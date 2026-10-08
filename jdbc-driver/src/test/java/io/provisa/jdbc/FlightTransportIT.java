@@ -1,66 +1,69 @@
 package io.provisa.jdbc;
 
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.Test;
 
-import java.sql.*;
-import java.util.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Integration tests for Arrow Flight transport against a live backend.
+ * The driver against a live Provisa server whose Flight port answers (REQ-293), with or without
+ * an auth provider.
  *
- * Requires: docker-compose up (Provisa on :8001, Flight server on :8815)
- * Run via: mvn verify
+ * <p>System properties: {@code provisa.url} (jdbc:provisa://host:port), {@code provisa.user},
+ * {@code provisa.password}, {@code provisa.sql} (a statement the user may run and that returns at
+ * least one row), {@code provisa.unheldRole} (a role the user does not hold; with an auth
+ * provider). Run via {@code mvn verify}.
  */
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class FlightTransportIT {
 
     static final String BASE_URL = System.getProperty("provisa.url", "jdbc:provisa://localhost:8001");
     static final String USER = System.getProperty("provisa.user", "admin");
+    static final String PASSWORD = System.getProperty("provisa.password", "");
+    static final String SQL = System.getProperty("provisa.sql", "SELECT 1 AS one");
+    static final String UNHELD_ROLE = System.getProperty("provisa.unheldRole");
+
+    private static Properties props(String password, String role) {
+        Properties props = new Properties();
+        props.setProperty("user", USER);
+        props.setProperty("password", password);
+        if (role != null) props.setProperty("role", role);
+        return props;
+    }
 
     @Test
-    @Order(1)
-    void flightTransport_connectsWhenServerAvailable() throws SQLException {
-        var props = new Properties();
-        props.setProperty("user", USER);
-        props.setProperty("password", "");
-        try (var conn = (ProvisaConnection) DriverManager.getConnection(BASE_URL, props)) {
-            // Flight may or may not be available depending on backend config
-            if (conn.flightTransport != null) {
-                assertTrue(conn.flightTransport.isConnected());
-            } else {
-                System.out.println("Flight server not available — HTTP fallback in use");
+    void aQueryRunsOverFlightAndStreamsTypedRows() throws SQLException {
+        try (var conn = (ProvisaConnection) DriverManager.getConnection(BASE_URL, props(PASSWORD, null))) {
+            assertNotNull(conn.flightTransport, "the Flight port must answer for this test");
+            try (Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(SQL)) {
+                assertInstanceOf(FlightStreamResultSet.class, rs);
+                assertTrue(rs.getMetaData().getColumnCount() > 0);
+                assertTrue(rs.next());
             }
         }
     }
 
     @Test
-    @Order(3)
-    void httpFallback_worksWhenFlightUnavailable() throws SQLException {
-        // Connect to a port where Flight is definitely not running
-        var props = new Properties();
-        props.setProperty("user", USER);
-        props.setProperty("password", "");
-        try (var conn = (ProvisaConnection) DriverManager.getConnection(BASE_URL, props)) {
-            // Even if Flight failed, the connection should be valid
-            assertFalse(conn.isClosed());
-            // Metadata should work (uses HTTP, not Flight)
-            assertNotNull(conn.getMetaData().getDatabaseProductName());
-        }
-    }
-
-    @Test
-    @Order(4)
-    void flightTransport_closedOnConnectionClose() throws SQLException {
-        var props = new Properties();
-        props.setProperty("user", USER);
-        props.setProperty("password", "");
-        var conn = (ProvisaConnection) DriverManager.getConnection(BASE_URL, props);
-        @SuppressWarnings("unused")
-        FlightTransport ft = conn.flightTransport;
+    void theFlightTransportIsClosedWithTheConnection() throws SQLException {
+        var conn = (ProvisaConnection) DriverManager.getConnection(BASE_URL, props(PASSWORD, null));
         conn.close();
         assertTrue(conn.isClosed());
         assertNull(conn.flightTransport);
+    }
+
+    @Test
+    void aRoleTheUserDoesNotHoldIsRefusedWithTheServersReason() throws SQLException {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            UNHELD_ROLE != null, "provisa.unheldRole names a role the user does not hold");
+        try (Connection conn = DriverManager.getConnection(BASE_URL, props(PASSWORD, UNHELD_ROLE));
+             Statement stmt = conn.createStatement()) {
+            SQLException refused = assertThrows(SQLException.class, () -> stmt.executeQuery(SQL));
+            assertTrue(refused.getMessage().contains(UNHELD_ROLE), refused.getMessage());
+        }
     }
 }

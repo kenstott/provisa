@@ -24,7 +24,7 @@ public class ProvisaConnection extends AbstractConnection {
     String role; // the role this connection REQUESTS; null = the server derives it from the identity
     String mode; // "catalog"
     String authToken; // the session token sign-in returned; null on a server with no password sign-in
-    FlightTransport flightTransport; // null if Flight unavailable
+    FlightTransport flightTransport; // null when the Flight port was unreachable at connect
     EnvelopeDecryptor encryptionService; // REQ-690: client-side column decrypt (null = disabled)
     String kmsKeyArn; // REQ-693: proof-of-client-decrypt sent to the high-security gate
     private boolean closed = false;
@@ -41,9 +41,13 @@ public class ProvisaConnection extends AbstractConnection {
      * the identity. On a server with no password sign-in ({@code /auth/login} answers 404: no
      * auth provider is configured) there is no identity to derive it from, and the user name is
      * the requested role, as that server takes every role at face value (REQ-131).
+     *
+     * <p>{@code flightPort} (the {@code flight_port} connection property) names the Flight port
+     * when it is not the conventional one beside the HTTP port (8815 beside 8001).
      */
-    ProvisaConnection(String baseUrl, String user, String password, String mode, String requestedRole)
-            throws SQLException {
+    ProvisaConnection(
+            String baseUrl, String user, String password, String mode, String requestedRole,
+            Integer flightPort) throws SQLException {
         this.baseUrl = baseUrl;
         this.mode = mode != null ? mode : "catalog";
         this.user = user;
@@ -56,13 +60,13 @@ public class ProvisaConnection extends AbstractConnection {
             this.role = null;
         }
 
-        // Attempt Flight connection (silent fallback to HTTP if unavailable)
-        String host = baseUrl.replaceFirst("^https?://", "").split(":")[0];
-        int port = 8001;
-        try {
-            port = Integer.parseInt(baseUrl.replaceFirst("^https?://", "").split(":")[1].split("/")[0]);
-        } catch (Exception ignored) {}
-        this.flightTransport = FlightTransport.tryConnect(host, port, this.role);
+        // REQ-293: queries run over Flight when its port answers now, over HTTP only when it
+        // is unreachable now (logged at INFO by FlightTransport.connect).
+        URI base = URI.create(baseUrl);
+        int resolvedFlightPort = flightPort != null
+            ? flightPort
+            : FlightTransport.deriveFlightPort(base.getPort() == -1 ? 8001 : base.getPort());
+        this.flightTransport = FlightTransport.connect(base.getHost(), resolvedFlightPort);
     }
 
     /**

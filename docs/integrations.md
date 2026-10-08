@@ -73,6 +73,8 @@ The full surface × method table is in [Security Model](security.md#surfaces-and
 
 The Provisa JDBC driver uses Arrow Flight as its underlying transport. It is the recommended path for BI tools with a JDBC connection wizard.
 
+Queries run over Arrow Flight whenever the Flight port answers when the connection is opened, and results stream a batch at a time with their column types. The Flight port is taken to be the one beside the HTTP port (8815 beside 8001); set the `flight_port` property when it is not. If the Flight port is unreachable at connect, the connection uses the HTTP API for its queries and logs that at INFO. Once a connection is on Flight, an error from the server — a refused credential, a role the user does not hold, a failed statement — is raised to the caller with the server's message; it is not retried over HTTP. (REQ-293)
+
 ### Connection
 
 Download [provisa-jdbc.jar](https://provisa.dev/dl/jdbc) (always the latest release) and add it to your tool's driver path.

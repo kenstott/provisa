@@ -35,6 +35,8 @@ public class ProvisaDriver implements Driver {
         String kmsMasterKey = info.getProperty("kms_master_key"); // base64, local provider only
         // The role to act as: one role the user holds, or a comma-separated set of them.
         String role = info.getProperty("role");
+        // The Arrow Flight port, when it is not the conventional one beside the HTTP port.
+        String flightPort = info.getProperty("flight_port");
         int qIdx = remainder.indexOf('?');
         if (qIdx >= 0) {
             hostPort = remainder.substring(0, qIdx);
@@ -44,6 +46,7 @@ public class ProvisaDriver implements Driver {
                 if (kv.length != 2) continue;
                 switch (kv[0]) {
                     case "mode": mode = kv[1]; break;
+                    case "flight_port": flightPort = kv[1]; break;
                     case "role": role = java.net.URLDecoder.decode(kv[1], java.nio.charset.StandardCharsets.UTF_8); break;
                     case "kms_provider": kmsProvider = kv[1]; break;
                     case "kms_key_arn": kmsKeyArn = kv[1]; break;
@@ -61,9 +64,19 @@ public class ProvisaDriver implements Driver {
         String user = info.getProperty("user", "");
         String password = info.getProperty("password", "");
 
-        ProvisaConnection conn = new ProvisaConnection(baseUrl, user, password, mode, role);
+        ProvisaConnection conn = new ProvisaConnection(
+            baseUrl, user, password, mode, role, parseFlightPort(flightPort));
         conn.configureEncryption(kmsProvider, kmsKeyArn, kmsMasterKey);
         return conn;
+    }
+
+    private static Integer parseFlightPort(String flightPort) throws SQLException {
+        if (flightPort == null || flightPort.isEmpty()) return null;
+        try {
+            return Integer.valueOf(flightPort);
+        } catch (NumberFormatException e) {
+            throw new SQLException("flight_port must be a port number, got: " + flightPort, e);
+        }
     }
 
     @Override
@@ -79,11 +92,16 @@ public class ProvisaDriver implements Driver {
         DriverPropertyInfo roleProp = new DriverPropertyInfo("role", info.getProperty("role"));
         roleProp.description = "The role to act as: one role the user holds, or a comma-separated "
             + "set of them. Omitted: the server derives the role from the signed-in identity.";
+        DriverPropertyInfo flightPortProp =
+            new DriverPropertyInfo("flight_port", info.getProperty("flight_port"));
+        flightPortProp.description = "The Arrow Flight port, when it is not the conventional one "
+            + "beside the HTTP port (8815 beside 8001). Queries run over Flight when it answers.";
         return new DriverPropertyInfo[]{
             new DriverPropertyInfo("user", info.getProperty("user")),
             new DriverPropertyInfo("password", info.getProperty("password")),
             modeProp,
             roleProp,
+            flightPortProp,
         };
     }
 

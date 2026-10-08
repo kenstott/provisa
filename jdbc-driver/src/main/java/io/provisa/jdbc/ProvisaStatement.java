@@ -6,8 +6,11 @@ import java.util.*;
 /**
  * Provisa JDBC Statement.
  *
- * Routes SQL through the /data/sql governance endpoint (RLS, masking, and
- * visibility) and returns the rows as a {@link ProvisaResultSet}.
+ * A query runs through the governed pipeline (RLS, masking, visibility) over Arrow Flight when
+ * the connection has a Flight transport (REQ-293), streamed as a {@link FlightStreamResultSet};
+ * and through the /data/sql endpoint, as a {@link ProvisaResultSet}, only on a connection whose
+ * Flight port was unreachable when it was opened. A Flight error is raised, never retried over
+ * HTTP.
  */
 public class ProvisaStatement extends AbstractStatement {
 
@@ -23,7 +26,14 @@ public class ProvisaStatement extends AbstractStatement {
     public ResultSet executeQuery(String sql) throws SQLException {
         if (closed) throw new SQLException("Statement is closed");
 
-        // Route raw SQL through /data/sql governance endpoint
+        if (currentResultSet != null) currentResultSet.close();
+        if (conn.flightTransport != null) {
+            currentResultSet = conn.flightTransport.execute(
+                sql, conn.authToken, conn.role, conn.kmsKeyArn, conn.encryptionService);
+            return currentResultSet;
+        }
+
+        // The Flight port was unreachable at connect: /data/sql
         List<Map<String, Object>> rows = conn.executeSqlEndpoint(sql);
         List<String> columns = rows.isEmpty()
             ? new ArrayList<>()
@@ -33,7 +43,11 @@ public class ProvisaStatement extends AbstractStatement {
     }
 
     @Override public ResultSet getResultSet() { return currentResultSet; }
-    @Override public void close() { closed = true; }
+    @Override
+    public void close() throws SQLException {
+        closed = true;
+        if (currentResultSet != null) currentResultSet.close();
+    }
     @Override public boolean isClosed() { return closed; }
     @Override public Connection getConnection() { return conn; }
 }

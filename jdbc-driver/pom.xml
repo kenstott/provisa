@@ -201,6 +201,9 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
         <configuration>
+          <!-- For the in-JVM Flight SERVER the tests stream from: writing record batches needs
+               java.nio opened on JDK 16+. Reading them, which is all the driver does, does not. -->
+          <argLine>--add-opens=java.base/java.nio=ALL-UNNAMED</argLine>
           <!-- Exclude integration tests (require running server) -->
           <excludes>
             <exclude>**/*IT.java</exclude>
