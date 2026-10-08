@@ -229,9 +229,22 @@ def _create_database(server: str) -> None:
     # serverless pool is still touching it. Retry that one error, bounded, the same way the
     # OPENROWSET readiness wait above polls the new workspace; any other error, or 1807 persisting
     # past the bound, fails the lane.
+    #
+    # Error 18456 ("Login failed for user '<token-identified principal>'") on the FIRST connection
+    # is the same freshness: the workspace's Azure AD admin was assigned a moment ago (_provision)
+    # and the serverless endpoint does not admit that login until the assignment has reached it
+    # (warehouse run 37777052154 failed here, on its first connect). The login is retried under the
+    # same bound; one still refused when the bound passes fails the lane with that error.
     deadline = time.monotonic() + 300
     while True:
-        rt = MssqlWarehouseRuntime(server=server, database="master", engine_name="synapse")
+        try:
+            rt = MssqlWarehouseRuntime(server=server, database="master", engine_name="synapse")
+        except pyodbc.InterfaceError as exc:
+            if "(18456)" not in str(exc) or time.monotonic() >= deadline:
+                raise
+            print(f"the workspace's AD admin is not admitted yet; retrying: {exc}", flush=True)
+            time.sleep(15)
+            continue
         try:
             rt.connection.autocommit = True
             cur = rt.connection.cursor()
