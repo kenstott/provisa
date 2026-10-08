@@ -764,7 +764,10 @@ class DataProductInput:  # REQ-1634, REQ-1660
     status: str | None = None
     sla: str | None = None
     support: str | None = None
-    custom_properties: JsonScalar = strawberry.field(default_factory=dict)
+    # Nullable, default null: a default of `{}` on the JSON scalar cannot be printed as a GraphQL
+    # default value, and the standard introspection query (which asks every input's defaultValue)
+    # then answered with an error. Absent or null means no custom properties.
+    custom_properties: JsonScalar | None = None
 
 
 @strawberry.input

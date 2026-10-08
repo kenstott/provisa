@@ -1851,7 +1851,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 status=input.status,
                 sla=input.sla,
                 support=input.support,
-                custom_properties=input.custom_properties,
+                # Absent or null is "no custom properties" (DataProductInput says why).
+                custom_properties=(
+                    {} if input.custom_properties is None else input.custom_properties
+                ),
             )
             await data_product_repo.upsert(conn, model)
         return MutationResult(
