@@ -18,6 +18,24 @@ site/
   deploy.sh             manual Cloudflare Pages deploy
 ```
 
+## Source picker
+
+The source-type block on the home page and at the top of `/why/sources` is the product's source
+picker rendered as HTML and CSS. It is generated, not typed: `scripts/gen-site-source-picker.mjs`
+reads `provisa-ui/src/pages/sources/constants.ts` (types, order, categories, the hosted Postgres
+services in `managed`) and `provisa-ui/src/components/SourceLogo.tsx` (which types have a
+simple-icons mark; the rest are lettered tiles), adds the requirement-only entries and tile
+sub-lists named at the top of the script, and writes the fragment between the
+`<!-- source-picker:start -->` and `<!-- source-picker:end -->` markers of both pages. The marks
+are written once to `assets/source-marks.<hash>.svg` and referenced with `<use>`.
+
+```bash
+node scripts/gen-site-source-picker.mjs           # regenerate after adding or renaming a source
+node scripts/gen-site-source-picker.mjs --check   # exit 1 when the site is out of step
+```
+
+`provisa-ui/src/__tests__/siteSourcePicker.test.ts` runs the check in the UI's test suite.
+
 ## Preview
 
 ```bash

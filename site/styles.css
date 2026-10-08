@@ -628,3 +628,32 @@ code:not(pre code) {
 .footer-links { display: flex; flex-wrap: wrap; gap: 12px 22px; }
 .footer-links a { color: var(--text-muted); font-size: .9rem; }
 .footer-links a:hover { color: var(--text); }
+
+/* The product's source-type picker, rendered from provisa-ui (scripts/gen-site-source-picker.mjs). */
+.picker-section { padding-top: 28px; }
+.picker-section .eyebrow { text-align: center; margin: 0 0 14px; }
+.picker { column-width: 220px; column-gap: 24px; text-align: left; }
+.doc-body .picker { margin: 0 0 32px; }
+.picker-cat { break-inside: avoid; margin: 0 0 14px; }
+.picker-cat h3 {
+  margin: 0 0 4px; font-size: .72rem; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.picker-cat ul { list-style: none; margin: 0; padding: 0; }
+.picker-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 4px 8px; border-radius: 6px; font-size: .9rem;
+}
+.picker-row:hover { background: var(--surface); }
+.picker-mark, .picker-tile { flex: none; }
+.picker-tile {
+  width: 20px; height: 20px; border-radius: 4px; color: #fff; font-size: 9px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; line-height: 1;
+}
+.picker-name { flex: 1; min-width: 0; }
+.picker-sub {
+  flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px 8px;
+  margin: 0 0 2px 28px !important; font-size: .74rem; color: var(--text-muted);
+}
+.picker-sub li::after { content: ","; }
+.picker-sub li:last-child::after { content: ""; }
