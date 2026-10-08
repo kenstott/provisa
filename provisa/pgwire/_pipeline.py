@@ -154,6 +154,8 @@ class _Plan:
     # rows matched than were returned) or "unchecked" (the check could not be made). None when
     # the answer was whole, or was not checked because it did not fill the limit.
     limit_outcome: str | None = None
+    # Whether a stream's end already asked for the row after the limit (once per read).
+    limit_checked: bool = False
     # Guards against a second finalize for one statement: the streaming surfaces finalize at their
     # own terminal, and a plan that also passes through _execute_plan must still write one row.
     audit_written: bool = field(default=False)
@@ -2238,8 +2240,7 @@ class _CutCheckedDrain:
         try:
             batch = next(self._batches)
         except StopIteration:
-            if self._rows == self._plan.row_limit.limit:
-                _settle_stream_cut(self._plan)
+            _stream_answer_whole(self._plan, self._rows)
             raise
         self._rows += self._rows_in(batch)
         return batch
@@ -2269,6 +2270,17 @@ def _stream_was_cut(plan: _Plan, state: Any) -> bool:
         after, plan.exec_params, session_hints=plan.session_hints
     )
     return bool(stream.rows())
+
+
+def _stream_answer_whole(plan: _Plan, rows: int) -> bool:
+    """Whether a stream of ``rows`` rows is the whole answer of a read its row limit bounds
+    (REQ-1949), asking for the row after the limit when the stream filled it exactly -- once,
+    by whichever sees the stream end first: the response cache's capture, which keeps only a
+    whole answer, or the drain."""
+    if rows == plan.row_limit.limit and not plan.limit_checked:
+        plan.limit_checked = True
+        _settle_stream_cut(plan)
+    return plan.limit_outcome is None
 
 
 def _settle_stream_cut(plan: _Plan) -> None:
@@ -2991,9 +3003,14 @@ def _cache_tee(plan: _Plan, state: Any, run: Any | None, wire_formats: list[int]
     from provisa.cache.raw_sql import new_tee
 
     ttl, table_ids = policy
-    return new_tee(
+    tee = new_tee(
         store, ck, _response_cache_org_id(state), ttl, table_ids, _response_cache_bound(), run
     )
+    if plan.row_limit is not None:
+        # REQ-1949: a stream cut at its row limit is not kept as the statement's answer -- the
+        # same rule a buffered answer is held to above (a warned answer is never stored).
+        tee.whole = functools.partial(_stream_answer_whole, plan)
+    return tee
 
 
 def response_cache_tee(plan: _Plan, state: Any, run: Any | None) -> Any | None:  # REQ-1897

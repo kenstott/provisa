@@ -201,10 +201,15 @@ class ResponseCacheTee:
         self._complete = False
         self._entry: dict | None = None
         self._column_types: list[str] | None = None
+        self._seen_rows = 0
+        # REQ-1949: asked when the stream ends, with the rows it delivered: whether what was
+        # captured is the statement's whole answer. A cut answer is not kept as the answer.
+        self.whole: Callable[[int], bool] | None = None
 
     # -- capture -------------------------------------------------------------------------------
 
     def _keep(self, item: Any, n_rows: int) -> None:
+        self._seen_rows += n_rows
         if self._buffer is None:
             return
         if self._buffered_rows + n_rows > self.bound:
@@ -215,6 +220,8 @@ class ResponseCacheTee:
         self.peak_buffered_rows = max(self.peak_buffered_rows, self._buffered_rows)
 
     def _finished(self) -> None:
+        if self.whole is not None and not self.whole(self._seen_rows):
+            self._buffer = self._entry = None
         self._complete = True
         if self._run is not None:
             self._run(self.commit())

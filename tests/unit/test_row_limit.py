@@ -465,3 +465,45 @@ def test_a_streams_audit_row_holds_what_its_drain_found(monkeypatch):
         "row_cap": 3,
         "row_limit": {"limit": 3, "kind": "role", "outcome": "cut"},
     }
+
+
+def _tee(whole):
+    from provisa.cache.raw_sql import ResponseCacheTee
+
+    tee = ResponseCacheTee(SimpleNamespace(), 100, run=None)
+    tee.whole = whole
+    return tee
+
+
+def test_a_cut_stream_is_not_kept_as_the_statements_answer(monkeypatch):
+    """The response cache's capture ends inside the drain: it asks whether the stream was the
+    whole answer before keeping it, so a hit never serves a cut answer with no warning."""
+    stream = _answer(3)
+    cut = _tee(lambda rows: rows != 3)
+    assert [len(b) for b in cut.rows(stream).batches()] == [3]
+    assert cut.stored_entry is None
+    whole = _tee(lambda rows: True)
+    list(whole.rows(_answer(3)).batches())
+    assert whole.stored_entry is not None
+
+
+def test_the_row_after_the_limit_is_asked_once_for_a_stream(monkeypatch):
+    """The cache's capture and the drain both see the stream end; the next row is read once."""
+    import provisa.api.app as app
+
+    engine = _SyncEngine([(4,)])
+    monkeypatch.setattr(app, "state", SimpleNamespace(federation_engine=engine))
+    plan = _plan()
+    assert _pipeline._stream_answer_whole(plan, 3) is False  # the capture: not kept
+    assert _pipeline._stream_answer_whole(plan, 3) is False  # the drain: nothing more read
+    assert len(engine.asked) == 1 and [w.code for w in plan.warnings] == ["statement.rows_cut"]
+    within = _plan()
+    assert _pipeline._stream_answer_whole(within, 2) is True and len(engine.asked) == 1
+
+
+def test_the_cache_capture_of_a_limited_read_asks_before_it_keeps(monkeypatch):
+    import inspect
+
+    assert "tee.whole = functools.partial(_stream_answer_whole, plan)" in inspect.getsource(
+        _pipeline._cache_tee
+    )
