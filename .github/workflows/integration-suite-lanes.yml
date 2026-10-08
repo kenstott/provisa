@@ -209,6 +209,16 @@ jobs:
           uv run python -c "from tests.itest_stack import concurrent_session_limit as n; \
             print('docker stack slots on this runner:', n()); assert n() >= 1"
 
+      # tests/integration/test_jdbc_driver_e2e.py (core lane) runs the JDBC driver's Flight IT
+      # with Maven against the server it starts; the driver is built for Java 21.
+      - name: Java 21 for the JDBC driver's integration test
+        if: matrix.lane == 'core'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
       - name: Run lane
         run: |
           uv run python scripts/ci/run_lane.py ${{ matrix.lane }} \

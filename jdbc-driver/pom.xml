@@ -211,6 +211,27 @@
         </configuration>
       </plugin>
       <plugin>
+        <!-- The *IT classes run against a live Provisa server, in `mvn verify`, and only the
+             ones named by -Dit.test: tests/integration/test_jdbc_driver_e2e.py starts the server
+             and passes its address (-Dprovisa.url, …). -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>3.5.2</version>
+        <configuration>
+          <!-- Test the compiled classes, not the shaded jar: the jar's relocated copies of
+               gRPC and Netty would sit beside the originals on the test classpath. -->
+          <classesDirectory>${project.build.outputDirectory}</classesDirectory>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-shade-plugin</artifactId>
         <version>3.5.2</version>
