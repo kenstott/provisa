@@ -77,6 +77,7 @@ def test_every_paged_list_is_offered_with_how_it_pages(offered):
     kinds = Counter(t.pagination.type.value for t in paged)
     assert set(kinds) == {"last_row", "cursor"} and kinds["last_row"] > 100
     assert all(t.pagination.rows_field == "data" for t in paged)
+    assert all(t.pagination.page_size_param == "limit" for t in paged)  # a search's cursor too
 
 
 # --- adding the source ---

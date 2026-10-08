@@ -4795,6 +4795,12 @@
     no default is not sent, so the read is not filtered by it; before this ruling it was sent
     every value it allows, which a remote that takes one value reads as the last of them or
     refuses.
+    (Amended 2026-10-08, PAGE SIZE OF A CURSOR-PAGED LIST) A cursor-paged table may declare a
+    page-size parameter, and its page size is then sent under it on every page; before this a
+    cursor-paged table's page size was never sent and each page was the remote's own size. With
+    no page-size parameter declared none is sent, since a cursor says where a page starts and
+    not how long it is, and no name is assumed. The parameter is proposed from the spec where
+    the list declares one beside its cursor. The Paging section shows both fields for a cursor.
   use_case: GET operation auto-registration maps path and query params to GraphQL arguments automatically.
   code:
   - provisa/openapi/

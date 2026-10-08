@@ -48,6 +48,9 @@ const READS: Record<PagingType, { field: keyof Paging; fallback?: string; label?
   cursor: [
     { field: "cursorParam", fallback: "cursor" },
     { field: "cursorField", fallback: "next_cursor" },
+    // No fallback: with no size parameter named, none is sent and the remote's own page applies.
+    { field: "pageSizeParam" },
+    { field: "pageSize" },
   ],
   // The next page starts after the last row of this one, named by a field of that row.
   last_row: [

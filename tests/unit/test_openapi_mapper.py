@@ -576,6 +576,18 @@ def test_a_parameter_the_answer_carries_the_next_value_of_is_offered_as_a_cursor
         "type": "cursor",
         "cursor_param": "page",
         "cursor_field": "next_page",
+        "page_size_param": "limit",
+    }
+
+
+def test_a_cursor_with_no_size_parameter_is_offered_without_one():
+    answer = _list_of(_CHARGE, {"next_page": {"type": "string"}})
+    (query,), _ = parse_spec(_wrapper_spec(answer, ["page"]))
+    assert query.pagination.model_dump(mode="json", exclude_unset=True) == {
+        "rows_field": "data",
+        "type": "cursor",
+        "cursor_param": "page",
+        "cursor_field": "next_page",
     }
 
 

@@ -34,6 +34,8 @@ from pydantic import BaseModel, Field, model_validator
 
 class PaginationType(str, Enum):  # REQ-318
     link_header = "link_header"
+    # The answer carries where the next page starts. The page size is sent only where the table
+    # names the parameter for it (page_size_param); without one the remote's own page applies.
     cursor = "cursor"
     offset = "offset"
     page_number = "page_number"

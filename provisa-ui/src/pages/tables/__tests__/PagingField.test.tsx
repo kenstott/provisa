@@ -57,6 +57,22 @@ describe("PagingField (REQ-318)", () => {
     expect(screen.queryByRole("textbox", { name: "Next-cursor field" })).not.toBeInTheDocument();
   });
 
+  it("lets a cursor-paged table name its page-size parameter, sending none when left empty", () => {
+    render(
+      <PagingField
+        kind="endpoint"
+        paging={{ ...NO_PAGING, type: "cursor", cursorParam: "page", pageSizeParam: "limit" }}
+        onChange={vi.fn()}
+        ceilingRows={1000}
+      />,
+    );
+    expect(screen.getByRole("textbox", { name: "Page size parameter" })).toHaveValue("limit");
+    expect(screen.getByRole("textbox", { name: "Page size parameter" })).not.toHaveAttribute(
+      "placeholder",
+    );
+    expect(screen.getByRole("textbox", { name: "Page size" })).toBeInTheDocument();
+  });
+
   it("lets the steward say where the rows are when registering (REQ-316)", () => {
     const onChange = vi.fn();
     render(

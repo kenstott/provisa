@@ -352,7 +352,7 @@ def propose_paging(
     page after the last row's id (the rows, ``row_properties``, having one), a page-number
     parameter, an offset with a size parameter, or a ``Link`` response header. Only a list is
     paged. A cursor the answer carries is proposed where the spec names it: a parameter ``x``
-    beside a ``next_x`` property of the answer."""
+    beside a ``next_x`` property of the answer, with the size parameter where it declares one."""
     if not is_list:
         return None
     declared: dict = {} if rows_field is None else {"rows_field": rows_field}
@@ -374,6 +374,8 @@ def propose_paging(
             "cursor_param": cursor,
             "cursor_field": f"next_{cursor}",
         }
+        if size is not None:
+            declared["page_size_param"] = size
     elif page is not None:
         declared |= {"type": PaginationType.page_number, "page_param": page}
         if size is not None:

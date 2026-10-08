@@ -222,6 +222,10 @@ async def _pages(
     elif pagination.type == PaginationType.cursor:
         cursor_param = pagination.cursor_param or "cursor"
         cursor_field = pagination.cursor_field or "next_cursor"
+        if pagination.page_size_param:
+            # A cursor names where a page starts and not how long it is: the page size is sent
+            # only under a parameter the table declares, and the remote's own applies without one.
+            params = {**(params or {}), pagination.page_size_param: pagination.page_size}
         for _ in range(max_pages):
             resp = await _request_with_retry(
                 client,

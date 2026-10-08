@@ -261,6 +261,28 @@ class TestPaginate:
         # second call should have cursor param injected
         second_call_kwargs = client.request.await_args_list[1].kwargs
         assert second_call_kwargs["params"] == {"cursor": "abc"}
+        # No size parameter is declared, so none is sent: the remote's own page applies.
+        assert client.request.await_args_list[0].kwargs["params"] == {}
+
+    @pytest.mark.asyncio
+    async def test_cursor_pagination_sends_the_page_size_under_the_parameter_it_declares(self):
+        pagination = PaginationConfig(
+            type=PaginationType.cursor,
+            cursor_param="page",
+            cursor_field="next_page",
+            page_size_param="limit",
+            page_size=50,
+        )
+        client = MagicMock()
+        client.request = AsyncMock(
+            side_effect=[_resp(200, {"items": [1], "next_page": "p2"}), _resp(200, {"items": [2]})]
+        )
+        endpoint = _endpoint(pagination=pagination)
+        await _paginate(client, endpoint, "/pets", {"q": "x"}, {}, None, 30.0)
+        assert [c.kwargs["params"] for c in client.request.await_args_list] == [
+            {"q": "x", "limit": 50},
+            {"q": "x", "limit": 50, "page": "p2"},
+        ]
 
     @pytest.mark.asyncio
     async def test_cursor_pagination_default_names(self):
