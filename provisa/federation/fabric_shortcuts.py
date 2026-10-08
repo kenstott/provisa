@@ -40,6 +40,21 @@ def _sanitize(s: str) -> str:
     return "".join(c if c.isalnum() else "_" for c in s).strip("_")
 
 
+# A Fabric display name holds 64 characters.
+_NAME_LIMIT = 64
+
+
+def connection_name(workspace_id: str, endpoint: str) -> str:
+    """The name of the connection Provisa keeps in ``workspace_id`` for ``endpoint``: the endpoint,
+    and a short digest of the workspace so that two workspaces reaching one endpoint -- two
+    deployments in a tenant, or one deployment under another principal -- each have their own."""
+    import hashlib
+
+    digest = hashlib.sha256(workspace_id.encode()).hexdigest()[:8]
+    stem = f"provisa_{_sanitize(endpoint.split('//', 1)[-1])}"[: _NAME_LIMIT - len(digest) - 1]
+    return f"{stem}_{digest}"
+
+
 class _Fabric:
     def __init__(self) -> None:
         from azure.identity import DefaultAzureCredential
@@ -61,15 +76,38 @@ class _Fabric:
         except ValueError:
             return r.status_code, r.text
 
-    def ensure_connection(self, endpoint: str, access_key: str, secret: str) -> str:
+    def _listed(self, path: str) -> list[dict] | None:
+        """Every entry of the listing at ``path``, or None when the listing is refused. A Fabric
+        listing is paged: each page names the next with a ``continuationToken``, and reading only
+        the first page missed whatever lay beyond it."""
+        from urllib.parse import quote
+
+        entries: list[dict] = []
+        token: str | None = None
+        while True:
+            page = path if token is None else f"{path}?continuationToken={quote(token, safe='')}"
+            st, payload = self._req("GET", page)
+            if st != HTTPStatus.OK or not isinstance(payload, dict):
+                return None
+            entries.extend(payload.get("value", []))
+            token = payload.get("continuationToken")
+            if not token:
+                return entries
+
+    def ensure_connection(
+        self, workspace_id: str, endpoint: str, access_key: str, secret: str
+    ) -> str:
         """An ``AmazonS3Compatible`` connection for the S3-compatible endpoint (idempotent by name).
-        The URL is the ENDPOINT only (no bucket); credentials are Basic (key id = user, secret = pw)."""
-        name = f"provisa_{_sanitize(endpoint.split('//', 1)[-1])}"[:64]
-        st, payload = self._req("GET", "/connections")
-        if st == HTTPStatus.OK:
-            for c in payload.get("value", []):
-                if c.get("displayName") == name:
-                    return c["id"]
+        The URL is the ENDPOINT only (no bucket); credentials are Basic (key id = user, secret = pw).
+
+        A connection's name is unique across the TENANT, and the listing shows only the connections
+        the calling principal can use. Named for the endpoint alone, a connection made by another
+        deployment or another principal was invisible to the listing and then collided on create
+        (``DuplicateConnectionName``). The name therefore carries the workspace it serves."""
+        name = connection_name(workspace_id, endpoint)
+        for c in self._listed("/connections") or []:
+            if c.get("displayName") == name:
+                return c["id"]
         body = {
             "connectivityType": "ShareableCloud",
             "displayName": name,
@@ -90,6 +128,13 @@ class _Fabric:
             },
         }
         st, payload = self._req("POST", "/connections", body)
+        if st == HTTPStatus.CONFLICT and "DuplicateConnectionName" in str(payload):
+            # It exists and this principal was not shown it: someone else's, by the same name.
+            raise FabricShortcutError(
+                f"A Fabric connection named {name!r} already exists in this tenant and the "
+                "principal Provisa runs as cannot use it: share that connection with the "
+                "principal, or delete it"
+            )
         if st not in (HTTPStatus.OK, HTTPStatus.CREATED):
             raise FabricShortcutError(
                 f"Fabric S3-compatible connection create failed ({st}): {payload}"
@@ -98,11 +143,9 @@ class _Fabric:
 
     def ensure_lakehouse(self, workspace_id: str, name: str = "provisa_shortcuts") -> str:
         """A Lakehouse to host shortcuts (idempotent by name)."""
-        st, payload = self._req("GET", f"/workspaces/{workspace_id}/items")
-        if st == HTTPStatus.OK:
-            for it in payload.get("value", []):
-                if it.get("type") == "Lakehouse" and it.get("displayName") == name:
-                    return it["id"]
+        for it in self._listed(f"/workspaces/{workspace_id}/items") or []:
+            if it.get("type") == "Lakehouse" and it.get("displayName") == name:
+                return it["id"]
         st, payload = self._req(
             "POST", f"/workspaces/{workspace_id}/lakehouses", {"displayName": name}
         )
@@ -114,11 +157,9 @@ class _Fabric:
 
             for _ in range(20):
                 time.sleep(3)
-                st2, p2 = self._req("GET", f"/workspaces/{workspace_id}/items")
-                if st2 == HTTPStatus.OK:
-                    for it in p2.get("value", []):
-                        if it.get("type") == "Lakehouse" and it.get("displayName") == name:
-                            return it["id"]
+                for it in self._listed(f"/workspaces/{workspace_id}/items") or []:
+                    if it.get("type") == "Lakehouse" and it.get("displayName") == name:
+                        return it["id"]
         raise FabricShortcutError(f"Fabric lakehouse create failed ({st}): {payload}")
 
     def ensure_shortcut(
@@ -178,7 +219,7 @@ def ensure_external_shortcut(
             "Fabric external link needs endpoint + access_key_id + secret_access_key in federation_hints"
         )
     fab = _Fabric()
-    conn_id = fab.ensure_connection(endpoint, access_key, secret)
+    conn_id = fab.ensure_connection(workspace_id, endpoint, access_key, secret)
     lakehouse_id = fab.ensure_lakehouse(workspace_id)
     fab.ensure_shortcut(workspace_id, lakehouse_id, name, conn_id, endpoint, bucket, subpath)
     return f"https://onelake.dfs.fabric.microsoft.com/{workspace_id}/{lakehouse_id}/Files/{name}/{filename}"
