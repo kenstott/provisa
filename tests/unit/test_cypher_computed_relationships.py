@@ -302,3 +302,36 @@ def test_an_untyped_variable_length_pattern_walks_only_what_joins_its_ends(
     assert _refusals(sql_tree, ctx, gov) == [], lowered
     assert _pairs(engine, sql_tree) == _pairs(engine, typed), lowered
     assert _pairs(engine, typed), "the fixture's rows are related by this relationship"
+
+
+def test_a_walk_along_a_self_relationship_and_another_is_one_statement_an_engine_runs(
+    monkeypatch,
+):
+    """Orders reach Regions, and a Region its parent Region (#158): the walk from an order is
+    one recursive statement, and returns every region reached within the hops given."""
+    monkeypatch.setitem(_RELATIONSHIPS, "plain", ("IN_REGION", "Orders", "Regions", "id", "id", {}))
+    _, _, label_map, _ = _model("plain")
+    parent = RelationshipMapping(
+        rel_type="PARENT",
+        source_label="Regions",
+        target_label="Regions",
+        join_source_column="name",
+        join_target_column="name",
+        field_name="parent",
+    )
+    label_map = CypherLabelMap(
+        nodes=label_map.nodes,
+        relationships={**label_map.relationships, "PARENT": parent},
+        aliases={**label_map.aliases, "PARENT": [parent]},
+    )
+    con = duckdb.connect()
+    con.execute("ATTACH ':memory:' AS pg")
+    con.execute("CREATE SCHEMA pg.public")
+    con.execute("CREATE TABLE pg.public.orders (id INTEGER, customer_code VARCHAR, doc VARCHAR)")
+    con.execute("CREATE TABLE pg.public.regions (id INTEGER, name VARCHAR)")
+    con.execute("INSERT INTO pg.public.orders VALUES (1, 'a', '{}'), (9, 'b', '{}')")
+    # Region 1 and region 2 share a name, so each is the other's (and its own) parent.
+    con.execute("INSERT INTO pg.public.regions VALUES (1, 'east'), (2, 'east'), (3, 'west')")
+    cypher = "MATCH (o:Orders)-[*1..2]->(r:Regions) RETURN DISTINCT o.id AS a, r.id AS b"
+    sql_tree, _, _ = cypher_to_sql(parse_cypher(cypher), label_map, {})
+    assert _pairs(con, sql_tree) == [(1, 1), (1, 2)], sql_tree.sql(dialect="postgres")

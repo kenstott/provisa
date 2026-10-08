@@ -625,6 +625,57 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         self._shortestpath_is_all = is_all
         return cast(exp.Expression, from_expr), joins  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
+    def _one_recursive_term(
+        self,
+        cte_name: str,
+        allowed_rels: list[RelationshipMapping],
+        max_hops: int,
+        _tbl: Any,
+    ) -> exp.Select:
+        """The recursive step over several relationships as one term: the traversal joined to
+        the union of every candidate hop, each a (from_type, from_id, cur_type, cur_id) row."""
+
+        def col(name: str, table: str, quoted: bool = False) -> exp.Column:
+            return exp.Column(
+                this=exp.Identifier(this=name, quoted=quoted), table=exp.Identifier(this=table)
+            )
+
+        hops: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        for rel in allowed_rels:
+            src_node_m = self._lm.nodes.get(rel.source_label)
+            tgt_node_m = self._lm.nodes.get(rel.target_label)
+            if src_node_m is None or tgt_node_m is None:
+                continue
+            hop = exp.select(
+                exp.alias_(exp.Literal.string(src_node_m.type_name), alias="from_type"),
+                exp.alias_(col(src_node_m.id_column, "_cur", quoted=True), alias="from_id"),
+                exp.alias_(exp.Literal.string(tgt_node_m.type_name), alias="cur_type"),
+                exp.alias_(col(tgt_node_m.id_column, "_nxt", quoted=True), alias="cur_id"),
+            ).from_(_tbl(src_node_m, "_cur"))
+            hop = _apply_hop(hop, rel, "_cur", tgt_node_m, "_nxt", _tbl(tgt_node_m, "_nxt"))
+            hops = hop if hops is None else exp.Union(this=hops, expression=hop, distinct=False)
+        assert hops is not None  # called with more than one branch built from these rels
+        return (
+            exp.select(
+                col("src_id", "t"),
+                col("cur_type", "_hop"),
+                col("cur_id", "_hop"),
+                exp.alias_(
+                    exp.Add(this=col("hops", "t"), expression=exp.Literal.number(1)), alias="hops"
+                ),
+            )
+            .from_(exp.alias_(exp.Table(this=exp.Identifier(this=cte_name)), alias="t"))
+            .join(
+                exp.alias_(exp.Subquery(this=hops), alias="_hop"),
+                on=exp.And(
+                    this=exp.EQ(this=col("from_type", "_hop"), expression=col("cur_type", "t")),
+                    expression=exp.EQ(this=col("from_id", "_hop"), expression=col("cur_id", "t")),
+                ),
+                join_type="INNER",
+            )
+            .where(exp.LT(this=col("hops", "t"), expression=exp.Literal.number(max_hops)))
+        )
+
     def _build_recursive_cte(
         self,
         cte_name: str,
@@ -769,6 +820,11 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 )
             )
             rec_branches.append(branch)
+
+        if len(rec_branches) > 1:
+            # One recursive term, reading the traversal once (#158): engines admit a single
+            # recursive term, and one that names the traversal a single time.
+            rec_branches = [self._one_recursive_term(cte_name, allowed_rels, max_hops, _tbl)]
 
         all_branches = base_branches + rec_branches
         if not all_branches:
