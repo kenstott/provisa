@@ -10,7 +10,7 @@ La surface d'administration exécute les mêmes convertisseurs : un import ne n�
 2. **Associer les domaines** (optionnel). Chaque paire associe un schéma v2 ou un sous-graphe DDN à un domaine Provisa ; tout ce qui n'est pas associé conserve son nom d'origine.
 3. **Convertir et prévisualiser.** Le serveur convertit et retourne des comptages, les avertissements du convertisseur, et la configuration générée. Rien n'est écrit à cette étape.
 4. **Réviser et modifier.** La configuration est modifiable sur place — détails de connexion, noms de domaines, noms de rôles. Ce que vous appliquez est ce qui est affiché.
-5. **Appliquer.** *Replace the existing semantic layer* supprime chaque source, table, rôle et règle absent de la configuration ; laissé désactivé, l'import fusionne avec ce que possède déjà l'organisation. L'application charge la configuration et reconstruit les schémas de l'organisation.
+5. **Appliquer.** *Appliquer à cette organisation* charge la configuration et reconstruit les schémas de l'organisation. Un import fusionne toujours avec ce que possède déjà l'organisation.
 
 Endpoints : `POST /admin/import/hasura/preview` et `POST /admin/import/hasura/apply`.
 

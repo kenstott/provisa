@@ -1,6 +1,6 @@
 # Supporto query Cypher
 
-Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/cypher/`. (REQ-345, REQ-347) Le query vengono analizzate da un parser custom recursive-descent (nessuna libreria Cypher esterna) (REQ-571), risolte contro il layer semantico (REQ-351), ed emesse come SQL, poi instradate al motore di esecuzione target. (REQ-066, REQ-067, REQ-347)
+Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/cypher/`. (REQ-345, REQ-347) Le query vengono analizzate da un parser custom recursive-descent (nessuna libreria Cypher esterna) (REQ-571), risolte contro il modello (REQ-351), ed emesse come SQL, poi instradate al motore di esecuzione target. (REQ-066, REQ-067, REQ-347)
 
 ## Funzionalità implementate
 
@@ -19,8 +19,8 @@ Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/
 | `UNION` / `UNION ALL` | ✓ | Union ricorsiva tra sotto-AST |
 | `CALL { … }` | ✓ | Decomposizione della subquery call top-level via `cypher_calls_to_sql_list` |
 | `CALL { WITH x … }` | ✓ | Subquery correlata → `CROSS JOIN LATERAL`; vedi §CALL correlata |
-| `CALL db.labels()` | ✓ | Restituisce le etichette dei nodi dal layer semantico; nessuna traduzione SQL (REQ-572) |
-| `CALL db.relationshipTypes()` | ✓ | Restituisce i tipi di relazione dal layer semantico (REQ-572) |
+| `CALL db.labels()` | ✓ | Restituisce le etichette dei nodi dal modello; nessuna traduzione SQL (REQ-572) |
+| `CALL db.relationshipTypes()` | ✓ | Restituisce i tipi di relazione dal modello (REQ-572) |
 | `CALL db.propertyKeys()` | ✓ | Restituisce tutti i nomi delle chiavi di proprietà su tutti i tipi nodo (REQ-572) |
 | `UNWIND` | ✓ | Espansione array-a-righe; il primo elemento diventa FROM, i successivi diventano CROSS JOIN UNNEST |
 
@@ -153,7 +153,7 @@ Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/
 | Sintassi | Mapping SQL |
 | -------- | ------------ |
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
-| `[(a)-[]->(b:Label) \| b.prop]` | tipo inferito dal layer semantico; stessa forma subquery ARRAY |
+| `[(a)-[]->(b:Label) \| b.prop]` | tipo inferito dal modello; stessa forma subquery ARRAY |
 
 ### Subquery CALL correlate
 
@@ -183,7 +183,7 @@ Regole:
 - L'etichetta deve risolvere esattamente a una tabella registrata. Etichette ambigue o sconosciute sono errori bloccanti; nessun matching fuzzy. (REQ-661) Non è possibile creare nuove etichette o tipi tramite Cypher. (REQ-662)
 - Ogni scrittura è vincolata alla ACL `writable_by` della tabella target; un ruolo senza diritti di scrittura viene rifiutato a tempo di compilazione. (REQ-663)
 - Il connettore dell'origine sottostante deve supportare DML. Le origini di sola lettura (federate via Trino, Iceberg senza connettore Delta) rifiutano le scritture a tempo di traduzione. (REQ-664)
-- Le relazioni non possono essere scritte — sono derivate dai join dichiarati nel layer semantico, non archi memorizzati. Targettare una relazione è un errore bloccante. (REQ-665) Un arco basato su una tabella di giunzione non fa eccezione: la tabella associativa che lo sostiene è essa stessa una tabella registrata, e le righe si scrivono in quella tabella, non nell'arco. (REQ-1586)
+- Le relazioni non possono essere scritte — sono derivate dai join dichiarati nel modello, non archi memorizzati. Targettare una relazione è un errore bloccante. (REQ-665) Un arco basato su una tabella di giunzione non fa eccezione: la tabella associativa che lo sostiene è essa stessa una tabella registrata, e le righe si scrivono in quella tabella, non nell'arco. (REQ-1586)
 - Le scritture passano attraverso l'intera pipeline di scrittura: iniezione RLS e hook post-mutation (invalidazione della cache di risposta, marcatura stale delle viste materializzate, eventi di modifica Kafka, ricarica hot-table). (REQ-798)
 - `MERGE`, `DETACH DELETE`, e `REMOVE` non sono supportati e vengono rifiutati a tempo di parsing. (REQ-671)
 
@@ -208,9 +208,9 @@ Cypher raggiunge la stessa pipeline governata su due trasporti:
 
 1. **Le scritture sono limitate a `CREATE`, `SET`, e `DELETE`.** Queste vengono eseguite come scritture dirette su tabella attraverso la stessa pipeline delle mutation GraphQL e SQL. (REQ-818, REQ-666, REQ-667, REQ-668) Vedi §Scritture sopra. `MERGE`, `DETACH DELETE`, e `REMOVE` vengono rifiutati a tempo di parsing. (REQ-671, REQ-818) Anche le procedure APOC vengono rifiutate.
 
-2. **Le proprietà di relazione esistono solo sugli archi basati su una giunzione.** Un arco dichiarato su una coppia di colonne di chiave esterna esiste solo come metadati di join nel layer semantico (REQ-574) e non porta attributi memorizzati, quindi `WHERE r.since > 2020` o `RETURN r.weight` non hanno significato su di esso. Un arco dichiarato su una tabella di giunzione li porta eccome: le restanti colonne della tabella associativa sono le proprietà della relazione, `RETURN r` le restituisce e un `WHERE` su una di esse compila in un predicato sull'alias della giunzione — quindi restringe la traversata invece di filtrare righe già assemblate. (REQ-1586) La tabella di giunzione stessa scompare dal lato nodi dello schema del grafo; qui è un arco e ovunque altrove è una tabella.
+2. **Le proprietà di relazione esistono solo sugli archi basati su una giunzione.** Un arco dichiarato su una coppia di colonne di chiave esterna esiste solo come metadati di join nel modello (REQ-574) e non porta attributi memorizzati, quindi `WHERE r.since > 2020` o `RETURN r.weight` non hanno significato su di esso. Un arco dichiarato su una tabella di giunzione li porta eccome: le restanti colonne della tabella associativa sono le proprietà della relazione, `RETURN r` le restituisce e un `WHERE` su una di esse compila in un predicato sull'alias della giunzione — quindi restringe la traversata invece di filtrare righe già assemblate. (REQ-1586) La tabella di giunzione stessa scompare dal lato nodi dello schema del grafo; qui è un arco e ovunque altrove è una tabella.
 
-3. **L'attraversamento bidirezionale** `(a)-[]-(b)` si riscrive nella UNION ALL forward+backward di tutte le relazioni dirette corrispondenti dal layer semantico. (REQ-575) Ogni relazione nel layer semantico è direzionale; la sintassi bidirezionale è zucchero sintattico che si espande in entrambe le direzioni. I rami extra vengono emessi al livello di query più esterno — i pattern MATCH successivi nella stessa query non vengono duplicati tra i rami (limitazione per bidirezionale multi-MATCH).
+3. **L'attraversamento bidirezionale** `(a)-[]-(b)` si riscrive nella UNION ALL forward+backward di tutte le relazioni dirette corrispondenti dal modello. (REQ-575) Ogni relazione nel modello è direzionale; la sintassi bidirezionale è zucchero sintattico che si espande in entrambe le direzioni. I rami extra vengono emessi al livello di query più esterno — i pattern MATCH successivi nella stessa query non vengono duplicati tra i rami (limitazione per bidirezionale multi-MATCH).
 
 4. **I path ricorsivi richiedono un limite.** I pattern a lunghezza variabile (`[*]`) devono includere un limite superiore (es. `[*..10]`). (REQ-348) L'attraversamento illimitato viene rifiutato a tempo di parsing per prevenire CTE ricorsive fuori controllo.
 

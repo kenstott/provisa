@@ -10,7 +10,7 @@ Die Admin-Oberfläche nutzt dieselben Konverter, sodass ein Import weder Shell-Z
 2. **Domänen zuordnen** (optional). Jedes Paar ordnet ein v2-Schema oder einen DDN-Subgraph einer Provisa-Domäne zu; alles Nicht-Zugeordnete behält seinen ursprünglichen Namen.
 3. **Konvertieren und Vorschau.** Der Server konvertiert und liefert Anzahlen, Konverter-Warnungen und die generierte Konfiguration zurück. In diesem Schritt wird nichts geschrieben.
 4. **Prüfen und bearbeiten.** Die Konfiguration ist direkt bearbeitbar — Verbindungsdetails, Domänennamen, Rollennamen. Was Sie anwenden, ist das, was angezeigt wird.
-5. **Anwenden.** *Bestehende semantische Schicht ersetzen* löscht jede Quelle, Tabelle, Rolle und Regel, die in der Konfiguration fehlt; ist die Option deaktiviert, wird der Import mit dem zusammengeführt, was die Organisation bereits hat. Das Anwenden lädt die Konfiguration und baut die Schemas der Organisation neu auf.
+5. **Anwenden.** *Auf diese Organisation anwenden* lädt die Konfiguration und baut die Schemas der Organisation neu auf. Ein Import wird immer mit dem zusammengeführt, was die Organisation bereits hat.
 
 Endpunkte: `POST /admin/import/hasura/preview` und `POST /admin/import/hasura/apply`.
 

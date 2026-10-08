@@ -225,7 +225,7 @@ Streaming-Abfragen liefern eine Nachricht pro Zeile; Mutationen sind unär.
 ## Commands über Protokolle hinweg aufrufen
 
 Ein **Command** ist eine registrierte getrackte Funktion oder ein Webhook — ein in der
-semantischen Schicht von Provisa registrierter Callable mit einem `kind` (`query` oder
+Modell von Provisa registrierter Callable mit einem `kind` (`query` oder
 `mutation`) und einem `impl_kind`, der beschreibt, wie er läuft. Jede Oberfläche leitet Aufrufe
 durch einen einzigen governten Executor (`invoke_tracked_function`), der `writable_by` und
 Governance einheitlich durchsetzt (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]

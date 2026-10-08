@@ -211,7 +211,7 @@ Consultas em streaming emitem uma mensagem por linha; mutações são unárias.
 
 ## Invocando Comandos Entre Protocolos
 
-Um **comando** é uma função rastreada registrada ou webhook — um chamável registrado na camada semântica do Provisa com um `kind` (`query` ou `mutation`) e um `impl_kind` que descreve como ele roda. Toda superfície roteia invocações através de um único executor governado (`invoke_tracked_function`) que aplica `writable_by` e governança uniformemente (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
+Um **comando** é uma função rastreada registrada ou webhook — um chamável registrado no modelo do Provisa com um `kind` (`query` ou `mutation`) e um `impl_kind` que descreve como ele roda. Toda superfície roteia invocações através de um único executor governado (`invoke_tracked_function`) que aplica `writable_by` e governança uniformemente (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 
 | `impl_kind` | O que roda | Campos de vinculação |
 | ------------ | ----------- | --------------- |

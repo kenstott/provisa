@@ -1,6 +1,6 @@
 # Schémas distants
 
-Une source de schéma distant connecte une API externe — GraphQL (y compris GitHub), gRPC ou REST (OpenAPI) — à la couche sémantique de Provisa. Ajouter une source n'enregistre aucune table. La source propose des tables, et un data steward enregistre chaque table souhaitée via le sélecteur « Register Table » ; cet enregistrement est l'étape de curation. (REQ-308, REQ-316, REQ-322) Une table enregistrée est une table Provisa de première classe. (REQ-308, REQ-316, REQ-325) Chaque règle de gouvernance, chaque interface de requête et chaque couche de sécurité s'applique automatiquement. (REQ-310, REQ-319, REQ-328) Le service distant ne voit jamais les règles de gouvernance de Provisa. (REQ-310, REQ-319, REQ-328)
+Une source de schéma distant connecte une API externe — GraphQL (y compris GitHub), gRPC ou REST (OpenAPI) — à le modèle de Provisa. Ajouter une source n'enregistre aucune table. La source propose des tables, et un data steward enregistre chaque table souhaitée via le sélecteur « Register Table » ; cet enregistrement est l'étape de curation. (REQ-308, REQ-316, REQ-322) Une table enregistrée est une table Provisa de première classe. (REQ-308, REQ-316, REQ-325) Chaque règle de gouvernance, chaque interface de requête et chaque couche de sécurité s'applique automatiquement. (REQ-310, REQ-319, REQ-328) Le service distant ne voit jamais les règles de gouvernance de Provisa. (REQ-310, REQ-319, REQ-328)
 
 ---
 

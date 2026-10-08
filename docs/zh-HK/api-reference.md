@@ -1244,7 +1244,7 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。(REQ-219, REQ-258) 通知傳遞
 
 ## 業務詞彙表 (REQ-1387)
 
-業務詞彙表把實體欄位名稱 — 即它們在來源資料庫中的樣子 — 對映到共用的人類詞彙。語意層中註冊的每個欄位都會自動取得一個術語。填充詞彙表無需手動輸入；策展人只在系統推導出的內容之上補充定義、關聯與專家。
+業務詞彙表把實體欄位名稱 — 即它們在來源資料庫中的樣子 — 對映到共用的人類詞彙。模型中註冊的每個欄位都會自動取得一個術語。填充詞彙表無需手動輸入；策展人只在系統推導出的內容之上補充定義、關聯與專家。
 
 ### 術語如何推導
 
@@ -1273,7 +1273,7 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。(REQ-219, REQ-258) 通知傳遞
 
 ### 生命週期
 
-術語是**從語意層成員資格推導而來**，而非由使用者按需建立。資料表儲存庫是唯一的寫入路徑：`sync_table_refs` 在每一次欄位集 upsert 內執行，`sweep_refless_terms` 則在任何刪除路徑之後執行。[tool-verified: `provisa/core/repositories/glossary.py`]
+術語是**從模型成員資格推導而來**，而非由使用者按需建立。資料表儲存庫是唯一的寫入路徑：`sync_table_refs` 在每一次欄位集 upsert 內執行，`sweep_refless_terms` 則在任何刪除路徑之後執行。[tool-verified: `provisa/core/repositories/glossary.py`]
 
 **新增欄位時：** Provisa 依名稱查找正規化後的術語。若已存在，該欄位會取得一個指向它的參照（若該術語先前已淘汰，則會復原 — `deprecated` 會設回 `False`）。若尚無術語，則建立一個。
 

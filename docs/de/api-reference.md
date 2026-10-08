@@ -1246,7 +1246,7 @@ SSE-Subscriptions sind unter `GET /data/subscribe/{table}` verfügbar. (REQ-219,
 
 ## Business-Glossar (REQ-1387)
 
-Das Business-Glossar bildet physische Feldnamen — wie sie in Quelldatenbanken existieren — auf ein gemeinsames menschliches Vokabular ab. Jede in der semantischen Schicht registrierte Spalte erhält automatisch einen Begriff. Es ist keine manuelle Eingabe erforderlich, um das Glossar zu befüllen; Kuratoren fügen Definitionen, Beziehungen und Experten auf dem hinzu, was das System ableitet.
+Das Business-Glossar bildet physische Feldnamen — wie sie in Quelldatenbanken existieren — auf ein gemeinsames menschliches Vokabular ab. Jede im Modell registrierte Spalte erhält automatisch einen Begriff. Es ist keine manuelle Eingabe erforderlich, um das Glossar zu befüllen; Kuratoren fügen Definitionen, Beziehungen und Experten auf dem hinzu, was das System ableitet.
 
 ### Wie Begriffe abgeleitet werden
 
@@ -1275,7 +1275,7 @@ Die ersten drei fallen zu einem Begriff zusammen. `transaction amount` behält b
 
 ### Lebenszyklus
 
-Begriffe werden **aus der Mitgliedschaft in der semantischen Schicht abgeleitet**, nicht auf Anforderung von Benutzern erstellt. Das Tabellen-Repository ist der einzige Schreibpfad: `sync_table_refs` läuft bei jedem Spaltensatz-Upsert, und `sweep_refless_terms` läuft nach jedem Löschpfad. [tool-verified: `provisa/core/repositories/glossary.py`]
+Begriffe werden **aus der Mitgliedschaft im Modell abgeleitet**, nicht auf Anforderung von Benutzern erstellt. Das Tabellen-Repository ist der einzige Schreibpfad: `sync_table_refs` läuft bei jedem Spaltensatz-Upsert, und `sweep_refless_terms` läuft nach jedem Löschpfad. [tool-verified: `provisa/core/repositories/glossary.py`]
 
 **Wenn eine Spalte hinzugefügt wird:** Provisa sucht den normalisierten Begriff nach Name. Existiert er bereits, erhält die Spalte eine Referenz darauf (und wurde der Begriff als veraltet markiert, wird er wiederbelebt — `deprecated` wird zurück auf `False` gesetzt). Existiert noch kein Begriff, wird einer erstellt.
 

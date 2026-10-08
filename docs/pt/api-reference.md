@@ -1246,7 +1246,7 @@ Subscriptions SSE estão disponíveis em `GET /data/subscribe/{table}`. (REQ-219
 
 ## Glossário de Negócios (REQ-1387)
 
-O glossário de negócios mapeia nomes de campo físicos — como existem nos bancos de dados de origem — para um vocabulário humano compartilhado. Toda coluna registrada na camada semântica recebe um termo automaticamente. Nenhuma entrada manual é necessária para popular o glossário; curadores adicionam definições, relacionamentos e especialistas sobre o que o sistema deriva.
+O glossário de negócios mapeia nomes de campo físicos — como existem nos bancos de dados de origem — para um vocabulário humano compartilhado. Toda coluna registrada no modelo recebe um termo automaticamente. Nenhuma entrada manual é necessária para popular o glossário; curadores adicionam definições, relacionamentos e especialistas sobre o que o sistema deriva.
 
 ### Como os Termos São Derivados
 
@@ -1275,7 +1275,7 @@ Os três primeiros colapsam em um termo. `transaction amount` mantém ambos os t
 
 ### Ciclo de Vida
 
-Termos são **derivados da associação à camada semântica**, não criados sob demanda por usuários. O repositório de tabela é o único caminho de escrita: `sync_table_refs` roda dentro de todo upsert de conjunto de colunas, e `sweep_refless_terms` roda após qualquer caminho de exclusão. [tool-verified: `provisa/core/repositories/glossary.py`]
+Termos são **derivados da associação ao modelo**, não criados sob demanda por usuários. O repositório de tabela é o único caminho de escrita: `sync_table_refs` roda dentro de todo upsert de conjunto de colunas, e `sweep_refless_terms` roda após qualquer caminho de exclusão. [tool-verified: `provisa/core/repositories/glossary.py`]
 
 **Quando uma coluna é adicionada:** o Provisa busca o termo normalizado pelo nome. Se ele já existir, a coluna recebe uma referência a ele (e se o termo estava depreciado, ele é revivido — `deprecated` é definido de volta para `False`). Se nenhum termo existir ainda, um é criado.
 

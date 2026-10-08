@@ -1246,7 +1246,7 @@ Les abonnements SSE sont disponibles à `GET /data/subscribe/{table}`. (REQ-219,
 
 ## Glossaire métier (REQ-1387)
 
-Le glossaire métier fait correspondre les noms de champs physiques — tels qu'ils existent dans les bases de données sources — à un vocabulaire humain partagé. Chaque colonne enregistrée dans la couche sémantique reçoit automatiquement un terme. Aucune saisie manuelle n'est requise pour peupler le glossaire ; les curateurs ajoutent des définitions, des relations et des experts par-dessus ce que le système dérive.
+Le glossaire métier fait correspondre les noms de champs physiques — tels qu'ils existent dans les bases de données sources — à un vocabulaire humain partagé. Chaque colonne enregistrée dans le modèle reçoit automatiquement un terme. Aucune saisie manuelle n'est requise pour peupler le glossaire ; les curateurs ajoutent des définitions, des relations et des experts par-dessus ce que le système dérive.
 
 ### Comment les termes sont dérivés
 
@@ -1275,7 +1275,7 @@ Les trois premiers se réduisent à un seul terme. `transaction amount` conserve
 
 ### Cycle de vie
 
-Les termes sont **dérivés de l'appartenance à la couche sémantique**, pas créés à la demande par les utilisateurs. Le référentiel de table est le chemin d'écriture unique : `sync_table_refs` s'exécute à l'intérieur de chaque mise à jour d'ensemble de colonnes, et `sweep_refless_terms` s'exécute après tout chemin de suppression. [tool-verified: `provisa/core/repositories/glossary.py`]
+Les termes sont **dérivés de l'appartenance au modèle**, pas créés à la demande par les utilisateurs. Le référentiel de table est le chemin d'écriture unique : `sync_table_refs` s'exécute à l'intérieur de chaque mise à jour d'ensemble de colonnes, et `sweep_refless_terms` s'exécute après tout chemin de suppression. [tool-verified: `provisa/core/repositories/glossary.py`]
 
 **Lorsqu'une colonne est ajoutée :** Provisa recherche le terme normalisé par nom. S'il existe déjà, la colonne obtient une référence vers lui (et si le terme était déprécié, il est réactivé — `deprecated` est remis à `False`). Si aucun terme n'existe encore, un est créé.
 

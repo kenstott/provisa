@@ -838,7 +838,7 @@ materialized_views:
 
 ## Vues (jeux de données calculés et gouvernés)
 
-Les vues sont des jeux de données calculés, définis en SQL, avec une gouvernance complète au niveau des colonnes. (REQ-133) Elles constituent le mécanisme gouverné pour ajouter agrégations, transformations et métriques dérivées à la couche sémantique. (REQ-136)
+Les vues sont des jeux de données calculés, définis en SQL, avec une gouvernance complète au niveau des colonnes. (REQ-133) Elles constituent le mécanisme gouverné pour ajouter agrégations, transformations et métriques dérivées au modèle. (REQ-136)
 
 ```yaml
 views:

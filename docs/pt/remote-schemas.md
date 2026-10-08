@@ -1,6 +1,6 @@
 # Esquemas Remotos (Remote Schemas)
 
-Uma fonte de esquema remoto conecta uma API externa — GraphQL (incluindo GitHub), gRPC, ou REST (OpenAPI) — à camada semântica do Provisa. Adicionar uma fonte não registra nenhuma tabela. A fonte oferece tabelas, e um steward registra cada tabela desejada pelo seletor «Register Table»; esse registro é a etapa de curadoria. (REQ-308, REQ-316, REQ-322) Uma tabela registrada é uma tabela Provisa de primeira classe. (REQ-308, REQ-316, REQ-325) Toda regra de governança, interface de consulta, e camada de segurança se aplica automaticamente. (REQ-310, REQ-319, REQ-328) O serviço remoto nunca vê as regras de governança do Provisa. (REQ-310, REQ-319, REQ-328)
+Uma fonte de esquema remoto conecta uma API externa — GraphQL (incluindo GitHub), gRPC, ou REST (OpenAPI) — ao modelo do Provisa. Adicionar uma fonte não registra nenhuma tabela. A fonte oferece tabelas, e um steward registra cada tabela desejada pelo seletor «Register Table»; esse registro é a etapa de curadoria. (REQ-308, REQ-316, REQ-322) Uma tabela registrada é uma tabela Provisa de primeira classe. (REQ-308, REQ-316, REQ-325) Toda regra de governança, interface de consulta, e camada de segurança se aplica automaticamente. (REQ-310, REQ-319, REQ-328) O serviço remoto nunca vê as regras de governança do Provisa. (REQ-310, REQ-319, REQ-328)
 
 ---
 

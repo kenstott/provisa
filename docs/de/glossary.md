@@ -1,10 +1,12 @@
 # Business-Glossar
 
-Das Business-Glossar ist ein lebendes Vokabular über Ihrem Datenmodell. Jede physische Spalte in der
-semantischen Schicht löst auf einen Begriff auf — auf einen gemeinsamen Begriff immer dann, wenn
+Das Business-Glossar ist ein lebendes Vokabular über Ihrem Datenmodell. Jede physische Spalte im
+Modell löst auf einen Begriff auf — auf einen gemeinsamen Begriff immer dann, wenn
 mehrere Spalten dasselbe Konzept tragen, wie unterschiedlich sie es auch schreiben. Jeder Begriff kann
 eine Definition halten, dazu einen Satz typisierter Beziehungen zu anderen Begriffen und eine Liste von
 Fachexperten, denen die Bedeutung gehört.
+
+Das Glossar ist eine Ontologie: ein Graph aus Konzepten, ihren Definitionen und den Beziehungen zwischen ihnen. Provisa bildet sie auf die Datenbankstrukturen ab, in denen die Werte liegen; dadurch kann es Fragen zu Ihren Daten beantworten. Ein Konzept ist ein Entwurf, bis es die Daten erreicht, direkt oder über andere Konzepte. Das Glossar ist von den Metriken getrennt: Ein Begriff sagt, was ein Konzept ist, eine Metrik sagt, wie eine Zahl berechnet wird.
 
 Dieses gemeinsame Vokabular ist die Brücke zwischen Fachsprache und physischen Daten. Ein KI-Agent,
 der weiß, dass „customer“ jede Spalte benennt, die eine Kundenkennung trägt, muss nicht raten,

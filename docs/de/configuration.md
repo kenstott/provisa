@@ -837,7 +837,7 @@ materialized_views:
 
 ## Sichten (Regierte berechnete Datasets)
 
-Sichten sind SQL-definierte berechnete Datasets mit vollständiger spaltenweiser Governance. (REQ-133) Sie sind der regierte Mechanismus zum Hinzufügen von Aggregationen, Transformationen und abgeleiteten Kennzahlen zur semantischen Schicht. (REQ-136)
+Sichten sind SQL-definierte berechnete Datasets mit vollständiger spaltenweiser Governance. (REQ-133) Sie sind der regierte Mechanismus zum Hinzufügen von Aggregationen, Transformationen und abgeleiteten Kennzahlen zur Modell. (REQ-136)
 
 ```yaml
 views:

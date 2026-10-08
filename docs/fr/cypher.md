@@ -1,6 +1,6 @@
 # Prise en charge des requêtes Cypher
 
-Provisa traduit un sous-ensemble d'openCypher en SQL via le module `provisa/cypher/`. (REQ-345, REQ-347) Les requêtes sont analysées par un analyseur syntaxique à descente récursive maison (sans bibliothèque Cypher externe) (REQ-571), résolues au niveau du schéma par rapport à la couche sémantique (REQ-351), puis émises en SQL avant d'être acheminées vers le moteur d'exécution cible. (REQ-066, REQ-067, REQ-347)
+Provisa traduit un sous-ensemble d'openCypher en SQL via le module `provisa/cypher/`. (REQ-345, REQ-347) Les requêtes sont analysées par un analyseur syntaxique à descente récursive maison (sans bibliothèque Cypher externe) (REQ-571), résolues au niveau du schéma par rapport au modèle (REQ-351), puis émises en SQL avant d'être acheminées vers le moteur d'exécution cible. (REQ-066, REQ-067, REQ-347)
 
 ## Fonctionnalités implémentées
 
@@ -19,8 +19,8 @@ Provisa traduit un sous-ensemble d'openCypher en SQL via le module `provisa/cyph
 | `UNION` / `UNION ALL` | ✓ | Union récursive entre sous-AST |
 | `CALL { … }` | ✓ | Décomposition de sous-requête CALL de premier niveau via `cypher_calls_to_sql_list` |
 | `CALL { WITH x … }` | ✓ | Sous-requête corrélée → `CROSS JOIN LATERAL` ; voir §CALL corrélé |
-| `CALL db.labels()` | ✓ | Renvoie les étiquettes de nœud de la couche sémantique ; aucune traduction SQL (REQ-572) |
-| `CALL db.relationshipTypes()` | ✓ | Renvoie les types de relation de la couche sémantique (REQ-572) |
+| `CALL db.labels()` | ✓ | Renvoie les étiquettes de nœud du modèle ; aucune traduction SQL (REQ-572) |
+| `CALL db.relationshipTypes()` | ✓ | Renvoie les types de relation du modèle (REQ-572) |
 | `CALL db.propertyKeys()` | ✓ | Renvoie tous les noms de clés de propriété pour tous les types de nœud (REQ-572) |
 | `UNWIND` | ✓ | Expansion d'un tableau en lignes ; le premier élément devient le FROM, les suivants deviennent des CROSS JOIN UNNEST |
 
@@ -153,7 +153,7 @@ Provisa traduit un sous-ensemble d'openCypher en SQL via le module `provisa/cyph
 | Syntaxe | Correspondance SQL |
 | -------- | ------------ |
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
-| `[(a)-[]->(b:Label) \| b.prop]` | type inféré à partir de la couche sémantique ; même forme de sous-requête ARRAY |
+| `[(a)-[]->(b:Label) \| b.prop]` | type inféré à partir du modèle ; même forme de sous-requête ARRAY |
 
 ### Sous-requêtes CALL corrélées
 
@@ -183,7 +183,7 @@ Règles :
 - L'étiquette doit correspondre à exactement une table enregistrée. Les étiquettes ambiguës ou inconnues provoquent des erreurs bloquantes ; aucune correspondance approximative. (REQ-661) Aucune nouvelle étiquette ni aucun nouveau type ne peut être créé via Cypher. (REQ-662)
 - Chaque écriture est conditionnée par la liste de contrôle d'accès `writable_by` de la table cible ; un rôle sans droit d'écriture est rejeté au moment de la compilation. (REQ-663)
 - Le connecteur de la source sous-jacente doit prendre en charge le DML. Les sources en lecture seule (fédérées via Trino, Iceberg sans connecteur Delta) rejettent les écritures au moment de la traduction. (REQ-664)
-- Les relations ne peuvent pas être écrites — elles sont dérivées des jointures déclarées dans la couche sémantique, et non stockées comme des arêtes. Cibler une relation constitue une erreur bloquante. (REQ-665) Une arête adossée à une jonction ne fait pas exception : la table associative qui la porte est elle-même une table enregistrée, et les lignes sont écrites dans cette table, non dans l'arête. (REQ-1586)
+- Les relations ne peuvent pas être écrites — elles sont dérivées des jointures déclarées dans le modèle, et non stockées comme des arêtes. Cibler une relation constitue une erreur bloquante. (REQ-665) Une arête adossée à une jonction ne fait pas exception : la table associative qui la porte est elle-même une table enregistrée, et les lignes sont écrites dans cette table, non dans l'arête. (REQ-1586)
 - Les écritures traversent l'intégralité du pipeline d'écriture : injection RLS et hooks post-mutation (invalidation du cache de réponse, marquage des vues matérialisées comme obsolètes, événements de changement Kafka, rechargement des tables actives). (REQ-798)
 - `MERGE`, `DETACH DELETE` et `REMOVE` ne sont pas pris en charge et sont rejetés au moment de l'analyse. (REQ-671)
 
@@ -208,9 +208,9 @@ Cypher atteint le même pipeline gouverné via deux transports :
 
 1. **Les écritures se limitent à `CREATE`, `SET` et `DELETE`.** Elles s'exécutent comme des écritures directes en table via le même pipeline que les mutations GraphQL et SQL. (REQ-818, REQ-666, REQ-667, REQ-668) Voir §Écritures ci-dessus. `MERGE`, `DETACH DELETE` et `REMOVE` sont rejetés au moment de l'analyse. (REQ-671, REQ-818) Les procédures APOC sont également rejetées.
 
-2. **Les propriétés de relation n'existent que sur les arêtes adossées à une jonction.** Une arête déclarée sur une paire de colonnes de clé étrangère existe uniquement comme métadonnées de jointure dans la couche sémantique (REQ-574) et ne porte aucun attribut stocké, si bien que `WHERE r.since > 2020` ou `RETURN r.weight` n'ont aucun sens sur elle. Une arête déclarée sur une table de jonction en porte bel et bien : les colonnes restantes de la table associative sont les propriétés de la relation, `RETURN r` les renvoie, et un `WHERE` sur l'une d'elles se compile en un prédicat sur l'alias de la jonction — il restreint donc le parcours au lieu de filtrer des lignes déjà assemblées. (REQ-1586) La table de jonction elle-même disparaît du côté nœuds du schéma du graphe ; c'est une arête ici et une table partout ailleurs.
+2. **Les propriétés de relation n'existent que sur les arêtes adossées à une jonction.** Une arête déclarée sur une paire de colonnes de clé étrangère existe uniquement comme métadonnées de jointure dans le modèle (REQ-574) et ne porte aucun attribut stocké, si bien que `WHERE r.since > 2020` ou `RETURN r.weight` n'ont aucun sens sur elle. Une arête déclarée sur une table de jonction en porte bel et bien : les colonnes restantes de la table associative sont les propriétés de la relation, `RETURN r` les renvoie, et un `WHERE` sur l'une d'elles se compile en un prédicat sur l'alias de la jonction — il restreint donc le parcours au lieu de filtrer des lignes déjà assemblées. (REQ-1586) La table de jonction elle-même disparaît du côté nœuds du schéma du graphe ; c'est une arête ici et une table partout ailleurs.
 
-3. **Le parcours bidirectionnel** `(a)-[]-(b)` est réécrit sous forme d'UNION ALL direct + inverse de toutes les relations dirigées correspondantes de la couche sémantique. (REQ-575) Chaque relation de la couche sémantique est directionnelle ; la syntaxe bidirectionnelle est un sucre syntaxique qui se développe dans les deux directions. Les branches supplémentaires sont émises au niveau le plus externe de la requête — les modèles MATCH suivants dans la même requête ne sont pas dupliqués entre les branches (limitation pour le cas bidirectionnel multi-MATCH).
+3. **Le parcours bidirectionnel** `(a)-[]-(b)` est réécrit sous forme d'UNION ALL direct + inverse de toutes les relations dirigées correspondantes du modèle. (REQ-575) Chaque relation du modèle est directionnelle ; la syntaxe bidirectionnelle est un sucre syntaxique qui se développe dans les deux directions. Les branches supplémentaires sont émises au niveau le plus externe de la requête — les modèles MATCH suivants dans la même requête ne sont pas dupliqués entre les branches (limitation pour le cas bidirectionnel multi-MATCH).
 
 4. **Les chemins récursifs nécessitent une borne.** Les modèles de longueur variable (`[*]`) doivent inclure une borne supérieure (par exemple `[*..10]`). (REQ-348) Le parcours non borné est rejeté au moment de l'analyse afin d'éviter des CTE récursives incontrôlées.
 

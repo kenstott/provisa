@@ -18,9 +18,7 @@ organização em que a sessão está atuando.
    configuração gerada. Nada é escrito nesta etapa.
 4. **Revisar e editar.** A configuração é editável no local — detalhes de conexão, nomes de domínio,
    nomes de função. O que você aplica é o que é mostrado.
-5. **Aplicar.** *Replace the existing semantic layer* exclui toda fonte, tabela, função e regra
-   ausente da configuração; deixado desmarcado, a importação faz merge com o que a organização já tem.
-   Aplicar carrega a configuração e reconstrói os esquemas da organização.
+5. **Aplicar.** *Aplicar a esta organização* carrega a configuração e reconstrói os esquemas da organização. Uma importação sempre faz merge com o que a organização já tem.
 
 Endpoints: `POST /admin/import/hasura/preview` e `POST /admin/import/hasura/apply`.
 

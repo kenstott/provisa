@@ -837,7 +837,7 @@ materialized_views:
 
 ## Views (conjuntos de dados computados governados)
 
-Views são conjuntos de dados computados definidos por SQL com governança completa em nível de coluna. (REQ-133) São o mecanismo governado para adicionar agregações, transformações e métricas derivadas à camada semântica. (REQ-136)
+Views são conjuntos de dados computados definidos por SQL com governança completa em nível de coluna. (REQ-133) São o mecanismo governado para adicionar agregações, transformações e métricas derivadas ao modelo. (REQ-136)
 
 ```yaml
 views:

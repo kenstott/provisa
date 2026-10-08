@@ -2,11 +2,12 @@
 
 **Connetti i tuoi database. Interroga con GraphQL, gRPC, SQL o MCP — su qualsiasi API o protocollo — in 5 minuti.**
 
-Provisa serve ogni superficie API (REST, GraphQL, SQL, gRPC, MCP e altre) sul risultato congiunto di tutte le tue origini. Può farlo perché **federazione, metriche, ontologia e governance derivano da un unico modello, senza nulla da tenere sincronizzato**. Il modello è una definizione unica del tuo patrimonio dati — ogni dominio, relazione e policy tra le tue origini, escludendo solo i sistemi di origine stessi — che opera il patrimonio e allo stesso tempo lo governa. La definizione non è documentazione che un motore può consultare; *è* il motore. I domini e le relazioni registrati sono gli unici percorsi di join legali, e le policy di accesso sono compilate in ogni piano di query. Un modello, tre compiti:
+Provisa serve ogni superficie API (REST, GraphQL, SQL, gRPC, MCP e altre) sul risultato congiunto di tutte le tue origini. Può farlo perché **federazione, metriche, ontologia e governance derivano da un unico modello, senza nulla da tenere sincronizzato**. Il modello è una definizione unica del tuo patrimonio dati — ogni dominio, relazione e policy tra le tue origini, escludendo solo i sistemi di origine stessi — che opera il patrimonio e allo stesso tempo lo governa. La definizione non è documentazione che un motore può consultare; *è* il motore. I domini e le relazioni registrati sono gli unici percorsi di join legali, e le policy di accesso sono compilate in ogni piano di query. Un modello, quattro proprietà:
 
-- **Definire** — Domini, colonne e relazioni sono dichiarati una sola volta. Quella dichiarazione è lo schema che ogni consumer vede e l'unico insieme di percorsi di join che qualsiasi query può percorrere.
-- **Applicare** — Sicurezza a livello di riga, mascheramento delle colonne, visibilità delle colonne e approvazione delle query sono applicati inline sul percorso di esecuzione. Nessuna query raggiunge i dati senza passare da questi controlli, quindi la copertura è totale per costruzione e non per diligenza.
-- **Auditing** — Poiché ogni richiesta percorre lo stesso percorso governato, chi ha interrogato cosa, con quale ruolo e contro quale policy viene registrato in modo uniforme. Trace distribuite, metriche e log sono essi stessi registrati come tabelle interrogabili accanto ai tuoi dati di business.
+- **Federazione** — 62 connettori che raggiungono oltre 75 tipi di sorgente, tra cui Salesforce, ServiceNow e Stripe, vengono letti sul posto: i sistemi SaaS su cui gira l'azienda sono tabelle accanto ai database, senza una pipeline preliminare verso un warehouse. Interroga in SQL, GraphQL o Cypher su nove protocolli.
+- **Metriche** — Una metrica è un aggregato con nome e governato. Si definisce una volta e ogni strumento e linguaggio che la richiede riceve la stessa definizione.
+- **Ontologia** — Il glossario aziendale è un grafo di concetti, delle loro definizioni e delle relazioni tra essi. Provisa lo mappa sulle strutture di database che contengono i valori, ed è questo che gli permette di rispondere a domande sui tuoi dati. Un concetto è una bozza finché non raggiunge i dati, direttamente o tramite altri concetti. Il glossario è distinto dalle metriche: un termine dice che cos'è un concetto, una metrica dice come si calcola un numero.
+- **Governance** — Sei livelli sono compilati in ogni piano di query, per ogni linguaggio e ogni protocollo, e ogni richiesta viene registrata allo stesso modo: chi ha interrogato cosa, con quale ruolo, rispetto a quale policy. Tracce, metriche e log sono a loro volta registrati come tabelle interrogabili accanto ai tuoi dati aziendali.
 
 Un unico core governato serve ogni linguaggio e trasporto. Interroga con **GraphQL, Cypher o SQL**; consuma su **pgwire, Bolt, gRPC, REST, Arrow Flight o JDBC**. Ogni linguaggio di query viene ridotto a un'unica rappresentazione intermedia dove la governance viene iniettata una sola volta — così una policy non può divergere tra linguaggi — e quella IR viene ritradotta verso il dialetto nativo di ciascuna origine in uscita. Aggiungere un linguaggio è un nuovo front-end sul core condiviso, non un nuovo motore.
 
@@ -102,7 +103,7 @@ Questi sono i protocolli di connessione. SQL, GraphQL e Cypher vi transitano sop
 
 ### Origini dati
 
-- **54 tipi di origine** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, triplestore SPARQL, Kafka, Google Sheets, Kaggle e altre tramite un'unica API; le origini grafo e RDF sono di prima classe, non adattatori
+- **62 connettori, oltre 75 tipi di sorgente** — Il numero più grande conta separatamente i servizi PostgreSQL ospitati (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) e i formati di file del File Crawler. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, triplestore SPARQL, Kafka, Google Sheets, Kaggle e altre tramite un'unica API; le origini grafo e RDF sono di prima classe, non adattatori
 - **Routing intelligente** — Le query su singola origine bypassano la federazione (sub-100ms); le query multi-origine vengono instradate attraverso il layer di federazione — porta il tuo cluster o usa i worker integrati
 - **Origini API** — Registra endpoint REST, GraphQL, gRPC, WebSocket o RSS come tabelle interrogabili; helper SPARQL inclusi; i join federati tra origini API e origini relazionali funzionano in modo trasparente
 - **Introspezione degli schemi remoti** — Punta a qualsiasi endpoint GraphQL, OpenAPI o gRPC; le operazioni documentate vengono automaticamente esposte come tabelle interrogabili, nodi e archi del grafo con governance completa applicata sopra
@@ -191,6 +192,8 @@ Le colonne mascherate vengono rifiutate dalle clausole `WHERE` e `HAVING`. Senza
 ### Governance delle relazioni
 
 Le condizioni JOIN in SQL devono corrispondere a una relazione registrata e approvata tra le tabelle. I join non approvati vengono rifiutati. Ogni relazione porta un motivo e una descrizione leggibili dall'uomo — una guida sia per gli utenti che per gli agenti autonomi sul perché esiste un percorso di attraversamento. Questa è policy di governance, non un confine di sicurezza rigido: i Livelli 2-5 restano validi indipendentemente dalla struttura del join, quindi un'elusione deliberata non espone dati che il ruolo non potrebbe raggiungere con due query separate. I tentativi di elusione vengono registrati e sottoposti ad audit.
+
+Nessun join non valido viene mai eseguito sui tuoi dati. I ruoli sono governati per impostazione predefinita; uscirne è una concessione deliberata del diritto `ignore_relationships` a un ruolo di cui ti fidi. Il token OAuth di un agente corrisponde a un ruolo, quindi un agente riceve gli stessi livelli di una persona. I cataloghi di dati che forniscono un livello di contesto dicono a un agente che cosa dovrebbe fare; Provisa impone ciò che può fare.
 
 ---
 

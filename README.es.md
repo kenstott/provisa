@@ -2,11 +2,12 @@
 
 **Conecte sus bases de datos. Consulte con GraphQL, gRPC, SQL o MCP — sobre cualquier API o protocolo — en 5 minutos.**
 
-Provisa sirve todas las superficies de API (REST, GraphQL, SQL, gRPC, MCP y más) sobre el resultado unido de todos sus orígenes. Puede hacerlo porque **la federación, las métricas, la ontología y el gobierno proceden de un único modelo, sin nada que mantener sincronizado**. El modelo es una única definición de su patrimonio de datos — cada dominio, relación y política a través de sus orígenes, excluyendo únicamente los propios sistemas de origen — que a la vez opera el patrimonio y lo gobierna. La definición no es documentación que un motor pueda consultar; *es* el motor. Los dominios y relaciones registrados son las únicas rutas de unión legales, y las políticas de acceso se compilan en cada plan de consulta. Un modelo, tres funciones:
+Provisa sirve todas las superficies de API (REST, GraphQL, SQL, gRPC, MCP y más) sobre el resultado unido de todos sus orígenes. Puede hacerlo porque **la federación, las métricas, la ontología y el gobierno proceden de un único modelo, sin nada que mantener sincronizado**. El modelo es una única definición de su patrimonio de datos — cada dominio, relación y política a través de sus orígenes, excluyendo únicamente los propios sistemas de origen — que a la vez opera el patrimonio y lo gobierna. La definición no es documentación que un motor pueda consultar; *es* el motor. Los dominios y relaciones registrados son las únicas rutas de unión legales, y las políticas de acceso se compilan en cada plan de consulta. Un modelo, cuatro propiedades:
 
-- **Definir** — Los dominios, columnas y relaciones se declaran una sola vez. Esa declaración es el esquema que ve cada consumidor y el único conjunto de rutas de unión que puede tomar cualquier consulta.
-- **Aplicar** — La seguridad de nivel de fila, el enmascaramiento de columnas, la visibilidad de columnas y la aprobación de consultas se aplican en línea en la ruta de ejecución. Ninguna consulta llega a los datos sin pasar por ellas, de modo que la cobertura es total por construcción y no por diligencia.
-- **Auditar** — Como cada solicitud recorre la misma ruta gobernada, quién consultó qué, bajo qué rol y contra qué política se registra de manera uniforme. Los trazos distribuidos, las métricas y los registros se registran ellos mismos como tablas consultables junto a sus datos de negocio.
+- **Federación** — 62 conectores que alcanzan más de 75 tipos de fuente, entre ellos Salesforce, ServiceNow y Stripe, se leen en su sitio: los sistemas SaaS en los que opera la empresa son tablas junto a las bases de datos, sin una canalización previa hacia un almacén. Consulte en SQL, GraphQL o Cypher a través de nueve protocolos.
+- **Métricas** — Una métrica es un agregado con nombre y gobernado. Se define una vez, y cada herramienta y lenguaje que la pide recibe la misma definición.
+- **Ontología** — El glosario de negocio es un grafo de conceptos, sus definiciones y las relaciones entre ellos. Provisa lo asigna a las estructuras de base de datos que contienen los valores, lo que le permite responder preguntas sobre sus datos. Un concepto es un borrador hasta que llega a los datos, directamente o a través de otros conceptos. El glosario es independiente de las métricas: un término dice qué es un concepto, una métrica dice cómo se calcula una cifra.
+- **Gobierno** — Seis capas se compilan en cada plan de consulta, para cada lenguaje y cada protocolo, y cada solicitud se registra del mismo modo: quién consultó qué, con qué rol, según qué política. Las trazas, métricas y registros se registran a su vez como tablas consultables junto a sus datos de negocio.
 
 Un único núcleo gobernado sirve a todo lenguaje y transporte. Consulte con **GraphQL, Cypher o SQL**; consuma sobre **pgwire, Bolt, gRPC, REST, Arrow Flight o JDBC**. Cada lenguaje de consulta se reduce a una única representación intermedia donde el gobierno se inyecta una sola vez — de modo que una política no puede divergir entre lenguajes — y esa IR se retraduce al dialecto nativo de cada origen a la salida. Añadir un lenguaje es un nuevo front-end sobre el núcleo compartido, no un motor nuevo.
 
@@ -102,7 +103,7 @@ Estos son los protocolos de conexión. SQL, GraphQL y Cypher viajan sobre ellos 
 
 ### Orígenes de datos
 
-- **54 tipos de origen** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, almacenes de triples SPARQL, Kafka, Google Sheets, Kaggle y más a través de una única API; los orígenes de grafo y RDF son de primera clase, no adaptadores
+- **62 conectores, más de 75 tipos de fuente** — La cifra mayor cuenta por separado los servicios de PostgreSQL alojados (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) y los formatos de archivo del File Crawler. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, almacenes de triples SPARQL, Kafka, Google Sheets, Kaggle y más a través de una única API; los orígenes de grafo y RDF son de primera clase, no adaptadores
 - **Enrutamiento inteligente** — Las consultas de un solo origen omiten la federación (menos de 100 ms); las consultas multiorigen se enrutan a través de la capa de federación — traiga su propio clúster o use los workers integrados
 - **Orígenes de API** — Registre endpoints REST, GraphQL, gRPC, WebSocket o RSS como tablas consultables; ayudantes de SPARQL incluidos; las uniones federadas entre orígenes de API y orígenes relacionales funcionan de manera transparente
 - **Introspección de esquemas remotos** — Apunte a cualquier endpoint GraphQL, OpenAPI o gRPC; las operaciones documentadas se exponen automáticamente como tablas consultables, nodos de grafo y aristas con el gobierno completo aplicado encima
@@ -191,6 +192,8 @@ Las columnas enmascaradas se rechazan en las cláusulas `WHERE` y `HAVING`. Sin 
 ### Gobierno de relaciones
 
 Las condiciones JOIN en SQL deben coincidir con una relación registrada y aprobada entre tablas. Las uniones no aprobadas se rechazan. Cada relación lleva una razón y una descripción legibles por humanos — orientación tanto para usuarios como para agentes autónomos sobre por qué existe una ruta de recorrido. Esto es política de gobierno, no un límite de seguridad estricto: las Capas 2–5 se mantienen sin importar la estructura de unión, de modo que una elusión deliberada no expone datos a los que el rol no pudiera llegar mediante dos consultas separadas. Los intentos de elusión se registran y son auditables.
+
+Ninguna unión no válida se ejecuta jamás sobre sus datos. Los roles están gobernados de forma predeterminada; excluirse es una concesión deliberada del derecho `ignore_relationships` a un rol de confianza. El token OAuth de un agente se asigna a un rol, así que un agente recibe las mismas capas que una persona. Los catálogos de datos que aportan una capa de contexto le dicen al agente qué debería hacer; Provisa impone qué puede hacer.
 
 ---
 

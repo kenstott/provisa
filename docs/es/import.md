@@ -10,7 +10,7 @@ La superficie de administración ejecuta los mismos convertidores, por lo que un
 2. **Mapear dominios** (opcional). Cada par mapea un esquema v2 o un subgraph de DDN a un dominio de Provisa; lo que no se mapee conserva su nombre original.
 3. **Convertir y previsualizar.** El servidor convierte y devuelve los recuentos, las advertencias del convertidor y la configuración generada. En este paso no se escribe nada.
 4. **Revisar y editar.** La configuración es editable in situ — detalles de conexión, nombres de dominio, nombres de rol. Lo que aplique es lo que se muestra.
-5. **Aplicar.** *Replace the existing semantic layer* elimina todo origen, tabla, rol y regla ausente de la configuración; si se deja desactivado, la importación se fusiona con lo que ya tiene la organización. Aplicar carga la configuración y reconstruye los esquemas de la organización.
+5. **Aplicar.** *Aplicar a esta organización* carga la configuración y reconstruye los esquemas de la organización. Una importación siempre se fusiona con lo que ya tiene la organización.
 
 Endpoints: `POST /admin/import/hasura/preview` y `POST /admin/import/hasura/apply`.
 

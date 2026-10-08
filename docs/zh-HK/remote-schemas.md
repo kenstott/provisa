@@ -1,6 +1,6 @@
 # 遠端結構描述
 
-遠端結構描述來源將外部 API——GraphQL（含 GitHub）、gRPC 或 REST（OpenAPI）——連接至 Provisa 語意層。新增來源不會註冊任何資料表。來源會提供資料表，由 data steward 透過「Register Table」選擇器註冊所需的每一張表；該註冊即為策展（curation）步驟。（REQ-308、REQ-316、REQ-322）已註冊的資料表是一級的 Provisa 資料表。（REQ-308、REQ-316、REQ-325）所有治理規則、查詢介面及安全層均會自動套用。（REQ-310、REQ-319、REQ-328）遠端服務永遠不會看到 Provisa 的治理規則。（REQ-310、REQ-319、REQ-328）
+遠端結構描述來源將外部 API——GraphQL（含 GitHub）、gRPC 或 REST（OpenAPI）——連接至 Provisa 模型。新增來源不會註冊任何資料表。來源會提供資料表，由 data steward 透過「Register Table」選擇器註冊所需的每一張表；該註冊即為策展（curation）步驟。（REQ-308、REQ-316、REQ-322）已註冊的資料表是一級的 Provisa 資料表。（REQ-308、REQ-316、REQ-325）所有治理規則、查詢介面及安全層均會自動套用。（REQ-310、REQ-319、REQ-328）遠端服務永遠不會看到 Provisa 的治理規則。（REQ-310、REQ-319、REQ-328）
 
 ---
 

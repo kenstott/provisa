@@ -1,6 +1,6 @@
 # Suporte a Consulta Cypher
 
-O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cypher/`. (REQ-345, REQ-347) Consultas são analisadas por um parser recursivo-descendente personalizado (nenhuma biblioteca Cypher externa) (REQ-571), resolvidas de esquema contra a camada semântica (REQ-351), e emitidas como SQL, depois roteadas para o motor de execução alvo. (REQ-066, REQ-067, REQ-347)
+O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cypher/`. (REQ-345, REQ-347) Consultas são analisadas por um parser recursivo-descendente personalizado (nenhuma biblioteca Cypher externa) (REQ-571), resolvidas de esquema contra o modelo (REQ-351), e emitidas como SQL, depois roteadas para o motor de execução alvo. (REQ-066, REQ-067, REQ-347)
 
 ## Funcionalidades Implementadas
 
@@ -19,8 +19,8 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 | `UNION` / `UNION ALL` | ✓ | União recursiva através de sub-ASTs |
 | `CALL { … }` | ✓ | Decomposição de subconsulta de call de nível superior via `cypher_calls_to_sql_list` |
 | `CALL { WITH x … }` | ✓ | Subconsulta correlacionada → `CROSS JOIN LATERAL`; veja §CALL Correlacionado |
-| `CALL db.labels()` | ✓ | Retorna labels de nó da camada semântica; sem tradução SQL (REQ-572) |
-| `CALL db.relationshipTypes()` | ✓ | Retorna tipos de relacionamento da camada semântica (REQ-572) |
+| `CALL db.labels()` | ✓ | Retorna labels de nó do modelo; sem tradução SQL (REQ-572) |
+| `CALL db.relationshipTypes()` | ✓ | Retorna tipos de relacionamento do modelo (REQ-572) |
 | `CALL db.propertyKeys()` | ✓ | Retorna todos os nomes de chave de propriedade em todos os tipos de nó (REQ-572) |
 | `UNWIND` | ✓ | Expansão de array para linhas; primeiro item se torna FROM, subsequentes se tornam CROSS JOIN UNNEST |
 
@@ -153,7 +153,7 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 | Sintaxe | Mapeamento SQL |
 | -------- | ------------ |
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
-| `[(a)-[]->(b:Label) \| b.prop]` | tipo inferido da camada semântica; mesma forma de subconsulta ARRAY |
+| `[(a)-[]->(b:Label) \| b.prop]` | tipo inferido do modelo; mesma forma de subconsulta ARRAY |
 
 ### Subconsultas CALL Correlacionadas
 
@@ -183,7 +183,7 @@ Regras:
 - O label deve resolver para exatamente uma tabela registrada. Labels ambíguos ou desconhecidos são erros rígidos; sem correspondência fuzzy. (REQ-661) Novos labels ou tipos não podem ser criados através do Cypher. (REQ-662)
 - Toda escrita é bloqueada pela ACL `writable_by` da tabela alvo; uma função sem direitos de escrita é rejeitada no momento da compilação. (REQ-663)
 - O conector de fonte subjacente deve suportar DML. Fontes somente-leitura (federadas via Trino, Iceberg sem um conector Delta) rejeitam escritas no momento da tradução. (REQ-664)
-- Relacionamentos não podem ser escritos — eles são derivados dos joins declarados na camada semântica, não arestas armazenadas. Direcionar um relacionamento é um erro rígido. (REQ-665) Uma aresta apoiada em junção não é exceção: a tabela associativa por trás dela é ela própria uma tabela registrada, e as linhas são escritas nessa tabela, não na aresta. (REQ-1586)
+- Relacionamentos não podem ser escritos — eles são derivados dos joins declarados no modelo, não arestas armazenadas. Direcionar um relacionamento é um erro rígido. (REQ-665) Uma aresta apoiada em junção não é exceção: a tabela associativa por trás dela é ela própria uma tabela registrada, e as linhas são escritas nessa tabela, não na aresta. (REQ-1586)
 - Escritas rodam através do pipeline de escrita completo: injeção de RLS e hooks pós-mutação (invalidação de cache de resposta, marcação de obsolescência de view materializada, eventos de mudança Kafka, recarga de tabela quente). (REQ-798)
 - `MERGE`, `DETACH DELETE`, e `REMOVE` não são suportados e são rejeitados no momento da análise. (REQ-671)
 
@@ -208,9 +208,9 @@ Cypher alcança o mesmo pipeline governado através de dois transportes:
 
 1. **Escritas são limitadas a `CREATE`, `SET`, e `DELETE`.** Estas executam como escritas de tabela diretas através do mesmo pipeline que mutações GraphQL e SQL. (REQ-818, REQ-666, REQ-667, REQ-668) Veja §Escritas acima. `MERGE`, `DETACH DELETE`, e `REMOVE` são rejeitados no momento da análise. (REQ-671, REQ-818) Procedimentos APOC também são rejeitados.
 
-2. **Propriedades de relacionamento existem apenas em arestas apoiadas em junção.** Uma aresta declarada sobre um par de colunas de chave estrangeira existe somente como metadados de join na camada semântica (REQ-574) e não carrega atributos armazenados, então `WHERE r.since > 2020` ou `RETURN r.weight` não têm significado sobre ela. Uma aresta declarada sobre uma tabela de junção carrega, sim: as demais colunas da tabela associativa são as propriedades do relacionamento, `RETURN r` as devolve, e um `WHERE` sobre uma delas compila para um predicado sobre o alias da junção — portanto restringe a travessia em vez de filtrar linhas já montadas. (REQ-1586) A própria tabela de junção sai do lado dos nós do esquema do grafo; aqui ela é uma aresta e em todo o resto é uma tabela.
+2. **Propriedades de relacionamento existem apenas em arestas apoiadas em junção.** Uma aresta declarada sobre um par de colunas de chave estrangeira existe somente como metadados de join no modelo (REQ-574) e não carrega atributos armazenados, então `WHERE r.since > 2020` ou `RETURN r.weight` não têm significado sobre ela. Uma aresta declarada sobre uma tabela de junção carrega, sim: as demais colunas da tabela associativa são as propriedades do relacionamento, `RETURN r` as devolve, e um `WHERE` sobre uma delas compila para um predicado sobre o alias da junção — portanto restringe a travessia em vez de filtrar linhas já montadas. (REQ-1586) A própria tabela de junção sai do lado dos nós do esquema do grafo; aqui ela é uma aresta e em todo o resto é uma tabela.
 
-3. **Travessia bidirecional** `(a)-[]-(b)` reescreve para a UNION ALL frente+trás de todos os relacionamentos direcionados correspondentes da camada semântica. (REQ-575) Todo relacionamento na camada semântica é direcional; sintaxe bidirecional é açúcar sintático que se expande para ambas as direções. Branches extras são emitidos no nível de consulta mais externo — padrões MATCH subsequentes na mesma consulta não são duplicados entre branches (limitação para bidirecional de múltiplos MATCH).
+3. **Travessia bidirecional** `(a)-[]-(b)` reescreve para a UNION ALL frente+trás de todos os relacionamentos direcionados correspondentes do modelo. (REQ-575) Todo relacionamento no modelo é direcional; sintaxe bidirecional é açúcar sintático que se expande para ambas as direções. Branches extras são emitidos no nível de consulta mais externo — padrões MATCH subsequentes na mesma consulta não são duplicados entre branches (limitação para bidirecional de múltiplos MATCH).
 
 4. **Caminhos recursivos exigem um limite.** Padrões de comprimento variável (`[*]`) devem incluir um limite superior (ex.: `[*..10]`). (REQ-348) Travessia sem limite é rejeitada no momento da análise para prevenir CTEs recursivos descontrolados.
 

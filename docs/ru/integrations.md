@@ -221,7 +221,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 ## Вызов команд через протоколы {: #invoking-commands-across-protocols }
 
 **Команда (command)** — это зарегистрированная отслеживаемая функция или webhook: вызываемый
-объект, зарегистрированный в семантическом слое Provisa, с полем `kind` (`query` или `mutation`) и
+объект, зарегистрированный в модели Provisa, с полем `kind` (`query` или `mutation`) и
 `impl_kind`, описывающим, как он выполняется. Каждая поверхность направляет вызовы через единый
 управляемый исполнитель (`invoke_tracked_function`), который единообразно применяет `writable_by`
 и governance (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`,

@@ -2,9 +2,9 @@
 
 ## Überblick
 
-Provisa ist eine konfigurationsgesteuerte Datenvirtualisierungsplattform, die speziell dafür entwickelt wurde, einen Semantic Layer anzutreiben — von kleinen Teams bis zu großen Unternehmen. Sie bietet eine einheitliche API über heterogene Datenquellen mit Governance, Sicherheit und Performance-Optimierung. Clients fragen über SQL, GraphQL oder Cypher ab; alle drei sind erstklassige Schnittstellen mit identisch angewendeter Governance. (REQ-002, REQ-038)
+Provisa ist eine konfigurationsgesteuerte Datenvirtualisierungsplattform: Föderation, Metriken, Ontologie und Governance aus einem einzigen Modell, für kleine Teams und große Unternehmen. Sie bietet eine einheitliche API über heterogene Datenquellen mit Governance, Sicherheit und Performance-Optimierung. Clients fragen über SQL, GraphQL oder Cypher ab; alle drei sind erstklassige Schnittstellen mit identisch angewendeter Governance. (REQ-002, REQ-038)
 
-Die Unterscheidung des Semantic Layer ist wichtig. Um dem Semantic Layer etwas hinzuzufügen, müssen Sie neue Datenquellen oder Aggregate innerhalb der Datenvirtualisierungsschicht erstellen. Das schafft eine saubere Trennung — keine neuen Ergänzungen der Semantik können außerhalb der Plattform vorgenommen werden, was echte Data Governance ermöglicht. (REQ-136) Die Durchsetzung erfolgt auf Compiler-Ebene: Der genehmigte Beziehungskatalog ist die Source of Truth, unabhängig davon, welche Abfragesprache verwendet wird. (REQ-002)
+Das Modell ist der einzige Ort, an dem Bedeutung hinzugefügt wird. Um dem Modell etwas hinzuzufügen, registrieren Sie neue Datenquellen oder Aggregate innerhalb der Datenvirtualisierungsschicht. Das schafft eine saubere Trennung — keine neuen Ergänzungen der Semantik können außerhalb der Plattform vorgenommen werden, was echte Data Governance ermöglicht. (REQ-136) Die Durchsetzung erfolgt auf Compiler-Ebene: Der genehmigte Beziehungskatalog ist die Source of Truth, unabhängig davon, welche Abfragesprache verwendet wird. (REQ-002)
 
 Provisa ist darauf ausgelegt, für operative Bedürfnisse hochperformant und für analytische Bedürfnisse von Unternehmen hochskalierbar zu sein. Eine einzige Plattform bedient beides, ohne Geschwindigkeit oder Skalierbarkeit zu opfern.
 

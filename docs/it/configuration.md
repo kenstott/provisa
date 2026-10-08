@@ -838,7 +838,7 @@ materialized_views:
 
 ## Viste (dataset calcolati governati)
 
-Le viste sono dataset calcolati definiti in SQL con governance completa a livello di colonna. (REQ-133) Sono il meccanismo governato per aggiungere aggregazioni, trasformazioni e metriche derivate al layer semantico. (REQ-136)
+Le viste sono dataset calcolati definiti in SQL con governance completa a livello di colonna. (REQ-133) Sono il meccanismo governato per aggiungere aggregazioni, trasformazioni e metriche derivate al modello. (REQ-136)
 
 ```yaml
 views:

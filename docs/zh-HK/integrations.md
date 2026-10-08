@@ -211,7 +211,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 
 ## 跨通訊協定呼叫 Command {: #invoking-commands-across-protocols }
 
-**Command** 是一個已註冊的追蹤函式或 webhook——一個在 Provisa 語義層中註冊的可呼叫項目，帶有 `kind`（`query` 或 `mutation`）及描述其運行方式的 `impl_kind`。每個介面都會透過單一受治理的執行器（`invoke_tracked_function`）路由呼叫，統一強制執行 `writable_by` 及治理規則（REQ-1156）。[tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
+**Command** 是一個已註冊的追蹤函式或 webhook——一個在 Provisa 模型中註冊的可呼叫項目，帶有 `kind`（`query` 或 `mutation`）及描述其運行方式的 `impl_kind`。每個介面都會透過單一受治理的執行器（`invoke_tracked_function`）路由呼叫，統一強制執行 `writable_by` 及治理規則（REQ-1156）。[tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 
 | `impl_kind` | 運行內容 | 綁定欄位 |
 | ------------ | ----------- | --------------- |

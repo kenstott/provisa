@@ -1,10 +1,12 @@
 # Glossário de Negócios
 
-O glossário de negócios é um vocabulário vivo sobre o seu modelo de dados. Toda coluna física na
-camada semântica resolve para um termo — um único termo compartilhado sempre que múltiplas colunas
+O glossário de negócios é um vocabulário vivo sobre o seu modelo de dados. Toda coluna física no
+modelo resolve para um termo — um único termo compartilhado sempre que múltiplas colunas
 carregam o mesmo conceito, por mais diferente que o escrevam. Cada termo pode conter uma definição,
 um conjunto de relacionamentos tipados com outros termos e uma lista de especialistas no assunto
 que são donos do significado.
+
+O glossário é uma ontologia: um grafo de conceitos, suas definições e as relações entre eles. O Provisa o mapeia para as estruturas de banco de dados que guardam os valores, o que permite responder perguntas sobre seus dados. Um conceito é um rascunho até chegar aos dados, diretamente ou por meio de outros conceitos. O glossário é separado das métricas: um termo diz o que um conceito é, uma métrica diz como um número é calculado.
 
 Esse vocabulário compartilhado é a ponte entre a linguagem de negócios e os dados físicos. Um agente
 de IA que sabe que "customer" nomeia toda coluna que carrega um identificador de cliente não precisa

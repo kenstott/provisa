@@ -1,6 +1,6 @@
 # Schemi remoti
 
-Un'origine di schema remoto collega un'API esterna — GraphQL (incluso GitHub), gRPC o REST (OpenAPI) — al livello semantico di Provisa. Aggiungere un'origine non registra alcuna tabella. L'origine offre tabelle, e un data steward registra ogni tabella desiderata tramite il selettore «Register Table»; tale registrazione è il passaggio di curation. (REQ-308, REQ-316, REQ-322) Una tabella registrata è una tabella Provisa a tutti gli effetti. (REQ-308, REQ-316, REQ-325) Ogni regola di governance, interfaccia di query e livello di sicurezza si applica automaticamente. (REQ-310, REQ-319, REQ-328) Il servizio remoto non vede mai le regole di governance di Provisa. (REQ-310, REQ-319, REQ-328)
+Un'origine di schema remoto collega un'API esterna — GraphQL (incluso GitHub), gRPC o REST (OpenAPI) — al modello di Provisa. Aggiungere un'origine non registra alcuna tabella. L'origine offre tabelle, e un data steward registra ogni tabella desiderata tramite il selettore «Register Table»; tale registrazione è il passaggio di curation. (REQ-308, REQ-316, REQ-322) Una tabella registrata è una tabella Provisa a tutti gli effetti. (REQ-308, REQ-316, REQ-325) Ogni regola di governance, interfaccia di query e livello di sicurezza si applica automaticamente. (REQ-310, REQ-319, REQ-328) Il servizio remoto non vede mai le regole di governance di Provisa. (REQ-310, REQ-319, REQ-328)
 
 ---
 

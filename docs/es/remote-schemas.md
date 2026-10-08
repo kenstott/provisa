@@ -1,6 +1,6 @@
 # Esquemas remotos
 
-Un origen de esquema remoto conecta una API externa —GraphQL (incluido GitHub), gRPC o REST (OpenAPI)— a la capa semántica de Provisa. Añadir un origen no registra ninguna tabla. El origen ofrece tablas, y un steward registra cada tabla que desea mediante el selector «Register Table»; ese registro es el paso de curación. (REQ-308, REQ-316, REQ-322) Una tabla registrada es una tabla de Provisa de primera clase. (REQ-308, REQ-316, REQ-325) Toda regla de gobierno, interfaz de consulta y capa de seguridad se aplica automáticamente. (REQ-310, REQ-319, REQ-328) El servicio remoto nunca ve las reglas de gobierno de Provisa. (REQ-310, REQ-319, REQ-328)
+Un origen de esquema remoto conecta una API externa —GraphQL (incluido GitHub), gRPC o REST (OpenAPI)— a el modelo de Provisa. Añadir un origen no registra ninguna tabla. El origen ofrece tablas, y un steward registra cada tabla que desea mediante el selector «Register Table»; ese registro es el paso de curación. (REQ-308, REQ-316, REQ-322) Una tabla registrada es una tabla de Provisa de primera clase. (REQ-308, REQ-316, REQ-325) Toda regla de gobierno, interfaz de consulta y capa de seguridad se aplica automáticamente. (REQ-310, REQ-319, REQ-328) El servicio remoto nunca ve las reglas de gobierno de Provisa. (REQ-310, REQ-319, REQ-328)
 
 ---
 

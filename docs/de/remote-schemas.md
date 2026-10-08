@@ -1,6 +1,6 @@
 # Externe Schemas
 
-Eine Quelle für ein externes Schema (Remote Schema) verbindet eine externe API — GraphQL (einschließlich GitHub), gRPC oder REST (OpenAPI) — mit der semantischen Schicht von Provisa. Das Hinzufügen einer Quelle registriert keine Tabelle. Die Quelle bietet Tabellen an, und ein Data Steward registriert jede gewünschte Tabelle über die Auswahl „Tabelle registrieren“ (Register Table); diese Registrierung ist der Kurationsschritt. (REQ-308, REQ-316, REQ-322) Eine registrierte Tabelle ist eine vollwertige Provisa-Tabelle. (REQ-308, REQ-316, REQ-325) Jede Governance-Regel, jede Abfrageschnittstelle und jede Sicherheitsschicht gilt automatisch. (REQ-310, REQ-319, REQ-328) Der externe Dienst sieht die Governance-Regeln von Provisa niemals. (REQ-310, REQ-319, REQ-328)
+Eine Quelle für ein externes Schema (Remote Schema) verbindet eine externe API — GraphQL (einschließlich GitHub), gRPC oder REST (OpenAPI) — mit dem Provisa-Modell. Das Hinzufügen einer Quelle registriert keine Tabelle. Die Quelle bietet Tabellen an, und ein Data Steward registriert jede gewünschte Tabelle über die Auswahl „Tabelle registrieren“ (Register Table); diese Registrierung ist der Kurationsschritt. (REQ-308, REQ-316, REQ-322) Eine registrierte Tabelle ist eine vollwertige Provisa-Tabelle. (REQ-308, REQ-316, REQ-325) Jede Governance-Regel, jede Abfrageschnittstelle und jede Sicherheitsschicht gilt automatisch. (REQ-310, REQ-319, REQ-328) Der externe Dienst sieht die Governance-Regeln von Provisa niemals. (REQ-310, REQ-319, REQ-328)
 
 ---
 

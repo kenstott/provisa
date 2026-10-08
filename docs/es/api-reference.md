@@ -1246,7 +1246,7 @@ Las suscripciones SSE están disponibles en `GET /data/subscribe/{table}`. (REQ-
 
 ## Glosario de negocio (REQ-1387)
 
-El glosario de negocio asigna nombres de campo físicos — tal como existen en las bases de datos de origen — a un vocabulario humano compartido. Cada columna registrada en la capa semántica obtiene un término automáticamente. No se requiere entrada manual para poblar el glosario; los curadores agregan definiciones, relaciones y expertos sobre lo que el sistema deriva.
+El glosario de negocio asigna nombres de campo físicos — tal como existen en las bases de datos de origen — a un vocabulario humano compartido. Cada columna registrada en el modelo obtiene un término automáticamente. No se requiere entrada manual para poblar el glosario; los curadores agregan definiciones, relaciones y expertos sobre lo que el sistema deriva.
 
 ### Cómo se derivan los términos
 
@@ -1275,7 +1275,7 @@ Los primeros tres colapsan en un solo término. `transaction amount` conserva am
 
 ### Ciclo de vida
 
-Los términos se **derivan de la pertenencia a la capa semántica**, no se crean bajo demanda por los usuarios. El repositorio de tablas es la única ruta de escritura: `sync_table_refs` se ejecuta dentro de cada upsert de conjunto de columnas, y `sweep_refless_terms` se ejecuta después de cualquier ruta de eliminación. [tool-verified: `provisa/core/repositories/glossary.py`]
+Los términos se **derivan de la pertenencia al modelo**, no se crean bajo demanda por los usuarios. El repositorio de tablas es la única ruta de escritura: `sync_table_refs` se ejecuta dentro de cada upsert de conjunto de columnas, y `sweep_refless_terms` se ejecuta después de cualquier ruta de eliminación. [tool-verified: `provisa/core/repositories/glossary.py`]
 
 **Cuando se agrega una columna:** Provisa busca el término normalizado por nombre. Si ya existe, la columna obtiene una referencia a él (y si el término estaba obsoleto, se revive — `deprecated` se restablece a `False`). Si aún no existe ningún término, se crea uno.
 

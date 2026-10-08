@@ -2,9 +2,9 @@
 
 ## Vue d'ensemble
 
-Provisa est une plateforme de virtualisation de données pilotée par configuration, spécifiquement conçue pour alimenter une couche sémantique, des petites équipes aux grandes entreprises. Elle fournit une API unifiée sur des sources de données hétérogènes avec gouvernance, sécurité, et optimisation de performance. Les clients interrogent via SQL, GraphQL, ou Cypher ; les trois sont des interfaces de premier ordre avec une gouvernance identique appliquée. (REQ-002, REQ-038)
+Provisa est une plateforme de virtualisation de données pilotée par configuration : fédération, métriques, ontologie et gouvernance à partir d'un seul modèle, pour les petites équipes comme pour les grandes entreprises. Elle fournit une API unifiée sur des sources de données hétérogènes avec gouvernance, sécurité, et optimisation de performance. Les clients interrogent via SQL, GraphQL, ou Cypher ; les trois sont des interfaces de premier ordre avec une gouvernance identique appliquée. (REQ-002, REQ-038)
 
-La distinction de couche sémantique est importante. Pour ajouter à la couche sémantique, vous devez créer de nouvelles sources de données ou agrégats au sein de la couche de virtualisation de données. Cela crée une séparation nette — aucun ajout à la sémantique ne peut être fait en dehors de la plateforme, permettant une véritable gouvernance des données. (REQ-136) L'application est au niveau du compilateur : le catalogue de relations approuvées est la source de vérité quel que soit le langage de requête utilisé. (REQ-002)
+Le modèle est le seul endroit où l'on ajoute du sens. Pour ajouter au modèle, vous enregistrez de nouvelles sources de données ou agrégats au sein de la couche de virtualisation de données. Cela crée une séparation nette — aucun ajout à la sémantique ne peut être fait en dehors de la plateforme, permettant une véritable gouvernance des données. (REQ-136) L'application est au niveau du compilateur : le catalogue de relations approuvées est la source de vérité quel que soit le langage de requête utilisé. (REQ-002)
 
 Provisa est conçu pour être hautement performant pour les besoins opérationnels et hautement scalable pour les besoins analytiques d'entreprise. Une plateforme unique sert les deux sans sacrifier la vitesse ou la scalabilité.
 

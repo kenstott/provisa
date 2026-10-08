@@ -2,9 +2,9 @@
 
 ## Visão geral
 
-O Provisa é uma plataforma de virtualização de dados orientada por configuração, projetada especificamente para potencializar uma camada semântica desde pequenas equipes até grandes empresas. Ele fornece uma API unificada sobre fontes de dados heterogêneas com governança, segurança e otimização de desempenho. Clientes consultam via SQL, GraphQL ou Cypher; todas as três são interfaces de primeira classe com a mesma governança aplicada. (REQ-002, REQ-038)
+O Provisa é uma plataforma de virtualização de dados orientada por configuração: federação, métricas, ontologia e governança a partir de um único modelo, para pequenas equipes e grandes empresas. Ele fornece uma API unificada sobre fontes de dados heterogêneas com governança, segurança e otimização de desempenho. Clientes consultam via SQL, GraphQL ou Cypher; todas as três são interfaces de primeira classe com a mesma governança aplicada. (REQ-002, REQ-038)
 
-A distinção da camada semântica é importante. Para adicionar à camada semântica, você deve criar novas fontes de dados ou agregações dentro da camada de virtualização de dados. Isso cria uma separação limpa — nenhuma nova adição à semântica pode ser feita fora da plataforma, permitindo governança de dados verdadeira. (REQ-136) A aplicação ocorre no nível do compilador: o catálogo de relacionamentos aprovado é a fonte da verdade independentemente de qual linguagem de consulta é usada. (REQ-002)
+O modelo é o único lugar onde se acrescenta significado. Para adicionar ao modelo, você registra novas fontes de dados ou agregações dentro da camada de virtualização de dados. Isso cria uma separação limpa — nenhuma nova adição à semântica pode ser feita fora da plataforma, permitindo governança de dados verdadeira. (REQ-136) A aplicação ocorre no nível do compilador: o catálogo de relacionamentos aprovado é a fonte da verdade independentemente de qual linguagem de consulta é usada. (REQ-002)
 
 O Provisa é projetado para ser altamente performático para necessidades operacionais e altamente escalável para necessidades analíticas empresariais. Uma única plataforma atende a ambas sem sacrificar velocidade ou escalabilidade.
 

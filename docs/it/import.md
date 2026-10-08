@@ -10,7 +10,7 @@ La superficie di amministrazione esegue gli stessi convertitori, quindi un'impor
 2. **Mappa i domini** (opzionale). Ogni coppia mappa uno schema v2 o un subgraph DDN a un dominio Provisa; ciò che non viene mappato mantiene il nome originale.
 3. **Converti e anteprima.** Il server converte e restituisce i conteggi, gli avvisi del convertitore e la configurazione generata. In questo passaggio non viene scritto nulla.
 4. **Rivedi e modifica.** La configurazione è modificabile sul posto — dettagli di connessione, nomi dei domini, nomi dei ruoli. Ciò che applichi è ciò che viene mostrato.
-5. **Applica.** *Sostituisci il livello semantico esistente* elimina ogni origine, tabella, ruolo e regola assente dalla configurazione; se disattivato, l'importazione viene unita a ciò che l'organizzazione già possiede. L'applicazione carica la configurazione e ricostruisce gli schemi dell'organizzazione.
+5. **Applica.** *Applica a questa organizzazione* carica la configurazione e ricostruisce gli schemi dell'organizzazione. Un'importazione si unisce sempre a ciò che l'organizzazione già possiede.
 
 Endpoint: `POST /admin/import/hasura/preview` e `POST /admin/import/hasura/apply`.
 

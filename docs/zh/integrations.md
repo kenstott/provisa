@@ -211,7 +211,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 
 ## 跨协议调用命令 {: #invoking-commands-across-protocols }
 
-**命令**是在 Provisa 语义层注册的已跟踪函数或 webhook —— 一个可调用元素，具有 `kind`（`query` 或 `mutation`）及描述其运行方式的 `impl_kind`。所有接口都通过单一受治理的执行器（`invoke_tracked_function`）路由调用，统一强制执行 `writable_by` 及治理（REQ-1156）。[tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
+**命令**是在 Provisa 模型注册的已跟踪函数或 webhook —— 一个可调用元素，具有 `kind`（`query` 或 `mutation`）及描述其运行方式的 `impl_kind`。所有接口都通过单一受治理的执行器（`invoke_tracked_function`）路由调用，统一强制执行 `writable_by` 及治理（REQ-1156）。[tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 
 | `impl_kind` | 执行内容 | 绑定字段 |
 | ------------ | ----------- | --------------- |

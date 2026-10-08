@@ -1,10 +1,12 @@
 # Glossaire métier
 
 Le glossaire métier est un vocabulaire vivant posé sur votre modèle de données. Chaque colonne
-physique de la couche sémantique se résout vers un terme — un terme partagé unique dès que
+physique du modèle se résout vers un terme — un terme partagé unique dès que
 plusieurs colonnes portent le même concept, aussi différemment qu'elles l'orthographient. Chaque
 terme peut porter une définition, un ensemble de relations typées vers d'autres termes et une
 liste d'experts métier qui possèdent le sens.
+
+Le glossaire est une ontologie : un graphe de concepts, de leurs définitions et des relations entre eux. Provisa le fait correspondre aux structures de base de données qui contiennent les valeurs, ce qui lui permet de répondre à des questions sur vos données. Un concept reste un brouillon tant qu'il n'atteint pas les données, directement ou par d'autres concepts. Le glossaire est distinct des métriques : un terme dit ce qu'est un concept, une métrique dit comment un chiffre est calculé.
 
 Ce vocabulaire partagé est le pont entre le langage métier et les données physiques. Un agent d'IA
 qui sait que « customer » nomme toutes les colonnes portant un identifiant de client n'a pas à

@@ -1246,7 +1246,7 @@ Le subscription SSE sono disponibili su `GET /data/subscribe/{table}`. (REQ-219,
 
 ## Glossario aziendale (REQ-1387)
 
-Il glossario aziendale mappa i nomi dei campi fisici — così come esistono nei database di origine — su un vocabolario umano condiviso. Ogni colonna registrata nel livello semantico ottiene automaticamente un termine. Non è richiesto alcun inserimento manuale per popolare il glossario; i curatori aggiungono definizioni, relazioni ed esperti sopra ciò che il sistema deriva.
+Il glossario aziendale mappa i nomi dei campi fisici — così come esistono nei database di origine — su un vocabolario umano condiviso. Ogni colonna registrata nel modello ottiene automaticamente un termine. Non è richiesto alcun inserimento manuale per popolare il glossario; i curatori aggiungono definizioni, relazioni ed esperti sopra ciò che il sistema deriva.
 
 ### Come vengono derivati i termini
 
@@ -1275,7 +1275,7 @@ I primi tre collassano in un unico termine. `transaction amount` mantiene entram
 
 ### Ciclo di vita
 
-I termini sono **derivati dall'appartenenza al livello semantico**, non creati su richiesta dagli utenti. Il repository delle tabelle è l'unico percorso di scrittura: `sync_table_refs` viene eseguito dentro ogni upsert di set di colonne, e `sweep_refless_terms` viene eseguito dopo ogni percorso di eliminazione. [tool-verified: `provisa/core/repositories/glossary.py`]
+I termini sono **derivati dall'appartenenza al modello**, non creati su richiesta dagli utenti. Il repository delle tabelle è l'unico percorso di scrittura: `sync_table_refs` viene eseguito dentro ogni upsert di set di colonne, e `sweep_refless_terms` viene eseguito dopo ogni percorso di eliminazione. [tool-verified: `provisa/core/repositories/glossary.py`]
 
 **Quando viene aggiunta una colonna:** Provisa cerca il termine normalizzato per nome. Se esiste già, la colonna ottiene un riferimento a esso (e se il termine era deprecato, viene ripristinato — `deprecated` viene reimpostato a `False`). Se non esiste ancora alcun termine, ne viene creato uno.
 

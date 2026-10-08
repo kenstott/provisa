@@ -1,10 +1,12 @@
 # Glosario de negocio
 
-El glosario de negocio es un vocabulario vivo sobre su modelo de datos. Cada columna física de la
-capa semántica se resuelve a un término: un único término compartido siempre que varias columnas
+El glosario de negocio es un vocabulario vivo sobre su modelo de datos. Cada columna física del
+modelo se resuelve a un término: un único término compartido siempre que varias columnas
 lleven el mismo concepto, por distinta que sea su escritura. Cada término puede contener una
 definición, un conjunto de relaciones tipadas con otros términos y una lista de expertos en la
 materia que son dueños del significado.
+
+El glosario es una ontología: un grafo de conceptos, sus definiciones y las relaciones entre ellos. Provisa lo asigna a las estructuras de base de datos que contienen los valores, lo que le permite responder preguntas sobre sus datos. Un concepto es un borrador hasta que llega a los datos, directamente o a través de otros conceptos. El glosario es independiente de las métricas: un término dice qué es un concepto, una métrica dice cómo se calcula una cifra.
 
 Ese vocabulario compartido es el puente entre el lenguaje de negocio y los datos físicos. Un agente
 de IA que sabe que "customer" nombra todas las columnas que llevan un identificador de cliente no

@@ -2,9 +2,9 @@
 
 ## Panoramica
 
-Provisa è una piattaforma di data virtualization guidata dalla configurazione, progettata specificamente per alimentare un layer semantico — da piccoli team fino all'azienda su larga scala. Fornisce un'API unificata su fonti dati eterogenee, con governance, sicurezza e ottimizzazione delle prestazioni integrate. I client interrogano tramite SQL, GraphQL o Cypher; tutte e tre sono interfacce di prima classe con la stessa governance applicata. (REQ-002, REQ-038)
+Provisa è una piattaforma di data virtualization guidata dalla configurazione: federazione, metriche, ontologia e governance da un unico modello, per piccoli team e grandi aziende. Fornisce un'API unificata su fonti dati eterogenee, con governance, sicurezza e ottimizzazione delle prestazioni integrate. I client interrogano tramite SQL, GraphQL o Cypher; tutte e tre sono interfacce di prima classe con la stessa governance applicata. (REQ-002, REQ-038)
 
-La distinzione del layer semantico è importante. Per estendere il layer semantico, è necessario creare nuove origini dati o aggregati all'interno del layer di data virtualization. Questo crea una netta separazione: non è possibile apportare nuove aggiunte alla semantica al di fuori della piattaforma, il che rende possibile una vera governance dei dati. (REQ-136) L'applicazione avviene a livello di compilatore: il catalogo delle relazioni approvate è la fonte di verità, indipendentemente dal linguaggio di query utilizzato. (REQ-002)
+Il modello è l'unico posto in cui si aggiunge significato. Per estendere il modello, si registrano nuove origini dati o aggregati all'interno del layer di data virtualization. Questo crea una netta separazione: non è possibile apportare nuove aggiunte alla semantica al di fuori della piattaforma, il che rende possibile una vera governance dei dati. (REQ-136) L'applicazione avviene a livello di compilatore: il catalogo delle relazioni approvate è la fonte di verità, indipendentemente dal linguaggio di query utilizzato. (REQ-002)
 
 Provisa è progettata per essere altamente performante per esigenze operative e altamente scalabile per esigenze analitiche a livello enterprise. Un'unica piattaforma serve entrambi gli scopi, senza sacrificare né la velocità né la scalabilità.
 

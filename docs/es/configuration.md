@@ -838,7 +838,7 @@ materialized_views:
 
 ## Vistas (conjuntos de datos computados gobernados)
 
-Las vistas son conjuntos de datos computados definidos en SQL con gobierno completo a nivel de columna. (REQ-133) Son el mecanismo gobernado para añadir agregaciones, transformaciones y métricas derivadas a la capa semántica. (REQ-136)
+Las vistas son conjuntos de datos computados definidos en SQL con gobierno completo a nivel de columna. (REQ-133) Son el mecanismo gobernado para añadir agregaciones, transformaciones y métricas derivadas al modelo. (REQ-136)
 
 ```yaml
 views:

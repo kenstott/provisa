@@ -1,6 +1,6 @@
 # Compatibilidad con consultas Cypher
 
-Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/cypher/`. (REQ-345, REQ-347) Las consultas se analizan con un analizador de descenso recursivo personalizado (sin biblioteca externa de Cypher) (REQ-571), se resuelven contra el esquema de la capa semántica (REQ-351) y se emiten como SQL, que luego se enruta al motor de ejecución de destino. (REQ-066, REQ-067, REQ-347)
+Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/cypher/`. (REQ-345, REQ-347) Las consultas se analizan con un analizador de descenso recursivo personalizado (sin biblioteca externa de Cypher) (REQ-571), se resuelven contra el esquema del modelo (REQ-351) y se emiten como SQL, que luego se enruta al motor de ejecución de destino. (REQ-066, REQ-067, REQ-347)
 
 ## Funcionalidades implementadas
 
@@ -19,8 +19,8 @@ Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/
 | `UNION` / `UNION ALL` | ✓ | Unión recursiva entre sub-AST |
 | `CALL { … }` | ✓ | Descomposición de subconsultas CALL de nivel superior mediante `cypher_calls_to_sql_list` |
 | `CALL { WITH x … }` | ✓ | Subconsulta correlacionada → `CROSS JOIN LATERAL`; véase §CALL correlacionado |
-| `CALL db.labels()` | ✓ | Devuelve las etiquetas de nodo de la capa semántica; sin traducción a SQL (REQ-572) |
-| `CALL db.relationshipTypes()` | ✓ | Devuelve los tipos de relación de la capa semántica (REQ-572) |
+| `CALL db.labels()` | ✓ | Devuelve las etiquetas de nodo del modelo; sin traducción a SQL (REQ-572) |
+| `CALL db.relationshipTypes()` | ✓ | Devuelve los tipos de relación del modelo (REQ-572) |
 | `CALL db.propertyKeys()` | ✓ | Devuelve todos los nombres de claves de propiedad de todos los tipos de nodo (REQ-572) |
 | `UNWIND` | ✓ | Expansión de arreglo a filas; el primer elemento se convierte en FROM, los siguientes en CROSS JOIN UNNEST |
 
@@ -153,7 +153,7 @@ Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/
 | Sintaxis | Asignación SQL |
 | -------- | ------------ |
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
-| `[(a)-[]->(b:Label) \| b.prop]` | tipo inferido a partir de la capa semántica; misma forma de subconsulta ARRAY |
+| `[(a)-[]->(b:Label) \| b.prop]` | tipo inferido a partir del modelo; misma forma de subconsulta ARRAY |
 
 ### Subconsultas CALL correlacionadas
 
@@ -183,7 +183,7 @@ Reglas:
 - La etiqueta debe resolverse a exactamente una tabla registrada. Las etiquetas ambiguas o desconocidas son errores irrecuperables; no hay coincidencia aproximada. (REQ-661) No se pueden crear nuevas etiquetas ni tipos a través de Cypher. (REQ-662)
 - Cada escritura está condicionada a la ACL `writable_by` de la tabla de destino; un rol sin derechos de escritura se rechaza en tiempo de compilación. (REQ-663)
 - El conector del origen de datos subyacente debe admitir DML. Los orígenes de solo lectura (federados con Trino, Iceberg sin conector Delta) rechazan las escrituras en tiempo de traducción. (REQ-664)
-- No se pueden escribir relaciones — se derivan de las uniones declaradas en la capa semántica, no se almacenan como aristas. Apuntar a una relación es un error irrecuperable. (REQ-665) Una arista respaldada por una tabla de unión (junction) no es una excepción: la tabla asociativa que hay detrás es a su vez una tabla registrada, y las filas se escriben en esa tabla, no en la arista. (REQ-1586)
+- No se pueden escribir relaciones — se derivan de las uniones declaradas en el modelo, no se almacenan como aristas. Apuntar a una relación es un error irrecuperable. (REQ-665) Una arista respaldada por una tabla de unión (junction) no es una excepción: la tabla asociativa que hay detrás es a su vez una tabla registrada, y las filas se escriben en esa tabla, no en la arista. (REQ-1586)
 - Las escrituras se ejecutan a través del pipeline de escritura completo: inyección de RLS y hooks posteriores a la mutación (invalidación de caché de respuesta, marcado de vista materializada como obsoleta, eventos de cambio de Kafka, recarga de tabla activa). (REQ-798)
 - `MERGE`, `DETACH DELETE` y `REMOVE` no son compatibles y se rechazan en tiempo de análisis. (REQ-671)
 
@@ -208,9 +208,9 @@ Cypher llega al mismo pipeline gobernado a través de dos transportes:
 
 1. **Las escrituras se limitan a `CREATE`, `SET` y `DELETE`.** Se ejecutan como escrituras directas de tabla a través del mismo pipeline que las mutaciones de GraphQL y SQL. (REQ-818, REQ-666, REQ-667, REQ-668) Véase §Escrituras más abajo. `MERGE`, `DETACH DELETE` y `REMOVE` se rechazan en tiempo de análisis. (REQ-671, REQ-818) Los procedimientos APOC también se rechazan.
 
-2. **Las propiedades de relación solo existen en aristas respaldadas por una tabla de unión.** Una arista declarada sobre un par de columnas de clave foránea existe únicamente como metadatos de unión en la capa semántica (REQ-574) y no lleva atributos almacenados, por lo que `WHERE r.since > 2020` o `RETURN r.weight` no tienen sentido sobre ella. Una arista declarada sobre una tabla de unión sí los lleva: las columnas restantes de la tabla asociativa son las propiedades de la relación, `RETURN r` las devuelve, y un `WHERE` sobre una de ellas se compila como un predicado sobre el alias de la tabla de unión — de modo que restringe el recorrido en vez de filtrar filas ya ensambladas. (REQ-1586) La propia tabla de unión desaparece del lado de los nodos del esquema del grafo; aquí es una arista y en todos los demás sitios es una tabla.
+2. **Las propiedades de relación solo existen en aristas respaldadas por una tabla de unión.** Una arista declarada sobre un par de columnas de clave foránea existe únicamente como metadatos de unión en el modelo (REQ-574) y no lleva atributos almacenados, por lo que `WHERE r.since > 2020` o `RETURN r.weight` no tienen sentido sobre ella. Una arista declarada sobre una tabla de unión sí los lleva: las columnas restantes de la tabla asociativa son las propiedades de la relación, `RETURN r` las devuelve, y un `WHERE` sobre una de ellas se compila como un predicado sobre el alias de la tabla de unión — de modo que restringe el recorrido en vez de filtrar filas ya ensambladas. (REQ-1586) La propia tabla de unión desaparece del lado de los nodos del esquema del grafo; aquí es una arista y en todos los demás sitios es una tabla.
 
-3. **El recorrido bidireccional** `(a)-[]-(b)` se reescribe como el UNION ALL directo e inverso de todas las relaciones dirigidas coincidentes de la capa semántica. (REQ-575) Toda relación en la capa semántica es direccional; la sintaxis bidireccional es azúcar sintáctico que se expande en ambas direcciones. Las ramas adicionales se emiten en el nivel más externo de la consulta — los patrones MATCH posteriores en la misma consulta no se duplican entre ramas (limitación para el caso bidireccional con múltiples MATCH).
+3. **El recorrido bidireccional** `(a)-[]-(b)` se reescribe como el UNION ALL directo e inverso de todas las relaciones dirigidas coincidentes del modelo. (REQ-575) Toda relación en el modelo es direccional; la sintaxis bidireccional es azúcar sintáctico que se expande en ambas direcciones. Las ramas adicionales se emiten en el nivel más externo de la consulta — los patrones MATCH posteriores en la misma consulta no se duplican entre ramas (limitación para el caso bidireccional con múltiples MATCH).
 
 4. **Las rutas recursivas requieren un límite.** Los patrones de longitud variable (`[*]`) deben incluir un límite superior (por ejemplo, `[*..10]`). (REQ-348) El recorrido sin límite se rechaza en tiempo de análisis para evitar CTE recursivas descontroladas.
 

@@ -1,6 +1,6 @@
 # Cypher-Abfrageunterstützung
 
-Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provisa/cypher/`. (REQ-345, REQ-347) Abfragen werden von einem eigenen rekursiven Abstiegs-Parser geparst (keine externe Cypher-Bibliothek) (REQ-571), gegen die semantische Schicht schema-aufgelöst (REQ-351) und als SQL emittiert, dann zur Ziel-Ausführungs-Engine geroutet. (REQ-066, REQ-067, REQ-347)
+Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provisa/cypher/`. (REQ-345, REQ-347) Abfragen werden von einem eigenen rekursiven Abstiegs-Parser geparst (keine externe Cypher-Bibliothek) (REQ-571), gegen das Modell schema-aufgelöst (REQ-351) und als SQL emittiert, dann zur Ziel-Ausführungs-Engine geroutet. (REQ-066, REQ-067, REQ-347)
 
 ## Implementierte Funktionen
 
@@ -19,8 +19,8 @@ Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provi
 | `UNION` / `UNION ALL` | ✓ | Rekursive Union über Sub-ASTs |
 | `CALL { … }` | ✓ | Top-Level-Call-Subquery-Zerlegung über `cypher_calls_to_sql_list` |
 | `CALL { WITH x … }` | ✓ | Korrelierte Subquery → `CROSS JOIN LATERAL`; siehe §Korrelierte CALL |
-| `CALL db.labels()` | ✓ | Gibt Knoten-Labels aus der semantischen Schicht zurück; keine SQL-Übersetzung (REQ-572) |
-| `CALL db.relationshipTypes()` | ✓ | Gibt Beziehungstypen aus der semantischen Schicht zurück (REQ-572) |
+| `CALL db.labels()` | ✓ | Gibt Knoten-Labels aus dem Modell zurück; keine SQL-Übersetzung (REQ-572) |
+| `CALL db.relationshipTypes()` | ✓ | Gibt Beziehungstypen aus dem Modell zurück (REQ-572) |
 | `CALL db.propertyKeys()` | ✓ | Gibt alle Eigenschaftsschlüssel-Namen über alle Knotentypen hinweg zurück (REQ-572) |
 | `UNWIND` | ✓ | Array-zu-Zeilen-Expansion; erstes Element wird zu FROM, weitere zu CROSS JOIN UNNEST |
 
@@ -153,7 +153,7 @@ Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provi
 | Syntax | SQL-Abbildung |
 | -------- | ------------ |
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
-| `[(a)-[]->(b:Label) \| b.prop]` | Typ aus der semantischen Schicht abgeleitet; gleiche ARRAY-Subquery-Form |
+| `[(a)-[]->(b:Label) \| b.prop]` | Typ aus dem Modell abgeleitet; gleiche ARRAY-Subquery-Form |
 
 ### Korrelierte CALL-Subqueries
 
@@ -183,7 +183,7 @@ Regeln:
 - Das Label muss auf genau eine registrierte Tabelle aufgelöst werden. Mehrdeutige oder unbekannte Labels sind harte Fehler; kein Fuzzy-Matching. (REQ-661) Neue Labels oder Typen können nicht über Cypher erstellt werden. (REQ-662)
 - Jeder Write ist an die `writable_by`-ACL der Zieltabelle gebunden; eine Rolle ohne Schreibrechte wird zur Kompilierzeit abgelehnt. (REQ-663)
 - Der zugrunde liegende Quellconnector muss DML unterstützen. Nur-Lese-Quellen (Trino-föderiert, Iceberg ohne Delta-Connector) lehnen Writes zur Übersetzungszeit ab. (REQ-664)
-- Beziehungen können nicht geschrieben werden — sie werden aus den deklarierten Joins der semantischen Schicht abgeleitet, nicht als gespeicherte Kanten. Eine Beziehung als Ziel zu adressieren ist ein harter Fehler. (REQ-665) Eine Junction-gestützte Kante ist keine Ausnahme: Die dahinterliegende Zuordnungstabelle ist selbst eine registrierte Tabelle, und Zeilen werden in diese Tabelle geschrieben, nicht in die Kante. (REQ-1586)
+- Beziehungen können nicht geschrieben werden — sie werden aus den deklarierten Joins des Modells abgeleitet, nicht als gespeicherte Kanten. Eine Beziehung als Ziel zu adressieren ist ein harter Fehler. (REQ-665) Eine Junction-gestützte Kante ist keine Ausnahme: Die dahinterliegende Zuordnungstabelle ist selbst eine registrierte Tabelle, und Zeilen werden in diese Tabelle geschrieben, nicht in die Kante. (REQ-1586)
 - Writes durchlaufen die vollständige Write-Pipeline: RLS-Injektion und Post-Mutation-Hooks (Response-Cache-Invalidierung, Markierung materialisierter Sichten als veraltet, Kafka-Change-Events, Hot-Table-Reload). (REQ-798)
 - `MERGE`, `DETACH DELETE` und `REMOVE` werden nicht unterstützt und zur Parse-Zeit abgelehnt. (REQ-671)
 
@@ -208,9 +208,9 @@ Cypher erreicht dieselbe geregelte Pipeline über zwei Transporte:
 
 1. **Writes sind auf `CREATE`, `SET` und `DELETE` beschränkt.** Diese werden als direkte Tabellen-Writes über dieselbe Pipeline wie GraphQL- und SQL-Mutationen ausgeführt. (REQ-818, REQ-666, REQ-667, REQ-668) Siehe §Writes oben. `MERGE`, `DETACH DELETE` und `REMOVE` werden zur Parse-Zeit abgelehnt. (REQ-671, REQ-818) APOC-Prozeduren werden ebenfalls abgelehnt.
 
-2. **Beziehungseigenschaften gibt es nur auf Junction-gestützten Kanten.** Eine über ein Fremdschlüssel-Spaltenpaar deklarierte Kante existiert ausschließlich als Join-Metadaten in der semantischen Schicht (REQ-574) und trägt keine gespeicherten Attribute, daher haben `WHERE r.since > 2020` oder `RETURN r.weight` auf ihr keine Bedeutung. Eine über eine Junction-Tabelle deklarierte Kante trägt sie sehr wohl: Die übrigen Spalten der Zuordnungstabelle sind die Eigenschaften der Beziehung, `RETURN r` gibt sie zurück, und ein `WHERE` auf einer davon kompiliert zu einem Prädikat auf dem Junction-Alias — es schränkt also die Traversierung ein, statt zusammengesetzte Zeilen zu filtern. (REQ-1586) Die Junction-Tabelle selbst fällt auf der Knotenseite des Graph-Schemas weg; hier ist sie eine Kante und überall sonst eine Tabelle.
+2. **Beziehungseigenschaften gibt es nur auf Junction-gestützten Kanten.** Eine über ein Fremdschlüssel-Spaltenpaar deklarierte Kante existiert ausschließlich als Join-Metadaten im Modell (REQ-574) und trägt keine gespeicherten Attribute, daher haben `WHERE r.since > 2020` oder `RETURN r.weight` auf ihr keine Bedeutung. Eine über eine Junction-Tabelle deklarierte Kante trägt sie sehr wohl: Die übrigen Spalten der Zuordnungstabelle sind die Eigenschaften der Beziehung, `RETURN r` gibt sie zurück, und ein `WHERE` auf einer davon kompiliert zu einem Prädikat auf dem Junction-Alias — es schränkt also die Traversierung ein, statt zusammengesetzte Zeilen zu filtern. (REQ-1586) Die Junction-Tabelle selbst fällt auf der Knotenseite des Graph-Schemas weg; hier ist sie eine Kante und überall sonst eine Tabelle.
 
-3. **Bidirektionale Traversierung** `(a)-[]-(b)` wird zur Vorwärts+Rückwärts-UNION-ALL aller passenden gerichteten Beziehungen aus der semantischen Schicht umgeschrieben. (REQ-575) Jede Beziehung in der semantischen Schicht ist gerichtet; bidirektionale Syntax ist Zucker, der zu beiden Richtungen expandiert. Zusätzliche Zweige werden auf der äußersten Abfrageebene emittiert — nachfolgende MATCH-Muster in derselben Abfrage werden nicht über die Zweige hinweg dupliziert (Einschränkung bei Multi-MATCH-Bidirektionalität).
+3. **Bidirektionale Traversierung** `(a)-[]-(b)` wird zur Vorwärts+Rückwärts-UNION-ALL aller passenden gerichteten Beziehungen aus dem Modell umgeschrieben. (REQ-575) Jede Beziehung im Modell ist gerichtet; bidirektionale Syntax ist Zucker, der zu beiden Richtungen expandiert. Zusätzliche Zweige werden auf der äußersten Abfrageebene emittiert — nachfolgende MATCH-Muster in derselben Abfrage werden nicht über die Zweige hinweg dupliziert (Einschränkung bei Multi-MATCH-Bidirektionalität).
 
 4. **Rekursive Pfade erfordern eine Obergrenze.** Muster variabler Länge (`[*]`) müssen eine Obergrenze enthalten (z. B. `[*..10]`). (REQ-348) Unbegrenzte Traversierung wird zur Parse-Zeit abgelehnt, um ausufernde rekursive CTEs zu verhindern.
 

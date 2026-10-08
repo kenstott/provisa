@@ -1,6 +1,6 @@
 # 远程模式
 
-远程模式来源将外部 API——GraphQL（含 GitHub）、gRPC 或 REST（OpenAPI）——连接至 Provisa 语义层。添加来源不会注册任何数据表。来源会提供数据表，由数据管家通过“Register Table”选择器注册所需的每一张表；该注册即为策展（curation）步骤。（REQ-308、REQ-316、REQ-322）已注册的数据表是一级的 Provisa 数据表。（REQ-308、REQ-316、REQ-325）所有治理规则、查询接口及安全层均会自动应用。（REQ-310、REQ-319、REQ-328）远程服务永远不会看到 Provisa 的治理规则。（REQ-310、REQ-319、REQ-328）
+远程模式来源将外部 API——GraphQL（含 GitHub）、gRPC 或 REST（OpenAPI）——连接至 Provisa 模型。添加来源不会注册任何数据表。来源会提供数据表，由数据管家通过“Register Table”选择器注册所需的每一张表；该注册即为策展（curation）步骤。（REQ-308、REQ-316、REQ-322）已注册的数据表是一级的 Provisa 数据表。（REQ-308、REQ-316、REQ-325）所有治理规则、查询接口及安全层均会自动应用。（REQ-310、REQ-319、REQ-328）远程服务永远不会看到 Provisa 的治理规则。（REQ-310、REQ-319、REQ-328）
 
 ---
 

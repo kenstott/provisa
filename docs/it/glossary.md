@@ -1,10 +1,12 @@
 # Glossario aziendale
 
 Il glossario aziendale è un vocabolario vivo sopra il modello dei dati. Ogni colonna fisica del
-livello semantico si risolve in un termine — un unico termine condiviso ogni volta che più colonne
+modello si risolve in un termine — un unico termine condiviso ogni volta che più colonne
 portano lo stesso concetto, per quanto diversamente lo scrivano. Ogni termine può contenere una
 definizione, un insieme di relazioni tipizzate verso altri termini e un elenco di esperti in materia
 che ne detengono il significato.
+
+Il glossario è un'ontologia: un grafo di concetti, delle loro definizioni e delle relazioni tra essi. Provisa lo mappa sulle strutture di database che contengono i valori, ed è questo che gli permette di rispondere a domande sui tuoi dati. Un concetto è una bozza finché non raggiunge i dati, direttamente o tramite altri concetti. Il glossario è distinto dalle metriche: un termine dice che cos'è un concetto, una metrica dice come si calcola un numero.
 
 Quel vocabolario condiviso è il ponte tra il linguaggio di business e i dati fisici. Un agente AI
 che sa che «customer» nomina ogni colonna che porta un identificatore di cliente non deve indovinare
