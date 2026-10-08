@@ -15,6 +15,19 @@ name: Integration suite (containers)
 on:
   push:
     branches: [integration, main]
+    # A push that touches only the website, the documentation or a markdown file starts no
+    # run -- and so replaces none: each push starts a run that cancels its branch's run in
+    # flight, and a day of site and docs pushes cancelled every run before its lanes finished.
+    # Later patterns win. The one documentation file a lane reads is kept in
+    # (tests/steps/steps_metadata_export_docs.py reads docs/metadata-export.md); mkdocs.yml is
+    # not under docs/ and counts as code. Dispatches and the nightly are not filtered.
+    paths:
+      - "**"
+      - "!site/**"
+      - "!docs/**"
+      - "!**/*.md"
+      - "!.github/workflows/docs.yml"
+      - "docs/metadata-export.md"
   schedule:
     # Nightly, for the warehouse lane only (06:00 UTC). Scheduled runs use the default branch's
     # copy of this file; the warehouse job checks out `integration` explicitly.
