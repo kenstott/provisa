@@ -305,6 +305,18 @@ class WorkerBoot:
             self._proc.wait(timeout=20)
             self._proc = None
             self._log.close()
+            self._keep_log()
+
+    def _keep_log(self) -> None:
+        """Copy the launch's log where the run keeps its results, when it names such a place
+        (``PROVISA_TEST_SERVER_LOG_DIR``; the CI lanes do, and upload it). The log lives in the
+        launch's data directory, which cleanup() removes: a worker that died or dropped a
+        connection in a lane left nothing to read (config-sync, run 37718641831: "Remote end
+        closed connection without response", and no log of the server that closed it)."""
+        kept = os.environ.get("PROVISA_TEST_SERVER_LOG_DIR")
+        if kept and self.log_path.exists():
+            Path(kept).mkdir(parents=True, exist_ok=True)
+            shutil.copy(self.log_path, Path(kept) / f"{self.database}-{self.log_path.name}")
 
     def cleanup(self) -> None:
         self.stop()
