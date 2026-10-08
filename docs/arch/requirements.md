@@ -22535,3 +22535,17 @@ A files source may declare an HTML crawl, and Wikipedia is a source type carried
 **Code:** `provisa/file_source/crawl.py`, `provisa/file_source/wikipedia.py`, `provisa/api/admin/schema_common.py`, `provisa/federation/pgwire_replica.py`, `provisa/federation/trino_connectors.py`, `provisa-ui/src/pages/sources/wikipedia.ts`, `provisa-ui/src/pages/sources/WikipediaFields.tsx`
 
 **Tests:** `tests/unit/test_wikipedia_source.py`, `provisa-ui/src/pages/sources/__tests__/wikipedia.test.tsx`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1961 · Schema Registration {#REQ-1961}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+The model records the precision and scale of a numeric column. Registration takes them from the source the same way whichever engine introspects it -- from the precision and scale each engine reports for the column, not from how that engine happens to print the type name -- and stores them with the column; the column editor shows them and lets the registrar set or clear them. A numeric column with a recorded precision and scale is an exact decimal of that precision and scale on every read path, on every engine and surface, and in every catalog listing. A numeric column with none recorded is floating point on every read path and in every listing, the same for an empty result as for a full one, and is documented as approximate. A column's type is never sized from the rows a read happens to return. The type a catalog lists for a column is the type a read of that column returns.
+
+**Use case:** A finance team registers an amounts column once as numeric(18,2) and gets exact values through SQL, Flight, JDBC and the catalog, whichever engine introspected the source.
+
+**Code:** —
+
+**Tests:** —

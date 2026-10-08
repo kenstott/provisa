@@ -77536,3 +77536,18 @@
     crawler''s features, reasonable defaults, and only links within content followed; surfacing tables and links to
     csv/parquet/xlsx that become tables is the goal. The crawl itself is in the file adapter (engine 0.109.0), which also
     reads a spanned table cell into every position it covers.'
+- id: REQ-1961
+  status: proposed
+  since: 2026-10
+  group: 3. Source Registration & Data Modeling
+  category: Schema Registration
+  priority: MUST
+  type: behavioral
+  description: 'The model records the precision and scale of a numeric column. Registration takes them from the source the same way whichever engine introspects it -- from the precision and scale each engine reports for the column, not from how that engine happens to print the type name -- and stores them with the column; the column editor shows them and lets the registrar set or clear them. A numeric column with a recorded precision and scale is an exact decimal of that precision and scale on every read path, on every engine and surface, and in every catalog listing. A numeric column with none recorded is floating point on every read path and in every listing, the same for an empty result as for a full one, and is documented as approximate. A column''s type is never sized from the rows a read happens to return. The type a catalog lists for a column is the type a read of that column returns.'
+  use_case: A finance team registers an amounts column once as numeric(18,2) and gets exact values through SQL, Flight,
+    JDBC and the catalog, whichever engine introspected the source.
+  related_reqs:
+  - REQ-846
+  - REQ-1426
+  - REQ-1952
+  notes: 'Maintainer 2026-10-08. Found while giving the Flight catalog real column types: the stored type kept a qualifier only when the introspecting engine printed one (Trino and DuckDB do, Postgres does not); 1 of 29 decimal columns in the repository''s model files carried one; the one read path returning an exact decimal took it from the engine''s result and, on a Postgres direct read, sized it from the first batch; two other paths converted decimals to floating point. Rulings: an undeclared numeric is served as floating point, and said to be; the model records precision, exact where declared.'
