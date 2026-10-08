@@ -103,31 +103,17 @@ def _parse_env_file(path: Path) -> dict[str, str]:
     return values
 
 
-def load_provider_creds(path: Path | None = None) -> list[str]:
-    """Export external-provider creds from ``path`` (default: :func:`env_file`). Returns the
-    names it set; none when there is no .env to read.
+def _bridge_sharepoint_names(relative_to: Path) -> list[str]:
+    """Give the SharePoint tests the names they read. The Azure AD app is authored under the SP_
+    prefix -- in .env and as the warehouse lane's secrets -- and the SharePoint e2e reads
+    SHAREPOINT_*. Wherever the SP_ values came from, a credential that IS present is used rather
+    than reported absent on a name mismatch: with no .env (the CI lane) the bridge was not run at
+    all, and six tests did not run for want of names that were set under the other prefix.
 
-    Called at import of tests/conftest.py so the values are present before any module-level
-    skipif condition is evaluated.
-    """
-    source = path if path is not None else env_file()
-    if source is None:
-        return []
-
-    loaded: list[str] = []
-    for key, value in _parse_env_file(source).items():
-        if not value:
-            continue  # an empty value is as good as unset -- never export it as a half credential
-        if key in os.environ:
-            continue  # a caller-exported value always wins -- an exported empty one too
-        os.environ[key] = value
-        loaded.append(key)
-
-    # .env authors the SharePoint Azure AD app under the SP_ prefix, but the sharepoint e2e
-    # reads SHAREPOINT_* (its own naming). Bridge the names so a credential that IS present
-    # is actually used instead of skipping on a name mismatch. certificate_path is authored
-    # relative (./sharepoint.pfx) to the .env that names it; resolve it so the test works from
-    # any cwd and from a worktree reading the primary checkout's .env.
+    The certificate path may be authored relative (./sharepoint.pfx) to the .env that names it;
+    it is resolved against ``relative_to`` so the test works from any cwd and from a worktree
+    reading the primary checkout's .env."""
+    bridged: list[str] = []
     for sp_key, sharepoint_key in (
         ("SP_SITE_URL", "SHAREPOINT_SITE_URL"),
         ("SP_TENANT_ID", "SHAREPOINT_TENANT_ID"),
@@ -138,11 +124,34 @@ def load_provider_creds(path: Path | None = None) -> list[str]:
         value = os.environ.get(sp_key)
         if value and not os.environ.get(sharepoint_key):
             os.environ[sharepoint_key] = value
-            loaded.append(sharepoint_key)
+            bridged.append(sharepoint_key)
     cert = os.environ.get("SP_CERT_PATH")
     if cert and not os.environ.get("SHAREPOINT_CERT_PATH"):
-        os.environ["SHAREPOINT_CERT_PATH"] = str((source.parent / cert).resolve())
-        loaded.append("SHAREPOINT_CERT_PATH")
+        os.environ["SHAREPOINT_CERT_PATH"] = str((relative_to / cert).resolve())
+        bridged.append("SHAREPOINT_CERT_PATH")
+    return bridged
+
+
+def load_provider_creds(path: Path | None = None) -> list[str]:
+    """Export external-provider creds from ``path`` (default: :func:`env_file`). Returns the
+    names it set. With no .env to read nothing is exported from a file; the SharePoint names are
+    still bridged from what the environment already holds (:func:`_bridge_sharepoint_names`).
+
+    Called at import of tests/conftest.py so the values are present before any module-level
+    skipif condition is evaluated.
+    """
+    source = path if path is not None else env_file()
+    loaded: list[str] = []
+    for key, value in (_parse_env_file(source) if source is not None else {}).items():
+        if not value:
+            continue  # an empty value is as good as unset -- never export it as a half credential
+        if key in os.environ:
+            continue  # a caller-exported value always wins -- an exported empty one too
+        os.environ[key] = value
+        loaded.append(key)
+    loaded += _bridge_sharepoint_names(source.parent if source is not None else Path.cwd())
+    if source is None:
+        return loaded
 
     # The Google Sheets API is enabled for the credentialed project and the key_file secret
     # works, so the live DuckDB gsheets read must RUN whenever those creds loaded rather than

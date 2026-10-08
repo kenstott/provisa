@@ -135,3 +135,52 @@ def test_a_checkouts_own_env_file_and_a_named_one_come_first(tmp_path, clean_env
     named = tmp_path / "named.env"
     monkeypatch.setenv("PROVISA_ENV_FILE", str(named))
     assert env_file(checkout) == named
+
+
+def test_the_sharepoint_names_are_bridged_where_there_is_no_env_file(
+    clean_env, monkeypatch, tmp_path
+):
+    """The warehouse lane has no .env: its SP_* values are the job's secrets. The bridge to the
+    SHAREPOINT_* names the SharePoint tests read ran only after a .env was read, so in the lane
+    six tests did not run, each reporting as absent five names that were set under SP_*."""
+    from tests import env_creds
+
+    for name in ("SITE_URL", "TENANT_ID", "CLIENT_ID", "CERT_PATH", "CERT_PASSWORD"):
+        monkeypatch.delenv(f"SHAREPOINT_{name}", raising=False)
+    monkeypatch.setattr(env_creds, "env_file", lambda *a, **k: None)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SP_SITE_URL", "https://example.sharepoint.com/sites/x")
+    monkeypatch.setenv("SP_TENANT_ID", "tenant")
+    monkeypatch.setenv("SP_CLIENT_ID", "client")
+    monkeypatch.setenv("SP_CERT_PASSWORD", "pfx-password")
+    monkeypatch.setenv(
+        "SP_CERT_PATH", str(tmp_path / "sharepoint.pfx")
+    )  # absolute, as the lane sets it
+
+    loaded = env_creds.load_provider_creds()
+
+    assert sorted(loaded) == [
+        "SHAREPOINT_CERT_PASSWORD",
+        "SHAREPOINT_CERT_PATH",
+        "SHAREPOINT_CLIENT_ID",
+        "SHAREPOINT_SITE_URL",
+        "SHAREPOINT_TENANT_ID",
+    ]
+    assert os.environ["SHAREPOINT_CERT_PATH"] == str((tmp_path / "sharepoint.pfx").resolve())
+    assert os.environ["SHAREPOINT_CERT_PASSWORD"] == "pfx-password"
+    for name in loaded:  # set by this test's call, not by monkeypatch: remove them again
+        monkeypatch.delenv(name)
+
+
+def test_the_warehouse_lane_is_handed_the_certificates_password():
+    """Trino and the pgwire server open the SharePoint client certificate with SP_CERT_PASSWORD.
+    The lane did not declare it, and the catalog failed to decrypt the PFX (run 37777052154)."""
+    import yaml
+
+    workflow = yaml.safe_load(
+        (_TESTS.parent / ".github" / "workflows" / "integration-suite-lanes.yml").read_text()
+    )
+    job = workflow["jobs"]["warehouse"]
+    assert job["env"]["SP_CERT_PASSWORD"] == "${{ secrets.SP_CERT_PASSWORD }}"
+    (check,) = [s for s in job["steps"] if s.get("name") == "Credentials present"]
+    assert "SP_CERT_PASSWORD" in check["run"]

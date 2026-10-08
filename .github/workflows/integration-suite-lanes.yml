@@ -380,6 +380,9 @@ jobs:
       SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
       SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
       SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
+      # The password of the client certificate below: Trino's SharePoint catalog and the pgwire
+      # server both open the PFX with it.
+      SP_CERT_PASSWORD: ${{ secrets.SP_CERT_PASSWORD }}
       # Synapse provisions through the Azure CLI, logged in as this service principal.
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
@@ -434,6 +437,7 @@ jobs:
                    SINGLESTORE_HOST SINGLESTORE_PORT SINGLESTORE_USERNAME SINGLESTORE_PASSWORD \
                    SINGLESTORE_DATABASE CLOUDFLARE_ACCOUNT_ID ASKAMERICA_API_KEY SP_AUTH_TYPE SP_CLIENT_ID SP_SITE_URL SP_TENANT_ID \
                    AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID SP_CERT_P12_BASE64 \
+                   SP_CERT_PASSWORD \
                    CLOUDOPS_AZURE_TENANT_ID CLOUDOPS_AZURE_CLIENT_ID CLOUDOPS_AZURE_CLIENT_SECRET \
                    CLOUDOPS_AZURE_SUBSCRIPTION_IDS CLOUDOPS_AWS_ACCESS_KEY_ID \
                    CLOUDOPS_AWS_SECRET_ACCESS_KEY CLOUDOPS_AWS_ACCOUNT_IDS CLOUDOPS_AWS_REGION \
@@ -446,7 +450,9 @@ jobs:
           fi
           printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$RUNNER_TEMP/gcp-key.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-key.json" >> "$GITHUB_ENV"
-          # SharePoint authenticates with the app's client certificate (a password-less PFX), not a
+          # SharePoint authenticates with the app's client certificate (a PFX opened with
+          # SP_CERT_PASSWORD; one exported with an empty password is not readable by Trino's JVM:
+          # run 37777052154, "failed to decrypt safe contents entry"), not a
           # client secret; the certificate is gitignored, so it arrives as a base64 secret.
           # It goes where compose mounts it into Trino from: ./sharepoint.pfx (docker-compose.core.yml).
           printf '%s' "$SP_CERT_P12_BASE64" | base64 -d > "$GITHUB_WORKSPACE/sharepoint.pfx"
