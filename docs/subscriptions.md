@@ -157,6 +157,44 @@ sources:
       schema_registry_ca: /etc/provisa/registry-ca.pem
 ```
 
+## When a Stream Ends on a Failure
+
+A stream that has opened has already answered `200`, so a failure after that point cannot be an HTTP status. The subscriber receives one last frame saying why, and then the stream closes. A stream never closes on a failure without that frame.
+
+The frame carries what the same failure would be answered with on an ordinary request:
+
+| Failure | Body |
+|---|---|
+| A refusal with a code (a schema registry's, a region's, a governance refusal) | `detail`, `code`, `params` |
+| The request's deadline | `detail: "Request timed out"` |
+| Anything unexpected | `detail: "Internal server error"`, `type` (the exception's type name) |
+
+Every body also carries `subscription_id`. For an unexpected failure the message and traceback are in the server log under that id, not in the frame.
+
+The table subscription (`/data/subscribe/{table}`) sends the body as the data of an event named `stream_error`:
+
+```text
+event: stream_error
+data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
+```
+
+The event is not named `error`, because an `EventSource` raises its own `error` event when a connection drops and a listener could not tell the two apart. Listen for it by name:
+
+```javascript
+source.addEventListener("stream_error", (e) => {
+  const { detail, code, params } = JSON.parse(e.data);
+  source.close();
+});
+```
+
+A GraphQL subscription keeps the GraphQL response shape, with the code and params under `extensions`:
+
+```json
+{"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
+```
+
+One case does not end a GraphQL subscription: when the re-read after a single change fails, that frame is sent in the same shape and the stream goes on to the next change. A failure of the initial read, of the change feed itself, or of starting it, is the last frame.
+
 ## Kafka Sink Redirect
 
 Any GraphQL subscription can be redirected to a Kafka topic instead of streaming back to the client. (REQ-812) Add the `X-Provisa-Sink` header to the subscription request:

@@ -51,6 +51,7 @@ import { useDomains } from "../hooks/useAdminQueries";
 import { serverMessage } from "../i18n/serverMessage";
 import { domainGqlAlias } from "../types/admin";
 import { actingRoleHeader } from "../lib/actingRole";
+import { localizedStreamFrame } from "./streamErrors";
 
 /** Register # @provisa hint completions in the GraphQL Monaco editor. */
 monaco.languages.registerCompletionItemProvider("graphql", {
@@ -786,7 +787,8 @@ export function QueryPage() {
               const raw = dataLine.slice(6).trim();
               if (!raw) continue;
               try {
-                yield JSON.parse(raw);
+                // A frame naming why the stream ended is shown from the server-error catalog.
+                yield localizedStreamFrame(JSON.parse(raw));
               } catch {
                 // skip malformed
               }

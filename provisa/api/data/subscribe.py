@@ -29,6 +29,7 @@ from typing import AsyncGenerator
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import StreamingResponse
 
+from provisa.api.data.stream_end import ending_by_name, new_subscription_id
 from provisa.api.errors import ApiError
 from provisa.kafka.avro_registry import RegistrySettings, SchemaRegistry, SchemaRegistryRefusal
 
@@ -536,6 +537,7 @@ async def subscribe(
     # stream ends, in the return path below).
     _sse_slot = await _acquire_sse_slot(state, role_id)
     disconnect = asyncio.Event()
+    subscription_id = new_subscription_id()
 
     async def on_disconnect() -> None:
         while True:
@@ -553,7 +555,10 @@ async def subscribe(
                 )
             else:
                 events = _sse_generator(state.tenant_db, table, disconnect)
-            async for chunk in _governed_changes(events, key, ref, pk):
+            # The stream has answered 200: when it ends on a failure the subscriber is told why in
+            # one last frame (provisa/api/data/stream_end.py), never left with a silent close.
+            changes = _governed_changes(events, key, ref, pk)
+            async for chunk in ending_by_name(changes, subscription_id, f"table {table}"):
                 yield chunk
         finally:
             task.cancel()

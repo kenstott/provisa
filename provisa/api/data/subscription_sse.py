@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from graphql.language.ast import FieldNode, OperationDefinitionNode, SelectionSetNode
 from graphql.language import print_ast
 
+from provisa.api.data.stream_end import graphql_stream_error, new_subscription_id
 from provisa.core.operator_floor import OperatorFloorError
 
 log = logging.getLogger(__name__)
@@ -237,6 +238,8 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
             return json.loads(body)
         return result  # type: ignore[return-value]
 
+    subscription_id = new_subscription_id()
+
     async def generate() -> AsyncGenerator[str, None]:
         task = asyncio.create_task(_on_disconnect())
         try:
@@ -245,8 +248,7 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
                 data = await _run_query()
                 yield f"data: {json.dumps(data)}\n\n"
             except Exception as exc:
-                log.warning("Subscription initial query failed: %s", exc)
-                yield f"data: {json.dumps({'errors': [{'message': str(exc)}]})}\n\n"
+                yield graphql_stream_error(exc, subscription_id, f"initial query of {table_name}")
                 return
 
             effective_watermark = _watermark
@@ -303,7 +305,9 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
 
                     provider = get_provider(source_type, provider_config)
             except Exception as exc:
-                log.warning("Subscription provider unavailable: %s", exc)
+                # No provider, no changes to report: say so and end (stream_end.py), rather than
+                # a stream that stays open in silence or closes without a word.
+                yield graphql_stream_error(exc, subscription_id, f"provider for {table_name}")
                 return
 
             try:
@@ -325,8 +329,13 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
                         data = await _run_query()
                         yield f"data: {json.dumps(data)}\n\n"
                     except Exception as exc:
-                        log.warning("Subscription re-query failed: %s", exc)
-                        yield f"data: {json.dumps({'errors': [{'message': str(exc)}]})}\n\n"
+                        # One change's read failed; the stream goes on to the next change.
+                        yield graphql_stream_error(
+                            exc, subscription_id, f"re-query of {table_name}"
+                        )
+            except Exception as exc:
+                # The change feed itself failed: the last frame says why, and the stream ends.
+                yield graphql_stream_error(exc, subscription_id, f"change feed of {table_name}")
             finally:
                 try:
                     await provider.close()
