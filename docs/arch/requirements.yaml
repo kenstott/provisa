@@ -77382,3 +77382,17 @@
   - REQ-1923
   - REQ-1946
   notes: 'Maintainer 2026-10-08: add a requirement for ServiceNow and name it on the website with Salesforce and Stripe (a reviewer''s positioning guidance named it; no requirement covered it). Not built. Whether it is written through, as Salesforce is, is undecided.'
+- id: REQ-1955
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: MCP & AI Integration
+  priority: SHOULD
+  type: behavioral
+  description: 'The MCP server has a tool that, given any two registered tables, returns the valid paths that connect them. A path is a chain of registered relationships leading from the first table to the second; each step names its relationship, the two tables it joins, the join condition and its cardinality, so an agent can write the join without guessing. Only relationships the caller''s role may traverse are walked, and only tables it may read appear on a path, so every returned path is a join the relationship guard (REQ-603) accepts for that caller. Paths are returned shortest first, up to a bound on length and on the number returned; the answer says when the bound cut it short. Two tables with no path return an empty list, not an error. The two tables may be the same table: the paths are then its registered self-relationships.'
+  use_case: An agent asked for revenue by region finds how orders reach regions through customers before it writes
+    the query, and does not try a join the guard would refuse.
+  related_reqs:
+  - REQ-603
+  - REQ-1825
+  notes: 'Maintainer 2026-10-08: new MCP requirement -- for any 2 tables, return a list of valid paths to connect them. Lead''s additions, open to correction: scoped to the caller''s role, shortest first, bounded with a stated cut, each step carries condition and cardinality. The MCP server already lists the relationships a role may traverse (provisa/api/mcp/tools.py); this tool walks them.'
