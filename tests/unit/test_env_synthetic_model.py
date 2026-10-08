@@ -211,3 +211,32 @@ def test_a_generated_table_is_read_as_an_ordinary_table_its_required_parameter_a
     assert unread == missing and untouched == other
     # The model's own rows are not changed by how the environment reads them.
     assert generated["columns"][1]["native_filter_type"] == "path_param"
+
+
+def test_each_reason_a_table_has_no_generated_rows_is_said_as_itself():
+    """REQ-1942: a table of a synthetic-bound source with no generated copy is refused for one
+    of two reasons, each said as itself: it is read from its API only by a required parameter and
+    has no declared profile; or it was registered after the model was generated."""
+    parameterised = env_model.unavailable_reason("pet_by_id", ["petId"])
+    assert "only by the required parameter(s) petId" in parameterised
+    assert "Declare a profile of it and generate again" in parameterised
+    late = env_model.unavailable_reason("returns", [])
+    assert "was registered after the model was generated" in late
+    assert late.endswith("Generate again to generate it.")
+    assert "required parameter" not in late and "Declare a profile" not in late
+
+    registry = replica_routing._Registry(
+        [
+            _table(1, "orders", "pg"),
+            _table(2, "returns", "pg"),
+            _table(3, "pet_by_id", "pg", "path_param"),
+        ],
+        {"pg": SimpleNamespace(id="pg", type="duckdb")},
+        serving=frozenset(),
+        promoted=frozenset(),
+        synthetic={1: (env_model.DATASET_ID, "s")},
+        bound=frozenset({"pg"}),
+    )
+    unavailable = replica_routing._unavailable(registry)
+    assert "was registered after the model was generated" in unavailable[2]
+    assert "only by the required parameter(s) _nf_0" in unavailable[3]

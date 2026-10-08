@@ -115,8 +115,15 @@ async def parameter_columns(conn: Any) -> dict[int, dict[str, str]]:
 
 
 def unavailable_reason(table_name: str, parameters: list[str]) -> str:
-    """Why a required-parameter API table is not available in a Test (synthetic) environment,
-    and what generates it (REQ-1942)."""
+    """Why a table of a source bound to a synthetic store has no generated rows to read, and
+    what generates it (REQ-1942): an API table read only by required ``parameters``, which needs
+    a declared profile; or, with none, a table that came into the model after it was generated."""
+    if not parameters:
+        return (
+            f"{table_name!r} is not available in this environment: its source is bound to the "
+            f"synthetic store, and the table was registered after the model was generated, so "
+            f"it has no generated rows. Generate again to generate it."
+        )
     return (
         f"{table_name!r} is not available in a Test (synthetic) environment: it is read from "
         f"its API only by the required parameter(s) {', '.join(parameters)}, so it has no full "
