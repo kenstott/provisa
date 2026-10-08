@@ -99,7 +99,8 @@
       "write_not_admitted": "Die Rolle '{{role}}' darf diesen Schreibvorgang nicht ausführen: Ein Schreibvorgang erfordert das Schreibrecht, Schreibzugriff auf jede geschriebene Spalte und Zeilen, die der Zeilenfilter der Rolle zulässt.",
       "write_not_supported": "'{{table}}' nimmt kein {{operation}} an: seine Quelle kann es nicht ausführen",
       "table_is_draft": "{{table}} ist ein Entwurf: außer Betrieb, bis die Verantwortlichen ihrer Domäne sie freigeben",
-      "source_unbound": "Die Quelle '{{source}}' hat in der Umgebung '{{env}}' keine Verbindung: Binden Sie sie oder kopieren Sie sie erneut aus der übergeordneten Umgebung"
+      "source_unbound": "Die Quelle '{{source}}' hat in der Umgebung '{{env}}' keine Verbindung: Binden Sie sie oder kopieren Sie sie erneut aus der übergeordneten Umgebung",
+      "system_catalog_unavailable": "Der Katalog '{{catalog}}' der Engine wird gerade registriert. Versuchen Sie es in Kürze erneut."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",

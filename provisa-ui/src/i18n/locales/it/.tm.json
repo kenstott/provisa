@@ -3142,6 +3142,7 @@
   "it/serverErrors.json::serverErrors.data.sql_generation_failed": "Could not generate valid SQL after 3 attempts: {{error}}",
   "it/serverErrors.json::serverErrors.data.table_is_draft": "{{table}} is a draft: out of service until its domain's owners release it",
   "it/serverErrors.json::serverErrors.data.source_unbound": "Source '{{source}}' has no connection in environment '{{env}}': bind it, or re-copy it from the parent",
+  "it/serverErrors.json::serverErrors.data.system_catalog_unavailable": "The engine's '{{catalog}}' catalog is being registered. Try again shortly.",
   "it/serverErrors.json::serverErrors.data.table_not_found": "Table '{{table}}' not found",
   "it/serverErrors.json::serverErrors.data.unknown_action_field": "Unknown action field: '{{field}}'",
   "it/serverErrors.json::serverErrors.data.unknown_command": "Unknown command '{{name}}'",

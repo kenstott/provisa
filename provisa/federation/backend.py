@@ -1151,7 +1151,12 @@ class TrinoBackend(EngineBackend):
             assert state.tenant_engine is not None
             # REQ-1429: ensure, not re-register — dropping the deployment-scoped `otel`/`results`
             # for one org takes them away from every other org on a shared coordinator.
-            ensure_system_catalogs(conn, state.tenant_engine.url, state.org_id)
+            from provisa.core.platform_state.catalogs import CatalogRecord
+
+            assert state.platform_state_db is not None  # brought up with the control planes
+            ensure_system_catalogs(
+                conn, state.tenant_engine.url, CatalogRecord(state.platform_state_db)
+            )
             seed_ops_trino(conn, ops_views)
 
     def cluster_diagnostics(self, state: Any) -> tuple[bool, int, int]:

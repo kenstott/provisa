@@ -3225,6 +3225,25 @@ def create_app() -> FastAPI:
             },
         )
 
+    from provisa.executor.errors import SystemCatalogUnavailable as _SystemCatalogUnavailable
+
+    @app.exception_handler(_SystemCatalogUnavailable)
+    async def _system_catalog_handler(_req: _Request, exc: _SystemCatalogUnavailable):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # The engine lacks one of Provisa's own catalogs at this moment (being re-created after
+        # its spec changed) and still did when the statement's retries ran out: the deployment's
+        # state, not the caller's error -- 503, to be tried again, never the engine's USER_ERROR.
+        return _JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    f"the engine's {exc.catalog!r} catalog is being registered; try again shortly"
+                ),
+                "code": exc.code,
+                "params": exc.params,
+            },
+            headers={"Retry-After": "1"},
+        )
+
     from provisa.compiler.definitions import TableIsDraft as _TableIsDraft
 
     @app.exception_handler(_TableIsDraft)
