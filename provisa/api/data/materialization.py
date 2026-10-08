@@ -500,15 +500,18 @@ async def _mat_grpc_remote_table(
         )
 
 
-async def _mat_fetch_rows_from_fills(ep, col_names: list, _META_COLS: set, state) -> list[dict]:
-    """The rows this API table's fills hold in the store (``api_source.fill_cache``) -- ``[]``
-    when no fill has made its table yet (a miss the caller fills live). A failed read raises:
-    it is never a cue to fetch from REST instead (REQ-1661, amended 2026-09-30)."""
+async def _mat_fetch_rows_from_fills(
+    ep, col_names: list, _META_COLS: set, state, args: dict | None = None
+) -> list[dict]:
+    """The rows this API table's fills hold in the store (``api_source.fill_cache``): every
+    argument set's, or only the answer to ``args`` when one is given -- ``[]`` when no fill
+    has made its table yet (a miss the caller fills live). A failed read raises: it is never a
+    cue to fetch from REST instead (REQ-1661, amended 2026-09-30)."""
     from provisa.api_source import fill_cache
 
     table = fill_cache.fill_table(state, ep, getattr(state, "api_sources", {}).get(ep.source_id))
     with state.federation_engine.isolated_sync() as conn:
-        raw = fill_cache.read_rows(conn, table)
+        raw = fill_cache.read_rows(conn, table, args)
     col_set = set(col_names)
     return [
         {k: _normalize_mat_value(v) for k, v in r.items() if k not in _META_COLS and k in col_set}
@@ -629,8 +632,14 @@ async def _mat_api_ep_table(
     cache_rewrites: dict,
     values_cte_entries: dict,
     nf_args: dict | None = None,
+    ctx=None,
 ) -> None:
-    """Materialize a REST API endpoint-backed table into the engine cache or VALUES CTE."""
+    """Materialize a REST API endpoint-backed table into the engine cache or VALUES CTE.
+
+    The cache table is kept under the arguments the statement gives the endpoint (REQ-318): an
+    endpoint with a parameter is a function of its arguments, so the answer to one argument set
+    is never another's. ``ctx`` is the model the statement compiled against, for the joins that
+    feed a parameter from a parent's keys."""
     from provisa.api_source.engine_cache import (
         cache_table_name,
         ensure_cache_schema,
@@ -643,10 +652,19 @@ async def _mat_api_ep_table(
     api_source = getattr(state, "api_sources", {}).get(source_id)
 
     # REQ-1730/REQ-1623: the source's API cache, where its fills are too.
-    from provisa.api_source.fill_cache import source_cache_location
+    from provisa.api_source.fill_cache import (
+        endpoint_args,
+        read_by_parent_keys,
+        source_cache_location,
+    )
 
     _cache_loc = source_cache_location(state, source_id, api_source)
-    cache_tbl = cache_table_name(source_id, tn, {})
+    args = endpoint_args(ep, nf_args)
+    # Read by its parent's keys, the fills are one argument set per key and the table is all of
+    # them, whatever else the statement gives. Read by argument, the table is that answer's:
+    # named as the fetch names it, with the endpoint's default parameters under the arguments.
+    by_keys = read_by_parent_keys(ep, args, ctx)
+    cache_tbl = cache_table_name(source_id, tn, {} if by_keys else {**ep.default_params, **args})
     ttl = (
         getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl")
         or getattr(state, "response_cache_default_ttl", None)
@@ -707,28 +725,22 @@ async def _mat_api_ep_table(
         return
 
     # Priority 3: cache miss — the fills in the store, then REST
-    rows = await _mat_fetch_rows_from_fills(ep, col_names, _META_COLS, state)
+    rows = await _mat_fetch_rows_from_fills(
+        ep, col_names, _META_COLS, state, None if by_keys else args
+    )
     fetched = not rows  # the rows are a live fetch's, not the fills'
 
     if not rows:
-        path_cols = [c for c in ep.columns if c.param_type == "path"]
-        rest_params: dict = {}
-        if path_cols:
-            from provisa.compiler.naming import apply_sql_name as _apply_sql_name
-
-            _nf_canon = {_apply_sql_name(k.lstrip("_")): v for k, v in (nf_args or {}).items()}
-            missing = []
-            for c in path_cols:
-                canon = _apply_sql_name(c.name)
-                if canon in _nf_canon:
-                    rest_params[c.name] = _nf_canon[canon]
-                else:
-                    missing.append(c.name)
-            if missing:
-                # Required path param(s) absent from this query — cannot call the endpoint
-                # generically (mirrors the graphql_remote required_args branch above).
-                log.warning("[MAT] %s requires path param(s) %s — skipping", tn, missing)
-                return
+        missing = [
+            c.name
+            for c in ep.columns
+            if c.param_type == "path" and (c.param_name or c.name) not in args
+        ]
+        if missing:
+            # Required path param(s) absent from this query — cannot call the endpoint
+            # generically (mirrors the graphql_remote required_args branch above).
+            log.warning("[MAT] %s requires path param(s) %s — skipping", tn, missing)
+            return
         # REQ-1661 (amended 2026-09-30): a failed live fetch fails the query -- it is never
         # logged and skipped, which left the engine answering from whatever cache it held.
         rows = await _mat_fetch_rows_from_rest(
@@ -741,7 +753,8 @@ async def _mat_api_ep_table(
             _cache_loc,
             cache_tbl,
             cache_rewrites,
-            params=rest_params,
+            # No argument when the table is all its parent-keyed fills: its name carries none.
+            params={} if by_keys else args,
         )
         if rows is None:
             return  # already written to cache_rewrites by _mat_fetch_rows_from_rest
@@ -849,6 +862,7 @@ async def _materialize_api_to_engine_cache(
     nf_args: dict | None = None,
     *,
     table_ids: Iterable[int],
+    ctx=None,
 ) -> tuple[dict, dict, dict[str, str]]:
     """Materialize API-backed tables into the engine cache (VARCHAR columns) before the engine SQL runs.
 
@@ -995,6 +1009,7 @@ async def _materialize_api_to_engine_cache(
             cache_rewrites,
             values_cte_entries,
             nf_args=nf_args,
+            ctx=ctx,
         )
         if tn not in cache_rewrites and tn not in values_cte_entries:
             log.warning("[MAT] %s could not be materialized — dropping union branch", tn)

@@ -539,7 +539,12 @@ class TestPromoteJoinedFromFills:
 
 def _ep(columns):
     return SimpleNamespace(
-        source_id="src", table_name="pets", ttl=60, columns=columns, promotions=[]
+        source_id="src",
+        table_name="pets",
+        ttl=60,
+        columns=columns,
+        promotions=[],
+        default_params={},
     )
 
 

@@ -155,6 +155,7 @@ def _openapi_state() -> SimpleNamespace:
         path="/pet/{petId}",
         ttl=60,
         promotions=[],
+        default_params={},
         columns=[
             ApiColumn(name="id", type=ApiColumnType.string),
             ApiColumn(name="petId", type=ApiColumnType.string, param_type=ParamType.path),
