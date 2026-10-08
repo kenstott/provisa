@@ -185,11 +185,11 @@
       },
       "stepQualityProfile": {
         "title": "Profilare una tabella",
-        "description": "📊 Una tabella si unisce a un <strong>Data Profiler</strong> dal proprio editor, una fonte che profila le proprie tabelle membro secondo una pianificazione. Un'esecuzione misura la forma di ogni colonna, le distribuzioni e le frequenze dei valori, e i figli per genitore. <strong>Profila ora</strong> ne avvia una e <strong>Visualizza esecuzioni di profilo</strong> le legge. I risultati arrivano come tabelle che registra e governa come qualsiasi altra; finché non le registra, nessun lettore vede un profilo."
+        "description": "📊 Una tabella si unisce a un <strong>Data Profiler</strong> dal proprio editor, una fonte che profila le proprie tabelle membro secondo una pianificazione. Un'esecuzione misura la forma di ogni colonna, le distribuzioni e le frequenze dei valori, e i figli per genitore. <strong>Profila ora</strong> ne avvia una e <strong>Visualizza esecuzioni di profilo</strong> le legge. I risultati arrivano come tabelle che registra e governa come qualsiasi altra; finché non le registra, nessun lettore vede un profilo. La scheda successiva vi aggiunge controlli."
       },
       "stepProfilerChecks": {
-        "title": "Deriva e controlli",
-        "description": "Ogni esecuzione è confrontata con le esecuzioni recenti della tabella, e una misura che deriva viene segnalata. Un verificatore della qualità dei dati solleva l'eccezione. Può anche accettare i vincoli proposti dal profilo e controllare le esecuzioni rispetto ad aspettative esterne a Provisa. Un vincolo può anche essere esportato come controllo nel contratto di un verificatore <strong>Soda</strong> o <strong>Great Expectations</strong>."
+        "title": "Controlli sui risultati del profilo",
+        "description": "Ogni esecuzione aggiunge righe alle sue tabelle dei risultati: colonne (quota di nulli, conteggio dei distinti, intervallo), esecuzioni (numero di righe), figli per genitore, quantili e deriva. Registri una tabella dei risultati e un verificatore di qualità dei dati, una fonte <strong>Soda</strong> o <strong>Great Expectations</strong> come qualsiasi altra, può scansionarla, così ogni misura prodotta da un profilo può portare un controllo che solleva un problema. La <strong>deriva</strong> è una di queste misure: ogni esecuzione è confrontata con le esecuzioni recenti della tabella e una misura che si sposta viene segnalata. Un vincolo accettato, un controllo di deriva o un controllo rispetto ad attese esterne a Provisa possono essere aggiunti al contratto del verificatore dalle esecuzioni del profiler."
       },
       "stepQualityProduct": {
         "title": "La qualità viaggia con il prodotto",

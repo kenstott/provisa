@@ -185,11 +185,11 @@
       },
       "stepQualityProfile": {
         "title": "Perfilar una tabla",
-        "description": "📊 Una tabla se une a un <strong>Data Profiler</strong> desde su editor, una fuente que perfila sus tablas miembro según un calendario. Una ejecución mide la forma de cada columna, las distribuciones y las frecuencias de valores, y los hijos por padre. <strong>Perfilar ahora</strong> inicia una y <strong>Ver ejecuciones de perfil</strong> las lee. Los resultados llegan como tablas que registra y gobierna como cualquier otra; hasta que las registre, ningún lector ve un perfil."
+        "description": "📊 Una tabla se une a un <strong>Data Profiler</strong> desde su editor, una fuente que perfila sus tablas miembro según un calendario. Una ejecución mide la forma de cada columna, las distribuciones y las frecuencias de valores, y los hijos por padre. <strong>Perfilar ahora</strong> inicia una y <strong>Ver ejecuciones de perfil</strong> las lee. Los resultados llegan como tablas que registra y gobierna como cualquier otra; hasta que las registre, ningún lector ve un perfil. La siguiente tarjeta les añade comprobaciones."
       },
       "stepProfilerChecks": {
-        "title": "Deriva y comprobaciones",
-        "description": "Cada ejecución se compara con las recientes de la tabla, y una medida que deriva se marca. Un verificador de calidad de datos genera la excepción. También puede aceptar las restricciones que propone el perfil y comprobar las ejecuciones frente a expectativas externas a Provisa. Una restricción también se puede exportar como comprobación al contrato de un verificador <strong>Soda</strong> o <strong>Great Expectations</strong>."
+        "title": "Comprobaciones sobre los resultados del perfil",
+        "description": "Cada ejecución añade filas a sus tablas de resultados: columnas (proporción de nulos, recuento de distintos, rango), ejecuciones (número de filas), hijos por padre, cuantiles y deriva. Registre una tabla de resultados y un verificador de calidad de datos, una fuente <strong>Soda</strong> o <strong>Great Expectations</strong> como cualquier otra, puede escanearla, de modo que cualquier medida que produzca un perfil puede llevar una comprobación que plantee una incidencia. La <strong>deriva</strong> es una de esas medidas: cada ejecución se compara con las ejecuciones recientes de la tabla y se marca la medida que se mueve. Una restricción aceptada, una comprobación de deriva o una comprobación contra expectativas externas a Provisa pueden añadirse al contrato del verificador desde las ejecuciones del perfilador."
       },
       "stepQualityProduct": {
         "title": "La calidad viaja con el producto",

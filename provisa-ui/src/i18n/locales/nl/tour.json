@@ -185,11 +185,11 @@
       },
       "stepQualityProfile": {
         "title": "Een tabel profileren",
-        "description": "📊 Een tabel voegt zich vanuit haar editor bij een <strong>Data Profiler</strong>, een bron die haar ledentabellen volgens een schema profileert. Een run meet de vorm van elke kolom, de verdelingen en waardefrequenties, en de kinderen per ouder. <strong>Nu profileren</strong> start er een en <strong>Profielruns bekijken</strong> leest ze. De resultaten komen als tabellen die u registreert en beheert zoals elke andere; zolang u ze niet registreert, ziet geen lezer een profiel."
+        "description": "📊 Een tabel voegt zich vanuit haar editor bij een <strong>Data Profiler</strong>, een bron die haar ledentabellen volgens een schema profileert. Een run meet de vorm van elke kolom, de verdelingen en waardefrequenties, en de kinderen per ouder. <strong>Nu profileren</strong> start er een en <strong>Profielruns bekijken</strong> leest ze. De resultaten komen als tabellen die u registreert en beheert zoals elke andere; zolang u ze niet registreert, ziet geen lezer een profiel. De volgende kaart voegt er controles aan toe."
       },
       "stepProfilerChecks": {
-        "title": "Drift en controles",
-        "description": "Elke run wordt vergeleken met de recente runs van de tabel, en een maat die afdrijft wordt gemarkeerd. Een datakwaliteitscontroleur meldt de uitzondering. U kunt ook door het profiel voorgestelde beperkingen accepteren en runs toetsen aan verwachtingen van buiten Provisa. Een beperking kan ook worden geëxporteerd als controle in het contract van een <strong>Soda</strong>- of <strong>Great Expectations</strong>-checker."
+        "title": "Controles op profielresultaten",
+        "description": "Elke run voegt rijen toe aan zijn resultaattabellen: kolommen (nulaandeel, aantal verschillende waarden, bereik), runs (aantal rijen), kinderen per ouder, kwantielen en drift. Registreer een resultaattabel en een datakwaliteitscontroleur, een <strong>Soda</strong>- of <strong>Great Expectations</strong>-bron zoals elke andere, kan hem scannen, zodat elke meting van een profiel een controle kan dragen die een probleem meldt. <strong>Drift</strong> is zo'n meting: elke run wordt vergeleken met de recente runs van de tabel, en een meting die verschuift wordt gemarkeerd. Een geaccepteerde beperking, een driftcontrole of een controle tegen verwachtingen van buiten Provisa kan vanuit de runs van de profiler aan het contract van de controleur worden toegevoegd."
       },
       "stepQualityProduct": {
         "title": "Kwaliteit reist mee met het product",

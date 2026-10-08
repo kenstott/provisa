@@ -185,11 +185,11 @@
       },
       "stepQualityProfile": {
         "title": "为表做画像",
-        "description": "📊 表通过自己的编辑器加入 <strong>Data Profiler</strong>，这是一种按计划为成员表做画像的数据源。一次运行会测量每列的形态、分布、取值频率以及每个父行的子行数。<strong>立即画像</strong>启动一次运行，<strong>查看画像运行</strong>读取运行记录。结果以表的形式落地，您像注册其他表一样注册并治理它们；注册之前，没有读取者能看到画像。"
+        "description": "📊 表通过自己的编辑器加入 <strong>Data Profiler</strong>，这是一种按计划为成员表做画像的数据源。一次运行会测量每列的形态、分布、取值频率以及每个父行的子行数。<strong>立即画像</strong>启动一次运行，<strong>查看画像运行</strong>读取运行记录。结果以表的形式落地，您像注册其他表一样注册并治理它们；注册之前，没有读取者能看到画像。 下一张卡片会给它们加上检查。"
       },
       "stepProfilerChecks": {
-        "title": "漂移与检查",
-        "description": "每次运行都会与该表最近的运行比较，漂移的度量会被标记。异常由数据质量检查器抛出。你还可以接受画像提出的约束，并把运行结果与 Provisa 之外提供的预期对照检查。也可以把约束作为检查导出到 <strong>Soda</strong> 或 <strong>Great Expectations</strong> 检查器的契约中。"
+        "title": "对画像结果的检查",
+        "description": "每次运行都会向它的结果表追加行：列（空值占比、不同值个数、范围）、运行（行数）、每个父行的子行数、分位数和漂移。注册一张结果表后，数据质量检查器（与其他数据源一样的 <strong>Soda</strong> 或 <strong>Great Expectations</strong> 源）就能扫描它，因此画像产生的任何度量都可以带上一项会提出问题的检查。<strong>漂移</strong>就是这样的度量之一：每次运行都与该表最近的运行比较，发生移动的度量会被标记。已接受的约束、漂移检查，或针对 Provisa 之外期望值的检查，都可以从画像器的运行中添加到检查器的契约里。"
       },
       "stepQualityProduct": {
         "title": "质量随产品一起发布",

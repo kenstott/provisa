@@ -185,11 +185,11 @@
       },
       "stepQualityProfile": {
         "title": "Profile a table",
-        "description": "📊 A table joins a <strong>Data Profiler</strong> from its editor, a source that profiles its member tables on a schedule. A run measures each column's shape, distributions and value frequencies, and the children per parent. <strong>Run Profile Now</strong> starts one and <strong>View Profile Runs</strong> reads them. Results land as tables you register and govern like any other; until you register them, no reader sees a profile."
+        "description": "📊 A table joins a <strong>Data Profiler</strong> from its editor, a source that profiles its member tables on a schedule. A run measures each column's shape, distributions and value frequencies, and the children per parent. <strong>Run Profile Now</strong> starts one and <strong>View Profile Runs</strong> reads them. Results land as tables you register and govern like any other; until you register them, no reader sees a profile. The next card puts checks on them."
       },
       "stepProfilerChecks": {
-        "title": "Drift and checks",
-        "description": "Every run is compared with the table's recent runs, and a measure that drifts is flagged. A data-quality checker raises the exception. You can also accept constraints the profile proposes, and check runs against expectations from outside Provisa. A constraint can also be exported as a check in the contract of a <strong>Soda</strong> or <strong>Great Expectations</strong> checker."
+        "title": "Checks on profile results",
+        "description": "Every run adds rows to its result tables: columns (null share, distinct count, range), runs (row count), children per parent, quantiles and drift. Register a result table and a data-quality checker, a <strong>Soda</strong> or <strong>Great Expectations</strong> source like any other, can scan it, so any measure a profile produces can carry a check that raises an issue. <strong>Drift</strong> is one such measure: each run is compared with the table's recent runs, and a measure that moves is flagged. An accepted constraint, a drift check, or a check against expectations from outside Provisa can be added to the checker's contract from the profiler's runs."
       },
       "stepQualityProduct": {
         "title": "Quality travels with the product",

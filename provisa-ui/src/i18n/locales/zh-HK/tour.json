@@ -185,11 +185,11 @@
       },
       "stepQualityProfile": {
         "title": "為表格做剖析",
-        "description": "📊 表格透過自己的編輯器加入 <strong>Data Profiler</strong>，這是一種按排程為成員表格做剖析的來源。一次執行會量度每個欄位的形態、分布、數值頻率，以及每個父列的子列數目。<strong>立即剖析</strong>啟動一次執行，<strong>檢視剖析執行</strong>讀取執行記錄。結果以表格形式落地，您像登記其他表格一樣登記並管治它們；登記之前，沒有讀取者能看到剖析。"
+        "description": "📊 表格透過自己的編輯器加入 <strong>Data Profiler</strong>，這是一種按排程為成員表格做剖析的來源。一次執行會量度每個欄位的形態、分布、數值頻率，以及每個父列的子列數目。<strong>立即剖析</strong>啟動一次執行，<strong>檢視剖析執行</strong>讀取執行記錄。結果以表格形式落地，您像登記其他表格一樣登記並管治它們；登記之前，沒有讀取者能看到剖析。 下一張卡片會為它們加上檢查。"
       },
       "stepProfilerChecks": {
-        "title": "漂移與檢查",
-        "description": "每次執行都會與該表格最近的執行比較，漂移的度量會被標記。例外由數據質素檢查器拋出。你亦可以接受剖析提出的約束，並把執行結果與 Provisa 以外提供的預期對照檢查。亦可以把約束作為檢查匯出到 <strong>Soda</strong> 或 <strong>Great Expectations</strong> 檢查器的合約中。"
+        "title": "對剖析結果的檢查",
+        "description": "每次執行都會向它的結果表追加列：欄位（空值佔比、不同值數目、範圍）、執行（列數）、每個父列的子列數目、分位數和漂移。登記一張結果表後，數據質素檢查器（與其他來源一樣的 <strong>Soda</strong> 或 <strong>Great Expectations</strong> 來源）就能掃描它，因此剖析產生的任何量度都可以附帶一項會提出問題的檢查。<strong>漂移</strong>就是這樣的量度之一：每次執行都與該表最近的執行比較，發生移動的量度會被標記。已接受的約束、漂移檢查，或針對 Provisa 以外期望值的檢查，都可以從剖析器的執行中新增到檢查器的合約裡。"
       },
       "stepQualityProduct": {
         "title": "質素隨產品一併發布",

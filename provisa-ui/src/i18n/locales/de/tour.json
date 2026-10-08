@@ -185,11 +185,11 @@
       },
       "stepQualityProfile": {
         "title": "Eine Tabelle profilieren",
-        "description": "📊 Eine Tabelle wird in ihrem Editor einem <strong>Data Profiler</strong> hinzugefügt, einer Quelle, die ihre Mitgliedstabellen nach Zeitplan profiliert. Ein Lauf misst die Form jeder Spalte, Verteilungen und Werthäufigkeiten sowie die Kinder pro Elternzeile. <strong>Profil jetzt erstellen</strong> startet einen Lauf, <strong>Profilläufe anzeigen</strong> liest sie. Die Ergebnisse landen als Tabellen, die Sie wie jede andere registrieren und steuern; bis Sie sie registrieren, sieht kein Leser ein Profil."
+        "description": "📊 Eine Tabelle wird in ihrem Editor einem <strong>Data Profiler</strong> hinzugefügt, einer Quelle, die ihre Mitgliedstabellen nach Zeitplan profiliert. Ein Lauf misst die Form jeder Spalte, Verteilungen und Werthäufigkeiten sowie die Kinder pro Elternzeile. <strong>Profil jetzt erstellen</strong> startet einen Lauf, <strong>Profilläufe anzeigen</strong> liest sie. Die Ergebnisse landen als Tabellen, die Sie wie jede andere registrieren und steuern; bis Sie sie registrieren, sieht kein Leser ein Profil. Die nächste Karte setzt Prüfungen darauf."
       },
       "stepProfilerChecks": {
-        "title": "Drift und Prüfungen",
-        "description": "Jeder Lauf wird mit den letzten Läufen der Tabelle verglichen, und eine driftende Messgröße wird markiert. Eine Datenqualitätsprüfung löst die Ausnahme aus. Sie können auch vom Profil vorgeschlagene Constraints annehmen und Läufe gegen Erwartungen von außerhalb von Provisa prüfen. Ein Constraint lässt sich außerdem als Prüfung in den Vertrag eines <strong>Soda</strong>- oder <strong>Great-Expectations</strong>-Checkers exportieren."
+        "title": "Prüfungen auf Profilergebnissen",
+        "description": "Jeder Lauf fügt seinen Ergebnistabellen Zeilen hinzu: Spalten (Nullanteil, Anzahl verschiedener Werte, Bereich), Läufe (Zeilenzahl), Kinder pro Elternzeile, Quantile und Drift. Registrieren Sie eine Ergebnistabelle, kann ein Datenqualitätsprüfer, eine <strong>Soda</strong>- oder <strong>Great Expectations</strong>-Quelle wie jede andere, sie scannen, sodass jede Messgröße eines Profils eine Prüfung tragen kann, die ein Problem meldet. <strong>Drift</strong> ist eine solche Messgröße: Jeder Lauf wird mit den letzten Läufen der Tabelle verglichen, und eine Messgröße, die sich bewegt, wird markiert. Eine akzeptierte Einschränkung, eine Drift-Prüfung oder eine Prüfung gegen Erwartungen von außerhalb von Provisa lässt sich aus den Läufen des Profilers dem Vertrag des Prüfers hinzufügen."
       },
       "stepQualityProduct": {
         "title": "Die Qualität reist mit dem Produkt",

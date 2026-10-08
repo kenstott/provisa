@@ -50,7 +50,7 @@ test("the Data quality topic walks from the checker through to the profiler pane
   await expect(page.locator('[data-tour="profiler-panel"]')).toBeVisible();
 
   await next.click();
-  await expect(title).toHaveText("Drift and checks", { timeout: 30000 });
+  await expect(title).toHaveText("Checks on profile results", { timeout: 30000 });
   await expect(page.locator('[data-tour="profiler-panel"]')).toBeVisible();
 });
 

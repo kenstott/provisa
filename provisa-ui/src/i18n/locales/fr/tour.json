@@ -185,11 +185,11 @@
       },
       "stepQualityProfile": {
         "title": "Profiler une table",
-        "description": "📊 Une table rejoint un <strong>Data Profiler</strong> depuis son éditeur, une source qui profile ses tables membres selon un calendrier. Une exécution mesure la forme de chaque colonne, les distributions et les fréquences de valeurs, ainsi que les enfants par parent. <strong>Profiler maintenant</strong> en lance une et <strong>Voir les exécutions de profil</strong> les lit. Les résultats arrivent sous forme de tables que vous enregistrez et gouvernez comme les autres ; tant que vous ne les enregistrez pas, aucun lecteur ne voit de profil."
+        "description": "📊 Une table rejoint un <strong>Data Profiler</strong> depuis son éditeur, une source qui profile ses tables membres selon un calendrier. Une exécution mesure la forme de chaque colonne, les distributions et les fréquences de valeurs, ainsi que les enfants par parent. <strong>Profiler maintenant</strong> en lance une et <strong>Voir les exécutions de profil</strong> les lit. Les résultats arrivent sous forme de tables que vous enregistrez et gouvernez comme les autres ; tant que vous ne les enregistrez pas, aucun lecteur ne voit de profil. La carte suivante y ajoute des contrôles."
       },
       "stepProfilerChecks": {
-        "title": "Dérive et contrôles",
-        "description": "Chaque exécution est comparée aux exécutions récentes de la table, et une mesure qui dérive est signalée. Un contrôleur de qualité des données lève l'exception. Vous pouvez aussi accepter les contraintes que propose le profil et vérifier les exécutions face à des attentes extérieures à Provisa. Une contrainte peut aussi être exportée comme contrôle dans le contrat d'un vérificateur <strong>Soda</strong> ou <strong>Great Expectations</strong>."
+        "title": "Contrôles sur les résultats du profil",
+        "description": "Chaque exécution ajoute des lignes à ses tables de résultats : colonnes (part de nuls, nombre de valeurs distinctes, plage), exécutions (nombre de lignes), enfants par parent, quantiles et dérive. Enregistrez une table de résultats et un vérificateur de qualité des données, une source <strong>Soda</strong> ou <strong>Great Expectations</strong> comme une autre, peut l'analyser : toute mesure produite par un profil peut porter un contrôle qui lève un problème. La <strong>dérive</strong> est l'une de ces mesures : chaque exécution est comparée aux exécutions récentes de la table, et une mesure qui bouge est signalée. Une contrainte acceptée, un contrôle de dérive ou un contrôle par rapport à des attentes extérieures à Provisa peuvent être ajoutés au contrat du vérificateur depuis les exécutions du profileur."
       },
       "stepQualityProduct": {
         "title": "La qualité voyage avec le produit",
