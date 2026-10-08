@@ -77103,3 +77103,17 @@
   - REQ-1944
   - REQ-1945
   notes: 'Maintainer 2026-10-07: scope relationship approvals to the domains involved. Maintainer (same day, choice): every domain involved must be covered -- two approvals from different people, every domain reached by at least one. Found while writing the tour: any holder of create_relationship could approve any request (creation_requests_router.py), with no routing by domain; a cross-domain target was only flagged for review.'
+- id: REQ-1949
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Query Governance
+  priority: SHOULD
+  type: behavioral
+  description: 'A read that a role''s row limit cut short says so. When a role without the right to full results reads more rows than its limit allows, the answer carries a warning naming the limit and saying the answer was cut there; an answer that fits within the limit carries none, so the warning is given only when rows were in fact left out. The warning is a statement warning, delivered on every surface in that surface''s own channel as the other statement warnings are -- SQL over HTTP, GraphQL, Cypher, pgwire, Bolt, Arrow Flight, gRPC, MCP and the UI''s result panel -- and an exported or redirected result carries it too. A temporary table filled from a cut read carries the same warning. The warning never changes what is returned and is never an error.'
+  use_case: An analyst without full results runs a count-by-region over a table larger than the role's limit and is told
+    the answer is from the first rows only, instead of trusting totals computed from a truncated read.
+  related_reqs:
+  - REQ-1944
+  - REQ-1942
+  notes: 'Maintainer 2026-10-07: add a warning on reads cut by the row limit. Found while building session temporary tables: the only "answer cut" warning in the code was for API pagination (api.answer_cut); a role''s row cap cut any read with no warning at all.'
