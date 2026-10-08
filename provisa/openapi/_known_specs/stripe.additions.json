@@ -1,0 +1,32 @@
+{
+  "_about": "Fields Stripe answers at the pinned API version that its published spec does not declare, seen in live answers. Each is added to the named schema's properties when the shipped spec is loaded. A field the published spec comes to declare is removed from here when the spec is baked again.",
+  "charge": {
+    "destination": {"type": "string", "nullable": true, "description": "ID of the connected account the charge's funds are sent to."},
+    "dispute": {"type": "string", "nullable": true, "description": "ID of the dispute opened on the charge."},
+    "order": {"type": "string", "nullable": true, "description": "ID of the order the charge pays for."},
+    "source": {
+      "anyOf": [
+        {"$ref": "#/components/schemas/bank_account"},
+        {"$ref": "#/components/schemas/card"},
+        {"$ref": "#/components/schemas/source"}
+      ],
+      "nullable": true,
+      "description": "The payment source the charge was made with, on charges made through the Sources API."
+    }
+  },
+  "payment_intent": {
+    "shared_payment_granted_token": {"type": "string", "nullable": true, "description": "ID of the shared payment granted token used to confirm the PaymentIntent."},
+    "source": {"type": "string", "nullable": true, "description": "ID of the payment source used with the PaymentIntent."}
+  },
+  "payment_method": {
+    "shared_payment_granted_token": {"type": "string", "nullable": true, "description": "ID of the shared payment granted token the PaymentMethod was created from."}
+  },
+  "product": {
+    "attributes": {"type": "array", "items": {"type": "string"}, "nullable": true, "description": "Attribute names of the product's SKUs."},
+    "type": {"type": "string", "enum": ["good", "service"], "description": "Whether the product is a good or a service."}
+  },
+  "subscription": {
+    "plan": {"anyOf": [{"$ref": "#/components/schemas/plan"}], "nullable": true, "description": "The plan of a subscription with a single item."},
+    "quantity": {"type": "integer", "nullable": true, "description": "The quantity of the plan of a subscription with a single item."}
+  }
+}

@@ -72536,6 +72536,17 @@
     (REQ-316), which replaces the statement above that they are offered as their page wrapper. Stripe
     answers a few fields its own spec does not declare, such as a charge's source; they are not
     columns.
+    (Amended 2026-10-08, FIELDS BEYOND THE PUBLISHED SPEC, maintainer ruling) A brand may add to its
+    shipped spec the fields its remote answers and the published spec does not declare, which replaces
+    the statements above that a preset never patches a gap with a schema of its own and that such
+    Stripe fields are not columns. The additions are a file of the brand's kept beside the vendor's
+    spec, naming each field by the schema it belongs to; the vendor's file stays as published and is
+    baked again unchanged. They are applied when the spec is loaded. An addition the published spec
+    has come to declare, or one for a schema it no longer has, fails the load until it is removed.
+    Only fields seen in live answers are added. Stripe's first additions are a charge's destination,
+    dispute, order and source, a payment intent's source and shared_payment_granted_token, a payment
+    method's shared_payment_granted_token, a product's attributes and type, and a subscription's plan
+    and quantity.
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.

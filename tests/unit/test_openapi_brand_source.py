@@ -169,3 +169,35 @@ async def test_a_stripe_list_is_read_to_its_end_each_page_after_the_last_rows_id
     ]
     assert route.calls.last.request.headers["authorization"] == "Bearer sk"
     assert [c.request.headers["stripe-version"] for c in route.calls] == [VERSION, VERSION]
+
+
+# --- fields Stripe answers that its published spec does not declare ------------------------------
+
+
+def test_fields_stripe_answers_beyond_its_published_spec_are_columns(offered):
+    from provisa.api_source.openapi_endpoint import endpoint_columns
+
+    tables = {t.operation_id: t for t in offered[0]}
+    columns = {
+        op: {c["name"]: c["type"] for c in endpoint_columns(tables[op])}
+        for op in ("GetCharges", "GetPaymentIntents", "GetProducts", "GetSubscriptions")
+    }
+    assert {"destination", "dispute", "order", "source"} <= set(columns["GetCharges"])
+    assert {"shared_payment_granted_token", "source"} <= set(columns["GetPaymentIntents"])
+    assert {"attributes", "type"} <= set(columns["GetProducts"])
+    assert (columns["GetSubscriptions"]["quantity"], "plan" in columns["GetSubscriptions"]) == (
+        "integer",
+        True,
+    )
+
+
+def test_an_addition_the_published_spec_declares_or_has_no_schema_for_fails_the_load():
+    from provisa.openapi.brands import _add_fields
+
+    spec = {"components": {"schemas": {"charge": {"properties": {"id": {"type": "string"}}}}}}
+    _add_fields("stripe", spec, {"_about": "a note", "charge": {"order": {"type": "string"}}})
+    assert set(spec["components"]["schemas"]["charge"]["properties"]) == {"id", "order"}
+    with pytest.raises(ValueError, match="now declares charge.order"):
+        _add_fields("stripe", spec, {"charge": {"order": {"type": "string"}}})
+    with pytest.raises(ValueError, match="does not have: refund"):
+        _add_fields("stripe", spec, {"refund": {"x": {"type": "string"}}})
