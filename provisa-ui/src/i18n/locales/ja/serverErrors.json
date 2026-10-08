@@ -375,8 +375,8 @@
     },
     "security": {
       "unknown_mode": "不明なセキュリティモード「{{mode}}」です",
-      "data_residency_refused": "{{object}} のリージョンを設定できません: data_residency の付与は {{value}} を含みません。{{value}} を含む data_residency 付与があれば可能です",
-      "data_residency_missing": "{{object}} のリージョンを設定できません: 呼び出し元の data_residency 付与はいずれも {{value}} を含みません。{{value}} を含む data_residency 付与があれば可能です"
+      "data_residency_refused": "{{object}} のリージョンを設定できません: data_residency の付与は {{value}} を含みません。それを含む data_residency 付与があれば可能です",
+      "data_residency_missing": "{{object}} のリージョンを設定できません: 呼び出し元の data_residency 付与はいずれも {{value}} を含みません。それを含む data_residency 付与があれば可能です"
     },
     "settings": {
       "auth_required": "認証が設定されるまで {{field}} は変更できません。",
