@@ -120,6 +120,19 @@ class ServerExited(ServerNotServing):  # REQ-955
 _LOG_TAIL_LINES = 20
 
 
+class ServerCatalogFailed(ServerNotServing):
+    """The server accepted connections but could not prepare its catalog — the first catalog
+    query, which an engine's attach depends on, failed. Not asked again until the server is
+    restarted (its source saved again)."""
+
+    def __init__(self, source_id: str, error: BaseException) -> None:
+        super().__init__(
+            f"the connector server for {source_id!r} could not prepare its catalog: "
+            f"{type(error).__name__}: {error}"
+        )
+        self.source_id = source_id
+
+
 class SourceStillStartingError(ServerNotServing):  # REQ-1824
     """A files/sharepoint/splunk source's bundled Calcite server hasn't finished starting yet —
     raised by a DISCOVERY call (schema/table/column introspection) that chose not to wait the full
@@ -127,11 +140,17 @@ class SourceStillStartingError(ServerNotServing):  # REQ-1824
     fixed ``STARTING:`` prefix) so the frontend can recognize it and poll again shortly instead of
     surfacing it as a hard error."""
 
-    def __init__(self, source_id: str) -> None:
-        super().__init__(
-            f"STARTING: {source_id!r}'s connector is still starting up — try again shortly."
+    def __init__(self, source_id: str, *, preparing_catalog: bool = False) -> None:
+        # Two waits, told apart for whoever is waiting: the server has not opened its port
+        # yet, or it is listening and preparing its catalog (``ConnectorReplica.await_catalog``).
+        doing = (
+            "is listening and preparing its catalog (counting the rows of its tables)"
+            if preparing_catalog
+            else "is still starting up"
         )
+        super().__init__(f"STARTING: {source_id!r}'s connector {doing} — try again shortly.")
         self.source_id = source_id
+        self.preparing_catalog = preparing_catalog
 
 
 def _source_type(source: Any) -> str:
@@ -761,6 +780,23 @@ class PgwireServer:  # REQ-955
             time.sleep(0.1)
 
 
+def _prepare_catalog(ports: PortPair) -> None:
+    """Send the server its first catalog query, as the user the engines attach as, and wait for
+    the answer (see ``ConnectorReplica.await_catalog``). One round trip on a connection of its
+    own (the module's generic PostgreSQL connect), closed when the answer comes or the query
+    fails. Run on the preparation's own thread, so it has an event loop of its own."""
+    import asyncio
+
+    async def _ask() -> None:
+        conn = await _pg_connect(ports.calcite_child_host, ports.pgwire_port)
+        try:
+            await conn.fetch("SELECT count(*) FROM pg_catalog.pg_class")
+        finally:
+            await conn.close()
+
+    asyncio.run(_ask())
+
+
 # -- land via SELECT (REQ-954) -------------------------------------------------
 
 
@@ -858,6 +894,7 @@ class ConnectorReplica:  # REQ-954/955/956
         connect: Callable[[str, int], Any] | None = None,
         version: str | None = None,
         port_is_free: Callable[[int], bool] | None = None,
+        prepare_catalog: Callable[[PortPair], None] | None = None,
     ) -> None:
         self._source = source
         self._resolver = resolver if resolver is not None else BundleResolver()
@@ -872,6 +909,14 @@ class ConnectorReplica:  # REQ-954/955/956
             else bundle_spec_for(_source_type(source))
         )
         self._server: PgwireServer | None = None
+        # The server's catalog, prepared once per server off any request (:meth:`await_catalog`).
+        self._prepare_catalog = prepare_catalog if prepare_catalog is not None else _prepare_catalog
+        self._catalog_ready = False
+        self._catalog_error: BaseException | None = None
+        self._catalog_thread: threading.Thread | None = None
+        # Which server the preparation in flight belongs to: one outlived by its server (the
+        # server was stopped under it) reports to no one.
+        self._catalog_server = 0
         # A start and the first endpoint request can come from different threads; one server.
         self._start_lock = threading.Lock()
 
@@ -964,22 +1009,77 @@ class ConnectorReplica:  # REQ-954/955/956
         )
 
     def require_serving(self) -> None:
-        """Raise if a server was started for the source and is not accepting connections: still
-        starting (``SourceStillStartingError``) or exited (``ServerExited``, with its log's
-        end). Starts nothing and waits for nothing."""
+        """Raise if a server was started for the source and cannot be read through yet: not
+        accepting connections (``SourceStillStartingError``), exited (``ServerExited``, with its
+        log's end), or listening with its catalog still being prepared (:meth:`await_catalog`).
+        Starts no server and waits for nothing."""
         server = self._server
-        if server is None or server.health():
+        if server is None:
+            return
+        if server.health():
+            self.await_catalog(server.ports, 0)
             return
         code = server.exit_code()
         if code is not None:
             raise ServerExited(self._source.id, code, server.log_tail())
         raise SourceStillStartingError(self._source.id)
 
+    def await_catalog(self, ports: PortPair, timeout: float) -> None:
+        """Return once the listening server's catalog is prepared; until then raise
+        ``SourceStillStartingError``, having waited at most ``timeout`` seconds.
+
+        A server's FIRST catalog query makes it count the rows of every table it serves, once
+        per server process — minutes for an AskAmerica source. An engine's attach issues that
+        query, and an attach runs on the request path under the engine's one attach lock, so an
+        attach that paid for it held every other statement of every other source. Instead the
+        query is sent here, once, from a thread of its own (``_prepare_catalog``); every attach
+        and statement meanwhile is answered "still starting" at once, and the attach that
+        follows finds the catalog prepared. A failed preparation is ``ServerCatalogFailed`` and
+        is not sent again until the server is restarted, so nothing restarts the count."""
+        with self._start_lock:
+            if self._catalog_ready:
+                return
+            if self._catalog_error is None and self._catalog_thread is None:
+                thread = threading.Thread(
+                    target=self._prepare_catalog_once,
+                    args=(ports, self._catalog_server),
+                    daemon=True,
+                    name=f"pgwire-catalog:{self._source.id}",
+                )
+                self._catalog_thread = thread
+                thread.start()
+            thread = self._catalog_thread
+        if thread is not None and timeout > 0:
+            thread.join(timeout)
+        if self._catalog_ready:
+            return
+        if self._catalog_error is not None:
+            raise ServerCatalogFailed(self._source.id, self._catalog_error)
+        raise SourceStillStartingError(self._source.id, preparing_catalog=True)
+
+    def _prepare_catalog_once(self, ports: PortPair, server: int) -> None:
+        error: BaseException | None = None
+        try:
+            self._prepare_catalog(ports)
+        except Exception as exc:  # noqa: BLE001 - kept and reported by name (ServerCatalogFailed)
+            error = exc
+        with self._start_lock:
+            if server != self._catalog_server:
+                return  # its server was stopped: the next one's catalog is prepared afresh
+            self._catalog_error = error
+            self._catalog_ready = error is None
+
     def close(self) -> None:
-        """Stop the server (idempotent)."""
+        """Stop the server (idempotent). The next server's catalog is prepared afresh."""
         if self._server is not None:
             self._server.stop()
             self._server = None
+        with self._start_lock:
+            # A preparation in flight loses its connection with the server and reports to no one.
+            self._catalog_server += 1
+            self._catalog_ready = False
+            self._catalog_error = None
+            self._catalog_thread = None
 
 
 # -- live endpoint for an engine that ATTACHes the pgwire server (REQ-1690) --------------------
@@ -1101,13 +1201,33 @@ def ensure_endpoint(source: Any, *, timeout: float | None = None) -> PortPair:
     """Start (once) the source's Calcite pgwire server and return the endpoint the engine attaches
     (REQ-1690). The server must be healthy before the ATTACH, so an unhealthy start is loud here.
 
+    Every pgwire server counts its tables' rows on its first catalog query, so for every type
+    the endpoint is returned only once that is done (``ConnectorReplica.await_catalog``), within
+    the same bound as the wait for the port; past it the answer is ``SourceStillStartingError``.
+
     ``timeout`` (REQ-1824): see ``ConnectorReplica.endpoint``. A type whose server takes
     minutes to start (``STARTED_WHEN_SAVED``) is not waited for by an attach: it was started
-    when its source was saved, and until it listens the attach is answered
-    ``SourceStillStartingError`` at once rather than holding its caller for the full wait."""
-    if timeout is None and _source_type(source) in STARTED_WHEN_SAVED:
-        return ensure_endpoint_for_discovery(source)
-    return _endpoint_replica(source).endpoint(timeout=timeout)
+    when its source was saved, and until it listens AND its catalog is prepared
+    (``ConnectorReplica.await_catalog``) the attach is answered ``SourceStillStartingError`` at
+    once rather than holding its caller — and the engine's attach pass — for the wait."""
+    replica = _endpoint_replica(source)
+    if _source_type(source) not in STARTED_WHEN_SAVED:
+        # A server that starts in seconds is waited for, as before — and its catalog within the
+        # same bound, where an attach used to wait for it without one.
+        ports = replica.endpoint(timeout=timeout)
+        replica.await_catalog(ports, SERVER_READY_SECONDS if timeout is None else timeout)
+        return ports
+    if timeout is None:
+        # An attach: answered at once, never holding the engine's attach pass.
+        try:
+            ports = replica.endpoint(timeout=DISCOVERY_READY_SECONDS)
+        except ServerLifecycleError as exc:
+            raise SourceStillStartingError(source.id) from exc
+        replica.await_catalog(ports, 0)
+        return ports
+    ports = replica.endpoint(timeout=timeout)
+    replica.await_catalog(ports, timeout)  # listening is not yet readable: see await_catalog
+    return ports
 
 
 # REQ-1824: how long a DISCOVERY call (schema/table/column introspection) waits for the bundled

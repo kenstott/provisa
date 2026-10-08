@@ -19,6 +19,8 @@ attached source's is. No in-process engine, no terminal of its own."""
 from __future__ import annotations
 
 import json
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -456,6 +458,9 @@ def test_a_sibling_whose_server_starts_in_seconds_is_still_waited_for(monkeypatc
             waited.append(timeout)
             return pr.PortPair(5440, "127.0.0.1", 5540)
 
+        def await_catalog(self, ports, timeout):
+            return None
+
     monkeypatch.setattr(pr, "_endpoint_replica", lambda source: _Replica())
     pr.ensure_endpoint(Source(id="docs", type=SourceType.files, path="/data"))
     assert waited == [None]
@@ -646,11 +651,18 @@ def test_starting_the_server_logs_no_secret(tmp_path, caplog, monkeypatch):
 # -- while the adapter starts, a statement reading the source says so --------------------------
 
 
-def _replica_with_server(*, healthy: bool, exit_code: int | None):
-    replica = pr.ConnectorReplica(_source())
+def _replica_with_server(
+    *, healthy: bool, exit_code: int | None, catalog_ready: bool = True, prepare=None
+):
+    replica = pr.ConnectorReplica(_source(), prepare_catalog=prepare)
     replica._server = SimpleNamespace(  # type: ignore[assignment]
-        health=lambda: healthy, exit_code=lambda: exit_code, log_tail=lambda: "the log's end"
+        health=lambda: healthy,
+        exit_code=lambda: exit_code,
+        log_tail=lambda: "the log's end",
+        ports=pr.PortPair(5440, "127.0.0.1", 5540),
+        stop=lambda: None,
     )
+    replica._catalog_ready = catalog_ready
     return replica
 
 
@@ -710,3 +722,292 @@ def test_no_pgwire_family_source_has_a_subscription_provider(stype):
     assert not supports_polling_fallback(stype)
     with pytest.raises(ValueError, match=f"No subscription provider for source_type='{stype}'"):
         get_provider(stype, {})
+
+
+# -- the server's first catalog query is paid for off the request path --------------------------
+#
+# A listening adapter answers its FIRST catalog query only after counting the rows of every table
+# it serves. An engine's attach issues that query, and the attach pass runs on the request path
+# under the engine's one attach lock: paid for there, it held every statement of every source.
+
+
+def test_a_listening_server_is_still_starting_until_its_catalog_is_prepared():
+    import threading
+
+    release = threading.Event()
+    asked: list[pr.PortPair] = []
+
+    def prepare(ports):
+        asked.append(ports)
+        assert release.wait(5)
+
+    replica = _replica_with_server(
+        healthy=True, exit_code=None, catalog_ready=False, prepare=prepare
+    )
+    ports = pr.PortPair(5440, "127.0.0.1", 5540)
+    for _ in range(3):  # every attach meanwhile: answered at once, the query sent only once
+        with pytest.raises(pr.SourceStillStartingError, match="test-askamerica"):
+            replica.await_catalog(ports, 0)
+    with pytest.raises(pr.SourceStillStartingError):
+        replica.require_serving()
+    release.set()
+    replica.await_catalog(ports, 5)  # prepared: the attach that follows goes ahead
+    replica.require_serving()
+    assert asked == [ports]
+
+
+def test_the_attach_itself_never_waits_for_the_catalog(monkeypatch):
+    """What the engine's attach pass calls: it returns or refuses at once, whatever the count
+    takes, so the pass never holds its lock for it."""
+    import threading
+    import time
+
+    release = threading.Event()
+    replica = _replica_with_server(
+        healthy=True,
+        exit_code=None,
+        catalog_ready=False,
+        prepare=lambda ports: release.wait(30),
+    )
+    replica.endpoint = lambda timeout=None: pr.PortPair(5440, "127.0.0.1", 5540)  # type: ignore[method-assign]
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: replica)
+    started = time.monotonic()
+    with pytest.raises(pr.SourceStillStartingError):
+        pr.ensure_endpoint(_source())
+    assert time.monotonic() - started < 2
+    release.set()
+
+
+def test_a_caller_that_gives_a_wait_gets_the_endpoint_once_the_catalog_is_prepared(monkeypatch):
+    prepared: list[pr.PortPair] = []
+    replica = _replica_with_server(
+        healthy=True, exit_code=None, catalog_ready=False, prepare=prepared.append
+    )
+    replica.endpoint = lambda timeout=None: pr.PortPair(5440, "127.0.0.1", 5540)  # type: ignore[method-assign]
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: replica)
+    assert pr.ensure_endpoint(_source(), timeout=5) == pr.PortPair(5440, "127.0.0.1", 5540)
+    assert len(prepared) == 1
+
+
+def test_a_catalog_that_cannot_be_prepared_is_reported_and_not_asked_for_again():
+    calls: list[int] = []
+
+    def prepare(ports):
+        calls.append(1)
+        raise RuntimeError("Object 'x' not found")
+
+    replica = _replica_with_server(
+        healthy=True, exit_code=None, catalog_ready=False, prepare=prepare
+    )
+    ports = pr.PortPair(5440, "127.0.0.1", 5540)
+    for _ in range(3):
+        with pytest.raises(
+            pr.ServerCatalogFailed, match="could not prepare its catalog.*not found"
+        ):
+            replica.await_catalog(ports, 5)
+    assert calls == [1]
+    assert isinstance(pr.ServerCatalogFailed("s", RuntimeError("x")), pr.server_start_errors())
+
+
+def test_a_restarted_server_has_its_catalog_prepared_afresh():
+    prepared: list[pr.PortPair] = []
+    replica = _replica_with_server(
+        healthy=True, exit_code=None, catalog_ready=False, prepare=prepared.append
+    )
+    ports = pr.PortPair(5440, "127.0.0.1", 5540)
+    replica.await_catalog(ports, 5)
+    replica.close()
+    replica.await_catalog(ports, 5)
+    assert len(prepared) == 2
+
+
+@pytest.mark.parametrize("stype", _SIBLINGS)
+def test_every_sibling_waits_for_its_catalog_within_the_bound_it_waits_for_its_port(
+    monkeypatch, stype
+):
+    """The family shares the server and its row counting. A sibling's server starts in seconds
+    and is still waited for; its catalog is now waited for too, within the same bound, where
+    the attach used to wait on it with none."""
+    waits: list[tuple[str, float | None]] = []
+
+    class _Replica:
+        def endpoint(self, *, timeout=None):
+            waits.append(("port", timeout))
+            return pr.PortPair(5440, "127.0.0.1", 5540)
+
+        def await_catalog(self, ports, timeout):
+            waits.append(("catalog", timeout))
+
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: _Replica())
+    pr.ensure_endpoint(Source(id="docs", type=SourceType(stype)))
+    pr.ensure_endpoint(Source(id="docs", type=SourceType(stype)), timeout=3)
+    assert waits == [
+        ("port", None),
+        ("catalog", pr.SERVER_READY_SECONDS),
+        ("port", 3),
+        ("catalog", 3),
+    ]
+
+
+def test_the_two_waits_are_told_apart_and_both_are_starting():
+    port = str(pr.SourceStillStartingError("test-askamerica"))
+    catalog = str(pr.SourceStillStartingError("test-askamerica", preparing_catalog=True))
+    assert port.startswith("STARTING:") and "still starting up" in port
+    assert catalog.startswith("STARTING:") and "counting the rows of its tables" in catalog
+    replica = _replica_with_server(
+        healthy=True, exit_code=None, catalog_ready=False, prepare=lambda ports: time.sleep(5)
+    )
+    with pytest.raises(pr.SourceStillStartingError, match="preparing its catalog"):
+        replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 0)
+    with pytest.raises(pr.SourceStillStartingError, match="still starting up"):
+        _replica_with_server(healthy=False, exit_code=None).require_serving()
+
+
+def test_a_preparation_outlived_by_its_server_reports_to_no_one():
+    release = threading.Event()
+
+    def prepare(ports):
+        release.wait(5)
+        raise RuntimeError("connection closed: the server was stopped")
+
+    replica = _replica_with_server(
+        healthy=True, exit_code=None, catalog_ready=False, prepare=prepare
+    )
+    ports = pr.PortPair(5440, "127.0.0.1", 5540)
+    with pytest.raises(pr.SourceStillStartingError):
+        replica.await_catalog(ports, 0)
+    stale = replica._catalog_thread
+    assert stale is not None
+    replica.close()  # the server is stopped under the preparation
+    release.set()
+    stale.join(5)
+    assert replica._catalog_error is None and not replica._catalog_ready
+
+
+def test_preparing_the_catalog_logs_nothing_and_its_failure_carries_no_secret(caplog):
+    import logging
+
+    def prepare(ports):
+        raise RuntimeError("could not connect to server")
+
+    replica = _replica_with_server(
+        healthy=True, exit_code=None, catalog_ready=False, prepare=prepare
+    )
+    with caplog.at_level(logging.DEBUG), pytest.raises(pr.ServerCatalogFailed) as failed:
+        replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 5)
+    for secret in _SECRETS:
+        assert secret not in caplog.text.replace("AskAmerica", "")
+        assert secret not in str(failed.value).replace("AskAmerica", "")
+
+
+def test_the_real_preparation_is_one_catalog_query_on_a_connection_it_closes(monkeypatch):
+    events: list[str] = []
+
+    class _Conn:
+        async def fetch(self, sql, *args, timeout=None):
+            events.append(sql)
+            return [(1,)]
+
+        async def close(self):
+            events.append("closed")
+
+    async def connect(host, port):
+        events.append(f"connect {host}:{port}")
+        return _Conn()
+
+    monkeypatch.setattr(pr, "_pg_connect", connect)
+    pr._prepare_catalog(pr.PortPair(5440, "127.0.0.1", 5540))
+    assert events == [
+        "connect 127.0.0.1:5440",
+        "SELECT count(*) FROM pg_catalog.pg_class",
+        "closed",
+    ]
+
+
+def test_a_failed_catalog_query_still_closes_its_connection(monkeypatch):
+    events: list[str] = []
+
+    class _Conn:
+        async def fetch(self, sql, *args, timeout=None):
+            raise RuntimeError("server closed the connection")
+
+        async def close(self):
+            events.append("closed")
+
+    async def connect(host, port):
+        return _Conn()
+
+    monkeypatch.setattr(pr, "_pg_connect", connect)
+    with pytest.raises(RuntimeError, match="server closed"):
+        pr._prepare_catalog(pr.PortPair(5440, "127.0.0.1", 5540))
+    assert events == ["closed"]
+
+
+def test_the_engines_attach_pass_never_waits_on_a_source_whose_catalog_is_being_prepared(
+    monkeypatch,
+):
+    """The pass runs under the engine's one attach lock, on the request path. Over [a fast
+    source, an AskAmerica source whose catalog is still being prepared, another fast source] it
+    returns at once, attaches the other two, and leaves the pass incomplete so the next one
+    retries the source that was starting."""
+    release = threading.Event()
+    replica = _replica_with_server(
+        healthy=True,
+        exit_code=None,
+        catalog_ready=False,
+        prepare=lambda ports: release.wait(30),
+    )
+    replica.endpoint = lambda timeout=None: pr.PortPair(5440, "127.0.0.1", 5540)  # type: ignore[method-assign]
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: replica)
+
+    class _Runtime:
+        def __init__(self) -> None:
+            self.attached: list[str] = []
+
+        def attach_source(self, merged) -> None:
+            if merged.type.value == "govdata":
+                pr.ensure_endpoint(merged)  # what the connector's details() does first
+            self.attached.append(merged.id)
+
+        def detach_source(self, *_a) -> None:
+            pass
+
+    def _src(sid: str, stype: str):
+        return SimpleNamespace(
+            id=sid,
+            type=SimpleNamespace(value=stype),
+            replicate=None,
+            load_protected=False,
+            host="h",
+            port=None,
+            base_url=None,
+            database="sec",
+            username="aa-key",
+            password=None,
+            path=None,
+            federation_hints={},
+            mapping={},
+        )
+
+    def _tbl(sid: str, table: str):
+        return SimpleNamespace(source_id=sid, schema_name="sec", table_name=table, region=None)
+
+    backend = build_duckdb_engine().backend
+    backend._runtime = _Runtime()
+    config = SimpleNamespace(
+        sources=[_src("pg-a", "postgresql"), _src("aa", "govdata"), _src("pg-b", "postgresql")],
+        tables=[_tbl("pg-a", "orders"), _tbl("aa", "financial_facts"), _tbl("pg-b", "items")],
+    )
+    state = SimpleNamespace(
+        runtime_sources={},
+        tables=[],
+        source_catalogs={"pg-a": "pg_a", "aa": "aa", "pg-b": "pg_b"},
+    )
+    started = time.monotonic()
+    complete = backend._walk_registry(state, config)
+    elapsed = time.monotonic() - started
+    release.set()
+
+    assert elapsed < 2, f"the attach pass waited {elapsed:.1f}s on the starting source"
+    assert backend._runtime.attached == ["pg-a", "pg-b"]
+    assert complete is False  # retried by the next pass, when the catalog is prepared
