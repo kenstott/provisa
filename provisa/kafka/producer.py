@@ -33,6 +33,31 @@ log = logging.getLogger(__name__)
 _STOP_SECONDS = 10.0
 _STOP = object()
 
+# The process's producers, one per cluster: change events, sinks and live outputs that name the
+# same brokers share one connection.
+_shared: dict[str, "Producer"] = {}
+_shared_lock = threading.Lock()
+
+
+def shared(bootstrap_servers: str) -> "Producer":
+    """The process's producer for ``bootstrap_servers``, started with its first use and stopped
+    by the lifespan (:func:`stop_all`)."""
+    with _shared_lock:
+        producer = _shared.get(bootstrap_servers)
+        if producer is None:
+            producer = _shared[bootstrap_servers] = Producer(bootstrap_servers, client_id="provisa")
+        return producer
+
+
+async def stop_all() -> None:
+    """Send what every producer of the process was handed, and stop them. Called by the lifespan
+    after everything that writes has stopped."""
+    with _shared_lock:
+        producers = list(_shared.values())
+        _shared.clear()
+    for producer in producers:
+        await producer.stop()
+
 
 class Producer:
     """Messages to one Kafka cluster, sent from a thread of this producer's own."""

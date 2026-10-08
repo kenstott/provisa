@@ -26,7 +26,7 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from provisa.kafka.producer import Producer
+from provisa.kafka.producer import Producer, shared
 
 # Requirements: REQ-172, REQ-173, REQ-174, REQ-175
 
@@ -55,16 +55,15 @@ def start() -> None:
     bootstrap = bootstrap_servers()
     if bootstrap is None or _producer is not None:
         return
-    _producer = Producer(bootstrap, client_id="provisa-change-events")
+    _producer = shared(bootstrap)
     log.info("change events are sent to %s on %s", _get_topic(), bootstrap)
 
 
-async def stop() -> None:
-    """Send the change events already emitted and stop the producer. Called by the lifespan."""
+def stop() -> None:
+    """Emit no more change events. Called by the lifespan, which then stops the process's
+    producers (``provisa.kafka.producer.stop_all``): those already emitted are sent first."""
     global _producer
-    producer, _producer = _producer, None
-    if producer is not None:
-        await producer.stop()
+    _producer = None
 
 
 def emit_change_event(  # REQ-172, REQ-173, REQ-174

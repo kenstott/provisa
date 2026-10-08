@@ -78,17 +78,17 @@ async def _execute_and_publish_table_sink(table, state: AppState) -> None:  # RE
         )
     rows = [dict(r) for r in rows_raw]
 
-    from confluent_kafka import Producer  # pyright: ignore[reportMissingImports]
+    from provisa.kafka.producer import shared
 
-    producer = Producer({"bootstrap.servers": bootstrap})
+    producer = shared(bootstrap)
     for row in rows:
         key = None
         if sink.key_column and sink.key_column in row:
             key = str(row[sink.key_column]).encode()
-        producer.produce(
-            sink.topic,
-            key=key,
-            value=json.dumps(row, cls=_Encoder).encode(),
-        )
-    producer.flush(timeout=10)
-    log.info("Sink published %d rows to %s for table %s", len(rows), sink.topic, table.table_name)
+        producer.send(sink.topic, json.dumps(row, cls=_Encoder).encode(), key=key)
+    log.info(
+        "Sink handed %d rows to the producer for %s (table %s)",
+        len(rows),
+        sink.topic,
+        table.table_name,
+    )

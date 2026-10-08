@@ -95,33 +95,31 @@ class TestChangeEventTopic:
 
 
 class _RecordingProducer:
-    """Stands in for provisa.kafka.producer.Producer: what it was built with and handed."""
+    """Stands in for the process's producer for one cluster: what it was handed."""
 
-    built: list["_RecordingProducer"] = []
-
-    def __init__(self, bootstrap_servers: str, *, client_id: str) -> None:
-        self.bootstrap, self.client_id = bootstrap_servers, client_id
+    def __init__(self, bootstrap_servers: str) -> None:
+        self.bootstrap = bootstrap_servers
         self.sent: list[tuple[str, bytes, bytes | None]] = []
-        self.stopped = False
-        _RecordingProducer.built.append(self)
 
     def send(self, topic: str, value: bytes, key: bytes | None = None) -> None:
         self.sent.append((topic, value, key))
 
-    async def stop(self) -> None:
-        self.stopped = True
-
 
 @pytest.fixture
 def producers(monkeypatch):
-    """Change events with a recording producer, and none started."""
-    _RecordingProducer.built = []
-    monkeypatch.setattr(ce, "Producer", _RecordingProducer)
+    """Change events with recording producers in place of the process's, and none in use."""
+    made: list[_RecordingProducer] = []
+
+    def _shared(bootstrap_servers: str) -> _RecordingProducer:
+        made.append(_RecordingProducer(bootstrap_servers))
+        return made[-1]
+
+    monkeypatch.setattr(ce, "shared", _shared)
     monkeypatch.setattr(ce, "_producer", None)
     monkeypatch.delenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", raising=False)
     monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
     monkeypatch.delenv("PROVISA_CHANGE_EVENT_TOPIC", raising=False)
-    return _RecordingProducer.built
+    return made
 
 
 class TestStart:
@@ -136,8 +134,8 @@ class TestStart:
     def test_the_change_event_broker_is_used(self, producers, monkeypatch):
         monkeypatch.setenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", "broker1:9092")
         ce.start()
-        (producer,) = producers
-        assert (producer.bootstrap, producer.client_id) == ("broker1:9092", "provisa-change-events")
+        (producer,) = producers  # the process's producer for that cluster
+        assert producer.bootstrap == "broker1:9092"
 
     def test_the_deployments_kafka_broker_is_used_when_no_other_is_named(
         self, producers, monkeypatch
@@ -158,17 +156,19 @@ class TestStart:
         ce.start()
         assert len(producers) == 1
 
-    async def test_stop_stops_the_producer_and_emits_nothing_after(self, producers, monkeypatch):
+    def test_after_stop_nothing_is_emitted(self, producers, monkeypatch):
+        """stop() ends change events; the producer itself is the process's, stopped by the
+        lifespan (provisa.kafka.producer.stop_all), which sends what was emitted before."""
         monkeypatch.setenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", "broker1:9092")
         ce.start()
-        await ce.stop()
-        (producer,) = producers
-        assert producer.stopped
         ce.emit_change_event("orders", "pg-main", "insert")
-        assert producer.sent == []
+        ce.stop()
+        ce.emit_change_event("orders", "pg-main", "update")
+        (producer,) = producers
+        assert len(producer.sent) == 1
 
-    async def test_stop_with_no_producer_does_nothing(self, producers):
-        await ce.stop()
+    def test_stop_with_no_producer_does_nothing(self, producers):
+        ce.stop()
         assert producers == []
 
 
@@ -339,20 +339,20 @@ class TestKafkaSinkConfig:
 
 class TestKafkaProducer:
     def _make_producer_with_mock(self) -> tuple[KafkaProducer, MagicMock]:
-        """Return a KafkaProducer with its internal confluent producer pre-mocked."""
+        """Return a KafkaProducer with the process's producer pre-mocked."""
         producer = KafkaProducer("localhost:9092")
         mock_inner = MagicMock()
         producer._producer = mock_inner
         return producer, mock_inner
 
-    async def test_publish_rows_calls_produce_for_each_row(self):
+    async def test_publish_rows_hands_over_each_row(self):
         producer, mock_inner = self._make_producer_with_mock()
 
         rows = [{"id": 1, "val": "a"}, {"id": 2, "val": "b"}]
         count = await producer.publish_rows(topic="test-topic", rows=rows, columns=["id", "val"])
 
         assert count == 2
-        assert mock_inner.produce.call_count == 2
+        assert mock_inner.send.call_count == 2
 
     async def test_publish_rows_with_key_column_encodes_key(self):
         producer, mock_inner = self._make_producer_with_mock()
@@ -362,7 +362,7 @@ class TestKafkaProducer:
             topic="test-topic", rows=rows, columns=["id", "name"], key_column="id"
         )
 
-        call_kwargs = mock_inner.produce.call_args[1]
+        call_kwargs = mock_inner.send.call_args[1]
         assert call_kwargs["key"] == b"42"
 
     async def test_publish_rows_with_no_key_column_sends_none_key(self):
@@ -371,7 +371,7 @@ class TestKafkaProducer:
         rows = [{"id": 1}]
         await producer.publish_rows(topic="test-topic", rows=rows, columns=["id"], key_column=None)
 
-        call_kwargs = mock_inner.produce.call_args[1]
+        call_kwargs = mock_inner.send.call_args[1]
         assert call_kwargs["key"] is None
 
     async def test_publish_rows_encodes_value_as_json_bytes(self):
@@ -380,7 +380,7 @@ class TestKafkaProducer:
         rows = [{"id": 1, "amount": 99.5}]
         await producer.publish_rows(topic="test-topic", rows=rows, columns=["id", "amount"])
 
-        call_kwargs = mock_inner.produce.call_args[1]
+        call_kwargs = mock_inner.send.call_args[1]
         decoded = json.loads(call_kwargs["value"].decode("utf-8"))
         assert decoded == {"id": 1, "amount": 99.5}
 
@@ -391,17 +391,9 @@ class TestKafkaProducer:
         count = await producer.publish_rows(topic="test-topic", rows=rows, columns=["id", "msg"])
 
         assert count == 2
-        first_call_kwargs = mock_inner.produce.call_args_list[0][1]
+        first_call_kwargs = mock_inner.send.call_args_list[0][1]
         decoded = json.loads(first_call_kwargs["value"].decode())
         assert decoded == {"id": 1, "msg": "hello"}
-
-    async def test_publish_rows_calls_poll_after_produce(self):
-        producer, mock_inner = self._make_producer_with_mock()
-
-        await producer.publish_rows(topic="t", rows=[{"id": 1}], columns=["id"])
-
-        mock_inner.poll.assert_called_once_with(0)
-        assert mock_inner.poll.call_args == ((0,), {})
 
     async def test_publish_empty_rows_returns_zero(self):
         producer, mock_inner = self._make_producer_with_mock()
@@ -409,53 +401,31 @@ class TestKafkaProducer:
         count = await producer.publish_rows(topic="t", rows=[], columns=["id"])
 
         assert count == 0
-        mock_inner.produce.assert_not_called()
+        mock_inner.send.assert_not_called()
 
-    def test_flush_delegates_to_inner_producer(self):
-        producer, mock_inner = self._make_producer_with_mock()
-
-        producer.flush(timeout=10.0)
-
-        mock_inner.flush.assert_called_once_with(10.0)
-        assert mock_inner.flush.call_args == ((10.0,), {})
-
-    def test_flush_with_default_timeout(self):
-        producer, mock_inner = self._make_producer_with_mock()
-
-        producer.flush()
-
-        mock_inner.flush.assert_called_once_with(5.0)
-        assert mock_inner.flush.call_args == ((5.0,), {})
-
-    def test_flush_does_nothing_when_inner_producer_none(self):
-        producer = KafkaProducer("localhost:9092")
-        producer._producer = None
-        # Must not raise
-        producer.flush()
-        # Inner producer must remain None — flush() must not create one
-        assert producer._producer is None
-
-    def test_close_flushes_then_clears_inner_producer(self):
+    def test_close_ends_this_sinks_use_and_leaves_the_producer_running(self):
         producer, mock_inner = self._make_producer_with_mock()
 
         producer.close()
 
-        mock_inner.flush.assert_called_once_with(5.0)
+        mock_inner.stop.assert_not_called()  # the process's producer: the lifespan stops it
         assert producer._producer is None
 
     def test_close_does_nothing_when_inner_producer_none(self):
         producer = KafkaProducer("localhost:9092")
         producer._producer = None
-        # Must not raise
+
         producer.close()
         # Inner producer must remain None — close() must not create one
         assert producer._producer is None
 
-    def test_ensure_producer_raises_import_error_when_confluent_kafka_missing(self):
+    def test_the_producer_is_the_processes_for_the_sinks_cluster(self, monkeypatch):
+        """The sink once imported a Kafka client the product does not declare and told the
+        operator to pip-install it. It uses the producer the product ships."""
+        monkeypatch.setattr("provisa.kafka.sink.shared", lambda bootstrap: f"shared:{bootstrap}")
         producer = KafkaProducer("localhost:9092")
-        with patch.dict("sys.modules", {"confluent_kafka": None}):
-            with pytest.raises(ImportError, match="confluent-kafka is required"):
-                producer._ensure_producer()
+        producer._ensure_producer()
+        assert producer._producer == "shared:localhost:9092"
 
 
 # ---------------------------------------------------------------------------

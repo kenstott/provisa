@@ -143,3 +143,23 @@ def _settle(producer: Producer) -> None:
 
     asyncio.run_coroutine_threadsafe(_mark(), producer._loop)  # noqa: SLF001
     assert done.wait(10)
+
+
+async def test_the_process_has_one_producer_per_cluster_and_the_lifespan_stops_them(broker):
+    """Change events, sinks and live outputs that name the same brokers share one producer;
+    stop_all sends what each was handed and ends its thread."""
+    from provisa.kafka import producer as kafka_producer
+
+    first = kafka_producer.shared("broker-a:9092")
+    try:
+        assert kafka_producer.shared("broker-a:9092") is first
+        other = kafka_producer.shared("broker-b:9092")
+        assert other is not first
+        first.send("t", b"a")
+        other.send("t", b"b")
+    finally:
+        await kafka_producer.stop_all()
+    assert sorted(value for _t, value, _k in broker.delivered) == [b"a", b"b"]
+    assert first._task.done() and other._task.done()  # noqa: SLF001 - their threads ended
+    assert kafka_producer.shared("broker-a:9092") is not first  # a new process's would be new
+    await kafka_producer.stop_all()

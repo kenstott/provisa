@@ -42,8 +42,7 @@ def kafka_sink_configured(shared_data: dict) -> None:
 
     producer = KafkaProducer("localhost:9092")
     captured_producer = MagicMock()
-    captured_producer.produce = MagicMock()
-    captured_producer.poll = MagicMock()
+    captured_producer.send = MagicMock()
     producer._producer = captured_producer
 
     shared_data["config"] = config
@@ -80,11 +79,11 @@ def results_published(shared_data: dict) -> None:
     captured = shared_data["captured_producer"]
 
     assert shared_data["published_count"] == len(shared_data["rows"])
-    assert captured.produce.call_count == len(shared_data["rows"])
+    assert captured.send.call_count == len(shared_data["rows"])
 
     # Every publish targeted the configured topic with valid JSON payload.
     keys_seen = []
-    for call in captured.produce.call_args_list:
+    for call in captured.send.call_args_list:
         args = call.args
         kwargs = call.kwargs
         topic = kwargs.get("topic", args[0] if args else None)
@@ -128,8 +127,7 @@ def no_kafka_sink_configured(shared_data: dict) -> None:
 
     producer = KafkaProducer("localhost:9092")
     captured_producer = MagicMock()
-    captured_producer.produce = MagicMock()
-    captured_producer.poll = MagicMock()
+    captured_producer.send = MagicMock()
     producer._producer = captured_producer
 
     shared_data["sink_registry"] = sink_registry
@@ -175,8 +173,7 @@ def no_messages_published(shared_data: dict) -> None:
 
     # No rows published and the underlying producer was never invoked.
     assert shared_data["published_count"] == 0
-    captured.produce.assert_not_called()
-    captured.poll.assert_not_called()
+    captured.send.assert_not_called()
 
     # The opt-in registry still holds no sink for this table.
     table_name = shared_data["table_name"]
@@ -221,8 +218,7 @@ def table_with_existing_sink(shared_data: dict) -> None:
 
     producer = KafkaProducer("localhost:9092")
     captured_producer = MagicMock()
-    captured_producer.produce = MagicMock()
-    captured_producer.poll = MagicMock()
+    captured_producer.send = MagicMock()
     producer._producer = captured_producer
 
     shared_data["table_name"] = table_name
@@ -266,8 +262,7 @@ def no_messages_and_config_unchanged(shared_data: dict) -> None:
     # No messages emitted because the sink is gone.
     assert config is None
     assert published_count == 0
-    captured.produce.assert_not_called()
-    captured.poll.assert_not_called()
+    captured.send.assert_not_called()
 
     # All other table configuration remains exactly as it was.
     assert shared_data["table_config"] == shared_data["table_config_snapshot"]

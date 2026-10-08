@@ -594,24 +594,24 @@ class TestKafkaSinkOutput:
         )
 
     def _inject_producer(self, sink: KafkaSinkOutput) -> MagicMock:
-        """Inject a mock producer directly so no import of confluent_kafka needed."""
+        """Put a mock in place of the process's producer."""
         mock_producer = MagicMock()
         sink._producer = mock_producer
         return mock_producer
 
-    async def test_send_calls_produce_for_each_row(self):
+    async def test_send_hands_over_each_row(self):
         sink = self._make_sink()
         producer = self._inject_producer(sink)
         rows = [{"id": 1, "amount": 100}, {"id": 2, "amount": 200}]
         await sink.send(rows)
-        assert producer.produce.call_count == 2
+        assert producer.send.call_count == 2
 
     async def test_send_serializes_rows_as_json(self):
         sink = self._make_sink()
         producer = self._inject_producer(sink)
         rows = [{"id": 1, "name": "Alice"}]
         await sink.send(rows)
-        call_kwargs = producer.produce.call_args
+        call_kwargs = producer.send.call_args
         value_arg = call_kwargs[1].get("value") or call_kwargs[0][1]
         assert json.loads(value_arg) == rows[0]
 
@@ -620,7 +620,7 @@ class TestKafkaSinkOutput:
         producer = self._inject_producer(sink)
         rows = [{"id": 42, "val": "x"}]
         await sink.send(rows)
-        call_kwargs = producer.produce.call_args
+        call_kwargs = producer.send.call_args
         key_arg = call_kwargs[1].get("key")
         assert key_arg == b"42"
 
@@ -629,7 +629,7 @@ class TestKafkaSinkOutput:
         producer = self._inject_producer(sink)
         rows = [{"id": 1, "val": "x"}]
         await sink.send(rows)
-        call_kwargs = producer.produce.call_args
+        call_kwargs = producer.send.call_args
         key_arg = call_kwargs[1].get("key")
         assert key_arg is None
 
@@ -637,23 +637,16 @@ class TestKafkaSinkOutput:
         sink = self._make_sink()
         producer = self._inject_producer(sink)
         await sink.send([])
-        producer.produce.assert_not_called()
-        assert producer.produce.call_count == 0
+        producer.send.assert_not_called()
+        assert producer.send.call_count == 0
 
-    async def test_send_calls_poll_after_produce(self):
-        sink = self._make_sink()
-        producer = self._inject_producer(sink)
-        rows = [{"id": 1}]
-        await sink.send(rows)
-        producer.poll.assert_called_once_with(0)
-        assert producer.poll.call_count == 1
-
-    async def test_close_calls_flush(self):
+    async def test_close_leaves_the_processes_producer_running(self):
+        """The producer is the process's, shared with sinks and change events; the lifespan
+        stops it. Closing a live output only ends that output's use of it."""
         sink = self._make_sink()
         producer = self._inject_producer(sink)
         await sink.close()
-        producer.flush.assert_called_once()
-        assert producer.flush.call_count == 1
+        producer.stop.assert_not_called()
 
     async def test_close_clears_producer_reference(self):
         sink = self._make_sink()
@@ -668,18 +661,22 @@ class TestKafkaSinkOutput:
         # Producer reference remains None; no flush attempted
         assert sink._producer is None
 
-    async def test_ensure_producer_raises_if_confluent_kafka_missing(self):
+    async def test_the_producer_is_the_processes_for_the_outputs_cluster(self, monkeypatch):
+        """It once imported a Kafka client the product does not declare, and failed with
+        "confluent-kafka is required". It uses the producer the product ships."""
+        monkeypatch.setattr(
+            "provisa.live.outputs.kafka.shared", lambda bootstrap: f"shared:{bootstrap}"
+        )
         sink = self._make_sink()
-        with patch.dict("sys.modules", {"confluent_kafka": None}):
-            with pytest.raises((RuntimeError, ImportError)):
-                sink._ensure_producer()
+        sink._ensure_producer()
+        assert sink._producer == "shared:localhost:9092"
 
     async def test_send_without_key_column_passes_none_key(self):
         sink = self._make_sink(key_column=None)
         producer = self._inject_producer(sink)
         rows = [{"id": 1, "val": "test"}]
         await sink.send(rows)
-        call_kwargs = producer.produce.call_args
+        call_kwargs = producer.send.call_args
         key_arg = call_kwargs[1].get("key")
         assert key_arg is None
 
@@ -688,7 +685,7 @@ class TestKafkaSinkOutput:
         producer = self._inject_producer(sink)
         rows = [{"id": i} for i in range(3)]
         await sink.send(rows)
-        for c in producer.produce.call_args_list:
+        for c in producer.send.call_args_list:
             _topic_arg = c[0][0] if c[0] else c[1].get("topic")
             # The topic is the first positional arg
             assert c[0][0] == "live-events"

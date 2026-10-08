@@ -149,18 +149,15 @@ OWNERS: dict[str, set[str]] = {
         "provisa/auth/approval_pb2_grpc.py",
         "provisa/auth/approval_hook.py",
     },
-    "confluent_kafka": {
-        "provisa/kafka/sink.py",  # delivery, not federated querying — see Context
-        "provisa/kafka/sink_executor.py",  # re-executes + delivers to a sink, same role
-    },
+    "confluent_kafka": set(),
     "aiokafka": {
         "provisa/kafka/source.py",  # kafka as federated source, per owner map
         # REQ-1730: the native (non-Trino) Kafka source reader, mirroring source.py's own role —
         # an adapter loader for materializing a kafka source under an engine with no live
         # connector for it (draining a topic from earliest offset, not delivery/sink work).
         "provisa/kafka/fetch.py",
-        # The product's producer (change events): delivery through the one Kafka client the
-        # product ships, not federated querying.
+        # The product's producer (change events, sinks, live outputs): delivery through the one
+        # Kafka client the product ships, not federated querying.
         "provisa/kafka/producer.py",
     },
     "kafka": set(),
@@ -196,10 +193,6 @@ ACCEPTED_OUT_OF_SCOPE: dict[str, str] = {
     ),
     "provisa/subscriptions/trino_polling_provider.py": (
         "CDC-signal consumption (trino) — self-contained, not federated querying"
-    ),
-    "provisa/live/outputs/kafka.py": (
-        "subscription/live-output delivery (confluent_kafka) — self-contained, not federated"
-        " querying"
     ),
     "provisa/core/redis_factory.py": "redis-as-cache connection factory, not a federated source",
     "provisa/core/org_provisioning.py": "redis ACL provisioning, not a federated source",

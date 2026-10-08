@@ -10,7 +10,7 @@
 
 """Kafka sink output for live queries (Phase AM).
 
-Publishes new rows to a Kafka topic using the confluent-kafka producer.
+Publishes new rows to a Kafka topic through the process's producer (provisa/kafka/producer.py).
 Each row is serialized as JSON.  If a *key_column* is configured its value
 is used as the Kafka message key, enabling per-entity partitioning.
 """
@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 
+from provisa.kafka.producer import Producer, shared
 from provisa.live.outputs.base import LiveOutput
 
 log = logging.getLogger(__name__)
@@ -39,17 +40,11 @@ class KafkaSinkOutput(LiveOutput):  # REQ-176, REQ-181, REQ-286
         self._bootstrap_servers = bootstrap_servers
         self._topic = topic
         self._key_column = key_column
-        self._producer = None
+        self._producer: Producer | None = None
 
-    def _ensure_producer(self):
-        if self._producer is not None:
-            return
-        try:
-            from confluent_kafka import Producer  # type: ignore[import-untyped]
-
-            self._producer = Producer({"bootstrap.servers": self._bootstrap_servers})
-        except ImportError:
-            raise RuntimeError("confluent-kafka is required for Kafka live output")
+    def _ensure_producer(self) -> None:
+        if self._producer is None:
+            self._producer = shared(self._bootstrap_servers)
 
     async def send(self, rows: list[dict]) -> None:  # REQ-565
         if not rows:
@@ -61,11 +56,9 @@ class KafkaSinkOutput(LiveOutput):  # REQ-176, REQ-181, REQ-286
             key = None
             if self._key_column and self._key_column in row:
                 key = str(row[self._key_column]).encode()
-            self._producer.produce(self._topic, value=value, key=key)
-        self._producer.poll(0)
-        log.debug("[KAFKA LIVE] produced %d rows to %s", len(rows), self._topic)
+            self._producer.send(self._topic, value=value, key=key)
+        log.debug("[KAFKA LIVE] handed %d rows to the producer for %s", len(rows), self._topic)
 
     async def close(self) -> None:  # REQ-565
-        if self._producer:
-            self._producer.flush()
-            self._producer = None
+        # The producer is the process's: the lifespan stops it, sending what it was handed first.
+        self._producer = None

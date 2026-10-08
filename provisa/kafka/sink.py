@@ -20,6 +20,8 @@ import json
 import logging
 from dataclasses import dataclass
 
+from provisa.kafka.producer import Producer, shared
+
 # Requirements: REQ-176, REQ-177, REQ-178, REQ-180, REQ-181
 
 log = logging.getLogger(__name__)
@@ -36,43 +38,16 @@ class KafkaSinkConfig:  # REQ-176, REQ-177, REQ-178, REQ-180
 
 
 class KafkaProducer:  # REQ-176, REQ-181
-    """Async Kafka producer wrapper.
+    """Publishes query result rows to topics of one Kafka cluster, through the process's producer
+    for that cluster (``provisa.kafka.producer``)."""
 
-    Uses confluent-kafka producer under the hood.
-    """
-
-    def __init__(self, bootstrap_servers: str, **kwargs):
+    def __init__(self, bootstrap_servers: str) -> None:
         self._bootstrap_servers = bootstrap_servers
-        self._producer = None
-        self._extra_config = kwargs
+        self._producer: Producer | None = None
 
-    def _ensure_producer(self):
+    def _ensure_producer(self) -> None:
         if self._producer is None:
-            try:
-                from confluent_kafka import Producer  # pyright: ignore[reportMissingImports]
-
-                config = {
-                    "bootstrap.servers": self._bootstrap_servers,
-                    "client.id": "provisa-sink",
-                    **self._extra_config,
-                }
-                self._producer = Producer(config)
-            except ImportError:
-                raise ImportError(
-                    "confluent-kafka is required for Kafka sink. "
-                    "Install with: pip install confluent-kafka"
-                )
-
-    def _delivery_callback(self, err, msg):
-        if err:
-            log.error("Kafka delivery failed: %s", err)
-        else:
-            log.debug(
-                "Kafka message delivered to %s [%d] @ %d",
-                msg.topic(),
-                msg.partition(),
-                msg.offset(),
-            )
+            self._producer = shared(self._bootstrap_servers)
 
     async def publish_rows(  # REQ-181
         self,
@@ -83,7 +58,9 @@ class KafkaProducer:  # REQ-176, REQ-181
     ) -> int:
         """Publish query result rows to a Kafka topic.
 
-        Each row becomes a JSON message. Fire-and-forget with delivery callback.
+        Each row becomes a JSON message, handed to the producer's own thread: this returns
+        without waiting on the broker, and a row that cannot be delivered is dropped and logged
+        there.
 
         Args:
             topic: Kafka topic name.
@@ -121,26 +98,11 @@ class KafkaProducer:  # REQ-176, REQ-181
                     key = str(key_val).encode("utf-8")
 
             assert self._producer is not None
-            self._producer.produce(
-                topic,
-                value=value,
-                key=key,
-                callback=self._delivery_callback,
-            )
+            self._producer.send(topic, value=value, key=key)
             count += 1
-
-        # Trigger delivery of buffered messages (non-blocking flush)
-        assert self._producer is not None
-        self._producer.poll(0)
         return count
 
-    def flush(self, timeout: float = 5.0) -> None:  # REQ-176
-        """Flush all buffered messages. Call on shutdown."""
-        if self._producer:
-            self._producer.flush(timeout)
-
     def close(self) -> None:
-        """Close the producer."""
-        if self._producer:
-            self._producer.flush(5.0)
-            self._producer = None
+        """Publish no more through this sink. The producer is the process's and is stopped by
+        the lifespan, which sends what it was handed first."""
+        self._producer = None

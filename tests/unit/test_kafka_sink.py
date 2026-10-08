@@ -44,8 +44,7 @@ class TestKafkaProducer:
     async def test_publish_rows_dict(self, mock_ensure):
         producer = KafkaProducer("localhost:9092")
         producer._producer = MagicMock()
-        producer._producer.produce = MagicMock()
-        producer._producer.poll = MagicMock()
+        producer._producer.send = MagicMock()
 
         rows = [
             {"id": 1, "amount": 100.0, "region": "us"},
@@ -59,14 +58,13 @@ class TestKafkaProducer:
         )
 
         assert count == 2
-        assert producer._producer.produce.call_count == 2
+        assert producer._producer.send.call_count == 2
 
     @patch("provisa.kafka.sink.KafkaProducer._ensure_producer")
     async def test_publish_with_key_column(self, mock_ensure):
         producer = KafkaProducer("localhost:9092")
         producer._producer = MagicMock()
-        producer._producer.produce = MagicMock()
-        producer._producer.poll = MagicMock()
+        producer._producer.send = MagicMock()
 
         rows = [{"id": 1, "name": "test"}]
 
@@ -77,14 +75,13 @@ class TestKafkaProducer:
             key_column="id",
         )
 
-        call_kwargs = producer._producer.produce.call_args
+        call_kwargs = producer._producer.send.call_args
         assert call_kwargs.kwargs.get("key") == b"1" or call_kwargs[1].get("key") == b"1"
 
     @patch("provisa.kafka.sink.KafkaProducer._ensure_producer")
     async def test_publish_empty_rows(self, mock_ensure):
         producer = KafkaProducer("localhost:9092")
         producer._producer = MagicMock()
-        producer._producer.poll = MagicMock()
 
         count = await producer.publish_rows(
             topic="test-topic",
@@ -131,7 +128,7 @@ class TestKafkaSinkEncoder:
 
 class TestKafkaProducerMocked:
     async def test_sink_publishes_result_to_topic(self):
-        """publish_rows calls producer.produce for each row."""
+        """publish_rows hands the producer each row."""
         mock_producer = MagicMock()
 
         with patch("provisa.kafka.sink.KafkaProducer._ensure_producer"):
@@ -149,11 +146,10 @@ class TestKafkaProducerMocked:
             )
 
         assert count == 2
-        assert mock_producer.produce.call_count == 2
-        mock_producer.poll.assert_called_once_with(0)
+        assert mock_producer.send.call_count == 2
 
     async def test_sink_respects_row_limit(self):
-        """Exactly N produce() calls for N rows — no more, no less."""
+        """Exactly N rows handed over for N rows — no more, no less."""
         mock_producer = MagicMock()
 
         with patch("provisa.kafka.sink.KafkaProducer._ensure_producer"):
@@ -168,10 +164,10 @@ class TestKafkaProducerMocked:
             )
 
         assert count == 50
-        assert mock_producer.produce.call_count == 50
+        assert mock_producer.send.call_count == 50
 
     async def test_sink_key_column_used_as_message_key(self):
-        """When key_column is set, produce() is called with the correct key bytes."""
+        """When key_column is set, the row is handed over with the correct key bytes."""
         mock_producer = MagicMock()
 
         with patch("provisa.kafka.sink.KafkaProducer._ensure_producer"):
@@ -186,7 +182,7 @@ class TestKafkaProducerMocked:
                 key_column="id",
             )
 
-        call_kwargs = mock_producer.produce.call_args
+        call_kwargs = mock_producer.send.call_args
         assert call_kwargs.kwargs.get("key") == b"42" or (
             len(call_kwargs.args) > 2 and call_kwargs.args[2] == b"42"
         )
@@ -199,7 +195,7 @@ class TestKafkaProducerMocked:
             produced_values.append(value)
 
         mock_producer = MagicMock()
-        mock_producer.produce.side_effect = capture_produce
+        mock_producer.send.side_effect = capture_produce
 
         with patch("provisa.kafka.sink.KafkaProducer._ensure_producer"):
             producer = KafkaProducer("localhost:9092")
@@ -217,16 +213,30 @@ class TestKafkaProducerMocked:
         assert decoded["id"] == 7
         assert decoded["region"] == "apac"
 
-    async def test_sink_close_flushes_producer(self):
-        """close() calls flush on the underlying producer."""
+    async def test_sink_close_leaves_the_processes_producer_running(self):
+        """close() ends this sink's use of the producer. The producer is the process's, shared
+        with every other sink and with change events, and is stopped by the lifespan."""
         mock_producer = MagicMock()
         with patch("provisa.kafka.sink.KafkaProducer._ensure_producer"):
             producer = KafkaProducer("localhost:9092")
             producer._producer = mock_producer
             producer.close()
 
-        mock_producer.flush.assert_called_once()
+        mock_producer.stop.assert_not_called()
         assert producer._producer is None
+
+    def test_a_sink_uses_the_processes_producer_for_its_cluster(self, monkeypatch):
+        """One producer per cluster per process: two sinks on the same brokers share it."""
+        made: list[str] = []
+        monkeypatch.setattr(
+            "provisa.kafka.sink.shared", lambda bootstrap: made.append(bootstrap) or bootstrap
+        )
+        first, second = KafkaProducer("broker:9092"), KafkaProducer("broker:9092")
+        first._ensure_producer()
+        second._ensure_producer()
+        first._ensure_producer()  # already has it
+        assert made == ["broker:9092", "broker:9092"]
+        assert first._producer == second._producer == "broker:9092"
 
 
 # ---------------------------------------------------------------------------
