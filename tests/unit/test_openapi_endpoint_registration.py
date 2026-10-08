@@ -493,3 +493,19 @@ def test_a_single_valued_enum_is_sent_its_default_or_not_at_all():
         {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 100}},
     )
     assert default_params_from_spec(spec, "/pets") == {"sort": "open", "limit": 100}
+
+
+async def test_a_branded_source_loads_with_its_brands_headers_and_another_with_none(control_plane):
+    from provisa.api_source.loader import load_api_sources
+    from provisa.api_source.openapi_endpoint import register_openapi_source
+    from provisa.openapi.brands import BRANDS
+
+    async with control_plane.acquire() as conn:
+        await conn.execute_core(
+            insert(sources).values(id="pay", type="openapi", path="brand:stripe")
+        )
+        await register_openapi_source(conn, "pay", "https://api.stripe.com/")
+        await register_openapi_source(conn, "petstore", BASE)
+        _endpoints, loaded = await load_api_sources(conn, {})
+    assert loaded["pay"].headers == BRANDS["stripe"].headers() != {}
+    assert loaded["petstore"].headers == {}

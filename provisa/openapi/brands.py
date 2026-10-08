@@ -42,6 +42,10 @@ class Brand:
     label: str  # what the user sees
     spec_url: str  # where the vendor publishes the spec (scripts/bake_openapi_brand_spec.py)
     verify_path: str  # a GET that succeeds only with a working credential
+    # The header that names the API version a call is answered in, where the vendor has one.
+    # It carries the shipped spec's version, so an answer has the shape the spec describes
+    # whatever version the account itself defaults to.
+    version_header: str | None = None
 
     @property
     def spec_path(self) -> str:
@@ -53,6 +57,12 @@ class Brand:
     def spec(self) -> dict:
         return brand_spec(self.id)
 
+    def headers(self) -> dict[str, str]:
+        """What every call to the brand carries beside its credential."""
+        if self.version_header is None:
+            return {}
+        return {self.version_header: self.spec()["info"]["version"]}
+
 
 BRANDS: dict[str, Brand] = {
     "stripe": Brand(
@@ -60,6 +70,7 @@ BRANDS: dict[str, Brand] = {
         label="Stripe",
         spec_url="https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.json",
         verify_path="/v1/balance",
+        version_header="Stripe-Version",
     ),
 }
 
@@ -76,3 +87,10 @@ def brand_spec(brand_id: str) -> dict:
 def spec_brand(spec_path: str) -> str | None:
     """The brand ``spec_path`` names, or None for a spec of the steward's own."""
     return spec_path[len(SPEC_SCHEME) :] if spec_path.startswith(SPEC_SCHEME) else None
+
+
+def spec_headers(spec_path: str | None) -> dict[str, str]:
+    """What every call to the source of ``spec_path`` carries beside its credential: its
+    brand's headers, none for a spec of the steward's own."""
+    brand = spec_brand(spec_path or "")
+    return {} if brand is None else BRANDS[brand].headers()

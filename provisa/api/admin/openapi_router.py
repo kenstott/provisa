@@ -192,7 +192,7 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
     return spec, len(queries), len(mutations)
 
 
-async def _verify_live_auth(url: str, auth: dict) -> None:
+async def _verify_live_auth(url: str, auth: dict, headers: dict[str, str]) -> None:
     """Confirm the credential works with one call. A branded source's spec ships with Provisa,
     so this is the only thing its registration asks of the remote."""
     import httpx
@@ -200,7 +200,7 @@ async def _verify_live_auth(url: str, auth: dict) -> None:
     from provisa.openapi.executor import _build_auth_headers
 
     async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(url, headers=_build_auth_headers(auth))
+        resp = await client.get(url, headers={**headers, **_build_auth_headers(auth)})
         resp.raise_for_status()
 
 
@@ -227,6 +227,7 @@ async def _branded(body: OpenAPIRegisterRequest) -> OpenAPIRegisterRequest:
         await _verify_live_auth(
             base_url.rstrip("/") + brand.verify_path,
             brand.auth(await _resolved_credential(body.token)),
+            brand.headers(),
         )
     except Exception as exc:
         raise ApiError(

@@ -134,8 +134,11 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
         # Cache miss: call API
         base_url = source.base_url if source else ""
         auth = source.auth if source else None
+        source_headers = source.headers if source else None
 
-        answer = await call_api(endpoint, params, base_url=base_url, auth=auth)
+        answer = await call_api(
+            endpoint, params, base_url=base_url, auth=auth, source_headers=source_headers
+        )
         all_rows, cut = answer_rows(endpoint, answer)
         if cut is not None:
             # A cut answer is never cached as the call's answer: it lands under a name of its

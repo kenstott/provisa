@@ -249,7 +249,7 @@ async def _call_openapi(state, source_id: str, operation: str, args: dict) -> li
     given = dict(args)
     path = _PATH_PARAM.sub(lambda m: str(given.pop(m.group(1))), mutation.path)
     body = given.pop(BODY_ARGUMENT, None)
-    headers: dict[str, str] = {}
+    headers: dict[str, str] = dict(source.headers)
     _apply_auth(source.auth, headers, given)
     if mutation.form:
         fields = [f for name, value in (body or {}).items() for f in _form_fields(value, name)]

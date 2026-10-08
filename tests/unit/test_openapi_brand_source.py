@@ -27,7 +27,7 @@ from provisa.core.auth_models import ApiAuthBearer
 from provisa.api_source.caller import iter_api_pages
 from provisa.api_source.models import ApiEndpoint
 from provisa.api_source.openapi_endpoint import api_auth, endpoint_columns, openapi_operation
-from provisa.openapi.brands import BRANDS, brand_spec
+from provisa.openapi.brands import BRANDS, brand_spec, spec_headers
 from provisa.openapi.loader import load_spec
 from provisa.openapi.mapper import parse_spec
 
@@ -41,6 +41,14 @@ def offered():
 
 
 # --- the brand ---
+
+VERSION = brand_spec("stripe")["info"]["version"]
+
+
+def test_every_call_names_the_version_of_the_shipped_spec():
+    assert STRIPE.headers() == {"Stripe-Version": VERSION}
+    assert spec_headers("brand:stripe") == {"Stripe-Version": VERSION}
+    assert spec_headers("https://pets.test/openapi.json") == {}  # a spec of the steward's own
 
 
 def test_a_branded_sources_row_names_the_shipped_spec():
@@ -85,6 +93,7 @@ async def test_adding_it_checks_the_key_and_takes_the_brands_spec_and_address():
     check = respx.get(f"{API}/v1/balance").mock(return_value=httpx.Response(200, json={}))
     body = await openapi_router._branded(_body())
     assert check.calls.last.request.headers["authorization"] == "Bearer sk_test_1"
+    assert check.calls.last.request.headers["stripe-version"] == VERSION
     assert (body.spec_path, body.base_url.rstrip("/")) == ("brand:stripe", API)
     assert body.auth_config == {"type": "bearer", "token": "sk_test_1"}
 
@@ -133,10 +142,16 @@ async def test_a_stripe_list_is_read_to_its_end_each_page_after_the_last_rows_id
         ]
     )
     auth = ApiAuthBearer(**api_auth(STRIPE.auth("sk")))  # as the stored auth is read back
-    pages = [p async for p in iter_api_pages(endpoint, {}, base_url=API, auth=auth)]
+    pages = [
+        p
+        async for p in iter_api_pages(
+            endpoint, {}, base_url=API, auth=auth, source_headers=STRIPE.headers()
+        )
+    ]
     assert [r["id"] for p in pages for r in p["data"]] == ["cus_1", "cus_2", "cus_3"]
     assert [dict(c.request.url.params) for c in route.calls] == [
         {"limit": "2"},
         {"limit": "2", "starting_after": "cus_2"},
     ]
     assert route.calls.last.request.headers["authorization"] == "Bearer sk"
+    assert [c.request.headers["stripe-version"] for c in route.calls] == [VERSION, VERSION]

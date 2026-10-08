@@ -4743,16 +4743,58 @@
   category: OpenAPI Auto-Registration Connector
   priority: SHOULD
   type: behavioral
-  description: OpenAPI GET operations as tables. [SUPERSEDED by the 2026-10-02 REGISTRATION IS CURATION
-    amendment below -- a GET operation is OFFERED as a table and becomes one only when the steward registers
-    it. Kept here for history; do not implement against it.] On registration, Provisa parses the spec
-    and auto-registers all GET operations as virtual query tables. [END SUPERSEDED BLOCK] Path parameters
-    and query parameters become GraphQL arguments. The `responses.200` (or `responses.2xx`) schema determines
-    the virtual table's column set. (Amended 2026-10-02, REGISTRATION IS CURATION) Adding an OpenAPI source
-    registers no tables. Every table the source offers is listed by the Register Table picker, and the
-    steward registers the ones wanted through the mutation every source uses; that registration is the
-    curation step, and a registered table is then governed like any other (REQ-1923). The spec is parsed
-    when the source is added and kept with it; each GET operation is a table on offer.
+  description: OpenAPI GET operations as tables. [SUPERSEDED by the 2026-10-02 REGISTRATION IS
+    CURATION amendment below -- a GET operation is OFFERED as a table and becomes one only when the
+    steward registers it. Kept here for history; do not implement against it.] On registration,
+    Provisa parses the spec and auto-registers all GET operations as virtual query tables. [END
+    SUPERSEDED BLOCK] Path parameters and query parameters become GraphQL arguments. The `responses.200` (or
+    `responses.2xx`) schema determines the virtual table's column set. (Amended 2026-10-02,
+    REGISTRATION IS CURATION) Adding an OpenAPI source registers no tables. Every table the source offers is listed by the Register Table picker, and the steward registers the ones wanted through the mutation every source uses; that registration is the curation step, and a registered table is then governed like any other (REQ-1923). The spec is
+    parsed when the source is added and kept with it; each GET operation is a table on offer.
+    (Amended 2026-10-07, SPEC READ BY A LIBRARY) The spec is read through a maintained spec library
+    that follows its references; Provisa has no reference resolver of its own. A response schema
+    composed with allOf is read as one set of properties, so its columns are those of every member.
+    A schema that refers to itself is read as far as a table's columns and an object column's
+    fields need.
+    (Amended 2026-10-07, A GET THAT ANSWERS NO ROWS) A GET whose response declares no schema, or
+    whose declared answer is a file, is offered as a command and not as a table (REQ-1924).
+    (Amended 2026-10-07, WHICH RESPONSE IS THE ROWS) A table's columns are read from the success
+    response only -- 200, else 2xx, else a default declared with neither. A default declared
+    beside a success response is the error the remote answers with and is never read as the rows.
+    The JSON schema is the one under the response's JSON media type, whatever parameters the
+    media type carries (application/json;charset=UTF-8 is JSON).
+    (Amended 2026-10-07, ROW LOCATION PROPOSED FROM THE SPEC) A list operation often answers a page
+    wrapper -- an object holding the rows under one property beside its paging fields. When the
+    success response is an object with exactly one property that is an array of objects, that
+    property is proposed as the table's row location when the table is offered, the way its paging
+    is proposed (REQ-318). The steward accepts or edits it at registration. The table's columns are
+    those of the objects at the row location, and each read takes its rows from there.
+    (Amended 2026-10-07, ROW LOCATION AS BUILT) The row location is one of the table's paging
+    settings (REQ-318) and may be declared with no paging type, for an answer that is wrapped and
+    not paged. It is proposed only when the response has no identity of its own -- no id, key or
+    name property -- and the objects in its one list declare their fields, so that a single thing
+    holding one list is not taken for a page. A row location the response does not have is refused
+    when the table is registered. It is set at registration and kept afterwards -- an edit of the
+    table's paging that names another is refused, since the table's columns are those of the objects
+    there; the table is registered again to read its rows from elsewhere. A cursor is not proposed
+    for a wrapped list, since nothing in a spec says which field or parameter carries it; the
+    steward declares it.
+    (Amended 2026-10-07, PAGING AFTER THE LAST ROW) A fifth paging type reads a list whose next
+    page starts after the last row of the page before -- a parameter carries a field of that row,
+    its id, and a page shorter than the page size is the last. It declares the parameter, the
+    row's field, the page-size parameter and the page size, and is bounded by max pages like the
+    others. It is proposed from the spec when a list declares a starting_after parameter beside a
+    size parameter and its rows declare an id. A cursor the answer carries is now proposed where
+    the spec names it -- a parameter x beside a next_x property of the answer -- which replaces
+    the statement above that a cursor is never proposed; any other cursor is still declared by
+    the steward. A page whose last row lacks the declared field fails the read by name.
+    (Amended 2026-10-07, ENUM PARAMETERS, maintainer ruling) The parameters a read of a table's
+    whole collection is called with are taken from the spec as follows. A list parameter whose
+    items are an enum is sent every value, so one call covers each of them. A single-valued
+    parameter is sent its declared default where it has one. A single-valued enum parameter with
+    no default is not sent, so the read is not filtered by it; before this ruling it was sent
+    every value it allows, which a remote that takes one value reads as the last of them or
+    refuses.
   use_case: GET operation auto-registration maps path and query params to GraphQL arguments automatically.
   code:
   - provisa/openapi/
@@ -4789,10 +4831,17 @@
   priority: SHOULD
   type: behavioral
   description: OpenAPI write operations as commands. [SUPERSEDED by REQ-1924, 2026-10-02 -- a source's
-    write operations are offered and registered one at a time, not registered when the source is added.
-    Kept here for history; do not implement against it.] All non-GET operations (POST, PUT, PATCH, DELETE)
-    are auto-registered as tracked functions (mutations). [END SUPERSEDED BLOCK] Request body schema properties
-    become GraphQL mutation input arguments. The `responses.200`/`2xx` schema becomes the mutation's `return_schema`.
+    write operations are offered and registered one at a time, not registered when the source is
+    added. Kept here for history; do not implement against it.] All non-GET operations (POST, PUT,
+    PATCH, DELETE) are auto-registered as tracked functions (mutations). [END SUPERSEDED BLOCK]
+    Request body schema properties become GraphQL mutation input arguments. The `responses.200`/`2xx`
+    schema becomes the mutation's `return_schema`.
+    (Amended 2026-10-07, FORM BODIES AND THE STORED CREDENTIAL) A command whose operation declares
+    its request body as form-encoded and not as JSON is sent form-encoded, with a nested object or
+    list written under bracketed keys such as items[0][price]. A multipart body is not sent, and
+    such an operation is offered with no body argument. A command is called at the source's
+    stored address with its stored credential, the ones its tables are read with, so a restarted
+    process calls it as the process that took the registration did.
   use_case: Non-GET operations auto-registered as mutations expose REST write endpoints as governed GraphQL
     mutations.
   code:
@@ -72361,50 +72410,88 @@
   description: Branded source types implemented over the generic API sources. A branded source is a named
     source type (Stripe, HubSpot, GitHub and so on) that adds only what is specific to that system on
     top of a generic source Provisa already has, and never a connector of its own. Two generic sources
-    carry them. One, the remote GraphQL source, for a system whose API is GraphQL -- GitHub is the first,
-    reached by the generic connector with its schema loaded from a baked artifact (REQ-1875). Two, the
-    OpenAPI source (REQ-314..321), for a system whose vendor publishes a usable OpenAPI spec -- the preset
-    is a pinned spec, an auth template, the pagination of each list operation, and, where the API offers
-    one, the parameter a refresh uses to pull only what changed. A preset chooses no subset of the API.
-    Adding a branded source makes every table the system offers available and registers none of them;
-    the steward registers the tables wanted, as for any source, and that registration is the curation.
-    A spec is usable only when it is well typed -- every list operation chosen as a table declares a response
-    schema with named, typed properties, since the table's columns are read from it (REQ-316). A spec
-    whose responses are untyped objects, or absent, does not qualify, and a preset never patches the gap
-    with a hand-written schema of its own. The steward picks the brand name and supplies credentials;
-    nothing else is asked. A branded source is always a replica, like every OpenAPI and remote GraphQL
-    source. This is the preferred route for the Supabase `wrappers` catalog whose SourceType stubs exist
-    (provisa/core/models.py) -- the captive Postgres pattern of REQ-1874 is kept for a system with neither
-    a GraphQL API nor a usable spec, and a system better reached through its own SDK or protocol gets
-    a direct loader. Each system in that catalog is investigated on its own and given one verdict -- GraphQL
-    preset, OpenAPI preset, wrapper, direct loader, already covered, or dropped. The mechanism is never
-    shown to the user; they see the brand name as an ordinary source type. (Amended 2026-10-02, GITHUB
-    AS BUILT) GitHub is the first brand. It is picked as GitHub in the source list, asks for an access
-    token and an optional table name prefix, and is shown as GitHub afterwards; the source row is a remote
-    GraphQL source that records its brand. The token goes to the org's secrets vault and the row carries
-    the reference, so a restarted process reads the source again without the token being re-entered. The
-    tables on offer are listed by the Register Table picker from the schema that ships with Provisa (REQ-1875),
-    and a table is registered through the same mutation every source uses. Three things are particular
-    to a brand and declared by it, never inferred. One, the error type its remote returns, before running
-    a query, for a field outside the credential's grant -- when a table is registered its query is offered
-    to the remote once, each field so refused is left out of the table, and the registration names what
-    was left out; a table the credential may not read at all is refused with the remote's reason. Two,
-    the error types its remote returns beside the data for one field of one row -- that field is null
-    in that row, as the remote returned it, the read stands, and the error is logged; an error naming
-    the table itself fails the read. Three, the error types that mean a page asked for more than the remote
-    computes in one query -- the page is asked for again at half the size. A brand also sets how deep
-    a nested object column is selected, since its schema is larger and more cross-referenced than the
-    deployment-wide setting is sized for. (Amended 2026-10-02, PRICED QUERIES AND GITLAB) Some systems
-    price a query and refuse one over a price -- GitLab allows 200 points to an anonymous caller and 250
-    with a token, and refuses a query over 10,000 characters. Such a system cannot serve a wide table
-    whole, so its tables are registered with the columns wanted. A count of columns is not the measure
-    -- what a column costs depends on its kind and on the page size -- so the system's own answer is.
-    When a table is registered, its query with the columns chosen is offered to the remote once at the
-    page size a read asks for; a brand declares how its remote's message starts when it refuses a query
-    as too costly or too large, and a registration so refused fails, changes nothing, and carries the
-    remote's message with its numbers. GitLab is the second brand, reaching gitlab.com. A brand's credential
-    check treats a null answer to its who-am-I query as a refusal, since a remote that also serves anonymous
-    callers answers an unrecognized credential that way and not with an error.
+    carry them. One, the remote GraphQL source, for a system whose API is GraphQL -- GitHub is the
+    first, reached by the generic connector with its schema loaded from a baked artifact (REQ-1875).
+    Two, the OpenAPI source (REQ-314..321), for a system whose vendor publishes a usable OpenAPI
+    spec -- the preset is a pinned spec, an auth template, the
+    pagination of each list operation, and, where the API offers one, the parameter a refresh uses to
+    pull only what changed. A preset chooses no subset of the API. Adding a branded source makes every
+    table the system offers available and registers none of them; the steward registers the tables
+    wanted, as for any source, and that registration is the curation.
+    A spec is usable only when it is well typed -- every list operation chosen as a table declares a
+    response schema with named, typed properties, since the table's columns are read from it (REQ-316).
+    A spec whose responses are untyped objects, or absent, does not qualify, and a preset never
+    patches the gap with a hand-written schema of its own.
+    The steward picks the brand name and supplies credentials; nothing else is asked. A branded source
+    is always a replica, like every OpenAPI and remote GraphQL source. This is the preferred route for
+    the Supabase `wrappers` catalog whose SourceType stubs exist (provisa/core/models.py) -- the captive
+    Postgres pattern of REQ-1874 is kept for a system with neither a GraphQL API nor a usable spec, and
+    a system better reached through its own SDK or protocol gets a direct loader. Each system in that
+    catalog is investigated on its own and given one verdict -- GraphQL preset, OpenAPI preset, wrapper,
+    direct loader, already covered, or dropped. The mechanism is never shown to the user; they see the
+    brand name as an ordinary source type. (Amended 2026-10-02, GITHUB AS BUILT) GitHub is the first
+    brand. It is picked as GitHub in the source list, asks for an access token and an optional table
+    name prefix, and is shown as GitHub afterwards; the source row is a remote GraphQL source that
+    records its brand. The token goes to the org's secrets vault and the row carries the reference, so
+    a restarted process reads the source again without the token being re-entered. The tables on offer
+    are listed by the Register Table picker from the schema that ships with Provisa (REQ-1875), and a
+    table is registered through the same mutation every source uses. Three things are particular to
+    a brand and declared by it, never inferred. One, the error type its remote returns, before running
+    a query, for a field outside the credential's grant -- when a table is registered its query is
+    offered to the remote once, each field so refused is left out of the table, and the registration
+    names what was left out; a table the credential may not read at all is refused with the remote's
+    reason. Two, the error types its remote returns beside the data for one field of one row -- that
+    field is null in that row, as the remote returned it, the read stands, and the error is logged;
+    an error naming the table itself fails the read. Three, the error types that mean a page asked
+    for more than the remote computes in one query -- the page is asked for again at half the size.
+    A brand also sets how deep a nested object column is selected, since its schema is larger and more
+    cross-referenced than the deployment-wide setting is sized for.
+    (Amended 2026-10-02, PRICED QUERIES AND GITLAB) Some systems price a query and refuse one over a
+    price -- GitLab allows 200 points to an anonymous caller and 250 with a token, and refuses a query
+    over 10,000 characters. Such a system cannot serve a wide table whole, so its tables are registered
+    with the columns wanted. A count of columns is not the measure -- what a column costs depends on
+    its kind and on the page size -- so the system's own answer is. When a table is registered, its
+    query with the columns chosen is offered to the remote once at the page size a read asks for; a
+    brand declares how its remote's message starts when it refuses a query as too costly or too
+    large, and a registration so refused fails, changes nothing, and carries the remote's message
+    with its numbers. GitLab is the second brand, reaching gitlab.com. A brand's credential check
+    treats a null answer to its who-am-I query as a refusal, since a remote that also serves
+    anonymous callers answers an unrecognized credential that way and not with an error.
+    (Amended 2026-10-07, ROUTE BY QUERY LANGUAGE) Which route a system takes follows from what its
+    API can be asked. A system with a rich query language of its own -- Salesforce, Splunk,
+    SharePoint -- is reached by a Calcite adapter, read in place with filters and projections pushed
+    to it, on every engine that attaches the adapter and through a native connector on Trino, so
+    no engine replicates it. A system whose API is list operations with few filters -- Stripe,
+    Bitbucket, Confluence -- is an API preset as described above and is always a replica. The
+    brand the steward picks is the same either way, and a system may move from one route to the
+    other without the steward seeing a different source type.
+    (Amended 2026-10-07, PER-USER RESOURCES ARE MULTI-ACCOUNT) A source of per-user resources -- a
+    mail system first, and a calendar or a personal file store likewise -- always serves many
+    accounts. It is given either one credential that reaches every account, or one credential per
+    account. The account is a column of each of its tables, so one table holds every account's
+    rows and row-level rules decide which accounts a role reads. A source of this kind that serves
+    one account only is not offered.
+    (Amended 2026-10-07, ONE BRAND, CLOUD OR DATA CENTER) A system offered both as a cloud service
+    and as a self-hosted product is one brand. Jira, Confluence and Bitbucket are each picked once,
+    and the steward says which deployment the source is -- Cloud or Data Center, and for Data Center
+    its version. That choice selects the pinned spec, since the two are different APIs, and the
+    tables and commands on offer follow from it.
+    (Amended 2026-10-07, STRIPE AS BUILT) Stripe is the first brand carried by the OpenAPI source.
+    It is picked as Stripe in the datasource picker, asks for a secret key and nothing else, and is
+    shown as Stripe afterwards; the source row is an OpenAPI source that records its brand and
+    names the brand's shipped spec. The spec is Stripe's published one, pinned and shipped with
+    Provisa under its MIT notice, and moved to a newer API version by baking it again. Adding the
+    source checks the key with one call to Stripe, stores it as every OpenAPI source's credential
+    is stored, and registers nothing. Each list is offered with the paging the spec declares
+    (REQ-316) -- after the last row's id for a list, the answered cursor for a search. Two lists
+    whose rows are one of several object kinds are offered as their page wrapper and not as rows.
+    Not yet read against a live Stripe account.
+    (Amended 2026-10-08, THE API VERSION) Every call to Stripe -- the key check, each read of a
+    table, each command -- carries a Stripe-Version header naming the version of the shipped
+    spec, so an answer has the shape the spec describes whatever version the account defaults
+    to. The header is derived from the shipped spec when the source is loaded and is never
+    stored, so baking a newer spec moves every Stripe source to it. A brand declares the header
+    that names its version; a source of a spec of the steward's own sends none.
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.
@@ -72416,8 +72503,12 @@
   - provisa/api/admin/graphql_remote_router.py
   - provisa/api/app_loaders.py
   - provisa-ui/src/pages/sources/sourceHelpers.ts
+  - provisa/openapi/brands.py
+  - provisa/api/admin/openapi_router.py
+  - scripts/bake_openapi_brand_spec.py
   tests:
   - tests/unit/test_graphql_brand_source.py
+  - tests/unit/test_openapi_brand_source.py
   - tests/unit/test_graphql_remote_relay.py
   - tests/integration/test_graphql_remote_source.py
   - provisa-ui/src/__tests__/sourceBrand.test.ts
@@ -72437,65 +72528,83 @@
   category: Branded API Sources
   priority: SHOULD
   type: behavioral
-  description: A source's write operations are registered as commands one at a time, the way its tables
-    are registered. Adding a source that has write operations -- the mutations of a remote GraphQL source,
-    branded or not, and the non-GET operations of an OpenAPI source -- registers no commands. Every write
-    operation the source offers is listed where a command is added, and the steward registers the ones
-    wanted, each into a domain with who may call it and whether a call needs approval; that registration
-    is the curation, as it is for tables (REQ-1923). A command's argument may be a JSON object. An operation
-    whose input is an object -- a GraphQL mutation's input type, an OpenAPI request body -- takes that
-    object as one argument and passes it to the remote as it was given, on every surface a command can
-    be called from; the remote's own validation of it is reported to the caller as the remote stated it.
-    A command registered from a source is called with the source's credential. [SUPERSEDED by the 2026-10-02
-    CREDENTIAL AT CALL amendment below -- a write cannot be tried without being performed. Kept here for
-    history; do not implement against it.] At registration it is held to the same check a table is --
-    an operation the credential may not perform is refused then, with the remote's reason. [END SUPERSEDED
-    BLOCK] [SUPERSEDED by the 2026-10-02 PASS-THROUGH amendment below -- a mutator has no input contract;
-    it is passed through as is. Kept here for history; do not implement against it.] (Amended 2026-10-02,
-    INPUT CONTRACT) Where the source's schema describes an operation's input, that shape is recorded on
-    the command when it is registered as its input contract -- named fields with canonical types. The
-    contract is the stored truth and each surface projects it -- GraphQL as a typed input object, MCP
-    as the tool's JSON Schema, Cypher as a map, SQL as a JSON literal -- so a caller builds the object
-    from primitives in the surface's own syntax. A call is checked against what the contract states (required
-    fields, field types, no unknown field) and everything else is the remote's to accept or refuse. An
-    operation whose input the schema does not describe has no contract, takes an untyped JSON object and
-    is checked by the remote alone. [END SUPERSEDED BLOCK] (Amended 2026-10-02, PASS-THROUGH) A mutator
-    is passed through as is. Provisa does not shape, type or check its input -- the caller's JSON object
-    goes to the remote unchanged, and the remote's answer, its refusal included, comes back unchanged.
-    What Provisa governs is the security of the call -- that the operation is registered, which domain
-    it sits in, which roles may call it, whether a call needs approval, that it is made with the source's
-    credential, and that each call is recorded. (Amended 2026-10-02, AN ACTION, NOT A TRANSFORM) A write
-    operation creates, changes or deletes something in the remote system. It is an action and not a derivation
-    of data, so it is not of the category of commands that take a dataset and return one (REQ-885, REQ-1159)
-    and it is not a lineage node (REQ-1160) -- lineage is for those commands and for transforms. A command
-    registered from a source's write operation is called on its own and is not composed in a view or a
-    materialized view, whose definition would otherwise perform the write each time it is read or refreshed.
-    What is recorded about it is what is recorded about any write -- who called it, as which role, with
-    what input, and what the remote answered -- and which table it writes, where that is known (REQ-871),
-    so the table's replica is refreshed after the call. (Amended 2026-10-02, THREE KINDS OF COMMAND) A
-    command is one of three kinds. A dataset transform takes a relation and returns a relation and is
-    a lineage node. A column transform takes values of a row and returns a value and is a named step inside
-    a projection's lineage. A mutator creates, updates or deletes something outside Provisa and is an
-    action, outside lineage. All three are registered one at a time and then governed; a source's write
-    operations are mutators. (Amended 2026-10-02, CREDENTIAL AT CALL) A table is checked against the source's
-    credential at registration by reading it; a write cannot be tried that way without being performed,
-    so whether the credential may perform an operation is answered by the remote when it is called, and
-    its refusal comes back to the caller as the remote stated it. (Amended 2026-10-02, WRITTEN TABLE)
-    The table a command writes is named on the command when it is registered, as one of the registered
-    tables of the command's own source, and is optional. After each call that the remote accepts, what
-    follows any write to that table follows -- its cached responses are dropped, the materialized views
-    over it are marked stale, its change is announced and its sinks run. [SUPERSEDED by the 2026-10-03
-    REPLICA AFTER WRITE amendment below -- the build request now exists (REQ-1915). Kept here for history;
-    do not implement against it.] Refreshing a replica of it after the call waits on a way to ask for
-    a replica refresh, which is not yet built; until then the replica is refreshed on its own schedule.
-    [END SUPERSEDED BLOCK] (Amended 2026-10-02, APPROVAL) A command that needs approval is put to the
-    deployment's approval hook (REQ-203) before each call, with who calls it, as which role, the command
-    and its arguments; it runs only when the hook approves. With no hook configured, such a call is refused.
-    (Amended 2026-10-03, REPLICA AFTER WRITE) When the written table is read from its whole-table replica
-    -- the operator's settings put it there, or the engine cannot read its source in place -- a build
-    of that replica is asked for after the call, with the reason "write" (REQ-1915); readers keep the
-    old replica until the new one swaps in. A table replicated row by row, or one with a parameter column,
+  description: A source's write operations are registered as commands one at a time, the way its
+    tables are registered. Adding a source that has write operations -- the mutations of a remote
+    GraphQL source, branded or not, and the non-GET operations of an OpenAPI source -- registers no
+    commands. Every write operation the source offers is listed where a command is added, and the
+    steward registers the ones wanted, each into a domain with who may call it and whether a call
+    needs approval; that registration is the curation, as it is for tables (REQ-1923). A command's
+    argument may be a JSON object. An operation whose input is an object -- a GraphQL mutation's
+    input type, an OpenAPI request body -- takes that object as one argument and passes it to the
+    remote as it was given, on every surface a command can be called from; the remote's own
+    validation of it is reported to the caller as the remote stated it. A command registered from
+    a source is called with the source's credential. [SUPERSEDED by the 2026-10-02 CREDENTIAL AT
+    CALL amendment below -- a write cannot be tried without being performed. Kept here for
+    history; do not implement against it.] At registration it is held to the same check a table
+    is -- an operation the credential may not perform is refused then, with the remote's
+    reason. [END SUPERSEDED BLOCK] [SUPERSEDED by the 2026-10-02 PASS-THROUGH amendment below -- a mutator has no
+    input contract; it is passed through as is. Kept here for history; do not implement against
+    it.] (Amended 2026-10-02, INPUT CONTRACT) Where the source's schema describes an
+    operation's input, that shape is recorded on the command when it is registered as its input
+    contract -- named fields with canonical types. The contract is the stored truth and each
+    surface projects it -- GraphQL as a typed input object, MCP as the tool's JSON Schema, Cypher
+    as a map, SQL as a JSON literal -- so a caller builds the object from primitives in the
+    surface's own syntax. A call is checked against what the contract states (required fields,
+    field types, no unknown field) and everything else is the remote's to accept or refuse. An
+    operation whose input the schema does not describe has no contract, takes an untyped JSON
+    object and is checked by the remote alone. [END SUPERSEDED BLOCK] (Amended 2026-10-02,
+    PASS-THROUGH) A mutator is passed through as is. Provisa does not shape, type or check its
+    input -- the caller's JSON object goes to the remote unchanged, and the remote's answer, its
+    refusal included, comes back unchanged. What Provisa governs is the security of the call --
+    that the operation is registered, which domain it sits in, which roles may call it, whether a
+    call needs approval, that it is made with the source's credential, and that each call is
+    recorded. (Amended 2026-10-02, AN ACTION, NOT A TRANSFORM) A
+    write operation creates, changes or deletes something in the remote system. It is an action
+    and not a derivation of data, so it is not of the category of commands that take a dataset
+    and return one (REQ-885, REQ-1159) and it is not a lineage node (REQ-1160) -- lineage is for
+    those commands and for transforms. A command registered from a source's write operation is
+    called on its own and is not composed in a view or a materialized view, whose definition
+    would otherwise perform the write each time it is read or refreshed. What is recorded about
+    it is what is recorded about any write -- who called it, as which role, with what input, and
+    what the remote answered -- and which table it writes, where that is known (REQ-871), so the
+    table's replica is refreshed after the call. (Amended 2026-10-02, THREE KINDS OF COMMAND) A
+    command is one of three kinds. A dataset transform takes a relation and returns a relation and
+    is a lineage node. A column transform takes values of a row and returns a value and is a named
+    step inside a projection's lineage. A mutator creates, updates or deletes something outside
+    Provisa and is an action, outside lineage. All three are registered one at a time and then
+    governed; a source's write operations are mutators. (Amended 2026-10-02, CREDENTIAL AT CALL)
+    A table is checked against the source's credential at registration by reading it; a write
+    cannot be tried that way without being performed, so whether the credential may perform an
+    operation is answered by the remote when it is called, and its refusal comes back to the
+    caller as the remote stated it. (Amended 2026-10-02, WRITTEN TABLE) The table a command
+    writes is named on the command when it is registered, as one of the registered tables of the
+    command's own source, and is optional. After each call that the remote accepts, what follows
+    any write to that table follows -- its cached responses are dropped, the materialized views
+    over it are marked stale, its change is announced and its sinks run. [SUPERSEDED by the
+    2026-10-03 REPLICA AFTER WRITE amendment below -- the build request now exists (REQ-1915).
+    Kept here for history; do not implement against it.] Refreshing a replica of it after the call
+    waits on a way to ask for a replica refresh, which is not yet built; until then the replica is
+    refreshed on its own schedule. [END SUPERSEDED BLOCK] (Amended 2026-10-02, APPROVAL) A command
+    that needs approval is put to the deployment's approval hook (REQ-203) before each call, with
+    who calls it, as which role, the command and its arguments; it runs only when the hook
+    approves. With no hook configured, such a call is refused. (Amended 2026-10-03, REPLICA AFTER
+    WRITE) When the written table is read from its whole-table replica -- the operator's settings
+    put it there, or the engine cannot read its source in place -- a build of that replica is
+    asked for after the call, with the reason "write" (REQ-1915); readers keep the old replica
+    until the new one swaps in. A table replicated row by row, or one with a parameter column,
     has no whole replica to rebuild. The same follows any write to a table made through Provisa.
+    (Amended 2026-10-07, A GET THAT ANSWERS NO ROWS) An OpenAPI source also offers as a command each
+    GET whose response declares no schema -- a diff, a log, an untyped document. Such an operation
+    is not offered as a table, since a table's columns are read from the response schema (REQ-316).
+    It reads, so it is registered as a query and none of what holds for a write holds for it -- it
+    needs no write right and may be composed in a statement or a view. Its answer is passed back as
+    the remote gave it. An operation whose declared answer is a file (application/octet-stream) is
+    offered the same way and answers one row with one bytea column named result; every surface
+    carries that value as it carries any bytea. The steward registers the ones wanted, as for any
+    command.
+    (Amended 2026-10-07, ANY ANSWER THAT IS NOT TEXT IS A FILE) A declared answer is a file when
+    none of the media types declared for it is text -- JSON, XML, text/* -- or unspecified (*/*).
+    A PDF, an archive or an image is a file as application/octet-stream is.
   use_case: GitHub offers 267 mutations and a team wants three of them. Registering all of them as commands
     when the source is added would put 264 unwanted commands in the model, each needing a domain and a
     grant; registering them one at a time keeps the model to what the team chose.

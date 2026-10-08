@@ -164,6 +164,7 @@ async def _pages(
     timeout: float,
     form_body: dict | None = None,
     paging: Paging | None = None,
+    source_headers: dict[str, str] | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Follow pagination, yielding each page as it arrives: a reader that takes them one at a
     time holds one page, not the collection."""
@@ -429,10 +430,15 @@ class PreparedCall:
 
 
 def prepare_call(
-    endpoint: ApiEndpoint, resolved_params: dict, base_url: str = "", auth: Any = None
+    endpoint: ApiEndpoint,
+    resolved_params: dict,
+    base_url: str = "",
+    auth: Any = None,
+    source_headers: dict[str, str] | None = None,
 ) -> PreparedCall:
     """The HTTP call ``endpoint`` makes with ``resolved_params``: its URL under ``base_url``,
-    its auth applied, its body encoded as the endpoint declares. Not for a gRPC endpoint
+    its source's own headers (``source_headers``) and auth applied, its body encoded as the
+    endpoint declares. Not for a gRPC endpoint
     (``method == "RPC"``), which is not an HTTP call."""
     from provisa.core.secrets import resolve_secrets
 
@@ -447,6 +453,7 @@ def prepare_call(
         # Prepend base_url if path is relative
         url = base_url.rstrip("/") + "/" + url.lstrip("/")
 
+    headers.update(source_headers or {})
     _apply_auth(auth, headers, query_params)
 
     # GraphQL: wrap query in proper body
@@ -548,6 +555,7 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
     auth=None,
     timeout: float = _DEFAULT_TIMEOUT,
     total_timeout: float = _DEFAULT_TOTAL_TIMEOUT,
+    source_headers: dict[str, str] | None = None,
 ) -> ApiAnswer:
     """Make the API call and return its pages, with whether the endpoint had more when the
     call stopped at its ``max_pages`` (:class:`ApiAnswer`; :func:`answer_rows` flattens it).
@@ -560,7 +568,7 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
         from provisa.core.secrets import resolve_secrets
 
         return ApiAnswer(await _call_grpc(endpoint, resolved_params, resolve_secrets(base_url)))
-    call = prepare_call(endpoint, resolved_params, base_url, auth)
+    call = prepare_call(endpoint, resolved_params, base_url, auth, source_headers)
 
     async def _run() -> ApiAnswer:
         paging = Paging()
@@ -599,13 +607,14 @@ async def iter_api_pages(  # REQ-1915
     auth: Any = None,
     timeout: float = _DEFAULT_TIMEOUT,
     paging: Paging | None = None,
+    source_headers: dict[str, str] | None = None,
 ) -> AsyncGenerator[Any, None]:
     """The pages of a paginated HTTP call, one at a time as each arrives, for a reader that
     copies a whole collection (a replica build). It holds one page at a time, and has no total
     time limit: a build is not under a request's deadline, and each page is under ``timeout``.
     It stops at the endpoint's ``max_pages`` like every call; ``paging`` tells the reader
     whether the endpoint had more."""
-    call = prepare_call(endpoint, resolved_params, base_url, auth)
+    call = prepare_call(endpoint, resolved_params, base_url, auth, source_headers)
     async with httpx.AsyncClient() as client:
         async for page in _pages(
             client,

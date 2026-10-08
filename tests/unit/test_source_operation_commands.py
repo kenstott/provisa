@@ -269,6 +269,19 @@ async def test_an_openapi_operation_gets_its_body_as_given_and_the_sources_crede
 
 
 @respx.mock
+async def test_an_openapi_operation_is_sent_its_sources_own_headers(state):
+    route = respx.post(f"{SHOP}/orders").mock(return_value=httpx.Response(201, json={"id": 7}))
+    shop = state.api_sources["shop"]
+    state.api_sources["shop"] = shop.model_copy(update={"headers": {"Shop-Version": "2026-01"}})
+    await ops.call_operation(state, "shop", "createOrder", {"body": {"sku": "A-1"}})
+    sent = route.calls.last.request
+    assert (sent.headers["shop-version"], sent.headers["authorization"]) == (
+        "2026-01",
+        "Bearer s3cret",
+    )
+
+
+@respx.mock
 async def test_a_body_the_operation_declares_as_a_form_is_sent_as_one(state):
     form = {
         "requestBody": {

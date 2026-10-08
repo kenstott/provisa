@@ -65,13 +65,15 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
     """
     # Load API sources
     from provisa.encryption import encryption_service  # REQ-686
+    from provisa.openapi.brands import spec_headers
 
     _enc = encryption_service()
     # REQ-1942: a source bound to a synthetic store is no API here -- its tables are read from
     # the store, and nothing in the environment calls it.
     src_rows = await conn.fetch(
-        "SELECT id, type, base_url, spec_url, auth FROM api_sources WHERE id NOT IN "
-        "(SELECT id FROM sources WHERE binding = 'synthetic')"
+        "SELECT a.id, a.type, a.base_url, a.spec_url, a.auth, s.path AS spec_path "
+        "FROM api_sources a LEFT JOIN sources s ON s.id = a.id "
+        "WHERE a.id NOT IN (SELECT id FROM sources WHERE binding = 'synthetic')"
     )
     api_sources: dict[str, ApiSource] = {}
     for r in src_rows:
@@ -85,6 +87,7 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
             base_url=r["base_url"],
             spec_url=r.get("spec_url"),
             auth=auth_data,
+            headers=spec_headers(r["spec_path"]) if r["type"] == "openapi" else {},
         )
         api_sources[api_src.id] = api_src
         source_types[api_src.id] = api_src.type.value

@@ -340,7 +340,11 @@ async def fetch(
     fails the request (REQ-1661): it is never logged and answered with whatever the cache held."""
     try:
         answer = await call_api(
-            endpoint, params, base_url=api_source.base_url, auth=api_source.auth
+            endpoint,
+            params,
+            base_url=api_source.base_url,
+            auth=api_source.auth,
+            source_headers=api_source.headers,
         )
     except ApiNotFoundError:
         return [], None

@@ -204,7 +204,7 @@ def replica_source(
     if endpoint.method == "RPC":
         return None
     params = dict(endpoint.default_params)
-    base_url, auth = api_source.base_url, api_source.auth
+    base_url, auth, source_headers = api_source.base_url, api_source.auth, api_source.headers
 
     pagination = endpoint.pagination
     if pagination is not None:
@@ -214,7 +214,14 @@ def replica_source(
             paging = Paging()
             pages = total = last = 0
             async with aclosing(
-                iter_api_pages(endpoint, params, base_url=base_url, auth=auth, paging=paging)
+                iter_api_pages(
+                    endpoint,
+                    params,
+                    base_url=base_url,
+                    auth=auth,
+                    paging=paging,
+                    source_headers=source_headers,
+                )
             ) as answer:
                 async for page in answer:
                     rows = flatten_response(
@@ -239,7 +246,10 @@ def replica_source(
         return None
     return SpooledDocumentSource(
         lambda spooled: _spooled_rows(
-            endpoint, lambda: prepare_call(endpoint, params, base_url, auth), rows, spooled
+            endpoint,
+            lambda: prepare_call(endpoint, params, base_url, auth, source_headers),
+            rows,
+            spooled,
         ),
         columns,
         table=table,

@@ -51,6 +51,9 @@ class ApiSource(BaseModel):  # REQ-295, REQ-297, REQ-298
     base_url: str
     spec_url: str | None = None
     auth: ApiAuth | None = None
+    # Sent with every call to the source, beside its auth. A branded source's are its brand's
+    # (openapi.brands), derived when the source is loaded and never stored.
+    headers: dict[str, str] = {}
 
 
 class ApiColumn(BaseModel):  # REQ-299, REQ-599

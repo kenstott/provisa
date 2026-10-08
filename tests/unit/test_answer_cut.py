@@ -153,7 +153,7 @@ async def test_a_cut_request_warns_and_lands_under_a_name_no_later_request_finds
 
     engine = SimpleNamespace(isolated_sync=isolated_sync)
     loc = CacheLocation("c", "s", "relational")
-    source = SimpleNamespace(base_url=BASE, auth=None)
+    source = SimpleNamespace(base_url=BASE, auth=None, headers={})
     endpoint = _endpoint(_offset(max_pages=1))
     with (
         patch.object(
@@ -210,7 +210,7 @@ async def test_a_cut_fill_warns_has_no_fetch_time_and_is_fetched_again():
         side_effect=lambda request: httpx.Response(200, json=_pets(2))
     )
     endpoint = _endpoint(_offset(max_pages=1))
-    source = SimpleNamespace(base_url=BASE, auth=None)
+    source = SimpleNamespace(base_url=BASE, auth=None, headers={})
     with collecting() as found:
         assert await fill_cache.fill(state, endpoint, source, [{}], ttl=300) == 2
     assert [w.code for w in found] == ["api.answer_cut"]

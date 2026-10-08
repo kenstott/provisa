@@ -84,7 +84,7 @@ def _endpoint(**kw) -> ApiEndpoint:
 
 
 def _api_source(auth=None):
-    return SimpleNamespace(base_url=BASE, auth=auth)
+    return SimpleNamespace(base_url=BASE, auth=auth, headers={})
 
 
 def _rows(con, table) -> list[tuple]:
@@ -126,7 +126,7 @@ def test_an_engine_with_no_cache_catalog_caches_in_the_catalog_it_reads_the_sour
 def test_a_sources_own_cache_catalog_wins_on_every_engine(store):
     state, _con = store
     state.source_catalogs["api"] = "api_catalog"
-    source = SimpleNamespace(base_url=BASE, auth=None, cache_catalog="pinned")
+    source = SimpleNamespace(base_url=BASE, auth=None, headers={}, cache_catalog="pinned")
     assert fill_cache.fill_table(state, _endpoint(), source).loc.catalog == "pinned"
 
 

@@ -62,7 +62,7 @@ def _endpoint(**kw) -> ApiEndpoint:
 
 
 def _api_source(auth=None):
-    return SimpleNamespace(base_url=BASE, auth=auth)
+    return SimpleNamespace(base_url=BASE, auth=auth, headers={"Api-Version": "7"})
 
 
 def _reader(endpoint: ApiEndpoint, auth=None):
@@ -119,6 +119,7 @@ async def test_a_paged_endpoint_is_read_one_page_per_round_trip():
         {"limit": "100", "offset": "100"},
         {"limit": "100", "offset": "200"},
     ]
+    assert {c.request.headers["api-version"] for c in route.calls} == {"7"}  # the source's own
 
 
 @respx.mock
@@ -363,6 +364,7 @@ async def test_the_spooled_call_carries_the_sources_auth_and_default_parameters(
     await _rows(_reader(endpoint, auth={"bearer": "t0ken"}))
     sent = route.calls[0].request
     assert sent.headers["authorization"] == "Bearer t0ken"
+    assert sent.headers["api-version"] == "7"  # the source's own headers
     assert dict(sent.url.params) == {"status": "sold"}
 
 
