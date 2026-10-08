@@ -526,7 +526,9 @@ sources: Provisa starts the bundled `pgwire-govdata` server for it, with the key
 credentials in the server's environment, and each engine reaches that server the way it reaches a
 sibling's. DuckDB, Postgres and ClickHouse attach it and read its tables in place, so an
 AskAmerica table joins tables of other sources, sits under views and is delivered like any other.
-Trino has no connector for it and reads a replica landed through the server. A table is read from
+Trino has no connector for it and reads a replica landed through the server: a copy of the
+table kept in the materialization store, as fresh as its last refresh under the table's cache
+and replication settings rather than read at query time. A table is read from
 the adapter schema it names (`sec`, `econ`, and so on). [tool-verified:
 `provisa/federation/pgwire_replica.py`, `provisa/federation/connector_duckdb.py`,
 `provisa/federation/clickhouse_connectors.py`]

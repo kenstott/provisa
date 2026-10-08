@@ -963,6 +963,18 @@ class ConnectorReplica:  # REQ-954/955/956
             ports, self._schema_of(table), table_name, pk_columns, keys, connect=self._connect
         )
 
+    def require_serving(self) -> None:
+        """Raise if a server was started for the source and is not accepting connections: still
+        starting (``SourceStillStartingError``) or exited (``ServerExited``, with its log's
+        end). Starts nothing and waits for nothing."""
+        server = self._server
+        if server is None or server.health():
+            return
+        code = server.exit_code()
+        if code is not None:
+            raise ServerExited(self._source.id, code, server.log_tail())
+        raise SourceStillStartingError(self._source.id)
+
     def close(self) -> None:
         """Stop the server (idempotent)."""
         if self._server is not None:
@@ -1018,6 +1030,18 @@ def start_when_saved(source: Any) -> None:
     from provisa.core.connection_loop import spawn_background
 
     spawn_background(asyncio.to_thread(start_endpoint, source), name=f"pgwire-server:{source.id}")
+
+
+def require_serving(source_id: str, source_type: str) -> None:
+    """Refuse, by name, a statement that reads a source whose server takes minutes to start
+    (``STARTED_WHEN_SAVED``) while that server is not yet serving — rather than hand the engine
+    a statement naming a relation it could not attach. No server started for the source in this
+    process is not a refusal: the engine's attach starts one."""
+    if source_type not in STARTED_WHEN_SAVED:
+        return
+    replica = _ENDPOINTS.get(source_id)
+    if replica is not None:
+        replica.require_serving()
 
 
 def server_start_errors() -> tuple[type[BaseException], ...]:

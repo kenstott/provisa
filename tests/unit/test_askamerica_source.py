@@ -496,3 +496,217 @@ def test_the_source_is_started_when_it_is_saved(monkeypatch):
     pr.start_when_saved(_source())
     pr.start_when_saved(Source(id="docs", type=SourceType.files, path="/data"))
     assert started == ["pgwire-server:test-askamerica"]
+
+
+# -- nothing changed for the single-schema siblings --------------------------------------------
+
+_SIBLINGS = ("files", "sharepoint", "splunk", "salesforce", "cloudops")
+
+
+def _sibling(stype: str) -> Any:
+    return SimpleNamespace(
+        id="my-src", type=SourceType(stype), catalog="my_src", schema_name="x", table_name="t"
+    )
+
+
+@pytest.mark.parametrize("stype", _SIBLINGS)
+def test_a_single_schema_sibling_attaches_on_duckdb_exactly_as_before(endpoint, stype):
+    assert build_duckdb_engine().connectors[stype].details(_sibling(stype)) == {
+        "attach": "ATTACH 'host=127.0.0.1 port=5440 user=provisa dbname=provisa' "
+        'AS "_src_my-src" (TYPE postgres, READ_ONLY)',
+        "raw_alias": "_src_my-src",
+        "remote_schema": "my_src",
+    }
+
+
+@pytest.mark.parametrize("stype", _SIBLINGS)
+def test_a_single_schema_sibling_attaches_on_postgres_exactly_as_before(endpoint, stype):
+    assert build_pg_engine().connectors[stype].details(_sibling(stype)) == {
+        "attach_ddl": [
+            "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
+            'CREATE SERVER IF NOT EXISTS "fdw_pgwire_my_src" FOREIGN DATA WRAPPER postgres_fdw '
+            "OPTIONS (host '127.0.0.1', port '5440', dbname 'provisa')",
+            'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "fdw_pgwire_my_src" '
+            "OPTIONS (user 'provisa')",
+            'CREATE SCHEMA IF NOT EXISTS "fdw_pgwire_my_src"',
+            'IMPORT FOREIGN SCHEMA my_src FROM SERVER "fdw_pgwire_my_src" INTO "fdw_pgwire_my_src"',
+        ],
+        "local_schema": "fdw_pgwire_my_src",
+    }
+
+
+@pytest.mark.parametrize("stype", _SIBLINGS)
+def test_a_single_schema_sibling_attaches_on_clickhouse_exactly_as_before(endpoint, stype):
+    assert build_clickhouse_engine().connectors[stype].details(_sibling(stype)) == {
+        "attach_ddl": [
+            'CREATE DATABASE IF NOT EXISTS "ch_pgwire_my_src" ENGINE = PostgreSQL('
+            "'127.0.0.1:5440', 'provisa', 'provisa', '', 'my_src')"
+        ],
+        "local_schema": "ch_pgwire_my_src",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stype", _SIBLINGS)
+async def test_a_single_schema_sibling_is_landed_from_its_one_schema_as_before(stype):
+    statements: list[str] = []
+
+    class _Conn:
+        async def fetch(self, sql, *args, timeout=None):
+            statements.append(sql)
+            return []
+
+        async def close(self):
+            return None
+
+    async def connect(host, port):
+        return _Conn()
+
+    source = Source(id="my-src", type=SourceType(stype))
+    replica = pr.ConnectorReplica(source, connect=connect)
+    replica.endpoint = lambda timeout=None: pr.PortPair(5440, "127.0.0.1", 5540)  # type: ignore[method-assign]
+    await replica.load(SimpleNamespace(schema_name="anything", table_name="t"))
+    await replica.load_keys(SimpleNamespace(schema_name="anything", table_name="t"), ["id"], [(1,)])
+    assert statements == [
+        'SELECT * FROM "my_src"."t"',
+        'SELECT * FROM "my_src"."t" WHERE "id" = ANY($1)',
+    ]
+
+
+# -- the key and what it resolves to are never written anywhere a reader could find them -------
+
+_SECRETS = ("aa-key", "AK", "SK", "TOKEN")
+
+
+def test_no_error_this_source_raises_carries_the_key_or_its_credentials():
+    creds = aa.resolve_storage_credentials("aa-key", fetch=lambda key: (200, _ANSWER))
+    said = [
+        repr(creds),
+        str(creds),
+        str(aa.AskAmericaKeyMissing("test-askamerica")),
+        str(pr.SourceStillStartingError("test-askamerica")),
+        str(pr.ServerExited("test-askamerica", 1, "the server's own log tail")),
+    ]
+    for refusal in (
+        lambda: aa.resolve_storage_credentials(
+            "aa-key", fetch=lambda key: (401, {"error": "invalid_api_key"})
+        ),
+        lambda: aa.resolve_storage_credentials(
+            "aa-key", fetch=lambda key: (502, {"error": "credential_mint_failed"})
+        ),
+    ):
+        with pytest.raises((aa.AskAmericaKeyRefused, aa.AskAmericaUnavailable)) as raised:
+            refusal()
+        said.append(str(raised.value))
+    for text in said:
+        for secret in _SECRETS:
+            assert secret not in text.replace("AskAmerica", ""), text
+
+
+def test_the_servers_command_line_and_model_carry_no_secret(tmp_path):
+    """They go to the process table and to a file on disk; the environment is the only carrier."""
+    (tmp_path / "model").mkdir()
+    (tmp_path / "model" / "model.json").write_text(json.dumps(_BUNDLE_MODEL))
+    creds = aa.resolve_storage_credentials("aa-key", fetch=lambda key: (200, _ANSWER))
+    server = pr.PgwireServer(
+        bundle_dir=tmp_path,
+        spec=rd.bundle_spec_for("govdata"),
+        model=pr.build_model_json(_source(), bundle_dir=tmp_path),
+        ports=pr.PortPair(5440, "127.0.0.1", 5540),
+        spawn=lambda *args: SimpleNamespace(),
+        environment=aa.server_environment(_source(), resolve=lambda key: creds),
+    )
+    server.start()
+    written = " ".join(server.command()) + (tmp_path / "model" / "model.json").read_text()
+    for secret in _SECRETS:
+        assert secret not in written
+
+
+def test_starting_the_server_logs_no_secret(tmp_path, caplog, monkeypatch):
+    import logging
+
+    (tmp_path / "bundle" / "model").mkdir(parents=True)
+    (tmp_path / "bundle" / "model" / "model.json").write_text(json.dumps(_BUNDLE_MODEL))
+    (tmp_path / "bundle" / "bin").mkdir()
+    monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(aa, "_fetch", lambda key: (200, _ANSWER))
+    replica = pr.ConnectorReplica(
+        _source(),
+        resolver=SimpleNamespace(resolve=lambda spec: tmp_path / "bundle"),  # type: ignore[arg-type]
+        allocator=pr.PortAllocator(is_free=lambda port: True),
+        spawn=lambda *args: SimpleNamespace(exit_code=lambda: None),
+        health_check=lambda host, port: True,
+    )
+    with caplog.at_level(logging.DEBUG):
+        replica.endpoint()
+    for secret in _SECRETS:
+        assert secret not in caplog.text.replace("AskAmerica", "")
+
+
+# -- while the adapter starts, a statement reading the source says so --------------------------
+
+
+def _replica_with_server(*, healthy: bool, exit_code: int | None):
+    replica = pr.ConnectorReplica(_source())
+    replica._server = SimpleNamespace(  # type: ignore[assignment]
+        health=lambda: healthy, exit_code=lambda: exit_code, log_tail=lambda: "the log's end"
+    )
+    return replica
+
+
+def test_a_statement_reading_a_starting_source_is_refused_as_starting(monkeypatch):
+    monkeypatch.setitem(
+        pr._ENDPOINTS, "test-askamerica", _replica_with_server(healthy=False, exit_code=None)
+    )
+    with pytest.raises(pr.SourceStillStartingError, match="STARTING: 'test-askamerica'"):
+        pr.require_serving("test-askamerica", "govdata")
+
+
+def test_a_statement_reading_a_source_whose_server_exited_is_told_why(monkeypatch):
+    monkeypatch.setitem(
+        pr._ENDPOINTS, "test-askamerica", _replica_with_server(healthy=False, exit_code=3)
+    )
+    with pytest.raises(pr.ServerExited, match=r"(?s)exited with code 3.*the log's end") as raised:
+        pr.require_serving("test-askamerica", "govdata")
+    assert "aa-key" not in str(raised.value)
+
+
+def test_a_serving_source_and_a_source_with_no_server_yet_are_not_refused(monkeypatch):
+    monkeypatch.setitem(
+        pr._ENDPOINTS, "test-askamerica", _replica_with_server(healthy=True, exit_code=None)
+    )
+    pr.require_serving("test-askamerica", "govdata")
+    pr.require_serving("never-started", "govdata")
+    pr.require_serving("some-pg", "postgresql")
+
+
+def test_the_pipeline_asks_only_for_a_statement_the_engine_computes(monkeypatch):
+    from provisa.pgwire import _pipeline
+    from provisa.transpiler.router import Route
+
+    asked: list[tuple[str, str]] = []
+    monkeypatch.setattr(pr, "require_serving", lambda sid, stype: asked.append((sid, stype)))
+    state = SimpleNamespace(source_types={"test-askamerica": "govdata", "pg": "postgresql"})
+    sources = {"test-askamerica", "pg"}
+    _pipeline._refuse_while_source_server_starts(
+        SimpleNamespace(route=Route.DIRECT), sources, state
+    )
+    assert asked == []
+    _pipeline._refuse_while_source_server_starts(
+        SimpleNamespace(route=Route.ENGINE), sources, state
+    )
+    assert asked == [("pg", "postgresql"), ("test-askamerica", "govdata")]
+
+
+# -- subscriptions: as a sibling's -------------------------------------------------------------
+
+
+@pytest.mark.parametrize("stype", ["govdata", "sharepoint", "salesforce", "cloudops"])
+def test_no_pgwire_family_source_has_a_subscription_provider(stype):
+    """The family has none today; a subscription on one is refused naming the type. AskAmerica
+    has no provider of its own."""
+    from provisa.subscriptions.registry import get_provider, supports_polling_fallback
+
+    assert not supports_polling_fallback(stype)
+    with pytest.raises(ValueError, match=f"No subscription provider for source_type='{stype}'"):
+        get_provider(stype, {})

@@ -553,6 +553,20 @@ def _direct_terminal_serves(decision: Any, default_source: str, state: Any) -> b
     return source_id != "provisa-admin" and state.source_pools.has(source_id)
 
 
+def _refuse_while_source_server_starts(decision: Any, sources: Any, state: Any) -> None:
+    """A statement the engine computes over a source whose own server is still starting (an
+    AskAmerica adapter mounts its schemas for minutes) is refused naming the source and that it
+    is starting, before the engine is asked for a relation it has not been able to attach."""
+    from provisa.transpiler.router import Route
+
+    if decision.route != Route.ENGINE:
+        return
+    from provisa.federation.pgwire_replica import require_serving
+
+    for source_id in sorted(sources):
+        require_serving(source_id, state.source_types.get(source_id, ""))
+
+
 async def _optimize_and_route_cached(
     exec_sql: str,
     governed_sql: str,
@@ -1833,6 +1847,7 @@ async def route_governed(
             _qualified = fold_catalog_into_schema(_qualified)
         return state.federation_engine.transpile_physical(_qualified)
 
+    _refuse_while_source_server_starts(decision, _sources, state)
     if decision.route == Route.ENGINE:
         # REQ-135/REQ-1163: inline-expand any __derived__ view ref BEFORE the unknown-catalog check and
         # transpile — a request-level as-of overlays each bitemporal view's entry with an as-of
@@ -4184,6 +4199,7 @@ async def _route_compiled(
     # which the reverse compiler does not have (it mis-translated a reshaped junction table).
     # Row-level materialization (REQ-1865) is the sanctioned mechanism for neo4j read performance
     # instead. A single-source neo4j query now always falls through to Route.ENGINE.
+    _refuse_while_source_server_starts(decision, sources, state)
     if decision.route == Route.ENGINE:
         _exec_sql, physical_sql = await _engine_forms(_exec_sql)
         _hints = _engine_session_hints(state, sources, session_props, _exec_sql)
