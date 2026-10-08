@@ -16,15 +16,17 @@ import { useComputedColorScheme } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import "./OpenApiPage.css";
+import { actingRoleHeader } from "../lib/actingRole";
 
 export function OpenApiPage() {
   const { t } = useTranslation();
   // Computed, not the raw setting: the raw value is "auto" when the user follows the system, and
   // "auto" is not "light", so the docs frame rendered dark on a light app.
   const colorScheme = useComputedColorScheme("light");
-  const { role, loading: authLoading } = useAuth();
+  const { selectedRoles, loading: authLoading } = useAuth();
   const { checkedDomains } = useDomainFilter();
-  const roleId = role?.id ?? "";
+  // REQ-1620: the ACTIVE roles — one, or under "Role: All" the set served as their meta-role.
+  const roleId = actingRoleHeader(selectedRoles) ?? "";
   const domainsParam = checkedDomains.size > 0 ? [...checkedDomains].join(",") : "";
   const theme = colorScheme === "light" ? "light" : "dark";
   const params = new URLSearchParams();

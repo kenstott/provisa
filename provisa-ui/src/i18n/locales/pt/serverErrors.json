@@ -31,8 +31,10 @@
       "invite_not_found": "Convite não encontrado",
       "last_org_admin": "Este é o último org_admin de: {{orgs}}. Promova outro org_admin em cada uma, ou exclua a organização, antes de excluir a conta.",
       "last_platform_admin": "Este é o último platform_admin desta implantação. Conceda platform_admin a outro usuário antes de excluir a conta.",
+      "meta_role_named": "'{{role_id}}' não é uma função: indique as funções que você possui e o servidor atuará como elas",
       "redeem_auth_required": "Autenticação necessária para resgatar um convite",
       "registration_basic_only": "Registro disponível apenas com o provedor de autenticação basic",
+      "role_not_assigned": "A função '{{role_id}}' não está atribuída a este usuário",
       "simple_provider_not_configured": "Provedor de autenticação simples não configurado",
       "username_exists": "Nome de usuário já existe"
     },
@@ -77,7 +79,7 @@
       "no_govdata_source": "Nenhuma fonte govdata '{{source_id}}'",
       "no_grpc_query_for_table": "Nenhuma consulta gRPC registrada para a tabela '{{table}}'",
       "no_mutation_fields": "Nenhum campo de mutação encontrado",
-      "no_proto_for_role": "Nenhum arquivo proto disponível para a função '{{role_id}}'",
+      "no_proto_for_role": "A função '{{role_id}}' não tem proto: nenhuma superfície de dados lhe é fornecida, porque não alcança nenhum domínio ou possui apenas direitos do plano de controle",
       "no_query_field_for_proto_type": "Nenhum campo de consulta para o tipo proto '{{type_name}}' na função '{{role_id}}'",
       "no_query_fields": "Nenhum campo de consulta encontrado",
       "no_role": "Função '{{role_id}}' inexistente",
@@ -100,7 +102,9 @@
       "write_not_supported": "'{{table}}' não aceita {{operation}}: sua origem não consegue executá-lo",
       "table_is_draft": "{{table}} é um rascunho: fora de serviço até que os responsáveis pelo seu domínio a liberem",
       "source_unbound": "A origem '{{source}}' não tem conexão no ambiente '{{env}}': vincule-a ou copie-a novamente do ambiente pai",
-      "system_catalog_unavailable": "O catálogo '{{catalog}}' do mecanismo está sendo registrado. Tente novamente em instantes."
+      "system_catalog_unavailable": "O catálogo '{{catalog}}' do mecanismo está sendo registrado. Tente novamente em instantes.",
+      "domain_not_accessible": "A função '{{role_id}}' não tem acesso ao domínio '{{domain}}'",
+      "role_mismatch": "A solicitação indica a função '{{body_role}}', mas é executada como a função '{{acting_role}}'. A função é transmitida pelo cabeçalho X-Provisa-Role (ou pela identidade conectada); remova a outra função ou faça com que coincida."
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",

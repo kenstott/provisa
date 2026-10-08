@@ -63,13 +63,13 @@ def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, body: Bas
 async def proto_endpoint(role_id: str, request: Request, domains: str = ""):  # REQ-525
     """Return the .proto file content for a role as text/plain.
 
-    Pass ?domains=a,b to restrict to specific domains. The role in the path is one the caller
-    holds (``acting_role.held_role``).
+    Pass ?domains=a,b to restrict to specific domains. The path names one role the caller holds,
+    or a comma-separated set of them served as their meta-role (``acting_role.named_role``).
     """
-    from provisa.api.acting_role import held_role
+    from provisa.api.acting_role import named_role
     from provisa.api.app import state
 
-    role_id = held_role(request, role_id)
+    role_id = named_role(request, role_id)
     from provisa.grpc.proto_gen import generate_proto
 
     domain_list = [d for d in domains.split(",") if d and d != "all"]
@@ -125,10 +125,18 @@ async def proto_endpoint(role_id: str, request: Request, domains: str = ""):  # 
         return Response(content=proto, media_type="text/plain")
 
     if role_id not in state.proto_files:
+        # Each reason is its own answer: the model has not been built, the role does not exist,
+        # or the role exists and is given no data surface (it reaches no domain, or it is a
+        # control-plane role — app_loaders._build_and_register_schemas).
+        if not state.role_build_inputs:
+            raise ApiError(503, "data.schema_cache_not_ready", "Schema build cache not ready")
+        if role_id not in state.roles:
+            raise ApiError(404, "data.no_role", f"No role {role_id!r}", role_id=role_id)
         raise ApiError(
             404,
             "data.no_proto_for_role",
-            f"No proto file available for role {role_id!r}",
+            f"Role {role_id!r} has no proto: it is given no data surface, because it reaches "
+            "no domain or holds only control-plane rights",
             role_id=role_id,
         )
     return Response(content=state.proto_files[role_id], media_type="text/plain")

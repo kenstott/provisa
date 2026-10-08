@@ -424,6 +424,8 @@ Return the auto-generated `.proto` file for a role. [tool-verified: `provisa/api
 
 **Response:** `text/plain` protobuf schema.
 
+`{role_id}` is one role the caller holds, or a comma-separated set of held roles (`analyst,org_admin`), which is served as the set's meta-role: the union of what its members are granted. A role the caller does not hold is refused with `403 auth.role_not_assigned`, and a meta-role id named directly with `403 auth.meta_role_named`. `?domains=a,b` narrows the proto to those domains; a domain the role does not reach is refused with `403 data.domain_not_accessible`. A role with no data surface answers `404 data.no_proto_for_role`, an unknown role `404 data.no_role`, and a model that has not been built yet `503 data.schema_cache_not_ready`. (REQ-1620, REQ-273) [tool-verified: `provisa/api/data/endpoint_dev.py`, `provisa/api/acting_role.py`]
+
 Each registered table produces a proto `message`. Relationships produce nested message fields. Type mapping: `integer → int32`, `bigint → int64`, `varchar → string`, `decimal → double`, `boolean → bool`, `timestamp → google.protobuf.Timestamp`. (REQ-538)
 
 ---

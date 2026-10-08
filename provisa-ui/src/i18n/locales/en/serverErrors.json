@@ -31,8 +31,10 @@
       "invite_not_found": "Invite not found",
       "last_org_admin": "You are the last org_admin of: {{orgs}}. Promote another org_admin in each, or delete the organization, before deleting your account.",
       "last_platform_admin": "You are the last platform_admin of this deployment. Grant platform_admin to another user before deleting your account.",
+      "meta_role_named": "'{{role_id}}' is not a role: name the roles you hold, and the server acts as them",
       "redeem_auth_required": "Authentication required to redeem an invite",
       "registration_basic_only": "Registration only available with basic auth provider",
+      "role_not_assigned": "Role '{{role_id}}' is not assigned to this user",
       "simple_provider_not_configured": "Simple auth provider not configured",
       "username_exists": "Username already exists"
     },
@@ -77,7 +79,7 @@
       "no_govdata_source": "No govdata source '{{source_id}}'",
       "no_grpc_query_for_table": "No gRPC query registered for table '{{table}}'",
       "no_mutation_fields": "No mutation fields found",
-      "no_proto_for_role": "No proto file available for role '{{role_id}}'",
+      "no_proto_for_role": "Role '{{role_id}}' has no proto: it is given no data surface, because it reaches no domain or holds only control-plane rights",
       "no_query_field_for_proto_type": "No query field for proto type '{{type_name}}' under role '{{role_id}}'",
       "no_query_fields": "No query fields found",
       "no_role": "No role '{{role_id}}'",
@@ -100,7 +102,9 @@
       "write_not_supported": "'{{table}}' does not take {{operation}}: its source cannot carry it",
       "table_is_draft": "{{table}} is a draft: out of service until its domain's owners release it",
       "source_unbound": "Source '{{source}}' has no connection in environment '{{env}}': bind it, or re-copy it from the parent",
-      "system_catalog_unavailable": "The engine's '{{catalog}}' catalog is being registered. Try again shortly."
+      "system_catalog_unavailable": "The engine's '{{catalog}}' catalog is being registered. Try again shortly.",
+      "domain_not_accessible": "Role '{{role_id}}' does not reach domain '{{domain}}'",
+      "role_mismatch": "The request names role '{{body_role}}' but runs as role '{{acting_role}}'. The role is carried by the X-Provisa-Role header (or the signed-in identity); remove the other role or make it match."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",

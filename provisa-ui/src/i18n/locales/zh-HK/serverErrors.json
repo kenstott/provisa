@@ -31,8 +31,10 @@
       "invite_not_found": "找不到邀請",
       "last_org_admin": "你是以下組織最後一位 org_admin：{{orgs}}。請先在各組織晉升另一位 org_admin，或刪除該組織，然後才刪除你的帳戶。",
       "last_platform_admin": "你是此部署最後一位 platform_admin。請先將 platform_admin 授予另一位使用者，然後才刪除你的帳戶。",
+      "meta_role_named": "「{{role_id}}」並非角色：請指明你持有的角色，伺服器會以這些角色的身分執行",
       "redeem_auth_required": "兌換邀請需要驗證",
       "registration_basic_only": "只有使用 basic 驗證提供者才可註冊",
+      "role_not_assigned": "角色「{{role_id}}」未指派予此使用者",
       "simple_provider_not_configured": "未設定 Simple 驗證提供者",
       "username_exists": "使用者名稱已存在"
     },
@@ -77,7 +79,7 @@
       "no_govdata_source": "沒有 govdata 數據來源「{{source_id}}」",
       "no_grpc_query_for_table": "資料表「{{table}}」沒有已註冊的 gRPC 查詢",
       "no_mutation_fields": "找不到變更欄位",
-      "no_proto_for_role": "角色「{{role_id}}」沒有可用的 proto 檔案",
+      "no_proto_for_role": "角色「{{role_id}}」沒有 proto：它沒有資料介面，因為它未涵蓋任何網域，或只擁有控制平面權限",
       "no_query_field_for_proto_type": "角色「{{role_id}}」下的 proto 類型「{{type_name}}」沒有查詢欄位",
       "no_query_fields": "找不到查詢欄位",
       "no_role": "沒有角色「{{role_id}}」",
@@ -100,7 +102,9 @@
       "write_not_supported": "'{{table}}' 不接受 {{operation}}：其資料來源無法執行",
       "table_is_draft": "{{table}} 是草稿：在其領域的擁有者發佈之前停止服務",
       "source_unbound": "來源 '{{source}}' 在環境 '{{env}}' 中沒有連線：請綁定它，或從父環境重新複製",
-      "system_catalog_unavailable": "引擎的目錄 '{{catalog}}' 正在註冊。請稍後重試。"
+      "system_catalog_unavailable": "引擎的目錄 '{{catalog}}' 正在註冊。請稍後重試。",
+      "domain_not_accessible": "角色「{{role_id}}」無法存取網域「{{domain}}」",
+      "role_mismatch": "請求指明角色「{{body_role}}」，但以角色「{{acting_role}}」執行。角色由 X-Provisa-Role 標頭（或已登入的身分）傳遞；請移除另一個角色或令其一致。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",

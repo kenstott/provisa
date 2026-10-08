@@ -31,8 +31,10 @@
       "invite_not_found": "Einladung nicht gefunden",
       "last_org_admin": "Sie sind der letzte org_admin von: {{orgs}}. Ernennen Sie in jeder Organisation einen weiteren org_admin oder löschen Sie die Organisation, bevor Sie Ihr Konto löschen.",
       "last_platform_admin": "Sie sind der letzte platform_admin dieser Bereitstellung. Vergeben Sie platform_admin an einen anderen Benutzer, bevor Sie Ihr Konto löschen.",
+      "meta_role_named": "'{{role_id}}' ist keine Rolle: Nennen Sie die Rollen, die Sie innehaben, und der Server handelt in deren Namen",
       "redeem_auth_required": "Zum Einlösen einer Einladung ist eine Authentifizierung erforderlich",
       "registration_basic_only": "Registrierung nur mit dem Basic-Auth-Anbieter verfügbar",
+      "role_not_assigned": "Rolle '{{role_id}}' ist diesem Benutzer nicht zugewiesen",
       "simple_provider_not_configured": "Simple-Auth-Anbieter nicht konfiguriert",
       "username_exists": "Benutzername existiert bereits"
     },
@@ -77,7 +79,7 @@
       "no_govdata_source": "Keine govdata-Quelle '{{source_id}}'",
       "no_grpc_query_for_table": "Keine gRPC-Abfrage für Tabelle '{{table}}' registriert",
       "no_mutation_fields": "Keine Mutationsfelder gefunden",
-      "no_proto_for_role": "Keine Proto-Datei für Rolle '{{role_id}}' verfügbar",
+      "no_proto_for_role": "Rolle '{{role_id}}' hat keine Proto-Datei: Sie erhält keine Datenoberfläche, weil sie keine Domäne erreicht oder nur Rechte der Steuerungsebene besitzt",
       "no_query_field_for_proto_type": "Kein Abfragefeld für Proto-Typ '{{type_name}}' unter Rolle '{{role_id}}'",
       "no_query_fields": "Keine Abfragefelder gefunden",
       "no_role": "Keine Rolle '{{role_id}}'",
@@ -100,7 +102,9 @@
       "write_not_supported": "'{{table}}' nimmt kein {{operation}} an: seine Quelle kann es nicht ausführen",
       "table_is_draft": "{{table}} ist ein Entwurf: außer Betrieb, bis die Verantwortlichen ihrer Domäne sie freigeben",
       "source_unbound": "Die Quelle '{{source}}' hat in der Umgebung '{{env}}' keine Verbindung: Binden Sie sie oder kopieren Sie sie erneut aus der übergeordneten Umgebung",
-      "system_catalog_unavailable": "Der Katalog '{{catalog}}' der Engine wird gerade registriert. Versuchen Sie es in Kürze erneut."
+      "system_catalog_unavailable": "Der Katalog '{{catalog}}' der Engine wird gerade registriert. Versuchen Sie es in Kürze erneut.",
+      "domain_not_accessible": "Rolle '{{role_id}}' hat keinen Zugriff auf die Domäne '{{domain}}'",
+      "role_mismatch": "Die Anfrage nennt die Rolle '{{body_role}}', wird aber als Rolle '{{acting_role}}' ausgeführt. Die Rolle wird über den Header X-Provisa-Role (oder die angemeldete Identität) übermittelt; entfernen Sie die andere Rolle oder gleichen Sie sie an."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",

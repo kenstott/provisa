@@ -31,8 +31,10 @@
       "invite_not_found": "No se encontró la invitación",
       "last_org_admin": "Es el último org_admin de: {{orgs}}. Promueva a otro org_admin en cada una, o elimine la organización, antes de eliminar la cuenta.",
       "last_platform_admin": "Es el último platform_admin de esta implementación. Otorgue platform_admin a otro usuario antes de eliminar la cuenta.",
+      "meta_role_named": "'{{role_id}}' no es un rol: indique los roles que posee y el servidor actuará como ellos",
       "redeem_auth_required": "Se requiere autenticación para canjear una invitación",
       "registration_basic_only": "El registro solo está disponible con el proveedor de autenticación basic",
+      "role_not_assigned": "El rol '{{role_id}}' no está asignado a este usuario",
       "simple_provider_not_configured": "El proveedor de autenticación simple no está configurado",
       "username_exists": "El nombre de usuario ya existe"
     },
@@ -77,7 +79,7 @@
       "no_govdata_source": "No existe el origen govdata '{{source_id}}'",
       "no_grpc_query_for_table": "No hay consulta gRPC registrada para la tabla '{{table}}'",
       "no_mutation_fields": "No se encontraron campos de mutación",
-      "no_proto_for_role": "No hay archivo proto disponible para el rol '{{role_id}}'",
+      "no_proto_for_role": "El rol '{{role_id}}' no tiene proto: no se le ofrece superficie de datos porque no alcanza ningún dominio o solo posee derechos del plano de control",
       "no_query_field_for_proto_type": "No hay campo de consulta para el tipo proto '{{type_name}}' bajo el rol '{{role_id}}'",
       "no_query_fields": "No se encontraron campos de consulta",
       "no_role": "No existe el rol '{{role_id}}'",
@@ -100,7 +102,9 @@
       "write_not_supported": "'{{table}}' no admite {{operation}}: su origen no puede realizarlo",
       "table_is_draft": "{{table}} es un borrador: fuera de servicio hasta que los responsables de su dominio la liberen",
       "source_unbound": "El origen '{{source}}' no tiene conexión en el entorno '{{env}}': vincúlelo o vuelva a copiarlo del entorno principal",
-      "system_catalog_unavailable": "El catálogo '{{catalog}}' del motor se está registrando. Vuelva a intentarlo en breve."
+      "system_catalog_unavailable": "El catálogo '{{catalog}}' del motor se está registrando. Vuelva a intentarlo en breve.",
+      "domain_not_accessible": "El rol '{{role_id}}' no tiene acceso al dominio '{{domain}}'",
+      "role_mismatch": "La solicitud indica el rol '{{body_role}}' pero se ejecuta como el rol '{{acting_role}}'. El rol se transmite en la cabecera X-Provisa-Role (o en la identidad con sesión iniciada); elimine el otro rol o haga que coincida."
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",

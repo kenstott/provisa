@@ -25,7 +25,7 @@ from typing import Any
 import pytest
 
 import provisa.api.app as appmod
-from provisa.api.acting_role import header_role, held_role
+from provisa.api.acting_role import header_role, held_role, named_role
 from provisa.api.data import endpoint_dev, endpoint_grpc_proxy
 from provisa.api.errors import ApiError
 from provisa.auth.models import RoleAssignment
@@ -44,7 +44,7 @@ def _request(*held: str, user_id: str | None = "u1", body: dict | None = None) -
     async def _json():
         return body or {}
 
-    return types.SimpleNamespace(state=state, json=_json)
+    return types.SimpleNamespace(state=state, json=_json, headers={})
 
 
 @pytest.fixture(autouse=True)
@@ -87,6 +87,155 @@ def test_a_held_role_is_honoured_and_any_other_is_refused():
 def test_no_auth_provider_takes_the_role_at_face_value():
     assert held_role(_request(user_id="anonymous"), B) == B
     assert held_role(_request(user_id=None), B) == B
+
+
+# --- a set of held roles named in the path (REQ-1620) --------------------------------------------
+
+META = "meta:role_a+role_b"
+
+
+@pytest.fixture
+def built(monkeypatch):
+    """The sets whose meta-role was asked for, with the meta-role's surface in place of a build."""
+    asked: list[tuple[str, ...]] = []
+
+    def _ensure(state, members):
+        asked.append(tuple(sorted(set(members))))
+        return "meta:" + "+".join(sorted(set(members)))
+
+    monkeypatch.setattr("provisa.security.meta_role.ensure_meta_role", _ensure)
+    appmod.state.proto_files[META] = 'syntax = "proto3"; // a+b'
+    return asked
+
+
+def test_one_named_role_is_that_role_and_several_act_as_their_meta_role(built):
+    assert named_role(_request(A, B), A) == A
+    assert built == []
+    assert named_role(_request(A, B), f"{B}, {A}") == META
+    assert named_role(_request(A, B), f"{A},{A}") == A  # the same role twice is one role
+    assert built == [(A, B)]
+
+
+def test_every_member_of_a_named_set_is_held(built):
+    with pytest.raises(ApiError) as err:
+        named_role(_request(A), f"{A},{B}")
+    _refused(err, B)
+    assert built == [], "no meta-role is made for a set the caller does not hold"
+
+
+def test_a_meta_role_is_never_named_directly(built):
+    for request in (_request(A, B), _request(user_id="anonymous"), _request(user_id=None)):
+        for named in (META, f"{A},{META}"):
+            with pytest.raises(ApiError) as err:
+                named_role(request, named)
+            assert (err.value.status_code, err.value.code) == (403, "auth.meta_role_named")
+    assert built == []
+
+
+def test_no_auth_provider_takes_a_named_set_at_face_value(built):
+    assert named_role(_request(user_id="anonymous"), f"{A},{B}") == META
+
+
+def test_a_set_naming_a_role_that_does_not_exist_is_refused_by_name(built):
+    with pytest.raises(ApiError) as err:
+        named_role(_request(user_id="anonymous"), f"{A},ghost")
+    assert (err.value.status_code, err.value.code) == (404, "data.no_role")
+    assert err.value.params == {"role_id": "ghost"}
+    assert built == []
+
+
+def test_a_control_plane_role_adds_nothing_to_a_named_set(built, monkeypatch):
+    """REQ-1327: it confers no data rights, so the set acts as its data-plane members."""
+    roles = dict(appmod.state.roles)
+    roles["platform"] = {"id": "platform", "capabilities": ["cross_org"], "domain_access": ["*"]}
+    monkeypatch.setattr(appmod.state, "roles", roles, raising=False)
+    assert named_role(_request(A, B, "platform"), f"{A},platform") == A
+    assert named_role(_request(A, B, "platform"), f"{A},platform,{B}") == META
+    assert named_role(_request("platform"), "platform") == "platform"  # alone: the role named
+
+
+def test_naming_no_role_is_refused():
+    with pytest.raises(ApiError) as err:
+        named_role(_request(A), " , ")
+    assert (err.value.status_code, err.value.code) == (400, "data.missing_role_id")
+
+
+async def test_the_explorers_routes_answer_for_the_named_set(built, monkeypatch):
+    both = f"{A},{B}"
+    resp = await endpoint_dev.proto_endpoint(both, _request(A, B))
+    assert resp.body == b'syntax = "proto3"; // a+b'
+
+    seen: list[str] = []
+
+    def _listed(state, role_id):
+        seen.append(role_id)
+        return []
+
+    monkeypatch.setattr("provisa.api.data.action_exec.list_visible_commands", _listed)
+    roles = {**appmod.state.roles, META: {"id": META, "capabilities": [], "domain_access": ["*"]}}
+    monkeypatch.setattr(appmod.state, "roles", roles, raising=False)
+    await endpoint_grpc_proxy.grpc_commands(both, _request(A, B))
+    assert seen == [META]
+
+    ran: list[str] = []
+
+    async def _invoke(name, args, state, role_id):
+        ran.append(role_id)
+        return []
+
+    monkeypatch.setattr("provisa.api.data.action_exec.invoke_tracked_function", _invoke)
+    monkeypatch.setattr(
+        "provisa.api.data.action_exec.bind_named_args", lambda name, args, state, role_id: args
+    )
+    body = {"name": "do_it", "args_json": "{}"}
+    await endpoint_grpc_proxy.grpc_command(both, _request(A, B, body=body))
+    assert ran == [META]
+    with pytest.raises(ApiError) as err:
+        await endpoint_grpc_proxy.grpc_command(both, _request(A, body=body))
+    _refused(err, B)
+    assert ran == [META], "the command must not run"
+
+
+# --- why a role has no proto ----------------------------------------------------------------------
+
+
+async def test_each_reason_a_role_has_no_proto_is_its_own_answer(monkeypatch):
+    monkeypatch.setattr(appmod.state, "proto_files", {}, raising=False)
+    # The model has not been built: nothing can be said about the role yet.
+    monkeypatch.setattr(appmod.state, "role_build_inputs", {}, raising=False)
+    with pytest.raises(ApiError) as err:
+        await endpoint_dev.proto_endpoint(A, _request(A))
+    assert (err.value.status_code, err.value.code) == (503, "data.schema_cache_not_ready")
+
+    monkeypatch.setattr(appmod.state, "role_build_inputs", {"tables": []}, raising=False)
+    # Built, and the role exists with no data surface.
+    with pytest.raises(ApiError) as err:
+        await endpoint_dev.proto_endpoint(A, _request(A))
+    assert (err.value.status_code, err.value.code) == (404, "data.no_proto_for_role")
+    assert err.value.params == {"role_id": A}
+    # Built, and there is no such role.
+    with pytest.raises(ApiError) as err:
+        await endpoint_dev.proto_endpoint("ghost", _request(user_id="anonymous"))
+    assert (err.value.status_code, err.value.code) == (404, "data.no_role")
+
+
+# --- /data/grpc/{type}: the role the request runs as ---------------------------------------------
+
+
+async def test_the_proxy_never_runs_as_a_body_role_the_request_does_not_run_as():
+    request = _request(A, body={"role_id": B})
+    request.state.role = A  # established by the auth layer
+    with pytest.raises(ApiError) as err:
+        await endpoint_grpc_proxy.grpc_proxy("Orders", request)
+    assert (err.value.status_code, err.value.code) == (400, "data.role_mismatch")
+    # The acting role is the one served: with no schema in this fixture, the ordinary 404 for A.
+    for body in ({}, {"role_id": A}):
+        request = _request(A, body=body)
+        request.state.role = A
+        with pytest.raises(ApiError) as err:
+            await endpoint_grpc_proxy.grpc_proxy("Orders", request)
+        assert (err.value.status_code, err.value.code) == (404, "data.no_schema_for_role")
+        assert err.value.params == {"role_id": A}
 
 
 # --- /data/proto/{role_id} -----------------------------------------------------------------------

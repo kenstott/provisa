@@ -31,8 +31,10 @@
       "invite_not_found": "Invitation introuvable",
       "last_org_admin": "Vous êtes le dernier org_admin de : {{orgs}}. Promouvez un autre org_admin dans chacune, ou supprimez l'organisation, avant de supprimer votre compte.",
       "last_platform_admin": "Vous êtes le dernier platform_admin de ce déploiement. Accordez platform_admin à un autre utilisateur avant de supprimer votre compte.",
+      "meta_role_named": "'{{role_id}}' n'est pas un rôle : nommez les rôles que vous détenez et le serveur agira en leur nom",
       "redeem_auth_required": "Authentification requise pour utiliser une invitation",
       "registration_basic_only": "Inscription disponible uniquement avec le fournisseur d'authentification basic",
+      "role_not_assigned": "Le rôle '{{role_id}}' n'est pas attribué à cet utilisateur",
       "simple_provider_not_configured": "Fournisseur d'authentification simple non configuré",
       "username_exists": "Ce nom d'utilisateur existe déjà"
     },
@@ -77,7 +79,7 @@
       "no_govdata_source": "Aucune source govdata « {{source_id}} »",
       "no_grpc_query_for_table": "Aucune requête gRPC enregistrée pour la table « {{table}} »",
       "no_mutation_fields": "Aucun champ de mutation trouvé",
-      "no_proto_for_role": "Aucun fichier proto disponible pour le rôle « {{role_id}} »",
+      "no_proto_for_role": "Le rôle '{{role_id}}' n'a pas de proto : aucune surface de données ne lui est fournie, car il n'atteint aucun domaine ou ne détient que des droits du plan de contrôle",
       "no_query_field_for_proto_type": "Aucun champ de requête pour le type proto « {{type_name}} » sous le rôle « {{role_id}} »",
       "no_query_fields": "Aucun champ de requête trouvé",
       "no_role": "Aucun rôle « {{role_id}} »",
@@ -100,7 +102,9 @@
       "write_not_supported": "'{{table}}' n'accepte pas {{operation}} : sa source ne peut pas l'exécuter",
       "table_is_draft": "{{table}} est un brouillon : hors service jusqu'à ce que les responsables de son domaine la publient",
       "source_unbound": "La source '{{source}}' n'a pas de connexion dans l'environnement '{{env}}' : liez-la ou recopiez-la depuis l'environnement parent",
-      "system_catalog_unavailable": "Le catalogue '{{catalog}}' du moteur est en cours d'enregistrement. Réessayez dans un instant."
+      "system_catalog_unavailable": "Le catalogue '{{catalog}}' du moteur est en cours d'enregistrement. Réessayez dans un instant.",
+      "domain_not_accessible": "Le rôle '{{role_id}}' n'a pas accès au domaine '{{domain}}'",
+      "role_mismatch": "La requête nomme le rôle '{{body_role}}' mais s'exécute sous le rôle '{{acting_role}}'. Le rôle est porté par l'en-tête X-Provisa-Role (ou par l'identité connectée) ; supprimez l'autre rôle ou faites-le correspondre."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",

@@ -31,8 +31,10 @@
       "invite_not_found": "Invito non trovato",
       "last_org_admin": "Ultimo org_admin di: {{orgs}}. Promuovere un altro org_admin in ciascuna, oppure eliminare l'organizzazione, prima di eliminare l'account.",
       "last_platform_admin": "Ultimo platform_admin di questa distribuzione. Concedere platform_admin a un altro utente prima di eliminare l'account.",
+      "meta_role_named": "'{{role_id}}' non è un ruolo: indica i ruoli che possiedi e il server agirà per loro conto",
       "redeem_auth_required": "Autenticazione richiesta per riscattare un invito",
       "registration_basic_only": "Registrazione disponibile solo con il provider di autenticazione basic",
+      "role_not_assigned": "Il ruolo '{{role_id}}' non è assegnato a questo utente",
       "simple_provider_not_configured": "Provider di autenticazione simple non configurato",
       "username_exists": "Nome utente già esistente"
     },
@@ -77,7 +79,7 @@
       "no_govdata_source": "Nessuna origine govdata '{{source_id}}'",
       "no_grpc_query_for_table": "Nessuna query gRPC registrata per la tabella '{{table}}'",
       "no_mutation_fields": "Nessun campo mutation trovato",
-      "no_proto_for_role": "Nessun file proto disponibile per il ruolo '{{role_id}}'",
+      "no_proto_for_role": "Il ruolo '{{role_id}}' non ha un proto: non gli viene fornita alcuna superficie dati, perché non raggiunge alcun dominio o possiede solo diritti del piano di controllo",
       "no_query_field_for_proto_type": "Nessun campo query per il tipo proto '{{type_name}}' nel ruolo '{{role_id}}'",
       "no_query_fields": "Nessun campo query trovato",
       "no_role": "Nessun ruolo '{{role_id}}'",
@@ -100,7 +102,9 @@
       "write_not_supported": "'{{table}}' non accetta {{operation}}: la sua origine non può eseguirlo",
       "table_is_draft": "{{table}} è una bozza: fuori servizio finché i responsabili del suo dominio non la rilasciano",
       "source_unbound": "L'origine '{{source}}' non ha una connessione nell'ambiente '{{env}}': collegala o copiala di nuovo dall'ambiente padre",
-      "system_catalog_unavailable": "Il catalogo '{{catalog}}' del motore è in fase di registrazione. Riprova tra poco."
+      "system_catalog_unavailable": "Il catalogo '{{catalog}}' del motore è in fase di registrazione. Riprova tra poco.",
+      "domain_not_accessible": "Il ruolo '{{role_id}}' non ha accesso al dominio '{{domain}}'",
+      "role_mismatch": "La richiesta indica il ruolo '{{body_role}}' ma viene eseguita come ruolo '{{acting_role}}'. Il ruolo è trasmesso dall'intestazione X-Provisa-Role (o dall'identità autenticata); rimuovi l'altro ruolo o fallo corrispondere."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adattatore per '{{source_type}}' non implementa discover_schema",

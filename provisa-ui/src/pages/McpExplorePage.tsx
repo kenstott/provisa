@@ -38,6 +38,7 @@ import remarkGfm from "remark-gfm";
 import { Check, Copy, Trash2 } from "lucide-react";
 import { HelpBubble } from "../components/HelpBubble";
 import { useAuth } from "../context/AuthContext";
+import { actingRoleHeader } from "../lib/actingRole";
 
 /** A copy-to-clipboard button that fades in on bubble hover. */
 function CopyButton({ text }: { text: string }) {
@@ -226,8 +227,9 @@ interface ToolEvent {
 // tools (list/describe/run/explain/search) under the active role, streamed over SSE.
 export function McpExplorePage() {
   const { t } = useTranslation();
-  const { role } = useAuth();
-  const roleId = role?.id ?? "";
+  const { selectedRoles } = useAuth();
+  // REQ-1620: the ACTIVE roles — one, or under "Role: All" the set served as their meta-role.
+  const roleId = actingRoleHeader(selectedRoles) ?? "";
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [tools, setTools] = useState<ToolEvent[]>([]);
   const [busy, setBusy] = useState(false);

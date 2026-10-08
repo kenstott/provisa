@@ -16,7 +16,7 @@ import { act, screen, waitFor } from "@testing-library/react";
 import { useNavigate } from "react-router-dom";
 import { render } from "../test-utils/render";
 
-vi.mock("../context/AuthContext", () => ({ useAuth: () => ({ role: { id: "org_admin" } }) }));
+vi.mock("../context/AuthContext", () => ({ useAuth: () => ({ role: { id: "org_admin" }, selectedRoles: [{ id: "org_admin" }] }) }));
 
 import { McpExplorePage } from "../pages/McpExplorePage";
 

@@ -31,6 +31,7 @@ from __future__ import annotations
 from starlette.requests import Request
 
 from provisa.api.errors import ApiError
+from provisa.security.meta_role import META_PREFIX
 
 
 def acting_role(
@@ -82,6 +83,43 @@ def held_role(request: Request, role_id: str) -> str:  # REQ-273
             role_id=role_id,
         )
     return role_id
+
+
+def named_role(request: Request, named: str) -> str:  # REQ-273, REQ-1620
+    """The role a request acts as from the role, or comma-separated set of roles, it NAMES in its
+    path — or a refusal.
+
+    The routes that address a role's own artifact (``/data/proto/{role_id}``, the gRPC Explorer's
+    ``/data/grpc-commands/{role_id}``) accept what ``X-Provisa-Role`` accepts: one role the caller
+    holds is that role, and several act as their meta-role, made on first use
+    (``security.meta_role.resolve_requested_role``). Every member is held (:func:`held_role`, the
+    same refusal by name), and a meta-role is never named directly: a client names the roles it
+    holds and the server acts as them.
+
+    REQ-1327: a control-plane role confers no data rights, so beside other roles it adds nothing
+    to the set — the set acts as its data-plane members, as the middleware resolves the same
+    header. Named alone it stays the role named, and the route refuses it for having no surface.
+    """
+    from provisa.api.app import state
+    from provisa.security.meta_role import MetaRoleNamed, resolve_requested_role
+    from provisa.security.rights import is_control_plane_role
+
+    names = [r.strip() for r in named.split(",") if r.strip()]
+    if not names:
+        raise ApiError(400, "data.missing_role_id", "Missing role_id")
+    for name in names:
+        if not name.startswith(META_PREFIX):
+            held_role(request, name)
+    if len(set(names)) > 1:
+        for name in names:
+            if not name.startswith(META_PREFIX) and name not in state.roles:
+                raise ApiError(404, "data.no_role", f"No role {name!r}", role_id=name)
+        data_plane = [n for n in names if not is_control_plane_role(n, state.roles)]
+        names = data_plane or names[:1]
+    try:
+        return resolve_requested_role(state, set(names), ",".join(names))
+    except MetaRoleNamed as exc:
+        raise ApiError(403, "auth.meta_role_named", str(exc), role_id=named) from exc
 
 
 def header_role(request: Request, x_provisa_role: str | None, x_role: str | None) -> str | None:

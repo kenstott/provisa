@@ -57,6 +57,7 @@ import {
   type PaginationLinks,
 } from "./jsonapi/document";
 import "./JsonApiPage.css";
+import { actingRoleHeader } from "../lib/actingRole";
 
 function ResourceCard({
   item,
@@ -213,8 +214,9 @@ const AGG_FUNCS = ["count", "sum", "avg", "stddev", "variance", "min", "max"];
 
 export function JsonApiPage() {
   const { t } = useTranslation();
-  const { role } = useAuth();
-  const roleId = role?.id ?? "";
+  const { selectedRoles } = useAuth();
+  // REQ-1620: the ACTIVE roles — one, or under "Role: All" the set served as their meta-role.
+  const roleId = actingRoleHeader(selectedRoles) ?? "";
   const { checkedDomains } = useDomainFilter();
   // A JSON:API URL handed to the page (NL "Open in JSON:API", Polly), whether the page was just
   // opened or already open. Each hand-off has its own sequence number: its pickers are seeded once

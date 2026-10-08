@@ -27,7 +27,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 
 from provisa.api.json_response import OrjsonResponse
-from provisa.api.acting_role import acting_role, held_role
+from provisa.api.acting_role import acting_role, named_role
 from provisa.api.errors import ApiError
 from provisa.grpc.query_ir import (
     AGG_FUNCS,
@@ -91,7 +91,7 @@ async def grpc_commands(role_id: str, request: Request):  # REQ-1156
     from provisa.api.data.action_exec import list_visible_commands
     from provisa.security.rights import require_role
 
-    role_id = held_role(request, role_id)
+    role_id = named_role(request, role_id)
     require_role(state.roles, role_id)
     # The one discovery list (functions and webhooks the role may call), as the picker shows it.
     return [
@@ -112,7 +112,7 @@ async def grpc_command(role_id: str, request: Request):  # REQ-1156
     from provisa.api.app import state
     from provisa.api.data.action_exec import bind_named_args, invoke_tracked_function
 
-    role_id = held_role(request, role_id)  # the command runs AS this role: one the caller holds
+    role_id = named_role(request, role_id)  # the command runs AS this role: held by the caller
     body = await request.json()
     name = body.get("name")
     if not name:
@@ -160,7 +160,7 @@ async def grpc_group_by_columns(role_id: str, type_name: str, request: Request):
     from provisa.api.app import state
     from provisa.grpc.query_ir import _find_table_meta
 
-    role_id = held_role(request, role_id)
+    role_id = named_role(request, role_id)
     if role_id not in state.schemas:
         raise ApiError(
             404, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
@@ -202,7 +202,7 @@ async def jsonapi_group_by_columns(
 
     from provisa.api.app import state
 
-    role_id = held_role(request, role_id)
+    role_id = named_role(request, role_id)
     if role_id not in state.schemas:
         raise ApiError(
             404, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
@@ -230,8 +230,8 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
     from provisa.api.app import state
 
     body = await request.json()
-    # REQ-273: the request runs as the role the auth layer established. A body role is not a
-    # second way to pick one: one that differs from the acting role is refused (acting_role).
+    # REQ-273: the request runs as the role the auth layer established (one held role, or the
+    # meta-role of the set X-Provisa-Role names); a body role that differs from it is refused.
     role_id = acting_role(
         request, request.headers.get("x-provisa-role"), body.get("role_id") or body.get("role"), ""
     )

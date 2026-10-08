@@ -31,8 +31,10 @@
       "invite_not_found": "ההזמנה לא נמצאה",
       "last_org_admin": "אתם ה-org_admin האחרון של: {{orgs}}. קדמו org_admin נוסף בכל אחד מהם, או מחקו את הארגון, לפני מחיקת החשבון.",
       "last_platform_admin": "אתם ה-platform_admin האחרון בפריסה זו. העניקו platform_admin למשתמש אחר לפני מחיקת החשבון.",
+      "meta_role_named": "'{{role_id}}' אינו תפקיד: ציינו את התפקידים שברשותכם, והשרת יפעל בשמם",
       "redeem_auth_required": "נדרש אימות כדי לממש הזמנה",
       "registration_basic_only": "הרשמה זמינה רק עם ספק אימות basic",
+      "role_not_assigned": "התפקיד '{{role_id}}' אינו מוקצה למשתמש זה",
       "simple_provider_not_configured": "ספק האימות הפשוט אינו מוגדר",
       "username_exists": "שם המשתמש כבר קיים"
     },
@@ -77,7 +79,7 @@
       "no_govdata_source": "אין מקור govdata '{{source_id}}'",
       "no_grpc_query_for_table": "לא רשומה שאילתת gRPC עבור הטבלה '{{table}}'",
       "no_mutation_fields": "לא נמצאו שדות מוטציה",
-      "no_proto_for_role": "אין קובץ proto זמין עבור התפקיד '{{role_id}}'",
+      "no_proto_for_role": "לתפקיד '{{role_id}}' אין proto: לא ניתן לו משטח נתונים, מפני שאינו מגיע לאף תחום או שיש לו רק הרשאות של מישור הבקרה",
       "no_query_field_for_proto_type": "אין שדה שאילתה עבור סוג ה-proto '{{type_name}}' תחת התפקיד '{{role_id}}'",
       "no_query_fields": "לא נמצאו שדות שאילתה",
       "no_role": "אין תפקיד '{{role_id}}'",
@@ -100,7 +102,9 @@
       "write_not_supported": "'{{table}}' אינה מקבלת {{operation}}: המקור שלה אינו יכול לבצע זאת",
       "table_is_draft": "{{table}} היא טיוטה: מחוץ לשירות עד שבעלי התחום שלה ישחררו אותה",
       "source_unbound": "למקור '{{source}}' אין חיבור בסביבה '{{env}}': יש לקשר אותו או להעתיק אותו מחדש מסביבת האב",
-      "system_catalog_unavailable": "הקטלוג '{{catalog}}' של המנוע נמצא בתהליך רישום. יש לנסות שוב בעוד רגע."
+      "system_catalog_unavailable": "הקטלוג '{{catalog}}' של המנוע נמצא בתהליך רישום. יש לנסות שוב בעוד רגע.",
+      "domain_not_accessible": "לתפקיד '{{role_id}}' אין גישה לתחום '{{domain}}'",
+      "role_mismatch": "הבקשה מציינת את התפקיד '{{body_role}}' אך רצה בתפקיד '{{acting_role}}'. התפקיד מועבר בכותרת X-Provisa-Role (או בזהות המחוברת); הסירו את התפקיד האחר או התאימו אותו."
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",

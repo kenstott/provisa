@@ -21,6 +21,7 @@ from fastapi import APIRouter, HTTPException, Header, Request
 from sqlalchemy import select
 
 from provisa.api.app import state
+from provisa.api.acting_role import header_role
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import registered_tables
 from provisa.core.models import DERIVED_SOURCE_ID
@@ -79,14 +80,17 @@ async def profile_table(
         # ONE pipeline: sample the view through the single governed chokepoint, exactly like /data/sql.
         from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
-        if not x_provisa_role:
+        # REQ-273: the sample is governed as the role the request runs as — the one the auth
+        # layer established (a held role, a set's meta-role), never the raw header text.
+        role_id = header_role(request, x_provisa_role, None)
+        if not role_id:
             raise ApiError(
                 400,
                 "profile.role_header_required",
                 "X-Provisa-Role header required to profile a view",
             )
         sampled = f"SELECT * FROM ({view_sql.rstrip().rstrip(';')}) _pv LIMIT {_SAMPLE_LIMIT}"
-        _plan = await _govern_and_route(sampled, x_provisa_role)
+        _plan = await _govern_and_route(sampled, role_id)
         res = await _execute_plan(_plan, state)
         rows = [dict(zip(res.column_names, r)) for r in res.rows]
         return {"columns": res.column_names, "rows": rows, "rowCount": len(rows)}

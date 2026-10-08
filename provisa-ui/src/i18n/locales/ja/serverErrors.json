@@ -31,8 +31,10 @@
       "invite_not_found": "招待が見つかりません",
       "last_org_admin": "あなたは次の組織の最後の org_admin です：{{orgs}}。アカウントを削除する前に、各組織で別の org_admin を昇格させるか、組織を削除してください。",
       "last_platform_admin": "あなたはこのデプロイメントの最後の platform_admin です。アカウントを削除する前に、別のユーザーに platform_admin を付与してください。",
+      "meta_role_named": "「{{role_id}}」はロールではありません。保有するロールを指定すると、サーバーがそれらのロールとして動作します",
       "redeem_auth_required": "招待を利用するには認証が必要です",
       "registration_basic_only": "登録は basic 認証プロバイダーでのみ利用できます",
+      "role_not_assigned": "ロール「{{role_id}}」はこのユーザーに割り当てられていません",
       "simple_provider_not_configured": "Simple 認証プロバイダーが設定されていません",
       "username_exists": "ユーザー名は既に存在します"
     },
@@ -77,7 +79,7 @@
       "no_govdata_source": "govdata ソース「{{source_id}}」がありません",
       "no_grpc_query_for_table": "テーブル「{{table}}」に登録された gRPC クエリがありません",
       "no_mutation_fields": "ミューテーションフィールドが見つかりません",
-      "no_proto_for_role": "ロール「{{role_id}}」に利用可能な proto ファイルがありません",
+      "no_proto_for_role": "ロール「{{role_id}}」には proto がありません。どのドメインにも到達しないか、コントロールプレーンの権限しか持たないため、データサーフェスが提供されません",
       "no_query_field_for_proto_type": "ロール「{{role_id}}」配下に proto 型「{{type_name}}」のクエリフィールドがありません",
       "no_query_fields": "クエリフィールドが見つかりません",
       "no_role": "ロール「{{role_id}}」がありません",
@@ -100,7 +102,9 @@
       "write_not_supported": "'{{table}}' は {{operation}} を受け付けません: そのソースでは実行できません",
       "table_is_draft": "{{table}} は下書きです: ドメインの所有者が公開するまで停止中です",
       "source_unbound": "ソース '{{source}}' は環境 '{{env}}' に接続がありません: バインドするか、親から再コピーしてください",
-      "system_catalog_unavailable": "エンジンのカタログ '{{catalog}}' を登録中です。しばらくしてからもう一度お試しください。"
+      "system_catalog_unavailable": "エンジンのカタログ '{{catalog}}' を登録中です。しばらくしてからもう一度お試しください。",
+      "domain_not_accessible": "ロール「{{role_id}}」はドメイン「{{domain}}」にアクセスできません",
+      "role_mismatch": "リクエストはロール「{{body_role}}」を指定していますが、ロール「{{acting_role}}」として実行されます。ロールは X-Provisa-Role ヘッダー(またはサインイン中の ID)で指定されます。もう一方のロールを削除するか、一致させてください。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",

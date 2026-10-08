@@ -20,7 +20,7 @@ import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor } from "../test-utils/render";
 
 vi.mock("../context/AuthContext", () => ({
-  useAuth: () => ({ role: { id: "org_admin" } }),
+  useAuth: () => ({ role: { id: "org_admin" }, selectedRoles: [{ id: "org_admin" }] }),
 }));
 
 vi.mock("../context/DomainFilterContext", () => ({

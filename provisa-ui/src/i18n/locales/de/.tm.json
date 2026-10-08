@@ -3127,7 +3127,7 @@
   "de/serverErrors.json::serverErrors.data.no_govdata_source": "No govdata source '{{source_id}}'",
   "de/serverErrors.json::serverErrors.data.no_grpc_query_for_table": "No gRPC query registered for table '{{table}}'",
   "de/serverErrors.json::serverErrors.data.no_mutation_fields": "No mutation fields found",
-  "de/serverErrors.json::serverErrors.data.no_proto_for_role": "No proto file available for role '{{role_id}}'",
+  "de/serverErrors.json::serverErrors.data.no_proto_for_role": "Role '{{role_id}}' has no proto: it is given no data surface, because it reaches no domain or holds only control-plane rights",
   "de/serverErrors.json::serverErrors.data.no_query_field_for_proto_type": "No query field for proto type '{{type_name}}' under role '{{role_id}}'",
   "de/serverErrors.json::serverErrors.data.no_query_fields": "No query fields found",
   "de/serverErrors.json::serverErrors.data.no_role": "No role '{{role_id}}'",
@@ -5248,5 +5248,9 @@
   "de/serverErrors.json::serverErrors.requests.own_request": "You cannot decide a request you made",
   "de/serverErrors.json::serverErrors.requests.tables_not_registered": "The tables this request names ({{tables}}) are no longer registered. It cannot be approved; a user whose right to create relationships reaches every domain may reject it",
   "de/serverErrors.json::serverErrors.requests.waiting_on_domains": "This request still waits on an approval from: {{domains}}",
-  "de/serverErrors.json::serverErrors.schema.relationship_request_queued": "Queued as request #{{id}}. It needs approvals from {{required}} different users who may create relationships, at least one reaching each domain it touches."
+  "de/serverErrors.json::serverErrors.schema.relationship_request_queued": "Queued as request #{{id}}. It needs approvals from {{required}} different users who may create relationships, at least one reaching each domain it touches.",
+  "de/serverErrors.json::serverErrors.auth.role_not_assigned": "Role '{{role_id}}' is not assigned to this user",
+  "de/serverErrors.json::serverErrors.auth.meta_role_named": "'{{role_id}}' is not a role: name the roles you hold, and the server acts as them",
+  "de/serverErrors.json::serverErrors.data.domain_not_accessible": "Role '{{role_id}}' does not reach domain '{{domain}}'",
+  "de/serverErrors.json::serverErrors.data.role_mismatch": "The request names role '{{body_role}}' but runs as role '{{acting_role}}'. The role is carried by the X-Provisa-Role header (or the signed-in identity); remove the other role or make it match."
 }

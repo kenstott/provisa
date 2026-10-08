@@ -17,7 +17,8 @@ import { Badge, Button, Checkbox, Group, MultiSelect, Select, Tabs, Text } from 
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import "./GrpcPage.css";
-import { serverMessage } from "../i18n/serverMessage";
+import { requestFailed, serverMessage, type ServerMessageShape } from "../i18n/serverMessage";
+import { actingRoleHeader } from "../lib/actingRole";
 
 type OperationType = "query" | "mutation" | "command";
 type LeftTab = "body" | "proto";
@@ -203,11 +204,28 @@ function parseGrpcHandoff(signature: string, autoRun: boolean, seq: number): Grp
   };
 }
 
+/** The server's own refusal of a request: its catalog message, else "<op> failed (<status>)". */
+async function refusal(res: Response, op: string): Promise<string> {
+  const fallback = requestFailed(op, res.status);
+  const text = await res.text();
+  let body: ServerMessageShape | null;
+  try {
+    body = JSON.parse(text) as ServerMessageShape;
+  } catch {
+    return fallback; // not a JSON error body (a proxy's HTML page): the status is what is known
+  }
+  return serverMessage(body, fallback);
+}
+
 export function GrpcPage() {
   const { t } = useTranslation();
-  const { role } = useAuth();
+  const { selectedRoles } = useAuth();
   const { checkedDomains } = useDomainFilter();
-  const roleId = role?.id ?? "";
+  // REQ-1620: every call on this page acts as the ACTIVE roles — one role, or under "Role: All"
+  // the comma-separated set the server serves as their meta-role — in the path of the routes that
+  // take a role there and in X-Provisa-Role. The domain filter spans every active role, so naming
+  // only the first role asked for domains that role does not reach and was refused.
+  const roleId = actingRoleHeader(selectedRoles) ?? "";
   const domainsParam = checkedDomains.size > 0 ? [...checkedDomains].join(",") : "";
 
   // A method handed to the page (NL "Open in gRPC", Polly) with the call syntax it was chosen with,
@@ -326,7 +344,7 @@ export function GrpcPage() {
           : `/data/proto/${encodeURIComponent(rid)}`;
         const res = await fetch(url);
         if (!res.ok) {
-          setProtoError(`No proto for role "${rid}" — schema not yet built.`);
+          setProtoError(await refusal(res, "Proto"));
           return;
         }
         const text = await res.text();
@@ -353,8 +371,8 @@ export function GrpcPage() {
           if (navM) navSelectDoneRef.current = true;
         }
         setParsed(p);
-      } catch {
-        setProtoError("Failed to fetch proto.");
+      } catch (e) {
+        setProtoError(String(e));
       }
     },
     [navMethod, navByColumns, navFuncs, navProjection, selectMethod],
@@ -370,13 +388,15 @@ export function GrpcPage() {
       const res = await fetch(`/data/grpc-commands/${encodeURIComponent(rid)}`);
       if (!res.ok) {
         setCommands([]);
+        setProtoError(await refusal(res, "Commands"));
         return;
       }
       const list = (await res.json()) as CommandDef[];
       commandsMapRef.current = Object.fromEntries(list.map((c) => [c.name, c]));
       setCommands(list);
-    } catch {
+    } catch (e) {
       setCommands([]);
+      setProtoError(String(e));
     }
   }, []);
 
@@ -402,10 +422,21 @@ export function GrpcPage() {
         const res = await fetch(
           `/data/grpc-group-by-columns/${encodeURIComponent(roleId)}/${encodeURIComponent(selectedMethod.typeName)}`,
         );
-        const cols = res.ok ? ((await res.json()) as string[]) : [];
+        if (!res.ok) {
+          const message = await refusal(res, "Columns");
+          if (!cancelled) {
+            setFetchedGroupByColumns([]);
+            setError(message);
+          }
+          return;
+        }
+        const cols = (await res.json()) as string[];
         if (!cancelled) setFetchedGroupByColumns(cols);
-      } catch {
-        if (!cancelled) setFetchedGroupByColumns([]);
+      } catch (e) {
+        if (!cancelled) {
+          setFetchedGroupByColumns([]);
+          setError(String(e));
+        }
       }
     })();
     return () => {
@@ -486,10 +517,11 @@ export function GrpcPage() {
         }
         return;
       }
-      let body: Record<string, unknown> = { role_id: roleId };
+      // The acting role travels ONLY in X-Provisa-Role: the server refuses a body role that
+      // differs from the role the request runs as, and under "Role: All" that is a meta-role.
+      let body: Record<string, unknown> = {};
       try {
-        const parsed_msg = JSON.parse(messageText) as Record<string, unknown>;
-        body = { ...parsed_msg, role_id: roleId };
+        body = JSON.parse(messageText) as Record<string, unknown>;
       } catch {
         /* use default body */
       }
@@ -590,6 +622,7 @@ export function GrpcPage() {
               data-testid="grpc-proto-error"
               style={{ maxWidth: 300 }}
               truncate="end"
+              title={protoError}
             >
               {protoError}
             </Text>

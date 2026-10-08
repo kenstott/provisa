@@ -17,7 +17,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor } from "../test-utils/render";
 
 vi.mock("../context/AuthContext", () => ({
-  useAuth: () => ({ role: { id: "org_admin" } }),
+  useAuth: () => ({ role: { id: "org_admin" }, selectedRoles: [{ id: "org_admin" }] }),
 }));
 
 vi.mock("../context/DomainFilterContext", () => ({

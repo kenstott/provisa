@@ -31,8 +31,10 @@
       "invite_not_found": "Uitnodiging niet gevonden",
       "last_org_admin": "U bent de laatste org_admin van: {{orgs}}. Promoveer in elke organisatie een andere org_admin, of verwijder de organisatie, voordat het account wordt verwijderd.",
       "last_platform_admin": "U bent de laatste platform_admin van deze installatie. Verleen platform_admin aan een andere gebruiker voordat het account wordt verwijderd.",
+      "meta_role_named": "'{{role_id}}' is geen rol: noem de rollen die u hebt, en de server handelt als die rollen",
       "redeem_auth_required": "Verificatie vereist om een uitnodiging in te wisselen",
       "registration_basic_only": "Registratie is alleen beschikbaar met de basic-authenticatieprovider",
+      "role_not_assigned": "Rol '{{role_id}}' is niet aan deze gebruiker toegewezen",
       "simple_provider_not_configured": "Simple-authenticatieprovider niet geconfigureerd",
       "username_exists": "Gebruikersnaam bestaat al"
     },
@@ -77,7 +79,7 @@
       "no_govdata_source": "Geen govdata-bron '{{source_id}}'",
       "no_grpc_query_for_table": "Geen gRPC-query geregistreerd voor tabel '{{table}}'",
       "no_mutation_fields": "Geen mutatievelden gevonden",
-      "no_proto_for_role": "Geen proto-bestand beschikbaar voor rol '{{role_id}}'",
+      "no_proto_for_role": "Rol '{{role_id}}' heeft geen proto: de rol krijgt geen gegevensoppervlak, omdat deze geen domein bereikt of alleen rechten op het besturingsvlak heeft",
       "no_query_field_for_proto_type": "Geen queryveld voor proto-type '{{type_name}}' onder rol '{{role_id}}'",
       "no_query_fields": "Geen queryvelden gevonden",
       "no_role": "Geen rol '{{role_id}}'",
@@ -100,7 +102,9 @@
       "write_not_supported": "'{{table}}' accepteert geen {{operation}}: de bron kan het niet uitvoeren",
       "table_is_draft": "{{table}} is een concept: buiten gebruik tot de eigenaren van haar domein haar vrijgeven",
       "source_unbound": "Bron '{{source}}' heeft geen verbinding in omgeving '{{env}}': bind deze of kopieer deze opnieuw vanuit de bovenliggende omgeving",
-      "system_catalog_unavailable": "De catalogus '{{catalog}}' van de engine wordt geregistreerd. Probeer het zo opnieuw."
+      "system_catalog_unavailable": "De catalogus '{{catalog}}' van de engine wordt geregistreerd. Probeer het zo opnieuw.",
+      "domain_not_accessible": "Rol '{{role_id}}' heeft geen toegang tot domein '{{domain}}'",
+      "role_mismatch": "Het verzoek noemt rol '{{body_role}}' maar wordt uitgevoerd als rol '{{acting_role}}'. De rol wordt meegegeven in de header X-Provisa-Role (of door de aangemelde identiteit); verwijder de andere rol of maak deze gelijk."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",

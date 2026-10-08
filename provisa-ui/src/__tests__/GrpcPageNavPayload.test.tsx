@@ -16,7 +16,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 
-vi.mock("../context/AuthContext", () => ({ useAuth: () => ({ role: { id: "org_admin" } }) }));
+vi.mock("../context/AuthContext", () => ({ useAuth: () => ({ role: { id: "org_admin" }, selectedRoles: [{ id: "org_admin" }] }) }));
 vi.mock("../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({ checkedDomains: new Set<string>() }),
 }));
