@@ -9,6 +9,8 @@ compiled + governed + routed like an interactive /data/sql query. Handing it raw
 to the federation engine 500s because domain refs never resolve.
 """
 
+# Requirements: REQ-452, REQ-273, REQ-1327
+
 import os
 
 import pytest
@@ -70,11 +72,21 @@ async def view_id():
 
 
 class TestTableProfileEndpoint:
-    async def test_view_profile_requires_role_header(self, client, view_id):
-        # No X-Provisa-Role → cannot pick a governance context; reject, never 500.
+    async def test_view_profile_without_a_role_header_is_the_acting_roles(self, client, view_id):
+        # REQ-273: the sample is governed as the role the auth layer established; the header
+        # only asks for one. This server has no auth provider, where a request that names no
+        # role acts as org_admin (REQ-1327) — so it is answered as the org_admin header is.
+        # (That a role the caller does not hold is refused needs an auth provider, which this
+        # server has not: tests/unit/test_table_profile_acting_role.py covers it.)
         resp = await client.post(f"/admin/tables/{view_id}/profile")
-        assert resp.status_code == 400
-        assert "role" in resp.json()["detail"].lower()
+        assert resp.status_code == 200, resp.text
+        named = await client.post(
+            f"/admin/tables/{view_id}/profile",
+            headers={"X-Provisa-Role": "org_admin"},
+        )
+        assert named.status_code == 200, named.text
+        assert resp.json()["columns"] == named.json()["columns"] == ["id", "amount"]
+        assert resp.json()["rows"] == named.json()["rows"]
 
     async def test_view_profile_returns_sampled_rows(self, client, view_id):
         # Semantic view SQL must resolve through the governed pipeline (regression).
