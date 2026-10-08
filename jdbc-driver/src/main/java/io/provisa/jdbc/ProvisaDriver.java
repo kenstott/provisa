@@ -33,6 +33,8 @@ public class ProvisaDriver implements Driver {
         String kmsProvider = info.getProperty("kms_provider");
         String kmsKeyArn = info.getProperty("kms_key_arn");
         String kmsMasterKey = info.getProperty("kms_master_key"); // base64, local provider only
+        // The role to act as: one role the user holds, or a comma-separated set of them.
+        String role = info.getProperty("role");
         int qIdx = remainder.indexOf('?');
         if (qIdx >= 0) {
             hostPort = remainder.substring(0, qIdx);
@@ -42,6 +44,7 @@ public class ProvisaDriver implements Driver {
                 if (kv.length != 2) continue;
                 switch (kv[0]) {
                     case "mode": mode = kv[1]; break;
+                    case "role": role = java.net.URLDecoder.decode(kv[1], java.nio.charset.StandardCharsets.UTF_8); break;
                     case "kms_provider": kmsProvider = kv[1]; break;
                     case "kms_key_arn": kmsKeyArn = kv[1]; break;
                     case "kms_master_key": kmsMasterKey = kv[1]; break;
@@ -58,7 +61,7 @@ public class ProvisaDriver implements Driver {
         String user = info.getProperty("user", "");
         String password = info.getProperty("password", "");
 
-        ProvisaConnection conn = new ProvisaConnection(baseUrl, user, password, mode);
+        ProvisaConnection conn = new ProvisaConnection(baseUrl, user, password, mode, role);
         conn.configureEncryption(kmsProvider, kmsKeyArn, kmsMasterKey);
         return conn;
     }
@@ -73,10 +76,14 @@ public class ProvisaDriver implements Driver {
         DriverPropertyInfo modeProp = new DriverPropertyInfo("mode", info.getProperty("mode", "catalog"));
         modeProp.description = "Connection mode: 'catalog' (schema discovery and SQL execution)";
         modeProp.choices = new String[]{"catalog"};
+        DriverPropertyInfo roleProp = new DriverPropertyInfo("role", info.getProperty("role"));
+        roleProp.description = "The role to act as: one role the user holds, or a comma-separated "
+            + "set of them. Omitted: the server derives the role from the signed-in identity.";
         return new DriverPropertyInfo[]{
             new DriverPropertyInfo("user", info.getProperty("user")),
             new DriverPropertyInfo("password", info.getProperty("password")),
             modeProp,
+            roleProp,
         };
     }
 

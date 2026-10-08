@@ -197,7 +197,7 @@ public class ProvisaDatabaseMetaData extends AbstractDatabaseMetaData {
     @Override public int getDriverMajorVersion() { return 0; }
     @Override public int getDriverMinorVersion() { return 1; }
     @Override public String getURL() { return conn.baseUrl; }
-    @Override public String getUserName() { return conn.role; }
+    @Override public String getUserName() { return conn.user; }
     @Override public boolean isReadOnly() { return true; }
     @Override public Connection getConnection() { return conn; }
 }

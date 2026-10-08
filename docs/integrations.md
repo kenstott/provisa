@@ -83,7 +83,7 @@ JDBC URL:
 jdbc:provisa://<host>:8815
 ```
 
-Authentication uses standard JDBC `user` / `password` properties. Provisa authenticates the credentials against the configured auth provider and assigns the role — the client does not choose its own role.
+Authentication uses standard JDBC `user` / `password` properties. The driver exchanges them for a session token and sends it on every request; a refused sign-in fails the connection with the server's status and reason. Provisa derives the role from the signed-in identity. The optional `role` property (or `?role=` in the URL) asks to act as one role the user holds, or a comma-separated set of them; a role the user does not hold is refused. On a deployment with no auth provider there is no sign-in, and the user name is taken as the requested role. (REQ-131, REQ-273)
 
 ### BI Tool Setup
 

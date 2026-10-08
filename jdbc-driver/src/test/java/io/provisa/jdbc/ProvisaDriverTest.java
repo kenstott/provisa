@@ -34,7 +34,8 @@ class ProvisaDriverTest {
     @Test
     void propertyInfoIncludesMode() {
         DriverPropertyInfo[] props = driver.getPropertyInfo("jdbc:provisa://localhost:8001", new Properties());
-        assertEquals(3, props.length);
+        assertEquals(4, props.length);
+        assertEquals("role", props[3].name);
         assertEquals("mode", props[2].name);
         assertArrayEquals(new String[]{"catalog"}, props[2].choices);
     }

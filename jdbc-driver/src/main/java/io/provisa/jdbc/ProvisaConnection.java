@@ -20,29 +20,41 @@ import java.util.*;
 public class ProvisaConnection extends AbstractConnection {
 
     String baseUrl;
-    String role;
+    String user;
+    String role; // the role this connection REQUESTS; null = the server derives it from the identity
     String mode; // "catalog"
-    String authToken;
+    String authToken; // the session token sign-in returned; null on a server with no password sign-in
     FlightTransport flightTransport; // null if Flight unavailable
     EnvelopeDecryptor encryptionService; // REQ-690: client-side column decrypt (null = disabled)
     String kmsKeyArn; // REQ-693: proof-of-client-decrypt sent to the high-security gate
     private boolean closed = false;
 
-    ProvisaConnection(String baseUrl, String user, String password, String mode) throws SQLException {
+    /**
+     * Sign in and open the connection.
+     *
+     * <p>The user and password are exchanged at {@code /auth/login} for a session token, which
+     * every later request carries. A refused sign-in is raised with the server's status and
+     * reason: a connection is never opened as someone the server did not authenticate.
+     *
+     * <p>{@code requestedRole} (the {@code role} connection property) asks to act as one role the
+     * user holds, or a comma-separated set of them; with none the server derives the role from
+     * the identity. On a server with no password sign-in ({@code /auth/login} answers 404: no
+     * auth provider is configured) there is no identity to derive it from, and the user name is
+     * the requested role, as that server takes every role at face value (REQ-131).
+     */
+    ProvisaConnection(String baseUrl, String user, String password, String mode, String requestedRole)
+            throws SQLException {
         this.baseUrl = baseUrl;
         this.mode = mode != null ? mode : "catalog";
-
-        String resolvedRole = user;
-        String resolvedToken = null;
-        try {
-            JsonObject authResult = authenticate(user, password);
-            resolvedRole = authResult.has("role") ? authResult.get("role").getAsString() : user;
-            resolvedToken = authResult.has("token") ? authResult.get("token").getAsString() : null;
-        } catch (Exception e) {
-            // Fall back to using username as role (test mode)
+        this.user = user;
+        this.authToken = signIn(user, password);
+        if (requestedRole != null && !requestedRole.isEmpty()) {
+            this.role = requestedRole;
+        } else if (this.authToken == null && user != null && !user.isEmpty()) {
+            this.role = user;
+        } else {
+            this.role = null;
         }
-        this.role = resolvedRole;
-        this.authToken = resolvedToken;
 
         // Attempt Flight connection (silent fallback to HTTP if unavailable)
         String host = baseUrl.replaceFirst("^https?://", "").split(":")[0];
@@ -76,23 +88,71 @@ public class ProvisaConnection extends AbstractConnection {
         this.encryptionService = new EnvelopeDecryptor(provider, 300);
     }
 
-    private JsonObject authenticate(String user, String password) throws Exception {
+    /**
+     * Exchange the user and password for a session token at {@code /auth/login}.
+     *
+     * @return the token, or null when the server has no password sign-in (404)
+     * @throws SQLException when the server refuses the sign-in, cannot be reached, or answers
+     *         without a token
+     */
+    private String signIn(String user, String password) throws SQLException {
         JsonObject body = new JsonObject();
         body.addProperty("username", user);
         body.addProperty("password", password);
 
-        HttpURLConnection conn = (HttpURLConnection) URI.create(baseUrl + "/auth/login").toURL().openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setDoOutput(true);
-        conn.getOutputStream().write(body.toString().getBytes(StandardCharsets.UTF_8));
-
-        if (conn.getResponseCode() != 200) {
-            throw new SQLException("Authentication failed: " + conn.getResponseCode());
+        int status;
+        String response;
+        try {
+            HttpURLConnection conn =
+                (HttpURLConnection) URI.create(baseUrl + "/auth/login").toURL().openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setDoOutput(true);
+            conn.getOutputStream().write(body.toString().getBytes(StandardCharsets.UTF_8));
+            status = conn.getResponseCode();
+            java.io.InputStream stream = status < 400 ? conn.getInputStream() : conn.getErrorStream();
+            response = stream == null ? "" : new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            throw new SQLException("Sign-in failed: cannot reach " + baseUrl + ": " + e.getMessage(), e);
         }
 
-        String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        return JsonParser.parseString(response).getAsJsonObject();
+        if (status == 404) {
+            return null;
+        }
+        if (status != 200) {
+            // 28000: invalid authorization specification
+            throw new SQLException(
+                "Sign-in failed (HTTP " + status + "): " + serverReason(response), "28000");
+        }
+        JsonElement token = JsonParser.parseString(response).getAsJsonObject().get("access_token");
+        if (token == null || token.isJsonNull()) {
+            throw new SQLException("Sign-in failed: the server answered without an access_token");
+        }
+        return token.getAsString();
+    }
+
+    /** The reason in a server error body: its {@code detail} when it is the JSON error shape, else the text. */
+    static String serverReason(String body) {
+        try {
+            JsonElement parsed = JsonParser.parseString(body);
+            if (parsed.isJsonObject() && parsed.getAsJsonObject().has("detail")) {
+                JsonElement detail = parsed.getAsJsonObject().get("detail");
+                return detail.isJsonPrimitive() ? detail.getAsString() : detail.toString();
+            }
+        } catch (JsonSyntaxException e) {
+            // not JSON: the text is the reason
+        }
+        return body;
+    }
+
+    /** The headers every request carries: the requested role (when one is) and the session token. */
+    private void identify(HttpURLConnection conn) {
+        if (role != null) {
+            conn.setRequestProperty("X-Provisa-Role", role);
+        }
+        if (authToken != null) {
+            conn.setRequestProperty("Authorization", "Bearer " + authToken);
+        }
     }
 
     // ── Registered tables (mode=catalog) ──
@@ -177,10 +237,7 @@ public class ProvisaConnection extends AbstractConnection {
         HttpURLConnection conn = (HttpURLConnection) URI.create(endpoint).toURL().openConnection();
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
-        conn.setRequestProperty("X-Provisa-Role", role);
-        if (authToken != null) {
-            conn.setRequestProperty("Authorization", "Bearer " + authToken);
-        }
+        identify(conn);
         conn.setDoOutput(true);
         conn.getOutputStream().write(body.toString().getBytes(StandardCharsets.UTF_8));
 
@@ -210,23 +267,21 @@ public class ProvisaConnection extends AbstractConnection {
     List<Map<String, Object>> executeSqlEndpoint(String sql) throws SQLException {
         try {
             JsonObject body = new JsonObject();
+            // The role travels in X-Provisa-Role only: the server refuses a body role that
+            // differs from the role the request runs as.
             body.addProperty("sql", sql);
-            body.addProperty("role", role);
 
             HttpURLConnection conn = (HttpURLConnection)
                 URI.create(baseUrl + "/data/sql").toURL().openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("X-Provisa-Role", role);
-            if (authToken != null) {
-                conn.setRequestProperty("Authorization", "Bearer " + authToken);
-            }
+            identify(conn);
             conn.setDoOutput(true);
             conn.getOutputStream().write(body.toString().getBytes(StandardCharsets.UTF_8));
 
             if (conn.getResponseCode() != 200) {
                 String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-                throw new SQLException("HTTP " + conn.getResponseCode() + ": " + error);
+                throw new SQLException("HTTP " + conn.getResponseCode() + ": " + serverReason(error));
             }
 
             String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
