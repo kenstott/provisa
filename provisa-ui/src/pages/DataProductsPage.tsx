@@ -16,17 +16,12 @@ import {
   Button,
   Group,
   Modal,
-  MultiSelect,
   Paper,
-  Select,
-  Stack,
   Table,
   Text,
-  Textarea,
-  TextInput,
   Title,
 } from "@mantine/core";
-import { Check, Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   useDataProducts,
   useCreateDataProduct,
@@ -50,7 +45,8 @@ import { fetchFederationGraph, type LineageGraphData } from "../api/lineage";
 import { fetchRelatedGlossaryTerms, type RelatedGlossaryTerm } from "../api/glossary";
 import { domainToSqlName } from "../naming";
 import { columnDescriber } from "../components/lineage/column-descriptions";
-import { CustomPropertiesEditor } from "./data-products/CustomPropertiesEditor";
+import { DataProductFormCard } from "./data-products/DataProductFormCard";
+import { EMPTY_FORM, type DataProductForm } from "./data-products/types";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import {
   ListTable,
@@ -64,254 +60,9 @@ import {
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PageLoading } from "../components/PageLoading";
 
-interface DataProductForm {
-  id: string;
-  domainId: string;
-  name: string;
-  ownerRole: string;
-  teamRole: string;
-  purpose: string;
-  limitations: string;
-  usage: string;
-  version: string;
-  status: string;
-  sla: string;
-  support: string;
-  customProperties: Record<string, string>;
-}
-
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
 // row deterministically EXPANDS rather than toggling whatever a prior visit left open.
 export const EXPANDED_STORAGE_KEY = "provisa.data_products.expanded";
-
-const EMPTY_FORM: DataProductForm = {
-  id: "",
-  domainId: "",
-  name: "",
-  ownerRole: "",
-  teamRole: "",
-  purpose: "",
-  limitations: "",
-  usage: "",
-  version: "",
-  status: "",
-  sla: "",
-  support: "",
-  customProperties: {},
-};
-
-interface DataProductFormCardProps {
-  editingId: string | null;
-  form: DataProductForm;
-  setForm: React.Dispatch<React.SetStateAction<DataProductForm>>;
-  domainOptions: string[];
-  roleOptions: string[];
-  tables: RegisteredTable[];
-  selectedTableIds: string[];
-  setSelectedTableIds: React.Dispatch<React.SetStateAction<string[]>>;
-  functions: TrackedFunction[];
-  selectedFunctionNames: string[];
-  setSelectedFunctionNames: React.Dispatch<React.SetStateAction<string[]>>;
-  saving: boolean;
-  msg: string;
-  onSave: () => void;
-  onCancel: () => void;
-}
-
-// Inline create/edit form — the app-wide pattern: no modal, the form renders in
-// place (creation card above the table, edit inside the expanded detail row).
-function DataProductFormCard({
-  editingId,
-  form,
-  setForm,
-  domainOptions,
-  roleOptions,
-  tables,
-  selectedTableIds,
-  setSelectedTableIds,
-  functions,
-  selectedFunctionNames,
-  setSelectedFunctionNames,
-  saving,
-  msg,
-  onSave,
-  onCancel,
-}: DataProductFormCardProps) {
-  const { t } = useTranslation();
-  return (
-    <Stack gap="sm" data-testid="data-product-form">
-      <TextInput
-        label={t("dataProductsTab.idLabel")}
-        required
-        value={form.id}
-        disabled={editingId !== null}
-        onChange={(e) => setForm((f) => ({ ...f, id: e.target.value }))}
-        placeholder={t("dataProductsTab.idPlaceholder")}
-        data-testid="data-product-id-input"
-      />
-      <Select
-        label={t("dataProductsTab.domainLabel")}
-        required
-        value={form.domainId}
-        onChange={(v) => setForm((f) => ({ ...f, domainId: v ?? "" }))}
-        data={domainOptions}
-        searchable
-        data-testid="data-product-domain-input"
-      />
-      <TextInput
-        label={t("dataProductsTab.nameLabel")}
-        required
-        value={form.name}
-        onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-        placeholder={t("dataProductsTab.namePlaceholder")}
-        data-testid="data-product-name-input"
-      />
-      <Select
-        label={t("dataProductsTab.ownerLabel")}
-        value={form.ownerRole || null}
-        onChange={(v) => setForm((f) => ({ ...f, ownerRole: v ?? "" }))}
-        data={roleOptions}
-        placeholder={t("dataProductsTab.ownerPlaceholder")}
-        searchable
-        clearable
-        data-testid="data-product-owner-input"
-      />
-      <Select
-        label={t("dataProductsTab.teamLabel")}
-        value={form.teamRole || null}
-        onChange={(v) => setForm((f) => ({ ...f, teamRole: v ?? "" }))}
-        data={roleOptions}
-        placeholder={t("dataProductsTab.teamPlaceholder")}
-        searchable
-        clearable
-        data-testid="data-product-team-input"
-      />
-      <Textarea
-        label={t("dataProductsTab.purposeLabel")}
-        value={form.purpose}
-        onChange={(e) => setForm((f) => ({ ...f, purpose: e.target.value }))}
-        placeholder={t("dataProductsTab.purposePlaceholder")}
-        rows={2}
-        data-testid="data-product-purpose-input"
-      />
-      <Textarea
-        label={t("dataProductsTab.limitationsLabel")}
-        value={form.limitations}
-        onChange={(e) => setForm((f) => ({ ...f, limitations: e.target.value }))}
-        placeholder={t("dataProductsTab.limitationsPlaceholder")}
-        rows={2}
-        data-testid="data-product-limitations-input"
-      />
-      <Textarea
-        label={t("dataProductsTab.usageLabel")}
-        value={form.usage}
-        onChange={(e) => setForm((f) => ({ ...f, usage: e.target.value }))}
-        placeholder={t("dataProductsTab.usagePlaceholder")}
-        rows={2}
-        data-testid="data-product-usage-input"
-      />
-      <TextInput
-        label={t("dataProductsTab.versionLabel")}
-        value={form.version}
-        onChange={(e) => setForm((f) => ({ ...f, version: e.target.value }))}
-        placeholder={t("dataProductsTab.versionPlaceholder")}
-        data-testid="data-product-version-input"
-      />
-      <TextInput
-        label={t("dataProductsTab.statusLabel")}
-        value={form.status}
-        onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-        placeholder={t("dataProductsTab.statusPlaceholder")}
-        data-testid="data-product-status-input"
-      />
-      <TextInput
-        label={t("dataProductsTab.slaLabel")}
-        value={form.sla}
-        onChange={(e) => setForm((f) => ({ ...f, sla: e.target.value }))}
-        placeholder={t("dataProductsTab.slaPlaceholder")}
-        data-testid="data-product-sla-input"
-      />
-      <TextInput
-        label={t("dataProductsTab.supportLabel")}
-        value={form.support}
-        onChange={(e) => setForm((f) => ({ ...f, support: e.target.value }))}
-        placeholder={t("dataProductsTab.supportPlaceholder")}
-        data-testid="data-product-support-input"
-      />
-      <CustomPropertiesEditor
-        value={form.customProperties}
-        onChange={(v) => setForm((f) => ({ ...f, customProperties: v }))}
-      />
-      <MultiSelect
-        label={t("dataProductsTab.tablesLabel")}
-        description={t("dataProductsTab.tablesDesc")}
-        placeholder={
-          form.domainId
-            ? t("dataProductsTab.tablesPlaceholder")
-            : t("dataProductsTab.tablesNoDomain")
-        }
-        disabled={!form.domainId}
-        value={selectedTableIds}
-        onChange={setSelectedTableIds}
-        // REQ-1634: a table may only join a data product owned by its own domain.
-        // REQ-1443 clause 10: a checker table (one carrying a contract) is a member through the
-        // table it scans, so it is listed but not toggled.
-        data={tables
-          .filter((tb) => tb.domainId === form.domainId)
-          .map((tb) => ({
-            value: String(tb.id),
-            label: `${tb.domainId}.${tb.tableName}`,
-            disabled: tb.dqContract != null,
-          }))}
-        searchable
-        data-testid="data-product-tables-input"
-      />
-      <MultiSelect
-        label={t("dataProductsTab.commandsLabel")}
-        description={t("dataProductsTab.commandsDesc")}
-        placeholder={
-          form.domainId
-            ? t("dataProductsTab.commandsPlaceholder")
-            : t("dataProductsTab.commandsNoDomain")
-        }
-        disabled={!form.domainId}
-        value={selectedFunctionNames}
-        onChange={setSelectedFunctionNames}
-        // REQ-1634: a command may only join a data product owned by its own domain.
-        data={functions
-          .filter((fn) => fn.domainId === form.domainId)
-          .map((fn) => ({ value: fn.name, label: fn.name }))}
-        searchable
-        data-testid="data-product-commands-input"
-      />
-      {msg && (
-        <Alert color="red" data-testid="data-product-form-error">
-          {msg}
-        </Alert>
-      )}
-      <Group justify="flex-end" gap="sm">
-        <Button
-          variant="default"
-          leftSection={<X size={14} />}
-          onClick={onCancel}
-          data-testid="data-product-cancel-button"
-        >
-          {t("dataProductsTab.cancel")}
-        </Button>
-        <Button
-          variant="filled"
-          leftSection={<Check size={14} />}
-          onClick={onSave}
-          loading={saving}
-          disabled={!form.id.trim() || !form.domainId.trim() || !form.name.trim()}
-          data-testid="data-product-save-button"
-        >
-          {t("dataProductsTab.save")}
-        </Button>
-      </Group>
-    </Stack>
-  );
-}
 
 // REQ-1634: top-level data-products management page (list / create / edit / delete).
 // Follows the MetricsPage detail-then-edit pattern (REQ-1323) — row click expands the
