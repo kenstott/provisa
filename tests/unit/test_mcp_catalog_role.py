@@ -66,6 +66,8 @@ class _Conn:
             {
                 "table_id": table_id,
                 "column_name": column,
+                "alias": None,
+                "data_type": "varchar",
                 "description": "",
                 "is_primary_key": False,
             }

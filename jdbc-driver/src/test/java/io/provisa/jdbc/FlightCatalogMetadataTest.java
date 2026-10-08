@@ -47,7 +47,11 @@ import static org.junit.jupiter.api.Assertions.*;
 class FlightCatalogMetadataTest {
 
     private static Field column(String name, Map<String, String> metadata) {
-        return new Field(name, new FieldType(true, new ArrowType.Utf8(), null, metadata), null);
+        return column(name, new ArrowType.Utf8(), metadata);
+    }
+
+    private static Field column(String name, ArrowType type, Map<String, String> metadata) {
+        return new Field(name, new FieldType(true, type, null, metadata), null);
     }
 
     private static FlightInfo table(String domain, String name, String description, Field... columns) {
@@ -56,8 +60,8 @@ class FlightCatalogMetadataTest {
     }
 
     private static final FlightInfo ORDERS = table("sales", "orders", "Customer orders",
-        column("id", Map.of("primary_key", "true", "description", "Order id")),
-        column("customer_id", Map.of(
+        column("id", new ArrowType.Int(32, true), Map.of("primary_key", "true", "description", "Order id")),
+        column("customer_id", new ArrowType.Int(64, true), Map.of(
             "references", "{\"domain\": \"sales\", \"table\": \"customers\", \"column\": \"id\"}")),
         column("region", Map.of()));
     private static final FlightInfo CUSTOMERS = table("sales", "customers", "Customer accounts",
@@ -215,6 +219,23 @@ class FlightCatalogMetadataTest {
         try (Connection conn = connect("hr_reader", true);
              ResultSet rs = conn.getMetaData().getColumns(null, null, "orders", null)) {
             assertFalse(rs.next(), "a table the role is not served has no columns to list");
+        }
+    }
+
+    @Test
+    void getColumnsReportsEachColumnsOwnType() throws SQLException {
+        try (Connection conn = connect(null, true);
+             ResultSet rs = conn.getMetaData().getColumns(null, null, "orders", null)) {
+            Map<String, Integer> types = new java.util.LinkedHashMap<>();
+            Map<String, String> typeNames = new java.util.LinkedHashMap<>();
+            while (rs.next()) {
+                types.put(rs.getString("COLUMN_NAME"), rs.getInt("DATA_TYPE"));
+                typeNames.put(rs.getString("COLUMN_NAME"), rs.getString("TYPE_NAME"));
+            }
+            assertEquals(Map.of(
+                "id", java.sql.Types.INTEGER, "customer_id", java.sql.Types.BIGINT,
+                "region", java.sql.Types.VARCHAR), types);
+            assertEquals("BIGINT", typeNames.get("customer_id"));
         }
     }
 

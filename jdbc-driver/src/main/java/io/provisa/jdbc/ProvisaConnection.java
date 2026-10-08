@@ -180,7 +180,7 @@ public class ProvisaConnection extends AbstractConnection {
             for (FlightTransport.CatalogColumn col : t.columns()) {
                 cols.add(new RegisteredColumn(
                     col.name(), null, col.description(), col.primaryKey(),
-                    col.referencesTable(), col.referencesColumn()));
+                    col.referencesTable(), col.referencesColumn(), col.sqlType()));
             }
             tables.add(new RegisteredTable(id++, t.domain(), t.table(), null, t.description(), cols));
         }

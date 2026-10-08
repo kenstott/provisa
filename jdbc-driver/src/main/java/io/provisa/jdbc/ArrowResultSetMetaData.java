@@ -34,9 +34,11 @@ public class ArrowResultSetMetaData implements ResultSetMetaData {
 
     @Override
     public int getColumnType(int column) throws SQLException {
-        Field field = schema.getFields().get(column - 1);
-        ArrowType type = field.getType();
+        return jdbcType(schema.getFields().get(column - 1).getType());
+    }
 
+    /** The JDBC type of an Arrow type: a result set's column, and a catalog column alike. */
+    static int jdbcType(ArrowType type) {
         if (type instanceof ArrowType.Utf8) return Types.VARCHAR;
         if (type instanceof ArrowType.Int) {
             int bitWidth = ((ArrowType.Int) type).getBitWidth();

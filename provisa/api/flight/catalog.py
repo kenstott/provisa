@@ -43,14 +43,23 @@ _ARROW_TYPE_MAP: dict[str, pa.DataType] = {
     "bigint": pa.int64(),
     "real": pa.float32(),
     "double": pa.float64(),
+    "double precision": pa.float64(),
+    "float": pa.float32(),
     "decimal": pa.float64(),
+    "numeric": pa.float64(),
     "varchar": pa.utf8(),
     "char": pa.utf8(),
+    "text": pa.utf8(),
     "varbinary": pa.binary(),
+    "bytea": pa.binary(),
     "date": pa.date32(),
     "time": pa.time64("us"),
     "timestamp": pa.timestamp("us"),
+    "timestamptz": pa.timestamp("us", tz="UTC"),
+    "timestamp with time zone": pa.timestamp("us", tz="UTC"),
+    "interval": pa.utf8(),
     "json": pa.utf8(),
+    "jsonb": pa.utf8(),
     "uuid": pa.utf8(),
     "array": pa.utf8(),
     "map": pa.utf8(),
@@ -146,8 +155,8 @@ async def _build_catalog_tables_async(state, role_id: str | None = None) -> list
             "FROM registered_tables WHERE NOT draft ORDER BY domain_id, table_name"
         )
         col_rows = await conn.fetch(
-            "SELECT tc.table_id, tc.column_name, tc.description, tc.is_primary_key "
-            "FROM table_columns tc ORDER BY tc.id"
+            "SELECT tc.table_id, tc.column_name, tc.alias, tc.data_type, tc.description, "
+            "tc.is_primary_key FROM table_columns tc ORDER BY tc.id"
         )
         rel_rows = await conn.fetch(
             "SELECT source_table_id, source_column, target_table_id, target_column "
@@ -157,39 +166,33 @@ async def _build_catalog_tables_async(state, role_id: str | None = None) -> list
         )
 
     named = {row["id"]: (row["domain_id"], row["table_name"]) for row in rows}
+    # A column is listed under the name SQL reads it by, so a name taken from the catalog can be
+    # written into a query: the role's compiled context has it for every column the role is
+    # served. The whole catalog (no role) is not one role's, so the name is derived as the
+    # context derives it (compiler/context.py): the column's alias, or the SQL naming convention.
+    from provisa.compiler.naming import apply_sql_name
+
+    if role_id is None:
+        sql_names = {
+            (cr["table_id"], cr["column_name"]): cr["alias"] or apply_sql_name(cr["column_name"])
+            for cr in col_rows
+        }
+    else:
+        ctx = state.contexts.get(role_id)
+        sql_names = {} if ctx is None else dict(ctx.physical_to_sql)
     # (table id, column) → what it refers to. A reference is listed only where its target is
     # listed too: a role is not told of a table or column it is not served by way of a key.
     references: dict[tuple[int, str], tuple[str, str, str]] = {}
     for rel in rel_rows:
         target_id, target_column = rel["target_table_id"], rel["target_column"]
-        if target_id not in named:
+        if target_id not in named or (target_id, target_column) not in sql_names:
             continue
         if visible is not None and target_column not in visible.get(target_id, ()):
             continue
         references.setdefault(
-            (rel["source_table_id"], rel["source_column"]), (*named[target_id], target_column)
+            (rel["source_table_id"], rel["source_column"]),
+            (*named[target_id], sql_names[(target_id, target_column)]),
         )
-
-    # Index column descriptions by (table_id, column_name)
-    col_desc_map: dict[tuple[int, str], str] = {}
-    for cr in col_rows:
-        col_desc_map[(cr["table_id"], cr["column_name"])] = cr["description"] or ""
-
-    # Get introspected column types from the broadest context
-    # We look at whichever role context has the most tables
-    best_count = -1
-    for _, ctx in state.contexts.items():
-        count = len(getattr(ctx, "table_map", {}))
-        if count > best_count:
-            best_count = count
-
-    # Build the column metadata lookup from introspection
-
-    if state.engine_conn:
-        # Re-use the compilation context's column types if available
-        # They are stored during schema build on AppState indirectly
-        # We can re-introspect the relevant tables
-        pass
 
     tables: list[CatalogTable] = []
     for row in rows:
@@ -213,11 +216,11 @@ async def _build_catalog_tables_async(state, role_id: str | None = None) -> list
             if visible is not None and col_name not in visible[table_id]:
                 continue
             col_description = cr["description"] or ""
-            # Default type — will be overridden if introspection data exists
             columns.append(
                 CatalogColumn(
-                    name=col_name,
-                    data_type="varchar",
+                    name=sql_names[(table_id, col_name)],
+                    # The registered type: a column is not stored without one (REQ-1426).
+                    data_type=cr["data_type"],
                     is_nullable=True,
                     description=col_description,
                     is_primary_key=bool(cr["is_primary_key"]),

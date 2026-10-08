@@ -24,6 +24,8 @@ from __future__ import annotations
 import json
 import types
 
+import pyarrow as pa
+
 from provisa.api.flight.catalog import (
     _build_catalog_tables_async,
     catalog_table_to_arrow_schema,
@@ -42,6 +44,9 @@ _RELATIONSHIPS = [
     (2, "id", 1, "customer_id", "one-to-many"),  # the to-many side is not a reference
     (1, "id", None, None, "many-to-one"),  # defined by a condition: no target column
 ]
+# The registered type of a column, where it is not an integer; and a column's alias.
+_TYPES = {"name": "varchar", "salary": "numeric(12,2)"}
+_ALIASES: dict[tuple[int, str], str] = {}
 _SERVED = {
     # Sees orders and customers, not staff.
     "seller": {1: ["id", "customer_id", "rep_id"], 2: ["id", "name"]},
@@ -84,7 +89,14 @@ class _Conn:
                 if t is not None and cardinality in ("many-to-one", "one-to-one")
             ]
         return [
-            {"table_id": table_id, "column_name": col, "description": "", "is_primary_key": pk}
+            {
+                "table_id": table_id,
+                "column_name": col,
+                "alias": _ALIASES.get((table_id, col)),
+                "data_type": _TYPES.get(col, "integer"),
+                "description": "",
+                "is_primary_key": pk,
+            }
             for table_id, (_, _, columns) in _TABLES.items()
             for col, pk in columns
         ]
@@ -150,3 +162,38 @@ async def test_the_keys_travel_in_the_arrow_field_metadata():
         "column": "id",
     }
     assert not schema.field("rep_id").metadata, "no key metadata for a reference not listed"
+
+
+# --- names and types -----------------------------------------------------------------------------
+
+
+async def test_a_column_is_listed_with_its_registered_type():
+    """Every column was listed as varchar whatever it was registered as."""
+    from provisa.api.flight.catalog import catalog_table_to_arrow_schema
+
+    tables = {t.table_name: t for t in await _build_catalog_tables_async(_state(), None)}
+    assert {c.name: c.data_type for c in tables["staff"].columns} == {
+        "id": "integer",
+        "salary": "numeric(12,2)",
+    }
+    customers = catalog_table_to_arrow_schema(tables["customers"])
+    assert customers.field("id").type == pa.int32()
+    assert customers.field("name").type == pa.utf8()
+    assert catalog_table_to_arrow_schema(tables["staff"]).field("salary").type == pa.float64()
+
+
+async def test_a_column_is_listed_under_the_name_sql_reads_it_by(monkeypatch):
+    """A column with an alias is queried by the alias; the catalog lists that name, for a role
+    (from its compiled context) and for the whole catalog alike, and a reference names its
+    target by it too."""
+    monkeypatch.setitem(_ALIASES, (1, "rep_id"), "rep")
+    monkeypatch.setitem(_ALIASES, (2, "id"), "customer_number")
+    state = _state()
+    state.contexts["seller"].physical_to_sql[(1, "rep_id")] = "rep"
+    state.contexts["seller"].physical_to_sql[(2, "id")] = "customer_number"
+    for role in ("seller", None):
+        tables = {t.table_name: t for t in await _build_catalog_tables_async(state, role)}
+        orders = {c.name: c for c in tables["orders"].columns}
+        assert set(orders) == {"id", "customer_id", "rep"}, role
+        assert {c.name for c in tables["customers"].columns} == {"customer_number", "name"}
+        assert orders["customer_id"].references == ("sales", "customers", "customer_number")

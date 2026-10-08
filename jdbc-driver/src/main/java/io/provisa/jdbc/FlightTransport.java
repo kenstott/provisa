@@ -118,7 +118,8 @@ class FlightTransport implements AutoCloseable {
 
     /** A column of a catalog table: its key flag and the column it refers to, when it has one. */
     record CatalogColumn(
-        String name, String description, boolean primaryKey, String referencesTable, String referencesColumn) {}
+        String name, String description, boolean primaryKey, String referencesTable, String referencesColumn,
+        int sqlType) {}
 
     /**
      * The tables the server's catalog lists for this credential and role (REQ-128).
@@ -156,7 +157,8 @@ class FlightTransport implements AutoCloseable {
                     }
                     columns.add(new CatalogColumn(
                         field.getName(), meta.get("description"),
-                        "true".equals(meta.get("primary_key")), referencesTable, referencesColumn));
+                        "true".equals(meta.get("primary_key")), referencesTable, referencesColumn,
+                        ArrowResultSetMetaData.jdbcType(field.getType())));
                 }
                 Map<String, String> tableMeta = schema.getCustomMetadata();
                 tables.add(new CatalogTable(
