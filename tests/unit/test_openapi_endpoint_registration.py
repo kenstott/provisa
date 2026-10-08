@@ -422,7 +422,7 @@ async def test_a_wrapped_lists_rows_are_read_page_by_page_to_the_short_page(cont
     table.pagination = PaginationConfig(type="offset", page_size=2, rows_field="values")
     await _register_in_the_admin(control_plane, state, table)
     route = _wrapped_pages()
-    endpoint = state.api_endpoints["listPets"]
+    endpoint = state.api_endpoints[("petstore", "listPets")]
     assert endpoint.response_root == "values"
     assert [c.name for c in endpoint.columns][:2] == ["id", "name"]
     rows, cut = answer_rows(
@@ -441,7 +441,7 @@ async def test_a_wrapped_answer_that_is_not_paged_is_read_once(control_plane):
     route = respx.get(f"{BASE}/pets").mock(
         return_value=httpx.Response(200, json={"total": 1, "values": [{"id": 9, "name": "z"}]})
     )
-    endpoint = state.api_endpoints["listPets"]
+    endpoint = state.api_endpoints[("petstore", "listPets")]
     rows, cut = answer_rows(
         endpoint, await call_api(endpoint, {}, state.api_sources["petstore"].base_url)
     )

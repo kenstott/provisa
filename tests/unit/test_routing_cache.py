@@ -88,6 +88,8 @@ def _ctx() -> CompilationContext:
 
 def _state(hot_manager=None) -> SimpleNamespace:
     return SimpleNamespace(
+        # The runtime the pipeline reads this environment's unbound sources from: none here.
+        _active_runtime=lambda: SimpleNamespace(unbound_sources=frozenset()),
         hot_manager=hot_manager,
         api_endpoints={},
         graphql_remote_sources={},

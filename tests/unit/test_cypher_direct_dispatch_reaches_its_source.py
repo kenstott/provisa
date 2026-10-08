@@ -71,6 +71,8 @@ async def test_a_role_without_meta_reading_a_source_with_no_connection_never_rea
     state.source_pools = _NoPools()
     state.tenant_db = store
     state.source_dialects = {"pg": "postgres"}
+    # The runtime the pipeline reads this environment's unbound sources from: none here.
+    state._active_runtime = lambda: SimpleNamespace(unbound_sources=frozenset())
     # The engine the read is routed to: it plans the statement (nothing here executes it).
     state.federation_engine = SimpleNamespace(
         engine=SimpleNamespace(catalog_qualified=True),

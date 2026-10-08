@@ -64,6 +64,8 @@ def _ctx() -> CompilationContext:
 
 def _state() -> SimpleNamespace:
     return SimpleNamespace(
+        # The runtime the pipeline reads this environment's unbound sources from: none here.
+        _active_runtime=lambda: SimpleNamespace(unbound_sources=frozenset()),
         hot_manager=None,
         api_endpoints={},
         graphql_remote_sources={
@@ -163,6 +165,8 @@ def _openapi_state() -> SimpleNamespace:
     conn.capabilities = SimpleNamespace(schemas=True)
     conn.fetch = AsyncMock(return_value=[])
     return SimpleNamespace(
+        # The runtime the pipeline reads this environment's unbound sources from: none here.
+        _active_runtime=lambda: SimpleNamespace(unbound_sources=frozenset()),
         hot_manager=None,
         api_endpoints={(ep.source_id, "get_pet_by_id"): ep},
         # The registered table the statement reads (its endpoint is keyed by source and name).
@@ -233,6 +237,8 @@ async def test_openapi_path_param_table_routes_through_engine_cache_not_tenant_d
 
 def _pg_state(*, pooled: bool) -> SimpleNamespace:
     return SimpleNamespace(
+        # The runtime the pipeline reads this environment's unbound sources from: none here.
+        _active_runtime=lambda: SimpleNamespace(unbound_sources=frozenset()),
         hot_manager=None,
         api_endpoints={},
         graphql_remote_sources={},

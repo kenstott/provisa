@@ -255,4 +255,4 @@ async def test_an_edit_of_a_tables_paging_keeps_where_its_rows_are(control_plane
     assert (moved.success, moved.code) == (False, "schema.paging_rows_field_fixed")
     assert moved.params == {"table": "pets", "rows_field": "values"}
     assert kept.success
-    assert state.api_endpoints["pets"].pagination.rows_field == "values"
+    assert state.api_endpoints[("api", "pets")].pagination.rows_field == "values"

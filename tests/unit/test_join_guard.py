@@ -326,7 +326,11 @@ def test_only_a_graphql_built_statement_is_exempt_and_its_caller_says_so():
         _pipeline._govern_compiled,
     ):
         assert inspect.signature(entry).parameters["sdl_joins"].default is inspect.Parameter.empty
-    assert "tables_outside_relationships" in inspect.getsource(_pipeline._govern_compiled)
+    # The compiled stage validates the statement as the raw stage does, the relationship guard
+    # skipped only for the SDL's joins or by the one bypass rule.
+    governing = inspect.getsource(_pipeline._govern_compiled)
+    assert "validate_sql(" in governing and "relationship_guard_bypassed(" in governing
+    assert "bypass_relationship_guard=sdl_joins" in governing
     package = _REPO / "provisa"
     for surface in (
         "bolt/session.py",
@@ -341,13 +345,13 @@ def test_only_a_graphql_built_statement_is_exempt_and_its_caller_says_so():
     flight = (package / "api/flight/server.py").read_text()
     graphql = flight[flight.index("def _do_get_graphql(") :]
     assert "sdl_joins=True" in graphql and "sdl_joins=False" in flight[: flight.index(graphql)]
-    # The one blanket skip left is the GraphQL endpoint's own validation of its SDL-built SQL.
+    # No blanket skip is left anywhere: the GraphQL endpoint states sdl_joins like every caller.
     skipping = [
         str(path.relative_to(package))
         for path in package.rglob("*.py")
         if re.search(r"bypass_relationship_guard=True", path.read_text())
     ]
-    assert skipping == ["api/data/endpoint.py"], skipping
+    assert skipping == [], skipping
 
 
 def test_usings_and_naturals_are_judged_by_the_columns_they_pair():
