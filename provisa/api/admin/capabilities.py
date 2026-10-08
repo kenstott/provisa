@@ -393,6 +393,26 @@ def _rights_scope(identity, state, rights: "tuple[str, ...]") -> frozenset[str] 
     return None if allowed is None else frozenset(allowed)
 
 
+def right_reach(identity, state, right: str) -> frozenset[str] | None:  # REQ-1944, REQ-1948
+    """The domains ``identity`` may exercise ``right`` in: ``None`` for every domain, the empty
+    set when no role it holds carries the right.
+
+    The same reading :func:`right_domain_refusal` makes, handed back as a scope for a caller that
+    asks whether the right reaches ANY of several domains rather than all of them. The dev/no-auth
+    principal is exempt, as at every capability gate; single-domain mode keeps the right check
+    and drops the domain check.
+    """
+    from provisa.core import domain_policy
+
+    if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+        return None
+    if right not in _resolved_capabilities(identity, state):
+        return frozenset()
+    if domain_policy.single_domain():
+        return None
+    return _rights_scope(identity, state, (right,))
+
+
 def right_domain_refusal(  # REQ-1944
     identity, state, rights: "str | tuple[str, ...]", domains: "Iterable[str]"
 ) -> str | None:

@@ -357,7 +357,8 @@
       "table_draft_set": "Tabel {{table}} als concept ingesteld",
       "table_released": "Tabel {{table}} vrijgegeven",
       "openapi_no_rows_field": "Tabel {{table}}: het antwoord heeft geen eigenschap {{rows_field}} om rijen uit te lezen.",
-      "paging_rows_field_fixed": "Tabel {{table}}: waar de rijen staan ({{rows_field}}) wordt ingesteld bij het registreren van de tabel. Registreer de tabel opnieuw om de rijen ergens anders te lezen."
+      "paging_rows_field_fixed": "Tabel {{table}}: waar de rijen staan ({{rows_field}}) wordt ingesteld bij het registreren van de tabel. Registreer de tabel opnieuw om de rijen ergens anders te lezen.",
+      "relationship_request_queued": "In wachtrij geplaatst als verzoek #{{id}}. Het heeft goedkeuringen nodig van {{required}} verschillende gebruikers die relaties mogen aanmaken, van wie er minstens één tot elk geraakt domein reikt."
     },
     "secrets": {
       "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."
@@ -417,6 +418,15 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}"
+    },
+    "requests": {
+      "approver_outside_domains": "Uw recht om relaties aan te maken reikt niet tot een domein dat dit verzoek raakt ({{domains}})",
+      "own_request": "U kunt niet beslissen over een verzoek dat u zelf hebt gedaan",
+      "already_approved": "U hebt dit verzoek al goedgekeurd",
+      "approver_unidentified": "Over een relatieverzoek beslissen aangemelde gebruikers; deze beslissing heeft geen gebruiker",
+      "waiting_on_domains": "Dit verzoek wacht nog op een goedkeuring van: {{domains}}",
+      "approvals_incomplete": "Dit verzoek heeft goedkeuringen van {{required}} verschillende gebruikers nodig",
+      "tables_not_registered": "De tabellen die dit verzoek noemt ({{tables}}), zijn niet meer geregistreerd. Het kan niet worden goedgekeurd; een gebruiker wiens recht om relaties aan te maken tot elk domein reikt, kan het afwijzen"
     }
   }
 }

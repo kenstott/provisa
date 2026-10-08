@@ -357,7 +357,8 @@
       "table_draft_set": "Tabelle {{table}} als Entwurf gesetzt",
       "table_released": "Tabelle {{table}} freigegeben",
       "openapi_no_rows_field": "Tabelle {{table}}: Die Antwort hat keine Eigenschaft {{rows_field}}, aus der Zeilen gelesen werden könnten.",
-      "paging_rows_field_fixed": "Tabelle {{table}}: Wo ihre Zeilen liegen ({{rows_field}}), wird bei der Registrierung der Tabelle festgelegt. Registrieren Sie die Tabelle erneut, um ihre Zeilen von anderer Stelle zu lesen."
+      "paging_rows_field_fixed": "Tabelle {{table}}: Wo ihre Zeilen liegen ({{rows_field}}), wird bei der Registrierung der Tabelle festgelegt. Registrieren Sie die Tabelle erneut, um ihre Zeilen von anderer Stelle zu lesen.",
+      "relationship_request_queued": "Als Antrag #{{id}} eingereiht. Er braucht Genehmigungen von {{required}} verschiedenen Benutzern, die Beziehungen anlegen dürfen, wobei mindestens einer jede berührte Domäne erreicht."
     },
     "secrets": {
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."
@@ -417,6 +418,15 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}"
+    },
+    "requests": {
+      "approver_outside_domains": "Ihr Recht, Beziehungen anzulegen, reicht in keine Domäne, die dieser Antrag berührt ({{domains}})",
+      "own_request": "Sie können über einen eigenen Antrag nicht entscheiden",
+      "already_approved": "Sie haben diesen Antrag bereits genehmigt",
+      "approver_unidentified": "Über einen Beziehungsantrag entscheiden angemeldete Benutzer; dieser Entscheidung ist kein Benutzer zugeordnet",
+      "waiting_on_domains": "Dieser Antrag wartet noch auf eine Genehmigung aus: {{domains}}",
+      "approvals_incomplete": "Dieser Antrag braucht Genehmigungen von {{required}} verschiedenen Benutzern",
+      "tables_not_registered": "Die Tabellen, die dieser Antrag nennt ({{tables}}), sind nicht mehr registriert. Er kann nicht genehmigt werden; ein Benutzer, dessen Recht, Beziehungen anzulegen, in jede Domäne reicht, kann ihn ablehnen"
     }
   }
 }

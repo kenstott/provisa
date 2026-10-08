@@ -357,7 +357,8 @@
       "table_draft_set": "表 {{table}} 已设为草稿",
       "table_released": "表 {{table}} 已发布",
       "openapi_no_rows_field": "表 {{table}}：响应中没有可用于读取行的属性 {{rows_field}}。",
-      "paging_rows_field_fixed": "表 {{table}}：行所在的位置（{{rows_field}}）在注册表时设置。要从其他位置读取行，请重新注册该表。"
+      "paging_rows_field_fixed": "表 {{table}}：行所在的位置（{{rows_field}}）在注册表时设置。要从其他位置读取行，请重新注册该表。",
+      "relationship_request_queued": "已排入请求 #{{id}}。它需要 {{required}} 位有权创建关系的不同用户批准，且每个涉及的域至少有一位批准者的权限覆盖。"
     },
     "secrets": {
       "still_referenced": "本组织中仍有 {{count}} 个已存储的值引用 {{secret}}。请更改或移除每一个，然后再次删除。"
@@ -417,6 +418,15 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}"
+    },
+    "requests": {
+      "approver_outside_domains": "你创建关系的权限未覆盖此请求涉及的任何域（{{domains}}）",
+      "own_request": "你不能决定自己提出的请求",
+      "already_approved": "你已批准过此请求",
+      "approver_unidentified": "关系请求由已登录的用户决定；此决定没有对应的用户",
+      "waiting_on_domains": "此请求仍在等待以下域的批准：{{domains}}",
+      "approvals_incomplete": "此请求需要 {{required}} 位不同用户的批准",
+      "tables_not_registered": "此请求指定的表（{{tables}}）已不再注册。无法批准；创建关系的权限覆盖所有域的用户可以拒绝它"
     }
   }
 }

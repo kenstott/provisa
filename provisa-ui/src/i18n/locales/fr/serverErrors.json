@@ -357,7 +357,8 @@
       "table_draft_set": "Table {{table}} mise en brouillon",
       "table_released": "Table {{table}} publiée",
       "openapi_no_rows_field": "Table {{table}} : la réponse n'a aucune propriété {{rows_field}} où lire des lignes.",
-      "paging_rows_field_fixed": "Table {{table}} : l'endroit où se trouvent ses lignes ({{rows_field}}) est défini à l'enregistrement de la table. Enregistrez de nouveau la table pour lire ses lignes ailleurs."
+      "paging_rows_field_fixed": "Table {{table}} : l'endroit où se trouvent ses lignes ({{rows_field}}) est défini à l'enregistrement de la table. Enregistrez de nouveau la table pour lire ses lignes ailleurs.",
+      "relationship_request_queued": "Mis en file comme demande n° {{id}}. Elle requiert les approbations de {{required}} utilisateurs différents autorisés à créer des relations, dont au moins un atteint chaque domaine concerné."
     },
     "secrets": {
       "still_referenced": "{{secret}} est encore nommé par {{count}} valeur(s) stockée(s) dans cette organisation. Modifiez ou retirez chacune, puis supprimez-le de nouveau."
@@ -417,6 +418,15 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}"
+    },
+    "requests": {
+      "approver_outside_domains": "Votre droit de créer des relations n'atteint aucun domaine concerné par cette demande ({{domains}})",
+      "own_request": "Vous ne pouvez pas décider d'une demande que vous avez faite",
+      "already_approved": "Vous avez déjà approuvé cette demande",
+      "approver_unidentified": "Une demande de relation est décidée par des utilisateurs connectés ; cette décision n'a pas d'utilisateur",
+      "waiting_on_domains": "Cette demande attend encore une approbation de : {{domains}}",
+      "approvals_incomplete": "Cette demande requiert les approbations de {{required}} utilisateurs différents",
+      "tables_not_registered": "Les tables nommées par cette demande ({{tables}}) ne sont plus enregistrées. Elle ne peut pas être approuvée ; un utilisateur dont le droit de créer des relations atteint tous les domaines peut la rejeter"
     }
   }
 }

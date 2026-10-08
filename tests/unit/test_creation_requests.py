@@ -64,6 +64,14 @@ class TestRepo:
         _, values, _ = conn.insert_calls[0]
         assert values["payload"] == {"id": "r1"}
 
+    async def test_every_queued_relationship_request_needs_two_approvals(self):  # REQ-1948
+        conn = _Conn(insert_returning=7)
+        await cr_repo.create(conn, "relationship", "create_relationship", {"id": "r1"}, "alice")
+        await cr_repo.create(conn, "view", "create_view", {"id": "v1"}, "alice")
+        assert conn.insert_calls[0][1]["required_approvals"] == 2
+        # Any other type takes the column's own default of one.
+        assert "required_approvals" not in conn.insert_calls[1][1]
+
     async def test_list_pending_decodes_payload(self):
         conn = _Conn(
             rows=[{"id": 1, "request_type": "view", "payload": {"a": 1}, "status": "pending"}]

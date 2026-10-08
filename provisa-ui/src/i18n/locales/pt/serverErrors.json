@@ -357,7 +357,8 @@
       "table_draft_set": "Tabela {{table}} definida como rascunho",
       "table_released": "Tabela {{table}} liberada",
       "openapi_no_rows_field": "Tabela {{table}}: a resposta não tem nenhuma propriedade {{rows_field}} de onde ler linhas.",
-      "paging_rows_field_fixed": "Tabela {{table}}: onde estão suas linhas ({{rows_field}}) é definido quando a tabela é registrada. Registre a tabela novamente para ler suas linhas de outro lugar."
+      "paging_rows_field_fixed": "Tabela {{table}}: onde estão suas linhas ({{rows_field}}) é definido quando a tabela é registrada. Registre a tabela novamente para ler suas linhas de outro lugar.",
+      "relationship_request_queued": "Enfileirado como solicitação nº {{id}}. Ela precisa de aprovações de {{required}} usuários diferentes que possam criar relacionamentos, com pelo menos um alcançando cada domínio tocado."
     },
     "secrets": {
       "still_referenced": "{{secret}} ainda é nomeado por {{count}} valor(es) armazenado(s) nesta organização. Altere ou remova cada um e exclua novamente."
@@ -417,6 +418,15 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}"
+    },
+    "requests": {
+      "approver_outside_domains": "Seu direito de criar relacionamentos não alcança nenhum domínio tocado por esta solicitação ({{domains}})",
+      "own_request": "Você não pode decidir uma solicitação que você fez",
+      "already_approved": "Você já aprovou esta solicitação",
+      "approver_unidentified": "Uma solicitação de relacionamento é decidida por usuários conectados; esta decisão não tem usuário",
+      "waiting_on_domains": "Esta solicitação ainda aguarda uma aprovação de: {{domains}}",
+      "approvals_incomplete": "Esta solicitação precisa de aprovações de {{required}} usuários diferentes",
+      "tables_not_registered": "As tabelas citadas por esta solicitação ({{tables}}) não estão mais registradas. Ela não pode ser aprovada; um usuário cujo direito de criar relacionamentos alcança todos os domínios pode rejeitá-la"
     }
   }
 }

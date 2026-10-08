@@ -357,7 +357,8 @@
       "table_draft_set": "表 {{table}} 已設為草稿",
       "table_released": "表 {{table}} 已發佈",
       "openapi_no_rows_field": "資料表 {{table}}：回應中沒有可用於讀取資料列的屬性 {{rows_field}}。",
-      "paging_rows_field_fixed": "資料表 {{table}}：資料列所在的位置（{{rows_field}}）在註冊資料表時設定。如要從其他位置讀取資料列，請重新註冊該資料表。"
+      "paging_rows_field_fixed": "資料表 {{table}}：資料列所在的位置（{{rows_field}}）在註冊資料表時設定。如要從其他位置讀取資料列，請重新註冊該資料表。",
+      "relationship_request_queued": "已排入佇列為請求 #{{id}}。它需要 {{required}} 位有權建立關係的不同使用者核准，且每個涉及的網域至少有一位核准者的權限涵蓋。"
     },
     "secrets": {
       "still_referenced": "本機構中仍有 {{count}} 個已儲存的值引用 {{secret}}。請更改或移除每一個，然後再次刪除。"
@@ -417,6 +418,15 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}"
+    },
+    "requests": {
+      "approver_outside_domains": "你建立關係的權限未涵蓋此請求涉及的任何網域（{{domains}}）",
+      "own_request": "你不能決定自己提出的請求",
+      "already_approved": "你已核准過此請求",
+      "approver_unidentified": "關係請求由已登入的使用者決定；此決定沒有對應的使用者",
+      "waiting_on_domains": "此請求仍在等待以下網域的核准：{{domains}}",
+      "approvals_incomplete": "此請求需要 {{required}} 位不同使用者的核准",
+      "tables_not_registered": "此請求指定的表（{{tables}}）已不再註冊。無法核准；建立關係的權限涵蓋所有網域的使用者可以拒絕它"
     }
   }
 }

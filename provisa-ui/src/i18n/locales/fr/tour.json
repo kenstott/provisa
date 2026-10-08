@@ -169,7 +169,7 @@
       },
       "stepRequests": {
         "title": "Demandes de relation",
-        "description": "✋ Cette demande vient de quelqu'un qui ne peut pas créer de relations lui-même, souvent hors de votre domaine, et qui veut relier ses tables aux vôtres ; c'est généralement la première étape avant de demander vos données. Les relations sont gouvernées : en approuver une change les requêtes autorisées, car un rôle qui ne peut faire de jointures que le long de relations approuvées pourra désormais en faire à travers celle-ci. Une demande de relation requiert deux approbations avant de pouvoir être exécutée. Approuvez-la, exécutez-la ou rejetez-la avec un motif tiré d'une liste fixe ; les demandes traitées passent dans l'onglet Traitées."
+        "description": "✋ Cette demande vient de quelqu'un qui ne peut pas créer de relations lui-même, souvent hors de votre domaine, et qui veut relier ses tables aux vôtres ; c'est généralement la première étape avant de demander vos données. Les relations sont gouvernées : en approuver une change les requêtes autorisées, car un rôle qui ne peut faire de jointures que le long de relations approuvées pourra désormais en faire à travers celle-ci. Une demande de relation requiert deux approbations avant de pouvoir être exécutée. Une relation entre deux domaines requiert un oui de chaque côté. Approuvez-la, exécutez-la ou rejetez-la avec un motif tiré d'une liste fixe ; les demandes traitées passent dans l'onglet Traitées."
       },
       "stepQualityTable": {
         "title": "Un vérificateur de qualité n'est qu'une source",

@@ -150,20 +150,11 @@ async def _upsert_relationship_impl(
     # REQ-434/366: a user lacking create_relationship queues a request instead of erroring.
     if not has_capability(info, "create_relationship"):
         return await _queue_creation_request(info, "relationship", "create_relationship", input)
-    from provisa.core.models import Relationship as RelModel, Cardinality
-    from provisa.core.repositories import relationship as rel_repo
     from provisa.api.admin.capabilities import _identity_from_info
 
-    pool = await _get_pool()
-    try:
-        Cardinality(input.cardinality)
-    except ValueError:
-        return MutationResult(
-            success=False,
-            message=f"Invalid cardinality: {input.cardinality!r}",
-            code="schema.invalid_cardinality",
-            params={"cardinality": input.cardinality},
-        )
+    _invalid = _cardinality_problem(input)
+    if _invalid is not None:
+        return _invalid
     # REQ-1531: A RELATIONSHIP IS OWNED BY ITS SOURCE. The row is source -> target and the unique
     # constraint is (source_table_id, alias), so the edge hangs off the source side and the source's
     # domain is the one being changed. The target is referenced, not altered — its own RLS and
@@ -195,7 +186,41 @@ async def _upsert_relationship_impl(
         # REQ-434/1531: out of domain queues a request, the same answer a missing right gets.
         return await _queue_creation_request(info, "relationship", "create_relationship", input)
     _cross_domain = _tgt_row is not None and _tgt_row["domain_id"] != _src_row["domain_id"]
+    # REQ-020: record the defining steward as owner.
+    _identity = _identity_from_info(info)
+    _owner = getattr(_identity, "user_id", None) if _identity is not None else None
+    return await save_relationship(input, owner=_owner, needs_review=_cross_domain)
 
+
+def _cardinality_problem(input: RelationshipInput) -> "MutationResult | None":
+    from provisa.core.models import Cardinality
+
+    try:
+        Cardinality(input.cardinality)
+    except ValueError:
+        return MutationResult(
+            success=False,
+            message=f"Invalid cardinality: {input.cardinality!r}",
+            code="schema.invalid_cardinality",
+            params={"cardinality": input.cardinality},
+        )
+    return None
+
+
+async def save_relationship(
+    input: RelationshipInput, *, owner: str | None, needs_review: bool
+) -> MutationResult:  # REQ-019, REQ-020, REQ-1948
+    """Store a relationship whose author has already been authorized: by holding the right in
+    the source table's domain (the mutation above), or by the approvals of the domains the
+    relationship touches (REQ-1948). ``needs_review`` flags an edge the target's domain has not
+    seen (REQ-1531)."""
+    from provisa.core.models import Relationship as RelModel, Cardinality
+    from provisa.core.repositories import relationship as rel_repo
+
+    _invalid = _cardinality_problem(input)
+    if _invalid is not None:
+        return _invalid
+    pool = await _get_pool()
     # REQ-1586: a junction end is an ordered column list paired positionally against the
     # relationship's own key, so the two lists must be the same length. Saving a mismatch would
     # produce an edge the compiler can only reject at query time.
@@ -215,9 +240,6 @@ async def _upsert_relationship_impl(
                 params={"relationship": input.id},
             )
 
-    # REQ-020: record the defining steward as owner.
-    _identity = _identity_from_info(info)
-    _owner = getattr(_identity, "user_id", None) if _identity is not None else None
     model = RelModel(
         id=input.id,
         source_table_id=input.source_table_id,
@@ -239,7 +261,7 @@ async def _upsert_relationship_impl(
         via_type_column=input.via_type_column or None,
         via_type_value=input.via_type_value or None,
         via_label_source=input.via_label_source,
-        owner=_owner,
+        owner=owner,
     )
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
@@ -253,7 +275,7 @@ async def _upsert_relationship_impl(
                 await relationship_fake_refusal(_conn, input.id)
         except _FakeRefusedSave as refused:
             return refused.result
-        if _cross_domain:
+        if needs_review:
             # REQ-1531: re-assert AFTER the upsert. rel_repo.upsert clears needs_review on conflict
             # (REQ-020 treats a save as an explicit re-review), and a cross-domain edge is not the
             # source steward's to clear — the flag is the other domain's notice that its tables are
@@ -302,6 +324,162 @@ async def _upsert_relationship_impl(
         code="schema.relationship_saved",
         params={"relationship": input.id},
     )
+
+
+def _rule_refusal(code: str, message: str, params: "dict | None" = None) -> Any:
+    from provisa.api.admin.relationship_approvals import Refusal
+
+    return Refusal(code, message, dict(params or {}))
+
+
+async def _relationship_decision_refusal(
+    info: StrawberryInfo, req: dict, *, executing: bool
+) -> "MutationResult | None":  # REQ-1948
+    """Why the caller may not reject (or, ``executing``, carry out) a relationship request.
+    A refused attempt is written to the org's administrative trail."""
+    from provisa.api.admin import relationship_approvals as rule
+
+    involved, reach, user_id = await _request_decision_scope(info, req)
+    refusal = rule.rejection_refusal(
+        user_id=user_id,
+        requested_by=req["requested_by"],
+        involved=involved,
+        reach=reach,
+        tables=rule.tables_named(req["payload"]),
+    )
+    if refusal is None and executing:
+        refusal = rule.incomplete_refusal(involved, req["approvals"], req["requested_by"])
+    if refusal is None:
+        return None
+    await _record_request_decision(info, req, "execute" if executing else "reject", refusal=refusal)
+    return MutationResult(
+        success=False, message=refusal.message, code=refusal.code, params=refusal.params
+    )
+
+
+async def _execution_refusal(info: StrawberryInfo, req: dict) -> "MutationResult | None":
+    """Why the caller may not carry out ``req``, for every request type: executing is open to the
+    users who may decide the request, and only once it has had its approvals."""
+    from provisa.api.admin import relationship_approvals as rule
+    from provisa.api.admin.capabilities import _identity_from_info, require_capability
+
+    if req["request_type"] == rule.REQUEST_TYPE:
+        return await _relationship_decision_refusal(info, req, executing=True)
+    try:
+        require_capability(info, req["capability"])
+    except PermissionError as e:
+        return MutationResult(success=False, message=str(e))
+    identity = _identity_from_info(info)
+    refusal = rule.repeat_refusal(
+        user_id=getattr(identity, "user_id", None), requested_by=req["requested_by"], approvals=[]
+    ) or rule.count_refusal(req["approvals"], req["requested_by"], req["required_approvals"])
+    if refusal is None:
+        return None
+    await _record_request_decision(info, req, "execute", refusal=refusal)
+    return MutationResult(
+        success=False, message=refusal.message, code=refusal.code, params=refusal.params
+    )
+
+
+async def _request_decision_scope(
+    info: StrawberryInfo, req: dict
+) -> "tuple[frozenset[str], frozenset[str] | None, str | None]":
+    """The domains the request touches, the caller's reach of the right, and the caller. Only a
+    relationship request is decided by domains (REQ-1948); any other touches none here."""
+    from provisa.api.admin import relationship_approvals as rule
+    from provisa.api.admin.capabilities import _identity_from_info, right_reach
+    from provisa.api.app import state
+
+    identity = _identity_from_info(info)
+    user_id = getattr(identity, "user_id", None)
+    if req["request_type"] != rule.REQUEST_TYPE:
+        return frozenset(), None, user_id
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        involved = await rule.domains_involved(cast("Connection", conn), req["payload"])
+    return involved, right_reach(identity, state, rule.RIGHT), user_id
+
+
+async def _record_request_decision(
+    info: StrawberryInfo, req: dict, action: str, *, refusal: Any = None
+) -> None:  # REQ-1948
+    from provisa.api.admin import relationship_approvals as rule
+
+    involved, reach, user_id = await _request_decision_scope(info, req)
+    await rule.record(
+        await _get_pool(),
+        action=action,
+        request=req,
+        actor=user_id,
+        involved=involved,
+        reach=reach,
+        refusal=refusal,
+    )
+
+
+async def perform_request_creation(info: StrawberryInfo, req: dict) -> MutationResult:
+    """Create what a creation request asks for, through the code the direct mutation uses.
+
+    The one place a request of any type is carried out, for the REST queue and the GraphQL
+    mutation alike. A relationship is stored on its approvals' authority (REQ-1948); a view,
+    table or source is created as the caller, under the caller's own gates; a webhook is exposed
+    by the schema rebuild once its request is marked executed (REQ-209). The caller marks the
+    request executed when this succeeds.
+    """
+    from provisa.api.admin.capabilities import _identity_from_info
+
+    kind = req["request_type"]
+    if kind == "relationship":
+        caller = _identity_from_info(info)
+        return await save_relationship(
+            _rebuild_relationship_input(req["payload"]),
+            owner=getattr(caller, "user_id", None),
+            needs_review=False,
+        )
+    if kind in ("view", "table"):  # REQ-1792: "table" is the MCP-proposal kind
+        table = _rebuild_table_input(req["payload"])
+        # Same strawberry-decorator signature limitation as the other in-module mutation calls.
+        return await Mutation().register_table(info, table)  # pyright: ignore[reportCallIssue]
+    if kind == "source":  # REQ-1792
+        source = _rebuild_source_input(req["payload"])
+        return await Mutation().create_source(info, source)  # pyright: ignore[reportCallIssue]
+    if kind == "webhook":
+        # REQ-209: approving a webhook only requires marking this request executed (the caller
+        # does) — the schema-build gate then exposes the webhook whose latest request is
+        # executed. Verify the webhook still exists; the rebuild follows the mark.
+        wh_name = req["payload"]["name"]
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            _ex = await conn.execute_core(
+                select(tracked_webhooks.c.id).where(tracked_webhooks.c.name == wh_name)
+            )
+            exists = _ex.scalar()
+        if not exists:
+            return MutationResult(
+                success=False,
+                message=f"Webhook {wh_name!r} not found",
+                code="schema.webhook_not_found",
+                params={"webhook": wh_name},
+            )
+        return MutationResult(
+            success=True,
+            message=f"Approved webhook {wh_name!r}",
+            code="schema.webhook_approved",
+            params={"webhook": wh_name},
+        )
+    return MutationResult(
+        success=False,
+        message=f"Unknown request type {kind!r}",
+        code="schema.unknown_request_type",
+        params={"type": kind},
+    )
+
+
+async def request_carried_out(req: dict) -> None:
+    """What follows marking a request executed: a webhook is exposed by the schema rebuild that
+    reads its latest request's status (REQ-209), so the rebuild comes after the mark."""
+    if req["request_type"] == "webhook":
+        await _rebuild_schemas()
 
 
 def _assignment_target_problem(model) -> "MutationResult | None":  # REQ-1377
@@ -2988,11 +3166,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def execute_creation_request(  # REQ-434, REQ-063
+    async def execute_creation_request(  # REQ-434, REQ-063, REQ-1948
         self, info: StrawberryInfo, request_id: int
     ) -> MutationResult:
-        """REQ-434: a rights-holder executes a queued creation request."""
-        from provisa.api.admin.capabilities import _identity_from_info, require_capability
+        """REQ-434: a rights-holder carries out a creation request that has had its approvals.
+
+        Refused until the request's required approvals are met; after that it serves to retry a
+        creation that failed when the last approval was given."""
+        from provisa.api.admin.capabilities import _identity_from_info
         from provisa.core.repositories import creation_request as cr_repo
 
         pool = await _get_pool()
@@ -3004,61 +3185,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 message="Request not found or already resolved",
                 code="schema.request_not_pending",
             )
-        try:
-            require_capability(info, req["capability"])
-        except PermissionError as e:
-            return MutationResult(success=False, message=str(e))
-
-        if req["request_type"] == "relationship":
-            # Same strawberry-decorator signature limitation as above.
-            result = await self.upsert_relationship(  # pyright: ignore[reportCallIssue]
-                info,
-                _rebuild_relationship_input(req["payload"]),  # pyright: ignore[reportCallIssue]
-            )
-        elif req["request_type"] in ("view", "table"):  # REQ-1792: "table" is the MCP-proposal kind
-            result = await self.register_table(info, _rebuild_table_input(req["payload"]))  # pyright: ignore[reportCallIssue]
-        elif req["request_type"] == "source":  # REQ-1792
-            result = await self.create_source(info, _rebuild_source_input(req["payload"]))  # pyright: ignore[reportCallIssue]
-        elif req["request_type"] == "webhook":
-            # REQ-209: approving a webhook only requires marking this request executed (done
-            # below) — the schema-build gate then exposes the webhook whose latest request is
-            # executed. Verify the webhook still exists, then rebuild.
-            wh_name = req["payload"]["name"]
-            async with pool.acquire() as conn:
-                _ex = await conn.execute_core(
-                    select(tracked_webhooks.c.id).where(tracked_webhooks.c.name == wh_name)
-                )
-                exists = _ex.scalar()
-            if not exists:
-                return MutationResult(
-                    success=False,
-                    message=f"Webhook {wh_name!r} not found",
-                    code="schema.webhook_not_found",
-                    params={"webhook": wh_name},
-                )
-            from provisa.api.app import _rebuild_schemas
-
-            await _rebuild_schemas()
-            result = MutationResult(
-                success=True,
-                message=f"Approved webhook {wh_name!r}",
-                code="schema.webhook_approved",
-                params={"webhook": wh_name},
-            )
-        else:
-            return MutationResult(
-                success=False,
-                message=f"Unknown request type {req['request_type']!r}",
-                code="schema.unknown_request_type",
-                params={"type": req["request_type"]},
-            )
+        refusal = await _execution_refusal(info, req)
+        if refusal is not None:
+            return refusal
+        result = await perform_request_creation(info, req)
         if not result.success:
+            if result.code is not None:
+                await _record_request_decision(
+                    info, req, "execute", refusal=_rule_refusal(result.code, result.message)
+                )
             return result
 
         identity = _identity_from_info(info)
         resolved_by = getattr(identity, "user_id", None) if identity is not None else None
         async with pool.acquire() as conn:
             await cr_repo.mark_executed(cast("Connection", conn), request_id, resolved_by)
+        await request_carried_out(req)
+        await _record_request_decision(info, req, "execute")
         return MutationResult(
             success=True,
             message=f"Executed creation request #{request_id}",
@@ -3067,7 +3210,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def reject_creation_request(  # REQ-434, REQ-063
+    async def reject_creation_request(  # REQ-434, REQ-063, REQ-1948
         self, info: StrawberryInfo, request_id: int, reason: str
     ) -> MutationResult:
         """REQ-434/063: a rights-holder rejects a queued request with an actionable reason."""
@@ -3089,15 +3232,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     message="Request not found or already resolved",
                     code="schema.request_not_pending",
                 )
-            try:
-                require_capability(info, req["capability"])
-            except PermissionError as e:
-                return MutationResult(success=False, message=str(e))
+            if req["request_type"] == "relationship":
+                # REQ-1948: a rejection comes from any user who could approve.
+                refusal = await _relationship_decision_refusal(info, req, executing=False)
+                if refusal is not None:
+                    return refusal
+            else:
+                try:
+                    require_capability(info, req["capability"])
+                except PermissionError as e:
+                    return MutationResult(success=False, message=str(e))
             identity = _identity_from_info(info)
             resolved_by = getattr(identity, "user_id", None) if identity is not None else None
             await cr_repo.mark_rejected(
                 cast("Connection", conn), request_id, reason.strip(), resolved_by
             )
+        if req["request_type"] == "relationship":
+            await _record_request_decision(info, req, "reject")
         return MutationResult(
             success=True,
             message=f"Rejected creation request #{request_id}",

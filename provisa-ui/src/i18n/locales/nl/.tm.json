@@ -2751,7 +2751,7 @@
   "nl/reportsTab.json::reportsTab.save": "Save",
   "nl/reportsTab.json::reportsTab.sqlLabel": "SQL",
   "nl/reportsTab.json::reportsTab.title": "Reports",
-  "nl/requestsPage.json::requestsPage.approve": "Approve ({{count}}/{{total}})",
+  "nl/requestsPage.json::requestsPage.approve": "Approve",
   "nl/requestsPage.json::requestsPage.cancel": "Cancel",
   "nl/requestsPage.json::requestsPage.colActions": "",
   "nl/requestsPage.json::requestsPage.colApprovals": "Approvals",
@@ -5200,7 +5200,7 @@
   "nl/tour.json::tour.steps.stepTags.title": "Tags carry meaning",
   "nl/tour.json::tour.steps.stepTags.description": "🏷️ A tag is one org-wide label with a fixed meaning, applied to sources, tables, columns, relationships or commands. Tags carry behavior, not only documentation, and a tag can require a reason, an expiry date or a parameter when it is applied.",
   "nl/tour.json::tour.steps.stepRequests.title": "Relationship requests",
-  "nl/tour.json::tour.steps.stepRequests.description": "✋ This request comes from someone who may not create relationships themselves, often from outside your domain, wanting to relate their tables to yours — usually the first step toward asking for your data. Relationships are governed, so approving one changes which queries are legal: a role that may join only along approved relationships can now join across it. A relationship request needs two approvals before it can be executed. Approve it, execute it, or reject it with a reason from a fixed list; resolved requests move to the Resolved tab.",
+  "nl/tour.json::tour.steps.stepRequests.description": "✋ This request comes from someone who may not create relationships themselves, often from outside your domain, wanting to relate their tables to yours — usually the first step toward asking for your data. Relationships are governed, so approving one changes which queries are legal: a role that may join only along approved relationships can now join across it. A relationship request needs two approvals before it can be executed. A relationship across two domains needs a yes from each side. Approve it, execute it, or reject it with a reason from a fixed list; resolved requests move to the Resolved tab.",
   "nl/tour.json::tour.steps.stepMetrics.title": "Metrics, defined once",
   "nl/tour.json::tour.steps.stepMetrics.description": "📏 A metric is the business definition of a measure, an aggregate over one fact table. Define it once and SQL, GraphQL, the explore canvas and every view built from it compute the same number; a view regenerates when its metric changes.",
   "nl/tour.json::tour.steps.stepCommands.title": "Commands",
@@ -5225,5 +5225,14 @@
   "nl/tableEditForm.json::tableEditForm.pagingRowsFieldHelp": "The property of the answer that holds the rows, such as a page wrapper's values or data. Leave empty when the answer is the rows. The table's columns are those of the objects there.",
   "nl/tableEditForm.json::tableEditForm.pagingTypes.last_row": "After the last row",
   "nl/tour.json::tour.steps.stepRelsAgents.description": "🤖 The model and its relationships are available to AI agents — Polly, and agents connecting over MCP — and they shape the queries those agents write.<p>An agent runs under a role, so the same rule applies to it as to a person: a query that joins outside the registered relationships <strong>fails</strong>. This is enforced, not advisory.</p><p>It is also your choice. To let an agent discover relationships, grant its role the <code>ignore_relationships</code> right; to keep it inside guardrails, leave the role without it. It is the same deliberate grant as for a trusted identity (never honored in high-security mode).</p>",
-  "nl/tour.json::tour.steps.stepRelsAgents.title": "Relationships and AI agents"
+  "nl/tour.json::tour.steps.stepRelsAgents.title": "Relationships and AI agents",
+  "nl/requestsPage.json::requestsPage.colWaitingOn": "Waiting on",
+  "nl/serverErrors.json::serverErrors.requests.already_approved": "You have already approved this request",
+  "nl/serverErrors.json::serverErrors.requests.approvals_incomplete": "This request needs approvals from {{required}} different users",
+  "nl/serverErrors.json::serverErrors.requests.approver_outside_domains": "Your right to create relationships does not reach a domain this request touches ({{domains}})",
+  "nl/serverErrors.json::serverErrors.requests.approver_unidentified": "A relationship request is decided by signed-in users; this decision has no user",
+  "nl/serverErrors.json::serverErrors.requests.own_request": "You cannot decide a request you made",
+  "nl/serverErrors.json::serverErrors.requests.tables_not_registered": "The tables this request names ({{tables}}) are no longer registered. It cannot be approved; a user whose right to create relationships reaches every domain may reject it",
+  "nl/serverErrors.json::serverErrors.requests.waiting_on_domains": "This request still waits on an approval from: {{domains}}",
+  "nl/serverErrors.json::serverErrors.schema.relationship_request_queued": "Queued as request #{{id}}. It needs approvals from {{required}} different users who may create relationships, at least one reaching each domain it touches."
 }

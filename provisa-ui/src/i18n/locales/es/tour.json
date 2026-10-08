@@ -169,7 +169,7 @@
       },
       "stepRequests": {
         "title": "Solicitudes de relación",
-        "description": "✋ Esta solicitud viene de alguien que no puede crear relaciones por sí mismo, a menudo desde fuera de su dominio, que quiere relacionar sus tablas con las suyas; suele ser el primer paso para pedir sus datos. Las relaciones están gobernadas, así que aprobar una cambia qué consultas son válidas: un rol que solo puede hacer joins a lo largo de relaciones aprobadas ahora podrá hacerlos a través de esta. Una solicitud de relación necesita dos aprobaciones antes de poder ejecutarse. Apruébela, ejecútela o rechácela con un motivo de una lista fija; las solicitudes resueltas pasan a la pestaña Resueltas."
+        "description": "✋ Esta solicitud viene de alguien que no puede crear relaciones por sí mismo, a menudo desde fuera de su dominio, que quiere relacionar sus tablas con las suyas; suele ser el primer paso para pedir sus datos. Las relaciones están gobernadas, así que aprobar una cambia qué consultas son válidas: un rol que solo puede hacer joins a lo largo de relaciones aprobadas ahora podrá hacerlos a través de esta. Una solicitud de relación necesita dos aprobaciones antes de poder ejecutarse. Una relación entre dos dominios necesita un sí de cada lado. Apruébela, ejecútela o rechácela con un motivo de una lista fija; las solicitudes resueltas pasan a la pestaña Resueltas."
       },
       "stepQualityTable": {
         "title": "Un verificador de calidad no es más que una fuente",

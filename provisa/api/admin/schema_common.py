@@ -142,6 +142,18 @@ async def _queue_creation_request(  # REQ-434
         rid = await cr_repo.create(
             cast("Connection", conn), request_type, capability, payload, requested_by
         )
+    if request_type in cr_repo.REQUIRED_APPROVALS:
+        # REQ-1948: a relationship request is decided by the domains it touches.
+        required = cr_repo.REQUIRED_APPROVALS[request_type]
+        return MutationResult(
+            success=True,
+            message=(
+                f"Queued as request #{rid}. It needs approvals from {required} different users "
+                f"who may create relationships, at least one reaching each domain it touches."
+            ),
+            code="schema.relationship_request_queued",
+            params={"id": rid, "required": required},
+        )
     return MutationResult(
         success=True,
         message=(

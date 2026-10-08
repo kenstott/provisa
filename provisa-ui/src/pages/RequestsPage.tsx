@@ -21,10 +21,11 @@ import {
   Stack,
   Table,
   Tabs,
+  Text,
   Title,
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
-import { serverMessage, requestFailed } from "../i18n/serverMessage";
+import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 
@@ -45,6 +46,17 @@ interface CreationRequest {
   resolved_at: string | null;
   approvals: { approver: string; approved_at: string }[];
   required_approvals: number;
+  // REQ-1948: the domains a relationship request touches, the ones no approver has reached yet,
+  // and whether this user is one of those who may decide it.
+  domains: string[];
+  waiting_on: string[];
+  can_decide: boolean;
+  // Why this user's approval would be refused (the server's own refusal), or null when it counts.
+  approve_refusal: ServerMessageShape | null;
+}
+
+function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -111,14 +123,14 @@ export function RequestsPage() {
       .then((data) =>
         status === "resolved" ? setRows(data.filter((r) => r.status !== "pending")) : setRows(data),
       )
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(errorText(e)));
   };
 
   useEffect(() => {
     load(tab);
     fetchRejectionReasons()
       .then(setReasons)
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(errorText(e)));
   }, [tab]);
 
   const doApprove = async (id: number) => {
@@ -128,7 +140,7 @@ export function RequestsPage() {
       await apiApprove(id);
       load(tab);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -141,7 +153,7 @@ export function RequestsPage() {
       await apiExecute(id);
       load(tab);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -157,7 +169,7 @@ export function RequestsPage() {
       setRejectReason(null);
       load(tab);
     } catch (e) {
-      setError(String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -202,6 +214,11 @@ export function RequestsPage() {
       key: "approvals",
       label: t("requestsPage.colApprovals"),
       sortValue: (r) => r.approvals.length,
+    },
+    {
+      key: "waiting",
+      label: t("requestsPage.colWaitingOn"),
+      sortValue: (r) => r.waiting_on.join(", "),
     },
     {
       key: "status",
@@ -300,7 +317,7 @@ export function RequestsPage() {
         </Stack>
       </Modal>
 
-      <ListTable minWidth={900}>
+      <ListTable minWidth={1000}>
         <ListHead
           columns={[
             { col: "id" },
@@ -309,6 +326,7 @@ export function RequestsPage() {
             { col: "submitted" },
             t("requestsPage.colPayload"),
             { col: "approvals" },
+            { col: "waiting" },
             { col: "status" },
             { col: "reason" },
             t("requestsPage.colActions"),
@@ -317,7 +335,7 @@ export function RequestsPage() {
         />
         <Table.Tbody>
           {filtered.length === 0 && (
-            <ListEmpty colSpan={9}>
+            <ListEmpty colSpan={10}>
               {search
                 ? t("requestsPage.emptyFiltered", { tab })
                 : t("requestsPage.empty", { tab })}
@@ -327,7 +345,7 @@ export function RequestsPage() {
             <ListItems
               state={sortGroup}
               items={pageItems(sortGroup, safePage - 1, PAGE_SIZE)}
-              colSpan={9}
+              colSpan={10}
               rowKey={(row) => row.id}
               render={(row) => (
                   <ListRow>
@@ -350,6 +368,11 @@ export function RequestsPage() {
                     <Table.Td>
                       {row.approvals.length} / {row.required_approvals}
                     </Table.Td>
+                    <Table.Td data-testid={`requests-waiting-${row.id}`}>
+                      {row.waiting_on.length > 0
+                        ? row.waiting_on.join(", ")
+                        : t("requestsPage.none")}
+                    </Table.Td>
                     <Table.Td>
                       <Badge color={statusColor(row.status)} variant="light">
                         {row.status}
@@ -357,20 +380,30 @@ export function RequestsPage() {
                     </Table.Td>
                     <Table.Td>{row.rejection_reason ?? t("requestsPage.none")}</Table.Td>
                     <Table.Td style={{ whiteSpace: "nowrap" }}>
-                      {row.status === "pending" && (
+                      {row.status === "pending" && !row.can_decide && row.approve_refusal && (
+                        <Text size="xs" c="dimmed" data-testid={`requests-cannot-${row.id}`}>
+                          {serverMessage(row.approve_refusal, "")}
+                        </Text>
+                      )}
+                      {row.status === "pending" && row.can_decide && (
                         <Group gap="xs" wrap="nowrap">
                           <Button
                             size="compact-xs"
                             onClick={() => doApprove(row.id)}
-                            disabled={busy}
+                            disabled={busy || row.approve_refusal !== null}
+                            title={
+                              row.approve_refusal
+                                ? serverMessage(row.approve_refusal, "")
+                                : undefined
+                            }
                             data-testid={`requests-approve-${row.id}`}
                           >
-                            {t("requestsPage.approve", {
-                              count: row.approvals.length + 1,
-                              total: row.required_approvals,
-                            })}
+                            {t("requestsPage.approve")}
                           </Button>
-                          {row.required_approvals === 1 && (
+                          {/* Executing only retries a creation that failed when the last
+                              approval was given: it is offered once the approvals are in. */}
+                          {row.approvals.length >= row.required_approvals &&
+                            row.waiting_on.length === 0 && (
                             <Button
                               size="compact-xs"
                               onClick={() => doExecute(row.id)}

@@ -99,7 +99,6 @@ EXEMPT: dict[tuple[str, str], str] = {
         "DELETE",
         "/admin/orgs/{org_id}/my-secrets/{name}",
     ): "caller's own vault; owner derived from identity",
-    ("GET", "/admin/creation-requests/"): "any member lists requests; approval is gated",
     ("POST", "/admin/creation-requests/"): "any member submits a request; approval is gated",
     (
         "GET",
