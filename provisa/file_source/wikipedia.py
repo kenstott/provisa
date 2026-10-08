@@ -81,7 +81,7 @@ DATA_FILE_EXTENSIONS: tuple[str, ...] = ("csv", "tsv", "xlsx", "xls", "json", "p
 
 #: The id of the "See also" heading by language edition. It is the one thing here that is a
 #: name: an edition has no mark for that section other than its heading. An edition absent
-#: here is given its heading by the operator.
+#: here is given its section's title by the operator.
 SEE_ALSO_HEADING: dict[str, str] = {
     "en": "See_also",
     "de": "Siehe_auch",
@@ -162,12 +162,15 @@ def crawl_settings(settings: dict, version: str) -> dict:
         raise InvalidWikipediaSource("wikipedia.no_pages", "name at least one page to start from")
     remove = list(REMOVE_SELECTORS)
     if not given["follow_see_also"]:
-        heading = given.get("see_also_heading") or SEE_ALSO_HEADING.get(language)
+        # The operator gives the section's title as a page shows it ("Voir aussi"); a heading's
+        # id is its title with each space an underscore.
+        title = str(given.get("see_also_heading") or "").strip().replace(" ", "_")
+        heading = title or SEE_ALSO_HEADING.get(language)
         if not heading:
             raise InvalidWikipediaSource(
                 "wikipedia.see_also_heading_needed",
-                f"the {language!r} edition's 'See also' heading is not known: give its id, or "
-                "follow those links",
+                f"what the {language!r} edition calls its 'See also' section is not known: give "
+                "the section's title, or follow those links",
                 language=language,
             )
         # A section is wrapped in an element labelled with its heading's id.

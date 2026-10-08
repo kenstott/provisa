@@ -453,7 +453,7 @@
       "no_pages": "至少指定一個起始頁面",
       "unknown_language": "「{{language}}」不是語言版本",
       "page_not_of_edition": "{{page}} 不是 {{host}} 的頁面",
-      "see_also_heading_needed": "Provisa 不知道 {{language}} 版本的「參見」標題：請提供其 id，或跟隨這些連結"
+      "see_also_heading_needed": "Provisa 不知道 {{language}} 版本如何稱呼「參見」章節：請提供章節標題，或跟隨這些連結"
     }
   }
 }

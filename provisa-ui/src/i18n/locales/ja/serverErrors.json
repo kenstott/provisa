@@ -453,7 +453,7 @@
       "no_pages": "開始ページを1つ以上指定してください",
       "unknown_language": "「{{language}}」は言語版ではありません",
       "page_not_of_edition": "{{page}}は{{host}}のページではありません",
-      "see_also_heading_needed": "Provisaは{{language}}版の「関連項目」の見出しを把握していません。IDを指定するか、それらのリンクをたどってください"
+      "see_also_heading_needed": "Provisaは{{language}}版が「関連項目」セクションを何と呼ぶかを把握していません。セクションのタイトルを指定するか、それらのリンクをたどってください"
     }
   }
 }

@@ -453,7 +453,7 @@
       "no_pages": "至少指定一个起始页面",
       "unknown_language": "“{{language}}”不是语言版本",
       "page_not_of_edition": "{{page}} 不是 {{host}} 的页面",
-      "see_also_heading_needed": "Provisa 不知道 {{language}} 版本的“参见”标题：请提供其 id，或跟随这些链接"
+      "see_also_heading_needed": "Provisa 不知道 {{language}} 版本如何称呼“参见”章节：请提供章节标题，或跟随这些链接"
     }
   }
 }

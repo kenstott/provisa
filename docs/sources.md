@@ -214,12 +214,12 @@ Wikipedia crawls the pages you name. Each data table on a page, and each linked 
 | Page limit | `25` | The most pages one crawl reads |
 | Contact | empty | Sent with each request so Wikipedia can reach you, as its policy asks |
 | Follow "See also" links | off | Off leaves that section out of the article |
-| "See also" heading | empty | The id of that section's heading. Needed only when the box above is off and Provisa does not know the edition |
+| What this edition calls its "See also" section | empty | Asked only when the box above is off and Provisa cannot name the section for the chosen edition. The section's title as a page shows it, for example `Voir aussi` |
 | Directory for the crawl's files | empty | Where tables and data files are written. Empty: `<PROVISA_DATA_DIR>/crawl/<source id>` |
 
 [tool-verified: `provisa-ui/src/pages/sources/WikipediaFields.tsx`; `provisa-ui/src/i18n/locales/en/sourceFormFieldsExtended.json` `wp*`; `provisa/file_source/wikipedia.py` `DEFAULTS`; `provisa/file_source/crawl.py` `crawl_landing_directory`]
 
-Provisa knows the "See also" heading of these editions: `en`, `de`, `es`, `it`, `pt`, `nl`, `pl`, `sv`, `ja`, `zh`, `ru`. For any other edition with "See also" off, the source is refused (`wikipedia.see_also_heading_needed`) until you give the heading id (for example `Articles_connexes`) or turn the option on. [tool-verified: `provisa/file_source/wikipedia.py` `SEE_ALSO_HEADING`, `crawl_settings`]
+Provisa knows the "See also" heading of these editions: `en`, `de`, `es`, `it`, `pt`, `nl`, `pl`, `sv`, `ja`, `zh`, `ru`. For any other edition with "See also" off, the form asks what the edition calls that section; type its title as a page shows it (for example `Voir aussi`). A source saved without it is refused (`wikipedia.see_also_heading_needed`). [tool-verified: `provisa/file_source/wikipedia.py` `SEE_ALSO_HEADING`, `crawl_settings`]
 
 **Which links are followed.** A link is chosen by what the page's own markup says it is, never by a name in its address: such names differ in every language edition and also occur in ordinary titles. [tool-verified: `provisa/file_source/wikipedia.py` module docstring]
 
@@ -230,7 +230,7 @@ Provisa knows the "See also" heading of these editions: `en`, `de`, `es`, `it`, 
 
 Only tables that editors mark as data tables (`table.wikitable`) become tables, and a table with fewer than 2 rows is not offered. [tool-verified: `provisa/file_source/wikipedia.py` `LINK_SELECTOR`, `REMOVE_SELECTORS`, `TABLE_SELECTOR`, `DEFAULTS`]
 
-**Advanced crawl settings.** The form shows each with its default; leave a field empty to keep it. In a `files` mapping the same names go under `crawl:`, and a name outside this list is refused. [tool-verified: `provisa/file_source/crawl.py` `CRAWL_SETTINGS`, `crawl_operand`; `provisa/file_source/wikipedia.py` `crawl_settings`]
+**Advanced crawl settings.** The form keeps these folded under "Crawl settings" and shows each with its default; leave a field empty to keep it. In a `files` mapping the same names go under `crawl:`, and a name outside this list is refused. [tool-verified: `provisa/file_source/crawl.py` `CRAWL_SETTINGS`, `crawl_operand`; `provisa/file_source/wikipedia.py` `crawl_settings`]
 
 | Setting | Wikipedia default | Meaning |
 | --- | --- | --- |

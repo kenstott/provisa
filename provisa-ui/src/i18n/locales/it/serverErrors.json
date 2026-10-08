@@ -453,7 +453,7 @@
       "no_pages": "Indicare almeno una pagina di partenza",
       "unknown_language": "«{{language}}» non è un’edizione linguistica",
       "page_not_of_edition": "{{page}} non è una pagina di {{host}}",
-      "see_also_heading_needed": "Provisa non conosce l’intestazione «Voci correlate» dell’edizione {{language}}: indicarne l’id o seguire quei link"
+      "see_also_heading_needed": "Provisa non sa come l'edizione {{language}} chiama la sezione «Voci correlate»: indica il titolo della sezione, oppure segui quei link"
     }
   }
 }

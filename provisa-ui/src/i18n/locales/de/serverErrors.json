@@ -453,7 +453,7 @@
       "no_pages": "Mindestens eine Startseite angeben",
       "unknown_language": "„{{language}}“ ist keine Sprachausgabe",
       "page_not_of_edition": "{{page}} ist keine Seite von {{host}}",
-      "see_also_heading_needed": "Provisa kennt die Überschrift „Siehe auch“ der Ausgabe {{language}} nicht: ID angeben oder diesen Links folgen"
+      "see_also_heading_needed": "Provisa weiß nicht, wie die Ausgabe {{language}} ihren Abschnitt „Siehe auch“ nennt: Titel des Abschnitts angeben oder diesen Links folgen"
     }
   }
 }

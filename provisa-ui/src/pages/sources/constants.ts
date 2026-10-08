@@ -290,6 +290,17 @@ export const BRAND_CARRIER: Record<string, string> = {
   wikipedia: "files", // REQ-1960
 };
 
+// REQ-1923/REQ-1960: the credential each brand asks for, stated by the brand. None is given
+// by default: a brand asks for what its own service takes, and one read without a credential
+// asks for nothing. "token" is a token the brand's API is called with.
+export type BrandAuth = "token" | "none";
+export const BRAND_AUTH: Record<string, BrandAuth> = {
+  github: "token",
+  gitlab: "token",
+  stripe: "token",
+  wikipedia: "none",
+};
+
 // UI source-type values → backend SourceType vocabulary where the two differ (REQ-947).
 export const TYPE_ALIAS: Record<string, string> = {
   graphql: "graphql_remote",

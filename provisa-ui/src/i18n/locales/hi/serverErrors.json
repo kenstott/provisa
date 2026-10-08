@@ -453,7 +453,7 @@
       "no_pages": "कम से कम एक शुरुआती पेज का नाम दें",
       "unknown_language": "'{{language}}' कोई भाषा संस्करण नहीं है",
       "page_not_of_edition": "{{page}}, {{host}} का पेज नहीं है",
-      "see_also_heading_needed": "Provisa {{language}} संस्करण का \"See also\" शीर्षक नहीं जानता: उसकी id दें, या उन लिंक का अनुसरण करें"
+      "see_also_heading_needed": "Provisa नहीं जानता कि {{language}} संस्करण अपने \"See also\" अनुभाग को क्या कहता है: अनुभाग का शीर्षक दें, या उन लिंक का अनुसरण करें"
     }
   }
 }

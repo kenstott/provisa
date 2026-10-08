@@ -453,7 +453,7 @@
       "no_pages": "Informe pelo menos uma página inicial",
       "unknown_language": "“{{language}}” não é uma edição de idioma",
       "page_not_of_edition": "{{page}} não é uma página de {{host}}",
-      "see_also_heading_needed": "O Provisa não conhece o título “Ver também” da edição {{language}}: informe o id ou siga esses links"
+      "see_also_heading_needed": "O Provisa não sabe como a edição {{language}} chama a seção \"Ver também\": informe o título da seção ou siga esses links"
     }
   }
 }

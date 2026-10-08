@@ -116,6 +116,11 @@ def test_an_edition_whose_see_also_heading_is_not_known_asks_for_it():
         {"pages": ["Dubaï"], "language": "fr", "see_also_heading": "Articles_connexes"}, "1"
     )
     assert "section[aria-labelledby='Articles_connexes']" in given["remove_selectors"]
+    # The operator gives the title as a page shows it; the section is found by it.
+    titled = wikipedia.crawl_settings(
+        {"pages": ["Dubaï"], "language": "fr", "see_also_heading": " Voir aussi "}, "1"
+    )
+    assert "section[aria-labelledby='Voir_aussi']" in titled["remove_selectors"]
     assert given["start_urls"] == ["https://fr.wikipedia.org/wiki/Duba%C3%AF"]
 
 

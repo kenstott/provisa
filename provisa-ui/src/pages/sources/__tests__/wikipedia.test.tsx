@@ -13,7 +13,9 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "../../../test-utils/render";
-import { BRAND_CARRIER, SOURCE_TYPES } from "../constants";
+import { BRAND_AUTH, BRAND_CARRIER, SOURCE_TYPES } from "../constants";
+import { SourceFormFieldsExtended } from "../SourceFormFieldsExtended";
+import type { SourceFormFieldsProps } from "../SourceFormFields";
 import { backendType, sourceBrand } from "../sourceHelpers";
 import { WikipediaFields } from "../WikipediaFields";
 import {
@@ -89,15 +91,77 @@ describe("what a Wikipedia setup still needs", () => {
 });
 
 describe("the Wikipedia setup form", () => {
-  it("shows every crawl setting, and the See also heading only while those links are left out", () => {
+  it("has every crawl setting, and asks what See also is called only of an edition it cannot name", () => {
     const setFields = vi.fn();
     const { rerender } = render(<WikipediaFields fields={{}} setFields={setFields} />);
     expect(screen.getByTestId("wikipedia-wp_pages")).toBeInTheDocument();
     for (const f of WIKIPEDIA_CRAWL_FIELDS) {
       expect(screen.getByTestId(`wikipedia-wpc_${f.key}`)).toBeInTheDocument();
     }
-    expect(screen.getByTestId("wikipedia-wp_see_also_heading")).toBeInTheDocument();
-    rerender(<WikipediaFields fields={{ wp_follow_see_also: "true" }} setFields={setFields} />);
+    // English is an edition Provisa can name the section of: nothing is asked.
     expect(screen.queryByTestId("wikipedia-wp_see_also_heading")).not.toBeInTheDocument();
+    rerender(<WikipediaFields fields={{ wp_language: "fr" }} setFields={setFields} />);
+    expect(screen.getByTestId("wikipedia-wp_see_also_heading")).toBeInTheDocument();
+    expect(screen.getByText(/as it appears on a page/)).toBeInTheDocument();
+    rerender(
+      <WikipediaFields fields={{ wp_language: "fr", wp_follow_see_also: "true" }} setFields={setFields} />,
+    );
+    expect(screen.queryByTestId("wikipedia-wp_see_also_heading")).not.toBeInTheDocument();
+  });
+});
+
+describe("the Wikipedia setup in the Sources form", () => {
+  const form = (type: string) =>
+    ({
+      // The Sources page's empty form (SourcesPage.tsx), with the type under test.
+      form: {
+        id: "s",
+        type,
+        host: "",
+        port: 0,
+        database: "",
+        username: "",
+        password: "",
+        gqlNamingConvention: "",
+        cacheTtl: "",
+        cacheEnabled: true,
+        replicate: null,
+        region: null,
+        loadProtected: false,
+        offPeakWindow: "",
+        offPeakTz: "UTC",
+        changeSignal: "ttl",
+        sentinelPath: "",
+        freshnessGate: false,
+        maxLiveConcurrency: "",
+        path: "",
+        description: "",
+      },
+      setForm: vi.fn(),
+      authType: "none",
+      setAuthType: vi.fn(),
+      authFields: {},
+      setAuthFields: vi.fn(),
+      domains: [],
+    }) as unknown as SourceFormFieldsProps;
+
+  it("asks for no credential: Wikipedia is read without one", () => {
+    expect(BRAND_AUTH.wikipedia).toBe("none");
+    render(<SourceFormFieldsExtended {...form("wikipedia")} />);
+    expect(screen.getByTestId("wikipedia-wp_pages")).toBeTruthy();
+    expect(screen.queryByTestId("brand-token-input")).toBeNull();
+    expect(screen.queryByLabelText(/token|password|secret|api key/i)).toBeNull();
+  });
+
+  it("gives no brand a credential by default: each states its own", () => {
+    expect(Object.keys(BRAND_AUTH).sort()).toEqual(Object.keys(BRAND_CARRIER).sort());
+    render(<SourceFormFieldsExtended {...form("a_brand_that_states_nothing")} />);
+    expect(screen.queryByTestId("brand-token-input")).toBeNull();
+  });
+
+  it("asks a brand that states a token for it", () => {
+    expect(BRAND_AUTH.github).toBe("token");
+    render(<SourceFormFieldsExtended {...form("github")} />);
+    expect(screen.getByTestId("brand-token-input")).toBeTruthy();
   });
 });

@@ -11,7 +11,7 @@
 // REQ-1960: a Wikipedia source -- the pages to start from, how far to follow the links in their
 // text, and every crawl setting, each with the brand's default shown until it is replaced.
 
-import { Checkbox, Divider, NumberInput, TextInput, Textarea } from "@mantine/core";
+import { Accordion, Checkbox, NumberInput, SimpleGrid, TextInput, Textarea } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { WIKIPEDIA_CRAWL_FIELDS, WIKIPEDIA_KNOWN_SEE_ALSO, wikipediaMissing } from "./wikipedia";
 
@@ -83,17 +83,20 @@ export function WikipediaFields({ fields, setFields }: Props) {
         style={{ gridColumn: "1 / -1" }}
         data-testid="wikipedia-wp_follow_see_also"
       />
-      {!followSeeAlso && (
+      {/* Asked only of an edition whose "See also" section Provisa cannot name, and in the
+          operator's terms: the section's title as a page shows it. */}
+      {!followSeeAlso && !WIKIPEDIA_KNOWN_SEE_ALSO.has(language) && (
         <TextInput
           label={t("sourceFormFieldsExtended.wpSeeAlsoHeading")}
           description={t("sourceFormFieldsExtended.wpSeeAlsoHeadingHelp")}
-          placeholder={WIKIPEDIA_KNOWN_SEE_ALSO.has(language) ? "" : "Articles_connexes"}
-          required={!WIKIPEDIA_KNOWN_SEE_ALSO.has(language)}
+          placeholder="Voir aussi"
+          required
           error={
             missing.has("wp_see_also_heading")
-              ? t("sourceFormFieldsExtended.wpSeeAlsoHeadingRequired", { language })
+              ? t("sourceFormFieldsExtended.wpSeeAlsoHeadingRequired")
               : undefined
           }
+          style={{ gridColumn: "1 / -1" }}
           {...text("wp_see_also_heading")}
         />
       )}
@@ -104,34 +107,43 @@ export function WikipediaFields({ fields, setFields }: Props) {
         style={{ gridColumn: "1 / -1" }}
         {...text("wp_directory")}
       />
-      <Divider
-        label={t("sourceFormFieldsExtended.wpCrawlSettings")}
-        labelPosition="left"
+      {/* The crawl's own settings all have defaults: folded away until they are wanted. */}
+      <Accordion
+        variant="separated"
         style={{ gridColumn: "1 / -1" }}
-      />
-      {WIKIPEDIA_CRAWL_FIELDS.map((f) => {
-        const key = `wpc_${f.key}`;
-        const label = t(`sourceFormFieldsExtended.wpCrawl.${f.key}`);
-        const description = t(`sourceFormFieldsExtended.wpCrawlHelp.${f.key}`);
-        if (f.kind === "list") {
-          return (
-            <Textarea
-              key={key}
-              label={label}
-              description={description}
-              placeholder={f.placeholder}
-              autosize
-              minRows={2}
-              {...text(key)}
-            />
-          );
-        }
-        return f.kind === "number" ? (
-          <NumberInput key={key} label={label} description={description} placeholder={f.placeholder} {...number(key)} />
-        ) : (
-          <TextInput key={key} label={label} description={description} placeholder={f.placeholder} {...text(key)} />
-        );
-      })}
+        data-testid="wikipedia-crawl-settings"
+      >
+        <Accordion.Item value="crawl">
+          <Accordion.Control>{t("sourceFormFieldsExtended.wpCrawlSettings")}</Accordion.Control>
+          <Accordion.Panel>
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+            {WIKIPEDIA_CRAWL_FIELDS.map((f) => {
+              const key = `wpc_${f.key}`;
+              const label = t(`sourceFormFieldsExtended.wpCrawl.${f.key}`);
+              const description = t(`sourceFormFieldsExtended.wpCrawlHelp.${f.key}`);
+              if (f.kind === "list") {
+                return (
+                  <Textarea
+                    key={key}
+                    label={label}
+                    description={description}
+                    placeholder={f.placeholder}
+                    autosize
+                    minRows={2}
+                    {...text(key)}
+                  />
+                );
+              }
+              return f.kind === "number" ? (
+                <NumberInput key={key} label={label} description={description} placeholder={f.placeholder} {...number(key)} />
+              ) : (
+                <TextInput key={key} label={label} description={description} placeholder={f.placeholder} {...text(key)} />
+              );
+            })}
+            </SimpleGrid>
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
     </>
   );
 }

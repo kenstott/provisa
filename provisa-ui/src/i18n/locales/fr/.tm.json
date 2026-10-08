@@ -5294,9 +5294,9 @@
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpContactHelp": "Sent with each request so Wikipedia can reach the operator, as its policy asks",
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpFollowSeeAlso": "Follow \"See also\" links",
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpFollowSeeAlsoHelp": "Links in a page's \"See also\" section are looser than links in its text. Off: that section is left out",
-  "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpSeeAlsoHeading": "\"See also\" heading",
-  "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpSeeAlsoHeadingHelp": "The id of that section's heading in this edition. Leave empty for an edition Provisa knows",
-  "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpSeeAlsoHeadingRequired": "Provisa does not know this heading for the {{language}} edition: give its id, or follow those links",
+  "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpSeeAlsoHeading": "What this edition calls its \"See also\" section",
+  "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpSeeAlsoHeadingHelp": "The section's title as it appears on a page, for example \"Voir aussi\" on French Wikipedia. Links in that section are left out",
+  "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpSeeAlsoHeadingRequired": "Type the section's title, or choose to follow those links above",
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpCrawlSettings": "Crawl settings (each empty field uses the default shown)",
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpCrawl.request_delay": "Delay between requests",
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpCrawl.html_cache_ttl": "Keep a crawl for",
@@ -5325,7 +5325,7 @@
   "fr/serverErrors.json::serverErrors.wikipedia.no_pages": "Name at least one page to start from",
   "fr/serverErrors.json::serverErrors.wikipedia.unknown_language": "'{{language}}' is not a language edition",
   "fr/serverErrors.json::serverErrors.wikipedia.page_not_of_edition": "{{page}} is not a page of {{host}}",
-  "fr/serverErrors.json::serverErrors.wikipedia.see_also_heading_needed": "Provisa does not know the \"See also\" heading of the {{language}} edition: give its id, or follow those links",
+  "fr/serverErrors.json::serverErrors.wikipedia.see_also_heading_needed": "Provisa does not know what the {{language}} edition calls its \"See also\" section: give the section's title, or follow those links",
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpDirectory": "Directory for the crawl's files",
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpDirectoryHelp": "Where the pages' tables and data files are written. It must be a directory the engine's file connector can write. Empty: a directory of this source's own under Provisa's data directory"
 }

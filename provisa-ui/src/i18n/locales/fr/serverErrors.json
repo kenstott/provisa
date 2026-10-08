@@ -453,7 +453,7 @@
       "no_pages": "Indiquez au moins une page de départ",
       "unknown_language": "« {{language}} » n’est pas une édition linguistique",
       "page_not_of_edition": "{{page}} n’est pas une page de {{host}}",
-      "see_also_heading_needed": "Provisa ne connaît pas le titre « Voir aussi » de l’édition {{language}} : indiquez son identifiant ou suivez ces liens"
+      "see_also_heading_needed": "Provisa ne sait pas comment l'édition {{language}} nomme sa section « Voir aussi » : indiquez le titre de la section, ou suivez ces liens"
     }
   }
 }

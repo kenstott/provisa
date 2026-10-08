@@ -28,6 +28,7 @@ import { SchemaRegistryAuthFields } from "./SchemaRegistryAuthFields";
 import {
   API_AUTH_TYPES,
   BRAND_CARRIER,
+  BRAND_AUTH,
   FILE_TRANSPORTS,
   GOVDATA_SUBJECTS,
   KAFKA_AUTH_TYPES,
@@ -229,29 +230,28 @@ export function SourceFormFieldsExtended({
           onSourcesRegistered={onKaggleSourcesRegistered ?? (() => {})}
         />
       )}
-      {form.type in BRAND_CARRIER && (
-        <>
-          <PasswordInput
-            required
-            label={t("sourceFormFieldsExtended.accessToken")}
-            description={t("sourceFormFieldsExtended.accessTokenHint")}
-            value={authFields.token ?? ""}
-            onChange={(e) => setAuthFields({ ...authFields, token: e.target.value })}
-            style={{ gridColumn: "1 / -1" }}
-            data-testid="brand-token-input"
-          />
-          {/* A table name prefix is the remote GraphQL source's; an OpenAPI table is named for
-              its operation. */}
-          {BRAND_CARRIER[form.type] === "graphql" && (
-            <TextInput
-              label={t("sourceFormFieldsExtended.namespace")}
-              description={t("sourceFormFieldsExtended.brandNamespaceHint")}
-              value={gqlNamespace}
-              onChange={(e) => setGqlNamespace(e.target.value)}
-              data-testid="brand-namespace-input"
-            />
-          )}
-        </>
+      {/* REQ-1923: a brand asks for the credential it states (BRAND_AUTH), never one by default. */}
+      {BRAND_AUTH[form.type] === "token" && (
+        <PasswordInput
+          required
+          label={t("sourceFormFieldsExtended.accessToken")}
+          description={t("sourceFormFieldsExtended.accessTokenHint")}
+          value={authFields.token ?? ""}
+          onChange={(e) => setAuthFields({ ...authFields, token: e.target.value })}
+          style={{ gridColumn: "1 / -1" }}
+          data-testid="brand-token-input"
+        />
+      )}
+      {/* A table name prefix is the remote GraphQL source's; an OpenAPI table is named for its
+          operation. */}
+      {BRAND_CARRIER[form.type] === "graphql" && (
+        <TextInput
+          label={t("sourceFormFieldsExtended.namespace")}
+          description={t("sourceFormFieldsExtended.brandNamespaceHint")}
+          value={gqlNamespace}
+          onChange={(e) => setGqlNamespace(e.target.value)}
+          data-testid="brand-namespace-input"
+        />
       )}
       {form.type === "graphql" && (
         <>

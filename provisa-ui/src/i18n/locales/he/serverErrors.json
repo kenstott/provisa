@@ -453,7 +453,7 @@
       "no_pages": "יש לציין לפחות דף התחלה אחד",
       "unknown_language": "\"{{language}}\" אינה מהדורת שפה",
       "page_not_of_edition": "{{page}} אינו דף של {{host}}",
-      "see_also_heading_needed": "Provisa אינה מכירה את הכותרת \"ראו גם\" של מהדורת {{language}}: יש לציין את המזהה שלה או לעקוב אחר הקישורים האלה"
+      "see_also_heading_needed": "Provisa אינה יודעת איך מהדורת {{language}} קוראת לפרק \"ראו גם\": ציינו את כותרת הפרק, או עקבו אחר הקישורים האלה"
     }
   }
 }

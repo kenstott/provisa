@@ -453,7 +453,7 @@
       "no_pages": "Geef minstens één startpagina op",
       "unknown_language": "‘{{language}}’ is geen taalversie",
       "page_not_of_edition": "{{page}} is geen pagina van {{host}}",
-      "see_also_heading_needed": "Provisa kent de kop ‘Zie ook’ van de versie {{language}} niet: geef de id op of volg die links"
+      "see_also_heading_needed": "Provisa weet niet hoe de editie {{language}} haar sectie 'Zie ook' noemt: geef de titel van de sectie op, of volg die links"
     }
   }
 }
