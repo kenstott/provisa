@@ -140,31 +140,6 @@ def test_a_column_is_landed_as_its_own_type_or_refused_by_name():
         _batch([("id", "bigint")], [("not a number",)])
 
 
-def test_a_temporary_table_filled_from_a_capped_read_says_so(monkeypatch):
-    """REQ-1350: the rows a temporary table takes are read as the role reads anything, so the
-    role's row limit applies; a table that took exactly that many carries a statement warning,
-    never a silent truncation. A role with no limit, and a read under it, carry none."""
-    from types import SimpleNamespace
-
-    from provisa.core.statement_warnings import collecting
-    from provisa.pgwire import temp_exec
-
-    monkeypatch.setattr(
-        "provisa.compiler.stage2.resolve_row_cap",
-        lambda role, explicit=None: None if role["full"] else 3,
-    )
-    state = SimpleNamespace(roles={"analyst": {"full": False}, "auditor": {"full": True}})
-    with collecting() as found:
-        temp_exec._warn_if_capped(state, "analyst", "t", 2)
-        temp_exec._warn_if_capped(state, "auditor", "t", 3)
-        assert found == []
-        temp_exec._warn_if_capped(state, "analyst", "t", 3)
-    (warning,) = found
-    assert warning.code == "temp_table.rows_capped"
-    assert warning.params == {"table": "t", "rows": 3, "limit": 3}
-    assert "was cut there and may hold more" in warning.message
-
-
 def test_a_statement_is_kept_for_its_session_alone_as_its_tables_stand():
     """The same words in two sessions name two tables: a governed statement, and the address it
     was lowered to, is never shared between them, nor kept across a drop and a create."""

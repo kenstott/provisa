@@ -443,6 +443,10 @@
       "waiting_on_domains": "Dit verzoek wacht nog op een goedkeuring van: {{domains}}",
       "approvals_incomplete": "Dit verzoek heeft goedkeuringen van {{required}} verschillende gebruikers nodig",
       "tables_not_registered": "De tabellen die dit verzoek noemt ({{tables}}), zijn niet meer geregistreerd. Het kan niet worden goedgekeurd; een gebruiker wiens recht om relaties aan te maken tot elk domein reikt, kan het afwijzen"
+    },
+    "statement": {
+      "rows_cut": "Het antwoord is afgekapt op {{limit}} rijen, de rijlimiet die voor deze leesactie geldt ({{kind}}): er komen meer rijen overeen dan er zijn teruggegeven.",
+      "rows_cut_unchecked": "Het antwoord heeft {{limit}} rijen, de rijlimiet die voor deze leesactie geldt ({{kind}}). Of er meer rijen overeenkomen, kon niet worden gecontroleerd: {{reason}}"
     }
   }
 }

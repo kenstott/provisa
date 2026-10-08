@@ -85,6 +85,18 @@ def warn(warning: ServerWarning) -> None:
         found.append(warning)
 
 
+def tell(warning: ServerWarning, of_plan: list[ServerWarning]) -> None:
+    """Add a warning found while a statement's rows were read -- after it was governed, so past
+    the collector the pipeline opened for it. It goes onto the plan's own list, which the
+    surfaces that answer from the plan read once the rows are in, and into the request's
+    collector where one is open (the HTTP surfaces, Bolt, MCP). Kept once in each."""
+    if warning not in of_plan:
+        of_plan.append(warning)
+    found = _collector.get()
+    if found is not None and warning not in found:
+        found.append(warning)
+
+
 def raised() -> list[ServerWarning]:
     """What the open collector holds so far (empty when none is open): for a step that must
     act on a warning raised earlier in the same statement."""

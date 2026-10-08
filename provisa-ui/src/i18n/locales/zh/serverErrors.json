@@ -443,6 +443,10 @@
       "waiting_on_domains": "此请求仍在等待以下域的批准：{{domains}}",
       "approvals_incomplete": "此请求需要 {{required}} 位不同用户的批准",
       "tables_not_registered": "此请求指定的表（{{tables}}）已不再注册。无法批准；创建关系的权限覆盖所有域的用户可以拒绝它"
+    },
+    "statement": {
+      "rows_cut": "结果在 {{limit}} 行处被截断，这是适用于此次读取的行数限制（{{kind}}）：匹配的行多于返回的行。",
+      "rows_cut_unchecked": "结果有 {{limit}} 行，即适用于此次读取的行数限制（{{kind}}）。无法检查是否还有更多匹配的行：{{reason}}"
     }
   }
 }

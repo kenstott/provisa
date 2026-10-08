@@ -443,6 +443,10 @@
       "waiting_on_domains": "Esta solicitud aún espera una aprobación de: {{domains}}",
       "approvals_incomplete": "Esta solicitud necesita aprobaciones de {{required}} usuarios distintos",
       "tables_not_registered": "Las tablas que nombra esta solicitud ({{tables}}) ya no están registradas. No puede aprobarse; un usuario cuyo derecho a crear relaciones alcance todos los dominios puede rechazarla"
+    },
+    "statement": {
+      "rows_cut": "La respuesta se cortó en {{limit}} filas, el límite de filas que se aplica a esta lectura ({{kind}}): coinciden más filas de las devueltas.",
+      "rows_cut_unchecked": "La respuesta tiene {{limit}} filas, el límite de filas que se aplica a esta lectura ({{kind}}). No se pudo comprobar si coinciden más filas: {{reason}}"
     }
   }
 }

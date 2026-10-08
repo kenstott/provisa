@@ -443,6 +443,10 @@
       "waiting_on_domains": "Dieser Antrag wartet noch auf eine Genehmigung aus: {{domains}}",
       "approvals_incomplete": "Dieser Antrag braucht Genehmigungen von {{required}} verschiedenen Benutzern",
       "tables_not_registered": "Die Tabellen, die dieser Antrag nennt ({{tables}}), sind nicht mehr registriert. Er kann nicht genehmigt werden; ein Benutzer, dessen Recht, Beziehungen anzulegen, in jede Domäne reicht, kann ihn ablehnen"
+    },
+    "statement": {
+      "rows_cut": "Die Antwort wurde bei {{limit}} Zeilen abgeschnitten, dem für diese Abfrage geltenden Zeilenlimit ({{kind}}): Es passen mehr Zeilen, als zurückgegeben wurden.",
+      "rows_cut_unchecked": "Die Antwort hat {{limit}} Zeilen, das für diese Abfrage geltende Zeilenlimit ({{kind}}). Ob mehr Zeilen passen, konnte nicht geprüft werden: {{reason}}"
     }
   }
 }

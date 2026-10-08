@@ -443,6 +443,10 @@
       "waiting_on_domains": "This request still waits on an approval from: {{domains}}",
       "approvals_incomplete": "This request needs approvals from {{required}} different users",
       "tables_not_registered": "The tables this request names ({{tables}}) are no longer registered. It cannot be approved; a user whose right to create relationships reaches every domain may reject it"
+    },
+    "statement": {
+      "rows_cut": "The answer was cut at {{limit}} rows, the row limit that applies to this read ({{kind}}): more rows match than were returned.",
+      "rows_cut_unchecked": "The answer has {{limit}} rows, the row limit that applies to this read ({{kind}}). Whether more rows match could not be checked: {{reason}}"
     }
   }
 }

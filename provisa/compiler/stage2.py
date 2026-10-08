@@ -47,6 +47,9 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     limit_ceiling: int | None = None
     # Per-table row ceiling (REQ-005) — applied only when that table is referenced.
     table_ceilings: dict[int, int] = field(default_factory=dict)
+    # REQ-1949: the ceiling that bounds the statement last governed with this context, when a
+    # ceiling and not the statement's own LIMIT is what bounds it (compiler/row_limit.RowLimit).
+    row_limit: Any = None
     sample_size: int | None = None
     # The role this context was built for, and what it may write (compiler/write_admission.py):
     # whether it holds the ``write`` right (REQ-868), and per table the columns whose
@@ -811,9 +814,14 @@ def apply_governance(
     # any per-table ceiling on a table referenced by the query.
     # A ceiling bounds the rows a READ returns; a write returns none, and what it may write
     # is its admission's to decide.
-    ceiling = None if writes else _effective_ceiling(tree, gov_ctx)
-    if ceiling is not None:
-        governed = _apply_limit_ceiling(governed, ceiling)
+    bound = None if writes else _effective_ceiling(tree, gov_ctx)
+    gov_ctx.row_limit = None
+    if bound is not None:
+        from provisa.compiler.row_limit import binds
+
+        if binds(governed, bound.limit):
+            gov_ctx.row_limit = bound
+        governed = _apply_limit_ceiling(governed, bound.limit)
     elif gov_ctx.sample_size is not None and not writes:
         governed = _apply_limit_ceiling(governed, gov_ctx.sample_size)
 
@@ -821,17 +829,20 @@ def apply_governance(
     return governed
 
 
-def _effective_ceiling(tree, gov_ctx: GovernanceContext) -> int | None:  # REQ-005, REQ-263
-    """Smallest applicable row ceiling: role-level plus per-table for referenced tables."""
-    candidates: list[int] = []
+def _effective_ceiling(tree, gov_ctx: GovernanceContext):  # REQ-005, REQ-263, REQ-1949
+    """The smallest applicable row ceiling and whose it is -- the role's, or a table's the
+    statement reads (compiler/row_limit.RowLimit); None when none applies. The role's wins a tie."""
+    from provisa.compiler.row_limit import ROLE, TABLE, RowLimit
+
+    candidates: list[RowLimit] = []
     if gov_ctx.limit_ceiling is not None:
-        candidates.append(gov_ctx.limit_ceiling)
+        candidates.append(RowLimit(gov_ctx.limit_ceiling, ROLE))
     if gov_ctx.table_ceilings:
         for tbl_node in tree.find_all(exp.Table):
             tid = _table_id_for_node(tbl_node, gov_ctx)
             if tid is not None and tid in gov_ctx.table_ceilings:
-                candidates.append(gov_ctx.table_ceilings[tid])
-    return min(candidates) if candidates else None
+                candidates.append(RowLimit(gov_ctx.table_ceilings[tid], TABLE))
+    return min(candidates, key=lambda c: c.limit) if candidates else None
 
 
 def apply_row_cap(sql: str, cap: int | None) -> str:  # REQ-005

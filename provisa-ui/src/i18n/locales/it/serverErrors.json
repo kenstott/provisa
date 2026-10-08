@@ -443,6 +443,10 @@
       "waiting_on_domains": "Questa richiesta attende ancora un'approvazione da: {{domains}}",
       "approvals_incomplete": "Questa richiesta richiede le approvazioni di {{required}} utenti diversi",
       "tables_not_registered": "Le tabelle indicate da questa richiesta ({{tables}}) non sono più registrate. Non può essere approvata; un utente il cui diritto di creare relazioni raggiunge ogni dominio può rifiutarla"
+    },
+    "statement": {
+      "rows_cut": "La risposta è stata troncata a {{limit}} righe, il limite di righe che si applica a questa lettura ({{kind}}): corrispondono più righe di quelle restituite.",
+      "rows_cut_unchecked": "La risposta ha {{limit}} righe, il limite di righe che si applica a questa lettura ({{kind}}). Non è stato possibile verificare se corrispondono altre righe: {{reason}}"
     }
   }
 }

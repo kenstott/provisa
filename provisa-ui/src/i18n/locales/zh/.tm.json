@@ -5274,5 +5274,7 @@
   "zh/sourceFormFieldsExtended.json::sourceFormFieldsExtended.registryPassword": "Registry password",
   "zh/sourceFormFieldsExtended.json::sourceFormFieldsExtended.registryPathPlaceholder": "absolute path on the server",
   "zh/sourceFormFieldsExtended.json::sourceFormFieldsExtended.registryToken": "Registry token",
-  "zh/sourceFormFieldsExtended.json::sourceFormFieldsExtended.registryUsername": "Registry username"
+  "zh/sourceFormFieldsExtended.json::sourceFormFieldsExtended.registryUsername": "Registry username",
+  "zh/serverErrors.json::serverErrors.statement.rows_cut": "The answer was cut at {{limit}} rows, the row limit that applies to this read ({{kind}}): more rows match than were returned.",
+  "zh/serverErrors.json::serverErrors.statement.rows_cut_unchecked": "The answer has {{limit}} rows, the row limit that applies to this read ({{kind}}). Whether more rows match could not be checked: {{reason}}"
 }

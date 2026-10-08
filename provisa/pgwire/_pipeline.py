@@ -147,6 +147,9 @@ class _Plan:
     # reports them in its own warning channel. A warned result is never stored in the response
     # cache.
     warnings: list[Any] = field(default_factory=list)
+    # REQ-1949: the row limit that bounds this read, when a limit and not the statement's own
+    # LIMIT is what bounds it (compiler/row_limit.RowLimit). None for every other statement.
+    row_limit: Any = None
     # Guards against a second finalize for one statement: the streaming surfaces finalize at their
     # own terminal, and a plan that also passes through _execute_plan must still write one row.
     audit_written: bool = field(default=False)
@@ -1105,7 +1108,7 @@ async def _govern_and_route_planned(
     governed = await govern_statement(
         sql, role_id, session_vars=session_vars, product_statement=product_statement
     )
-    return await route_governed(
+    return await _route_bounded(
         governed,
         params=params,
         as_of=as_of,
@@ -1419,6 +1422,15 @@ async def govern_statement(
     ) and not _calls_a_registered_command(_parsed_input, state):
         _slot.keep(governed)
     return governed
+
+
+async def _route_bounded(governed: "_Governed", **how: Any) -> _Plan:
+    """:func:`route_governed`, the plan carrying the row limit the statement was bounded at
+    (REQ-1949). An EXPLAIN of the statement is no read of its rows and carries none."""
+    plan = await route_governed(governed, **how)
+    if how.get("explain") is None:
+        plan.row_limit = governed.gov_ctx.row_limit
+    return plan
 
 
 async def route_governed(
@@ -2369,13 +2381,77 @@ async def _execute_plan_bound(plan: _Plan, state: Any) -> QueryResult:
     return result
 
 
+class NextRowNotAskable(Exception):
+    """The statement a terminal ran is not in a form its next row can be asked of."""
+
+
+async def rows_were_cut(plan: _Plan, state: Any) -> bool:
+    """Whether the read ``plan`` bounds at its row limit holds more rows than the limit
+    (REQ-1949): the statement the terminal ran -- the role's governed statement, its row filters
+    and masks in it -- asked for the one row after the limit, through the same terminal, inside
+    the request's deadline and with the org's secrets bound as for the read itself. Called only
+    for an answer that filled the limit exactly; any other is known whole without it."""
+    from provisa.compiler.row_limit import next_row_sql
+    from provisa.transpiler.router import Route
+
+    limit = plan.row_limit.limit
+    if plan.route == Route.ENGINE:
+        assert plan.physical_sql is not None
+        after = next_row_sql(plan.physical_sql, limit, state.federation_engine.dialect)
+        asking = dataclasses.replace(plan, physical_sql=after)
+    else:
+        after = next_row_sql(plan.sql, limit, plan.dialect)
+        asking = dataclasses.replace(plan, sql=after)
+    if after is None:
+        raise NextRowNotAskable(
+            f"the statement as run is no longer bounded by an outermost LIMIT {limit}"
+        )
+    asking.materialize = asking.auto_deliver = asking.audit = None
+    asking.row_limit = None
+    return bool((await _run_plan_terminal(asking, state)).rows)
+
+
+async def _warn_if_cut(plan: _Plan, result: QueryResult, state: Any) -> None:
+    """REQ-1949: an answer that fills the row limit bounding it, where more rows match, says so
+    in the statement's warnings. An answer within the limit is whole and says nothing; a landed
+    result reports its row count and is checked by its terminal."""
+    if plan.row_limit is None or result.redirect is not None:
+        return
+    if len(result.rows) != plan.row_limit.limit:
+        return
+    from provisa.compiler.row_limit import cut_warning, unchecked_warning
+    from provisa.core.statement_warnings import tell
+
+    try:
+        more = await rows_were_cut(plan, state)
+    except TimeoutError:
+        raise  # the request's deadline: the request's own failure, as for the read itself
+    except Exception as exc:
+        # REQ-1949: "The warning never changes what is returned and is never an error." The
+        # answer is already read and stands; that the check failed is said in the answer's
+        # warnings, with why, and to the operator -- reported, not passed over.
+        log.warning("row-limit check failed for role %s: %s", plan.role_id, exc, exc_info=True)
+        tell(unchecked_warning(plan.row_limit, str(exc)), plan.warnings)
+        return
+    if more:
+        tell(cut_warning(plan.row_limit), plan.warnings)
+
+
 async def _execute_plan_with_secrets(plan: _Plan, state: Any) -> QueryResult:
     if _reads_an_org_secret(plan, state):
         from provisa.core.secrets_store import bound_to_request_org
 
         async with bound_to_request_org():
-            return await _execute_plan_in_org(plan, state)
-    return await _execute_plan_in_org(plan, state)
+            return await _answered(plan, state)
+    return await _answered(plan, state)
+
+
+async def _answered(plan: _Plan, state: Any) -> QueryResult:
+    """The plan's answer, and what it says about a row limit that cut it (REQ-1949) -- read
+    with the same secrets bound, since the check reads the same sources."""
+    result = await _execute_plan_in_org(plan, state)
+    await _warn_if_cut(plan, result, state)
+    return result
 
 
 async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-027, REQ-028
@@ -3444,7 +3520,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
                 as_of=as_of,
             )
 
-    return await _route_compiled(
+    plan = await _route_compiled(
         sql,
         role_id,
         state,
@@ -3469,6 +3545,8 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         api_compiled=api_compiled,
         extra_selections=extra_selections,
     )
+    plan.row_limit = gov_ctx.row_limit  # REQ-1949
+    return plan
 
 
 def _prepare_compiled_stage(compiled: Any, role_id: str, state: Any) -> Any:  # REQ-148, REQ-198
@@ -4216,7 +4294,7 @@ async def plan_pgwire_statement(  # REQ-589
     again. ``wire_formats`` and ``deliver``: see :func:`govern_pgwire_plan`."""
     from provisa.api.app import state
 
-    plan = await route_governed(
+    plan = await _route_bounded(
         governed, params=params, serve_cached=True, wire_formats=wire_formats, deliver=deliver
     )
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)

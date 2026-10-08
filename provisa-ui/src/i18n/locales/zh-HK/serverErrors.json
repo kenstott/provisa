@@ -443,6 +443,10 @@
       "waiting_on_domains": "此請求仍在等待以下網域的核准：{{domains}}",
       "approvals_incomplete": "此請求需要 {{required}} 位不同使用者的核准",
       "tables_not_registered": "此請求指定的表（{{tables}}）已不再註冊。無法核准；建立關係的權限涵蓋所有網域的使用者可以拒絕它"
+    },
+    "statement": {
+      "rows_cut": "結果在 {{limit}} 行處被截斷，這是適用於此次讀取的行數限制（{{kind}}）：符合的行多於傳回的行。",
+      "rows_cut_unchecked": "結果有 {{limit}} 行，即適用於此次讀取的行數限制（{{kind}}）。無法檢查是否還有更多符合的行：{{reason}}"
     }
   }
 }

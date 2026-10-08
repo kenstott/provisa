@@ -165,32 +165,6 @@ def _batch(columns: list[tuple[str, str]], rows: list[tuple]) -> Any:
     return pa.RecordBatch.from_pydict(arrays)
 
 
-def capped_warning(name: str, rows: int, limit: int) -> Any:
-    """The warning a statement carries when the rows a temporary table took are the role's row
-    limit (REQ-1350): the read it was filled from was cut there, and may hold more."""
-    from provisa.core.statement_warnings import ServerWarning
-
-    return ServerWarning(
-        code="temp_table.rows_capped",
-        params={"table": name, "rows": rows, "limit": limit},
-        message=(
-            f"temporary table {name} took {rows} rows, the row limit of the role: the read it "
-            f"was filled from was cut there and may hold more."
-        ),
-    )
-
-
-def _warn_if_capped(state: Any, role_id: str | None, name: str, rows: int) -> None:
-    """REQ-1350: a temporary table filled from a read the role's row limit cut says so in the
-    statement's warnings, on every surface -- never a silent truncation."""
-    from provisa.compiler.stage2 import resolve_row_cap
-    from provisa.core.statement_warnings import warn
-
-    limit = resolve_row_cap(state.roles.get(role_id) if role_id is not None else None)
-    if limit is not None and rows >= limit:
-        warn(capped_warning(name, rows, limit))
-
-
 async def _land(state: Any, session: TempSession, name: str, batch: Any, columns: list) -> None:
     from provisa.federation.data_replicator import data_replicator
     from provisa.federation.replica_address import ReplicaAddress
@@ -244,7 +218,6 @@ async def apply(
                 (c, inferred_type(c, [r[i] for r in rows]))
                 for i, c in enumerate(result.column_names)
             ]
-            _warn_if_capped(state, role_id, name, len(rows))
         await _land(state, session, name, _batch(columns, rows), columns)
         session.tables[name] = TempTable(name, columns)
         session.generation += 1
@@ -259,7 +232,6 @@ async def apply(
                 f"INSERT INTO {name}: {len(named)} column(s) named, "
                 f"{len(result.column_names)} value(s) given"
             )
-        _warn_if_capped(state, role_id, name, len(result.rows))
         _, held = await asyncio.to_thread(_system_rows, state, f"SELECT * FROM {at}", name)
         position = {c: i for i, c in enumerate(named)}
         added = [
