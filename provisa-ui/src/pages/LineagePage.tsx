@@ -12,6 +12,7 @@
 // (command boundaries spliced continuous to source columns, transforms named), or load the
 // federation-wide provenance graph over every view/MV with cycles characterized.
 
+import { LINEAGE_EDITOR_PANEL_STYLE, LINEAGE_CONTROLS_PANEL_STYLE } from "./lineageLayout";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -211,7 +212,7 @@ export function LineagePage(): React.ReactElement {
       </Text>
       {/* The editor stretches to the height of the control column beside it, so the two read as
           one row whatever the query's length. */}
-      <Group align="stretch" wrap="nowrap">
+      <Group align="stretch" wrap="wrap">
         <Input.Wrapper
           label={
             <Group gap={4} component="span">
@@ -233,13 +234,16 @@ export function LineagePage(): React.ReactElement {
               </Tooltip>
             </Group>
           }
-          style={{ flex: 1, display: "flex", flexDirection: "column" }}
+          data-testid="lineage-editor-panel"
+          style={LINEAGE_EDITOR_PANEL_STYLE}
         >
           <div
             data-testid="lineage-sql"
             style={{
               position: "relative",
               flex: 1,
+              minWidth: 0,
+              overflow: "hidden",
               display: "flex",
               flexDirection: "column",
               border: "1px solid var(--mantine-color-default-border)",
@@ -289,7 +293,7 @@ export function LineagePage(): React.ReactElement {
             </Tooltip>
           </div>
         </Input.Wrapper>
-        <Stack gap="xs">
+        <Stack gap="xs" data-testid="lineage-controls-panel" style={LINEAGE_CONTROLS_PANEL_STYLE}>
           <CapabilityGate capability="view_governance">
             <MultiSelect
               size="xs"
@@ -371,9 +375,9 @@ export function LineagePage(): React.ReactElement {
         <Paper
           withBorder
           p="xs"
-          style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+          style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}
         >
-          <div style={{ flex: 1, minHeight: 0 }}>
+          <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
             <LineageDag
               graph={graph}
               height="100%"

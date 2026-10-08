@@ -94,6 +94,20 @@ describe("LineagePage — REQ-1160/1161", () => {
     sessionStorage.clear();
   });
 
+  it("gives the query and button panels a proportional share with a floor each, wrapping below both", () => {
+    // jsdom does no layout: this proves the style contract, not how the page looks when narrow.
+    render(<LineagePage />);
+    const editor = screen.getByTestId("lineage-editor-panel");
+    const controls = screen.getByTestId("lineage-controls-panel");
+    expect(editor.style.flexGrow).toBe("3");
+    expect(editor.style.flexShrink).toBe("1");
+    expect(editor.style.minWidth).toBe("20rem");
+    expect(controls.style.flexGrow).toBe("1");
+    expect(controls.style.flexShrink).toBe("1");
+    expect(controls.style.minWidth).toBe("14rem");
+    expect(editor.parentElement?.style.getPropertyValue("--group-wrap")).toBe("wrap");
+  });
+
   it("builds a statement graph and renders the DAG", async () => {
     render(<LineagePage />);
     fireEvent.click(screen.getByTestId("lineage-build"));
