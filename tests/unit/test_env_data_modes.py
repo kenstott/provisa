@@ -112,3 +112,28 @@ def test_a_restored_source_takes_the_type_the_model_gives_it_now():
         **inherited,
         "synthetic": {"schema": "s", "tables": [], "model_type": "mysql"},
     }
+
+
+def test_test_synthetic_is_refused_by_name_where_the_engine_cannot_generate():
+    """REQ-1942: said when the mode is chosen, naming the engine and the engines that can --
+    not left to fail when generation is first asked for."""
+    from provisa.core.env_data import refuse_synthetic_on
+    from provisa.synthetic.generate import DIALECTS
+
+    for engine in DIALECTS:
+        refuse_synthetic_on(engine, "qa")
+    with pytest.raises(DataChoiceRefused) as refused:
+        refuse_synthetic_on("postgres", "qa")
+    said = str(refused.value)
+    assert "'qa' cannot be Test (synthetic)" in said and "(postgres)" in said
+    assert all(engine in said for engine in DIALECTS)
+
+
+def test_both_places_a_data_mode_is_chosen_ask_the_engine():
+    """Creating an environment as Test (synthetic) and changing one to it are the two choices."""
+    import inspect
+
+    from provisa.api.admin import environment_data_router, environments_router
+
+    for module in (environments_router, environment_data_router):
+        assert "refuse_synthetic_on(" in inspect.getsource(module), module.__name__

@@ -55,7 +55,14 @@ from provisa.core.env_retire import (
     kinds_and_counts,
     retire_environment,
 )
-from provisa.core.env_classes import INHERIT, REFUSED, TEST_FAKE, UNBOUND, UNBOUND_MODE
+from provisa.core.env_classes import (
+    INHERIT,
+    REFUSED,
+    TEST_FAKE,
+    TEST_SYNTHETIC,
+    UNBOUND,
+    UNBOUND_MODE,
+)
 from provisa.core.env_store import (
     EnvironmentLimitError,
     get_env,
@@ -489,6 +496,16 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
         await _member(request, org_id, DATA_CAPABILITY)
     if body.data_mode == INHERIT:
         await _reads_parent(request, org_id, body.from_env)
+    if body.data_mode == TEST_SYNTHETIC:
+        from provisa.api.app import state as _engine_state
+        from provisa.core.env_data import DataChoiceRefused, refuse_synthetic_on
+
+        try:
+            refuse_synthetic_on(_engine_state.federation_engine.engine.name, body.name)
+        except DataChoiceRefused as exc:
+            raise ApiError(
+                422, "environments.data_refused", str(exc), org=org_id, env=body.name
+            ) from exc
     if body.data_mode == TEST_FAKE:
         # REQ-1942: the new environment holds the parent's model, so its sensitive columns are
         # the parent's; one with no fake would show real values.

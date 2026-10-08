@@ -207,6 +207,13 @@ async def edit_data_choices(
                 org=org_id,
                 env=name,
             )
+        if body.data_mode == TEST_SYNTHETIC:
+            from provisa.api.app import state
+
+            try:
+                env_data.refuse_synthetic_on(state.federation_engine.engine.name, name)
+            except env_data.DataChoiceRefused as exc:
+                raise _refused(org_id, name, exc) from exc
         if step.reads_parent:
             await _reads_parent(request, org_id, row["parent"])
         schema = org_schema(org_id, name)
