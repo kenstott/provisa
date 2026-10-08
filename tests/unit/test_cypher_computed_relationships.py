@@ -254,3 +254,51 @@ def test_a_left_pointing_variable_length_pattern_matches_what_the_right_pointing
         lowered[name] = _pairs(engine, sql_tree)
     assert lowered["forward"] == lowered["backward"], lowered
     assert lowered["forward"], "the fixture's rows are related by this relationship"
+
+
+def _with_a_loop_elsewhere(label_map: CypherLabelMap) -> CypherLabelMap:
+    """The model, plus a relationship of a table to itself that no path from an order to a
+    customer runs along."""
+    loop = RelationshipMapping(
+        rel_type="PARENT",
+        source_label="Regions",
+        target_label="Regions",
+        join_source_column="id",
+        join_target_column="id",
+        field_name="parent",
+    )
+    return CypherLabelMap(
+        nodes=label_map.nodes,
+        relationships={**label_map.relationships, "PARENT": loop},
+        aliases={**label_map.aliases, "PARENT": [loop]},
+    )
+
+
+@pytest.mark.parametrize(
+    "cypher",
+    [
+        "MATCH (o:Orders)-[*1..2]->(c:Customers) RETURN o.id AS a, c.id AS b",
+        "MATCH (c:Customers)<-[*1..2]-(o:Orders) RETURN o.id AS a, c.id AS b",
+    ],
+)
+def test_an_untyped_variable_length_pattern_walks_only_what_joins_its_ends(
+    cypher, engine, monkeypatch
+):
+    """A relationship of some other table to itself is on no path between the pattern's ends
+    (#157): the pattern is lowered as the typed one is, along the registered relationship."""
+    monkeypatch.setitem(
+        _RELATIONSHIPS, "plain", ("PLACED_BY", "Orders", "Customers", "customer_code", "code", {})
+    )
+    ctx, gov, label_map, _ = _model("plain")
+    typed, _, _ = cypher_to_sql(
+        parse_cypher(
+            "MATCH (o:Orders)-[:PLACED_BY*1..2]->(c:Customers) RETURN o.id AS a, c.id AS b"
+        ),
+        label_map,
+        {},
+    )
+    sql_tree, _, _ = cypher_to_sql(parse_cypher(cypher), _with_a_loop_elsewhere(label_map), {})
+    lowered = sql_tree.sql(dialect="postgres")
+    assert _refusals(sql_tree, ctx, gov) == [], lowered
+    assert _pairs(engine, sql_tree) == _pairs(engine, typed), lowered
+    assert _pairs(engine, typed), "the fixture's rows are related by this relationship"

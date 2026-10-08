@@ -267,18 +267,16 @@ def test_a_cypher_relationship_pattern_passes_for_every_role(server, surface):
 
 
 @pytest.mark.parametrize("surface", list(_CYPHER_SURFACES))
-def test_a_variable_length_pattern_reads_the_same_rows_pointing_either_way(server, surface):
-    """(v)<-[:R*1..2]-(c) is (c)-[:R*1..2]->(v) (#151): along the registered relationship, so it
-    passes for a role the relationships bind, and both return the same rows."""
+@pytest.mark.parametrize("hops", ["[:HAS_VISITS*1..2]", "[*1..2]"], ids=["typed", "untyped"])
+def test_a_variable_length_pattern_reads_the_same_rows_pointing_either_way(server, surface, hops):
+    """(v)<-[:R*1..2]-(c) is (c)-[:R*1..2]->(v) (#151), and with no type given the pattern
+    walks only the relationships joining its ends (#157): along the registered relationship, so
+    it passes for a role the relationships bind, and both return the same rows."""
     run = _CYPHER_SURFACES[surface]
     returning = "RETURN c.name AS name, v.id AS id ORDER BY id"
-    right, rows = run(
-        server, "bound", f"MATCH (c:Customers)-[:HAS_VISITS*1..2]->(v:Visits) {returning}"
-    )
+    right, rows = run(server, "bound", f"MATCH (c:Customers)-{hops}->(v:Visits) {returning}")
     assert right, rows
-    left, same = run(
-        server, "bound", f"MATCH (v:Visits)<-[:HAS_VISITS*1..2]-(c:Customers) {returning}"
-    )
+    left, same = run(server, "bound", f"MATCH (v:Visits)<-{hops}-(c:Customers) {returning}")
     assert left, same
     assert same == rows, (rows, same)
     assert all(said in rows for said in ("ann", "bo", "10", "11", "12")), rows

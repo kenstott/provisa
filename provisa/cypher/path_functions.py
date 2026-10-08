@@ -113,6 +113,28 @@ def _filter_allowed_rels(
     ]
 
 
+def _rels_between(
+    rels: list[RelationshipMapping], src_type: str, tgt_type: str
+) -> list[RelationshipMapping]:
+    """The relationships that lie on some directed path from ``src_type`` to ``tgt_type`` (#157):
+    one whose source the path can reach and whose target the path can go on from. A relationship
+    elsewhere in the model is no part of the pattern, whatever its shape."""
+
+    def reach(start: str, step_from: str, step_to: str) -> set[str]:
+        seen, frontier = {start}, [start]
+        while frontier:
+            at = frontier.pop()
+            for r in rels:
+                if getattr(r, step_from) == at and getattr(r, step_to) not in seen:
+                    seen.add(getattr(r, step_to))
+                    frontier.append(getattr(r, step_to))
+        return seen
+
+    from_src = reach(src_type, "source_label", "target_label")
+    to_tgt = reach(tgt_type, "target_label", "source_label")
+    return [r for r in rels if r.source_label in from_src and r.target_label in to_tgt]
+
+
 def _needs_recursive_cte(
     variable_length: bool,
     is_undirected: bool,
@@ -222,6 +244,8 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
 
         rel_types, variable_length, is_undirected, max_hops = _extract_rel_attrs(rel)
         allowed_rels = _filter_allowed_rels(self._lm, rel_types)
+        if not is_undirected:
+            allowed_rels = _rels_between(allowed_rels, src_type, tgt_type)
         needs_recursive = _needs_recursive_cte(
             variable_length, is_undirected, src_type, tgt_type, allowed_rels
         )
