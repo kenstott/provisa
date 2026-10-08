@@ -39,6 +39,32 @@ _SNOWFLAKE_DECIMAL = pa.decimal128(38, 9)
 #: The Arrow type a ``numeric`` column is staged as: Delta's DECIMAL(38,9).
 _DELTA_DECIMAL = pa.decimal128(38, 9)
 
+# The build table is dropped and created under the same name for every build. BigQuery's Storage
+# Write API learns of a table a little after the DDL that created it returns, and of one
+# re-created under a name it knew, later still: a stream asked for in that window is answered
+# "Requested entity was not found" for a table that exists (warehouse run 37777052154, on the
+# third build of one replica). The table was created by the statement before, so that answer
+# means "not yet": the stream is asked for again until it opens, within this bound.
+_STREAM_OPEN_SECONDS = 60.0
+_STREAM_OPEN_INTERVAL = 2.0
+
+
+def _open_pending_stream(writer: Any, parent: str, stream: Any) -> Any:
+    """A pending write stream on the table ``parent`` names, which the caller has just created."""
+    import time
+
+    from google.api_core.exceptions import NotFound
+
+    deadline = time.monotonic() + _STREAM_OPEN_SECONDS
+    while True:
+        try:
+            return writer.create_write_stream(parent=parent, write_stream=stream)
+        except NotFound:
+            request_deadline.check()
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(_STREAM_OPEN_INTERVAL)
+
 
 class MssqlWarehouseStoreTarget:
     """A replica in a T-SQL warehouse (Microsoft Fabric Warehouse), written by bulk parameter
@@ -336,8 +362,8 @@ class BigQueryStoreTarget:
                 credentials=self._client._credentials
             )
         parent = self._writer.table_path(self._project, self._dataset, self._build)
-        pending = self._writer.create_write_stream(
-            parent=parent, write_stream=types.WriteStream(type_=types.WriteStream.Type.PENDING)
+        pending = _open_pending_stream(
+            self._writer, parent, types.WriteStream(type_=types.WriteStream.Type.PENDING)
         )
         self._stream_name = pending.name
         template = types.AppendRowsRequest()
