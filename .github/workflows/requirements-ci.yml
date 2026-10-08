@@ -50,25 +50,10 @@ jobs:
       - name: Check .feature files are up to date
         run: uv run python scripts/gen_features.py --check
 
-  bdd:
-    name: pytest-bdd scenarios
-    runs-on: ubuntu-latest
-    needs: drift
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-
-      - name: Install deps
-        run: uv sync --frozen --extra dev
-
-      - name: Run BDD scenarios
-        # Scenarios with unimplemented steps call pytest.skip — reported as skipped not failed.
-        # Unregistered steps (missing from generated_stubs.py) cause ERROR — those must be fixed.
-        run: |
-          uv run pytest tests/features/ -m bdd \
-            --no-cov \
-            --tb=short \
-            -q \
-            2>&1 | tail -20
+  # There is no BDD job here. One used to run `pytest tests/features/ -m bdd | tail -20`: that
+  # directory holds only .feature files, pytest collected nothing ("no tests ran"), and the pipe
+  # to tail made its "nothing collected" exit a success -- a job that could only be green.
+  # The scenarios are bound and run from tests/steps/steps_*.py, which need the container stack:
+  # they run in the integration suite's lanes (scripts/ci/run_lane.py, _SUITE), each by its
+  # markers. That every .feature file is bound by a step module is checked without services by
+  # tests/unit/test_features_are_bound.py, in the unit workflow.

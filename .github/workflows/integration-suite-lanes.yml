@@ -45,6 +45,13 @@ on:
 permissions:
   contents: read
 
+# Naming the shell makes GitHub run every step with `bash -eo pipefail`. The default
+# (`bash -e`) gives a pipeline its LAST command's status: a failed download piped into an
+# installer, or a failed `docker save` piped into a compressor, passed.
+defaults:
+  run:
+    shell: bash
+
 env:
   # The harness tears its own stacks down at session end; nothing is kept between steps.
   PYTEST_DOCKER_KEEP: ""
@@ -265,7 +272,11 @@ jobs:
       - &save-images
         name: Save images
         if: always() && steps.images.outputs.cache-hit != 'true'
-        run: docker save $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>') | zstd -T0 -3 -o ~/images.tar.zst
+        # pipefail: without it the step's status is zstd's, and a save that failed left a
+        # truncated archive for the next step to cache and later runs to load.
+        run: |
+          set -o pipefail
+          docker save $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>') | zstd -T0 -3 -o ~/images.tar.zst
 
       - &cache-images
         name: Cache images
