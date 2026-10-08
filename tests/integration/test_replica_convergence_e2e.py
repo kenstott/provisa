@@ -259,8 +259,11 @@ def test_two_servers_that_see_the_declaration_build_the_replica_once(databases):
             time.sleep(2 * _RELOAD_S + 2)  # the other server has reloaded and converged too
             (build,) = _builds(second)["builds"]  # it sees the same record
             assert build["state"] == "idle"
+            records = {"first": _builds(first), "second": _builds(second)}
         finally:
             first.stop_process()
             second.stop_process()
     builds = _builds_of_orders(pg)
-    assert len(builds) == 1, builds
+    # A second build says why in its record (requestedReason) and when in the engine's log: both
+    # are shown whole, one statement per line.
+    assert len(builds) == 1, "\n".join(["builds of orders:", *builds, f"records: {records}"])

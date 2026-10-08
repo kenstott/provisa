@@ -231,6 +231,11 @@ def _serve_connection(sock: socket.socket, ssl_ctx: ssl.SSLContext | None) -> No
         sock.close()
 
 
+# How long the accept thread waits for a connection before it looks again at whether the listener
+# was closed: the longest close() waits for that thread.
+_ACCEPT_POLL_SECONDS = 0.5
+
+
 class BoltListener:
     """The Bolt TCP listener: an accept loop on its own thread, one thread per connection."""
 
@@ -239,6 +244,12 @@ class BoltListener:
         # each run their own Bolt listener on the same port (the kernel load-balances new
         # connections between them) instead of all but one crashing with "Address already in use".
         self._sock = socket.create_server((host, port), reuse_port=True)
+        # The accept thread is stopped by the closed flag, read between bounded waits. Closing
+        # the socket does not wake a thread blocked in accept(): the thread stayed there, and the
+        # descriptor it held was free for the next socket the process opened. Nor can a
+        # connection made to the port wake it: the port is shared (SO_REUSEPORT) and the kernel
+        # may give that connection to another worker's listener (provisa/api/flight/relay.py).
+        self._sock.settimeout(_ACCEPT_POLL_SECONDS)
         self._ssl_ctx = ssl_ctx
         self._closed = False
         self.port = self._sock.getsockname()[1]
@@ -251,19 +262,28 @@ class BoltListener:
         while not self._closed:
             try:
                 conn, _addr = self._sock.accept()
+            except TimeoutError:
+                continue  # nothing arrived: look at the closed flag again
             except OSError:
-                if self._closed:
-                    return  # close() shut the listening socket
                 # A transient accept failure (EMFILE, ECONNABORTED) costs one connection, not the
                 # listener; it is reported and the loop keeps accepting.
                 log.exception("[BOLT] accept failed")
                 continue
+            if self._closed:
+                conn.close()  # arrived as the listener closed
+                return
+            # The listener's timeout is its own: a connection blocks, as its handler expects (an
+            # accepted socket takes the listener's timeout on some platforms).
+            conn.settimeout(None)
             threading.Thread(
                 target=_serve_connection, args=(conn, self._ssl_ctx), name="bolt-conn", daemon=True
             ).start()
 
     def close(self) -> None:
+        """Stop accepting. Returns once the accept thread has ended; the listening socket is
+        closed only then, so no thread is left in accept() on a descriptor that was closed."""
         self._closed = True
+        self._thread.join()
         self._sock.close()
 
 
