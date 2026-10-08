@@ -39,6 +39,7 @@ as-is.
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import string
@@ -211,6 +212,31 @@ def _wait_for_openrowset(server: str, adls_url: str) -> None:
             time.sleep(15)
     raise RuntimeError(
         f"OPENROWSET on {adls_url} never became readable within {_RBAC_TIMEOUT_S}s: {last}"
+    )
+
+
+def _who_is_refused(workspace: str, resource_group: str, assigned_oid: str) -> str:
+    """Why a login the lane has just made the workspace's Azure AD admin may still be refused:
+    the admin the workspace records (login, sid, tenant) beside the identifying claims of the
+    token the runtime presents (object id, application id, tenant, audience, identity type).
+    These are identifiers, not credentials."""
+    import base64
+
+    from azure.identity import DefaultAzureCredential
+
+    admin = _az(
+        "synapse", "sql", "ad-admin", "show",
+        "--workspace-name", workspace, "-g", resource_group,
+        "--query", "{login:login, sid:sid, tenantId:tenantId, type:administratorType}", "-o", "json",
+    )  # fmt: skip
+    token = DefaultAzureCredential().get_token("https://database.windows.net/.default").token
+    payload = token.split(".")[1]
+    claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    shown = {k: claims.get(k) for k in ("oid", "appid", "azp", "tid", "aud", "idtyp", "sub")}
+    return (
+        "the workspace's Azure AD admin was still refused at the serverless endpoint after the "
+        f"bound (18456).\n  admin the lane assigned (object id): {assigned_oid}\n"
+        f"  admin the workspace records: {admin}\n  token presented: {json.dumps(shown)}"
     )
 
 
@@ -567,7 +593,15 @@ def _provision() -> tuple[dict[str, str], str, str, str]:
 
         sql_server = f"{workspace}-ondemand.sql.azuresynapse.net"
         adls_url = f"https://{storage}.dfs.core.windows.net/{_FILESYSTEM}/{_PARQUET_PATH}"
-        _create_database(sql_server)
+        try:
+            _create_database(sql_server)
+        except Exception as exc:
+            if "(18456)" not in str(exc):
+                raise
+            # The login was still refused when the bound passed, so it is not the assignment
+            # reaching the endpoint (warehouse run 37806460400: twenty refusals over 300 s). Say
+            # who the workspace's admin is recorded as and who the token says is logging in.
+            raise AssertionError(_who_is_refused(workspace, resource_group, user_oid)) from exc
         _wait_for_openrowset(sql_server, adls_url)
         print(f"== synapse lane ready: {sql_server} ==", flush=True)
     except Exception:
