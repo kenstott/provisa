@@ -749,6 +749,20 @@ cluster_nodes = Table(
     Column("last_seen", DateTime(timezone=True), nullable=False),
 )
 
+# The PLATFORM STATE STORE's record of each coordinator's system catalogs
+# (provisa/core/platform_state/catalogs.py): the hash of the spec a catalog was last created
+# from, by coordinator address and catalog name. Trino cannot read a catalog's properties back,
+# so this is how a registrar knows the live catalog already is what it would create and leaves
+# it alone. Per deployment; never an org's model.
+engine_system_catalogs = Table(
+    "engine_system_catalogs",
+    metadata,
+    Column("coordinator", Text, primary_key=True),
+    Column("name", Text, primary_key=True),
+    Column("spec_hash", Text, nullable=False),
+    Column("registered_at", DateTime(timezone=True), nullable=False),
+)
+
 
 REGISTRY_TABLES = [
     orgs,
@@ -774,6 +788,7 @@ REGISTRY_TABLES = [
     deployment_settings,
     config_stamp,
     cluster_nodes,
+    engine_system_catalogs,
 ]
 
 

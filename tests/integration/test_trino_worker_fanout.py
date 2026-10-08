@@ -97,9 +97,7 @@ def _provisa_admin_catalog():
     try:
         register_catalog(
             conn,
-            control_plane_spec(
-                make_url(os.environ["TENANT_DATABASE_URL"]), os.environ.get("ORG_ID", "default")
-            ),
+            control_plane_spec(make_url(os.environ["TENANT_DATABASE_URL"])),
         )
     finally:
         conn.close()

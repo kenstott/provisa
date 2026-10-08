@@ -83,7 +83,9 @@ def test_the_boot_connection_asks_the_engine_to_cut_off_statements_at_the_limit(
 
     monkeypatch.setattr(catalogs, "otel_object_store", lambda: {"endpoint": "http://minio:9000"})
     monkeypatch.setattr(
-        catalogs, "register_system_catalogs", lambda conn, url, org, limit: seen.update(limit=limit)
+        catalogs,
+        "register_system_catalogs",
+        lambda conn, url, record, limit: seen.update(limit=limit),
     )
     monkeypatch.setattr(schema_service, "init", lambda engine: None)
 
@@ -95,6 +97,9 @@ def test_the_boot_connection_asks_the_engine_to_cut_off_statements_at_the_limit(
         tenant_engine=SimpleNamespace(url=URL.create("postgresql", host="pg", port=5432)),
         org_id="default",
         federation_engine=None,
+        # The platform state store's handle: where the catalogs' record is kept (not reached
+        # here, the registration is stubbed above).
+        platform_state_db=SimpleNamespace(engine=None),
     )
     with pytest.raises(BootStepFailed) as raised:
         trino_lifecycle.provision(state, [])

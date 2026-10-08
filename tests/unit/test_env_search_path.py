@@ -39,24 +39,52 @@ def in_env():
 # --- provisa_admin's currentSchema (core/trino_system_catalogs.py) -------------------------------
 
 
-def test_control_plane_spec_follows_the_bound_environment(in_env):
-    spec = tsc.control_plane_spec(_URL, "acme")
-    assert spec.properties["connection-url"].endswith("?currentSchema=org_acme_env_feature_x")
+def test_control_plane_spec_is_the_same_whichever_environment_is_bound(in_env):
+    """One ``provisa_admin`` serves every org and environment on a coordinator, so its spec names
+    none of them. It carried ``currentSchema=org_<id>[_env_<env>]`` (REQ-1623), and each
+    environment's build dropped and re-created the catalog for itself; the environment's schema
+    is named by the statement instead (``TrinoBackend.materialize_store_target``, below)."""
+    bound = tsc.control_plane_spec(_URL)
+    token = set_current_env("feature_y")
+    try:
+        other = tsc.control_plane_spec(_URL)
+    finally:
+        reset_current_env(token)
+    assert bound == other
+    assert "currentSchema" not in bound.properties["connection-url"]
 
 
-def test_control_plane_spec_unbound_is_prod():
-    spec = tsc.control_plane_spec(_URL, "acme")
-    assert spec.properties["connection-url"].endswith("?currentSchema=org_acme")
+def _store_statement(monkeypatch, org_id: str) -> str:
+    """A read of ``org_id``'s view store as the Trino backend addresses it."""
+    from provisa.federation.backend import TrinoBackend
+
+    monkeypatch.setattr("provisa.storage.byo.org_store_dsn", lambda _org: None)  # the platform's
+    catalog, schema = TrinoBackend.materialize_store_target(
+        TrinoBackend.__new__(TrinoBackend), None, org_id
+    )
+    return f'SELECT * FROM "{catalog}"."{schema}"."mv_orders"'
 
 
-def test_two_environments_do_not_share_the_control_plane_schema():
-    a = set_current_env("feature_x")
-    url_a = tsc.control_plane_spec(_URL, "acme").properties["connection-url"]
-    reset_current_env(a)
-    b = set_current_env("feature_y")
-    url_b = tsc.control_plane_spec(_URL, "acme").properties["connection-url"]
-    reset_current_env(b)
-    assert url_a != url_b
+def test_each_org_and_environment_reads_its_own_store_schema_through_the_one_catalog(
+    monkeypatch, in_env
+):
+    """The catalog has no default schema, so the statement names it: each org's, and within an org
+    each environment's."""
+    in_feature_x = _store_statement(monkeypatch, "acme")
+    assert (
+        in_feature_x
+        == 'SELECT * FROM "provisa_admin"."org_acme_env_feature_x_mv_cache"."mv_orders"'
+    )
+    assert _store_statement(monkeypatch, "globex") == (
+        'SELECT * FROM "provisa_admin"."org_globex_env_feature_x_mv_cache"."mv_orders"'
+    )
+    assert tsc.unqualified_admin_references(in_feature_x) == []
+
+
+def test_prods_store_schema_is_named_too(monkeypatch):
+    statement = _store_statement(monkeypatch, "acme")
+    assert statement == 'SELECT * FROM "provisa_admin"."org_acme_mv_cache"."mv_orders"'
+    assert tsc.unqualified_admin_references(statement) == []
 
 
 # --- the Trino terminal's default schema (federation/trino_lifecycle.py) ------------------------

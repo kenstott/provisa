@@ -134,3 +134,32 @@ def test_a_session_lock_through_the_helper_holds_across_the_pooled_stores_transa
             assert conn.execute(text(f"SELECT pg_try_advisory_xact_lock({key})")).scalar() is True
     finally:
         store.dispose()
+
+
+def test_the_catalog_record_is_kept_in_a_postgresql_platform_database():
+    """What a coordinator's catalog was last created from, in the platform state store on
+    PostgreSQL (tests/unit/test_platform_state_catalogs.py has it on SQLite): the table is one of
+    the platform schema's, created with it, never by the code that reads or writes it."""
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.platform_state.catalogs import CatalogRecord
+    from provisa.core.schema_admin import engine_system_catalogs, metadata
+
+    engine = create_engine_from_url(_url("PG_PORT").render_as_string(hide_password=False))
+    coordinator = f"probe-{time.monotonic_ns()}:8080"  # this test's own rows in the shared table
+    try:
+        with engine.begin() as conn:
+            metadata.create_all(conn, tables=[engine_system_catalogs])  # as the schema init does
+        record = CatalogRecord(Database(engine, "platform-state", holds="platform_state"))
+        assert record.created_from(coordinator, "provisa_admin") is None
+        record.record(coordinator, "provisa_admin", "abc")
+        record.record(coordinator, "provisa_admin", "def")  # its spec changed
+        assert record.created_from(coordinator, "provisa_admin") == "def"
+        assert record.created_from(coordinator, "otel") is None
+    finally:
+        with engine.begin() as conn:
+            conn.execute(
+                engine_system_catalogs.delete().where(
+                    engine_system_catalogs.c.coordinator == coordinator
+                )
+            )
+        engine.dispose()

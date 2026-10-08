@@ -21,9 +21,10 @@ org's model — never projected, never in an environment copy or export.
 One module per member:
 
 - ``nodes``: the cluster's nodes, each with its mode and region (REQ-1916).
+- ``catalogs``: what each coordinator's system catalogs were last created from (REQ-1429).
 """
 
-from provisa.core.platform_state import nodes
+from provisa.core.platform_state import catalogs, nodes
 
 #: Every platform-state table, across the members.
-TABLES: frozenset[str] = frozenset(nodes.TABLES)
+TABLES: frozenset[str] = frozenset((*nodes.TABLES, *catalogs.TABLES))

@@ -216,6 +216,7 @@ def provision(state: Any, ops_views: list) -> None:
     logged and bounded by engine.ready_timeout."""
     from provisa.compiler import schema_service
     from provisa.core import settings_registry
+    from provisa.core.platform_state.catalogs import CatalogRecord
     from provisa.core.trino_system_catalogs import otel_object_store, register_system_catalogs
     from provisa.observability.ops_trino import seed_ops_trino
 
@@ -240,7 +241,7 @@ def provision(state: Any, ops_views: list) -> None:
         "register system catalogs",
         f"{engine_at} and {control_plane_at}",
         limit,
-        lambda: register_system_catalogs(boot, url, state.org_id, limit),
+        lambda: register_system_catalogs(boot, url, CatalogRecord(state.platform_state_db), limit),
     )
     schema_service.init(state.federation_engine)
     _boot_step(
@@ -459,7 +460,7 @@ async def reload_catalog(state: Any, catalog: str, ops_views: list) -> dict:
 
     errors: list[str] = []
     try:
-        spec = spec_for(catalog, state.tenant_engine.url, state.org_id)
+        spec = spec_for(catalog, state.tenant_engine.url)
         await asyncio.to_thread(register_catalog, state.engine_conn, spec)
     except (ValueError, RuntimeError, trino.exceptions.Error) as exc:
         return {"success": False, "errors": [str(exc)]}

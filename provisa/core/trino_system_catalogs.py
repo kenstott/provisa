@@ -31,12 +31,16 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from sqlalchemy.engine import URL
 
 # The results catalog name is owned by the CTAS-redirect writer; import rather than restate it.
 from provisa.executor.trino_write import RESULTS_CATALOG
 from provisa.federation.trino_types import TrinoConnection, TrinoQueryError
+
+if TYPE_CHECKING:
+    from provisa.core.platform_state.catalogs import CatalogRecord
 
 log = logging.getLogger(__name__)
 
@@ -105,26 +109,24 @@ def engine_visible_s3_endpoint(endpoint: str) -> str:
     return os.environ.get("PROVISA_ENGINE_OTEL_S3_ENDPOINT", endpoint)
 
 
-def control_plane_spec(url: URL, org_id: str) -> CatalogSpec:
-    """The ``provisa_admin`` catalog: the tenant control plane, scoped to this org's schema.
+def control_plane_spec(url: URL) -> CatalogSpec:
+    """The ``provisa_admin`` catalog: the tenant control plane's database, with NO default schema.
 
-    REQ-1623: the schema is the one the environment being served occupies, not prod's. This
-    catalog is where the Trino backend lands a materialized view (``materialize_store_target``),
-    and an unqualified reference through it resolves in ``currentSchema`` — fixed at ``org_<id>``
-    that was prod's copy of the model whichever environment asked.
+    One catalog of this name serves every org and environment on a coordinator, so its spec is
+    the same for all of them: the database, and nothing of who is asking. It once carried
+    ``currentSchema=org_<id>`` (REQ-1623: the asking environment's), which made the catalog the
+    last builder's -- each org's or environment's build dropped and re-created it for itself, a
+    statement that arrived in between found no catalog, and an unqualified name through it
+    resolved in whichever schema was built last. A statement that names this catalog names its
+    schema (``unqualified_admin_references`` finds one that does not).
     """
-    from provisa.core.environments import active_org_schema
-
     host, port, database, user, password = _pg_parts(url)
     host, port = engine_visible_address(host, port)
     return CatalogSpec(
         name=PROVISA_ADMIN_CATALOG,
         connector="postgresql",
         properties={
-            "connection-url": (
-                f"jdbc:postgresql://{host}:{port}/{database}"
-                f"?currentSchema={active_org_schema(org_id)}"
-            ),
+            "connection-url": f"jdbc:postgresql://{host}:{port}/{database}",
             "connection-user": user,
             "connection-password": password,
             "statistics.enabled": "false",
@@ -200,14 +202,15 @@ def results_spec(url: URL) -> CatalogSpec:
     )
 
 
-def system_catalog_specs(url: URL, org_id: str) -> list[CatalogSpec]:
-    """Every Provisa-owned catalog, derived from the live control plane + object store."""
-    return [control_plane_spec(url, org_id), otel_spec(url), results_spec(url)]
+def system_catalog_specs(url: URL) -> list[CatalogSpec]:
+    """Every Provisa-owned catalog, derived from the live control plane + object store. None of
+    them depends on the org or environment asking: one coordinator holds one of each."""
+    return [control_plane_spec(url), otel_spec(url), results_spec(url)]
 
 
-def spec_for(name: str, url: URL, org_id: str) -> CatalogSpec:
+def spec_for(name: str, url: URL) -> CatalogSpec:
     """The spec for one system catalog by name; raises for anything else."""
-    for spec in system_catalog_specs(url, org_id):
+    for spec in system_catalog_specs(url):
         if spec.name == name:
             return spec
     raise ValueError(f"{name!r} is not a Provisa system catalog ({', '.join(SYSTEM_CATALOGS)})")
@@ -343,6 +346,15 @@ def ensure_iceberg_catalog_tables(url: URL, timeout: float | None = None) -> Non
 _CATALOG_LOCK_KEY = 7338
 
 
+def spec_hash(spec: CatalogSpec) -> str:
+    """What identifies a catalog's definition: its name, connector and every property."""
+    import hashlib
+    import json
+
+    body = json.dumps([spec.name, spec.connector, sorted(spec.properties.items())])
+    return hashlib.sha256(body.encode()).hexdigest()
+
+
 @contextmanager
 def one_registrar(url: URL, timeout: float | None = None) -> Iterator[None]:
     """Hold the deployment's catalog-registration lock for the block: a transaction-scoped advisory
@@ -382,19 +394,60 @@ def one_registrar(url: URL, timeout: float | None = None) -> Iterator[None]:
         pg.close()
 
 
+def _bring_in_line(conn: TrinoConnection, url: URL, record: "CatalogRecord") -> list[str]:
+    """Create each system catalog the coordinator lacks, and re-create one only when the spec it
+    was created from is not the spec it should have now; the names it (re)created.
+
+    A catalog that is live and was created from this spec is LEFT ALONE: ``register_catalog``
+    refreshes by dropping first, and every statement that names the catalog between its drop and
+    its create fails CATALOG_NOT_FOUND. One coordinator serves every org, environment and worker
+    of the deployment, each of which comes through here when it boots or builds a runtime; before
+    this each of them dropped ``provisa_admin`` under the others' statements. Called with the
+    registration lock held; ``record`` is the platform state store's
+    (``provisa.core.platform_state.catalogs``), written only after the catalog was created."""
+    coordinator = f"{conn.host}:{conn.port}"
+    live = _live_catalogs(conn)
+    changed = []
+    for spec in system_catalog_specs(url):
+        wanted = spec_hash(spec)
+        if spec.name in live and record.created_from(coordinator, spec.name) == wanted:
+            continue
+        register_catalog(conn, spec)
+        record.record(coordinator, spec.name, wanted)
+        changed.append(spec.name)
+    return changed
+
+
 def register_system_catalogs(
-    conn: TrinoConnection, url: URL, org_id: str, timeout: float | None = None
+    conn: TrinoConnection, url: URL, record: "CatalogRecord", timeout: float | None = None
 ) -> None:
-    """Register every Provisa-owned catalog from runtime values. Boot-time; blocking, and each wait
-    bounded by ``timeout`` (engine.ready_timeout when not given)."""
+    """Bring the coordinator's Provisa-owned catalogs in line with the runtime values. Boot-time;
+    blocking, and each wait bounded by ``timeout`` (engine.ready_timeout when not given)."""
     from provisa.core.catalog import wait_until_ready
 
     wait = _boot_wait() if timeout is None else timeout
     wait_until_ready(conn, wait)  # a coordinator that just restarted races app boot
     ensure_iceberg_catalog_tables(url, wait)
     with one_registrar(url, wait):
-        for spec in system_catalog_specs(url, org_id):
-            register_catalog(conn, spec)
+        _bring_in_line(conn, url, record)
+
+
+def unqualified_admin_references(sql: str) -> list[str]:
+    """The tables ``sql`` reads through ``provisa_admin`` without naming their schema.
+
+    The catalog has no default schema (``control_plane_spec``): ``provisa_admin.orders`` names no
+    table anywhere, and before it had none it named whichever org's or environment's schema the
+    catalog was last created for. Every statement built for the catalog names
+    ``provisa_admin.<schema>.<table>``; the tests of each place that builds one hold it to this."""
+    import sqlglot
+    from sqlglot import exp
+
+    return [
+        f"{table.db}.{table.name}"
+        for table in sqlglot.parse_one(sql, dialect="trino").find_all(exp.Table)
+        # Two parts whose first is the catalog's name: ``<catalog>.<table>``, no schema between.
+        if not table.catalog and table.db.lower() == PROVISA_ADMIN_CATALOG
+    ]
 
 
 def _live_catalogs(conn: TrinoConnection) -> set[str]:
@@ -403,27 +456,21 @@ def _live_catalogs(conn: TrinoConnection) -> set[str]:
     return {row[0] for row in cur.fetchall()}
 
 
-def ensure_system_catalogs(conn: TrinoConnection, url: URL, org_id: str) -> None:
-    """Register this coordinator's system catalogs without disturbing the ones already serving.
+def ensure_system_catalogs(conn: TrinoConnection, url: URL, record: "CatalogRecord") -> None:
+    """Bring this coordinator's system catalogs in line without disturbing the ones already serving.
 
     REQ-1429: ``register_catalog`` refreshes by dropping first, because Trino cannot read a
-    catalog's properties back. That is right at boot, when the coordinator serves nobody yet, and
-    wrong on every later per-org rebuild: ``otel`` and ``results`` are DEPLOYMENT-scoped — their
-    specs take no ``org_id`` and are byte-identical for every org — so re-registering them for one
-    org drops a catalog the other orgs are querying, and the drop races the create. Switching an
-    org's engine did exactly that on the SaaS node: the rebuild dropped ``otel``, its own CREATE
-    lost the race and failed CATALOG_NOT_FOUND, and the shared coordinator was left with no ``otel``
-    at all, so the ops reports and the org-engine tab both broke for every org on it.
+    catalog's properties back, and the drop races the create. A per-org rebuild that re-registered
+    the deployment's catalogs dropped ones every other org was querying: switching an org's engine
+    did exactly that on the SaaS node, where the rebuild dropped ``otel``, its own CREATE lost the
+    race and failed CATALOG_NOT_FOUND, and the shared coordinator was left with no ``otel`` at all.
 
-    ``provisa_admin`` is the one org-scoped spec (its JDBC URL names ``org_<id>``), so it is still
-    refreshed — a stale schema there is the mis-pointing this module exists to prevent.
+    No system catalog is the asking org's: each is created once and re-created only when its spec
+    changed (``_bring_in_line``).
     """
     from provisa.core.catalog import wait_until_ready
 
     wait_until_ready(conn)
     ensure_iceberg_catalog_tables(url)
     with one_registrar(url):
-        live = _live_catalogs(conn)
-        for spec in system_catalog_specs(url, org_id):
-            if spec.name == PROVISA_ADMIN_CATALOG or spec.name not in live:
-                register_catalog(conn, spec)
+        _bring_in_line(conn, url, record)
