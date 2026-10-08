@@ -95,12 +95,15 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
         # REQ-603: however the statement relates its tables -- a join of any spelling, a CTE, a
         # derived table, a subquery -- every pairing of their columns is a registered
         # relationship.
+        computed, constants = computed_joins(ctx)
         violations += tables_outside_relationships(
             tree,
             gov_ctx,
             valid_joins,
             table_id_to_meta,
             bypass_uncovered=bypass_uncovered_relationships,
+            computed=computed,
+            constants=constants,
         )
     violations += _check_column_visibility(tree, gov_ctx, cte_names_set)
     violations += _check_dag(tree, gov_ctx, cte_names_set)
@@ -290,6 +293,15 @@ def approved_joins(ctx: CompilationContext) -> set[tuple[int, int, str, str]]:
         src = type_to_meta.get(type_name)
         if not src:
             continue
+        if (
+            jm.source_constant is not None
+            or jm.source_expr is not None
+            or jm.target_expr is not None
+            or jm.source_json_key is not None
+        ):
+            # Registered with a computed edge: its own condition is what is approved
+            # (computed_joins), not an equality of the two columns it is computed from.
+            continue
         approved.add((src.table_id, jm.target.table_id, jm.source_column, jm.target_column))
         approved.add((jm.target.table_id, src.table_id, jm.target_column, jm.source_column))
         via = jm.via
@@ -304,17 +316,69 @@ def approved_joins(ctx: CompilationContext) -> set[tuple[int, int, str, str]]:
     return approved
 
 
-def tables_outside_relationships(  # REQ-264
+def computed_joins(
+    ctx: CompilationContext,
+) -> tuple[set[tuple[int, int, str, str]], set[tuple[int, int, str, str]]]:
+    """The registered relationships whose edge is computed, as the guard compares a statement's
+    condition with them (REQ-603): those with an expression or a JSON key on a side, as (table,
+    table, side's form, side's form) in both directions; and those whose source side is a
+    constant, as (source table, target table, the constant, the target side's form). A plain
+    column side is written in the same form, so a condition is compared whole."""
+    from sqlglot import exp as _exp
+
+    from provisa.compiler.join_guard import registered_form
+
+    type_to_meta = {meta.type_name: meta for meta in ctx.tables.values()}
+    computed: set[tuple[int, int, str, str]] = set()
+    constants: set[tuple[int, int, str, str]] = set()
+    for (type_name, _), jm in ctx.joins.items():
+        src = type_to_meta.get(type_name)
+        if not src:
+            continue
+        target_side = registered_form(jm.target_expr or f'{{alias}}."{jm.target_column}"')
+        if jm.source_constant is not None:
+            literal = (
+                _exp.Literal.string(jm.source_constant)
+                if isinstance(jm.source_constant, str)
+                else _exp.Literal.number(jm.source_constant)
+            )
+            constants.add(
+                (src.table_id, jm.target.table_id, literal.sql(dialect="postgres"), target_side)
+            )
+            continue
+        if jm.source_expr is not None:
+            source_side = registered_form(jm.source_expr)
+        elif jm.source_json_key is not None:
+            source_side = registered_form(
+                f"JSON_EXTRACT_SCALAR({{alias}}.\"{jm.source_column}\", '$.{jm.source_json_key}')"
+            )
+        elif jm.target_expr is not None:
+            source_side = registered_form(f'{{alias}}."{jm.source_column}"')
+        else:
+            continue  # a plain column pair: approved_joins
+        computed.add((src.table_id, jm.target.table_id, source_side, target_side))
+        computed.add((jm.target.table_id, src.table_id, target_side, source_side))
+    return computed, constants
+
+
+def tables_outside_relationships(  # REQ-603
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
     valid_joins: set[tuple[int, int, str, str]],
     table_id_to_meta: dict[int, TableMeta],
     *,
     bypass_uncovered: bool = False,
+    computed: set[tuple[int, int, str, str]] = frozenset(),  # type: ignore[assignment]
+    constants: set[tuple[int, int, str, str]] = frozenset(),  # type: ignore[assignment]
 ) -> list[ValidationViolation]:
     """V002 for each pair of registered tables ``tree`` combines outside the registered
     relationships, however the statement is written (provisa.compiler.join_guard)."""
-    from provisa.compiler.join_guard import NOT_EQUALITY, UNREGISTERED, unrelated_tables
+    from provisa.compiler.join_guard import (
+        NEVER_TRUE,
+        NOT_EQUALITY,
+        UNREGISTERED,
+        unrelated_tables,
+    )
 
     covered_pairs = {(s, t) for s, t, _, _ in valid_joins}
 
@@ -349,12 +413,19 @@ def tables_outside_relationships(  # REQ-264
         registered=valid_joins,
         exempt_table=exempt,
         same_remote_source=same_remote_source,
+        computed=computed,
+        constants=constants,
     ):
         left, right = name(pair.left_table), name(pair.right_table)
         if pair.reason == UNREGISTERED:
             said = (
                 f"Invalid JOIN: {left}.{pair.left_column} = {right}.{pair.right_column} — no "
                 f"approved relationship exists between these tables on these columns"
+            )
+        elif pair.reason == NEVER_TRUE:
+            said = (
+                f"Invalid JOIN: no approved relationship of the type named connects {left} and "
+                f"{right}"
             )
         elif pair.reason == NOT_EQUALITY:
             said = (

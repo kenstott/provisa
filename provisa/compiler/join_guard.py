@@ -56,6 +56,30 @@ class _Base:
 UNREGISTERED = "unregistered"  # a column equality that is no registered relationship
 NOT_EQUALITY = "not_equality"  # matched by something other than a column equality
 NO_CONDITION = "no_condition"  # combined with nothing relating them
+NEVER_TRUE = "never_true"  # joined on a condition that is never true: no relationship named
+
+#: The alias a condition's side is written under when it is compared with a registered one.
+_ANY = "__a"
+
+
+def form_of(side: exp.Expr) -> str:
+    """``side`` -- one side of a condition, every column of it of ONE table -- in the form a
+    registered relationship's own side is compared in: the same expression whatever alias the
+    statement reads the table under."""
+    shaped = side.copy()
+    for column in [shaped] if isinstance(shaped, exp.Column) else shaped.find_all(exp.Column):
+        column.set("table", exp.to_identifier(_ANY))
+        column.set("db", None)
+        column.set("catalog", None)
+    return shaped.sql(dialect="postgres", identify=True)
+
+
+def registered_form(template: str) -> str:
+    """A registered relationship's side, written with ``{alias}`` for its table, as
+    :func:`form_of` writes a statement's."""
+    import sqlglot
+
+    return form_of(sqlglot.parse_one(template.replace("{alias}", _ANY), read="postgres"))
 
 
 @dataclass(frozen=True)
@@ -217,9 +241,15 @@ def unrelated_tables(
     registered: set[tuple[int, int, str, str]],
     exempt_table: Any,
     same_remote_source: Any,
+    computed: set[tuple[int, int, str, str]] = frozenset(),  # type: ignore[assignment]
+    constants: set[tuple[int, int, str, str]] = frozenset(),  # type: ignore[assignment]
 ) -> list[Unrelated]:
     """The pairs of registered tables ``tree`` combines outside the ``registered`` relationships
-    -- (table id, table id, column, column), both directions. ``exempt_table(table_id)``: a table
+    -- (table id, table id, column, column), both directions. ``computed``: the relationships
+    registered with a computed side, as (table id, table id, form, form), both directions, each
+    form as :func:`registered_form` writes it. ``constants``: those whose source side is a
+    constant, as (source table id, target table id, the constant, the target side's form) -- the
+    target's rows matching the constant are related to every row of the source. ``exempt_table(table_id)``: a table
     any table may be read beside (the meta and ops domains). ``same_remote_source(a, b)``: two
     tables of one remote source, whose own model relates them, with no relationship registered
     between them here."""
@@ -231,7 +261,14 @@ def unrelated_tables(
         root = build_scope(query)
         if root is not None:
             found += _unrelated_in(
-                root, resolve_table_id, columns_of, registered, exempt_table, same_remote_source
+                root,
+                resolve_table_id,
+                columns_of,
+                registered,
+                exempt_table,
+                same_remote_source,
+                computed,
+                constants,
             )
     return found
 
@@ -253,8 +290,13 @@ def _unrelated_in(
     registered: set[tuple[int, int, str, str]],
     exempt_table: Any,
     same_remote_source: Any,
+    computed: set[tuple[int, int, str, str]],
+    constants: set[tuple[int, int, str, str]],
 ) -> list[Unrelated]:
     resolver = _Resolver(resolve_table_id, columns_of)
+    # instance -> the (side's form, constant) equalities the statement holds it to
+    held_to: dict[int, set[tuple[str, str]]] = {}
+    never_true: set[frozenset[int]] = set()
     scopes = list(root.traverse())
     by_query = {id(s.expression): s for s in scopes}
     edges: set[frozenset[int]] = set()  # registered pairings, by instance pair
@@ -303,7 +345,17 @@ def _unrelated_in(
         conditions: list[exp.Expr] = []
         if isinstance(query, exp.Select):
             for join in query.args.get("joins") or []:
-                conditions += _conjuncts(join.args.get("on"))
+                on = join.args.get("on")
+                conditions += _conjuncts(on)
+                if isinstance(on, exp.Boolean) and on.this is False:
+                    # Joined on FALSE: what a pattern naming a relationship that does not
+                    # connect its two tables lowers to.
+                    inside = resolver.alternatives(scope)
+                    joined_source = scope.sources.get(join.this.alias_or_name)
+                    if isinstance(joined_source, exp.Table) and id(joined_source) in table_of:
+                        for alt in inside:
+                            for other in alt - {id(joined_source)}:
+                                never_true.add(frozenset({id(joined_source), other}))
                 named = [u.name for u in join.args.get("using") or []]
                 joined = join.this
                 source = scope.sources.get(joined.alias_or_name)
@@ -326,6 +378,20 @@ def _unrelated_in(
                 for c in _conjuncts(having.this if having is not None else None)
                 if c.find(exp.AggFunc) is None
             ]
+
+        def one_instance(side: exp.Expr, scope: Scope = scope, mine: set[int] = mine) -> int | None:
+            """The one instance every column of ``side`` is a plain column of, else None."""
+            columns = [side] if isinstance(side, exp.Column) else list(side.find_all(exp.Column))
+            drawn: set[int] = set()
+            for column in columns:
+                if id(column) not in mine:
+                    return None  # a column of another scope: not a side of one table
+                bases = resolver.resolve(scope, column)
+                if len(bases) != 1:
+                    return None
+                drawn |= {b.instance for b in bases}
+            return next(iter(drawn)) if len(drawn) == 1 else None
+
         for condition in conditions:
             tested = condition.this.unnest() if isinstance(condition, exp.Not) else condition
             if isinstance(tested, exp.In) and tested.args.get("query") is not None:
@@ -361,7 +427,16 @@ def _unrelated_in(
             for column in columns:
                 touching |= resolver.touched(scope, column)
             if len({i for i in touching if not exempt(i)}) < 2:
-                continue  # a condition on one table relates it to no other
+                # A condition on one table relates it to no other -- unless it is the constant
+                # side of a registered relationship, which the connecting below reads.
+                if isinstance(condition, exp.EQ) and len(touching) == 1:
+                    sides = (condition.left.unnest(), condition.right.unnest())
+                    for value, other in (sides, sides[::-1]):
+                        if isinstance(value, exp.Literal) and one_instance(other) is not None:
+                            held_to.setdefault(next(iter(touching)), set()).add(
+                                (form_of(other), value.sql(dialect="postgres"))
+                            )
+                continue
             if isinstance(condition, exp.EQ):
                 left_side, right_side = condition.left.unnest(), condition.right.unnest()
                 if isinstance(left_side, exp.Column) and isinstance(right_side, exp.Column):
@@ -369,6 +444,19 @@ def _unrelated_in(
                     right_bases = resolver.resolve(scope, right_side)
                     if left_bases and right_bases:
                         pair(left_bases, right_bases)
+                        continue
+                # A registered relationship's own condition, where one side of it is computed.
+                left_one = one_instance(left_side)
+                right_one = one_instance(right_side)
+                if left_one is not None and right_one is not None:
+                    key = (
+                        table_of[left_one],
+                        table_of[right_one],
+                        form_of(left_side),
+                        form_of(right_side),
+                    )
+                    if key in computed:
+                        edges.add(frozenset({left_one, right_one}))
                         continue
             other_matching(touching)
         # A column of the statement around it: a correlated subquery is combined with the
@@ -398,6 +486,13 @@ def _unrelated_in(
             a, b = tuple(edge)
             if a in component and b in component:
                 component[top(a)] = top(b)
+        # A relationship registered with a constant source: the target's rows held to that
+        # constant are related to every row of the source it is combined with.
+        for target in members:
+            for form, constant in held_to.get(target, ()):
+                for source in members:
+                    if (table_of[source], table_of[target], constant, form) in constants:
+                        component[top(source)] = top(target)
         first = top(members[0])
         apart = next((m for m in members[1:] if top(m) != first), None)
         if apart is None:
@@ -405,7 +500,10 @@ def _unrelated_in(
         tables = sorted((table_of[members[0]], table_of[apart]))
         # Already refused for how it relates them: said once, as that.
         if not any({f.left_table, f.right_table} == set(tables) for f in found):
-            refuse(Unrelated(tables[0], tables[1], NO_CONDITION))
+            said = frozenset({members[0], apart}) in never_true or any(
+                apart in pair and (pair - {apart}) <= set(members) for pair in never_true
+            )
+            refuse(Unrelated(tables[0], tables[1], NEVER_TRUE if said else NO_CONDITION))
     return found
 
 

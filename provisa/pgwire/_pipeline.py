@@ -3352,8 +3352,11 @@ async def _govern_compiled(
             from provisa.audit.pipeline import write_denial
             from provisa.compiler.sql_validator import (
                 approved_joins,
+                computed_joins,
                 tables_outside_relationships,
             )
+
+            _computed, _constants = computed_joins(ctx)
 
             _outside = await _off_loop(
                 tables_outside_relationships,
@@ -3363,6 +3366,8 @@ async def _govern_compiled(
                 {meta.table_id: meta for meta in ctx.tables.values()},
                 # A remote source's own model relates its tables, as on the raw-SQL path.
                 bypass_uncovered=True,
+                computed=_computed,
+                constants=_constants,
             )
             if _outside:
                 await write_denial(sql, role_id, _compiled_tree, gov_ctx, state)

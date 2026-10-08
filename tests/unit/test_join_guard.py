@@ -375,3 +375,189 @@ def test_usings_and_naturals_are_judged_by_the_columns_they_pair():
     # NATURAL pairs every column the two share: id is not a relationship of theirs.
     said = v002("SELECT o.id FROM orders o NATURAL JOIN customers c")
     assert any("orders.id = customers.id" in m for m in said), said
+
+
+# -- a registered relationship whose edge is computed -------------------------------------------
+
+
+def _computed_model():
+    """orders, customers and regions. Two registered relationships with computed edges:
+    LOWER(orders.customer_code) = customers.code, and every customer -> the region whose id is
+    the constant 1."""
+    from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+
+    columns = {
+        1: ["id", "customer_code"],
+        2: ["id", "code", "name"],
+        3: ["id", "name"],
+    }
+    orders, customers, regions = _meta(1, "orders"), _meta(2, "customers"), _meta(3, "regions")
+    ctx = CompilationContext()
+    ctx.tables = {"orders": orders, "customers": customers, "regions": regions}
+    ctx.joins = {
+        ("Orders", "customer"): JoinMeta(
+            source_column="customer_code",
+            target_column="code",
+            source_column_type="varchar",
+            target_column_type="varchar",
+            target=customers,
+            cardinality="many-to-one",
+            source_expr='LOWER({alias}."customer_code")',
+        ),
+        ("Customers", "home"): JoinMeta(
+            source_column="id",
+            target_column="id",
+            source_column_type="integer",
+            target_column_type="integer",
+            target=regions,
+            cardinality="many-to-one",
+            source_constant=1,
+        ),
+    }
+    gov = GovernanceContext()
+    gov.table_map = {
+        "orders": 1,
+        "customers": 2,
+        "regions": 3,
+        "public.orders": 1,
+        "public.customers": 2,
+        "public.regions": 3,
+    }
+    gov.all_columns = {tid: [(c, "varchar") for c in cols] for tid, cols in columns.items()}
+
+    def node(label: str, table_id: int, table: str) -> NodeMapping:
+        return NodeMapping(
+            label=label,
+            type_name=label,
+            domain_label=None,
+            table_label=label,
+            table_id=table_id,
+            source_id="pg",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="pg",
+            schema_name="public",
+            table_name=table,
+            properties={c: c for c in columns[table_id]},
+        )
+
+    placed_by = RelationshipMapping(
+        rel_type="PLACED_BY",
+        source_label="Orders",
+        target_label="Customers",
+        join_source_column="customer_code",
+        join_target_column="code",
+        field_name="customer",
+        source_expr='LOWER({alias}."customer_code")',
+    )
+    home = RelationshipMapping(
+        rel_type="HOME",
+        source_label="Customers",
+        target_label="Regions",
+        join_source_column="id",
+        join_target_column="id",
+        field_name="home",
+        source_constant=1,
+    )
+    label_map = CypherLabelMap(
+        nodes={
+            "Orders": node("Orders", 1, "orders"),
+            "Customers": node("Customers", 2, "customers"),
+            "Regions": node("Regions", 3, "regions"),
+        },
+        relationships={"PLACED_BY": placed_by, "HOME": home},
+        aliases={"PLACED_BY": [placed_by], "HOME": [home]},
+    )
+    return ctx, gov, label_map
+
+
+def _guard(sql_tree, ctx, gov) -> list[str]:
+    from provisa.compiler.sql_validator import approved_joins, tables_outside_relationships
+
+    from provisa.compiler.sql_validator import computed_joins
+
+    computed, constants = computed_joins(ctx)
+    return [
+        v.message
+        for v in tables_outside_relationships(
+            sql_tree,
+            gov,
+            approved_joins(ctx),
+            {m.table_id: m for m in ctx.tables.values()},
+            computed=computed,
+            constants=constants,
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "cypher",
+    [
+        "MATCH (o:Orders)-[:PLACED_BY]->(c:Customers) RETURN o.id, c.name",
+        "MATCH (c:Customers)-[:HOME]->(r:Regions) RETURN c.name, r.name",
+    ],
+)
+def test_a_pattern_over_a_computed_registered_relationship_passes(cypher):
+    """A relationship registered with a computed edge -- an expression, a constant -- is a
+    registered relationship: the join a pattern over it lowers to IS its own condition."""
+    from provisa.cypher.parser import parse_cypher
+    from provisa.cypher.translator import cypher_to_sql
+
+    ctx, gov, label_map = _computed_model()
+    sql_tree, _, _ = cypher_to_sql(parse_cypher(cypher), label_map, {})
+    assert _guard(sql_tree, ctx, gov) == [], sql_tree.sql(dialect="postgres")
+
+
+def test_sql_written_as_the_computed_relationship_is_registered_passes_and_any_other_does_not():
+    import sqlglot
+
+    ctx, gov, _ = _computed_model()
+
+    def said(sql: str) -> list[str]:
+        return _guard(sqlglot.parse_one(sql, read="postgres"), ctx, gov)
+
+    assert (
+        said('SELECT o.id FROM orders o JOIN customers c ON LOWER(o."customer_code") = c."code"')
+        == []
+    )
+    assert (
+        said("SELECT o.id FROM orders o, customers c WHERE c.code = LOWER(o.customer_code)") == []
+    )
+    assert said("SELECT c.name FROM customers c JOIN regions r ON r.id = 1") == []
+    # Another expression, another constant, the plain column: none is the relationship.
+    assert said("SELECT o.id FROM orders o JOIN customers c ON UPPER(o.customer_code) = c.code")
+    assert said("SELECT o.id FROM orders o JOIN customers c ON o.customer_code = c.code")
+    assert said("SELECT c.name FROM customers c JOIN regions r ON r.id = 2")
+    assert said("SELECT c.name FROM customers c JOIN regions r ON TRUE")
+
+
+def test_a_pattern_whose_type_does_not_connect_its_labels_is_refused_saying_so():
+    """A registered relationship type named between two labels it does not connect lowers to a
+    join that is never true; the refusal says no relationship of that type connects them."""
+    from provisa.cypher.parser import parse_cypher
+    from provisa.cypher.translator import cypher_to_sql
+
+    ctx, gov, label_map = _computed_model()
+    cypher = "MATCH (o:Orders)-[:HOME]->(r:Regions) RETURN o.id, r.name"
+    sql_tree, _, _ = cypher_to_sql(parse_cypher(cypher), label_map, {})
+    assert _guard(sql_tree, ctx, gov) == [
+        "Invalid JOIN: no approved relationship of the type named connects orders and regions"
+    ], sql_tree.sql(dialect="postgres")
+
+
+def test_a_lowering_that_is_not_the_relationships_own_condition_is_refused():
+    """The backward traversal of a relationship registered with an expression on its source side
+    is lowered on the two plain columns (#148), which is not the registered condition: the guard
+    holds the statement to the relationship as registered, whoever wrote the SQL."""
+    from provisa.cypher.parser import parse_cypher
+    from provisa.cypher.translator import cypher_to_sql
+
+    ctx, gov, label_map = _computed_model()
+    cypher = "MATCH (c:Customers)<-[:PLACED_BY]-(o:Orders) RETURN o.id, c.name"
+    sql_tree, _, _ = cypher_to_sql(parse_cypher(cypher), label_map, {})
+    lowered = sql_tree.sql(dialect="postgres")
+    if "LOWER(" in lowered:
+        assert _guard(sql_tree, ctx, gov) == [], lowered  # the translator defect is fixed
+    else:
+        (said,) = _guard(sql_tree, ctx, gov)
+        assert "orders.customer_code = customers.code" in said, said
