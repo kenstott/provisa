@@ -16,6 +16,7 @@ instantiated alone.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
@@ -595,6 +596,10 @@ class _RelJoinMixin:  # mixin for _Translator
             pattern = clause.pattern
             nodes = pattern.nodes
             rels = pattern.rels
+            if len(rels) == 1 and rels[0].variable_length and rels[0].direction == "left":
+                # (a)<-[*..n]-(b) is (b)-[*..n]->(a): lowered from the node the arrow leaves (#151).
+                nodes = list(reversed(nodes))
+                rels = [dataclasses.replace(rels[0], direction="right")]
 
             for node in nodes:
                 self._register_node(node)

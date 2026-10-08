@@ -51,13 +51,16 @@ def _extract_path_nodes(
     pattern = pf.pattern
     if len(pattern.nodes) < 2:
         raise CypherTranslateError("Path function requires at least two nodes")
+    rel: RelPattern | None = pattern.rels[0] if pattern.rels else None
     src_node = pattern.nodes[0]
     tgt_node = pattern.nodes[-1]
+    if rel is not None and rel.direction == "left":
+        # (a)<-[...]-(b) is (b)-[...]->(a): the path leaves the node the arrow leaves (#151).
+        src_node, tgt_node = tgt_node, src_node
     if not src_node.labels or not tgt_node.labels:
         raise CypherTranslateError(
             "shortestPath/allShortestPaths require labeled source and target nodes"
         )
-    rel: RelPattern | None = pattern.rels[0] if pattern.rels else None
     return src_node, tgt_node, rel
 
 

@@ -221,18 +221,36 @@ def test_every_traversal_of_a_computed_relationship_is_its_registered_condition(
     assert sorted(set(_pairs(engine, sql_tree))) == sorted(set(_pairs(engine, plain))), lowered
 
 
-def test_a_left_pointing_variable_length_pattern_is_refused_whatever_the_relationship():
-    """A variable-length pattern written right-to-left finds no schema path for a plain
-    relationship and a computed one alike (#151): a translation error for every role, never rows
-    matched on another condition."""
-    from provisa.cypher.translator_types import CypherTranslateError
+_LEFT_POINTING = {
+    "variable_length": (
+        "MATCH (o:Orders)-[:PLACED_BY*1..2]->(c:Customers) RETURN o.id AS a, c.id AS b",
+        "MATCH (c:Customers)<-[:PLACED_BY*1..2]-(o:Orders) RETURN o.id AS a, c.id AS b",
+    ),
+    "shortest_path": (
+        "MATCH p = shortestPath((o:Orders)-[:PLACED_BY*1..2]->(c:Customers)) "
+        "RETURN o.id AS a, c.id AS b",
+        "MATCH p = shortestPath((c:Customers)<-[:PLACED_BY*1..2]-(o:Orders)) "
+        "RETURN o.id AS a, c.id AS b",
+    ),
+}
 
-    _RELATIONSHIPS["plain"] = ("PLACED_BY", "Orders", "Customers", "customer_code", "code", {})
-    try:
-        for kind in ("plain", "source_expr", "target_expr", "json_key"):
-            _, _, label_map, _ = _model(kind)
-            cypher = "MATCH (c:Customers)<-[:PLACED_BY*1..2]-(o:Orders) RETURN o.id, c.id"
-            with pytest.raises(CypherTranslateError, match="No schema path found"):
-                cypher_to_sql(parse_cypher(cypher), label_map, {})
-    finally:
-        del _RELATIONSHIPS["plain"]
+
+@pytest.mark.parametrize("kind", ["plain", "source_expr", "target_expr", "json_key"])
+@pytest.mark.parametrize("shape", list(_LEFT_POINTING))
+def test_a_left_pointing_variable_length_pattern_matches_what_the_right_pointing_one_does(
+    kind, shape, engine, monkeypatch
+):
+    """(c)<-[:R*1..2]-(o) is (o)-[:R*1..2]->(c) (#151): the same registered condition, the same
+    pairs, for a plain relationship and a computed one."""
+    monkeypatch.setitem(
+        _RELATIONSHIPS, "plain", ("PLACED_BY", "Orders", "Customers", "customer_code", "code", {})
+    )
+    ctx, gov, label_map, _ = _model(kind)
+    forward, backward = _LEFT_POINTING[shape]
+    lowered = {}
+    for name, cypher in (("forward", forward), ("backward", backward)):
+        sql_tree, _, _ = cypher_to_sql(parse_cypher(cypher), label_map, {})
+        assert _refusals(sql_tree, ctx, gov) == [], (name, sql_tree.sql(dialect="postgres"))
+        lowered[name] = _pairs(engine, sql_tree)
+    assert lowered["forward"] == lowered["backward"], lowered
+    assert lowered["forward"], "the fixture's rows are related by this relationship"

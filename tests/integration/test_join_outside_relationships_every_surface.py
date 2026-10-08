@@ -267,6 +267,24 @@ def test_a_cypher_relationship_pattern_passes_for_every_role(server, surface):
 
 
 @pytest.mark.parametrize("surface", list(_CYPHER_SURFACES))
+def test_a_variable_length_pattern_reads_the_same_rows_pointing_either_way(server, surface):
+    """(v)<-[:R*1..2]-(c) is (c)-[:R*1..2]->(v) (#151): along the registered relationship, so it
+    passes for a role the relationships bind, and both return the same rows."""
+    run = _CYPHER_SURFACES[surface]
+    returning = "RETURN c.name AS name, v.id AS id ORDER BY id"
+    right, rows = run(
+        server, "bound", f"MATCH (c:Customers)-[:HAS_VISITS*1..2]->(v:Visits) {returning}"
+    )
+    assert right, rows
+    left, same = run(
+        server, "bound", f"MATCH (v:Visits)<-[:HAS_VISITS*1..2]-(c:Customers) {returning}"
+    )
+    assert left, same
+    assert same == rows, (rows, same)
+    assert all(said in rows for said in ("ann", "bo", "10", "11", "12")), rows
+
+
+@pytest.mark.parametrize("surface", list(_CYPHER_SURFACES))
 def test_an_unregistered_cypher_relationship_type_is_refused(server, surface):
     accepted, said = _CYPHER_SURFACES[surface](
         server, "bound", "MATCH (o:Orders)-[:NO_SUCH_REL]->(c:Customers) RETURN o.id"
