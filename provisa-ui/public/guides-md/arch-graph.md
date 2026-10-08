@@ -140,7 +140,7 @@ Grouping is a **view transform**, not a data transform. REQ-644 The underlying n
 
 ### Attribute Discovery
 
-After any query result or analytics pass, scan all node properties to build a per-label map of groupable attributes (categorical fields: strings, low-cardinality integers). REQ-645 `domain` is always available as a grouping attribute (derived from the node label prefix set by the semantic layer). REQ-645 `cluster` appears after community detection analytics. REQ-645 Schema cluster attributes (`schema_L1`, `schema_L2`, `schema_L3`) are available when schema clustering has run. (REQ-645) All other attributes come from the data itself.
+After any query result or analytics pass, scan all node properties to build a per-label map of groupable attributes (categorical fields: strings, low-cardinality integers). REQ-645 `domain` is always available as a grouping attribute (derived from the node label prefix set by the model). REQ-645 `cluster` appears after community detection analytics. REQ-645 Schema cluster attributes (`schema_L1`, `schema_L2`, `schema_L3`) are available when schema clustering has run. (REQ-645) All other attributes come from the data itself.
 
 ```ts
 // Derived from frame nodes after each result

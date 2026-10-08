@@ -838,7 +838,7 @@ materialized_views:
 
 ## Views (Governed Computed Datasets)
 
-Views are SQL-defined computed datasets with full column-level governance. (REQ-133) They are the governed mechanism for adding aggregations, transformations, and derived metrics to the semantic layer. (REQ-136)
+Views are SQL-defined computed datasets with full column-level governance. (REQ-133) They are the governed mechanism for adding aggregations, transformations, and derived metrics to the model. (REQ-136)
 
 ```yaml
 views:

@@ -1,5 +1,5 @@
 site_name: Provisa
-site_description: A single governed API over 53 heterogeneous data sources — query with GraphQL, Cypher, or SQL.
+site_description: Federation, metrics, ontology and governance from a single model. 62 connectors reaching 75+ kinds of source; query with GraphQL, Cypher, or SQL.
 site_url: https://provisa.dev/docs/
 site_dir: docs_site
 repo_url: https://github.com/kenstott/provisa

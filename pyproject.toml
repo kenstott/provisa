@@ -1,7 +1,7 @@
 [project]
 name = "provisa"
 version = "0.1.0"
-description = "Config-driven data virtualization platform"
+description = "Federation, metrics, ontology and governance from a single model."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [

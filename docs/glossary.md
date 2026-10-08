@@ -1,9 +1,11 @@
 # Business Glossary
 
 The business glossary is a living vocabulary over your data model. Every physical column in the
-semantic layer resolves to a term — one shared term whenever multiple columns carry the same
+model resolves to a term — one shared term whenever multiple columns carry the same
 concept, however differently they spell it. Each term can hold a definition, a set of typed
 relationships to other terms, and a list of subject-matter experts who own the meaning.
+
+The glossary is an ontology: a graph of concepts, their definitions and the relationships between them. Provisa maps it to the database structures that hold the values, which is what lets it answer questions about your data. A concept is a draft until it reaches data, directly or through other concepts. The glossary is separate from the metrics: a term says what a concept is, a metric says how a number is computed.
 
 That shared vocabulary is the bridge between business language and physical data. An AI agent
 that knows "customer" names every column that carries a customer identifier does not have to guess

@@ -1,6 +1,6 @@
 # Cypher Query Support
 
-Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` module. (REQ-345, REQ-347) Queries are parsed by a custom recursive-descent parser (no external Cypher library) (REQ-571), schema-resolved against the semantic layer (REQ-351), and emitted as SQL, then routed to the target execution engine. (REQ-066, REQ-067, REQ-347)
+Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` module. (REQ-345, REQ-347) Queries are parsed by a custom recursive-descent parser (no external Cypher library) (REQ-571), schema-resolved against the model (REQ-351), and emitted as SQL, then routed to the target execution engine. (REQ-066, REQ-067, REQ-347)
 
 ## Implemented Features
 
@@ -19,8 +19,8 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 | `UNION` / `UNION ALL` | ✓ | Recursive union across sub-ASTs |
 | `CALL { … }` | ✓ | Top-level call subquery decomposition via `cypher_calls_to_sql_list` |
 | `CALL { WITH x … }` | ✓ | Correlated subquery → `CROSS JOIN LATERAL`; see §Correlated CALL |
-| `CALL db.labels()` | ✓ | Returns node labels from the semantic layer; no SQL translation (REQ-572) |
-| `CALL db.relationshipTypes()` | ✓ | Returns relationship types from the semantic layer (REQ-572) |
+| `CALL db.labels()` | ✓ | Returns node labels from the model; no SQL translation (REQ-572) |
+| `CALL db.relationshipTypes()` | ✓ | Returns relationship types from the model (REQ-572) |
 | `CALL db.propertyKeys()` | ✓ | Returns all property key names across all node types (REQ-572) |
 | `UNWIND` | ✓ | Array-to-rows expansion; first item becomes FROM, subsequent become CROSS JOIN UNNEST |
 
@@ -153,7 +153,7 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 | Syntax | SQL mapping |
 | -------- | ------------ |
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
-| `[(a)-[]->(b:Label) \| b.prop]` | type-inferred from semantic layer; same ARRAY subquery form |
+| `[(a)-[]->(b:Label) \| b.prop]` | type-inferred from the model; same ARRAY subquery form |
 
 ### Correlated CALL Subqueries
 
@@ -183,7 +183,7 @@ Rules:
 - The label must resolve to exactly one registered table. Ambiguous or unknown labels are hard errors; no fuzzy matching. (REQ-661) New labels or types cannot be created through Cypher. (REQ-662)
 - Every write is gated on the target table's `writable_by` ACL; a role without write rights is rejected at compile time. (REQ-663)
 - The backing source connector must support DML. Read-only sources (Trino-federated, Iceberg without a Delta connector) reject writes at translation time. (REQ-664)
-- Relationships cannot be written — they are derived from the semantic layer's declared joins, not stored edges. Targeting a relationship is a hard error. (REQ-665) A junction-backed edge is no exception: the associative table behind it is itself a registered table, and rows are written to that table, not to the edge. (REQ-1586)
+- Relationships cannot be written — they are derived from the model's declared joins, not stored edges. Targeting a relationship is a hard error. (REQ-665) A junction-backed edge is no exception: the associative table behind it is itself a registered table, and rows are written to that table, not to the edge. (REQ-1586)
 - Writes run through the full write pipeline: RLS injection and post-mutation hooks (response-cache invalidation, materialized-view stale marking, Kafka change events, hot-table reload). (REQ-798)
 - `MERGE`, `DETACH DELETE`, and `REMOVE` are unsupported and rejected at parse time. (REQ-671)
 
@@ -208,9 +208,9 @@ Cypher reaches the same governed pipeline over two transports:
 
 1. **Writes are limited to `CREATE`, `SET`, and `DELETE`.** These execute as direct table writes through the same pipeline as GraphQL and SQL mutations. (REQ-818, REQ-666, REQ-667, REQ-668) See §Writes below. `MERGE`, `DETACH DELETE`, and `REMOVE` are rejected at parse time. (REQ-671, REQ-818) APOC procedures are also rejected.
 
-2. **Relationship properties exist only on junction-backed edges.** An edge declared over a foreign-key column pair exists solely as join metadata in the semantic layer (REQ-574) and carries no stored attributes, so `WHERE r.since > 2020` or `RETURN r.weight` has no meaning on it. An edge declared over a junction table does carry them: the associative table's remaining columns are the relationship's properties, `RETURN r` returns them, and a `WHERE` on one compiles to a predicate on the junction alias — so it restricts the traversal rather than filtering assembled rows. (REQ-1586) The junction table itself is dropped from the node side of the graph schema; it is an edge here and a table everywhere else.
+2. **Relationship properties exist only on junction-backed edges.** An edge declared over a foreign-key column pair exists solely as join metadata in the model (REQ-574) and carries no stored attributes, so `WHERE r.since > 2020` or `RETURN r.weight` has no meaning on it. An edge declared over a junction table does carry them: the associative table's remaining columns are the relationship's properties, `RETURN r` returns them, and a `WHERE` on one compiles to a predicate on the junction alias — so it restricts the traversal rather than filtering assembled rows. (REQ-1586) The junction table itself is dropped from the node side of the graph schema; it is an edge here and a table everywhere else.
 
-3. **Bidirectional traversal** `(a)-[]-(b)` rewrites to the forward+backward UNION ALL of all matching directed relationships from the semantic layer. (REQ-575) Every relationship in the semantic layer is directional; bidirectional syntax is sugar that expands to both directions. Extra branches are emitted at the outermost query level — subsequent MATCH patterns in the same query are not duplicated across branches (limitation for multi-MATCH bidirectional).
+3. **Bidirectional traversal** `(a)-[]-(b)` rewrites to the forward+backward UNION ALL of all matching directed relationships from the model. (REQ-575) Every relationship in the model is directional; bidirectional syntax is sugar that expands to both directions. Extra branches are emitted at the outermost query level — subsequent MATCH patterns in the same query are not duplicated across branches (limitation for multi-MATCH bidirectional).
 
 4. **Recursive paths require a bound.** Variable-length patterns (`[*]`) must include an upper bound (e.g. `[*..10]`). (REQ-348) Unbounded traversal is rejected at parse time to prevent runaway recursive CTEs.
 

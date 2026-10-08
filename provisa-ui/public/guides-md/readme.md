@@ -1,10 +1,11 @@
 # Provisa
 
-Provisa holds **federation, metrics, ontology and governance in a single model, with nothing to keep in sync**. The model is a single definition of your data estate — every domain, relationship, and policy across your sources, excluding only the systems of origin themselves — that both operates the estate and governs it. The definition is not documentation an engine may consult; it *is* the engine. Registered domains and relationships are the only legal join paths, and access policies are compiled into every query plan. One model, three jobs:
+Provisa holds **federation, metrics, ontology and governance in a single model, with nothing to keep in sync**. The model is a single definition of your data estate — every domain, relationship, and policy across your sources, excluding only the systems of origin themselves — that both operates the estate and governs it. The definition is not documentation an engine may consult; it *is* the engine. Registered domains and relationships are the only legal join paths, and access policies are compiled into every query plan. One model, four properties:
 
-- **Define** — Domains, columns, and relationships are declared once. That declaration is the schema every consumer sees and the only set of join paths any query may take.
-- **Enforce** — Row-level security, column masking, column visibility, and query approval are applied inline on the execution path. No query reaches data without passing through them, so coverage is total by construction rather than by diligence.
-- **Audit** — Because every request travels the same governed path, who queried what, under which role, and against which policy is recorded uniformly. Distributed traces, metrics, and logs are themselves registered as queryable tables alongside your business data.
+- **Federation** — 62 connectors reaching 75+ kinds of source, including Salesforce, ServiceNow and Stripe, are read in place: the SaaS systems the business runs on are tables beside the databases, with no pipeline into a warehouse first. Query in SQL, GraphQL or Cypher over nine protocols.
+- **Metrics** — A metric is a named, governed aggregate. It is defined once, and every tool and language that asks gets the same definition.
+- **Ontology** — The business glossary is a graph of concepts, their definitions and the relationships between them. Provisa maps it to the database structures that hold the values, which is what lets it answer questions about your data. A concept is a draft until it reaches data, directly or through other concepts. The glossary is separate from the metrics: a term says what a concept is, a metric says how a number is computed.
+- **Governance** — Six layers are compiled into every query plan, on every language and every protocol, and every request is recorded the same way: who queried what, under which role, against which policy. Traces, metrics, and logs are themselves registered as queryable tables alongside your business data.
 
 One governed core serves every language and transport. Query with **GraphQL, Cypher, or SQL**; consume over **pgwire, Bolt, gRPC, REST, Arrow Flight, or JDBC**. Each query language lowers to a single intermediate representation where governance is injected once — so a policy cannot drift between languages — and that IR retargets to each source's native dialect on the way out. Adding a language is a new front-end onto the shared core, not a new engine.
 
@@ -76,7 +77,7 @@ These are the connection protocols. SQL, GraphQL, and Cypher ride over them — 
 
 ### Data Sources
 
-- **60 source types** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Salesforce, and more through a single API; graph and RDF sources are first-class, not adapters
+- **62 connectors, 75+ kinds of source** — the larger number counts the hosted PostgreSQL services (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) and the File Crawler's file formats individually. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Salesforce, ServiceNow, Stripe, and more through a single API; graph and RDF sources are first-class, not adapters
 - **Smart routing** — Single-source queries bypass federation (sub-100ms); multi-source queries route through the federation layer — bring your own cluster or use the embedded workers
 - **API sources** — Register REST, GraphQL, gRPC, WebSocket, or RSS endpoints as queryable tables; SPARQL helpers included; federated joins across API sources and relational sources work transparently
 - **Remote schema introspection** — Point at any GraphQL, OpenAPI, or gRPC endpoint; documented operations are automatically surfaced as queryable tables, graph nodes, and edges with full governance applied on top
@@ -162,6 +163,8 @@ Masked columns are rejected from `WHERE` and `HAVING` clauses. Without this, a c
 ### Relationship governance
 
 JOIN conditions in SQL must match a registered, approved relationship between tables. Unapproved joins are rejected. Each relationship carries a human-readable reason and description — guidance for both users and autonomous agents about why a traversal path exists. This is governance policy, not a hard security boundary: Layers 2–5 hold regardless of join structure, so a deliberate circumvention does not expose data the role could not reach through two separate queries. Circumvention attempts are logged and auditable.
+
+No invalid join ever runs on your data. Roles are governed by default; opting out is a deliberate grant of the `ignore_relationships` right to a role you trust. An agent's OAuth token maps to a role, so an agent gets the same layers a person does. Data catalogs that provide a context layer tell an agent what it should do; Provisa enforces what it can do.
 
 ---
 

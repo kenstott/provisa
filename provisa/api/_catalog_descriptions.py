@@ -39,9 +39,9 @@ TABLE_DESCRIPTIONS: dict[str, str] = {
     "rls_rules": "Row-level security predicates applied per (table, role) before any query runs",
     "roles": "The role hierarchy queries execute under; a role inherits its parent's grants",
     "roles_domain_access": "Which domains each role may reach — one row per role/domain pair",
-    "tracked_webhooks": "HTTP endpoints registered as callable functions in the semantic layer",
+    "tracked_webhooks": "HTTP endpoints registered as callable functions in the model",
     "tracked_functions": "Source-native and Provisa-defined functions exposed as callable "
-    "commands in the semantic layer",
+    "commands in the model",
     "tags": "The tag registry — governance labels (pii, deprecated, …) that can be attached to "
     "catalog objects, including the built-in system tags",
     "tag_assignments": "Every tag attached to a catalog object, with its justification and "
@@ -209,7 +209,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     },
     "tracked_webhooks": {
         "id": "Webhook identifier",
-        "name": "Name the webhook is callable under in the semantic layer",
+        "name": "Name the webhook is callable under in the model",
         "url": "Endpoint invoked",
         "method": "HTTP method used",
         "timeout_ms": "Milliseconds to wait before the call is abandoned",
@@ -225,7 +225,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     },
     "tracked_functions": {
         "id": "Function identifier",
-        "name": "Name the function is callable under in the semantic layer",
+        "name": "Name the function is callable under in the model",
         "source_id": "Source that hosts the function",
         "schema_name": "Schema the function lives in at the source",
         "function_name": "Function name at the source",

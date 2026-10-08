@@ -301,7 +301,7 @@ def slide_title(prs):
     )
 
     # Right graphic: stacked labels
-    labels = ["Federation", "Semantic Layer", "Governance", "Delivery"]
+    labels = ["Federation", "Metrics", "Ontology", "Governance"]
     colors = [TEAL, TEAL_DARK, RGBColor(0x0A, 0x50, 0x70), RGBColor(0x05, 0x35, 0x55)]
     for i, (lbl, clr) in enumerate(zip(labels, colors)):
         add_rect(slide, 10.2, 1.5 + i * 1.1, 2.8, 0.9, fill_color=clr)
@@ -337,11 +337,11 @@ def slide_product_summary(prs):
             ],
         ),
         (
-            "Semantic Layer Management",
+            "Model Management",
             [
                 "Register sources, tables, and relationships through a governed UI",
                 "GraphQL schema auto-generated from registration model — never hand-authored",
-                "Cross-source relationships defined semantically, not inferred from FK constraints",
+                "Cross-source relationships defined in the model, not inferred from FK constraints",
                 "Schema reflects business intent; stewards control what the surface exposes",
                 "NoSQL sources automatically materialized to Parquet for unified querying",
                 "Schema changes flag dependent relationships and registry entries for re-review",

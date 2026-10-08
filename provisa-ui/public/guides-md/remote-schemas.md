@@ -1,6 +1,6 @@
 # Remote Schemas
 
-A remote schema source connects an external API — GraphQL, gRPC, or REST (OpenAPI) — to the Provisa semantic layer. Once registered, the external API's operations become first-class Provisa tables and functions. (REQ-308, REQ-316, REQ-325) Every governance rule, query interface, and security layer applies automatically. (REQ-310, REQ-319, REQ-328) The remote service never sees Provisa's governance rules. (REQ-310, REQ-319, REQ-328)
+A remote schema source connects an external API — GraphQL, gRPC, or REST (OpenAPI) — to the Provisa model. Once registered, the external API's operations become first-class Provisa tables and functions. (REQ-308, REQ-316, REQ-325) Every governance rule, query interface, and security layer applies automatically. (REQ-310, REQ-319, REQ-328) The remote service never sees Provisa's governance rules. (REQ-310, REQ-319, REQ-328)
 
 ---
 

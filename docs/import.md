@@ -18,9 +18,8 @@ session is acting in.
    generated configuration. Nothing is written at this step.
 4. **Review and edit.** The configuration is editable in place — connection details, domain names,
    role names. What you apply is what is shown.
-5. **Apply.** *Replace the existing semantic layer* deletes every source, table, role and rule
-   absent from the configuration; left off, the import merges into what the organization has.
-   Applying loads the configuration and rebuilds the organization's schemas.
+5. **Apply.** *Apply to this organization* loads the configuration and rebuilds the organization's schemas.
+   An import is always a merge into what the organization has.
 
 Endpoints: `POST /admin/import/hasura/preview` and `POST /admin/import/hasura/apply`.
 

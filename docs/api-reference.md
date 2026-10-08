@@ -1255,7 +1255,7 @@ SSE subscriptions are available at `GET /data/subscribe/{table}`. (REQ-219, REQ-
 
 ## Business Glossary (REQ-1387)
 
-The business glossary maps physical field names — as they exist in source databases — onto a shared human vocabulary. Every column registered in the semantic layer gets a term automatically. No manual entry is required to populate the glossary; curators add definitions, relationships, and experts on top of what the system derives.
+The business glossary maps physical field names — as they exist in source databases — onto a shared human vocabulary. Every column registered in the model gets a term automatically. No manual entry is required to populate the glossary; curators add definitions, relationships, and experts on top of what the system derives.
 
 ### How Terms Are Derived
 

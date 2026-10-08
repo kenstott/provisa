@@ -1,6 +1,6 @@
 # Remote Schemas
 
-A remote schema source connects an external API — GraphQL (including GitHub), gRPC, or REST (OpenAPI) — to the Provisa semantic layer. Adding a source registers no table. The source offers tables, and a steward registers each one wanted through the Register Table picker; that registration is the curation step (REQ-308, REQ-316, REQ-322). A registered table is a first-class Provisa table. (REQ-308, REQ-316, REQ-325) Every governance rule, query interface, and security layer applies automatically. (REQ-310, REQ-319, REQ-328) The remote service never sees Provisa's governance rules. (REQ-310, REQ-319, REQ-328)
+A remote schema source connects an external API — GraphQL (including GitHub), gRPC, or REST (OpenAPI) — to the Provisa model. Adding a source registers no table. The source offers tables, and a steward registers each one wanted through the Register Table picker; that registration is the curation step (REQ-308, REQ-316, REQ-322). A registered table is a first-class Provisa table. (REQ-308, REQ-316, REQ-325) Every governance rule, query interface, and security layer applies automatically. (REQ-310, REQ-319, REQ-328) The remote service never sees Provisa's governance rules. (REQ-310, REQ-319, REQ-328)
 
 ---
 
