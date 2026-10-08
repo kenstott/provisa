@@ -1332,7 +1332,7 @@
     A registered view is its own table. Not relating, and so allowed without a relationship: the branches of UNION,
     INTERSECT and EXCEPT, and a subquery that refers to nothing outside itself. A relationship type that is not
     registered is refused on every Cypher surface alike. Found 2026-10-07: the check read only ON equalities between
-    directly named tables, and the Cypher surfaces did not run it.'
+    directly named tables, and the Cypher surfaces did not run it. (Amended 2026-10-08:) A table joined to itself on equality of its whole registered primary key re-reads the same row and relates nothing; it needs no relationship. A table with no registered key has no such exemption.'
   use_case: V002 enforces approved navigation paths so joins between sensitive tables require explicit
     steward registration and approval, providing an audit surface for cross-table data access.
   code:
@@ -77315,3 +77315,17 @@
   - REQ-1948
   - REQ-209
   notes: 'Found 2026-10-07 while building REQ-1948 (issues #149, #152): approving or executing a request over REST only changed its status; execute needed no approvals; product-queued requests needed one approval; a cross-domain execute re-queued and marked the original executed; webhook requests recorded no requester and MCP-proposed ones recorded a role; an MCP-proposed request could never be carried out; GraphQL had no approve mutation. Maintainer 2026-10-07: scope relationship approvals to the domains involved; lead ruling under the standing rule that a found defect is fixed: every type creates what it asks for.'
+- id: REQ-1951
+  status: proposed
+  since: 2026-10
+  group: 9. Live Data & Events
+  category: Change Data Capture
+  priority: SHOULD
+  type: behavioral
+  description: 'A Debezium topic encoded in Avro with a schema registry is read as its rows. A Debezium source may name a schema registry -- its URL and how it is authenticated: not at all, by basic credentials, by a bearer token, or by mutual TLS with a client certificate, each secret held through the secrets contract -- and a message in the registry wire format is decoded with the writer schema its id names, fetched from the registry and kept by id, so a change of schema on the topic is followed message by message. Inserts, updates and deletes arrive as they do from a JSON-encoded topic. A topic whose messages are Avro when the source names no registry, a registry that cannot be reached within its bound, and a schema id the registry does not know are each refused by name; an Avro topic is never read as JSON. The fields a method needs are checked when the source is saved, and a missing one is refused by name. The Avro codec is a declared dependency; the Kafka client stays the one the product ships.'
+  use_case: A team whose Debezium connectors publish Avro, as most larger Kafka installations do, subscribes Provisa
+    to an orders topic and sees row changes without re-encoding the topic as JSON.
+  related_reqs:
+  - REQ-172
+  - REQ-176
+  notes: 'Maintainer 2026-10-07/08: support it properly (chosen over refusing Avro topics by name). Found while reading CI server logs: the Avro path imported an undeclared Kafka client package; with it absent, which was every install, a subscription to an Avro topic ended on its first message with an unnamed decode error. Dependency ruling: fastavro (MIT) only; the registry lookup is written on httpx, already a dependency. Related defects of the same class fixed separately: change events, Kafka sinks and the live Kafka output used the same undeclared client (issues #155, #156).'
