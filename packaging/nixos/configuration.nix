@@ -10,7 +10,7 @@ let
   nixLd = "/run/current-system/sw/share/nix-ld/lib";
 in
 {
-  system.stateVersion = "25.11";
+  system.stateVersion = "26.05";
 
   # Microsoft's ODBC driver is the one unfree package (the SQL Server warehouse replica target).
   nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [ "msodbcsql18" ];
@@ -40,7 +40,7 @@ in
       libxml2
       libuuid
       curl
-      unixODBC
+      unixodbc
       # Playwright's Chromium.
       glib
       nss
@@ -58,13 +58,13 @@ in
       systemd
       fontconfig
       freetype
-      xorg.libX11
-      xorg.libXcomposite
-      xorg.libXdamage
-      xorg.libXext
-      xorg.libXfixes
-      xorg.libXrandr
-      xorg.libxcb
+      libx11
+      libxcomposite
+      libxdamage
+      libxext
+      libxfixes
+      libxrandr
+      libxcb
     ];
   };
 
@@ -84,11 +84,11 @@ in
     curl
     openssl
     zstd
-    unixODBC
+    unixodbc
   ];
 
   # Registers "ODBC Driver 18 for SQL Server" in /etc/odbcinst.ini.
-  environment.unixODBCDrivers = [ pkgs.unixODBCDrivers.msodbcsql18 ];
+  environment.unixODBCDrivers = [ pkgs.unixodbcDrivers.msodbcsql18 ];
 
   networking.firewall.allowedTCPPorts = [
     3000

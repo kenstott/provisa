@@ -44,15 +44,6 @@ jobs:
 
       - uses: ./.github/actions/nixos-vm
 
-      # packaging/nixos has no flake.lock until one is committed, so this run resolved nixos-25.11
-      # itself. Committing this file pins every later run to the same nixpkgs.
-      - name: Upload the lock this run resolved
-        uses: actions/upload-artifact@v4
-        with:
-          name: nixos-flake-lock
-          path: packaging/nixos/flake.lock
-          if-no-files-found: ignore
-
       - name: Install dependencies
         id: deps
         run: |

@@ -1,7 +1,8 @@
 {
   description = "Provisa on NixOS: the host configuration, and the VM the NixOS workflow tests it in";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+  # nixos-26.05 at a fixed commit, so every run builds the same system; move it deliberately.
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/7c8764b7c7b09b34f632464276218ef9090eaa11";
 
   outputs =
     { nixpkgs, ... }:
