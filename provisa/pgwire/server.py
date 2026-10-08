@@ -503,6 +503,14 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
     per-column types, exactly ONE batch is buffered to infer them — a bounded peek, not the
     whole result."""
 
+    def late_warnings(self) -> list[Any]:
+        """The warnings the plan gained since the last were said (REQ-1949), each given once."""
+        if self._plan_warnings is None:
+            return []
+        late = [w for w in self._plan_warnings if w not in self._said]
+        self._said.extend(late)
+        return late
+
     def __init__(
         self,
         engine_result: ResultStream,
@@ -518,6 +526,10 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         # REQ-1350: what the statement's answer must say about itself (sent as notices).
         # A registered-function call has no plan, and nothing to say.
         self.warnings: tuple[Any, ...] = tuple(plan.warnings) if plan is not None else ()
+        # REQ-1949: what is known only once the rows are read is added to the plan's own list
+        # when the drain ends; what was said ahead of the rows is not said again.
+        self._plan_warnings: list[Any] | None = plan.warnings if plan is not None else None
+        self._said: list[Any] = list(self.warnings)
         self._cols = engine_result.column_names
         self._status = (
             _write_tag(original_sql, engine_result)
@@ -1526,6 +1538,12 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self._shield.settle()
                 self._close_request()
 
+    def _send_warning(self, warning: Any) -> None:
+        self._send_pg_notice(
+            warning.message,
+            json.dumps({"code": warning.code, "params": warning.params}, ensure_ascii=True),
+        )
+
     def send_data_rows(self, query_result: BVQueryResult, limit: int = 0) -> int:
         # REQ-1905: the request's deadline covers the row send. A result that is ready only after
         # the deadline has passed is not sent; a stream is checked again at every batch it pulls
@@ -1537,16 +1555,19 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         # the Detail field.
         if isinstance(query_result, ProvisaQueryResult):
             for warning in query_result.warnings:
-                self._send_pg_notice(
-                    warning.message,
-                    json.dumps({"code": warning.code, "params": warning.params}, ensure_ascii=True),
-                )
+                self._send_warning(warning)
             query_result.warnings = ()  # a later Execute of the same portal says it once
         # REQ-1910: rows are pulled from the result and encoded onto the socket here.
         with _stage(_tracer, "pgwire.encode", name="encode"):
             sent = super().send_data_rows(query_result, limit)
             _annotate_request(db__row_count=sent)
-            return sent
+        # REQ-1949: what the rows themselves showed -- the answer was cut at a row limit -- is
+        # known when the drain ends, and goes as a NOTICE after the last row, ahead of the
+        # statement's completion.
+        if isinstance(query_result, ProvisaQueryResult):
+            for warning in query_result.late_warnings():
+                self._send_warning(warning)
+        return sent
 
     def handle(self) -> None:
         """Serve the connection with a ConnectionLoop bound to this thread for its whole life.

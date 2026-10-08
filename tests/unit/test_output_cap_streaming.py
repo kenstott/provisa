@@ -99,7 +99,7 @@ def test_the_drains_record_says_402(ceiling_three, monkeypatch):
         "provisa.audit.pipeline.complete_audit_record",
         lambda record, started, status, rows: completed.append(status),
     )
-    plan = SimpleNamespace(audit_deferred=object(), audit=None)
+    plan = SimpleNamespace(audit_deferred=object(), audit=None, limit_outcome=None)
     stream = acquire_plan_permits(SimpleNamespace(), _plan()).wrap_stream(_stream(3))
     drain = _pipeline._AuditedDrain(plan, stream.batches(), len)
     with pytest.raises(_TierCapExceeded):

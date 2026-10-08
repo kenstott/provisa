@@ -53,9 +53,18 @@ def warnings_metadata(warnings: Any) -> pa.Buffer:
 def _with_warnings(schema: pa.Schema, batches: Iterable[Any], warnings: Any) -> Iterable[Any]:
     """``batches`` behind one zero-row batch carrying the warnings: a Flight header is sent
     before do_get runs, so the warnings ride the stream, and a zero-row batch carries them for
-    an empty result too."""
-    yield (pa.RecordBatch.from_pylist([], schema=schema), warnings_metadata(warnings))
+    an empty result too.
+
+    REQ-1949: a warning known only once the rows are read -- the answer was cut at a row limit
+    -- is added to ``warnings`` when the drain ends, and rides a second zero-row batch, the last
+    of the stream."""
+    said = list(warnings)
+    if said:
+        yield (pa.RecordBatch.from_pylist([], schema=schema), warnings_metadata(said))
     yield from batches
+    late = [w for w in warnings if w not in said]
+    if late:
+        yield (pa.RecordBatch.from_pylist([], schema=schema), warnings_metadata(late))
 
 
 def record_batch_stream(
@@ -72,7 +81,8 @@ def generator_stream(
     schema: pa.Schema, batches: Iterable[Any], warnings: Any = ()
 ) -> flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """A lazy stream over ``batches``, with IPC compression where configured. ``warnings``: what
-    the statement's answer says about itself, sent ahead of the rows."""
-    if warnings:
+    the statement's answer says about itself, sent ahead of the rows -- and, for what is known
+    only once they are read, after them. A plan's own list is read again when the rows end."""
+    if warnings or isinstance(warnings, list):
         batches = _with_warnings(schema, batches, warnings)
     return flight.GeneratorStream(schema, batches, options=ipc_write_options())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

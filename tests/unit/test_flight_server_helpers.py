@@ -205,6 +205,7 @@ class TestFlightSqlDispatchHopCount:
         plan = SimpleNamespace(
             warnings=[],  # REQ-1350: nothing to say
             materialize=None,  # as _Plan: no delivery asked for (REQ-1194)
+            row_limit=None,  # as _Plan: no row limit bounds this read
             route=Route.DIRECT,
             source_id="src1",
             sql="SELECT 1",
@@ -257,6 +258,7 @@ class TestFlightSqlDispatchHopCount:
             exec_params=None,
             stamp="governed",
             audit_deferred=None,  # as _Plan: no audit record held back for the drain
+            row_limit=None,  # as _Plan: no row limit bounds this read
             live_caps=(),  # REQ-1909: the capped live sources the pipeline binds at mint (none here)
             live_caps_org=None,
             tier_caps=None,

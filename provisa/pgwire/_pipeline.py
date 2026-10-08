@@ -150,6 +150,10 @@ class _Plan:
     # REQ-1949: the row limit that bounds this read, when a limit and not the statement's own
     # LIMIT is what bounds it (compiler/row_limit.RowLimit). None for every other statement.
     row_limit: Any = None
+    # REQ-1949: what the check of that limit found, for the statement's audit row: "cut" (more
+    # rows matched than were returned) or "unchecked" (the check could not be made). None when
+    # the answer was whole, or was not checked because it did not fill the limit.
+    limit_outcome: str | None = None
     # Guards against a second finalize for one statement: the streaming surfaces finalize at their
     # own terminal, and a plan that also passes through _execute_plan must still write one row.
     audit_written: bool = field(default=False)
@@ -2154,6 +2158,7 @@ class _AuditedDrain:
         self._batches = iter(batches)
         self._rows_in = rows_in
         self._record, plan.audit_deferred = plan.audit_deferred, None
+        self._plan = plan
         self._started = plan.audit.started if plan.audit is not None else 0.0
         self._rows = 0
 
@@ -2178,6 +2183,11 @@ class _AuditedDrain:
         if record is not None:
             from provisa.audit.pipeline import complete_audit_record
 
+            if self._plan.limit_outcome is not None:
+                # REQ-1949: settled by the drain inside this one (_CutCheckedDrain) just now.
+                record = dataclasses.replace(
+                    record, enforced=_enforced_with_limit_outcome(record.enforced, self._plan)
+                )
             complete_audit_record(record, self._started, status_code, self._rows)
 
     def finish(self) -> None:
@@ -2199,10 +2209,86 @@ def audit_on_drain(plan: _Plan, batches: Any, rows_in: Callable[[Any], int] = le
     """Wrap a streamed result's batches so the audit record ``finalize_audit(...,
     defer_to_drain=True)`` held back is written when the drain ends, with the rows delivered.
     ``rows_in`` counts one batch (``len`` for row lists; ``lambda b: b.num_rows`` for Arrow).
-    A plan with no deferred record (already recorded, or no acting principal) is passed through."""
+    A plan with no deferred record (already recorded, or no acting principal) is passed through.
+
+    REQ-1949: the same drain is where a streamed read that a row limit bounds is known to have
+    filled it; whether it was cut is settled there, before the drain reports its end."""
+    if plan.row_limit is not None:
+        batches = _CutCheckedDrain(plan, batches, rows_in)
     if plan.audit_deferred is None:
         return batches
     return _AuditedDrain(plan, batches, rows_in)
+
+
+class _CutCheckedDrain:
+    """A streamed read's batches; when they end having filled the row limit that bounds the
+    read exactly, the read is asked for its next row and the plan's warnings say what was found
+    (REQ-1949) -- before the end of the stream is reported, so the surface can still say it."""
+
+    def __init__(self, plan: _Plan, batches: Any, rows_in: Callable[[Any], int]) -> None:
+        self._plan = plan
+        self._batches = iter(batches)
+        self._rows_in = rows_in
+        self._rows = 0
+
+    def __iter__(self) -> "_CutCheckedDrain":
+        return self
+
+    def __next__(self) -> Any:
+        try:
+            batch = next(self._batches)
+        except StopIteration:
+            if self._rows == self._plan.row_limit.limit:
+                _settle_stream_cut(self._plan)
+            raise
+        self._rows += self._rows_in(batch)
+        return batch
+
+    def close(self) -> None:
+        close = getattr(self._batches, "close", None)
+        if close is not None:
+            close()
+
+
+def _stream_was_cut(plan: _Plan, state: Any) -> bool:
+    """:func:`rows_were_cut` for a stream: the drain runs on a worker thread, off the event
+    loop, so the next row is asked through the engine's synchronous terminal -- the one the
+    stream itself was read through, in the same thread, org and deadline."""
+    from provisa.compiler.row_limit import next_row_sql
+    from provisa.transpiler.router import Route
+
+    if plan.route != Route.ENGINE or plan.physical_sql is None:
+        raise NextRowNotAskable("the stream was not read through the engine")
+    limit = plan.row_limit.limit
+    after = next_row_sql(plan.physical_sql, limit, state.federation_engine.dialect)
+    if after is None:
+        raise NextRowNotAskable(
+            f"the statement as run is no longer bounded by an outermost LIMIT {limit}"
+        )
+    stream = state.federation_engine.execute_engine_sync(
+        after, plan.exec_params, session_hints=plan.session_hints
+    )
+    return bool(stream.rows())
+
+
+def _settle_stream_cut(plan: _Plan) -> None:
+    from provisa.api.app import state
+    from provisa.compiler.row_limit import cut_warning, unchecked_warning
+    from provisa.core.statement_warnings import tell
+
+    try:
+        more = _stream_was_cut(plan, state)
+    except TimeoutError:
+        raise  # the request's deadline: the request's own failure, as for the read itself
+    except Exception as exc:
+        # REQ-1949: never an error, and its failure is said, not passed over (see _warn_if_cut).
+        log.warning("row-limit check failed for role %s: %s", plan.role_id, exc, exc_info=True)
+        tell(unchecked_warning(plan.row_limit, str(exc)), plan.warnings)
+        plan.limit_outcome = "unchecked"
+        return
+    if more:
+        tell(cut_warning(plan.row_limit), plan.warnings)
+        plan.limit_outcome = "cut"
 
 
 async def finalize_audit(
@@ -2260,15 +2346,21 @@ async def finalize_audit(
             else None
         ),
     }
+    _audit = plan.audit
+    if _audit is not None and plan.limit_outcome is not None:
+        # REQ-1949: the row says what the row limit did to the answer the caller was given.
+        _audit = dataclasses.replace(
+            _audit, enforced=_enforced_with_limit_outcome(_audit.enforced, plan)
+        )
     if defer_to_drain and status_code == 200:  # noqa: PLR2004 - HTTP OK
         from provisa.audit.pipeline import build_audit_record
 
         plan.audit_deferred = build_audit_record(
-            plan.audit, status_code, state, route=_route, **_outcome
+            _audit, status_code, state, route=_route, **_outcome
         )
     else:
         await write_audit(
-            plan.audit, status_code, state, route=_route, row_count=plan.row_count, **_outcome
+            _audit, status_code, state, route=_route, row_count=plan.row_count, **_outcome
         )
     # REQ-1897: every terminal finalizes here, so the steps after a successful write run once,
     # whichever surface ran it.
@@ -2434,9 +2526,30 @@ async def _warn_if_cut(plan: _Plan, result: QueryResult, state: Any) -> None:
         # warnings, with why, and to the operator -- reported, not passed over.
         log.warning("row-limit check failed for role %s: %s", plan.role_id, exc, exc_info=True)
         tell(unchecked_warning(plan.row_limit, str(exc)), plan.warnings)
+        plan.limit_outcome = "unchecked"
         return
     if more:
         tell(cut_warning(plan.row_limit), plan.warnings)
+        plan.limit_outcome = "cut"
+
+
+def _enforced_with_limit_outcome(enforced: Any, plan: _Plan) -> Any:
+    """What was enforced on the statement, with what its row limit did to the answer
+    (REQ-1949): the audit row says the caller was given a cut answer, or one whose cut could not
+    be checked, beside the limit itself (``enforced.row_cap`` / ``table_caps``)."""
+    if plan.limit_outcome is None or enforced is None:
+        return enforced
+    said = {
+        "limit": plan.row_limit.limit,
+        "kind": plan.row_limit.kind,
+        "outcome": plan.limit_outcome,
+    }
+
+    def resolved() -> dict[str, Any]:
+        was = cast("dict[str, Any]", enforced() if callable(enforced) else enforced)
+        return {**was, "row_limit": said}
+
+    return resolved
 
 
 async def _execute_plan_with_secrets(plan: _Plan, state: Any) -> QueryResult:
@@ -2544,11 +2657,13 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
         await finalize_audit(plan, 402, state)
         raise
     plan.row_count = len(result.rows)
-    await finalize_audit(plan, 200, state)
-    # REQ-1949: whether the row limit cut this answer is settled before it is kept -- a warned
-    # answer is never stored as the statement's answer (_cache_tee), so every repeat of a cut
-    # read is read, checked and says so again; an answer that is stored was whole.
+    # REQ-1949: whether the row limit cut this answer is settled before the statement is
+    # recorded and before the answer is kept -- the audit row says what the caller was given
+    # (finalize_audit), and a warned answer is never stored as the statement's answer
+    # (_cache_tee), so every repeat of a cut read is read, checked and says so again; an answer
+    # that is stored was whole.
     await _warn_if_cut(plan, result, state)
+    await finalize_audit(plan, 200, state)
     # REQ-1897: the buffered chokepoint writes its row result to the raw-SQL namespace.
     await store_executed_result(plan, state, result)
     # REQ-1517: record this statement against the request's stats accumulator (opt-in via

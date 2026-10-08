@@ -315,3 +315,153 @@ def test_the_catalog_says_it_in_every_locale():
         assert all(p in unchecked for p in ("{{limit}}", "{{kind}}", "{{reason}}")), catalog
         if catalog.parent.name != "en":
             assert said != text and unchecked != english["statement"]["rows_cut_unchecked"]
+
+
+class _SyncEngine:
+    """The engine's synchronous terminal, answering the next-row statement with ``rows``."""
+
+    dialect = "duckdb"
+
+    def __init__(self, rows: list[tuple] | Exception) -> None:
+        self._rows = rows
+        self.asked: list[str] = []
+
+    def execute_engine_sync(self, sql, params=None, *, session_hints=None):
+        self.asked.append(sql)
+        if isinstance(self._rows, Exception):
+            raise self._rows
+        return SimpleNamespace(rows=lambda: self._rows)
+
+
+def _drain(monkeypatch, plan, batches, engine) -> list:
+    import provisa.api.app as app
+
+    monkeypatch.setattr(app, "state", SimpleNamespace(federation_engine=engine))
+    return list(_pipeline.audit_on_drain(plan, iter(batches)))
+
+
+@pytest.mark.parametrize(
+    ("batches", "next_rows", "codes"),
+    [
+        ([[(1,), (2,)], [(3,)]], [(4,)], ["statement.rows_cut"]),
+        ([[(1,), (2,)], [(3,)]], [], []),
+        ([[(1,), (2,)]], [(4,)], []),
+    ],
+    ids=["filled_and_more", "filled_exactly", "within_the_limit"],
+)
+def test_a_stream_that_fills_the_limit_is_asked_for_its_next_row_when_it_ends(
+    monkeypatch, batches, next_rows, codes
+):
+    engine = _SyncEngine(next_rows)
+    plan = _plan()
+    out = _drain(monkeypatch, plan, batches, engine)
+    assert out == batches  # the stream itself is what it was: never a row past the limit
+    assert [w.code for w in plan.warnings] == codes
+    filled = sum(len(b) for b in batches) == 3
+    assert len(engine.asked) == (1 if filled else 0)
+    if filled:
+        assert "LIMIT 1" in engine.asked[0] and "OFFSET 3" in engine.asked[0]
+
+
+def test_a_stream_whose_check_fails_says_so_and_still_ends(monkeypatch):
+    plan = _plan()
+    out = _drain(monkeypatch, plan, [[(1,), (2,), (3,)]], _SyncEngine(ConnectionError("gone")))
+    assert len(out) == 1
+    assert [w.code for w in plan.warnings] == ["statement.rows_cut_unchecked"]
+    direct = _plan(Route.DIRECT)
+    _drain(monkeypatch, direct, [[(1,), (2,), (3,)]], _SyncEngine([]))
+    assert "not read through the engine" in direct.warnings[0].params["reason"]
+
+
+def test_a_stream_no_limit_bounds_is_passed_through_untouched(monkeypatch):
+    plan = _plan(limit=None)
+    batches = iter([[(1,)]])
+    assert _pipeline.audit_on_drain(plan, batches) is batches
+
+
+def test_flight_says_a_late_warning_in_a_last_zero_row_batch():
+    """Flight and airport: what is known before the rows rides a zero-row batch ahead of them;
+    what the rows showed rides another, the last of the stream."""
+    import pyarrow as pa
+
+    from provisa.api.flight import compression
+
+    schema = pa.schema([("id", pa.int64())])
+    data = pa.RecordBatch.from_pylist([{"id": 1}], schema=schema)
+    early, late = cut_warning(RowLimit(9, TABLE)), cut_warning(RowLimit(3, ROLE))
+    warnings = [early]
+
+    def rows():
+        yield data
+        warnings.append(late)  # the drain's end found it
+
+    out = list(compression._with_warnings(schema, rows(), warnings))
+    assert [type(item) for item in out] == [tuple, pa.RecordBatch, tuple]
+    assert out[0][0].num_rows == 0 and out[2][0].num_rows == 0
+    assert out[0][1] != out[2][1]
+    # Nothing to say at either end: the rows alone.
+    assert list(compression._with_warnings(schema, iter([data]), [])) == [data]
+
+
+def test_pgwire_says_a_late_warning_once_after_the_rows():
+    from provisa.pgwire.server import ProvisaQueryResult
+
+    early, late = cut_warning(RowLimit(9, TABLE)), cut_warning(RowLimit(3, ROLE))
+    plan = _plan(limit=None)
+    plan.warnings = [early]
+    result = ProvisaQueryResult(_answer(1), "SELECT 1", plan=plan)
+    assert result.warnings == (early,) and result.late_warnings() == []
+    plan.warnings.append(late)
+    assert result.late_warnings() == [late]
+    assert result.late_warnings() == []
+
+
+def test_the_audit_row_says_what_the_limit_did_to_the_answer():
+    """REQ-1949: the warning is a fact about what the caller was given, so the statement's
+    audit row holds it -- in ``enforced``, beside the limit itself."""
+    plan = _plan()
+    was = {"row_cap": 3, "table_caps": {}}
+    assert _pipeline._enforced_with_limit_outcome(was, plan) is was  # whole: nothing added
+    plan.limit_outcome = "cut"
+    said = {"limit": 3, "kind": "role", "outcome": "cut"}
+    assert _pipeline._enforced_with_limit_outcome(was, plan)() == {**was, "row_limit": said}
+    # ``enforced`` may be a resolver the audit writer calls on its own thread.
+    assert _pipeline._enforced_with_limit_outcome(lambda: was, plan)()["row_limit"] == said
+    plan.limit_outcome = "unchecked"
+    assert (
+        _pipeline._enforced_with_limit_outcome(was, plan)()["row_limit"]["outcome"] == "unchecked"
+    )
+
+
+def test_the_buffered_answer_is_checked_before_its_audit_row_is_written():
+    import inspect
+
+    chokepoint = inspect.getsource(_pipeline._execute_plan_in_org)
+    assert chokepoint.index("_warn_if_cut(") < chokepoint.index("finalize_audit(plan, 200")
+    assert "_enforced_with_limit_outcome(" in inspect.getsource(_pipeline.finalize_audit)
+
+
+def test_a_streams_audit_row_holds_what_its_drain_found(monkeypatch):
+    import dataclasses
+
+    @dataclasses.dataclass
+    class Record:
+        enforced: object
+        status_code: int = 0
+        row_count: int = 0
+
+    written = []
+    monkeypatch.setattr(
+        "provisa.audit.pipeline.complete_audit_record",
+        lambda record, started, status_code, row_count: written.append((record, row_count)),
+    )
+    plan = _plan()
+    plan.audit_deferred = Record({"row_cap": 3})
+    out = _drain(monkeypatch, plan, [[(1,), (2,), (3,)]], _SyncEngine([(4,)]))
+    assert len(out) == 1
+    ((record, rows),) = written
+    assert rows == 3
+    assert record.enforced() == {
+        "row_cap": 3,
+        "row_limit": {"limit": 3, "kind": "role", "outcome": "cut"},
+    }

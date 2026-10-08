@@ -96,6 +96,7 @@ def _plan(route, **kwargs):
         audit_written=False,
         row_count=None,  # the terminal's delivered rows; unset on a streamed scan until its drain
         audit_deferred=None,
+        row_limit=None,  # as _Plan: no row limit bounds this read
         writes_tables=False,  # REQ-1897: finalize_audit invalidates a write's tables
         live_caps=(),  # REQ-1909: the capped live sources the pipeline binds at mint (none here)
         live_caps_org=None,

@@ -1172,6 +1172,8 @@ table = client.do_get(ticket).read_all()
 
 When the Zaychik Flight SQL proxy is available (port 8480), record batches stream end-to-end without full materialization. (REQ-144) Falls back to materializing via the federated query layer if Zaychik is unavailable. (REQ-146)
 
+**Warnings.** What an answer says about itself rides the stream as the `app_metadata` of a zero-row batch: `{"provisa_warnings": [{"code", "params", "message"}]}`. Warnings known before the rows are read come in a zero-row batch ahead of them. A warning known only once the rows are read comes in a second zero-row batch, the last of the stream: `statement.rows_cut` says the answer was cut at a row limit and more rows match (REQ-1949). Read `app_metadata` on every batch, the last included. [tool-verified: `provisa/api/flight/compression.py`]
+
 ---
 
 ## Protobuf gRPC Endpoint
