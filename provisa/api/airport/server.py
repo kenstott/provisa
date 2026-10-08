@@ -221,7 +221,7 @@ class ProvisaAirportServer(
         at face value (the DuckDB airport secret's ``auth_token``), as ``X-Provisa-Role`` does
         over HTTP there, and PROVISA_AIRPORT_DEFAULT_ROLE serves a call that names none.
         """
-        from provisa.grpc.auth import auth_active
+        from provisa.auth.bearer import auth_active
 
         headers = self._headers(context)
         token = ""
@@ -229,9 +229,9 @@ class ProvisaAirportServer(
         if raw:
             token = raw[7:].strip() if raw.lower().startswith("bearer ") else raw.strip()
         try:
-            secured = auth_active(self._state)
+            secured = auth_active(self._state, "airport")
         except RuntimeError as exc:
-            raise _err(f"airport: {exc}") from exc
+            raise _err(str(exc)) from exc
         if secured:
             return self._authenticated_role(token, self._header(headers, "x-provisa-role"))
         if not token:
@@ -251,21 +251,23 @@ class ProvisaAirportServer(
         """The role a validated credential acts as (REQ-1263, REQ-273).
 
         The identity's own role, or the one ``x-provisa-role`` requests when the identity holds
-        it (one role, or a comma-separated set acting as its meta-role) — the gRPC transport's
-        rule, from its functions. No credential, a rejected one, or a role the identity does not
+        it (one role, or a comma-separated set acting as its meta-role) — the rule gRPC and Flight
+        follow, from the same functions (``auth.bearer``). No credential, a rejected one, or a role the identity does not
         hold is refused; PROVISA_AIRPORT_DEFAULT_ROLE is not consulted.
         """
         import jwt
 
         from provisa.core.connection_loop import run_on_connection_loop
-        from provisa.grpc.auth import authorize_role, validate_grpc_credential
+        from provisa.auth.bearer import authorize_role, validate_bearer_credential
 
         if not credential:
             raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]
                 "airport: a bearer credential is required (the airport secret's auth_token)"
             )
         try:
-            identity = run_on_connection_loop(validate_grpc_credential(self._state, credential))
+            identity = run_on_connection_loop(
+                validate_bearer_credential(self._state, credential, "an airport client")
+            )
         except (ValueError, jwt.PyJWTError) as exc:
             # Every rejection reads the same on the wire: a caller must not learn from the
             # response whether the credential was unknown, expired or revoked.

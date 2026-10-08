@@ -303,6 +303,17 @@ def _grpc(cred: Credential, secret: str) -> str:
     return identity.user_id
 
 
+def _airport(cred: Credential, secret: str) -> str:
+    from provisa.auth.bearer import validate_bearer_credential
+
+    del cred
+    try:
+        identity = asyncio.run(validate_bearer_credential(_state(), secret, "an airport client"))
+    except (ValueError, PermissionError, jwt.PyJWTError) as exc:
+        raise _Rejected(str(exc)) from exc
+    return identity.user_id
+
+
 @dataclass(frozen=True)
 class Surface:
     name: str
@@ -321,6 +332,7 @@ _SURFACES = (
     Surface("mcp", _mcp, (_TOKEN_CRED, _PAT_CRED)),
     Surface("flight", _flight, (_TOKEN_CRED, _PAT_CRED)),
     Surface("grpc", _grpc, (_TOKEN_CRED, _PAT_CRED)),
+    Surface("airport", _airport, (_TOKEN_CRED, _PAT_CRED)),
 )
 
 _CASES = [
@@ -383,15 +395,18 @@ def test_every_authenticating_surface_is_in_the_matrix():
         and path.name != "models.py"
     }
 
+    # auth/bearer.py is the one bearer validation the credential-only transports share; each of
+    # them reaches it through its own entry point above.
     covered = {
-        "grpc/auth.py": "grpc",
-        "bolt/session.py": "bolt",
-        "api/flight/server.py": "flight",
-        "api/mcp/server.py": "mcp",
-        "pgwire/server.py": "pgwire",
+        "auth/bearer.py": ("grpc", "flight", "airport"),
+        "bolt/session.py": ("bolt",),
+        "api/mcp/server.py": ("mcp",),
+        "pgwire/server.py": ("pgwire",),
     }
     assert callers == set(covered), (
         f"surfaces validating credentials but absent from the conformance matrix: "
-        f"{sorted(callers - set(covered))}"
+        f"{sorted(callers ^ set(covered))}"
     )
-    assert {s.name for s in _SURFACES} == set(covered.values()) | {"http"}
+    assert {s.name for s in _SURFACES} == {n for names in covered.values() for n in names} | {
+        "http"
+    }

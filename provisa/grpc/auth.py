@@ -33,6 +33,8 @@ import grpc
 import jwt
 
 from provisa.audit.context import AuditIdentity, set_audit_identity
+from provisa.auth import bearer
+from provisa.auth.bearer import authorize_role
 from provisa.auth.models import AuthIdentity
 from provisa.security.high_security import high_security_wire_reject, kms_key_in_pairs
 
@@ -53,66 +55,14 @@ def authenticated_identity() -> AuthIdentity | None:
 
 
 def auth_active(state) -> bool:
-    """Whether this deployment authenticates gRPC callers.
-
-    The same fail-closed reading pgwire and Flight use: a live auth middleware with no resolved
-    ``auth_config`` is a misconfiguration, and a secured server must never degrade to trust mode
-    because its config went missing.
-    """
-    if getattr(state, "auth_config", None) is not None:
-        return True
-    if getattr(state, "auth_middleware_active", False):
-        raise RuntimeError("grpc auth_config not configured")
-    return False
+    """Whether this deployment authenticates gRPC callers (``auth.bearer.auth_active``)."""
+    return bearer.auth_active(state, "grpc")
 
 
 async def validate_grpc_credential(state, token: str):
-    """Validate a caller's bearer credential and return its identity (REQ-1263).
-
-    gRPC carries exactly one credential presentation — a bearer token in ``authorization`` — so the
-    bearer validator is selected by name rather than calling ``validate_token``, whose meaning
-    differs per provider (under ``basic`` it expects base64 ``user:password``, and every bearer
-    credential, personal access token included, would fail there). The platform pool is passed
-    through so a PAT resolves here exactly as it does on every other surface.
-    """
-    from provisa.auth.models import validator_for_scheme
-    from provisa.auth.throttle import throttled
-    from provisa.auth.wiring import build_auth_provider
-
-    provider = build_auth_provider(state.auth_config, admin_pool=getattr(state, "admin_db", None))
-    validator = validator_for_scheme(provider, "bearer")
-    if validator is None:
-        raise PermissionError(
-            f"auth provider {provider.provider_name!r} accepts no bearer credential, "
-            "so it cannot authenticate a gRPC caller"
-        )
-    # REQ-1393: gRPC names no principal, so the throttle keys on the credential itself — replaying
-    # one rejected token is bounded, and a caller cannot lock out an account it does not know.
-    return await throttled(validator, token, principal=None)
-
-
-def authorize_role(state, identity, requested: str | None) -> str:
-    """The role this RPC executes as — derived from the validated identity, never asserted.
-
-    ``x-provisa-role`` may REQUEST a role, and it is honored only when the identity's own
-    assignments carry it; anything else is a privilege claim by the client and is refused. With no
-    request, the identity's claims map to a role through the same rules every other surface uses.
-    """
-    from provisa.auth.role_mapping import resolve_assignments, resolve_role
-
-    auth_config = state.auth_config
-    default_role = auth_config.get("default_role")
-    if not default_role:
-        # No admin default: an identity matching no mapping rule is refused, not escalated.
-        raise PermissionError("identity matched no role and no default_role is configured")
-    mapped = resolve_role(identity, auth_config.get("role_mapping", []), default_role)
-    if not requested:
-        return mapped
-    permitted = {a.role_id for a in resolve_assignments(identity)} | {mapped}
-    from provisa.security.meta_role import resolve_requested_role
-
-    # One role, or a comma-separated set of held roles acting as their meta-role.
-    return resolve_requested_role(state, permitted, requested)
+    """Validate a caller's bearer credential and return its identity (REQ-1263): the one bearer
+    validation every credential-only transport uses (``auth.bearer``)."""
+    return await bearer.validate_bearer_credential(state, token, "a gRPC caller")
 
 
 def _bearer(metadata) -> str | None:

@@ -120,27 +120,11 @@ async def _run_with_org(org_id: str | None, coro):
 
 
 async def _validate_flight_credential(state, token: str):
-    """Validate a Flight client's credential and return its identity (REQ-1263).
+    """Validate a Flight client's credential and return its identity (REQ-1263): the one bearer
+    validation every credential-only transport uses (``auth.bearer``)."""
+    from provisa.auth.bearer import validate_bearer_credential
 
-    Flight carries exactly one credential presentation — a bearer token in the handshake or the
-    ticket — so the bearer validator is selected by name rather than calling ``validate_token``,
-    whose meaning differs per provider (under ``basic`` it expects base64 ``user:password``, and
-    every bearer credential, personal access token included, would fail there). The platform pool
-    is passed through so a PAT resolves here exactly as it does on every other surface.
-    """
-    from provisa.auth.models import validator_for_scheme
-    from provisa.auth.throttle import throttled
-    from provisa.auth.wiring import build_auth_provider
-
-    provider = build_auth_provider(state.auth_config, admin_pool=getattr(state, "admin_db", None))
-    validator = validator_for_scheme(provider, "bearer")
-    if validator is None:
-        raise PermissionError(
-            f"auth provider {provider.provider_name!r} accepts no bearer credential, "
-            "so it cannot authenticate a Flight client"
-        )
-    # REQ-1393: Flight names no principal, so the throttle keys on the credential digest.
-    return await throttled(validator, token, principal=None)
+    return await validate_bearer_credential(state, token, "a Flight client")
 
 
 async def _resolve_identity_org(state, identity, request: dict[str, object]) -> str:
@@ -449,11 +433,12 @@ class ProvisaFlightServer(
         Mirrors pgwire's fail-closed reading of the same state: a live auth middleware with no
         resolved ``auth_config`` is a misconfiguration, and a secured server must never degrade
         to trust mode because its config went missing."""
-        if getattr(self._state, "auth_config", None) is not None:
-            return True
-        if getattr(self._state, "auth_middleware_active", False):
-            raise _flight_error("flight auth_config not configured")
-        return False
+        from provisa.auth.bearer import auth_active
+
+        try:
+            return auth_active(self._state, "flight")
+        except RuntimeError as exc:
+            raise _flight_error(str(exc)) from exc
 
     def _authenticate(self, credential: str | None):
         """Validate a bearer credential and return its identity, or None when auth is off.
@@ -500,26 +485,11 @@ class ProvisaFlightServer(
         A ticket may REQUEST a role, and it is honored only when the identity's own assignments
         carry it; anything else is a privilege claim by the client and is refused. With no request,
         the identity's claims map to a role through the same rules every other surface uses."""
-        from provisa.auth.role_mapping import resolve_assignments, resolve_role
+        from provisa.auth.bearer import authorize_role
 
-        auth_config = self._state.auth_config
-        assert auth_config is not None  # an identity exists ⇒ auth is active ⇒ config is resolved
-        default_role = auth_config.get("default_role")
-        if not default_role:
-            # No admin default: an identity matching no mapping rule is refused, not escalated.
-            raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                "identity matched no role and no default_role is configured"
-            )
-        mapped = resolve_role(identity, auth_config.get("role_mapping", []), default_role)
         requested = request.get("role")
-        if not requested:
-            return mapped
-        permitted = {a.role_id for a in resolve_assignments(identity)} | {mapped}
-        from provisa.security.meta_role import resolve_requested_role
-
-        # One role, or a comma-separated set of held roles acting as their meta-role.
         try:
-            return resolve_requested_role(self._state, permitted, str(requested))
+            return authorize_role(self._state, identity, str(requested) if requested else None)
         except PermissionError as exc:
             raise flight.FlightUnauthenticatedError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 

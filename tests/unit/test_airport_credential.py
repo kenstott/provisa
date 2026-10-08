@@ -70,7 +70,7 @@ def _server(monkeypatch, *, auth: bool, middleware_only: bool = False) -> Provis
     )
     validated: list[str] = []
 
-    async def _validate(state, token):  # noqa: ARG001  # signature mirrors the real validator
+    async def _validate(state, token, surface):  # noqa: ARG001  # mirrors the real validator
         validated.append(token)
         if token == "sam-token":
             return _identity(["seller"])
@@ -78,7 +78,7 @@ def _server(monkeypatch, *, auth: bool, middleware_only: bool = False) -> Provis
             return _identity(["seller", "hr_reader"])
         raise ValueError("no such credential")
 
-    monkeypatch.setattr("provisa.grpc.auth.validate_grpc_credential", _validate)
+    monkeypatch.setattr("provisa.auth.bearer.validate_bearer_credential", _validate)
     monkeypatch.setattr(
         "provisa.core.connection_loop.run_on_connection_loop",
         lambda coro, **kwargs: __import__("asyncio").run(coro),
