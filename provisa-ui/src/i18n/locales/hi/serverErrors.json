@@ -349,7 +349,8 @@
       "webhook_name_required": "वेबहुक ट्रिगर के लिए webhook_name आवश्यक है",
       "webhook_not_found": "वेबहुक '{{webhook}}' नहीं मिला",
       "change_streams_unavailable": "स्रोत '{{source}}' एक स्टैंडअलोन MongoDB सर्वर है, जो change streams नहीं देता: native परिवर्तन संकेत के लिए replica set या sharded cluster चाहिए। इसे replica set के रूप में चलाएँ, या poll परिवर्तन संकेत का उपयोग करें।",
-      "relationship_request_queued": "अनुरोध #{{id}} के रूप में कतारबद्ध। इसे संबंध बना सकने वाले {{required}} अलग-अलग उपयोगकर्ताओं की स्वीकृतियाँ चाहिए, जिनमें से कम से कम एक इससे जुड़े हर डोमेन तक पहुँचता हो।"
+      "relationship_request_queued": "अनुरोध #{{id}} के रूप में कतारबद्ध। इसे संबंध बना सकने वाले {{required}} अलग-अलग उपयोगकर्ताओं की स्वीकृतियाँ चाहिए, जिनमें से कम से कम एक इससे जुड़े हर डोमेन तक पहुँचता हो।",
+      "request_approved": "निर्माण अनुरोध #{{id}} स्वीकृत"
     },
     "secrets": {
       "still_referenced": "{{secret}} का नाम इस संगठन में अब भी {{count}} संग्रहीत मान ले रहे हैं। हर एक को बदलें या हटाएँ, फिर दोबारा हटाएँ।"

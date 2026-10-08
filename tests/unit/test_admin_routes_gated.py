@@ -101,6 +101,10 @@ EXEMPT: dict[tuple[str, str], str] = {
     ): "caller's own vault; owner derived from identity",
     ("POST", "/admin/creation-requests/"): "any member submits a request; approval is gated",
     (
+        "graphql:mutation",
+        "approveCreationRequest",
+    ): "the REST approve handler asked over GraphQL; that handler is gated and checked above",
+    (
         "GET",
         "/admin/creation-requests/rejection-reasons",
     ): "static vocabulary for the request form",

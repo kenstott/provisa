@@ -319,6 +319,12 @@ def build_mcp_server(state: Any):
         # stdio: fall back to the explicitly-pinned dev role (never admin), which may be a set.
         return named_role(_pinned_stdio_role(), state)
 
+    def _proposer(resolved_role: str) -> str:
+        """The user a proposal made through this server is recorded as made by: the remote
+        caller's validated identity, or over stdio (no bearer token, no real identity) the same
+        ``mcp-stdio`` principal ``_capability_request`` acts as."""
+        return _capability_request(resolved_role).state.identity.user_id
+
     def _capability_request(resolved_role: str) -> Any:  # REQ-1857
         """A minimal request-shaped shim for the handful of tools that carry their own
         capability check (glossary/data-product/metric writes) via
@@ -453,7 +459,9 @@ def build_mcp_server(state: Any):
         plus whatever of host/port/database/username/password/path/description/allowed_domains the
         discovery turned up. `reason` should say what led to this proposal.
         """
-        return await tools.propose_source(state, _role(role), source, reason)
+        return await tools.propose_source(
+            state, _role(role), source, reason, requested_by=_proposer(_role(role))
+        )
 
     @_tool
     async def propose_table(table: dict, reason: str, role: str | None = None) -> dict:
@@ -465,7 +473,9 @@ def build_mcp_server(state: Any):
         "table_name", "columns"} where each column is at least {"name", "visible_to"}. `reason`
         should say what led to this proposal.
         """
-        return await tools.propose_table(state, _role(role), table, reason)
+        return await tools.propose_table(
+            state, _role(role), table, reason, requested_by=_proposer(_role(role))
+        )
 
     @_tool
     async def graphql_field_names(schema: str, table: str, role: str | None = None) -> dict:

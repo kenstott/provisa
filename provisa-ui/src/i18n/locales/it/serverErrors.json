@@ -349,7 +349,8 @@
       "webhook_name_required": "webhook_name è obbligatorio per un trigger webhook",
       "webhook_not_found": "Webhook '{{webhook}}' non trovato",
       "change_streams_unavailable": "L'origine '{{source}}' è un server MongoDB standalone, che non fornisce change stream: il segnale di modifica native richiede un replica set o un cluster shardato. Eseguilo come replica set oppure usa il segnale di modifica poll.",
-      "relationship_request_queued": "Accodata come richiesta n. {{id}}. Richiede le approvazioni di {{required}} utenti diversi che possono creare relazioni, di cui almeno uno raggiunge ciascun dominio toccato."
+      "relationship_request_queued": "Accodata come richiesta n. {{id}}. Richiede le approvazioni di {{required}} utenti diversi che possono creare relazioni, di cui almeno uno raggiunge ciascun dominio toccato.",
+      "request_approved": "Richiesta di creazione n. {{id}} approvata"
     },
     "secrets": {
       "still_referenced": "{{secret}} è ancora nominato da {{count}} valore/i memorizzato/i in questa organizzazione. Modifica o rimuovi ciascuno, poi eliminalo di nuovo."

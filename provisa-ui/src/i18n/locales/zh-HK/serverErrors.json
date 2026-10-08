@@ -349,7 +349,8 @@
       "webhook_name_required": "Webhook 觸發程序必須提供 webhook_name",
       "webhook_not_found": "找不到 Webhook「{{webhook}}」",
       "change_streams_unavailable": "來源 '{{source}}' 是獨立的 MongoDB 伺服器，不提供 change streams：native 變更訊號需要副本集或分片叢集。請將其作為副本集執行，或使用 poll 變更訊號。",
-      "relationship_request_queued": "已排入佇列為請求 #{{id}}。它需要 {{required}} 位有權建立關係的不同使用者核准，且每個涉及的網域至少有一位核准者的權限涵蓋。"
+      "relationship_request_queued": "已排入佇列為請求 #{{id}}。它需要 {{required}} 位有權建立關係的不同使用者核准，且每個涉及的網域至少有一位核准者的權限涵蓋。",
+      "request_approved": "已核准建立請求 #{{id}}"
     },
     "secrets": {
       "still_referenced": "本機構中仍有 {{count}} 個已儲存的值引用 {{secret}}。請更改或移除每一個，然後再次刪除。"

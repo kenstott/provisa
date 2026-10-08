@@ -349,7 +349,8 @@
       "webhook_name_required": "webhook_name es obligatorio para un desencadenador de webhook",
       "webhook_not_found": "No se encontró el webhook '{{webhook}}'",
       "change_streams_unavailable": "El origen '{{source}}' es un servidor MongoDB independiente, que no ofrece change streams: la señal de cambio native requiere un replica set o un clúster fragmentado. Ejecútelo como replica set o use la señal de cambio poll.",
-      "relationship_request_queued": "En cola como solicitud #{{id}}. Necesita aprobaciones de {{required}} usuarios distintos que puedan crear relaciones, y al menos uno debe alcanzar cada dominio que toca."
+      "relationship_request_queued": "En cola como solicitud #{{id}}. Necesita aprobaciones de {{required}} usuarios distintos que puedan crear relaciones, y al menos uno debe alcanzar cada dominio que toca.",
+      "request_approved": "Solicitud de creación #{{id}} aprobada"
     },
     "secrets": {
       "still_referenced": "{{secret}} sigue siendo nombrado por {{count}} valor(es) almacenado(s) en esta organización. Cambie o quite cada uno y vuelva a eliminarlo."

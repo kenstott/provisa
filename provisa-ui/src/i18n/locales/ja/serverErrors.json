@@ -349,7 +349,8 @@
       "webhook_name_required": "Webhook トリガーには webhook_name が必要です",
       "webhook_not_found": "Webhook「{{webhook}}」が見つかりません",
       "change_streams_unavailable": "ソース '{{source}}' はスタンドアロンの MongoDB サーバーで、change streams を提供しません。native 変更シグナルにはレプリカセットまたはシャードクラスターが必要です。レプリカセットとして実行するか、poll 変更シグナルを使用してください。",
-      "relationship_request_queued": "リクエスト #{{id}} としてキューに登録しました。リレーションシップを作成できる {{required}} 人の異なるユーザーの承認が必要で、関わる各ドメインに少なくとも 1 人の権限が及んでいる必要があります。"
+      "relationship_request_queued": "リクエスト #{{id}} としてキューに登録しました。リレーションシップを作成できる {{required}} 人の異なるユーザーの承認が必要で、関わる各ドメインに少なくとも 1 人の権限が及んでいる必要があります。",
+      "request_approved": "作成リクエスト #{{id}} を承認しました"
     },
     "secrets": {
       "still_referenced": "{{secret}} は、この組織に保存されている {{count}} 件の値からまだ参照されています。それぞれを変更または削除してから、もう一度削除してください。"

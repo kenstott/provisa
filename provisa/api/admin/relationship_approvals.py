@@ -234,6 +234,13 @@ def repeat_refusal(
     return None
 
 
+def is_withdrawal(*, request_type: str, user_id: str | None, requested_by: str | None) -> bool:
+    """Whether a rejection is the request's own author taking it back. An author may withdraw a
+    request of any type but a relationship's, whose rejection comes only from the users who
+    could approve it (REQ-1948)."""
+    return request_type != REQUEST_TYPE and bool(user_id) and user_id == requested_by
+
+
 def count_refusal(approvals: list[dict], requested_by: str | None, required: int) -> Refusal | None:
     """Why a request of any type may not be carried out yet: it has not had the approvals its
     type requires, from different users, none of them the requester."""

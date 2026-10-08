@@ -349,7 +349,8 @@
       "webhook_name_required": "webhook_name é obrigatório para um gatilho de webhook",
       "webhook_not_found": "Webhook '{{webhook}}' não encontrado",
       "change_streams_unavailable": "A origem '{{source}}' é um servidor MongoDB autônomo, que não oferece change streams: o sinal de alteração native exige um replica set ou um cluster fragmentado. Execute-o como replica set ou use o sinal de alteração poll.",
-      "relationship_request_queued": "Enfileirado como solicitação nº {{id}}. Ela precisa de aprovações de {{required}} usuários diferentes que possam criar relacionamentos, com pelo menos um alcançando cada domínio tocado."
+      "relationship_request_queued": "Enfileirado como solicitação nº {{id}}. Ela precisa de aprovações de {{required}} usuários diferentes que possam criar relacionamentos, com pelo menos um alcançando cada domínio tocado.",
+      "request_approved": "Solicitação de criação nº {{id}} aprovada"
     },
     "secrets": {
       "still_referenced": "{{secret}} ainda é nomeado por {{count}} valor(es) armazenado(s) nesta organização. Altere ou remova cada um e exclua novamente."

@@ -349,7 +349,8 @@
       "webhook_name_required": "webhook_name est requis pour un déclencheur webhook",
       "webhook_not_found": "Webhook « {{webhook}} » introuvable",
       "change_streams_unavailable": "La source '{{source}}' est un serveur MongoDB autonome, qui ne fournit pas de change streams : le signal de modification native exige un replica set ou un cluster shardé. Exécutez-le en replica set ou utilisez le signal de modification poll.",
-      "relationship_request_queued": "Mis en file comme demande n° {{id}}. Elle requiert les approbations de {{required}} utilisateurs différents autorisés à créer des relations, dont au moins un atteint chaque domaine concerné."
+      "relationship_request_queued": "Mis en file comme demande n° {{id}}. Elle requiert les approbations de {{required}} utilisateurs différents autorisés à créer des relations, dont au moins un atteint chaque domaine concerné.",
+      "request_approved": "Demande de création n° {{id}} approuvée"
     },
     "secrets": {
       "still_referenced": "{{secret}} est encore nommé par {{count}} valeur(s) stockée(s) dans cette organisation. Modifiez ou retirez chacune, puis supprimez-le de nouveau."

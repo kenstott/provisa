@@ -349,7 +349,8 @@
       "webhook_name_required": "webhook_name ist für einen Webhook-Trigger erforderlich",
       "webhook_not_found": "Webhook '{{webhook}}' nicht gefunden",
       "change_streams_unavailable": "Quelle '{{source}}' ist ein eigenständiger MongoDB-Server, der keine Change Streams bereitstellt: Das native Änderungssignal erfordert ein Replica Set oder einen Sharded Cluster. Betreiben Sie ihn als Replica Set oder verwenden Sie das Änderungssignal poll.",
-      "relationship_request_queued": "Als Antrag #{{id}} eingereiht. Er braucht Genehmigungen von {{required}} verschiedenen Benutzern, die Beziehungen anlegen dürfen, wobei mindestens einer jede berührte Domäne erreicht."
+      "relationship_request_queued": "Als Antrag #{{id}} eingereiht. Er braucht Genehmigungen von {{required}} verschiedenen Benutzern, die Beziehungen anlegen dürfen, wobei mindestens einer jede berührte Domäne erreicht.",
+      "request_approved": "Erstellungsanfrage #{{id}} genehmigt"
     },
     "secrets": {
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."

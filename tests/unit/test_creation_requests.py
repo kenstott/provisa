@@ -257,6 +257,34 @@ class TestPayloadRoundTrip:
         assert rebuilt.cdc.bootstrap_servers == "kafka:9092"
 
 
+class TestProposalNotes:  # #152
+    """An MCP proposal stores notes beside the proposed input; carrying the request out rebuilds
+    the input without them."""
+
+    _NOTES = {"_proposed_reason": "scan", "_proposed_via": "mcp", "_proposed_role": "analyst"}
+
+    async def test_a_proposed_source_rebuilds_without_its_notes(self):
+        from provisa.api.admin.schema_common import _rebuild_source_input
+
+        rebuilt = _rebuild_source_input({"id": "crm", "type": "postgresql", **self._NOTES})
+        assert rebuilt.id == "crm"
+
+    async def test_a_proposed_table_rebuilds_without_its_notes(self):
+        from provisa.api.admin.schema_common import _rebuild_table_input
+
+        rebuilt = _rebuild_table_input(
+            {
+                "source_id": "pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "leads",
+                "columns": [],
+                **self._NOTES,
+            }
+        )
+        assert rebuilt.table_name == "leads"
+
+
 class TestRejectionReasons:  # REQ-1814
     """Every request_type a creation request can actually be stored with must have a non-empty
     rejection-reason list — an unlisted request_type resolves to [] and the Requests page's

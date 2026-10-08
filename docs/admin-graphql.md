@@ -620,13 +620,17 @@ Rebuild the in-memory schema from database state. Useful after external database
 
 ### Creation requests
 
+#### `approveCreationRequest(requestId: Int!) → MutationResult`
+
+Approve a creation request: the same rule, refusals and admin-trail entries as `POST /admin/creation-requests/{id}/approve`. The requester cannot approve their own request and one user's approval counts once. The approval that completes the request's count creates what it asks for; `params.status` is `executed` when this one did, otherwise `pending`, and `params.waitingOn` lists the domains a relationship request still waits on. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py` `approve_creation_request`]
+
 #### `executeCreationRequest(requestId: Int!) → MutationResult`
 
 Carries out a creation request that has had its approvals — relationship, view, table, source or webhook — through the code the direct mutation uses. Refused with `requests.approvals_incomplete` until the request's required approvals are met (one, or two for a relationship) by users other than the requester; a relationship request is also refused with `requests.waiting_on_domains` while a domain it touches has no approver. Approvals are given through `POST /admin/creation-requests/{id}/approve`, and the approval that completes the count performs the creation, so this mutation serves to retry a creation that failed. A failed creation leaves the request pending and answers with the failure's own code. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py` `execute_creation_request`, `perform_request_creation`; `provisa/api/admin/creation_requests_router.py`]
 
 #### `rejectCreationRequest(requestId: Int!, reason: String!) → MutationResult`
 
-Reject a queued request with an actionable reason. `reason` is required. A relationship request may be rejected by any user who could approve it. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py:3064-3106`]
+Reject a queued request with an actionable reason. `reason` is required. A relationship request may be rejected by any user who could approve it. The author of a request of any other type may take it back; that is recorded on the admin trail as a withdrawal. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py:3064-3106`]
 
 ---
 
