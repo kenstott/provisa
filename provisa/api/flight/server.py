@@ -29,10 +29,10 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from provisa.federation.execution_auth import plan_authorization
 
-import jwt
 import pyarrow as pa
 import pyarrow.flight as flight
 
+from provisa.auth import bearer
 from provisa.api.flight.compression import generator_stream, record_batch_stream
 from provisa.api.flight.catalog import (
     CatalogTable,
@@ -453,11 +453,9 @@ class ProvisaFlightServer(
             )
         try:
             return self._run_on_loop(_validate_flight_credential(self._state, credential))
-        except (ValueError, jwt.PyJWTError) as e:
-            # Every rejection reads the same on the wire: a caller must not learn from the
-            # response whether the credential was unknown, expired or revoked.
+        except bearer.CREDENTIAL_ERRORS as e:
             raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                "credential rejected"
+                bearer.credential_refusal(e)
             ) from e
 
     def _catalog_role(self, context: flight.ServerCallContext) -> str | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -491,7 +489,8 @@ class ProvisaFlightServer(
         try:
             return authorize_role(self._state, identity, str(requested) if requested else None)
         except PermissionError as exc:
-            raise flight.FlightUnauthenticatedError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            # The caller is authenticated; what it asked to act as is refused: permission denied.
+            raise flight.FlightUnauthorizedError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     # ------------------------------------------------------------------
     # Flight SQL handshake

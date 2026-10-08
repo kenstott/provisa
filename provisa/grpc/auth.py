@@ -30,7 +30,6 @@ import logging
 from contextvars import ContextVar
 
 import grpc
-import jwt
 
 from provisa.audit.context import AuditIdentity, set_audit_identity
 from provisa.auth import bearer
@@ -155,10 +154,8 @@ def _authenticate(rpc, context, state, credential: str, requested: str | None) -
     """Validate the credential and publish the principal in the RPC's context, or abort."""
     try:
         identity = rpc.run(validate_grpc_credential(state, credential))
-    except (ValueError, jwt.PyJWTError):
-        # Every rejection reads the same on the wire: a caller must not learn from the response
-        # whether the credential was unknown, expired or revoked.
-        context.abort(grpc.StatusCode.UNAUTHENTICATED, "credential rejected")
+    except bearer.CREDENTIAL_ERRORS as exc:
+        context.abort(grpc.StatusCode.UNAUTHENTICATED, bearer.credential_refusal(exc))
         raise  # abort ends the RPC by raising; should it return, the rejection still propagates
     try:
         role = authorize_role(state, identity, requested)

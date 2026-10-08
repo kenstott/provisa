@@ -124,7 +124,7 @@ def test_the_role_comes_from_the_validated_identity(monkeypatch):
 def test_a_role_the_identity_does_not_hold_is_refused_by_name(monkeypatch):
     srv = _server(monkeypatch, auth=True)
     for requested in ("org_admin", "seller,org_admin", "meta:hr_reader+seller"):
-        with pytest.raises(flight.FlightUnauthenticatedError) as refused:
+        with pytest.raises(flight.FlightUnauthorizedError) as refused:
             srv._role(_Call(bearer="sam-token", role=requested))
         assert "org_admin" in str(refused.value) or "is not a role" in str(refused.value)
 
@@ -216,6 +216,17 @@ def test_no_rpc_serves_a_call_that_presents_no_valid_credential(secured, rpc, ca
     ["do_get (scan)", "get_flight_info", "do_exchange (insert/update/delete)"],
 )
 def test_a_valid_credential_cannot_read_or_write_as_a_role_it_does_not_hold(secured, rpc):
-    with pytest.raises(flight.FlightUnauthenticatedError, match="org_admin"):
+    with pytest.raises(flight.FlightUnauthorizedError, match="org_admin"):
         _rpcs(secured)[rpc](_Call(bearer="sam-token", role="org_admin"))
     assert secured._reached == []
+
+
+def test_a_provider_that_takes_no_bearer_credential_is_unauthenticated_with_the_reason(monkeypatch):
+    srv = _server(monkeypatch, auth=True)
+
+    async def _validate(state, token, surface):  # noqa: ARG001
+        raise PermissionError("auth provider 'basic' accepts no bearer credential")
+
+    monkeypatch.setattr("provisa.auth.bearer.validate_bearer_credential", _validate)
+    with pytest.raises(flight.FlightUnauthenticatedError, match="accepts no bearer credential"):
+        srv._role(_Call(bearer="anything"))

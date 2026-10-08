@@ -253,5 +253,5 @@ def test_a_role_the_credential_does_not_hold_is_refused(client, tokens, role):
         lambda: client.get_schema(descriptor, options),
         lambda: client.do_get(_ticket(token=tokens["sam"], role=role)).read_all(),
     ):
-        with pytest.raises(flight.FlightUnauthenticatedError):
+        with pytest.raises(flight.FlightUnauthorizedError):
             call()

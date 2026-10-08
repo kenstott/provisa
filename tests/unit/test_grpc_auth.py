@@ -141,6 +141,22 @@ class TestCredentialIsRequired:
         assert context.code == grpc.StatusCode.UNAUTHENTICATED
         assert context.detail == "credential rejected"
 
+    def test_a_provider_that_takes_no_bearer_credential_is_unauthenticated_with_the_reason(
+        self, monkeypatch
+    ):
+        async def _validate(state, token):  # noqa: ARG001
+            raise PermissionError("auth provider 'basic' accepts no bearer credential")
+
+        monkeypatch.setattr(grpc_auth, "validate_grpc_credential", _validate)
+        interceptor = AuthInterceptor(
+            FakeState(auth_config=_AUTH_CONFIG, auth_middleware_active=True)
+        )
+        seen: list = []
+        context, result = _run(interceptor, [("authorization", "Bearer anything")], seen)
+        assert context.code == grpc.StatusCode.UNAUTHENTICATED
+        assert context.detail == "auth provider 'basic' accepts no bearer credential"
+        assert result is None and seen == []
+
     def test_a_non_bearer_authorization_is_not_a_credential(self, secured):
         context, _ = _run(secured, [("authorization", "Basic dXNlcjpwdw==")], [])
         assert context.code == grpc.StatusCode.UNAUTHENTICATED

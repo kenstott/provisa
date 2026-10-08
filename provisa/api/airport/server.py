@@ -255,10 +255,13 @@ class ProvisaAirportServer(
         follow, from the same functions (``auth.bearer``). No credential, a rejected one, or a role the identity does not
         hold is refused; PROVISA_AIRPORT_DEFAULT_ROLE is not consulted.
         """
-        import jwt
-
         from provisa.core.connection_loop import run_on_connection_loop
-        from provisa.auth.bearer import authorize_role, validate_bearer_credential
+        from provisa.auth.bearer import (
+            CREDENTIAL_ERRORS,
+            authorize_role,
+            credential_refusal,
+            validate_bearer_credential,
+        )
 
         if not credential:
             raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]
@@ -268,16 +271,15 @@ class ProvisaAirportServer(
             identity = run_on_connection_loop(
                 validate_bearer_credential(self._state, credential, "an airport client")
             )
-        except (ValueError, jwt.PyJWTError) as exc:
-            # Every rejection reads the same on the wire: a caller must not learn from the
-            # response whether the credential was unknown, expired or revoked.
+        except CREDENTIAL_ERRORS as exc:
             raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]
-                "airport: credential rejected"
+                f"airport: {credential_refusal(exc)}"
             ) from exc
         try:
             role_id = authorize_role(self._state, identity, requested)
         except PermissionError as exc:
-            raise flight.FlightUnauthenticatedError(f"airport: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]
+            # The caller is authenticated; what it asked to act as is refused: permission denied.
+            raise flight.FlightUnauthorizedError(f"airport: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]
         if role_id not in self._state.contexts:
             raise _err(f"airport: role {role_id!r} has no data surface")
         return role_id

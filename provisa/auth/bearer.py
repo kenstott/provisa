@@ -22,6 +22,26 @@ refusal is said in its protocol.
 
 from __future__ import annotations
 
+import jwt
+
+# What validating a bearer credential raises when the caller is not authenticated: a rejected
+# credential (ValueError, or the JWT library's own error), or a provider that takes no bearer
+# credential at all (PermissionError). A transport catches these and answers "unauthenticated"
+# in its protocol with :func:`credential_refusal` as the reason — never a generic server error.
+CREDENTIAL_ERRORS = (ValueError, jwt.PyJWTError, PermissionError)
+
+
+def credential_refusal(exc: BaseException) -> str:
+    """The reason a caller is told its credential did not authenticate it.
+
+    Every rejected credential reads the same on the wire: a caller must not learn from the
+    response whether the credential was unknown, expired or revoked. A provider that accepts no
+    bearer credential is a fact about the deployment, not about the credential, and is said.
+    """
+    if isinstance(exc, PermissionError):
+        return str(exc)
+    return "credential rejected"
+
 
 def auth_active(state, surface: str) -> bool:
     """Whether this deployment authenticates ``surface``'s callers.

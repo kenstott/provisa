@@ -119,15 +119,26 @@ class TestDoGetAuthentication:
         assert secured._seen["role"] == "auditor"
 
     def test_a_requested_role_the_identity_lacks_is_refused(self, secured):
-        with pytest.raises(
-            flight.FlightUnauthenticatedError, match="not assigned to this identity"
-        ):
+        # Authenticated, and refused what it asked to act as: permission denied, not
+        # unauthenticated.
+        with pytest.raises(flight.FlightUnauthorizedError, match="not assigned to this identity"):
             secured.do_get(None, _ticket(query="SELECT 1", token="good-token", role="admin"))
 
     def test_the_ticket_cannot_assert_a_role_it_merely_names(self, secured):
         """The old echo behavior: `role` alone granted that role. It must not, even with a token."""
-        with pytest.raises(flight.FlightUnauthenticatedError):
+        with pytest.raises(flight.FlightUnauthorizedError):
             secured.do_get(None, _ticket(query="SELECT 1", token="plain-token", role="steward"))
+
+
+class TestProviderWithoutABearerCredential:
+    def test_it_is_unauthenticated_with_the_reason_not_a_server_error(self, secured, monkeypatch):
+        async def _validate(state, token):  # noqa: ARG001
+            raise PermissionError("auth provider 'basic' accepts no bearer credential")
+
+        monkeypatch.setattr(flight_server, "_validate_flight_credential", _validate)
+        with pytest.raises(flight.FlightUnauthenticatedError, match="accepts no bearer credential"):
+            secured.do_get(None, _ticket(query="SELECT 1", token="anything"))
+        assert secured._seen == {}
 
 
 class TestHandshake:
@@ -142,7 +153,7 @@ class TestHandshake:
         assert json.loads(token.decode()) == {"role": "auditor"}
 
     def test_the_handshake_will_not_confirm_an_unheld_role(self, secured):
-        with pytest.raises(flight.FlightUnauthenticatedError):
+        with pytest.raises(flight.FlightUnauthorizedError):
             secured.do_handshake(
                 None, [json.dumps({"token": "good-token", "role": "admin"}).encode()]
             )

@@ -290,7 +290,7 @@ def test_a_role_the_credential_does_not_hold_is_refused(monkeypatch):
                 None, flight.Ticket(json.dumps({"token": "sam", "role": role}).encode())
             ),
         ):
-            with pytest.raises(flight.FlightUnauthenticatedError):
+            with pytest.raises(flight.FlightUnauthorizedError):
                 rpc()
     assert _CAPTURED == []
 
