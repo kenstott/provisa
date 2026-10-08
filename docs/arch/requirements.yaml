@@ -77446,3 +77446,21 @@
   - REQ-1923
   - REQ-316
   notes: 'Maintainer 2026-10-08, after Stripe flagged the sandbox for Charges/Customers calls carrying a token or inline source: convert to the new API; just curate the spec; if a feature is needed on consuming a spec, add some sort of exclusion override. Lead''s additions, open to correction: exclusions name operations or arguments; brands ship theirs and operators add their own; a setting has a UI surface; an already-registered item covered by a new exclusion is reported by name.'
+- id: REQ-1958
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Governance Column Visibility
+  priority: MUST
+  type: behavioral
+  description: 'The admin API answers a caller with the catalog that caller may see, as every data surface does. Its listings of tables, columns and relationships answer the whole catalog only to a caller holding a catalog-administration right -- table registration, or a right to hide tables or columns -- and only within the domains that caller''s roles reach; every other caller is answered the tables, columns and relationships its acting role is served, from the one role-narrowing the Flight catalog and the MCP catalog tools use. A column''s grant lists and mask settings (who it is visible to, writable by and unmasked for, and how it is masked) are returned only to a caller holding the right to view governance (REQ-1134). Domains are listed to a caller for the domains its roles reach; a source is named to a caller that is served a table from it; a metric is listed to a caller its visibility admits; a caller holding the administration right for that kind of object is answered all of them. Narrowing is by rights and domain reach, never by a role''s name (REQ-1337), and a platform administrator is answered no data catalog by this rule (REQ-1327). A deployment with no auth provider is unchanged. The application''s own pages are built from these answers, so a picker never offers a table the caller''s query would be refused.'
+  use_case: An analyst opening the SQL explorer is sent the tables and columns their role is served, not the names and
+    grant lists of every table in the organisation.
+  related_reqs:
+  - REQ-1134
+  - REQ-1952
+  - REQ-128
+  - REQ-1944
+  - REQ-1327
+  - REQ-1337
+  notes: 'Maintainer 2026-10-08, on a finding made while fixing the JDBC driver''s metadata: the admin GraphQL tables and relationships queries answered the whole catalog, with each column''s grant lists and mask types, to any signed-in caller, and the explore pages called them. Rulings: narrow to the role (whole catalog only with a catalog-administration right, grant lists only with view_governance); domains, sources and metrics narrowed to domain reach.'
