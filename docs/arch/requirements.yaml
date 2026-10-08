@@ -77464,3 +77464,18 @@
   - REQ-1327
   - REQ-1337
   notes: 'Maintainer 2026-10-08, on a finding made while fixing the JDBC driver''s metadata: the admin GraphQL tables and relationships queries answered the whole catalog, with each column''s grant lists and mask types, to any signed-in caller, and the explore pages called them. Rulings: narrow to the role (whole catalog only with a catalog-administration right, grant lists only with view_governance); domains, sources and metrics narrowed to domain reach. Clarification the same day: public items are available to all domains.'
+- id: REQ-1959
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Governance Column Visibility
+  priority: MUST
+  type: behavioral
+  description: 'What is public is available to all domains. An item marked public is served to every role of the organisation whatever domains that role''s domain access reaches: a public column is served, with the table it belongs to, to a role with no reach into that table''s domain, and only that table''s public columns are served to such a role; a relationship both of whose ends are served is served; a metric marked public is listed. Public is decided in the one place a role''s served set is decided, so every surface -- SQL, GraphQL, Cypher, pgwire, Bolt, Flight and its catalog, gRPC, MCP, JSON:API, the JDBC driver''s metadata and the admin API''s listings (REQ-1958) -- agrees, and none has a rule of its own. Public widens who is served and nothing else: masks, row rules, the relationship guard and row limits apply to a public item as to any other, and a column''s own visibility list still applies within its scope. An item is public only because someone with the right to set it said so; nothing is public by default. A restricted item is served only as its own visibility list says.'
+  use_case: A reference table of country codes is published once and every team can join to it, without each team''s
+    domain being granted reach into the owning domain.
+  related_reqs:
+  - REQ-1958
+  - REQ-1059
+  - REQ-603
+  notes: 'Maintainer 2026-10-08: public items are available to all domains; told that nothing enforced it (a column has a stored scope of domain, public or restricted that no code reads; REQ-1059''s public role is unbuilt), ruled: build public across domains first, before the admin catalog narrowing relies on it. The stored column scope is the starting point; how a table, relationship or metric is marked public, and what restricted means beyond the visibility list, are to be settled from the model as it is and reported before building.'
