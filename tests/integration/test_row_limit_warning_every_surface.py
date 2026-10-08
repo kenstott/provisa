@@ -139,7 +139,11 @@ def _pgwire(boot, role: str, table: str) -> tuple[int, list[str]]:
     ) as conn:
         # REQ-1350: a warning is a NOTICE whose Detail is {"code", "params"} as JSON.
         conn.add_notice_handler(
-            lambda diag: notices.append(json.loads(diag.detail)["code"]) if diag.detail else None
+            lambda diag: (
+                notices.append(json.loads(diag.message_detail)["code"])
+                if diag.message_detail
+                else None
+            )
         )
         rows = conn.execute(f"SELECT id FROM sales.{table}").fetchall()
     return len(rows), notices
@@ -258,7 +262,11 @@ def test_a_statements_own_limit_within_the_role_limit_is_not_a_cut(server, surfa
             connect_timeout=30,
         ) as conn:
             conn.add_notice_handler(
-                lambda diag: codes.append(json.loads(diag.detail)["code"]) if diag.detail else None
+                lambda diag: (
+                    codes.append(json.loads(diag.message_detail)["code"])
+                    if diag.message_detail
+                    else None
+                )
             )
             rows = len(conn.execute("SELECT id FROM sales.four LIMIT 2").fetchall())
     assert rows == 2 and _CUT not in codes, (rows, codes)
