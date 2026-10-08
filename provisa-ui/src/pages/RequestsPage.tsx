@@ -400,10 +400,10 @@ export function RequestsPage() {
                           >
                             {t("requestsPage.approve")}
                           </Button>
-                          {(row.required_approvals === 1 ||
-                            (row.request_type === "relationship" &&
-                              row.approvals.length >= row.required_approvals &&
-                              row.waiting_on.length === 0)) && (
+                          {/* Executing only retries a creation that failed when the last
+                              approval was given: it is offered once the approvals are in. */}
+                          {row.approvals.length >= row.required_approvals &&
+                            row.waiting_on.length === 0 && (
                             <Button
                               size="compact-xs"
                               onClick={() => doExecute(row.id)}

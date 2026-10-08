@@ -41,6 +41,7 @@ from provisa.core.schema_org import (
     domains,
     registered_tables,
     relationships,
+    tracked_webhooks,
     roles,
     sources,
 )
@@ -66,6 +67,9 @@ _USERS = {
     "fred": "finance_modeler",
     "hal": "hr_modeler",
     "olga": "org_modeler",
+    # The other request types: two holders of the rights those requests name, in sales.
+    "tina": "sales_builder",
+    "tom": "sales_builder",
 }
 
 
@@ -135,6 +139,16 @@ async def plane(monkeypatch):
             ("finance_modeler", ["create_relationship"], ["finance"]),
             ("hr_modeler", ["create_relationship"], ["hr"]),
             ("org_modeler", ["create_relationship"], ["*"]),
+            (
+                "sales_builder",
+                [
+                    "create_view",
+                    "table_registration",
+                    "source_registration",
+                    "webhook_registration",
+                ],
+                ["sales"],
+            ),
         ):
             await conn.execute_core(
                 insert(roles).values(id=role_id, capabilities=caps, domain_access=access)
@@ -494,3 +508,218 @@ async def test_a_request_whose_tables_are_gone_can_only_be_cleared(plane):
     assert narrow.status_code == 403
     cleared = await _post(plane, "olga", f"{rid}/reject", reason="source_not_registered")
     assert cleared.status_code == 200 and cleared.json()["status"] == "rejected"
+
+
+# --- every other request type: executing creates what the request asks for (#149) ---------------
+
+_TABLE = {
+    "source_id": "pg",
+    "domain_id": "sales",
+    "schema_name": "public",
+    "table_name": "leads",
+    "columns": [],
+}
+_OTHER_TYPES = {
+    "view": ("create_view", {**_TABLE, "view_sql": "SELECT id FROM orders"}, "register_table"),
+    "table": ("table_registration", _TABLE, "register_table"),
+    "source": ("source_registration", {"id": "crm", "type": "postgresql"}, "create_source"),
+}
+
+
+class _Creation:
+    """Stands in for the direct mutation a request is carried out through, recording who it ran
+    as and what it was handed; ``fail`` makes it refuse as the real one does, with a code."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Any]] = []
+        self.fail = False
+
+    async def __call__(self, _self: Any, info: Any, input: Any):
+        from provisa.api.admin.types import MutationResult
+
+        self.calls.append((info.context["request"].state.identity.user_id, input))
+        if self.fail:
+            return MutationResult(success=False, message="no", code="schema.test_refused")
+        return MutationResult(success=True, message="made", code="schema.test_made")
+
+
+async def _queue(plane, kind: str, capability: str, payload: dict, by: str | None) -> int:
+    from provisa.core.repositories import creation_request as cr_repo
+
+    async with plane.db.acquire() as conn:
+        return await cr_repo.create(conn, kind, capability, payload, by)
+
+
+async def _status(plane, rid: int) -> tuple[str, list]:
+    from provisa.core.repositories import creation_request as cr_repo
+
+    async with plane.db.acquire() as conn:
+        row = await cr_repo.get(conn, rid)
+    assert row is not None
+    return row["status"], row["approvals"]
+
+
+@pytest.fixture(params=sorted(_OTHER_TYPES))
+def other(request, monkeypatch):
+    capability, payload, method = _OTHER_TYPES[request.param]
+    creation = _Creation()
+
+    async def _direct(self, info, input):
+        return await creation(self, info, input)
+
+    monkeypatch.setattr(schema_mutation.Mutation, method, _direct)
+    return types.SimpleNamespace(
+        kind=request.param, capability=capability, payload=payload, creation=creation
+    )
+
+
+async def test_rest_approval_creates_what_any_request_asks_for(plane, other):
+    rid = await _queue(plane, other.kind, other.capability, other.payload, "asker")
+
+    early = await _post(plane, "tina", f"{rid}/execute")
+    assert early.status_code == 409 and early.json()["code"] == "requests.approvals_incomplete"
+    assert other.creation.calls == [] and (await _status(plane, rid))[0] == "pending"
+
+    approved = await _post(plane, "tina", f"{rid}/approve")
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "executed"
+    # Created once, as the approver, from the request's own payload.
+    assert [user for user, _ in other.creation.calls] == ["tina"]
+    made = other.creation.calls[0][1]
+    assert (made.id if other.kind == "source" else made.table_name) in ("crm", "leads")
+    assert (await _status(plane, rid))[0] == "executed"
+    assert (await _post(plane, "tom", f"{rid}/approve")).status_code == 409
+
+
+async def test_the_requester_and_a_repeat_approver_are_refused_for_any_type(plane, other):
+    rid = await _queue(plane, other.kind, other.capability, other.payload, "tina")
+    for path in (f"{rid}/approve", f"{rid}/execute"):
+        own = await _post(plane, "tina", path)
+        assert own.status_code == 403 and own.json()["code"] == "requests.own_request", own.text
+    m = schema_mutation.Mutation()
+    gql = await m.execute_creation_request(_info("tina"), rid)  # pyright: ignore[reportCallIssue]
+    assert gql.success is False and gql.code == "requests.own_request"
+    assert other.creation.calls == []
+
+    # One user approves once: the first yes fails to create, the second is refused.
+    other.creation.fail = True
+    failed = await _post(plane, "tom", f"{rid}/approve")
+    assert failed.status_code == 422 and failed.json()["code"] == "schema.test_refused"
+    again = await _post(plane, "tom", f"{rid}/approve")
+    assert again.status_code == 403 and again.json()["code"] == "requests.already_approved"
+    status, approvals = await _status(plane, rid)
+    assert status == "pending" and [a["approver"] for a in approvals] == ["tom"]
+
+
+async def test_a_failed_creation_is_retried_through_execute_for_any_type(plane, other):
+    rid = await _queue(plane, other.kind, other.capability, other.payload, "asker")
+    other.creation.fail = True
+    failed = await _post(plane, "tina", f"{rid}/approve")
+    assert failed.status_code == 422 and failed.json()["code"] == "schema.test_refused"
+    assert (await _status(plane, rid))[0] == "pending"
+    still = await _post(plane, "tina", f"{rid}/execute")
+    assert still.status_code == 422 and (await _status(plane, rid))[0] == "pending"
+
+    other.creation.fail = False
+    retried = await _post(plane, "tom", f"{rid}/execute")
+    assert retried.status_code == 200 and retried.json()["status"] == "executed"
+    assert [user for user, _ in other.creation.calls] == ["tina", "tina", "tom"]
+
+
+async def test_the_graphql_execute_is_held_to_the_count_for_any_type(plane, other):
+    m = schema_mutation.Mutation()
+    rid = await _queue(plane, other.kind, other.capability, other.payload, "asker")
+    early = await m.execute_creation_request(_info("tina"), rid)  # pyright: ignore[reportCallIssue]
+    assert early.success is False and early.code == "requests.approvals_incomplete"
+    lacking = await m.execute_creation_request(_info("sam"), rid)  # pyright: ignore[reportCallIssue]
+    assert lacking.success is False and "Missing capability" in lacking.message
+    assert other.creation.calls == [] and (await _status(plane, rid))[0] == "pending"
+
+    other.creation.fail = True
+    await _post(plane, "tina", f"{rid}/approve")
+    other.creation.fail = False
+    done = await m.execute_creation_request(_info("tom"), rid)  # pyright: ignore[reportCallIssue]
+    assert done.success is True and done.code == "schema.request_executed"
+    assert other.creation.calls[-1][0] == "tom"
+    assert (await _status(plane, rid))[0] == "executed"
+
+
+async def test_a_webhook_request_is_approved_only_while_its_webhook_exists(plane, monkeypatch):
+    from provisa.core.repositories import creation_request as cr_repo
+
+    rebuilt: list[str] = []
+
+    async def _rebuild() -> None:
+        async with plane.db.acquire() as conn:
+            rebuilt.append(str(await cr_repo.latest_status(conn, "webhook", "notify")))
+
+    monkeypatch.setattr(schema_mutation, "_rebuild_schemas", _rebuild)
+    m = schema_mutation.Mutation()
+    rid = await _queue(plane, "webhook", "webhook_registration", {"name": "notify"}, None)
+
+    for attempt in (
+        await _post(plane, "tina", f"{rid}/execute"),
+        await _post(plane, "sam", f"{rid}/approve"),
+    ):
+        assert attempt.status_code in (403, 409)
+    early = await m.execute_creation_request(_info("tina"), rid)  # pyright: ignore[reportCallIssue]
+    assert early.success is False and early.code == "requests.approvals_incomplete"
+
+    # No such webhook: the approval is recorded, nothing is exposed, the request stays pending.
+    missing = await _post(plane, "tina", f"{rid}/approve")
+    assert missing.status_code == 422 and missing.json()["code"] == "schema.webhook_not_found"
+    assert (await _status(plane, rid))[0] == "pending" and rebuilt == []
+
+    async with plane.db.acquire() as conn:
+        await conn.execute_core(insert(tracked_webhooks).values(name="notify", url="http://x"))
+    done = await m.execute_creation_request(_info("tom"), rid)  # pyright: ignore[reportCallIssue]
+    assert done.success is True, done.message
+    # The schema is rebuilt after the request is marked executed, which is what exposes it.
+    assert rebuilt == ["executed"]
+
+
+async def test_rest_approval_exposes_a_webhook(plane, monkeypatch):
+    rebuilt: list[int] = []
+
+    async def _rebuild() -> None:
+        rebuilt.append(1)
+
+    monkeypatch.setattr(schema_mutation, "_rebuild_schemas", _rebuild)
+    async with plane.db.acquire() as conn:
+        await conn.execute_core(insert(tracked_webhooks).values(name="notify", url="http://x"))
+    rid = await _queue(plane, "webhook", "webhook_registration", {"name": "notify"}, None)
+    approved = await _post(plane, "tina", f"{rid}/approve")
+    assert approved.status_code == 200 and approved.json()["status"] == "executed"
+    assert rebuilt == [1]
+
+
+async def test_decisions_on_other_types_are_on_the_trail_too(plane, other):
+    rid = await _queue(plane, other.kind, other.capability, other.payload, "asker")
+    await _post(plane, "tina", f"{rid}/execute")
+    await _post(plane, "tina", f"{rid}/approve")
+    assert [
+        (action, actor, detail["outcome"]) for action, actor, detail in await _trail(plane)
+    ] == [
+        (f"{other.kind}_request.execute", "tina", "refused"),
+        (f"{other.kind}_request.approve", "tina", "done"),
+        (f"{other.kind}_request.execute", "tina", "done"),
+    ]
+
+
+async def test_a_table_request_is_created_under_the_approvers_own_domain_gate(plane):
+    # Not patched: the real register_table. The request names a finance table; the approver
+    # holds table_registration in sales only, so the direct mutation's own gate refuses, the
+    # approval stays recorded and nothing is registered.
+    rid = await _queue(
+        plane, "table", "table_registration", {**_TABLE, "domain_id": "finance"}, "asker"
+    )
+    refused = await _post(plane, "tina", f"{rid}/approve")
+    assert refused.status_code == 403, refused.text
+    assert refused.json()["code"] == "auth.domain_denied"
+    status, approvals = await _status(plane, rid)
+    assert status == "pending" and [a["approver"] for a in approvals] == ["tina"]
+    async with plane.db.acquire() as conn:
+        found = await conn.execute_core(
+            select(registered_tables.c.id).where(registered_tables.c.table_name == "leads")
+        )
+        assert found.fetchone() is None

@@ -195,7 +195,7 @@ def _counted(approvals: list[dict], requested_by: str | None) -> dict[str, set[s
     """approver -> involved domains reached, the requester left out, each user once."""
     by_user: dict[str, set[str]] = {}
     for a in approvals:
-        if a["approver"] == requested_by:
+        if requested_by is not None and a["approver"] == requested_by:
             continue
         by_user.setdefault(a["approver"], set()).update(a["domains"])
     return by_user
@@ -217,6 +217,33 @@ def executable(involved: frozenset[str], approvals: list[dict], requested_by: st
         return False
     counted = _counted(approvals, requested_by)
     return len(counted) >= REQUIRED_APPROVERS and not waiting_on(involved, approvals, requested_by)
+
+
+def repeat_refusal(
+    *, user_id: str | None, requested_by: str | None, approvals: list[dict]
+) -> Refusal | None:
+    """The two refusals every request type shares: the requester does not approve their own
+    request, and one user's approval counts once. The unsigned dev principal has no user to
+    compare, as at every capability gate."""
+    if not user_id or user_id == "anonymous":
+        return None
+    if user_id == requested_by:
+        return Refusal("requests.own_request", "You cannot decide a request you made")
+    if any(a["approver"] == user_id for a in approvals):
+        return Refusal("requests.already_approved", "You have already approved this request")
+    return None
+
+
+def count_refusal(approvals: list[dict], requested_by: str | None, required: int) -> Refusal | None:
+    """Why a request of any type may not be carried out yet: it has not had the approvals its
+    type requires, from different users, none of them the requester."""
+    if len(_counted(approvals, requested_by)) >= required:
+        return None
+    return Refusal(
+        "requests.approvals_incomplete",
+        f"This request needs approvals from {required} different users",
+        {"required": required},
+    )
 
 
 def incomplete_refusal(
@@ -250,7 +277,7 @@ async def record(
     reach: frozenset[str] | None,
     refusal: Refusal | None = None,
 ) -> None:
-    """Write one decision on a relationship request, or one refused attempt at it, to the org's
+    """Write one decision on a creation request, or one refused attempt at it, to the org's
     administrative trail: the request, who asked, who acted, the domains the request touches,
     the ones the actor's right reached, and how it came out."""
     from provisa.core.org_membership import record_admin_action
@@ -266,7 +293,7 @@ async def record(
         detail["refusal"] = refusal.code
     await record_admin_action(
         model_db,
-        action=f"relationship_request.{action}",
+        action=f"{request['request_type']}_request.{action}",
         # The trail's actor column is NOT NULL; a decision nobody signed is recorded as the
         # anonymous principal, as the other administrative entries record it.
         actor_id=actor or "anonymous",

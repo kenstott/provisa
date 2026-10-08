@@ -622,7 +622,7 @@ Rebuild the in-memory schema from database state. Useful after external database
 
 #### `executeCreationRequest(requestId: Int!) → MutationResult`
 
-A rights-holder executes a queued creation request — relationship, view, or webhook. Requires the capability the request is waiting on. A relationship request is refused until two different users, neither the requester, have approved it and every domain it touches has an approver (`requests.waiting_on_domains`, `requests.approvals_incomplete`); approvals are given through `POST /admin/creation-requests/{id}/approve`, and the approval that completes the rule creates the relationship. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py:2977-3062`, `provisa/api/admin/creation_requests_router.py`]
+Carries out a creation request that has had its approvals — relationship, view, table, source or webhook — through the code the direct mutation uses. Refused with `requests.approvals_incomplete` until the request's required approvals are met (one, or two for a relationship) by users other than the requester; a relationship request is also refused with `requests.waiting_on_domains` while a domain it touches has no approver. Approvals are given through `POST /admin/creation-requests/{id}/approve`, and the approval that completes the count performs the creation, so this mutation serves to retry a creation that failed. A failed creation leaves the request pending and answers with the failure's own code. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py` `execute_creation_request`, `perform_request_creation`; `provisa/api/admin/creation_requests_router.py`]
 
 #### `rejectCreationRequest(requestId: Int!, reason: String!) → MutationResult`
 

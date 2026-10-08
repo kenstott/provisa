@@ -146,7 +146,7 @@ async def mark_rejected(  # REQ-063, REQ-434
 
 
 async def add_approval(
-    conn: "Connection", request_id: int, approver: str, domains: list[str]
+    conn: "Connection", request_id: int, approver: str | None, domains: list[str]
 ) -> dict | None:  # REQ-480, REQ-1948
     """Append an approval entry. Returns updated row or None if not found/already resolved.
 

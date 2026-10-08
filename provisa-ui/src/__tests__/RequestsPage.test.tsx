@@ -73,6 +73,28 @@ const MINE = {
   approve_refusal: OWN_REFUSAL,
 };
 
+// A view request: one approval, which creates the view. A second one whose creation failed after
+// that approval is the only place Execute is offered.
+const VIEW = {
+  ...base,
+  id: 4,
+  request_type: "view",
+  capability: "create_view",
+  required_approvals: 1,
+  requested_by: "asker",
+  approvals: [],
+  domains: [],
+  waiting_on: [],
+  can_decide: true,
+  approve_refusal: null,
+};
+const VIEW_TO_RETRY = {
+  ...VIEW,
+  id: 5,
+  approvals: [{ approver: "me", approved_at: "now", domains: [] }],
+  approve_refusal: { code: "requests.already_approved", params: {}, detail: "server English" },
+};
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -86,7 +108,7 @@ function serve(approve: () => Response) {
     vi.fn(async (url: string) => {
       if (url.includes("/rejection-reasons")) return json({ relationship: ["duplicate"] });
       if (url.endsWith("/approve")) return approve();
-      return json([DECIDABLE, MINE, ONE_SIDED]);
+      return json([DECIDABLE, MINE, ONE_SIDED, VIEW, VIEW_TO_RETRY]);
     }),
   );
 }
@@ -166,6 +188,17 @@ describe("RequestsPage — a request is decided by the domains it touches", () =
     page();
     await row(1);
     expect(screen.queryByTestId("requests-execute-1")).toBeNull();
+  });
+
+  it("offers execute only to retry a request that has had its approvals", async () => {
+    serve(() => json(DECIDABLE));
+    page();
+    const fresh = await row(4);
+    expect(within(fresh).getByTestId("requests-approve-4")).toBeEnabled();
+    expect(within(fresh).queryByTestId("requests-execute-4")).toBeNull();
+    const retry = await row(5);
+    expect(within(retry).getByTestId("requests-execute-5")).toBeEnabled();
+    expect(within(retry).getByTestId("requests-approve-5")).toBeDisabled();
   });
 
   it.each([

@@ -19,7 +19,7 @@ A relationship request is decided by the domains it touches (REQ-1948); the rule
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -141,7 +141,8 @@ async def _audit(
         request=row,
         actor=_user_id(request),
         involved=involved,
-        reach=_reach(request),
+        # Only a relationship request is decided by domains; any other touches none here.
+        reach=_reach(request) if _is_relationship(row) else None,
         refusal=refusal,
     )
 
@@ -189,28 +190,35 @@ async def _pending(conn: "Connection", request_id: int) -> dict:
 
 async def _carry_out(
     conn: "Connection", row: dict, request: Request, involved: frozenset[str]
-) -> None:  # REQ-1948
-    """Create the relationship a fully approved request asks for, and mark the request executed.
+) -> None:  # REQ-434, REQ-1948
+    """Create what a request that has had its approvals asks for, and mark it executed.
 
-    The approvals are the authority: the relationship is stored for the domains that said yes,
-    whichever of them the caller sits in. The target's domain has approved it, so the edge is
-    not flagged for that domain's review (REQ-1531).
+    Every type goes through ``perform_request_creation`` — the code the direct mutation uses.
+    A relationship is stored on its approvals' authority (REQ-1948); a view, table or source is
+    created as the caller, whose own capability and domain gates apply. A creation that fails
+    leaves the request pending, answered with the failure's own code.
     """
-    from provisa.api.admin.schema_common import _rebuild_relationship_input
-    from provisa.api.admin.schema_mutation import save_relationship
+    import types
 
-    user_id = _user_id(request)
-    result = await save_relationship(
-        _rebuild_relationship_input(row["payload"]), owner=user_id, needs_review=False
-    )
+    from provisa.api.admin.schema_mutation import perform_request_creation, request_carried_out
+
+    info = types.SimpleNamespace(context={"request": request})
+    try:
+        result = await perform_request_creation(cast("Any", info), row)
+    except PermissionError as e:
+        # The direct mutation's own gate refused the caller (a view, table or source is created
+        # as the caller): the same answer, and the same codes, the REST gates give.
+        code = "auth.missing_capability" if str(e).startswith("Missing") else "auth.domain_denied"
+        await _refuse(request, row, "execute", involved, approvals_rule.Refusal(code, str(e)), 403)
+        raise
     if not result.success:
-        # Every refusal save_relationship gives carries its code (cardinality, junction keys,
-        # fakes); the code is what the trail and the client name the failure by.
-        assert result.code is not None
+        if result.code is None:
+            raise HTTPException(status_code=422, detail=result.message)
         failed = approvals_rule.Refusal(result.code, result.message, dict(result.params or {}))
         await _refuse(request, row, "execute", involved, failed, status_code=422)
-    if not await cr_repo.mark_executed(conn, row["id"], user_id):
+    if not await cr_repo.mark_executed(conn, row["id"], _user_id(request)):
         raise HTTPException(status_code=409, detail="Could not execute request")
+    await request_carried_out(row)
     await _audit(request, row, "execute", involved)
 
 
@@ -329,7 +337,14 @@ async def list_requests(  # REQ-063, REQ-434, REQ-1948
                 )
             else:
                 decides = _holds(request, row["capability"])
-                row["approve_refusal"] = None
+                repeat = approvals_rule.repeat_refusal(
+                    user_id=user_id, requested_by=row["requested_by"], approvals=row["approvals"]
+                )
+                row["approve_refusal"] = (
+                    None
+                    if repeat is None
+                    else {"code": repeat.code, "params": repeat.params, "detail": repeat.message}
+                )
                 row["domains"] = []
                 row["waiting_on"] = []
             if not (decides or mine):
@@ -348,39 +363,31 @@ async def approve_request(request_id: int, request: Request):  # REQ-063, REQ-36
         row = await _pending(conn, request_id)
         if _is_relationship(row):
             return await _approve_relationship(conn, row, request)
+        # Every type: the right the request names, never the requester's own yes, one yes per
+        # user; the approval that completes the count creates what the request asks for.
         _require_capability(request, row["capability"])
-        new_approvals = list(row.get("approvals") or []) + [
-            {"approver": user_id, "approved_at": "now"}
-        ]
-        upd = await conn.execute_core(
-            update(creation_requests)
-            .where(
-                and_(
-                    creation_requests.c.id == request_id,
-                    creation_requests.c.status == "pending",
-                )
-            )
-            .values(approvals=new_approvals)
+        none: frozenset[str] = frozenset()
+        await _refuse(
+            request,
+            row,
+            "approve",
+            none,
+            approvals_rule.repeat_refusal(
+                user_id=user_id, requested_by=row["requested_by"], approvals=row["approvals"]
+            ),
         )
-        if (upd.rowcount or 0) == 0:
+        stored = await cr_repo.add_approval(conn, request_id, user_id, [])
+        if stored is None:
             raise HTTPException(status_code=409, detail="Could not record approval")
-        result = await conn.execute_core(
-            select(creation_requests).where(creation_requests.c.id == request_id)
-        )
-        updated = _deserialize(dict(result.fetchone()._mapping))
-        approvals = updated.get("approvals") or []
-        required = updated.get("required_approvals", 1)
-        if len(approvals) >= required:
-            await conn.execute_core(
-                update(creation_requests)
-                .where(
-                    and_(
-                        creation_requests.c.id == request_id,
-                        creation_requests.c.status == "pending",
-                    )
-                )
-                .values(status="executed", resolved_by=user_id, resolved_at=func.now())
+        updated = _deserialize(stored)
+        await _audit(request, updated, "approve", none)
+        if (
+            approvals_rule.count_refusal(
+                updated["approvals"], updated["requested_by"], updated["required_approvals"]
             )
+            is None
+        ):
+            await _carry_out(conn, updated, request, none)
             updated["status"] = "executed"
     return updated
 
@@ -511,17 +518,27 @@ async def execute_request(request_id: int, request: Request):  # REQ-063, REQ-36
             )
             await _carry_out(conn, row, request, involved)
             return {"id": request_id, "status": "executed"}
+        # Every other type: executing is not a way around the approvals either.
         _require_capability(request, row["capability"])
-        result = await conn.execute_core(
-            update(creation_requests)
-            .where(
-                and_(
-                    creation_requests.c.id == request_id,
-                    creation_requests.c.status == "pending",
-                )
-            )
-            .values(status="executed", resolved_by=_user_id(request), resolved_at=func.now())
+        none: frozenset[str] = frozenset()
+        await _refuse(
+            request,
+            row,
+            "execute",
+            none,
+            approvals_rule.repeat_refusal(
+                user_id=_user_id(request), requested_by=row["requested_by"], approvals=[]
+            ),
         )
-        if (result.rowcount or 0) != 1:
-            raise HTTPException(status_code=409, detail="Could not execute request")
+        await _refuse(
+            request,
+            row,
+            "execute",
+            none,
+            approvals_rule.count_refusal(
+                row["approvals"], row["requested_by"], row["required_approvals"]
+            ),
+            status_code=409,
+        )
+        await _carry_out(conn, row, request, none)
     return {"id": request_id, "status": "executed"}
