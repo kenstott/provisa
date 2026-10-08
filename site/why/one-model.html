@@ -87,8 +87,14 @@
         <p>
           The business glossary is a graph. Terms are derived from the field names in the
           model, linked to the physical columns they name, and connected by the relationships
-          between those tables. It is separate from the metrics: a glossary term says what a
-          concept is, a metric says how a number is computed.
+          between those tables. You can also add any concept of your own, give it a
+          definition, and link it into the glossary. That is an ontology: a graph of
+          concepts, their definitions and the relationships between them. Provisa maps it to
+          the database structures that hold the values, which is the step that lets it answer
+          questions about your data. A concept is a draft until it reaches data, directly or
+          through other concepts. Only then is it part of the model. It is separate from the
+          metrics: a glossary term says what a concept is, a metric says how a number is
+          computed.
         </p>
         <p>
           The graph is what Cypher queries run over, what finds the path between any two
@@ -115,9 +121,9 @@
 
         <h2>Alongside context layers</h2>
         <p>
-          A context layer such as Atlan tells an agent what it should do. Provisa enforces
-          what it can do. They are complementary, and Provisa publishes its model into
-          Atlan.
+          Data catalogs that provide a context layer tell an agent what it should do.
+          Provisa enforces what it can do. They are complementary, and Provisa publishes its
+          model into those catalogs.
         </p>
       </div>
 
