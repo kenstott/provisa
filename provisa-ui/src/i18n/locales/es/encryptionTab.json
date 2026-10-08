@@ -12,15 +12,14 @@
     "masterKeyPresent": "presente",
     "masterKeyMissing": "ausente",
     "generating": "Generando…",
-    "rotateKey": "Rotar clave maestra",
     "generateKey": "Generar clave maestra",
-    "restartWarning": "{{note}} Rotar una clave maestra mientras existen datos cifrados puede hacer ilegibles las filas anteriores: rote antes de almacenar datos sensibles o planifique un recifrado.",
     "saveTitle": "Guardar configuración de cifrado",
     "keyGeneratedStored": "Clave maestra generada y almacenada en el llavero del sistema operativo (id de clave: {{keyId}}): surte efecto de inmediato, sin necesidad de reiniciar.",
     "keyGeneratedNoKeychain": "No hay llavero del sistema operativo disponible: copie esta clave y configúrela como {{envVar}}. No se mostrará de nuevo.",
     "savedRestartRequired": "Guardado. Reinicie el servicio para aplicar los cambios.",
     "saved": "Guardado.",
     "secretOnFile": "Almacenado: déjelo en blanco para conservarlo",
-    "secretNotSet": "Sin definir"
+    "secretNotSet": "Sin definir",
+    "fingerprintLabel": "Huella"
   }
 }

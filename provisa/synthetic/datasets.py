@@ -89,6 +89,8 @@ class DatasetRow:
     error: str | None
     generated_at: Any
     tables: tuple[DatasetTableRow, ...]
+    # REQ-1942: why the report on the generated rows failed; None when it did not, or has not run.
+    report_error: str | None = None
     fanout_conditions: tuple[FanoutCondition, ...] = ()
     assertions: tuple[str, ...] = ()
     private_epsilon: float | None = None  # REQ-1939, DIFFERENTIAL PRIVACY
@@ -232,6 +234,7 @@ async def list_datasets(conn: Any) -> list[DatasetRow]:
             error=r._mapping["error"],
             generated_at=r._mapping["generated_at"],
             tables=tuple(by.get(r._mapping["id"], [])),
+            report_error=r._mapping["report_error"],
             fanout_conditions=tuple(
                 FanoutCondition(c["relationship"], c["condition"], c["count"])
                 for c in _json(r._mapping["fanout_conditions"])

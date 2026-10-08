@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
+import { Alert, Badge, Button, Code, Group, Select, Stack, Text, TextInput } from "@mantine/core";
 import { Check } from "lucide-react";
 import { missingRequired, secretPlaceholder, seedFields } from "./secretFields";
 import { PlatformRequired } from "./PlatformRequired";
@@ -189,21 +189,30 @@ export function EncryptionTab() {
                   </Badge>
                 )}
               </Text>
-              <Button
-                variant="default"
-                onClick={generate}
-                loading={generating}
-                data-testid="generate-key-button"
-              >
-                {s.key_present ? t("encryptionTab.rotateKey") : t("encryptionTab.generateKey")}
-              </Button>
+              {/* REQ-918: a key is provisioned, never replaced. Once one is in use it is shown by
+                  its fingerprint and there is nothing to generate: a new key would open nothing
+                  written under the first. */}
+              {s.key_fingerprint ? (
+                <Text data-testid="master-key-fingerprint">
+                  {t("encryptionTab.fingerprintLabel")} <Code>{s.key_fingerprint}</Code>
+                </Text>
+              ) : (
+                <Button
+                  variant="default"
+                  onClick={generate}
+                  loading={generating}
+                  data-testid="generate-key-button"
+                >
+                  {t("encryptionTab.generateKey")}
+                </Button>
+              )}
             </Group>
           </>
         )}
       </Stack>
 
       <Alert color="yellow" variant="light">
-        {t("encryptionTab.restartWarning", { note: s.restart_required_note })}
+        {s.restart_required_note}
       </Alert>
 
       <Group gap="sm" align="center">

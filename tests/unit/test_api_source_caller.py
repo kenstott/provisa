@@ -305,6 +305,47 @@ class TestPaginate:
         assert second_call_kwargs["params"] == {"limit": 2, "offset": 2}
 
     @pytest.mark.asyncio
+    async def test_last_row_pagination_starts_each_page_after_the_last_rows_id(self):
+        pagination = PaginationConfig(
+            type=PaginationType.last_row,
+            page_size=2,
+            page_size_param="limit",
+            cursor_param="starting_after",
+            cursor_field="id",
+            rows_field="data",
+            max_pages=10,
+        )
+        endpoint = _endpoint(pagination=pagination, response_root="data")
+        client = MagicMock()
+        client.request = AsyncMock(
+            side_effect=[
+                _resp(200, {"data": [{"id": "a"}, {"id": "b"}], "has_more": True}),
+                _resp(200, {"data": [{"id": "c"}, {"id": "d"}], "has_more": True}),
+                _resp(200, {"data": [{"id": "e"}], "has_more": False}),
+            ]
+        )
+        pages = await _paginate(client, endpoint, "/pets", {"status": "open"}, {}, None, 30.0)
+        assert [[r["id"] for r in page["data"]] for page in pages] == [
+            ["a", "b"],
+            ["c", "d"],
+            ["e"],
+        ]
+        assert [call.kwargs["params"] for call in client.request.await_args_list] == [
+            {"status": "open", "limit": 2},
+            {"status": "open", "limit": 2, "starting_after": "b"},
+            {"status": "open", "limit": 2, "starting_after": "d"},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_last_row_pagination_fails_by_name_when_the_last_row_has_no_id(self):
+        pagination = PaginationConfig(type=PaginationType.last_row, page_size=1, max_pages=5)
+        endpoint = _endpoint(pagination=pagination)
+        client = MagicMock()
+        client.request = AsyncMock(return_value=_resp(200, [{"name": "rex"}]))
+        with pytest.raises(caller.ApiCallError, match="last row's 'id'"):
+            await _paginate(client, endpoint, "/pets", {}, {}, None, 30.0)
+
+    @pytest.mark.asyncio
     async def test_offset_pagination_max_pages_stops(self):
         pagination = PaginationConfig(
             type=PaginationType.offset,

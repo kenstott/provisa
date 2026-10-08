@@ -262,10 +262,14 @@ async def test_the_sources_auth_is_stored_and_reaches_the_caller_and_a_refresh_k
 
 
 def _operation(params: list[str], *, is_list: bool = True, link: bool = False):
+    from jsonschema_path import SchemaPath
+
     from provisa.openapi.mapper import propose_paging
 
-    operation = {"responses": {"200": {"headers": {"Link": {}} if link else {}}}}
-    return propose_paging({}, operation, [{"name": p, "type": "integer"} for p in params], is_list)
+    operation = SchemaPath.from_dict(
+        {"responses": {"200": {"headers": {"Link": {}} if link else {}}}}
+    )
+    return propose_paging(operation, [{"name": p, "type": "integer"} for p in params], is_list)
 
 
 def test_an_operation_with_offset_and_limit_is_offered_offset_paging():
@@ -353,3 +357,139 @@ async def test_a_second_source_registering_a_table_of_the_same_name_keeps_the_fi
     assert sorted(tuple(r) for r in rows) == [("copy", "listPets"), ("petstore", "listPets")]
     assert state.api_endpoints[("petstore", "listPets")].source_id == "petstore"
     assert state.api_endpoints[("copy", "listPets")].source_id == "copy"
+
+
+# -- a page wrapper: the rows are read where the table's paging says (REQ-316) ----------------------
+
+WRAPPED_SPEC = {
+    "openapi": "3.0.0",
+    "paths": {
+        "/pets": {
+            "get": {
+                "operationId": "listPets",
+                "parameters": SPEC["paths"]["/pets"]["get"]["parameters"],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "total": {"type": "integer"},
+                                        "values": SPEC["paths"]["/pets"]["get"]["responses"]["200"][
+                                            "content"
+                                        ]["application/json"]["schema"],
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    },
+}
+
+
+def _wrapped_state():
+    state = _state()
+    state.openapi_specs["petstore"]["spec"] = WRAPPED_SPEC
+    return state
+
+
+def _wrapped_pages():
+    pages = {0: [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}], 2: [{"id": 3, "name": "c"}]}
+    return respx.get(f"{BASE}/pets").mock(
+        side_effect=lambda request: httpx.Response(
+            200, json={"total": 3, "values": pages[int(request.url.params["offset"])]}
+        )
+    )
+
+
+async def test_a_wrapped_list_is_offered_with_where_its_rows_are():
+    from provisa.openapi.mapper import parse_spec
+
+    (query,), _ = parse_spec(WRAPPED_SPEC)
+    assert query.pagination == PaginationConfig(
+        rows_field="values", type="offset", page_param="offset", page_size_param="limit"
+    )
+
+
+@respx.mock
+async def test_a_wrapped_lists_rows_are_read_page_by_page_to_the_short_page(control_plane):
+    state = _wrapped_state()
+    table = _table(max_pages=10)
+    table.pagination = PaginationConfig(type="offset", page_size=2, rows_field="values")
+    await _register_in_the_admin(control_plane, state, table)
+    route = _wrapped_pages()
+    endpoint = state.api_endpoints["listPets"]
+    assert endpoint.response_root == "values"
+    assert [c.name for c in endpoint.columns][:2] == ["id", "name"]
+    rows, cut = answer_rows(
+        endpoint, await call_api(endpoint, {}, state.api_sources["petstore"].base_url)
+    )
+    assert [r["id"] for r in rows] == [1, 2, 3] and cut is None
+    assert route.call_count == 2  # the short page ended it
+
+
+@respx.mock
+async def test_a_wrapped_answer_that_is_not_paged_is_read_once(control_plane):
+    state = _wrapped_state()
+    table = _table(max_pages=10)
+    table.pagination = PaginationConfig(rows_field="values")
+    await _register_in_the_admin(control_plane, state, table)
+    route = respx.get(f"{BASE}/pets").mock(
+        return_value=httpx.Response(200, json={"total": 1, "values": [{"id": 9, "name": "z"}]})
+    )
+    endpoint = state.api_endpoints["listPets"]
+    rows, cut = answer_rows(
+        endpoint, await call_api(endpoint, {}, state.api_sources["petstore"].base_url)
+    )
+    assert [(r["id"], r["name"]) for r in rows] == [(9, "z")]
+    assert (cut, route.call_count) == (None, 1)
+
+
+async def test_a_row_location_the_response_does_not_have_is_refused_by_name(control_plane):
+    from provisa.api.admin._openapi_table_registration import persist_openapi_endpoint
+    from provisa.core.repositories import table as table_repo
+
+    table = _table(max_pages=10)
+    table.pagination = PaginationConfig(rows_field="items")
+    async with control_plane.acquire() as conn:
+        await table_repo.upsert(conn, table)
+        refused = await persist_openapi_endpoint(_wrapped_state(), conn, table)
+    assert (refused.success, refused.code) == (False, "schema.openapi_no_rows_field")
+    assert refused.params == {"table": "listPets", "rows_field": "items"}
+
+
+# -- the parameters a read of the whole collection is called with ---------------------------------
+
+
+def _params_spec(*parameters: dict) -> dict:
+    return {"paths": {"/pets": {"get": {"parameters": list(parameters)}}}}
+
+
+def test_a_list_parameter_is_sent_every_value_its_items_allow():
+    from provisa.api_source.openapi_endpoint import default_params_from_spec
+
+    listed = {"type": "array", "items": {"type": "string", "enum": ["available", "sold"]}}
+    spec = _params_spec(
+        {"name": "status", "in": "query", "schema": listed},
+        {"name": "kind", "in": "query", **listed},  # Swagger 2.0: declared on the parameter
+    )
+    assert default_params_from_spec(spec, "/pets") == {
+        "status": ["available", "sold"],
+        "kind": ["available", "sold"],
+    }
+
+
+def test_a_single_valued_enum_is_sent_its_default_or_not_at_all():
+    from provisa.api_source.openapi_endpoint import default_params_from_spec
+
+    one_of = {"type": "string", "enum": ["draft", "open", "paid"]}
+    spec = _params_spec(
+        {"name": "status", "in": "query", "schema": one_of},
+        {"name": "sort", "in": "query", "schema": {**one_of, "default": "open"}},
+        {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 100}},
+    )
+    assert default_params_from_spec(spec, "/pets") == {"sort": "open", "limit": 100}

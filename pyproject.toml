@@ -61,6 +61,9 @@ dependencies = [
     "apscheduler>=3.10",
     "inflect",
     "jsonpath-ng",
+    # Reads an OpenAPI or Swagger spec and follows its references (provisa/openapi/mapper.py,
+    # REQ-314). From the python-openapi project, over `referencing`. Apache-2.0.
+    "jsonschema-path>=0.4,<0.5",
     "PyJWT[crypto]",
     "bcrypt",
     # REQ-1265: the LDAP auth provider's directory client. Pure Python, no native library.
@@ -293,6 +296,8 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 "provisa" = ["_ui/**/*", "_config/*.yaml", "_config/demo/files/*"]
 # REQ-1923: the shipped schema of each branded GraphQL source (scripts/bake_graphql_brand_schema.py).
 "provisa.graphql_remote" = ["_known_schemas/*.json.gz"]
+# REQ-1923: the pinned spec of each branded OpenAPI source (scripts/bake_openapi_brand_spec.py).
+"provisa.openapi" = ["_known_specs/*.json.gz", "_known_specs/THIRD_PARTY_NOTICES"]
 # REQ-1494: the portable fake definition's versioned word lists and templates, and their notice.
 "provisa.fakes" = ["portable/*.json", "portable/THIRD_PARTY_NOTICES"]
 

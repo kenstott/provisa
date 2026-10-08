@@ -246,7 +246,8 @@
       "offset": "位移與限制",
       "page_number": "頁碼",
       "cursor": "游標",
-      "link_header": "Link 標頭"
+      "link_header": "Link 標頭",
+      "last_row": "最後一列之後"
     },
     "pagingFields": {
       "pageParam": "頁參數",
@@ -254,7 +255,10 @@
       "pageSize": "頁面大小",
       "cursorParam": "游標參數",
       "cursorField": "下一個游標欄位",
-      "maxPages": "頁數上限"
+      "maxPages": "頁數上限",
+      "afterParam": "起始位置參數",
+      "lastRowField": "最後一列的欄位",
+      "rowsField": "資料列所在的屬性"
     },
     "pagingCutNote": "在 API 仍有更多資料時達到頁數上限的讀取會被報告為已截斷。",
     "pagingTypeRequired": "請選擇分頁類型，或清空分頁欄位。",
@@ -281,6 +285,8 @@
       "rebuildEveryHelp": "定期重建整個複本，以擷取增量遺漏的內容。留空 = 永不依時鐘重建。",
       "query": "增量查詢（選用，來源原生）",
       "queryHelp": "使用 $wm（游標）及 {{fields}} 預留位置的來源原生查詢。SQL 來源請留空：Provisa 會產生 SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>。"
-    }
+    },
+    "pagingRowsFieldHelp": "回應中包含資料列的屬性，例如分頁包裝中的 values 或 data。當回應本身就是資料列時請留空。資料表的欄位即該處物件的欄位。",
+    "pagingRowsFieldFixed": "在註冊資料表時設定。如要從其他位置讀取資料列，請重新註冊該資料表。"
   }
 }

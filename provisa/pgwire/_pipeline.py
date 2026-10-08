@@ -1255,18 +1255,7 @@ async def govern_statement(
     )
     await _guard_complexity(sql, role_id, _parsed_input, gov_ctx, ctx, state)
 
-    from provisa.security.rights import Capability, has_capability
-
-    _role_guard = role.get("relationship_guard", True)
-    _bypass_guard = has_capability(role, Capability.IGNORE_RELATIONSHIPS) or (
-        (not _role_guard) and sql_opts_out
-    )
-    # REQ-693: high-security mode is belts and suspenders — the relationship guard is not
-    # bypassable there at all. A deployment that improperly granted ignore_relationships (or
-    # cleared relationship_guard) to a production role does not get a break-out; the grant is
-    # ignored and every join must exist in the approved relationship catalog.
-    if getattr(state, "security_high", False):
-        _bypass_guard = False
+    _bypass_guard = relationship_guard_bypassed(role, state, statement_opts_out=sql_opts_out)
 
     # REQ-1877: in-memory, TTL-evicted cache of the validate_sql + domain-access outcome — see
     # provisa/compiler/compiled_query_cache.py for the read-verified scope decision (routing/
@@ -3269,7 +3258,8 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     extra_selections: dict | None = None,
     sdl_joins: bool,
 ) -> _Plan:
-    """Governance + routing for already-physical SQL.
+    """Governance + routing for already-physical SQL. ``sdl_joins``: see
+    :func:`_govern_and_route_compiled`.
 
     Used by the compiled transport paths after language-specific compilation. ``columns``: the
     output columns the compiler named, which the approval hook is told of (REQ-203)."""
@@ -3468,6 +3458,24 @@ class ApprovalDenied(PermissionError):  # REQ-203
         self.reason = reason
 
 
+def relationship_guard_bypassed(role: dict, state: Any, *, statement_opts_out: bool) -> bool:
+    """Whether ``role`` may relate tables outside the registered relationships (REQ-264): it
+    holds ``ignore_relationships``, or its relationship guard is cleared and the statement opts
+    out. Decided here for every statement, raw or compiled, so no surface decides it for itself.
+
+    REQ-693: high-security mode is belts and suspenders — the relationship guard is not
+    bypassable there at all. A deployment that improperly granted ignore_relationships (or
+    cleared relationship_guard) to a production role does not get a break-out; the grant is
+    ignored and every join must exist in the approved relationship catalog."""
+    from provisa.security.rights import Capability, has_capability
+
+    if getattr(state, "security_high", False):
+        return False
+    return has_capability(role, Capability.IGNORE_RELATIONSHIPS) or (
+        (not role.get("relationship_guard", True)) and statement_opts_out
+    )
+
+
 @dataclass
 class _GovernedCompiled:
     """A compiled statement the pipeline has governed but not yet routed — the compiled stage's
@@ -3560,28 +3568,28 @@ async def _govern_compiled(
         engine=getattr(state, "federation_engine", None),
     )
     await _guard_complexity(sql, role_id, _compiled_tree, gov_ctx, ctx, state)
-    # The V-rules every statement meets (a masked column in a filter, a hidden column, an
-    # unapproved join, …), on the compiled path too. The relationship guard is skipped only where
-    # the GraphQL SDL defined the joins, or for a role granted ignore_relationships outside
-    # high-security mode (the raw-SQL stage's rule, REQ-693).
+    # The V-rules every statement meets (a masked column in a filter, a hidden column, tables
+    # related outside the approved relationships, …), on the compiled path too. The relationship
+    # guard (REQ-603) is skipped only where the GraphQL SDL defined the joins, or by the one
+    # bypass rule the raw-SQL stage uses (never in high-security mode, REQ-693). Decided once
+    # here: the governed statement is kept, so a repeat of it is not checked again.
     from provisa.compiler.sql_validator import validate_sql
-    from provisa.security.rights import Capability, has_capability
 
     _role = require_role(state.roles, role_id)
-    _bypass_guard = sdl_joins or (
-        has_capability(_role, Capability.IGNORE_RELATIONSHIPS)
-        and not getattr(state, "security_high", False)
-    )
     violations = validate_sql(
         sql,
         ctx,
         gov_ctx,
         _role,
         getattr(state, "tables", []),
-        bypass_relationship_guard=_bypass_guard,
+        bypass_relationship_guard=sdl_joins
+        or relationship_guard_bypassed(_role, state, statement_opts_out=False),
         bypass_uncovered_relationships=True,
     )
     if violations:
+        from provisa.audit.pipeline import write_denial
+
+        await write_denial(sql, role_id, _compiled_tree, gov_ctx, state)  # REQ-1386
         raise PermissionError("; ".join(f"[{v.code}] {v.message}" for v in violations))
 
     _table_ids = tuple(resolve_table_ids(_compiled_tree, gov_ctx))  # REQ-1897

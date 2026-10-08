@@ -229,8 +229,15 @@ def _build_sql_from_ast(
     try:
         sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, body.params)
     except Exception as exc:
-        from provisa.cypher.translator_types import CypherCrossSourceError, CypherTranslateError
+        from provisa.cypher.translator_types import (
+            CypherCrossSourceError,
+            CypherTranslateError,
+            UnregisteredRelationshipType,
+        )
 
+        if isinstance(exc, UnregisteredRelationshipType):
+            # REQ-603: refused by the translation every Cypher surface performs.
+            return JSONResponse(status_code=403, content={"error": str(exc)})
         if isinstance(exc, (CypherCrossSourceError, CypherTranslateError)):
             return JSONResponse(status_code=400, content={"error": str(exc)})
         raise
@@ -462,6 +469,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         from provisa.compiler.stage2 import build_governance_context
         from provisa.compiler.rls import RLSContext
         from provisa.compiler.sql_validator import validate_sql as _validate_sql
+        from provisa.pgwire._pipeline import relationship_guard_bypassed
         from provisa.pgwire._pipeline import _govern_and_route_compiled
     except Exception as exc:
         log.exception("Cypher imports failed")
@@ -504,28 +512,6 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             ast = parse_cypher(query_text)
         except CypherParseError as exc:
             return JSONResponse(status_code=400, content={"error": str(exc)})
-
-        # REQ-603: Reject Cypher queries that reference unregistered relationship types.
-        # The SQL translator converts unknown rel types to exp.false() (best-effort, no crash),
-        # so the V002 SQL-layer guard (bypass_relationship_guard=True below) cannot catch this.
-        # We check explicitly at the AST level before SQL generation.
-        from provisa.cypher.parser import PathPattern as _PathPattern, PathFunction as _PathFunction  # noqa: PLC0415,E501
-
-        _unknown_rels: list[str] = []
-        for _mc in ast.match_clauses:
-            _pat = _mc.pattern
-            _ppath = _pat.pattern if isinstance(_pat, _PathFunction) else _pat
-            if isinstance(_ppath, _PathPattern):
-                for _rp in _ppath.rels:
-                    for _rt in _rp.types:
-                        if _rt not in label_map.aliases:
-                            _unknown_rels.append(_rt)
-        if _unknown_rels:
-            _unique = sorted(set(_unknown_rels))
-            return JSONResponse(
-                status_code=403,
-                content={"error": f"Unregistered relationship type(s): {', '.join(_unique)}"},
-            )
 
         # Validate and bind params
         param_names = collect_param_names(query_text)
@@ -572,7 +558,12 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             _gov_ctx_for_validate,
             _role_dict,
             getattr(state, "tables", []),
-            bypass_relationship_guard=True,
+            # REQ-264: the relationship guard is held by the pipeline for every Cypher surface
+            # (provisa.pgwire._pipeline._govern_compiled), by the one bypass rule; here it is
+            # decided by that same rule, never switched off for the surface.
+            bypass_relationship_guard=relationship_guard_bypassed(
+                _role_dict, state, statement_opts_out=False
+            ),
             bypass_uncovered_relationships=True,
         )
         if _violations:

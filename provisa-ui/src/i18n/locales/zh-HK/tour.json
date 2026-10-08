@@ -22,7 +22,7 @@
       "intro": "一個模型承載你的數據、元數據和處理,保持同步,並在各處重用。選擇一個主題:每個主題都是一段獨立的簡短導覽,按「完成」即可返回此處。工具列中的指南針可隨時重新開啟此選單。",
       "completed": "已完成",
       "steps": "步驟數:{{count}}",
-      "coreTour": "開始核心導覽"
+      "coreTour": "從頭開始"
     },
     "topics": {
       "connect": {
@@ -76,7 +76,7 @@
         "description": "➕ 新連接由這個按鈕開始——PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及 50 多種其他類型。"
       },
       "step3": {
-        "title": "60 種數據來源類型，13 個類別",
+        "title": "61 種數據來源類型，13 個類別",
         "description": "一個選擇器按類別列出所有類型：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。可以按名稱或別名搜尋，也可以用類別標籤收窄範圍。每種類型都有標誌和可達性圖示：⚡ 表示就地即時讀取，複製圖示表示 Provisa 讀取已更新的副本。<p>揀選一個，填寫連線，儲存。</p>"
       },
       "step4": {
@@ -129,11 +129,11 @@
       },
       "step15": {
         "title": "連接圖譜",
-        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>關係將表格跨數據來源連結起來——即使是跨不同數據庫——把扁平的表格變成一個可遍歷的<strong>圖譜</strong>。</p><p>🛡️ 這些關係也可以被<strong>強制執行</strong>：給予使用者自由探索的空間，同時設有合理的防護措施。</p>"
+        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>關係有兩個作用。它塑造你的<strong>資料模型</strong>：跨數據來源和網域的表格如何連結，而每一種查詢入口——GraphQL 嵌套、Cypher 路徑或 SQL 連接（join）——都沿著它走。</p><p>它同時也是一條<strong>規則</strong>。連接受治理管控：沒有 <code>ignore_relationships</code> 權限的角色只能沿已註冊的關係做連接，所以存在哪些關係，決定了哪些查詢是合法的。你可以有意把這項權限授予你信任的角色，該角色就可以自由連接（高安全模式下不適用）。</p><p>關係將表格跨數據來源連結起來——即使是跨不同數據庫——把扁平的表格變成一個可遍歷的<strong>圖譜</strong>。</p>"
       },
       "step16": {
         "title": "定義關係",
-        "description": "🔗 將來源欄位對應到目標欄位，並設定<strong>基數</strong>：<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ 也可以讓 Provisa 用 AI 為你<strong>推斷</strong>關係。</p>"
+        "description": "🔗 將來源欄位對應到目標欄位，並設定<strong>基數</strong>：<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ 也可以讓 Provisa 用 AI 為你<strong>推斷</strong>關係。</p><p>🛡️ 因為關係是一條規則，新增、修改或刪除關係都可能讓某個查詢變得合法或非法。來自來源表所在網域之外、或來自無權建立關係的人所提出的關係，需要等待核准。</p>"
       },
       "stepRelsSuggest": {
         "title": "建議關係",
@@ -141,7 +141,7 @@
       },
       "stepRelsList": {
         "title": "所有關係集中在一個清單",
-        "description": "📋 模型中的關係，無論資料來源是否宣告，均可篩選和排序。展開一列即可編輯它或新增其反向關係。角色只會走訪它擁有權限的關係。"
+        "description": "📋 模型中的關係，無論資料來源是否宣告，均可篩選和排序。展開一列即可編輯它或新增其反向關係。角色只能沿這些關係做連接，除非它擁有 ignore_relationships 權限。"
       },
       "step17": {
         "title": "查看 ERD",
@@ -169,7 +169,7 @@
       },
       "stepRequests": {
         "title": "關係請求",
-        "description": "✋ 關係請求需要兩次核准才能執行。你可以核准、執行，或從固定清單中選擇原因後拒絕；已處理的請求會移到「已處理」分頁。"
+        "description": "✋ 這個請求來自無權自行建立關係的人，通常在你的網域之外，想把他們的表與你的表關聯起來——這往往是向你索取資料的第一步。關係受治理管控，所以核准一個關係會改變哪些查詢是合法的：只能沿已核准關係做連接（join）的角色，現在可以跨這個關係做連接。關係請求需要兩次核准才能執行。你可以核准、執行，或從固定清單中選擇原因後拒絕；已處理的請求會移到「已處理」分頁。"
       },
       "stepQualityTable": {
         "title": "品質檢查器也只是一個數據來源",
@@ -274,6 +274,10 @@
       "stepPublish": {
         "title": "發布到你的機構所用的工具",
         "description": "📤 <strong>發布到你的機構本來就在查看的地方。</strong>目錄項目(表、欄位、領域、數據管理員、已批准的關係)、數據產品和欄位層級血緣會發送出去,每個目標接收其所支援的內容:<strong>DataHub、OpenMetadata、Collibra、Atlan 和 Apache Atlas</strong> 作為目錄,<strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong> 作為數據產品列表,血緣則透過 <strong>OpenLineage</strong> 發送。<p>發布只會向外單向進行:Provisa 絕不會把目標讀回來當作事實來源。</p>"
+      },
+      "stepRelsAgents": {
+        "title": "關係與 AI 智能體",
+        "description": "🤖 模型及其關係對 AI 智能體開放——包括 Polly 和透過 MCP 連接的智能體——並決定這些智能體撰寫的查詢。<p>智能體在某個角色下運行，因此適用與人相同的規則：在已註冊關係之外做連接的查詢會<strong>失敗</strong>。這是強制執行的，而不只是建議。</p><p>這也由你決定。想讓智能體發現關係，就把 <code>ignore_relationships</code> 權限授予它的角色；想把它限制在防護欄之內，就不要授予。這與授予可信身份的有意授權相同（高安全模式下永不生效）。</p>"
       }
     },
     "status": {

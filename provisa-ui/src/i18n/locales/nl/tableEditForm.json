@@ -246,7 +246,8 @@
       "offset": "Offset en limiet",
       "page_number": "Paginanummer",
       "cursor": "Cursor",
-      "link_header": "Link-header"
+      "link_header": "Link-header",
+      "last_row": "Na de laatste rij"
     },
     "pagingFields": {
       "pageParam": "Paginaparameter",
@@ -254,7 +255,10 @@
       "pageSize": "Paginagrootte",
       "cursorParam": "Cursorparameter",
       "cursorField": "Veld voor volgende cursor",
-      "maxPages": "Max. pagina's"
+      "maxPages": "Max. pagina's",
+      "afterParam": "Parameter voor begin na",
+      "lastRowField": "Veld van de laatste rij",
+      "rowsField": "Rijen staan onder"
     },
     "pagingCutNote": "Een leesbewerking die Max. pagina's bereikt terwijl de API meer heeft, wordt als afgekapt gemeld.",
     "pagingTypeRequired": "Kies een pagineringstype, of maak de pagineringsvelden leeg.",
@@ -281,6 +285,8 @@
       "rebuildEveryHelp": "Bouwt periodiek de hele replica opnieuw op om alles op te vangen wat een delta mist. Leeg = nooit volgens een klok.",
       "query": "Delta-query (optioneel, bronnatief)",
       "queryHelp": "Een bronnatieve query met de placeholders $wm (cursor) en {{fields}}. Laat leeg voor een SQL-bron: Provisa genereert SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
-    }
+    },
+    "pagingRowsFieldHelp": "De eigenschap van het antwoord die de rijen bevat, zoals values of data in een pagina-wrapper. Laat leeg als het antwoord zelf de rijen is. De kolommen van de tabel zijn die van de objecten daar.",
+    "pagingRowsFieldFixed": "Ingesteld bij het registreren van de tabel. Registreer de tabel opnieuw om de rijen ergens anders te lezen."
   }
 }

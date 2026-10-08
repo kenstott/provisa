@@ -37,6 +37,9 @@ class PaginationType(str, Enum):  # REQ-318
     cursor = "cursor"
     offset = "offset"
     page_number = "page_number"
+    # The next page starts after the last row of this one: a parameter carries a field of that
+    # row (its id), and a page shorter than the page size is the last.
+    last_row = "last_row"
 
 
 #: What only a paged REST endpoint declares.
@@ -54,6 +57,10 @@ class PaginationConfig(BaseModel):  # REQ-318
     page_size: int = Field(default=100, ge=1)
     max_pages: int = Field(default=10, ge=1)
     max_rows: int | None = Field(default=None, ge=1)
+    # REQ-316: the property of a REST answer its rows sit under (a page wrapper's ``data``,
+    # ``values``, ``results``); None when the answer is the rows. It may be declared with no
+    # paging type: an answer wrapped and not paged.
+    rows_field: str | None = None
 
     @model_validator(mode="after")
     def _one_kind(self) -> PaginationConfig:
@@ -62,17 +69,18 @@ class PaginationConfig(BaseModel):  # REQ-318
                 "pagination: page parameters, page_size and max_pages describe a paged endpoint "
                 "and need its type; a connection table sets max_rows only"
             )
-        if self.type is not None and self.max_rows is not None:
+        if self.max_rows is not None and (self.type is not None or self.rows_field is not None):
             raise ValueError(
-                "pagination: max_rows bounds a connection table; a paged endpoint is bounded by "
-                "max_pages"
+                "pagination: max_rows bounds a connection table; a REST endpoint is bounded by "
+                "max_pages and names where its rows are with rows_field"
             )
         return self
 
     @property
     def is_endpoint(self) -> bool:
-        """Whether this is a paged REST endpoint's paging (else a connection table's bound)."""
-        return self.type is not None
+        """Whether this describes a REST endpoint -- how it pages, or where its rows are --
+        (else a connection table's bound)."""
+        return self.type is not None or self.rows_field is not None
 
 
 class PagingRefused(ValueError):
@@ -119,7 +127,8 @@ def check_paging(
         raise PagingRefused(
             "schema.paging_endpoint_needs_type",
             {"table": table},
-            f"table {table!r} is a REST endpoint: its pagination names the paging type",
+            f"table {table!r} is a REST endpoint: its pagination names the paging type, or where "
+            "its rows are",
         )
     if kind == CONNECTION and pagination.is_endpoint:
         raise PagingRefused(

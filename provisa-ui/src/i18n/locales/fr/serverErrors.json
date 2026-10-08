@@ -282,7 +282,7 @@
       "not_virtual_view": "La table n'est pas une vue virtuelle Provisa (source_id != '__derived__')",
       "paging_above_ceiling": "Table {{table}} : max_rows={{max_rows}} dépasse graphql_remote.max_rows={{ceiling}} ; une table peut abaisser la limite de l'opérateur, jamais la relever.",
       "paging_connection_rows_only": "La table {{table}} est une table de connexion : elle pagine par les arguments de son schéma et ne définit que le nombre maximal de lignes.",
-      "paging_endpoint_needs_type": "La table {{table}} est un point de terminaison REST : sa pagination nomme le type de pagination.",
+      "paging_endpoint_needs_type": "La table {{table}} est un point de terminaison REST : sa pagination nomme le type de pagination, ou l'endroit où se trouvent ses lignes.",
       "paging_invalid": "Table {{table}} : {{reason}}",
       "paging_not_paged": "La table {{table}} n'est pas lue page par page ; elle ne prend donc pas de pagination.",
       "query_engine_unavailable": "Moteur de requête indisponible",
@@ -355,7 +355,9 @@
       "webhook_not_found": "Webhook « {{webhook}} » introuvable",
       "change_streams_unavailable": "La source '{{source}}' est un serveur MongoDB autonome, qui ne fournit pas de change streams : le signal de modification native exige un replica set ou un cluster shardé. Exécutez-le en replica set ou utilisez le signal de modification poll.",
       "table_draft_set": "Table {{table}} mise en brouillon",
-      "table_released": "Table {{table}} publiée"
+      "table_released": "Table {{table}} publiée",
+      "openapi_no_rows_field": "Table {{table}} : la réponse n'a aucune propriété {{rows_field}} où lire des lignes.",
+      "paging_rows_field_fixed": "Table {{table}} : l'endroit où se trouvent ses lignes ({{rows_field}}) est défini à l'enregistrement de la table. Enregistrez de nouveau la table pour lire ses lignes ailleurs."
     },
     "secrets": {
       "still_referenced": "{{secret}} est encore nommé par {{count}} valeur(s) stockée(s) dans cette organisation. Modifiez ou retirez chacune, puis supprimez-le de nouveau."

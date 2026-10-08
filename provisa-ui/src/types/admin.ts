@@ -266,7 +266,7 @@ export interface RoleTtl {
 // REQ-318: a table's paging as declared — a paged REST endpoint's type and parameters, or a
 // connection table's row bound (provisa/core/paging.py). Unset fields are null.
 export type PagingKind = "endpoint" | "connection";
-export type PagingType = "link_header" | "cursor" | "offset" | "page_number";
+export type PagingType = "link_header" | "cursor" | "offset" | "page_number" | "last_row";
 export interface Paging {
   type: PagingType | null;
   cursorField: string | null;
@@ -276,6 +276,8 @@ export interface Paging {
   pageSize: number | null;
   maxPages: number | null;
   maxRows: number | null;
+  // REQ-316: the property of a REST answer its rows sit under; null when the answer is the rows.
+  rowsField: string | null;
 }
 
 export interface RegisteredTable {

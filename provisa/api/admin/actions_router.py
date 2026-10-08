@@ -171,12 +171,17 @@ class WebhookInput(BaseModel):  # REQ-209, REQ-210, REQ-211
 
 
 async def _as_source_operation(body: FunctionInput) -> None:
-    """REQ-1924: a command registered on a remote source is one of the source's write
-    operations, called as it is. What it is follows from the operation the source offers -- its
+    """REQ-1924: a command registered on a remote source is one of the operations the source
+    offers as commands -- its write operations, and an OpenAPI source's GETs that answer with
+    no row schema, which read -- called as it is. What it is follows from the operation the source offers -- its
     kind, the schema it is registered under, its arguments, each passed through as a JSON value
     -- and not from what the form sent. An operation the source does not offer is refused."""
     from provisa.api.app import state
-    from provisa.executor.source_operation import OPERATION_SCHEMA, offered_operation
+    from provisa.executor.source_operation import (
+        BINARY_ANSWER,
+        OPERATION_SCHEMA,
+        offered_operation,
+    )
 
     source_type = (getattr(state, "source_types", None) or {}).get(body.sourceId, "")
     if source_type not in OPERATION_SCHEMA:
@@ -187,12 +192,14 @@ async def _as_source_operation(body: FunctionInput) -> None:
         await _ensure_openapi_spec(body.sourceId)
     operation = await offered_operation(state, body.sourceId, body.functionName)
     body.implKind = "source_operation"
-    body.kind = "mutation"
+    body.kind = "query" if operation.reads else "mutation"
     body.schemaName = OPERATION_SCHEMA[source_type]
     body.returns = ""
     body.binding = {}
     body.materialize = False
     body.arguments = [{"name": a, "type": "json"} for a in operation.arguments]
+    if operation.binary:
+        body.outputColumns = [dict(c) for c in BINARY_ANSWER]
 
 
 def _check_written_table(body: FunctionInput) -> None:

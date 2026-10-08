@@ -246,7 +246,8 @@
       "offset": "היסט ומגבלה",
       "page_number": "מספר עמוד",
       "cursor": "סמן",
-      "link_header": "כותרת Link"
+      "link_header": "כותרת Link",
+      "last_row": "אחרי השורה האחרונה"
     },
     "pagingFields": {
       "pageParam": "פרמטר עמוד",
@@ -254,7 +255,10 @@
       "pageSize": "גודל עמוד",
       "cursorParam": "פרמטר סמן",
       "cursorField": "שדה הסמן הבא",
-      "maxPages": "מספר עמודים מרבי"
+      "maxPages": "מספר עמודים מרבי",
+      "afterParam": "פרמטר התחלה אחרי",
+      "lastRowField": "שדה השורה האחרונה",
+      "rowsField": "השורות נמצאות תחת"
     },
     "pagingCutNote": "קריאה שמגיעה למספר העמודים המרבי בזמן של-API יש עוד מדווחת כחתוכה.",
     "pagingTypeRequired": "בחרו סוג עימוד, או נקו את שדות העימוד.",
@@ -281,6 +285,8 @@
       "rebuildEveryHelp": "בונה מחדש את הרפליקה כולה מעת לעת כדי לתפוס כל מה ש-delta מחמיץ. ריק = אף פעם לפי שעון.",
       "query": "שאילתת delta (אופציונלית, ילידית למקור)",
       "queryHelp": "שאילתה ילידית למקור עם מצייני המיקום $wm (סמן) ו-{{fields}}. השאירו ריק עבור מקור SQL: Provisa מייצר SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
-    }
+    },
+    "pagingRowsFieldHelp": "המאפיין בתשובה שמכיל את השורות, כגון values או data במעטפת עמוד. השאירו ריק כאשר התשובה עצמה היא השורות. עמודות הטבלה הן אלה של האובייקטים שנמצאים שם.",
+    "pagingRowsFieldFixed": "נקבע בעת רישום הטבלה. רשמו את הטבלה מחדש כדי לקרוא את שורותיה ממקום אחר."
   }
 }

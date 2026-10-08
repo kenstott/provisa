@@ -296,6 +296,14 @@ export const TOUR_STEPS: TourStep[] = [
     key: "step15",
   },
   {
+    // REQ-1945: the agents point refers to Polly, so the runner opens the panel (pollyOpen); the list always renders.
+    route: "/relationships",
+    capability: "create_relationship",
+    element: '[data-testid="relationships-list"]',
+    pollyOpen: true,
+    key: "stepRelsAgents",
+  },
+  {
     element: '[data-tour="rels-form"]',
     key: "step16",
     clickBefore: RELS_ADD,
@@ -587,7 +595,7 @@ export type TourScope = "core" | TopicId;
 export const TOUR_SCOPES: Record<TourScope, readonly string[]> = {
   core: ["step0", "stepPolly", "step1", "step2", "stepQuery", "step14"],
   connect: ["step3", "step4", "step5", "stepPreview"],
-  relationships: ["step15", "step16", "stepRelsSuggest", "stepRelsList", "step17"],
+  relationships: ["step15", "stepRelsAgents", "step16", "stepRelsSuggest", "stepRelsList", "step17"],
   model: ["step20", "step21", "stepMetrics", "stepCommands", "step22"],
   govern: ["step18", "stepRoleInherit", "step19", "stepDomains", "stepTags", "stepRequests"],
   query: ["step6", "step7", "step8", "step9", "step10", "step11", "step12", "step13"],

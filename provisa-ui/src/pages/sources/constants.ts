@@ -122,7 +122,7 @@ export const SOURCE_TYPES = [
   { value: "parquet", label: "Parquet File", category: "File", defaultPort: 0 },
   {
     value: "files",
-    label: "File Directory (CSV/Parquet/XLSX/JSON, etc.)",
+    label: "File Crawler (XLSX/DOCX/MD/CSV/Parquet/JSON, etc.)",
     category: "File",
     defaultPort: 0,
   },
@@ -137,10 +137,6 @@ export const SOURCE_TYPES = [
   // API
   { value: "openapi", label: "REST API (OpenAPI)", category: "API", defaultPort: 443 },
   { value: "graphql", label: "GraphQL", category: "API", defaultPort: 443 },
-  // REQ-1923: a branded source — the remote GraphQL source with the system's endpoint, schema
-  // and credential handling already supplied. The user sees the brand as an ordinary type.
-  { value: "github", label: "GitHub", category: "API", defaultPort: 443 },
-  { value: "gitlab", label: "GitLab", category: "API", defaultPort: 443 },
   { value: "grpc", label: "gRPC", category: "API", defaultPort: 50051 },
   // Streaming
   { value: "kafka", label: "Kafka", category: "Streaming", defaultPort: 9092 },
@@ -164,6 +160,8 @@ export const SOURCE_TYPES = [
     category: "Enterprise",
     defaultPort: 0,
   },
+  // REQ-1923: carried by the OpenAPI source, with the system's pinned spec supplied.
+  { value: "stripe", label: "Stripe", category: "Enterprise", defaultPort: 443 },
   { value: "splunk", label: "Splunk", category: "Enterprise", defaultPort: 8089 },
   // Data Quality (REQ-1443) — a checker scans a governed table through Provisa's own pgwire
   // endpoint; the source itself needs no connection fields (dq/contract.py). soda is Elastic
@@ -282,6 +280,7 @@ export const NO_CONNECTION_TYPES = new Set([
 export const BRAND_CARRIER: Record<string, string> = {
   github: "graphql",
   gitlab: "graphql",
+  stripe: "openapi",
 };
 
 // UI source-type values → backend SourceType vocabulary where the two differ (REQ-947).

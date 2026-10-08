@@ -246,7 +246,8 @@
       "offset": "Décalage et limite",
       "page_number": "Numéro de page",
       "cursor": "Curseur",
-      "link_header": "En-tête Link"
+      "link_header": "En-tête Link",
+      "last_row": "Après la dernière ligne"
     },
     "pagingFields": {
       "pageParam": "Paramètre de page",
@@ -254,7 +255,10 @@
       "pageSize": "Taille de page",
       "cursorParam": "Paramètre de curseur",
       "cursorField": "Champ du curseur suivant",
-      "maxPages": "Pages max"
+      "maxPages": "Pages max",
+      "afterParam": "Paramètre « commence après »",
+      "lastRowField": "Champ de la dernière ligne",
+      "rowsField": "Les lignes sont sous"
     },
     "pagingCutNote": "Une lecture qui atteint Pages max alors que l'API en a davantage est signalée comme tronquée.",
     "pagingTypeRequired": "Choisissez un type de pagination, ou videz les champs de pagination.",
@@ -281,6 +285,8 @@
       "rebuildEveryHelp": "Reconstruit périodiquement toute la réplique pour rattraper ce qu'un delta manque. Vide = jamais selon une horloge.",
       "query": "Requête delta (facultative, native de la source)",
       "queryHelp": "Une requête native de la source avec les espaces réservés $wm (curseur) et {{fields}}. Laissez vide pour une source SQL : Provisa génère SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
-    }
+    },
+    "pagingRowsFieldHelp": "La propriété de la réponse qui contient les lignes, comme values ou data dans une enveloppe de page. Laissez vide quand la réponse est elle-même les lignes. Les colonnes de la table sont celles des objets qui s'y trouvent.",
+    "pagingRowsFieldFixed": "Défini à l'enregistrement de la table. Enregistrez de nouveau la table pour lire ses lignes ailleurs."
   }
 }

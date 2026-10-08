@@ -246,7 +246,8 @@
       "offset": "Offset e limite",
       "page_number": "Numero di pagina",
       "cursor": "Cursore",
-      "link_header": "Intestazione Link"
+      "link_header": "Intestazione Link",
+      "last_row": "Dopo l'ultima riga"
     },
     "pagingFields": {
       "pageParam": "Parametro di pagina",
@@ -254,7 +255,10 @@
       "pageSize": "Dimensione pagina",
       "cursorParam": "Parametro cursore",
       "cursorField": "Campo cursore successivo",
-      "maxPages": "Pagine massime"
+      "maxPages": "Pagine massime",
+      "afterParam": "Parametro di inizio successivo",
+      "lastRowField": "Campo dell'ultima riga",
+      "rowsField": "Le righe sono sotto"
     },
     "pagingCutNote": "Una lettura che raggiunge Pagine massime mentre l'API ha altri dati viene segnalata come troncata.",
     "pagingTypeRequired": "Scegli un tipo di paginazione o svuota i campi di paginazione.",
@@ -281,6 +285,8 @@
       "rebuildEveryHelp": "Ricostruisce periodicamente l'intera replica per intercettare ciò che un delta perde. Vuoto = mai a orario.",
       "query": "Query delta (facoltativa, nativa dell'origine)",
       "queryHelp": "Una query nativa dell'origine con i segnaposto $wm (cursore) e {{fields}}. Lascia vuoto per un'origine SQL: Provisa genera SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
-    }
+    },
+    "pagingRowsFieldHelp": "La proprietà della risposta che contiene le righe, come values o data in un involucro di pagina. Lascia vuoto quando la risposta è costituita dalle righe stesse. Le colonne della tabella sono quelle degli oggetti che si trovano lì.",
+    "pagingRowsFieldFixed": "Impostato alla registrazione della tabella. Registra di nuovo la tabella per leggere le sue righe da un'altra posizione."
   }
 }

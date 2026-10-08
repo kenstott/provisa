@@ -12,15 +12,14 @@
     "masterKeyPresent": "aanwezig",
     "masterKeyMissing": "ontbreekt",
     "generating": "Genereren…",
-    "rotateKey": "Hoofdsleutel roteren",
     "generateKey": "Hoofdsleutel genereren",
-    "restartWarning": "{{note}} Het roteren van een hoofdsleutel terwijl er versleutelde gegevens bestaan, kan eerdere rijen onleesbaar maken — roteer voordat gevoelige gegevens worden opgeslagen, of plan een herversleuteling.",
     "saveTitle": "Encryptie-instellingen opslaan",
     "keyGeneratedStored": "Hoofdsleutel gegenereerd en opgeslagen in de OS-sleutelhanger (sleutel-id: {{keyId}}) — direct van kracht, geen herstart nodig.",
     "keyGeneratedNoKeychain": "Geen OS-sleutelhanger beschikbaar — kopieer deze sleutel en stel deze in als {{envVar}}. De sleutel wordt niet opnieuw getoond.",
     "savedRestartRequired": "Opgeslagen. Herstart de service om toe te passen.",
     "saved": "Opgeslagen.",
     "secretOnFile": "Opgeslagen — leeg laten om te behouden",
-    "secretNotSet": "Niet ingesteld"
+    "secretNotSet": "Niet ingesteld",
+    "fingerprintLabel": "Vingerafdruk"
   }
 }

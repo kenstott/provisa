@@ -246,7 +246,8 @@
       "offset": "オフセットとリミット",
       "page_number": "ページ番号",
       "cursor": "カーソル",
-      "link_header": "Link ヘッダー"
+      "link_header": "Link ヘッダー",
+      "last_row": "最後の行の後"
     },
     "pagingFields": {
       "pageParam": "ページパラメーター",
@@ -254,7 +255,10 @@
       "pageSize": "ページサイズ",
       "cursorParam": "カーソルパラメーター",
       "cursorField": "次カーソルのフィールド",
-      "maxPages": "最大ページ数"
+      "maxPages": "最大ページ数",
+      "afterParam": "開始位置パラメーター",
+      "lastRowField": "最後の行のフィールド",
+      "rowsField": "行の場所"
     },
     "pagingCutNote": "API にまだデータがあるのに最大ページ数に達した読み取りは、切り詰めとして報告されます。",
     "pagingTypeRequired": "ページングの種類を選ぶか、ページングのフィールドを空にしてください。",
@@ -281,6 +285,8 @@
       "rebuildEveryHelp": "デルタで取りこぼしたものを反映するため、レプリカ全体を定期的に再ビルドします。空欄 = 時刻による再ビルドなし。",
       "query": "デルタクエリ (任意、ソースネイティブ)",
       "queryHelp": "$wm (カーソル) と {{fields}} のプレースホルダーを含むソースネイティブのクエリ。SQL ソースの場合は空欄のままにします: Provisa が SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark> を生成します。"
-    }
+    },
+    "pagingRowsFieldHelp": "応答のうち行を保持するプロパティです（ページラッパーの values や data など）。応答そのものが行である場合は空のままにします。テーブルの列は、そこにあるオブジェクトの列になります。",
+    "pagingRowsFieldFixed": "テーブルの登録時に設定されます。別の場所から行を読み取るには、テーブルを登録し直してください。"
   }
 }

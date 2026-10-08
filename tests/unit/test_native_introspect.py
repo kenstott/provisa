@@ -747,10 +747,10 @@ def test_openapi_is_table_petstore_single_object_response():
     assert _openapi_is_table(q) is True
 
 
-def test_openapi_is_table_petstore_null_response():
-    queries, _ = parse_spec(_PETSTORE_SPEC)
-    q = _query_by_id(queries, "logoutUser")
-    assert _openapi_is_table(q) is False
+def test_a_petstore_get_with_no_response_schema_is_a_command_not_a_table():
+    queries, commands = parse_spec(_PETSTORE_SPEC)
+    assert "logoutUser" not in {q.operation_id for q in queries}
+    assert _query_by_id(commands, "logoutUser").reads is True
 
 
 @pytest.mark.parametrize("source_type", ["cockroachdb", "yugabytedb", "greenplum", "redshift"])

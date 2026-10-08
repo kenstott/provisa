@@ -77,8 +77,34 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
 
     Returns (sql_ast, ordered_param_names, graph_vars).
     """
+    refuse_unregistered_relationship_types(ast, label_map)
     translator = _Translator(ast, label_map, params)
     return translator.translate()
+
+
+def refuse_unregistered_relationship_types(ast: CypherAST, label_map: CypherLabelMap) -> None:
+    """REQ-603: refuse a statement whose MATCH names a relationship type that is not registered.
+
+    The translator lowers an unknown type to a predicate that is never true (best effort, no
+    crash), which answers no rows where the statement should be refused; so the types are checked
+    on the AST, before anything is lowered. Here, in the one translation every Cypher surface
+    performs (HTTP, Bolt, Flight), so none checks it for itself and none goes without."""
+    from provisa.cypher.parser import PathFunction, PathPattern
+    from provisa.cypher.translator_types import UnregisteredRelationshipType
+
+    # A registered type: one the label map holds a relationship of, by its type or by an alias.
+    registered = set(label_map.aliases) | {r.rel_type for r in label_map.relationships.values()}
+    unknown: set[str] = set()
+    for clause in ast.match_clauses:
+        pattern = clause.pattern
+        path = pattern.pattern if isinstance(pattern, PathFunction) else pattern
+        if isinstance(path, PathPattern):
+            for rel in path.rels:
+                if len(rel.types) > 1 and not rel.variable_length:
+                    continue  # refused as an alternation on a single hop, by its own message
+                unknown.update(t for t in rel.types if t not in registered)
+    if unknown:
+        raise UnregisteredRelationshipType(sorted(unknown))
 
 
 def cypher_calls_to_sql_list(  # REQ-571

@@ -1030,6 +1030,7 @@ CREATE TABLE IF NOT EXISTS synthetic_datasets (
     status        TEXT NOT NULL,          -- defined | generating | generated | failed
     store_schema  TEXT NOT NULL,
     error         TEXT,
+    report_error  TEXT,             -- REQ-1942: why the report on its generated rows failed
     generated_at  TIMESTAMPTZ,
     -- REQ-1939: conditional child counts by relationship, and statements checked after generation
     fanout_conditions JSONB NOT NULL DEFAULT '[]',

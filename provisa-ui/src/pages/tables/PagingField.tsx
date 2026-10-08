@@ -24,13 +24,17 @@ interface PagingFieldProps {
   paging: Paging | null;
   onChange: (paging: Paging) => void;
   ceilingRows: number | null;
+  // REQ-316: where a REST answer's rows are is set when the table is registered and shown,
+  // not edited, afterwards (the table's columns are those of the objects there).
+  rowsFieldEditable?: boolean;
 }
 
-const TYPES: PagingType[] = ["offset", "page_number", "cursor", "link_header"];
+const TYPES: PagingType[] = ["offset", "page_number", "cursor", "last_row", "link_header"];
 
 // Which declared fields each paging type reads (provisa/api_source/caller.py), with the name the
-// caller sends when a parameter field is left empty.
-const READS: Record<PagingType, { field: keyof Paging; fallback?: string }[]> = {
+// caller sends when a parameter field is left empty. A field one type reads differently is named
+// for that type (label).
+const READS: Record<PagingType, { field: keyof Paging; fallback?: string; label?: string }[]> = {
   offset: [
     { field: "pageParam", fallback: "offset" },
     { field: "pageSizeParam", fallback: "limit" },
@@ -45,12 +49,25 @@ const READS: Record<PagingType, { field: keyof Paging; fallback?: string }[]> = 
     { field: "cursorParam", fallback: "cursor" },
     { field: "cursorField", fallback: "next_cursor" },
   ],
+  // The next page starts after the last row of this one, named by a field of that row.
+  last_row: [
+    { field: "cursorParam", fallback: "starting_after", label: "afterParam" },
+    { field: "cursorField", fallback: "id", label: "lastRowField" },
+    { field: "pageSizeParam", fallback: "limit" },
+    { field: "pageSize" },
+  ],
   link_header: [],
 };
 
 const NUMERIC = new Set<keyof Paging>(["pageSize", "maxPages", "maxRows"]);
 
-export function PagingField({ kind, paging, onChange, ceilingRows }: PagingFieldProps) {
+export function PagingField({
+  kind,
+  paging,
+  onChange,
+  ceilingRows,
+  rowsFieldEditable = false,
+}: PagingFieldProps) {
   const { t } = useTranslation();
   const staged = paging ?? NO_PAGING;
   const problem = pagingProblem(kind, paging, ceilingRows);
@@ -88,7 +105,7 @@ export function PagingField({ kind, paging, onChange, ceilingRows }: PagingField
   // Changing the type keeps only what the new type reads.
   const pickType = (value: string | null) => {
     const type = value as PagingType | null;
-    const kept: Partial<Paging> = { maxPages: staged.maxPages };
+    const kept: Partial<Paging> = { maxPages: staged.maxPages, rowsField: staged.rowsField };
     for (const { field } of type ? READS[type] : []) kept[field] = staged[field] as never;
     onChange({ ...NO_PAGING, ...kept, type });
   };
@@ -112,12 +129,12 @@ export function PagingField({ kind, paging, onChange, ceilingRows }: PagingField
       />
       {staged.type !== null && (
         <Group gap="xs" mt={4} align="flex-start" grow>
-          {READS[staged.type].map(({ field, fallback }) =>
+          {READS[staged.type].map(({ field, fallback, label = field }) =>
             NUMERIC.has(field) ? (
               <NumberInput
                 key={field}
-                aria-label={t(`tableEditForm.pagingFields.${field}`)}
-                label={t(`tableEditForm.pagingFields.${field}`)}
+                aria-label={t(`tableEditForm.pagingFields.${label}`)}
+                label={t(`tableEditForm.pagingFields.${label}`)}
                 min={1}
                 allowDecimal={false}
                 allowNegative={false}
@@ -128,8 +145,8 @@ export function PagingField({ kind, paging, onChange, ceilingRows }: PagingField
             ) : (
               <TextInput
                 key={field}
-                aria-label={t(`tableEditForm.pagingFields.${field}`)}
-                label={t(`tableEditForm.pagingFields.${field}`)}
+                aria-label={t(`tableEditForm.pagingFields.${label}`)}
+                label={t(`tableEditForm.pagingFields.${label}`)}
                 value={(staged[field] as string | null) ?? ""}
                 placeholder={fallback}
                 onChange={(e) =>
@@ -154,6 +171,21 @@ export function PagingField({ kind, paging, onChange, ceilingRows }: PagingField
         <Text size="xs" c="dimmed" data-testid="paging-cut-note">
           {t("tableEditForm.pagingCutNote")}
         </Text>
+      )}
+      {(rowsFieldEditable || staged.rowsField !== null) && (
+        <TextInput
+          mt={4}
+          aria-label={t("tableEditForm.pagingFields.rowsField")}
+          label={t("tableEditForm.pagingFields.rowsField")}
+          description={t(
+            rowsFieldEditable
+              ? "tableEditForm.pagingRowsFieldHelp"
+              : "tableEditForm.pagingRowsFieldFixed",
+          )}
+          value={staged.rowsField ?? ""}
+          readOnly={!rowsFieldEditable}
+          onChange={(e) => set({ rowsField: e.currentTarget.value || null })}
+        />
       )}
     </div>
   );

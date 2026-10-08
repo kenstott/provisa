@@ -95,7 +95,7 @@ def _as_ps_sees_it(pid: int) -> str:
     """What the selection reads for ``pid``: its listing line and whether ``ps eww`` shows the
     data directory in its environment — the failure message, so a run that fails says why."""
     listed = subprocess.run(
-        ["ps", "-axo", "pid=,ppid=,command="], capture_output=True, text=True, check=False
+        ["ps", "-axww", "-o", "pid=,ppid=,command="], capture_output=True, text=True, check=False
     ).stdout
     line = next((ln for ln in listed.splitlines() if ln.split(None, 1)[0] == str(pid)), None)
     shown = subprocess.run(

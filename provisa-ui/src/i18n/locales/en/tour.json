@@ -22,7 +22,7 @@
       "intro": "One model for your data, metadata and processing, kept in sync and reused everywhere. Pick a topic: each is a short tour of its own, and Done brings you back here. The compass in the toolbar reopens this menu anytime.",
       "completed": "Completed",
       "steps": "Steps: {{count}}",
-      "coreTour": "Start the core tour"
+      "coreTour": "Start at the Beginning"
     },
     "topics": {
       "connect": {
@@ -76,7 +76,7 @@
         "description": "➕ New connections start with this button — PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and 50+ more."
       },
       "step3": {
-        "title": "60 source types, 13 categories",
+        "title": "61 source types, 13 categories",
         "description": "One picker lists every type, grouped by category: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Search by name or alias, or narrow with the category chips. Each type shows its logo and a reach icon: ⚡ read live in place, or a copy icon where Provisa reads a refreshed replica.<p>Pick one, fill the connection, Save.</p>"
       },
       "step4": {
@@ -129,11 +129,11 @@
       },
       "step15": {
         "title": "Connect the graph",
-        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>Relationships link tables across sources — even across different databases — turning flat tables into a traversable <strong>graph</strong>.</p><p>🛡️ They can also be <strong>enforced</strong>: hand people freedom to explore, with sensible guardrails.</p>"
+        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>A relationship does two jobs. It shapes your <strong>data model</strong>: how tables across sources and domains connect — which is what every query surface follows, whether GraphQL nesting, Cypher paths or SQL joins.</p><p>It is also a <strong>rule</strong>. Joins are governed: a role without the <code>ignore_relationships</code> right can join only along registered relationships, so which ones exist decides which queries are legal. Grant that right deliberately to a role you trust and it joins freely (never in high-security mode).</p><p>Relationships link tables across sources — even across different databases — turning flat tables into a traversable <strong>graph</strong>.</p>"
       },
       "step16": {
         "title": "Define a relationship",
-        "description": "🔗 Map a source column to a target column and set <strong>cardinality</strong>:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Or let Provisa <strong>infer</strong> relationships for you with AI.</p>"
+        "description": "🔗 Map a source column to a target column and set <strong>cardinality</strong>:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Or let Provisa <strong>infer</strong> relationships for you with AI.</p><p>🛡️ Because a relationship is a rule, adding, changing or removing one can make a query legal or illegal. A relationship requested from outside the source table's domain, or by someone who may not create relationships, waits for approval.</p>"
       },
       "stepRelsSuggest": {
         "title": "Suggest relationships",
@@ -141,7 +141,7 @@
       },
       "stepRelsList": {
         "title": "Every relationship in one list",
-        "description": "📋 The model's relationships, whether or not a source declares them, filterable and sortable. Expand a row to edit it or add its reverse. A role traverses only the relationships it holds rights to."
+        "description": "📋 The model's relationships, whether or not a source declares them, filterable and sortable. Expand a row to edit it or add its reverse. A role joins only along these relationships unless it holds the ignore_relationships right."
       },
       "step17": {
         "title": "See the ERD",
@@ -169,7 +169,7 @@
       },
       "stepRequests": {
         "title": "Relationship requests",
-        "description": "✋ A relationship request needs two approvals before it can be executed. Approve it, execute it, or reject it with a reason from a fixed list; resolved requests move to the Resolved tab."
+        "description": "✋ This request comes from someone who may not create relationships themselves, often from outside your domain, wanting to relate their tables to yours — usually the first step toward asking for your data. Relationships are governed, so approving one changes which queries are legal: a role that may join only along approved relationships can now join across it. A relationship request needs two approvals before it can be executed. Approve it, execute it, or reject it with a reason from a fixed list; resolved requests move to the Resolved tab."
       },
       "stepQualityTable": {
         "title": "A quality checker is just a source",
@@ -274,6 +274,10 @@
       "stepPublish": {
         "title": "Publish to the tools your org uses",
         "description": "📤 <strong>Publish it where your org already looks.</strong> Catalog entries (tables, columns, domains, stewards, approved relationships), data products and column-level lineage go out, and each target receives what it supports: <strong>DataHub, OpenMetadata, Collibra, Atlan and Apache Atlas</strong> as catalogs, <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong> as data-product listings, and lineage over <strong>OpenLineage</strong>.<p>Publication is outbound only: Provisa never reads a target back as a source of truth.</p>"
+      },
+      "stepRelsAgents": {
+        "title": "Relationships and AI agents",
+        "description": "🤖 The model and its relationships are available to AI agents — Polly, and agents connecting over MCP — and they shape the queries those agents write.<p>An agent runs under a role, so the same rule applies to it as to a person: a query that joins outside the registered relationships <strong>fails</strong>. This is enforced, not advisory.</p><p>It is also your choice. To let an agent discover relationships, grant its role the <code>ignore_relationships</code> right; to keep it inside guardrails, leave the role without it. It is the same deliberate grant as for a trusted identity (never honored in high-security mode).</p>"
       }
     },
     "status": {

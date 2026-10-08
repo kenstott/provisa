@@ -246,7 +246,8 @@
       "offset": "Offset and limit",
       "page_number": "Page number",
       "cursor": "Cursor",
-      "link_header": "Link header"
+      "link_header": "Link header",
+      "last_row": "After the last row"
     },
     "pagingFields": {
       "pageParam": "Page parameter",
@@ -254,7 +255,10 @@
       "pageSize": "Page size",
       "cursorParam": "Cursor parameter",
       "cursorField": "Next-cursor field",
-      "maxPages": "Max pages"
+      "maxPages": "Max pages",
+      "afterParam": "Starts-after parameter",
+      "lastRowField": "Last row's field",
+      "rowsField": "Rows are under"
     },
     "pagingCutNote": "A read that reaches Max pages while the API has more is reported as cut.",
     "pagingTypeRequired": "Choose a paging type, or clear the paging fields.",
@@ -281,6 +285,8 @@
       "queryHelp": "A source-native query with the $wm (cursor) and {{fields}} placeholders. Leave blank for a SQL source: Provisa generates SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
     },
     "draftLabel": "Draft",
-    "draftHelp": "Out of service while checked: read and written nowhere, offered in no schema, and copied nowhere — existing copies in every region are removed. A table or view registered here starts as draft; clear it to release it."
+    "draftHelp": "Out of service while checked: read and written nowhere, offered in no schema, and copied nowhere — existing copies in every region are removed. A table or view registered here starts as draft; clear it to release it.",
+    "pagingRowsFieldHelp": "The property of the answer that holds the rows, such as a page wrapper's values or data. Leave empty when the answer is the rows. The table's columns are those of the objects there.",
+    "pagingRowsFieldFixed": "Set when the table was registered. Register the table again to read its rows from elsewhere."
   }
 }

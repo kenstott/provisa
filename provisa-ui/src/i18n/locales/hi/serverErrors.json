@@ -282,7 +282,7 @@
       "not_virtual_view": "टेबल एक वर्चुअल Provisa व्यू नहीं है (source_id != '__derived__')",
       "paging_above_ceiling": "तालिका {{table}}: max_rows={{max_rows}} graphql_remote.max_rows={{ceiling}} से अधिक है; तालिका ऑपरेटर की सीमा घटा सकती है, कभी बढ़ा नहीं सकती।",
       "paging_connection_rows_only": "तालिका {{table}} एक कनेक्शन तालिका है: यह अपनी स्कीमा के आर्ग्युमेंट से पेज करती है और केवल अधिकतम पंक्तियाँ निर्धारित करती है।",
-      "paging_endpoint_needs_type": "तालिका {{table}} एक REST एंडपॉइंट है: इसकी पेजिंग में पेजिंग प्रकार होना चाहिए।",
+      "paging_endpoint_needs_type": "तालिका {{table}} एक REST एंडपॉइंट है: इसकी पेजिंग में पेजिंग प्रकार होना चाहिए, या यह कि इसकी पंक्तियाँ कहाँ हैं।",
       "paging_invalid": "तालिका {{table}}: {{reason}}",
       "paging_not_paged": "तालिका {{table}} पृष्ठ-दर-पृष्ठ नहीं पढ़ी जाती, इसलिए इस पर पेजिंग लागू नहीं होती।",
       "query_engine_unavailable": "क्वेरी इंजन उपलब्ध नहीं है",
@@ -355,7 +355,9 @@
       "webhook_not_found": "वेबहुक '{{webhook}}' नहीं मिला",
       "change_streams_unavailable": "स्रोत '{{source}}' एक स्टैंडअलोन MongoDB सर्वर है, जो change streams नहीं देता: native परिवर्तन संकेत के लिए replica set या sharded cluster चाहिए। इसे replica set के रूप में चलाएँ, या poll परिवर्तन संकेत का उपयोग करें।",
       "table_draft_set": "टेबल {{table}} ड्राफ़्ट के रूप में सेट",
-      "table_released": "टेबल {{table}} रिलीज़ हुई"
+      "table_released": "टेबल {{table}} रिलीज़ हुई",
+      "openapi_no_rows_field": "तालिका {{table}}: उत्तर में {{rows_field}} नाम की कोई प्रॉपर्टी नहीं है जिससे पंक्तियाँ पढ़ी जा सकें।",
+      "paging_rows_field_fixed": "तालिका {{table}}: इसकी पंक्तियाँ कहाँ हैं ({{rows_field}}) यह तालिका पंजीकृत करते समय तय होता है। इसकी पंक्तियाँ कहीं और से पढ़ने के लिए तालिका को फिर से पंजीकृत करें।"
     },
     "secrets": {
       "still_referenced": "{{secret}} का नाम इस संगठन में अब भी {{count}} संग्रहीत मान ले रहे हैं। हर एक को बदलें या हटाएँ, फिर दोबारा हटाएँ।"

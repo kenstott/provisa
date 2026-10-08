@@ -282,7 +282,7 @@
       "not_virtual_view": "テーブルは仮想 Provisa ビューではありません（source_id != '__derived__'）",
       "paging_above_ceiling": "テーブル {{table}}: max_rows={{max_rows}} は graphql_remote.max_rows={{ceiling}} を超えています。テーブルはオペレーターの上限を下げられますが、上げることはできません。",
       "paging_connection_rows_only": "テーブル {{table}} はコネクションテーブルです。スキーマの引数でページングし、設定できるのは最大行数だけです。",
-      "paging_endpoint_needs_type": "テーブル {{table}} は REST エンドポイントです。ページングにはページングの種類を指定します。",
+      "paging_endpoint_needs_type": "テーブル {{table}} は REST エンドポイントです。ページングにはページングの種類、または行の場所を指定します。",
       "paging_invalid": "テーブル {{table}}: {{reason}}",
       "paging_not_paged": "テーブル {{table}} はページ単位で読み取られないため、ページングを設定できません。",
       "query_engine_unavailable": "クエリエンジンが利用できません",
@@ -355,7 +355,9 @@
       "webhook_not_found": "Webhook「{{webhook}}」が見つかりません",
       "change_streams_unavailable": "ソース '{{source}}' はスタンドアロンの MongoDB サーバーで、change streams を提供しません。native 変更シグナルにはレプリカセットまたはシャードクラスターが必要です。レプリカセットとして実行するか、poll 変更シグナルを使用してください。",
       "table_draft_set": "テーブル {{table}} を下書きにしました",
-      "table_released": "テーブル {{table}} を公開しました"
+      "table_released": "テーブル {{table}} を公開しました",
+      "openapi_no_rows_field": "テーブル {{table}}: 応答には、行を読み取るためのプロパティ {{rows_field}} がありません。",
+      "paging_rows_field_fixed": "テーブル {{table}}: 行の場所（{{rows_field}}）はテーブルの登録時に設定されます。別の場所から行を読み取るには、テーブルを登録し直してください。"
     },
     "secrets": {
       "still_referenced": "{{secret}} は、この組織に保存されている {{count}} 件の値からまだ参照されています。それぞれを変更または削除してから、もう一度削除してください。"

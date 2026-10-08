@@ -246,7 +246,8 @@
       "offset": "Offset und Limit",
       "page_number": "Seitennummer",
       "cursor": "Cursor",
-      "link_header": "Link-Header"
+      "link_header": "Link-Header",
+      "last_row": "Nach der letzten Zeile"
     },
     "pagingFields": {
       "pageParam": "Seitenparameter",
@@ -254,7 +255,10 @@
       "pageSize": "Seitengröße",
       "cursorParam": "Cursor-Parameter",
       "cursorField": "Feld für nächsten Cursor",
-      "maxPages": "Max. Seiten"
+      "maxPages": "Max. Seiten",
+      "afterParam": "Parameter „Beginnt nach“",
+      "lastRowField": "Feld der letzten Zeile",
+      "rowsField": "Zeilen liegen unter"
     },
     "pagingCutNote": "Ein Lesevorgang, der Max. Seiten erreicht, während die API mehr hat, wird als abgeschnitten gemeldet.",
     "pagingTypeRequired": "Wählen Sie einen Paginierungstyp oder leeren Sie die Paginierungsfelder.",
@@ -281,6 +285,8 @@
       "rebuildEveryHelp": "Baut das gesamte Replikat periodisch neu auf, um alles zu erfassen, was ein Delta verpasst. Leer = nie nach Zeitplan.",
       "query": "Delta-Abfrage (optional, quellnativ)",
       "queryHelp": "Eine quellnative Abfrage mit den Platzhaltern $wm (Cursor) und {{fields}}. Für eine SQL-Quelle leer lassen: Provisa erzeugt SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
-    }
+    },
+    "pagingRowsFieldHelp": "Die Eigenschaft der Antwort, die die Zeilen enthält, etwa values oder data eines Seiten-Wrappers. Leer lassen, wenn die Antwort selbst die Zeilen ist. Die Spalten der Tabelle sind die der Objekte dort.",
+    "pagingRowsFieldFixed": "Bei der Registrierung der Tabelle festgelegt. Registrieren Sie die Tabelle erneut, um ihre Zeilen von anderer Stelle zu lesen."
   }
 }

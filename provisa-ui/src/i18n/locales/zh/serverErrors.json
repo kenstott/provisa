@@ -282,7 +282,7 @@
       "not_virtual_view": "表不是虚拟 Provisa 视图（source_id != '__derived__'）",
       "paging_above_ceiling": "表 {{table}}：max_rows={{max_rows}} 高于 graphql_remote.max_rows={{ceiling}}；表可以降低操作员的上限，但不能提高。",
       "paging_connection_rows_only": "表 {{table}} 是连接表：它按其架构的参数分页，只能设置最大行数。",
-      "paging_endpoint_needs_type": "表 {{table}} 是 REST 端点：其分页需要指明分页类型。",
+      "paging_endpoint_needs_type": "表 {{table}} 是 REST 端点：其分页需要指明分页类型，或指明行所在的位置。",
       "paging_invalid": "表 {{table}}：{{reason}}",
       "paging_not_paged": "表 {{table}} 不是逐页读取的，因此不接受分页。",
       "query_engine_unavailable": "查询引擎不可用",
@@ -355,7 +355,9 @@
       "webhook_not_found": "未找到 Webhook '{{webhook}}'",
       "change_streams_unavailable": "源 '{{source}}' 是独立的 MongoDB 服务器，不提供 change streams：native 变更信号需要副本集或分片集群。请将其作为副本集运行，或使用 poll 变更信号。",
       "table_draft_set": "表 {{table}} 已设为草稿",
-      "table_released": "表 {{table}} 已发布"
+      "table_released": "表 {{table}} 已发布",
+      "openapi_no_rows_field": "表 {{table}}：响应中没有可用于读取行的属性 {{rows_field}}。",
+      "paging_rows_field_fixed": "表 {{table}}：行所在的位置（{{rows_field}}）在注册表时设置。要从其他位置读取行，请重新注册该表。"
     },
     "secrets": {
       "still_referenced": "本组织中仍有 {{count}} 个已存储的值引用 {{secret}}。请更改或移除每一个，然后再次删除。"

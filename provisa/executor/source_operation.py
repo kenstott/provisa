@@ -8,13 +8,18 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A source's write operation, registered as a command and called through it (REQ-1924).
+"""A source's operation, registered as a command and called through it (REQ-1924).
 
 A remote source -- OpenAPI, remote GraphQL, gRPC -- offers write operations: an OpenAPI
 operation that is not a GET, a field of a GraphQL schema's mutation root, a gRPC method
 classified as a mutation. One the steward registers is a command of kind ``source_operation``,
 named by the source and the operation. It is a mutator: it creates, changes or deletes something
 in the remote system.
+
+An OpenAPI source also offers each GET whose response declares no row schema -- a diff, a log,
+an untyped document, a file. It is a command because what it answers is not rows a table could
+hold; it reads, so it is registered as a query and none of what holds for a write holds for it.
+An operation that answers with a file (a media type neither text nor JSON) answers one binary value.
 
 A call is passed through as is. Provisa does not shape, type or check the input: each argument
 the caller gives goes to the remote unchanged, with the source's credential, and the remote's
@@ -31,12 +36,14 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
 from provisa.api.errors import ApiError
+from provisa.core.ir_types import bytea_hex
 
 # The schema name a source's operations are registered under, per source type.
 OPERATION_SCHEMA = {"openapi": "openapi", "graphql_remote": "graphql", "grpc_remote": "grpc_remote"}
@@ -54,12 +61,19 @@ _HTTP_SERVER_ERROR = 500
 
 @dataclass(frozen=True)
 class Operation:
-    """One write operation a source offers: its name, a line saying what it is, and the
-    arguments a call passes through to it."""
+    """One operation a source offers as a command: its name, a line saying what it is, the
+    arguments a call passes through to it, whether it only reads, and whether it answers with a
+    file."""
 
     name: str
     comment: str | None
     arguments: tuple[str, ...]
+    reads: bool = False
+    binary: bool = False
+
+
+# What a command that answers with a file returns: one row holding the file, a bytea.
+BINARY_ANSWER = ({"name": "result", "type": "bytea"},)
 
 
 def _source_type(state, source_id: str) -> str:
@@ -84,6 +98,8 @@ def _openapi_operations(state, source_id: str) -> list[Operation] | None:
                 *_PATH_PARAM.findall(m.path),
                 *((BODY_ARGUMENT,) if m.input_schema is not None else ()),
             ),
+            reads=m.reads,
+            binary=m.binary,
         )
         for m in mutations
     ]
@@ -205,34 +221,57 @@ def _rows(answer: Any) -> list[dict]:
     return [{"result": answer}]
 
 
+def _form_fields(value: Any, key: str) -> Iterator[tuple[str, str]]:
+    """``value`` as the fields of a form-encoded body under ``key``: a nested object or list is
+    written with bracketed keys (``items[0][price]``), the one form encoding that carries them."""
+    if isinstance(value, dict):
+        for name, inner in value.items():
+            yield from _form_fields(inner, f"{key}[{name}]")
+    elif isinstance(value, list):
+        for index, inner in enumerate(value):
+            yield from _form_fields(inner, f"{key}[{index}]")
+    elif isinstance(value, bool):
+        yield key, "true" if value else "false"
+    else:
+        yield key, "" if value is None else str(value)
+
+
 async def _call_openapi(state, source_id: str, operation: str, args: dict) -> list[dict]:
+    from provisa.api_source.caller import _apply_auth
     from provisa.core.secrets import resolve_secrets
-    from provisa.openapi.executor import _build_auth_headers
     from provisa.openapi.mapper import parse_spec
 
-    entry = state.openapi_specs[source_id]
-    _, mutations = parse_spec(entry["spec"])
+    # The address and the credential are the source's stored ones, which its tables are read
+    # with too (api_source.loader): a restarted process calls with them as the first did.
+    source = state.api_sources[source_id]
+    _, mutations = parse_spec(state.openapi_specs[source_id]["spec"])
     mutation = next(m for m in mutations if m.operation_id == operation)
     given = dict(args)
     path = _PATH_PARAM.sub(lambda m: str(given.pop(m.group(1))), mutation.path)
     body = given.pop(BODY_ARGUMENT, None)
-    auth = {
-        k: resolve_secrets(v) if isinstance(v, str) else v
-        for k, v in (entry.get("auth_config") or {}).items()
-    }
-    headers = {"Content-Type": "application/json", **_build_auth_headers(auth or None)}
+    headers: dict[str, str] = {}
+    _apply_auth(source.auth, headers, given)
+    if mutation.form:
+        fields = [f for name, value in (body or {}).items() for f in _form_fields(value, name)]
+        sent: dict[str, Any] = {"data": dict(fields)}
+    else:
+        headers["Content-Type"] = "application/json"
+        sent = {"json": body}
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.request(
             mutation.method.upper(),
-            entry["base_url"].rstrip("/") + path,
+            resolve_secrets(source.base_url).rstrip("/") + path,
             params=given or None,
-            json=body,
             headers=headers,
+            **sent,
         )
-    answer = _answer(resp)
     if resp.is_error:
-        raise _refused(source_id, operation, resp.status_code, answer)
-    return _rows(answer)
+        raise _refused(source_id, operation, resp.status_code, _answer(resp))
+    if mutation.binary:
+        # A command's rows hold a bytea in its canonical text form, as a source procedure's do
+        # (function_dispatch); each surface carries it from there as it carries any bytea.
+        return [{BINARY_ANSWER[0]["name"]: bytea_hex(resp.content)}]
+    return _rows(_answer(resp))
 
 
 def _type_ref(type_ref: dict) -> str:
@@ -348,6 +387,16 @@ def written_table(state, source_id: str, schema_table: str) -> dict | None:
     )
 
 
+def _writes(command: dict) -> bool:
+    """Whether ``command`` is a source's write operation (one registered as a query reads)."""
+    from provisa.security.mutation_authz import MutationKind, classify_kind
+
+    return (
+        command.get("impl_kind") == "source_operation"
+        and classify_kind(command.get("kind")) is MutationKind.WRITE
+    )
+
+
 def writes_called_in(tree, commands: dict) -> list[str]:
     """The source write operations a parsed statement calls, in any position -- a relation in
     FROM, a value in a projection, an argument -- by command name (REQ-1924)."""
@@ -357,7 +406,7 @@ def writes_called_in(tree, commands: dict) -> list[str]:
         {
             node.name
             for node in tree.find_all(exp.Anonymous)
-            if (commands.get(node.name) or {}).get("impl_kind") == "source_operation"
+            if _writes(commands.get(node.name) or {})
         }
     )
 
@@ -368,7 +417,7 @@ def refuse_writes_in_definition(sql: str, commands: dict, what: str) -> None:
     import sqlglot
     import sqlglot.errors
 
-    if not any(c.get("impl_kind") == "source_operation" for c in commands.values()):
+    if not any(_writes(c) for c in commands.values()):
         return  # no write operation is registered, so there is none a definition could call
     try:
         tree = sqlglot.parse_one(sql, read="postgres")

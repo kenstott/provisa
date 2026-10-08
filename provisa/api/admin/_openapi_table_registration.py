@@ -39,6 +39,7 @@ async def persist_openapi_endpoint(
     read from."""
     from provisa.api.admin.types import MutationResult
     from provisa.api_source.openapi_endpoint import NoOperation, register_openapi_endpoint
+    from provisa.openapi.mapper import NoRowsField
 
     row = (
         await conn.execute_core(
@@ -63,5 +64,12 @@ async def persist_openapi_endpoint(
             message=str(missing),
             code="schema.openapi_no_operation",
             params={"source_id": model.source_id, "table": model.table_name},
+        )
+    except NoRowsField as missing:
+        return MutationResult(
+            success=False,
+            message=f"table {model.table_name!r}: {missing}",
+            code="schema.openapi_no_rows_field",
+            params={"table": model.table_name, "rows_field": missing.rows_field},
         )
     return None

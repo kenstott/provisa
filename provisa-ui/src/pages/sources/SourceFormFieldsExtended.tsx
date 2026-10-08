@@ -238,13 +238,17 @@ export function SourceFormFieldsExtended({
             style={{ gridColumn: "1 / -1" }}
             data-testid="brand-token-input"
           />
-          <TextInput
-            label={t("sourceFormFieldsExtended.namespace")}
-            description={t("sourceFormFieldsExtended.brandNamespaceHint")}
-            value={gqlNamespace}
-            onChange={(e) => setGqlNamespace(e.target.value)}
-            data-testid="brand-namespace-input"
-          />
+          {/* A table name prefix is the remote GraphQL source's; an OpenAPI table is named for
+              its operation. */}
+          {BRAND_CARRIER[form.type] === "graphql" && (
+            <TextInput
+              label={t("sourceFormFieldsExtended.namespace")}
+              description={t("sourceFormFieldsExtended.brandNamespaceHint")}
+              value={gqlNamespace}
+              onChange={(e) => setGqlNamespace(e.target.value)}
+              data-testid="brand-namespace-input"
+            />
+          )}
         </>
       )}
       {form.type === "graphql" && (

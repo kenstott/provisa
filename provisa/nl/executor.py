@@ -120,7 +120,7 @@ async def _execute_cypher(
         deliver=deliver,
         buffered=True,
         cache_hint=NO_CACHE_HINT,
-        sdl_joins=True,
+        sdl_joins=False,
     )
     result = await _execute_plan(plan, app_state)
     if result.redirect is not None:

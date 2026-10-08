@@ -31,12 +31,18 @@ def parse_text(content: str) -> dict:  # REQ-315, REQ-407
 
 
 def load_spec(spec_path: str) -> dict:  # REQ-314, REQ-315
-    """Load OpenAPI spec from a local file path or remote URL (http/https).
+    """Load OpenAPI spec from a local file path or remote URL (http/https), or the spec a
+    branded source ships with (``brand:<id>``, REQ-1923).
 
     Raises FileNotFoundError for missing local paths.
     Raises httpx.HTTPError for HTTP failures.
     Raises ValueError for parse errors.
     """
+    from provisa.openapi.brands import brand_spec, spec_brand
+
+    brand = spec_brand(spec_path)
+    if brand is not None:
+        return brand_spec(brand)
     p = pathlib.Path(spec_path)
     if p.exists():
         text = p.read_text()

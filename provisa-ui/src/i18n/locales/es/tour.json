@@ -22,7 +22,7 @@
       "intro": "Un modelo para sus datos, metadatos y procesamiento, siempre sincronizado y reutilizado en todas partes. Elija un tema: cada uno es un recorrido breve e independiente, y «Listo» le devuelve aquí. La brújula de la barra de herramientas vuelve a abrir este menú en cualquier momento.",
       "completed": "Completado",
       "steps": "Pasos: {{count}}",
-      "coreTour": "Iniciar el recorrido principal"
+      "coreTour": "Empezar desde el principio"
     },
     "topics": {
       "connect": {
@@ -76,7 +76,7 @@
         "description": "➕ Las conexiones nuevas empiezan con este botón — PostgreSQL, Snowflake, MongoDB, una API REST, un CSV, y más de 50 opciones adicionales."
       },
       "step3": {
-        "title": "60 tipos de fuente, 13 categorías",
+        "title": "61 tipos de fuente, 13 categorías",
         "description": "Un selector enumera cada tipo, agrupado por categoría: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Busque por nombre o alias, o acote con los chips de categoría. Cada tipo muestra su logotipo y un icono de alcance: ⚡ lectura en vivo en el origen, o un icono de copia donde Provisa lee una réplica actualizada.<p>Elija uno, rellene la conexión y guarde.</p>"
       },
       "step4": {
@@ -129,11 +129,11 @@
       },
       "step15": {
         "title": "Conecta el grafo",
-        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>Las relaciones enlazan tablas entre orígenes — incluso entre distintas bases de datos — convirtiendo tablas planas en un <strong>grafo</strong> navegable.</p><p>🛡️ También se pueden <strong>hacer cumplir</strong>: dale a la gente libertad para explorar, con barreras de protección sensatas.</p>"
+        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>Una relación cumple dos funciones. Da forma a su <strong>modelo de datos</strong>: cómo se conectan las tablas entre orígenes y dominios, que es lo que sigue toda superficie de consulta, ya sea el anidamiento de GraphQL, las rutas de Cypher o los joins de SQL.</p><p>También es una <strong>regla</strong>. Los joins están gobernados: un rol sin el derecho <code>ignore_relationships</code> solo puede hacer joins a lo largo de relaciones registradas, así que qué relaciones existen decide qué consultas son válidas. Conceda ese derecho de forma deliberada a un rol de confianza y podrá hacer joins libremente (nunca en modo de alta seguridad).</p><p>Las relaciones enlazan tablas entre orígenes — incluso entre distintas bases de datos — convirtiendo tablas planas en un <strong>grafo</strong> navegable.</p>"
       },
       "step16": {
         "title": "Define una relación",
-        "description": "🔗 Asigna una columna de origen a una columna de destino y establece la <strong>cardinalidad</strong>:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ O deja que Provisa <strong>infiera</strong> las relaciones por ti con IA.</p>"
+        "description": "🔗 Asigna una columna de origen a una columna de destino y establece la <strong>cardinalidad</strong>:<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ O deja que Provisa <strong>infiera</strong> las relaciones por ti con IA.</p><p>🛡️ Como una relación es una regla, añadir, cambiar o eliminar una puede hacer que una consulta pase a ser válida o inválida. Una relación solicitada desde fuera del dominio de la tabla de origen, o por alguien que no puede crear relaciones, espera aprobación.</p>"
       },
       "stepRelsSuggest": {
         "title": "Sugerir relaciones",
@@ -141,7 +141,7 @@
       },
       "stepRelsList": {
         "title": "Todas las relaciones en una lista",
-        "description": "📋 Las relaciones del modelo, las declare o no un origen, con filtro y orden. Expanda una fila para editarla o añadir su inversa. Un rol solo recorre las relaciones sobre las que tiene derechos."
+        "description": "📋 Las relaciones del modelo, las declare o no un origen, con filtro y orden. Expanda una fila para editarla o añadir su inversa. Un rol solo hace joins a lo largo de estas relaciones, salvo que tenga el derecho ignore_relationships."
       },
       "step17": {
         "title": "Consulta el ERD",
@@ -169,7 +169,7 @@
       },
       "stepRequests": {
         "title": "Solicitudes de relación",
-        "description": "✋ Una solicitud de relación necesita dos aprobaciones antes de poder ejecutarse. Apruébela, ejecútela o rechácela con un motivo de una lista fija; las solicitudes resueltas pasan a la pestaña Resueltas."
+        "description": "✋ Esta solicitud viene de alguien que no puede crear relaciones por sí mismo, a menudo desde fuera de su dominio, que quiere relacionar sus tablas con las suyas; suele ser el primer paso para pedir sus datos. Las relaciones están gobernadas, así que aprobar una cambia qué consultas son válidas: un rol que solo puede hacer joins a lo largo de relaciones aprobadas ahora podrá hacerlos a través de esta. Una solicitud de relación necesita dos aprobaciones antes de poder ejecutarse. Apruébela, ejecútela o rechácela con un motivo de una lista fija; las solicitudes resueltas pasan a la pestaña Resueltas."
       },
       "stepQualityTable": {
         "title": "Un verificador de calidad no es más que una fuente",
@@ -274,6 +274,10 @@
       "stepPublish": {
         "title": "Publicar en las herramientas de su organización",
         "description": "📤 <strong>Publíquelo donde su organización ya mira.</strong> Salen las entradas de catálogo (tablas, columnas, dominios, responsables, relaciones aprobadas), los productos de datos y el linaje a nivel de columna, y cada destino recibe lo que admite: <strong>DataHub, OpenMetadata, Collibra, Atlan y Apache Atlas</strong> como catálogos, <strong>Snowflake Horizon</strong> y <strong>BigQuery Dataplex</strong> como listados de productos de datos, y el linaje mediante <strong>OpenLineage</strong>.<p>La publicación es solo de salida: Provisa nunca vuelve a leer un destino como fuente de verdad.</p>"
+      },
+      "stepRelsAgents": {
+        "title": "Relaciones y agentes de IA",
+        "description": "🤖 El modelo y sus relaciones están disponibles para los agentes de IA — Polly y los agentes que se conectan por MCP — y determinan las consultas que esos agentes escriben.<p>Un agente se ejecuta bajo un rol, así que se le aplica la misma regla que a una persona: una consulta que hace joins fuera de las relaciones registradas <strong>falla</strong>. Se hace cumplir, no es solo una recomendación.</p><p>Además, es decisión suya. Para que un agente descubra relaciones, conceda a su rol el derecho <code>ignore_relationships</code>; para mantenerlo dentro de barreras, deje al rol sin él. Es la misma concesión deliberada que para una identidad de confianza (nunca se aplica en modo de alta seguridad).</p>"
       }
     },
     "status": {

@@ -121,6 +121,15 @@ async def environment_detail(request: Request, org_id: str, name: str) -> dict:
         faked = await env_data.faked_column_count(conn, schema)
         uncovered = await env_data.uncovered_sensitive(conn, schema)
         kept = await kept_counts(conn, schema)
+        report_error = None
+        if row["synthetic_dataset"] is not None:
+            sd = env_data._table("synthetic_datasets", schema)
+            held = (
+                await conn.execute_core(
+                    select(sd.c.report_error).where(sd.c.id == row["synthetic_dataset"])
+                )
+            ).fetchone()
+            report_error = None if held is None else held[0]
     return {
         "name": name,
         "parent": row["parent"],
@@ -136,6 +145,18 @@ async def environment_detail(request: Request, org_id: str, name: str) -> dict:
                 "dataset": row["synthetic_dataset"],
                 "status": row["data_status"],
                 "error": row["data_error"],
+                # REQ-1942: the report on the generated rows is its own outcome -- failed, with
+                # why, while the environment is Ready and serves them; ready; or none yet.
+                "report": {
+                    "status": (
+                        "failed"
+                        if report_error is not None
+                        else "ready"
+                        if row["data_status"] == "ready"
+                        else None
+                    ),
+                    "error": report_error,
+                },
             },
         },
     }

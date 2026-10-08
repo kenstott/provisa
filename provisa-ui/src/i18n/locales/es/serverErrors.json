@@ -282,7 +282,7 @@
       "not_virtual_view": "La tabla no es una vista virtual de Provisa (source_id != '__derived__')",
       "paging_above_ceiling": "Tabla {{table}}: max_rows={{max_rows}} supera graphql_remote.max_rows={{ceiling}}; una tabla puede reducir el límite del operador, nunca aumentarlo.",
       "paging_connection_rows_only": "La tabla {{table}} es una tabla de conexión: pagina con los argumentos de su esquema y solo establece el máximo de filas.",
-      "paging_endpoint_needs_type": "La tabla {{table}} es un endpoint REST: su paginación indica el tipo de paginación.",
+      "paging_endpoint_needs_type": "La tabla {{table}} es un endpoint REST: su paginación indica el tipo de paginación o dónde están sus filas.",
       "paging_invalid": "Tabla {{table}}: {{reason}}",
       "paging_not_paged": "La tabla {{table}} no se lee página a página, así que no admite paginación.",
       "query_engine_unavailable": "Motor de consultas no disponible",
@@ -355,7 +355,9 @@
       "webhook_not_found": "No se encontró el webhook '{{webhook}}'",
       "change_streams_unavailable": "El origen '{{source}}' es un servidor MongoDB independiente, que no ofrece change streams: la señal de cambio native requiere un replica set o un clúster fragmentado. Ejecútelo como replica set o use la señal de cambio poll.",
       "table_draft_set": "Tabla {{table}} marcada como borrador",
-      "table_released": "Tabla {{table}} liberada"
+      "table_released": "Tabla {{table}} liberada",
+      "openapi_no_rows_field": "Tabla {{table}}: la respuesta no tiene ninguna propiedad {{rows_field}} de la que leer filas.",
+      "paging_rows_field_fixed": "Tabla {{table}}: dónde están sus filas ({{rows_field}}) se establece al registrar la tabla. Registre la tabla de nuevo para leer sus filas de otro lugar."
     },
     "secrets": {
       "still_referenced": "{{secret}} sigue siendo nombrado por {{count}} valor(es) almacenado(s) en esta organización. Cambie o quite cada uno y vuelva a eliminarlo."

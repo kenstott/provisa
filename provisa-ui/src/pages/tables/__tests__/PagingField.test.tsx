@@ -8,7 +8,7 @@
 // the parameters that type reads, or a connection table's max rows — and nothing else.
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "../../../test-utils/render";
+import { fireEvent, render, screen } from "../../../test-utils/render";
 import { PagingField } from "../PagingField";
 import { NO_PAGING } from "../paging";
 
@@ -32,6 +32,70 @@ describe("PagingField (REQ-318)", () => {
     );
     expect(screen.getByRole("textbox", { name: "Max pages" })).toHaveValue("3");
     expect(screen.queryByRole("textbox", { name: "Max rows per read" })).not.toBeInTheDocument();
+  });
+
+  it("names what paging after the last row reads, with the names sent when left empty", () => {
+    render(
+      <PagingField
+        kind="endpoint"
+        paging={{ ...NO_PAGING, type: "last_row", cursorParam: "starting_after" }}
+        onChange={vi.fn()}
+        ceilingRows={1000}
+      />,
+    );
+    expect(screen.getByRole("textbox", { name: "Starts-after parameter" })).toHaveValue(
+      "starting_after",
+    );
+    expect(screen.getByRole("textbox", { name: "Last row's field" })).toHaveAttribute(
+      "placeholder",
+      "id",
+    );
+    expect(screen.getByRole("textbox", { name: "Page size parameter" })).toHaveAttribute(
+      "placeholder",
+      "limit",
+    );
+    expect(screen.queryByRole("textbox", { name: "Next-cursor field" })).not.toBeInTheDocument();
+  });
+
+  it("lets the steward say where the rows are when registering (REQ-316)", () => {
+    const onChange = vi.fn();
+    render(
+      <PagingField
+        kind="endpoint"
+        paging={{ ...NO_PAGING, rowsField: "values" }}
+        onChange={onChange}
+        ceilingRows={1000}
+        rowsFieldEditable
+      />,
+    );
+    const field = screen.getByRole("textbox", { name: "Rows are under" });
+    expect(field).toHaveValue("values");
+    expect(field).not.toHaveAttribute("readonly");
+    // Where the rows are needs no paging type beside it.
+    expect(screen.queryByText("Choose a paging type, or clear the paging fields.")).toBeNull();
+    fireEvent.change(field, { target: { value: "data" } });
+    expect(onChange).toHaveBeenCalledWith({ ...NO_PAGING, rowsField: "data" });
+  });
+
+  it("shows where a registered table's rows are without letting it be edited", () => {
+    const { rerender } = render(
+      <PagingField
+        kind="endpoint"
+        paging={{ ...NO_PAGING, type: "offset", rowsField: "values" }}
+        onChange={vi.fn()}
+        ceilingRows={1000}
+      />,
+    );
+    expect(screen.getByRole("textbox", { name: "Rows are under" })).toHaveAttribute("readonly");
+    rerender(
+      <PagingField
+        kind="endpoint"
+        paging={{ ...NO_PAGING, type: "offset" }}
+        onChange={vi.fn()}
+        ceilingRows={1000}
+      />,
+    );
+    expect(screen.queryByRole("textbox", { name: "Rows are under" })).toBeNull();
   });
 
   it("shows a connection table its row bound only", () => {

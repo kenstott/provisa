@@ -246,7 +246,8 @@
       "offset": "Deslocamento e limite",
       "page_number": "Número de página",
       "cursor": "Cursor",
-      "link_header": "Cabeçalho Link"
+      "link_header": "Cabeçalho Link",
+      "last_row": "Após a última linha"
     },
     "pagingFields": {
       "pageParam": "Parâmetro de página",
@@ -254,7 +255,10 @@
       "pageSize": "Tamanho de página",
       "cursorParam": "Parâmetro de cursor",
       "cursorField": "Campo do próximo cursor",
-      "maxPages": "Máximo de páginas"
+      "maxPages": "Máximo de páginas",
+      "afterParam": "Parâmetro de início após",
+      "lastRowField": "Campo da última linha",
+      "rowsField": "As linhas estão em"
     },
     "pagingCutNote": "Uma leitura que atinge Máximo de páginas enquanto a API tem mais é informada como cortada.",
     "pagingTypeRequired": "Escolha um tipo de paginação ou limpe os campos de paginação.",
@@ -281,6 +285,8 @@
       "rebuildEveryHelp": "Recompila periodicamente a réplica inteira para capturar o que um delta deixar passar. Em branco = nunca por relógio.",
       "query": "Consulta delta (opcional, nativa da fonte)",
       "queryHelp": "Uma consulta nativa da fonte com os marcadores $wm (cursor) e {{fields}}. Deixe em branco para uma fonte SQL: o Provisa gera SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
-    }
+    },
+    "pagingRowsFieldHelp": "A propriedade da resposta que contém as linhas, como values ou data em um invólucro de página. Deixe vazio quando a própria resposta são as linhas. As colunas da tabela são as dos objetos que estão ali.",
+    "pagingRowsFieldFixed": "Definido quando a tabela foi registrada. Registre a tabela novamente para ler suas linhas de outro lugar."
   }
 }

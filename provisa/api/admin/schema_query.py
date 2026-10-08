@@ -1022,7 +1022,8 @@ class Query:  # REQ-021, REQ-042
     ) -> list[AvailableTableType]:
         """What a source offers to be registered as commands one at a time. A remote source
         offers write operations (REQ-1924): an OpenAPI source's operations that are not GETs, a
-        remote GraphQL source's mutations, a gRPC source's mutation methods. A database source
+        remote GraphQL source's mutations, a gRPC source's mutation methods. An OpenAPI source
+        also offers each GET whose response declares no row schema. A database source
         offers the routines of ``schema_name`` (REQ-887), each with its read/write kind. Listing
         them registers none: registration is the steward's curation step."""
         require_capability(info, "table_registration")

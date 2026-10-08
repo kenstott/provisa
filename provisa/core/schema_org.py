@@ -1027,6 +1027,9 @@ synthetic_datasets = Table(
     Column("status", Text, nullable=False),
     Column("store_schema", Text, nullable=False),
     Column("error", Text),
+    # REQ-1942: why the report on its generated rows failed -- the report's own outcome, apart
+    # from the generation's; NULL when it did not fail.
+    Column("report_error", Text),
     Column("generated_at", DateTime(timezone=True)),
     # REQ-1939: conditional child counts by relationship ([{relationship, condition, count}]) and
     # the statements checked after generation ([statement, ...])

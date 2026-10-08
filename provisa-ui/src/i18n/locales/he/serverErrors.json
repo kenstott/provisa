@@ -282,7 +282,7 @@
       "not_virtual_view": "הטבלה אינה תצוגת Provisa וירטואלית (source_id != '__derived__')",
       "paging_above_ceiling": "טבלה {{table}}: max_rows={{max_rows}} גבוה מ-graphql_remote.max_rows={{ceiling}}; טבלה רשאית להוריד את מגבלת המפעיל, לעולם לא להעלות אותה.",
       "paging_connection_rows_only": "הטבלה {{table}} היא טבלת חיבור: היא מעמדת לפי הארגומנטים של הסכמה שלה וקובעת רק מספר שורות מרבי.",
-      "paging_endpoint_needs_type": "הטבלה {{table}} היא נקודת קצה REST: העימוד שלה מציין את סוג העימוד.",
+      "paging_endpoint_needs_type": "הטבלה {{table}} היא נקודת קצה REST: העימוד שלה מציין את סוג העימוד, או היכן נמצאות שורותיה.",
       "paging_invalid": "טבלה {{table}}: {{reason}}",
       "paging_not_paged": "הטבלה {{table}} אינה נקראת עמוד אחר עמוד, ולכן אינה מקבלת עימוד.",
       "query_engine_unavailable": "מנוע השאילתות אינו זמין",
@@ -355,7 +355,9 @@
       "webhook_not_found": "ה-Webhook '{{webhook}}' לא נמצא",
       "change_streams_unavailable": "המקור '{{source}}' הוא שרת MongoDB עצמאי, שאינו מספק change streams: אות השינוי native דורש replica set או אשכול מפוצל. הפעילו אותו כ-replica set, או השתמשו באות השינוי poll.",
       "table_draft_set": "הטבלה {{table}} הוגדרה כטיוטה",
-      "table_released": "הטבלה {{table}} שוחררה"
+      "table_released": "הטבלה {{table}} שוחררה",
+      "openapi_no_rows_field": "הטבלה {{table}}: בתשובה אין מאפיין {{rows_field}} שממנו ניתן לקרוא שורות.",
+      "paging_rows_field_fixed": "הטבלה {{table}}: מיקום שורותיה ({{rows_field}}) נקבע בעת רישום הטבלה. רשמו את הטבלה מחדש כדי לקרוא את שורותיה ממקום אחר."
     },
     "secrets": {
       "still_referenced": "{{secret}} עדיין מצוין על ידי {{count}} ערכים שמורים בארגון זה. יש לשנות או להסיר כל אחד מהם ואז למחוק שוב."

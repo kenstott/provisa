@@ -17,7 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 
 from provisa.core.paging import (
     CONNECTION,
@@ -222,3 +222,37 @@ async def test_a_remote_graphql_table_that_is_no_connection_takes_no_paging(cont
     async with control_plane.acquire() as conn:
         result = await save_table_paging(state, conn, 2, PagingInput(max_rows=5))
     assert (result.success, result.code) == (False, "schema.paging_not_paged")
+
+
+# -- where a REST answer's rows are (REQ-316) -------------------------------------------------------
+
+
+def test_a_rest_endpoint_may_say_where_its_rows_are_and_nothing_else():
+    wrapped = PaginationConfig(rows_field="values")
+    assert wrapped.is_endpoint and wrapped.type is None
+    assert paging_row(wrapped) == {"rows_field": "values"}
+    check_paging(wrapped, table="repos", kind=ENDPOINT, ceiling_rows=100)
+    with pytest.raises(ValueError, match="rows_field"):
+        PaginationConfig(rows_field="values", max_rows=10)
+
+
+async def test_an_edit_of_a_tables_paging_keeps_where_its_rows_are(control_plane):
+    from provisa.api.admin._table_paging import save_table_paging
+    from provisa.api.admin.types import PagingInput
+    from provisa.core.schema_org import registered_tables
+
+    state = _state()
+    async with control_plane.acquire() as conn:
+        await conn.execute_core(
+            update(registered_tables)
+            .where(registered_tables.c.id == 1)
+            .values(pagination={"rows_field": "values"})
+        )
+        moved = await save_table_paging(state, conn, 1, PagingInput(type="offset"))
+        kept = await save_table_paging(
+            state, conn, 1, PagingInput(type="offset", rows_field="values", max_pages=3)
+        )
+    assert (moved.success, moved.code) == (False, "schema.paging_rows_field_fixed")
+    assert moved.params == {"table": "pets", "rows_field": "values"}
+    assert kept.success
+    assert state.api_endpoints["pets"].pagination.rows_field == "values"

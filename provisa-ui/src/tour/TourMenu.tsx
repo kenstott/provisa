@@ -47,9 +47,16 @@ export function TourMenu({
       data-testid="tour-menu"
     >
       <Stack gap="md">
-        <Group justify="space-between" align="flex-start" wrap="nowrap">
+        <Group justify="space-between" align="flex-start" wrap="wrap">
           <Text size="sm">{t("tour.menu.intro")}</Text>
-          <Button variant="light" size="xs" onClick={onCore} data-testid="tour-menu-core-tour">
+          {/* flexShrink 0: a shrinking flex item let Mantine's nowrap/ellipsis label clip to "Start the" */}
+          <Button
+            variant="light"
+            size="xs"
+            onClick={onCore}
+            style={{ flexShrink: 0 }}
+            data-testid="tour-menu-core-tour"
+          >
             {t("tour.menu.coreTour")}
           </Button>
         </Group>

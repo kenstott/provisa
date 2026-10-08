@@ -272,16 +272,37 @@ class TestEncryption:
         resp = await client.put("/admin/encryption", json={"provider": "no-such-provider-xyz"})
         assert resp.status_code == 400
 
-    async def test_generate_encryption_key(self, client):
-        resp = await client.post("/admin/encryption/generate-key", json={})
-        assert resp.status_code in (200, 503)
-        body = resp.json()
-        if resp.status_code == 200:
-            assert body["stored"] is True
-            assert body["key_id"] == "master"
-        # REQ-1574: the key is never handed back, not even on the call that creates it. A
-        # deployment with nowhere to store it says so; it does not print the key instead.
-        assert "key_b64" not in str(body)
+    async def test_a_deployment_with_a_recorded_key_generates_no_other(self, client):
+        """REQ-918: a master key is provisioned, never replaced. This deployment's control plane
+        is the session's, shared with every other module: once it has stored a secret, the key
+        that secret is written under is the only key its servers start with, so a key generated
+        over it would stop every server started afterwards (VaultKeyError). The request is
+        refused and the key this host holds is the one it held before.
+
+        The 200 on a deployment with no recorded key is tests/unit/test_admin_config_tabs.py's:
+        generating one here would replace the session's key."""
+        from provisa.api.app import state
+        from provisa.core import secrets_store
+        from provisa.encryption.providers import master_key_fingerprint
+        from tests.integration.vault_state import vault_left_as_found
+
+        with vault_left_as_found(state.admin_db.engine):
+            await secrets_store.put(
+                state.admin_db, "default", "REQ918_PROBE", "v", owner_id=secrets_store.ORG_OWNER
+            )
+            recorded = await secrets_store.recorded_key_fingerprint(state.admin_db)
+            assert recorded is not None and recorded == master_key_fingerprint()
+
+            shown = (await client.get("/admin/encryption")).json()
+            assert shown["key_fingerprint"] == recorded
+
+            resp = await client.post("/admin/encryption/generate-key", json={})
+            assert resp.status_code == 409, resp.text
+            assert recorded in resp.text
+            # REQ-1574: the key is never handed back, on any answer.
+            assert "key_b64" not in resp.text
+            assert master_key_fingerprint() == recorded
+            assert await secrets_store.recorded_key_fingerprint(state.admin_db) == recorded
 
     async def test_encryption_get_returns_no_secret_values(self, client):
         """REQ-1575: a field the registry marks secret is absent, with a set/unset bit beside it."""

@@ -1285,13 +1285,19 @@ def test_shared_alias_produces_union_all():
     assert "UNION ALL" in sql.upper()
 
 
-def test_unknown_rel_type_returns_empty():
-    """Unknown relationship type produces impossible join (Cypher best-effort semantics)."""
+def test_an_unregistered_rel_type_is_refused():
+    """REQ-603: a relationship type the model does not register is refused by the translation
+    every Cypher surface performs -- never lowered to a join that is silently never true -- and a
+    registered one translates."""
+    from provisa.cypher.translator_types import UnregisteredRelationshipType
+
     lm = _make_label_map_with_alias()
     ast = parse_cypher("MATCH (e:Employee)-[:UNKNOWN_REL]->(d:Department) RETURN e.name")
-    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
-    sql = sql_ast.sql(dialect="trino").upper()
-    assert "FALSE" in sql or "1 = 0" in sql or "WHERE FALSE" in sql
+    with pytest.raises(UnregisteredRelationshipType, match=r"type\(s\): UNKNOWN_REL") as refused:
+        cypher_to_sql(ast, lm, {})
+    assert refused.value.types == ["UNKNOWN_REL"]
+    known = sorted(lm.aliases)[0]
+    cypher_to_sql(parse_cypher(f"MATCH (a)-[:{known}]->(b) RETURN a"), lm, {})
 
 
 def _make_label_map_product_reviews() -> CypherLabelMap:

@@ -70,6 +70,7 @@ import {
   pickerTypeLabel,
   reachInfoFor,
   reachSuffix,
+  carrierOf,
   sourceBrand,
   sourceTypeLabel,
   uiType,
@@ -1237,16 +1238,22 @@ export function SourcesPage() {
       const resp = await fetch("/admin/openapi/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...(openapiSpecMode === "inline"
-            ? { spec_content: openapiSpecInline }
-            : { spec_path: openapiSpecPath }),
-          base_url: openapiBaseUrl || undefined,
-          source_id: form.id,
-          domain_id: "",
-          auth_config: authType !== "none" ? { type: authType, ...authFields } : null,
-          cache_ttl: parseInt(openapiCacheTtl, 10) || 300,
-        }),
+        body: JSON.stringify(
+          form.type in BRAND_CARRIER
+            ? // REQ-1923: a branded source sends its brand and a credential; the spec and the
+              // address are the brand's, and no tables are registered by adding it.
+              { source_id: form.id, brand: form.type, token: authFields.token ?? "" }
+            : {
+                ...(openapiSpecMode === "inline"
+                  ? { spec_content: openapiSpecInline }
+                  : { spec_path: openapiSpecPath }),
+                base_url: openapiBaseUrl || undefined,
+                source_id: form.id,
+                domain_id: "",
+                auth_config: authType !== "none" ? { type: authType, ...authFields } : null,
+                cache_ttl: parseInt(openapiCacheTtl, 10) || 300,
+              },
+        ),
       });
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
@@ -1528,11 +1535,11 @@ export function SourcesPage() {
             data-tour="sources-form"
             className="form-card"
             onSubmit={
-              form.type === "openapi"
+              carrierOf(form.type) === "openapi"
                 ? handleOpenapiRegister
                 : form.type === "grpc"
                   ? handleGrpcRegister
-                  : form.type === "graphql" || form.type in BRAND_CARRIER
+                  : carrierOf(form.type) === "graphql"
                     ? handleGraphqlRegister
                     : // REQ-1780/1783: kaggle registers per-file through KaggleFormSection's own
                       // "Add Dataset" button (each file needs its own createSource+registerTable
@@ -1727,11 +1734,11 @@ export function SourcesPage() {
                               <form
                                 className="form-card"
                                 onSubmit={
-                                  form.type === "openapi"
+                                  carrierOf(form.type) === "openapi"
                                     ? handleOpenapiRegister
                                     : form.type === "grpc"
                                       ? handleGrpcRegister
-                                      : form.type === "graphql" || form.type in BRAND_CARRIER
+                                      : carrierOf(form.type) === "graphql"
                                         ? handleGraphqlRegister
                                         : handleCreate
                                 }

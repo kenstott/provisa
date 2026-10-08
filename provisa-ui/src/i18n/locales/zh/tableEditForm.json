@@ -246,7 +246,8 @@
       "offset": "偏移量和限制",
       "page_number": "页码",
       "cursor": "游标",
-      "link_header": "Link 标头"
+      "link_header": "Link 标头",
+      "last_row": "最后一行之后"
     },
     "pagingFields": {
       "pageParam": "页参数",
@@ -254,7 +255,10 @@
       "pageSize": "页大小",
       "cursorParam": "游标参数",
       "cursorField": "下一个游标字段",
-      "maxPages": "最大页数"
+      "maxPages": "最大页数",
+      "afterParam": "起始位置参数",
+      "lastRowField": "最后一行的字段",
+      "rowsField": "行所在的属性"
     },
     "pagingCutNote": "在 API 还有更多数据时达到最大页数的读取会被报告为已截断。",
     "pagingTypeRequired": "请选择分页类型，或清空分页字段。",
@@ -281,6 +285,8 @@
       "rebuildEveryHelp": "定期重建整个副本，以捕获增量遗漏的内容。留空 = 从不按时钟重建。",
       "query": "增量查询（可选，数据源原生）",
       "queryHelp": "使用 $wm（游标）和 {{fields}} 占位符的数据源原生查询。SQL 数据源请留空：Provisa 会生成 SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>。"
-    }
+    },
+    "pagingRowsFieldHelp": "响应中包含行的属性，例如分页包装中的 values 或 data。当响应本身就是行时请留空。表的列即该处对象的列。",
+    "pagingRowsFieldFixed": "在注册表时设置。要从其他位置读取行，请重新注册该表。"
   }
 }
