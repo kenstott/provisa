@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>One model — Provisa</title>
+  <meta name="description" content="Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Federation across 62 sources, metrics defined once, the glossary as a graph, and six governance layers compiled into every query plan." />
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="canonical" href="https://provisa.dev/why/one-model" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#interfaces">Interfaces</a>
+        <a href="/#governance">Governance</a>
+        <a href="/#sources">Sources</a>
+        <a href="/docs">Docs</a>
+        <a class="nav-cta" href="/#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <div class="doc-head">
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>One model</span></p>
+        <h1>One model.</h1>
+        <p class="lead">
+          Federation, metrics, ontology and governance from a single model. Nothing to keep
+          in sync.
+        </p>
+      </div>
+
+      <div class="doc-body">
+        <p>
+          Most estates run these as four tools. A federation engine knows where the data
+          is, a metrics layer knows what the numbers mean, a catalog or knowledge graph
+          knows what the terms mean, and a policy service knows who may see what. Each holds
+          its own description of the same data, and the descriptions drift apart. Provisa
+          keeps one description and runs from it, so the four stay in step because there is
+          only one of them.
+        </p>
+
+        <h2 id="federation">Federation</h2>
+        <p>
+          62 source types, including Salesforce, ServiceNow and Stripe, are reached in place.
+          The SaaS systems the business runs on are tables beside the databases, with no
+          pipeline into a warehouse first. You register the tables you want; nothing a
+          source offers is registered for you.
+        </p>
+        <p>
+          Query in SQL, GraphQL or Cypher over nine protocols: pgwire, Bolt, Arrow Flight,
+          gRPC, JDBC, REST, WebSocket, Airport and MCP. Any Postgres-wire client can connect,
+          so a BI tool or a metrics tool can sit on top. <a href="/why/sources">All 62
+          sources.</a> <a href="/why/interfaces">The languages and protocols.</a>
+        </p>
+
+        <h2 id="metrics">Metrics</h2>
+        <p>
+          A metric is a named, governed aggregate: a name, an expression, a data type, a
+          description. It is defined once and every tool and language that asks gets the
+          same definition. A metric carries the same role visibility and stewardship as a
+          table, and the joins it needs come from the registered relationships rather than
+          from each tool's own copy of them.
+        </p>
+
+        <h2 id="ontology">Ontology</h2>
+        <p>
+          The business glossary is a graph. Terms are derived from the field names in the
+          model, linked to the physical columns they name, and connected by the relationships
+          between those tables. It is separate from the metrics: a glossary term says what a
+          concept is, a metric says how a number is computed.
+        </p>
+        <p>
+          The graph is what Cypher queries run over, what finds the path between any two
+          tables, and what an agent reads to work out what connects to what. The glossary is
+          itself queryable metadata, so reporting on it goes through the same governance as
+          any other query.
+        </p>
+
+        <h2 id="governance">Governance</h2>
+        <p>
+          Six layers are compiled into every query plan, on every language and every
+          protocol: introspection filtering, public access, domain access, row-level
+          security, column visibility and masking, and a predicate guard with approval.
+          The policy is part of the plan that runs, so no route in goes around it.
+          <a href="/why/governance">How each layer works.</a>
+        </p>
+        <p>
+          No invalid join ever runs on your data. A JOIN or a graph traversal is legal only
+          if it matches a registered, approved relationship, and a refused join names the
+          valid paths. Roles are governed by default; opting out is a deliberate grant of the
+          ignore-relationships right to a role you trust. An agent's token maps to a role, so
+          an agent gets the same layers a person does.
+        </p>
+
+        <h2>Alongside context layers</h2>
+        <p>
+          A context layer such as Atlan tells an agent what it should do. Provisa enforces
+          what it can do. They are complementary, and Provisa publishes its model into
+          Atlan.
+        </p>
+      </div>
+
+      <div class="doc-next">
+        <a class="more" href="/why/governance">The six governance layers</a>
+        <a class="more" href="/why/interfaces">Three languages, nine protocols</a>
+        <a class="more" href="/#download">Try it</a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <p class="footer-note">Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/why/one-model">One model</a>
+        <a href="/why/interfaces">Interfaces</a>
+        <a href="/why/governance">Governance</a>
+        <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
