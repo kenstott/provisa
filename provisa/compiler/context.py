@@ -532,11 +532,20 @@ def _register_draft_names(  # REQ-1921
     domain_alias_map: dict[str, str],
 ) -> None:
     """Every name a statement could give a draft table this role would otherwise read — its
-    field name (named as ``schema_gen._assign_names`` names a table), table name, alias and
-    ``schema.table`` — so a statement naming one is refused as draft, not as unknown. A draft
+    field name (named as ``schema_gen._assign_names`` names a table), table name, alias, and the
+    qualified names a served table answers to (``domain.semantic``, ``domain.table``,
+    ``schema.table``: the one rule in :mod:`provisa.compiler.naming`) — so a statement naming one
+    is refused as draft, not as unknown. A draft
     table in a domain the role does not reach, or with no column it sees, is not named: to that
     role it does not exist, draft or not."""
-    from provisa.compiler.naming import active_gql_convention, domain_to_sql_name, generate_name
+    from provisa.compiler.naming import (
+        active_gql_convention,
+        apply_sql_name,
+        domain_to_sql_name,
+        generate_name,
+        semantic_relation_names,
+        stored_relation_names,
+    )
     from provisa.compiler.schema_gen import SchemaInput
     from provisa.security.rights import reaches_all_domains
 
@@ -556,11 +565,21 @@ def _register_draft_names(  # REQ-1921
         field_name = generate_name(
             base, si.naming_rules, alias=alias, convention=active_gql_convention()
         )
+        unprefixed = field_name
         if si.domain_prefix:
             prefix = domain_alias_map.get(domain) or domain_to_sql_name(domain)
             if prefix:
                 field_name = f"{prefix}__{field_name}"
-        for said in {field_name, name, alias, f"{row['schema_name']}.{name}"}:
+        # Its semantic name, as ``semantic_table_name`` reads a served table's: the alias, else
+        # the field name without its domain prefix.
+        semantic = apply_sql_name(alias or unprefixed)
+        for said in {
+            field_name,
+            name,
+            alias,
+            *semantic_relation_names(domain, semantic),
+            *stored_relation_names(domain, row["schema_name"], name),
+        }:
             if said:
                 ctx.draft_names[said] = name
 

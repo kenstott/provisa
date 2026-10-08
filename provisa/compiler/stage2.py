@@ -248,27 +248,21 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     gov.public_tables = frozenset(_public)
 
     # table_map from compilation context — semantic refs only
-    from provisa.compiler.naming import domain_to_sql_name
+    from provisa.compiler.naming import semantic_relation_names, stored_relation_names
     from provisa.compiler.sql_rewrite import semantic_table_name
 
     for meta in ctx.tables.values():
-        key_semantic = f"{domain_to_sql_name(meta.domain_id)}.{semantic_table_name(meta)}"
-        key_short = semantic_table_name(meta)
-        gov.table_map[key_semantic] = meta.table_id
-        gov.table_map[key_short] = meta.table_id
+        for said in semantic_relation_names(meta.domain_id, semantic_table_name(meta)):
+            gov.table_map[said] = meta.table_id
 
     # Also allow domain.original_table_name and schema.original_table_name refs
     # (e.g. "meta.registered_tables", "public.registered_tables")
     # ctx.tables have aliased names; raw tables have the original pre-alias names.
     for tbl in tables:
-        domain_id = tbl.get("domain_id") or ""
-        original_name = tbl.get("table_name") or ""
-        schema_name = tbl.get("schema_name") or ""
-        tbl_id = tbl["id"]
-        if domain_id and original_name:
-            gov.table_map[f"{domain_to_sql_name(domain_id)}.{original_name}"] = tbl_id
-        if schema_name and original_name:
-            gov.table_map[f"{schema_name}.{original_name}"] = tbl_id
+        for said in stored_relation_names(
+            tbl.get("domain_id") or "", tbl.get("schema_name") or "", tbl.get("table_name") or ""
+        ):
+            gov.table_map[said] = tbl["id"]
 
     # REQ-1132: row-level meta scoping. A DEFAULT-tier role sees meta ROWS only for its reachable
     # neighbourhood (directly-accessible tables + 1-hop semantic neighbours); admins and meta-grant

@@ -191,6 +191,28 @@ def domain_to_sql_name(domain_id: str) -> str:  # REQ-471
     return re.sub(r"[^a-zA-Z0-9]", "_", domain_id).strip("_")
 
 
+def semantic_relation_names(domain_id: str, semantic: str) -> tuple[str, str]:  # REQ-641
+    """The names a statement gives a registered table through its semantic name: qualified by
+    its domain's SQL name, and bare."""
+    return f"{domain_to_sql_name(domain_id)}.{semantic}", semantic
+
+
+def stored_relation_names(domain_id: str, schema_name: str, table_name: str) -> list[str]:
+    """The qualified names a statement gives a registered table through its stored table name:
+    ``domain.table`` and ``schema.table`` (e.g. ``meta.registered_tables``,
+    ``public.registered_tables``). Served and draft tables alike are named by this one rule —
+    governance resolves a served table under these names (``build_governance_context``) and a
+    draft is refused as draft under the same ones (REQ-1921)."""
+    if not table_name:
+        return []
+    names = []
+    if domain_id:
+        names.append(f"{domain_to_sql_name(domain_id)}.{table_name}")
+    if schema_name:
+        names.append(f"{schema_name}.{table_name}")
+    return names
+
+
 def domain_gql_alias(domain_id: str, stored: str | None = None) -> str:  # REQ-471
     """Return stored alias, or compute first-letter acronym from domain id.
 
