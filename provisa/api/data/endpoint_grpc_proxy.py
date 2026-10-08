@@ -27,7 +27,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 
 from provisa.api.json_response import OrjsonResponse
-from provisa.api.acting_role import held_role
+from provisa.api.acting_role import acting_role, held_role
 from provisa.api.errors import ApiError
 from provisa.grpc.query_ir import (
     AGG_FUNCS,
@@ -230,7 +230,11 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
     from provisa.api.app import state
 
     body = await request.json()
-    role_id = request.headers.get("x-provisa-role") or body.get("role_id") or body.get("role")
+    # REQ-273: the request runs as the role the auth layer established. A body role is not a
+    # second way to pick one: one that differs from the acting role is refused (acting_role).
+    role_id = acting_role(
+        request, request.headers.get("x-provisa-role"), body.get("role_id") or body.get("role"), ""
+    )
     # REQ-544: the native servicer's `x-provisa-cache` / `x-provisa-cache-ttl` opt-in, as headers.
     cache_hint = cache_hint_from_grpc_metadata(request.headers.items())
     limit = int(body.get("limit", 100))

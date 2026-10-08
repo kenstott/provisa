@@ -141,11 +141,13 @@ async def test_another_bound_value_is_a_miss_but_not_another_statement(pipe):  #
 
 
 class _ProxyRequest:
-    """Stands in for the Starlette request ``grpc_proxy`` reads: a JSON body and headers."""
+    """Stands in for the Starlette request ``grpc_proxy`` reads: a JSON body, headers, and the
+    request state the auth layer writes the acting role to (none here: no middleware mounted)."""
 
     def __init__(self, body: dict, headers: dict[str, str]) -> None:
         self._body = body
         self.headers = headers
+        self.state = SimpleNamespace()
 
     async def json(self) -> dict:
         return self._body
