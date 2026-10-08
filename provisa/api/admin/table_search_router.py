@@ -25,12 +25,13 @@ router = APIRouter(prefix="/admin/sources", tags=["admin", "table-search"])
 
 
 async def _candidates_from_cache(  # REQ-464
-    source_id: str, schema_name: str, pool
+    source_id: str, schema_name: str, state
 ) -> list[TableCandidate] | None:
-    """Return TableCandidates from the cache, or None if cache is cold."""
+    """Return TableCandidates from the cache, or None if cache is cold. The cache is a state
+    table, read through the org's state store."""
     from provisa.discovery.catalog_cache import read_cache
 
-    cached = await read_cache(pool, source_id, schema_name)
+    cached = await read_cache(state.tenant_db, source_id, schema_name)
     if cached is None:
         return None
     return [
@@ -142,11 +143,9 @@ async def search_source_tables(
     """
     require_capability_request(request, "source_registration")
     from provisa.api.app import state
-    from provisa.api.admin.schema import _get_pool
     from provisa.core.org_secrets import read_org_api_keys
 
-    pool = await _get_pool()
-    candidates = await _candidates_from_cache(source_id, schema_name, pool)
+    candidates = await _candidates_from_cache(source_id, schema_name, state)
     cache_warm = candidates is not None
 
     if not cache_warm:

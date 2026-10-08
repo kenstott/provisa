@@ -186,3 +186,81 @@ def test_ensure_table_on_a_control_plane_without_schemas(tmp_path):
     asyncio.run(ensure_table(db))  # a second start finds it
     assert "source_catalog_cache" in sa.inspect(engine).get_table_names()
     engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# The cache is a state table: written and read through the org's state store
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def stores(tmp_path):
+    """The org's model store and state store as the product hands them out: one database here,
+    two handles, each refusing the other's tables (``core.store_sides``, REQ-1922)."""
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_org import metadata
+
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'org.db'}")
+    with engine.begin() as raw:
+        metadata.create_all(raw)
+    return Database(engine, "org-model", holds="model"), Database(engine, "state", holds="state")
+
+
+@pytest.mark.asyncio
+async def test_indexing_a_source_writes_its_catalog_where_the_search_reads_it(
+    stores, monkeypatch, caplog
+):
+    """Indexing lists a source through the model store and keeps the result in the state store.
+    Handed the model store for both, every write was refused -- `source_catalog_cache is a
+    state table, use the org's tenant_db` -- logged, and the cache stayed empty for every
+    source of every type."""
+    import logging
+    from types import SimpleNamespace
+
+    from provisa.api.admin import introspect
+    from provisa.api.admin.table_search_router import _candidates_from_cache
+    from provisa.discovery.catalog_cache import index_source
+
+    model_db, tenant_db = stores
+
+    async def _schemas(source_id, source_type, pools, conn):
+        return ["sec"]
+
+    async def _tables(source_id, source_type, schema, pools, conn, state):
+        return [SimpleNamespace(name="financial_facts", comment="facts")]
+
+    async def _columns(source_id, source_type, schema, table, pools, conn):
+        return [("cik", "varchar"), ("value", "double")]
+
+    async def _attached(state, source_id):
+        return None
+
+    monkeypatch.setattr(introspect, "native_schemas", _schemas)
+    monkeypatch.setattr(introspect, "native_tables", _tables)
+    monkeypatch.setattr(introspect, "native_columns", _columns)
+    monkeypatch.setattr(introspect, "unattached_source", _attached)
+    state = SimpleNamespace(tenant_db=tenant_db, model_db=model_db)
+
+    with caplog.at_level(logging.WARNING):
+        await index_source("src", model_db, None, None, {"src": "govdata"}, state)
+
+    assert "write failed" not in caplog.text
+    found = await _candidates_from_cache("src", "sec", state)
+    assert found is not None
+    assert [(c.name, c.columns) for c in found] == [("financial_facts", ["cik", "value"])]
+
+
+@pytest.mark.asyncio
+async def test_invalidating_a_source_empties_its_catalog_in_the_state_store(stores):
+    from provisa.discovery.catalog_cache import invalidate_source, read_cache, write_cache
+
+    _, tenant_db = stores
+    await write_cache(
+        tenant_db,
+        "src",
+        "sec",
+        [CachedTable(schema_name="sec", table_name="t", column_names=["a"], comment=None)],
+    )
+    assert await read_cache(tenant_db, "src", "sec")
+    await invalidate_source(tenant_db, "src")
+    assert await read_cache(tenant_db, "src", "sec") is None

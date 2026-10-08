@@ -1600,7 +1600,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
         async def _reindex():
-            await _invalidate(pool, input.id)
+            await _invalidate(state.tenant_db, input.id)
             await _index_source(
                 input.id,
                 pool,

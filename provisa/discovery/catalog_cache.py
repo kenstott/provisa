@@ -124,6 +124,10 @@ async def index_source(
 ) -> None:  # REQ-464
     """Background task: walk all schemas+tables for a source and populate cache.
 
+    ``pool`` is the org's model store, which the source is listed through; the cache itself is
+    a state table (``core.store_sides``) and is written through the org's state store,
+    ``state.tenant_db``.
+
     Errors are logged and swallowed — cache miss is always safe (live fallback).
     """
     from provisa.api.admin.introspect import (
@@ -248,7 +252,7 @@ async def index_source(
                 ) from exc
 
         try:
-            await write_cache(pool, source_id, schema, tables_with_cols)
+            await write_cache(state.tenant_db, source_id, schema, tables_with_cols)
             log.debug(
                 "catalog_cache: indexed %d tables for %r/%r",
                 len(tables_with_cols),

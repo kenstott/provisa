@@ -311,6 +311,7 @@ async def test_the_catalog_index_of_a_floored_source_never_asks_the_engine(monke
 
     monkeypatch.setattr(catalog_cache, "write_cache", _write)
     control_plane = SimpleNamespace(acquire=lambda: _Acquire())
+    state.tenant_db = control_plane  # the state store the index is written through
 
     await catalog_cache.index_source(
         "orders-pg", control_plane, engine, pool, state.source_types, state
@@ -347,6 +348,7 @@ async def test_the_catalog_index_registers_none_of_the_sources_routines(monkeypa
     monkeypatch.setattr(function_repo, "upsert_function", upsert)
     monkeypatch.setattr(function_repo, "get_function", AsyncMock(return_value=None))
     control_plane = SimpleNamespace(acquire=lambda: _Acquire())
+    state.tenant_db = control_plane  # the state store the index is written through
 
     await catalog_cache.index_source(
         "orders-pg", control_plane, engine, pool, state.source_types, state
