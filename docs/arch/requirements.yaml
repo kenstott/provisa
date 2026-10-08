@@ -77344,3 +77344,19 @@
   - REQ-525
   - REQ-1944
   notes: 'Found 2026-10-08 from a maintainer bug report (the gRPC explorer showed "No proto for role analyst" with several roles active): the HTTP gRPC proxy took its role from the request body without checking the caller held it (issue #162, hotfixed 547e1db9d); the explorer asked for one role''s proto with every active role''s domains. Maintainer ruling 2026-10-08 on Flight''s catalog calls: credential and role-scoped when authentication is on (chosen over whole-catalog-to-any-authenticated-caller and over leaving it).'
+- id: REQ-1953
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: Data Products
+  priority: SHOULD
+  type: behavioral
+  description: 'A data product shows the profiles of its tables without anyone wiring them to it. Where a table a product contains is a member of a data profiler and that profiler''s result tables are registered, the product''s Data Quality panel lists those published profile results beside its checks, under a heading of their own: a profile is a measurement and a check is a verdict, and a product with a profile and no check does not read as checked. Only registered profile results appear, and they are read as the viewer reads any governed table -- their visibility, masks and row rules decide what each viewer sees -- so the panel adds no way to see a profile that registration has not opened. Registering a profiler''s result tables is done where any source''s tables are registered; the product panel adds no second place for it. Publishing a product sends its published profile results to a catalog that takes table and column profiles, as it sends its data-quality results.'
+  use_case: A consumer opening the Orders product sees when its tables were last profiled and what the runs measured,
+    because the steward registered the profiler''s results once -- not because someone attached them to each product.
+  related_reqs:
+  - REQ-1634
+  - REQ-1934
+  - REQ-1443
+  - REQ-1945
+  notes: 'Maintainer 2026-10-08: we should automatically add profile results to a data product''s data quality panel; (later) we would only put published data profile results, which have security by definition. Lead''s first reading proposed a value-free summary shown automatically and value-level detail only when registered; the maintainer''s rule is simpler and replaces it: registered results only, governed as any table.'
