@@ -77329,3 +77329,18 @@
   - REQ-172
   - REQ-176
   notes: 'Maintainer 2026-10-07/08: support it properly (chosen over refusing Avro topics by name). Found while reading CI server logs: the Avro path imported an undeclared Kafka client package; with it absent, which was every install, a subscription to an Avro topic ended on its first message with an unnamed decode error. Dependency ruling: fastavro (MIT) only; the registry lookup is written on httpx, already a dependency. Related defects of the same class fixed separately: change events, Kafka sinks and the live Kafka output used the same undeclared client (issues #155, #156).'
+- id: REQ-1952
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Client Access
+  priority: MUST
+  type: behavioral
+  description: 'A role is the one the request runs as, on every data route, and a catalog is listed for the caller it is listed to. A data route takes its role from the authenticated request -- the role header checked against the caller''s assignments, one held role or a set of held roles acting as their meta-role -- and never from the request body or an unchecked header; a body that names a different role is refused, naming both. A route that names a role in its path accepts the same thing the header does, through one resolver. With authentication on, Arrow Flight''s catalog calls -- listing flights, flight info, schema, and the catalog ticket -- require a credential as every other surface does, and list only the tables, columns and commands the caller''s role or roles may see; with authentication off they answer as they did. The gRPC explorer and the other explore pages act as the role or roles the session acts as, and show the server''s own refusal.'
+  use_case: A user holding only a seller role cannot read another role''s rows by naming that role in a request body, and
+    an unauthenticated Flight client cannot browse the catalog of a deployment that requires sign-in.
+  related_reqs:
+  - REQ-273
+  - REQ-525
+  - REQ-1944
+  notes: 'Found 2026-10-08 from a maintainer bug report (the gRPC explorer showed "No proto for role analyst" with several roles active): the HTTP gRPC proxy took its role from the request body without checking the caller held it (issue #162, hotfixed 547e1db9d); the explorer asked for one role''s proto with every active role''s domains. Maintainer ruling 2026-10-08 on Flight''s catalog calls: credential and role-scoped when authentication is on (chosen over whole-catalog-to-any-authenticated-caller and over leaving it).'
