@@ -346,7 +346,7 @@ async def test_boot_keeps_two_sources_same_named_tables_apart(monkeypatch, actin
             name = "pg row" if sql.startswith('SELECT * FROM "pg"') else "wh row"
             return QueryResult(rows=[(1, name)], column_names=["id", "name"])
 
-    mgr = await hot_tables.init_hot_tables(raw, _PerCatalog([], []), registered)
+    mgr = await hot_tables.init_hot_tables(raw, _PerCatalog([], []), registered, {}, {})
     try:
         assert mgr.get_entry(CUSTOMERS).rows == [{"id": 1, "name": "pg row"}]
         assert mgr.get_entry(OTHER_CUSTOMERS).rows == [{"id": 1, "name": "wh row"}]
@@ -358,7 +358,7 @@ async def test_boot_refuses_a_config_table_that_is_not_registered(monkeypatch, a
     _hot_settings(monkeypatch)
     raw = {"tables": [{"source_id": "pg", "schema": "public", "table": "ghost", "hot": True}]}
     with pytest.raises(ValueError, match=r"config table pg/public.ghost is not registered"):
-        await hot_tables.init_hot_tables(raw, _Engine([], []), [])
+        await hot_tables.init_hot_tables(raw, _Engine([], []), [], {}, {})
 
 
 def test_a_statement_holds_fetched_rows_under_the_table_it_reads(acting):
@@ -459,9 +459,75 @@ async def test_boot_finds_a_table_registered_under_its_settled_name(monkeypatch,
             "table_name": "animal_breeds",
         }
     ]
-    mgr = await hot_tables.init_hot_tables(raw, _Engine([], []), registered)
+    mgr = await hot_tables.init_hot_tables(raw, _Engine([], []), registered, {}, {})
     try:
         (candidate,) = mgr.snapshot()
         assert (candidate["table_id"], candidate["table_name"]) == (CUSTOMERS, "animal_breeds")
+    finally:
+        await mgr.close()
+
+
+# --- an OpenAPI table declared hot is read as every read of it is -------------------------------
+
+
+async def test_boot_loads_an_openapi_table_through_its_endpoint_and_its_sources_credential(
+    monkeypatch, acting
+):
+    """The table's own paging, the source's stored credential and headers: the one caller every
+    read of the table uses, and no reader of the hot tier's own."""
+    import httpx
+    import respx
+
+    from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint, ApiSource
+    from provisa.core.auth_models import ApiAuthBearer
+    from provisa.core.paging import PaginationConfig
+
+    _hot_settings(monkeypatch)
+    endpoint = ApiEndpoint(
+        source_id="pay",
+        path="/v1/plans",
+        table_name="GetPlans",
+        columns=[
+            ApiColumn(name="id", type=ApiColumnType.string),
+            ApiColumn(name="name", type=ApiColumnType.string),
+        ],
+        pagination=PaginationConfig(
+            type="last_row", cursor_param="starting_after", page_size_param="limit", page_size=2
+        ),
+        response_root="data",
+    )
+    source = ApiSource(
+        id="pay",
+        type="openapi",
+        base_url="https://api.pay.test",
+        auth=ApiAuthBearer(token="sk_1"),
+        headers={"Pay-Version": "9"},
+    )
+    raw = {
+        "sources": [{"id": "pay", "type": "openapi"}],
+        "tables": [{"source_id": "pay", "schema": "openapi", "table": "GetPlans", "hot": True}],
+    }
+    registered = [
+        {"id": CUSTOMERS, "source_id": "pay", "schema_name": "openapi", "table_name": "GetPlans"}
+    ]
+    plans = [{"id": f"p{i}", "name": f"plan {i}"} for i in range(3)]
+    with respx.mock:
+        route = respx.get("https://api.pay.test/v1/plans").mock(
+            side_effect=[
+                httpx.Response(200, json={"data": plans[:2]}),
+                httpx.Response(200, json={"data": plans[2:]}),
+            ]
+        )
+        mgr = await hot_tables.init_hot_tables(
+            raw, _Engine([], []), registered, {("pay", "GetPlans"): endpoint}, {"pay": source}
+        )
+    try:
+        assert mgr.get_entry(CUSTOMERS).rows == plans
+        assert [dict(c.request.url.params) for c in route.calls] == [
+            {"limit": "2"},
+            {"limit": "2", "starting_after": "p1"},
+        ]
+        sent = route.calls.last.request.headers
+        assert (sent["authorization"], sent["pay-version"]) == ("Bearer sk_1", "9")
     finally:
         await mgr.close()

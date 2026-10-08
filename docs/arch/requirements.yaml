@@ -4801,6 +4801,14 @@
     no page-size parameter declared none is sent, since a cursor says where a page starts and
     not how long it is, and no name is assumed. The parameter is proposed from the spec where
     the list declares one beside its cursor. The Paging section shows both fields for a cursor.
+    (Amended 2026-10-08, ROWS OF SEVERAL KINDS) A list whose rows are one of several kinds of object
+    (anyOf or oneOf, every member an object with properties) is a table like any other list. Its
+    columns are every property any kind declares, since a row is one kind and holds that kind's; a
+    property the kinds type differently is a text column. A value that may also be a scalar, such as
+    an id or the object it names, is not a row. (Amended 2026-10-08, AN OPERATION'S OWN ADDRESS) An
+    operation that declares servers of its own, on itself or on its path, is called at that address
+    with the source's credential and headers; every other operation is called at the source's address.
+    This holds for a table and for a command.
   use_case: GET operation auto-registration maps path and query params to GraphQL arguments automatically.
   code:
   - provisa/openapi/
@@ -4848,6 +4856,13 @@
     such an operation is offered with no body argument. A command is called at the source's
     stored address with its stored credential, the ones its tables are read with, so a restarted
     process calls it as the process that took the registration did.
+    (Amended 2026-10-08, FILE UPLOADS) A multipart body is now sent, which replaces the statement
+    above that it is not. An operation that declares its body as multipart/form-data takes a body
+    argument like any other. A property declared as a file (format binary) is given as a bytea in its
+    canonical text form, the form a command answers a file in, and is sent as a file part named for
+    the property; every other property is sent as the form fields a form-encoded body carries. A file
+    given in any other form is refused before the remote is called. A source's commands are read from
+    its spec once and again only when the spec is replaced.
   use_case: Non-GET operations auto-registered as mutations expose REST write endpoints as governed GraphQL
     mutations.
   code:
@@ -4855,6 +4870,7 @@
   tests:
   - tests/unit/test_openapi_loader.py
   - tests/integration/test_openapi_source.py
+  - tests/unit/test_source_operation_commands.py
   since: 2026-01
   scenario: 'Given an OpenAPI spec with POST/PUT/PATCH/DELETE operations
 
@@ -4987,6 +5003,12 @@
   description: Auth configuration for the upstream REST API (bearer token, API key header, basic auth,
     OAuth2 client credentials) is stored per-source in the secrets store and injected into outgoing requests.
     The caller's Provisa token is not forwarded.
+    (Amended 2026-10-08, THE CREDENTIAL NEVER LEAVES THE SERVER) What the admin reports of an OpenAPI
+    source's auth is the stored one without its credential -- its type, and the user name or header
+    name -- so it is reported the same after a restart, and the token, password or key is never sent
+    to a browser. The process holds no second copy of the credential beside the stored one. A change
+    to the source states the credential again, and an auth stated without its credential is refused;
+    before this an edit after a restart was shown no auth and saving it cleared the stored one.
   use_case: Per-source upstream auth config keeps API credentials in the secrets store and out of client
     requests.
   code:
@@ -4994,6 +5016,7 @@
   tests:
   - tests/unit/test_openapi_loader.py
   - tests/integration/test_openapi_source.py
+  - tests/unit/test_openapi_endpoint_registration.py
   since: 2026-01
   scenario: 'Given an OpenAPI source with bearer token auth configured in the secrets store
 
@@ -10630,7 +10653,12 @@
   description: 'Hot tables stored as a single JSON blob in Redis and injected as a VALUES CTE; column
     governance (RLS/masking/visibility) is NOT applied at storage time but by Stage-2 apply_governance
     over the governed SQL that wraps the CTE (pipeline order: governance -> cache/CTE -> route). The per-row
-    PK-hash/sorted-set storage in the spec was judged unnecessary because hot tables are tiny inline tables.'
+    PK-hash/sorted-set storage in the spec was judged unnecessary because hot tables are tiny inline tables.
+    (Amended 2026-10-08, AN OPENAPI TABLE DECLARED HOT) An OpenAPI table declared hot is loaded as
+    every read of it is made -- through its endpoint and the one paged caller, with its source''s
+    stored address, credential and headers and the table''s own paging. A read the endpoint cut at its
+    page limit, or one above the tier''s row ceiling, leaves the table not hot. The tier''s own reader,
+    which fetched the spec again and guessed a list path from the table''s name, is removed.'
   use_case: Centralised JSON blob storage with governance applied at query time simplifies cache maintenance
     and ensures all governance rules are enforced on hot data.
   code:
@@ -10644,6 +10672,7 @@
   - tests/unit/test_hot_tables.py
   - tests/unit/test_mask_inject.py
   - tests/unit/test_settings_tiers.py
+  - tests/unit/test_hot_table_scope.py
   since: 2026-01
   scenario: 'Given a table designated as hot
 
@@ -72498,6 +72527,15 @@
     to. The header is derived from the shipped spec when the source is loaded and is never
     stored, so baking a newer spec moves every Stripe source to it. A brand declares the header
     that names its version; a source of a spec of the steward's own sends none.
+    (Amended 2026-10-08, STRIPE READ LIVE) Stripe was read against a sandbox account, which replaces
+    the statement above that it had not been. Checked there -- the key check, the version header,
+    commands with form bodies, a file upload, paging after the last row, search paging by cursor, and
+    tables read with rows of customers, products, prices, payment intents, charges, balance
+    transactions, invoices, invoice items, subscriptions, files, events, payment methods and a
+    customer's sources. The two lists whose rows are one of several object kinds are now tables
+    (REQ-316), which replaces the statement above that they are offered as their page wrapper. Stripe
+    answers a few fields its own spec does not declare, such as a charge's source; they are not
+    columns.
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.

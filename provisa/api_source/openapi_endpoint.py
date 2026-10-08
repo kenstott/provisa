@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
 
@@ -169,6 +169,28 @@ def api_auth(auth_config: dict | None) -> dict | None:
     raise ValueError(f"OpenAPI auth type {kind!r} is not one the caller applies")
 
 
+#: The credential of each auth type, as the registration states it (:func:`api_auth`).
+AUTH_SECRET = {"bearer": "token", "basic": "password", "api_key": "api_key"}
+
+
+def auth_without_secret(auth: Any) -> dict | None:
+    """A source's stored auth (core.auth_models.ApiAuth) as it may leave the server, in the
+    shape a registration states it: its type, user name or header name, never the credential.
+    A caller that changes the source supplies the credential again."""
+    from provisa.core.auth_models import ApiAuthApiKey, ApiAuthBasic, ApiAuthBearer
+
+    match auth:
+        case None:
+            return None
+        case ApiAuthBearer():
+            return {"type": "bearer"}
+        case ApiAuthBasic(username=username):
+            return {"type": "basic", "username": username}
+        case ApiAuthApiKey(name=name):
+            return {"type": "api_key", "header_name": name}
+    raise ValueError(f"OpenAPI auth {type(auth).__name__} is not one a registration states")
+
+
 async def register_openapi_source(conn: Connection, source_id: str, base_url: str) -> None:
     """The ``api_sources`` row an OpenAPI source's tables are called through: its base URL. The
     row's auth is the source registration's (:func:`store_openapi_auth`) and is not touched."""
@@ -205,7 +227,9 @@ async def register_openapi_endpoint(
         api_endpoints,
         {
             "source_id": table.source_id,
-            "path": match.path,
+            # An operation that declares an address of its own is called there: the caller takes
+            # an absolute path as it is and puts the source's address before any other.
+            "path": match.path if match.server is None else match.server.rstrip("/") + match.path,
             "method": "GET",
             "table_name": table.table_name,
             "columns": columns,

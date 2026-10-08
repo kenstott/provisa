@@ -80,6 +80,19 @@ def test_every_paged_list_is_offered_with_how_it_pages(offered):
     assert all(t.pagination.page_size_param == "limit" for t in paged)  # a search's cursor too
 
 
+def test_lists_of_several_kinds_of_object_are_tables_and_the_file_upload_is_a_command(offered):
+    tables, commands = offered
+    by_id = {t.operation_id: t for t in tables}
+    for mixed in ("GetAccountsAccountExternalAccounts", "GetCustomersCustomerSources"):
+        table = by_id[mixed]
+        assert (table.is_list, table.rows_field) == (True, "data")
+        assert table.pagination.type.value == "last_row"
+        assert {"id", "object", "last4"} <= set(table.response_schema["properties"])
+    upload = next(c for c in commands if c.operation_id == "PostFiles")
+    assert (upload.multipart, upload.files) == (True, frozenset({"file"}))
+    assert upload.server == "https://files.stripe.com/"  # its own address, not the API's
+
+
 # --- adding the source ---
 
 

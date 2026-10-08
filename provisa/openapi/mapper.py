@@ -42,6 +42,9 @@ class OpenAPIQuery:  # REQ-316
     # REQ-318: the paging the operation's parameters and responses suggest, offered to the steward
     # who registers the table (accepted or edited there); None when nothing suggests one.
     pagination: PaginationConfig | None = None
+    # The address the operation is called at where it declares one of its own (``servers`` on
+    # the operation or its path); None for the source's.
+    server: str | None = None
 
 
 @dataclass
@@ -54,6 +57,14 @@ class OpenAPIMutation:  # REQ-317
     # Its body is sent form-encoded (``application/x-www-form-urlencoded``), the only encoding the
     # operation declares; else as JSON.
     form: bool = False
+    # Its body is sent as ``multipart/form-data``, the only encoding the operation declares: a
+    # file upload. ``files`` names the properties that are files (``format: binary``), each given
+    # as a bytea in its canonical text form.
+    multipart: bool = False
+    files: frozenset[str] = frozenset()
+    # The address the operation is called at where it declares one of its own (``servers`` on
+    # the operation or its path); None for the source's.
+    server: str | None = None
     response_schema: dict | None = None
     # REQ-1924: a GET whose response declares no row schema. It changes nothing in the remote
     # system; it is a command because what it answers is not rows a table could hold.
@@ -83,7 +94,10 @@ _PROPERTY_DEPTH = 2
 
 def _schema(node: SchemaPath, depth: int = _PROPERTY_DEPTH) -> dict:
     """A schema as a table reads it: the members of an ``allOf`` as one set of properties, and
-    each property likewise down to ``depth``. References are followed by the spec reader."""
+    each property likewise down to ``depth``. A schema that is one of several kinds of object
+    (``anyOf``/``oneOf``, every member an object with properties) and declares no properties of
+    its own reads as the properties of all of them (:func:`_one_of_objects`). References are
+    followed by the spec reader."""
     schema = dict(node.read_value())
     properties: dict = {}
     for member in _at(node, "allOf") or ():
@@ -92,6 +106,8 @@ def _schema(node: SchemaPath, depth: int = _PROPERTY_DEPTH) -> dict:
         schema = {**merged, **schema}
     for name, prop in (_at(node, "properties") or _NOTHING).str_items():
         properties[name] = _schema(prop, depth - 1) if depth > 1 else dict(prop.read_value())
+    if not properties:
+        properties = _one_of_objects(node, depth)
     schema.pop("allOf", None)
     if properties:
         schema["properties"] = properties
@@ -147,6 +163,26 @@ def _json_schema(body: SchemaPath) -> SchemaPath | None:
         ),
         None,
     )
+
+
+def _one_of_objects(node: SchemaPath, depth: int) -> dict:
+    """The properties of a schema that is one of several kinds of object: every property any kind
+    declares, since a row is one kind and holds that kind's. A property the kinds type
+    differently is left untyped, which a column reads as text. Empty unless every member is an
+    object with properties: a value that may also be a scalar (an id or the object it names) is
+    not a row."""
+    for keyword in ("anyOf", "oneOf"):
+        kinds = [_schema(member, depth) for member in _at(node, keyword) or ()]
+        if not kinds or not all(kind.get("properties") for kind in kinds):
+            continue
+        merged: dict = {}
+        for kind in kinds:
+            for name, prop in kind["properties"].items():
+                if name in merged and merged[name].get("type") != prop.get("type"):
+                    merged[name] = {k: v for k, v in merged[name].items() if k != "type"}
+                merged.setdefault(name, prop)
+        return merged
+    return {}
 
 
 def _answers_binary(root: SchemaPath, operation: SchemaPath) -> bool:
@@ -240,22 +276,40 @@ def _extract_response_schema(
 _FORM = "application/x-www-form-urlencoded"
 
 
-def _extract_request(operation: SchemaPath) -> tuple[dict | None, bool]:
-    """(schema, form) of the request body: ``requestBody`` (OpenAPI 3.x) or the body parameter
-    (Swagger 2.0). ``form``: the body is declared form-encoded and not as JSON."""
+_MULTIPART = "multipart/form-data"
+
+#: How a request body is sent.
+JSON_BODY, FORM_BODY, MULTIPART_BODY = "json", "form", "multipart"
+
+
+def _extract_request(operation: SchemaPath) -> tuple[dict | None, str]:
+    """(schema, encoding) of the request body: ``requestBody`` (OpenAPI 3.x) or the body
+    parameter (Swagger 2.0). JSON where the operation declares it; else form-encoded, else
+    multipart, whichever it declares."""
     body = _at(operation, "requestBody")
     schema = None if body is None else _json_schema(body)
     if schema is not None:
-        return _row_schema(schema)[0], False
+        return _row_schema(schema)[0], JSON_BODY
     content = (None if body is None else _at(body, "content")) or _NOTHING
-    for name in content.str_keys():
-        declared = _at(content, name, "schema")
-        if _media(name) == _FORM and declared is not None:
-            return _row_schema(declared)[0], True
+    for media, encoding in ((_FORM, FORM_BODY), (_MULTIPART, MULTIPART_BODY)):
+        for name in content.str_keys():
+            declared = _at(content, name, "schema")
+            if _media(name) == media and declared is not None:
+                return _row_schema(declared)[0], encoding
     for param in _at(operation, "parameters") or ():
         if param.read_value().get("in") == "body" and "schema" in param:
-            return _row_schema(param / "schema")[0], False
-    return None, False
+            return _row_schema(param / "schema")[0], JSON_BODY
+    return None, JSON_BODY
+
+
+def _own_server(path_item: SchemaPath, operation: SchemaPath) -> str | None:
+    """The address an operation declares for itself: its own ``servers``, else its path's. None
+    where it declares neither and is called at the source's."""
+    for node in (operation, path_item):
+        servers = node.read_value().get("servers")
+        if servers:
+            return servers[0]["url"]
+    return None
 
 
 def _slugify(text: str) -> str:
@@ -458,6 +512,7 @@ def _map_operations(
                         response_schema=response_schema,
                         is_list=is_list,
                         rows_field=rows_field,
+                        server=_own_server(path_item, operation),
                         pagination=propose_paging(
                             operation,
                             query_params,
@@ -468,7 +523,8 @@ def _map_operations(
                     )
                 )
             else:
-                request_schema, form = _extract_request(operation)
+                request_schema, encoding = _extract_request(operation)
+                body_properties = (request_schema or {}).get("properties") or {}
                 mutations.append(
                     OpenAPIMutation(
                         operation_id=op_id,
@@ -476,7 +532,14 @@ def _map_operations(
                         method=method.upper(),
                         summary=summary,
                         input_schema=request_schema,
-                        form=form,
+                        form=encoding == FORM_BODY,
+                        multipart=encoding == MULTIPART_BODY,
+                        files=frozenset(
+                            name
+                            for name, prop in body_properties.items()
+                            if encoding == MULTIPART_BODY and prop.get("format") == "binary"
+                        ),
+                        server=_own_server(path_item, operation),
                         response_schema=response_schema,
                         reads=reads,
                         binary=binary,

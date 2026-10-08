@@ -143,7 +143,6 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
             "spec": spec,
             "base_url": base_url,
             "domain_id": "",
-            "auth_config": None,
             "cache_ttl": 300,
         }
         return True

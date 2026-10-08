@@ -1386,7 +1386,9 @@ async def _load_and_build(
     # Initialize hot tables (Phase AD6)
     from provisa.cache.hot_tables import init_hot_tables
 
-    hot_mgr = await init_hot_tables(raw_config, state.federation_engine, state.tables)
+    hot_mgr = await init_hot_tables(
+        raw_config, state.federation_engine, state.tables, state.api_endpoints, state.api_sources
+    )
     if hot_mgr is not None:
         state.hot_manager = hot_mgr
 

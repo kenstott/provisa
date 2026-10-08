@@ -509,3 +509,94 @@ async def test_a_branded_source_loads_with_its_brands_headers_and_another_with_n
         _endpoints, loaded = await load_api_sources(conn, {})
     assert loaded["pay"].headers == BRANDS["stripe"].headers() != {}
     assert loaded["petstore"].headers == {}
+
+
+# --- a source's credential never leaves the server ----------------------------------------------
+
+
+def test_a_stored_auth_is_reported_without_its_credential():
+    from provisa.api_source.openapi_endpoint import api_auth, auth_without_secret
+    from provisa.core.auth_models import ApiAuthApiKey, ApiAuthBasic, ApiAuthBearer
+
+    stated = [
+        {"type": "bearer", "token": "s3cret"},
+        {"type": "basic", "username": "ann", "password": "s3cret"},
+        {"type": "api_key", "header_name": "X-Key", "api_key": "s3cret"},
+    ]
+    stored = [
+        ApiAuthBearer(**api_auth(stated[0])),
+        ApiAuthBasic(**api_auth(stated[1])),
+        ApiAuthApiKey(**api_auth(stated[2])),
+    ]
+    reported = [auth_without_secret(auth) for auth in stored]
+    assert reported == [
+        {"type": "bearer"},
+        {"type": "basic", "username": "ann"},
+        {"type": "api_key", "header_name": "X-Key"},
+    ]
+    assert "s3cret" not in repr(reported) and auth_without_secret(None) is None
+
+
+async def test_the_source_list_reports_the_stored_auth_and_never_the_credential(monkeypatch):
+    """The auth is the stored one, so it is reported after a restart too, and the in-memory
+    registration holds no credential to report."""
+    from provisa.api import app
+    from provisa.api.admin import openapi_router
+    from provisa.api_source.models import ApiSource
+    from provisa.core.auth_models import ApiAuthBearer
+
+    monkeypatch.setattr(openapi_router, "require_capability_request", lambda *_a: None)
+    monkeypatch.setattr(
+        app.state,
+        "openapi_specs",
+        {
+            "pay": {"spec_path": "brand:stripe", "spec": {}, "base_url": BASE},
+            "practice": {"spec_path": "x.json", "spec": {}, "base_url": BASE},
+        },
+        raising=False,
+    )
+    called = ApiSource(id="pay", type="openapi", base_url=BASE, auth=ApiAuthBearer(token="sk_1"))
+    # "practice" is bound to a synthetic store: it is not loaded as an API.
+    monkeypatch.setattr(app.state, "api_sources", {"pay": called}, raising=False)
+    listed = {r["source_id"]: r for r in await openapi_router.list_openapi_sources(None)}
+    assert listed["pay"]["auth_config"] == {"type": "bearer"}
+    assert listed["practice"]["auth_config"] is None
+    assert "sk_1" not in repr(listed)
+
+
+def test_an_auth_stated_without_its_credential_is_refused():
+    from provisa.api.admin.openapi_router import _require_credential
+    from provisa.api.errors import ApiError
+
+    _require_credential(None)
+    _require_credential({"type": "none"})
+    _require_credential({"type": "bearer", "token": "${secret:PAY}"})
+    for stated, field in [
+        ({"type": "bearer", "token": ""}, "token"),
+        ({"type": "basic", "username": "ann"}, "password"),
+        ({"type": "api_key", "header_name": "X-Key", "api_key": ""}, "api_key"),
+    ]:
+        with pytest.raises(ApiError) as refused:
+            _require_credential(stated)
+        assert (refused.value.code, refused.value.params["field"]) == (
+            "openapi.auth_credential_required",
+            field,
+        )
+
+
+# --- an operation with an address of its own ---------------------------------------------------
+
+
+async def test_a_table_whose_operation_declares_its_own_server_is_called_there(control_plane):
+    from provisa.api_source.openapi_endpoint import (
+        register_openapi_endpoint,
+        register_openapi_source,
+    )
+
+    spec = {**SPEC, "paths": {"/pets": {"get": {**SPEC["paths"]["/pets"]["get"], "servers": [{"url": "https://files.pets.test/"}]}}}}  # fmt: skip
+    table = _table(max_pages=3)
+    async with control_plane.acquire() as conn:
+        await register_openapi_source(conn, "petstore", BASE)
+        await register_openapi_endpoint(conn, table, spec=spec, ttl=60)
+        stored = (await conn.execute_core(select(api_endpoints.c.path))).scalar_one()
+    assert stored == "https://files.pets.test/pets"

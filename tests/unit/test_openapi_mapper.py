@@ -629,3 +629,73 @@ def test_a_registered_table_reads_its_rows_where_it_says():
 
     with pytest.raises(NoRowsField, match="'items'"):
         parse_spec(spec, rows_fields={"listRepos": "items"})
+
+
+# --- a row that is one of several kinds of object -------------------------------------------------
+
+_CARD = {"type": "object", "properties": {"id": {"type": "string"}, "last4": {"type": "string"}}}
+_BANK = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "string"},
+        "last4": {"type": "integer"},
+        "bank": {"type": "string"},
+    },
+}
+
+
+def test_a_list_of_several_kinds_of_object_is_a_table_of_every_kinds_properties():
+    answer = _list_of({"anyOf": [_CARD, _BANK]})
+    (query,), _ = parse_spec(_wrapper_spec(answer, ["limit", "starting_after"]))
+    assert (query.is_list, query.rows_field) == (True, "data")
+    assert query.pagination.type.value == "last_row"  # the kinds declare an id
+    properties = query.response_schema["properties"]
+    assert list(properties) == ["id", "last4", "bank"]
+    # A property the kinds type differently is left untyped, which a column reads as text.
+    assert (properties["id"].get("type"), properties["last4"].get("type")) == ("string", None)
+
+
+def test_a_value_that_is_an_id_or_the_object_it_names_is_not_a_row():
+    answer = _list_of({"anyOf": [{"type": "string"}, _CARD]})
+    (query,), _ = parse_spec(_wrapper_spec(answer, ["limit"]))
+    assert query.is_list is False  # the wrapper holds no list of objects: it is offered whole
+
+
+# --- a file upload, and an operation with an address of its own ---------------------------------
+
+
+def _upload_spec(**operation) -> dict:
+    body = {
+        "type": "object",
+        "properties": {
+            "file": {"type": "string", "format": "binary"},
+            "purpose": {"type": "string"},
+        },
+    }
+    return {
+        "openapi": "3.0.0",
+        "info": {"title": "Test", "version": "1.0.0"},
+        "servers": [{"url": "https://api.test"}],
+        "paths": {
+            "/files": {
+                "post": {
+                    "operationId": "postFile",
+                    "requestBody": {"content": {"multipart/form-data": {"schema": body}}},
+                    "responses": {"200": {"description": "ok"}},
+                    **operation,
+                }
+            }
+        },
+    }
+
+
+def test_a_multipart_body_is_a_command_that_names_its_files():
+    _, (command,) = parse_spec(_upload_spec())
+    assert (command.multipart, command.form, command.files) == (True, False, frozenset({"file"}))
+    assert list(command.input_schema["properties"]) == ["file", "purpose"]
+    assert command.server is None  # called at the source's address
+
+
+def test_an_operation_that_declares_its_own_server_is_called_there():
+    _, (command,) = parse_spec(_upload_spec(servers=[{"url": "https://files.test/"}]))
+    assert command.server == "https://files.test/"

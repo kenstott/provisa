@@ -161,7 +161,6 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
         "spec": spec,
         "base_url": resolved_base_url,
         "domain_id": domain_id,
-        "auth_config": auth_config,
         "cache_ttl": cache_ttl,
         "operation_overrides": operation_overrides or {},
         "relationships": relationships or [],
@@ -190,6 +189,24 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
     )
 
     return spec, len(queries), len(mutations)
+
+
+def _require_credential(auth_config: dict | None) -> None:
+    """Refuse an auth stated without its credential. A source's stored credential is never sent
+    back to be edited, so a change to the source states it again; storing an empty one would
+    leave the source unable to call its remote."""
+    from provisa.api_source.openapi_endpoint import AUTH_SECRET
+
+    kind = (auth_config or {}).get("type", "none")
+    if kind in AUTH_SECRET and not (auth_config or {}).get(AUTH_SECRET[kind]):
+        raise ApiError(
+            422,
+            "openapi.auth_credential_required",
+            f"{kind} authentication needs its {AUTH_SECRET[kind]}; a stored one is not sent back "
+            "to be edited, so state it again",
+            auth_type=kind,
+            field=AUTH_SECRET[kind],
+        )
 
 
 async def _verify_live_auth(url: str, auth: dict, headers: dict[str, str]) -> None:
@@ -257,6 +274,7 @@ async def register_openapi_source(
     require_capability_request(request, "source_registration")
     if body.brand:
         body = await _branded(body)
+    _require_credential(body.auth_config)
     try:
         _, n_offered, n_commands = await _load_and_register(
             body.source_id,
@@ -310,7 +328,7 @@ async def refresh_openapi_source(request: Request, source_id: str):  # REQ-321
             source_id,
             reg.get("spec_path", ""),
             reg.get("domain_id", ""),
-            reg.get("auth_config"),
+            None,  # the stored auth stands (store_auth is not set)
             reg.get("cache_ttl", 300),
             base_url=reg.get("base_url", ""),
             spec_content=reg.get("spec_content", ""),
@@ -382,13 +400,18 @@ async def preview_openapi_spec(request: Request, body: OpenAPIPreviewRequest):  
 
 @router.get("/list")
 async def list_openapi_sources(request: Request):
-    """Return registration metadata for all OpenAPI sources (without the parsed spec)."""
+    """Return registration metadata for all OpenAPI sources (without the parsed spec). A
+    source's auth is its stored one without the credential, which never leaves the server."""
     require_capability_request(request, "source_registration")
     from provisa.api.app import state
+    from provisa.api_source.openapi_endpoint import auth_without_secret
 
     specs = getattr(state, "openapi_specs", {})
     result = []
     for sid, reg in specs.items():
+        # A source bound to a synthetic store is not loaded as an API (api_source.loader,
+        # REQ-1942): nothing calls it, so it has no auth to report.
+        called = state.api_sources.get(sid)
         result.append(
             {
                 "source_id": sid,
@@ -397,7 +420,7 @@ async def list_openapi_sources(request: Request):
                 "base_url": reg.get("base_url", ""),
                 "domain_id": reg.get("domain_id", ""),
                 "cache_ttl": reg.get("cache_ttl", 300),
-                "auth_config": reg.get("auth_config"),
+                "auth_config": None if called is None else auth_without_secret(called.auth),
             }
         )
     return result

@@ -83,13 +83,26 @@ def _source_type(state, source_id: str) -> str:
 # --- what a source offers ----------------------------------------------------------------------
 
 
-def _openapi_operations(state, source_id: str) -> list[Operation] | None:
-    from provisa.openapi.mapper import parse_spec
+# The commands of each source's spec, by operation, with the spec they were read from: a spec is
+# read once and again only when the source's spec is replaced (a refresh, a new registration).
+_COMMANDS: dict[str, tuple[dict, dict[str, Any]]] = {}
 
-    entry = (getattr(state, "openapi_specs", None) or {}).get(source_id)
-    if entry is None:
+
+def _commands(state, source_id: str) -> dict[str, Any]:
+    spec = state.openapi_specs[source_id]["spec"]
+    held = _COMMANDS.get(source_id)
+    if held is None or held[0] is not spec:
+        from provisa.openapi.mapper import parse_spec
+
+        _, mutations = parse_spec(spec)
+        held = _COMMANDS[source_id] = (spec, {m.operation_id: m for m in mutations})
+    return held[1]
+
+
+def _openapi_operations(state, source_id: str) -> list[Operation] | None:
+    if source_id not in (getattr(state, "openapi_specs", None) or {}):
         return None
-    _, mutations = parse_spec(entry["spec"])
+    mutations = _commands(state, source_id).values()
     return [
         Operation(
             name=m.operation_id,
@@ -236,31 +249,69 @@ def _form_fields(value: Any, key: str) -> Iterator[tuple[str, str]]:
         yield key, "" if value is None else str(value)
 
 
+def _file_bytes(operation: str, name: str, value: Any) -> bytes:
+    """A file given to a command: a bytea in its canonical text form (``\\x`` and hex digits),
+    as a command answers one (:data:`BINARY_ANSWER`)."""
+    text = value if isinstance(value, str) else ""
+    try:
+        if not text.startswith("\\x"):
+            raise ValueError
+        return bytes.fromhex(text[2:])
+    except ValueError:
+        raise ApiError(
+            422,
+            "source_operation.file_not_bytea",
+            f"{operation}: {name!r} is a file, given as a bytea in text form (\\x and hex digits)",
+            operation=operation,
+            field=name,
+        ) from None
+
+
+def _multipart(mutation, body: dict) -> dict[str, Any]:
+    """``body`` as a multipart request: each file property a file part named for the property,
+    every other property the form fields a form-encoded body carries."""
+    files = {
+        name: (name, _file_bytes(mutation.operation_id, name, body[name]))
+        for name in mutation.files
+        if name in body
+    }
+    fields = [
+        f
+        for name, value in body.items()
+        if name not in mutation.files
+        for f in _form_fields(value, name)
+    ]
+    return {"data": dict(fields), "files": files}
+
+
 async def _call_openapi(state, source_id: str, operation: str, args: dict) -> list[dict]:
     from provisa.api_source.caller import _apply_auth
     from provisa.core.secrets import resolve_secrets
-    from provisa.openapi.mapper import parse_spec
 
     # The address and the credential are the source's stored ones, which its tables are read
     # with too (api_source.loader): a restarted process calls with them as the first did.
     source = state.api_sources[source_id]
-    _, mutations = parse_spec(state.openapi_specs[source_id]["spec"])
-    mutation = next(m for m in mutations if m.operation_id == operation)
+    mutation = _commands(state, source_id)[operation]
     given = dict(args)
     path = _PATH_PARAM.sub(lambda m: str(given.pop(m.group(1))), mutation.path)
     body = given.pop(BODY_ARGUMENT, None)
     headers: dict[str, str] = dict(source.headers)
     _apply_auth(source.auth, headers, given)
-    if mutation.form:
+    if mutation.multipart:
+        sent: dict[str, Any] = _multipart(mutation, body or {})
+    elif mutation.form:
         fields = [f for name, value in (body or {}).items() for f in _form_fields(value, name)]
-        sent: dict[str, Any] = {"data": dict(fields)}
+        sent = {"data": dict(fields)}
     else:
         headers["Content-Type"] = "application/json"
         sent = {"json": body}
+    # An operation that declares an address of its own is called there, with the source's
+    # credential; every other at the source's.
+    address = mutation.server or resolve_secrets(source.base_url)
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.request(
             mutation.method.upper(),
-            resolve_secrets(source.base_url).rstrip("/") + path,
+            address.rstrip("/") + path,
             params=given or None,
             headers=headers,
             **sent,

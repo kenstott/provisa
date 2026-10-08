@@ -850,3 +850,75 @@ def test_a_command_that_reads_is_composed_like_any_query():
     sql = "SELECT o.id FROM orders o JOIN get_diff('{}') d ON true"
     _refuse_composed_mutators(sqlglot.parse_one(sql, dialect="postgres"), commands)
     ops.refuse_writes_in_definition(sql, commands, "view 'v'")
+
+
+# --- a file upload, an operation's own address, and a spec read once ----------------------------
+
+_UPLOAD = {
+    "operationId": "postFile",
+    "servers": [{"url": "https://files.shop.example/"}],
+    "requestBody": {
+        "content": {
+            "multipart/form-data": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "file": {"type": "string", "format": "binary"},
+                        "purpose": {"type": "string"},
+                        "link": {"type": "object", "properties": {"create": {"type": "boolean"}}},
+                    },
+                }
+            }
+        }
+    },
+    "responses": {"200": {"description": "ok"}},
+}
+
+
+@pytest.fixture
+def uploads(state) -> SimpleNamespace:
+    state.openapi_specs["shop"]["spec"] = {**SPEC, "paths": {"/files": {"post": _UPLOAD}}}
+    return state
+
+
+@respx.mock
+async def test_a_file_is_uploaded_as_a_multipart_body_at_the_operations_own_address(uploads):
+    route = respx.post("https://files.shop.example/files").mock(
+        return_value=httpx.Response(200, json={"id": "file_1"})
+    )
+    body = {"file": "\\x25504446", "purpose": "evidence", "link": {"create": True}}
+    rows = await ops.call_operation(uploads, "shop", "postFile", {"body": body})
+    sent = route.calls.last.request
+    assert sent.headers["content-type"].startswith("multipart/form-data; boundary=")
+    assert sent.headers["authorization"] == "Bearer s3cret"  # the source's credential goes too
+    content = sent.content
+    assert b'name="file"; filename="file"' in content and b"%PDF" in content
+    assert b'name="purpose"\r\n\r\nevidence' in content
+    assert b'name="link[create]"\r\n\r\ntrue' in content
+    assert rows == [{"id": "file_1"}]
+
+
+async def test_a_file_that_is_not_a_bytea_in_text_form_is_refused_before_any_call(uploads):
+    with pytest.raises(ApiError) as refused:
+        await ops.call_operation(uploads, "shop", "postFile", {"body": {"file": "JVBERi0="}})
+    assert (refused.value.code, refused.value.params["field"]) == (
+        "source_operation.file_not_bytea",
+        "file",
+    )
+
+
+@respx.mock
+async def test_a_sources_spec_is_read_once_and_again_when_it_is_replaced(state, monkeypatch):
+    from provisa.openapi import mapper
+
+    respx.post(f"{SHOP}/orders").mock(return_value=httpx.Response(201, json={"id": 7}))
+    read = []
+    parse = mapper.parse_spec
+    monkeypatch.setattr(mapper, "parse_spec", lambda spec: read.append(1) or parse(spec))
+    ops._COMMANDS.clear()
+    for _ in range(3):
+        await ops.call_operation(state, "shop", "createOrder", {"body": {"sku": "A-1"}})
+    assert len(read) == 1
+    state.openapi_specs["shop"]["spec"] = dict(SPEC)  # a refresh: the spec is a new one
+    await ops.call_operation(state, "shop", "createOrder", {"body": {"sku": "A-1"}})
+    assert len(read) == 2

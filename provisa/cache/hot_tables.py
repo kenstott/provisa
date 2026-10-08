@@ -284,48 +284,40 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             table_id, table_name, rows, pk_column, source_cfg["id"], "default"
         )
 
-    async def load_table_from_openapi(  # REQ-544
+    async def load_table_from_openapi(  # REQ-544, REQ-316
         self,
-        source_cfg: dict,
+        endpoint,
+        api_source,
         table_id: int,
         table_name: str,
         pk_column: str,
     ) -> int:
-        """Load an OpenAPI resource into Redis by finding its list operation. Returns row count."""
-        import httpx
+        """Load an OpenAPI table into Redis, read as every read of it is: through its endpoint
+        and the one caller, with its source's stored address, credential and headers and its
+        own paging. Returns row count."""
+        from provisa.api_source.caller import answer_rows, call_api
 
-        spec_url = source_cfg.get("path", "")
-        base_url = source_cfg.get("base_url", "").rstrip("/")
-        auth_config = source_cfg.get("auth_config")
-
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                spec_resp = await client.get(spec_url)
-                spec_resp.raise_for_status()
-                spec = spec_resp.json()
-        except (httpx.HTTPError, OSError, ValueError) as _e:
-            # httpx.HTTPError: request/status failures; OSError: socket; ValueError: bad JSON.
-            log.warning("OpenAPI spec fetch failed for %s: %s", table_name, _e)
-            return 0
-
-        rows = await _openapi_list_rows(spec, base_url, table_name, auth_config, self._max_rows)
-        if rows is None:
+        answer = await call_api(
+            endpoint,
+            dict(endpoint.default_params),
+            base_url=api_source.base_url,
+            auth=api_source.auth,
+            source_headers=api_source.headers,
+        )
+        rows, cut = answer_rows(endpoint, answer)
+        if cut is not None or len(rows) > self._max_rows:
+            # More than the tier holds, or more than one read of the table takes: not hot.
             log.info(
-                "No list operation found for %s in OpenAPI spec — skipping hot cache", table_name
-            )
-            return 0
-
-        if len(rows) > self._max_rows:
-            log.info(
-                "Skipping hot table %s: %d rows > threshold %d",
+                "Skipping hot table %s: %d rows read%s, threshold %d",
                 table_name,
                 len(rows),
+                "" if cut is None else " and the endpoint had more",
                 self._max_rows,
             )
             return len(rows)
 
         return await self._store_rows(
-            table_id, table_name, rows, pk_column, source_cfg["id"], "default"
+            table_id, table_name, rows, pk_column, endpoint.source_id, "default"
         )
 
     async def get_rows(self, table_id: int) -> list[dict]:  # REQ-544
@@ -529,100 +521,6 @@ def detect_hot_tables(  # REQ-236, REQ-237
     return result
 
 
-async def _openapi_list_rows(
-    spec: dict,
-    base_url: str,
-    table_name: str,
-    auth_config: dict | None,
-    max_rows: int,
-) -> list[dict] | None:
-    """Find a GET list operation for table_name in the spec and execute it.
-
-    Prefers operations with no required params. For required params that have
-    an enum, sends all enum values. Returns None if no suitable operation found.
-    """
-    import httpx
-
-    definitions = spec.get("definitions", {})
-    if "components" in spec:
-        definitions = spec.get("components", {}).get("schemas", definitions)
-
-    auth_headers: dict = {}
-    if auth_config and auth_config.get("type") == "bearer":
-        auth_headers["Authorization"] = f"Bearer {auth_config.get('token', '')}"
-    elif auth_config and auth_config.get("type") == "api_key":
-        auth_headers[auth_config.get("header_name", "X-API-Key")] = auth_config.get("api_key", "")
-
-    # Score candidate paths: prefer exact /{table_name}, then paths containing it
-    candidates: list[tuple[int, str, dict]] = []
-    for path, methods in spec.get("paths", {}).items():
-        if "get" not in methods:
-            continue
-        # Skip paths with unresolved path parameters — can't auto-call them
-        if "{" in path:
-            continue
-        path_parts = [p for p in path.split("/") if p]
-        if table_name not in path_parts:
-            continue
-        # Only consider operations that return arrays
-        get_op = methods["get"]
-        responses = get_op.get("responses", {})
-        ok_resp = responses.get("200", responses.get("default", {}))
-        content = ok_resp.get("content", {})
-        schema: dict = {}
-        if "application/json" in content:
-            schema = content["application/json"].get("schema", {})
-        elif "schema" in ok_resp:
-            schema = ok_resp.get("schema", {})
-        is_array = schema.get("type") == "array"
-        if not is_array and "$ref" not in schema:
-            ref = schema.get("items", {}).get("$ref", "")
-            if not ref:
-                continue
-        # Score: fewer path parts = closer match, no required params preferred
-        params = get_op.get("parameters", [])
-        required_params = [p for p in params if p.get("required") and p.get("in") == "query"]
-        score = len(path_parts) * 10 + len(required_params)
-        candidates.append((score, path, get_op))
-
-    if not candidates:
-        return None
-
-    candidates.sort(key=lambda x: x[0])
-    _, best_path, best_op = candidates[0]
-
-    # Build query params — fill required params with enum values or skip
-    params = best_op.get("parameters", [])
-    query_params: list[tuple[str, str | int | float | bool | None]] = []
-    for p in params:
-        if p.get("in") != "query":
-            continue
-        if not p.get("required"):
-            continue
-        enum_vals = p.get("schema", p).get("enum", [])
-        if enum_vals:
-            for v in enum_vals:
-                query_params.append((p["name"], str(v)))
-        else:
-            return None  # required param with no enum — can't auto-fill
-
-    url = base_url + best_path
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url, params=query_params, headers=auth_headers)
-            if resp.status_code == _HTTP_NOT_FOUND:
-                return None
-            resp.raise_for_status()
-            data = resp.json()
-    except (httpx.HTTPError, OSError, ValueError) as _e:
-        # httpx.HTTPError: request/status failures; OSError: socket; ValueError: bad JSON body.
-        log.warning("OpenAPI list rows failed for %s: %s", url, _e)
-        return None
-
-    rows = data if isinstance(data, list) else [data]
-    return rows[: max_rows + 1]
-
-
 async def count_table_rows(engine, table_name: str, schema: str, catalog: str) -> int:  # REQ-544
     """SELECT COUNT(*) for auto-detection sizing, through the engine terminal."""
     fqn = f'"{catalog}"."{schema}"."{table_name}"'
@@ -682,10 +580,13 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
     raw_config: dict,
     engine,
     registered: list[dict],
+    api_endpoints: dict,
+    api_sources: dict,
 ) -> HotTableManager | None:
     """Initialize hot table manager from raw config. Returns manager or None. ``registered`` are
     the registered tables (``state.tables``); each config table is found among them by its
-    identity (source, schema, table) and kept under its id."""
+    identity (source, schema, table) and kept under its id. ``api_endpoints`` and
+    ``api_sources`` are the loaded ones (``state``'s), which an OpenAPI table is read through."""
 
     # REQ-1913: the tier's settings are operator settings, resolved by the settings registry.
     from provisa.core import settings_registry
@@ -778,7 +679,13 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
             if source_type == "sqlite":
                 await hot_mgr.load_table_from_sqlite(source_cfg, table_id, tbl_name, pk_col)
             elif source_type == "openapi":
-                await hot_mgr.load_table_from_openapi(source_cfg, table_id, tbl_name, pk_col)
+                await hot_mgr.load_table_from_openapi(
+                    api_endpoints[(source_id, tbl_name)],
+                    api_sources[source_id],
+                    table_id,
+                    tbl_name,
+                    pk_col,
+                )
             elif source_type in _ENGINE_BACKED:
                 await hot_mgr.load_table(engine, table_id, tbl_name, schema_name, catalog, pk_col)
             else:

@@ -538,7 +538,6 @@ async def _load_openapi_specs() -> None:
                 "spec": _spec,
                 "base_url": _base_url,
                 "domain_id": "",
-                "auth_config": None,
                 "cache_ttl": 300,
             }
 
