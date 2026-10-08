@@ -107,11 +107,14 @@ async def _org_model_db(org_id: str) -> Database:  # REQ-1305, REQ-1919
 
 
 def _pool() -> Database:
-    # Tenant control plane — used for org schema (de)provisioning.
+    # Tenant control plane — used for org schema (de)provisioning. The deployment org's store,
+    # named: these routes need no org named, so the request may be bound to none, and the
+    # org-routed ``state.model_db`` then refuses ("No active org bound", #187).
     from provisa.api.app import state
 
-    assert state.model_db is not None
-    return state.model_db
+    pool = state.platform_model_db
+    assert pool is not None
+    return pool
 
 
 def _admin_pool() -> Database:

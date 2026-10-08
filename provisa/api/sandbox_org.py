@@ -157,7 +157,9 @@ async def seat_platform_admins(pool) -> int:
     # The assignments live in the ROOT org's schema: platform_admin is only ever conferred there
     # (an invitation carrying it is refused for any other org), so that one schema is the whole
     # list of this deployment's administrators.
-    root_db = state.model_db
+    # Named, not routed by the request: this runs on the bootstrap claim, which is bound to no
+    # org, and from the sandbox's own build (#187).
+    root_db = state.platform_model_db
     if root_db is None:
         raise RuntimeError(
             "REQ-1599: the sandbox org is ready, so the root org's tenant plane is up — "

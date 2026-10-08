@@ -209,7 +209,8 @@ async def tenant_dbs(monkeypatch):
 
     monkeypatch.setattr(
         "provisa.api.app.state",
-        SimpleNamespace(model_db=root, tenant_db=root, admin_db=None),
+        # The deployment org's store, as the app names it for a request bound to no org (#187).
+        SimpleNamespace(platform_model_db=root, tenant_db=root, admin_db=None),
         raising=False,
     )
 

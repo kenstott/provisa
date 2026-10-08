@@ -364,9 +364,11 @@ async def _seat_claimant_in_root(user_id: str) -> None:  # REQ-1296
     assert state.admin_db is not None
     # Claiming the bootstrap slot is the claimant's own act, so the membership needs no explaining.
     await grant_membership(state.admin_db, user_id, state.org_id, joined_via=JOINED_VIA_CREATED)
-    # current_org is unbound on this request, so the model_db shim resolves the default (bootstrap)
-    # org's runtime — the same org the membership names.
-    model_db = state.model_db
+    # The claim acts in no org (it is a platform-plane request, and the claimant belongs to none
+    # yet), so the bootstrap org's model store is named explicitly — the same org the membership
+    # names. Read through ``state.model_db``, which resolves the org the REQUEST is bound to, a
+    # claim on a multi-tenant deployment failed with "No active org bound" and answered 500.
+    model_db = state.platform_model_db
     assert model_db is not None, "the bootstrap org's tenant plane must be up before a claim"
     from provisa.security.rights import DEPLOYMENT_GRANTER
 
@@ -1014,11 +1016,14 @@ async def delete_account(request: Request, confirm: str | None = None):
                 "proceed."
             ),
         )
-    assert state.model_db is not None
+    # The store that holds the platform_admin assignments is the deployment org's, named: a
+    # person removing their account may belong to no org, and the request is then bound to none.
+    platform_db = state.platform_model_db
+    assert platform_db is not None
     try:
         return await remove_account(
             _admin_pool(),
-            state.model_db,
+            platform_db,
             user_id,
             model_db_of=_org_model_db,
             record_db_of=_org_record_db,
