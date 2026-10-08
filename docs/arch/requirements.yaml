@@ -77368,3 +77368,17 @@
   - REQ-1443
   - REQ-1945
   notes: 'Maintainer 2026-10-08: we should automatically add profile results to a data product''s data quality panel; (later) we would only put published data profile results, which have security by definition. Lead''s first reading proposed a value-free summary shown automatically and value-level detail only when registered; the maintainer''s rule is simpler and replaces it: registered results only, governed as any table.'
+- id: REQ-1954
+  status: proposed
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Enterprise Sources
+  priority: SHOULD
+  type: behavioral
+  description: 'ServiceNow is a source type. An instance is registered with its address and a credential; its tables (incidents, changes, requests, the configuration database, users and groups) are offered for registration and nothing is registered until a steward registers it. A registered ServiceNow table is read in place through the instance''s own API, with filters, column selection and paging sent to the instance where it supports them, and is governed, related and served on every surface as any other table. ServiceNow is listed with the enterprise sources in the source picker, the documentation and every stated count of source types.'
+  use_case: An operations team joins open incidents to the customer and contract tables they already govern, without
+    first exporting ServiceNow into a warehouse.
+  related_reqs:
+  - REQ-1923
+  - REQ-1946
+  notes: 'Maintainer 2026-10-08: add a requirement for ServiceNow and name it on the website with Salesforce and Stripe (a reviewer''s positioning guidance named it; no requirement covered it). Not built. Whether it is written through, as Salesforce is, is undecided.'
