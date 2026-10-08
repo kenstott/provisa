@@ -23,7 +23,7 @@
     "colActions": "",
     "none": "—",
     "viewPayload": "bekijken",
-    "approve": "Goedkeuren ({{count}}/{{total}})",
+    "approve": "Goedkeuren",
     "execute": "Uitvoeren",
     "reject": "Afwijzen",
     "reasonDuplicate": "Duplicaat",

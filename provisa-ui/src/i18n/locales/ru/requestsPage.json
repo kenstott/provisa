@@ -23,7 +23,7 @@
     "colActions": "",
     "none": "—",
     "viewPayload": "просмотр",
-    "approve": "Согласовать ({{count}}/{{total}})",
+    "approve": "Согласовать",
     "execute": "Выполнить",
     "reject": "Отклонить",
     "reasonDuplicate": "Дубликат",

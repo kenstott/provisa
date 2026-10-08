@@ -192,3 +192,37 @@ def test_a_user_sees_what_they_can_decide_and_what_they_made():
 def test_can_decide_is_false_for_the_requester():
     assert ra.can_decide(user_id="a", requested_by="req", involved=BOTH, reach=SALES) is True
     assert ra.can_decide(user_id="req", requested_by="req", involved=BOTH, reach=SALES) is False
+
+
+# --- a request whose tables are gone -------------------------------------------------------------
+
+
+def test_a_request_with_no_registered_table_cannot_be_approved_by_anyone():
+    for reach in (None, SALES):
+        refusal = ra.approval_refusal(
+            user_id="a", requested_by="req", approvals=[], involved=frozenset(), reach=reach
+        )
+        assert refusal is not None and refusal.code == "requests.tables_not_registered"
+
+
+def test_it_is_rejected_only_by_a_right_reaching_every_domain():
+    kw = {"requested_by": "req", "involved": frozenset()}
+    assert ra.rejection_refusal(user_id="org", reach=None, **kw) is None
+    narrow = ra.rejection_refusal(user_id="a", reach=SALES, **kw)
+    assert narrow is not None and narrow.code == "requests.tables_not_registered"
+    own = ra.rejection_refusal(user_id="req", reach=None, **kw)
+    assert own is not None and own.code == "requests.own_request"
+
+
+def test_the_refusal_names_the_tables_that_are_gone():
+    refusal = ra.approval_refusal(
+        user_id="a",
+        requested_by="req",
+        approvals=[],
+        involved=frozenset(),
+        reach=None,
+        tables=("orders", "customers"),
+    )
+    assert refusal is not None and refusal.params == {"tables": "orders, customers"}
+    assert "orders, customers" in refusal.message
+    assert ra.tables_named({"source_table_id": "orders", "target_table_id": ""}) == ("orders",)

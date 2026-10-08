@@ -23,7 +23,7 @@
     "colActions": "",
     "none": "—",
     "viewPayload": "देखें",
-    "approve": "अनुमोदित करें ({{count}}/{{total}})",
+    "approve": "अनुमोदित करें",
     "execute": "निष्पादित करें",
     "reject": "अस्वीकार करें",
     "reasonDuplicate": "डुप्लिकेट",

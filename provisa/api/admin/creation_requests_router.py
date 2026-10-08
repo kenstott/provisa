@@ -128,9 +128,37 @@ def _reach(request: Request) -> frozenset[str] | None:
     return right_reach(_identity(request), state, approvals_rule.RIGHT)
 
 
-def _refuse(refusal: "approvals_rule.Refusal | None", status_code: int = 403) -> None:
-    if refusal is not None:
-        raise ApiError(status_code, refusal.code, refusal.message, **refusal.params)
+async def _audit(
+    request: Request,
+    row: dict,
+    action: str,
+    involved: frozenset[str],
+    refusal: "approvals_rule.Refusal | None" = None,
+) -> None:  # REQ-1948
+    await approvals_rule.record(
+        _get_pool(),
+        action=action,
+        request=row,
+        actor=_user_id(request),
+        involved=involved,
+        reach=_reach(request),
+        refusal=refusal,
+    )
+
+
+async def _refuse(
+    request: Request,
+    row: dict,
+    action: str,
+    involved: frozenset[str],
+    refusal: "approvals_rule.Refusal | None",
+    status_code: int = 403,
+) -> None:
+    """Raise ``refusal`` (when there is one) after writing the refused attempt to the trail."""
+    if refusal is None:
+        return
+    await _audit(request, row, action, involved, refusal)
+    raise ApiError(status_code, refusal.code, refusal.message, **refusal.params)
 
 
 def _deserialize(row: dict) -> dict:
@@ -159,7 +187,9 @@ async def _pending(conn: "Connection", request_id: int) -> dict:
     return row
 
 
-async def _carry_out(conn: "Connection", row: dict, user_id: str | None) -> None:  # REQ-1948
+async def _carry_out(
+    conn: "Connection", row: dict, request: Request, involved: frozenset[str]
+) -> None:  # REQ-1948
     """Create the relationship a fully approved request asks for, and mark the request executed.
 
     The approvals are the authority: the relationship is stored for the domains that said yes,
@@ -169,15 +199,19 @@ async def _carry_out(conn: "Connection", row: dict, user_id: str | None) -> None
     from provisa.api.admin.schema_common import _rebuild_relationship_input
     from provisa.api.admin.schema_mutation import save_relationship
 
+    user_id = _user_id(request)
     result = await save_relationship(
         _rebuild_relationship_input(row["payload"]), owner=user_id, needs_review=False
     )
     if not result.success:
-        if result.code is None:
-            raise HTTPException(status_code=422, detail=result.message)
-        raise ApiError(422, result.code, result.message, **(result.params or {}))
+        # Every refusal save_relationship gives carries its code (cardinality, junction keys,
+        # fakes); the code is what the trail and the client name the failure by.
+        assert result.code is not None
+        failed = approvals_rule.Refusal(result.code, result.message, dict(result.params or {}))
+        await _refuse(request, row, "execute", involved, failed, status_code=422)
     if not await cr_repo.mark_executed(conn, row["id"], user_id):
         raise HTTPException(status_code=409, detail="Could not execute request")
+    await _audit(request, row, "execute", involved)
 
 
 class SubmitBody(BaseModel):
@@ -237,8 +271,8 @@ async def list_requests(  # REQ-063, REQ-434, REQ-1948
 ):
     """The requests the caller can decide and the ones they made (REQ-1948).
 
-    Each row says which domains it touches, which of them it still waits on, and whether the
-    caller is one of the users who may decide it.
+    Each row says which domains it touches, which of them it still waits on, whether the caller
+    is one of the users who may decide it, and why the caller's approval would be refused.
     """
     stmt = select(creation_requests)
     if status:
@@ -258,11 +292,34 @@ async def list_requests(  # REQ-063, REQ-434, REQ-1948
             mine = user_id is not None and row["requested_by"] == user_id
             if _is_relationship(row):
                 involved = await approvals_rule.domains_involved(conn, row["payload"])
-                decides = approvals_rule.can_decide(
+                tables = approvals_rule.tables_named(row["payload"])
+                decides = (
+                    approvals_rule.rejection_refusal(
+                        user_id=user_id,
+                        requested_by=row["requested_by"],
+                        involved=involved,
+                        reach=reach,
+                        tables=tables,
+                    )
+                    is None
+                )
+                cannot_approve = approvals_rule.approval_refusal(
                     user_id=user_id,
                     requested_by=row["requested_by"],
+                    approvals=row["approvals"],
                     involved=involved,
                     reach=reach,
+                    tables=tables,
+                )
+                # Why this user's approval would be refused, so the page says it before asking.
+                row["approve_refusal"] = (
+                    None
+                    if cannot_approve is None
+                    else {
+                        "code": cannot_approve.code,
+                        "params": cannot_approve.params,
+                        "detail": cannot_approve.message,
+                    }
                 )
                 row["domains"] = sorted(involved)
                 row["waiting_on"] = (
@@ -272,6 +329,7 @@ async def list_requests(  # REQ-063, REQ-434, REQ-1948
                 )
             else:
                 decides = _holds(request, row["capability"])
+                row["approve_refusal"] = None
                 row["domains"] = []
                 row["waiting_on"] = []
             if not (decides or mine):
@@ -333,14 +391,19 @@ async def _approve_relationship(conn: "Connection", row: dict, request: Request)
     user_id = _user_id(request)
     involved = await approvals_rule.domains_involved(conn, row["payload"])
     reach = _reach(request)
-    _refuse(
+    await _refuse(
+        request,
+        row,
+        "approve",
+        involved,
         approvals_rule.approval_refusal(
             user_id=user_id,
             requested_by=row["requested_by"],
             approvals=row["approvals"],
             involved=involved,
             reach=reach,
-        )
+            tables=approvals_rule.tables_named(row["payload"]),
+        ),
     )
     assert user_id is not None  # an approval without a user was refused above
     stored = await cr_repo.add_approval(
@@ -349,8 +412,9 @@ async def _approve_relationship(conn: "Connection", row: dict, request: Request)
     if stored is None:
         raise HTTPException(status_code=409, detail="Could not record approval")
     updated = _deserialize(stored)
+    await _audit(request, updated, "approve", involved)
     if approvals_rule.executable(involved, updated["approvals"], updated["requested_by"]):
-        await _carry_out(conn, updated, user_id)
+        await _carry_out(conn, updated, request, involved)
         updated["status"] = "executed"
     updated["domains"] = sorted(involved)
     updated["waiting_on"] = approvals_rule.waiting_on(
@@ -367,15 +431,22 @@ async def reject_request(
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
         row = await _pending(conn, request_id)
+        involved: frozenset[str] = frozenset()
         if _is_relationship(row):
             # REQ-1948: a rejection comes from any user who could approve.
-            _refuse(
+            involved = await approvals_rule.domains_involved(conn, row["payload"])
+            await _refuse(
+                request,
+                row,
+                "reject",
+                involved,
                 approvals_rule.rejection_refusal(
                     user_id=_user_id(request),
                     requested_by=row["requested_by"],
-                    involved=await approvals_rule.domains_involved(conn, row["payload"]),
+                    involved=involved,
                     reach=_reach(request),
-                )
+                    tables=approvals_rule.tables_named(row["payload"]),
+                ),
             )
         else:
             _require_capability(request, row["capability"])
@@ -402,6 +473,8 @@ async def reject_request(
         )
         if (result.rowcount or 0) != 1:
             raise HTTPException(status_code=409, detail="Could not reject request")
+        if _is_relationship(row):
+            await _audit(request, row, "reject", involved)
     return {"id": request_id, "status": "rejected", "reason": body.reason}
 
 
@@ -415,19 +488,28 @@ async def execute_request(request_id: int, request: Request):  # REQ-063, REQ-36
             # REQ-1948: executing is not a way around the approvals. It is open to the users who
             # may decide the request, and only once the request is fully approved.
             involved = await approvals_rule.domains_involved(conn, row["payload"])
-            _refuse(
+            await _refuse(
+                request,
+                row,
+                "execute",
+                involved,
                 approvals_rule.rejection_refusal(
                     user_id=_user_id(request),
                     requested_by=row["requested_by"],
                     involved=involved,
                     reach=_reach(request),
-                )
+                    tables=approvals_rule.tables_named(row["payload"]),
+                ),
             )
-            _refuse(
+            await _refuse(
+                request,
+                row,
+                "execute",
+                involved,
                 approvals_rule.incomplete_refusal(involved, row["approvals"], row["requested_by"]),
                 status_code=409,
             )
-            await _carry_out(conn, row, _user_id(request))
+            await _carry_out(conn, row, request, involved)
             return {"id": request_id, "status": "executed"}
         _require_capability(request, row["capability"])
         result = await conn.execute_core(

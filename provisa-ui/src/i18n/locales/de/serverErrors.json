@@ -348,7 +348,8 @@
       "webhook_approved": "Webhook '{{webhook}}' genehmigt",
       "webhook_name_required": "webhook_name ist für einen Webhook-Trigger erforderlich",
       "webhook_not_found": "Webhook '{{webhook}}' nicht gefunden",
-      "change_streams_unavailable": "Quelle '{{source}}' ist ein eigenständiger MongoDB-Server, der keine Change Streams bereitstellt: Das native Änderungssignal erfordert ein Replica Set oder einen Sharded Cluster. Betreiben Sie ihn als Replica Set oder verwenden Sie das Änderungssignal poll."
+      "change_streams_unavailable": "Quelle '{{source}}' ist ein eigenständiger MongoDB-Server, der keine Change Streams bereitstellt: Das native Änderungssignal erfordert ein Replica Set oder einen Sharded Cluster. Betreiben Sie ihn als Replica Set oder verwenden Sie das Änderungssignal poll.",
+      "relationship_request_queued": "Als Antrag #{{id}} eingereiht. Er braucht Genehmigungen von {{required}} verschiedenen Benutzern, die Beziehungen anlegen dürfen, wobei mindestens einer jede berührte Domäne erreicht."
     },
     "secrets": {
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."
@@ -413,7 +414,8 @@
       "already_approved": "Sie haben diesen Antrag bereits genehmigt",
       "approver_unidentified": "Über einen Beziehungsantrag entscheiden angemeldete Benutzer; dieser Entscheidung ist kein Benutzer zugeordnet",
       "waiting_on_domains": "Dieser Antrag wartet noch auf eine Genehmigung aus: {{domains}}",
-      "approvals_incomplete": "Dieser Antrag braucht Genehmigungen von {{required}} verschiedenen Benutzern"
+      "approvals_incomplete": "Dieser Antrag braucht Genehmigungen von {{required}} verschiedenen Benutzern",
+      "tables_not_registered": "Die Tabellen, die dieser Antrag nennt ({{tables}}), sind nicht mehr registriert. Er kann nicht genehmigt werden; ein Benutzer, dessen Recht, Beziehungen anzulegen, in jede Domäne reicht, kann ihn ablehnen"
     }
   }
 }

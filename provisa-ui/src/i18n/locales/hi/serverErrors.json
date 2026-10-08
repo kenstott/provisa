@@ -348,7 +348,8 @@
       "webhook_approved": "वेबहुक '{{webhook}}' अनुमोदित किया गया",
       "webhook_name_required": "वेबहुक ट्रिगर के लिए webhook_name आवश्यक है",
       "webhook_not_found": "वेबहुक '{{webhook}}' नहीं मिला",
-      "change_streams_unavailable": "स्रोत '{{source}}' एक स्टैंडअलोन MongoDB सर्वर है, जो change streams नहीं देता: native परिवर्तन संकेत के लिए replica set या sharded cluster चाहिए। इसे replica set के रूप में चलाएँ, या poll परिवर्तन संकेत का उपयोग करें।"
+      "change_streams_unavailable": "स्रोत '{{source}}' एक स्टैंडअलोन MongoDB सर्वर है, जो change streams नहीं देता: native परिवर्तन संकेत के लिए replica set या sharded cluster चाहिए। इसे replica set के रूप में चलाएँ, या poll परिवर्तन संकेत का उपयोग करें।",
+      "relationship_request_queued": "अनुरोध #{{id}} के रूप में कतारबद्ध। इसे संबंध बना सकने वाले {{required}} अलग-अलग उपयोगकर्ताओं की स्वीकृतियाँ चाहिए, जिनमें से कम से कम एक इससे जुड़े हर डोमेन तक पहुँचता हो।"
     },
     "secrets": {
       "still_referenced": "{{secret}} का नाम इस संगठन में अब भी {{count}} संग्रहीत मान ले रहे हैं। हर एक को बदलें या हटाएँ, फिर दोबारा हटाएँ।"
@@ -413,7 +414,8 @@
       "already_approved": "आप इस अनुरोध को पहले ही स्वीकृत कर चुके हैं",
       "approver_unidentified": "संबंध अनुरोध पर निर्णय साइन-इन किए हुए उपयोगकर्ता लेते हैं; इस निर्णय के साथ कोई उपयोगकर्ता नहीं है",
       "waiting_on_domains": "यह अनुरोध अभी इनकी स्वीकृति की प्रतीक्षा में है: {{domains}}",
-      "approvals_incomplete": "इस अनुरोध को {{required}} अलग-अलग उपयोगकर्ताओं की स्वीकृतियाँ चाहिए"
+      "approvals_incomplete": "इस अनुरोध को {{required}} अलग-अलग उपयोगकर्ताओं की स्वीकृतियाँ चाहिए",
+      "tables_not_registered": "इस अनुरोध में नामित तालिकाएँ ({{tables}}) अब पंजीकृत नहीं हैं। इसे स्वीकृत नहीं किया जा सकता; जिस उपयोगकर्ता का संबंध बनाने का अधिकार हर डोमेन तक पहुँचता है, वह इसे अस्वीकार कर सकता है"
     }
   }
 }

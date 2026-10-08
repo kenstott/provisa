@@ -65,13 +65,16 @@ async def domains_involved(conn: "Connection", payload: dict) -> frozenset[str]:
     from provisa.core.repositories import table as table_repo
 
     domains: set[str] = set()
-    for name in (payload["source_table_id"], payload["target_table_id"]):
-        if not name:
-            continue
+    for name in tables_named(payload):
         row = await table_repo.find_by_table_name(conn, name)
         if row is not None:
             domains.add(row["domain_id"])
     return frozenset(domains)
+
+
+def tables_named(payload: dict) -> tuple[str, ...]:
+    """The tables a relationship request names: its source, and its target when it has one."""
+    return tuple(n for n in (payload["source_table_id"], payload["target_table_id"]) if n)
 
 
 def reached(reach: frozenset[str] | None, involved: frozenset[str]) -> frozenset[str]:
@@ -85,6 +88,8 @@ def _eligibility_refusal(
     requested_by: str | None,
     involved: frozenset[str],
     reach: frozenset[str] | None,
+    tables: tuple[str, ...] = (),
+    approving: bool = False,
 ) -> Refusal | None:
     if not user_id or user_id == "anonymous":
         # Two DIFFERENT users is the rule; a decision nobody signed cannot be counted toward it.
@@ -92,7 +97,20 @@ def _eligibility_refusal(
             "requests.approver_unidentified",
             "A relationship request is decided by signed-in users; this decision has no user",
         )
-    if not reached(reach, involved):
+    if not involved:
+        # Neither table is registered any more, so no domain can say yes. The request can only
+        # be cleared, and only by a right that reaches every domain (as an object of the whole
+        # org is changed only by such a right, REQ-1944).
+        if approving or reach is not None:
+            names = ", ".join(tables)
+            return Refusal(
+                "requests.tables_not_registered",
+                f"The tables this request names ({names}) are no longer registered. It cannot "
+                "be approved; a user whose right to create relationships reaches every domain "
+                "may reject it",
+                {"tables": names},
+            )
+    elif not reached(reach, involved):
         names = _named(involved)
         return Refusal(
             "requests.approver_outside_domains",
@@ -112,10 +130,17 @@ def approval_refusal(
     approvals: list[dict],
     involved: frozenset[str],
     reach: frozenset[str] | None,
+    tables: tuple[str, ...] = (),
 ) -> Refusal | None:
-    """Why ``user_id`` may not approve, or None when the approval counts."""
+    """Why ``user_id`` may not approve, or None when the approval counts. ``tables`` are the
+    tables the request names, for the refusal that says they are gone."""
     refusal = _eligibility_refusal(
-        user_id=user_id, requested_by=requested_by, involved=involved, reach=reach
+        user_id=user_id,
+        requested_by=requested_by,
+        involved=involved,
+        reach=reach,
+        tables=tables,
+        approving=True,
     )
     if refusal is not None:
         return refusal
@@ -130,10 +155,11 @@ def rejection_refusal(
     requested_by: str | None,
     involved: frozenset[str],
     reach: frozenset[str] | None,
+    tables: tuple[str, ...] = (),
 ) -> Refusal | None:
     """Why ``user_id`` may not reject: a rejection comes from any user who could approve."""
     return _eligibility_refusal(
-        user_id=user_id, requested_by=requested_by, involved=involved, reach=reach
+        user_id=user_id, requested_by=requested_by, involved=involved, reach=reach, tables=tables
     )
 
 
@@ -211,4 +237,39 @@ def incomplete_refusal(
         "requests.approvals_incomplete",
         f"This request needs approvals from {REQUIRED_APPROVERS} different users",
         {"required": REQUIRED_APPROVERS},
+    )
+
+
+async def record(
+    model_db: Any,
+    *,
+    action: str,
+    request: dict,
+    actor: str | None,
+    involved: frozenset[str],
+    reach: frozenset[str] | None,
+    refusal: Refusal | None = None,
+) -> None:
+    """Write one decision on a relationship request, or one refused attempt at it, to the org's
+    administrative trail: the request, who asked, who acted, the domains the request touches,
+    the ones the actor's right reached, and how it came out."""
+    from provisa.core.org_membership import record_admin_action
+
+    detail: dict[str, Any] = {
+        "request_id": request["id"],
+        "requested_by": request["requested_by"],
+        "domains": sorted(involved),
+        "domains_reached": sorted(reached(reach, involved)),
+        "outcome": "refused" if refusal is not None else "done",
+    }
+    if refusal is not None:
+        detail["refusal"] = refusal.code
+    await record_admin_action(
+        model_db,
+        action=f"relationship_request.{action}",
+        # The trail's actor column is NOT NULL; a decision nobody signed is recorded as the
+        # anonymous principal, as the other administrative entries record it.
+        actor_id=actor or "anonymous",
+        subject_id=str(request["id"]),
+        detail=detail,
     )

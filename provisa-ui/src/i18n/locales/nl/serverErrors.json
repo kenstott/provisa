@@ -348,7 +348,8 @@
       "webhook_approved": "Webhook '{{webhook}}' goedgekeurd",
       "webhook_name_required": "webhook_name is vereist voor een webhooktrigger",
       "webhook_not_found": "Webhook '{{webhook}}' niet gevonden",
-      "change_streams_unavailable": "Bron '{{source}}' is een zelfstandige MongoDB-server, die geen change streams levert: het native wijzigingssignaal vereist een replica set of een sharded cluster. Draai hem als replica set, of gebruik het wijzigingssignaal poll."
+      "change_streams_unavailable": "Bron '{{source}}' is een zelfstandige MongoDB-server, die geen change streams levert: het native wijzigingssignaal vereist een replica set of een sharded cluster. Draai hem als replica set, of gebruik het wijzigingssignaal poll.",
+      "relationship_request_queued": "In wachtrij geplaatst als verzoek #{{id}}. Het heeft goedkeuringen nodig van {{required}} verschillende gebruikers die relaties mogen aanmaken, van wie er minstens één tot elk geraakt domein reikt."
     },
     "secrets": {
       "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."
@@ -413,7 +414,8 @@
       "already_approved": "U hebt dit verzoek al goedgekeurd",
       "approver_unidentified": "Over een relatieverzoek beslissen aangemelde gebruikers; deze beslissing heeft geen gebruiker",
       "waiting_on_domains": "Dit verzoek wacht nog op een goedkeuring van: {{domains}}",
-      "approvals_incomplete": "Dit verzoek heeft goedkeuringen van {{required}} verschillende gebruikers nodig"
+      "approvals_incomplete": "Dit verzoek heeft goedkeuringen van {{required}} verschillende gebruikers nodig",
+      "tables_not_registered": "De tabellen die dit verzoek noemt ({{tables}}), zijn niet meer geregistreerd. Het kan niet worden goedgekeurd; een gebruiker wiens recht om relaties aan te maken tot elk domein reikt, kan het afwijzen"
     }
   }
 }

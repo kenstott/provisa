@@ -348,7 +348,8 @@
       "webhook_approved": "已批准 Webhook '{{webhook}}'",
       "webhook_name_required": "Webhook 触发器需要 webhook_name",
       "webhook_not_found": "未找到 Webhook '{{webhook}}'",
-      "change_streams_unavailable": "源 '{{source}}' 是独立的 MongoDB 服务器，不提供 change streams：native 变更信号需要副本集或分片集群。请将其作为副本集运行，或使用 poll 变更信号。"
+      "change_streams_unavailable": "源 '{{source}}' 是独立的 MongoDB 服务器，不提供 change streams：native 变更信号需要副本集或分片集群。请将其作为副本集运行，或使用 poll 变更信号。",
+      "relationship_request_queued": "已排入请求 #{{id}}。它需要 {{required}} 位有权创建关系的不同用户批准，且每个涉及的域至少有一位批准者的权限覆盖。"
     },
     "secrets": {
       "still_referenced": "本组织中仍有 {{count}} 个已存储的值引用 {{secret}}。请更改或移除每一个，然后再次删除。"
@@ -413,7 +414,8 @@
       "already_approved": "你已批准过此请求",
       "approver_unidentified": "关系请求由已登录的用户决定；此决定没有对应的用户",
       "waiting_on_domains": "此请求仍在等待以下域的批准：{{domains}}",
-      "approvals_incomplete": "此请求需要 {{required}} 位不同用户的批准"
+      "approvals_incomplete": "此请求需要 {{required}} 位不同用户的批准",
+      "tables_not_registered": "此请求指定的表（{{tables}}）已不再注册。无法批准；创建关系的权限覆盖所有域的用户可以拒绝它"
     }
   }
 }

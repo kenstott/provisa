@@ -348,7 +348,8 @@
       "webhook_approved": "Webhook「{{webhook}}」を承認しました",
       "webhook_name_required": "Webhook トリガーには webhook_name が必要です",
       "webhook_not_found": "Webhook「{{webhook}}」が見つかりません",
-      "change_streams_unavailable": "ソース '{{source}}' はスタンドアロンの MongoDB サーバーで、change streams を提供しません。native 変更シグナルにはレプリカセットまたはシャードクラスターが必要です。レプリカセットとして実行するか、poll 変更シグナルを使用してください。"
+      "change_streams_unavailable": "ソース '{{source}}' はスタンドアロンの MongoDB サーバーで、change streams を提供しません。native 変更シグナルにはレプリカセットまたはシャードクラスターが必要です。レプリカセットとして実行するか、poll 変更シグナルを使用してください。",
+      "relationship_request_queued": "リクエスト #{{id}} としてキューに登録しました。リレーションシップを作成できる {{required}} 人の異なるユーザーの承認が必要で、関わる各ドメインに少なくとも 1 人の権限が及んでいる必要があります。"
     },
     "secrets": {
       "still_referenced": "{{secret}} は、この組織に保存されている {{count}} 件の値からまだ参照されています。それぞれを変更または削除してから、もう一度削除してください。"
@@ -413,7 +414,8 @@
       "already_approved": "このリクエストはすでに承認済みです",
       "approver_unidentified": "リレーションシップのリクエストはサインインしたユーザーが決定します。この決定にはユーザーがありません",
       "waiting_on_domains": "このリクエストは次のドメインからの承認を待っています: {{domains}}",
-      "approvals_incomplete": "このリクエストには {{required}} 人の異なるユーザーの承認が必要です"
+      "approvals_incomplete": "このリクエストには {{required}} 人の異なるユーザーの承認が必要です",
+      "tables_not_registered": "このリクエストが指定するテーブル ({{tables}}) は、もう登録されていません。承認はできません。リレーションシップを作成する権限がすべてのドメインに及ぶユーザーが却下できます"
     }
   }
 }

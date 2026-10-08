@@ -21,10 +21,11 @@ import {
   Stack,
   Table,
   Tabs,
+  Text,
   Title,
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
-import { serverMessage, requestFailed } from "../i18n/serverMessage";
+import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 
@@ -50,6 +51,8 @@ interface CreationRequest {
   domains: string[];
   waiting_on: string[];
   can_decide: boolean;
+  // Why this user's approval would be refused (the server's own refusal), or null when it counts.
+  approve_refusal: ServerMessageShape | null;
 }
 
 function errorText(e: unknown): string {
@@ -377,18 +380,25 @@ export function RequestsPage() {
                     </Table.Td>
                     <Table.Td>{row.rejection_reason ?? t("requestsPage.none")}</Table.Td>
                     <Table.Td style={{ whiteSpace: "nowrap" }}>
+                      {row.status === "pending" && !row.can_decide && row.approve_refusal && (
+                        <Text size="xs" c="dimmed" data-testid={`requests-cannot-${row.id}`}>
+                          {serverMessage(row.approve_refusal, "")}
+                        </Text>
+                      )}
                       {row.status === "pending" && row.can_decide && (
                         <Group gap="xs" wrap="nowrap">
                           <Button
                             size="compact-xs"
                             onClick={() => doApprove(row.id)}
-                            disabled={busy}
+                            disabled={busy || row.approve_refusal !== null}
+                            title={
+                              row.approve_refusal
+                                ? serverMessage(row.approve_refusal, "")
+                                : undefined
+                            }
                             data-testid={`requests-approve-${row.id}`}
                           >
-                            {t("requestsPage.approve", {
-                              count: row.approvals.length + 1,
-                              total: row.required_approvals,
-                            })}
+                            {t("requestsPage.approve")}
                           </Button>
                           {(row.required_approvals === 1 ||
                             (row.request_type === "relationship" &&

@@ -23,7 +23,7 @@
     "colActions": "",
     "none": "—",
     "viewPayload": "anzeigen",
-    "approve": "Genehmigen ({{count}}/{{total}})",
+    "approve": "Genehmigen",
     "execute": "Ausführen",
     "reject": "Ablehnen",
     "reasonDuplicate": "Duplikat",

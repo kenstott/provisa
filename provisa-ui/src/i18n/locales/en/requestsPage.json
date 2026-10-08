@@ -23,7 +23,7 @@
     "colActions": "",
     "none": "—",
     "viewPayload": "view",
-    "approve": "Approve ({{count}}/{{total}})",
+    "approve": "Approve",
     "execute": "Execute",
     "reject": "Reject",
     "reasonDuplicate": "Duplicate",

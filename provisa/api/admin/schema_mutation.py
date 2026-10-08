@@ -328,7 +328,32 @@ async def save_relationship(
 async def _relationship_decision_refusal(
     info: StrawberryInfo, req: dict, *, executing: bool
 ) -> "MutationResult | None":  # REQ-1948
-    """Why the caller may not reject (or, ``executing``, carry out) a relationship request."""
+    """Why the caller may not reject (or, ``executing``, carry out) a relationship request.
+    A refused attempt is written to the org's administrative trail."""
+    from provisa.api.admin import relationship_approvals as rule
+
+    involved, reach, user_id = await _relationship_decision_scope(info, req)
+    refusal = rule.rejection_refusal(
+        user_id=user_id,
+        requested_by=req["requested_by"],
+        involved=involved,
+        reach=reach,
+        tables=rule.tables_named(req["payload"]),
+    )
+    if refusal is None and executing:
+        refusal = rule.incomplete_refusal(involved, req["approvals"], req["requested_by"])
+    if refusal is None:
+        return None
+    await _record_relationship_decision(info, req, executing=executing, refusal=refusal)
+    return MutationResult(
+        success=False, message=refusal.message, code=refusal.code, params=refusal.params
+    )
+
+
+async def _relationship_decision_scope(
+    info: StrawberryInfo, req: dict
+) -> "tuple[frozenset[str], frozenset[str] | None, str | None]":
+    """The domains the request touches, the caller's reach of the right, and the caller."""
     from provisa.api.admin import relationship_approvals as rule
     from provisa.api.admin.capabilities import _identity_from_info, right_reach
     from provisa.api.app import state
@@ -337,18 +362,23 @@ async def _relationship_decision_refusal(
     pool = await _get_pool()
     async with pool.acquire() as conn:
         involved = await rule.domains_involved(cast("Connection", conn), req["payload"])
-    refusal = rule.rejection_refusal(
-        user_id=getattr(identity, "user_id", None),
-        requested_by=req["requested_by"],
+    return involved, right_reach(identity, state, rule.RIGHT), getattr(identity, "user_id", None)
+
+
+async def _record_relationship_decision(
+    info: StrawberryInfo, req: dict, *, executing: bool, refusal: Any = None
+) -> None:  # REQ-1948
+    from provisa.api.admin import relationship_approvals as rule
+
+    involved, reach, user_id = await _relationship_decision_scope(info, req)
+    await rule.record(
+        await _get_pool(),
+        action="execute" if executing else "reject",
+        request=req,
+        actor=user_id,
         involved=involved,
-        reach=right_reach(identity, state, rule.RIGHT),
-    )
-    if refusal is None and executing:
-        refusal = rule.incomplete_refusal(involved, req["approvals"], req["requested_by"])
-    if refusal is None:
-        return None
-    return MutationResult(
-        success=False, message=refusal.message, code=refusal.code, params=refusal.params
+        reach=reach,
+        refusal=refusal,
     )
 
 
@@ -3009,6 +3039,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 owner=getattr(_presser, "user_id", None),
                 needs_review=False,
             )
+            if not result.success:
+                from provisa.api.admin import relationship_approvals as _rule
+
+                assert result.code is not None  # every save refusal carries its code
+                await _record_relationship_decision(
+                    info,
+                    req,
+                    executing=True,
+                    refusal=_rule.Refusal(result.code, result.message),
+                )
         elif req["request_type"] in ("view", "table"):  # REQ-1792: "table" is the MCP-proposal kind
             result = await self.register_table(info, _rebuild_table_input(req["payload"]))  # pyright: ignore[reportCallIssue]
         elif req["request_type"] == "source":  # REQ-1792
@@ -3053,6 +3093,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         resolved_by = getattr(identity, "user_id", None) if identity is not None else None
         async with pool.acquire() as conn:
             await cr_repo.mark_executed(cast("Connection", conn), request_id, resolved_by)
+        if req["request_type"] == "relationship":
+            await _record_relationship_decision(info, req, executing=True)
         return MutationResult(
             success=True,
             message=f"Executed creation request #{request_id}",
@@ -3098,6 +3140,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             await cr_repo.mark_rejected(
                 cast("Connection", conn), request_id, reason.strip(), resolved_by
             )
+        if req["request_type"] == "relationship":
+            await _record_relationship_decision(info, req, executing=False)
         return MutationResult(
             success=True,
             message=f"Rejected creation request #{request_id}",

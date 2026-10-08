@@ -36,7 +36,14 @@ from provisa.api.admin.creation_requests_router import router
 from provisa.api.errors import ApiError
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.db import init_schema
-from provisa.core.schema_org import domains, relationships, roles, sources
+from provisa.core.schema_org import (
+    admin_audit_log,
+    domains,
+    registered_tables,
+    relationships,
+    roles,
+    sources,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -186,7 +193,7 @@ async def _ask(user: str, rel_id: str, source: str, target: str) -> int:
             cardinality="many-to-one",
         ),
     )
-    assert queued.code == "schema.creation_request_queued", queued.message
+    assert queued.code == "schema.relationship_request_queued", queued.message
     assert isinstance(queued.params, dict)
     return queued.params["id"]
 
@@ -299,6 +306,7 @@ async def test_the_requester_cannot_decide_their_own_request(plane):
         assert resp.json()["code"] == "requests.own_request"
     mine = (await _listed(plane, "fay"))[rid]
     assert mine["can_decide"] is False and mine["status"] == "pending"
+    assert mine["approve_refusal"]["code"] == "requests.own_request"
 
 
 async def test_a_rejection_comes_from_any_user_who_could_approve(plane):
@@ -324,6 +332,11 @@ async def test_the_list_shows_what_a_user_can_decide_and_what_they_made(plane):
 
     await _post(plane, "sam", f"{cross}/approve")
     assert (await _listed(plane, "fay"))[cross]["waiting_on"] == ["finance"]
+    # The page is told beforehand whose approval would be refused, and why.
+    assert (await _listed(plane, "fay"))[cross]["approve_refusal"] is None
+    again = (await _listed(plane, "sam"))[cross]
+    assert again["can_decide"] is True
+    assert again["approve_refusal"]["code"] == "requests.already_approved"
 
 
 async def test_the_graphql_execute_is_held_to_the_same_rule(plane):
@@ -336,3 +349,148 @@ async def test_the_graphql_execute_is_held_to_the_same_rule(plane):
     )
     assert outside.success is False and outside.code == "requests.approver_outside_domains"
     assert await _stored(plane, "orders_invoices") is None
+
+
+async def _trail(plane) -> list[tuple[str, str, dict]]:
+    async with plane.db.acquire() as conn:
+        result = await conn.execute_core(
+            select(
+                admin_audit_log.c.action, admin_audit_log.c.actor_id, admin_audit_log.c.detail
+            ).order_by(admin_audit_log.c.id)
+        )
+        return [(r.action, r.actor_id, r.detail) for r in result.fetchall()]
+
+
+async def test_every_decision_and_every_refusal_is_written_to_the_trail(plane):
+    rid = await _ask("asker", "orders_invoices", "orders", "invoices")
+    await _post(plane, "hal", f"{rid}/approve")  # refused: outside
+    await _post(plane, "sam", f"{rid}/approve")
+    await _post(plane, "sam", f"{rid}/execute")  # refused: finance not heard from
+    await _post(plane, "fay", f"{rid}/approve")  # completes, creates
+    other = await _ask("asker", "orders_customers", "orders", "customers")
+    await _post(plane, "sue", f"{other}/reject", reason="duplicate")
+
+    trail = await _trail(plane)
+    assert [(action, actor, detail["outcome"]) for action, actor, detail in trail] == [
+        ("relationship_request.approve", "hal", "refused"),
+        ("relationship_request.approve", "sam", "done"),
+        ("relationship_request.execute", "sam", "refused"),
+        ("relationship_request.approve", "fay", "done"),
+        ("relationship_request.execute", "fay", "done"),
+        ("relationship_request.reject", "sue", "done"),
+    ]
+    refused, approved = trail[0][2], trail[1][2]
+    assert refused == {
+        "request_id": rid,
+        "requested_by": "asker",
+        "domains": ["finance", "sales"],
+        "domains_reached": [],
+        "outcome": "refused",
+        "refusal": "requests.approver_outside_domains",
+    }
+    assert approved["domains_reached"] == ["sales"] and approved["request_id"] == rid
+    assert trail[2][2]["refusal"] == "requests.waiting_on_domains"
+
+
+async def test_no_path_carries_out_a_request_the_rule_has_not_passed(plane):
+    m = schema_mutation.Mutation()
+    rid = await _ask("asker", "orders_invoices", "orders", "invoices")
+
+    async def _attempts(expected: str) -> None:
+        for user in ("sam", "fay", "olga"):
+            rest = await _post(plane, user, f"{rid}/execute")
+            assert rest.status_code == 409 and rest.json()["code"] == expected, rest.text
+            gql = await m.execute_creation_request(  # pyright: ignore[reportCallIssue]
+                _info(user), rid
+            )
+            assert gql.success is False and gql.code == expected
+        # Outside the request's domains, and the requester: refused before the count is read.
+        for user, code in (
+            ("hal", "requests.approver_outside_domains"),
+            ("asker", "requests.approver_outside_domains"),
+        ):
+            assert (await _post(plane, user, f"{rid}/execute")).json()["code"] == code
+            gql = await m.execute_creation_request(  # pyright: ignore[reportCallIssue]
+                _info(user), rid
+            )
+            assert gql.success is False and gql.code == code
+        assert await _stored(plane, "orders_invoices") is None
+        assert (await _listed(plane, "sam"))[rid]["status"] == "pending"
+
+    await _attempts("requests.waiting_on_domains")  # no approvals at all
+    await _post(plane, "sam", f"{rid}/approve")
+    await _attempts("requests.waiting_on_domains")  # one side
+    await _post(plane, "sue", f"{rid}/approve")
+    await _attempts("requests.waiting_on_domains")  # two approvals, still one side
+
+
+async def test_a_request_submitted_over_rest_is_held_to_the_same_count(plane):
+    payload = {
+        "id": "orders_customers",
+        "source_table_id": "orders",
+        "target_table_id": "customers",
+        "source_column": "ref_id",
+        "target_column": "id",
+        "cardinality": "many-to-one",
+    }
+    made = await _post(
+        plane,
+        "asker",
+        "",
+        request_type="relationship",
+        capability="create_relationship",
+        payload=payload,
+    )
+    assert made.status_code == 200, made.text
+    rid = made.json()["id"]
+    assert (await _listed(plane, "sam"))[rid]["required_approvals"] == 2
+    assert (await _post(plane, "sam", f"{rid}/approve")).json()["status"] == "pending"
+    assert await _stored(plane, "orders_customers") is None
+
+
+async def test_a_creation_that_fails_leaves_the_request_pending_for_a_retry(plane):
+    from provisa.api.admin.types import RelationshipInput
+
+    queued = await schema_mutation._upsert_relationship_impl(
+        _info("asker"),
+        RelationshipInput(
+            id="orders_customers",
+            source_table_id="orders",
+            target_table_id="customers",
+            source_column="ref_id",
+            target_column="id",
+            cardinality="sideways",
+        ),
+    )
+    assert isinstance(queued.params, dict)
+    rid = queued.params["id"]
+    await _post(plane, "sam", f"{rid}/approve")
+    completing = await _post(plane, "sue", f"{rid}/approve")
+    assert completing.status_code == 422
+    assert completing.json()["code"] == "schema.invalid_cardinality"
+    row = (await _listed(plane, "sam"))[rid]
+    assert row["status"] == "pending" and len(row["approvals"]) == 2
+    retry = await _post(plane, "sam", f"{rid}/execute")
+    assert retry.status_code == 422 and retry.json()["code"] == "schema.invalid_cardinality"
+    assert await _stored(plane, "orders_customers") is None
+
+
+async def test_a_request_whose_tables_are_gone_can_only_be_cleared(plane):
+    from sqlalchemy import delete
+
+    rid = await _ask("asker", "orders_customers", "orders", "customers")
+    async with plane.db.acquire() as conn:
+        await conn.execute_core(
+            delete(registered_tables).where(
+                registered_tables.c.table_name.in_(["orders", "customers"])
+            )
+        )
+    for user in ("sam", "olga"):
+        resp = await _post(plane, user, f"{rid}/approve")
+        assert resp.status_code == 403
+        assert resp.json()["code"] == "requests.tables_not_registered"
+        assert resp.json()["params"] == {"tables": "orders, customers"}
+    narrow = await _post(plane, "sam", f"{rid}/reject", reason="source_not_registered")
+    assert narrow.status_code == 403
+    cleared = await _post(plane, "olga", f"{rid}/reject", reason="source_not_registered")
+    assert cleared.status_code == 200 and cleared.json()["status"] == "rejected"

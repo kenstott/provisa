@@ -38,6 +38,28 @@ const DECIDABLE = {
   domains: ["finance", "sales"],
   waiting_on: ["finance"],
   can_decide: true,
+  approve_refusal: null,
+};
+
+const OWN_REFUSAL = {
+  code: "requests.own_request",
+  params: {},
+  detail: "server English",
+};
+
+// Two approvals from the sales side: the count is met, finance has not been heard from.
+const ONE_SIDED = {
+  ...base,
+  id: 3,
+  requested_by: "asker",
+  approvals: [
+    { approver: "sam", approved_at: "now", domains: ["sales"] },
+    { approver: "me", approved_at: "now", domains: ["sales"] },
+  ],
+  domains: ["finance", "sales"],
+  waiting_on: ["finance"],
+  can_decide: true,
+  approve_refusal: { code: "requests.already_approved", params: {}, detail: "server English" },
 };
 
 const MINE = {
@@ -48,6 +70,7 @@ const MINE = {
   domains: ["finance", "sales"],
   waiting_on: ["finance", "sales"],
   can_decide: false,
+  approve_refusal: OWN_REFUSAL,
 };
 
 function json(body: unknown, status = 200) {
@@ -63,7 +86,7 @@ function serve(approve: () => Response) {
     vi.fn(async (url: string) => {
       if (url.includes("/rejection-reasons")) return json({ relationship: ["duplicate"] });
       if (url.endsWith("/approve")) return approve();
-      return json([DECIDABLE, MINE]);
+      return json([DECIDABLE, MINE, ONE_SIDED]);
     }),
   );
 }
@@ -106,6 +129,36 @@ describe("RequestsPage — a request is decided by the domains it touches", () =
     const mine = await row(2);
     expect(within(mine).queryByTestId("requests-approve-2")).toBeNull();
     expect(within(mine).queryByTestId("requests-reject-2")).toBeNull();
+  });
+
+  it("says why, where the user cannot decide", async () => {
+    serve(() => json(DECIDABLE));
+    page();
+    expect(await screen.findByTestId("requests-cannot-2")).toHaveTextContent(
+      "You cannot decide a request you made",
+    );
+    expect(screen.queryByTestId("requests-cannot-1")).toBeNull();
+  });
+
+  it("shows the approvals so far and the domains waited on, never a count past the total", async () => {
+    serve(() => json(DECIDABLE));
+    page();
+    const oneSided = await row(3);
+    expect(oneSided).toHaveTextContent("2 / 2");
+    expect(within(oneSided).getByTestId("requests-waiting-3")).toHaveTextContent("finance");
+    expect(oneSided).not.toHaveTextContent("3/2");
+    expect(within(await row(1)).getByTestId("requests-approve-1")).toHaveTextContent(/^Approve$/);
+  });
+
+  it("disables approve for a user whose approval adds nothing, with the reason", async () => {
+    serve(() => json(DECIDABLE));
+    page();
+    const approve = within(await row(3)).getByTestId("requests-approve-3");
+    expect(approve).toBeDisabled();
+    expect(approve).toHaveAttribute("title", "You have already approved this request");
+    // Rejecting is still theirs to do.
+    expect(within(await row(3)).getByTestId("requests-reject-3")).toBeEnabled();
+    expect(within(await row(1)).getByTestId("requests-approve-1")).toBeEnabled();
   });
 
   it("does not offer execute while a domain is still waited on", async () => {

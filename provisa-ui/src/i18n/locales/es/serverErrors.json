@@ -348,7 +348,8 @@
       "webhook_approved": "Webhook '{{webhook}}' aprobado",
       "webhook_name_required": "webhook_name es obligatorio para un desencadenador de webhook",
       "webhook_not_found": "No se encontró el webhook '{{webhook}}'",
-      "change_streams_unavailable": "El origen '{{source}}' es un servidor MongoDB independiente, que no ofrece change streams: la señal de cambio native requiere un replica set o un clúster fragmentado. Ejecútelo como replica set o use la señal de cambio poll."
+      "change_streams_unavailable": "El origen '{{source}}' es un servidor MongoDB independiente, que no ofrece change streams: la señal de cambio native requiere un replica set o un clúster fragmentado. Ejecútelo como replica set o use la señal de cambio poll.",
+      "relationship_request_queued": "En cola como solicitud #{{id}}. Necesita aprobaciones de {{required}} usuarios distintos que puedan crear relaciones, y al menos uno debe alcanzar cada dominio que toca."
     },
     "secrets": {
       "still_referenced": "{{secret}} sigue siendo nombrado por {{count}} valor(es) almacenado(s) en esta organización. Cambie o quite cada uno y vuelva a eliminarlo."
@@ -413,7 +414,8 @@
       "already_approved": "Ya ha aprobado esta solicitud",
       "approver_unidentified": "Una solicitud de relación la deciden usuarios que han iniciado sesión; esta decisión no tiene usuario",
       "waiting_on_domains": "Esta solicitud aún espera una aprobación de: {{domains}}",
-      "approvals_incomplete": "Esta solicitud necesita aprobaciones de {{required}} usuarios distintos"
+      "approvals_incomplete": "Esta solicitud necesita aprobaciones de {{required}} usuarios distintos",
+      "tables_not_registered": "Las tablas que nombra esta solicitud ({{tables}}) ya no están registradas. No puede aprobarse; un usuario cuyo derecho a crear relaciones alcance todos los dominios puede rechazarla"
     }
   }
 }

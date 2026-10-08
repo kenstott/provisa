@@ -23,7 +23,7 @@
     "colActions": "",
     "none": "—",
     "viewPayload": "הצגה",
-    "approve": "אישור ({{count}}/{{total}})",
+    "approve": "אישור",
     "execute": "הרצה",
     "reject": "דחייה",
     "reasonDuplicate": "כפילות",

@@ -23,7 +23,7 @@
     "colActions": "",
     "none": "—",
     "viewPayload": "檢視",
-    "approve": "核准（{{count}}/{{total}}）",
+    "approve": "核准",
     "execute": "執行",
     "reject": "拒絕",
     "reasonDuplicate": "重複",
