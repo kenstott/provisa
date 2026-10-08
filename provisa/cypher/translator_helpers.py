@@ -293,19 +293,14 @@ def _make_rel_join(
     if rm.source_label != rm.target_label and src_nm is not None:
         is_bwd = src_nm.type_name == rm.target_label
     if is_bwd:
-        if rm.source_constant is not None:
-            cond = exp.EQ(
-                this=_const_literal(rm.source_constant),
-                expression=_tgt_col_expr_for_rm(rm, src_table_ref),
-            )
-        else:
-            cond = exp.EQ(
-                this=exp.Column(
-                    this=exp.Identifier(this=rm.join_source_column, quoted=True),
-                    table=exp.Identifier(this=tgt_alias),
-                ),
-                expression=_tgt_col_expr_for_rm(rm, src_table_ref),
-            )
+        # The joined table holds the relationship's SOURCE side and the table already in the
+        # statement its TARGET side. The condition is the relationship's own in either
+        # direction: its source side as registered -- a constant, an expression, the column --
+        # never the bare column an expression is computed from (#148).
+        cond = exp.EQ(
+            this=_src_col_expr_for_rm(rm, tgt_alias, tgt_nm),
+            expression=_tgt_col_expr_for_rm(rm, src_table_ref),
+        )
     else:
         src_col = _src_col_expr_for_rm(rm, src_table_ref, src_nm)
         tgt_col = _tgt_col_expr_for_rm(rm, tgt_alias)
