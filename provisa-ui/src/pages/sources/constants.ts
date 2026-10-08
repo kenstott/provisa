@@ -114,7 +114,7 @@ export const SOURCE_TYPES = [
   { value: "parquet", label: "Parquet File", category: "File", defaultPort: 0 },
   {
     value: "files",
-    label: "File Directory (CSV/Parquet/XLSX/JSON, etc.)",
+    label: "File Crawler (XLSX/DOCX/MD/CSV/Parquet/JSON, etc.)",
     category: "File",
     defaultPort: 0,
   },

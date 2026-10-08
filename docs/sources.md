@@ -150,7 +150,7 @@ Two mechanisms cover files. Both use the `path` field instead of `host`/`port`. 
 
 Private buckets need credentials (AWS region and keys from the environment). For CSV over `s3://` or `http(s)://`, or to register many files at once, use the `files` source. [tool-verified: `provisa/file_source/source.py`]
 
-**`files` source** — points `path` at a glob, crawls it recursively, and registers the directory as a federated catalog of tables. It reads many formats over many transports; the sets below come from the file connector (kenstott/calcite fork). [tool-verified: `provisa/core/catalog.py` `files` branch and `provisa/core/models.py` `SOURCE_TO_CONNECTOR`; format and transport lists from the calcite `file` adapter — `FileSchema.java`, `storage/StorageProviderFactory.java`]
+**File Crawler (`files` source)** — points `path` at a glob, crawls it recursively, and registers the directory as a federated catalog of tables. It reads many formats over many transports; the sets below come from the file connector (kenstott/calcite fork). [tool-verified: `provisa/core/catalog.py` `files` branch and `provisa/core/models.py` `SOURCE_TO_CONNECTOR`; format and transport lists from the calcite `file` adapter — `FileSchema.java`, `storage/StorageProviderFactory.java`]
 
 | Formats | Transports |
 | --- | --- |
