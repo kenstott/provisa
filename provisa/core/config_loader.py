@@ -390,9 +390,12 @@ def _load_openapi_specs(config: ProvisaConfig) -> dict[str, dict]:
     for src in config.sources:
         if src.type.value == "openapi" and src.path:
             try:
-                from provisa.openapi.loader import load_spec
+                from provisa.openapi.exclusions import load_source_spec
 
-                openapi_specs[src.id] = load_spec(resolve_secrets(src.path))
+                # REQ-1957: without what the source's own exclusions name.
+                openapi_specs[src.id] = load_source_spec(
+                    resolve_secrets(src.path), src.mapping, source_id=src.id
+                )
             except Exception as _e:
                 log.warning("Failed to load OpenAPI spec for %s: %s", src.id, _e)
     return openapi_specs

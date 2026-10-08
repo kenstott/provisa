@@ -300,7 +300,7 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 # REQ-1923: the shipped schema of each branded GraphQL source (scripts/bake_graphql_brand_schema.py).
 "provisa.graphql_remote" = ["_known_schemas/*.json.gz"]
 # REQ-1923: the pinned spec of each branded OpenAPI source (scripts/bake_openapi_brand_spec.py).
-"provisa.openapi" = ["_known_specs/*.json.gz", "_known_specs/*.additions.json", "_known_specs/THIRD_PARTY_NOTICES"]
+"provisa.openapi" = ["_known_specs/*.json.gz", "_known_specs/*.additions.json", "_known_specs/*.exclusions.json", "_known_specs/THIRD_PARTY_NOTICES"]
 # REQ-1494: the portable fake definition's versioned word lists and templates, and their notice.
 "provisa.fakes" = ["portable/*.json", "portable/THIRD_PARTY_NOTICES"]
 

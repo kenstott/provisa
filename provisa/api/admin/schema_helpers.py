@@ -114,7 +114,9 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         return False
     async with pool.acquire() as conn:
         result = await conn.execute_core(
-            select(sources.c.type, sources.c.path).where(sources.c.id == source_id)
+            select(sources.c.type, sources.c.path, sources.c.mapping).where(
+                sources.c.id == source_id
+            )
         )
         _r = result.fetchone()
     row = dict(_r._mapping) if _r is not None else None
@@ -122,10 +124,11 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         return False
     try:
         from provisa.core.secrets import resolve_secrets as _resolve_secrets
-        from provisa.openapi.loader import load_spec
+        from provisa.openapi.exclusions import load_source_spec
 
         resolved_path = _resolve_secrets(row["path"])
-        spec = load_spec(resolved_path)
+        # REQ-1957: without what the source's own exclusions name.
+        spec = load_source_spec(resolved_path, row["mapping"], source_id=source_id)
         servers = spec.get("servers", [])
         base_url = servers[0].get("url", "") if servers else ""
         if (

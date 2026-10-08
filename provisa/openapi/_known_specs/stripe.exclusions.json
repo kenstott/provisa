@@ -1,0 +1,113 @@
+{
+  "_about": "What the Stripe source does not offer (REQ-1957, REQ-1923): Stripe's deprecated legacy payment integration -- the Charges and Customers APIs given a card/bank token or inline card data, the Tokens API and the Sources API. Stripe restricts these for new integrations and flags an account that sends them. Payments are taken through Payment Intents, Payment Methods and Setup Intents, which the specification offers. Reading and deleting payment sources an account already has stays on offer, as do Connect external accounts, Issuing cards and the Payment Methods API's own `card`. `default_source` names a source that already exists and is not excluded. Applied when the shipped specification is loaded; an entry the specification no longer has fails the load until it is removed.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/v1/tokens",
+      "why": "Makes a card or bank-account token, which only the legacy integration consumes."
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tokens/{token}",
+      "why": "Reads a token; nothing offered makes one."
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sources",
+      "why": "The Sources API, deprecated in favour of Payment Methods."
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sources/{source}",
+      "why": "The Sources API, deprecated in favour of Payment Methods."
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sources/{source}/verify",
+      "why": "The Sources API, deprecated in favour of Payment Methods."
+    },
+    {
+      "method": "POST",
+      "path": "/v1/customers/{customer}/sources",
+      "why": "Creates or changes a payment source from a card/bank token or inline card data: Stripe's deprecated legacy integration."
+    },
+    {
+      "method": "POST",
+      "path": "/v1/customers/{customer}/sources/{id}",
+      "why": "Creates or changes a payment source from a card/bank token or inline card data: Stripe's deprecated legacy integration."
+    },
+    {
+      "method": "POST",
+      "path": "/v1/customers/{customer}/sources/{id}/verify",
+      "why": "Creates or changes a payment source from a card/bank token or inline card data: Stripe's deprecated legacy integration."
+    },
+    {
+      "method": "POST",
+      "path": "/v1/customers/{customer}/cards",
+      "why": "Creates or changes a payment source from a card/bank token or inline card data: Stripe's deprecated legacy integration."
+    },
+    {
+      "method": "POST",
+      "path": "/v1/customers/{customer}/cards/{id}",
+      "why": "Creates or changes a payment source from a card/bank token or inline card data: Stripe's deprecated legacy integration."
+    },
+    {
+      "method": "POST",
+      "path": "/v1/customers/{customer}/bank_accounts",
+      "why": "Creates or changes a payment source from a card/bank token or inline card data: Stripe's deprecated legacy integration."
+    },
+    {
+      "method": "POST",
+      "path": "/v1/customers/{customer}/bank_accounts/{id}",
+      "why": "Creates or changes a payment source from a card/bank token or inline card data: Stripe's deprecated legacy integration."
+    },
+    {
+      "method": "POST",
+      "path": "/v1/customers/{customer}/bank_accounts/{id}/verify",
+      "why": "Creates or changes a payment source from a card/bank token or inline card data: Stripe's deprecated legacy integration."
+    },
+    {
+      "method": "POST",
+      "path": "/v1/charges",
+      "why": "A charge is created from a token, inline card data or a customer's legacy default source. Payments are taken with POST /v1/payment_intents."
+    }
+  ],
+  "arguments": [
+    {
+      "name": "source",
+      "method": "POST",
+      "path": "/v1/customers",
+      "why": "A card/bank token or inline card data: the legacy integration."
+    },
+    {
+      "name": "source",
+      "method": "POST",
+      "path": "/v1/customers/{customer}",
+      "why": "A card/bank token or inline card data: the legacy integration."
+    },
+    {
+      "name": "card",
+      "method": "POST",
+      "path": "/v1/customers/{customer}",
+      "why": "A card/bank token or inline card data: the legacy integration."
+    },
+    {
+      "name": "bank_account",
+      "method": "POST",
+      "path": "/v1/customers/{customer}",
+      "why": "A card/bank token or inline card data: the legacy integration."
+    },
+    {
+      "name": "default_card",
+      "method": "POST",
+      "path": "/v1/customers/{customer}",
+      "why": "Names a legacy card as the default; replaced by invoice_settings.default_payment_method."
+    },
+    {
+      "name": "source",
+      "method": "POST",
+      "path": "/v1/invoices/{invoice}/pay",
+      "why": "A card/bank token or inline card data: the legacy integration."
+    }
+  ]
+}

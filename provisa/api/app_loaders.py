@@ -506,7 +506,7 @@ async def _load_openapi_specs() -> None:
             dict(_r._mapping)
             for _r in (
                 await conn.execute_core(
-                    select(_sources_t.c.id, _sources_t.c.path).where(
+                    select(_sources_t.c.id, _sources_t.c.path, _sources_t.c.mapping).where(
                         _sources_t.c.type == "openapi",
                         _sources_t.c.path.is_not(None),
                         _sources_t.c.path != "",
@@ -514,7 +514,7 @@ async def _load_openapi_specs() -> None:
                 )
             ).fetchall()
         ]
-    from provisa.openapi.loader import load_spec
+    from provisa.openapi.exclusions import load_source_spec
     from provisa.core.secrets import resolve_secrets as _resolve_secrets
 
     state.openapi_specs = {}
@@ -522,7 +522,8 @@ async def _load_openapi_specs() -> None:
         # Best-effort: a malformed or unreachable spec must not abort startup.
         with tolerate_startup_failure(f"OpenAPI spec for {_row['id']!r}"):
             _resolved_path = _resolve_secrets(_row["path"])
-            _spec = load_spec(_resolved_path)
+            # REQ-1957: without what the source's own exclusions name.
+            _spec = load_source_spec(_resolved_path, _row["mapping"], source_id=_row["id"])
             _servers = _spec.get("servers", [])
             _base_url = _servers[0].get("url", "") if _servers else ""
             if (

@@ -386,6 +386,38 @@ API responses are fetched, cached in PostgreSQL (configurable TTL), and exposed 
 
 GitHub and GitLab are branded sources carried by `graphql_remote`: each appears in the Sources form under its own name and registers as a remote GraphQL source that records its brand. The form takes a personal access token and nothing else. The endpoint (`https://api.github.com/graphql`, `https://gitlab.com/api/graphql`) and the schema ship with Provisa, so the schema is not introspected at registration. The token is checked when the source is added. Adding the source registers no tables: every table the schema offers is available under the source's namespace (`gh`, `gl`), and the steward registers the ones wanted. A field the token may not read is left out of a table when it is registered. [tool-verified: `provisa/graphql_remote/brands.py` `BRANDS`] (REQ-1923)
 
+#### Exclusions on a specification-built source
+
+A published OpenAPI specification describes everything the remote API accepts, including what its vendor has deprecated and what a deployment must never send. An OpenAPI source can carry exclusions: things in the specification the source does not offer. (REQ-1957)
+
+| Excluded | Named by | Effect |
+|---|---|---|
+| An operation | `method` and `path` | Not listed for registration as a table or a command |
+| A request argument | `name`, on one operation (`method` and `path`) or, with neither, on every operation that has it | Not among the operation's arguments, not shown, never sent |
+
+Exclusions are set under `exclusions` in the source's `mapping`:
+
+```yaml
+sources:
+  - id: shop-api
+    type: openapi
+    path: https://shop.example.com/openapi.json
+    mapping:
+      exclusions:
+        operations:
+          - {method: POST, path: /v1/tokens}
+        arguments:
+          - {name: source, method: POST, path: /v1/customers}
+          - {name: legacy_token}          # on every operation that has it
+```
+
+They are applied to the specification when it is loaded, so the registration listing, the generated commands and the request that is sent all see a specification in which the excluded things do not exist. A body property and a query, header or cookie parameter can be excluded; a path parameter cannot, because it is part of the operation's address.
+
+An exclusion that names an operation or argument the specification does not have fails the load of that source's specification and names each stale entry, so a list that no longer matches a newer specification is noticed.
+
+A branded source ships its own exclusions as part of its curation, and an operator's are added to them. The Stripe source excludes Stripe's deprecated token and source payment integration: creating a charge, the Tokens and Sources APIs, adding a card or bank account to a customer from a token, and the `source`, `card`, `bank_account` and `default_card` arguments of customer and invoice-payment writes. Payments are taken through Payment Intents, Payment Methods and Setup Intents, which the source offers. Reading and deleting payment sources an account already has stays on offer.
+
+
 ### GovData
 
 U.S. government open data. Access is partitioned by subject grouping. [tool-verified: `provisa/core/models.py` lines 543–609]

@@ -79,7 +79,8 @@ BRANDS: dict[str, Brand] = {
 @lru_cache(maxsize=None)
 def brand_spec(brand_id: str) -> dict:
     """The spec a brand ships with: the vendor's published one, pinned, with the brand's
-    additions (:func:`_add_fields`). Callers read it and never change it."""
+    additions (:func:`_add_fields`) and without its exclusions (REQ-1957,
+    ``provisa/openapi/exclusions.py``). Callers read it and never change it."""
     if brand_id not in BRANDS:
         raise FileNotFoundError(f"No branded OpenAPI source {brand_id!r}")
     with gzip.open(_SPEC_DIR / f"{brand_id}.json.gz", "rb") as fh:
@@ -87,6 +88,13 @@ def brand_spec(brand_id: str) -> dict:
     additions = _SPEC_DIR / f"{brand_id}.additions.json"
     if additions.exists():
         _add_fields(brand_id, spec, json.loads(additions.read_text()))
+    # REQ-1957: what the brand does not offer, applied the way an operator's own exclusions are.
+    excluded = _SPEC_DIR / f"{brand_id}.exclusions.json"
+    if excluded.exists():
+        from provisa.openapi.exclusions import Exclusions, apply
+
+        who = f"brand {brand_id}"
+        spec = apply(spec, Exclusions.parse(json.loads(excluded.read_text()), who=who), who=who)
     return spec
 
 
