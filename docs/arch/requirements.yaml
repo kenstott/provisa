@@ -4917,7 +4917,26 @@
     by name. The fetch itself writes nothing. Before this the fetch also wrote them, into the same
     table and with the endpoint''s parameter columns, so a table with a parameter that is no response
     field failed on its first read and one without held its rows twice. Columns promoted from JSON are
-    applied to the table the statement stored.'
+    applied to the table the statement stored.
+
+    (Amended 2026-10-08, AN ANSWER IS KEPT UNDER ITS ARGUMENTS) An API table with a parameter is a
+    function of its arguments, so what is cached is the answer to one argument set and is kept under
+    it: the arguments the statement gives for the table''s own parameters, path and query alike, over
+    the endpoint''s default parameters. A read for other arguments is a miss and calls the API with
+    them; it is never answered with rows fetched for another argument set. Every argument the
+    statement gives is sent, because its condition is taken out of the statement the engine runs. An
+    argument that is another table''s parameter is no part of the name. Rows a GraphQL read filled are
+    read back by the same arguments, one group per argument set. The one exception is a table read by
+    its parent''s keys: when the statement does not give a parameter that a join feeds (a path
+    parameter, or the query parameter a join targets), the table is every key''s fill together, which
+    is what the statement joins to. Before this the cache table was named for the table alone, so
+    the second argument set read within the lifetime of the first was answered with the first''s rows,
+    and a query argument given in SQL was not sent at all.
+
+    (Amended 2026-10-08, DEFAULT PARAMETERS ON EVERY CALL) Every call to an endpoint sends its default
+    parameters under what the statement gives, whichever path makes the call. The fills a GraphQL read
+    makes left them out, so the same table was called one way from GraphQL and another from SQL. The
+    default parameters are no part of a fill''s argument group.'
   use_case: '[SUPERSEDED by REQ-845, 2026-10-03 -- the API cache is held in the engine''s own store on
     every engine, not in S3/Iceberg read through Trino. Kept here for history; do not implement against
     it.] S3/Iceberg materialization of GET operation results prevents repeated upstream REST calls and

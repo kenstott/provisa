@@ -409,3 +409,245 @@ async def test_an_api_that_answers_nothing_gives_no_rows_through_every_path_that
     with state.federation_engine.isolated_sync() as conn:
         assert fill_cache.read_rows(conn, table) == []
         assert fill_cache.distinct_values(conn, table, "id") == []
+
+
+# --- an answer is kept under its arguments (REQ-318) ----------------------------------------------
+
+_META = {fill_cache.PARAMS_HASH, fill_cache.CACHED_AT}
+_NO_JOINS = SimpleNamespace(joins={}, tables={})
+
+
+def _by_id() -> ApiEndpoint:
+    return _endpoint(
+        path="/pets/{petId}",
+        table_name="pet_by_id",
+        columns=[
+            *_endpoint().columns[:2],
+            ApiColumn(name="petId", type=ApiColumnType.integer, param_type="path", param_only=True),
+        ],
+    )
+
+
+def _pets_feeding_by_id() -> SimpleNamespace:
+    """A model in which ``pets.id`` feeds ``pet_by_id``'s path parameter."""
+    join = SimpleNamespace(
+        target=SimpleNamespace(table_name="pet_by_id"), target_column="petId", source_column="id"
+    )
+    parent = SimpleNamespace(type_name="Pet", source_id="api", table_name="pets", schema_name="x")
+    return SimpleNamespace(joins={("Pet", "byId"): join}, tables={"pets": parent})
+
+
+@pytest.fixture
+def api_step(store, monkeypatch):
+    """The API step of a statement over the store: ``read(endpoint, args, ctx)`` gives the cache
+    table the statement is pointed at and the rows it holds."""
+    from provisa.api.data import hydration
+    from provisa.api.data.materialization import _mat_api_ep_table, _StatementHot
+    from provisa.api_source import engine_cache
+
+    state, con = store
+    state.api_sources = {"api": _api_source()}
+    state.source_cache = {}
+    state.response_cache_default_ttl = 300
+    state.tables = []
+    state.tenant_db = None
+    engine_cache._TABLE_EXISTS_CACHE.clear()
+    hydration._source_hydration_expiry.clear()
+    monkeypatch.setattr(engine_cache, "_scope", lambda: "scope")
+    # No org runtime is built here: redirect settings are the platform's, as a deployment that
+    # installs no org resolver reads them (an earlier test's app import leaves one installed).
+    monkeypatch.setattr("provisa.executor.redirect._org_overrides_resolver", None)
+    monkeypatch.setattr(engine_cache, "schedule_drop", lambda *a, **k: None)
+
+    async def read(endpoint, args=None, ctx=_NO_JOINS):
+        rewrites: dict = {}
+        await _mat_api_ep_table(
+            endpoint.table_name,
+            endpoint,
+            state,
+            _StatementHot(None, state, []),
+            0,  # nothing is inlined: every answer is read from its cache table
+            _META,
+            rewrites,
+            {},
+            nf_args=args,
+            ctx=ctx,
+        )
+        loc, table = rewrites[endpoint.table_name]
+        held = con.execute(
+            f'SELECT id, name FROM "{loc.catalog}"."{loc.schema}"."{table}" ORDER BY id'
+        )
+        return table, held.fetchall()
+
+    yield state, read
+    engine_cache._TABLE_EXISTS_CACHE.clear()
+    hydration._source_hydration_expiry.clear()
+
+
+def _one_pet(request: httpx.Request) -> httpx.Response:
+    pet = int(request.url.path.rsplit("/", 1)[1])
+    return httpx.Response(200, json={"id": pet, "name": f"pet {pet}"})
+
+
+def _pets_by_status(request: httpx.Request) -> httpx.Response:
+    pets = {"sold": [{"id": 1, "name": "a"}], "available": [{"id": 2, "name": "b"}]}
+    status = request.url.params.get("status")
+    return httpx.Response(200, json=pets[status] if status else pets["sold"] + pets["available"])
+
+
+def test_a_statements_arguments_for_an_endpoint_are_its_own_parameters_under_their_sent_names():
+    ep = _endpoint(
+        columns=[
+            ApiColumn(name="id", type=ApiColumnType.integer),
+            ApiColumn(name="petId", type=ApiColumnType.integer, param_type="path"),
+            ApiColumn(
+                name="state", type=ApiColumnType.string, param_type="query", param_name="status"
+            ),
+        ]
+    )
+    # By column or by sent name, re-cased and ``_``-prefixed as a statement may carry them; an
+    # argument that is another table's parameter, and one given as nothing, are not its own.
+    assert fill_cache.endpoint_args(ep, {"_pet_id": 3, "status": "sold", "owner": 9}) == {
+        "petId": 3,
+        "status": "sold",
+    }
+    assert fill_cache.endpoint_args(ep, {"state": "sold", "petId": None}) == {"status": "sold"}
+    assert fill_cache.endpoint_args(ep, None) == {}
+
+
+def test_an_endpoint_is_read_by_parent_keys_when_a_join_fed_parameter_is_not_given():
+    by_id = _by_id()
+    assert fill_cache.read_by_parent_keys(by_id, {}, _NO_JOINS)  # a path parameter, not given
+    assert not fill_cache.read_by_parent_keys(by_id, {"petId": 1}, _NO_JOINS)
+
+    orders = _endpoint(
+        path="/orders",
+        table_name="orders",
+        columns=[
+            ApiColumn(name="id", type=ApiColumnType.integer),
+            ApiColumn(name="customer_id", type=ApiColumnType.integer, param_type="query"),
+            ApiColumn(name="status", type=ApiColumnType.string, param_type="query"),
+        ],
+    )
+    join = SimpleNamespace(
+        target=SimpleNamespace(table_name="orders"), target_column="customer_id", source_column="id"
+    )
+    fed = SimpleNamespace(
+        joins={("Customer", "orders"): join},
+        tables={"customers": SimpleNamespace(type_name="Customer", table_name="customers")},
+    )
+    assert fill_cache.read_by_parent_keys(orders, {"status": "open"}, fed)  # the join's is not
+    assert not fill_cache.read_by_parent_keys(orders, {"customer_id": 5}, fed)
+    assert not fill_cache.read_by_parent_keys(orders, {}, _NO_JOINS)  # no join feeds it
+    assert not fill_cache.read_by_parent_keys(orders, {}, None)
+
+
+@respx.mock
+async def test_a_path_parameter_table_read_for_one_argument_never_answers_another(api_step):
+    """The defect: the cache table of ``/pets/{petId}`` was named without the argument, so the
+    read for pet 2 was answered with pet 1's row for as long as that table lived."""
+    route = respx.route(host="api.test").mock(side_effect=_one_pet)
+    _state, read = api_step
+    by_id = _by_id()
+
+    first, rows = await read(by_id, {"petId": "1"})
+    assert rows == [(1, "pet 1")]
+    second, rows = await read(by_id, {"petId": "2"})
+    assert rows == [(2, "pet 2")] and second != first
+    again, rows = await read(by_id, {"petId": "1"})
+    assert (again, rows) == (first, [(1, "pet 1")])
+    assert [c.request.url.path for c in route.calls] == ["/pets/1", "/pets/2"]  # a hit, no call
+
+
+@respx.mock
+async def test_a_query_argument_a_statement_gives_is_sent_and_names_its_answer(api_step):
+    """A SQL read with ``_nf_status = 'sold'`` has the condition taken out of the engine's
+    statement: the remote must apply it, and the answer is that argument's alone."""
+    route = respx.route(host="api.test").mock(side_effect=_pets_by_status)
+    _state, read = api_step
+
+    sold, rows = await read(_endpoint(), {"status": "sold"})
+    assert rows == [(1, "a")]
+    everything, rows = await read(_endpoint())
+    assert rows == [(1, "a"), (2, "b")] and everything != sold
+    assert [dict(c.request.url.params) for c in route.calls] == [{"status": "sold"}, {}]
+
+
+@respx.mock
+async def test_a_fill_is_read_back_by_the_arguments_it_was_fetched_for(api_step):
+    """GraphQL fills one group per argument set. Read back, a statement gets the group of its
+    own arguments -- not every group the table holds, and not the first one a cache table was
+    made from. An argument that is another table's parameter makes no group of its own."""
+    from provisa.api.data import hydration
+
+    route = respx.route(host="api.test").mock(side_effect=_pets_by_status)
+    state, read = api_step
+    pets = _endpoint()
+    state.api_endpoints = {("api", "pets"): pets}
+    for args in ({"status": "sold"}, {"status": "available"}, {"status": "sold", "owner": 9}):
+        hydration._source_hydration_expiry.clear()
+        await hydration._hydrate_api_tables_before_engine(
+            SimpleNamespace(sources={"api"}, api_args=args), _NO_JOINS, state
+        )
+        _table, rows = await read(pets, args)
+        assert rows == ([(1, "a")] if args["status"] == "sold" else [(2, "b")])
+    assert [dict(c.request.url.params) for c in route.calls] == [
+        {"status": "sold"},
+        {"status": "available"},
+    ]
+
+
+@respx.mock
+async def test_a_table_read_by_its_parents_keys_is_every_keys_fill_and_one_key_is_its_own(
+    api_step,
+):
+    """A path-parameter table joined to its parent is filled once per parent key, and a
+    statement that gives no argument reads all of them to join to. A statement that names one
+    pet reads that pet's fill, with no call."""
+    from provisa.api.data import hydration
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/pets":
+            return httpx.Response(200, json=[{"id": 1, "name": "a"}, {"id": 2, "name": "b"}])
+        return _one_pet(request)
+
+    route = respx.route(host="api.test").mock(side_effect=answer)
+    state, read = api_step
+    pets, by_id = _endpoint(columns=_endpoint().columns[:2]), _by_id()
+    state.api_endpoints = {("api", "pets"): pets, ("api", "pet_by_id"): by_id}
+    ctx = _pets_feeding_by_id()
+    await hydration._hydrate_api_tables_before_engine(
+        SimpleNamespace(sources={"api"}, api_args={}), ctx, state
+    )
+    calls = len(route.calls)
+
+    joined, rows = await read(by_id, None, ctx)
+    assert rows == [(1, "pet 1"), (2, "pet 2")]
+    one, rows = await read(by_id, {"petId": "2"}, ctx)
+    assert rows == [(2, "pet 2")] and one != joined
+    assert len(route.calls) == calls
+
+
+@respx.mock
+async def test_a_fill_calls_the_api_with_the_endpoints_default_parameters_under_its_arguments(
+    store,
+):
+    """The default parameters are what make the endpoint's whole collection (REQ-318). A fill
+    left them out, so a GraphQL read called the API differently from a SQL read of the same
+    table. They are sent under what the statement gives, and are no part of the fill's group."""
+    route = respx.get(f"{BASE}/pets").mock(return_value=httpx.Response(200, json=[]))
+    state, _con = store
+    pets = _endpoint(
+        columns=[
+            *_endpoint().columns,
+            ApiColumn(name="scope", type=ApiColumnType.string, param_type="query", param_only=True),
+        ],
+        default_params={"scope": "all", "status": "available"},
+    )
+    await fill_cache.fill(state, pets, _api_source(), [{}, {"status": "sold"}], ttl=300)
+    assert [dict(c.request.url.params) for c in route.calls] == [
+        {"scope": "all", "status": "available"},
+        {"scope": "all", "status": "sold"},
+    ]
+    table = fill_cache.fill_table(state, pets, _api_source())
+    assert fill_cache.is_mem_fresh(table, {}) and fill_cache.is_mem_fresh(table, {"status": "sold"})

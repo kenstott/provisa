@@ -122,11 +122,8 @@ async def _hydrate_collection(
     """Collection branch: the call for this request's arguments, unless its fill is fresh."""
     from provisa.api_source import fill_cache
 
-    param_name_map = {
-        c.name: (c.param_name or c.name) for c in endpoint.columns if c.param_type is not None
-    }
-    raw_params = compiled.api_args or {}
-    query_params = {param_name_map.get(k, k): v for k, v in raw_params.items()}
+    # The endpoint's own arguments, as the API step reads the fill back by them (REQ-318).
+    query_params = fill_cache.endpoint_args(endpoint, compiled.api_args)
     if fill_cache.is_mem_fresh(fill_cache.fill_table(state, endpoint, src), query_params):
         cache_hit_sources.add(source_id)
         return
@@ -189,6 +186,7 @@ async def _hydrate_api_tables_before_engine(
 
     Returns (dataloader_sources, hydration_times_ms, hydration_rows, cache_hit_sources).
     """
+    from provisa.api_source import fill_cache
     from provisa.api_source.models import ParamType
 
     dataloader_sources: set = set()
@@ -223,7 +221,6 @@ async def _hydrate_api_tables_before_engine(
                 continue
             if table_name in _row_level_tables:
                 continue
-            pg_table = table_name
             ttl = endpoint.ttl
             _min_ttl = ttl if _min_ttl is None else min(_min_ttl, ttl)
 
@@ -233,24 +230,14 @@ async def _hydrate_api_tables_before_engine(
             dataloader_col = None
             dataloader_parent_join_col = None
             dataloader_parent_table_meta = None
-            for (src_type, _), join_meta in ctx.joins.items():
-                if join_meta.target.table_name == pg_table:
-                    target_col = next(
-                        (
-                            c
-                            for c in endpoint.columns
-                            if c.name == join_meta.target_column and c.param_type == ParamType.query
-                        ),
-                        None,
-                    )
-                    if target_col:
-                        dataloader_col = target_col
-                        dataloader_parent_join_col = join_meta.source_column
-                        for tbl_meta in ctx.tables.values():
-                            if tbl_meta.type_name == src_type:
-                                dataloader_parent_table_meta = tbl_meta
-                                break
-                        break
+            for c in endpoint.columns:
+                if c.param_type != ParamType.query:
+                    continue
+                fed = fill_cache.joined_from(endpoint, c.name, ctx)
+                if fed is not None:
+                    dataloader_col = c
+                    dataloader_parent_table_meta, dataloader_parent_join_col = fed
+                    break
 
             if dataloader_col is not None and dataloader_parent_table_meta is not None:
                 dataloader_sources.add(source_id)

@@ -104,6 +104,60 @@ def params_hash(params: dict) -> str:
     return hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()[:16]
 
 
+def endpoint_args(endpoint: ApiEndpoint, given: dict | None) -> dict:
+    """The arguments a statement gives for ``endpoint``'s own parameters, each under the name
+    it is sent as. A statement's arguments are not per table: one that is another table's
+    parameter is not this endpoint's, and is no part of what its answer is kept under."""
+    from provisa.compiler.naming import apply_sql_name
+
+    # A statement names a parameter by its column, which the naming authority may have
+    # re-cased and Provisa may have prefixed with ``_``: both sides reduce to one sql name.
+    canon = {apply_sql_name(k.lstrip("_")): v for k, v in (given or {}).items()}
+    args: dict = {}
+    for c in endpoint.columns:
+        if c.param_type is None:
+            continue
+        for name in (c.name, c.param_name):
+            if name and apply_sql_name(name) in canon:
+                value = canon[apply_sql_name(name)]
+                if value is not None:  # sent as no argument (caller._build_request_parts)
+                    args[c.param_name or c.name] = value
+                break
+    return args
+
+
+def read_by_parent_keys(endpoint: ApiEndpoint, args: dict, ctx: Any) -> bool:
+    """Whether a statement that gives ``args`` reads ``endpoint`` by its parent's keys and not
+    by argument: a parameter a join feeds (a path parameter, or the query parameter a join
+    targets) is one the statement does not give. Its fills are then one argument set per
+    parent key, and together they are what the statement joins to."""
+    for c in endpoint.columns:
+        if c.param_type is None or (c.param_name or c.name) in args:
+            continue
+        if c.param_type.value == "path":
+            return True
+        if c.param_type.value == "query" and joined_from(endpoint, c.name, ctx) is not None:
+            return True
+    return False
+
+
+def joined_from(endpoint: ApiEndpoint, column: str | None, ctx: Any) -> tuple[Any, str] | None:
+    """The parent table and its column a model join feeds ``endpoint`` from -- through
+    ``column`` when one is named, else through any -- or None when no join does."""
+    if ctx is None:  # no model in hand: no join is known to feed it
+        return None
+    for (src_type, _), join in ctx.joins.items():
+        if join.target.table_name != endpoint.table_name:
+            continue
+        if column is not None and join.target_column != column:
+            continue
+        for parent in ctx.tables.values():
+            if parent.type_name == src_type:
+                return parent, join.source_column
+        return None
+    return None
+
+
 def source_cache_location(state: Any, source_id: str, api_source: Any) -> CacheLocation:
     """Where the acting org's API cache for ``source_id`` is, in the bound engine's terms: the
     source's own cache catalog when it names one, else the engine's own cache catalog (a native
@@ -293,14 +347,19 @@ def store(
     return len(rows)
 
 
-def read_rows(conn: Any, table: FillTable) -> list[dict]:
-    """Every row the table holds, as the endpoint's response columns — ``[]`` when no fill has
-    made the table yet. A read that fails raises: it is never a cue to call the remote."""
+def read_rows(conn: Any, table: FillTable, args: dict | None = None) -> list[dict]:
+    """The rows the table holds, as the endpoint's response columns — every argument set's, or
+    only the answer to ``args`` when one is given; ``[]`` when no fill has made the table yet.
+    A read that fails raises: it is never a cue to call the remote."""
     if not _exists(conn, table):
         return []
     names = table.data_columns
     select = ", ".join(_quoted(n, conn.dialect) for n in names)
-    conn.execute(f"SELECT {select} FROM {_ref(conn, table)}")
+    sql = f"SELECT {select} FROM {_ref(conn, table)}"
+    if args is not None:
+        group = _string_literal(params_hash(args), conn.dialect)
+        sql += f" WHERE {_quoted(PARAMS_HASH, conn.dialect)} = {group}"
+    conn.execute(sql)
     return [dict(zip(names, row)) for row in conn.fetchall()]
 
 
@@ -341,7 +400,9 @@ async def fetch(
     try:
         answer = await call_api(
             endpoint,
-            params,
+            # REQ-318: the endpoint's default parameters under what the statement gives, as every
+            # other read of it calls (router_integration.handle_api_query, replica_read).
+            {**endpoint.default_params, **params},
             base_url=api_source.base_url,
             auth=api_source.auth,
             source_headers=api_source.headers,

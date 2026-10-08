@@ -328,7 +328,7 @@ async def _optimize_and_route(
     # ``extra_selections``: the fields a GraphQL query reads of a graphql_remote table beyond its
     # columns (``CompiledQuery.gql_remote_extra_selections``), fetched with it.
     _rewrites, _values_ctes, _dropped = await _materialize_api_to_engine_cache(
-        exec_sql, state, extra_selections, nf_args=nf_args, table_ids=table_ids
+        exec_sql, state, extra_selections, nf_args=nf_args, table_ids=table_ids, ctx=ctx
     )
     _actually_dropped: set[str] = set()
     if _dropped:
