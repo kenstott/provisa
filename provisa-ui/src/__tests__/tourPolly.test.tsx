@@ -54,6 +54,14 @@ function Shell() {
   );
 }
 
+/** The Next button of the card now on screen for `key`, once that card is the one showing. */
+async function nextButtonOf(key: string): Promise<Element> {
+  await waitFor(() =>
+    expect(document.querySelector(".driver-popover-title")?.textContent).toBe(`tour.steps.${key}.title`),
+  );
+  return document.querySelector(".driver-popover-next-btn")!;
+}
+
 function renderShell() {
   return render(
     <MantineProvider>
@@ -107,9 +115,8 @@ describe("tour opens Polly", () => {
     renderShell();
     fireEvent.click(screen.getByText("launch"));
     await waitFor(() => expect(screen.getByTestId("chat-panel")).toBeInTheDocument());
-    await waitFor(() => expect(document.querySelector(".driver-popover-next-btn")).not.toBeNull());
 
-    fireEvent.click(document.querySelector(".driver-popover-next-btn")!);
+    fireEvent.click(await nextButtonOf("stepPolly"));
 
     await waitFor(() => expect(screen.queryByTestId("chat-panel")).toBeNull());
   });
@@ -121,9 +128,8 @@ describe("tour opens Polly", () => {
     fireEvent.click(screen.getByText("polly-launcher"));
     await waitFor(() => expect(screen.getByTestId("chat-panel")).toBeInTheDocument());
     fireEvent.click(screen.getByText("launch"));
-    await waitFor(() => expect(document.querySelector(".driver-popover-next-btn")).not.toBeNull());
 
-    fireEvent.click(document.querySelector(".driver-popover-next-btn")!);
+    fireEvent.click(await nextButtonOf("stepPolly"));
     await act(async () => {
       await Promise.resolve();
     });

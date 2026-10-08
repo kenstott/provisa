@@ -725,6 +725,19 @@ export function TourProvider({ children }: { children: ReactNode }) {
     // `attempt` is the Retry trigger: it re-runs this effect on the same step index.
   }, [activeStep, attempt, navigate, endTour, closeTourPolly, t]);
 
+  // The driver paints its overlay and popover straight into document.body, outside React's tree, so
+  // unmounting the provider does not remove them. Left behind they dim the page and keep a live
+  // Next button whose handlers target a provider that no longer exists; the ref is nulled first so
+  // onDestroyed does not read this as the visitor dismissing the tour.
+  useEffect(
+    () => () => {
+      const inst = driverRef.current;
+      driverRef.current = null;
+      inst?.destroy();
+    },
+    [],
+  );
+
   // Start the tour. Resumes from saved progress by default; pass { restart: true } to force step 0.
   //
   // The tour hops between surfaces faster than a step's own destination can pay its first-visit
