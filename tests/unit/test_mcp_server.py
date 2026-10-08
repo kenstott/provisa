@@ -118,7 +118,7 @@ def state():
 def _patch_catalog(monkeypatch):
     """_build_catalog_tables_async normally hits tenant_db; feed the fixed catalog."""
 
-    async def _fake(_state):
+    async def _fake(_state, _role_id=None):
         return list(_CATALOG)
 
     monkeypatch.setattr(tools, "_build_catalog_tables_async", _fake)
@@ -241,7 +241,7 @@ _PREFIXED_CATALOG = [
 async def test_names_are_semantic_not_raw(monkeypatch):
     """schema 'pet-store' → 'pet_store'; FK target field 'ps__users' → 'users'."""
 
-    async def _fake(_state):
+    async def _fake(_state, _role_id=None):
         return list(_PREFIXED_CATALOG)
 
     monkeypatch.setattr(tools, "_build_catalog_tables_async", _fake)

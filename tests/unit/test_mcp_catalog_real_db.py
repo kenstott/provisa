@@ -75,8 +75,30 @@ async def _seeded_db(tmp_path):
 
 
 def _state(db):
+    # The analyst's compiled context, as a schema build leaves it for the table seeded above:
+    # the tools list what the role is served, so a context with no table is an empty catalog.
+    from provisa.compiler.sql_types import TableMeta
+
+    with db._engine.connect() as c:
+        (table_id,) = c.execute(
+            registered_tables.select().with_only_columns(registered_tables.c.id)
+        ).one()
+    orders = TableMeta(
+        table_id=table_id,
+        field_name="orders",
+        type_name="Orders",
+        source_id="__derived__",
+        catalog_name="derived",
+        schema_name="public",
+        table_name="orders",
+        domain_id="sales",
+    )
     return types.SimpleNamespace(
-        contexts={"analyst": types.SimpleNamespace(tables={}, joins={})},
+        contexts={
+            "analyst": types.SimpleNamespace(
+                tables={"orders": orders}, joins={}, physical_to_sql={(table_id, "id"): "id"}
+            )
+        },
         roles={"analyst": {"domain_access": ["*"]}},
         config=types.SimpleNamespace(domains=[]),
         model_db=db,
@@ -111,4 +133,4 @@ async def test_catalog_returns_empty_list_when_no_tenant_db():
     from provisa.api.mcp import tools
 
     state = types.SimpleNamespace(model_db=None, tenant_db=None)
-    assert await tools._catalog(state) == []
+    assert await tools._catalog(state, None) == []

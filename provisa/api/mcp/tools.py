@@ -110,9 +110,14 @@ def _semantic_catalog(
     return out
 
 
-async def _catalog(state: Any) -> list[CatalogTable]:
+async def _catalog(state: Any, role: str | None) -> list[CatalogTable]:
     """The virtual catalog (schemas/tables/columns) via the Flight reference builder,
     with every schema/table identifier normalized to its semantic (SQL-queryable) name.
+
+    ``role`` narrows it to what that role is served — the tables and columns of its compiled
+    context, by the builder's own narrowing (``flight.catalog.role_visibility``) — so a tool
+    never lists a name the role could not read. None is the whole catalog, for the search
+    index, which is built once for every role and filtered per caller when it is searched.
 
     Calls the ASYNC builder directly, on the caller's own event loop — not the sync
     ``build_catalog_tables`` wrapper (used by the Arrow Flight server, whose RPC handlers run on
@@ -124,7 +129,7 @@ async def _catalog(state: Any) -> list[CatalogTable]:
     failing on that mismatch."""
     if not state.tenant_db:
         return []
-    raw = await _build_catalog_tables_async(state)
+    raw = await _build_catalog_tables_async(state, role)
     return _semantic_catalog(raw, _meta_index(state))
 
 
@@ -149,7 +154,7 @@ def _find_role_table(ctx: Any, schema: str, table: str) -> Any:
 async def list_schemas(state: Any, role: str) -> list[dict]:
     """schema id + description + table count."""
     require_role(role, state)
-    tables = await _catalog(state)
+    tables = await _catalog(state, role)
     descs = _domain_descriptions(state)
     counts: dict[str, int] = {}
     for t in tables:
@@ -163,7 +168,7 @@ async def list_schemas(state: Any, role: str) -> list[dict]:
 async def list_tables(state: Any, role: str, schema: str) -> list[dict]:
     """table name + description + column count for one schema."""
     require_role(role, state)
-    tables = await _catalog(state)
+    tables = await _catalog(state, role)
     out = [
         {
             "table": t.table_name,
@@ -232,7 +237,7 @@ def _unique_constraints(state: Any, role: str, schema: str, table: str) -> list[
 async def describe_table(state: Any, role: str, schema: str, table: str) -> dict:
     """columns (name, type, description) + foreign keys + unique constraints for one table."""
     require_role(role, state)
-    tables = await _catalog(state)
+    tables = await _catalog(state, role)
     match = next(
         (t for t in tables if t.domain_id == schema and t.table_name == table),
         None,
@@ -1011,7 +1016,7 @@ async def build_catalog_index(state: Any, provider: Any = None) -> int:
     from provisa.api.mcp.search import CatalogSearchIndex
 
     model = await _resolve_embedding_model(state)
-    catalog = await _catalog(state)
+    catalog = await _catalog(state, None)
     index = CatalogSearchIndex(model, provider)
     await index.build(catalog, _domain_descriptions(state))
     state.mcp_catalog_index = index
@@ -1065,6 +1070,10 @@ async def search_catalog(state: Any, role: str, nl_text: str, k: int = 5) -> lis
             branch = await describe_table(state, role, h.schema, h.table)
         except (ValueError, PermissionError):
             continue  # table vanished or not visible to this role — skip, don't fail the search
+        # The index covers every column; a hit on a column this role is not served would name
+        # it in ``matched_on``.
+        if h.column is not None and h.column not in {c["name"] for c in branch["columns"]}:
+            continue
         results.append(
             {
                 "schema": h.schema,

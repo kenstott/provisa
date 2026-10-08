@@ -140,7 +140,7 @@ def _state():
 @pytest.mark.asyncio
 class TestSearchCatalogTool:
     async def _prime(self, monkeypatch, state):
-        async def fake_catalog(_s):
+        async def fake_catalog(_s, _role):
             return _catalog()
 
         monkeypatch.setattr(tools, "_catalog", fake_catalog)
