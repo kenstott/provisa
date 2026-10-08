@@ -2130,7 +2130,7 @@ async def resolve_available_columns_metadata(
     # use correctly, instead of maintaining a second, divergent construction of the same call.
     if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
         from provisa.openapi.mapper import parse_spec
-        from provisa.openapi.register import _schema_to_columns
+        from provisa.openapi.register import _openapi_to_provisa_type, _schema_to_columns
 
         spec = state.openapi_specs[source_id]["spec"]
         queries, _ = parse_spec(spec)
@@ -2147,7 +2147,7 @@ async def resolve_available_columns_metadata(
                 cols.append(
                     {
                         "name": nf_name,
-                        "type": p.get("type", "string"),
+                        "type": _openapi_to_provisa_type(p.get("type")),
                         "native_filter_type": "path_param",
                     }
                 )
@@ -2157,7 +2157,9 @@ async def resolve_available_columns_metadata(
                 cols.append(
                     {
                         "name": nf_name,
-                        "type": p.get("type", "string"),
+                        # A parameter's type is the spec's (array, object); a column's is one
+                        # the engine has, as the response's columns are typed.
+                        "type": _openapi_to_provisa_type(p.get("type")),
                         "native_filter_type": "query_param",
                     }
                 )

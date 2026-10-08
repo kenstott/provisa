@@ -600,3 +600,44 @@ async def test_a_table_whose_operation_declares_its_own_server_is_called_there(c
         await register_openapi_endpoint(conn, table, spec=spec, ttl=60)
         stored = (await conn.execute_core(select(api_endpoints.c.path))).scalar_one()
     assert stored == "https://files.pets.test/pets"
+
+
+# --- a parameter column carries a type the engine has --------------------------------------------
+
+
+async def test_a_parameter_the_spec_types_as_a_list_or_object_is_offered_with_an_engine_type(
+    monkeypatch,
+):
+    """Stripe's lists all take ``expand`` (a list) and ``created`` (an object). A parameter column
+    typed with the spec's own word could be registered and then not served: the engine has no
+    type named ``array``."""
+    from provisa.api import app
+    from provisa.api.admin import schema_query
+    from provisa.compiler.type_map import column_type_to_graphql
+
+    operation = {
+        **SPEC["paths"]["/pets"]["get"],
+        "parameters": [
+            {"name": "limit", "in": "query", "schema": {"type": "integer"}},
+            {
+                "name": "expand",
+                "in": "query",
+                "schema": {"type": "array", "items": {"type": "string"}},
+            },
+            {"name": "created", "in": "query", "schema": {"type": "object"}},
+        ],
+    }
+    spec = {**SPEC, "paths": {"/pets": {"get": operation}}}
+    monkeypatch.setattr(app.state, "source_types", {"petstore": "openapi"}, raising=False)
+    monkeypatch.setattr(app.state, "openapi_specs", {"petstore": {"spec": spec, "base_url": BASE}}, raising=False)  # fmt: skip
+    offered = await schema_query.resolve_available_columns_metadata(
+        "petstore", "openapi", "listPets"
+    )
+    types = {c.name: c.data_type for c in offered}
+    assert (types["_nf_limit"], types["_nf_expand"], types["_nf_created"]) == (
+        "integer",
+        "jsonb",
+        "jsonb",
+    )
+    for data_type in types.values():
+        column_type_to_graphql(data_type)  # every one is a type the engine maps
