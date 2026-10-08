@@ -518,7 +518,8 @@ class EngineBackend:
         the first real query. In-process engines have no remote terminal to defer — no-op."""
 
     def close(self, state: Any) -> None:
-        """Lifecycle: tear down the engine terminal. Native engines close with the process — no-op."""
+        """Lifecycle: tear down the engine terminal. An engine with none has nothing to close; a
+        native engine closes its runtime (``NativeEngineBackend.close``)."""
 
     def register_kafka_catalog(self, state: Any, kafka_source: dict) -> None:
         """Register a Kafka source as an engine catalog. Native engines reach Kafka through their

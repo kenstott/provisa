@@ -202,6 +202,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._pg_ext_loaded = False  # postgres DuckDB extension INSTALL/LOAD (source ATTACH)
         self._httpfs_loaded = False  # httpfs INSTALL/LOAD for S3-compatible (e.g. R2) sources
         self._store_attached = False  # materialization-store ATTACH (distinct from source attaches)
+        self._attached_store_dsn: str | None = None  # the store that attach was for
         # REQ-1922: the other regions' replicas stores this connection has attached, by alias.
         self._region_stores: set[str] = set()
         # REQ-1901: set instead of a `mat_store` ATTACH when the store is embedded DuckDB — see
@@ -735,6 +736,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def _store_dsn(self) -> str:
         """The materialization-store DSN: the explicit constructor override, else the engine's
         invariant resolution (configured → declared default → error). Never a fallback."""
+        if self._attached_store_dsn is not None:
+            # The store this runtime attached is its store for as long as it lives: "is it
+            # attached" and "which store" are answered from the same fact.
+            return self._attached_store_dsn
         return (
             self._materialize_dsn
             if self._materialize_dsn is not None
@@ -792,6 +797,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                     self._con.execute(f"LOAD {store_type}")
                 self._con.execute(f"ATTACH '{target}' AS {self._MAT_STORE} (TYPE {store_type})")
             self._store_attached = True
+            self._attached_store_dsn = dsn
         return self._MAT_STORE
 
     def region_table_address(self, name: str, schema: str, table: str) -> tuple[str, str, str]:

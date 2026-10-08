@@ -168,6 +168,23 @@ class NativeEngineBackend(EngineBackend):
         self._refused_in: tuple[Any, Any, Any, Any] | None = None
         self._walk_lock = threading.Lock()
 
+    def close(self, state: Any) -> None:
+        """Lifecycle: the runtime this backend built is closed and dropped with everything
+        remembered about it, so nothing of one app's engine survives into the next app this
+        process starts. A runtime attaches its store once; one that outlived its app answered the
+        next app "store attached" from memory while that app named another store, and the cache
+        write then named a catalog that was never attached. Called by the lifespan at shutdown."""
+        del state
+        with self._walk_lock:
+            runtime, self._runtime = self._runtime, None
+            self._attached.clear()
+            self._detached.clear()
+            self._refused.clear()
+            self._walked = None
+            self._refused_in = None
+        if runtime is not None:
+            runtime.close()
+
     # -- runtime (subclass hook) ----------------------------------------------
 
     def _new_runtime(self) -> Any:
