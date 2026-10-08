@@ -253,10 +253,6 @@ def test_cypher_relating_two_labels_outside_a_relationship_is_refused(server, su
     accepted, said = run(server, "bound", _CYPHER_OUTSIDE[shape])
     assert not accepted, said
     assert "relationship" in said.lower(), said
-    if shape == "with_then_match":
-        # The translator lowers this shape to a statement that names its CTE without reading
-        # it, which the engine cannot run for any role: a defect of its own, filed separately.
-        return
     accepted, said = run(server, "free", _CYPHER_OUTSIDE[shape])
     assert accepted, said
 

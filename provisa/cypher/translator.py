@@ -210,8 +210,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         match_steps: list,
         unwinds: list,
         with_clause: WithClause,
+        carried: str | None,
     ) -> tuple[str, exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Build one CTE (from, joins, select, where, group-by) for a WITH segment."""
+        """Build one CTE (from, joins, select, where, group-by) for a WITH segment.
+
+        ``carried``: the CTE of the WITH before it, whose rows this segment goes on from.
+        """
         all_matches = [m for step in match_steps for m in step.matches]
         stage_where: WhereClause | None = None
         for step in match_steps:
@@ -220,6 +224,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 break
         if all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
+            joins = self._beside_carried_rows(from_clause, list(joins), carried)
             if unwinds:
                 _, uw_joins = self._build_unwind_joins(unwinds, has_from=True)
                 joins.extend(uw_joins)
@@ -247,7 +252,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         if with_group_exprs:
             stage_query = stage_query.group_by(*with_group_exprs)
         if with_clause.where is not None:
+            # The WITH's WHERE reads what the WITH carries, which here is the wrapped stage.
+            before = (self._var_table, self._cte_sources)
+            self._update_var_table_for_with(with_clause.items, "_inner")
             with_where_expr = self._build_where(with_clause.where)
+            self._var_table, self._cte_sources = before
             if with_where_expr:
                 stage_query = (
                     exp.select(exp.Star())
@@ -257,6 +266,28 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         cte_name = f"_w{n}"
         return cte_name, stage_query
+
+    @staticmethod
+    def _beside_carried_rows(
+        from_clause: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: list[dict],
+        carried: str | None,
+    ) -> list[dict]:
+        """A MATCH after a WITH goes on from the rows the WITH carries (#147): where its own
+        patterns do not read them, they are set beside its rows as a second MATCH's are, for the
+        WHERE to relate."""
+        if carried is None:
+            return joins
+        read = {
+            t.name
+            for part in [from_clause, *(j["table"] for j in joins)]
+            for t in part.find_all(exp.Table)
+            if not t.db
+        }
+        if carried in read:
+            return joins
+        table = exp.Table(this=exp.Identifier(this=carried))
+        return [*joins, {"table": table, "on": None, "join_type": "CROSS"}]
 
     def _build_final_from(
         self,
@@ -292,6 +323,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 joins = list(uw_joins)
         elif all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
+            joins = self._beside_carried_rows(
+                from_clause, list(joins), cte_defs[-1][0] if cte_defs else None
+            )
             if final_unwinds:
                 _, uw_joins = self._build_unwind_joins(final_unwinds, has_from=True)
                 joins = list(joins) + uw_joins
@@ -439,7 +473,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         for n, (match_steps, unwinds, with_clause) in enumerate(segments[:-1]):
             assert with_clause is not None
-            cte_name, stage_query = self._build_cte_segment(n, match_steps, unwinds, with_clause)
+            cte_name, stage_query = self._build_cte_segment(
+                n, match_steps, unwinds, with_clause, cte_defs[-1][0] if cte_defs else None
+            )
             cte_defs.append((cte_name, stage_query))
             self._update_var_table_for_with(with_clause.items, cte_name)
 
@@ -778,9 +814,15 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             expr_text = item.expression.strip()
             alias = item.alias
             if _is_bare_variable(expr_text) and expr_text in self._var_table:
+                held_in, meta = self._var_table[expr_text]
+                if expr_text in self._cte_sources and meta is None:
+                    # A value an earlier WITH carries: one column of that WITH's rows.
+                    carried = exp.column(expr_text, table=held_in, quoted=True)
+                    exprs.append(exp.alias_(carried, alias or expr_text, quoted=True))
+                    continue
                 tbl_col = exp.Column(
                     this=exp.Star(),
-                    table=exp.Identifier(this=expr_text),
+                    table=exp.Identifier(this=held_in),
                 )
                 if alias:
                     exprs.append(exp.alias_(tbl_col, alias))
