@@ -65,9 +65,19 @@ LANES: dict[str, Lane] = {
     "isolated": Lane(("tests",), "isolated", clear_addopts=True, ignore=("tests/e2e",)),
     "e2e": Lane(("tests/e2e",), "e2e and not cluster", clear_addopts=True),
     "cluster": Lane(("tests/e2e/test_helm_minikube.py",), "cluster", clear_addopts=True),
-    # Live cloud warehouses: nightly and on demand, with the credentials from repo secrets.
+    # Live cloud services: nightly and on demand, with the credentials from repo secrets. A live
+    # test runs in CI only in a lane whose job declares its secrets and checks they are present
+    # (integration-suite-lanes.yml), so what a lane runs is decided here, by marker, never by a
+    # test skipping itself. The live Salesforce test is in no nightly lane: a cold run costs
+    # about 2,450 API calls of an org allowed 15,000 a day.
     "warehouse": Lane(
-        ("tests/integration", "tests/steps"), "requires_warehouse", clear_addopts=True
+        ("tests/integration", "tests/steps"),
+        "requires_warehouse and not requires_salesforce",
+        clear_addopts=True,
+    ),
+    # The live Salesforce org: on demand only (workflow_dispatch, include_salesforce), its own job.
+    "salesforce": Lane(
+        ("tests/integration", "tests/steps"), "requires_salesforce", clear_addopts=True
     ),
 }
 
@@ -78,8 +88,8 @@ TEST_TIMEOUT_S = 900
 # How long before that bound a still-running test's stacks are written to the log.
 STACKS_BEFORE_BOUND_S = 60
 
-# The suite job's matrix: lane -> (file shards, timeout minutes). cluster and warehouse are their
-# own jobs, not matrix entries.
+# The suite job's matrix: lane -> (file shards, timeout minutes). cluster, warehouse and salesforce
+# are their own jobs, not matrix entries.
 SUITE: dict[str, tuple[int, int]] = {
     "core": (6, 150),
     "app": (3, 120),

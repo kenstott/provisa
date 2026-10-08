@@ -34,6 +34,11 @@ on:
         type: boolean
         required: false
         default: false
+      include_salesforce:
+        description: "Also run the Salesforce lane (live org; about 2,450 of its 15,000 daily API calls when cold)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -51,6 +56,7 @@ jobs:
       ref: ${{ inputs.ref || '' }}
       lanes: ${{ inputs.lanes || 'all' }}
       include_warehouse: ${{ inputs.include_warehouse || false }}
+      include_salesforce: ${{ inputs.include_salesforce || false }}
     concurrency:
       group: integration-suite
       queue: max

@@ -85,7 +85,7 @@ def test_all_is_every_suite_lane_with_its_shards():
     assert [m["shard"] for m in include if m["lane"] == "core"] == [f"{k}/6" for k in range(1, 7)]
     assert [m["shard"] for m in include if m["lane"] == "app"] == ["1/3", "2/3", "3/3"]
     assert {"lane": "kafka", "shard": "", "timeout": 90} in include
-    assert not [m for m in include if m["lane"] in ("cluster", "warehouse")]
+    assert not [m for m in include if m["lane"] in ("cluster", "warehouse", "salesforce")]
 
 
 def test_a_selection_runs_only_those_lanes():
@@ -104,7 +104,7 @@ def test_the_workflow_takes_its_matrix_from_the_runner():
     assert "fromJSON(needs.plan.outputs.matrix)" in workflow
 
 
-@pytest.mark.parametrize("lane", ["core", "app", "e2e", "warehouse"])
+@pytest.mark.parametrize("lane", ["core", "app", "e2e", "warehouse", "salesforce"])
 def test_every_lane_bounds_each_test(lane):
     """A hung test failed nothing: core 6/6 held its runner until the job was cancelled, and a
     cancelled job's log is gone. Every lane command now bounds each test (pytest-timeout), so a hang
@@ -115,7 +115,7 @@ def test_every_lane_bounds_each_test(lane):
     assert cmd[cmd.index("--timeout-method") + 1] == "signal"
 
 
-@pytest.mark.parametrize("lane", ["core", "app", "e2e", "warehouse"])
+@pytest.mark.parametrize("lane", ["core", "app", "e2e", "warehouse", "salesforce"])
 def test_every_lane_writes_a_long_tests_stacks_to_the_log_before_its_bound(lane):
     """The bound's stacks come in pytest's final report. A lane cancelled by its job limit never
     prints one: the e2e lane hung in seven module teardowns, 15 minutes each, and its log named
@@ -184,7 +184,7 @@ def _job_steps(job: str) -> list[dict]:
     return workflow["jobs"][job]["steps"]
 
 
-@pytest.mark.parametrize("job", ["suite", "cluster", "warehouse"])
+@pytest.mark.parametrize("job", ["suite", "cluster", "warehouse", "salesforce"])
 def test_every_collecting_job_caches_the_pinned_trino_plugins_around_its_lane(job):
     """tests/conftest.py fetches the pinned Trino plugin jars from Maven Central at collection, and
     a refused fetch ended the lane before any test ran (run 37573213103: neo4j 403, kafka 404).
@@ -220,3 +220,123 @@ def test_the_trino_plugin_pin_step_names_the_harness_pin():
         f"trino/plugins/{n}/{n}-{harness._trino_plugin_version(n)}.jar"
         for n in harness._TRINO_PLUGINS
     ]
+
+
+# --- live lanes: what runs is decided by lane selection, and each lane names its secrets ---------
+
+
+def _lanes_workflow() -> dict:
+    import yaml
+
+    return yaml.safe_load(
+        (REPO / ".github" / "workflows" / "integration-suite-lanes.yml").read_text()
+    )
+
+
+def _credentials_step(job: str) -> dict:
+    (step,) = [s for s in _job_steps(job) if s.get("name") == "Credentials present"]
+    return step
+
+
+def test_the_live_salesforce_test_is_in_no_lane_but_its_own():
+    """The org allows 15,000 API calls a day and a cold run costs about 2,450: the test carries
+    requires_warehouse, and the nightly warehouse lane must not select it."""
+    run_lane = _runner()
+    marker = run_lane.LANES["warehouse"].marker
+    assert marker == "requires_warehouse and not requires_salesforce"
+    assert run_lane.LANES["salesforce"].marker == "requires_salesforce"
+    # Every other lane excludes the live tests through the base exclusion or its own marker.
+    for name, lane in run_lane.LANES.items():
+        if name in ("warehouse", "salesforce"):
+            continue
+        assert "not requires_warehouse" in lane.marker or name in ("isolated", "e2e", "cluster")
+    for test in ("test_salesforce_source_e2e.py", "test_cloudops_source_e2e.py"):
+        source = (REPO / "tests" / "integration" / test).read_text()
+        assert "pytest.mark.requires_warehouse" in source  # so no push lane selects it
+
+
+def test_the_salesforce_lane_runs_only_when_a_dispatch_asks_for_it():
+    job = _lanes_workflow()["jobs"]["salesforce"]
+    assert job["if"] == "github.event_name == 'workflow_dispatch' && inputs.include_salesforce"
+    import yaml
+
+    caller = yaml.safe_load((REPO / ".github" / "workflows" / "integration-suite.yml").read_text())
+    dispatch = caller[True]["workflow_dispatch"]["inputs"]["include_salesforce"]  # `on` is True
+    assert dispatch["default"] is False
+    assert caller["jobs"]["lanes"]["with"]["include_salesforce"] == (
+        "${{ inputs.include_salesforce || false }}"
+    )
+
+
+def test_the_salesforce_lane_keeps_its_describe_caches_between_runs_by_org():
+    steps = {s.get("name"): s for s in _job_steps("salesforce")}
+    names = list(steps)
+    restore, save = (
+        steps["Restore Salesforce describe caches"],
+        steps["Cache Salesforce describe caches"],
+    )
+    assert (
+        names.index("Credentials present") < names.index(restore["name"]) < names.index("Run lane")
+    )
+    assert names.index("Run lane") < names.index(save["name"])
+    assert restore["with"]["path"] == save["with"]["path"]
+    for kept in ("salesforce-itest-state", "itest-trino-salesforce-describe"):
+        assert f".runtime-deps/{kept}" in save["with"]["path"]
+    assert restore["with"]["key"] == save["with"]["key"]
+    assert "steps.org.outputs.digest" in save["with"]["key"]
+    assert restore["with"]["restore-keys"].endswith("${{ steps.org.outputs.digest }}-")
+    env = _lanes_workflow()["jobs"]["salesforce"]["env"]
+    assert env["PROVISA_RUNTIME_DEPS_CACHE"] == "${{ github.workspace }}/.runtime-deps"
+
+
+_CLOUDOPS_SECRETS = [
+    "CLOUDOPS_AZURE_TENANT_ID",
+    "CLOUDOPS_AZURE_CLIENT_ID",
+    "CLOUDOPS_AZURE_CLIENT_SECRET",
+    "CLOUDOPS_AZURE_SUBSCRIPTION_IDS",
+    "CLOUDOPS_AWS_ACCESS_KEY_ID",
+    "CLOUDOPS_AWS_SECRET_ACCESS_KEY",
+    "CLOUDOPS_AWS_ACCOUNT_IDS",
+    "CLOUDOPS_AWS_REGION",
+    "CLOUDOPS_GCP_PROJECT_IDS",
+]
+_SALESFORCE_SECRETS = [
+    "SF_LOGIN_URL",
+    "SF_CONSUMER_KEY",
+    "SF_CONSUMER_SECRET",
+    "SF_PASSWORD",
+    "SF_SECURITY_TOKEN",
+    "SF_NICKNAME",
+]
+
+
+@pytest.mark.parametrize(
+    ("job", "secrets"),
+    [
+        ("warehouse", [*_CLOUDOPS_SECRETS, "CLOUDOPS_GCP_CREDENTIALS_JSON_BASE64"]),
+        ("salesforce", _SALESFORCE_SECRETS),
+    ],
+)
+def test_a_live_lane_declares_its_secrets_and_fails_by_name_when_one_is_missing(job, secrets):
+    """A live test runs in CI only in a lane whose job is handed its secrets and checks them
+    before anything runs: a missing one ends the lane naming it, it is never a skipped test."""
+    declared = {**_lanes_workflow()["jobs"][job]["env"], **_credentials_step(job).get("env", {})}
+    script = _credentials_step(job)["run"]
+    checked = set(re.search(r"for v in (.*?); do", script, re.S).group(1).replace("\\", "").split())
+    for name in secrets:
+        assert declared[name] == f"${{{{ secrets.{name} }}}}"
+        assert name in checked
+    assert "repo secrets not set:$missing" in script and "exit 1" in script
+
+
+def test_the_cloudops_gcp_key_reaches_the_test_as_a_file_and_is_never_printed():
+    script = _credentials_step("warehouse")["run"]
+    assert (
+        "printf '%s' \"$CLOUDOPS_GCP_CREDENTIALS_JSON_BASE64\" | base64 -d > "
+        '"$RUNNER_TEMP/cloudops-gcp-key.json"'
+    ) in script
+    assert (
+        'CLOUDOPS_GCP_CREDENTIALS_PATH=$RUNNER_TEMP/cloudops-gcp-key.json" >> "$GITHUB_ENV"'
+        in script
+    )
+    assert "echo $CLOUDOPS" not in script and 'echo "$CLOUDOPS' not in script

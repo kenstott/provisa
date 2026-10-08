@@ -9,6 +9,8 @@ name: Integration suite lanes
 # file shards so each job fits a runner. One test session per runner, so the harness's stack slot
 # (acquire_stack_slot) always admits it; the first step of every job prints the slot count.
 #
+# The salesforce lane uses a live Salesforce org with a daily API allowance: it runs only when a
+# dispatch asks for it (include_salesforce), never nightly and never on a push.
 # The warehouse lane uses live cloud warehouses and their credentials (repo secrets). It runs
 # nightly against the integration branch and on demand, not on every push. A warehouse test that
 # cannot run because something is not set FAILS, naming what (tests/skip_is_failure.py).
@@ -32,6 +34,10 @@ on:
         required: false
         default: "all"
       include_warehouse:
+        type: boolean
+        required: false
+        default: false
+      include_salesforce:
         type: boolean
         required: false
         default: false
@@ -378,6 +384,20 @@ jobs:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      # The cloudops source's three clouds (tests/integration/test_cloudops_source_e2e.py). The GCP
+      # service-account key is a file the source is pointed at; it arrives as base64 and is
+      # written under RUNNER_TEMP by "Credentials present" (CLOUDOPS_GCP_CREDENTIALS_PATH).
+      # CLOUDOPS_AWS_ROLE_ARN is optional to the source and no role is assumed here.
+      CLOUDOPS_AZURE_TENANT_ID: ${{ secrets.CLOUDOPS_AZURE_TENANT_ID }}
+      CLOUDOPS_AZURE_CLIENT_ID: ${{ secrets.CLOUDOPS_AZURE_CLIENT_ID }}
+      CLOUDOPS_AZURE_CLIENT_SECRET: ${{ secrets.CLOUDOPS_AZURE_CLIENT_SECRET }}
+      CLOUDOPS_AZURE_SUBSCRIPTION_IDS: ${{ secrets.CLOUDOPS_AZURE_SUBSCRIPTION_IDS }}
+      CLOUDOPS_AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDOPS_AWS_ACCESS_KEY_ID }}
+      CLOUDOPS_AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDOPS_AWS_SECRET_ACCESS_KEY }}
+      CLOUDOPS_AWS_ACCOUNT_IDS: ${{ secrets.CLOUDOPS_AWS_ACCOUNT_IDS }}
+      CLOUDOPS_AWS_REGION: ${{ secrets.CLOUDOPS_AWS_REGION }}
+      CLOUDOPS_AWS_ROLE_ARN: ""
+      CLOUDOPS_GCP_PROJECT_IDS: ${{ secrets.CLOUDOPS_GCP_PROJECT_IDS }}
       # Synapse's region, pinned: probing which regions accept a new SQL server reads the
       # subscription, and the CI principal holds rights on FABRIC_RESOURCE_GROUP only.
       SYNAPSE_AZ_LOCATION: centralus
@@ -401,6 +421,7 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
           SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
+          CLOUDOPS_GCP_CREDENTIALS_JSON_BASE64: ${{ secrets.CLOUDOPS_GCP_CREDENTIALS_JSON_BASE64 }}
         run: |
           missing=""
           for v in SNOWFLAKE_ACCOUNT SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_WAREHOUSE \
@@ -412,7 +433,11 @@ jobs:
                    AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_OVERRIDE \
                    SINGLESTORE_HOST SINGLESTORE_PORT SINGLESTORE_USERNAME SINGLESTORE_PASSWORD \
                    SINGLESTORE_DATABASE CLOUDFLARE_ACCOUNT_ID ASKAMERICA_API_KEY SP_AUTH_TYPE SP_CLIENT_ID SP_SITE_URL SP_TENANT_ID \
-                   AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID SP_CERT_P12_BASE64; do
+                   AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID SP_CERT_P12_BASE64 \
+                   CLOUDOPS_AZURE_TENANT_ID CLOUDOPS_AZURE_CLIENT_ID CLOUDOPS_AZURE_CLIENT_SECRET \
+                   CLOUDOPS_AZURE_SUBSCRIPTION_IDS CLOUDOPS_AWS_ACCESS_KEY_ID \
+                   CLOUDOPS_AWS_SECRET_ACCESS_KEY CLOUDOPS_AWS_ACCOUNT_IDS CLOUDOPS_AWS_REGION \
+                   CLOUDOPS_GCP_PROJECT_IDS CLOUDOPS_GCP_CREDENTIALS_JSON_BASE64; do
             [ -n "${!v}" ] || missing="$missing $v"
           done
           if [ -n "$missing" ]; then
@@ -427,6 +452,9 @@ jobs:
           printf '%s' "$SP_CERT_P12_BASE64" | base64 -d > "$GITHUB_WORKSPACE/sharepoint.pfx"
           echo "SP_CERT_PATH=$GITHUB_WORKSPACE/sharepoint.pfx" >> "$GITHUB_ENV"
           echo "PROVISA_E2E_SHAREPOINT_CERT_HOST=$GITHUB_WORKSPACE/sharepoint.pfx" >> "$GITHUB_ENV"
+          # The cloudops source reads its GCP service-account key from a file, by absolute path.
+          printf '%s' "$CLOUDOPS_GCP_CREDENTIALS_JSON_BASE64" | base64 -d > "$RUNNER_TEMP/cloudops-gcp-key.json"
+          echo "CLOUDOPS_GCP_CREDENTIALS_PATH=$RUNNER_TEMP/cloudops-gcp-key.json" >> "$GITHUB_ENV"
 
       # GovData's JDBC driver is the calcite engine's govdata jar, from the engine release
       # provisa/runtime_deps/pgwire_bundles.py pins (RELEASE_TAG); the test loads lib/calcite-govdata-*.jar.
@@ -457,9 +485,93 @@ jobs:
           path: results/
           if-no-files-found: error
 
+  # The live Salesforce org. A cold run describes every sObject of the org -- about 2,450 API calls
+  # of the 15,000 the org is allowed a day -- so this job runs only when a dispatch asks for it.
+  # Both describe caches (the pgwire server's and the Trino plugin's) are kept between runs, keyed
+  # on the org, so a rerun within the cache's day costs the test's statements and no describe.
+  salesforce:
+    name: salesforce (live org)
+    if: github.event_name == 'workflow_dispatch' && inputs.include_salesforce
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SF_LOGIN_URL: ${{ secrets.SF_LOGIN_URL }}
+      SF_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
+      SF_CONSUMER_SECRET: ${{ secrets.SF_CONSUMER_SECRET }}
+      SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
+      SF_SECURITY_TOKEN: ${{ secrets.SF_SECURITY_TOKEN }}
+      SF_NICKNAME: ${{ secrets.SF_NICKNAME }}
+      # Where the downloaded bundles and both describe caches live (default_cache_root).
+      PROVISA_RUNTIME_DEPS_CACHE: ${{ github.workspace }}/.runtime-deps
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - *install-uv
+      - *install-deps
+
+      - *trino-plugin-pin
+      - *restore-trino-plugins
+
+      # A missing credential fails the lane by name rather than surfacing as a skipped test.
+      - name: Credentials present
+        id: org
+        run: |
+          missing=""
+          for v in SF_LOGIN_URL SF_CONSUMER_KEY SF_CONSUMER_SECRET SF_PASSWORD SF_SECURITY_TOKEN \
+                   SF_NICKNAME; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::salesforce lane cannot run; repo secrets not set:$missing"
+            exit 1
+          fi
+          # The caches are one org's: the key carries a digest of the login URL, as the test's
+          # source id does.
+          echo "digest=$(printf '%s' "$SF_LOGIN_URL" | sha256sum | cut -c1-8)" >> "$GITHUB_OUTPUT"
+
+      # A cache entry is written once per key, so each run saves under its own and restores the
+      # newest of its org.
+      - name: Restore Salesforce describe caches
+        uses: actions/cache/restore@v4
+        with:
+          path: &salesforce-describe |
+            .runtime-deps/salesforce-itest-state
+            .runtime-deps/itest-trino-salesforce-describe
+          key: salesforce-describe-${{ steps.org.outputs.digest }}-${{ github.run_id }}
+          restore-keys: salesforce-describe-${{ steps.org.outputs.digest }}-
+
+      - *stack-slots
+
+      - name: Run lane
+        run: uv run python scripts/ci/run_lane.py salesforce --junitxml results/salesforce/junit.xml
+
+      # The Trino container writes its describe results as its own user.
+      - name: Describe caches readable
+        if: always()
+        run: sudo chmod -R a+rX .runtime-deps/salesforce-itest-state .runtime-deps/itest-trino-salesforce-describe
+
+      - name: Cache Salesforce describe caches
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: *salesforce-describe
+          key: salesforce-describe-${{ steps.org.outputs.digest }}-${{ github.run_id }}
+
+      - *trino-plugins-fetched
+      - *cache-trino-plugins
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-salesforce
+          path: results/
+          if-no-files-found: error
+
   report:
     name: results by lane
-    needs: [plan, suite, cluster, warehouse]
+    needs: [plan, suite, cluster, warehouse, salesforce]
     if: always()
     runs-on: ubuntu-latest
     steps:
