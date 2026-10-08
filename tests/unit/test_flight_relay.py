@@ -183,3 +183,23 @@ def test_closing_the_relay_ends_its_accept_thread_before_its_listener_is_closed(
     relay.close()
     assert not relay._acceptor.is_alive()  # noqa: SLF001 - the property under test
     assert relay._listener.fileno() == -1  # noqa: SLF001 - closed only after the thread ended
+
+
+def test_a_relay_closes_while_another_listener_shares_its_port(started):
+    """Every worker binds the advertised port (SO_REUSEPORT), and on Linux the kernel gives a new
+    connection to any one of the port's listeners. close() used to wake its accept thread with a
+    connection to the port; when that connection went to the other listener the thread stayed in
+    accept() and close() never returned -- a worker's shutdown hung (the e2e lane: seven module
+    teardowns, 15 minutes each). Closing does not depend on which listener a connection reaches."""
+    server = started(_Echo("w1"))
+    port = lease_port()
+    other = started(FlightRelay("127.0.0.1", port, server.port))  # stays open throughout
+    for _ in range(8):  # one in two of these hung on Linux when the wake-up went to `other`
+        relay = FlightRelay("127.0.0.1", port, server.port)
+        closing = threading.Thread(target=relay.close, daemon=True)
+        closing.start()
+        closing.join(timeout=10)
+        assert not closing.is_alive(), "close() did not return while another listener held the port"
+        assert not relay._acceptor.is_alive()  # noqa: SLF001 - the property under test
+    assert _get(port)["server"] == "w1"  # the listener that stayed still serves
+    del other

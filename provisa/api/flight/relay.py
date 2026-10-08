@@ -47,6 +47,9 @@ log = logging.getLogger(__name__)
 
 _BUFFER_BYTES = 1 << 20
 _UPSTREAM_CONNECT_TIMEOUT = 5.0
+# How long the accept thread waits for a connection before it looks again at whether the relay
+# was closed: the longest close() waits for that thread.
+_ACCEPT_POLL_SECONDS = 0.5
 
 
 class FlightRelay:
@@ -61,6 +64,13 @@ class FlightRelay:
         # reuse_port: every worker process binds this same address, and the bind fails loudly
         # (OSError) on a platform that cannot share it.
         self._listener = socket.create_server((host, port), reuse_port=True)
+        # The accept thread is stopped by the closed flag, which it reads between bounded waits.
+        # It was once woken by a connection close() made to this port, and that is not this
+        # listener's to receive: the port is shared (SO_REUSEPORT), and on Linux the kernel gives
+        # a connection to any one of its listeners -- another worker's, or another server's in the
+        # same process. The wake-up then went there, this thread stayed in accept(), and close()
+        # waited on it for ever (a worker's shutdown never returned).
+        self._listener.settimeout(_ACCEPT_POLL_SECONDS)
         self._acceptor = threading.Thread(
             target=self._accept_loop, name=f"flight-relay-accept-{port}", daemon=True
         )
@@ -79,10 +89,7 @@ class FlightRelay:
             self._closed = True
             for sock in self._connections:
                 _shutdown(sock)
-        # Neither close nor (on darwin) shutdown wakes a thread blocked in accept(): a connection
-        # does. The accept loop sees the relay closed, drops it, and returns.
-        if self._acceptor.is_alive():
-            socket.create_connection(self._listener.getsockname()[:2], timeout=5).close()
+        # The accept loop sees the relay closed at its next look, within _ACCEPT_POLL_SECONDS.
         self._acceptor.join()
         self._listener.close()
 
@@ -90,13 +97,20 @@ class FlightRelay:
         while True:
             try:
                 client, _addr = self._listener.accept()
+            except TimeoutError:
+                if self._closed:
+                    return
+                continue
             except OSError:
                 if self._closed:
                     return
                 raise
             if self._closed:
-                client.close()  # the connection close() made to wake this thread, or a late one
+                client.close()  # a connection that arrived as the relay closed
                 return
+            # The listener's timeout is its own: a relayed connection blocks, as its copy threads
+            # expect (an accepted socket takes the listener's timeout on some platforms).
+            client.settimeout(None)
             threading.Thread(
                 target=self._relay, args=(client,), name="flight-relay", daemon=True
             ).start()
