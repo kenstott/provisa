@@ -207,7 +207,7 @@ jobs:
           mkdir -p sbom
           /tmp/toolchain-venv/bin/cyclonedx-py environment --of JSON \
             -o sbom/provisa-pg-ext-sbom.cdx.json
-          /tmp/toolchain-venv/bin/pip-audit -f json | tee sbom/provisa-pg-ext-cve-report.json
+          /tmp/toolchain-venv/bin/pip-audit --timeout 60 -f json | tee sbom/provisa-pg-ext-cve-report.json
 
       - name: Publish provisa-pg-ext to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

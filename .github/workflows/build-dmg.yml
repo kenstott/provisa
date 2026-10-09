@@ -440,7 +440,7 @@ jobs:
         run: |
           set -o pipefail
           pip install pip-audit -q
-          pip-audit -f json | tee sbom/provisa-client-cve-report.json
+          pip-audit --timeout 60 -f json | tee sbom/provisa-client-cve-report.json
 
       - name: Ensure release exists
         uses: ./.github/actions/ensure-release
@@ -542,7 +542,7 @@ jobs:
       - name: CVE scan (gates PyPI publish)
         run: |
           set -o pipefail
-          uvx pip-audit -r requirements-audit.txt --no-deps --ignore-vuln PYSEC-2026-4114 -f json \
+          uvx pip-audit --timeout 60 -r requirements-audit.txt --no-deps --ignore-vuln PYSEC-2026-4114 -f json \
             | tee sbom/provisa-cve-report.json
 
       - name: Ensure release exists
@@ -1237,6 +1237,13 @@ jobs:
       - build-windows-container
       - build-jdbc
       - build-python-client
+      # The server wheel and both PyPI publications: v0.1.0-alpha.478 was undrafted with every
+      # installer while its server wheel's job had failed and "Publish provisa server to PyPI"
+      # was skipped (run 37959190134) -- nothing here waited for them. A failed or partial run
+      # never publishes the release.
+      - build-provisa-wheel
+      - publish-provisa-pypi
+      - publish-pypi
       - package-obs-images
       - package-demo-images
       - package-core-images

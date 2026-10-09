@@ -56,6 +56,12 @@ def test_build_dmg_publish_job_depends_on_all_builds():
         "build-windows-core",
         "build-windows-container",
         "build-jdbc",
+        "build-python-client",
+        # A release is not published while the server wheel or a PyPI publication has failed
+        # (v0.1.0-alpha.478: undrafted with "Publish provisa server to PyPI" skipped).
+        "build-provisa-wheel",
+        "publish-provisa-pypi",
+        "publish-pypi",
     }
     assert required_needs.issubset(needs), (
         f"publish-release missing dependency on: {required_needs - needs}"
@@ -148,3 +154,20 @@ def test_release_manifest_includes_all_installer_types():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
+
+
+def test_a_cve_scan_gives_the_advisory_lookup_time_to_answer():
+    """pip-audit's lookup of PyPI has a 15 s socket timeout by default; on v0.1.0-alpha.478 it
+    timed out and failed the server wheel's job with no finding at all (run 37959190134). Every
+    scan gives it 60 s. A timeout still fails the job -- a scan that did not finish is not a
+    pass -- and pip-audit has no retry option of its own, so none is wrapped around it."""
+    scans = []
+    for path in sorted((_ROOT / ".github" / "workflows").glob("*.yml")):
+        for line in path.read_text().splitlines():
+            code = line.split("#")[0]
+            if "pip-audit -" in code and "pip install" not in code:
+                scans.append((path.name, code.strip()))
+    assert len(scans) == 5, scans
+    for name, command in scans:
+        assert "pip-audit --timeout 60 " in command, f"{name}: {command}"
+        assert "||" not in command and "until " not in command and "retry" not in command, name
