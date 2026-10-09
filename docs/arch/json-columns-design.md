@@ -12,6 +12,9 @@ The tradeoffs of JSON-only are accepted (maintainer: "we can accept (and train) 
 tradeoffs, but this does fill a hole in semantic sql"). Section 9 states each one once, in the
 form the user documentation takes.
 
+Open at the time of writing: whether a one-level array of a primitive becomes a real type
+(`array-of-primitives-addendum.md`). The decisions list in section 13 is not final.
+
 Two rules run through the document:
 
 - A named refusal is for what a backend cannot do correctly. Never for what it does slowly.
@@ -33,7 +36,7 @@ to the source's own query and returns values in the expected type, and Provisa t
 | Exact decimals | when the JSON holds them as strings; the datasource translation writes them that way | a JSON **number** in a source's own JSON column: DuckDB and SQLite read it as a double (`12345678901234567.89` comes back `…567.68`) `[probe]`. Such an element is `number`, floating point, and is said to be |
 | Native speed and indexes | DIRECT reads and native-engine reads of a natively-array column, for the recognised operations (section 4.2) | a federating engine over a live source: whether the engine pushes the native predicate to the source is the engine's choice. The statement still runs; the plan says so (section 10) |
 | Schema is right | generated schemas are true by construction: the same translation writes the JSON | the source's type changing after registration: detected at reconcile, column refused by name (section 5.4) |
-| Provisa touches no value | every SQL route and wire (section 8) | GraphQL and JSON:API parse a JSON column's text today (`provisa/executor/serialize.py:67-70` `[code]`); section 7 replaces that with splicing the engine's text |
+| Provisa touches no value | every SQL route and wire (section 8) | GraphQL and JSON:API parse a JSON column's text today (`provisa/executor/serialize.py:67-70` `[code]`); section 7 passes the engine's text through where no sub-field handling needs it parsed |
 | No per-request derivation (REQ-1877) | the schema is model data, read when the plan is compiled and kept with the governed plan | — |
 
 The bottleneck case of the first version is gone: a DIRECT read from a source without arrays
@@ -75,8 +78,8 @@ What is missing for "JSON for all engines and direct query sources":
 4. Physical type gaps: PostgreSQL lands `JSON`, which has no index support (`jsonb` supports
    GIN, btree and hash; `json` does not `[doc]`); Fabric/Synapse lands `VARCHAR(8000)`; Oracle
    has no mapping.
-5. Type taken from the declaration at the GraphQL boundary, not from the first character of a
-   string.
+5. At the GraphQL boundary, JSON parsing decided by the column's declared type, not by the first
+   character of a string (a defect on its own, section 14).
 
 ## 2. The model
 
@@ -105,17 +108,19 @@ Schema subset used (JSON Schema 2020-12 keywords):
 | binary | `{"type":"string","contentEncoding":"base16"}` |
 | nullable anything | `"type":[<t>,"null"]` |
 
-One mechanism, not two. Today the shape of a JSON column is described twice: `object_fields`
-(name, type, alias, description, `visible_to`, nested; `models.py:809-816`) and, for functions,
-`return_schema`. `json_schema` becomes the one description of shape. The governance attributes
-`object_fields` carries (alias, description, `visible_to` per sub-field) stay, keyed by JSON
-path. `_json_schema_to_gql_type` (`actions_schema.py:77`) is the converter to extend (nesting,
-arrays of scalars, formats) and use for columns and functions alike.
+The schema has one consumer: the semantic-SQL translation (casts in and out, native form;
+section 5). It does not type GraphQL output or filters (maintainer, 2026-10-09): GraphQL sees a
+JSON column as the opaque `JSON` scalar it is today.
 
-Storage and UI: `json_schema` and `native_type` are stored with the column, as `object_fields`
-is (`provisa/core/schema_org.py:341` `[code]`). The column editor shows the schema, read-only
-when generated, editable when declared, with the paste-a-sample inference the commands page
-already has (REQ-305).
+`Column.object_fields` (`models.py:809-816,845`) is not touched by this design. Today it
+declares typed sub-fields of an object column for GraphQL, with alias, description and
+`visible_to` per sub-field; it keeps doing exactly that. The function-return converter
+`_json_schema_to_gql_type` (`actions_schema.py:77`, REQ-304) is likewise left as it is.
+
+Storage and UI: `json_schema` and `native_type` are stored with the column. The column editor
+shows the schema: read-only when generated from a native type (mandatory for every natively
+array, struct or map column), editable when a registrar declares one on a column that is JSON
+at its source (optional).
 
 ## 3. The datasource translation
 
@@ -148,7 +153,7 @@ generated from the schema, recursively, as SQL:
 | timestamp | `"YYYY-MM-DDTHH:MM:SS.ffffff"`, UTC | DuckDB writes `"2026-10-09 12:34:56.123456"` with a space `[probe]` |
 | date, time, uuid, interval | ISO 8601 text | |
 | binary | lower-case hex | DuckDB writes `"\\x00ff"` `[probe]` |
-| float, double | JSON number | DuckDB writes `NaN` unquoted, which is not JSON `[probe]`; `jsonb` rejects NaN and infinity `[doc]`. See D9 |
+| float, double | JSON number | DuckDB writes `NaN` unquoted, which is not JSON `[probe]`; `jsonb` rejects NaN and infinity `[doc]`. See D8 |
 | integer up to 64 bits | JSON number | exact through DuckDB (`9007199254740993` verified `[probe]`), SQLite `[probe]` |
 
 Form: cast the native value to the same shape with those element types as text, then to JSON.
@@ -331,15 +336,15 @@ edit bumps the schema version, which already invalidates kept plans.
 | pgwire | `jsonb` (OID 3802), JSON text | the catalog lists `jsonb`; schema shown as the column comment |
 | Flight / Arrow, JDBC, DuckDB extension | utf8 holding JSON text; field metadata carries the schema | catalog type `json`, the same as a read returns (REQ-1961 rule) |
 | Extracted scalars and `JSON_TABLE` columns, all SQL wires | their own typed columns | typed by the schema |
-| GraphQL | a typed list or object built from the schema by the extended `_json_schema_to_gql_type`; without a schema the `JSON` scalar | field types, sub-selection, `where` inputs: `contains`, `length`, typed by `items` |
-| GraphQL, REST, JSON:API response | the engine's JSON text spliced into the response unparsed (`orjson.Fragment`; `orjson` is a dependency, `pyproject.toml:21`). Sub-field selection and per-path visibility are applied in SQL, so the text is already what the reader may see | — |
+| GraphQL | the opaque `JSON` scalar, as today (`provisa/compiler/type_map.py:191-192`). `object_fields` sub-fields as today | not used |
+| GraphQL, REST, JSON:API response | the value reaches the client as JSON. Where the column has no `object_fields` sub-selection to resolve, the engine's JSON text is passed into the response unparsed (`orjson.Fragment`; `orjson` is a dependency, `pyproject.toml:21`); otherwise parsed as today. The parsing of text columns that merely look like JSON (`serialize.py:67-72`) is a defect fixed on its own (section 14) | not used |
 | gRPC | `string` field holding JSON | field comment |
-| MCP | JSON value; the column's schema is in the tool's schema | tool input and output schemas |
-| Cypher / Bolt | see D8 | list functions map to the section 4 operations |
+| MCP | JSON value | not used |
+| Cypher / Bolt | see D7 | list functions map to the section 4 operations |
 | Row rules | any section 4 operation; native form on native columns, so an index can serve the rule | literal typing |
-| Masks | whole value: constant NULL. By path: a mask on a JSON path, rebuilt in SQL. Fake kinds on a path follow REQ-1494 in the engine | which mask kinds fit a path's type |
-| Column grants and per-path visibility | column `visible_to`; per-path `visible_to` as `object_fields` has today | paths |
-| Results grid (REQ-1937) | a cell renders the JSON; for an array of scalars the filter offers contains, is empty, length | operator set from `items` |
+| Masks | whole value: constant NULL. Regex, truncate and fake kinds do not apply to a JSON column | not used |
+| Column grants | column `visible_to`; sub-field `visible_to` of `object_fields` as today | not used |
+| Results grid (REQ-1937) | a cell renders the JSON; is-empty and is-not-empty filters. Typed columns produced by `JSON_VALUE` / `JSON_TABLE` filter as any typed column | not used |
 | Search index | type `json` and the schema's field names | |
 | Data-quality | the conformance check of section 6; length and element checks | |
 | Profiler | length distribution, distinct elements, through `JSON_TABLE` | |
@@ -436,7 +441,7 @@ alternative. It is advice. It never blocks or changes the statement.
   remains the statement of what happened (a `Seq Scan` or an index scan); the note states what
   the backend is able to do. Provisa does not look at the source's indexes.
 - Notes appear in the plan. Whether they also ride the warning channel of every execution is
-  decision D7.
+  decision D6.
 
 ## 11. Governance of the change
 
@@ -446,8 +451,8 @@ V1: no migrations, no shims.
 |---|---|
 | A column registered as `text` today that is natively an array | at the next re-registration or reconcile it becomes `json` with a generated schema and `native_type`. Its replica is rebuilt |
 | Things declared against the text reading (regex mask, `LIKE` in a row rule or view) | fail model validation then, each named |
-| `object_fields` | its shape part is replaced by `json_schema`; model files in the repository change in the same commit |
-| Requirement text to amend | REQ-980 (composites "remain collapsed to text"), REQ-846, REQ-304/305 (converter and inference shared with columns), REQ-1961 (catalog type = read type, extended to the schema), REQ-1937. No requirement was filed by this design |
+| `object_fields` | unchanged |
+| Requirement text to amend | REQ-980 (composites "remain collapsed to text"), REQ-846, REQ-1961 (catalog type = read type, extended to the schema where a surface carries it). REQ-1965 is the requirement this design answers; its sentence "GraphQL serves it typed from the schema" no longer matches the ruling |
 
 Guards and tests the build will trip (found by content search, to read before starting):
 `tests/unit/test_ir_types.py`, `test_discovery_through_driver.py`, `test_ops_domain.py` (array →
@@ -465,14 +470,14 @@ in CI.
 
 | # | Piece | Value alone | Tests |
 |---|---|---|---|
-| 1 | `json_schema` on the column: model, loader, admin API, column editor with sample inference; `_json_schema_to_gql_type` extended and used for columns; schema in catalogs | typed GraphQL for existing JSON columns; the mail sources' list columns get their schema | L |
+| 1 | `json_schema` and `native_type` on the column: model, loader, admin API, column editor (read-only when generated, editable when declared); schema in catalogs where the surface carries one | the model can hold the schema; the mail sources' list columns get theirs | L |
 | 2 | Registration: native array/struct/map → `json` + generated schema + `native_type`; `to_ir` parses every native spelling; whole-value read through the to-JSON expression with exact spellings. DuckDB, PostgreSQL, Trino | registration stops raising or storing `text`; JSON on every wire | L for DuckDB; C |
 | 3 | The rule table with its index and pushdown facts, JSON form, for PostgreSQL, DuckDB, Trino; typed `JSON_VALUE` and `JSON_TABLE` from the schema; literal casts; the route rule at `router.py:273` replaced by the table; plan notes in `analyze_sql`, the SQL editor and the MCP tool | JSON operations in semantic SQL, DIRECT where the source can; the plan says what will scan | L snapshot and DuckDB execution; C |
 | 4 | Native form for PostgreSQL, DuckDB, Trino; M1 and M2 | source indexes serve JSON-spelled predicates | L; C; perf-bench |
 | 5 | JSON form for MySQL, MariaDB, SQL Server, SQLite source; physical type fixes (PostgreSQL `jsonb`, Fabric, Oracle) | sources without arrays, DIRECT | L for SQLite; C |
-| 6 | Landing by SQL expression instead of the per-row parse; GraphQL splice; type from the declaration at `serialize.py` | no value touched anywhere | L |
-| 7 | Surfaces: GraphQL `where` on JSON arrays, grid filters, gRPC, MCP, Bolt | filtering from every client | L; Playwright in CI |
-| 8 | Governance: per-path visibility on the schema, masks by path, conformance check, drift refusal | governed JSON | L |
+| 6 | Landing by SQL expression instead of the per-row parse; JSON passed through to GraphQL/REST where no sub-field handling needs it parsed; the text-column parsing defect at `serialize.py:67-72` | no value touched where avoidable | L |
+| 7 | Surfaces: grid rendering and empty filters for JSON cells, gRPC, MCP, Bolt | JSON columns on every client | L; Playwright in CI |
+| 8 | Conformance check for declared schemas; drift refusal | checked JSON | L |
 | 9 | Remaining backends: ClickHouse, Snowflake, BigQuery, Databricks, Oracle, Exasol, each unverified kind, each pushdown cell | breadth | C |
 
 Documentation, written with the piece that makes it true (doc-writer agent):
@@ -485,7 +490,7 @@ Documentation, written with the piece that makes it true (doc-writer agent):
 | `docs/engines.md` | per engine: JSON physical type, index kinds, pushdown to attached sources | 3, 5, 9 |
 | `docs/pgwire.md`, `docs/api-reference.md` | a JSON column on each wire; what BI and JDBC clients receive and how to select typed parts | 2, 7 |
 | SQL editor help, `docs/admin.md` | reading the plan notes | 3 |
-| `docs/security.md` | visibility and masks by JSON path | 8 |
+| `docs/security.md` | what masks and grants apply to a JSON column | 8 |
 | `docs/glossary.md` | JSON column, schema, native type, child table | 1 |
 
 Common to this design and version 1: the per-dialect JSON function table, the native spelling
@@ -500,13 +505,12 @@ first.
 |---|---|---|
 | D1 | Spelling in semantic SQL | **SQL/JSON standard functions, with PostgreSQL's operators accepted as the same operations**; PostgreSQL operators only; standard only |
 | D2 | Decimals with a declared precision inside JSON | **strings, `format: decimal`** (exact on every backend); JSON numbers (inexact through DuckDB and SQLite `[probe]`) |
-| D3 | Shape description | **one `json_schema` per column, `object_fields` reduced to per-path governance attributes**; keep both, `object_fields` generated from the schema |
-| D4 | A declared schema | **descriptive, with an engine-run conformance check and the engine's cast error at use**; also a CHECK constraint on replicas where the store has one |
-| D5 | PostgreSQL physical type for `json` | **`jsonb`** (GIN, containment); `JSON` as today |
-| D6 | Drift | **refuse reads of the column by name until re-registered**; regenerate the schema automatically at reconcile |
-| D7 | Plan notes | **in the plan only**; also on the warning channel of every execution |
-| D8 | Cypher / Bolt | **the JSON text as a string, as on the other wires**; parse to lists at that surface, the one place Provisa would touch a value |
-| D9 | NaN and infinities in float elements | **the translation raises by name (`json.non_finite_number`)**; write them as strings |
+| D3 | A declared schema | **descriptive, with an engine-run conformance check and the engine's cast error at use**; also a CHECK constraint on replicas where the store has one |
+| D4 | PostgreSQL physical type for `json` | **`jsonb`** (GIN, containment); `JSON` as today |
+| D5 | Drift | **refuse reads of the column by name until re-registered**; regenerate the schema automatically at reconcile |
+| D6 | Plan notes | **in the plan only**; also on the warning channel of every execution |
+| D7 | Cypher / Bolt | **the JSON text as a string, as on the other wires**; parse to lists at that surface, the one place Provisa would touch a value |
+| D8 | NaN and infinities in float elements | **the translation raises by name (`json.non_finite_number`)**; write them as strings |
 
 ## 14. Defects that stand on their own
 
@@ -522,6 +526,9 @@ Independent of this design. None filed.
 | 6 | IR `json` lands as `JSON` on PostgreSQL (no index, no containment), `VARCHAR(8000)` on Fabric/Synapse (length limit), and has no Oracle mapping (`to_physical("json","oracle")` raises `UnsupportedCompilationError`) | `provisa/core/ir_types.py:68,308-320`; `provisa/federation/mssql_warehouse_runtime.py:79` | yes for PostgreSQL and Oracle, by calling `to_physical`; Fabric read in code |
 | 7 | sqlglot output accepted unchecked for array and JSON operations: Trino `a \|\| b` on arrays becomes a string concatenation; Databricks `array_agg(x ORDER BY k)` loses its order; PostgreSQL JSON functions other than `->`/`->>` pass through unchanged to every dialect | `provisa/transpiler/transpile.py:41-48` and the generic `transpile` | yes, by transpiling |
 | 8 | The JSON land path parses each JSON value in Python per row, against the set-based rule stated in `ir_types.py:157-160` | `provisa/federation/materialize_exec.py:135-138` | read in code |
+| 9 | The type the registration picker suggests is the raw native spelling lower-cased, not passed through `to_ir`; the raise surfaces later, at landing or import | `provisa/api/admin/schema_query.py:2338-2343,2368-2371,2410-2415`; raises at `provisa/federation/residency.py:87`, `provisa/api/admin/import_typing.py:53`, `provisa/federation/replica_routing.py:385` | found and cited by teammate json; not re-read by me |
+| 10 | The UI's IR type map shows `json`/`jsonb` as "text" | `provisa-ui/src/irTypes.ts:36-37` | found by teammate json; not re-read by me |
+| 11 | Further spellings that raise in `to_ir`: PostgreSQL `USER-DEFINED`, `text[]`; Snowflake `ARRAY`/`OBJECT`/`VARIANT`; Redshift `super`; ClickHouse `Tuple`/`Map`/`Nested`; BigQuery `STRUCT<..>`; Databricks `struct`/`map`. DuckDB `STRUCT(..)`/`MAP(..)` do reach `text` (correcting row 1: not only Trino's spelling is mapped) | `provisa/core/ir_types.py:244-255` | found by teammate json |
 
 ## 15. The mail sources
 
@@ -529,8 +536,8 @@ Their canonical schema is not in code yet (`feat/gmail-source` holds settings an
 only); this follows the lead's description: list columns as JSON text, child tables for joins.
 
 Under this design nothing moves. The list columns are already JSON columns. Piece 1 gives each
-its schema (`{"type":"array","items":{"type":"string"}}`), which types them in GraphQL and
-drives filters. The child tables stay as the indexed join path, which is the practice section 9
+its schema (`{"type":"array","items":{"type":"string"}}`), which the SQL translation uses to
+type extracted elements. The child tables stay as the indexed join path, which is the practice section 9
 recommends. To hold now: the JSON is an array of scalar strings (an address list of objects gets
 an object `items` schema); an empty list is `[]` and an absent field is SQL NULL; the child
 table carries the element position.
