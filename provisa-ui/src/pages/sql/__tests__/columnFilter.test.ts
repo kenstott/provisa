@@ -17,6 +17,7 @@ import {
   distinctValues,
   TYPE_FAMILIES,
   kindFromType,
+  kindFromValues,
   matchesFilter,
   parseQuick,
 } from "../columnFilter";
@@ -234,5 +235,34 @@ describe("distinctValues", () => {
       { value: EMPTY_VALUE, count: 2 },
       { value: "error", count: 1 },
     ]);
+  });
+});
+
+describe("kindFromValues — a result that reports no column types", () => {
+  it("reads a column's family off the values held", () => {
+    expect(kindFromValues([1, 2.5, -3])).toBe("number");
+    expect(kindFromValues([true, false])).toBe("boolean");
+    expect(kindFromValues(["2026-10-08", "2026-01-01"])).toBe("date");
+    expect(kindFromValues(["2026-10-08T15:30:00Z", "2026-10-08 15:30:00.123+02:00"])).toBe("date");
+    expect(kindFromValues(["ok", "error"])).toBe("text");
+  });
+
+  it("lets blank cells say nothing either way", () => {
+    expect(kindFromValues([null, 1, "", 2, undefined])).toBe("number");
+    expect(kindFromValues([null, "2026-10-08"])).toBe("date");
+  });
+
+  it("is text when there is nothing to read, or the kinds are mixed", () => {
+    expect(kindFromValues([])).toBe("text");
+    expect(kindFromValues([null, ""])).toBe("text");
+    expect(kindFromValues([1, "two"])).toBe("text");
+    expect(kindFromValues([true, 1])).toBe("text");
+    expect(kindFromValues(["2026-10-08", "soon"])).toBe("text");
+  });
+
+  it("takes text that looks like a number or a date as what the result sent", () => {
+    expect(kindFromValues(["42", "7"])).toBe("text"); // sent as text
+    expect(kindFromValues(["2026-13-45"])).toBe("text"); // the shape of a date, not a date
+    expect(kindFromValues(["10/08/2026"])).toBe("text");
   });
 });

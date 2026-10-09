@@ -35,14 +35,18 @@ function Harness({ partial = false }: { partial?: boolean }) {
 const body = () => document.querySelector("tbody")?.textContent ?? "";
 
 describe("typed column filters", () => {
-  it("types a column that reports no type as text", () => {
+  it("types a column of a result that reports no types from its values", () => {
+    // REQ-1937: "…or is inferred from its values when the result carries none."
     function Untyped() {
       const grid = useResultsGrid(ROWS, COLS);
       return <ResultsGrid grid={grid} totalRowCount={ROWS.length} />;
     }
     render(<Untyped />);
-    // ">100" is plain text on a text column: contains, which matches nothing here.
+    // amount holds numbers, so ">100" is a comparison; status holds text, so it is contains.
     fireEvent.change(screen.getByLabelText("Filter rows… amount"), { target: { value: ">100" } });
+    expect(body()).not.toContain("50ok");
+    expect(body()).toContain("150");
+    fireEvent.change(screen.getByLabelText("Filter rows… status"), { target: { value: ">100" } });
     expect(screen.getByTestId("results-grid-empty")).toBeTruthy();
   });
 

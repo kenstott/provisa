@@ -158,6 +158,32 @@ export function kindFromType(dataType: string | null | undefined): ColumnKind {
   return TYPE_FAMILIES[bare] ?? "text";
 }
 
+// A date or a timestamp as results carry one: ISO-8601, date first.
+const ISO_MOMENT = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}(:?\d{2})?)?)?$/;
+
+/** A column's filter family read off its values, for a result that reports no column types:
+    boolean when every value held is a boolean, number when every one is a number, date when
+    every one is an ISO date or timestamp, and text otherwise — including a column with no
+    value to read, and one that mixes kinds. Blank cells say nothing either way. A number
+    written as text ("42") is text: the result said it was text by sending it that way. */
+export function kindFromValues(values: Iterable<unknown>): ColumnKind {
+  let seen = false;
+  let bool = true;
+  let num = true;
+  let date = true;
+  for (const v of values) {
+    if (v == null || v === "") continue;
+    seen = true;
+    if (typeof v !== "boolean") bool = false;
+    if (typeof v !== "number" && typeof v !== "bigint") num = false;
+    if (!(typeof v === "string" && ISO_MOMENT.test(v) && !Number.isNaN(Date.parse(v))))
+      date = false;
+    if (!bool && !num && !date) return "text";
+  }
+  if (!seen) return "text";
+  return bool ? "boolean" : num ? "number" : date ? "date" : "text";
+}
+
 const DAY_MS = 86_400_000;
 
 /** A calendar date typed as yyyy-mm-dd, as local midnight; null when it is not one. */

@@ -22,6 +22,7 @@ import {
   isUsable,
   matchesFilter,
   kindFromType,
+  kindFromValues,
   type ActiveFilter,
   type ColumnKind,
   type FilterSpec,
@@ -164,12 +165,16 @@ export function useResultsGrid(
   const displayColumns = baseColumns;
 
   // REQ-1937: a column's filter family comes from the type the server reports for it, through the
-  // one table in columnFilter.ts. A column with no reported type is text.
+  // one table in columnFilter.ts. A column the result reports no type for is typed from the
+  // values the grid holds.
   const columnKinds = useMemo(() => {
     const out: Record<string, ColumnKind> = {};
-    for (const c of baseColumns) out[c] = kindFromType(columnTypes?.[c]);
+    for (const c of baseColumns) {
+      const declared = columnTypes?.[c];
+      out[c] = declared ? kindFromType(declared) : kindFromValues(resultRows.map((r) => r[c]));
+    }
     return out;
-  }, [baseColumns, columnTypes]);
+  }, [baseColumns, columnTypes, resultRows]);
 
   const activeFilters = useMemo(() => {
     const out: ActiveFilter[] = [];
