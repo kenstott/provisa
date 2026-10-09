@@ -57,13 +57,14 @@ jobs:
       # the level below it passed in this run.
       #   0  each composite action alone
       #   1  the reusable workflows with trivial work (the lane; the release's control flow)
+      #   2  one REAL caller of each kind, at its cheapest (proof only: removed at the flip)
       - name: The level to prove
         id: level
         run: |
           level="$(tr -d '[:space:]' < .github/ci-proof-level)"
           case "$level" in
-            0|1) echo "level=$level" >> "$GITHUB_OUTPUT" ;;
-            *) echo "::error::.github/ci-proof-level is '$level'; this workflow proves levels 0 and 1"; exit 1 ;;
+            0|1|2) echo "level=$level" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::.github/ci-proof-level is '$level'; this workflow proves levels 0 to 2"; exit 1 ;;
           esac
           echo "proving up to level $level on ${GITHUB_REF_NAME} at ${GITHUB_SHA}"
 
@@ -396,7 +397,8 @@ jobs:
       ANTHROPIC_API_KEY: ${{ matrix.case == 'plain' && 'passed-by-the-caller' || '' }}
 
   # A lane whose command fails on purpose: its on-failure and after scripts must still run and
-  # its results must still be uploaded. `verdict` expects this job to FAIL.
+  # its results must still be uploaded. `failure-expected` keeps the deliberate failure from
+  # failing the run; what the lane left (lane-results) is the proof that it failed.
   lane-fails:
     name: lane / fails on purpose
     needs: [scope, level-0]
@@ -405,6 +407,7 @@ jobs:
     with:
       name: leaf fails
       timeout: 15
+      failure-expected: true
       prepare: scripts/ci/lanes/leafcheck-prepare.sh fails
       run: mkdir -p "results/$LANE_SLUG" && echo started > "results/$LANE_SLUG/run.txt" && exit 7
       after: bash scripts/ci/lanes/leafcheck-after.sh
@@ -484,7 +487,8 @@ jobs:
       # The manual half of the orchestrator's expression (a tag push is its other half): false here.
       publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
 
-  # The same with a need that fails: the release job must not run. `verdict` expects FAILURE.
+  # The same with a need that fails: the release job must not run. The failing need does not
+  # fail the run; release-results reads what the release job saw.
   release-after-a-failed-need:
     name: release / a failed need
     needs: [scope, level-0]
@@ -521,9 +525,55 @@ jobs:
           # `publish` arrived as the boolean false; the step that leaves the run was skipped.
           assert dry.get("publish-is-boolean") == "true", dry
           assert dry.get("left-the-run") == "false", dry
-          # After a FAILED need the release job did not run at all.
+          # After a FAILED need the release job did not run at all: what it saw of that need was
+          # "failure", although the failure was not allowed to fail the run.
+          assert failed.get("build-result") == "failure", failed
           assert not failed.get("release-ran"), failed
           EOF
+
+  # ── level 2: one real caller of each kind (PROOF ONLY -- removed in the flip commit) ───────
+  #
+  # A push to a ci/** branch cannot trigger these workflows (their own triggers are main,
+  # release branches, tags), so they are called. Each reads exactly what it reads on main today,
+  # passed by name: the amd64 engines none; the Trino UI lane the SharePoint certificate; the
+  # suite's neo4j lane the Splunkbase account its harness may need.
+
+  level-1:
+    name: level 1 / the reusable workflows
+    needs: [lane-results, release-results]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo "the lane workflow and the release's control flow behaved as they should"
+
+  real-amd64-engines:
+    name: real / amd64-only engines
+    needs: [scope, level-1]
+    if: fromJSON(needs.scope.outputs.level) >= 2
+    uses: ./.github/workflows/amd64-engines.yml
+
+  real-suite-neo4j:
+    name: real / suite (neo4j)
+    needs: [scope, level-1]
+    if: fromJSON(needs.scope.outputs.level) >= 2
+    uses: ./.github/workflows/integration-suite-lanes.yml
+    with:
+      lanes: neo4j
+    secrets:
+      SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
+      SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
+    # The suite's own queue: behind a suite already running on main, never beside it.
+    concurrency:
+      group: integration-suite
+      queue: max
+
+  real-ui-trino:
+    name: real / UI Trino lane
+    needs: [scope, level-1]
+    if: fromJSON(needs.scope.outputs.level) >= 2
+    uses: ./.github/workflows/ui-e2e-trino.yml
+    secrets:
+      SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
 
   # ── the verdict ────────────────────────────────────────────────────────────────────────────
 
@@ -549,6 +599,10 @@ jobs:
       - release-dry-run
       - release-after-a-failed-need
       - release-results
+      - level-1
+      - real-amd64-engines
+      - real-suite-neo4j
+      - real-ui-trino
     if: ${{ always() && startsWith(github.ref, 'refs/heads/ci/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -563,14 +617,18 @@ jobs:
           needs = json.loads(os.environ["NEEDS"])
           results = {job: need["result"] for job, need in needs.items()}
           level = int(needs["scope"]["outputs"]["level"])
-          # Two jobs fail on purpose; every other one must succeed.
+          # Every job must succeed. The two that exercise a failure contain it (it does not fail
+          # the run); lane-results and release-results assert that the failure happened.
           expected = {job: "success" for job in results}
-          expected["lane-fails"] = "failure"
-          expected["release-after-a-failed-need"] = "failure"
           # Level 1's jobs do not run when the committed level is 0.
           if level < 1:
               for job in ("lane", "lane-fails", "lane-results", "release-dry-run",
                           "release-after-a-failed-need", "release-results"):
+                  expected[job] = "skipped"
+              expected["level-1"] = "skipped"
+          # Level 2's jobs do not run below level 2.
+          if level < 2:
+              for job in ("real-amd64-engines", "real-suite-neo4j", "real-ui-trino"):
                   expected[job] = "skipped"
           print(f"level {level}")
           wrong = {job: (got, expected[job]) for job, got in results.items() if got != expected[job]}

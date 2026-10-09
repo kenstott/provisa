@@ -50,6 +50,12 @@ on:
       - "demo/**"
       - ".github/workflows/ui-e2e-trino.yml"
   workflow_dispatch:
+  # Callable: by an orchestrator, and by the proof of the CI's own structure. The caller passes
+  # the one secret the lane reads, by name.
+  workflow_call:
+    secrets:
+      SP_CERT_P12_BASE64:
+        required: false
 
 permissions:
   contents: read

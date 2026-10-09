@@ -38,6 +38,9 @@ on:
         value: ${{ jobs.release.outputs.left_the_run }}
       release-ran:
         value: ${{ jobs.release.outputs.ran }}
+      build-result:
+        description: What a job that needs the failed build sees as its result.
+        value: ${{ jobs.observe.outputs.build_result }}
 
 permissions:
   contents: read
@@ -54,9 +57,11 @@ jobs:
     steps:
       - run: echo "a publication would happen here"
 
-  # As a build whose failure must stop the release.
+  # As a build whose failure must stop the release. When it is MEANT to fail, the run is not
+  # failed by it -- what the release job sees of it (`needs.build.result`) is what is under test.
   build:
     runs-on: ubuntu-latest
+    continue-on-error: ${{ inputs.fail-a-need }}
     steps:
       - name: Fail when asked to
         env:
@@ -98,3 +103,17 @@ jobs:
           fi
           echo "left_the_run=${LEFT:-false}" >> "$GITHUB_OUTPUT"
           echo "ran=true" >> "$GITHUB_OUTPUT"
+
+  # What `needs.build.result` is for a build that failed under continue-on-error: the release
+  # job's condition depends on it being "failure".
+  observe:
+    needs: [build]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    outputs:
+      build_result: ${{ steps.see.outputs.build_result }}
+    steps:
+      - id: see
+        env:
+          RESULT: ${{ needs.build.result }}
+        run: echo "build_result=$RESULT" >> "$GITHUB_OUTPUT"

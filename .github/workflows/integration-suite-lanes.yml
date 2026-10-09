@@ -41,6 +41,130 @@ on:
         type: boolean
         required: false
         default: false
+    # Every secret a job of this workflow reads, by name: the caller passes each one, and
+    # nothing is inherited. The matrix lanes read only the first three; the rest are the
+    # warehouse and salesforce jobs' live credentials.
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: false
+      SPLUNKBASE_USERNAME:
+        required: false
+      SPLUNKBASE_PASSWORD:
+        required: false
+      ASKAMERICA_API_KEY:
+        required: false
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_ENDPOINT_OVERRIDE:
+        required: false
+      AWS_REGION:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+      AZURE_CLIENT_ID:
+        required: false
+      AZURE_CLIENT_SECRET:
+        required: false
+      AZURE_TENANT_ID:
+        required: false
+      BIGQUERY_LOCATION:
+        required: false
+      BIGQUERY_TEST_GCS_BUCKET:
+        required: false
+      CLOUDFLARE_ACCOUNT_ID:
+        required: false
+      CLOUDOPS_AWS_ACCESS_KEY_ID:
+        required: false
+      CLOUDOPS_AWS_ACCOUNT_IDS:
+        required: false
+      CLOUDOPS_AWS_REGION:
+        required: false
+      CLOUDOPS_AWS_SECRET_ACCESS_KEY:
+        required: false
+      CLOUDOPS_AZURE_CLIENT_ID:
+        required: false
+      CLOUDOPS_AZURE_CLIENT_SECRET:
+        required: false
+      CLOUDOPS_AZURE_SUBSCRIPTION_IDS:
+        required: false
+      CLOUDOPS_AZURE_TENANT_ID:
+        required: false
+      CLOUDOPS_GCP_CREDENTIALS_JSON_BASE64:
+        required: false
+      CLOUDOPS_GCP_PROJECT_IDS:
+        required: false
+      DATABRICKS_HTTP_PATH:
+        required: false
+      DATABRICKS_SERVER_HOSTNAME:
+        required: false
+      DATABRICKS_TOKEN:
+        required: false
+      FABRIC_CAPACITY_NAME:
+        required: false
+      FABRIC_DATABASE:
+        required: false
+      FABRIC_RESOURCE_GROUP:
+        required: false
+      FABRIC_SQL_SERVER:
+        required: false
+      FABRIC_WORKSPACE_ID:
+        required: false
+      GOOGLE_APPLICATION_CREDENTIALS_JSON:
+        required: false
+      GOOGLE_CLOUD_PROJECT:
+        required: false
+      GSHEETS_TEST_SHEET_ID:
+        required: false
+      REDSHIFT_AWS_ACCESS_KEY_ID:
+        required: false
+      REDSHIFT_AWS_REGION:
+        required: false
+      REDSHIFT_AWS_SECRET_ACCESS_KEY:
+        required: false
+      SF_CONSUMER_KEY:
+        required: false
+      SF_CONSUMER_SECRET:
+        required: false
+      SF_LOGIN_URL:
+        required: false
+      SF_NICKNAME:
+        required: false
+      SF_PASSWORD:
+        required: false
+      SF_SECURITY_TOKEN:
+        required: false
+      SINGLESTORE_DATABASE:
+        required: false
+      SINGLESTORE_HOST:
+        required: false
+      SINGLESTORE_PASSWORD:
+        required: false
+      SINGLESTORE_PORT:
+        required: false
+      SINGLESTORE_USERNAME:
+        required: false
+      SNOWFLAKE_ACCOUNT:
+        required: false
+      SNOWFLAKE_DATABASE:
+        required: false
+      SNOWFLAKE_PASSWORD:
+        required: false
+      SNOWFLAKE_USER:
+        required: false
+      SNOWFLAKE_WAREHOUSE:
+        required: false
+      SP_AUTH_TYPE:
+        required: false
+      SP_CERT_P12_BASE64:
+        required: false
+      SP_CERT_PASSWORD:
+        required: false
+      SP_CLIENT_ID:
+        required: false
+      SP_SITE_URL:
+        required: false
+      SP_TENANT_ID:
+        required: false
 
 permissions:
   contents: read
@@ -78,7 +202,8 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
       - id: plan
         env:
-          LANES: ${{ github.event_name == 'workflow_dispatch' && inputs.lanes || 'all' }}
+          # The caller's choice: 'all' on a push, the dispatcher's list on demand.
+          LANES: ${{ inputs.lanes }}
         run: |
           matrix=$(python3 scripts/ci/run_lane.py --matrix "$LANES")
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"

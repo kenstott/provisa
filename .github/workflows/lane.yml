@@ -87,6 +87,13 @@ on:
         description: A command run after the lane's, whatever its outcome (a report of the run).
         type: string
         default: ""
+      failure-expected:
+        description: >-
+          The lane is MEANT to fail (the lane workflow's own self-test, ci-leaf-check.yml, and
+          nothing else): its failure steps run as for any failed lane, and the run is not failed
+          by it.
+        type: boolean
+        default: false
       sampler:
         description: >-
           Record the runner's load, memory and busiest processes every 30 s while the lane runs
@@ -198,6 +205,7 @@ jobs:
     name: ${{ inputs.name }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout }}
+    continue-on-error: ${{ inputs.failure-expected }}
     steps:
       - uses: actions/checkout@v4
         with:

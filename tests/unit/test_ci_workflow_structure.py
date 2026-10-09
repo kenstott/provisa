@@ -622,15 +622,31 @@ def test_the_leaf_check_runs_only_on_ci_branches_and_never_on_main_or_a_tag():
     assert set(jobs["verdict"]["needs"]) == set(jobs) - {"verdict"}
 
 
-def test_the_leaf_check_reads_no_secret_and_can_publish_nothing():
+# The proof's level-2 jobs call one real caller of each kind and pass it, by name, exactly what
+# that lane reads on main. They exist only on the proof branch: the flip commit removes them.
+_REAL_CALLER_SECRETS = {
+    "real-amd64-engines": set(),
+    "real-suite-neo4j": {"SPLUNKBASE_USERNAME", "SPLUNKBASE_PASSWORD"},
+    "real-ui-trino": {"SP_CERT_P12_BASE64"},
+}
+
+
+def test_the_leaf_check_reads_no_secret_below_level_two_and_can_publish_nothing():
     for name in (_LEAF_CHECK, "ci-leaf-stub-leg.yml"):
         path = REPO / ".github" / "workflows" / name
-        text, workflow = path.read_text(), yaml.safe_load(path.read_text())
-        assert not re.search(r"\bsecrets\.[A-Za-z_]", text), f"{name} reads a secret"
-        assert "secrets: inherit" not in text
+        workflow = yaml.safe_load(path.read_text())
         # Its token reads the repository and nothing else, for every job.
         assert workflow["permissions"] == {"contents": "read"}
         for job, body in workflow["jobs"].items():
+            allowed = _REAL_CALLER_SECRETS.get(job, set()) if name == _LEAF_CHECK else set()
+            read = set(re.findall(r"secrets\.([A-Za-z0-9_]+)", yaml.safe_dump(body)))
+            assert read == allowed, f"{name}:{job} reads {sorted(read)}"
+            # A value passed as a secret is one of those, or a literal (the lane's self-test
+            # passes a made-up string to show an expression over the matrix reaches one lane).
+            passed = body.get("secrets") or {}
+            assert {k for k, v in passed.items() if "secrets." in str(v)} == allowed, (
+                f"{name}:{job}"
+            )
             assert "permissions" not in body, f"{name}:{job} widens its token"
             # No leg of the release is called, and no step is one that publishes.
             assert not str(body.get("uses", "")).startswith("./.github/workflows/release-")
@@ -645,6 +661,46 @@ def test_the_leaf_check_reads_no_secret_and_can_publish_nothing():
                 # ensure-release, the one action here that could create a release, is skipped.
                 if "ensure-release" in str(step.get("uses", "")):
                     assert step["if"] == "${{ fromJSON('false') }}"
+    # A job that calls a real caller is a level-2 job, gated on the level file.
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / _LEAF_CHECK).read_text())["jobs"]
+    real = {
+        job
+        for job, body in jobs.items()
+        if str(body.get("uses", "")).startswith("./.github/workflows/")
+        and body["uses"] not in (LANE, "./.github/workflows/ci-leaf-stub-leg.yml")
+    }
+    assert real == set(_REAL_CALLER_SECRETS)
+    for job in real:
+        assert jobs[job]["needs"] == ["scope", "level-1"]
+        assert jobs[job]["if"] == "fromJSON(needs.scope.outputs.level) >= 2"
+
+
+def test_no_workflow_inherits_secrets_or_serialises_them():
+    """Every reusable workflow declares the secrets it can be given and is passed them by name.
+    None is handed everything (`secrets: inherit`), and none turns the secrets context into
+    text."""
+    for path in WORKFLOWS:
+        text = path.read_text()
+        code = "\n".join(
+            line.split(" #")[0] for line in text.splitlines() if not line.lstrip().startswith("#")
+        )
+        assert "secrets: inherit" not in code, path.name
+        assert "toJSON(secrets" not in code.replace(" ", ""), path.name
+        workflow = yaml.safe_load(text)
+        call = (workflow.get(True) or {}).get("workflow_call")
+        if call is None and "workflow_call" not in (workflow.get(True) or {}):
+            continue
+        declared = set((call or {}).get("secrets") or {})
+        read = set(re.findall(r"secrets\.([A-Za-z0-9_]+)", code)) - {"GITHUB_TOKEN"}
+        assert read <= declared, f"{path.name} reads {sorted(read - declared)} without declaring it"
+    # ... and each caller passes only names the workflow it calls declares.
+    for workflow, job, body in _jobs():
+        target = str(body.get("uses", ""))
+        if not target.startswith("./.github/workflows/"):
+            continue
+        called = yaml.safe_load((REPO / target).read_text())
+        declared = set(((called[True] or {}).get("workflow_call") or {}).get("secrets") or {})
+        assert set(body.get("secrets") or {}) <= declared, f"{workflow}:{job} -> {target}"
 
 
 def test_the_leaf_check_covers_every_leaf_or_says_why_not():
@@ -663,10 +719,14 @@ def test_the_leaf_check_covers_every_leaf_or_says_why_not():
         assert f"#   - {action}:" in header, f"the header does not say why {action} is left out"
     called = {str(b.get("uses", "")) for b in workflow["jobs"].values()}
     assert LANE in called and "./.github/workflows/ci-leaf-stub-leg.yml" in called
-    # The two jobs that fail on purpose are the two the verdict expects to fail.
-    verdict = workflow["jobs"]["verdict"]["steps"][0]["run"]
-    assert 'expected["lane-fails"] = "failure"' in verdict
-    assert 'expected["release-after-a-failed-need"] = "failure"' in verdict
+    # A lane that fails on purpose does not fail the run, and only the self-test may ask for
+    # that: a real lane's failure always fails its run.
+    assert workflow["jobs"]["lane-fails"]["with"]["failure-expected"] is True
+    lane = yaml.safe_load((REPO / ".github/workflows/lane.yml").read_text())["jobs"]["lane"]
+    assert lane["continue-on-error"] == "${{ inputs.failure-expected }}"
+    for caller, job, body in _lane_callers():
+        if (caller, job) != (_LEAF_CHECK, "lane-fails"):
+            assert "failure-expected" not in body["with"], f"{caller}:{job}"
 
 
 def test_the_proof_level_is_one_committed_file_and_each_level_needs_the_one_below():
@@ -674,7 +734,7 @@ def test_the_proof_level_is_one_committed_file_and_each_level_needs_the_one_belo
     everything; level 1's jobs need level 0's gate, which needs every composite action's check."""
     _text, workflow = _leaf_check()
     level = (REPO / ".github" / "ci-proof-level").read_text().strip()
-    assert level in {"0", "1"}, level
+    assert level in {"0", "1", "2"}, level
     jobs = workflow["jobs"]
     assert jobs["scope"]["outputs"] == {"level": "${{ steps.level.outputs.level }}"}
     level_one = {"lane", "lane-fails", "release-dry-run", "release-after-a-failed-need"}

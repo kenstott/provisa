@@ -61,7 +61,11 @@ def test_the_dispatchers_choices_reach_the_lanes():
     passed = _caller()["jobs"]["lanes"]["with"]
     called = yaml.safe_load((WORKFLOWS / "integration-suite-lanes.yml").read_text())
     assert set(passed) == set(called[True]["workflow_call"]["inputs"])
-    assert _caller()["jobs"]["lanes"]["secrets"] == "inherit"
+    # Every secret the lanes workflow declares is passed, each by its own name; none is inherited.
+    secrets = _caller()["jobs"]["lanes"]["secrets"]
+    declared = called[True]["workflow_call"]["secrets"]
+    assert secrets == {name: f"${{{{ secrets.{name} }}}}" for name in declared}
+    assert len(declared) == 60
 
 
 def _pipelines_without_pipefail(script: str) -> list[str]:

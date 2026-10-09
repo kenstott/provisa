@@ -35,6 +35,8 @@ on:
       - "provisa/federation/**"
       - ".github/workflows/amd64-engines.yml"
   workflow_dispatch:
+  # Callable: by an orchestrator, and by the proof of the CI's own structure.
+  workflow_call:
 
 permissions:
   contents: read
