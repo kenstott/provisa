@@ -657,5 +657,3 @@ code:not(pre code) {
 }
 .picker-sub li::after { content: ","; }
 .picker-sub li:last-child::after { content: ""; }
-.picker-caption { margin: 0 0 14px; text-align: center; font-size: .85rem; color: var(--text-muted); }
-.doc-body .picker-caption { text-align: left; }

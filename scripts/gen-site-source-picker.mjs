@@ -113,10 +113,7 @@ export async function renderPicker() {
   }
   // The larger number is a floor to the nearest five: connectors plus the kinds shown under tiles.
   const kinds = Math.floor((total + extra) / 5) * 5;
-  const caption =
-    `<p class="picker-caption">${total} connectors reaching ${kinds}+ kinds of source. The larger number ` +
-    `counts the hosted PostgreSQL services and the File Crawler's file formats shown under their tiles.</p>`;
-  return { html: `${caption}<div class="picker" data-count="${total}" data-kinds="${kinds}">${out.join("")}</div>`, total, kinds, sprite };
+  return { html: `<div class="picker" data-count="${total}" data-kinds="${kinds}">${out.join("")}</div>`, total, kinds, sprite };
 }
 
 const PAGES = ["site/index.html", "site/why/sources.html"];
