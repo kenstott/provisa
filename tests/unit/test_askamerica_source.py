@@ -558,6 +558,21 @@ class _Adapter:
         self.statements.append("closed")
 
 
+class _Row:
+    """A result row as asyncpg gives it: read by position, or by the server's own label."""
+
+    def __init__(self, **labelled):
+        self._labels = list(labelled)
+        self._values = list(labelled.values())
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._values[key]
+        if key not in self._labels:
+            raise KeyError(key)
+        return self._values[self._labels.index(key)]
+
+
 @pytest.fixture
 def adapter(monkeypatch):
     """A listening server whose catalog is NOT prepared: anything that waits on it would raise."""
@@ -570,12 +585,14 @@ def adapter(monkeypatch):
             raise AssertionError("discovery waited on the adapter's pg_catalog")
 
     def _answers(sql):
+        # Rows as the server returns them: its column labels are upper case (ORACLE lexer), so
+        # a reader that asks a row for "table_name" finds nothing.
         if "information_schema.tables" in sql:
-            return [{"table_name": "filings"}, {"table_name": "financial_facts"}]
+            return [_Row(TABLE_NAME="filings"), _Row(TABLE_NAME="financial_facts")]
         return [
-            {"table_name": "filings", "column_name": "cik", "data_type": "character varying"},
-            {"table_name": "filings", "column_name": "form", "data_type": "character varying"},
-            {"table_name": "financial_facts", "column_name": "cik", "data_type": "bigint"},
+            _Row(TABLE_NAME="filings", COLUMN_NAME="cik", DATA_TYPE="character varying"),
+            _Row(TABLE_NAME="filings", COLUMN_NAME="form", DATA_TYPE="character varying"),
+            _Row(TABLE_NAME="financial_facts", COLUMN_NAME="cik", DATA_TYPE="bigint"),
         ]
 
     conn = _Adapter(_answers)

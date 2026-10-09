@@ -896,7 +896,9 @@ async def adapter_tables(source: Any, schema: str) -> list[str]:
         "SELECT table_name FROM information_schema.tables "
         f"WHERE table_schema = '{schema}' ORDER BY table_name",  # noqa: S608 - identifier
     )
-    return [row["table_name"] for row in rows]
+    # Read by position: the server labels a result column in its own lexical case (TABLE_NAME
+    # under its ORACLE lexer), so the label is not the name the statement wrote.
+    return [row[0] for row in rows]
 
 
 async def adapter_columns(
@@ -913,8 +915,8 @@ async def adapter_columns(
         "ORDER BY table_name, ordinal_position",
     )
     columns: dict[str, list[tuple[str, str]]] = {}
-    for row in rows:
-        columns.setdefault(row["table_name"], []).append((row["column_name"], row["data_type"]))
+    for row in rows:  # by position, as in adapter_tables
+        columns.setdefault(row[0], []).append((row[1], row[2]))
     return columns
 
 
