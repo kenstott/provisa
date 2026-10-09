@@ -1996,7 +1996,7 @@ Connector cardinality capability — cardinality(source, table) -> Estimate{valu
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Sources of type `govdata` expose U.S. government open data partitioned by subject grouping. Configuring a govdata source with a subject exposes all schemas for that subject automatically.
+Sources of type `govdata` (AskAmerica) expose U.S. government open data by subject. The subjects ticked on a source decide the schemas it offers; each subject brings its schemas, and every schema the adapter serves belongs to a subject or is a linker schema ([REQ-541](#REQ-541)). The subjects and their schemas are stated once, by the server, and the Sources form and the Register Table form read them from it. Provisa runs the adapter bundle as installed, with the catalog it was built with, and writes no model of its own; narrowing to the ticked subjects is done by Provisa, which refuses a table or column outside the schemas of the source. A subscription reaches every table, so there is one AskAmerica source -- per organisation on a multi-tenant deployment -- and a second is refused when it is saved. The Register Table form lists the tables and columns of a schema from the adapter as soon as it is listening; listing names never waits on the row counts the adapter reports to engines.
 
 **Use case:** Subject-grouped GovData sources let stewards selectively grant access to government data by domain area.
 
@@ -2008,7 +2008,7 @@ Sources of type `govdata` expose U.S. government open data partitioned by subjec
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-The `ref` and `geo` schemas are always included as linker schemas in every GovData source — they are not configurable and not tied to any subject grouping.
+The `ref` and `geo` schemas are always included as linker schemas in every GovData source — they are not configurable and not tied to any subject grouping. The Register Table form lists them beside the schemas of the ticked subjects.
 
 **Use case:** Always-included linker schemas ensure GovData joins on reference and geography data are always available without explicit configuration.
 
@@ -21080,7 +21080,7 @@ Materialized and cached data isolation via per-tenant S3 prefixes: DuckDB, Parqu
 
 **Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
-NL-assisted table candidate discovery for registration. When a registered source has a large schema (hundreds or thousands of tables), stewards search across registered source schemas — table names, column names, descriptions — using natural language ("customer invoicing and payment tables"). A two-pass approach: fast fuzzy text filter narrows candidates, then LLM (haiku) provides semantic ranking with confidence scores. Steward judgment is required — feature surfaces candidates, does not claim them. Implementation in admin API and unclaimed tables UI.
+NL-assisted table candidate discovery for registration. When a registered source has a large schema (hundreds or thousands of tables), stewards search across registered source schemas — table names, column names, descriptions — using natural language ("customer invoicing and payment tables"). A two-pass approach: fast fuzzy text filter narrows candidates, then LLM (haiku) provides semantic ranking with confidence scores. Steward judgment is required — feature surfaces candidates, does not claim them. Implementation in admin API and unclaimed tables UI. The search reads an index of each source. Table names are indexed when the source is installed. Column names are filled in afterwards, a schema at a time, by one rule for every kind of source, so a search made soon after install may not find a table by a column name; the answer says whether table names are complete and whether column names are complete, still loading or unavailable. Selecting a table reads its columns from the source at once, whatever the index holds, and records them in the index.
 
 **Code:** `provisa/discovery/table_search.py`, `provisa/api/admin/table_search_router.py`, `provisa/discovery/catalog_cache.py`
 
@@ -22502,7 +22502,7 @@ A source built from a published API specification carries exclusions: operations
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-The admin API answers a caller with the catalog that caller may see, as every data surface does. Its listings of tables, columns and relationships answer the whole catalog only to a caller holding a catalog-administration right -- table registration, or a right to hide tables or columns -- and only within the domains that caller's roles reach; every other caller is answered the tables, columns and relationships its acting role is served, from the one role-narrowing the Flight catalog and the MCP catalog tools use. A column's grant lists and mask settings (who it is visible to, writable by and unmasked for, and how it is masked) are returned only to a caller holding the right to view governance ([REQ-1134](#REQ-1134)). Domains are listed to a caller for the domains its roles reach; a source is named to a caller that is served a table from it; a metric is listed to a caller its visibility admits; a caller holding the administration right for that kind of object is answered all of them. Narrowing is by rights and domain reach, never by a role's name ([REQ-1337](#REQ-1337)), and a platform administrator is answered no data catalog by this rule ([REQ-1327](#REQ-1327)). What is public is available to all domains: a public table, relationship, metric or other item is answered to every caller, whatever domains its roles reach, as it is on the data surfaces. A deployment with no auth provider is unchanged. The application's own pages are built from these answers, so a picker never offers a table the caller's query would be refused.
+The admin API answers a caller with the catalog that caller may see, as every data surface does. Its listings of tables, columns and relationships answer the whole catalog only to a caller holding a catalog-administration right -- table registration, or a right to hide tables or columns -- and only within the domains that caller's roles reach; every other caller is answered the tables, columns and relationships its acting role is served, from the one role-narrowing the Flight catalog and the MCP catalog tools use. A column's grant lists and mask settings (who it is visible to, writable by and unmasked for, and how it is masked) are returned only to a caller holding the right to view governance ([REQ-1134](#REQ-1134)). Domains are listed to a caller for the domains its roles reach; a source is named to a caller that is served a table from it; a metric is listed to a caller its visibility admits; a caller holding the administration right for that kind of object is answered all of them. Narrowing is by rights and domain reach, never by a role's name ([REQ-1337](#REQ-1337)), and a platform administrator is answered no data catalog by this rule ([REQ-1327](#REQ-1327)). What is public is available to all domains: a public table, relationship, metric or other item is answered to every caller, whatever domains its roles reach, as it is on the data surfaces. A deployment with no auth provider is unchanged. The application's own pages are built from these answers, so a picker never offers a table the caller's query would be refused. A registrar who is not shown the grant lists and masks of a table may still edit the table: the editor opens without those columns and its save names none of them, so the store keeps them.
 
 **Use case:** An analyst opening the SQL explorer is sent the tables and columns their role is served, not the names and grant lists of every table in the organisation.
 
@@ -22545,6 +22545,48 @@ A files source may declare an HTML crawl, and Wikipedia is a source type carried
 The model records the precision and scale of a numeric column. Registration takes them from the source the same way whichever engine introspects it -- from the precision and scale each engine reports for the column, not from how that engine happens to print the type name -- and stores them with the column; the column editor shows them and lets the registrar set or clear them. A numeric column with a recorded precision and scale is an exact decimal of that precision and scale on every read path, on every engine and surface, and in every catalog listing. A numeric column with none recorded is floating point on every read path and in every listing, the same for an empty result as for a full one, and is documented as approximate. A column's type is never sized from the rows a read happens to return. The type a catalog lists for a column is the type a read of that column returns.
 
 **Use case:** A finance team registers an amounts column once as numeric(18,2) and gets exact values through SQL, Flight, JDBC and the catalog, whichever engine introspected the source.
+
+**Code:** —
+
+**Tests:** —
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-1962 · Read Refusals {#REQ-1962}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A read that needs a table whose replica could not be built is refused, naming the table and the error the build recorded: HTTP 503 with code query.replica_build_failed and the table and reason as parameters, gRPC UNAVAILABLE, and the same message on the transports that carry only a message. It is one of the refusals for a read the deployment cannot answer now, with a read whose home region is unavailable ([REQ-1922](#REQ-1922)), and every surface answers that family in one place; no surface names a member of it.
+
+**Use case:** An analyst whose query touches a table that failed to land is told which table and why, instead of a server fault.
+
+**Code:** `provisa/core/read_refusal.py`, `provisa/api/app.py`
+
+**Tests:** `tests/unit/test_read_refusal.py`
+
+## 1. Access Governance & Security
+
+### REQ-1963 · Role Assignments {#REQ-1963}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+A multi-tenant deployment reads role assignments from Provisa, never from sign-in claims: a configuration that sets multitenancy with auth.assignments_source claims, stated or by default, does not load, the deployment does not start on it, and a settings change that would produce it is refused, each naming both settings and the value to use. A single-tenant deployment may use either.
+
+**Use case:** An operator cannot run a multi-tenant deployment in which sign-in claims override the roles each organisation granted.
+
+**Code:** `provisa/core/assignments_source.py`, `provisa/core/models.py`, `provisa/api/admin/_config_io.py`
+
+**Tests:** `tests/unit/test_assignments_source_tenancy.py`
+
+## 4. Source Connectors
+
+### REQ-1964 · GovData Sources {#REQ-1964}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+
+The row counts the AskAmerica adapter reports are for engines to optimise with and are read from recorded table metadata, never by scanning a table. Every AskAmerica table is an Iceberg table; one that is not is a defect to fix, not a case to accommodate. A view reports a row count of 0, as PostgreSQL does, and the catalog the adapter serves is compatible with PostgreSQL 16. Provisa pins the adapter release that does this for AskAmerica alone, and until then a query on a registered AskAmerica table waits on the count the adapter makes after it starts.
+
+**Use case:** A query on an AskAmerica table answers as soon as the adapter is serving, and an engine still has row counts to plan with.
 
 **Code:** —
 
