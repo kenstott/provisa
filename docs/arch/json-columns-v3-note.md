@@ -1,6 +1,7 @@
 # v3 note: two hidden column attributes instead of a JSON Schema
 
-Status: note, 2026-10-09. Beside `json-columns-design.md` (v2). Everything in v2 not mentioned
+Status: superseded 2026-10-09 by the final `json-columns-design.md` (the array attribute became
+an integer depth; `native_type` was adopted). Kept on record. Original status: note, 2026-10-09. Beside `json-columns-design.md` (v2). Everything in v2 not mentioned
 here stands: the datasource cast, the operations and rule table, refusals, plan notes,
 tradeoffs, wires.
 

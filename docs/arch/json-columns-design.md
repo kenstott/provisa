@@ -1,46 +1,40 @@
-# Arrays, structs and maps as JSON columns with a schema — design
+# Nested data as JSON columns, with hidden array attributes — design
 
-Status: design only, 2026-10-09. Version 2. No product code. Base: origin/main `3db8281dd`.
-Version 1, the typed `array<T>` design this replaces, stays on record beside it:
-`docs/arch/array-types-design.md`.
+Status: final design, 2026-10-09. Answers REQ-1965 as rewritten on origin/main the same day. No
+product code. Supersedes the earlier text of this file and `json-columns-v3-note.md`. On record
+beside it: `array-types-design.md` (typed arrays, not adopted) and
+`array-of-primitives-addendum.md` (an array type on the wire, not adopted).
 
-Ruling this version follows (maintainer, 2026-10-09): there is no typed array in semantic SQL,
-only JSON columns. A datasource translates its native arrays, structs and maps into JSON. A JSON
-column may carry a JSON Schema, generated from the source's native type or declared by a
-registrar. The schema is an input to the one SQL translation, which uses it to cast in and out.
-The tradeoffs of JSON-only are accepted (maintainer: "we can accept (and train) on design
-tradeoffs, but this does fill a hole in semantic sql"). Section 9 states each one once, in the
-form the user documentation takes.
+The design in six lines:
 
-Open at the time of writing: whether a one-level array of a primitive becomes a real type
-(`array-of-primitives-addendum.md`). The decisions list in section 13 is not final.
-
-Two rules run through the document:
-
-- A named refusal is for what a backend cannot do correctly. Never for what it does slowly.
-- A JSON operation that is correct but slow runs. The product's part is to say so: in the
-  documentation, and in the query plan (section 10).
+- Semantic SQL has no array, struct or map type. Nested data is a JSON column, listed as JSON by
+  every catalog and wire, on every engine and every source read directly.
+- A datasource hands a native array, struct or map over as JSON, by a cast the source or engine
+  executes.
+- A column carries three hidden attributes, recorded from the source at registration: array
+  depth (integer), innermost element type, native type.
+- One portable set of JSON operations, translated per backend from one rule table. For an array
+  of a primitive the attributes drive casts in and out and the native form.
+- A refusal by name is for what a backend cannot do correctly, never for what it does slowly.
+- What is correct but slow runs, and the query plan says so.
 
 Evidence tags: `[code]` read in the repo at the cited line; `[doc]` vendor page fetched today;
 `[probe]` run locally today; `[mem]` from memory, not fetched, unverified. Sources in section 16.
 
 ## 0. The claim, and where "always" stops
 
-Claim: with the column's schema available to the translation, a statement is always translated
-to the source's own query and returns values in the expected type, and Provisa touches no value.
+Claim: with the attributes available to the translation, a statement is always translated to the
+source's own query and returns values in the expected type, and Provisa converts no value.
 
 | Part of the claim | Holds | Stops at |
 |---|---|---|
-| Translated to a native query | every backend that has either JSON functions or a native array/struct form for the operation | backends with neither, and operations a backend lacks (section 4.3): refused by name at compile |
-| Results in the expected type | an extracted scalar or an unnested row is cast in the generated SQL to the type the schema states, so the engine returns it typed | the whole column value: on SQL wires it is JSON text, by the ruling |
-| Exact decimals | when the JSON holds them as strings; the datasource translation writes them that way | a JSON **number** in a source's own JSON column: DuckDB and SQLite read it as a double (`12345678901234567.89` comes back `…567.68`) `[probe]`. Such an element is `number`, floating point, and is said to be |
-| Native speed and indexes | DIRECT reads and native-engine reads of a natively-array column, for the recognised operations (section 4.2) | a federating engine over a live source: whether the engine pushes the native predicate to the source is the engine's choice. The statement still runs; the plan says so (section 10) |
-| Schema is right | generated schemas are true by construction: the same translation writes the JSON | the source's type changing after registration: detected at reconcile, column refused by name (section 5.4) |
-| Provisa touches no value | every SQL route and wire (section 8) | GraphQL and JSON:API parse a JSON column's text today (`provisa/executor/serialize.py:67-70` `[code]`); section 7 passes the engine's text through where no sub-field handling needs it parsed |
-| No per-request derivation (REQ-1877) | the schema is model data, read when the plan is compiled and kept with the governed plan | — |
-
-The bottleneck case of the first version is gone: a DIRECT read from a source without arrays
-returns JSON text and it stays JSON text. Nothing is decoded.
+| Translated to a native query | every backend that has either JSON functions or a native array form for the operation | backends with neither, and operations a backend lacks (section 4.3): refused by name at compile |
+| Results in the expected type | an innermost element of an array of a primitive, extracted or unnested, is cast in the generated SQL to the element type | the whole column value is JSON text on SQL wires; inside a struct, map or array of structs nothing is typed and the user writes the cast |
+| Exact decimals | a decimal element with a declared precision is written into the JSON as a string and cast back | inside a struct or map, where a decimal is a JSON number: DuckDB and SQLite read one through a double (`12345678901234567.89` comes back `…567.68`) `[probe]` |
+| Native speed and indexes | reads at the source of a natively-array column, for element, length, contains and unnest (section 4.2) | a federating engine over a live source: pushdown is the engine's choice. The statement runs; the plan says so (section 10) |
+| The attributes are right | recorded from the source's own type at registration | the source's type changing afterwards: reads of the column refused by name until it is registered again (section 5.4) |
+| Provisa converts no value | once a source or engine has produced a value, on every route (section 8) | API and stream sources, where Provisa's own caller fetches the payload; two existing touches removed by piece 6 (section 8) |
+| No per-request derivation (REQ-1877) | the attributes are model data, read when the plan is compiled and kept with the governed plan | — |
 
 ## 1. What "json is first-class" covers today
 
@@ -74,7 +68,7 @@ What is missing for "JSON for all engines and direct query sources":
 1. A translation Provisa owns for the JSON operations, per dialect. Today: PostgreSQL native, two
    engines hand-patched, DIRECT refused elsewhere.
 2. Native arrays, structs and maps registered as `json` with a to-JSON cast, instead of `text`.
-3. A schema on the column.
+3. The three hidden attributes on the column.
 4. Physical type gaps: PostgreSQL lands `JSON`, which has no index support (`jsonb` supports
    GIN, btree and hash; `json` does not `[doc]`); Fabric/Synapse lands `VARCHAR(8000)`; Oracle
    has no mapping.
@@ -83,44 +77,54 @@ What is missing for "JSON for all engines and direct query sources":
 
 ## 2. The model
 
-| Field on the column | Meaning |
-|---|---|
-| `data_type` | `json` |
-| `json_schema` | the JSON Schema of the value. Present on every column generated from a native type; optional on a source's own JSON column |
-| `native_type` | the source's type as introspected (`text[]`, `array(row(a integer, b varchar))`, `ARRAY<STRING>`), or absent when the source column is itself JSON. Says whether the native form (section 4.2) applies, and is what drift is checked against |
+### 2.1 The three hidden attributes
 
-Schema subset used (JSON Schema 2020-12 keywords):
+| Attribute | Value | Read by |
+|---|---|---|
+| array depth | integer. 0: not an array of a primitive. 1: array of a primitive. 2: array of arrays of a primitive. And so on | every translator: which casts apply, whether a native form exists |
+| element type | the semantic SQL type of the innermost element, with precision and scale where it has them (REQ-1961 spelling): `text`, `bigint`, `numeric(18,2)`, `timestamp`. Empty at depth 0 | cast out, cast in, the element pre-cast of the datasource cast |
+| native type | the source's type in its own spelling: `varchar(20)[]`, `timestamptz[]`, `array(row(a integer, b varchar))`, `STRUCT<..>` | the three casts that depend on the exact spelling (section 5.3), the to-JSON cast for depth-0 native columns, drift |
 
-| Native | Schema |
-|---|---|
-| array / list of T | `{"type":"array","items":<T>}`; nested arrays nest `items` |
-| struct / row / composite | `{"type":"object","properties":{...},"additionalProperties":false}` |
-| map(K, V) | `{"type":"object","additionalProperties":<V>}`; keys are strings in JSON |
-| text, varchar | `{"type":"string"}` |
-| smallint, integer, bigint | `{"type":"integer"}` |
-| boolean | `{"type":"boolean"}` |
-| float, double | `{"type":"number"}` |
-| numeric(p,s) | `{"type":"string","format":"decimal","x-precision":p,"x-scale":s}` |
-| numeric, no precision | `{"type":"number"}` (REQ-1961: undeclared numeric is floating point) |
-| date / timestamp / time | `{"type":"string","format":"date"}` / `"date-time"` / `"time"` |
-| interval | `{"type":"string","format":"duration"}` |
-| uuid | `{"type":"string","format":"uuid"}` |
-| binary | `{"type":"string","contentEncoding":"base16"}` |
-| nullable anything | `"type":[<t>,"null"]` |
+| Source column | depth | element type | native type |
+|---|---|---|---|
+| array of one primitive type, any nesting | ≥ 1 | the primitive | recorded |
+| struct, map, array of structs, array of mixed types | 0 | — | recorded |
+| JSON at its source (MySQL `JSON`, PostgreSQL `jsonb`, a text column holding JSON, an API payload) | none of the three | | |
+| any scalar column | not a JSON column; outside this design | | |
 
-The schema has one consumer: the semantic-SQL translation (casts in and out, native form;
-section 5). It does not type GraphQL output or filters (maintainer, 2026-10-09): GraphQL sees a
-JSON column as the opaque `JSON` scalar it is today.
+Rules:
 
-`Column.object_fields` (`models.py:809-816,845`) is not touched by this design. Today it
-declares typed sub-fields of an object column for GraphQL, with alias, description and
-`visible_to` per sub-field; it keeps doing exactly that. The function-return converter
-`_json_schema_to_gql_type` (`actions_schema.py:77`, REQ-304) is likewise left as it is.
+- Visible type: `data_type` is `json` for all of the above. Registration suggests `json`, never
+  text, and never raises on a native nested type.
+- The attributes come from a native type only. A registrar does not declare them on a column
+  that is JSON at its source.
+- Stored with the column, beside `data_type` (`provisa/core/models.py:822` `[code]`), as
+  `object_fields` is (`provisa/core/schema_org.py:341` `[code]`). V1: the table definition
+  changes; no migration.
+- Hidden: not offered in the registration form, not listed by catalogs. A read-only line in the
+  column detail ("array of text, depth 1, native `text[]`") is allowed for support.
+- Whether a column is natively nested and so needs the to-JSON cast is: native type recorded.
 
-Storage and UI: `json_schema` and `native_type` are stored with the column. The column editor
-shows the schema: read-only when generated from a native type (mandatory for every natively
-array, struct or map column), editable when a registrar declares one on a column that is JSON
-at its source (optional).
+`Column.object_fields` (`models.py:809-816,845`) is not touched. It declares typed sub-fields of
+an object column for GraphQL, with alias, description and `visible_to` per sub-field, and keeps
+doing that. GraphQL serves a JSON column as the opaque `JSON` scalar. There is no JSON Schema.
+
+### 2.2 Does any backend have an array of more than one element type
+
+No supported backend has an array type parameterised by several element types. Arrays are
+homogeneous: DuckDB lists "must all have the same underlying type" `[doc]`; Trino `ARRAY` is "an
+array of the given component type" `[doc]`; PostgreSQL, ClickHouse `Array(T)`, BigQuery
+`ARRAY<T>`, Databricks and Hive `ARRAY<T>` take one element type `[doc]`.
+
+| Nearest thing | What it is | Registers as |
+|---|---|---|
+| Snowflake `ARRAY` | "Each value in a semi-structured array is of type VARIANT" `[doc]`: elements may differ at run time | depth 0, plain JSON. Structured `ARRAY(T)` is depth 1 |
+| Redshift `SUPER` | arrays of scalar or complex values "without having any restrictions for regularity" `[doc]` | JSON at its source |
+| ClickHouse `Array(Variant(T1, T2))` | a `Variant` value is "either type T1 or T2 ... or none of them" `[doc]`; arrays of variants are shown `[doc]` | depth 0 |
+| DuckDB `UNION` | a tagged union holding "one of multiple alternative values" `[doc]`; a list of unions is not stated on the page | depth 0 |
+| Trino `ROW`, ClickHouse `Tuple`, PostgreSQL composite | fixed positions, each with its own type; Trino: "allows mixed types" `[doc]` | depth 0 (a struct) |
+| PostgreSQL `anyarray` | a pseudo-type for function signatures, not a column type `[mem]` | not a column |
+| JSON arrays | heterogeneous everywhere | JSON at its source |
 
 ## 3. The datasource translation
 
@@ -140,12 +144,12 @@ nothing.
 | Hive / HiveServer2 | `array<T>`, `struct`, `map` | not verified | whole-value read refused until a to-JSON form is confirmed |
 | Redshift | `super` | `JSON_SERIALIZE(c)` `[mem]` | |
 | CockroachDB | `T[]` | `to_jsonb(c)` `[mem]` | no nested arrays `[doc]` |
-| MySQL family, SQL Server family, Oracle, SQLite, Exasol | no native arrays | none: the column is JSON or JSON text already | |
-| API and file sources (OpenAPI, GraphQL remote, gRPC remote, Kafka, MongoDB, Elasticsearch) | arrays and objects in the payload | none: already JSON; the schema comes from the source's own spec where it has one (OpenAPI `items`, GraphQL list types, Avro) | `provisa/openapi/mapper.py`, `provisa/kafka/source.py:184-208` `[code]` |
+| MySQL family, SQL Server family, Oracle, SQLite, Exasol | no native arrays | none: the column is JSON or JSON text already; none of the three attributes | |
+| API and file sources (OpenAPI, GraphQL remote, gRPC remote, Kafka, MongoDB, Elasticsearch) | arrays and objects in the payload | none: already JSON; none of the three attributes | `provisa/openapi/mapper.py`, `provisa/kafka/source.py:184-208` `[code]` |
 
 Exact types inside the JSON. Each backend prints temporal and decimal values its own way, and a
 client reads the JSON text, so the translation fixes the spelling before the to-JSON call. It is
-generated from the schema, recursively, as SQL:
+generated from the element type, for columns of depth 1 or more, as SQL:
 
 | Element type | Spelling written | Why not the backend's default |
 |---|---|---|
@@ -153,7 +157,7 @@ generated from the schema, recursively, as SQL:
 | timestamp | `"YYYY-MM-DDTHH:MM:SS.ffffff"`, UTC | DuckDB writes `"2026-10-09 12:34:56.123456"` with a space `[probe]` |
 | date, time, uuid, interval | ISO 8601 text | |
 | binary | lower-case hex | DuckDB writes `"\\x00ff"` `[probe]` |
-| float, double | JSON number | DuckDB writes `NaN` unquoted, which is not JSON `[probe]`; `jsonb` rejects NaN and infinity `[doc]`. See D8 |
+| float, double | JSON number | DuckDB writes `NaN` unquoted, which is not JSON `[probe]`; `jsonb` rejects NaN and infinity `[doc]`. Refused by name: `json.non_finite_number` |
 | integer up to 64 bits | JSON number | exact through DuckDB (`9007199254740993` verified `[probe]`), SQLite `[probe]` |
 
 Form: cast the native value to the same shape with those element types as text, then to JSON.
@@ -161,9 +165,18 @@ DuckDB: `to_json(list_transform(c, x -> strftime(x, ...)))` or a shape cast
 `CAST(c AS STRUCT(a VARCHAR, b VARCHAR[]))`. PostgreSQL: `to_jsonb(c::text[])` for a numeric
 array. Columns whose elements are text, integer or boolean need no pre-cast.
 
+A column of depth 0 with a native type (struct, map, array of structs, mixed array) gets the
+plain to-JSON expression with no pre-cast: nothing inside it is typed. Its numbers are JSON
+numbers and its timestamps are in the backend's own spelling.
+
+A timestamp element keeps its instant: the pre-cast applies the native type's own transform
+(a timestamp with time zone is taken to UTC, `provisa/core/ir_types.py:164-172` `[code]`) before
+it is written.
+
 Replicas. A replica of such a column is landed by the same expression in the landing statement:
-the store receives JSON and stores its physical JSON type. The replica's column keeps the same
-`json_schema`; `native_type` is absent there, so reads of the replica use the JSON form.
+the store receives JSON and stores its physical JSON type (`jsonb` on PostgreSQL). The replica's
+column keeps depth and element type, so casts in and out still apply; reads of a replica use the
+JSON form.
 
 ## 4. The portable JSON operations
 
@@ -176,7 +189,7 @@ JSON positions are 0-based, as in JSON path and in PostgreSQL's `->`.
 | Internal operation | Standard spelling | PostgreSQL spelling also accepted | Result type |
 |---|---|---|---|
 | element or field, as JSON | `JSON_QUERY(c, '$[0]')` | `c -> 0`, `c -> 'a'` | json |
-| scalar, typed | `JSON_VALUE(c, '$[0]' RETURNING T)`; `RETURNING` may be omitted and is then the schema's type | `c ->> 0` (text, as PostgreSQL) | T |
+| scalar, typed | `JSON_VALUE(c, '$[0]' RETURNING T)`; for an innermost element of an array of a primitive `RETURNING` may be omitted and is then the element type | `c ->> 0` (text, as PostgreSQL) | T |
 | length | — | `jsonb_array_length(c)` | integer |
 | contains value | `JSON_EXISTS(c, '$[*] ? (@ == $v)' PASSING x AS v)` | `c @> '["x"]'`, `c ? 'x'` | boolean |
 | each element, with position | `JSON_TABLE(c, '$[*]' COLUMNS (ord FOR ORDINALITY, v T PATH '$'))` | `jsonb_array_elements(c) WITH ORDINALITY`, `jsonb_array_elements_text` | rows |
@@ -189,10 +202,12 @@ Every one is rewritten by a rule table Provisa owns, keyed by (operation, backen
 native form), before sqlglot generates SQL. A missing cell is a refusal. A unit test enumerates
 the table so no cell falls through to sqlglot's pass-through.
 
-### 4.2 Native form, when `native_type` is set
+### 4.2 Native form: depth 1 or more, read at the source
 
-When the statement runs where the column is natively an array, struct or map, the operation is
-translated to the native operation and no JSON is built. Positions shift by one where the
+When the statement runs on the source and the column there is natively an array of a primitive,
+element access, length, contains and unnest are translated to the native operation and no JSON
+is built. The "field" column of the table is not used by this design: a struct or map is depth 0
+and always goes through the to-JSON expression. Depth above 1 is section 6. Positions shift by one where the
 backend counts from 1. This is what keeps the source's own indexes usable.
 
 | Backend | element `[i]` | field | length | contains `v` | each with position | index that serves contains |
@@ -276,80 +291,135 @@ Pushdown through a federating engine over an attached source is recorded per (en
 source kind, operation). Every cell starts as "not pushed down" and is changed only by a test
 that reads the engine's plan for that pair; none was verified today.
 
-## 5. Casts in and out, driven by the schema
+## 5. Casts in and out, driven by the attributes
+
+Applies to columns of depth 1 or more. `T` is the element type.
 
 ### 5.1 Out
 
 | Expression | Generated |
 |---|---|
-| `JSON_VALUE(c, '$[0]')` on items `{"type":"string","format":"date-time"}` | JSON form: the backend's typed extraction to `timestamp`. Native form: `c[1]`, already a timestamp |
-| `JSON_TABLE(c, '$[*]' COLUMNS (v PATH '$'))` | each column typed from the schema at its path |
-| a `decimal` element | JSON form: the string cast to `DECIMAL(p,s)` in the engine. Native form: the element itself |
+| `JSON_VALUE(c, '$[0]')` on a depth-1 `timestamp` array | JSON form: the backend's typed extraction to `to_physical(T, dialect)`. Native form: `c[1]`, with the native type's transform |
+| `JSON_TABLE(c, '$[*]' COLUMNS (v PATH '$'))` | `v` typed `T` |
+| a `numeric(p,s)` element | JSON form: the string cast to `DECIMAL(p,s)` in the engine. Native form: the element itself |
 | the whole column | the to-JSON expression of section 3; type `json` |
 
-The result's column types are stated by the plan from the schema. No surface types a column
-from the rows it receives.
+The plan states the result's column types from the attributes. No surface types a column from
+the rows it receives.
 
 ### 5.2 In
 
 | Expression | Generated |
 |---|---|
-| `JSON_VALUE(c, '$.due') > '2026-01-01'` | the literal cast to the element's type: `> TIMESTAMP '2026-01-01'` |
-| contains with a parameter | native form: `c @> ARRAY[$1::text]`; MySQL: `CAST(? AS CHAR) MEMBER OF (c)` |
-| a literal that does not read as the element's type | refused at compile (`query.json_literal_type`), not sent to fail at the source |
-| writes to a native-origin column | the JSON value given is cast to the native type by the source: PostgreSQL `ARRAY(SELECT jsonb_array_elements_text($1))::text[]`, DuckDB `from_json($1, '["VARCHAR"]')`, Trino `CAST(json_parse(?) AS array(varchar))` |
+| `JSON_VALUE(c, '$[0]') > '2026-01-01'` | the literal cast to `T` |
+| contains with a parameter | native form: the parameter cast to the column's native element type; MySQL: `CAST(? AS CHAR) MEMBER OF (c)` |
+| a literal that does not read as `T` | refused at compile (`query.json_literal_type`) |
+| a write to a natively-array column | the JSON given is cast to the native type by the source: PostgreSQL `ARRAY(SELECT jsonb_array_elements_text($1))::<native type>`, DuckDB `from_json`, Trino `CAST(json_parse(?) AS <native type>)` |
 
-### 5.3 What the schema cannot do
+### 5.3 Where the native type, not the element type, decides the cast
 
-- State a type the JSON does not hold. A registrar who declares `format: decimal` over a JSON
-  number on a backend that reads numbers through a double is refused at declaration
-  (`model.json_schema_inexact`).
-- Describe a heterogeneous array beyond `items: {}`; elements are then `json` and extraction
-  needs an explicit `RETURNING`.
+| Case | Why |
+|---|---|
+| timestamp with time zone against timestamp without | both are semantic `timestamp`; the UTC transform is keyed by the native type and applied to the wrong kind it shifts the value |
+| PostgreSQL array operators | both sides must be the same array type: `varchar[] @> text[]` has no operator `[mem]`; the literal side is cast to the native element type |
+| writes | the target of the cast is the native type (`char(10)[]`, DuckDB `INTEGER[3]`) |
 
 ### 5.4 Drift
 
-`native_type` is recorded at registration. Schema reconcile re-introspects; where the source's
-type no longer equals it, the column is marked and every read that references it is refused by
-name (`model.json_schema_drift`: table, column, registered type, current type) until it is
-re-registered. Between reconciles a changed type surfaces as the source's own cast error, since
-every cast is explicit in the SQL. No cast is adjusted to fit.
+Schema reconcile re-introspects. Where the source's type no longer equals the recorded native
+type, the column is marked and every read that references it is refused by name
+(`model.json_column_drift`: table, column, recorded type, current type) until it is registered
+again. Between reconciles a changed type surfaces as the source's own cast error, since every
+cast is explicit in the SQL. No cast is adjusted to fit.
 
-### 5.5 REQ-1877
+### 5.5 How the attributes reach the translation, and REQ-1877
 
-The schema and `native_type` are part of the compiled context a governed plan is anchored to.
-The rewrite runs in the transpile stage, once, and its output is kept with the plan. A schema
-edit bumps the schema version, which already invalidates kept plans.
+Per-column types already travel in the governance context as `(name, type)` pairs
+(`gov_ctx.all_columns`, read at `provisa/compiler/stage2.py:488,517,558` `[code]`); the
+attributes travel beside them. Nothing under `provisa/transpiler` reads column types today, and
+the rewrite needs the routed backend, known only after routing. So stage 2 records on the plan
+the attributes of each JSON column the statement references, and the rule-table rewrite in the
+transpile stage reads that map with the dialect and whether the address read is the source or a
+replica. Derived once, kept with the governed plan. Re-registering a column bumps the schema
+version, which already invalidates kept plans.
 
-## 6. Validation
+## 6. Depth above 1
 
-| Schema | Status |
+### 6.1 Which backends state depth in the type
+
+| Backend | Depth in the type | Recorded depth |
+|---|---|---|
+| DuckDB | `INTEGER[][]` `[probe]` | as stated |
+| Trino | `array(array(T))` `[doc]` | as stated |
+| ClickHouse | `Array(Array(T))` `[doc]` | as stated |
+| Databricks, Hive | `array<array<T>>` `[doc]` | as stated |
+| Snowflake structured | `ARRAY(ARRAY(T))`: the element may be a structured ARRAY `[doc]` | as stated |
+| BigQuery | "Arrays of arrays aren't allowed" `[doc]`; nesting needs a struct between, which is an array of structs | 1 at most; the struct form is depth 0 |
+| CockroachDB | "does not support nested arrays" `[doc]` | 1 |
+| PostgreSQL, Greenplum, YugabyteDB, openGauss | no. The type records no dimensions; `pg_attribute.attndims` is "not enforced, so any nonzero value effectively means it's an array" `[doc]` | always 1 |
+
+### 6.2 PostgreSQL: a multidimensional value in a depth-1 column
+
+| Read | What happens |
 |---|---|
-| Generated from a native type | true by construction: the translation that writes the JSON is generated from it |
-| Declared over a source's own JSON column | descriptive. Enforced where it is used: a value that does not fit fails the engine's cast with the engine's error |
-| Checked on demand | a data-quality check whose SQL is generated from the schema and run by the engine (type tests per path; MySQL has `JSON_SCHEMA_VALID` `[mem]`). Full or sampled is the check's setting. Nothing is validated row by row in Provisa |
+| whole value | `to_jsonb` writes "arrays of arrays" `[doc]`: correct JSON, deeper than the recorded depth says |
+| JSON form (replica, or any expression kept as to-JSON) | follows the JSON: `$[0]` is an inner array, so `JSON_VALUE` of it is not a scalar and gives NULL; each yields inner arrays |
+| native form | PostgreSQL's own rules: a 2-D array subscripted once gives NULL; `unnest` yields every innermost element; `@>` looks at innermost elements `[mem]` |
+
+The two forms agree on element access (NULL) and can disagree on unnest. The design does not
+paper over it: PostgreSQL does not say which columns hold such values. Stated in the
+documentation for PostgreSQL sources, with a data-quality check the registrar can run
+(`array_ndims(c) = 1`). Raised with the lead as the one point where the recorded depth can be
+wrong.
+
+### 6.3 How operations address a level
+
+The JSON path states the level. `d` is the recorded depth.
+
+| Operation | Addressing | Typed |
+|---|---|---|
+| element | `$[i]` is a level-1 element; `$[i][j]` level 2 | cast to `T` when the path has `d` array steps; with fewer steps the result is JSON (`JSON_QUERY`). `JSON_VALUE` with fewer than `d` steps is refused at compile (`query.json_path_not_scalar`: column, depth) |
+| length | `jsonb_array_length(c)` is the outer length; of an inner array: `jsonb_array_length(c -> i)` | integer |
+| contains | `JSON_EXISTS(c, '$[*] ? (@ == $v)')` at depth 1; `'$[*][*] ? (@ == $v)'` asks whether any inner array holds `v` | `$v` cast to `T` when the path has `d` wildcard steps |
+| unnest | `JSON_TABLE(c, '$[*]' ...)` gives one row per level-1 element (an inner array at `d` > 1); `NESTED PATH '$[*]'` or `'$[*][*]'` goes down a level, each level with its own `FOR ORDINALITY` | innermost column typed `T` |
+| construct, aggregate | JSON form on every backend; nested by nesting the calls | json |
+
+### 6.4 Native form at depth above 1
+
+| Backend | element `[i][j]` | contains at the innermost level | unnest |
+|---|---|---|---|
+| DuckDB | `c[i+1][j+1]` | `list_contains(flatten(c), v)` `[mem]` | `unnest(c)` one level per call |
+| Trino | `element_at(element_at(c, i+1), j+1)` | `contains(flatten(c), v)`; `flatten` takes `array(array(T))` `[doc]` | `UNNEST` once per level, each `WITH ORDINALITY` |
+| ClickHouse | `c[i+1][j+1]`, guarded by lengths | `has(arrayFlatten(c), v)` `[mem]` | `ARRAY JOIN` per level |
+| Databricks | `try_element_at(try_element_at(c, i+1), j+1)` | `array_contains(flatten(c), v)` `[mem]` | `posexplode` per level |
+| Snowflake structured | `GET(GET(c, i), j)` | `ARRAY_CONTAINS(v, ARRAY_FLATTEN(c))` `[mem]` | `FLATTEN` per level |
+| PostgreSQL family, CockroachDB, BigQuery | none: recorded depth never exceeds 1 | | |
+
+Each rule is the depth-1 rule applied once per level, so the rule table has no separate rows per
+depth: an entry carries `max_native_depth` (1 for the PostgreSQL family, CockroachDB and
+BigQuery; unbounded elsewhere), and above it the operation uses the to-JSON expression. No index
+serves a contains at depth above 1 on any backend listed; the plan note says so.
 
 ## 7. Wires and surfaces
 
-| Surface | A JSON column arrives as | Schema used for |
-|---|---|---|
-| pgwire | `jsonb` (OID 3802), JSON text | the catalog lists `jsonb`; schema shown as the column comment |
-| Flight / Arrow, JDBC, DuckDB extension | utf8 holding JSON text; field metadata carries the schema | catalog type `json`, the same as a read returns (REQ-1961 rule) |
-| Extracted scalars and `JSON_TABLE` columns, all SQL wires | their own typed columns | typed by the schema |
-| GraphQL | the opaque `JSON` scalar, as today (`provisa/compiler/type_map.py:191-192`). `object_fields` sub-fields as today | not used |
-| GraphQL, REST, JSON:API response | the value reaches the client as JSON. Where the column has no `object_fields` sub-selection to resolve, the engine's JSON text is passed into the response unparsed (`orjson.Fragment`; `orjson` is a dependency, `pyproject.toml:21`); otherwise parsed as today. The parsing of text columns that merely look like JSON (`serialize.py:67-72`) is a defect fixed on its own (section 14) | not used |
-| gRPC | `string` field holding JSON | field comment |
-| MCP | JSON value | not used |
-| Cypher / Bolt | see D7 | list functions map to the section 4 operations |
-| Row rules | any section 4 operation; native form on native columns, so an index can serve the rule | literal typing |
-| Masks | whole value: constant NULL. Regex, truncate and fake kinds do not apply to a JSON column | not used |
-| Column grants | column `visible_to`; sub-field `visible_to` of `object_fields` as today | not used |
-| Results grid (REQ-1937) | a cell renders the JSON; is-empty and is-not-empty filters. Typed columns produced by `JSON_VALUE` / `JSON_TABLE` filter as any typed column | not used |
-| Search index | type `json` and the schema's field names | |
-| Data-quality | the conformance check of section 6; length and element checks | |
-| Profiler | length distribution, distinct elements, through `JSON_TABLE` | |
-| Fakes and synthetic data | generated in the engine as JSON from the schema | |
-| Metadata export | type `json` with the schema attached | |
+| Surface | A JSON column arrives as |
+|---|---|
+| pgwire | `jsonb` (OID 3802), JSON text; the catalog lists `jsonb` |
+| Flight / Arrow, JDBC, DuckDB extension | utf8 holding JSON text; catalog type `json`, the same as a read returns (REQ-1961 rule) |
+| Extracted scalars and `JSON_TABLE` columns, all SQL wires | their own typed columns |
+| GraphQL | the opaque `JSON` scalar, as today (`provisa/compiler/type_map.py:191-192`); `object_fields` sub-fields as today |
+| GraphQL, REST, JSON:API response | JSON. Where the column has no `object_fields` sub-selection to resolve, the engine's JSON text is passed into the response unparsed (`orjson.Fragment`; `orjson` is a dependency, `pyproject.toml:21`); otherwise parsed as today |
+| gRPC | `string` field holding JSON |
+| MCP | JSON value |
+| Cypher / Bolt | a JSON string; list functions in the query map to the section 4 operations |
+| Row rules | any section 4 operation; native form at the source, so an index can serve the rule |
+| Masks | whole value: constant NULL. Regex, truncate and fake kinds do not apply to a JSON column |
+| Column grants | column `visible_to`; sub-field `visible_to` of `object_fields` as today |
+| Results grid (REQ-1937) | a cell renders the JSON; is-empty and is-not-empty filters. Typed columns from `JSON_VALUE` / `JSON_TABLE` filter as any typed column |
+| Search index, metadata export | type `json` |
+| Data-quality, profiler | checks and measures written with the section 4 operations |
+
+The hidden attributes appear on no surface.
 
 ## 8. Per-route table: who touches a value
 
@@ -389,7 +459,8 @@ Each is stated once. The right-hand column is the recommended practice.
 | An element filter may not use an index | `contains`, `JSON_EXISTS` and filters on unnested rows run as a scan on backends with no index for them (section 4.4, column "index"). They return the right answer | for a list that is filtered or joined often, register a child table (one row per element, with the position) and join it; or keep a replica on an engine that indexes JSON (PostgreSQL `jsonb` with GIN, MySQL multi-valued index) |
 | A filter may not be pushed down | when a federating engine reads a live source, a JSON or array predicate may be evaluated in the engine after it pulls the column | query the source directly where routing allows; or replicate the table |
 | Unnesting a large JSON column is work | `JSON_TABLE` over every row parses every value in the backend | filter first, unnest after; or the child table |
-| Exactness inside JSON | text, integers, booleans, dates, timestamps, uuids and decimals with a declared precision are exact: the last four travel as strings. A JSON number is floating point | declare precision on numeric columns (REQ-1961); in a source's own JSON, store money as strings |
+| Exactness inside JSON | in an array of a primitive, elements are exact: decimals with a declared precision, dates, timestamps and uuids travel as strings and are cast back. Inside a struct, a map or a source's own JSON a number is a JSON number, floating point on several backends | declare precision on numeric columns (REQ-1961); inside structs and in a source's own JSON, keep money as strings and write the cast |
+| Nothing is typed inside a struct or map | the whole value and the untyped operations work; a typed value from inside needs `RETURNING` or a cast the user writes | `JSON_VALUE(c, '$.amount' RETURNING numeric(18,2))` |
 | Whole values do not compare | two JSON arrays cannot be ordered, and compare for equality only where the backend compares JSON | compare extracted parts |
 | Some operations are missing on some backends | the statement is refused at compile, naming the operation, the backend and the column (section 4.3) | run it through an engine that has the operation, or replicate the table |
 | The source serialises | a native array read whole is converted to JSON text by the source | M1 gives the cost; select parts where the whole value is not needed |
@@ -440,8 +511,9 @@ alternative. It is advice. It never blocks or changes the statement.
   beside the Provisa nodes it already draws above the engine's plan. The engine's own EXPLAIN
   remains the statement of what happened (a `Seq Scan` or an index scan); the note states what
   the backend is able to do. Provisa does not look at the source's indexes.
-- Notes appear in the plan. Whether they also ride the warning channel of every execution is
-  decision D6.
+- Notes appear with the plan only. They do not ride the warning channel of an execution.
+- A note is given where the backend cannot serve the operation from an index, or where pushdown
+  is not known. Every pushdown cell starts as not known.
 
 ## 11. Governance of the change
 
@@ -449,68 +521,80 @@ V1: no migrations, no shims.
 
 | Question | Answer |
 |---|---|
-| A column registered as `text` today that is natively an array | at the next re-registration or reconcile it becomes `json` with a generated schema and `native_type`. Its replica is rebuilt |
+| A column registered as `text` today that is natively an array, struct or map | at the next registration or reconcile it becomes `json` with its attributes. Its replica is rebuilt |
 | Things declared against the text reading (regex mask, `LIKE` in a row rule or view) | fail model validation then, each named |
-| `object_fields` | unchanged |
-| Requirement text to amend | REQ-980 (composites "remain collapsed to text"), REQ-846, REQ-1961 (catalog type = read type, extended to the schema where a surface carries it). REQ-1965 is the requirement this design answers; its sentence "GraphQL serves it typed from the schema" no longer matches the ruling |
+| `object_fields`, `_json_schema_to_gql_type` | unchanged |
+| Requirement text | REQ-1965 is the requirement. REQ-980 ("remain collapsed to text") and REQ-846 need a line pointing at it |
 
 Guards and tests the build will trip (found by content search, to read before starting):
 `tests/unit/test_ir_types.py`, `test_discovery_through_driver.py`, `test_ops_domain.py` (array →
 text); `tests/unit/pgwire/test_server.py`, `test_extended_protocol_portals.py`, `test_catalog.py`
-(list wire types, first-row inference); `tests/unit/test_function_gen.py`,
-`test_schema_service.py` (the JSON Schema converter); `test_no_per_request_sql_derivation.py`
-(REQ-1877); the engine-kinds equality test (the rule table needs the same held-equal test per
-engine kind); import layering (schema handling in `provisa/core`, rule table in the engine and
+(list wire types, first-row inference); `test_no_per_request_sql_derivation.py` (REQ-1877); the
+engine-kinds equality test (the rule table needs the same held-equal test per engine kind);
+import layering (attribute and type parsing in `provisa/core`, rule table in the engine and
 transpiler layers); the length ratchet on `transpile.py` and `pgwire/server.py`.
 
-## 12. Build order
+## 12. Build order and the rule-table shape
 
 L = unit tests run locally (DuckDB in-process, SQLite files). C = container or credential lanes
 in CI.
 
 | # | Piece | Value alone | Tests |
 |---|---|---|---|
-| 1 | `json_schema` and `native_type` on the column: model, loader, admin API, column editor (read-only when generated, editable when declared); schema in catalogs where the surface carries one | the model can hold the schema; the mail sources' list columns get theirs | L |
-| 2 | Registration: native array/struct/map → `json` + generated schema + `native_type`; `to_ir` parses every native spelling; whole-value read through the to-JSON expression with exact spellings. DuckDB, PostgreSQL, Trino | registration stops raising or storing `text`; JSON on every wire | L for DuckDB; C |
-| 3 | The rule table with its index and pushdown facts, JSON form, for PostgreSQL, DuckDB, Trino; typed `JSON_VALUE` and `JSON_TABLE` from the schema; literal casts; the route rule at `router.py:273` replaced by the table; plan notes in `analyze_sql`, the SQL editor and the MCP tool | JSON operations in semantic SQL, DIRECT where the source can; the plan says what will scan | L snapshot and DuckDB execution; C |
-| 4 | Native form for PostgreSQL, DuckDB, Trino; M1 and M2 | source indexes serve JSON-spelled predicates | L; C; perf-bench |
-| 5 | JSON form for MySQL, MariaDB, SQL Server, SQLite source; physical type fixes (PostgreSQL `jsonb`, Fabric, Oracle) | sources without arrays, DIRECT | L for SQLite; C |
-| 6 | Landing by SQL expression instead of the per-row parse; JSON passed through to GraphQL/REST where no sub-field handling needs it parsed; the text-column parsing defect at `serialize.py:67-72` | no value touched where avoidable | L |
-| 7 | Surfaces: grid rendering and empty filters for JSON cells, gRPC, MCP, Bolt | JSON columns on every client | L; Playwright in CI |
-| 8 | Conformance check for declared schemas; drift refusal | checked JSON | L |
+| 1 | Registration. A parser turns every native spelling into a structured native type (kind: scalar / array / struct / map; element; fields; precision, scale). One function derives from it: `data_type` (`json` for any nested kind), depth, element type, native type. The three attributes on `Column`, in storage, loader and admin API; the suggested type in the registration picker goes through the same function. PostgreSQL family via `pg_catalog` (`format_type`, `typcategory`, `typelem`) | registering a native array, struct or map never raises and never stores `text` | L |
+| 2 | The datasource cast: to-JSON expression per backend, with the element pre-cast for depth ≥ 1 (decimal strings, timestamps, hex binary; NaN and infinity raise by name). Whole-value read on every wire; landing a replica by the same expression; `jsonb` on PostgreSQL. DuckDB, PostgreSQL, Trino first | JSON on every wire from native nested columns | L for DuckDB; C |
+| 3 | The rule table, JSON form, for PostgreSQL, DuckDB, Trino; casts in and out from the attributes; path-depth checks; the route rule at `router.py:273` replaced by the table; plan notes in `analyze_sql`, the SQL editor and the MCP tool | JSON operations in semantic SQL, DIRECT where the source can; the plan says what will scan | L snapshot and DuckDB execution; C |
+| 4 | Native form at depth 1 for PostgreSQL, DuckDB, Trino; then depth above 1 where the backend states it; M1 and M2 | source indexes serve JSON-spelled predicates | L; C; perf-bench |
+| 5 | JSON form for MySQL, MariaDB, SQL Server, SQLite source; physical type fixes (Fabric, Oracle) | sources without arrays, DIRECT | L for SQLite; C |
+| 6 | Landing by SQL expression instead of the per-row parse; JSON passed through to GraphQL/REST where no sub-field handling needs it parsed; the text-column parsing defect at `serialize.py:67-72` | no value converted where avoidable | L |
+| 7 | Surfaces: grid rendering and empty filters for JSON cells, gRPC, MCP, Bolt as a JSON string | JSON columns on every client | L; Playwright in CI |
+| 8 | Drift refusal at reconcile | a changed source type cannot give a wrong cast | L |
 | 9 | Remaining backends: ClickHouse, Snowflake, BigQuery, Databricks, Oracle, Exasol, each unverified kind, each pushdown cell | breadth | C |
+
+Rule-table shape. One table, total over its key; a missing entry is a refusal, and a unit test
+enumerates it.
+
+| Part | Content |
+|---|---|
+| Key | (operation, backend, form). operation ∈ element, scalar, length, contains, each, exists, construct_array, construct_object, aggregate_array, keys, to_json, from_json. backend = the dialect or engine kind the statement is routed to. form ∈ json, native |
+| Entry: `emit` | a function from the operands (sqlglot expressions), the column's attributes and the path to a sqlglot expression. Not a string template |
+| Entry: `refused` | set instead of `emit` where the backend cannot do it; carries the reason text for `query.json_operation_unsupported` |
+| Entry: `index` | the index kind that can serve this entry on this backend, or none |
+| Entry: `pushdown` | per attached-source kind: known pushed, or not known. Starts not known |
+| Entry: `max_native_depth` | native form only: 1 or unbounded |
+| Entry: `verified` | whether a test against the real backend pins this entry. An unverified entry of an unverified backend is a refusal |
+| Per backend | `to_json(native type)`, the element pre-cast per element type, index base, the physical JSON type |
+| Selection | form = native when depth ≥ 1, the address read is the source, the source kind has arrays, and the path depth is within `max_native_depth`; otherwise json. Every column reference starts as its to-JSON expression; a recognised operation over it is replaced by the native entry; anything else keeps to-JSON |
+| Outputs per statement | the rewritten expression tree; the result column types; the plan notes |
 
 Documentation, written with the piece that makes it true (doc-writer agent):
 
 | Page | Sections | With piece |
 |---|---|---|
-| `docs/modeling.md` | "JSON columns": what a native array, struct or map registers as; the schema, generated and declared; editing it; drift | 1, 2 |
-| `docs/sources.md` | per source kind: native types that become JSON, the spelling of exact values, what is not available | 2, 5, 9 |
-| new `docs/json.md` | the operations with one example each; typed extraction; unnesting; the tradeoff table of section 9 with its practices; "when to use a child table"; the per-backend table of what uses an index, what is pushed down and what is refused, generated from the rule table; M1 and M2 figures | 3, 4 |
+| `docs/modeling.md` | "JSON columns": what a native array, struct or map registers as; what is typed (arrays of a primitive) and what is not; drift | 1, 2 |
+| `docs/sources.md` | per source kind: native types that become JSON, the spelling of exact values, PostgreSQL multidimensional values, what is not available | 2, 5, 9 |
+| new `docs/json.md` | the operations with one example each; typed extraction; unnesting, by level; the tradeoff table of section 9 with its practices; "when to use a child table"; the per-backend table of what can use an index, what is pushed down and what is refused, generated from the rule table; M1 and M2 figures | 3, 4 |
 | `docs/engines.md` | per engine: JSON physical type, index kinds, pushdown to attached sources | 3, 5, 9 |
-| `docs/pgwire.md`, `docs/api-reference.md` | a JSON column on each wire; what BI and JDBC clients receive and how to select typed parts | 2, 7 |
+| `docs/pgwire.md`, `docs/api-reference.md`, `docs/cypher.md` | a JSON column on each wire; what BI and JDBC clients receive and how to select typed parts | 2, 7 |
 | SQL editor help, `docs/admin.md` | reading the plan notes | 3 |
-| `docs/security.md` | what masks and grants apply to a JSON column | 8 |
-| `docs/glossary.md` | JSON column, schema, native type, child table | 1 |
+| `docs/glossary.md` | JSON column, array of a primitive, child table | 1 |
 
-Common to this design and version 1: the per-dialect JSON function table, the native spelling
-parser, the exact spellings, M2.
+## 13. Settled choices, and what remains open
 
-## 13. Decisions for the maintainer
+Settled (maintainer, 2026-10-09, in REQ-1965): JSON columns only; three hidden attributes with
+depth as an integer; structs, maps, arrays of structs and mixed arrays plain JSON with nothing
+typed inside; attributes from a native type only; decimals with a declared precision as strings;
+SQL/JSON standard functions with PostgreSQL operators as the same operations; drift refused by
+name; plan notes with the plan only; Bolt a JSON string; GraphQL the opaque JSON scalar;
+PostgreSQL lands `jsonb`; NaN and infinity raise by name.
 
-Only what needs a choice. The accepted tradeoffs of section 9 are not listed. Recommendation
-first.
+Open, each small:
 
-| # | Decision | Choices |
+| # | Point | Proposed |
 |---|---|---|
-| D1 | Spelling in semantic SQL | **SQL/JSON standard functions, with PostgreSQL's operators accepted as the same operations**; PostgreSQL operators only; standard only |
-| D2 | Decimals with a declared precision inside JSON | **strings, `format: decimal`** (exact on every backend); JSON numbers (inexact through DuckDB and SQLite `[probe]`) |
-| D3 | A declared schema | **descriptive, with an engine-run conformance check and the engine's cast error at use**; also a CHECK constraint on replicas where the store has one |
-| D4 | PostgreSQL physical type for `json` | **`jsonb`** (GIN, containment); `JSON` as today |
-| D5 | Drift | **refuse reads of the column by name until re-registered**; regenerate the schema automatically at reconcile |
-| D6 | Plan notes | **in the plan only**; also on the warning channel of every execution |
-| D7 | Cypher / Bolt | **the JSON text as a string, as on the other wires**; parse to lists at that surface, the one place Provisa would touch a value |
-| D8 | NaN and infinities in float elements | **the translation raises by name (`json.non_finite_number`)**; write them as strings |
+| 1 | PostgreSQL multidimensional values in a depth-1 column (section 6.2) | document it, offer the `array_ndims` check; no guard in the read |
+| 2 | `JSON_VALUE` with fewer array steps than the depth | compile error `query.json_path_not_scalar` rather than a NULL at run time |
+| 3 | Backends whose to-JSON or JSON functions are unverified | registered, read refused by name, until a test pins the entry |
 
 ## 14. Defects that stand on their own
 
@@ -535,12 +619,12 @@ Independent of this design. None filed.
 Their canonical schema is not in code yet (`feat/gmail-source` holds settings and OAuth grants
 only); this follows the lead's description: list columns as JSON text, child tables for joins.
 
-Under this design nothing moves. The list columns are already JSON columns. Piece 1 gives each
-its schema (`{"type":"array","items":{"type":"string"}}`), which the SQL translation uses to
-type extracted elements. The child tables stay as the indexed join path, which is the practice section 9
-recommends. To hold now: the JSON is an array of scalar strings (an address list of objects gets
-an object `items` schema); an empty list is `[]` and an absent field is SQL NULL; the child
-table carries the element position.
+The list columns are JSON at their source (an API payload), so they carry none of the three
+attributes: they are plain JSON columns, readable whole and with the untyped operations, and an
+element is text unless the user casts it. For string lists that is already the right type. The
+child tables stay as the indexed join path, the practice section 9 recommends. To hold: the JSON
+is an array of scalar strings where it can be; an empty list is `[]` and an absent field is SQL
+NULL; the child table carries the element position.
 
 ## 16. Probes and sources
 
@@ -561,6 +645,11 @@ Vendor pages fetched:
 - PostgreSQL JSON functions: https://www.postgresql.org/docs/current/functions-json.html
 - PostgreSQL JSON types: https://www.postgresql.org/docs/current/datatype-json.html
 - PostgreSQL arrays: https://www.postgresql.org/docs/current/arrays.html
+- PostgreSQL pg_attribute: https://www.postgresql.org/docs/current/catalog-pg-attribute.html
+- ClickHouse Variant: https://clickhouse.com/docs/sql-reference/data-types/variant
+- DuckDB UNION: https://duckdb.org/docs/current/sql/data_types/union.html
+- Trino types: https://trino.io/docs/current/language/types.html
+- Snowflake structured types: https://docs.snowflake.com/en/sql-reference/data-types-structured
 - PostgreSQL GIN: https://www.postgresql.org/docs/current/gin.html
 - DuckDB JSON functions: https://duckdb.org/docs/current/data/json/json_functions.html
 - DuckDB LIST: https://duckdb.org/docs/current/sql/data_types/list.html
