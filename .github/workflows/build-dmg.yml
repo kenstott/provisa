@@ -572,7 +572,27 @@ jobs:
   publish-provisa-pypi:
     name: Publish provisa server to PyPI
     runs-on: ubuntu-latest
-    needs: build-provisa-wheel
+    # Nothing that cannot be taken back happens until every artifact exists: this publication
+    # needs EVERY build of the release -- the installers, the JDBC jar, both wheels (each with
+    # its CVE scan) and the image and plugin archives -- not only the one it uploads. A failed
+    # installer therefore blocks PyPI too; what is left is the moment between PyPI and the
+    # undraft, which a re-run of publish-release closes.
+    needs:
+      - build-macos-core
+      - build-macos-container
+      - build-macos-obs
+      - build-macos-demo
+      - build-linux
+      - build-windows-core
+      - build-windows-container
+      - build-jdbc
+      - build-python-client
+      - build-provisa-wheel
+      - package-obs-images
+      - package-demo-images
+      - package-core-images
+      - package-core-images-amd64
+      - package-plugins
     # id-token: write is what lets gh-action-pypi-publish request a Sigstore-signed PEP 740
     # attestation for each uploaded file — PyPI removed GPG signature uploads in 2023, so this
     # (not a detached .asc) is the only signing PyPI currently accepts.
@@ -670,7 +690,27 @@ jobs:
   publish-pypi:
     name: Publish Python client to PyPI
     runs-on: ubuntu-latest
-    needs: build-python-client
+    # Nothing that cannot be taken back happens until every artifact exists: this publication
+    # needs EVERY build of the release -- the installers, the JDBC jar, both wheels (each with
+    # its CVE scan) and the image and plugin archives -- not only the one it uploads. A failed
+    # installer therefore blocks PyPI too; what is left is the moment between PyPI and the
+    # undraft, which a re-run of publish-release closes.
+    needs:
+      - build-macos-core
+      - build-macos-container
+      - build-macos-obs
+      - build-macos-demo
+      - build-linux
+      - build-windows-core
+      - build-windows-container
+      - build-jdbc
+      - build-python-client
+      - build-provisa-wheel
+      - package-obs-images
+      - package-demo-images
+      - package-core-images
+      - package-core-images-amd64
+      - package-plugins
     permissions:
       id-token: write
     steps:
@@ -1509,10 +1549,26 @@ jobs:
   publish-zaychik-image:
     name: Publish Arrow Flight SQL proxy image
     runs-on: ubuntu-latest
-    # Only metadata is needed: the image is the upstream proxy at a pinned commit
-    # plus a local patch, and it carries nothing out of the release.
+    # The image is the upstream proxy at a pinned commit plus a local patch and carries nothing
+    # out of the release, but pushing it publishes this version's tag: like the PyPI
+    # publications, it waits for every build of the release.
     needs:
       - metadata
+      - build-macos-core
+      - build-macos-container
+      - build-macos-obs
+      - build-macos-demo
+      - build-linux
+      - build-windows-core
+      - build-windows-container
+      - build-jdbc
+      - build-python-client
+      - build-provisa-wheel
+      - package-obs-images
+      - package-demo-images
+      - package-core-images
+      - package-core-images-amd64
+      - package-plugins
     permissions:
       contents: read
       packages: write

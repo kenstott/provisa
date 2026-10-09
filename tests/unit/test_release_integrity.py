@@ -171,3 +171,45 @@ def test_a_cve_scan_gives_the_advisory_lookup_time_to_answer():
     for name, command in scans:
         assert "pip-audit --timeout 60 " in command, f"{name}: {command}"
         assert "||" not in command and "until " not in command and "retry" not in command, name
+
+
+def test_no_publication_is_reachable_without_every_build():
+    """Nothing that cannot be taken back happens until every artifact exists. A job that uploads
+    to PyPI, pushes an image or attaches to and undrafts the release needs -- directly or through
+    the jobs it needs -- EVERY job that builds or packages an artifact of the release. On
+    v0.1.0-alpha.478 the release was undrafted and the client was on PyPI while the server
+    wheel's job had failed (run 37959190134)."""
+    import re
+
+    jobs = yaml.safe_load((_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text())["jobs"]
+
+    def needs(job: str) -> set[str]:
+        direct = jobs[job].get("needs") or []
+        direct = [direct] if isinstance(direct, str) else direct
+        return set(direct).union(*(needs(d) for d in direct)) if direct else set()
+
+    builds = {job for job in jobs if job.startswith(("build-", "package-"))}
+    assert len(builds) >= 15, sorted(builds)
+    publishes = re.compile(
+        r"pypi-publish|softprops/action-gh-release|gh release edit|docker push|twine upload"
+    )
+    publishing = set()
+    for job, body in jobs.items():
+        for step in body.get("steps") or []:
+            text = f"{step.get('uses') or ''}\n{step.get('run') or ''}"
+            if publishes.search(text) or (step.get("with") or {}).get("push") is True:
+                publishing.add(job)
+    assert publishing == {
+        "publish-pypi",
+        "publish-provisa-pypi",
+        "publish-release",
+        "publish-engine-image",
+        "publish-zaychik-image",
+    }
+    for job in sorted(publishing):
+        missing = builds - needs(job)
+        assert not missing, f"{job} can run without {sorted(missing)}"
+    # The release is undrafted only after both PyPI publications; the engine image, whose build
+    # downloads the release's public assets, only after the release.
+    assert {"publish-pypi", "publish-provisa-pypi"} <= needs("publish-release")
+    assert "publish-release" in needs("publish-engine-image")
