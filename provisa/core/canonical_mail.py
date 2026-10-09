@@ -34,22 +34,6 @@ PROVIDERS = (GOOGLE, MICROSOFT)
 #: The IR types a canonical column may have (``provisa/core/ir_arrow.py``).
 IR_TYPES = frozenset({"text", "bigint", "boolean", "date", "timestamp", "json"})
 
-#: What a ``json`` column holds, by the shape its column states: a JSON Schema. A json column
-#: that states no shape holds what its provider gives, and has none.
-JSON_SHAPES: Mapping[str, Mapping] = MappingProxyType(
-    {
-        "text list": {"type": "array", "items": {"type": "string"}},
-        "list of {name, value}": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {"name": {"type": "string"}, "value": {"type": "string"}},
-                "required": ["name", "value"],
-            },
-        },
-    }
-)
-
 
 @dataclass(frozen=True)
 class Column:
@@ -59,11 +43,7 @@ class Column:
     google: str  # where Google's value comes from, for the reader
     microsoft: str  # where Microsoft's value comes from
     enum: str | None = None  # the enumeration its values belong to (ENUMS)
-    shape: str | None = None  # what a json column holds (JSON_SHAPES)
-
-    @property
-    def json_schema(self) -> Mapping | None:
-        return None if self.shape is None else JSON_SHAPES[self.shape]
+    shape: str | None = None  # what a json column holds, in words, for the reader
 
     def populated_by(self, provider: str) -> bool:
         return provider[0].upper() in self.populated
@@ -350,7 +330,7 @@ _TABLES = (
     ),
     Table(
         "events",
-        "Rows: single events, series masters and exceptions. Not every expanded occurrence. Google lists these with `singleEvents=false`. Microsoft's `/events` answers single events and series masters only; exceptions come from one further call per series master. `recurrence` has one encoding. The Microsoft source renders Graph's structured pattern as RFC 5545 lines; that renderer is part of the calendar build, and the column does not ship before it. A cancelled event is a row, for both providers: `is_cancelled` true and `status` `cancelled`.",
+        "Rows: single events, series masters and exceptions. Not every expanded occurrence. Google lists these with `singleEvents=false`. Microsoft's `/events` answers single events and series masters only; exceptions come from one further call per series master. `recurrence` has one encoding. The Microsoft source renders Graph's structured pattern as RFC 5545 lines; that renderer is part of the calendar build, and the column does not ship before it. A cancelled event is a row: `is_cancelled` true and `status` `cancelled`. Microsoft marks a cancelled meeting that is still on the calendar. Google's `cancelled` means deleted for every event but a cancelled occurrence of a live series, so for Google only those are rows. An event deleted outright is not a row for either.",
         (
             Column("provider", "text", "GM", "", "", enum="provider"),
             Column("account", "text", "GM", "", ""),

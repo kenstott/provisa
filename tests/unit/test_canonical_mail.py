@@ -88,21 +88,8 @@ def test_every_column_says_who_populates_it_and_only_json_states_a_shape():
             assert column.populated_by(cm.MICROSOFT) == ("M" in column.populated), where
             if column.shape is not None:
                 assert column.type == "json", where
-                assert column.json_schema["type"] == "array", where
             if column.enum is not None:
                 assert column.type == "text" and column.enum in cm.ENUMS, where
-
-
-def test_an_address_list_states_its_json_schema():
-    assert cm.TABLES["messages"].column("to_addresses").json_schema == {
-        "type": "array",
-        "items": {"type": "string"},
-    }
-    assert cm.TABLES["messages"].column("headers").json_schema["items"]["required"] == [
-        "name",
-        "value",
-    ]
-    assert cm.TABLES["events"].column("reminders").json_schema is None  # states no shape
 
 
 def test_an_enumeration_column_is_populated_by_the_providers_that_have_a_table_for_it():

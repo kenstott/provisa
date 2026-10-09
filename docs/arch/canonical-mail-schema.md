@@ -31,8 +31,8 @@ same column names, types, order and meaning, so `UNION ALL` of the two needs no 
    type; an array or list in a store's own vocabulary is collapsed to `text`
    (`ir_types.py:116`, `:151`). Where rows are needed for a join, a child table carries the
    same fact as rows (`message_folders`, `message_recipients`, `event_attendees`).
-   A `json` column that states its shape, as `json (text list)` does, has a JSON Schema for it
-   in the module (`JSON_SHAPES`); one that states none holds what its provider gives.
+   The shape in brackets after `json`, as in `json (text list)`, is a note for the reader;
+   nothing reads it (REQ-1965: no JSON Schema is carried).
 9. An enumeration column holds a canonical value. Each provider declares a table from its
    values to the canonical ones; a provider value the table does not list fails the build of
    that table by name. A row in a table below that maps to NULL is a declared mapping. The
@@ -202,7 +202,7 @@ Metadata only. Content is not in the first build.
 
 ## events
 
-Rows: single events, series masters and exceptions. Not every expanded occurrence. Google lists these with `singleEvents=false`. Microsoft's `/events` answers single events and series masters only; exceptions come from one further call per series master. `recurrence` has one encoding. The Microsoft source renders Graph's structured pattern as RFC 5545 lines; that renderer is part of the calendar build, and the column does not ship before it. A cancelled event is a row, for both providers: `is_cancelled` true and `status` `cancelled`.
+Rows: single events, series masters and exceptions. Not every expanded occurrence. Google lists these with `singleEvents=false`. Microsoft's `/events` answers single events and series masters only; exceptions come from one further call per series master. `recurrence` has one encoding. The Microsoft source renders Graph's structured pattern as RFC 5545 lines; that renderer is part of the calendar build, and the column does not ship before it. A cancelled event is a row: `is_cancelled` true and `status` `cancelled`. Microsoft marks a cancelled meeting that is still on the calendar. Google's `cancelled` means deleted for every event but a cancelled occurrence of a live series, so for Google only those are rows. An event deleted outright is not a row for either.
 
 | # | column | type | P | Google | Microsoft |
 |---|---|---|---|---|---|
@@ -377,9 +377,8 @@ loader works out as stated. Microsoft values are those of the Graph v1.0 descrip
 1. Microsoft `folders.role` needs one call per well-known folder name, since the v1.0 folder
    carries no such property.
 2. Microsoft exceptions in `events` cost one call per series master.
-3. Cancelled events are rows (maintainer's ruling). Google returns them only when asked to show
-   deleted ones; Microsoft returns those the calendar still holds. An event deleted outright is
-   not a row for either.
+3. Cancelled events are rows (maintainer's ruling), as far as each vendor can tell one from a
+   deleted event: see the note on `events`. Google is read without its show-deleted option.
 4. Under Google's metadata-only scope `body_text` and `body_html` are NULL for every message.
    Google describes that format as returning "only email message ID, labels, and email
    headers", so whether `snippet`, `size_bytes` and `change_key` are returned under it is not
