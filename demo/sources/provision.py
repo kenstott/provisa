@@ -95,7 +95,15 @@ def up(
             _join_network(prefix, name, network, env)
         prime = d / "prime.py"
         if prime.is_file():
-            subprocess.run([sys.executable, str(prime)], check=True, env=env)
+            # The primer is told the prefix this source was started under: one that finds its
+            # container by compose project (exasol, firebird) otherwise looks under the default
+            # prefix and finds none ("no running exasol container for compose project
+            # 'provisa-demo-exasol'" when started as provisa-s2q-exasol).
+            subprocess.run(
+                [sys.executable, str(prime)],
+                check=True,
+                env={**env, "PROVISA_DEMO_PREFIX": prefix},
+            )
 
 
 def down(names: list[str], prefix: str, env: dict[str, str]) -> None:

@@ -37,9 +37,13 @@ def main() -> int:
         try:
             conn = pyodbc.connect(conn_str, autocommit=True)
             break
-        except pyodbc.Error:
+        except pyodbc.Error as refused:
             if time.monotonic() > deadline:
-                print(f"sqlserver at localhost:{PORT} did not become ready", file=sys.stderr)
+                # The driver's own words: "not ready" alone hid a missing ODBC driver.
+                print(
+                    f"sqlserver at localhost:{PORT} did not become ready: {refused}",
+                    file=sys.stderr,
+                )
                 return 1
             time.sleep(3)
     try:
