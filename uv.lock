@@ -282,14 +282,14 @@ wheels = [
 
 [[package]]
 name = "askamerica"
-version = "0.21.4"
+version = "0.109.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b1/41/67113cb7b40c59e76ea54c5432e781af27cb92ed284b0de08024298c6003/askamerica-0.21.4.tar.gz", hash = "sha256:2cfdfab2f6bfe1cb13ee3e7ae36173d884bf72b9f5f265bc218349aa850be919", size = 13372, upload-time = "2026-06-01T19:12:28.765Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ba/e2/bea6de1f4830edfe59f89cdac47010fe29762c35eb42dac340f5f9c50115/askamerica-0.109.0.tar.gz", hash = "sha256:9f9d5b77370158e0d5d5f40d554b675504af2105c9d31761c1aeb3bca6b06dcb", size = 23832, upload-time = "2026-10-08T19:46:50.971Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3a/38/fc3bb70232edd32fc4ead6e4d483aba5d1d6efc448633f885c1026f7a2db/askamerica-0.21.4-py3-none-any.whl", hash = "sha256:44943bd18be1502a99b057dea86f3878b930a65fce81b70f4de749edfb37147d", size = 19560, upload-time = "2026-06-01T19:12:27.557Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/d6/d5fa6249d933929adf57acb4636af95d1f5f501613dcea25e9268ee5cb03/askamerica-0.109.0-py3-none-any.whl", hash = "sha256:a4fc6c62e0e87b503a9938f54d2c039c16100212ef585abed44a61e4e70a4555", size = 24678, upload-time = "2026-10-08T19:46:49.52Z" },
 ]
 
 [package.optional-dependencies]
