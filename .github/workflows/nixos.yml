@@ -113,12 +113,12 @@ jobs:
           packaging/nixos/vm-run '
             cd provisa-ui
             npx playwright install chromium
-            PROVISA_E2E_DEPLOYED_URL=http://127.0.0.1:3000 npx playwright test -c playwright.deployed.config.ts --reporter=list
+            PROVISA_E2E_DEPLOYED_URL=http://127.0.0.1:3000 npx playwright test -c playwright.deployed.config.ts --reporter=list || { cat test-results/*/error-context.md; exit 1; }
           '
 
       - name: Service log
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: packaging/nixos/vm-run 'systemctl status provisa --no-pager -l || true; journalctl -u provisa --no-pager -n 300'
+        run: packaging/nixos/vm-run 'systemctl status provisa --no-pager -l || true; journalctl -u provisa --no-pager -n 3000'
 
       # Stopped before the suites: they bind ports of their own.
       - name: Stop the provisa service
