@@ -194,7 +194,7 @@ async def set_table_profiler(
     require_role(role, state)
     _require_table_editor(request)
     table = await table_edit.read_table(table_id)
-    edited = table_edit.table_input(table)
+    edited = table_edit.editor_input(request, table)
     edited.profiler_source_id = profiler_source_id or None
     return await table_edit.save_table(request, edited)
 
@@ -412,7 +412,7 @@ async def set_column_fake(
     from provisa.api.admin.fakes_router import ColumnFakeIn, check_column_fake
 
     table = await table_edit.read_table(table_id)
-    edited = table_edit.table_input(table)
+    edited = table_edit.editor_input(request, table)
     target = next((c for c in edited.columns if c.name == column), None)
     if target is None:
         raise ValueError(f"table {table.table_name!r} has no column {column!r}")

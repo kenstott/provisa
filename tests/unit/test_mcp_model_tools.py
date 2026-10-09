@@ -620,6 +620,39 @@ async def test_get_table_fakes_lists_each_columns_fake(monkeypatch, app_state):
     ]
 
 
+async def test_a_caller_not_shown_the_grants_sets_a_fake_without_naming_them(
+    monkeypatch, app_state
+):
+    """REQ-1958: the steward here holds no view_governance, and the table's columns are granted
+    (visible_to ["steward"]). The tool's save names no grant list or mask — the store keeps
+    them — so the save guard, which refuses a payload that names one, admits it."""
+    from provisa.api.admin._hiding_guard import GOVERNANCE_FIELDS, governance_sets
+
+    assert "view_governance" not in _ROLES["steward"]["capabilities"]
+    stored = _table()
+    assert any(c.visible_to for c in stored.columns), "the stored table has grants to lose"
+    _use_db(monkeypatch, app_state, {})
+    update_table, captured = _saved()
+    request = _request("steward")
+    with (
+        patch("provisa.api.mcp.table_edit.read_table", new=AsyncMock(return_value=stored)),
+        patch("provisa.api.admin.db_queries.fetch_tables", new=AsyncMock(return_value=[])),
+        patch("provisa.api.admin.db_queries.fetch_relationships", new=AsyncMock(return_value=[])),
+        patch("provisa.api.admin.schema_mutation.Mutation.update_table", new=update_table),
+    ):
+        out = await model_tools.set_column_fake(
+            app_state, "steward", request, 7, "email", "email()"
+        )
+        await model_tools.set_table_profiler(app_state, "steward", request, 7, "prof2")
+    assert out["fake"] == "email()"
+    for info, saved in captured:
+        for column in saved.columns:
+            for field in GOVERNANCE_FIELDS:
+                assert getattr(column, field) in (None, []), (column.name, field)
+        assert governance_sets(info, saved) == [], "nothing for the guard to refuse"
+    assert {c.name: c.fake for c in captured[0][1].columns}["email"] == "email()"
+
+
 async def test_set_column_fake_is_checked_then_saved_with_the_whole_table(monkeypatch, app_state):
     _use_db(monkeypatch, app_state, {})
     update_table, captured = _saved()

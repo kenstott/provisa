@@ -208,3 +208,63 @@ async def test_with_no_auth_provider_a_save_is_what_it_sends():
     sent = _save(_column("email", visible_to=["analyst"]), _column("id"))
     saved = await keep_governance(anonymous, sent)
     assert saved.columns[0].visible_to == ["analyst"]
+
+
+# --- an editor tool's save (the MCP model tools) ---------------------------------------------------
+
+
+async def test_a_tool_that_writes_the_stored_table_back_is_what_the_guard_refuses(monkeypatch):
+    """The defect: set_column_fake read the stored table, changed one attribute and submitted
+    the whole of it — every grant list included — for a caller who is not shown them."""
+    from provisa.api.mcp import table_edit
+
+    info, _request = grant(monkeypatch, "table_registration")
+    written_back = _save(*table_edit.table_input("stored").columns)
+    assert governance_sets(info, written_back) == [
+        "email.visible_to",
+        "email.writable_by",
+        "email.unmasked_to",
+        "email.mask_type",
+        "email.mask_pattern",
+        "email.mask_replace",
+    ]
+
+
+async def test_an_editor_tool_builds_its_save_from_what_its_caller_is_shown(monkeypatch):
+    """One helper for every tool: without view_governance the input names no grant list or
+    mask, so the save is admitted and carries the stored ones forward untouched."""
+    from provisa.api.mcp import table_edit
+
+    info, request = grant(monkeypatch, "table_registration")
+    edited = table_edit.editor_input(request, "stored")
+    for column in edited.columns:
+        for field in GOVERNANCE_FIELDS:
+            assert getattr(column, field) in (None, []), (column.name, field)
+    payload = _save(*edited.columns)
+    assert governance_sets(info, payload) == []
+    refuse_governance_sets(governance_sets(info, payload))
+    saved = await keep_governance(info, payload)
+    assert _governance(saved.columns) == _governance(_stored_columns())
+
+
+async def test_an_editor_tool_of_a_governance_viewer_starts_from_the_stored_grants(monkeypatch):
+    from provisa.api.mcp import table_edit
+
+    _info, request = grant(monkeypatch, "table_registration", "view_governance")
+    edited = table_edit.editor_input(request, "stored")
+    assert _governance(edited.columns) == _governance(_stored_columns())
+
+
+def test_no_editor_tool_builds_its_save_from_the_stored_table_directly():
+    """Every MCP model tool that saves a table starts from editor_input; table_input, which
+    carries the stored grants, is for reading the store (the guard's own use of it)."""
+    from pathlib import Path
+
+    import provisa.api.mcp as mcp
+
+    for source in sorted(Path(mcp.__file__).parent.glob("*.py")):
+        text = source.read_text(encoding="utf-8")
+        if source.name == "table_edit.py":
+            assert text.count("table_input(t)") == 1, "only editor_input wraps it"
+            continue
+        assert "table_edit.table_input(" not in text, source.name
