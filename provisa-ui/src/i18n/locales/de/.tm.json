@@ -5280,7 +5280,6 @@
   "de/serverErrors.json::serverErrors.statement.rows_cut": "The answer was cut at {{limit}} rows, the row limit that applies to this read ({{kind}}): more rows match than were returned.",
   "de/serverErrors.json::serverErrors.statement.rows_cut_unchecked": "The answer has {{limit}} rows, the row limit that applies to this read ({{kind}}). Whether more rows match could not be checked: {{reason}}",
   "de/tableReadView.json::tableReadView.notShown": "not shown",
-  "de/tableReadView.json::tableReadView.editNeedsGovernance": "Editing a table replaces its columns' grant lists and masks, which you are not shown. It needs the view_governance right.",
   "de/registerTableForm.json::registerTableForm.scopeHelp": "domain: served to roles that reach this table's domain. public: also to roles outside it. restricted: only to the roles named in Visible to.",
   "de/tableEditForm.json::tableEditForm.scopeHelp": "domain: served to roles that reach this table's domain. public: also to roles outside it. restricted: only to the roles named in Visible to.",
   "de/serverErrors.json::serverErrors.schema.column_scope_invalid": "Column '{{column}}' has scope '{{scope}}'; a column's scope is one of {{scopes}}",
@@ -5330,5 +5329,6 @@
   "de/serverErrors.json::serverErrors.wikipedia.page_not_of_edition": "{{page}} is not a page of {{host}}",
   "de/serverErrors.json::serverErrors.wikipedia.see_also_heading_needed": "Provisa does not know what the {{language}} edition calls its \"See also\" section: give the section's title, or follow those links",
   "de/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpDirectory": "Directory for the crawl's files",
-  "de/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpDirectoryHelp": "Where the pages' tables and data files are written. It must be a directory the engine's file connector can write. Empty: a directory of this source's own under Provisa's data directory"
+  "de/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpDirectoryHelp": "Where the pages' tables and data files are written. It must be a directory the engine's file connector can write. Empty: a directory of this source's own under Provisa's data directory",
+  "de/serverErrors.json::serverErrors.settings.claims_with_multitenancy": "A multi-tenant deployment cannot read role assignments from sign-in claims: it grants roles itself, per org, and claims would override them. Set the assignments source to Provisa."
 }

@@ -395,7 +395,8 @@
       "unknown_auth_provider": "अज्ञात ऑथ प्रोवाइडर '{{provider}}'; मान्य: {{valid}}",
       "unknown_encryption_provider": "अज्ञात एन्क्रिप्शन प्रोवाइडर '{{provider}}'",
       "unknown_engine": "अज्ञात इंजन '{{engine}}'; मान्य: {{valid}}",
-      "use_domains_invalid": "use_domains true, false या null होना चाहिए"
+      "use_domains_invalid": "use_domains true, false या null होना चाहिए",
+      "claims_with_multitenancy": "बहु-किरायेदार डिप्लॉयमेंट साइन-इन क्लेम से भूमिका असाइनमेंट नहीं पढ़ सकता: वह स्वयं, प्रति संगठन, भूमिकाएँ देता है और क्लेम उन्हें बदल देंगे। असाइनमेंट स्रोत को Provisa पर सेट करें।"
     },
     "setup": {
       "admin_credentials_required": "admin_username और admin_password आवश्यक हैं",

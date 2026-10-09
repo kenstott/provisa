@@ -6481,8 +6481,8 @@
   category: GovData Sources
   priority: SHOULD
   type: behavioral
-  description: Sources of type `govdata` expose U.S. government open data partitioned by subject grouping.
-    Configuring a govdata source with a subject exposes all schemas for that subject automatically.
+  description: 'Sources of type `govdata` (AskAmerica) expose U.S. government open data by subject. The subjects ticked on a source decide the schemas it offers; each subject brings its schemas, and every schema the adapter serves belongs to a subject or is a linker schema (REQ-541). The subjects and their schemas are stated once, by the server, and the Sources form and the Register Table form read them from it. Provisa runs the adapter bundle as installed, with the catalog it was built with, and writes no model of its own; narrowing to the ticked subjects is done by Provisa, which refuses a table or column outside the schemas of the source. A subscription reaches every table, so there is one AskAmerica source -- per organisation on a multi-tenant deployment -- and a second is refused when it is saved. The Register Table form lists the tables and columns of a schema from the adapter as soon as it is listening; listing names never waits on the row counts the adapter reports to engines.'
+  notes: 'Amended 2026-10-09 on maintainer rulings: the subjects ticked on the source narrow the schema list and every available schema has a home in a subject; the adapter is installed and called as built; two sources with two keys is unsupported, one per organisation on the cloud instance; row counting must not block listing table names.'
   use_case: Subject-grouped GovData sources let stewards selectively grant access to government data by
     domain area.
   code:
@@ -6518,7 +6518,8 @@
   priority: MUST
   type: constraint
   description: The `ref` and `geo` schemas are always included as linker schemas in every GovData source
-    — they are not configurable and not tied to any subject grouping.
+    — they are not configurable and not tied to any subject grouping. The Register Table form lists
+    them beside the schemas of the ticked subjects.
   use_case: Always-included linker schemas ensure GovData joins on reference and geography data are always
     available without explicit configuration.
   code:
@@ -73728,7 +73729,12 @@
     table names, column names, descriptions — using natural language ("customer invoicing and payment
     tables"). A two-pass approach: fast fuzzy text filter narrows candidates, then LLM (haiku) provides
     semantic ranking with confidence scores. Steward judgment is required — feature surfaces candidates,
-    does not claim them. Implementation in admin API and unclaimed tables UI.'
+    does not claim them. Implementation in admin API and unclaimed tables UI. The search reads an index
+    of each source. Table names are indexed when the source is installed. Column names are filled in
+    afterwards, a schema at a time, by one rule for every kind of source, so a search made soon after
+    install may not find a table by a column name; the answer says whether table names are complete
+    and whether column names are complete, still loading or unavailable. Selecting a table reads its
+    columns from the source at once, whatever the index holds, and records them in the index.'
   notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
     written on 2026-05-15 under the heading ''Security''; it was dropped when requirements.md became generated
     from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: Backend fuzzy+haiku search
@@ -77455,7 +77461,7 @@
   category: Governance Column Visibility
   priority: MUST
   type: behavioral
-  description: 'The admin API answers a caller with the catalog that caller may see, as every data surface does. Its listings of tables, columns and relationships answer the whole catalog only to a caller holding a catalog-administration right -- table registration, or a right to hide tables or columns -- and only within the domains that caller''s roles reach; every other caller is answered the tables, columns and relationships its acting role is served, from the one role-narrowing the Flight catalog and the MCP catalog tools use. A column''s grant lists and mask settings (who it is visible to, writable by and unmasked for, and how it is masked) are returned only to a caller holding the right to view governance (REQ-1134). Domains are listed to a caller for the domains its roles reach; a source is named to a caller that is served a table from it; a metric is listed to a caller its visibility admits; a caller holding the administration right for that kind of object is answered all of them. Narrowing is by rights and domain reach, never by a role''s name (REQ-1337), and a platform administrator is answered no data catalog by this rule (REQ-1327). What is public is available to all domains: a public table, relationship, metric or other item is answered to every caller, whatever domains its roles reach, as it is on the data surfaces. A deployment with no auth provider is unchanged. The application''s own pages are built from these answers, so a picker never offers a table the caller''s query would be refused.'
+  description: 'The admin API answers a caller with the catalog that caller may see, as every data surface does. Its listings of tables, columns and relationships answer the whole catalog only to a caller holding a catalog-administration right -- table registration, or a right to hide tables or columns -- and only within the domains that caller''s roles reach; every other caller is answered the tables, columns and relationships its acting role is served, from the one role-narrowing the Flight catalog and the MCP catalog tools use. A column''s grant lists and mask settings (who it is visible to, writable by and unmasked for, and how it is masked) are returned only to a caller holding the right to view governance (REQ-1134). Domains are listed to a caller for the domains its roles reach; a source is named to a caller that is served a table from it; a metric is listed to a caller its visibility admits; a caller holding the administration right for that kind of object is answered all of them. Narrowing is by rights and domain reach, never by a role''s name (REQ-1337), and a platform administrator is answered no data catalog by this rule (REQ-1327). What is public is available to all domains: a public table, relationship, metric or other item is answered to every caller, whatever domains its roles reach, as it is on the data surfaces. A deployment with no auth provider is unchanged. The application''s own pages are built from these answers, so a picker never offers a table the caller''s query would be refused. A registrar who is not shown the grant lists and masks of a table may still edit the table: the editor opens without those columns and its save names none of them, so the store keeps them.'
   use_case: An analyst opening the SQL explorer is sent the tables and columns their role is served, not the names and
     grant lists of every table in the organisation.
   related_reqs:
@@ -77551,3 +77557,74 @@
   - REQ-1426
   - REQ-1952
   notes: 'Maintainer 2026-10-08. Found while giving the Flight catalog real column types: the stored type kept a qualifier only when the introspecting engine printed one (Trino and DuckDB do, Postgres does not); 1 of 29 decimal columns in the repository''s model files carried one; the one read path returning an exact decimal took it from the engine''s result and, on a Postgres direct read, sized it from the first batch; two other paths converted decimals to floating point. Rulings: an undeclared numeric is served as floating point, and said to be; the model records precision, exact where declared.'
+- id: REQ-1962
+  status: complete
+  since: 2026-10
+  group: 6. Execution, Routing, Caching & Performance
+  category: Read Refusals
+  priority: MUST
+  type: behavioral
+  description: 'A read that needs a table whose replica could not be built is refused, naming the table and the error the build recorded: HTTP 503 with code query.replica_build_failed and the table and reason as parameters, gRPC UNAVAILABLE, and the same message on the transports that carry only a message. It is one of the refusals for a read the deployment cannot answer now, with a read whose home region is unavailable (REQ-1922), and every surface answers that family in one place; no surface names a member of it.'
+  use_case: An analyst whose query touches a table that failed to land is told which table and why, instead of a server fault.
+  code:
+  - provisa/core/read_refusal.py
+  - provisa/api/app.py
+  tests:
+  - tests/unit/test_read_refusal.py
+  scenario: 'Given a table whose replica could not be built
+
+    When a read needs that table
+
+    Then the read is refused with HTTP 503 and code query.replica_build_failed, or gRPC UNAVAILABLE
+
+    And the refusal names the table and the error the build recorded
+
+    '
+  related_reqs:
+  - REQ-1922
+  - REQ-1661
+  notes: 'Maintainer 2026-10-09: an unbuildable table is refused, naming the table.'
+- id: REQ-1963
+  status: complete
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Role Assignments
+  priority: MUST
+  type: constraint
+  description: 'A multi-tenant deployment reads role assignments from Provisa, never from sign-in claims: a configuration that sets multitenancy with auth.assignments_source claims, stated or by default, does not load, the deployment does not start on it, and a settings change that would produce it is refused, each naming both settings and the value to use. A single-tenant deployment may use either.'
+  use_case: An operator cannot run a multi-tenant deployment in which sign-in claims override the roles each organisation granted.
+  code:
+  - provisa/core/assignments_source.py
+  - provisa/core/models.py
+  - provisa/api/admin/_config_io.py
+  tests:
+  - tests/unit/test_assignments_source_tenancy.py
+  notes: 'Maintainer 2026-10-09: claims with multi-tenancy is refused at boot.'
+- id: REQ-1964
+  status: proposed
+  since: 2026-10
+  group: 4. Source Connectors
+  category: GovData Sources
+  priority: MUST
+  type: constraint
+  description: 'The row counts the AskAmerica adapter reports are for engines to optimise with and are read from recorded table metadata, never by scanning a table. Every AskAmerica table is an Iceberg table; one that is not is a defect to fix, not a case to accommodate. A view reports a row count of 0, as PostgreSQL does, and the catalog the adapter serves is compatible with PostgreSQL 16. Provisa pins the adapter release that does this for AskAmerica alone, and until then a query on a registered AskAmerica table waits on the count the adapter makes after it starts.'
+  use_case: A query on an AskAmerica table answers as soon as the adapter is serving, and an engine still has row counts to plan with.
+  related_reqs:
+  - REQ-540
+  notes: 'Maintainer 2026-10-09: counts are used by engines for optimisation; it should never scan to get a count; every govdata table is Iceberg by design; row counts for views are 0; it should be pg-16 compatible. Choices the same day: rebuild the adapter seed, then release; pin AskAmerica only.'
+- id: REQ-1965
+  status: proposed
+  since: 2026-10
+  group: 5. Query Languages, Compilation & Operations
+  category: JSON Columns
+  priority: MUST
+  type: behavioral
+  description: 'Semantic SQL has no array, struct or map type; nested data is a JSON column, and JSON is the type every catalog and every wire lists for it, on every federation engine and every source read directly, so a registration answers the same on every engine. A datasource hands a native array, struct or map over as JSON, by a cast the source or engine executes; such a column is registered as JSON -- JSON is the type registration suggests for it, never text -- and registering one is never an error, though reading one from a backend with no verified way to produce JSON is refused by name. A column carries three hidden attributes, recorded from the source at registration, stored with the column, not offered in the registration form and available to every translator: its array depth as an integer -- 0 for a column that is not an array of a primitive, 1 for an array of a primitive, 2 for an array of arrays of a primitive, and so on for each level of nesting -- the semantic SQL type of its innermost element with precision and scale where it has them, and the native type of the source in its own spelling. Only an array whose innermost element is one primitive type has a depth above 0; a struct, a map, an array of structs or an array whose elements are of mixed types is a plain JSON column of depth 0 with its native type recorded, and a column that is JSON at its source carries none of the three. Semantic SQL offers one portable set of JSON operations -- element and field access, length, contains, unnest, construct, and aggregate into a JSON array -- spelled as the SQL standard JSON functions, with the PostgreSQL operators accepted as the same operations, and translated to the dialect of the backend a statement is routed to from one rule table covering every operation on every backend class. For an array of a primitive, at any depth, the attributes are an input to that translation: an innermost element that is extracted or unnested is cast to the element type and a literal compared with one is cast to it, inside the generated statement, and where the statement runs on the source and its column is natively an array, element access, length, contains and unnest use the native operation -- except that on the PostgreSQL family, whose array type does not record its dimensions, unnest always goes through JSON, so its answer never depends on the dimensions of the value. A typed extraction that goes fewer levels into an array than its depth is refused when the statement is compiled, naming the column and its depth. A write goes the other way by the same rule: the JSON a statement gives for a column that is natively an array, struct or map is cast into the recorded native type by the source that stores it, inside the generated statement, through the one write path; a value the source cannot cast is refused with the error of the source, and a backend with no verified way to build its native value from JSON refuses the write by name. A decimal element with a declared precision is written into the JSON as a string and cast back, so it is exact on every engine; a timestamp element keeps its instant; an element that is not a number or is infinite is refused by name. Inside a struct, a map or an array of structs nothing is typed: the whole value and the untyped operations work, and a typed value from inside one needs a cast the user writes. Once a source or an engine has produced a value, Provisa does not parse, convert or re-encode it on any route; the translation is derived once with the governed statement, not per request. An operation a backend cannot perform correctly is refused by name; an operation that is correct but slow is allowed and runs -- the user is responsible for what will not perform, and the product says so: the query plan notes, for each JSON operation that the backend it is routed to cannot serve from an index or that is not known to be pushed down, the column, the operation, the backend and the documented alternative, as advice that never blocks or changes the statement and is shown with the plan only; the documentation states the same per backend class from the same rule table. When the type of a source column no longer matches what was recorded, reads of that column are refused, naming the column and both types, until it is registered again. GraphQL serves a JSON column as the opaque JSON value it does today, and Bolt as a JSON string.'
+  use_case: A registrar registers a PostgreSQL text[] column or a BigQuery struct and an analyst filters on an element of it from semantic SQL on any engine, with the plan saying when that filter will scan.
+  related_reqs:
+  - REQ-980
+  - REQ-846
+  - REQ-1961
+  - REQ-1877
+  - REQ-1952
+  notes: 'Maintainer 2026-10-09, in sequence: asked whether semantic SQL has array types (it has none; a native array, row or map is registered as text or raises later); considered a typed array stored as JSON where a database has none, worried about where translation happens and Provisa becoming a bottleneck; ruled JSON for all engines and direct sources, a datasource translates arrays into JSON, no typed array in semantic SQL, the suggested type for a native array is json; the tradeoffs are accepted -- the user takes responsibility for realizing a query will not perform -- and the query plan ought to point it out; GraphQL only sees an opaque JSON object. Then rethought the JSON Schema: relational databases do not allow arrays of arbitrary types, so support arrays of primitives, with hidden column attributes (array true/false, the element semantic SQL type) available to any translator in place of a schema; the array attribute is an integer, 0 not an array and 1, 2, 3 the nesting levels. Choices the same day: a third hidden attribute for the native type; structs and maps plain JSON with no schema; attributes from a native type only, not declared on a JSON column; decimals as strings; standard JSON functions with PostgreSQL operators; drift refused by name; plan notes with the plan only; Bolt a JSON string; PostgreSQL unnest always via JSON; a typed extraction short of the depth is a compile error; asked whether the reverse can store them back -- yes, by a cast into the recorded native type that the source executes. Lead, from the design: PostgreSQL replicas land the indexable JSON type. Wording corrected the same day against the design findings (API and stream sources fetch their own payloads; Provisa knows what a backend can index, not what is indexed; no pushdown fact is verified yet). Design by teammate arrays on branch design/array-types (json-columns-design.md and json-columns-v3-note.md).'

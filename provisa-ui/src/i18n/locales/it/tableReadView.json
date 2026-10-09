@@ -57,7 +57,6 @@
     "writable": "Scrivibile",
     "writableOps": "Accetta {{ops}} da GraphQL, REST e SQL",
     "dataProductChip": "Prodotto dati",
-    "notShown": "non mostrato",
-    "editNeedsGovernance": "La modifica di una tabella sostituisce gli elenchi di concessione e le maschere delle sue colonne, che non ti vengono mostrati. Richiede il diritto view_governance."
+    "notShown": "non mostrato"
   }
 }

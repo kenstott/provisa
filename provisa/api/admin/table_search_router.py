@@ -49,7 +49,7 @@ async def _candidates_live(
     source_id: str, schema_name: str, state
 ) -> list[TableCandidate]:  # REQ-464
     """Fetch candidates live from native introspection + the engine (cache-miss path)."""
-    from provisa.api.admin.introspect import native_columns, native_tables, require_live_attach
+    from provisa.api.admin.introspect import native_tables, require_live_attach
     from provisa.api.admin.schema import _get_pool
     from provisa.api.admin.discovery_resilience import discovery_fallback
 
@@ -110,38 +110,19 @@ async def _candidates_live(
     # Enrich with column names (best-effort): the source's own driver first (REQ-1912); the
     # engine's catalog only for a table the driver cannot list, on a source the engine holds a
     # live attach of.
-    from provisa.api.admin.introspect import unattached_source
     from provisa.discovery.catalog_cache import loads_columns_lazily
 
     if loads_columns_lazily(source_type):
         # REQ-464: its column names are loaded on first search of an indexed schema, in one
         # statement for the schema; never one statement per table on a request.
         return candidates
-    engine_lists = await unattached_source(state, source_id) is None
-    for c in candidates:
-        native = None
-        async with pool.acquire() as config_conn:
-            with discovery_fallback(f"native columns for {source_id!r}.{schema_name}.{c.name}"):
-                native = await native_columns(
-                    source_id, source_type, schema_name, c.name, state.source_pools, config_conn
-                )
-        if native is not None:
-            c.columns = [name for name, _dtype in native]
-            continue
-        if not engine_lists:
-            continue  # no driver listing and no engine catalog: the names stay unenriched
-        catalog = state.catalog_for(source_id)
-        with discovery_fallback(f"engine columns for {source_id!r}.{schema_name}.{c.name}"):
-            res = await run_admin_catalog_sql(
-                state,
-                state.federation_engine,
-                f'SELECT column_name FROM "{catalog}".information_schema.columns '
-                f"WHERE table_schema = '{schema_name}' AND table_name = '{c.name}' "
-                f"ORDER BY ordinal_position",
-                "table search",
-            )
-            c.columns = [row[0] for row in res.rows]
+    # A source registered from a specification: its tables' fields are in the specification
+    # this process holds, read with no call to the source and no statement.
+    from provisa.api.admin.introspect import specification_columns
 
+    fields = await specification_columns(source_id, source_type, schema_name, state)
+    for c in candidates:
+        c.columns = list((fields or {}).get(c.name, []))
     return candidates
 
 

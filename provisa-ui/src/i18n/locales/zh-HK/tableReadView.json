@@ -57,7 +57,6 @@
     "writable": "可寫入",
     "writableOps": "接受來自 GraphQL、REST 及 SQL 的 {{ops}}",
     "dataProductChip": "數據產品",
-    "notShown": "未顯示",
-    "editNeedsGovernance": "編輯資料表會取代其欄位的授權清單和遮罩，而這些內容並未向你顯示。需要 view_governance 權限。"
+    "notShown": "未顯示"
   }
 }

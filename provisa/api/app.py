@@ -3234,13 +3234,14 @@ def create_app() -> FastAPI:
             headers=exc.headers,
         )
 
-    from provisa.core.region_stores import HomeRegionUnavailable as _HomeRegionUnavailable
+    from provisa.core.read_refusal import ReadRefused as _ReadRefused
 
-    @app.exception_handler(_HomeRegionUnavailable)
-    async def _home_region_handler(_req: _Request, exc: _HomeRegionUnavailable):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
-        # REQ-1922: a table kept in another region is read only from its replica there; while that
-        # replica is not built, or its region cannot be reached, the read is refused — 503, the
-        # answer exists but cannot be given from here now.
+    @app.exception_handler(_ReadRefused)
+    async def _read_refused_handler(_req: _Request, exc: _ReadRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # A read the deployment cannot answer now (core/read_refusal.py): a table kept in a
+        # region that cannot be reached or whose replica there is not built (REQ-1922), a
+        # replica the read needs that could not be built (REQ-1661). 503: the statement is good
+        # and the answer exists but cannot be given now; the body names the table and the reason.
         return _JSONResponse(
             status_code=503,
             content={"detail": str(exc), "code": exc.code, "params": exc.params},

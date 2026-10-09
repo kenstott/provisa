@@ -1652,6 +1652,9 @@ tables:
   schema: graphql
   source_id: graphql-demo
   table: schedules
+# REQ-663: the demo's one writable table. A column is writable only by the roles its writable_by
+# names, so the org's admin can add, change and remove a prospective adopter (Cypher CREATE / SET
+# / DELETE, SQL INSERT / UPDATE / DELETE); a DELETE needs every column writable.
 - columns:
   - description: When the customer record was created
     name: created_at
@@ -1659,10 +1662,14 @@ tables:
     visible_to:
     - org_admin
     - analyst
+    writable_by:
+    - org_admin
   - description: Customer's email address
     name: email
     data_type: varchar
     visible_to:
+    - org_admin
+    writable_by:
     - org_admin
   - description: Identifier of the customer
     name: id
@@ -1670,16 +1677,22 @@ tables:
     visible_to:
     - org_admin
     - analyst
+    writable_by:
+    - org_admin
   - description: Customer's full name
     name: name
     data_type: varchar
     visible_to:
     - org_admin
     - analyst
+    writable_by:
+    - org_admin
   - description: Customer's phone number
     name: phone
     data_type: varchar
     visible_to:
+    - org_admin
+    writable_by:
     - org_admin
   description: Prospective adopters who have submitted inquiries
   domain_id: pet-store

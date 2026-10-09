@@ -31,6 +31,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from provisa.core.read_refusal import ReadRefused
 from provisa.compiler.complexity import ComplexityLimitExceeded
 
 log = logging.getLogger(__name__)
@@ -154,6 +155,8 @@ async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-35
         raise  # REQ-1174: answered as 413 by the app's handler
     except PermissionError as exc:
         return _error_response(str(exc), "Forbidden")
+    except ReadRefused as exc:
+        return _read_refused(exc)
     except Exception as exc:
         log.exception("Cypher governance failed")
         return _error_response(f"Governance failed: {exc}", "DatabaseError")
@@ -161,6 +164,8 @@ async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-35
     try:
         result = await _execute_plan(plan)
         rows = [dict(zip(result.column_names, row)) for row in result.rows]
+    except ReadRefused as exc:
+        return _read_refused(exc)
     except Exception as exc:
         log.exception("Cypher execution failed")
         return _error_response(f"Execution failed: {_federation_error(exc)}", "DatabaseError")
@@ -225,6 +230,13 @@ def _to_query_v2_value(value: Any) -> Any:
         }
 
     return value
+
+
+def _read_refused(refused: ReadRefused) -> JSONResponse:
+    """A read the deployment cannot answer now (core/read_refusal.py), in this endpoint's error
+    format: 503, as every HTTP surface answers the family, with the refusal's own message — the
+    table and what is wrong with it — and not as an execution failure."""
+    return _error_response(str(refused), "DatabaseError", 503)
 
 
 def _error_response(message: str, code: str, status: int = 400) -> JSONResponse:

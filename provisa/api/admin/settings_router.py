@@ -1384,6 +1384,17 @@ async def set_auth(request: Request):  # REQ-919
     path = config_path()
     cfg = read_config()
     cfg["auth"] = apply_auth_settings(dict(cfg.get("auth", {}) or {}), body)
+    # A save that would leave a multi-tenant deployment reading assignments from sign-in claims
+    # is refused here, before it is written: the deployment would not start on it.
+    from provisa.core.assignments_source import (
+        ClaimsWithMultitenancy,
+        require_assignments_source,
+    )
+
+    try:
+        require_assignments_source(bool(cfg.get("multitenancy")), cfg["auth"])
+    except ClaimsWithMultitenancy as refused:
+        raise ApiError(400, "settings.claims_with_multitenancy", str(refused)) from refused
     write_config(path, cfg)
     return {"success": True, "restart_required": True}
 

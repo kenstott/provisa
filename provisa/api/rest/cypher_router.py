@@ -44,7 +44,7 @@ import re as _re
 from sqlalchemy import select
 
 from provisa.core import request_deadline
-from provisa.core.region_stores import HomeRegionUnavailable
+from provisa.core.read_refusal import ReadRefused
 from provisa.executor.result import QueryResult
 from provisa.core.schema_org import node_ids
 from provisa.api.rest.registered_call import (
@@ -295,7 +295,7 @@ async def _run_plan(plan: Any, state: AppState) -> QueryResult | Response:
     except OSError as exc:
         log.warning("Cypher execution: network error: %s", exc)
         return _exec_error(503, exc, physical_sql)
-    except (PermissionError, HomeRegionUnavailable):
+    except (PermissionError, ReadRefused):
         raise  # a refusal is answered by its own handler, not as an execution failure
     except Exception as exc:
         # Engine driver errors are classified through the seam (no engine-specific exception

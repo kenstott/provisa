@@ -395,7 +395,8 @@
       "unknown_auth_provider": "provider di autenticazione '{{provider}}' sconosciuto; validi: {{valid}}",
       "unknown_encryption_provider": "provider di crittografia '{{provider}}' sconosciuto",
       "unknown_engine": "motore '{{engine}}' sconosciuto; validi: {{valid}}",
-      "use_domains_invalid": "use_domains deve essere true, false o null"
+      "use_domains_invalid": "use_domains deve essere true, false o null",
+      "claims_with_multitenancy": "Una distribuzione multi-tenant non può leggere le assegnazioni dei ruoli dai claim di accesso: assegna i ruoli da sé, per organizzazione, e i claim li sovrascriverebbero. Imposta l'origine delle assegnazioni su Provisa."
     },
     "setup": {
       "admin_credentials_required": "admin_username e admin_password richiesti",

@@ -49,6 +49,8 @@ Because it is state:
 
 from __future__ import annotations
 
+from provisa.core.read_refusal import ReadRefused
+
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -330,14 +332,20 @@ class ReplicaBuilding(TimeoutError):
         )
 
 
-class ReplicaBuildFailed(RuntimeError):
-    """The build of a replica a read needs failed: the read fails, it never reads what the
-    failed build left standing (REQ-1661)."""
+class ReplicaBuildFailed(ReadRefused):
+    """The build of a replica a read needs failed: the read is refused, naming the table and the
+    build's own error; it never reads what the failed build left standing (REQ-1661). The
+    statement is good and the server has not failed — the table cannot be built until what the
+    error names is put right."""
+
+    code = "query.replica_build_failed"
 
     def __init__(self, replica: str, error: str | None) -> None:
         self.replica = replica
         self.error = error
-        super().__init__(f"the replica of {replica} could not be built: {error}")
+        reason = error or "the build recorded no error"
+        self.params = {"table": replica, "reason": reason}
+        super().__init__(f"the replica of {replica} could not be built: {reason}")
 
 
 async def read(conn: "Connection", key: ReplicaKey) -> ReplicaRecord | None:

@@ -395,7 +395,8 @@
       "unknown_auth_provider": "不明な認証プロバイダー「{{provider}}」です。有効な値：{{valid}}",
       "unknown_encryption_provider": "不明な暗号化プロバイダー「{{provider}}」です",
       "unknown_engine": "不明なエンジン「{{engine}}」です。有効な値：{{valid}}",
-      "use_domains_invalid": "use_domains は true、false、または null である必要があります"
+      "use_domains_invalid": "use_domains は true、false、または null である必要があります",
+      "claims_with_multitenancy": "マルチテナントのデプロイメントは、サインインのクレームからロール割り当てを読み取ることはできません。ロールは組織ごとに自ら付与しており、クレームがそれらを上書きしてしまうためです。割り当てのソースを Provisa に設定してください。"
     },
     "setup": {
       "admin_credentials_required": "admin_username と admin_password が必要です",

@@ -57,7 +57,6 @@
     "writable": "Writable",
     "writableOps": "Accepts {{ops}} from GraphQL, REST and SQL",
     "dataProductChip": "Data product",
-    "notShown": "not shown",
-    "editNeedsGovernance": "Editing a table replaces its columns' grant lists and masks, which you are not shown. It needs the view_governance right."
+    "notShown": "not shown"
   }
 }

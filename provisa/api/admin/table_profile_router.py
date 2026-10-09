@@ -15,6 +15,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
+from provisa.core.read_refusal import ReadRefused
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
 
 from fastapi import APIRouter, HTTPException, Header, Request
@@ -108,6 +109,8 @@ async def profile_table(
         )
         raw_rows = res.rows
         columns = res.column_names
+    except ReadRefused:
+        raise  # refused by name; the app answers it (core/read_refusal.py), never retried
     except Exception:
         if "TABLESAMPLE" in sql:
             # Retry without TABLESAMPLE
@@ -121,6 +124,8 @@ async def profile_table(
                 )
                 raw_rows = res.rows
                 columns = res.column_names
+            except ReadRefused:
+                raise
             except Exception as e:
                 raise HTTPException(400, str(e))
         else:

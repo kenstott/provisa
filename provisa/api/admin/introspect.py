@@ -633,6 +633,72 @@ async def _native_tables_grpc(  # REQ-322, REQ-323, REQ-325
     ]
 
 
+async def specification_columns(  # REQ-464
+    source_id: str, source_type: str, schema_name: str, state
+) -> "dict[str, list[str]] | None":
+    """``{table: [field, ...]}`` for a source registered from a specification — an OpenAPI
+    document's operations, a gRPC proto's query methods, a GraphQL schema's tables — read from
+    the specification the source was registered with, each table under the name
+    ``native_tables`` lists it by. The source itself is never called: None when this process
+    does not hold the specification (a plain GraphQL source whose schema has not been read
+    yet is one), and for any other kind.
+
+    The fields are the ones a registration of the table would offer: its response columns and
+    its native-filter columns (``_nf_<parameter>``)."""
+    t = source_type.lower()
+    if t == "openapi":
+        spec_info = getattr(state, "openapi_specs", {}).get(source_id)
+        if spec_info is None or schema_name != "openapi":
+            return None
+        from provisa.openapi.mapper import parse_spec
+        from provisa.openapi.register import _schema_to_columns
+
+        queries, _ = parse_spec(spec_info["spec"])
+        return {
+            q.operation_id: [
+                *(c["name"] for c in _schema_to_columns(q.response_schema)),
+                *(f"_nf_{p['name']}" for p in (*q.path_params, *q.query_params)),
+            ]
+            for q in queries
+            if _openapi_is_table(q)
+        }
+    if t in ("grpc", "grpc_remote"):
+        reg = getattr(state, "grpc_remote_sources", {}).get(source_id)
+        if reg is None or schema_name != "grpc_remote":
+            return None
+        from provisa.grpc_remote.mapper import query_table_name
+
+        return {
+            query_table_name(reg.get("namespace", ""), q): [
+                *(c.name for c in q.columns),
+                *(f"_nf_{c.name}" for c in q.input_fields),
+            ]
+            for q in reg.get("queries") or []
+        }
+    if t in ("graphql", "graphql_remote"):
+        reg = getattr(state, "graphql_remote_sources", {}).get(source_id)
+        if reg is None or schema_name != "graphql":
+            return None
+        if not reg.get("brand") and reg.get("schema") is None:
+            return None  # its schema has not been read from its endpoint yet: no call here
+        from provisa.api.admin._graphql_table_registration import (
+            offered_columns,
+            offered_tables,
+            source_offer,
+        )
+
+        offered = await source_offer(state, source_id)
+        if offered is None:
+            return None
+        return {
+            table["name"]: [
+                name for name, _type, _comment in offered_columns(*offered, table["name"])
+            ]
+            for table in offered_tables(*offered)
+        }
+    return None
+
+
 async def _native_tables_kafka(  # REQ-147
     source_id: str,
     schema_name: str,
@@ -1320,6 +1386,124 @@ async def native_columns(  # REQ-1732
             [schema_name, table_name],
         )
         return [(row[0], row[1]) for row in result.rows]
+    return None
+
+
+# -- every column name of a schema, in one statement (REQ-464) -----------------------------------
+#
+# What the table search loads lazily: the column names of every table of a schema, fetched in
+# ONE statement through the source's own driver, where ``native_columns`` costs a statement a
+# table. One entry per source kind: its catalog's statement, and how the schema is given
+# (bound, or written in for a driver that binds none — the names come from this same dispatch's
+# schema list, as in ``native_columns``). Each returns rows of (table, column) in column order.
+
+_PARAM_DOLLAR = (
+    "SELECT table_name, column_name FROM information_schema.columns "
+    "WHERE table_schema = $1 ORDER BY table_name, ordinal_position"
+)
+_PARAM_QMARK_UPPER = (
+    "SELECT TABLE_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+    "WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, ORDINAL_POSITION"
+)
+#: kind -> (statement, whether the schema is bound as its one parameter).
+_SCHEMA_COLUMNS_SQL: dict[str, tuple[str, bool]] = {
+    "trino": (_PARAM_DOLLAR, True),
+    **{kind: (_PARAM_DOLLAR, True) for kind in _POSTGRES_WIRE},
+    "sqlserver": (_PARAM_QMARK_UPPER, True),
+    "fabric": (_PARAM_QMARK_UPPER, True),
+    "synapse": (_PARAM_QMARK_UPPER, True),
+    "oracle": (
+        "SELECT table_name, column_name FROM all_tab_columns "
+        "WHERE owner = $1 ORDER BY table_name, column_id",
+        True,
+    ),
+    "saphana": (
+        "SELECT TABLE_NAME, COLUMN_NAME FROM SYS.TABLE_COLUMNS "
+        "WHERE SCHEMA_NAME = $1 ORDER BY TABLE_NAME, POSITION",
+        True,
+    ),
+    "duckdb": (
+        "SELECT table_name, column_name FROM information_schema.columns "
+        "WHERE table_catalog = current_database() AND table_schema = ? "
+        "ORDER BY table_name, ordinal_position",
+        True,
+    ),
+    **{
+        kind: (
+            "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA = $1 ORDER BY TABLE_NAME, ORDINAL_POSITION",
+            True,
+        )
+        for kind in ("mysql", "mariadb", "tidb", "singlestore")
+    },
+    "clickhouse": (
+        "SELECT table, name FROM system.columns WHERE database = '{schema}' "
+        "ORDER BY table, position",
+        False,
+    ),
+    "snowflake": (
+        "SELECT table_name, column_name FROM information_schema.columns "
+        "WHERE table_schema = '{schema}' ORDER BY table_name, ordinal_position",
+        False,
+    ),
+    "exasol": (
+        "SELECT column_table, column_name FROM EXA_ALL_COLUMNS "
+        "WHERE column_schema = '{schema}' ORDER BY column_table, column_ordinal_position",
+        False,
+    ),
+}
+#: Kinds whose statement is qualified by the source's stored catalog or project.
+_SCHEMA_COLUMNS_QUALIFIED_SQL: dict[str, str] = {
+    "databricks": (
+        "SELECT table_name, column_name FROM `{database}`.information_schema.columns "
+        "WHERE table_schema = '{schema}' ORDER BY table_name, ordinal_position"
+    ),
+    "bigquery": (
+        "SELECT table_name, column_name FROM `{database}`.`{schema}`.INFORMATION_SCHEMA.COLUMNS "
+        "ORDER BY table_name, ordinal_position"
+    ),
+}
+
+
+def _grouped(rows) -> dict[str, list[str]]:
+    columns: dict[str, list[str]] = {}
+    for row in rows:
+        columns.setdefault(row[0], []).append(row[1])
+    return columns
+
+
+async def native_schema_columns(  # REQ-464
+    source_id: str,
+    source_type: str,
+    schema_name: str,
+    pool: "SourcePool",
+    config_conn: "Connection | None" = None,
+) -> "dict[str, list[str]] | None":
+    """``{table: [column, ...]}`` for every table of ``schema_name``, in ONE statement through
+    the source's own driver; None when this kind has no such statement here (no driver pool
+    for the source, a kind listed some other way, or a catalog with no schema-wide column view —
+    hiveserver2 describes one table at a time)."""
+    t = source_type.lower()
+    if not pool.has(source_id):
+        return None
+    if t in _SCHEMA_COLUMNS_SQL:
+        statement, bound = _SCHEMA_COLUMNS_SQL[t]
+        if bound:
+            result = await pool.execute(source_id, statement, [schema_name])
+        else:
+            result = await pool.execute(source_id, statement.format(schema=schema_name))
+        return _grouped(result.rows)
+    if t in _SCHEMA_COLUMNS_QUALIFIED_SQL:
+        if config_conn is None:
+            return None
+        database = await _source_database(source_id, config_conn)
+        if not database:
+            return None
+        result = await pool.execute(
+            source_id,
+            _SCHEMA_COLUMNS_QUALIFIED_SQL[t].format(database=database, schema=schema_name),
+        )
+        return _grouped(result.rows)
     return None
 
 

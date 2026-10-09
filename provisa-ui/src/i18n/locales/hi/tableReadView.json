@@ -57,7 +57,6 @@
     "writable": "लिखने योग्य",
     "writableOps": "GraphQL, REST और SQL से {{ops}} स्वीकार करता है",
     "dataProductChip": "डेटा प्रोडक्ट",
-    "notShown": "नहीं दिखाया गया",
-    "editNeedsGovernance": "तालिका संपादित करने से उसके कॉलम की अनुदान सूचियाँ और मास्क बदल जाते हैं, जो आपको नहीं दिखाए जाते। इसके लिए view_governance अधिकार चाहिए।"
+    "notShown": "नहीं दिखाया गया"
   }
 }

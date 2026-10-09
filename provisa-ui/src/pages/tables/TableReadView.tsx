@@ -15,7 +15,7 @@ import { ActionIcon, Badge, Box, Button, Group, Table, Text, Tooltip } from "@ma
 import type { NavigateFunction } from "react-router-dom";
 import { requiredParamColumns } from "../../components/nativeParams";
 import type { RegisteredTable, DataProduct } from "../../types/admin";
-import { computeProfile, governanceWithheld } from "./helpers";
+import { computeProfile } from "./helpers";
 import { TagControl } from "../../components/TagControl";
 import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
 import { OwnerResolutionIcon } from "../../components/OwnerResolution";
@@ -390,17 +390,12 @@ export function TableReadView({
         >
           {t("tableReadView.policiesButton")}
         </Button>
-        {/* A save replaces each column's grant lists and mask, so the editor is offered only to a
-            caller who is shown them (REQ-1958): it would otherwise overwrite what it cannot see. */}
-        <Tooltip
-          label={t("tableReadView.editNeedsGovernance")}
-          disabled={!governanceWithheld(table)}
-        >
+        {/* REQ-1958: the editor opens for a caller who is not shown the grant lists and masks
+            too; it shows none of them and its save names none, so the store keeps them. */}
           <ActionIcon
             variant="subtle"
             aria-label={t("tableReadView.editButtonLabel", { name: table.tableName })}
             data-testid="table-read-view-edit"
-            disabled={governanceWithheld(table)}
             onClick={(e) => {
               e.stopPropagation();
               startEditing(table);
@@ -408,7 +403,6 @@ export function TableReadView({
           >
             <Pencil size={14} />
           </ActionIcon>
-        </Tooltip>
         {!hidingOnly && (
           <ActionIcon
             variant="subtle"

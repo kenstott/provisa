@@ -30,6 +30,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from graphql import GraphQLError, GraphQLObjectType, GraphQLSchema
 
+from provisa.core.read_refusal import ReadRefused
 from provisa.api.json_response import OrjsonResponse
 from provisa.api._query_helpers import (
     build_graphql_query as _build_graphql_query_shared,
@@ -655,6 +656,8 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 nodes_result = await _execute_plan(nodes_plan, state)
         except ComplexityLimitExceeded:
             raise  # REQ-1174: answered as 413 by the app's handler
+        except ReadRefused:
+            raise  # refused by name; the app answers it (core/read_refusal.py)
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
         except HTTPException:
@@ -816,6 +819,8 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             rows = await invoke_tracked_function(command_name, args, state, role_id)
         except ComplexityLimitExceeded:
             raise  # REQ-1174: answered as 413 by the app's handler
+        except ReadRefused:
+            raise  # refused by name; the app answers it (core/read_refusal.py)
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
 

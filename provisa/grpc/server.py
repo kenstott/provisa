@@ -41,6 +41,7 @@ from google.protobuf.descriptor import FieldDescriptor
 
 from provisa.compiler.directives import cache_hint_from_grpc_metadata
 from provisa.core import request_deadline
+from provisa.core.read_refusal import ReadRefused
 from provisa.core.ir_types import iso8601_duration
 
 log = logging.getLogger(__name__)
@@ -140,6 +141,10 @@ def _status_for_exception(exc: BaseException) -> grpc.StatusCode:
     if isinstance(exc, PermissionError):
         return grpc.StatusCode.PERMISSION_DENIED
     if isinstance(exc, (ConnectionError, OSError)):
+        return grpc.StatusCode.UNAVAILABLE
+    if isinstance(exc, ReadRefused):
+        # The deployment cannot answer this read now (core/read_refusal.py); the message names
+        # the table and the reason.
         return grpc.StatusCode.UNAVAILABLE
     if isinstance(exc, ValueError):
         return grpc.StatusCode.INVALID_ARGUMENT

@@ -395,7 +395,8 @@
       "unknown_auth_provider": "onbekende authenticatieprovider '{{provider}}'; geldig: {{valid}}",
       "unknown_encryption_provider": "onbekende encryptieprovider '{{provider}}'",
       "unknown_engine": "onbekende engine '{{engine}}'; geldig: {{valid}}",
-      "use_domains_invalid": "use_domains moet true, false of null zijn"
+      "use_domains_invalid": "use_domains moet true, false of null zijn",
+      "claims_with_multitenancy": "Een multi-tenant-implementatie kan roltoewijzingen niet uit aanmeldclaims lezen: zij kent rollen zelf toe, per organisatie, en claims zouden die overschrijven. Stel de bron van de toewijzingen in op Provisa."
     },
     "setup": {
       "admin_credentials_required": "admin_username en admin_password vereist",

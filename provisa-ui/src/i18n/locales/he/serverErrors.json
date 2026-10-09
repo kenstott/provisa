@@ -395,7 +395,8 @@
       "unknown_auth_provider": "ספק אימות לא מוכר '{{provider}}'; תקפים: {{valid}}",
       "unknown_encryption_provider": "ספק הצפנה לא מוכר '{{provider}}'",
       "unknown_engine": "מנוע לא מוכר '{{engine}}'; תקפים: {{valid}}",
-      "use_domains_invalid": "use_domains חייב להיות true, false או null"
+      "use_domains_invalid": "use_domains חייב להיות true, false או null",
+      "claims_with_multitenancy": "פריסה מרובת דיירים אינה יכולה לקרוא הקצאות תפקידים מתוך claims של הכניסה: היא מעניקה תפקידים בעצמה, לכל ארגון, וה-claims היו דורסים אותם. הגדירו את מקור ההקצאות ל-Provisa."
     },
     "setup": {
       "admin_credentials_required": "admin_username ו-admin_password נדרשים",

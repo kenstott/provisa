@@ -24,6 +24,8 @@ tenant database: there is no region model to name another store.
 
 from __future__ import annotations
 
+from provisa.core.read_refusal import ReadRefused
+
 import threading
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -283,7 +285,7 @@ class ForeignRegion(NamedTuple):
         return self._replace(reads="views")
 
 
-class HomeRegionUnavailable(RuntimeError):
+class HomeRegionUnavailable(ReadRefused):
     """A table that names another region is read from that region's replica, never live: refused
     while that replica is not built or that region's stores cannot be reached."""
 

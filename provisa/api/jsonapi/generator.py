@@ -32,6 +32,7 @@ from graphql import (
     GraphQLSchema,
 )
 
+from provisa.core.read_refusal import ReadRefused
 from provisa.api.json_response import OrjsonResponse
 from provisa.api.jsonapi.errors import error_response, jsonapi_error
 from provisa.api.jsonapi.pagination import (
@@ -859,6 +860,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 if e.status_code == 503:
                     return _jsonapi_error_response(503, "Service Unavailable", e.detail)
                 raise
+            except ReadRefused as e:
+                # The deployment cannot answer this read now (core/read_refusal.py): named, 503.
+                return _jsonapi_error_response(503, "Service Unavailable", str(e))
             except TimeoutError as e:
                 # REQ-1905: the statement outran its request deadline, or the server is stopping.
                 return _jsonapi_error_response(504, "Gateway Timeout", str(e))
@@ -1004,6 +1008,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             if e.status_code == 503:
                 return _jsonapi_error_response(503, "Service Unavailable", e.detail)
             raise
+        except ReadRefused as e:
+            # The deployment cannot answer this read now (core/read_refusal.py): named, 503.
+            return _jsonapi_error_response(503, "Service Unavailable", str(e))
         except TimeoutError as e:
             # REQ-1905: the statement outran its request deadline, or the server is stopping.
             return _jsonapi_error_response(504, "Gateway Timeout", str(e))
@@ -1052,6 +1059,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 if e.status_code == 503:
                     return _jsonapi_error_response(503, "Service Unavailable", e.detail)
                 raise
+            except ReadRefused as e:
+                # The deployment cannot answer this read now (core/read_refusal.py): named, 503.
+                return _jsonapi_error_response(503, "Service Unavailable", str(e))
             except TimeoutError as e:
                 # REQ-1905: the statement outran its request deadline, or the server is stopping.
                 return _jsonapi_error_response(504, "Gateway Timeout", str(e))

@@ -57,7 +57,6 @@
     "writable": "可写入",
     "writableOps": "接受来自 GraphQL、REST 和 SQL 的 {{ops}}",
     "dataProductChip": "数据产品",
-    "notShown": "未显示",
-    "editNeedsGovernance": "编辑表会替换其列的授权列表和掩码，而这些内容未向您显示。需要 view_governance 权限。"
+    "notShown": "未显示"
   }
 }

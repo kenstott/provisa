@@ -395,7 +395,8 @@
       "unknown_auth_provider": "未知的身份验证提供程序 '{{provider}}'；有效值：{{valid}}",
       "unknown_encryption_provider": "未知的加密提供程序 '{{provider}}'",
       "unknown_engine": "未知引擎 '{{engine}}'；有效值：{{valid}}",
-      "use_domains_invalid": "use_domains 必须为 true、false 或 null"
+      "use_domains_invalid": "use_domains 必须为 true、false 或 null",
+      "claims_with_multitenancy": "多租户部署不能从登录声明中读取角色分配：它按组织自行授予角色，而声明会覆盖这些授予。请将分配来源设置为 Provisa。"
     },
     "setup": {
       "admin_credentials_required": "需要 admin_username 和 admin_password",

@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-540 — GovData Sources
-  # Sources of type `govdata` expose U.S. government open data partitioned by subject grouping. Configuring a govdata source…
+  # Sources of type `govdata` (AskAmerica) expose U.S. government open data by subject. The subjects ticked on a source deci…
 
   Scenario: REQ-540 default behaviour
     Given a govdata source configured with a subject grouping

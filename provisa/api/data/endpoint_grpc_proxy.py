@@ -44,6 +44,7 @@ from provisa.grpc.query_ir import (
 from provisa.grpc.proto_gen import _to_proto_field_name
 from provisa.compiler.directives import cache_hint_from_grpc_metadata
 from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
+from provisa.core.read_refusal import ReadRefused
 from provisa.compiler.complexity import ComplexityLimitExceeded
 
 log = logging.getLogger(__name__)
@@ -340,6 +341,8 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
             result = await _execute_plan(plan, state)
         except ComplexityLimitExceeded:
             raise  # REQ-1174: answered as 413 by the app's handler
+        except ReadRefused:
+            raise  # refused by name; the app answers it (core/read_refusal.py)
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
         except Exception as exc:
@@ -371,6 +374,8 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
                     nodes_result = await _execute_plan(nodes_plan, state)
                 except ComplexityLimitExceeded:
                     raise  # REQ-1174: answered as 413 by the app's handler
+                except ReadRefused:
+                    raise  # refused by name; the app answers it (core/read_refusal.py)
                 except PermissionError as exc:
                     raise HTTPException(status_code=403, detail=str(exc))
                 except Exception as exc:
@@ -449,6 +454,8 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
         result = await _execute_plan(plan, state)
     except ComplexityLimitExceeded:
         raise  # REQ-1174: answered as 413 by the app's handler
+    except ReadRefused:
+        raise  # refused by name; the app answers it (core/read_refusal.py)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except Exception as exc:

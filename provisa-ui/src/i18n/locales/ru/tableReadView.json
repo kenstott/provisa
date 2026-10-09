@@ -57,7 +57,6 @@
     "writable": "Доступна для записи",
     "writableOps": "Принимает {{ops}} через GraphQL, REST и SQL",
     "dataProductChip": "Продукт данных",
-    "notShown": "не показано",
-    "editNeedsGovernance": "Редактирование таблицы заменяет списки доступа и маски её столбцов, которые вам не показаны. Требуется право view_governance."
+    "notShown": "не показано"
   }
 }

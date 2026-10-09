@@ -64,6 +64,11 @@ def read_config_for_setup() -> dict:  # REQ-164, REQ-120
 
 
 def write_config(path: Path, cfg: dict) -> None:  # REQ-164
+    # Every settings path writes the configuration here, so a configuration the deployment
+    # would refuse to start on is refused here, before it replaces the one that works.
+    from provisa.core.assignments_source import require_assignments_source
+
+    require_assignments_source(bool(cfg.get("multitenancy")), cfg.get("auth"))
     # First-run setup creates the config for the first time — there is nothing to
     # back up and the config dir may not exist yet. Only snapshot an existing file.
     path.parent.mkdir(parents=True, exist_ok=True)

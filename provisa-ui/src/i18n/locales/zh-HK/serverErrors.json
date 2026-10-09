@@ -395,7 +395,8 @@
       "unknown_auth_provider": "未知的驗證提供者「{{provider}}」；有效值：{{valid}}",
       "unknown_encryption_provider": "未知的加密提供者「{{provider}}」",
       "unknown_engine": "未知引擎「{{engine}}」；有效值：{{valid}}",
-      "use_domains_invalid": "use_domains 必須為 true、false 或 null"
+      "use_domains_invalid": "use_domains 必須為 true、false 或 null",
+      "claims_with_multitenancy": "多租戶部署不能從登入聲明中讀取角色指派：它按組織自行授予角色，而聲明會覆蓋這些授予。請將指派來源設定為 Provisa。"
     },
     "setup": {
       "admin_credentials_required": "必須提供 admin_username 及 admin_password",
