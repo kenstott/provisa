@@ -484,20 +484,24 @@ A branded source ships its own exclusions as part of its curation, and an operat
 
 U.S. government open data. Access is partitioned by subject grouping. [tool-verified: `provisa/core/models.py` lines 543–609]
 
-Each `govdata` source selects one subject. That subject determines which GovData schemas are exposed. The `ref` and `geo` schemas are always included as linker schemas — they are not listed per subject but are always present. [tool-verified: `provisa/core/models.py` line 562–563 comment]
+A source is given one or more subjects, and each subject brings the adapter schemas listed below. A schema may belong to more than one subject (`census`). The `ref` and `geo` schemas are linker schemas: reference data and geography that every subject's tables join through, so every source serves them whatever subjects it is given. The list is stated once on the server and is held, by a test, to the schemas the pinned adapter bundle serves. [tool-verified: `provisa/core/models.py` `GOVDATA_SUBJECT_SCHEMAS`, `GOVDATA_LINKER_SCHEMAS`; `tests/unit/test_govdata_subject_schemas.py`]
 
 | Subject | Schemas Exposed |
 | --------- | ----------------- |
-| `COMMERCE` | `sec`, `patents` |
-| `ECONOMY` | `econ` |
-| `EDUCATION` | `census`, `edu` |
+| `COMMERCE` | `sec`, `patents`, `cftc` |
+| `ECONOMY` | `econ`, `econ_reference`, `ag`, `banking`, `fiscal`, `housing`, `transport` |
+| `EDUCATION` | `census`, `edu`, `research` |
 | `HEALTH` | `health` |
 | `CYBER` | `cyber_threat`, `cyber_vuln` |
-| `PUBLIC_SAFETY` | `crime` |
-| `ENVIRONMENT` | `lands` |
+| `PUBLIC_SAFETY` | `crime`, `disasters` |
+| `ENVIRONMENT` | `lands`, `environment` |
 | `WEATHER` | `weather` |
-| `GOVERNMENT` | `fedregister`, `fec` |
-| `ALL` | Every schema above |
+| `ENERGY` | `energy` |
+| `GOVERNMENT` | `fedregister`, `fec`, `officials`, `law` |
+| `DEMOGRAPHICS` | `census` |
+| every source | `ref`, `geo` |
+
+`ALL` is a subscription's shorthand for every subject; it is not a choice on the Sources form.
 
 ```yaml
 sources:
