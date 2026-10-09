@@ -1,8 +1,12 @@
 name: Boot the NixOS guest
 description: >-
-  Build packaging/nixos's `ci` system as a QEMU VM, boot it on this runner under KVM, and copy the
+  Build one of packaging/nixos's systems (`ci` unless asked otherwise) as a QEMU VM, boot it on this runner under KVM, and copy the
   checkout onto its disk at ~/provisa. Afterwards `packaging/nixos/vm-run '<script>'` runs a script
   in the guest, and PROVISA_VM_SSH_CONFIG names the ssh config (host `vm`) for scp.
+inputs:
+  system:
+    description: "Which system of packaging/nixos/flake.nix to boot: ci (the Provisa host) or bare (a host without its settings)"
+    default: ci
 runs:
   using: composite
   steps:
@@ -57,7 +61,7 @@ runs:
     - name: Build the VM
       shell: bash
       run: |
-        nix build "path:$GITHUB_WORKSPACE/packaging/nixos#nixosConfigurations.ci.config.system.build.vm" \
+        nix build "path:$GITHUB_WORKSPACE/packaging/nixos#nixosConfigurations.${{ inputs.system }}.config.system.build.vm" \
           --out-link "$RUNNER_TEMP/vm" --print-build-logs
 
     - name: Boot

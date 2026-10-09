@@ -20,5 +20,14 @@
           ./ci-vm.nix
         ];
       };
+
+      # A host without the settings, as the same guest: what install.sh says to a new NixOS user.
+      nixosConfigurations.bare = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          ./bare.nix
+          ./ci-vm.nix
+        ];
+      };
     };
 }

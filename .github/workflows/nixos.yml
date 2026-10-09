@@ -16,6 +16,8 @@ on:
     branches: [integration, main]
     paths:
       - "packaging/nixos/**"
+      - "install.sh"
+      - "scripts/provisa"
       - ".github/actions/nixos-vm/**"
       - ".github/workflows/nixos.yml"
   schedule:
@@ -179,6 +181,45 @@ jobs:
           name: nixos-console-${{ github.job }}-${{ strategy.job-index }}
           path: ${{ runner.temp }}/vm-console.log
           if-no-files-found: ignore
+
+  # install.sh on NixOS. A host without Provisa's settings is told the steps and nothing is
+  # installed; a host with them (the settings file the installer hands out is the one the `ci`
+  # guest is built from) is installed on, and its services answer.
+  installer:
+    name: installer (${{ matrix.guest }} host)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        guest: [bare, ci]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/nixos-vm
+        with:
+          system: ${{ matrix.guest }}
+
+      - name: The installer names the steps and stops
+        if: matrix.guest == 'bare'
+        run: packaging/nixos/vm-run 'packaging/nixos/ci/installer-refuses.sh'
+
+      - name: The installer installs and the services answer
+        id: install
+        if: matrix.guest == 'ci'
+        run: packaging/nixos/vm-run 'packaging/nixos/ci/installer-installs.sh'
+
+      - name: Containers
+        if: ${{ failure() && steps.install.outcome == 'failure' }}
+        run: |
+          packaging/nixos/vm-run '
+            docker ps -a --format "{{.Names}}\t{{.Status}}"
+            for c in $(docker ps -a --format "{{.Names}}"); do
+              echo "=== $c"; docker logs --tail 100 "$c" 2>&1
+            done
+          '
+
+      - *console
 
   # The same matrix integration-suite-lanes.yml builds, for the lanes asked for.
   plan:
