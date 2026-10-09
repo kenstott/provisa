@@ -383,3 +383,12 @@ loader works out as stated. Microsoft values are those of the Graph v1.0 descrip
    Google describes that format as returning "only email message ID, labels, and email
    headers", so whether `snippet`, `size_bytes` and `change_key` are returned under it is not
    yet known; each is NULL if not. Stated after the first live read.
+5. Known gap, Microsoft `attachments`: rows are listed only for messages Graph marks
+   `hasAttachments`, which by Microsoft's own description does not count inline attachments.
+   A message whose only attachments are inline has no attachment rows from Microsoft, where
+   Google gives a row for each inline part. Proposed follow-up, not built: also list a
+   message's attachments when its HTML body refers to one (`cid:`). `content_id` is NULL from
+   Microsoft until a live read shows how Graph returns it without the attachment's content.
+6. A message with a part that cannot be read keeps its row with the body columns NULL and the
+   rest filled (maintainer's ruling, both providers). The count and ids are a warning in the
+   log when the table's read ends, until the replica's record has a place for a build note.
