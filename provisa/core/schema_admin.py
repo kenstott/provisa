@@ -795,6 +795,23 @@ source_sign_ins = Table(
 )
 
 
+# REQ-1923: the mail platforms an organisation's sources sign in to (Google Workspace,
+# Microsoft 365): the client the organisation's administrator registered with the platform,
+# entered once for the organisation and used by every source of it. The client's secret is not
+# here: it is in the organisation's vault (``core.mail_platforms.secret_name``). ``settings`` is
+# what else the platform's addresses depend on (Microsoft's tenant), as JSON.
+org_mail_platforms = Table(
+    "org_mail_platforms",
+    metadata,
+    Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), primary_key=True),
+    Column("platform", Text, primary_key=True),
+    Column("client_id", Text, nullable=False),
+    Column("settings", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_by", Text, nullable=True),
+)
+
+
 REGISTRY_TABLES = [
     orgs,
     org_encryption_keys,
@@ -810,6 +827,7 @@ REGISTRY_TABLES = [
     org_config,
     secrets_store,
     source_sign_ins,
+    org_mail_platforms,
     deployment_encryption_key,
     personal_access_tokens,
     scram_credentials,

@@ -83,6 +83,9 @@ REGISTRY_ONLY_TABLES = {
     # its credentials go to, and readable by whichever process the answer reaches. Portable
     # metadata only.
     "source_sign_ins",
+    # REQ-1923: the mail platforms an organisation's sources sign in to. Beside ``orgs`` and the
+    # vault its client secret is kept in. Portable metadata only.
+    "org_mail_platforms",
     # REQ-1574: the org's key ring, held beside ``orgs`` on the platform plane so a blob is
     # decryptable before any org schema is open. Portable metadata only.
     "org_encryption_keys",

@@ -3775,6 +3775,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.source_sign_in_router import router as source_sign_in_router
 
     app.include_router(source_sign_in_router)  # REQ-1923
+    from provisa.api.admin.mail_platforms_router import router as mail_platforms_router
+
+    app.include_router(mail_platforms_router)  # REQ-1923
     from provisa.api.branding_router import router as branding_router  # REQ-1486
 
     app.include_router(branding_router)

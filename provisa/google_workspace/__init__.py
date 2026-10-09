@@ -10,6 +10,7 @@
 
 """Google Workspace source: the mail, calendar and tasks of Google accounts (REQ-1923)."""
 
+from provisa.core import mail_platforms
 from provisa.core.declared_sensitive import declare_canonical_mail
 
 #: The source type's name, as a source row records it.
@@ -17,3 +18,6 @@ SOURCE_TYPE = "google_workspace"
 
 # REQ-1943: its mail tables are the canonical ones, hidden and tagged as those are declared.
 declare_canonical_mail(SOURCE_TYPE)
+
+# REQ-1923: an organisation enters its Google client once; every source of it signs in with it.
+mail_platforms.declare(mail_platforms.Platform(SOURCE_TYPE))
