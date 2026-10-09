@@ -628,6 +628,16 @@ _REAL_CALLER_SECRETS = {
     "real-amd64-engines": set(),
     "real-suite-neo4j": {"SPLUNKBASE_USERNAME", "SPLUNKBASE_PASSWORD"},
     "real-ui-trino": {"SP_CERT_P12_BASE64"},
+    "real-suite": {"ANTHROPIC_API_KEY", "SPLUNKBASE_USERNAME", "SPLUNKBASE_PASSWORD"},
+    "real-ui-swap": set(),
+}
+# The level at which each starts (the neo4j lane alone only AT level 2: level 3 runs the suite).
+_REAL_CALLER_GATE = {
+    "real-amd64-engines": ">= 2",
+    "real-suite-neo4j": "== 2",
+    "real-ui-trino": ">= 2",
+    "real-suite": ">= 3",
+    "real-ui-swap": ">= 3",
 }
 
 
@@ -672,7 +682,10 @@ def test_the_leaf_check_reads_no_secret_below_level_two_and_can_publish_nothing(
     assert real == set(_REAL_CALLER_SECRETS)
     for job in real:
         assert jobs[job]["needs"] == ["scope", "level-1"]
-        assert jobs[job]["if"] == "fromJSON(needs.scope.outputs.level) >= 2"
+        assert jobs[job]["if"] == f"fromJSON(needs.scope.outputs.level) {_REAL_CALLER_GATE[job]}"
+    # Neither suite call asks for the lanes that hold live credentials.
+    for job in ("real-suite", "real-suite-neo4j"):
+        assert set(jobs[job]["with"]) == {"lanes"}
 
 
 def test_no_workflow_inherits_secrets_or_serialises_them():
@@ -734,7 +747,7 @@ def test_the_proof_level_is_one_committed_file_and_each_level_needs_the_one_belo
     everything; level 1's jobs need level 0's gate, which needs every composite action's check."""
     _text, workflow = _leaf_check()
     level = (REPO / ".github" / "ci-proof-level").read_text().strip()
-    assert level in {"0", "1", "2"}, level
+    assert level in {"0", "1", "2", "3"}, level
     jobs = workflow["jobs"]
     assert jobs["scope"]["outputs"] == {"level": "${{ steps.level.outputs.level }}"}
     level_one = {"lane", "lane-fails", "release-dry-run"}

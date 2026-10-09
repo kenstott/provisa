@@ -30,6 +30,8 @@ on:
       - "docker-compose.core.yml"
       - ".github/workflows/ui-e2e-swap-amd64.yml"
   workflow_dispatch:
+  # Callable: by an orchestrator, and by the proof of the CI's own structure. Reads no secret.
+  workflow_call:
 
 permissions:
   contents: read

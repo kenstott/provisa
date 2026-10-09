@@ -58,13 +58,14 @@ jobs:
       #   0  each composite action alone
       #   1  the reusable workflows with trivial work (the lane; the release's control flow)
       #   2  one REAL caller of each kind, at its cheapest (proof only: removed at the flip)
+      #   3  the orchestrated runs: the whole suite, and the UI swap lane (proof only)
       - name: The level to prove
         id: level
         run: |
           level="$(tr -d '[:space:]' < .github/ci-proof-level)"
           case "$level" in
-            0|1|2) echo "level=$level" >> "$GITHUB_OUTPUT" ;;
-            *) echo "::error::.github/ci-proof-level is '$level'; this workflow proves levels 0 to 2"; exit 1 ;;
+            0|1|2|3) echo "level=$level" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::.github/ci-proof-level is '$level'; this workflow proves levels 0 to 3"; exit 1 ;;
           esac
           echo "proving up to level $level on ${GITHUB_REF_NAME} at ${GITHUB_SHA}"
 
@@ -536,7 +537,8 @@ jobs:
   real-suite-neo4j:
     name: real / suite (neo4j)
     needs: [scope, level-1]
-    if: fromJSON(needs.scope.outputs.level) >= 2
+    # At level 3 the whole suite runs instead, which includes this lane.
+    if: fromJSON(needs.scope.outputs.level) == 2
     uses: ./.github/workflows/integration-suite-lanes.yml
     with:
       lanes: neo4j
@@ -555,6 +557,33 @@ jobs:
     uses: ./.github/workflows/ui-e2e-trino.yml
     secrets:
       SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
+
+  # ── level 3: the orchestrated runs (PROOF ONLY -- removed in the flip commit) ──────────────
+  #
+  # The whole suite as a push to main runs it: every lane and the cluster job, no warehouse and
+  # no Salesforce lane (those are nightly or on demand, with live credentials -- level 4). It
+  # is passed the three secrets the lanes read on main. And the UI swap lane, which reads none.
+
+  real-suite:
+    name: real / suite (all lanes)
+    needs: [scope, level-1]
+    if: fromJSON(needs.scope.outputs.level) >= 3
+    uses: ./.github/workflows/integration-suite-lanes.yml
+    with:
+      lanes: all
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
+      SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
+    concurrency:
+      group: integration-suite
+      queue: max
+
+  real-ui-swap:
+    name: real / UI swap lane
+    needs: [scope, level-1]
+    if: fromJSON(needs.scope.outputs.level) >= 3
+    uses: ./.github/workflows/ui-e2e-swap-amd64.yml
 
   # ── the verdict ────────────────────────────────────────────────────────────────────────────
 
@@ -583,6 +612,8 @@ jobs:
       - real-amd64-engines
       - real-suite-neo4j
       - real-ui-trino
+      - real-suite
+      - real-ui-swap
     if: ${{ always() && startsWith(github.ref, 'refs/heads/ci/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -608,7 +639,12 @@ jobs:
               expected["level-1"] = "skipped"
           # Level 2's jobs do not run below level 2.
           if level < 2:
-              for job in ("real-amd64-engines", "real-suite-neo4j", "real-ui-trino"):
+              for job in ("real-amd64-engines", "real-ui-trino"):
+                  expected[job] = "skipped"
+          if level != 2:
+              expected["real-suite-neo4j"] = "skipped"
+          if level < 3:
+              for job in ("real-suite", "real-ui-swap"):
                   expected[job] = "skipped"
           print(f"level {level}")
           wrong = {job: (got, expected[job]) for job, got in results.items() if got != expected[job]}
