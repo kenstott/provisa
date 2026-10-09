@@ -86,8 +86,14 @@ jobs:
       # demo/sources/saphana/prime.py's own dependency and the product's own hana+hdbcli driver —
       # source-to-query-generic-rdbms.spec.ts's saphana case runs for real on this runner (a genuine
       # amd64 host, see that spec's RUNNING_IN_CI gate).
+      # `gx` and `soda` are the two data-quality checkers the demo model this lane serves registers
+      # as sources (dq-checker, dq-soda; pyproject's REQ-1443 notes). Without them each scan exits
+      # "checker ... is not installed", its results table can never be built, and every request
+      # that reads the whole model fails on it: the seven `MATCH (n) ...` Cypher cases answered 500
+      # (ReplicaBuildFailed for dq-checker.quality.pets_scan) and the checker specs had nothing to
+      # show (run 37874182519 on v0.1.0-alpha.477).
       - name: Install Python deps
-        run: uv sync --frozen --extra dev --extra cassandra --extra saphana
+        run: uv sync --frozen --extra dev --extra cassandra --extra saphana --extra gx --extra soda
 
       - uses: actions/setup-node@v4
         with:
