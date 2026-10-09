@@ -40,7 +40,7 @@ from graphql import GraphQLSyntaxError, OperationType
 from pydantic import BaseModel
 
 from provisa.core import request_deadline
-from provisa.core.region_stores import HomeRegionUnavailable
+from provisa.core.read_refusal import ReadRefused
 from provisa.core.statement_warnings import collecting
 from provisa.api.errors import ApiError
 from provisa.cache.middleware import build_cache_headers
@@ -541,8 +541,8 @@ async def _executed(plan, state, root_field: str):
             f"Redirect upload failed: {failed}",
             error=str(failed),
         ) from failed
-    except (HTTPException, PermissionError, ReplicaBuilding, HomeRegionUnavailable):
-        raise  # HomeRegionUnavailable (REQ-1922): refused by name; the app answers it (503)
+    except (HTTPException, PermissionError, ReplicaBuilding, ReadRefused):
+        raise  # ReadRefused (REQ-1922, REQ-1661): refused by name; the app answers it (503)
     except (MemoryError, ConnectionError) as exc:
         log.error("Query resource error for %s: %s", root_field, exc)
         raise HTTPException(status_code=503, detail=str(exc)) from exc

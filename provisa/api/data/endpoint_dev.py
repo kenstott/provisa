@@ -30,6 +30,7 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     from provisa.cypher.label_map import CypherLabelMap
 
+from provisa.core.read_refusal import ReadRefused
 from provisa.compiler.definitions import NotAvailableHere
 from provisa.api.admin._dev_shared import detect_target
 from provisa.api.errors import ApiError
@@ -300,6 +301,8 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         )
     except ComplexityLimitExceeded:
         raise  # REQ-1174: answered as 413 by the app's handler
+    except ReadRefused:
+        raise  # refused by name; the app answers it (core/read_refusal.py)
     except NotAvailableHere:
         # A statement this surface or the table cannot take (a definition; a write the table's
         # source cannot carry): answered by the app's handler with its code and parameters.
@@ -369,6 +372,8 @@ async def sql_explain_endpoint(  # REQ-1519
         return await analyze_sql(request.sql, role_id, state, analyze=request.analyze, as_of=_as_of)
     except ComplexityLimitExceeded:
         raise  # REQ-1174: answered as 413 by the app's handler
+    except ReadRefused:
+        raise  # refused by name; the app answers it (core/read_refusal.py)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except ExplainUnsupported as exc:
