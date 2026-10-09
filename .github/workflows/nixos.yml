@@ -132,8 +132,10 @@ jobs:
         if: ${{ !cancelled() && steps.service.outcome == 'success' }}
         run: |
           packaging/nixos/vm-run '
-            sudo find / -xdev -name pgwire-server.log 2>/dev/null | while read -r f; do
-              echo "=== $f"; sudo tail -n 400 "$f"
+            for f in ~/.provisa/pgwire/*/*/pgwire-server.log; do
+              # No server was started: the pattern is still a pattern.
+              [ -e "$f" ] || continue
+              echo "=== $f"; tail -n 400 "$f"
             done
           '
 

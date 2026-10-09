@@ -119,6 +119,9 @@ in
       NIX_LD = "${nixLd}/ld.so";
       NIX_LD_LIBRARY_PATH = nixLd;
       SSL_CERT_FILE = caBundle;
+      # An adapter server's Python starts its JVM through JPype, which finds libjvm.so by
+      # JAVA_HOME or in /usr/lib/jvm, not in the JRE its own bundle ships.
+      JAVA_HOME = pkgs.jdk21.home;
     };
     serviceConfig = {
       User = "provisa";
