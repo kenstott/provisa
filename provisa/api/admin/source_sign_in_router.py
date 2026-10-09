@@ -12,14 +12,15 @@
 
 Three calls, each open to whoever may add a source in the caller's organisation:
 
-- ``GET  /admin/source-sign-in/redirect-address`` -- the address the operator copies into their
-  own client at the issuer;
-- ``POST /admin/source-sign-in/start`` -- records the sign-in and answers the address the
-  operator's browser is sent to;
+- ``GET  /admin/source-sign-in/status`` -- whether the organisation has entered a client for
+  the kind of source, and whether the caller is one who may enter it;
+- ``POST /admin/source-sign-in/start`` -- records the sign-in with the ORGANISATION's client
+  (``core.mail_platforms``; none is sent by the form) and answers the address the operator's
+  browser is sent to;
 - ``POST /admin/source-sign-in/complete`` -- takes the issuer's answer, which the page the
   browser came back to handed to the form that started the sign-in.
 
-No answer carries a code, a token or a secret: a completed sign-in answers the references the
+No answer carries a code, a token or a secret: a completed sign-in answers the reference the
 source's settings then hold. The exchange itself is ``provisa.core.source_sign_in``.
 """
 
@@ -34,22 +35,22 @@ import provisa.google_workspace.sign_in  # noqa: F401  (registers the Google kin
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.admin.environments_router import _caller_user_id
 from provisa.api.errors import ApiError
-from provisa.core import source_sign_in
+from provisa.core import mail_platforms, source_sign_in
 from provisa.core.database import Database
+from provisa.core.mail_platforms import MailPlatformRefused
 from provisa.core.source_sign_in import SignInRefused
 
 router = APIRouter(prefix="/admin/source-sign-in", tags=["admin", "sources"])
 
 
 class StartRequest(BaseModel):
+    """What the person adding a source gives. The client is the organisation's and is read
+    from its mail-platform setting, never sent here."""
+
     source_id: str
     kind: str
     account: str
     scopes: list[str]
-    client_id: str
-    client_secret: str
-    #: What of the source's own settings its issuer's addresses depend on (a tenant).
-    settings: dict[str, str] = {}
 
 
 class CompleteRequest(BaseModel):
@@ -91,13 +92,11 @@ async def _source_exists(source_id: str) -> bool:
         return found.fetchone() is not None
 
 
-def _store_secret(actor: str | None):
-    async def store(name: str, value: str, description: str) -> str:
-        from provisa.api.admin.schema_common import _store_source_secret
+def _holds_org_settings(request: Request) -> bool:
+    """Whether the caller may enter the organisation's client (Admin > Email)."""
+    from provisa.api.admin.capabilities import has_capability_request
 
-        return await _store_source_secret(actor, name, value, description)
-
-    return store
+    return has_capability_request(request, "org_settings")
 
 
 def _store_refresh_token(org_id: str, actor: str | None):
@@ -123,13 +122,18 @@ def _store_refresh_token(org_id: str, actor: str | None):
     return store
 
 
-@router.get("/redirect-address")
-async def redirect_address(request: Request) -> dict:
+@router.get("/status")
+async def status(request: Request, kind: str) -> dict:
+    """Whether the caller's organisation has entered a client for ``kind``, so the Sources
+    form can offer the sign-in or say what is missing and who sets it."""
     require_capability_request(request, "source_registration")
+    from provisa.core.request_context import require_current_org
+
     try:
-        return {"redirect_address": source_sign_in.redirect_address(_public_address())}
-    except SignInRefused as refused:
-        raise _refusal(refused) from None
+        configured = await mail_platforms.read(_admin_db(), require_current_org(), kind)
+    except MailPlatformRefused as refused:
+        raise ApiError(refused.status, refused.code, str(refused), None, **refused.params) from None
+    return {"configured": configured is not None, "may_configure": _holds_org_settings(request)}
 
 
 @router.post("/start")
@@ -139,6 +143,11 @@ async def start(request: Request, body: StartRequest) -> dict:
     from provisa.core.request_context import active_env, require_current_org
 
     org_id, env, user_id = require_current_org(), active_env(), _starter(request)
+    try:
+        # The organisation's own client, and no other organisation's.
+        client = await mail_platforms.require(_admin_db(), org_id, body.kind)
+    except MailPlatformRefused as refused:
+        raise ApiError(refused.status, refused.code, str(refused), None, **refused.params) from None
     try:
         await source_sign_in.sweep(
             _admin_db(),
@@ -156,19 +165,22 @@ async def start(request: Request, body: StartRequest) -> dict:
             kind_id=body.kind,
             account=body.account.strip(),
             scopes=body.scopes,
-            client_id=body.client_id.strip(),
-            client_secret=body.client_secret,
-            public_address=_public_address(),
-            secret_names=(
-                source_mapping_secret_name(body.source_id.strip(), "client_secret", env),
-                source_mapping_secret_name(body.source_id.strip(), "refresh_token", env),
+            client_id=client.client_id,
+            client_secret_name=mail_platforms.secret_name(body.kind),
+            refresh_token_name=source_mapping_secret_name(
+                body.source_id.strip(), "refresh_token", env
             ),
-            store_secret=_store_secret(_caller_user_id(request)),
-            settings=body.settings,
+            public_address=_public_address(),
+            settings=client.settings,
         )
     except SignInRefused as refused:
         raise _refusal(refused) from None
-    return {"authorization_url": started.authorization_url, "expires_in": started.expires_in}
+    return {
+        "authorization_url": started.authorization_url,
+        "expires_in": started.expires_in,
+        # Where the issuer returns the browser to: the form listens for the page there.
+        "return_origin": started.return_origin,
+    }
 
 
 @router.post("/complete")
@@ -192,6 +204,5 @@ async def complete(request: Request, body: CompleteRequest) -> dict:
     return {
         "source_id": done.source_id,
         "account": done.account,
-        "client_secret": done.client_secret,
         "refresh_token": done.refresh_token,
     }

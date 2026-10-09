@@ -22,6 +22,7 @@ import {
   answerOpener,
   awaitIssuerAnswer,
   mayReceiveAnswer,
+  signInSource,
   takeIssuerAnswer,
 } from "../lib/sourceSignIn";
 
@@ -241,5 +242,81 @@ describe("what the form accepts as the issuer's answer", () => {
     const refused = expect(waiting).rejects.toMatchObject({ code: "source_sign_in.state_expired" });
     await vi.advanceTimersByTimeAsync(600_001);
     await refused;
+  });
+});
+
+describe("signing a source in from the form", () => {
+  const request = {
+    source_id: "mail",
+    kind: "google_workspace",
+    account: "ada@example.test",
+    scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+  };
+
+  function page(answers: Record<string, unknown>) {
+    const popup = { closed: false, postMessage: vi.fn(), close: vi.fn(), location: { href: "" } };
+    const listeners: ((event: MessageEvent) => void)[] = [];
+    const sent: { path: string; body: unknown }[] = [];
+    const fetched = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const path = String(input).replace("/admin/source-sign-in/", "");
+      sent.push({ path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      return new Response(JSON.stringify(answers[path]), { status: 200 });
+    });
+    const win = {
+      open: vi.fn(() => popup),
+      setInterval: (fn: () => void, ms: number) => setInterval(fn, ms),
+      clearInterval: (id: number) => clearInterval(id),
+      setTimeout: (fn: () => void, ms: number) => setTimeout(fn, ms),
+      clearTimeout: (id: number) => clearTimeout(id),
+      addEventListener: (_: string, fn: (event: MessageEvent) => void) => listeners.push(fn),
+      removeEventListener: vi.fn(),
+    };
+    const hear = (origin: string, data: unknown) =>
+      listeners.forEach((fn) => fn({ origin, data, source: popup } as unknown as MessageEvent));
+    return { popup, win: win as unknown as Window, sent, hear, fetched, listeners };
+  }
+
+  it("sends no client, listens where the server says the browser returns, and completes", async () => {
+    const { popup, win, sent, hear, fetched, listeners } = page({
+      start: {
+        authorization_url: "https://issuer.test/authorize?state=made-up-state",
+        expires_in: 600,
+        return_origin: SIGN_IN,
+      },
+      complete: { source_id: "mail", account: "ada@example.test", refresh_token: "${secret:t}" },
+    });
+    const signing = signInSource(request, win);
+    await vi.waitFor(() => expect(listeners).toHaveLength(1));
+    expect(popup.location.href).toBe("https://issuer.test/authorize?state=made-up-state");
+    // An answer from the organisation's own origin is not the return page's.
+    hear(ORG, { type: ANSWER, state: "made-up-state", code: "forged", error: null });
+    hear(SIGN_IN, { type: ANSWER, state: "made-up-state", code: "made-up-code", error: null });
+    await expect(signing).resolves.toEqual({
+      source_id: "mail",
+      account: "ada@example.test",
+      refresh_token: "${secret:t}",
+    });
+    expect(sent).toEqual([
+      { path: "start", body: request },
+      { path: "complete", body: { state: "made-up-state", code: "made-up-code", error: null } },
+    ]);
+    expect(Object.keys(sent[0].body as object).sort()).toEqual([
+      "account",
+      "kind",
+      "scopes",
+      "source_id",
+    ]);
+    expect(popup.close).toHaveBeenCalled();
+    fetched.mockRestore();
+  });
+
+  it("stops by name when the browser blocks the window, before asking the server anything", async () => {
+    const { win, sent, fetched } = page({});
+    (win.open as ReturnType<typeof vi.fn>).mockReturnValue(null);
+    await expect(signInSource(request, win)).rejects.toMatchObject({
+      code: "source_sign_in.popup_blocked",
+    });
+    expect(sent).toEqual([]);
+    fetched.mockRestore();
   });
 });

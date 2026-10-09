@@ -43,11 +43,15 @@ export function gwScopes(fields: Record<string, string>): string[] {
 export const gwHeadersOnly = (fields: Record<string, string>) =>
   stated(fields, "gw_mail_content") === GW_MAIL_HEADERS;
 
-/** What the operator must enter before Google can be asked for their approval. */
+/** Whether the source signs in by its owner's approval (the only way the form sets up). */
+export const gwByApproval = (fields: Record<string, string>) =>
+  stated(fields, "gw_sign_in") !== GW_SERVICE_ACCOUNT;
+
+/** What must be entered before Google can be asked for the owner's approval. */
 export function gwConnectMissing(fields: Record<string, string>, sourceId: string): string[] {
   const missing: string[] = [];
   if (!sourceId.trim()) missing.push("source_id");
-  for (const key of ["gw_account", "gw_mail_content", "gw_client_id", "gw_client_secret"]) {
+  for (const key of ["gw_account", "gw_mail_content"]) {
     if (!stated(fields, key)) missing.push(key);
   }
   return missing;
@@ -56,35 +60,26 @@ export function gwConnectMissing(fields: Record<string, string>, sourceId: strin
 /** The fields still needed before the source can be saved. */
 export function gwMissing(fields: Record<string, string>): string[] {
   const missing: string[] = [];
-  for (const key of ["gw_account", "gw_sign_in", "gw_mail_content"]) {
+  for (const key of ["gw_account", "gw_mail_content"]) {
     if (!stated(fields, key)) missing.push(key);
   }
-  const signIn = stated(fields, "gw_sign_in");
-  if (signIn === GW_GOOGLE_ACCOUNT) {
-    for (const key of ["gw_client_id", "gw_client_secret", "gw_refresh_token"]) {
-      if (!stated(fields, key)) missing.push(key);
-    }
-  }
-  if (signIn === GW_SERVICE_ACCOUNT && !stated(fields, "gw_service_account_key")) {
-    missing.push("gw_service_account_key");
-  }
+  const credential = gwByApproval(fields) ? "gw_refresh_token" : "gw_service_account_key";
+  if (!stated(fields, credential)) missing.push(credential);
   return missing;
 }
 
-/** The source's mapping for what the fields say. */
+/** The source's mapping for what the fields say. The organisation's Google client is not part
+ * of it: a source keeps only its owner's approval. */
 export function gwMapping(fields: Record<string, string>): Record<string, unknown> {
-  const signIn = stated(fields, "gw_sign_in");
+  const byApproval = gwByApproval(fields);
   const mapping: Record<string, unknown> = {
     accounts: [stated(fields, "gw_account")],
     resources: ["mail"],
-    sign_in: signIn,
+    sign_in: byApproval ? GW_GOOGLE_ACCOUNT : GW_SERVICE_ACCOUNT,
     mail_content: stated(fields, "gw_mail_content"),
   };
-  const credentials =
-    signIn === GW_GOOGLE_ACCOUNT
-      ? ["client_id", "client_secret", "refresh_token"]
-      : ["service_account_key"];
-  for (const key of credentials) mapping[key] = stated(fields, `gw_${key}`);
+  const credential = byApproval ? "refresh_token" : "service_account_key";
+  mapping[credential] = stated(fields, `gw_${credential}`);
   if (lines(fields.gw_mail_labels).length) mapping.mail_labels = lines(fields.gw_mail_labels);
   if (fields.gw_mail_include_spam_trash === "true") mapping.mail_include_spam_trash = true;
   if (!gwHeadersOnly(fields)) {
@@ -107,8 +102,6 @@ export function gwFieldsFromMapping(mappingJson: string): Record<string, string>
     "mail_content",
     "mail_search",
     "mail_since",
-    "client_id",
-    "client_secret",
     "refresh_token",
     "service_account_key",
   ]) {

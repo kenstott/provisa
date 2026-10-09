@@ -38,7 +38,8 @@ ORG, USER, ENV = "acme", "uid-ada", "prod"
 ACCOUNT = "ada@example.test"
 PUBLIC = "https://acme.provisa.test"
 REDIRECT = "https://cloud.provisa.test/source-sign-in.html"
-SECRET_NAME, TOKEN_NAME = "source_mail__client_secret", "source_mail__refresh_token"
+# The organisation's client secret, already in its vault; and where the source's token goes.
+SECRET_NAME, TOKEN_NAME = "mail_platform_stand_in_client_secret", "source_mail__refresh_token"
 CLIENT_SECRET = "made-up-client-secret"
 CODE = "made-up-authorization-code"
 ACCESS, REFRESH = "made-up-access-token", "made-up-refresh-token"
@@ -98,7 +99,7 @@ def control_plane(tmp_path):
 
 @pytest.fixture
 def vault(monkeypatch):
-    held: dict[str, str] = {}
+    held: dict[str, str] = {SECRET_NAME: CLIENT_SECRET}
 
     @asynccontextmanager
     async def bound(admin_db, org_id, *, user_id=None):
@@ -136,14 +137,6 @@ def issuer(monkeypatch):
     return issuer
 
 
-def _store(vault: dict):
-    async def store(name: str, value: str, description: str) -> str:
-        vault[name] = value
-        return f"${{secret:{name}}}"
-
-    return store
-
-
 def _store_token(vault: dict):
     async def store(source_id: str, name: str, token: str) -> str:
         vault[name] = token
@@ -162,10 +155,9 @@ async def _start(control_plane, vault, **changed):
         "account": ACCOUNT,
         "scopes": [SCOPE],
         "client_id": "client-1",
-        "client_secret": CLIENT_SECRET,
+        "client_secret_name": SECRET_NAME,
+        "refresh_token_name": TOKEN_NAME,
         "public_address": PUBLIC,
-        "secret_names": (SECRET_NAME, TOKEN_NAME),
-        "store_secret": _store(vault),
     }
     given.update(changed)
     return await source_sign_in.start(control_plane, **given)
@@ -237,6 +229,7 @@ class TestStart:
         asked = _asked(started)
         assert started.authorization_url.startswith("https://issuer.test/authorize?")
         assert started.expires_in == source_sign_in.STATE_LIFETIME == 600
+        assert started.return_origin == "https://cloud.provisa.test"
         assert asked["response_type"] == "code"
         assert asked["client_id"] == "client-1"
         assert asked["redirect_uri"] == REDIRECT
@@ -269,12 +262,13 @@ class TestStart:
         assert (row["source_id"], row["account"], row["scopes"]) == ("mail", ACCOUNT, SCOPE)
         assert row["used_at"] is None
 
-    async def test_the_client_secret_goes_to_the_vault_and_not_into_what_is_pending(
+    async def test_the_organisations_client_secret_is_named_and_never_held_or_written(
         self, control_plane, vault, issuer
     ):
         started = await _start(control_plane, vault)
-        assert vault == {SECRET_NAME: CLIENT_SECRET}
+        assert vault == {SECRET_NAME: CLIENT_SECRET}  # as it was: start writes nothing
         (row,) = _rows(control_plane)
+        assert row["client_secret_name"] == SECRET_NAME
         assert CLIENT_SECRET not in map(str, row.values())
         assert CLIENT_SECRET not in started.authorization_url
 
@@ -282,21 +276,21 @@ class TestStart:
         with pytest.raises(SignInRefused) as raised:
             await _start(control_plane, vault, public_address="")
         assert raised.value.code == "source_sign_in.public_address_not_set"
-        assert vault == {} and _rows(control_plane) == []
+        assert vault == {SECRET_NAME: CLIENT_SECRET} and _rows(control_plane) == []
 
     async def test_an_unknown_kind_is_refused(self, control_plane, vault, issuer):
         with pytest.raises(SignInRefused) as raised:
             await _start(control_plane, vault, kind_id="nobody")
         assert raised.value.code == "source_sign_in.unknown_kind"
 
-    @pytest.mark.parametrize("missing", ["source_id", "account", "client_id", "client_secret"])
+    @pytest.mark.parametrize("missing", ["source_id", "account", "client_id", "client_secret_name"])
     async def test_a_start_without_what_it_needs_is_refused(
         self, control_plane, vault, issuer, missing
     ):
         with pytest.raises(SignInRefused) as raised:
             await _start(control_plane, vault, **{missing: ""})
         assert raised.value.code == "source_sign_in.incomplete"
-        assert vault == {}
+        assert vault == {SECRET_NAME: CLIENT_SECRET}
 
 
 # -- completing --------------------------------------------------------------------------------
@@ -321,7 +315,6 @@ class TestComplete:
         assert done == source_sign_in.Completed(
             source_id="mail",
             account=ACCOUNT,
-            client_secret=f"${{secret:{SECRET_NAME}}}",
             refresh_token=f"${{secret:{TOKEN_NAME}}}",
         )
 
@@ -344,7 +337,7 @@ class TestComplete:
         with pytest.raises(SignInRefused) as raised:
             await _complete(control_plane, vault, "made-up-state")
         assert raised.value.code == "source_sign_in.unknown_state"
-        assert issuer.forms == [] and vault == {}
+        assert issuer.forms == [] and vault == {SECRET_NAME: CLIENT_SECRET}
 
     @pytest.mark.parametrize("caller", [{"org_id": "globex"}, {"user_id": "uid-bo"}])
     async def test_another_organisations_or_persons_state_is_refused_and_not_spent(
@@ -552,9 +545,10 @@ class TestSweep:
         vault["someone_elses_secret"] = "made-up-unrelated"
         await _start(control_plane, vault)
         self._later(monkeypatch, 601)
-        assert await swept() == [SECRET_NAME, TOKEN_NAME]
+        assert await swept() == [TOKEN_NAME]
         assert _rows(control_plane) == []
-        assert vault == {"someone_elses_secret": "made-up-unrelated"}
+        # Not the organisation's client secret, and not anything it did not write.
+        assert vault == {SECRET_NAME: CLIENT_SECRET, "someone_elses_secret": "made-up-unrelated"}
 
     async def test_a_saved_sources_entries_survive(
         self, control_plane, vault, issuer, swept, monkeypatch
@@ -575,8 +569,8 @@ class TestSweep:
         self._later(monkeypatch, 3600)
         assert await swept() == []
         self._later(monkeypatch, 24 * 3600 + 1)
-        assert await swept() == [SECRET_NAME, TOKEN_NAME]
-        assert vault == {}
+        assert await swept() == [TOKEN_NAME]
+        assert vault == {SECRET_NAME: CLIENT_SECRET}
 
     async def test_a_source_being_signed_in_again_keeps_its_entries(
         self, control_plane, vault, issuer, swept, monkeypatch

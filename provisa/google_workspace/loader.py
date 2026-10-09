@@ -236,10 +236,16 @@ async def table_rows(
         )
 
 
-def make_google_workspace_loader() -> Any:
+def make_google_workspace_loader(state: Any) -> Any:
     """The row-fetch of a Google Workspace source: one of its tables, whole, read from Gmail
-    with the source's own credential."""
+    with the source's own credential -- its owner's approval of the organisation's Google
+    client (``core.mail_platforms``, read for the organisation the build runs in), or a service
+    account's key."""
     from provisa.api_source.oauth_grants import access_token
+    from provisa.core import mail_platforms
+    from provisa.core.request_context import require_current_org
+    from provisa.google_workspace import SOURCE_TYPE
+    from provisa.google_workspace.settings import GOOGLE_ACCOUNT
 
     async def _batches(
         source: Any, table: Any, unreadable: list[str] | None = None
@@ -248,7 +254,12 @@ def make_google_workspace_loader() -> Any:
         if settings.mail is None:
             raise UnknownMailTable(table.table_name)
         (account,) = settings.accounts
-        auth = _resolved(settings.auth(account))
+        client = None
+        if settings.sign_in == GOOGLE_ACCOUNT:
+            client = await mail_platforms.require(
+                state.admin_db, require_current_org(), SOURCE_TYPE
+            )
+        auth = _resolved(settings.auth(account, client))
 
         async def token() -> str:
             return await asyncio.to_thread(access_token, auth)

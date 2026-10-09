@@ -7,31 +7,27 @@
 // NOTICE: Use of this software for training artificial intelligence or
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
-
-// REQ-1923: a Google Workspace source -- whose mailbox, what to read, how Provisa signs in to
-// Google, and which mail to hold. Each field asks for something the operator can see in Gmail
-// or in their Google Cloud console; a field is shown only when its answer is used.
+// REQ-1923: a Google Workspace source -- whose mailbox, how much of it to read, which mail to
+// hold, and one button to connect it. The person adding a source is asked nothing about how
+// Provisa signs in to Google: the client is the organisation's, entered once by an
+// administrator under Admin › Email, and a source keeps only its owner's approval.
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  Alert,
-  Button,
-  Checkbox,
-  Group,
-  PasswordInput,
-  Select,
-  TextInput,
-  Textarea,
-} from "@mantine/core";
+import { Alert, Anchor, Button, Checkbox, Group, Select, TextInput, Textarea } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { serverMessage } from "../../i18n/serverMessage";
-import { redirectAddress, SignInRefused, signInSource } from "../../lib/sourceSignIn";
+import {
+  SignInRefused,
+  signInSource,
+  signInStatus,
+  type SignInStatus,
+} from "../../lib/sourceSignIn";
 import {
   GOOGLE_WORKSPACE,
-  GW_GOOGLE_ACCOUNT,
   GW_MAIL_FULL,
   GW_MAIL_HEADERS,
-  GW_SERVICE_ACCOUNT,
+  gwByApproval,
   gwConnectMissing,
   gwHeadersOnly,
   gwMissing,
@@ -45,14 +41,15 @@ interface Props {
 }
 
 const WIDE = { gridColumn: "1 / -1" } as const;
+/** Where an administrator enters the organisation's Google client. */
+export const MAIL_PLATFORMS_ROUTE = "/admin/email";
 
 export function GoogleWorkspaceFields({ sourceId, fields, setFields }: Props) {
   const { t } = useTranslation();
-  const [address, setAddress] = useState("");
+  const [status, setStatus] = useState<SignInStatus | null>(null);
   const [problem, setProblem] = useState("");
   const [connecting, setConnecting] = useState(false);
-  const signIn = fields.gw_sign_in ?? "";
-  const byApproval = signIn === GW_GOOGLE_ACCOUNT;
+  const byApproval = gwByApproval(fields);
   const missing = new Set(gwMissing(fields));
   const refused = useCallback(
     (err: unknown) =>
@@ -65,17 +62,17 @@ export function GoogleWorkspaceFields({ sourceId, fields, setFields }: Props) {
     [t],
   );
 
-  // The address Google is told to return to is the deployment's, so the server states it.
+  // Whether the organisation has connected Google Workspace decides what the form offers.
   useEffect(() => {
-    if (!byApproval || address) return;
+    if (!byApproval) return;
     let live = true;
-    redirectAddress()
-      .then((stated) => live && setAddress(stated))
+    signInStatus(GOOGLE_WORKSPACE)
+      .then((answered) => live && setStatus(answered))
       .catch((err: unknown) => live && setProblem(refused(err)));
     return () => {
       live = false;
     };
-  }, [byApproval, address, refused]);
+  }, [byApproval, refused]);
 
   const set = (key: string, value: string) => setFields({ ...fields, [key]: value });
   // A change to what Google was asked for is not what was approved: the approval is asked again.
@@ -97,12 +94,9 @@ export function GoogleWorkspaceFields({ sourceId, fields, setFields }: Props) {
         kind: GOOGLE_WORKSPACE,
         account: fields.gw_account.trim(),
         scopes: gwScopes(fields),
-        client_id: fields.gw_client_id.trim(),
-        client_secret: fields.gw_client_secret,
       });
       setFields({
         ...fields,
-        gw_client_secret: done.client_secret,
         gw_refresh_token: done.refresh_token,
         gw_connected_as: done.account,
       });
@@ -113,6 +107,7 @@ export function GoogleWorkspaceFields({ sourceId, fields, setFields }: Props) {
     }
   };
 
+  const notConnected = byApproval && status !== null && !status.configured;
   return (
     <>
       <TextInput
@@ -137,71 +132,52 @@ export function GoogleWorkspaceFields({ sourceId, fields, setFields }: Props) {
         style={WIDE}
         data-testid="google-workspace-gw_mail_content"
       />
-      <Select
-        label={t("googleWorkspaceFields.signIn")}
-        data={[
-          { value: GW_GOOGLE_ACCOUNT, label: t("googleWorkspaceFields.signInGoogleAccount") },
-          { value: GW_SERVICE_ACCOUNT, label: t("googleWorkspaceFields.signInServiceAccount") },
-        ]}
-        value={signIn || null}
-        onChange={(value) => set("gw_sign_in", value ?? "")}
-        required
-        allowDeselect={false}
-        style={WIDE}
-        data-testid="google-workspace-gw_sign_in"
-      />
-      {byApproval && (
-        <>
-          <TextInput
-            label={t("googleWorkspaceFields.redirectAddress")}
-            description={t("googleWorkspaceFields.redirectAddressHelp")}
-            value={address}
-            readOnly
-            style={WIDE}
-            data-testid="google-workspace-redirect-address"
-          />
-          <TextInput
-            label={t("googleWorkspaceFields.clientId")}
-            required
-            {...text("gw_client_id", setAsked)}
-          />
-          <PasswordInput
-            label={t("googleWorkspaceFields.clientSecret")}
-            required
-            {...text("gw_client_secret", setAsked)}
-          />
-          <Group style={WIDE} gap="sm" align="center">
-            <Button
-              type="button"
-              onClick={connect}
-              loading={connecting}
-              disabled={gwConnectMissing(fields, sourceId).length > 0}
-              data-testid="google-workspace-connect"
-            >
-              {t("googleWorkspaceFields.connect")}
-            </Button>
-            {fields.gw_connected_as && !missing.has("gw_refresh_token") && (
-              <Alert
-                color="green"
-                variant="light"
-                py={4}
-                px="sm"
-                data-testid="google-workspace-connected"
-              >
-                {t("googleWorkspaceFields.connected", { account: fields.gw_connected_as })}
-              </Alert>
-            )}
-          </Group>
-        </>
-      )}
-      {signIn === GW_SERVICE_ACCOUNT && (
-        <PasswordInput
-          label={t("googleWorkspaceFields.serviceAccountKey")}
-          description={t("googleWorkspaceFields.serviceAccountKeyHelp")}
-          required
+      {notConnected && (
+        <Alert
+          color="yellow"
+          variant="light"
           style={WIDE}
-          {...text("gw_service_account_key")}
-        />
+          data-testid="google-workspace-not-set-up"
+        >
+          {status.may_configure ? (
+            <>
+              {t("googleWorkspaceFields.notSetUp")}{" "}
+              <Anchor
+                component={Link}
+                to={MAIL_PLATFORMS_ROUTE}
+                data-testid="google-workspace-set-up"
+              >
+                {t("googleWorkspaceFields.setUpLink")}
+              </Anchor>
+            </>
+          ) : (
+            t("googleWorkspaceFields.notSetUpAsk")
+          )}
+        </Alert>
+      )}
+      {byApproval && !notConnected && (
+        <Group style={WIDE} gap="sm" align="center">
+          <Button
+            type="button"
+            onClick={connect}
+            loading={connecting}
+            disabled={status === null || gwConnectMissing(fields, sourceId).length > 0}
+            data-testid="google-workspace-connect"
+          >
+            {t("googleWorkspaceFields.connect")}
+          </Button>
+          {fields.gw_connected_as && !missing.has("gw_refresh_token") && (
+            <Alert
+              color="green"
+              variant="light"
+              py={4}
+              px="sm"
+              data-testid="google-workspace-connected"
+            >
+              {t("googleWorkspaceFields.connected", { account: fields.gw_connected_as })}
+            </Alert>
+          )}
+        </Group>
       )}
       {problem && (
         <Alert color="red" variant="light" style={WIDE} data-testid="google-workspace-problem">

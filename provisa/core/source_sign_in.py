@@ -116,19 +116,18 @@ def register_kind(kind: SignInKind) -> None:
 class Started:
     authorization_url: str
     expires_in: int
+    #: The origin of the address the issuer returns the browser to.
+    return_origin: str
 
 
 @dataclass(frozen=True)
 class Completed:
     source_id: str
     account: str
-    #: What the source's settings hold for each credential: references into the vault.
-    client_secret: str
+    #: What the source's settings hold for its credential: a reference into the vault.
     refresh_token: str
 
 
-#: Stores a typed credential under a vault name and returns the reference that names it.
-StoreSecret = Callable[[str, str, str], Awaitable[str]]
 #: Stores a source's refresh token (source id, vault name, token) where its refreshes read it,
 #: under the lock they take, and returns the reference that names it.
 StoreRefreshToken = Callable[[str, str, str], Awaitable[str]]
@@ -191,26 +190,23 @@ async def start(
     account: str,
     scopes: list[str],
     client_id: str,
-    client_secret: str,
+    client_secret_name: str,
+    refresh_token_name: str,
     public_address: str | None,
-    secret_names: tuple[str, str],
-    store_secret: StoreSecret,
     settings: Mapping[str, str] | None = None,
 ) -> Started:
     """Record a sign-in and make the address the operator's browser is sent to.
 
-    ``secret_names`` are the vault names of the source's client secret and refresh token. The
-    client secret is stored at once (``store_secret``), so nothing pending holds it."""
+    The client is the organisation's (``core.mail_platforms``): ``client_id``, and the vault
+    name its secret is kept under, which is all that is recorded of it. ``refresh_token_name``
+    is the vault name the source's refresh token will be kept under."""
     kind = _kind(kind_id)
     settings = dict(settings or {})
-    if not (source_id and account and client_id and client_secret and scopes):
-        raise SignInRefused(
-            "incomplete", "A sign-in needs the source, the account, the client and its secret"
-        )
+    if not (source_id and account and client_id and client_secret_name and scopes):
+        raise SignInRefused("incomplete", "A sign-in needs the source, the account and a client")
     address = redirect_address(public_address)
     authorization_endpoint = _address(kind.authorization_endpoint, settings)
-    secret_name, token_name = secret_names
-    await store_secret(secret_name, client_secret, f"client secret for source {source_id}")
+    secret_name, token_name = client_secret_name, refresh_token_name
     state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
     async with admin_db.acquire() as conn:
         await conn.execute_core(
@@ -242,7 +238,12 @@ async def start(
         "code_challenge_method": "S256",
         **kind.authorization_params(account),
     }
-    return Started(f"{authorization_endpoint}?{urlencode(query)}", STATE_LIFETIME)
+    returned_to = urlsplit(address)
+    return Started(
+        f"{authorization_endpoint}?{urlencode(query)}",
+        STATE_LIFETIME,
+        f"{returned_to.scheme}://{returned_to.netloc}",
+    )
 
 
 async def _consume(admin_db: "Database", state: str, *, org_id: str, user_id: str) -> dict:
@@ -359,7 +360,6 @@ async def complete(
     return Completed(
         source_id=pending["source_id"],
         account=approved,
-        client_secret=_reference(pending["client_secret_name"]),
         refresh_token=reference,
     )
 
@@ -375,8 +375,9 @@ async def sweep(
     """Forget the organisation's sign-ins that came to nothing: never completed in time, or
     completed for a source that was not saved within :data:`UNSAVED_LIFETIME`.
 
-    Only the vault entries a sign-in recorded are removed, and only while no source of its id
-    exists; a sign-in whose source was saved just loses its row."""
+    Only the refresh token a sign-in recorded is removed, and only while no source of its id
+    exists; a sign-in whose source was saved just loses its row. The client's secret is the
+    organisation's and is never removed here."""
     now = _now()
     async with admin_db.acquire() as conn:
         rows = (
@@ -400,7 +401,7 @@ async def sweep(
         if not over(pending):
             continue
         if pending["source_id"] not in live and not await source_exists(pending["source_id"]):
-            await forget_secret(pending["client_secret_name"])
+            # The client's secret is the organisation's and is not this sign-in's to remove.
             await forget_secret(pending["refresh_token_name"])
         async with admin_db.acquire() as conn:
             await conn.execute_core(

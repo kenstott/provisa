@@ -27,8 +27,12 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from provisa.core.auth_models import ApiAuthGoogleServiceAccount, ApiAuthOAuth2RefreshToken
+
+if TYPE_CHECKING:
+    from provisa.core.mail_platforms import Configured
 
 
 #: Google's token endpoint, as its OpenID configuration document publishes it.
@@ -59,10 +63,12 @@ RESOURCE_SCOPES: dict[str, tuple[str, ...]] = {
 GOOGLE_ACCOUNT, SERVICE_ACCOUNT = "google_account", "service_account"
 
 #: The settings that are credentials: kept in the org's vault, the source holding a reference.
-SECRET_KEYS: tuple[str, ...] = ("client_secret", "refresh_token", "service_account_key")
+SECRET_KEYS: tuple[str, ...] = ("refresh_token", "service_account_key")
 
+#: What each sign-in keeps in the source. A person's approval is of the ORGANISATION's client
+#: (``core.mail_platforms``), which the source does not hold: it keeps the approval alone.
 _SIGN_IN_KEYS: dict[str, tuple[str, ...]] = {
-    GOOGLE_ACCOUNT: ("client_id", "client_secret", "refresh_token"),
+    GOOGLE_ACCOUNT: ("refresh_token",),
     SERVICE_ACCOUNT: ("service_account_key",),
 }
 _MAIL_KEYS = (
@@ -118,14 +124,22 @@ class Settings:
                 scopes.extend(RESOURCE_SCOPES[resource])
         return scopes
 
-    def auth(self, account: str) -> ApiAuthOAuth2RefreshToken | ApiAuthGoogleServiceAccount:
-        """The credential ``account`` is read with."""
+    def auth(
+        self, account: str, client: "Configured | None" = None
+    ) -> ApiAuthOAuth2RefreshToken | ApiAuthGoogleServiceAccount:
+        """The credential ``account`` is read with. ``client`` is the organisation's Google
+        client, which a person's approval was given to and is renewed with."""
         if account not in self.accounts:
             raise InvalidGoogleWorkspaceSource(f"{account} is not an account of this source")
         if self.sign_in == GOOGLE_ACCOUNT:
+            if client is None:
+                raise InvalidGoogleWorkspaceSource(
+                    "A source signed in by its owner's approval is read with the "
+                    "organisation's Google client, and none was given"
+                )
             return ApiAuthOAuth2RefreshToken(
-                client_id=self.credential["client_id"],
-                client_secret=self.credential["client_secret"],
+                client_id=client.client_id,
+                client_secret=client.client_secret,
                 refresh_token=self.credential["refresh_token"],
                 token_url=TOKEN_URL,
             )

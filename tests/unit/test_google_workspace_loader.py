@@ -380,6 +380,7 @@ class TestTheLoader:
             seen["auth"] = auth
             return "made-up-access-token"
 
+        seen["state"] = SimpleNamespace(admin_db="admin-plane")
         monkeypatch.setattr(loader, "Gmail", Recording)
         monkeypatch.setattr(
             loader, "resolve_secrets", lambda v: v.replace("${secret:k}", "resolved-key")
@@ -399,12 +400,49 @@ class TestTheLoader:
         return SimpleNamespace(id="mail", mapping=mapping)
 
     async def test_a_table_is_read_with_the_sources_own_credential(self, read):
-        fetch = loader.make_google_workspace_loader()
+        fetch = loader.make_google_workspace_loader(read["state"])
         rows = await fetch(self._source(), SimpleNamespace(table_name="messages"))
         assert [r["id"] for r in rows] == ["m1", "m2", "m3"]
         assert read["account"] == ACCOUNT
         assert await read["token"]() == "made-up-access-token"
         assert (read["auth"].key, read["auth"].subject) == ("resolved-key", ACCOUNT)
+
+    async def test_an_owners_approval_is_renewed_with_the_organisations_client(
+        self, read, monkeypatch
+    ):
+        from provisa.core import mail_platforms, request_context
+        from provisa.core.mail_platforms import Configured
+
+        asked: list[tuple] = []
+
+        async def require(admin_db, org_id, platform_id):
+            asked.append((admin_db, org_id, platform_id))
+            return Configured(platform_id, "org-client-1", {})
+
+        monkeypatch.setattr(mail_platforms, "require", require)
+        monkeypatch.setattr(
+            loader, "resolve_secrets", lambda v: v.replace("${secret:", "resolved:").rstrip("}")
+        )
+        token = request_context.set_current_org("acme")
+        try:
+            source = self._source()
+            source.mapping = {
+                "accounts": [ACCOUNT],
+                "resources": ["mail"],
+                "sign_in": "google_account",
+                "refresh_token": "${secret:source_mail__refresh_token}",
+                "mail_content": "full",
+            }
+            fetch = loader.make_google_workspace_loader(read["state"])
+            await fetch(source, SimpleNamespace(table_name="folders"))
+        finally:
+            request_context.reset_current_org(token)
+        assert asked == [("admin-plane", "acme", "google_workspace")]
+        await read["token"]()
+        auth = read["auth"]
+        assert auth.client_id == "org-client-1"
+        assert auth.client_secret == "resolved:mail_platform_google_workspace_client_secret"
+        assert auth.refresh_token == "resolved:source_mail__refresh_token"
 
     async def test_a_replicas_build_notes_the_messages_kept_without_text(self, read, monkeypatch):
         broken = _mail("m9", "t9", T0, "Kept")
@@ -412,7 +450,7 @@ class TestTheLoader:
             {"name": "Content-Type", "value": "text/plain; charset=x-made-up"}
         ]
         monkeypatch.setitem(MAILBOX, "m9", broken)
-        fetch = loader.make_google_workspace_loader()
+        fetch = loader.make_google_workspace_loader(read["state"])
         columns = cm.ir_columns("messages")
         source = fetch.replica_source(
             self._source(), SimpleNamespace(table_name="messages"), columns
@@ -425,7 +463,7 @@ class TestTheLoader:
         assert note.params == {"count": 1, "ids": ["m9"], "more": 0}
 
     async def test_a_clean_read_leaves_no_note(self, read):
-        fetch = loader.make_google_workspace_loader()
+        fetch = loader.make_google_workspace_loader(read["state"])
         columns = cm.ir_columns("messages")
         source = fetch.replica_source(
             self._source(), SimpleNamespace(table_name="messages"), columns
@@ -440,7 +478,7 @@ class TestTheLoader:
         assert loader.unreadable_note([]) is None
 
     async def test_a_replica_is_built_from_the_same_read_in_the_canonical_columns(self, read):
-        fetch = loader.make_google_workspace_loader()
+        fetch = loader.make_google_workspace_loader(read["state"])
         columns = cm.ir_columns("threads")
         source = fetch.replica_source(
             self._source(), SimpleNamespace(table_name="threads"), columns

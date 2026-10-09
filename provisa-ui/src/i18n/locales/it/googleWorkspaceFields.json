@@ -6,24 +6,18 @@
     "mailContentHelp": "A Google non viene chiesto più di questo.",
     "mailContentFull": "Messaggi interi",
     "mailContentHeaders": "Solo intestazioni ed etichette, senza il testo dei messaggi",
-    "signIn": "Come Provisa accede a Google",
-    "signInGoogleAccount": "Lo approva il proprietario della casella",
-    "signInServiceAccount": "Un account di servizio autorizzato dall’amministratore di Workspace",
-    "redirectAddress": "Indirizzo di reindirizzamento autorizzato",
-    "redirectAddressHelp": "Copialo nel tuo client OAuth, nella console Google Cloud, in «URI di reindirizzamento autorizzati».",
-    "clientId": "ID client",
-    "clientSecret": "Client secret",
     "connect": "Collega account Google",
     "connected": "Collegato come {{account}}",
     "connectFailed": "Non è stato possibile completare l’accesso.",
-    "serviceAccountKey": "Chiave dell’account di servizio",
-    "serviceAccountKeyHelp": "Il contenuto del file di chiave JSON che Google ti ha fornito per l’account di servizio.",
     "mailSearch": "Posta da includere",
     "mailSearchHelp": "Una ricerca esattamente come la scriveresti nella casella di ricerca di Gmail. Lascia vuoto per tutta la posta.",
     "mailSince": "Niente di più vecchio di",
     "mailSinceHelp": "Lascia vuoto per leggere posta di qualsiasi data.",
     "mailLabels": "Etichette",
     "mailLabelsHelp": "Un nome di etichetta per riga. Viene letta solo la posta che le ha tutte. Lascia vuoto per tutta la posta.",
-    "mailSpamTrash": "Includi Spam e Cestino"
+    "mailSpamTrash": "Includi Spam e Cestino",
+    "notSetUp": "La tua organizzazione non ha ancora collegato Google Workspace.",
+    "setUpLink": "Configuralo in Admin › Email",
+    "notSetUpAsk": "La tua organizzazione non ha ancora collegato Google Workspace. Chiedi a un amministratore di configurarlo in Admin › Email."
   }
 }

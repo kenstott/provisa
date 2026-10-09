@@ -6,24 +6,18 @@
     "mailContentHelp": "Google ne reçoit aucune demande au-delà.",
     "mailContentFull": "Messages entiers",
     "mailContentHeaders": "En-têtes et libellés uniquement, sans le texte des messages",
-    "signIn": "Comment Provisa se connecte à Google",
-    "signInGoogleAccount": "Le propriétaire de la boîte l’approuve",
-    "signInServiceAccount": "Un compte de service autorisé par votre administrateur Workspace",
-    "redirectAddress": "Adresse de redirection autorisée",
-    "redirectAddressHelp": "Copiez-la dans votre client OAuth, dans la console Google Cloud, sous « URI de redirection autorisés ».",
-    "clientId": "ID client",
-    "clientSecret": "Code secret du client",
     "connect": "Connecter le compte Google",
     "connected": "Connecté en tant que {{account}}",
     "connectFailed": "La connexion n’a pas pu aboutir.",
-    "serviceAccountKey": "Clé du compte de service",
-    "serviceAccountKeyHelp": "Le contenu du fichier de clé JSON que Google vous a remis pour le compte de service.",
     "mailSearch": "Messages à inclure",
     "mailSearchHelp": "Une recherche telle que vous la saisiriez dans le champ de recherche de Gmail. Laissez vide pour tous les messages.",
     "mailSince": "Rien de plus ancien que",
     "mailSinceHelp": "Laissez vide pour lire les messages de toute date.",
     "mailLabels": "Libellés",
     "mailLabelsHelp": "Un nom de libellé par ligne. Seuls les messages qui les portent tous sont lus. Laissez vide pour tous les messages.",
-    "mailSpamTrash": "Inclure Spam et Corbeille"
+    "mailSpamTrash": "Inclure Spam et Corbeille",
+    "notSetUp": "Votre organisation n’a pas encore connecté Google Workspace.",
+    "setUpLink": "Le configurer dans Admin › Email",
+    "notSetUpAsk": "Votre organisation n’a pas encore connecté Google Workspace. Demandez à un administrateur de le configurer dans Admin › Email."
   }
 }

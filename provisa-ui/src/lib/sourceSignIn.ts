@@ -78,17 +78,22 @@ export function answerOpener(answer: IssuerAnswer, win: Window = window): () => 
 export interface SignedIn {
   source_id: string;
   account: string;
-  client_secret: string; // references into the organisation's vault, never the credentials
-  refresh_token: string;
+  refresh_token: string; // a reference into the organisation's vault, never the credential
 }
 
+/** What the person adding a source gives. The client is the organisation's (Admin › Email) and
+ * is read by the server; the form neither holds nor sends one. */
 export interface SignInRequest {
   source_id: string;
   kind: string;
   account: string;
   scopes: string[];
-  client_id: string;
-  client_secret: string;
+}
+
+/** Whether the organisation has connected the platform, and whether the caller may do so. */
+export interface SignInStatus {
+  configured: boolean;
+  may_configure: boolean;
 }
 
 /** A refusal by the server, with the code its message is localised by. */
@@ -113,17 +118,16 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
   return said as T;
 }
 
-/** The address the operator copies into their own client at the issuer. */
-export async function redirectAddress(): Promise<string> {
-  return (await call<{ redirect_address: string }>("redirect-address")).redirect_address;
+export async function signInStatus(kind: string): Promise<SignInStatus> {
+  return call<SignInStatus>(`status?kind=${encodeURIComponent(kind)}`);
 }
 
 const HELLO_EVERY_MS = 500;
 
 /**
  * Wait for the return page in `popup` to hand over the issuer's answer. `signInOrigin` is the
- * origin of the deployment's redirect address: hellos are addressed to it alone, so none is
- * delivered while the popup is still at the issuer.
+ * origin the issuer returns the browser to, as the server states it: hellos are addressed to it
+ * alone, so none is delivered while the popup is still at the issuer.
  */
 export function awaitIssuerAnswer(
   popup: Window,
@@ -164,15 +168,23 @@ export async function signInSource(
   request: SignInRequest,
   win: Window = window,
 ): Promise<SignedIn> {
-  const signInOrigin = new URL(await redirectAddress()).origin;
   // Opened before the start call answers, while the press that asked for it still counts as the
   // operator's, or the browser blocks it.
   const popup = win.open("about:blank", "provisa-source-sign-in", "popup,width=520,height=680");
   if (!popup) throw new SignInRefused({ code: "source_sign_in.popup_blocked" });
   try {
-    const started = await call<{ authorization_url: string; expires_in: number }>("start", request);
+    const started = await call<{
+      authorization_url: string;
+      expires_in: number;
+      return_origin: string;
+    }>("start", request);
     popup.location.href = started.authorization_url;
-    const answer = await awaitIssuerAnswer(popup, signInOrigin, started.expires_in * 1000, win);
+    const answer = await awaitIssuerAnswer(
+      popup,
+      started.return_origin,
+      started.expires_in * 1000,
+      win,
+    );
     return await call<SignedIn>("complete", answer);
   } finally {
     if (!popup.closed) popup.close();

@@ -17,6 +17,7 @@ import datetime as dt
 import pytest
 
 from provisa.core.auth_models import ApiAuthGoogleServiceAccount, ApiAuthOAuth2RefreshToken
+from provisa.core.mail_platforms import Configured
 from provisa.google_workspace import settings as gw
 from provisa.google_workspace.settings import InvalidGoogleWorkspaceSource, parse
 
@@ -29,8 +30,6 @@ def _person(**changed) -> dict:
         "accounts": ["ada@example.test"],
         "resources": ["mail"],
         "sign_in": "google_account",
-        "client_id": "client-1",
-        "client_secret": "${secret:gw_client_secret}",
         "refresh_token": "${secret:gw_refresh_token}",
         "mail_content": "full",
     }
@@ -41,8 +40,6 @@ def _person(**changed) -> dict:
 def _delegated(**changed) -> dict:
     stated = {
         "sign_in": "service_account",
-        "client_id": None,
-        "client_secret": None,
         "refresh_token": None,
         "service_account_key": "${secret:gw_key}",
     }
@@ -121,14 +118,23 @@ class TestAccounts:
 
 
 class TestSignIn:
-    def test_a_person_signs_in_with_the_approval_they_gave(self):
-        auth = parse(_person()).auth("ada@example.test")
+    def test_a_person_signs_in_with_their_approval_of_the_organisations_client(self):
+        client = Configured("google_workspace", "org-client-1", {})
+        auth = parse(_person()).auth("ada@example.test", client)
         assert auth == ApiAuthOAuth2RefreshToken(
-            client_id="client-1",
-            client_secret="${secret:gw_client_secret}",
+            client_id="org-client-1",
+            client_secret="${secret:mail_platform_google_workspace_client_secret}",
             refresh_token="${secret:gw_refresh_token}",
             token_url="https://oauth2.googleapis.com/token",
         )
+
+    def test_a_persons_approval_cannot_be_used_without_the_organisations_client(self):
+        with pytest.raises(InvalidGoogleWorkspaceSource, match="organisation's Google client"):
+            parse(_person()).auth("ada@example.test")
+
+    def test_the_source_holds_no_client_of_its_own(self):
+        said = _refused(_person(client_id="client-1", client_secret="${secret:x}"))
+        assert said == "client_id, client_secret is not a setting of a Google Workspace source"
 
     def test_a_service_account_reads_as_the_account_for_the_ticked_scopes(self):
         auth = parse(_delegated()).auth("ada@example.test")
@@ -145,9 +151,9 @@ class TestSignIn:
             _person(sign_in=None)
         )
 
-    @pytest.mark.parametrize("missing", ["client_id", "client_secret", "refresh_token"])
-    def test_a_person_sign_in_names_what_it_lacks(self, missing):
-        assert _refused(_person(**{missing: None})) == f"google_account sign-in needs {missing}"
+    def test_a_person_sign_in_needs_the_approval(self):
+        said = _refused(_person(refresh_token=None))
+        assert said == "google_account sign-in needs refresh_token"
 
     def test_a_service_account_sign_in_needs_its_key(self):
         said = _refused(_delegated(service_account_key=" "))
@@ -158,7 +164,7 @@ class TestSignIn:
         assert said == "service_account sign-in does not take refresh_token"
 
     def test_the_credentials_are_the_declared_secrets(self):
-        assert set(gw.SECRET_KEYS) == {"client_secret", "refresh_token", "service_account_key"}
+        assert set(gw.SECRET_KEYS) == {"refresh_token", "service_account_key"}
 
 
 class TestMail:

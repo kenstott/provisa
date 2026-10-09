@@ -6,24 +6,18 @@
     "mailContentHelp": "מ-Google לא מתבקש יותר מזה.",
     "mailContentFull": "הודעות שלמות",
     "mailContentHeaders": "כותרות ותוויות בלבד, ללא תוכן ההודעה",
-    "signIn": "איך Provisa נכנס ל-Google",
-    "signInGoogleAccount": "בעל תיבת הדואר מאשר זאת",
-    "signInServiceAccount": "חשבון שירות שמנהל ה-Workspace שלך אישר",
-    "redirectAddress": "כתובת הפניה מורשית",
-    "redirectAddressHelp": "יש להעתיק אותה ללקוח ה-OAuth שלך במסוף Google Cloud, תחת \"מזהי URI מורשים להפניה אוטומטית\".",
-    "clientId": "מזהה לקוח",
-    "clientSecret": "סוד לקוח",
     "connect": "חיבור חשבון Google",
     "connected": "מחובר בתור {{account}}",
     "connectFailed": "לא ניתן היה להשלים את הכניסה.",
-    "serviceAccountKey": "מפתח חשבון השירות",
-    "serviceAccountKeyHelp": "התוכן של קובץ מפתח ה-JSON ש-Google נתן לך עבור חשבון השירות.",
     "mailSearch": "דואר לכלול",
     "mailSearchHelp": "חיפוש בדיוק כפי שהיית מקליד בתיבת החיפוש של Gmail. יש להשאיר ריק עבור כל הדואר.",
     "mailSince": "שום דבר ישן מ-",
     "mailSinceHelp": "יש להשאיר ריק כדי לקרוא דואר מכל תאריך.",
     "mailLabels": "תוויות",
     "mailLabelsHelp": "שם תווית אחד בכל שורה. נקרא רק דואר שנושא את כולן. יש להשאיר ריק עבור כל הדואר.",
-    "mailSpamTrash": "לכלול ספאם ואשפה"
+    "mailSpamTrash": "לכלול ספאם ואשפה",
+    "notSetUp": "הארגון שלך עדיין לא חיבר את Google Workspace.",
+    "setUpLink": "להגדרה תחת Admin › Email",
+    "notSetUpAsk": "הארגון שלך עדיין לא חיבר את Google Workspace. יש לבקש ממנהל להגדיר זאת תחת Admin › Email."
   }
 }

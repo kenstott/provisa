@@ -8,16 +8,17 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1923: a Google Workspace source's setup, as the whole Sources form shows it: what is
-// asked, in whose terms, and only when its answer is used.
+// REQ-1923: a Google Workspace source's setup, as the whole Sources form shows it. The person
+// adding a source is asked for the mailbox, how much to read and which mail, and is given one
+// button; nothing about how Provisa signs in to Google is in front of them.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
 import en from "../../../i18n/locales/en/googleWorkspaceFields.json";
 import { BRAND_CARRIER, SOURCE_TYPES } from "../constants";
 import { SourceFormFieldsExtended } from "../SourceFormFieldsExtended";
-import { backendType } from "../sourceHelpers";
 import type { SourceFormFieldsProps } from "../SourceFormFields";
+import { backendType } from "../sourceHelpers";
 import {
   gwConnectMissing,
   gwFieldsFromMapping,
@@ -27,24 +28,17 @@ import {
 } from "../googleWorkspace";
 
 const signIn = vi.hoisted(() => ({
-  redirectAddress: vi.fn(),
+  signInStatus: vi.fn(),
   signInSource: vi.fn(),
 }));
 vi.mock("../../../lib/sourceSignIn", async (original) => ({
   ...(await original<typeof import("../../../lib/sourceSignIn")>()),
-  redirectAddress: signIn.redirectAddress,
+  signInStatus: signIn.signInStatus,
   signInSource: signIn.signInSource,
 }));
 
-const REDIRECT = "https://cloud.provisa.test/source-sign-in.html";
 const READONLY = "https://www.googleapis.com/auth/gmail.readonly";
-const APPROVAL = {
-  gw_account: "ada@example.test",
-  gw_mail_content: "full",
-  gw_sign_in: "google_account",
-  gw_client_id: "client-1",
-  gw_client_secret: "made-up-client-secret",
-};
+const FILLED = { gw_account: "ada@example.test", gw_mail_content: "full" };
 
 function form(authFields: Record<string, string>, id = "mail") {
   const setAuthFields = vi.fn();
@@ -85,9 +79,10 @@ function form(authFields: Record<string, string>, id = "mail") {
 }
 
 const shown = (key: string) => screen.queryByTestId(`google-workspace-${key}`);
+const connectReady = () => waitFor(() => expect(shown("connect")).toBeEnabled());
 
 beforeEach(() => {
-  signIn.redirectAddress.mockReset().mockResolvedValue(REDIRECT);
+  signIn.signInStatus.mockReset().mockResolvedValue({ configured: true, may_configure: false });
   signIn.signInSource.mockReset();
 });
 
@@ -102,83 +97,94 @@ describe("the source pick list", () => {
 });
 
 describe("what a Google Workspace setup asks", () => {
-  it("asks whose mailbox and how to sign in, and for no credential until that is chosen", () => {
-    form({});
-    expect(shown("gw_account")).toBeInTheDocument();
-    expect(shown("gw_sign_in")).toBeInTheDocument();
-    expect(shown("gw_mail_content")).toBeInTheDocument();
-    for (const key of ["gw_client_id", "gw_client_secret", "gw_service_account_key", "connect"]) {
-      expect(shown(key)).toBeNull();
+  it("asks for the mailbox, how much to read and which mail, and offers one button", async () => {
+    form(FILLED);
+    await connectReady();
+    for (const key of ["gw_account", "gw_mail_content", "gw_mail_search", "gw_mail_labels"]) {
+      expect(shown(key)).toBeInTheDocument();
     }
-    expect(screen.queryByTestId("brand-token-input")).toBeNull();
-    expect(signIn.redirectAddress).not.toHaveBeenCalled();
+    expect(signIn.signInStatus).toHaveBeenCalledWith("google_workspace");
   });
 
-  it("shows nothing it cannot read: no calendar, no tasks, nothing marked as coming", () => {
-    form({ gw_sign_in: "google_account", gw_mail_content: "full" });
-    expect(screen.queryByText(/calendar|tasks|not yet|coming|not supported|available/i)).toBeNull();
+  it("puts nothing about how Provisa signs in to Google in front of the person", async () => {
+    form(FILLED);
+    await connectReady();
+    // No client, no secret, no key, no token, no address to copy or type.
+    expect(
+      screen.queryByLabelText(/client|secret|key|token|redirect|address to|sign[- ]?in/i),
+    ).toBeNull();
+    expect(screen.queryByText(/redirect|client id|client secret|service account/i)).toBeNull();
+    expect(document.querySelectorAll('input[type="password"]')).toHaveLength(0);
+    expect(screen.queryByTestId("brand-token-input")).toBeNull();
+  });
+
+  it("shows nothing it cannot read: no calendar, no tasks, nothing marked as coming", async () => {
+    form(FILLED);
+    await connectReady();
+    expect(screen.queryByText(/calendar|tasks|not yet|coming|not supported/i)).toBeNull();
     expect(screen.queryByRole("checkbox", { name: /calendar|tasks/i })).toBeNull();
   });
 
-  it("for the owner's approval asks for the client, shows the address to give Google, and no key", async () => {
-    form({ gw_sign_in: "google_account" });
-    await waitFor(() => expect(shown("redirect-address")).toHaveValue(REDIRECT));
-    expect(shown("redirect-address")).toHaveAttribute("readonly");
-    expect(shown("gw_client_id")).toBeInTheDocument();
-    expect(shown("gw_client_secret")).toHaveAttribute("type", "password");
-    expect(shown("gw_service_account_key")).toBeNull();
-    // The refresh token is Google's to hand over; the operator is never asked to paste one.
-    expect(screen.queryByLabelText(/refresh|token/i)).toBeNull();
-  });
-
-  it("for a service account asks for its key and nothing about a client", () => {
-    form({ gw_sign_in: "service_account" });
-    expect(shown("gw_service_account_key")).toHaveAttribute("type", "password");
-    for (const key of ["gw_client_id", "gw_client_secret", "connect", "redirect-address"]) {
-      expect(shown(key)).toBeNull();
-    }
-    expect(signIn.redirectAddress).not.toHaveBeenCalled();
-  });
-
   it("does not offer a search over mail read as headers and labels only", () => {
-    form({ gw_mail_content: "headers" });
+    form({ ...FILLED, gw_mail_content: "headers" });
     expect(shown("gw_mail_search")).toBeNull();
     expect(shown("gw_mail_since")).toBeNull();
     expect(shown("gw_mail_labels")).toBeInTheDocument();
   });
 
   it("asks which mail to hold in Gmail's own terms", () => {
-    form({ gw_mail_content: "full" });
-    expect(shown("gw_mail_search")).toBeInTheDocument();
+    form(FILLED);
     expect(screen.getByText(/as you would type it in Gmail's search box/)).toBeInTheDocument();
     expect(shown("gw_mail_since")).toHaveAttribute("type", "date");
   });
+});
 
-  it("says why the address could not be stated", async () => {
-    signIn.redirectAddress.mockRejectedValue(new Error("unreachable"));
-    form({ gw_sign_in: "google_account" });
+describe("an organisation that has not connected Google Workspace", () => {
+  it("tells an administrator in one line and links to where it is set up", async () => {
+    signIn.signInStatus.mockResolvedValue({ configured: false, may_configure: true });
+    form(FILLED);
+    const line = await screen.findByTestId("google-workspace-not-set-up");
+    expect(line).toHaveTextContent(en.googleWorkspaceFields.notSetUp);
+    expect(shown("set-up")).toHaveAttribute("href", "/admin/email");
+    expect(shown("connect")).toBeNull();
+  });
+
+  it("tells anyone else to ask an administrator, with no link they cannot use", async () => {
+    signIn.signInStatus.mockResolvedValue({ configured: false, may_configure: false });
+    form(FILLED);
+    const line = await screen.findByTestId("google-workspace-not-set-up");
+    expect(line).toHaveTextContent(en.googleWorkspaceFields.notSetUpAsk);
+    expect(shown("set-up")).toBeNull();
+    expect(shown("connect")).toBeNull();
+  });
+
+  it("says why when it cannot tell", async () => {
+    signIn.signInStatus.mockRejectedValue(new Error("unreachable"));
+    form(FILLED);
     expect(await screen.findByTestId("google-workspace-problem")).toHaveTextContent(
       en.googleWorkspaceFields.connectFailed,
     );
+    expect(shown("connect")).toBeDisabled();
   });
 });
 
 describe("connecting a Google account", () => {
-  it("cannot be asked for until Google can be told what for", () => {
-    form({ ...APPROVAL, gw_client_secret: "" });
+  it("cannot be asked for until Google can be told whose mailbox and what for", async () => {
+    form({ gw_account: "ada@example.test" });
+    await waitFor(() => expect(signIn.signInStatus).toHaveBeenCalled());
     expect(shown("connect")).toBeDisabled();
-    expect(gwConnectMissing(APPROVAL, "")).toEqual(["source_id"]);
-    expect(gwConnectMissing(APPROVAL, "mail")).toEqual([]);
+    expect(gwConnectMissing(FILLED, "")).toEqual(["source_id"]);
+    expect(gwConnectMissing(FILLED, "mail")).toEqual([]);
   });
 
-  it("asks Google for the scope of what is read and keeps only references", async () => {
+  it("sends Google's scope for what is read, and no client, and keeps only a reference", async () => {
     signIn.signInSource.mockResolvedValue({
       source_id: "mail",
       account: "ada@example.test",
-      client_secret: "${secret:source_mail__client_secret}",
       refresh_token: "${secret:source_mail__refresh_token}",
     });
-    const setAuthFields = form(APPROVAL);
+    const setAuthFields = form(FILLED);
+    await connectReady();
     fireEvent.click(shown("connect")!);
     await waitFor(() => expect(setAuthFields).toHaveBeenCalled());
     expect(signIn.signInSource).toHaveBeenCalledWith({
@@ -186,32 +192,30 @@ describe("connecting a Google account", () => {
       kind: "google_workspace",
       account: "ada@example.test",
       scopes: [READONLY],
-      client_id: "client-1",
-      client_secret: "made-up-client-secret",
     });
     expect(setAuthFields).toHaveBeenLastCalledWith({
-      ...APPROVAL,
-      gw_client_secret: "${secret:source_mail__client_secret}",
+      ...FILLED,
       gw_refresh_token: "${secret:source_mail__refresh_token}",
       gw_connected_as: "ada@example.test",
     });
   });
 
-  it("says who approved once connected", () => {
-    form({ ...APPROVAL, gw_refresh_token: "${secret:t}", gw_connected_as: "ada@example.test" });
+  it("says who approved once connected", async () => {
+    form({ ...FILLED, gw_refresh_token: "${secret:t}", gw_connected_as: "ada@example.test" });
+    await connectReady();
     expect(shown("connected")).toHaveTextContent("Connected as ada@example.test");
   });
 
   it("asks again when what Google was asked for changes", () => {
     const setAuthFields = form({
-      ...APPROVAL,
+      ...FILLED,
       gw_refresh_token: "${secret:t}",
       gw_connected_as: "ada@example.test",
     });
-    fireEvent.change(shown("gw_client_id")!, { target: { value: "client-2" } });
+    fireEvent.change(shown("gw_account")!, { target: { value: "bo@example.test" } });
     expect(setAuthFields).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        gw_client_id: "client-2",
+        gw_account: "bo@example.test",
         gw_refresh_token: "",
         gw_connected_as: "",
       }),
@@ -220,7 +224,8 @@ describe("connecting a Google account", () => {
 
   it("shows a refusal and connects nothing", async () => {
     signIn.signInSource.mockRejectedValue(new Error("refused"));
-    const setAuthFields = form(APPROVAL);
+    const setAuthFields = form(FILLED);
+    await connectReady();
     fireEvent.click(shown("connect")!);
     expect(await screen.findByTestId("google-workspace-problem")).toBeInTheDocument();
     expect(setAuthFields).not.toHaveBeenCalled();
@@ -229,13 +234,9 @@ describe("connecting a Google account", () => {
 });
 
 describe("what a Google Workspace setup saves", () => {
-  const connected = {
-    ...APPROVAL,
-    gw_client_secret: "${secret:s}",
-    gw_refresh_token: "${secret:t}",
-  };
+  const connected = { ...FILLED, gw_refresh_token: "${secret:t}" };
 
-  it("is the settings the server reads, by their names", () => {
+  it("is the settings the server reads, by their names, and no client", () => {
     expect(
       gwMapping({
         ...connected,
@@ -249,28 +250,12 @@ describe("what a Google Workspace setup saves", () => {
       resources: ["mail"],
       sign_in: "google_account",
       mail_content: "full",
-      client_id: "client-1",
-      client_secret: "${secret:s}",
       refresh_token: "${secret:t}",
       mail_search: "from:bo@example.test",
       mail_labels: ["Clients", "Invoices"],
       mail_since: "2026-01-01",
       mail_include_spam_trash: true,
     });
-  });
-
-  it("carries only the chosen sign-in's credential", () => {
-    const mapping = gwMapping({
-      ...connected,
-      gw_sign_in: "service_account",
-      gw_service_account_key: "${secret:k}",
-    });
-    expect(mapping).toMatchObject({
-      sign_in: "service_account",
-      service_account_key: "${secret:k}",
-    });
-    expect(mapping).not.toHaveProperty("client_secret");
-    expect(mapping).not.toHaveProperty("refresh_token");
   });
 
   it("leaves out a search Google would refuse for headers-only mail", () => {
@@ -287,24 +272,36 @@ describe("what a Google Workspace setup saves", () => {
     ]);
   });
 
-  it("is not complete until the account is connected or the key given", () => {
-    expect(gwMissing({})).toEqual(["gw_account", "gw_sign_in", "gw_mail_content"]);
-    expect(gwMissing(APPROVAL)).toEqual(["gw_refresh_token"]);
+  it("is not complete until the account is connected", () => {
+    expect(gwMissing({})).toEqual(["gw_account", "gw_mail_content", "gw_refresh_token"]);
+    expect(gwMissing(FILLED)).toEqual(["gw_refresh_token"]);
     expect(gwMissing(connected)).toEqual([]);
-    expect(gwMissing({ ...APPROVAL, gw_sign_in: "service_account" })).toEqual([
-      "gw_service_account_key",
-    ]);
   });
 
   it("reads back into the form what was saved", () => {
-    const fields = gwFieldsFromMapping(
-      JSON.stringify(gwMapping({ ...connected, gw_mail_labels: "Clients" })),
-    );
+    const saved = gwMapping({ ...connected, gw_mail_labels: "Clients" });
+    const fields = gwFieldsFromMapping(JSON.stringify(saved));
     expect(fields).toMatchObject({
       ...connected,
       gw_mail_labels: "Clients",
       gw_connected_as: "ada@example.test",
     });
-    expect(gwMapping(fields)).toEqual(gwMapping({ ...connected, gw_mail_labels: "Clients" }));
+    expect(gwMapping(fields)).toEqual(saved);
+  });
+
+  it("keeps a source set up by hand with a service account as it is, and offers no button", async () => {
+    const byHand = {
+      accounts: ["ada@example.test"],
+      resources: ["mail"],
+      sign_in: "service_account",
+      service_account_key: "${secret:k}",
+      mail_content: "full",
+    };
+    const fields = gwFieldsFromMapping(JSON.stringify(byHand));
+    expect(gwMapping(fields)).toEqual(byHand);
+    expect(gwMissing(fields)).toEqual([]);
+    form(fields);
+    expect(shown("connect")).toBeNull();
+    expect(signIn.signInStatus).not.toHaveBeenCalled();
   });
 });

@@ -826,7 +826,7 @@ SOURCE_MAPPING_SECRET_KEYS: dict[str, tuple[str, ...]] = {
     "salesforce": ("sf_password", "security_token", "access_token"),
     "cloudops": ("azure_client_secret", "aws_secret_access_key"),  # REQ-1947
     # REQ-1923: the same names provisa/google_workspace/settings.py reads (SECRET_KEYS).
-    "google_workspace": ("client_secret", "refresh_token", "service_account_key"),
+    "google_workspace": ("refresh_token", "service_account_key"),
 }
 
 

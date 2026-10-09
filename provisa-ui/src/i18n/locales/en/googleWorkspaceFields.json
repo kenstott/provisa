@@ -6,24 +6,18 @@
     "mailContentHelp": "Google is asked for no more than this.",
     "mailContentFull": "Whole messages",
     "mailContentHeaders": "Headers and labels only, no message text",
-    "signIn": "How Provisa signs in to Google",
-    "signInGoogleAccount": "The mailbox owner approves it",
-    "signInServiceAccount": "A service account your Workspace administrator has authorised",
-    "redirectAddress": "Authorised redirect address",
-    "redirectAddressHelp": "Copy this into your OAuth client in the Google Cloud console, under Authorised redirect URIs.",
-    "clientId": "Client ID",
-    "clientSecret": "Client secret",
     "connect": "Connect Google account",
     "connected": "Connected as {{account}}",
     "connectFailed": "The sign-in could not be completed.",
-    "serviceAccountKey": "Service account key",
-    "serviceAccountKeyHelp": "The contents of the JSON key file Google gave you for the service account.",
     "mailSearch": "Mail to include",
     "mailSearchHelp": "A search exactly as you would type it in Gmail's search box. Leave empty for all mail.",
     "mailSince": "Nothing older than",
     "mailSinceHelp": "Leave empty to read mail of any age.",
     "mailLabels": "Labels",
     "mailLabelsHelp": "One label name per line. Only mail carrying every one is read. Leave empty for all mail.",
-    "mailSpamTrash": "Include Spam and Trash"
+    "mailSpamTrash": "Include Spam and Trash",
+    "notSetUp": "Your organization has not connected Google Workspace yet.",
+    "setUpLink": "Set it up under Admin › Email",
+    "notSetUpAsk": "Your organization has not connected Google Workspace yet. Ask an administrator to set it up under Admin › Email."
   }
 }
