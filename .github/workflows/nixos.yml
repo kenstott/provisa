@@ -101,6 +101,17 @@ jobs:
             "
           '
 
+      # How long AskAmerica's credentials API takes to answer, from the runner and from the guest:
+      # the product gives it 10 seconds, and which side is slow tells a NixOS difference from the API.
+      - name: AskAmerica credentials API, timed from the runner and the guest
+        if: ${{ !cancelled() && steps.service.outcome == 'success' }}
+        env:
+          FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
+        run: |
+          probe='for n in 1 2 3; do curl -s -o /dev/null -m 60 -A provisa-askamerica/1.0 -H "X-API-Key: $FREE_ASKAMERICA_KEY" -w "%{http_code} dns=%{time_namelookup}s connect=%{time_connect}s tls=%{time_appconnect}s total=%{time_total}s\n" https://api.askamerica.ai/v1/catalog/credentials; done'
+          echo "runner:"; bash -c "$probe"
+          echo "guest:"; packaging/nixos/vm-run "$probe"
+
       # The govdata case of the UI suite, against the service above: a live source (AskAmerica, US
       # government open data) read through its bundled pgwire server, which the service starts.
       - name: AskAmerica through the deployed UI (add a source, register a table, query it)
