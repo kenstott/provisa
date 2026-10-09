@@ -27,7 +27,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: The version to build, as a tag (v0.0.0-dryrun.1). Names every artifact.
+        description: >-
+          The version to build, shaped as a release tag (v0.0.0-alpha.1): it names every artifact
+          and is stamped into the wheels, so only -alpha.N / -beta.N / -rc.N suffixes convert.
         type: string
         required: true
       publish:

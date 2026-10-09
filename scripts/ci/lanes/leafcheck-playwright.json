@@ -1,0 +1,25 @@
+{
+  "suites": [
+    {
+      "title": "leaf.spec.ts",
+      "file": "leaf.spec.ts",
+      "specs": [
+        {"title": "runs", "file": "leaf.spec.ts",
+         "tests": [{"status": "expected", "annotations": [], "results": [{"status": "passed"}]}]}
+      ],
+      "suites": [
+        {
+          "title": "needs a credential",
+          "specs": [
+            {"title": "live source", "file": "leaf.spec.ts",
+             "tests": [{"status": "skipped",
+                        "annotations": [{"type": "skip", "description": "LEAF_TOKEN not set"}],
+                        "results": [{"status": "skipped"}]}]},
+            {"title": "after a failure", "file": "leaf.spec.ts",
+             "tests": [{"status": "skipped", "annotations": [], "results": []}]}
+          ]
+        }
+      ]
+    }
+  ]
+}

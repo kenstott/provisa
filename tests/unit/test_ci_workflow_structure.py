@@ -146,6 +146,7 @@ def test_every_job_that_needs_a_python_environment_gets_it_from_the_action():
 
 LANE = "./.github/workflows/lane.yml"
 _RUNNER = "playwright " + "test"
+_LEAF_CHECK = "ci-leaf-check.yml"
 
 # The suite's three jobs that keep steps of their own (lane.yml's header says why): each carries
 # live credentials or cluster tooling, and the lane workflow declares only the few secrets its
@@ -167,7 +168,7 @@ def _lane_callers():
 
 
 def test_every_job_that_runs_the_container_suite_or_playwright_is_the_lane_workflow():
-    callers = {f"{w}:{j}" for w, j, _b in _lane_callers()}
+    callers = {f"{w}:{j}" for w, j, _b in _lane_callers() if w != _LEAF_CHECK}
     assert callers == {
         "amd64-engines.yml:exasol",
         "integration-suite-lanes.yml:suite",
@@ -191,7 +192,10 @@ def test_every_job_that_runs_the_container_suite_or_playwright_is_the_lane_workf
 def test_a_lane_caller_names_a_command_and_scripts_that_exist():
     for workflow, job, body in _lane_callers():
         given = body["with"]
-        assert _runs_a_lane(str(given["run"])), f"{workflow}:{job} runs no lane"
+        # The lane workflow's own self-test calls it with a command that only writes a file.
+        assert workflow == _LEAF_CHECK or _runs_a_lane(str(given["run"])), (
+            f"{workflow}:{job} runs no lane"
+        )
         for hook in ("prepare", "on-failure", "after"):
             if hook in given:
                 named = [w for w in str(given[hook]).split() if w.endswith((".sh", ".py"))][0]
@@ -584,3 +588,101 @@ def test_the_core_ui_jobs_report_what_did_not_execute_and_sample_the_runner():
         assert given["prepare"] == "scripts/ci/lanes/ui-core-prepare.sh"
         assert given["sampler"] is True
         assert "provisa-ui/playwright-results.json" in given["artifact-path"]
+
+
+# --- the leaves' own check ------------------------------------------------------------------------
+
+
+def _leaf_check() -> tuple[str, dict]:
+    path = REPO / ".github" / "workflows" / _LEAF_CHECK
+    return path.read_text(), yaml.safe_load(path.read_text())
+
+
+def test_the_leaf_check_runs_only_on_ci_branches_and_never_on_main_or_a_tag():
+    text, workflow = _leaf_check()
+    trigger = workflow[True]
+    assert set(trigger) == {"push", "workflow_dispatch"}
+    assert trigger["push"] == {"branches": ["ci/**"], "paths": [".github/**", "scripts/ci/**"]}
+    assert "tags" not in trigger["push"]
+    jobs = workflow["jobs"]
+    # A manual run started on any other ref does nothing: `scope` runs only on a ci/** branch
+    # and every other job needs it, directly or through a job that does.
+    assert jobs["scope"]["if"] == "startsWith(github.ref, 'refs/heads/ci/')"
+
+    def reaches_scope(job: str) -> bool:
+        needs = jobs[job].get("needs") or []
+        needs = [needs] if isinstance(needs, str) else needs
+        return "scope" in needs or any(reaches_scope(n) for n in needs)
+
+    for job in jobs:
+        assert job == "scope" or reaches_scope(job), f"{job} can run without scope"
+    # The one job that runs `always()` says the branch condition itself.
+    assert "always()" in jobs["verdict"]["if"]
+    assert "startsWith(github.ref, 'refs/heads/ci/')" in jobs["verdict"]["if"]
+    assert set(jobs["verdict"]["needs"]) == set(jobs) - {"verdict"}
+
+
+def test_the_leaf_check_reads_no_secret_and_can_publish_nothing():
+    for name in (_LEAF_CHECK, "ci-leaf-stub-leg.yml"):
+        path = REPO / ".github" / "workflows" / name
+        text, workflow = path.read_text(), yaml.safe_load(path.read_text())
+        assert not re.search(r"\bsecrets\.[A-Za-z_]", text), f"{name} reads a secret"
+        assert "secrets: inherit" not in text
+        # Its token reads the repository and nothing else, for every job.
+        assert workflow["permissions"] == {"contents": "read"}
+        for job, body in workflow["jobs"].items():
+            assert "permissions" not in body, f"{name}:{job} widens its token"
+            # No leg of the release is called, and no step is one that publishes.
+            assert not str(body.get("uses", "")).startswith("./.github/workflows/release-")
+            for step in body.get("steps") or []:
+                step_text = f"{step.get('uses') or ''}\n{step.get('run') or ''}"
+                assert not re.search(
+                    r"pypi-publish|action-gh-release|gh release (create|upload|edit)|docker push|"
+                    r"docker/login-action|attest-build-provenance",
+                    step_text,
+                ), f"{name}:{job}:{step.get('name')}"
+                assert (step.get("with") or {}).get("push") in (None, False)
+                # ensure-release, the one action here that could create a release, is skipped.
+                if "ensure-release" in str(step.get("uses", "")):
+                    assert step["if"] == "${{ fromJSON('false') }}"
+
+
+def test_the_leaf_check_covers_every_leaf_or_says_why_not():
+    text, workflow = _leaf_check()
+    used = {
+        str(step["uses"]).rsplit("/", 1)[-1]
+        for body in workflow["jobs"].values()
+        for step in body.get("steps") or []
+        if str(step.get("uses", "")).startswith("./.github/actions/")
+    }
+    actions = {p.parent.name for p in ACTIONS}
+    left_out = {"apple-signing", "nixos-vm"}
+    assert used == actions - left_out, used ^ (actions - left_out)
+    header = text.split("\nname: ", 1)[0]
+    for action in left_out:
+        assert f"#   - {action}:" in header, f"the header does not say why {action} is left out"
+    called = {str(b.get("uses", "")) for b in workflow["jobs"].values()}
+    assert LANE in called and "./.github/workflows/ci-leaf-stub-leg.yml" in called
+    # The two jobs that fail on purpose are the two the verdict expects to fail.
+    verdict = workflow["jobs"]["verdict"]["steps"][0]["run"]
+    assert 'expected["lane-fails"] = "failure"' in verdict
+    assert 'expected["release-after-a-failed-need"] = "failure"' in verdict
+
+
+def test_the_proof_level_is_one_committed_file_and_each_level_needs_the_one_below():
+    """A push proves up to the level `.github/ci-proof-level` names, so it does not start
+    everything; level 1's jobs need level 0's gate, which needs every composite action's check."""
+    _text, workflow = _leaf_check()
+    level = (REPO / ".github" / "ci-proof-level").read_text().strip()
+    assert level in {"0", "1"}, level
+    jobs = workflow["jobs"]
+    assert jobs["scope"]["outputs"] == {"level": "${{ steps.level.outputs.level }}"}
+    level_one = {"lane", "lane-fails", "release-dry-run", "release-after-a-failed-need"}
+    for job in level_one:
+        assert jobs[job]["needs"] == ["scope", "level-0"], job
+        assert jobs[job]["if"] == "fromJSON(needs.scope.outputs.level) >= 1", job
+    level_zero = set(jobs["level-0"]["needs"])
+    assert level_zero == {
+        job for job, body in jobs.items() if str(body.get("name", "")).startswith("action / ")
+    }
+    assert len(level_zero) == 11

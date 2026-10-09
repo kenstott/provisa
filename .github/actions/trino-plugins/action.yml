@@ -16,10 +16,18 @@ inputs:
   cache-hit:
     description: (save) the restore phase's `cache-hit` output; a hit is not saved again.
     default: "false"
+  key-suffix:
+    description: >-
+      Appended to the cache key. Empty everywhere but the action's own self-test
+      (ci-leaf-check.yml), which round-trips a key of its own and never touches the real one.
+    default: ""
 outputs:
   cache-hit:
     description: (restore) whether the jars came from the cache.
     value: ${{ steps.trino-plugins.outputs.cache-hit }}
+  jars:
+    description: The jar paths the pin names (what the save phase requires to be present).
+    value: ${{ steps.trino-pin.outputs.jars }}
 runs:
   using: composite
   steps:
@@ -51,7 +59,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: trino/plugins/trino-*
-        key: trino-plugins-${{ steps.trino-pin.outputs.version }}
+        key: trino-plugins-${{ steps.trino-pin.outputs.version }}${{ inputs.key-suffix }}
 
     - name: Trino plugins fetched
       id: trino-plugins-fetched
@@ -68,4 +76,4 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: trino/plugins/trino-*
-        key: trino-plugins-${{ steps.trino-pin.outputs.version }}
+        key: trino-plugins-${{ steps.trino-pin.outputs.version }}${{ inputs.key-suffix }}

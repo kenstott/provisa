@@ -1,0 +1,100 @@
+# A stand-in for a leg of the release, called only by ci-leaf-check.yml.
+#
+# It builds nothing and publishes nothing. It carries, in the smallest form, the control-flow
+# constructs the release's legs depend on and that nothing had proven on GitHub:
+#
+#   - `version: ${{ inputs.version || github.ref_name }}` as the orchestrator writes it
+#   - a job that is skipped whole on a dry run (`if: inputs.publish`)
+#   - a job that NEEDS that skipped job and must still run:
+#     `!cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')`
+#   - a step that leaves the run (`if: inputs.publish`), skipped on a dry run
+#   - `push: ${{ inputs.publish }}` arriving as a boolean
+#
+# What this proves is how GitHub evaluates those constructs. It does NOT prove the real publish
+# leg: that one needs every other leg's artifacts and write permissions to the release, the
+# package registry and the OIDC token, none of which a check that runs on a branch push may
+# hold. The real leg is proven by the release's dry run.
+name: ci leaf stub leg
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      publish:
+        type: boolean
+        required: true
+      fail-a-need:
+        description: Make the job the release job needs FAIL, to show the release job then does not run.
+        type: boolean
+        default: false
+    outputs:
+      version:
+        value: ${{ jobs.release.outputs.version }}
+      publish-is-boolean:
+        value: ${{ jobs.release.outputs.publish_is_boolean }}
+      left-the-run:
+        value: ${{ jobs.release.outputs.left_the_run }}
+      release-ran:
+        value: ${{ jobs.release.outputs.ran }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # As publish-pypi: a publication, skipped whole on a dry run.
+  publication:
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "a publication would happen here"
+
+  # As a build whose failure must stop the release.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail when asked to
+        env:
+          FAIL: ${{ inputs.fail-a-need }}
+        run: |
+          if [ "$FAIL" = "true" ]; then echo "failing on purpose"; exit 1; fi
+
+  # As publish-release: needs a job that a dry run skips, and still runs -- unless a need failed.
+  release:
+    needs: [publication, build]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.report.outputs.version }}
+      publish_is_boolean: ${{ steps.report.outputs.publish_is_boolean }}
+      left_the_run: ${{ steps.report.outputs.left_the_run }}
+      ran: ${{ steps.report.outputs.ran }}
+    steps:
+      - name: A step that leaves the run
+        id: leaves
+        if: inputs.publish
+        run: echo "happened=true" >> "$GITHUB_OUTPUT"
+
+      - name: Report
+        id: report
+        env:
+          VERSION: ${{ inputs.version }}
+          # `push: ${{ inputs.publish }}` in a `with:` block: what the expression yields.
+          PUSH: ${{ inputs.publish }}
+          PUSH_IS_FALSE: ${{ inputs.publish == false }}
+          LEFT: ${{ steps.leaves.outputs.happened }}
+        run: |
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # A boolean input compares equal to the boolean false, and prints as "false".
+          if [ "$PUSH" = "false" ] && [ "$PUSH_IS_FALSE" = "true" ]; then
+            echo "publish_is_boolean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish_is_boolean=false ($PUSH / $PUSH_IS_FALSE)" >> "$GITHUB_OUTPUT"
+          fi
+          echo "left_the_run=${LEFT:-false}" >> "$GITHUB_OUTPUT"
+          echo "ran=true" >> "$GITHUB_OUTPUT"

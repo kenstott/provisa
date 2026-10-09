@@ -254,7 +254,10 @@ def test_the_plugin_cache_action_restores_and_saves_under_one_key():
     ]
     restored = by_name["Restore Trino plugins"]["with"]
     assert by_name["Cache Trino plugins"]["with"] == restored
-    assert restored["key"] == "trino-plugins-${{ steps.trino-pin.outputs.version }}"
+    # The pin, and a suffix that is empty for every caller but the action's own self-test.
+    assert restored["key"] == (
+        "trino-plugins-${{ steps.trino-pin.outputs.version }}${{ inputs.key-suffix }}"
+    )
     assert "inputs.phase == 'restore'" in by_name["Restore Trino plugins"]["if"]
     # Saved whatever the tests' outcome, and only when the restore missed and every jar is there.
     for step in ("Trino plugins fetched", "Cache Trino plugins"):

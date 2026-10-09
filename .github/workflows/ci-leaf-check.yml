@@ -1,0 +1,581 @@
+# The CI's own leaves, each proven alone.
+#
+# The workflows are built from composite actions (.github/actions), one reusable lane workflow
+# (lane.yml) and the release's legs. This runs each leaf by itself, in minutes, and asserts what
+# the leaf is supposed to LEAVE BEHIND -- not only that it exited 0 -- so a broken leaf is found
+# here and not forty minutes into a lane, or on a release tag.
+#
+# It runs on a push to a ci/** branch that touches the workflows or their scripts (and on
+# demand, on such a branch). It never runs on main or on a tag: every job needs `scope`, which
+# runs only on a ci/** branch. It reads NO repository secret, publishes nothing, and its token
+# can only read the repository.
+#
+# Left out, and why:
+#   - apple-signing: imports a Developer ID certificate into a macOS keychain. Without the
+#     certificate (a secret) it does nothing but print that it skipped; with it, this check
+#     would hold a signing identity on a branch push.
+#   - nixos-vm: boots a NixOS guest under KVM (many minutes, a multi-gigabyte build). It is
+#     the NixOS workflow's own and is proven by that workflow.
+#   - the real release legs: each builds installers or needs their artifacts, and the publish
+#     leg needs write access to the release, the registry and the OIDC token. Their control flow
+#     is exercised through a stand-in (ci-leaf-stub-leg.yml), which proves how GitHub evaluates
+#     the constructs they use; the legs themselves are proven by the release's dry run.
+name: CI leaf check
+
+on:
+  push:
+    branches: ["ci/**"]
+    paths:
+      - ".github/**"
+      - "scripts/ci/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-leaf-check-${{ github.ref }}
+  cancel-in-progress: true
+
+# Naming the shell makes GitHub run every step with `bash -eo pipefail`.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Only on a ci/** branch. Every other job needs this one, so on any other ref (a manual run
+  # started on main, a tag) they are all skipped.
+  scope:
+    if: startsWith(github.ref, 'refs/heads/ci/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      level: ${{ steps.level.outputs.level }}
+    steps:
+      - uses: actions/checkout@v4
+      # The highest level this push proves, named by one committed file. A level runs only when
+      # the level below it passed in this run.
+      #   0  each composite action alone
+      #   1  the reusable workflows with trivial work (the lane; the release's control flow)
+      - name: The level to prove
+        id: level
+        run: |
+          level="$(tr -d '[:space:]' < .github/ci-proof-level)"
+          case "$level" in
+            0|1) echo "level=$level" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::.github/ci-proof-level is '$level'; this workflow proves levels 0 and 1"; exit 1 ;;
+          esac
+          echo "proving up to level $level on ${GITHUB_REF_NAME} at ${GITHUB_SHA}"
+
+  # ── composite actions ──────────────────────────────────────────────────────────────────────
+
+  setup-python:
+    name: action / setup-python
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-python
+        with:
+          client: "true"
+      - name: uv is present, the project's environment exists and imports
+        run: |
+          uv --version
+          test -x .venv/bin/python
+          .venv/bin/python -c "import provisa, pytest, provisa_client; print(provisa.__name__)"
+
+  setup-python-uv-only:
+    name: action / setup-python (uv only)
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-python
+        with:
+          sync: "false"
+      - name: uv is present and nothing was synced
+        run: |
+          uv --version
+          test ! -e .venv
+
+  setup-python-extras:
+    name: action / setup-python (extras)
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-python
+        with:
+          extras: dev saphana
+      - name: each named extra was installed
+        run: .venv/bin/python -c "import pytest, hdbcli; print('dev and saphana')"
+
+  setup-ui:
+    name: action / setup-ui
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ui
+        with:
+          playwright: chromium
+      - name: Node 22, the UI's dependencies and Chromium are there
+        run: |
+          node --version | grep -E '^v22\.'
+          test -x provisa-ui/node_modules/.bin/vite
+          test -x provisa-ui/node_modules/.bin/playwright
+          ls "$HOME/.cache/ms-playwright" | grep -E '^chromium'
+
+  setup-ui-no-install:
+    name: action / setup-ui (no install)
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ui
+        with:
+          node-version: "20"
+          install: "false"
+      - name: Node 20 and no installed dependencies
+        run: |
+          node --version | grep -E '^v20\.'
+          test ! -e provisa-ui/node_modules
+
+  mssql-odbc:
+    name: action / mssql-odbc
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/mssql-odbc
+        timeout-minutes: 10
+      - name: the driver is registered
+        run: odbcinst -q -d -n "ODBC Driver 18 for SQL Server"
+
+  docs-site-deps:
+    name: action / docs-site-deps
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: ./.github/actions/docs-site-deps
+      - name: MkDocs and its plugins import
+        run: |
+          mkdocs --version
+          python -c "import material, pymdownx; print('mkdocs-material and pymdown-extensions')"
+
+  # A round trip on a key of this run's own (key-suffix): the real cache is never touched.
+  # First job: the restore misses, the jars the pin names are put there (tiny stand-ins), the
+  # save phase stores them.
+  trino-plugins-save:
+    name: action / trino-plugins (miss, then save)
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore
+        id: restore
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
+          key-suffix: -leafcheck-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: A key nobody saved misses, and the pin names its jars
+        env:
+          HIT: ${{ steps.restore.outputs.cache-hit }}
+          JARS: ${{ steps.restore.outputs.jars }}
+        run: |
+          [ "$HIT" != "true" ]
+          [ -n "$JARS" ]
+          for jar in $JARS; do
+            case "$jar" in trino/plugins/trino-*/trino-*.jar) ;; *) echo "unexpected: $jar"; exit 1 ;; esac
+            mkdir -p "$(dirname "$jar")"
+            echo "stand-in for $jar" > "$jar"
+          done
+      - name: Save
+        if: always()
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: save
+          cache-hit: ${{ steps.restore.outputs.cache-hit }}
+          key-suffix: -leafcheck-${{ github.run_id }}-${{ github.run_attempt }}
+
+  # Second job, a fresh runner: the same key now hits and the jars are back.
+  trino-plugins-restore:
+    name: action / trino-plugins (hit)
+    needs: trino-plugins-save
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore
+        id: restore
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
+          key-suffix: -leafcheck-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: The saved key hits and every jar is restored
+        env:
+          HIT: ${{ steps.restore.outputs.cache-hit }}
+          JARS: ${{ steps.restore.outputs.jars }}
+        run: |
+          [ "$HIT" = "true" ]
+          for jar in $JARS; do grep -q "stand-in for $jar" "$jar"; done
+      # A hit is not saved again: the save phase does nothing, and says so by doing nothing.
+      - name: Save after a hit
+        if: always()
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: save
+          cache-hit: ${{ steps.restore.outputs.cache-hit }}
+          key-suffix: -leafcheck-${{ github.run_id }}-${{ github.run_attempt }}
+
+  release-metadata:
+    name: action / release-metadata
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - id: alpha
+        uses: ./.github/actions/release-metadata
+        with:
+          version: v1.2.3-alpha.45
+      - id: stable
+        uses: ./.github/actions/release-metadata
+        with:
+          version: v2.0.0
+      # The version a dry run is given: shaped as a release tag, so it converts to PEP 440.
+      - id: dry
+        uses: ./.github/actions/release-metadata
+        with:
+          version: v0.0.0-rc.1
+      - name: Every name is the one the release expects
+        env:
+          ALPHA: ${{ toJSON(steps.alpha.outputs) }}
+          STABLE: ${{ toJSON(steps.stable.outputs) }}
+          DRY: ${{ toJSON(steps.dry.outputs) }}
+        run: |
+          python3 - <<'EOF'
+          import json, os
+
+          alpha, stable, dry = (json.loads(os.environ[k]) for k in ("ALPHA", "STABLE", "DRY"))
+          expected = {
+              "is_prerelease": "true",
+              "channel": "alpha",
+              "py_version": "1.2.3a45",
+              "dmg_name": "Provisa-v1.2.3-alpha.45-macOS.dmg",
+              "dmg_obs_name": "Provisa-Obs-v1.2.3-alpha.45-macOS.dmg",
+              "dmg_container_name": "Provisa-Container-v1.2.3-alpha.45-macOS.dmg",
+              "dmg_demo_name": "Provisa-Demo-v1.2.3-alpha.45-macOS.dmg",
+              "linux_name": "Provisa-v1.2.3-alpha.45-linux-x86_64.AppImage",
+              "windows_name": "Provisa-v1.2.3-alpha.45-windows-x64.exe",
+              "windows_container_name": "Provisa-Container-v1.2.3-alpha.45-windows-x64.exe",
+              "jdbc_name": "provisa-jdbc-v1.2.3-alpha.45.jar",
+              "obs_images_name": "provisa-obs-images-v1.2.3-alpha.45.tar.gz",
+              "demo_images_name": "provisa-demo-images-v1.2.3-alpha.45.tar.gz",
+              "core_images_name": "provisa-core-images-v1.2.3-alpha.45.tar.gz",
+              "core_images_amd64_name": "provisa-core-images-amd64-v1.2.3-alpha.45.zip",
+              "trino_image_name": "provisa-trino-image-v1.2.3-alpha.45.tar.gz",
+              "trino_image_amd64_name": "provisa-trino-image-amd64-v1.2.3-alpha.45.tar.gz",
+              "plugins_name": "provisa-trino-plugins-v1.2.3-alpha.45.tar.gz",
+          }
+          assert alpha == expected, {k: (alpha.get(k), v) for k, v in expected.items() if alpha.get(k) != v}
+          assert (stable["channel"], stable["is_prerelease"], stable["py_version"]) == ("stable", "false", "2.0.0"), stable
+          assert (dry["channel"], dry["is_prerelease"], dry["py_version"]) == ("rc", "true", "0.0.0rc1"), dry
+          print("18 outputs as expected; stable and release-candidate forms resolve")
+          EOF
+
+  # ensure-release has no switch of its own: a leg skips it with `if: inputs.publish`. Gated
+  # the same way with the condition false, it must be skipped and no release may exist.
+  ensure-release-off:
+    name: action / ensure-release (publish off)
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TAG: v0.0.0-leafcheck.${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure release exists
+        id: ensure
+        if: ${{ fromJSON('false') }}
+        uses: ./.github/actions/ensure-release
+        with:
+          tag: ${{ env.TAG }}
+      - name: The step was skipped and there is no such release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CONCLUSION: ${{ steps.ensure.conclusion }}
+        run: |
+          [ "$CONCLUSION" = "skipped" ]
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::error::a release $TAG exists"; exit 1
+          fi
+          echo "no release $TAG"
+
+  # Level 0 as one job: it succeeds only when every composite action's check did, and level 1
+  # needs it.
+  level-0:
+    name: level 0 / every composite action
+    needs:
+      - setup-python
+      - setup-python-uv-only
+      - setup-python-extras
+      - setup-ui
+      - setup-ui-no-install
+      - mssql-odbc
+      - docs-site-deps
+      - trino-plugins-save
+      - trino-plugins-restore
+      - release-metadata
+      - ensure-release-off
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo "every composite action left what it should"
+
+  # ── the lane workflow ──────────────────────────────────────────────────────────────────────
+  #
+  # Called through a matrix with a command that only writes a file, so each construct the real
+  # callers rely on is exercised: matrix.* in `with:` and in `secrets:`, a boolean expression
+  # arriving as a boolean input, a folded multi-line `run:`, the default artifact name and
+  # retention, the lane's environment reaching its prepare, run and after commands, the sampler.
+  lane:
+    name: lane / ${{ matrix.case }}
+    needs: [scope, level-0]
+    if: fromJSON(needs.scope.outputs.level) >= 1
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: plain
+            check: "true"
+            artifact: ""
+          - case: java
+            check: java -version 2>&1 | grep -q 'version "21'
+            artifact: ""
+          - case: sampler
+            check: sleep 45
+            artifact: leaf-named-artifact
+    uses: ./.github/workflows/lane.yml
+    with:
+      name: leaf ${{ matrix.case }} 1/2
+      timeout: 15
+      java: ${{ matrix.case == 'java' }}
+      trino-plugins: ${{ matrix.case == 'java' }}
+      splunk-cim-cache: ${{ matrix.case == 'java' }}
+      sampler: ${{ matrix.case == 'sampler' }}
+      env: |
+        LEAF_ONE=one
+        LEAF_TWO=two words=kept
+      prepare: scripts/ci/lanes/leafcheck-prepare.sh ${{ matrix.case }}
+      run: >-
+        mkdir -p "results/$LANE_SLUG" &&
+        echo "case=${{ matrix.case }} slug=$LANE_SLUG one=$LEAF_ONE two=$LEAF_TWO secret=${ANTHROPIC_API_KEY:-empty}"
+        > "results/$LANE_SLUG/run.txt" &&
+        ${{ matrix.check }}
+      after: bash scripts/ci/lanes/leafcheck-after.sh
+      on-failure: scripts/ci/lanes/leafcheck-on-failure.sh
+      artifact-name: ${{ matrix.artifact }}
+      artifact-path: results/
+      artifact-required: error
+    secrets:
+      # A literal, not a repository secret: what matters is that an expression over the matrix
+      # reaches one lane and not the others.
+      ANTHROPIC_API_KEY: ${{ matrix.case == 'plain' && 'passed-by-the-caller' || '' }}
+
+  # A lane whose command fails on purpose: its on-failure and after scripts must still run and
+  # its results must still be uploaded. `verdict` expects this job to FAIL.
+  lane-fails:
+    name: lane / fails on purpose
+    needs: [scope, level-0]
+    if: fromJSON(needs.scope.outputs.level) >= 1
+    uses: ./.github/workflows/lane.yml
+    with:
+      name: leaf fails
+      timeout: 15
+      prepare: scripts/ci/lanes/leafcheck-prepare.sh fails
+      run: mkdir -p "results/$LANE_SLUG" && echo started > "results/$LANE_SLUG/run.txt" && exit 7
+      after: bash scripts/ci/lanes/leafcheck-after.sh
+      on-failure: scripts/ci/lanes/leafcheck-on-failure.sh
+      artifact-path: results/
+      artifact-required: error
+
+  lane-results:
+    name: lane / what each lane left
+    needs: [lane, lane-fails]
+    if: ${{ !cancelled() && needs.lane.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Each lane's results, under the name the lane gave them: the default is
+      # lane-<the lane's name as a file name> ("leaf plain 1/2" -> "leaf-plain-1of2").
+      - uses: actions/download-artifact@v4
+        with:
+          name: lane-leaf-plain-1of2
+          path: got/plain
+      - uses: actions/download-artifact@v4
+        with:
+          name: lane-leaf-java-1of2
+          path: got/java
+      - uses: actions/download-artifact@v4
+        with:
+          name: leaf-named-artifact
+          path: got/sampler
+      - uses: actions/download-artifact@v4
+        with:
+          name: sampler-leaf-sampler-1of2
+          path: got/samples
+      - uses: actions/download-artifact@v4
+        with:
+          name: lane-leaf-fails
+          path: got/fails
+      - name: Each lane left what it should
+        run: |
+          find got -type f | sort
+          # The folded command ran as one line, with the lane's environment and its name as a file name.
+          grep -qx 'case=plain slug=leaf-plain-1of2 one=one two=two words=kept secret=passed-by-the-caller' got/plain/leaf-plain-1of2/run.txt
+          grep -qx 'case=java slug=leaf-java-1of2 one=one two=two words=kept secret=empty' got/java/leaf-java-1of2/run.txt
+          # The secret an expression over the matrix passed reached the prepare and after commands
+          # of that lane, and no other lane.
+          grep -q 'prepared with: plain' got/plain/leaf-plain-1of2/prepare.txt
+          grep -q 'LEAF_ONE=one secret=passed-by-the-caller' got/plain/leaf-plain-1of2/prepare.txt
+          grep -q 'after ran; secret=passed-by-the-caller' got/plain/leaf-plain-1of2/after.txt
+          grep -q 'secret=empty' got/java/leaf-java-1of2/prepare.txt
+          grep -q 'secret=empty' got/sampler/leaf-sampler-1of2/after.txt
+          # A lane that passed ran no on-failure script.
+          test ! -e got/plain/leaf-plain-1of2/on-failure.txt
+          # The not-executed report, from the made-up Playwright report.
+          grep -qx 'NOT EXECUTED: 2 test(s)' got/plain/leaf-plain-1of2/not-executed.txt
+          grep -q 'live source -- LEAF_TOKEN not set' got/plain/leaf-plain-1of2/not-executed.txt
+          grep -q 'after a failure -- did not run' got/plain/leaf-plain-1of2/not-executed.txt
+          # The sampler wrote samples: a load line, memory, and processes by name.
+          grep -q 'load: ' got/samples/samples.txt
+          grep -q 'memory: ' got/samples/samples.txt
+          grep -q 'by cpu:' got/samples/samples.txt
+          # The lane that failed still prepared, started, ran its on-failure and after scripts,
+          # and uploaded.
+          grep -qx 'started' got/fails/leaf-fails/run.txt
+          grep -q 'the lane failed and this ran' got/fails/leaf-fails/on-failure.txt
+          grep -q 'after ran' got/fails/leaf-fails/after.txt
+
+  # ── the release's control flow, through a stand-in leg ─────────────────────────────────────
+
+  # A dry run as the orchestrator starts a leg: `inputs.version || github.ref_name` (no input
+  # on a push, so the ref's name) and publish false.
+  release-dry-run:
+    name: release / dry run
+    needs: [scope, level-0]
+    if: fromJSON(needs.scope.outputs.level) >= 1
+    uses: ./.github/workflows/ci-leaf-stub-leg.yml
+    with:
+      version: ${{ inputs.version || github.ref_name }}
+      # The manual half of the orchestrator's expression (a tag push is its other half): false here.
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
+
+  # The same with a need that fails: the release job must not run. `verdict` expects FAILURE.
+  release-after-a-failed-need:
+    name: release / a failed need
+    needs: [scope, level-0]
+    if: fromJSON(needs.scope.outputs.level) >= 1
+    uses: ./.github/workflows/ci-leaf-stub-leg.yml
+    with:
+      version: v0.0.0-rc.1
+      publish: false
+      fail-a-need: true
+
+  release-results:
+    name: release / what the stand-in showed
+    needs: [release-dry-run, release-after-a-failed-need]
+    if: ${{ !cancelled() && needs.release-dry-run.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: The dry run's release job ran, on the ref's name, and nothing left the run
+        env:
+          DRY: ${{ toJSON(needs.release-dry-run.outputs) }}
+          FAILED: ${{ toJSON(needs.release-after-a-failed-need.outputs) }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          python3 - <<'EOF'
+          import json, os
+
+          dry, failed = json.loads(os.environ["DRY"]), json.loads(os.environ["FAILED"])
+          print("dry run:", dry)
+          print("a failed need:", failed)
+          # The job that needs a SKIPPED publication still ran.
+          assert dry.get("release-ran") == "true", dry
+          # `inputs.version || github.ref_name` with no input is the ref's name.
+          assert dry.get("version") == os.environ["REF_NAME"], dry
+          # `publish` arrived as the boolean false; the step that leaves the run was skipped.
+          assert dry.get("publish-is-boolean") == "true", dry
+          assert dry.get("left-the-run") == "false", dry
+          # After a FAILED need the release job did not run at all.
+          assert not failed.get("release-ran"), failed
+          EOF
+
+  # ── the verdict ────────────────────────────────────────────────────────────────────────────
+
+  verdict:
+    name: every leaf as expected
+    needs:
+      - scope
+      - level-0
+      - setup-python
+      - setup-python-uv-only
+      - setup-python-extras
+      - setup-ui
+      - setup-ui-no-install
+      - mssql-odbc
+      - docs-site-deps
+      - trino-plugins-save
+      - trino-plugins-restore
+      - release-metadata
+      - ensure-release-off
+      - lane
+      - lane-fails
+      - lane-results
+      - release-dry-run
+      - release-after-a-failed-need
+      - release-results
+    if: ${{ always() && startsWith(github.ref, 'refs/heads/ci/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Each job concluded as it should
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'EOF'
+          import json, os
+
+          needs = json.loads(os.environ["NEEDS"])
+          results = {job: need["result"] for job, need in needs.items()}
+          level = int(needs["scope"]["outputs"]["level"])
+          # Two jobs fail on purpose; every other one must succeed.
+          expected = {job: "success" for job in results}
+          expected["lane-fails"] = "failure"
+          expected["release-after-a-failed-need"] = "failure"
+          # Level 1's jobs do not run when the committed level is 0.
+          if level < 1:
+              for job in ("lane", "lane-fails", "lane-results", "release-dry-run",
+                          "release-after-a-failed-need", "release-results"):
+                  expected[job] = "skipped"
+          print(f"level {level}")
+          wrong = {job: (got, expected[job]) for job, got in results.items() if got != expected[job]}
+          for job in sorted(results):
+              print(f"{job:32} {results[job]:10} expected {expected[job]}")
+          if wrong:
+              raise SystemExit(f"not as expected: {wrong}")
+          EOF
