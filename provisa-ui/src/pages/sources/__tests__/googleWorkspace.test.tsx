@@ -114,14 +114,10 @@ describe("what a Google Workspace setup asks", () => {
     expect(signIn.redirectAddress).not.toHaveBeenCalled();
   });
 
-  it("offers mail, and names calendar and tasks as not yet available", () => {
-    form({});
-    expect(shown("reads-mail")).toBeChecked();
-    for (const later of ["calendar", "tasks"]) {
-      expect(shown(`reads-${later}`)).not.toBeChecked();
-      expect(shown(`reads-${later}`)).toBeDisabled();
-    }
-    expect(screen.getAllByText(en.googleWorkspaceFields.readsLater)).toHaveLength(2);
+  it("shows nothing it cannot read: no calendar, no tasks, nothing marked as coming", () => {
+    form({ gw_sign_in: "google_account", gw_mail_content: "full" });
+    expect(screen.queryByText(/calendar|tasks|not yet|coming|not supported|available/i)).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /calendar|tasks/i })).toBeNull();
   });
 
   it("for the owner's approval asks for the client, shows the address to give Google, and no key", async () => {

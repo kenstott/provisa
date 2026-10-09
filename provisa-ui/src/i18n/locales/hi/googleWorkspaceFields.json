@@ -2,12 +2,6 @@
   "googleWorkspaceFields": {
     "account": "मेलबॉक्स का पता",
     "accountHelp": "वह Google खाता जिसे यह स्रोत पढ़ता है।",
-    "reads": {
-      "mail": "मेल",
-      "calendar": "कैलेंडर",
-      "tasks": "टास्क"
-    },
-    "readsLater": "अभी उपलब्ध नहीं",
     "mailContent": "हर संदेश का कितना हिस्सा पढ़ना है",
     "mailContentHelp": "Google से इससे ज़्यादा कुछ नहीं माँगा जाता।",
     "mailContentFull": "पूरे संदेश",

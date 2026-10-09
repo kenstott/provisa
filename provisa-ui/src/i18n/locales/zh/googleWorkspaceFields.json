@@ -2,12 +2,6 @@
   "googleWorkspaceFields": {
     "account": "邮箱地址",
     "accountHelp": "此数据源读取的 Google 账号。",
-    "reads": {
-      "mail": "邮件",
-      "calendar": "日历",
-      "tasks": "任务"
-    },
-    "readsLater": "暂不可用",
     "mailContent": "每封邮件读取多少内容",
     "mailContentHelp": "向 Google 请求的权限不会超出此范围。",
     "mailContentFull": "完整邮件",

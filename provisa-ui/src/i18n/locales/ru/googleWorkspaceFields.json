@@ -2,12 +2,6 @@
   "googleWorkspaceFields": {
     "account": "Адрес почтового ящика",
     "accountHelp": "Аккаунт Google, который читает этот источник.",
-    "reads": {
-      "mail": "Почта",
-      "calendar": "Календарь",
-      "tasks": "Задачи"
-    },
-    "readsLater": "Пока недоступно",
     "mailContent": "Какую часть каждого письма читать",
     "mailContentHelp": "Больше этого у Google не запрашивается.",
     "mailContentFull": "Письма целиком",

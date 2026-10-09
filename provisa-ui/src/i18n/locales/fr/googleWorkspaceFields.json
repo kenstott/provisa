@@ -2,12 +2,6 @@
   "googleWorkspaceFields": {
     "account": "Adresse de la boîte aux lettres",
     "accountHelp": "Le compte Google que cette source lit.",
-    "reads": {
-      "mail": "Messagerie",
-      "calendar": "Agenda",
-      "tasks": "Tâches"
-    },
-    "readsLater": "Pas encore disponible",
     "mailContent": "Quelle part de chaque message lire",
     "mailContentHelp": "Google ne reçoit aucune demande au-delà.",
     "mailContentFull": "Messages entiers",

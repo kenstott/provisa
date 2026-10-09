@@ -2,12 +2,6 @@
   "googleWorkspaceFields": {
     "account": "כתובת תיבת הדואר",
     "accountHelp": "חשבון Google שהמקור הזה קורא.",
-    "reads": {
-      "mail": "דואר",
-      "calendar": "יומן",
-      "tasks": "משימות"
-    },
-    "readsLater": "עדיין לא זמין",
     "mailContent": "כמה מכל הודעה לקרוא",
     "mailContentHelp": "מ-Google לא מתבקש יותר מזה.",
     "mailContentFull": "הודעות שלמות",

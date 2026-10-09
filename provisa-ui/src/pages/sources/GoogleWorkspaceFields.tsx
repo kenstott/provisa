@@ -20,7 +20,6 @@ import {
   Group,
   PasswordInput,
   Select,
-  Stack,
   TextInput,
   Textarea,
 } from "@mantine/core";
@@ -32,8 +31,6 @@ import {
   GW_GOOGLE_ACCOUNT,
   GW_MAIL_FULL,
   GW_MAIL_HEADERS,
-  GW_RESOURCES,
-  GW_RESOURCES_READ,
   GW_SERVICE_ACCOUNT,
   gwConnectMissing,
   gwHeadersOnly,
@@ -126,21 +123,6 @@ export function GoogleWorkspaceFields({ sourceId, fields, setFields }: Props) {
         style={WIDE}
         {...text("gw_account", setAsked)}
       />
-      <Stack gap={4} style={WIDE} data-testid="google-workspace-reads">
-        {GW_RESOURCES.map((resource) => (
-          <Checkbox
-            key={resource}
-            label={t(`googleWorkspaceFields.reads.${resource}`)}
-            description={
-              GW_RESOURCES_READ.has(resource) ? undefined : t("googleWorkspaceFields.readsLater")
-            }
-            checked={GW_RESOURCES_READ.has(resource)}
-            disabled
-            readOnly
-            data-testid={`google-workspace-reads-${resource}`}
-          />
-        ))}
-      </Stack>
       <Select
         label={t("googleWorkspaceFields.mailContent")}
         description={t("googleWorkspaceFields.mailContentHelp")}

@@ -19,10 +19,6 @@ export const GW_SERVICE_ACCOUNT = "service_account";
 export const GW_MAIL_FULL = "full";
 export const GW_MAIL_HEADERS = "headers";
 
-/** What a source may read, in the order shown; only mail is read by this version. */
-export const GW_RESOURCES = ["mail", "calendar", "tasks"] as const;
-export const GW_RESOURCES_READ: ReadonlySet<string> = new Set(["mail"]);
-
 const SCOPE = "https://www.googleapis.com/auth/";
 const MAIL_SCOPE: Record<string, string> = {
   [GW_MAIL_FULL]: `${SCOPE}gmail.readonly`,

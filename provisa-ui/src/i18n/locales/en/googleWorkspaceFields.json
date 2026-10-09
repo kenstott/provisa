@@ -2,12 +2,6 @@
   "googleWorkspaceFields": {
     "account": "Mailbox address",
     "accountHelp": "The Google account this source reads.",
-    "reads": {
-      "mail": "Mail",
-      "calendar": "Calendar",
-      "tasks": "Tasks"
-    },
-    "readsLater": "Not yet available",
     "mailContent": "How much of each message to read",
     "mailContentHelp": "Google is asked for no more than this.",
     "mailContentFull": "Whole messages",

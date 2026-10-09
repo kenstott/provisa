@@ -2,12 +2,6 @@
   "googleWorkspaceFields": {
     "account": "Adres van de mailbox",
     "accountHelp": "Het Google-account dat deze bron leest.",
-    "reads": {
-      "mail": "E-mail",
-      "calendar": "Agenda",
-      "tasks": "Taken"
-    },
-    "readsLater": "Nog niet beschikbaar",
     "mailContent": "Hoeveel van elk bericht wordt gelezen",
     "mailContentHelp": "Meer dan dit wordt Google niet gevraagd.",
     "mailContentFull": "Hele berichten",

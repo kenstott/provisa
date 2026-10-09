@@ -2,12 +2,6 @@
   "googleWorkspaceFields": {
     "account": "メールボックスのアドレス",
     "accountHelp": "このソースが読み取る Google アカウント。",
-    "reads": {
-      "mail": "メール",
-      "calendar": "カレンダー",
-      "tasks": "ToDo リスト"
-    },
-    "readsLater": "まだ利用できません",
     "mailContent": "各メッセージをどこまで読み取るか",
     "mailContentHelp": "Google にはこれ以上を要求しません。",
     "mailContentFull": "メッセージ全体",
