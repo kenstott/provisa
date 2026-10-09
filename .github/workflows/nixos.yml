@@ -258,6 +258,15 @@ jobs:
             done
           '
 
+      # The contrib FDW build writes to a file, not to the test's output.
+      - name: FDW build log
+        if: failure()
+        run: |
+          packaging/nixos/vm-run '
+            mkdir -p ~/.cache/provisa-fdw
+            find ~/.cache/provisa-fdw -maxdepth 1 -name build.log -exec tail -n 150 {} \;
+          '
+
       - name: Results off the guest
         if: always()
         run: scp -F "$PROVISA_VM_SSH_CONFIG" -r vm:provisa/results "results-${{ steps.key.outputs.lane }}"
