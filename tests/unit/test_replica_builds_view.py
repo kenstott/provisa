@@ -43,6 +43,8 @@ def _record(**kw):
         feed_error=None,
         delta_skipped=None,
         delta_cursor=None,
+        build_note_code=None,
+        build_note_params=None,
     )
     base.update(kw)
     return SimpleNamespace(**base)
@@ -126,3 +128,24 @@ def test_a_failed_build_shows_its_error_and_a_waiting_one_says_why():
 def test_a_replica_the_model_no_longer_declares_is_shown_as_retired():
     view = build_view(_record(build_state="idle", completed_at=NOW, retired_at=NOW), NOW)
     assert view["state"] == "retired"
+
+
+def test_a_build_that_had_something_to_say_shows_its_note():
+    params = {"count": 2, "ids": ["m1", "m9"], "more": 0}
+    view = build_view(
+        _record(
+            completed_at=NOW,
+            build_note_code="replication.unreadable_messages",
+            build_note_params=params,
+        ),
+        NOW,
+    )
+    assert (view["build_note_code"], view["build_note_params"]) == (
+        "replication.unreadable_messages",
+        params,
+    )
+
+
+def test_a_build_with_nothing_to_say_shows_no_note():
+    view = build_view(_record(completed_at=NOW), NOW)
+    assert (view["build_note_code"], view["build_note_params"]) == (None, None)

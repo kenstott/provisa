@@ -16,7 +16,12 @@ import { useTranslation } from "react-i18next";
 import { Text } from "@mantine/core";
 import { useReplicaBuilds } from "../../hooks/useAdminOpsQueries";
 import { serverMessage } from "../../i18n/serverMessage";
-import { replicaBuildLine, replicaDeltaLine, replicaFeedLine } from "./replicaBuild";
+import {
+  replicaBuildLine,
+  replicaDeltaLine,
+  replicaFeedLine,
+  replicaNoteLine,
+} from "./replicaBuild";
 
 export function ReplicaBuildLine({
   sourceId,
@@ -38,6 +43,7 @@ export function ReplicaBuildLine({
   const line = replicaBuildLine(build, t, (n) => numbers.format(n), formatWhen, serverMessage);
   const feedLine = replicaFeedLine(build, t, formatWhen);
   const deltaLine = replicaDeltaLine(build, t);
+  const noteLine = replicaNoteLine(build, t);
   return (
     <>
       <Text
@@ -47,6 +53,11 @@ export function ReplicaBuildLine({
       >
         {line}
       </Text>
+      {noteLine && (
+        <Text size="xs" c="orange" data-testid="replica-build-note">
+          {noteLine}
+        </Text>
+      )}
       {deltaLine && (
         <Text size="xs" c="dimmed" data-testid="replica-delta-line">
           {deltaLine}

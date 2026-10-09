@@ -33,6 +33,11 @@
         "rebuild_interval_elapsed": "定期的な再ビルドの間隔が経過しました",
         "store_cannot_apply_delta": "ストアがデルタを適用できません"
       }
+    },
+    "note": {
+      "unreadable_messages": "パートが宣言どおりの内容でないため、本文なしで保持されたメッセージ: {{total}} 件。ID: {{ids}}",
+      "andMore": "{{ids}} ほか {{more}} 件",
+      "other": "前回のビルドの注記: {{code}}"
     }
   }
 }

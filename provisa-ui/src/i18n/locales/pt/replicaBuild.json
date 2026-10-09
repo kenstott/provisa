@@ -33,6 +33,11 @@
         "rebuild_interval_elapsed": "o intervalo de recompilação periódica expirou",
         "store_cannot_apply_delta": "o repositório não consegue aplicar um delta"
       }
+    },
+    "note": {
+      "unreadable_messages": "Mensagens mantidas sem o texto porque uma parte não é o que declara: {{total}}. Seus IDs: {{ids}}",
+      "andMore": "{{ids}} e mais {{more}}",
+      "other": "A última compilação registrou: {{code}}"
     }
   }
 }

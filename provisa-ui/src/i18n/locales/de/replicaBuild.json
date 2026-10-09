@@ -33,6 +33,11 @@
         "rebuild_interval_elapsed": "das Intervall für den periodischen Neuaufbau ist abgelaufen",
         "store_cannot_apply_delta": "der Store kann kein Delta anwenden"
       }
+    },
+    "note": {
+      "unreadable_messages": "Nachrichten, die ohne ihren Text übernommen wurden, weil ein Teil nicht das ist, was er angibt: {{total}}. Ihre IDs: {{ids}}",
+      "andMore": "{{ids}} und {{more}} weitere",
+      "other": "Der letzte Build hat vermerkt: {{code}}"
     }
   }
 }

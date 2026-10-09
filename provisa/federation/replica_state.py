@@ -64,6 +64,8 @@ from provisa.core.schema_org import replica_state
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from provisa.federation.data_replicator import BuildNote
+
     from provisa.core.database import Connection
 
 #: A replica's key: the registered identity of its table.
@@ -230,6 +232,9 @@ class ReplicaRecord:
     feed_error: str | None = None
     delta_cursor: Any = None
     delta_skipped: str | None = None
+    #: What the last completed build had to say of the copy it made, when it had anything.
+    build_note_code: str | None = None
+    build_note_params: dict | None = None
 
     @property
     def exists(self) -> bool:
@@ -273,6 +278,8 @@ _COLUMNS = (
     _t.feed_error,
     _t.delta_cursor,
     _t.delta_skipped,
+    _t.build_note_code,
+    _t.build_note_params,
 )
 
 
@@ -313,6 +320,8 @@ def _record(row: Any) -> ReplicaRecord:
         feed_error=row[26],
         delta_cursor=row[27],
         delta_skipped=row[28],
+        build_note_code=row[29],
+        build_note_params=row[30],
     )
 
 
@@ -631,10 +640,13 @@ async def record_completed(
     now: datetime,
     definition_hash: str | None = None,
     built_columns: list | None = None,
+    note: "BuildNote | None" = None,
 ) -> None:
     """The build finished and its table was swapped in, in the store ``store`` identifies.
     ``definition_hash`` and ``built_columns`` say what it was built from and which columns it
     has (None from a caller that does not track them: the next convergence asks again).
+    ``note`` is what the build had to say of its copy; a build with nothing to say clears the
+    note the one before it left.
 
     When this is the first replica of a promoted table in this store, the replica-state stamp
     advances with the completion (REQ-826, ``mark_first_completion``): the completion and the
@@ -671,6 +683,8 @@ async def record_completed(
                 last_error=None,
                 last_error_code=None,
                 last_error_params=None,
+                build_note_code=None if note is None else note.code,
+                build_note_params=None if note is None else note.params,
                 failed_at=None,
                 failed_attempts=0,
                 waiting_on=None,

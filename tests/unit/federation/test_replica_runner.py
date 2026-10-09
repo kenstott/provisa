@@ -296,6 +296,25 @@ async def test_a_row_left_building_by_a_dead_builder_is_rebuilt(plane, tmp_path)
     assert (record.build_state, record.rows_copied, record.content_hash) == ("idle", 7, "h")
 
 
+async def test_what_a_build_had_to_say_is_recorded_with_its_completion(plane, tmp_path):
+    from provisa.federation.data_replicator import BuildNote
+
+    url, connect = plane
+    db = connect()
+    await _request(db, _key(0))
+    note = BuildNote("replication.unreadable_messages", {"count": 1, "ids": ["m9"], "more": 0})
+
+    async def build(key, progress):
+        return BuildOutcome(rows_copied=4, method="stream_batches", content_hash="h", note=note)
+
+    node = _Node("a", url, db, tmp_path, build=build, permits=_Permits())
+    assert await node.runner.run_pass() == 1
+    await node.drain()
+    record = (await _records(db))[_key(0)]
+    assert record.build_state == "idle"
+    assert (record.build_note_code, record.build_note_params) == (note.code, note.params)
+
+
 async def test_a_failed_build_is_recorded_and_frees_what_it_held(plane, tmp_path):
     url, connect = plane
     db = connect()

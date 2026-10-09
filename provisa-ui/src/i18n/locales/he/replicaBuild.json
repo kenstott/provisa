@@ -33,6 +33,11 @@
         "rebuild_interval_elapsed": "מרווח הבנייה מחדש התקופתית חלף",
         "store_cannot_apply_delta": "המאגר אינו יכול להחיל delta"
       }
+    },
+    "note": {
+      "unreadable_messages": "הודעות שנשמרו ללא הטקסט שלהן, כי חלק מהן אינו מה שהוא מצהיר: {{total}}. המזהים שלהן: {{ids}}",
+      "andMore": "{{ids}} ועוד {{more}}",
+      "other": "הבנייה האחרונה ציינה: {{code}}"
     }
   }
 }

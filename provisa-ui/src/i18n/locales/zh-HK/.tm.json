@@ -5422,5 +5422,8 @@
   "zh-HK/columnFilter.json::columnFilter.appliesToLoaded": "Filters apply to the {{count}} rows loaded, not the whole result.",
   "zh-HK/columnFilter.json::columnFilter.syntaxHint": "Quick syntax: >100, 10..20, !text, a, b, c, =exact. Plain text means contains.",
   "zh-HK/serverErrors.json::serverErrors.data.sql_parameters_do_not_fit": "The parameter values do not fit the statement: {{reason}}",
-  "zh-HK/columnFilter.json::columnFilter.addTyped": "Add “{{value}}”"
+  "zh-HK/columnFilter.json::columnFilter.addTyped": "Add “{{value}}”",
+  "zh-HK/replicaBuild.json::replicaBuild.note.andMore": "{{ids}} and {{more}} more",
+  "zh-HK/replicaBuild.json::replicaBuild.note.other": "The last build noted: {{code}}",
+  "zh-HK/replicaBuild.json::replicaBuild.note.unreadable_messages": "Messages kept without their text, because a part is not what it declares: {{total}}. Their ids: {{ids}}"
 }

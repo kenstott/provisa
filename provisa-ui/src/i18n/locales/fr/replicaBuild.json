@@ -33,6 +33,11 @@
         "rebuild_interval_elapsed": "l'intervalle de reconstruction périodique est écoulé",
         "store_cannot_apply_delta": "le magasin ne peut pas appliquer de delta"
       }
+    },
+    "note": {
+      "unreadable_messages": "Messages conservés sans leur texte, car une partie n’est pas ce qu’elle déclare : {{total}}. Leurs identifiants : {{ids}}",
+      "andMore": "{{ids}} et {{more}} autres",
+      "other": "Le dernier build a noté : {{code}}"
     }
   }
 }

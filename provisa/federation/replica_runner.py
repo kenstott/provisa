@@ -283,6 +283,7 @@ class ReplicaRunner:
                         store=self._store(),
                         definition_hash=outcome.definition_hash,
                         built_columns=outcome.built_columns,
+                        note=outcome.note,
                         next_refresh_at=due,
                         now=now,
                     )

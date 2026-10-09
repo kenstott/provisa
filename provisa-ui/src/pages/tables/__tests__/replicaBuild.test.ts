@@ -13,7 +13,12 @@
 import { describe, it, expect } from "vitest";
 import type { ReplicaBuild } from "../../../api/admin";
 import type { ServerMessageShape } from "../../../i18n/serverMessage";
-import { replicaBuildLine, replicaDeltaLine, replicaFeedLine } from "../replicaBuild";
+import {
+  replicaBuildLine,
+  replicaDeltaLine,
+  replicaFeedLine,
+  replicaNoteLine,
+} from "../replicaBuild";
 
 const t = (key: string, options?: Record<string, unknown>) =>
   options ? `${key} ${JSON.stringify(options)}` : key;
@@ -55,6 +60,8 @@ function build(over: Partial<ReplicaBuild>): ReplicaBuild {
     feedError: null,
     deltaSkipped: null,
     deltaCursor: null,
+    buildNoteCode: null,
+    buildNoteParams: null,
     ...over,
   };
 }
@@ -229,6 +236,42 @@ describe("replicaDeltaLine (REQ-874)", () => {
   it("renders an applied delta with no cursor without throwing", () => {
     expect(replicaDeltaLine(build({ method: "delta", deltaCursor: null }), t)).toBe(
       'replicaBuild.delta.applied {"cursor":""}',
+    );
+  });
+});
+
+describe("replicaNoteLine", () => {
+  const UNREADABLE = "replication.unreadable_messages";
+
+  it("says nothing for a build that had nothing to say", () => {
+    expect(replicaNoteLine(undefined, t)).toBeNull();
+    expect(replicaNoteLine(build({}), t)).toBeNull();
+  });
+
+  it("counts and names the messages kept without their text", () => {
+    const noted = build({
+      buildNoteCode: UNREADABLE,
+      buildNoteParams: { count: 2, ids: ["m1", "m9"], more: 0 },
+    });
+    expect(replicaNoteLine(noted, t)).toBe(
+      'replicaBuild.note.unreadable_messages {"total":2,"ids":"m1, m9"}',
+    );
+  });
+
+  it("says how many more there are than it names", () => {
+    const noted = build({
+      buildNoteCode: UNREADABLE,
+      buildNoteParams: { count: 150, ids: ["m1", "m2"], more: 148 },
+    });
+    expect(replicaNoteLine(noted, t)).toBe(
+      'replicaBuild.note.unreadable_messages {"total":150,"ids":"replicaBuild.note.andMore {\\"ids\\":\\"m1, m2\\",\\"more\\":148}"}',
+    );
+  });
+
+  it("shows a note it has no wording for by its code, and does not drop it", () => {
+    const noted = build({ buildNoteCode: "replication.something_new", buildNoteParams: null });
+    expect(replicaNoteLine(noted, t)).toBe(
+      'replicaBuild.note.other {"code":"replication.something_new"}',
     );
   });
 });

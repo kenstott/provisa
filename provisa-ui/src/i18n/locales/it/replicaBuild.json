@@ -33,6 +33,11 @@
         "rebuild_interval_elapsed": "l'intervallo di ricostruzione periodica è trascorso",
         "store_cannot_apply_delta": "lo store non può applicare un delta"
       }
+    },
+    "note": {
+      "unreadable_messages": "Messaggi conservati senza il testo perché una parte non è ciò che dichiara: {{total}}. I loro ID: {{ids}}",
+      "andMore": "{{ids}} e altri {{more}}",
+      "other": "L’ultima build ha annotato: {{code}}"
     }
   }
 }

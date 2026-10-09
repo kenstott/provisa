@@ -75,4 +75,8 @@ def build_view(record: Any, now: datetime) -> dict:
         # delta was applied; ``delta_cursor`` is the stored watermark the next delta resumes from.
         "delta_skipped": record.delta_skipped,
         "delta_cursor": record.delta_cursor,
+        # What the last completed build had to say of the copy it made (a code and its
+        # particulars, worded by the UI); None when it had nothing to say.
+        "build_note_code": record.build_note_code,
+        "build_note_params": record.build_note_params,
     }

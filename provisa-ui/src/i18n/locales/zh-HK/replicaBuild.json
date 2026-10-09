@@ -33,6 +33,11 @@
         "rebuild_interval_elapsed": "定期重建間隔已屆滿",
         "store_cannot_apply_delta": "儲存區無法套用增量"
       }
+    },
+    "note": {
+      "unreadable_messages": "因某個部分與其聲明不符而未保留內文的郵件:{{total}} 封。其 ID:{{ids}}",
+      "andMore": "{{ids}} 以及另外 {{more}} 封",
+      "other": "上次建置的備註:{{code}}"
     }
   }
 }

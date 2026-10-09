@@ -33,6 +33,11 @@
         "rebuild_interval_elapsed": "het interval voor periodieke herbouw is verstreken",
         "store_cannot_apply_delta": "de store kan geen delta toepassen"
       }
+    },
+    "note": {
+      "unreadable_messages": "Berichten die zonder hun tekst zijn bewaard omdat een onderdeel niet is wat het aangeeft: {{total}}. Hun ID’s: {{ids}}",
+      "andMore": "{{ids}} en nog {{more}}",
+      "other": "De laatste build meldde: {{code}}"
     }
   }
 }

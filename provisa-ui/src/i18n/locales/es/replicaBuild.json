@@ -33,6 +33,11 @@
         "rebuild_interval_elapsed": "transcurrió el intervalo de recompilación periódica",
         "store_cannot_apply_delta": "el almacén no puede aplicar un delta"
       }
+    },
+    "note": {
+      "unreadable_messages": "Mensajes conservados sin su texto porque una parte no es lo que declara: {{total}}. Sus ID: {{ids}}",
+      "andMore": "{{ids}} y {{more}} más",
+      "other": "La última compilación anotó: {{code}}"
     }
   }
 }

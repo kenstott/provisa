@@ -15,6 +15,7 @@ from provisa.core.database import Database, create_engine_from_url
 from provisa.core import config_stamp
 from provisa.core.schema_org import config_stamp as stamps
 from provisa.core.schema_org import metadata, replica_state
+from provisa.federation.data_replicator import BuildNote
 from provisa.federation import replica_state as build_state
 from provisa.federation.replica_state import promoted_keys, promotion, serving_keys, set_promoted
 from provisa.federation.replica_state import RetryPolicy
@@ -311,3 +312,58 @@ async def test_a_reader_that_joins_a_running_build_asks_for_no_second_one(conn):
     assert await build_state.request_build(conn, KEY, build_state.REASON_READ, now=later) is False
     await _build_completes(conn, start + timedelta(seconds=9))
     assert (await build_state.read(conn, KEY)).build_state == "idle"
+
+
+# -- what a completed build had to say of its copy --------------------------------------------
+
+
+async def _completed_saying(conn, note=None) -> None:
+    now = datetime.now(UTC)
+    await build_state.request_build(conn, KEY, build_state.REASON_REFRESH)
+    await build_state.claim(conn, KEY, holder="h:1", retry=RetryPolicy(60, 3600), now=now)
+    await build_state.record_completed(
+        conn,
+        KEY,
+        rows_copied=4,
+        method="stream_batches",
+        content_hash="abc",
+        store="store-a",
+        next_refresh_at=None,
+        now=now,
+        note=note,
+    )
+
+
+_NOTE = BuildNote("replication.unreadable_messages", {"count": 1, "ids": ["m9"], "more": 0})
+
+
+async def test_a_completed_build_records_what_it_had_to_say(conn):
+    await _completed_saying(conn, _NOTE)
+    record = await build_state.read(conn, KEY)
+    assert record.build_note_code == "replication.unreadable_messages"
+    assert record.build_note_params == {"count": 1, "ids": ["m9"], "more": 0}
+    assert record.exists and record.last_error is None
+
+
+async def test_a_completed_build_with_nothing_to_say_clears_the_note_before_it(conn):
+    await _completed_saying(conn, _NOTE)
+    await _completed_saying(conn)
+    record = await build_state.read(conn, KEY)
+    assert (record.build_note_code, record.build_note_params) == (None, None)
+
+
+async def test_a_failed_build_leaves_the_last_completed_builds_note(conn):
+    await _completed_saying(conn, _NOTE)
+    now = datetime.now(UTC)
+    await build_state.request_build(conn, KEY, build_state.REASON_REFRESH)
+    await build_state.claim(conn, KEY, holder="h:1", retry=RetryPolicy(60, 3600), now=now)
+    await build_state.record_failed(conn, KEY, error="boom", now=now)
+    record = await build_state.read(conn, KEY)
+    assert record.build_state == "failed"
+    assert record.build_note_code == "replication.unreadable_messages"
+
+
+async def test_a_replica_that_was_never_noted_has_none(conn):
+    await _completed_saying(conn)
+    record = await build_state.read(conn, KEY)
+    assert (record.build_note_code, record.build_note_params) == (None, None)

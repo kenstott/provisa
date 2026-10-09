@@ -33,6 +33,11 @@
         "rebuild_interval_elapsed": "定期重建间隔已到",
         "store_cannot_apply_delta": "存储无法应用增量"
       }
+    },
+    "note": {
+      "unreadable_messages": "因某个部分与其声明不符而未保留正文的邮件:{{total}} 封。其 ID:{{ids}}",
+      "andMore": "{{ids}} 以及另外 {{more}} 封",
+      "other": "上次构建的备注:{{code}}"
     }
   }
 }

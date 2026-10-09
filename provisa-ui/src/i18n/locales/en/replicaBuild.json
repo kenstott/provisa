@@ -33,6 +33,11 @@
         "rebuild_interval_elapsed": "the periodic rebuild interval elapsed",
         "store_cannot_apply_delta": "the store cannot apply a delta"
       }
+    },
+    "note": {
+      "unreadable_messages": "Messages kept without their text, because a part is not what it declares: {{total}}. Their ids: {{ids}}",
+      "andMore": "{{ids}} and {{more}} more",
+      "other": "The last build noted: {{code}}"
     }
   }
 }
