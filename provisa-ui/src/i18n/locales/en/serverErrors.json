@@ -372,6 +372,7 @@
       "column_scope_invalid": "Column '{{column}}' has scope '{{scope}}'; a column's scope is one of {{scopes}}"
     },
     "secrets": {
+      "org_not_found": "Organization '{{org_id}}' not found",
       "still_referenced": "{{secret}} is still named by {{count}} stored value(s) in this organization. Change or remove each one, then delete it again."
     },
     "security": {

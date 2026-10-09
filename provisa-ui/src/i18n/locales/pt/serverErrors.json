@@ -372,6 +372,7 @@
       "column_scope_invalid": "A coluna '{{column}}' tem o escopo '{{scope}}'; o escopo de uma coluna é um de {{scopes}}"
     },
     "secrets": {
+      "org_not_found": "Organização '{{org_id}}' não encontrada",
       "still_referenced": "{{secret}} ainda é nomeado por {{count}} valor(es) armazenado(s) nesta organização. Altere ou remova cada um e exclua novamente."
     },
     "security": {

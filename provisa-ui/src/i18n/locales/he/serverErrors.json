@@ -372,6 +372,7 @@
       "column_scope_invalid": "לעמודה '{{column}}' יש היקף '{{scope}}'; היקף של עמודה הוא אחד מ-{{scopes}}"
     },
     "secrets": {
+      "org_not_found": "הארגון '{{org_id}}' לא נמצא",
       "still_referenced": "{{secret}} עדיין מצוין על ידי {{count}} ערכים שמורים בארגון זה. יש לשנות או להסיר כל אחד מהם ואז למחוק שוב."
     },
     "security": {

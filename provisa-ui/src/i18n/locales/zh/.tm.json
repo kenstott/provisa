@@ -5330,5 +5330,6 @@
   "zh/serverErrors.json::serverErrors.wikipedia.see_also_heading_needed": "Provisa does not know what the {{language}} edition calls its \"See also\" section: give the section's title, or follow those links",
   "zh/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpDirectory": "Directory for the crawl's files",
   "zh/sourceFormFieldsExtended.json::sourceFormFieldsExtended.wpDirectoryHelp": "Where the pages' tables and data files are written. It must be a directory the engine's file connector can write. Empty: a directory of this source's own under Provisa's data directory",
-  "zh/serverErrors.json::serverErrors.settings.claims_with_multitenancy": "A multi-tenant deployment cannot read role assignments from sign-in claims: it grants roles itself, per org, and claims would override them. Set the assignments source to Provisa."
+  "zh/serverErrors.json::serverErrors.settings.claims_with_multitenancy": "A multi-tenant deployment cannot read role assignments from sign-in claims: it grants roles itself, per org, and claims would override them. Set the assignments source to Provisa.",
+  "zh/serverErrors.json::serverErrors.secrets.org_not_found": "Organization '{{org_id}}' not found"
 }

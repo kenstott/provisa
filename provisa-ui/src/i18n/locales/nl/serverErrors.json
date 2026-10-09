@@ -372,6 +372,7 @@
       "column_scope_invalid": "Kolom '{{column}}' heeft bereik '{{scope}}'; het bereik van een kolom is een van {{scopes}}"
     },
     "secrets": {
+      "org_not_found": "Organisatie '{{org_id}}' niet gevonden",
       "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."
     },
     "security": {

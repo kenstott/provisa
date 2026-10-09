@@ -372,6 +372,7 @@
       "column_scope_invalid": "कॉलम '{{column}}' का स्कोप '{{scope}}' है; कॉलम का स्कोप इनमें से एक होता है: {{scopes}}"
     },
     "secrets": {
+      "org_not_found": "संगठन '{{org_id}}' नहीं मिला",
       "still_referenced": "{{secret}} का नाम इस संगठन में अब भी {{count}} संग्रहीत मान ले रहे हैं। हर एक को बदलें या हटाएँ, फिर दोबारा हटाएँ।"
     },
     "security": {

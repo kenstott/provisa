@@ -372,6 +372,7 @@
       "column_scope_invalid": "La columna '{{column}}' tiene el ámbito '{{scope}}'; el ámbito de una columna es uno de {{scopes}}"
     },
     "secrets": {
+      "org_not_found": "No se encontró la organización '{{org_id}}'",
       "still_referenced": "{{secret}} sigue siendo nombrado por {{count}} valor(es) almacenado(s) en esta organización. Cambie o quite cada uno y vuelva a eliminarlo."
     },
     "security": {

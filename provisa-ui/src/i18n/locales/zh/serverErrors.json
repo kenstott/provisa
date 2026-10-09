@@ -372,6 +372,7 @@
       "column_scope_invalid": "列 '{{column}}' 的范围为 '{{scope}}'；列的范围必须是 {{scopes}} 之一"
     },
     "secrets": {
+      "org_not_found": "未找到组织 '{{org_id}}'",
       "still_referenced": "本组织中仍有 {{count}} 个已存储的值引用 {{secret}}。请更改或移除每一个，然后再次删除。"
     },
     "security": {

@@ -32,6 +32,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from provisa.api.errors import ApiError
 from provisa.api.admin.environments_router import _caller_user_id
@@ -83,13 +84,42 @@ async def _org_guard(request: Request, org_id: str) -> str | None:
     return user_id
 
 
-def _personal_owner(request: Request, org_id: str) -> str:
-    """The vault of whoever is calling (REQ-1560).
+def _deployment() -> tuple[bool, str]:
+    """(whether the deployment holds many organizations, the organization it starts with)."""
+    from provisa.api.app import state
+
+    return state.multitenancy, state.org_id
+
+
+async def _belongs(user_id: str, org_id: str) -> bool:
+    """Whether ``user_id`` belongs to ``org_id``, as the session binding decides it: by membership
+    where the deployment holds many organizations (``bindable_memberships``, which leaves out an
+    organization still awaiting its subscription), and by being the deployment's one organization
+    where it holds one, which records no memberships for its people."""
+    from provisa.core.org_membership import bindable_memberships
+
+    multitenant, own_org = _deployment()
+    if not multitenant:
+        return org_id == own_org
+    memberships = bindable_memberships(user_id).subquery()
+    async with _admin_pool().acquire() as conn:
+        found = await conn.execute_core(
+            select(memberships.c.org_id).where(memberships.c.org_id == org_id)
+        )
+        return found.fetchone() is not None
+
+
+async def _personal_owner(request: Request, org_id: str) -> str:
+    """The vault of whoever is calling, in an organization they belong to (REQ-1560).
 
     There is no ``owner`` parameter anywhere in this router, and that is the security property: the
     owner is read off the authenticated identity, so the only vault any request can address is the
     caller's own. Nothing here consults capabilities -- holding a personal secret is not a
     privilege, and no privilege reaches another person's.
+
+    The organization comes from the path, so it is checked: the caller must belong to it. An
+    organization the caller is not in answers exactly as one that does not exist, so its id
+    confirms nothing.
     """
     user_id = _caller_user_id(request)
     if user_id is None:
@@ -98,6 +128,13 @@ def _personal_owner(request: Request, org_id: str) -> str:
             "secrets.identity_required",
             "A personal secret belongs to a person, so this deployment must have authentication "
             "configured before one can be stored.",
+            org_id=org_id,
+        )
+    if not await _belongs(user_id, org_id):
+        raise ApiError(
+            404,
+            "secrets.org_not_found",
+            f"Organization {org_id!r} not found.",
             org_id=org_id,
         )
     return user_id
@@ -280,18 +317,18 @@ async def delete_secret(request: Request, org_id: str, name: str) -> dict:
 @router.get("/my-secrets")
 async def list_my_secrets(request: Request, org_id: str) -> dict:
     """What the CALLER holds in this org. Never anyone else's -- there is no way to ask."""
-    return await _list_vault(org_id, _personal_owner(request, org_id))
+    return await _list_vault(org_id, await _personal_owner(request, org_id))
 
 
 @router.put("/my-secrets/{name}")
 async def put_my_secret(request: Request, org_id: str, name: str, body: SecretBody) -> dict:
     """Create or replace one of the caller's own secrets."""
-    owner = _personal_owner(request, org_id)
+    owner = await _personal_owner(request, org_id)
     return await _store(org_id, owner, name, body, owner)
 
 
 @router.delete("/my-secrets/{name}")
 async def delete_my_secret(request: Request, org_id: str, name: str) -> dict:
     """Delete one of the caller's own secrets."""
-    owner = _personal_owner(request, org_id)
+    owner = await _personal_owner(request, org_id)
     return await _drop(org_id, owner, name, owner)

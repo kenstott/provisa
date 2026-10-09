@@ -372,6 +372,7 @@
       "column_scope_invalid": "列「{{column}}」のスコープは「{{scope}}」です。列のスコープは {{scopes}} のいずれかです"
     },
     "secrets": {
+      "org_not_found": "組織「{{org_id}}」が見つかりません",
       "still_referenced": "{{secret}} は、この組織に保存されている {{count}} 件の値からまだ参照されています。それぞれを変更または削除してから、もう一度削除してください。"
     },
     "security": {

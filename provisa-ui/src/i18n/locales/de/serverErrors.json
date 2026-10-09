@@ -372,6 +372,7 @@
       "column_scope_invalid": "Spalte '{{column}}' hat den Geltungsbereich '{{scope}}'; zulässig ist einer von {{scopes}}"
     },
     "secrets": {
+      "org_not_found": "Organisation '{{org_id}}' nicht gefunden",
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."
     },
     "security": {

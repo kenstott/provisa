@@ -372,6 +372,7 @@
       "column_scope_invalid": "La colonne '{{column}}' a la portée '{{scope}}' ; la portée d'une colonne est l'une de {{scopes}}"
     },
     "secrets": {
+      "org_not_found": "Organisation « {{org_id}} » introuvable",
       "still_referenced": "{{secret}} est encore nommé par {{count}} valeur(s) stockée(s) dans cette organisation. Modifiez ou retirez chacune, puis supprimez-le de nouveau."
     },
     "security": {

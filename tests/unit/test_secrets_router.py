@@ -75,7 +75,7 @@ def store(monkeypatch):
         calls["guard"].append(org_id)
         return "uid-admin"
 
-    def _personal_owner(request, org_id):
+    async def _personal_owner(request, org_id):
         calls["owner"].append(org_id)
         return "uid-dev"
 
