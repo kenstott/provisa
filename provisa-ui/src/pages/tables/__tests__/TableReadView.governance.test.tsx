@@ -9,9 +9,8 @@
 // permission from the copyright holder.
 
 // REQ-1958/REQ-1134: a caller without view_governance is answered null grant lists and mask
-// settings. The read view says they are not shown -- never "all" or "none" -- and does not offer
-// the editor, whose save replaces grant lists the caller cannot see. With them shown, nothing
-// changes.
+// settings. The read view says they are not shown -- never "all" or "none". The editor is offered
+// either way: without them it shows no governance column and its save names none.
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "../../../test-utils/render";
@@ -140,12 +139,14 @@ describe("TableReadView with grant lists withheld (REQ-1958)", () => {
     expect(screen.queryByText("none")).not.toBeInTheDocument();
   });
 
-  it("does not offer the editor", () => {
+  it("offers the editor all the same", () => {
+    // The form opens without the governance columns and its save names none of them
+    // (TableEditForm.governance.test.tsx), so nothing the caller cannot see is overwritten.
     const startEditing = renderView(withheld);
     const edit = screen.getByTestId("table-read-view-edit");
-    expect(edit).toBeDisabled();
+    expect(edit).not.toBeDisabled();
     edit.click();
-    expect(startEditing).not.toHaveBeenCalled();
+    expect(startEditing).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -57,7 +57,6 @@
     "writable": "Beschreibbar",
     "writableOps": "Nimmt {{ops}} über GraphQL, REST und SQL an",
     "dataProductChip": "Datenprodukt",
-    "notShown": "nicht angezeigt",
-    "editNeedsGovernance": "Beim Bearbeiten einer Tabelle werden die Berechtigungslisten und Masken ihrer Spalten ersetzt, die Ihnen nicht angezeigt werden. Dafür ist das Recht view_governance erforderlich."
+    "notShown": "nicht angezeigt"
   }
 }

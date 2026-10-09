@@ -53,7 +53,7 @@ import { PagingField } from "./PagingField";
 import { tableTtlSignalError } from "./roleTtl";
 import { ReplicateSelect } from "../../components/admin/ReplicateSelect";
 import { ReplicaBuildLine } from "./ReplicaBuildLine";
-import { shownGrants } from "./helpers";
+import { governanceWithheld, shownGrants } from "./helpers";
 
 interface CacheTtlEdit {
   value: string;
@@ -128,6 +128,7 @@ export function TableEditForm({
   }, []);
 
   // REQ-1143: live-previewed refresh-policy summary; logic extracted to useLivePolicyPreview.
+  const governanceHidden = governanceWithheld(editingTable);
   const stagedTtl = cacheTtlEdits[editingTable.id]?.value;
   const shownPolicy = useLivePolicyPreview(editingTable, stagedTtl);
 
@@ -787,9 +788,15 @@ export function TableEditForm({
                   <Table.Th>{t("tableEditForm.dataTypeHeader")}</Table.Th>
                   <Table.Th>{t("tableEditForm.sqlAliasHeader")}</Table.Th>
                   <Table.Th>{t("tableEditForm.descriptionHeader")}</Table.Th>
-                  <Table.Th>{t("tableEditForm.visibleToHeader")}</Table.Th>
-                  <Table.Th>{t("tableEditForm.writableByHeader")}</Table.Th>
-                  <Table.Th>{t("tableEditForm.maskingHeader")}</Table.Th>
+                  {/* REQ-1958: a caller who is not shown a column's grant lists and mask edits
+                      the table without them; the save names none and the store keeps them. */}
+                  {!governanceHidden && (
+                    <>
+                      <Table.Th>{t("tableEditForm.visibleToHeader")}</Table.Th>
+                      <Table.Th>{t("tableEditForm.writableByHeader")}</Table.Th>
+                      <Table.Th>{t("tableEditForm.maskingHeader")}</Table.Th>
+                    </>
+                  )}
                   <Table.Th>{t("tableEditForm.scopeHeader")}</Table.Th>
                   {editSource?.type === "ingest" && (
                     <Table.Th>{t("tableEditForm.jsonPathHeader")}</Table.Th>
@@ -862,33 +869,37 @@ export function TableEditForm({
                           />
                         )}
                       </Table.Td>
-                      <Table.Td>
-                        <MultiSelect
-                          options={roleOptions}
-                          value={shownGrants(c.visibleTo)}
-                          onChange={(selected) => updateEditCol(i, "visibleTo", selected)}
-                          ariaLabel={t("tableEditForm.visibleToHeader")}
-                        />
-                      </Table.Td>
-                      <Table.Td>
-                        <MultiSelect
-                          options={roleOptions}
-                          value={shownGrants(c.writableBy)}
-                          onChange={(selected) => updateEditCol(i, "writableBy", selected)}
-                          ariaLabel={t("tableEditForm.writableByHeader")}
-                          disabled={hidingOnly}
-                        />
-                      </Table.Td>
-                      <Table.Td>
-                        <Select
-                          aria-label={t("tableEditForm.maskingHeader")}
-                          data={maskOptions(t)}
-                          value={c.maskType || ""}
-                          onChange={(v) => updateEditCol(i, "maskType", v ?? "")}
-                          comboboxProps={{ withinPortal: true }}
-                          allowDeselect={false}
-                        />
-                      </Table.Td>
+                      {!governanceHidden && (
+                        <>
+                          <Table.Td>
+                            <MultiSelect
+                              options={roleOptions}
+                              value={shownGrants(c.visibleTo)}
+                              onChange={(selected) => updateEditCol(i, "visibleTo", selected)}
+                              ariaLabel={t("tableEditForm.visibleToHeader")}
+                            />
+                          </Table.Td>
+                          <Table.Td>
+                            <MultiSelect
+                              options={roleOptions}
+                              value={shownGrants(c.writableBy)}
+                              onChange={(selected) => updateEditCol(i, "writableBy", selected)}
+                              ariaLabel={t("tableEditForm.writableByHeader")}
+                              disabled={hidingOnly}
+                            />
+                          </Table.Td>
+                          <Table.Td>
+                            <Select
+                              aria-label={t("tableEditForm.maskingHeader")}
+                              data={maskOptions(t)}
+                              value={c.maskType || ""}
+                              onChange={(v) => updateEditCol(i, "maskType", v ?? "")}
+                              comboboxProps={{ withinPortal: true }}
+                              allowDeselect={false}
+                            />
+                          </Table.Td>
+                        </>
+                      )}
                       <Table.Td>
                         <Select
                           aria-label={t("tableEditForm.scopeHeader")}

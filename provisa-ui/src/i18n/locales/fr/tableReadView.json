@@ -57,7 +57,6 @@
     "writable": "Modifiable",
     "writableOps": "Accepte {{ops}} via GraphQL, REST et SQL",
     "dataProductChip": "Produit de données",
-    "notShown": "non affiché",
-    "editNeedsGovernance": "Modifier une table remplace les listes d'octroi et les masques de ses colonnes, qui ne vous sont pas affichés. Cela nécessite le droit view_governance."
+    "notShown": "non affiché"
   }
 }

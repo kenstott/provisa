@@ -57,7 +57,6 @@
     "writable": "ניתנת לכתיבה",
     "writableOps": "מקבלת {{ops}} דרך GraphQL,‏ REST ו-SQL",
     "dataProductChip": "מוצר נתונים",
-    "notShown": "לא מוצג",
-    "editNeedsGovernance": "עריכת טבלה מחליפה את רשימות ההרשאות והמסכות של העמודות שלה, שאינן מוצגות לכם. נדרשת הזכות view_governance."
+    "notShown": "לא מוצג"
   }
 }

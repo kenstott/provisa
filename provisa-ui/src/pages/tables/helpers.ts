@@ -14,6 +14,7 @@ import type { RegisteredTable } from "../../types/admin";
  * table edit form and the REQ-1318 view definition-mode editor so both send the same
  * complete input (updateTable takes the whole TableInput). */
 export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknown> {
+  const withheld = governanceWithheld(t);
   return {
     sourceId: t.sourceId,
     domainId: t.domainId,
@@ -96,14 +97,7 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
       .map((u) => ({ name: u.name.trim(), columns: u.columns })),
     columns: t.columns.map((c) => ({
       name: c.columnName,
-      visibleTo: shownGrants(c.visibleTo),
-      writableBy: shownGrants(c.writableBy),
-      unmaskedTo: shownGrants(c.unmaskedTo),
-      maskType: c.maskType || undefined,
-      maskPattern: c.maskPattern || undefined,
-      maskReplace: c.maskReplace || undefined,
-      maskValue: c.maskValue || undefined,
-      maskPrecision: c.maskPrecision || undefined,
+      ...governanceInput(c, withheld),
       alias: c.alias || undefined,
       description: c.description || undefined,
       dataType: c.dataType || undefined, // REQ-846: steward type override (metadata only)
@@ -181,6 +175,40 @@ export function computeProfile(columns: string[], rows: Record<string, unknown>[
  */
 export function governanceWithheld(table: { columns: { visibleTo: string[] | null }[] }): boolean {
   return table.columns.some((c) => c.visibleTo === null);
+}
+
+type GovernanceColumn = Pick<
+  RegisteredTable["columns"][number],
+  | "visibleTo"
+  | "writableBy"
+  | "unmaskedTo"
+  | "maskType"
+  | "maskPattern"
+  | "maskReplace"
+  | "maskValue"
+  | "maskPrecision"
+>;
+
+/**
+ * A column's grant lists and mask as a save sends them (REQ-1958). A caller who is not shown
+ * them names none: the lists go empty and the mask is left out, which the server reads as "not
+ * set by this save" and keeps what is stored. A value sent for a field the caller is not shown
+ * is refused by the server, so nothing hidden is ever echoed back.
+ */
+export function governanceInput(c: GovernanceColumn, withheld: boolean) {
+  if (withheld) {
+    return { visibleTo: [] as string[] };
+  }
+  return {
+    visibleTo: shownGrants(c.visibleTo),
+    writableBy: shownGrants(c.writableBy),
+    unmaskedTo: shownGrants(c.unmaskedTo),
+    maskType: c.maskType || undefined,
+    maskPattern: c.maskPattern || undefined,
+    maskReplace: c.maskReplace || undefined,
+    maskValue: c.maskValue || undefined,
+    maskPrecision: c.maskPrecision || undefined,
+  };
 }
 
 /**
