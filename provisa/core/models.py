@@ -1834,6 +1834,15 @@ class Microsoft365MailConfig(BaseModel):  # REQ-1576
     login_url: str = "https://login.microsoftonline.com"
 
 
+#: The port every launcher serves the UI on when the operator states none: the installer's start
+#: script, the bundled compose file and the UI's own dev server. A local install is opened at
+#: ``http://localhost:<this>``; tests/unit/test_ui_public_address.py holds the three to it.
+DEFAULT_UI_PORT = 3000
+#: Where a local install's UI is opened, and so the public origin of a deployment that states
+#: none.
+DEFAULT_UI_ORIGIN = f"http://localhost:{DEFAULT_UI_PORT}"
+
+
 class MailConfig(BaseModel):  # REQ-1310, REQ-1330, REQ-1576
     """Outbound mail for platform communications -- today the org invitation. Sending happens only
     in SaaS deployments (multitenancy) -- REQ-1330.
@@ -1848,11 +1857,14 @@ class MailConfig(BaseModel):  # REQ-1310, REQ-1330, REQ-1576
     base_url: public origin of the UI, used to build the redemption link in the message. It cannot
         be derived from the request that created the invitation -- that request may arrive on an
         internal address or an org subdomain, and the link must work from the invitee's mailbox.
+        It is also where an identity provider returns a source's sign-in (REQ-1923). Its default
+        is where a local install's UI is served (:data:`DEFAULT_UI_ORIGIN`), so a local install
+        needs nothing set; a deployment reached at another address states it.
     """
 
     provider: str = "smtp"
     from_address: str = "provisa@localhost"
-    base_url: str = "http://localhost:5173"
+    base_url: str = DEFAULT_UI_ORIGIN
     timeout_seconds: int = 10
     smtp: SmtpMailConfig = Field(default_factory=SmtpMailConfig)
     resend: ResendMailConfig = Field(default_factory=ResendMailConfig)
