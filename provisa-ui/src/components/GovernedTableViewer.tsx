@@ -160,9 +160,13 @@ export function GovernedTableViewer({ table, showTitle = false }: GovernedTableV
         label: t("tablePreview.provParams"),
         value: supplied.map(([k, v]) => `${k} = ${v}`).join("\n"),
       });
+    // The statement as it was sent: its text with placeholders, then the value bound to each.
+    const sent = pagedViewerSql(table, params, filters, sorts, groupBy, 0, EXPORT_CHUNK_SIZE);
     entries.push({
       label: t("tablePreview.provStatement"),
-      value: pagedViewerSql(table, params, filters, sorts, groupBy, 0, EXPORT_CHUNK_SIZE),
+      value: [sent.sql, ...sent.params.map((v, i) => `$${i + 1} = ${JSON.stringify(v)}`)].join(
+        "\n",
+      ),
     });
     return entries;
   };

@@ -14,9 +14,9 @@
 // and Profile must collect these values first.
 
 import type { RegisteredTable, TableColumn } from "../types/admin";
-import { tableSqlRef } from "../naming";
+import { quoteIdent, tableSqlRef } from "../naming";
 import type { ActiveFilter } from "../pages/sql/columnFilter";
-import { filterToSql } from "./columnFilterSql";
+import { binder, filterToSql, type Bind, type BoundStatement } from "./columnFilterSql";
 
 export const PREVIEW_ROW_LIMIT = 1000;
 
@@ -25,8 +25,12 @@ export function previewSql(
   table: RegisteredTable,
   params: Record<string, string>,
   limit: number = PREVIEW_ROW_LIMIT,
-): string {
-  return `SELECT * FROM ${tableSqlRef(table)}${buildParamWhere(table, params)} LIMIT ${limit}`;
+): BoundStatement {
+  const { bind, params: bound } = binder();
+  return {
+    sql: `SELECT * FROM ${tableSqlRef(table)}${buildParamWhere(table, params, bind)} LIMIT ${limit}`,
+    params: bound,
+  };
 }
 
 /** One PAGE of a governed SELECT * — the viewer never loads the whole dataset.
@@ -51,33 +55,39 @@ export function pagedViewerSql(
   groupBy: string[],
   page: number,
   pageSize: number,
-): string {
+): BoundStatement {
+  // Every value -- a native parameter's, a filter's -- is bound; none is written into the text.
+  const { bind, params: bound } = binder();
   const predicates: string[] = [];
-  const paramWhere = buildParamWhere(table, params);
+  const paramWhere = buildParamWhere(table, params, bind);
   if (paramWhere) predicates.push(paramWhere.replace(/^ WHERE /, ""));
   // REQ-1937: each typed column filter as a predicate that means what the in-browser test means.
   for (const f of filters) {
-    const predicate = filterToSql(f);
+    const predicate = filterToSql(f, bind);
     if (predicate) predicates.push(predicate);
   }
   const where = predicates.length > 0 ? ` WHERE ${predicates.join(" AND ")}` : "";
 
   const orderCols: string[] = [];
-  for (const col of groupBy) orderCols.push(`"${col}" ASC`);
+  for (const col of groupBy) orderCols.push(`${quoteIdent(col)} ASC`);
   for (const s of sorts)
-    if (!groupBy.includes(s.col)) orderCols.push(`"${s.col}" ${s.dir.toUpperCase()}`);
+    if (!groupBy.includes(s.col))
+      orderCols.push(`${quoteIdent(s.col)} ${s.dir === "desc" ? "DESC" : "ASC"}`);
   if (orderCols.length > 0) {
     for (const c of table.columns) {
       if (c.isPrimaryKey) {
         const name = c.alias || c.columnName;
         if (!groupBy.includes(name) && !sorts.some((s) => s.col === name))
-          orderCols.push(`"${name}" ASC`);
+          orderCols.push(`${quoteIdent(name)} ASC`);
       }
     }
   }
   const orderBy = orderCols.length > 0 ? ` ORDER BY ${orderCols.join(", ")}` : "";
 
-  return `SELECT * FROM ${tableSqlRef(table)}${where}${orderBy} LIMIT ${pageSize + 1} OFFSET ${page * pageSize}`;
+  return {
+    sql: `SELECT * FROM ${tableSqlRef(table)}${where}${orderBy} LIMIT ${pageSize + 1} OFFSET ${page * pageSize}`,
+    params: bound,
+  };
 }
 
 export function requiredParamColumns(table: RegisteredTable): TableColumn[] {
@@ -90,17 +100,25 @@ export function optionalParamColumns(table: RegisteredTable): TableColumn[] {
 
 const NUMERIC_TYPES = /int|numeric|decimal|double|float|real|bigint|smallint/i;
 
-function sqlLiteral(value: string, dataType: string | null): string {
+/** A native parameter's value as it is bound: a number for a numeric column, else its text. */
+function paramValue(value: string, dataType: string | null): string | number {
   if (dataType && NUMERIC_TYPES.test(dataType) && value.trim() !== "" && !isNaN(Number(value)))
-    return value.trim();
-  return `'${value.replace(/'/g, "''")}'`;
+    return Number(value.trim());
+  return value;
 }
 
-/** WHERE clause for the provided param values; empty string when none set. */
-export function buildParamWhere(table: RegisteredTable, values: Record<string, string>): string {
+/** WHERE clause for the provided param values, each bound; empty string when none set. */
+export function buildParamWhere(
+  table: RegisteredTable,
+  values: Record<string, string>,
+  bind: Bind,
+): string {
   const predicates = [...requiredParamColumns(table), ...optionalParamColumns(table)]
     .filter((c) => (values[c.columnName] ?? "").trim() !== "")
-    .map((c) => `"${c.alias || c.columnName}" = ${sqlLiteral(values[c.columnName], c.dataType)}`);
+    .map(
+      (c) =>
+        `${quoteIdent(c.alias || c.columnName)} = ${bind(paramValue(values[c.columnName], c.dataType))}`,
+    );
   return predicates.length > 0 ? ` WHERE ${predicates.join(" AND ")}` : "";
 }
 

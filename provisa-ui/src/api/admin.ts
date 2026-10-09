@@ -1348,7 +1348,9 @@ export interface CompileResult {
 }
 
 export async function runSql(
-  sqlText: string,
+  // A statement, or a statement with the values of its $1…$n placeholders. The values are
+  // sent beside the text and bound by the server; they are never written into it.
+  statement: string | { sql: string; params: (string | number)[] },
   role: string = "org_admin",
   statsEnabled: boolean = false,
 ): Promise<{
@@ -1375,7 +1377,13 @@ export async function runSql(
       // api/acting_role.py), because the server's acting role is one member of the set.
       method: "POST",
       headers,
-      body: JSON.stringify({ sql: sqlText }),
+      body: JSON.stringify(
+        typeof statement === "string"
+          ? { sql: statement }
+          : statement.params.length > 0
+            ? statement
+            : { sql: statement.sql },
+      ),
     });
     if (!resp.ok) {
       const text = await resp.text();

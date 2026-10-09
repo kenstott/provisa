@@ -142,12 +142,21 @@ export interface SqlNamedTable {
  * (src/__tests__/oneTableSqlName.test.ts).
  */
 export function tableSqlRef(table: SqlNamedTable): string {
-  return `"${domainToSqlName(table.domainId)}"."${table.alias || table.tableName}"`;
+  return `${quoteIdent(domainToSqlName(table.domainId))}.${quoteIdent(table.alias || table.tableName)}`;
 }
 
 /** A column of a registered table as a statement names it: the table's SQL name, then the column. */
 export function columnSqlRef(table: SqlNamedTable, columnName: string): string {
-  return `"${table.alias || table.tableName}"."${columnName}"`;
+  return `${quoteIdent(table.alias || table.tableName)}.${quoteIdent(columnName)}`;
+}
+
+/**
+ * THE one way the UI writes an identifier into a statement: double-quoted, with a double quote
+ * inside the name doubled. A name is written into a statement nowhere else — a column called
+ * `a"b` is one identifier, never the end of one and the start of something else.
+ */
+export function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
 }
 
 /** The unquoted `domain.table_name` relation name the server reports a registered table under. */
