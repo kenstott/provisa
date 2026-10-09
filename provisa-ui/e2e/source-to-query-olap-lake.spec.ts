@@ -49,6 +49,7 @@ import {
   releaseDraftTables,
   setSourceCacheTtl,
   submitSourceAndExpectListed,
+  FORM_FIELD,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -112,9 +113,9 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("hiveserver2");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_HIVESERVER2_PORT));
-    await page.getByLabel(/^Database/).fill("wh"); // demo/sources/hiveserver2/prime.py's seeded db
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_HIVESERVER2_PORT));
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("wh"); // demo/sources/hiveserver2/prime.py's seeded db
     // auth_mechanism defaults to PLAIN (SourceFormFields.tsx), which is what demo/sources/
     // hiveserver2's stock HS2 speaks — left untouched.
     // REQ-1907: a source the engine lands needs a landing clock before a table is registered.

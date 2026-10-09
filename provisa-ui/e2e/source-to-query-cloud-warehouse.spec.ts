@@ -60,6 +60,7 @@ import {
   pickSchemaAndTable,
   submitRegisterAndExpectListed,
   runSqlOnPage,
+  FORM_FIELD,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -99,7 +100,7 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       await page.getByLabel(/Account URL/).fill(process.env.SNOWFLAKE_ACCOUNT!);
       // A dedicated all-uppercase-safe database, not SNOWFLAKE_DATABASE — see the file header's
       // "second bug" note.
-      await page.getByLabel(/^Database/).fill("PROVISA_UI_E2E");
+      await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("PROVISA_UI_E2E");
       await page.getByLabel(/^Warehouse$/).fill(process.env.SNOWFLAKE_WAREHOUSE ?? "COMPUTE_WH");
       // Mantine's Select portals its listbox with aria-labelledby pointing at the same label,
       // so plain getByLabel("Authentication") resolves to both the input and the (closed)

@@ -60,6 +60,7 @@ import {
   runSqlOnPage,
   releaseDraftTables,
   submitSourceAndExpectListed,
+  FORM_FIELD,
 } from "./source-to-query-helpers";
 import { deleteSourceAndItsTables } from "./delete-source";
 
@@ -250,8 +251,8 @@ test.describe("source to query through the UI: pinot (REQ-1740)", () => {
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("pinot");
-    await page.getByLabel(/^Host/).fill("pinot");
-    await page.getByLabel(/^Port/).fill("9000");
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("pinot");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill("9000");
     await submitSourceAndExpectListed(page, sourceId);
     // See REQ-1751 above: wait out the Trino Pinot connector's own cold-start discovery race
     // before touching the UI picker, so a slow-converging fixture doesn't masquerade as a
@@ -606,8 +607,8 @@ test.describe("source to query through the UI: druid (REQ-1763)", () => {
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("druid");
-    await page.getByLabel(/^Host/).fill("druid");
-    await page.getByLabel(/^Port/).fill("8082");
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("druid");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill("8082");
     await submitSourceAndExpectListed(page, sourceId);
     await waitForTrinoTable(sourceId, "druid", "widgets");
 

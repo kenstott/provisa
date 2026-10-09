@@ -32,6 +32,13 @@ export async function setSourceCacheTtl(page: Page, seconds: number) {
   await page.getByTestId("cache-ttl-input").fill(String(seconds));
 }
 
+// A source form field, by its label. The sources list behind the form has sortable column headers
+// whose buttons are labelled "Host, not sorted", "Port, ...", "Database, ...", so a label alone
+// names two elements once a source is listed (UI e2e Trino lane on v0.1.0-alpha.477: "strict mode
+// violation: getByLabel(/^Host/) resolved to 2 elements"). Narrow a label locator with
+// `.and(page.locator(FORM_FIELD))`.
+export const FORM_FIELD = "input, select, textarea";
+
 export async function submitSourceAndExpectListed(page: Page, sourceId: string) {
   await page.getByTestId("sources-submit").click();
   await expect(page.locator(".data-table td").filter({ hasText: sourceId })).toBeVisible({

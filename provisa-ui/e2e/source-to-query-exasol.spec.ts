@@ -29,6 +29,7 @@ import {
   runSqlOnPage,
   releaseDraftTables,
   submitSourceAndExpectListed,
+  FORM_FIELD,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -101,11 +102,11 @@ test.describe("source to query through the UI: exasol (REQ-1731, REQ-1763)", () 
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("exasol");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_EXASOL_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_EXASOL_PORT));
     await page.getByLabel(/^Username/).fill("sys");
     await page.getByLabel(/^Password/).fill("exasol");
-    await page.getByLabel(/^Database/).fill("PROVISA");
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("PROVISA");
     // Exasol always serves TLS with a self-signed, per-boot certificate — pin the fingerprint
     // THIS run's container actually presents (read back from prime.py's output file above),
     // exactly the same pin ExasolDriver.connect() (executor/drivers/exasol.py) needs to validate.
