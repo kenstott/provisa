@@ -432,6 +432,17 @@ async def _decrypted(admin_db: "Database", org_id: str, owner_id: str) -> dict[s
         ) from exc
 
 
+async def value_of(admin_db: "Database", org_id: str, name: str, *, owner_id: str) -> str:
+    """The value of the secret ``name`` in ``owner_id``'s vault within ``org_id``, read now. For
+    the one caller that must see what is stored at this moment and not what a binding read
+    earlier: the refresh of a credential the issuer replaces on use
+    (``provisa.api_source.oauth_store``)."""
+    values = await _decrypted(admin_db, org_id, owner_id)
+    if name not in values:
+        raise KeyError(f"Organization {org_id!r} has no secret named {name!r}")
+    return values[name]
+
+
 @asynccontextmanager
 async def bound(admin_db: "Database", org_id: str, *, user_id: str | None = None):
     """Make ``org_id``'s secrets -- and ``user_id``'s own -- resolvable for the duration of the block.
