@@ -50,6 +50,8 @@ needs libgit2 built.
 from __future__ import annotations
 
 import os
+import shutil
+import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -110,8 +112,24 @@ def ensure_repo(org_id: str) -> Repo:
     path = repo_path(org_id)
     if (path / "objects").is_dir():
         return Repo(str(path))
-    path.mkdir(parents=True, exist_ok=True)
-    return Repo.init_bare(str(path))
+    # Made beside its place and renamed into it, never made in place: every request runs on its
+    # own thread, and a read and a write-through can both be the org's first use. Initialised in
+    # place, two callers that both found nothing both created it and the second was refused
+    # (FileExistsError on branches/), and a third could open an object store with no HEAD yet.
+    # A rename is atomic, so the repository is either absent or whole.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    building = Path(tempfile.mkdtemp(prefix=f".{org_id}.", dir=path.parent))
+    Repo.init_bare(str(building)).close()
+    try:
+        os.rename(building, path)
+    except OSError:
+        # The one expected refusal: another caller put the repository there first (a rename onto
+        # a directory that is not empty is refused). Theirs is the repository; anything else is
+        # raised.
+        if not (path / "objects").is_dir():
+            raise
+        shutil.rmtree(building)
+    return Repo(str(path))
 
 
 def _branch_ref(env: str) -> Ref:
