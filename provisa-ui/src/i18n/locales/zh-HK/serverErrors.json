@@ -456,6 +456,21 @@
       "unknown_language": "「{{language}}」不是語言版本",
       "page_not_of_edition": "{{page}} 不是 {{host}} 的頁面",
       "see_also_heading_needed": "Provisa 不知道 {{language}} 版本如何稱呼「參見」章節：請提供章節標題，或跟隨這些連結"
+    },
+    "source_sign_in": {
+      "public_address_not_set": "此部署的公開地址尚未設定,登入後無處返回。請要求管理員設定。",
+      "unknown_kind": "沒有類型為 {{kind}} 的登入。",
+      "incomplete": "請先填寫數據來源名稱、帳戶、用戶端 ID 和用戶端密鑰。",
+      "unknown_state": "此登入並非在這裏發起。請重新發起。",
+      "state_not_yours": "此登入由其他人或在其他組織中發起。",
+      "state_used": "此登入已完成。",
+      "state_expired": "登入未在限時內完成。請重新發起。",
+      "refused_by_issuer": "登入被拒絕:{{error}}",
+      "no_refresh_token": "此次批准不允許之後讀取數據來源。請重新批准並允許持續存取。",
+      "wrong_account": "{{approved}} 批准了登入,但此數據來源讀取的是 {{account}}。請以 {{account}} 的身分登入。",
+      "account_unread": "登入已獲批准,但無法確認郵箱。請檢查你的用戶端所屬專案是否已啟用 Gmail API。",
+      "popup_blocked": "瀏覽器封鎖了登入視窗。請允許此網站顯示彈出式視窗,然後再試一次。",
+      "window_closed": "登入視窗在完成前已被關閉。"
     }
   }
 }

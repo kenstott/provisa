@@ -40,6 +40,7 @@ import { PushFeedFormSection } from "./PushFeedFormSection";
 import { ProfilerFormSection } from "./ProfilerFormSection";
 import { SalesforceFields } from "./SalesforceFields";
 import { CloudopsFields } from "./CloudopsFields";
+import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
 import { WikipediaFields } from "./WikipediaFields";
 import { SparqlFormSection } from "./SparqlFormSection";
 import { SourceLoadManagementPanel } from "./SourceLoadManagementPanel";
@@ -579,6 +580,9 @@ export function SourceFormFieldsExtended({
           rssUseSsl={rssUseSsl}
           setRssUseSsl={setRssUseSsl}
         />
+      )}
+      {form.type === "google_workspace" && ( // REQ-1923
+        <GoogleWorkspaceFields sourceId={form.id} fields={authFields} setFields={setAuthFields} />
       )}
       {form.type === "wikipedia" && (
         <WikipediaFields fields={authFields} setFields={setAuthFields} /> // REQ-1960

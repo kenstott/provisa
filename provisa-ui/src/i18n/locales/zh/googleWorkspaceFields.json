@@ -1,0 +1,35 @@
+{
+  "googleWorkspaceFields": {
+    "account": "邮箱地址",
+    "accountHelp": "此数据源读取的 Google 账号。",
+    "reads": {
+      "mail": "邮件",
+      "calendar": "日历",
+      "tasks": "任务"
+    },
+    "readsLater": "暂不可用",
+    "mailContent": "每封邮件读取多少内容",
+    "mailContentHelp": "向 Google 请求的权限不会超出此范围。",
+    "mailContentFull": "完整邮件",
+    "mailContentHeaders": "仅邮件标头和标签,不含正文",
+    "signIn": "Provisa 如何登录 Google",
+    "signInGoogleAccount": "由邮箱所有者批准",
+    "signInServiceAccount": "由您的 Workspace 管理员授权的服务账号",
+    "redirectAddress": "已获授权的重定向地址",
+    "redirectAddressHelp": "请将其复制到 Google Cloud 控制台中您的 OAuth 客户端的“已获授权的重定向 URI”下。",
+    "clientId": "客户端 ID",
+    "clientSecret": "客户端密钥",
+    "connect": "连接 Google 账号",
+    "connected": "已以 {{account}} 的身份连接",
+    "connectFailed": "无法完成登录。",
+    "serviceAccountKey": "服务账号密钥",
+    "serviceAccountKeyHelp": "Google 为该服务账号提供的 JSON 密钥文件的内容。",
+    "mailSearch": "要包含的邮件",
+    "mailSearchHelp": "与您在 Gmail 搜索框中输入的搜索条件完全相同。留空表示所有邮件。",
+    "mailSince": "不早于",
+    "mailSinceHelp": "留空表示读取任何日期的邮件。",
+    "mailLabels": "标签",
+    "mailLabelsHelp": "每行一个标签名称。仅读取带有全部标签的邮件。留空表示所有邮件。",
+    "mailSpamTrash": "包含垃圾邮件和已删除邮件"
+  }
+}

@@ -456,6 +456,21 @@
       "unknown_language": "“{{language}}” não é uma edição de idioma",
       "page_not_of_edition": "{{page}} não é uma página de {{host}}",
       "see_also_heading_needed": "O Provisa não sabe como a edição {{language}} chama a seção \"Ver também\": informe o título da seção ou siga esses links"
+    },
+    "source_sign_in": {
+      "public_address_not_set": "O endereço público desta implantação não está definido, então o login não tem para onde voltar. Peça ao administrador que o defina.",
+      "unknown_kind": "Não existe login do tipo {{kind}}.",
+      "incomplete": "Informe primeiro o nome da fonte, a conta, o ID do cliente e a chave secreta do cliente.",
+      "unknown_state": "Este login não foi iniciado aqui. Inicie-o novamente.",
+      "state_not_yours": "Este login foi iniciado por outra pessoa ou em outra organização.",
+      "state_used": "Este login já foi concluído.",
+      "state_expired": "O login não foi concluído a tempo. Inicie-o novamente.",
+      "refused_by_issuer": "O login foi recusado: {{error}}",
+      "no_refresh_token": "A aprovação não permite ler a fonte mais tarde. Aprove novamente e permita o acesso contínuo.",
+      "wrong_account": "{{approved}} aprovou o login, mas esta fonte lê {{account}}. Faça login como {{account}}.",
+      "account_unread": "O login foi aprovado, mas não foi possível identificar a caixa de correio. Verifique se a API do Gmail está ativada no projeto do seu cliente.",
+      "popup_blocked": "O navegador bloqueou a janela de login. Permita pop-ups para este site e tente novamente.",
+      "window_closed": "A janela de login foi fechada antes de terminar."
     }
   }
 }

@@ -1,0 +1,35 @@
+{
+  "googleWorkspaceFields": {
+    "account": "मेलबॉक्स का पता",
+    "accountHelp": "वह Google खाता जिसे यह स्रोत पढ़ता है।",
+    "reads": {
+      "mail": "मेल",
+      "calendar": "कैलेंडर",
+      "tasks": "टास्क"
+    },
+    "readsLater": "अभी उपलब्ध नहीं",
+    "mailContent": "हर संदेश का कितना हिस्सा पढ़ना है",
+    "mailContentHelp": "Google से इससे ज़्यादा कुछ नहीं माँगा जाता।",
+    "mailContentFull": "पूरे संदेश",
+    "mailContentHeaders": "सिर्फ़ हेडर और लेबल, संदेश का पाठ नहीं",
+    "signIn": "Provisa, Google में कैसे साइन इन करता है",
+    "signInGoogleAccount": "मेलबॉक्स का मालिक इसे मंज़ूरी देता है",
+    "signInServiceAccount": "वह सेवा खाता जिसे आपके Workspace एडमिन ने अनुमति दी है",
+    "redirectAddress": "अनुमति प्राप्त रीडायरेक्ट पता",
+    "redirectAddressHelp": "इसे Google Cloud कंसोल में अपने OAuth क्लाइंट के “अनुमति वाले रीडायरेक्ट यूआरआई” में कॉपी करें।",
+    "clientId": "क्लाइंट आईडी",
+    "clientSecret": "क्लाइंट सीक्रेट",
+    "connect": "Google खाता कनेक्ट करें",
+    "connected": "{{account}} के रूप में कनेक्ट है",
+    "connectFailed": "साइन इन पूरा नहीं हो सका।",
+    "serviceAccountKey": "सेवा खाते की कुंजी",
+    "serviceAccountKeyHelp": "उस JSON कुंजी फ़ाइल की सामग्री जो Google ने आपको सेवा खाते के लिए दी थी।",
+    "mailSearch": "शामिल की जाने वाली मेल",
+    "mailSearchHelp": "ठीक वैसी खोज जैसी आप Gmail के खोज बॉक्स में लिखते हैं। सारी मेल के लिए खाली छोड़ें।",
+    "mailSince": "इससे पुराना कुछ नहीं",
+    "mailSinceHelp": "किसी भी तारीख की मेल पढ़ने के लिए खाली छोड़ें।",
+    "mailLabels": "लेबल",
+    "mailLabelsHelp": "हर पंक्ति में एक लेबल का नाम। सिर्फ़ वही मेल पढ़ी जाती है जिस पर ये सभी लेबल हों। सारी मेल के लिए खाली छोड़ें।",
+    "mailSpamTrash": "स्पैम और ट्रैश शामिल करें"
+  }
+}

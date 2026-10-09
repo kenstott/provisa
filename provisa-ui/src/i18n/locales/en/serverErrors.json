@@ -456,6 +456,21 @@
       "unknown_language": "'{{language}}' is not a language edition",
       "page_not_of_edition": "{{page}} is not a page of {{host}}",
       "see_also_heading_needed": "Provisa does not know what the {{language}} edition calls its \"See also\" section: give the section's title, or follow those links"
+    },
+    "source_sign_in": {
+      "public_address_not_set": "This deployment's public address is not set, so the sign-in has nowhere to return to. Ask your administrator to set it.",
+      "unknown_kind": "No sign-in of kind {{kind}} exists.",
+      "incomplete": "Enter the source name, the account, the client ID and the client secret first.",
+      "unknown_state": "This sign-in was not started here. Start it again.",
+      "state_not_yours": "This sign-in was started by someone else or in another organization.",
+      "state_used": "This sign-in has already been completed.",
+      "state_expired": "The sign-in was not completed in time. Start it again.",
+      "refused_by_issuer": "The sign-in was refused: {{error}}",
+      "no_refresh_token": "The approval does not let the source be read later. Approve again and allow ongoing access.",
+      "wrong_account": "{{approved}} approved the sign-in, but this source reads {{account}}. Sign in as {{account}}.",
+      "account_unread": "The sign-in was approved, but the mailbox could not be identified. Check that the Gmail API is enabled for your client's project.",
+      "popup_blocked": "Your browser blocked the sign-in window. Allow pop-ups for this site and try again.",
+      "window_closed": "The sign-in window was closed before it finished."
     }
   }
 }

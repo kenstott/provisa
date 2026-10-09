@@ -1,0 +1,35 @@
+{
+  "googleWorkspaceFields": {
+    "account": "郵箱地址",
+    "accountHelp": "此數據來源讀取的 Google 帳戶。",
+    "reads": {
+      "mail": "郵件",
+      "calendar": "日曆",
+      "tasks": "工作"
+    },
+    "readsLater": "暫未提供",
+    "mailContent": "每封郵件讀取多少內容",
+    "mailContentHelp": "向 Google 要求的權限不會超出此範圍。",
+    "mailContentFull": "完整郵件",
+    "mailContentHeaders": "只限郵件標頭和標籤,不包括內文",
+    "signIn": "Provisa 如何登入 Google",
+    "signInGoogleAccount": "由郵箱擁有者批准",
+    "signInServiceAccount": "由你的 Workspace 管理員授權的服務帳戶",
+    "redirectAddress": "已授權的重新導向地址",
+    "redirectAddressHelp": "請將其複製到 Google Cloud 控制台中你的 OAuth 用戶端的「已授權的重新導向 URI」之下。",
+    "clientId": "用戶端 ID",
+    "clientSecret": "用戶端密鑰",
+    "connect": "連接 Google 帳戶",
+    "connected": "已以 {{account}} 的身分連接",
+    "connectFailed": "無法完成登入。",
+    "serviceAccountKey": "服務帳戶金鑰",
+    "serviceAccountKeyHelp": "Google 為該服務帳戶提供的 JSON 金鑰檔案的內容。",
+    "mailSearch": "要包括的郵件",
+    "mailSearchHelp": "與你在 Gmail 搜尋框中輸入的搜尋條件完全相同。留空表示所有郵件。",
+    "mailSince": "不早於",
+    "mailSinceHelp": "留空表示讀取任何日期的郵件。",
+    "mailLabels": "標籤",
+    "mailLabelsHelp": "每行一個標籤名稱。只讀取附有全部標籤的郵件。留空表示所有郵件。",
+    "mailSpamTrash": "包括垃圾郵件和垃圾桶"
+  }
+}

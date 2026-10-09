@@ -184,6 +184,8 @@ export default defineConfig((config) => ({
       input: {
         index: path.resolve(__dirname, "index.html"),
         "auth-relay": path.resolve(__dirname, "auth-relay.html"),
+        // REQ-1923: the page an issuer returns a source sign-in to; served as its own file.
+        "source-sign-in": path.resolve(__dirname, "source-sign-in.html"),
       },
       output: {
         codeSplitting: true,

@@ -1,0 +1,35 @@
+{
+  "googleWorkspaceFields": {
+    "account": "Postfachadresse",
+    "accountHelp": "Das Google-Konto, das diese Quelle liest.",
+    "reads": {
+      "mail": "E-Mail",
+      "calendar": "Kalender",
+      "tasks": "Aufgaben"
+    },
+    "readsLater": "Noch nicht verfügbar",
+    "mailContent": "Wie viel von jeder Nachricht gelesen wird",
+    "mailContentHelp": "Google wird um nicht mehr als das gebeten.",
+    "mailContentFull": "Ganze Nachrichten",
+    "mailContentHeaders": "Nur Header und Labels, kein Nachrichtentext",
+    "signIn": "Wie sich Provisa bei Google anmeldet",
+    "signInGoogleAccount": "Der Postfachinhaber genehmigt es",
+    "signInServiceAccount": "Ein Dienstkonto, das Ihr Workspace-Administrator autorisiert hat",
+    "redirectAddress": "Autorisierte Weiterleitungsadresse",
+    "redirectAddressHelp": "Kopieren Sie diese Adresse in Ihren OAuth-Client in der Google Cloud Console unter „Autorisierte Weiterleitungs-URIs“.",
+    "clientId": "Client-ID",
+    "clientSecret": "Clientschlüssel",
+    "connect": "Google-Konto verbinden",
+    "connected": "Verbunden als {{account}}",
+    "connectFailed": "Die Anmeldung konnte nicht abgeschlossen werden.",
+    "serviceAccountKey": "Dienstkontoschlüssel",
+    "serviceAccountKeyHelp": "Der Inhalt der JSON-Schlüsseldatei, die Google Ihnen für das Dienstkonto gegeben hat.",
+    "mailSearch": "Einzubeziehende E-Mails",
+    "mailSearchHelp": "Eine Suche, genau wie Sie sie in das Suchfeld von Gmail eingeben würden. Leer lassen für alle E-Mails.",
+    "mailSince": "Nichts Älteres als",
+    "mailSinceHelp": "Leer lassen, um E-Mails jeden Alters zu lesen.",
+    "mailLabels": "Labels",
+    "mailLabelsHelp": "Ein Labelname pro Zeile. Es werden nur E-Mails gelesen, die alle tragen. Leer lassen für alle E-Mails.",
+    "mailSpamTrash": "Spam und Papierkorb einbeziehen"
+  }
+}

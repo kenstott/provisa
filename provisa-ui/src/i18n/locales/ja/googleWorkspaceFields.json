@@ -1,0 +1,35 @@
+{
+  "googleWorkspaceFields": {
+    "account": "メールボックスのアドレス",
+    "accountHelp": "このソースが読み取る Google アカウント。",
+    "reads": {
+      "mail": "メール",
+      "calendar": "カレンダー",
+      "tasks": "ToDo リスト"
+    },
+    "readsLater": "まだ利用できません",
+    "mailContent": "各メッセージをどこまで読み取るか",
+    "mailContentHelp": "Google にはこれ以上を要求しません。",
+    "mailContentFull": "メッセージ全体",
+    "mailContentHeaders": "ヘッダーとラベルのみ(本文なし)",
+    "signIn": "Provisa が Google にログインする方法",
+    "signInGoogleAccount": "メールボックスの所有者が承認する",
+    "signInServiceAccount": "Workspace 管理者が承認したサービス アカウント",
+    "redirectAddress": "承認済みのリダイレクト アドレス",
+    "redirectAddressHelp": "Google Cloud コンソールの OAuth クライアントで、「承認済みのリダイレクト URI」にこのアドレスをコピーしてください。",
+    "clientId": "クライアント ID",
+    "clientSecret": "クライアント シークレット",
+    "connect": "Google アカウントを接続",
+    "connected": "{{account}} として接続済み",
+    "connectFailed": "ログインを完了できませんでした。",
+    "serviceAccountKey": "サービス アカウント キー",
+    "serviceAccountKeyHelp": "Google から受け取ったサービス アカウントの JSON キーファイルの内容。",
+    "mailSearch": "含めるメール",
+    "mailSearchHelp": "Gmail の検索ボックスに入力するとおりの検索条件。すべてのメールを対象にする場合は空欄にします。",
+    "mailSince": "これより古いものは除外",
+    "mailSinceHelp": "日付を問わず読み取る場合は空欄にします。",
+    "mailLabels": "ラベル",
+    "mailLabelsHelp": "1 行に 1 つのラベル名。すべてのラベルが付いたメールだけを読み取ります。すべてのメールを対象にする場合は空欄にします。",
+    "mailSpamTrash": "迷惑メールとゴミ箱を含める"
+  }
+}

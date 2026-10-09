@@ -456,6 +456,21 @@
       "unknown_language": "«{{language}}» non è un’edizione linguistica",
       "page_not_of_edition": "{{page}} non è una pagina di {{host}}",
       "see_also_heading_needed": "Provisa non sa come l'edizione {{language}} chiama la sezione «Voci correlate»: indica il titolo della sezione, oppure segui quei link"
+    },
+    "source_sign_in": {
+      "public_address_not_set": "L’indirizzo pubblico di questa installazione non è impostato, quindi l’accesso non ha dove tornare. Chiedi all’amministratore di impostarlo.",
+      "unknown_kind": "Non esiste alcun accesso di tipo {{kind}}.",
+      "incomplete": "Inserisci prima il nome dell’origine, l’account, l’ID client e il client secret.",
+      "unknown_state": "Questo accesso non è stato avviato qui. Avvialo di nuovo.",
+      "state_not_yours": "Questo accesso è stato avviato da un’altra persona o in un’altra organizzazione.",
+      "state_used": "Questo accesso è già stato completato.",
+      "state_expired": "L’accesso non è stato completato in tempo. Avvialo di nuovo.",
+      "refused_by_issuer": "L’accesso è stato rifiutato: {{error}}",
+      "no_refresh_token": "L’approvazione non consente di leggere l’origine in seguito. Approva di nuovo e consenti l’accesso continuativo.",
+      "wrong_account": "{{approved}} ha approvato l’accesso, ma questa origine legge {{account}}. Accedi come {{account}}.",
+      "account_unread": "L’accesso è stato approvato, ma non è stato possibile identificare la casella di posta. Verifica che l’API Gmail sia abilitata nel progetto del tuo client.",
+      "popup_blocked": "Il browser ha bloccato la finestra di accesso. Consenti i pop-up per questo sito e riprova.",
+      "window_closed": "La finestra di accesso è stata chiusa prima del completamento."
     }
   }
 }

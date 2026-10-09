@@ -456,6 +456,21 @@
       "unknown_language": "‘{{language}}’ is geen taalversie",
       "page_not_of_edition": "{{page}} is geen pagina van {{host}}",
       "see_also_heading_needed": "Provisa weet niet hoe de editie {{language}} haar sectie 'Zie ook' noemt: geef de titel van de sectie op, of volg die links"
+    },
+    "source_sign_in": {
+      "public_address_not_set": "Het openbare adres van deze installatie is niet ingesteld, dus het inloggen kan nergens naar terugkeren. Vraag uw beheerder het in te stellen.",
+      "unknown_kind": "Er bestaat geen aanmelding van het soort {{kind}}.",
+      "incomplete": "Vul eerst de naam van de bron, het account, de client-ID en het clientgeheim in.",
+      "unknown_state": "Deze aanmelding is niet hier gestart. Start haar opnieuw.",
+      "state_not_yours": "Deze aanmelding is door iemand anders of in een andere organisatie gestart.",
+      "state_used": "Deze aanmelding is al voltooid.",
+      "state_expired": "De aanmelding is niet op tijd voltooid. Start haar opnieuw.",
+      "refused_by_issuer": "De aanmelding is geweigerd: {{error}}",
+      "no_refresh_token": "Met deze goedkeuring kan de bron later niet worden gelezen. Keur opnieuw goed en sta doorlopende toegang toe.",
+      "wrong_account": "{{approved}} heeft de aanmelding goedgekeurd, maar deze bron leest {{account}}. Log in als {{account}}.",
+      "account_unread": "De aanmelding is goedgekeurd, maar de mailbox kon niet worden vastgesteld. Controleer of de Gmail API is ingeschakeld voor het project van uw client.",
+      "popup_blocked": "Uw browser heeft het inlogvenster geblokkeerd. Sta pop-ups toe voor deze site en probeer het opnieuw.",
+      "window_closed": "Het inlogvenster is gesloten voordat het klaar was."
     }
   }
 }

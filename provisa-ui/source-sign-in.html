@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- REQ-1923: the page an issuer sends the operator's browser back to after they approve a
+         source's sign-in. Its address carries the issuer's one-time code, so before anything
+         else the script below takes the code out of the address. The page asks for nothing
+         else: no font, no image, no configuration, no call to any server. It hands what it
+         was given to the window that opened it and closes. -->
+    <meta name="referrer" content="no-referrer" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Provisa</title>
+    <style>
+      body { font: 16px/1.5 system-ui, sans-serif; margin: 3rem; color: #222; }
+    </style>
+  </head>
+  <body>
+    <p id="status"></p>
+    <script type="module" src="/src/sourceSignInPage.ts"></script>
+  </body>
+</html>

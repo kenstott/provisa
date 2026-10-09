@@ -1,0 +1,35 @@
+{
+  "googleWorkspaceFields": {
+    "account": "Dirección del buzón",
+    "accountHelp": "La cuenta de Google que lee este origen.",
+    "reads": {
+      "mail": "Correo",
+      "calendar": "Calendario",
+      "tasks": "Tareas"
+    },
+    "readsLater": "Aún no disponible",
+    "mailContent": "Cuánto se lee de cada mensaje",
+    "mailContentHelp": "A Google no se le pide más que esto.",
+    "mailContentFull": "Mensajes completos",
+    "mailContentHeaders": "Solo encabezados y etiquetas, sin el texto del mensaje",
+    "signIn": "Cómo inicia sesión Provisa en Google",
+    "signInGoogleAccount": "El propietario del buzón lo aprueba",
+    "signInServiceAccount": "Una cuenta de servicio autorizada por su administrador de Workspace",
+    "redirectAddress": "Dirección de redireccionamiento autorizada",
+    "redirectAddressHelp": "Cópiela en su cliente de OAuth, en la consola de Google Cloud, en «URI de redireccionamiento autorizados».",
+    "clientId": "ID de cliente",
+    "clientSecret": "Secreto del cliente",
+    "connect": "Conectar cuenta de Google",
+    "connected": "Conectado como {{account}}",
+    "connectFailed": "No se pudo completar el inicio de sesión.",
+    "serviceAccountKey": "Clave de la cuenta de servicio",
+    "serviceAccountKeyHelp": "El contenido del archivo de clave JSON que Google le entregó para la cuenta de servicio.",
+    "mailSearch": "Correo que se incluye",
+    "mailSearchHelp": "Una búsqueda tal como la escribiría en el cuadro de búsqueda de Gmail. Déjelo vacío para todo el correo.",
+    "mailSince": "Nada anterior a",
+    "mailSinceHelp": "Déjelo vacío para leer correo de cualquier fecha.",
+    "mailLabels": "Etiquetas",
+    "mailLabelsHelp": "Un nombre de etiqueta por línea. Solo se lee el correo que las lleva todas. Déjelo vacío para todo el correo.",
+    "mailSpamTrash": "Incluir Spam y Papelera"
+  }
+}

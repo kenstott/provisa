@@ -456,6 +456,21 @@
       "unknown_language": "«{{language}}» no es una edición de idioma",
       "page_not_of_edition": "{{page}} no es una página de {{host}}",
       "see_also_heading_needed": "Provisa no sabe cómo llama la edición {{language}} a su sección «Véase también»: indique el título de la sección o siga esos enlaces"
+    },
+    "source_sign_in": {
+      "public_address_not_set": "La dirección pública de este despliegue no está definida, así que el inicio de sesión no tiene adónde volver. Pida a su administrador que la defina.",
+      "unknown_kind": "No existe ningún inicio de sesión del tipo {{kind}}.",
+      "incomplete": "Introduzca primero el nombre del origen, la cuenta, el ID de cliente y el secreto del cliente.",
+      "unknown_state": "Este inicio de sesión no se inició aquí. Inícielo de nuevo.",
+      "state_not_yours": "Este inicio de sesión lo inició otra persona o se inició en otra organización.",
+      "state_used": "Este inicio de sesión ya se completó.",
+      "state_expired": "El inicio de sesión no se completó a tiempo. Inícielo de nuevo.",
+      "refused_by_issuer": "Se rechazó el inicio de sesión: {{error}}",
+      "no_refresh_token": "La aprobación no permite leer el origen más adelante. Apruebe de nuevo y permita el acceso continuo.",
+      "wrong_account": "{{approved}} aprobó el inicio de sesión, pero este origen lee {{account}}. Inicie sesión como {{account}}.",
+      "account_unread": "El inicio de sesión se aprobó, pero no se pudo identificar el buzón. Compruebe que la API de Gmail esté habilitada en el proyecto de su cliente.",
+      "popup_blocked": "Su navegador bloqueó la ventana de inicio de sesión. Permita las ventanas emergentes de este sitio e inténtelo de nuevo.",
+      "window_closed": "La ventana de inicio de sesión se cerró antes de terminar."
     }
   }
 }

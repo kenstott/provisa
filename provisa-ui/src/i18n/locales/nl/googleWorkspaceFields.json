@@ -1,0 +1,35 @@
+{
+  "googleWorkspaceFields": {
+    "account": "Adres van de mailbox",
+    "accountHelp": "Het Google-account dat deze bron leest.",
+    "reads": {
+      "mail": "E-mail",
+      "calendar": "Agenda",
+      "tasks": "Taken"
+    },
+    "readsLater": "Nog niet beschikbaar",
+    "mailContent": "Hoeveel van elk bericht wordt gelezen",
+    "mailContentHelp": "Meer dan dit wordt Google niet gevraagd.",
+    "mailContentFull": "Hele berichten",
+    "mailContentHeaders": "Alleen headers en labels, geen berichttekst",
+    "signIn": "Hoe Provisa bij Google inlogt",
+    "signInGoogleAccount": "De eigenaar van de mailbox keurt het goed",
+    "signInServiceAccount": "Een serviceaccount dat uw Workspace-beheerder heeft geautoriseerd",
+    "redirectAddress": "Geautoriseerd omleidingsadres",
+    "redirectAddressHelp": "Kopieer dit naar uw OAuth-client in de Google Cloud Console, onder ‘Geautoriseerde omleidings-URI’s’.",
+    "clientId": "Client-ID",
+    "clientSecret": "Clientgeheim",
+    "connect": "Google-account koppelen",
+    "connected": "Gekoppeld als {{account}}",
+    "connectFailed": "Het inloggen kon niet worden voltooid.",
+    "serviceAccountKey": "Sleutel van het serviceaccount",
+    "serviceAccountKeyHelp": "De inhoud van het JSON-sleutelbestand dat Google u voor het serviceaccount heeft gegeven.",
+    "mailSearch": "Op te nemen e-mail",
+    "mailSearchHelp": "Een zoekopdracht precies zoals u die in het zoekvak van Gmail zou typen. Laat leeg voor alle e-mail.",
+    "mailSince": "Niets ouder dan",
+    "mailSinceHelp": "Laat leeg om e-mail van elke datum te lezen.",
+    "mailLabels": "Labels",
+    "mailLabelsHelp": "Eén labelnaam per regel. Alleen e-mail met alle labels wordt gelezen. Laat leeg voor alle e-mail.",
+    "mailSpamTrash": "Spam en Prullenbak opnemen"
+  }
+}

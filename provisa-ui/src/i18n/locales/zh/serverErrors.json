@@ -456,6 +456,21 @@
       "unknown_language": "“{{language}}”不是语言版本",
       "page_not_of_edition": "{{page}} 不是 {{host}} 的页面",
       "see_also_heading_needed": "Provisa 不知道 {{language}} 版本如何称呼“参见”章节：请提供章节标题，或跟随这些链接"
+    },
+    "source_sign_in": {
+      "public_address_not_set": "此部署的公开地址尚未设置,登录后无处返回。请让管理员进行设置。",
+      "unknown_kind": "不存在类型为 {{kind}} 的登录。",
+      "incomplete": "请先填写数据源名称、账号、客户端 ID 和客户端密钥。",
+      "unknown_state": "此登录不是在这里发起的。请重新发起。",
+      "state_not_yours": "此登录由其他人或在其他组织中发起。",
+      "state_used": "此登录已完成。",
+      "state_expired": "登录未在限定时间内完成。请重新发起。",
+      "refused_by_issuer": "登录被拒绝:{{error}}",
+      "no_refresh_token": "此次批准不允许之后读取数据源。请重新批准并允许持续访问。",
+      "wrong_account": "{{approved}} 批准了登录,但此数据源读取的是 {{account}}。请以 {{account}} 的身份登录。",
+      "account_unread": "登录已获批准,但无法确认邮箱。请检查您的客户端所属项目是否已启用 Gmail API。",
+      "popup_blocked": "浏览器拦截了登录窗口。请允许此网站弹出窗口,然后重试。",
+      "window_closed": "登录窗口在完成前已被关闭。"
     }
   }
 }

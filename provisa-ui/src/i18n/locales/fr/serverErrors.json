@@ -456,6 +456,21 @@
       "unknown_language": "« {{language}} » n’est pas une édition linguistique",
       "page_not_of_edition": "{{page}} n’est pas une page de {{host}}",
       "see_also_heading_needed": "Provisa ne sait pas comment l'édition {{language}} nomme sa section « Voir aussi » : indiquez le titre de la section, ou suivez ces liens"
+    },
+    "source_sign_in": {
+      "public_address_not_set": "L’adresse publique de ce déploiement n’est pas définie : la connexion n’a nulle part où revenir. Demandez à votre administrateur de la définir.",
+      "unknown_kind": "Aucune connexion de type {{kind}} n’existe.",
+      "incomplete": "Saisissez d’abord le nom de la source, le compte, l’ID client et le code secret du client.",
+      "unknown_state": "Cette connexion n’a pas été lancée ici. Relancez-la.",
+      "state_not_yours": "Cette connexion a été lancée par quelqu’un d’autre ou dans une autre organisation.",
+      "state_used": "Cette connexion a déjà été finalisée.",
+      "state_expired": "La connexion n’a pas été finalisée à temps. Relancez-la.",
+      "refused_by_issuer": "La connexion a été refusée : {{error}}",
+      "no_refresh_token": "Cette approbation ne permet pas de lire la source plus tard. Approuvez de nouveau en autorisant un accès permanent.",
+      "wrong_account": "{{approved}} a approuvé la connexion, mais cette source lit {{account}}. Connectez-vous en tant que {{account}}.",
+      "account_unread": "La connexion a été approuvée, mais la boîte aux lettres n’a pas pu être identifiée. Vérifiez que l’API Gmail est activée pour le projet de votre client.",
+      "popup_blocked": "Votre navigateur a bloqué la fenêtre de connexion. Autorisez les fenêtres pop-up pour ce site, puis réessayez.",
+      "window_closed": "La fenêtre de connexion a été fermée avant la fin."
     }
   }
 }
