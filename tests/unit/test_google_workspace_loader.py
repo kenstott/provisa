@@ -406,6 +406,39 @@ class TestTheLoader:
         assert await read["token"]() == "made-up-access-token"
         assert (read["auth"].key, read["auth"].subject) == ("resolved-key", ACCOUNT)
 
+    async def test_a_replicas_build_notes_the_messages_kept_without_text(self, read, monkeypatch):
+        broken = _mail("m9", "t9", T0, "Kept")
+        broken["payload"]["parts"][0]["headers"] = [
+            {"name": "Content-Type", "value": "text/plain; charset=x-made-up"}
+        ]
+        monkeypatch.setitem(MAILBOX, "m9", broken)
+        fetch = loader.make_google_workspace_loader()
+        columns = cm.ir_columns("messages")
+        source = fetch.replica_source(
+            self._source(), SimpleNamespace(table_name="messages"), columns
+        )
+        assert source.note() is None  # nothing read yet
+        rows = sum([b.num_rows async for b in source.batches(1000)])
+        assert rows == 4
+        note = source.note()
+        assert note.code == "replication.unreadable_messages"
+        assert note.params == {"count": 1, "ids": ["m9"], "more": 0}
+
+    async def test_a_clean_read_leaves_no_note(self, read):
+        fetch = loader.make_google_workspace_loader()
+        columns = cm.ir_columns("messages")
+        source = fetch.replica_source(
+            self._source(), SimpleNamespace(table_name="messages"), columns
+        )
+        [b async for b in source.batches(1000)]
+        assert source.note() is None
+
+    async def test_the_note_names_the_first_hundred_and_counts_the_rest(self):
+        ids = [f"m{n}" for n in range(150)]
+        note = loader.unreadable_note(ids)
+        assert note.params == {"count": 150, "ids": ids[:100], "more": 50}
+        assert loader.unreadable_note([]) is None
+
     async def test_a_replica_is_built_from_the_same_read_in_the_canonical_columns(self, read):
         fetch = loader.make_google_workspace_loader()
         columns = cm.ir_columns("threads")

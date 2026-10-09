@@ -201,6 +201,16 @@ Progress = Callable[[int], Awaitable[None]]
 
 
 @dataclass(frozen=True)
+class BuildNote:
+    """Something a completed build has to say about the copy it made, as a code the UI words
+    in its own language and the particulars that go with it (a count, some ids). A build that
+    read every row as it expected to has none."""
+
+    code: str
+    params: dict
+
+
+@dataclass(frozen=True)
 class BuildOutcome:
     """What a finished build reports. ``changed`` is False when the copy's content hash equals
     the previous build's: the build table was discarded and the replica left as it was."""
@@ -213,9 +223,14 @@ class BuildOutcome:
     #: (``replica_converge.definition_hash``); recorded with the build's completion.
     definition_hash: str | None = None
     built_columns: list | None = None
+    #: What the source had to say of the rows it read, when it had anything (BuildNote).
+    note: BuildNote | None = None
 
 
 class _Source(Protocol):
+    """A source may also carry ``note()``: called once its batches are read to the end, it
+    answers a :class:`BuildNote` for the read just made, or None."""
+
     caps: SourceCaps
 
     def batches(self, batch_rows: int) -> AsyncIterator["pa.RecordBatch"]: ...
@@ -301,12 +316,16 @@ class ReplicaJob:
                     copied += len(rows)
                     await progress(copied)
             content_hash = digest.hexdigest()
+            # What the source says of this read holds whether or not the copy is swapped in.
+            said = getattr(self._source, "note", None)
+            note = said() if said is not None else None
             if content_hash == self._prior_hash:
                 return BuildOutcome(
                     rows_copied=copied,
                     method=self.method.value,
                     content_hash=content_hash,
                     changed=False,
+                    note=note,
                 )
             if self._still_wanted is not None:
                 # Raises when the model stopped declaring the table while it was copied: the
@@ -318,7 +337,9 @@ class ReplicaJob:
             if not swapped:
                 await self._target.abort()
         await self._engine.after_swap()
-        return BuildOutcome(rows_copied=copied, method=self.method.value, content_hash=content_hash)
+        return BuildOutcome(
+            rows_copied=copied, method=self.method.value, content_hash=content_hash, note=note
+        )
 
 
 def _within_bytes(batch: "pa.RecordBatch", max_bytes: int) -> Iterator["pa.RecordBatch"]:

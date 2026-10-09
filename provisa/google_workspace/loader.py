@@ -20,7 +20,8 @@ its messages (as headers and labels only where the table needs no text), so noth
 memory beyond a page and what ``threads`` adds up.
 
 A message with a part that is not what it declares keeps its row without text
-(``mail_rows``); the read counts such messages and names them when it ends.
+(``mail_rows``); the read counts such messages and names them when it ends: every id in the
+log, and the count with the first :data:`NOTED_IDS` ids as the build's note on the replica.
 """
 
 # Requirements: REQ-1923
@@ -35,6 +36,7 @@ import httpx
 
 from provisa.core import canonical_mail as cm
 from provisa.core.secrets import resolve_secrets
+from provisa.federation.data_replicator import BuildNote
 from provisa.google_workspace import settings as gw_settings
 from provisa.google_workspace.gmail import Gmail, GmailNotFound
 from provisa.google_workspace.mail_rows import PROVIDER, MessageFacts, message_facts
@@ -53,6 +55,11 @@ TABLES: tuple[str, ...] = (
 )
 #: The schema the table picker shows them under: a mailbox has none of its own.
 SCHEMA = "default"
+
+#: The note a build carries when messages were kept without their text.
+UNREADABLE_MESSAGES = "replication.unreadable_messages"
+#: How many of their ids the note names; the log names them all.
+NOTED_IDS = 100
 
 #: Tables whose rows need a message's text and parts; every other is read as headers only.
 _NEEDS_WHOLE_MESSAGE = frozenset({"messages", "attachments"})
@@ -173,8 +180,26 @@ async def _messages(
         yield page
 
 
-async def table_rows(gmail: Gmail, mail: MailSettings, table: str) -> AsyncIterator[list[dict]]:
-    """The rows of one canonical table, in batches, to the last one."""
+def unreadable_note(unreadable: list[str]) -> BuildNote | None:
+    """The build's note for the messages kept without text: how many, the first
+    :data:`NOTED_IDS` of their ids, and how many more there are."""
+    if not unreadable:
+        return None
+    return BuildNote(
+        UNREADABLE_MESSAGES,
+        {
+            "count": len(unreadable),
+            "ids": unreadable[:NOTED_IDS],
+            "more": max(len(unreadable) - NOTED_IDS, 0),
+        },
+    )
+
+
+async def table_rows(
+    gmail: Gmail, mail: MailSettings, table: str, unreadable: list[str] | None = None
+) -> AsyncIterator[list[dict]]:
+    """The rows of one canonical table, in batches, to the last one. The ids of the messages
+    kept without text are added to ``unreadable`` as they are met."""
     if table not in TABLES:
         raise UnknownMailTable(table)
     if table == "folders":
@@ -187,7 +212,7 @@ async def table_rows(gmail: Gmail, mail: MailSettings, table: str) -> AsyncItera
         mail = MailSettings(
             MAIL_HEADERS, mail.search, mail.labels, mail.since, mail.include_spam_trash
         )
-    unreadable: list[str] = []
+    unreadable = [] if unreadable is None else unreadable
     threads = _Threads(gmail.account)
     async for page in _messages(gmail, mail, unreadable):
         if table == "threads":
@@ -216,7 +241,9 @@ def make_google_workspace_loader() -> Any:
     with the source's own credential."""
     from provisa.api_source.oauth_grants import access_token
 
-    async def _batches(source: Any, table: Any) -> AsyncIterator[list[dict]]:
+    async def _batches(
+        source: Any, table: Any, unreadable: list[str] | None = None
+    ) -> AsyncIterator[list[dict]]:
         settings = source_settings(source)
         if settings.mail is None:
             raise UnknownMailTable(table.table_name)
@@ -228,7 +255,7 @@ def make_google_workspace_loader() -> Any:
 
         async with httpx.AsyncClient() as client:
             gmail = Gmail(account, token, client)
-            async for rows in table_rows(gmail, settings.mail, table.table_name):
+            async for rows in table_rows(gmail, settings.mail, table.table_name, unreadable):
                 yield rows
 
     async def _load(source: Any, table: Any) -> list[dict]:
@@ -237,7 +264,13 @@ def make_google_workspace_loader() -> Any:
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
         from provisa.federation.replica_source import CursorSource
 
-        return CursorSource(lambda _batch_rows: _batches(source, table), columns)
+        unreadable: list[str] = []
+
+        def read(_batch_rows: int) -> AsyncIterator[list[dict]]:
+            unreadable.clear()  # a build reads once; a read begun again counts again
+            return _batches(source, table, unreadable)
+
+        return CursorSource(read, columns, note=lambda: unreadable_note(unreadable))
 
     _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load

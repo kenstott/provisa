@@ -38,7 +38,7 @@ from typing import Any, Protocol
 import pyarrow as pa
 
 from provisa.core.ir_arrow import arrow_schema, rows_to_batch
-from provisa.federation.data_replicator import SourceCaps, SourceRead
+from provisa.federation.data_replicator import BuildNote, SourceCaps, SourceRead
 
 #: The default bound on one batch, in rows: the engines' own stream batch size.
 BATCH_ROWS = 65_536
@@ -133,9 +133,16 @@ class CursorSource:
         self,
         row_batches: Callable[[int], AsyncIterator[list[dict]]],
         columns: list[tuple[str, str]],
+        *,
+        note: Callable[[], BuildNote | None] | None = None,
     ) -> None:
         self._row_batches = row_batches
         self._columns = columns
+        self._note = note
+
+    def note(self) -> BuildNote | None:
+        """What the adapter has to say of the read just made, once it is read to the end."""
+        return self._note() if self._note is not None else None
 
     async def batches(self, batch_rows: int) -> AsyncIterator[pa.RecordBatch]:
         schema = arrow_schema(self._columns)
