@@ -126,6 +126,8 @@ _HTTP_DATA_ROUTES = (
     "api/rest/generator.py",  # REST
     "api/rest/cypher_router.py",  # Cypher
     "api/jsonapi/generator.py",  # JSON:API
+    "api/rest/neo4j_compat_router.py",  # the Neo4j HTTP-compatible endpoint
+    "api/admin/table_profile_router.py",  # a table's sampled profile
 )
 
 
@@ -140,3 +142,23 @@ def test_json_api_answers_the_family_in_its_own_error_format():
     source = (Path(provisa.__file__).parent / "api/jsonapi/generator.py").read_text()
     assert source.count("except ReadRefused as e:") == source.count("except Exception as e:")
     assert '_jsonapi_error_response(503, "Service Unavailable", str(e))' in source
+
+
+def test_the_neo4j_endpoint_answers_the_family_in_its_own_error_format():
+    """503 with the refusal's message, not "Execution failed: …" as a 400."""
+    from provisa.api.rest.neo4j_compat_router import _read_refused
+
+    response = _read_refused(ReplicaBuildFailed(_TABLE, _REASON))
+    assert response.status_code == 503
+    (error,) = json.loads(response.body)["errors"]
+    assert _TABLE in error["message"] and _REASON in error["message"]
+    assert not error["message"].startswith("Execution failed")
+    source = (Path(provisa.__file__).parent / "api/rest/neo4j_compat_router.py").read_text()
+    assert source.count("except ReadRefused as exc:") == 2  # governance, and execution
+
+
+def test_a_table_profile_does_not_retry_or_reword_a_refusal():
+    """Its catch-all retries the sample without TABLESAMPLE and answers a second failure as a
+    400; a refusal is neither retried nor reworded."""
+    source = (Path(provisa.__file__).parent / "api/admin/table_profile_router.py").read_text()
+    assert source.count("except ReadRefused:") == source.count("except Exception")
