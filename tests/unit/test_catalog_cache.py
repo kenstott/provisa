@@ -643,10 +643,11 @@ async def test_the_adapter_is_asked_for_a_schemas_columns_in_one_statement(monke
     class _Conn:
         async def fetch(self, sql, *args, timeout=None):
             statements.append(sql)
+            # Rows read by position, as the adapter's are: its labels are upper case.
             return [
-                {"table_name": "filings", "column_name": "cik", "data_type": "bigint"},
-                {"table_name": "filings", "column_name": "form", "data_type": "text"},
-                {"table_name": "financial_facts", "column_name": "cik", "data_type": "bigint"},
+                ("filings", "cik", "bigint"),
+                ("filings", "form", "text"),
+                ("financial_facts", "cik", "bigint"),
             ]
 
         async def close(self):
