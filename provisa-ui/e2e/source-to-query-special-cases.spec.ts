@@ -66,7 +66,7 @@ import { fileURLToPath } from "node:url";
 
 import { test, expect } from "./coverage";
 import {
-  SOURCE_SERVING_BUDGET_MS,
+  ASKAMERICA_SERVING_BUDGET_MS,
   openRegisterForm,
   openSourcesForm,
   pickSchemaAndTable,
@@ -167,7 +167,7 @@ test.describe("govdata: source to query through the UI (REQ-1742)", () => {
     // carried source.mapping). Un-skipped.
     // Saving the source starts its server, which has a minute to answer (see
     // waitForSourceServing). That wait has its own budget; the screens after it keep theirs.
-    test.setTimeout(SOURCE_SERVING_BUDGET_MS + 300000);
+    test.setTimeout(ASKAMERICA_SERVING_BUDGET_MS + 300000);
     const stamp = Date.now();
     const sourceId = `e2e_govdata_${stamp}`;
 
@@ -178,7 +178,9 @@ test.describe("govdata: source to query through the UI (REQ-1742)", () => {
     await page.getByTestId("govdata-subject-WEATHER").check();
     await page.getByTestId("govdata-api-key-input").fill(apiKey);
     await submitSourceAndExpectListed(page, sourceId);
-    expect(await waitForSourceServing(page, sourceId, "weather")).toContain("nws_stations");
+    expect(
+      await waitForSourceServing(page, sourceId, "weather", ASKAMERICA_SERVING_BUDGET_MS),
+    ).toContain("nws_stations");
 
     // 2. Register Table form — the WEATHER subject maps to the "weather" schema
     // (constants.ts GOVDATA_SUBJECTS); nws_stations is small and fast relative to the daily-

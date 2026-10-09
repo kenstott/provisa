@@ -35,7 +35,7 @@ import {
   pickSchemaAndTable,
   registerOfferedTable,
   submitRegisterAndExpectListed,
-  SOURCE_SERVING_BUDGET_MS,
+  ASKAMERICA_SERVING_BUDGET_MS,
   submitSourceAndExpectListed,
   waitForSourceServing,
   FORM_FIELD,
@@ -1289,8 +1289,10 @@ export async function registerGovdata(page: Page): Promise<Registration> {
   await page.getByTestId("govdata-api-key-input").fill(apiKey);
   await submitSourceAndExpectListed(page, sourceId);
   // The server's start has its own budget, on top of the case's.
-  test.setTimeout(test.info().timeout + SOURCE_SERVING_BUDGET_MS);
-  expect(await waitForSourceServing(page, sourceId, "weather")).toContain("nws_stations");
+  test.setTimeout(test.info().timeout + ASKAMERICA_SERVING_BUDGET_MS);
+  expect(
+    await waitForSourceServing(page, sourceId, "weather", ASKAMERICA_SERVING_BUDGET_MS),
+  ).toContain("nws_stations");
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "weather", "nws_stations");
