@@ -93,5 +93,31 @@ def test_the_values_travel_by_the_pipelines_own_parameter_path():
     from provisa.pgwire import _pipeline
 
     source = inspect.getsource(_pipeline.execute_sql_batch)
-    assert source.count("params=params,") == 2  # the temp-session re-entry, and the governed call
+    assert "params=params," in source  # the temp-session re-entry keeps them
+    assert "functools.partial(_govern_and_route, params=params)" in source  # the governed call
     assert "substitute" not in source and ".format(" not in source
+
+
+async def test_a_statement_sent_without_values_is_governed_by_the_call_it_always_was(monkeypatch):
+    """A caller with no parameter field of its own (the MCP run-SQL tool, the SQL explorer's
+    plain statements) passes nothing new down: the governed call carries ``params`` only when
+    values were sent."""
+    from unittest.mock import AsyncMock
+
+    from provisa.executor.result import QueryResult
+    from provisa.pgwire import _pipeline
+
+    govern = AsyncMock(return_value=object())
+    monkeypatch.setattr(_pipeline, "_govern_and_route", govern)
+    monkeypatch.setattr(
+        _pipeline, "_execute_plan", AsyncMock(return_value=QueryResult(rows=[], column_names=[]))
+    )
+    monkeypatch.setattr(
+        "provisa.pgwire.function_call.maybe_invoke_registered_function",
+        AsyncMock(return_value=None),
+    )
+    state = object()
+    await _pipeline.execute_sql_batch("SELECT 1", "analyst", state)
+    assert "params" not in govern.await_args.kwargs
+    await _pipeline.execute_sql_batch("SELECT $1", "analyst", state, params=[7])
+    assert govern.await_args.kwargs["params"] == [7]

@@ -3442,7 +3442,14 @@ async def execute_sql_batch(
         # Delivery applies only to the final (result) statement of the batch; leading statements run
         # inline so their side effects land without spilling intermediate results to a sink.
         _deliver = deliver if _i == len(statements) - 1 else None
-        plan = await _govern_and_route(
+        # Bound values are handed on only when the caller sent some: a statement sent without
+        # any is governed by the call it always was.
+        govern = (
+            _govern_and_route
+            if params is None
+            else functools.partial(_govern_and_route, params=params)
+        )
+        plan = await govern(
             stmt,
             role_id,
             session_vars=session_vars,
@@ -3450,7 +3457,6 @@ async def execute_sql_batch(
             deliver=_deliver,
             buffered=buffered and _i == len(statements) - 1,
             serve_cached=True,  # REQ-1897: this function executes at the chokepoint, which serves it
-            params=params,
         )
         result = await _execute_plan(plan, state)
     assert result is not None
