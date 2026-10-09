@@ -5419,5 +5419,6 @@
   "ja/columnFilter.json::columnFilter.apply": "Apply",
   "ja/columnFilter.json::columnFilter.removeFilter": "Remove the filter on {{column}}",
   "ja/columnFilter.json::columnFilter.appliesToLoaded": "Filters apply to the {{count}} rows loaded, not the whole result.",
-  "ja/columnFilter.json::columnFilter.syntaxHint": "Quick syntax: >100, 10..20, !text, a, b, c, =exact. Plain text means contains."
+  "ja/columnFilter.json::columnFilter.syntaxHint": "Quick syntax: >100, 10..20, !text, a, b, c, =exact. Plain text means contains.",
+  "ja/serverErrors.json::serverErrors.data.sql_parameters_do_not_fit": "The parameter values do not fit the statement: {{reason}}"
 }

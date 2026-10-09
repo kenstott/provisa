@@ -104,7 +104,8 @@
       "source_unbound": "ソース '{{source}}' は環境 '{{env}}' に接続がありません: バインドするか、親から再コピーしてください",
       "system_catalog_unavailable": "エンジンのカタログ '{{catalog}}' を登録中です。しばらくしてからもう一度お試しください。",
       "domain_not_accessible": "ロール「{{role_id}}」はドメイン「{{domain}}」にアクセスできません",
-      "role_mismatch": "リクエストはロール「{{body_role}}」を指定していますが、ロール「{{acting_role}}」として実行されます。ロールは X-Provisa-Role ヘッダー(またはサインイン中の ID)で指定されます。もう一方のロールを削除するか、一致させてください。"
+      "role_mismatch": "リクエストはロール「{{body_role}}」を指定していますが、ロール「{{acting_role}}」として実行されます。ロールは X-Provisa-Role ヘッダー(またはサインイン中の ID)で指定されます。もう一方のロールを削除するか、一致させてください。",
+      "sql_parameters_do_not_fit": "パラメーターの値がステートメントと一致しません: {{reason}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",

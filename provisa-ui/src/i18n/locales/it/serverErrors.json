@@ -104,7 +104,8 @@
       "source_unbound": "L'origine '{{source}}' non ha una connessione nell'ambiente '{{env}}': collegala o copiala di nuovo dall'ambiente padre",
       "system_catalog_unavailable": "Il catalogo '{{catalog}}' del motore è in fase di registrazione. Riprova tra poco.",
       "domain_not_accessible": "Il ruolo '{{role_id}}' non ha accesso al dominio '{{domain}}'",
-      "role_mismatch": "La richiesta indica il ruolo '{{body_role}}' ma viene eseguita come ruolo '{{acting_role}}'. Il ruolo è trasmesso dall'intestazione X-Provisa-Role (o dall'identità autenticata); rimuovi l'altro ruolo o fallo corrispondere."
+      "role_mismatch": "La richiesta indica il ruolo '{{body_role}}' ma viene eseguita come ruolo '{{acting_role}}'. Il ruolo è trasmesso dall'intestazione X-Provisa-Role (o dall'identità autenticata); rimuovi l'altro ruolo o fallo corrispondere.",
+      "sql_parameters_do_not_fit": "I valori dei parametri non corrispondono all'istruzione: {{reason}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adattatore per '{{source_type}}' non implementa discover_schema",

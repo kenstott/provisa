@@ -104,7 +104,8 @@
       "source_unbound": "למקור '{{source}}' אין חיבור בסביבה '{{env}}': יש לקשר אותו או להעתיק אותו מחדש מסביבת האב",
       "system_catalog_unavailable": "הקטלוג '{{catalog}}' של המנוע נמצא בתהליך רישום. יש לנסות שוב בעוד רגע.",
       "domain_not_accessible": "לתפקיד '{{role_id}}' אין גישה לתחום '{{domain}}'",
-      "role_mismatch": "הבקשה מציינת את התפקיד '{{body_role}}' אך רצה בתפקיד '{{acting_role}}'. התפקיד מועבר בכותרת X-Provisa-Role (או בזהות המחוברת); הסירו את התפקיד האחר או התאימו אותו."
+      "role_mismatch": "הבקשה מציינת את התפקיד '{{body_role}}' אך רצה בתפקיד '{{acting_role}}'. התפקיד מועבר בכותרת X-Provisa-Role (או בזהות המחוברת); הסירו את התפקיד האחר או התאימו אותו.",
+      "sql_parameters_do_not_fit": "ערכי הפרמטרים אינם תואמים את המשפט: {{reason}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",

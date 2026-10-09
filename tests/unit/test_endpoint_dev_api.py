@@ -310,6 +310,69 @@ class TestSqlEndpointStatsAndFormat:
         assert resp.status_code == 200
         assert resp.json()["column_types"] == ["bigint", "varchar"]
 
+    async def test_parameter_values_are_bound_never_written_into_the_statement(self, sql_client):
+        """REQ-1937: the values of $1…$n travel beside the statement to whatever runs it."""
+        result = _make_query_result(rows=[(7,)], column_names=["id"])
+        direct = AsyncMock(return_value=result)
+        engine = AsyncMock(return_value=result)
+        with (
+            patch("provisa.executor.direct.execute_direct", new=direct),
+            patch("provisa.executor.trino.execute_trino", new=engine),
+        ):
+            resp = await sql_client.post(
+                "/data/sql",
+                json={
+                    "sql": "SELECT id FROM orders WHERE id = $1 AND name = $2",
+                    "role": "org_admin",
+                    "params": [7, "o'brien; DROP TABLE orders"],
+                },
+            )
+        assert resp.status_code == 200, resp.text
+        (call,) = [*direct.call_args_list, *engine.call_args_list]
+        sent = [*call.args, *call.kwargs.values()]
+        statement = next(a for a in sent if isinstance(a, str) and "orders" in a.lower())
+        assert [7, "o'brien; DROP TABLE orders"] in sent, "the values were not handed on as values"
+        assert "o'brien" not in statement and "DROP TABLE" not in statement
+
+    @pytest.mark.parametrize(
+        "sql, params, reason",
+        [
+            (
+                "SELECT id FROM orders WHERE id = $1 AND name = $2",
+                [7],
+                "placeholder $2 has no value",
+            ),
+            ("SELECT id FROM orders WHERE id = $1", [7, 8], "no placeholder takes value $2"),
+            ("SELECT id FROM orders", [7], "no placeholder takes value $1"),
+            ("SELECT id FROM orders WHERE id = $1; SELECT 1", [7], "one statement"),
+        ],
+    )
+    async def test_values_that_do_not_fit_the_statement_are_refused_before_it_runs(
+        self, sql_client, sql, params, reason
+    ):
+        direct, engine = AsyncMock(), AsyncMock()
+        with (
+            patch("provisa.executor.direct.execute_direct", new=direct),
+            patch("provisa.executor.trino.execute_trino", new=engine),
+        ):
+            resp = await sql_client.post(
+                "/data/sql", json={"sql": sql, "role": "org_admin", "params": params}
+            )
+        assert resp.status_code == 400, resp.text
+        body = resp.json()
+        assert body["code"] == "data.sql_parameters_do_not_fit" and reason in body["detail"]
+        assert not direct.called and not engine.called
+
+    def test_the_field_is_described_in_the_openapi_document(self):
+        """The endpoint's request model is what its OpenAPI operation is generated from."""
+        from provisa.api.app import create_app
+
+        spec = create_app().openapi()
+        operation = spec["paths"]["/data/sql"]["post"]
+        ref = operation["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+        params = spec["components"]["schemas"][ref.rsplit("/", 1)[1]]["properties"]["params"]
+        assert "never written into its text" in params["description"]
+
     async def test_csv_accept_format_uses_format_response(self, sql_client):
         fallback_result = _make_query_result(rows=[(1, "test")], column_names=["id", "name"])
         with (

@@ -104,7 +104,8 @@
       "source_unbound": "Source '{{source}}' has no connection in environment '{{env}}': bind it, or re-copy it from the parent",
       "system_catalog_unavailable": "The engine's '{{catalog}}' catalog is being registered. Try again shortly.",
       "domain_not_accessible": "Role '{{role_id}}' does not reach domain '{{domain}}'",
-      "role_mismatch": "The request names role '{{body_role}}' but runs as role '{{acting_role}}'. The role is carried by the X-Provisa-Role header (or the signed-in identity); remove the other role or make it match."
+      "role_mismatch": "The request names role '{{body_role}}' but runs as role '{{acting_role}}'. The role is carried by the X-Provisa-Role header (or the signed-in identity); remove the other role or make it match.",
+      "sql_parameters_do_not_fit": "The parameter values do not fit the statement: {{reason}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",

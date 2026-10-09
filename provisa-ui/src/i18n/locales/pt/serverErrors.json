@@ -104,7 +104,8 @@
       "source_unbound": "A origem '{{source}}' não tem conexão no ambiente '{{env}}': vincule-a ou copie-a novamente do ambiente pai",
       "system_catalog_unavailable": "O catálogo '{{catalog}}' do mecanismo está sendo registrado. Tente novamente em instantes.",
       "domain_not_accessible": "A função '{{role_id}}' não tem acesso ao domínio '{{domain}}'",
-      "role_mismatch": "A solicitação indica a função '{{body_role}}', mas é executada como a função '{{acting_role}}'. A função é transmitida pelo cabeçalho X-Provisa-Role (ou pela identidade conectada); remova a outra função ou faça com que coincida."
+      "role_mismatch": "A solicitação indica a função '{{body_role}}', mas é executada como a função '{{acting_role}}'. A função é transmitida pelo cabeçalho X-Provisa-Role (ou pela identidade conectada); remova a outra função ou faça com que coincida.",
+      "sql_parameters_do_not_fit": "Os valores dos parâmetros não correspondem à instrução: {{reason}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",

@@ -104,7 +104,8 @@
       "source_unbound": "來源 '{{source}}' 在環境 '{{env}}' 中沒有連線：請綁定它，或從父環境重新複製",
       "system_catalog_unavailable": "引擎的目錄 '{{catalog}}' 正在註冊。請稍後重試。",
       "domain_not_accessible": "角色「{{role_id}}」無法存取網域「{{domain}}」",
-      "role_mismatch": "請求指明角色「{{body_role}}」，但以角色「{{acting_role}}」執行。角色由 X-Provisa-Role 標頭（或已登入的身分）傳遞；請移除另一個角色或令其一致。"
+      "role_mismatch": "請求指明角色「{{body_role}}」，但以角色「{{acting_role}}」執行。角色由 X-Provisa-Role 標頭（或已登入的身分）傳遞；請移除另一個角色或令其一致。",
+      "sql_parameters_do_not_fit": "參數值與陳述式不相符：{{reason}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",

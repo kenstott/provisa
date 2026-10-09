@@ -104,7 +104,8 @@
       "source_unbound": "स्रोत '{{source}}' का परिवेश '{{env}}' में कोई कनेक्शन नहीं है: इसे बाइंड करें या पैरेंट से दोबारा कॉपी करें",
       "system_catalog_unavailable": "इंजन का '{{catalog}}' कैटलॉग पंजीकृत किया जा रहा है। थोड़ी देर में फिर प्रयास करें।",
       "domain_not_accessible": "भूमिका '{{role_id}}' की डोमेन '{{domain}}' तक पहुँच नहीं है",
-      "role_mismatch": "अनुरोध में भूमिका '{{body_role}}' दी गई है लेकिन यह भूमिका '{{acting_role}}' के रूप में चलता है। भूमिका X-Provisa-Role हेडर (या साइन-इन पहचान) से आती है; दूसरी भूमिका हटाएँ या उसे मिलाएँ।"
+      "role_mismatch": "अनुरोध में भूमिका '{{body_role}}' दी गई है लेकिन यह भूमिका '{{acting_role}}' के रूप में चलता है। भूमिका X-Provisa-Role हेडर (या साइन-इन पहचान) से आती है; दूसरी भूमिका हटाएँ या उसे मिलाएँ।",
+      "sql_parameters_do_not_fit": "पैरामीटर मान कथन से मेल नहीं खाते: {{reason}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' का अडैप्टर discover_schema लागू नहीं करता",

@@ -104,7 +104,8 @@
       "source_unbound": "源 '{{source}}' 在环境 '{{env}}' 中没有连接：请绑定它，或从父环境重新复制",
       "system_catalog_unavailable": "引擎的目录 '{{catalog}}' 正在注册。请稍后重试。",
       "domain_not_accessible": "角色 '{{role_id}}' 无法访问域 '{{domain}}'",
-      "role_mismatch": "请求指定了角色 '{{body_role}}'，但以角色 '{{acting_role}}' 运行。角色由 X-Provisa-Role 标头（或已登录的身份）携带；请移除另一个角色或使其一致。"
+      "role_mismatch": "请求指定了角色 '{{body_role}}'，但以角色 '{{acting_role}}' 运行。角色由 X-Provisa-Role 标头（或已登录的身份）携带；请移除另一个角色或使其一致。",
+      "sql_parameters_do_not_fit": "参数值与语句不匹配：{{reason}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",

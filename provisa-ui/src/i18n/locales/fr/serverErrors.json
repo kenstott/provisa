@@ -104,7 +104,8 @@
       "source_unbound": "La source '{{source}}' n'a pas de connexion dans l'environnement '{{env}}' : liez-la ou recopiez-la depuis l'environnement parent",
       "system_catalog_unavailable": "Le catalogue '{{catalog}}' du moteur est en cours d'enregistrement. Réessayez dans un instant.",
       "domain_not_accessible": "Le rôle '{{role_id}}' n'a pas accès au domaine '{{domain}}'",
-      "role_mismatch": "La requête nomme le rôle '{{body_role}}' mais s'exécute sous le rôle '{{acting_role}}'. Le rôle est porté par l'en-tête X-Provisa-Role (ou par l'identité connectée) ; supprimez l'autre rôle ou faites-le correspondre."
+      "role_mismatch": "La requête nomme le rôle '{{body_role}}' mais s'exécute sous le rôle '{{acting_role}}'. Le rôle est porté par l'en-tête X-Provisa-Role (ou par l'identité connectée) ; supprimez l'autre rôle ou faites-le correspondre.",
+      "sql_parameters_do_not_fit": "Les valeurs des paramètres ne correspondent pas à l'instruction : {{reason}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",

@@ -21,16 +21,17 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from provisa.cypher.label_map import CypherLabelMap
 
 from provisa.core.read_refusal import ReadRefused
+from provisa.compiler.params import ParametersDoNotFit
 from provisa.compiler.definitions import NotAvailableHere
 from provisa.api.admin._dev_shared import detect_target
 from provisa.api.errors import ApiError
@@ -47,6 +48,17 @@ router = APIRouter(prefix="/data", tags=["data"])
 
 class SQLRequest(BaseModel):
     sql: str
+    # REQ-1937: the values of the statement's $1…$n placeholders, sent apart from its text. They
+    # are bound by the engine or driver that runs the statement, never written into it.
+    params: list[Any] | None = Field(
+        default=None,
+        description=(
+            "Values for the statement's $1…$n placeholders, in order. They are bound when the "
+            "statement runs and never written into its text. Sent with exactly one statement "
+            "whose placeholders number them exactly; anything else is refused before the "
+            "statement runs. Omit for a statement without placeholders."
+        ),
+    )
     role: str = "org_admin"  # REQ-1327: dev default is the DATA-plane admin; "admin"≡platform_admin is control-plane
 
 
@@ -309,8 +321,18 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     # documented boundary contract, not silent error handling.
     try:
         result = await execute_sql_batch(
-            request.sql, role_id, state, as_of=_as_of, deliver=delivery, buffered=True
+            request.sql,
+            role_id,
+            state,
+            as_of=_as_of,
+            deliver=delivery,
+            buffered=True,
+            params=request.params,
         )
+    except ParametersDoNotFit as exc:
+        # The values sent are not the values the statement's placeholders number: refused by
+        # name, before the statement was governed or run.
+        raise ApiError(400, "data.sql_parameters_do_not_fit", str(exc), reason=str(exc)) from exc
     except ComplexityLimitExceeded:
         raise  # REQ-1174: answered as 413 by the app's handler
     except ReadRefused:

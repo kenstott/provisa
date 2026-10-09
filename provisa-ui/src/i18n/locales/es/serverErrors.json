@@ -104,7 +104,8 @@
       "source_unbound": "El origen '{{source}}' no tiene conexión en el entorno '{{env}}': vincúlelo o vuelva a copiarlo del entorno principal",
       "system_catalog_unavailable": "El catálogo '{{catalog}}' del motor se está registrando. Vuelva a intentarlo en breve.",
       "domain_not_accessible": "El rol '{{role_id}}' no tiene acceso al dominio '{{domain}}'",
-      "role_mismatch": "La solicitud indica el rol '{{body_role}}' pero se ejecuta como el rol '{{acting_role}}'. El rol se transmite en la cabecera X-Provisa-Role (o en la identidad con sesión iniciada); elimine el otro rol o haga que coincida."
+      "role_mismatch": "La solicitud indica el rol '{{body_role}}' pero se ejecuta como el rol '{{acting_role}}'. El rol se transmite en la cabecera X-Provisa-Role (o en la identidad con sesión iniciada); elimine el otro rol o haga que coincida.",
+      "sql_parameters_do_not_fit": "Los valores de los parámetros no corresponden a la sentencia: {{reason}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",

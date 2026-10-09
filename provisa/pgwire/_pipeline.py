@@ -3376,9 +3376,16 @@ async def execute_sql_batch(
     as_of: str | None = None,
     deliver: Delivery | None = None,
     buffered: bool = False,
+    params: list | None = None,
 ) -> QueryResult:
     """Govern + execute a (possibly multi-statement) SQL batch through the ONE pipeline, returning the
     LAST statement's result (psql/JDBC batch semantics).
+
+    ``params``: the values of the statement's ``$N`` placeholders, when the caller sent them
+    apart from the text. They are bound, by the path pgwire's extended protocol binds its own by
+    (``_govern_and_route(params=...)``), and never written into the statement. A list of values
+    belongs to ONE statement, whose placeholders it must number exactly; a batch, or a count
+    that does not fit, is refused before anything is governed.
 
     Every entry point can send multiple statements. Splitting is statement-aware (no parser
     differential) and EACH statement is governed+routed+stamped and executed IN ORDER — so a batch is
@@ -3394,6 +3401,15 @@ async def execute_sql_batch(
     statements = split_sql_statements(sql)
     if not statements:
         return QueryResult(rows=[], column_names=[])
+    if params is not None:
+        from provisa.compiler.params import ParametersDoNotFit, require_parameters_fit
+
+        if len(statements) != 1:
+            raise ParametersDoNotFit(
+                f"parameter values are bound to one statement; this request holds "
+                f"{len(statements)} statements"
+            )
+        require_parameters_fit(statements[0], params)
     from provisa.compiler import temp_tables
 
     if temp_tables.current() is None:
@@ -3412,6 +3428,7 @@ async def execute_sql_batch(
                 as_of=as_of,
                 deliver=deliver,
                 buffered=buffered,
+                params=params,
             )
         finally:
             temp_tables.unbind(token)
@@ -3433,6 +3450,7 @@ async def execute_sql_batch(
             deliver=_deliver,
             buffered=buffered and _i == len(statements) - 1,
             serve_cached=True,  # REQ-1897: this function executes at the chokepoint, which serves it
+            params=params,
         )
         result = await _execute_plan(plan, state)
     assert result is not None

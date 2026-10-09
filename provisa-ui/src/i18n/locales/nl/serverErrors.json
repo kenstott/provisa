@@ -104,7 +104,8 @@
       "source_unbound": "Bron '{{source}}' heeft geen verbinding in omgeving '{{env}}': bind deze of kopieer deze opnieuw vanuit de bovenliggende omgeving",
       "system_catalog_unavailable": "De catalogus '{{catalog}}' van de engine wordt geregistreerd. Probeer het zo opnieuw.",
       "domain_not_accessible": "Rol '{{role_id}}' heeft geen toegang tot domein '{{domain}}'",
-      "role_mismatch": "Het verzoek noemt rol '{{body_role}}' maar wordt uitgevoerd als rol '{{acting_role}}'. De rol wordt meegegeven in de header X-Provisa-Role (of door de aangemelde identiteit); verwijder de andere rol of maak deze gelijk."
+      "role_mismatch": "Het verzoek noemt rol '{{body_role}}' maar wordt uitgevoerd als rol '{{acting_role}}'. De rol wordt meegegeven in de header X-Provisa-Role (of door de aangemelde identiteit); verwijder de andere rol of maak deze gelijk.",
+      "sql_parameters_do_not_fit": "De parameterwaarden passen niet bij de instructie: {{reason}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",

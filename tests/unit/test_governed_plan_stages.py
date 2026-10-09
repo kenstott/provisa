@@ -323,6 +323,28 @@ async def test_the_raw_stage_governs_a_repeated_statement_once(pipeline):
     assert pipeline.calls == {"context": 1, "govern": 1}
 
 
+async def test_the_raw_stage_governs_a_statement_with_placeholders_once_for_any_values(pipeline):
+    """REQ-1877, REQ-1937: /data/sql sends a statement's values apart from its text. The
+    statement with its placeholders is the kept unit; the values vary per request and are
+    bound, so a repeat with other values is neither governed nor parsed again."""
+    from provisa.compiler.params import require_parameters_fit, statement_placeholders
+
+    sql = "SELECT o.id FROM sales.orders o WHERE o.id = $1"
+    require_parameters_fit(sql, [1])
+    first = await pipeline.mod._govern_and_route(sql, "analyst", params=[1])
+    assert first.exec_params == [1] and "$1" in first.sql
+    assert pipeline.calls == {"context": 1, "govern": 1}
+    read_before = statement_placeholders.cache_info().misses
+    for value in (2, 3, "o'brien"):
+        require_parameters_fit(sql, [value])
+        again = await pipeline.mod._govern_and_route(sql, "analyst", params=[value])
+        assert again.sql == first.sql and again.exec_params == [value]
+    assert pipeline.calls == {"context": 1, "govern": 1}
+    assert statement_placeholders.cache_info().misses == read_before, (
+        "its placeholders were read again"
+    )
+
+
 async def test_the_two_stages_never_share_a_plan_for_the_same_text(pipeline):
     await pipeline.mod._govern_and_route(_SQL, "analyst")
     await _compiled(pipeline)

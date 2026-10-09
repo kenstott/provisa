@@ -173,6 +173,17 @@ Execute raw SQL through the Stage 2 governance pipeline. (REQ-267) [tool-verifie
 }
 ```
 
+`params` (optional) carries the values of the statement's `$1…$n` placeholders, in order, apart from its text:
+
+```json
+{
+  "sql": "SELECT id, amount FROM orders WHERE region = $1 AND amount > $2",
+  "params": ["us", 100]
+}
+```
+
+The values are bound when the statement runs — by the engine or the source's driver — and are never written into the statement, so a value cannot change what the statement is. They go with exactly one statement whose placeholders number them exactly: a batch of statements, a placeholder with no value or a value no placeholder takes is refused with `400` and code `data.sql_parameters_do_not_fit` before the statement is governed or run. A statement without placeholders is sent without `params`, as before. (REQ-1937)
+
 **Required capabilities:** `QUERY_DEVELOPMENT`.
 
 Governance violations on `POST /data/sql` return HTTP 403. (REQ-002, REQ-266)

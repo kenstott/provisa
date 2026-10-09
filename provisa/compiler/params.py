@@ -12,6 +12,7 @@
 
 # Requirements: REQ-301, REQ-211
 
+import functools
 import math
 import re as _re
 from collections.abc import Callable, Sequence
@@ -41,6 +42,55 @@ def substitute_positional_placeholders(
         sql = sql.replace(f"@{i}", text)
         sql = sql.replace(f"${i}", text)
     return sql
+
+
+class ParametersDoNotFit(ValueError):
+    """The values sent with a statement are not the values its placeholders number."""
+
+
+# What a ``$N`` can sit inside without being a placeholder: a string, a quoted identifier, a
+# comment, a dollar-quoted body (``$$…$$`` or ``$tag$…$tag$``, whose tag never starts with a
+# digit). Scanned left to right; the first alternative that matches at a position wins.
+_PLACEHOLDER_SCAN = _re.compile(
+    r"""
+      '(?:[^']|'')*'                      # a string; a quote inside it is doubled
+    | "(?:[^"]|"")*"                      # a quoted identifier
+    | --[^\n]*                            # a line comment
+    | /\*.*?\*/                           # a block comment
+    | \$(?P<tag>[A-Za-z_][A-Za-z_0-9]*)?\$.*?\$(?P=tag)?\$   # a dollar-quoted body
+    | \$(?P<number>\d+)                   # a placeholder
+    """,
+    _re.VERBOSE | _re.DOTALL,
+)
+
+
+@functools.lru_cache(maxsize=2048)
+def statement_placeholders(sql: str) -> tuple[int, ...]:
+    """The numbers of the ``$N`` placeholders ``sql`` holds, ascending, each once. A ``$5``
+    inside a string, a quoted identifier, a comment or a dollar-quoted body is text, not a
+    placeholder. Kept per statement text: a statement sent again with other values is not read
+    again (REQ-1877)."""
+    numbers = {int(found["number"]) for found in _PLACEHOLDER_SCAN.finditer(sql) if found["number"]}
+    return tuple(sorted(numbers))
+
+
+def require_parameters_fit(sql: str, params: Sequence[object]) -> None:
+    """Refuse (:class:`ParametersDoNotFit`), before anything is governed or run, a statement
+    whose placeholders are not exactly ``$1`` to ``$n`` for the ``n`` values sent with it."""
+    numbered = statement_placeholders(sql)
+    expected = tuple(range(1, len(params) + 1))
+    if numbered == expected:
+        return
+    missing = [f"${n}" for n in numbered if n not in expected]
+    unused = [f"${n}" for n in expected if n not in numbered]
+    if missing:
+        detail = f"placeholder {', '.join(missing)} has no value"
+    else:
+        detail = f"no placeholder takes value {', '.join(unused)}"
+    raise ParametersDoNotFit(
+        f"the statement holds {len(numbered)} placeholder(s) and {len(params)} value(s) were "
+        f"sent: {detail}"
+    )
 
 
 _PLACEHOLDER_RE = _re.compile(r"[$@](\d+)")
