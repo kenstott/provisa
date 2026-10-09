@@ -139,3 +139,66 @@ async def test_removing_ones_account_names_the_store_of_the_platform_grants(monk
     answer = await auth_router.delete_account(request, confirm="pat")
     assert seen == {"platform_db": state.platform_model_db, "user_id": "pat"}
     assert answer == {"removed": "pat"}
+
+
+# --- the gates of /admin/orgs read rights, and they too are asked with no org bound --------------
+
+
+class _NoOrgBoundRoles(_NoOrgBound):
+    """The org-routed role definitions refuse as the app's do; the deployment org's are named."""
+
+    platform_roles = {
+        "platform_admin": {"capabilities": ["cross_org"]},
+        "org_admin": {"capabilities": ["user_management"]},
+    }
+
+    @property
+    def roles(self):
+        raise RuntimeError("No active org bound (current_org unset).")
+
+
+_RULE = r"@example\.com$"
+
+
+def _request_of(*roles: str):
+    identity = SimpleNamespace(user_id="pat", roles=list(roles))
+    return SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=None))
+
+
+def test_listing_orgs_with_no_org_named_refuses_a_non_administrator_with_403(monkeypatch):
+    """GET /admin/orgs/ by someone who is not a platform administrator answered 500: the gate
+    read the bound org's role definitions and there was no bound org (suite run 37874425906,
+    "a non-admin lists orgs: HTTP 500")."""
+    import pytest
+
+    from provisa.api.admin import orgs_router
+    from provisa.api.errors import ApiError
+
+    monkeypatch.setattr("provisa.api.app.state", _NoOrgBoundRoles())
+    with pytest.raises(ApiError) as refused:
+        orgs_router._require_platform_admin(_request_of("org_admin"))  # noqa: SLF001
+    assert refused.value.status_code == 403
+    with pytest.raises(ApiError):
+        orgs_router._require_platform_admin(_request_of())  # noqa: SLF001
+
+
+def test_a_platform_administrator_passes_the_gate_with_no_org_named(monkeypatch):
+    from provisa.api.admin import orgs_router
+
+    monkeypatch.setattr("provisa.api.app.state", _NoOrgBoundRoles())
+    orgs_router._require_platform_admin(_request_of("platform_admin"))  # noqa: SLF001
+
+
+def test_an_auto_join_role_is_judged_by_the_deployment_orgs_definitions(monkeypatch):
+    """An org is created on a request bound to none; its auto-join role is still refused when it
+    carries a platform right, and accepted when it does not."""
+    import pytest
+
+    from provisa.api.admin import orgs_router
+    from provisa.api.errors import ApiError
+
+    monkeypatch.setattr("provisa.api.app.state", _NoOrgBoundRoles())
+    orgs_router._validate_org_policy(_RULE, True, "org_admin")  # noqa: SLF001
+    with pytest.raises(ApiError) as refused:
+        orgs_router._validate_org_policy(_RULE, True, "platform_admin")  # noqa: SLF001
+    assert refused.value.status_code == 403

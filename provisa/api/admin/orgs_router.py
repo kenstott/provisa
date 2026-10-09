@@ -54,15 +54,23 @@ _provisioning_tasks: set[concurrent.futures.Future[None]] = set()
 def _require_platform_admin(request: Request) -> None:  # REQ-042, REQ-125, REQ-1297
     """Raise 403 unless the caller holds ``cross_org`` — the right over org lifecycle (REQ-1337).
     Dev mode (anonymous) is allowed."""
-    from provisa.api.app import state as _app_state
-    from provisa.api.admin.capabilities import _resolved_capabilities
-
     identity = getattr(request.state, "identity", None)
     if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
         return  # dev mode — no auth configured
-    caps = _resolved_capabilities(identity, _app_state)
-    if not can_act_cross_org(caps):
+    if not can_act_cross_org(_platform_capabilities(identity)):
         raise ApiError(403, "orgs.platform_admin_required", "platform_admin required")
+
+
+def _platform_capabilities(identity) -> set[str]:  # REQ-1327, REQ-1337
+    """The rights ``identity`` holds as judged by the DEPLOYMENT org's role definitions, where the
+    platform grants live -- what every other surface reads ``cross_org`` from. These routes need no
+    org named, so a request may be bound to none; read from the bound org's definitions
+    (``state.roles``), the gate itself failed "No active org bound" and answered 500 where it owed
+    the list or a 403 (#187)."""
+    from provisa.api.app import state as _app_state
+    from provisa.security.rights import capabilities_for_claims
+
+    return capabilities_for_claims(getattr(identity, "roles", []) or [], _app_state.platform_roles)
 
 
 def _caller_user_id(request: Request) -> str | None:
@@ -198,7 +206,9 @@ def _validate_org_policy(
         from provisa.api.app import state as _app_state
         from provisa.security.rights import carries_platform_right
 
-        if carries_platform_right(auto_join_role, getattr(_app_state, "roles", {})):
+        # Judged by the deployment org's definitions, where platform rights are conferred: an org
+        # is created on a request bound to none (#187).
+        if carries_platform_right(auto_join_role, _app_state.platform_roles):
             raise ApiError(
                 403,
                 "orgs.auto_join_role_carries_platform_right",
@@ -651,11 +661,7 @@ async def org_status(org_id: str, request: Request):  # REQ-1266
         raise ApiError(404, "orgs.not_found", "Org not found")
     record = dict(row._mapping)
     if user_id not in (None, "anonymous") and record["created_by"] not in (None, user_id):
-        from provisa.api.app import state as _app_state
-        from provisa.api.admin.capabilities import _resolved_capabilities
-
-        caps = _resolved_capabilities(identity, _app_state)
-        if not can_act_cross_org(caps):
+        if not can_act_cross_org(_platform_capabilities(identity)):
             raise ApiError(403, "orgs.view_not_permitted", "Not permitted to view this org")
     return record
 
