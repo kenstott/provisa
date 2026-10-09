@@ -145,6 +145,7 @@ jobs:
         run: npx playwright install chromium
 
       - name: Run Playwright core lane
+        id: core
         working-directory: provisa-ui
         run: npx playwright test --project=core --reporter=list,html
         env:
@@ -159,4 +160,24 @@ jobs:
         with:
           name: playwright-report-core
           path: provisa-ui/playwright-report/
+          retention-days: 7
+
+      # The specs that bring source stacks up and down, one worker, after the rest of the lane has
+      # finished: a Docker network made or removed on the runner aborts whatever another worker's
+      # page is loading (playwright.config.ts PROVISIONING_SPECS). always(): a red first step does
+      # not hide this one's result. A report of its own, so neither overwrites the other.
+      - name: Run Playwright core lane, provisioning specs
+        if: always() && steps.core.conclusion != 'skipped'
+        working-directory: provisa-ui
+        run: npx playwright test --project=core-provisioning --workers=1 --reporter=list,html
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-provisioning
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Upload Playwright report, provisioning specs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-core-provisioning
+          path: provisa-ui/playwright-report-provisioning/
           retention-days: 7

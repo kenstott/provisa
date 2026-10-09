@@ -153,6 +153,22 @@ const SWAP_SPECS = ["**/engine-swap.spec.ts"];
 // arm64 host's emulation). The core project collects them only on an amd64 host — ui-e2e-core.yml's
 // ubuntu-latest runner — so an arm64 dev box never collects them rather than skipping them.
 const AMD64_ONLY_SPECS = ["**/source-to-query-exasol.spec.ts"];
+// Core-lane specs that bring a source's compose stack up and down while they run. Each stack is a
+// Docker bridge network made and removed on the host, and Chromium aborts every request in flight
+// when the host's interfaces change (net::ERR_NETWORK_CHANGED) -- in whichever worker's page is
+// loading at that moment (neo4j-container.ts records the same effect). In run 37874182519, 32 of
+// 99 failed attempts had a network change inside their own window against 2 of 181 passed ones.
+// They are their own project, "core-provisioning", run with ONE worker after "core" has finished
+// (ui-e2e-core.yml; `npm run test:e2e:core`): no other worker's page is loading while a network
+// changes, and a provisioning spec's own pages load only after its stack is up.
+const PROVISIONING_SPECS = [
+  "**/source-to-query.spec.ts",
+  "**/source-to-query-community-ext.spec.ts",
+  "**/source-to-query-exasol.spec.ts",
+  "**/source-to-query-generic-rdbms.spec.ts",
+  "**/source-to-query-olap-lake.spec.ts",
+  "**/source-to-query-streaming.spec.ts",
+];
 // The same, for a case that shares its file with others: matched by title (druid, in
 // source-to-query-olap-lake-trino.spec.ts).
 const AMD64_ONLY_TITLES = /\bdruid: /;
@@ -555,8 +571,15 @@ export default defineConfig({
               ...TRINO_SPECS,
               ...SWAP_SPECS,
               ...REGIONS_SPECS,
+              ...PROVISIONING_SPECS,
               ...(IS_AMD64 ? [] : AMD64_ONLY_SPECS),
             ],
+          },
+          {
+            // Run with --workers=1, after "core" (see PROVISIONING_SPECS).
+            name: "core-provisioning",
+            testMatch: PROVISIONING_SPECS,
+            testIgnore: IS_AMD64 ? [] : AMD64_ONLY_SPECS,
           },
         ]
       : []),
