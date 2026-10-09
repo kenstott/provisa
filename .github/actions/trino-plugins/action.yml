@@ -1,0 +1,71 @@
+name: Trino plugin cache
+description: >-
+  tests/conftest.py fetches the pinned Trino plugin jars (_TRINO_PLUGINS at _TRINO_PLUGIN_VERSION,
+  or at their own in _TRINO_PLUGIN_VERSIONS) from Maven Central when it collects the container
+  suite; a refused fetch there ends the job before any test runs (run 37573213103; release run
+  37874425655: HTTP 404 for a jar that exists). The jars are cached by that pin.
+
+  Used twice by every job that collects the container suite: `phase: restore` before the tests,
+  and `phase: save` after them with `if: always()` and the restore's `cache-hit`, so the jars
+  are saved whatever the tests' outcome once every one is present and Maven Central is asked
+  once per pin.
+inputs:
+  phase:
+    description: restore | save
+    required: true
+  cache-hit:
+    description: (save) the restore phase's `cache-hit` output; a hit is not saved again.
+    default: "false"
+outputs:
+  cache-hit:
+    description: (restore) whether the jars came from the cache.
+    value: ${{ steps.trino-plugins.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - name: Trino plugin pin
+      id: trino-pin
+      if: always()
+      shell: bash
+      run: |
+        python3 - >> "$GITHUB_OUTPUT" <<'EOF'
+        import ast
+        tree = ast.parse(open("tests/conftest.py").read())
+        pins = {
+            t.id: ast.literal_eval(n.value)
+            for n in tree.body if isinstance(n, ast.Assign)
+            for t in n.targets if isinstance(t, ast.Name)
+            and t.id in ("_TRINO_PLUGIN_VERSION", "_TRINO_PLUGINS", "_TRINO_PLUGIN_VERSIONS")
+        }
+        # A plugin named in _TRINO_PLUGIN_VERSIONS is fetched at its own version; the cache key
+        # carries each of those beside the pin, so moving any one of them is a new cache.
+        own = pins["_TRINO_PLUGIN_VERSIONS"]
+        versions = {n: own.get(n, pins["_TRINO_PLUGIN_VERSION"]) for n in pins["_TRINO_PLUGINS"]}
+        print("version=" + "_".join([pins["_TRINO_PLUGIN_VERSION"], *(f"{n}-{own[n]}" for n in sorted(own))]))
+        print("jars=" + " ".join(f"trino/plugins/{n}/{n}-{v}.jar" for n, v in versions.items()))
+        EOF
+
+    - name: Restore Trino plugins
+      id: trino-plugins
+      if: inputs.phase == 'restore'
+      uses: actions/cache/restore@v4
+      with:
+        path: trino/plugins/trino-*
+        key: trino-plugins-${{ steps.trino-pin.outputs.version }}
+
+    - name: Trino plugins fetched
+      id: trino-plugins-fetched
+      if: always() && inputs.phase == 'save' && inputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        for jar in ${{ steps.trino-pin.outputs.jars }}; do
+          if [ ! -s "$jar" ]; then echo "present=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+        done
+        echo "present=true" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Trino plugins
+      if: always() && inputs.phase == 'save' && steps.trino-plugins-fetched.outputs.present == 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: trino/plugins/trino-*
+        key: trino-plugins-${{ steps.trino-pin.outputs.version }}

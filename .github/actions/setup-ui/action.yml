@@ -1,0 +1,46 @@
+name: Set up the UI toolchain
+description: >-
+  Node, the UI's locked dependencies (`npm ci` in provisa-ui) and, when asked, Playwright's
+  Chromium. THE one place a job gets its UI toolchain.
+inputs:
+  node-version:
+    description: Node major version.
+    default: "22"
+  install:
+    description: >-
+      Run `npm ci`. False for a job whose own build script installs (packaging's build-wheel.sh
+      and the macOS installer scripts), which needs Node and the npm cache only.
+    default: "true"
+  playwright:
+    description: >-
+      none | chromium | chromium-with-deps. Plain `chromium` installs no system packages: the
+      ubuntu-24.04 runner image already carries Chromium's shared libraries and fonts, and the
+      apt refresh `--with-deps` triggers has stalled past a job's timeout when the mirror was
+      unreachable (run 32158624857: 28.5 minutes, zero tests run).
+    default: none
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: provisa-ui/package-lock.json
+
+    - name: Install UI deps
+      if: inputs.install == 'true'
+      shell: bash
+      working-directory: provisa-ui
+      run: npm ci
+
+    - name: Install Playwright browser
+      if: inputs.playwright == 'chromium'
+      shell: bash
+      working-directory: provisa-ui
+      run: npx playwright install chromium
+
+    - name: Install Playwright browser (with system packages)
+      if: inputs.playwright == 'chromium-with-deps'
+      shell: bash
+      working-directory: provisa-ui
+      run: npx playwright install --with-deps chromium

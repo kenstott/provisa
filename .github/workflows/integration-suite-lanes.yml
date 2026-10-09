@@ -113,74 +113,32 @@ jobs:
           echo "lane=${name//\//of}" >> "$GITHUB_OUTPUT"
           echo "compose=${{ hashFiles('docker-compose.core.yml', 'docker-compose.test.yml', 'docker-compose.e2e.yml') }}" >> "$GITHUB_OUTPUT"
 
-      - &install-uv
-        name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-          cache-dependency-glob: uv.lock
-
       # The SQL Server warehouse replica target (provisa/federation/mssql_warehouse_runtime.py)
       # connects through Microsoft's ODBC Driver 18, which the runner image does not ship; its
       # requires_sqlserver tests run in the suite shards.
       - &install-mssql-odbc
         name: Install Microsoft ODBC Driver 18 for SQL Server
-        # Bounded: core 2/6 once sat in this step for its whole job (run 37690884511, started
-        # 21:45Z and still here at 23:23Z). Nothing in it had a time limit: a download that
-        # stalls, or a package lock another process holds, waited for ever. Each transfer now
-        # gives up and is retried, apt waits a bounded time for the lock, and the step itself ends.
+        uses: ./.github/actions/mssql-odbc
+        # Bounds the whole install: core 2/6 once sat in it for its job's length (run 37690884511).
         timeout-minutes: 10
-        env:
-          DEBIAN_FRONTEND: noninteractive
-          CURL_OPTS: --fail --silent --show-error --location --connect-timeout 20 --max-time 120 --retry 5 --retry-all-errors
-          APT_OPTS: -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=300
-        run: |
-          curl $CURL_OPTS https://packages.microsoft.com/keys/microsoft.asc \
-            | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
-          curl $CURL_OPTS "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list" \
-            | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
-          sudo apt-get $APT_OPTS update -q
-          sudo ACCEPT_EULA=Y DEBIAN_FRONTEND=noninteractive apt-get $APT_OPTS install -y -q msodbcsql18 unixodbc-dev
-          odbcinst -q -d -n "ODBC Driver 18 for SQL Server"
 
-      - &install-deps
-        name: Install dependencies
-        run: |
-          uv sync --frozen --extra dev
-          uv pip install -e "provisa-client/[dev]" -q
+      - &setup-python
+        name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          cache: "true"
+          client: "true"
 
       # tests/conftest.py fetches the pinned Trino plugin jars (_TRINO_PLUGINS at
       # _TRINO_PLUGIN_VERSION, or at their own in _TRINO_PLUGIN_VERSIONS) from Maven Central at collection; a refused fetch there ends the lane
       # before any test runs. The jars are cached by that pin: restored here, saved after the lane
       # whatever its outcome once every jar is present, so Maven Central is hit once per pin.
-      - &trino-plugin-pin
-        name: Trino plugin pin
-        id: trino-pin
-        run: |
-          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
-          import ast
-          tree = ast.parse(open("tests/conftest.py").read())
-          pins = {
-              t.id: ast.literal_eval(n.value)
-              for n in tree.body if isinstance(n, ast.Assign)
-              for t in n.targets if isinstance(t, ast.Name)
-              and t.id in ("_TRINO_PLUGIN_VERSION", "_TRINO_PLUGINS", "_TRINO_PLUGIN_VERSIONS")
-          }
-          # A plugin named in _TRINO_PLUGIN_VERSIONS is fetched at its own version; the cache key
-          # carries each of those beside the pin, so moving any one of them is a new cache.
-          own = pins["_TRINO_PLUGIN_VERSIONS"]
-          versions = {n: own.get(n, pins["_TRINO_PLUGIN_VERSION"]) for n in pins["_TRINO_PLUGINS"]}
-          print("version=" + "_".join([pins["_TRINO_PLUGIN_VERSION"], *(f"{n}-{own[n]}" for n in sorted(own))]))
-          print("jars=" + " ".join(f"trino/plugins/{n}/{n}-{v}.jar" for n, v in versions.items()))
-          EOF
-
       - &restore-trino-plugins
         name: Restore Trino plugins
         id: trino-plugins
-        uses: actions/cache/restore@v4
+        uses: ./.github/actions/trino-plugins
         with:
-          path: trino/plugins/trino-*
-          key: trino-plugins-${{ steps.trino-pin.outputs.version }}
+          phase: restore
 
       # Images this lane pulled last time, so a run is not dominated by pulls. Keyed on the compose
       # files: a changed image tag is a new key.
@@ -286,23 +244,13 @@ jobs:
           path: ~/images.tar.zst
           key: images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}
 
-      - &trino-plugins-fetched
-        name: Trino plugins fetched
-        id: trino-plugins-fetched
-        if: always() && steps.trino-plugins.outputs.cache-hit != 'true'
-        run: |
-          for jar in ${{ steps.trino-pin.outputs.jars }}; do
-            if [ ! -s "$jar" ]; then echo "present=false" >> "$GITHUB_OUTPUT"; exit 0; fi
-          done
-          echo "present=true" >> "$GITHUB_OUTPUT"
-
       - &cache-trino-plugins
         name: Cache Trino plugins
-        if: always() && steps.trino-plugins-fetched.outputs.present == 'true'
-        uses: actions/cache/save@v4
+        if: always()
+        uses: ./.github/actions/trino-plugins
         with:
-          path: trino/plugins/trino-*
-          key: trino-plugins-${{ steps.trino-pin.outputs.version }}
+          phase: save
+          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
 
       - &upload
         name: Upload results
@@ -326,10 +274,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}
-      - *install-uv
-      - *install-deps
+      - *setup-python
 
-      - *trino-plugin-pin
       - *restore-trino-plugins
 
       - name: Install minikube and helm
@@ -348,7 +294,6 @@ jobs:
         run: |
           uv run python scripts/ci/run_lane.py cluster --junitxml results/cluster/junit.xml
 
-      - *trino-plugins-fetched
       - *cache-trino-plugins
 
       - name: Upload results
@@ -432,11 +377,9 @@ jobs:
         with:
           # Nightly: the integration branch. On demand: the ref asked for.
           ref: ${{ github.event_name == 'schedule' && 'integration' || inputs.ref || github.sha }}
-      - *install-uv
       - *install-mssql-odbc  # Fabric's SQL endpoint is reached through ODBC Driver 18
-      - *install-deps
+      - *setup-python
 
-      - *trino-plugin-pin
       - *restore-trino-plugins
 
       # Every credential the lane needs, checked before anything runs: a missing one fails the lane
@@ -501,7 +444,6 @@ jobs:
       - name: Run lane
         run: uv run python scripts/ci/run_lane.py warehouse --junitxml results/warehouse/junit.xml
 
-      - *trino-plugins-fetched
       - *cache-trino-plugins
 
       - name: Upload results
@@ -534,10 +476,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}
-      - *install-uv
-      - *install-deps
+      - *setup-python
 
-      - *trino-plugin-pin
       - *restore-trino-plugins
 
       # A missing credential fails the lane by name rather than surfacing as a skipped test.
@@ -585,7 +525,6 @@ jobs:
           path: *salesforce-describe
           key: salesforce-describe-${{ steps.org.outputs.digest }}-${{ github.run_id }}
 
-      - *trino-plugins-fetched
       - *cache-trino-plugins
 
       - name: Upload results

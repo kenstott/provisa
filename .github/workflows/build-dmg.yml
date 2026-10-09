@@ -174,18 +174,16 @@ jobs:
           python-version: '3.12'
 
       - name: Set up Node 20 (vite build)
-        uses: actions/setup-node@v4
+        uses: ./.github/actions/setup-ui
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: provisa-ui/package-lock.json
+          node-version: "20"
 
       - name: Install docs-site build deps (mkdocs)
-        run: pip install mkdocs-material pymdown-extensions mkdocs-static-i18n
+        uses: ./.github/actions/docs-site-deps
 
       - name: Build UI SPA into static/
         run: |
-          ( cd provisa-ui && npm ci && npm run build )
+          ( cd provisa-ui && npm run build )
           cp -r provisa-ui/dist/. static/
 
       - name: Pull core images and build zaychik
@@ -272,18 +270,16 @@ jobs:
           python-version: '3.12'
 
       - name: Set up Node 20 (vite build)
-        uses: actions/setup-node@v4
+        uses: ./.github/actions/setup-ui
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: provisa-ui/package-lock.json
+          node-version: "20"
 
       - name: Install docs-site build deps (mkdocs)
-        run: pip install mkdocs-material pymdown-extensions mkdocs-static-i18n
+        uses: ./.github/actions/docs-site-deps
 
       - name: Build UI SPA into static/
         run: |
-          ( cd provisa-ui && npm ci && npm run build )
+          ( cd provisa-ui && npm run build )
           cp -r provisa-ui/dist/. static/
 
       - name: Pull core images (amd64), build zaychik and provisa
@@ -482,19 +478,20 @@ jobs:
           python-version: '3.12'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: ./.github/actions/setup-python
+        with:
+          sync: "false"
 
       - name: Set up Node 20 (vite build)
-        uses: actions/setup-node@v4
+        uses: ./.github/actions/setup-ui
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: provisa-ui/package-lock.json
+          node-version: "20"
+          install: "false"
 
       # build-wheel.sh runs `npm run build`, whose prebuild hook renders the offline
       # MkDocs site into provisa/_ui; without mkdocs on PATH it fails with ENOENT.
       - name: Install docs-site build deps (mkdocs)
-        run: pip install mkdocs-material pymdown-extensions mkdocs-static-i18n
+        uses: ./.github/actions/docs-site-deps
 
       - name: Stamp version and build wheel (bundles UI + config + buenavista)
         run: |
@@ -744,39 +741,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Import Apple signing certificate
-        env:
-          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
-          APPLE_CERT_P12_PASSWORD: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
-        run: |
-          if [ -z "$APPLE_CERT_P12_BASE64" ]; then
-            echo "No Apple signing certificate configured — skipping import"
-            exit 0
-          fi
-          echo "$APPLE_CERT_P12_BASE64" | base64 --decode > /tmp/signing.p12
-          security create-keychain -p "" build.keychain
-          security unlock-keychain -p "" build.keychain
-          # A new keychain locks itself after 5 idle minutes; the build runs longer than that
-          # before it signs, and a locked keychain makes codesign wait for a password forever.
-          security set-keychain-settings -lut 21600 build.keychain
-          security list-keychains -d user -s build.keychain \
-            $(security list-keychains -d user | tr -d '"' | tr '\n' ' ')
-          security import /tmp/signing.p12 \
-            -k build.keychain \
-            -P "$APPLE_CERT_P12_PASSWORD" \
-            -T /usr/bin/codesign \
-            -T /usr/bin/xcrun
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s -k "" build.keychain
-          rm /tmp/signing.p12
-          security find-identity -v -p codesigning build.keychain
+        uses: ./.github/actions/apple-signing
+        with:
+          p12-base64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: ./.github/actions/setup-ui
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: provisa-ui/package-lock.json
+          node-version: "20"
+          install: "false"
 
       - name: Build DMG
         env:
@@ -815,39 +789,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Import Apple signing certificate
-        env:
-          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
-          APPLE_CERT_P12_PASSWORD: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
-        run: |
-          if [ -z "$APPLE_CERT_P12_BASE64" ]; then
-            echo "No Apple signing certificate configured — skipping import"
-            exit 0
-          fi
-          echo "$APPLE_CERT_P12_BASE64" | base64 --decode > /tmp/signing.p12
-          security create-keychain -p "" build.keychain
-          security unlock-keychain -p "" build.keychain
-          # A new keychain locks itself after 5 idle minutes; the build runs longer than that
-          # before it signs, and a locked keychain makes codesign wait for a password forever.
-          security set-keychain-settings -lut 21600 build.keychain
-          security list-keychains -d user -s build.keychain \
-            $(security list-keychains -d user | tr -d '"' | tr '\n' ' ')
-          security import /tmp/signing.p12 \
-            -k build.keychain \
-            -P "$APPLE_CERT_P12_PASSWORD" \
-            -T /usr/bin/codesign \
-            -T /usr/bin/xcrun
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s -k "" build.keychain
-          rm /tmp/signing.p12
-          security find-identity -v -p codesigning build.keychain
+        uses: ./.github/actions/apple-signing
+        with:
+          p12-base64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: ./.github/actions/setup-ui
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: provisa-ui/package-lock.json
+          node-version: "20"
+          install: "false"
 
       - name: Build Container DMG
         env:
@@ -897,31 +848,10 @@ jobs:
           path: trino/plugins/
 
       - name: Import Apple signing certificate
-        env:
-          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
-          APPLE_CERT_P12_PASSWORD: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
-        run: |
-          if [ -z "$APPLE_CERT_P12_BASE64" ]; then
-            echo "No Apple signing certificate configured — skipping import"
-            exit 0
-          fi
-          echo "$APPLE_CERT_P12_BASE64" | base64 --decode > /tmp/signing.p12
-          security create-keychain -p "" build.keychain
-          security unlock-keychain -p "" build.keychain
-          # A new keychain locks itself after 5 idle minutes; the build runs longer than that
-          # before it signs, and a locked keychain makes codesign wait for a password forever.
-          security set-keychain-settings -lut 21600 build.keychain
-          security list-keychains -d user -s build.keychain \
-            $(security list-keychains -d user | tr -d '"' | tr '\n' ' ')
-          security import /tmp/signing.p12 \
-            -k build.keychain \
-            -P "$APPLE_CERT_P12_PASSWORD" \
-            -T /usr/bin/codesign \
-            -T /usr/bin/xcrun
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s -k "" build.keychain
-          rm /tmp/signing.p12
+        uses: ./.github/actions/apple-signing
+        with:
+          p12-base64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
 
       - name: Build Obs DMG
         env:
@@ -969,31 +899,10 @@ jobs:
           path: trino/plugins/
 
       - name: Import Apple signing certificate
-        env:
-          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
-          APPLE_CERT_P12_PASSWORD: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
-        run: |
-          if [ -z "$APPLE_CERT_P12_BASE64" ]; then
-            echo "No Apple signing certificate configured — skipping import"
-            exit 0
-          fi
-          echo "$APPLE_CERT_P12_BASE64" | base64 --decode > /tmp/signing.p12
-          security create-keychain -p "" build.keychain
-          security unlock-keychain -p "" build.keychain
-          # A new keychain locks itself after 5 idle minutes; the build runs longer than that
-          # before it signs, and a locked keychain makes codesign wait for a password forever.
-          security set-keychain-settings -lut 21600 build.keychain
-          security list-keychains -d user -s build.keychain \
-            $(security list-keychains -d user | tr -d '"' | tr '\n' ' ')
-          security import /tmp/signing.p12 \
-            -k build.keychain \
-            -P "$APPLE_CERT_P12_PASSWORD" \
-            -T /usr/bin/codesign \
-            -T /usr/bin/xcrun
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s -k "" build.keychain
-          rm /tmp/signing.p12
+        uses: ./.github/actions/apple-signing
+        with:
+          p12-base64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
 
       - name: Build Demo DMG
         env:
@@ -1075,9 +984,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+        uses: ./.github/actions/setup-ui
 
       - name: Set up Python (offline docs site)
         uses: actions/setup-python@v5
@@ -1085,12 +992,11 @@ jobs:
           python-version: '3.12'
 
       - name: Install MkDocs (offline docs site)
-        run: pip install mkdocs-material pymdown-extensions mkdocs-static-i18n
+        uses: ./.github/actions/docs-site-deps
 
       - name: Build provisa-ui
         run: |
           cd provisa-ui
-          npm ci
           npm run build
 
       - name: Upload dist artifact

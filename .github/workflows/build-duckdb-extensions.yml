@@ -37,11 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-
-      - name: Sync (pins DuckDB + provisa; the mirror derives the list from the connector defs)
-        run: uv sync --frozen --extra dev
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
 
       # packaging/duckdb-ext/pyproject.toml is the source of truth for the DuckDB version these blobs
       # are built for. The root lock resolves duckdb through the PUBLISHED provisa-duckdb-ext, so a

@@ -30,16 +30,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-
-      - name: Install deps
-        run: uv sync --frozen --extra dev
-
-      - name: Install provisa-client (editable)
-        # tests/unit/test_client_encryption.py and test_client_role.py import provisa_client — the
-        # sibling package (versioned/shipped independently), not part of this project's own deps.
-        run: uv pip install -e "provisa-client/[dev]" -q
+      # client: tests/unit/test_client_encryption.py and test_client_role.py import provisa_client —
+      # the sibling package (versioned/shipped independently), not part of this project's own deps.
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          client: "true"
 
       - name: Run unit tests
         # faulthandler_timeout: a test still running after five minutes has every thread's stack

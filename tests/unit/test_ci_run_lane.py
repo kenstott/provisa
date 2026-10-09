@@ -184,27 +184,67 @@ def _job_steps(job: str) -> list[dict]:
     return workflow["jobs"][job]["steps"]
 
 
+def _plugin_cache_action() -> list[dict]:
+    import yaml
+
+    action = REPO / ".github" / "actions" / "trino-plugins" / "action.yml"
+    return yaml.safe_load(action.read_text())["runs"]["steps"]
+
+
+_RESTORE = {"uses": "./.github/actions/trino-plugins", "with": {"phase": "restore"}}
+_SAVE = {
+    "uses": "./.github/actions/trino-plugins",
+    "with": {"phase": "save", "cache-hit": "${{ steps.trino-plugins.outputs.cache-hit }}"},
+}
+
+
+def _plugin_cache_steps(steps: list[dict]) -> tuple[int, int]:
+    """Where a job restores and saves the Trino plugins through the one action that does it;
+    asserts each call is the action's, unaltered."""
+    by_name = {step.get("name"): (i, step) for i, step in enumerate(steps)}
+    at_restore, restore = by_name["Restore Trino plugins"]
+    at_save, save = by_name["Cache Trino plugins"]
+    assert restore["id"] == "trino-plugins"
+    assert {k: restore[k] for k in _RESTORE} == _RESTORE
+    assert {k: save[k] for k in _SAVE} == _SAVE
+    assert "always()" in save["if"]
+    return at_restore, at_save
+
+
 @pytest.mark.parametrize("job", ["suite", "cluster", "warehouse", "salesforce"])
 def test_every_collecting_job_caches_the_pinned_trino_plugins_around_its_lane(job):
     """tests/conftest.py fetches the pinned Trino plugin jars from Maven Central at collection, and
     a refused fetch ended the lane before any test ran (run 37573213103: neo4j 403, kafka 404).
-    Each job that collects tests restores them by pin before its lane and saves them after."""
+    Each job that collects tests restores them by pin before its lane and saves them after --
+    through .github/actions/trino-plugins, so no job can carry a copy that has drifted."""
     steps = _job_steps(job)
-    names = [step.get("name") for step in steps]
-    lane = names.index("Run lane")
-    assert names.index("Trino plugin pin") < names.index("Restore Trino plugins") < lane
-    assert lane < names.index("Trino plugins fetched") < names.index("Cache Trino plugins")
-    by_name = {step.get("name"): step for step in steps}
+    lane = [step.get("name") for step in steps].index("Run lane")
+    at_restore, at_save = _plugin_cache_steps(steps)
+    assert at_restore < lane < at_save
+
+
+def test_the_plugin_cache_action_restores_and_saves_under_one_key():
+    by_name = {step["name"]: step for step in _plugin_cache_action()}
+    assert list(by_name) == [
+        "Trino plugin pin",
+        "Restore Trino plugins",
+        "Trino plugins fetched",
+        "Cache Trino plugins",
+    ]
     restored = by_name["Restore Trino plugins"]["with"]
     assert by_name["Cache Trino plugins"]["with"] == restored
     assert restored["key"] == "trino-plugins-${{ steps.trino-pin.outputs.version }}"
-    assert "always()" in by_name["Cache Trino plugins"]["if"]
+    assert "inputs.phase == 'restore'" in by_name["Restore Trino plugins"]["if"]
+    # Saved whatever the tests' outcome, and only when the restore missed and every jar is there.
+    for step in ("Trino plugins fetched", "Cache Trino plugins"):
+        assert "always()" in by_name[step]["if"] and "inputs.phase == 'save'" in by_name[step]["if"]
+    assert "inputs.cache-hit != 'true'" in by_name["Trino plugins fetched"]["if"]
 
 
 def test_the_trino_plugin_pin_step_names_the_harness_pin():
     import subprocess
 
-    pin = next(s for s in _job_steps("suite") if s.get("name") == "Trino plugin pin")
+    pin = next(s for s in _plugin_cache_action() if s.get("name") == "Trino plugin pin")
     script = pin["run"].replace('>> "$GITHUB_OUTPUT" ', "")
     out = subprocess.run(  # noqa: S603 — the workflow's own step, run at the repo root
         ["bash", "-c", script], cwd=REPO, capture_output=True, text=True, check=True
@@ -357,14 +397,7 @@ def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_
     tests/integration, tests/steps or tests/e2e, and a refused fetch ends the run before any
     test. The release run of the amd64-only engines workflow stopped there (37874425655: HTTP 404
     for a jar that exists): it was the one job that collected those tests without the suite's
-    cache. Every such job carries the suite's four steps, unchanged, so they share one cache."""
-    suite = {s.get("name"): s for s in _job_steps("suite")}
-    cache_steps = (
-        "Trino plugin pin",
-        "Restore Trino plugins",
-        "Trino plugins fetched",
-        "Cache Trino plugins",
-    )
+    cache. Every such job restores and saves through the one plugin-cache action."""
     collecting, in_a_guest = [], []
     for workflow, job, steps in _workflow_jobs():
         runs = [(i, s.get("run") or "") for i, s in enumerate(steps)]
@@ -387,14 +420,10 @@ def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_
             continue
         collecting.append(f"{workflow}:{job}")
         names = [s.get("name") for s in steps]
-        by_name = {s.get("name"): s for s in steps}
-        for step in cache_steps:
-            assert step in names, f"{workflow}:{job} collects the container suite without {step!r}"
-            assert by_name[step] == suite[step], (
-                f"{workflow}:{job}: {step!r} differs from the suite's"
-            )
-        assert (
-            names.index("Restore Trino plugins") < tests_at[0] < names.index("Cache Trino plugins")
+        assert "Restore Trino plugins" in names and "Cache Trino plugins" in names, (
+            f"{workflow}:{job} collects the container suite without the Trino plugin cache"
         )
+        at_restore, at_save = _plugin_cache_steps(steps)
+        assert at_restore < tests_at[0] < at_save, f"{workflow}:{job}"
     assert "amd64-engines.yml:exasol" in collecting and len(collecting) >= 5, collecting
     assert in_a_guest == ["nixos.yml:lane"], in_a_guest

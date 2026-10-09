@@ -1,0 +1,11 @@
+name: Install the docs-site build dependencies
+description: >-
+  MkDocs and the plugins the documentation site is built with. The UI's prebuild
+  (provisa-ui/scripts/build-docs-site.mjs) builds the offline docs site, so every job that
+  runs `npm run build` needs these, as does the docs deploy.
+runs:
+  using: composite
+  steps:
+    - name: Install docs-site build deps (mkdocs)
+      shell: bash
+      run: pip install mkdocs-material pymdown-extensions mkdocs-static-i18n

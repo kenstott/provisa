@@ -80,8 +80,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
+      # demo/sources/sqlserver/prime.py connects with pyodbc through "ODBC Driver 18 for SQL Server",
+      # which the runner image does not carry. Without it the primer could never connect, reported
+      # only "sqlserver ... did not become ready", and the generic-RDBMS spec's whole stack failed
+      # to provision: mariadb failed and the nine cases after it did not run (run 37874182519).
+      - name: Install Microsoft ODBC Driver 18 for SQL Server
+        uses: ./.github/actions/mssql-odbc
+        timeout-minutes: 10
 
       # playwright.config.ts's webServer commands invoke `.venv/bin/uvicorn` by path, so the
       # environment must be a real repo-root .venv — uv sync creates exactly that.
@@ -92,57 +97,27 @@ jobs:
       # demo/sources/saphana/prime.py's own dependency and the product's own hana+hdbcli driver —
       # source-to-query-generic-rdbms.spec.ts's saphana case runs for real on this runner (a genuine
       # amd64 host, see that spec's RUNNING_IN_CI gate).
-      # demo/sources/sqlserver/prime.py connects with pyodbc through "ODBC Driver 18 for SQL Server",
-      # which the runner image does not carry. Without it the primer could never connect, reported
-      # only "sqlserver ... did not become ready", and the generic-RDBMS spec's whole stack failed
-      # to provision: mariadb failed and the nine cases after it did not run (run 37874182519).
-      # The same step as the integration suite's lanes.
-      - name: Install Microsoft ODBC Driver 18 for SQL Server
-        # Bounded: core 2/6 once sat in this step for its whole job (run 37690884511, started
-        # 21:45Z and still here at 23:23Z). Nothing in it had a time limit: a download that
-        # stalls, or a package lock another process holds, waited for ever. Each transfer now
-        # gives up and is retried, apt waits a bounded time for the lock, and the step itself ends.
-        timeout-minutes: 10
-        env:
-          DEBIAN_FRONTEND: noninteractive
-          CURL_OPTS: --fail --silent --show-error --location --connect-timeout 20 --max-time 120 --retry 5 --retry-all-errors
-          APT_OPTS: -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=300
-        run: |
-          curl $CURL_OPTS https://packages.microsoft.com/keys/microsoft.asc \
-            | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
-          curl $CURL_OPTS "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list" \
-            | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
-          sudo apt-get $APT_OPTS update -q
-          sudo ACCEPT_EULA=Y DEBIAN_FRONTEND=noninteractive apt-get $APT_OPTS install -y -q msodbcsql18 unixodbc-dev
-          odbcinst -q -d -n "ODBC Driver 18 for SQL Server"
-
       # `gx` and `soda` are the two data-quality checkers the demo model this lane serves registers
       # as sources (dq-checker, dq-soda; pyproject's REQ-1443 notes). Without them each scan exits
       # "checker ... is not installed", its results table can never be built, and every request
       # that reads the whole model fails on it: the seven `MATCH (n) ...` Cypher cases answered 500
       # (ReplicaBuildFailed for dq-checker.quality.pets_scan) and the checker specs had nothing to
       # show (run 37874182519 on v0.1.0-alpha.477).
-      - name: Install Python deps
-        run: uv sync --frozen --extra dev --extra cassandra --extra saphana --extra gx --extra soda
-
-      - uses: actions/setup-node@v4
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: provisa-ui/package-lock.json
-
-      - name: Install UI deps
-        working-directory: provisa-ui
-        run: npm ci
+          extras: dev cassandra saphana gx soda
 
       # No --with-deps: the ubuntu-24.04 runner image already carries chromium's shared
       # libraries and fonts, and the apt refresh it triggers has stalled past the job
       # timeout when the azure mirror is unreachable (run 32158624857: 28.5 minutes on
       # `Get:5 ... noble-security InRelease`, zero tests run).
-      - name: Install Playwright browser
-        working-directory: provisa-ui
-        timeout-minutes: 6
-        run: npx playwright install chromium
+      - name: Set up the UI toolchain
+        uses: ./.github/actions/setup-ui
+        # Bounds Node, `npm ci` and the browser download together (the browser alone had 6).
+        timeout-minutes: 12
+        with:
+          playwright: chromium
 
       - name: Run Playwright core lane
         id: core

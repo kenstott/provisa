@@ -1,0 +1,46 @@
+name: Set up Python (uv)
+description: >-
+  Install uv and, unless `sync` is false, the project's locked dependencies with the named
+  extras. THE one place a job gets its Python environment: a lane that needs another extra
+  names it here, so two lanes cannot differ by an install step one of them forgot.
+inputs:
+  extras:
+    description: Space-separated extras for `uv sync` (each becomes `--extra <name>`).
+    default: dev
+  client:
+    description: Also install provisa-client with its dev extra (the container suite's lanes).
+    default: "false"
+  cache:
+    description: Keep uv's download cache between runs, keyed on uv.lock.
+    default: "false"
+  sync:
+    description: Run `uv sync`. False installs uv alone (a job that only calls `uv build`/`uvx`).
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      if: inputs.cache != 'true'
+      uses: astral-sh/setup-uv@v6
+
+    - name: Install uv (cached)
+      if: inputs.cache == 'true'
+      uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
+        cache-dependency-glob: uv.lock
+
+    - name: Install dependencies
+      if: inputs.sync == 'true'
+      shell: bash
+      env:
+        EXTRAS: ${{ inputs.extras }}
+        CLIENT: ${{ inputs.client }}
+      run: |
+        set -euo pipefail
+        args=()
+        for extra in $EXTRAS; do args+=(--extra "$extra"); done
+        uv sync --frozen "${args[@]}"
+        if [ "$CLIENT" = "true" ]; then
+          uv pip install -e "provisa-client/[dev]" -q
+        fi
