@@ -76,14 +76,27 @@ def rights_for(field: str, *, sensitive: bool, editor: bool) -> tuple[str, ...] 
     covers it."""
     if sensitive:
         return (SENSITIVE_DATA,)
-    if field in ("visible_to", "scope"):
-        # Who is served a column is its grant list read with its scope (REQ-1959): one right.
+    if field == "visible_to":
+        return VISIBILITY_RIGHTS
+    if field == "scope":
+        # Reached for a change that WIDENS who is served the column (:func:`scope_widens`); a
+        # narrowing is the table editor's own to make.
         return VISIBILITY_RIGHTS
     if field in _MASK_FIELDS:
         return MASK_RIGHTS
     if field in _FAKE_FIELDS:
         return None if editor else GOVERNANCE_RIGHTS
     raise ValueError(f"{field!r} is not a hiding field")
+
+
+#: Who a scope serves, narrowest first (REQ-1959): the roles a grant names; the roles that
+#: reach the table's domain; roles outside it too.
+_SCOPE_REACH = {"restricted": 0, "domain": 1, "public": 2}
+
+
+def scope_widens(before: str, after: str) -> bool:
+    """Whether changing a column's scope from ``before`` to ``after`` serves it to more roles."""
+    return _SCOPE_REACH[after] > _SCOPE_REACH[before]
 
 
 async def stored_table(conn: "Connection", model: Any) -> dict | None:
@@ -128,7 +141,18 @@ async def hiding_refusal(
         for field in HIDING_FIELDS:
             if _value(before, field) == _value(column, field):
                 continue
-            rights = rights_for(field, sensitive=column.name in sensitive, editor=editor)
+            tagged = column.name in sensitive
+            if (
+                field == "scope"
+                and editor
+                and not tagged
+                and not scope_widens(_value(before, field), _value(column, field))
+            ):
+                # Narrowing who is served a column is the table editor's to do, as setting its
+                # scope always was; only widening it needs the right to grant (REQ-1959). On a
+                # sensitive column every change needs sensitive_data (REQ-1943), below.
+                continue
+            rights = rights_for(field, sensitive=tagged, editor=editor)
             if rights is None:
                 continue
             refusal = right_domain_refusal(identity, state, rights, domains)
