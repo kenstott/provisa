@@ -62,6 +62,30 @@ class ApiAuthOAuth2ClientCredentials(BaseModel):  # REQ-320
     scope: str | None = None
 
 
+class ApiAuthOAuth2RefreshToken(BaseModel):  # REQ-320
+    """A person's standing approval of a client: the refresh token their sign-in issued is
+    exchanged for a short-lived access token at each call (RFC 6749 section 6)."""
+
+    type: Literal["oauth2_refresh_token"] = "oauth2_refresh_token"
+    client_id: str
+    client_secret: str
+    refresh_token: str
+    token_url: str
+    scope: str | None = None
+
+
+class ApiAuthGoogleServiceAccount(BaseModel):  # REQ-320
+    """A Google service account reading as ``subject``, an account of a Workspace domain that
+    has delegated ``scopes`` to it. ``key`` is the account's key file, JSON, as Google issues
+    it; the same key reads as any account the domain allows, so the account read is stated
+    here and not in the key."""
+
+    type: Literal["google_service_account"] = "google_service_account"
+    key: str
+    subject: str
+    scopes: list[str] = Field(min_length=1)
+
+
 class ApiAuthCustomHeaders(BaseModel):  # REQ-320
     type: Literal["custom_headers"] = "custom_headers"
     headers: dict[str, str]
@@ -74,6 +98,8 @@ ApiAuth = Annotated[
         ApiAuthBasic,
         ApiAuthApiKey,
         ApiAuthOAuth2ClientCredentials,
+        ApiAuthOAuth2RefreshToken,
+        ApiAuthGoogleServiceAccount,
         ApiAuthCustomHeaders,
     ],
     Field(discriminator="type"),

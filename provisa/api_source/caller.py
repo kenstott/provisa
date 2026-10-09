@@ -382,7 +382,9 @@ def _apply_auth(auth, headers: dict, query_params: dict) -> None:  # REQ-320
         ApiAuthBearer,
         ApiAuthBasic,
         ApiAuthApiKey,
+        ApiAuthGoogleServiceAccount,
         ApiAuthOAuth2ClientCredentials,
+        ApiAuthOAuth2RefreshToken,
         ApiAuthCustomHeaders,
         ApiKeyLocation,
     )
@@ -416,6 +418,10 @@ def _apply_auth(auth, headers: dict, query_params: dict) -> None:  # REQ-320
         case ApiAuthOAuth2ClientCredentials() as oauth:
             token = _fetch_oauth2_token(oauth)
             headers["Authorization"] = f"Bearer {token}"
+        case ApiAuthOAuth2RefreshToken() | ApiAuthGoogleServiceAccount():
+            from provisa.api_source.oauth_grants import access_token
+
+            headers["Authorization"] = f"Bearer {access_token(auth)}"
         case ApiAuthCustomHeaders(headers=h):
             for k, v in h.items():
                 headers[k] = resolve_secrets(v)
