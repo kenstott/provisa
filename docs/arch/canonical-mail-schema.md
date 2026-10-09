@@ -1,7 +1,8 @@
 # Canonical mail, calendar and task tables
 
-Status: agreed. Written by the Exchange teammate, co-signed by the Gmail teammate on 2026-10-09.
-Awaiting the maintainer.
+Status: agreed by both source teammates on 2026-10-09 and approved by the maintainer as the
+basis of the mail tables. The tables and enumerations below are generated from
+`provisa/core/canonical_mail.py`, which both loaders import; change that module, then this file.
 
 The Google Workspace source and the Microsoft 365 source each produce every table below with the
 same column names, types, order and meaning, so `UNION ALL` of the two needs no cast or rename.
@@ -30,14 +31,20 @@ same column names, types, order and meaning, so `UNION ALL` of the two needs no 
    type; an array or list in a store's own vocabulary is collapsed to `text`
    (`ir_types.py:116`, `:151`). Where rows are needed for a join, a child table carries the
    same fact as rows (`message_folders`, `message_recipients`, `event_attendees`).
+   A `json` column that states its shape, as `json (text list)` does, has a JSON Schema for it
+   in the module (`JSON_SHAPES`); one that states none holds what its provider gives.
 9. An enumeration column holds a canonical value. Each provider declares a table from its
    values to the canonical ones; a provider value the table does not list fails the build of
-   that table by name. A row in a table below that maps to NULL is a declared mapping. Where a
-   vendor says its own set is open, the table carries a declared catch-all and says so.
+   that table by name. A row in a table below that maps to NULL is a declared mapping. The
+   folder role alone has a declared catch-all.
 
 P = populated by: G Google, M Microsoft, GM both.
 
+<!-- tables: generated from provisa/core/canonical_mail.py (render_tables) -->
+
 ## messages
+
+`folder_id` (single) is not a column: it is the same fact as `folder_ids`.
 
 | # | column | type | P | Google | Microsoft |
 |---|---|---|---|---|---|
@@ -84,21 +91,19 @@ P = populated by: G Google, M Microsoft, GM both.
 | 41 | flag_due_at | timestamp | M | NULL | flag.dueDateTime |
 | 42 | flag_completed_at | timestamp | M | NULL | flag.completedDateTime |
 
-`folder_id` (single) is not a column: it is the same fact as `folder_ids`.
-
 ## message_recipients
 
 Names beside addresses, as rows. `kind`: `from`, `sender`, `to`, `cc`, `bcc`, `reply_to`.
 
-| # | column | type | P |
-|---|---|---|---|
-| 1 | provider | text | GM |
-| 2 | account | text | GM |
-| 3 | message_id | text | GM |
-| 4 | kind | text enum | GM |
-| 5 | position | bigint | GM |
-| 6 | address | text | GM |
-| 7 | name | text | GM |
+| # | column | type | P | Google | Microsoft |
+|---|---|---|---|---|---|
+| 1 | provider | text | GM |  |  |
+| 2 | account | text | GM |  |  |
+| 3 | message_id | text | GM |  |  |
+| 4 | kind | text enum | GM |  |  |
+| 5 | position | bigint | GM |  |  |
+| 6 | address | text | GM |  |  |
+| 7 | name | text | GM |  |  |
 
 ## folders
 
@@ -106,8 +111,8 @@ A named container of messages: a Gmail label, an Exchange mail folder.
 
 | # | column | type | P | Google | Microsoft |
 |---|---|---|---|---|---|
-| 1 | provider | text | GM | | |
-| 2 | account | text | GM | | |
+| 1 | provider | text | GM |  |  |
+| 2 | account | text | GM |  |  |
 | 3 | id | text | GM | id | id |
 | 4 | name | text | GM | name | displayName |
 | 5 | parent_id | text | M | NULL | parentFolderId |
@@ -128,27 +133,27 @@ A named container of messages: a Gmail label, an Exchange mail folder.
 
 One row per message per container. Google: many per message. Microsoft: one.
 
-| # | column | type | P |
-|---|---|---|---|
-| 1 | provider | text | GM |
-| 2 | account | text | GM |
-| 3 | message_id | text | GM |
-| 4 | folder_id | text | GM |
+| # | column | type | P | Google | Microsoft |
+|---|---|---|---|---|---|
+| 1 | provider | text | GM |  |  |
+| 2 | account | text | GM |  |  |
+| 3 | message_id | text | GM |  |  |
+| 4 | folder_id | text | GM |  |  |
 
 ## threads
 
 Derived by both sources from the messages they hold, grouped by `thread_id`.
 
-| # | column | type | P | meaning |
-|---|---|---|---|---|
-| 1 | provider | text | GM | |
-| 2 | account | text | GM | |
-| 3 | id | text | GM | thread_id |
-| 4 | subject | text | GM | of the earliest message by received_at |
-| 5 | snippet | text | GM | of the latest message |
-| 6 | first_message_at | timestamp | GM | |
-| 7 | last_message_at | timestamp | GM | |
-| 8 | message_count | bigint | GM | |
+| # | column | type | P | Google | Microsoft |
+|---|---|---|---|---|---|
+| 1 | provider | text | GM |  |  |
+| 2 | account | text | GM |  |  |
+| 3 | id | text | GM | thread_id | thread_id |
+| 4 | subject | text | GM | of the earliest message by received_at | of the earliest message by received_at |
+| 5 | snippet | text | GM | of the latest message | of the latest message |
+| 6 | first_message_at | timestamp | GM |  |  |
+| 7 | last_message_at | timestamp | GM |  |  |
+| 8 | message_count | bigint | GM |  |  |
 
 ## attachments
 
@@ -156,9 +161,9 @@ Metadata only. Content is not in the first build.
 
 | # | column | type | P | Google | Microsoft |
 |---|---|---|---|---|---|
-| 1 | provider | text | GM | | |
-| 2 | account | text | GM | | |
-| 3 | message_id | text | GM | | |
+| 1 | provider | text | GM |  |  |
+| 2 | account | text | GM |  |  |
+| 3 | message_id | text | GM |  |  |
 | 4 | id | text | GM | partId | id |
 | 5 | name | text | GM | filename | name |
 | 6 | content_type | text | GM | mimeType | contentType |
@@ -172,8 +177,8 @@ Metadata only. Content is not in the first build.
 
 | # | column | type | P | Google | Microsoft |
 |---|---|---|---|---|---|
-| 1 | provider | text | GM | | |
-| 2 | account | text | GM | | |
+| 1 | provider | text | GM |  |  |
+| 2 | account | text | GM |  |  |
 | 3 | id | text | GM | id | id |
 | 4 | name | text | GM | summary | name |
 | 5 | description | text | G | description | NULL |
@@ -197,14 +202,12 @@ Metadata only. Content is not in the first build.
 
 ## events
 
-Rows: single events, series masters and exceptions. Not every expanded occurrence.
-Google lists these with `singleEvents=false`. Microsoft's `/events` answers single events and
-series masters only; exceptions come from one further call per series master.
+Rows: single events, series masters and exceptions. Not every expanded occurrence. Google lists these with `singleEvents=false`. Microsoft's `/events` answers single events and series masters only; exceptions come from one further call per series master. `recurrence` has one encoding. The Microsoft source renders Graph's structured pattern as RFC 5545 lines; that renderer is part of the calendar build, and the column does not ship before it. A cancelled event is a row, for both providers: `is_cancelled` true and `status` `cancelled`.
 
 | # | column | type | P | Google | Microsoft |
 |---|---|---|---|---|---|
-| 1 | provider | text | GM | | |
-| 2 | account | text | GM | | |
+| 1 | provider | text | GM |  |  |
+| 2 | account | text | GM |  |  |
 | 3 | id | text | GM | id | id |
 | 4 | calendar_id | text | GM | calendar listed | calendar listed |
 | 5 | ical_uid | text | GM | iCalUID | iCalUId |
@@ -264,18 +267,14 @@ series masters only; exceptions come from one further call per series master.
 | 59 | my_response | text enum | GM | the attendee marked self | responseStatus.response |
 | 60 | cancelled_occurrences | json (text list) | M | NULL | cancelledOccurrences (series master) |
 
-`recurrence` has one encoding. The Microsoft source renders Graph's structured pattern as
-RFC 5545 lines; that renderer is part of the calendar build, and the column does not ship
-before it.
-
 ## event_attendees
 
 | # | column | type | P | Google | Microsoft |
 |---|---|---|---|---|---|
-| 1 | provider | text | GM | | |
-| 2 | account | text | GM | | |
-| 3 | event_id | text | GM | | |
-| 4 | position | bigint | GM | | |
+| 1 | provider | text | GM |  |  |
+| 2 | account | text | GM |  |  |
+| 3 | event_id | text | GM |  |  |
+| 4 | position | bigint | GM |  |  |
 | 5 | address | text | GM | email | emailAddress.address |
 | 6 | name | text | GM | displayName | emailAddress.name |
 | 7 | kind | text enum | GM | optional, resource flags | type |
@@ -290,8 +289,8 @@ before it.
 
 | # | column | type | P | Google | Microsoft |
 |---|---|---|---|---|---|
-| 1 | provider | text | GM | | |
-| 2 | account | text | GM | | |
+| 1 | provider | text | GM |  |  |
+| 2 | account | text | GM |  |  |
 | 3 | id | text | GM | id | id |
 | 4 | name | text | GM | title | displayName |
 | 5 | is_default | boolean | M | NULL | wellknownListName = defaultList |
@@ -304,8 +303,8 @@ before it.
 
 | # | column | type | P | Google | Microsoft |
 |---|---|---|---|---|---|
-| 1 | provider | text | GM | | |
-| 2 | account | text | GM | | |
+| 1 | provider | text | GM |  |  |
+| 2 | account | text | GM |  |  |
 | 3 | id | text | GM | id | id |
 | 4 | task_list_id | text | GM | list read | list read |
 | 5 | parent_id | text | G | parent | NULL |
@@ -334,44 +333,53 @@ before it.
 | 28 | is_reminder_on | boolean | M | NULL | isReminderOn |
 | 29 | notes_updated_at | timestamp | M | NULL | bodyLastModifiedDateTime |
 
+<!-- end tables -->
+
 ## Enumerations
 
-Microsoft values are those of the Graph v1.0 description read on 2026-10-09. Google values are
-the Gmail teammate's to confirm against the discovery documents.
+One value set for each enumeration, and each provider's table from its own values to them
+(`provisa.core.canonical_mail.ENUMS`, read through `translate`). A value a provider's table
+does not list fails the build of the table by name. The folder role is the one exception, by
+the maintainer's ruling: both vendors' sets of system folders are open, so a value neither
+table lists is `other`. "derived" marks a value the provider has no field for, which its
+loader works out as stated. Microsoft values are those of the Graph v1.0 description read on
+2026-10-09; Google values those of the discovery documents and labels guide read the same day.
 
-| column | canonical values | Microsoft | Google |
-|---|---|---|---|
-| provider | google, microsoft | | |
-| messages.flag_status | none, flagged, complete | notFlagged→none, flagged→flagged, complete→complete | STARRED→flagged, else none |
-| importance (messages, events, tasks) | low, normal, high | low, normal, high | none: NULL |
-| messages.inference_classification | focused, other | focused, other | none: NULL |
-| message_recipients.kind | from, sender, to, cc, bcc, reply_to | by property | by header |
-| folders.kind | system, user | role present→system, else user | system→system, user→user |
-| folders.role | inbox, sent, drafts, trash, spam, archive, outbox, flagged, important, unread, category, other | inbox→inbox, sentitems→sent, drafts→drafts, deleteditems→trash, junkemail→spam, archive→archive, outbox→outbox, every other well-known name→other, no well-known name→NULL | INBOX→inbox, SENT→sent, DRAFT→drafts, TRASH→trash, SPAM→spam, STARRED→flagged, IMPORTANT→important, UNREAD→unread, CATEGORY_PERSONAL, CATEGORY_SOCIAL, CATEGORY_PROMOTIONS, CATEGORY_UPDATES, CATEGORY_FORUMS→category, any other label of type system→other (declared catch-all: Google states its list of reserved names is not exhaustive), type user→NULL |
-| folders.label_list_visibility | show, show_if_unread, hide | none: NULL | labelShow→show, labelShowIfUnread→show_if_unread, labelHide→hide |
-| folders.message_list_visibility | show, hide | none: NULL | show, hide |
-| attachments.kind | file, item, reference | fileAttachment→file, itemAttachment→item, referenceAttachment→reference | file |
-| calendars.access_role | owner, writer, writer_without_private_access, reader, free_busy_reader | none: NULL | owner, writer, writerWithoutPrivateAccess→writer_without_private_access, reader, freeBusyReader→free_busy_reader |
-| events.body_format | text, html | text, html | none: NULL |
-| events.status | confirmed, tentative, cancelled | isCancelled→cancelled, else NULL | confirmed, tentative, cancelled |
-| events.show_as | free, busy, tentative, out_of_office, working_elsewhere, unknown | free, busy, tentative, oof→out_of_office, workingElsewhere→working_elsewhere, unknown | transparent→free, opaque→busy |
-| events.visibility | default, public, personal, private, confidential | normal→default, personal, private, confidential | default, public, private, confidential |
-| events.kind | single, series_master, exception, occurrence | singleInstance→single, seriesMaster→series_master, exception, occurrence | recurrence present→series_master, recurringEventId present→exception, else single |
-| events.event_type | default, birthday, focus_time, from_gmail, out_of_office, working_location | none: NULL | default, birthday, focusTime→focus_time, fromGmail→from_gmail, outOfOffice→out_of_office, workingLocation→working_location |
-| events.my_response | as event_attendees.response | as event_attendees.response | as event_attendees.response |
-| event_attendees.kind | required, optional, resource | required, optional, resource | resource flag→resource, optional flag→optional, else required |
-| event_attendees.response | needs_action, accepted, tentative, declined | none→needs_action, notResponded→needs_action, tentativelyAccepted→tentative, accepted, declined, organizer→NULL (is_organizer carries it) | needsAction→needs_action, accepted, tentative, declined |
-| task_lists.role | default, flagged_emails, none | defaultList→default, flaggedEmails→flagged_emails, none→none, unknownFutureValue→refused | none: NULL |
-| tasks.status | open, done | notStarted, inProgress, waitingOnOthers, deferred→open; completed→done | needsAction→open, completed→done |
+<!-- enums: generated from provisa/core/canonical_mail.py (render_enums) -->
+
+| enumeration | columns | canonical values | Microsoft | Google |
+|---|---|---|---|---|
+| flag_status | messages.flag_status | none, flagged, complete | notFlagged→none, flagged, complete | derived: STARRED label present→flagged, else none |
+| importance | messages.importance, events.importance, tasks.importance | low, normal, high | low, normal, high | none: NULL |
+| inference_classification | messages.inference_classification | focused, other | focused, other | none: NULL |
+| recipient_kind | message_recipients.kind | from, sender, to, cc, bcc, reply_to | derived: by property | derived: by header |
+| folder_kind | folders.kind | system, user | derived: role present→system, else user | system, user |
+| folder_role | folders.role | inbox, sent, drafts, trash, spam, archive, outbox, flagged, important, unread, category, other | inbox, sentitems→sent, drafts, deleteditems→trash, junkemail→spam, archive, outbox, any other→other (declared catch-all) | INBOX→inbox, SENT→sent, DRAFT→drafts, TRASH→trash, SPAM→spam, STARRED→flagged, IMPORTANT→important, UNREAD→unread, CATEGORY_PERSONAL→category, CATEGORY_SOCIAL→category, CATEGORY_PROMOTIONS→category, CATEGORY_UPDATES→category, CATEGORY_FORUMS→category, any other→other (declared catch-all) |
+| label_list_visibility | folders.label_list_visibility | show, show_if_unread, hide | none: NULL | labelShow→show, labelShowIfUnread→show_if_unread, labelHide→hide |
+| message_list_visibility | folders.message_list_visibility | show, hide | none: NULL | show, hide |
+| attachment_kind | attachments.kind | file, item, reference | #microsoft.graph.fileAttachment→file, #microsoft.graph.itemAttachment→item, #microsoft.graph.referenceAttachment→reference | derived: file |
+| calendar_access_role | calendars.access_role | owner, writer, writer_without_private_access, reader, free_busy_reader | none: NULL | owner, writer, writerWithoutPrivateAccess→writer_without_private_access, reader, freeBusyReader→free_busy_reader |
+| body_format | events.body_format | text, html | text, html | none: NULL |
+| event_status | events.status | confirmed, tentative, cancelled | derived: isCancelled→cancelled, else NULL | confirmed, tentative, cancelled |
+| show_as | events.show_as | free, busy, tentative, out_of_office, working_elsewhere, unknown | free, busy, tentative, oof→out_of_office, workingElsewhere→working_elsewhere, unknown | transparent→free, opaque→busy |
+| event_visibility | events.visibility | default, public, personal, private, confidential | normal→default, personal, private, confidential | default, public, private, confidential |
+| event_kind | events.kind | single, series_master, exception, occurrence | singleInstance→single, seriesMaster→series_master, exception, occurrence | derived: recurrence present→series_master, recurringEventId present→exception, else single |
+| event_type | events.event_type | default, birthday, focus_time, from_gmail, out_of_office, working_location | none: NULL | default, birthday, focusTime→focus_time, fromGmail→from_gmail, outOfOffice→out_of_office, workingLocation→working_location |
+| attendee_kind | event_attendees.kind | required, optional, resource | required, optional, resource | derived: resource flag→resource, optional flag→optional, else required |
+| attendee_response | events.my_response, event_attendees.response | needs_action, accepted, tentative, declined | none→needs_action, notResponded→needs_action, tentativelyAccepted→tentative, accepted, declined, organizer→NULL | needsAction→needs_action, accepted, tentative, declined |
+| task_list_role | task_lists.role | default, flagged_emails, none | defaultList→default, flaggedEmails→flagged_emails, none | none: NULL |
+| task_status | tasks.status | open, done | notStarted→open, inProgress→open, waitingOnOthers→open, deferred→open, completed→done | needsAction→open, completed→done |
+
+<!-- end enums -->
 
 ## Open points
 
 1. Microsoft `folders.role` needs one call per well-known folder name, since the v1.0 folder
-   carries no such property. Its "every other well-known name→other" row is a declared
-   catch-all like Google's.
+   carries no such property.
 2. Microsoft exceptions in `events` cost one call per series master.
-3. Google's event list returns cancelled events only when asked to show deleted ones or on a
-   sync; which rows exist is settled in the calendar build and must be the same for both.
+3. Cancelled events are rows (maintainer's ruling). Google returns them only when asked to show
+   deleted ones; Microsoft returns those the calendar still holds. An event deleted outright is
+   not a row for either.
 4. Under Google's metadata-only scope `body_text` and `body_html` are NULL for every message.
    Google describes that format as returning "only email message ID, labels, and email
    headers", so whether `snippet`, `size_bytes` and `change_key` are returned under it is not
