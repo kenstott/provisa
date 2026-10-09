@@ -20,6 +20,13 @@ a second query on it is refused ("Attempt to execute concurrent queries within t
 session"). Every request runs on its own thread (REQ-1882), so the driver holds a bounded pool of
 clients — one per checkout, used by one request at a time — like every other direct driver, and
 runs the query on the request's own thread.
+
+The clients name NO session at all (``autogenerate_session_id=False``). One client per request
+keeps two requests off one session, but not the next request off the last one's: the server
+releases a session a moment after the client has read its answer, and a pooled client handed
+straight to the next request was refused in that moment ("Session ... is locked by a concurrent
+client", SESSION_IS_LOCKED -- seen on the engine's client, #189). Nothing here keeps state in a
+session (no temporary table, no SET).
 """
 
 from __future__ import annotations
@@ -77,6 +84,9 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
                 password=password or "",
                 database=database or "default",
                 secure=secure,
+                # No server session (see the module note): a pooled client is taken by the next
+                # request the moment the last one returns it.
+                autogenerate_session_id=False,
             )
 
         self._open = _open
