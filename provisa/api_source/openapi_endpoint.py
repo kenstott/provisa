@@ -207,6 +207,11 @@ async def store_openapi_auth(conn: Connection, source_id: str, auth: dict | None
     encrypted at rest (REQ-686); None clears it."""
     from provisa.encryption import encryption_service
 
+    # REQ-1557: a ${secret:...} in it is checked before it is encrypted, where the write seam
+    # cannot read it.
+    from provisa.core.secrets_providers import check_stored
+
+    check_stored(auth)
     stored = None if auth is None else encryption_service().encrypt(json.dumps(auth).encode())
     await conn.execute_core(
         update(api_sources).where(api_sources.c.id == source_id).values(auth=stored)

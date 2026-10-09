@@ -373,6 +373,8 @@
       "column_scope_invalid": "Kolom '{{column}}' heeft bereik '{{scope}}'; het bereik van een kolom is een van {{scopes}}"
     },
     "secrets": {
+      "name_refused": "{{name}} is geen naam binnen de secrets van deze organisatie in {{service}}: een naam is relatief ten opzichte van de organisatie en kan deze niet verlaten",
+      "name_too_long": "{{name}} is een te lange naam: met het voorvoegsel van deze organisatie telt deze {{length}} tekens, en {{service}} accepteert er hoogstens {{limit}}",
       "org_not_found": "Organisatie '{{org_id}}' niet gevonden",
       "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."
     },

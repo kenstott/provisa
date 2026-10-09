@@ -373,6 +373,8 @@
       "column_scope_invalid": "列 '{{column}}' 的范围为 '{{scope}}'；列的范围必须是 {{scopes}} 之一"
     },
     "secrets": {
+      "name_refused": "{{name}} 不是 {{service}} 中本组织密钥范围内的名称：名称相对于组织，不能超出组织范围",
+      "name_too_long": "{{name}} 名称过长：加上本组织的前缀后为 {{length}} 个字符，而 {{service}} 最多接受 {{limit}} 个",
       "org_not_found": "未找到组织 '{{org_id}}'",
       "still_referenced": "本组织中仍有 {{count}} 个已存储的值引用 {{secret}}。请更改或移除每一个，然后再次删除。"
     },

@@ -373,6 +373,8 @@
       "column_scope_invalid": "Column '{{column}}' has scope '{{scope}}'; a column's scope is one of {{scopes}}"
     },
     "secrets": {
+      "name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",
+      "name_too_long": "{{name}} is too long a name: with this organization's prefix it is {{length}} characters, and {{service}} takes at most {{limit}}",
       "org_not_found": "Organization '{{org_id}}' not found",
       "still_referenced": "{{secret}} is still named by {{count}} stored value(s) in this organization. Change or remove each one, then delete it again."
     },

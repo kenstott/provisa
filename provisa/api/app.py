@@ -3254,6 +3254,14 @@ def create_app() -> FastAPI:
             content={"detail": str(exc), "code": exc.code, "params": exc.params},
         )
 
+    from provisa.core.secrets_providers import SecretNameRefused as _SecretNameRefused
+
+    @app.exception_handler(_SecretNameRefused)
+    async def _secret_name_refused_handler(_req: _Request, exc: _SecretNameRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        from provisa.api.errors import secret_name_refused_response
+
+        return secret_name_refused_response(exc)
+
     from provisa.core.operator_floor import OperatorFloorError as _OperatorFloorError
 
     from provisa.compiler.complexity import ComplexityLimitExceeded as _ComplexityLimitExceeded

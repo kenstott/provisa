@@ -174,8 +174,13 @@ def test_a_name_too_long_once_prefixed_is_refused_with_the_limit(bound_to_a, kin
     held = {prefix + fits: A_SECRET}
     provider = _gcp(held) if kind == "gcp" else _azure(held)
     assert provider.resolve(fits) == A_SECRET
-    with pytest.raises(sp.SecretNameRefused, match=f"{limit + 1} characters.*at most {limit}"):
+    with pytest.raises(
+        sp.SecretNameRefused, match=f"{limit + 1} characters.*at most {limit}"
+    ) as no:
         provider.resolve(fits + "n")
+    assert no.value.code == "secrets.name_too_long"
+    assert no.value.params["limit"] == limit and no.value.params["length"] == limit + 1
+    assert no.value.params["name"] == fits + "n" and no.value.params["service"]
 
 
 # ------------------------------------------------------------------ at the save of a reference
@@ -239,3 +244,63 @@ def test_a_save_is_not_checked_on_a_deployment_of_one_organisation_or_the_built_
     _insert(
         id="s", password_ref="${secret:" + "n" * 127 + "}"
     )  # read as written: Azure's own limit
+
+
+def test_a_refusal_carries_the_code_and_parameters_an_operator_is_answered_with(bound_to_a):
+    with pytest.raises(sp.SecretNameRefused) as refused:
+        _vault({}).resolve("../b/db#password")
+    assert refused.value.code == "secrets.name_refused"
+    assert refused.value.params == {"name": "../b/db#password", "service": "HashiCorp Vault"}
+
+
+def test_a_refused_save_is_answered_400_with_its_code(bound_to_a, wired_to):
+    """Through the handler the application registers for it: status, code and parameters."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from provisa.api.errors import secret_name_refused_response
+
+    app = FastAPI()
+    app.add_exception_handler(
+        sp.SecretNameRefused, lambda _req, exc: secret_name_refused_response(exc)
+    )
+
+    @app.put("/save")
+    def save() -> None:
+        wired_to("azure_key_vault")
+        token = secrets_store._bound.set(secrets_store._Binding("a", {}, None, {}))
+        try:
+            _insert(id="s", password_ref="${secret:" + "n" * 127 + "}")
+        finally:
+            secrets_store._bound.reset(token)
+
+    answer = TestClient(app).put("/save")
+    assert answer.status_code == 400
+    body = answer.json()
+    assert body["code"] == "secrets.name_too_long"
+    assert body["params"]["limit"] == 127 and body["params"]["service"] == "Azure Key Vault"
+
+
+def test_the_api_source_auth_writer_checks_a_reference_before_it_is_encrypted(bound_to_a, wired_to):
+    import asyncio
+
+    from provisa.api_source.openapi_endpoint import store_openapi_auth
+
+    wired_to("hashicorp_vault")
+    with pytest.raises(sp.SecretNameRefused, match="cannot leave it"):
+        asyncio.run(store_openapi_auth(None, "s", {"type": "bearer", "token": "${secret:../b/t}"}))
+
+
+def test_only_the_api_layer_selects_a_secrets_backend():
+    """A central service is read only by a process that selected one, and only the API layer
+    does (``configure_secrets``): the same layer that says whether the deployment holds many
+    organisations. A process that selects none reads the built-in store, which asks nothing."""
+    from pathlib import Path
+
+    root = Path(sp.__file__).resolve().parents[1]
+    callers = sorted(
+        str(path.relative_to(root))
+        for path in root.rglob("*.py")
+        if "configure_secrets(" in path.read_text().replace("def configure_secrets(", "")
+    )
+    assert callers == ["api/admin/settings_router.py", "api/app_loaders.py"]

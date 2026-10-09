@@ -97,3 +97,16 @@ def timeout_error(exc: TimeoutError) -> ApiError:
             setting=exc.setting,
         )
     return ApiError(504, "data.request_interrupted", str(exc), error=str(exc))
+
+
+def secret_name_refused_response(exc: Any) -> Any:
+    """REQ-1557: the answer to a stored ``${secret:...}`` whose name leaves its organisation's
+    part of the central secrets service, or is too long for that service once prefixed
+    (``provisa.core.secrets_providers.SecretNameRefused``). 400: the value being saved is what
+    has to change."""
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=400,
+        content={"detail": str(exc), "code": exc.code, "params": exc.params},
+    )

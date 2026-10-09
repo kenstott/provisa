@@ -373,6 +373,8 @@
       "column_scope_invalid": "La columna '{{column}}' tiene el ámbito '{{scope}}'; el ámbito de una columna es uno de {{scopes}}"
     },
     "secrets": {
+      "name_refused": "{{name}} no es un nombre dentro de los secretos de esta organización en {{service}}: un nombre es relativo a la organización y no puede salir de ella",
+      "name_too_long": "{{name}} es un nombre demasiado largo: con el prefijo de esta organización tiene {{length}} caracteres y {{service}} admite como máximo {{limit}}",
       "org_not_found": "No se encontró la organización '{{org_id}}'",
       "still_referenced": "{{secret}} sigue siendo nombrado por {{count}} valor(es) almacenado(s) en esta organización. Cambie o quite cada uno y vuelva a eliminarlo."
     },

@@ -373,6 +373,8 @@
       "column_scope_invalid": "欄位「{{column}}」的範圍為「{{scope}}」；欄位的範圍須為 {{scopes}} 其中之一"
     },
     "secrets": {
+      "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",
+      "name_too_long": "{{name}} 名稱過長：加上本組織的前綴後為 {{length}} 個字元，而 {{service}} 最多接受 {{limit}} 個",
       "org_not_found": "找不到組織「{{org_id}}」",
       "still_referenced": "本機構中仍有 {{count}} 個已儲存的值引用 {{secret}}。請更改或移除每一個，然後再次刪除。"
     },

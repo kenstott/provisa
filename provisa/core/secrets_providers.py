@@ -72,10 +72,25 @@ def _scoped() -> bool:
 
 
 class SecretNameRefused(KeyError):
-    """A reference names a secret outside its organisation, or by a name its service cannot hold."""
+    """A reference names a secret outside its organisation, or by a name its service cannot
+    hold. ``code`` and ``params`` are what an operator is answered with (HTTP 400)."""
+
+    def __init__(self, code: str, message: str, **params: object) -> None:
+        super().__init__(message)
+        self.code = code
+        self.params = params
 
     def __str__(self) -> str:  # KeyError shows the repr of its argument
         return str(self.args[0])
+
+
+#: What an operator calls each central service.
+_SERVICE = {
+    "vault": "HashiCorp Vault",
+    "aws": "AWS Secrets Manager",
+    "gcp": "GCP Secret Manager",
+    "azure": "Azure Key Vault",
+}
 
 
 def _bound_org(reference: str) -> str:
@@ -133,15 +148,23 @@ def _inside(kind: str, reference: str, name: str, org_id: str) -> str:
         or (flat and "/" in name)
     ):
         raise SecretNameRefused(
+            "secrets.name_refused",
             f"${{secret:{reference}}} is not a name inside this organization's secrets: a name "
-            "is relative to the organization and cannot leave it"
+            "is relative to the organization and cannot leave it",
+            name=reference,
+            service=_SERVICE[kind],
         )
     full = org_namespace(kind, org_id) + name
     limit = NAME_LIMITS.get(kind)
     if limit is not None and len(full) > limit:
         raise SecretNameRefused(
+            "secrets.name_too_long",
             f"${{secret:{reference}}} is too long a name: with this organization's prefix it is "
-            f"{len(full)} characters, and the secrets service takes at most {limit}"
+            f"{len(full)} characters, and {_SERVICE[kind]} takes at most {limit}",
+            name=reference,
+            service=_SERVICE[kind],
+            length=len(full),
+            limit=limit,
         )
     return full
 

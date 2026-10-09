@@ -373,6 +373,8 @@
       "column_scope_invalid": "A coluna '{{column}}' tem o escopo '{{scope}}'; o escopo de uma coluna é um de {{scopes}}"
     },
     "secrets": {
+      "name_refused": "{{name}} não é um nome dentro dos segredos desta organização em {{service}}: um nome é relativo à organização e não pode sair dela",
+      "name_too_long": "{{name}} é um nome longo demais: com o prefixo desta organização tem {{length}} caracteres, e {{service}} aceita no máximo {{limit}}",
       "org_not_found": "Organização '{{org_id}}' não encontrada",
       "still_referenced": "{{secret}} ainda é nomeado por {{count}} valor(es) armazenado(s) nesta organização. Altere ou remova cada um e exclua novamente."
     },

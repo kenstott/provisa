@@ -373,6 +373,8 @@
       "column_scope_invalid": "La colonna '{{column}}' ha ambito '{{scope}}'; l'ambito di una colonna è uno tra {{scopes}}"
     },
     "secrets": {
+      "name_refused": "{{name}} non è un nome all'interno dei segreti di questa organizzazione in {{service}}: un nome è relativo all'organizzazione e non può uscirne",
+      "name_too_long": "{{name}} è un nome troppo lungo: con il prefisso di questa organizzazione conta {{length}} caratteri e {{service}} ne accetta al massimo {{limit}}",
       "org_not_found": "Organizzazione '{{org_id}}' non trovata",
       "still_referenced": "{{secret}} è ancora nominato da {{count}} valore/i memorizzato/i in questa organizzazione. Modifica o rimuovi ciascuno, poi eliminalo di nuovo."
     },

@@ -5424,5 +5424,7 @@
   "hi/columnFilter.json::columnFilter.addTyped": "Add “{{value}}”",
   "hi/replicaBuild.json::replicaBuild.note.andMore": "{{ids}} and {{more}} more",
   "hi/replicaBuild.json::replicaBuild.note.other": "The last build noted: {{code}}",
-  "hi/replicaBuild.json::replicaBuild.note.unreadable_messages": "Messages kept without their text, because a part is not what it declares: {{total}}. Their ids: {{ids}}"
+  "hi/replicaBuild.json::replicaBuild.note.unreadable_messages": "Messages kept without their text, because a part is not what it declares: {{total}}. Their ids: {{ids}}",
+  "hi/serverErrors.json::serverErrors.secrets.name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",
+  "hi/serverErrors.json::serverErrors.secrets.name_too_long": "{{name}} is too long a name: with this organization's prefix it is {{length}} characters, and {{service}} takes at most {{limit}}"
 }

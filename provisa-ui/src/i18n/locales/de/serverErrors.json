@@ -373,6 +373,8 @@
       "column_scope_invalid": "Spalte '{{column}}' hat den Geltungsbereich '{{scope}}'; zulässig ist einer von {{scopes}}"
     },
     "secrets": {
+      "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",
+      "name_too_long": "{{name}} ist als Name zu lang: Mit dem Präfix dieser Organisation sind es {{length}} Zeichen, und {{service}} lässt höchstens {{limit}} zu",
       "org_not_found": "Organisation '{{org_id}}' nicht gefunden",
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."
     },
