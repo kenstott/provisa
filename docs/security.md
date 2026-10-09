@@ -110,7 +110,7 @@ Each column has a four-field permission model controlling read, write, and maski
 
 ### Public columns
 
-Every column has a `scope`, set by a holder of `table_registration` in the table's domain (in the model file, the admin API or the Tables page). (REQ-1959)
+Every column has a `scope`, set in the model file, the admin API or the Tables page. Changing a column's scope changes who is served it, so it takes the right that changing its grant list takes — `column_grant` or `access_config` in the table's domain, and `sensitive_data` on a column carrying a sensitive tag; a table editor without it saves the table with each column's scope as it stands. (REQ-1959, REQ-1943, REQ-1944)
 
 | Scope | Served to |
 | ------- | ----------- |

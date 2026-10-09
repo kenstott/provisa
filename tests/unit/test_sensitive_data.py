@@ -36,6 +36,7 @@ from provisa.security.sensitive import hiding_changes, system_sensitive_tag_ids
 
 _STORED = {
     "visible_to": ["analyst"],
+    "scope": "domain",  # read with the grant list: who is served the column (REQ-1959)
     "unmasked_to": [],
     "mask_type": None,
     "mask_pattern": None,

@@ -58,6 +58,7 @@ _FAKE_FIELDS = frozenset({"fake", "fake_stable", "synthetic_rule"})
 #: A column not yet stored: hidden by nothing (visible_to [] is visible to every role).
 _UNSTORED_COLUMN: dict[str, Any] = {
     "visible_to": [],
+    "scope": "domain",
     "unmasked_to": [],
     "mask_type": None,
     "mask_pattern": None,
@@ -75,7 +76,8 @@ def rights_for(field: str, *, sensitive: bool, editor: bool) -> tuple[str, ...] 
     covers it."""
     if sensitive:
         return (SENSITIVE_DATA,)
-    if field == "visible_to":
+    if field in ("visible_to", "scope"):
+        # Who is served a column is its grant list read with its scope (REQ-1959): one right.
         return VISIBILITY_RIGHTS
     if field in _MASK_FIELDS:
         return MASK_RIGHTS

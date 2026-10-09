@@ -29,16 +29,20 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
+from provisa.core.column_scope import SCOPE_DOMAIN
+
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 #: The right (REQ-1943).
 SENSITIVE_DATA = "sensitive_data"
 
-#: What hides or reveals a column's values: its read grants, its role masks, its fake and its
-#: synthetic rule.
+#: What hides or reveals a column's values: its read grants and the scope they are read with
+#: (REQ-1959: ``restricted`` with no grant is nobody, ``domain`` with none is every role in
+#: reach, ``public`` reaches past the domain), its role masks, its fake and its synthetic rule.
 HIDING_FIELDS = (
     "visible_to",
+    "scope",
     "unmasked_to",
     "mask_type",
     "mask_pattern",
@@ -93,6 +97,8 @@ def _value(column: Any, field: str) -> Any:
         return sorted(raw or [])
     if field == "fake_stable":
         return bool(raw)
+    if field == "scope":
+        return raw or SCOPE_DOMAIN  # a column that states none is ``domain``
     return raw
 
 
