@@ -190,7 +190,9 @@ class _Locked:
         await asyncio.to_thread(self._lock.close)
 
 
-async def _replace(admin_db: "Database", org_id: str, name: str, value: str, *, actor: str) -> None:
+async def _replace(
+    admin_db: "Database", org_id: str, name: str, value: str, *, actor: str | None
+) -> None:
     """Store ``value`` as the org's secret ``name``, keeping the description it has."""
     owner = secrets_store.ORG_OWNER
     known = await secrets_store.describe(admin_db, org_id, name, owner_id=owner)
@@ -265,11 +267,12 @@ async def store_refresh_token(
     source_id: str,
     secret_name: str,
     refresh_token: str,
-    actor: str,
+    actor: str | None,
     lock_wait_seconds: float = LOCK_WAIT_SECONDS,
 ) -> None:
     """Store the refresh token a sign-in produced, under the lock a refresh takes, and drop the
-    access token this process held under the one it replaces."""
+    access token this process held under the one it replaces. ``actor`` is who signed in; None
+    on a deployment without sign-in, which has nobody to name."""
     async with _Locked(platform_url, org_id, source_id, lock_wait_seconds):
         await _replace(admin_db, org_id, secret_name, refresh_token, actor=actor)
         forget(org_id, source_id)
