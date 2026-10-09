@@ -248,7 +248,7 @@ def test_every_binary_column_is_accounted_for():
     decrypted = set(secret_references.SEARCHED_DECRYPTED)
     not_searched = set(secret_references.NOT_SEARCHED)
     assert decrypted == {("api_sources", "auth"), ("org_secrets", "value_enc")}
-    assert len(not_searched) == 10 and not (decrypted & not_searched)
+    assert len(not_searched) == 11 and not (decrypted & not_searched)
     assert decrypted | not_searched == binary
     for metadata in (schema_org.metadata, schema_admin.metadata):
         for table in metadata.tables.values():

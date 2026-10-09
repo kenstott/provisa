@@ -552,6 +552,99 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
     require_right_in_domains(info, SENSITIVE_DATA, {await table_domain(conn, table_id)})
 
 
+async def store_tag_assignment(  # REQ-1375, REQ-1377, REQ-1443, REQ-1467
+    conn: "Connection", model: Any, tag_row: dict
+) -> "MutationResult | None":
+    """Put ``model``'s tag on its object, or say why it may not be put there: the tag's own
+    rules (a derived tag, its reason, expiry and value policies, what it applies to), then the
+    one write. THE writer of a tag assignment: ``assignTag`` calls it once the caller's right
+    is established, and a registration calls it for the columns its source kind declares
+    sensitive (REQ-1943, ``_declared_sensitive``), which no caller chooses."""
+    from provisa.core.repositories import tag as tag_repo
+
+    # REQ-1443: a derived tag reports state the table already carries, so assigning it
+    # would either duplicate that state or contradict it — the registration is the only
+    # way to change it.
+    if tag_row["derived"]:
+        return MutationResult(
+            success=False,
+            message=(
+                f"Tag {model.tag_id!r} is derived from the object's own registration "
+                "and cannot be assigned"
+            ),
+            code="schema.tag_derived_immutable",
+            params={"tag": model.tag_id},
+        )
+    # REQ-1375: the registry's per-tag field policy governs the assignment fields —
+    # a required field refuses absence, a hidden field refuses presence.
+    for field_name, value, policy in (
+        ("reason", model.reason, tag_row["reason_policy"]),
+        ("expires_on", model.expires_on, tag_row["expires_policy"]),
+    ):
+        if policy == "required" and value is None:
+            return MutationResult(
+                success=False,
+                message=f"Tag {model.tag_id!r} requires {field_name}",
+                code="schema.tag_reason_required"
+                if field_name == "reason"
+                else "schema.tag_expires_required",
+                params={"tag": model.tag_id, "field": field_name},
+            )
+        if policy == "hidden" and value is not None:
+            return MutationResult(
+                success=False,
+                message=f"Tag {model.tag_id!r} does not take {field_name}",
+                code="schema.tag_field_hidden",
+                params={"tag": model.tag_id, "field": field_name},
+            )
+    # REQ-1467: the parameter is part of the assignment, and the permitted values are a
+    # closed maintainer-owned list. An unlisted value is refused rather than stored: a
+    # misspelt "entity:custmoer" indexes the column's values under a type nothing
+    # queries, and the empty result reads as absence rather than as the typo it is.
+    param = model.tag_param()
+    if tag_row["param_policy"] == "required":
+        if param is None:
+            return MutationResult(
+                success=False,
+                message=(
+                    f"Tag {model.tag_id!r} must be assigned with a value, as {model.tag_id}:<value>"
+                ),
+                code="schema.tag_param_required",
+                params={"tag": model.tag_id},
+            )
+        permitted = {
+            p["value"]
+            for p in await tag_repo.list_param_values(cast("Connection", conn), model.tag_id)
+        }
+        if param not in permitted:
+            return MutationResult(
+                success=False,
+                message=(
+                    f"{param!r} is not a permitted value for tag "
+                    f"{model.base_tag_id()!r} — choose one of {sorted(permitted)} "
+                    "or add it to the tag's value list"
+                ),
+                code="schema.tag_param_unknown",
+                params={"tag": model.base_tag_id(), "value": param},
+            )
+    elif param is not None:
+        return MutationResult(
+            success=False,
+            message=f"Tag {model.base_tag_id()!r} does not take a value",
+            code="schema.tag_param_not_allowed",
+            params={"tag": model.base_tag_id(), "value": param},
+        )
+    if model.object_type not in list(tag_row["applies_to"] or []):
+        return MutationResult(
+            success=False,
+            message=(f"Tag {model.tag_id!r} does not apply to {model.object_type!r} objects"),
+            code="schema.tag_scope_mismatch",
+            params={"tag": model.tag_id, "objectType": model.object_type},
+        )
+    await tag_repo.assign(cast("Connection", conn), model)
+    return None
+
+
 async def _refresh_config_tags() -> None:  # REQ-1373/1377
     """The DB is the source of truth for tags; mirror it into state.config for consumers
     (metadata export builder) that read the in-memory config."""
@@ -2095,91 +2188,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             await _require_tag_assignment_right(
                 info, cast("Connection", conn), tag_row, input.object_type, input.table_id
             )
-            # REQ-1443: a derived tag reports state the table already carries, so assigning it
-            # would either duplicate that state or contradict it — the registration is the only
-            # way to change it.
-            if tag_row["derived"]:
-                return MutationResult(
-                    success=False,
-                    message=(
-                        f"Tag {input.tag_id!r} is derived from the object's own registration "
-                        "and cannot be assigned"
-                    ),
-                    code="schema.tag_derived_immutable",
-                    params={"tag": input.tag_id},
-                )
-            # REQ-1375: the registry's per-tag field policy governs the assignment fields —
-            # a required field refuses absence, a hidden field refuses presence.
-            for field_name, value, policy in (
-                ("reason", model.reason, tag_row["reason_policy"]),
-                ("expires_on", model.expires_on, tag_row["expires_policy"]),
-            ):
-                if policy == "required" and value is None:
-                    return MutationResult(
-                        success=False,
-                        message=f"Tag {input.tag_id!r} requires {field_name}",
-                        code="schema.tag_reason_required"
-                        if field_name == "reason"
-                        else "schema.tag_expires_required",
-                        params={"tag": input.tag_id, "field": field_name},
-                    )
-                if policy == "hidden" and value is not None:
-                    return MutationResult(
-                        success=False,
-                        message=f"Tag {input.tag_id!r} does not take {field_name}",
-                        code="schema.tag_field_hidden",
-                        params={"tag": input.tag_id, "field": field_name},
-                    )
-            # REQ-1467: the parameter is part of the assignment, and the permitted values are a
-            # closed maintainer-owned list. An unlisted value is refused rather than stored: a
-            # misspelt "entity:custmoer" indexes the column's values under a type nothing
-            # queries, and the empty result reads as absence rather than as the typo it is.
-            param = model.tag_param()
-            if tag_row["param_policy"] == "required":
-                if param is None:
-                    return MutationResult(
-                        success=False,
-                        message=(
-                            f"Tag {input.tag_id!r} must be assigned with a value, "
-                            f"as {input.tag_id}:<value>"
-                        ),
-                        code="schema.tag_param_required",
-                        params={"tag": input.tag_id},
-                    )
-                permitted = {
-                    p["value"]
-                    for p in await tag_repo.list_param_values(
-                        cast("Connection", conn), input.tag_id
-                    )
-                }
-                if param not in permitted:
-                    return MutationResult(
-                        success=False,
-                        message=(
-                            f"{param!r} is not a permitted value for tag "
-                            f"{model.base_tag_id()!r} — choose one of {sorted(permitted)} "
-                            "or add it to the tag's value list"
-                        ),
-                        code="schema.tag_param_unknown",
-                        params={"tag": model.base_tag_id(), "value": param},
-                    )
-            elif param is not None:
-                return MutationResult(
-                    success=False,
-                    message=f"Tag {model.base_tag_id()!r} does not take a value",
-                    code="schema.tag_param_not_allowed",
-                    params={"tag": model.base_tag_id(), "value": param},
-                )
-            if input.object_type not in list(tag_row["applies_to"] or []):
-                return MutationResult(
-                    success=False,
-                    message=(
-                        f"Tag {input.tag_id!r} does not apply to {input.object_type!r} objects"
-                    ),
-                    code="schema.tag_scope_mismatch",
-                    params={"tag": input.tag_id, "objectType": input.object_type},
-                )
-            await tag_repo.assign(cast("Connection", conn), model)
+            refused = await store_tag_assignment(cast("Connection", conn), model, tag_row)
+            if refused is not None:
+                return refused
         await _refresh_config_tags()
         return MutationResult(
             success=True,

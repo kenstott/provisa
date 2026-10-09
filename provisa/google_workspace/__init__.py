@@ -9,3 +9,11 @@
 # permission from the copyright holder.
 
 """Google Workspace source: the mail, calendar and tasks of Google accounts (REQ-1923)."""
+
+from provisa.core.declared_sensitive import declare_canonical_mail
+
+#: The source type's name, as a source row records it.
+SOURCE_TYPE = "google_workspace"
+
+# REQ-1943: its mail tables are the canonical ones, hidden and tagged as those are declared.
+declare_canonical_mail(SOURCE_TYPE)

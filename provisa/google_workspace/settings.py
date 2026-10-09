@@ -30,7 +30,6 @@ from dataclasses import dataclass
 
 from provisa.core.auth_models import ApiAuthGoogleServiceAccount, ApiAuthOAuth2RefreshToken
 
-SOURCE_TYPE = "google_workspace"
 
 #: Google's token endpoint, as its OpenID configuration document publishes it.
 TOKEN_URL = "https://oauth2.googleapis.com/token"

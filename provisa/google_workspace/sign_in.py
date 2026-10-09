@@ -17,7 +17,8 @@ from __future__ import annotations
 import httpx
 
 from provisa.core.source_sign_in import SignInKind, SignInRefused, register_kind
-from provisa.google_workspace.settings import SOURCE_TYPE, TOKEN_URL
+from provisa.google_workspace import SOURCE_TYPE
+from provisa.google_workspace.settings import TOKEN_URL
 
 #: Google's authorization endpoint, as its OpenID configuration document publishes it.
 AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/v2/auth"

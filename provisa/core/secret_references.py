@@ -79,6 +79,10 @@ NOT_SEARCHED: dict[tuple[str, str], str] = {
     ("orgs", "engine_url_enc"): "the org's engine DSN, encrypted at rest; used as it is stored",
     ("orgs", "storage_url_enc"): "the org's store DSN, encrypted at rest; used as it is stored",
     ("orgs", "branding_logo"): "an image",
+    ("source_sign_ins", "verifier"): (
+        "a pending sign-in's one-time code verifier, sealed by the vault's cipher; random, "
+        "never resolved as a reference, and gone when the sign-in is"
+    ),
 }
 
 #: Platform-plane tables that belong to the vault itself and are never a "reference".
