@@ -64,11 +64,12 @@ class ApiAuthOAuth2ClientCredentials(BaseModel):  # REQ-320
 
 class ApiAuthOAuth2RefreshToken(BaseModel):  # REQ-320
     """A person's standing approval of a client: the refresh token their sign-in issued is
-    exchanged for a short-lived access token at each call (RFC 6749 section 6)."""
+    exchanged for a short-lived access token at each call (RFC 6749 section 6). A client that
+    cannot keep a secret (one signed in to on the person's own device) states none."""
 
     type: Literal["oauth2_refresh_token"] = "oauth2_refresh_token"
     client_id: str
-    client_secret: str
+    client_secret: str | None = None
     refresh_token: str
     token_url: str
     scope: str | None = None

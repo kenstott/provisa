@@ -28,8 +28,11 @@ from provisa.api_source import oauth_grants
 from provisa.api_source.caller import ApiCallError, _apply_auth
 from provisa.api_source.oauth_grants import (
     CredentialRefused,
+    RefreshGrant,
+    ReplacementNotKept,
     ServiceAccountKeyInvalid,
     access_token,
+    exchange_refresh_token,
 )
 from provisa.core.auth_models import (
     ApiAuth,
@@ -200,6 +203,88 @@ class TestRefreshToken:
         ):
             access_token(_refresh())
         assert oauth_grants._tokens == {}
+
+
+class TestPublicClient:
+    def test_a_client_with_no_secret_sends_none(self):
+        with patch.object(oauth_grants.httpx, "post", return_value=_granted()) as post:
+            assert access_token(_refresh(client_secret=None)) == "access-1"
+        assert post.call_args.kwargs["data"] == {
+            "grant_type": "refresh_token",
+            "client_id": "client-1",
+            "refresh_token": "made-up-refresh-token",
+        }
+
+
+class TestExchange:
+    """One exchange whose answer is the caller's to keep (the writer that stores a replaced
+    refresh token calls this)."""
+
+    def test_the_answer_is_returned_with_its_life(self):
+        with patch.object(oauth_grants.httpx, "post", return_value=_granted()):
+            assert exchange_refresh_token(_refresh()) == RefreshGrant("access-1", 3600.0, None)
+
+    def test_a_replacement_is_returned_to_the_caller(self):
+        answer = _granted(refresh_token="made-up-second-token")
+        with patch.object(oauth_grants.httpx, "post", return_value=answer):
+            grant = exchange_refresh_token(_refresh())
+        assert grant.replacement == "made-up-second-token"
+
+    def test_the_same_token_answered_again_is_not_a_replacement(self):
+        answer = _granted(refresh_token="made-up-refresh-token")
+        with patch.object(oauth_grants.httpx, "post", return_value=answer):
+            assert exchange_refresh_token(_refresh()).replacement is None
+
+    def test_exactly_the_stated_refresh_token_is_sent_every_time(self):
+        answers = [_granted(refresh_token="made-up-second-token"), _granted("access-2")]
+        with patch.object(oauth_grants.httpx, "post", side_effect=answers) as post:
+            exchange_refresh_token(_refresh())
+            exchange_refresh_token(_refresh())
+        sent = [call.kwargs["data"]["refresh_token"] for call in post.call_args_list]
+        assert sent == ["made-up-refresh-token", "made-up-refresh-token"]
+
+    def test_nothing_is_held(self):
+        with patch.object(oauth_grants.httpx, "post", return_value=_granted()) as post:
+            exchange_refresh_token(_refresh())
+            exchange_refresh_token(_refresh())
+        assert post.call_count == 2
+        assert oauth_grants._tokens == {}
+
+    def test_no_stated_life_is_said_so(self):
+        with patch.object(oauth_grants.httpx, "post", return_value=_issuer(access_token="a")):
+            assert exchange_refresh_token(_refresh()).expires_in is None
+
+    def test_a_refusal_is_the_issuers(self):
+        refused = _issuer(400, error="invalid_grant", error_description="AADSTS700082: expired.")
+        with (
+            patch.object(oauth_grants.httpx, "post", return_value=refused),
+            pytest.raises(CredentialRefused) as raised,
+        ):
+            exchange_refresh_token(_refresh())
+        assert raised.value.reason == "invalid_grant: AADSTS700082: expired."
+
+
+class TestReplacedRefreshTokenOnAPlainCall:
+    """A plain API call keeps nothing, so an issuer that replaces the refresh token is refused."""
+
+    def test_it_is_refused_by_name_and_no_token_is_held(self):
+        answer = _granted(refresh_token="made-up-second-token")
+        with (
+            patch.object(oauth_grants.httpx, "post", return_value=answer),
+            pytest.raises(ReplacementNotKept) as raised,
+        ):
+            access_token(_refresh())
+        assert "replaces the refresh token at each use" in str(raised.value)
+        assert "made-up" not in str(raised.value)
+        assert oauth_grants._tokens == {}
+
+    def test_the_generic_caller_is_such_a_call(self):
+        answer = _granted(refresh_token="made-up-second-token")
+        with (
+            patch.object(oauth_grants.httpx, "post", return_value=answer),
+            pytest.raises(ReplacementNotKept),
+        ):
+            _apply_auth(_refresh(), {}, {})
 
 
 class TestServiceAccount:
