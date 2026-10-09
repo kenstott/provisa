@@ -179,3 +179,37 @@ class TestClickHouseDriverSessions:
         asyncio.run(driver.execute("SELECT 1 AS n"))
         asyncio.run(driver.close())
         assert opened and all(s.closed for s in opened) and not driver.is_connected
+
+
+def test_a_pooled_client_names_no_server_session(monkeypatch):
+    """A ClickHouse session admits one statement at a time and is released a moment after its
+    answer is read; a pooled client goes to the next request at once. Every client the driver
+    opens -- pooled, and the cancel's own -- names no session (#134, #189)."""
+    import asyncio
+
+    import clickhouse_connect
+
+    from provisa.executor.drivers.clickhouse import ClickHouseDriver
+
+    asked: list[dict] = []
+
+    class _Client:
+        def command(self, *_a, **_k):
+            return None
+
+        def close(self):
+            return None
+
+    def _get_client(**kwargs):
+        asked.append(kwargs)
+        return _Client()
+
+    monkeypatch.setattr(clickhouse_connect, "get_client", _get_client)
+    driver = ClickHouseDriver()
+    asyncio.run(driver.connect("h", 8123, "default", "u", "p", min_pool=2, max_pool=2))
+    driver._kill_query("abc")  # noqa: SLF001
+
+    assert len(asked) == 3
+    for kwargs in asked:
+        assert kwargs["autogenerate_session_id"] is False
+        assert "session_id" not in kwargs

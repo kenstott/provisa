@@ -91,6 +91,8 @@
     "nlSearchPlaceholder": "ex.: tabelas de faturamento e pagamentos de clientes",
     "nlSearchButton": "Pesquisar",
     "nlSearchNone": "Nenhuma tabela deste esquema corresponde a essa descrição.",
+    "nlSearchColumnsLoading": "Os nomes de tabela foram pesquisados por completo. Os nomes de coluna deste esquema ainda estão sendo carregados, então pode faltar uma tabela que corresponda apenas por uma coluna; esta pesquisa se repete até que sejam carregados.",
+    "nlSearchColumnsUnavailable": "Os nomes de tabela foram pesquisados por completo. Não foi possível carregar os nomes de coluna deste esquema, então apenas nomes de tabela e descrições foram pesquisados.",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "Registrada",
     "nlSearchUse": "Usar",

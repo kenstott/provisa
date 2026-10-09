@@ -19,7 +19,7 @@ vi.mock("../../../api/admin", () => ({
   searchSourceTables: (...args: unknown[]) => search(...args),
 }));
 
-import { NlTableSearch } from "../NlTableSearch";
+import { COLUMNS_REASK_MS, NlTableSearch } from "../NlTableSearch";
 
 const CANDIDATES = [
   {
@@ -40,6 +40,11 @@ const CANDIDATES = [
   },
 ];
 
+const answer = (
+  candidates: typeof CANDIDATES,
+  column_names: "complete" | "loading" | "unavailable" = "complete",
+) => ({ table_names: "complete" as const, column_names, candidates });
+
 beforeEach(() => search.mockReset());
 
 function setup(registered: string[] = []) {
@@ -57,7 +62,7 @@ function setup(registered: string[] = []) {
 
 describe("NlTableSearch", () => {
   it("searches the source's schema with the description and lists the ranked candidates", async () => {
-    search.mockResolvedValue(CANDIDATES);
+    search.mockResolvedValue(answer(CANDIDATES));
     setup();
     fireEvent.change(screen.getByTestId("register-table-nl-query"), {
       target: { value: "customer invoicing and payment tables" },
@@ -71,7 +76,7 @@ describe("NlTableSearch", () => {
   });
 
   it("fills in the chosen table and offers nothing for one already registered", async () => {
-    search.mockResolvedValue(CANDIDATES);
+    search.mockResolvedValue(answer(CANDIDATES));
     const { onPick } = setup(["payments"]);
     fireEvent.change(screen.getByTestId("register-table-nl-query"), { target: { value: "x" } });
     fireEvent.click(screen.getByTestId("register-table-nl-run"));
@@ -84,7 +89,7 @@ describe("NlTableSearch", () => {
   });
 
   it("says when nothing matches, and shows the server's refusal", async () => {
-    search.mockResolvedValueOnce([]);
+    search.mockResolvedValueOnce(answer([]));
     setup();
     fireEvent.change(screen.getByTestId("register-table-nl-query"), { target: { value: "x" } });
     fireEvent.click(screen.getByTestId("register-table-nl-run"));
@@ -96,5 +101,64 @@ describe("NlTableSearch", () => {
     await waitFor(() =>
       expect(screen.getByText("Missing capability: source_registration")).toBeInTheDocument(),
     );
+  });
+
+  // REQ-464: a schema's column names are loaded the first time it is searched. An answer given
+  // meanwhile says so, and the same search is asked again until they are in.
+  it("says column names are still loading and asks again until they are loaded", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      search
+        .mockResolvedValueOnce(answer([], "loading"))
+        .mockResolvedValueOnce(answer([CANDIDATES[0]], "complete"));
+      setup();
+      fireEvent.change(screen.getByTestId("register-table-nl-query"), {
+        target: { value: "amount due" },
+      });
+      fireEvent.click(screen.getByTestId("register-table-nl-run"));
+      expect(await screen.findByTestId("register-table-nl-columns-loading")).toHaveTextContent(
+        "Column names in this schema are still loading",
+      );
+      expect(search).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(COLUMNS_REASK_MS + 50);
+      await screen.findByText("invoices");
+      expect(search).toHaveBeenCalledTimes(2);
+      expect(search).toHaveBeenLastCalledWith("erp", "amount due", "public");
+      expect(screen.queryByTestId("register-table-nl-columns-loading")).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(COLUMNS_REASK_MS * 3);
+      expect(search).toHaveBeenCalledTimes(2); // loaded: asked no more
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says nothing of columns when the answer searched them all", async () => {
+    search.mockResolvedValue(answer(CANDIDATES, "complete"));
+    setup();
+    fireEvent.change(screen.getByTestId("register-table-nl-query"), { target: { value: "x" } });
+    fireEvent.click(screen.getByTestId("register-table-nl-run"));
+    await screen.findByText("invoices");
+    expect(screen.queryByTestId("register-table-nl-columns-loading")).toBeNull();
+    expect(screen.queryByTestId("register-table-nl-columns-unavailable")).toBeNull();
+    expect(search).toHaveBeenCalledTimes(1);
+  });
+
+  it("says when column names could not be loaded, and does not ask again", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      search.mockResolvedValue(answer(CANDIDATES, "unavailable"));
+      setup();
+      fireEvent.change(screen.getByTestId("register-table-nl-query"), { target: { value: "x" } });
+      fireEvent.click(screen.getByTestId("register-table-nl-run"));
+      expect(await screen.findByTestId("register-table-nl-columns-unavailable")).toHaveTextContent(
+        "could not be loaded",
+      );
+      await vi.advanceTimersByTimeAsync(COLUMNS_REASK_MS * 3);
+      expect(search).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

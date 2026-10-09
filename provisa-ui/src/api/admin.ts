@@ -2167,13 +2167,23 @@ export interface TableSearchCandidate {
   cache_warm: boolean;
 }
 
+/** REQ-464: what a table search answers with, and what it searched. Table names are complete
+ *  from the first answer. Column names are loaded the first time a schema is searched:
+ *  "loading" means a table that matches only by a column may be missing — ask again;
+ *  "unavailable" means they could not be loaded. */
+export interface TableSearchAnswer {
+  table_names: "complete";
+  column_names: "complete" | "loading" | "unavailable";
+  candidates: TableSearchCandidate[];
+}
+
 /** REQ-464: search a source's schema for the tables a description fits. The steward chooses;
  *  nothing is registered by a search. */
 export async function searchSourceTables(
   sourceId: string,
   query: string,
   schemaName: string,
-): Promise<TableSearchCandidate[]> {
+): Promise<TableSearchAnswer> {
   const params = new URLSearchParams({ q: query, schema_name: schemaName });
   const res = await fetch(
     `${API_BASE}/admin/sources/${encodeURIComponent(sourceId)}/tables/search?${params}`,

@@ -27,6 +27,9 @@ on:
       - "!docs/**"
       - "!**/*.md"
       - "!.github/workflows/docs.yml"
+      # The website's generators write only site/ pages (2942c57fe restarted a suite mid-run for
+      # a caption on the site's source picker).
+      - "!scripts/gen-site-*.mjs"
       - "docs/metadata-export.md"
   schedule:
     # Nightly, for the warehouse lane only (06:00 UTC). Scheduled runs use the default branch's

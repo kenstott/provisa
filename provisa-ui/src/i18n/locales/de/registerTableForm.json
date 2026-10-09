@@ -91,6 +91,8 @@
     "nlSearchPlaceholder": "z. B. Tabellen zu Kundenrechnungen und Zahlungen",
     "nlSearchButton": "Suchen",
     "nlSearchNone": "Keine Tabelle in diesem Schema passt zu dieser Beschreibung.",
+    "nlSearchColumnsLoading": "Die Tabellennamen wurden vollständig durchsucht. Die Spaltennamen dieses Schemas werden noch geladen; eine Tabelle, die nur über eine Spalte passt, kann daher fehlen. Diese Suche wird wiederholt, bis sie geladen sind.",
+    "nlSearchColumnsUnavailable": "Die Tabellennamen wurden vollständig durchsucht. Die Spaltennamen dieses Schemas konnten nicht geladen werden; es wurden nur Tabellennamen und Beschreibungen durchsucht.",
     "nlSearchConfidence": "{{percent}} %",
     "nlSearchRegistered": "Registriert",
     "nlSearchUse": "Übernehmen",

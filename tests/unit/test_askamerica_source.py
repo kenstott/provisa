@@ -155,9 +155,11 @@ def test_bundle_is_pgwire_govdata():
 
 def test_the_server_is_started_with_what_the_key_resolves_to():
     creds = aa.resolve_storage_credentials("aa-key", fetch=lambda key: (200, _ANSWER))
-    env = aa.server_environment(_source(), resolve=lambda key: creds)
+    catalog = Path("/bundle/model/.duckdb/govdata.duckdb")
+    env = aa.server_environment(_source(), catalog=catalog, resolve=lambda key: creds)
     assert env == {
         "ASKAMERICA_API_KEY": "aa-key",
+        "GOVDATA_DUCKDB_CATALOG": "/bundle/model/.duckdb/govdata.duckdb",
         "GOVDATA_PARQUET_DIR": "s3://govdata-parquet-v1",
         "AWS_ACCESS_KEY_ID": "AK",
         "AWS_SECRET_ACCESS_KEY": "SK",
@@ -170,7 +172,7 @@ def test_the_server_is_started_with_what_the_key_resolves_to():
 
 def test_only_an_askamerica_server_takes_an_environment():
     files = Source(id="docs", type=SourceType.files, path="/data")
-    assert pr.server_environment(files) is None
+    assert pr.server_environment(files, Path("/bundle")) is None
 
 
 # The bundle as it is installed: its own model file, the catalog prebuilt for that model beside
@@ -190,13 +192,51 @@ def _seed_name(model_bytes: bytes) -> str:
     return f"catalog-cache-{hashlib.sha256(model_bytes).hexdigest()[:16]}.pkl"
 
 
-def _install_bundle(root: Path) -> Path:
+_SEED_SCHEMAS = ("sec", "econ", "ref")
+
+
+def _seed_zip(*, catalog: bytes = b"the prebuilt catalog") -> bytes:
+    """A seed as the bundle's jar carries it: the catalog and one conversion record a schema."""
+    import io
+    import zipfile
+
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as seed:
+        seed.writestr(".duckdb/govdata.duckdb", catalog)
+        for schema in _SEED_SCHEMAS:
+            seed.writestr(f".aperio/{schema}/.conversions.json", f'{{"schema": "{schema}"}}')
+    return out.getvalue()
+
+
+def _write_jar(bundle: Path, entries: dict[str, bytes]) -> None:
+    import zipfile
+
+    (bundle / "jars").mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(bundle / "jars" / "calcite-govdata-1.42.0-SNAPSHOT.jar", "w") as jar:
+        for name, data in entries.items():
+            jar.writestr(name, data)
+
+
+def _install_bundle(root: Path, *, seed: bytes | None = None) -> Path:
     (root / "model").mkdir(parents=True)
     (root / "bin").mkdir()
     (root / "model" / "model.json").write_bytes(_INSTALLED_MODEL)
     (root / "model" / _seed_name(_INSTALLED_MODEL)).write_bytes(b"prebuilt")
     (root / "bin" / "pgwire-govdata").write_text("#!/bin/sh\n")
+    _write_jar(
+        root,
+        {
+            aa.SEED_ZIP_RESOURCE: seed if seed is not None else _seed_zip(),
+            aa.SCHEMA_CACHE_RESOURCE: b'{"tables": {}}',
+        },
+    )
     return root
+
+
+@pytest.fixture(autouse=True)
+def _schema_cache_in_a_directory_of_the_tests_own(tmp_path, monkeypatch):
+    """The adapter keeps its Iceberg schema cache under the user's home; no test installs there."""
+    monkeypatch.setattr(aa, "_schema_cache_dir", lambda: tmp_path / "iceberg-schema-cache")
 
 
 def _replica_on(bundle: Path, spawned: list, monkeypatch) -> pr.ConnectorReplica:
@@ -218,12 +258,16 @@ def _replica_on(bundle: Path, spawned: list, monkeypatch) -> pr.ConnectorReplica
 
 def test_the_server_is_the_installed_bundle_started_by_its_own_launcher(tmp_path, monkeypatch):
     """Installed, then called: the bundle's launcher, in the bundle, with a port and the
-    environment the key resolves to. Nothing is copied, linked or written."""
+    environment the key resolves to. Nothing of the bundle is copied, linked or rewritten; the
+    one thing added is its own seed, laid down beside its model."""
     bundle = _install_bundle(tmp_path / "bundle")
     monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path / "data"))
     before = sorted(p.relative_to(bundle) for p in bundle.rglob("*"))
     spawned: list = []
     _replica_on(bundle, spawned, monkeypatch).endpoint()
+    added = set(p.relative_to(bundle) for p in bundle.rglob("*")) - set(before)
+    assert all(str(p).startswith(("model/.duckdb", "model/.aperio")) for p in added), added
+    before = sorted(p.relative_to(bundle) for p in bundle.rglob("*"))
 
     command, cwd, env = spawned[0]
     assert command[0] == str(bundle / "bin" / "pgwire-govdata")
@@ -272,6 +316,137 @@ def test_a_bundle_whose_model_serves_other_schemas_than_recorded_is_not_started(
     assert "scripts/record_govdata_bundle_schemas.py" in str(refused.value)
     assert (bundle / "model" / "model.json").read_bytes() == moved
     assert isinstance(refused.value, pr.server_start_errors())
+
+
+# -- installing the bundle installs its seed; the server is started on it ------------------------
+#
+# The bundle carries, in its govdata jar, the DuckDB catalog and the per-schema conversion
+# records the adapter otherwise builds at every start from object storage. The adapter's own
+# installer runs only on its embedded JDBC path; a pgwire server never reaches it.
+
+
+def test_the_seed_is_laid_down_where_the_server_reads_it(tmp_path):
+    bundle = _install_bundle(tmp_path / "bundle")
+    catalog = aa.install_seed(bundle)
+
+    assert catalog == bundle / "model" / ".duckdb" / "govdata.duckdb"
+    assert catalog.read_bytes() == b"the prebuilt catalog"
+    for schema in _SEED_SCHEMAS:  # <model dir>/.aperio/<schema>: each schema's working directory
+        record = bundle / "model" / ".aperio" / schema / ".conversions.json"
+        assert record.read_text() == f'{{"schema": "{schema}"}}'
+    # The marker the adapter's installer writes: the seed's SHA-256, beside the catalog.
+    import hashlib
+
+    marker = bundle / "model" / ".duckdb" / "govdata.duckdb.version"
+    assert marker.read_text() == hashlib.sha256(_seed_zip()).hexdigest()
+    assert (bundle / "model" / "model.json").read_bytes() == _INSTALLED_MODEL
+
+
+def test_the_server_is_started_on_the_seeded_catalog(tmp_path, monkeypatch):
+    bundle = _install_bundle(tmp_path / "bundle")
+    spawned: list = []
+    _replica_on(bundle, spawned, monkeypatch).endpoint()
+    _, _, env = spawned[0]
+    catalog = bundle / "model" / ".duckdb" / "govdata.duckdb"
+    assert env["GOVDATA_DUCKDB_CATALOG"] == str(catalog)
+    assert catalog.is_file()  # installed before the launcher is run
+
+
+def test_an_installed_seed_is_left_alone_and_a_new_bundles_seed_replaces_it(tmp_path):
+    bundle = _install_bundle(tmp_path / "bundle")
+    catalog = aa.install_seed(bundle)
+    catalog.write_bytes(b"the catalog as the running server has kept it")
+    aa.install_seed(bundle)
+    assert catalog.read_bytes() == b"the catalog as the running server has kept it"
+
+    # A new release of the bundle: another seed, so another fingerprint.
+    _write_jar(bundle, {aa.SEED_ZIP_RESOURCE: _seed_zip(catalog=b"the next release's catalog")})
+    aa.install_seed(bundle)
+    assert catalog.read_bytes() == b"the next release's catalog"
+
+
+def test_a_catalog_the_server_built_for_itself_is_not_taken_for_a_seed(tmp_path):
+    """Before the seed was installed a server built its own catalog and records in these
+    directories. They carry no marker: the seed replaces them, and the write-ahead log of the
+    replaced catalog goes with it."""
+    bundle = _install_bundle(tmp_path / "bundle")
+    built = bundle / "model" / ".duckdb"
+    built.mkdir(parents=True)
+    (built / "govdata.duckdb").write_bytes(b"built cold this morning")
+    (built / "govdata.duckdb.wal").write_bytes(b"its log")
+    record = bundle / "model" / ".aperio" / "sec" / ".conversions.json"
+    record.parent.mkdir(parents=True)
+    record.write_text("built cold")
+
+    catalog = aa.install_seed(bundle)
+    assert catalog.read_bytes() == b"the prebuilt catalog"
+    assert not (built / "govdata.duckdb.wal").exists()
+    assert record.read_text() == '{"schema": "sec"}'
+
+
+def test_a_missing_catalog_is_seeded_again_whatever_the_marker_says(tmp_path):
+    bundle = _install_bundle(tmp_path / "bundle")
+    catalog = aa.install_seed(bundle)
+    catalog.unlink()
+    assert aa.install_seed(bundle).read_bytes() == b"the prebuilt catalog"
+
+
+def test_a_bundle_with_no_seed_is_refused_by_name_and_its_server_is_not_started(
+    tmp_path, monkeypatch
+):
+    """A packaging defect of the bundle, not a cold start to sit through."""
+    bundle = _install_bundle(tmp_path / "bundle")
+    _write_jar(bundle, {"org/apache/calcite/adapter/govdata/Some.class": b""})
+    spawned: list = []
+    with pytest.raises(aa.BundleSeedMissing) as refused:
+        _replica_on(bundle, spawned, monkeypatch).endpoint()
+    assert spawned == []
+    assert "calcite-govdata-1.42.0-SNAPSHOT.jar" in str(refused.value)
+    assert "duckdb/seed/govdata-seed.zip" in str(refused.value)
+    assert isinstance(refused.value, pr.server_start_errors())
+
+
+def test_a_seed_with_no_catalog_in_it_is_refused(tmp_path):
+    import io
+    import zipfile
+
+    empty = io.BytesIO()
+    with zipfile.ZipFile(empty, "w") as seed:
+        seed.writestr(".aperio/sec/.conversions.json", "{}")
+    bundle = _install_bundle(tmp_path / "bundle", seed=empty.getvalue())
+    with pytest.raises(aa.BundleSeedMissing, match="holds no .duckdb/govdata.duckdb"):
+        aa.install_seed(bundle)
+
+
+def test_a_seed_entry_that_leaves_the_seed_directory_is_refused(tmp_path):
+    import io
+    import zipfile
+
+    hostile = io.BytesIO()
+    with zipfile.ZipFile(hostile, "w") as seed:
+        seed.writestr("../../outside.txt", "x")
+    bundle = _install_bundle(tmp_path / "bundle", seed=hostile.getvalue())
+    with pytest.raises(aa.BundleSeedMissing, match="leaves the seed directory"):
+        aa.install_seed(bundle)
+    assert not (tmp_path / "outside.txt").exists()
+
+
+def test_the_bundled_iceberg_schema_cache_is_installed_where_the_adapter_reads_it(tmp_path):
+    """As the adapter's own installer: the file, and the marker of the bundled copy installed
+    (its MD5), so a copy the adapter has since refreshed is not put back."""
+    import hashlib
+
+    bundle = _install_bundle(tmp_path / "bundle")
+    cache_dir = tmp_path / "cache"
+    aa.install_seed(bundle, schema_cache_dir=cache_dir)
+    target = cache_dir / "iceberg-schema-cache.json"
+    assert target.read_bytes() == b'{"tables": {}}'
+    marker = cache_dir / "iceberg-schema-cache.json.bundled"
+    assert marker.read_text() == hashlib.md5(b'{"tables": {}}', usedforsecurity=False).hexdigest()
+
+    target.write_bytes(b"refreshed by the adapter")
+    aa.install_seed(bundle, schema_cache_dir=cache_dir)
+    assert target.read_bytes() == b"refreshed by the adapter"
 
 
 def test_no_model_is_built_for_a_source_that_runs_on_its_bundles_own():
@@ -360,16 +535,210 @@ def test_a_schema_outside_the_sources_list_is_refused_by_name():
     assert "['sec', 'econ', 'ref']" in str(refused.value)
 
 
+# -- discovery asks the adapter's information_schema, never its pg_catalog -----------------------
+#
+# The adapter answers information_schema through Calcite as soon as it listens. Its pg_catalog is
+# another matter: the first pg_catalog query makes it count the rows of every table it serves
+# (673 for the full model), minutes during which nothing that waits on it can answer. An engine's
+# attach reads pg_catalog (its own scanner), so statements wait for that; discovery does not.
+
+
+class _Adapter:
+    """The adapter over a plain pg connection: answers information_schema, records statements."""
+
+    def __init__(self, answers) -> None:
+        self._answers = answers
+        self.statements: list[str] = []
+
+    async def fetch(self, sql, *args, timeout=None):
+        self.statements.append(sql)
+        return self._answers(sql)
+
+    async def close(self):
+        self.statements.append("closed")
+
+
+class _Row:
+    """A result row as asyncpg gives it: read by position, or by the server's own label."""
+
+    def __init__(self, **labelled):
+        self._labels = list(labelled)
+        self._values = list(labelled.values())
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._values[key]
+        if key not in self._labels:
+            raise KeyError(key)
+        return self._values[self._labels.index(key)]
+
+
+@pytest.fixture
+def adapter(monkeypatch):
+    """A listening server whose catalog is NOT prepared: anything that waits on it would raise."""
+
+    class _Replica:
+        def endpoint(self, *, timeout=None):
+            return pr.PortPair(5440, "127.0.0.1", 5540)
+
+        def await_catalog(self, ports, timeout):
+            raise AssertionError("discovery waited on the adapter's pg_catalog")
+
+    def _answers(sql):
+        # Rows as the server returns them: its column labels are upper case (ORACLE lexer), so
+        # a reader that asks a row for "table_name" finds nothing.
+        if "information_schema.tables" in sql:
+            return [_Row(TABLE_NAME="filings"), _Row(TABLE_NAME="financial_facts")]
+        return [
+            _Row(TABLE_NAME="filings", COLUMN_NAME="cik", DATA_TYPE="character varying"),
+            _Row(TABLE_NAME="filings", COLUMN_NAME="form", DATA_TYPE="character varying"),
+            _Row(TABLE_NAME="financial_facts", COLUMN_NAME="cik", DATA_TYPE="bigint"),
+        ]
+
+    conn = _Adapter(_answers)
+
+    async def _connect(host, port):
+        return conn
+
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: _Replica())
+    monkeypatch.setattr(pr, "_pg_connect", _connect)
+    return conn
+
+
 @pytest.mark.asyncio
-async def test_a_schema_outside_the_sources_list_lists_no_tables():
+async def test_a_schemas_tables_are_one_information_schema_statement(adapter):
+    assert await pr.adapter_tables(_source(), "sec") == ["filings", "financial_facts"]
+    assert len(adapter.statements) == 2 and adapter.statements[1] == "closed"
+    assert "information_schema.tables" in adapter.statements[0]
+    assert "table_schema = 'sec'" in adapter.statements[0]
+    assert "pg_catalog" not in adapter.statements[0]
+
+
+@pytest.mark.asyncio
+async def test_a_schemas_columns_are_one_information_schema_statement(adapter):
+    columns = await pr.adapter_columns(_source(), "sec")
+    assert columns == {
+        "filings": [("cik", "character varying"), ("form", "character varying")],
+        "financial_facts": [("cik", "bigint")],
+    }
+    assert len(adapter.statements) == 2
+    assert "information_schema.columns" in adapter.statements[0]
+    assert "ORDER BY table_name, ordinal_position" in adapter.statements[0]
+    assert "pg_catalog" not in adapter.statements[0]
+
+
+@pytest.mark.asyncio
+async def test_one_tables_columns_are_asked_for_by_table(adapter):
+    await pr.adapter_columns(_source(), "sec", "filings")
+    assert "table_name = 'filings'" in adapter.statements[0]
+
+
+@pytest.mark.asyncio
+async def test_discovery_answers_while_the_adapters_catalog_is_still_being_prepared(adapter):
+    """The fixture's server is listening with its catalog unprepared: both reads answer."""
+    assert await pr.adapter_tables(_source(), "sec")
+    assert await pr.adapter_columns(_source(), "sec")
+    assert await pr.schema_columns(_source(), "sec") == {
+        "filings": ["cik", "form"],
+        "financial_facts": ["cik"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_discovery_of_a_server_that_does_not_listen_yet_is_starting(monkeypatch):
+    class _Replica:
+        def endpoint(self, *, timeout=None):
+            raise pr.ServerLifecycleError("did not accept connections")
+
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: _Replica())
+    with pytest.raises(pr.SourceStillStartingError, match="still starting up"):
+        await pr.adapter_tables(_source(), "sec")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", ["sec'; DROP", "", "a b", "pg_catalog.pg_class"])
+async def test_a_name_that_is_not_an_identifier_is_refused(adapter, bad):
+    with pytest.raises(ValueError, match="not a schema name|not a table name"):
+        await pr.adapter_tables(_source(), bad)
+    with pytest.raises(ValueError, match="not a schema name|not a table name"):
+        await pr.adapter_columns(_source(), "sec", bad)
+    assert adapter.statements == []
+
+
+@pytest.mark.asyncio
+async def test_the_one_reader_refuses_a_statement_on_pg_catalog(adapter):
+    with pytest.raises(ValueError, match="pg_catalog"):
+        await pr._read_information_schema(_source(), "SELECT 1 FROM pg_catalog.pg_class")
+    assert adapter.statements == []
+
+
+class _Unbound:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+@pytest.fixture
+def discovered(monkeypatch, adapter):
+    """The admin's listers for a source saved with sec, ref and geo."""
+    from provisa.api.admin import introspect, schema_query
+
+    async def _source_of(source_id):
+        return _source("sec,ref,geo")
+
+    monkeypatch.setattr(schema_query, "_source_for_introspection", _source_of)
+    monkeypatch.setattr(introspect, "_adapter_bound", _Unbound, raising=False)
+    return adapter
+
+
+@pytest.mark.asyncio
+async def test_the_register_table_list_is_read_from_the_adapters_information_schema(discovered):
     from provisa.api.admin.introspect import native_tables
 
-    row = SimpleNamespace(id="test-askamerica", database="sec,ref,geo")
-    conn = _OneRow(row)
-    outside = await native_tables("test-askamerica", "govdata", "weather", None, conn, None)  # type: ignore[arg-type]
+    conn = _OneRow(SimpleNamespace(id="test-askamerica", database="sec,ref,geo"))
     inside = await native_tables("test-askamerica", "govdata", "sec", None, conn, None)  # type: ignore[arg-type]
+    assert inside is not None and [t.name for t in inside] == ["filings", "financial_facts"]
+    assert "information_schema.tables" in discovered.statements[0]
+
+
+@pytest.mark.asyncio
+async def test_a_schema_outside_the_sources_list_lists_no_tables(discovered):
+    from provisa.api.admin.introspect import native_tables
+
+    conn = _OneRow(SimpleNamespace(id="test-askamerica", database="sec,ref,geo"))
+    outside = await native_tables("test-askamerica", "govdata", "weather", None, conn, None)  # type: ignore[arg-type]
     assert outside == []  # never listed
-    assert inside is None  # listed by the engine, from the attached server
+    assert discovered.statements == []  # and the adapter is not asked
+
+
+@pytest.mark.asyncio
+async def test_a_selected_tables_columns_are_read_from_the_adapters_information_schema(
+    discovered,
+):
+    from provisa.api.admin.introspect import native_columns
+
+    columns = await native_columns("test-askamerica", "govdata", "sec", "filings", None)  # type: ignore[arg-type]
+    assert columns == [("cik", "character varying"), ("form", "character varying")]
+    assert "table_name = 'filings'" in discovered.statements[0]
+    assert "pg_catalog" not in discovered.statements[0]
+
+
+@pytest.mark.asyncio
+async def test_columns_of_a_schema_outside_the_sources_list_are_refused_by_name(discovered):
+    from provisa.api.admin.introspect import native_columns
+
+    with pytest.raises(aa.SchemaNotServed, match="weather"):
+        await native_columns("test-askamerica", "govdata", "weather", "stations", None)  # type: ignore[arg-type]
+
+
+def test_the_wait_a_statement_meets_says_what_it_is():
+    """Discovery no longer waits on the catalog; a statement the engine computes still does,
+    because the engine's attach reads pg_catalog. The message names that wait."""
+    said = str(pr.SourceStillStartingError("test-askamerica", preparing_catalog=True))
+    assert said.startswith("STARTING:")
+    assert "can be registered now" in said and "counting the rows" in said
 
 
 def test_registration_refuses_a_schema_outside_the_list_before_anything_is_written():
@@ -801,7 +1170,7 @@ def test_no_error_this_source_raises_carries_the_key_or_its_credentials():
 
 def test_the_servers_command_line_carries_no_secret_and_no_file_is_written(tmp_path, monkeypatch):
     """A command line is in the process table and a file is on disk; the environment is the only
-    carrier, and the installed bundle is left as it was."""
+    carrier. What the install lays down is the bundle's own seed, which holds neither."""
     bundle = _install_bundle(tmp_path / "bundle")
     before = {p: p.read_bytes() for p in bundle.rglob("*") if p.is_file()}
     spawned: list = []
@@ -809,7 +1178,11 @@ def test_the_servers_command_line_carries_no_secret_and_no_file_is_written(tmp_p
     command, _, _ = spawned[0]
     for secret in _SECRETS:
         assert secret not in " ".join(command)
-    assert {p: p.read_bytes() for p in bundle.rglob("*") if p.is_file()} == before
+    after = {p: p.read_bytes() for p in bundle.rglob("*") if p.is_file()}
+    assert {p: data for p, data in after.items() if p in before} == before
+    for data in after.values():
+        for secret in ("aa-key", "TOKEN"):
+            assert secret.encode() not in data
 
 
 def test_starting_the_server_logs_no_secret(tmp_path, caplog, monkeypatch):
@@ -1036,11 +1409,11 @@ def test_the_two_waits_are_told_apart_and_both_are_starting():
     port = str(pr.SourceStillStartingError("test-askamerica"))
     catalog = str(pr.SourceStillStartingError("test-askamerica", preparing_catalog=True))
     assert port.startswith("STARTING:") and "still starting up" in port
-    assert catalog.startswith("STARTING:") and "answering its first catalog query" in catalog
+    assert catalog.startswith("STARTING:") and "counting the rows" in catalog
     replica = _replica_with_server(
         healthy=True, exit_code=None, catalog_ready=False, prepare=lambda ports: time.sleep(5)
     )
-    with pytest.raises(pr.SourceStillStartingError, match="answering its first catalog query"):
+    with pytest.raises(pr.SourceStillStartingError, match="counting the rows"):
         replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 0)
     with pytest.raises(pr.SourceStillStartingError, match="still starting up"):
         _replica_with_server(healthy=False, exit_code=None).require_serving()

@@ -162,7 +162,9 @@ class SourceStillStartingError(ServerNotServing):  # REQ-1824
         # Two waits, told apart for whoever is waiting: the server has not opened its port
         # yet, or it is listening and preparing its catalog (``ConnectorReplica.await_catalog``).
         doing = (
-            "is listening and answering its first catalog query"
+            "is listening, and its tables can be registered now; a query on them waits until "
+            "the engine can attach it, while the connector answers the engine's first catalog "
+            "query by counting the rows of every table it serves"
             if preparing_catalog
             else "is still starting up"
         )
@@ -600,14 +602,19 @@ class _ProcessGroup:
 SERVER_LOG_NAME = "pgwire-server.log"
 
 
-def server_environment(source: Any) -> dict[str, str] | None:
+def server_environment(source: Any, bundle_dir: Path) -> dict[str, str] | None:
     """What the source's server needs in its environment beyond this process's own, or None
     when its model carries everything (every type but AskAmerica, whose bundled model reads its
-    credentials by name from the environment)."""
+    credentials and its catalog by name from the environment). For AskAmerica the bundle's seed
+    is installed first (``askamerica.install_seed``): the server is started on that catalog, and
+    a bundle that carries none is refused here, by name."""
     if _source_type(source) == "govdata":
-        from provisa.federation.askamerica import server_environment as _askamerica_environment
+        from provisa.federation.askamerica import (
+            install_seed,
+            server_environment as _askamerica_environment,
+        )
 
-        return _askamerica_environment(source)
+        return _askamerica_environment(source, catalog=install_seed(bundle_dir))
     return None
 
 
@@ -836,6 +843,92 @@ async def land_via_select(
         await conn.close()
 
 
+# -- discovery: the server's information_schema, over a plain connection ------------------------
+#
+# What a source's server holds is read here and nowhere else: its information_schema, which the
+# server answers through Calcite as soon as it listens. Never its pg_catalog: the first
+# pg_catalog query makes the server build its catalog database, counting the rows of every
+# table it serves — minutes. An engine's attach reads pg_catalog (the engine's own scanner), so
+# a statement the engine computes waits for that (``ConnectorReplica.await_catalog``); the
+# Register Table lists, the catalog index and the search's column fill do not.
+
+
+def _identifier(name: str, what: str) -> str:
+    """``name`` as it is written into a statement: held to an identifier, since the server's
+    handling of a bound text value is not relied on."""
+    import re
+
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name or ""):
+        raise ValueError(f"{name!r} is not a {what} name")
+    return name
+
+
+def listening_endpoint(source: Any) -> PortPair:
+    """The source's server once it accepts connections, waited for no longer than a discovery
+    call waits; ``SourceStillStartingError`` until then. Its catalog is NOT waited for: what is
+    read through this endpoint is information_schema."""
+    try:
+        return _endpoint_replica(source).endpoint(timeout=DISCOVERY_READY_SECONDS)
+    except ServerLifecycleError as exc:
+        raise SourceStillStartingError(source.id) from exc
+
+
+async def _read_information_schema(source: Any, statement: str) -> list[Any]:
+    """Run one information_schema statement on the source's server over a connection of its
+    own. THE one reader discovery uses; a statement naming pg_catalog is refused."""
+    import asyncio
+
+    if "pg_catalog" in statement.lower():
+        raise ValueError("discovery reads the server's information_schema, never pg_catalog")
+    ports = await asyncio.to_thread(listening_endpoint, source)
+    conn = await _pg_connect(ports.calcite_child_host, ports.pgwire_port)
+    try:
+        return list(await conn.fetch(statement, timeout=_fetch_timeout()))
+    finally:
+        await conn.close()
+
+
+async def adapter_tables(source: Any, schema: str) -> list[str]:
+    """The tables of one schema of the source's server: one statement."""
+    schema = _identifier(schema, "schema")
+    rows = await _read_information_schema(
+        source,
+        "SELECT table_name FROM information_schema.tables "
+        f"WHERE table_schema = '{schema}' ORDER BY table_name",  # noqa: S608 - identifier
+    )
+    # Read by position: the server labels a result column in its own lexical case (TABLE_NAME
+    # under its ORACLE lexer), so the label is not the name the statement wrote.
+    return [row[0] for row in rows]
+
+
+async def adapter_columns(
+    source: Any, schema: str, table: str | None = None
+) -> dict[str, list[tuple[str, str]]]:
+    """``{table: [(column, type), ...]}`` for one schema of the source's server — every table
+    of it, or ``table`` alone — in one statement, columns in their order."""
+    schema = _identifier(schema, "schema")
+    only = "" if table is None else f" AND table_name = '{_identifier(table, 'table')}'"
+    rows = await _read_information_schema(
+        source,
+        "SELECT table_name, column_name, data_type FROM information_schema.columns "
+        f"WHERE table_schema = '{schema}'{only} "  # noqa: S608 - identifiers
+        "ORDER BY table_name, ordinal_position",
+    )
+    columns: dict[str, list[tuple[str, str]]] = {}
+    for row in rows:  # by position, as in adapter_tables
+        columns.setdefault(row[0], []).append((row[1], row[2]))
+    return columns
+
+
+async def schema_columns(source: Any, schema: str) -> dict[str, list[str]]:
+    """``{table: [column, ...]}`` for every table of one schema: the names of
+    :func:`adapter_columns`, as the search's column fill keeps them."""
+    return {
+        table: [name for name, _type in columns]
+        for table, columns in (await adapter_columns(source, schema)).items()
+    }
+
+
 # -- orchestration + engine integration ----------------------------------------
 
 
@@ -974,7 +1067,7 @@ class ConnectorReplica:  # REQ-954/955/956
             spawn=self._spawn,
             health_check=self._health,
             port_is_free=self._port_is_free,
-            environment=server_environment(self._source),
+            environment=server_environment(self._source, Path(bundle_dir)),
         )
         server.start()  # REQ-955 (lifecycle)
         self._server = server
@@ -1188,6 +1281,7 @@ def server_start_errors() -> tuple[type[BaseException], ...]:
         AskAmericaKeyMissing,
         AskAmericaKeyRefused,
         AskAmericaUnavailable,
+        BundleSeedMissing,
     )
     from provisa.govdata.subjects import BundleSchemasChanged
     from provisa.runtime_deps.pgwire_bundles import BundleUnavailable
@@ -1200,6 +1294,7 @@ def server_start_errors() -> tuple[type[BaseException], ...]:
         AskAmericaKeyMissing,
         AskAmericaKeyRefused,
         AskAmericaUnavailable,
+        BundleSeedMissing,
     )
 
 

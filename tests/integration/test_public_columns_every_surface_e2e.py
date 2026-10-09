@@ -195,7 +195,10 @@ def test_rest_serves_the_published_columns(server):
     status, body = _call(server, "/data/rest/hr/staff", "seller")
     assert status == 200, body
     rows = body["data"] if isinstance(body, dict) and "data" in body else body
-    assert rows and all(set(row) <= {"id", "name"} for row in rows), rows
+    # Every table's rows carry its two system fields beside its columns (``_name_``, the table's
+    # address, and ``_domain_``; compiler/context.py virtual_columns) — a REST read with no
+    # ``fields`` selects them with the rest. The role's DATA columns are the published two.
+    assert rows == [{"id": 7, "name": "Ada", "_name_": "hr.staff", "_domain_": "hr"}], rows
     status, body = _call(server, "/data/rest/hr/reviews", "seller")
     assert status != 200, body
 

@@ -91,6 +91,8 @@
     "nlSearchPlaceholder": "例如：客戶發票及付款表",
     "nlSearchButton": "搜尋",
     "nlSearchNone": "此結構描述中沒有與該描述相符的表。",
+    "nlSearchColumnsLoading": "資料表名稱已完整搜尋。此結構描述的欄位名稱仍在載入，因此僅按欄位相符的資料表可能缺少；此搜尋會重複執行，直至欄位名稱載入完成。",
+    "nlSearchColumnsUnavailable": "資料表名稱已完整搜尋。此結構描述的欄位名稱無法載入，因此僅搜尋了資料表名稱和描述。",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "已註冊",
     "nlSearchUse": "使用",

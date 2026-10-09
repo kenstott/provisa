@@ -43,6 +43,11 @@ log = logging.getLogger(__name__)
 INTERVAL_SETTING = "config.reload_interval"
 
 
+# What a target's reload answers when it loaded nothing: the copy it was listed for was dropped
+# or replaced before, or while, it was read. The runtime that replaces it loads its own.
+NOT_RELOADED = object()
+
+
 @dataclass(frozen=True)
 class Target:
     """One copy this process holds of something a control plane stores."""
@@ -51,7 +56,9 @@ class Target:
     db: "Database"  # the control plane whose config_stamp row is compared
     kind: str  # the row: config_stamp.MODEL | config_stamp.SETTINGS
     loaded: Callable[[], int | None]  # the stamp the copy was loaded at; None = no copy held
-    reload: Callable[[], Awaitable[None]]  # load again, recording the stamp read before the rows
+    # Load again, recording the stamp read before the rows. Answers NOT_RELOADED when there was
+    # no copy left to load (the runtime it was listed for is gone).
+    reload: Callable[[], Awaitable[object]]
 
 
 async def check(targets: list[Target]) -> list[str]:
@@ -72,7 +79,11 @@ async def check(targets: list[Target]) -> list[str]:
             # loads it records the stamp it loaded at. There is nothing here to reload.
             if loaded is None or loaded == current:
                 continue
-            await target.reload()
+            if await target.reload() is NOT_RELOADED:
+                log.info(
+                    "config not reloaded: %s is gone; its replacement loads its own", target.name
+                )
+                continue
         except Exception:  # allow-ble: a background check's boundary — logged, next check retries
             log.exception("config reload of %s failed; retrying on the next check", target.name)
             continue

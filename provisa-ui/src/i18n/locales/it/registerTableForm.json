@@ -91,6 +91,8 @@
     "nlSearchPlaceholder": "ad es. tabelle di fatturazione e pagamenti dei clienti",
     "nlSearchButton": "Cerca",
     "nlSearchNone": "Nessuna tabella in questo schema corrisponde a quella descrizione.",
+    "nlSearchColumnsLoading": "I nomi delle tabelle sono stati cercati per intero. I nomi delle colonne di questo schema sono ancora in caricamento, quindi una tabella che corrisponde solo per una colonna può mancare; la ricerca si ripete finché non sono caricati.",
+    "nlSearchColumnsUnavailable": "I nomi delle tabelle sono stati cercati per intero. Non è stato possibile caricare i nomi delle colonne di questo schema, quindi sono stati cercati solo nomi di tabella e descrizioni.",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "Registrata",
     "nlSearchUse": "Usa",
