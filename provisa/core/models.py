@@ -1877,6 +1877,15 @@ class MailConfig(BaseModel):  # REQ-1310, REQ-1330, REQ-1576
     ses: SesMailConfig = Field(default_factory=SesMailConfig)
     microsoft365: Microsoft365MailConfig = Field(default_factory=Microsoft365MailConfig)
 
+    @field_validator("base_url")
+    @classmethod
+    def _an_empty_address_is_not_stated(cls, value: str) -> str:
+        # A launcher that passes PROVISA_MAIL_BASE_URL on whether or not the operator set it
+        # delivers an empty string, and ``${env:NAME:-default}`` gives a default only to an
+        # ABSENT variable. Empty states no address, so it is read as none stated and takes the
+        # default (maintainer's ruling, 2026-10-09: an empty value must not defeat a default).
+        return value if value.strip() else DEFAULT_UI_ORIGIN
+
 
 class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073
     """Outbound publication of governance metadata to an external catalog.

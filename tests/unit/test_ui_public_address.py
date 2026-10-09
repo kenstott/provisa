@@ -64,3 +64,29 @@ def test_a_local_installs_sign_in_returns_to_the_address_its_ui_is_opened_at():
 def test_an_invitation_from_a_local_install_links_to_the_address_its_ui_is_opened_at():
     link = invite_redemption_url(MailConfig().base_url, "tok", "acme")
     assert link == f"{DEFAULT_UI_ORIGIN}/?invite=tok"
+
+
+def test_an_address_stated_as_empty_is_read_as_none_stated():
+    """A launcher that passes the variable on unset delivers "", which must not defeat the
+    default (packaging/linux/first-launch.sh does exactly this)."""
+    assert MailConfig(base_url="").base_url == DEFAULT_UI_ORIGIN
+    assert MailConfig(base_url="   ").base_url == DEFAULT_UI_ORIGIN
+    assert MailConfig(base_url="https://provisa.example.test").base_url == (
+        "https://provisa.example.test"
+    )
+
+
+def test_the_install_configs_default_to_the_same_address():
+    """Each shipped config that states the address states the one the launchers serve."""
+    stated = []
+    for config in (
+        "config/provisa-install.yaml",
+        "config/provisa-install-base.yaml",
+        "demo/named/perf/config.yaml",
+    ):
+        found = re.findall(
+            r"base_url: \$\{env:PROVISA_MAIL_BASE_URL:-(\S+)\}", (ROOT / config).read_text()
+        )
+        assert len(found) == 1, config
+        stated.extend(found)
+    assert set(stated) == {DEFAULT_UI_ORIGIN}
