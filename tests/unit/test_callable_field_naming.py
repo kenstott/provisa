@@ -79,3 +79,45 @@ def test_reverse_lookup_transform_matches_emit_site():
     emitted = naming.apply_gql_name("add_pet")
     registered_key = naming.apply_convention("add_pet", "apollo_graphql")
     assert emitted == registered_key == "addPet"
+
+
+def test_a_source_operation_command_named_with_a_trailing_number_is_a_mutation_field():
+    """REQ-1924, REQ-1172: the command the UI e2e registers — ``e2e_place_order_<stamp>``, a
+    ``source_operation`` in the ``pet-store`` domain, on a deployment that prefixes fields with
+    their domain — IS in the role's mutation type. Its field is the domain prefix and the
+    convention's casing of the name, and the convention keeps the underscore before a run of
+    digits (naming._to_pascal_case), so it is ``…e2ePlaceOrder_<stamp>``, not
+    ``…e2ePlaceOrder<stamp>``."""
+    naming.configure(gql="apollo_graphql", sql="snake")
+    name = "e2e_place_order_1728432000000"
+    si = SchemaInput(
+        tables=[],
+        relationships=[],
+        column_types={},
+        naming_rules=[],
+        role={"id": "org_admin", "domain_access": ["*"]},
+        domains=[{"id": "pet-store"}],
+        domain_prefix=True,
+        functions=[
+            {
+                "name": name,
+                "impl_kind": "source_operation",
+                "source_id": "petstore-api",
+                "function_name": "placeOrder",
+                "arguments": [{"name": "body", "type": "json"}],
+                "returns": "",
+                "domain_id": "pet-store",
+                "kind": "mutation",
+                "visible_to": [],
+                "writable_by": ["org_admin"],
+            }
+        ],
+        webhooks=[],
+    )
+    _query, mutation = _build_action_fields(si, {}, [])
+    assert list(mutation) == ["pet_store__e2ePlaceOrder_1728432000000"]
+    (field,) = mutation
+    # What a client matching the command by name can rely on: the name's letters and digits,
+    # in order, whatever the convention did with its separators.
+    assert field.lower().replace("_", "").endswith("placeorder1728432000000")
+    assert not field.lower().endswith("placeorder1728432000000")

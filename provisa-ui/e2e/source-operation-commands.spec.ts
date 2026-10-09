@@ -102,7 +102,10 @@ test("REQ-1924: a registered operation is called with a JSON object and reaches 
   });
   const fields = ((await schema.json()).data.__schema.mutationType.fields as { name: string }[])
     .map((f) => f.name)
-    .filter((n) => n.toLowerCase().endsWith(`placeorder${STAMP}`));
+    // The field is the domain prefix and the naming convention's casing of the command's name,
+    // and the convention keeps the underscore before a run of digits:
+    // pet_store__e2ePlaceOrder_<stamp>. Match the name's letters and digits, not its separators.
+    .filter((n) => n.toLowerCase().replace(/_/g, "").endsWith(`placeorder${STAMP}`));
   expect(fields, "the command's mutation field").toHaveLength(1);
   // A field the petstore spec does not declare is passed through all the same.
   const order = { id: ORDER_ID, petId: 7, quantity: 2, status: "placed", note: "e2e" };
