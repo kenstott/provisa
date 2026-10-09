@@ -448,3 +448,292 @@ async def test_an_engine_with_no_attach_seam_is_still_asked_for_its_catalog(stor
     assert found is not None and [(t.table_name, t.column_names) for t in found] == [
         ("financial_facts", ["cik"])
     ]
+
+
+# ---------------------------------------------------------------------------
+# Column names for searching are loaded lazily (REQ-464)
+# ---------------------------------------------------------------------------
+#
+# The index stays cheap: table names and comments. A schema's column names are fetched the first
+# time a search needs them -- one query for the whole schema, through the source's adapter, off
+# the request -- and kept in the cache from then on.
+
+
+@pytest.fixture
+def fills(monkeypatch):
+    """Column fills run inline here instead of on a background worker, and are recorded."""
+    from provisa.discovery import catalog_cache
+
+    monkeypatch.setattr(catalog_cache, "_COLUMN_FILLS", {})
+    started: list = []
+
+    def _spawn(coro, *, name=None):
+        started.append((name, coro))
+
+    monkeypatch.setattr(catalog_cache, "_spawn_fill", _spawn)
+    yield started
+    for _, coro in started:
+        coro.close()  # a fill a test started and did not run
+
+
+async def _seeded(tenant_db, tables=("financial_facts", "filings")):
+    from provisa.discovery.catalog_cache import write_cache
+
+    await write_cache(
+        tenant_db,
+        "test",
+        "sec",
+        [
+            CachedTable(schema_name="sec", table_name=t, column_names=[], comment=None)
+            for t in tables
+        ],
+    )
+
+
+def _columns_through_the_adapter(monkeypatch, answer):
+    from types import SimpleNamespace
+
+    from provisa.api.admin import schema_query
+    from provisa.federation import pgwire_replica as pr
+
+    asked: list[tuple[str, str]] = []
+
+    async def _source(source_id):
+        return SimpleNamespace(id=source_id)
+
+    async def _columns(source, schema):
+        asked.append((source.id, schema))
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(schema_query, "_source_for_introspection", _source)
+    monkeypatch.setattr(pr, "schema_columns", _columns)
+    return asked
+
+
+@pytest.mark.asyncio
+async def test_a_search_answers_with_what_is_known_and_the_columns_are_filled_off_the_request(
+    stores, monkeypatch, fills
+):
+    from types import SimpleNamespace
+
+    from provisa.discovery import catalog_cache
+
+    _, tenant_db = stores
+    await _seeded(tenant_db)
+    asked = _columns_through_the_adapter(
+        monkeypatch, {"financial_facts": ["cik", "value"], "filings": ["cik", "form"]}
+    )
+    state = SimpleNamespace(tenant_db=tenant_db)
+    known = await catalog_cache.read_cache(tenant_db, "test", "sec")
+
+    assert catalog_cache.request_column_fill("test", "govdata", "sec", known, state) is True
+    assert asked == []  # nothing fetched on the request: the fill was handed off
+    assert len(fills) == 1 and fills[0][0] == "catalog-columns:test/sec"
+
+    await fills[0][1]  # the background work
+    assert asked == [("test", "sec")]  # ONE query for the schema, not one per table
+    filled = await catalog_cache.read_cache(tenant_db, "test", "sec")
+    assert {t.table_name: t.column_names for t in filled} == {
+        "financial_facts": ["cik", "value"],
+        "filings": ["cik", "form"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_schema_is_filled_at_most_once_per_index_generation(stores, monkeypatch, fills):
+    from types import SimpleNamespace
+
+    from provisa.discovery import catalog_cache
+
+    _, tenant_db = stores
+    await _seeded(tenant_db)
+    # A table the adapter lists no columns for stays without: that is not "unfilled".
+    asked = _columns_through_the_adapter(monkeypatch, {"financial_facts": ["cik"]})
+    state = SimpleNamespace(tenant_db=tenant_db)
+
+    async def _search() -> bool:
+        known = await catalog_cache.read_cache(tenant_db, "test", "sec")
+        return catalog_cache.request_column_fill("test", "govdata", "sec", known, state)
+
+    assert await _search() is True
+    assert await _search() is False  # in flight: not started twice
+    await fills[0][1]
+    assert await _search() is False  # filled this generation, "filings" still has none
+    assert asked == [("test", "sec")]
+
+    await catalog_cache.invalidate_source(tenant_db, "test")  # a new generation
+    await _seeded(tenant_db)
+    assert await _search() is True
+
+
+@pytest.mark.asyncio
+async def test_a_source_that_is_still_starting_is_filled_by_a_later_search(
+    stores, monkeypatch, fills, caplog
+):
+    import logging
+    from types import SimpleNamespace
+
+    from provisa.discovery import catalog_cache
+    from provisa.federation.pgwire_replica import SourceStillStartingError
+
+    _, tenant_db = stores
+    await _seeded(tenant_db)
+    _columns_through_the_adapter(monkeypatch, SourceStillStartingError("test"))
+    state = SimpleNamespace(tenant_db=tenant_db)
+    known = await catalog_cache.read_cache(tenant_db, "test", "sec")
+
+    with caplog.at_level(logging.WARNING):
+        assert catalog_cache.request_column_fill("test", "govdata", "sec", known, state) is True
+        await fills[0][1]
+    assert caplog.text == ""  # "later", not an error
+    assert catalog_cache.request_column_fill("test", "govdata", "sec", known, state) is True
+
+
+@pytest.mark.asyncio
+async def test_a_fill_that_fails_is_reported_once_and_not_repeated_this_generation(
+    stores, monkeypatch, fills, caplog
+):
+    import logging
+    from types import SimpleNamespace
+
+    from provisa.discovery import catalog_cache
+    from provisa.federation.pgwire_replica import ServerExited
+
+    _, tenant_db = stores
+    await _seeded(tenant_db)
+    _columns_through_the_adapter(monkeypatch, ServerExited("test", 1, "boom"))
+    state = SimpleNamespace(tenant_db=tenant_db)
+    known = await catalog_cache.read_cache(tenant_db, "test", "sec")
+
+    with caplog.at_level(logging.WARNING):
+        catalog_cache.request_column_fill("test", "govdata", "sec", known, state)
+        await fills[0][1]
+    assert "column names of 'test'/'sec' are not loaded" in caplog.text
+    assert catalog_cache.request_column_fill("test", "govdata", "sec", known, state) is False
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_fetched_when_the_columns_are_known_or_the_kind_is_not_lazy(
+    stores, monkeypatch, fills
+):
+    from types import SimpleNamespace
+
+    from provisa.discovery import catalog_cache
+
+    state = SimpleNamespace(tenant_db=stores[1])
+    known = [CachedTable(schema_name="sec", table_name="t", column_names=["a"], comment=None)]
+    assert catalog_cache.request_column_fill("test", "govdata", "sec", known, state) is False
+    bare = [CachedTable(schema_name="public", table_name="t", column_names=[], comment=None)]
+    # A source listed by its own driver has its columns from the index, as before.
+    assert catalog_cache.request_column_fill("pg", "postgresql", "public", bare, state) is False
+    assert fills == []
+
+
+@pytest.mark.asyncio
+async def test_the_adapter_is_asked_for_a_schemas_columns_in_one_statement(monkeypatch):
+    from types import SimpleNamespace
+
+    from provisa.federation import pgwire_replica as pr
+
+    statements: list[str] = []
+
+    class _Conn:
+        async def fetch(self, sql, *args, timeout=None):
+            statements.append(sql)
+            return [
+                {"table_name": "filings", "column_name": "cik"},
+                {"table_name": "filings", "column_name": "form"},
+                {"table_name": "financial_facts", "column_name": "cik"},
+            ]
+
+        async def close(self):
+            statements.append("closed")
+
+    async def _connect(host, port):
+        return _Conn()
+
+    monkeypatch.setattr(
+        pr, "ensure_endpoint_for_discovery", lambda source: pr.PortPair(5440, "127.0.0.1", 5540)
+    )
+    monkeypatch.setattr(pr, "_pg_connect", _connect)
+    columns = await pr.schema_columns(SimpleNamespace(id="test"), "sec")
+
+    assert columns == {"filings": ["cik", "form"], "financial_facts": ["cik"]}
+    assert len(statements) == 2 and statements[1] == "closed"
+    assert "information_schema.columns" in statements[0] and "table_schema = 'sec'" in statements[0]
+    assert "ORDER BY table_name, ordinal_position" in statements[0]
+    with pytest.raises(ValueError, match="not a schema name"):
+        await pr.schema_columns(SimpleNamespace(id="test"), "sec'; DROP")
+
+
+@pytest.mark.asyncio
+async def test_the_index_fetches_no_column_of_an_attached_source(stores, monkeypatch):
+    """The background index stays cheap: names only, no statement and no describe per table."""
+    from types import SimpleNamespace
+
+    from provisa.discovery.catalog_cache import index_source, read_cache
+    from provisa.federation import pgwire_replica as pr
+
+    model_db, tenant_db = stores
+    _attached_source_arranged(monkeypatch, ["sec"])
+
+    async def _never(source, schema):
+        raise AssertionError("the index fetched columns")
+
+    monkeypatch.setattr(pr, "schema_columns", _never)
+    engine = _AttachingEngine(lambda schema: ["financial_facts"])
+    state = SimpleNamespace(tenant_db=tenant_db, catalog_for=lambda sid: sid)
+    await index_source("test", model_db, engine, None, {"test": "govdata"}, state)
+    found = await read_cache(tenant_db, "test", "sec")
+    assert found is not None and found[0].column_names == []
+    assert engine.statements == []
+
+
+@pytest.mark.asyncio
+async def test_a_search_before_the_index_lists_an_attached_source_through_the_seam(monkeypatch):
+    """The cache is cold (the index has not run): the request lists the schema's tables through
+    the attach seam and fetches no column per table."""
+    from types import SimpleNamespace
+
+    from provisa.api.admin import introspect, schema, schema_query, table_search_router
+    from provisa.discovery import catalog_cache
+
+    class _Pool:
+        def acquire(self):
+            return self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    async def _pool():
+        return _Pool()
+
+    async def _no_native(*args):
+        return None
+
+    async def _boom(*args, **kwargs):
+        raise AssertionError("the request asked for a catalog or a table's columns")
+
+    async def _source(source_id):
+        return SimpleNamespace(id=source_id)
+
+    monkeypatch.setattr(schema, "_get_pool", _pool)
+    monkeypatch.setattr(introspect, "native_tables", _no_native)
+    monkeypatch.setattr(introspect, "native_columns", _boom)
+    monkeypatch.setattr(introspect, "require_live_attach", _boom)
+    monkeypatch.setattr(table_search_router, "run_admin_catalog_sql", _boom)
+    monkeypatch.setattr(schema_query, "_source_for_introspection", _source)
+    monkeypatch.setattr(catalog_cache, "_seam_bound", _no_binding, raising=False)
+    state = SimpleNamespace(
+        source_types={"test": "govdata"},
+        source_pools=None,
+        federation_engine=_AttachingEngine(lambda schema_name: ["financial_facts", "filings"]),
+    )
+
+    found = await table_search_router._candidates_live("test", "sec", state)
+    assert [(c.name, c.columns) for c in found] == [("financial_facts", []), ("filings", [])]

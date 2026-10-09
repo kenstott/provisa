@@ -67,7 +67,19 @@ async def _candidates_live(
                 state,
             )
 
+    attached: list[str] | None = None
     if raw_tables is None:
+        # A source the engine attaches is listed through the attach seam, as the Register Table
+        # form and the background index list it: no engine catalog is named after it.
+        from provisa.discovery.catalog_cache import _SeamSource
+
+        attached = await _SeamSource(state.federation_engine, source_id).tables(schema_name)
+    if attached is not None:
+        candidates = [
+            TableCandidate(name=t, comment=None, columns=[], schema_name=schema_name)
+            for t in attached
+        ]
+    elif raw_tables is None:
         # REQ-1912: the engine lists only a source it holds a live attach of.
         await require_live_attach(state, source_id, "tables")
         catalog = state.catalog_for(source_id)
@@ -99,7 +111,12 @@ async def _candidates_live(
     # engine's catalog only for a table the driver cannot list, on a source the engine holds a
     # live attach of.
     from provisa.api.admin.introspect import unattached_source
+    from provisa.discovery.catalog_cache import loads_columns_lazily
 
+    if loads_columns_lazily(source_type):
+        # REQ-464: its column names are loaded on first search of an indexed schema, in one
+        # statement for the schema; never one statement per table on a request.
+        return candidates
     engine_lists = await unattached_source(state, source_id) is None
     for c in candidates:
         native = None
@@ -147,6 +164,14 @@ async def search_source_tables(
 
     candidates = await _candidates_from_cache(source_id, schema_name, state)
     cache_warm = candidates is not None
+    if cache_warm:
+        # REQ-464: column names of a source listed through its adapter are loaded on first
+        # search, off this request; the answer below ranks on what is known now.
+        from provisa.discovery.catalog_cache import request_column_fill
+
+        request_column_fill(
+            source_id, state.source_types.get(source_id, ""), schema_name, candidates, state
+        )
 
     if not cache_warm:
         candidates = await _candidates_live(source_id, schema_name, state)

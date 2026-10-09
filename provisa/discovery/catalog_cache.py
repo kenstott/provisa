@@ -113,11 +113,116 @@ async def write_cache(
             )
 
 
+async def write_columns(
+    pool, source_id: str, schema_name: str, columns: dict[str, list[str]]
+) -> None:  # REQ-464
+    """Record the column names of tables already in the cache; a table not there is left out."""
+    from sqlalchemy import update
+
+    async with pool.acquire() as conn, conn.transaction():
+        for table_name, names in columns.items():
+            await conn.execute_core(
+                update(source_catalog_cache)
+                .where(
+                    (source_catalog_cache.c.source_id == source_id)
+                    & (source_catalog_cache.c.schema_name == schema_name)
+                    & (source_catalog_cache.c.table_name == table_name)
+                )
+                .values(column_names=list(names))
+            )
+
+
 async def invalidate_source(pool, source_id: str) -> None:  # REQ-464
+    _new_index_generation(source_id)
     async with pool.acquire() as conn:
         await conn.execute_core(
             _delete(source_catalog_cache).where(source_catalog_cache.c.source_id == source_id)
         )
+
+
+# -- column names for searching are loaded lazily (REQ-464) -------------------------------------
+#
+# The index of a source whose tables are listed through its adapter holds table names and
+# comments only: listing columns there means a statement per table, hundreds for one source,
+# for names most searches never read. A schema's column names are fetched the first time a
+# search of it needs them — ONE statement for the whole schema, through the adapter, off the
+# request, which answers with what is known — and kept in the cache from then on.
+
+#: Where each schema's column fill stands in the current index generation of its source, by
+#: (org, source, schema): "filling" while in flight, "filled" once done or once it failed. A
+#: schema is filled at most once per generation; a source still starting is left to a later
+#: search. A generation ends when the source is indexed again or invalidated.
+_COLUMN_FILLS: dict[tuple[str | None, str, str], str] = {}
+
+
+def _fill_key(source_id: str, schema_name: str) -> tuple[str | None, str, str]:
+    from provisa.core.request_context import current_org
+
+    return (current_org.get(), source_id, schema_name)
+
+
+def _new_index_generation(source_id: str) -> None:
+    org = _fill_key(source_id, "")[0]
+    for key in [k for k in _COLUMN_FILLS if k[0] == org and k[1] == source_id]:
+        del _COLUMN_FILLS[key]
+
+
+def _spawn_fill(coro, *, name: str) -> None:
+    from provisa.core.connection_loop import spawn_background
+
+    spawn_background(coro, name=name)
+
+
+def loads_columns_lazily(source_type: str) -> bool:
+    """Whether a source's column names are loaded on first search rather than by the index: a
+    source listed through its bundled adapter (``pgwire_replica.PGWIRE_REPLICA_TYPES``)."""
+    from provisa.federation.pgwire_replica import PGWIRE_REPLICA_TYPES
+
+    return source_type in PGWIRE_REPLICA_TYPES
+
+
+def request_column_fill(source_id: str, source_type: str, schema_name: str, tables, state) -> bool:
+    """Start, off the request, the fill of ``schema_name``'s column names when a search has met
+    tables without them; True when a fill was started. Never waits: the search answers with
+    what is known."""
+    if not loads_columns_lazily(source_type):
+        return False
+    if all(getattr(t, "column_names", None) or getattr(t, "columns", None) for t in tables):
+        return False
+    key = _fill_key(source_id, schema_name)
+    if key in _COLUMN_FILLS:
+        return False
+    _COLUMN_FILLS[key] = "filling"
+    _spawn_fill(
+        _fill_columns(key, source_id, schema_name, state),
+        name=f"catalog-columns:{source_id}/{schema_name}",
+    )
+    return True
+
+
+async def _fill_columns(key, source_id: str, schema_name: str, state) -> None:
+    from provisa.api.admin.schema_query import _source_for_introspection
+    from provisa.federation import pgwire_replica
+
+    try:
+        source = await _source_for_introspection(source_id)
+        if source is None:
+            raise LookupError(f"source {source_id!r} is not registered")
+        columns = await pgwire_replica.schema_columns(source, schema_name)
+    except pgwire_replica.SourceStillStartingError:
+        _COLUMN_FILLS.pop(key, None)  # later: the next search of the schema asks again
+        return
+    except (pgwire_replica.ServerNotServing, LookupError) as exc:
+        _COLUMN_FILLS[key] = "filled"  # not asked again this generation
+        log.warning(
+            "catalog_cache: the column names of %r/%r are not loaded: %s",
+            source_id,
+            schema_name,
+            exc,
+        )
+        return
+    await write_columns(state.tenant_db, source_id, schema_name, columns)
+    _COLUMN_FILLS[key] = "filled"
 
 
 #: How often, and for how long, the index asks again for a source whose own server is still
@@ -214,6 +319,7 @@ async def _index_source_once(
     )
 
     source_type = source_types.get(source_id, "")
+    _new_index_generation(source_id)  # its schemas' columns are loaded afresh on first search
     # REQ-1912: a source's catalog is listed through the source's own driver. The engine's
     # catalog is asked only for what the driver cannot list, and only for a source the engine
     # holds a live attach of — a floored source has no engine catalog, so no query is sent.

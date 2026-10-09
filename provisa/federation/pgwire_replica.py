@@ -841,6 +841,33 @@ async def land_via_select(
         await conn.close()
 
 
+async def schema_columns(source: Any, schema: str) -> dict[str, list[str]]:
+    """``{table: [column, ...]}`` for every table of one schema of the source's server, in ONE
+    statement on its information_schema — the one way the column names of a source read
+    through its adapter are fetched. Raises ``SourceStillStartingError`` while the server has
+    not started. The schema name is written into the statement (the server's handling of a
+    bound text value is not relied on), so it is held to an identifier first."""
+    import asyncio
+    import re
+
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema):
+        raise ValueError(f"{schema!r} is not a schema name")
+    ports = await asyncio.to_thread(ensure_endpoint_for_discovery, source)
+    conn = await _pg_connect(ports.calcite_child_host, ports.pgwire_port)
+    try:
+        rows = await conn.fetch(
+            "SELECT table_name, column_name FROM information_schema.columns "
+            f"WHERE table_schema = '{schema}' ORDER BY table_name, ordinal_position",  # noqa: S608
+            timeout=_fetch_timeout(),
+        )
+    finally:
+        await conn.close()
+    columns: dict[str, list[str]] = {}
+    for row in rows:
+        columns.setdefault(row["table_name"], []).append(row["column_name"])
+    return columns
+
+
 # -- orchestration + engine integration ----------------------------------------
 
 
