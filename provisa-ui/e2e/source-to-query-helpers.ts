@@ -11,7 +11,8 @@
 // The three screens of the source-to-query e2e (REQ-1671), as steps both lanes' specs share:
 // the Sources form, the Register Table form, and the SQL page's results grid.
 
-import { expect, type Page } from "./coverage";
+import { BACKEND_URL, expect, type Page } from "./coverage";
+import { deleteSourceAndItsTables } from "./delete-source";
 
 export const DOMAIN = "pet-store"; // shipped by both lanes' configs; its SQL schema is pet_store
 
@@ -30,6 +31,35 @@ export async function setSourceCacheTtl(page: Page, seconds: number) {
   const toggle = page.getByTestId("source-load-management-panel-toggle");
   if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
   await page.getByTestId("cache-ttl-input").fill(String(seconds));
+}
+
+/** Remove every source the tests registered on this worker's backend, with its tables.
+ *
+ * For a spec's teardown, BEFORE it takes its stack down. A source left registered against a
+ * server that is gone is not inert: the backend goes on building its tables' replicas for as
+ * long as the registration exists -- the hiveserver2 case's table was retried 29 times over the
+ * remaining 83 minutes of the core lane, each with a refused connection and a traceback (run
+ * 37918605161) -- and every read of the whole model meets it.
+ *
+ * The tests' sources are told from the model's own by their ids: `e2e_<kind>_<13-digit stamp>`,
+ * which no source of the demo model has. */
+export async function removeTestSources(baseUrl: string = BACKEND_URL): Promise<string[]> {
+  const gql = async (query: string, variables: Record<string, unknown> = {}) => {
+    const res = await fetch(`${baseUrl}/admin/graphql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-provisa-role": "org_admin" },
+      body: JSON.stringify({ query, variables }),
+    });
+    if (!res.ok) throw new Error(`admin GraphQL answered ${res.status}: ${await res.text()}`);
+    return res.json();
+  };
+  const listed = await gql("{ sources { id } }");
+  if (listed.errors) throw new Error(`sources could not be listed: ${JSON.stringify(listed.errors)}`);
+  const mine = ((listed.data?.sources ?? []) as Array<{ id: string }>)
+    .map((s) => s.id)
+    .filter((id) => /^e2e_[a-z0-9_]+_\d{13}$/.test(id));
+  for (const id of mine) await deleteSourceAndItsTables(gql, id);
+  return mine;
 }
 
 // A source form field, by its label. The sources list behind the form has sortable column headers

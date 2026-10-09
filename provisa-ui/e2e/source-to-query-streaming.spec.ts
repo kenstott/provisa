@@ -43,6 +43,7 @@ import {
   submitSourceAndExpectListed,
   typeSql,
   FORM_FIELD,
+  removeTestSources,
 } from "./source-to-query-helpers";
 
 const E2E_RSS_PORT = 37801;
@@ -463,7 +464,8 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
     provisionKafka("up");
   });
 
-  test.afterAll(() => {
+  test.afterAll(async () => {
+    await removeTestSources();
     provisionKafka("down");
   });
 

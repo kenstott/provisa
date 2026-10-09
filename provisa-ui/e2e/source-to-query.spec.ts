@@ -46,6 +46,7 @@ import {
   setSourceCacheTtl,
   submitSourceAndExpectListed,
   FORM_FIELD,
+  removeTestSources,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -722,7 +723,8 @@ test.describe("source to query through the UI, extra RDBMS coverage (REQ-1732)",
     provisionExtraSources("up");
   });
 
-  test.afterAll(() => {
+  test.afterAll(async () => {
+    await removeTestSources();
     provisionExtraSources("down");
   });
 

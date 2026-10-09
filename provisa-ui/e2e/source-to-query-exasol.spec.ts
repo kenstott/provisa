@@ -30,6 +30,7 @@ import {
   releaseDraftTables,
   submitSourceAndExpectListed,
   FORM_FIELD,
+  removeTestSources,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -89,7 +90,8 @@ test.describe("source to query through the UI: exasol (REQ-1731, REQ-1763)", () 
     exasolFingerprint = fs.readFileSync(E2E_EXASOL_FINGERPRINT_FILE, "utf8").trim();
   });
 
-  test.afterAll(() => {
+  test.afterAll(async () => {
+    await removeTestSources();
     provision("down", ["exasol"]);
     if (fs.existsSync(E2E_EXASOL_FINGERPRINT_FILE)) fs.rmSync(E2E_EXASOL_FINGERPRINT_FILE);
   });
