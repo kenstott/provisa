@@ -77,9 +77,9 @@ export async function createDomain(page: Page, id: string): Promise<void> {
   expect(result.success, result.message).toBeTruthy();
 }
 
-/** How long a source whose server takes minutes to start (AskAmerica: a download on first use,
- * its schemas mounted, the rows of its tables counted) is given to answer. */
-export const SOURCE_SERVING_BUDGET_MS = 15 * 60 * 1000;
+/** How long a source's own server (AskAmerica's) is given to answer after its source is saved.
+ * One minute is the bound: a server that comes up later is a defect, not a slow start. */
+export const SOURCE_SERVING_BUDGET_MS = 60 * 1000;
 
 /**
  * Wait until a source's own server lists the tables of `schema`. While it starts, the listing

@@ -15,7 +15,7 @@ import { defineConfig } from "@playwright/test";
  *
  * What runs is the live AskAmerica case: add the source with the free key, wait for its server
  * to answer, register a table, query it on the SQL page. The case sets its own time budget: the
- * server's first start is minutes (waitForSourceServing).
+ * server has a minute to answer (waitForSourceServing).
  */
 const DEPLOYED_URL = process.env.PROVISA_E2E_DEPLOYED_URL;
 if (!DEPLOYED_URL) {

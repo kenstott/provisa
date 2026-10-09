@@ -165,7 +165,7 @@ test.describe("govdata: source to query through the UI (REQ-1742)", () => {
     // test's own history — fixed: attach_source's view_ddl branch never loaded a scanner
     // connector's own DuckDB extension, and native_backend.py's query-time source merges never
     // carried source.mapping). Un-skipped.
-    // Saving the source starts its server, which takes minutes the first time (see
+    // Saving the source starts its server, which has a minute to answer (see
     // waitForSourceServing). That wait has its own budget; the screens after it keep theirs.
     test.setTimeout(SOURCE_SERVING_BUDGET_MS + 300000);
     const stamp = Date.now();
