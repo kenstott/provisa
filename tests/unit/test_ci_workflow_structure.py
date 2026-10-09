@@ -776,3 +776,20 @@ def test_no_proof_job_fails_on_purpose_uncontained_and_no_needed_job_is_containe
         for job, body in jobs.items():
             if "continue-on-error" in body:
                 assert job not in needed, f"{path.name}:{job} is contained and needed"
+
+
+def test_the_primer_names_only_guards_actions_and_scripts_that_exist():
+    """.github/README.md states each rule beside the test that holds it. A rule whose test was
+    renamed or removed would read as held when it is not."""
+    primer = (REPO / ".github" / "README.md").read_text()
+    cited = set(re.findall(r"`(test_[a-z0-9_]+)`", primer))
+    assert len(cited) >= 12
+    defined = set()
+    for path in (REPO / "tests" / "unit").glob("test_*.py"):
+        defined |= set(re.findall(r"^def (test_[a-z0-9_]+)\(", path.read_text(), re.M))
+    assert cited <= defined, sorted(cited - defined)
+    # Every action is in the map, and nothing is in the map that is not an action.
+    actions = {path.parent.name for path in (REPO / ".github" / "actions").glob("*/action.yml")}
+    assert set(re.findall(r"^\| `([a-z-]+)` \|", primer, re.M)) == actions
+    for path in re.findall(r"`((?:scripts/ci|\.github/workflows)/[\w./-]+\.(?:py|yml))`", primer):
+        assert (REPO / path).exists(), path
