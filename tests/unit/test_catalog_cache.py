@@ -737,3 +737,214 @@ async def test_a_search_before_the_index_lists_an_attached_source_through_the_se
 
     found = await table_search_router._candidates_live("test", "sec", state)
     assert [(c.name, c.columns) for c in found] == [("financial_facts", []), ("filings", [])]
+
+
+# -- a search says when column names are still loading ------------------------------------------
+#
+# The window between a schema's first search and its column fill is accepted, never silent: the
+# answer names it, so a column searched for early is not taken for "no such column".
+
+
+@pytest.mark.asyncio
+async def test_a_search_says_its_column_names_are_loading_and_then_that_they_are_complete(
+    stores, monkeypatch, fills
+):
+    from types import SimpleNamespace
+
+    from provisa.discovery import catalog_cache as cc
+
+    _, tenant_db = stores
+    await _seeded(tenant_db)
+    _columns_through_the_adapter(monkeypatch, {"financial_facts": ["cik"], "filings": ["form"]})
+    state = SimpleNamespace(tenant_db=tenant_db)
+
+    known = await cc.read_cache(tenant_db, "test", "sec")
+    cc.request_column_fill("test", "govdata", "sec", known, state)
+    assert cc.column_names_state("test", "govdata", "sec", known) == cc.COLUMNS_LOADING
+
+    await fills[0][1]
+    known = await cc.read_cache(tenant_db, "test", "sec")
+    cc.request_column_fill("test", "govdata", "sec", known, state)
+    assert cc.column_names_state("test", "govdata", "sec", known) == cc.COLUMNS_COMPLETE
+
+
+@pytest.mark.asyncio
+async def test_a_schema_filled_this_generation_is_complete_even_where_a_table_has_no_columns(
+    stores, monkeypatch, fills
+):
+    from types import SimpleNamespace
+
+    from provisa.discovery import catalog_cache as cc
+
+    _, tenant_db = stores
+    await _seeded(tenant_db)
+    _columns_through_the_adapter(monkeypatch, {"financial_facts": ["cik"]})
+    known = await cc.read_cache(tenant_db, "test", "sec")
+    cc.request_column_fill("test", "govdata", "sec", known, SimpleNamespace(tenant_db=tenant_db))
+    await fills[0][1]
+    known = await cc.read_cache(tenant_db, "test", "sec")
+    assert cc.column_names_state("test", "govdata", "sec", known) == cc.COLUMNS_COMPLETE
+
+
+@pytest.mark.asyncio
+async def test_a_search_says_when_column_names_could_not_be_loaded(stores, monkeypatch, fills):
+    from types import SimpleNamespace
+
+    from provisa.discovery import catalog_cache as cc
+    from provisa.federation.pgwire_replica import ServerExited
+
+    _, tenant_db = stores
+    await _seeded(tenant_db)
+    _columns_through_the_adapter(monkeypatch, ServerExited("test", 1, "boom"))
+    known = await cc.read_cache(tenant_db, "test", "sec")
+    cc.request_column_fill("test", "govdata", "sec", known, SimpleNamespace(tenant_db=tenant_db))
+    await fills[0][1]
+    assert cc.column_names_state("test", "govdata", "sec", known) == cc.COLUMNS_UNAVAILABLE
+
+
+def test_a_search_of_a_source_whose_index_holds_its_columns_is_complete_from_the_start(fills):
+    from provisa.discovery import catalog_cache as cc
+
+    bare = [CachedTable(schema_name="public", table_name="t", column_names=[], comment=None)]
+    assert cc.column_names_state("pg", "postgresql", "public", bare) == cc.COLUMNS_COMPLETE
+
+
+@pytest.mark.asyncio
+async def test_the_search_answer_carries_both_statements(stores, monkeypatch, fills):
+    """The route's answer: table names complete from the start; column names loading, then
+    complete."""
+    from types import SimpleNamespace
+
+    import provisa.api.app as app_mod
+    from provisa.api.admin import table_search_router as router
+    from provisa.core import org_secrets
+
+    _, tenant_db = stores
+    await _seeded(tenant_db)
+    _columns_through_the_adapter(monkeypatch, {"financial_facts": ["cik"], "filings": ["form"]})
+    state = SimpleNamespace(
+        tenant_db=tenant_db, model_db=object(), source_types={"test": "govdata"}
+    )
+    monkeypatch.setattr(app_mod, "state", state, raising=False)
+    monkeypatch.setattr(router, "require_capability_request", lambda request, cap: None)
+
+    async def _no_keys(db):
+        return {}
+
+    monkeypatch.setattr(org_secrets, "read_org_api_keys", _no_keys)
+
+    first = await router.search_source_tables(None, "test", q="facts", schema_name="sec")  # type: ignore[arg-type]
+    assert first["table_names"] == "complete"
+    assert first["column_names"] == "loading"
+    assert "financial_facts" in [c["table_name"] for c in first["candidates"]]
+
+    await fills[0][1]
+    again = await router.search_source_tables(None, "test", q="facts", schema_name="sec")  # type: ignore[arg-type]
+    assert again["table_names"] == "complete" and again["column_names"] == "complete"
+
+
+# -- a selected table has its columns pulled at once, from its source ---------------------------
+
+
+@pytest.mark.asyncio
+async def test_selecting_a_table_fetches_its_columns_live_with_the_cache_empty(stores, monkeypatch):
+    """The Register Table form's table pick and a search result opened are one path: the form
+    asks `availableColumnsMetadata` for the table. It reads the source through the engine's
+    attach, never the search cache, and what it fetched is kept for searching."""
+    from types import SimpleNamespace
+
+    import provisa.api.app as app_mod
+    from provisa.api.admin import introspect, schema_query
+    from provisa.discovery import catalog_cache as cc
+
+    _, tenant_db = stores
+    assert await cc.read_cache(tenant_db, "test", "sec") is None  # the cache holds nothing
+
+    described: list[tuple[str, str]] = []
+
+    def _describe(source, schema_name, table_name):
+        described.append((schema_name, table_name))
+        return {"cik": "VARCHAR", "value": "DOUBLE"}
+
+    class _Unbound:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    class _Pool:
+        def acquire(self):
+            return _Unbound()
+
+    async def _pool():
+        return _Pool()
+
+    async def _no_native(*args):
+        return None
+
+    async def _none(*args, **kwargs):
+        return None
+
+    async def _source(source_id):
+        return SimpleNamespace(id=source_id)
+
+    state = SimpleNamespace(
+        tenant_db=tenant_db,
+        source_types={"test": "govdata"},
+        source_pools=None,
+        federation_engine=SimpleNamespace(
+            engine=SimpleNamespace(native_store="duckdb"), introspect_columns=_describe
+        ),
+    )
+    monkeypatch.setattr(app_mod, "state", state, raising=False)
+    monkeypatch.setattr(schema_query, "_engine_reaches_live", lambda state, source_type: True)
+    monkeypatch.setattr(schema_query, "_unattached_source", _none)
+    monkeypatch.setattr(schema_query, "_ensure_openapi_spec", _none)
+    monkeypatch.setattr(schema_query, "_get_pool", _pool)
+    monkeypatch.setattr(schema_query, "_require_live_attach", _none)
+    monkeypatch.setattr(schema_query, "_source_for_introspection", _source)
+    monkeypatch.setattr(schema_query, "_bound_to_request_org", _Unbound)
+    monkeypatch.setattr(introspect, "native_columns", _no_native)
+
+    columns = await schema_query.resolve_available_columns_metadata(
+        "test", "sec", "financial_facts"
+    )
+    assert [(c.name, c.data_type) for c in columns] == [("cik", "varchar"), ("value", "double")]
+    assert described == [("sec", "financial_facts")]  # asked of the source, at once
+
+    await schema_query._remember_selected_columns("test", "sec", "financial_facts", columns)
+    kept = await cc.read_cache(tenant_db, "test", "sec")
+    assert kept is not None
+    assert [(t.table_name, t.column_names) for t in kept] == [("financial_facts", ["cik", "value"])]
+
+
+@pytest.mark.asyncio
+async def test_columns_kept_from_a_selection_leave_the_tables_indexed_comment(stores):
+    from provisa.discovery import catalog_cache as cc
+
+    _, tenant_db = stores
+    await cc.write_cache(
+        tenant_db,
+        "test",
+        "sec",
+        [CachedTable(schema_name="sec", table_name="filings", column_names=[], comment="10-K")],
+    )
+    await cc.record_table_columns(tenant_db, "test", "sec", "filings", ["cik", "form"])
+    kept = await cc.read_cache(tenant_db, "test", "sec")
+    assert kept is not None
+    assert [(t.table_name, t.column_names, t.comment) for t in kept] == [
+        ("filings", ["cik", "form"], "10-K")
+    ]
+
+
+def test_both_admin_column_fields_keep_what_a_selection_fetched():
+    import inspect
+
+    from provisa.api.admin import schema_query
+
+    source = inspect.getsource(schema_query)
+    assert source.count("await _remember_selected_columns(source_id, schema_name, table_name") == 2
+    # The resolver itself never reads the search cache.
+    resolver = inspect.getsource(schema_query.resolve_available_columns_metadata)
+    assert "read_cache" not in resolver and "source_catalog_cache" not in resolver

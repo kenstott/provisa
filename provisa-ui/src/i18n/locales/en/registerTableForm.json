@@ -91,6 +91,8 @@
     "nlSearchPlaceholder": "e.g. customer invoicing and payment tables",
     "nlSearchButton": "Search",
     "nlSearchNone": "No table in this schema matches that description.",
+    "nlSearchColumnsLoading": "Table names were searched in full. Column names in this schema are still loading, so a table that matches only by a column may be missing; this search repeats until they are loaded.",
+    "nlSearchColumnsUnavailable": "Table names were searched in full. Column names in this schema could not be loaded, so only table names and descriptions were searched.",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "Registered",
     "nlSearchUse": "Use",

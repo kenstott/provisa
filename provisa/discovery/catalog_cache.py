@@ -132,6 +132,27 @@ async def write_columns(
             )
 
 
+async def record_table_columns(
+    pool, source_id: str, schema_name: str, table_name: str, names: list[str]
+) -> None:  # REQ-464
+    """Keep the column names just fetched live for one table (a table selected in the Register
+    Table form): written onto its cache row, or as a row of its own when the index has not
+    listed the table yet. Its comment, if the index recorded one, is left as it is."""
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.upsert(
+            source_catalog_cache,
+            {
+                "source_id": source_id,
+                "schema_name": schema_name,
+                "table_name": table_name,
+                "column_names": list(names),
+                "indexed_at": func.now(),
+            },
+            index_elements=["source_id", "schema_name", "table_name"],
+            update_columns=["column_names"],
+        )
+
+
 async def invalidate_source(pool, source_id: str) -> None:  # REQ-464
     _new_index_generation(source_id)
     async with pool.acquire() as conn:
@@ -148,8 +169,13 @@ async def invalidate_source(pool, source_id: str) -> None:  # REQ-464
 # search of it needs them — ONE statement for the whole schema, through the adapter, off the
 # request, which answers with what is known — and kept in the cache from then on.
 
+#: What a search answer says of the column names of the schema it searched.
+COLUMNS_COMPLETE = "complete"  # every known column name was searched
+COLUMNS_LOADING = "loading"  # still being loaded: a match on a column may be missing; ask again
+COLUMNS_UNAVAILABLE = "unavailable"  # could not be loaded for this index of the source
+
 #: Where each schema's column fill stands in the current index generation of its source, by
-#: (org, source, schema): "filling" while in flight, "filled" once done or once it failed. A
+#: (org, source, schema): "filling" while in flight, "filled" once done, "failed" once it failed. A
 #: schema is filled at most once per generation; a source still starting is left to a later
 #: search. A generation ends when the source is indexed again or invalidated.
 _COLUMN_FILLS: dict[tuple[str | None, str, str], str] = {}
@@ -200,6 +226,24 @@ def request_column_fill(source_id: str, source_type: str, schema_name: str, tabl
     return True
 
 
+def column_names_state(source_id: str, source_type: str, schema_name: str, tables) -> str:
+    """What a search of ``schema_name`` can say of its column names, read after
+    :func:`request_column_fill`: complete, still loading, or unavailable. Table names are
+    complete from the first answer whatever this says."""
+    if not loads_columns_lazily(source_type):
+        return COLUMNS_COMPLETE
+    stands = _COLUMN_FILLS.get(_fill_key(source_id, schema_name))
+    if stands == "failed":
+        return COLUMNS_UNAVAILABLE
+    if stands == "filling":
+        return COLUMNS_LOADING
+    if all(getattr(t, "column_names", None) or getattr(t, "columns", None) for t in tables):
+        return COLUMNS_COMPLETE
+    # Filled this generation: what has no column names has none. Not filled (no index of the
+    # source yet, or its server still starting): they are still to be loaded.
+    return COLUMNS_COMPLETE if stands == "filled" else COLUMNS_LOADING
+
+
 async def _fill_columns(key, source_id: str, schema_name: str, state) -> None:
     from provisa.api.admin.schema_query import _source_for_introspection
     from provisa.federation import pgwire_replica
@@ -213,7 +257,7 @@ async def _fill_columns(key, source_id: str, schema_name: str, state) -> None:
         _COLUMN_FILLS.pop(key, None)  # later: the next search of the schema asks again
         return
     except (pgwire_replica.ServerNotServing, LookupError) as exc:
-        _COLUMN_FILLS[key] = "filled"  # not asked again this generation
+        _COLUMN_FILLS[key] = "failed"  # not asked again this generation
         log.warning(
             "catalog_cache: the column names of %r/%r are not loaded: %s",
             source_id,

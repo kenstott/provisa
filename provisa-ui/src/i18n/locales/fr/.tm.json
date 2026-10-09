@@ -2564,6 +2564,8 @@
   "fr/registerTableForm.json::registerTableForm.nlSearchConfidence": "{{percent}}%",
   "fr/registerTableForm.json::registerTableForm.nlSearchLabel": "Find tables by description",
   "fr/registerTableForm.json::registerTableForm.nlSearchNone": "No table in this schema matches that description.",
+  "fr/registerTableForm.json::registerTableForm.nlSearchColumnsLoading": "Table names were searched in full. Column names in this schema are still loading, so a table that matches only by a column may be missing; this search repeats until they are loaded.",
+  "fr/registerTableForm.json::registerTableForm.nlSearchColumnsUnavailable": "Table names were searched in full. Column names in this schema could not be loaded, so only table names and descriptions were searched.",
   "fr/registerTableForm.json::registerTableForm.nlSearchPlaceholder": "e.g. customer invoicing and payment tables",
   "fr/registerTableForm.json::registerTableForm.nlSearchRegistered": "Registered",
   "fr/registerTableForm.json::registerTableForm.nlSearchUse": "Use",

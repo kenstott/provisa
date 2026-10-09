@@ -91,6 +91,8 @@
     "nlSearchPlaceholder": "p. ex. tables de facturation et de paiements clients",
     "nlSearchButton": "Rechercher",
     "nlSearchNone": "Aucune table de ce schéma ne correspond à cette description.",
+    "nlSearchColumnsLoading": "Les noms de table ont été entièrement parcourus. Les noms de colonne de ce schéma sont encore en cours de chargement ; une table qui ne correspond que par une colonne peut donc manquer. Cette recherche se répète jusqu'à leur chargement.",
+    "nlSearchColumnsUnavailable": "Les noms de table ont été entièrement parcourus. Les noms de colonne de ce schéma n'ont pas pu être chargés ; seuls les noms de table et les descriptions ont été parcourus.",
     "nlSearchConfidence": "{{percent}} %",
     "nlSearchRegistered": "Enregistrée",
     "nlSearchUse": "Utiliser",

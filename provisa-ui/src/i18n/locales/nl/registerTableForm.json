@@ -91,6 +91,8 @@
     "nlSearchPlaceholder": "bijv. tabellen voor klantfacturering en betalingen",
     "nlSearchButton": "Zoeken",
     "nlSearchNone": "Geen tabel in dit schema past bij die beschrijving.",
+    "nlSearchColumnsLoading": "De tabelnamen zijn volledig doorzocht. De kolomnamen van dit schema worden nog geladen, dus een tabel die alleen op een kolom overeenkomt kan ontbreken; deze zoekopdracht wordt herhaald tot ze geladen zijn.",
+    "nlSearchColumnsUnavailable": "De tabelnamen zijn volledig doorzocht. De kolomnamen van dit schema konden niet worden geladen, dus alleen tabelnamen en beschrijvingen zijn doorzocht.",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "Geregistreerd",
     "nlSearchUse": "Gebruiken",

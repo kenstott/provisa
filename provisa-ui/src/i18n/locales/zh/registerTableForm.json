@@ -91,6 +91,8 @@
     "nlSearchPlaceholder": "例如：客户开票和付款表",
     "nlSearchButton": "搜索",
     "nlSearchNone": "此架构中没有与该描述匹配的表。",
+    "nlSearchColumnsLoading": "表名已完整搜索。此架构的列名仍在加载，因此仅按列匹配的表可能缺失；此搜索会重复执行，直到列名加载完成。",
+    "nlSearchColumnsUnavailable": "表名已完整搜索。此架构的列名无法加载，因此仅搜索了表名和描述。",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "已注册",
     "nlSearchUse": "使用",

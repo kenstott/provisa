@@ -91,6 +91,8 @@
     "nlSearchPlaceholder": "例: 顧客の請求と支払のテーブル",
     "nlSearchButton": "検索",
     "nlSearchNone": "このスキーマにその説明に一致するテーブルはありません。",
+    "nlSearchColumnsLoading": "テーブル名はすべて検索されました。このスキーマの列名はまだ読み込み中のため、列だけで一致するテーブルが抜けている可能性があります。読み込みが終わるまでこの検索は繰り返されます。",
+    "nlSearchColumnsUnavailable": "テーブル名はすべて検索されました。このスキーマの列名を読み込めなかったため、テーブル名と説明のみが検索されました。",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "登録済み",
     "nlSearchUse": "使用",

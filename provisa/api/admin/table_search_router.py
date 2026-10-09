@@ -151,42 +151,49 @@ async def search_source_tables(
     source_id: str,
     q: str = Query(..., description="Natural language search query"),
     schema_name: str = Query("public", description="Schema to search within"),
-) -> list[dict]:
+) -> dict:
     """Search tables in a source using NL query.
 
     Reads from the background-populated catalog cache when warm.
     Falls back to live the engine introspection on a cold cache.
     Two-pass ranking: token overlap pre-filter, then haiku LLM (if ANTHROPIC_API_KEY set).
+
+    The answer says what was searched: ``table_names`` is always ``complete``; ``column_names``
+    is ``loading`` while the schema's column names are still being loaded (a table that
+    matches only by a column may be missing: ask again), ``unavailable`` when they could not be
+    loaded, else ``complete``.
     """
     require_capability_request(request, "source_registration")
     from provisa.api.app import state
     from provisa.core.org_secrets import read_org_api_keys
+    from provisa.discovery.catalog_cache import column_names_state, request_column_fill
 
+    source_type = state.source_types.get(source_id, "")
     candidates = await _candidates_from_cache(source_id, schema_name, state)
     cache_warm = candidates is not None
     if cache_warm:
         # REQ-464: column names of a source listed through its adapter are loaded on first
         # search, off this request; the answer below ranks on what is known now.
-        from provisa.discovery.catalog_cache import request_column_fill
-
-        request_column_fill(
-            source_id, state.source_types.get(source_id, ""), schema_name, candidates, state
-        )
-
-    if not cache_warm:
+        request_column_fill(source_id, source_type, schema_name, candidates, state)
+    else:
         candidates = await _candidates_live(source_id, schema_name, state)
+    columns = column_names_state(source_id, source_type, schema_name, candidates)
 
     assert state.model_db is not None
     api_keys = await read_org_api_keys(state.model_db)
     ranked = await search_tables(q, candidates, api_keys=api_keys)
-    return [
-        {
-            "schema_name": r.schema_name,
-            "table_name": r.name,
-            "comment": r.comment,
-            "confidence": r.confidence,
-            "reasoning": r.reasoning,
-            "cache_warm": cache_warm,
-        }
-        for r in ranked
-    ]
+    return {
+        "table_names": "complete",
+        "column_names": columns,
+        "candidates": [
+            {
+                "schema_name": r.schema_name,
+                "table_name": r.name,
+                "comment": r.comment,
+                "confidence": r.confidence,
+                "reasoning": r.reasoning,
+                "cache_warm": cache_warm,
+            }
+            for r in ranked
+        ],
+    }

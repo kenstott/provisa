@@ -1211,6 +1211,7 @@ class Query:  # REQ-021, REQ-042
         (REQ-1912)."""
         require_capability(info, "table_registration")
         columns = await resolve_available_columns_metadata(source_id, schema_name, table_name)
+        await _remember_selected_columns(source_id, schema_name, table_name, columns)
         return [c.name for c in columns]
 
     @strawberry.field
@@ -1222,7 +1223,9 @@ class Query:  # REQ-021, REQ-042
         For OpenAPI sources: derives columns from the operation's response schema + params.
         """
         require_capability(info, "table_registration")
-        return await resolve_available_columns_metadata(source_id, schema_name, table_name)
+        columns = await resolve_available_columns_metadata(source_id, schema_name, table_name)
+        await _remember_selected_columns(source_id, schema_name, table_name, columns)
+        return columns
 
     @strawberry.field
     async def suggest_table_alias(
@@ -2151,6 +2154,22 @@ async def _remote_source_columns(
         AvailableColumnType(name=name, data_type=data_type, comment=comment)
         for name, data_type, comment in offered_columns(*_offered, table_name)
     ]
+
+
+async def _remember_selected_columns(
+    source_id: str, schema_name: str, table_name: str, columns: list[AvailableColumnType]
+) -> None:
+    """REQ-464: a table selected in the Register Table form has its columns fetched live, at
+    once, from its source (``resolve_available_columns_metadata`` — never the search cache,
+    which may not hold them yet). What was fetched is kept for searching."""
+    if not columns:
+        return
+    from provisa.api.app import state
+    from provisa.discovery.catalog_cache import record_table_columns
+
+    await record_table_columns(
+        state.tenant_db, source_id, schema_name, table_name, [c.name for c in columns]
+    )
 
 
 async def resolve_available_columns_metadata(
