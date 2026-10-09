@@ -3,7 +3,7 @@
 Status: design only, 2026-10-09. No product code. Base: origin/main `3db8281dd`.
 
 Evidence tags: `[code]` read in the repo at the cited line; `[doc]` vendor page fetched today
-(links in section 12); `[probe]` run locally today (section 11); `[mem]` from memory, not
+(links in section 12); `[probe]` run locally today (section 12); `[mem]` from memory, not
 fetched, treat as unverified.
 
 ## 0. Answer to the central question
@@ -30,7 +30,7 @@ names the two measurements.
 | DuckDB reports `VARCHAR[]`, `INTEGER[][]`, `INTEGER[3]` in `information_schema` | `[probe]` |
 | GraphQL already turns Trino's `array(varchar)` into `[String!]` and nested into `[[Int!]!]`; no other spelling | `provisa/compiler/type_map.py:214-218` `[code]`, `[probe]` |
 | gRPC schema generation has the same Trino-only branch | `provisa/grpc/proto_gen.py:85-96` `[code]` |
-| pgwire maps `INTEGER[]` and `VARCHAR[]` to array wire types, any other `[]` to JSON, and types a list column from the first non-null row | `provisa/pgwire/server.py:325-326,427-430,449-454` `[code]` |
+| pgwire maps `INTEGER[]` and `VARCHAR[]` to array wire types, any other `[]` to JSON, and types a list column from the first non-null row | `provisa/pgwire/server.py:325-326,401-402,406-431` `[code]` |
 | Flight catalog lists `array`, `map`, `row` as utf8 | `provisa/api/flight/catalog.py:64-66` `[code]` |
 | Arrow landing types: no list type | `provisa/core/ir_arrow.py:35-51` `[code]` |
 | Every result is `list[tuple]` of Python values; row surfaces (pgwire, Bolt, gRPC, GraphQL, JSON:API) consume those | `provisa/executor/result.py:55-73` `[code]` |
@@ -40,7 +40,7 @@ names the two measurements.
 | The JSON land path already parses a JSON column per row in Python before insert | `provisa/federation/materialize_exec.py:135-138` `[code]` |
 | Semantic SQL is PostgreSQL dialect, transpiled by sqlglot | `provisa/transpiler/transpile.py:11-38` `[code]` |
 | Column `data_type` is one string on the column | `provisa/core/models.py:822` `[code]` |
-| Masks validate by base type; string masks accept `varchar/char/text/varbinary` | `provisa/security/masking.py:44-60` `[code]` |
+| Masks validate by base type; string masks accept `varchar/char/text/varbinary` | `provisa/security/masking.py:43-60` `[code]` |
 
 sqlglot 30.9.0 cannot be left to translate array operations on its own `[probe]`:
 
@@ -140,7 +140,7 @@ Classes used in the rest of the document:
 |---|---|---|---|---|---|
 | DuckDB | N | `T[]` LIST | yes, ragged: `[['duck','goose'],['frog']]` `[doc]` | 1-based; NULL elements; list comparison is positional `[doc]` | none |
 | Trino | N | `array(T)` | yes (`flatten` takes `array(array(T))`) `[doc]` | `[]` is 1-based and fails out of range; `element_at` returns NULL `[doc]` | none |
-| ClickHouse | N | `Array(T)` | yes, "T can be any data type, including an array" `[doc]` | 1-based `[doc]`; out-of-range returns the type default, not NULL `[mem]`; `Array` itself cannot be `Nullable` `[mem]`, so NULL vs empty needs an encoding decision (section 9, D7) | bloom-filter skip index for `has()` `[mem]` |
+| ClickHouse | N | `Array(T)` | yes, "T can be any data type, including an array" `[doc]` | 1-based `[doc]`; out-of-range returns the type default, not NULL `[mem]`; `Array` itself cannot be `Nullable` `[mem]`, so NULL vs empty needs an encoding decision (section 11, D7) | bloom-filter skip index for `has()` `[mem]` |
 | Databricks | N | `ARRAY<T>` | yes `[doc]` | `[]` 0-based `[doc]`; `COLLECT_LIST` has no order | none |
 | Hive / HiveServer2 | N | `ARRAY<T>` | yes `[doc]` | 0-based `[mem]`; `size`, `array_contains`, `posexplode` `[mem]` | none |
 | Snowflake | N | `ARRAY` of VARIANT; structured `ARRAY(T)` in standard and Iceberg tables `[doc]` | yes `[doc]` | 0-based; holds both SQL NULL and JSON null `[doc]`; 128 MB `[doc]` | search optimization `[mem]` |
@@ -216,7 +216,7 @@ already return (`provisa/executor/result.py`).
 | Row wires: pgwire, Bolt, gRPC | parse to Python lists; the wire encoder then walks them, as it does for a native array | one C call per array cell | same |
 
 Row surfaces receive Python values for every column today (`result.py:62`), and pgwire runs a
-Python converter per value (`provisa/pgwire/server.py:380-387` `[code]`). For scale: turning a
+Python converter per value (`provisa/pgwire/server.py:380-388` `[code]`). For scale: turning a
 native Arrow list column into Python lists costs 3.05 s per 1M rows on the same data, against
 0.42 s for a text column `[probe]`. Decoding the encoded form is cheaper than the conversion a
 native array column already pays on a row surface. The vectorised path is the one that matters
