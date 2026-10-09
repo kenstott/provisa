@@ -73,3 +73,14 @@ def test_the_body_matches_what_jsonable_encoder_would_produce():
     }
     expected = json.loads(json.dumps(jsonable_encoder(body)))
     assert json.loads(OrjsonResponse(body).body) == expected
+
+
+def test_a_float_subclass_is_encoded_as_its_number():
+    # JPype boxes java.lang.Double as a float subclass; a govdata row carries them.
+    class Boxed(float):
+        pass
+
+    assert (
+        OrjsonResponse({"rows": [{"latitude": Boxed(41.5)}]}).body
+        == b'{"rows":[{"latitude":41.5}]}'
+    )
