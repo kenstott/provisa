@@ -32,6 +32,10 @@ def _encode_unknown(value: Any) -> Any:  # noqa: ANN401 — whatever orjson cann
     """A value orjson has no encoding for, as jsonable_encoder would give it."""
     from fastapi.encoders import jsonable_encoder
 
+    # orjson encodes float itself and no subclass of it, and jsonable_encoder hands a float
+    # subclass back as it is: JPype's boxed java.lang.Double, in a govdata row.
+    if isinstance(value, float):
+        return float(value)
     return jsonable_encoder(value)
 
 
