@@ -212,7 +212,7 @@ backend counts from 1. This is what keeps the source's own indexes usable.
 
 | Backend | element `[i]` | field | length | contains `v` | each with position | index that serves contains |
 |---|---|---|---|---|---|---|
-| PostgreSQL family | `c[i+1]` | `(c).f` | `cardinality(c)` | `c @> ARRAY[v]` | `unnest(c) WITH ORDINALITY` | GIN `array_ops`: `&&`, `@>`, `<@`, `=` `[doc]`. `v = ANY(c)` is not served, so it is not emitted |
+| PostgreSQL family | `c[i+1]` | `(c).f` | `cardinality(c)` | `c @> ARRAY[v]` | none: always the JSON form, `jsonb_array_elements(to_jsonb(c)) WITH ORDINALITY` (ruling, section 6.2) | GIN `array_ops`: `&&`, `@>`, `<@`, `=` `[doc]`. `v = ANY(c)` is not served, so it is not emitted |
 | CockroachDB | same | — | `array_length(c,1)` | `c @> ARRAY[v]` | `unnest` | inverted index `[doc]` |
 | DuckDB | `c[i+1]` | `c.f`, `c[k]` | `len(c)` | `list_contains(c, v)` | `unnest` with `generate_subscripts` | none |
 | Trino | `element_at(c, i+1)` | `c.f`, `element_at(c, k)` | `cardinality(c)` | `contains(c, v)` | `UNNEST(c) WITH ORDINALITY` `[doc]` | none |
@@ -364,13 +364,13 @@ version, which already invalidates kept plans.
 |---|---|
 | whole value | `to_jsonb` writes "arrays of arrays" `[doc]`: correct JSON, deeper than the recorded depth says |
 | JSON form (replica, or any expression kept as to-JSON) | follows the JSON: `$[0]` is an inner array, so `JSON_VALUE` of it is not a scalar and gives NULL; each yields inner arrays |
-| native form | PostgreSQL's own rules: a 2-D array subscripted once gives NULL; `unnest` yields every innermost element; `@>` looks at innermost elements `[mem]` |
+| native form, element / length / contains | PostgreSQL's own rules: a 2-D array subscripted once gives NULL, as the JSON form does; `@>` looks at innermost elements `[mem]` |
 
-The two forms agree on element access (NULL) and can disagree on unnest. The design does not
-paper over it: PostgreSQL does not say which columns hold such values. Stated in the
-documentation for PostgreSQL sources, with a data-quality check the registrar can run
-(`array_ndims(c) = 1`). Raised with the lead as the one point where the recorded depth can be
-wrong.
+Ruling (maintainer, 2026-10-09): on the PostgreSQL family unnest is always done through JSON,
+`to_jsonb` first and then the JSON each. There is no native unnest there, so the rows an unnest
+returns never depend on the dimensions of the value. Element access, length and contains keep
+their native form. The `array_ndims(c) = 1` data-quality check stays available to a registrar
+who wants to know whether a column holds such values.
 
 ### 6.3 How operations address a level
 
@@ -544,7 +544,7 @@ in CI.
 | 1 | Registration. A parser turns every native spelling into a structured native type (kind: scalar / array / struct / map; element; fields; precision, scale). One function derives from it: `data_type` (`json` for any nested kind), depth, element type, native type. The three attributes on `Column`, in storage, loader and admin API; the suggested type in the registration picker goes through the same function. PostgreSQL family via `pg_catalog` (`format_type`, `typcategory`, `typelem`) | registering a native array, struct or map never raises and never stores `text` | L |
 | 2 | The datasource cast: to-JSON expression per backend, with the element pre-cast for depth ≥ 1 (decimal strings, timestamps, hex binary; NaN and infinity raise by name). Whole-value read on every wire; landing a replica by the same expression; `jsonb` on PostgreSQL. DuckDB, PostgreSQL, Trino first | JSON on every wire from native nested columns | L for DuckDB; C |
 | 3 | The rule table, JSON form, for PostgreSQL, DuckDB, Trino; casts in and out from the attributes; path-depth checks; the route rule at `router.py:273` replaced by the table; plan notes in `analyze_sql`, the SQL editor and the MCP tool | JSON operations in semantic SQL, DIRECT where the source can; the plan says what will scan | L snapshot and DuckDB execution; C |
-| 4 | Native form at depth 1 for PostgreSQL, DuckDB, Trino; then depth above 1 where the backend states it; M1 and M2 | source indexes serve JSON-spelled predicates | L; C; perf-bench |
+| 4 | Native form at depth 1 for PostgreSQL (element, length, contains; never unnest), DuckDB, Trino; then depth above 1 where the backend states it; M1 and M2 | source indexes serve JSON-spelled predicates | L; C; perf-bench |
 | 5 | JSON form for MySQL, MariaDB, SQL Server, SQLite source; physical type fixes (Fabric, Oracle) | sources without arrays, DIRECT | L for SQLite; C |
 | 6 | Landing by SQL expression instead of the per-row parse; JSON passed through to GraphQL/REST where no sub-field handling needs it parsed; the text-column parsing defect at `serialize.py:67-72` | no value converted where avoidable | L |
 | 7 | Surfaces: grid rendering and empty filters for JSON cells, gRPC, MCP, Bolt as a JSON string | JSON columns on every client | L; Playwright in CI |
@@ -588,13 +588,15 @@ SQL/JSON standard functions with PostgreSQL operators as the same operations; dr
 name; plan notes with the plan only; Bolt a JSON string; GraphQL the opaque JSON scalar;
 PostgreSQL lands `jsonb`; NaN and infinity raise by name.
 
-Open, each small:
+Settled after the first final commit (maintainer, 2026-10-09):
 
-| # | Point | Proposed |
+| # | Point | Ruling |
 |---|---|---|
-| 1 | PostgreSQL multidimensional values in a depth-1 column (section 6.2) | document it, offer the `array_ndims` check; no guard in the read |
-| 2 | `JSON_VALUE` with fewer array steps than the depth | compile error `query.json_path_not_scalar` rather than a NULL at run time |
+| 1 | PostgreSQL multidimensional values in a depth-1 column (section 6.2) | unnest on the PostgreSQL family is always via JSON (`to_jsonb`, then each); no native unnest there |
+| 2 | `JSON_VALUE` with fewer array steps than the column's depth | a compile error naming the column and its depth (`query.json_path_not_scalar`) |
 | 3 | Backends whose to-JSON or JSON functions are unverified | registered, read refused by name, until a test pins the entry |
+
+Nothing is open.
 
 ## 14. Defects that stand on their own
 
