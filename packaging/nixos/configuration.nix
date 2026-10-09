@@ -8,6 +8,7 @@
 let
   repo = "/home/provisa/provisa";
   nixLd = "/run/current-system/sw/share/nix-ld/lib";
+  caBundle = "/etc/ssl/certs/ca-certificates.crt";
 in
 {
   system.stateVersion = "26.05";
@@ -71,6 +72,11 @@ in
   # pyproject pins Python to 3.12; uv supplies that interpreter itself, as it does in CI.
   environment.variables.UV_PYTHON_PREFERENCE = "only-managed";
 
+  # uv's interpreter is built to find its CA store at /etc/ssl/cert.pem or in a hashed
+  # /etc/ssl/certs; NixOS has neither, so every https call from the standard library fails
+  # verification unless it is told where the bundle is.
+  environment.variables.SSL_CERT_FILE = caBundle;
+
   programs.java = {
     enable = true;
     package = pkgs.jdk21;
@@ -109,6 +115,7 @@ in
     environment = {
       NIX_LD = "${nixLd}/ld.so";
       NIX_LD_LIBRARY_PATH = nixLd;
+      SSL_CERT_FILE = caBundle;
     };
     serviceConfig = {
       User = "provisa";
