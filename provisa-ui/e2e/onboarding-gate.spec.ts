@@ -71,11 +71,21 @@ async function stubDeployment(
   await page.route("**/firebase-config.js", (route: Route) =>
     route.fulfill({ body: "", contentType: "application/javascript" }),
   );
-  await page.route("**/auth/me", (route: Route) =>
-    identityStatus !== undefined
-      ? route.fulfill({ status: identityStatus, json: { detail: "nope" } })
-      : route.fulfill({ json: { ...identity, email: "carol@example.com", dev_mode: false } }),
-  );
+  await page.route("**/auth/me", (route: Route) => {
+    if (identityStatus !== undefined) {
+      return route.fulfill({ status: identityStatus, json: { detail: "nope" } });
+    }
+    // As a deployment with auth on answers: an identity for a credential, 401 for none. The stub
+    // used to return the identity whatever was sent, so once the gate had dropped the credential
+    // the app's next identity fetch "resolved" a member and stored their org again -- the unclaimed
+    // slot case then read provisa_org as "carolco" where a real deployment stores nothing.
+    if (!route.request().headers()["authorization"]) {
+      return route.fulfill({ status: 401, json: { detail: "Authentication required" } });
+    }
+    return route.fulfill({
+      json: { ...identity, email: "carol@example.com", dev_mode: false },
+    });
+  });
   await page.route("**/auth/bootstrap-status", (route: Route) =>
     route.fulfill({ json: { unclaimed: slotUnclaimed } }),
   );
