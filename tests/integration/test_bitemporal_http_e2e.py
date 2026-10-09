@@ -65,6 +65,11 @@ async def _sql(client, sql: str, **headers):
     )
 
 
+def _rows_and_columns(response) -> dict:
+    body = response.json()
+    return {"data": body["data"], "columns": body["columns"]}
+
+
 async def test_bitemporal_view_http_end_to_end(client):
     await _admin(
         client, 'mutation { createDomain(input: { id: "bt", description: "x" }) { success } }'
@@ -116,7 +121,9 @@ async def test_bitemporal_view_http_end_to_end(client):
     # (2) Current-by-default read through the real endpoint reconstructs current state from the log.
     cur = await _sql(client, 'SELECT id, amount FROM "bt"."bt_view"')
     assert cur.status_code == 200, cur.text
-    assert cur.json() == {
+    # The rows and their columns are what is under test; the body also carries the engine's
+    # column types (REQ-1937), which have their own tests.
+    assert _rows_and_columns(cur) == {
         "data": {"sql": [{"id": 1, "amount": 10}]},
         "columns": ["id", "amount"],
     }, cur.text
@@ -128,7 +135,9 @@ async def test_bitemporal_view_http_end_to_end(client):
         **{"X-Provisa-As-Of": "2999-01-01T00:00:00"},
     )
     assert fut.status_code == 200, fut.text
-    assert fut.json() == {
+    # The rows and their columns are what is under test; the body also carries the engine's
+    # column types (REQ-1937), which have their own tests.
+    assert _rows_and_columns(fut) == {
         "data": {"sql": [{"id": 1, "amount": 10}]},
         "columns": ["id", "amount"],
     }, fut.text
@@ -142,7 +151,7 @@ async def test_bitemporal_view_http_end_to_end(client):
     assert past.status_code == 200, past.text
     # REQ-1436: the projection rides alongside the rows, and is still present when the result is
     # empty — that is the case it exists for.
-    assert past.json() == {"data": {"sql": []}, "columns": ["id", "amount"]}, past.text
+    assert _rows_and_columns(past) == {"data": {"sql": []}, "columns": ["id", "amount"]}, past.text
 
     # (5) A malformed X-Provisa-As-Of is rejected at the endpoint before execution → HTTP 400.
     bad = await _sql(

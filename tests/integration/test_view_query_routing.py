@@ -87,4 +87,6 @@ async def test_select_from_provisa_view_routes_through_engine(client):
     )
     # The regression: this used to be a 400 {"detail": "'<source-id>'"} (KeyError in the driver pool).
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"data": {"sql": [{"n": 1}]}, "columns": ["n"]}, resp.text
+    # The body also carries the engine's column types (REQ-1937); the routing is read off the rows.
+    body = resp.json()
+    assert (body["data"], body["columns"]) == ({"sql": [{"n": 1}]}, ["n"]), resp.text
