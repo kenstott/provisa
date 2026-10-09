@@ -30,6 +30,7 @@
     "dataSubjects": "數據主體",
     "askAmericaApiKey": "AskAmerica API 金鑰",
     "getApiKey": "取得 API 金鑰 →",
+    "govdataSubjectsUnavailable": "伺服器尚未列出 AskAmerica 主題。請稍後再試。",
     "validatingApiKey": "正在驗證 API 金鑰並預先載入中繼資料……首次使用可能需要最多 30 秒。",
     "bootstrapServers": "Bootstrap 伺服器",
     "schemaRegistryUrl": "Schema Registry URL",

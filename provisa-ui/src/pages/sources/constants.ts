@@ -307,18 +307,6 @@ export const TYPE_ALIAS: Record<string, string> = {
   grpc: "grpc_remote",
 };
 
-export const GOVDATA_SUBJECTS: { value: string; label: string; schemas: string[] }[] = [
-  { value: "COMMERCE", label: "Commerce", schemas: ["sec", "patents"] },
-  { value: "ECONOMY", label: "Economy", schemas: ["econ"] },
-  { value: "EDUCATION", label: "Education", schemas: ["census", "edu"] },
-  { value: "HEALTH", label: "Health", schemas: ["health"] },
-  { value: "CYBER", label: "Cyber", schemas: ["cyber_threat", "cyber_vuln"] },
-  { value: "PUBLIC_SAFETY", label: "Public Safety", schemas: ["crime"] },
-  { value: "ENVIRONMENT", label: "Environment", schemas: ["lands"] },
-  { value: "WEATHER", label: "Weather", schemas: ["weather"] },
-  { value: "GOVERNMENT", label: "Government", schemas: ["fedregister", "fec"] },
-];
-
 export const FILE_TRANSPORTS = [
   { value: "file://", label: "file:// (file mount / local disk)", needsAuth: false as const },
   { value: "ftp://", label: "ftp://", needsAuth: "userpass" as const },

@@ -2105,22 +2105,13 @@ class GovDataSubject(str, Enum):
     demographics = "DEMOGRAPHICS"
 
 
-# Maps each subject to the GovData schema names it covers.
-# ALL expands to every schema at access-check time.
-# "ref" and "geo" are always included as linker schemas — not listed here.
+# THE one place a subject's schemas are stated (REQ-540, REQ-541). The Sources form reads it from
+# the server (admin ``govdataSubjects``), a tenant's subscription is checked against it, and a
+# unit test holds it to the schemas the pinned adapter bundle serves
+# (``provisa/govdata/bundle_schemas.json``): every schema the bundle serves is in a subject or
+# is a linker schema, and no subject names a schema the bundle lacks.
 #
-# (Amended 2026-09-15: reconciled against askamerica-engine's actual DEFAULT_SCHEMAS list
-# (McpServer.java) — 9 real schemas (ag, banking, cftc, disasters, fiscal, housing, officials,
-# research, transport) were unmapped to any subject, so no per-subject GovDataSubscription could
-# reach them (only GovDataSubject.all could) even though the engine serves them; GovDataSubject
-# .demographics had zero schemas mapped at all. Added below with the closest-fit existing subject
-# — cftc alongside sec (both financial-markets regulators, COMMERCE); ag/banking/fiscal/housing/
-# transport under ECONOMY (economic-indicator data); disasters under PUBLIC_SAFETY alongside
-# crime; officials under GOVERNMENT alongside fedregister/fec; research under EDUCATION; census
-# added to DEMOGRAPHICS in addition to its existing EDUCATION mapping — a schema may serve more
-# than one subject, and this was the only way to give demographics ANY reachable schema. These
-# groupings are a reasonable first pass, not a verified product decision — revisit if a subject
-# boundary here turns out wrong.)
+# A schema may serve more than one subject (census: EDUCATION and DEMOGRAPHICS).
 GOVDATA_SUBJECT_SCHEMAS: dict[str, list[str]] = {
     "COMMERCE": ["sec", "patents", "cftc"],
     "ECONOMY": ["econ", "econ_reference", "ag", "banking", "fiscal", "housing", "transport"],
@@ -2128,11 +2119,31 @@ GOVDATA_SUBJECT_SCHEMAS: dict[str, list[str]] = {
     "HEALTH": ["health"],
     "CYBER": ["cyber_threat", "cyber_vuln"],
     "PUBLIC_SAFETY": ["crime", "disasters"],
-    "ENVIRONMENT": ["lands"],
+    "ENVIRONMENT": ["lands", "environment"],
     "WEATHER": ["weather"],
     "ENERGY": ["energy"],
-    "GOVERNMENT": ["fedregister", "fec", "officials"],
+    "GOVERNMENT": ["fedregister", "fec", "officials", "law"],
     "DEMOGRAPHICS": ["census"],
+}
+
+# The linker schemas: reference data (``ref``) and geography (``geo``) that every subject's
+# tables join through. They belong to no one subject, so a source serves them whatever
+# subjects it is given (REQ-541); this is the one statement of that.
+GOVDATA_LINKER_SCHEMAS: tuple[str, ...] = ("ref", "geo")
+
+# What the Sources form calls each subject.
+GOVDATA_SUBJECT_LABELS: dict[str, str] = {
+    "COMMERCE": "Commerce",
+    "ECONOMY": "Economy",
+    "EDUCATION": "Education",
+    "HEALTH": "Health",
+    "CYBER": "Cyber",
+    "PUBLIC_SAFETY": "Public Safety",
+    "ENVIRONMENT": "Environment",
+    "WEATHER": "Weather",
+    "ENERGY": "Energy",
+    "GOVERNMENT": "Government",
+    "DEMOGRAPHICS": "Demographics",
 }
 
 

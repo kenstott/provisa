@@ -30,6 +30,7 @@
     "dataSubjects": "Sujets de données",
     "askAmericaApiKey": "Clé API AskAmerica",
     "getApiKey": "Obtenir une clé API →",
+    "govdataSubjectsUnavailable": "Le serveur n'a pas encore listé les sujets AskAmerica. Réessayez dans un instant.",
     "validatingApiKey": "Validation de la clé API et préchargement des métadonnées… cela peut prendre jusqu'à 30 secondes à la première utilisation.",
     "bootstrapServers": "Serveurs bootstrap",
     "schemaRegistryUrl": "URL du Schema Registry",

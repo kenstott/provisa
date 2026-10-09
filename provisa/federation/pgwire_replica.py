@@ -953,6 +953,14 @@ class ConnectorReplica:  # REQ-954/955/956
             # The installed bundle, started by its own launcher as it is: its model and the
             # catalog prebuilt for that model are used where they were installed.
             run_dir, model = Path(bundle_dir), None
+            # The subject map is held to a record of what this release serves; a bundle whose
+            # model (read here, never changed) serves anything else is refused by name rather
+            # than started.
+            from provisa.govdata.subjects import require_recorded_schemas
+
+            require_recorded_schemas(
+                json.loads((run_dir / "model" / "model.json").read_text()), self._spec.version
+            )
         else:
             # The server runs from its own state directory, the bundle's code linked in: the
             # shared bundle is never written to (one model and one adapter state per server).
@@ -1181,10 +1189,12 @@ def server_start_errors() -> tuple[type[BaseException], ...]:
         AskAmericaKeyRefused,
         AskAmericaUnavailable,
     )
+    from provisa.govdata.subjects import BundleSchemasChanged
     from provisa.runtime_deps.pgwire_bundles import BundleUnavailable
 
     return (
         ServerNotServing,
+        BundleSchemasChanged,
         BundleUnavailable,
         MissingConnectorConfig,
         AskAmericaKeyMissing,

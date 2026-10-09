@@ -51,12 +51,17 @@ _ANSWER = {
     "bucket": "govdata-parquet-v1",
     "expires_in": 3600,
 }
+_RECORDED_SCHEMAS = json.loads(
+    (Path(aa.__file__).resolve().parents[1] / "govdata" / "bundle_schemas.json").read_text()
+)["schemas"]
 _BUNDLE_MODEL = {
     "version": "1.0",
     "defaultSchema": "sec",
     "schemas": [
         {"name": name, "type": "custom", "factory": "F", "operand": {"dataSource": name}}
-        for name in ("sec", "geo", "econ", "ref")
+        # The schemas recorded for the pinned bundle: a server is started only from a bundle
+        # that serves exactly these (govdata.subjects.require_recorded_schemas).
+        for name in sorted(_RECORDED_SCHEMAS)
     ],
 }
 
@@ -171,7 +176,9 @@ def test_only_an_askamerica_server_takes_an_environment():
 # The bundle as it is installed: its own model file, the catalog prebuilt for that model beside
 # it, and its own launcher. The model's bytes are deliberately not what json.dumps would write.
 _INSTALLED_MODEL = (
-    b'{"version": "1.0", "defaultSchema": "sec", "schemas": [{"name": "sec"},{"name": "econ"}]}'
+    b'{"version": "1.0", "defaultSchema": "sec", "schemas": ['
+    + b",".join(b'{"name": "%s"}' % name.encode() for name in sorted(_RECORDED_SCHEMAS))
+    + b"]}"
 )
 
 
@@ -243,6 +250,28 @@ def test_the_server_runs_on_the_bundles_model_byte_for_byte_with_its_prebuilt_ca
     # What a re-serialized model would have been named: not what is installed.
     reserialized = json.dumps(json.loads(_INSTALLED_MODEL), indent=2).encode()
     assert _seed_name(reserialized) != _seed_name(_INSTALLED_MODEL)
+
+
+def test_a_bundle_whose_model_serves_other_schemas_than_recorded_is_not_started(
+    tmp_path, monkeypatch
+):
+    """The installed model is read, never changed, and held to the record of its release
+    (provisa/govdata/bundle_schemas.json): a difference is refused by name before the launcher
+    is run, naming both sides of it and the command that records the bundle."""
+    from provisa.govdata.subjects import BundleSchemasChanged
+
+    bundle = _install_bundle(tmp_path / "bundle")
+    moved = _INSTALLED_MODEL.replace(b'{"name": "law"}', b'{"name": "space"}')
+    (bundle / "model" / "model.json").write_bytes(moved)
+    spawned: list = []
+    with pytest.raises(BundleSchemasChanged) as refused:
+        _replica_on(bundle, spawned, monkeypatch).endpoint()
+    assert spawned == []
+    assert "only in the bundle ['space']" in str(refused.value)
+    assert "only in the record ['law']" in str(refused.value)
+    assert "scripts/record_govdata_bundle_schemas.py" in str(refused.value)
+    assert (bundle / "model" / "model.json").read_bytes() == moved
+    assert isinstance(refused.value, pr.server_start_errors())
 
 
 def test_no_model_is_built_for_a_source_that_runs_on_its_bundles_own():

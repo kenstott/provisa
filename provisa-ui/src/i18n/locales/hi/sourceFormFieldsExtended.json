@@ -30,6 +30,7 @@
     "dataSubjects": "डेटा विषय",
     "askAmericaApiKey": "AskAmerica API कुंजी",
     "getApiKey": "API कुंजी प्राप्त करें →",
+    "govdataSubjectsUnavailable": "सर्वर ने अभी तक AskAmerica विषयों की सूची नहीं दी है। कुछ क्षण में पुनः प्रयास करें।",
     "validatingApiKey": "API कुंजी सत्यापित की जा रही है और मेटाडेटा पहले से लोड हो रहा है… पहली बार उपयोग में इसमें 30 सेकंड तक लग सकते हैं।",
     "bootstrapServers": "बूटस्ट्रैप सर्वर",
     "schemaRegistryUrl": "स्कीमा रजिस्ट्री URL",

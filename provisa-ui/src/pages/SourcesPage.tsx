@@ -44,6 +44,8 @@ import {
   useUpdateSourceAllowedDomains,
   useDomains,
 } from "../hooks/useAdminQueries";
+import { useGovdataSubjects } from "../hooks/useGovdataSubjects";
+import { schemasForSubjects, subjectsOfSchemas } from "./sources/govdataSubjects";
 import { useAuth } from "../context/AuthContext";
 import { SchemaDiscovery } from "../components/SchemaDiscovery";
 import { TagControl } from "../components/TagControl";
@@ -59,7 +61,6 @@ import {
   DB_DESCRIPTION_TYPES,
   DISCOVERABLE_TYPES,
   FILE_SOURCES,
-  GOVDATA_SUBJECTS,
   MAPPING_TYPES,
   SOURCE_TYPES,
 } from "./sources/constants";
@@ -768,11 +769,11 @@ export function SourcesPage() {
         .split(",")
         .map((x: string) => x.trim())
         .filter(Boolean);
-      setGovdataSubjects(
-        GOVDATA_SUBJECTS.filter((subj) =>
-          subj.schemas.some((schema) => storedSchemas.includes(schema)),
-        ).map((subj) => subj.value),
-      );
+      if (!govdataCatalog) {
+        setError(t("sourceFormFieldsExtended.govdataSubjectsUnavailable"));
+        return;
+      }
+      setGovdataSubjects(subjectsOfSchemas(govdataCatalog, storedSchemas));
     } else {
       setGovdataSubjects([]);
     }
@@ -1053,15 +1054,7 @@ export function SourcesPage() {
               : null,
         database:
           form.type === "govdata"
-            ? Array.from(
-                new Set([
-                  ...govdataSubjects.flatMap(
-                    (sv) => GOVDATA_SUBJECTS.find((s) => s.value === sv)?.schemas ?? [],
-                  ),
-                  "ref",
-                  "geo",
-                ]),
-              ).join(",")
+            ? schemasForSubjects(requireGovdataCatalog(), govdataSubjects).join(",")
             : coreForm.database,
         ...(spMappingJson !== undefined ? { mappingJson: spMappingJson } : {}),
         ...(federationHintsJson !== undefined ? { federationHintsJson } : {}),
@@ -1196,8 +1189,14 @@ export function SourcesPage() {
   const [openapiPreviewing, setOpenapiPreviewing] = useState(false);
   const [openapiPreviewError, setOpenapiPreviewError] = useState<string | null>(null);
 
-  // GovData-specific state — subjects map to schema groups; "ref" is always included silently
+  // REQ-540: the subjects ticked for an AskAmerica source. What each brings, and the linker
+  // schemas every such source serves, are the server's (useGovdataSubjects).
   const [govdataSubjects, setGovdataSubjects] = useState<string[]>([]);
+  const { catalog: govdataCatalog } = useGovdataSubjects();
+  const requireGovdataCatalog = () => {
+    if (!govdataCatalog) throw new Error(t("sourceFormFieldsExtended.govdataSubjectsUnavailable"));
+    return govdataCatalog;
+  };
 
   // gRPC Remote-specific state
   const [grpcProtoPath, setGrpcProtoPath] = useState("");
@@ -1443,6 +1442,7 @@ export function SourcesPage() {
     setFilesCertPassword,
     govdataSubjects,
     setGovdataSubjects,
+    govdataSubjectOptions: govdataCatalog?.subjects ?? null,
     submitting,
     openapiSpecPath,
     setOpenapiSpecPath,

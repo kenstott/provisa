@@ -125,6 +125,24 @@ class SourceType:  # REQ-012
 
 
 @strawberry.type
+class GovDataSubjectType:  # REQ-540
+    """A subject an AskAmerica source can be given, and the adapter schemas it brings."""
+
+    value: str
+    label: str
+    schemas: list[str]
+
+
+@strawberry.type
+class GovDataSubjectsType:  # REQ-540, REQ-541
+    """What the Sources form offers for an AskAmerica source: the subjects, and the linker
+    schemas every such source serves whatever subjects it is given."""
+
+    subjects: list[GovDataSubjectType]
+    linker_schemas: list[str]
+
+
+@strawberry.type
 class DomainType:  # REQ-533, REQ-609
     id: str
     description: str

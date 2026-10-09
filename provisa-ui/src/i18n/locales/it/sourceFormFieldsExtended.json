@@ -30,6 +30,7 @@
     "dataSubjects": "Soggetti dei dati",
     "askAmericaApiKey": "Chiave API AskAmerica",
     "getApiKey": "Ottieni chiave API →",
+    "govdataSubjectsUnavailable": "Il server non ha ancora elencato gli argomenti di AskAmerica. Riprova tra un momento.",
     "validatingApiKey": "Convalida della chiave API e precaricamento dei metadati in corso… al primo utilizzo può richiedere fino a 30 secondi.",
     "bootstrapServers": "Server bootstrap",
     "schemaRegistryUrl": "URL registro schemi",

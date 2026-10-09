@@ -30,7 +30,6 @@ import {
   BRAND_CARRIER,
   BRAND_AUTH,
   FILE_TRANSPORTS,
-  GOVDATA_SUBJECTS,
   KAFKA_AUTH_TYPES,
   NAMING_CONVENTIONS,
 } from "./constants";
@@ -83,6 +82,7 @@ export function SourceFormFieldsExtended({
   setFilesCertPassword,
   govdataSubjects,
   setGovdataSubjects,
+  govdataSubjectOptions,
   submitting,
   openapiSpecPath,
   setOpenapiSpecPath,
@@ -486,7 +486,7 @@ export function SourceFormFieldsExtended({
             style={{ gridColumn: "1 / -1" }}
           >
             <Group gap="sm" mt="0.25rem">
-              {GOVDATA_SUBJECTS.map((subj) => (
+              {(govdataSubjectOptions ?? []).map((subj) => (
                 <Checkbox
                   key={subj.value}
                   value={subj.value}

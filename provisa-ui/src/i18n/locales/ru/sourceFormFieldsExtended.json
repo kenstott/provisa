@@ -30,6 +30,7 @@
     "dataSubjects": "Субъекты данных",
     "askAmericaApiKey": "Ключ API AskAmerica",
     "getApiKey": "Получить ключ API →",
+    "govdataSubjectsUnavailable": "Сервер ещё не перечислил темы AskAmerica. Повторите попытку через мгновение.",
     "validatingApiKey": "Проверка ключа API и предварительная загрузка метаданных… при первом использовании это может занять до 30 секунд.",
     "bootstrapServers": "Bootstrap-серверы",
     "schemaRegistryUrl": "URL реестра схем",
