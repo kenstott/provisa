@@ -128,3 +128,27 @@ async def test_arrow_batches_are_inserted_and_exchanged_in_atomically_on_a_serve
     assert _count(server) == 900
     tables, _ = server.query(f"SELECT name FROM system.tables WHERE database = '{SCHEMA}'")
     assert [str(t[0]) for t in tables] == [TABLE]
+
+
+def test_two_statements_at_once_on_one_runtime_both_answer(server):
+    """Every request runs on its own thread and the engine's runtime holds one client. With a
+    server session named, the second of two statements in flight was refused
+    ("Session ... is locked by a concurrent client", SESSION_IS_LOCKED)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _slow(n: int) -> int:
+        rows, _ = server.query(f"SELECT {n} + sleep(1)")
+        return int(rows[0][0])
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        assert sorted(pool.map(_slow, range(4))) == [0, 1, 2, 3]
+
+
+def test_a_statement_sent_the_moment_a_stream_is_read_answers(server):
+    """The org-delete case's shape: a lazy stream's rows are read and the next statement follows
+    at once, before the server has finished with the first."""
+    for _ in range(50):
+        _schema, batches = server.query_arrow_stream("SELECT number FROM system.numbers LIMIT 3")
+        assert sum(b.num_rows for b in batches) == 3
+        rows, _ = server.query("SELECT 1")
+        assert rows == [(1,)]

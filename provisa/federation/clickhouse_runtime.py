@@ -152,7 +152,19 @@ class _ServerBackend:
     def __init__(self, *, host: str, port: int, username: str, password: str) -> None:
         import clickhouse_connect
 
-        self._conn_args = {"host": host, "port": port, "username": username, "password": password}
+        # No server session. clickhouse-connect otherwise gives each client one session id and sends
+        # it with every statement, and a ClickHouse session admits ONE statement at a time: a second
+        # statement on this runtime -- another request's, or the next one sent the moment a stream's
+        # rows were read -- was refused "Session ... is locked by a concurrent client"
+        # (SESSION_IS_LOCKED). Nothing here keeps state in a session (no temporary table, no SET);
+        # the HTTP client's pool carries concurrent statements once none is named.
+        self._conn_args = {
+            "host": host,
+            "port": port,
+            "username": username,
+            "password": password,
+            "autogenerate_session_id": False,
+        }
         self._client = clickhouse_connect.get_client(**self._conn_args)
 
     def _kill(self, query_id: str) -> None:

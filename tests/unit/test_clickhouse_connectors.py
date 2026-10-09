@@ -247,3 +247,35 @@ def test_from_url_rejects_unknown_scheme():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
+
+
+def test_the_server_client_names_no_session(monkeypatch):
+    """A ClickHouse session admits one statement at a time, and clickhouse-connect gives a client
+    one session for everything it sends unless told not to. The runtime's one client serves every
+    request, so it names none (test_region_org_delete in suite run 37874425906: "Session ... is
+    locked by a concurrent client")."""
+    import clickhouse_connect
+
+    from provisa.federation.clickhouse_runtime import _ServerBackend
+
+    asked: list[dict] = []
+
+    class _Client:
+        def command(self, *_a, **_k):
+            return None
+
+        def close(self):
+            return None
+
+    def _get_client(**kwargs):
+        asked.append(kwargs)
+        return _Client()
+
+    monkeypatch.setattr(clickhouse_connect, "get_client", _get_client)
+    backend = _ServerBackend(host="ch", port=8123, username="default", password="")
+    backend._kill("some-query")  # noqa: SLF001 -- the cancel's own short-lived client
+
+    assert len(asked) == 2
+    for kwargs in asked:
+        assert kwargs["autogenerate_session_id"] is False
+        assert "session_id" not in kwargs
