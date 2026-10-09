@@ -124,7 +124,12 @@ def _success_response(operation: SchemaPath) -> SchemaPath | None:
     responses = _at(operation, "responses")
     if responses is None:
         return None
-    return next((responses / code for code in ("200", "2xx", "default") if code in responses), None)
+    # A status range is written "2XX" by the OpenAPI specification and "2xx" by some authors.
+    declared = {str(code).lower(): code for code in responses.keys()}
+    return next(
+        (responses / declared[code] for code in ("200", "2xx", "default") if code in declared),
+        None,
+    )
 
 
 def _media(name: str) -> str:

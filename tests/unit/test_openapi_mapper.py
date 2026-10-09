@@ -699,3 +699,50 @@ def test_a_multipart_body_is_a_command_that_names_its_files():
 def test_an_operation_that_declares_its_own_server_is_called_there():
     _, (command,) = parse_spec(_upload_spec(servers=[{"url": "https://files.test/"}]))
     assert command.server == "https://files.test/"
+
+
+def test_a_success_answer_declared_as_2XX_gives_the_table_its_columns():
+    """OpenAPI writes a status range with capital X ("2XX"); Microsoft Graph's description
+    declares every success answer so. Its rows are the table's, not the error answer's."""
+    spec = {
+        "openapi": "3.0.4",
+        "info": {"title": "t", "version": "1"},
+        "paths": {
+            "/messages": {
+                "get": {
+                    "operationId": "listMessages",
+                    "responses": {
+                        "2XX": {
+                            "description": "ok",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {"subject": {"type": "string"}},
+                                        },
+                                    }
+                                }
+                            },
+                        },
+                        "default": {
+                            "description": "error",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {"error": {"type": "object"}},
+                                    }
+                                }
+                            },
+                        },
+                    },
+                }
+            }
+        },
+    }
+    queries, _ = parse_spec(spec)
+    (query,) = queries
+    assert query.is_list is True
+    assert list(query.response_schema["properties"]) == ["subject"]
