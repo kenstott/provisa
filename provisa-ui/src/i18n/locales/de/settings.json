@@ -145,6 +145,10 @@
         "label": "Wiederholungsintervall für Replikat-Builds",
         "help": "Nach einem fehlgeschlagenen Replikat-Build fordert ein Lesezugriff erst nach Ablauf dieser Zeit einen weiteren Build an."
       },
+      "retry_interval_max": {
+        "label": "Längste Wartezeit für Replikat-Build-Wiederholungen",
+        "help": "Die Wartezeit, bevor ein fehlgeschlagener Replikat-Build erneut versucht wird, verdoppelt sich mit jedem Fehlschlag in Folge, beginnend beim Wiederholungsintervall, und wächst über diesen Wert nicht hinaus. Ein Build, der weiter fehlschlägt, wird dennoch in diesem Abstand versucht, solange seine Tabelle registriert ist; ein abgeschlossener Build setzt die Wartezeit auf das Wiederholungsintervall zurück. Der Wert darf nicht kleiner sein als das Wiederholungsintervall."
+      },
       "spool_max_bytes": {
         "label": "Speicherplatzlimit für Replikat-Zwischendateien",
         "help": "Der maximale Speicherplatz, den dieser Knoten nutzt, um die Antwort einer Quelle in einer temporären Datei zu halten, während ihr Replikat gebaut wird. Gilt für Quellen, die mit einem einzigen Dokument antworten und nicht über einen Cursor gelesen werden können. Ein Build, der das Limit überschreiten würde, schlägt fehl; es wird nichts abgeschnitten."

@@ -145,6 +145,10 @@
         "label": "Intervalle de nouvelle tentative de construction de réplique",
         "help": "Après l'échec de la construction d'une réplique, une lecture ne demande pas d'autre construction avant que ce délai soit écoulé."
       },
+      "retry_interval_max": {
+        "label": "Attente maximale entre les nouvelles tentatives de construction de réplica",
+        "help": "L'attente avant de retenter une construction de réplica échouée double à chaque échec consécutif, à partir de l'intervalle de nouvelle tentative, et cesse de croître à cette valeur. Une construction qui continue d'échouer est tout de même retentée, à cette fréquence, tant que sa table est enregistrée ; une construction terminée ramène l'attente à l'intervalle de nouvelle tentative. Elle ne peut pas être inférieure à l'intervalle de nouvelle tentative."
+      },
       "spool_max_bytes": {
         "label": "Limite de disque pour le stockage temporaire des répliques",
         "help": "L'espace disque maximal que ce nœud utilise pour conserver la réponse d'une source dans un fichier temporaire pendant la construction de sa réplique. S'applique aux sources qui répondent par un seul document et ne peuvent pas être lues par un curseur. Une construction qui dépasserait la limite échoue ; rien n'est tronqué."

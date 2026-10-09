@@ -145,6 +145,10 @@
         "label": "Interval voor opnieuw proberen van replica-builds",
         "help": "Nadat een replica-build is mislukt, vraagt een leesactie pas om een nieuwe build wanneer deze tijd is verstreken."
       },
+      "retry_interval_max": {
+        "label": "Langste wachttijd tussen nieuwe pogingen voor replicabuilds",
+        "help": "De wachttijd voordat een mislukte replicabuild opnieuw wordt geprobeerd, verdubbelt bij elke opeenvolgende mislukking, te beginnen bij het herhalingsinterval, en groeit niet verder dan deze waarde. Een build die blijft mislukken wordt toch met deze regelmaat geprobeerd, zolang de tabel geregistreerd is; een voltooide build zet de wachttijd terug op het herhalingsinterval. De waarde mag niet kleiner zijn dan het herhalingsinterval."
+      },
       "spool_max_bytes": {
         "label": "Schijflimiet voor replica-spool",
         "help": "De maximale schijfruimte die deze node gebruikt om het antwoord van een bron in een tijdelijk bestand te bewaren terwijl de replica wordt gebouwd. Geldt voor bronnen die met één document antwoorden en niet via een cursor kunnen worden gelezen. Een build die de limiet zou overschrijden mislukt; er wordt niets afgekapt."

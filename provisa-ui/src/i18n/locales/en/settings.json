@@ -145,6 +145,10 @@
         "label": "Replica build retry interval",
         "help": "After a replica build fails, a read does not ask for another build until this long has passed."
       },
+      "retry_interval_max": {
+        "label": "Longest replica build retry wait",
+        "help": "The wait before a failed replica build is tried again doubles with each failure in a row, starting from the retry interval, and stops growing here. A build that keeps failing is still tried, this often, for as long as its table is registered; a build that completes puts the wait back to the retry interval. It cannot be less than the retry interval."
+      },
       "spool_max_bytes": {
         "label": "Replica spool disk limit",
         "help": "The most disk space this node uses to hold a source's answer in a temporary file while its replica is built. It applies to sources that answer with one document and cannot be read through a cursor. A build that would pass the limit fails; nothing is truncated."

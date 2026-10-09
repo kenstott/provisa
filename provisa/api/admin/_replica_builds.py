@@ -19,12 +19,19 @@ from datetime import datetime
 from typing import Any
 
 from provisa.federation.replica_errors import WAITING
+from provisa.federation.replica_state import retry_policy
 
 RETIRED = "retired"
 
 
 def _iso(at: datetime | None) -> str | None:
     return at.isoformat() if at is not None else None
+
+
+def _next_attempt_at(record: Any) -> datetime | None:
+    if record.build_state != "failed" or record.retired_at is not None or record.failed_at is None:
+        return None
+    return retry_policy().next_attempt_at(record.failed_at, record.failed_attempts)
 
 
 def build_view(record: Any, now: datetime) -> dict:
@@ -56,6 +63,9 @@ def build_view(record: Any, now: datetime) -> dict:
         "last_error_code": record.last_error_code,
         "last_error_params": record.last_error_params,
         "failed_attempts": record.failed_attempts,
+        # REQ-1915: when a failed build is tried next (its wait grows with each failure in a
+        # row). None unless the replica is failed.
+        "next_attempt_at": _iso(_next_attempt_at(record)),
         "waiting_on": WAITING[record.waiting_on] if record.waiting_on is not None else None,
         "waiting_on_code": record.waiting_on,
         "feed_down_since": _iso(record.feed_down_since),

@@ -7,6 +7,7 @@
     "buildingNoRate": "Build della replica in corso ({{how}}).",
     "built": "Replica creata {{when}}: {{rows}} righe ({{how}}).",
     "failed": "Build della replica non riuscita (tentativo {{attempts}}; viene ritentata): {{error}}",
+    "failedNextAt": "Build della replica non riuscita (tentativo {{attempts}}; nuovo tentativo {{when}}): {{error}}",
     "retired": "Questa tabella non è più replicata; la sua replica è in fase di rimozione.",
     "convergenceError": "Le repliche non vengono allineate al modello: {{error}}",
     "method": {

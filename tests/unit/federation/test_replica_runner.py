@@ -27,6 +27,7 @@ from provisa.federation.replica_runner import (
     ReplicaRunner,
     engine_job_key,
 )
+from provisa.federation.replica_state import RetryPolicy
 
 ORG = "org1"
 
@@ -119,7 +120,7 @@ class _Node:
             permits=permits,
             next_refresh_at=_async(lambda _key, _now: None),
             store=lambda: "store-a",
-            retry_interval=lambda: retry,
+            retry=lambda: RetryPolicy(retry, 3600),
             builds_per_node=lambda: per_node,
             engine_jobs=lambda: engine_jobs,
             spawn=lambda coro, name: self.tasks.append(asyncio.ensure_future(coro)),
@@ -282,7 +283,7 @@ async def test_a_row_left_building_by_a_dead_builder_is_rebuilt(plane, tmp_path)
     await _request(db, _key(0))
     async with db.acquire() as conn:
         assert await build_state.claim(
-            conn, _key(0), holder="gone:1", retry_interval=60, now=datetime.now(UTC)
+            conn, _key(0), holder="gone:1", retry=RetryPolicy(60, 3600), now=datetime.now(UTC)
         )
 
     async def build(key, progress):

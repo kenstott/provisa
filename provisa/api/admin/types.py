@@ -1365,8 +1365,10 @@ class ReplicaBuildType:  # REQ-1915
     last_error_code: str | None
     last_error_params: JsonScalar | None
     # Builds that have failed in a row since the last one that completed. A failing build is
-    # tried again every ``replication.retry_interval``.
+    # tried again after ``replication.retry_interval``, doubled for each failure in a row up
+    # to ``replication.retry_interval_max``; ``next_attempt_at`` is when (ISO 8601, UTC).
     failed_attempts: int
+    next_attempt_at: str | None
     # Why a requested build has not started: English text and its code.
     waiting_on: str | None
     waiting_on_code: str | None

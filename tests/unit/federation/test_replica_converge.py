@@ -31,6 +31,7 @@ from provisa.federation.replica_converge import (
 )
 from provisa.federation.replica_locks import BuildLocks
 from provisa.federation.replica_state_view import view_for
+from provisa.federation.replica_state import RetryPolicy
 
 pytestmark = pytest.mark.unit
 
@@ -172,7 +173,9 @@ class _Model:
         now = datetime.now(UTC)
         src, cols, _pk = self.tables[key]
         async with self.db.acquire() as conn:
-            assert await replica_state.claim(conn, key, holder="t:1", now=now, retry_interval=60)
+            assert await replica_state.claim(
+                conn, key, holder="t:1", now=now, retry=RetryPolicy(60, 3600)
+            )
             await replica_state.record_completed(
                 conn,
                 key,
@@ -334,8 +337,12 @@ async def test_a_retired_replica_is_neither_built_nor_requested_again(model):
         assert not await replica_state.request_build(conn, key, replica_state.REASON_READ)
         assert not await replica_state.request_build(conn, key, replica_state.REASON_OPERATOR)
         due = now + timedelta(days=1)
-        assert key not in await replica_state.candidates(conn, now=due, limit=50, retry_interval=0)
-        assert not await replica_state.claim(conn, key, holder="t:1", now=due, retry_interval=0)
+        assert key not in await replica_state.candidates(
+            conn, now=due, limit=50, retry=RetryPolicy(0, 3600)
+        )
+        assert not await replica_state.claim(
+            conn, key, holder="t:1", now=due, retry=RetryPolicy(0, 3600)
+        )
 
 
 async def test_a_table_declared_again_before_the_drop_keeps_its_replica(model, monkeypatch):

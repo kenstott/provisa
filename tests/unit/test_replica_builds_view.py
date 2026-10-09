@@ -36,6 +36,7 @@ def _record(**kw):
         last_error_code=None,
         last_error_params=None,
         failed_attempts=0,
+        failed_at=None,
         waiting_on=None,
         retired_at=None,
         feed_down_since=None,

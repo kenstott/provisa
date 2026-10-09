@@ -115,6 +115,7 @@
         "file_not_found": "No se encontró ese archivo en el servidor.",
         "invalid_tls_pair": "El certificado y la clave privada deben establecerse juntos ({{other}}).",
         "redis_tls_required": "Redis debe usar TLS mientras TLS sea obligatorio.",
+        "retry_max_below_interval": "La espera máxima entre reintentos no puede ser menor que el intervalo de reintento ({{other}}).",
         "cannot_decrypt": "No se pudo descifrar un valor almacenado con la clave actual."
       },
       "group": {

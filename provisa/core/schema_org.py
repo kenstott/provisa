@@ -1461,8 +1461,10 @@ replica_state = Table(
     Column("last_error_code", Text),
     Column("last_error_params", JSON(none_as_null=True)),
     Column("failed_at", DateTime(timezone=True)),
-    # Builds that have failed in a row since the last one that completed: a replica that keeps
-    # failing is retried every ``replication.retry_interval``, and this says how often it has.
+    # Builds that have failed in a row since the last one that completed. A replica that keeps
+    # failing is retried for as long as it is declared, after ``replication.retry_interval``
+    # doubled for each of these up to ``replication.retry_interval_max`` (replica_state
+    # .RetryPolicy): the wait is computed from this count and ``failed_at``, nothing else is stored.
     Column("failed_attempts", Integer, nullable=False, server_default="0"),
     # Why a requested build was not started on the last pass that tried it, as a code
     # (``replica_errors.WAITING``: the engine at its job cap, the source at its live-read

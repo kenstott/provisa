@@ -222,6 +222,20 @@ DECLARED: list[Setting] = [
         unit="seconds",
     ),
     Setting(
+        key="replication.retry_interval_max",
+        card="concurrency",
+        type="int",
+        effect="live",
+        # 3600: the wait before a failed build is tried again doubles with each failure in a row
+        # and stops growing here -- a source that stays down is asked once an hour, for as long
+        # as its table is registered. Not below the interval (settings_guards refuses it).
+        req="REQ-1915",
+        env="PROVISA_REPLICATION_RETRY_INTERVAL_MAX",
+        default=3600,
+        min=0,
+        unit="seconds",
+    ),
+    Setting(
         key="replication.spool_max_bytes",
         card="limits",
         type="int",

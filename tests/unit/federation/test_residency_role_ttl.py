@@ -316,7 +316,7 @@ def wiring(monkeypatch):
     monkeypatch.setattr("provisa.federation.query_residency._BUILD_POLL_S", 0.01)
     monkeypatch.setattr(
         "provisa.core.settings_registry.value",
-        lambda key: {"replication.retry_interval": 60}[key],
+        lambda key: {"replication.retry_interval": 60, "replication.retry_interval_max": 3600}[key],
     )
     seen: dict = {}
 

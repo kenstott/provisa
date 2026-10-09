@@ -418,7 +418,7 @@ def make_runner(state: Any, org_id: str, platform_url: str) -> ReplicaRunner:
         permits=state.live_permit_store,
         next_refresh_at=_next_refresh_at(state),
         store=lambda: store_identity(state),
-        retry_interval=lambda: float(settings_registry.value("replication.retry_interval")),
+        retry=replica_state.retry_policy,
         housekeeping=lambda locks, org: drop_retired(state, locks, org),
         builds_per_node=lambda: int(settings_registry.value("replication.builds_per_node")),
         engine_jobs=lambda: int(settings_registry.value("replication.engine_jobs")),

@@ -32,7 +32,7 @@ request's own coroutine, bounded by the request's deadline (``ReplicaBuilding``)
 
 A build that fails is recorded on the replica and fails the query with the build's own cause;
 the query never reads what the failed build left (REQ-1661, amended 2026-09-30). A read does
-not ask again until ``replication.retry_interval`` has passed.
+not ask again until the build's retry wait (``replica_state.RetryPolicy``) has passed.
 """
 
 # Requirements: REQ-1661, REQ-860, REQ-855, REQ-1141, REQ-1907, REQ-1915
@@ -396,7 +396,7 @@ async def ensure_resident(
     (``replica_state.request_build``) and waits on the record until the build has completed —
     it never copies a table on its own thread. A build that failed fails the read
     (:class:`ReplicaBuildFailed`); it is asked for again only after
-    ``replication.retry_interval``. A read whose deadline passes while the build is still
+    its retry wait (``replica_state.RetryPolicy``). A read whose deadline passes while the build is still
     running raises :class:`ReplicaBuilding`; the build goes on.
 
     ``table_ids`` are the registered tables the STATEMENT reads (REQ-826): only those are judged
@@ -525,7 +525,7 @@ async def ensure_resident(
     replicated_by = {s.id: _replicated(state, tables_by_source.get(s.id, [])) for s in sources}
     protected_of = {s.id: _load_protected(s, tables_by_source.get(s.id, [])) for s in sources}
 
-    from provisa.core import request_deadline, settings_registry
+    from provisa.core import request_deadline
     from provisa.core.request_context import current_org
     from provisa.federation import replica_builds, replica_state
     from provisa.federation.replica_routing import live_while_building
@@ -594,7 +594,7 @@ async def ensure_resident(
         resident = state_ is not None and state_["last_refresh_at"] is not None
         return _plan(source, is_stale, lambda sid: resident)
 
-    retry_interval = float(settings_registry.value("replication.retry_interval"))
+    retry = replica_state.retry_policy()
     waiting: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
     replicas_read: dict[ReplicaKey, datetime] = {}
 
@@ -637,7 +637,7 @@ async def ensure_resident(
                         record = await replica_state.read(conn, key)
                         if _stale(source, t, record):
                             await replica_state.request_build(
-                                conn, key, replica_state.REASON_READ, retry_interval=retry_interval
+                                conn, key, replica_state.REASON_READ, retry=retry
                             )
                             record = await replica_state.read(conn, key)
                     view.read(org_id, key, record)
@@ -645,7 +645,7 @@ async def ensure_resident(
                 _read_from(key, record)
                 continue
             if record is not None and record.build_state == replica_state.FAILED:
-                # Failed too recently to ask again (replication.retry_interval): the read fails
+                # Failed too recently to ask again (replica_state.RetryPolicy): the read fails
                 # with the build's own error. It never reads what the failed build left.
                 raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
             if live_while_building(source, t, engine.engine):

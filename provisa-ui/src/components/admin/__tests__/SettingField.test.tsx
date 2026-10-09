@@ -585,6 +585,7 @@ describe("new PUT reasons", () => {
     "invalid_tls_pair",
     "redis_tls_required",
     "cannot_decrypt",
+    "retry_max_below_interval",
   ])("has a text for %s and shows the other listener", async (reason) => {
     const onSave = vi.fn().mockRejectedValue(
       Object.assign(new Error("raw server text"), {
@@ -597,7 +598,11 @@ describe("new PUT reasons", () => {
     const err = await screen.findByTestId(`${id(num.key)}-error`);
     expect(err.textContent).not.toMatch(/adminPage\.setting\.reason/);
     expect(err.textContent).not.toBe("raw server text");
-    if (reason === "port_in_use" || reason === "invalid_tls_pair") {
+    if (
+      reason === "port_in_use" ||
+      reason === "invalid_tls_pair" ||
+      reason === "retry_max_below_interval"
+    ) {
       expect(err.textContent).toContain("server.grpc_port");
     }
   });

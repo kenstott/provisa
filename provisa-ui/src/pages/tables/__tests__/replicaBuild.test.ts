@@ -48,6 +48,7 @@ function build(over: Partial<ReplicaBuild>): ReplicaBuild {
     lastErrorCode: null,
     lastErrorParams: null,
     failedAttempts: 0,
+    nextAttemptAt: null,
     waitingOn: null,
     waitingOnCode: null,
     feedDownSince: null,
@@ -109,6 +110,25 @@ describe("replicaBuildLine", () => {
         msg,
       ),
     ).toBe('replicaBuild.waiting {"waitingOn":"the engine is busy"}');
+  });
+
+  it("says when a failed build is tried next", () => {
+    expect(
+      replicaBuildLine(
+        build({
+          state: "failed",
+          failedAttempts: 3,
+          lastError: "source down",
+          nextAttemptAt: "2026-10-09T12:04:00+00:00",
+        }),
+        t,
+        num,
+        when,
+        msg,
+      ),
+    ).toBe(
+      `replicaBuild.failedNextAt {"attempts":"#3","when":"${when("2026-10-09T12:04:00+00:00")}","error":"source down"}`,
+    );
   });
 
   it("shows a failed build's error and a retired replica", () => {

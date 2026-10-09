@@ -38,6 +38,7 @@ from provisa.core.database import Database, create_engine_from_url
 from provisa.core.db import init_schema
 from provisa.core.models import Column, Table
 from provisa.core.repositories import table as table_repo
+from provisa.federation.replica_state import RetryPolicy
 
 
 @pytest.fixture
@@ -96,7 +97,7 @@ def test_the_replica_stamp_has_no_trigger_and_moves_only_when_advanced(tenant_db
         async with tenant_db.acquire() as conn:
             await replica_state.request_build(conn, key, replica_state.REASON_MODEL)
             now = datetime.now(UTC)
-            await replica_state.claim(conn, key, holder="h:1", now=now, retry_interval=60)
+            await replica_state.claim(conn, key, holder="h:1", now=now, retry=RetryPolicy(60, 3600))
             await replica_state.record_progress(conn, key, rows_copied=10)
             for _ in range(2):
                 await replica_state.record_completed(

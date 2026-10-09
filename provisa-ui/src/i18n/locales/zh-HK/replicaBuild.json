@@ -7,6 +7,7 @@
     "buildingNoRate": "複本建置中（{{how}}）。",
     "built": "複本已於 {{when}} 建置：{{rows}} 列（{{how}}）。",
     "failed": "複本建置失敗（第 {{attempts}} 次嘗試；將會重試）：{{error}}",
+    "failedNextAt": "複本建置失敗（第 {{attempts}} 次嘗試；將於 {{when}} 重試）：{{error}}",
     "retired": "此表不再複製；其複本正在移除。",
     "convergenceError": "複本未與模型保持一致：{{error}}",
     "method": {

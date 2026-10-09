@@ -128,9 +128,27 @@ def _superuser(values: dict[str, Any]) -> None:
         raise Refused(field, "superuser_incomplete", other=other)
 
 
+_RETRY = ("replication.retry_interval", "replication.retry_interval_max")
+
+
+def _retry(values: dict[str, Any]) -> None:
+    """REQ-1915: the wait before a failed build is tried again grows from the interval up to the
+    ceiling, so a ceiling below the interval is no ceiling the interval could reach. Refused on
+    whichever of the two was saved, naming the other."""
+    changed = [key for key in _RETRY if key in values]
+    if not changed:
+        return
+    interval, ceiling = (settings_registry.prospective(key, values) for key in _RETRY)
+    if ceiling < interval:
+        field = changed[0]
+        other = _RETRY[1] if field == _RETRY[0] else _RETRY[0]
+        raise Refused(field, "retry_max_below_interval", other=other)
+
+
 def check(values: dict[str, Any]) -> None:
     """Raise :class:`Refused` for the first saved value that cannot work with the rest."""
     _superuser(values)
     _ports(values)
     _tls(values)
     _redis(values)
+    _retry(values)

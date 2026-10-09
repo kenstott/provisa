@@ -20,6 +20,7 @@ from provisa.core.schema_org import metadata, replica_state as replica_state_tab
 from provisa.events.boot import build_source_node_spec
 from provisa.events.handlers import make_source_build
 from provisa.federation import replica_state
+from provisa.federation.replica_state import RetryPolicy
 
 pytestmark = pytest.mark.unit
 
@@ -43,7 +44,7 @@ def _handle(db, kicks):
 async def _complete(db, *, content_hash: str, rows: int = 7) -> None:
     now = datetime.now(UTC)
     async with db.acquire() as conn:
-        await replica_state.claim(conn, KEY, holder="t:1", now=now, retry_interval=60)
+        await replica_state.claim(conn, KEY, holder="t:1", now=now, retry=RetryPolicy(60, 3600))
         await replica_state.record_completed(
             conn,
             KEY,
@@ -191,7 +192,7 @@ def _seed(posted: datetime) -> list[dict]:
 async def _start_model_build(db, at: datetime) -> None:
     async with db.acquire() as conn:
         await replica_state.request_build(conn, KEY, replica_state.REASON_MODEL, now=at)
-        await replica_state.claim(conn, KEY, holder="t:1", now=at, retry_interval=60)
+        await replica_state.claim(conn, KEY, holder="t:1", now=at, retry=RetryPolicy(60, 3600))
 
 
 async def test_the_boot_seed_is_answered_by_the_model_build_it_raced(db):

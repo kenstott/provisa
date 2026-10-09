@@ -7,6 +7,7 @@
     "buildingNoRate": "Compilando réplica ({{how}}).",
     "built": "Réplica compilada {{when}}: {{rows}} filas ({{how}}).",
     "failed": "La compilación de la réplica falló (intento {{attempts}}; se vuelve a intentar): {{error}}",
+    "failedNextAt": "La compilación de la réplica falló (intento {{attempts}}; se reintenta {{when}}): {{error}}",
     "retired": "Esta tabla ya no se replica; su réplica se está eliminando.",
     "convergenceError": "Las réplicas no se están alineando con el modelo: {{error}}",
     "method": {

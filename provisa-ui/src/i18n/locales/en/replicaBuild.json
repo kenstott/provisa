@@ -7,6 +7,7 @@
     "buildingNoRate": "Replica building ({{how}}).",
     "built": "Replica built {{when}}: {{rows}} rows ({{how}}).",
     "failed": "Replica build failed (attempt {{attempts}}; it is tried again): {{error}}",
+    "failedNextAt": "Replica build failed (attempt {{attempts}}; it is tried again {{when}}): {{error}}",
     "retired": "This table is no longer replicated; its replica is being removed.",
     "convergenceError": "Replicas are not being brought in line with the model: {{error}}",
     "method": {

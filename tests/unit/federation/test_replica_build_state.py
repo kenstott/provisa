@@ -17,6 +17,7 @@ from provisa.core.schema_org import config_stamp as stamps
 from provisa.core.schema_org import metadata, replica_state
 from provisa.federation import replica_state as build_state
 from provisa.federation.replica_state import promoted_keys, promotion, serving_keys, set_promoted
+from provisa.federation.replica_state import RetryPolicy
 
 KEY = ("src", "public", "orders")
 
@@ -42,7 +43,7 @@ async def test_the_first_request_creates_the_record_and_later_ones_join_it(conn)
     assert not record.exists
 
     now = datetime.now(UTC)
-    assert await build_state.claim(conn, KEY, holder="h:1", retry_interval=60, now=now)
+    assert await build_state.claim(conn, KEY, holder="h:1", retry=RetryPolicy(60, 3600), now=now)
     assert await build_state.request_build(conn, KEY, build_state.REASON_OPERATOR) is False
     assert (await build_state.read(conn, KEY)).build_state == "building"
 
@@ -50,7 +51,7 @@ async def test_the_first_request_creates_the_record_and_later_ones_join_it(conn)
 async def test_a_completed_replica_stays_readable_while_its_refresh_is_requested_or_fails(conn):
     now = datetime.now(UTC)
     await build_state.request_build(conn, KEY, build_state.REASON_MODEL)
-    await build_state.claim(conn, KEY, holder="h:1", retry_interval=60, now=now)
+    await build_state.claim(conn, KEY, holder="h:1", retry=RetryPolicy(60, 3600), now=now)
     await build_state.record_progress(conn, KEY, rows_copied=40)
     assert (await build_state.read(conn, KEY)).rows_copied == 40
     await build_state.record_completed(
@@ -68,7 +69,7 @@ async def test_a_completed_replica_stays_readable_while_its_refresh_is_requested
 
     assert await build_state.request_build(conn, KEY, build_state.REASON_REFRESH) is True
     assert (await build_state.read(conn, KEY)).exists
-    await build_state.claim(conn, KEY, holder="h:1", retry_interval=60, now=now)
+    await build_state.claim(conn, KEY, holder="h:1", retry=RetryPolicy(60, 3600), now=now)
     await build_state.record_failed(conn, KEY, error="boom", now=now)
     record = await build_state.read(conn, KEY)
     assert record.exists and record.build_state == "failed" and record.last_error == "boom"
@@ -77,19 +78,32 @@ async def test_a_completed_replica_stays_readable_while_its_refresh_is_requested
 async def test_a_read_does_not_ask_again_inside_the_retry_interval(conn):
     failed_at = datetime.now(UTC)
     await build_state.request_build(conn, KEY, build_state.REASON_MODEL)
-    await build_state.claim(conn, KEY, holder="h:1", retry_interval=60, now=failed_at)
+    await build_state.claim(conn, KEY, holder="h:1", retry=RetryPolicy(60, 3600), now=failed_at)
     await build_state.record_failed(conn, KEY, error="boom", now=failed_at)
 
     soon = failed_at + timedelta(seconds=30)
     later = failed_at + timedelta(seconds=61)
     ask = build_state.request_build
-    assert await ask(conn, KEY, build_state.REASON_READ, retry_interval=60, now=soon) is False
+    assert (
+        await ask(conn, KEY, build_state.REASON_READ, retry=RetryPolicy(60, 3600), now=soon)
+        is False
+    )
     assert (await build_state.read(conn, KEY)).build_state == "failed"
     # An operator's request is not held back.
     assert await ask(conn, KEY, build_state.REASON_OPERATOR, now=soon) is True
-    await build_state.claim(conn, KEY, holder="h:1", retry_interval=60, now=soon)
+    await build_state.claim(conn, KEY, holder="h:1", retry=RetryPolicy(60, 3600), now=soon)
     await build_state.record_failed(conn, KEY, error="boom", now=failed_at)
-    assert await ask(conn, KEY, build_state.REASON_READ, retry_interval=60, now=later) is True
+    # Two failures in a row: the wait has doubled (REQ-1915), so a read a minute on still does
+    # not ask, and one two minutes on does.
+    assert (
+        await ask(conn, KEY, build_state.REASON_READ, retry=RetryPolicy(60, 3600), now=later)
+        is False
+    )
+    doubled = failed_at + timedelta(seconds=120)
+    assert (
+        await ask(conn, KEY, build_state.REASON_READ, retry=RetryPolicy(60, 3600), now=doubled)
+        is True
+    )
 
 
 async def test_candidates_are_requested_due_and_building_rows_oldest_request_first(conn):
@@ -99,7 +113,7 @@ async def test_candidates_are_requested_due_and_building_rows_oldest_request_fir
     await build_state.request_build(conn, a, "model", now=now - timedelta(minutes=1))
     for key, due in ((c, now - timedelta(seconds=1)), (d, now + timedelta(hours=1))):
         await build_state.request_build(conn, key, "model", now=now - timedelta(hours=1))
-        await build_state.claim(conn, key, holder="h:1", retry_interval=60, now=now)
+        await build_state.claim(conn, key, holder="h:1", retry=RetryPolicy(60, 3600), now=now)
         await build_state.record_completed(
             conn,
             key,
@@ -110,8 +124,12 @@ async def test_candidates_are_requested_due_and_building_rows_oldest_request_fir
             next_refresh_at=due,
             now=now,
         )
-    assert await build_state.candidates(conn, retry_interval=60, now=now, limit=10) == [c, b, a]
-    assert await build_state.candidates(conn, retry_interval=60, now=now, limit=1) == [c]
+    assert await build_state.candidates(conn, retry=RetryPolicy(60, 3600), now=now, limit=10) == [
+        c,
+        b,
+        a,
+    ]
+    assert await build_state.candidates(conn, retry=RetryPolicy(60, 3600), now=now, limit=1) == [c]
 
 
 async def test_the_promoted_flag_and_the_build_state_share_the_row(conn):
@@ -270,7 +288,7 @@ async def test_a_change_reported_while_a_build_runs_is_built_again_when_it_compl
     the request is kept and the replica is requested again the moment that build completes."""
     start = datetime.now(UTC)
     await build_state.request_build(conn, KEY, build_state.REASON_MODEL, now=start)
-    await build_state.claim(conn, KEY, holder="h:1", retry_interval=60, now=start)
+    await build_state.claim(conn, KEY, holder="h:1", retry=RetryPolicy(60, 3600), now=start)
     changed = start + timedelta(seconds=5)
     assert await build_state.request_build(conn, KEY, reason, now=changed) is False
     assert (await build_state.read(conn, KEY)).build_state == "building"
@@ -280,7 +298,7 @@ async def test_a_change_reported_while_a_build_runs_is_built_again_when_it_compl
     assert record.exists  # the build that completed is served meanwhile
 
     again = start + timedelta(seconds=10)
-    await build_state.claim(conn, KEY, holder="h:1", retry_interval=60, now=again)
+    await build_state.claim(conn, KEY, holder="h:1", retry=RetryPolicy(60, 3600), now=again)
     await _build_completes(conn, again + timedelta(seconds=1))
     assert (await build_state.read(conn, KEY)).build_state == "idle"  # nothing changed since
 
@@ -288,7 +306,7 @@ async def test_a_change_reported_while_a_build_runs_is_built_again_when_it_compl
 async def test_a_reader_that_joins_a_running_build_asks_for_no_second_one(conn):
     start = datetime.now(UTC)
     await build_state.request_build(conn, KEY, build_state.REASON_MODEL, now=start)
-    await build_state.claim(conn, KEY, holder="h:1", retry_interval=60, now=start)
+    await build_state.claim(conn, KEY, holder="h:1", retry=RetryPolicy(60, 3600), now=start)
     later = start + timedelta(seconds=5)
     assert await build_state.request_build(conn, KEY, build_state.REASON_READ, now=later) is False
     await _build_completes(conn, start + timedelta(seconds=9))

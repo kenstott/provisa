@@ -53,7 +53,7 @@ from provisa.core.read_refusal import ReadRefused
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
@@ -359,34 +359,95 @@ async def read_all(conn: "Connection") -> list[ReplicaRecord]:
     return [_record(r) for r in (await conn.execute_core(select(*_COLUMNS))).fetchall()]
 
 
+class Failure(NamedTuple):
+    """One recorded failure: how many in a row, and whether it repeats the one before."""
+
+    attempts: int
+    repeat: bool
+
+
+@dataclass(frozen=True)
+class RetryPolicy:
+    """How long a failed build waits before it is tried again (REQ-1915): the operator's
+    ``replication.retry_interval``, doubled for each failure in a row, never past
+    ``replication.retry_interval_max``. Nothing stops the retries; a completed build puts the
+    count of failures back to none, and with it the wait.
+
+    Computed from ``failed_attempts`` and ``failed_at`` alone: there is no stored "next attempt"
+    and no second clock, so a changed setting is in force for the very next decision."""
+
+    interval: float
+    ceiling: float
+
+    def wait(self, failed_attempts: int) -> float:
+        """Seconds after its last failure before a build that has failed ``failed_attempts``
+        times in a row is tried again."""
+        if self.interval <= 0:
+            return 0.0
+        wait = min(self.interval, self.ceiling)
+        for _ in range(max(failed_attempts, 1) - 1):
+            if wait >= self.ceiling:
+                break
+            wait = min(wait * 2, self.ceiling)
+        return float(wait)
+
+    def next_attempt_at(self, failed_at: datetime, failed_attempts: int) -> datetime:
+        return failed_at + timedelta(seconds=self.wait(failed_attempts))
+
+    def _due(self, now: datetime) -> Any:
+        """The SQL for "this failed build's wait has passed": one comparison per step of the
+        doubling, which the ceiling keeps few, and one for every count at or past the ceiling."""
+        steps: list[Any] = []
+        attempts = 1
+        while self.wait(attempts) < self.wait(attempts + 1):
+            # The first step also takes a record with no failure counted yet.
+            counted = (
+                _t.failed_attempts <= attempts if attempts == 1 else _t.failed_attempts == attempts
+            )
+            waited = _t.failed_at <= now - timedelta(seconds=self.wait(attempts))
+            steps.append(and_(counted, waited))
+            attempts += 1
+        longest = _t.failed_at <= now - timedelta(seconds=self.wait(attempts))
+        steps.append(longest if attempts == 1 else and_(_t.failed_attempts >= attempts, longest))
+        return or_(*steps)
+
+
+def retry_policy() -> RetryPolicy:
+    """The policy in force: the two operator settings, read now (both are live)."""
+    from provisa.core import settings_registry  # noqa: PLC0415 -- settings load the catalog
+
+    return RetryPolicy(
+        interval=float(settings_registry.value("replication.retry_interval")),
+        ceiling=float(settings_registry.value("replication.retry_interval_max")),
+    )
+
+
 async def request_build(
     conn: "Connection",
     key: ReplicaKey,
     reason: str,
     *,
-    retry_interval: float | None = None,
+    retry: RetryPolicy | None = None,
     model_stamp: int | None = None,
     now: datetime | None = None,
 ) -> bool:
     """Ask for a build of the replica ``key``. True when this call made the request; False when
     a build was already requested or running (the caller has joined it), when
-    ``retry_interval`` holds it back, or when the replica is retired (the model no longer
-    declares it: a retired replica is never rebuilt).
+    ``retry`` holds it back, or when the replica is retired (the model no longer declares it:
+    a retired replica is never rebuilt).
 
     ``model_stamp`` is the model stamp the asking process has loaded, recorded so that a node
     with an older model does not take the replica for one whose table is gone.
 
-    ``retry_interval`` (seconds) is given by a caller that must not ask again too soon after a
-    failure — a read: a build that failed less than that long ago is not requested again."""
+    ``retry`` is given by a caller that must not ask again too soon after a failure — a read: a
+    build whose wait (:class:`RetryPolicy`) has not passed is not requested again. A caller that
+    gives none — an operator's own request — is tried at once, whatever the wait."""
     if reason not in REASONS:
         raise ValueError(f"unknown build reason {reason!r}; expected one of {REASONS}")
     at = now if now is not None else datetime.now(UTC)
     retriable = _t.build_state == FAILED
-    if retry_interval is not None:
-        retriable = and_(
-            retriable,
-            or_(_t.failed_at.is_(None), _t.failed_at <= at - timedelta(seconds=retry_interval)),
-        )
+    if retry is not None:
+        retriable = and_(retriable, or_(_t.failed_at.is_(None), retry._due(at)))
     requested: dict[str, Any] = {
         "build_state": REQUESTED,
         "requested_at": at,
@@ -423,27 +484,24 @@ async def request_build(
     return True
 
 
-def _claimable(now: datetime, retry_interval: float) -> Any:
+def _claimable(now: datetime, retry: RetryPolicy) -> Any:
     """A record a runner may build: not retired, and requested; idle with a refresh due;
     building (whose builder may have died — only the runner that gets the replica's lock finds
-    out); or failed at least ``retry_interval`` seconds ago (the runner tries a failed build
-    again itself: a replica nobody reads would otherwise stay failed)."""
+    out); or failed and its wait has passed (:class:`RetryPolicy` — the runner tries a failed
+    build again itself: a replica nobody reads would otherwise stay failed). THE one place the
+    wait of a failed build is decided for a runner; a read's request asks the same policy."""
     due = and_(_t.build_state == IDLE, _t.next_refresh_at.is_not(None), _t.next_refresh_at <= now)
-    retry = and_(
-        _t.build_state == FAILED,
-        _t.failed_at.is_not(None),
-        _t.failed_at <= now - timedelta(seconds=retry_interval),
-    )
-    return and_(_t.retired_at.is_(None), or_(_t.build_state.in_((REQUESTED, BUILDING)), due, retry))
+    again = and_(_t.build_state == FAILED, _t.failed_at.is_not(None), retry._due(now))
+    return and_(_t.retired_at.is_(None), or_(_t.build_state.in_((REQUESTED, BUILDING)), due, again))
 
 
 async def candidates(
-    conn: "Connection", *, now: datetime, limit: int, retry_interval: float
+    conn: "Connection", *, now: datetime, limit: int, retry: RetryPolicy
 ) -> list[ReplicaKey]:
     """The replicas a runner may try to build (:func:`_claimable`), oldest request first."""
     result = await conn.execute_core(
         select(_t.source_id, _t.schema_name, _t.table_name)
-        .where(_claimable(now, retry_interval))
+        .where(_claimable(now, retry))
         .order_by(_t.requested_at.asc().nulls_last(), _t.next_refresh_at.asc())
         .limit(limit)
     )
@@ -451,14 +509,14 @@ async def candidates(
 
 
 async def claim(
-    conn: "Connection", key: ReplicaKey, *, holder: str, now: datetime, retry_interval: float
+    conn: "Connection", key: ReplicaKey, *, holder: str, now: datetime, retry: RetryPolicy
 ) -> bool:
     """Move the row to ``building`` for ``holder``. Called only by the process that holds the
     replica's lock; False when the row is no longer a candidate (another runner completed it
     between this runner's selection and its lock, or the model stopped declaring it)."""
     result = await conn.execute_core(
         update(replica_state)
-        .where(_is(key), _claimable(now, retry_interval))
+        .where(_is(key), _claimable(now, retry))
         .values(
             build_state=BUILDING,
             build_started_at=now,
@@ -620,10 +678,21 @@ async def record_failed(
     now: datetime,
     code: str | None = None,
     params: dict | None = None,
-) -> None:
+) -> "Failure":
     """The build failed. The previous replica, if any, is untouched and stays readable.
     ``code`` and ``params`` name a cause Provisa knows (``replica_errors``). The count of
-    failures in a row goes up by one; a completed build puts it back to none."""
+    failures in a row goes up by one; a completed build puts it back to none.
+
+    Returns the count of failures in a row including this one, and whether this failure repeats
+    the one before it (the same error text, in an unbroken run of failures) — what the runner's
+    log needs to say a repeat in one line."""
+    before = (
+        await conn.execute_core(
+            select(_t.build_state, _t.failed_attempts, _t.last_error).where(_is(key))
+        )
+    ).fetchone()
+    earlier = int(before[1] or 0) if before is not None else 0
+    repeat = earlier > 0 and before is not None and before[2] == error
     await conn.execute_core(
         update(replica_state)
         .where(_is(key))
@@ -637,6 +706,7 @@ async def record_failed(
             failed_attempts=_t.failed_attempts + 1,
         )
     )
+    return Failure(attempts=earlier + 1, repeat=repeat)
 
 
 # -- retiring a replica the model no longer declares (REQ-1915, REQ-1919) ----------------------

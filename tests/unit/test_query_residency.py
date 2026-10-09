@@ -29,6 +29,7 @@ from provisa.federation.query_residency import ensure_resident, is_stale_of
 from provisa.federation.replica_address import ReplicaRoutes
 from provisa.federation.replica_routing import table_floor
 from provisa.federation.replica_state import ReplicaBuildFailed, ReplicaBuilding
+from provisa.federation.replica_state import RetryPolicy
 
 pytestmark = pytest.mark.unit
 
@@ -149,9 +150,11 @@ class _Runner:
     async def run(self) -> None:
         now = datetime.now(UTC)
         async with self._db.acquire() as conn:
-            for key in await replica_state.candidates(conn, retry_interval=60, now=now, limit=50):
+            for key in await replica_state.candidates(
+                conn, retry=RetryPolicy(60, 3600), now=now, limit=50
+            ):
                 if not await replica_state.claim(
-                    conn, key, holder="test:1", retry_interval=60, now=now
+                    conn, key, holder="test:1", retry=RetryPolicy(60, 3600), now=now
                 ):
                     continue
                 if self.fail is not None:
@@ -245,7 +248,9 @@ async def _built(plane, table, *, at: datetime | None = None, store: str = STORE
     when = at if at is not None else datetime.now(UTC)
     async with plane.acquire() as conn:
         await replica_state.request_build(conn, _key(table), "model", now=when)
-        await replica_state.claim(conn, _key(table), holder="test:1", retry_interval=60, now=when)
+        await replica_state.claim(
+            conn, _key(table), holder="test:1", retry=RetryPolicy(60, 3600), now=when
+        )
         await replica_state.record_completed(
             conn,
             _key(table),
@@ -446,7 +451,7 @@ async def test_a_failed_build_is_not_asked_for_again_within_the_retry_interval(
     assert wiring.kicks == 1 and wiring.built == []
     monkeypatch.setattr(
         "provisa.core.settings_registry.value",
-        lambda key: 0 if key == "replication.retry_interval" else None,
+        lambda key: {"replication.retry_interval": 0, "replication.retry_interval_max": 3600}[key],
     )
     assert await _ensure(state, {"pets-db"}) == [("pets-db", "pets")]
     assert wiring.built == [_key(pets)]

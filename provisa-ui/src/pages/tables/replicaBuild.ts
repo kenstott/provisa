@@ -38,14 +38,22 @@ export function replicaBuildLine(
   switch (build.state) {
     case "retired":
       return t("replicaBuild.retired");
-    case "failed":
-      return t("replicaBuild.failed", {
-        attempts: formatNumber(build.failedAttempts),
-        error: serverText(
-          { code: build.lastErrorCode, params: build.lastErrorParams, message: build.lastError },
-          "",
-        ),
-      });
+    case "failed": {
+      const attempts = formatNumber(build.failedAttempts);
+      const error = serverText(
+        { code: build.lastErrorCode, params: build.lastErrorParams, message: build.lastError },
+        "",
+      );
+      // The wait before the next attempt grows with each failure in a row, so "it is tried
+      // again" says when.
+      return build.nextAttemptAt
+        ? t("replicaBuild.failedNextAt", {
+            attempts,
+            when: formatWhen(build.nextAttemptAt),
+            error,
+          })
+        : t("replicaBuild.failed", { attempts, error });
+    }
     case "requested":
       return build.waitingOn
         ? t("replicaBuild.waiting", {

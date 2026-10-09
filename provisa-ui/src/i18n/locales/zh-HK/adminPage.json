@@ -115,6 +115,7 @@
         "file_not_found": "在伺服器上找不到該檔案。",
         "invalid_tls_pair": "證書和私密金鑰必須同時設定（{{other}}）。",
         "redis_tls_required": "在要求使用 TLS 時，Redis 必須使用 TLS。",
+        "retry_max_below_interval": "最長等待時間不可小於重試間隔（{{other}}）。",
         "cannot_decrypt": "無法用目前的金鑰解密已儲存的值。"
       },
       "group": {

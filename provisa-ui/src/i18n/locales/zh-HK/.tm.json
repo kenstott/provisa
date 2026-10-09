@@ -5374,5 +5374,9 @@
   "zh-HK/viewDefinitionForm.json::viewDefinitionForm.save": "Save view",
   "zh-HK/viewDefinitionForm.json::viewDefinitionForm.saveFailed": "Save failed",
   "zh-HK/viewDefinitionForm.json::viewDefinitionForm.sqlCreateHint": "Free-hand views are authored in the SQL editor: write the SELECT, run it, then save it as a view.",
-  "zh-HK/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor."
+  "zh-HK/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor.",
+  "zh-HK/settings.json::settings.replication.retry_interval_max.label": "Longest replica build retry wait",
+  "zh-HK/settings.json::settings.replication.retry_interval_max.help": "The wait before a failed replica build is tried again doubles with each failure in a row, starting from the retry interval, and stops growing here. A build that keeps failing is still tried, this often, for as long as its table is registered; a build that completes puts the wait back to the retry interval. It cannot be less than the retry interval.",
+  "zh-HK/adminPage.json::adminPage.setting.reason.retry_max_below_interval": "The longest retry wait cannot be less than the retry interval ({{other}}).",
+  "zh-HK/replicaBuild.json::replicaBuild.failedNextAt": "Replica build failed (attempt {{attempts}}; it is tried again {{when}}): {{error}}"
 }

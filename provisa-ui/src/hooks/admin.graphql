@@ -725,6 +725,7 @@ query ReplicaBuilds {
       lastErrorCode
       lastErrorParams
       failedAttempts
+      nextAttemptAt
       waitingOn
       waitingOnCode
       feedDownSince

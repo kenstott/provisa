@@ -145,6 +145,10 @@
         "label": "Intervalo de nova tentativa de compilação de réplica",
         "help": "Depois que a compilação de uma réplica falha, uma leitura não solicita outra compilação até que este tempo tenha passado."
       },
+      "retry_interval_max": {
+        "label": "Espera máxima entre novas tentativas de compilação de réplicas",
+        "help": "A espera antes de tentar novamente uma compilação de réplica que falhou duplica a cada falha consecutiva, a partir do intervalo de nova tentativa, e deixa de crescer neste valor. Uma compilação que continua a falhar continua a ser tentada, com esta frequência, enquanto a sua tabela estiver registada; uma compilação concluída repõe a espera no intervalo de nova tentativa. Não pode ser inferior ao intervalo de nova tentativa."
+      },
       "spool_max_bytes": {
         "label": "Limite de disco para o spool de réplicas",
         "help": "O máximo de espaço em disco que este nó usa para guardar a resposta de uma origem em um arquivo temporário enquanto sua réplica é compilada. Aplica-se a origens que respondem com um único documento e não podem ser lidas por um cursor. Uma compilação que ultrapassaria o limite falha; nada é truncado."

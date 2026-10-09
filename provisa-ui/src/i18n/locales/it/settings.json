@@ -145,6 +145,10 @@
         "label": "Intervallo di nuovo tentativo per la build di repliche",
         "help": "Dopo il fallimento della build di una replica, una lettura non richiede un'altra build finché non è trascorso questo tempo."
       },
+      "retry_interval_max": {
+        "label": "Attesa massima tra i nuovi tentativi di build delle repliche",
+        "help": "L'attesa prima di ritentare una build di replica non riuscita raddoppia a ogni errore consecutivo, a partire dall'intervallo di nuovo tentativo, e smette di crescere a questo valore. Una build che continua a fallire viene comunque ritentata, con questa frequenza, finché la sua tabella è registrata; una build completata riporta l'attesa all'intervallo di nuovo tentativo. Non può essere inferiore all'intervallo di nuovo tentativo."
+      },
       "spool_max_bytes": {
         "label": "Limite di disco per lo spool delle repliche",
         "help": "Lo spazio su disco massimo che questo nodo usa per conservare la risposta di un'origine in un file temporaneo durante la build della sua replica. Si applica alle origini che rispondono con un unico documento e non possono essere lette tramite un cursore. Una build che supererebbe il limite fallisce; nulla viene troncato."

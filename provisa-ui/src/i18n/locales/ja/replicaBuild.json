@@ -7,6 +7,7 @@
     "buildingNoRate": "レプリカをビルド中 ({{how}})。",
     "built": "レプリカは {{when}} にビルドされました: {{rows}} 行 ({{how}})。",
     "failed": "レプリカのビルドに失敗しました（{{attempts}} 回目。再試行されます）: {{error}}",
+    "failedNextAt": "レプリカのビルドに失敗しました（試行 {{attempts}} 回目、{{when}} に再試行）: {{error}}",
     "retired": "このテーブルはレプリケートされなくなりました。レプリカを削除しています。",
     "convergenceError": "レプリカがモデルに合わせて更新されていません: {{error}}",
     "method": {

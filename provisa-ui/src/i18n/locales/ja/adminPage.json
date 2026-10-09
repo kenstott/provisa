@@ -115,6 +115,7 @@
         "file_not_found": "そのファイルはサーバー上に見つかりません。",
         "invalid_tls_pair": "証明書と秘密鍵は一緒に設定する必要があります（{{other}}）。",
         "redis_tls_required": "TLS が必須の間、Redis は TLS を使用する必要があります。",
+        "retry_max_below_interval": "最大待機時間は再試行間隔（{{other}}）より小さくできません。",
         "cannot_decrypt": "保存された値を現在の鍵で復号できませんでした。"
       },
       "group": {

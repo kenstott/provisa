@@ -67,6 +67,32 @@ def engine_job_key(kind: str, address: str | None) -> str:
     return f"{kind}@{address if address is not None else socket.gethostname()}"
 
 
+def _log_failure(
+    key: ReplicaKey,
+    exc: BaseException,
+    failure: build_state.Failure,
+    retry: build_state.RetryPolicy,
+    failed_at: datetime,
+) -> None:
+    """A failed build in the log. The first failure of a run of them, and any failure whose
+    error differs from the one before, is an error with its traceback. A repeat of the same
+    error says so in one line -- the table, how many in a row, when it is tried next: a source
+    that stays down is retried for as long as its table is registered, and a traceback each
+    time buries the one that says why."""
+    name = ".".join(key)
+    again = retry.next_attempt_at(failed_at, failure.attempts).isoformat(timespec="seconds")
+    if failure.repeat:
+        log.warning(
+            "replica build of %s failed again (%d in a row): %s; next attempt at %s",
+            name,
+            failure.attempts,
+            exc,
+            again,
+        )
+        return
+    log.error("replica build of %s failed: %s; next attempt at %s", name, exc, again, exc_info=exc)
+
+
 @dataclass
 class _Job:
     key: ReplicaKey
@@ -96,7 +122,7 @@ class ReplicaRunner:
         permits: Any,
         next_refresh_at: Callable[[ReplicaKey, datetime], Awaitable[datetime | None]],
         store: Callable[[], str],
-        retry_interval: Callable[[], float],
+        retry: Callable[[], build_state.RetryPolicy],
         housekeeping: Callable[[BuildLocks, str], Awaitable[Any]] | None = None,
         builds_per_node: Callable[[], int],
         engine_jobs: Callable[[], int],
@@ -111,7 +137,7 @@ class ReplicaRunner:
         self._permits = permits
         self._next_refresh_at = next_refresh_at
         self._store = store
-        self._retry_interval = retry_interval
+        self._retry = retry
         self._housekeeping = housekeeping
         self._builds_per_node = builds_per_node
         self._engine_jobs = engine_jobs
@@ -164,7 +190,7 @@ class ReplicaRunner:
         now = datetime.now(UTC)
         async with self._db.acquire() as conn:
             keys = await build_state.candidates(
-                conn, now=now, limit=_CANDIDATES_PER_PASS, retry_interval=self._retry_interval()
+                conn, now=now, limit=_CANDIDATES_PER_PASS, retry=self._retry()
             )
         if not keys:
             return None
@@ -194,7 +220,7 @@ class ReplicaRunner:
         try:
             async with self._db.acquire() as conn:
                 if not await build_state.claim(
-                    conn, key, holder=self._holder, now=now, retry_interval=self._retry_interval()
+                    conn, key, holder=self._holder, now=now, retry=self._retry()
                 ):
                     return None  # built by another runner since this pass selected it
                 cap = await self._source_cap(key)
@@ -230,17 +256,18 @@ class ReplicaRunner:
             try:
                 outcome = await self._build(job.key, progress)
             except BaseException as exc:  # allow-ble: a build's failure, whatever its type, is recorded on the replica for the operator and the next read; it is re-raised below when it is not an ordinary error
-                log.error("replica build of %s failed: %s", ".".join(job.key), exc, exc_info=exc)
                 code, params = coded(exc)
+                failed_at = datetime.now(UTC)
                 async with self._db.acquire() as conn:
-                    await build_state.record_failed(
+                    failure = await build_state.record_failed(
                         conn,
                         job.key,
                         error=str(exc) or type(exc).__name__,
                         code=code,
                         params=params,
-                        now=datetime.now(UTC),
+                        now=failed_at,
                     )
+                _log_failure(job.key, exc, failure, self._retry(), failed_at)
                 if not isinstance(exc, Exception):
                     raise
             else:

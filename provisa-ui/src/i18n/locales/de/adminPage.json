@@ -115,6 +115,7 @@
         "file_not_found": "Diese Datei wurde auf dem Server nicht gefunden.",
         "invalid_tls_pair": "Zertifikat und privater Schlüssel müssen zusammen gesetzt werden ({{other}}).",
         "redis_tls_required": "Redis muss TLS verwenden, solange TLS erforderlich ist.",
+        "retry_max_below_interval": "Die längste Wartezeit darf nicht kleiner sein als das Wiederholungsintervall ({{other}}).",
         "cannot_decrypt": "Ein gespeicherter Wert konnte mit dem aktuellen Schlüssel nicht entschlüsselt werden."
       },
       "group": {

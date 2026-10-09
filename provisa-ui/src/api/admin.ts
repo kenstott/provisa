@@ -1537,6 +1537,8 @@ export interface ReplicaBuild {
   lastErrorParams: Record<string, unknown> | null;
   /** Builds that have failed in a row since the last one that completed. */
   failedAttempts: number;
+  /** When a failed build is tried next (its wait grows with each failure in a row); null unless failed. */
+  nextAttemptAt: string | null;
   /** Why a requested build has not started: English text and its code. */
   waitingOn: string | null;
   waitingOnCode: string | null;
