@@ -155,9 +155,11 @@ def test_bundle_is_pgwire_govdata():
 
 def test_the_server_is_started_with_what_the_key_resolves_to():
     creds = aa.resolve_storage_credentials("aa-key", fetch=lambda key: (200, _ANSWER))
-    env = aa.server_environment(_source(), resolve=lambda key: creds)
+    catalog = Path("/bundle/model/.duckdb/govdata.duckdb")
+    env = aa.server_environment(_source(), catalog=catalog, resolve=lambda key: creds)
     assert env == {
         "ASKAMERICA_API_KEY": "aa-key",
+        "GOVDATA_DUCKDB_CATALOG": "/bundle/model/.duckdb/govdata.duckdb",
         "GOVDATA_PARQUET_DIR": "s3://govdata-parquet-v1",
         "AWS_ACCESS_KEY_ID": "AK",
         "AWS_SECRET_ACCESS_KEY": "SK",
@@ -170,7 +172,7 @@ def test_the_server_is_started_with_what_the_key_resolves_to():
 
 def test_only_an_askamerica_server_takes_an_environment():
     files = Source(id="docs", type=SourceType.files, path="/data")
-    assert pr.server_environment(files) is None
+    assert pr.server_environment(files, Path("/bundle")) is None
 
 
 # The bundle as it is installed: its own model file, the catalog prebuilt for that model beside
@@ -190,13 +192,51 @@ def _seed_name(model_bytes: bytes) -> str:
     return f"catalog-cache-{hashlib.sha256(model_bytes).hexdigest()[:16]}.pkl"
 
 
-def _install_bundle(root: Path) -> Path:
+_SEED_SCHEMAS = ("sec", "econ", "ref")
+
+
+def _seed_zip(*, catalog: bytes = b"the prebuilt catalog") -> bytes:
+    """A seed as the bundle's jar carries it: the catalog and one conversion record a schema."""
+    import io
+    import zipfile
+
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as seed:
+        seed.writestr(".duckdb/govdata.duckdb", catalog)
+        for schema in _SEED_SCHEMAS:
+            seed.writestr(f".aperio/{schema}/.conversions.json", f'{{"schema": "{schema}"}}')
+    return out.getvalue()
+
+
+def _write_jar(bundle: Path, entries: dict[str, bytes]) -> None:
+    import zipfile
+
+    (bundle / "jars").mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(bundle / "jars" / "calcite-govdata-1.42.0-SNAPSHOT.jar", "w") as jar:
+        for name, data in entries.items():
+            jar.writestr(name, data)
+
+
+def _install_bundle(root: Path, *, seed: bytes | None = None) -> Path:
     (root / "model").mkdir(parents=True)
     (root / "bin").mkdir()
     (root / "model" / "model.json").write_bytes(_INSTALLED_MODEL)
     (root / "model" / _seed_name(_INSTALLED_MODEL)).write_bytes(b"prebuilt")
     (root / "bin" / "pgwire-govdata").write_text("#!/bin/sh\n")
+    _write_jar(
+        root,
+        {
+            aa.SEED_ZIP_RESOURCE: seed if seed is not None else _seed_zip(),
+            aa.SCHEMA_CACHE_RESOURCE: b'{"tables": {}}',
+        },
+    )
     return root
+
+
+@pytest.fixture(autouse=True)
+def _schema_cache_in_a_directory_of_the_tests_own(tmp_path, monkeypatch):
+    """The adapter keeps its Iceberg schema cache under the user's home; no test installs there."""
+    monkeypatch.setattr(aa, "_schema_cache_dir", lambda: tmp_path / "iceberg-schema-cache")
 
 
 def _replica_on(bundle: Path, spawned: list, monkeypatch) -> pr.ConnectorReplica:
@@ -218,12 +258,16 @@ def _replica_on(bundle: Path, spawned: list, monkeypatch) -> pr.ConnectorReplica
 
 def test_the_server_is_the_installed_bundle_started_by_its_own_launcher(tmp_path, monkeypatch):
     """Installed, then called: the bundle's launcher, in the bundle, with a port and the
-    environment the key resolves to. Nothing is copied, linked or written."""
+    environment the key resolves to. Nothing of the bundle is copied, linked or rewritten; the
+    one thing added is its own seed, laid down beside its model."""
     bundle = _install_bundle(tmp_path / "bundle")
     monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path / "data"))
     before = sorted(p.relative_to(bundle) for p in bundle.rglob("*"))
     spawned: list = []
     _replica_on(bundle, spawned, monkeypatch).endpoint()
+    added = set(p.relative_to(bundle) for p in bundle.rglob("*")) - set(before)
+    assert all(str(p).startswith(("model/.duckdb", "model/.aperio")) for p in added), added
+    before = sorted(p.relative_to(bundle) for p in bundle.rglob("*"))
 
     command, cwd, env = spawned[0]
     assert command[0] == str(bundle / "bin" / "pgwire-govdata")
@@ -272,6 +316,137 @@ def test_a_bundle_whose_model_serves_other_schemas_than_recorded_is_not_started(
     assert "scripts/record_govdata_bundle_schemas.py" in str(refused.value)
     assert (bundle / "model" / "model.json").read_bytes() == moved
     assert isinstance(refused.value, pr.server_start_errors())
+
+
+# -- installing the bundle installs its seed; the server is started on it ------------------------
+#
+# The bundle carries, in its govdata jar, the DuckDB catalog and the per-schema conversion
+# records the adapter otherwise builds at every start from object storage. The adapter's own
+# installer runs only on its embedded JDBC path; a pgwire server never reaches it.
+
+
+def test_the_seed_is_laid_down_where_the_server_reads_it(tmp_path):
+    bundle = _install_bundle(tmp_path / "bundle")
+    catalog = aa.install_seed(bundle)
+
+    assert catalog == bundle / "model" / ".duckdb" / "govdata.duckdb"
+    assert catalog.read_bytes() == b"the prebuilt catalog"
+    for schema in _SEED_SCHEMAS:  # <model dir>/.aperio/<schema>: each schema's working directory
+        record = bundle / "model" / ".aperio" / schema / ".conversions.json"
+        assert record.read_text() == f'{{"schema": "{schema}"}}'
+    # The marker the adapter's installer writes: the seed's SHA-256, beside the catalog.
+    import hashlib
+
+    marker = bundle / "model" / ".duckdb" / "govdata.duckdb.version"
+    assert marker.read_text() == hashlib.sha256(_seed_zip()).hexdigest()
+    assert (bundle / "model" / "model.json").read_bytes() == _INSTALLED_MODEL
+
+
+def test_the_server_is_started_on_the_seeded_catalog(tmp_path, monkeypatch):
+    bundle = _install_bundle(tmp_path / "bundle")
+    spawned: list = []
+    _replica_on(bundle, spawned, monkeypatch).endpoint()
+    _, _, env = spawned[0]
+    catalog = bundle / "model" / ".duckdb" / "govdata.duckdb"
+    assert env["GOVDATA_DUCKDB_CATALOG"] == str(catalog)
+    assert catalog.is_file()  # installed before the launcher is run
+
+
+def test_an_installed_seed_is_left_alone_and_a_new_bundles_seed_replaces_it(tmp_path):
+    bundle = _install_bundle(tmp_path / "bundle")
+    catalog = aa.install_seed(bundle)
+    catalog.write_bytes(b"the catalog as the running server has kept it")
+    aa.install_seed(bundle)
+    assert catalog.read_bytes() == b"the catalog as the running server has kept it"
+
+    # A new release of the bundle: another seed, so another fingerprint.
+    _write_jar(bundle, {aa.SEED_ZIP_RESOURCE: _seed_zip(catalog=b"the next release's catalog")})
+    aa.install_seed(bundle)
+    assert catalog.read_bytes() == b"the next release's catalog"
+
+
+def test_a_catalog_the_server_built_for_itself_is_not_taken_for_a_seed(tmp_path):
+    """Before the seed was installed a server built its own catalog and records in these
+    directories. They carry no marker: the seed replaces them, and the write-ahead log of the
+    replaced catalog goes with it."""
+    bundle = _install_bundle(tmp_path / "bundle")
+    built = bundle / "model" / ".duckdb"
+    built.mkdir(parents=True)
+    (built / "govdata.duckdb").write_bytes(b"built cold this morning")
+    (built / "govdata.duckdb.wal").write_bytes(b"its log")
+    record = bundle / "model" / ".aperio" / "sec" / ".conversions.json"
+    record.parent.mkdir(parents=True)
+    record.write_text("built cold")
+
+    catalog = aa.install_seed(bundle)
+    assert catalog.read_bytes() == b"the prebuilt catalog"
+    assert not (built / "govdata.duckdb.wal").exists()
+    assert record.read_text() == '{"schema": "sec"}'
+
+
+def test_a_missing_catalog_is_seeded_again_whatever_the_marker_says(tmp_path):
+    bundle = _install_bundle(tmp_path / "bundle")
+    catalog = aa.install_seed(bundle)
+    catalog.unlink()
+    assert aa.install_seed(bundle).read_bytes() == b"the prebuilt catalog"
+
+
+def test_a_bundle_with_no_seed_is_refused_by_name_and_its_server_is_not_started(
+    tmp_path, monkeypatch
+):
+    """A packaging defect of the bundle, not a cold start to sit through."""
+    bundle = _install_bundle(tmp_path / "bundle")
+    _write_jar(bundle, {"org/apache/calcite/adapter/govdata/Some.class": b""})
+    spawned: list = []
+    with pytest.raises(aa.BundleSeedMissing) as refused:
+        _replica_on(bundle, spawned, monkeypatch).endpoint()
+    assert spawned == []
+    assert "calcite-govdata-1.42.0-SNAPSHOT.jar" in str(refused.value)
+    assert "duckdb/seed/govdata-seed.zip" in str(refused.value)
+    assert isinstance(refused.value, pr.server_start_errors())
+
+
+def test_a_seed_with_no_catalog_in_it_is_refused(tmp_path):
+    import io
+    import zipfile
+
+    empty = io.BytesIO()
+    with zipfile.ZipFile(empty, "w") as seed:
+        seed.writestr(".aperio/sec/.conversions.json", "{}")
+    bundle = _install_bundle(tmp_path / "bundle", seed=empty.getvalue())
+    with pytest.raises(aa.BundleSeedMissing, match="holds no .duckdb/govdata.duckdb"):
+        aa.install_seed(bundle)
+
+
+def test_a_seed_entry_that_leaves_the_seed_directory_is_refused(tmp_path):
+    import io
+    import zipfile
+
+    hostile = io.BytesIO()
+    with zipfile.ZipFile(hostile, "w") as seed:
+        seed.writestr("../../outside.txt", "x")
+    bundle = _install_bundle(tmp_path / "bundle", seed=hostile.getvalue())
+    with pytest.raises(aa.BundleSeedMissing, match="leaves the seed directory"):
+        aa.install_seed(bundle)
+    assert not (tmp_path / "outside.txt").exists()
+
+
+def test_the_bundled_iceberg_schema_cache_is_installed_where_the_adapter_reads_it(tmp_path):
+    """As the adapter's own installer: the file, and the marker of the bundled copy installed
+    (its MD5), so a copy the adapter has since refreshed is not put back."""
+    import hashlib
+
+    bundle = _install_bundle(tmp_path / "bundle")
+    cache_dir = tmp_path / "cache"
+    aa.install_seed(bundle, schema_cache_dir=cache_dir)
+    target = cache_dir / "iceberg-schema-cache.json"
+    assert target.read_bytes() == b'{"tables": {}}'
+    marker = cache_dir / "iceberg-schema-cache.json.bundled"
+    assert marker.read_text() == hashlib.md5(b'{"tables": {}}', usedforsecurity=False).hexdigest()
+
+    target.write_bytes(b"refreshed by the adapter")
+    aa.install_seed(bundle, schema_cache_dir=cache_dir)
+    assert target.read_bytes() == b"refreshed by the adapter"
 
 
 def test_no_model_is_built_for_a_source_that_runs_on_its_bundles_own():
@@ -801,7 +976,7 @@ def test_no_error_this_source_raises_carries_the_key_or_its_credentials():
 
 def test_the_servers_command_line_carries_no_secret_and_no_file_is_written(tmp_path, monkeypatch):
     """A command line is in the process table and a file is on disk; the environment is the only
-    carrier, and the installed bundle is left as it was."""
+    carrier. What the install lays down is the bundle's own seed, which holds neither."""
     bundle = _install_bundle(tmp_path / "bundle")
     before = {p: p.read_bytes() for p in bundle.rglob("*") if p.is_file()}
     spawned: list = []
@@ -809,7 +984,11 @@ def test_the_servers_command_line_carries_no_secret_and_no_file_is_written(tmp_p
     command, _, _ = spawned[0]
     for secret in _SECRETS:
         assert secret not in " ".join(command)
-    assert {p: p.read_bytes() for p in bundle.rglob("*") if p.is_file()} == before
+    after = {p: p.read_bytes() for p in bundle.rglob("*") if p.is_file()}
+    assert {p: data for p, data in after.items() if p in before} == before
+    for data in after.values():
+        for secret in ("aa-key", "TOKEN"):
+            assert secret.encode() not in data
 
 
 def test_starting_the_server_logs_no_secret(tmp_path, caplog, monkeypatch):

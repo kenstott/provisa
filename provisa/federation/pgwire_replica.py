@@ -600,14 +600,19 @@ class _ProcessGroup:
 SERVER_LOG_NAME = "pgwire-server.log"
 
 
-def server_environment(source: Any) -> dict[str, str] | None:
+def server_environment(source: Any, bundle_dir: Path) -> dict[str, str] | None:
     """What the source's server needs in its environment beyond this process's own, or None
     when its model carries everything (every type but AskAmerica, whose bundled model reads its
-    credentials by name from the environment)."""
+    credentials and its catalog by name from the environment). For AskAmerica the bundle's seed
+    is installed first (``askamerica.install_seed``): the server is started on that catalog, and
+    a bundle that carries none is refused here, by name."""
     if _source_type(source) == "govdata":
-        from provisa.federation.askamerica import server_environment as _askamerica_environment
+        from provisa.federation.askamerica import (
+            install_seed,
+            server_environment as _askamerica_environment,
+        )
 
-        return _askamerica_environment(source)
+        return _askamerica_environment(source, catalog=install_seed(bundle_dir))
     return None
 
 
@@ -974,7 +979,7 @@ class ConnectorReplica:  # REQ-954/955/956
             spawn=self._spawn,
             health_check=self._health,
             port_is_free=self._port_is_free,
-            environment=server_environment(self._source),
+            environment=server_environment(self._source, Path(bundle_dir)),
         )
         server.start()  # REQ-955 (lifecycle)
         self._server = server
@@ -1188,6 +1193,7 @@ def server_start_errors() -> tuple[type[BaseException], ...]:
         AskAmericaKeyMissing,
         AskAmericaKeyRefused,
         AskAmericaUnavailable,
+        BundleSeedMissing,
     )
     from provisa.govdata.subjects import BundleSchemasChanged
     from provisa.runtime_deps.pgwire_bundles import BundleUnavailable
@@ -1200,6 +1206,7 @@ def server_start_errors() -> tuple[type[BaseException], ...]:
         AskAmericaKeyMissing,
         AskAmericaKeyRefused,
         AskAmericaUnavailable,
+        BundleSeedMissing,
     )
 
 
