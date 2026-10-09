@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: e8ca7d71-62fb-431e-95ae-6d162c22e680
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -12,8 +13,9 @@ import { defineConfig } from "@playwright/test";
  * nothing to provision and no global setup. coverage.ts calls a deployment it does not own the
  * `cloud` target; this is that target with no IdP in front of it.
  *
- * What runs is the live AskAmerica case: add the source with the free key, register a table,
- * query it on the SQL page.
+ * What runs is the live AskAmerica case: add the source with the free key, wait for its server
+ * to answer, register a table, query it on the SQL page. The case sets its own time budget: the
+ * server's first start is minutes (waitForSourceServing).
  */
 const DEPLOYED_URL = process.env.PROVISA_E2E_DEPLOYED_URL;
 if (!DEPLOYED_URL) {

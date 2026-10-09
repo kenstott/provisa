@@ -70,6 +70,53 @@ export async function createDomain(page: Page, id: string): Promise<void> {
   expect(result.success, result.message).toBeTruthy();
 }
 
+/** How long a source whose server takes minutes to start (AskAmerica: a download on first use,
+ * its schemas mounted, the rows of its tables counted) is given to answer. */
+export const SOURCE_SERVING_BUDGET_MS = 15 * 60 * 1000;
+
+/**
+ * Wait until a source's own server lists the tables of `schema`. While it starts, the listing
+ * answers `STARTING:` (the port is not open, or the catalog is being prepared) and is asked
+ * again, as the Register Table form does. Any other error ends the wait at once with that error:
+ * a server that exited or could not prepare its catalog is never waited out. The schema list is
+ * no use here: a source that declares its schemas answers it without its server.
+ */
+export async function waitForSourceServing(
+  page: Page,
+  sourceId: string,
+  schema: string,
+  budgetMs = SOURCE_SERVING_BUDGET_MS,
+): Promise<string[]> {
+  const deadline = Date.now() + budgetMs;
+  let last = "";
+  for (;;) {
+    const res = await page.request.post("/admin/graphql", {
+      data: {
+        query:
+          "query($sourceId: String!, $schema: String!) { availableTables(sourceId: $sourceId, schemaName: $schema) { name } }",
+        variables: { sourceId, schema },
+      },
+    });
+    expect(res.ok(), await res.text()).toBeTruthy();
+    const body = await res.json();
+    if (!body.errors?.length) {
+      return (body.data.availableTables as { name: string }[]).map((t) => t.name);
+    }
+    const message = body.errors.map((e: { message: string }) => e.message).join("; ");
+    if (!message.includes("STARTING:")) {
+      throw new Error(`source ${sourceId} is not serving: ${message}`);
+    }
+    if (message !== last) {
+      console.log(`[${new Date().toISOString()}] ${message}`);
+      last = message;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`source ${sourceId} was still starting after ${budgetMs} ms: ${message}`);
+    }
+    await page.waitForTimeout(5000);
+  }
+}
+
 /** Pick a schema and a table in the pickers, waiting for each to be introspected from the source. */
 export async function pickSchemaAndTable(page: Page, schema: string, table: string) {
   const schemaSelect = page.getByTestId("register-table-schema-select");

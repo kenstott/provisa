@@ -16,7 +16,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import { expect } from "./coverage";
+import { expect, test } from "./coverage";
 import type { Page } from "./coverage";
 import {
   E2E_CASSANDRA_PORT,
@@ -35,7 +35,9 @@ import {
   pickSchemaAndTable,
   registerOfferedTable,
   submitRegisterAndExpectListed,
+  SOURCE_SERVING_BUDGET_MS,
   submitSourceAndExpectListed,
+  waitForSourceServing,
 } from "./source-to-query-helpers";
 import {
   E2E_AIRPORT_PORT,
@@ -1273,7 +1275,7 @@ export async function registerOpenapi(page: Page, specUrlOverride?: string): Pro
 // reads a replica landed through it. A REAL external API (US government open data), no offline
 // mock — same credential gate source-to-query-special-cases.spec.ts's own govdata case uses
 // (FREE_ASKAMERICA_KEY in .env). The server mounts its schemas before it listens, so the
-// Register Table form reports the source as still starting until it does.
+// source answers discovery as still starting until it does (waitForSourceServing).
 export async function registerGovdata(page: Page): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_govdata_${stamp}`;
@@ -1285,6 +1287,9 @@ export async function registerGovdata(page: Page): Promise<Registration> {
   await page.getByTestId("govdata-subject-WEATHER").check();
   await page.getByTestId("govdata-api-key-input").fill(apiKey);
   await submitSourceAndExpectListed(page, sourceId);
+  // The server's start has its own budget, on top of the case's.
+  test.setTimeout(test.info().timeout + SOURCE_SERVING_BUDGET_MS);
+  expect(await waitForSourceServing(page, sourceId, "weather")).toContain("nws_stations");
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "weather", "nws_stations");

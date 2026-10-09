@@ -66,6 +66,7 @@ import { fileURLToPath } from "node:url";
 
 import { test, expect } from "./coverage";
 import {
+  SOURCE_SERVING_BUDGET_MS,
   openRegisterForm,
   openSourcesForm,
   pickSchemaAndTable,
@@ -73,6 +74,7 @@ import {
   runSqlOnPage,
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
+  waitForSourceServing,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -163,7 +165,9 @@ test.describe("govdata: source to query through the UI (REQ-1742)", () => {
     // test's own history — fixed: attach_source's view_ddl branch never loaded a scanner
     // connector's own DuckDB extension, and native_backend.py's query-time source merges never
     // carried source.mapping). Un-skipped.
-    test.setTimeout(180000);
+    // Saving the source starts its server, which takes minutes the first time (see
+    // waitForSourceServing). That wait has its own budget; the screens after it keep theirs.
+    test.setTimeout(SOURCE_SERVING_BUDGET_MS + 300000);
     const stamp = Date.now();
     const sourceId = `e2e_govdata_${stamp}`;
 
@@ -174,6 +178,7 @@ test.describe("govdata: source to query through the UI (REQ-1742)", () => {
     await page.getByTestId("govdata-subject-WEATHER").check();
     await page.getByTestId("govdata-api-key-input").fill(apiKey);
     await submitSourceAndExpectListed(page, sourceId);
+    expect(await waitForSourceServing(page, sourceId, "weather")).toContain("nws_stations");
 
     // 2. Register Table form — the WEATHER subject maps to the "weather" schema
     // (constants.ts GOVDATA_SUBJECTS); nws_stations is small and fast relative to the daily-
