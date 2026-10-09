@@ -256,6 +256,11 @@ def hold_registered_tables(
         ],
     )
     monkeypatch.setattr(state, "contexts", {})
+    # ... and no model store: the readable-inputs check (provisa/mv/readable_inputs.py) also asks
+    # the store which registered tables keep rows by key. A store an earlier test left on the
+    # state is another model's -- or a database since dropped: core 1/6 of run 37874425906 failed
+    # steps_materialization_store there, `relation "registered_tables" does not exist`.
+    monkeypatch.setattr(state, "model_db", None)
 
 
 def derived_lineage(views: list, tables: list[tuple[str, str, str]]) -> dict[str, set[str]]:

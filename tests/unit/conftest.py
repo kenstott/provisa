@@ -71,6 +71,31 @@ def _no_otel_log_pipeline_outlives_its_test():
 
 
 @pytest.fixture(autouse=True)
+def _no_unit_test_dials_a_pgwire_server(monkeypatch: pytest.MonkeyPatch):
+    """A replica prepares its server's catalog by connecting to the server's port. A unit test's
+    stand-in server listens nowhere, and its port (the default 5433) may be held by a real
+    adapter on this machine -- a test once sent its catalog query to one. So the real
+    preparation is refused in this lane: a test that reaches it gives its replica a
+    ``prepare_catalog``. The real function stays reachable as ``_prepare_catalog.real`` for the
+    tests of the function itself."""
+    replica = sys.modules.get("provisa.federation.pgwire_replica")
+    if replica is None:
+        import provisa.federation.pgwire_replica as replica
+
+    real = getattr(replica._prepare_catalog, "real", replica._prepare_catalog)
+
+    def _refused(ports):
+        raise AssertionError(
+            f"a unit test let a replica dial a real pgwire port ({ports}): give the "
+            "ConnectorReplica a prepare_catalog"
+        )
+
+    _refused.real = real  # type: ignore[attr-defined]
+    monkeypatch.setattr(replica, "_prepare_catalog", _refused)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _deployment_org_bound(request: pytest.FixtureRequest):
     if request.node.get_closest_marker("unbound") is not None:
         yield

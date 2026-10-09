@@ -30,6 +30,7 @@
     "dataSubjects": "データ主体",
     "askAmericaApiKey": "AskAmerica APIキー",
     "getApiKey": "APIキーを取得 →",
+    "govdataSubjectsUnavailable": "サーバーはまだ AskAmerica のサブジェクトを一覧していません。しばらくしてからもう一度お試しください。",
     "validatingApiKey": "APIキーを検証し、メタデータを事前読み込みしています…初回利用時は最大30秒かかる場合があります。",
     "bootstrapServers": "ブートストラップサーバー",
     "schemaRegistryUrl": "スキーマレジストリURL",

@@ -11,6 +11,7 @@
 import { NumberInput, PasswordInput, Select, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { Domain } from "../../types/admin";
+import type { GovdataSubject } from "./govdataSubjects";
 import { DATA_LAKE, FILE_SOURCES, HOST_PORT_ONLY, SIMPLE_RDBMS } from "./constants";
 import { AuthUserPass } from "./AuthUserPass";
 import { IcebergCatalogFields } from "./IcebergCatalogFields";
@@ -94,6 +95,8 @@ export interface SourceFormFieldsProps {
   setFilesCertPassword: (v: string) => void;
   govdataSubjects: string[];
   setGovdataSubjects: (v: string[]) => void;
+  /** REQ-540: the subjects the server offers; null until it has answered. */
+  govdataSubjectOptions: GovdataSubject[] | null;
   submitting: boolean;
   openapiSpecPath: string;
   setOpenapiSpecPath: (v: string) => void;

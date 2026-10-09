@@ -49,7 +49,10 @@ class TestDiscoveryReadyGuard:
             pr, "ensure_endpoint_for_discovery", lambda source: calls.append(source.id)
         )
         # Not attached, so introspect_tables returns [] after the readiness check passes —
-        # proves the guard did not itself raise or block.
+        # proves the guard did not itself raise or block. "Not attached" is arranged here: left
+        # to the runtime, the attach resolved the real bundle and started its server for this
+        # source, which no unit test may do.
+        monkeypatch.setattr(runtime, "_attached_alias", lambda source: None)
         assert runtime.introspect_tables(_files_source(), "kaggle_big") == []
         assert calls == ["kaggle-big"]
 

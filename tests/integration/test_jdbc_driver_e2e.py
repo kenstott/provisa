@@ -133,6 +133,8 @@ def test_the_drivers_integration_tests_pass_against_an_authenticated_server(
             "-Dprovisa.adminRole=org_admin",
             "-Dprovisa.table=orders",
             "-Dprovisa.columns=id,region",
+            # public.orders is created with ``id integer PRIMARY KEY`` (worker_boot_harness).
+            "-Dprovisa.primaryKey=id",
             "-Dprovisa.hiddenTable=payroll",
         ],
         capture_output=True,

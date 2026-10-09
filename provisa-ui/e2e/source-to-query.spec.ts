@@ -45,6 +45,7 @@ import {
   submitRegisterAndExpectListed,
   setSourceCacheTtl,
   submitSourceAndExpectListed,
+  FORM_FIELD,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -136,9 +137,9 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("mongodb");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_MONGO_PORT));
-    await page.getByLabel(/^Database/).fill("provisa");
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_MONGO_PORT));
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("provisa");
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register Table form: the engine's introspection lists the collection as a table
@@ -174,8 +175,8 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("elasticsearch");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_ES_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_ES_PORT));
     // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
     await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
@@ -211,9 +212,9 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("redis");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_REDIS_PORT));
-    await page.getByLabel(/^Database/).fill("0"); // the form requires one; Redis's db index
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_REDIS_PORT));
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("0"); // the form requires one; Redis's db index
     // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
     await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
@@ -249,9 +250,9 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("cassandra");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_CASSANDRA_PORT));
-    await page.getByLabel(/^Database/).fill("shelter_ops"); // the form requires one; the keyspace
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_CASSANDRA_PORT));
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("shelter_ops"); // the form requires one; the keyspace
     // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
     await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
@@ -735,11 +736,11 @@ test.describe("source to query through the UI, extra RDBMS coverage (REQ-1732)",
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("mysql");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_MYSQL_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_MYSQL_PORT));
     await page.getByLabel(/^Username/).fill("root");
     await page.getByLabel(/^Password/).fill("provisa");
-    await page.getByLabel(/^Database/).fill("provisa_demo");
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("provisa_demo");
     // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
     await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
@@ -778,10 +779,10 @@ test.describe("source to query through the UI, extra RDBMS coverage (REQ-1732)",
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("trino");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_TRINO_SOURCE_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_TRINO_SOURCE_PORT));
     await page.getByLabel(/^Username/).fill("provisa");
-    await page.getByLabel(/^Database/).fill("tpch");
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("tpch");
     // REQ-1907: the native engine serves this source from a replica — it needs a landing clock.
     await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);

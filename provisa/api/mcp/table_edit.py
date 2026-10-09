@@ -195,6 +195,27 @@ def table_input(t: Any) -> Any:
     )
 
 
+def editor_input(request: Any, t: Any) -> Any:
+    """The ``TableInput`` an editor tool starts from: ``t`` as the CALLER is shown it.
+
+    A tool changes one attribute and saves the table. What it saves is built from what its
+    caller is shown plus that change: a caller without ``view_governance`` is not shown a
+    column's grant lists or mask (REQ-1134), so the input names none of them — the save carries
+    them forward from the store (``_hiding_guard.keep_governance``) and refuses a payload that
+    names one (REQ-1958). Submitting the stored values back would be naming them.
+    """
+    from provisa.api.admin._hiding_guard import GOVERNANCE_FIELDS
+    from provisa.api.admin.capabilities import has_capability_request
+
+    edited = table_input(t)
+    if has_capability_request(request, "view_governance"):
+        return edited
+    for column in edited.columns:
+        for field in GOVERNANCE_FIELDS:
+            setattr(column, field, [] if isinstance(getattr(column, field), list) else None)
+    return edited
+
+
 async def save_table(request: Any, table_input_: Any) -> dict:
     """Save through the ``updateTable`` mutation the editor calls; a refusal raises its message."""
     from provisa.api.admin.schema_mutation import Mutation

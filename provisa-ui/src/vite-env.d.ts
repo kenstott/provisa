@@ -16,6 +16,7 @@ declare module "*.graphql" {
   export const RolesQuery: DocumentNode;
   export const SourcesQuery: DocumentNode;
   export const DomainsQuery: DocumentNode;
+  export const GovdataSubjectsQuery: DocumentNode;
   export const DataProductsQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
@@ -125,6 +126,7 @@ declare module "*.gql" {
   export const RolesQuery: DocumentNode;
   export const SourcesQuery: DocumentNode;
   export const DomainsQuery: DocumentNode;
+  export const GovdataSubjectsQuery: DocumentNode;
   export const DataProductsQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
   export const TagsQuery: DocumentNode;

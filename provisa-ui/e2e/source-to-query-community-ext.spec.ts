@@ -66,6 +66,7 @@ import {
   runSqlOnPage,
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
+  FORM_FIELD,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -151,13 +152,13 @@ test.describe("source to query through the UI, community-extension sources (REQ-
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("firebird");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_FIREBIRD_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_FIREBIRD_PORT));
     await page.getByLabel(/^Username/).fill("provisa");
     await page.getByLabel(/^Password/).fill("provisa");
     // The firebird extension's DSN path is the file's IN-CONTAINER path (FIREBIRD_DATABASE=test.fdb
     // under /firebird/data — see demo/sources/firebird/compose.yml), not a host path.
-    await page.getByLabel(/^Database/).fill("/firebird/data/test.fdb");
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("/firebird/data/test.fdb");
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
@@ -201,8 +202,8 @@ test.describe("source to query through the UI, community-extension sources (REQ-
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("airport");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_AIRPORT_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_AIRPORT_PORT));
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
@@ -240,11 +241,11 @@ test.describe("source to query through the UI, community-extension sources (REQ-
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("singlestore");
-    await page.getByLabel(/^Host/).fill(process.env.SINGLESTORE_HOST!);
-    await page.getByLabel(/^Port/).fill(process.env.SINGLESTORE_PORT!);
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill(process.env.SINGLESTORE_HOST!);
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(process.env.SINGLESTORE_PORT!);
     await page.getByLabel(/^Username/).fill(process.env.SINGLESTORE_USERNAME!);
     await page.getByLabel(/^Password/).fill(process.env.SINGLESTORE_PASSWORD!);
-    await page.getByLabel(/^Database/).fill(database);
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill(database);
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);

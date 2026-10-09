@@ -17,9 +17,15 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from provisa.core.models import GOVDATA_SUBJECT_SCHEMAS, GovDataSubject
+from provisa.core.models import (
+    GOVDATA_LINKER_SCHEMAS,
+    GOVDATA_SUBJECT_LABELS,
+    GOVDATA_SUBJECT_SCHEMAS,
+    GovDataSubject,
+)
 
 _CATALOG_PATH = Path(__file__).resolve().parent / "catalog_metadata.json"
+_BUNDLE_SCHEMAS_PATH = Path(__file__).resolve().parent / "bundle_schemas.json"
 
 # Requirements: REQ-540, REQ-541
 
@@ -28,6 +34,62 @@ _SCHEMA_TO_SUBJECT: dict[str, GovDataSubject] = {}
 for _subj, _schemas in GOVDATA_SUBJECT_SCHEMAS.items():
     for _schema in _schemas:
         _SCHEMA_TO_SUBJECT[_schema] = GovDataSubject(_subj)
+
+
+@lru_cache(maxsize=1)
+def bundle_schemas() -> tuple[str, frozenset[str]]:  # REQ-540
+    """``(release, schemas)``: the schemas the adapter bundle of ``release`` serves, as recorded
+    from that bundle's own model by ``scripts/record_govdata_bundle_schemas.py``. The record is
+    held to the bundle pin by a unit test and to the bundle itself wherever one is started
+    (:func:`require_recorded_schemas`)."""
+    record = json.loads(_BUNDLE_SCHEMAS_PATH.read_text())
+    return record["release"], frozenset(record["schemas"])
+
+
+class BundleSchemasChanged(RuntimeError):
+    """The adapter bundle being started does not serve the schemas recorded for it."""
+
+
+def require_recorded_schemas(bundle_model: dict, release: str) -> None:  # REQ-540
+    """Refuse, by name, a bundle whose model serves other schemas than the record says — the
+    record is what the subject map is held to, so a bundle that has moved on from it means a
+    schema with no subject or a subject with no schema."""
+    recorded_release, recorded = bundle_schemas()
+    served = {entry["name"] for entry in bundle_model["schemas"]}
+    if release == recorded_release and served == recorded:
+        return
+    raise BundleSchemasChanged(
+        f"the pgwire-govdata bundle {release} serves schemas that differ from the record of "
+        f"{recorded_release} (provisa/govdata/bundle_schemas.json): only in the bundle "
+        f"{sorted(served - recorded)}, only in the record {sorted(recorded - served)}. "
+        "Run scripts/record_govdata_bundle_schemas.py and place any new schema under a subject."
+    )
+
+
+def subject_catalog() -> list[dict]:  # REQ-540
+    """Every subject a source can be given, as the Sources form offers it: its value, its
+    label and the schemas it brings. ``ALL`` is not offered: it is a subscription's shorthand
+    for every subject, not a choice of schemas."""
+    return [
+        {"value": value, "label": GOVDATA_SUBJECT_LABELS[value], "schemas": list(schemas)}
+        for value, schemas in GOVDATA_SUBJECT_SCHEMAS.items()
+    ]
+
+
+def schemas_for_subjects(subjects: list[str]) -> list[str]:  # REQ-540, REQ-541
+    """The schemas a source given ``subjects`` serves: each subject's, then the linker schemas,
+    once each, in that order. An unknown subject is refused by name."""
+    unknown = [s for s in subjects if s not in GOVDATA_SUBJECT_SCHEMAS]
+    if unknown:
+        raise ValueError(f"unknown GovData subject(s) {unknown}")
+    ordered: list[str] = []
+    for schema in (
+        *(schema for subject in subjects for schema in GOVDATA_SUBJECT_SCHEMAS[subject]),
+        *GOVDATA_LINKER_SCHEMAS,
+    ):
+        if schema not in ordered:
+            ordered.append(schema)
+    return ordered
 
 
 def schemas_for_subject(subject: GovDataSubject) -> list[str]:  # REQ-540, REQ-541

@@ -108,6 +108,17 @@ query SourcesQuery {
   }
 }
 
+query GovdataSubjectsQuery {
+  govdataSubjects {
+    subjects {
+      value
+      label
+      schemas
+    }
+    linkerSchemas
+  }
+}
+
 query DomainsQuery {
   domains {
     id

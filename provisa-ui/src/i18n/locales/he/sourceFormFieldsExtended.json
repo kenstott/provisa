@@ -30,6 +30,7 @@
     "dataSubjects": "נושאי נתונים",
     "askAmericaApiKey": "מפתח API של AskAmerica",
     "getApiKey": "קבלת מפתח API ←",
+    "govdataSubjectsUnavailable": "השרת עדיין לא פירט את נושאי AskAmerica. נסו שוב בעוד רגע.",
     "validatingApiKey": "מאמת את מפתח ה-API וטוען מטא-נתונים מראש… בשימוש ראשון זה עשוי להימשך עד 30 שניות.",
     "bootstrapServers": "Bootstrap Servers",
     "schemaRegistryUrl": "כתובת URL של Schema Registry",

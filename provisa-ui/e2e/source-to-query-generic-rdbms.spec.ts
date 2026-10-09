@@ -35,6 +35,7 @@ import {
   runSqlOnPage,
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
+  FORM_FIELD,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -147,11 +148,11 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("mariadb");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_MARIADB_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_MARIADB_PORT));
     await page.getByLabel(/^Username/).fill("root");
     await page.getByLabel(/^Password/).fill("provisa");
-    await page.getByLabel(/^Database/).fill("provisa_demo");
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("provisa_demo");
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
@@ -183,11 +184,11 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("postgresql");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_POSTGRESQL_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_POSTGRESQL_PORT));
     await page.getByLabel(/^Username/).fill("provisa");
     await page.getByLabel(/^Password/).fill("provisa");
-    await page.getByLabel(/^Database/).fill("provisa_demo");
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("provisa_demo");
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
@@ -219,10 +220,10 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("tidb");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_TIDB_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_TIDB_PORT));
     await page.getByLabel(/^Username/).fill("root");
-    await page.getByLabel(/^Database/).fill("test");
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("test");
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
@@ -251,10 +252,10 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("cockroachdb");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_COCKROACHDB_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_COCKROACHDB_PORT));
     await page.getByLabel(/^Username/).fill("root");
-    await page.getByLabel(/^Database/).fill("defaultdb");
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("defaultdb");
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
@@ -283,11 +284,11 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("yugabytedb");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_YUGABYTEDB_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_YUGABYTEDB_PORT));
     await page.getByLabel(/^Username/).fill("yugabyte");
     await page.getByLabel(/^Password/).fill("yugabyte");
-    await page.getByLabel(/^Database/).fill("yugabyte");
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("yugabyte");
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
@@ -316,11 +317,11 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("clickhouse");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_CLICKHOUSE_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_CLICKHOUSE_PORT));
     await page.getByLabel(/^Username/).fill("default");
     await page.getByLabel(/^Password/).fill("provisa");
-    await page.getByLabel(/^Database/).fill("default");
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("default");
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
@@ -355,11 +356,11 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("sqlserver");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_SQLSERVER_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_SQLSERVER_PORT));
     await page.getByLabel(/^Username/).fill("sa");
     await page.getByLabel(/^Password/).fill("Provisa_2026!");
-    await page.getByLabel(/^Database/).fill("master");
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("master");
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
@@ -388,11 +389,11 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("oracle");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_ORACLE_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_ORACLE_PORT));
     await page.getByLabel(/^Username/).fill("system");
     await page.getByLabel(/^Password/).fill("provisa");
-    await page.getByLabel(/^Database/).fill("FREEPDB1");
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("FREEPDB1");
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
@@ -435,10 +436,10 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("greenplum");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_GREENPLUM_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_GREENPLUM_PORT));
     await page.getByLabel(/^Username/).fill("gpadmin");
-    await page.getByLabel(/^Database/).fill("postgres");
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("postgres");
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
@@ -486,11 +487,11 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("saphana");
-    await page.getByLabel(/^Host/).fill(E2E_SAPHANA_HOST);
-    await page.getByLabel(/^Port/).fill(String(E2E_SAPHANA_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill(E2E_SAPHANA_HOST);
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_SAPHANA_PORT));
     await page.getByLabel(/^Username/).fill("SYSTEM");
     await page.getByLabel(/^Password/).fill(E2E_SAPHANA_PASSWORD);
-    await page.getByLabel(/^Database/).fill("HXE");
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("HXE");
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);

@@ -842,6 +842,9 @@ def test_ensure_endpoint_for_discovery_succeeds_when_ready(tmp_path, monkeypatch
             spawn=_spawn_returning(_FakeProc()),
             health_check=_health_from(lambda: True),
             port_is_free=lambda _: True,
+            # The stand-in server listens nowhere: its catalog is "prepared" here, never asked
+            # of whatever real process holds the default port on this machine.
+            prepare_catalog=lambda ports: None,
         )
 
     monkeypatch.setattr(pr, "ConnectorReplica", _fake_replica)

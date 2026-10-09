@@ -340,3 +340,61 @@ def test_the_cloudops_gcp_key_reaches_the_test_as_a_file_and_is_never_printed():
         in script
     )
     assert "echo $CLOUDOPS" not in script and 'echo "$CLOUDOPS' not in script
+
+
+def _workflow_jobs() -> list[tuple[str, str, list[dict]]]:
+    import yaml
+
+    found = []
+    for path in sorted((REPO / ".github" / "workflows").glob("*.yml")):
+        for name, job in (yaml.safe_load(path.read_text()).get("jobs") or {}).items():
+            found.append((path.name, name, job.get("steps") or []))
+    return found
+
+
+def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_by_pin():
+    """tests/conftest.py fetches the pinned Trino plugin jars from Maven Central when it collects
+    tests/integration, tests/steps or tests/e2e, and a refused fetch ends the run before any
+    test. The release run of the amd64-only engines workflow stopped there (37874425655: HTTP 404
+    for a jar that exists): it was the one job that collected those tests without the suite's
+    cache. Every such job carries the suite's four steps, unchanged, so they share one cache."""
+    suite = {s.get("name"): s for s in _job_steps("suite")}
+    cache_steps = (
+        "Trino plugin pin",
+        "Restore Trino plugins",
+        "Trino plugins fetched",
+        "Cache Trino plugins",
+    )
+    collecting, in_a_guest = [], []
+    for workflow, job, steps in _workflow_jobs():
+        runs = [(i, s.get("run") or "") for i, s in enumerate(steps)]
+        tests_at = [
+            i
+            for i, run in runs
+            if ("pytest" in run or "run_lane.py" in run)
+            and "--matrix" not in run
+            and any(
+                d in run for d in ("tests/integration", "tests/steps", "tests/e2e", "run_lane.py")
+            )
+        ]
+        if not tests_at:
+            continue
+        if any("packaging/nixos/vm-run" in run for _i, run in runs):
+            # Runs inside a NixOS guest, which has no access to the runner's cache: it fetches
+            # the jars from Maven Central on every run and is exposed to the same refusal. Named
+            # here so it is seen, not hidden; closing it means carrying the jars into the guest.
+            in_a_guest.append(f"{workflow}:{job}")
+            continue
+        collecting.append(f"{workflow}:{job}")
+        names = [s.get("name") for s in steps]
+        by_name = {s.get("name"): s for s in steps}
+        for step in cache_steps:
+            assert step in names, f"{workflow}:{job} collects the container suite without {step!r}"
+            assert by_name[step] == suite[step], (
+                f"{workflow}:{job}: {step!r} differs from the suite's"
+            )
+        assert (
+            names.index("Restore Trino plugins") < tests_at[0] < names.index("Cache Trino plugins")
+        )
+    assert "amd64-engines.yml:exasol" in collecting and len(collecting) >= 5, collecting
+    assert in_a_guest == ["nixos.yml:lane"], in_a_guest

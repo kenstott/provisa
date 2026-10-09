@@ -3945,6 +3945,7 @@
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.freshnessGate": "Freshness gate",
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.freshnessGateTooltip": "Check freshness (from the change signal and Cache TTL) before each read of this source's tables, and refresh first when stale. Needs a Cache TTL for ttl signals; push signals can't gate.",
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.getApiKey": "Get API Key →",
+  "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.govdataSubjectsUnavailable": "The server has not listed the AskAmerica subjects yet. Try again in a moment.",
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.headerName": "Header Name",
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.host": "Host",
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.https": "HTTPS",

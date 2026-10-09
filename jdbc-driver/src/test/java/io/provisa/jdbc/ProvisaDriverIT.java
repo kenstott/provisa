@@ -26,7 +26,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@code provisa.adminUser} /
  * {@code provisa.adminPassword} / {@code provisa.adminRole} — a user who may read the registered
  * catalog, and the role it acts as; {@code provisa.table} (a registered table) and
- * {@code provisa.columns} (its columns, comma-separated); {@code provisa.sql}. Run via
+ * {@code provisa.columns} (its columns, comma-separated) and {@code provisa.primaryKey} (the
+ * column its source declares as primary key); {@code provisa.sql}. Run via
  * {@code mvn verify}; tests/integration/test_jdbc_driver_e2e.py starts the server and passes
  * these.
  */
@@ -36,6 +37,9 @@ class ProvisaDriverIT {
     static final String TABLE = System.getProperty("provisa.table", "orders");
     static final List<String> COLUMNS = List.of(System.getProperty("provisa.columns", "id,region").split(","));
     static final String SQL = System.getProperty("provisa.sql", "SELECT id, region FROM sales.orders");
+
+    /** The column the registered table's source declares as its primary key. */
+    static final String PRIMARY_KEY = System.getProperty("provisa.primaryKey", "id");
 
     /** A table the plain user's role is NOT served (the admin user's role is). */
     static final String HIDDEN_TABLE = System.getProperty("provisa.hiddenTable");
@@ -125,7 +129,12 @@ class ProvisaDriverIT {
             try (ResultSet fks = conn.getMetaData().getImportedKeys(null, null, TABLE)) {
                 assertFalse(fks.next(), "the test model declares no relationship");
             }
+            // The key the SOURCE declares: registration records a source table's primary key, so
+            // the catalog lists it and the driver reports it. (provisa.primaryKey names it.)
             try (ResultSet pks = conn.getMetaData().getPrimaryKeys(null, null, TABLE)) {
+                assertTrue(pks.next(), "the source table declares a primary key");
+                assertEquals(PRIMARY_KEY, pks.getString("COLUMN_NAME"));
+                assertEquals(TABLE, pks.getString("TABLE_NAME"));
                 assertFalse(pks.next());
             }
         }

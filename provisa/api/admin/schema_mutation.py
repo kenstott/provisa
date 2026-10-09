@@ -114,6 +114,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _cache_prometheus_label_columns,
     _synthesize_mapping_dsl_tables,
     _upsert_source_with_domains,
+    _another_govdata_source,
     _validate_govdata_api_key,
     forget_source_mapping_secrets,
     forget_source_password,
@@ -1058,12 +1059,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         if _residency is not None:  # REQ-1921
             return _residency
 
+        pool = await _get_pool()
         if input.type == "govdata":
-            _err = await _validate_govdata_api_key(input)
+            _err = await _another_govdata_source(pool, input) or await _validate_govdata_api_key(
+                input
+            )
             if _err is not None:
                 return _err
 
-        pool = await _get_pool()
         from provisa.api.app import state
         from provisa.core.secrets_store import bound_to_request_org
 

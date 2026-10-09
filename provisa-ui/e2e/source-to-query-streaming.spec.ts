@@ -42,6 +42,7 @@ import {
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
   typeSql,
+  FORM_FIELD,
 } from "./source-to-query-helpers";
 
 const E2E_RSS_PORT = 37801;
@@ -322,8 +323,8 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("rss");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_RSS_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_RSS_PORT));
     await page.getByTestId("rss-use-ssl-checkbox").uncheck();
     // REQ-1907: rss is polled (a pull source the engine lands), so it needs a landing clock.
     await setSourceCacheTtl(page, 300);
@@ -409,8 +410,8 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("websocket");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_WS_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_WS_PORT));
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register Table form — REQ-1745's synthetic "default"/<sourceId> pick + placeholder
@@ -479,8 +480,8 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("kafka");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_KAFKA_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_KAFKA_PORT));
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register Table form — same REQ-1745 synthetic "default"/<sourceId> pick + placeholder
@@ -580,8 +581,8 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("kafka");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_KAFKA_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_KAFKA_PORT));
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Sources page's own "Discover" flow (DISCOVERABLE_TYPES) — topic + registry URL hints,
@@ -718,8 +719,8 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("kafka");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_KAFKA_PORT));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_KAFKA_PORT));
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Discover flow — topic filled, Schema Registry URL left BLANK (the trigger for sample

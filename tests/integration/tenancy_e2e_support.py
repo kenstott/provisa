@@ -47,6 +47,11 @@ def boot_server() -> WorkerBoot:
                 "provider": "basic",
                 "jwt_secret": "tenancy-e2e-signing-key-not-a-secret",
                 "bootstrap_superadmin": True,
+                # Roles are the ones Provisa records (grants, invitations, auto-join), as on a
+                # deployment made through /setup. Left at the default ("claims") a member's roles
+                # are read from the sign-in's claims and a granted role is never reported: both
+                # auto-join cases failed there, `assert 'analyst' in []` (run 37874425906).
+                "assignments_source": "provisa",
                 "superuser": {"username": _BREAK_GLASS[0], "password": _BREAK_GLASS[1]},
             },
             "roles": [

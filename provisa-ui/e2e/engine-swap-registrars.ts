@@ -38,6 +38,7 @@ import {
   SOURCE_SERVING_BUDGET_MS,
   submitSourceAndExpectListed,
   waitForSourceServing,
+  FORM_FIELD,
 } from "./source-to-query-helpers";
 import {
   E2E_AIRPORT_PORT,
@@ -123,9 +124,9 @@ export async function registerMongodb(
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("mongodb");
-  await page.getByLabel(/^Host/).fill(host);
-  await page.getByLabel(/^Port/).fill(String(E2E_MONGO_PORT));
-  await page.getByLabel(/^Database/).fill("provisa");
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill(host);
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_MONGO_PORT));
+  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("provisa");
   await submitSourceAndExpectListed(page, sourceId);
 
   await openRegisterForm(page, sourceId);
@@ -230,11 +231,11 @@ export function registerRdbWidgets(cfg: RdbWidgetsConfig): (page: Page) => Promi
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption(cfg.type);
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(cfg.port));
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(cfg.port));
     await page.getByLabel(/^Username/).fill(cfg.username);
     await page.getByLabel(/^Password/).fill(cfg.password);
-    await page.getByLabel(/^Database/).fill(cfg.database);
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill(cfg.database);
     // The demo compose fixture (demo/sources/sqlserver/compose.yml) uses SQL Server's own
     // self-signed cert — Trino's default (encrypt=true, trustServerCertificate=false) refuses it
     // outright (JDBC_ERROR: PKIX path building failed), so the swap's Trino leg needs the same
@@ -593,7 +594,7 @@ export async function registerSnowflake(page: Page): Promise<Registration> {
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("snowflake");
   await page.getByLabel(/Account URL/).fill(process.env.SNOWFLAKE_ACCOUNT!);
-  await page.getByLabel(/^Database/).fill("PROVISA_UI_E2E");
+  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("PROVISA_UI_E2E");
   await page.getByLabel(/^Warehouse$/).fill(process.env.SNOWFLAKE_WAREHOUSE ?? "COMPUTE_WH");
   await page.getByRole("textbox", { name: "Authentication" }).click();
   await page.getByRole("option", { name: "Username / Password", exact: true }).click();
@@ -766,9 +767,9 @@ export function registerRedshift(conn: RedshiftConnection): (page: Page) => Prom
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("redshift");
-    await page.getByLabel(/^Host/).fill(conn.host);
-    await page.getByLabel(/^Port/).fill(String(conn.port));
-    await page.getByLabel(/^Database/).fill(conn.database);
+    await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill(conn.host);
+    await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(conn.port));
+    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill(conn.database);
     await page.getByLabel(/^Username/).fill(conn.user);
     await page.getByLabel(/^Password/).fill(conn.password);
     await submitSourceAndExpectListed(page, sourceId);
@@ -806,8 +807,8 @@ export async function registerElasticsearch(
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("elasticsearch");
-  await page.getByLabel(/^Host/).fill(host);
-  await page.getByLabel(/^Port/).fill(String(E2E_ES_PORT));
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill(host);
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_ES_PORT));
   await submitSourceAndExpectListed(page, sourceId);
 
   await openRegisterForm(page, sourceId);
@@ -841,9 +842,9 @@ export async function registerRedis(
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("redis");
-  await page.getByLabel(/^Host/).fill(host);
-  await page.getByLabel(/^Port/).fill(String(E2E_REDIS_PORT));
-  await page.getByLabel(/^Database/).fill("0");
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill(host);
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_REDIS_PORT));
+  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("0");
   await submitSourceAndExpectListed(page, sourceId);
 
   await openRegisterForm(page, sourceId);
@@ -877,9 +878,9 @@ export async function registerCassandra(
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("cassandra");
-  await page.getByLabel(/^Host/).fill(host);
-  await page.getByLabel(/^Port/).fill(String(E2E_CASSANDRA_PORT));
-  await page.getByLabel(/^Database/).fill("shelter_ops");
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill(host);
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_CASSANDRA_PORT));
+  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("shelter_ops");
   await submitSourceAndExpectListed(page, sourceId);
 
   await openRegisterForm(page, sourceId);
@@ -1323,8 +1324,8 @@ export async function registerRss(page: Page): Promise<Registration> {
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("rss");
-  await page.getByLabel(/^Host/).fill("localhost");
-  await page.getByLabel(/^Port/).fill(String(E2E_RSS_PORT));
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_RSS_PORT));
   await page.getByTestId("rss-use-ssl-checkbox").uncheck();
   await submitSourceAndExpectListed(page, sourceId);
 
@@ -1393,8 +1394,8 @@ export async function registerWebsocket(page: Page): Promise<Registration> {
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("websocket");
-  await page.getByLabel(/^Host/).fill("localhost");
-  await page.getByLabel(/^Port/).fill(String(E2E_WS_PORT));
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_WS_PORT));
   await submitSourceAndExpectListed(page, sourceId);
 
   await openRegisterForm(page, sourceId);
@@ -1426,13 +1427,13 @@ export async function registerFirebird(page: Page): Promise<Registration> {
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("firebird");
-  await page.getByLabel(/^Host/).fill("localhost");
-  await page.getByLabel(/^Port/).fill(String(E2E_FIREBIRD_PORT));
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_FIREBIRD_PORT));
   await page.getByLabel(/^Username/).fill("provisa");
   await page.getByLabel(/^Password/).fill("provisa");
   // The firebird extension's DSN path is the file's IN-CONTAINER path (FIREBIRD_DATABASE=test.fdb
   // under /firebird/data — see demo/sources/firebird/compose.yml), not a host path.
-  await page.getByLabel(/^Database/).fill("/firebird/data/test.fdb");
+  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("/firebird/data/test.fdb");
   await submitSourceAndExpectListed(page, sourceId);
 
   await openRegisterForm(page, sourceId);
@@ -1469,8 +1470,8 @@ export async function registerAirport(page: Page): Promise<Registration> {
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("airport");
-  await page.getByLabel(/^Host/).fill("localhost");
-  await page.getByLabel(/^Port/).fill(String(E2E_AIRPORT_PORT));
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_AIRPORT_PORT));
   await submitSourceAndExpectListed(page, sourceId);
 
   await openRegisterForm(page, sourceId);
@@ -1543,10 +1544,10 @@ export async function registerTrinoSource(page: Page): Promise<Registration> {
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("trino");
-  await page.getByLabel(/^Host/).fill("localhost");
-  await page.getByLabel(/^Port/).fill(String(E2E_TRINO_SOURCE_PORT));
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_TRINO_SOURCE_PORT));
   await page.getByLabel(/^Username/).fill("provisa");
-  await page.getByLabel(/^Database/).fill("tpch");
+  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("tpch");
   await submitSourceAndExpectListed(page, sourceId);
 
   await openRegisterForm(page, sourceId);
@@ -1579,11 +1580,11 @@ export async function registerSinglestore(page: Page): Promise<Registration> {
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("singlestore");
-  await page.getByLabel(/^Host/).fill(process.env.SINGLESTORE_HOST!);
-  await page.getByLabel(/^Port/).fill(process.env.SINGLESTORE_PORT!);
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill(process.env.SINGLESTORE_HOST!);
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(process.env.SINGLESTORE_PORT!);
   await page.getByLabel(/^Username/).fill(process.env.SINGLESTORE_USERNAME!);
   await page.getByLabel(/^Password/).fill(process.env.SINGLESTORE_PASSWORD!);
-  await page.getByLabel(/^Database/).fill(database);
+  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill(database);
   await submitSourceAndExpectListed(page, sourceId);
 
   await openRegisterForm(page, sourceId);
@@ -1624,11 +1625,11 @@ export async function registerExasol(page: Page, fingerprint: () => string): Pro
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("exasol");
-  await page.getByLabel(/^Host/).fill("localhost");
-  await page.getByLabel(/^Port/).fill(String(E2E_EXASOL_PORT));
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_EXASOL_PORT));
   await page.getByLabel(/^Username/).fill("sys");
   await page.getByLabel(/^Password/).fill("exasol");
-  await page.getByLabel(/^Database/).fill("PROVISA");
+  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("PROVISA");
   // Mantine's Select renders a readonly <input> + listbox popup, never a native <select> —
   // .selectOption() doesn't apply (same click-then-pick pattern registerSnowflake's identical
   // "Authentication" field already uses).
@@ -1767,8 +1768,8 @@ export async function registerKafka(page: Page): Promise<Registration> {
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("kafka");
-  await page.getByLabel(/^Host/).fill("localhost");
-  await page.getByLabel(/^Port/).fill(String(E2E_KAFKA_PORT));
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_KAFKA_PORT));
   await page
     .getByTestId("kafka-schema-registry-input")
     .fill(`http://localhost:${E2E_KAFKA_SCHEMA_REGISTRY_PORT}`);
@@ -1906,8 +1907,8 @@ export async function registerPinot(page: Page): Promise<Registration> {
   // (runRebootCase's default hostRewriteTypes={trino:"pinot"}) rewrites this to
   // host.docker.internal before the Trino reboot, the same generic mechanism every other type
   // here already uses.
-  await page.getByLabel(/^Host/).fill("localhost");
-  await page.getByLabel(/^Port/).fill(String(E2E_PINOT_CONTROLLER_PORT));
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_PINOT_CONTROLLER_PORT));
   await submitSourceAndExpectListed(page, sourceId);
 
   // The broker's own query/sql endpoint lives on a DIFFERENT host-published port than the
@@ -2157,8 +2158,8 @@ export async function registerDruid(page: Page): Promise<Registration> {
   // registrar used before druid got a real materialization path (same fix as pinot's own).
   // rewriteHostForContainerizedEngine (runRebootCase's default hostRewriteTypes={trino:"druid"})
   // rewrites this to host.docker.internal before the Trino reboot.
-  await page.getByLabel(/^Host/).fill("localhost");
-  await page.getByLabel(/^Port/).fill(String(E2E_DRUID_BROKER_PORT));
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_DRUID_BROKER_PORT));
   await submitSourceAndExpectListed(page, sourceId);
 
   // Same table-list convergence wait source-to-query-olap-lake-trino.spec.ts's own druid case

@@ -15,9 +15,16 @@ search_govdata_subjects can do real keyword matching (e.g. "inflation" -> the ec
 schema's `inflation_metrics`/`metro_cpi` tables) without a live askamerica connection
 or the sibling Java repo being present at runtime.
 
-Re-run this manually whenever the govdata schema YAML files change; it is not part
-of the app's runtime or CI (the sibling repo isn't guaranteed to be checked out
-everywhere Provisa runs).
+Re-run this whenever the adapter bundle pin moves (provisa/runtime_deps/pgwire_bundles.py),
+against the schema YAML of THAT release, not of the adapter repo's working tree, which may
+describe schemas the pinned bundle does not serve:
+
+    git -C <calcite repo> archive <release tag> govdata/src/main/resources | tar -x -C <dir>
+    python3 scripts/build_govdata_catalog.py <dir>/govdata/src/main/resources
+
+A unit test holds the result to the schemas recorded for the pinned bundle
+(provisa/govdata/bundle_schemas.json). It is not part of the app's runtime or CI (the
+sibling repo isn't guaranteed to be checked out everywhere Provisa runs).
 
 Usage: python3 scripts/build_govdata_catalog.py [path to govdata resources dir]
 """

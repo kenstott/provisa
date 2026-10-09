@@ -64,6 +64,8 @@ from provisa.api.admin.types import (
     CrawlResultType,
     DataProductType,
     DomainType,
+    GovDataSubjectsType,
+    GovDataSubjectType,
     DqCheckBuildInput,
     DqCheckCatalogType,
     DqCheckColumnType,
@@ -610,6 +612,19 @@ class Query:  # REQ-021, REQ-042
             if not connection and id not in await _listed_sources(conn, catalog_scope(info)):
                 return None
             return _source_from_row(dict(row._mapping), connection=connection)
+
+    @strawberry.field
+    def govdata_subjects(self, info: StrawberryInfo) -> GovDataSubjectsType:  # REQ-540, REQ-541
+        """The subjects an AskAmerica source can be given and the schemas each brings — the
+        server's one statement of it (``core.models.GOVDATA_SUBJECT_SCHEMAS``)."""
+        require_capability(info, "source_registration")
+        from provisa.core.models import GOVDATA_LINKER_SCHEMAS
+        from provisa.govdata.subjects import subject_catalog
+
+        return GovDataSubjectsType(
+            subjects=[GovDataSubjectType(**subject) for subject in subject_catalog()],
+            linker_schemas=list(GOVDATA_LINKER_SCHEMAS),
+        )
 
     @strawberry.field
     async def domains(self, info: StrawberryInfo) -> list[DomainType]:  # REQ-021, REQ-042

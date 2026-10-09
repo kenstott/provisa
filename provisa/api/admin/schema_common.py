@@ -65,6 +65,7 @@ __all__ = [
     "_resolve_admin_context",
     "_sync_view_mv",
     "_upsert_source_with_domains",
+    "_another_govdata_source",
     "_validate_govdata_api_key",
 ]
 
@@ -179,6 +180,36 @@ def _resolve_admin_context(info: StrawberryInfo) -> str:
     capability gate; no right widens a resolver's rows beyond the org it returns.
     """
     return require_active_org_id(info.context["request"])
+
+
+async def _another_govdata_source(pool, input: SourceInput) -> Optional[MutationResult]:
+    """Return a failure MutationResult if another AskAmerica source is already registered.
+
+    REQ-540: an AskAmerica subscription reaches every table, and its server is the one
+    installed bundle, so one such source is served; a second is refused at save naming the one
+    that exists, not started beside it."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import sources
+
+    async with pool.acquire() as conn:
+        held = (
+            await conn.execute_core(
+                select(sources.c.id).where(
+                    (sources.c.type == "govdata") & (sources.c.id != input.id)
+                )
+            )
+        ).fetchone()
+    if held is None:
+        return None
+    return MutationResult(
+        success=False,
+        message=(
+            f"AskAmerica source {held[0]!r} already exists: one AskAmerica source is served, "
+            "and its subscription reaches every table. Edit that source's subjects instead "
+            "of adding another."
+        ),
+    )
 
 
 async def _validate_govdata_api_key(input: SourceInput) -> Optional[MutationResult]:

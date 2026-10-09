@@ -50,9 +50,13 @@ from provisa.runtime_deps import BundleResolver, BundleSpec, bundle_spec_for
 PGWIRE_REPLICA_TYPES = frozenset(
     {"files", "sharepoint", "splunk", "salesforce", "cloudops", "govdata"}
 )
-# Types whose bundle carries its own model of SEVERAL schemas, of which a source serves the ones
-# it lists (AskAmerica: sec, econ, ...). Every other type's model is written from the source and
-# has ONE schema, named after the source id.
+# Types whose bundle is a complete install — its own model of SEVERAL schemas (AskAmerica: sec,
+# econ, ...) and the catalog prebuilt for exactly that model beside it. Such a server is the
+# installed bundle started by its own launcher AS IT IS: nothing of it is copied, linked or
+# rewritten, since the adapter finds its prebuilt catalog by the model file's bytes and builds
+# it afresh (minutes) for any other model. One source of such a type runs from the one install.
+# Every other type's model is written from the source into a state directory of its own and has
+# ONE schema, named after the source id.
 BUNDLE_MODEL_TYPES = frozenset({"govdata"})
 
 # Default ports (REQ-955): the pgwire endpoint (--port) and the Calcite child JVM (--calcite-child).
@@ -120,6 +124,20 @@ class ServerExited(ServerNotServing):  # REQ-955
 _LOG_TAIL_LINES = 20
 
 
+class InstalledBundleInUse(ServerNotServing):
+    """A second source of a type that runs from its one installed bundle (AskAmerica). One
+    source of the type is served per instance; the other is refused naming the one that holds
+    the bundle."""
+
+    def __init__(self, source_id: str, source_type: str, held_by: str) -> None:
+        super().__init__(
+            f"{source_type} source {source_id!r} cannot be started: source {held_by!r} already "
+            f"runs the one installed {source_type} server of this instance"
+        )
+        self.source_id = source_id
+        self.held_by = held_by
+
+
 class ServerCatalogFailed(ServerNotServing):
     """The server accepted connections but could not prepare its catalog — the first catalog
     query, which an engine's attach depends on, failed. Not asked again until the server is
@@ -144,7 +162,7 @@ class SourceStillStartingError(ServerNotServing):  # REQ-1824
         # Two waits, told apart for whoever is waiting: the server has not opened its port
         # yet, or it is listening and preparing its catalog (``ConnectorReplica.await_catalog``).
         doing = (
-            "is listening and preparing its catalog (counting the rows of its tables)"
+            "is listening and answering its first catalog query"
             if preparing_catalog
             else "is still starting up"
         )
@@ -432,30 +450,21 @@ _OPERAND_BUILDERS: dict[str, Callable[[Any], dict]] = {
 }
 
 
-def build_model_json(
-    source: Any, *, state_dir: Path | None = None, bundle_dir: Path | None = None
-) -> dict:
+def build_model_json(source: Any, *, state_dir: Path | None = None) -> dict:
     """The Calcite ``model.json`` for a pgwire-replica source (REQ-955): one custom schema whose
     operand carries the source-specific creds/paths. A non-replica source type is a caller error.
 
     ``state_dir`` is the directory the source's server runs in (:func:`server_state_dir`). A
     Salesforce model keeps its describe cache there (REQ-1946) — the adapter's own default is a
     directory under the user's home that every server on the machine would share — so a
-    Salesforce model built without one is refused. ``bundle_dir`` is the resolved bundle, read
-    for a type whose model ships in it (``BUNDLE_MODEL_TYPES``)."""
+    Salesforce model built without one is refused. A type that runs on its bundle's own model
+    (``BUNDLE_MODEL_TYPES``) has none built."""
     stype = _source_type(source)
     if stype in BUNDLE_MODEL_TYPES:
-        # The bundle's own model, narrowed to the schemas the source serves. Its credentials
-        # are read from the server's environment (:func:`server_environment`), never written.
-        if bundle_dir is None:
-            raise MissingConnectorConfig(
-                f"{stype} source {source.id!r}: the model is the bundle's own, and no bundle "
-                "directory was given"
-            )
-        from provisa.federation.askamerica import narrow_model
-
-        bundled = json.loads((Path(bundle_dir) / "model" / "model.json").read_text())
-        return narrow_model(bundled, source)
+        raise MissingConnectorConfig(
+            f"{stype} source {source.id!r}: its server runs on its bundle's own model; "
+            "none is built for it"
+        )
     builder = _OPERAND_BUILDERS.get(stype)
     if builder is None:
         raise MissingConnectorConfig(f"source type {stype!r} is not a pgwire-replica connector")
@@ -683,7 +692,7 @@ class PgwireServer:  # REQ-955
         *,
         bundle_dir: str | Path,
         spec: BundleSpec,
-        model: dict,
+        model: dict | None,
         ports: PortPair,
         spawn: Callable[..., Any] | None = None,
         health_check: Callable[[str, int], bool] | None = None,
@@ -731,12 +740,14 @@ class PgwireServer:  # REQ-955
         return path
 
     def start(self) -> None:
-        """Write the model and spawn the server. Starting a running server is a lifecycle error."""
+        """Write the model (when one is built for the source) and spawn the server. Starting a
+        running server is a lifecycle error."""
         if self._proc is not None:
             raise ServerLifecycleError(
                 f"pgwire server on port {self._ports.pgwire_port} already running"
             )
-        self.write_model()
+        if self._model is not None:  # None: the installed bundle's own model, left as it is
+            self.write_model()
         if self._environment is None:
             self._proc = self._spawn(self.command(), self._bundle_dir)
         else:
@@ -924,6 +935,10 @@ class ConnectorReplica:  # REQ-954/955/956
     def spec(self) -> BundleSpec:
         return self._spec
 
+    @property
+    def source_type(self) -> str:
+        return _source_type(self._source)
+
     def _ensure_server(self) -> PgwireServer:
         with self._start_lock:
             return self._ensure_server_locked()
@@ -933,15 +948,28 @@ class ConnectorReplica:  # REQ-954/955/956
             return self._server
         bundle_dir = self._resolver.resolve(self._spec)  # REQ-956 (resolve + cache)
         ports = self._allocator.allocate(self._source.id)  # REQ-955 (unique ports)
-        # The server runs from its own state directory, the bundle's code linked in: the
-        # shared bundle is never written to (one model and one adapter state per server).
-        state_dir = server_state_dir(bundle_dir, self._spec.version, self._source.id)
+        model: dict | None
+        if _source_type(self._source) in BUNDLE_MODEL_TYPES:
+            # The installed bundle, started by its own launcher as it is: its model and the
+            # catalog prebuilt for that model are used where they were installed.
+            run_dir, model = Path(bundle_dir), None
+            # The subject map is held to a record of what this release serves; a bundle whose
+            # model (read here, never changed) serves anything else is refused by name rather
+            # than started.
+            from provisa.govdata.subjects import require_recorded_schemas
+
+            require_recorded_schemas(
+                json.loads((run_dir / "model" / "model.json").read_text()), self._spec.version
+            )
+        else:
+            # The server runs from its own state directory, the bundle's code linked in: the
+            # shared bundle is never written to (one model and one adapter state per server).
+            run_dir = server_state_dir(bundle_dir, self._spec.version, self._source.id)
+            model = build_model_json(self._source, state_dir=run_dir)  # REQ-955 (config)
         server = PgwireServer(
-            bundle_dir=state_dir,
+            bundle_dir=run_dir,
             spec=self._spec,
-            model=build_model_json(  # REQ-955 (config)
-                self._source, state_dir=state_dir, bundle_dir=bundle_dir
-            ),
+            model=model,
             ports=ports,
             spawn=self._spawn,
             health_check=self._health,
@@ -1028,14 +1056,14 @@ class ConnectorReplica:  # REQ-954/955/956
         """Return once the listening server's catalog is prepared; until then raise
         ``SourceStillStartingError``, having waited at most ``timeout`` seconds.
 
-        A server's FIRST catalog query makes it count the rows of every table it serves, once
-        per server process — minutes for an AskAmerica source. An engine's attach issues that
+        A server's FIRST catalog query can take far longer than any later one (a server whose
+        catalog was not prebuilt for its model builds it then). An engine's attach issues that
         query, and an attach runs on the request path under the engine's one attach lock, so an
         attach that paid for it held every other statement of every other source. Instead the
         query is sent here, once, from a thread of its own (``_prepare_catalog``); every attach
         and statement meanwhile is answered "still starting" at once, and the attach that
         follows finds the catalog prepared. A failed preparation is ``ServerCatalogFailed`` and
-        is not sent again until the server is restarted, so nothing restarts the count."""
+        is not sent again until the server is restarted."""
         with self._start_lock:
             if self._catalog_ready:
                 return
@@ -1098,6 +1126,12 @@ def _endpoint_replica(source: Any) -> ConnectorReplica:
     with _ENDPOINTS_LOCK:
         replica = _ENDPOINTS.get(source.id)
         if replica is None:
+            stype = _source_type(source)
+            if stype in BUNDLE_MODEL_TYPES:
+                # One source of such a type runs from the one installed bundle.
+                for held_by, other in _ENDPOINTS.items():
+                    if other.source_type == stype:
+                        raise InstalledBundleInUse(source.id, stype, held_by)
             replica = ConnectorReplica(source, allocator=_ENDPOINT_ALLOCATOR)
             _ENDPOINTS[source.id] = replica
         _reap_on_exit()
@@ -1155,10 +1189,12 @@ def server_start_errors() -> tuple[type[BaseException], ...]:
         AskAmericaKeyRefused,
         AskAmericaUnavailable,
     )
+    from provisa.govdata.subjects import BundleSchemasChanged
     from provisa.runtime_deps.pgwire_bundles import BundleUnavailable
 
     return (
         ServerNotServing,
+        BundleSchemasChanged,
         BundleUnavailable,
         MissingConnectorConfig,
         AskAmericaKeyMissing,

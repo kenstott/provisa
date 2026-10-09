@@ -56,6 +56,50 @@ class TestTheRepositoryExistsBeforeTheFirstEdit:
         assert (repo_path(ORG) / "objects").is_dir()
         assert not (repo_path(ORG) / ".git").exists()
 
+    def test_two_first_uses_at_once_both_get_the_repository(self, monkeypatch):
+        """Every request runs on its own thread and a write-through and a read can both be the
+        org's first use. Two callers that both found no repository both initialised it in place;
+        the second was refused ("FileExistsError: … e2e.git/branches") and its request answered
+        500 (UI e2e swap lane on v0.1.0-alpha.477, GET …/repo-integration/sync). Here the second
+        caller arrives while the first is in the middle of creating."""
+        from dulwich.repo import Repo
+
+        real_init = Repo.init_bare
+        arrived: list[Repo] = []
+
+        def _init_while_another_caller_arrives(path, *args, **kwargs):
+            if not arrived:
+                arrived.append(None)  # type: ignore[arg-type]
+                arrived[0] = ensure_repo(ORG)
+            return real_init(path, *args, **kwargs)
+
+        monkeypatch.setattr(Repo, "init_bare", staticmethod(_init_while_another_caller_arrives))
+        first = ensure_repo(ORG)
+
+        assert arrived[0].path == first.path == str(repo_path(ORG))
+        sha = commit_files(first, "prod", MODEL, "seed", None)
+        assert history(ORG, "prod")[0]["sha"] == sha
+        # Nothing of the caller that lost is left beside the repository.
+        assert [p.name for p in repo_path(ORG).parent.iterdir()] == [repo_path(ORG).name]
+
+    def test_a_repository_is_never_seen_half_made(self, monkeypatch):
+        """A caller that looks while another is creating finds no repository yet, never one with
+        an object store and no HEAD."""
+        from dulwich.repo import Repo
+
+        real_init = Repo.init_bare
+        seen: list[bool] = []
+
+        def _init(path, *args, **kwargs):
+            repo = real_init(path, *args, **kwargs)
+            seen.append(repo_path(ORG).exists())
+            return repo
+
+        monkeypatch.setattr(Repo, "init_bare", staticmethod(_init))
+        ensure_repo(ORG)
+        assert seen == [False]
+        assert (repo_path(ORG) / "HEAD").is_file()
+
     def test_asking_twice_gives_the_same_repository(self):
         first = commit_files(ensure_repo(ORG), "prod", MODEL, "seed", None)
         assert history(ORG, "prod")[0]["sha"] == first

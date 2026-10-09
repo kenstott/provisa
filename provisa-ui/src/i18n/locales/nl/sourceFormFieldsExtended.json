@@ -30,6 +30,7 @@
     "dataSubjects": "Data subjects",
     "askAmericaApiKey": "AskAmerica API-sleutel",
     "getApiKey": "API-sleutel ophalen →",
+    "govdataSubjectsUnavailable": "De server heeft de AskAmerica-onderwerpen nog niet opgesomd. Probeer het zo opnieuw.",
     "validatingApiKey": "API-sleutel valideren en metadata vooraf laden… dit kan bij eerste gebruik tot 30 seconden duren.",
     "bootstrapServers": "Bootstrap-servers",
     "schemaRegistryUrl": "Schema Registry-URL",
