@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Run a script in the NixOS guest .github/actions/nixos-vm booted: a login shell (the environment
-# configuration.nix sets), at the checkout, stopping at the first failing command.
-#
-# Usage: packaging/nixos/vm-run '<script>'
+# Run a script in the guest, from the checkout. The script runs in a subshell: an `exit` in a login
+# shell sources /etc/bash_logout, which reads an unset variable and would fail under `set -u`.
 set -euo pipefail
 exec ssh -F "$PROVISA_VM_SSH_CONFIG" vm \
-  "bash -lc $(printf '%q' "set -euo pipefail; cd ~/provisa; $*")"
+  "bash -lc $(printf '%q' "set -eo pipefail; cd ~/provisa; ( set -u; $* )")"
