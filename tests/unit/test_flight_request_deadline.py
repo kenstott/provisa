@@ -21,7 +21,6 @@ that names it."""
 from __future__ import annotations
 
 import json
-import threading
 import time
 
 import pyarrow as pa
@@ -66,17 +65,67 @@ def _ticket() -> flight.Ticket:
     return flight.Ticket(json.dumps({"query": "SELECT 1", "role": "analyst"}).encode())
 
 
-def _batches(n: int, each: float):
+def _batches(n: int, each: float, clock=None):
+    """``n`` batches, each taking ``each`` seconds to produce: on ``clock`` when one is given
+    (the request deadline's injected clock moves, nothing sleeps), else in real time."""
     schema = pa.schema([("n", pa.int64())])
     for i in range(n):
-        time.sleep(each)
+        if clock is None:
+            time.sleep(each)
+        else:
+            clock.advance(each)
         yield pa.record_batch([pa.array([i])], schema=schema)
 
 
-def test_execution_gets_what_the_wait_left_of_the_one_deadline():
-    """A request that waited 0.6s of a 1s budget for a slot runs with ~0.4s left — not a fresh
+# The three cases below are about ONE budget shared by a request's wait for a stream slot, its
+# execution and its stream. They used to hold a 1-second budget against the real clock, with a
+# second thread holding the slot and real sleeps for the work: on a loaded machine the thread
+# start, the sleeps and the test's own setup spent the budget before the point being measured,
+# and the cases failed for a reason that had nothing to do with the rule. The deadline's clock
+# is injected (tests/deadline_clock.py) and the wait for a slot is a stand-in that takes a
+# stated time on that clock, so each case is the same arithmetic on any machine.
+
+
+class _SlotAfter:
+    """The server's stream slots, with the one slot freeing after ``waits`` seconds for each
+    successive request (on the deadline's clock): what a request finds when another holds it."""
+
+    def __init__(self, clock, *waits: float) -> None:
+        self._clock = clock
+        self._waits = list(waits)
+        self.asked: list[float] = []
+
+    def acquire(self, timeout: float | None = None) -> bool:
+        self.asked.append(timeout if timeout is not None else float("inf"))
+        wait = self._waits.pop(0)
+        if timeout is not None and wait > timeout:
+            self._clock.advance(timeout)
+            return False  # no slot freed within what the request had left
+        self._clock.advance(wait)
+        return True
+
+    def release(self) -> None:
+        return None
+
+
+def _one_slot(monkeypatch, clock, *waits: float) -> _SlotAfter:
+    slot = _SlotAfter(clock, *waits)
+    monkeypatch.setattr(stream_slots.slots_for(1), "_free", slot)
+    return slot
+
+
+@pytest.fixture
+def stream_clock(deadline_clock, monkeypatch):
+    """The deadline's clock, with the stream's own check as the only thing that acts on it: the
+    process watchdog (a separate mechanism with its own tests) raises into a request's thread
+    from another thread at a moment the machine chooses, and is kept out of these cases."""
+    monkeypatch.setattr(request_deadline._watchdog, "watch", lambda *args, **kwargs: None)
+    return deadline_clock
+
+
+def test_execution_gets_what_the_wait_left_of_the_one_deadline(stream_clock, monkeypatch):
+    """A request that waited 0.6s of a 1s budget for a slot runs with 0.4s left — not a fresh
     1s."""
-    release = threading.Event()
     seen: list[float | None] = []
 
     def _execute(_request):
@@ -84,66 +133,67 @@ def test_execution_gets_what_the_wait_left_of_the_one_deadline():
         release_slot = server._acquire_stream_slot()
         try:
             seen.append(request_deadline.remaining())
-            if len(seen) == 1:
-                release.wait(timeout=0.6)  # the first request holds the slot this long
             return "ok"
         finally:
             release_slot()
 
     server = _server(_State(cap=1, request_timeout=1.0), _execute)
-    first = threading.Thread(target=lambda: server.do_get(None, _ticket()))
-    first.start()
-    time.sleep(0.05)  # `first` holds the only slot for ~0.6s
-    assert server.do_get(None, _ticket()) == "ok"
-    first.join(timeout=10)
+    slot = _one_slot(monkeypatch, stream_clock, 0.0, 0.6)
+    assert server.do_get(None, _ticket()) == "ok"  # the slot is free: no wait
+    assert server.do_get(None, _ticket()) == "ok"  # another request holds it for 0.6s
 
-    waited_remaining = seen[1]
-    assert seen[0] is not None and seen[0] > 0.9  # the first request: nearly its whole budget
-    assert waited_remaining is not None and 0.2 < waited_remaining < 0.5
+    assert seen == [pytest.approx(1.0), pytest.approx(0.4)]
+    # ... and the wait itself was bounded by the request's own budget, not a separate one.
+    assert slot.asked == [pytest.approx(1.0), pytest.approx(1.0)]
 
 
-def test_a_stream_that_waited_is_cut_off_at_the_deadline_not_at_wait_plus_budget():
+def test_a_stream_that_waited_is_cut_off_at_the_deadline_not_at_wait_plus_budget(
+    stream_clock, monkeypatch
+):
     budget = 1.0
-    calls = 0
-    guard = threading.Lock()
 
     def _execute(_request):
-        nonlocal calls
-        with guard:
-            calls += 1
-            mine = calls
-        release_slot = server._acquire_stream_slot()
-        if mine == 1:
-            try:
-                time.sleep(0.3)  # the first request: holds the only slot, then finishes
-                return "ok"
-            finally:
-                release_slot()
-        # The second request: a lazy stream of 20 batches, 0.1s apart — 2s of work — holding
-        # its slot until the stream ends.
+        release_slot = server._acquire_stream_slot()  # waits 0.3s for the slot
+        # A lazy stream of 20 batches, 0.1s apart — 2s of work — holding its slot until the
+        # stream ends.
         return flight_deadline.stream_within_deadline(
-            stream_slots.SlotHeldBatches(release_slot, _batches(20, 0.1))
+            stream_slots.SlotHeldBatches(release_slot, _batches(20, 0.1, stream_clock))
         )
 
     server = _server(_State(cap=1, request_timeout=budget), _execute)
-    first = threading.Thread(target=lambda: server.do_get(None, _ticket()))
-    first.start()
-    time.sleep(0.05)
-    started = time.monotonic()
-    stream = server.do_get(None, _ticket())  # waits ~0.25s for the slot
-    assert 0.15 < time.monotonic() - started < 0.6
-    first.join(timeout=10)
+    _one_slot(monkeypatch, stream_clock, 0.3)
+    started = stream_clock.monotonic()
+    stream = server.do_get(None, _ticket())
+    assert stream_clock.monotonic() - started == pytest.approx(0.3)  # the wait, and nothing else
 
     got = 0
     with pytest.raises(flight.FlightServerError) as raised:
         for _batch in stream:
             got += 1
-    elapsed = time.monotonic() - started
+    elapsed = stream_clock.monotonic() - started
 
-    assert budget <= elapsed < budget + 0.5  # cut at the deadline, not at 0.3s + 1s
-    assert 0 < got < 10
+    # Cut when the ONE budget ran out, 1s after the request began: the 0.3s wait left 0.7s of
+    # stream, which is 7 batches. A budget that started again after the wait would have run
+    # to 1.3s and delivered 10.
+    assert got == 7
+    assert elapsed == pytest.approx(budget)
     message = str(raised.value)
     assert "request deadline" in message and "request_timeout" in message and "1s" in message
+
+
+def test_a_request_that_finds_no_slot_within_its_budget_is_refused_at_the_deadline(
+    stream_clock, monkeypatch
+):
+    """The wait for a slot draws on the same budget: one that would take longer than the
+    request has is given up when the budget ends, naming the limit."""
+    server = _server(
+        _State(cap=1, request_timeout=1.0), lambda _r: server._acquire_stream_slot() and "ok"
+    )
+    _one_slot(monkeypatch, stream_clock, 5.0)
+    started = stream_clock.monotonic()
+    with pytest.raises(flight.FlightServerError):
+        server.do_get(None, _ticket())
+    assert stream_clock.monotonic() - started == pytest.approx(1.0)
 
 
 def test_a_stream_within_its_deadline_is_unaffected():
@@ -163,11 +213,11 @@ def test_a_materialized_result_within_its_deadline_is_unaffected():
     assert request_deadline.current() is None
 
 
-def test_execution_cancelled_at_the_deadline_names_it():
+def test_execution_cancelled_at_the_deadline_names_it(stream_clock):
     def _execute(_request):
         dl = request_deadline.current()
         assert dl is not None
-        time.sleep(0.25)
+        stream_clock.advance(0.25)  # the statement runs past its 0.2s budget
         raise dl.expired_error()  # what a statement cancelled by the deadline's watchdog raises
 
     server = _server(_State(cap=2, request_timeout=0.2), _execute)
