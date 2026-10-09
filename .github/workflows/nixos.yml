@@ -132,11 +132,9 @@ jobs:
         if: ${{ !cancelled() && steps.service.outcome == 'success' }}
         run: |
           packaging/nixos/vm-run '
-            for f in ~/.provisa/pgwire/*/*/pgwire-server.log; do
-              # No server was started: the pattern is still a pattern.
-              [ -e "$f" ] || continue
-              echo "=== $f"; tail -n 400 "$f"
-            done
+            # A server runs from its own state directory or, AskAmerica's, from the bundle itself.
+            mkdir -p ~/.provisa ~/.cache/provisa
+            find ~/.provisa ~/.cache/provisa -name pgwire-server.log -exec sh -c "echo \"=== \$1\"; grep -c . \"\$1\"; head -n 40 \"\$1\"; echo ...; tail -n 300 \"\$1\"" _ {} \;
           '
 
       - name: Service log
