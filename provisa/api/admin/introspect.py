@@ -633,6 +633,72 @@ async def _native_tables_grpc(  # REQ-322, REQ-323, REQ-325
     ]
 
 
+async def specification_columns(  # REQ-464
+    source_id: str, source_type: str, schema_name: str, state
+) -> "dict[str, list[str]] | None":
+    """``{table: [field, ...]}`` for a source registered from a specification — an OpenAPI
+    document's operations, a gRPC proto's query methods, a GraphQL schema's tables — read from
+    the specification the source was registered with, each table under the name
+    ``native_tables`` lists it by. The source itself is never called: None when this process
+    does not hold the specification (a plain GraphQL source whose schema has not been read
+    yet is one), and for any other kind.
+
+    The fields are the ones a registration of the table would offer: its response columns and
+    its native-filter columns (``_nf_<parameter>``)."""
+    t = source_type.lower()
+    if t == "openapi":
+        spec_info = getattr(state, "openapi_specs", {}).get(source_id)
+        if spec_info is None or schema_name != "openapi":
+            return None
+        from provisa.openapi.mapper import parse_spec
+        from provisa.openapi.register import _schema_to_columns
+
+        queries, _ = parse_spec(spec_info["spec"])
+        return {
+            q.operation_id: [
+                *(c["name"] for c in _schema_to_columns(q.response_schema)),
+                *(f"_nf_{p['name']}" for p in (*q.path_params, *q.query_params)),
+            ]
+            for q in queries
+            if _openapi_is_table(q)
+        }
+    if t in ("grpc", "grpc_remote"):
+        reg = getattr(state, "grpc_remote_sources", {}).get(source_id)
+        if reg is None or schema_name != "grpc_remote":
+            return None
+        from provisa.grpc_remote.mapper import query_table_name
+
+        return {
+            query_table_name(reg.get("namespace", ""), q): [
+                *(c.name for c in q.columns),
+                *(f"_nf_{c.name}" for c in q.input_fields),
+            ]
+            for q in reg.get("queries") or []
+        }
+    if t in ("graphql", "graphql_remote"):
+        reg = getattr(state, "graphql_remote_sources", {}).get(source_id)
+        if reg is None or schema_name != "graphql":
+            return None
+        if not reg.get("brand") and reg.get("schema") is None:
+            return None  # its schema has not been read from its endpoint yet: no call here
+        from provisa.api.admin._graphql_table_registration import (
+            offered_columns,
+            offered_tables,
+            source_offer,
+        )
+
+        offered = await source_offer(state, source_id)
+        if offered is None:
+            return None
+        return {
+            table["name"]: [
+                name for name, _type, _comment in offered_columns(*offered, table["name"])
+            ]
+            for table in offered_tables(*offered)
+        }
+    return None
+
+
 async def _native_tables_kafka(  # REQ-147
     source_id: str,
     schema_name: str,

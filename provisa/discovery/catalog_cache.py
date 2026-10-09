@@ -200,8 +200,10 @@ def _spawn_fill(coro, *, name: str) -> None:
 
 
 #: Kinds whose tables are operations or types of a specification the source was registered
-#: with (an OpenAPI document, a GraphQL schema, a gRPC proto): their index is left as it is.
-#: For every other kind a table's columns cost a statement, and are loaded lazily.
+#: with (an OpenAPI document, a GraphQL schema, a gRPC proto): their fields are in that
+#: specification and are indexed with their tables, with no call to the source
+#: (``introspect.specification_columns``). For every other kind a table's columns cost a
+#: statement, and are loaded lazily.
 INDEX_TIME_COLUMN_KINDS = frozenset({"openapi", "graphql", "graphql_remote", "grpc", "grpc_remote"})
 
 
@@ -346,6 +348,13 @@ async def _fill_columns(key, source_id: str, source_type: str, schema_name: str,
 INDEX_STARTING_POLL_SECONDS = 10.0
 INDEX_STARTING_WAIT_SECONDS = 900.0
 
+
+async def _wait(seconds: float) -> None:
+    """The index's wait between asks of a source still starting (its own name, so a test
+    stands in for THIS wait and no other sleep in the process)."""
+    await asyncio.sleep(seconds)
+
+
 #: The org-vault binding the attach seam runs inside (the source's credential is a reference
 #: into the org's vault); resolved on first use.
 _seam_bound = None
@@ -408,7 +417,7 @@ async def index_source(
                     int(waited),
                 )
                 return
-            await asyncio.sleep(INDEX_STARTING_POLL_SECONDS)
+            await _wait(INDEX_STARTING_POLL_SECONDS)
             waited += INDEX_STARTING_POLL_SECONDS
         except ServerNotServing as exc:
             log.warning("catalog_cache: %r is not indexed: %s", source_id, exc)
@@ -427,7 +436,6 @@ async def _index_source_once(
     Errors are logged and swallowed — cache miss is always safe (live fallback).
     """
     from provisa.api.admin.introspect import (
-        native_columns,
         native_schemas,
         native_tables,
         unattached_source,
@@ -440,7 +448,6 @@ async def _index_source_once(
     # holds a live attach of — a floored source has no engine catalog, so no query is sent.
     engine_lists = await unattached_source(state, source_id) is None
     seam = _SeamSource(engine, source_id)
-    listed_through_attach: set[str] = set()
     try:
         async with pool.acquire() as config_conn:
             schemas = await native_schemas(source_id, source_type, source_pools, config_conn)
@@ -499,7 +506,6 @@ async def _index_source_once(
             # index_source.
             attached = await seam.tables(schema)
             if attached is not None:
-                listed_through_attach.add(schema)
                 tables_with_cols = [
                     CachedTable(schema_name=schema, table_name=t, column_names=[], comment=None)
                     for t in attached
@@ -534,37 +540,16 @@ async def _index_source_once(
                 for t in tables
             ]
 
-        # Enrich with column names: the source's own driver first, else the engine's catalog
-        # where the engine holds a live attach of the source. Not for a source whose column
-        # names are loaded on first search (one statement a schema, not one a table here).
-        for cached in [] if loads_columns_lazily(source_type) else tables_with_cols:
-            async with pool.acquire() as config_conn:
-                native = await native_columns(
-                    source_id, source_type, schema, cached.table_name, source_pools, config_conn
-                )
-            if native is not None:
-                cached.column_names = [name for name, _dtype in native]
-                continue
-            if not engine_lists:
-                continue  # neither lists this table's columns: it is indexed by name alone
-            if schema in listed_through_attach:
-                # No catalog of the engine is named after an attached source, and the seam
-                # lists tables, not their columns: such a table is indexed by name alone.
-                continue
-            catalog = state.catalog_for(source_id)
-            try:
-                res = await engine.execute_engine(
-                    f'SELECT column_name FROM "{catalog}".information_schema.columns '
-                    f"WHERE table_schema = '{schema}' AND table_name = '{cached.table_name}' "
-                    f"ORDER BY ordinal_position",
-                    authorization=system_auth("catalog index"),
-                )
-                cached.column_names = [row[0] for row in res.rows]
-            except Exception as exc:
-                raise RuntimeError(
-                    f"catalog_cache: column introspection failed for "
-                    f"{source_id!r}/{schema!r}/{cached.table_name!r}: {exc}"
-                ) from exc
+        if not loads_columns_lazily(source_type):
+            # A source registered from a specification: its tables' fields are in the
+            # specification this process holds. Read from there; the source is not called.
+            from provisa.api.admin.introspect import specification_columns
+
+            fields = await specification_columns(source_id, source_type, schema, state)
+            for cached in tables_with_cols:
+                cached.column_names = list((fields or {}).get(cached.table_name, []))
+        # Column names cost a statement nowhere here: a specification's fields are set above,
+        # and every other kind's are loaded on first search (one statement a schema).
 
         try:
             await write_cache(state.tenant_db, source_id, schema, tables_with_cols)

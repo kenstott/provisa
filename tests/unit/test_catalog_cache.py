@@ -378,7 +378,7 @@ async def test_a_source_that_is_still_starting_is_indexed_when_it_has_started(
     async def _sleep(seconds):
         waits.append(seconds)
 
-    monkeypatch.setattr(catalog_cache.asyncio, "sleep", _sleep)
+    monkeypatch.setattr(catalog_cache, "_wait", _sleep)
     engine = _AttachingEngine(lambda schema: ["financial_facts"], starting_for=3)
     state = SimpleNamespace(tenant_db=tenant_db, catalog_for=lambda sid: sid)
 
@@ -404,7 +404,7 @@ async def test_a_source_that_never_starts_is_reported_once_by_name(stores, monke
     async def _sleep(seconds):
         return None
 
-    monkeypatch.setattr(catalog_cache.asyncio, "sleep", _sleep)
+    monkeypatch.setattr(catalog_cache, "_wait", _sleep)
     monkeypatch.setattr(catalog_cache, "INDEX_STARTING_WAIT_SECONDS", 30)
     engine = _AttachingEngine(lambda schema: ["t"], starting_for=10_000)
     state = SimpleNamespace(tenant_db=tenant_db, catalog_for=lambda sid: sid)
@@ -1239,3 +1239,225 @@ async def test_a_fill_that_raises_anything_is_reported_once_and_not_repeated(
     assert "the column names of 'pg'/'sales' are not loaded: permission denied" in caplog.text
     assert cc.request_column_fill("pg", "postgresql", "sales", known, state) is False
     assert cc.column_names_state("pg", "postgresql", "sales", known) == cc.COLUMNS_UNAVAILABLE
+
+
+# ---------------------------------------------------------------------------
+# Sources registered from a specification: fields indexed from the specification
+# ---------------------------------------------------------------------------
+#
+# An OpenAPI document's operations, a gRPC proto's query methods, a GraphQL schema's tables: the
+# fields are in the specification the source was registered with. They are indexed with their
+# tables, so a search on a field name finds them, and the source itself is never called.
+
+_PETSTORE = {
+    "openapi": "3.0.0",
+    "info": {"title": "petstore", "version": "1"},
+    "paths": {
+        "/pets": {
+            "get": {
+                "operationId": "listPets",
+                "summary": "All pets",
+                "parameters": [{"name": "status", "in": "query", "schema": {"type": "string"}}],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "id": {"type": "integer"},
+                                            "name": {"type": "string"},
+                                            "breed": {"type": "string"},
+                                        },
+                                    },
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        },
+        "/pets/{petId}": {
+            "get": {
+                "operationId": "getPet",
+                "parameters": [
+                    {"name": "petId", "in": "path", "required": True, "schema": {"type": "integer"}}
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"id": {"type": "integer"}},
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    },
+}
+
+
+def _openapi_state():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(openapi_specs={"petstore": {"spec": _PETSTORE, "base_url": "http://x"}})
+
+
+@pytest.mark.asyncio
+async def test_an_openapi_operations_fields_are_read_from_the_registered_document():
+    from provisa.api.admin.introspect import specification_columns
+
+    fields = await specification_columns("petstore", "openapi", "openapi", _openapi_state())
+    assert fields == {
+        "listPets": ["id", "name", "breed", "_nf_status"],
+        "getPet": ["id", "_nf_petId"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_grpc_query_methods_fields_are_read_from_the_registered_proto():
+    from types import SimpleNamespace
+
+    from provisa.api.admin.introspect import native_tables, specification_columns
+    from provisa.grpc_remote.mapper import ColumnDef, GrpcQuery
+
+    query = GrpcQuery(
+        service="AnimalCatalog",
+        method="ListAnimals",
+        full_method_path="/zoo.AnimalCatalog/ListAnimals",
+        input_message="ListRequest",
+        output_message="Animal",
+        columns=[ColumnDef(name="id", type="integer"), ColumnDef(name="species", type="text")],
+        input_fields=[ColumnDef(name="zone", type="text")],
+    )
+    state = SimpleNamespace(grpc_remote_sources={"zoo": {"namespace": "zoo", "queries": [query]}})
+    fields = await specification_columns("zoo", "grpc_remote", "grpc_remote", state)
+    listed = await native_tables("zoo", "grpc_remote", "grpc_remote", None, None, state)  # type: ignore[arg-type]
+    assert listed is not None and len(listed) == 1
+    assert fields == {listed[0].name: ["id", "species", "_nf_zone"]}  # under the listed name
+
+
+@pytest.mark.asyncio
+async def test_a_graphql_tables_fields_are_read_from_the_schema_held_and_never_fetched(
+    monkeypatch,
+):
+    from types import SimpleNamespace
+
+    from provisa.api.admin import _graphql_table_registration as reg_mod
+    from provisa.api.admin.introspect import specification_columns
+
+    async def _offer(state, source_id):
+        return ("the offer", {"namespace": "gh"})
+
+    monkeypatch.setattr(reg_mod, "source_offer", _offer)
+    monkeypatch.setattr(reg_mod, "offered_tables", lambda offer, reg: [{"name": "repos"}])
+    monkeypatch.setattr(
+        reg_mod,
+        "offered_columns",
+        lambda offer, reg, table: [("id", "text", None), ("stars", "integer", None)],
+    )
+    held = SimpleNamespace(graphql_remote_sources={"gh": {"schema": {"types": []}, "url": "u"}})
+    assert await specification_columns("gh", "graphql_remote", "graphql", held) == {
+        "repos": ["id", "stars"]
+    }
+
+    async def _would_call_the_source(state, source_id):
+        raise AssertionError("the source's schema was fetched for the index")
+
+    monkeypatch.setattr(reg_mod, "source_offer", _would_call_the_source)
+    not_read_yet = SimpleNamespace(graphql_remote_sources={"gh": {"schema": None, "url": "u"}})
+    assert await specification_columns("gh", "graphql_remote", "graphql", not_read_yet) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kind", "schema"),
+    [("openapi", "openapi"), ("grpc_remote", "grpc_remote"), ("graphql_remote", "graphql")],
+)
+async def test_a_specification_this_process_does_not_hold_has_no_fields_and_makes_no_call(
+    kind, schema
+):
+    from types import SimpleNamespace
+
+    from provisa.api.admin.introspect import specification_columns
+
+    state = SimpleNamespace(openapi_specs={}, grpc_remote_sources={}, graphql_remote_sources={})
+    assert await specification_columns("absent", kind, schema, state) is None
+    assert await specification_columns("absent", "postgresql", "public", state) is None
+
+
+@pytest.mark.asyncio
+async def test_the_index_of_an_openapi_source_carries_its_operations_fields(stores, monkeypatch):
+    """Indexed from the document, with no statement to any driver or engine and no call to
+    the API: a search on a field name finds the operation."""
+    from provisa.api.admin import introspect
+    from provisa.discovery.catalog_cache import index_source, read_cache
+
+    model_db, tenant_db = stores
+
+    async def _schemas(source_id, source_type, pools, conn):
+        return ["openapi"]
+
+    async def _attached(state, source_id):
+        return object()  # an API source: the engine holds no live attach of it
+
+    monkeypatch.setattr(introspect, "native_schemas", _schemas)
+    monkeypatch.setattr(introspect, "unattached_source", _attached)
+
+    class _NoEngine:
+        async def execute_engine(self, sql, **kwargs):
+            raise AssertionError("the index sent the engine a statement for an API source")
+
+    state = _openapi_state()
+    state.tenant_db = tenant_db
+    await index_source("petstore", model_db, _NoEngine(), None, {"petstore": "openapi"}, state)
+
+    found = await read_cache(tenant_db, "petstore", "openapi")
+    assert found is not None
+    assert {t.table_name: (t.column_names, t.comment) for t in found} == {
+        "listPets": (["id", "name", "breed", "_nf_status"], "All pets"),
+        "getPet": (["id", "_nf_petId"], None),
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_search_before_the_index_reads_an_openapi_sources_fields_from_its_document(
+    monkeypatch,
+):
+    from provisa.api.admin import schema, table_search_router
+
+    class _Model:
+        def acquire(self):
+            return _no_binding()
+
+    async def _get_pool():
+        return _Model()
+
+    monkeypatch.setattr(schema, "_get_pool", _get_pool)
+    state = _openapi_state()
+    state.source_types = {"petstore": "openapi"}
+    state.source_pools = None
+    found = await table_search_router._candidates_live("petstore", "openapi", state)
+    assert {c.name: c.columns for c in found} == {
+        "listPets": ["id", "name", "breed", "_nf_status"],
+        "getPet": ["id", "_nf_petId"],
+    }
+
+
+def test_a_specification_kinds_column_names_are_complete_from_the_first_search(fills):
+    from provisa.discovery import catalog_cache as cc
+
+    known = [
+        CachedTable(schema_name="openapi", table_name="getPet", column_names=["id"], comment=None)
+    ]
+    assert cc.request_column_fill("petstore", "openapi", "openapi", known, None) is False
+    assert cc.column_names_state("petstore", "openapi", "openapi", known) == cc.COLUMNS_COMPLETE
+    assert fills == []
