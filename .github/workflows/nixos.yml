@@ -127,12 +127,12 @@ jobs:
             PROVISA_E2E_DEPLOYED_URL=http://127.0.0.1:3000 npx playwright test -c playwright.deployed.config.ts --reporter=list || { cat test-results/*/error-context.md; exit 1; }
           '
 
-      # An adapter server (AskAmerica's) writes to a file beside its bundle, not to the journal.
+      # An adapter server writes to a file, not to the journal: in its own state directory or,
+      # for AskAmerica, in the bundle it runs from.
       - name: Adapter server logs
         if: ${{ !cancelled() && steps.service.outcome == 'success' }}
         run: |
           packaging/nixos/vm-run '
-            # A server runs from its own state directory or, AskAmerica's, from the bundle itself.
             mkdir -p ~/.provisa ~/.cache/provisa
             find ~/.provisa ~/.cache/provisa -name pgwire-server.log -exec sh -c "echo \"=== \$1\"; grep -c . \"\$1\"; head -n 40 \"\$1\"; echo ...; tail -n 300 \"\$1\"" _ {} \;
           '

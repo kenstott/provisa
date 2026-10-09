@@ -92,6 +92,9 @@ in
     curl
     openssl
     zstd
+    # pg_dump and pg_restore for the integration suites' snapshots, at the major the
+    # postgres:16 image they dump runs.
+    postgresql_16
     unixodbc
   ];
 
