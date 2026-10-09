@@ -1,0 +1,260 @@
+# Release: macOS installers
+#
+# The four macOS DMGs. The Obs and Demo DMGs embed image tarballs and plugins the prebuilt leg of the same run uploaded.
+#
+# One leg of the release. Called by build-dmg.yml (the release orchestrator) on a tag, and by a
+# manual dry run of it. `version` is the release's tag; nothing here reads the pushed ref.
+# `publish` is false on a dry run: every artifact is built and uploaded to the RUN exactly as on
+# a tag, and every step that leaves the run -- the draft release, its attachments, PyPI, an image
+# push, a signed attestation -- is skipped. A failed job of this leg is re-run alone with
+# "Re-run failed jobs" on the release's run; the legs it reads from (their artifacts are the
+# run's) are not built again.
+name: "Release: macOS installers"
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The release tag (v0.1.0-alpha.477).
+        type: string
+        required: true
+      publish:
+        description: Leave the run (draft release, attachments, PyPI, image pushes). False on a dry run.
+        type: boolean
+        required: true
+    secrets:
+      # Passed by name: the Developer ID certificate and the notarization account. Absent, the installer is built unsigned.
+      APPLE_CERT_P12_BASE64:
+        required: false
+      APPLE_CERT_P12_PASSWORD:
+        required: false
+      APPLE_DEVELOPER_ID:
+        required: false
+      APPLE_NOTARYTOOL_APPLE_ID:
+        required: false
+      APPLE_NOTARYTOOL_PASSWORD:
+        required: false
+      APPLE_NOTARYTOOL_TEAM_ID:
+        required: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  metadata:
+    name: Resolve release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.meta.outputs.channel }}
+      dmg_name: ${{ steps.meta.outputs.dmg_name }}
+      dmg_obs_name: ${{ steps.meta.outputs.dmg_obs_name }}
+      dmg_container_name: ${{ steps.meta.outputs.dmg_container_name }}
+      dmg_demo_name: ${{ steps.meta.outputs.dmg_demo_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        uses: ./.github/actions/release-metadata
+        with:
+          version: ${{ inputs.version }}
+
+  # ── macOS build jobs ─────────────────────────────────────────────────────────
+
+  build-macos-core:
+    name: Build macOS Core DMG (${{ needs.metadata.outputs.channel }})
+    runs-on: macos-14
+    # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
+    # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
+    timeout-minutes: 45
+    # Native tier only — no compose, no observability, no container images, the same
+    # payload the Windows native installer ships (packaging/windows/build-sfx.ps1).
+    # The Docker tier lives in the Container DMG (build-macos-container).
+    needs: [metadata]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Import Apple signing certificate
+        uses: ./.github/actions/apple-signing
+        with:
+          p12-base64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
+
+      - name: Set up Node.js
+        uses: ./.github/actions/setup-ui
+        with:
+          node-version: "20"
+          install: "false"
+
+      - name: Build DMG
+        env:
+          VERSION: ${{ inputs.version }}
+          APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+          APPLE_NOTARYTOOL_APPLE_ID: ${{ secrets.APPLE_NOTARYTOOL_APPLE_ID }}
+          APPLE_NOTARYTOOL_PASSWORD: ${{ secrets.APPLE_NOTARYTOOL_PASSWORD }}
+          APPLE_NOTARYTOOL_TEAM_ID: ${{ secrets.APPLE_NOTARYTOOL_TEAM_ID }}
+        run: |
+          chmod +x packaging/macos/build-dmg.sh
+          packaging/macos/build-dmg.sh
+
+      - name: Rename DMG with version + channel
+        run: |
+          mv packaging/macos/dist/Provisa.dmg \
+             "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-core-dist
+          path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
+          retention-days: 1
+
+  build-macos-container:
+    name: Build macOS Container DMG (${{ needs.metadata.outputs.channel }})
+    runs-on: macos-14
+    # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
+    # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
+    timeout-minutes: 45
+    # Docker tier only: the compose tree + observability config. Images are fetched on
+    # demand (provisa-core-images-<version>.tar.gz), mirroring build-container.ps1.
+    needs: [metadata]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Import Apple signing certificate
+        uses: ./.github/actions/apple-signing
+        with:
+          p12-base64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
+
+      - name: Set up Node.js
+        uses: ./.github/actions/setup-ui
+        with:
+          node-version: "20"
+          install: "false"
+
+      - name: Build Container DMG
+        env:
+          PROVISA_EDITION: container
+          VERSION: ${{ inputs.version }}
+          APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+          APPLE_NOTARYTOOL_APPLE_ID: ${{ secrets.APPLE_NOTARYTOOL_APPLE_ID }}
+          APPLE_NOTARYTOOL_PASSWORD: ${{ secrets.APPLE_NOTARYTOOL_PASSWORD }}
+          APPLE_NOTARYTOOL_TEAM_ID: ${{ secrets.APPLE_NOTARYTOOL_TEAM_ID }}
+        run: |
+          chmod +x packaging/macos/build-dmg.sh
+          packaging/macos/build-dmg.sh
+
+      - name: Rename DMG with version + channel
+        run: |
+          mv packaging/macos/dist/Provisa-Container.dmg \
+             "packaging/macos/dist/${{ needs.metadata.outputs.dmg_container_name }}"
+
+      - name: Upload Container DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-container-dist
+          path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_container_name }}"
+          retention-days: 1
+
+  build-macos-obs:
+    name: Build macOS Obs DMG (${{ needs.metadata.outputs.channel }})
+    runs-on: macos-14
+    # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
+    # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
+    timeout-minutes: 45
+    needs: [metadata]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download obs image tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images-obs
+          path: packaging/macos/obs-images/
+
+      - name: Download Calcite plugins
+        uses: actions/download-artifact@v4
+        with:
+          name: trino-plugins
+          path: trino/plugins/
+
+      - name: Import Apple signing certificate
+        uses: ./.github/actions/apple-signing
+        with:
+          p12-base64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
+
+      - name: Build Obs DMG
+        env:
+          APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+          APPLE_NOTARYTOOL_APPLE_ID: ${{ secrets.APPLE_NOTARYTOOL_APPLE_ID }}
+          APPLE_NOTARYTOOL_PASSWORD: ${{ secrets.APPLE_NOTARYTOOL_PASSWORD }}
+          APPLE_NOTARYTOOL_TEAM_ID: ${{ secrets.APPLE_NOTARYTOOL_TEAM_ID }}
+        run: |
+          chmod +x packaging/macos/build-dmg-obs.sh
+          packaging/macos/build-dmg-obs.sh
+
+      - name: Rename DMG
+        run: |
+          mv packaging/macos/dist/Provisa-Obs.dmg \
+             "packaging/macos/dist/${{ needs.metadata.outputs.dmg_obs_name }}"
+
+      - name: Upload Obs DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-obs-dist
+          path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_obs_name }}"
+          retention-days: 1
+
+  build-macos-demo:
+    name: Build macOS Demo DMG (${{ needs.metadata.outputs.channel }})
+    runs-on: macos-14
+    # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
+    # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
+    timeout-minutes: 45
+    needs: [metadata]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download demo image tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images-demo
+          path: packaging/macos/demo-images/
+
+      - name: Download Calcite plugins
+        uses: actions/download-artifact@v4
+        with:
+          name: trino-plugins
+          path: trino/plugins/
+
+      - name: Import Apple signing certificate
+        uses: ./.github/actions/apple-signing
+        with:
+          p12-base64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
+
+      - name: Build Demo DMG
+        env:
+          APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+          APPLE_NOTARYTOOL_APPLE_ID: ${{ secrets.APPLE_NOTARYTOOL_APPLE_ID }}
+          APPLE_NOTARYTOOL_PASSWORD: ${{ secrets.APPLE_NOTARYTOOL_PASSWORD }}
+          APPLE_NOTARYTOOL_TEAM_ID: ${{ secrets.APPLE_NOTARYTOOL_TEAM_ID }}
+        run: |
+          chmod +x packaging/macos/build-dmg-demo.sh
+          packaging/macos/build-dmg-demo.sh
+
+      - name: Rename DMG
+        run: |
+          mv packaging/macos/dist/Provisa-Demo.dmg \
+             "packaging/macos/dist/${{ needs.metadata.outputs.dmg_demo_name }}"
+
+      - name: Upload Demo DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-demo-dist
+          path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_demo_name }}"
+          retention-days: 1

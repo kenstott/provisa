@@ -35,43 +35,73 @@ def test_ensure_release_action_creates_draft():
     assert "--draft" in content, "ensure-release action must create releases as DRAFT"
 
 
+_WORKFLOWS = _ROOT / ".github" / "workflows"
+# The release is an orchestrator (build-dmg.yml) and its legs; publish-release is a job of the
+# last leg, which the orchestrator starts only after every other leg has succeeded.
+_LEGS = {
+    "prebuilt": "release-prebuilt.yml",
+    "packages": "release-packages.yml",
+    "macos": "release-macos.yml",
+    "windows": "release-windows.yml",
+    "linux": "release-linux.yml",
+    "publish": "release-publish.yml",
+}
+
+
+def _load(name: str) -> dict:
+    return yaml.safe_load((_WORKFLOWS / name).read_text())
+
+
+def _publish_job() -> dict:
+    return _load("release-publish.yml")["jobs"]["publish-release"]
+
+
 def test_build_dmg_publish_job_exists():
-    """build-dmg workflow must have a publish-release job."""
-    workflow = yaml.safe_load((_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text())
-    assert "jobs" in workflow
-    assert "publish-release" in workflow["jobs"]
+    """The release has a publish-release job, in the leg the orchestrator calls `publish`."""
+    orchestrator = _load("build-dmg.yml")["jobs"]
+    assert {job: body["uses"] for job, body in orchestrator.items()} == {
+        job: f"./.github/workflows/{leg}" for job, leg in _LEGS.items()
+    }
+    assert "publish-release" in _load("release-publish.yml")["jobs"]
 
 
 def test_build_dmg_publish_job_depends_on_all_builds():
-    """publish-release job must wait for all build jobs to complete."""
-    workflow = yaml.safe_load((_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text())
-    publish_job = workflow["jobs"]["publish-release"]
-    needs = set(publish_job.get("needs", []))
-
-    # All platform-specific build jobs must be completed before publishing
-    required_needs = {
-        "metadata",
+    """Publishing waits for every build: the orchestrator's `publish` job needs every other leg,
+    and each build job is a job of one of those legs."""
+    orchestrator = _load("build-dmg.yml")["jobs"]
+    assert set(orchestrator["publish"]["needs"]) == set(_LEGS) - {"publish"}
+    built = {job for leg in set(_LEGS) - {"publish"} for job in _load(_LEGS[leg])["jobs"]}
+    required = {
         "build-macos-core",
+        "build-macos-container",
+        "build-macos-obs",
+        "build-macos-demo",
         "build-linux",
         "build-windows-core",
         "build-windows-container",
         "build-jdbc",
         "build-python-client",
-        # A release is not published while the server wheel or a PyPI publication has failed
-        # (v0.1.0-alpha.478: undrafted with "Publish provisa server to PyPI" skipped).
+        "package-obs-images",
+        "package-demo-images",
+        "package-core-images",
+        "package-core-images-amd64",
+        "package-plugins",
+        # The server wheel too (v0.1.0-alpha.478 was undrafted while its job had failed).
         "build-provisa-wheel",
-        "publish-provisa-pypi",
-        "publish-pypi",
     }
-    assert required_needs.issubset(needs), (
-        f"publish-release missing dependency on: {required_needs - needs}"
+    assert required <= built, f"no leg builds: {required - built}"
+    # A leg that reads another leg's artifacts starts after it.
+    for leg in ("macos", "windows", "linux"):
+        assert orchestrator[leg]["needs"] == "prebuilt"
+    # Inside the last leg the engine image still follows the release it reads its assets from.
+    assert (
+        "publish-release" in _load("release-publish.yml")["jobs"]["publish-engine-image"]["needs"]
     )
 
 
 def test_build_dmg_publish_uses_fail_on_unmatched_files():
     """softprops/action-gh-release must use fail_on_unmatched_files: true."""
-    workflow = yaml.safe_load((_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text())
-    publish_job = workflow["jobs"]["publish-release"]
+    publish_job = _publish_job()
     steps = publish_job.get("steps", [])
 
     attach_step = None
@@ -88,8 +118,7 @@ def test_build_dmg_publish_uses_fail_on_unmatched_files():
 
 def test_build_dmg_publish_keeps_draft_status():
     """publish step must upload as draft: true (never as published)."""
-    workflow = yaml.safe_load((_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text())
-    publish_job = workflow["jobs"]["publish-release"]
+    publish_job = _publish_job()
     steps = publish_job.get("steps", [])
 
     attach_step = None
@@ -120,8 +149,7 @@ def test_sibling_workflows_use_gh_release_upload_clobber():
 
 def test_release_manifest_includes_all_installer_types():
     """publish-release files list must include all expected installer types."""
-    workflow = yaml.safe_load((_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text())
-    publish_job = workflow["jobs"]["publish-release"]
+    publish_job = _publish_job()
     steps = publish_job.get("steps", [])
 
     attach_step = None
@@ -131,8 +159,17 @@ def test_release_manifest_includes_all_installer_types():
             break
 
     assert attach_step is not None, "Missing 'Attach installers to draft release' step"
-    files_str = attach_step.get("with", {}).get("files", "")
+    # One list: the "Release assets present" step holds it, proves every file is there (on a dry
+    # run too, where nothing is attached), and hands it to the attach step.
+    assert attach_step["with"]["files"] == "${{ steps.assets.outputs.files }}"
+    assets_step = next(s for s in steps if s.get("id") == "assets")
+    assert steps.index(assets_step) < steps.index(attach_step)
+    assert "if" not in assets_step, "the asset check runs on every run"
+    files_str = assets_step["env"]["FILES"]
     assert isinstance(files_str, str)
+    assert (
+        'compgen -G "$pattern"' in assets_step["run"] and '[ "$missing" = 0 ]' in assets_step["run"]
+    )
 
     # The files section should reference all expected installer types via metadata outputs. The
     # Runtime DMG (dmg_runtime_name) was removed from the installer set (native venv tier replaced it),
@@ -150,10 +187,6 @@ def test_release_manifest_includes_all_installer_types():
         assert pattern in files_str, (
             f"Installer manifest must include {pattern} to ensure complete release"
         )
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-q"])
 
 
 def test_a_cve_scan_gives_the_advisory_lookup_time_to_answer():
@@ -174,42 +207,47 @@ def test_a_cve_scan_gives_the_advisory_lookup_time_to_answer():
 
 
 def test_no_publication_is_reachable_without_every_build():
-    """Nothing that cannot be taken back happens until every artifact exists. A job that uploads
-    to PyPI, pushes an image or attaches to and undrafts the release needs -- directly or through
-    the jobs it needs -- EVERY job that builds or packages an artifact of the release. On
-    v0.1.0-alpha.478 the release was undrafted and the client was on PyPI while the server
-    wheel's job had failed (run 37959190134)."""
+    """Nothing that cannot be taken back happens until every artifact exists. Every job that
+    uploads to PyPI, pushes an image or attaches to and undrafts the release is a job of the
+    publish leg, which the orchestrator starts only after every other leg -- so each needs every
+    job that builds or packages an artifact. On v0.1.0-alpha.478 the release was undrafted and
+    the client was on PyPI while the server wheel's job had failed (run 37959190134)."""
     import re
 
-    jobs = yaml.safe_load((_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text())["jobs"]
-
-    def needs(job: str) -> set[str]:
-        direct = jobs[job].get("needs") or []
-        direct = [direct] if isinstance(direct, str) else direct
-        return set(direct).union(*(needs(d) for d in direct)) if direct else set()
-
-    builds = {job for job in jobs if job.startswith(("build-", "package-"))}
-    assert len(builds) >= 15, sorted(builds)
     publishes = re.compile(
         r"pypi-publish|softprops/action-gh-release|gh release edit|docker push|twine upload"
     )
-    publishing = set()
-    for job, body in jobs.items():
-        for step in body.get("steps") or []:
-            text = f"{step.get('uses') or ''}\n{step.get('run') or ''}"
-            if publishes.search(text) or (step.get("with") or {}).get("push") is True:
-                publishing.add(job)
-    assert publishing == {
-        "publish-pypi",
-        "publish-provisa-pypi",
-        "publish-release",
-        "publish-engine-image",
-        "publish-zaychik-image",
+    where: dict[str, str] = {}
+    builds: dict[str, str] = {}
+    for leg, name in _LEGS.items():
+        for job, body in _load(name)["jobs"].items():
+            if job.startswith(("build-", "package-")):
+                builds[job] = leg
+            for step in body.get("steps") or []:
+                text = f"{step.get('uses') or ''}\n{step.get('run') or ''}"
+                pushes = (step.get("with") or {}).get("push") is not None
+                if publishes.search(text) or pushes:
+                    where[job] = leg
+    assert where == {
+        "publish-pypi": "publish",
+        "publish-provisa-pypi": "publish",
+        "publish-release": "publish",
+        "publish-engine-image": "publish",
+        "publish-zaychik-image": "publish",
     }
-    for job in sorted(publishing):
-        missing = builds - needs(job)
-        assert not missing, f"{job} can run without {sorted(missing)}"
-    # The release is undrafted only after both PyPI publications; the engine image, whose build
+    assert len(builds) >= 15 and "publish" not in builds.values(), builds
+    orchestrator = _load("build-dmg.yml")["jobs"]
+    assert set(orchestrator["publish"]["needs"]) == set(builds.values()) == set(_LEGS) - {"publish"}
+    # Inside the leg: undrafted only after both PyPI publications; the engine image, whose build
     # downloads the release's public assets, only after the release.
-    assert {"publish-pypi", "publish-provisa-pypi"} <= needs("publish-release")
-    assert "publish-release" in needs("publish-engine-image")
+    leg = _load("release-publish.yml")["jobs"]
+    assert {"publish-pypi", "publish-provisa-pypi"} <= set(leg["publish-release"]["needs"])
+    assert "publish-release" in leg["publish-engine-image"]["needs"]
+    # A dry run skips the two publications; the release job (the asset check) still runs, and
+    # never after one that failed.
+    ran = leg["publish-release"]["if"]
+    assert "!cancelled()" in ran and "contains(needs.*.result, 'failure')" in ran
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-q"])

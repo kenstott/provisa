@@ -104,7 +104,10 @@ def test_the_workflows_fetch_each_plugin_at_the_harness_version():
     )
     # The release's plugin tarball, and the stack both Trino-backed UI lanes start (one script
     # now; each lane's workflow carried its own copy).
-    for name in (".github/workflows/build-dmg.yml", "scripts/ci/lanes/trino-stack-prepare.sh"):
+    for name in (
+        ".github/workflows/release-prebuilt.yml",
+        "scripts/ci/lanes/trino-stack-prepare.sh",
+    ):
         text = (repo / name).read_text()
         assert f'VERSION="{harness._TRINO_PLUGIN_VERSION}"' in text, name
         loop = " ".join(

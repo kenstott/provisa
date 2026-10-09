@@ -1,0 +1,302 @@
+# Release: packages
+#
+# The Python client and the server wheel, each with its CVE scan, and the JDBC driver. Built here; published by the publish leg.
+#
+# One leg of the release. Called by build-dmg.yml (the release orchestrator) on a tag, and by a
+# manual dry run of it. `version` is the release's tag; nothing here reads the pushed ref.
+# `publish` is false on a dry run: every artifact is built and uploaded to the RUN exactly as on
+# a tag, and every step that leaves the run -- the draft release, its attachments, PyPI, an image
+# push, a signed attestation -- is skipped. A failed job of this leg is re-run alone with
+# "Re-run failed jobs" on the release's run; the legs it reads from (their artifacts are the
+# run's) are not built again.
+name: "Release: packages"
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The release tag (v0.1.0-alpha.477).
+        type: string
+        required: true
+      publish:
+        description: Leave the run (draft release, attachments, PyPI, image pushes). False on a dry run.
+        type: boolean
+        required: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  metadata:
+    name: Resolve release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      jdbc_name: ${{ steps.meta.outputs.jdbc_name }}
+      py_version: ${{ steps.meta.outputs.py_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        uses: ./.github/actions/release-metadata
+        with:
+          version: ${{ inputs.version }}
+
+  # ── Python client + JDBC (unchanged) ────────────────────────────────────────
+
+  build-python-client:
+    name: Build and test Python client
+    runs-on: ubuntu-latest
+    needs: [metadata]
+    permissions:
+      contents: write   # attaches its SBOM + CVE report to the draft release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install and test
+        run: |
+          pip install -e "provisa-client/[dev]" -q
+          python -m pytest provisa-client/tests/ -x -q
+
+      - name: Stamp version and build dist
+        run: |
+          sed -i 's/^version = .*/version = "${{ needs.metadata.outputs.py_version }}"/' \
+            provisa-client/pyproject.toml
+          pip install build -q
+          python -m build provisa-client/ --outdir provisa-client/dist/
+
+      # SBOM + vulnerability gate for what actually ships: the venv "Install and test" resolved
+      # for provisa-client (its own pyproject has no lockfile, unlike the root package's uv.lock).
+      # pip-audit's non-zero exit on any finding fails this job, which fails publish-pypi via its
+      # existing `needs: build-python-client` — no separate gating job/needs wiring required.
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          mkdir -p sbom
+          pip install cyclonedx-bom -q
+          cyclonedx-py environment --of JSON -o sbom/provisa-client-sbom.cdx.json
+
+      - name: CVE scan (gates PyPI publish)
+        run: |
+          set -o pipefail
+          pip install pip-audit -q
+          pip-audit --timeout 60 -f json | tee sbom/provisa-client-cve-report.json
+
+      - name: Ensure release exists
+        if: inputs.publish
+        uses: ./.github/actions/ensure-release
+        with:
+          tag: ${{ inputs.version }}
+
+      # Kept OUT of provisa-client/dist/ (a sibling sbom/ dir): pypa/gh-action-pypi-publish globs
+      # packages-dir for everything to upload to PyPI, and these attestation-adjacent JSON files
+      # are not packages — they attach to the GitHub Release only.
+      - name: Attach SBOM + CVE report to draft release
+        if: inputs.publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            sbom/provisa-client-sbom.cdx.json \
+            sbom/provisa-client-cve-report.json \
+            --clobber
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-client-dist
+          path: provisa-client/dist/
+          retention-days: 1
+
+  build-provisa-wheel:
+    name: Build provisa server wheel (embedded tier)
+    runs-on: ubuntu-latest
+    needs: [metadata]
+    permissions:
+      contents: write   # attaches its SBOM + CVE report to the draft release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: ./.github/actions/setup-python
+        with:
+          sync: "false"
+
+      - name: Set up Node 20 (vite build)
+        uses: ./.github/actions/setup-ui
+        with:
+          node-version: "20"
+          install: "false"
+
+      # build-wheel.sh runs `npm run build`, whose prebuild hook renders the offline
+      # MkDocs site into provisa/_ui; without mkdocs on PATH it fails with ENOENT.
+      - name: Install docs-site build deps (mkdocs)
+        uses: ./.github/actions/docs-site-deps
+
+      - name: Stamp version and build wheel (bundles UI + config + buenavista)
+        run: |
+          sed -i 's/^version = .*/version = "${{ needs.metadata.outputs.py_version }}"/' pyproject.toml
+          pip install build -q
+          scripts/build-wheel.sh --sdist --wheel
+
+      - name: Verify the wheel is self-contained
+        run: |
+          python - <<'PY'
+          import glob, zipfile, sys
+          wheel = glob.glob("dist/provisa-*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          missing = [n for n in ("provisa/cli.py", "buenavista/core.py") if n not in names]
+          missing += [p for p in ("provisa/_ui/", "provisa/_config/") if not any(n.startswith(p) for n in names)]
+          leaked = [n for n in names if "node_modules" in n or n.startswith("provisa_client/")]
+          if missing or leaked:
+              print("missing:", missing, "\nleaked:", leaked[:5]); sys.exit(1)
+          print(f"OK: {wheel} self-contained ({len(names)} members)")
+          PY
+
+      # SBOM + vulnerability gate for what actually ships: the root uv.lock (same locked
+      # dependency set cve-audit.yml already scans continuously) rather than the build runner's
+      # own pip environment, which only has `build`/mkdocs installed, not provisa's own deps.
+      # pip-audit's non-zero exit on any finding fails this job, which fails publish-provisa-pypi
+      # via its existing `needs: build-provisa-wheel` — no separate gating job/needs wiring needed.
+      - name: Export locked dependencies
+        # pipefail: without it the step's status is grep's, and an export that failed left an
+        # empty or partial file for the audit to pass on.
+        run: |
+          set -o pipefail
+          uv export --frozen --all-extras --no-emit-project --no-hashes --format requirements-txt \
+            | grep -vE '^-e |@ file://|^[[:space:]]*#' > requirements-audit.txt
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          mkdir -p sbom
+          uvx --from cyclonedx-bom cyclonedx-py requirements requirements-audit.txt \
+            --of JSON -o sbom/provisa-sbom.cdx.json
+
+      # Documented ignore, PYSEC-2026-4114 / CVE-2026-49265 only: a server-side PKCE timing flaw
+      # in oauthlib. Provisa uses oauthlib only client-side, through databricks-sql-connector,
+      # which pins oauthlib<4 even in 4.6.0. Remove this ignore when the connector allows
+      # oauthlib 4. Every other finding still fails the job.
+      - name: CVE scan (gates PyPI publish)
+        run: |
+          set -o pipefail
+          uvx pip-audit --timeout 60 -r requirements-audit.txt --no-deps --ignore-vuln PYSEC-2026-4114 -f json \
+            | tee sbom/provisa-cve-report.json
+
+      - name: Ensure release exists
+        if: inputs.publish
+        uses: ./.github/actions/ensure-release
+        with:
+          tag: ${{ inputs.version }}
+
+      # Kept OUT of dist/ (a sibling sbom/ dir): pypa/gh-action-pypi-publish globs packages-dir
+      # for everything to upload to PyPI, and these attestation-adjacent JSON files are not
+      # packages — they attach to the GitHub Release only.
+      - name: Attach SBOM + CVE report to draft release
+        if: inputs.publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            sbom/provisa-sbom.cdx.json \
+            sbom/provisa-cve-report.json \
+            --clobber
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: provisa-wheel-dist
+          path: dist/
+          retention-days: 1
+
+  build-jdbc:
+    name: Build JDBC driver
+    runs-on: ubuntu-latest
+    needs: [metadata]
+    permissions:
+      contents: write   # attest-build-provenance + attach SBOM/CVE report to the draft release
+      id-token: write   # actions/attest-build-provenance signs via Sigstore/OIDC
+      attestations: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+
+      - name: Build shaded JAR
+        run: mvn -f jdbc-driver/pom.xml -B package -DskipTests
+
+      - name: Rename JAR with version + channel
+        run: |
+          mv jdbc-driver/target/provisa-jdbc-*.jar \
+             "jdbc-driver/target/${{ needs.metadata.outputs.jdbc_name }}"
+
+      # CycloneDX Maven plugin (invoked ad hoc — not added to jdbc-driver/pom.xml, this is a
+      # CI-only concern) has the real dependency tree; grype below only sees the shaded jar's
+      # flattened classes, so the two are complementary rather than redundant.
+      - name: Generate SBOM (CycloneDX Maven plugin)
+        run: |
+          mvn -f jdbc-driver/pom.xml -q org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom
+          mkdir -p sbom
+          cp jdbc-driver/target/bom.json sbom/provisa-jdbc-sbom.cdx.json
+
+      - name: Install grype
+        # pipefail: a failed download otherwise hands `sh` nothing and the step passes.
+        run: |
+          set -o pipefail
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: CVE scan (gates the release — fails on any medium+ finding)
+        run: |
+          grype "jdbc-driver/target/${{ needs.metadata.outputs.jdbc_name }}" \
+            -o json --file sbom/provisa-jdbc-cve-report.json --fail-on medium
+
+      # GitHub-native artifact attestation (Sigstore-backed, same trust root as PyPI's PEP 740):
+      # this jar is attached to the Release, never published to Maven Central, so there is no
+      # gh-action-pypi-publish step to hook attestations:true into.
+      - name: Sign JAR (Sigstore attestation)
+        if: inputs.publish
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "jdbc-driver/target/${{ needs.metadata.outputs.jdbc_name }}"
+
+      - name: Ensure release exists
+        if: inputs.publish
+        uses: ./.github/actions/ensure-release
+        with:
+          tag: ${{ inputs.version }}
+
+      - name: Attach SBOM + CVE report to draft release
+        if: inputs.publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            sbom/provisa-jdbc-sbom.cdx.json \
+            sbom/provisa-jdbc-cve-report.json \
+            --clobber
+
+      - name: Upload JDBC JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: jdbc-jar
+          path: "jdbc-driver/target/${{ needs.metadata.outputs.jdbc_name }}"
+          retention-days: 1

@@ -83,6 +83,16 @@ on:
         description: Where `run` runs.
         type: string
         default: "."
+      after:
+        description: A command run after the lane's, whatever its outcome (a report of the run).
+        type: string
+        default: ""
+      sampler:
+        description: >-
+          Record the runner's load, memory and busiest processes every 30 s while the lane runs
+          (scripts/ci/lanes/sampler.sh), uploaded as sampler-<lane>.
+        type: boolean
+        default: false
       on-failure:
         description: A script run when the lane failed.
         type: string
@@ -117,6 +127,56 @@ on:
       SPLUNKBASE_PASSWORD:
         required: false
       SP_CERT_P12_BASE64:
+        required: false
+      # The live sources the core UI lane registers (ui-e2e-core.yml passes them; no other caller
+      # does, and a lane job can read only what its caller passed).
+      # Snowflake
+      SNOWFLAKE_ACCOUNT:
+        required: false
+      SNOWFLAKE_USER:
+        required: false
+      SNOWFLAKE_PASSWORD:
+        required: false
+      SNOWFLAKE_WAREHOUSE:
+        required: false
+      # Databricks
+      DATABRICKS_SERVER_HOSTNAME:
+        required: false
+      DATABRICKS_HTTP_PATH:
+        required: false
+      DATABRICKS_TOKEN:
+        required: false
+      # BigQuery and Google Sheets (the key is written to a file by the prepare script)
+      GOOGLE_CLOUD_PROJECT:
+        required: false
+      GOOGLE_APPLICATION_CREDENTIALS_JSON:
+        required: false
+      GSHEETS_TEST_SHEET_ID:
+        required: false
+      # Fabric
+      FABRIC_SQL_SERVER:
+        required: false
+      FABRIC_DATABASE:
+        required: false
+      FABRIC_RESOURCE_GROUP:
+        required: false
+      FABRIC_CAPACITY_NAME:
+        required: false
+      # the Azure service principal Fabric's capacity and SQL endpoint are reached as
+      AZURE_CLIENT_ID:
+        required: false
+      AZURE_CLIENT_SECRET:
+        required: false
+      AZURE_TENANT_ID:
+        required: false
+      # SharePoint (with SP_CERT_P12_BASE64 above)
+      SP_TENANT_ID:
+        required: false
+      SP_CLIENT_ID:
+        required: false
+      SP_SITE_URL:
+        required: false
+      SP_CERT_PASSWORD:
         required: false
 
 permissions:
@@ -234,17 +294,20 @@ jobs:
             esac
           done <<< "$LANE_ENV"
 
+      # Started before the lane's own work and left running to the job's end. Process names and
+      # arguments only, never an environment; the script redacts any argument that names a
+      # password, token, secret or key.
+      - name: Sample the runner
+        if: inputs.sampler
+        run: |
+          nohup bash scripts/ci/lanes/sampler.sh "$RUNNER_TEMP/sampler/samples.txt" \
+            > "$RUNNER_TEMP/sampler.log" 2>&1 &
+
       - name: Prepare
         if: inputs.prepare != ''
-        env:
-          SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
-          PREPARE: ${{ inputs.prepare }}
-        run: bash $PREPARE
-
-      - name: Run lane
-        id: run
-        working-directory: ${{ inputs.working-directory }}
-        env:
+        # The lane's own commands -- its prepare script, its command and its after script -- and
+        # no other step see what the caller passed. An absent secret is an empty value.
+        env: &lane-env
           # Where a test's launched servers leave their logs (tests/integration/
           # worker_boot_harness.py): under results/, so they are uploaded with the lane's report.
           PROVISA_TEST_SERVER_LOG_DIR: ${{ github.workspace }}/results/${{ steps.key.outputs.lane }}/server-logs
@@ -253,7 +316,41 @@ jobs:
           # For the Splunk CIM fetch tests/conftest.py runs before starting splunk.
           SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
           SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
+          SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+          GSHEETS_TEST_SHEET_ID: ${{ secrets.GSHEETS_TEST_SHEET_ID }}
+          FABRIC_SQL_SERVER: ${{ secrets.FABRIC_SQL_SERVER }}
+          FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
+          FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
+          FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
+          SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
+          SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
+          SP_CERT_PASSWORD: ${{ secrets.SP_CERT_PASSWORD }}
+        run: bash ${{ inputs.prepare }}
+
+      - name: Run lane
+        id: run
+        working-directory: ${{ inputs.working-directory }}
+        env: *lane-env
         run: ${{ inputs.run }}
+
+      - name: After the lane
+        if: always() && inputs.after != '' && steps.run.conclusion != 'skipped'
+        working-directory: ${{ inputs.working-directory }}
+        env: *lane-env
+        run: ${{ inputs.after }}
 
       # A fetch inside the lane leaves the tarball at the restored path; save it under the same key,
       # also when the lane failed (actions/cache's own post-step saves only on success).
@@ -310,6 +407,14 @@ jobs:
           path: ${{ inputs.artifact-path }}
           retention-days: ${{ inputs.artifact-retention }}
           if-no-files-found: ${{ inputs.artifact-required }}
+
+      - name: Upload the runner's samples
+        if: always() && inputs.sampler
+        uses: actions/upload-artifact@v4
+        with:
+          name: sampler-${{ steps.key.outputs.lane }}
+          path: ${{ runner.temp }}/sampler/
+          retention-days: ${{ inputs.artifact-retention }}
 
       - name: Upload what the lane left when it failed
         if: failure() && inputs.artifact-on-failure-name != ''

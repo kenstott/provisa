@@ -1,0 +1,432 @@
+# Release: attach and publish
+#
+# Every publication of the release: both wheels to PyPI, the installers attached to the draft release and the release undrafted, the engine and Flight proxy images pushed.
+#
+# One leg of the release. Called by build-dmg.yml (the release orchestrator) on a tag, and by a
+# manual dry run of it. `version` is the release's tag; nothing here reads the pushed ref.
+# `publish` is false on a dry run: every artifact is built and uploaded to the RUN exactly as on
+# a tag, and every step that leaves the run -- the draft release, its attachments, PyPI, an image
+# push, a signed attestation -- is skipped. A failed job of this leg is re-run alone with
+# "Re-run failed jobs" on the release's run; the legs it reads from (their artifacts are the
+# run's) are not built again.
+name: "Release: attach and publish"
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The release tag (v0.1.0-alpha.477).
+        type: string
+        required: true
+      publish:
+        description: Leave the run (draft release, attachments, PyPI, image pushes). False on a dry run.
+        type: boolean
+        required: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  metadata:
+    name: Resolve release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+      channel: ${{ steps.meta.outputs.channel }}
+      dmg_name: ${{ steps.meta.outputs.dmg_name }}
+      dmg_obs_name: ${{ steps.meta.outputs.dmg_obs_name }}
+      dmg_container_name: ${{ steps.meta.outputs.dmg_container_name }}
+      dmg_demo_name: ${{ steps.meta.outputs.dmg_demo_name }}
+      linux_name: ${{ steps.meta.outputs.linux_name }}
+      windows_name: ${{ steps.meta.outputs.windows_name }}
+      windows_container_name: ${{ steps.meta.outputs.windows_container_name }}
+      jdbc_name: ${{ steps.meta.outputs.jdbc_name }}
+      py_version: ${{ steps.meta.outputs.py_version }}
+      obs_images_name: ${{ steps.meta.outputs.obs_images_name }}
+      demo_images_name: ${{ steps.meta.outputs.demo_images_name }}
+      core_images_name: ${{ steps.meta.outputs.core_images_name }}
+      core_images_amd64_name: ${{ steps.meta.outputs.core_images_amd64_name }}
+      trino_image_name: ${{ steps.meta.outputs.trino_image_name }}
+      trino_image_amd64_name: ${{ steps.meta.outputs.trino_image_amd64_name }}
+      plugins_name: ${{ steps.meta.outputs.plugins_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        uses: ./.github/actions/release-metadata
+        with:
+          version: ${{ inputs.version }}
+
+  # ── Release ──────────────────────────────────────────────────────────────────
+  # Nothing that cannot be taken back happens until every artifact exists: this leg starts only
+  # after every other leg has succeeded (the orchestrator's `publish` job needs them all), so a
+  # failed installer blocks PyPI as well as the release. The release is undrafted only after both
+  # PyPI publications; what remains is the moment between them and the undraft, which a re-run
+  # of publish-release closes.
+  publish-pypi:
+    name: Publish Python client to PyPI
+    # Publishes and does nothing else: not run on a dry run.
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: python-client-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true
+          attestations: true
+
+
+  publish-provisa-pypi:
+    name: Publish provisa server to PyPI
+    # Publishes and does nothing else: not run on a dry run.
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    # id-token: write is what lets gh-action-pypi-publish request a Sigstore-signed PEP 740
+    # attestation for each uploaded file — PyPI removed GPG signature uploads in 2023, so this
+    # (not a detached .asc) is the only signing PyPI currently accepts.
+    permissions:
+      id-token: write
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: provisa-wheel-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true
+          attestations: true
+
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [metadata, publish-pypi, publish-provisa-pypi]
+    # On a dry run the two publications are skipped, and a job is skipped with the jobs it needs
+    # unless it says otherwise: this one still runs (it proves the asset set is whole), and still
+    # never runs after a publication that failed or was cancelled.
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    permissions:
+      contents: write
+    steps:
+      # gh release create resolves the repo via local git; without a checkout the "Ensure release
+      # exists" step dies with "fatal: not a git repository" whenever it wins the create race against
+      # the sibling duckdb/pg/exports workflows (the alpha.257 release failure). A shallow checkout
+      # is enough — --generate-notes is server-side.
+      - name: Checkout (so gh release create has a git repo)
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-dist"
+          path: release-assets/
+          merge-multiple: true
+
+      - name: Download JDBC JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: jdbc-jar
+          path: release-assets/
+
+      - name: Download Python client wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: python-client-dist
+          path: release-assets/
+
+      - name: Download obs images tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: obs-images-tarball
+          path: release-assets/
+
+      - name: Download demo images tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: demo-images-tarball
+          path: release-assets/
+
+      - name: Download core images tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: core-images-tarball
+          path: release-assets/
+
+      - name: Download amd64 core images zip
+        uses: actions/download-artifact@v4
+        with:
+          name: core-images-amd64-tarball
+          path: release-assets/
+
+      - name: Download trino image tarball (arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images-trino
+          path: release-assets/
+
+      - name: Download trino image tarball (amd64)
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images-trino-amd64
+          path: release-assets/
+
+      - name: Download Trino plugins tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: plugins-tarball
+          path: release-assets/
+
+      # Idempotently create the release as a DRAFT (shared with the parallel
+      # duckdb/pg/exports workflows). It stays a draft — unpublished, skipped by
+      # /dl — until the "Publish release" step below undrafts it. Because this job
+      # needs: every installer build, reaching that step means all installers
+      # exist, so a failed/partial run never publishes.
+      - name: Ensure draft release exists
+        if: inputs.publish
+        uses: ./.github/actions/ensure-release
+        with:
+          tag: ${{ inputs.version }}
+
+      # The set the release attaches, and the proof that it is whole -- on a dry run too, where
+      # the attach step (and its fail_on_unmatched_files) does not run. One list: the attach
+      # step below takes it from here.
+      - name: Release assets present
+        id: assets
+        env:
+          FILES: |
+            release-assets/${{ needs.metadata.outputs.dmg_name }}
+            release-assets/${{ needs.metadata.outputs.dmg_container_name }}
+            release-assets/${{ needs.metadata.outputs.dmg_obs_name }}
+            release-assets/${{ needs.metadata.outputs.dmg_demo_name }}
+            release-assets/${{ needs.metadata.outputs.linux_name }}
+            release-assets/${{ needs.metadata.outputs.windows_name }}
+            release-assets/${{ needs.metadata.outputs.windows_container_name }}
+            release-assets/${{ needs.metadata.outputs.jdbc_name }}
+            release-assets/${{ needs.metadata.outputs.obs_images_name }}
+            release-assets/${{ needs.metadata.outputs.demo_images_name }}
+            release-assets/${{ needs.metadata.outputs.core_images_name }}
+            release-assets/${{ needs.metadata.outputs.core_images_amd64_name }}
+            release-assets/${{ needs.metadata.outputs.trino_image_name }}
+            release-assets/${{ needs.metadata.outputs.trino_image_amd64_name }}
+            release-assets/${{ needs.metadata.outputs.plugins_name }}
+            release-assets/*.whl
+        run: |
+          set -euo pipefail
+          missing=0
+          while IFS= read -r pattern; do
+            [ -z "$pattern" ] && continue
+            if ! compgen -G "$pattern" > /dev/null; then
+              echo "::error::missing release asset: $pattern"
+              missing=1
+            fi
+          done <<< "$FILES"
+          [ "$missing" = 0 ]
+          { echo "files<<RELEASE_ASSETS"; printf '%s\n' "$FILES"; echo "RELEASE_ASSETS"; } >> "$GITHUB_OUTPUT"
+
+      # Attach every installer to the DRAFT (draft: true keeps it unpublished).
+      # fail_on_unmatched_files: any missing installer fails the step here — the
+      # release is never undrafted, so a partial set can never be published.
+      - name: Attach installers to draft release
+        if: inputs.publish
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "${{ inputs.version }}"
+          tag_name: ${{ inputs.version }}
+          draft: true
+          prerelease: ${{ needs.metadata.outputs.is_prerelease != 'false' }}
+          make_latest: "false"
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: ${{ steps.assets.outputs.files }}
+          body: |
+            ## Channel: `${{ needs.metadata.outputs.channel }}`
+
+            | Asset | Platform / Use |
+            |-------|----------------|
+            | `${{ needs.metadata.outputs.dmg_name }}` | macOS Core (Apple Silicon) |
+            | `${{ needs.metadata.outputs.dmg_container_name }}` | macOS Container tier (Trino/Docker) |
+            | `${{ needs.metadata.outputs.dmg_obs_name }}` | macOS Observability extension |
+            | `${{ needs.metadata.outputs.dmg_demo_name }}` | macOS Demo extension (requires Obs) |
+            | `${{ needs.metadata.outputs.linux_name }}` | Linux x86_64 (core, airgapped AppImage; obs ships separately) |
+            | `${{ needs.metadata.outputs.windows_name }}` | Windows x64 native installer (embedded Python, no Docker) |
+            | `${{ needs.metadata.outputs.windows_container_name }}` | Windows x64 container-tier upgrade (WSL2 + Trino); fetches images on demand |
+            | `${{ needs.metadata.outputs.core_images_amd64_name }}` | Core Services image tarballs — the container tier downloads this, or drop it beside the installer for airgap |
+            | `${{ needs.metadata.outputs.jdbc_name }}` | JDBC driver — Tableau, PowerBI, DBeaver |
+            | `provisa_client-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl` | Python client |
+            | `${{ needs.metadata.outputs.core_images_name }}` | Core Services (airgapped install) |
+            | `${{ needs.metadata.outputs.trino_image_name }}` | Coordination Engine image (arm64) — fetched with the core images |
+            | `${{ needs.metadata.outputs.trino_image_amd64_name }}` | Coordination Engine image (amd64) — fetched with the core images |
+            | `${{ needs.metadata.outputs.obs_images_name }}` | Observability Stack (optional) |
+            | `${{ needs.metadata.outputs.demo_images_name }}` | Demo Data Pack (optional) |
+            | `${{ needs.metadata.outputs.plugins_name }}` | Coordination Engine connectors (SharePoint, Splunk, File) |
+
+            ### macOS Install
+            1. Download `${{ needs.metadata.outputs.dmg_name }}`
+            2. Open the DMG, drag **Provisa.app** to `/Applications`
+            3. Double-click **Provisa.app** — first-launch setup runs once (native tier builds a Python venv; online pulls from PyPI, offline uses the bundled wheels)
+            4. `provisa start && provisa open`
+            5. **Optional**: Open `${{ needs.metadata.outputs.dmg_obs_name }}` and run `install-obs.sh` to add Observability Stack
+            6. **Optional**: Open `${{ needs.metadata.outputs.dmg_demo_name }}` and run `install-demo.sh` to add Demo Data Pack (requires Observability Stack)
+
+            ### Linux Install
+            ```bash
+            chmod +x ${{ needs.metadata.outputs.linux_name }}
+            ./${{ needs.metadata.outputs.linux_name }}   # one-time setup (core; obs available as add-on)
+            provisa start && provisa open
+            ```
+
+            ### Windows Install
+            Run `${{ needs.metadata.outputs.windows_name }}` — the native tier (embedded Python) runs immediately, no Docker or VM.
+            1. Run `${{ needs.metadata.outputs.windows_name }}`
+            2. Launch **Provisa** from the Start Menu — first-launch stages the bundled runtime and starts the app
+            3. `provisa start`
+
+            **Optional container tier** (adds Trino + full compute via WSL2, no VirtualBox): download and run
+            `${{ needs.metadata.outputs.windows_container_name }}`. It provisions a WSL2 distro with
+            containerd, loads the bundled core images, and starts the compose stack. Reversible — switch
+            back to the native tier at any time.
+
+            ### Python client
+            ```bash
+            pip install provisa-client==${{ needs.metadata.outputs.py_version }}
+            ```
+
+            ### JDBC
+            Add `${{ needs.metadata.outputs.jdbc_name }}` to your BI tool's driver path.
+            Connection URL: `jdbc:provisa://localhost:8001`
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Publish (the SOLE undraft) ──────────────────────────────────────────
+      # This is the only step in any workflow that publishes the release. It runs
+      # last, after every installer has been attached to the draft, and re-verifies
+      # the complete installer manifest is present on the release before undrafting.
+      # If anything is missing it fails WITHOUT publishing, so the release stays a
+      # draft (unpublished, skipped by /dl) — never a partial published release.
+      - name: Publish release (verify installers, then undraft)
+        if: inputs.publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.version }}
+          IS_PRERELEASE: ${{ needs.metadata.outputs.is_prerelease }}
+          DMG_NAME: ${{ needs.metadata.outputs.dmg_name }}
+          DMG_OBS_NAME: ${{ needs.metadata.outputs.dmg_obs_name }}
+          DMG_DEMO_NAME: ${{ needs.metadata.outputs.dmg_demo_name }}
+          LINUX_NAME: ${{ needs.metadata.outputs.linux_name }}
+          WINDOWS_NAME: ${{ needs.metadata.outputs.windows_name }}
+          WINDOWS_CONTAINER_NAME: ${{ needs.metadata.outputs.windows_container_name }}
+          JDBC_NAME: ${{ needs.metadata.outputs.jdbc_name }}
+        run: |
+          set -euo pipefail
+
+          # Every installer/download-link asset that MUST exist before we publish.
+          required=(
+            "$DMG_NAME" "$DMG_OBS_NAME" "$DMG_DEMO_NAME"
+            "$LINUX_NAME" "$WINDOWS_NAME" "$WINDOWS_CONTAINER_NAME" "$JDBC_NAME"
+          )
+
+          # Assets actually attached to the release right now.
+          attached="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+
+          missing=()
+          for asset in "${required[@]}"; do
+            grep -Fxq "$asset" <<<"$attached" || missing+=("$asset")
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Refusing to publish $TAG — missing installer asset(s): ${missing[*]}"
+            echo "Release stays a DRAFT (unpublished). Fix the failed build and re-run." >&2
+            exit 1
+          fi
+
+          # Complete — publish. Alpha/beta/rc stay prereleases and never become 'latest'.
+          if [ "$IS_PRERELEASE" = "false" ]; then
+            gh release edit "$TAG" --draft=false --prerelease=false --latest
+          else
+            gh release edit "$TAG" --draft=false --prerelease --latest=false
+          fi
+          echo "Published $TAG with all ${#required[@]} required installers."
+
+  # ── SaaS federation-engine image ─────────────────────────────────────────────
+
+  publish-engine-image:
+    name: Publish federation-engine image
+    # Publishes and does nothing else: not run on a dry run.
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    # After publish-release, not in parallel with it: the Dockerfile curls the
+    # plugins tarball from the release's public download URL, and a draft's assets
+    # are not served there. Building earlier 404s.
+    needs: [metadata, publish-release]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # GHCR, not Artifact Registry: public packages are free to host and pull, so
+      # the engine image adds nothing to the zero-customer floor (REQ-1447).
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # amd64 only — every GKE engine node pool runs amd64 (terraform/gcp-saas/gke.tf).
+      - name: Build and push engine image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/trino-engine.Dockerfile
+          platforms: linux/amd64
+          push: ${{ inputs.publish }}
+          provenance: false
+          build-args: |
+            PROVISA_VERSION=${{ inputs.version }}
+            GITHUB_REPO=${{ github.repository }}
+          tags: ghcr.io/${{ github.repository_owner }}/provisa-trino-engine:${{ inputs.version }}
+
+  publish-zaychik-image:
+    name: Publish Arrow Flight SQL proxy image
+    runs-on: ubuntu-latest
+    # Only metadata is needed: the image is the upstream proxy at a pinned commit
+    # plus a local patch, and it carries nothing out of the release.
+    needs: [metadata]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        if: inputs.publish
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # amd64 only, and for the same reason as the engine image: this runs as a
+      # sidecar in the engine's own pod (REQ-1448), so it lands wherever that lands.
+      - name: Build and push zaychik image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./zaychik
+          platforms: linux/amd64
+          push: ${{ inputs.publish }}
+          provenance: false
+          tags: ghcr.io/${{ github.repository_owner }}/provisa-zaychik:${{ inputs.version }}

@@ -9,6 +9,12 @@ description: >-
   redirector — until build-dmg.yml's publish-release job undrafts it, and only
   after every installer build has succeeded. This is the guarantee that a failed
   or partial run never publishes a release with a missing installer.
+inputs:
+  tag:
+    description: >-
+      The release's tag. By default the pushed ref's name; a leg of the release orchestrator
+      passes the version it was given, which is the same on a tag push.
+    default: ""
 runs:
   using: composite
   steps:
@@ -16,7 +22,7 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
-        TAG: ${{ github.ref_name }}
+        TAG: ${{ inputs.tag || github.ref_name }}
       run: |
         set -euo pipefail
         if gh release view "$TAG" >/dev/null 2>&1; then

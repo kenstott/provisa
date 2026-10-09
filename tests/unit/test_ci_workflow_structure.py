@@ -192,9 +192,10 @@ def test_a_lane_caller_names_a_command_and_scripts_that_exist():
     for workflow, job, body in _lane_callers():
         given = body["with"]
         assert _runs_a_lane(str(given["run"])), f"{workflow}:{job} runs no lane"
-        for hook in ("prepare", "on-failure"):
+        for hook in ("prepare", "on-failure", "after"):
             if hook in given:
-                script = REPO / str(given[hook]).split()[0]
+                named = [w for w in str(given[hook]).split() if w.endswith((".sh", ".py"))][0]
+                script = (REPO / named.removeprefix("../")).resolve()
                 assert script.is_file(), f"{workflow}:{job} {hook}: {script} does not exist"
                 assert script.parent == REPO / "scripts" / "ci" / "lanes"
 
@@ -212,32 +213,110 @@ def test_a_lane_script_fails_loud(script):
     ]
     assert commands[0] == "set -euo pipefail", script.name
     used = {
-        str(b["with"].get(h, "")).split()[0]
+        word.removeprefix("../")
         for _w, _j, b in _lane_callers()
-        for h in ("prepare", "on-failure")
-        if b["with"].get(h)
+        for h in ("prepare", "on-failure", "after")
+        for word in str(b["with"].get(h, "")).split()
+        if word.endswith(".sh")
     }
     used |= {"scripts/ci/lanes/suite-prepare.sh"}  # also the warehouse and salesforce jobs' step
+    # ... and what the lane workflow itself runs (the sampler).
+    used |= set(
+        re.findall(
+            r"scripts/ci/lanes/[\w-]+\.sh", (REPO / ".github/workflows/lane.yml").read_text()
+        )
+    )
     assert str(script.relative_to(REPO)) in used, f"{script.name} is called by no lane"
 
 
-def test_the_lane_workflow_is_passed_its_few_secrets_by_name():
-    lane = yaml.safe_load((REPO / ".github" / "workflows" / "lane.yml").read_text())
+# What the lane workflow may be handed, by caller. The four every lane kind may need, and the
+# live sources' credentials, which ONLY the core UI workflow passes.
+_LANE_SECRETS = {
+    "ANTHROPIC_API_KEY",
+    "SPLUNKBASE_USERNAME",
+    "SPLUNKBASE_PASSWORD",
+    "SP_CERT_P12_BASE64",
+}
+_LIVE_SOURCE_SECRETS = {
+    "SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD", "SNOWFLAKE_WAREHOUSE",
+    "DATABRICKS_SERVER_HOSTNAME", "DATABRICKS_HTTP_PATH", "DATABRICKS_TOKEN",
+    "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS_JSON", "GSHEETS_TEST_SHEET_ID",
+    "FABRIC_SQL_SERVER", "FABRIC_DATABASE", "FABRIC_RESOURCE_GROUP", "FABRIC_CAPACITY_NAME",
+    "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID",
+    "SP_TENANT_ID", "SP_CLIENT_ID", "SP_SITE_URL", "SP_CERT_PASSWORD",
+}  # fmt: skip
+
+
+def test_the_lane_workflow_is_passed_its_secrets_by_name():
+    """It declares each secret it can be given and inherits none; a lane job reads only what its
+    caller passed. The live sources' credentials are passed by the core UI workflow alone."""
+    path = REPO / ".github" / "workflows" / "lane.yml"
+    lane = yaml.safe_load(path.read_text())
     declared = set(lane[True]["workflow_call"]["secrets"])
-    assert declared == {
-        "ANTHROPIC_API_KEY",
-        "SPLUNKBASE_USERNAME",
-        "SPLUNKBASE_PASSWORD",
-        "SP_CERT_P12_BASE64",
-    }
-    read = set(
-        re.findall(r"secrets\.([A-Z0-9_]+)", (REPO / ".github/workflows/lane.yml").read_text())
-    )
-    assert read == declared
+    assert declared == _LANE_SECRETS | _LIVE_SOURCE_SECRETS
+    assert set(re.findall(r"secrets\.([A-Z0-9_]+)", path.read_text())) == declared
+    assert "toJSON(secrets" not in path.read_text().replace(" ", "")
     for workflow, job, body in _lane_callers():
         passed = body.get("secrets", {})
         assert passed != "inherit", f"{workflow}:{job} hands the lane every secret"
         assert set(passed) <= declared, f"{workflow}:{job}"
+        if workflow != "ui-e2e-core.yml":
+            assert not set(passed) & _LIVE_SOURCE_SECRETS, f"{workflow}:{job}"
+    core = yaml.safe_load((REPO / ".github/workflows/ui-e2e-core.yml").read_text())["jobs"]
+    passed = set(core["playwright"]["secrets"]) | set(core["provisioning"]["secrets"])
+    assert _LIVE_SOURCE_SECRETS <= passed
+    # A secret reaches the lane's own commands and no other step: no action, no upload.
+    steps = lane["jobs"]["lane"]["steps"]
+    with_secrets = [
+        s["name"] for s in steps if any("secrets." in str(v) for v in (s.get("env") or {}).values())
+    ]
+    assert with_secrets == ["Prepare", "Run lane", "After the lane"]
+    assert "env" not in lane["jobs"]["lane"], "a job-level environment reaches every step"
+
+
+def test_no_step_or_lane_script_prints_its_environment():
+    """A secret in a step's environment must not reach the log: no command dumps the
+    environment, traces its own expansion, or serialises the secrets context."""
+    dump = re.compile(
+        r"(^|[;&|]\s*|\$\()\s*(printenv|env)\s*($|[|>;&)])|^\s*set\s*$|\bset -[a-z]*x|"
+        r"\bexport -p\b|\bdeclare -x\b|toJSON\(\s*(secrets|env)\b",
+        re.M,
+    )
+    sources = [(where, step.get("run") or "") for where, step in _steps()]
+    sources += [(str(p.relative_to(REPO)), p.read_text()) for p in ACTIONS]
+    sources += [
+        (str(p.relative_to(REPO)), p.read_text())
+        for p in sorted((REPO / "scripts" / "ci" / "lanes").iterdir())
+        if p.is_file()
+    ]
+    assert len(sources) > 100
+    for where, text in sources:
+        code = "\n".join(
+            line.split(" #")[0] for line in text.splitlines() if not line.lstrip().startswith("#")
+        )
+        found = dump.search(code)
+        assert not found, f"{where}: {found.group(0)!r}"
+
+
+def test_the_core_ui_lanes_credential_files_are_private_and_removed():
+    def commands(name: str) -> str:
+        text = (REPO / "scripts" / "ci" / "lanes" / name).read_text()
+        return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+
+    prepare, after = commands("ui-core-prepare.sh"), commands("ui-core-after.sh")
+    assert "umask 077" in prepare and "set +x" in prepare
+    assert '"${RUNNER_TEMP:?}/lane-credentials"' in prepare
+    # The secret is a variable's value written to a file, never a command's argument or output.
+    for line in prepare.splitlines():
+        if "_JSON" in line or "_BASE64" in line:
+            assert line.strip().startswith(("if [ -n", "printf '%s' \"$")), line
+    assert "az login" not in prepare and "az login" not in after
+    assert 'rm -rf "${RUNNER_TEMP:?}/lane-credentials"' in after
+    # The Fabric capacity the lane resumed is paused again whatever the lane's outcome.
+    assert "suspend_capacity()" in after
+    lane = yaml.safe_load((REPO / ".github/workflows/lane.yml").read_text())["jobs"]["lane"]
+    after_step = next(s for s in lane["steps"] if s.get("name") == "After the lane")
+    assert "always()" in after_step["if"]
 
 
 def test_no_two_lanes_share_a_name_or_an_artifact():
@@ -261,3 +340,247 @@ def test_reusable_workflows_nest_no_deeper_than_github_allows():
 
     # A caller and the workflows nested under it: four levels in all.
     assert max(depth(w) for w in calls) <= 4
+
+
+# --- the release: an orchestrator and its legs (stage 3) ------------------------------------------
+
+_RELEASE = REPO / ".github" / "workflows" / "build-dmg.yml"
+_LEAVES_THE_RUN = re.compile(
+    r"gh release (upload|edit|create|view)|softprops/action-gh-release|pypi-publish|"
+    r"attest-build-provenance|docker/login-action|\./\.github/actions/ensure-release|twine upload|"
+    r"docker push"
+)
+
+
+def _release_legs() -> dict[str, tuple[str, dict]]:
+    """{orchestrator job: (leg file, parsed leg)}."""
+    jobs = yaml.safe_load(_RELEASE.read_text())["jobs"]
+    legs = {}
+    for job, body in jobs.items():
+        assert body["uses"].startswith("./.github/workflows/release-"), f"{job} is not a leg"
+        name = body["uses"].rsplit("/", 1)[-1]
+        legs[job] = (name, yaml.safe_load((REPO / ".github" / "workflows" / name).read_text()))
+    return legs
+
+
+def test_the_release_orchestrator_only_calls_legs_and_gives_each_the_same_version_and_publish():
+    jobs = yaml.safe_load(_RELEASE.read_text())["jobs"]
+    given = {job: body["with"] for job, body in jobs.items()}
+    first = next(iter(given.values()))
+    assert set(first) == {"version", "publish"}
+    assert all(w == first for w in given.values()), "the legs are not built for one version"
+    assert first["version"] == "${{ inputs.version || github.ref_name }}"
+    # A tag push publishes. A manual run publishes only when started on the tag it names.
+    assert first["publish"] == (
+        "${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' "
+        "&& github.ref_name == inputs.version) }}"
+    )
+    trigger = yaml.safe_load(_RELEASE.read_text())[True]
+    assert trigger["push"] == {"tags": ["v*"]}
+    assert trigger["workflow_dispatch"]["inputs"]["publish"]["default"] is False
+    for body in jobs.values():
+        assert "steps" not in body and body.get("secrets") != "inherit"
+
+
+def test_every_step_of_the_release_that_leaves_the_run_waits_for_publish():
+    """A dry run builds every artifact and publishes nothing: each step that creates or changes
+    the release, uploads to PyPI, signs an attestation or logs in to push an image carries
+    `if: inputs.publish` (or its whole job does), and an image build pushes only on publish."""
+    seen = 0
+    for _job, (name, leg) in _release_legs().items():
+        for job, body in leg["jobs"].items():
+            job_gated = body.get("if") == "inputs.publish"
+            for step in body.get("steps") or []:
+                where = f"{name}:{job}:{step.get('name')}"
+                text = f"{step.get('uses') or ''}\n{step.get('run') or ''}"
+                if _LEAVES_THE_RUN.search(text):
+                    seen += 1
+                    assert job_gated or step.get("if") == "inputs.publish", where
+                push = (step.get("with") or {}).get("push")
+                if push is not None:
+                    seen += 1
+                    assert job_gated or push == "${{ inputs.publish }}", where
+    assert seen >= 14, f"only {seen} publishing steps found: the pattern no longer matches them"
+
+
+def test_no_leg_of_the_release_reads_the_pushed_ref():
+    """A leg is built for the `version` it is given -- the same on a tag, and the only version
+    there is on a dry run, where the ref is a branch."""
+    for _job, (name, _leg) in _release_legs().items():
+        text = (REPO / ".github" / "workflows" / name).read_text()
+        assert "github.ref_name" not in text and "GITHUB_REF_NAME" not in text, name
+        assert "github.ref " not in text and "github.ref}" not in text, name
+    metadata = (REPO / ".github" / "actions" / "release-metadata" / "action.yml").read_text()
+    assert "GITHUB_REF" not in metadata and "github.ref" not in metadata
+
+
+def test_every_asset_name_a_leg_uses_is_one_the_metadata_action_resolves():
+    action = yaml.safe_load(
+        (REPO / ".github" / "actions" / "release-metadata" / "action.yml").read_text()
+    )
+    resolved = set(action["outputs"])
+    for _job, (name, leg) in _release_legs().items():
+        text = (REPO / ".github" / "workflows" / name).read_text()
+        used = set(re.findall(r"needs\.metadata\.outputs\.(\w+)", text))
+        if not used:
+            continue
+        declared = leg["jobs"]["metadata"]["outputs"]
+        assert used <= set(declared) <= resolved, name
+        for output, value in declared.items():
+            assert value == f"${{{{ steps.meta.outputs.{output} }}}}"
+        step = leg["jobs"]["metadata"]["steps"][-1]
+        assert step["uses"] == "./.github/actions/release-metadata"
+        assert step["with"] == {"version": "${{ inputs.version }}"}
+
+
+def test_a_leg_that_reads_another_legs_artifact_starts_after_it():
+    """Artifacts are the run's: a leg downloads what another leg uploaded, so the orchestrator
+    must order them. Every named download in a leg is uploaded in that leg or in one it needs."""
+    orchestrator = yaml.safe_load(_RELEASE.read_text())["jobs"]
+
+    def needed(job: str) -> set[str]:
+        direct = orchestrator[job].get("needs") or []
+        direct = [direct] if isinstance(direct, str) else direct
+        return set(direct).union(*(needed(d) for d in direct)) if direct else set()
+
+    uploads: dict[str, set[str]] = {}
+    downloads: dict[str, set[str]] = {}
+    for job, (_name, leg) in _release_legs().items():
+        for body in leg["jobs"].values():
+            for step in body.get("steps") or []:
+                artifact = (step.get("with") or {}).get("name")
+                if not artifact:
+                    continue
+                if "upload-artifact" in (step.get("uses") or ""):
+                    uploads.setdefault(job, set()).add(artifact)
+                if "download-artifact" in (step.get("uses") or ""):
+                    downloads.setdefault(job, set()).add(artifact)
+    crossed = 0
+    for job, wanted in downloads.items():
+        for artifact in wanted - uploads.get(job, set()):
+            source = [other for other, made in uploads.items() if artifact in made]
+            assert len(source) == 1, f"{job} downloads {artifact!r}, uploaded by {source}"
+            assert source[0] in needed(job), (
+                f"{job} reads {artifact!r} of {source[0]} without needing it"
+            )
+            crossed += 1
+    assert crossed >= 5, crossed
+
+
+def test_a_leg_is_passed_its_secrets_by_name():
+    orchestrator = yaml.safe_load(_RELEASE.read_text())["jobs"]
+    for job, (name, leg) in _release_legs().items():
+        text = (REPO / ".github" / "workflows" / name).read_text()
+        read = set(re.findall(r"secrets\.([A-Z0-9_]+)", text)) - {"GITHUB_TOKEN"}
+        declared = set((leg[True]["workflow_call"].get("secrets") or {}))
+        assert read == declared, f"{name} reads {read ^ declared} without declaring it"
+        assert set(orchestrator[job].get("secrets") or {}) == declared, job
+
+
+def test_the_sampler_shows_process_names_and_arguments_and_no_credential():
+    """The runner's samples are uploaded: a process is shown by name and arguments, never by its
+    environment, and an argument that names a password, token, secret or key loses its value."""
+    import subprocess
+
+    script = (REPO / "scripts" / "ci" / "lanes" / "sampler.sh").read_text()
+    commands = "\n".join(
+        line for line in script.splitlines() if line.strip() and not line.lstrip().startswith("#")
+    )
+    # `ps` is asked for the arguments column and no environment (no `e` modifier, no /proc read).
+    (asked,) = re.findall(r"ps (-\S+ \S+)", commands)
+    assert asked == "-eo pid=,pcpu=,pmem=,rss=,args="
+    assert "environ" not in commands and "printenv" not in commands
+    redact = re.search(r"sed -E '(s/.*?/Ig)'", script).group(1).removesuffix("Ig") + "g"
+    shown = subprocess.run(  # noqa: S603 -- the script's own expression, on made-up lines
+        ["perl", "-lpe", redact.replace("[= ]", "[= ]") + "i"],
+        input=(
+            "redis-server --requirepass hunter2 --port 6379\n"
+            "psql --password=abc123 -h db\n"
+            "tool --api-key sk-12345 --TOKEN=xyz\n"
+            "uvicorn main:app --host 0.0.0.0 --port 3900\n"
+        ),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    assert shown == [
+        "redis-server --requirepass <redacted> --port 6379",
+        "psql --password=<redacted> -h db",
+        "tool --api-key <redacted> --TOKEN=<redacted>",
+        "uvicorn main:app --host 0.0.0.0 --port 3900",
+    ]
+
+
+def test_a_test_that_did_not_run_is_named_and_counted_as_not_executed(
+    tmp_path, monkeypatch, capsys
+):
+    """Skipped by its own condition, or never started after an earlier failure in a serial group:
+    each is listed by name with its reason, under a count of its own -- never among the passed."""
+    import importlib.util
+    import json
+
+    spec = importlib.util.spec_from_file_location(
+        "playwright_not_executed", REPO / "scripts" / "ci" / "lanes" / "playwright_not_executed.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def test(status, results, reason=None):
+        annotations = [{"type": "skip", "description": reason}] if reason else []
+        return {"status": status, "results": results, "annotations": annotations}
+
+    report = {
+        "suites": [
+            {
+                "title": "kaggle-source.spec.ts",
+                "file": "kaggle-source.spec.ts",
+                "specs": [
+                    {"title": "passes", "file": "kaggle-source.spec.ts",
+                     "tests": [test("expected", [{"status": "passed"}])]},
+                    {"title": "fails", "file": "kaggle-source.spec.ts",
+                     "tests": [test("unexpected", [{"status": "failed"}, {"status": "failed"}])]},
+                ],
+                "suites": [
+                    {
+                        "title": "live Kaggle API",
+                        "specs": [
+                            {"title": "single-file dataset", "file": "kaggle-source.spec.ts",
+                             "tests": [test("skipped", [{"status": "skipped"}],
+                                            "KAGGLE_API_TOKEN not set in the environment")]},
+                            {"title": "after the failure", "file": "kaggle-source.spec.ts",
+                             "tests": [test("skipped", [])]},
+                        ],
+                    }
+                ],
+            }
+        ]
+    }  # fmt: skip
+    path = tmp_path / "results.json"
+    path.write_text(json.dumps(report))
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+
+    assert module.main(["x", str(path)]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "NOT EXECUTED: 2 test(s)",
+        "- kaggle-source.spec.ts › live Kaggle API › after the failure -- did not run",
+        "- kaggle-source.spec.ts › live Kaggle API › single-file dataset -- "
+        "KAGGLE_API_TOKEN not set in the environment",
+    ]
+    assert "### Not executed: 2" in summary.read_text()
+    assert "not counted as passed" in summary.read_text()
+    # A report that is not there is an error, not an empty list.
+    with pytest.raises(FileNotFoundError):
+        module.main(["x", str(tmp_path / "absent.json")])
+
+
+def test_the_core_ui_jobs_report_what_did_not_execute_and_sample_the_runner():
+    jobs = yaml.safe_load((REPO / ".github/workflows/ui-e2e-core.yml").read_text())["jobs"]
+    for job in ("playwright", "provisioning"):
+        given = jobs[job]["with"]
+        assert "--reporter=list,html,json" in given["run"]
+        assert "PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-results.json" in given["run"]
+        assert given["after"] == "bash ../scripts/ci/lanes/ui-core-after.sh playwright-results.json"
+        assert given["prepare"] == "scripts/ci/lanes/ui-core-prepare.sh"
+        assert given["sampler"] is True
+        assert "provisa-ui/playwright-results.json" in given["artifact-path"]

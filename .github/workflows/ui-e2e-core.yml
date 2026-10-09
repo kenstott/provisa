@@ -63,6 +63,8 @@ jobs:
     with:
       name: ui-core
       timeout: 120
+      # Fabric's SQL endpoint (the cloud-warehouse spec) is reached through ODBC Driver 18.
+      odbc: true
       # playwright.config.ts's webServer commands invoke `.venv/bin/uvicorn` by path, so the
       # environment must be a real repo-root .venv. `cassandra` and `saphana` are their demo
       # primers' own dependencies (demo/sources/*/prime.py); `gx` and `soda` are the two
@@ -79,15 +81,47 @@ jobs:
         CI=true
         PROVISA_E2E_LANE=core
       working-directory: provisa-ui
-      run: npx playwright test --project=core --reporter=list,html
+      # json beside the list and the HTML report (in a file of its own: the HTML reporter empties
+      # its folder): the run's own record of what did not execute.
+      run: >-
+        PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-results.json
+        npx playwright test --project=core --reporter=list,html,json
+      # prepare: the credential files of the live sources. after: every test that did not run,
+      # by name and reason, under its own count (not a pass); the Fabric capacity paused again;
+      # the credential files removed.
+      prepare: scripts/ci/lanes/ui-core-prepare.sh
+      after: bash ../scripts/ci/lanes/ui-core-after.sh playwright-results.json
+      # What held the runner while the lane ran (run 37918605161 could not say).
+      sampler: true
       artifact-name: playwright-report-core
-      artifact-path: provisa-ui/playwright-report/
+      artifact-path: |
+        provisa-ui/playwright-report/
+        provisa-ui/playwright-results.json
       artifact-retention: 7
     secrets:
       # chat-panel-streaming.spec.ts drives a live model and fails by name without it. This
       # workflow runs on release pushes, tags and dispatch only (no pull_request trigger), so
       # the secret never reaches a fork's code.
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # The live sources this job's specs register: Snowflake, Databricks, BigQuery, Google
+      # Sheets and Fabric (source-to-query-cloud-warehouse / -special-cases). Passed by name.
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      GSHEETS_TEST_SHEET_ID: ${{ secrets.GSHEETS_TEST_SHEET_ID }}
+      FABRIC_SQL_SERVER: ${{ secrets.FABRIC_SQL_SERVER }}
+      FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
+      FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
+      FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
   # The specs that bring source stacks up and down, with ONE worker on a runner of their own.
   provisioning:
@@ -107,9 +141,28 @@ jobs:
         CI=true
         PROVISA_E2E_LANE=core
       working-directory: provisa-ui
-      run: npx playwright test --project=core-provisioning --workers=1 --reporter=list,html
+      # json beside the list and the HTML report (in a file of its own: the HTML reporter empties
+      # its folder): the run's own record of what did not execute.
+      run: >-
+        PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-results.json
+        npx playwright test --project=core-provisioning --workers=1 --reporter=list,html,json
+      # prepare: the credential files of the live sources. after: every test that did not run,
+      # by name and reason, under its own count (not a pass); the Fabric capacity paused again;
+      # the credential files removed.
+      prepare: scripts/ci/lanes/ui-core-prepare.sh
+      after: bash ../scripts/ci/lanes/ui-core-after.sh playwright-results.json
+      # What held the runner while the lane ran (run 37918605161 could not say).
+      sampler: true
       artifact-name: playwright-report-core-provisioning
-      artifact-path: provisa-ui/playwright-report/
+      artifact-path: |
+        provisa-ui/playwright-report/
+        provisa-ui/playwright-results.json
       artifact-retention: 7
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # SharePoint (source-to-query.spec.ts), the one live source among this job's specs.
+      SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
+      SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
+      SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
+      SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
+      SP_CERT_PASSWORD: ${{ secrets.SP_CERT_PASSWORD }}
