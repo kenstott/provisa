@@ -1,4 +1,4 @@
-# A stand-in for a leg of the release, called only by ci-leaf-check.yml and ci-leaf-red-check.yml.
+# A stand-in for a leg of the release, called only by ci-leaf-check.yml.
 #
 # It builds nothing and publishes nothing. It carries, in the smallest form, the control-flow
 # constructs the release's legs depend on and that nothing had proven on GitHub:
@@ -25,10 +25,6 @@ on:
       publish:
         type: boolean
         required: true
-      fail-a-need:
-        description: Make the job the release job needs FAIL, to show the release job then does not run.
-        type: boolean
-        default: false
     outputs:
       version:
         value: ${{ jobs.release.outputs.version }}
@@ -54,18 +50,15 @@ jobs:
     steps:
       - run: echo "a publication would happen here"
 
-  # As a build whose failure must stop the release. Its failure cannot be contained: a job that
-  # fails under continue-on-error shows `success` to the job that needs it (run 37983239912), so
-  # the release job would run. The failing case therefore ends its run red, and lives in
-  # ci-leaf-red-check.yml, apart from the check that must end green.
+  # As a build the release needs. That the release job does NOT run after a FAILED need was
+  # shown once, in run 37981549282 (build failed, release skipped), and is not re-run here: it
+  # needs a job that really fails, which fails the run -- a failure contained by
+  # continue-on-error shows `success` to the job that needs it (run 37983239912). The release
+  # job's condition string is held by tests/unit/test_release_integrity.py.
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Fail when asked to
-        env:
-          FAIL: ${{ inputs.fail-a-need }}
-        run: |
-          if [ "$FAIL" = "true" ]; then echo "failing on purpose"; exit 1; fi
+      - run: echo "a build would happen here"
 
   # As publish-release: needs a job that a dry run skips, and still runs -- unless a need failed.
   release:
