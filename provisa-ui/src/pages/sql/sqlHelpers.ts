@@ -161,3 +161,26 @@ export function statementLimit(sql: string): number | null {
   const m = /\blimit\s+(\d+)(\s+offset\s+\d+)?\s*;?\s*$/i.exec(sql);
   return m ? Number(m[1]) : null;
 }
+
+/** The server's own words for "this answer was cut at a row limit" (compiler/row_limit.py):
+    cut for certain, or filled to the limit with no way to check for more. */
+const ROWS_CUT_CODES: ReadonlySet<string> = new Set([
+  "statement.rows_cut",
+  "statement.rows_cut_unchecked",
+]);
+
+/**
+ * REQ-1937: whether the rows a grid holds are part of a longer answer, so a filter over them is
+ * not a filter over the whole result. Two things say so: the server, when its row limit cut the
+ * answer (it says it in the response); and the statement as SENT, when it carried a LIMIT — the
+ * explorer's own sample size, or one the reader wrote — and the answer filled it.
+ */
+export function resultIsPartial(
+  sentSql: string,
+  rowCount: number,
+  warnings: readonly { code: string }[] | undefined,
+): boolean {
+  if ((warnings ?? []).some((w) => ROWS_CUT_CODES.has(w.code))) return true;
+  const limit = statementLimit(sentSql);
+  return limit !== null && limit > 0 && rowCount >= limit;
+}

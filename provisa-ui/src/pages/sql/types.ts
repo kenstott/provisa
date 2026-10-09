@@ -83,6 +83,8 @@ export interface SqlResults {
   columns: string[];
   rows: Record<string, unknown>[];
   error: string;
+  /** REQ-1937: the rows are part of a longer answer (cut at a row limit). */
+  partial?: boolean;
 }
 
 export interface SqlTab {
@@ -92,6 +94,8 @@ export interface SqlTab {
   nlText: string;
   resultColumns: string[];
   resultRows: Record<string, unknown>[];
+  /** REQ-1937: the rows held are part of a longer answer; absent on a tab that has not run. */
+  resultPartial?: boolean;
   resultError: string;
   execMs: number | null;
   detached?: boolean; // REQ-1322: one-way detach from metric semantics → free-hand SQL

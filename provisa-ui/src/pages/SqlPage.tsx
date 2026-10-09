@@ -43,7 +43,7 @@ import {
   autoAliasConflicts,
   parseSemanticMetricQuery,
   wrapSampledSql,
-  statementLimit,
+  resultIsPartial,
 } from "./sql/sqlHelpers";
 import { newTabId, emptyTab, loadTabsMeta, persistTabsMeta, nextTabTitle } from "./sql/tabHelpers";
 import { SchemaBrowser } from "./sql/SchemaBrowser";
@@ -164,6 +164,8 @@ export function SqlPage() {
   // REQ-1937: the columns' SQL types from the last run. A tab restored from storage has none, and
   // its filters are typed from the values.
   const [resultColumnTypes, setResultColumnTypes] = useState<Record<string, string | null>>({});
+  // REQ-1937: whether the rows held are part of a longer answer, decided when they arrived.
+  const [resultPartial, setResultPartial] = useState<boolean>(active0.resultPartial ?? false);
   const [resultRows, setResultRows] = useState<Record<string, unknown>[]>(active0.resultRows);
   const [resultError, setResultError] = useState(active0.resultError);
   const [execMs, setExecMs] = useState<number | null>(active0.execMs);
@@ -204,7 +206,13 @@ export function SqlPage() {
         prev.map((t) => {
           const r = byId.get(t.id);
           return r
-            ? { ...t, resultColumns: r.columns, resultRows: r.rows, resultError: r.error }
+            ? {
+                ...t,
+                resultColumns: r.columns,
+                resultRows: r.rows,
+                resultError: r.error,
+                resultPartial: r.partial ?? false,
+              }
             : t;
         }),
       );
@@ -212,6 +220,7 @@ export function SqlPage() {
       if (ar) {
         setResultColumns(ar.columns);
         setResultRows(ar.rows);
+        setResultPartial(ar.partial ?? false);
         setResultError(ar.error);
       }
       resultsHydrated.current = true;
@@ -419,10 +428,20 @@ export function SqlPage() {
     (): SqlTab[] =>
       tabs.map((t) =>
         t.id === activeTabId
-          ? { ...t, sqlText, nlText, resultColumns, resultRows, resultError, execMs }
+          ? { ...t, sqlText, nlText, resultColumns, resultRows, resultPartial, resultError, execMs }
           : t,
       ),
-    [tabs, activeTabId, sqlText, nlText, resultColumns, resultRows, resultError, execMs],
+    [
+      tabs,
+      activeTabId,
+      sqlText,
+      nlText,
+      resultColumns,
+      resultRows,
+      resultPartial,
+      resultError,
+      execMs,
+    ],
   );
 
   const loadTabIntoWorkingState = useCallback(
@@ -431,6 +450,7 @@ export function SqlPage() {
       setNlText(t.nlText);
       setResultColumns(t.resultColumns);
       setResultRows(t.resultRows);
+      setResultPartial(t.resultPartial ?? false);
       setResultError(t.resultError);
       setExecMs(t.execMs);
       setQueryStats(null);
@@ -647,6 +667,7 @@ export function SqlPage() {
       setResultColumns([]);
       setResultColumnTypes({});
       setResultRows([]);
+      setResultPartial(false);
       idbSet(tabResultsKey(activeTabId), { columns: [], rows: [], error: result.error });
     } else {
       setResultColumns(result.columns);
@@ -654,7 +675,15 @@ export function SqlPage() {
         Object.fromEntries(result.columns.map((c, i) => [c, result.column_types?.[i] ?? null])),
       );
       setResultRows(result.rows);
-      idbSet(tabResultsKey(activeTabId), { columns: result.columns, rows: result.rows, error: "" });
+      // The statement as SENT (the sampler's LIMIT included) and what the server said of it.
+      const partial = resultIsPartial(sampledSql, result.rows.length, result.warnings);
+      setResultPartial(partial);
+      idbSet(tabResultsKey(activeTabId), {
+        columns: result.columns,
+        rows: result.rows,
+        error: "",
+        partial,
+      });
     }
     resetGrid();
     setResultTab("results");
@@ -915,7 +944,7 @@ export function SqlPage() {
               resultError={resultError}
               resultRows={resultRows}
               resultColumns={resultColumns}
-              rowsPartial={statementLimit(sqlText) === resultRows.length}
+              rowsPartial={resultPartial}
               grid={grid}
               errors={errors}
               history={history}

@@ -1347,6 +1347,13 @@ export interface CompileResult {
   cypher_error?: string | null;
 }
 
+/** One thing an answer says about itself (REQ-1350), as the server sends it. */
+export interface StatementWarning {
+  code: string;
+  params: Record<string, unknown>;
+  message: string;
+}
+
 export async function runSql(
   // A statement, or a statement with the values of its $1…$n placeholders. The values are
   // sent beside the text and bound by the server; they are never written into it.
@@ -1358,6 +1365,8 @@ export async function runSql(
   /** REQ-1937: each column's SQL type, parallel to `columns`; null when the engine reported none. */
   column_types?: string[] | null;
   rows: Record<string, unknown>[];
+  /** REQ-1350: what the answer says about itself (a row limit that cut it, …). */
+  warnings?: StatementWarning[];
   error?: string;
   provisa_stats?: unknown;
 }> {
@@ -1400,6 +1409,7 @@ export async function runSql(
       columns,
       column_types: json.column_types ?? null,
       rows,
+      warnings: json?.extensions?.warnings ?? [],
       provisa_stats: json?.provisa_stats,
     };
   } catch (e) {
