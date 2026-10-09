@@ -64,8 +64,11 @@ describe("GovernedTableViewer XLSX export", () => {
 
     await waitFor(() => expect(downloadXlsx).toHaveBeenCalled());
     const exportCalls = vi.mocked(runSql).mock.calls.slice(1);
-    expect(exportCalls[0][0]).toContain(`LIMIT ${CHUNK + 1} OFFSET 0`);
-    expect(exportCalls[1][0]).toContain(`LIMIT ${CHUNK + 1} OFFSET ${CHUNK}`);
+    // The statement is sent with its bound values beside it (REQ-1937); here there are none.
+    const sent = (call: unknown[]) => call[0] as { sql: string; params: unknown[] };
+    expect(sent(exportCalls[0]).sql).toContain(`LIMIT ${CHUNK + 1} OFFSET 0`);
+    expect(sent(exportCalls[1]).sql).toContain(`LIMIT ${CHUNK + 1} OFFSET ${CHUNK}`);
+    expect(sent(exportCalls[0]).params).toEqual([]);
     expect(exportCalls).toHaveLength(2);
 
     const [, , exported] = vi.mocked(downloadXlsx).mock.calls[0];
