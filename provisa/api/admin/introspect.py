@@ -1323,6 +1323,124 @@ async def native_columns(  # REQ-1732
     return None
 
 
+# -- every column name of a schema, in one statement (REQ-464) -----------------------------------
+#
+# What the table search loads lazily: the column names of every table of a schema, fetched in
+# ONE statement through the source's own driver, where ``native_columns`` costs a statement a
+# table. One entry per source kind: its catalog's statement, and how the schema is given
+# (bound, or written in for a driver that binds none — the names come from this same dispatch's
+# schema list, as in ``native_columns``). Each returns rows of (table, column) in column order.
+
+_PARAM_DOLLAR = (
+    "SELECT table_name, column_name FROM information_schema.columns "
+    "WHERE table_schema = $1 ORDER BY table_name, ordinal_position"
+)
+_PARAM_QMARK_UPPER = (
+    "SELECT TABLE_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+    "WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, ORDINAL_POSITION"
+)
+#: kind -> (statement, whether the schema is bound as its one parameter).
+_SCHEMA_COLUMNS_SQL: dict[str, tuple[str, bool]] = {
+    "trino": (_PARAM_DOLLAR, True),
+    **{kind: (_PARAM_DOLLAR, True) for kind in _POSTGRES_WIRE},
+    "sqlserver": (_PARAM_QMARK_UPPER, True),
+    "fabric": (_PARAM_QMARK_UPPER, True),
+    "synapse": (_PARAM_QMARK_UPPER, True),
+    "oracle": (
+        "SELECT table_name, column_name FROM all_tab_columns "
+        "WHERE owner = $1 ORDER BY table_name, column_id",
+        True,
+    ),
+    "saphana": (
+        "SELECT TABLE_NAME, COLUMN_NAME FROM SYS.TABLE_COLUMNS "
+        "WHERE SCHEMA_NAME = $1 ORDER BY TABLE_NAME, POSITION",
+        True,
+    ),
+    "duckdb": (
+        "SELECT table_name, column_name FROM information_schema.columns "
+        "WHERE table_catalog = current_database() AND table_schema = ? "
+        "ORDER BY table_name, ordinal_position",
+        True,
+    ),
+    **{
+        kind: (
+            "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA = $1 ORDER BY TABLE_NAME, ORDINAL_POSITION",
+            True,
+        )
+        for kind in ("mysql", "mariadb", "tidb", "singlestore")
+    },
+    "clickhouse": (
+        "SELECT table, name FROM system.columns WHERE database = '{schema}' "
+        "ORDER BY table, position",
+        False,
+    ),
+    "snowflake": (
+        "SELECT table_name, column_name FROM information_schema.columns "
+        "WHERE table_schema = '{schema}' ORDER BY table_name, ordinal_position",
+        False,
+    ),
+    "exasol": (
+        "SELECT column_table, column_name FROM EXA_ALL_COLUMNS "
+        "WHERE column_schema = '{schema}' ORDER BY column_table, column_ordinal_position",
+        False,
+    ),
+}
+#: Kinds whose statement is qualified by the source's stored catalog or project.
+_SCHEMA_COLUMNS_QUALIFIED_SQL: dict[str, str] = {
+    "databricks": (
+        "SELECT table_name, column_name FROM `{database}`.information_schema.columns "
+        "WHERE table_schema = '{schema}' ORDER BY table_name, ordinal_position"
+    ),
+    "bigquery": (
+        "SELECT table_name, column_name FROM `{database}`.`{schema}`.INFORMATION_SCHEMA.COLUMNS "
+        "ORDER BY table_name, ordinal_position"
+    ),
+}
+
+
+def _grouped(rows) -> dict[str, list[str]]:
+    columns: dict[str, list[str]] = {}
+    for row in rows:
+        columns.setdefault(row[0], []).append(row[1])
+    return columns
+
+
+async def native_schema_columns(  # REQ-464
+    source_id: str,
+    source_type: str,
+    schema_name: str,
+    pool: "SourcePool",
+    config_conn: "Connection | None" = None,
+) -> "dict[str, list[str]] | None":
+    """``{table: [column, ...]}`` for every table of ``schema_name``, in ONE statement through
+    the source's own driver; None when this kind has no such statement here (no driver pool
+    for the source, a kind listed some other way, or a catalog with no schema-wide column view —
+    hiveserver2 describes one table at a time)."""
+    t = source_type.lower()
+    if not pool.has(source_id):
+        return None
+    if t in _SCHEMA_COLUMNS_SQL:
+        statement, bound = _SCHEMA_COLUMNS_SQL[t]
+        if bound:
+            result = await pool.execute(source_id, statement, [schema_name])
+        else:
+            result = await pool.execute(source_id, statement.format(schema=schema_name))
+        return _grouped(result.rows)
+    if t in _SCHEMA_COLUMNS_QUALIFIED_SQL:
+        if config_conn is None:
+            return None
+        database = await _source_database(source_id, config_conn)
+        if not database:
+            return None
+        result = await pool.execute(
+            source_id,
+            _SCHEMA_COLUMNS_QUALIFIED_SQL[t].format(database=database, schema=schema_name),
+        )
+        return _grouped(result.rows)
+    return None
+
+
 _PK_SQL = (
     "SELECT kcu.column_name FROM information_schema.table_constraints tc "
     "JOIN information_schema.key_column_usage kcu "

@@ -284,9 +284,10 @@ async def test_table_search_of_a_floored_source_never_asks_the_engine(monkeypatc
     monkeypatch.setattr("provisa.api.admin.schema._get_pool", _pool)
     candidates = await table_search_router._candidates_live("orders-pg", "public", state)
 
-    assert [(c.name, c.columns) for c in candidates] == [
-        ("orders", ["id", "name", "placed_at", "tags", "status"])
-    ]
+    # REQ-464: the tables are listed by the driver; their columns are not fetched on the
+    # request (one statement a table) -- they are loaded lazily, a schema at a time.
+    assert [(c.name, c.columns) for c in candidates] == [("orders", [])]
+    assert not [sql for sql in pool.asked if "information_schema.columns" in sql[1]]
     assert engine.statements == []
 
 
@@ -317,9 +318,9 @@ async def test_the_catalog_index_of_a_floored_source_never_asks_the_engine(monke
         "orders-pg", control_plane, engine, pool, state.source_types, state
     )
 
-    assert written == [
-        ("orders-pg", "public", [("orders", ["id", "name", "placed_at", "tags", "status"])])
-    ]
+    # REQ-464: the index records the tables; column names are loaded on first search.
+    assert written == [("orders-pg", "public", [("orders", [])])]
+    assert not [sql for sql in pool.asked if "information_schema.columns" in sql[1]]
     assert engine.statements == []
 
 

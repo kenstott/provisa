@@ -199,12 +199,87 @@ def _spawn_fill(coro, *, name: str) -> None:
     spawn_background(coro, name=name)
 
 
-def loads_columns_lazily(source_type: str) -> bool:
-    """Whether a source's column names are loaded on first search rather than by the index: a
-    source listed through its bundled adapter (``pgwire_replica.PGWIRE_REPLICA_TYPES``)."""
-    from provisa.federation.pgwire_replica import PGWIRE_REPLICA_TYPES
+#: Kinds whose tables are operations or types of a specification the source was registered
+#: with (an OpenAPI document, a GraphQL schema, a gRPC proto): their index is left as it is.
+#: For every other kind a table's columns cost a statement, and are loaded lazily.
+INDEX_TIME_COLUMN_KINDS = frozenset({"openapi", "graphql", "graphql_remote", "grpc", "grpc_remote"})
 
-    return source_type in PGWIRE_REPLICA_TYPES
+
+def loads_columns_lazily(source_type: str) -> bool:
+    """Whether a source's column names are loaded on first search rather than by the index:
+    ONE rule for every kind whose columns cost a statement to list (REQ-464)."""
+    return source_type not in INDEX_TIME_COLUMN_KINDS
+
+
+async def fetch_schema_columns(
+    source_id: str, source_type: str, schema_name: str, state
+) -> dict[str, list[str]]:
+    """``{table: [column, ...]}`` for every table of one schema — one way per source kind, and
+    one statement for the schema wherever the kind has one:
+
+    - a source read through its bundled adapter, where that adapter is what lists it (its
+      discovery kind, or a sibling the bound engine attaches): the adapter's information_schema;
+    - a source with a driver of its own: the driver's catalog (``native_schema_columns``);
+    - a source only the engine lists (a federator's catalog): the engine's information_schema;
+    - a driver whose catalog has no schema-wide column view: its tables one at a time
+      (``native_columns``), still off the request.
+    """
+    from provisa.api.admin.introspect import (
+        native_columns,
+        native_schema_columns,
+        unattached_source,
+    )
+    from provisa.api.admin.schema import _get_pool
+    from provisa.api.admin.schema_query import _source_for_introspection
+    from provisa.federation import pgwire_replica
+
+    if source_type in pgwire_replica.BUNDLE_MODEL_TYPES or (
+        source_type in pgwire_replica.PGWIRE_REPLICA_TYPES
+        and state.federation_engine.engine.native_store is not None
+    ):
+        source = await _source_for_introspection(source_id)
+        if source is None:
+            raise LookupError(f"source {source_id!r} is not registered")
+        return await pgwire_replica.schema_columns(source, schema_name)
+
+    pool = await _get_pool()
+    async with pool.acquire() as config_conn:
+        listed = await native_schema_columns(
+            source_id, source_type, schema_name, state.source_pools, config_conn
+        )
+    if listed is not None:
+        return listed
+
+    if state.source_pools.has(source_id):
+        # A driver with no schema-wide column view: the cached tables, one at a time.
+        tables = await read_cache(state.tenant_db, source_id, schema_name) or []
+        columns: dict[str, list[str]] = {}
+        for table in tables:
+            async with pool.acquire() as config_conn:
+                native = await native_columns(
+                    source_id,
+                    source_type,
+                    schema_name,
+                    table.table_name,
+                    state.source_pools,
+                    config_conn,
+                )
+            if native is not None:
+                columns[table.table_name] = [name for name, _type in native]
+        return columns
+
+    if await unattached_source(state, source_id) is not None:
+        return {}  # neither a driver nor a live attach of the engine lists its columns
+    catalog = state.catalog_for(source_id)
+    res = await state.federation_engine.execute_engine(
+        f'SELECT table_name, column_name FROM "{catalog}".information_schema.columns '
+        f"WHERE table_schema = '{schema_name}' ORDER BY table_name, ordinal_position",
+        authorization=system_auth("catalog index"),
+    )
+    listed = {}
+    for row in res.rows:
+        listed.setdefault(row[0], []).append(row[1])
+    return listed
 
 
 def request_column_fill(source_id: str, source_type: str, schema_name: str, tables, state) -> bool:
@@ -220,7 +295,7 @@ def request_column_fill(source_id: str, source_type: str, schema_name: str, tabl
         return False
     _COLUMN_FILLS[key] = "filling"
     _spawn_fill(
-        _fill_columns(key, source_id, schema_name, state),
+        _fill_columns(key, source_id, source_type, schema_name, state),
         name=f"catalog-columns:{source_id}/{schema_name}",
     )
     return True
@@ -244,19 +319,15 @@ def column_names_state(source_id: str, source_type: str, schema_name: str, table
     return COLUMNS_COMPLETE if stands == "filled" else COLUMNS_LOADING
 
 
-async def _fill_columns(key, source_id: str, schema_name: str, state) -> None:
-    from provisa.api.admin.schema_query import _source_for_introspection
+async def _fill_columns(key, source_id: str, source_type: str, schema_name: str, state) -> None:
     from provisa.federation import pgwire_replica
 
     try:
-        source = await _source_for_introspection(source_id)
-        if source is None:
-            raise LookupError(f"source {source_id!r} is not registered")
-        columns = await pgwire_replica.schema_columns(source, schema_name)
+        columns = await fetch_schema_columns(source_id, source_type, schema_name, state)
     except pgwire_replica.SourceStillStartingError:
         _COLUMN_FILLS.pop(key, None)  # later: the next search of the schema asks again
         return
-    except (pgwire_replica.ServerNotServing, LookupError) as exc:
+    except Exception as exc:  # noqa: BLE001 - any source's refusal: reported once, by name
         _COLUMN_FILLS[key] = "failed"  # not asked again this generation
         log.warning(
             "catalog_cache: the column names of %r/%r are not loaded: %s",
