@@ -295,6 +295,22 @@ async def register_table(
         from provisa.core.environments import active_org_schema
 
         model.schema_name = active_org_schema(_reg_state.org_id, "")
+    if _reg_state.source_types.get(input.source_id) == "govdata":
+        # REQ-540: the adapter serves every schema it has; a table is registered only from a
+        # schema the source was given, refused by name otherwise.
+        from provisa.federation.askamerica import SchemaNotServed, require_schema_served
+
+        async with pool.acquire() as _schemas_conn:
+            _given = (
+                await _schemas_conn.execute_core(
+                    select(sources.c.id, sources.c.database).where(sources.c.id == input.source_id)
+                )
+            ).fetchone()
+        if _given is not None:
+            try:
+                require_schema_served(_given, input.schema_name)
+            except SchemaNotServed as _not_served:
+                return MutationResult(success=False, message=str(_not_served))
     _effective_view_sql = input.view_sql
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)

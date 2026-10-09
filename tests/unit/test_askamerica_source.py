@@ -168,29 +168,191 @@ def test_only_an_askamerica_server_takes_an_environment():
     assert pr.server_environment(files) is None
 
 
-def test_the_model_is_the_bundles_own_narrowed_to_the_sources_schemas(tmp_path):
-    (tmp_path / "model").mkdir()
-    (tmp_path / "model" / "model.json").write_text(json.dumps(_BUNDLE_MODEL))
-    model = pr.build_model_json(_source("geo, SEC"), bundle_dir=tmp_path)
-    assert [s["name"] for s in model["schemas"]] == ["geo", "sec"]
-    assert model["defaultSchema"] == "geo"
-    # No credential is written into the model: the bundle reads them from its environment.
-    assert "aa-key" not in json.dumps(model)
+# The bundle as it is installed: its own model file, the catalog prebuilt for that model beside
+# it, and its own launcher. The model's bytes are deliberately not what json.dumps would write.
+_INSTALLED_MODEL = (
+    b'{"version": "1.0", "defaultSchema": "sec", "schemas": [{"name": "sec"},{"name": "econ"}]}'
+)
 
 
-def test_a_schema_the_adapter_does_not_serve_is_refused_by_name():
-    with pytest.raises(ValueError, match=r"no schema named \['nasa'\]"):
-        aa.narrow_model(_BUNDLE_MODEL, _source("sec,nasa"))
+def _seed_name(model_bytes: bytes) -> str:
+    """The catalog cache the adapter looks for beside a model: named by the model file's bytes
+    (pgwire_calcite.catalog_populate: sha256 of the bytes, first 16 hex digits)."""
+    import hashlib
+
+    return f"catalog-cache-{hashlib.sha256(model_bytes).hexdigest()[:16]}.pkl"
 
 
-def test_a_source_listing_no_schema_is_refused():
-    with pytest.raises(ValueError, match="lists no schema"):
-        aa.narrow_model(_BUNDLE_MODEL, _source(""))
+def _install_bundle(root: Path) -> Path:
+    (root / "model").mkdir(parents=True)
+    (root / "bin").mkdir()
+    (root / "model" / "model.json").write_bytes(_INSTALLED_MODEL)
+    (root / "model" / _seed_name(_INSTALLED_MODEL)).write_bytes(b"prebuilt")
+    (root / "bin" / "pgwire-govdata").write_text("#!/bin/sh\n")
+    return root
 
 
-def test_the_model_needs_the_bundle():
-    with pytest.raises(pr.MissingConnectorConfig, match="no bundle directory"):
+def _replica_on(bundle: Path, spawned: list, monkeypatch) -> pr.ConnectorReplica:
+    monkeypatch.setattr(aa, "_fetch", lambda key: (200, _ANSWER))
+
+    def spawn(command, cwd, env=None):
+        spawned.append((command, cwd, env))
+        return SimpleNamespace(exit_code=lambda: None)
+
+    return pr.ConnectorReplica(
+        _source(),
+        resolver=SimpleNamespace(resolve=lambda spec: bundle),  # type: ignore[arg-type]
+        allocator=pr.PortAllocator(is_free=lambda port: True),
+        spawn=spawn,
+        health_check=lambda host, port: True,
+        prepare_catalog=lambda ports: None,
+    )
+
+
+def test_the_server_is_the_installed_bundle_started_by_its_own_launcher(tmp_path, monkeypatch):
+    """Installed, then called: the bundle's launcher, in the bundle, with a port and the
+    environment the key resolves to. Nothing is copied, linked or written."""
+    bundle = _install_bundle(tmp_path / "bundle")
+    monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path / "data"))
+    before = sorted(p.relative_to(bundle) for p in bundle.rglob("*"))
+    spawned: list = []
+    _replica_on(bundle, spawned, monkeypatch).endpoint()
+
+    command, cwd, env = spawned[0]
+    assert command[0] == str(bundle / "bin" / "pgwire-govdata")
+    assert command[1:5] == ["--port", "5433", "--calcite-child", "127.0.0.1:5533"]
+    assert cwd == bundle
+    assert env["ASKAMERICA_API_KEY"] == "aa-key" and env["AWS_ACCESS_KEY_ID"] == "AK"
+    assert sorted(p.relative_to(bundle) for p in bundle.rglob("*")) == before
+    assert not (tmp_path / "data").exists()  # no per-source copy of the tree
+
+
+def test_the_server_runs_on_the_bundles_model_byte_for_byte_with_its_prebuilt_catalog(
+    tmp_path, monkeypatch
+):
+    """The adapter finds its prebuilt catalog by the model file's bytes. A model Provisa had
+    rewritten -- narrowed, or only re-serialized -- has another name's catalog, and the adapter
+    then builds one from scratch: the multi-minute start this replaces."""
+    bundle = _install_bundle(tmp_path / "bundle")
+    spawned: list = []
+    _replica_on(bundle, spawned, monkeypatch).endpoint()
+
+    model = (bundle / "model" / "model.json").read_bytes()
+    assert model == _INSTALLED_MODEL
+    assert (bundle / "model" / _seed_name(model)).is_file()
+    # What a re-serialized model would have been named: not what is installed.
+    reserialized = json.dumps(json.loads(_INSTALLED_MODEL), indent=2).encode()
+    assert _seed_name(reserialized) != _seed_name(_INSTALLED_MODEL)
+
+
+def test_no_model_is_built_for_a_source_that_runs_on_its_bundles_own():
+    with pytest.raises(pr.MissingConnectorConfig, match="runs on its bundle's own model"):
         pr.build_model_json(_source())
+    assert not hasattr(aa, "narrow_model")
+
+
+def test_a_sibling_still_runs_from_a_state_directory_of_its_own_with_its_model_written(
+    tmp_path, monkeypatch
+):
+    bundle = tmp_path / "bundle"
+    (bundle / "bin").mkdir(parents=True)
+    monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path / "data"))
+    spawned: list = []
+    replica = pr.ConnectorReplica(
+        Source(id="docs", type=SourceType.files, path="/data"),
+        resolver=SimpleNamespace(resolve=lambda spec: bundle),  # type: ignore[arg-type]
+        allocator=pr.PortAllocator(is_free=lambda port: True),
+        spawn=lambda command, cwd: spawned.append((command, cwd)) or SimpleNamespace(),
+        health_check=lambda host, port: True,
+    )
+    replica.endpoint()
+    _, cwd = spawned[0]
+    assert cwd != bundle and (cwd / "model" / "model.json").is_file()
+    assert not (bundle / "model").exists()
+
+
+# -- one AskAmerica source runs from the one installed bundle ------------------------------------
+
+
+def test_a_second_askamerica_source_is_not_started_beside_the_first(monkeypatch):
+    monkeypatch.setattr(pr, "_ENDPOINTS", {})
+    monkeypatch.setattr(pr, "_reap_on_exit", lambda: None)
+    first = pr._endpoint_replica(_source())
+    assert pr._endpoint_replica(_source()) is first  # the same source: its one server
+    other = Source(id="second-askamerica", type=SourceType.govdata, username="k", database="sec")
+    with pytest.raises(pr.InstalledBundleInUse, match="'test-askamerica' already runs"):
+        pr._endpoint_replica(other)
+    assert isinstance(pr.InstalledBundleInUse("b", "govdata", "a"), pr.server_start_errors())
+    # A sibling type is one server per source, as before.
+    pr._endpoint_replica(Source(id="docs-a", type=SourceType.files, path="/a"))
+    pr._endpoint_replica(Source(id="docs-b", type=SourceType.files, path="/b"))
+
+
+class _OneRow:
+    def __init__(self, row) -> None:
+        self._row = row
+
+    def acquire(self):
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def execute_core(self, statement):
+        return SimpleNamespace(fetchone=lambda: self._row)
+
+
+@pytest.mark.asyncio
+async def test_saving_a_second_askamerica_source_is_refused_naming_the_first():
+    from provisa.api.admin.schema_common import _another_govdata_source
+
+    refused = await _another_govdata_source(_OneRow(("test-askamerica",)), _input("aa-key"))
+    assert refused is not None and not refused.success
+    assert "AskAmerica source 'test-askamerica' already exists" in refused.message
+    assert await _another_govdata_source(_OneRow(None), _input("aa-key")) is None
+
+
+# -- which schemas a source offers is Provisa's own ----------------------------------------------
+#
+# The adapter serves every schema it has. The source offers the ones its subjects bring.
+
+
+def test_a_schema_outside_the_sources_list_is_refused_by_name():
+    source = _source("sec, ECON ,ref")
+    assert aa.serves_schema(source, "sec") and aa.serves_schema(source, "Econ")
+    assert not aa.serves_schema(source, "weather")
+    aa.require_schema_served(source, "ref")
+    with pytest.raises(aa.SchemaNotServed) as refused:
+        aa.require_schema_served(source, "weather")
+    assert "'test-askamerica' does not serve schema 'weather'" in str(refused.value)
+    assert "['sec', 'econ', 'ref']" in str(refused.value)
+
+
+@pytest.mark.asyncio
+async def test_a_schema_outside_the_sources_list_lists_no_tables():
+    from provisa.api.admin.introspect import native_tables
+
+    row = SimpleNamespace(id="test-askamerica", database="sec,ref,geo")
+    conn = _OneRow(row)
+    outside = await native_tables("test-askamerica", "govdata", "weather", None, conn, None)  # type: ignore[arg-type]
+    inside = await native_tables("test-askamerica", "govdata", "sec", None, conn, None)  # type: ignore[arg-type]
+    assert outside == []  # never listed
+    assert inside is None  # listed by the engine, from the attached server
+
+
+def test_registration_refuses_a_schema_outside_the_list_before_anything_is_written():
+    """The check sits before the table row is written (schema_mutation_ops.register_table)."""
+    import inspect
+
+    from provisa.api.admin import schema_mutation_ops
+
+    body = inspect.getsource(schema_mutation_ops.register_table)
+    check = body.index("require_schema_served(_given, input.schema_name)")
+    assert check < body.index("_effective_view_sql = input.view_sql")
+    assert "return MutationResult(success=False, message=str(_not_served))" in body
 
 
 def test_the_spawned_server_receives_its_environment(tmp_path):
@@ -608,31 +770,23 @@ def test_no_error_this_source_raises_carries_the_key_or_its_credentials():
             assert secret not in text.replace("AskAmerica", ""), text
 
 
-def test_the_servers_command_line_and_model_carry_no_secret(tmp_path):
-    """They go to the process table and to a file on disk; the environment is the only carrier."""
-    (tmp_path / "model").mkdir()
-    (tmp_path / "model" / "model.json").write_text(json.dumps(_BUNDLE_MODEL))
-    creds = aa.resolve_storage_credentials("aa-key", fetch=lambda key: (200, _ANSWER))
-    server = pr.PgwireServer(
-        bundle_dir=tmp_path,
-        spec=rd.bundle_spec_for("govdata"),
-        model=pr.build_model_json(_source(), bundle_dir=tmp_path),
-        ports=pr.PortPair(5440, "127.0.0.1", 5540),
-        spawn=lambda *args: SimpleNamespace(),
-        environment=aa.server_environment(_source(), resolve=lambda key: creds),
-    )
-    server.start()
-    written = " ".join(server.command()) + (tmp_path / "model" / "model.json").read_text()
+def test_the_servers_command_line_carries_no_secret_and_no_file_is_written(tmp_path, monkeypatch):
+    """A command line is in the process table and a file is on disk; the environment is the only
+    carrier, and the installed bundle is left as it was."""
+    bundle = _install_bundle(tmp_path / "bundle")
+    before = {p: p.read_bytes() for p in bundle.rglob("*") if p.is_file()}
+    spawned: list = []
+    _replica_on(bundle, spawned, monkeypatch).endpoint()
+    command, _, _ = spawned[0]
     for secret in _SECRETS:
-        assert secret not in written
+        assert secret not in " ".join(command)
+    assert {p: p.read_bytes() for p in bundle.rglob("*") if p.is_file()} == before
 
 
 def test_starting_the_server_logs_no_secret(tmp_path, caplog, monkeypatch):
     import logging
 
-    (tmp_path / "bundle" / "model").mkdir(parents=True)
-    (tmp_path / "bundle" / "model" / "model.json").write_text(json.dumps(_BUNDLE_MODEL))
-    (tmp_path / "bundle" / "bin").mkdir()
+    _install_bundle(tmp_path / "bundle")
     monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(aa, "_fetch", lambda key: (200, _ANSWER))
     replica = pr.ConnectorReplica(
@@ -726,8 +880,8 @@ def test_no_pgwire_family_source_has_a_subscription_provider(stype):
 
 # -- the server's first catalog query is paid for off the request path --------------------------
 #
-# A listening adapter answers its FIRST catalog query only after counting the rows of every table
-# it serves. An engine's attach issues that query, and the attach pass runs on the request path
+# A listening adapter's FIRST catalog query can take far longer than any later one (a catalog
+# not prebuilt for its model is built then). An engine's attach issues that query, and the attach pass runs on the request path
 # under the engine's one attach lock: paid for there, it held every statement of every source.
 
 
@@ -853,11 +1007,11 @@ def test_the_two_waits_are_told_apart_and_both_are_starting():
     port = str(pr.SourceStillStartingError("test-askamerica"))
     catalog = str(pr.SourceStillStartingError("test-askamerica", preparing_catalog=True))
     assert port.startswith("STARTING:") and "still starting up" in port
-    assert catalog.startswith("STARTING:") and "counting the rows of its tables" in catalog
+    assert catalog.startswith("STARTING:") and "answering its first catalog query" in catalog
     replica = _replica_with_server(
         healthy=True, exit_code=None, catalog_ready=False, prepare=lambda ports: time.sleep(5)
     )
-    with pytest.raises(pr.SourceStillStartingError, match="preparing its catalog"):
+    with pytest.raises(pr.SourceStillStartingError, match="answering its first catalog query"):
         replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 0)
     with pytest.raises(pr.SourceStillStartingError, match="still starting up"):
         _replica_with_server(healthy=False, exit_code=None).require_serving()
@@ -916,7 +1070,7 @@ def test_the_real_preparation_is_one_catalog_query_on_a_connection_it_closes(mon
         return _Conn()
 
     monkeypatch.setattr(pr, "_pg_connect", connect)
-    pr._prepare_catalog(pr.PortPair(5440, "127.0.0.1", 5540))
+    pr._prepare_catalog.real(pr.PortPair(5440, "127.0.0.1", 5540))  # type: ignore[attr-defined]
     assert events == [
         "connect 127.0.0.1:5440",
         "SELECT count(*) FROM pg_catalog.pg_class",
@@ -939,7 +1093,7 @@ def test_a_failed_catalog_query_still_closes_its_connection(monkeypatch):
 
     monkeypatch.setattr(pr, "_pg_connect", connect)
     with pytest.raises(RuntimeError, match="server closed"):
-        pr._prepare_catalog(pr.PortPair(5440, "127.0.0.1", 5540))
+        pr._prepare_catalog.real(pr.PortPair(5440, "127.0.0.1", 5540))  # type: ignore[attr-defined]
     assert events == ["closed"]
 
 

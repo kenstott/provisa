@@ -21,9 +21,14 @@ The operator gives one thing, the API key (REQ-540). Everything else follows fro
   (``federation.pgwire_replica``). The server renews its own credentials before they expire,
   from the key it is started with.
 
-A source lists the schemas it serves (``sec``, ``econ``, ...) in ``database``, as the Sources
-form writes them; each is a schema of the adapter's one database, and a registered table names
-its own.
+The server is the installed bundle, started by its own launcher as it was installed: its own
+model, its own prebuilt catalog beside it. Provisa writes nothing into it and rewrites nothing
+of it; it hands the launcher a port and the environment above.
+
+A source lists the schemas it offers (``sec``, ``econ``, ...) in ``database``, as the Sources
+form writes them. The adapter serves every schema it has; narrowing to the source's list is
+Provisa's own — what the Register Table form lists and what a table may be registered from
+(:func:`require_schema_served`). One AskAmerica source runs from the one installed bundle.
 """
 
 from __future__ import annotations
@@ -148,21 +153,26 @@ def server_environment(
     }
 
 
-def narrow_model(bundle_model: dict, source: Any) -> dict:
-    """The bundle's own model with only the schemas the source serves. A schema the source
-    lists that the bundle does not carry is refused by name."""
-    wanted = schemas(source)
-    if not wanted:
-        raise ValueError(f"AskAmerica source {source.id!r}: lists no schema to serve")
-    by_name = {entry["name"]: entry for entry in bundle_model["schemas"]}
-    unknown = [name for name in wanted if name not in by_name]
-    if unknown:
-        raise ValueError(
-            f"AskAmerica source {source.id!r}: the adapter serves no schema named {unknown} "
-            f"(it serves {sorted(by_name)})"
+class SchemaNotServed(ValueError):
+    """A schema named for an AskAmerica source that is not among the schemas the source was
+    given. The adapter serves every schema it has; which of them a source offers is the
+    source's own list, kept and enforced here."""
+
+    def __init__(self, source_id: str, schema: str, served: list[str]) -> None:
+        super().__init__(
+            f"AskAmerica source {source_id!r} does not serve schema {schema!r}: its subjects "
+            f"bring {served}"
         )
-    return {
-        **bundle_model,
-        "defaultSchema": wanted[0],
-        "schemas": [by_name[name] for name in wanted],
-    }
+        self.source_id = source_id
+        self.schema = schema
+
+
+def serves_schema(source: Any, schema: str) -> bool:
+    """Whether ``schema`` is one of the schemas the source was given (:func:`schemas`)."""
+    return schema.strip().lower() in schemas(source)
+
+
+def require_schema_served(source: Any, schema: str) -> None:
+    """Refuse, by name, a schema outside the source's list."""
+    if not serves_schema(source, schema):
+        raise SchemaNotServed(source.id, schema, schemas(source))

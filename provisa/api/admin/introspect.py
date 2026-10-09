@@ -1382,6 +1382,21 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
     """Return table list via native introspection or None to fall back to the engine."""
     t = source_type.lower()
 
+    if t == "govdata":
+        # The adapter serves every schema it has; the source offers the ones it was given
+        # (``federation.askamerica``). A schema outside that list has no tables here; one
+        # inside it is listed by the engine (None).
+        from provisa.federation.askamerica import serves_schema
+
+        row = (
+            await config_conn.execute_core(
+                select(sources.c.id, sources.c.database).where(sources.c.id == source_id)
+            )
+        ).fetchone()
+        if row is None or not serves_schema(row, schema_name):
+            return []
+        return None
+
     if t == "openapi":
         return await _native_tables_openapi(source_id, schema_name, state)
 
