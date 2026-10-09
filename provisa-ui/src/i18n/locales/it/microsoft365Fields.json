@@ -1,0 +1,14 @@
+{
+  "microsoft365Fields": {
+    "account": "Indirizzo della casella di posta",
+    "accountHelp": "L’account Microsoft 365 letto da questa origine.",
+    "readsMail": "Posta",
+    "readsMailHelp": "Messaggi, cartelle e dettagli degli allegati di questa casella di posta. Nulla viene modificato.",
+    "connect": "Collega account Microsoft",
+    "connected": "Collegato come {{account}}",
+    "connectFailed": "Non è stato possibile completare l’accesso.",
+    "notSetUp": "La tua organizzazione non ha ancora collegato Microsoft 365.",
+    "setUpLink": "Configuralo in {{where}}",
+    "notSetUpAsk": "La tua organizzazione non ha ancora collegato Microsoft 365. Chiedi a un amministratore di configurarlo in {{where}}."
+  }
+}

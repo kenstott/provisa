@@ -370,7 +370,8 @@
       "registry_url_required": "Origem '{{source}}': há configurações do registro de esquemas, mas nenhuma URL de registro de esquemas",
       "registry_field_required": "Origem '{{source}}': a autenticação do registro de esquemas '{{method}}' exige {{field}}",
       "registry_path_not_absolute": "Origem '{{source}}': {{field}} deve ser um caminho absoluto, recebido '{{path}}'",
-      "column_scope_invalid": "A coluna '{{column}}' tem o escopo '{{scope}}'; o escopo de uma coluna é um de {{scopes}}"
+      "column_scope_invalid": "A coluna '{{column}}' tem o escopo '{{scope}}'; o escopo de uma coluna é um de {{scopes}}",
+      "microsoft_365_invalid": "Fonte do Microsoft 365 {{source}}: {{error}}"
     },
     "secrets": {
       "name_refused": "{{name}} não é um nome dentro dos segredos desta organização em {{service}}: um nome é relativo à organização e não pode sair dela",
@@ -473,7 +474,9 @@
       "wrong_account": "{{approved}} aprovou o login, mas esta fonte lê {{account}}. Faça login como {{account}}.",
       "account_unread": "O login foi aprovado, mas não foi possível identificar a caixa de correio. Verifique se a API do Gmail está ativada no projeto do seu cliente.",
       "popup_blocked": "O navegador bloqueou a janela de login. Permita pop-ups para este site e tente novamente.",
-      "window_closed": "A janela de login foi fechada antes de terminar."
+      "window_closed": "A janela de login foi fechada antes de terminar.",
+      "tenant_invalid": "A configuração do Microsoft 365 da organização não indica um diretório (locatário). Um administrador insere o ID ou o domínio do diretório.",
+      "microsoft_account_unread": "O início de sessão foi aprovado, mas a Microsoft não indicou de quem é a caixa de correio."
     }
   }
 }

@@ -1,0 +1,14 @@
+{
+  "microsoft365Fields": {
+    "account": "Adres van de mailbox",
+    "accountHelp": "Het Microsoft 365-account dat deze bron leest.",
+    "readsMail": "E-mail",
+    "readsMailHelp": "Berichten, mappen en gegevens over bijlagen van dit postvak. Er wordt niets in gewijzigd.",
+    "connect": "Microsoft-account koppelen",
+    "connected": "Gekoppeld als {{account}}",
+    "connectFailed": "Het inloggen kon niet worden voltooid.",
+    "notSetUp": "Uw organisatie heeft Microsoft 365 nog niet gekoppeld.",
+    "setUpLink": "Stel het in onder {{where}}",
+    "notSetUpAsk": "Uw organisatie heeft Microsoft 365 nog niet gekoppeld. Vraag een beheerder het in te stellen onder {{where}}."
+  }
+}

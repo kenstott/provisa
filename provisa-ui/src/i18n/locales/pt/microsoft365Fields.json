@@ -1,0 +1,14 @@
+{
+  "microsoft365Fields": {
+    "account": "Endereço da caixa de correio",
+    "accountHelp": "A conta Microsoft 365 que esta fonte lê.",
+    "readsMail": "Correio",
+    "readsMailHelp": "Mensagens, pastas e detalhes dos anexos desta caixa de correio. Nada é alterado nela.",
+    "connect": "Conectar conta Microsoft",
+    "connected": "Conectado como {{account}}",
+    "connectFailed": "Não foi possível concluir o login.",
+    "notSetUp": "Sua organização ainda não conectou o Microsoft 365.",
+    "setUpLink": "Configurar em {{where}}",
+    "notSetUpAsk": "Sua organização ainda não conectou o Microsoft 365. Peça a um administrador que o configure em {{where}}."
+  }
+}

@@ -370,7 +370,8 @@
       "registry_url_required": "Source '{{source}}': schema registry settings are given but no schema registry URL",
       "registry_field_required": "Source '{{source}}': schema registry authentication '{{method}}' requires {{field}}",
       "registry_path_not_absolute": "Source '{{source}}': {{field}} must be an absolute path, got '{{path}}'",
-      "column_scope_invalid": "Column '{{column}}' has scope '{{scope}}'; a column's scope is one of {{scopes}}"
+      "column_scope_invalid": "Column '{{column}}' has scope '{{scope}}'; a column's scope is one of {{scopes}}",
+      "microsoft_365_invalid": "Microsoft 365 source {{source}}: {{error}}"
     },
     "secrets": {
       "name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",
@@ -473,7 +474,9 @@
       "wrong_account": "{{approved}} approved the sign-in, but this source reads {{account}}. Sign in as {{account}}.",
       "account_unread": "The sign-in was approved, but the mailbox could not be identified. Check that the Gmail API is enabled for your client's project.",
       "popup_blocked": "Your browser blocked the sign-in window. Allow pop-ups for this site and try again.",
-      "window_closed": "The sign-in window was closed before it finished."
+      "window_closed": "The sign-in window was closed before it finished.",
+      "tenant_invalid": "The organization's Microsoft 365 setting does not name a directory (tenant). An administrator enters the directory's ID or domain.",
+      "microsoft_account_unread": "The sign-in was approved, but Microsoft did not say whose mailbox it is."
     }
   }
 }

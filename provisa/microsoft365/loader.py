@@ -19,7 +19,7 @@ a replica like any fetched source.
 Graph is read with a blocking client; each batch is fetched off the event loop and only one is
 held. A message whose HTML body Graph will not give keeps its row without it; the read counts
 such messages and names them when it ends: every id in the log, and the count with the first
-ids as the build's note on the replica, in the form the Google Workspace source uses.
+ids as the build's note on the replica, the one every mail source gives.
 """
 
 # Requirements: REQ-1923
@@ -94,8 +94,8 @@ def make_microsoft365_loader(connect: Connect) -> Any:
         return [row async for rows in _batches(source, table) for row in rows]
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.data_replicator import unreadable_messages_note
         from provisa.federation.replica_source import CursorSource
-        from provisa.google_workspace.loader import unreadable_note
 
         unreadable: list[str] = []
 
@@ -104,7 +104,69 @@ def make_microsoft365_loader(connect: Connect) -> Any:
             return _batches(source, table, unreadable)
 
         # The note is the one both mail sources give (same code and particulars).
-        return CursorSource(read, columns, note=lambda: unreadable_note(unreadable))
+        return CursorSource(read, columns, note=lambda: unreadable_messages_note(unreadable))
 
     _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
+
+
+def make_connect(state: Any) -> Connect:
+    """How a source is signed in for a read: the organisation's Microsoft client
+    (``core.mail_platforms``, for the organisation the build runs in) and the source's own
+    refresh token, exchanged under the lock every refresh of the source takes
+    (``api_source.oauth_store``) because Microsoft replaces a refresh token each time it is
+    used."""
+    from provisa.api_source import oauth_store
+    from provisa.api_source.oauth_grants import exchange_refresh_token
+    from provisa.core import mail_platforms
+    from provisa.core.auth_models import ApiAuthOAuth2RefreshToken
+    from provisa.core.config_loader import load_control_plane
+    from provisa.core.config_location import config_path_str
+    from provisa.core.request_context import require_current_org
+    from provisa.core.secrets import resolve_secrets
+    from provisa.microsoft365 import SOURCE_TYPE
+    from provisa.microsoft365 import settings as m365
+
+    async def connect(source: Any) -> Connection:
+        settings = m365.parse(dict(getattr(source, "mapping", None) or {}))
+        org_id = require_current_org()
+        client = await mail_platforms.require(state.admin_db, org_id, SOURCE_TYPE)
+        # Resolved here, where the organisation's vault is bound: the exchange runs in a
+        # worker thread, which holds none.
+        client_secret = resolve_secrets(client.client_secret)
+        url = m365.token_url(client.settings.get("tenant"))
+        platform_url = load_control_plane(config_path_str()).resolved_platform_url()
+        loop = asyncio.get_running_loop()
+
+        def exchange(refresh_token: str) -> oauth_store.Grant:
+            answered = exchange_refresh_token(
+                ApiAuthOAuth2RefreshToken(
+                    client_id=client.client_id,
+                    client_secret=client_secret,
+                    refresh_token=refresh_token,
+                    token_url=url,
+                    scope=" ".join(settings.scopes()),
+                )
+            )
+            return oauth_store.Grant(
+                answered.access_token, answered.expires_in, answered.replacement
+            )
+
+        def token() -> str:
+            # Called from the thread that reads Graph; the store is the loop's.
+            return asyncio.run_coroutine_threadsafe(
+                oauth_store.stored_access_token(
+                    state.admin_db,
+                    platform_url,
+                    org_id,
+                    source_id=source.id,
+                    secret_name=settings.refresh_token_name,
+                    exchange=exchange,
+                    replaces=True,
+                ),
+                loop,
+            ).result()
+
+        return settings.account, token
+
+    return connect

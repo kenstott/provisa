@@ -370,7 +370,8 @@
       "registry_url_required": "מקור '{{source}}': הוגדרו הגדרות של רישום סכמות אך לא כתובת URL של רישום סכמות",
       "registry_field_required": "מקור '{{source}}': שיטת האימות '{{method}}' של רישום הסכמות דורשת {{field}}",
       "registry_path_not_absolute": "מקור '{{source}}': {{field}} חייב להיות נתיב מוחלט, התקבל '{{path}}'",
-      "column_scope_invalid": "לעמודה '{{column}}' יש היקף '{{scope}}'; היקף של עמודה הוא אחד מ-{{scopes}}"
+      "column_scope_invalid": "לעמודה '{{column}}' יש היקף '{{scope}}'; היקף של עמודה הוא אחד מ-{{scopes}}",
+      "microsoft_365_invalid": "מקור Microsoft 365 {{source}}: {{error}}"
     },
     "secrets": {
       "name_refused": "{{name}} אינו שם בתוך הסודות של הארגון הזה ב-{{service}}: שם הוא יחסי לארגון ואינו יכול לצאת ממנו",
@@ -473,7 +474,9 @@
       "wrong_account": "{{approved}} אישר את הכניסה, אבל המקור הזה קורא את {{account}}. יש להיכנס בתור {{account}}.",
       "account_unread": "הכניסה אושרה, אבל לא ניתן היה לזהות את תיבת הדואר. יש לבדוק שה-Gmail API מופעל בפרויקט של הלקוח שלך.",
       "popup_blocked": "הדפדפן חסם את חלון הכניסה. יש לאפשר חלונות קופצים לאתר הזה ולנסות שוב.",
-      "window_closed": "חלון הכניסה נסגר לפני שהסתיים."
+      "window_closed": "חלון הכניסה נסגר לפני שהסתיים.",
+      "tenant_invalid": "הגדרת Microsoft 365 של הארגון אינה מציינת ספרייה (דייר). מנהל מזין את מזהה הספרייה או את הדומיין שלה.",
+      "microsoft_account_unread": "הכניסה אושרה, אך Microsoft לא ציינה של מי תיבת הדואר."
     }
   }
 }

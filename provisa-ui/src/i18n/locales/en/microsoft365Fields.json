@@ -1,0 +1,14 @@
+{
+  "microsoft365Fields": {
+    "account": "Mailbox address",
+    "accountHelp": "The Microsoft 365 mailbox this source reads.",
+    "readsMail": "Mail",
+    "readsMailHelp": "Messages, folders and attachment details of this mailbox. Nothing is changed in it.",
+    "connect": "Connect Microsoft account",
+    "connected": "Connected as {{account}}",
+    "connectFailed": "The sign-in could not be completed.",
+    "notSetUp": "Your organization has not connected Microsoft 365 yet.",
+    "setUpLink": "Set it up under {{where}}",
+    "notSetUpAsk": "Your organization has not connected Microsoft 365 yet. Ask an administrator to set it up under {{where}}."
+  }
+}

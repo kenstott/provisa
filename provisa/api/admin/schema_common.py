@@ -330,6 +330,29 @@ def google_workspace_refusal(input: SourceInput) -> Optional[MutationResult]:  #
     return None
 
 
+def microsoft_365_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-1923
+    """Why a Microsoft 365 source's settings cannot be a source, in the setup's own terms, or
+    None: for another source type, and for settings that can. The settings are the source's
+    mapping, read by the one module that also reads them to fetch the mail."""
+    import json as _json
+
+    from provisa.microsoft365 import SOURCE_TYPE
+    from provisa.microsoft365.settings import InvalidMicrosoft365Source, parse
+
+    if input.type != SOURCE_TYPE:
+        return None
+    try:
+        parse(_json.loads(input.mapping_json or "{}"))
+    except InvalidMicrosoft365Source as exc:
+        return MutationResult(
+            success=False,
+            message=f"Microsoft 365 source {input.id!r}: {exc}",
+            code="schema.microsoft_365_invalid",
+            params={"source": input.id, "error": str(exc)},
+        )
+    return None
+
+
 def _expand_wikipedia_if_needed(input: SourceInput) -> Optional[MutationResult]:  # REQ-1960
     """The ONE place a Wikipedia source becomes the ``files`` source that carries it -- called
     from inside create_source, as Kaggle staging is, so every creation path gets the same crawl.
@@ -827,6 +850,8 @@ SOURCE_MAPPING_SECRET_KEYS: dict[str, tuple[str, ...]] = {
     "cloudops": ("azure_client_secret", "aws_secret_access_key"),  # REQ-1947
     # REQ-1923: the same names provisa/google_workspace/settings.py reads (SECRET_KEYS).
     "google_workspace": ("refresh_token", "service_account_key"),
+    # REQ-1923: the same names provisa/microsoft365/settings.py reads (SECRET_KEYS).
+    "microsoft_365": ("refresh_token",),
 }
 
 

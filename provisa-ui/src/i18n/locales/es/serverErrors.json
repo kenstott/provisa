@@ -370,7 +370,8 @@
       "registry_url_required": "Origen '{{source}}': se indican ajustes del registro de esquemas pero no su URL",
       "registry_field_required": "Origen '{{source}}': la autenticación del registro de esquemas '{{method}}' requiere {{field}}",
       "registry_path_not_absolute": "Origen '{{source}}': {{field}} debe ser una ruta absoluta, se recibió '{{path}}'",
-      "column_scope_invalid": "La columna '{{column}}' tiene el ámbito '{{scope}}'; el ámbito de una columna es uno de {{scopes}}"
+      "column_scope_invalid": "La columna '{{column}}' tiene el ámbito '{{scope}}'; el ámbito de una columna es uno de {{scopes}}",
+      "microsoft_365_invalid": "Origen de Microsoft 365 {{source}}: {{error}}"
     },
     "secrets": {
       "name_refused": "{{name}} no es un nombre dentro de los secretos de esta organización en {{service}}: un nombre es relativo a la organización y no puede salir de ella",
@@ -473,7 +474,9 @@
       "wrong_account": "{{approved}} aprobó el inicio de sesión, pero este origen lee {{account}}. Inicie sesión como {{account}}.",
       "account_unread": "El inicio de sesión se aprobó, pero no se pudo identificar el buzón. Compruebe que la API de Gmail esté habilitada en el proyecto de su cliente.",
       "popup_blocked": "Su navegador bloqueó la ventana de inicio de sesión. Permita las ventanas emergentes de este sitio e inténtelo de nuevo.",
-      "window_closed": "La ventana de inicio de sesión se cerró antes de terminar."
+      "window_closed": "La ventana de inicio de sesión se cerró antes de terminar.",
+      "tenant_invalid": "La configuración de Microsoft 365 de la organización no indica un directorio (inquilino). Un administrador introduce el ID o el dominio del directorio.",
+      "microsoft_account_unread": "Se aprobó el inicio de sesión, pero Microsoft no indicó de quién es el buzón."
     }
   }
 }

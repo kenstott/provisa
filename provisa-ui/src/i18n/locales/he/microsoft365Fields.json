@@ -1,0 +1,14 @@
+{
+  "microsoft365Fields": {
+    "account": "כתובת תיבת הדואר",
+    "accountHelp": "חשבון Microsoft 365 שהמקור הזה קורא.",
+    "readsMail": "דואר",
+    "readsMailHelp": "הודעות, תיקיות ופרטי קבצים מצורפים של תיבת דואר זו. דבר אינו משתנה בה.",
+    "connect": "חיבור חשבון Microsoft",
+    "connected": "מחובר בתור {{account}}",
+    "connectFailed": "לא ניתן היה להשלים את הכניסה.",
+    "notSetUp": "הארגון שלך עדיין לא חיבר את Microsoft 365.",
+    "setUpLink": "להגדרה תחת {{where}}",
+    "notSetUpAsk": "הארגון שלך עדיין לא חיבר את Microsoft 365. יש לבקש ממנהל להגדיר זאת תחת {{where}}."
+  }
+}

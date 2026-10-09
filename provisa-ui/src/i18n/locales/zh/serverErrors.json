@@ -370,7 +370,8 @@
       "registry_url_required": "数据源“{{source}}”：已给出模式注册表设置，但没有模式注册表 URL",
       "registry_field_required": "数据源“{{source}}”：模式注册表认证“{{method}}”需要 {{field}}",
       "registry_path_not_absolute": "数据源“{{source}}”：{{field}} 必须是绝对路径，实际为“{{path}}”",
-      "column_scope_invalid": "列 '{{column}}' 的范围为 '{{scope}}'；列的范围必须是 {{scopes}} 之一"
+      "column_scope_invalid": "列 '{{column}}' 的范围为 '{{scope}}'；列的范围必须是 {{scopes}} 之一",
+      "microsoft_365_invalid": "Microsoft 365 数据源 {{source}}：{{error}}"
     },
     "secrets": {
       "name_refused": "{{name}} 不是 {{service}} 中本组织密钥范围内的名称：名称相对于组织，不能超出组织范围",
@@ -473,7 +474,9 @@
       "wrong_account": "{{approved}} 批准了登录,但此数据源读取的是 {{account}}。请以 {{account}} 的身份登录。",
       "account_unread": "登录已获批准,但无法确认邮箱。请检查您的客户端所属项目是否已启用 Gmail API。",
       "popup_blocked": "浏览器拦截了登录窗口。请允许此网站弹出窗口,然后重试。",
-      "window_closed": "登录窗口在完成前已被关闭。"
+      "window_closed": "登录窗口在完成前已被关闭。",
+      "tenant_invalid": "组织的 Microsoft 365 设置未指定目录（租户）。由管理员输入目录的 ID 或域名。",
+      "microsoft_account_unread": "登录已获批准，但 Microsoft 未说明这是谁的邮箱。"
     }
   }
 }

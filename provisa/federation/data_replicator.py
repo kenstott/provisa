@@ -210,6 +210,28 @@ class BuildNote:
     params: dict
 
 
+#: The note of a mail source's build that kept messages without a part it could not read.
+UNREADABLE_MESSAGES = "replication.unreadable_messages"
+#: How many of their ids the note carries; every id is in the log.
+NOTED_IDS = 100
+
+
+def unreadable_messages_note(unreadable: list[str]) -> BuildNote | None:
+    """The build's note for the messages kept without a part that could not be read: how
+    many, the first :data:`NOTED_IDS` of their ids, and how many more there are. None when
+    every message was read whole."""
+    if not unreadable:
+        return None
+    return BuildNote(
+        UNREADABLE_MESSAGES,
+        {
+            "count": len(unreadable),
+            "ids": unreadable[:NOTED_IDS],
+            "more": max(len(unreadable) - NOTED_IDS, 0),
+        },
+    )
+
+
 @dataclass(frozen=True)
 class BuildOutcome:
     """What a finished build reports. ``changed`` is False when the copy's content hash equals

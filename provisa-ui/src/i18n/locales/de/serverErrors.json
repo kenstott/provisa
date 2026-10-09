@@ -370,7 +370,8 @@
       "registry_url_required": "Quelle '{{source}}': Schema-Registry-Einstellungen sind angegeben, aber keine Schema-Registry-URL",
       "registry_field_required": "Quelle '{{source}}': Die Schema-Registry-Authentifizierung '{{method}}' erfordert {{field}}",
       "registry_path_not_absolute": "Quelle '{{source}}': {{field}} muss ein absoluter Pfad sein, erhalten: '{{path}}'",
-      "column_scope_invalid": "Spalte '{{column}}' hat den Geltungsbereich '{{scope}}'; zulässig ist einer von {{scopes}}"
+      "column_scope_invalid": "Spalte '{{column}}' hat den Geltungsbereich '{{scope}}'; zulässig ist einer von {{scopes}}",
+      "microsoft_365_invalid": "Microsoft-365-Quelle {{source}}: {{error}}"
     },
     "secrets": {
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",
@@ -473,7 +474,9 @@
       "wrong_account": "{{approved}} hat die Anmeldung genehmigt, aber diese Quelle liest {{account}}. Melden Sie sich als {{account}} an.",
       "account_unread": "Die Anmeldung wurde genehmigt, aber das Postfach konnte nicht ermittelt werden. Prüfen Sie, ob die Gmail API für das Projekt Ihres Clients aktiviert ist.",
       "popup_blocked": "Ihr Browser hat das Anmeldefenster blockiert. Erlauben Sie Pop-ups für diese Website und versuchen Sie es erneut.",
-      "window_closed": "Das Anmeldefenster wurde geschlossen, bevor die Anmeldung abgeschlossen war."
+      "window_closed": "Das Anmeldefenster wurde geschlossen, bevor die Anmeldung abgeschlossen war.",
+      "tenant_invalid": "Die Microsoft-365-Einstellung der Organisation nennt kein Verzeichnis (Mandant). Ein Administrator gibt die ID oder Domäne des Verzeichnisses ein.",
+      "microsoft_account_unread": "Die Anmeldung wurde genehmigt, aber Microsoft hat nicht angegeben, wessen Postfach es ist."
     }
   }
 }

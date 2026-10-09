@@ -370,7 +370,8 @@
       "registry_url_required": "Source '{{source}}' : des paramètres du registre de schémas sont fournis mais aucune URL de registre de schémas",
       "registry_field_required": "Source '{{source}}' : l'authentification du registre de schémas '{{method}}' exige {{field}}",
       "registry_path_not_absolute": "Source '{{source}}' : {{field}} doit être un chemin absolu, reçu '{{path}}'",
-      "column_scope_invalid": "La colonne '{{column}}' a la portée '{{scope}}' ; la portée d'une colonne est l'une de {{scopes}}"
+      "column_scope_invalid": "La colonne '{{column}}' a la portée '{{scope}}' ; la portée d'une colonne est l'une de {{scopes}}",
+      "microsoft_365_invalid": "Source Microsoft 365 {{source}} : {{error}}"
     },
     "secrets": {
       "name_refused": "{{name}} n'est pas un nom situé dans les secrets de cette organisation dans {{service}} : un nom est relatif à l'organisation et ne peut pas en sortir",
@@ -473,7 +474,9 @@
       "wrong_account": "{{approved}} a approuvé la connexion, mais cette source lit {{account}}. Connectez-vous en tant que {{account}}.",
       "account_unread": "La connexion a été approuvée, mais la boîte aux lettres n’a pas pu être identifiée. Vérifiez que l’API Gmail est activée pour le projet de votre client.",
       "popup_blocked": "Votre navigateur a bloqué la fenêtre de connexion. Autorisez les fenêtres pop-up pour ce site, puis réessayez.",
-      "window_closed": "La fenêtre de connexion a été fermée avant la fin."
+      "window_closed": "La fenêtre de connexion a été fermée avant la fin.",
+      "tenant_invalid": "Le paramètre Microsoft 365 de l’organisation n’indique aucun annuaire (locataire). Un administrateur saisit l’ID ou le domaine de l’annuaire.",
+      "microsoft_account_unread": "La connexion a été approuvée, mais Microsoft n’a pas indiqué à qui appartient la boîte aux lettres."
     }
   }
 }

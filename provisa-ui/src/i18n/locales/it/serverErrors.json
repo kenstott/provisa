@@ -370,7 +370,8 @@
       "registry_url_required": "Origine '{{source}}': sono indicate impostazioni del registro degli schemi ma nessun URL del registro",
       "registry_field_required": "Origine '{{source}}': l'autenticazione del registro degli schemi '{{method}}' richiede {{field}}",
       "registry_path_not_absolute": "Origine '{{source}}': {{field}} deve essere un percorso assoluto, ricevuto '{{path}}'",
-      "column_scope_invalid": "La colonna '{{column}}' ha ambito '{{scope}}'; l'ambito di una colonna è uno tra {{scopes}}"
+      "column_scope_invalid": "La colonna '{{column}}' ha ambito '{{scope}}'; l'ambito di una colonna è uno tra {{scopes}}",
+      "microsoft_365_invalid": "Origine Microsoft 365 {{source}}: {{error}}"
     },
     "secrets": {
       "name_refused": "{{name}} non è un nome all'interno dei segreti di questa organizzazione in {{service}}: un nome è relativo all'organizzazione e non può uscirne",
@@ -473,7 +474,9 @@
       "wrong_account": "{{approved}} ha approvato l’accesso, ma questa origine legge {{account}}. Accedi come {{account}}.",
       "account_unread": "L’accesso è stato approvato, ma non è stato possibile identificare la casella di posta. Verifica che l’API Gmail sia abilitata nel progetto del tuo client.",
       "popup_blocked": "Il browser ha bloccato la finestra di accesso. Consenti i pop-up per questo sito e riprova.",
-      "window_closed": "La finestra di accesso è stata chiusa prima del completamento."
+      "window_closed": "La finestra di accesso è stata chiusa prima del completamento.",
+      "tenant_invalid": "L'impostazione Microsoft 365 dell'organizzazione non indica una directory (tenant). Un amministratore inserisce l'ID o il dominio della directory.",
+      "microsoft_account_unread": "L'accesso è stato approvato, ma Microsoft non ha indicato di chi è la casella di posta."
     }
   }
 }

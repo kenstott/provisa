@@ -21,7 +21,8 @@ memory beyond a page and what ``threads`` adds up.
 
 A message with a part that is not what it declares keeps its row without text
 (``mail_rows``); the read counts such messages and names them when it ends: every id in the
-log, and the count with the first :data:`NOTED_IDS` ids as the build's note on the replica.
+log, and the count with the first of their ids as the build's note on the replica
+(``data_replicator.unreadable_messages_note``).
 """
 
 # Requirements: REQ-1923
@@ -36,7 +37,7 @@ import httpx
 
 from provisa.core import canonical_mail as cm
 from provisa.core.secrets import resolve_secrets
-from provisa.federation.data_replicator import BuildNote
+from provisa.federation.data_replicator import unreadable_messages_note
 from provisa.google_workspace import settings as gw_settings
 from provisa.google_workspace.gmail import Gmail, GmailNotFound
 from provisa.google_workspace.mail_rows import PROVIDER, MessageFacts, message_facts
@@ -55,11 +56,6 @@ TABLES: tuple[str, ...] = (
 )
 #: The schema the table picker shows them under: a mailbox has none of its own.
 SCHEMA = "default"
-
-#: The note a build carries when messages were kept without their text.
-UNREADABLE_MESSAGES = "replication.unreadable_messages"
-#: How many of their ids the note names; the log names them all.
-NOTED_IDS = 100
 
 #: Tables whose rows need a message's text and parts; every other is read as headers only.
 _NEEDS_WHOLE_MESSAGE = frozenset({"messages", "attachments"})
@@ -180,19 +176,8 @@ async def _messages(
         yield page
 
 
-def unreadable_note(unreadable: list[str]) -> BuildNote | None:
-    """The build's note for the messages kept without text: how many, the first
-    :data:`NOTED_IDS` of their ids, and how many more there are."""
-    if not unreadable:
-        return None
-    return BuildNote(
-        UNREADABLE_MESSAGES,
-        {
-            "count": len(unreadable),
-            "ids": unreadable[:NOTED_IDS],
-            "more": max(len(unreadable) - NOTED_IDS, 0),
-        },
-    )
+#: The build's note for the messages kept without text: the one every mail source gives.
+unreadable_note = unreadable_messages_note
 
 
 async def table_rows(

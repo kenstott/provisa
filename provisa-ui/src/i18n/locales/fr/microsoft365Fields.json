@@ -1,0 +1,14 @@
+{
+  "microsoft365Fields": {
+    "account": "Adresse de la boîte aux lettres",
+    "accountHelp": "Le compte Microsoft 365 que cette source lit.",
+    "readsMail": "Courrier",
+    "readsMailHelp": "Messages, dossiers et informations sur les pièces jointes de cette boîte aux lettres. Rien n’y est modifié.",
+    "connect": "Connecter le compte Microsoft",
+    "connected": "Connecté en tant que {{account}}",
+    "connectFailed": "La connexion n’a pas pu aboutir.",
+    "notSetUp": "Votre organisation n’a pas encore connecté Microsoft 365.",
+    "setUpLink": "Le configurer dans {{where}}",
+    "notSetUpAsk": "Votre organisation n’a pas encore connecté Microsoft 365. Demandez à un administrateur de le configurer dans {{where}}."
+  }
+}

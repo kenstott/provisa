@@ -370,7 +370,8 @@
       "registry_url_required": "資料來源「{{source}}」：已提供綱要註冊表設定，但沒有綱要註冊表 URL",
       "registry_field_required": "資料來源「{{source}}」：綱要註冊表驗證「{{method}}」需要 {{field}}",
       "registry_path_not_absolute": "資料來源「{{source}}」：{{field}} 必須是絕對路徑，實際為「{{path}}」",
-      "column_scope_invalid": "欄位「{{column}}」的範圍為「{{scope}}」；欄位的範圍須為 {{scopes}} 其中之一"
+      "column_scope_invalid": "欄位「{{column}}」的範圍為「{{scope}}」；欄位的範圍須為 {{scopes}} 其中之一",
+      "microsoft_365_invalid": "Microsoft 365 數據來源 {{source}}：{{error}}"
     },
     "secrets": {
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",
@@ -473,7 +474,9 @@
       "wrong_account": "{{approved}} 批准了登入,但此數據來源讀取的是 {{account}}。請以 {{account}} 的身分登入。",
       "account_unread": "登入已獲批准,但無法確認郵箱。請檢查你的用戶端所屬專案是否已啟用 Gmail API。",
       "popup_blocked": "瀏覽器封鎖了登入視窗。請允許此網站顯示彈出式視窗,然後再試一次。",
-      "window_closed": "登入視窗在完成前已被關閉。"
+      "window_closed": "登入視窗在完成前已被關閉。",
+      "tenant_invalid": "組織的 Microsoft 365 設定未指定目錄（租用戶）。由管理員輸入目錄的 ID 或網域。",
+      "microsoft_account_unread": "登入已獲批准，但 Microsoft 未說明這是誰的信箱。"
     }
   }
 }

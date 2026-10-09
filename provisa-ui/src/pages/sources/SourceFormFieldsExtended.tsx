@@ -41,6 +41,7 @@ import { ProfilerFormSection } from "./ProfilerFormSection";
 import { SalesforceFields } from "./SalesforceFields";
 import { CloudopsFields } from "./CloudopsFields";
 import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
+import { Microsoft365Fields } from "./Microsoft365Fields";
 import { WikipediaFields } from "./WikipediaFields";
 import { SparqlFormSection } from "./SparqlFormSection";
 import { SourceLoadManagementPanel } from "./SourceLoadManagementPanel";
@@ -583,6 +584,9 @@ export function SourceFormFieldsExtended({
       )}
       {form.type === "google_workspace" && ( // REQ-1923
         <GoogleWorkspaceFields sourceId={form.id} fields={authFields} setFields={setAuthFields} />
+      )}
+      {form.type === "microsoft_365" && ( // REQ-1923
+        <Microsoft365Fields sourceId={form.id} fields={authFields} setFields={setAuthFields} />
       )}
       {form.type === "wikipedia" && (
         <WikipediaFields fields={authFields} setFields={setAuthFields} /> // REQ-1960

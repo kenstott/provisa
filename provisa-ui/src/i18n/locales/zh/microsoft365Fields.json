@@ -1,0 +1,14 @@
+{
+  "microsoft365Fields": {
+    "account": "邮箱地址",
+    "accountHelp": "此数据源读取的 Microsoft 365 账号。",
+    "readsMail": "邮件",
+    "readsMailHelp": "读取此邮箱的邮件、文件夹和附件信息。不会更改邮箱中的任何内容。",
+    "connect": "连接 Microsoft 账号",
+    "connected": "已以 {{account}} 的身份连接",
+    "connectFailed": "无法完成登录。",
+    "notSetUp": "您的组织尚未连接 Microsoft 365。",
+    "setUpLink": "在{{where}}中进行设置",
+    "notSetUpAsk": "您的组织尚未连接 Microsoft 365。请让管理员在{{where}}中进行设置。"
+  }
+}

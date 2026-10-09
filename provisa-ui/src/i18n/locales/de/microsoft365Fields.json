@@ -1,0 +1,14 @@
+{
+  "microsoft365Fields": {
+    "account": "Postfachadresse",
+    "accountHelp": "Das Microsoft 365-Konto, das diese Quelle liest.",
+    "readsMail": "E-Mail",
+    "readsMailHelp": "Nachrichten, Ordner und Angaben zu Anhängen dieses Postfachs. Darin wird nichts geändert.",
+    "connect": "Microsoft-Konto verbinden",
+    "connected": "Verbunden als {{account}}",
+    "connectFailed": "Die Anmeldung konnte nicht abgeschlossen werden.",
+    "notSetUp": "Ihre Organisation hat Microsoft 365 noch nicht verbunden.",
+    "setUpLink": "Unter {{where}} einrichten",
+    "notSetUpAsk": "Ihre Organisation hat Microsoft 365 noch nicht verbunden. Bitten Sie einen Administrator, es unter {{where}} einzurichten."
+  }
+}

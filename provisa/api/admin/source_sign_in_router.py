@@ -32,6 +32,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 import provisa.google_workspace.sign_in  # noqa: F401  (registers the Google kind)
+import provisa.microsoft365.sign_in  # noqa: F401  (registers the Microsoft kind)
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.admin.environments_router import _caller_user_id
 from provisa.api.errors import ApiError

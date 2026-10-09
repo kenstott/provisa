@@ -370,7 +370,8 @@
       "registry_url_required": "ソース '{{source}}': スキーマレジストリの設定がありますが、スキーマレジストリ URL がありません",
       "registry_field_required": "ソース '{{source}}': スキーマレジストリ認証 '{{method}}' には {{field}} が必要です",
       "registry_path_not_absolute": "ソース '{{source}}': {{field}} は絶対パスである必要があります（指定値: '{{path}}'）",
-      "column_scope_invalid": "列「{{column}}」のスコープは「{{scope}}」です。列のスコープは {{scopes}} のいずれかです"
+      "column_scope_invalid": "列「{{column}}」のスコープは「{{scope}}」です。列のスコープは {{scopes}} のいずれかです",
+      "microsoft_365_invalid": "Microsoft 365 ソース {{source}}: {{error}}"
     },
     "secrets": {
       "name_refused": "{{name}} は {{service}} 内のこの組織のシークレットに含まれる名前ではありません。名前は組織に対する相対指定であり、組織の外に出ることはできません",
@@ -473,7 +474,9 @@
       "wrong_account": "{{approved}} がログインを承認しましたが、このソースが読み取るのは {{account}} です。{{account}} としてログインしてください。",
       "account_unread": "ログインは承認されましたが、メールボックスを特定できませんでした。クライアントのプロジェクトで Gmail API が有効になっているか確認してください。",
       "popup_blocked": "ブラウザがログイン ウィンドウをブロックしました。このサイトのポップアップを許可して、もう一度お試しください。",
-      "window_closed": "ログイン ウィンドウが完了前に閉じられました。"
+      "window_closed": "ログイン ウィンドウが完了前に閉じられました。",
+      "tenant_invalid": "組織の Microsoft 365 設定にディレクトリ (テナント) が指定されていません。管理者がディレクトリの ID またはドメインを入力します。",
+      "microsoft_account_unread": "サインインは承認されましたが、Microsoft からメールボックスの所有者が示されませんでした。"
     }
   }
 }

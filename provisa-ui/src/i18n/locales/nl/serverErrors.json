@@ -370,7 +370,8 @@
       "registry_url_required": "Bron '{{source}}': er zijn schema-registryinstellingen opgegeven maar geen schema-registry-URL",
       "registry_field_required": "Bron '{{source}}': schema-registryauthenticatie '{{method}}' vereist {{field}}",
       "registry_path_not_absolute": "Bron '{{source}}': {{field}} moet een absoluut pad zijn, ontvangen '{{path}}'",
-      "column_scope_invalid": "Kolom '{{column}}' heeft bereik '{{scope}}'; het bereik van een kolom is een van {{scopes}}"
+      "column_scope_invalid": "Kolom '{{column}}' heeft bereik '{{scope}}'; het bereik van een kolom is een van {{scopes}}",
+      "microsoft_365_invalid": "Microsoft 365-bron {{source}}: {{error}}"
     },
     "secrets": {
       "name_refused": "{{name}} is geen naam binnen de secrets van deze organisatie in {{service}}: een naam is relatief ten opzichte van de organisatie en kan deze niet verlaten",
@@ -473,7 +474,9 @@
       "wrong_account": "{{approved}} heeft de aanmelding goedgekeurd, maar deze bron leest {{account}}. Log in als {{account}}.",
       "account_unread": "De aanmelding is goedgekeurd, maar de mailbox kon niet worden vastgesteld. Controleer of de Gmail API is ingeschakeld voor het project van uw client.",
       "popup_blocked": "Uw browser heeft het inlogvenster geblokkeerd. Sta pop-ups toe voor deze site en probeer het opnieuw.",
-      "window_closed": "Het inlogvenster is gesloten voordat het klaar was."
+      "window_closed": "Het inlogvenster is gesloten voordat het klaar was.",
+      "tenant_invalid": "De Microsoft 365-instelling van de organisatie noemt geen directory (tenant). Een beheerder voert de ID of het domein van de directory in.",
+      "microsoft_account_unread": "De aanmelding is goedgekeurd, maar Microsoft heeft niet aangegeven van wie het postvak is."
     }
   }
 }

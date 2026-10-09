@@ -110,6 +110,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _remove_view_mv,
     _expand_wikipedia_if_needed,
     google_workspace_refusal,
+    microsoft_365_refusal,
     _stage_kaggle_if_needed,
     _sync_view_mv,
     _cache_prometheus_label_columns,
@@ -1185,6 +1186,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 _workspace_refusal = google_workspace_refusal(input)
                 if _workspace_refusal is not None:
                     return _workspace_refusal
+                _m365_refusal = microsoft_365_refusal(input)  # REQ-1923
+                if _m365_refusal is not None:
+                    return _m365_refusal
                 await _add_source_pool(state, input)
         except Exception as _conn_err:
             logging.getLogger(__name__).exception(
@@ -1558,6 +1562,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _workspace_refusal = google_workspace_refusal(input)  # REQ-1923
             if _workspace_refusal is not None:
                 return _workspace_refusal
+            _m365_refusal = microsoft_365_refusal(input)  # REQ-1923
+            if _m365_refusal is not None:
+                return _m365_refusal
             # REQ-1695: the literal a person retyped into the form replaces the vault entry under
             # the same name -- a rotation, not a second secret -- and the row keeps the reference.
             password_ref = await persist_source_password(info, input.id, input.password)

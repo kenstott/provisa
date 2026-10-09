@@ -1,0 +1,14 @@
+{
+  "microsoft365Fields": {
+    "account": "Dirección del buzón",
+    "accountHelp": "La cuenta de Microsoft 365 que lee este origen.",
+    "readsMail": "Correo",
+    "readsMailHelp": "Mensajes, carpetas y datos de los adjuntos de este buzón. No se modifica nada en él.",
+    "connect": "Conectar cuenta de Microsoft",
+    "connected": "Conectado como {{account}}",
+    "connectFailed": "No se pudo completar el inicio de sesión.",
+    "notSetUp": "Su organización aún no ha conectado Microsoft 365.",
+    "setUpLink": "Configurarlo en {{where}}",
+    "notSetUpAsk": "Su organización aún no ha conectado Microsoft 365. Pida a un administrador que lo configure en {{where}}."
+  }
+}
