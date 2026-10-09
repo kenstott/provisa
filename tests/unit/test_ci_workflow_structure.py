@@ -140,3 +140,124 @@ def test_every_job_that_needs_a_python_environment_gets_it_from_the_action():
             assert any((s.get("uses") or "") == "./.github/actions/setup-python" for s in steps), (
                 f"{workflow}:{job} runs uv without the setup-python action"
             )
+
+
+# --- one lane workflow (stage 2) ------------------------------------------------------------------
+
+LANE = "./.github/workflows/lane.yml"
+_RUNNER = "playwright " + "test"
+
+# The suite's three jobs that keep steps of their own (lane.yml's header says why): each carries
+# live credentials or cluster tooling, and the lane workflow declares only the few secrets its
+# callers pass by name instead of inheriting every one.
+_OWN_STEPS = {
+    "integration-suite-lanes.yml": {"cluster", "warehouse", "salesforce"},
+}
+
+
+def _runs_a_lane(command: str) -> bool:
+    container_suite = ("pytest" in command or "run_lane.py" in command) and any(
+        d in command for d in ("tests/integration", "tests/steps", "tests/e2e", "run_lane.py")
+    )
+    return (container_suite and "--matrix" not in command) or _RUNNER in command
+
+
+def _lane_callers():
+    return [(w, j, b) for w, j, b in _jobs() if b.get("uses") == LANE]
+
+
+def test_every_job_that_runs_the_container_suite_or_playwright_is_the_lane_workflow():
+    callers = {f"{w}:{j}" for w, j, _b in _lane_callers()}
+    assert callers == {
+        "amd64-engines.yml:exasol",
+        "integration-suite-lanes.yml:suite",
+        "ui-e2e-core.yml:playwright",
+        "ui-e2e-core.yml:provisioning",
+        "ui-e2e-swap-amd64.yml:playwright",
+        "ui-e2e-trino.yml:playwright",
+    }
+    for workflow, job, body in _jobs():
+        if workflow == "lane.yml" or job in _OWN_STEPS.get(workflow, ()):
+            continue
+        for step in body.get("steps") or []:
+            command = step.get("run") or ""
+            if _IN_THE_GUEST in command:
+                continue
+            assert not _runs_a_lane(command), (
+                f"{workflow}:{job} runs a lane with steps of its own: {step.get('name')}"
+            )
+
+
+def test_a_lane_caller_names_a_command_and_scripts_that_exist():
+    for workflow, job, body in _lane_callers():
+        given = body["with"]
+        assert _runs_a_lane(str(given["run"])), f"{workflow}:{job} runs no lane"
+        for hook in ("prepare", "on-failure"):
+            if hook in given:
+                script = REPO / str(given[hook]).split()[0]
+                assert script.is_file(), f"{workflow}:{job} {hook}: {script} does not exist"
+                assert script.parent == REPO / "scripts" / "ci" / "lanes"
+
+
+@pytest.mark.parametrize(
+    "script", sorted((REPO / "scripts" / "ci" / "lanes").glob("*.sh")), ids=lambda p: p.name
+)
+def test_a_lane_script_fails_loud(script):
+    """Its first command is `set -euo pipefail`: no later command's failure, and no failing side
+    of a pipe, is passed over."""
+    commands = [
+        line.strip()
+        for line in script.read_text().splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    assert commands[0] == "set -euo pipefail", script.name
+    used = {
+        str(b["with"].get(h, "")).split()[0]
+        for _w, _j, b in _lane_callers()
+        for h in ("prepare", "on-failure")
+        if b["with"].get(h)
+    }
+    used |= {"scripts/ci/lanes/suite-prepare.sh"}  # also the warehouse and salesforce jobs' step
+    assert str(script.relative_to(REPO)) in used, f"{script.name} is called by no lane"
+
+
+def test_the_lane_workflow_is_passed_its_few_secrets_by_name():
+    lane = yaml.safe_load((REPO / ".github" / "workflows" / "lane.yml").read_text())
+    declared = set(lane[True]["workflow_call"]["secrets"])
+    assert declared == {
+        "ANTHROPIC_API_KEY",
+        "SPLUNKBASE_USERNAME",
+        "SPLUNKBASE_PASSWORD",
+        "SP_CERT_P12_BASE64",
+    }
+    read = set(
+        re.findall(r"secrets\.([A-Z0-9_]+)", (REPO / ".github/workflows/lane.yml").read_text())
+    )
+    assert read == declared
+    for workflow, job, body in _lane_callers():
+        passed = body.get("secrets", {})
+        assert passed != "inherit", f"{workflow}:{job} hands the lane every secret"
+        assert set(passed) <= declared, f"{workflow}:{job}"
+
+
+def test_no_two_lanes_share_a_name_or_an_artifact():
+    names = [b["with"]["name"] for _w, _j, b in _lane_callers()]
+    assert len(names) == len(set(names)), names
+    artifacts = [b["with"].get("artifact-name") for _w, _j, b in _lane_callers()]
+    explicit = [a for a in artifacts if a]
+    assert len(explicit) == len(set(explicit)), explicit
+
+
+def test_reusable_workflows_nest_no_deeper_than_github_allows():
+    calls = {}
+    for workflow, _job, body in _jobs():
+        target = body.get("uses") or ""
+        if target.startswith("./.github/workflows/"):
+            calls.setdefault(workflow, set()).add(target.rsplit("/", 1)[-1])
+
+    def depth(workflow: str, seen: tuple = ()) -> int:
+        assert workflow not in seen, f"cycle through {workflow}"
+        return 1 + max((depth(c, (*seen, workflow)) for c in calls.get(workflow, ())), default=0)
+
+    # A caller and the workflows nested under it: four levels in all.
+    assert max(depth(w) for w in calls) <= 4

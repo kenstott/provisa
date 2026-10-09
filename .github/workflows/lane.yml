@@ -1,0 +1,320 @@
+# One lane: a job that runs the container suite or Playwright.
+#
+# Every such job in the repository is this workflow, called with what is particular to the lane:
+# the suite's matrix lanes (integration-suite-lanes.yml), the amd64-only engines
+# (amd64-engines.yml) and the three UI lanes (ui-e2e-core / -trino / -swap-amd64). The skeleton is
+# fixed -- checkout, drivers, Python, UI toolchain, Java, the Trino plugin and image caches, the
+# lane's prepare script, the lane's command, its failure script, the caches saved and the results
+# uploaded whatever the outcome -- so a lane cannot be missing a piece of setup another has.
+# What only one lane does before or after its command is a script under scripts/ci/lanes/.
+#
+# Not called by: the suite's cluster, warehouse and salesforce jobs (ordinary jobs built from the
+# same composite actions: each carries credentials or cluster tooling of its own, and this
+# workflow declares only the few secrets below rather than inheriting every one), and the NixOS
+# lanes (their command runs inside a guest VM the runner's setup does not reach).
+name: lane
+
+on:
+  workflow_call:
+    inputs:
+      name:
+        description: The lane as shown and as its results are named ("core 1/6", "ui-core").
+        type: string
+        required: true
+      ref:
+        type: string
+        default: ""
+      timeout:
+        description: The job's bound, in minutes.
+        type: number
+        required: true
+      python-extras:
+        description: Extras for `uv sync` (.github/actions/setup-python).
+        type: string
+        default: dev
+      client:
+        description: Also install provisa-client (the container suite).
+        type: boolean
+        default: false
+      uv-cache:
+        type: boolean
+        default: false
+      odbc:
+        description: Install Microsoft ODBC Driver 18.
+        type: boolean
+        default: false
+      ui:
+        description: none | chromium | chromium-with-deps (.github/actions/setup-ui).
+        type: string
+        default: none
+      ui-timeout:
+        description: Bound on the UI toolchain step, in minutes.
+        type: number
+        default: 30
+      java:
+        description: Java 21 with the Maven cache (the JDBC driver's integration test).
+        type: boolean
+        default: false
+      trino-plugins:
+        description: Restore and save the pinned Trino plugin jars (a lane that collects pytest).
+        type: boolean
+        default: false
+      image-cache:
+        description: Keep the lane's pulled images between runs.
+        type: boolean
+        default: false
+      splunk-cim-cache:
+        description: Keep the Splunk CIM add-on tarball between runs.
+        type: boolean
+        default: false
+      env:
+        description: KEY=VALUE lines, set for every step after setup.
+        type: string
+        default: ""
+      prepare:
+        description: A script (and its arguments) run before the lane's command.
+        type: string
+        default: ""
+      run:
+        description: The lane's command. $LANE_SLUG is the lane's name as a file name.
+        type: string
+        required: true
+      working-directory:
+        description: Where `run` runs.
+        type: string
+        default: "."
+      on-failure:
+        description: A script run when the lane failed.
+        type: string
+        default: ""
+      artifact-name:
+        description: The results artifact; by default lane-<the lane's name as a file name>.
+        type: string
+        default: ""
+      artifact-path:
+        type: string
+        required: true
+      artifact-retention:
+        description: Days; 0 keeps the repository's default.
+        type: number
+        default: 0
+      artifact-required:
+        description: error | warn when `artifact-path` holds no file.
+        type: string
+        default: warn
+      artifact-on-failure-name:
+        description: An artifact uploaded only when the lane failed.
+        type: string
+        default: ""
+      artifact-on-failure-path:
+        type: string
+        default: ""
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: false
+      SPLUNKBASE_USERNAME:
+        required: false
+      SPLUNKBASE_PASSWORD:
+        required: false
+      SP_CERT_P12_BASE64:
+        required: false
+
+permissions:
+  contents: read
+
+# Naming the shell makes GitHub run every step with `bash -eo pipefail`. The default
+# (`bash -e`) gives a pipeline its LAST command's status: a failed download piped into an
+# installer, or a failed `docker save` piped into a compressor, passed.
+defaults:
+  run:
+    shell: bash
+
+env:
+  # The Splunk CIM add-on release scripts/fetch-splunk-cim.sh vendors (and the cache key names).
+  SPLUNK_CIM_VERSION: "6.1.0"
+
+jobs:
+  lane:
+    name: ${{ inputs.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      # First, before any step that can fail: the result upload and the image cache run on
+      # failure too, and read this step's names. Run after an install that failed, it never ran
+      # and they were named "lane-" and "images--".
+      - name: Lane cache key
+        id: key
+        env:
+          LANE_NAME: ${{ inputs.name }}
+        run: |
+          # "core 1/6" -> "core-1of6": the lane's name as a file name and a cache key.
+          name="${LANE_NAME// /-}"
+          name="${name//\//of}"
+          echo "lane=$name" >> "$GITHUB_OUTPUT"
+          echo "LANE_SLUG=$name" >> "$GITHUB_ENV"
+          echo "compose=${{ hashFiles('docker-compose.core.yml', 'docker-compose.test.yml', 'docker-compose.e2e.yml') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Microsoft ODBC Driver 18 for SQL Server
+        if: inputs.odbc
+        uses: ./.github/actions/mssql-odbc
+        # Bounds the whole install: core 2/6 once sat in it for its job's length (run 37690884511).
+        timeout-minutes: 10
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: ${{ inputs.python-extras }}
+          client: ${{ inputs.client }}
+          cache: ${{ inputs.uv-cache }}
+
+      - name: Set up the UI toolchain
+        if: inputs.ui != 'none'
+        uses: ./.github/actions/setup-ui
+        timeout-minutes: ${{ inputs.ui-timeout }}
+        with:
+          playwright: ${{ inputs.ui }}
+
+      - name: Java 21
+        if: inputs.java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Restore Trino plugins
+        id: trino-plugins
+        if: inputs.trino-plugins
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
+
+      # Images this lane pulled last time, so a run is not dominated by pulls. Keyed on the compose
+      # files: a changed image tag is a new key.
+      - name: Restore images
+        id: images
+        if: inputs.image-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/images.tar.zst
+          key: images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}
+
+      - name: Load images
+        if: inputs.image-cache && steps.images.outputs.cache-hit == 'true'
+        run: zstd -dc ~/images.tar.zst | docker load
+
+      # The itest splunk service bind-mounts the Splunk CIM add-on (docker-compose.test.yml), which
+      # is licensed from Splunkbase and gitignored. tests/conftest.py fetches it
+      # (scripts/fetch-splunk-cim.sh) only when it is about to start splunk, so only a
+      # requires_splunk test needs it, and one that cannot get it fails by name while the rest of
+      # the lane runs. The tarball is cached by version: restored here, saved after the lane
+      # whatever the lane's outcome, so Splunkbase is hit once per version.
+      - name: Restore Splunk CIM tarball
+        id: splunk-cim
+        if: inputs.splunk-cim-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/provisa-splunk-cim
+          key: splunk-cim-${{ env.SPLUNK_CIM_VERSION }}
+
+      - name: Lane environment
+        if: inputs.env != ''
+        env:
+          LANE_ENV: ${{ inputs.env }}
+        run: |
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            case "$line" in
+              *=*) echo "$line" >> "$GITHUB_ENV" ;;
+              *) echo "::error::not KEY=VALUE: $line"; exit 1 ;;
+            esac
+          done <<< "$LANE_ENV"
+
+      - name: Prepare
+        if: inputs.prepare != ''
+        env:
+          SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
+          PREPARE: ${{ inputs.prepare }}
+        run: bash $PREPARE
+
+      - name: Run lane
+        id: run
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          # Where a test's launched servers leave their logs (tests/integration/
+          # worker_boot_harness.py): under results/, so they are uploaded with the lane's report.
+          PROVISA_TEST_SERVER_LOG_DIR: ${{ github.workspace }}/results/${{ steps.key.outputs.lane }}/server-logs
+          # A lane that reaches the live model; the caller passes the key only to such a lane.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # For the Splunk CIM fetch tests/conftest.py runs before starting splunk.
+          SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
+          SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
+        run: ${{ inputs.run }}
+
+      # A fetch inside the lane leaves the tarball at the restored path; save it under the same key,
+      # also when the lane failed (actions/cache's own post-step saves only on success).
+      - name: Splunk CIM tarball fetched
+        id: splunk-cim-fetched
+        if: always() && inputs.splunk-cim-cache && steps.splunk-cim.outputs.cache-hit != 'true'
+        run: |
+          if [ -s ~/.cache/provisa-splunk-cim/Splunk_SA_CIM-${SPLUNK_CIM_VERSION}.tgz ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache Splunk CIM tarball
+        if: always() && steps.splunk-cim-fetched.outputs.present == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/provisa-splunk-cim
+          key: splunk-cim-${{ env.SPLUNK_CIM_VERSION }}
+
+      - name: What the lane left when it failed
+        if: failure() && inputs.on-failure != ''
+        env:
+          ON_FAILURE: ${{ inputs.on-failure }}
+        run: bash $ON_FAILURE
+
+      - name: Save images
+        if: always() && inputs.image-cache && steps.images.outputs.cache-hit != 'true'
+        # pipefail: without it the step's status is zstd's, and a save that failed left a
+        # truncated archive for the next step to cache and later runs to load.
+        run: |
+          set -o pipefail
+          docker save $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>') | zstd -T0 -3 -o ~/images.tar.zst
+
+      - name: Cache images
+        if: always() && inputs.image-cache && steps.images.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/images.tar.zst
+          key: images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}
+
+      - name: Cache Trino plugins
+        if: always() && inputs.trino-plugins
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: save
+          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name || format('lane-{0}', steps.key.outputs.lane) }}
+          path: ${{ inputs.artifact-path }}
+          retention-days: ${{ inputs.artifact-retention }}
+          if-no-files-found: ${{ inputs.artifact-required }}
+
+      - name: Upload what the lane left when it failed
+        if: failure() && inputs.artifact-on-failure-name != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-on-failure-name }}
+          path: ${{ inputs.artifact-on-failure-path }}
+          retention-days: ${{ inputs.artifact-retention }}

@@ -41,133 +41,38 @@ concurrency:
 jobs:
   playwright:
     name: Playwright swap lane (exasol, saphana)
-    runs-on: ubuntu-latest
-    # exasol's EXAStorage cold init and saphana's HXE tenant boot each budget up to 15m in their
-    # own beforeAll (engine-swap.spec.ts), and both run twice (swap describe + reboot describe) on
-    # this job's single worker, on top of the core stack's own Trino cold boot.
-    timeout-minutes: 90
-    env:
-      # playwright.config.ts keys `reuseExistingServer` off this: under CI every webServer must
-      # be started by the harness, never adopted from a stale process.
-      CI: "true"
-      # Declares the Trino webServer and keeps the control plane on the compose Postgres — the
-      # swap project requires RUNS_TRINO (playwright.config.ts rejects lane=trino on sqlite).
-      PROVISA_E2E_LANE: trino
-      PG_PORT: "5432"
-      TRINO_PORT: "8080"
-      # The harness registers a source on the DuckDB backend and reads it back on the Trino one:
-      # both must serve the SAME org schema (engine-swap.spec.ts's documented invocation). Left
-      # unset they are "e2e" and "e2e_trino", and the second engine answered "source … not found
-      # on this engine's control-plane schema" (swap lane on v0.1.0-alpha.478).
-      PROVISA_E2E_ORG_ID: e2e_swap
-      PROVISA_E2E_TRINO_ORG_ID: e2e_swap
-    steps:
-      - uses: actions/checkout@v4
-
-      # A skip caused by the wrong arch would be a green run that executed nothing — exactly what
-      # this workflow exists to prevent (both sources are gated on RUNNING_IN_CI, not arch, so a
-      # silent arm64 runner would still "pass" by running zero assertions).
-      - name: Assert the runner is amd64
-        run: |
-          arch="$(uname -m)"
-          echo "runner arch: $arch"
-          [ "$arch" = "x86_64" ] || { echo "::error::ui-e2e swap lane running on $arch"; exit 1; }
-
-      # saphana extra is demo/sources/saphana/prime.py's own dependency (hdbcli + sqlalchemy-hana)
-      # — same reasoning as ui-e2e-core.yml's saphana case.
-      - name: Set up Python
-        uses: ./.github/actions/setup-python
-        with:
-          extras: dev saphana
-
-      - name: Set up the UI toolchain
-        uses: ./.github/actions/setup-ui
-        with:
-          playwright: chromium-with-deps
-
-      # docker-compose.core.yml bind-mounts ./sharepoint.pfx into Trino unconditionally, whether
-      # or not this lane runs any sharepoint test. Neither exasol nor saphana authenticates
-      # through it — an empty placeholder is enough to let the mount (and Trino's boot) succeed,
-      # same approach as amd64-engines.yml.
-      - name: Placeholder for the gitignored SharePoint cert mount
-        run: touch sharepoint.pfx
-
-      # docker-compose.core.yml also mounts these plugin dirs into Trino unconditionally; Trino
-      # aborts with "No service providers of type io.trino.spi.Plugin" without them, surfacing
-      # only as an unhealthy container two minutes in — same requirement as ui-e2e-trino.yml even
-      # though this lane exercises neither sharepoint nor splunk.
-      - name: Download Calcite Trino plugins
-        run: |
-          MAVEN="https://repo1.maven.org/maven2/io/simpleishard"
-          VERSION="0.106.3"
-          # name:version. trino-file (REQ-1960) is at 0.109.0; trino-salesforce (REQ-1946) and
-          # trino-cloudops (REQ-1947) are at 0.108.0, the
-          # first release with what Provisa needs of them; see tests/conftest.py _TRINO_PLUGIN_VERSIONS.
-          for spec in trino-sharepoint:$VERSION trino-splunk:$VERSION trino-file:0.109.0 \
-              trino-salesforce:0.108.0 trino-cloudops:0.108.0; do
-            plugin="${spec%%:*}"
-            version="${spec##*:}"
-            mkdir -p "trino/plugins/$plugin"
-            curl -fsSL "$MAVEN/$plugin/$version/$plugin-$version.jar" \
-              -o "trino/plugins/$plugin/$plugin-$version.jar"
-            ls "trino/plugins/$plugin"/*.jar >/dev/null
-          done
-
-      # REQ-1494: Provisa's own function plugin (provisa_digest, provisa_fake_method), built from
-      # trino-functions/ in a Maven container; the engine's compose mounts it beside the others.
-      - name: Build the provisa-functions Trino plugin
-        run: scripts/build_trino_functions.sh
-
-      - name: Pre-pull service images
-        run: docker compose -f docker-compose.core.yml pull postgres trino minio minio-init
-
-      # zaychik is built, not pulled (build: ./zaychik, image: zaychik:latest).
-      - name: Build the Zaychik Flight SQL image
-        run: docker compose -f docker-compose.core.yml build zaychik
-
-      # trino-worker stays at replicas: 0 — same reasoning as ui-e2e-trino.yml. minio and zaychik
-      # are not optional: TrinoBackend.provision_infra dials both with no fallback at startup.
-      # docker-compose.core.yml's hive_warehouse volume is a `local` driver bind (o: bind), not a
-      # plain service-level bind mount — unlike a plain bind, it does NOT auto-create a missing
-      # host directory, it fails the container outright ("no such file or directory"). The
-      # compose file's own default device path is this repo's maintainer's own machine, so CI
-      # must override it — same fix as ui-e2e-trino.yml.
-      - name: Create the hive_warehouse bind-mount device
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/.e2e-hive-warehouse"
-          echo "PROVISA_E2E_HIVE_WAREHOUSE_HOST=$GITHUB_WORKSPACE/.e2e-hive-warehouse" >> "$GITHUB_ENV"
-
-      - name: Start core services
-        run: |
-          docker compose -f docker-compose.core.yml up -d --wait \
-            postgres trino minio zaychik
-          docker compose -f docker-compose.core.yml up minio-init
-
-      - name: Run Playwright swap lane (exasol, saphana only)
-        working-directory: provisa-ui
-        env:
-          PROVISA_OTEL_S3_ENDPOINT: http://localhost:9000
-        run: npx playwright test --project=swap -g "exasol|saphana" --reporter=list,html
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-swap-amd64
-          path: provisa-ui/playwright-report/
-          retention-days: 7
-
-      - name: Container state and logs on failure
-        if: failure()
-        run: |
-          docker ps -a
-          docker compose -f docker-compose.core.yml logs --tail=200
-          docker compose -f docker-compose.core.yml logs --no-color trino > trino-container.log
-
-      - name: Upload Trino container log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trino-container-log-swap-amd64
-          path: trino-container.log
-          retention-days: 7
+    uses: ./.github/workflows/lane.yml
+    with:
+      name: ui-swap-amd64
+      timeout: 90
+      # saphana (hdbcli + sqlalchemy-hana) is demo/sources/saphana/prime.py's own dependency.
+      python-extras: dev saphana
+      ui: chromium-with-deps
+      # CI: every webServer is started by the harness. PROVISA_E2E_LANE=trino declares the Trino
+      # webServer and keeps the control plane on the compose Postgres. PG_PORT / TRINO_PORT pin
+      # what docker-compose.core.yml publishes so playwright.config.ts's `docker compose port`
+      # lookup and the Trino backend agree with the binding. PROVISA_OTEL_S3_ENDPOINT: the
+      # backends run on the host, where the compose name "minio" does not resolve; minio
+      # publishes 9000 there.
+      # PROVISA_E2E_ORG_ID == PROVISA_E2E_TRINO_ORG_ID: the harness registers a source on the
+      # DuckDB backend and reads it back on the Trino one, so both must serve the SAME org schema
+      # (engine-swap.spec.ts's documented invocation). Left unset they are "e2e" and "e2e_trino",
+      # and the second engine answered "source … not found on this engine's control-plane
+      # schema" (swap lane on v0.1.0-alpha.478).
+      env: |
+        CI=true
+        PROVISA_E2E_LANE=trino
+        PG_PORT=5432
+        TRINO_PORT=8080
+        PROVISA_OTEL_S3_ENDPOINT=http://localhost:9000
+        PROVISA_E2E_ORG_ID=e2e_swap
+        PROVISA_E2E_TRINO_ORG_ID=e2e_swap
+      prepare: scripts/ci/lanes/trino-stack-prepare.sh placeholder-cert
+      working-directory: provisa-ui
+      run: npx playwright test --project=swap -g "exasol|saphana" --reporter=list,html
+      on-failure: scripts/ci/lanes/trino-stack-on-failure.sh
+      artifact-name: playwright-report-swap-amd64
+      artifact-path: provisa-ui/playwright-report/
+      artifact-retention: 7
+      artifact-on-failure-name: trino-container-log-swap-amd64
+      artifact-on-failure-path: trino-container.log

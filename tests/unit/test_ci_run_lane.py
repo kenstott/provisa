@@ -128,13 +128,29 @@ def test_every_lane_writes_a_long_tests_stacks_to_the_log_before_its_bound(lane)
     assert 0 < int(seconds) < run_lane.TEST_TIMEOUT_S
 
 
-def _suite_steps() -> list[dict]:
+LANE = "./.github/workflows/lane.yml"
+
+
+def _suite_job() -> dict:
     import yaml
 
     workflow = yaml.safe_load(
         (REPO / ".github" / "workflows" / "integration-suite-lanes.yml").read_text()
     )
-    return workflow["jobs"]["suite"]["steps"]
+    return workflow["jobs"]["suite"]
+
+
+def _suite_steps() -> list[dict]:
+    """The steps a suite lane runs: the suite's matrix job IS the one lane workflow (lane.yml),
+    called with the Splunk CIM cache, the plugin cache and the image cache switched on."""
+    import yaml
+
+    suite = _suite_job()
+    assert suite["uses"] == LANE
+    for switch in ("trino-plugins", "image-cache", "splunk-cim-cache", "client", "odbc"):
+        assert suite["with"][switch] is True, switch
+    lane = yaml.safe_load((REPO / ".github" / "workflows" / "lane.yml").read_text())
+    return lane["jobs"]["lane"]["steps"]
 
 
 def test_no_suite_step_fetches_the_splunk_cim_add_on():
@@ -148,6 +164,11 @@ def test_no_suite_step_fetches_the_splunk_cim_add_on():
 def test_the_lane_gets_the_splunkbase_credentials_for_that_fetch():
     lane = next(step for step in _suite_steps() if step.get("name") == "Run lane")
     assert {"SPLUNKBASE_USERNAME", "SPLUNKBASE_PASSWORD"} <= set(lane["env"])
+    # ... which the suite passes by name; the lane workflow inherits no secret.
+    passed = _suite_job()["secrets"]
+    assert isinstance(passed, dict)
+    for name in ("SPLUNKBASE_USERNAME", "SPLUNKBASE_PASSWORD"):
+        assert passed[name] == f"${{{{ secrets.{name} }}}}"
 
 
 def test_a_tarball_fetched_inside_the_lane_is_saved_under_the_restored_key():
@@ -217,7 +238,7 @@ def test_every_collecting_job_caches_the_pinned_trino_plugins_around_its_lane(jo
     a refused fetch ended the lane before any test ran (run 37573213103: neo4j 403, kafka 404).
     Each job that collects tests restores them by pin before its lane and saves them after --
     through .github/actions/trino-plugins, so no job can carry a copy that has drifted."""
-    steps = _job_steps(job)
+    steps = _suite_steps() if job == "suite" else _job_steps(job)
     lane = [step.get("name") for step in steps].index("Run lane")
     at_restore, at_save = _plugin_cache_steps(steps)
     assert at_restore < lane < at_save
@@ -382,14 +403,24 @@ def test_the_cloudops_gcp_key_reaches_the_test_as_a_file_and_is_never_printed():
     assert "echo $CLOUDOPS" not in script and 'echo "$CLOUDOPS' not in script
 
 
-def _workflow_jobs() -> list[tuple[str, str, list[dict]]]:
+def _workflow_jobs() -> list[tuple[str, str, dict]]:
     import yaml
 
     found = []
     for path in sorted((REPO / ".github" / "workflows").glob("*.yml")):
         for name, job in (yaml.safe_load(path.read_text()).get("jobs") or {}).items():
-            found.append((path.name, name, job.get("steps") or []))
+            found.append((path.name, name, job))
     return found
+
+
+def _collects_the_container_suite(command: str) -> bool:
+    return (
+        ("pytest" in command or "run_lane.py" in command)
+        and "--matrix" not in command
+        and any(
+            d in command for d in ("tests/integration", "tests/steps", "tests/e2e", "run_lane.py")
+        )
+    )
 
 
 def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_by_pin():
@@ -397,19 +428,20 @@ def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_
     tests/integration, tests/steps or tests/e2e, and a refused fetch ends the run before any
     test. The release run of the amd64-only engines workflow stopped there (37874425655: HTTP 404
     for a jar that exists): it was the one job that collected those tests without the suite's
-    cache. Every such job restores and saves through the one plugin-cache action."""
+    cache. Every such job restores and saves through the one plugin-cache action -- as a call of
+    the lane workflow with `trino-plugins: true`, or with the action's two steps of its own."""
     collecting, in_a_guest = [], []
-    for workflow, job, steps in _workflow_jobs():
+    for workflow, job, body in _workflow_jobs():
+        if body.get("uses") == LANE:
+            if _collects_the_container_suite(str(body["with"]["run"])):
+                collecting.append(f"{workflow}:{job}")
+                assert body["with"].get("trino-plugins") is True, (
+                    f"{workflow}:{job} collects the container suite without the Trino plugin cache"
+                )
+            continue
+        steps = body.get("steps") or []
         runs = [(i, s.get("run") or "") for i, s in enumerate(steps)]
-        tests_at = [
-            i
-            for i, run in runs
-            if ("pytest" in run or "run_lane.py" in run)
-            and "--matrix" not in run
-            and any(
-                d in run for d in ("tests/integration", "tests/steps", "tests/e2e", "run_lane.py")
-            )
-        ]
+        tests_at = [i for i, run in runs if _collects_the_container_suite(run)]
         if not tests_at:
             continue
         if any("packaging/nixos/vm-run" in run for _i, run in runs):
@@ -425,5 +457,11 @@ def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_
         )
         at_restore, at_save = _plugin_cache_steps(steps)
         assert at_restore < tests_at[0] < at_save, f"{workflow}:{job}"
-    assert "amd64-engines.yml:exasol" in collecting and len(collecting) >= 5, collecting
+    assert sorted(collecting) == [
+        "amd64-engines.yml:exasol",
+        "integration-suite-lanes.yml:cluster",
+        "integration-suite-lanes.yml:salesforce",
+        "integration-suite-lanes.yml:suite",
+        "integration-suite-lanes.yml:warehouse",
+    ], collecting
     assert in_a_guest == ["nixos.yml:lane"], in_a_guest

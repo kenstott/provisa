@@ -59,18 +59,25 @@ def test_the_core_project_leaves_those_specs_to_the_provisioning_project():
     assert re.search(r'name: "core-provisioning",\s*testMatch: PROVISIONING_SPECS', CONFIG)
 
 
-def test_the_lane_runs_the_provisioning_project_last_with_one_worker():
+def test_the_lane_runs_the_provisioning_project_alone_with_one_worker():
+    """Two jobs of the core UI workflow, each a call of the lane workflow and so each on a runner
+    of its own: "core" with the lane's workers, and "core-provisioning" with one. No other
+    worker's page is on the host whose networks the provisioning specs change."""
     workflow = yaml.safe_load((REPO / ".github/workflows/ui-e2e-core.yml").read_text())
-    steps = workflow["jobs"]["playwright"]["steps"]
-    runs = [s for s in steps if RUNNER in (s.get("run") or "")]
-    assert [
-        ("--project=core " in s["run"], "--project=core-provisioning" in s["run"]) for s in runs
-    ] == [(True, False), (False, True)]
-    last = runs[1]
-    assert "--workers=1" in last["run"]
-    # A red first step does not hide the second's result, and each keeps its own report.
-    assert "always()" in last["if"]
-    assert last["env"]["PLAYWRIGHT_HTML_OUTPUT_DIR"] != "playwright-report"
+    jobs = workflow["jobs"]
+    assert {job: body["uses"] for job, body in jobs.items()} == {
+        "playwright": "./.github/workflows/lane.yml",
+        "provisioning": "./.github/workflows/lane.yml",
+    }
+    core, provisioning = jobs["playwright"]["with"]["run"], jobs["provisioning"]["with"]["run"]
+    assert RUNNER in core and "--project=core " in core and "--workers" not in core
+    assert RUNNER in provisioning and "--project=core-provisioning --workers=1" in provisioning
+    assert "needs" not in jobs["provisioning"]  # side by side, not after
+    # Each keeps a report of its own.
+    names = {body["with"]["artifact-name"] for body in jobs.values()}
+    assert names == {"playwright-report-core", "playwright-report-core-provisioning"}
+    # The provisioning job is the one that starts SQL Server's primer.
+    assert jobs["provisioning"]["with"]["odbc"] is True
 
     script = json.loads((UI / "package.json").read_text())["scripts"]["test:e2e:core"]
     first = re.search(r"--project=core(?!-)", script)

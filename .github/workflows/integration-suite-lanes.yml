@@ -87,179 +87,51 @@ jobs:
           case ",${LANES// /}," in *,all,*|*,cluster,*) c=true;; *) c=false;; esac
           echo "cluster=$c" >> "$GITHUB_OUTPUT"
 
+  # Every lane of the matrix is the one lane workflow (lane.yml), called with what a container-suite
+  # lane needs.
   suite:
     name: ${{ matrix.lane }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }}
     needs: plan
     if: github.event_name != 'schedule' && needs.plan.outputs.suite == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-
-      # First, before any step that can fail: the result upload and the image cache run on
-      # failure too, and read this step's names. Run after an install that failed, it never ran
-      # and they were named "lane-" and "images--".
-      - &lane-key
-        name: Lane cache key
-        id: key
-        run: |
-          # A lane with no shards is named by itself ("e2e"), not with a trailing dash.
-          name="${{ matrix.lane }}${{ matrix.shard && format('-{0}', matrix.shard) || '' }}"
-          echo "lane=${name//\//of}" >> "$GITHUB_OUTPUT"
-          echo "compose=${{ hashFiles('docker-compose.core.yml', 'docker-compose.test.yml', 'docker-compose.e2e.yml') }}" >> "$GITHUB_OUTPUT"
-
+    uses: ./.github/workflows/lane.yml
+    with:
+      name: ${{ matrix.lane }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }}
+      ref: ${{ inputs.ref || github.sha }}
+      timeout: ${{ matrix.timeout }}
+      client: true
+      uv-cache: true
       # The SQL Server warehouse replica target (provisa/federation/mssql_warehouse_runtime.py)
       # connects through Microsoft's ODBC Driver 18, which the runner image does not ship; its
       # requires_sqlserver tests run in the suite shards.
-      - &install-mssql-odbc
-        name: Install Microsoft ODBC Driver 18 for SQL Server
-        uses: ./.github/actions/mssql-odbc
-        # Bounds the whole install: core 2/6 once sat in it for its job's length (run 37690884511).
-        timeout-minutes: 10
-
-      - &setup-python
-        name: Set up Python
-        uses: ./.github/actions/setup-python
-        with:
-          cache: "true"
-          client: "true"
-
-      # tests/conftest.py fetches the pinned Trino plugin jars (_TRINO_PLUGINS at
-      # _TRINO_PLUGIN_VERSION, or at their own in _TRINO_PLUGIN_VERSIONS) from Maven Central at collection; a refused fetch there ends the lane
-      # before any test runs. The jars are cached by that pin: restored here, saved after the lane
-      # whatever its outcome once every jar is present, so Maven Central is hit once per pin.
-      - &restore-trino-plugins
-        name: Restore Trino plugins
-        id: trino-plugins
-        uses: ./.github/actions/trino-plugins
-        with:
-          phase: restore
-
-      # Images this lane pulled last time, so a run is not dominated by pulls. Keyed on the compose
-      # files: a changed image tag is a new key.
-      - &restore-images
-        name: Restore images
-        id: images
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/images.tar.zst
-          key: images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}
-
-      - &load-images
-        name: Load images
-        if: steps.images.outputs.cache-hit == 'true'
-        run: zstd -dc ~/images.tar.zst | docker load
-
-      # The itest splunk service bind-mounts the Splunk CIM add-on (docker-compose.test.yml), which
-      # is licensed from Splunkbase and gitignored. tests/conftest.py fetches it
-      # (scripts/fetch-splunk-cim.sh) only when it is about to start splunk, so only a
-      # requires_splunk test needs it, and one that cannot get it fails by name while the rest of
-      # the lane runs. The tarball is cached by version: restored here, saved after the lane
-      # whatever the lane's outcome, so Splunkbase is hit once per version.
-      - name: Restore Splunk CIM tarball
-        id: splunk-cim
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.cache/provisa-splunk-cim
-          key: splunk-cim-${{ env.SPLUNK_CIM_VERSION }}
-
-      - &stack-slots
-        name: Stack slots on this runner
-        run: |
-          uv run python -c "from tests.itest_stack import concurrent_session_limit as n; \
-            print('docker stack slots on this runner:', n()); assert n() >= 1"
-
+      odbc: true
       # tests/integration/test_jdbc_driver_e2e.py (core lane) runs the JDBC driver's Flight IT
       # with Maven against the server it starts; the driver is built for Java 21.
-      - name: Java 21 for the JDBC driver's integration test
-        if: matrix.lane == 'core'
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: maven
-
-      - name: Run lane
-        run: |
-          uv run python scripts/ci/run_lane.py ${{ matrix.lane }} \
-            ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }} \
-            --junitxml "results/${{ steps.key.outputs.lane }}/junit.xml"
-        env:
-          # Where a test's launched servers leave their logs (tests/integration/
-          # worker_boot_harness.py): under results/, so they are uploaded with the lane's report.
-          PROVISA_TEST_SERVER_LOG_DIR: ${{ github.workspace }}/results/${{ steps.key.outputs.lane }}/server-logs
-          # The e2e lane's LLM-evaluation tests reach the live model.
-          ANTHROPIC_API_KEY: ${{ matrix.lane == 'e2e' && secrets.ANTHROPIC_API_KEY || '' }}
-          # For the Splunk CIM fetch tests/conftest.py runs before starting splunk.
-          SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
-          SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
-
-      # A fetch inside the lane leaves the tarball at the restored path; save it under the same key,
-      # also when the lane failed (actions/cache's own post-step saves only on success).
-      - name: Splunk CIM tarball fetched
-        id: splunk-cim-fetched
-        if: always() && steps.splunk-cim.outputs.cache-hit != 'true'
-        run: |
-          if [ -s ~/.cache/provisa-splunk-cim/Splunk_SA_CIM-${SPLUNK_CIM_VERSION}.tgz ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Cache Splunk CIM tarball
-        if: always() && steps.splunk-cim-fetched.outputs.present == 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.cache/provisa-splunk-cim
-          key: splunk-cim-${{ env.SPLUNK_CIM_VERSION }}
-
-      - &why
-        name: Containers that were not healthy
-        if: failure()
-        run: |
-          docker ps -a --format '{{.Names}}\t{{.Status}}'
-          for c in $(docker ps -a --filter health=unhealthy --filter status=exited --format '{{.Names}}'); do
-            echo "=== $c"; docker logs --tail 200 "$c" 2>&1
-          done
-
-      - &save-images
-        name: Save images
-        if: always() && steps.images.outputs.cache-hit != 'true'
-        # pipefail: without it the step's status is zstd's, and a save that failed left a
-        # truncated archive for the next step to cache and later runs to load.
-        run: |
-          set -o pipefail
-          docker save $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>') | zstd -T0 -3 -o ~/images.tar.zst
-
-      - &cache-images
-        name: Cache images
-        if: always() && steps.images.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ~/images.tar.zst
-          key: images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}
-
-      - &cache-trino-plugins
-        name: Cache Trino plugins
-        if: always()
-        uses: ./.github/actions/trino-plugins
-        with:
-          phase: save
-          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
-
-      - &upload
-        name: Upload results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: lane-${{ steps.key.outputs.lane }}
-          path: results/
-          if-no-files-found: error
+      java: ${{ matrix.lane == 'core' }}
+      trino-plugins: true
+      image-cache: true
+      splunk-cim-cache: true
+      env: |
+        PYTEST_DOCKER_KEEP=
+        PYTHONFAULTHANDLER=1
+        PYTHONUNBUFFERED=1
+      prepare: scripts/ci/lanes/suite-prepare.sh
+      run: >-
+        uv run python scripts/ci/run_lane.py ${{ matrix.lane }}
+        ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }}
+        --junitxml "results/$LANE_SLUG/junit.xml"
+      on-failure: scripts/ci/lanes/suite-on-failure.sh
+      # Uploaded as lane-<name as a file name> (lane-core-1of6, lane-e2e), which `report` collects.
+      artifact-path: results/
+      artifact-required: error
+    secrets:
+      # The e2e lane's LLM-evaluation tests reach the live model.
+      ANTHROPIC_API_KEY: ${{ matrix.lane == 'e2e' && secrets.ANTHROPIC_API_KEY || '' }}
+      # For the Splunk CIM fetch tests/conftest.py runs before starting splunk.
+      SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
+      SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
 
   cluster:
     name: cluster (helm on minikube)
@@ -274,9 +146,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}
-      - *setup-python
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          cache: "true"
+          client: "true"
 
-      - *restore-trino-plugins
+      - name: Restore Trino plugins
+        id: trino-plugins
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
 
       - name: Install minikube and helm
         run: |
@@ -294,7 +174,12 @@ jobs:
         run: |
           uv run python scripts/ci/run_lane.py cluster --junitxml results/cluster/junit.xml
 
-      - *cache-trino-plugins
+      - name: Cache Trino plugins
+        if: always()
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: save
+          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
 
       - name: Upload results
         if: always()
@@ -377,10 +262,21 @@ jobs:
         with:
           # Nightly: the integration branch. On demand: the ref asked for.
           ref: ${{ github.event_name == 'schedule' && 'integration' || inputs.ref || github.sha }}
-      - *install-mssql-odbc  # Fabric's SQL endpoint is reached through ODBC Driver 18
-      - *setup-python
+      # Fabric's SQL endpoint is reached through ODBC Driver 18
+      - name: Install Microsoft ODBC Driver 18 for SQL Server
+        uses: ./.github/actions/mssql-odbc
+        timeout-minutes: 10
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          cache: "true"
+          client: "true"
 
-      - *restore-trino-plugins
+      - name: Restore Trino plugins
+        id: trino-plugins
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
 
       # Every credential the lane needs, checked before anything runs: a missing one fails the lane
       # by name rather than surfacing as a skipped test.
@@ -439,12 +335,18 @@ jobs:
       - name: Azure CLI login (Synapse provisioning)
         run: az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
 
-      - *stack-slots
+      - name: Stack slots on this runner
+        run: bash scripts/ci/lanes/suite-prepare.sh
 
       - name: Run lane
         run: uv run python scripts/ci/run_lane.py warehouse --junitxml results/warehouse/junit.xml
 
-      - *cache-trino-plugins
+      - name: Cache Trino plugins
+        if: always()
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: save
+          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
 
       - name: Upload results
         if: always()
@@ -476,9 +378,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}
-      - *setup-python
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          cache: "true"
+          client: "true"
 
-      - *restore-trino-plugins
+      - name: Restore Trino plugins
+        id: trino-plugins
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
 
       # A missing credential fails the lane by name rather than surfacing as a skipped test.
       - name: Credentials present
@@ -508,7 +418,8 @@ jobs:
           key: salesforce-describe-${{ steps.org.outputs.digest }}-${{ github.run_id }}
           restore-keys: salesforce-describe-${{ steps.org.outputs.digest }}-
 
-      - *stack-slots
+      - name: Stack slots on this runner
+        run: bash scripts/ci/lanes/suite-prepare.sh
 
       - name: Run lane
         run: uv run python scripts/ci/run_lane.py salesforce --junitxml results/salesforce/junit.xml
@@ -525,7 +436,12 @@ jobs:
           path: *salesforce-describe
           key: salesforce-describe-${{ steps.org.outputs.digest }}-${{ github.run_id }}
 
-      - *cache-trino-plugins
+      - name: Cache Trino plugins
+        if: always()
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: save
+          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
 
       - name: Upload results
         if: always()

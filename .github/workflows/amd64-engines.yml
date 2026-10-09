@@ -46,61 +46,27 @@ concurrency:
 jobs:
   exasol:
     name: Exasol (source + pipeline e2e)
-    runs-on: ubuntu-latest   # amd64 — the whole point of this workflow
-    # Exasol's own boot is minutes even natively, and it runs after the core stack (Trino's
-    # start_period alone is 120s) plus a zaychik image build.
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: ./.github/actions/setup-python
-
-      # docker-compose.core.yml bind-mounts ./sharepoint.pfx into Trino. The file is a real
-      # certificate on a developer box and is gitignored, so it is absent here — and Docker
-      # silently creates a DIRECTORY in place of a missing bind-mount source, leaving an
-      # untracked directory named like a cert in the checkout. Create the empty file instead;
-      # no catalog in this lane reads it.
-      - name: Placeholder for the gitignored SharePoint cert mount
-        run: touch sharepoint.pfx
-
-      - name: Assert the runner is amd64
-        run: |
-          arch="$(uname -m)"
-          echo "runner arch: $arch"
-          # A silent arch change here would turn every test in this lane into a skip, i.e. a
-          # green run that executed nothing — exactly what this workflow exists to prevent.
-          [ "$arch" = "x86_64" ] || { echo "::error::amd64 lane running on $arch"; exit 1; }
-
+    uses: ./.github/workflows/lane.yml
+    with:
+      name: amd64-exasol
+      # Exasol's own boot is minutes even natively, and it runs after the core stack (Trino's
+      # start_period alone is 120s) plus a zaychik image build. Runs on ubuntu-latest, amd64 --
+      # the whole point of this workflow; the prepare script asserts it.
+      timeout: 60
       # tests/conftest.py fetches the pinned Trino plugin jars from Maven Central at collection, and
       # a refused fetch ends the run before any test (release run 37874425655: HTTP 404 for a jar
-      # that exists). The same steps as the integration suite's lanes, sharing its cache: the jars
-      # are restored by their pin, and saved after the tests once every one is present, so Maven
-      # Central is asked once per pin, not on every run.
-      - name: Restore Trino plugins
-        id: trino-plugins
-        uses: ./.github/actions/trino-plugins
-        with:
-          phase: restore
-
+      # that exists).
+      trino-plugins: true
+      prepare: scripts/ci/lanes/amd64-engines-prepare.sh
       # -o addopts="": the ini addopts carry the default-lane marker filter and
       # --ignore=tests/e2e; the modules are named explicitly here instead.
       # -rA prints a reason for every outcome, so a skip is visible in the log rather than
       # hiding inside a pass count.
-      - name: Exasol tests
-        run: |
-          uv run pytest \
-            tests/integration/test_exasol_source_e2e.py \
-            tests/integration/test_exasol_pipeline_e2e.py \
-            -o addopts="" -p no:randomly -v -rA
-
-      - name: Container logs on failure
-        if: failure()
-        run: docker ps -a && docker compose ls
-
-      - name: Cache Trino plugins
-        if: always()
-        uses: ./.github/actions/trino-plugins
-        with:
-          phase: save
-          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
+      run: >-
+        uv run pytest
+        tests/integration/test_exasol_source_e2e.py
+        tests/integration/test_exasol_pipeline_e2e.py
+        -o addopts="" -p no:randomly -v -rA
+        --junitxml "results/$LANE_SLUG/junit.xml"
+      on-failure: scripts/ci/lanes/amd64-engines-on-failure.sh
+      artifact-path: results/

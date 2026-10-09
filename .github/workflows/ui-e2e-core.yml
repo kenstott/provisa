@@ -52,107 +52,64 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Both jobs are the one lane workflow (lane.yml). They run side by side on two runners: the
+  # lane took 2.0 h as one job (run 37918605161, which reached its 120-minute bound), and the
+  # provisioning specs must not share a host with other workers' pages -- a Docker network made
+  # or removed on the runner aborts whatever page is loading (playwright.config.ts
+  # PROVISIONING_SPECS).
   playwright:
     name: Playwright core lane
-    runs-on: ubuntu-latest
-    # Was 30: the core-lane suite has grown past that budget — every run since at least
-    # 2026-09-12 was cancelled at the 30m mark mid-suite, not from a hang (the last log inspected
-    # was still making steady per-test progress at cancellation). Raised to 60 as an immediate
-    # unblock, then to 90: source-to-query-generic-rdbms.spec.ts's beforeAll now also provisions
-    # saphana, whose HXE tenant DB alone can take up to 15 minutes past container-healthy
-    # (demo/sources/saphana/prime.py's own retry budget), serially on top of every other fixture in
-    # that file. Raised again to 120 (REQ-1763): source-to-query-olap-lake.spec.ts's exasol describe
-    # block also runs for real here (RUNNING_IN_CI), with its own beforeAll budgeted up to 15
-    # minutes (EXAStorage cold init), and this job's single core-lane worker runs every spec file
-    # serially. (druid moved to ui-e2e-trino.yml with the rest of TRINO_SPECS — REQ-1763 amendment,
-    # 2026-09-15 — since it, like pinot/hive_s3/hive, has no direct driver and was never actually
-    # reachable here.) The real fix (splitting/parallelizing this job, or trimming serial per-file
-    # container provisioning — several files stand up every fixture in one beforeAll even when most
-    # of that file's tests are skipped) is tracked separately, not done here.
-    timeout-minutes: 120
-    env:
-      # playwright.config.ts keys `reuseExistingServer` off this: under CI every webServer must be
-      # started by the harness, never adopted from a stale process.
-      CI: "true"
-      # Selects the SQLite control plane and drops the Trino webServer from the config. Without it
-      # the config would call `docker compose port postgres`, which throws with no daemon running.
-      PROVISA_E2E_LANE: core
-    steps:
-      - uses: actions/checkout@v4
-
-      # demo/sources/sqlserver/prime.py connects with pyodbc through "ODBC Driver 18 for SQL Server",
-      # which the runner image does not carry. Without it the primer could never connect, reported
-      # only "sqlserver ... did not become ready", and the generic-RDBMS spec's whole stack failed
-      # to provision: mariadb failed and the nine cases after it did not run (run 37874182519).
-      - name: Install Microsoft ODBC Driver 18 for SQL Server
-        uses: ./.github/actions/mssql-odbc
-        timeout-minutes: 10
-
+    uses: ./.github/workflows/lane.yml
+    with:
+      name: ui-core
+      timeout: 120
       # playwright.config.ts's webServer commands invoke `.venv/bin/uvicorn` by path, so the
-      # environment must be a real repo-root .venv — uv sync creates exactly that.
-      # The `cassandra` extra is demo/sources/cassandra/prime.py's own dependency: this lane's
-      # global setup provisions every DEMO_SOURCES entry (demo-source-containers.ts), cassandra
-      # included, and prime.py imports cassandra-driver directly rather than through a lazy import
-      # a missing package could degrade gracefully around. `saphana` (hdbcli + sqlalchemy-hana) is
-      # demo/sources/saphana/prime.py's own dependency and the product's own hana+hdbcli driver —
-      # source-to-query-generic-rdbms.spec.ts's saphana case runs for real on this runner (a genuine
-      # amd64 host, see that spec's RUNNING_IN_CI gate).
-      # `gx` and `soda` are the two data-quality checkers the demo model this lane serves registers
-      # as sources (dq-checker, dq-soda; pyproject's REQ-1443 notes). Without them each scan exits
-      # "checker ... is not installed", its results table can never be built, and every request
-      # that reads the whole model fails on it: the seven `MATCH (n) ...` Cypher cases answered 500
-      # (ReplicaBuildFailed for dq-checker.quality.pets_scan) and the checker specs had nothing to
-      # show (run 37874182519 on v0.1.0-alpha.477).
-      - name: Set up Python
-        uses: ./.github/actions/setup-python
-        with:
-          extras: dev cassandra saphana gx soda
-
+      # environment must be a real repo-root .venv. `cassandra` and `saphana` are their demo
+      # primers' own dependencies (demo/sources/*/prime.py); `gx` and `soda` are the two
+      # data-quality checkers the demo model this lane serves registers as sources -- without
+      # them every read of the whole model failed (run 37874182519).
+      python-extras: dev cassandra saphana gx soda
       # No --with-deps: the ubuntu-24.04 runner image already carries chromium's shared
-      # libraries and fonts, and the apt refresh it triggers has stalled past the job
-      # timeout when the azure mirror is unreachable (run 32158624857: 28.5 minutes on
-      # `Get:5 ... noble-security InRelease`, zero tests run).
-      - name: Set up the UI toolchain
-        uses: ./.github/actions/setup-ui
-        # Bounds Node, `npm ci` and the browser download together (the browser alone had 6).
-        timeout-minutes: 12
-        with:
-          playwright: chromium
+      # libraries and fonts, and the apt refresh it triggers has stalled past the job timeout.
+      ui: chromium
+      ui-timeout: 12
+      # CI: every webServer is started by the harness, never adopted from a stale process.
+      # PROVISA_E2E_LANE: the SQLite control plane, and no Trino webServer in the config.
+      env: |
+        CI=true
+        PROVISA_E2E_LANE=core
+      working-directory: provisa-ui
+      run: npx playwright test --project=core --reporter=list,html
+      artifact-name: playwright-report-core
+      artifact-path: provisa-ui/playwright-report/
+      artifact-retention: 7
+    secrets:
+      # chat-panel-streaming.spec.ts drives a live model and fails by name without it. This
+      # workflow runs on release pushes, tags and dispatch only (no pull_request trigger), so
+      # the secret never reaches a fork's code.
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
-      - name: Run Playwright core lane
-        id: core
-        working-directory: provisa-ui
-        run: npx playwright test --project=core --reporter=list,html
-        env:
-          # chat-panel-streaming.spec.ts drives a live model and fails by name without it. This
-          # workflow runs on release pushes, tags and dispatch only (no pull_request trigger), so
-          # the secret never reaches a fork's code.
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-core
-          path: provisa-ui/playwright-report/
-          retention-days: 7
-
-      # The specs that bring source stacks up and down, one worker, after the rest of the lane has
-      # finished: a Docker network made or removed on the runner aborts whatever another worker's
-      # page is loading (playwright.config.ts PROVISIONING_SPECS). always(): a red first step does
-      # not hide this one's result. A report of its own, so neither overwrites the other.
-      - name: Run Playwright core lane, provisioning specs
-        if: always() && steps.core.conclusion != 'skipped'
-        working-directory: provisa-ui
-        run: npx playwright test --project=core-provisioning --workers=1 --reporter=list,html
-        env:
-          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-provisioning
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
-      - name: Upload Playwright report, provisioning specs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-core-provisioning
-          path: provisa-ui/playwright-report-provisioning/
-          retention-days: 7
+  # The specs that bring source stacks up and down, with ONE worker on a runner of their own.
+  provisioning:
+    name: Playwright core lane, provisioning specs
+    uses: ./.github/workflows/lane.yml
+    with:
+      name: ui-core-provisioning
+      timeout: 150
+      python-extras: dev cassandra saphana gx soda
+      # demo/sources/sqlserver/prime.py connects with pyodbc through "ODBC Driver 18 for SQL
+      # Server", which the runner image does not carry (run 37874182519: the generic-RDBMS
+      # stack never provisioned).
+      odbc: true
+      ui: chromium
+      ui-timeout: 12
+      env: |
+        CI=true
+        PROVISA_E2E_LANE=core
+      working-directory: provisa-ui
+      run: npx playwright test --project=core-provisioning --workers=1 --reporter=list,html
+      artifact-name: playwright-report-core-provisioning
+      artifact-path: provisa-ui/playwright-report/
+      artifact-retention: 7
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

@@ -97,13 +97,15 @@ def test_the_workflows_fetch_each_plugin_at_the_harness_version():
     # CI and the harness must fetch the same build of each plugin.
     from pathlib import Path
 
-    workflows = Path(__file__).resolve().parents[2] / ".github" / "workflows"
+    repo = Path(__file__).resolve().parents[2]
     wanted = " ".join(
         f"{name}:{harness._TRINO_PLUGIN_VERSIONS.get(name, '$VERSION')}"
         for name in harness._TRINO_PLUGINS
     )
-    for name in ("build-dmg.yml", "ui-e2e-swap-amd64.yml", "ui-e2e-trino.yml"):
-        text = (workflows / name).read_text()
+    # The release's plugin tarball, and the stack both Trino-backed UI lanes start (one script
+    # now; each lane's workflow carried its own copy).
+    for name in (".github/workflows/build-dmg.yml", "scripts/ci/lanes/trino-stack-prepare.sh"):
+        text = (repo / name).read_text()
         assert f'VERSION="{harness._TRINO_PLUGIN_VERSION}"' in text, name
         loop = " ".join(
             text[text.index("for spec in") : text.index("; do", text.index("for spec in"))]
