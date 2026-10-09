@@ -48,16 +48,18 @@ jobs:
         id: deps
         run: |
           packaging/nixos/vm-run '
-            uv sync --frozen --extra dev --extra embedded
+            uv sync --frozen --extra dev --extra embedded --extra docs
             uv pip install -e "provisa-client/[dev]" -q
             cd provisa-ui && npm ci
           '
 
-      # The UI server serves the repo-root static/ from a source checkout.
+      # The UI server serves the repo-root static/ from a source checkout. The build bundles the
+      # docs site, which it makes with `python3` and `mkdocs`: on NixOS both are the venv's.
       - name: Build the UI
         id: ui
         run: |
           packaging/nixos/vm-run '
+            export PATH="$HOME/provisa/.venv/bin:$PATH"
             cd provisa-ui && npm run build
             cp -r dist/. ../static/
           '

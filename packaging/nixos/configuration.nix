@@ -81,6 +81,8 @@ in
     uv
     nodejs_22
     maven
+    # tests/unit renders the chart with `helm template`.
+    kubernetes-helm
     curl
     openssl
     zstd
