@@ -42,6 +42,7 @@ from provisa.core.request_context import (
     set_current_env,
     set_current_org,
 )
+from provisa.core.runtime_gone import RuntimeNotBuilt, left_to_the_next_runtime
 
 if TYPE_CHECKING:
     from provisa.api.org_runtime import OrgRuntime
@@ -200,7 +201,17 @@ async def reload_model(rt: "OrgRuntime") -> None:
         # worker reaches this worker's scheduler here -- the holder's among them.
         await reschedule_triggers(rt)
 
-    await _bound(rt, _rebuild)
+    try:
+        await _bound(rt, _rebuild)
+    except RuntimeNotBuilt as gone:
+        # The runtime was held when the rebuild began and was dropped while it read (a change of
+        # the environment's data replaces the runtime): the rebuild's next read of the bound
+        # runtime finds none. The build that replaces it loads the model itself, so this pass is
+        # left to it like every other pass detached from a build. Still held, the refusal is a
+        # defect and is raised.
+        if _held(rt):
+            raise
+        left_to_the_next_runtime(gone, "config reload")
 
 
 async def reschedule_triggers(rt: "OrgRuntime") -> None:

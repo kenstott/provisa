@@ -272,3 +272,60 @@ async def test_a_profiler_is_scheduled_on_its_cron_beside_the_triggers(orgs):
         await conn.execute_core(sources.delete())
     await jobs.register_org_triggers(scheduler, "a", None)
     assert scheduler.get_job("profiler:prof:org_a") is None
+
+
+async def test_a_reload_whose_runtime_is_replaced_under_it_is_left_to_the_next(monkeypatch, caplog):
+    """The reload check lists a runtime, finds it held, and starts rebuilding its model; a change
+    of the environment's data (a recopy) drops that runtime while the rebuild is still reading.
+    The rebuild's next read finds no runtime bound and raises RuntimeNotBuilt -- which the check
+    logged as a failed reload, with a traceback, and retried (suite run 37874427795,
+    test_recopy_from_parent_restores_a_cleared_connection: "no runtime built for environment
+    'recopied'"). Like every other pass detached from a build, it is left to the runtime that
+    replaces this one: that build loads the model itself."""
+    import logging
+
+    import provisa.api.app as app_mod
+    from provisa.api import model_reload
+    from provisa.core.request_context import current_env, current_org
+    from provisa.core.runtime_gone import RuntimeNotBuilt
+
+    rt = SimpleNamespace(org_id="default", env="recopied")
+    held = {"now": True}
+
+    async def _rebuild(**_kw):
+        held["now"] = False  # the recopy drops the runtime while the model is being read ...
+        raise RuntimeNotBuilt(  # ... and the next read of the bound runtime says so
+            current_org.get(), current_env.get(), "no runtime built for environment 'recopied'"
+        )
+
+    async def _never(_rt):
+        raise AssertionError("nothing more is done for a runtime that is gone")
+
+    monkeypatch.setattr(app_mod, "_rebuild_schemas", _rebuild)
+    monkeypatch.setattr(model_reload, "prune_region_state", _never)
+    monkeypatch.setattr(model_reload, "reschedule_triggers", _never)
+    monkeypatch.setattr(model_reload, "_held", lambda _rt: held["now"])
+
+    with caplog.at_level(logging.DEBUG):
+        await model_reload.reload_model(rt)  # type: ignore[arg-type]
+
+    assert current_org.get() is None and current_env.get() is None
+    assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
+
+
+async def test_a_reload_that_finds_no_runtime_while_still_held_is_an_error(monkeypatch):
+    """Only a runtime that was dropped is left to the next: the same refusal for a runtime this
+    process still serves is a defect, and is raised."""
+    import pytest
+
+    import provisa.api.app as app_mod
+    from provisa.api import model_reload
+    from provisa.core.runtime_gone import RuntimeNotBuilt
+
+    async def _rebuild(**_kw):
+        raise RuntimeNotBuilt("default", "recopied", "no runtime built")
+
+    monkeypatch.setattr(app_mod, "_rebuild_schemas", _rebuild)
+    monkeypatch.setattr(model_reload, "_held", lambda _rt: True)
+    with pytest.raises(RuntimeNotBuilt):
+        await model_reload.reload_model(SimpleNamespace(org_id="default", env="recopied"))  # type: ignore[arg-type]
