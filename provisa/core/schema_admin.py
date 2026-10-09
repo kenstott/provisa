@@ -806,6 +806,10 @@ org_mail_platforms = Table(
     Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), primary_key=True),
     Column("platform", Text, primary_key=True),
     Column("client_id", Text, nullable=False),
+    # The reference that names the client's secret in the organisation's vault, as text, so the
+    # vault's reference search (core/secret_references.py) finds the entry and refuses to let
+    # the secret go while the entry stands.
+    Column("client_secret", Text, nullable=False),
     Column("settings", Text, nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_by", Text, nullable=True),

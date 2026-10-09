@@ -181,11 +181,12 @@ async def put(
                 "org_id": org_id,
                 "platform": platform_id,
                 "client_id": client_id,
+                "client_secret": Configured(platform_id, client_id).client_secret,
                 "settings": json.dumps(settings, sort_keys=True),
                 "updated_by": actor,
             },
             index_elements=["org_id", "platform"],
-            update_columns=["client_id", "settings", "updated_by"],
+            update_columns=["client_id", "client_secret", "settings", "updated_by"],
             set_extra={"updated_at": func.now()},
         )
     return Configured(platform_id, client_id, settings)
@@ -193,7 +194,8 @@ async def put(
 
 async def forget(admin_db: "Database", org_id: str, platform_id: str) -> bool:
     """Remove ``org_id``'s client for the platform: True when there was one. Its secret is the
-    caller's to remove from the vault, by the vault's own rules."""
+    caller's to remove from the vault afterwards, by the vault's own rules: while the client
+    stands it names the secret, and the vault lets no named secret go."""
     platform(platform_id)
     async with admin_db.acquire() as conn:
         result = await conn.execute_core(

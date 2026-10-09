@@ -253,7 +253,7 @@ class TestTheAdminSurface:
         assert listed["redirect_problem"] == "source_sign_in.public_address_not_set"
         assert listed["platforms"]
 
-    async def test_removing_takes_the_secret_out_of_the_vault_first(self, wired, plane):
+    async def test_removing_takes_the_client_and_then_its_secret(self, wired, plane):
         await _put(plane)
         assert await router.delete_platform(None, "acme", GOOGLE) == {"removed": True}
         assert wired["dropped"] == [
@@ -266,18 +266,39 @@ class TestTheAdminSurface:
         ]
         assert await mail_platforms.read(plane, "acme", GOOGLE) is None
 
-    async def test_a_vault_that_will_not_let_the_secret_go_keeps_the_client(
-        self, wired, plane, monkeypatch
-    ):
+    async def test_a_vault_that_will_not_let_the_secret_go_says_so(self, wired, plane, monkeypatch):
         await _put(plane)
 
         async def refused(org_id, owner_id, name, actor):
             raise ApiError(409, "secrets.still_referenced", "in use")
 
         monkeypatch.setattr(router, "_drop", refused)
-        with pytest.raises(ApiError):
+        with pytest.raises(ApiError) as raised:
             await router.delete_platform(None, "acme", GOOGLE)
-        assert await mail_platforms.read(plane, "acme", GOOGLE) is not None
+        assert raised.value.code == "secrets.still_referenced"
+
+    async def test_the_vault_keeps_a_secret_the_client_names(self, plane):
+        """The Secrets screen's delete asks the vault's reference search, which finds the
+        organisation's platform entry and no other organisation's."""
+        from provisa.core import secret_references
+
+        with plane.engine.begin() as conn:  # the search reads every table of the plane
+            schema_admin.metadata.create_all(conn)
+        await _put(plane, org="acme")
+        name = mail_platforms.secret_name(GOOGLE)
+        found = await secret_references.references(plane, "acme", name, environments={})
+        assert [(r.table, r.column, r.id) for r in found] == [
+            ("org_mail_platforms", "client_secret", ["acme", GOOGLE])
+        ]
+        assert await secret_references.references(plane, "globex", name, environments={}) == []
+        with pytest.raises(secrets_store.SecretDeleteRefused):
+            await secrets_store.remove(
+                plane, "acme", name, owner_id=secrets_store.ORG_OWNER, environments={}
+            )
+        await mail_platforms.forget(plane, "acme", GOOGLE)
+        assert await secrets_store.remove(
+            plane, "acme", name, owner_id=secrets_store.ORG_OWNER, environments={}
+        )
 
     async def test_removing_what_was_never_entered_removes_nothing(self, wired):
         assert await router.delete_platform(None, "acme", GOOGLE) == {"removed": False}

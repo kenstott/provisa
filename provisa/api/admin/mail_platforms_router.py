@@ -107,6 +107,7 @@ async def delete_platform(request: Request, org_id: str, platform: str) -> dict:
             return {"removed": False}
     except MailPlatformRefused as refused:
         raise _refusal(refused) from None
-    # The secret first: if the vault refuses to let it go, the client stays whole.
+    # The client first: it names its secret, and the vault lets no named secret go.
+    await mail_platforms.forget(_admin_pool(), org_id, platform)
     await _drop(org_id, secrets_store.ORG_OWNER, mail_platforms.secret_name(platform), actor)
-    return {"removed": await mail_platforms.forget(_admin_pool(), org_id, platform)}
+    return {"removed": True}
