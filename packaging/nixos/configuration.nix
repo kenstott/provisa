@@ -11,6 +11,9 @@ let
   caBundle = "/etc/ssl/certs/ca-certificates.crt";
 in
 {
+  # What any Provisa install needs of a NixOS host; the installer hands a user the same file.
+  imports = [ ./preinstall.nix ];
+
   system.stateVersion = "26.05";
 
   # Microsoft's ODBC driver is the one unfree package (the SQL Server warehouse replica target).
@@ -25,67 +28,12 @@ in
   };
   security.sudo.wheelNeedsPassword = false;
 
-  # The container-backed lanes provision their sources with docker compose.
-  virtualisation.docker.enable = true;
   # Docker's own default, on every other distro. NixOS sends container output to journald, which
   # drops lines past its rate limit: `docker logs` of a busy container is then missing some.
   virtualisation.docker.logDriver = "json-file";
 
-  programs.nix-ld = {
-    enable = true;
-    # What a manylinux binary expects the distro to provide. A library missing from this list is a
-    # NixOS difference: add it here when a lane names it.
-    libraries = with pkgs; [
-      stdenv.cc.cc.lib
-      zlib
-      openssl
-      krb5
-      icu
-      libxml2
-      libuuid
-      curl
-      unixodbc
-      # The embedded PostgreSQL's sqlite_fdw.
-      sqlite
-      # Playwright's Chromium.
-      glib
-      nss
-      nspr
-      at-spi2-core
-      cups
-      dbus
-      libdrm
-      expat
-      libxkbcommon
-      libgbm
-      pango
-      cairo
-      alsa-lib
-      systemd
-      fontconfig
-      freetype
-      libx11
-      libxcomposite
-      libxdamage
-      libxext
-      libxfixes
-      libxrandr
-      libxcb
-    ];
-  };
-
   # pyproject pins Python to 3.12; uv supplies that interpreter itself, as it does in CI.
   environment.variables.UV_PYTHON_PREFERENCE = "only-managed";
-
-  # uv's interpreter is built to find its CA store at /etc/ssl/cert.pem or in a hashed
-  # /etc/ssl/certs; NixOS has neither, so every https call from the standard library fails
-  # verification unless it is told where the bundle is.
-  environment.variables.SSL_CERT_FILE = caBundle;
-
-  programs.java = {
-    enable = true;
-    package = pkgs.jdk21;
-  };
 
   environment.systemPackages = with pkgs; [
     git

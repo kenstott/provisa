@@ -57,6 +57,56 @@ version_gte() {
     return 0
 }
 
+# ── NixOS ───────────────────────────────────────────────────────────────────
+# NixOS has no loader or library at the paths a prebuilt binary expects, and its settings change
+# only by a rebuild of the system from its configuration: the installer cannot make them. It checks
+# for them, and where they are missing it names the steps and stops, having installed nothing.
+# The settings are packaging/nixos/preinstall.nix, which records its version on the host.
+NIXOS_PREINSTALL_VERSION="1"
+NIXOS_PREINSTALL_MARKER="/etc/provisa/nixos-preinstall"
+
+is_nixos() { [ -e /etc/NIXOS ]; }
+
+nixos_preinstall() {
+    local settings=false in_group=false
+    if [ -f "$NIXOS_PREINSTALL_MARKER" ] && [ "$(cat "$NIXOS_PREINSTALL_MARKER")" = "$NIXOS_PREINSTALL_VERSION" ]; then
+        settings=true
+    fi
+    case " $(id -nG) " in *" docker "*) in_group=true ;; esac
+    if [ "$settings" = true ] && [ "$in_group" = true ] && docker info &>/dev/null; then
+        ok "NixOS: the settings Provisa needs are in place"
+        return 0
+    fi
+
+    warn "This is NixOS, and it does not yet have the settings Provisa needs."
+    warn "They are made in the system configuration, so the installer cannot make them for you."
+    if [ "$NON_INTERACTIVE" = false ]; then
+        # A closed stdin answers as Enter does.
+        printf "${CYAN}[provisa]${NC} Press Enter to list the steps: "
+        read -r _ || true
+    fi
+
+    local n=1
+    printf "\n${BOLD}Before installing Provisa on NixOS:${NC}\n\n"
+    if [ "$settings" = false ]; then
+        local module="${PROVISA_HOME}/nixos-preinstall.nix"
+        mkdir -p "${PROVISA_HOME}"
+        cp "${SCRIPT_DIR}/packaging/nixos/preinstall.nix" "$module"
+        printf "  %d. Copy the settings into the system configuration:\n" "$n"; n=$((n + 1))
+        printf "       sudo cp %s /etc/nixos/provisa.nix\n" "$module"
+        printf "  %d. In /etc/nixos/configuration.nix, add ./provisa.nix to imports:\n" "$n"; n=$((n + 1))
+        printf "       imports = [ ./hardware-configuration.nix ./provisa.nix ];\n"
+    fi
+    if [ "$in_group" = false ]; then
+        printf "  %d. In /etc/nixos/configuration.nix, give your user Docker:\n" "$n"; n=$((n + 1))
+        printf "       users.users.%s.extraGroups = [ \"docker\" ];\n" "$(id -un)"
+    fi
+    printf "  %d. Apply the configuration:\n" "$n"; n=$((n + 1))
+    printf "       sudo nixos-rebuild switch\n"
+    printf "  %d. Log out and back in, then run this installer again.\n\n" "$n"
+    exit 1
+}
+
 # ── Container runtime detection ─────────────────────────────────────────────
 detect_runtime() {
     if command -v docker &>/dev/null; then
@@ -282,6 +332,12 @@ main() {
     printf "\n${BOLD}Provisa Installer${NC}\n"
     printf "═══════════════════════════════════════════\n\n"
 
+    # 0. NixOS: its settings come before anything else is checked or written
+    if is_nixos; then
+        ensure_project_source
+        nixos_preinstall
+    fi
+
     # 1. Detect container runtime
     info "Detecting container runtime..."
     RUNTIME="$(detect_runtime)"
@@ -324,6 +380,10 @@ main() {
     # In airgap mode install to ~/.provisa/bin to avoid needing sudo
     if [ "$AIRGAP" = true ]; then
         CLI_INSTALL_DIR="${PROVISA_HOME}/bin"
+        mkdir -p "${CLI_INSTALL_DIR}"
+    elif is_nixos; then
+        # NixOS has no /usr/local/bin; preinstall.nix puts ~/.local/bin on PATH.
+        CLI_INSTALL_DIR="${HOME}/.local/bin"
         mkdir -p "${CLI_INSTALL_DIR}"
     fi
 
