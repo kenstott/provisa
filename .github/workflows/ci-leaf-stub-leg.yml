@@ -1,4 +1,4 @@
-# A stand-in for a leg of the release, called only by ci-leaf-check.yml.
+# A stand-in for a leg of the release, called only by ci-leaf-check.yml and ci-leaf-red-check.yml.
 #
 # It builds nothing and publishes nothing. It carries, in the smallest form, the control-flow
 # constructs the release's legs depend on and that nothing had proven on GitHub:
@@ -38,9 +38,6 @@ on:
         value: ${{ jobs.release.outputs.left_the_run }}
       release-ran:
         value: ${{ jobs.release.outputs.ran }}
-      build-result:
-        description: What a job that needs the failed build sees as its result.
-        value: ${{ jobs.observe.outputs.build_result }}
 
 permissions:
   contents: read
@@ -57,11 +54,12 @@ jobs:
     steps:
       - run: echo "a publication would happen here"
 
-  # As a build whose failure must stop the release. When it is MEANT to fail, the run is not
-  # failed by it -- what the release job sees of it (`needs.build.result`) is what is under test.
+  # As a build whose failure must stop the release. Its failure cannot be contained: a job that
+  # fails under continue-on-error shows `success` to the job that needs it (run 37983239912), so
+  # the release job would run. The failing case therefore ends its run red, and lives in
+  # ci-leaf-red-check.yml, apart from the check that must end green.
   build:
     runs-on: ubuntu-latest
-    continue-on-error: ${{ inputs.fail-a-need }}
     steps:
       - name: Fail when asked to
         env:
@@ -103,17 +101,3 @@ jobs:
           fi
           echo "left_the_run=${LEFT:-false}" >> "$GITHUB_OUTPUT"
           echo "ran=true" >> "$GITHUB_OUTPUT"
-
-  # What `needs.build.result` is for a build that failed under continue-on-error: the release
-  # job's condition depends on it being "failure".
-  observe:
-    needs: [build]
-    if: ${{ always() }}
-    runs-on: ubuntu-latest
-    outputs:
-      build_result: ${{ steps.see.outputs.build_result }}
-    steps:
-      - id: see
-        env:
-          RESULT: ${{ needs.build.result }}
-        run: echo "build_result=$RESULT" >> "$GITHUB_OUTPUT"

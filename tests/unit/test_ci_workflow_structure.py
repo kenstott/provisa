@@ -147,6 +147,7 @@ def test_every_job_that_needs_a_python_environment_gets_it_from_the_action():
 LANE = "./.github/workflows/lane.yml"
 _RUNNER = "playwright " + "test"
 _LEAF_CHECK = "ci-leaf-check.yml"
+_RED_CHECK = "ci-leaf-red-check.yml"
 
 # The suite's three jobs that keep steps of their own (lane.yml's header says why): each carries
 # live credentials or cluster tooling, and the lane workflow declares only the few secrets its
@@ -632,7 +633,7 @@ _REAL_CALLER_SECRETS = {
 
 
 def test_the_leaf_check_reads_no_secret_below_level_two_and_can_publish_nothing():
-    for name in (_LEAF_CHECK, "ci-leaf-stub-leg.yml"):
+    for name in (_LEAF_CHECK, "ci-leaf-stub-leg.yml", _RED_CHECK):
         path = REPO / ".github" / "workflows" / name
         workflow = yaml.safe_load(path.read_text())
         # Its token reads the repository and nothing else, for every job.
@@ -737,7 +738,7 @@ def test_the_proof_level_is_one_committed_file_and_each_level_needs_the_one_belo
     assert level in {"0", "1", "2"}, level
     jobs = workflow["jobs"]
     assert jobs["scope"]["outputs"] == {"level": "${{ steps.level.outputs.level }}"}
-    level_one = {"lane", "lane-fails", "release-dry-run", "release-after-a-failed-need"}
+    level_one = {"lane", "lane-fails", "release-dry-run"}
     for job in level_one:
         assert jobs[job]["needs"] == ["scope", "level-0"], job
         assert jobs[job]["if"] == "fromJSON(needs.scope.outputs.level) >= 1", job
@@ -746,3 +747,24 @@ def test_the_proof_level_is_one_committed_file_and_each_level_needs_the_one_belo
         job for job, body in jobs.items() if str(body.get("name", "")).startswith("action / ")
     }
     assert len(level_zero) == 11
+
+
+def test_the_check_that_ends_red_is_apart_and_starts_only_for_its_own_files():
+    """A job that fails under continue-on-error shows `success` to the job that needs it, so
+    "the release does not run after a failed need" needs a job that really fails -- and a run
+    that ends red. It is its own workflow; the check that must end green has no such job."""
+    red = yaml.safe_load((REPO / ".github" / "workflows" / _RED_CHECK).read_text())
+    assert red[True] == {
+        "push": {
+            "branches": ["ci/**"],
+            "paths": [f".github/workflows/{_RED_CHECK}", ".github/workflows/ci-leaf-stub-leg.yml"],
+        }
+    }
+    for body in red["jobs"].values():
+        assert "startsWith(github.ref, 'refs/heads/ci/')" in body["if"]
+    assert red["jobs"]["release-after-a-failed-need"]["with"]["fail-a-need"] is True
+    stub = yaml.safe_load((REPO / ".github" / "workflows" / "ci-leaf-stub-leg.yml").read_text())
+    assert all("continue-on-error" not in body for body in stub["jobs"].values())
+    green = yaml.safe_load((REPO / ".github" / "workflows" / _LEAF_CHECK).read_text())
+    for job, body in green["jobs"].items():
+        assert (body.get("with") or {}).get("fail-a-need") is not True, job
