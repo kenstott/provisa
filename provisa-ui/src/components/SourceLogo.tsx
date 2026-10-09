@@ -26,6 +26,7 @@ import {
   siElasticsearch,
   siGithub,
   siGitlab,
+  siGoogle,
   siGooglebigquery,
   siGooglesheets,
   siGraphql,
@@ -78,6 +79,7 @@ const MARKS: Record<string, Icon> = {
   sqlite: siSqlite,
   parquet: siApacheparquet,
   google_sheets: siGooglesheets,
+  google_workspace: siGoogle, // REQ-1923
   prometheus: siPrometheus,
   openapi: siOpenapiinitiative,
   graphql: siGraphql,

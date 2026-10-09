@@ -314,6 +314,12 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     if t in ("rss", "websocket", "ingest"):
         return ["default"]
 
+    # REQ-1923: a mailbox has no schema of its own; its canonical tables are listed under one.
+    if t == "google_workspace":
+        from provisa.google_workspace.loader import SCHEMA
+
+        return [SCHEMA]
+
     if t == "files":
         # Schema is always the sql-normalised source-id (matches pgwire_replica.schema_name())
         return [source_id.replace("-", "_")]
@@ -1691,6 +1697,16 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
         if schema_name != "default":
             return []
         return [AvailableTableType(name=source_id, comment=None)]
+
+    # REQ-1923: the canonical mail tables, the same for every mailbox.
+    if t == "google_workspace":
+        from provisa.api.admin.types import AvailableTableType
+        from provisa.core.canonical_mail import TABLES as CANONICAL
+        from provisa.google_workspace.loader import SCHEMA, TABLES
+
+        if schema_name != SCHEMA:
+            return []
+        return [AvailableTableType(name=name, comment=CANONICAL[name].note) for name in TABLES]
 
     # See native_schemas's snowflake/databricks/bigquery/fabric/synapse branches for why these
     # need their own path rather than falling through to _native_tables_rdbms's engine-catalog

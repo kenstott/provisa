@@ -80,7 +80,7 @@
         "description": "➕ New connections start with this button — PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and 50+ more."
       },
       "step3": {
-        "title": "62 source types, 13 categories",
+        "title": "63 source types, 13 categories",
         "description": "One picker lists every type, grouped by category: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Search by name or alias, or narrow with the category chips. Each type shows its logo and a reach icon: ⚡ read live in place, or a copy icon where Provisa reads a refreshed replica.<p>Pick one, fill the connection, Save.</p>"
       },
       "step4": {

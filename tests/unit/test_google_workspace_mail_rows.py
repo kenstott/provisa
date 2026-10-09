@@ -19,7 +19,7 @@ import datetime as dt
 
 import pytest
 
-from provisa.google_workspace.mail_rows import UnreadableMessage, message_facts
+from provisa.google_workspace.mail_rows import message_facts
 
 ACCOUNT = "ada@example.test"
 KEY = {"provider": "google", "account": ACCOUNT}
@@ -266,15 +266,24 @@ class TestItsText:
             ("us-ascii", "Grüße", "is not us-ascii"),
         ],
     )
-    def test_a_part_that_is_not_what_it_declares_is_refused_naming_the_message(
+    def test_a_part_that_is_not_what_it_declares_leaves_no_text_and_marks_the_message(
         self, charset, text, said
     ):
         part = _part("text/plain", None, part_id="", charset=charset)
         part["body"] = {"size": 1, "data": _b64(text)}
-        with pytest.raises(UnreadableMessage, match=said) as raised:
-            message_facts(ACCOUNT, _message(payload=part))
-        assert raised.value.message_id == "m1"
-        assert text not in str(raised.value)
+        part["headers"] += _h(Subject="Kept", From="bo@example.test")
+        facts = message_facts(ACCOUNT, _message(payload=part))
+        assert facts.message["body_text"] is None
+        assert (facts.message["subject"], facts.message["from_address"]) == (
+            "Kept",
+            "bo@example.test",
+        )
+        assert facts.message["snippet"] == "Lunch on Friday?"
+        assert facts.unreadable is not None and said in facts.unreadable
+        assert facts.unreadable.startswith("message m1: ") and text not in facts.unreadable
+
+    def test_a_message_that_reads_is_not_marked(self):
+        assert message_facts(ACCOUNT, _message()).unreadable is None
 
 
 class TestItsOtherRows:

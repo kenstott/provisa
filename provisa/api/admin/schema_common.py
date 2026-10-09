@@ -307,6 +307,29 @@ async def _stage_kaggle_if_needed(input: SourceInput) -> Optional[MutationResult
     return None
 
 
+def google_workspace_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-1923
+    """Why a Google Workspace source's settings cannot be a source, in the setup's own terms,
+    or None: for another source type, and for settings that can. The settings are the source's
+    mapping, read by the one module that also reads them to fetch the mail."""
+    import json as _json
+
+    from provisa.google_workspace import SOURCE_TYPE
+    from provisa.google_workspace.settings import InvalidGoogleWorkspaceSource, parse
+
+    if input.type != SOURCE_TYPE:
+        return None
+    try:
+        parse(_json.loads(input.mapping_json or "{}"))
+    except InvalidGoogleWorkspaceSource as exc:
+        return MutationResult(
+            success=False,
+            message=f"Google Workspace source {input.id!r}: {exc}",
+            code="schema.google_workspace_invalid",
+            params={"source": input.id, "error": str(exc)},
+        )
+    return None
+
+
 def _expand_wikipedia_if_needed(input: SourceInput) -> Optional[MutationResult]:  # REQ-1960
     """The ONE place a Wikipedia source becomes the ``files`` source that carries it -- called
     from inside create_source, as Kaggle staging is, so every creation path gets the same crawl.
@@ -802,6 +825,8 @@ SOURCE_MAPPING_SECRET_KEYS: dict[str, tuple[str, ...]] = {
     "sharepoint": ("certificate_password", "sp_password"),
     "salesforce": ("sf_password", "security_token", "access_token"),
     "cloudops": ("azure_client_secret", "aws_secret_access_key"),  # REQ-1947
+    # REQ-1923: the same names provisa/google_workspace/settings.py reads (SECRET_KEYS).
+    "google_workspace": ("client_secret", "refresh_token", "service_account_key"),
 }
 
 

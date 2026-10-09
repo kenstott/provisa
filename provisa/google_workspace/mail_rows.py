@@ -25,6 +25,10 @@ the rules of the mail standards and not by guessing:
 
 A fact Gmail did not answer is None, never an empty value standing in for it: a message read
 as headers and labels only has no text, and says so by having none.
+
+A part that is not what it declares (a charset that does not exist, bytes that are not that
+charset) leaves the message's row with no text and every other column filled, and the message
+is marked (``MessageFacts.unreadable``) so that the read can count and name it.
 """
 
 # Requirements: REQ-1923
@@ -65,6 +69,9 @@ class MessageFacts:
     recipients: list[dict[str, Any]] = field(default_factory=list)
     folders: list[dict[str, Any]] = field(default_factory=list)
     attachments: list[dict[str, Any]] = field(default_factory=list)
+    #: Why the message's text could not be read as its part declares it, when it could not: the
+    #: row is kept with no text, and whoever reads the mailbox counts and names such messages.
+    unreadable: str | None = None
 
 
 def _header(headers: list[dict], name: str) -> str | None:
@@ -177,10 +184,16 @@ def message_facts(account: str, answered: dict) -> MessageFacts:
     files = [_attachment(p) for p in parts if p.get("filename")]
     bodies = [p for p in parts if not p.get("filename")]
 
+    unreadable: list[str] = []
+
     def body(mime_type: str) -> str | None:
         for part in bodies:
             if part.get("mimeType") == mime_type:
-                return _text(message_id, part)
+                try:
+                    return _text(message_id, part)
+                except UnreadableMessage as why:
+                    unreadable.append(str(why))
+                    return None
         return None
 
     def first(kind: str, index: int) -> str | None:
@@ -248,4 +261,4 @@ def message_facts(account: str, answered: dict) -> MessageFacts:
     ]
     folders = [{**key, "message_id": message_id, "folder_id": label} for label in labels]
     attachments = [{**key, "message_id": message_id, **f} for f in files]
-    return MessageFacts(message, recipients, folders, attachments)
+    return MessageFacts(message, recipients, folders, attachments, "; ".join(unreadable) or None)

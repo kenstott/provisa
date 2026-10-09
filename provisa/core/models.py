@@ -126,6 +126,9 @@ class SourceType(str, Enum):
     parquet = "parquet"
     # Other
     google_sheets = "google_sheets"
+    # REQ-1923: the mail of a Google account, read through Google's own API by its loader
+    # (provisa/google_workspace) and landed; calendar and tasks are named and not yet read.
+    google_workspace = "google_workspace"
     prometheus = "prometheus"
     graphql_remote = "graphql_remote"
     openapi = "openapi"

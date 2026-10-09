@@ -81,6 +81,7 @@ import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources
 import { profilerFieldsFromMapping, profilerMappingJson } from "./sources/profilerMapping";
 import { salesforceFieldsFromMapping, salesforceMappingJson } from "./sources/salesforce";
 import { cloudopsFieldsFromMapping, cloudopsMappingJson } from "./sources/cloudops";
+import { GOOGLE_WORKSPACE, gwFieldsFromMapping, gwMapping } from "./sources/googleWorkspace";
 import { WIKIPEDIA, wikipediaFieldsFromHints, wikipediaHints } from "./sources/wikipedia";
 import { sourceLoadFieldsValid } from "./sources/loadManagement";
 import { SourceFormFields } from "./sources/SourceFormFields";
@@ -667,6 +668,9 @@ export function SourcesPage() {
     if (s.type === "cloudops" && s.mappingJson) {
       setAuthFields(cloudopsFieldsFromMapping(s.mappingJson)); // REQ-1947
     }
+    if (s.type === GOOGLE_WORKSPACE && s.mappingJson) {
+      setAuthFields(gwFieldsFromMapping(s.mappingJson)); // REQ-1923
+    }
     if (sourceBrand(s.federationHintsJson) === WIKIPEDIA && s.federationHintsJson) {
       // REQ-1960: the directory is the source's own path, shown as where its files land.
       setAuthFields({
@@ -982,6 +986,8 @@ export function SourcesPage() {
           ? profilerMappingJson(authFields) // REQ-1934
           : form.type === "cloudops"
           ? cloudopsMappingJson(authFields) // REQ-1947
+          : form.type === GOOGLE_WORKSPACE
+          ? JSON.stringify(gwMapping(authFields)) // REQ-1923
           : form.type === "salesforce"
           ? salesforceMappingJson(authFields) // REQ-1946
           : form.type === "sharepoint"

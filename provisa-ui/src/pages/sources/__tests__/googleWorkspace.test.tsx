@@ -14,7 +14,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
 import en from "../../../i18n/locales/en/googleWorkspaceFields.json";
+import { BRAND_CARRIER, SOURCE_TYPES } from "../constants";
 import { SourceFormFieldsExtended } from "../SourceFormFieldsExtended";
+import { backendType } from "../sourceHelpers";
 import type { SourceFormFieldsProps } from "../SourceFormFields";
 import {
   gwConnectMissing,
@@ -87,6 +89,16 @@ const shown = (key: string) => screen.queryByTestId(`google-workspace-${key}`);
 beforeEach(() => {
   signIn.redirectAddress.mockReset().mockResolvedValue(REDIRECT);
   signIn.signInSource.mockReset();
+});
+
+describe("the source pick list", () => {
+  it("offers Google Workspace as a source type of its own", () => {
+    expect(SOURCE_TYPES.find((s) => s.value === "google_workspace")).toMatchObject({
+      label: "Google Workspace",
+    });
+    expect(backendType("google_workspace")).toBe("google_workspace");
+    expect(BRAND_CARRIER.google_workspace).toBeUndefined();
+  });
 });
 
 describe("what a Google Workspace setup asks", () => {

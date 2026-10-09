@@ -2215,6 +2215,17 @@ async def resolve_available_columns_metadata(
             return await _druid_columns(source_id, table_name)
         if source_type == "hive_s3":
             return await _hive_s3_columns(source_id, schema_name, table_name)
+    if source_type == "google_workspace":
+        # REQ-1923: a canonical mail table's columns are the canonical ones, by definition.
+        from provisa.core.canonical_mail import ir_columns
+        from provisa.google_workspace.loader import TABLES as _MAIL_TABLES, UnknownMailTable
+
+        if table_name not in _MAIL_TABLES:
+            raise UnknownMailTable(table_name)
+        return [
+            AvailableColumnType(name=name, data_type=ir_type, comment=None)
+            for name, ir_type in ir_columns(table_name)
+        ]
     if source_type == "rss":
         # REQ-1745: an rss/Atom feed has no catalog to introspect at all (native_schemas/
         # native_tables give it a synthetic single "default"/<source_id> pick so the picker isn't
