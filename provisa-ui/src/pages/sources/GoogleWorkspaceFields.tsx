@@ -25,6 +25,7 @@ import {
 } from "../../lib/sourceSignIn";
 import {
   GOOGLE_WORKSPACE,
+  MAIL_PLATFORMS_ROUTE,
   GW_MAIL_FULL,
   GW_MAIL_HEADERS,
   gwByApproval,
@@ -41,8 +42,6 @@ interface Props {
 }
 
 const WIDE = { gridColumn: "1 / -1" } as const;
-/** Where an administrator enters the organisation's Google client. */
-export const MAIL_PLATFORMS_ROUTE = "/admin/email";
 
 export function GoogleWorkspaceFields({ sourceId, fields, setFields }: Props) {
   const { t } = useTranslation();
@@ -108,6 +107,8 @@ export function GoogleWorkspaceFields({ sourceId, fields, setFields }: Props) {
   };
 
   const notConnected = byApproval && status !== null && !status.configured;
+  // Where an administrator sets it up, named as the menu names it in this language.
+  const where = `${t("navBar.groupAdmin")} › ${t("navBar.itemEmail")}`;
   return (
     <>
       <TextInput
@@ -147,11 +148,11 @@ export function GoogleWorkspaceFields({ sourceId, fields, setFields }: Props) {
                 to={MAIL_PLATFORMS_ROUTE}
                 data-testid="google-workspace-set-up"
               >
-                {t("googleWorkspaceFields.setUpLink")}
+                {t("googleWorkspaceFields.setUpLink", { where })}
               </Anchor>
             </>
           ) : (
-            t("googleWorkspaceFields.notSetUpAsk")
+            t("googleWorkspaceFields.notSetUpAsk", { where })
           )}
         </Alert>
       )}

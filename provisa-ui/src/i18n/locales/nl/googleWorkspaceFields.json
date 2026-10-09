@@ -17,7 +17,7 @@
     "mailLabelsHelp": "Eén labelnaam per regel. Alleen e-mail met alle labels wordt gelezen. Laat leeg voor alle e-mail.",
     "mailSpamTrash": "Spam en Prullenbak opnemen",
     "notSetUp": "Uw organisatie heeft Google Workspace nog niet gekoppeld.",
-    "setUpLink": "Stel het in onder Admin › Email",
-    "notSetUpAsk": "Uw organisatie heeft Google Workspace nog niet gekoppeld. Vraag een beheerder het in te stellen onder Admin › Email."
+    "setUpLink": "Stel het in onder {{where}}",
+    "notSetUpAsk": "Uw organisatie heeft Google Workspace nog niet gekoppeld. Vraag een beheerder het in te stellen onder {{where}}."
   }
 }

@@ -17,7 +17,7 @@
     "mailLabelsHelp": "每行一個標籤名稱。只讀取附有全部標籤的郵件。留空表示所有郵件。",
     "mailSpamTrash": "包括垃圾郵件和垃圾桶",
     "notSetUp": "你的組織尚未連接 Google Workspace。",
-    "setUpLink": "在Admin › Email中設定",
-    "notSetUpAsk": "你的組織尚未連接 Google Workspace。請要求管理員在Admin › Email中設定。"
+    "setUpLink": "在{{where}}中設定",
+    "notSetUpAsk": "你的組織尚未連接 Google Workspace。請要求管理員在{{where}}中設定。"
   }
 }

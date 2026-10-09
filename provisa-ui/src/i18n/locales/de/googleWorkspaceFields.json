@@ -17,7 +17,7 @@
     "mailLabelsHelp": "Ein Labelname pro Zeile. Es werden nur E-Mails gelesen, die alle tragen. Leer lassen für alle E-Mails.",
     "mailSpamTrash": "Spam und Papierkorb einbeziehen",
     "notSetUp": "Ihre Organisation hat Google Workspace noch nicht verbunden.",
-    "setUpLink": "Unter Admin › Email einrichten",
-    "notSetUpAsk": "Ihre Organisation hat Google Workspace noch nicht verbunden. Bitten Sie einen Administrator, es unter Admin › Email einzurichten."
+    "setUpLink": "Unter {{where}} einrichten",
+    "notSetUpAsk": "Ihre Organisation hat Google Workspace noch nicht verbunden. Bitten Sie einen Administrator, es unter {{where}} einzurichten."
   }
 }

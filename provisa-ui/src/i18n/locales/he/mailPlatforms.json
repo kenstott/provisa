@@ -1,0 +1,28 @@
+{
+  "mailPlatforms": {
+    "sentTitle": "דואר ש-Provisa שולח",
+    "sentHelp": "הזמנות והתראות אחרות ש-Provisa שולח.",
+    "platformsTitle": "פלטפורמות דואר שהמקורות שלך מתחברים אליהן",
+    "platformsHelp": "מקור שקורא דואר נכנס באמצעות לקוח שהארגון שלך רושם בפלטפורמת הדואר. יש להזין אותו כאן פעם אחת; מי שמוסיף מקור אינו רואה אותו.",
+    "platform": {
+      "google_workspace": "Google Workspace"
+    },
+    "connected": "מחובר",
+    "notConnected": "לא מחובר",
+    "redirectAddress": "כתובת הפניה",
+    "redirectHelp": {
+      "google_workspace": "יש להעתיק אותה ללקוח ה-OAuth שלך במסוף Google Cloud, תחת \"מזהי URI מורשים להפניה אוטומטית\"."
+    },
+    "copy": "העתקה",
+    "copied": "הועתק",
+    "sameAddressNote": "מי שמחבר מקור חייב לפתוח את Provisa בכתובת {{origin}}. שם אחר לאותו מחשב (127.0.0.1 במקום localhost) לא ישלים את הכניסה.",
+    "redirectUnknown": "לא ניתן להציג את כתובת ההפניה כי הכתובת הציבורית של ההתקנה הזו לא הוגדרה.",
+    "clientId": "מזהה לקוח",
+    "clientSecret": "סוד לקוח",
+    "clientSecretKeep": "יש להשאיר ריק כדי לשמור את זה שכבר הוזן.",
+    "save": "שמירה",
+    "remove": "הסרה",
+    "saved": "נשמר.",
+    "removed": "הוסר."
+  }
+}

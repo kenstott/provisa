@@ -17,7 +17,7 @@
     "mailLabelsHelp": "Um nome de marcador por linha. Só são lidos os e-mails que têm todos. Deixe em branco para todos os e-mails.",
     "mailSpamTrash": "Incluir Spam e Lixeira",
     "notSetUp": "Sua organização ainda não conectou o Google Workspace.",
-    "setUpLink": "Configurar em Admin › Email",
-    "notSetUpAsk": "Sua organização ainda não conectou o Google Workspace. Peça a um administrador que o configure em Admin › Email."
+    "setUpLink": "Configurar em {{where}}",
+    "notSetUpAsk": "Sua organização ainda não conectou o Google Workspace. Peça a um administrador que o configure em {{where}}."
   }
 }

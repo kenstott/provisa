@@ -1,0 +1,28 @@
+{
+  "mailPlatforms": {
+    "sentTitle": "Provisa が送信するメール",
+    "sentHelp": "Provisa が送信する招待やその他の通知。",
+    "platformsTitle": "ソースの接続先となるメール プラットフォーム",
+    "platformsHelp": "メールを読み取るソースは、組織がメール プラットフォームに登録したクライアントでログインします。ここで一度だけ入力してください。ソースを追加する人には表示されません。",
+    "platform": {
+      "google_workspace": "Google Workspace"
+    },
+    "connected": "接続済み",
+    "notConnected": "未接続",
+    "redirectAddress": "リダイレクト アドレス",
+    "redirectHelp": {
+      "google_workspace": "Google Cloud コンソールの OAuth クライアントで、「承認済みのリダイレクト URI」にこのアドレスをコピーしてください。"
+    },
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "sameAddressNote": "ソースを接続する人は {{origin}} で Provisa を開く必要があります。同じマシンの別名(localhost の代わりに 127.0.0.1)ではログインが完了しません。",
+    "redirectUnknown": "このデプロイの公開アドレスが設定されていないため、リダイレクト アドレスを表示できません。",
+    "clientId": "クライアント ID",
+    "clientSecret": "クライアント シークレット",
+    "clientSecretKeep": "入力済みのものを保持する場合は空欄のままにします。",
+    "save": "保存",
+    "remove": "削除",
+    "saved": "保存しました。",
+    "removed": "削除しました。"
+  }
+}

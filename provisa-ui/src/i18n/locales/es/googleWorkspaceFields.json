@@ -17,7 +17,7 @@
     "mailLabelsHelp": "Un nombre de etiqueta por línea. Solo se lee el correo que las lleva todas. Déjelo vacío para todo el correo.",
     "mailSpamTrash": "Incluir Spam y Papelera",
     "notSetUp": "Su organización aún no ha conectado Google Workspace.",
-    "setUpLink": "Configurarlo en Admin › Email",
-    "notSetUpAsk": "Su organización aún no ha conectado Google Workspace. Pida a un administrador que lo configure en Admin › Email."
+    "setUpLink": "Configurarlo en {{where}}",
+    "notSetUpAsk": "Su organización aún no ha conectado Google Workspace. Pida a un administrador que lo configure en {{where}}."
   }
 }

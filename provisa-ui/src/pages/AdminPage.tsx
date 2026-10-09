@@ -61,7 +61,7 @@ import { ReportsTab } from "../components/admin/ReportsTab";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
 import { SecretsTab, MySecretsTab } from "../components/admin/SecretsTab";
-import { MailTab } from "../components/admin/MailTab";
+import { EmailTab } from "../components/admin/EmailTab";
 import { SettingsCatalogPanel } from "../components/admin/SettingField";
 import { DomainModeCard, NamingConventionsCard } from "../components/admin/settingsCards";
 import { PageLoading } from "../components/PageLoading";
@@ -450,7 +450,7 @@ export function AdminPage() {
         {activeTab === "Scheduler" && <ScheduledTasks />}
         {activeTab === "Federation" && <FederationEngineTab />}
         {activeTab === "Org Engine" && <OrgEngineTab />}
-        {activeTab === "Email" && <MailTab />}
+        {activeTab === "Email" && <EmailTab />}
         {activeTab === "Maintenance" && <MaintenanceTab />}
         {activeTab === "Deployment settings" && <SettingsCatalogPanel />}
         {activeTab === "Billing" && <BillingTab />}

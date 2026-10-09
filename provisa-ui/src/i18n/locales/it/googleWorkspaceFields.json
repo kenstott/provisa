@@ -17,7 +17,7 @@
     "mailLabelsHelp": "Un nome di etichetta per riga. Viene letta solo la posta che le ha tutte. Lascia vuoto per tutta la posta.",
     "mailSpamTrash": "Includi Spam e Cestino",
     "notSetUp": "La tua organizzazione non ha ancora collegato Google Workspace.",
-    "setUpLink": "Configuralo in Admin › Email",
-    "notSetUpAsk": "La tua organizzazione non ha ancora collegato Google Workspace. Chiedi a un amministratore di configurarlo in Admin › Email."
+    "setUpLink": "Configuralo in {{where}}",
+    "notSetUpAsk": "La tua organizzazione non ha ancora collegato Google Workspace. Chiedi a un amministratore di configurarlo in {{where}}."
   }
 }

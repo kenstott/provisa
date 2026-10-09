@@ -1,0 +1,28 @@
+{
+  "mailPlatforms": {
+    "sentTitle": "E-mail die Provisa verstuurt",
+    "sentHelp": "Uitnodigingen en andere meldingen die Provisa verstuurt.",
+    "platformsTitle": "E-mailplatforms waarmee uw bronnen verbinding maken",
+    "platformsHelp": "Een bron die e-mail leest, logt in met een client die uw organisatie bij het e-mailplatform registreert. Vul die hier één keer in; wie een bron toevoegt, ziet hem niet.",
+    "platform": {
+      "google_workspace": "Google Workspace"
+    },
+    "connected": "Gekoppeld",
+    "notConnected": "Niet gekoppeld",
+    "redirectAddress": "Omleidingsadres",
+    "redirectHelp": {
+      "google_workspace": "Kopieer dit naar uw OAuth-client in de Google Cloud Console, onder ‘Geautoriseerde omleidings-URI’s’."
+    },
+    "copy": "Kopiëren",
+    "copied": "Gekopieerd",
+    "sameAddressNote": "Wie een bron koppelt, moet Provisa openen op {{origin}}. Een andere naam voor dezelfde machine (127.0.0.1 in plaats van localhost) rondt het inloggen niet af.",
+    "redirectUnknown": "Het omleidingsadres kan niet worden getoond omdat het openbare adres van deze installatie niet is ingesteld.",
+    "clientId": "Client-ID",
+    "clientSecret": "Clientgeheim",
+    "clientSecretKeep": "Laat leeg om het al ingevulde geheim te behouden.",
+    "save": "Opslaan",
+    "remove": "Verwijderen",
+    "saved": "Opgeslagen.",
+    "removed": "Verwijderd."
+  }
+}

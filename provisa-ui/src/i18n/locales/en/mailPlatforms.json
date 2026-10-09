@@ -1,0 +1,28 @@
+{
+  "mailPlatforms": {
+    "sentTitle": "Mail Provisa sends",
+    "sentHelp": "Invitations and other notifications that Provisa sends out.",
+    "platformsTitle": "Mail platforms your sources connect to",
+    "platformsHelp": "A source that reads mail signs in with a client your organization registers with the mail platform. Enter it here once; nobody adding a source sees it.",
+    "platform": {
+      "google_workspace": "Google Workspace"
+    },
+    "connected": "Connected",
+    "notConnected": "Not connected",
+    "redirectAddress": "Redirect address",
+    "redirectHelp": {
+      "google_workspace": "Copy this into your OAuth client in the Google Cloud console, under Authorized redirect URIs."
+    },
+    "copy": "Copy",
+    "copied": "Copied",
+    "sameAddressNote": "People connecting a source must open Provisa at {{origin}}. Another name for the same machine (127.0.0.1 in place of localhost) will not complete the sign-in.",
+    "redirectUnknown": "The redirect address cannot be shown because this deployment's public address is not set.",
+    "clientId": "Client ID",
+    "clientSecret": "Client secret",
+    "clientSecretKeep": "Leave empty to keep the one already entered.",
+    "save": "Save",
+    "remove": "Remove",
+    "saved": "Saved.",
+    "removed": "Removed."
+  }
+}

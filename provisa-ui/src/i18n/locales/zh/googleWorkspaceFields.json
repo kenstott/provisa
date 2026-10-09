@@ -17,7 +17,7 @@
     "mailLabelsHelp": "每行一个标签名称。仅读取带有全部标签的邮件。留空表示所有邮件。",
     "mailSpamTrash": "包含垃圾邮件和已删除邮件",
     "notSetUp": "您的组织尚未连接 Google Workspace。",
-    "setUpLink": "在Admin › Email中进行设置",
-    "notSetUpAsk": "您的组织尚未连接 Google Workspace。请让管理员在Admin › Email中进行设置。"
+    "setUpLink": "在{{where}}中进行设置",
+    "notSetUpAsk": "您的组织尚未连接 Google Workspace。请让管理员在{{where}}中进行设置。"
   }
 }

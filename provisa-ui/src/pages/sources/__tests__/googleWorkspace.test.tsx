@@ -146,6 +146,7 @@ describe("an organisation that has not connected Google Workspace", () => {
     const line = await screen.findByTestId("google-workspace-not-set-up");
     expect(line).toHaveTextContent(en.googleWorkspaceFields.notSetUp);
     expect(shown("set-up")).toHaveAttribute("href", "/admin/email");
+    expect(shown("set-up")).toHaveTextContent("Set it up under Admin › Email");
     expect(shown("connect")).toBeNull();
   });
 
@@ -153,7 +154,7 @@ describe("an organisation that has not connected Google Workspace", () => {
     signIn.signInStatus.mockResolvedValue({ configured: false, may_configure: false });
     form(FILLED);
     const line = await screen.findByTestId("google-workspace-not-set-up");
-    expect(line).toHaveTextContent(en.googleWorkspaceFields.notSetUpAsk);
+    expect(line).toHaveTextContent("Ask an administrator to set it up under Admin › Email.");
     expect(shown("set-up")).toBeNull();
     expect(shown("connect")).toBeNull();
   });

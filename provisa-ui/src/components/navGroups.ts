@@ -185,7 +185,15 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/my-secrets", labelKey: "navBar.itemMySecrets", capability: "usage" },
       // REQ-1576: the mail transport platform communications go out through. Deployment-wide, and
       // an invitation is the platform's message rather than any org's, so platform_settings.
-      { to: "/admin/email", labelKey: "navBar.itemEmail", capability: "platform_settings" },
+      // REQ-1923: the page also holds the organisation's mail platforms (the client its sources
+      // sign in to Google or Microsoft with), which are the organisation's: org_settings opens it
+      // too, and each half of the page shows only to a holder of its own right.
+      {
+        to: "/admin/email",
+        labelKey: "navBar.itemEmail",
+        capability: "platform_settings",
+        orCapability: "org_settings",
+      },
       // REQ-1466: the scheduled-downtime banner is turned on and off for the whole deployment, so
       // platform_settings — the same right that gates the engine topology switch it announces.
       {

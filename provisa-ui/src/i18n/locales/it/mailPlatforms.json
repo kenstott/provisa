@@ -1,0 +1,28 @@
+{
+  "mailPlatforms": {
+    "sentTitle": "Posta inviata da Provisa",
+    "sentHelp": "Inviti e altre notifiche che Provisa invia.",
+    "platformsTitle": "Piattaforme di posta a cui si collegano le tue origini",
+    "platformsHelp": "Un’origine che legge la posta accede con un client che la tua organizzazione registra presso la piattaforma di posta. Inseriscilo qui una sola volta; chi aggiunge un’origine non lo vede.",
+    "platform": {
+      "google_workspace": "Google Workspace"
+    },
+    "connected": "Collegata",
+    "notConnected": "Non collegata",
+    "redirectAddress": "Indirizzo di reindirizzamento",
+    "redirectHelp": {
+      "google_workspace": "Copialo nel tuo client OAuth, nella console Google Cloud, in «URI di reindirizzamento autorizzati»."
+    },
+    "copy": "Copia",
+    "copied": "Copiato",
+    "sameAddressNote": "Chi collega un’origine deve aprire Provisa all’indirizzo {{origin}}. Un altro nome per la stessa macchina (127.0.0.1 al posto di localhost) non completa l’accesso.",
+    "redirectUnknown": "L’indirizzo di reindirizzamento non può essere mostrato perché l’indirizzo pubblico di questa installazione non è impostato.",
+    "clientId": "ID client",
+    "clientSecret": "Client secret",
+    "clientSecretKeep": "Lascia vuoto per mantenere quello già inserito.",
+    "save": "Salva",
+    "remove": "Rimuovi",
+    "saved": "Salvato.",
+    "removed": "Rimosso."
+  }
+}

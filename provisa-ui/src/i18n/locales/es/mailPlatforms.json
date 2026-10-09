@@ -1,0 +1,28 @@
+{
+  "mailPlatforms": {
+    "sentTitle": "Correo que envía Provisa",
+    "sentHelp": "Invitaciones y otras notificaciones que envía Provisa.",
+    "platformsTitle": "Plataformas de correo a las que se conectan sus orígenes",
+    "platformsHelp": "Un origen que lee correo inicia sesión con un cliente que su organización registra en la plataforma de correo. Introdúzcalo aquí una sola vez; quien añade un origen no lo ve.",
+    "platform": {
+      "google_workspace": "Google Workspace"
+    },
+    "connected": "Conectada",
+    "notConnected": "Sin conectar",
+    "redirectAddress": "Dirección de redireccionamiento",
+    "redirectHelp": {
+      "google_workspace": "Cópiela en su cliente de OAuth, en la consola de Google Cloud, en «URI de redireccionamiento autorizados»."
+    },
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "sameAddressNote": "Quien conecte un origen debe abrir Provisa en {{origin}}. Otro nombre para el mismo equipo (127.0.0.1 en lugar de localhost) no completará el inicio de sesión.",
+    "redirectUnknown": "No se puede mostrar la dirección de redireccionamiento porque la dirección pública de este despliegue no está definida.",
+    "clientId": "ID de cliente",
+    "clientSecret": "Secreto del cliente",
+    "clientSecretKeep": "Déjelo vacío para conservar el que ya está introducido.",
+    "save": "Guardar",
+    "remove": "Quitar",
+    "saved": "Guardado.",
+    "removed": "Quitado."
+  }
+}

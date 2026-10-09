@@ -13,6 +13,8 @@
 // authority on what is valid, and this one only says what is still missing from the form.
 
 export const GOOGLE_WORKSPACE = "google_workspace";
+/** Where an administrator enters the organisation's Google client. */
+export const MAIL_PLATFORMS_ROUTE = "/admin/email";
 
 export const GW_GOOGLE_ACCOUNT = "google_account";
 export const GW_SERVICE_ACCOUNT = "service_account";

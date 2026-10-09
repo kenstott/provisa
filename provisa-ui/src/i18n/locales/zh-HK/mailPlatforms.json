@@ -1,0 +1,28 @@
+{
+  "mailPlatforms": {
+    "sentTitle": "Provisa 發送的郵件",
+    "sentHelp": "Provisa 發出的邀請和其他通知。",
+    "platformsTitle": "數據來源所連接的郵件平台",
+    "platformsHelp": "讀取郵件的數據來源使用你的組織在郵件平台註冊的用戶端登入。只需在此填寫一次;新增數據來源的人看不到它。",
+    "platform": {
+      "google_workspace": "Google Workspace"
+    },
+    "connected": "已連接",
+    "notConnected": "未連接",
+    "redirectAddress": "重新導向地址",
+    "redirectHelp": {
+      "google_workspace": "請將其複製到 Google Cloud 控制台中你的 OAuth 用戶端的「已授權的重新導向 URI」之下。"
+    },
+    "copy": "複製",
+    "copied": "已複製",
+    "sameAddressNote": "連接數據來源的人必須透過 {{origin}} 開啟 Provisa。使用同一部機器的其他名稱(以 127.0.0.1 代替 localhost)無法完成登入。",
+    "redirectUnknown": "無法顯示重新導向地址,因為此部署的公開地址尚未設定。",
+    "clientId": "用戶端 ID",
+    "clientSecret": "用戶端密鑰",
+    "clientSecretKeep": "留空則保留已填寫的密鑰。",
+    "save": "儲存",
+    "remove": "移除",
+    "saved": "已儲存。",
+    "removed": "已移除。"
+  }
+}

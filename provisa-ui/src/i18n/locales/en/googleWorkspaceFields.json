@@ -17,7 +17,7 @@
     "mailLabelsHelp": "One label name per line. Only mail carrying every one is read. Leave empty for all mail.",
     "mailSpamTrash": "Include Spam and Trash",
     "notSetUp": "Your organization has not connected Google Workspace yet.",
-    "setUpLink": "Set it up under Admin › Email",
-    "notSetUpAsk": "Your organization has not connected Google Workspace yet. Ask an administrator to set it up under Admin › Email."
+    "setUpLink": "Set it up under {{where}}",
+    "notSetUpAsk": "Your organization has not connected Google Workspace yet. Ask an administrator to set it up under {{where}}."
   }
 }

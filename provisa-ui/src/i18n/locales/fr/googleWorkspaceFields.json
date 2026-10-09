@@ -17,7 +17,7 @@
     "mailLabelsHelp": "Un nom de libellé par ligne. Seuls les messages qui les portent tous sont lus. Laissez vide pour tous les messages.",
     "mailSpamTrash": "Inclure Spam et Corbeille",
     "notSetUp": "Votre organisation n’a pas encore connecté Google Workspace.",
-    "setUpLink": "Le configurer dans Admin › Email",
-    "notSetUpAsk": "Votre organisation n’a pas encore connecté Google Workspace. Demandez à un administrateur de le configurer dans Admin › Email."
+    "setUpLink": "Le configurer dans {{where}}",
+    "notSetUpAsk": "Votre organisation n’a pas encore connecté Google Workspace. Demandez à un administrateur de le configurer dans {{where}}."
   }
 }

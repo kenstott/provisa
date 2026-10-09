@@ -17,7 +17,7 @@
     "mailLabelsHelp": "1 行に 1 つのラベル名。すべてのラベルが付いたメールだけを読み取ります。すべてのメールを対象にする場合は空欄にします。",
     "mailSpamTrash": "迷惑メールとゴミ箱を含める",
     "notSetUp": "組織でまだ Google Workspace が接続されていません。",
-    "setUpLink": "Admin › Email で設定する",
-    "notSetUpAsk": "組織でまだ Google Workspace が接続されていません。管理者に Admin › Email での設定を依頼してください。"
+    "setUpLink": "{{where}} で設定する",
+    "notSetUpAsk": "組織でまだ Google Workspace が接続されていません。管理者に {{where}} での設定を依頼してください。"
   }
 }

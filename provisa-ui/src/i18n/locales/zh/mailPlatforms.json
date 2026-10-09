@@ -1,0 +1,28 @@
+{
+  "mailPlatforms": {
+    "sentTitle": "Provisa 发送的邮件",
+    "sentHelp": "Provisa 发出的邀请和其他通知。",
+    "platformsTitle": "数据源所连接的邮件平台",
+    "platformsHelp": "读取邮件的数据源使用您的组织在邮件平台注册的客户端登录。只需在此填写一次;添加数据源的人看不到它。",
+    "platform": {
+      "google_workspace": "Google Workspace"
+    },
+    "connected": "已连接",
+    "notConnected": "未连接",
+    "redirectAddress": "重定向地址",
+    "redirectHelp": {
+      "google_workspace": "请将其复制到 Google Cloud 控制台中您的 OAuth 客户端的“已获授权的重定向 URI”下。"
+    },
+    "copy": "复制",
+    "copied": "已复制",
+    "sameAddressNote": "连接数据源的人必须通过 {{origin}} 打开 Provisa。使用同一台机器的其他名称(用 127.0.0.1 代替 localhost)无法完成登录。",
+    "redirectUnknown": "无法显示重定向地址,因为此部署的公开地址尚未设置。",
+    "clientId": "客户端 ID",
+    "clientSecret": "客户端密钥",
+    "clientSecretKeep": "留空则保留已填写的密钥。",
+    "save": "保存",
+    "remove": "移除",
+    "saved": "已保存。",
+    "removed": "已移除。"
+  }
+}

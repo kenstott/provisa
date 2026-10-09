@@ -17,7 +17,7 @@
     "mailLabelsHelp": "שם תווית אחד בכל שורה. נקרא רק דואר שנושא את כולן. יש להשאיר ריק עבור כל הדואר.",
     "mailSpamTrash": "לכלול ספאם ואשפה",
     "notSetUp": "הארגון שלך עדיין לא חיבר את Google Workspace.",
-    "setUpLink": "להגדרה תחת Admin › Email",
-    "notSetUpAsk": "הארגון שלך עדיין לא חיבר את Google Workspace. יש לבקש ממנהל להגדיר זאת תחת Admin › Email."
+    "setUpLink": "להגדרה תחת {{where}}",
+    "notSetUpAsk": "הארגון שלך עדיין לא חיבר את Google Workspace. יש לבקש ממנהל להגדיר זאת תחת {{where}}."
   }
 }

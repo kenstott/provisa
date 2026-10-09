@@ -582,7 +582,6 @@ function App() {
                                     // curation controls inside are gated on `glossary_rw`.
                                     ["/admin/glossary", "glossary_read"], // REQ-1387
                                     ["/admin/security", "platform_settings"],
-                                    ["/admin/email", "platform_settings"], // REQ-1576
                                     ["/admin/maintenance", "platform_settings"], // REQ-1466
                                     ["/admin/deployment-settings", "platform_settings"], // REQ-1913
                                     ["/admin/billing", "org_settings"], // REQ-1469
@@ -601,6 +600,22 @@ function App() {
                                     }
                                   />
                                 ))}
+                                {/* REQ-1576, REQ-1923: the mail Provisa sends is the platform's
+                                    (platform_settings); the mail platforms sources sign in to are
+                                    the organisation's (org_settings). Either opens the page; each
+                                    half shows only to a holder of its own right. */}
+                                <Route
+                                  path="/admin/email"
+                                  element={
+                                    <CapabilityGate
+                                      capability="platform_settings"
+                                      orCapability="org_settings"
+                                      fallback={<NotAuthorized />}
+                                    >
+                                      <AdminPage />
+                                    </CapabilityGate>
+                                  }
+                                />
                               </Routes>
                             </Suspense>
                           </main>
