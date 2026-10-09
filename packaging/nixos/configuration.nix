@@ -111,6 +111,9 @@ in
     wants = [ "network-online.target" ];
     after = [ "network-online.target" ];
     unitConfig.ConditionPathExists = "${repo}/.venv/bin/provisa";
+    # A unit's PATH is a handful of core tools. The adapter servers the service starts are
+    # `#!/usr/bin/env bash` launchers, so it gets the PATH a login has.
+    path = [ "/run/current-system/sw" ];
     # A service does not get the login environment nix-ld is configured through.
     environment = {
       NIX_LD = "${nixLd}/ld.so";
