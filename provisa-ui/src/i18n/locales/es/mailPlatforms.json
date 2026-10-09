@@ -5,13 +5,15 @@
     "platformsTitle": "Plataformas de correo a las que se conectan sus orígenes",
     "platformsHelp": "Un origen que lee correo inicia sesión con un cliente que su organización registra en la plataforma de correo. Introdúzcalo aquí una sola vez; quien añade un origen no lo ve.",
     "platform": {
-      "google_workspace": "Google Workspace"
+      "google_workspace": "Google Workspace",
+      "microsoft_365": "Microsoft 365"
     },
     "connected": "Conectada",
     "notConnected": "Sin conectar",
     "redirectAddress": "Dirección de redireccionamiento",
     "redirectHelp": {
-      "google_workspace": "Cópiela en su cliente de OAuth, en la consola de Google Cloud, en «URI de redireccionamiento autorizados»."
+      "google_workspace": "Cópiela en su cliente de OAuth, en la consola de Google Cloud, en «URI de redireccionamiento autorizados».",
+      "microsoft_365": "En Microsoft Entra, abra el registro de la aplicación, elija Autenticación, agregue una plataforma Web y pegue esta dirección como URI de redireccionamiento."
     },
     "copy": "Copiar",
     "copied": "Copiado",
@@ -20,6 +22,12 @@
     "clientId": "ID de cliente",
     "clientSecret": "Secreto del cliente",
     "clientSecretKeep": "Déjelo vacío para conservar el que ya está introducido.",
+    "setting": {
+      "tenant": "Id. de directorio (inquilino)"
+    },
+    "settingHelp": {
+      "tenant": "El directorio donde están las cuentas de Microsoft 365 de su organización: su id. o su dominio, tal como Microsoft Entra lo muestra en la página Información general del registro de la aplicación."
+    },
     "save": "Guardar",
     "remove": "Quitar",
     "saved": "Guardado.",

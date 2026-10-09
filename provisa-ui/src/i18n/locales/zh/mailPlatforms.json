@@ -5,13 +5,15 @@
     "platformsTitle": "数据源所连接的邮件平台",
     "platformsHelp": "读取邮件的数据源使用您的组织在邮件平台注册的客户端登录。只需在此填写一次;添加数据源的人看不到它。",
     "platform": {
-      "google_workspace": "Google Workspace"
+      "google_workspace": "Google Workspace",
+      "microsoft_365": "Microsoft 365"
     },
     "connected": "已连接",
     "notConnected": "未连接",
     "redirectAddress": "重定向地址",
     "redirectHelp": {
-      "google_workspace": "请将其复制到 Google Cloud 控制台中您的 OAuth 客户端的“已获授权的重定向 URI”下。"
+      "google_workspace": "请将其复制到 Google Cloud 控制台中您的 OAuth 客户端的“已获授权的重定向 URI”下。",
+      "microsoft_365": "在 Microsoft Entra 中打开应用注册,选择“身份验证”,添加 Web 平台,并将此地址粘贴为重定向 URI。"
     },
     "copy": "复制",
     "copied": "已复制",
@@ -20,6 +22,12 @@
     "clientId": "客户端 ID",
     "clientSecret": "客户端密钥",
     "clientSecretKeep": "留空则保留已填写的密钥。",
+    "setting": {
+      "tenant": "目录(租户)ID"
+    },
+    "settingHelp": {
+      "tenant": "您的组织的 Microsoft 365 账号所在的目录:其 ID 或域名,即 Microsoft Entra 在应用注册的“概述”页上显示的内容。"
+    },
     "save": "保存",
     "remove": "移除",
     "saved": "已保存。",

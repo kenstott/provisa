@@ -5,13 +5,15 @@
     "platformsTitle": "Plateformes de messagerie auxquelles vos sources se connectent",
     "platformsHelp": "Une source qui lit des e-mails se connecte avec un client que votre organisation enregistre auprès de la plateforme de messagerie. Saisissez-le ici une seule fois ; personne ne le voit en ajoutant une source.",
     "platform": {
-      "google_workspace": "Google Workspace"
+      "google_workspace": "Google Workspace",
+      "microsoft_365": "Microsoft 365"
     },
     "connected": "Connectée",
     "notConnected": "Non connectée",
     "redirectAddress": "Adresse de redirection",
     "redirectHelp": {
-      "google_workspace": "Copiez-la dans votre client OAuth, dans la console Google Cloud, sous « URI de redirection autorisés »."
+      "google_workspace": "Copiez-la dans votre client OAuth, dans la console Google Cloud, sous « URI de redirection autorisés ».",
+      "microsoft_365": "Dans Microsoft Entra, ouvrez l’inscription d’application, choisissez Authentification, ajoutez une plateforme Web et collez cette adresse comme URI de redirection."
     },
     "copy": "Copier",
     "copied": "Copié",
@@ -20,6 +22,12 @@
     "clientId": "ID client",
     "clientSecret": "Code secret du client",
     "clientSecretKeep": "Laissez vide pour conserver celui déjà saisi.",
+    "setting": {
+      "tenant": "ID de l’annuaire (locataire)"
+    },
+    "settingHelp": {
+      "tenant": "L’annuaire où se trouvent les comptes Microsoft 365 de votre organisation : son ID ou son domaine, tel que Microsoft Entra l’affiche sur la page Vue d’ensemble de l’inscription d’application."
+    },
     "save": "Enregistrer",
     "remove": "Supprimer",
     "saved": "Enregistré.",

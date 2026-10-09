@@ -5,13 +5,15 @@
     "platformsTitle": "E-mailplatforms waarmee uw bronnen verbinding maken",
     "platformsHelp": "Een bron die e-mail leest, logt in met een client die uw organisatie bij het e-mailplatform registreert. Vul die hier één keer in; wie een bron toevoegt, ziet hem niet.",
     "platform": {
-      "google_workspace": "Google Workspace"
+      "google_workspace": "Google Workspace",
+      "microsoft_365": "Microsoft 365"
     },
     "connected": "Gekoppeld",
     "notConnected": "Niet gekoppeld",
     "redirectAddress": "Omleidingsadres",
     "redirectHelp": {
-      "google_workspace": "Kopieer dit naar uw OAuth-client in de Google Cloud Console, onder ‘Geautoriseerde omleidings-URI’s’."
+      "google_workspace": "Kopieer dit naar uw OAuth-client in de Google Cloud Console, onder ‘Geautoriseerde omleidings-URI’s’.",
+      "microsoft_365": "Open in Microsoft Entra de app-registratie, kies Verificatie, voeg een webplatform toe en plak dit adres als omleidings-URI."
     },
     "copy": "Kopiëren",
     "copied": "Gekopieerd",
@@ -20,6 +22,12 @@
     "clientId": "Client-ID",
     "clientSecret": "Clientgeheim",
     "clientSecretKeep": "Laat leeg om het al ingevulde geheim te behouden.",
+    "setting": {
+      "tenant": "Map-id (tenant)"
+    },
+    "settingHelp": {
+      "tenant": "De map waarin de Microsoft 365-accounts van uw organisatie staan: de id of het domein ervan, zoals Microsoft Entra die toont op de pagina Overzicht van de app-registratie."
+    },
     "save": "Opslaan",
     "remove": "Verwijderen",
     "saved": "Opgeslagen.",

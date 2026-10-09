@@ -5,13 +5,15 @@
     "platformsTitle": "數據來源所連接的郵件平台",
     "platformsHelp": "讀取郵件的數據來源使用你的組織在郵件平台註冊的用戶端登入。只需在此填寫一次;新增數據來源的人看不到它。",
     "platform": {
-      "google_workspace": "Google Workspace"
+      "google_workspace": "Google Workspace",
+      "microsoft_365": "Microsoft 365"
     },
     "connected": "已連接",
     "notConnected": "未連接",
     "redirectAddress": "重新導向地址",
     "redirectHelp": {
-      "google_workspace": "請將其複製到 Google Cloud 控制台中你的 OAuth 用戶端的「已授權的重新導向 URI」之下。"
+      "google_workspace": "請將其複製到 Google Cloud 控制台中你的 OAuth 用戶端的「已授權的重新導向 URI」之下。",
+      "microsoft_365": "在 Microsoft Entra 中開啟應用程式註冊,選擇「驗證」,新增 Web 平台,並將此地址貼上為重新導向 URI。"
     },
     "copy": "複製",
     "copied": "已複製",
@@ -20,6 +22,12 @@
     "clientId": "用戶端 ID",
     "clientSecret": "用戶端密鑰",
     "clientSecretKeep": "留空則保留已填寫的密鑰。",
+    "setting": {
+      "tenant": "目錄(租用戶)識別碼"
+    },
+    "settingHelp": {
+      "tenant": "你的組織的 Microsoft 365 帳戶所在的目錄:其識別碼或網域,即 Microsoft Entra 在應用程式註冊的「概觀」頁面上顯示的內容。"
+    },
     "save": "儲存",
     "remove": "移除",
     "saved": "已儲存。",

@@ -5,13 +5,15 @@
     "platformsTitle": "ソースの接続先となるメール プラットフォーム",
     "platformsHelp": "メールを読み取るソースは、組織がメール プラットフォームに登録したクライアントでログインします。ここで一度だけ入力してください。ソースを追加する人には表示されません。",
     "platform": {
-      "google_workspace": "Google Workspace"
+      "google_workspace": "Google Workspace",
+      "microsoft_365": "Microsoft 365"
     },
     "connected": "接続済み",
     "notConnected": "未接続",
     "redirectAddress": "リダイレクト アドレス",
     "redirectHelp": {
-      "google_workspace": "Google Cloud コンソールの OAuth クライアントで、「承認済みのリダイレクト URI」にこのアドレスをコピーしてください。"
+      "google_workspace": "Google Cloud コンソールの OAuth クライアントで、「承認済みのリダイレクト URI」にこのアドレスをコピーしてください。",
+      "microsoft_365": "Microsoft Entra でアプリの登録を開き、[認証] を選択して Web プラットフォームを追加し、このアドレスをリダイレクト URI として貼り付けてください。"
     },
     "copy": "コピー",
     "copied": "コピーしました",
@@ -20,6 +22,12 @@
     "clientId": "クライアント ID",
     "clientSecret": "クライアント シークレット",
     "clientSecretKeep": "入力済みのものを保持する場合は空欄のままにします。",
+    "setting": {
+      "tenant": "ディレクトリ (テナント) ID"
+    },
+    "settingHelp": {
+      "tenant": "組織の Microsoft 365 アカウントが属するディレクトリ。Microsoft Entra のアプリの登録の [概要] ページに表示される ID またはドメインです。"
+    },
     "save": "保存",
     "remove": "削除",
     "saved": "保存しました。",

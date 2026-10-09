@@ -5,13 +5,15 @@
     "platformsTitle": "Plataformas de e-mail às quais suas fontes se conectam",
     "platformsHelp": "Uma fonte que lê e-mails faz login com um cliente que sua organização registra na plataforma de e-mail. Informe-o aqui uma única vez; quem adiciona uma fonte não o vê.",
     "platform": {
-      "google_workspace": "Google Workspace"
+      "google_workspace": "Google Workspace",
+      "microsoft_365": "Microsoft 365"
     },
     "connected": "Conectada",
     "notConnected": "Não conectada",
     "redirectAddress": "Endereço de redirecionamento",
     "redirectHelp": {
-      "google_workspace": "Copie-o para o seu cliente OAuth, no console do Google Cloud, em “URIs de redirecionamento autorizados”."
+      "google_workspace": "Copie-o para o seu cliente OAuth, no console do Google Cloud, em “URIs de redirecionamento autorizados”.",
+      "microsoft_365": "No Microsoft Entra, abra o registro do aplicativo, escolha Autenticação, adicione uma plataforma Web e cole este endereço como URI de redirecionamento."
     },
     "copy": "Copiar",
     "copied": "Copiado",
@@ -20,6 +22,12 @@
     "clientId": "ID do cliente",
     "clientSecret": "Chave secreta do cliente",
     "clientSecretKeep": "Deixe em branco para manter a que já foi informada.",
+    "setting": {
+      "tenant": "ID do diretório (locatário)"
+    },
+    "settingHelp": {
+      "tenant": "O diretório em que estão as contas do Microsoft 365 da sua organização: o ID ou o domínio dele, como o Microsoft Entra mostra na página Visão geral do registro do aplicativo."
+    },
     "save": "Salvar",
     "remove": "Remover",
     "saved": "Salvo.",

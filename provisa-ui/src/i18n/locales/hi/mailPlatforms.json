@@ -5,13 +5,15 @@
     "platformsTitle": "वे मेल प्लैटफ़ॉर्म जिनसे आपके स्रोत जुड़ते हैं",
     "platformsHelp": "मेल पढ़ने वाला स्रोत उस क्लाइंट से साइन इन करता है जिसे आपका संगठन मेल प्लैटफ़ॉर्म पर रजिस्टर करता है। उसे यहाँ एक बार डालें; स्रोत जोड़ने वाले को वह नहीं दिखता।",
     "platform": {
-      "google_workspace": "Google Workspace"
+      "google_workspace": "Google Workspace",
+      "microsoft_365": "Microsoft 365"
     },
     "connected": "कनेक्ट है",
     "notConnected": "कनेक्ट नहीं है",
     "redirectAddress": "रीडायरेक्ट पता",
     "redirectHelp": {
-      "google_workspace": "इसे Google Cloud कंसोल में अपने OAuth क्लाइंट के “अनुमति वाले रीडायरेक्ट यूआरआई” में कॉपी करें।"
+      "google_workspace": "इसे Google Cloud कंसोल में अपने OAuth क्लाइंट के “अनुमति वाले रीडायरेक्ट यूआरआई” में कॉपी करें।",
+      "microsoft_365": "Microsoft Entra में ऐप रजिस्ट्रेशन खोलें, Authentication चुनें, एक वेब प्लैटफ़ॉर्म जोड़ें और यह पता उसके रीडायरेक्ट URI के रूप में पेस्ट करें।"
     },
     "copy": "कॉपी करें",
     "copied": "कॉपी हो गया",
@@ -20,6 +22,12 @@
     "clientId": "क्लाइंट आईडी",
     "clientSecret": "क्लाइंट सीक्रेट",
     "clientSecretKeep": "पहले से डाला गया सीक्रेट रखने के लिए खाली छोड़ें।",
+    "setting": {
+      "tenant": "डायरेक्टरी (टेनेंट) आईडी"
+    },
+    "settingHelp": {
+      "tenant": "वह डायरेक्टरी जिसमें आपके संगठन के Microsoft 365 खाते हैं: उसकी आईडी या उसका डोमेन, जैसा Microsoft Entra ऐप रजिस्ट्रेशन के Overview पेज पर दिखाता है।"
+    },
     "save": "सेव करें",
     "remove": "हटाएँ",
     "saved": "सेव हो गया।",

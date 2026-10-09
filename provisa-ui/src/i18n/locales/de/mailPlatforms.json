@@ -5,13 +5,15 @@
     "platformsTitle": "E-Mail-Plattformen, mit denen sich Ihre Quellen verbinden",
     "platformsHelp": "Eine Quelle, die E-Mails liest, meldet sich mit einem Client an, den Ihre Organisation bei der E-Mail-Plattform registriert. Tragen Sie ihn hier einmal ein; wer eine Quelle hinzufügt, sieht ihn nicht.",
     "platform": {
-      "google_workspace": "Google Workspace"
+      "google_workspace": "Google Workspace",
+      "microsoft_365": "Microsoft 365"
     },
     "connected": "Verbunden",
     "notConnected": "Nicht verbunden",
     "redirectAddress": "Weiterleitungsadresse",
     "redirectHelp": {
-      "google_workspace": "Kopieren Sie diese Adresse in Ihren OAuth-Client in der Google Cloud Console unter „Autorisierte Weiterleitungs-URIs“."
+      "google_workspace": "Kopieren Sie diese Adresse in Ihren OAuth-Client in der Google Cloud Console unter „Autorisierte Weiterleitungs-URIs“.",
+      "microsoft_365": "Öffnen Sie in Microsoft Entra die App-Registrierung, wählen Sie „Authentifizierung“, fügen Sie eine Web-Plattform hinzu und fügen Sie diese Adresse als Umleitungs-URI ein."
     },
     "copy": "Kopieren",
     "copied": "Kopiert",
@@ -20,6 +22,12 @@
     "clientId": "Client-ID",
     "clientSecret": "Clientschlüssel",
     "clientSecretKeep": "Leer lassen, um den bereits eingetragenen zu behalten.",
+    "setting": {
+      "tenant": "Verzeichnis-ID (Mandant)"
+    },
+    "settingHelp": {
+      "tenant": "Das Verzeichnis, in dem sich die Microsoft 365-Konten Ihrer Organisation befinden: seine ID oder seine Domäne, wie Microsoft Entra sie auf der Seite „Übersicht“ der App-Registrierung anzeigt."
+    },
     "save": "Speichern",
     "remove": "Entfernen",
     "saved": "Gespeichert.",

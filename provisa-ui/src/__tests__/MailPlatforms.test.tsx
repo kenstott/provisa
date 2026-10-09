@@ -196,6 +196,19 @@ describe("the organisation's mail platforms", () => {
     expect(await screen.findByTestId(tid("-said"))).toHaveTextContent("needs client_secret");
   });
 
+  it("shows Microsoft 365 by name with its tenant setting labelled and where its address goes", async () => {
+    list.mockResolvedValue({
+      redirect_address: REDIRECT,
+      platforms: [google({ platform: "microsoft_365", settings_fields: ["tenant"] })],
+    });
+    render(<MailPlatformsSection />);
+    expect(await screen.findByText("Microsoft 365")).toBeInTheDocument();
+    expect(screen.getByTestId("mail-platform-microsoft_365-setting-tenant")).toBeInTheDocument();
+    expect(screen.getByText(en.mailPlatforms.setting.tenant)).toBeInTheDocument();
+    expect(screen.getByText(en.mailPlatforms.settingHelp.tenant)).toBeInTheDocument();
+    expect(screen.getByText(en.mailPlatforms.redirectHelp.microsoft_365)).toBeInTheDocument();
+  });
+
   it("asks for each setting a platform declares, and needs it", () => {
     const tenanted = google({ platform: "tenanted", settings_fields: ["tenant"] });
     const draft = { client_id: "c", client_secret: "s", settings: { tenant: "" } };
