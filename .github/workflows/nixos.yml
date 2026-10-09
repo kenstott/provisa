@@ -127,6 +127,16 @@ jobs:
             PROVISA_E2E_DEPLOYED_URL=http://127.0.0.1:3000 npx playwright test -c playwright.deployed.config.ts --reporter=list || { cat test-results/*/error-context.md; exit 1; }
           '
 
+      # An adapter server (AskAmerica's) writes to a file beside its bundle, not to the journal.
+      - name: Adapter server logs
+        if: ${{ !cancelled() && steps.service.outcome == 'success' }}
+        run: |
+          packaging/nixos/vm-run '
+            sudo find / -xdev -name pgwire-server.log 2>/dev/null | while read -r f; do
+              echo "=== $f"; sudo tail -n 400 "$f"
+            done
+          '
+
       - name: Service log
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: packaging/nixos/vm-run 'systemctl status provisa --no-pager -l || true; journalctl -u provisa --no-pager -n 3000'
