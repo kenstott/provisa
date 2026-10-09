@@ -24,8 +24,7 @@ from provisa.api_source import oauth_store
 from provisa.api_source.oauth_store import Grant, RefreshBusy, stored_access_token
 from provisa.core import secrets_store
 from provisa.core.database import Database, create_engine_from_url
-from provisa.core.schema_admin import deployment_encryption_key, metadata
-from provisa.core.schema_admin import secrets_store as secrets_table
+from provisa.core.schema_admin import REGISTRY_TABLES, metadata, orgs
 from provisa.core.secrets_store import ORG_OWNER
 from provisa.encryption.runtime import reset_encryption
 
@@ -64,7 +63,10 @@ def plane():
     url = f"{_BASE}/{name}"
     engine = create_engine_from_url(url)
     with engine.begin() as conn:
-        metadata.create_all(conn, tables=[secrets_table, deployment_encryption_key])
+        # The control plane's own tables, as the org tests build them: the vault refers to the
+        # organisation that holds each secret.
+        metadata.create_all(conn, tables=REGISTRY_TABLES)
+        conn.execute(sa.insert(orgs).values(id=ORG, name=ORG))
     try:
         yield Database(engine, "test"), url
     finally:
