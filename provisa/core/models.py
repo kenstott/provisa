@@ -2361,6 +2361,13 @@ class ProvisaConfig(BaseModel):
     kafka_sources: list[dict[str, Any]] = Field(default_factory=list)
 
     @model_validator(mode="after")
+    def _assignments_source_fits_the_tenancy(self) -> "ProvisaConfig":
+        from provisa.core.assignments_source import require_assignments_source
+
+        require_assignments_source(self.multitenancy, self.auth.model_dump())
+        return self
+
+    @model_validator(mode="after")
     def _validate_regions(self) -> "ProvisaConfig":
         validate_regions(self)  # REQ-1922
         return self

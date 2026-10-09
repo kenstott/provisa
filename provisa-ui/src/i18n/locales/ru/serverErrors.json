@@ -395,7 +395,8 @@
       "unknown_auth_provider": "неизвестный провайдер аутентификации '{{provider}}'; допустимые: {{valid}}",
       "unknown_encryption_provider": "неизвестный провайдер шифрования '{{provider}}'",
       "unknown_engine": "неизвестный движок '{{engine}}'; допустимые: {{valid}}",
-      "use_domains_invalid": "use_domains должен быть true, false или null"
+      "use_domains_invalid": "use_domains должен быть true, false или null",
+      "claims_with_multitenancy": "Мультиарендное развёртывание не может читать назначения ролей из утверждений входа: оно само выдаёт роли, по организациям, и утверждения перекрыли бы их. Укажите Provisa в качестве источника назначений."
     },
     "setup": {
       "admin_credentials_required": "требуются admin_username и admin_password",

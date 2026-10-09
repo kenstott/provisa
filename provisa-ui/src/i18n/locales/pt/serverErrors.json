@@ -395,7 +395,8 @@
       "unknown_auth_provider": "provedor de autenticação desconhecido '{{provider}}'; válidos: {{valid}}",
       "unknown_encryption_provider": "provedor de criptografia desconhecido '{{provider}}'",
       "unknown_engine": "mecanismo desconhecido '{{engine}}'; válidos: {{valid}}",
-      "use_domains_invalid": "use_domains deve ser true, false ou null"
+      "use_domains_invalid": "use_domains deve ser true, false ou null",
+      "claims_with_multitenancy": "Uma implantação multilocatário não pode ler as atribuições de funções das claims de início de sessão: ela própria concede as funções, por organização, e as claims iriam substituí-las. Defina a origem das atribuições como Provisa."
     },
     "setup": {
       "admin_credentials_required": "admin_username e admin_password obrigatórios",

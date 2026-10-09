@@ -395,7 +395,8 @@
       "unknown_auth_provider": "proveedor de autenticación desconocido: '{{provider}}'; válidos: {{valid}}",
       "unknown_encryption_provider": "proveedor de cifrado desconocido: '{{provider}}'",
       "unknown_engine": "motor desconocido: '{{engine}}'; válidos: {{valid}}",
-      "use_domains_invalid": "use_domains debe ser true, false o null"
+      "use_domains_invalid": "use_domains debe ser true, false o null",
+      "claims_with_multitenancy": "Un despliegue multiinquilino no puede leer las asignaciones de roles de los claims de inicio de sesión: concede los roles por sí mismo, por organización, y los claims los anularían. Establezca el origen de las asignaciones en Provisa."
     },
     "setup": {
       "admin_credentials_required": "admin_username y admin_password son obligatorios",
