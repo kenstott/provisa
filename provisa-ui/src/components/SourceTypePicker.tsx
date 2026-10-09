@@ -49,6 +49,8 @@ const ALIASES: Record<string, string> = {
   hive: "apache",
   hiveserver2: "apache hive",
   google_sheets: "spreadsheet",
+  // REQ-1923: what a person looking for their mail types.
+  google_workspace: "gmail google mail email calendar tasks g suite gsuite",
   openapi: "rest swagger",
   elasticsearch: "opensearch",
   saphana: "sap hana",

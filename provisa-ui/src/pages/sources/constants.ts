@@ -162,7 +162,12 @@ export const SOURCE_TYPES = [
   },
   // REQ-1923: the mail of a Google account, read through Google's own API (calendar and tasks
   // are named in its setup and not yet read).
-  { value: "google_workspace", label: "Google Workspace", category: "Enterprise", defaultPort: 0 },
+  {
+    value: "google_workspace",
+    label: "Google Workspace (Gmail)",
+    category: "Enterprise",
+    defaultPort: 0,
+  },
   // REQ-1923: a branded source — the remote GraphQL source with the system's endpoint, schema
   // and credential handling already supplied. The user sees the brand as an ordinary type.
   { value: "github", label: "GitHub", category: "Enterprise", defaultPort: 443 },

@@ -64,6 +64,33 @@ describe("SourceTypePicker", () => {
     expect(screen.queryByTestId("source-type-picker-section-Streaming")).toBeNull();
   });
 
+  // REQ-1923: a person looking for their mail types "gmail", not the suite's name.
+  it.each(["gmail", "mail", "email", "google", "google mail", "calendar", "tasks", "workspace"])(
+    "finds Google Workspace by %s",
+    async (typed) => {
+      render(
+        <SourceTypePicker
+          opened
+          onClose={vi.fn()}
+          groups={[
+            ...GROUPS,
+            {
+              group: "Enterprise",
+              items: [{ value: "google_workspace", label: "Google Workspace (Gmail)" }],
+            },
+          ]}
+          value="postgresql"
+          onPick={vi.fn()}
+        />,
+      );
+      fireEvent.change(await screen.findByTestId("source-type-picker-search"), {
+        target: { value: typed },
+      });
+      expect(screen.getByTestId("source-type-option-google_workspace")).toBeInTheDocument();
+      expect(screen.queryByTestId("source-type-option-kafka")).toBeNull();
+    },
+  );
+
   it("says so when nothing matches", async () => {
     open();
     fireEvent.change(await screen.findByTestId("source-type-picker-search"), {

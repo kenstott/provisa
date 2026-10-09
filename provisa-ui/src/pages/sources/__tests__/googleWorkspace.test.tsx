@@ -94,7 +94,7 @@ beforeEach(() => {
 describe("the source pick list", () => {
   it("offers Google Workspace as a source type of its own", () => {
     expect(SOURCE_TYPES.find((s) => s.value === "google_workspace")).toMatchObject({
-      label: "Google Workspace",
+      label: "Google Workspace (Gmail)",
     });
     expect(backendType("google_workspace")).toBe("google_workspace");
     expect(BRAND_CARRIER.google_workspace).toBeUndefined();
