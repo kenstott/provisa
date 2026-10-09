@@ -264,3 +264,187 @@ async def test_invalidating_a_source_empties_its_catalog_in_the_state_store(stor
     assert await read_cache(tenant_db, "src", "sec")
     await invalidate_source(tenant_db, "src")
     assert await read_cache(tenant_db, "src", "sec") is None
+
+
+# ---------------------------------------------------------------------------
+# A source the engine attaches is listed through the attach seam, as the form lists it
+# ---------------------------------------------------------------------------
+
+
+class _AttachingEngine:
+    """An engine that lists an attached source through its attach seam (the Register Table
+    form's path) and holds NO catalog named after the source: asked for one in SQL, it answers
+    as DuckDB did -- `Binder Error: Catalog "test" does not exist!`."""
+
+    def __init__(self, tables_of, *, starting_for: int = 0) -> None:
+        self._tables_of = tables_of
+        self._starting_for = starting_for
+        self.seam_calls: list[str] = []
+        self.statements: list[str] = []
+
+    def introspect_tables(self, source, schema_name):
+        self.seam_calls.append(schema_name)
+        if self._starting_for > 0:
+            self._starting_for -= 1
+            from provisa.federation.pgwire_replica import SourceStillStartingError
+
+            raise SourceStillStartingError(source.id)
+        return self._tables_of(schema_name)
+
+    async def execute_engine(self, sql, **kwargs):
+        self.statements.append(sql)
+        raise RuntimeError('Binder Error: Catalog "test" does not exist!')
+
+
+class _no_binding:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+def _attached_source_arranged(monkeypatch, schemas):
+    from types import SimpleNamespace
+
+    from provisa.api.admin import introspect, schema_query
+    from provisa.discovery import catalog_cache
+
+    async def _schemas(source_id, source_type, pools, conn):
+        return list(schemas)
+
+    async def _no_native(*args):
+        return None  # the driver lists nothing: the engine's attach does
+
+    async def _attached(state, source_id):
+        return None
+
+    async def _source(source_id):
+        return SimpleNamespace(id=source_id)
+
+    monkeypatch.setattr(introspect, "native_schemas", _schemas)
+    monkeypatch.setattr(introspect, "native_tables", _no_native)
+    monkeypatch.setattr(introspect, "native_columns", _no_native)
+    monkeypatch.setattr(introspect, "unattached_source", _attached)
+    monkeypatch.setattr(schema_query, "_source_for_introspection", _source)
+    # The seam runs inside the org's vault binding (the source's credential is a reference
+    # into it); these stand-ins resolve none, so the binding is a no-op here.
+    monkeypatch.setattr(catalog_cache, "_seam_bound", _no_binding, raising=False)
+
+
+@pytest.mark.asyncio
+async def test_an_attached_source_is_indexed_through_the_attach_seam(stores, monkeypatch, caplog):
+    """The index asked the engine for `"<source>".information_schema.tables`. A native engine
+    exposes an attached source as views of its registered tables, never as a catalog named after
+    it, so every schema of an AskAmerica source logged `table list failed ... Catalog "test" does
+    not exist!` and the source was never indexed."""
+    import logging
+    from types import SimpleNamespace
+
+    from provisa.discovery.catalog_cache import index_source, read_cache
+
+    model_db, tenant_db = stores
+    _attached_source_arranged(monkeypatch, ["sec", "econ"])
+    engine = _AttachingEngine(lambda schema: [f"{schema}_facts", f"{schema}_meta"])
+    state = SimpleNamespace(tenant_db=tenant_db, catalog_for=lambda sid: sid)
+
+    with caplog.at_level(logging.WARNING):
+        await index_source("test", model_db, engine, None, {"test": "govdata"}, state)
+
+    assert "table list failed" not in caplog.text
+    assert engine.statements == []  # no catalog SQL for a source listed through its attach
+    assert engine.seam_calls == ["sec", "econ"]
+    sec = await read_cache(tenant_db, "test", "sec")
+    assert sec is not None and [t.table_name for t in sec] == ["sec_facts", "sec_meta"]
+    assert await read_cache(tenant_db, "test", "econ")
+
+
+@pytest.mark.asyncio
+async def test_a_source_that_is_still_starting_is_indexed_when_it_has_started(
+    stores, monkeypatch, caplog
+):
+    """STARTING is "index later", not a failure: the index waits for the source's server and
+    then lists it."""
+    import logging
+    from types import SimpleNamespace
+
+    from provisa.discovery import catalog_cache
+
+    model_db, tenant_db = stores
+    _attached_source_arranged(monkeypatch, ["sec"])
+    waits: list[float] = []
+
+    async def _sleep(seconds):
+        waits.append(seconds)
+
+    monkeypatch.setattr(catalog_cache.asyncio, "sleep", _sleep)
+    engine = _AttachingEngine(lambda schema: ["financial_facts"], starting_for=3)
+    state = SimpleNamespace(tenant_db=tenant_db, catalog_for=lambda sid: sid)
+
+    with caplog.at_level(logging.WARNING):
+        await catalog_cache.index_source("test", model_db, engine, None, {"test": "govdata"}, state)
+
+    assert waits == [catalog_cache.INDEX_STARTING_POLL_SECONDS] * 3
+    assert caplog.text == ""  # nothing failed: nothing is warned
+    found = await catalog_cache.read_cache(tenant_db, "test", "sec")
+    assert found is not None and [t.table_name for t in found] == ["financial_facts"]
+
+
+@pytest.mark.asyncio
+async def test_a_source_that_never_starts_is_reported_once_by_name(stores, monkeypatch, caplog):
+    import logging
+    from types import SimpleNamespace
+
+    from provisa.discovery import catalog_cache
+
+    model_db, tenant_db = stores
+    _attached_source_arranged(monkeypatch, ["sec", "econ"])
+
+    async def _sleep(seconds):
+        return None
+
+    monkeypatch.setattr(catalog_cache.asyncio, "sleep", _sleep)
+    monkeypatch.setattr(catalog_cache, "INDEX_STARTING_WAIT_SECONDS", 30)
+    engine = _AttachingEngine(lambda schema: ["t"], starting_for=10_000)
+    state = SimpleNamespace(tenant_db=tenant_db, catalog_for=lambda sid: sid)
+
+    with caplog.at_level(logging.WARNING):
+        await catalog_cache.index_source("test", model_db, engine, None, {"test": "govdata"}, state)
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warnings) == 1, warnings
+    assert "'test' is not indexed" in warnings[0] and "still starting" in warnings[0]
+    assert engine.statements == []
+    assert await catalog_cache.read_cache(tenant_db, "test", "sec") is None
+
+
+@pytest.mark.asyncio
+async def test_an_engine_with_no_attach_seam_is_still_asked_for_its_catalog(stores, monkeypatch):
+    """A federator (Trino) lists a source through a catalog of its own: unchanged."""
+    from types import SimpleNamespace
+
+    from provisa.discovery.catalog_cache import index_source, read_cache
+
+    model_db, tenant_db = stores
+    _attached_source_arranged(monkeypatch, ["sec"])
+
+    class _Federator:
+        statements: list[str] = []
+
+        def introspect_tables(self, source, schema_name):
+            return None  # no seam on this engine
+
+        async def execute_engine(self, sql, **kwargs):
+            self.statements.append(sql)
+            rows = [("financial_facts",)] if "information_schema.tables" in sql else [("cik",)]
+            return SimpleNamespace(rows=rows)
+
+    engine = _Federator()
+    state = SimpleNamespace(tenant_db=tenant_db, catalog_for=lambda sid: "test_cat")
+    await index_source("test", model_db, engine, None, {"test": "govdata"}, state)
+
+    assert any('"test_cat".information_schema.tables' in s for s in engine.statements)
+    found = await read_cache(tenant_db, "test", "sec")
+    assert found is not None and [(t.table_name, t.column_names) for t in found] == [
+        ("financial_facts", ["cik"])
+    ]

@@ -19,6 +19,7 @@ The search endpoint reads from cache; falls back to live the engine if cache is 
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 
@@ -119,10 +120,85 @@ async def invalidate_source(pool, source_id: str) -> None:  # REQ-464
         )
 
 
+#: How often, and for how long, the index asks again for a source whose own server is still
+#: starting (``pgwire_replica.SourceStillStartingError``). Past the wait the source is reported
+#: as not indexed, once; it is indexed the next time it is saved.
+INDEX_STARTING_POLL_SECONDS = 10.0
+INDEX_STARTING_WAIT_SECONDS = 900.0
+
+#: The org-vault binding the attach seam runs inside (the source's credential is a reference
+#: into the org's vault); resolved on first use.
+_seam_bound = None
+
+
+class _SeamSource:
+    """The attach seam of the bound engine for one source: how the Register Table form lists a
+    source the engine attaches (``engine.introspect_tables``), used here for the same listing.
+
+    A native engine exposes an attached source as views of its registered tables, never as a
+    catalog named after the source, so catalog SQL names a catalog that does not exist. ``None``
+    from the seam means the engine has none (a federator), and its catalog SQL is the listing."""
+
+    def __init__(self, engine, source_id: str) -> None:
+        self._engine = engine
+        self._source_id = source_id
+        self._source = None
+
+    async def tables(self, schema: str) -> list[str] | None:
+        seam = getattr(self._engine, "introspect_tables", None)
+        if seam is None:
+            return None
+        if self._source is None:
+            from provisa.api.admin.schema_query import _source_for_introspection
+
+            self._source = await _source_for_introspection(self._source_id)
+            if self._source is None:
+                return None
+        global _seam_bound
+        if _seam_bound is None:
+            from provisa.core.secrets_store import bound_to_request_org
+
+            _seam_bound = bound_to_request_org
+        async with _seam_bound():
+            return await asyncio.to_thread(seam, self._source, schema)
+
+
 async def index_source(
     source_id: str, pool, engine, source_pools, source_types, state
 ) -> None:  # REQ-464
     """Background task: walk all schemas+tables for a source and populate cache.
+
+    A source whose own server is still starting is not a failure: the index asks again
+    (``INDEX_STARTING_POLL_SECONDS``) until it has started, and reports it once, by name, if it
+    has not within ``INDEX_STARTING_WAIT_SECONDS``.
+    """
+    from provisa.federation.pgwire_replica import ServerNotServing, SourceStillStartingError
+
+    waited = 0.0
+    while True:
+        try:
+            await _index_source_once(source_id, pool, engine, source_pools, source_types, state)
+            return
+        except SourceStillStartingError:
+            if waited >= INDEX_STARTING_WAIT_SECONDS:
+                log.warning(
+                    "catalog_cache: %r is not indexed: its server was still starting after %ds; "
+                    "it is indexed when the source is next saved",
+                    source_id,
+                    int(waited),
+                )
+                return
+            await asyncio.sleep(INDEX_STARTING_POLL_SECONDS)
+            waited += INDEX_STARTING_POLL_SECONDS
+        except ServerNotServing as exc:
+            log.warning("catalog_cache: %r is not indexed: %s", source_id, exc)
+            return
+
+
+async def _index_source_once(
+    source_id: str, pool, engine, source_pools, source_types, state
+) -> None:  # REQ-464
+    """One walk of all schemas+tables of a source into the cache.
 
     ``pool`` is the org's model store, which the source is listed through; the cache itself is
     a state table (``core.store_sides``) and is written through the org's state store,
@@ -142,6 +218,8 @@ async def index_source(
     # catalog is asked only for what the driver cannot list, and only for a source the engine
     # holds a live attach of — a floored source has no engine catalog, so no query is sent.
     engine_lists = await unattached_source(state, source_id) is None
+    seam = _SeamSource(engine, source_id)
+    listed_through_attach: set[str] = set()
     try:
         async with pool.acquire() as config_conn:
             schemas = await native_schemas(source_id, source_type, source_pools, config_conn)
@@ -195,24 +273,35 @@ async def index_source(
                     schema,
                 )
                 continue
-            catalog = state.catalog_for(source_id)
-            try:
-                res = await engine.execute_engine(
-                    f'SELECT table_name FROM "{catalog}".information_schema.tables '
-                    f"WHERE table_schema = '{schema}' AND table_type = 'BASE TABLE' "
-                    f"ORDER BY table_name",
-                    authorization=system_auth("catalog index"),
-                )
-                table_names = [row[0] for row in res.rows]
+            # A source the engine attaches is listed through the attach seam, as the Register
+            # Table form lists it. A server still starting raises here and is retried by
+            # index_source.
+            attached = await seam.tables(schema)
+            if attached is not None:
+                listed_through_attach.add(schema)
                 tables_with_cols = [
                     CachedTable(schema_name=schema, table_name=t, column_names=[], comment=None)
-                    for t in table_names
+                    for t in attached
                 ]
-            except Exception as exc:
-                log.warning(
-                    "catalog_cache: table list failed for %r/%r: %s", source_id, schema, exc
-                )
-                continue
+            else:
+                catalog = state.catalog_for(source_id)
+                try:
+                    res = await engine.execute_engine(
+                        f'SELECT table_name FROM "{catalog}".information_schema.tables '
+                        f"WHERE table_schema = '{schema}' AND table_type = 'BASE TABLE' "
+                        f"ORDER BY table_name",
+                        authorization=system_auth("catalog index"),
+                    )
+                    table_names = [row[0] for row in res.rows]
+                    tables_with_cols = [
+                        CachedTable(schema_name=schema, table_name=t, column_names=[], comment=None)
+                        for t in table_names
+                    ]
+                except Exception as exc:
+                    log.warning(
+                        "catalog_cache: table list failed for %r/%r: %s", source_id, schema, exc
+                    )
+                    continue
         else:
             tables_with_cols = [
                 CachedTable(
@@ -236,6 +325,10 @@ async def index_source(
                 continue
             if not engine_lists:
                 continue  # neither lists this table's columns: it is indexed by name alone
+            if schema in listed_through_attach:
+                # No catalog of the engine is named after an attached source, and the seam
+                # lists tables, not their columns: such a table is indexed by name alone.
+                continue
             catalog = state.catalog_for(source_id)
             try:
                 res = await engine.execute_engine(
