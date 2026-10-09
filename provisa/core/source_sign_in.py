@@ -20,7 +20,8 @@ that exchange, for any issuer a credential kind describes (:class:`SignInKind`):
   environment, and the source being set up; and a PKCE verifier (RFC 7636, S256).
 - **complete** takes the issuer's answer (``state`` and a code), consumes the state in one
   statement, exchanges the code, checks the account approved is the account named, and writes
-  the refresh token to the organisation's vault under the source's own reference.
+  the refresh token to the organisation's vault under the source's own reference, through the
+  writer that takes the lock the source's refreshes take.
 
 What is pending is a row of the control plane (``source_sign_ins``), so the answer may arrive
 at any process or host of the deployment. Only the state's digest is stored; the verifier is
@@ -37,9 +38,10 @@ from __future__ import annotations
 import base64
 import datetime as dt
 import hashlib
+import json
 import re
 import secrets
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode, urlsplit, urlunsplit
@@ -79,13 +81,24 @@ class SignInRefused(Exception):
         self.params = params
 
 
+#: An issuer's address, or how to make it from a sign-in's settings.
+Endpoint = str | Callable[[Mapping[str, str]], str]
+
+
+def _address(endpoint: Endpoint, settings: Mapping[str, str]) -> str:
+    return endpoint if isinstance(endpoint, str) else endpoint(settings)
+
+
 @dataclass(frozen=True)
 class SignInKind:
     """What is particular to one issuer."""
 
     id: str
-    authorization_endpoint: str
-    token_endpoint: str
+    #: Where the operator approves and where a code is exchanged: one address, or, for an
+    #: issuer whose addresses depend on the source (a tenant in their path), how to make it
+    #: from the settings the sign-in was started with.
+    authorization_endpoint: Endpoint
+    token_endpoint: Endpoint
     #: What the issuer is asked beside the standard parameters, for the account named.
     authorization_params: Callable[[str], dict[str, str]]
     #: The account an access token was approved by, as the issuer names it.
@@ -116,6 +129,9 @@ class Completed:
 
 #: Stores a typed credential under a vault name and returns the reference that names it.
 StoreSecret = Callable[[str, str, str], Awaitable[str]]
+#: Stores a source's refresh token (source id, vault name, token) where its refreshes read it,
+#: under the lock they take, and returns the reference that names it.
+StoreRefreshToken = Callable[[str, str, str], Awaitable[str]]
 #: Removes a vault entry this sign-in wrote, unless a stored value still names it.
 ForgetSecret = Callable[[str], Awaitable[None]]
 
@@ -179,17 +195,20 @@ async def start(
     public_address: str | None,
     secret_names: tuple[str, str],
     store_secret: StoreSecret,
+    settings: Mapping[str, str] | None = None,
 ) -> Started:
     """Record a sign-in and make the address the operator's browser is sent to.
 
     ``secret_names`` are the vault names of the source's client secret and refresh token. The
     client secret is stored at once (``store_secret``), so nothing pending holds it."""
     kind = _kind(kind_id)
+    settings = dict(settings or {})
     if not (source_id and account and client_id and client_secret and scopes):
         raise SignInRefused(
             "incomplete", "A sign-in needs the source, the account, the client and its secret"
         )
     address = redirect_address(public_address)
+    authorization_endpoint = _address(kind.authorization_endpoint, settings)
     secret_name, token_name = secret_names
     await store_secret(secret_name, client_secret, f"client secret for source {source_id}")
     state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
@@ -209,6 +228,7 @@ async def start(
                 refresh_token_name=token_name,
                 verifier=secrets_store.seal(verifier),
                 redirect_address=address,
+                settings=json.dumps(settings, sort_keys=True),
                 expires_at=_now() + dt.timedelta(seconds=STATE_LIFETIME),
             )
         )
@@ -222,7 +242,7 @@ async def start(
         "code_challenge_method": "S256",
         **kind.authorization_params(account),
     }
-    return Started(f"{kind.authorization_endpoint}?{urlencode(query)}", STATE_LIFETIME)
+    return Started(f"{authorization_endpoint}?{urlencode(query)}", STATE_LIFETIME)
 
 
 async def _consume(admin_db: "Database", state: str, *, org_id: str, user_id: str) -> dict:
@@ -283,7 +303,9 @@ async def _exchange(admin_db: "Database", kind: SignInKind, pending: dict, code:
         "code_verifier": secrets_store.unseal(pending["verifier"]),
     }
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        answer = await client.post(kind.token_endpoint, data=form)
+        answer = await client.post(
+            _address(kind.token_endpoint, json.loads(pending["settings"])), data=form
+        )
     if answer.status_code != 200:
         raise SignInRefused(
             "refused_by_issuer",
@@ -305,7 +327,7 @@ async def complete(
     state: str,
     code: str | None,
     error: str | None,
-    store_secret: StoreSecret,
+    store_refresh_token: StoreRefreshToken,
 ) -> Completed:
     """Finish the sign-in ``state`` names with the issuer's answer: a code, or its refusal."""
     pending = await _consume(admin_db, state, org_id=org_id, user_id=user_id)
@@ -331,10 +353,8 @@ async def complete(
             approved=approved,
             account=pending["account"],
         )
-    reference = await store_secret(
-        pending["refresh_token_name"],
-        refresh_token,
-        f"sign-in approved by {approved} for source {pending['source_id']}",
+    reference = await store_refresh_token(
+        pending["source_id"], pending["refresh_token_name"], refresh_token
     )
     return Completed(
         source_id=pending["source_id"],

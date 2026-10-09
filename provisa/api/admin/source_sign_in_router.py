@@ -48,6 +48,8 @@ class StartRequest(BaseModel):
     scopes: list[str]
     client_id: str
     client_secret: str
+    #: What of the source's own settings its issuer's addresses depend on (a tenant).
+    settings: dict[str, str] = {}
 
 
 class CompleteRequest(BaseModel):
@@ -98,6 +100,29 @@ def _store_secret(actor: str | None):
     return store
 
 
+def _store_refresh_token(org_id: str, actor: str | None):
+    """The refresh token goes to the vault under the lock the source's refreshes take
+    (``oauth_store``), so a sign-in and a refresh never write one source's token at once."""
+
+    async def store(source_id: str, secret_name: str, refresh_token: str) -> str:
+        from provisa.api_source import oauth_store
+        from provisa.core.config_loader import load_control_plane
+        from provisa.core.config_location import config_path_str
+
+        await oauth_store.store_refresh_token(
+            _admin_db(),
+            load_control_plane(config_path_str()).resolved_platform_url(),
+            org_id,
+            source_id=source_id,
+            secret_name=secret_name,
+            refresh_token=refresh_token,
+            actor=actor,
+        )
+        return f"${{secret:{secret_name}}}"
+
+    return store
+
+
 @router.get("/redirect-address")
 async def redirect_address(request: Request) -> dict:
     require_capability_request(request, "source_registration")
@@ -139,6 +164,7 @@ async def start(request: Request, body: StartRequest) -> dict:
                 source_mapping_secret_name(body.source_id.strip(), "refresh_token", env),
             ),
             store_secret=_store_secret(_caller_user_id(request)),
+            settings=body.settings,
         )
     except SignInRefused as refused:
         raise _refusal(refused) from None
@@ -150,15 +176,16 @@ async def complete(request: Request, body: CompleteRequest) -> dict:
     require_capability_request(request, "source_registration")
     from provisa.core.request_context import require_current_org
 
+    org_id = require_current_org()
     try:
         done = await source_sign_in.complete(
             _admin_db(),
-            org_id=require_current_org(),
+            org_id=org_id,
             user_id=_starter(request),
             state=body.state,
             code=body.code,
             error=body.error,
-            store_secret=_store_secret(_caller_user_id(request)),
+            store_refresh_token=_store_refresh_token(org_id, _caller_user_id(request)),
         )
     except SignInRefused as refused:
         raise _refusal(refused) from None

@@ -74,6 +74,20 @@ def wired(monkeypatch):
     monkeypatch.setattr(router.source_sign_in, "sweep", sweep)
     monkeypatch.setattr(router.source_sign_in, "start", start)
     monkeypatch.setattr(router.source_sign_in, "complete", complete)
+
+    from provisa.api_source import oauth_store
+    from provisa.core import config_loader, config_location
+
+    async def store_refresh_token(admin_db, platform_url, org_id, **given):
+        seen.setdefault("locked", []).append((admin_db, platform_url, org_id, given))
+
+    monkeypatch.setattr(oauth_store, "store_refresh_token", store_refresh_token)
+    monkeypatch.setattr(config_location, "config_path_str", lambda: "provisa.yaml")
+    monkeypatch.setattr(
+        config_loader,
+        "load_control_plane",
+        lambda path: SimpleNamespace(resolved_platform_url=lambda: f"platform-of:{path}"),
+    )
     yield seen
     request_context.reset_current_org(token)
 
@@ -168,7 +182,32 @@ class TestStart:
         assert wired["stored"][0][0] is None
 
 
+class TestSettings:
+    async def test_what_the_issuers_addresses_depend_on_is_passed_on(self, wired):
+        await router.start(_request(), _start_body(settings={"tenant": "contoso"}))
+        assert wired["started"][0]["settings"] == {"tenant": "contoso"}
+
+    async def test_a_source_with_none_passes_none(self, wired):
+        await router.start(_request(), _start_body())
+        assert wired["started"][0]["settings"] == {}
+
+
 class TestComplete:
+    async def test_the_refresh_token_is_written_under_the_lock_its_refreshes_take(self, wired):
+        await router.complete(_request(), router.CompleteRequest(state="s", code=CODE))
+        writer = wired["completed"][0]["store_refresh_token"]
+        reference = await writer("mail", "source_mail__refresh_token", "made-up-refresh-token")
+        assert reference == "${secret:source_mail__refresh_token}"
+        ((admin_db, platform_url, org_id, given),) = wired["locked"]
+        assert (admin_db, platform_url, org_id) == ("admin-plane", "platform-of:provisa.yaml", ORG)
+        assert given == {
+            "source_id": "mail",
+            "secret_name": "source_mail__refresh_token",
+            "refresh_token": "made-up-refresh-token",
+            "actor": "uid-ada",
+        }
+        assert "made-up" not in reference
+
     async def test_the_caller_and_their_organisation_are_what_the_state_is_checked_against(
         self, wired
     ):

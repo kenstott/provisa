@@ -788,6 +788,8 @@ source_sign_ins = Table(
     Column("refresh_token_name", Text, nullable=False),
     Column("verifier", LargeBinary, nullable=False),
     Column("redirect_address", Text, nullable=False),
+    # What of the source's own settings the issuer's addresses depend on (a tenant), as JSON.
+    Column("settings", Text, nullable=False),
     Column("expires_at", DateTime(timezone=True), nullable=False),
     Column("used_at", DateTime(timezone=True), nullable=True),
 )

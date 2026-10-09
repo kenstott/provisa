@@ -62,6 +62,7 @@ class Issuer:
 
     def __init__(self) -> None:
         self.forms: list[dict] = []
+        self.asked_at: list[str] = []
         self.answer: httpx.Response | None = None
         self.approved = ACCOUNT
 
@@ -71,6 +72,7 @@ class Issuer:
         return {k: v for k, v in body.items() if v is not None}
 
     def handle(self, request: httpx.Request) -> httpx.Response:
+        self.asked_at.append(str(request.url))
         self.forms.append({k: v[0] for k, v in parse_qs(request.content.decode()).items()})
         return self.answer or httpx.Response(200, json=self.granted())
 
@@ -142,6 +144,14 @@ def _store(vault: dict):
     return store
 
 
+def _store_token(vault: dict):
+    async def store(source_id: str, name: str, token: str) -> str:
+        vault[name] = token
+        return f"${{secret:{name}}}"
+
+    return store
+
+
 async def _start(control_plane, vault, **changed):
     given = {
         "org_id": ORG,
@@ -172,7 +182,7 @@ async def _complete(control_plane, vault, state, **changed):
         "state": state,
         "code": CODE,
         "error": None,
-        "store_secret": _store(vault),
+        "store_refresh_token": _store_token(vault),
     }
     given.update(changed)
     return await source_sign_in.complete(control_plane, **given)
@@ -432,6 +442,73 @@ class TestComplete:
         issuer.approved = "Ada@Example.Test"
         state = _asked(await _start(control_plane, vault))["state"]
         assert (await _complete(control_plane, vault, state)).account == ACCOUNT
+
+
+class TestAnIssuerWhoseAddressesDependOnTheSource:
+    """Some issuers put a tenant in their addresses; the sign-in is started with it and the
+    exchange is sent where the same tenant says."""
+
+    @pytest.fixture
+    def tenanted(self, monkeypatch, issuer):
+        monkeypatch.setitem(
+            source_sign_in.KINDS,
+            "tenanted",
+            SignInKind(
+                id="tenanted",
+                authorization_endpoint=lambda s: f"https://issuer.test/{s['tenant']}/authorize",
+                token_endpoint=lambda s: f"https://issuer.test/{s['tenant']}/token",
+                authorization_params=lambda account: {},
+                approved_account=issuer.approved_account,
+            ),
+        )
+
+    async def test_the_operator_is_sent_to_the_tenants_address(
+        self, control_plane, vault, tenanted
+    ):
+        started = await _start(
+            control_plane, vault, kind_id="tenanted", settings={"tenant": "contoso"}
+        )
+        assert started.authorization_url.startswith("https://issuer.test/contoso/authorize?")
+        (row,) = _rows(control_plane)
+        assert row["settings"] == '{"tenant": "contoso"}'
+
+    async def test_the_code_is_exchanged_at_the_same_tenants_address(
+        self, control_plane, vault, issuer, tenanted
+    ):
+        started = await _start(
+            control_plane, vault, kind_id="tenanted", settings={"tenant": "contoso"}
+        )
+        await _complete(control_plane, vault, _asked(started)["state"])
+        assert issuer.asked_at == ["https://issuer.test/contoso/token"]
+
+    async def test_an_issuer_of_one_address_needs_no_settings(self, control_plane, vault, issuer):
+        await _start(control_plane, vault)
+        (row,) = _rows(control_plane)
+        assert row["settings"] == "{}"
+
+
+class TestWhereTheRefreshTokenGoes:
+    async def test_it_is_handed_to_the_writer_with_the_source_and_its_vault_name(
+        self, control_plane, vault, issuer
+    ):
+        written: list[tuple[str, str, str]] = []
+
+        async def writer(source_id: str, name: str, token: str) -> str:
+            written.append((source_id, name, token))
+            return f"${{secret:{name}}}"
+
+        state = _asked(await _start(control_plane, vault))["state"]
+        done = await source_sign_in.complete(
+            control_plane,
+            org_id=ORG,
+            user_id=USER,
+            state=state,
+            code=CODE,
+            error=None,
+            store_refresh_token=writer,
+        )
+        assert written == [("mail", TOKEN_NAME, REFRESH)]
+        assert done.refresh_token == f"${{secret:{TOKEN_NAME}}}"
 
 
 # -- sign-ins that came to nothing --------------------------------------------------------------
