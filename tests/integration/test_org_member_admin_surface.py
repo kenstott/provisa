@@ -180,13 +180,18 @@ async def test_org_admin_sees_its_orgs_roles(org_plane):
     assert "org_admin" in {r["id"] for r in data["roles"]}
 
 
-async def test_platform_admin_still_sees_the_same_tenant_schema(org_plane):
-    """The platform-bypass branch and the member branch must agree — one schema, one answer."""
-    as_admin = await _run(
+async def test_a_caller_holding_no_role_the_org_defines_is_answered_none_of_its_domains(org_plane):
+    """REQ-1958, REQ-1327: the admin catalog answers by the caller's rights and reach. ``admin``
+    is not a role this org defines (its only role is ``org_admin``), so that caller holds no
+    right and reaches no domain here, and is answered none of the tenant's domains — an empty
+    answer, not the platform bypass this case used to assert. The org's own admin still sees
+    them."""
+    as_undefined = await _run(
         "{ domains { id } }", active_org_id=_ORG_ID, roles=["admin"], user_id="root-user"
     )
     as_member = await _run("{ domains { id } }", **_ORG_ADMIN_CTX)
-    assert {d["id"] for d in as_admin["domains"]} == {d["id"] for d in as_member["domains"]}
+    assert as_undefined["domains"] == []
+    assert {d["id"] for d in as_member["domains"]} == {"meta", "ops", "shelter"}
 
 
 async def test_unset_active_org_is_still_refused(org_plane):
