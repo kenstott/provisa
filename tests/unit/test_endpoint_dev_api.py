@@ -67,6 +67,7 @@ def _make_query_result(**kwargs) -> QueryResult:
     return QueryResult(
         rows=kwargs.get("rows", [(1, "test")]),
         column_names=kwargs.get("column_names", ["id", "name"]),
+        column_types=kwargs.get("column_types"),
     )
 
 
@@ -286,7 +287,28 @@ class TestSqlEndpointStatsAndFormat:
         assert resp.status_code == 200
         # REQ-1436: the projection rides alongside the rows, so a grid can draw its header
         # (and the filter inputs in it) even when the result set is empty.
-        assert resp.json() == {"data": {"sql": [{"id": 1}]}, "columns": ["id"]}
+        # REQ-1937: a result that reports no types says so, and the grid types its filters from
+        # the values.
+        assert resp.json() == {
+            "data": {"sql": [{"id": 1}]},
+            "columns": ["id"],
+            "column_types": None,
+        }
+
+    async def test_column_types_ride_alongside_the_columns(self, sql_client):
+        """REQ-1937: the grid types each column's filter from the result's column types."""
+        typed = _make_query_result(
+            rows=[(1, "a")], column_names=["id", "name"], column_types=["bigint", "varchar"]
+        )
+        with (
+            patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=typed)),
+            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=typed)),
+        ):
+            resp = await sql_client.post(
+                "/data/sql", json={"sql": "SELECT id, name FROM orders", "role": "org_admin"}
+            )
+        assert resp.status_code == 200
+        assert resp.json()["column_types"] == ["bigint", "varchar"]
 
     async def test_csv_accept_format_uses_format_response(self, sql_client):
         fallback_result = _make_query_result(rows=[(1, "test")], column_names=["id", "name"])
@@ -431,6 +453,13 @@ class TestProtoEndpoint:
         monkeypatch.setattr(app_mod.state, "proto_files", {}, raising=False)
         resp = await sql_client.get("/data/proto/org_admin")
         assert resp.status_code == 404
+
+    async def test_proto_before_the_model_is_built_503(self, sql_client, monkeypatch):
+        import provisa.api.app as app_mod
+
+        monkeypatch.setattr(app_mod.state, "role_build_inputs", {})
+        resp = await sql_client.get("/data/proto/org_admin")
+        assert resp.status_code == 503
 
     async def test_static_proto_file_returned(self, sql_client):
         import provisa.api.app as app_mod

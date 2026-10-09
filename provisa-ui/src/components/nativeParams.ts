@@ -15,6 +15,8 @@
 
 import type { RegisteredTable, TableColumn } from "../types/admin";
 import { tableSqlRef } from "../naming";
+import type { ActiveFilter } from "../pages/sql/columnFilter";
+import { filterToSql } from "./columnFilterSql";
 
 export const PREVIEW_ROW_LIMIT = 1000;
 
@@ -44,7 +46,7 @@ export function previewSql(
 export function pagedViewerSql(
   table: RegisteredTable,
   params: Record<string, string>,
-  filters: Record<string, string>,
+  filters: ActiveFilter[],
   sorts: { col: string; dir: "asc" | "desc" }[],
   groupBy: string[],
   page: number,
@@ -53,10 +55,10 @@ export function pagedViewerSql(
   const predicates: string[] = [];
   const paramWhere = buildParamWhere(table, params);
   if (paramWhere) predicates.push(paramWhere.replace(/^ WHERE /, ""));
-  for (const [col, value] of Object.entries(filters)) {
-    if (!value.trim()) continue;
-    const escaped = value.replace(/'/g, "''");
-    predicates.push(`LOWER(CAST("${col}" AS VARCHAR)) LIKE LOWER('%${escaped}%')`);
+  // REQ-1937: each typed column filter as a predicate that means what the in-browser test means.
+  for (const f of filters) {
+    const predicate = filterToSql(f);
+    if (predicate) predicates.push(predicate);
   }
   const where = predicates.length > 0 ? ` WHERE ${predicates.join(" AND ")}` : "";
 

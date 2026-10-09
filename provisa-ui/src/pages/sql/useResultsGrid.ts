@@ -16,6 +16,16 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { CHAR_PX, COL_MAX, COL_MIN, PAGE_SIZE } from "./types";
 import type { ColumnProfile } from "./types";
+import {
+  distinctValues,
+  effectiveSpec,
+  isUsable,
+  matchesFilter,
+  kindFromType,
+  type ActiveFilter,
+  type ColumnKind,
+  type FilterSpec,
+} from "./columnFilter";
 
 /** A group header row (collapsible) or a data row, in render order. */
 export type GridItem =
@@ -26,6 +36,21 @@ export interface ResultsGridState {
   sorts: { col: string; dir: "asc" | "desc" }[];
   filters: Record<string, string>;
   setFilters: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  /** REQ-1937: filters chosen from a column's filter menu, one per column. A column carries either
+      one of these or the quick syntax typed in its box, never both. */
+  filterSpecs: Record<string, FilterSpec>;
+  /** Set (or with null, drop) a column's menu filter; it replaces whatever was typed in the box. */
+  setFilterSpec: (col: string, spec: FilterSpec | null) => void;
+  /** Type into a column's filter box; it replaces the column's menu filter. */
+  setFilterText: (col: string, text: string) => void;
+  /** Each column's filter kind: its declared type, else read off the values held. */
+  columnKinds: Record<string, ColumnKind>;
+  /** The filters in force, usable ones only: what the rows are narrowed by and the chips show. */
+  activeFilters: ActiveFilter[];
+  /** Distinct values of a column in the rows the grid holds, with counts. */
+  valuesOf: (col: string) => { value: string; count: number }[];
+  /** How many rows the grid holds before any filter. */
+  rowsHeld: number;
   /** REQ-1442: true when at least one column filter is narrowing the result. */
   hasFilters: boolean;
   /** REQ-1442: drop every column filter at once and return to the first page. */
@@ -63,7 +88,8 @@ export interface ResultsGridState {
 
 interface PersistedGridChoices {
   sorts?: { col: string; dir: "asc" | "desc" }[];
-  filters?: Record<string, string>;
+  /** REQ-1937: the one stored shape of column filters. An older `filters` value is not read. */
+  columnFilters?: { text: Record<string, string>; specs: Record<string, FilterSpec> };
   groupBy?: string[];
   colWidths?: Record<string, number>;
   pageSize?: number;
@@ -87,12 +113,18 @@ export function useResultsGrid(
   /** Present = server-paged: the caller fetches one page at a time (pushing
       filters/sorts/grouping into the query) and reports whether more exist. */
   server?: { hasMore: boolean },
+  /** REQ-1937: each column's declared type, when the caller knows it. A column without one is typed
+      from its values. */
+  columnTypes?: Record<string, string | null | undefined>,
 ): ResultsGridState {
   const [sorts, setSorts] = useState<{ col: string; dir: "asc" | "desc" }[]>(
     () => loadChoices(storageKey).sorts ?? [],
   );
   const [filters, setFilters] = useState<Record<string, string>>(
-    () => loadChoices(storageKey).filters ?? {},
+    () => loadChoices(storageKey).columnFilters?.text ?? {},
+  );
+  const [filterSpecs, setFilterSpecs] = useState<Record<string, FilterSpec>>(
+    () => loadChoices(storageKey).columnFilters?.specs ?? {},
   );
   const [colWidths, setColWidths] = useState<Record<string, number>>(
     () => loadChoices(storageKey).colWidths ?? {},
@@ -112,9 +144,15 @@ export function useResultsGrid(
     if (!storageKey) return;
     localStorage.setItem(
       `provisa.grid.${storageKey}`,
-      JSON.stringify({ sorts, filters, groupBy, colWidths, pageSize }),
+      JSON.stringify({
+        sorts,
+        columnFilters: { text: filters, specs: filterSpecs },
+        groupBy,
+        colWidths,
+        pageSize,
+      }),
     );
-  }, [storageKey, sorts, filters, groupBy, colWidths, pageSize]);
+  }, [storageKey, sorts, filters, filterSpecs, groupBy, colWidths, pageSize]);
 
   const baseColumns = useMemo(
     () => (resultColumns.length > 0 ? resultColumns : Object.keys(resultRows[0] ?? {})),
@@ -125,20 +163,32 @@ export function useResultsGrid(
   // row headers within the table, not aggregates.
   const displayColumns = baseColumns;
 
+  // REQ-1937: a column's filter family comes from the type the server reports for it, through the
+  // one table in columnFilter.ts. A column with no reported type is text.
+  const columnKinds = useMemo(() => {
+    const out: Record<string, ColumnKind> = {};
+    for (const c of baseColumns) out[c] = kindFromType(columnTypes?.[c]);
+    return out;
+  }, [baseColumns, columnTypes]);
+
+  const activeFilters = useMemo(() => {
+    const out: ActiveFilter[] = [];
+    for (const col of baseColumns) {
+      const kind = columnKinds[col];
+      const spec = effectiveSpec(kind, filterSpecs[col], filters[col]);
+      if (spec && isUsable(kind, spec)) out.push({ col, kind, spec });
+    }
+    return out;
+  }, [baseColumns, columnKinds, filterSpecs, filters]);
+
   const serverPaged = server != null;
   const serverHasMore = server?.hasMore ?? false;
 
   const displayRows = useMemo(() => {
     let rows = [...resultRows];
     if (serverPaged) return rows; // filtering/sorting already happened in the query
-    for (const col of baseColumns) {
-      const f = filters[col];
-      if (!f) continue;
-      const lower = f.toLowerCase();
-      rows = rows.filter((r) => {
-        const v = r[col];
-        return v != null && String(v).toLowerCase().includes(lower);
-      });
+    for (const { col, kind, spec } of activeFilters) {
+      rows = rows.filter((r) => matchesFilter(kind, spec, r[col]));
     }
     if (sorts.length > 0) {
       rows.sort((a, b) => {
@@ -162,7 +212,7 @@ export function useResultsGrid(
       });
     }
     return rows;
-  }, [resultRows, baseColumns, filters, sorts, serverPaged]);
+  }, [resultRows, activeFilters, sorts, serverPaged]);
 
   // Flattened group tree in render order: a header item per group value at each
   // level, its rows (or sub-groups) nested beneath, collapsed subtrees omitted.
@@ -224,12 +274,45 @@ export function useResultsGrid(
 
   // REQ-1442: clearing filters one input at a time is the only way back from a filter that emptied
   // the grid, and a reader who narrowed six columns has to find all six. This drops them together.
-  const hasFilters = useMemo(() => Object.values(filters).some((f) => f !== ""), [filters]);
+  const hasFilters = useMemo(
+    () => Object.values(filters).some((f) => f !== "") || Object.keys(filterSpecs).length > 0,
+    [filters, filterSpecs],
+  );
 
   const clearFilters = useCallback(() => {
     setFilters({});
+    setFilterSpecs({});
     setPage(0);
   }, []);
+
+  const setFilterSpec = useCallback((col: string, spec: FilterSpec | null) => {
+    setFilterSpecs((prev) => {
+      const next = { ...prev };
+      if (spec) next[col] = spec;
+      else delete next[col];
+      return next;
+    });
+    setFilters((prev) => {
+      if (!(col in prev)) return prev;
+      const next = { ...prev };
+      delete next[col];
+      return next;
+    });
+    setPage(0);
+  }, []);
+
+  const setFilterText = useCallback((col: string, text: string) => {
+    setFilters((prev) => ({ ...prev, [col]: text }));
+    setFilterSpecs((prev) => {
+      if (!(col in prev)) return prev;
+      const next = { ...prev };
+      delete next[col];
+      return next;
+    });
+    setPage(0);
+  }, []);
+
+  const valuesOf = useCallback((col: string) => distinctValues(resultRows, col), [resultRows]);
 
   const toggleGroupBy = useCallback((col: string) => {
     setGroupBy((prev) => (prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]));
@@ -339,6 +422,7 @@ export function useResultsGrid(
   const resetGrid = useCallback(() => {
     setSorts([]);
     setFilters({});
+    setFilterSpecs({});
     setColWidths({});
     setGroupBy([]);
     setCollapsedGroups(new Set());
@@ -350,6 +434,13 @@ export function useResultsGrid(
     sorts,
     filters,
     setFilters,
+    filterSpecs,
+    setFilterSpec,
+    setFilterText,
+    columnKinds,
+    activeFilters,
+    valuesOf,
+    rowsHeld: resultRows.length,
     hasFilters,
     clearFilters,
     groupBy,

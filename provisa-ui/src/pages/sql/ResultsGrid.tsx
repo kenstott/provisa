@@ -14,7 +14,9 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Anchor, Button, Select, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Anchor, Badge, Button, Select, Text, TextInput } from "@mantine/core";
+import { ColumnFilterMenu } from "./ColumnFilterMenu";
+import { describeFilter } from "./columnFilterLabel";
 import { notifications } from "@mantine/notifications";
 import {
   Copy,
@@ -27,6 +29,7 @@ import {
   Filter,
   FilterX,
   Layers,
+  X,
 } from "lucide-react";
 import { COL_MIN, PAGE_SIZES } from "./types";
 import { formatCell } from "./formatCell";
@@ -54,6 +57,9 @@ interface ResultsGridProps {
       filter/sort/group choices. Both exports use it instead of the page on screen; without it the
       grid already holds every row and the page is the relation. */
   fetchAllRows?: () => Promise<Record<string, unknown>[]>;
+  /** REQ-1937: the rows held are only part of the result (cut at a row limit). A filter then
+      applies to the rows loaded, and the grid says so. */
+  rowsPartial?: boolean;
 }
 
 export function ResultsGrid({
@@ -63,6 +69,7 @@ export function ResultsGrid({
   provenance = [],
   exportName = "results",
   fetchAllRows,
+  rowsPartial = false,
 }: ResultsGridProps) {
   const { t } = useTranslation();
   // Trace/span ids in any column drill down to the full span record.
@@ -71,7 +78,12 @@ export function ResultsGrid({
   const {
     sorts,
     filters,
-    setFilters,
+    setFilterSpec,
+    setFilterText,
+    columnKinds,
+    activeFilters,
+    valuesOf,
+    rowsHeld,
     hasFilters,
     clearFilters,
     groupBy,
@@ -151,11 +163,7 @@ export function ResultsGrid({
       { label: t("sqlResultsPanel.provRowsExported"), value: String(rows.length) },
       {
         label: t("sqlResultsPanel.provFilters"),
-        value:
-          Object.entries(filters)
-            .filter(([, v]) => v !== "")
-            .map(([c, v]) => `${c} ~ "${v}"`)
-            .join("\n") || none,
+        value: activeFilters.map((f) => describeFilter(t, f)).join("\n") || none,
       },
       {
         label: t("sqlResultsPanel.provSort"),
@@ -311,6 +319,52 @@ export function ResultsGrid({
           </>
         )}
       </div>
+      {activeFilters.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "0.35rem",
+            padding: "0.25rem 0.75rem",
+            borderBottom: "1px solid var(--border)",
+            flexShrink: 0,
+            fontSize: "0.72rem",
+          }}
+          data-testid="filter-chips"
+        >
+          {activeFilters.map((f) => (
+            <Badge
+              key={f.col}
+              size="md"
+              variant="light"
+              tt="none"
+              data-testid={`filter-chip-${f.col}`}
+              rightSection={
+                <ActionIcon
+                  size="xs"
+                  variant="transparent"
+                  aria-label={t("columnFilter.removeFilter", { column: f.col })}
+                  data-testid={`filter-chip-remove-${f.col}`}
+                  onClick={() => {
+                    setFilterSpec(f.col, null);
+                    setFilterText(f.col, "");
+                  }}
+                >
+                  <X size={11} />
+                </ActionIcon>
+              }
+            >
+              {describeFilter(t, f)}
+            </Badge>
+          ))}
+          {rowsPartial && (
+            <Text component="span" size="xs" c="dimmed" data-testid="filter-partial-note">
+              {t("columnFilter.appliesToLoaded", { count: rowsHeld })}
+            </Text>
+          )}
+        </div>
+      )}
       <div style={{ flex: 1, overflow: "auto" }}>
         <table
           className="data-table sql-results-table"
@@ -410,25 +464,37 @@ export function ResultsGrid({
                       )}
                     </div>
                     {baseColumns.includes(c) && (
-                      <TextInput
-                        size="xs"
-                        variant="unstyled"
-                        className="th-filter"
-                        leftSection={<Filter size={11} />}
-                        leftSectionPointerEvents="none"
-                        aria-label={`${t("sqlResultsPanel.filterPlaceholder")} ${c}`}
-                        value={filters[c] ?? ""}
-                        onChange={(e) => {
-                          // Read before the updater: React runs a functional updater on a later
-                          // render pass, when the synthetic event has been pooled and
-                          // currentTarget is null — typing a filter threw there.
-                          const next = e.currentTarget.value;
-                          setFilters((prev) => ({ ...prev, [c]: next }));
-                          setPage(0);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        placeholder={t("sqlResultsPanel.filterPlaceholder")}
-                      />
+                      <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                        <TextInput
+                          style={{ flex: 1 }}
+                          size="xs"
+                          variant="unstyled"
+                          className="th-filter"
+                          leftSection={<Filter size={11} />}
+                          leftSectionPointerEvents="none"
+                          aria-label={`${t("sqlResultsPanel.filterPlaceholder")} ${c}`}
+                          title={t("columnFilter.syntaxHint")}
+                          value={filters[c] ?? ""}
+                          onChange={(e) => {
+                            // Read before the updater: React runs a functional updater on a later
+                            // render pass, when the synthetic event has been pooled and
+                            // currentTarget is null — typing a filter threw there.
+                            const next = e.currentTarget.value;
+                            setFilterText(c, next);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          placeholder={t("sqlResultsPanel.filterPlaceholder")}
+                        />
+                        <ColumnFilterMenu
+                          col={c}
+                          kind={columnKinds[c] ?? "text"}
+                          current={activeFilters.find((f) => f.col === c)?.spec ?? null}
+                          values={valuesOf(c)}
+                          valuesFromPage={rowsPartial || serverPaged}
+                          rowsHeld={rowsHeld}
+                          onApply={(spec) => setFilterSpec(c, spec)}
+                        />
+                      </div>
                     )}
                     <div
                       role="separator"

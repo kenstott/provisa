@@ -20,6 +20,7 @@ import {
   requiredParamsSatisfied,
 } from "../nativeParams";
 import type { RegisteredTable, TableColumn } from "../../types/admin";
+import type { ActiveFilter } from "../../pages/sql/columnFilter";
 
 function col(name: string, nativeFilterType: string | null, dataType = "text"): TableColumn {
   return {
@@ -95,18 +96,19 @@ describe("nativeParams", () => {
 
   describe("pagedViewerSql — one page per query, choices pushed into SQL", () => {
     it("pages with LIMIT pageSize+1 / OFFSET, never the whole dataset", () => {
-      const sql = pagedViewerSql(TABLE, { petId: "7" }, {}, [], [], 3, 100);
+      const sql = pagedViewerSql(TABLE, { petId: "7" }, [], [], [], 3, 100);
       expect(sql).toContain("LIMIT 101 OFFSET 300");
       expect(sql).toContain(`WHERE "petId" = 7`);
     });
 
     it("pushes column filters into WHERE against the full relation", () => {
-      const sql = pagedViewerSql(TABLE, {}, { name: "re'x" }, [], [], 0, 100);
-      expect(sql).toContain(`LOWER(CAST("name" AS VARCHAR)) LIKE LOWER('%re''x%')`);
+      const f: ActiveFilter = { col: "name", kind: "text", spec: { op: "contains", a: "re'X" } };
+      const sql = pagedViewerSql(TABLE, {}, [f], [], [], 0, 100);
+      expect(sql).toContain(`STRPOS(LOWER(CAST("name" AS VARCHAR)), 're''x') > 0`);
     });
 
     it("orders by group columns first, then sorts, then pk tiebreaker", () => {
-      const sql = pagedViewerSql(TABLE, {}, {}, [{ col: "name", dir: "desc" }], ["status"], 0, 100);
+      const sql = pagedViewerSql(TABLE, {}, [], [{ col: "name", dir: "desc" }], ["status"], 0, 100);
       expect(sql).toContain(`ORDER BY "status" ASC, "name" DESC`);
     });
 
@@ -119,14 +121,14 @@ describe("nativeParams", () => {
     } as unknown as RegisteredTable;
 
     it("appends primary-key columns as a stable-paging tiebreaker under a chosen order", () => {
-      const sql = pagedViewerSql(pkTable, {}, {}, [{ col: "name", dir: "asc" }], [], 0, 100);
+      const sql = pagedViewerSql(pkTable, {}, [], [{ col: "name", dir: "asc" }], [], 0, 100);
       expect(sql).toContain(`ORDER BY "name" ASC, "id" ASC`);
     });
 
     // A pk-only ORDER BY sorts a relation the user never asked to sort, and that
     // sort is a full scan — it stalled every telemetry report for minutes.
     it("emits no ORDER BY when no sort or grouping is chosen", () => {
-      const sql = pagedViewerSql(pkTable, {}, {}, [], [], 0, 100);
+      const sql = pagedViewerSql(pkTable, {}, [], [], [], 0, 100);
       expect(sql).not.toContain("ORDER BY");
       expect(sql).toBe(`SELECT * FROM "petstore"."pets" LIMIT 101 OFFSET 0`);
     });

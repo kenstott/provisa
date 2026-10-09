@@ -26,6 +26,8 @@ interface ResultsPanelProps {
   resultError: string;
   resultRows: Record<string, unknown>[];
   resultColumns: string[];
+  /** REQ-1937: the rows held are only part of the result, so a filter applies to those loaded. */
+  rowsPartial?: boolean;
   grid: ResultsGridState;
   errors: string[];
   history: HistoryEntry[];
@@ -43,6 +45,7 @@ export function ResultsPanel({
   running,
   resultError,
   resultRows,
+  rowsPartial = false,
   grid,
   errors,
   history,
@@ -179,6 +182,7 @@ export function ResultsPanel({
               <ResultsGrid
                 grid={grid}
                 totalRowCount={resultRows.length}
+                rowsPartial={rowsPartial}
                 // REQ-1441: in the workbench the statement in the editor IS the construction.
                 provenance={[{ label: t("tablePreview.provStatement"), value: sqlText }]}
               />
@@ -195,6 +199,7 @@ export function ResultsPanel({
                 <ResultsGrid
                   grid={grid}
                   totalRowCount={resultRows.length}
+                  rowsPartial={rowsPartial}
                   provenance={[{ label: t("tablePreview.provStatement"), value: sqlText }]}
                 />
               </Modal>

@@ -153,3 +153,11 @@ export function parseSemanticMetricQuery(
     .filter((s) => s && s.toLowerCase() !== "value");
   return { metric: m[2], dimensions };
 }
+
+/** The row count a statement's own trailing LIMIT cuts the result to, or null when it has none.
+    A result holding exactly that many rows is probably cut, and its filters apply to those rows
+    (REQ-1937). */
+export function statementLimit(sql: string): number | null {
+  const m = /\blimit\s+(\d+)(\s+offset\s+\d+)?\s*;?\s*$/i.exec(sql);
+  return m ? Number(m[1]) : null;
+}

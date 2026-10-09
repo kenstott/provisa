@@ -1353,6 +1353,8 @@ export async function runSql(
   statsEnabled: boolean = false,
 ): Promise<{
   columns: string[];
+  /** REQ-1937: each column's SQL type, parallel to `columns`; null when the engine reported none. */
+  column_types?: string[] | null;
   rows: Record<string, unknown>[];
   error?: string;
   provisa_stats?: unknown;
@@ -1377,7 +1379,7 @@ export async function runSql(
     });
     if (!resp.ok) {
       const text = await resp.text();
-      return { columns: [], rows: [], error: text };
+      return { columns: [], column_types: null, rows: [], error: text };
     }
     const json = await resp.json();
     const rows: Record<string, unknown>[] = json?.data?.sql ?? [];
@@ -1386,9 +1388,19 @@ export async function runSql(
     // and therefore no filter input to clear it with. /data/sql returns `columns` on every JSON
     // response, empty result included.
     const columns: string[] = json.columns;
-    return { columns, rows, provisa_stats: json?.provisa_stats };
+    return {
+      columns,
+      column_types: json.column_types ?? null,
+      rows,
+      provisa_stats: json?.provisa_stats,
+    };
   } catch (e) {
-    return { columns: [], rows: [], error: e instanceof Error ? e.message : String(e) };
+    return {
+      columns: [],
+      column_types: null,
+      rows: [],
+      error: e instanceof Error ? e.message : String(e),
+    };
   }
 }
 

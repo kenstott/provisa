@@ -154,6 +154,13 @@ def _with_cache_headers(payload, cache_headers: dict[str, str]):  # REQ-536
     return OrjsonResponse(payload, headers=cache_headers)
 
 
+def _column_types(result) -> list[str] | None:
+    """The result's column types, parallel to its columns, as text; ``None`` when the engine reported
+    none. The UI types a column's filter from them (REQ-1937)."""
+    types = result.column_types
+    return None if types is None else [str(t) for t in types]
+
+
 def _with_warnings(body: dict) -> dict:
     """``body`` with what the request's answer says about itself (REQ-1350) in
     ``extensions.warnings``, as the GraphQL endpoint does; unchanged when there is nothing."""
@@ -244,6 +251,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                         {
                             "data": {"sql": rows_as_dicts},
                             "columns": list(result.column_names),
+                            "column_types": _column_types(result),
                             "provisa_stats": qs.to_dict(),
                         }
                     ),
@@ -258,7 +266,11 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
             # the filter inputs, away. There was then no control left to clear the filter with.
             return _with_cache_headers(
                 _with_warnings(
-                    {"data": {"sql": rows_as_dicts}, "columns": list(result.column_names)}
+                    {
+                        "data": {"sql": rows_as_dicts},
+                        "columns": list(result.column_names),
+                        "column_types": _column_types(result),
+                    }
                 ),
                 cache_headers,
             )

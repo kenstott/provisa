@@ -17,7 +17,7 @@
 // required before any query can run). Choices persist per table and restore on
 // the next visit. Mount with key=table.id — state is per-table by remount.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActionIcon, Alert, Button, Group, Loader, Text, TextInput } from "@mantine/core";
 import { RefreshCw } from "lucide-react";
@@ -67,13 +67,19 @@ export function GovernedTableViewer({ table, showTitle = false }: GovernedTableV
   // between it and the live key (no state writes inside the effect body).
   const [fetchedKey, setFetchedKey] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  const columnTypes = useMemo(
+    () => Object.fromEntries(table.columns.map((c) => [c.alias || c.columnName, c.dataType])),
+    [table.columns],
+  );
   const grid = useResultsGrid(
     result?.rows ?? [],
     result?.columns ?? [],
     `table:${table.schemaName}.${table.alias || table.tableName}`,
     { hasMore: result?.hasMore ?? false },
+    // REQ-1937: the registered type of each column types its filter (a page can be empty).
+    columnTypes,
   );
-  const { page, pageSize, sorts, filters, groupBy } = grid;
+  const { page, pageSize, sorts, activeFilters: filters, groupBy } = grid;
   const canRun = requiredParamsSatisfied(table, paramValues);
 
   // One page per query: refetch whenever the page or any pushed-down choice

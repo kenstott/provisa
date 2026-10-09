@@ -39,7 +39,12 @@ import { tabResultsKey, tabSqlKey, tabNlKey } from "./sql/types";
 import type { ResultTab, TopTab, SqlTab, SqlResults, ViewColumnConfig } from "./sql/types";
 import { useResultsGrid } from "./sql/useResultsGrid";
 import { loadHistory, saveHistory } from "./sql/historyHelpers";
-import { autoAliasConflicts, parseSemanticMetricQuery, wrapSampledSql } from "./sql/sqlHelpers";
+import {
+  autoAliasConflicts,
+  parseSemanticMetricQuery,
+  wrapSampledSql,
+  statementLimit,
+} from "./sql/sqlHelpers";
 import { newTabId, emptyTab, loadTabsMeta, persistTabsMeta, nextTabTitle } from "./sql/tabHelpers";
 import { SchemaBrowser } from "./sql/SchemaBrowser";
 import { JoinCanvas } from "./sql/JoinCanvas";
@@ -156,6 +161,9 @@ export function SqlPage() {
   const [sampleSize, setSampleSize] = useState(100);
   const [resultTab, setResultTab] = useState<ResultTab>("results");
   const [resultColumns, setResultColumns] = useState<string[]>(active0.resultColumns);
+  // REQ-1937: the columns' SQL types from the last run. A tab restored from storage has none, and
+  // its filters are typed from the values.
+  const [resultColumnTypes, setResultColumnTypes] = useState<Record<string, string | null>>({});
   const [resultRows, setResultRows] = useState<Record<string, unknown>[]>(active0.resultRows);
   const [resultError, setResultError] = useState(active0.resultError);
   const [execMs, setExecMs] = useState<number | null>(active0.execMs);
@@ -403,7 +411,7 @@ export function SqlPage() {
   }, [sqlText]);
 
   // Client-side grid state (sort/filter/group/page/widths/export) — shared hook.
-  const grid = useResultsGrid(resultRows, resultColumns);
+  const grid = useResultsGrid(resultRows, resultColumns, undefined, undefined, resultColumnTypes);
   const { resetGrid } = grid;
 
   // ----- Query tab actions -----
@@ -637,10 +645,14 @@ export function SqlPage() {
     if (result.error) {
       setResultError(result.error);
       setResultColumns([]);
+      setResultColumnTypes({});
       setResultRows([]);
       idbSet(tabResultsKey(activeTabId), { columns: [], rows: [], error: result.error });
     } else {
       setResultColumns(result.columns);
+      setResultColumnTypes(
+        Object.fromEntries(result.columns.map((c, i) => [c, result.column_types?.[i] ?? null])),
+      );
       setResultRows(result.rows);
       idbSet(tabResultsKey(activeTabId), { columns: result.columns, rows: result.rows, error: "" });
     }
@@ -903,6 +915,7 @@ export function SqlPage() {
               resultError={resultError}
               resultRows={resultRows}
               resultColumns={resultColumns}
+              rowsPartial={statementLimit(sqlText) === resultRows.length}
               grid={grid}
               errors={errors}
               history={history}
