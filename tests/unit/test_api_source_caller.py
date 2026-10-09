@@ -191,6 +191,64 @@ class TestRequestWithRetry:
         sleep_mock.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_429_waits_as_long_as_the_remote_asks(self):
+        client = MagicMock()
+        client.request = AsyncMock(
+            side_effect=[_resp(429, headers={"Retry-After": "7"}), _resp(200, {"ok": True})]
+        )
+        with patch("provisa.api_source.caller.asyncio.sleep", new=AsyncMock()) as sleep_mock:
+            resp = await caller._request_with_retry(client, "GET", "/pets")
+        assert resp.status_code == 200
+        sleep_mock.assert_awaited_once_with(7.0)
+
+    @pytest.mark.asyncio
+    async def test_429_retry_after_as_a_date_is_waited_until(self):
+        from datetime import datetime, timedelta, timezone
+        from email.utils import format_datetime
+
+        now = datetime(2026, 10, 9, 12, 0, 0, tzinfo=timezone.utc)
+        client = MagicMock()
+        client.request = AsyncMock(
+            side_effect=[
+                _resp(429, headers={"Retry-After": format_datetime(now + timedelta(seconds=5))}),
+                _resp(200, {"ok": True}),
+            ]
+        )
+        with (
+            patch("provisa.api_source.caller.asyncio.sleep", new=AsyncMock()) as sleep_mock,
+            patch("provisa.api_source.caller._utcnow", return_value=now),
+        ):
+            await caller._request_with_retry(client, "GET", "/pets")
+        sleep_mock.assert_awaited_once_with(5.0)
+
+    @pytest.mark.asyncio
+    async def test_429_still_refused_after_the_retries_names_the_remote_wait(self):
+        client = MagicMock()
+        client.request = AsyncMock(return_value=_resp(429, headers={"Retry-After": "7"}))
+        with patch("provisa.api_source.caller.asyncio.sleep", new=AsyncMock()):
+            with pytest.raises(ApiCallError, match="Retry-After: 7"):
+                await caller._request_with_retry(client, "GET", "/pets")
+        assert client.request.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_429_asking_longer_than_a_call_may_take_is_refused_at_once(self):
+        client = MagicMock()
+        client.request = AsyncMock(return_value=_resp(429, headers={"Retry-After": "600"}))
+        with patch("provisa.api_source.caller.asyncio.sleep", new=AsyncMock()) as sleep_mock:
+            with pytest.raises(ApiCallError, match="Retry-After: 600"):
+                await caller._request_with_retry(client, "GET", "/pets")
+        client.request.assert_awaited_once()
+        sleep_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_429_with_an_unreadable_retry_after_is_refused_naming_it(self):
+        client = MagicMock()
+        client.request = AsyncMock(return_value=_resp(429, headers={"Retry-After": "soon"}))
+        with patch("provisa.api_source.caller.asyncio.sleep", new=AsyncMock()):
+            with pytest.raises(ApiCallError, match="Retry-After: soon"):
+                await caller._request_with_retry(client, "GET", "/pets")
+
+    @pytest.mark.asyncio
     async def test_other_error_status_raises_for_status(self):
         resp_obj = _resp(400, text="bad request")
         resp_obj.raise_for_status.side_effect = RuntimeError("400 error")

@@ -16,6 +16,8 @@ import asyncio
 import re
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
@@ -85,6 +87,25 @@ def _build_request_parts(
     return url, query_params, headers, body
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _retry_after(value: str) -> float | None:
+    """How many seconds a ``Retry-After`` header asks the caller to wait: it carries either a
+    count of seconds or the date to wait until. None when it carries neither."""
+    value = value.strip()
+    if value.isdigit():
+        return float(value)
+    try:
+        until = parsedate_to_datetime(value)
+    except ValueError:
+        return None
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
+    return max(0.0, (until - _utcnow()).total_seconds())
+
+
 async def _request_with_retry(
     client: httpx.AsyncClient,
     method: str,
@@ -95,7 +116,9 @@ async def _request_with_retry(
     form_body: dict | None = None,
     timeout: float = _DEFAULT_TIMEOUT,
 ) -> httpx.Response:
-    """Make an HTTP request with retry on 429/5xx."""
+    """Make an HTTP request with retry on 429/5xx. A refusal that names its own wait
+    (``Retry-After``) is waited out as asked; one asking for longer than a call may take in
+    total is not retried."""
     for attempt in range(_MAX_RETRIES):
         resp = await client.request(
             method,
@@ -109,13 +132,24 @@ async def _request_with_retry(
         if resp.status_code == 404:
             raise ApiNotFoundError(f"404 Not Found: {resp.url}")
         if resp.status_code == 429 or resp.status_code >= 500:
+            asked = resp.headers.get("Retry-After")
+            named = "" if asked is None else f" (Retry-After: {asked})"
+            wait = _RETRY_BACKOFF_BASE * (2**attempt) if asked is None else _retry_after(asked)
+            if wait is None:
+                raise ApiCallError(
+                    f"API call refused with an unreadable wait: {resp.status_code}{named}"
+                )
+            if wait > _DEFAULT_TOTAL_TIMEOUT:
+                raise ApiCallError(
+                    f"API call refused for longer than a call may take "
+                    f"({_DEFAULT_TOTAL_TIMEOUT:g}s): {resp.status_code}{named}"
+                )
             if attempt < _MAX_RETRIES - 1:
-                wait = _RETRY_BACKOFF_BASE * (2**attempt)
                 await asyncio.sleep(wait)
                 continue
             raise ApiCallError(
                 f"API call failed after {_MAX_RETRIES} retries: "
-                f"{resp.status_code} {resp.text[:200]}"
+                f"{resp.status_code}{named} {resp.text[:200]}"
             )
         resp.raise_for_status()
         return resp
