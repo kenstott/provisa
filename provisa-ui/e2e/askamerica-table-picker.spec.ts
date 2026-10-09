@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 09415624-d232-4b0c-ae11-70958d0e0e98
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // The Register Table form's pickers for an AskAmerica source (REQ-540, REQ-541): the schemas the
 // source's subjects bring, each schema's tables, and a picked table's columns, all read from the
 // adapter as soon as it listens.
