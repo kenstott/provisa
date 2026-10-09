@@ -108,3 +108,71 @@ def test_upstream_timeout_returns_504_naming_the_path(tmp_path, monkeypatch, cap
     assert "ReadTimeout" in resp.text
     logged = [r.getMessage() for r in caplog.records]
     assert any("proxy timeout" in m and "/admin/discovery/run" in m for m in logged), logged
+
+
+# -- REQ-1923: the page an issuer returns a source sign-in to ---------------------------------
+
+
+def _sign_in_client(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import provisa.ui_server as ui_server
+
+    (tmp_path / "index.html").write_text("<!doctype html><title>shell</title>")
+    (tmp_path / "source-sign-in.html").write_text("<!doctype html><title>sign-in</title>")
+    monkeypatch.setattr(ui_server, "STATIC_DIR", tmp_path)
+    return TestClient(ui_server.app)
+
+
+def test_the_sign_in_return_page_is_served_with_no_referrer_and_never_cached(tmp_path, monkeypatch):
+    # Its address carries the issuer's one-time code, which a Referer header would hand to
+    # whatever the page next asked for.
+    client = _sign_in_client(tmp_path, monkeypatch)
+    answer = client.get(
+        "/source-sign-in.html?state=made-up-state&code=made-up-code",
+        headers={"sec-fetch-dest": "document"},
+    )
+    assert answer.status_code == 200
+    assert "sign-in" in answer.text  # the page itself, not the SPA shell
+    assert answer.headers["referrer-policy"] == "no-referrer"
+    assert answer.headers["cache-control"] == "no-store"
+
+
+def test_an_unbuilt_sign_in_return_page_is_not_answered_with_the_shell(tmp_path, monkeypatch):
+    client = _sign_in_client(tmp_path, monkeypatch)
+    (tmp_path / "source-sign-in.html").unlink()
+    answer = client.get("/source-sign-in.html?code=made-up-code")
+    assert answer.status_code == 503
+    assert answer.headers["referrer-policy"] == "no-referrer"
+
+
+def _access_line(path_with_query: str) -> str:
+    """The line uvicorn's access log writes for a request, through its own logger."""
+    import io
+    import logging
+
+    import provisa.ui_server  # noqa: F401  (installs the filter)
+
+    written = io.StringIO()
+    handler = logging.StreamHandler(written)
+    logger = logging.getLogger("uvicorn.access")
+    level = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    try:
+        logger.info('%s - "%s %s HTTP/%s" %d', "10.0.0.1:5000", "GET", path_with_query, "1.1", 200)
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(level)
+    return written.getvalue()
+
+
+def test_the_access_log_does_not_record_the_code_a_sign_in_returns_with():
+    line = _access_line("/source-sign-in.html?state=made-up-state&code=made-up-code")
+    assert '"GET /source-sign-in.html HTTP/1.1" 200' in line
+    assert "made-up" not in line and "?" not in line
+
+
+def test_the_access_log_records_every_other_address_whole():
+    line = _access_line("/admin/sources?code=kept&x=/source-sign-in.html")
+    assert "/admin/sources?code=kept&x=/source-sign-in.html" in line

@@ -764,6 +764,35 @@ engine_system_catalogs = Table(
 )
 
 
+# REQ-1923: a sign-in to a source's issuer that an operator started and the issuer has not yet
+# answered. The operator's browser leaves for the issuer and comes back with a ``state`` value;
+# this row is what that value is checked against, and it is kept here, not in a process, so the
+# answer may arrive at any process or host of the deployment. Only the digest of the state is
+# kept. A row is used once: ``used_at`` is set by the one statement that consumes it.
+# ``verifier`` is the PKCE code verifier sealed by the vault's cipher (``secrets_store.seal``).
+# The two ``*_name`` columns are the vault entries this sign-in wrote, which is all a sweep of
+# an abandoned sign-in may remove.
+source_sign_ins = Table(
+    "source_sign_ins",
+    metadata,
+    Column("state_digest", Text, primary_key=True),
+    Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False),
+    Column("env", Text, nullable=False),
+    Column("user_id", Text, nullable=False),
+    Column("source_id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("account", Text, nullable=False),
+    Column("scopes", Text, nullable=False),  # space separated, as the issuer is asked
+    Column("client_id", Text, nullable=False),
+    Column("client_secret_name", Text, nullable=False),
+    Column("refresh_token_name", Text, nullable=False),
+    Column("verifier", LargeBinary, nullable=False),
+    Column("redirect_address", Text, nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("used_at", DateTime(timezone=True), nullable=True),
+)
+
+
 REGISTRY_TABLES = [
     orgs,
     org_encryption_keys,
@@ -778,6 +807,7 @@ REGISTRY_TABLES = [
     env_merge_requests,
     org_config,
     secrets_store,
+    source_sign_ins,
     deployment_encryption_key,
     personal_access_tokens,
     scram_credentials,

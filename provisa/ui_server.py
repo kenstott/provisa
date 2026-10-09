@@ -149,6 +149,29 @@ _STATIC_PREFIXES = (
     "/voyager/",
 )
 
+#: REQ-1923: the page an issuer sends the operator's browser back to after a source sign-in. Its
+#: address carries the issuer's one-time code in its query, so the page is served with no
+#: referrer to leak it by, is never cached, and its query never reaches the access log.
+SOURCE_SIGN_IN_PATH = "/source-sign-in.html"
+_SOURCE_SIGN_IN_HEADERS = {"Referrer-Policy": "no-referrer", "Cache-Control": "no-store"}
+
+
+class _NoSignInQuery(logging.Filter):
+    """Drops the query from the access log's line for :data:`SOURCE_SIGN_IN_PATH`.
+
+    uvicorn's access record carries (client, method, path with query, HTTP version, status)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) == 5 and isinstance(args[2], str):
+            path, has_query, _ = args[2].partition("?")
+            if has_query and path == SOURCE_SIGN_IN_PATH:
+                record.args = (*args[:2], path, *args[3:])
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_NoSignInQuery())
+
 # Disable this proxy app's own Swagger so /docs falls through to the SPA (the API's
 # Swagger lives at /data/openapi/docs, reachable through the proxy).
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -214,6 +237,15 @@ async def firebase_config() -> Response:  # REQ-1266
     response_model=None,
 )
 async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ-058, REQ-559
+    # ── A source sign-in's return page (REQ-1923) ────────────────────────────
+    if request.url.path == SOURCE_SIGN_IN_PATH:
+        page = STATIC_DIR / SOURCE_SIGN_IN_PATH.lstrip("/")
+        if not page.is_file():
+            return HTMLResponse(
+                "<h1>Provisa UI not bundled</h1>", status_code=503, headers=_SOURCE_SIGN_IN_HEADERS
+            )
+        return FileResponse(page, headers=_SOURCE_SIGN_IN_HEADERS)
+
     # ── Static asset — serve from disk ───────────────────────────────────────
     if any(request.url.path.startswith(p) for p in _STATIC_PREFIXES):
         candidate = STATIC_DIR / full_path

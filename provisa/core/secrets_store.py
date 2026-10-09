@@ -263,6 +263,17 @@ def _cipher(*, mint: bool) -> "EncryptionService":
     return EnvelopeEncryption(LocalKeychain.from_config())
 
 
+def seal(value: str) -> bytes:
+    """``value`` encrypted as a stored secret's value is, for a caller that keeps a short-lived
+    secret in a row of its own (a sign-in's code verifier) and not under a name in the vault."""
+    return _cipher(mint=True).encrypt(value.encode())
+
+
+def unseal(blob: bytes) -> str:
+    """What :func:`seal` sealed."""
+    return _cipher(mint=False).decrypt(blob).decode()
+
+
 async def put(
     admin_db: "Database",
     org_id: str,

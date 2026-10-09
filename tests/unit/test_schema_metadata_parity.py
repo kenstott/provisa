@@ -79,6 +79,10 @@ REGISTRY_ONLY_TABLES = {
     # REQ-1557, REQ-1558: the org's own secrets, held beside ``orgs`` on the platform plane so
     # that a secret is resolvable before any org schema is open. Portable metadata only.
     "secrets_store",
+    # REQ-1923: a source sign-in started and not yet answered by its issuer. Beside the vault
+    # its credentials go to, and readable by whichever process the answer reaches. Portable
+    # metadata only.
+    "source_sign_ins",
     # REQ-1574: the org's key ring, held beside ``orgs`` on the platform plane so a blob is
     # decryptable before any org schema is open. Portable metadata only.
     "org_encryption_keys",
