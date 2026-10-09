@@ -3,6 +3,10 @@
 {
   networking.hostName = "provisa-nixos";
 
+  # A hosted runner's zone. NixOS declares none by default, and a library that looks for the
+  # host's zone then warns on stderr, ahead of the output a test reads from a process it starts.
+  time.timeZone = "UTC";
+
   # Never booted from: the VM build replaces both. A NixOS system must declare them to evaluate.
   fileSystems."/" = {
     device = "/dev/disk/by-label/nixos";

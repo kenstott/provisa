@@ -52,6 +52,10 @@ _PHASE_RE = re.compile(
     r"startup phase (?P<name>.+?)\s+\+\s*(?P<delta>[\d.]+)s \(total\s+(?P<total>[\d.]+)s\) "
     r"pid=(?P<pid>\d+)"
 )
+# How long the supervisor waits on a worker's ping answer. It also bounds how long a worker killed
+# with that ping unanswered goes unnoticed: the supervisor holds the pipe's other end open.
+WORKER_HEALTHCHECK_S = 120
+
 _READY_RE = re.compile(r"startup phase worker\s+ready pid=(\d+)")
 _TRANSPORTS = ("http", "pgwire", "flight", "grpc", "bolt", "mcp", "airport")
 # A direct do_get ticket, as Flight clients send it: the two rows create_database() seeds.
@@ -266,7 +270,7 @@ class WorkerBoot:
                 # uvicorn's supervisor kills a worker that does not answer its ping within 5 s; on
                 # a machine other test sessions are loading, a worker's startup takes longer.
                 "--timeout-worker-healthcheck",
-                "120",
+                str(WORKER_HEALTHCHECK_S),
             ],
             cwd=str(_REPO_ROOT),
             env=env,

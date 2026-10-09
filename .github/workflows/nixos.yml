@@ -30,6 +30,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # The Splunk CIM add-on tests/conftest.py fetches: integration-suite-lanes.yml's version.
+  SPLUNK_CIM_VERSION: "6.1.0"
+
 concurrency:
   group: nixos-${{ github.ref }}
   cancel-in-progress: true
@@ -239,6 +243,7 @@ jobs:
           SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
         run: |
           packaging/nixos/vm-run '
+            export SPLUNK_CIM_VERSION=${{ env.SPLUNK_CIM_VERSION }}
             export PROVISA_TEST_SERVER_LOG_DIR="$HOME/provisa/results/server-logs"
             uv run python scripts/ci/run_lane.py ${{ matrix.lane }} ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }} --junitxml results/junit.xml
           '

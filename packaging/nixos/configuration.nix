@@ -27,6 +27,9 @@ in
 
   # The container-backed lanes provision their sources with docker compose.
   virtualisation.docker.enable = true;
+  # Docker's own default, on every other distro. NixOS sends container output to journald, which
+  # drops lines past its rate limit: `docker logs` of a busy container is then missing some.
+  virtualisation.docker.logDriver = "json-file";
 
   programs.nix-ld = {
     enable = true;
@@ -42,6 +45,8 @@ in
       libuuid
       curl
       unixodbc
+      # The embedded PostgreSQL's sqlite_fdw.
+      sqlite
       # Playwright's Chromium.
       glib
       nss
@@ -97,11 +102,21 @@ in
     postgresql_16
     # The worker-boot integration tests read a process's listening sockets with it.
     lsof
+    # The embedded PostgreSQL's contrib FDWs are built from source.
+    gcc
+    gnumake
     unixodbc
   ];
 
   # Registers "ODBC Driver 18 for SQL Server" in /etc/odbcinst.ini.
   environment.unixODBCDrivers = [ pkgs.unixodbcDrivers.msodbcsql18 ];
+
+  # The DuckDB firebird extension is given the client library by path, and looks for it where a
+  # distro package puts it.
+  systemd.tmpfiles.rules = [
+    "d /usr/lib 0755 root root -"
+    "L+ /usr/lib/libfbclient.so.2 - - - - ${pkgs.firebird}/lib/libfbclient.so.2"
+  ];
 
   networking.firewall.allowedTCPPorts = [
     3000

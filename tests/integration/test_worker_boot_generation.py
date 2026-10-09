@@ -29,7 +29,7 @@ import pytest
 import sqlalchemy as sa
 
 from provisa.core.boot_lock import boot_generation, control_plane_boot_lock
-from tests.integration.worker_boot_harness import WorkerBoot, requests_served
+from tests.integration.worker_boot_harness import WORKER_HEALTHCHECK_S, WorkerBoot, requests_served
 
 pytestmark = [pytest.mark.integration]
 
@@ -151,7 +151,8 @@ def test_a_respawned_worker_skips_the_once_work(four_workers):
     boot = four_workers
     victim = sorted(boot.ready_pids())[0]
     os.kill(victim, signal.SIGKILL)
-    deadline = time.monotonic() + 120
+    # The supervisor notices within its ping wait, then the replacement boots.
+    deadline = time.monotonic() + WORKER_HEALTHCHECK_S + 120
     while time.monotonic() < deadline:
         if len(boot.ready_pids()) == _WORKERS + 1:
             break
