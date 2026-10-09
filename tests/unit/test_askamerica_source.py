@@ -535,16 +535,193 @@ def test_a_schema_outside_the_sources_list_is_refused_by_name():
     assert "['sec', 'econ', 'ref']" in str(refused.value)
 
 
+# -- discovery asks the adapter's information_schema, never its pg_catalog -----------------------
+#
+# The adapter answers information_schema through Calcite as soon as it listens. Its pg_catalog is
+# another matter: the first pg_catalog query makes it count the rows of every table it serves
+# (673 for the full model), minutes during which nothing that waits on it can answer. An engine's
+# attach reads pg_catalog (its own scanner), so statements wait for that; discovery does not.
+
+
+class _Adapter:
+    """The adapter over a plain pg connection: answers information_schema, records statements."""
+
+    def __init__(self, answers) -> None:
+        self._answers = answers
+        self.statements: list[str] = []
+
+    async def fetch(self, sql, *args, timeout=None):
+        self.statements.append(sql)
+        return self._answers(sql)
+
+    async def close(self):
+        self.statements.append("closed")
+
+
+@pytest.fixture
+def adapter(monkeypatch):
+    """A listening server whose catalog is NOT prepared: anything that waits on it would raise."""
+
+    class _Replica:
+        def endpoint(self, *, timeout=None):
+            return pr.PortPair(5440, "127.0.0.1", 5540)
+
+        def await_catalog(self, ports, timeout):
+            raise AssertionError("discovery waited on the adapter's pg_catalog")
+
+    def _answers(sql):
+        if "information_schema.tables" in sql:
+            return [{"table_name": "filings"}, {"table_name": "financial_facts"}]
+        return [
+            {"table_name": "filings", "column_name": "cik", "data_type": "character varying"},
+            {"table_name": "filings", "column_name": "form", "data_type": "character varying"},
+            {"table_name": "financial_facts", "column_name": "cik", "data_type": "bigint"},
+        ]
+
+    conn = _Adapter(_answers)
+
+    async def _connect(host, port):
+        return conn
+
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: _Replica())
+    monkeypatch.setattr(pr, "_pg_connect", _connect)
+    return conn
+
+
 @pytest.mark.asyncio
-async def test_a_schema_outside_the_sources_list_lists_no_tables():
+async def test_a_schemas_tables_are_one_information_schema_statement(adapter):
+    assert await pr.adapter_tables(_source(), "sec") == ["filings", "financial_facts"]
+    assert len(adapter.statements) == 2 and adapter.statements[1] == "closed"
+    assert "information_schema.tables" in adapter.statements[0]
+    assert "table_schema = 'sec'" in adapter.statements[0]
+    assert "pg_catalog" not in adapter.statements[0]
+
+
+@pytest.mark.asyncio
+async def test_a_schemas_columns_are_one_information_schema_statement(adapter):
+    columns = await pr.adapter_columns(_source(), "sec")
+    assert columns == {
+        "filings": [("cik", "character varying"), ("form", "character varying")],
+        "financial_facts": [("cik", "bigint")],
+    }
+    assert len(adapter.statements) == 2
+    assert "information_schema.columns" in adapter.statements[0]
+    assert "ORDER BY table_name, ordinal_position" in adapter.statements[0]
+    assert "pg_catalog" not in adapter.statements[0]
+
+
+@pytest.mark.asyncio
+async def test_one_tables_columns_are_asked_for_by_table(adapter):
+    await pr.adapter_columns(_source(), "sec", "filings")
+    assert "table_name = 'filings'" in adapter.statements[0]
+
+
+@pytest.mark.asyncio
+async def test_discovery_answers_while_the_adapters_catalog_is_still_being_prepared(adapter):
+    """The fixture's server is listening with its catalog unprepared: both reads answer."""
+    assert await pr.adapter_tables(_source(), "sec")
+    assert await pr.adapter_columns(_source(), "sec")
+    assert await pr.schema_columns(_source(), "sec") == {
+        "filings": ["cik", "form"],
+        "financial_facts": ["cik"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_discovery_of_a_server_that_does_not_listen_yet_is_starting(monkeypatch):
+    class _Replica:
+        def endpoint(self, *, timeout=None):
+            raise pr.ServerLifecycleError("did not accept connections")
+
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: _Replica())
+    with pytest.raises(pr.SourceStillStartingError, match="still starting up"):
+        await pr.adapter_tables(_source(), "sec")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", ["sec'; DROP", "", "a b", "pg_catalog.pg_class"])
+async def test_a_name_that_is_not_an_identifier_is_refused(adapter, bad):
+    with pytest.raises(ValueError, match="not a schema name|not a table name"):
+        await pr.adapter_tables(_source(), bad)
+    with pytest.raises(ValueError, match="not a schema name|not a table name"):
+        await pr.adapter_columns(_source(), "sec", bad)
+    assert adapter.statements == []
+
+
+@pytest.mark.asyncio
+async def test_the_one_reader_refuses_a_statement_on_pg_catalog(adapter):
+    with pytest.raises(ValueError, match="pg_catalog"):
+        await pr._read_information_schema(_source(), "SELECT 1 FROM pg_catalog.pg_class")
+    assert adapter.statements == []
+
+
+class _Unbound:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+@pytest.fixture
+def discovered(monkeypatch, adapter):
+    """The admin's listers for a source saved with sec, ref and geo."""
+    from provisa.api.admin import introspect, schema_query
+
+    async def _source_of(source_id):
+        return _source("sec,ref,geo")
+
+    monkeypatch.setattr(schema_query, "_source_for_introspection", _source_of)
+    monkeypatch.setattr(introspect, "_adapter_bound", _Unbound, raising=False)
+    return adapter
+
+
+@pytest.mark.asyncio
+async def test_the_register_table_list_is_read_from_the_adapters_information_schema(discovered):
     from provisa.api.admin.introspect import native_tables
 
-    row = SimpleNamespace(id="test-askamerica", database="sec,ref,geo")
-    conn = _OneRow(row)
-    outside = await native_tables("test-askamerica", "govdata", "weather", None, conn, None)  # type: ignore[arg-type]
+    conn = _OneRow(SimpleNamespace(id="test-askamerica", database="sec,ref,geo"))
     inside = await native_tables("test-askamerica", "govdata", "sec", None, conn, None)  # type: ignore[arg-type]
+    assert inside is not None and [t.name for t in inside] == ["filings", "financial_facts"]
+    assert "information_schema.tables" in discovered.statements[0]
+
+
+@pytest.mark.asyncio
+async def test_a_schema_outside_the_sources_list_lists_no_tables(discovered):
+    from provisa.api.admin.introspect import native_tables
+
+    conn = _OneRow(SimpleNamespace(id="test-askamerica", database="sec,ref,geo"))
+    outside = await native_tables("test-askamerica", "govdata", "weather", None, conn, None)  # type: ignore[arg-type]
     assert outside == []  # never listed
-    assert inside is None  # listed by the engine, from the attached server
+    assert discovered.statements == []  # and the adapter is not asked
+
+
+@pytest.mark.asyncio
+async def test_a_selected_tables_columns_are_read_from_the_adapters_information_schema(
+    discovered,
+):
+    from provisa.api.admin.introspect import native_columns
+
+    columns = await native_columns("test-askamerica", "govdata", "sec", "filings", None)  # type: ignore[arg-type]
+    assert columns == [("cik", "character varying"), ("form", "character varying")]
+    assert "table_name = 'filings'" in discovered.statements[0]
+    assert "pg_catalog" not in discovered.statements[0]
+
+
+@pytest.mark.asyncio
+async def test_columns_of_a_schema_outside_the_sources_list_are_refused_by_name(discovered):
+    from provisa.api.admin.introspect import native_columns
+
+    with pytest.raises(aa.SchemaNotServed, match="weather"):
+        await native_columns("test-askamerica", "govdata", "weather", "stations", None)  # type: ignore[arg-type]
+
+
+def test_the_wait_a_statement_meets_says_what_it_is():
+    """Discovery no longer waits on the catalog; a statement the engine computes still does,
+    because the engine's attach reads pg_catalog. The message names that wait."""
+    said = str(pr.SourceStillStartingError("test-askamerica", preparing_catalog=True))
+    assert said.startswith("STARTING:")
+    assert "can be registered now" in said and "counting the rows" in said
 
 
 def test_registration_refuses_a_schema_outside_the_list_before_anything_is_written():
@@ -1215,11 +1392,11 @@ def test_the_two_waits_are_told_apart_and_both_are_starting():
     port = str(pr.SourceStillStartingError("test-askamerica"))
     catalog = str(pr.SourceStillStartingError("test-askamerica", preparing_catalog=True))
     assert port.startswith("STARTING:") and "still starting up" in port
-    assert catalog.startswith("STARTING:") and "answering its first catalog query" in catalog
+    assert catalog.startswith("STARTING:") and "counting the rows" in catalog
     replica = _replica_with_server(
         healthy=True, exit_code=None, catalog_ready=False, prepare=lambda ports: time.sleep(5)
     )
-    with pytest.raises(pr.SourceStillStartingError, match="answering its first catalog query"):
+    with pytest.raises(pr.SourceStillStartingError, match="counting the rows"):
         replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 0)
     with pytest.raises(pr.SourceStillStartingError, match="still starting up"):
         _replica_with_server(healthy=False, exit_code=None).require_serving()

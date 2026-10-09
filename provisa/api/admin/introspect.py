@@ -1091,6 +1091,37 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
     return None
 
 
+#: The org-vault binding a read of a source's adapter runs inside (the source's key is a
+#: reference into the org's vault).
+from provisa.core.secrets_store import bound_to_request_org as _adapter_bound  # noqa: E402
+
+
+async def _adapter_source(source_id: str):
+    """The registered Source whose adapter is read, or a named refusal."""
+    from provisa.api.admin.schema_query import _source_for_introspection
+
+    source = await _source_for_introspection(source_id)
+    if source is None:
+        raise LookupError(f"source {source_id!r} is not registered")
+    return source
+
+
+async def _native_columns_govdata(
+    source_id: str, schema_name: str, table_name: str
+) -> list[tuple[str, str]]:
+    """One table's columns from the adapter's information_schema (see native_tables), for a
+    schema the source was given; a schema outside its list is refused by name."""
+    from provisa.federation.askamerica import require_schema_served
+    from provisa.federation.pgwire_replica import adapter_columns
+
+    source = await _adapter_source(source_id)
+    require_schema_served(source, schema_name)
+    schema = schema_name.strip().lower()
+    async with _adapter_bound():
+        columns = await adapter_columns(source, schema, table_name)
+    return columns.get(table_name, [])
+
+
 async def native_columns(  # REQ-1732
     source_id: str,
     source_type: str,
@@ -1117,6 +1148,8 @@ async def native_columns(  # REQ-1732
     them, so this is the only path there too. ``config_conn`` is required for databricks/bigquery,
     which need the source's stored catalog/project to qualify information_schema."""
     t = source_type.lower()
+    if t == "govdata":
+        return await _native_columns_govdata(source_id, schema_name, table_name)
     if not pool.has(source_id):
         return None
     if t == "trino":
@@ -1395,7 +1428,15 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
         ).fetchone()
         if row is None or not serves_schema(row, schema_name):
             return []
-        return None
+        # Listed from the adapter's information_schema, which it answers as soon as it
+        # listens — not through the engine's attach, which waits on the adapter's pg_catalog.
+        from provisa.api.admin.types import AvailableTableType
+        from provisa.federation.pgwire_replica import adapter_tables
+
+        source = await _adapter_source(source_id)
+        async with _adapter_bound():
+            names = await adapter_tables(source, schema_name.strip().lower())
+        return [AvailableTableType(name=name, comment=None) for name in names]
 
     if t == "openapi":
         return await _native_tables_openapi(source_id, schema_name, state)

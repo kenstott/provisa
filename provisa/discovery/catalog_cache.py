@@ -464,8 +464,9 @@ async def _index_source_once(
             ]
 
         # Enrich with column names: the source's own driver first, else the engine's catalog
-        # where the engine holds a live attach of the source.
-        for cached in tables_with_cols:
+        # where the engine holds a live attach of the source. Not for a source whose column
+        # names are loaded on first search (one statement a schema, not one a table here).
+        for cached in [] if loads_columns_lazily(source_type) else tables_with_cols:
             async with pool.acquire() as config_conn:
                 native = await native_columns(
                     source_id, source_type, schema, cached.table_name, source_pools, config_conn

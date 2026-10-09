@@ -242,7 +242,7 @@ async def test_indexing_a_source_writes_its_catalog_where_the_search_reads_it(
     state = SimpleNamespace(tenant_db=tenant_db, model_db=model_db)
 
     with caplog.at_level(logging.WARNING):
-        await index_source("src", model_db, None, None, {"src": "govdata"}, state)
+        await index_source("src", model_db, None, None, {"src": "postgresql"}, state)
 
     assert "write failed" not in caplog.text
     found = await _candidates_from_cache("src", "sec", state)
@@ -420,7 +420,8 @@ async def test_a_source_that_never_starts_is_reported_once_by_name(stores, monke
 
 @pytest.mark.asyncio
 async def test_an_engine_with_no_attach_seam_is_still_asked_for_its_catalog(stores, monkeypatch):
-    """A federator (Trino) lists a source through a catalog of its own: unchanged."""
+    """A federator (Trino) lists a source through a catalog of its own, columns included:
+    unchanged."""
     from types import SimpleNamespace
 
     from provisa.discovery.catalog_cache import index_source, read_cache
@@ -441,7 +442,7 @@ async def test_an_engine_with_no_attach_seam_is_still_asked_for_its_catalog(stor
 
     engine = _Federator()
     state = SimpleNamespace(tenant_db=tenant_db, catalog_for=lambda sid: "test_cat")
-    await index_source("test", model_db, engine, None, {"test": "govdata"}, state)
+    await index_source("test", model_db, engine, None, {"test": "hive"}, state)
 
     assert any('"test_cat".information_schema.tables' in s for s in engine.statements)
     found = await read_cache(tenant_db, "test", "sec")
@@ -643,9 +644,9 @@ async def test_the_adapter_is_asked_for_a_schemas_columns_in_one_statement(monke
         async def fetch(self, sql, *args, timeout=None):
             statements.append(sql)
             return [
-                {"table_name": "filings", "column_name": "cik"},
-                {"table_name": "filings", "column_name": "form"},
-                {"table_name": "financial_facts", "column_name": "cik"},
+                {"table_name": "filings", "column_name": "cik", "data_type": "bigint"},
+                {"table_name": "filings", "column_name": "form", "data_type": "text"},
+                {"table_name": "financial_facts", "column_name": "cik", "data_type": "bigint"},
             ]
 
         async def close(self):
@@ -655,7 +656,7 @@ async def test_the_adapter_is_asked_for_a_schemas_columns_in_one_statement(monke
         return _Conn()
 
     monkeypatch.setattr(
-        pr, "ensure_endpoint_for_discovery", lambda source: pr.PortPair(5440, "127.0.0.1", 5540)
+        pr, "listening_endpoint", lambda source: pr.PortPair(5440, "127.0.0.1", 5540)
     )
     monkeypatch.setattr(pr, "_pg_connect", _connect)
     columns = await pr.schema_columns(SimpleNamespace(id="test"), "sec")
