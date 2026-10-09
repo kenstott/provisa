@@ -51,6 +51,9 @@ _ADAPTER_FETCH_ONLY: frozenset[str] = frozenset(
         # REQ-1923: a mailbox is read through Google's API by its own loader
         # (provisa/google_workspace/loader.py) and landed; no engine reaches it.
         "google_workspace",
+        # REQ-1923: likewise a Microsoft 365 mailbox, through Microsoft Graph
+        # (provisa/microsoft365/loader.py).
+        "microsoft_365",
         # REQ-1443: a data-quality checker source has no table to scan — its rows ARE the result of
         # running the contract, produced by the checker subprocess. See :func:`make_dq_loader`.
         "soda",

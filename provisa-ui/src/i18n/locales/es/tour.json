@@ -80,7 +80,7 @@
         "description": "➕ Las conexiones nuevas empiezan con este botón — PostgreSQL, Snowflake, MongoDB, una API REST, un CSV, y más de 50 opciones adicionales."
       },
       "step3": {
-        "title": "63 tipos de fuente, 13 categorías",
+        "title": "64 tipos de fuente, 13 categorías",
         "description": "Un selector enumera cada tipo, agrupado por categoría: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Busque por nombre o alias, o acote con los chips de categoría. Cada tipo muestra su logotipo y un icono de alcance: ⚡ lectura en vivo en el origen, o un icono de copia donde Provisa lee una réplica actualizada.<p>Elija uno, rellene la conexión y guarde.</p>"
       },
       "step4": {

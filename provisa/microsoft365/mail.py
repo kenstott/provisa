@@ -337,11 +337,14 @@ class Mailbox:
                     if f.get("childFolderCount")
                 ]
 
-    def rows(self, table: str) -> Iterator[list[dict[str, Any]]]:
-        """Every row of one of the mail tables, a batch at a time."""
+    def rows(
+        self, table: str, unreadable: list[str] | None = None
+    ) -> Iterator[list[dict[str, Any]]]:
+        """Every row of one of the mail tables, a batch at a time. The ids of the messages
+        kept without a body Graph would not give are added to ``unreadable`` as they are met."""
         account = self.account
         if table == "messages":
-            unread: list[str] = []
+            unread: list[str] = [] if unreadable is None else unreadable
             for page in self._messages(_MESSAGE_FIELDS, prefer=(_TEXT_BODY,)):
                 html = self._html(page, unread)
                 yield [message_row(account, m, html[m["id"]]) for m in page]

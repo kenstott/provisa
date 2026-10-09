@@ -51,6 +51,7 @@ const ALIASES: Record<string, string> = {
   google_sheets: "spreadsheet",
   // REQ-1923: what a person looking for their mail types.
   google_workspace: "gmail google mail email calendar tasks g suite gsuite",
+  microsoft_365: "exchange outlook office 365 o365 microsoft mail email calendar tasks to do",
   openapi: "rest swagger",
   elasticsearch: "opensearch",
   saphana: "sap hana",

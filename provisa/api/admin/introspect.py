@@ -319,6 +319,10 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         from provisa.google_workspace.loader import SCHEMA
 
         return [SCHEMA]
+    if t == "microsoft_365":
+        from provisa.microsoft365.loader import SCHEMA
+
+        return [SCHEMA]
 
     if t == "files":
         # Schema is always the sql-normalised source-id (matches pgwire_replica.schema_name())
@@ -1703,6 +1707,14 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
         from provisa.api.admin.types import AvailableTableType
         from provisa.core.canonical_mail import TABLES as CANONICAL
         from provisa.google_workspace.loader import SCHEMA, TABLES
+
+        if schema_name != SCHEMA:
+            return []
+        return [AvailableTableType(name=name, comment=CANONICAL[name].note) for name in TABLES]
+    if t == "microsoft_365":
+        from provisa.api.admin.types import AvailableTableType
+        from provisa.core.canonical_mail import TABLES as CANONICAL
+        from provisa.microsoft365.loader import SCHEMA, TABLES
 
         if schema_name != SCHEMA:
             return []

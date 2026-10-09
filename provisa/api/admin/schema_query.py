@@ -2226,6 +2226,18 @@ async def resolve_available_columns_metadata(
             AvailableColumnType(name=name, data_type=ir_type, comment=None)
             for name, ir_type in ir_columns(table_name)
         ]
+    if source_type == "microsoft_365":
+        # REQ-1923: likewise the canonical columns, by definition.
+        from provisa.core.canonical_mail import ir_columns
+        from provisa.microsoft365.loader import TABLES as _M365_TABLES
+        from provisa.microsoft365.loader import UnknownMailTable as _UnknownM365Table
+
+        if table_name not in _M365_TABLES:
+            raise _UnknownM365Table(table_name)
+        return [
+            AvailableColumnType(name=name, data_type=ir_type, comment=None)
+            for name, ir_type in ir_columns(table_name)
+        ]
     if source_type == "rss":
         # REQ-1745: an rss/Atom feed has no catalog to introspect at all (native_schemas/
         # native_tables give it a synthetic single "default"/<source_id> pick so the picker isn't

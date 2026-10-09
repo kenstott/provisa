@@ -91,6 +91,42 @@ describe("SourceTypePicker", () => {
     },
   );
 
+  // REQ-1923: likewise Microsoft 365, by what its mail is called.
+  it.each([
+    "exchange",
+    "outlook",
+    "office 365",
+    "o365",
+    "microsoft mail",
+    "mail",
+    "email",
+    "calendar",
+    "tasks",
+    "to do",
+    "microsoft 365",
+  ])("finds Microsoft 365 by %s", async (typed) => {
+    render(
+      <SourceTypePicker
+        opened
+        onClose={vi.fn()}
+        groups={[
+          ...GROUPS,
+          {
+            group: "Enterprise",
+            items: [{ value: "microsoft_365", label: "Microsoft 365 (Outlook, Exchange)" }],
+          },
+        ]}
+        value="postgresql"
+        onPick={vi.fn()}
+      />,
+    );
+    fireEvent.change(await screen.findByTestId("source-type-picker-search"), {
+      target: { value: typed },
+    });
+    expect(screen.getByTestId("source-type-option-microsoft_365")).toBeInTheDocument();
+    expect(screen.queryByTestId("source-type-option-kafka")).toBeNull();
+  });
+
   it("says so when nothing matches", async () => {
     open();
     fireEvent.change(await screen.findByTestId("source-type-picker-search"), {
