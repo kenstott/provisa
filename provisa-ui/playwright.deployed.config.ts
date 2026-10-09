@@ -13,9 +13,9 @@ import { defineConfig } from "@playwright/test";
  * nothing to provision and no global setup. coverage.ts calls a deployment it does not own the
  * `cloud` target; this is that target with no IdP in front of it.
  *
- * What runs is the live AskAmerica case: add the source with the free key, wait for its server
- * to answer, register a table, query it on the SQL page. The case sets its own time budget: the
- * server has a minute to answer (waitForSourceServing).
+ * What runs is what a host owes a live AskAmerica source: added with the free key, its bundled
+ * server is listening within a minute (askamerica-server-listening.spec.ts). Registering a table
+ * and querying it wait on that server's catalog, which the UI lanes' full case judges.
  */
 const DEPLOYED_URL = process.env.PROVISA_E2E_DEPLOYED_URL;
 if (!DEPLOYED_URL) {
@@ -36,8 +36,7 @@ export default defineConfig({
   projects: [
     {
       name: "deployed",
-      testMatch: ["**/source-to-query-special-cases.spec.ts"],
-      grep: /govdata: source to query/,
+      testMatch: ["**/askamerica-server-listening.spec.ts"],
     },
   ],
 });

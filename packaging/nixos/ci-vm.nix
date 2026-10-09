@@ -23,7 +23,8 @@
     cores = 4;
     memorySize = 12288;
     # MB, allocated as it is written: the lanes' images and the checkout's environments.
-    diskSize = 40960;
+    # A core shard's images and volumes filled 40 GB; the runner has about 100 GB free.
+    diskSize = 81920;
     graphics = false;
     forwardPorts = [
       {

@@ -95,6 +95,8 @@ in
     # pg_dump and pg_restore for the integration suites' snapshots, at the major the
     # postgres:16 image they dump runs.
     postgresql_16
+    # The worker-boot integration tests read a process's listening sockets with it.
+    lsof
     unixodbc
   ];
 

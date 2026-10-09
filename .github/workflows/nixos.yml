@@ -112,9 +112,11 @@ jobs:
           echo "runner:"; bash -c "$probe"
           echo "guest:"; packaging/nixos/vm-run "$probe"
 
-      # The govdata case of the UI suite, against the service above: a live source (AskAmerica, US
-      # government open data) read through its bundled pgwire server, which the service starts.
-      - name: AskAmerica through the deployed UI (add a source, register a table, query it)
+      # What the host owes a live AskAmerica source (US government open data), against the service
+      # above: saved through the UI, its bundled pgwire server is started and listens, and that
+      # server's Python has started its JVM. How long the server then takes to answer its first
+      # catalog query is the server's own business; the UI lanes' full case judges that.
+      - name: AskAmerica through the deployed UI (add a source; its server listens, its JVM is up)
         if: ${{ !cancelled() && steps.service.outcome == 'success' }}
         env:
           FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
@@ -125,6 +127,7 @@ jobs:
             cd provisa-ui
             npx playwright install chromium
             PROVISA_E2E_DEPLOYED_URL=http://127.0.0.1:3000 npx playwright test -c playwright.deployed.config.ts --reporter=list || { cat test-results/*/error-context.md; exit 1; }
+            grep -H "JVM started" ~/.cache/provisa/runtime_deps/*/pgwire-govdata/pgwire-server.log
           '
 
       # An adapter server writes to a file, not to the journal: in its own state directory or,
