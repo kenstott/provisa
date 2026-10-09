@@ -26,12 +26,15 @@ What Graph gives and how it is asked:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from typing import Any
 from urllib.parse import quote
 
 from provisa.core import canonical_mail as cm
-from provisa.microsoft365.graph import IMMUTABLE_IDS, Graph
+from provisa.microsoft365.graph import IMMUTABLE_IDS, Graph, GraphRefused
+
+log = logging.getLogger(__name__)
 
 PROVIDER = cm.MICROSOFT
 #: The six mail tables, in the order a registrar is offered them.
@@ -291,13 +294,19 @@ class Mailbox:
             prefer=(IMMUTABLE_IDS, *prefer),
         )
 
-    def _html(self, page: list[dict]) -> dict[str, str]:
-        answers = self._graph.batch(
+    def _html(self, page: list[dict], unread: list[str]) -> dict[str, str | None]:
+        """The HTML body of each message of ``page``. One Graph will not give is None, and its
+        message's id is added to ``unread``: the row is kept without it."""
+        answers = self._graph.batch_each(
             [f"{self._root}/messages/{quote(m['id'], safe='')}?$select=body" for m in page],
             prefer=(IMMUTABLE_IDS, _HTML_BODY),
         )
-        bodies = {}
+        bodies: dict[str, str | None] = {}
         for message, answer in zip(page, answers):
+            if isinstance(answer, GraphRefused):
+                bodies[message["id"]] = None
+                unread.append(message["id"])
+                continue
             body = answer["body"]
             if body["contentType"] != "html":
                 raise UnexpectedAnswer(
@@ -332,9 +341,20 @@ class Mailbox:
         """Every row of one of the mail tables, a batch at a time."""
         account = self.account
         if table == "messages":
+            unread: list[str] = []
             for page in self._messages(_MESSAGE_FIELDS, prefer=(_TEXT_BODY,)):
-                html = self._html(page)
+                html = self._html(page, unread)
                 yield [message_row(account, m, html[m["id"]]) for m in page]
+            if unread:
+                # A message with a part that cannot be read keeps its row; what was left out is
+                # reported once, when the table's read ends.
+                log.warning(
+                    "microsoft_365 %s messages: %d message(s) kept without an HTML body Graph "
+                    "would not give: %s",
+                    account,
+                    len(unread),
+                    ", ".join(unread),
+                )
         elif table == "message_recipients":
             fields = "id,from,sender,toRecipients,ccRecipients,bccRecipients,replyTo"
             for page in self._messages(fields, prefer=()):

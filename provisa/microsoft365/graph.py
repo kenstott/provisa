@@ -157,7 +157,17 @@ class Graph:
 
     def batch(self, paths: list[str], *, prefer=()) -> list[dict]:
         """The answers to GETs of ``paths``, in their order. A refusal of any one fails all."""
-        answers: list[dict] = []
+        answers = self.batch_each(paths, prefer=prefer)
+        for answer in answers:
+            if isinstance(answer, GraphRefused):
+                raise answer
+        return answers  # type: ignore[return-value]  # no refusal is left in it
+
+    def batch_each(self, paths: list[str], *, prefer=()) -> "list[dict | GraphRefused]":
+        """The answer to a GET of each of ``paths``, in their order: its body, or the refusal
+        Graph gave that one. A throttled request is asked again; throttling past the bound
+        fails the whole call."""
+        answers: list[dict | GraphRefused] = []
         for start in range(0, len(paths), BATCH_SIZE):
             chunk = paths[start : start + BATCH_SIZE]
             headers = {"Prefer": ", ".join(prefer)} if prefer else {}
@@ -168,7 +178,7 @@ class Graph:
                 for n, path in enumerate(chunk)
             ]
             pending = {r["id"]: r for r in requests}
-            got: dict[str, dict] = {}
+            got: dict[str, dict | GraphRefused] = {}
             waited = 0.0
             while pending:
                 reply = self._call(
@@ -185,13 +195,14 @@ class Graph:
                         continue
                     if item["status"] >= 400:
                         error = (item.get("body") or {}).get("error") or {}
-                        raise GraphRefused(
+                        got[item["id"]] = GraphRefused(
                             item["status"],
                             str(error.get("code")),
                             str(error.get("message")),
                             path.split("?", 1)[0],
                         )
-                    got[item["id"]] = item["body"]
+                    else:
+                        got[item["id"]] = item["body"]
                     del pending[item["id"]]
                 if pending:
                     if waited + wait > self._wait_seconds:

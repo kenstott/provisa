@@ -464,3 +464,29 @@ def test_a_refused_request_of_a_batch_fails_the_batch():
     graph, _, _ = _graph({"/i/0": {"n": 0}})
     with pytest.raises(GraphRefused, match="ErrorItemNotFound"):
         graph.batch(["/i/0", "/i/missing"])
+
+
+def test_a_message_whose_html_body_graph_will_not_give_keeps_its_row(caplog):
+    """The build completes: the row is kept with that body column None and the rest filled,
+    and the count and ids are reported once when the table's read ends."""
+    import logging
+
+    source = {f"{ROOT}/messages": [[_message(1), _message(2)]], **_html(1)}  # no body for m2
+    mailbox, _ = _mailbox(source)
+    with caplog.at_level(logging.WARNING, logger="provisa.microsoft365.mail"):
+        rows = _all(mailbox, "messages")
+    assert [(r["id"], r["body_html"], r["body_text"]) for r in rows] == [
+        ("m1", "<p>1</p>", "Text 1"),
+        ("m2", None, "Text 2"),
+    ]
+    assert rows[1]["subject"] == "Subject 2"
+    (record,) = caplog.records
+    assert "1 message(s)" in record.getMessage() and "m2" in record.getMessage()
+    assert "megan@contoso.com" in record.getMessage()
+
+
+def test_batch_each_gives_each_request_its_answer_or_its_refusal():
+    graph, _, _ = _graph({"/i/0": {"n": 0}})
+    first, second = graph.batch_each(["/i/0", "/i/missing"])
+    assert first == {"n": 0}
+    assert isinstance(second, GraphRefused) and second.code == "ErrorItemNotFound"
