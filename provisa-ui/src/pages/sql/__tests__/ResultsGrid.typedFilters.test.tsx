@@ -84,6 +84,60 @@ describe("typed column filters", () => {
     expect(body()).toContain("700");
   });
 
+  it("says the checklist's values are from the rows loaded, and takes a value typed by hand", async () => {
+    // The server-paged viewer holds one page of a longer relation and filters the whole of it:
+    // its checklist cannot list every value, says so, and accepts one that is not on the page.
+    function ServerPaged() {
+      const grid = useResultsGrid(
+        ROWS,
+        COLS,
+        undefined,
+        { hasMore: true },
+        {
+          amount: "bigint",
+          status: "varchar",
+        },
+      );
+      return (
+        <>
+          <output data-testid="active-filters">{JSON.stringify(grid.activeFilters)}</output>
+          <ResultsGrid grid={grid} totalRowCount={ROWS.length} />
+        </>
+      );
+    }
+    render(<ServerPaged />);
+    fireEvent.click(screen.getByTestId("col-filter-status-btn"));
+    fireEvent.click(await screen.findByTestId("col-filter-status-op"));
+    fireEvent.click(await screen.findByRole("option", { name: "is one of", hidden: true }));
+    expect(await screen.findByText("Values are from the 4 rows loaded.")).toBeTruthy();
+
+    // "cancelled" is on no row of this page.
+    fireEvent.change(screen.getByTestId("col-filter-status-search"), {
+      target: { value: "cancelled" },
+    });
+    fireEvent.click(screen.getByTestId("col-filter-status-add-typed"));
+    // It is in the list, ticked, with no count: no row held carries it.
+    const added = screen.getByTestId("col-filter-status-value-cancelled") as HTMLInputElement;
+    expect(added.checked).toBe(true);
+    expect(screen.getByText("cancelled")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("col-filter-status-value-error"));
+    fireEvent.click(screen.getByTestId("col-filter-status-apply"));
+    expect(JSON.parse(screen.getByTestId("active-filters").textContent ?? "")).toEqual([
+      { col: "status", kind: "text", spec: { op: "in", values: ["cancelled", "error"] } },
+    ]);
+  });
+
+  it("offers no add button for a value the list already has", async () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByTestId("col-filter-status-btn"));
+    fireEvent.click(await screen.findByTestId("col-filter-status-op"));
+    fireEvent.click(await screen.findByRole("option", { name: "is one of", hidden: true }));
+    fireEvent.change(await screen.findByTestId("col-filter-status-search"), {
+      target: { value: "error" },
+    });
+    expect(screen.queryByTestId("col-filter-status-add-typed")).toBeNull();
+  });
+
   it("combines filters on several columns with AND", () => {
     render(<Harness />);
     fireEvent.change(screen.getByLabelText("Filter rows… amount"), { target: { value: ">100" } });

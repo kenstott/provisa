@@ -43,6 +43,7 @@
     "apply": "適用",
     "removeFilter": "{{column}} の絞り込みを削除",
     "appliesToLoaded": "絞り込みは結果全体ではなく、読み込まれた {{count}} 行に適用されます。",
-    "syntaxHint": "簡易構文: >100、10..20、!text、a, b, c、=exact。単なる文字列は「を含む」を意味します。"
+    "syntaxHint": "簡易構文: >100、10..20、!text、a, b, c、=exact。単なる文字列は「を含む」を意味します。",
+    "addTyped": "「{{value}}」を追加"
   }
 }

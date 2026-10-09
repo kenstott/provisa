@@ -43,6 +43,7 @@
     "apply": "Toepassen",
     "removeFilter": "Het filter op {{column}} verwijderen",
     "appliesToLoaded": "Filters gelden voor de {{count}} geladen rijen, niet voor het hele resultaat.",
-    "syntaxHint": "Korte syntaxis: >100, 10..20, !tekst, a, b, c, =exact. Gewone tekst betekent bevat."
+    "syntaxHint": "Korte syntaxis: >100, 10..20, !tekst, a, b, c, =exact. Gewone tekst betekent bevat.",
+    "addTyped": "‘{{value}}’ toevoegen"
   }
 }

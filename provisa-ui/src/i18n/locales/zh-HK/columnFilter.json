@@ -43,6 +43,7 @@
     "apply": "套用",
     "removeFilter": "移除 {{column}} 的篩選",
     "appliesToLoaded": "篩選只作用於已載入的 {{count}} 列，而不是整個結果。",
-    "syntaxHint": "快速語法：>100、10..20、!text、a, b, c、=exact。純文字表示包含。"
+    "syntaxHint": "快速語法：>100、10..20、!text、a, b, c、=exact。純文字表示包含。",
+    "addTyped": "加入「{{value}}」"
   }
 }

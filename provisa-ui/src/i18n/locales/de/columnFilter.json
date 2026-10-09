@@ -43,6 +43,7 @@
     "apply": "Anwenden",
     "removeFilter": "Filter für {{column}} entfernen",
     "appliesToLoaded": "Filter gelten für die {{count}} geladenen Zeilen, nicht für das gesamte Ergebnis.",
-    "syntaxHint": "Kurzsyntax: >100, 10..20, !Text, a, b, c, =genau. Reiner Text bedeutet enthält."
+    "syntaxHint": "Kurzsyntax: >100, 10..20, !Text, a, b, c, =genau. Reiner Text bedeutet enthält.",
+    "addTyped": "„{{value}}“ hinzufügen"
   }
 }

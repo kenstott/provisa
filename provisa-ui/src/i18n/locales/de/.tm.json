@@ -5420,5 +5420,6 @@
   "de/columnFilter.json::columnFilter.removeFilter": "Remove the filter on {{column}}",
   "de/columnFilter.json::columnFilter.appliesToLoaded": "Filters apply to the {{count}} rows loaded, not the whole result.",
   "de/columnFilter.json::columnFilter.syntaxHint": "Quick syntax: >100, 10..20, !text, a, b, c, =exact. Plain text means contains.",
-  "de/serverErrors.json::serverErrors.data.sql_parameters_do_not_fit": "The parameter values do not fit the statement: {{reason}}"
+  "de/serverErrors.json::serverErrors.data.sql_parameters_do_not_fit": "The parameter values do not fit the statement: {{reason}}",
+  "de/columnFilter.json::columnFilter.addTyped": "Add “{{value}}”"
 }

@@ -43,6 +43,7 @@
     "apply": "Aplicar",
     "removeFilter": "Quitar el filtro de {{column}}",
     "appliesToLoaded": "Los filtros se aplican a las {{count}} filas cargadas, no a todo el resultado.",
-    "syntaxHint": "Sintaxis rápida: >100, 10..20, !texto, a, b, c, =exacto. El texto simple significa contiene."
+    "syntaxHint": "Sintaxis rápida: >100, 10..20, !texto, a, b, c, =exacto. El texto simple significa contiene.",
+    "addTyped": "Añadir «{{value}}»"
   }
 }

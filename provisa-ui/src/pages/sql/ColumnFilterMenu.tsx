@@ -77,16 +77,31 @@ export function ColumnFilterMenu({
     setOpened(true);
   };
 
+  // The list offered: the values of the rows held, and before them any value that is ticked but
+  // is not among those rows -- one typed by hand, or ticked from another page of a longer
+  // relation. It has no count: none of the rows held carries it.
+  const offered = useMemo(() => {
+    const held = new Set(values.map((v) => v.value));
+    const extra = [...ticked].filter((v) => !held.has(v)).map((value) => ({ value, count: null }));
+    return [...extra, ...values] as { value: string; count: number | null }[];
+  }, [values, ticked]);
+
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     return q === ""
-      ? values
-      : values.filter((v) =>
+      ? offered
+      : offered.filter((v) =>
           (v.value === EMPTY_VALUE ? t("columnFilter.emptyValue") : v.value)
             .toLowerCase()
             .includes(q),
         );
-  }, [values, search, t]);
+  }, [offered, search, t]);
+
+  // What is typed in the search box, when it is not a value already offered: it can be added to
+  // the checklist as typed. The rows held are not all the values there are.
+  const typed = search.trim();
+  const canAddTyped =
+    typed !== "" && !offered.some((v) => v.value === typed) && !typed.includes("\u0000");
 
   const apply = () => {
     if (op === "in") onApply(ticked.size > 0 ? { op, values: [...ticked] } : null);
@@ -162,6 +177,19 @@ export function ColumnFilterMenu({
                   {t("columnFilter.clearSelection")}
                 </Button>
               </Group>
+              {canAddTyped && (
+                <Button
+                  size="compact-xs"
+                  variant="light"
+                  onClick={() => {
+                    setTicked(new Set([...ticked, typed]));
+                    setSearch("");
+                  }}
+                  data-testid={`${id}-add-typed`}
+                >
+                  {t("columnFilter.addTyped", { value: typed })}
+                </Button>
+              )}
               <ScrollArea.Autosize mah={180}>
                 <Stack gap={4}>
                   {shown.length === 0 && (
@@ -183,7 +211,10 @@ export function ColumnFilterMenu({
                           return next;
                         });
                       }}
-                      label={`${v.value === EMPTY_VALUE ? t("columnFilter.emptyValue") : v.value} (${v.count})`}
+                      label={
+                        (v.value === EMPTY_VALUE ? t("columnFilter.emptyValue") : v.value) +
+                        (v.count === null ? "" : ` (${v.count})`)
+                      }
                       data-testid={`${id}-value-${v.value === EMPTY_VALUE ? "empty" : v.value}`}
                     />
                   ))}

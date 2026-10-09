@@ -43,6 +43,7 @@
     "apply": "Apply",
     "removeFilter": "Remove the filter on {{column}}",
     "appliesToLoaded": "Filters apply to the {{count}} rows loaded, not the whole result.",
-    "syntaxHint": "Quick syntax: >100, 10..20, !text, a, b, c, =exact. Plain text means contains."
+    "syntaxHint": "Quick syntax: >100, 10..20, !text, a, b, c, =exact. Plain text means contains.",
+    "addTyped": "Add “{{value}}”"
   }
 }
