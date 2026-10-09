@@ -101,3 +101,15 @@ def test_only_pushes_are_filtered():
     assert "paths" not in (triggers.get("workflow_dispatch") or {})
     assert triggers["schedule"] == [{"cron": "0 6 * * *"}]
     assert triggers["push"]["branches"] == ["integration", "main"]
+
+
+def test_a_push_of_the_sites_generator_and_its_pages_starts_no_run():
+    """2942c57fe changed three site pages and scripts/gen-site-source-picker.mjs, which writes
+    them, and restarted a suite whose core shards were mid-run. The generators are the site's."""
+    assert not _starts_a_run(
+        ["scripts/gen-site-source-picker.mjs", "site/index.html", "site/why/sources.html"]
+    )
+    assert not _starts_a_run(["scripts/gen-site-source-picker.mjs"])
+    # Any other script is the product's or the CI's and does start one.
+    assert _starts_a_run(["scripts/build_trino_functions.sh"])
+    assert _starts_a_run(["scripts/ci/run_lane.py", "site/index.html"])
