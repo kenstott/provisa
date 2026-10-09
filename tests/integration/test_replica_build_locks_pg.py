@@ -105,7 +105,7 @@ class _Node:
             permits=_NoCap(),
             next_refresh_at=_async(lambda _key, _now: None),
             store=lambda: "store-a",
-            retry_interval=lambda: 60.0,
+            retry=lambda: build_state.RetryPolicy(interval=60.0, ceiling=3600.0),
             builds_per_node=lambda: 1,
             engine_jobs=lambda: engine_jobs,
             spawn=lambda coro, name: self.tasks.append(asyncio.ensure_future(coro)),
@@ -215,7 +215,11 @@ async def test_a_killed_builder_frees_its_engine_slot_and_replica_and_the_row_is
         from datetime import UTC, datetime
 
         assert await build_state.claim(
-            conn, _key(0), holder="gone:1", retry_interval=60, now=datetime.now(UTC)
+            conn,
+            _key(0),
+            holder="gone:1",
+            retry=build_state.RetryPolicy(interval=60.0, ceiling=3600.0),
+            now=datetime.now(UTC),
         )
 
     other = BuildLocks(url).claim()

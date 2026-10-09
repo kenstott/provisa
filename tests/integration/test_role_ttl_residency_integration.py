@@ -110,7 +110,7 @@ class _Builds:
             permits=_NoCap(),
             next_refresh_at=_async(lambda _key, _now: None),
             store=lambda: STORE,
-            retry_interval=lambda: 60.0,
+            retry=lambda: replica_state.RetryPolicy(interval=60.0, ceiling=3600.0),
             builds_per_node=lambda: 4,
             engine_jobs=lambda: 4,
             spawn=lambda coro, name: self.tasks.append(asyncio.ensure_future(coro)),
@@ -207,7 +207,13 @@ async def _built(db: Database, age_seconds: float) -> None:
     at = datetime.now(UTC) - timedelta(seconds=age_seconds)
     async with db.acquire() as conn:
         await replica_state.request_build(conn, KEY, replica_state.REASON_MODEL, now=at)
-        await replica_state.claim(conn, KEY, holder="test:1", retry_interval=60, now=at)
+        await replica_state.claim(
+            conn,
+            KEY,
+            holder="test:1",
+            retry=replica_state.RetryPolicy(interval=60.0, ceiling=3600.0),
+            now=at,
+        )
         await replica_state.record_completed(
             conn,
             KEY,
