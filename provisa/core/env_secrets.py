@@ -118,6 +118,30 @@ def check_row(table: str, values: dict[str, Any]) -> None:
             raise CredentialLiteralError(table, column, reason)
 
 
+def _check_secret_references(stmt: Any) -> None:
+    """REQ-1557: a ``${secret:...}`` being stored is checked against the organisation it is
+    stored for, so a name its secrets service can never read is refused at the write and not at
+    first use (``secrets_providers.check_stored``)."""
+    parameters = getattr(stmt, "_values", None) or {}
+    literals = [getattr(value, "value", None) for value in parameters.values()]
+    if not any(_holds_reference(literal) for literal in literals):
+        return
+    from provisa.core.secrets_providers import check_stored
+
+    for literal in literals:
+        check_stored(literal)
+
+
+def _holds_reference(value: Any) -> bool:
+    if isinstance(value, str):
+        return "${secret:" in value
+    if isinstance(value, dict):
+        return any(_holds_reference(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_holds_reference(v) for v in value)
+    return False
+
+
 def guard_statement(stmt: Any) -> Any:
     """The seam: every Core INSERT/UPDATE is checked before it executes, and returned unchanged.
 
@@ -129,6 +153,7 @@ def guard_statement(stmt: Any) -> Any:
 
     if not isinstance(stmt, (Insert, Update)):
         return stmt
+    _check_secret_references(stmt)
     table = getattr(stmt, "table", None)
     name = getattr(table, "name", None)
     if name is None or name not in CARRIED:

@@ -358,6 +358,10 @@ A personal access token is issued for one org and names it itself. It opens that
 
 A single-tenant deployment has no org to name. No surface reads a hostname, a database name or a header for one there.
 
+## Secrets across organizations
+
+An organization's secrets are read only by that organization. In Provisa's own store each secret is held under its organization. In a central service (Vault, AWS Secrets Manager, GCP Secret Manager, Azure Key Vault) on a deployment of many organizations, every read is made inside the reading organization's prefix, and a reference that would leave it is refused. (REQ-1557) The prefixes and the steps to move existing secrets under them are in [Secrets](secrets.md#one-organizations-secrets-in-a-central-service).
+
 ## High-Security Mode
 
 `security.mode: high` in `provisa.yaml` asserts one guarantee: the Provisa backend never handles plaintext data. (REQ-693) Every column that matters is encrypted at the source, and only a client holding the decryption key can read it. That guarantee has consequences a deployment must plan for.

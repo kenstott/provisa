@@ -951,6 +951,13 @@ def _request_org_for_secrets() -> tuple[Database, str]:
 
 secrets_store.set_request_org_resolver(_request_org_for_secrets)
 
+# REQ-1557: a central secrets service is read inside the bound organisation's namespace where the
+# deployment holds many organisations. The provider asks this state each time, so there is one
+# answer and it is the running deployment's.
+from provisa.core import secrets_providers as _secrets_providers  # noqa: E402
+
+_secrets_providers.set_many_organisations_resolver(lambda: state.multitenancy)
+
 
 def _org_redirect_overrides() -> dict:
     """The bound org's `redirect` override block, for RedirectConfig.from_env (REQ-1349)."""

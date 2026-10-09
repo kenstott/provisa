@@ -146,6 +146,10 @@ async def write_org_secret(
         if value is None:
             await conn.execute_core(_delete(_org_secrets_t).where(_org_secrets_t.c.key == key))
             return
+        # REQ-1557: checked before it is encrypted, where the write seam cannot read it.
+        from provisa.core.secrets_providers import check_stored
+
+        check_stored(value)
         value_enc = encryption_service().encrypt(value.encode("utf-8"))
         await conn.upsert(
             _org_secrets_t,

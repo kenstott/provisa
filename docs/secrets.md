@@ -77,6 +77,27 @@ When the built-in `provisa` backend is active, the Secrets page is fully writabl
 
 ---
 
+### One organization's secrets in a central service
+
+A deployment that holds many organizations and reads a central service reads it for each organization inside that organization's own prefix. A reference stays the short name (`${secret:db#password}`); the prefix is added when it is read. (REQ-1557) [tool-verified: `provisa/core/secrets_providers.py`, `org_namespace`]
+
+| Service | Where organization `acme`'s secret `db` is kept |
+|---|---|
+| HashiCorp Vault (KV v2) | `orgs/acme/db` |
+| AWS Secrets Manager | `orgs/acme/db` |
+| GCP Secret Manager | `org-acme--db` |
+| Azure Key Vault | `o4-acme-db` (`o`, the length of the organization id, the id with `_` written as `-`, then the name) |
+
+A reference is refused, by name, when:
+
+- its name would leave the prefix: it starts with `/`, holds a `..` segment or a backslash, or holds `/` in GCP or Azure, whose names are flat;
+- its name is too long for the service once prefixed (GCP 255 characters, Azure 127); this is refused when the reference is saved, with the limit stated;
+- no organization is bound to the operation that reads it.
+
+A deployment of one organization reads a reference exactly as written, with no prefix: the service it is wired to is that organization's own, and nothing has to be moved.
+
+**Moving to the prefix.** On a deployment of many organizations, every secret an organization references has to sit under that organization's prefix. Copy each one there with the service's own tooling, then shorten the reference to the name inside the prefix (`${secret:teams/data/db}` kept at `orgs/acme/db` becomes `${secret:db}`). A reference whose secret has not been moved fails as not found; it is not read from where it was.
+
 ## Provisa's built-in store
 
 The default when no central service is configured. Every row in `secrets_store` holds an encrypted envelope blob — the `value` column is binary, not text, and the decryption key lives in the process environment, not the database. A copy of the control plane without the deployment's master key holds ciphertext and nothing else. (REQ-1558)
