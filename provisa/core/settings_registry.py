@@ -476,6 +476,9 @@ def freeze() -> None:
                     IGNORE_STORED_ENV,
                 )
     _frozen = {s.key: resolve(s.key).value for s in all_settings() if s.effect == "restart"}
+    # Settings that only work together are judged on what this process resolved them to: an
+    # invalid pair stops the boot here, naming both settings, their values and their sources.
+    check_pairs()
 
 
 def freeze_at_boot() -> None:
@@ -596,6 +599,87 @@ async def reload_and_apply() -> None:
     platform plane's ``settings`` stamp (REQ-1914)."""
     deployment_settings.reload()
     apply_changes()
+
+
+# --- settings that only work together -------------------------------------------------------
+#
+# ONE rule with two entrances: a save through the admin API (settings_guards, which judges the
+# values the deployment WOULD run on) and a load at boot (:func:`freeze`, which judges what the
+# environment, the config file and the store resolve to). A pair that cannot work is refused at
+# both, by name -- it is never quietly bent into something that runs.
+
+# (the setting, the setting it may not be below, the refusal's reason)
+_AT_LEAST: tuple[tuple[str, str, str], ...] = (
+    # REQ-1915: the wait before a failed build is tried again grows from the interval up to the
+    # ceiling, so a ceiling below the interval is no ceiling the interval could reach.
+    ("replication.retry_interval_max", "replication.retry_interval", "retry_max_below_interval"),
+)
+
+
+class SettingsConflict(ValueError):
+    """Two settings that cannot work together. Names both, their values, and where each came
+    from; ``field`` is the one the refusal is reported on."""
+
+    def __init__(
+        self, field: str, other: str, reason: str, *, value: Any, other_value: Any, where: str
+    ) -> None:
+        self.field, self.other, self.reason = field, other, reason
+        self.value, self.other_value = value, other_value
+        super().__init__(
+            f"setting {field} is {value!r} and setting {other} is {other_value!r} ({where}) — "
+            f"{reason}"
+        )
+
+
+def check_pairs(values: dict[str, Any] | None = None) -> None:
+    """Raise :class:`SettingsConflict` for the first pair that cannot work together.
+
+    With ``values`` (a save): the pair is judged on what it WOULD resolve to once they are
+    stored, only when one of the two is being saved, and reported on the one that was. Without
+    (a load): every pair is judged on what it resolves to now, and each value's source is
+    named."""
+    _ensure_loaded()
+    for higher, lower, reason in _AT_LEAST:
+        if higher not in _settings or lower not in _settings:
+            continue  # a registry that declares neither has no such pair (a test's own catalog)
+        if values is None:
+            top, floor = resolve(higher), resolve(lower)
+            if top.value < floor.value:
+                raise SettingsConflict(
+                    higher,
+                    lower,
+                    reason,
+                    value=top.value,
+                    other_value=floor.value,
+                    where=f"{higher} from {_named(higher, top.source)}, "
+                    f"{lower} from {_named(lower, floor.source)}",
+                )
+            continue
+        saved = [key for key in (lower, higher) if key in values]
+        if not saved:
+            continue
+        top, floor = prospective(higher, values), prospective(lower, values)
+        if top < floor:
+            field = saved[0]
+            raise SettingsConflict(
+                field,
+                higher if field == lower else lower,
+                reason,
+                value=top if field == higher else floor,
+                other_value=floor if field == higher else top,
+                where="as they would be stored",
+            )
+
+
+def _named(key: str, source: str) -> str:
+    """Where a resolved value came from, as an operator would look for it."""
+    s = setting(key)
+    return {
+        "env": f"environment variable {s.env}",
+        "config": "config key " + ".".join(s.config_path or ()),
+        "stored": "its stored value",
+        "default": "its declared default",
+    }[source]
 
 
 def validate(values: dict[str, Any]) -> None:

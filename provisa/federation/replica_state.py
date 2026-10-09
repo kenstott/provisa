@@ -379,12 +379,20 @@ class RetryPolicy:
     interval: float
     ceiling: float
 
+    def __post_init__(self) -> None:
+        # The two settings are refused as a pair where they are saved and where they are loaded
+        # (settings_registry.check_pairs); a policy is never made from one that slipped past.
+        if self.ceiling < self.interval:
+            raise ValueError(
+                f"retry ceiling {self.ceiling:g} s is below the retry interval {self.interval:g} s"
+            )
+
     def wait(self, failed_attempts: int) -> float:
         """Seconds after its last failure before a build that has failed ``failed_attempts``
         times in a row is tried again."""
         if self.interval <= 0:
             return 0.0
-        wait = min(self.interval, self.ceiling)
+        wait = self.interval
         for _ in range(max(failed_attempts, 1) - 1):
             if wait >= self.ceiling:
                 break

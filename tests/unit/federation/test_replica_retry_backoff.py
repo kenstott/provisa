@@ -56,9 +56,11 @@ def test_the_wait_doubles_with_each_failure_in_a_row_up_to_the_ceiling():
     assert DEFAULT.wait(0) == 60
     # No interval: tried again at once, however often it has failed.
     assert [RetryPolicy(0, 3600).wait(n) for n in (1, 5, 50)] == [0, 0, 0]
-    # A ceiling the interval is already past (the save refuses it; the environment can still
-    # say it): the ceiling is the wait.
-    assert [RetryPolicy(600, 300).wait(n) for n in (1, 2, 9)] == [300, 300, 300]
+    # A ceiling below the interval is no policy: the pair is refused where it is saved and where
+    # it is loaded, and never bent into "the wait is the ceiling".
+    with pytest.raises(ValueError, match="ceiling 300 s is below the retry interval 600 s"):
+        RetryPolicy(600, 300)
+    assert RetryPolicy(600, 600).wait(9) == 600
     assert DEFAULT.next_attempt_at(T0, 3) == T0 + timedelta(seconds=240)
 
 
@@ -194,7 +196,7 @@ def test_a_ceiling_below_the_interval_is_refused_at_save_naming_the_other_settin
 
     _settings(monkeypatch)
     with pytest.raises(settings_guards.Refused) as refused:
-        settings_guards._retry({"replication.retry_interval_max": 30})  # noqa: SLF001
+        settings_guards._pairs({"replication.retry_interval_max": 30})  # noqa: SLF001
     assert (refused.value.field, refused.value.reason, refused.value.params) == (
         "replication.retry_interval_max",
         "retry_max_below_interval",
@@ -202,16 +204,57 @@ def test_a_ceiling_below_the_interval_is_refused_at_save_naming_the_other_settin
     )
     # The same pair, saved from the other side.
     with pytest.raises(settings_guards.Refused) as refused:
-        settings_guards._retry({"replication.retry_interval": 7200})  # noqa: SLF001
+        settings_guards._pairs({"replication.retry_interval": 7200})  # noqa: SLF001
     assert (refused.value.field, refused.value.params) == (
         "replication.retry_interval",
         {"other": "replication.retry_interval_max"},
     )
     # Saved together they are judged together; equal is allowed (no growth, a fixed wait).
-    settings_guards._retry(  # noqa: SLF001
+    settings_guards._pairs(  # noqa: SLF001
         {"replication.retry_interval": 7200, "replication.retry_interval_max": 7200}
     )
-    settings_guards._retry({"cache.default_ttl": 5})  # noqa: SLF001 -- neither saved: not judged
+    settings_guards._pairs({"cache.default_ttl": 5})  # noqa: SLF001 -- neither saved: not judged
+
+
+def test_a_ceiling_below_the_interval_from_the_environment_stops_the_load_by_name(monkeypatch):
+    """The same rule at the other entrance. A deployment started with the ceiling below the
+    interval does not run on a bent policy: the load is refused, naming both settings, both
+    values and where each came from."""
+    from provisa.core import settings_registry
+    from provisa.core.settings_registry import Resolved, SettingsConflict
+
+    resolved = {
+        "replication.retry_interval": Resolved(60, "default"),
+        "replication.retry_interval_max": Resolved(30, "env"),
+    }
+    monkeypatch.setattr(settings_registry, "resolve", lambda key: resolved[key])
+    with pytest.raises(SettingsConflict) as refused:
+        settings_registry.check_pairs()
+    said = str(refused.value)
+    assert (refused.value.field, refused.value.other) == (
+        "replication.retry_interval_max",
+        "replication.retry_interval",
+    )
+    assert said == (
+        "setting replication.retry_interval_max is 30 and setting replication.retry_interval is "
+        "60 (replication.retry_interval_max from environment variable "
+        "PROVISA_REPLICATION_RETRY_INTERVAL_MAX, replication.retry_interval from its declared "
+        "default) — retry_max_below_interval"
+    )
+    # A pair that works loads.
+    resolved["replication.retry_interval_max"] = Resolved(60, "env")
+    settings_registry.check_pairs()
+
+
+def test_the_boot_applies_the_pair_rule(monkeypatch):
+    """`freeze` is where a boot fixes its settings; the pair rule runs there."""
+    from provisa.core import settings_registry
+
+    called = []
+    monkeypatch.setattr(settings_registry, "check_pairs", lambda values=None: called.append(values))
+    monkeypatch.setattr(settings_registry, "_frozen", None)
+    settings_registry.freeze()
+    assert called == [None]
 
 
 def test_the_ceiling_is_a_live_operator_setting_with_its_environment_variable():
@@ -219,6 +262,11 @@ def test_the_ceiling_is_a_live_operator_setting_with_its_environment_variable():
 
     ceiling = settings_registry.setting("replication.retry_interval_max")
     interval = settings_registry.setting("replication.retry_interval")
+    # ... and the product's catalog declares the pair the rule judges.
+    assert ("replication.retry_interval_max", "replication.retry_interval") in [
+        pair[:2]
+        for pair in settings_registry._AT_LEAST  # noqa: SLF001
+    ]
     assert (ceiling.type, ceiling.effect, ceiling.default, ceiling.unit) == (
         "int", "live", 3600, "seconds"
     )  # fmt: skip
