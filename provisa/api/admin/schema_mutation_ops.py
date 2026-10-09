@@ -452,15 +452,10 @@ async def register_table(
             if isinstance(_paging, MutationResult):
                 return _paging
             model.pagination = _paging
-        from provisa.api.admin._declared_sensitive import hide_declared, tag_declared
         from provisa.api.admin._hiding_guard import table_hiding_refusal
 
-        # REQ-1943: what the table's source kind declares sensitive is hidden by the system at
-        # its first registration, whatever the registration carried for those columns.
-        _source_type = _reg_state.source_types.get(input.source_id)
-        _declared = await hide_declared(_conn, _source_type, model)
         _hiding_refusal = await table_hiding_refusal(  # REQ-1943, REQ-1944
-            info, _conn, model, editor=True, declared=_declared
+            info, _conn, model, editor=True
         )
         if _hiding_refusal is not None:
             return _hiding_refusal
@@ -495,13 +490,6 @@ async def register_table(
                     "holder": _taken.holder,
                 },
             )
-        # REQ-1943: the declared columns carry the sensitive tag from the moment they exist.
-        if _declared:
-            if table_id is None or _source_type is None:
-                raise RuntimeError(f"table {model.table_name!r} was stored without an id to tag")
-            _tag_refusal = await tag_declared(_conn, table_id, _source_type, _declared)
-            if _tag_refusal is not None:
-                return _tag_refusal
         if model.query_template:
             _qa_err = await persist_query_api_registration(_conn, model)
             if _qa_err is not None:

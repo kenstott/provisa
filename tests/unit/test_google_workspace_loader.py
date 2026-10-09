@@ -11,7 +11,7 @@
 """The mail tables of a Google Workspace source (REQ-1923): each is exactly its canonical
 table, read whole from a mailbox. Gmail is a stand-in answering made-up mail."""
 
-# Requirements: REQ-1923, REQ-1943
+# Requirements: REQ-1923
 from __future__ import annotations
 
 import base64
@@ -22,7 +22,6 @@ from types import SimpleNamespace
 import pytest
 
 from provisa.core import canonical_mail as cm
-from provisa.core.declared_sensitive import CANONICAL_MAIL, declared_for
 from provisa.core.ir_arrow import arrow_schema, rows_to_batch
 from provisa.core.models import SourceType
 from provisa.google_workspace import SOURCE_TYPE, loader
@@ -333,13 +332,6 @@ class TestTheSourceKind:
         from provisa.api.admin.schema_common import SOURCE_MAPPING_SECRET_KEYS
 
         assert SOURCE_MAPPING_SECRET_KEYS[SOURCE_TYPE] == SECRET_KEYS
-
-    async def test_what_it_declares_sensitive_are_columns_of_the_canonical_tables(self):
-        for table, declared in CANONICAL_MAIL.items():
-            assert table in TABLES
-            names = {name for name, _ in cm.ir_columns(table)}
-            assert declared.columns <= names, (table, declared.columns - names)
-        assert declared_for(SOURCE_TYPE, "messages") is CANONICAL_MAIL["messages"]
 
     async def test_settings_that_cannot_be_a_source_are_refused_in_the_setups_terms(self):
         import json

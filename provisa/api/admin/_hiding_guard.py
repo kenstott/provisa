@@ -122,16 +122,11 @@ async def hiding_refusal(
     identity: Any,
     state: Any,
     editor: bool,
-    declared: frozenset[str] = frozenset(),
 ) -> str | None:
     """Why this save of ``model`` may not change how its columns are hidden, or None.
 
     Each changed hiding field is checked for its right in the table's domain -- the stored one,
     and the one it is saved into. The refusal names every column and field, and the domain.
-
-    ``declared`` are the columns the table's source kind declares sensitive, which the system
-    hid for this first registration (``_declared_sensitive``): the caller did not choose how
-    they are hidden, so no right is asked of it for them.
     """
     from provisa.api.admin.capabilities import right_domain_refusal
     from provisa.core.repositories.table import load_columns
@@ -147,8 +142,6 @@ async def hiding_refusal(
         sensitive = await sensitive_columns(conn, stored["id"])
     refusals: list[str] = []
     for column in model.columns:
-        if column.name in declared:
-            continue
         before = stored_columns.get(column.name, _UNSTORED_COLUMN)
         for field in HIDING_FIELDS:
             if _value(before, field) == _value(column, field):
@@ -374,7 +367,6 @@ async def table_hiding_refusal(
     model: Any,
     *,
     editor: bool,
-    declared: frozenset[str] = frozenset(),
 ) -> Any:  # REQ-1943, REQ-1944
     """:func:`hiding_refusal` for a GraphQL save, as the ``MutationResult`` it answers with."""
     from provisa.api.admin.capabilities import _identity_from_info
@@ -387,7 +379,6 @@ async def table_hiding_refusal(
         identity=_identity_from_info(info),
         state=state,
         editor=editor,
-        declared=declared,
     )
     if refusal is None:
         return None

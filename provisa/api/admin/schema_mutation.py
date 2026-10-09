@@ -559,8 +559,7 @@ async def store_tag_assignment(  # REQ-1375, REQ-1377, REQ-1443, REQ-1467
     """Put ``model``'s tag on its object, or say why it may not be put there: the tag's own
     rules (a derived tag, its reason, expiry and value policies, what it applies to), then the
     one write. THE writer of a tag assignment: ``assignTag`` calls it once the caller's right
-    is established, and a registration calls it for the columns its source kind declares
-    sensitive (REQ-1943, ``_declared_sensitive``), which no caller chooses."""
+    is established."""
     from provisa.core.repositories import tag as tag_repo
 
     # REQ-1443: a derived tag reports state the table already carries, so assigning it
