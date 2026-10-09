@@ -63,6 +63,17 @@ import { REBOOT_BACKEND_URL } from "./engine-swap-helpers";
 import type { RedshiftConnection } from "./engine-swap-helpers";
 import type { Registration } from "./engine-swap-helpers";
 
+/** Every registrar's submit. A source registered here is read by engines that do not attach it,
+ * so its tables LAND, and a landed table whose change signal is the TTL needs a landing clock
+ * (REQ-1907): without one the table registration is refused -- "change_signal 'ttl' is TTL-based
+ * and the table lands, so add a cache_ttl to the table or its source" -- and the row the
+ * registrar waits for never appears (swap lane, exasol and saphana, run 37918608303). Set here,
+ * once, for every source type, not registrar by registrar. */
+async function submitSwapSource(page: Page, sourceId: string): Promise<void> {
+  await setSourceCacheTtl(page, 300);
+  await submitSourceAndExpectListed(page, sourceId);
+}
+
 // REQ-1730: the duckdb-as-a-source fixture, generated (not committed — *.duckdb is gitignored)
 // by registerDuckdbSource's own caller before the test runs, same file
 // source-to-query-community-ext.spec.ts's own `duckdb` test uses.
@@ -78,7 +89,7 @@ export async function registerNeo4j(page: Page): Promise<Registration> {
   await page.getByTestId("neo4j-host-input").fill("localhost");
   await page.getByTestId("neo4j-port-input").fill(String(E2E_NEO4J_HTTP_PORT));
   await page.getByTestId("neo4j-database-input").fill("neo4j");
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await expect(page.getByTestId("register-table-schema-select")).toHaveCount(0);
@@ -128,7 +139,7 @@ export async function registerMongodb(
   await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill(host);
   await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_MONGO_PORT));
   await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("provisa");
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "provisa", tableName);
@@ -250,10 +261,7 @@ export function registerRdbWidgets(cfg: RdbWidgetsConfig): (page: Page) => Promi
         .getByRole("option", { name: "Trust Server Certificate (self-signed / internal CA)" })
         .click();
     }
-    // saphana has no DuckDB attach either: its tables land and need a landing clock (REQ-1907;
-    // see registerExasol).
-    if (cfg.type === "saphana") await setSourceCacheTtl(page, 300);
-    await submitSourceAndExpectListed(page, sourceId);
+    await submitSwapSource(page, sourceId);
 
     await openRegisterForm(page, sourceId);
     await pickSchemaAndTable(page, cfg.schema, cfg.table ?? "widgets");
@@ -290,7 +298,7 @@ export function registerFileLake(sourceType: "delta_lake" | "iceberg", tablePath
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption(sourceType);
     await page.getByLabel(/Warehouse Path/).fill(tablePath());
-    await submitSourceAndExpectListed(page, sourceId);
+    await submitSwapSource(page, sourceId);
 
     await openRegisterForm(page, sourceId);
     await pickSchemaAndTable(page, "main", sourceId);
@@ -358,7 +366,7 @@ export function registerSingleFile(
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption(sourceType);
     await page.getByLabel(fieldLabel).fill(filePath);
-    await submitSourceAndExpectListed(page, sourceId);
+    await submitSwapSource(page, sourceId);
 
     await openRegisterForm(page, sourceId);
     await pickSchemaAndTable(page, "main", sourceId);
@@ -395,7 +403,7 @@ export function registerFiles(): (page: Page) => Promise<Registration> {
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("files");
     await page.getByTestId("files-path-input").fill(`${runDir}/**`);
-    await submitSourceAndExpectListed(page, sourceId);
+    await submitSwapSource(page, sourceId);
 
     await openRegisterForm(page, sourceId);
     await pickSchemaAndTable(page, sourceId.replace(/-/g, "_"), "customers");
@@ -468,7 +476,7 @@ function registerDqChecker(
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption(checkerType);
-    await submitSourceAndExpectListed(page, sourceId);
+    await submitSwapSource(page, sourceId);
 
     // 3. Register Table form: no schema/table picker for a checker, only the DQ contract panel.
     await openRegisterForm(page, sourceId);
@@ -561,7 +569,7 @@ export async function registerGsheets(page: Page): Promise<Registration> {
   await page.getByTestId("sources-type-select").selectOption("google_sheets");
   await page.getByTestId("google-sheets-credentials-input").fill(process.env.GOOGLE_APPLICATION_CREDENTIALS!);
   await page.getByTestId("google-sheets-sheet-id-input").fill(process.env.GSHEETS_TEST_SHEET_ID!);
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "main", sourceId);
@@ -604,7 +612,7 @@ export async function registerSnowflake(page: Page): Promise<Registration> {
   await page.getByRole("option", { name: "Username / Password", exact: true }).click();
   await page.getByLabel(/^Username/).fill(process.env.SNOWFLAKE_USER!);
   await page.getByLabel(/^Password/).fill(process.env.SNOWFLAKE_PASSWORD!);
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "PUBLIC", "WIDGETS");
@@ -652,7 +660,7 @@ export async function registerFabric(page: Page): Promise<Registration> {
   await page
     .getByRole("option", { name: "Ambient Credential (az login / managed identity)", exact: true })
     .click();
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
@@ -696,7 +704,7 @@ export async function registerDatabricks(page: Page): Promise<Registration> {
   await page.getByRole("textbox", { name: "Authentication" }).click();
   await page.getByRole("option", { name: "Personal Access Token", exact: true }).click();
   await page.getByLabel(/Access Token/).fill(process.env.DATABRICKS_TOKEN!);
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
@@ -733,7 +741,7 @@ export async function registerBigquery(page: Page): Promise<Registration> {
   await page.getByLabel(/Project ID/).fill(process.env.GOOGLE_CLOUD_PROJECT!);
   await page.getByRole("textbox", { name: "Authentication" }).click();
   await page.getByRole("option", { name: "Application Default Credentials", exact: true }).click();
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
@@ -776,7 +784,7 @@ export function registerRedshift(conn: RedshiftConnection): (page: Page) => Prom
     await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill(conn.database);
     await page.getByLabel(/^Username/).fill(conn.user);
     await page.getByLabel(/^Password/).fill(conn.password);
-    await submitSourceAndExpectListed(page, sourceId);
+    await submitSwapSource(page, sourceId);
 
     await openRegisterForm(page, sourceId);
     await pickSchemaAndTable(page, "public", "provisa_widgets_e2e");
@@ -813,7 +821,7 @@ export async function registerElasticsearch(
   await page.getByTestId("sources-type-select").selectOption("elasticsearch");
   await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill(host);
   await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_ES_PORT));
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "default", tableName);
@@ -849,7 +857,7 @@ export async function registerRedis(
   await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill(host);
   await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_REDIS_PORT));
   await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("0");
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "default", tableName);
@@ -885,7 +893,7 @@ export async function registerCassandra(
   await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill(host);
   await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_CASSANDRA_PORT));
   await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("shelter_ops");
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "shelter_ops", tableName);
@@ -917,7 +925,7 @@ export async function registerSparql(page: Page): Promise<Registration> {
   await page
     .getByTestId("sparql-endpoint-input")
     .fill(`http://localhost:${E2E_SPARQL_PORT}/provisa/query`);
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await expect(page.getByTestId("register-table-schema-select")).toHaveCount(0);
@@ -956,7 +964,7 @@ export async function registerPrometheus(page: Page): Promise<Registration> {
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("prometheus");
   await page.getByTestId("prometheus-url-input").fill(`http://localhost:${E2E_PROMETHEUS_PORT}`);
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "default", tableName);
@@ -1007,7 +1015,7 @@ export async function registerSplunk(page: Page): Promise<Registration> {
   await page.getByTestId("splunk-username-input").fill("admin");
   await page.getByTestId("splunk-password-input").fill("Provisa_2026!");
   await page.getByTestId("splunk-disable-ssl-checkbox").check();
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, sourceId, tableName);
@@ -1060,7 +1068,7 @@ export async function registerSharepoint(page: Page): Promise<Registration> {
   await page.getByTestId("sharepoint-client-id-input").fill(process.env.SP_CLIENT_ID!);
   await page.getByTestId("sharepoint-cert-path-input").fill(certPath);
   await page.getByTestId("sharepoint-cert-password-input").fill(process.env.SP_CERT_PASSWORD ?? "");
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, sourceId, tableName);
@@ -1091,7 +1099,7 @@ export async function registerSqlite(page: Page): Promise<Registration> {
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("sqlite");
   await page.getByLabel(/SQLite File Path/).fill("./demo/files/inquiries.sqlite");
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "main", "users");
@@ -1130,7 +1138,7 @@ export async function registerGraphqlRemote(page: Page, endpointOverride?: strin
   await page.getByTestId("sources-type-select").selectOption("graphql");
   await page.getByTestId("graphql-endpoint-input").fill(endpoint);
   await page.getByTestId("graphql-namespace-input").fill(namespace);
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   // REQ-308: adding the source registers nothing; the table is registered on its own.
   const breedTable = await registerOfferedTable(page, sourceId, "graphql", "animal_breed", [
@@ -1173,7 +1181,7 @@ export async function registerGrpcRemote(page: Page, port: number): Promise<Regi
   await page.getByTestId("grpc-proto-path-input").fill(protoPath);
   await page.getByTestId("grpc-server-address-input").fill(`localhost:${port}`);
   await page.getByTestId("grpc-namespace-input").fill(namespace);
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   // REQ-322: adding the source registers nothing; the table is registered on its own.
   const breedTable = await registerOfferedTable(page, sourceId, "grpc_remote", "ListBreeds", [
@@ -1221,7 +1229,7 @@ export async function registerIngest(page: Page): Promise<Registration> {
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("ingest");
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "default", sourceId);
@@ -1260,7 +1268,7 @@ export async function registerOpenapi(page: Page, specUrlOverride?: string): Pro
   await page.getByTestId("sources-type-select").selectOption("openapi");
   await page.getByTestId("openapi-spec-path-input").fill(specUrl);
   await page.getByTestId("openapi-base-url-input").fill(baseUrl);
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "openapi", "getInventory");
@@ -1291,7 +1299,7 @@ export async function registerGovdata(page: Page): Promise<Registration> {
   await page.getByTestId("sources-type-select").selectOption("govdata");
   await page.getByTestId("govdata-subject-WEATHER").check();
   await page.getByTestId("govdata-api-key-input").fill(apiKey);
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
   // The server's start has its own budget, on top of the case's.
   test.setTimeout(test.info().timeout + ASKAMERICA_SERVING_BUDGET_MS);
   expect(
@@ -1333,7 +1341,7 @@ export async function registerRss(page: Page): Promise<Registration> {
   await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
   await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_RSS_PORT));
   await page.getByTestId("rss-use-ssl-checkbox").uncheck();
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "default", sourceId);
@@ -1402,7 +1410,7 @@ export async function registerWebsocket(page: Page): Promise<Registration> {
   await page.getByTestId("sources-type-select").selectOption("websocket");
   await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
   await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_WS_PORT));
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "default", sourceId);
@@ -1440,7 +1448,7 @@ export async function registerFirebird(page: Page): Promise<Registration> {
   // The firebird extension's DSN path is the file's IN-CONTAINER path (FIREBIRD_DATABASE=test.fdb
   // under /firebird/data — see demo/sources/firebird/compose.yml), not a host path.
   await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("/firebird/data/test.fdb");
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   // demo/sources/firebird/prime.py quotes lower-case identifiers ("widgets"/"id"/"name") so
@@ -1478,7 +1486,7 @@ export async function registerAirport(page: Page): Promise<Registration> {
   await page.getByTestId("sources-type-select").selectOption("airport");
   await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
   await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_AIRPORT_PORT));
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "test", "widgets");
@@ -1516,7 +1524,7 @@ export async function registerDuckdbSource(page: Page): Promise<Registration> {
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("duckdb");
   await page.getByLabel(/^File Path/).fill(WIDGETS_DUCKDB_PATH);
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "main", "widgets");
@@ -1554,7 +1562,7 @@ export async function registerTrinoSource(page: Page): Promise<Registration> {
   await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_TRINO_SOURCE_PORT));
   await page.getByLabel(/^Username/).fill("provisa");
   await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("tpch");
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "tiny", "nation");
@@ -1591,7 +1599,7 @@ export async function registerSinglestore(page: Page): Promise<Registration> {
   await page.getByLabel(/^Username/).fill(process.env.SINGLESTORE_USERNAME!);
   await page.getByLabel(/^Password/).fill(process.env.SINGLESTORE_PASSWORD!);
   await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill(database);
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, database, "widgets");
@@ -1642,12 +1650,7 @@ export async function registerExasol(page: Page, fingerprint: () => string): Pro
   await page.getByRole("textbox", { name: "Authentication" }).click();
   await page.getByRole("option", { name: "TLS Fingerprint Pin", exact: true }).click();
   await page.getByLabel(/TLS Fingerprint/).fill(fingerprint());
-  // DuckDB has no attach for exasol, so its tables land (a replica), and a landed table needs a
-  // landing clock (REQ-1907). Without it the registration is refused -- "change_signal 'ttl' is
-  // TTL-based and the table lands, so add a cache_ttl to the table or its source" -- and the
-  // table never reaches the list (swap lane on 76fa4414e).
-  await setSourceCacheTtl(page, 300);
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "PROVISA", "WIDGETS");
@@ -1784,7 +1787,7 @@ export async function registerKafka(page: Page): Promise<Registration> {
   await page
     .getByTestId("kafka-schema-registry-input")
     .fill(`http://localhost:${E2E_KAFKA_SCHEMA_REGISTRY_PORT}`);
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "default", sourceId);
@@ -1920,7 +1923,7 @@ export async function registerPinot(page: Page): Promise<Registration> {
   // here already uses.
   await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
   await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_PINOT_CONTROLLER_PORT));
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   // The broker's own query/sql endpoint lives on a DIFFERENT host-published port than the
   // controller (see E2E_PINOT_BROKER_PORT's own comment) — federation_hints is the established
@@ -2057,7 +2060,7 @@ export async function registerHiveS3(page: Page): Promise<Registration> {
   // this type needed one — see rewriteHostForContainerizedEngine's own new comment for the
   // Trino-side rewrite this now requires).
   await page.getByLabel(/S3 Endpoint/).fill("http://localhost:9000");
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "wh", "widgets");
@@ -2131,7 +2134,7 @@ export async function registerHive(page: Page): Promise<Registration> {
   await page.getByTestId("sources-type-select").selectOption("hive");
   await page.getByLabel(/Metastore URI/).fill("hive");
   await page.getByLabel(/Warehouse Path/).fill("/opt/hive/data/warehouse");
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "wh", "widgets");
@@ -2171,7 +2174,7 @@ export async function registerDruid(page: Page): Promise<Registration> {
   // rewrites this to host.docker.internal before the Trino reboot.
   await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
   await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_DRUID_BROKER_PORT));
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   // Same table-list convergence wait source-to-query-olap-lake-trino.spec.ts's own druid case
   // takes before touching the picker (its waitForTrinoTable call) — Trino's druid connector
@@ -2270,7 +2273,7 @@ export async function registerSynapse(
   await page
     .getByRole("option", { name: "Ambient Credential (az login / managed identity)", exact: true })
     .click();
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "dbo", "widgets");

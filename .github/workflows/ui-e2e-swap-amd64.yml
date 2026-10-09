@@ -55,6 +55,12 @@ jobs:
       PROVISA_E2E_LANE: trino
       PG_PORT: "5432"
       TRINO_PORT: "8080"
+      # The harness registers a source on the DuckDB backend and reads it back on the Trino one:
+      # both must serve the SAME org schema (engine-swap.spec.ts's documented invocation). Left
+      # unset they are "e2e" and "e2e_trino", and the second engine answered "source … not found
+      # on this engine's control-plane schema" (swap lane on v0.1.0-alpha.478).
+      PROVISA_E2E_ORG_ID: e2e_swap
+      PROVISA_E2E_TRINO_ORG_ID: e2e_swap
     steps:
       - uses: actions/checkout@v4
 

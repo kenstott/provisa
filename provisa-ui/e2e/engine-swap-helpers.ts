@@ -391,7 +391,7 @@ export async function reprovisionSourceOnEngine(engine: EngineTarget, sourceId: 
       // every such hint on replay (caught live 2026-09-16 registering sqlserver against a
       // self-signed demo cert: JDBC_ERROR, PKIX path building failed).
       query:
-        "{ sources { id type host port database username passwordRef path description mappingJson federationHintsJson } }",
+        "{ sources { id type host port database username passwordRef path description mappingJson federationHintsJson cacheTtl replicate } }",
     }),
   });
   const resText = await res.text();
@@ -408,6 +408,12 @@ export async function reprovisionSourceOnEngine(engine: EngineTarget, sourceId: 
     description: string;
     mappingJson: string | null;
     federationHintsJson: string | null;
+    // Read and written back with the rest: this harness replays the source through
+    // createSource / updateSource, and a replay without them CLEARED the landing clock its
+    // tables need -- the update was refused with REQ-1907's message (swap lane on
+    // v0.1.0-alpha.478, exasol reboot case).
+    cacheTtl: number | null;
+    replicate: number | null;
   }>;
   const src = sources.find((s) => s.id === sourceId);
   expect(src, `source ${sourceId} not found on this engine's control-plane schema`).toBeTruthy();
@@ -988,7 +994,7 @@ export async function rewriteHostForContainerizedEngine(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       query:
-        "{ sources { id type host port database username passwordRef path description mappingJson federationHintsJson } }",
+        "{ sources { id type host port database username passwordRef path description mappingJson federationHintsJson cacheTtl replicate } }",
     }),
   });
   const resText = await res.text();
@@ -1005,6 +1011,12 @@ export async function rewriteHostForContainerizedEngine(
     description: string;
     mappingJson: string | null;
     federationHintsJson: string | null;
+    // Read and written back with the rest: this harness replays the source through
+    // createSource / updateSource, and a replay without them CLEARED the landing clock its
+    // tables need -- the update was refused with REQ-1907's message (swap lane on
+    // v0.1.0-alpha.478, exasol reboot case).
+    cacheTtl: number | null;
+    replicate: number | null;
   }>;
   const src = sources.find((s) => s.id === sourceId);
   expect(src, `source ${sourceId} not found on the reboot harness's control-plane schema`).toBeTruthy();
