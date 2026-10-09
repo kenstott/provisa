@@ -420,3 +420,26 @@ def test_the_reload_interval_is_an_operator_setting_with_a_floor():
     assert declared.editable and declared.card in settings_registry.CARDS
     with pytest.raises(settings_registry.SettingInvalid):
         settings_registry.parse(declared, 0.1, "stored")
+
+
+def test_a_copy_that_is_gone_is_not_reported_as_reloaded(tenant_db, caplog):
+    """A reload that found no copy left to load (its runtime was dropped or replaced under it)
+    answers NOT_RELOADED. The check does not list it among those reloaded and does not log
+    "config reloaded" for it: it says the copy is gone and its replacement loads its own."""
+    import logging
+
+    class _Gone(_Copy):
+        async def load(self):
+            self.reloads += 1
+            return config_watch.NOT_RELOADED
+
+    gone = _Gone(tenant_db, config_stamp.MODEL)
+    gone.stamp = -1  # loaded at a stamp the plane no longer holds: the check will ask it to reload
+
+    with caplog.at_level(logging.INFO, logger="provisa.core.config_watch"):
+        assert _check(("org acme: model", gone)) == []
+
+    assert gone.reloads == 1
+    said = [r.getMessage() for r in caplog.records]
+    assert not any(m.startswith("config reloaded") for m in said), said
+    assert any("config not reloaded: org acme: model is gone" in m for m in said), said

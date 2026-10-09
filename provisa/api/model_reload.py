@@ -34,7 +34,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 from provisa.core import config_stamp, deployment_settings, domain_policy
-from provisa.core.config_watch import Target
+from provisa.core.config_watch import NOT_RELOADED, Target
 from provisa.core.environments import PROD
 from provisa.core.request_context import (
     reset_current_env,
@@ -183,14 +183,14 @@ async def _bound(rt: "OrgRuntime", work: Any) -> None:
         reset_current_org(org_token)
 
 
-async def reload_model(rt: "OrgRuntime") -> None:
+async def reload_model(rt: "OrgRuntime") -> object:
     """Rebuild ``rt``'s compiled model from the control plane. The build records the ``model``
     stamp it read before reading the model, and bumps the process's schema generation, which is
     what every kept plan, compiled query and routing decision is keyed on."""
     from provisa.api.app import _rebuild_schemas
 
     if not _held(rt):
-        return  # dropped since the watcher listed it: there is no copy left to reload
+        return NOT_RELOADED  # dropped since the watcher listed it: there is no copy left to reload
 
     async def _rebuild() -> None:
         # The worker that made the change announced it (REQ-1072); a reload is not another change.
@@ -212,6 +212,8 @@ async def reload_model(rt: "OrgRuntime") -> None:
         if _held(rt):
             raise
         left_to_the_next_runtime(gone, "config reload")
+        return NOT_RELOADED
+    return None
 
 
 async def reschedule_triggers(rt: "OrgRuntime") -> None:

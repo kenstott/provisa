@@ -307,7 +307,12 @@ async def test_a_reload_whose_runtime_is_replaced_under_it_is_left_to_the_next(m
     monkeypatch.setattr(model_reload, "_held", lambda _rt: held["now"])
 
     with caplog.at_level(logging.DEBUG):
-        await model_reload.reload_model(rt)  # type: ignore[arg-type]
+        answered = await model_reload.reload_model(rt)  # type: ignore[arg-type]
+
+    # It says so, and the check then does not report the model as reloaded.
+    from provisa.core.config_watch import NOT_RELOADED
+
+    assert answered is NOT_RELOADED
 
     assert current_org.get() is None and current_env.get() is None
     assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
