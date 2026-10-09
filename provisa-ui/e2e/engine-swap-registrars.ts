@@ -39,6 +39,7 @@ import {
   submitSourceAndExpectListed,
   waitForSourceServing,
   FORM_FIELD,
+  setSourceCacheTtl,
 } from "./source-to-query-helpers";
 import {
   E2E_AIRPORT_PORT,
@@ -249,6 +250,9 @@ export function registerRdbWidgets(cfg: RdbWidgetsConfig): (page: Page) => Promi
         .getByRole("option", { name: "Trust Server Certificate (self-signed / internal CA)" })
         .click();
     }
+    // saphana has no DuckDB attach either: its tables land and need a landing clock (REQ-1907;
+    // see registerExasol).
+    if (cfg.type === "saphana") await setSourceCacheTtl(page, 300);
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
@@ -1636,6 +1640,11 @@ export async function registerExasol(page: Page, fingerprint: () => string): Pro
   await page.getByRole("textbox", { name: "Authentication" }).click();
   await page.getByRole("option", { name: "TLS Fingerprint Pin", exact: true }).click();
   await page.getByLabel(/TLS Fingerprint/).fill(fingerprint());
+  // DuckDB has no attach for exasol, so its tables land (a replica), and a landed table needs a
+  // landing clock (REQ-1907). Without it the registration is refused -- "change_signal 'ttl' is
+  // TTL-based and the table lands, so add a cache_ttl to the table or its source" -- and the
+  // table never reaches the list (swap lane on 76fa4414e).
+  await setSourceCacheTtl(page, 300);
   await submitSourceAndExpectListed(page, sourceId);
 
   await openRegisterForm(page, sourceId);
