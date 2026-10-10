@@ -77656,3 +77656,15 @@
   - REQ-1321
   - REQ-1966
   notes: 'Maintainer 2026-10-10: "do option 1 and 3. log as requirements". Option 3 as put to him: the one format worth writing directly, because the Ossie converter for dbt speaks only the semantic-layer file.'
+- id: REQ-1968
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: Form Layout
+  priority: SHOULD
+  type: behavioral
+  description: 'Every form in the UI is laid out by one shared form layout, and a field is as wide as what it holds, not as wide as the form. A field declares a size class (short for numbers, ports, durations, switches and short choices; medium for names and hosts; long for addresses, paths and one-line descriptions; full for multi-line text and editors only), and each class has a minimum and a maximum width, so a field neither stretches across the form nor collapses. Fields flow into as many columns as the screen allows and wrap on a narrower one, with no form carrying its own breakpoints; fields that belong together (host and port, precision and scale) are declared as a group and wrap as one. A single-line field is never full width; full width is for multi-line text, editors and tables. Identifier fields, where a form has them, are not in the flow: they sit at the top of the form in a section of their own. A form''s action buttons are at the bottom, aligned to the start of the line (left in a left-to-right language, right in a right-to-left one), primary action first. Reading order and keyboard order are the same after any reflow. Minimum widths hold each field''s label in every shipped locale. The rule is held by a guard test: a form that lays its fields out outside the shared layout, a single-line field stretched to full width, and action buttons aligned elsewhere each fail it.'
+  use_case: An operator fills in a source or table form on a laptop or a wide monitor and sees short fields side by side, identifiers set apart at the top, and the buttons where every form has them.
+  related_reqs:
+  - REQ-1350
+  notes: 'Maintainer 2026-10-10: "We have TOO many full width fields. Fields should be a sensible length, and should use multiple columns and flow to accomodate multiple screens sizes. Fields should have min and max widths. Fields that represent identifiers maybe NOT in with the flow at the top of the form. Action buttons for the form should be left aligned at the bottom." Then, the same day: "one more exception. identifier fields (if they exist) should be at the top in their own section." Lead, measured that day in provisa-ui/src: 116 fields stretched to full width across 25 files; form grids fixed at two equal columns; action buttons right-aligned in 68 places and left-aligned in 2. Size classes, grouping, start-alignment for right-to-left and the guard are the lead''s proposal as put to him; he had not ruled on the class widths when this was recorded.'

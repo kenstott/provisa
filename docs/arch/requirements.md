@@ -22631,3 +22631,17 @@ The model export offers a dbt sources file (sources.yml) written by Provisa dire
 **Code:** —
 
 **Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-1968 · Form Layout {#REQ-1968}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Every form in the UI is laid out by one shared form layout, and a field is as wide as what it holds, not as wide as the form. A field declares a size class (short for numbers, ports, durations, switches and short choices; medium for names and hosts; long for addresses, paths and one-line descriptions; full for multi-line text and editors only), and each class has a minimum and a maximum width, so a field neither stretches across the form nor collapses. Fields flow into as many columns as the screen allows and wrap on a narrower one, with no form carrying its own breakpoints; fields that belong together (host and port, precision and scale) are declared as a group and wrap as one. A single-line field is never full width; full width is for multi-line text, editors and tables. Identifier fields, where a form has them, are not in the flow: they sit at the top of the form in a section of their own. A form's action buttons are at the bottom, aligned to the start of the line (left in a left-to-right language, right in a right-to-left one), primary action first. Reading order and keyboard order are the same after any reflow. Minimum widths hold each field's label in every shipped locale. The rule is held by a guard test: a form that lays its fields out outside the shared layout, a single-line field stretched to full width, and action buttons aligned elsewhere each fail it.
+
+**Use case:** An operator fills in a source or table form on a laptop or a wide monitor and sees short fields side by side, identifiers set apart at the top, and the buttons where every form has them.
+
+**Code:** —
+
+**Tests:** —
