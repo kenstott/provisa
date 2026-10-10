@@ -111,12 +111,20 @@ async def test_bitemporal_view_http_end_to_end(client):
     rb = await _admin(client, "mutation { rebuildSchemas { success } }")
     assert rb["data"]["rebuildSchemas"]["success"], rb
     from provisa.api.app import state
-    from provisa.mv.refresh import refresh_mv
+    from provisa.mv.refresh import refresh_failure
 
     mv = state.mv_registry.get("view-bt_view")
     assert mv is not None and mv.bitemporal is not None  # REQ-1162: spec survived the reload
     assert mv.bitemporal.mode == "delta"
-    await refresh_mv(state.federation_engine, mv, state.mv_registry)
+    # The refresh a user asks for: through the admin mutation, as the org the request is bound to.
+    # Called directly from here it runs with no org bound, is refused by name, and -- because a
+    # refresh never raises -- only logs; the reads below then answered without the log having
+    # been written by it (main's suite 37995232420).
+    refreshed = await _admin(
+        client, 'mutation { refreshMv(mvId: "view-bt_view") { success message } }'
+    )
+    assert refreshed["data"]["refreshMv"]["success"], refreshed
+    assert refresh_failure(mv) is None
 
     # (2) Current-by-default read through the real endpoint reconstructs current state from the log.
     cur = await _sql(client, 'SELECT id, amount FROM "bt"."bt_view"')
