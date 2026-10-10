@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # First-launch setup for Linux AppImage.
 # Loads bundled Docker images and installs the provisa CLI.
-# Always uses bundled rootless dockerd — no system Docker required.
+# Uses the bundled rootless dockerd unless told otherwise (PROVISA_DOCKER_MODE; NixOS: system).
 set -euo pipefail
 
 APPDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,7 +24,13 @@ BUNDLED_PID="${PROVISA_HOME}/run/dockerd.pid"
 # the cloud/VM startup (PROVISA_DOCKER_MODE=system), where the script runs as root
 # and rootless dockerd refuses to start. The socket feeds DOCKER_HOST, the config
 # docker_host, and the systemd unit.
-DOCKER_MODE="${PROVISA_DOCKER_MODE:-bundled}"
+# On NixOS the default is `system`: the host's settings (nixos/preinstall.nix) enable the
+# system daemon, and the bundled rootless one needs subordinate-id setup NixOS gives no user.
+if [ -e /etc/NIXOS ]; then
+  DOCKER_MODE="${PROVISA_DOCKER_MODE:-system}"
+else
+  DOCKER_MODE="${PROVISA_DOCKER_MODE:-bundled}"
+fi
 if [ "$DOCKER_MODE" = system ]; then
   DOCKER_SOCKET="${PROVISA_DOCKER_SOCKET:-/var/run/docker.sock}"
 else
@@ -49,6 +55,11 @@ ok()    { printf "${GREEN}[provisa]${NC} %s\n" "$*"; }
 warn()  { printf "${YELLOW}[provisa]${NC} %s\n" "$*"; }
 err()   { printf "${RED}[provisa]${NC} %s\n" "$*" >&2; }
 _lc()   { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+# The NixOS check install.sh makes too (is_nixos, nixos_preinstall): one file, carried in the
+# AppDir beside the settings it hands out.
+# shellcheck source=../nixos/preinstall-check.sh
+. "${APPDIR}/nixos/preinstall-check.sh"
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 # Supports non-interactive invocation from Terraform / cloud-init:
@@ -1486,7 +1497,17 @@ main() {
     return
   fi
 
+  # NixOS: its settings come before anything is asked or written. Docker is asked for below,
+  # once the answers say whether this install runs under it.
+  if is_nixos; then
+    nixos_preinstall "${APPDIR}/nixos/preinstall.nix" false
+  fi
+
   resolve_deployment   # sets DEPLOY_ENGINE OBS_MODE INSTALL_DEMO DEMO_MODE NEEDS_DOCKER
+
+  if is_nixos && [ "$NEEDS_DOCKER" = true ]; then
+    nixos_preinstall "${APPDIR}/nixos/preinstall.nix" true
+  fi
 
   # ── Native tier (default): a Python venv, no Docker ──
   # Single-node — no primary/secondary role prompt; the venv serves everything.

@@ -9,7 +9,10 @@ IMAGES_DIR="${SCRIPT_DIR}/images"
 APPDIR="${SCRIPT_DIR}/Provisa.AppDir"
 OUT_DIR="${SCRIPT_DIR}/dist"
 DOCKER_BIN_CACHE="${SCRIPT_DIR}/.docker-bin-cache"
-APPIMAGETOOL_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+# AppImage/appimagetool, not the retired AppImageKit one: it packs with the STATICALLY linked
+# type-2 runtime, so the AppImage starts on a host with no glibc loader at /lib64 and no libfuse2
+# -- stock NixOS, and Ubuntu 22.04+ without an extra package. create_appimage checks it did.
+APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
 APPIMAGETOOL="${SCRIPT_DIR}/appimagetool-x86_64.AppImage"
 
 # Pin Docker version — update here to upgrade bundled runtime
@@ -88,10 +91,9 @@ check_prereqs() {
     err "Required tool not found: curl"
     exit 1
   fi
-  if ! dpkg -s libfuse2 &>/dev/null 2>&1; then
-    info "Installing libfuse2 (required by appimagetool)..."
-    sudo apt-get update -qq
-    sudo apt-get install -y libfuse2
+  if ! command -v readelf &>/dev/null; then
+    err "Required tool not found: readelf (binutils) -- it checks the AppImage's runtime is static"
+    exit 1
   fi
   ok "Prerequisites satisfied."
 }
@@ -216,6 +218,11 @@ build_appdir() {
   chmod +x "${APPDIR}/AppRun"
   cp "${SCRIPT_DIR}/Provisa.desktop"        "${APPDIR}/Provisa.desktop"
 
+  # NixOS: the check first-launch.sh sources, and the settings file it hands the user.
+  mkdir -p "${APPDIR}/nixos"
+  cp "${REPO_ROOT}/packaging/nixos/preinstall-check.sh" "${APPDIR}/nixos/preinstall-check.sh"
+  cp "${REPO_ROOT}/packaging/nixos/preinstall.nix"      "${APPDIR}/nixos/preinstall.nix"
+
   # Bake the release version so first-launch.sh can pin the online native pip
   # install to the matching release (parity with macOS Resources/VERSION).
   printf '%s' "${VERSION:-dev}" > "${APPDIR}/VERSION"
@@ -312,6 +319,21 @@ bundle_native_payload() {
   ok "Native payload bundled into AppDir."
 }
 
+# ── The runtime must be static ────────────────────────────────────────────────
+# The file a visitor downloads is the AppImage's runtime with the payload appended. A runtime
+# that names a program interpreter (/lib64/ld-linux-x86-64.so.2) does not start on NixOS, so the
+# download would not be "one installer for Linux and NixOS". A build that produced one fails.
+require_static_runtime() {
+  local appimage="$1" interpreter
+  interpreter="$(readelf --program-headers --wide "$appimage" | grep -c 'INTERP' || true)"
+  if [ "$interpreter" != "0" ]; then
+    err "The AppImage's runtime is dynamically linked: it will not start on NixOS."
+    readelf --program-headers --wide "$appimage" | grep -A1 'INTERP' >&2 || true
+    exit 1
+  fi
+  ok "The AppImage's runtime is statically linked."
+}
+
 # ── Create AppImage ────────────────────────────────────────────────────────────
 create_appimage() {
   info "Fetching appimagetool..."
@@ -324,6 +346,7 @@ create_appimage() {
   info "Packing AppImage..."
   APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 \
     "$APPIMAGETOOL" "$APPDIR" "${OUT_DIR}/Provisa.AppImage"
+  require_static_runtime "${OUT_DIR}/Provisa.AppImage"
   ok "AppImage created: ${OUT_DIR}/Provisa.AppImage"
 }
 
