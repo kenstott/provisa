@@ -404,6 +404,34 @@ Any structural problem is a `400` with a path-named error, e.g.
 [tool-verified: `import_ossie`, `provisa/api/admin/ossie_router.py` lines 36–52:
 "Nothing is registered here — imported definitions never bypass registration review"]
 
+#### Coming from dbt, Cube, Snowflake, and other semantic layers
+
+The Apache Ossie project maintains converters between Ossie and other tools' model formats. Run
+the converter for your tool, then post its output to the import endpoint or pick the file in the
+review screen below. Provisa reads the Ossie document; it does not read the other tool's files.
+
+| Coming from | Converter command | What it reads |
+|---|---|---|
+| dbt (semantic layer) | `ossie-dbt msi-to-ossie -i target/semantic_manifest.json -o semantic_model.yaml` | The `semantic_manifest.json` that dbt writes for MetricFlow |
+| Cube | `ossie-cube import -i model/ -o model.yaml` | A Cube model directory, or individual cube and view files |
+
+[tool-verified: `converters/dbt/README.md` and `converters/cube/README.md` in the
+`apache/ossie` repository, read 2026-10-10]
+
+The same repository holds converters for Snowflake, Databricks, Microsoft, Salesforce,
+ThoughtSpot, Sigma, Omni, Hex, GoodData, and others; each has its own README.
+[tool-verified: directory listing of `converters/` in `apache/ossie`, 2026-10-10]
+
+Two limits to know before converting:
+
+- The dbt converter reads the semantic-layer manifest only. A dbt project without semantic
+  models has nothing for it to convert. It drops conversion metrics, private metrics, and
+  natural-key entities, and prints a warning for each.
+  [tool-verified: `converters/dbt/README.md`, the "MSI → Ossie is lossy" table]
+- A converter's output follows the Ossie version that converter targets. Provisa reads spec
+  0.2.0.dev0. A document from another version of the draft spec may be refused with a
+  path-named error. [inferred: no converter's output has been run through Provisa's importer]
+
 #### The review screen
 
 In the UI, the **Import** button (Metrics page → Ossie Interchange panel) opens a file picker.
