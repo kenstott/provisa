@@ -242,6 +242,14 @@ jobs:
           python-version: "3.12"
       - run: pip install mkdocs-material pymdown-extensions mkdocs-static-i18n
 
+      # The wheel the AppImage carries includes the built UI, and the script that builds the wheel
+      # is told the UI is already built -- as it is in the release, whose Linux job is handed it.
+      - name: Build the UI
+        working-directory: provisa-ui
+        run: |
+          npm ci
+          npm run build
+
       # Fails if the packed runtime names a loader (require_static_runtime): such a file does not
       # start on NixOS at all.
       - name: Build the AppImage

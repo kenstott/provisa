@@ -287,6 +287,8 @@ def test_the_workflow_runs_the_one_downloaded_file_on_stock_nixos_and_after_the_
     jobs = _workflow()["jobs"]
     build = "\n".join(str(step.get("run", "")) for step in jobs["appimage-build"]["steps"])
     assert "packaging/linux/build-appimage.sh" in build  # built as the release builds it
+    # The wheel build inside it expects the UI already built (run 38047033910 failed without).
+    assert build.index("npm run build") < build.index("packaging/linux/build-appimage.sh")
     proof = jobs["appimage"]
     assert proof["needs"] == "appimage-build"
     assert proof["strategy"]["matrix"]["guest"] == ["bare", "prepared"]
