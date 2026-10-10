@@ -490,6 +490,9 @@
       "client_refused": "Microsoft ने आपके संगठन के Microsoft 365 क्लाइंट को अस्वीकार कर दिया: {{reason}}",
       "throttled": "Microsoft अभी अनुरोधों को सीमित कर रहा है। {{retry_after}} सेकंड में फिर प्रयास करें।",
       "directory_refused": "Microsoft ने संगठन के मेलबॉक्स सूचीबद्ध नहीं किए ({{status}} {{reason}})। क्लाइंट को निर्देशिका के उपयोगकर्ताओं को पढ़ने की अनुमति चाहिए।"
+    },
+    "dbt_sources": {
+      "unknown_role": "{{role}} नाम की कोई भूमिका मौजूद नहीं है।"
     }
   }
 }

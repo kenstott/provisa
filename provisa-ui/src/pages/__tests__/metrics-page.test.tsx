@@ -131,6 +131,9 @@ const TABLES: RegisteredTable[] = [
   }),
 ];
 
+// The page's export panel writes a dbt sources file for the role in use (REQ-1967).
+vi.mock("../../context/AuthContext", () => ({ useAuth: () => ({ role: { id: "analyst" } }) }));
+
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
 // replace-everything factory here leaks into other files and drops exports they need.
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({

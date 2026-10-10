@@ -490,6 +490,9 @@
       "client_refused": "Microsoft が組織の Microsoft 365 クライアントを拒否しました: {{reason}}",
       "throttled": "Microsoft が現在リクエストを制限しています。{{retry_after}} 秒後にもう一度お試しください。",
       "directory_refused": "Microsoft が組織のメールボックスを一覧表示しませんでした ({{status}} {{reason}})。クライアントにはディレクトリのユーザーを読み取るアクセス許可が必要です。"
+    },
+    "dbt_sources": {
+      "unknown_role": "{{role}} という名前のロールはありません。"
     }
   }
 }

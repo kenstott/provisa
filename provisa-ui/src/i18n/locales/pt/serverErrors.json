@@ -490,6 +490,9 @@
       "client_refused": "A Microsoft recusou o cliente Microsoft 365 da sua organização: {{reason}}",
       "throttled": "A Microsoft está a limitar os pedidos por agora. Tente novamente dentro de {{retry_after}} segundos.",
       "directory_refused": "A Microsoft não listou as caixas de correio da organização ({{status}} {{reason}}). O cliente precisa de permissão para ler os utilizadores do diretório."
+    },
+    "dbt_sources": {
+      "unknown_role": "Não existe nenhuma função chamada {{role}}."
     }
   }
 }

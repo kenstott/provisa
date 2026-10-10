@@ -35,6 +35,7 @@ import { Download, Upload } from "lucide-react";
 import { CopyButton } from "../../components/CopyButton";
 import {
   OSSIE_ENDPOINT_PATH,
+  fetchDbtSourcesYaml,
   fetchOssieYaml,
   importOssie,
   type OssieImportProposals,
@@ -44,12 +45,23 @@ import {
   useUpsertMetric,
   useUpsertRelationship,
 } from "../../hooks/useAdminQueries";
+import { useAuth } from "../../context/AuthContext";
 import type { MutationResult } from "../../types/admin";
+
+function saveAs(text: string, filename: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/yaml" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 type ItemKey = `table:${string}` | `rel:${string}` | `metric:${string}`;
 
 export function OssieInterchangePanel() {
   const { t } = useTranslation();
+  const { role } = useAuth();
   const { registerTable } = useRegisterTable();
   const { upsertRelationship } = useUpsertRelationship();
   const { upsertMetric } = useUpsertMetric();
@@ -66,14 +78,18 @@ export function OssieInterchangePanel() {
   const handleDownload = async () => {
     setError("");
     try {
-      const yaml = await fetchOssieYaml();
-      const blob = new Blob([yaml], { type: "text/yaml" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "provisa.ossie.yaml";
-      a.click();
-      URL.revokeObjectURL(url);
+      saveAs(await fetchOssieYaml(), "provisa.ossie.yaml");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  // REQ-1967: the catalog as the role in use is served it, for a dbt project's sources.
+  const handleDbtSources = async () => {
+    if (!role) return;
+    setError("");
+    try {
+      saveAs(await fetchDbtSourcesYaml(role.id), "provisa.sources.yml");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -206,6 +222,17 @@ export function OssieInterchangePanel() {
           <Button
             size="xs"
             variant="default"
+            leftSection={<Download size={13} />}
+            onClick={handleDbtSources}
+            disabled={!role}
+            title={t("ossiePanel.dbtSourcesHelp", { role: role?.id ?? "" })}
+            data-testid="dbt-sources-download"
+          >
+            {t("ossiePanel.dbtSources")}
+          </Button>
+          <Button
+            size="xs"
+            variant="default"
             leftSection={<Upload size={13} />}
             loading={importing}
             onClick={() => fileInputRef.current?.click()}
@@ -227,6 +254,9 @@ export function OssieInterchangePanel() {
           />
         </Group>
       </Group>
+      <Text size="xs" c="dimmed" mt="xs" data-testid="export-governance-line">
+        {t("ossiePanel.governance")}
+      </Text>
       {error && (
         <Alert
           color="red"

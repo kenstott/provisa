@@ -490,6 +490,9 @@
       "client_refused": "Microsoft отклонила клиент Microsoft 365 вашей организации: {{reason}}",
       "throttled": "Microsoft сейчас ограничивает запросы. Повторите попытку через {{retry_after}} с.",
       "directory_refused": "Microsoft не вернула список почтовых ящиков организации ({{status}} {{reason}}). Клиенту требуется разрешение на чтение пользователей каталога."
+    },
+    "dbt_sources": {
+      "unknown_role": "Роли с именем {{role}} не существует."
     }
   }
 }

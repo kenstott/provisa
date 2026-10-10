@@ -490,6 +490,9 @@
       "client_refused": "Microsoft ha rifiutato il client Microsoft 365 della tua organizzazione: {{reason}}",
       "throttled": "Microsoft sta limitando le richieste per ora. Riprova tra {{retry_after}} secondi.",
       "directory_refused": "Microsoft non ha elencato le caselle di posta dell'organizzazione ({{status}} {{reason}}). Il client necessita dell'autorizzazione a leggere gli utenti della directory."
+    },
+    "dbt_sources": {
+      "unknown_role": "Non esiste alcun ruolo chiamato {{role}}."
     }
   }
 }

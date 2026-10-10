@@ -20,12 +20,16 @@ import type { OssieImportProposals } from "../../api/admin";
 
 const importOssie = vi.fn();
 const fetchOssieYaml = vi.fn();
+const fetchDbtSourcesYaml = vi.fn();
+const auth = vi.hoisted(() => ({ role: { id: "analyst" } as { id: string } | null }));
+vi.mock("../../context/AuthContext", () => ({ useAuth: () => auth }));
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
 // replace-everything factory here leaks into other files and drops exports they need.
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
   importOssie: (...a: unknown[]) => importOssie(...a),
   fetchOssieYaml: (...a: unknown[]) => fetchOssieYaml(...a),
+  fetchDbtSourcesYaml: (...a: unknown[]) => fetchDbtSourcesYaml(...a),
 }));
 
 const registerTable = vi.fn();
@@ -112,6 +116,40 @@ describe("Ossie interchange panel (REQ-1316)", () => {
     await waitFor(() => expect(fetchOssieYaml).toHaveBeenCalled());
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
     vi.unstubAllGlobals();
+  });
+
+  it("downloads a dbt sources file for the role in use (REQ-1967)", async () => {
+    auth.role = { id: "analyst" };
+    fetchDbtSourcesYaml.mockResolvedValue("version: 2\nsources: []\n");
+    const createObjectURL = vi.fn().mockReturnValue("blob:x");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+
+    const user = userEvent.setup();
+    render(<OssieInterchangePanel />);
+    await user.click(screen.getByTestId("dbt-sources-download"));
+    await waitFor(() => expect(fetchDbtSourcesYaml).toHaveBeenCalledWith("analyst"));
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+    vi.unstubAllGlobals();
+  });
+
+  it("says in one line what a download does not carry", () => {
+    render(<OssieInterchangePanel />);
+    const line = screen.getByTestId("export-governance-line");
+    expect(line).toHaveTextContent("Row security, masking, roles and lineage stay in Provisa");
+    expect(line).toHaveTextContent("only when it reads through Provisa's own SQL endpoint");
+  });
+
+  it("offers no sources file without a role to write it for, and shows a refusal", async () => {
+    auth.role = null;
+    render(<OssieInterchangePanel />);
+    expect(screen.getByTestId("dbt-sources-download")).toBeDisabled();
+
+    auth.role = { id: "analyst" };
+    fetchDbtSourcesYaml.mockRejectedValue(new Error("No role named analyst exists."));
+    const user = userEvent.setup();
+    render(<OssieInterchangePanel />);
+    await user.click(screen.getAllByTestId("dbt-sources-download")[1]);
+    expect(await screen.findByTestId("ossie-error")).toHaveTextContent("No role named analyst");
   });
 
   it("upload lands as a review screen with everything checked and nothing registered", async () => {

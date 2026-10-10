@@ -35,6 +35,35 @@ async def download_ossie(request: Request):  # REQ-1321
     )
 
 
+@router.get("/admin/dbt/sources")
+async def download_dbt_sources(request: Request, role: str):  # REQ-1967
+    """The governed catalog as a dbt sources file, as ``role`` is served it: derived from live
+    state on every read. ``role`` is one the caller holds, or any role for the holder of the
+    right that administers what roles are served."""
+    require_org_settings(request)
+    from datetime import UTC, datetime
+
+    from provisa.api.admin.capabilities import require_inspectable_role_request
+    from provisa.api.admin.config_export import build_live_config
+    from provisa.api.errors import ApiError
+    from provisa.core.models import ProvisaConfig
+    from provisa.dbt.sources import FILENAME, UnknownRole, dbt_sources_yaml
+
+    require_inspectable_role_request(request, role)
+    config = ProvisaConfig.model_validate(await build_live_config())
+    try:
+        content = dbt_sources_yaml(
+            config, role, derived_at=datetime.now(UTC).isoformat(timespec="seconds")
+        )
+    except UnknownRole as unknown:
+        raise ApiError(404, "dbt_sources.unknown_role", str(unknown), role=role) from None
+    return Response(
+        content=content,
+        media_type="text/yaml",
+        headers={"Content-Disposition": f"attachment; filename={FILENAME}"},
+    )
+
+
 @router.post("/admin/ossie/import")
 async def import_ossie(request: Request):  # REQ-1316
     """Parse a posted Ossie document (YAML or JSON) into registration PROPOSALS. Nothing

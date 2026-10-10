@@ -490,6 +490,9 @@
       "client_refused": "Microsoft 拒绝了您组织的 Microsoft 365 客户端：{{reason}}",
       "throttled": "Microsoft 目前正在限制请求。请在 {{retry_after}} 秒后重试。",
       "directory_refused": "Microsoft 未列出组织的邮箱（{{status}} {{reason}}）。客户端需要读取目录用户的权限。"
+    },
+    "dbt_sources": {
+      "unknown_role": "不存在名为 {{role}} 的角色。"
     }
   }
 }

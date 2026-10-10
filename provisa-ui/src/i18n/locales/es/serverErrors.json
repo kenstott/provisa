@@ -490,6 +490,9 @@
       "client_refused": "Microsoft rechazó el cliente de Microsoft 365 de su organización: {{reason}}",
       "throttled": "Microsoft está limitando las solicitudes por ahora. Inténtelo de nuevo en {{retry_after}} segundos.",
       "directory_refused": "Microsoft no quiso enumerar los buzones de la organización ({{status}} {{reason}}). El cliente necesita permiso para leer los usuarios del directorio."
+    },
+    "dbt_sources": {
+      "unknown_role": "No existe ningún rol llamado {{role}}."
     }
   }
 }

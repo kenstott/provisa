@@ -490,6 +490,9 @@
       "client_refused": "Microsoft a refusé le client Microsoft 365 de votre organisation : {{reason}}",
       "throttled": "Microsoft limite les requêtes pour le moment. Réessayez dans {{retry_after}} secondes.",
       "directory_refused": "Microsoft n’a pas voulu lister les boîtes aux lettres de l’organisation ({{status}} {{reason}}). Le client a besoin de l’autorisation de lire les utilisateurs de l’annuaire."
+    },
+    "dbt_sources": {
+      "unknown_role": "Aucun rôle nommé {{role}} n’existe."
     }
   }
 }

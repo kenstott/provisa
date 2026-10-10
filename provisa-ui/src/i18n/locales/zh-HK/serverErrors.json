@@ -490,6 +490,9 @@
       "client_refused": "Microsoft 拒絕了您組織的 Microsoft 365 用戶端：{{reason}}",
       "throttled": "Microsoft 目前正在限制要求。請在 {{retry_after}} 秒後重試。",
       "directory_refused": "Microsoft 未列出組織的信箱（{{status}} {{reason}}）。用戶端需要讀取目錄使用者的權限。"
+    },
+    "dbt_sources": {
+      "unknown_role": "沒有名為 {{role}} 的角色。"
     }
   }
 }

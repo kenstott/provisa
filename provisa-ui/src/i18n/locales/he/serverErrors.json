@@ -490,6 +490,9 @@
       "client_refused": "Microsoft דחתה את לקוח Microsoft 365 של הארגון שלך: {{reason}}",
       "throttled": "Microsoft מגבילה כעת בקשות. יש לנסות שוב בעוד {{retry_after}} שניות.",
       "directory_refused": "Microsoft לא הסכימה למנות את תיבות הדואר של הארגון ({{status}} {{reason}}). הלקוח זקוק להרשאה לקרוא את משתמשי הספרייה."
+    },
+    "dbt_sources": {
+      "unknown_role": "אין תפקיד בשם {{role}}."
     }
   }
 }

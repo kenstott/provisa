@@ -490,6 +490,9 @@
       "client_refused": "Microsoft hat den Microsoft-365-Client Ihrer Organisation abgelehnt: {{reason}}",
       "throttled": "Microsoft begrenzt derzeit die Anfragen. Versuchen Sie es in {{retry_after}} Sekunden erneut.",
       "directory_refused": "Microsoft hat die Postfächer der Organisation nicht aufgelistet ({{status}} {{reason}}). Der Client benötigt die Berechtigung, die Benutzer des Verzeichnisses zu lesen."
+    },
+    "dbt_sources": {
+      "unknown_role": "Es gibt keine Rolle namens {{role}}."
     }
   }
 }

@@ -490,6 +490,9 @@
       "client_refused": "Microsoft heeft de Microsoft 365-client van uw organisatie geweigerd: {{reason}}",
       "throttled": "Microsoft beperkt momenteel het aantal aanvragen. Probeer het over {{retry_after}} seconden opnieuw.",
       "directory_refused": "Microsoft wilde de postvakken van de organisatie niet weergeven ({{status}} {{reason}}). De client heeft toestemming nodig om de gebruikers van de directory te lezen."
+    },
+    "dbt_sources": {
+      "unknown_role": "Er bestaat geen rol met de naam {{role}}."
     }
   }
 }

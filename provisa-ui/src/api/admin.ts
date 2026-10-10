@@ -2102,6 +2102,20 @@ export async function fetchOssieYaml(): Promise<string> {
   return resp.text();
 }
 
+/** REQ-1967: the governed catalog as a dbt sources file, as `role` is served it. */
+export const DBT_SOURCES_ENDPOINT_PATH = "/admin/dbt/sources";
+
+export async function fetchDbtSourcesYaml(role: string): Promise<string> {
+  const resp = await fetch(
+    `${API_BASE}${DBT_SOURCES_ENDPOINT_PATH}?role=${encodeURIComponent(role)}`,
+  );
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => null);
+    throw new Error(serverMessage(body, requestFailed("dbt sources export", resp.status)));
+  }
+  return resp.text();
+}
+
 /** POST a raw Ossie YAML/JSON document; returns registration proposals. */
 export async function importOssie(body: string): Promise<OssieImportProposals> {
   const resp = await fetch(`${API_BASE}${OSSIE_ENDPOINT_PATH}/import`, {
