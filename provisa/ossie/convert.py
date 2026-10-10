@@ -18,6 +18,7 @@ applies through the existing registration mutations.
 from __future__ import annotations
 
 import json
+import re
 from typing import TypeVar
 
 from dataclasses import dataclass, field
@@ -101,6 +102,10 @@ _PROPOSED_TYPE: dict[str, str] = {
     "DateTime": "timestamp",
     "DateTimeTz": "timestamptz",
 }
+
+
+# A field's expression that is one column of its source, as written or double-quoted.
+_BARE_COLUMN = re.compile(r'"?([A-Za-z_][A-Za-z0-9_$]*)"?')
 
 
 class OssieExportRefused(ValueError):
@@ -367,11 +372,14 @@ def _parse_dataset(ds: object, path: str) -> dict:
     parts = str(source).split(".")
     if len(parts) < 3:
         raise ValueError(
-            f"ossie import: {path}.source must be 'database.schema.table', got {source!r}"
+            f"ossie import: {path}.source is {source!r}; Provisa registers a table by its "
+            "source, schema and table name, so it needs three parts, 'source.schema.table' "
+            "(a query, or a name of fewer parts, cannot be registered)"
         )
     source_id, schema_name, table_name = parts[0], parts[1], ".".join(parts[2:])
 
     columns: list[dict] = []
+    not_importable: list[dict] = []
     primary_key = ds.get("primary_key") or []
     if not isinstance(primary_key, list):
         raise ValueError(f"ossie import: {path}.primary_key must be a list")
@@ -379,13 +387,23 @@ def _parse_dataset(ds: object, path: str) -> dict:
         fpath = f"{path}.fields[{i}]"
         if not isinstance(f, dict):
             raise ValueError(f"ossie import: {fpath} must be a mapping")
-        col_name = _require(f, "name", fpath, str)
+        field_name = _require(f, "name", fpath, str)
+        expression = _ansi_expression(_require(f, "expression", fpath, dict), f"{fpath}.expression")
+        column = _BARE_COLUMN.fullmatch(expression.strip())
+        if column is None:
+            # A computation is not a column of the source, and a registered table holds
+            # columns: it is named to the reviewer and proposed as nothing.
+            not_importable.append({"name": field_name, "expression": expression})
+            continue
+        col_name = column.group(1)
         columns.append(
             {
                 "name": col_name,
+                # A field that renames its column keeps its own name as the column's alias.
+                "alias": field_name if field_name != col_name else None,
                 "datatype": _proposed_type(f, fpath),
                 "description": f.get("description"),
-                "is_primary_key": col_name in primary_key,
+                "is_primary_key": field_name in primary_key or col_name in primary_key,
             }
         )
 
@@ -396,6 +414,7 @@ def _parse_dataset(ds: object, path: str) -> dict:
         "source_id": source_id,
         "description": ds.get("description"),
         "columns": columns,
+        "not_importable": not_importable,
         "primary_key": list(primary_key),
         "unique_keys": [list(uk) for uk in (ds.get("unique_keys") or [])],
     }

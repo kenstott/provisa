@@ -14,6 +14,7 @@
     "relationshipsSection": "Relations ({{count}})",
     "metricsSection": "Métriques ({{count}})",
     "columnCount": "{{count}} colonnes",
+    "notImportable": "Non importé — champs calculés, qui ne sont pas des colonnes de la source ({{count}}) : {{names}}",
     "apply": "Appliquer ({{count}})",
     "applied": "Appliqué",
     "failed": "Échec",

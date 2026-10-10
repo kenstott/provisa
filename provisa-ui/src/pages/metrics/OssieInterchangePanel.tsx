@@ -142,6 +142,7 @@ export function OssieInterchangePanel() {
         description: tbl.description ?? undefined,
         columns: tbl.columns.map((c) => ({
           name: c.name,
+          alias: c.alias ?? undefined,
           visibleTo: ["*"],
           dataType: c.datatype ?? undefined,
           description: c.description ?? undefined,
@@ -304,6 +305,18 @@ export function OssieInterchangePanel() {
                           {t("ossiePanel.columnCount", { count: tbl.columns.length })}
                           {tbl.modeling_role ? ` · ${tbl.modeling_role}` : ""}
                         </Text>
+                        {tbl.not_importable.length > 0 && (
+                          <Text
+                            size="xs"
+                            c="orange"
+                            data-testid={`ossie-not-importable-${tbl.name}`}
+                          >
+                            {t("ossiePanel.notImportable", {
+                              count: tbl.not_importable.length,
+                              names: tbl.not_importable.map((f) => f.name).join(", "),
+                            })}
+                          </Text>
+                        )}
                       </Text>
                     }
                   />

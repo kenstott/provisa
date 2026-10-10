@@ -2405,6 +2405,7 @@
   "ru/ossiePanel.json::ossiePanel.governance": "Downloads carry definitions only. Row security, masking, roles and lineage stay in Provisa: a tool that loads them is governed only when it reads through Provisa's own SQL endpoint.",
   "ru/ossiePanel.json::ossiePanel.import": "Import",
   "ru/ossiePanel.json::ossiePanel.metricsSection": "Metrics ({{count}})",
+  "ru/ossiePanel.json::ossiePanel.notImportable": "Not imported — computed fields, which are not columns of the source ({{count}}): {{names}}",
   "ru/ossiePanel.json::ossiePanel.relationshipsSection": "Relationships ({{count}})",
   "ru/ossiePanel.json::ossiePanel.reviewHint": "Nothing is registered yet. Uncheck anything you want to trim, then apply — checked items register through the standard registration mutations.",
   "ru/ossiePanel.json::ossiePanel.reviewTitle": "Review Ossie import: {{model}}",

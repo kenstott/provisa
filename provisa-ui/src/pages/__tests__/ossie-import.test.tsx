@@ -56,9 +56,22 @@ const PROPOSALS: OssieImportProposals = {
       source_id: "pg1",
       description: "Order lines",
       columns: [
-        { name: "id", datatype: "integer", description: null, is_primary_key: true },
-        { name: "amount", datatype: "number", description: "Line amount", is_primary_key: false },
+        {
+          name: "id",
+          alias: "order_key",
+          datatype: "bigint",
+          description: null,
+          is_primary_key: true,
+        },
+        {
+          name: "amount",
+          alias: null,
+          datatype: "decimal",
+          description: "Line amount",
+          is_primary_key: false,
+        },
       ],
+      not_importable: [{ name: "amount_with_tax", expression: "amount * 1.2" }],
       primary_key: ["id"],
       unique_keys: [["id"]],
       modeling_role: "fact",
@@ -152,6 +165,22 @@ describe("Ossie interchange panel (REQ-1316)", () => {
     expect(await screen.findByTestId("ossie-error")).toHaveTextContent("No role named analyst");
   });
 
+  it("names a table's computed fields as not imported, and registers a renamed column by its alias", async () => {
+    await openReview();
+    const named = screen.getByTestId("ossie-not-importable-orders");
+    expect(named).toHaveTextContent("amount_with_tax");
+    expect(named).toHaveTextContent("computed fields");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("ossie-apply"));
+    await waitFor(() => expect(registerTable).toHaveBeenCalled());
+    const columns = registerTable.mock.calls[0][0].columns as { name: string; alias?: string }[];
+    expect(columns.map((c) => [c.name, c.alias])).toEqual([
+      ["id", "order_key"],
+      ["amount", undefined],
+    ]);
+  });
+
   it("upload lands as a review screen with everything checked and nothing registered", async () => {
     await openReview();
     expect(importOssie).toHaveBeenCalledWith("version: 0.2.0.dev0\n");
@@ -185,15 +214,17 @@ describe("Ossie interchange panel (REQ-1316)", () => {
       columns: [
         {
           name: "id",
+          alias: "order_key",
           visibleTo: ["*"],
-          dataType: "integer",
+          dataType: "bigint",
           description: undefined,
           isPrimaryKey: true,
         },
         {
           name: "amount",
+          alias: undefined,
           visibleTo: ["*"],
-          dataType: "number",
+          dataType: "decimal",
           description: "Line amount",
           isPrimaryKey: false,
         },

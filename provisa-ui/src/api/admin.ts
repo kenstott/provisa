@@ -2053,6 +2053,8 @@ export const OSSIE_ENDPOINT_PATH = "/admin/ossie";
 
 export interface OssieColumnProposal {
   name: string;
+  /** The field's own name, when it differs from the column it reads. */
+  alias: string | null;
   datatype: string | null;
   description: string | null;
   is_primary_key: boolean;
@@ -2065,6 +2067,8 @@ export interface OssieTableProposal {
   source_id: string;
   description: string | null;
   columns: OssieColumnProposal[];
+  /** Fields that are computations, not columns of the source: named, never registered. */
+  not_importable: { name: string; expression: string }[];
   primary_key: string[];
   unique_keys: string[][];
   modeling_role?: string | null;

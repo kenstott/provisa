@@ -14,6 +14,7 @@
     "relationshipsSection": "关系（{{count}}）",
     "metricsSection": "指标（{{count}}）",
     "columnCount": "{{count}} 列",
+    "notImportable": "未导入——计算字段不是数据源的列({{count}}):{{names}}",
     "apply": "应用（{{count}}）",
     "applied": "已应用",
     "failed": "失败",

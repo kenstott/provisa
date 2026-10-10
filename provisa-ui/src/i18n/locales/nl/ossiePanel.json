@@ -14,6 +14,7 @@
     "relationshipsSection": "Relaties ({{count}})",
     "metricsSection": "Metrics ({{count}})",
     "columnCount": "{{count}} kolommen",
+    "notImportable": "Niet geïmporteerd — berekende velden, die geen kolommen van de bron zijn ({{count}}): {{names}}",
     "apply": "Toepassen ({{count}})",
     "applied": "Toegepast",
     "failed": "Mislukt",

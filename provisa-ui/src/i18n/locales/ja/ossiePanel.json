@@ -14,6 +14,7 @@
     "relationshipsSection": "リレーションシップ（{{count}}）",
     "metricsSection": "メトリクス（{{count}}）",
     "columnCount": "{{count}} 列",
+    "notImportable": "インポートされません — ソースの列ではない計算フィールド ({{count}}): {{names}}",
     "apply": "適用（{{count}}）",
     "applied": "適用済み",
     "failed": "失敗",

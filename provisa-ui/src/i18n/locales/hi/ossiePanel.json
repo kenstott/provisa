@@ -14,6 +14,7 @@
     "relationshipsSection": "संबंध ({{count}})",
     "metricsSection": "मेट्रिक्स ({{count}})",
     "columnCount": "{{count}} कॉलम",
+    "notImportable": "इंपोर्ट नहीं हुआ — गणना किए गए फ़ील्ड, जो स्रोत के कॉलम नहीं हैं ({{count}}): {{names}}",
     "apply": "लागू करें ({{count}})",
     "applied": "लागू हो गया",
     "failed": "विफल",

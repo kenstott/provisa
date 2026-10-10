@@ -428,6 +428,47 @@ def test_a_document_another_ossie_tool_wrote_is_read():
     assert imp.metrics == []
 
 
+def _expr(sql: str) -> dict:
+    return {"dialects": [{"dialect": "ANSI_SQL", "expression": sql}]}
+
+
+def test_a_computed_field_is_named_as_not_importable_and_proposed_as_nothing():
+    doc = build_ossie_model(_config())
+    doc["datasets"][0]["fields"].append(
+        {"name": "amount_with_tax", "expression": _expr("amount * 1.2"), "datatype": "Decimal"}
+    )
+    orders = parse_ossie_model(doc).tables[0]
+    assert "amount_with_tax" not in [c["name"] for c in orders["columns"]]
+    assert orders["not_importable"] == [{"name": "amount_with_tax", "expression": "amount * 1.2"}]
+    assert parse_ossie_model(doc).tables[1]["not_importable"] == []
+
+
+def test_a_field_that_renames_its_column_is_the_column_with_the_fields_name_as_alias():
+    doc = build_ossie_model(_config())
+    doc["datasets"][0]["primary_key"] = ["order_key"]
+    doc["datasets"][0]["fields"][0] = {"name": "order_key", "expression": _expr('"id"')}
+    columns = {c["name"]: c for c in parse_ossie_model(doc).tables[0]["columns"]}
+    assert (columns["id"]["alias"], columns["id"]["is_primary_key"]) == ("order_key", True)
+    assert columns["customer_id"]["alias"] is None
+
+
+def test_a_field_without_an_expression_names_its_path():
+    doc = build_ossie_model(_config())
+    del doc["datasets"][0]["fields"][1]["expression"]
+    with pytest.raises(ValueError, match=r"missing \$\.datasets\[0\]\.fields\[1\]\.expression"):
+        parse_ossie_model(doc)
+
+
+def test_a_source_that_is_not_three_parts_says_what_provisa_needs():
+    doc = build_ossie_model(_config())
+    doc["datasets"][0]["source"] = "public.orders"
+    with pytest.raises(ValueError) as refused:
+        parse_ossie_model(doc)
+    said = str(refused.value)
+    assert "$.datasets[0].source is 'public.orders'" in said
+    assert "'source.schema.table'" in said and "cannot be registered" in said
+
+
 def test_parse_dataset_without_source_names_path():
     doc = build_ossie_model(_config())
     del doc["datasets"][1]["source"]

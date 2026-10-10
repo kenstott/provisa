@@ -14,6 +14,7 @@
     "relationshipsSection": "關係（{{count}}）",
     "metricsSection": "指標（{{count}}）",
     "columnCount": "{{count}} 個資料行",
+    "notImportable": "未匯入——計算欄位並非數據來源的欄({{count}}):{{names}}",
     "apply": "套用（{{count}}）",
     "applied": "已套用",
     "failed": "失敗",

@@ -14,6 +14,7 @@
     "relationshipsSection": "Связи ({{count}})",
     "metricsSection": "Метрики ({{count}})",
     "columnCount": "{{count}} столбцов",
+    "notImportable": "Не импортировано — вычисляемые поля, которые не являются столбцами источника ({{count}}): {{names}}",
     "apply": "Применить ({{count}})",
     "applied": "Применено",
     "failed": "Ошибка",

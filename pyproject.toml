@@ -242,6 +242,8 @@ dev = [
     # the runner's cores.
     "pytest-xdist",
     "hypothesis",
+    # tests/unit/test_ossie_convert.py validates the Ossie export against Ossie's own schema.
+    "jsonschema",
     "ruff",
     "black",
     "pyright",
