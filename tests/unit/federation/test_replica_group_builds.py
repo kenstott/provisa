@@ -96,6 +96,7 @@ def group(wiring, monkeypatch):
     monkeypatch.setattr(
         "provisa.events.app_wiring.build_adapter_loaders", lambda s, e: {"openapi": loader}
     )
+    monkeypatch.setattr(replica_builds, "GROUP_READ_TYPES", frozenset({"openapi"}))
 
     async def record_refresh(conn, node, *, at, ok):
         seen["stamps"].append((node, ok))
@@ -197,3 +198,34 @@ async def test_the_runner_is_given_the_group_calls():
     source = inspect.getsource(replica_builds.make_runner)
     assert "group_of=lambda key: group_of(state, key)" in source
     assert "build_group=lambda keys, progress: build_group(state, keys, progress)" in source
+
+
+async def test_a_table_answered_before_a_read_that_fails_is_handed_back_with_its_own_reason(group):
+    from provisa.federation.data_replicator import GroupReadFailed
+
+    group["fail"] = True
+    state = _group_state(_Targets(), NAMES[:2])  # attachments is gone from the model
+    with pytest.raises(GroupReadFailed, match="stopped answering") as failed:
+        await replica_builds.build_group(state, KEYS, _noop)
+    assert isinstance(failed.value.cause, RuntimeError)
+    assert list(failed.value.settled) == [KEYS[2]]
+    assert isinstance(failed.value.settled[KEYS[2]], replica_builds.ReplicaTableGone)
+
+
+async def test_a_source_type_that_declares_no_group_looks_no_adapter_up(wiring, monkeypatch):
+    def never(state, engine):
+        raise AssertionError("no adapter is built for a source type with no group read")
+
+    monkeypatch.setattr("provisa.events.app_wiring.build_adapter_loaders", never)
+    monkeypatch.setattr(replica_builds, "GROUP_READ_TYPES", frozenset({"microsoft_365"}))
+    wiring["record"] = SimpleNamespace(retired_at=None)
+    assert await replica_builds.group_of(_group_state(_Targets()), KEYS[0]) is None
+
+
+def test_the_source_types_that_read_in_groups_are_the_ones_whose_loader_says_so():
+    from provisa.microsoft365 import SOURCE_TYPE
+    from provisa.microsoft365.loader import make_microsoft365_loader
+
+    loader = make_microsoft365_loader(None)  # type: ignore[arg-type]
+    assert SOURCE_TYPE in replica_builds.GROUP_READ_TYPES
+    assert callable(loader.replica_group) and callable(loader.replica_group_source)

@@ -396,9 +396,16 @@ async def run_build(state: Any, key: ReplicaKey, progress: Progress) -> BuildOut
     return outcome
 
 
+#: The source types whose adapter gives several tables from one read. Asked first, so a build
+#: of any other source's table looks no adapter up.
+GROUP_READ_TYPES: frozenset[str] = frozenset({"microsoft_365"})
+
+
 def _group_loader(state: Any, source: Any) -> Any:
     """The adapter that reads ``source``'s rows, when it gives several tables from one read
     (it carries ``replica_group`` and ``replica_group_source``); None for every other source."""
+    if source.type not in GROUP_READ_TYPES:
+        return None
     from provisa.events.app_wiring import build_adapter_loaders
 
     loader = build_adapter_loaders(state, state.federation_engine).get(source.type)
@@ -449,7 +456,7 @@ async def build_group(
     from provisa.events import queue
     from provisa.events.land_lock import land_lock
     from provisa.events.nodes import source_node
-    from provisa.federation.data_replicator import GroupPart, ReplicaGroupJob
+    from provisa.federation.data_replicator import GroupPart, GroupReadFailed, ReplicaGroupJob
     from provisa.federation.residency import resolve_landing_args
     from provisa.federation.source_vault import org_vault
 
@@ -533,10 +540,13 @@ async def build_group(
                 for name in sorted(f"{a.schema}.{a.table}" for _s, _t, _a, a in prepared.values()):
                     await held.enter_async_context(land_lock(name))
                 built = await job.run(table_progress)
-    except BaseException:
+    except BaseException as failed:
         async with state.tenant_db.acquire() as conn:
             for node in nodes.values():
                 await queue.record_refresh(conn, node, at=datetime.now(UTC), ok=False)
+        if isinstance(failed, Exception) and results:
+            # Tables answered before the read keep their own reason on their records.
+            raise GroupReadFailed(failed, dict(results)) from failed
         raise
     async with state.tenant_db.acquire() as conn:
         for key, (src, table, args, address) in prepared.items():

@@ -77,7 +77,6 @@ _MESSAGE_FIELDS = (
     "parentFolderId,categories,inferenceClassification,isReadReceiptRequested,"
     "isDeliveryReceiptRequested,body,internetMessageHeaders,changeKey,webLink"
 )
-_THREAD_FIELDS = "id,conversationId,subject,bodyPreview,receivedDateTime"
 _ATTACHMENT_FIELDS = "id,name,contentType,size,isInline,lastModifiedDateTime"
 _RECIPIENT_LISTS = (
     ("to", "toRecipients"),
@@ -422,50 +421,15 @@ class Mailbox:
     def rows(
         self, table: str, unreadable: list[str] | None = None
     ) -> Iterator[list[dict[str, Any]]]:
-        """Every row of one of the mail tables, a batch at a time. The ids of the messages
-        kept without a body Graph would not give are added to ``unreadable`` as they are met."""
-        account = self.account
-        if table == "messages":
-            unread: list[str] = [] if unreadable is None else unreadable
-            for page in self._messages(_MESSAGE_FIELDS, prefer=(_TEXT_BODY,)):
-                html = self._html(page, unread)
-                yield [message_row(account, m, html[m["id"]]) for m in page]
-            if unread:
-                # A message with a part that cannot be read keeps its row; what was left out is
-                # reported once, when the table's read ends.
-                log.warning(
-                    "microsoft_365 %s messages: %d message(s) kept without an HTML body Graph "
-                    "would not give: %s",
-                    account,
-                    len(unread),
-                    ", ".join(unread),
-                )
-        elif table == "message_recipients":
-            fields = "id,from,sender,toRecipients,ccRecipients,bccRecipients,replyTo"
-            for page in self._messages(fields, prefer=()):
-                yield [row for m in page for row in recipient_rows(account, m)]
-        elif table == "message_folders":
-            for page in self._messages("id,parentFolderId", prefer=()):
-                yield [message_folder_row(account, m) for m in page]
-        elif table == "threads":
-            # A thread is its messages taken together, so the mailbox is read before any row.
-            items = [m for page in self._messages(_THREAD_FIELDS, prefer=()) for m in page]
-            rows = thread_rows(account, items)
-            for start in range(0, len(rows), self._page_size):
-                yield rows[start : start + self._page_size]
+        """Every row of one of the mail tables, a batch at a time. A table that comes from
+        the messages is read by the one reader of them (:meth:`message_tables`), as a group
+        of one; folders are their own read."""
+        if table in MESSAGE_TABLES:
+            for _table, rows in self.message_tables((table,), unreadable):
+                yield rows
         elif table == "folders":
             known = self._well_known()
             for page in self._folders():
-                yield [folder_row(account, f, known.get(f["id"])) for f in page]
-        elif table == "attachments":
-            for page in self._messages("id,hasAttachments", prefer=()):
-                for message in page:
-                    if not message["hasAttachments"]:
-                        continue
-                    path = f"{self._root}/messages/{quote(message['id'], safe='')}/attachments"
-                    for items in self._graph.pages(
-                        path, {"$select": _ATTACHMENT_FIELDS}, prefer=(IMMUTABLE_IDS,)
-                    ):
-                        yield [attachment_row(account, message["id"], a) for a in items]
+                yield [folder_row(self.account, f, known.get(f["id"])) for f in page]
         else:
             raise KeyError(f"{table!r} is not a Microsoft 365 mail table")

@@ -343,3 +343,53 @@ async def test_a_read_that_is_stopped_frees_every_table_and_records_it_on_each(p
         assert all(after.try_replica(ORG, key) for key in GROUP)
     finally:
         after.close()
+
+
+async def test_the_retry_of_a_failed_sibling_forms_the_group_again(plane, tmp_path):
+    """One failed group read is one read to make again, not one per table: when the wait is
+    over, whichever table a runner claims first brings the others into its read."""
+    url, connect = plane
+    db = connect()
+    await _request(db, _key(1))
+    far = datetime.now(UTC) + timedelta(days=30)
+    for key in (_key(2), _key(3)):
+        await _request(db, key)
+        await _complete(db, key, next_refresh_at=far)  # idle, healthy, not due
+    failing = _Reads(fail=RuntimeError("the source stopped answering"))
+    node = _node("a", url, db, tmp_path, failing, retry=0.05)
+    await asyncio.wait_for(node.runner.run_pass(), 10)
+    await asyncio.wait_for(node.drain(), 10)
+    records = await _records(db)
+    assert [records[k].build_state for k in GROUP] == [build_state.FAILED] * 3
+
+    await asyncio.sleep(0.2)  # the wait of a first failure is over
+    working = _Reads()
+    again = _node("b", url, db, tmp_path, working, retry=0.05)
+    await asyncio.wait_for(again.runner.run_pass(), 10)
+    await asyncio.wait_for(again.drain(), 10)
+    assert [sorted(g) for g in working.groups] == [GROUP] and working.single == []
+    records = await _records(db)
+    assert [records[k].build_state for k in GROUP] == [build_state.IDLE] * 3
+    assert [records[k].failed_attempts for k in GROUP] == [0, 0, 0]
+
+
+async def test_a_table_answered_before_the_read_keeps_its_own_reason_when_the_read_fails(
+    plane, tmp_path
+):
+    from provisa.federation.data_replicator import GroupReadFailed
+
+    url, connect = plane
+    db = connect()
+    await _request(db, *GROUP)
+    gone = LookupError("table t2 is no longer declared")
+    reads = _Reads(
+        fail=GroupReadFailed(RuntimeError("the source stopped answering"), {_key(2): gone})
+    )
+    node = _node("a", url, db, tmp_path, reads)
+    await asyncio.wait_for(node.runner.run_pass(), 10)
+    await asyncio.wait_for(node.drain(), 10)
+    records = await _records(db)
+    assert records[_key(2)].last_error == "table t2 is no longer declared"
+    assert (
+        records[_key(1)].last_error == records[_key(3)].last_error == "the source stopped answering"
+    )

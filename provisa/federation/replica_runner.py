@@ -46,7 +46,7 @@ from typing import Any
 
 from provisa.core import process_mode, request_deadline
 from provisa.federation import replica_state as build_state
-from provisa.federation.data_replicator import BuildOutcome, Progress
+from provisa.federation.data_replicator import BuildOutcome, GroupReadFailed, Progress
 from provisa.federation.replica_errors import WAITING_ENGINE, WAITING_SOURCE, coded
 from provisa.federation.replica_locks import BuildClaim, BuildLocks
 from provisa.federation.replica_state import ReplicaKey
@@ -328,8 +328,12 @@ class ReplicaRunner:
             try:
                 outcomes = await self._build_group(keys, progress)
             except BaseException as exc:  # allow-ble: the read's failure, whatever its type, is recorded on every table it was building; it is re-raised below when it is not an ordinary error
+                # A table that had its own answer before the read began keeps that reason.
+                settled = exc.settled if isinstance(exc, GroupReadFailed) else {}
+                cause = exc.cause if isinstance(exc, GroupReadFailed) else exc
                 for key in keys:
-                    await self._record_failed(key, exc)
+                    own = settled.get(key)
+                    await self._record_failed(key, own if isinstance(own, BaseException) else cause)
                 if not isinstance(exc, Exception):
                     raise
             else:

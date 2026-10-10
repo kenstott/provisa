@@ -373,6 +373,17 @@ class ReplicaJob:
         )
 
 
+class GroupReadFailed(Exception):
+    """The one read of a group build failed. ``cause`` is why; ``settled`` holds, by the key
+    its builder gave it, each table that already had an answer of its own before the read
+    began (no longer declared, say), which is the truer reason for that table."""
+
+    def __init__(self, cause: Exception, settled: dict) -> None:
+        super().__init__(str(cause) or type(cause).__name__)
+        self.cause = cause
+        self.settled = settled
+
+
 class _GroupSource(Protocol):
     """One read that gives the rows of several tables: ``batches`` yields each batch with the
     name of the table it belongs to. It may carry ``notes()`` as a single table's source does."""
