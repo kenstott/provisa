@@ -60,7 +60,7 @@ def _node(name, url, db, tmp_path, reads, *, group=GROUP, permits=None, due=None
     node = _Node(name, url, db, tmp_path, build=reads.build, permits=permits or _Permits(), **kw)
 
     async def group_of(key):
-        return [k for k in group if k != key] if key in group else []
+        return [k for k in group if k != key] if key in group else None
 
     node.runner._group_of = group_of
     node.runner._build_group = reads.build_group
@@ -212,33 +212,42 @@ async def test_what_a_group_job_holds_is_released_whether_it_succeeds_or_fails(p
             claim.close()
 
 
-async def test_a_sibling_another_runner_holds_is_left_out_and_built_on_its_own(plane, tmp_path):
+async def test_a_sibling_another_runner_holds_is_left_out_and_built_by_a_read_of_its_own(
+    plane, tmp_path
+):
     url, connect = plane
-    db_a, db_b = connect(), connect()
-    await _request(db_a, *GROUP)
-    release = asyncio.Event()
-
-    async def hold():
-        await asyncio.wait_for(release.wait(), 5)
-
-    held_reads = _Reads(hold=hold)
-    b = _node("b", url, db_b, tmp_path, held_reads, group=[_key(3)], per_node=1)
-    # b takes t3 alone first and holds it mid-build.
-    b.runner._group_of = None
-    await _complete(db_a, _key(1))
-    await _complete(db_a, _key(2))
-    assert await b.runner.run_pass() == 1
-    await _request(db_a, _key(1), _key(2))
+    db = connect()
+    await _request(db, *GROUP)
     reads = _Reads()
-    a = _node("a", url, db_a, tmp_path, reads)
-    await asyncio.wait_for(a.runner.run_pass(), 10)
-    await asyncio.wait_for(a.drain(), 10)
-    release.set()
-    await asyncio.wait_for(b.drain(), 10)
-    (group,) = reads.groups
-    assert _key(3) not in group and sorted(group) == [_key(1), _key(2)]
-    records = await _records(db_a)
-    assert all(records[k].build_state == build_state.IDLE for k in GROUP)
+    node = _node("a", url, db, tmp_path, reads)
+    other = node.locks.claim()  # another runner's hold on t3
+    assert other.try_replica(ORG, _key(3))
+    try:
+        await asyncio.wait_for(node.runner.run_pass(), 10)
+        await asyncio.wait_for(node.drain(), 10)
+    finally:
+        other.close()
+    assert [sorted(g) for g in reads.groups] == [[_key(1), _key(2)]] and reads.single == []
+    records = await _records(db)
+    assert records[_key(3)].build_state == build_state.REQUESTED  # still to be built
+    # Its own turn is a group read too -- a source has one reader -- and brings the others.
+    await asyncio.wait_for(node.runner.run_pass(), 10)
+    await asyncio.wait_for(node.drain(), 10)
+    assert sorted(reads.groups[1]) == GROUP and reads.single == []
+    assert all(r.build_state == build_state.IDLE for r in (await _records(db)).values())
+
+
+async def test_a_table_of_a_group_with_no_sibling_to_claim_is_still_built_by_the_group_read(
+    plane, tmp_path
+):
+    url, connect = plane
+    db = connect()
+    await _request(db, _key(1))  # its siblings have no replica
+    reads = _Reads()
+    node = _node("a", url, db, tmp_path, reads, group=[_key(1)])
+    await asyncio.wait_for(node.runner.run_pass(), 10)
+    await asyncio.wait_for(node.drain(), 10)
+    assert reads.groups == [[_key(1)]] and reads.single == []
 
 
 async def test_two_runners_starting_from_different_tables_of_a_group_never_wait_on_each_other(

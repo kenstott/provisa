@@ -122,7 +122,7 @@ async def test_the_tables_of_one_read_are_found_among_the_declared_replicas(grou
     group["record"] = SimpleNamespace(retired_at=None)
     state = _group_state(_Targets())
     assert await replica_builds.group_of(state, KEYS[0]) == sorted(KEYS[1:])
-    assert await replica_builds.group_of(state, ("s1", "public", "folders")) == []
+    assert await replica_builds.group_of(state, ("s1", "public", "folders")) is None
     # A table the model does not declare, or one with no replica, is no sibling.
     assert await replica_builds.group_of(_group_state(_Targets(), NAMES[:2]), KEYS[0]) == [KEYS[1]]
     group["record"] = None
@@ -133,7 +133,7 @@ async def test_the_tables_of_one_read_are_found_among_the_declared_replicas(grou
 
 async def test_a_source_that_gives_no_group_has_none(wiring):
     wiring["record"] = SimpleNamespace(retired_at=None)
-    assert await replica_builds.group_of(_group_state(_Targets()), KEYS[0]) == []
+    assert await replica_builds.group_of(_group_state(_Targets()), KEYS[0]) is None
 
 
 async def test_one_read_builds_each_claimed_table_at_its_own_address(group):

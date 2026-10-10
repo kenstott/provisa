@@ -99,7 +99,11 @@ class _Job:
     claim: BuildClaim
     permit: tuple[str, str] | None  # the source permit's (set key, token), when one was taken
     slot: Any = None
-    # The other replicas the same read builds (a group build), each claimed like ``key``.
+    # Whether ``key`` is one of several tables its source gives from one read. Such a table
+    # is always built by the group read, even when it is the only one this job holds, so a
+    # source has one reader.
+    grouped: bool = False
+    # The other replicas the same read builds, each claimed like ``key``.
     siblings: list[ReplicaKey] = field(default_factory=list)
 
 
@@ -129,7 +133,7 @@ class ReplicaRunner:
         builds_per_node: Callable[[], int],
         engine_jobs: Callable[[], int],
         spawn: Callable[..., Any],
-        group_of: Callable[[ReplicaKey], Awaitable[list[ReplicaKey]]] | None = None,
+        group_of: Callable[[ReplicaKey], Awaitable[list[ReplicaKey] | None]] | None = None,
         build_group: Callable[
             [list[ReplicaKey], Callable[[ReplicaKey, int], Awaitable[None]]],
             Awaitable[dict[ReplicaKey, "BuildOutcome | BaseException"]],
@@ -150,8 +154,9 @@ class ReplicaRunner:
         self._builds_per_node = builds_per_node
         self._engine_jobs = engine_jobs
         self._spawn = spawn
-        # ``group_of`` gives the other replicas one read of ``key``'s source builds with it
-        # (none for most sources); ``build_group`` runs that one read for the claimed ones.
+        # ``group_of`` gives the other replicas one read of ``key``'s source builds with it,
+        # or None for a table read on its own (every table of most sources); ``build_group``
+        # runs that one read for the claimed ones.
         self._group_of = group_of
         self._build_group = build_group
         self._holder = f"{socket.gethostname()}:{os.getpid()}"
@@ -245,11 +250,13 @@ class ReplicaRunner:
                         return None
                     permit = (permit_key, token)
             started = True
+            siblings = await self._claim_siblings(claim, key, now)
             return _Job(
                 key=key,
                 claim=claim,
                 permit=permit,
-                siblings=await self._claim_siblings(claim, key, now),
+                grouped=siblings is not None,
+                siblings=siblings or [],
             )
         finally:
             if not started:
@@ -257,16 +264,22 @@ class ReplicaRunner:
 
     async def _claim_siblings(
         self, claim: BuildClaim, key: ReplicaKey, now: datetime
-    ) -> list[ReplicaKey]:
+    ) -> list[ReplicaKey] | None:
         """Claim the other replicas the read of ``key``'s source builds with it, so one read
-        serves them all. Each lock is TRIED, never waited for, in sorted key order: a runner
-        holding one replica's lock never blocks on another's, so two runners that start from
-        different tables of one group cannot wait on each other. A sibling another runner
-        holds is left out; its rows from this read are dropped and it is built on its own."""
+        serves them all; None when ``key`` is a table read on its own. Every sibling is tried
+        BEFORE the read starts, since one left out costs a second read of the source. Each lock
+        is TRIED, never waited for, in sorted key order: a runner holding one replica's lock
+        never blocks on another's, so two runners that start from different tables of one group
+        cannot wait on each other. A sibling another runner holds is left out; its rows from
+        this read are dropped and it is built by a group read of its own. When every sibling
+        is held the answer is an empty list, and ``key`` is still built by the group read."""
         if self._group_of is None or self._build_group is None:
-            return []
+            return None
+        group = await self._group_of(key)
+        if group is None:
+            return None
         taken: list[ReplicaKey] = []
-        for sibling in sorted(await self._group_of(key)):
+        for sibling in sorted(group):
             if sibling == key or not claim.try_replica(self._org_id, sibling):
                 continue
             async with self._db.acquire() as conn:
@@ -296,7 +309,9 @@ class ReplicaRunner:
     async def _run_group(self, job: _Job) -> None:
         """Run one read that builds ``job.key`` and its claimed siblings, record each table's
         outcome on its own record, release what the job holds, and look for the next build.
-        A read that fails is recorded once on every claimed table, with the same reason."""
+        A read that fails is recorded once on every claimed table, with the same reason: a
+        sibling that was idle and not due is then failed like the rest, and when its wait is
+        over whichever of them a runner claims first brings the others into one read again."""
         assert self._build_group is not None  # siblings are claimed only when it is given
         keys = [job.key, *job.siblings]
         last_write = dict.fromkeys(keys, 0.0)
@@ -359,7 +374,7 @@ class ReplicaRunner:
     async def _run(self, job: _Job) -> None:
         """Run one claimed build to its end, record the outcome, release what it holds, and
         look for the next build."""
-        if job.siblings:
+        if job.grouped:
             await self._run_group(job)
             return
         last_write = 0.0

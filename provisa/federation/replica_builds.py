@@ -407,20 +407,21 @@ def _group_loader(state: Any, source: Any) -> Any:
     return loader
 
 
-async def group_of(state: Any, key: ReplicaKey) -> list[ReplicaKey]:
+async def group_of(state: Any, key: ReplicaKey) -> list[ReplicaKey] | None:
     """The other replicas one read of ``key``'s source builds with it: the tables its adapter
-    says come from the same read, that the model declares and that have a replica. Empty for a
-    table read on its own, which is every table of most sources."""
+    says come from the same read, that the model declares and that have a replica. None for a
+    table read on its own, which is every table of most sources; an empty list for a table
+    of a group whose siblings are not declared or have no replica."""
     from provisa.federation.registry_view import registered_tables
 
     try:
         source, table, _sources = await _model_row(state, key)
     except ReplicaTableGone:
-        return []
+        return None
     loader = _group_loader(state, source)
     names = loader.replica_group(source, table) if loader is not None else None
     if not names:
-        return []
+        return None
     declared = {
         (t.source_id, t.schema_name, t.table_name)
         for t in await registered_tables(state)

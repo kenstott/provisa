@@ -214,3 +214,18 @@ async def test_a_table_its_engine_would_copy_itself_is_not_a_group_table():
 async def test_a_group_needs_a_table():
     with pytest.raises(ValueError, match="at least one table"):
         ReplicaGroupJob(_Read([]), {}, batch_rows=10)
+
+
+async def test_a_build_table_that_cannot_be_removed_does_not_hide_why_the_read_failed():
+    class _Stuck(_Target):
+        async def abort(self):
+            self.events.append("abort")
+            raise RuntimeError("the build table could not be removed")
+
+    ta, tb = _Stuck(), _Target()
+    job = _job(
+        _Read(_pages(), fail_after=2), a=GroupPart(ta, _Engine()), b=GroupPart(tb, _Engine())
+    )
+    with pytest.raises(RuntimeError, match="stopped answering"):
+        await job.run(_noop)
+    assert ta.events == ["begin", "abort"] and tb.events == ["begin", "abort"]  # both tried

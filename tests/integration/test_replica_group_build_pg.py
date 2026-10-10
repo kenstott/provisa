@@ -39,7 +39,7 @@ GROUP = [_key(1), _key(2), _key(3)]
 
 def _grouped(node, reads):
     async def group_of(key):
-        return [k for k in GROUP if k != key] if key in GROUP else []
+        return [k for k in GROUP if k != key] if key in GROUP else None
 
     node.runner._group_of = group_of
     node.runner._build_group = reads

@@ -43,6 +43,7 @@ the requests that ask for its rows.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from enum import Enum
@@ -197,6 +198,8 @@ def choose_method(source: SourceCaps, target: TargetCaps, engine: EngineCaps) ->
 BATCH_BYTES = 8 * 1024 * 1024
 
 #: Called by a job as it copies: the rows copied so far.
+log = logging.getLogger(__name__)
+
 Progress = Callable[[int], Awaitable[None]]
 
 
@@ -459,9 +462,14 @@ class ReplicaGroupJob:
             said = getattr(self._source, "notes", None)
             notes = tuple(said()) if said is not None else ()
         except BaseException:
-            # The read failed: no table is swapped, and every previous copy stays.
+            # The read failed: no table is swapped, and every previous copy stays. Every build
+            # table is removed, whatever one of the removals does: the read's own failure is
+            # what the build reports.
             for table in open_targets:
-                await self._parts[table].target.abort()
+                try:
+                    await self._parts[table].target.abort()
+                except Exception:  # allow-ble: a build table that could not be removed must not hide why the read failed, nor leave the others standing
+                    log.exception("could not remove the build table of %s", table)
             raise
         results: dict[str, BuildOutcome | BaseException] = {}
         for table, part in self._parts.items():
