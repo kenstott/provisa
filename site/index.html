@@ -217,7 +217,7 @@
           </p>
           <span class="job-more">All 65 connectors &rarr;</span>
         </a>
-        <a class="job" href="/why/interfaces">
+        <div class="job">
           <p class="job-tag">Data science, connected</p>
           <h3>Every dataset the team needs, in Arrow.</h3>
           <p>
@@ -225,12 +225,11 @@
             Polars, or DuckDB. Arrow Flight streams record batches columnar all the way
             out — no row-by-row serialization, nothing materialized server-side while
             you read — and single-source queries route straight to the driver. To train
-            without touching personal data, point the same query at a test environment:
-            identifying columns faked on read, or a synthetic dataset with no real rows
-            in it.
+            without PII, point at our auto-generated synthetic data.
           </p>
-          <span class="job-more">Flight, Airport, and pgwire &rarr;</span>
-        </a>
+          <a class="job-more" href="/why/interfaces">Flight, Airport, and pgwire &rarr;</a>
+          <a class="job-more" href="/docs/test-data/#generate-a-synthetic-dataset">Synthetic Data &rarr;</a>
+        </div>
         <a class="job" href="/why/governance">
           <p class="job-tag">Provision data to other teams</p>
           <h3>Hand over a result set, not a pipeline.</h3>
