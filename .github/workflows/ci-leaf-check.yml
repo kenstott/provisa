@@ -179,10 +179,13 @@ jobs:
           python -c "import material, pymdownx; print('mkdocs-material and pymdown-extensions')"
 
   # A round trip on a key of this run's own (key-suffix): the real cache is never touched.
-  # First job: the restore misses, the jars the pin names are put there (tiny stand-ins), the
-  # save phase stores them.
-  trino-plugins-save:
-    name: action / trino-plugins (miss, then save)
+  # One job, one round trip through the cache service: a key nobody saved misses; the jars are
+  # saved under it; the local copies are removed; the same key then hits and brings them back.
+  # It was two jobs (save, then a fresh runner restores). Run 38046755990 showed why it cannot
+  # be: the second job waited 33 minutes for a runner, main's suite saved 13 GB of image caches
+  # in that time, the repository went past its 10 GB of cache and GitHub evicted this one.
+  trino-plugins:
+    name: action / trino-plugins (miss, save, hit)
     needs: scope
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -207,41 +210,35 @@ jobs:
             echo "stand-in for $jar" > "$jar"
           done
       - name: Save
-        if: always()
         uses: ./.github/actions/trino-plugins
         with:
           phase: save
           cache-hit: ${{ steps.restore.outputs.cache-hit }}
           key-suffix: -leafcheck-${{ github.run_id }}-${{ github.run_attempt }}
-
-  # Second job, a fresh runner: the same key now hits and the jars are back.
-  trino-plugins-restore:
-    name: action / trino-plugins (hit)
-    needs: trino-plugins-save
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - name: Restore
-        id: restore
+      - name: Remove the local jars
+        env:
+          JARS: ${{ steps.restore.outputs.jars }}
+        run: |
+          for jar in $JARS; do rm "$jar"; done
+      - name: Restore again
+        id: again
         uses: ./.github/actions/trino-plugins
         with:
           phase: restore
           key-suffix: -leafcheck-${{ github.run_id }}-${{ github.run_attempt }}
-      - name: The saved key hits and every jar is restored
+      - name: The saved key hits and every jar is back
         env:
-          HIT: ${{ steps.restore.outputs.cache-hit }}
-          JARS: ${{ steps.restore.outputs.jars }}
+          HIT: ${{ steps.again.outputs.cache-hit }}
+          JARS: ${{ steps.again.outputs.jars }}
         run: |
           [ "$HIT" = "true" ]
           for jar in $JARS; do grep -q "stand-in for $jar" "$jar"; done
       # A hit is not saved again: the save phase does nothing, and says so by doing nothing.
       - name: Save after a hit
-        if: always()
         uses: ./.github/actions/trino-plugins
         with:
           phase: save
-          cache-hit: ${{ steps.restore.outputs.cache-hit }}
+          cache-hit: ${{ steps.again.outputs.cache-hit }}
           key-suffix: -leafcheck-${{ github.run_id }}-${{ github.run_attempt }}
 
   release-metadata:
@@ -340,8 +337,7 @@ jobs:
       - setup-ui-no-install
       - mssql-odbc
       - docs-site-deps
-      - trino-plugins-save
-      - trino-plugins-restore
+      - trino-plugins
       - release-metadata
       - ensure-release-off
     runs-on: ubuntu-latest
@@ -640,8 +636,7 @@ jobs:
       - setup-ui-no-install
       - mssql-odbc
       - docs-site-deps
-      - trino-plugins-save
-      - trino-plugins-restore
+      - trino-plugins
       - release-metadata
       - ensure-release-off
       - lane

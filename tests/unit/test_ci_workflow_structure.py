@@ -790,7 +790,7 @@ def test_the_proof_level_is_one_committed_file_and_each_level_needs_the_one_belo
     assert level_zero == {
         job for job, body in jobs.items() if str(body.get("name", "")).startswith("action / ")
     }
-    assert len(level_zero) == 11
+    assert len(level_zero) == 10
 
 
 def test_no_proof_job_fails_on_purpose_uncontained_and_no_needed_job_is_contained():
