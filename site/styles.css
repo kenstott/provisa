@@ -228,6 +228,9 @@ code { font-family: var(--mono); font-size: .87rem; line-height: 1.7; color: #cb
 .job h3 { margin: 0 0 10px; font-size: 1.1rem; letter-spacing: -0.01em; line-height: 1.25; }
 .job p { margin: 0; color: var(--text-muted); font-size: .95rem; }
 .job-more { display: inline-block; margin-top: 14px; color: var(--primary-hover); font-size: .9rem; font-weight: 500; }
+/* A card with more than one destination is a block holding its own links. */
+a.job-more { text-decoration: none; margin-right: 18px; }
+a.job-more:hover, a.job-more:focus-visible { text-decoration: underline; }
 @media (max-width: 860px) {
   .jobs-grid { grid-template-columns: 1fr; }
   .jobs-grid > .job, .jobs-grid > .job:nth-child(4), .jobs-grid > .job:nth-child(5) { grid-column: auto; }
