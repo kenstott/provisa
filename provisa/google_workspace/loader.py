@@ -15,9 +15,12 @@ One source reads one mailbox and offers the six canonical mail tables
 ``message_folders``, ``threads`` and ``attachments``. Each is read whole, from Gmail, into rows
 of exactly the canonical columns, and landed as a replica like any fetched source.
 
-A table is read on its own: the tables that come from messages each list the mailbox and fetch
-its messages (as headers and labels only where the table needs no text), so nothing is held in
-memory beyond a page and what ``threads`` adds up.
+The five tables that come from messages are ONE read (:func:`message_table_rows`): the mailbox
+is listed once and each message fetched once, whichever of them are being built, as headers
+and labels only when none of them needs a message's text. A replica build takes them together
+(``replica_group``, ``federation.data_replicator.ReplicaGroupJob``). ``folders`` comes from
+the mailbox's labels, on its own. Nothing is held in memory beyond a page and what ``threads``
+adds up.
 
 A message with a part that is not what it declares keeps its row without text
 (``mail_rows``); the read counts such messages and names them when it ends: every id in the
@@ -31,6 +34,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
@@ -176,6 +180,56 @@ async def _messages(
         yield page
 
 
+#: The tables one read of the mailbox's messages gives; ``folders`` comes from its labels.
+MESSAGE_TABLES: tuple[str, ...] = (
+    "messages",
+    "message_recipients",
+    "message_folders",
+    "attachments",
+    "threads",
+)
+
+
+async def message_table_rows(
+    gmail: Gmail, mail: MailSettings, tables: tuple[str, ...], unreadable: list[str]
+) -> AsyncIterator[tuple[str, list[dict]]]:
+    """The rows of the message tables ``tables``, from ONE pass over the mailbox: each message
+    is fetched once and gives its rows to every table asked for. A page of messages yields
+    each table's rows of that page; ``threads`` is added up over the whole pass and comes last.
+    Whole messages are fetched only when a table asked for needs their text or parts. The ids
+    of the messages kept without text are added to ``unreadable`` as they are met."""
+    unknown = [table for table in tables if table not in MESSAGE_TABLES]
+    if unknown:
+        raise UnknownMailTable(unknown[0])
+    if not _NEEDS_WHOLE_MESSAGE.intersection(tables):
+        mail = MailSettings(
+            MAIL_HEADERS, mail.search, mail.labels, mail.since, mail.include_spam_trash
+        )
+    threads = _Threads(gmail.account) if "threads" in tables else None
+    async for page in _messages(gmail, mail, unreadable):
+        for table in tables:
+            if table == "threads":
+                continue
+            rows = [row for facts in page for row in _PER_MESSAGE[table](facts)]
+            if rows:
+                yield table, rows
+        if threads is not None:
+            for facts in page:
+                threads.add(facts.message)
+    if threads is not None:
+        yield "threads", threads.rows()
+    if unreadable:
+        # Stated, never silent: these rows are in their tables without their text.
+        log.warning(
+            "Google Workspace mailbox %s, tables %s: %d message(s) have a part that is not "
+            "what it declares and were kept without text: %s",
+            gmail.account,
+            ", ".join(tables),
+            len(unreadable),
+            ", ".join(unreadable),
+        )
+
+
 #: The build's note for the messages kept without text: the one every mail source gives.
 unreadable_note = unreadable_messages_note
 
@@ -183,8 +237,8 @@ unreadable_note = unreadable_messages_note
 async def table_rows(
     gmail: Gmail, mail: MailSettings, table: str, unreadable: list[str] | None = None
 ) -> AsyncIterator[list[dict]]:
-    """The rows of one canonical table, in batches, to the last one. The ids of the messages
-    kept without text are added to ``unreadable`` as they are met."""
+    """The rows of one canonical table, in batches, to the last one: ``folders`` from the
+    mailbox's labels, any other from the one read of its messages, asked for that table alone."""
     if table not in TABLES:
         raise UnknownMailTable(table)
     if table == "folders":
@@ -193,32 +247,50 @@ async def table_rows(
             rows.append(_folder(gmail.account, await gmail.label(label["id"])))
         yield rows
         return
-    if table not in _NEEDS_WHOLE_MESSAGE:
-        mail = MailSettings(
-            MAIL_HEADERS, mail.search, mail.labels, mail.since, mail.include_spam_trash
-        )
     unreadable = [] if unreadable is None else unreadable
-    threads = _Threads(gmail.account)
-    async for page in _messages(gmail, mail, unreadable):
-        if table == "threads":
-            for facts in page:
-                threads.add(facts.message)
-            continue
-        rows = [row for facts in page for row in _PER_MESSAGE[table](facts)]
-        if rows:
-            yield rows
-    if table == "threads":
-        yield threads.rows()
-    if unreadable:
-        # Stated, never silent: these rows are in the table without their text.
-        log.warning(
-            "Google Workspace mailbox %s, table %s: %d message(s) have a part that is not what "
-            "it declares and were kept without text: %s",
-            gmail.account,
-            table,
-            len(unreadable),
-            ", ".join(unreadable),
-        )
+    async for _table, rows in message_table_rows(gmail, mail, (table,), unreadable):
+        yield rows
+
+
+class _MailboxRead:
+    """One read of a source's mailbox as the rows of several message tables: what a group
+    build streams (``federation.data_replicator.ReplicaGroupJob``)."""
+
+    def __init__(
+        self,
+        connect: Any,
+        source: Any,
+        tables: tuple[str, ...],
+        columns: dict[str, list[tuple[str, str]]],
+    ) -> None:
+        from provisa.federation.data_replicator import SourceCaps, SourceRead
+
+        self.caps = SourceCaps(frozenset({SourceRead.CURSOR}))
+        self._connect = connect
+        self._source = source
+        self._tables = tables
+        self._columns = columns
+        self._unreadable: list[str] = []
+
+    def notes(self) -> list[Any]:
+        return noted(unreadable_note(self._unreadable))
+
+    async def batches(self, batch_rows: int) -> AsyncIterator[tuple[str, Any]]:
+        from provisa.core.ir_arrow import arrow_schema, rows_to_batch
+
+        self._unreadable.clear()  # a build reads once; a read begun again counts again
+        schemas = {table: arrow_schema(self._columns[table]) for table in self._tables}
+        async with self._connect(self._source) as (gmail, mail):
+            async for table, rows in message_table_rows(
+                gmail, mail, self._tables, self._unreadable
+            ):
+                for start in range(0, len(rows), batch_rows):
+                    yield (
+                        table,
+                        rows_to_batch(
+                            rows[start : start + batch_rows], self._columns[table], schemas[table]
+                        ),
+                    )
 
 
 def make_google_workspace_loader(state: Any) -> Any:
@@ -232,12 +304,12 @@ def make_google_workspace_loader(state: Any) -> Any:
     from provisa.google_workspace import SOURCE_TYPE
     from provisa.google_workspace.settings import GOOGLE_ACCOUNT
 
-    async def _batches(
-        source: Any, table: Any, unreadable: list[str] | None = None
-    ) -> AsyncIterator[list[dict]]:
+    @asynccontextmanager
+    async def _connect(source: Any) -> AsyncIterator[tuple[Gmail, MailSettings]]:
+        """The source's mailbox, read with its own credential, and which mail of it to hold."""
         settings = source_settings(source)
         if settings.mail is None:
-            raise UnknownMailTable(table.table_name)
+            raise UnknownMailTable("messages")
         (account,) = settings.accounts
         client = None
         if settings.sign_in == GOOGLE_ACCOUNT:
@@ -249,9 +321,14 @@ def make_google_workspace_loader(state: Any) -> Any:
         async def token() -> str:
             return await asyncio.to_thread(access_token, auth)
 
-        async with httpx.AsyncClient() as client:
-            gmail = Gmail(account, token, client)
-            async for rows in table_rows(gmail, settings.mail, table.table_name, unreadable):
+        async with httpx.AsyncClient() as http:
+            yield Gmail(account, token, http), settings.mail
+
+    async def _batches(
+        source: Any, table: Any, unreadable: list[str] | None = None
+    ) -> AsyncIterator[list[dict]]:
+        async with _connect(source) as (gmail, mail):
+            async for rows in table_rows(gmail, mail, table.table_name, unreadable):
                 yield rows
 
     async def _load(source: Any, table: Any) -> list[dict]:
@@ -268,5 +345,17 @@ def make_google_workspace_loader(state: Any) -> Any:
 
         return CursorSource(read, columns, notes=lambda: noted(unreadable_note(unreadable)))
 
+    def _replica_group(_source: Any, table: Any) -> tuple[str, ...] | None:
+        """The tables one read of the mailbox gives together with ``table``, or None when
+        ``table`` is read on its own (folders)."""
+        return MESSAGE_TABLES if table.table_name in MESSAGE_TABLES else None
+
+    def _replica_group_source(
+        source: Any, tables: tuple[str, ...], columns: dict[str, list[tuple[str, str]]]
+    ) -> Any:
+        return _MailboxRead(_connect, source, tuple(tables), columns)
+
     _load.replica_source = _replica_source  # type: ignore[attr-defined]
+    _load.replica_group = _replica_group  # type: ignore[attr-defined]
+    _load.replica_group_source = _replica_group_source  # type: ignore[attr-defined]
     return _load

@@ -26,7 +26,13 @@ from provisa.core.ir_arrow import arrow_schema, rows_to_batch
 from provisa.core.models import SourceType
 from provisa.google_workspace import SOURCE_TYPE, loader
 from provisa.google_workspace.gmail import GmailNotFound
-from provisa.google_workspace.loader import TABLES, UnknownMailTable, table_rows
+from provisa.google_workspace.loader import (
+    MESSAGE_TABLES,
+    TABLES,
+    UnknownMailTable,
+    message_table_rows,
+    table_rows,
+)
 from provisa.google_workspace.settings import SECRET_KEYS, MailSettings
 
 pytestmark = pytest.mark.asyncio
@@ -478,3 +484,132 @@ class TestTheLoader:
         batches = [batch async for batch in source.batches(1000)]
         assert sum(b.num_rows for b in batches) == 2
         assert batches[0].schema.names == [name for name, _ in columns]
+
+
+async def _one_pass(tables, gmail=None, mail=FULL, unreadable=None):
+    seen: list[tuple[str, list[dict]]] = []
+    async for table, rows in message_table_rows(
+        gmail or FakeGmail(), mail, tuple(tables), [] if unreadable is None else unreadable
+    ):
+        seen.append((table, rows))
+    return seen
+
+
+def _by_table(seen) -> dict[str, list[dict]]:
+    out: dict[str, list[dict]] = {}
+    for table, rows in seen:
+        out.setdefault(table, []).extend(rows)
+    return out
+
+
+class TestOneReadOfTheMailbox:
+    async def test_every_message_table_comes_from_one_fetch_of_each_message(self):
+        gmail = FakeGmail()
+        rows = _by_table(await _one_pass(MESSAGE_TABLES, gmail))
+        assert sorted(rows) == sorted(MESSAGE_TABLES)
+        assert [message_id for message_id, _ in gmail.asked] == list(MAILBOX)
+        for table in MESSAGE_TABLES:
+            assert rows[table] == await _rows(table), table
+
+    async def test_whole_messages_are_fetched_only_when_a_table_needs_their_text(self):
+        for tables, content in (
+            (("message_recipients", "message_folders", "threads"), "headers"),
+            (("message_recipients", "attachments"), "full"),
+            (("messages",), "full"),
+        ):
+            gmail = FakeGmail()
+            await _one_pass(tables, gmail)
+            assert {asked for _, asked in gmail.asked} == {content}, tables
+
+    async def test_a_source_of_headers_only_is_never_asked_for_whole_messages(self):
+        gmail = FakeGmail()
+        await _one_pass(MESSAGE_TABLES, gmail, MailSettings("headers", None, (), None, False))
+        assert {asked for _, asked in gmail.asked} == {"headers"}
+
+    async def test_only_the_tables_asked_for_are_given(self):
+        seen = await _one_pass(("message_folders", "threads"))
+        assert {table for table, _ in seen} == {"message_folders", "threads"}
+
+    async def test_threads_come_last_and_whole(self):
+        ids = list(MAILBOX)
+        gmail = FakeGmail(pages=[ids[:1], ids[1:]])
+        seen = await _one_pass(("messages", "threads"), gmail)
+        assert [table for table, _ in seen] == ["messages", "messages", "threads"]
+        assert seen[-1][1] == await _rows("threads")
+
+    async def test_a_message_deleted_after_it_was_listed_is_in_no_table(self):
+        gmail = FakeGmail(pages=[[*MAILBOX, "gone"]])
+        rows = _by_table(await _one_pass(MESSAGE_TABLES, gmail))
+        assert [r["id"] for r in rows["messages"]] == list(MAILBOX)
+        assert "gone" not in {r["message_id"] for r in rows["message_folders"]}
+        assert [message_id for message_id, _ in gmail.asked].count("gone") == 1
+
+    async def test_a_table_that_does_not_come_from_messages_is_refused(self):
+        with pytest.raises(UnknownMailTable, match="no table 'folders'"):
+            await _one_pass(("messages", "folders"))
+
+
+class TestTheGroupBuild:
+    @pytest.fixture
+    def fetch(self, monkeypatch):
+        gmails: list[FakeGmail] = []
+
+        class Recording(FakeGmail):
+            def __init__(self, account, token, client) -> None:
+                super().__init__()
+                gmails.append(self)
+
+        monkeypatch.setattr(loader, "Gmail", Recording)
+        monkeypatch.setattr(loader, "resolve_secrets", lambda v: v)
+        monkeypatch.setattr("provisa.api_source.oauth_grants.access_token", lambda auth: "t")
+        made = loader.make_google_workspace_loader(SimpleNamespace(admin_db=None))
+        made.gmails = gmails
+        return made
+
+    SOURCE = SimpleNamespace(
+        id="mail",
+        mapping={
+            "accounts": [ACCOUNT],
+            "resources": ["mail"],
+            "sign_in": "service_account",
+            "service_account_key": "${secret:k}",
+            "mail_content": "full",
+        },
+    )
+
+    async def test_the_message_tables_are_one_group_and_folders_is_read_alone(self, fetch):
+        for table in MESSAGE_TABLES:
+            group = fetch.replica_group(self.SOURCE, SimpleNamespace(table_name=table))
+            assert group == MESSAGE_TABLES
+        assert fetch.replica_group(self.SOURCE, SimpleNamespace(table_name="folders")) is None
+        assert set(MESSAGE_TABLES) | {"folders"} == set(TABLES)
+
+    async def test_one_read_gives_each_claimed_table_its_canonical_batches(self, fetch):
+        tables = ("messages", "message_recipients", "threads")
+        columns = {table: cm.ir_columns(table) for table in tables}
+        source = fetch.replica_group_source(self.SOURCE, tables, columns)
+        assert source.notes() == []  # nothing read yet
+        counted: dict[str, int] = {}
+        async for table, batch in source.batches(2):
+            assert batch.schema == arrow_schema(columns[table])
+            assert batch.num_rows <= 2
+            counted[table] = counted.get(table, 0) + batch.num_rows
+        assert counted == {table: len(await _rows(table)) for table in tables}
+        (gmail,) = fetch.gmails
+        assert [message_id for message_id, _ in gmail.asked] == list(MAILBOX)
+        assert source.notes() == []
+
+    async def test_the_reads_note_is_of_the_messages_kept_without_text(self, fetch, monkeypatch):
+        broken = _mail("m9", "t9", T0, "Kept")
+        broken["payload"]["parts"][0]["headers"] = [
+            {"name": "Content-Type", "value": "text/plain; charset=x-made-up"}
+        ]
+        monkeypatch.setitem(MAILBOX, "m9", broken)
+        tables = ("messages", "message_folders")
+        source = fetch.replica_group_source(
+            self.SOURCE, tables, {table: cm.ir_columns(table) for table in tables}
+        )
+        for _ in range(2):  # a read begun again counts again, not twice
+            [batch async for batch in source.batches(1000)]
+            (note,) = source.notes()
+            assert note.params == {"count": 1, "ids": ["m9"], "more": 0}
