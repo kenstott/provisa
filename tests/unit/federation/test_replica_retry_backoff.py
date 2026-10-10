@@ -289,3 +289,88 @@ def test_the_admin_record_of_a_failed_replica_says_when_it_is_tried_next(monkeyp
     assert build_view(record, T0)["next_attempt_at"] == "2026-10-09T12:04:00+00:00"
     record.build_state = "idle"
     assert build_view(record, T0)["next_attempt_at"] is None
+
+
+# --- #203: the wait before a failed build is tried again is never nothing -----------------------
+
+
+def test_the_retry_interval_refuses_a_value_below_one_second():
+    from provisa.core import settings_registry
+    from provisa.core.settings_registry import SettingInvalid
+
+    interval = settings_registry.setting("replication.retry_interval")
+    assert interval.min == 1
+    for refused in (0, -5):
+        with pytest.raises(SettingInvalid) as invalid:
+            settings_registry.validate({"replication.retry_interval": refused})
+        assert invalid.value.reason == "below_min"
+    settings_registry.validate({"replication.retry_interval": 1})
+
+
+async def test_a_build_that_keeps_failing_is_not_attempted_again_until_its_wait_has_passed(
+    tmp_path,
+):
+    """The regression of #203. With no wait a failing build was claimed again the moment it
+    failed, hundreds of times a second, and the runner never rested. At the shortest wait the
+    setting allows it is attempted once, and the runner comes to rest."""
+    import asyncio
+
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_org import metadata
+    from provisa.core.schema_org import replica_state as replica_state_table
+    from provisa.federation import replica_state as build_state
+    from provisa.federation.replica_locks import BuildLocks
+    from provisa.federation.replica_runner import ReplicaRunner
+
+    url = f"sqlite+pysqlite:///{tmp_path / 'cp.db'}"
+    engine = create_engine_from_url(url)
+    with engine.begin() as conn:
+        metadata.create_all(conn, tables=[replica_state_table])
+    db = Database(engine, "test")
+    key = ("src", "public", "t1")
+    async with db.acquire() as conn:
+        assert await build_state.request_build(conn, key, build_state.REASON_MODEL)
+    attempts = 0
+    tasks: list[asyncio.Task] = []
+
+    async def build(_key, _progress):
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("the source is down")
+
+    async def none(*_args):
+        return None
+
+    shortest = settings_registry_min()
+    locks = BuildLocks(url)
+    locks._slots = tmp_path / "slots"  # noqa: SLF001
+    runner = ReplicaRunner(
+        db=db,
+        org_id="org1",
+        locks=locks,
+        engine_key=lambda: "engine",
+        build=build,
+        source_cap=none,
+        permits=None,
+        next_refresh_at=none,
+        store=lambda: "store-a",
+        retry=lambda: RetryPolicy(shortest, 3600),
+        builds_per_node=lambda: 1,
+        engine_jobs=lambda: 1,
+        spawn=lambda coro, name: tasks.append(asyncio.ensure_future(coro)),
+    )
+    try:
+        await runner.run_pass()
+        # Bounded: a runner that spun would never let this finish.
+        await asyncio.wait_for(asyncio.gather(*tasks), 5)
+    finally:
+        for task in tasks:
+            task.cancel()
+        engine.dispose()
+    assert attempts == 1
+
+
+def settings_registry_min() -> float:
+    from provisa.core import settings_registry
+
+    return float(settings_registry.setting("replication.retry_interval").min)

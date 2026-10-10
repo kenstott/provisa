@@ -218,7 +218,9 @@ DECLARED: list[Setting] = [
         req="REQ-1915",  # 60: a failing source is asked again once a minute, not once per read
         env="PROVISA_REPLICATION_RETRY_INTERVAL",
         default=60,
-        min=0,
+        # At least a second: with no wait at all a build that fails is claimed again at once,
+        # and the runner never rests (#203).
+        min=1,
         unit="seconds",
     ),
     Setting(

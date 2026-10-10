@@ -449,10 +449,17 @@ async def test_a_failed_build_is_not_asked_for_again_within_the_retry_interval(
     with pytest.raises(ReplicaBuildFailed, match="adapter down"):
         await _ensure(state, {"pets-db"})
     assert wiring.kicks == 1 and wiring.built == []
+    # The interval passes: the failure is now older than the shortest wait there is.
+    from sqlalchemy import update
+
     monkeypatch.setattr(
         "provisa.core.settings_registry.value",
-        lambda key: {"replication.retry_interval": 0, "replication.retry_interval_max": 3600}[key],
+        lambda key: {"replication.retry_interval": 1, "replication.retry_interval_max": 3600}[key],
     )
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            update(replica_state_table).values(failed_at=datetime.now(UTC) - timedelta(seconds=5))
+        )
     assert await _ensure(state, {"pets-db"}) == [("pets-db", "pets")]
     assert wiring.built == [_key(pets)]
 
