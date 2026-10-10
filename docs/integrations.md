@@ -326,8 +326,15 @@ Elastic License 2.0 bars providing the software to third parties as a hosted ser
 Provisa exchanges semantic models with Apache Ossie (spec 0.2.0.dev0, incubating; formerly Open
 Semantic Interchange) through a boundary adapter. Provisa's internal vocabulary is never renamed
 to Ossie's — the spec declares breaking changes as likely, so coupling is confined to the adapter.
-[tool-verified: `provisa/ossie/convert.py` docstring lines 7–16; `OSSIE_VERSION = "0.2.0.dev0"`,
-`provisa/ossie/convert.py` line 29]
+[tool-verified: `provisa/ossie/convert.py` module docstring; `OSSIE_VERSION = "0.2.0.dev0"`]
+
+The draft spec has changed shape without changing its version string. The adapter follows the
+spec as it stands at `apache/ossie` commit `642cb894` (2026-10-10): one model per document,
+with `version`, `name`, `datasets`, `relationships`, and `metrics` at the document's root, and
+an enumerated `datatype`. The export is checked in the unit tests against that commit's
+`core-spec/ossie-schema.json`.
+[tool-verified: `OSSIE_SPEC_COMMIT`, `provisa/ossie/convert.py`;
+`test_the_export_is_valid_against_ossies_own_schema`, `tests/unit/test_ossie_convert.py`]
 
 ### Export
 
@@ -355,35 +362,47 @@ The adapter maps Provisa objects to Ossie objects as follows:
 | `Table` | `dataset` | `source` = `catalog.schema.table`; primary/unique keys from column config and `UniqueConstraint` |
 | `Column` | `field` | `expression` = column reference (ANSI_SQL dialect); time columns gain `dimension.is_time: true` |
 | `Relationship` | `relationship` | Alias used as name when set; computed (function-target) relationships are skipped |
-| `Metric` | `metric` | `name`, `expression` (ANSI_SQL), `datatype`, `description`, `ai_context` — lossless by design |
+| `Metric` | `metric` | `name`, `expression` (ANSI_SQL), `datatype` (mapped as a column's is), `description`, `ai_context` |
 | `modeling_role` / `modeling_history` | `custom_extensions[].vendor_name="provisa"` | Round-trip only; other tools may ignore |
 
-[tool-verified: `_table_to_dataset`, `build_ossie_model`, `provisa/ossie/convert.py` lines 90–198;
-`_table_to_dataset` comment at line 153: "Computed (function-target) relationships have no dataset
-target — not representable in Ossie; skipping is the defined export boundary"]
+[tool-verified: `_table_to_dataset`, `build_ossie_model`, `provisa/ossie/convert.py`: "Computed
+(function-target) relationships have no dataset target — not representable in Ossie; skipping
+is the defined export boundary"]
+
+A relationship over several columns lists each column in `from_columns` and `to_columns`. A
+model with no table is refused with a `422`: an Ossie document has at least one dataset.
+[tool-verified: `test_a_relationship_over_several_columns_lists_each_column`,
+`test_a_model_with_no_table_is_refused_by_name`, `tests/unit/test_ossie_convert.py`]
 
 Governance, RLS, lineage, and graph semantics are not exported. They may travel in the optional
 `provisa` custom_extensions slot for round-trip fidelity, but interchange never depends on other
 tools reading it. [tool-verified: `provisa/ossie/convert.py` docstring lines 13–15]
 
-Unknown Provisa column types pass through verbatim; the adapter never silently maps to a wrong
-type. [tool-verified: `_map_datatype`, `provisa/ossie/convert.py` lines 70–77: "Unknown types
-pass through verbatim — mapping silently to a wrong type would corrupt the model"]
+A column type outside Ossie's vocabulary is written as `Opaque`, with the type's own name in the
+field's `provisa` extension, which is what the spec directs for a known type it has no member
+for. A column with no type recorded states no `datatype`. The adapter never maps to a type the
+column does not have. [tool-verified: `_map_datatype`, `_typed`, `provisa/ossie/convert.py`]
 
 #### Type mapping
 
-[tool-verified: `_DATATYPE_MAP`, `provisa/ossie/convert.py` lines 35–65]
+[tool-verified: `_DATATYPE_MAP`, `provisa/ossie/convert.py`]
 
 | Provisa / source type | Ossie `datatype` |
 | --- | --- |
-| `varchar`, `text`, `char`, `uuid`, `string` | `string` |
-| `int`, `integer`, `bigint`, `smallint`, `int4`, `int8`, `tinyint` | `integer` |
-| `numeric`, `decimal`, `float`, `double`, `real` | `number` |
-| `bool`, `boolean` | `boolean` |
-| `date` | `date` |
-| `time` | `time` |
-| `timestamp`, `timestamptz`, `datetime` | `timestamp` |
-| anything else | passed through verbatim |
+| `varchar`, `text`, `char`, `uuid`, `string` | `String` |
+| `int`, `integer`, `bigint`, `smallint`, `int4`, `int8`, `tinyint` | `Integer` |
+| `numeric`, `decimal` | `Decimal` |
+| `float`, `double`, `real` | `Float` |
+| `bool`, `boolean` | `Boolean` |
+| `date` | `Date` |
+| `time` | `Time` |
+| `timestamp`, `datetime` | `DateTime` |
+| `timestamptz`, `timestamp with time zone` | `DateTimeTz` |
+| anything else | `Opaque`, with the type's name in the `provisa` extension |
+
+Ossie's `Decimal` carries no precision or scale, so `numeric(10,2)` is exported as `Decimal`
+and comes back from an import as `decimal`.
+[tool-verified: `test_parse_round_trips_export`, `tests/unit/test_ossie_convert.py`]
 
 ### Import
 
@@ -400,9 +419,24 @@ Content-Type: text/yaml   (or application/json)
 The server parses the document with `parse_ossie_model`, which validates structure and returns an
 `OssieImport` dataclass containing proposed tables, relationships, and metrics as plain dicts.
 Any structural problem is a `400` with a path-named error, e.g.
-`ossie import: missing semantic_model[0].datasets[1].source`.
-[tool-verified: `import_ossie`, `provisa/api/admin/ossie_router.py` lines 36–52:
+`ossie import: missing $.datasets[1].source`.
+[tool-verified: `import_ossie`, `provisa/api/admin/ossie_router.py`:
 "Nothing is registered here — imported definitions never bypass registration review"]
+
+The importer reads the flat document shape only. Three things are refused by name:
+
+- A document that wraps its model in `semantic_model`, the shape the draft spec had before
+  September 2026. The error says the document predates the flat shape and how to move it.
+- A `version` other than `0.2.0.dev0`.
+- A `datatype` that is not a member of Ossie's vocabulary; the error names the path and lists
+  the members.
+
+A proposed column or metric carries the type its Ossie datatype stands for (`Integer` proposes
+`bigint`, `DateTime` proposes `timestamp`). `Opaque` proposes the type the `provisa` extension
+names when the document came from Provisa, and no type otherwise. An `ai_context` given as an
+object is read by its `instructions`.
+[tool-verified: `parse_ossie_model`, `_proposed_type`, `_ai_context`,
+`provisa/ossie/convert.py`; the `test_*refused*` cases in `tests/unit/test_ossie_convert.py`]
 
 #### Coming from dbt, Cube, Snowflake, and other semantic layers
 
@@ -428,9 +462,29 @@ Two limits to know before converting:
   models has nothing for it to convert. It drops conversion metrics, private metrics, and
   natural-key entities, and prints a warning for each.
   [tool-verified: `converters/dbt/README.md`, the "MSI → Ossie is lossy" table]
-- A converter's output follows the Ossie version that converter targets. Provisa reads spec
-  0.2.0.dev0. A document from another version of the draft spec may be refused with a
-  path-named error. [inferred: no converter's output has been run through Provisa's importer]
+- A converter's output follows the spec as that converter's own commit has it. Provisa reads
+  the flat shape of `apache/ossie` commit `642cb894`; a converter older than September 2026
+  writes the `semantic_model` wrapper, which Provisa refuses by name.
+
+Both paths were run on 2026-10-10 with the converters installed from `apache/ossie` commit
+`642cb894` (they are not published as packages; they install from the repository's
+`converters/dbt` and `converters/cube` directories and need Python 3.11 or later). A model of
+two tables, one relationship, and one metric was exported from Provisa, converted to a dbt
+semantic manifest and to a Cube model, converted back to Ossie by `ossie-dbt msi-to-ossie` and
+`ossie-cube import`, and read by `parse_ossie_model`:
+
+| Path | Result |
+|---|---|
+| Cube model → Ossie → Provisa | Read. Tables, keys, column types, the relationship, and the metric all came back; the relationship's name was the converter's (`orders_to_customers`). |
+| dbt semantic manifest → Ossie → Provisa | Read. Tables, primary keys, and the metric came back. Column types did not (the converter's output states none), and the relationship came back as the converter derived it from dbt entities, which was not the registered one. Review the relationships before applying. |
+
+[tool-verified: both runs, 2026-10-10, `apache/ossie` commit `642cb894`, `ossie-dbt` and
+`ossie-cube` 0.2.0.dev0, metricflow 0.213.0; inputs were files those converters had written
+from a Provisa export, not files authored in dbt or Cube]
+
+The dbt converter refuses a model in which any table has a unique constraint over several
+columns ("MetricFlow entities cannot represent composite keys losslessly").
+[tool-verified: `ossie-dbt ossie-to-msi` on the same export with such a constraint, 2026-10-10]
 
 #### The review screen
 

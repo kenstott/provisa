@@ -301,9 +301,9 @@ GET  /admin/ossie
 POST /admin/ossie/import
 ```
 
-**Export** (`GET /admin/ossie`) derives the Ossie YAML document from the live governed model on every request — it is never cached, so it cannot be stale. The response is `text/yaml` with a `Content-Disposition: attachment` header. Tables become `dataset` objects, columns become `field` objects, and relationships map to Ossie `relationship` objects. (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py:download_ossie`]
+**Export** (`GET /admin/ossie`) derives the Ossie YAML document from the live governed model on every request — it is never cached, so it cannot be stale. The response is `text/yaml` with a `Content-Disposition: attachment` header. The document is one model with `version`, `name`, `datasets`, `relationships`, and `metrics` at its root: tables become `dataset` objects, columns become `field` objects, and relationships map to Ossie `relationship` objects. A model with no table is refused with a `422`. (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py:download_ossie`]
 
-**Import** (`POST /admin/ossie/import`) accepts an Ossie YAML or JSON document (the format auto-detects). It parses the document and returns proposed table and relationship registrations as a JSON object — nothing is registered. The review screen in the admin UI lets you accept or trim proposals before any mutation fires. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py:import_ossie`]
+**Import** (`POST /admin/ossie/import`) accepts an Ossie YAML or JSON document (the format auto-detects). It parses the document and returns proposed table, relationship, and metric registrations as a JSON object — nothing is registered. It reads the flat document shape only; a document that wraps its model in `semantic_model` is refused by name. The review screen in the admin UI lets you accept or trim proposals before any mutation fires. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py:import_ossie`]
 
 ### Object Storage (REQ-1046, REQ-1048, REQ-1049)
 

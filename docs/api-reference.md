@@ -894,7 +894,7 @@ Export the org's governed model as an Apache Ossie (incubating) YAML document. (
 
 The document is derived from live state on every request — never cached — so it cannot be stale. Tables become `dataset` objects, columns become `field` objects, and relationships map to Ossie `relationship` objects.
 
-Returns `text/yaml` with `Content-Disposition: attachment; filename=provisa-ossie.yaml`.
+Returns `text/yaml` with `Content-Disposition: attachment; filename=provisa.ossie.yaml`.
 
 #### `POST /admin/ossie/import`
 
