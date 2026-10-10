@@ -396,6 +396,175 @@ async def run_build(state: Any, key: ReplicaKey, progress: Progress) -> BuildOut
     return outcome
 
 
+def _group_loader(state: Any, source: Any) -> Any:
+    """The adapter that reads ``source``'s rows, when it gives several tables from one read
+    (it carries ``replica_group`` and ``replica_group_source``); None for every other source."""
+    from provisa.events.app_wiring import build_adapter_loaders
+
+    loader = build_adapter_loaders(state, state.federation_engine).get(source.type)
+    if loader is None or getattr(loader, "replica_group", None) is None:
+        return None
+    return loader
+
+
+async def group_of(state: Any, key: ReplicaKey) -> list[ReplicaKey]:
+    """The other replicas one read of ``key``'s source builds with it: the tables its adapter
+    says come from the same read, that the model declares and that have a replica. Empty for a
+    table read on its own, which is every table of most sources."""
+    from provisa.federation.registry_view import registered_tables
+
+    try:
+        source, table, _sources = await _model_row(state, key)
+    except ReplicaTableGone:
+        return []
+    loader = _group_loader(state, source)
+    names = loader.replica_group(source, table) if loader is not None else None
+    if not names:
+        return []
+    declared = {
+        (t.source_id, t.schema_name, t.table_name)
+        for t in await registered_tables(state)
+        if t.source_id == key[0] and t.schema_name == key[1] and t.table_name in names
+    }
+    siblings: list[ReplicaKey] = []
+    async with state.tenant_db.acquire() as conn:
+        for sibling in sorted(declared - {key}):
+            record = await replica_state.read(conn, sibling)
+            if record is not None and record.retired_at is None:
+                siblings.append(sibling)
+    return siblings
+
+
+async def build_group(
+    state: Any, keys: list[ReplicaKey], progress: Any
+) -> dict[ReplicaKey, "BuildOutcome | BaseException"]:
+    """Build the replicas ``keys`` name from ONE read of their source (``ReplicaGroupJob``):
+    what a single build does for one table -- its store address, its build table, its record
+    of how it copies, the lock on its replica in this process, its stamp on the table's
+    freshness node -- done for each, around one read. A table the model no longer declares is
+    answered with why and the others are built. Raises when the read itself fails."""
+    from contextlib import AsyncExitStack
+
+    from provisa.events import queue
+    from provisa.events.land_lock import land_lock
+    from provisa.events.nodes import source_node
+    from provisa.federation.data_replicator import GroupPart, ReplicaGroupJob
+    from provisa.federation.residency import resolve_landing_args
+    from provisa.federation.source_vault import org_vault
+
+    engine = state.federation_engine
+    backend = engine.engine.backend
+    results: dict[ReplicaKey, BuildOutcome | BaseException] = {}
+    prepared: dict[ReplicaKey, tuple[Any, Any, Any, Any]] = {}  # source, table, args, address
+    sources: list[Any] = []
+    for key in keys:
+        try:
+            source, table, sources = await _model_row(state, key)
+            if not whole_copy(source, table, engine):
+                raise NoWholeCopy(key)
+        except (ReplicaTableGone, NoWholeCopy) as gone:
+            results[key] = gone
+            continue
+        args = resolve_landing_args(source, table, platform=backend.dialect)
+        address = backend.replica_address(
+            state, source_id=source.id, schema_name=table.schema_name, table_name=table.table_name
+        )
+        prepared[key] = (source, table, args, address)
+    if not prepared:
+        return results
+    source = next(iter(prepared.values()))[0]
+    loader = _group_loader(state, source)
+    if loader is None:
+        raise RuntimeError(f"source {source.id!r} gives no group of tables from one read")
+
+    def _still_wanted(key: ReplicaKey) -> Any:
+        async def still_wanted() -> None:
+            await _model_row(state, key)  # raises when the table was deleted while it was read
+
+        return still_wanted
+
+    nodes = {key: source_node(*key) for key in prepared}
+    try:
+        # REQ-1695: the read dials the source, so the vault of the org it is registered in is
+        # bound here, where the build runs.
+        async with org_vault(state, sources):
+            parts: dict[str, GroupPart] = {}
+            for key, (src, table, args, address) in prepared.items():
+                engine_party = backend.replica_engine(state, src, table, address=address, args=args)
+                target = backend.replica_target(
+                    state, address=address, args=args, engine=engine_party
+                )
+                async with state.tenant_db.acquire() as conn:
+                    record = await replica_state.read(conn, key)
+                parts[table.table_name] = GroupPart(
+                    target,
+                    engine_party,
+                    # The last build's hash says "unchanged" only of the replica in THIS store.
+                    prior_hash=(
+                        record.content_hash
+                        if record is not None and record.exists_in(store_identity(state))
+                        else None
+                    ),
+                    still_wanted=_still_wanted(key),
+                )
+            by_table = {table.table_name: key for key, (_s, table, _a, _d) in prepared.items()}
+            reader = loader.replica_group_source(
+                source,
+                tuple(by_table),
+                {t.table_name: args.columns for _s, t, args, _d in prepared.values()},
+            )
+            job = ReplicaGroupJob(reader, parts, batch_rows=BATCH_ROWS)
+            async with state.tenant_db.acquire() as conn:
+                for key, (_s, table, _a, _d) in prepared.items():
+                    await replica_state.record_started(
+                        conn,
+                        key,
+                        method=job.methods[table.table_name].value,
+                        load_kind=parts[table.table_name].target.caps.load.value,
+                    )
+
+            async def table_progress(table_name: str, rows_copied: int) -> None:
+                await progress(by_table[table_name], rows_copied)
+
+            # REQ-1661: never two writers on one replica in a process; the locks are taken in
+            # one order (the addresses sorted) by every group build.
+            async with AsyncExitStack() as held:
+                for name in sorted(f"{a.schema}.{a.table}" for _s, _t, _a, a in prepared.values()):
+                    await held.enter_async_context(land_lock(name))
+                built = await job.run(table_progress)
+    except BaseException:
+        async with state.tenant_db.acquire() as conn:
+            for node in nodes.values():
+                await queue.record_refresh(conn, node, at=datetime.now(UTC), ok=False)
+        raise
+    async with state.tenant_db.acquire() as conn:
+        for key, (src, table, args, address) in prepared.items():
+            outcome = built[table.table_name]
+            node = nodes[key]
+            if isinstance(outcome, BaseException):
+                await queue.record_refresh(conn, node, at=datetime.now(UTC), ok=False)
+                results[key] = outcome
+                continue
+            await queue.record_refresh(conn, node, at=datetime.now(UTC), ok=True)
+            if outcome.changed and key in (getattr(state, "replica_nodes", None) or {}):
+                # The replica changed: post it to the table's event-loop node, as a single
+                # build does (run_build), so the views that read it ripple (REQ-981).
+                event_id = await queue.post_event(
+                    conn,
+                    source_table=node,
+                    event_type="replace",
+                    payload={"built": True, "rows": outcome.rows_copied},
+                )
+                await queue.fan_out(conn, event_id, [node])
+            # What it was built from: the next convergence compares the model with this.
+            results[key] = replace(
+                outcome,
+                definition_hash=definition_hash(src, address, args.columns, args.pk_columns),
+                built_columns=[[name, ir_type] for name, ir_type in args.columns],
+            )
+    return results
+
+
 def make_runner(state: Any, org_id: str, platform_url: str) -> ReplicaRunner:
     """This process's runner for the org ``state`` serves."""
     from provisa.core import settings_registry
@@ -423,6 +592,8 @@ def make_runner(state: Any, org_id: str, platform_url: str) -> ReplicaRunner:
         builds_per_node=lambda: int(settings_registry.value("replication.builds_per_node")),
         engine_jobs=lambda: int(settings_registry.value("replication.engine_jobs")),
         spawn=spawn_background,
+        group_of=lambda key: group_of(state, key),
+        build_group=lambda keys, progress: build_group(state, keys, progress),
     )
 
 

@@ -40,7 +40,7 @@ import random
 import socket
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -99,6 +99,8 @@ class _Job:
     claim: BuildClaim
     permit: tuple[str, str] | None  # the source permit's (set key, token), when one was taken
     slot: Any = None
+    # The other replicas the same read builds (a group build), each claimed like ``key``.
+    siblings: list[ReplicaKey] = field(default_factory=list)
 
 
 class ReplicaRunner:
@@ -127,6 +129,12 @@ class ReplicaRunner:
         builds_per_node: Callable[[], int],
         engine_jobs: Callable[[], int],
         spawn: Callable[..., Any],
+        group_of: Callable[[ReplicaKey], Awaitable[list[ReplicaKey]]] | None = None,
+        build_group: Callable[
+            [list[ReplicaKey], Callable[[ReplicaKey, int], Awaitable[None]]],
+            Awaitable[dict[ReplicaKey, "BuildOutcome | BaseException"]],
+        ]
+        | None = None,
     ) -> None:
         self._db = db
         self._org_id = org_id
@@ -142,6 +150,10 @@ class ReplicaRunner:
         self._builds_per_node = builds_per_node
         self._engine_jobs = engine_jobs
         self._spawn = spawn
+        # ``group_of`` gives the other replicas one read of ``key``'s source builds with it
+        # (none for most sources); ``build_group`` runs that one read for the claimed ones.
+        self._group_of = group_of
+        self._build_group = build_group
         self._holder = f"{socket.gethostname()}:{os.getpid()}"
 
     async def run_pass(self) -> int:
@@ -233,14 +245,123 @@ class ReplicaRunner:
                         return None
                     permit = (permit_key, token)
             started = True
-            return _Job(key=key, claim=claim, permit=permit)
+            return _Job(
+                key=key,
+                claim=claim,
+                permit=permit,
+                siblings=await self._claim_siblings(claim, key, now),
+            )
         finally:
             if not started:
                 claim.release_replica(self._org_id, key)
 
+    async def _claim_siblings(
+        self, claim: BuildClaim, key: ReplicaKey, now: datetime
+    ) -> list[ReplicaKey]:
+        """Claim the other replicas the read of ``key``'s source builds with it, so one read
+        serves them all. Each lock is TRIED, never waited for, in sorted key order: a runner
+        holding one replica's lock never blocks on another's, so two runners that start from
+        different tables of one group cannot wait on each other. A sibling another runner
+        holds is left out; its rows from this read are dropped and it is built on its own."""
+        if self._group_of is None or self._build_group is None:
+            return []
+        taken: list[ReplicaKey] = []
+        for sibling in sorted(await self._group_of(key)):
+            if sibling == key or not claim.try_replica(self._org_id, sibling):
+                continue
+            async with self._db.acquire() as conn:
+                claimed = await build_state.claim_sibling(
+                    conn, sibling, holder=self._holder, now=now
+                )
+            if claimed:
+                taken.append(sibling)
+            else:
+                claim.release_replica(self._org_id, sibling)
+        return taken
+
+    async def _record_failed(self, key: ReplicaKey, exc: BaseException) -> None:
+        code, params = coded(exc)
+        failed_at = datetime.now(UTC)
+        async with self._db.acquire() as conn:
+            failure = await build_state.record_failed(
+                conn,
+                key,
+                error=str(exc) or type(exc).__name__,
+                code=code,
+                params=params,
+                now=failed_at,
+            )
+        _log_failure(key, exc, failure, self._retry(), failed_at)
+
+    async def _run_group(self, job: _Job) -> None:
+        """Run one read that builds ``job.key`` and its claimed siblings, record each table's
+        outcome on its own record, release what the job holds, and look for the next build.
+        A read that fails is recorded once on every claimed table, with the same reason."""
+        assert self._build_group is not None  # siblings are claimed only when it is given
+        keys = [job.key, *job.siblings]
+        last_write = dict.fromkeys(keys, 0.0)
+
+        async def progress(key: ReplicaKey, rows_copied: int) -> None:
+            if time.monotonic() - last_write[key] < _PROGRESS_EVERY_S:
+                return
+            last_write[key] = time.monotonic()
+            async with self._db.acquire() as conn:
+                await build_state.record_progress(conn, key, rows_copied=rows_copied)
+
+        shield = request_deadline.shielded()
+        try:
+            try:
+                outcomes = await self._build_group(keys, progress)
+            except BaseException as exc:  # allow-ble: the read's failure, whatever its type, is recorded on every table it was building; it is re-raised below when it is not an ordinary error
+                for key in keys:
+                    await self._record_failed(key, exc)
+                if not isinstance(exc, Exception):
+                    raise
+            else:
+                for key in keys:
+                    outcome = outcomes[key]
+                    if isinstance(outcome, BaseException):
+                        await self._record_failed(key, outcome)
+                        continue
+                    now = datetime.now(UTC)
+                    due = await self._next_refresh_at(key, now)
+                    async with self._db.acquire() as conn:
+                        await build_state.record_completed(
+                            conn,
+                            key,
+                            rows_copied=outcome.rows_copied,
+                            method=outcome.method,
+                            content_hash=outcome.content_hash,
+                            store=self._store(),
+                            definition_hash=outcome.definition_hash,
+                            built_columns=outcome.built_columns,
+                            notes=outcome.notes,
+                            next_refresh_at=due,
+                            now=now,
+                        )
+                    log.info(
+                        "replica of %s built: %d rows (%s, one read of %d tables)",
+                        ".".join(key),
+                        outcome.rows_copied,
+                        outcome.method,
+                        len(keys),
+                    )
+        finally:
+            with shield.lock:
+                shield.settle()
+                if job.permit is not None:
+                    self._permits.release(*job.permit)
+                job.claim.close()
+                if job.slot is not None:
+                    job.slot.release()
+        await self.run_pass()
+
     async def _run(self, job: _Job) -> None:
         """Run one claimed build to its end, record the outcome, release what it holds, and
         look for the next build."""
+        if job.siblings:
+            await self._run_group(job)
+            return
         last_write = 0.0
 
         async def progress(rows_copied: int) -> None:

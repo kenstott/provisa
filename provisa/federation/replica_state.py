@@ -544,6 +544,26 @@ async def claim(
     return (result.rowcount or 0) > 0
 
 
+async def claim_sibling(conn: "Connection", key: ReplicaKey, *, holder: str, now: datetime) -> bool:
+    """Move the row to ``building`` for ``holder`` because a build of another table of the
+    same read is starting: the read gives this table's rows too, so it is built whatever its
+    own state -- idle and not yet due, or failed and still waiting. Called only by the process
+    that holds the replica's lock. False when the row is retired or gone. Its failure record
+    is left as it is: the build's completion clears it, and a failed read adds one attempt."""
+    result = await conn.execute_core(
+        update(replica_state)
+        .where(_is(key), _t.retired_at.is_(None))
+        .values(
+            build_state=BUILDING,
+            build_started_at=now,
+            build_holder=holder,
+            rows_copied=0,
+            waiting_on=None,
+        )
+    )
+    return (result.rowcount or 0) > 0
+
+
 async def record_started(
     conn: "Connection", key: ReplicaKey, *, method: str, load_kind: str
 ) -> None:
