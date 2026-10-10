@@ -55,6 +55,7 @@ function renderForm() {
       suggestTableAlias={vi.fn().mockResolvedValue("")}
       registerTable={registerTable}
       onSuccess={vi.fn()}
+      onCancel={() => {}}
       setError={vi.fn()}
     />,
   );

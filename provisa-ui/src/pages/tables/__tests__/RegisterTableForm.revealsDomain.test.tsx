@@ -51,6 +51,7 @@ describe("RegisterTableForm reveals the domain it registered into", () => {
         suggestTableAlias={vi.fn().mockResolvedValue("")}
         registerTable={registerTable}
         onSuccess={vi.fn()}
+        onCancel={() => {}}
         setError={vi.fn()}
       />,
     );

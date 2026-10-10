@@ -869,6 +869,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               setShowForm(false);
               reload();
             }}
+            onCancel={() => setShowForm(false)}
             setError={setError}
           />
         </div>

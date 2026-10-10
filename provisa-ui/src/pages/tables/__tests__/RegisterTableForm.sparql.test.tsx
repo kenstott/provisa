@@ -57,6 +57,7 @@ describe("RegisterTableForm on a sparql source (REQ-1683)", () => {
         suggestTableAlias={vi.fn().mockResolvedValue("")}
         registerTable={registerTable}
         onSuccess={vi.fn()}
+        onCancel={() => {}}
         setError={vi.fn()}
       />,
     );

@@ -75,6 +75,7 @@ function renderForm() {
       suggestTableAlias={suggestTableAlias}
       registerTable={registerTable}
       onSuccess={vi.fn()}
+      onCancel={() => {}}
       setError={setError}
     />,
   );

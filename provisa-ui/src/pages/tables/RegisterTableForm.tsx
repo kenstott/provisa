@@ -12,7 +12,17 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { ColumnsTable } from "./ColumnsTable";
 import { FilesGlobFieldset } from "./FilesGlobFieldset";
 import { useTranslation } from "react-i18next";
-import { Button, Checkbox, Select, Stack, Table, Text, TextInput, Textarea } from "@mantine/core";
+import {
+  Button,
+  Checkbox,
+  Group,
+  Select,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  Textarea,
+} from "@mantine/core";
 import { domainToSqlName, toSnakeCase } from "../../naming";
 import { NlTableSearch } from "./NlTableSearch";
 import { MultiSelect } from "../../components/MultiSelect";
@@ -78,6 +88,8 @@ interface RegisterTableFormProps {
   suggestTableAlias: (tableName: string, domainId: string, sourceId: string) => Promise<string>;
   registerTable: (input: Record<string, unknown>) => Promise<{ success: boolean; message: string }>;
   onSuccess: () => void;
+  /** Closes the form without registering anything. */
+  onCancel: () => void;
   setError: (e: string | null) => void;
 }
 
@@ -93,6 +105,7 @@ export function RegisterTableForm({
   suggestTableAlias,
   registerTable,
   onSuccess,
+  onCancel,
   setError,
 }: RegisterTableFormProps) {
   const { t } = useTranslation();
@@ -1015,15 +1028,16 @@ export function RegisterTableForm({
           />
         </div>
       )}
-      <Button
-        onClick={handleSubmit}
-        // In a grid, alignSelf is the vertical axis; justifySelf is what keeps the button at its
-        // label's width, at the start of the row.
-        style={{ gridColumn: "1 / -1", justifySelf: "start" }}
-        data-testid="register-table-submit"
-      >
-        {t("registerTableForm.submitButton")}
-      </Button>
+      {/* The form's own actions, at the start of the row and as wide as their labels: Save registers
+          the table, Cancel closes the form. (The page's "+ Table" only opens it.) */}
+      <Group gap="xs" style={{ gridColumn: "1 / -1", justifySelf: "start" }}>
+        <Button onClick={handleSubmit} data-testid="register-table-submit">
+          {t("registerTableForm.submitButton")}
+        </Button>
+        <Button variant="default" onClick={onCancel} data-testid="register-table-cancel">
+          {t("registerTableForm.cancelButton")}
+        </Button>
+      </Group>
     </div>
   );
 }
