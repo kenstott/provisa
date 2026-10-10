@@ -1210,7 +1210,10 @@ _online() {
 # The bare interpreter (python-base/), wheelhouse (wheels/) and built UI
 # (ui-dist/) are staged into the AppDir at build time.
 _find_payload() {
-  local name="$1" test_glob="$2" cand="${APPDIR}/${name}"
+  # Two statements: a declaration's words are all expanded before any of it is assigned, so
+  # `local name="$1" cand="${APPDIR}/${name}"` reads a `name` that is not there yet.
+  local name="$1" test_glob="$2"
+  local cand="${APPDIR}/${name}"
   if [ -d "$cand" ] && { [ -z "$test_glob" ] || ls "$cand"/$test_glob >/dev/null 2>&1; }; then
     printf '%s' "$cand"; return 0
   fi

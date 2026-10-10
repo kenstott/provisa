@@ -353,3 +353,32 @@ def test_first_launch_installs_the_wheels_it_carries_when_asked(source, network,
         text=True,
     )
     assert done.stdout.strip() == ("online" if online else "bundled"), done.stderr
+
+
+def test_first_launch_finds_the_payload_the_appimage_carries(tmp_path):
+    """Run 38047806077: the native tier — the default install — stopped at "name: unbound
+    variable", on any distro: the finder declared `name` and read it in one statement. The
+    function, run as the script runs (unset variables are errors)."""
+    first_launch = (_ROOT / "packaging/linux/first-launch.sh").read_text()
+    start = first_launch.index("_find_payload() {")
+    function = first_launch[start : first_launch.index("\n}\n", start) + 3]
+    (tmp_path / "python-base/bin").mkdir(parents=True)
+    (tmp_path / "python-base/bin/python3").write_text("")
+    (tmp_path / "ui-dist").mkdir()
+    script = function + (
+        '_find_payload python-base bin/python3; echo; _find_payload ui-dist ""; echo\n'
+        '_find_payload wheels "*.whl" || echo "no wheels"\n'
+    )
+    done = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", script],
+        env={"APPDIR": str(tmp_path), "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.split() == [
+        f"{tmp_path}/python-base",
+        f"{tmp_path}/ui-dist",
+        "no",
+        "wheels",
+    ]
