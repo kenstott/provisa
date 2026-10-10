@@ -13,7 +13,6 @@ import { useTranslation } from "react-i18next";
 import { Trash2, Pencil } from "lucide-react";
 import { ActionIcon, Badge, Box, Button, Group, Table, Text, Tooltip } from "@mantine/core";
 import type { NavigateFunction } from "react-router-dom";
-import { requiredParamColumns } from "../../components/nativeParams";
 import type { RegisteredTable, DataProduct } from "../../types/admin";
 import { computeProfile } from "./helpers";
 import { TagControl } from "../../components/TagControl";
@@ -75,9 +74,6 @@ export function TableReadView({
   profileColumnsTable,
 }: TableReadViewProps) {
   const { t } = useTranslation();
-  // A table whose rows need a value for a required filter (_nf_* path parameters) has no whole
-  // table to preview or profile.
-  const needsFilter = requiredParamColumns(table).length > 0;
 
   return (
     <>
@@ -345,21 +341,21 @@ export function TableReadView({
               : t("tableReadView.deployToDbButton")}
           </Button>
         )}
-        {!needsFilter && (
-          <Button
-            size="compact-sm"
-            variant="default"
-            data-testid="table-read-view-preview"
-            onClick={(e) => {
-              e.stopPropagation();
-              onPreview(table);
-            }}
-            title={t("tableReadView.previewTitle")}
-          >
-            {t("tableReadView.previewButton")}
-          </Button>
-        )}
-        {!needsFilter && !hidingOnly && (
+        {/* A table that needs a value for a required parameter is asked for it first: Preview
+            in its own viewer, Profile in the dialog its handler opens. */}
+        <Button
+          size="compact-sm"
+          variant="default"
+          data-testid="table-read-view-preview"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPreview(table);
+          }}
+          title={t("tableReadView.previewTitle")}
+        >
+          {t("tableReadView.previewButton")}
+        </Button>
+        {!hidingOnly && (
           <Button
             size="compact-sm"
             variant="default"
@@ -392,17 +388,17 @@ export function TableReadView({
         </Button>
         {/* REQ-1958: the editor opens for a caller who is not shown the grant lists and masks
             too; it shows none of them and its save names none, so the store keeps them. */}
-          <ActionIcon
-            variant="subtle"
-            aria-label={t("tableReadView.editButtonLabel", { name: table.tableName })}
-            data-testid="table-read-view-edit"
-            onClick={(e) => {
-              e.stopPropagation();
-              startEditing(table);
-            }}
-          >
-            <Pencil size={14} />
-          </ActionIcon>
+        <ActionIcon
+          variant="subtle"
+          aria-label={t("tableReadView.editButtonLabel", { name: table.tableName })}
+          data-testid="table-read-view-edit"
+          onClick={(e) => {
+            e.stopPropagation();
+            startEditing(table);
+          }}
+        >
+          <Pencil size={14} />
+        </ActionIcon>
         {!hidingOnly && (
           <ActionIcon
             variant="subtle"

@@ -346,7 +346,13 @@ def _extract_params(params: list[dict]) -> tuple[list[dict], list[dict]]:
         location = p.get("in", "")
         schema = p.get("schema", {})
         param_type = schema.get("type") if isinstance(schema, dict) else p.get("type", "string")
-        entry = {"name": p.get("name", ""), "type": param_type or "string"}
+        # OpenAPI: a parameter is required when it says so; a path parameter always is, and
+        # the specification's own default for the others is false.
+        entry = {
+            "name": p.get("name", ""),
+            "type": param_type or "string",
+            "required": location == "path" or p.get("required") is True,
+        }
         if location == "path":
             path_params.append(entry)
         elif location == "query":

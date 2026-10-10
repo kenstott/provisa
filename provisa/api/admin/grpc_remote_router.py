@@ -264,6 +264,9 @@ def query_columns(query) -> tuple[list, list]:
             visible_to=[],
             data_type=c.type,
             native_filter_type="grpc_input",
+            # proto3 has no required fields: every field of a request message may be left
+            # unset, so no input is required by what the proto states.
+            native_filter_required=False,
         )
         for c in query.input_fields
     ]

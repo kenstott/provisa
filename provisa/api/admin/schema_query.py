@@ -2314,6 +2314,7 @@ async def resolve_available_columns_metadata(
                         "name": nf_name,
                         "type": _openapi_to_provisa_type(p.get("type")),
                         "native_filter_type": "path_param",
+                        "native_filter_required": True,
                     }
                 )
         for p in q.query_params:
@@ -2326,6 +2327,7 @@ async def resolve_available_columns_metadata(
                         # the engine has, as the response's columns are typed.
                         "type": _openapi_to_provisa_type(p.get("type")),
                         "native_filter_type": "query_param",
+                        "native_filter_required": p["required"],
                     }
                 )
         return [
@@ -2334,6 +2336,7 @@ async def resolve_available_columns_metadata(
                 data_type=c["type"],
                 comment=c.get("description"),
                 native_filter_type=c.get("native_filter_type"),
+                native_filter_required=c.get("native_filter_required"),
             )
             for c in cols
         ]

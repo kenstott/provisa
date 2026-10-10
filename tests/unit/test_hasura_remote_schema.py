@@ -96,6 +96,7 @@ def test_required_root_argument_becomes_native_filter_column():
     continent = next(t for t in cfg.tables if t.table_name == "continent")
     nf = continent.columns[0]
     assert nf.name == "_nf_code" and nf.native_filter_type == "query_param"
+    assert nf.native_filter_required is True
     assert nf.visible_to == [] and nf.data_type == "varchar"
 
 

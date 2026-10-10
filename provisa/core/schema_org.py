@@ -336,6 +336,8 @@ table_columns = Table(
     Column("mask_precision", Text),
     Column("is_primary_key", Boolean, nullable=False, server_default=false()),
     Column("native_filter_type", Text),
+    # Whether the parameter is required by its source; NULL where it is not recorded.
+    Column("native_filter_required", Boolean),
     Column("is_foreign_key", Boolean, nullable=False, server_default=false()),
     Column("is_alternate_key", Boolean, nullable=False, server_default=false()),
     Column("object_fields", JSON, nullable=False, default=list, server_default="[]"),

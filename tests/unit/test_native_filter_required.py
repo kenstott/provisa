@@ -1,0 +1,51 @@
+"""A registered parameter column records whether its source requires a value for it (#204).
+
+Each registration path sets it from what the source states: an OpenAPI path parameter, or one
+the spec marks required; a GraphQL argument that is non-null with no default. Preview and
+Profile ask for the required values first, so a table is never read without them.
+"""
+
+from __future__ import annotations
+
+from provisa.api.admin import _graphql_table_registration as registration
+from provisa.core.models import Column
+from provisa.openapi.mapper import _extract_params
+
+
+def test_an_openapi_parameter_is_required_when_the_spec_says_so():
+    path, query = _extract_params(
+        [
+            {"name": "petId", "in": "path", "required": True, "schema": {"type": "integer"}},
+            # A path parameter is always required, whatever a loose spec leaves out.
+            {"name": "ownerId", "in": "path", "schema": {"type": "string"}},
+            {"name": "status", "in": "query", "required": True, "schema": {"type": "string"}},
+            {"name": "limit", "in": "query", "schema": {"type": "integer"}},
+            {"name": "tag", "in": "query", "required": False, "schema": {"type": "string"}},
+        ]
+    )
+    assert {p["name"]: p["required"] for p in path} == {"petId": True, "ownerId": True}
+    assert {p["name"]: p["required"] for p in query} == {
+        "status": True,
+        "limit": False,
+        "tag": False,
+    }
+
+
+def test_a_remote_graphql_tables_required_argument_is_recorded_required():
+    columns = registration._column_models(
+        {
+            "columns": [{"name": "id", "type": "integer"}],
+            "required_args": [{"name": "owner", "provisa_type": "text"}],
+        }
+    )
+    by_name = {c.name: c for c in columns}
+    assert by_name["_nf_owner"].native_filter_type == "query_param"
+    assert by_name["_nf_owner"].native_filter_required is True
+    assert by_name["id"].native_filter_required is None  # not a parameter
+
+
+def test_a_column_says_nothing_until_a_registration_records_it():
+    assert (
+        Column(name="_nf_id", visible_to=[], native_filter_type="path_param").native_filter_required
+        is None
+    )

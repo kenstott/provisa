@@ -12,7 +12,7 @@
 // previews it, but is not offered the table editor's acts -- deploy, profile, delete.
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "../../../test-utils/render";
+import { fireEvent, render, screen } from "../../../test-utils/render";
 import { TableReadView } from "../TableReadView";
 import type { RegisteredTable } from "../../../types/admin";
 
@@ -82,10 +82,10 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
 
 const TABLE = makeTable({ id: 7, sourceId: "pg", canDeployToDb: true });
 
-function renderView(hidingOnly: boolean) {
+function renderView(hidingOnly: boolean, shown: RegisteredTable = TABLE, acts = {}) {
   render(
     <TableReadView
-      t={TABLE}
+      t={shown}
       hidingOnly={hidingOnly}
       dataProducts={[]}
       navigate={vi.fn()}
@@ -101,6 +101,7 @@ function renderView(hidingOnly: boolean) {
       handleDelete={vi.fn()}
       handleProfile={vi.fn()}
       onPreview={vi.fn()}
+      {...acts}
     />,
   );
 }
@@ -120,5 +121,31 @@ describe("TableReadView for a governance-only viewer (REQ-1944)", () => {
     expect(screen.getByTestId("table-read-view-deploy")).toBeInTheDocument();
     expect(screen.getByTestId("table-read-view-profile")).toBeInTheDocument();
     expect(screen.getByTestId("table-read-view-delete")).toBeInTheDocument();
+  });
+});
+
+// #204: a table with a required parameter keeps both buttons. Each hands the table on to what
+// asks for the required values first (the preview's own form; the dialog Profile opens).
+describe("TableReadView for a table with a required parameter", () => {
+  const argument = {
+    id: 1,
+    columnName: "_nf_owner",
+    visibleTo: [],
+    writableBy: [],
+    unmaskedTo: [],
+    scope: "domain",
+    nativeFilterType: "query_param",
+    nativeFilterRequired: true,
+  } as unknown as RegisteredTable["columns"][number];
+  const needing = makeTable({ id: 9, sourceId: "gh", columns: [argument] });
+
+  it("offers Preview and Profile for a remote GraphQL table's required argument", () => {
+    const onPreview = vi.fn();
+    const handleProfile = vi.fn();
+    renderView(false, needing, { onPreview, handleProfile });
+    fireEvent.click(screen.getByTestId("table-read-view-preview"));
+    fireEvent.click(screen.getByTestId("table-read-view-profile"));
+    expect(onPreview).toHaveBeenCalledWith(needing);
+    expect(handleProfile).toHaveBeenCalledWith(9);
   });
 });

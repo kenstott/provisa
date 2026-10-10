@@ -87,6 +87,7 @@ _COLUMN_PROJECTION = [
     table_columns.c.mask_value,
     table_columns.c.mask_precision,
     table_columns.c.native_filter_type,
+    table_columns.c.native_filter_required,
     table_columns.c.is_primary_key,
     table_columns.c.is_foreign_key,
     table_columns.c.is_alternate_key,
@@ -505,6 +506,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 data_type=_data_type,
                 path=getattr(col, "path", None),
                 native_filter_type=getattr(col, "native_filter_type", None),
+                native_filter_required=getattr(col, "native_filter_required", None),
                 is_primary_key=getattr(col, "is_primary_key", False),
                 is_foreign_key=getattr(col, "is_foreign_key", False)
                 or _derived_keys.get(col.name, (False, False))[0],

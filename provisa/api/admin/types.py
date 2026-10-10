@@ -498,6 +498,8 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     description: str | None
     data_type: str | None = None
     native_filter_type: str | None = None
+    # Whether the source requires a value for this parameter; None where it is not recorded.
+    native_filter_required: bool | None = None
     # REQ-1739: dot-notation JSON extraction path for an `ingest` push source's column mapping
     # (provisa/ingest/router.py's `_extract_row`) — already a DB column and a core Column model
     # field, just never surfaced through this GraphQL type, so the table editor couldn't read it.
@@ -596,6 +598,8 @@ class AvailableColumnType:  # REQ-533
     data_type: str
     comment: str | None
     native_filter_type: str | None = None
+    # Whether the source requires a value for this parameter; None where it is not recorded.
+    native_filter_required: bool | None = None
     is_primary_key: bool = False
 
 
@@ -850,6 +854,8 @@ class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
     # it — this input type just never carried it, so the Sources UI had no way to set it.
     path: str | None = None
     native_filter_type: str | None = None
+    # Whether the source requires a value for this parameter; None where it is not recorded.
+    native_filter_required: bool | None = None
     is_primary_key: bool = False
     is_foreign_key: bool = False
     is_alternate_key: bool = False

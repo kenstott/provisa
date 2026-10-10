@@ -447,7 +447,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       setTableProfiles((prev) => ({ ...prev, [tableId]: "No active role" }));
       return;
     }
-    // A table with required native params (path_param) cannot be sampled bare:
+    // A table with required native params (isRequiredParam) cannot be sampled bare:
     // collect the params first, then profile through the governed SQL pipeline
     // with the params as WHERE predicates.
     const table = tables.find((tbl) => tbl.id === tableId);

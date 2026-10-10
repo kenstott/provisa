@@ -162,6 +162,8 @@ def _column_models(table: dict) -> "list[Column]":
             name=f"_nf_{apply_sql_name(a['name'])}",
             visible_to=[],
             native_filter_type="query_param",
+            # Every argument registered is one the schema requires: non-null, with no default.
+            native_filter_required=True,
             data_type=_PHYSICAL_TYPE[a["provisa_type"]],
         )
         for a in table.get("required_args") or []
@@ -237,6 +239,7 @@ async def columns_to_register(
                     "object_fields": col.object_fields,
                     "gql_selection": col.gql_selection,
                     "native_filter_type": col.native_filter_type,
+                    "native_filter_required": col.native_filter_required,
                     "description": pick.description or col.description,
                 }
             )

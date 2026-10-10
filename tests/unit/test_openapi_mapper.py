@@ -102,7 +102,7 @@ def test_path_params_extracted():
     queries, _ = parse_spec(spec)
     assert len(queries) == 1
     q = queries[0]
-    assert q.path_params == [{"name": "id", "type": "string"}]
+    assert q.path_params == [{"name": "id", "type": "string", "required": True}]
     assert q.query_params == []
 
 
@@ -124,8 +124,9 @@ def test_query_params_extracted():
     queries, _ = parse_spec(spec)
     q = queries[0]
     assert q.query_params == [
-        {"name": "limit", "type": "integer"},
-        {"name": "offset", "type": "integer"},
+        # Neither says it is required, and the specification's default is that it is not.
+        {"name": "limit", "type": "integer", "required": False},
+        {"name": "offset", "type": "integer", "required": False},
     ]
 
 
@@ -373,7 +374,7 @@ def test_a_schema_that_refers_to_itself_is_read():
 
 def test_a_referenced_parameter_is_read():
     (query,), _ = parse_spec(_COMPOSED)
-    assert query.path_params == [{"name": "slug", "type": "string"}]
+    assert query.path_params == [{"name": "slug", "type": "string", "required": True}]
 
 
 # -- a GET that declares no rows, and an operation that answers with a file (REQ-1924) ------------

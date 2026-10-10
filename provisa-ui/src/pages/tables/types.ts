@@ -22,6 +22,8 @@ export interface ColumnForm {
   description: string;
   selected: boolean;
   nativeFilterType: string | null;
+  /** Whether the source requires a value for this parameter; null where it is not recorded. */
+  nativeFilterRequired?: boolean | null;
   dataType: string;
   isPrimaryKey: boolean;
   scope: string;

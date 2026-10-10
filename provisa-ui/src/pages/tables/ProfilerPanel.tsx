@@ -32,7 +32,7 @@ export function ProfilerPanel({
   setEditingTable: React.Dispatch<React.SetStateAction<RegisteredTable | null>>;
 }) {
   const { t } = useTranslation();
-  // A table whose rows need a value for a required filter (_nf_* path parameters) has no whole
+  // A table whose rows need a value for a required parameter (isRequiredParam) has no whole
   // table to profile, so it cannot join a profiler.
   const needsFilter = requiredParamColumns(editingTable).length > 0;
   const [profilers, setProfilers] = useState<Profiler[] | null>(null);

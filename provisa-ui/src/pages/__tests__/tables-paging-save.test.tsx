@@ -151,7 +151,10 @@ const TABLES = [
         unmaskedTo: [],
         maskType: null,
         scope: null,
-        nativeFilterType: "path_param",
+        // A remote GraphQL table's required argument: a query_param the registration records
+        // as required (#204).
+        nativeFilterType: "query_param",
+        nativeFilterRequired: true,
       } as unknown as RegisteredTable["columns"][number],
     ],
   }),
@@ -345,11 +348,21 @@ describe("TablesPage — a table that needs a required filter", () => {
     await userEvent.click(row.querySelector("td") as HTMLElement);
   }
 
-  it("offers no preview or profile when its rows need a required filter", async () => {
+  // #204: both stay, and each asks for the required value before anything is read.
+  it("asks for the required value before it profiles", async () => {
     await openTable("pet_by_id");
-    await screen.findByTestId("table-read-view-policies");
-    expect(screen.queryByTestId("table-read-view-preview")).toBeNull();
-    expect(screen.queryByTestId("table-read-view-profile")).toBeNull();
+    await userEvent.click(await screen.findByTestId("table-read-view-profile"));
+    expect(await screen.findByTestId("native-params-modal")).toBeInTheDocument();
+    expect(screen.getByTestId("native-param-_nf_id")).toBeRequired();
+    expect(screen.getByTestId("native-params-run-btn")).toBeDisabled();
+  });
+
+  it("asks for the required value before it previews", async () => {
+    await openTable("pet_by_id");
+    await userEvent.click(await screen.findByTestId("table-read-view-preview"));
+    expect(await screen.findByTestId("table-preview-params-hint")).toBeInTheDocument();
+    expect(screen.getByTestId("preview-param-_nf_id")).toBeRequired();
+    expect(screen.getByTestId("preview-run-btn")).toBeDisabled();
   });
 
   it("offers preview and profile for a table with no required filter", async () => {

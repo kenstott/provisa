@@ -482,6 +482,8 @@ export interface ColumnMetadata {
   dataType: string;
   comment: string | null;
   nativeFilterType: string | null;
+  /** Whether the source requires a value for this parameter; null where it is not recorded. */
+  nativeFilterRequired?: boolean | null;
   isPrimaryKey: boolean;
 }
 

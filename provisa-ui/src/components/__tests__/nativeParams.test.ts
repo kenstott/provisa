@@ -16,6 +16,8 @@ import {
   buildParamWhere,
   pagedViewerSql,
   previewSql,
+  isRequiredParam,
+  optionalParamColumns,
   requiredParamColumns,
   requiredParamsSatisfied,
 } from "../nativeParams";
@@ -61,6 +63,26 @@ const TABLE = {
 describe("nativeParams", () => {
   it("identifies path_param columns as required", () => {
     expect(requiredParamColumns(TABLE).map((c) => c.columnName)).toEqual(["petId"]);
+  });
+
+  // #204: the registration records whether the source requires the parameter. A remote GraphQL
+  // table's required argument is a query_param, and an OpenAPI query parameter may be required.
+  it("takes required from what the registration recorded, whatever the parameter's kind", () => {
+    const required = { ...col("owner", "query_param"), nativeFilterRequired: true };
+    const optional = { ...col("limit", "query_param"), nativeFilterRequired: false };
+    const input = { ...col("customer", "grpc_input"), nativeFilterRequired: false };
+    const table = { ...TABLE, columns: [required, optional, input, col("name", null)] };
+    expect(requiredParamColumns(table).map((c) => c.columnName)).toEqual(["owner"]);
+    expect(optionalParamColumns(table).map((c) => c.columnName)).toEqual(["limit", "customer"]);
+    expect(requiredParamsSatisfied(table, {})).toBe(false);
+    expect(requiredParamsSatisfied(table, { owner: "octocat" })).toBe(true);
+  });
+
+  it("knows only a path parameter to be required where nothing was recorded", () => {
+    expect(isRequiredParam(col("petId", "path_param"))).toBe(true);
+    expect(isRequiredParam(col("status", "query_param"))).toBe(false);
+    expect(isRequiredParam({ ...col("x", "query_param"), nativeFilterRequired: null })).toBe(false);
+    expect(isRequiredParam({ ...col("name", null), nativeFilterRequired: true })).toBe(false);
   });
 
   it("blocks until every required param is non-blank", () => {

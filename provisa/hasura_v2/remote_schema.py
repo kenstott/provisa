@@ -155,6 +155,7 @@ def land_remote_schema(
                     name=f"_nf_{arg_name}",
                     data_type=arg_type,
                     native_filter_type="query_param",
+                    native_filter_required=True,  # only non-null arguments are registered
                     visible_to=[],
                     description=f"{arg_name} argument of {rs.name}.{fname}, passed through at query time",
                 )

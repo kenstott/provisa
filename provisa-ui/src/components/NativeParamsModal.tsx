@@ -17,6 +17,7 @@ import { Button, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
 import type { RegisteredTable } from "../types/admin";
 import {
   optionalParamColumns,
+  isRequiredParam,
   requiredParamColumns,
   requiredParamsSatisfied,
 } from "./nativeParams";
@@ -52,7 +53,7 @@ export function NativeParamsModal({ table, onClose, onSubmit }: NativeParamsModa
           <TextInput
             key={c.columnName}
             label={c.alias || c.columnName}
-            required={c.nativeFilterType === "path_param"}
+            required={isRequiredParam(c)}
             value={values[c.columnName] ?? ""}
             onChange={(e) => {
               // React may run a functional updater on a later render pass, by which point the

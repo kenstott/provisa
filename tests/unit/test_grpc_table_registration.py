@@ -152,6 +152,8 @@ async def test_registering_a_table_takes_the_columns_chosen_and_every_filter(mon
     assert set(by_name) == {"id", "total", "_nf_customer_id"}
     assert by_name["id"].visible_to == ["analyst"] and by_name["id"].data_type == "integer"
     assert by_name["_nf_customer_id"].native_filter_type == "grpc_input"
+    # proto3 has no required fields, so no input is required by what the proto states.
+    assert by_name["_nf_customer_id"].native_filter_required is False
     # The registration is recorded for the table, in the domain it is registered into.
     args = conn.execute.await_args.args
     assert args[1:3] == ("g", "ns__OrderService__ListOrders") and args[5] == "sales"

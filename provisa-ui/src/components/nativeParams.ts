@@ -90,12 +90,28 @@ export function pagedViewerSql(
   };
 }
 
-export function requiredParamColumns(table: RegisteredTable): TableColumn[] {
-  return table.columns.filter((c) => c.nativeFilterType === "path_param");
+/** Whether a column is a parameter its source cannot be read without. The registration records
+ * it (`nativeFilterRequired`) from what the source states: an OpenAPI path parameter or one
+ * marked required, a GraphQL argument that is non-null with no default. A column registered
+ * before that was recorded says nothing; then only a path parameter is known to be required. */
+export function isRequiredParam(c: {
+  nativeFilterType?: string | null;
+  nativeFilterRequired?: boolean | null;
+}): boolean {
+  if (!c.nativeFilterType) return false;
+  if (c.nativeFilterRequired === true || c.nativeFilterRequired === false) {
+    return c.nativeFilterRequired;
+  }
+  return c.nativeFilterType === "path_param";
 }
 
+export function requiredParamColumns(table: RegisteredTable): TableColumn[] {
+  return table.columns.filter((c) => isRequiredParam(c));
+}
+
+/** The parameters a read may be given and does not need. */
 export function optionalParamColumns(table: RegisteredTable): TableColumn[] {
-  return table.columns.filter((c) => c.nativeFilterType === "query_param");
+  return table.columns.filter((c) => !!c.nativeFilterType && !isRequiredParam(c));
 }
 
 const NUMERIC_TYPES = /int|numeric|decimal|double|float|real|bigint|smallint/i;

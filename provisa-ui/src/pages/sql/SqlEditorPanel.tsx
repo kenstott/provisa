@@ -571,6 +571,7 @@ export function SqlEditorPanel({
                   alias: c.alias ?? undefined,
                   description: c.description ?? undefined,
                   nativeFilterType: c.nativeFilterType ?? undefined,
+                  nativeFilterRequired: c.nativeFilterRequired ?? undefined,
                   isPrimaryKey: c.isPrimaryKey ?? undefined,
                   isForeignKey: c.isForeignKey ?? undefined,
                   isAlternateKey: c.isAlternateKey ?? undefined,

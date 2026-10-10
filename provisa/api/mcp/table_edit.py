@@ -116,6 +116,7 @@ def _column_input(c: Any) -> Any:
         data_type=c.data_type or None,
         path=c.path or None,
         native_filter_type=c.native_filter_type or None,
+        native_filter_required=c.native_filter_required,
         is_primary_key=c.is_primary_key,
         is_foreign_key=c.is_foreign_key,
         is_alternate_key=c.is_alternate_key,

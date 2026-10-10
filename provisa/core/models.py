@@ -843,6 +843,11 @@ class Column(
     description: str | None = None  # GraphQL field description
     path: str | None = None  # JSON extraction path (e.g. "payload.order_id")
     native_filter_type: str | None = None  # "path_param" | "query_param" for OpenAPI sources
+    # Whether the source cannot be read without a value for this parameter, as the source's own
+    # description says (an OpenAPI path parameter or one marked required, a GraphQL argument
+    # that is non-null with no default). None for a column that is no parameter, and for one
+    # registered before this was recorded: then only a path parameter is known to be required.
+    native_filter_required: bool | None = None
     is_primary_key: bool = False  # user-designated PK (informational, not enforced)
     is_foreign_key: bool = False  # derived from relationships (source_column side)
     is_alternate_key: bool = (

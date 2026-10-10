@@ -82,7 +82,6 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
   };
 }
 
-
 function column(name: string, grants: Partial<TableColumn>): TableColumn {
   return {
     id: 1,

@@ -193,6 +193,8 @@ export interface TableColumn {
   description: string | null;
   dataType: string | null;
   nativeFilterType: string | null;
+  /** Whether the source requires a value for this parameter; null where it is not recorded. */
+  nativeFilterRequired?: boolean | null;
   // REQ-1739: dot-notation JSON extraction path for an `ingest` push source's column mapping.
   path?: string | null;
   isPrimaryKey: boolean;

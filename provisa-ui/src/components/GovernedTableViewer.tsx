@@ -29,6 +29,7 @@ import { useResultsGrid } from "../pages/sql/useResultsGrid";
 import {
   optionalParamColumns,
   pagedViewerSql,
+  isRequiredParam,
   requiredParamColumns,
   requiredParamsSatisfied,
 } from "./nativeParams";
@@ -202,7 +203,7 @@ export function GovernedTableViewer({ table, showTitle = false }: GovernedTableV
               key={c.columnName}
               size="xs"
               label={c.alias || c.columnName}
-              required={c.nativeFilterType === "path_param"}
+              required={isRequiredParam(c)}
               value={paramValues[c.columnName] ?? ""}
               onChange={(e) => {
                 // Read before the updater: a functional updater can run on a later render pass,

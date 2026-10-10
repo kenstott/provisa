@@ -165,6 +165,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         col_rows = await conn.fetch(
             "SELECT column_name, data_type, visible_to, writable_by, unmasked_to, "
             "mask_type, alias, description, path, is_primary_key, object_fields, native_filter_type, "
+            "native_filter_required, "
             "epoch_unit, fake, fake_stable, fake_stable_version, synthetic_rule, "  # REQ-1908, REQ-1494
             "scope "  # REQ-1959: who is served the column is decided from it (rights.column_served)
             "FROM table_columns WHERE table_id = $1 ORDER BY id",
@@ -192,6 +193,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
                 "is_primary_key": bool(r.get("is_primary_key") or False),
                 "object_fields": _as_list(r.get("object_fields")),
                 "native_filter_type": r.get("native_filter_type"),
+                "native_filter_required": r.get("native_filter_required"),
                 "scope": r["scope"],  # REQ-1959
                 "epoch_unit": r.get("epoch_unit"),  # REQ-1908
                 "fake": r.get("fake"),  # REQ-1494

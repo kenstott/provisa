@@ -42,7 +42,11 @@ const PROFILERS = [
 
 function table(
   profilerSourceId: string | null,
-  columns: { columnName: string; nativeFilterType: string | null }[] = [],
+  columns: {
+    columnName: string;
+    nativeFilterType: string | null;
+    nativeFilterRequired?: boolean | null;
+  }[] = [],
 ): RegisteredTable {
   return { id: 7, tableName: "orders", profilerSourceId, columns } as unknown as RegisteredTable;
 }
@@ -57,6 +61,19 @@ describe("ProfilerPanel", () => {
     render(
       <ProfilerPanel
         editingTable={table(null, [{ columnName: "_nf_id", nativeFilterType: "path_param" }])}
+        savedProfilerId={null}
+        setEditingTable={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("profiler-panel-toggle")).toBeNull();
+  });
+
+  it("is not offered for a table with a required argument of another kind (#204)", () => {
+    render(
+      <ProfilerPanel
+        editingTable={table(null, [
+          { columnName: "_nf_owner", nativeFilterType: "query_param", nativeFilterRequired: true },
+        ])}
         savedProfilerId={null}
         setEditingTable={vi.fn()}
       />,

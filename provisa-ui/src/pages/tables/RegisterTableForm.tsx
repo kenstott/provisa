@@ -71,6 +71,7 @@ interface RegisterTableFormProps {
       dataType: string;
       comment?: string | null;
       nativeFilterType?: string | null;
+      nativeFilterRequired?: boolean | null;
       isPrimaryKey?: boolean | null;
     }[]
   >;
@@ -333,6 +334,7 @@ export function RegisterTableForm({
             description: c.comment || "",
             selected: true,
             nativeFilterType: c.nativeFilterType ?? null,
+            nativeFilterRequired: c.nativeFilterRequired ?? null,
             dataType: c.dataType,
             isPrimaryKey: c.isPrimaryKey ?? false,
             // REQ-1959: nothing is public by default. A parameter column is an argument, not
@@ -441,6 +443,7 @@ export function RegisterTableForm({
         alias: c.alias || undefined,
         description: c.description || undefined,
         nativeFilterType: c.nativeFilterType || undefined,
+        nativeFilterRequired: c.nativeFilterRequired ?? undefined,
         isPrimaryKey: c.isPrimaryKey || undefined,
         scope: c.scope || "domain",
         path: c.path?.trim() || undefined, // REQ-1739: ingest per-column JSON extraction path

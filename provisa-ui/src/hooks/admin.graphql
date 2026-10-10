@@ -26,6 +26,7 @@ fragment ColumnFields on TableColumnType {
   description
   dataType
   nativeFilterType
+  nativeFilterRequired
   path
   isPrimaryKey
   isForeignKey
@@ -593,6 +594,7 @@ query AvailableColumnsMetadata($sourceId: String!, $schemaName: String!, $tableN
     dataType
     comment
     nativeFilterType
+    nativeFilterRequired
     isPrimaryKey
   }
 }

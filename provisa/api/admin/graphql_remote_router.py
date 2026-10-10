@@ -395,6 +395,8 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                         name=f"_nf_{apply_sql_name(a['name'])}",
                         visible_to=[],
                         native_filter_type="query_param",
+                        # A required argument: non-null in the schema, with no default.
+                        native_filter_required=True,
                         # REQ-1426: a native-filter column is a column — it carries the argument's
                         # resolved type like any other. Omitting it wrote NULL data_type rows the
                         # catalog then rendered as "unknown". _gql_to_provisa_type always yields a

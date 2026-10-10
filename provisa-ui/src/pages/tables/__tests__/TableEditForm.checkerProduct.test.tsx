@@ -165,10 +165,7 @@ describe("TableEditForm — checker table product membership (REQ-1443 clause 10
   });
 
   it("keeps the editable picker for an ordinary table", () => {
-    renderForm(
-      makeTable({ sourceId: "wh", dqContract: null, productId: null }),
-      [PLAIN_SOURCE],
-    );
+    renderForm(makeTable({ sourceId: "wh", dqContract: null, productId: null }), [PLAIN_SOURCE]);
     const control = screen.getByTestId("table-edit-product-id") as HTMLInputElement;
     expect(control).not.toBeDisabled();
     expect(screen.getByText(t("tableEditForm.dataProductDesc"))).toBeTruthy();

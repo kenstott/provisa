@@ -215,6 +215,13 @@ async def test_how_a_registered_table_is_read_is_stored_with_the_source(state):
     assert specs["shop__order"]["field_name"] == "order"
     assert [a["gql_type"] for a in specs["shop__order"]["required_args"]] == ["Int!"]
     assert json.dumps(specs)  # stored as plain data
+    # The required argument is stored as a parameter the table cannot be read without.
+    async with state.tenant_db.acquire() as conn:
+        kept = await table_repo.get_by_name(conn, "shop", "graphql", "shop__order")
+    cols = kept["columns"]
+    params = [c["native_filter_required"] for c in cols if c["native_filter_type"]]
+    assert params and set(params) == {True}
+    assert {c["native_filter_required"] for c in cols if not c["native_filter_type"]} == {None}
 
 
 @respx.mock
