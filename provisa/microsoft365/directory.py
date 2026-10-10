@@ -100,9 +100,18 @@ def _address(user: dict) -> str | None:
     return address.lower() if isinstance(address, str) and address else None
 
 
-def _users(graph: Graph, path: str) -> list[str]:
+#: What Graph requires of a query that narrows a group's members to one kind (an OData cast):
+#: this header and ``$count`` (group: list transitive members, "ConsistencyLevel ... This header
+#: and $count are required when using ... OData cast").
+_ADVANCED = {"ConsistencyLevel": "eventual"}
+
+
+def _users(graph: Graph, path: str, *, advanced: bool = False) -> list[str]:
+    query = {"$select": _USER_FIELDS, "$top": _PAGE}
+    if advanced:
+        query["$count"] = "true"
     addresses = []
-    for page in graph.pages(path, {"$select": _USER_FIELDS, "$top": _PAGE}):
+    for page in graph.pages(path, query, headers=_ADVANCED if advanced else None):
         for user in page:
             # A disabled account is not read: it is left out here, not found out by a refusal.
             if user.get("accountEnabled") is False:
@@ -131,7 +140,9 @@ def mailboxes(graph: Graph, choice: Mailboxes) -> list[str]:
     elif choice.kind == GROUP:
         assert choice.group is not None  # a group choice names its group (settings.parse)
         group = _group_id(graph, choice.group)
-        found = _users(graph, f"/groups/{group}/transitiveMembers/microsoft.graph.user")
+        found = _users(
+            graph, f"/groups/{group}/transitiveMembers/microsoft.graph.user", advanced=True
+        )
     else:
         found = list(choice.addresses)
     return sorted(set(found))

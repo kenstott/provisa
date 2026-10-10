@@ -105,10 +105,11 @@ class Graph:
         params: Mapping[str, str] | None,
         prefer: tuple[str, ...],
         body: Any = None,
+        also: Mapping[str, str] | None = None,
     ) -> Any:
         waited = 0.0
         while True:
-            headers = {"Authorization": f"Bearer {self._token()}"}
+            headers = {**(also or {}), "Authorization": f"Bearer {self._token()}"}
             if prefer:
                 headers["Prefer"] = ", ".join(prefer)
             answer = self._send(method, url, params, headers, body)
@@ -145,12 +146,18 @@ class Graph:
             raise
 
     def pages(
-        self, path: str, params: Mapping[str, str] | None = None, *, prefer=()
+        self,
+        path: str,
+        params: Mapping[str, str] | None = None,
+        *,
+        prefer=(),
+        headers: Mapping[str, str] | None = None,
     ) -> Iterator[list[dict]]:
-        """A collection, one page of items at a time, to its end."""
+        """A collection, one page of items at a time, to its end. ``headers`` are sent with
+        every page (a directory query that needs ``ConsistencyLevel``)."""
         url, query = BASE_URL + path, params
         while url is not None:
-            page = self._call("GET", url, query, tuple(prefer))
+            page = self._call("GET", url, query, tuple(prefer), also=headers)
             yield page["value"]
             # The next page is the address Graph gave, whole: it carries the query already.
             url, query = page.get("@odata.nextLink"), None

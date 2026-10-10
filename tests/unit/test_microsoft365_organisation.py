@@ -262,15 +262,21 @@ def test_everyone_is_every_enabled_user_of_the_directory_to_its_last_page():
         "zed@contoso.com",
     ]
     assert fake.calls[0][2]["$select"] == "mail,userPrincipalName,accountEnabled"
+    assert "$count" not in fake.calls[0][2] and "ConsistencyLevel" not in fake.calls[0][3]
 
 
 def test_a_group_is_named_by_its_id_or_found_by_its_address():
     members = f"/groups/{TENANT}/transitiveMembers/microsoft.graph.user"
-    graph, fake = _graph({members: [[_user("b@contoso.com"), _user("a@contoso.com")]]})
+    graph, fake = _graph({members: [[_user("b@contoso.com")], [_user("a@contoso.com")]]})
     assert directory.mailboxes(graph, Mailboxes("group", group=TENANT)) == [
         "a@contoso.com",
         "b@contoso.com",
     ]
+    # Narrowing a group's members to its users is an advanced query: Graph requires this
+    # header and $count with it, on every page.
+    first, second = fake.calls
+    assert first[2]["$count"] == "true" and first[2]["$top"] == "999"
+    assert first[3]["ConsistencyLevel"] == second[3]["ConsistencyLevel"] == "eventual"
     graph, fake = _graph(
         {"/groups": {"value": [{"id": TENANT}]}, members: [[_user("a@contoso.com")]]}
     )
