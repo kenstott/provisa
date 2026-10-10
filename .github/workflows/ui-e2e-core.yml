@@ -37,6 +37,56 @@ on:
       - "demo/**"
       - ".github/workflows/ui-e2e-core.yml"
   workflow_dispatch:
+  # Callable: by an orchestrator, and by the proof of the CI's own structure. Every secret its two
+  # jobs read, by name; the caller passes each one and nothing is inherited.
+  workflow_call:
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: false
+      AZURE_CLIENT_ID:
+        required: false
+      AZURE_CLIENT_SECRET:
+        required: false
+      AZURE_TENANT_ID:
+        required: false
+      DATABRICKS_HTTP_PATH:
+        required: false
+      DATABRICKS_SERVER_HOSTNAME:
+        required: false
+      DATABRICKS_TOKEN:
+        required: false
+      FABRIC_CAPACITY_NAME:
+        required: false
+      FABRIC_DATABASE:
+        required: false
+      FABRIC_RESOURCE_GROUP:
+        required: false
+      FABRIC_SQL_SERVER:
+        required: false
+      GOOGLE_APPLICATION_CREDENTIALS_JSON:
+        required: false
+      GOOGLE_CLOUD_PROJECT:
+        required: false
+      GSHEETS_TEST_SHEET_ID:
+        required: false
+      SNOWFLAKE_ACCOUNT:
+        required: false
+      SNOWFLAKE_PASSWORD:
+        required: false
+      SNOWFLAKE_USER:
+        required: false
+      SNOWFLAKE_WAREHOUSE:
+        required: false
+      SP_CERT_P12_BASE64:
+        required: false
+      SP_CERT_PASSWORD:
+        required: false
+      SP_CLIENT_ID:
+        required: false
+      SP_SITE_URL:
+        required: false
+      SP_TENANT_ID:
+        required: false
 
 permissions:
   contents: read
@@ -83,9 +133,13 @@ jobs:
       working-directory: provisa-ui
       # json beside the list and the HTML report (in a file of its own: the HTML reporter empties
       # its folder): the run's own record of what did not execute.
+      # Playwright stops ITSELF after 95 minutes, inside the job's bound: a run the job timeout
+      # kills writes no report at all (release .479, run 38022153596: 108 failed attempts and
+      # not one line of error text, no artifact). Stopped by its own limit it prints every
+      # failure and writes the HTML and JSON reports, which the steps after this one upload.
       run: >-
         PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-results.json
-        npx playwright test --project=core --reporter=list,html,json
+        npx playwright test --project=core --global-timeout=5700000 --reporter=list,html,json
       # prepare: the credential files of the live sources. after: every test that did not run,
       # by name and reason, under its own count (not a pass); the Fabric capacity paused again;
       # the credential files removed.
@@ -143,9 +197,13 @@ jobs:
       working-directory: provisa-ui
       # json beside the list and the HTML report (in a file of its own: the HTML reporter empties
       # its folder): the run's own record of what did not execute.
+      # Playwright stops ITSELF after 125 minutes, inside the job's bound: a run the job timeout
+      # kills writes no report at all (release .479, run 38022153596: 108 failed attempts and
+      # not one line of error text, no artifact). Stopped by its own limit it prints every
+      # failure and writes the HTML and JSON reports, which the steps after this one upload.
       run: >-
         PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-results.json
-        npx playwright test --project=core-provisioning --workers=1 --reporter=list,html,json
+        npx playwright test --project=core-provisioning --workers=1 --global-timeout=7500000 --reporter=list,html,json
       # prepare: the credential files of the live sources. after: every test that did not run,
       # by name and reason, under its own count (not a pass); the Fabric capacity paused again;
       # the credential files removed.

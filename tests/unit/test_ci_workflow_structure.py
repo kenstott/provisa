@@ -583,6 +583,11 @@ def test_the_core_ui_jobs_report_what_did_not_execute_and_sample_the_runner():
     for job in ("playwright", "provisioning"):
         given = jobs[job]["with"]
         assert "--reporter=list,html,json" in given["run"]
+        # The run stops itself inside the job's bound, so a slow run still leaves its reports: a
+        # run killed by the job timeout writes none (release .479's core lane).
+        limit = re.search(r"--global-timeout=(\d+)", given["run"])
+        assert limit is not None, job
+        assert 15 <= int(given["timeout"]) - int(limit.group(1)) / 60000 <= 30, job
         assert "PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-results.json" in given["run"]
         assert given["after"] == "bash ../scripts/ci/lanes/ui-core-after.sh playwright-results.json"
         assert given["prepare"] == "scripts/ci/lanes/ui-core-prepare.sh"
@@ -630,14 +635,41 @@ _REAL_CALLER_SECRETS = {
     "real-ui-trino": {"SP_CERT_P12_BASE64"},
     "real-suite": {"ANTHROPIC_API_KEY", "SPLUNKBASE_USERNAME", "SPLUNKBASE_PASSWORD"},
     "real-ui-swap": set(),
+    # Level 4: every secret ui-e2e-core.yml declares -- the live sources and the model key.
+    "real-ui-core": {
+        "ANTHROPIC_API_KEY",
+        "AZURE_CLIENT_ID",
+        "AZURE_CLIENT_SECRET",
+        "AZURE_TENANT_ID",
+        "DATABRICKS_HTTP_PATH",
+        "DATABRICKS_SERVER_HOSTNAME",
+        "DATABRICKS_TOKEN",
+        "FABRIC_CAPACITY_NAME",
+        "FABRIC_DATABASE",
+        "FABRIC_RESOURCE_GROUP",
+        "FABRIC_SQL_SERVER",
+        "GOOGLE_APPLICATION_CREDENTIALS_JSON",
+        "GOOGLE_CLOUD_PROJECT",
+        "GSHEETS_TEST_SHEET_ID",
+        "SNOWFLAKE_ACCOUNT",
+        "SNOWFLAKE_PASSWORD",
+        "SNOWFLAKE_USER",
+        "SNOWFLAKE_WAREHOUSE",
+        "SP_CERT_P12_BASE64",
+        "SP_CERT_PASSWORD",
+        "SP_CLIENT_ID",
+        "SP_SITE_URL",
+        "SP_TENANT_ID",
+    },
 }
 # The level at which each starts (the neo4j lane alone only AT level 2: level 3 runs the suite).
 _REAL_CALLER_GATE = {
-    "real-amd64-engines": ">= 2",
+    "real-amd64-engines": ">= 2 && fromJSON(needs.scope.outputs.level) < 4",
     "real-suite-neo4j": "== 2",
-    "real-ui-trino": ">= 2",
-    "real-suite": ">= 3",
-    "real-ui-swap": ">= 3",
+    "real-ui-trino": ">= 2 && fromJSON(needs.scope.outputs.level) < 4",
+    "real-suite": "== 3",
+    "real-ui-swap": "== 3",
+    "real-ui-core": "== 4",
 }
 
 
@@ -747,7 +779,7 @@ def test_the_proof_level_is_one_committed_file_and_each_level_needs_the_one_belo
     everything; level 1's jobs need level 0's gate, which needs every composite action's check."""
     _text, workflow = _leaf_check()
     level = (REPO / ".github" / "ci-proof-level").read_text().strip()
-    assert level in {"0", "1", "2", "3"}, level
+    assert level in {"0", "1", "2", "3", "4"}, level
     jobs = workflow["jobs"]
     assert jobs["scope"]["outputs"] == {"level": "${{ steps.level.outputs.level }}"}
     level_one = {"lane", "lane-fails", "release-dry-run"}
