@@ -490,3 +490,59 @@ def test_batch_each_gives_each_request_its_answer_or_its_refusal():
     first, second = graph.batch_each(["/i/0", "/i/missing"])
     assert first == {"n": 0}
     assert isinstance(second, GraphRefused) and second.code == "ErrorItemNotFound"
+
+
+# ------------------------------------------------------ one listing, every message table
+
+
+def _mailbox_of_three() -> dict:
+    return {
+        f"{ROOT}/messages": [
+            [_message(1, hasAttachments=True), _message(2)],
+            [_message(3, conversationId="c2")],
+        ],
+        **_html(1, 2, 3),
+        f"{ROOT}/messages/m1/attachments": [
+            [{"@odata.type": "#microsoft.graph.fileAttachment", "id": "a1", "name": "x.pdf"}]
+        ],
+    }
+
+
+def test_one_listing_of_the_mailbox_gives_every_message_table():
+    mailbox, fake = _mailbox(_mailbox_of_three(), page_size=2)
+    got: dict[str, list[dict]] = {}
+    for table, rows in mailbox.message_tables(mail.MESSAGE_TABLES):
+        got.setdefault(table, []).extend(rows)
+    listings = [
+        c for c in fake.calls if c[0] == "GET" and urlsplit(c[1]).path.endswith("/messages")
+    ]
+    assert len(listings) == 2  # the two pages of ONE listing; no table listed the mailbox again
+    # Each table's rows are the ones it gives when read on its own.
+    for table in mail.MESSAGE_TABLES:
+        alone, _ = _mailbox(_mailbox_of_three(), page_size=2)
+        assert got[table] == _all(alone, table), table
+    assert set(got) == set(mail.MESSAGE_TABLES)
+
+
+def test_a_group_read_without_messages_asks_for_no_bodies():
+    mailbox, fake = _mailbox(_mailbox_of_three())
+    tables = ("message_recipients", "message_folders", "threads")
+    got = {table for table, _rows in mailbox.message_tables(tables)}
+    assert got == set(tables)
+    assert not [c for c in fake.calls if c[0] == "POST"]  # no HTML body was read
+    (listing,) = [c for c in fake.calls if urlsplit(c[1]).path.endswith("/messages")][:1]
+    assert "body" not in listing[2]["$select"].split(",")
+
+
+def test_folders_do_not_come_from_the_messages():
+    mailbox, _ = _mailbox({})
+    with pytest.raises(KeyError, match="folders do not come from"):
+        list(mailbox.message_tables(("messages", "folders")))
+
+
+def test_a_group_read_names_the_messages_kept_without_a_body():
+    source = {f"{ROOT}/messages": [[_message(1), _message(2)]], **_html(1)}
+    mailbox, _ = _mailbox(source)
+    unreadable: list[str] = []
+    rows = [r for t, batch in mailbox.message_tables(("messages",), unreadable) for r in batch]
+    assert [r["body_html"] for r in rows] == ["<p>1</p>", None] and unreadable == ["m2"]

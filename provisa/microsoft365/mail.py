@@ -87,6 +87,21 @@ _RECIPIENT_LISTS = (
 )
 
 
+#: The tables that come from the messages of a mailbox: one read of it gives them all.
+MESSAGE_TABLES = (
+    "messages",
+    "message_recipients",
+    "message_folders",
+    "threads",
+    "attachments",
+)
+# What a message is asked for when its own row is not wanted: what the other tables read.
+_OTHER_FIELDS = (
+    "id,conversationId,subject,bodyPreview,receivedDateTime,from,sender,toRecipients,"
+    "ccRecipients,bccRecipients,replyTo,parentFolderId,hasAttachments"
+)
+
+
 class UnexpectedAnswer(RuntimeError):
     """Graph answered in a form the reader did not ask for."""
 
@@ -336,6 +351,73 @@ class Mailbox:
                     for f in page
                     if f.get("childFolderCount")
                 ]
+
+    def message_tables(
+        self, tables: tuple[str, ...] | list[str], unreadable: list[str] | None = None
+    ) -> Iterator[tuple[str, list[dict[str, Any]]]]:
+        """The rows of several of the tables that come from messages, from ONE listing of the
+        mailbox: each batch with the name of its table. Threads, which are their messages
+        taken together, come when the listing has ended."""
+        wanted = [t for t in tables if t not in MESSAGE_TABLES]
+        if wanted:
+            raise KeyError(f"{', '.join(wanted)} do not come from a mailbox's messages")
+        account = self.account
+        whole = "messages" in tables
+        unread: list[str] = [] if unreadable is None else unreadable
+        seen: list[dict] = []
+        listing = (
+            self._messages(_MESSAGE_FIELDS, prefer=(_TEXT_BODY,))
+            if whole
+            else self._messages(_OTHER_FIELDS, prefer=())
+        )
+        for page in listing:
+            if whole:
+                html = self._html(page, unread)
+                yield "messages", [message_row(account, m, html[m["id"]]) for m in page]
+            if "message_recipients" in tables:
+                yield "message_recipients", [r for m in page for r in recipient_rows(account, m)]
+            if "message_folders" in tables:
+                yield "message_folders", [message_folder_row(account, m) for m in page]
+            if "attachments" in tables:
+                for message in page:
+                    if message["hasAttachments"]:
+                        yield "attachments", self._attachments(message["id"])
+            if "threads" in tables:
+                seen += [
+                    {
+                        k: m.get(k)
+                        for k in (
+                            "id",
+                            "conversationId",
+                            "subject",
+                            "bodyPreview",
+                            "receivedDateTime",
+                        )
+                    }
+                    for m in page
+                ]
+        if "threads" in tables:
+            rows = thread_rows(account, seen)
+            for start in range(0, len(rows), self._page_size):
+                yield "threads", rows[start : start + self._page_size]
+        if unread:
+            log.warning(
+                "microsoft_365 %s messages: %d message(s) kept without an HTML body Graph "
+                "would not give: %s",
+                account,
+                len(unread),
+                ", ".join(unread),
+            )
+
+    def _attachments(self, message_id: str) -> list[dict[str, Any]]:
+        path = f"{self._root}/messages/{quote(message_id, safe='')}/attachments"
+        return [
+            attachment_row(self.account, message_id, a)
+            for items in self._graph.pages(
+                path, {"$select": _ATTACHMENT_FIELDS}, prefer=(IMMUTABLE_IDS,)
+            )
+            for a in items
+        ]
 
     def rows(
         self, table: str, unreadable: list[str] | None = None

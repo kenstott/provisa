@@ -62,7 +62,7 @@ def table_rows(
     return mail.Mailbox(graph, account).rows(table, unreadable)
 
 
-async def _stepped(make: Callable[[], Iterator[list[dict]]]) -> AsyncIterator[list[dict]]:
+async def _stepped(make: Callable[[], Iterator[Any]]) -> AsyncIterator[Any]:
     """A blocking iterator's batches, each produced off the event loop."""
     batches = await asyncio.to_thread(make)
     while True:
@@ -108,8 +108,66 @@ def make_microsoft365_loader(connect: Connect) -> Any:
             read, columns, notes=lambda: noted(unreadable_messages_note(unreadable))
         )
 
+    def _replica_group(_source: Any, table: Any) -> tuple[str, ...] | None:
+        """The tables one read of the mailbox gives together with ``table``, or None when
+        ``table`` is read on its own (folders)."""
+        name = table.table_name
+        return mail.MESSAGE_TABLES if name in mail.MESSAGE_TABLES else None
+
+    def _replica_group_source(
+        source: Any, tables: tuple[str, ...], columns: dict[str, list[tuple[str, str]]]
+    ) -> Any:
+        return _MessagesRead(connect, source, tuple(tables), columns)
+
     _load.replica_source = _replica_source  # type: ignore[attr-defined]
+    _load.replica_group = _replica_group  # type: ignore[attr-defined]
+    _load.replica_group_source = _replica_group_source  # type: ignore[attr-defined]
     return _load
+
+
+class _MessagesRead:
+    """One read of a mailbox's messages as the rows of several canonical tables: what a group
+    build streams (``federation.data_replicator.ReplicaGroupJob``)."""
+
+    def __init__(
+        self,
+        connect: Connect,
+        source: Any,
+        tables: tuple[str, ...],
+        columns: dict[str, list[tuple[str, str]]],
+    ) -> None:
+        from provisa.federation.data_replicator import SourceCaps, SourceRead
+
+        self.caps = SourceCaps(frozenset({SourceRead.CURSOR}))
+        self._connect = connect
+        self._source = source
+        self._tables = tables
+        self._columns = columns
+        self._unreadable: list[str] = []
+
+    def note(self) -> Any:
+        from provisa.federation.data_replicator import unreadable_messages_note
+
+        return unreadable_messages_note(self._unreadable)
+
+    async def batches(self, batch_rows: int) -> AsyncIterator[tuple[str, Any]]:
+        from provisa.core.ir_arrow import arrow_schema, rows_to_batch
+
+        self._unreadable.clear()  # a build reads once; a read begun again counts again
+        schemas = {table: arrow_schema(self._columns[table]) for table in self._tables}
+        account, token = await self._connect(self._source)
+        with httpx.Client() as client:
+            mailbox = mail.Mailbox(Graph(http_send(client), token), account)
+            async for table, rows in _stepped(
+                lambda: mailbox.message_tables(self._tables, self._unreadable)
+            ):
+                for start in range(0, len(rows), batch_rows):
+                    yield (
+                        table,
+                        rows_to_batch(
+                            rows[start : start + batch_rows], self._columns[table], schemas[table]
+                        ),
+                    )
 
 
 def make_connect(state: Any) -> Connect:

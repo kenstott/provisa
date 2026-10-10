@@ -136,3 +136,45 @@ def test_a_refusal_by_graph_fails_the_read_and_is_not_a_shorter_table(fetch):
     ]
     with pytest.raises(GraphRefused, match="ErrorAccessDenied"):
         asyncio.run(fetch(SOURCE, _table("messages")))
+
+
+# ----------------------------------------------------------------------- one read, a group
+
+
+def test_the_tables_that_come_from_messages_are_one_group_and_folders_is_alone(fetch):
+    from provisa.microsoft365 import mail
+
+    assert fetch.replica_group(SOURCE, _table("messages")) == mail.MESSAGE_TABLES
+    assert fetch.replica_group(SOURCE, _table("threads")) == mail.MESSAGE_TABLES
+    assert fetch.replica_group(SOURCE, _table("folders")) is None
+    assert set(mail.MESSAGE_TABLES) | {"folders"} == set(loader.TABLES)
+
+
+def test_a_group_read_gives_each_table_its_canonical_batches_from_one_listing(fetch):
+    from provisa.microsoft365 import mail
+
+    fetch.graph.table.update(
+        {
+            f"{ROOT}/messages": [[_message(1, hasAttachments=True), _message(2)]],
+            **_html(1),
+            f"{ROOT}/messages/m1/attachments": [
+                [{"@odata.type": "#microsoft.graph.fileAttachment", "id": "a1"}]
+            ],
+        }
+    )
+    tables = mail.MESSAGE_TABLES
+    columns = {table: cm.ir_columns(table) for table in tables}
+    source = fetch.replica_group_source(SOURCE, tables, columns)
+
+    async def read():
+        return [(table, batch) async for table, batch in source.batches(1000)]
+
+    batches = asyncio.run(read())
+    assert {table for table, _ in batches} == set(tables)
+    for table, batch in batches:
+        assert batch.schema == arrow_schema(columns[table]), table
+    listings = [c for c in fetch.graph.calls if c[1].split("?")[0].endswith("/messages")]
+    assert len(listings) == 1
+    assert source.note().params == {"count": 1, "ids": ["m2"], "more": 0}  # m2 has no HTML body
+    asyncio.run(read())
+    assert source.note().params["count"] == 1  # a read begun again counts again, not twice
