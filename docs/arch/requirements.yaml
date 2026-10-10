@@ -77628,3 +77628,31 @@
   - REQ-1877
   - REQ-1952
   notes: 'Maintainer 2026-10-09, in sequence: asked whether semantic SQL has array types (it has none; a native array, row or map is registered as text or raises later); considered a typed array stored as JSON where a database has none, worried about where translation happens and Provisa becoming a bottleneck; ruled JSON for all engines and direct sources, a datasource translates arrays into JSON, no typed array in semantic SQL, the suggested type for a native array is json; the tradeoffs are accepted -- the user takes responsibility for realizing a query will not perform -- and the query plan ought to point it out; GraphQL only sees an opaque JSON object -- later the same day, told that a Trino array column is served today as a typed GraphQL list because the GraphQL schema builder reads source type spellings on its own: GraphQL seeing that the JSON is an array or nested array of primitives is acceptable, since the hidden attributes are standardized metadata. Then rethought the JSON Schema: relational databases do not allow arrays of arbitrary types, so support arrays of primitives, with hidden column attributes (array true/false, the element semantic SQL type) available to any translator in place of a schema; the array attribute is an integer, 0 not an array and 1, 2, 3 the nesting levels. Choices the same day: a third hidden attribute for the native type; structs and maps plain JSON with no schema; attributes from a native type only, not declared on a JSON column; decimals as strings; standard JSON functions with PostgreSQL operators; drift refused by name; plan notes with the plan only; Bolt a JSON string; PostgreSQL unnest always via JSON; a typed extraction short of the depth is a compile error; asked whether the reverse can store them back -- yes, by a cast into the recorded native type that the source executes; the native type is there for the cast in, the cast out being to JSON, and the cast in is widened to predicates; JSON as a type does not have to be supported by a backend, just JSON transforms or methods. Lead, from the design: PostgreSQL replicas land the indexable JSON type. Wording corrected the same day against the design findings (API and stream sources fetch their own payloads; Provisa knows what a backend can index, not what is indexed; no pushdown fact is verified yet). Design by teammate arrays on branch design/array-types (json-columns-design.md and json-columns-v3-note.md).'
+- id: REQ-1966
+  status: proposed
+  since: 2026-10
+  group: 3. Source Registration & Data Modeling
+  category: Semantic Interchange (Apache Ossie)
+  priority: SHOULD
+  type: behavioral
+  description: 'The model export offers the dbt semantic manifest and the Cube model as formats beside Ossie, each as one download from the same export surface as the Ossie document (REQ-1316, REQ-1321). Provisa writes neither format itself: it renders the governed model as Ossie and hands that to the Apache Ossie project''s own converter for the target (Ossie to dbt MetricFlow semantic manifest; Ossie to Cube model files), run on the server. What a converter reports as dropped, refused or parked is returned to the user with the download, by name, and a conversion the converter refuses is a refusal by name, never a partial file presented as whole. The export carries definitions only (datasets, fields, keys, relationships, metrics); row security, masking, roles and lineage stay in Provisa, and the export surface says so in one line, with the consequence: a dbt or Cube deployment built from the export is governed only when it reads through Provisa''s own SQL endpoint. The converter and the Ossie version it reads are pinned; a converter whose Ossie version does not match what Provisa emits is refused at start by name.'
+  use_case: A team that runs Cube or the dbt semantic layer downloads the governed model from Provisa in the format their tool loads, without running a converter by hand.
+  related_reqs:
+  - REQ-1316
+  - REQ-1317
+  - REQ-1321
+  notes: 'Maintainer 2026-10-10: "could we export a cube or dbt metadata directly instead of via ossie", then "do option 1 and 3. log as requirements". Option 1 as put to him: wrap the converters, own no vendor format. Lead, from the converters'' READMEs read that day: both are bidirectional and carry metrics; dbt''s drops conversion and private metrics and natural-key entities with a warning each; Cube''s refuses two joins between one pair of cubes. Unverified when recorded: that the converters are published as installable packages, and that their Ossie version matches Provisa''s (0.2.0.dev0).'
+- id: REQ-1967
+  status: proposed
+  since: 2026-10
+  group: 3. Source Registration & Data Modeling
+  category: Semantic Interchange (Apache Ossie)
+  priority: SHOULD
+  type: behavioral
+  description: 'The model export offers a dbt sources file (sources.yml) written by Provisa directly, for dbt projects that do not use the semantic layer and so cannot load the semantic manifest of REQ-1966. It lists each registered table the requesting role can see as a dbt source table under its source and schema, with the table''s description, each column''s description, and the standard dbt tests the model can state: unique and not_null for a primary key, unique for a unique constraint, not_null for a column registered as not nullable, and relationships for a registered relationship. It carries no metrics (a sources file has none) and nothing of row security, masking, roles or lineage, and the export surface says so. It is derived from the governed model on every read, as the Ossie document is.'
+  use_case: An analytics engineer adds the governed catalog to an existing dbt project as documented, tested sources by downloading one file.
+  related_reqs:
+  - REQ-1316
+  - REQ-1321
+  - REQ-1966
+  notes: 'Maintainer 2026-10-10: "do option 1 and 3. log as requirements". Option 3 as put to him: the one format worth writing directly, because the Ossie converter for dbt speaks only the semantic-layer file.'

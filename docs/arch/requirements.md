@@ -22605,3 +22605,29 @@ Semantic SQL has no array, struct or map type; nested data is a JSON column, and
 **Code:** —
 
 **Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1966 · Semantic Interchange (Apache Ossie) {#REQ-1966}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The model export offers the dbt semantic manifest and the Cube model as formats beside Ossie, each as one download from the same export surface as the Ossie document ([REQ-1316](#REQ-1316), [REQ-1321](#REQ-1321)). Provisa writes neither format itself: it renders the governed model as Ossie and hands that to the Apache Ossie project's own converter for the target (Ossie to dbt MetricFlow semantic manifest; Ossie to Cube model files), run on the server. What a converter reports as dropped, refused or parked is returned to the user with the download, by name, and a conversion the converter refuses is a refusal by name, never a partial file presented as whole. The export carries definitions only (datasets, fields, keys, relationships, metrics); row security, masking, roles and lineage stay in Provisa, and the export surface says so in one line, with the consequence: a dbt or Cube deployment built from the export is governed only when it reads through Provisa's own SQL endpoint. The converter and the Ossie version it reads are pinned; a converter whose Ossie version does not match what Provisa emits is refused at start by name.
+
+**Use case:** A team that runs Cube or the dbt semantic layer downloads the governed model from Provisa in the format their tool loads, without running a converter by hand.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1967 · Semantic Interchange (Apache Ossie) {#REQ-1967}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The model export offers a dbt sources file (sources.yml) written by Provisa directly, for dbt projects that do not use the semantic layer and so cannot load the semantic manifest of [REQ-1966](#REQ-1966). It lists each registered table the requesting role can see as a dbt source table under its source and schema, with the table's description, each column's description, and the standard dbt tests the model can state: unique and not_null for a primary key, unique for a unique constraint, not_null for a column registered as not nullable, and relationships for a registered relationship. It carries no metrics (a sources file has none) and nothing of row security, masking, roles or lineage, and the export surface says so. It is derived from the governed model on every read, as the Ossie document is.
+
+**Use case:** An analytics engineer adds the governed catalog to an existing dbt project as documented, tested sources by downloading one file.
+
+**Code:** —
+
+**Tests:** —
