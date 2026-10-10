@@ -537,8 +537,8 @@ comment says so.
 
 A file generated from a model of two tables and one relationship was parsed by dbt-core 1.12.5
 with dbt-duckdb 1.11.0: two sources and five tests, no warnings. dbt-core 1.9.11 does not read
-its `relationships` tests, which nest their arguments under `arguments` (the form dbt 1.10.5
-introduced). [tool-verified: `dbt parse` and `dbt ls` on both versions, 2026-10-10; `dbt test`
+its `relationships` tests, which nest their arguments under `arguments`; versions between the
+two were not tried. [tool-verified: `dbt parse` and `dbt ls` on both versions, 2026-10-10; `dbt test`
 against data was not run]
 
 ---

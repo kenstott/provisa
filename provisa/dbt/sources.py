@@ -49,11 +49,11 @@ GOVERNANCE = (
 )
 
 
-#: Which dbt reads the file, as measured: its relationships tests nest their arguments under
-#: ``arguments``, the form dbt 1.10.5 introduced.
+#: Which dbt reads the file, as measured and no further: its relationships tests nest their
+#: arguments under ``arguments``, the form current dbt asks for.
 DBT_VERSIONS = (
-    "Loads in dbt 1.10.5 and later (parsed by dbt-core 1.12.5). dbt 1.9 and earlier do not "
-    "read its relationships tests (dbt-core 1.9.11 refuses them)."
+    "Parsed by dbt-core 1.12.5. dbt-core 1.9.11 refuses its relationships tests, which nest "
+    "their arguments under 'arguments'; versions between the two were not tried."
 )
 
 
@@ -127,9 +127,9 @@ def build_dbt_sources(config: ProvisaConfig, role_id: str) -> DbtSources:
         to = names[(target.source_id, target.schema_name)]
         relationships.setdefault((id(source), rel.source_column), []).append(
             {
-                # A generic test's arguments are nested under ``arguments``, as dbt 1.10.5
-                # and later ask (the top-level form is deprecated there). dbt 1.9 and
-                # earlier, themselves out of support, do not read this form.
+                # A generic test's arguments are nested under ``arguments``: dbt-core 1.12.5
+                # warns that the top-level form is deprecated. dbt-core 1.9.11, itself out of
+                # support, does not read this form (both measured, DBT_VERSIONS).
                 "relationships": {
                     "arguments": {
                         "to": f"source('{to}', '{target.table_name}')",
