@@ -49,6 +49,14 @@ GOVERNANCE = (
 )
 
 
+#: Which dbt reads the file, as measured: its relationships tests nest their arguments under
+#: ``arguments``, the form dbt 1.10.5 introduced.
+DBT_VERSIONS = (
+    "Loads in dbt 1.10.5 and later (parsed by dbt-core 1.12.5). dbt 1.9 and earlier do not "
+    "read its relationships tests (dbt-core 1.9.11 refuses them)."
+)
+
+
 class UnknownRole(LookupError):
     def __init__(self, role_id: str) -> None:
         super().__init__(f"No role {role_id!r} exists")
@@ -176,6 +184,7 @@ def dbt_sources_yaml(config: ProvisaConfig, role_id: str, *, derived_at: str) ->
         f"dbt sources from Provisa's governed model, as role {role_id!r} is served it.",
         f"Derived {derived_at}; derived again on every download.",
         GOVERNANCE,
+        DBT_VERSIONS,
     ]
     if sources.not_stated:
         comment.append(

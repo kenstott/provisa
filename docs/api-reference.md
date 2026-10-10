@@ -896,6 +896,14 @@ The document is derived from live state on every request — never cached — so
 
 Returns `text/yaml` with `Content-Disposition: attachment; filename=provisa.ossie.yaml`.
 
+#### `GET /admin/dbt/sources`
+
+Download the governed catalog as a dbt `sources.yml`, as one role is served it. (REQ-1967) [tool-verified: `provisa/api/admin/ossie_router.py`]
+
+**Query parameter:** `role` — a role the caller holds, or any role for the holder of `access_config`.
+
+Returns `text/yaml` with `Content-Disposition: attachment; filename=provisa.sources.yml`. An unknown role is a `404` with code `dbt_sources.unknown_role`. See [integrations](integrations.md#dbt-sources-file-req-1967) for what the file contains.
+
 #### `POST /admin/ossie/import`
 
 Parse an Ossie YAML or JSON document and return proposed table and relationship registrations. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py`]

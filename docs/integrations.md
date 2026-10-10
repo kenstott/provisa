@@ -501,6 +501,46 @@ The modeling role and history stored in a Provisa-exported Ossie document round-
 through import. [tool-verified: `_parse_dataset` custom_extensions handling,
 `provisa/ossie/convert.py` lines 287–300: "REQ-1320: round-trip the provisa modeling metadata slot"]
 
+### dbt sources file (REQ-1967)
+
+For a dbt project that does not use the semantic layer, Provisa writes a dbt `sources.yml`
+directly. It is derived from the live model on every request.
+
+```http
+GET /admin/dbt/sources?role=<role id>
+```
+
+The response is YAML with `Content-Disposition: attachment; filename=provisa.sources.yml`. The
+caller needs `org_settings`, and `role` must be a role the caller holds; the holder of
+`access_config` may name any role. The Metrics page's interchange panel offers the same download
+for the role in use.
+[tool-verified: `download_dbt_sources`, `provisa/api/admin/ossie_router.py`; `TestTheEndpoint`,
+`tests/unit/test_dbt_sources.py`]
+
+The file lists each table the role is served, under a dbt source per source and schema (named
+by the source id, or `<source>_<schema>` when a source has tables in more than one schema),
+with the table's description, the served columns' descriptions, and these tests:
+
+| The model states | The file writes |
+|---|---|
+| A primary key of one column | `unique` and `not_null` on that column |
+| A primary key of several columns | `not_null` on each column |
+| A unique constraint of one column | `unique` on that column |
+| A relationship between two tables the role is both served | `relationships` on the source column, to `source('<source>', '<table>')` |
+
+A column the role is not served is absent, as is a table with no served column. A key over
+several columns has no standard dbt test; the file's opening comment names each one, and no
+test is written for it. The model records no nullability, so `not_null` appears on key columns
+only. The file carries no metrics, row security, masking, roles, or lineage, and its opening
+comment says so.
+[tool-verified: `build_dbt_sources`, `provisa/dbt/sources.py`; `tests/unit/test_dbt_sources.py`]
+
+A file generated from a model of two tables and one relationship was parsed by dbt-core 1.12.5
+with dbt-duckdb 1.11.0: two sources and five tests, no warnings. dbt-core 1.9.11 does not read
+its `relationships` tests, which nest their arguments under `arguments` (the form dbt 1.10.5
+introduced). [tool-verified: `dbt parse` and `dbt ls` on both versions, 2026-10-10; `dbt test`
+against data was not run]
+
 ---
 
 ## Metrics Across Protocols (REQ-1319)

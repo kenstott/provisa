@@ -30,7 +30,13 @@ from provisa.core.models import (
     Table,
     UniqueConstraint,
 )
-from provisa.dbt.sources import GOVERNANCE, UnknownRole, build_dbt_sources, dbt_sources_yaml
+from provisa.dbt.sources import (
+    DBT_VERSIONS,
+    GOVERNANCE,
+    UnknownRole,
+    build_dbt_sources,
+    dbt_sources_yaml,
+)
 
 
 def _column(name: str, **more) -> Column:
@@ -219,6 +225,7 @@ def test_the_file_opens_by_saying_what_it_does_not_carry_and_what_it_could_not_s
     assert head[0] == "# dbt sources from Provisa's governed model, as role 'analyst' is served it."
     assert "2026-10-10T00:00:00+00:00" in head[1]
     assert head[2] == f"# {GOVERNANCE}"
+    assert head[3] == f"# {DBT_VERSIONS}" and "1.12.5" in DBT_VERSIONS and "1.9" in DBT_VERSIONS
     assert "#   pg1_public.orders: unique constraint (customer_id, ordered_at)" in head
     assert "#   pg1_archive.order_lines: primary key (order_id, line_no)" in head
     assert yaml.safe_load(text) == build_dbt_sources(_config(), "analyst").document
