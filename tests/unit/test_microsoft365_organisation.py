@@ -262,6 +262,8 @@ def test_everyone_is_every_enabled_user_of_the_directory_to_its_last_page():
         "zed@contoso.com",
     ]
     assert fake.calls[0][2]["$select"] == "mail,userPrincipalName,accountEnabled"
+    # Members only: a guest has no mailbox in the tenant. This filter needs no advanced query.
+    assert fake.calls[0][2]["$filter"] == "userType eq 'Member'"
     assert "$count" not in fake.calls[0][2] and "ConsistencyLevel" not in fake.calls[0][3]
 
 
@@ -284,6 +286,9 @@ def test_a_group_is_named_by_its_id_or_found_by_its_address():
         "a@contoso.com"
     ]
     assert fake.calls[0][2]["$filter"] == "mail eq 'sales@contoso.com'"
+    # A group's members are not narrowed to members of the directory: a guest in the group is
+    # attempted and reported like any other.
+    assert "$filter" not in fake.calls[1][2]
 
 
 @pytest.mark.parametrize("found", [[], [{"id": "1"}, {"id": "2"}]])

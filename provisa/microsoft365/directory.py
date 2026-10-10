@@ -106,8 +106,17 @@ def _address(user: dict) -> str | None:
 _ADVANCED = {"ConsistencyLevel": "eventual"}
 
 
-def _users(graph: Graph, path: str, *, advanced: bool = False) -> list[str]:
+#: Everyone in the directory is its members: a guest has no mailbox in the tenant. Graph
+#: answers ``userType eq`` without the advanced-query header (its table of filters by property).
+_MEMBERS = "userType eq 'Member'"
+
+
+def _users(
+    graph: Graph, path: str, *, advanced: bool = False, only: str | None = None
+) -> list[str]:
     query = {"$select": _USER_FIELDS, "$top": _PAGE}
+    if only is not None:
+        query["$filter"] = only
     if advanced:
         query["$count"] = "true"
     addresses = []
@@ -134,9 +143,11 @@ def _group_id(graph: Graph, group: str) -> str:
 
 
 def mailboxes(graph: Graph, choice: Mailboxes) -> list[str]:
-    """The addresses of the mailboxes ``choice`` names, in address order, each once."""
+    """The addresses of the mailboxes ``choice`` names, in address order, each once. Everyone
+    is every member of the directory; a guest named in a list, or reached through a group, is
+    read like any other and reported if it cannot be."""
     if choice.kind == EVERYONE:
-        found = _users(graph, "/users")
+        found = _users(graph, "/users", only=_MEMBERS)
     elif choice.kind == GROUP:
         assert choice.group is not None  # a group choice names its group (settings.parse)
         group = _group_id(graph, choice.group)
