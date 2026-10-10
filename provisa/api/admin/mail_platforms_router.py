@@ -25,6 +25,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 import provisa.google_workspace  # noqa: F401  (declares the Google Workspace platform)
+import provisa.microsoft365  # noqa: F401  (declares the Microsoft 365 platform)
 from provisa.api.admin.secrets_router import _admin_pool, _drop, _org_guard
 from provisa.api.errors import ApiError
 from provisa.core import mail_platforms, secrets_store, source_sign_in
@@ -39,6 +40,9 @@ class PlatformBody(BaseModel):
     #: Left out to keep the secret already entered.
     client_secret: str | None = None
     settings: dict[str, str] = {}
+    # Whether sources may read the organisation's mailboxes with this client's own credential.
+    # Left out, the switch stays as it stands.
+    organisation_mailboxes: bool | None = None
 
 
 def _refusal(refused: MailPlatformRefused) -> ApiError:
@@ -63,6 +67,7 @@ async def _entry(org_id: str, platform: mail_platforms.Platform) -> dict:
         "configured": configured is not None,
         "client_id": None if configured is None else configured.client_id,
         "settings": {} if configured is None else configured.settings,
+        "organisation_mailboxes": configured is not None and configured.organisation_mailboxes,
     }
 
 
@@ -89,6 +94,7 @@ async def put_platform(request: Request, org_id: str, platform: str, body: Platf
             client_id=body.client_id,
             client_secret=body.client_secret or None,
             settings=body.settings,
+            organisation_mailboxes=body.organisation_mailboxes,
             actor=actor,
         )
         return await _entry(org_id, mail_platforms.platform(platform))

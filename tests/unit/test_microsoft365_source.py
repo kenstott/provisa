@@ -160,8 +160,10 @@ def test_a_source_is_signed_in_with_the_organisations_client_through_the_store(s
     source = SimpleNamespace(id="m365", mapping=GOOD)
 
     async def run():
-        account, token = await loader.make_connect(state)(source)
-        return account, await asyncio.to_thread(token)  # Graph is read off the loop
+        reading = await loader.make_connect(state)(source)
+        assert reading.organisation is False and reading.at_once == 1
+        (account,) = reading.accounts
+        return account, await asyncio.to_thread(reading.token)  # Graph is read off the loop
 
     account, token = asyncio.run(run())
     assert (account, token) == ("megan@contoso.com", "access-1")

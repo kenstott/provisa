@@ -134,14 +134,22 @@ class TestWhoMayAsk:
 
 class TestStatus:
     async def test_it_says_whether_the_callers_organisation_has_a_client(self, wired):
-        assert await router.status(_request(), KIND) == {"configured": True, "may_configure": False}
+        assert await router.status(_request(), KIND) == {
+            "configured": True,
+            "may_configure": False,
+            "organisation_mailboxes": False,
+        }
         assert wired["read"] == [("admin-plane", ORG, KIND)]
         wired["client"] = None
         assert (await router.status(_request(), KIND))["configured"] is False
 
     async def test_it_says_whether_the_caller_is_one_who_may_enter_it(self, wired):
         wired["client"], wired["org_admin"] = None, True
-        assert await router.status(_request(), KIND) == {"configured": False, "may_configure": True}
+        assert await router.status(_request(), KIND) == {
+            "configured": False,
+            "may_configure": True,
+            "organisation_mailboxes": False,
+        }
 
     async def test_it_carries_nothing_of_the_client(self, wired):
         assert "org-client-1" not in repr(await router.status(_request(), KIND))

@@ -218,6 +218,7 @@ class TestTheAdminSurface:
             "configured": False,
             "client_id": None,
             "settings": {},
+            "organisation_mailboxes": False,
         }
         assert before["redirect_address"] == "http://localhost:3000/source-sign-in.html"
         await _put(plane)

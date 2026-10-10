@@ -353,6 +353,34 @@ def microsoft_365_refusal(input: SourceInput) -> Optional[MutationResult]:  # RE
     return None
 
 
+async def microsoft_365_organisation_refusal(
+    input: SourceInput,
+) -> Optional[MutationResult]:  # REQ-1923
+    """Why a Microsoft 365 source of the ORGANISATION's mailboxes cannot be saved, or None: for
+    another source type, for a source of one mailbox, and when the organisation's administrator
+    has allowed such sources. Asked again where a build asks for its token."""
+    import json as _json
+
+    from provisa.api.app import state
+    from provisa.core import mail_platforms
+    from provisa.core.request_context import require_current_org
+    from provisa.microsoft365 import SOURCE_TYPE
+    from provisa.microsoft365.settings import parse
+
+    if input.type != SOURCE_TYPE or not parse(_json.loads(input.mapping_json or "{}")).organisation:
+        return None
+    assert state.admin_db is not None  # set before any request is served
+    try:
+        await mail_platforms.require_organisation(
+            state.admin_db, require_current_org(), SOURCE_TYPE
+        )
+    except mail_platforms.MailPlatformRefused as refused:
+        return MutationResult(
+            success=False, message=str(refused), code=refused.code, params=dict(refused.params)
+        )
+    return None
+
+
 def _expand_wikipedia_if_needed(input: SourceInput) -> Optional[MutationResult]:  # REQ-1960
     """The ONE place a Wikipedia source becomes the ``files`` source that carries it -- called
     from inside create_source, as Kaggle staging is, so every creation path gets the same crawl.

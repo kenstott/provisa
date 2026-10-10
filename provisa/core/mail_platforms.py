@@ -66,6 +66,9 @@ class Configured:
     platform: str
     client_id: str
     settings: dict[str, str] = field(default_factory=dict)
+    #: Whether the administrator allows sources that read the organisation's mailboxes with
+    #: this client's own credential.
+    organisation_mailboxes: bool = False
 
     @property
     def client_secret(self) -> str:
@@ -104,7 +107,11 @@ async def read(admin_db: "Database", org_id: str, platform_id: str) -> Configure
     async with admin_db.acquire() as conn:
         row = (
             await conn.execute_core(
-                select(org_mail_platforms.c.client_id, org_mail_platforms.c.settings).where(
+                select(
+                    org_mail_platforms.c.client_id,
+                    org_mail_platforms.c.settings,
+                    org_mail_platforms.c.organisation_mailboxes,
+                ).where(
                     org_mail_platforms.c.org_id == org_id,
                     org_mail_platforms.c.platform == platform_id,
                 )
@@ -112,7 +119,7 @@ async def read(admin_db: "Database", org_id: str, platform_id: str) -> Configure
         ).fetchone()
     if row is None:
         return None
-    return Configured(platform_id, row[0], json.loads(row[1]))
+    return Configured(platform_id, row[0], json.loads(row[1]), bool(row[2]))
 
 
 async def require(admin_db: "Database", org_id: str, platform_id: str) -> Configured:
@@ -128,6 +135,22 @@ async def require(admin_db: "Database", org_id: str, platform_id: str) -> Config
     return configured
 
 
+async def require_organisation(admin_db: "Database", org_id: str, platform_id: str) -> Configured:
+    """``org_id``'s client for the platform, for a source that reads the ORGANISATION's
+    mailboxes with the client's own credential: refused by name when the organisation has
+    entered none, and when its administrator has not allowed such sources."""
+    configured = await require(admin_db, org_id, platform_id)
+    if not configured.organisation_mailboxes:
+        raise MailPlatformRefused(
+            "organisation_mailboxes_off",
+            f"This organisation has not allowed sources that read its mailboxes for "
+            f"{platform_id}; an administrator turns it on under Admin > Email.",
+            status=403,
+            platform=platform_id,
+        )
+    return configured
+
+
 async def put(
     admin_db: "Database",
     org_id: str,
@@ -137,9 +160,11 @@ async def put(
     client_secret: str | None,
     settings: dict[str, str],
     actor: str | None,
+    organisation_mailboxes: bool | None = None,
 ) -> Configured:
     """Keep ``org_id``'s client for the platform. ``client_secret`` None keeps the secret already
-    in the vault, which there must then be: a client is never kept without its secret."""
+    in the vault, which there must then be: a client is never kept without its secret.
+    ``organisation_mailboxes`` None leaves the switch as it stands (off for a new entry)."""
     declared = platform(platform_id)
     client_id = client_id.strip()
     settings = {key: value.strip() for key, value in settings.items()}
@@ -174,22 +199,30 @@ async def put(
             description=f"client secret of the organisation's {platform_id} client",
             actor=actor,
         )
+    values = {
+        "org_id": org_id,
+        "platform": platform_id,
+        "client_id": client_id,
+        "client_secret": Configured(platform_id, client_id).client_secret,
+        "settings": json.dumps(settings, sort_keys=True),
+        "updated_by": actor,
+    }
+    updated = ["client_id", "client_secret", "settings", "updated_by"]
+    if organisation_mailboxes is not None:
+        values["organisation_mailboxes"] = organisation_mailboxes
+        updated.append("organisation_mailboxes")
     async with admin_db.acquire() as conn:
         await conn.upsert(
             org_mail_platforms,
-            {
-                "org_id": org_id,
-                "platform": platform_id,
-                "client_id": client_id,
-                "client_secret": Configured(platform_id, client_id).client_secret,
-                "settings": json.dumps(settings, sort_keys=True),
-                "updated_by": actor,
-            },
+            values,
             index_elements=["org_id", "platform"],
-            update_columns=["client_id", "client_secret", "settings", "updated_by"],
+            update_columns=updated,
             set_extra={"updated_at": func.now()},
         )
-    return Configured(platform_id, client_id, settings)
+    kept = await read(admin_db, org_id, platform_id)
+    if kept is None:
+        raise RuntimeError(f"{platform_id} was kept for {org_id} but cannot be read back")
+    return kept
 
 
 async def forget(admin_db: "Database", org_id: str, platform_id: str) -> bool:

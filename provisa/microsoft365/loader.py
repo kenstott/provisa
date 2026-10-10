@@ -26,22 +26,55 @@ ids as the build's note on the replica, the one every mail source gives.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
 from provisa.microsoft365 import mail
-from provisa.microsoft365.graph import Graph, http_send
+from provisa.microsoft365.graph import Graph, GraphRefused, http_send
+
+log = logging.getLogger(__name__)
 
 TABLES: tuple[str, ...] = mail.MAIL_TABLES
 #: A mailbox has no schema of its own; its tables are listed under this one.
 SCHEMA = "default"
 
-#: What reading a source needs, made where the organisation's vault is bound: the mailbox's
-#: address, and a call that gives the access token for each request (called off the event loop).
-Connection = tuple[str, Callable[[], str]]
-Connect = Callable[[Any], Awaitable[Connection]]
+
+@dataclass(frozen=True)
+class Reading:
+    """What reading a source needs, made where the organisation's vault is bound: the
+    mailboxes to read, by address and in address order; a call that gives the access token for
+    each request (called off the event loop); and, for a source of the organisation's
+    mailboxes, how many are read at once."""
+
+    accounts: tuple[str, ...]
+    token: Callable[[], str]
+    organisation: bool = False
+    at_once: int = 1
+
+
+Connect = Callable[[Any], Awaitable[Reading]]
+
+#: What Graph answers for a mailbox that is not there or that the client may not read. Such a
+#: mailbox of the organisation's is left out of the build and reported; anything else Graph
+#: refuses fails the build, and so does throttling it does not lift.
+_NOT_READABLE_STATUS = frozenset({403, 404})
+_NOT_READABLE_CODES = frozenset({"MailboxNotEnabledForRESTAPI", "MailboxNotSupportedForRESTAPI"})
+
+
+class NoMailboxRead(RuntimeError):
+    """Not one of the organisation's mailboxes could be read: the client's permission, not a
+    mailbox, is what is wrong."""
+
+    def __init__(self, count: int, reason: str) -> None:
+        super().__init__(
+            f"none of the {count} mailboxes could be read ({reason}): the organisation's "
+            "Microsoft 365 client has not been granted reading of mail"
+        )
+
 
 _END = object()
 
@@ -72,41 +105,135 @@ async def _stepped(make: Callable[[], Iterator[Any]]) -> AsyncIterator[Any]:
         yield rows  # type: ignore[misc]  # not the end marker
 
 
+def _not_readable(refused: BaseException) -> bool:
+    return isinstance(refused, GraphRefused) and (
+        refused.status in _NOT_READABLE_STATUS or refused.code in _NOT_READABLE_CODES
+    )
+
+
+async def _read_mailboxes(
+    reading: Reading,
+    read: Callable[[mail.Mailbox], Iterator[Any]],
+    left_out: list[str],
+) -> AsyncIterator[Any]:
+    """What ``read`` gives for each mailbox of ``reading``, as it arrives. One mailbox is read
+    as it stands: whatever Graph refuses fails the read. The organisation's mailboxes are
+    started in address order, ``at_once`` at a time; one Graph will not let be read at all
+    (refused before it gave anything) is added to ``left_out`` and the others go on. Throttling
+    Graph does not lift, and any refusal after a mailbox began to be read, fail the read."""
+    with httpx.Client() as client:
+        send = http_send(client)
+
+        def rows_of(account: str) -> Iterator[Any]:
+            return read(mail.Mailbox(Graph(send, reading.token), account))
+
+        if not reading.organisation:
+            (account,) = reading.accounts
+            async for item in _stepped(lambda: rows_of(account)):
+                yield item
+            return
+
+        waiting = list(reading.accounts)
+        arrived: asyncio.Queue[Any] = asyncio.Queue(maxsize=max(reading.at_once, 1) * 2)
+        last_refusal: list[str] = []
+
+        async def worker() -> None:
+            while waiting:
+                account = waiting.pop(0)
+                began = False
+                try:
+                    async for item in _stepped(lambda: rows_of(account)):  # noqa: B023  # the account of this turn; the loop awaits it to its end before the next
+                        began = True
+                        await arrived.put(item)
+                except GraphRefused as refused:
+                    if began or not _not_readable(refused):
+                        raise
+                    left_out.append(account)
+                    last_refusal[:] = [f"{refused.status} {refused.code}"]
+
+        workers = [
+            asyncio.ensure_future(worker())
+            for _ in range(max(min(reading.at_once, len(waiting)), 1))
+        ]
+        done = asyncio.ensure_future(asyncio.gather(*workers))
+        try:
+            while True:
+                getter = asyncio.ensure_future(arrived.get())
+                finished, _ = await asyncio.wait(
+                    {getter, done}, return_when=asyncio.FIRST_COMPLETED
+                )
+                if getter in finished:
+                    yield getter.result()
+                    continue
+                getter.cancel()
+                done.result()  # raises what a worker raised
+                while not arrived.empty():
+                    yield arrived.get_nowait()
+                break
+        finally:
+            for task in workers:
+                task.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
+        if reading.accounts and len(left_out) == len(reading.accounts):
+            raise NoMailboxRead(len(left_out), last_refusal[0])
+        if left_out:
+            log.warning(
+                "microsoft_365: %d of %d mailbox(es) were left out, not there or not permitted: %s",
+                len(left_out),
+                len(reading.accounts),
+                ", ".join(sorted(left_out)),
+            )
+
+
+def _notes(unreadable: list[str], left_out: list[str]) -> list[Any]:
+    from provisa.federation.data_replicator import (
+        mailboxes_left_out_note,
+        noted,
+        unreadable_messages_note,
+    )
+
+    return noted(unreadable_messages_note(unreadable), mailboxes_left_out_note(sorted(left_out)))
+
+
 def make_microsoft365_loader(connect: Connect) -> Any:
     """The row-fetch of a Microsoft 365 source: one of its tables, whole, read through Graph
     as ``connect`` signs the source in."""
 
     async def _batches(
-        source: Any, table: Any, unreadable: list[str] | None = None
+        source: Any,
+        table: Any,
+        unreadable: list[str] | None = None,
+        left_out: list[str] | None = None,
     ) -> AsyncIterator[list[dict]]:
-        if table.table_name not in TABLES:
-            raise UnknownMailTable(table.table_name)
-        account, token = await connect(source)
-        with httpx.Client() as client:
-            graph = Graph(http_send(client), token)
-            async for rows in _stepped(
-                lambda: table_rows(graph, account, table.table_name, unreadable)
-            ):
-                if rows:
-                    yield rows
+        name = table.table_name
+        if name not in TABLES:
+            raise UnknownMailTable(name)
+        reading = await connect(source)
+        async for rows in _read_mailboxes(
+            reading,
+            lambda mailbox: mailbox.rows(name, unreadable),
+            [] if left_out is None else left_out,
+        ):
+            if rows:
+                yield rows
 
     async def _load(source: Any, table: Any) -> list[dict]:
         return [row async for rows in _batches(source, table) for row in rows]
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
-        from provisa.federation.data_replicator import noted, unreadable_messages_note
         from provisa.federation.replica_source import CursorSource
 
         unreadable: list[str] = []
+        left_out: list[str] = []
 
         def read(_batch_rows: int) -> AsyncIterator[list[dict]]:
-            unreadable.clear()  # a build reads once; a read begun again counts again
-            return _batches(source, table, unreadable)
+            # A build reads once; a read begun again counts again.
+            unreadable.clear()
+            left_out.clear()
+            return _batches(source, table, unreadable, left_out)
 
-        # The note is the one both mail sources give (same code and particulars).
-        return CursorSource(
-            read, columns, notes=lambda: noted(unreadable_messages_note(unreadable))
-        )
+        # The notes are the ones every mail source gives (same codes and particulars).
+        return CursorSource(read, columns, notes=lambda: _notes(unreadable, left_out))
 
     def _replica_group(_source: Any, table: Any) -> tuple[str, ...] | None:
         """The tables one read of the mailbox gives together with ``table``, or None when
@@ -126,8 +253,8 @@ def make_microsoft365_loader(connect: Connect) -> Any:
 
 
 class _MessagesRead:
-    """One read of a mailbox's messages as the rows of several canonical tables: what a group
-    build streams (``federation.data_replicator.ReplicaGroupJob``)."""
+    """One read of a source's mailboxes' messages as the rows of several canonical tables: what a
+    group build streams (``federation.data_replicator.ReplicaGroupJob``)."""
 
     def __init__(
         self,
@@ -144,30 +271,61 @@ class _MessagesRead:
         self._tables = tables
         self._columns = columns
         self._unreadable: list[str] = []
+        self._left_out: list[str] = []
 
     def notes(self) -> list[Any]:
-        from provisa.federation.data_replicator import noted, unreadable_messages_note
-
-        return noted(unreadable_messages_note(self._unreadable))
+        return _notes(self._unreadable, self._left_out)
 
     async def batches(self, batch_rows: int) -> AsyncIterator[tuple[str, Any]]:
         from provisa.core.ir_arrow import arrow_schema, rows_to_batch
 
-        self._unreadable.clear()  # a build reads once; a read begun again counts again
+        # A build reads once; a read begun again counts again.
+        self._unreadable.clear()
+        self._left_out.clear()
         schemas = {table: arrow_schema(self._columns[table]) for table in self._tables}
-        account, token = await self._connect(self._source)
-        with httpx.Client() as client:
-            mailbox = mail.Mailbox(Graph(http_send(client), token), account)
-            async for table, rows in _stepped(
-                lambda: mailbox.message_tables(self._tables, self._unreadable)
-            ):
-                for start in range(0, len(rows), batch_rows):
-                    yield (
-                        table,
-                        rows_to_batch(
-                            rows[start : start + batch_rows], self._columns[table], schemas[table]
-                        ),
-                    )
+        reading = await self._connect(self._source)
+        async for table, rows in _read_mailboxes(
+            reading,
+            lambda mailbox: mailbox.message_tables(self._tables, self._unreadable),
+            self._left_out,
+        ):
+            for start in range(0, len(rows), batch_rows):
+                yield (
+                    table,
+                    rows_to_batch(
+                        rows[start : start + batch_rows], self._columns[table], schemas[table]
+                    ),
+                )
+
+
+async def listed_mailboxes(token: Callable[[], str], chosen: Any) -> list[str]:
+    """The mailboxes ``chosen`` names, as the directory lists them now, read off the event loop
+    with the organisation's own token."""
+    from provisa.microsoft365 import directory
+
+    def listed() -> list[str]:
+        with httpx.Client() as http:
+            return directory.mailboxes(Graph(http_send(http), token), chosen)
+
+    return await asyncio.to_thread(listed)
+
+
+async def organisation_token(admin_db: Any, org_id: str) -> Callable[[], str]:
+    """The token of the organisation's Microsoft client, for reading the organisation's
+    mailboxes: refused by name unless its administrator has allowed such sources. The client's
+    secret is resolved here, where the organisation's vault is bound, and held only by the
+    token's own renewal."""
+    from provisa.core import mail_platforms
+    from provisa.core.secrets import resolve_secrets
+    from provisa.microsoft365 import SOURCE_TYPE, directory
+    from provisa.microsoft365 import settings as m365
+
+    client = await mail_platforms.require_organisation(admin_db, org_id, SOURCE_TYPE)
+    return directory.ClientToken(
+        m365.token_url(client.settings.get("tenant")),
+        client.client_id,
+        resolve_secrets(client.client_secret),
+    )
 
 
 def make_connect(state: Any) -> Connect:
@@ -178,7 +336,7 @@ def make_connect(state: Any) -> Connect:
     used."""
     from provisa.api_source import oauth_store
     from provisa.api_source.oauth_grants import exchange_refresh_token
-    from provisa.core import mail_platforms
+    from provisa.core import mail_platforms, settings_registry
     from provisa.core.auth_models import ApiAuthOAuth2RefreshToken
     from provisa.core.config_loader import load_control_plane
     from provisa.core.config_location import config_path_str
@@ -187,9 +345,20 @@ def make_connect(state: Any) -> Connect:
     from provisa.microsoft365 import SOURCE_TYPE
     from provisa.microsoft365 import settings as m365
 
-    async def connect(source: Any) -> Connection:
+    async def connect(source: Any) -> Reading:
         settings = m365.parse(dict(getattr(source, "mapping", None) or {}))
         org_id = require_current_org()
+        if settings.organisation:
+            assert settings.mailboxes is not None  # the organisation shape names its mailboxes
+            # Refused by name unless the organisation's administrator allowed sources that
+            # read its mailboxes: asked here, each time a token is about to be asked for.
+            token = await organisation_token(state.admin_db, org_id)
+            return Reading(
+                tuple(await listed_mailboxes(token, settings.mailboxes)),
+                token,
+                organisation=True,
+                at_once=int(settings_registry.value("mail.mailboxes_at_once")),
+            )
         client = await mail_platforms.require(state.admin_db, org_id, SOURCE_TYPE)
         # Resolved here, where the organisation's vault is bound: the exchange runs in a
         # worker thread, which holds none.
@@ -197,6 +366,7 @@ def make_connect(state: Any) -> Connect:
         url = m365.token_url(client.settings.get("tenant"))
         platform_url = load_control_plane(config_path_str()).resolved_platform_url()
         loop = asyncio.get_running_loop()
+        assert settings.account is not None  # the one-mailbox shape names it (settings.parse)
 
         def exchange(refresh_token: str) -> oauth_store.Grant:
             answered = exchange_refresh_token(
@@ -212,7 +382,7 @@ def make_connect(state: Any) -> Connect:
                 answered.access_token, answered.expires_in, answered.replacement
             )
 
-        def token() -> str:
+        def signed_in() -> str:
             # Called from the thread that reads Graph; the store is the loop's.
             return asyncio.run_coroutine_threadsafe(
                 oauth_store.stored_access_token(
@@ -227,6 +397,6 @@ def make_connect(state: Any) -> Connect:
                 loop,
             ).result()
 
-        return settings.account, token
+        return Reading((settings.account,), signed_in)
 
     return connect

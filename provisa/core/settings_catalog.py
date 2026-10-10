@@ -211,6 +211,20 @@ DECLARED: list[Setting] = [
         unit="jobs",
     ),
     Setting(
+        key="mail.mailboxes_at_once",
+        card="concurrency",
+        type="int",
+        effect="live",
+        # 4: a source of an organisation's mailboxes reads this many at the same time. Each
+        # mailbox is paced on its own by its vendor; more at once shortens a build and asks
+        # more of the vendor's limit for the whole application.
+        req="REQ-1923",
+        env="PROVISA_MAIL_MAILBOXES_AT_ONCE",
+        default=4,
+        min=1,
+        unit="mailboxes",
+    ),
+    Setting(
         key="replication.retry_interval",
         card="concurrency",
         type="int",

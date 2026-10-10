@@ -134,7 +134,12 @@ async def status(request: Request, kind: str) -> dict:
         configured = await mail_platforms.read(_admin_db(), require_current_org(), kind)
     except MailPlatformRefused as refused:
         raise ApiError(refused.status, refused.code, str(refused), None, **refused.params) from None
-    return {"configured": configured is not None, "may_configure": _holds_org_settings(request)}
+    return {
+        "configured": configured is not None,
+        "may_configure": _holds_org_settings(request),
+        # Whether the administrator allows sources that read the organisation's mailboxes.
+        "organisation_mailboxes": configured is not None and configured.organisation_mailboxes,
+    }
 
 
 @router.post("/start")

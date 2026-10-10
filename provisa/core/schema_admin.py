@@ -811,6 +811,10 @@ org_mail_platforms = Table(
     # the secret go while the entry stands.
     Column("client_secret", Text, nullable=False),
     Column("settings", Text, nullable=False),
+    # REQ-1923: whether the organisation's administrator allows sources that read the
+    # organisation's mailboxes with this client's own credential, nobody signing in. Off until
+    # the administrator turns it on.
+    Column("organisation_mailboxes", Boolean, nullable=False, server_default=false()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_by", Text, nullable=True),
 )

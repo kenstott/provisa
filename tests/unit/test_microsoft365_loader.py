@@ -45,7 +45,7 @@ def fetch(monkeypatch):
             tokens.append("asked")
             return "access-token"
 
-        return ACCOUNT, token
+        return loader.Reading((ACCOUNT,), token)
 
     made = loader.make_microsoft365_loader(connect)
     made.graph = fake

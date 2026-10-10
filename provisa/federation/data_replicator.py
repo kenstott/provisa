@@ -241,6 +241,26 @@ def unreadable_messages_note(unreadable: list[str]) -> BuildNote | None:
     )
 
 
+#: The note of a mail source's build that left out mailboxes its vendor said are not there or
+#: may not be read.
+MAILBOXES_LEFT_OUT = "replication.mailboxes_left_out"
+
+
+def mailboxes_left_out_note(accounts: list[str]) -> BuildNote | None:
+    """The build's note for the mailboxes left out: how many, the first :data:`NOTED_IDS` of
+    their addresses, and how many more there are. None when every mailbox was read."""
+    if not accounts:
+        return None
+    return BuildNote(
+        MAILBOXES_LEFT_OUT,
+        {
+            "count": len(accounts),
+            "accounts": accounts[:NOTED_IDS],
+            "more": max(len(accounts) - NOTED_IDS, 0),
+        },
+    )
+
+
 @dataclass(frozen=True)
 class BuildOutcome:
     """What a finished build reports. ``changed`` is False when the copy's content hash equals
