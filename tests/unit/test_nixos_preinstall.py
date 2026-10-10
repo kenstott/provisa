@@ -272,3 +272,82 @@ def test_a_build_whose_runtime_names_a_loader_fails(headers, code):
     )
     assert done.returncode == code, done.stderr
     assert ("will not start on NixOS" in done.stderr) is (code == 1)
+
+
+# --- the proof: the NixOS workflow runs the download itself -------------------------------------------
+
+
+def _workflow() -> dict:
+    import yaml
+
+    return yaml.safe_load((_ROOT / ".github/workflows/nixos.yml").read_text())
+
+
+def test_the_workflow_runs_the_one_downloaded_file_on_stock_nixos_and_after_the_steps():
+    jobs = _workflow()["jobs"]
+    build = "\n".join(str(step.get("run", "")) for step in jobs["appimage-build"]["steps"])
+    assert "packaging/linux/build-appimage.sh" in build  # built as the release builds it
+    proof = jobs["appimage"]
+    assert proof["needs"] == "appimage-build"
+    assert proof["strategy"]["matrix"]["guest"] == ["bare", "prepared"]
+    runs = {step.get("if"): step["run"] for step in proof["steps"] if "run" in step}
+    # The artifact alone is copied into the guest; the checkout's scripts only drive it.
+    assert (
+        'scp -F "$PROVISA_VM_SSH_CONFIG" "$RUNNER_TEMP/download/Provisa.AppImage" vm:' in runs[None]
+    )
+    assert "appimage-refuses.sh" in runs["matrix.guest == 'bare'"]
+    assert "appimage-installs.sh" in runs["matrix.guest == 'prepared'"]
+
+
+def test_a_change_to_the_linux_download_starts_the_nixos_workflow():
+    paths = _workflow()[True]["push"]["paths"]  # YAML reads the key `on` as a boolean
+    assert {"packaging/linux/**", "packaging/nixos/**", "install.sh"} <= set(paths)
+
+
+def test_the_prepared_guest_is_stock_nixos_plus_the_settings_and_nothing_more():
+    """Not the `ci` guest, whose toolchains could stand in for something the settings lack."""
+    flake = (_ROOT / "packaging/nixos/flake.nix").read_text()
+    prepared = flake[flake.index("nixosConfigurations.prepared") :]
+    modules = prepared[prepared.index("modules = [") : prepared.index("];")]
+    assert re.findall(r"\./[\w.-]+", modules) == ["./bare.nix", "./preinstall.nix", "./ci-vm.nix"]
+    bare = (_ROOT / "packaging/nixos/bare.nix").read_text()
+    assert "nix-ld" not in bare and "docker" not in bare
+
+
+@pytest.mark.parametrize("script", ["appimage-refuses.sh", "appimage-installs.sh"])
+def test_the_guest_scripts_run_the_file_in_the_users_home(script):
+    import os
+
+    path = _ROOT / "packaging/nixos/ci" / script
+    assert os.access(path, os.X_OK)
+    text = path.read_text()
+    assert ". packaging/nixos/ci/appimage-runtime.sh" in text
+    assert '"$APPIMAGE"' in text and "install.sh" not in text and "first-launch.sh" not in text
+    runtime = (_ROOT / "packaging/nixos/ci/appimage-runtime.sh").read_text()
+    assert 'APPIMAGE="$HOME/Provisa.AppImage"' in runtime
+    # The job's log says how the runtime ran.
+    assert "MOUNTED its payload" in runtime and "EXTRACT-AND-RUN" in runtime
+
+
+@pytest.mark.parametrize(
+    ("source", "network", "online"),
+    [("", "up", True), ("", "down", False), ("bundled", "up", False)],
+)
+def test_first_launch_installs_the_wheels_it_carries_when_asked(source, network, online):
+    """PROVISA_INSTALL_SOURCE=bundled: this build's wheels, even where PyPI answers — what the
+    proof installs. Otherwise the network decides, as before."""
+    first_launch = (_ROOT / "packaging/linux/first-launch.sh").read_text()
+    start = first_launch.index("_online() {")
+    function = first_launch[start : first_launch.index("\n}\n", start) + 3]
+    script = (
+        'curl() { [ "$NETWORK" = up ]; }\n'
+        + function
+        + "if _online; then echo online; else echo bundled; fi\n"
+    )
+    done = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", script],
+        env={"PROVISA_INSTALL_SOURCE": source, "NETWORK": network, "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+    )
+    assert done.stdout.strip() == ("online" if online else "bundled"), done.stderr

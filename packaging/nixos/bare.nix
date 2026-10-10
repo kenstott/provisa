@@ -1,5 +1,6 @@
-# A NixOS host with none of the settings Provisa needs (preinstall.nix), for the installer's check:
-# the NixOS workflow runs install.sh here and expects the list of steps, not an install.
+# A NixOS host with none of the settings Provisa needs (preinstall.nix): stock NixOS. The NixOS
+# workflow runs each installer here and expects the list of steps, not an install; with
+# preinstall.nix beside it (the flake's `prepared`) it is the host those steps lead to.
 { pkgs, ... }:
 {
   system.stateVersion = "26.05";

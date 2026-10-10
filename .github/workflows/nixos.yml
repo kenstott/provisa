@@ -16,6 +16,7 @@ on:
     branches: [integration, main]
     paths:
       - "packaging/nixos/**"
+      - "packaging/linux/**"
       - "install.sh"
       - "scripts/provisa"
       - ".github/actions/nixos-vm/**"
@@ -218,6 +219,76 @@ jobs:
               echo "=== $c"; docker logs --tail 100 "$c" 2>&1
             done
           '
+
+      - *console
+
+  # The Linux download IS the NixOS download: the site offers one file, the AppImage. It is built
+  # here from this commit exactly as the release builds it, and that one file -- nothing else of
+  # the checkout -- is what the guests below run.
+  appimage-build:
+    name: build the Linux download
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The UI build renders the offline docs site first (provisa-ui's prebuild).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install mkdocs-material pymdown-extensions mkdocs-static-i18n
+
+      # Fails if the packed runtime names a loader (require_static_runtime): such a file does not
+      # start on NixOS at all.
+      - name: Build the AppImage
+        run: packaging/linux/build-appimage.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: provisa-appimage
+          path: packaging/linux/dist/Provisa.AppImage
+          retention-days: 1
+          compression-level: 0
+
+  # The download on NixOS. On stock NixOS (`bare`) it starts, names the steps and installs
+  # nothing; on stock NixOS after those steps (`prepared`: the settings and nothing more) it
+  # installs the default native tier and its API and UI answer. Each leg says whether the
+  # AppImage mounted its payload or had to unpack itself.
+  appimage:
+    name: download (${{ matrix.guest }} host)
+    needs: appimage-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        guest: [bare, prepared]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/nixos-vm
+        with:
+          system: ${{ matrix.guest }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: provisa-appimage
+          path: ${{ runner.temp }}/download
+
+      - name: Put the one file in the guest's home
+        run: scp -F "$PROVISA_VM_SSH_CONFIG" "$RUNNER_TEMP/download/Provisa.AppImage" vm:Provisa.AppImage
+
+      - name: The download names the steps and stops
+        if: matrix.guest == 'bare'
+        run: packaging/nixos/vm-run 'packaging/nixos/ci/appimage-refuses.sh'
+
+      - name: The download installs and the services answer
+        if: matrix.guest == 'prepared'
+        run: packaging/nixos/vm-run 'packaging/nixos/ci/appimage-installs.sh'
 
       - *console
 

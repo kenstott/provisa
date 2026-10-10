@@ -1199,7 +1199,12 @@ _native_extras() {
 }
 
 # ── Network check (online vs airgapped) ──────────────────────────────────────
-_online() { curl -fsI --max-time 8 https://pypi.org/simple/ >/dev/null 2>&1; }
+# PROVISA_INSTALL_SOURCE=bundled installs the wheels this AppImage carries even where the
+# network is there: the build that was downloaded, not a release fetched from PyPI.
+_online() {
+  [ "${PROVISA_INSTALL_SOURCE:-}" != bundled ] \
+    && curl -fsI --max-time 8 https://pypi.org/simple/ >/dev/null 2>&1
+}
 
 # ── Locate a native-tier payload dir bundled inside the AppDir ────────────────
 # The bare interpreter (python-base/), wheelhouse (wheels/) and built UI

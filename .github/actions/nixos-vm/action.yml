@@ -5,7 +5,7 @@ description: >-
   in the guest, and PROVISA_VM_SSH_CONFIG names the ssh config (host `vm`) for scp.
 inputs:
   system:
-    description: "Which system of packaging/nixos/flake.nix to boot: ci (the Provisa host) or bare (a host without its settings)"
+    description: "Which system of packaging/nixos/flake.nix to boot: ci (the Provisa host), bare (a host without its settings) or prepared (bare plus the settings)"
     default: ci
 runs:
   using: composite

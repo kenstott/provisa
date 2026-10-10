@@ -21,7 +21,18 @@
         ];
       };
 
-      # A host without the settings, as the same guest: what install.sh says to a new NixOS user.
+      # Stock NixOS after the steps an installer names -- the settings and nothing more -- as the
+      # same guest: where the download has to install and start.
+      nixosConfigurations.prepared = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          ./bare.nix
+          ./preinstall.nix
+          ./ci-vm.nix
+        ];
+      };
+
+      # A host without the settings, as the same guest: what an installer says to a new NixOS user.
       nixosConfigurations.bare = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
