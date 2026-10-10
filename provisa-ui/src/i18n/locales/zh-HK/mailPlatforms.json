@@ -13,7 +13,7 @@
     "redirectAddress": "重新導向地址",
     "redirectHelp": {
       "google_workspace": "請將其複製到 Google Cloud 控制台中你的 OAuth 用戶端的「已授權的重新導向 URI」之下。",
-      "microsoft_365": "在 Microsoft Entra 中開啟應用程式註冊,選擇「驗證」,新增 Web 平台,並將此地址貼上為重新導向 URI。"
+      "microsoft_365": "在 Microsoft Entra 中開啟應用程式註冊,選擇「驗證」,新增 Web 平台,並將此地址貼上為重新導向 URI。登入會在登入者的瀏覽器中返回此地址，因此 localhost 地址只在其於執行 Provisa 的電腦上登入時有效。讀取組織郵箱的資料來源不會使用此地址。"
     },
     "copy": "複製",
     "copied": "已複製",

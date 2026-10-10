@@ -13,7 +13,7 @@
     "redirectAddress": "重定向地址",
     "redirectHelp": {
       "google_workspace": "请将其复制到 Google Cloud 控制台中您的 OAuth 客户端的“已获授权的重定向 URI”下。",
-      "microsoft_365": "在 Microsoft Entra 中打开应用注册,选择“身份验证”,添加 Web 平台,并将此地址粘贴为重定向 URI。"
+      "microsoft_365": "在 Microsoft Entra 中打开应用注册,选择“身份验证”,添加 Web 平台,并将此地址粘贴为重定向 URI。登录会在登录者的浏览器中返回到此地址，因此 localhost 地址仅在其于运行 Provisa 的计算机上登录时有效。读取组织邮箱的数据源不使用该地址。"
     },
     "copy": "复制",
     "copied": "已复制",

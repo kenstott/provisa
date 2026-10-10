@@ -13,7 +13,7 @@
     "redirectAddress": "Indirizzo di reindirizzamento",
     "redirectHelp": {
       "google_workspace": "Copialo nel tuo client OAuth, nella console Google Cloud, in «URI di reindirizzamento autorizzati».",
-      "microsoft_365": "In Microsoft Entra apri la registrazione dell’app, scegli Autenticazione, aggiungi una piattaforma Web e incolla questo indirizzo come URI di reindirizzamento."
+      "microsoft_365": "In Microsoft Entra apri la registrazione dell’app, scegli Autenticazione, aggiungi una piattaforma Web e incolla questo indirizzo come URI di reindirizzamento. L'accesso ritorna a questo indirizzo nel browser della persona che accede, quindi un indirizzo localhost funziona solo se accede dalla macchina su cui è in esecuzione Provisa. Le origini che leggono le caselle di posta dell'organizzazione non lo utilizzano."
     },
     "copy": "Copia",
     "copied": "Copiato",

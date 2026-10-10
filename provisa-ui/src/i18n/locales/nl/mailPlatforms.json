@@ -13,7 +13,7 @@
     "redirectAddress": "Omleidingsadres",
     "redirectHelp": {
       "google_workspace": "Kopieer dit naar uw OAuth-client in de Google Cloud Console, onder ‘Geautoriseerde omleidings-URI’s’.",
-      "microsoft_365": "Open in Microsoft Entra de app-registratie, kies Verificatie, voeg een webplatform toe en plak dit adres als omleidings-URI."
+      "microsoft_365": "Open in Microsoft Entra de app-registratie, kies Verificatie, voeg een webplatform toe en plak dit adres als omleidings-URI. De aanmelding keert terug naar dit adres in de browser van de persoon die zich aanmeldt; een localhost-adres werkt dus alleen als die persoon zich aanmeldt op de machine waarop Provisa draait. Bronnen die de postvakken van de organisatie lezen, gebruiken het niet."
     },
     "copy": "Kopiëren",
     "copied": "Gekopieerd",

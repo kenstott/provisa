@@ -13,7 +13,7 @@
     "redirectAddress": "Endereço de redirecionamento",
     "redirectHelp": {
       "google_workspace": "Copie-o para o seu cliente OAuth, no console do Google Cloud, em “URIs de redirecionamento autorizados”.",
-      "microsoft_365": "No Microsoft Entra, abra o registro do aplicativo, escolha Autenticação, adicione uma plataforma Web e cole este endereço como URI de redirecionamento."
+      "microsoft_365": "No Microsoft Entra, abra o registro do aplicativo, escolha Autenticação, adicione uma plataforma Web e cole este endereço como URI de redirecionamento. O início de sessão regressa a este endereço no navegador da pessoa que inicia sessão, pelo que um endereço localhost só funciona se ela iniciar sessão na máquina onde o Provisa está a ser executado. As origens que leem as caixas de correio da organização não o utilizam."
     },
     "copy": "Copiar",
     "copied": "Copiado",

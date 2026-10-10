@@ -13,7 +13,7 @@
     "redirectAddress": "Weiterleitungsadresse",
     "redirectHelp": {
       "google_workspace": "Kopieren Sie diese Adresse in Ihren OAuth-Client in der Google Cloud Console unter „Autorisierte Weiterleitungs-URIs“.",
-      "microsoft_365": "Öffnen Sie in Microsoft Entra die App-Registrierung, wählen Sie „Authentifizierung“, fügen Sie eine Web-Plattform hinzu und fügen Sie diese Adresse als Umleitungs-URI ein."
+      "microsoft_365": "Öffnen Sie in Microsoft Entra die App-Registrierung, wählen Sie „Authentifizierung“, fügen Sie eine Web-Plattform hinzu und fügen Sie diese Adresse als Umleitungs-URI ein. Die Anmeldung kehrt im Browser der anmeldenden Person zu dieser Adresse zurück; eine localhost-Adresse funktioniert daher nur, wenn die Anmeldung auf dem Rechner erfolgt, auf dem Provisa läuft. Quellen, die die Postfächer der Organisation lesen, verwenden sie nicht."
     },
     "copy": "Kopieren",
     "copied": "Kopiert",
