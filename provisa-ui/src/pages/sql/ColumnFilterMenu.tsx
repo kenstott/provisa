@@ -130,6 +130,7 @@ export function ColumnFilterMenu({
         <ActionIcon
           variant={current ? "filled" : "subtle"}
           size="xs"
+          className="th-filter-btn"
           aria-label={t("columnFilter.open", { column: col })}
           title={t("columnFilter.open", { column: col })}
           data-testid={`${id}-btn`}

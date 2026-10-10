@@ -26,7 +26,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsRight,
-  Filter,
   FilterX,
   Layers,
   X,
@@ -464,14 +463,12 @@ export function ResultsGrid({
                       )}
                     </div>
                     {baseColumns.includes(c) && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                      <div style={{ display: "flex", alignItems: "stretch", gap: 0 }}>
                         <TextInput
                           style={{ flex: 1 }}
                           size="xs"
                           variant="unstyled"
                           className="th-filter"
-                          leftSection={<Filter size={11} />}
-                          leftSectionPointerEvents="none"
                           aria-label={`${t("sqlResultsPanel.filterPlaceholder")} ${c}`}
                           title={t("columnFilter.syntaxHint")}
                           value={filters[c] ?? ""}
