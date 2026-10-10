@@ -115,7 +115,9 @@ describe("PagingField (REQ-318)", () => {
   });
 
   it("shows a connection table its row bound only", () => {
-    render(<PagingField kind="connection" paging={null} onChange={vi.fn()} ceilingRows={1000} />);
+    render(
+      <PagingField kind="connection" paging={null} onChange={vi.fn()} ceilingRows={1000} />,
+    );
     expect(screen.getByRole("textbox", { name: "Max rows per read" })).toHaveAttribute(
       "placeholder",
       "Default: 1000",

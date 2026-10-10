@@ -147,6 +147,7 @@ const EMAIL = {
   isImplicitDimension: false,
 } satisfies TableColumn;
 
+
 const H = en.tableEditForm;
 const GOVERNANCE_HEADERS = [H.visibleToHeader, H.writableByHeader, H.maskingHeader];
 const GOVERNANCE_KEYS = [
