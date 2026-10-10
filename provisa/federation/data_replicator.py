@@ -370,6 +370,135 @@ class ReplicaJob:
         )
 
 
+class _GroupSource(Protocol):
+    """One read that gives the rows of several tables: ``batches`` yields each batch with the
+    name of the table it belongs to. It may carry ``note()`` as a single table's source does."""
+
+    caps: SourceCaps
+
+    def batches(self, batch_rows: int) -> AsyncIterator[tuple[str, "pa.RecordBatch"]]: ...
+
+
+@dataclass
+class GroupPart:
+    """One table's part in a group build: where its copy is written, the engine's part for
+    it, its last build's content hash, and the check that the model still declares it."""
+
+    target: _Target
+    engine: _Engine
+    prior_hash: str | None = None
+    still_wanted: Callable[[], Awaitable[None]] | None = None
+
+
+#: A group build's progress: the table, and the rows copied into it so far.
+GroupProgress = Callable[[str, int], Awaitable[None]]
+
+
+class ReplicaGroupJob:
+    """The build of several replicas from ONE read of their source. Run it once.
+
+    A source such as a mailbox gives several tables from the same rows read; reading it once
+    per table costs the read several times over. Every table's copy is streamed as its
+    batches arrive, a batch at a time as a single build holds them.
+
+    WHAT A FAILURE LEAVES. Nothing is swapped until the read has ended: a read that fails
+    aborts every table's build table and every previous copy stays as it was. Once the read
+    has ended each table is complete and hashed, and from there the tables are independent,
+    as they are when built alone: one whose content is unchanged is discarded unswapped, one
+    the model stopped declaring is aborted, and one whose swap fails is reported as failed
+    while the others, already whole, are swapped. The swaps are one after another, not one
+    atomic change across the tables.
+    """
+
+    def __init__(
+        self,
+        source: _GroupSource,
+        parts: dict[str, GroupPart],
+        *,
+        batch_rows: int,
+        batch_bytes: int = BATCH_BYTES,
+    ) -> None:
+        if not parts:
+            raise ValueError("a group build needs at least one table")
+        self._source = source
+        self._parts = parts
+        self._batch_rows = batch_rows
+        self._batch_bytes = batch_bytes
+        # Every table is streamed: the read is the source's own, which no engine can make.
+        self.methods: dict[str, Method] = {}
+        for table, part in parts.items():
+            method = choose_method(source.caps, part.target.caps, part.engine.caps)
+            if method is Method.ENGINE_STATEMENT:
+                raise NoReplicationMethod(
+                    [f"a group build streams its tables; {table} would be copied by its engine"]
+                )
+            self.methods[table] = method
+
+    async def run(self, progress: GroupProgress) -> dict[str, "BuildOutcome | BaseException"]:
+        """What the build did for each table: its outcome, or why its copy was not swapped in.
+        Raises when the read itself fails, having swapped nothing."""
+        from provisa.events.content_hash import RowSetHash
+
+        digests = {table: RowSetHash() for table in self._parts}
+        copied = dict.fromkeys(self._parts, 0)
+        open_targets: list[str] = []
+        try:
+            for table, part in self._parts.items():
+                await part.target.begin()
+                open_targets.append(table)
+            async for table, read in self._source.batches(self._batch_rows):
+                part = self._parts.get(table)
+                if part is None:
+                    continue  # a table of the read this job was not given to build
+                for batch in _within_bytes(read, self._batch_bytes):
+                    rows = batch.to_pylist()
+                    digests[table].update(rows)
+                    await part.target.write(batch, rows)
+                    copied[table] += len(rows)
+                    await progress(table, copied[table])
+            said = getattr(self._source, "note", None)
+            note = said() if said is not None else None
+        except BaseException:
+            # The read failed: no table is swapped, and every previous copy stays.
+            for table in open_targets:
+                await self._parts[table].target.abort()
+            raise
+        results: dict[str, BuildOutcome | BaseException] = {}
+        for table, part in self._parts.items():
+            results[table] = await self._finish(
+                table, part, digests[table].hexdigest(), copied[table], note
+            )
+        return results
+
+    async def _finish(
+        self, table: str, part: GroupPart, content_hash: str, copied: int, note: BuildNote | None
+    ) -> "BuildOutcome | BaseException":
+        """Swap one complete, hashed table in, or say why not. Its build table is removed
+        whenever it is not swapped."""
+        method = self.methods[table].value
+        swapped = False
+        try:
+            if content_hash == part.prior_hash:
+                return BuildOutcome(
+                    rows_copied=copied,
+                    method=method,
+                    content_hash=content_hash,
+                    changed=False,
+                    note=note,
+                )
+            if part.still_wanted is not None:
+                await part.still_wanted()
+            await part.target.swap()
+            swapped = True
+            await part.engine.after_swap()
+        except Exception as exc:  # allow-ble: one table's failure is its own outcome; the other tables of the read, already whole, are still swapped
+            return exc
+        finally:
+            if not swapped:
+                await part.target.abort()
+        return BuildOutcome(rows_copied=copied, method=method, content_hash=content_hash, note=note)
+
+
 def _within_bytes(batch: "pa.RecordBatch", max_bytes: int) -> Iterator["pa.RecordBatch"]:
     """``batch`` whole when it is within ``max_bytes`` of Arrow data, else in equal slices that
     each are (by the batch's average row size). A slice is never empty: one row wider than the
