@@ -435,8 +435,14 @@ A proposed column or metric carries the type its Ossie datatype stands for (`Int
 `bigint`, `DateTime` proposes `timestamp`). `Opaque` proposes the type the `provisa` extension
 names when the document came from Provisa, and no type otherwise. An `ai_context` given as an
 object is read by its `instructions`.
-[tool-verified: `parse_ossie_model`, `_proposed_type`, `_ai_context`,
-`provisa/ossie/convert.py`; the `test_*refused*` cases in `tests/unit/test_ossie_convert.py`]
+
+A field is proposed as a column only when its expression is one column of the source. A field
+whose expression is a computation is not proposed; the review screen names it under its table
+as not imported. A field that renames its column is proposed as that column, with the field's
+name as the column's alias. A dataset's `source` must have three parts,
+`source.schema.table`; a query or a shorter name is refused, and the error says so.
+[tool-verified: `parse_ossie_model`, `_parse_dataset`, `_proposed_type`, `_ai_context`,
+`provisa/ossie/convert.py`; `tests/unit/test_ossie_convert.py`]
 
 #### Coming from dbt, Cube, Snowflake, and other semantic layers
 
