@@ -30,6 +30,9 @@
     },
     "organisationMailboxes": "允許數據來源讀取組織的信箱",
     "organisationMailboxesHelp": "關閉:數據來源只讀取某人連接的那一個信箱。開啟:數據來源可以使用管理員的憑證讀取組織的多個信箱;除非資料列規則加以限制,任何可以讀取其資料表的人都能讀取每個信箱。",
+    "organisationGrant": {
+      "microsoft_365": "對於讀取組織信箱的數據來源,請為應用程式註冊授予應用程式權限 Mail.Read 和 User.Read.All,並授予管理員同意。"
+    },
     "save": "儲存",
     "remove": "移除",
     "saved": "已儲存。",

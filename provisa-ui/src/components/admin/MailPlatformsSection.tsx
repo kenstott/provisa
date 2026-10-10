@@ -42,7 +42,7 @@ import { useAuth } from "../../context/AuthContext";
 import { draftOf, platformMissing, type Draft } from "./mailPlatformDraft";
 
 export function MailPlatformsSection() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { activeOrgId } = useAuth();
   const [state, setState] = useState<MailPlatforms | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -165,7 +165,19 @@ export function MailPlatformsSection() {
               </SimpleGrid>
               <Switch
                 label={t("mailPlatforms.organisationMailboxes")}
-                description={t("mailPlatforms.organisationMailboxesHelp")}
+                description={
+                  <>
+                    {t("mailPlatforms.organisationMailboxesHelp")}
+                    {/* What the administrator grants at the platform for it, where it has
+                        wording: a platform whose organisation form is not built has none. */}
+                    {i18n.exists(`mailPlatforms.organisationGrant.${p.platform}`) && (
+                      <span data-testid={`${id}-organisation-grant`}>
+                        {" "}
+                        {t(`mailPlatforms.organisationGrant.${p.platform}`)}
+                      </span>
+                    )}
+                  </>
+                }
                 checked={draft.organisation_mailboxes}
                 onChange={(e) =>
                   change(p.platform, { organisation_mailboxes: e.currentTarget.checked })

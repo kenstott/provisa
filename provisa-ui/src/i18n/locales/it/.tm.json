@@ -1636,6 +1636,7 @@
   "it/mailPlatforms.json::mailPlatforms.copied": "Copied",
   "it/mailPlatforms.json::mailPlatforms.copy": "Copy",
   "it/mailPlatforms.json::mailPlatforms.notConnected": "Not connected",
+  "it/mailPlatforms.json::mailPlatforms.organisationGrant.microsoft_365": "For sources that read the organization's mailboxes, give the app registration the application permissions Mail.Read and User.Read.All and grant admin consent.",
   "it/mailPlatforms.json::mailPlatforms.organisationMailboxes": "Allow sources that read the organization's mailboxes",
   "it/mailPlatforms.json::mailPlatforms.organisationMailboxesHelp": "Off: a source reads only the one mailbox a person connects. On: a source may read many mailboxes of the organization with the administrator's credential, and anyone who may read its tables reads every mailbox unless a row rule limits them.",
   "it/mailPlatforms.json::mailPlatforms.platform.google_workspace": "Google Workspace",

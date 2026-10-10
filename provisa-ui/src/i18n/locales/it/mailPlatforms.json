@@ -30,6 +30,9 @@
     },
     "organisationMailboxes": "Consenti le origini che leggono le caselle di posta dell’organizzazione",
     "organisationMailboxesHelp": "Disattivato: un’origine legge solo la casella che una persona collega. Attivato: un’origine può leggere molte caselle dell’organizzazione con le credenziali dell’amministratore, e chi può leggerne le tabelle legge ogni casella, a meno che una regola sulle righe non lo limiti.",
+    "organisationGrant": {
+      "microsoft_365": "Per le origini che leggono le caselle di posta dell’organizzazione, assegna alla registrazione dell’app le autorizzazioni dell’applicazione Mail.Read e User.Read.All e concedi il consenso dell’amministratore."
+    },
     "save": "Salva",
     "remove": "Rimuovi",
     "saved": "Salvato.",

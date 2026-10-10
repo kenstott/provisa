@@ -30,6 +30,9 @@
     },
     "organisationMailboxes": "Permitir orígenes que leen los buzones de la organización",
     "organisationMailboxesHelp": "Desactivado: un origen lee solo el buzón que una persona conecta. Activado: un origen puede leer muchos buzones de la organización con la credencial del administrador, y quien pueda leer sus tablas lee todos los buzones salvo que una regla de filas lo limite.",
+    "organisationGrant": {
+      "microsoft_365": "Para los orígenes que leen los buzones de la organización, conceda al registro de la aplicación los permisos de aplicación Mail.Read y User.Read.All y otorgue el consentimiento del administrador."
+    },
     "save": "Guardar",
     "remove": "Quitar",
     "saved": "Guardado.",

@@ -30,6 +30,9 @@
     },
     "organisationMailboxes": "Quellen erlauben, die die Postfächer der Organisation lesen",
     "organisationMailboxesHelp": "Aus: Eine Quelle liest nur das eine Postfach, das eine Person verbindet. Ein: Eine Quelle darf mit den Anmeldedaten des Administrators viele Postfächer der Organisation lesen, und wer ihre Tabellen lesen darf, liest jedes Postfach, sofern keine Zeilenregel dies einschränkt.",
+    "organisationGrant": {
+      "microsoft_365": "Geben Sie der App-Registrierung für Quellen, die die Postfächer der Organisation lesen, die Anwendungsberechtigungen Mail.Read und User.Read.All und erteilen Sie die Administratoreinwilligung."
+    },
     "save": "Speichern",
     "remove": "Entfernen",
     "saved": "Gespeichert.",

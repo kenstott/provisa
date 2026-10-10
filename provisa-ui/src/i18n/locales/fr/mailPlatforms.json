@@ -30,6 +30,9 @@
     },
     "organisationMailboxes": "Autoriser les sources qui lisent les boîtes aux lettres de l’organisation",
     "organisationMailboxesHelp": "Désactivé : une source ne lit que la boîte aux lettres qu’une personne connecte. Activé : une source peut lire de nombreuses boîtes aux lettres de l’organisation avec les identifiants de l’administrateur, et quiconque peut lire ses tables lit toutes les boîtes, sauf si une règle de ligne le limite.",
+    "organisationGrant": {
+      "microsoft_365": "Pour les sources qui lisent les boîtes aux lettres de l’organisation, accordez à l’inscription d’application les autorisations d’application Mail.Read et User.Read.All, puis donnez le consentement administrateur."
+    },
     "save": "Enregistrer",
     "remove": "Supprimer",
     "saved": "Enregistré.",

@@ -233,6 +233,18 @@ describe("the organisation's mail platforms", () => {
     );
   });
 
+  it("says what the administrator grants at Microsoft for it, and nothing for a platform with no wording", async () => {
+    list.mockResolvedValue({
+      redirect_address: REDIRECT,
+      platforms: [google(), google({ platform: "microsoft_365", settings_fields: ["tenant"] })],
+    });
+    render(<MailPlatformsSection />);
+    expect(
+      await screen.findByTestId("mail-platform-microsoft_365-organisation-grant"),
+    ).toHaveTextContent("Mail.Read and User.Read.All");
+    expect(screen.queryByTestId(tid("-organisation-grant"))).toBeNull();
+  });
+
   it("shows the switch as the organisation left it", async () => {
     list.mockResolvedValue({
       redirect_address: REDIRECT,
