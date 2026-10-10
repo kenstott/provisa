@@ -28,6 +28,8 @@
     "settingHelp": {
       "tenant": "De map waarin de Microsoft 365-accounts van uw organisatie staan: de id of het domein ervan, zoals Microsoft Entra die toont op de pagina Overzicht van de app-registratie."
     },
+    "organisationMailboxes": "Bronnen toestaan die de postvakken van de organisatie lezen",
+    "organisationMailboxesHelp": "Uit: een bron leest alleen het ene postvak dat iemand koppelt. Aan: een bron mag met de inloggegevens van de beheerder veel postvakken van de organisatie lezen, en wie de tabellen mag lezen, leest elk postvak, tenzij een rijregel dat beperkt.",
     "save": "Opslaan",
     "remove": "Verwijderen",
     "saved": "Opgeslagen.",

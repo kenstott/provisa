@@ -28,6 +28,8 @@
     "settingHelp": {
       "tenant": "O diretório em que estão as contas do Microsoft 365 da sua organização: o ID ou o domínio dele, como o Microsoft Entra mostra na página Visão geral do registro do aplicativo."
     },
+    "organisationMailboxes": "Permitir fontes que leem as caixas de correio da organização",
+    "organisationMailboxesHelp": "Desativado: uma fonte lê apenas a caixa de correio que uma pessoa conecta. Ativado: uma fonte pode ler muitas caixas de correio da organização com a credencial do administrador, e quem pode ler suas tabelas lê todas as caixas, a menos que uma regra de linha limite isso.",
     "save": "Salvar",
     "remove": "Remover",
     "saved": "Salvo.",

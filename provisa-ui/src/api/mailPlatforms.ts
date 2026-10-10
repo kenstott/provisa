@@ -24,6 +24,8 @@ export interface MailPlatform {
   configured: boolean;
   client_id: string | null;
   settings: Record<string, string>;
+  /** Whether sources may read the organisation's mailboxes through this platform. */
+  organisation_mailboxes: boolean;
 }
 
 export interface MailPlatforms {
@@ -38,6 +40,7 @@ export interface MailPlatformBody {
   /** Left out to keep the secret already entered. */
   client_secret?: string;
   settings: Record<string, string>;
+  organisation_mailboxes: boolean;
 }
 
 async function ok<T>(res: Response, op: string): Promise<T> {

@@ -26,6 +26,7 @@ import {
   PasswordInput,
   SimpleGrid,
   Stack,
+  Switch,
   Text,
   TextInput,
   Title,
@@ -162,6 +163,15 @@ export function MailPlatformsSection() {
                   />
                 ))}
               </SimpleGrid>
+              <Switch
+                label={t("mailPlatforms.organisationMailboxes")}
+                description={t("mailPlatforms.organisationMailboxesHelp")}
+                checked={draft.organisation_mailboxes}
+                onChange={(e) =>
+                  change(p.platform, { organisation_mailboxes: e.currentTarget.checked })
+                }
+                data-testid={`${id}-organisation-mailboxes`}
+              />
               <Group gap="sm">
                 <Button
                   onClick={() =>
@@ -172,6 +182,7 @@ export function MailPlatformsSection() {
                           client_id: draft.client_id.trim(),
                           ...(draft.client_secret ? { client_secret: draft.client_secret } : {}),
                           settings: draft.settings,
+                          organisation_mailboxes: draft.organisation_mailboxes,
                         }),
                       t("mailPlatforms.saved"),
                     )

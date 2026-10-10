@@ -16,12 +16,14 @@ export interface Draft {
   client_id: string;
   client_secret: string;
   settings: Record<string, string>;
+  organisation_mailboxes: boolean;
 }
 
 export const draftOf = (p: MailPlatform): Draft => ({
   client_id: p.client_id ?? "",
   client_secret: "",
   settings: Object.fromEntries(p.settings_fields.map((f) => [f, p.settings[f] ?? ""])),
+  organisation_mailboxes: p.organisation_mailboxes,
 });
 
 /** What is still needed before a platform's client can be saved. */

@@ -48,6 +48,7 @@ const google = (over = {}) => ({
   configured: false,
   client_id: null as string | null,
   settings: {} as Record<string, string>,
+  organisation_mailboxes: false,
   ...over,
 });
 const tid = (suffix: string) => `mail-platform-google_workspace${suffix}`;
@@ -150,6 +151,7 @@ describe("the organisation's mail platforms", () => {
         client_id: "client-1",
         client_secret: "made-up-secret",
         settings: {},
+        organisation_mailboxes: false,
       }),
     );
     expect(await screen.findByTestId(tid("-said"))).toHaveTextContent(en.mailPlatforms.saved);
@@ -170,6 +172,7 @@ describe("the organisation's mail platforms", () => {
       expect(put).toHaveBeenCalledWith("acme", "google_workspace", {
         client_id: "client-2",
         settings: {},
+        organisation_mailboxes: false,
       }),
     );
   });
@@ -209,12 +212,47 @@ describe("the organisation's mail platforms", () => {
     expect(screen.getByText(en.mailPlatforms.redirectHelp.microsoft_365)).toBeInTheDocument();
   });
 
+  it("has a switch, off until an administrator turns it on, for reading the organisation's mailboxes", async () => {
+    list.mockResolvedValue({
+      redirect_address: REDIRECT,
+      platforms: [google({ configured: true, client_id: "client-1" })],
+    });
+    render(<MailPlatformsSection />);
+    const allow = await screen.findByTestId(tid("-organisation-mailboxes"));
+    expect(allow).not.toBeChecked();
+    expect(screen.getByText(en.mailPlatforms.organisationMailboxes)).toBeInTheDocument();
+    fireEvent.click(allow);
+    expect(put).not.toHaveBeenCalled(); // saved with the entry, not on the click
+    fireEvent.click(screen.getByTestId(tid("-save")));
+    await waitFor(() =>
+      expect(put).toHaveBeenCalledWith("acme", "google_workspace", {
+        client_id: "client-1",
+        settings: {},
+        organisation_mailboxes: true,
+      }),
+    );
+  });
+
+  it("shows the switch as the organisation left it", async () => {
+    list.mockResolvedValue({
+      redirect_address: REDIRECT,
+      platforms: [google({ configured: true, client_id: "c", organisation_mailboxes: true })],
+    });
+    render(<MailPlatformsSection />);
+    expect(await screen.findByTestId(tid("-organisation-mailboxes"))).toBeChecked();
+  });
+
   it("asks for each setting a platform declares, and needs it", () => {
     const tenanted = google({ platform: "tenanted", settings_fields: ["tenant"] });
-    const draft = { client_id: "c", client_secret: "s", settings: { tenant: "" } };
+    const draft = {
+      client_id: "c",
+      client_secret: "s",
+      settings: { tenant: "" },
+      organisation_mailboxes: false,
+    };
     expect(platformMissing(tenanted, draft)).toEqual(["tenant"]);
     expect(platformMissing(tenanted, { ...draft, settings: { tenant: "contoso" } })).toEqual([]);
-    expect(platformMissing(google(), { client_id: "", client_secret: "", settings: {} })).toEqual([
+    expect(platformMissing(google(), { ...draft, client_id: "", client_secret: "" })).toEqual([
       "client_id",
       "client_secret",
     ]);

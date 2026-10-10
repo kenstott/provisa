@@ -28,6 +28,8 @@
     "settingHelp": {
       "tenant": "El directorio donde están las cuentas de Microsoft 365 de su organización: su id. o su dominio, tal como Microsoft Entra lo muestra en la página Información general del registro de la aplicación."
     },
+    "organisationMailboxes": "Permitir orígenes que leen los buzones de la organización",
+    "organisationMailboxesHelp": "Desactivado: un origen lee solo el buzón que una persona conecta. Activado: un origen puede leer muchos buzones de la organización con la credencial del administrador, y quien pueda leer sus tablas lee todos los buzones salvo que una regla de filas lo limite.",
     "save": "Guardar",
     "remove": "Quitar",
     "saved": "Guardado.",

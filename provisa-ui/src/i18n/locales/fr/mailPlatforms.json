@@ -28,6 +28,8 @@
     "settingHelp": {
       "tenant": "L’annuaire où se trouvent les comptes Microsoft 365 de votre organisation : son ID ou son domaine, tel que Microsoft Entra l’affiche sur la page Vue d’ensemble de l’inscription d’application."
     },
+    "organisationMailboxes": "Autoriser les sources qui lisent les boîtes aux lettres de l’organisation",
+    "organisationMailboxesHelp": "Désactivé : une source ne lit que la boîte aux lettres qu’une personne connecte. Activé : une source peut lire de nombreuses boîtes aux lettres de l’organisation avec les identifiants de l’administrateur, et quiconque peut lire ses tables lit toutes les boîtes, sauf si une règle de ligne le limite.",
     "save": "Enregistrer",
     "remove": "Supprimer",
     "saved": "Enregistré.",

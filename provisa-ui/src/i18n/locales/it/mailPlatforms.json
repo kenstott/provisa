@@ -28,6 +28,8 @@
     "settingHelp": {
       "tenant": "La directory in cui si trovano gli account Microsoft 365 della tua organizzazione: il suo ID o il suo dominio, come Microsoft Entra lo mostra nella pagina Panoramica della registrazione dell’app."
     },
+    "organisationMailboxes": "Consenti le origini che leggono le caselle di posta dell’organizzazione",
+    "organisationMailboxesHelp": "Disattivato: un’origine legge solo la casella che una persona collega. Attivato: un’origine può leggere molte caselle dell’organizzazione con le credenziali dell’amministratore, e chi può leggerne le tabelle legge ogni casella, a meno che una regola sulle righe non lo limiti.",
     "save": "Salva",
     "remove": "Rimuovi",
     "saved": "Salvato.",

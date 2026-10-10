@@ -28,6 +28,8 @@
     "settingHelp": {
       "tenant": "Das Verzeichnis, in dem sich die Microsoft 365-Konten Ihrer Organisation befinden: seine ID oder seine Domäne, wie Microsoft Entra sie auf der Seite „Übersicht“ der App-Registrierung anzeigt."
     },
+    "organisationMailboxes": "Quellen erlauben, die die Postfächer der Organisation lesen",
+    "organisationMailboxesHelp": "Aus: Eine Quelle liest nur das eine Postfach, das eine Person verbindet. Ein: Eine Quelle darf mit den Anmeldedaten des Administrators viele Postfächer der Organisation lesen, und wer ihre Tabellen lesen darf, liest jedes Postfach, sofern keine Zeilenregel dies einschränkt.",
     "save": "Speichern",
     "remove": "Entfernen",
     "saved": "Gespeichert.",

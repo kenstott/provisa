@@ -28,6 +28,8 @@
     "settingHelp": {
       "tenant": "您的组织的 Microsoft 365 账号所在的目录:其 ID 或域名,即 Microsoft Entra 在应用注册的“概述”页上显示的内容。"
     },
+    "organisationMailboxes": "允许数据源读取组织的邮箱",
+    "organisationMailboxesHelp": "关闭:数据源只读取某人连接的那一个邮箱。开启:数据源可以使用管理员的凭据读取组织的多个邮箱;除非行规则加以限制,任何可以读取其表的人都能读取每个邮箱。",
     "save": "保存",
     "remove": "移除",
     "saved": "已保存。",
