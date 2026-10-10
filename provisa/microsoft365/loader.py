@@ -94,7 +94,7 @@ def make_microsoft365_loader(connect: Connect) -> Any:
         return [row async for rows in _batches(source, table) for row in rows]
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
-        from provisa.federation.data_replicator import unreadable_messages_note
+        from provisa.federation.data_replicator import noted, unreadable_messages_note
         from provisa.federation.replica_source import CursorSource
 
         unreadable: list[str] = []
@@ -104,7 +104,9 @@ def make_microsoft365_loader(connect: Connect) -> Any:
             return _batches(source, table, unreadable)
 
         # The note is the one both mail sources give (same code and particulars).
-        return CursorSource(read, columns, note=lambda: unreadable_messages_note(unreadable))
+        return CursorSource(
+            read, columns, notes=lambda: noted(unreadable_messages_note(unreadable))
+        )
 
     _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load

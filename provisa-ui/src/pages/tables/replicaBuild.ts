@@ -96,20 +96,22 @@ export function replicaFeedLine(
 /** REQ-874: how a delta table's replica was last refreshed, or null for a non-delta table (no
  * delta_skipped and not a delta build). A whole rebuild names its reason (`deltaSkipped`, a
  * delta.SKIP_* code); an applied delta shows the cursor it advanced to. */
-/** What the last completed build had to say of the copy it made, or null when it had nothing
- * to say. A note this build of the UI has no wording for is shown by its code, never dropped. */
-export function replicaNoteLine(build: ReplicaBuild | undefined, t: Translate): string | null {
-  if (!build?.buildNoteCode) return null;
-  const params = build.buildNoteParams ?? {};
-  if (build.buildNoteCode === "replication.unreadable_messages") {
-    const named = ((params.ids as string[] | undefined) ?? []).join(", ");
-    const more = Number(params.more ?? 0);
-    return t("replicaBuild.note.unreadable_messages", {
-      total: Number(params.count ?? 0),
-      ids: more > 0 ? t("replicaBuild.note.andMore", { ids: named, more }) : named,
-    });
-  }
-  return t("replicaBuild.note.other", { code: build.buildNoteCode });
+/** What the last completed build had to say of the copy it made: a line for each note, none
+ * when it had nothing to say. A note this build of the UI has no wording for is shown by its
+ * code, never dropped. */
+export function replicaNoteLines(build: ReplicaBuild | undefined, t: Translate): string[] {
+  return (build?.buildNotes ?? []).map(({ code, params: given }) => {
+    const params = given ?? {};
+    if (code === "replication.unreadable_messages") {
+      const named = ((params.ids as string[] | undefined) ?? []).join(", ");
+      const more = Number(params.more ?? 0);
+      return t("replicaBuild.note.unreadable_messages", {
+        total: Number(params.count ?? 0),
+        ids: more > 0 ? t("replicaBuild.note.andMore", { ids: named, more }) : named,
+      });
+    }
+    return t("replicaBuild.note.other", { code });
+  });
 }
 
 export function replicaDeltaLine(build: ReplicaBuild | undefined, t: Translate): string | null {

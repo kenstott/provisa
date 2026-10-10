@@ -43,8 +43,7 @@ def _record(**kw):
         feed_error=None,
         delta_skipped=None,
         delta_cursor=None,
-        build_note_code=None,
-        build_note_params=None,
+        build_notes=[],
     )
     base.update(kw)
     return SimpleNamespace(**base)
@@ -135,17 +134,13 @@ def test_a_build_that_had_something_to_say_shows_its_note():
     view = build_view(
         _record(
             completed_at=NOW,
-            build_note_code="replication.unreadable_messages",
-            build_note_params=params,
+            build_notes=[{"code": "replication.unreadable_messages", "params": params}],
         ),
         NOW,
     )
-    assert (view["build_note_code"], view["build_note_params"]) == (
-        "replication.unreadable_messages",
-        params,
-    )
+    assert view["build_notes"] == [{"code": "replication.unreadable_messages", "params": params}]
 
 
 def test_a_build_with_nothing_to_say_shows_no_note():
     view = build_view(_record(completed_at=NOW), NOW)
-    assert (view["build_note_code"], view["build_note_params"]) == (None, None)
+    assert view["build_notes"] == []

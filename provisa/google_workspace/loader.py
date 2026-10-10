@@ -37,7 +37,7 @@ import httpx
 
 from provisa.core import canonical_mail as cm
 from provisa.core.secrets import resolve_secrets
-from provisa.federation.data_replicator import unreadable_messages_note
+from provisa.federation.data_replicator import noted, unreadable_messages_note
 from provisa.google_workspace import settings as gw_settings
 from provisa.google_workspace.gmail import Gmail, GmailNotFound
 from provisa.google_workspace.mail_rows import PROVIDER, MessageFacts, message_facts
@@ -266,7 +266,7 @@ def make_google_workspace_loader(state: Any) -> Any:
             unreadable.clear()  # a build reads once; a read begun again counts again
             return _batches(source, table, unreadable)
 
-        return CursorSource(read, columns, note=lambda: unreadable_note(unreadable))
+        return CursorSource(read, columns, notes=lambda: noted(unreadable_note(unreadable)))
 
     _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load

@@ -1460,11 +1460,11 @@ replica_state = Table(
     # (``replica_errors``); NULL for a driver's or a source's own error.
     Column("last_error_code", Text),
     Column("last_error_params", JSON(none_as_null=True)),
-    # What the last COMPLETED build had to say of the copy it made (data_replicator.BuildNote):
-    # a code the UI words in its own language, and its particulars. NULL: it had nothing to
-    # say. Set or cleared by each completed build; a failed build leaves it as it was.
-    Column("build_note_code", Text),
-    Column("build_note_params", JSON(none_as_null=True)),
+    # What the last COMPLETED build had to say of the copy it made: a list of
+    # data_replicator.BuildNote as {"code", "params"} -- a code the UI words in its own
+    # language, and its particulars. Empty: it had nothing to say; NULL: no build has
+    # completed. Set by each completed build; a failed build leaves it as it was.
+    Column("build_notes", JSON(none_as_null=True)),
     Column("failed_at", DateTime(timezone=True)),
     # Builds that have failed in a row since the last one that completed. A replica that keeps
     # failing is retried for as long as it is declared, after ``replication.retry_interval``

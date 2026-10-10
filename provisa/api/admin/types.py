@@ -1381,10 +1381,10 @@ class ReplicaBuildType:  # REQ-1915
     # is the stored watermark the next delta resumes from. Both None for a non-delta table.
     delta_skipped: str | None
     delta_cursor: JsonScalar | None
-    # What the last completed build had to say of the copy it made: a code the UI words in its
-    # own language (``replication.unreadable_messages``) and its particulars. None: nothing.
-    build_note_code: str | None = None
-    build_note_params: JsonScalar | None = None
+    # What the last completed build had to say of the copy it made: a list of {code, params},
+    # each a code the UI words in its own language (``replication.unreadable_messages``) and
+    # its particulars. Empty: nothing.
+    build_notes: JsonScalar
 
 
 @strawberry.type

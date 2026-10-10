@@ -305,14 +305,14 @@ async def test_what_a_build_had_to_say_is_recorded_with_its_completion(plane, tm
     note = BuildNote("replication.unreadable_messages", {"count": 1, "ids": ["m9"], "more": 0})
 
     async def build(key, progress):
-        return BuildOutcome(rows_copied=4, method="stream_batches", content_hash="h", note=note)
+        return BuildOutcome(rows_copied=4, method="stream_batches", content_hash="h", notes=(note,))
 
     node = _Node("a", url, db, tmp_path, build=build, permits=_Permits())
     assert await node.runner.run_pass() == 1
     await node.drain()
     record = (await _records(db))[_key(0)]
     assert record.build_state == "idle"
-    assert (record.build_note_code, record.build_note_params) == (note.code, note.params)
+    assert record.build_notes == [{"code": note.code, "params": note.params}]
 
 
 async def test_a_failed_build_is_recorded_and_frees_what_it_held(plane, tmp_path):

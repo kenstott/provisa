@@ -1582,8 +1582,7 @@ export interface ReplicaBuild {
   deltaCursor: unknown | null;
   /** What the last completed build had to say of the copy it made: a code and its particulars
    * (`replication.unreadable_messages`: count, ids, more). Null when it had nothing to say. */
-  buildNoteCode: string | null;
-  buildNoteParams: Record<string, unknown> | null;
+  buildNotes: { code: string; params: Record<string, unknown> | null }[];
 }
 
 export interface ReplicaBuilds {

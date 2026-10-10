@@ -17,7 +17,7 @@ import {
   replicaBuildLine,
   replicaDeltaLine,
   replicaFeedLine,
-  replicaNoteLine,
+  replicaNoteLines,
 } from "../replicaBuild";
 
 const t = (key: string, options?: Record<string, unknown>) =>
@@ -60,8 +60,7 @@ function build(over: Partial<ReplicaBuild>): ReplicaBuild {
     feedError: null,
     deltaSkipped: null,
     deltaCursor: null,
-    buildNoteCode: null,
-    buildNoteParams: null,
+    buildNotes: [],
     ...over,
   };
 }
@@ -240,38 +239,42 @@ describe("replicaDeltaLine (REQ-874)", () => {
   });
 });
 
-describe("replicaNoteLine", () => {
+describe("replicaNoteLines", () => {
   const UNREADABLE = "replication.unreadable_messages";
 
   it("says nothing for a build that had nothing to say", () => {
-    expect(replicaNoteLine(undefined, t)).toBeNull();
-    expect(replicaNoteLine(build({}), t)).toBeNull();
+    expect(replicaNoteLines(undefined, t)).toEqual([]);
+    expect(replicaNoteLines(build({}), t)).toEqual([]);
   });
 
   it("counts and names the messages kept without their text", () => {
     const noted = build({
-      buildNoteCode: UNREADABLE,
-      buildNoteParams: { count: 2, ids: ["m1", "m9"], more: 0 },
+      buildNotes: [{ code: UNREADABLE, params: { count: 2, ids: ["m1", "m9"], more: 0 } }],
     });
-    expect(replicaNoteLine(noted, t)).toBe(
+    expect(replicaNoteLines(noted, t)).toEqual([
       'replicaBuild.note.unreadable_messages {"total":2,"ids":"m1, m9"}',
-    );
+    ]);
   });
 
   it("says how many more there are than it names", () => {
     const noted = build({
-      buildNoteCode: UNREADABLE,
-      buildNoteParams: { count: 150, ids: ["m1", "m2"], more: 148 },
+      buildNotes: [{ code: UNREADABLE, params: { count: 150, ids: ["m1", "m2"], more: 148 } }],
     });
-    expect(replicaNoteLine(noted, t)).toBe(
+    expect(replicaNoteLines(noted, t)).toEqual([
       'replicaBuild.note.unreadable_messages {"total":150,"ids":"replicaBuild.note.andMore {\\"ids\\":\\"m1, m2\\",\\"more\\":148}"}',
-    );
+    ]);
   });
 
-  it("shows a note it has no wording for by its code, and does not drop it", () => {
-    const noted = build({ buildNoteCode: "replication.something_new", buildNoteParams: null });
-    expect(replicaNoteLine(noted, t)).toBe(
+  it("gives a line for each thing the build had to say, in the order it said them", () => {
+    const noted = build({
+      buildNotes: [
+        { code: UNREADABLE, params: { count: 1, ids: ["m1"], more: 0 } },
+        { code: "replication.something_new", params: null },
+      ],
+    });
+    expect(replicaNoteLines(noted, t)).toEqual([
+      'replicaBuild.note.unreadable_messages {"total":1,"ids":"m1"}',
       'replicaBuild.note.other {"code":"replication.something_new"}',
-    );
+    ]);
   });
 });

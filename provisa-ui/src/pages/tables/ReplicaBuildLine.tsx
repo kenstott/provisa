@@ -20,7 +20,7 @@ import {
   replicaBuildLine,
   replicaDeltaLine,
   replicaFeedLine,
-  replicaNoteLine,
+  replicaNoteLines,
 } from "./replicaBuild";
 
 export function ReplicaBuildLine({
@@ -43,7 +43,7 @@ export function ReplicaBuildLine({
   const line = replicaBuildLine(build, t, (n) => numbers.format(n), formatWhen, serverMessage);
   const feedLine = replicaFeedLine(build, t, formatWhen);
   const deltaLine = replicaDeltaLine(build, t);
-  const noteLine = replicaNoteLine(build, t);
+  const noteLines = replicaNoteLines(build, t);
   return (
     <>
       <Text
@@ -53,11 +53,11 @@ export function ReplicaBuildLine({
       >
         {line}
       </Text>
-      {noteLine && (
-        <Text size="xs" c="orange" data-testid="replica-build-note">
+      {noteLines.map((noteLine) => (
+        <Text key={noteLine} size="xs" c="orange" data-testid="replica-build-note">
           {noteLine}
         </Text>
-      )}
+      ))}
       {deltaLine && (
         <Text size="xs" c="dimmed" data-testid="replica-delta-line">
           {deltaLine}

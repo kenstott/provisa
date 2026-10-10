@@ -51,7 +51,7 @@ from __future__ import annotations
 
 from provisa.core.read_refusal import ReadRefused
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -233,8 +233,8 @@ class ReplicaRecord:
     delta_cursor: Any = None
     delta_skipped: str | None = None
     #: What the last completed build had to say of the copy it made, when it had anything.
-    build_note_code: str | None = None
-    build_note_params: dict | None = None
+    #: What the last completed build had to say: [{"code", "params"}], empty when nothing.
+    build_notes: list = field(default_factory=list)
 
     @property
     def exists(self) -> bool:
@@ -278,8 +278,7 @@ _COLUMNS = (
     _t.feed_error,
     _t.delta_cursor,
     _t.delta_skipped,
-    _t.build_note_code,
-    _t.build_note_params,
+    _t.build_notes,
 )
 
 
@@ -320,8 +319,8 @@ def _record(row: Any) -> ReplicaRecord:
         feed_error=row[26],
         delta_cursor=row[27],
         delta_skipped=row[28],
-        build_note_code=row[29],
-        build_note_params=row[30],
+        # NULL is a replica no build has completed for, which has no notes.
+        build_notes=row[29] if row[29] is not None else [],
     )
 
 
@@ -640,7 +639,7 @@ async def record_completed(
     now: datetime,
     definition_hash: str | None = None,
     built_columns: list | None = None,
-    note: "BuildNote | None" = None,
+    notes: "tuple[BuildNote, ...]" = (),
 ) -> None:
     """The build finished and its table was swapped in, in the store ``store`` identifies.
     ``definition_hash`` and ``built_columns`` say what it was built from and which columns it
@@ -683,8 +682,7 @@ async def record_completed(
                 last_error=None,
                 last_error_code=None,
                 last_error_params=None,
-                build_note_code=None if note is None else note.code,
-                build_note_params=None if note is None else note.params,
+                build_notes=[{"code": note.code, "params": note.params} for note in notes],
                 failed_at=None,
                 failed_attempts=0,
                 waiting_on=None,

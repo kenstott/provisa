@@ -107,24 +107,24 @@ def test_the_replica_is_given_exactly_the_canonical_columns(fetch, table):
     batches = asyncio.run(read())
     assert batches and all(batch.schema == arrow_schema(columns) for batch in batches)
     assert sum(batch.num_rows for batch in batches) >= 1
-    assert source.note() is None  # every message was read whole
+    assert source.notes() == []  # every message was read whole
 
 
 def test_messages_kept_without_a_body_are_the_builds_note(fetch):
     fetch.graph.table.update({f"{ROOT}/messages": [[_message(1), _message(2)]], **_html(1)})
     columns = cm.ir_columns("messages")
     source = fetch.replica_source(SOURCE, _table("messages"), columns)
-    assert source.note() is None  # nothing read yet
+    assert source.notes() == []  # nothing read yet
 
     async def read():
         return sum([batch.num_rows async for batch in source.batches(1000)])
 
     assert asyncio.run(read()) == 2  # the row is kept
-    note = source.note()
+    (note,) = source.notes()
     assert note.code == "replication.unreadable_messages"
     assert note.params == {"count": 1, "ids": ["m2"], "more": 0}
     assert asyncio.run(read()) == 2  # a build begun again counts again, not twice
-    assert source.note().params["count"] == 1
+    assert source.notes()[0].params["count"] == 1
 
 
 def test_a_refusal_by_graph_fails_the_read_and_is_not_a_shorter_table(fetch):

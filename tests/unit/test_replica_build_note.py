@@ -52,7 +52,7 @@ class _Engine:
 async def _progress(_copied: int) -> None: ...
 
 
-def _source(note=None, *, ids=("a", "b")):
+def _source(notes=None, *, ids=("a", "b")):
     read: list[str] = []
 
     async def rows(_batch_rows: int):
@@ -60,7 +60,7 @@ def _source(note=None, *, ids=("a", "b")):
             read.append(row_id)
             yield [{"id": row_id}]
 
-    source = CursorSource(rows, COLUMNS, note=note)
+    source = CursorSource(rows, COLUMNS, notes=notes)
     source.read = read  # type: ignore[attr-defined]
     return source
 
@@ -74,22 +74,22 @@ async def _build(source, *, prior_hash=None):
 
 
 async def test_a_build_carries_what_its_source_says_of_the_read():
-    outcome, target = await _build(_source(lambda: NOTE))
-    assert outcome.note == NOTE
+    outcome, target = await _build(_source(lambda: [NOTE]))
+    assert outcome.notes == (NOTE,)
     assert (outcome.rows_copied, target.swapped) == (2, True)
 
 
 async def test_the_source_is_asked_once_its_rows_are_read_to_the_end():
     source = _source()
     asked_after: list[int] = []
-    source._note = lambda: asked_after.append(len(source.read)) or NOTE  # type: ignore[attr-defined]
+    source._notes = lambda: asked_after.append(len(source.read)) or [NOTE]  # type: ignore[attr-defined]
     await _build(source)
     assert asked_after == [2]
 
 
 async def test_a_source_with_nothing_to_say_leaves_no_note():
-    assert (await _build(_source(lambda: None)))[0].note is None
-    assert (await _build(_source()))[0].note is None
+    assert (await _build(_source(lambda: [])))[0].notes == ()
+    assert (await _build(_source()))[0].notes == ()
 
 
 async def test_a_source_that_states_no_notes_at_all_leaves_none():
@@ -99,11 +99,20 @@ async def test_a_source_that_states_no_notes_at_all_leaves_none():
         async def batches(self, _batch_rows: int):
             yield pa.RecordBatch.from_pylist([{"id": "a"}])
 
-    assert (await _build(Plain()))[0].note is None
+    assert (await _build(Plain()))[0].notes == ()
 
 
 async def test_a_copy_equal_to_the_last_build_still_carries_the_note():
-    first, _ = await _build(_source(lambda: NOTE))
-    again, target = await _build(_source(lambda: NOTE), prior_hash=first.content_hash)
+    first, _ = await _build(_source(lambda: [NOTE]))
+    again, target = await _build(_source(lambda: [NOTE]), prior_hash=first.content_hash)
     assert (again.changed, target.swapped, target.aborted) == (False, False, True)
-    assert again.note == NOTE
+    assert again.notes == (NOTE,)
+
+
+async def test_a_build_carries_every_note_its_source_has_in_the_order_given():
+    from provisa.federation.data_replicator import noted
+
+    other = BuildNote("replication.mailboxes_left_out", {"count": 1})
+    outcome, _ = await _build(_source(lambda: noted(NOTE, None, other)))
+    assert outcome.notes == (NOTE, other)
+    assert noted(None, None) == []

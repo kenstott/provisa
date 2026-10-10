@@ -317,7 +317,7 @@ async def test_a_reader_that_joins_a_running_build_asks_for_no_second_one(conn):
 # -- what a completed build had to say of its copy --------------------------------------------
 
 
-async def _completed_saying(conn, note=None) -> None:
+async def _completed_saying(conn, *notes) -> None:
     now = datetime.now(UTC)
     await build_state.request_build(conn, KEY, build_state.REASON_REFRESH)
     await build_state.claim(conn, KEY, holder="h:1", retry=RetryPolicy(60, 3600), now=now)
@@ -330,7 +330,7 @@ async def _completed_saying(conn, note=None) -> None:
         store="store-a",
         next_refresh_at=None,
         now=now,
-        note=note,
+        notes=notes,
     )
 
 
@@ -340,8 +340,12 @@ _NOTE = BuildNote("replication.unreadable_messages", {"count": 1, "ids": ["m9"],
 async def test_a_completed_build_records_what_it_had_to_say(conn):
     await _completed_saying(conn, _NOTE)
     record = await build_state.read(conn, KEY)
-    assert record.build_note_code == "replication.unreadable_messages"
-    assert record.build_note_params == {"count": 1, "ids": ["m9"], "more": 0}
+    assert record.build_notes == [
+        {
+            "code": "replication.unreadable_messages",
+            "params": {"count": 1, "ids": ["m9"], "more": 0},
+        }
+    ]
     assert record.exists and record.last_error is None
 
 
@@ -349,7 +353,7 @@ async def test_a_completed_build_with_nothing_to_say_clears_the_note_before_it(c
     await _completed_saying(conn, _NOTE)
     await _completed_saying(conn)
     record = await build_state.read(conn, KEY)
-    assert (record.build_note_code, record.build_note_params) == (None, None)
+    assert record.build_notes == []
 
 
 async def test_a_failed_build_leaves_the_last_completed_builds_note(conn):
@@ -360,10 +364,23 @@ async def test_a_failed_build_leaves_the_last_completed_builds_note(conn):
     await build_state.record_failed(conn, KEY, error="boom", now=now)
     record = await build_state.read(conn, KEY)
     assert record.build_state == "failed"
-    assert record.build_note_code == "replication.unreadable_messages"
+    assert record.build_notes == [
+        {
+            "code": "replication.unreadable_messages",
+            "params": {"count": 1, "ids": ["m9"], "more": 0},
+        }
+    ]
 
 
 async def test_a_replica_that_was_never_noted_has_none(conn):
     await _completed_saying(conn)
     record = await build_state.read(conn, KEY)
-    assert (record.build_note_code, record.build_note_params) == (None, None)
+    assert record.build_notes == []
+
+
+async def test_a_build_with_several_things_to_say_records_each(conn):
+    left_out = BuildNote("replication.mailboxes_left_out", {"count": 2})
+    await _completed_saying(conn, _NOTE, left_out)
+    record = await build_state.read(conn, KEY)
+    assert [note["code"] for note in record.build_notes] == [_NOTE.code, left_out.code]
+    assert record.build_notes[1]["params"] == {"count": 2}

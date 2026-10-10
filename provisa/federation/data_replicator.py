@@ -210,6 +210,12 @@ class BuildNote:
     params: dict
 
 
+def noted(*notes: "BuildNote | None") -> list[BuildNote]:
+    """The notes a read has, of the ones it might have had: each kind of note is None when the
+    read gave no cause for it."""
+    return [note for note in notes if note is not None]
+
+
 #: The note of a mail source's build that kept messages without a part it could not read.
 UNREADABLE_MESSAGES = "replication.unreadable_messages"
 #: How many of their ids the note carries; every id is in the log.
@@ -245,13 +251,13 @@ class BuildOutcome:
     #: (``replica_converge.definition_hash``); recorded with the build's completion.
     definition_hash: str | None = None
     built_columns: list | None = None
-    #: What the source had to say of the rows it read, when it had anything (BuildNote).
-    note: BuildNote | None = None
+    #: What the source had to say of the rows it read (BuildNote); empty when nothing.
+    notes: tuple[BuildNote, ...] = ()
 
 
 class _Source(Protocol):
-    """A source may also carry ``note()``: called once its batches are read to the end, it
-    answers a :class:`BuildNote` for the read just made, or None."""
+    """A source may also carry ``notes()``: called once its batches are read to the end, it
+    answers every :class:`BuildNote` of the read just made, none when it has nothing to say."""
 
     caps: SourceCaps
 
@@ -339,15 +345,15 @@ class ReplicaJob:
                     await progress(copied)
             content_hash = digest.hexdigest()
             # What the source says of this read holds whether or not the copy is swapped in.
-            said = getattr(self._source, "note", None)
-            note = said() if said is not None else None
+            said = getattr(self._source, "notes", None)
+            notes = tuple(said()) if said is not None else ()
             if content_hash == self._prior_hash:
                 return BuildOutcome(
                     rows_copied=copied,
                     method=self.method.value,
                     content_hash=content_hash,
                     changed=False,
-                    note=note,
+                    notes=notes,
                 )
             if self._still_wanted is not None:
                 # Raises when the model stopped declaring the table while it was copied: the
@@ -360,7 +366,7 @@ class ReplicaJob:
                 await self._target.abort()
         await self._engine.after_swap()
         return BuildOutcome(
-            rows_copied=copied, method=self.method.value, content_hash=content_hash, note=note
+            rows_copied=copied, method=self.method.value, content_hash=content_hash, notes=notes
         )
 
 

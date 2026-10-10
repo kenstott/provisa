@@ -447,10 +447,10 @@ class TestTheLoader:
         source = fetch.replica_source(
             self._source(), SimpleNamespace(table_name="messages"), columns
         )
-        assert source.note() is None  # nothing read yet
+        assert source.notes() == []  # nothing read yet
         rows = sum([b.num_rows async for b in source.batches(1000)])
         assert rows == 4
-        note = source.note()
+        (note,) = source.notes()
         assert note.code == "replication.unreadable_messages"
         assert note.params == {"count": 1, "ids": ["m9"], "more": 0}
 
@@ -461,7 +461,7 @@ class TestTheLoader:
             self._source(), SimpleNamespace(table_name="messages"), columns
         )
         [b async for b in source.batches(1000)]
-        assert source.note() is None
+        assert source.notes() == []
 
     async def test_the_note_names_the_first_hundred_and_counts_the_rest(self):
         ids = [f"m{n}" for n in range(150)]

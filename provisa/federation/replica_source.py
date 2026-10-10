@@ -134,15 +134,15 @@ class CursorSource:
         row_batches: Callable[[int], AsyncIterator[list[dict]]],
         columns: list[tuple[str, str]],
         *,
-        note: Callable[[], BuildNote | None] | None = None,
+        notes: Callable[[], list[BuildNote]] | None = None,
     ) -> None:
         self._row_batches = row_batches
         self._columns = columns
-        self._note = note
+        self._notes = notes
 
-    def note(self) -> BuildNote | None:
+    def notes(self) -> list[BuildNote]:
         """What the adapter has to say of the read just made, once it is read to the end."""
-        return self._note() if self._note is not None else None
+        return self._notes() if self._notes is not None else []
 
     async def batches(self, batch_rows: int) -> AsyncIterator[pa.RecordBatch]:
         schema = arrow_schema(self._columns)

@@ -732,8 +732,7 @@ query ReplicaBuilds {
       feedError
       deltaSkipped
       deltaCursor
-      buildNoteCode
-      buildNoteParams
+      buildNotes
     }
     convergenceError
     convergenceErrorAt
