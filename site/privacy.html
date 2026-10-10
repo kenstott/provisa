@@ -50,17 +50,21 @@
           cover data you load into your own Provisa deployment — that data is yours, stays in
           your infrastructure, and is never seen by us.
         </p>
-        <p class="lead">Last updated August 31, 2026.</p>
+        <p class="lead">Last updated October 10, 2026.</p>
       </div>
 
       <div class="doc-body">
         <h2>What we collect</h2>
-        <p>Two things, and nothing beyond them:</p>
+        <p>Three things, and nothing beyond them:</p>
         <ul>
           <li>
             <strong>Sign-in to the Provisa application.</strong> When you sign in with Google,
-            GitHub, or Microsoft, we request only your <strong>name, email address, and profile
-            picture</strong> (scopes: <code>profile</code>, <code>email</code>). We use this
+            GitHub, or Microsoft, we request only the scopes <code>profile</code> and
+            <code>email</code> (Google), <code>read:user</code> and <code>user:email</code>
+            (GitHub), or <code>openid</code>, <code>email</code> and <code>profile</code>
+            (Microsoft), and the application reads your <strong>name and email address</strong>.
+            If you sign in with an email address and password instead, we store that email
+            address and a password managed by Firebase Authentication. We use this
             solely to create and authenticate your account and to know who is asking when a
             query runs. We never request access to your files, contacts, calendar, or any other
             data those providers hold.
@@ -69,6 +73,14 @@
             <strong>Product-update mailing list.</strong> If you submit the "Keep me posted"
             form on this site, we store the <strong>name and email address</strong> you enter,
             for the sole purpose of emailing you product updates.
+          </li>
+          <li>
+            <strong>License registration.</strong> If you register for a license on this site,
+            we store the <strong>email address, first and last name, company, position, role,
+            optional phone number, and machine ID</strong> you enter, with the time of
+            registration and of confirmation. We use them to send you a confirmation link and,
+            once you confirm it, a signed license file that contains those same fields and the
+            date of issue.
           </li>
         </ul>
 
@@ -82,24 +94,25 @@
         <h2>Where it's stored</h2>
         <p>
           Sign-in identities are managed by Firebase Authentication (Google Cloud). Mailing-list
-          entries are stored in a private Cloudflare D1 database that only the Provisa operator
-          can access. Both providers process data under their own security and compliance
-          commitments as our data sub-processors; neither is authorized to use it for their own
-          purposes.
+          entries and license registrations are stored in a private Cloudflare D1 database that
+          only the Provisa operator can access. The confirmation email and the license email
+          are sent through Resend, which receives the recipient's email address, first name and,
+          in the license email, the license file. Firebase, Cloudflare and Resend process data
+          under their own security and compliance commitments as our data sub-processors;
+          none is authorized to use it for their own purposes.
         </p>
 
         <h2>How long we keep it</h2>
         <p>
           Sign-in data persists for as long as your account exists; delete your account and it
-          is removed. Mailing-list entries persist until you unsubscribe or ask us to remove
-          them — every email includes an unsubscribe link, and the address is de-duplicated so
-          you're only ever stored once.
+          is removed. Mailing-list entries and license registrations persist until you ask
+          us to remove them (see Contact); the mailing-list address is de-duplicated so you're
+          only ever stored once. A license confirmation link stops working after 48 hours.
         </p>
 
         <h2>Your choices</h2>
         <ul>
-          <li>Sign in with any of the three supported providers, or self-host with your own auth if you're running Provisa on your own infrastructure.</li>
-          <li>Unsubscribe from the mailing list at any time via the link in any email.</li>
+          <li>Sign in with Google, GitHub, Microsoft or an email address and password, or self-host with your own auth if you're running Provisa on your own infrastructure.</li>
           <li>Ask us to access, correct, export, or delete your data — email us and we'll handle it directly, no ticket queue.</li>
         </ul>
 
