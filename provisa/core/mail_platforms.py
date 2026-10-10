@@ -160,11 +160,12 @@ async def put(
     client_secret: str | None,
     settings: dict[str, str],
     actor: str | None,
-    organisation_mailboxes: bool | None = None,
+    organisation_mailboxes: bool,
 ) -> Configured:
     """Keep ``org_id``'s client for the platform. ``client_secret`` None keeps the secret already
     in the vault, which there must then be: a client is never kept without its secret.
-    ``organisation_mailboxes`` None leaves the switch as it stands (off for a new entry)."""
+    ``organisation_mailboxes`` is stated at every save: whether sources may read the
+    organisation's mailboxes with this client's own credential."""
     declared = platform(platform_id)
     client_id = client_id.strip()
     settings = {key: value.strip() for key, value in settings.items()}
@@ -205,18 +206,21 @@ async def put(
         "client_id": client_id,
         "client_secret": Configured(platform_id, client_id).client_secret,
         "settings": json.dumps(settings, sort_keys=True),
+        "organisation_mailboxes": organisation_mailboxes,
         "updated_by": actor,
     }
-    updated = ["client_id", "client_secret", "settings", "updated_by"]
-    if organisation_mailboxes is not None:
-        values["organisation_mailboxes"] = organisation_mailboxes
-        updated.append("organisation_mailboxes")
     async with admin_db.acquire() as conn:
         await conn.upsert(
             org_mail_platforms,
             values,
             index_elements=["org_id", "platform"],
-            update_columns=updated,
+            update_columns=[
+                "client_id",
+                "client_secret",
+                "settings",
+                "organisation_mailboxes",
+                "updated_by",
+            ],
             set_extra={"updated_at": func.now()},
         )
     kept = await read(admin_db, org_id, platform_id)

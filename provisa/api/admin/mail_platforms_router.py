@@ -40,9 +40,9 @@ class PlatformBody(BaseModel):
     #: Left out to keep the secret already entered.
     client_secret: str | None = None
     settings: dict[str, str] = {}
-    # Whether sources may read the organisation's mailboxes with this client's own credential.
-    # Left out, the switch stays as it stands.
-    organisation_mailboxes: bool | None = None
+    # Whether sources may read the organisation's mailboxes with this client's own credential:
+    # stated at every save.
+    organisation_mailboxes: bool
 
 
 def _refusal(refused: MailPlatformRefused) -> ApiError:

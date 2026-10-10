@@ -104,18 +104,22 @@ async def test_the_switch_is_off_until_the_administrator_turns_it_on(plane):
     assert allowed.client_id == "client-1"
 
 
-async def test_saving_the_client_again_without_naming_the_switch_leaves_it_as_it_stands(plane):
+async def test_the_switch_is_stated_at_every_save(plane):
     await _put(
         plane, platform=SOURCE_TYPE, settings={"tenant": TENANT}, organisation_mailboxes=True
     )
-    again = await _put(
-        plane, platform=SOURCE_TYPE, client_id="client-2", settings={"tenant": TENANT}
-    )
-    assert again.client_id == "client-2" and again.organisation_mailboxes is True
     off = await _put(
-        plane, platform=SOURCE_TYPE, settings={"tenant": TENANT}, organisation_mailboxes=False
+        plane,
+        platform=SOURCE_TYPE,
+        client_id="client-2",
+        settings={"tenant": TENANT},
+        organisation_mailboxes=False,
     )
-    assert off.organisation_mailboxes is False
+    assert off.client_id == "client-2" and off.organisation_mailboxes is False
+    with pytest.raises(TypeError, match="organisation_mailboxes"):
+        await mail_platforms.put(
+            plane, "acme", SOURCE_TYPE, client_id="c", client_secret=None, settings={}, actor=None
+        )
 
 
 async def test_an_organisation_with_no_client_is_refused_as_not_configured(plane):
@@ -143,7 +147,15 @@ async def test_the_admin_route_reads_and_sets_the_switch(plane, monkeypatch):
     monkeypatch.setattr(router, "_org_guard", guard)
     monkeypatch.setattr(router, "_admin_pool", lambda: plane)
     monkeypatch.setattr(source_sign_in_router, "_public_address", lambda: "http://localhost:3000")
-    body = router.PlatformBody(client_id="c", client_secret=SECRET, settings={"tenant": TENANT})
+    listed = await router.list_platforms(None, "acme")
+    entry = next(p for p in listed["platforms"] if p["platform"] == SOURCE_TYPE)
+    assert entry["organisation_mailboxes"] is False  # answered, not left out, before any client
+    body = router.PlatformBody(
+        client_id="c",
+        client_secret=SECRET,
+        settings={"tenant": TENANT},
+        organisation_mailboxes=False,
+    )
     entry = await router.put_platform(None, "acme", SOURCE_TYPE, body)
     assert entry["organisation_mailboxes"] is False
     body = router.PlatformBody(

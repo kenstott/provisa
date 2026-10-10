@@ -73,7 +73,13 @@ async def _vault(plane, org: str) -> dict[str, str]:
 
 
 async def _put(plane, org="acme", platform=GOOGLE, **changed):
-    given = {"client_id": "client-1", "client_secret": SECRET, "settings": {}, "actor": "uid-ada"}
+    given = {
+        "client_id": "client-1",
+        "client_secret": SECRET,
+        "settings": {},
+        "actor": "uid-ada",
+        "organisation_mailboxes": False,
+    }
     given.update(changed)
     return await mail_platforms.put(plane, org, platform, **given)
 
@@ -186,7 +192,10 @@ class TestTheAdminSurface:
     async def test_it_is_opened_by_the_organisations_own_right_in_that_organisation(self, wired):
         await router.list_platforms(None, "acme")
         await router.put_platform(
-            None, "acme", GOOGLE, router.PlatformBody(client_id="c", client_secret=SECRET)
+            None,
+            "acme",
+            GOOGLE,
+            router.PlatformBody(client_id="c", client_secret=SECRET, organisation_mailboxes=False),
         )
         await router.delete_platform(None, "acme", GOOGLE)
         assert wired["guarded"] == ["acme"] * 3
@@ -197,7 +206,10 @@ class TestTheAdminSurface:
         for call in (
             lambda: router.list_platforms(None, "acme"),
             lambda: router.put_platform(
-                None, "acme", GOOGLE, router.PlatformBody(client_id="x", client_secret="y")
+                None,
+                "acme",
+                GOOGLE,
+                router.PlatformBody(client_id="x", client_secret="y", organisation_mailboxes=False),
             ),
             lambda: router.delete_platform(None, "acme", GOOGLE),
         ):
@@ -228,7 +240,12 @@ class TestTheAdminSurface:
 
     async def test_no_answer_carries_the_secret(self, wired):
         kept = await router.put_platform(
-            None, "acme", GOOGLE, router.PlatformBody(client_id="client-1", client_secret=SECRET)
+            None,
+            "acme",
+            GOOGLE,
+            router.PlatformBody(
+                client_id="client-1", client_secret=SECRET, organisation_mailboxes=False
+            ),
         )
         listed = await router.list_platforms(None, "acme")
         assert SECRET not in repr(kept) and SECRET not in repr(listed)
@@ -240,7 +257,12 @@ class TestTheAdminSurface:
 
     async def test_a_refusal_keeps_its_name(self, wired):
         with pytest.raises(ApiError) as raised:
-            await router.put_platform(None, "acme", GOOGLE, router.PlatformBody(client_id="c"))
+            await router.put_platform(
+                None,
+                "acme",
+                GOOGLE,
+                router.PlatformBody(client_id="c", organisation_mailboxes=False),
+            )
         assert (raised.value.code, raised.value.status_code) == ("mail_platform.incomplete", 400)
 
     async def test_an_unset_public_address_is_said_and_does_not_hide_the_list(
