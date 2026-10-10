@@ -132,6 +132,12 @@
         "help": "Wie viele Worker-Prozesse der Server ausführt. Neustart erforderlich, da die Prozesse vom Launcher gestartet werden."
       }
     },
+    "mail": {
+      "mailboxes_at_once": {
+        "label": "Gleichzeitig gelesene Postfächer",
+        "help": "Wie viele Postfächer eine Quelle der Postfächer einer Organisation gleichzeitig liest. Mehr verkürzt einen Build und beansprucht das Limit des E-Mail-Dienstes für die gesamte Anwendung stärker."
+      }
+    },
     "replication": {
       "builds_per_node": {
         "label": "Replikat-Builds pro Knoten",

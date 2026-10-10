@@ -9,6 +9,24 @@
     "connectFailed": "无法完成登录。",
     "notSetUp": "您的组织尚未连接 Microsoft 365。",
     "setUpLink": "在{{where}}中进行设置",
-    "notSetUpAsk": "您的组织尚未连接 Microsoft 365。请让管理员在{{where}}中进行设置。"
+    "notSetUpAsk": "您的组织尚未连接 Microsoft 365。请让管理员在{{where}}中进行设置。",
+    "whose": "读取谁的邮件",
+    "whoseHelp": "单个邮箱由其所有者连接。组织的邮箱在管理员允许后，使用组织自身的访问权限读取。",
+    "whoseOne": "单个邮箱",
+    "whoseOrganisation": "组织的邮箱",
+    "choice": "哪些邮箱",
+    "choiceEveryone": "目录中的所有人",
+    "choiceGroup": "某个组的成员",
+    "choiceList": "以下地址",
+    "group": "组",
+    "groupHelp": "组的地址，或 Microsoft Entra 中显示的 ID。包含其内嵌套组的成员。",
+    "list": "邮箱地址",
+    "listHelp": "每行一个地址。",
+    "everyMailbox": "一张表保存所有邮箱的行。可读取该表的角色可读取每个邮箱，除非 account 列上的行规则另有规定。",
+    "notAllowed": "您的组织尚未允许读取其邮箱的数据源。",
+    "allowLink": "在 {{where}} 中允许",
+    "notAllowedAsk": "您的组织尚未允许读取其邮箱的数据源。请让管理员在 {{where}} 中允许。",
+    "check": "检查",
+    "found": "找到的邮箱：{{count}}"
   }
 }

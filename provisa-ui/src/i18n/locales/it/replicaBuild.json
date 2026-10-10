@@ -36,6 +36,7 @@
     },
     "note": {
       "unreadable_messages": "Messaggi conservati senza il testo perché una parte non è ciò che dichiara: {{total}}. I loro ID: {{ids}}",
+      "mailboxes_left_out": "Caselle di posta escluse, perché Microsoft o Google indica che non esistono o non possono essere lette: {{total}}. Sono: {{accounts}}",
       "andMore": "{{ids}} e altri {{more}}",
       "other": "L’ultima build ha annotato: {{code}}"
     }

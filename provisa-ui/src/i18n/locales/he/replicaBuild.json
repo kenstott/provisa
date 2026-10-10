@@ -36,6 +36,7 @@
     },
     "note": {
       "unreadable_messages": "הודעות שנשמרו ללא הטקסט שלהן, כי חלק מהן אינו מה שהוא מצהיר: {{total}}. המזהים שלהן: {{ids}}",
+      "mailboxes_left_out": "תיבות דואר שהושמטו, כי Microsoft או Google מציינת שאינן קיימות או שאין לקרוא אותן: {{total}}. הן: {{accounts}}",
       "andMore": "{{ids}} ועוד {{more}}",
       "other": "הבנייה האחרונה ציינה: {{code}}"
     }

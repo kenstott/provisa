@@ -132,6 +132,12 @@
         "help": "Le nombre de processus worker que le serveur exécute. Redémarrage requis car les processus sont lancés par le lanceur."
       }
     },
+    "mail": {
+      "mailboxes_at_once": {
+        "label": "Boîtes aux lettres lues en même temps",
+        "help": "Combien de boîtes aux lettres une source des boîtes d’une organisation lit en même temps. Un nombre plus élevé raccourcit une construction et sollicite davantage la limite du service de messagerie pour toute l’application."
+      }
+    },
     "replication": {
       "builds_per_node": {
         "label": "Constructions de répliques par nœud",

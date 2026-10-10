@@ -9,6 +9,24 @@
     "connectFailed": "La connexion n’a pas pu aboutir.",
     "notSetUp": "Votre organisation n’a pas encore connecté Microsoft 365.",
     "setUpLink": "Le configurer dans {{where}}",
-    "notSetUpAsk": "Votre organisation n’a pas encore connecté Microsoft 365. Demandez à un administrateur de le configurer dans {{where}}."
+    "notSetUpAsk": "Votre organisation n’a pas encore connecté Microsoft 365. Demandez à un administrateur de le configurer dans {{where}}.",
+    "whose": "Le courrier de qui",
+    "whoseHelp": "Une boîte aux lettres est connectée par son propriétaire. Les boîtes aux lettres de l’organisation sont lues avec l’accès propre de l’organisation, une fois qu’un administrateur l’a autorisé.",
+    "whoseOne": "Une boîte aux lettres",
+    "whoseOrganisation": "Les boîtes aux lettres de l’organisation",
+    "choice": "Quelles boîtes aux lettres",
+    "choiceEveryone": "Tout le monde dans l’annuaire",
+    "choiceGroup": "Les membres d’un groupe",
+    "choiceList": "Ces adresses",
+    "group": "Groupe",
+    "groupHelp": "L’adresse du groupe, ou son ID tel que Microsoft Entra l’affiche. Les membres des groupes qu’il contient sont inclus.",
+    "list": "Adresses des boîtes aux lettres",
+    "listHelp": "Une adresse par ligne.",
+    "everyMailbox": "Une table contient les lignes de toutes les boîtes aux lettres. Un rôle autorisé à lire la table lit toutes les boîtes, sauf si une règle de lignes sur la colonne account en décide autrement.",
+    "notAllowed": "Votre organisation n’a pas autorisé les sources qui lisent ses boîtes aux lettres.",
+    "allowLink": "Autorisez-le dans {{where}}",
+    "notAllowedAsk": "Votre organisation n’a pas autorisé les sources qui lisent ses boîtes aux lettres. Demandez à un administrateur de l’autoriser dans {{where}}.",
+    "check": "Vérifier",
+    "found": "Boîtes aux lettres trouvées : {{count}}"
   }
 }

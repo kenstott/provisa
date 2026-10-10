@@ -477,6 +477,15 @@
       "window_closed": "La finestra di accesso è stata chiusa prima del completamento.",
       "tenant_invalid": "L'impostazione Microsoft 365 dell'organizzazione non indica una directory (tenant). Un amministratore inserisce l'ID o il dominio della directory.",
       "microsoft_account_unread": "L'accesso è stato approvato, ma Microsoft non ha indicato di chi è la casella di posta."
+    },
+    "mail_platform": {
+      "organisation_mailboxes_off": "La tua organizzazione non ha consentito origini che leggono le sue caselle di posta. Un amministratore lo consente in Amministrazione › Email."
+    },
+    "microsoft_365": {
+      "mailboxes_invalid": "La scelta delle caselle di posta non può essere interpretata: {{error}}",
+      "client_refused": "Microsoft ha rifiutato il client Microsoft 365 della tua organizzazione: {{reason}}",
+      "throttled": "Microsoft sta limitando le richieste per ora. Riprova tra {{retry_after}} secondi.",
+      "directory_refused": "Microsoft non ha elencato le caselle di posta dell'organizzazione ({{status}} {{reason}}). Il client necessita dell'autorizzazione a leggere gli utenti della directory."
     }
   }
 }

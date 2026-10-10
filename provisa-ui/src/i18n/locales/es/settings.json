@@ -132,6 +132,12 @@
         "help": "Cuántos procesos worker ejecuta el servidor. Requiere reinicio porque el lanzador inicia los procesos."
       }
     },
+    "mail": {
+      "mailboxes_at_once": {
+        "label": "Buzones leídos a la vez",
+        "help": "Cuántos buzones lee a la vez un origen de los buzones de una organización. Un número mayor acorta una compilación y consume más del límite del servicio de correo para toda la aplicación."
+      }
+    },
     "replication": {
       "builds_per_node": {
         "label": "Compilaciones de réplicas por nodo",

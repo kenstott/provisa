@@ -265,6 +265,25 @@ describe("replicaNoteLines", () => {
     ]);
   });
 
+  it("counts and names the mailboxes left out", () => {
+    const noted = build({
+      buildNotes: [
+        {
+          code: "replication.mailboxes_left_out",
+          params: { count: 2, accounts: ["a@contoso.test", "b@contoso.test"], more: 0 },
+        },
+        {
+          code: "replication.mailboxes_left_out",
+          params: { count: 130, accounts: ["a@contoso.test"], more: 129 },
+        },
+      ],
+    });
+    expect(replicaNoteLines(noted, t)).toEqual([
+      'replicaBuild.note.mailboxes_left_out {"total":2,"accounts":"a@contoso.test, b@contoso.test"}',
+      'replicaBuild.note.mailboxes_left_out {"total":130,"accounts":"replicaBuild.note.andMore {\\"ids\\":\\"a@contoso.test\\",\\"more\\":129}"}',
+    ]);
+  });
+
   it("gives a line for each thing the build had to say, in the order it said them", () => {
     const noted = build({
       buildNotes: [

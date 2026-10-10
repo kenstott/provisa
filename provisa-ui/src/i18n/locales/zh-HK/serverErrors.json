@@ -477,6 +477,15 @@
       "window_closed": "登入視窗在完成前已被關閉。",
       "tenant_invalid": "組織的 Microsoft 365 設定未指定目錄（租用戶）。由管理員輸入目錄的 ID 或網域。",
       "microsoft_account_unread": "登入已獲批准，但 Microsoft 未說明這是誰的信箱。"
+    },
+    "mail_platform": {
+      "organisation_mailboxes_off": "您的組織尚未允許讀取其信箱的數據來源。管理員可在「管理 › 郵件」中允許。"
+    },
+    "microsoft_365": {
+      "mailboxes_invalid": "無法解析信箱選擇：{{error}}",
+      "client_refused": "Microsoft 拒絕了您組織的 Microsoft 365 用戶端：{{reason}}",
+      "throttled": "Microsoft 目前正在限制要求。請在 {{retry_after}} 秒後重試。",
+      "directory_refused": "Microsoft 未列出組織的信箱（{{status}} {{reason}}）。用戶端需要讀取目錄使用者的權限。"
     }
   }
 }

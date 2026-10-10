@@ -36,6 +36,7 @@
     },
     "note": {
       "unreadable_messages": "Nachrichten, die ohne ihren Text übernommen wurden, weil ein Teil nicht das ist, was er angibt: {{total}}. Ihre IDs: {{ids}}",
+      "mailboxes_left_out": "Ausgelassene Postfächer, weil sie laut Microsoft oder Google nicht vorhanden sind oder nicht gelesen werden dürfen: {{total}}. Es sind: {{accounts}}",
       "andMore": "{{ids}} und {{more}} weitere",
       "other": "Der letzte Build hat vermerkt: {{code}}"
     }

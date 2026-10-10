@@ -9,6 +9,24 @@
     "connectFailed": "無法完成登入。",
     "notSetUp": "你的組織尚未連接 Microsoft 365。",
     "setUpLink": "在{{where}}中設定",
-    "notSetUpAsk": "你的組織尚未連接 Microsoft 365。請要求管理員在{{where}}中設定。"
+    "notSetUpAsk": "你的組織尚未連接 Microsoft 365。請要求管理員在{{where}}中設定。",
+    "whose": "讀取誰的郵件",
+    "whoseHelp": "單一信箱由其擁有者連接。組織的信箱在管理員允許後，使用組織本身的存取權讀取。",
+    "whoseOne": "單一信箱",
+    "whoseOrganisation": "組織的信箱",
+    "choice": "哪些信箱",
+    "choiceEveryone": "目錄中的所有人",
+    "choiceGroup": "某個群組的成員",
+    "choiceList": "以下地址",
+    "group": "群組",
+    "groupHelp": "群組的地址，或 Microsoft Entra 中顯示的 ID。包含其內巢狀群組的成員。",
+    "list": "信箱地址",
+    "listHelp": "每行一個地址。",
+    "everyMailbox": "一個資料表保存所有信箱的列。可讀取該資料表的角色可讀取每個信箱，除非 account 欄上的列規則另有規定。",
+    "notAllowed": "您的組織尚未允許讀取其信箱的數據來源。",
+    "allowLink": "在 {{where}} 中允許",
+    "notAllowedAsk": "您的組織尚未允許讀取其信箱的數據來源。請讓管理員在 {{where}} 中允許。",
+    "check": "檢查",
+    "found": "找到的信箱：{{count}}"
   }
 }

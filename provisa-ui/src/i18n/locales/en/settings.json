@@ -132,6 +132,12 @@
         "help": "How many worker processes the server runs. Restart required because processes are started by the launcher."
       }
     },
+    "mail": {
+      "mailboxes_at_once": {
+        "label": "Mailboxes read at once",
+        "help": "How many mailboxes a source of an organization's mailboxes reads at the same time. More shortens a build and asks more of the mail service's limit for the whole application."
+      }
+    },
     "replication": {
       "builds_per_node": {
         "label": "Replica builds per node",

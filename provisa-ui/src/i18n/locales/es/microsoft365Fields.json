@@ -9,6 +9,24 @@
     "connectFailed": "No se pudo completar el inicio de sesión.",
     "notSetUp": "Su organización aún no ha conectado Microsoft 365.",
     "setUpLink": "Configurarlo en {{where}}",
-    "notSetUpAsk": "Su organización aún no ha conectado Microsoft 365. Pida a un administrador que lo configure en {{where}}."
+    "notSetUpAsk": "Su organización aún no ha conectado Microsoft 365. Pida a un administrador que lo configure en {{where}}.",
+    "whose": "De quién es el correo",
+    "whoseHelp": "Un buzón lo conecta su propietario. Los buzones de la organización se leen con el acceso propio de la organización, una vez que un administrador lo ha permitido.",
+    "whoseOne": "Un buzón",
+    "whoseOrganisation": "Los buzones de la organización",
+    "choice": "Qué buzones",
+    "choiceEveryone": "Todos los del directorio",
+    "choiceGroup": "Los miembros de un grupo",
+    "choiceList": "Estas direcciones",
+    "group": "Grupo",
+    "groupHelp": "La dirección del grupo o su ID tal como lo muestra Microsoft Entra. Se incluyen los miembros de los grupos que contiene.",
+    "list": "Direcciones de los buzones",
+    "listHelp": "Una dirección por línea.",
+    "everyMailbox": "Una tabla contiene las filas de todos los buzones. Un rol que puede leer la tabla lee todos los buzones, salvo que una regla de filas sobre la columna account indique otra cosa.",
+    "notAllowed": "Su organización no ha permitido orígenes que lean sus buzones.",
+    "allowLink": "Permítalo en {{where}}",
+    "notAllowedAsk": "Su organización no ha permitido orígenes que lean sus buzones. Pida a un administrador que lo permita en {{where}}.",
+    "check": "Comprobar",
+    "found": "Buzones encontrados: {{count}}"
   }
 }

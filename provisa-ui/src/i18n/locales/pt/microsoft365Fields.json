@@ -9,6 +9,24 @@
     "connectFailed": "Não foi possível concluir o login.",
     "notSetUp": "Sua organização ainda não conectou o Microsoft 365.",
     "setUpLink": "Configurar em {{where}}",
-    "notSetUpAsk": "Sua organização ainda não conectou o Microsoft 365. Peça a um administrador que o configure em {{where}}."
+    "notSetUpAsk": "Sua organização ainda não conectou o Microsoft 365. Peça a um administrador que o configure em {{where}}.",
+    "whose": "O correio de quem",
+    "whoseHelp": "Uma caixa de correio é conectada pelo seu proprietário. As caixas de correio da organização são lidas com o acesso próprio da organização, depois de um administrador o permitir.",
+    "whoseOne": "Uma caixa de correio",
+    "whoseOrganisation": "As caixas de correio da organização",
+    "choice": "Quais caixas de correio",
+    "choiceEveryone": "Todos no diretório",
+    "choiceGroup": "Os membros de um grupo",
+    "choiceList": "Estes endereços",
+    "group": "Grupo",
+    "groupHelp": "O endereço do grupo, ou o seu ID tal como o Microsoft Entra o mostra. Os membros dos grupos nele contidos são incluídos.",
+    "list": "Endereços das caixas de correio",
+    "listHelp": "Um endereço por linha.",
+    "everyMailbox": "Uma tabela contém as linhas de todas as caixas de correio. Um papel que pode ler a tabela lê todas as caixas, salvo se uma regra de linhas na coluna account determinar o contrário.",
+    "notAllowed": "A sua organização não permitiu fontes que leiam as suas caixas de correio.",
+    "allowLink": "Permita em {{where}}",
+    "notAllowedAsk": "A sua organização não permitiu fontes que leiam as suas caixas de correio. Peça a um administrador que o permita em {{where}}.",
+    "check": "Verificar",
+    "found": "Caixas de correio encontradas: {{count}}"
   }
 }

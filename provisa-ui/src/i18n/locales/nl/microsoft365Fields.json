@@ -9,6 +9,24 @@
     "connectFailed": "Het inloggen kon niet worden voltooid.",
     "notSetUp": "Uw organisatie heeft Microsoft 365 nog niet gekoppeld.",
     "setUpLink": "Stel het in onder {{where}}",
-    "notSetUpAsk": "Uw organisatie heeft Microsoft 365 nog niet gekoppeld. Vraag een beheerder het in te stellen onder {{where}}."
+    "notSetUpAsk": "Uw organisatie heeft Microsoft 365 nog niet gekoppeld. Vraag een beheerder het in te stellen onder {{where}}.",
+    "whose": "Wiens e-mail",
+    "whoseHelp": "Eén postvak wordt door de eigenaar verbonden. De postvakken van de organisatie worden gelezen met de eigen toegang van de organisatie, zodra een beheerder dat heeft toegestaan.",
+    "whoseOne": "Eén postvak",
+    "whoseOrganisation": "De postvakken van de organisatie",
+    "choice": "Welke postvakken",
+    "choiceEveryone": "Iedereen in de directory",
+    "choiceGroup": "De leden van een groep",
+    "choiceList": "Deze adressen",
+    "group": "Groep",
+    "groupHelp": "Het adres van de groep, of de ID zoals Microsoft Entra die toont. Leden van groepen daarbinnen worden meegenomen.",
+    "list": "Postvakadressen",
+    "listHelp": "Eén adres per regel.",
+    "everyMailbox": "Eén tabel bevat de rijen van alle postvakken. Een rol die de tabel mag lezen, leest elk postvak, tenzij een rijregel op de kolom account anders bepaalt.",
+    "notAllowed": "Uw organisatie heeft geen bronnen toegestaan die haar postvakken lezen.",
+    "allowLink": "Sta het toe onder {{where}}",
+    "notAllowedAsk": "Uw organisatie heeft geen bronnen toegestaan die haar postvakken lezen. Vraag een beheerder dit toe te staan onder {{where}}.",
+    "check": "Controleren",
+    "found": "Gevonden postvakken: {{count}}"
   }
 }

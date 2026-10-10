@@ -477,6 +477,15 @@
       "window_closed": "The sign-in window was closed before it finished.",
       "tenant_invalid": "The organization's Microsoft 365 setting does not name a directory (tenant). An administrator enters the directory's ID or domain.",
       "microsoft_account_unread": "The sign-in was approved, but Microsoft did not say whose mailbox it is."
+    },
+    "mail_platform": {
+      "organisation_mailboxes_off": "Your organization has not allowed sources that read its mailboxes. An administrator allows it under Admin › Email."
+    },
+    "microsoft_365": {
+      "mailboxes_invalid": "The choice of mailboxes cannot be read: {{error}}",
+      "client_refused": "Microsoft refused your organization's Microsoft 365 client: {{reason}}",
+      "throttled": "Microsoft is limiting requests for now. Try again in {{retry_after}} seconds.",
+      "directory_refused": "Microsoft would not list the organization's mailboxes ({{status}} {{reason}}). The client needs permission to read the directory's users."
     }
   }
 }

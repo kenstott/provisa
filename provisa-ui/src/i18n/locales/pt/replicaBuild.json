@@ -36,6 +36,7 @@
     },
     "note": {
       "unreadable_messages": "Mensagens mantidas sem o texto porque uma parte não é o que declara: {{total}}. Seus IDs: {{ids}}",
+      "mailboxes_left_out": "Caixas de correio deixadas de fora, porque a Microsoft ou a Google indica que não existem ou não podem ser lidas: {{total}}. São: {{accounts}}",
       "andMore": "{{ids}} e mais {{more}}",
       "other": "A última compilação registrou: {{code}}"
     }

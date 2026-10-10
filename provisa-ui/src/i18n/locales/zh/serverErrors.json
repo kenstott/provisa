@@ -477,6 +477,15 @@
       "window_closed": "登录窗口在完成前已被关闭。",
       "tenant_invalid": "组织的 Microsoft 365 设置未指定目录（租户）。由管理员输入目录的 ID 或域名。",
       "microsoft_account_unread": "登录已获批准，但 Microsoft 未说明这是谁的邮箱。"
+    },
+    "mail_platform": {
+      "organisation_mailboxes_off": "您的组织尚未允许读取其邮箱的数据源。管理员可在“管理 › 邮件”中允许。"
+    },
+    "microsoft_365": {
+      "mailboxes_invalid": "无法解析邮箱选择：{{error}}",
+      "client_refused": "Microsoft 拒绝了您组织的 Microsoft 365 客户端：{{reason}}",
+      "throttled": "Microsoft 目前正在限制请求。请在 {{retry_after}} 秒后重试。",
+      "directory_refused": "Microsoft 未列出组织的邮箱（{{status}} {{reason}}）。客户端需要读取目录用户的权限。"
     }
   }
 }

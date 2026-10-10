@@ -477,6 +477,15 @@
       "window_closed": "Das Anmeldefenster wurde geschlossen, bevor die Anmeldung abgeschlossen war.",
       "tenant_invalid": "Die Microsoft-365-Einstellung der Organisation nennt kein Verzeichnis (Mandant). Ein Administrator gibt die ID oder Domäne des Verzeichnisses ein.",
       "microsoft_account_unread": "Die Anmeldung wurde genehmigt, aber Microsoft hat nicht angegeben, wessen Postfach es ist."
+    },
+    "mail_platform": {
+      "organisation_mailboxes_off": "Ihre Organisation hat keine Quellen erlaubt, die ihre Postfächer lesen. Ein Administrator erlaubt es unter Admin › E-Mail."
+    },
+    "microsoft_365": {
+      "mailboxes_invalid": "Die Auswahl der Postfächer kann nicht gelesen werden: {{error}}",
+      "client_refused": "Microsoft hat den Microsoft-365-Client Ihrer Organisation abgelehnt: {{reason}}",
+      "throttled": "Microsoft begrenzt derzeit die Anfragen. Versuchen Sie es in {{retry_after}} Sekunden erneut.",
+      "directory_refused": "Microsoft hat die Postfächer der Organisation nicht aufgelistet ({{status}} {{reason}}). Der Client benötigt die Berechtigung, die Benutzer des Verzeichnisses zu lesen."
     }
   }
 }

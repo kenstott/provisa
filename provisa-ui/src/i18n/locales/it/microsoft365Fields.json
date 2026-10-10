@@ -9,6 +9,24 @@
     "connectFailed": "Non è stato possibile completare l’accesso.",
     "notSetUp": "La tua organizzazione non ha ancora collegato Microsoft 365.",
     "setUpLink": "Configuralo in {{where}}",
-    "notSetUpAsk": "La tua organizzazione non ha ancora collegato Microsoft 365. Chiedi a un amministratore di configurarlo in {{where}}."
+    "notSetUpAsk": "La tua organizzazione non ha ancora collegato Microsoft 365. Chiedi a un amministratore di configurarlo in {{where}}.",
+    "whose": "La posta di chi",
+    "whoseHelp": "Una casella di posta viene collegata dal suo proprietario. Le caselle dell'organizzazione vengono lette con l'accesso proprio dell'organizzazione, dopo che un amministratore lo ha consentito.",
+    "whoseOne": "Una casella di posta",
+    "whoseOrganisation": "Le caselle di posta dell'organizzazione",
+    "choice": "Quali caselle di posta",
+    "choiceEveryone": "Tutti nella directory",
+    "choiceGroup": "I membri di un gruppo",
+    "choiceList": "Questi indirizzi",
+    "group": "Gruppo",
+    "groupHelp": "L'indirizzo del gruppo, o il suo ID come mostrato da Microsoft Entra. Sono inclusi i membri dei gruppi contenuti.",
+    "list": "Indirizzi delle caselle di posta",
+    "listHelp": "Un indirizzo per riga.",
+    "everyMailbox": "Una tabella contiene le righe di tutte le caselle di posta. Un ruolo che può leggere la tabella legge ogni casella, a meno che una regola di riga sulla colonna account non stabilisca diversamente.",
+    "notAllowed": "La tua organizzazione non ha consentito origini che leggono le sue caselle di posta.",
+    "allowLink": "Consentilo in {{where}}",
+    "notAllowedAsk": "La tua organizzazione non ha consentito origini che leggono le sue caselle di posta. Chiedi a un amministratore di consentirlo in {{where}}.",
+    "check": "Verifica",
+    "found": "Caselle di posta trovate: {{count}}"
   }
 }

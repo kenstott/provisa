@@ -477,6 +477,15 @@
       "window_closed": "ログイン ウィンドウが完了前に閉じられました。",
       "tenant_invalid": "組織の Microsoft 365 設定にディレクトリ (テナント) が指定されていません。管理者がディレクトリの ID またはドメインを入力します。",
       "microsoft_account_unread": "サインインは承認されましたが、Microsoft からメールボックスの所有者が示されませんでした。"
+    },
+    "mail_platform": {
+      "organisation_mailboxes_off": "組織のメールボックスを読み取るソースは、組織で許可されていません。管理者が「管理 › メール」で許可します。"
+    },
+    "microsoft_365": {
+      "mailboxes_invalid": "メールボックスの選択を解釈できません: {{error}}",
+      "client_refused": "Microsoft が組織の Microsoft 365 クライアントを拒否しました: {{reason}}",
+      "throttled": "Microsoft が現在リクエストを制限しています。{{retry_after}} 秒後にもう一度お試しください。",
+      "directory_refused": "Microsoft が組織のメールボックスを一覧表示しませんでした ({{status}} {{reason}})。クライアントにはディレクトリのユーザーを読み取るアクセス許可が必要です。"
     }
   }
 }

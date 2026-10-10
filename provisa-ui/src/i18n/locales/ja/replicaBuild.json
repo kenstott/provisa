@@ -36,6 +36,7 @@
     },
     "note": {
       "unreadable_messages": "パートが宣言どおりの内容でないため、本文なしで保持されたメッセージ: {{total}} 件。ID: {{ids}}",
+      "mailboxes_left_out": "Microsoft または Google から、存在しない、または読み取れないと示されたため除外されたメールボックス: {{total}} 件。対象: {{accounts}}",
       "andMore": "{{ids}} ほか {{more}} 件",
       "other": "前回のビルドの注記: {{code}}"
     }

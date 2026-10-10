@@ -36,6 +36,7 @@
     },
     "note": {
       "unreadable_messages": "因某個部分與其聲明不符而未保留內文的郵件:{{total}} 封。其 ID:{{ids}}",
+      "mailboxes_left_out": "因 Microsoft 或 Google 表示不存在或不可讀取而被排除的信箱：{{total}} 個。它們是：{{accounts}}",
       "andMore": "{{ids}} 以及另外 {{more}} 封",
       "other": "上次建置的備註:{{code}}"
     }

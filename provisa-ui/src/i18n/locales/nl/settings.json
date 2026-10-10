@@ -132,6 +132,12 @@
         "help": "Hoeveel workerprocessen de server draait. Opnieuw opstarten vereist omdat de processen door de launcher worden gestart."
       }
     },
+    "mail": {
+      "mailboxes_at_once": {
+        "label": "Tegelijk gelezen postvakken",
+        "help": "Hoeveel postvakken een bron van de postvakken van een organisatie tegelijk leest. Meer verkort een build en vraagt meer van de limiet van de e-maildienst voor de hele toepassing."
+      }
+    },
     "replication": {
       "builds_per_node": {
         "label": "Replica-builds per node",

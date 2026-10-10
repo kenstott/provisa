@@ -477,6 +477,15 @@
       "window_closed": "La ventana de inicio de sesión se cerró antes de terminar.",
       "tenant_invalid": "La configuración de Microsoft 365 de la organización no indica un directorio (inquilino). Un administrador introduce el ID o el dominio del directorio.",
       "microsoft_account_unread": "Se aprobó el inicio de sesión, pero Microsoft no indicó de quién es el buzón."
+    },
+    "mail_platform": {
+      "organisation_mailboxes_off": "Su organización no ha permitido orígenes que lean sus buzones. Un administrador lo permite en Administración › Correo."
+    },
+    "microsoft_365": {
+      "mailboxes_invalid": "No se puede interpretar la selección de buzones: {{error}}",
+      "client_refused": "Microsoft rechazó el cliente de Microsoft 365 de su organización: {{reason}}",
+      "throttled": "Microsoft está limitando las solicitudes por ahora. Inténtelo de nuevo en {{retry_after}} segundos.",
+      "directory_refused": "Microsoft no quiso enumerar los buzones de la organización ({{status}} {{reason}}). El cliente necesita permiso para leer los usuarios del directorio."
     }
   }
 }

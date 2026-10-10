@@ -9,6 +9,24 @@
     "connectFailed": "ログインを完了できませんでした。",
     "notSetUp": "組織でまだ Microsoft 365 が接続されていません。",
     "setUpLink": "{{where}} で設定する",
-    "notSetUpAsk": "組織でまだ Microsoft 365 が接続されていません。管理者に {{where}} での設定を依頼してください。"
+    "notSetUpAsk": "組織でまだ Microsoft 365 が接続されていません。管理者に {{where}} での設定を依頼してください。",
+    "whose": "対象のメール",
+    "whoseHelp": "1 つのメールボックスは所有者が接続します。組織のメールボックスは、管理者が許可した後、組織自身のアクセス権で読み取られます。",
+    "whoseOne": "1 つのメールボックス",
+    "whoseOrganisation": "組織のメールボックス",
+    "choice": "対象のメールボックス",
+    "choiceEveryone": "ディレクトリ内の全員",
+    "choiceGroup": "グループのメンバー",
+    "choiceList": "指定するアドレス",
+    "group": "グループ",
+    "groupHelp": "グループのアドレス、または Microsoft Entra に表示される ID。内包するグループのメンバーも含まれます。",
+    "list": "メールボックスのアドレス",
+    "listHelp": "1 行に 1 つのアドレス。",
+    "everyMailbox": "1 つのテーブルにすべてのメールボックスの行が入ります。account 列の行ルールで制限しない限り、テーブルを読み取れるロールはすべてのメールボックスを読み取れます。",
+    "notAllowed": "組織のメールボックスを読み取るソースは、組織で許可されていません。",
+    "allowLink": "{{where}} で許可する",
+    "notAllowedAsk": "組織のメールボックスを読み取るソースは、組織で許可されていません。管理者に {{where}} での許可を依頼してください。",
+    "check": "確認",
+    "found": "見つかったメールボックス: {{count}}"
   }
 }

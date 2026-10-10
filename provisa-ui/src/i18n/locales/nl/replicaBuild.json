@@ -36,6 +36,7 @@
     },
     "note": {
       "unreadable_messages": "Berichten die zonder hun tekst zijn bewaard omdat een onderdeel niet is wat het aangeeft: {{total}}. Hun ID’s: {{ids}}",
+      "mailboxes_left_out": "Weggelaten postvakken, omdat ze volgens Microsoft of Google niet bestaan of niet gelezen mogen worden: {{total}}. Het zijn: {{accounts}}",
       "andMore": "{{ids}} en nog {{more}}",
       "other": "De laatste build meldde: {{code}}"
     }

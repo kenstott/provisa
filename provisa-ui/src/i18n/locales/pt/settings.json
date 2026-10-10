@@ -132,6 +132,12 @@
         "help": "Quantos processos worker o servidor executa. Requer reinicialização, pois os processos são iniciados pelo launcher."
       }
     },
+    "mail": {
+      "mailboxes_at_once": {
+        "label": "Caixas de correio lidas em simultâneo",
+        "help": "Quantas caixas de correio uma fonte das caixas de uma organização lê ao mesmo tempo. Um número maior encurta uma compilação e consome mais do limite do serviço de correio para toda a aplicação."
+      }
+    },
     "replication": {
       "builds_per_node": {
         "label": "Compilações de réplicas por nó",

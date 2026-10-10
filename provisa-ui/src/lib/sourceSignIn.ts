@@ -94,6 +94,8 @@ export interface SignInRequest {
 export interface SignInStatus {
   configured: boolean;
   may_configure: boolean;
+  /** Whether an administrator allows sources that read the organisation's mailboxes. */
+  organisation_mailboxes?: boolean;
 }
 
 /** A refusal by the server, with the code its message is localised by. */

@@ -477,6 +477,15 @@
       "window_closed": "Het inlogvenster is gesloten voordat het klaar was.",
       "tenant_invalid": "De Microsoft 365-instelling van de organisatie noemt geen directory (tenant). Een beheerder voert de ID of het domein van de directory in.",
       "microsoft_account_unread": "De aanmelding is goedgekeurd, maar Microsoft heeft niet aangegeven van wie het postvak is."
+    },
+    "mail_platform": {
+      "organisation_mailboxes_off": "Uw organisatie heeft geen bronnen toegestaan die haar postvakken lezen. Een beheerder staat dit toe onder Beheer › E-mail."
+    },
+    "microsoft_365": {
+      "mailboxes_invalid": "De keuze van postvakken kan niet worden gelezen: {{error}}",
+      "client_refused": "Microsoft heeft de Microsoft 365-client van uw organisatie geweigerd: {{reason}}",
+      "throttled": "Microsoft beperkt momenteel het aantal aanvragen. Probeer het over {{retry_after}} seconden opnieuw.",
+      "directory_refused": "Microsoft wilde de postvakken van de organisatie niet weergeven ({{status}} {{reason}}). De client heeft toestemming nodig om de gebruikers van de directory te lezen."
     }
   }
 }

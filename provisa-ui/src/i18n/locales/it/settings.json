@@ -132,6 +132,12 @@
         "help": "Quanti processi worker esegue il server. Richiede un riavvio perché i processi vengono avviati dal launcher."
       }
     },
+    "mail": {
+      "mailboxes_at_once": {
+        "label": "Caselle di posta lette contemporaneamente",
+        "help": "Quante caselle di posta legge contemporaneamente un'origine delle caselle di un'organizzazione. Un numero maggiore accorcia una build e impegna di più il limite del servizio di posta per l'intera applicazione."
+      }
+    },
     "replication": {
       "builds_per_node": {
         "label": "Build di repliche per nodo",

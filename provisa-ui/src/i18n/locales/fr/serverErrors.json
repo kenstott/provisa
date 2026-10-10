@@ -477,6 +477,15 @@
       "window_closed": "La fenêtre de connexion a été fermée avant la fin.",
       "tenant_invalid": "Le paramètre Microsoft 365 de l’organisation n’indique aucun annuaire (locataire). Un administrateur saisit l’ID ou le domaine de l’annuaire.",
       "microsoft_account_unread": "La connexion a été approuvée, mais Microsoft n’a pas indiqué à qui appartient la boîte aux lettres."
+    },
+    "mail_platform": {
+      "organisation_mailboxes_off": "Votre organisation n’a pas autorisé les sources qui lisent ses boîtes aux lettres. Un administrateur l’autorise dans Administration › E-mail."
+    },
+    "microsoft_365": {
+      "mailboxes_invalid": "Le choix des boîtes aux lettres ne peut pas être interprété : {{error}}",
+      "client_refused": "Microsoft a refusé le client Microsoft 365 de votre organisation : {{reason}}",
+      "throttled": "Microsoft limite les requêtes pour le moment. Réessayez dans {{retry_after}} secondes.",
+      "directory_refused": "Microsoft n’a pas voulu lister les boîtes aux lettres de l’organisation ({{status}} {{reason}}). Le client a besoin de l’autorisation de lire les utilisateurs de l’annuaire."
     }
   }
 }

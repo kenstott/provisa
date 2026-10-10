@@ -19,10 +19,12 @@ import { BRAND_CARRIER, SOURCE_TYPES } from "../constants";
 import { SourceFormFieldsExtended } from "../SourceFormFieldsExtended";
 import type { SourceFormFieldsProps } from "../SourceFormFields";
 import { backendType } from "../sourceHelpers";
+import * as m365 from "../microsoft365";
 import {
   M365_SCOPES,
   m365ConnectMissing,
   m365FieldsFromMapping,
+  m365Mailboxes,
   m365Mapping,
 } from "../microsoft365";
 
@@ -204,9 +206,91 @@ describe("the source's mapping", () => {
       refresh_token: "${secret:t}",
     });
     expect(m365FieldsFromMapping(JSON.stringify(mapping))).toEqual({
+      m365_whose: "one",
       m365_account: "megan@contoso.test",
       m365_refresh_token: "${secret:t}",
       m365_connected_as: "megan@contoso.test",
     });
+  });
+});
+
+const ORG = { m365_whose: "organisation" };
+const allowed = { configured: true, may_configure: false, organisation_mailboxes: true };
+
+describe("a source of the organisation's mailboxes", () => {
+  it("asks which mailboxes and nothing about a person's sign-in", async () => {
+    signIn.signInStatus.mockResolvedValue(allowed);
+    form({ ...ORG, m365_choice: "group" });
+    expect(shown("m365_choice")).toBeInTheDocument();
+    expect(shown("m365_group")).toBeInTheDocument();
+    expect(shown("m365_account")).toBeNull();
+    expect(shown("connect")).toBeNull();
+    expect(shown("every-mailbox")).toHaveTextContent(en.microsoft365Fields.everyMailbox);
+    await waitFor(() => expect(shown("check")).toBeInTheDocument());
+    expect(shown("check")).toBeDisabled(); // no group named yet
+  });
+
+  it("shows the list of addresses only when a list is chosen", () => {
+    signIn.signInStatus.mockResolvedValue(allowed);
+    form({ ...ORG, m365_choice: "list" });
+    expect(shown("m365_list")).toBeInTheDocument();
+    expect(shown("m365_group")).toBeNull();
+  });
+
+  it("says how many mailboxes a choice names", async () => {
+    signIn.signInStatus.mockResolvedValue(allowed);
+    const check = vi.spyOn(m365, "m365CheckMailboxes").mockResolvedValue(12);
+    form({ ...ORG, m365_choice: "everyone" });
+    await waitFor(() => expect(shown("check")).toBeEnabled());
+    fireEvent.click(shown("check")!);
+    expect(await screen.findByTestId("microsoft-365-found")).toHaveTextContent(
+      "Mailboxes found: 12",
+    );
+    expect(check).toHaveBeenCalledWith({ everyone: true });
+    check.mockRestore();
+  });
+
+  it("says why when the count is refused", async () => {
+    signIn.signInStatus.mockResolvedValue(allowed);
+    const check = vi.spyOn(m365, "m365CheckMailboxes").mockRejectedValue(new Error("down"));
+    form({ ...ORG, m365_choice: "everyone" });
+    await waitFor(() => expect(shown("check")).toBeEnabled());
+    fireEvent.click(shown("check")!);
+    expect(await screen.findByTestId("microsoft-365-problem")).toBeInTheDocument();
+    check.mockRestore();
+  });
+
+  it("tells an administrator in one line when the organisation has not allowed it", async () => {
+    signIn.signInStatus.mockResolvedValue({ ...allowed, may_configure: true, organisation_mailboxes: false });
+    form({ ...ORG, m365_choice: "everyone" });
+    const line = await screen.findByTestId("microsoft-365-not-allowed");
+    expect(line).toHaveTextContent(en.microsoft365Fields.notAllowed);
+    expect(shown("allow")).toHaveAttribute("href", "/admin/email");
+    expect(shown("check")).toBeNull();
+  });
+
+  it("tells anyone else to ask an administrator", async () => {
+    signIn.signInStatus.mockResolvedValue({ ...allowed, organisation_mailboxes: false });
+    form({ ...ORG, m365_choice: "everyone" });
+    const line = await screen.findByTestId("microsoft-365-not-allowed");
+    expect(line).toHaveTextContent("Ask an administrator to allow it under Admin › Email.");
+    expect(shown("allow")).toBeNull();
+    expect(shown("check")).toBeNull();
+  });
+
+  it("keeps only which mailboxes in the source's mapping", () => {
+    expect(m365Mailboxes({ ...ORG, m365_choice: "group", m365_group: " " })).toBeNull();
+    const cases: [Record<string, string>, Record<string, unknown>][] = [
+      [{ m365_choice: "everyone" }, { everyone: true }],
+      [{ m365_choice: "group", m365_group: " sales@contoso.test " }, { group: "sales@contoso.test" }],
+      [{ m365_choice: "list", m365_list: "a@contoso.test\n\n b@contoso.test " }, { list: ["a@contoso.test", "b@contoso.test"] }],
+    ];
+    for (const [fields, mailboxes] of cases) {
+      const mapping = m365Mapping({ ...ORG, ...fields, m365_refresh_token: "left over" });
+      expect(mapping).toEqual({ resources: ["mail"], mailboxes });
+      const back = m365FieldsFromMapping(JSON.stringify(mapping));
+      expect(back.m365_whose).toBe("organisation");
+      expect(m365Mapping(back)).toEqual(mapping);
+    }
   });
 });

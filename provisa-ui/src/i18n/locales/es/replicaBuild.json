@@ -36,6 +36,7 @@
     },
     "note": {
       "unreadable_messages": "Mensajes conservados sin su texto porque una parte no es lo que declara: {{total}}. Sus ID: {{ids}}",
+      "mailboxes_left_out": "Buzones omitidos, porque Microsoft o Google indica que no existen o no pueden leerse: {{total}}. Son: {{accounts}}",
       "andMore": "{{ids}} y {{more}} más",
       "other": "La última compilación anotó: {{code}}"
     }

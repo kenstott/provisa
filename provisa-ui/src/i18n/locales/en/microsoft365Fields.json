@@ -9,6 +9,24 @@
     "connectFailed": "The sign-in could not be completed.",
     "notSetUp": "Your organization has not connected Microsoft 365 yet.",
     "setUpLink": "Set it up under {{where}}",
-    "notSetUpAsk": "Your organization has not connected Microsoft 365 yet. Ask an administrator to set it up under {{where}}."
+    "notSetUpAsk": "Your organization has not connected Microsoft 365 yet. Ask an administrator to set it up under {{where}}.",
+    "whose": "Whose mail",
+    "whoseHelp": "One mailbox is connected by its owner. The organization's mailboxes are read with the organization's own access, once an administrator has allowed it.",
+    "whoseOne": "One mailbox",
+    "whoseOrganisation": "The organization's mailboxes",
+    "choice": "Which mailboxes",
+    "choiceEveryone": "Everyone in the directory",
+    "choiceGroup": "The members of a group",
+    "choiceList": "These addresses",
+    "group": "Group",
+    "groupHelp": "The group's address, or its ID as Microsoft Entra shows it. Members of groups inside it are included.",
+    "list": "Mailbox addresses",
+    "listHelp": "One address per line.",
+    "everyMailbox": "One table holds every mailbox's rows. A role that may read the table reads every mailbox, unless a row rule on the account column says otherwise.",
+    "notAllowed": "Your organization has not allowed sources that read its mailboxes.",
+    "allowLink": "Allow it under {{where}}",
+    "notAllowedAsk": "Your organization has not allowed sources that read its mailboxes. Ask an administrator to allow it under {{where}}.",
+    "check": "Check",
+    "found": "Mailboxes found: {{count}}"
   }
 }

@@ -477,6 +477,15 @@
       "window_closed": "חלון הכניסה נסגר לפני שהסתיים.",
       "tenant_invalid": "הגדרת Microsoft 365 של הארגון אינה מציינת ספרייה (דייר). מנהל מזין את מזהה הספרייה או את הדומיין שלה.",
       "microsoft_account_unread": "הכניסה אושרה, אך Microsoft לא ציינה של מי תיבת הדואר."
+    },
+    "mail_platform": {
+      "organisation_mailboxes_off": "הארגון שלך לא התיר מקורות שקוראים את תיבות הדואר שלו. מנהל מתיר זאת תחת ניהול › דוא\"ל."
+    },
+    "microsoft_365": {
+      "mailboxes_invalid": "לא ניתן לפרש את בחירת תיבות הדואר: {{error}}",
+      "client_refused": "Microsoft דחתה את לקוח Microsoft 365 של הארגון שלך: {{reason}}",
+      "throttled": "Microsoft מגבילה כעת בקשות. יש לנסות שוב בעוד {{retry_after}} שניות.",
+      "directory_refused": "Microsoft לא הסכימה למנות את תיבות הדואר של הארגון ({{status}} {{reason}}). הלקוח זקוק להרשאה לקרוא את משתמשי הספרייה."
     }
   }
 }

@@ -9,6 +9,24 @@
     "connectFailed": "Die Anmeldung konnte nicht abgeschlossen werden.",
     "notSetUp": "Ihre Organisation hat Microsoft 365 noch nicht verbunden.",
     "setUpLink": "Unter {{where}} einrichten",
-    "notSetUpAsk": "Ihre Organisation hat Microsoft 365 noch nicht verbunden. Bitten Sie einen Administrator, es unter {{where}} einzurichten."
+    "notSetUpAsk": "Ihre Organisation hat Microsoft 365 noch nicht verbunden. Bitten Sie einen Administrator, es unter {{where}} einzurichten.",
+    "whose": "Wessen E-Mail",
+    "whoseHelp": "Ein einzelnes Postfach wird von seinem Besitzer verbunden. Die Postfächer der Organisation werden mit dem eigenen Zugriff der Organisation gelesen, sobald ein Administrator es erlaubt hat.",
+    "whoseOne": "Ein Postfach",
+    "whoseOrganisation": "Die Postfächer der Organisation",
+    "choice": "Welche Postfächer",
+    "choiceEveryone": "Alle im Verzeichnis",
+    "choiceGroup": "Die Mitglieder einer Gruppe",
+    "choiceList": "Diese Adressen",
+    "group": "Gruppe",
+    "groupHelp": "Die Adresse der Gruppe oder ihre ID, wie Microsoft Entra sie anzeigt. Mitglieder enthaltener Gruppen sind eingeschlossen.",
+    "list": "Postfachadressen",
+    "listHelp": "Eine Adresse pro Zeile.",
+    "everyMailbox": "Eine Tabelle enthält die Zeilen aller Postfächer. Eine Rolle, die die Tabelle lesen darf, liest jedes Postfach, sofern keine Zeilenregel auf der Spalte account etwas anderes festlegt.",
+    "notAllowed": "Ihre Organisation hat keine Quellen erlaubt, die ihre Postfächer lesen.",
+    "allowLink": "Unter {{where}} erlauben",
+    "notAllowedAsk": "Ihre Organisation hat keine Quellen erlaubt, die ihre Postfächer lesen. Bitten Sie einen Administrator, es unter {{where}} zu erlauben.",
+    "check": "Prüfen",
+    "found": "Gefundene Postfächer: {{count}}"
   }
 }
