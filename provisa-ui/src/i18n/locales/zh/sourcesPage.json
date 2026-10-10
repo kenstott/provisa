@@ -9,8 +9,6 @@
     "idLabel": "ID",
     "idPlaceholder": "例如 sales-pg",
     "typeLabel": "类型",
-    "creating": "正在创建…",
-    "create": "创建",
     "colId": "ID",
     "colType": "类型",
     "colHost": "主机",

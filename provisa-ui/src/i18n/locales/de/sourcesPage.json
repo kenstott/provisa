@@ -9,8 +9,6 @@
     "idLabel": "ID",
     "idPlaceholder": "z. B. sales-pg",
     "typeLabel": "Typ",
-    "creating": "Wird erstellt…",
-    "create": "Erstellen",
     "colId": "ID",
     "colType": "Typ",
     "colHost": "Host",

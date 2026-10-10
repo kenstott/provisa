@@ -9,8 +9,6 @@
     "idLabel": "ID",
     "idPlaceholder": "例: sales-pg",
     "typeLabel": "タイプ",
-    "creating": "作成中…",
-    "create": "作成",
     "colId": "ID",
     "colType": "タイプ",
     "colHost": "ホスト",

@@ -4281,8 +4281,6 @@
   "hi/sourcesPage.json::sourcesPage.colNaming": "Naming",
   "hi/sourcesPage.json::sourcesPage.colPort": "Port",
   "hi/sourcesPage.json::sourcesPage.colType": "Type",
-  "hi/sourcesPage.json::sourcesPage.create": "Create",
-  "hi/sourcesPage.json::sourcesPage.creating": "Creating…",
   "hi/sourcesPage.json::sourcesPage.discover": "Discover",
   "hi/sourcesPage.json::sourcesPage.empty": "No sources found.",
   "hi/sourcesPage.json::sourcesPage.filterPlaceholder": "Filter by source ID or type…",

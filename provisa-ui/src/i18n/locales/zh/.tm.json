@@ -4317,8 +4317,6 @@
   "zh/sourcesPage.json::sourcesPage.colNaming": "Naming",
   "zh/sourcesPage.json::sourcesPage.colPort": "Port",
   "zh/sourcesPage.json::sourcesPage.colType": "Type",
-  "zh/sourcesPage.json::sourcesPage.create": "Create",
-  "zh/sourcesPage.json::sourcesPage.creating": "Creating…",
   "zh/sourcesPage.json::sourcesPage.discover": "Discover",
   "zh/sourcesPage.json::sourcesPage.empty": "No sources found.",
   "zh/sourcesPage.json::sourcesPage.filterPlaceholder": "Filter by source ID or type…",

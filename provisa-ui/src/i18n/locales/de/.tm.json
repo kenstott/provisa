@@ -4281,8 +4281,6 @@
   "de/sourcesPage.json::sourcesPage.colNaming": "Naming",
   "de/sourcesPage.json::sourcesPage.colPort": "Port",
   "de/sourcesPage.json::sourcesPage.colType": "Type",
-  "de/sourcesPage.json::sourcesPage.create": "Create",
-  "de/sourcesPage.json::sourcesPage.creating": "Creating…",
   "de/sourcesPage.json::sourcesPage.discover": "Discover",
   "de/sourcesPage.json::sourcesPage.empty": "No sources found.",
   "de/sourcesPage.json::sourcesPage.filterPlaceholder": "Filter by source ID or type…",

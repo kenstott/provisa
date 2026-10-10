@@ -9,8 +9,6 @@
     "idLabel": "ID",
     "idPlaceholder": "bijv. sales-pg",
     "typeLabel": "Type",
-    "creating": "Aanmaken…",
-    "create": "Aanmaken",
     "colId": "ID",
     "colType": "Type",
     "colHost": "Host",

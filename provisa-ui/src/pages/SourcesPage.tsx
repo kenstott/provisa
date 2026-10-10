@@ -879,99 +879,102 @@ export function SourcesPage() {
         form.type === WIKIPEDIA
           ? wikipediaHints(authFields) // REQ-1960: the server makes these the files source's crawl
           : form.type === "snowflake"
-          ? Object.fromEntries(
-              (["warehouse", "schema", "role"] as const)
-                .filter((k) => authFields[k])
-                .map((k) => [k, authFields[k]]),
-            )
-          : form.type === "databricks" && authFields.http_path
-            ? { http_path: authFields.http_path }
-            : form.type === "bigquery" &&
-                authType === "service_account" &&
-                authFields.credentials_json
-              ? { credentials_path: authFields.credentials_json }
-              : // REQ-990: a CSV/Parquet file in an object store carries that store's credentials,
-                // the store named by its path (S3, GCS HMAC keys, an Azure account key).
-                CLOUD_FILE_TYPES.has(form.type) && objectStoreOf(form.path)
-                ? objectStoreHints(objectStoreOf(form.path)!, authFields)
-                : // delta_lake/iceberg: DuckDB's _s3_secret_ddl (connector_duckdb.py) reads S3 creds
-                  // from federation_hints, never from mapping — unlike hive, which keeps its
-                  // storage.aws creds in mapping (Trino's hive connector props). Only "aws" is wired
-                  // here: DuckDB's delta_scan/iceberg_scan have no azure/gcs SECRET support yet. The
-                  // region is saved with them (it was shown and then dropped). An iceberg source also
-                  // saves its catalog (REQ-990), whatever its storage authentication.
-                  form.type === "iceberg"
-                  ? {
-                      ...(authType === "aws" ? objectStoreHints("S3", authFields) : {}),
-                      ...icebergCatalogHints(authFields),
-                    }
-                  : form.type === "delta_lake" && authType === "aws"
-                    ? objectStoreHints("S3", authFields)
-                    : // exasol: an optional TLS-fingerprint pin for a self-signed cert the truststore
-                      // can't chain (models.py's Source.jdbc_url reads federation_hints["tls_fingerprint"]).
-                      form.type === "exasol" &&
-                        authType === "tls_fingerprint" &&
-                        authFields.tls_fingerprint
-                      ? { tls_fingerprint: authFields.tls_fingerprint }
-                      : // sqlserver: an optional flag trusting a self-signed/internal-CA cert the
-                        // truststore can't chain — common on internal/on-prem deployments (models.py's
-                        // Source.jdbc_url reads federation_hints["trust_server_certificate"]).
-                        form.type === "sqlserver" && authType === "trust_server_certificate"
-                        ? { trust_server_certificate: "true" }
-                        : // fabric/synapse: an optional Azure AD service-principal identity pinned per-source
-                          // (mssql_warehouse.py's MssqlWarehouseDriver._token reads tenant_id/client_id/
-                          // client_secret); absent, the driver falls back to the ambient credential.
-                          (form.type === "fabric" || form.type === "synapse") &&
-                            authType === "service_principal"
-                          ? Object.fromEntries(
-                              (["tenant_id", "client_id", "client_secret"] as const)
-                                .filter((k) => authFields[k])
-                                .map((k) => [k, authFields[k]]),
-                            )
-                          : // REQ-1731: HiveDriver.configure() reads `auth_mechanism` from federation_hints;
-                            // PLAIN is the driver's own default, so only submit it when the operator picked a
-                            // non-default mechanism (GSSAPI/LDAP) — no point round-tripping the default.
-                            form.type === "hiveserver2" &&
-                              authFields.auth_mechanism &&
-                              authFields.auth_mechanism !== "PLAIN"
-                            ? { auth_mechanism: authFields.auth_mechanism }
-                            : // REQ-1739: websocket/rss connection extras that don't fit host/port/path
-                              // (use_ssl/subscribe_payload/event_path/reconnect_interval for websocket;
-                              // feed_url/poll_interval/use_ssl for rss) travel the same channel.
-                              form.type === "websocket"
-                              ? Object.fromEntries(
-                                  (
-                                    [
-                                      ["use_ssl", wsUseSsl ? "true" : ""],
-                                      ["subscribe_payload", wsSubscribePayload.trim()],
-                                      ["event_path", wsEventPath.trim()],
-                                      ["reconnect_interval", wsReconnectInterval.trim()],
-                                    ] as const
-                                  ).filter(([, v]) => v),
-                                )
-                              : form.type === "rss"
+            ? Object.fromEntries(
+                (["warehouse", "schema", "role"] as const)
+                  .filter((k) => authFields[k])
+                  .map((k) => [k, authFields[k]]),
+              )
+            : form.type === "databricks" && authFields.http_path
+              ? { http_path: authFields.http_path }
+              : form.type === "bigquery" &&
+                  authType === "service_account" &&
+                  authFields.credentials_json
+                ? { credentials_path: authFields.credentials_json }
+                : // REQ-990: a CSV/Parquet file in an object store carries that store's credentials,
+                  // the store named by its path (S3, GCS HMAC keys, an Azure account key).
+                  CLOUD_FILE_TYPES.has(form.type) && objectStoreOf(form.path)
+                  ? objectStoreHints(objectStoreOf(form.path)!, authFields)
+                  : // delta_lake/iceberg: DuckDB's _s3_secret_ddl (connector_duckdb.py) reads S3 creds
+                    // from federation_hints, never from mapping — unlike hive, which keeps its
+                    // storage.aws creds in mapping (Trino's hive connector props). Only "aws" is wired
+                    // here: DuckDB's delta_scan/iceberg_scan have no azure/gcs SECRET support yet. The
+                    // region is saved with them (it was shown and then dropped). An iceberg source also
+                    // saves its catalog (REQ-990), whatever its storage authentication.
+                    form.type === "iceberg"
+                    ? {
+                        ...(authType === "aws" ? objectStoreHints("S3", authFields) : {}),
+                        ...icebergCatalogHints(authFields),
+                      }
+                    : form.type === "delta_lake" && authType === "aws"
+                      ? objectStoreHints("S3", authFields)
+                      : // exasol: an optional TLS-fingerprint pin for a self-signed cert the truststore
+                        // can't chain (models.py's Source.jdbc_url reads federation_hints["tls_fingerprint"]).
+                        form.type === "exasol" &&
+                          authType === "tls_fingerprint" &&
+                          authFields.tls_fingerprint
+                        ? { tls_fingerprint: authFields.tls_fingerprint }
+                        : // sqlserver: an optional flag trusting a self-signed/internal-CA cert the
+                          // truststore can't chain — common on internal/on-prem deployments (models.py's
+                          // Source.jdbc_url reads federation_hints["trust_server_certificate"]).
+                          form.type === "sqlserver" && authType === "trust_server_certificate"
+                          ? { trust_server_certificate: "true" }
+                          : // fabric/synapse: an optional Azure AD service-principal identity pinned per-source
+                            // (mssql_warehouse.py's MssqlWarehouseDriver._token reads tenant_id/client_id/
+                            // client_secret); absent, the driver falls back to the ambient credential.
+                            (form.type === "fabric" || form.type === "synapse") &&
+                              authType === "service_principal"
+                            ? Object.fromEntries(
+                                (["tenant_id", "client_id", "client_secret"] as const)
+                                  .filter((k) => authFields[k])
+                                  .map((k) => [k, authFields[k]]),
+                              )
+                            : // REQ-1731: HiveDriver.configure() reads `auth_mechanism` from federation_hints;
+                              // PLAIN is the driver's own default, so only submit it when the operator picked a
+                              // non-default mechanism (GSSAPI/LDAP) — no point round-tripping the default.
+                              form.type === "hiveserver2" &&
+                                authFields.auth_mechanism &&
+                                authFields.auth_mechanism !== "PLAIN"
+                              ? { auth_mechanism: authFields.auth_mechanism }
+                              : // REQ-1739: websocket/rss connection extras that don't fit host/port/path
+                                // (use_ssl/subscribe_payload/event_path/reconnect_interval for websocket;
+                                // feed_url/poll_interval/use_ssl for rss) travel the same channel.
+                                form.type === "websocket"
                                 ? Object.fromEntries(
                                     (
                                       [
-                                        ["feed_url", rssFeedUrl.trim()],
-                                        ["poll_interval", rssPollInterval.trim()],
-                                        ["use_ssl", rssUseSsl ? "true" : "false"],
+                                        ["use_ssl", wsUseSsl ? "true" : ""],
+                                        ["subscribe_payload", wsSubscribePayload.trim()],
+                                        ["event_path", wsEventPath.trim()],
+                                        ["reconnect_interval", wsReconnectInterval.trim()],
                                       ] as const
                                     ).filter(([, v]) => v),
                                   )
-                                : // REQ-1740: sparql/source.py's SparqlSourceConfig.default_graph_uri —
-                                  // optional, restricts queries to one named graph.
-                                  form.type === "sparql" && authFields.default_graph_uri?.trim()
-                                  ? { default_graph_uri: authFields.default_graph_uri.trim() }
-                                  : // A type with no dedicated branch above has no UI field this form could
-                                    // ever reconstruct its federation_hints from -- falling through to {}
-                                    // unconditionally wiped them on every edit (confirmed: kaggle_owner/
-                                    // kaggle_ref, stashed on create by KaggleFormSection, silently lost on
-                                    // the next edit of that same csv/parquet source). Preserve verbatim
-                                    // instead when editing such a type; a brand-new source has nothing yet.
-                                    editingSourceId && editingSourceHintsJson
-                                    ? (JSON.parse(editingSourceHintsJson) as Record<string, string>)
-                                    : {};
+                                : form.type === "rss"
+                                  ? Object.fromEntries(
+                                      (
+                                        [
+                                          ["feed_url", rssFeedUrl.trim()],
+                                          ["poll_interval", rssPollInterval.trim()],
+                                          ["use_ssl", rssUseSsl ? "true" : "false"],
+                                        ] as const
+                                      ).filter(([, v]) => v),
+                                    )
+                                  : // REQ-1740: sparql/source.py's SparqlSourceConfig.default_graph_uri —
+                                    // optional, restricts queries to one named graph.
+                                    form.type === "sparql" && authFields.default_graph_uri?.trim()
+                                    ? { default_graph_uri: authFields.default_graph_uri.trim() }
+                                    : // A type with no dedicated branch above has no UI field this form could
+                                      // ever reconstruct its federation_hints from -- falling through to {}
+                                      // unconditionally wiped them on every edit (confirmed: kaggle_owner/
+                                      // kaggle_ref, stashed on create by KaggleFormSection, silently lost on
+                                      // the next edit of that same csv/parquet source). Preserve verbatim
+                                      // instead when editing such a type; a brand-new source has nothing yet.
+                                      editingSourceId && editingSourceHintsJson
+                                      ? (JSON.parse(editingSourceHintsJson) as Record<
+                                          string,
+                                          string
+                                        >)
+                                      : {};
       const federationHintsJson =
         Object.keys(federationHints).length > 0 ? JSON.stringify(federationHints) : undefined;
       // password auth (Snowflake) / personal-access-token auth (Databricks) collect into authFields,
@@ -989,41 +992,41 @@ export function SourcesPage() {
         form.type === "data_profiler"
           ? profilerMappingJson(authFields) // REQ-1934
           : form.type === "cloudops"
-          ? cloudopsMappingJson(authFields) // REQ-1947
-          : form.type === GOOGLE_WORKSPACE
-          ? JSON.stringify(gwMapping(authFields)) // REQ-1923
-          : form.type === MICROSOFT_365
-          ? JSON.stringify(m365Mapping(authFields)) // REQ-1923
-          : form.type === "salesforce"
-          ? salesforceMappingJson(authFields) // REQ-1946
-          : form.type === "sharepoint"
-            ? JSON.stringify({
-                auth_type: spAuthType,
-                ...(spAuthType === "CERTIFICATE"
-                  ? { certificate_path: spCertPath, certificate_password: spCertPassword }
-                  : {}),
-                ...(spAuthType === "USERNAME_PASSWORD"
-                  ? { sp_username: spUsername, sp_password: spPassword }
-                  : {}),
-              })
-            : form.type === "splunk"
-              ? JSON.stringify({
-                  use_token: splunkAuthMode === "token",
-                  ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
-                })
-              : // The Trino gsheets catalog needs the service-account key path alongside the metadata
-                // sheet id (which rides in `database`), so it travels in the mapping like the other
-                // connectors' extra options.
-                form.type === "google_sheets"
-                ? JSON.stringify({ credentials_json: authFields.credentials_json ?? "" })
-                : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
-                  // region/endpoint) are a mapping-discriminated config choice read by
-                  // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
-                  // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
-                  // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
-                  form.type === "hive" || form.type === "hive_s3"
-                  ? JSON.stringify({ storage: lakeStorage, ...authFields })
-                  : undefined;
+            ? cloudopsMappingJson(authFields) // REQ-1947
+            : form.type === GOOGLE_WORKSPACE
+              ? JSON.stringify(gwMapping(authFields)) // REQ-1923
+              : form.type === MICROSOFT_365
+                ? JSON.stringify(m365Mapping(authFields)) // REQ-1923
+                : form.type === "salesforce"
+                  ? salesforceMappingJson(authFields) // REQ-1946
+                  : form.type === "sharepoint"
+                    ? JSON.stringify({
+                        auth_type: spAuthType,
+                        ...(spAuthType === "CERTIFICATE"
+                          ? { certificate_path: spCertPath, certificate_password: spCertPassword }
+                          : {}),
+                        ...(spAuthType === "USERNAME_PASSWORD"
+                          ? { sp_username: spUsername, sp_password: spPassword }
+                          : {}),
+                      })
+                    : form.type === "splunk"
+                      ? JSON.stringify({
+                          use_token: splunkAuthMode === "token",
+                          ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
+                        })
+                      : // The Trino gsheets catalog needs the service-account key path alongside the metadata
+                        // sheet id (which rides in `database`), so it travels in the mapping like the other
+                        // connectors' extra options.
+                        form.type === "google_sheets"
+                        ? JSON.stringify({ credentials_json: authFields.credentials_json ?? "" })
+                        : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
+                          // region/endpoint) are a mapping-discriminated config choice read by
+                          // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
+                          // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
+                          // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
+                          form.type === "hive" || form.type === "hive_s3"
+                          ? JSON.stringify({ storage: lakeStorage, ...authFields })
+                          : undefined;
       const sourcePayload = {
         ...coreForm,
         ...authCredentials,
@@ -1051,19 +1054,19 @@ export function SourcesPage() {
                 // directory of its own under the data directory.
                 authFields.wp_directory?.trim() || null
               : FILE_SOURCES.has(form.type) ||
-                form.type === "files" ||
-                form.type === "delta_lake" ||
-                form.type === "iceberg" ||
-                // REQ-1739: websocket/rss's path is optional (default "/") — the push_wiring.py /
-                // subscribe.py URL derivation reads Source.path the same way a file source does.
-                form.type === "websocket" ||
-                form.type === "rss"
-              ? form.type === "files" && form.path
-                ? filesTransport === "file://"
-                  ? form.path
-                  : filesTransport + form.path
-                : form.path || null
-              : null,
+                  form.type === "files" ||
+                  form.type === "delta_lake" ||
+                  form.type === "iceberg" ||
+                  // REQ-1739: websocket/rss's path is optional (default "/") — the push_wiring.py /
+                  // subscribe.py URL derivation reads Source.path the same way a file source does.
+                  form.type === "websocket" ||
+                  form.type === "rss"
+                ? form.type === "files" && form.path
+                  ? filesTransport === "file://"
+                    ? form.path
+                    : filesTransport + form.path
+                  : form.path || null
+                : null,
         database:
           form.type === "govdata"
             ? schemasForSubjects(requireGovdataCatalog(), govdataSubjects).join(",")
@@ -1642,11 +1645,30 @@ export function SourcesPage() {
               onPick={handleTypeChange}
             />
             <SourceFormFields {...sourceFormFieldsProps} />
-            {form.type !== "kaggle" && (
-              <Button type="submit" loading={submitting} data-testid="sources-submit">
-                {submitting ? t("sourcesPage.creating") : t("sourcesPage.create")}
+            {/* The same two actions, in the same place and order, as the edit form below: Save first,
+                Cancel beside it, at the start of the row and as wide as their labels. A Kaggle source
+                is created by its own section's button, so it gets Cancel alone. */}
+            <Group gap="sm" style={{ gridColumn: "1 / -1", justifySelf: "start" }}>
+              {form.type !== "kaggle" && (
+                <Button
+                  type="submit"
+                  loading={submitting}
+                  leftSection={<Check size={14} />}
+                  data-testid="sources-submit"
+                >
+                  {t("sourcesPage.saveEdit")}
+                </Button>
+              )}
+              <Button
+                variant="default"
+                type="button"
+                leftSection={<X size={14} />}
+                onClick={handleCancelForm}
+                data-testid="sources-cancel"
+              >
+                {t("sourcesPage.cancelEdit")}
               </Button>
-            )}
+            </Group>
           </form>
         </div>
       )}
@@ -1802,11 +1824,16 @@ export function SourcesPage() {
                                 />
                                 <SourceFormFields {...sourceFormFieldsProps} />
                                 <Group
-                                  justify="flex-end"
-                                  align="flex-start"
                                   gap="sm"
-                                  style={{ alignSelf: "end" }}
+                                  style={{ gridColumn: "1 / -1", justifySelf: "start" }}
                                 >
+                                  <Button
+                                    variant="filled"
+                                    type="submit"
+                                    leftSection={<Check size={14} />}
+                                  >
+                                    {t("sourcesPage.saveEdit")}
+                                  </Button>
                                   <Button
                                     variant="default"
                                     type="button"
@@ -1814,13 +1841,6 @@ export function SourcesPage() {
                                     onClick={handleCancelForm}
                                   >
                                     {t("sourcesPage.cancelEdit")}
-                                  </Button>
-                                  <Button
-                                    variant="filled"
-                                    type="submit"
-                                    leftSection={<Check size={14} />}
-                                  >
-                                    {t("sourcesPage.saveEdit")}
                                   </Button>
                                 </Group>
                               </form>
