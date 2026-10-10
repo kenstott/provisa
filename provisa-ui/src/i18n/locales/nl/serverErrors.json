@@ -479,7 +479,11 @@
       "microsoft_account_unread": "De aanmelding is goedgekeurd, maar Microsoft heeft niet aangegeven van wie het postvak is."
     },
     "mail_platform": {
-      "organisation_mailboxes_off": "Uw organisatie heeft geen bronnen toegestaan die haar postvakken lezen. Een beheerder staat dit toe onder Beheer › E-mail."
+      "organisation_mailboxes_off": "Uw organisatie heeft geen bronnen toegestaan die haar postvakken lezen. Een beheerder staat dit toe onder Beheer › E-mail.",
+      "unknown": "Er bestaat geen e-mailplatform met de naam {{platform}}.",
+      "not_configured": "Uw organisatie heeft dit e-mailplatform ({{platform}}) nog niet gekoppeld. Een beheerder vult de client één keer in onder Beheer › E-mail.",
+      "unknown_setting": "{{setting}} is geen instelling van dit e-mailplatform.",
+      "incomplete": "Nog nodig voordat dit kan worden opgeslagen: {{missing}}."
     },
     "microsoft_365": {
       "mailboxes_invalid": "De keuze van postvakken kan niet worden gelezen: {{error}}",

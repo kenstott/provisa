@@ -479,7 +479,11 @@
       "microsoft_account_unread": "サインインは承認されましたが、Microsoft からメールボックスの所有者が示されませんでした。"
     },
     "mail_platform": {
-      "organisation_mailboxes_off": "組織のメールボックスを読み取るソースは、組織で許可されていません。管理者が「管理 › メール」で許可します。"
+      "organisation_mailboxes_off": "組織のメールボックスを読み取るソースは、組織で許可されていません。管理者が「管理 › メール」で許可します。",
+      "unknown": "{{platform}} という名前のメール プラットフォームはありません。",
+      "not_configured": "組織はこのメール プラットフォーム ({{platform}}) をまだ接続していません。管理者が 「管理 › メール」 でクライアントを一度入力します。",
+      "unknown_setting": "{{setting}} はこのメール プラットフォームの設定ではありません。",
+      "incomplete": "保存するには、次の項目がまだ必要です: {{missing}}。"
     },
     "microsoft_365": {
       "mailboxes_invalid": "メールボックスの選択を解釈できません: {{error}}",

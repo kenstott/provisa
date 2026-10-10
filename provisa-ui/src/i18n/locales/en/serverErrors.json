@@ -479,7 +479,11 @@
       "microsoft_account_unread": "The sign-in was approved, but Microsoft did not say whose mailbox it is."
     },
     "mail_platform": {
-      "organisation_mailboxes_off": "Your organization has not allowed sources that read its mailboxes. An administrator allows it under Admin › Email."
+      "organisation_mailboxes_off": "Your organization has not allowed sources that read its mailboxes. An administrator allows it under Admin › Email.",
+      "unknown": "No mail platform named {{platform}} exists.",
+      "not_configured": "Your organization has not connected this mail platform ({{platform}}) yet. An administrator enters its client once under Admin › Email.",
+      "unknown_setting": "{{setting}} is not a setting of this mail platform.",
+      "incomplete": "Still needed before this can be saved: {{missing}}."
     },
     "microsoft_365": {
       "mailboxes_invalid": "The choice of mailboxes cannot be read: {{error}}",

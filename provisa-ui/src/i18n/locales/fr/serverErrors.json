@@ -479,7 +479,11 @@
       "microsoft_account_unread": "La connexion a été approuvée, mais Microsoft n’a pas indiqué à qui appartient la boîte aux lettres."
     },
     "mail_platform": {
-      "organisation_mailboxes_off": "Votre organisation n’a pas autorisé les sources qui lisent ses boîtes aux lettres. Un administrateur l’autorise dans Administration › E-mail."
+      "organisation_mailboxes_off": "Votre organisation n’a pas autorisé les sources qui lisent ses boîtes aux lettres. Un administrateur l’autorise dans Administration › E-mail.",
+      "unknown": "Aucune plateforme de messagerie nommée {{platform}} n’existe.",
+      "not_configured": "Votre organisation n’a pas encore connecté cette plateforme de messagerie ({{platform}}). Un administrateur saisit son client une fois sous Admin › E-mail.",
+      "unknown_setting": "{{setting}} n’est pas un paramètre de cette plateforme de messagerie.",
+      "incomplete": "Encore nécessaire avant l’enregistrement : {{missing}}."
     },
     "microsoft_365": {
       "mailboxes_invalid": "Le choix des boîtes aux lettres ne peut pas être interprété : {{error}}",

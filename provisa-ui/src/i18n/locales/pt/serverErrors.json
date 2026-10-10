@@ -479,7 +479,11 @@
       "microsoft_account_unread": "O início de sessão foi aprovado, mas a Microsoft não indicou de quem é a caixa de correio."
     },
     "mail_platform": {
-      "organisation_mailboxes_off": "A sua organização não permitiu fontes que leiam as suas caixas de correio. Um administrador permite-o em Administração › E-mail."
+      "organisation_mailboxes_off": "A sua organização não permitiu fontes que leiam as suas caixas de correio. Um administrador permite-o em Administração › E-mail.",
+      "unknown": "Não existe nenhuma plataforma de e-mail chamada {{platform}}.",
+      "not_configured": "Sua organização ainda não conectou esta plataforma de e-mail ({{platform}}). Um administrador informa o cliente dela uma vez em Administração › E-mail.",
+      "unknown_setting": "{{setting}} não é uma configuração desta plataforma de e-mail.",
+      "incomplete": "Ainda necessário antes de salvar: {{missing}}."
     },
     "microsoft_365": {
       "mailboxes_invalid": "A escolha das caixas de correio não pode ser interpretada: {{error}}",

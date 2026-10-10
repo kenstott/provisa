@@ -479,7 +479,11 @@
       "microsoft_account_unread": "登入已獲批准，但 Microsoft 未說明這是誰的信箱。"
     },
     "mail_platform": {
-      "organisation_mailboxes_off": "您的組織尚未允許讀取其信箱的數據來源。管理員可在「管理 › 郵件」中允許。"
+      "organisation_mailboxes_off": "您的組織尚未允許讀取其信箱的數據來源。管理員可在「管理 › 郵件」中允許。",
+      "unknown": "沒有名為 {{platform}} 的郵件平台。",
+      "not_configured": "你的組織尚未連接此郵件平台({{platform}})。管理員在「管理 › 電郵」下填寫一次其用戶端即可。",
+      "unknown_setting": "{{setting}} 不是此郵件平台的設定。",
+      "incomplete": "儲存前仍需要:{{missing}}。"
     },
     "microsoft_365": {
       "mailboxes_invalid": "無法解析信箱選擇：{{error}}",

@@ -479,7 +479,11 @@
       "microsoft_account_unread": "L'accesso è stato approvato, ma Microsoft non ha indicato di chi è la casella di posta."
     },
     "mail_platform": {
-      "organisation_mailboxes_off": "La tua organizzazione non ha consentito origini che leggono le sue caselle di posta. Un amministratore lo consente in Amministrazione › Email."
+      "organisation_mailboxes_off": "La tua organizzazione non ha consentito origini che leggono le sue caselle di posta. Un amministratore lo consente in Amministrazione › Email.",
+      "unknown": "Non esiste alcuna piattaforma di posta chiamata {{platform}}.",
+      "not_configured": "La tua organizzazione non ha ancora collegato questa piattaforma di posta ({{platform}}). Un amministratore ne inserisce il client una volta in Amministrazione › Email.",
+      "unknown_setting": "{{setting}} non è un’impostazione di questa piattaforma di posta.",
+      "incomplete": "Ancora necessario prima di salvare: {{missing}}."
     },
     "microsoft_365": {
       "mailboxes_invalid": "La scelta delle caselle di posta non può essere interpretata: {{error}}",

@@ -479,7 +479,11 @@
       "microsoft_account_unread": "Se aprobó el inicio de sesión, pero Microsoft no indicó de quién es el buzón."
     },
     "mail_platform": {
-      "organisation_mailboxes_off": "Su organización no ha permitido orígenes que lean sus buzones. Un administrador lo permite en Administración › Correo."
+      "organisation_mailboxes_off": "Su organización no ha permitido orígenes que lean sus buzones. Un administrador lo permite en Administración › Correo.",
+      "unknown": "No existe ninguna plataforma de correo llamada {{platform}}.",
+      "not_configured": "Su organización aún no ha conectado esta plataforma de correo ({{platform}}). Un administrador introduce su cliente una vez en Administración › Correo electrónico.",
+      "unknown_setting": "{{setting}} no es un ajuste de esta plataforma de correo.",
+      "incomplete": "Aún falta para poder guardar: {{missing}}."
     },
     "microsoft_365": {
       "mailboxes_invalid": "No se puede interpretar la selección de buzones: {{error}}",
