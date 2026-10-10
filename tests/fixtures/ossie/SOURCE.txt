@@ -1,0 +1,4 @@
+ossie-schema.json is core-spec/ossie-schema.json of the Apache Ossie project (incubating),
+https://github.com/apache/ossie, copied unchanged at commit
+642cb894b453807062ff93de599d0d8edacaad04 (2026-10-10). Apache License 2.0.
+It is the schema provisa/ossie/convert.py is tested against (OSSIE_SPEC_COMMIT).

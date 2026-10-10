@@ -162,8 +162,9 @@ export function OssieInterchangePanel() {
         id: rel.name,
         sourceTableId: rel.from,
         targetTableId: rel.to,
-        sourceColumn: rel.from_columns[0] ?? "",
-        targetColumn: rel.to_columns[0] ?? "",
+        // A key of several columns is one ordered, comma-separated list on each end.
+        sourceColumn: rel.from_columns.join(","),
+        targetColumn: rel.to_columns.join(","),
         cardinality: "many-to-one",
       });
     }

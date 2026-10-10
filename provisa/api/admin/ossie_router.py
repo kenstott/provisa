@@ -25,11 +25,16 @@ async def download_ossie(request: Request):  # REQ-1321
     require_org_settings(request)
     from provisa.api.admin.config_export import build_live_config
     from provisa.core.models import ProvisaConfig
-    from provisa.ossie.convert import ossie_yaml
+    from provisa.api.errors import ApiError
+    from provisa.ossie.convert import OssieExportRefused, ossie_yaml
 
     config = ProvisaConfig.model_validate(await build_live_config())
+    try:
+        content = ossie_yaml(config)
+    except OssieExportRefused as refused:
+        raise ApiError(422, "ossie.export_refused", str(refused)) from None
     return Response(
-        content=ossie_yaml(config),
+        content=content,
         media_type="text/yaml",
         headers={"Content-Disposition": "attachment; filename=provisa.ossie.yaml"},
     )

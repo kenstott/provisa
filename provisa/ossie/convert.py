@@ -27,54 +27,116 @@ import yaml
 from provisa.core.models import ProvisaConfig, Table
 
 OSSIE_VERSION = "0.2.0.dev0"
+#: The commit of apache/ossie whose core-spec this adapter was written and checked against. The
+#: spec's version string did not change across its breaking changes of September 2026 (the
+#: ``semantic_model`` wrapper removed, the datatype vocabulary enumerated), so the version alone
+#: does not say which shape a document has.
+OSSIE_SPEC_COMMIT = "642cb894b453807062ff93de599d0d8edacaad04"
 _ANSI = "ANSI_SQL"
 _PROVISA_VENDOR = "provisa"
 
-# Provisa/source column types → Ossie datatype strings. Unknown types pass
-# through verbatim — mapping silently to a wrong type would corrupt the model.
+#: Ossie's datatype vocabulary (core-spec/ossie-schema.json, ``DataType``).
+OPAQUE = "Opaque"
+DATATYPES: tuple[str, ...] = (
+    "String",
+    "Integer",
+    "Decimal",
+    "Float",
+    "Boolean",
+    "Date",
+    "Time",
+    "DateTime",
+    "DateTimeTz",
+    OPAQUE,
+)
+
+# Provisa/source column types -> Ossie datatype. A type that is not here is a known type outside
+# Ossie's vocabulary and is written ``Opaque`` with the type itself in the provisa extension, as
+# the spec directs ("use Opaque plus custom_extensions for a known type outside the portable
+# vocabulary"); a column with no type recorded carries no datatype ("omit when unknown").
 _DATATYPE_MAP: dict[str, str] = {
-    "varchar": "string",
-    "character varying": "string",
-    "char": "string",
-    "character": "string",
-    "text": "string",
-    "string": "string",
-    "uuid": "string",
-    "int": "integer",
-    "integer": "integer",
-    "int4": "integer",
-    "int8": "integer",
-    "bigint": "integer",
-    "smallint": "integer",
-    "tinyint": "integer",
-    "numeric": "number",
-    "decimal": "number",
-    "double": "number",
-    "double precision": "number",
-    "float": "number",
-    "real": "number",
-    "bool": "boolean",
-    "boolean": "boolean",
-    "date": "date",
-    "time": "time",
-    "timestamp": "timestamp",
-    "timestamptz": "timestamp",
-    "timestamp with time zone": "timestamp",
-    "timestamp without time zone": "timestamp",
-    "datetime": "timestamp",
+    "varchar": "String",
+    "character varying": "String",
+    "char": "String",
+    "character": "String",
+    "text": "String",
+    "string": "String",
+    "uuid": "String",
+    "int": "Integer",
+    "integer": "Integer",
+    "int4": "Integer",
+    "int8": "Integer",
+    "bigint": "Integer",
+    "smallint": "Integer",
+    "tinyint": "Integer",
+    "numeric": "Decimal",
+    "decimal": "Decimal",
+    "double": "Float",
+    "double precision": "Float",
+    "float": "Float",
+    "real": "Float",
+    "bool": "Boolean",
+    "boolean": "Boolean",
+    "date": "Date",
+    "time": "Time",
+    "timestamp": "DateTime",
+    "timestamp without time zone": "DateTime",
+    "datetime": "DateTime",
+    "timestamptz": "DateTimeTz",
+    "timestamp with time zone": "DateTimeTz",
 }
 
-_TIME_DATATYPES = {"date", "timestamp"}
+_TIME_DATATYPES = {"Date", "DateTime", "DateTimeTz"}
+
+# Ossie datatype -> the type a registration proposal carries. Decimal and Float carry no
+# precision in Ossie, so none is proposed.
+_PROPOSED_TYPE: dict[str, str] = {
+    "String": "varchar",
+    "Integer": "bigint",
+    "Decimal": "decimal",
+    "Float": "double",
+    "Boolean": "boolean",
+    "Date": "date",
+    "Time": "time",
+    "DateTime": "timestamp",
+    "DateTimeTz": "timestamptz",
+}
+
+
+class OssieExportRefused(ValueError):
+    """A model that cannot be written as an Ossie document, said by name."""
 
 
 def _map_datatype(data_type: str | None) -> str | None:
-    if data_type is None:
+    """The Ossie datatype of a Provisa/source type: its member of the vocabulary, ``Opaque``
+    for a type outside it, None for no type."""
+    if data_type is None or not data_type.strip():
         return None
     base = data_type.strip().lower()
     # Strip parameterization, e.g. "varchar(255)" / "numeric(10,2)".
     if "(" in base:
         base = base.split("(", 1)[0].strip()
-    return _DATATYPE_MAP.get(base, data_type)
+    return _DATATYPE_MAP.get(base, OPAQUE)
+
+
+def _typed(entry: dict, data_type: str | None) -> str | None:
+    """Write ``data_type`` on a field or metric entry as Ossie states it, and answer the Ossie
+    datatype written. An ``Opaque`` entry keeps the type itself in the provisa extension."""
+    datatype = _map_datatype(data_type)
+    if datatype is None:
+        return None
+    entry["datatype"] = datatype
+    if datatype == OPAQUE:
+        entry["custom_extensions"] = [
+            {"vendor_name": _PROVISA_VENDOR, "data": json.dumps({"data_type": data_type})}
+        ]
+    return datatype
+
+
+def _columns(columns: str) -> list[str]:
+    # A composite key's columns are one comma-separated, ordered list (core/models.py
+    # Relationship).
+    return [name.strip() for name in columns.split(",") if name.strip()]
 
 
 def _dataset_name(table: Table) -> str:
@@ -91,13 +153,13 @@ def _table_to_dataset(table: Table) -> dict:
     fields: list[dict] = []
     for col in table.columns:
         f: dict = {"name": col.name, "expression": _expression(col.name)}
-        datatype = _map_datatype(col.data_type)
-        if datatype is not None:
-            f["datatype"] = datatype
+        extension: dict = {}
+        datatype = _typed(extension, col.data_type)
         if datatype in _TIME_DATATYPES:
             f["dimension"] = {"is_time": True}
         if col.description:
             f["description"] = col.description
+        f.update(extension)  # datatype, and the provisa extension of an Opaque one
         fields.append(f)
 
     dataset: dict = {
@@ -133,9 +195,15 @@ def _table_to_dataset(table: Table) -> dict:
 def build_ossie_model(config: ProvisaConfig, name: str | None = None) -> dict:
     """REQ-1316: export the semantic slice of a ProvisaConfig as an Ossie document.
 
-    One semantic_model, named ``name`` when given, else the config's first domain
-    id, else "provisa" — deterministic for a given config.
+    One model per document, its properties at the document's root (the shape Ossie has had
+    since apache/ossie #383): named ``name`` when given, else the config's first domain id,
+    else "provisa" — deterministic for a given config. A model with no table is refused: an
+    Ossie document has at least one dataset.
     """
+    if not config.tables:
+        raise OssieExportRefused(
+            "The model has no table, and an Ossie document needs at least one dataset"
+        )
     model_name = name or (config.domains[0].id if config.domains else "provisa")
 
     datasets = [_table_to_dataset(t) for t in config.tables]
@@ -168,33 +236,33 @@ def build_ossie_model(config: ProvisaConfig, name: str | None = None) -> dict:
                 "name": rel.alias or rel.id,
                 "from": name_to_dataset[rel.source_table_id],
                 "to": name_to_dataset[rel.target_table_id],
-                "from_columns": [rel.source_column],
-                "to_columns": [rel.target_column],
+                "from_columns": _columns(rel.source_column),
+                "to_columns": _columns(rel.target_column),
             }
         )
 
     metrics: list[dict] = []
     for m in config.metrics:
         metric: dict = {"name": m.name, "expression": _expression(m.expression)}
-        if m.datatype is not None:
-            metric["datatype"] = m.datatype
+        extension: dict = {}
+        _typed(extension, m.datatype)
+        if "datatype" in extension:
+            metric["datatype"] = extension["datatype"]
         if m.description is not None:
             metric["description"] = m.description
         if m.ai_context is not None:
             # REQ-1319: AI-consumer definition text projects into Ossie ai_context.
             metric["ai_context"] = m.ai_context
+        if "custom_extensions" in extension:
+            metric["custom_extensions"] = extension["custom_extensions"]
         metrics.append(metric)
 
     return {
         "version": OSSIE_VERSION,
-        "semantic_model": [
-            {
-                "name": model_name,
-                "datasets": datasets,
-                "relationships": relationships,
-                "metrics": metrics,
-            }
-        ],
+        "name": model_name,
+        "datasets": datasets,
+        "relationships": relationships,
+        "metrics": metrics,
     }
 
 
@@ -243,6 +311,54 @@ def _ansi_expression(expr: object, path: str) -> str:
     raise ValueError(f"ossie import: {path}.dialects has no {_ANSI} entry")
 
 
+def _provisa_extension(entry: dict, path: str) -> dict:
+    """What the provisa vendor slot of ``entry`` carries; empty when it has none."""
+    for i, ext in enumerate(entry.get("custom_extensions") or []):
+        epath = f"{path}.custom_extensions[{i}]"
+        if not isinstance(ext, dict):
+            raise ValueError(f"ossie import: {epath} must be a mapping")
+        if ext.get("vendor_name") != _PROVISA_VENDOR:
+            continue
+        data = _require(ext, "data", epath, str)
+        try:
+            payload = json.loads(data)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"ossie import: {epath}.data is not valid JSON: {e}") from e
+        if not isinstance(payload, dict):
+            raise ValueError(f"ossie import: {epath}.data must be a JSON object")
+        return payload
+    return {}
+
+
+def _proposed_type(entry: dict, path: str) -> str | None:
+    """The type a proposal carries for a field or metric: the one its Ossie datatype stands
+    for; for ``Opaque``, the type the provisa extension names, when there is one; None when
+    the document states no datatype. A datatype outside Ossie's vocabulary is refused."""
+    datatype = entry.get("datatype")
+    if datatype is None:
+        return None
+    if datatype not in DATATYPES:
+        raise ValueError(
+            f"ossie import: {path}.datatype is {datatype!r}, which is not an Ossie datatype "
+            f"({', '.join(DATATYPES)})"
+        )
+    if datatype == OPAQUE:
+        named = _provisa_extension(entry, path).get("data_type")
+        return named if isinstance(named, str) else None
+    return _PROPOSED_TYPE[datatype]
+
+
+def _ai_context(entry: dict, path: str) -> str | None:
+    """Ossie's ai_context is text, or an object whose ``instructions`` is the text."""
+    context = entry.get("ai_context")
+    if context is None or isinstance(context, str):
+        return context
+    if not isinstance(context, dict):
+        raise ValueError(f"ossie import: {path}.ai_context must be text or a mapping")
+    instructions = context.get("instructions")
+    return instructions if isinstance(instructions, str) else None
+
+
 def _parse_dataset(ds: object, path: str) -> dict:
     if not isinstance(ds, dict):
         raise ValueError(f"ossie import: {path} must be a mapping")
@@ -267,7 +383,7 @@ def _parse_dataset(ds: object, path: str) -> dict:
         columns.append(
             {
                 "name": col_name,
-                "datatype": f.get("datatype"),
+                "datatype": _proposed_type(f, fpath),
                 "description": f.get("description"),
                 "is_primary_key": col_name in primary_key,
             }
@@ -284,20 +400,11 @@ def _parse_dataset(ds: object, path: str) -> dict:
         "unique_keys": [list(uk) for uk in (ds.get("unique_keys") or [])],
     }
 
-    for i, ext in enumerate(ds.get("custom_extensions") or []):
-        epath = f"{path}.custom_extensions[{i}]"
-        if not isinstance(ext, dict):
-            raise ValueError(f"ossie import: {epath} must be a mapping")
-        if ext.get("vendor_name") != _PROVISA_VENDOR:
-            continue
-        # REQ-1320: round-trip the provisa modeling metadata slot.
-        data = _require(ext, "data", epath, str)
-        try:
-            payload = json.loads(data)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"ossie import: {epath}.data is not valid JSON: {e}") from e
-        proposal["modeling_role"] = payload.get("modeling_role")
-        proposal["modeling_history"] = payload.get("modeling_history")
+    # REQ-1320: round-trip the provisa modeling metadata slot.
+    slot = _provisa_extension(ds, path)
+    if "modeling_role" in slot or "modeling_history" in slot:
+        proposal["modeling_role"] = slot.get("modeling_role")
+        proposal["modeling_history"] = slot.get("modeling_history")
     return proposal
 
 
@@ -308,22 +415,25 @@ def parse_ossie_model(doc: object) -> OssieImport:
     """
     if not isinstance(doc, dict):
         raise ValueError(f"ossie import: document must be a mapping, got {type(doc).__name__}")
-    _require(doc, "version", "$", str)
-    models = _require(doc, "semantic_model", "$", list)
-    if not models:
-        raise ValueError("ossie import: semantic_model must contain at least one model")
-    if len(models) > 1:
+    if "semantic_model" in doc:
         raise ValueError(
-            f"ossie import: expected exactly one semantic_model entry, got {len(models)}"
+            "ossie import: this document wraps its model in $.semantic_model, which predates "
+            "Ossie's flat document shape; move the model's name, datasets, relationships and "
+            "metrics to the document's root (one model per document)"
         )
-    model = models[0]
-    mpath = "semantic_model[0]"
+    version = _require(doc, "version", "$", str)
+    if version != OSSIE_VERSION:
+        raise ValueError(
+            f"ossie import: $.version is {version!r}; this reads Ossie {OSSIE_VERSION}"
+        )
+    model = doc
+    mpath = "$"
     model_name = str(_require(model, "name", mpath, str))
+    datasets = _require(model, "datasets", mpath, list)
+    if not datasets:
+        raise ValueError("ossie import: $.datasets must contain at least one dataset")
 
-    tables = [
-        _parse_dataset(ds, f"{mpath}.datasets[{i}]")
-        for i, ds in enumerate(model.get("datasets") or [])
-    ]
+    tables = [_parse_dataset(ds, f"{mpath}.datasets[{i}]") for i, ds in enumerate(datasets)]
 
     relationships: list[dict] = []
     for i, rel in enumerate(model.get("relationships") or []):
@@ -347,9 +457,9 @@ def parse_ossie_model(doc: object) -> OssieImport:
             {
                 "name": name,
                 "expression": expression,
-                "datatype": m.get("datatype"),
+                "datatype": _proposed_type(m, kpath),
                 "description": m.get("description"),
-                "ai_context": m.get("ai_context"),
+                "ai_context": _ai_context(m, kpath),
             }
         )
 
