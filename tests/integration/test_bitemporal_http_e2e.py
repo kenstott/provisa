@@ -68,14 +68,17 @@ async def _sql(client, sql: str, **headers):
     )
 
 
-def _view_input(amount: int) -> str:
-    """The view's registration, with its one row's amount: the same input registers it and, with
-    another amount, changes it (same columns, so its history is kept)."""
+def _view_input(amount: int, schema: str = "views") -> str:
+    """The view's input, with its one row's amount. It registers the view; with another amount
+    and the schema the view is STORED under it changes it (same columns, so its history is
+    kept). Registering a materialized view stores it under the schema it lands in, not the one
+    written here, and an existing table is addressed by what is stored -- as the admin UI does,
+    which sends back the schema name it read (provisa-ui/src/pages/tables/helpers.ts)."""
     visible = 'visibleTo: ["org_admin", "analyst", "developer"]'
     return f"""input: {{
         sourceId: "__derived__",
         domainId: "bt",
-        schemaName: "views",
+        schemaName: "{schema}",
         tableName: "bt_view",
         alias: "bt_view",
         viewSql: "SELECT 1 AS id, {amount} AS amount",
@@ -120,7 +123,9 @@ async def test_bitemporal_view_http_end_to_end(client):
     assert released["data"]["setTableDraft"]["success"], released
 
     # (1) Persistence round-trip: the bitemporal config survives GraphQL -> DB -> read-back.
-    tables = await _admin(client, "query { tables { tableName mvBitemporalMode mvBitemporalKey } }")
+    tables = await _admin(
+        client, "query { tables { tableName schemaName mvBitemporalMode mvBitemporalKey } }"
+    )
     row = next(t for t in tables["data"]["tables"] if t["tableName"] == "bt_view")
     assert row["mvBitemporalMode"] == "delta"
     assert row["mvBitemporalKey"] == ["id"]
@@ -184,8 +189,10 @@ async def test_bitemporal_view_http_end_to_end(client):
     await asyncio.sleep(0.5)
     between = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     await asyncio.sleep(0.5)
+    # The view is addressed by the schema it is stored under, read back above.
     changed = await _admin(
-        client, f"mutation {{ updateTable({_view_input(20)}) {{ success message }} }}"
+        client,
+        f"mutation {{ updateTable({_view_input(20, row['schemaName'])}) {{ success message }} }}",
     )
     assert changed["data"]["updateTable"]["success"], changed
     mv = state.mv_registry.get("view-bt_view")
