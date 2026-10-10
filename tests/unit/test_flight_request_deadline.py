@@ -150,21 +150,24 @@ def test_execution_gets_what_the_wait_left_of_the_one_deadline(stream_clock, mon
 def test_a_stream_that_waited_is_cut_off_at_the_deadline_not_at_wait_plus_budget(
     stream_clock, monkeypatch
 ):
+    # Every time here is a binary fraction (1/4, 1/8), so the sums are exact wherever the clock
+    # starts: with 0.3 and 0.1 the seventh batch landed a rounding step short of the deadline once
+    # the machine had been up 2**22 seconds, and an eighth batch was delivered.
     budget = 1.0
 
     def _execute(_request):
-        release_slot = server._acquire_stream_slot()  # waits 0.3s for the slot
-        # A lazy stream of 20 batches, 0.1s apart — 2s of work — holding its slot until the
+        release_slot = server._acquire_stream_slot()  # waits 0.25s for the slot
+        # A lazy stream of 20 batches, 0.125s apart — 2.5s of work — holding its slot until the
         # stream ends.
         return flight_deadline.stream_within_deadline(
-            stream_slots.SlotHeldBatches(release_slot, _batches(20, 0.1, stream_clock))
+            stream_slots.SlotHeldBatches(release_slot, _batches(20, 0.125, stream_clock))
         )
 
     server = _server(_State(cap=1, request_timeout=budget), _execute)
-    _one_slot(monkeypatch, stream_clock, 0.3)
+    _one_slot(monkeypatch, stream_clock, 0.25)
     started = stream_clock.monotonic()
     stream = server.do_get(None, _ticket())
-    assert stream_clock.monotonic() - started == pytest.approx(0.3)  # the wait, and nothing else
+    assert stream_clock.monotonic() - started == pytest.approx(0.25)  # the wait, and nothing else
 
     got = 0
     with pytest.raises(flight.FlightServerError) as raised:
@@ -172,10 +175,10 @@ def test_a_stream_that_waited_is_cut_off_at_the_deadline_not_at_wait_plus_budget
             got += 1
     elapsed = stream_clock.monotonic() - started
 
-    # Cut when the ONE budget ran out, 1s after the request began: the 0.3s wait left 0.7s of
-    # stream, which is 7 batches. A budget that started again after the wait would have run
-    # to 1.3s and delivered 10.
-    assert got == 7
+    # Cut when the ONE budget ran out, 1s after the request began: the 0.25s wait left 0.75s of
+    # stream, which is 6 batches. A budget that started again after the wait would have run
+    # to 1.25s and delivered 8.
+    assert got == 6
     assert elapsed == pytest.approx(budget)
     message = str(raised.value)
     assert "request deadline" in message and "request_timeout" in message and "1s" in message
