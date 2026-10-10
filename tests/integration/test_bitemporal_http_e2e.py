@@ -7,13 +7,16 @@
 """REQ-1162 + REQ-1163: HTTP end-to-end for a bitemporal materialized view.
 
 Drives the full live path through the real app: register a MATERIALIZED bitemporal view over GraphQL
-(config persists to the DB), rebuild + refresh so its append log materializes, then query it through
-/data/sql — current-by-default and with the X-Provisa-As-Of header. The materialize store is pointed
+(config persists to the DB) and release it, which builds it — the first version in its append log;
+change its row and refresh, the second version; then query it through /data/sql — current-by-default
+and with the X-Provisa-As-Of header, before, between and after the two versions. The materialize store is pointed
 at an embedded DuckDB file so the in-process test app needs no external store (the isolated Postgres
 is on an ephemeral port, not :5432)."""
 
+import asyncio
 import os
 import tempfile
+from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
@@ -65,6 +68,37 @@ async def _sql(client, sql: str, **headers):
     )
 
 
+def _view_input(amount: int) -> str:
+    """The view's registration, with its one row's amount: the same input registers it and, with
+    another amount, changes it (same columns, so its history is kept)."""
+    visible = 'visibleTo: ["org_admin", "analyst", "developer"]'
+    return f"""input: {{
+        sourceId: "__derived__",
+        domainId: "bt",
+        schemaName: "views",
+        tableName: "bt_view",
+        alias: "bt_view",
+        viewSql: "SELECT 1 AS id, {amount} AS amount",
+        materialize: true,
+        mvBitemporalMode: "delta",
+        mvBitemporalKey: ["id"],
+        columns: [{{ name: "id", {visible} }}, {{ name: "amount", {visible} }}]
+    }}"""
+
+
+async def _refresh(client, mv) -> None:
+    """The refresh a user asks for: through the admin mutation, as the org the request is bound
+    to. Called directly it runs with no org bound, is refused by name, and -- because a refresh
+    never raises -- only logs (main's suite 37995232420)."""
+    from provisa.mv.refresh import refresh_failure
+
+    refreshed = await _admin(
+        client, 'mutation { refreshMv(mvId: "view-bt_view") { success message } }'
+    )
+    assert refreshed["data"]["refreshMv"]["success"], refreshed
+    assert refresh_failure(mv) is None
+
+
 def _rows_and_columns(response) -> dict:
     body = response.json()
     return {"data": body["data"], "columns": body["columns"]}
@@ -76,23 +110,7 @@ async def test_bitemporal_view_http_end_to_end(client):
     )
 
     reg = await _admin(
-        client,
-        """
-        mutation {
-            registerTable(input: {
-                sourceId: "__derived__",
-                domainId: "bt",
-                schemaName: "views",
-                tableName: "bt_view",
-                alias: "bt_view",
-                viewSql: "SELECT 1 AS id, 10 AS amount",
-                materialize: true,
-                mvBitemporalMode: "delta",
-                mvBitemporalKey: ["id"],
-                columns: [{ name: "id", visibleTo: ["org_admin", "analyst", "developer"] }, { name: "amount", visibleTo: ["org_admin", "analyst", "developer"] }]
-            }) { success message }
-        }
-        """,
+        client, f"mutation {{ registerTable({_view_input(10)}) {{ success message }} }}"
     )
     assert reg["data"]["registerTable"]["success"], reg
     # REQ-1921: registered through the admin, the view starts as draft; released, it is built.
@@ -107,24 +125,16 @@ async def test_bitemporal_view_http_end_to_end(client):
     assert row["mvBitemporalMode"] == "delta"
     assert row["mvBitemporalKey"] == ["id"]
 
-    # Rebuild so the view's read is wired to the reconstruction, then materialize the append log.
+    # Rebuild so the view's read is wired to the reconstruction. The append log already holds the
+    # first version: releasing the view built it. The refresh here finds nothing changed.
     rb = await _admin(client, "mutation { rebuildSchemas { success } }")
     assert rb["data"]["rebuildSchemas"]["success"], rb
     from provisa.api.app import state
-    from provisa.mv.refresh import refresh_failure
 
     mv = state.mv_registry.get("view-bt_view")
     assert mv is not None and mv.bitemporal is not None  # REQ-1162: spec survived the reload
     assert mv.bitemporal.mode == "delta"
-    # The refresh a user asks for: through the admin mutation, as the org the request is bound to.
-    # Called directly from here it runs with no org bound, is refused by name, and -- because a
-    # refresh never raises -- only logs; the reads below then answered without the log having
-    # been written by it (main's suite 37995232420).
-    refreshed = await _admin(
-        client, 'mutation { refreshMv(mvId: "view-bt_view") { success message } }'
-    )
-    assert refreshed["data"]["refreshMv"]["success"], refreshed
-    assert refresh_failure(mv) is None
+    await _refresh(client, mv)
 
     # (2) Current-by-default read through the real endpoint reconstructs current state from the log.
     cur = await _sql(client, 'SELECT id, amount FROM "bt"."bt_view"')
@@ -136,7 +146,7 @@ async def test_bitemporal_view_http_end_to_end(client):
         "columns": ["id", "amount"],
     }, cur.text
 
-    # (3) X-Provisa-As-Of after the refresh → the reconstructed current row (time-travel path).
+    # (3) X-Provisa-As-Of after the first version → the reconstructed current row (time-travel path).
     fut = await _sql(
         client,
         'SELECT id, amount FROM "bt"."bt_view"',
@@ -150,7 +160,7 @@ async def test_bitemporal_view_http_end_to_end(client):
         "columns": ["id", "amount"],
     }, fut.text
 
-    # (4) X-Provisa-As-Of BEFORE the first refresh → no version was effective yet → empty.
+    # (4) X-Provisa-As-Of BEFORE the first version → no version was effective yet → empty.
     past = await _sql(
         client,
         'SELECT id, amount FROM "bt"."bt_view"',
@@ -167,3 +177,31 @@ async def test_bitemporal_view_http_end_to_end(client):
     )
     assert bad.status_code == 400, bad.text
     assert "as-of" in bad.text.lower() or "as_of" in bad.text.lower()
+
+    # (6) A second version. An instant after the first version and before the change is taken;
+    # then the view's row changes (same columns, so the log is kept and appended to) and the view
+    # is refreshed. The log now holds two versions of id 1, which is what bitemporal has to mean.
+    await asyncio.sleep(0.5)
+    between = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    await asyncio.sleep(0.5)
+    changed = await _admin(
+        client, f"mutation {{ updateTable({_view_input(20)}) {{ success message }} }}"
+    )
+    assert changed["data"]["updateTable"]["success"], changed
+    mv = state.mv_registry.get("view-bt_view")
+    assert mv is not None and mv.bitemporal is not None
+    await _refresh(client, mv)
+
+    select = 'SELECT id, amount FROM "bt"."bt_view"'
+    # Between the two versions: the first.
+    then = await _sql(client, select, **{"X-Provisa-As-Of": between})
+    assert then.status_code == 200, then.text
+    assert _rows_and_columns(then)["data"] == {"sql": [{"id": 1, "amount": 10}]}, then.text
+    # After the second, and by default: the changed row.
+    for headers in ({"X-Provisa-As-Of": "2999-01-01T00:00:00"}, {}):
+        now = await _sql(client, select, **headers)
+        assert now.status_code == 200, now.text
+        assert _rows_and_columns(now)["data"] == {"sql": [{"id": 1, "amount": 20}]}, now.text
+    # And before the first there is still nothing: the change rewrote no history.
+    past = await _sql(client, select, **{"X-Provisa-As-Of": "2000-01-01T00:00:00"})
+    assert _rows_and_columns(past)["data"] == {"sql": []}, past.text
