@@ -238,6 +238,25 @@ def _compute_implicit_dim_measures(  # REQ-1360
     return implicit_measures, implicit_dimensions, measure_names, dimension_names
 
 
+def native_filter_required(
+    recorded: bool | None, filter_type: str | None, source_type: str
+) -> bool | None:
+    """Whether a parameter column is required, for a row that may predate the record (#204).
+
+    What a registration recorded stands. Where nothing was recorded, two cases are certain by
+    design and are resolved; the rest stay None (not known to be required):
+    - a path parameter: a path cannot be built without it;
+    - any parameter of a remote GraphQL source: only its ``required_args`` (arguments that are
+      non-null with no default) are ever registered as columns
+      (``_graphql_table_registration._column_models``, ``hasura_v2.remote_schema``).
+    An OpenAPI query parameter and a gRPC input carried no such guarantee."""
+    if filter_type is None or recorded is not None:
+        return recorded
+    if filter_type == "path_param" or source_type == "graphql_remote":
+        return True
+    return None
+
+
 async def _fetch_table_with_columns(
     conn, row, all_tables: list | None = None, user_can_deploy: bool = True
 ) -> RegisteredTableType:
@@ -275,6 +294,10 @@ async def _fetch_table_with_columns(
         )
     )
 
+    _source_type = (
+        await conn.execute_core(select(sources.c.type).where(sources.c.id == row["source_id"]))
+    ).scalar_one()
+
     columns = [
         TableColumnType(
             id=r["id"],
@@ -294,7 +317,9 @@ async def _fetch_table_with_columns(
             description=r.get("description"),
             data_type=r.get("data_type"),
             native_filter_type=r.get("native_filter_type"),
-            native_filter_required=r.get("native_filter_required"),
+            native_filter_required=native_filter_required(
+                r.get("native_filter_required"), r.get("native_filter_type"), _source_type
+            ),
             path=r.get("path"),  # REQ-1739
             is_primary_key=bool(r.get("is_primary_key") or False),
             is_foreign_key=bool(r.get("is_foreign_key") or False),
@@ -356,9 +381,6 @@ async def _fetch_table_with_columns(
     from provisa.api.admin._table_paging import paging_type, table_paging_kind
     from provisa.api.app import state as _state
 
-    _source_type = (
-        await conn.execute_core(select(sources.c.type).where(sources.c.id == row["source_id"]))
-    ).scalar_one()
     _paging_kind = table_paging_kind(_state, _source_type, row["source_id"], row["table_name"])
 
     view_sql = row.get("view_sql")

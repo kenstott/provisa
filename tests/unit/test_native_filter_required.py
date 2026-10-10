@@ -59,3 +59,19 @@ def test_a_column_says_nothing_until_a_registration_records_it():
         Column(name="_nf_id", visible_to=[], native_filter_type="path_param").native_filter_required
         is None
     )
+
+
+def test_an_old_row_is_resolved_only_where_required_is_certain():
+    from provisa.api.admin.schema_helpers import native_filter_required as resolved
+
+    # Recorded: it stands, whatever the kind.
+    assert resolved(False, "query_param", "graphql_remote") is False
+    assert resolved(True, "query_param", "openapi") is True
+    # Nothing recorded: a remote GraphQL table registers only its required arguments, and a
+    # path cannot be built without its parameter.
+    assert resolved(None, "query_param", "graphql_remote") is True
+    assert resolved(None, "path_param", "openapi") is True
+    # An OpenAPI query parameter and a gRPC input may be optional: not made required.
+    assert resolved(None, "query_param", "openapi") is None
+    assert resolved(None, "grpc_input", "grpc_remote") is None
+    assert resolved(None, None, "graphql_remote") is None  # not a parameter
