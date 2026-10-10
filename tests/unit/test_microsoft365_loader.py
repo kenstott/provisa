@@ -175,6 +175,7 @@ def test_a_group_read_gives_each_table_its_canonical_batches_from_one_listing(fe
         assert batch.schema == arrow_schema(columns[table]), table
     listings = [c for c in fetch.graph.calls if c[1].split("?")[0].endswith("/messages")]
     assert len(listings) == 1
-    assert source.note().params == {"count": 1, "ids": ["m2"], "more": 0}  # m2 has no HTML body
+    (note,) = source.notes()
+    assert note.params == {"count": 1, "ids": ["m2"], "more": 0}  # m2 has no HTML body
     asyncio.run(read())
-    assert source.note().params["count"] == 1  # a read begun again counts again, not twice
+    assert source.notes()[0].params["count"] == 1  # a read begun again counts again, not twice

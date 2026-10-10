@@ -372,7 +372,7 @@ class ReplicaJob:
 
 class _GroupSource(Protocol):
     """One read that gives the rows of several tables: ``batches`` yields each batch with the
-    name of the table it belongs to. It may carry ``note()`` as a single table's source does."""
+    name of the table it belongs to. It may carry ``notes()`` as a single table's source does."""
 
     caps: SourceCaps
 
@@ -456,8 +456,8 @@ class ReplicaGroupJob:
                     await part.target.write(batch, rows)
                     copied[table] += len(rows)
                     await progress(table, copied[table])
-            said = getattr(self._source, "note", None)
-            note = said() if said is not None else None
+            said = getattr(self._source, "notes", None)
+            notes = tuple(said()) if said is not None else ()
         except BaseException:
             # The read failed: no table is swapped, and every previous copy stays.
             for table in open_targets:
@@ -466,12 +466,17 @@ class ReplicaGroupJob:
         results: dict[str, BuildOutcome | BaseException] = {}
         for table, part in self._parts.items():
             results[table] = await self._finish(
-                table, part, digests[table].hexdigest(), copied[table], note
+                table, part, digests[table].hexdigest(), copied[table], notes
             )
         return results
 
     async def _finish(
-        self, table: str, part: GroupPart, content_hash: str, copied: int, note: BuildNote | None
+        self,
+        table: str,
+        part: GroupPart,
+        content_hash: str,
+        copied: int,
+        notes: tuple[BuildNote, ...],
     ) -> "BuildOutcome | BaseException":
         """Swap one complete, hashed table in, or say why not. Its build table is removed
         whenever it is not swapped."""
@@ -484,7 +489,7 @@ class ReplicaGroupJob:
                     method=method,
                     content_hash=content_hash,
                     changed=False,
-                    note=note,
+                    notes=notes,
                 )
             if part.still_wanted is not None:
                 await part.still_wanted()
@@ -496,7 +501,9 @@ class ReplicaGroupJob:
         finally:
             if not swapped:
                 await part.target.abort()
-        return BuildOutcome(rows_copied=copied, method=method, content_hash=content_hash, note=note)
+        return BuildOutcome(
+            rows_copied=copied, method=method, content_hash=content_hash, notes=notes
+        )
 
 
 def _within_bytes(batch: "pa.RecordBatch", max_bytes: int) -> Iterator["pa.RecordBatch"]:

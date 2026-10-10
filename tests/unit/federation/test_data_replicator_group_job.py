@@ -90,8 +90,8 @@ class _Read:
         self._note = note
         self.reads = 0
 
-    def note(self):
-        return self._note
+    def notes(self):
+        return [] if self._note is None else [self._note]
 
     async def batches(self, batch_rows):
         self.reads += 1
@@ -135,7 +135,9 @@ async def test_one_read_gives_each_table_exactly_its_rows_and_swaps_each():
     assert (results["a"].rows_copied, results["b"].rows_copied) == (5, 4)
     assert results["a"].method == "stream_batches" and results["a"].changed
     assert results["a"].content_hash == _hash(_a(5)) != results["b"].content_hash
-    assert results["a"].note.code == results["b"].note.code == "x.note"
+    assert (
+        [n.code for n in results["a"].notes] == [n.code for n in results["b"].notes] == ["x.note"]
+    )
     assert seen == [("a", 3), ("b", 4), ("a", 5)]
 
 

@@ -145,10 +145,10 @@ class _MessagesRead:
         self._columns = columns
         self._unreadable: list[str] = []
 
-    def note(self) -> Any:
-        from provisa.federation.data_replicator import unreadable_messages_note
+    def notes(self) -> list[Any]:
+        from provisa.federation.data_replicator import noted, unreadable_messages_note
 
-        return unreadable_messages_note(self._unreadable)
+        return noted(unreadable_messages_note(self._unreadable))
 
     async def batches(self, batch_rows: int) -> AsyncIterator[tuple[str, Any]]:
         from provisa.core.ir_arrow import arrow_schema, rows_to_batch
