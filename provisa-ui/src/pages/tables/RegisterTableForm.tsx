@@ -1017,7 +1017,9 @@ export function RegisterTableForm({
       )}
       <Button
         onClick={handleSubmit}
-        style={{ gridColumn: "1 / -1", alignSelf: "flex-start" }}
+        // In a grid, alignSelf is the vertical axis; justifySelf is what keeps the button at its
+        // label's width, at the start of the row.
+        style={{ gridColumn: "1 / -1", justifySelf: "start" }}
         data-testid="register-table-submit"
       >
         {t("registerTableForm.submitButton")}
