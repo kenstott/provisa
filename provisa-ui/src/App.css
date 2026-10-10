@@ -658,14 +658,12 @@ main {
   font-family: inherit;
 }
 /* The filter menu's button sits flush against its text box and takes the same background, so the
-   two read as one control; a column with a filter applied keeps the filled colour. */
+   two read as one control; a column with a filter applied shows a filled icon, not a colour. */
 .sql-results-table .th-filter-btn {
   height: auto;
   min-height: 0;
   border-radius: 0;
   border-top: 1px solid var(--border);
-}
-.sql-results-table .th-filter-btn:not([data-variant="filled"]) {
   background: rgba(0, 0, 0, 0.3);
 }
 .sql-results-table .th-filter::placeholder {

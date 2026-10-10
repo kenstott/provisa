@@ -128,7 +128,8 @@ export function ColumnFilterMenu({
     >
       <Popover.Target>
         <ActionIcon
-          variant={current ? "filled" : "subtle"}
+          variant="subtle"
+          data-active={current ? "true" : undefined}
           size="xs"
           className="th-filter-btn"
           aria-label={t("columnFilter.open", { column: col })}
@@ -141,7 +142,8 @@ export function ColumnFilterMenu({
             else open();
           }}
         >
-          <Filter size={11} />
+          {/* An applied filter fills the icon; the button keeps the text box's background. */}
+          <Filter size={11} fill={current ? "currentColor" : "none"} />
         </ActionIcon>
       </Popover.Target>
       <Popover.Dropdown onClick={(e) => e.stopPropagation()} data-testid={`${id}-menu`}>
