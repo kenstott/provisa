@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 090c22b1-8121-4d9f-b541-1a0dd2626124
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """A registered parameter column records whether its source requires a value for it (#204).
 
 Each registration path sets it from what the source states: an OpenAPI path parameter, or one

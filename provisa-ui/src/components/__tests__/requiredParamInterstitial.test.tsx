@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: fc2e1a61-0ff5-4077-b90b-93a50650a8d2
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // #204: Preview and Profile of a table with a required parameter ask for its value first. The
 // registration records which parameters are required; a remote GraphQL table's required
 // argument is a query_param, which the kind alone does not tell from an optional one.
