@@ -44,6 +44,9 @@
     "deleteAccountHeading": "Delete account",
     "deleteAccountHelp": "This removes your Provisa account and your membership of every organization. Organizations you belong to, and everything registered in them, are kept.",
     "deleteAccountConfirmLabel": "Type {{userId}} to confirm",
-    "deleteAccountButton": "Delete my account"
+    "deleteAccountButton": "Delete my account",
+    "emailPreferences": "Email preferences",
+    "receiveEmails": "Receive product update emails",
+    "receiveEmailsHelp": "Get occasional updates about Provisa features and product news."
   }
 }

@@ -59,6 +59,14 @@ describe("UserProfileModal offboarding", () => {
     deleteAccountSpy.mockClear();
   });
 
+  it("shows translated email preference labels", async () => {
+    render(<UserProfileModal onClose={() => {}} />);
+    expect(await screen.findByText(t("userProfileModal.emailPreferences"))).toBeInTheDocument();
+    expect(screen.getByText(t("userProfileModal.receiveEmails"))).toBeInTheDocument();
+    expect(screen.getByText(t("userProfileModal.receiveEmailsHelp"))).toBeInTheDocument();
+    expect(screen.queryByText("USERPROFILEMODAL.EMAILPREFERENCES")).not.toBeInTheDocument();
+  });
+
   it("offers a leave control for each org the person belongs to", async () => {
     render(<UserProfileModal onClose={() => {}} />);
     expect(await screen.findByTestId("profile-leave-acme")).toBeInTheDocument();
