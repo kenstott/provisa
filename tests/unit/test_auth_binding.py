@@ -83,11 +83,11 @@ def _simple_config() -> dict:
 
 
 @pytest.fixture()
-def client(monkeypatch):
+def client(monkeypatch, control_plane):
     from provisa.api.app import state
     from provisa.auth.login_router import router
 
-    monkeypatch.setattr(state, "admin_db", platform_db())
+    monkeypatch.setattr(state, "admin_db", platform_db(control_plane))
     app = FastAPI()
     app.include_router(router)
     return TestClient(app), state

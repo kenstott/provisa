@@ -244,7 +244,7 @@ def _handler529(shared_data: dict):
     return handler
 
 
-def _authenticate529(shared_data: dict, *, user: str = "alice") -> None:
+def _authenticate529(shared_data: dict, control_plane, *, user: str = "alice") -> None:
     """Run handle_md5_password against the auth config recorded in shared_data."""
     shared_data["errors"] = []
     shared_data["admitted"] = []
@@ -255,7 +255,7 @@ def _authenticate529(shared_data: dict, *, user: str = "alice") -> None:
         # REQ-1266: an unsecured deployment's connection serves the deployment's own org.
         org_id="default",
         # The simple provider keeps its users' ids on the platform plane.
-        admin_db=platform_db(),
+        admin_db=platform_db(control_plane),
     )
     handler = _handler529(shared_data)
     ctx = cast(Any, _Ctx529(user))
@@ -292,9 +292,9 @@ def given_provider_none(shared_data):
 
 
 @when("a client connects with any password")
-def when_any_password(shared_data):
+def when_any_password(shared_data, control_plane):
     shared_data["password"] = "anything-at-all"
-    _authenticate529(shared_data, user="alice")
+    _authenticate529(shared_data, control_plane, user="alice")
 
 
 @then("the username becomes the role_id and the session is established")
@@ -342,9 +342,9 @@ def given_credential_provider(shared_data):
 
 
 @when("a client presents a valid password for a known user")
-def when_valid_password(shared_data):
+def when_valid_password(shared_data, control_plane):
     shared_data["password"] = "s3cret"
-    _authenticate529(shared_data, user="alice")
+    _authenticate529(shared_data, control_plane, user="alice")
 
 
 @then("the credential is verified through the provider and a role is resolved")
@@ -403,13 +403,13 @@ def given_oidc_provider(shared_data):
 
 
 @when("a client presents a bearer token as the password")
-def when_bearer_token(shared_data):
+def when_bearer_token(shared_data, control_plane):
     shared_data["password"] = jwt.encode(
         {"email": "ada@x.io", "aud": "provisa", "iss": "https://issuer"},
         _SECRET,
         algorithm="HS256",
     )
-    _authenticate529(shared_data, user="ada")
+    _authenticate529(shared_data, control_plane, user="ada")
 
 
 @then("the token is validated through AuthProvider.validate_token and a role is resolved")
@@ -439,8 +439,8 @@ def given_invalid_credential(shared_data):
 
 
 @when("authentication is attempted")
-def authentication_attempted(shared_data):
-    _authenticate529(shared_data)
+def authentication_attempted(shared_data, control_plane):
+    _authenticate529(shared_data, control_plane)
 
 
 @then("a FATAL 28P01 is returned and no session is established")

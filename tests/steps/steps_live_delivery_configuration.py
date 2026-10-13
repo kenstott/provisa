@@ -196,9 +196,7 @@ def _save_live(db, mutation, poll_interval: int):
 
 
 @given("the admin UI TablesPage")
-def given_admin_ui_tables_page(
-    shared_data: dict, request, embedded_postgres, control_plane_template
-) -> None:
+def given_admin_ui_tables_page(shared_data: dict, request, control_plane_template) -> None:
     """A table whose live configuration TablesPage saved (poll every 10 s), and the org's running
     live engine reconciled from it."""
     from provisa.api.admin.schema_mutation import Mutation
@@ -210,9 +208,9 @@ def given_admin_ui_tables_page(
     engine = LiveEngine(tenant_db=None, org_id="default", scheduler=MagicMock())
     shared_data["ui_engine"] = engine
     # Its own store: the GraphQL half of this scenario has one of its own (control_plane).
-    from tests.pg_control_plane import clone
+    from tests.pg_control_plane import SessionPostgres, clone
 
-    ui_plane = clone(embedded_postgres, control_plane_template)
+    ui_plane = clone(SessionPostgres.from_env(), control_plane_template)
     request.addfinalizer(ui_plane.close)
     shared_data["ui_db_cm"] = _db(ui_plane, source_ttl=60)
 

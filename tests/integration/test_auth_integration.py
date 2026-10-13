@@ -73,12 +73,14 @@ def _hash(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
-def _make_simple_provider(users: list[dict] | None = None) -> SimpleAuthProvider:
+def _make_simple_provider(control_plane, users: list[dict] | None = None) -> SimpleAuthProvider:
     users = users or [
         {"username": "alice", "password_hash": _hash("s3cr3t"), "roles": [ROLE_ANALYST]},
         {"username": "bob", "password_hash": _hash("passw0rd"), "roles": [ROLE_ADMIN]},
     ]
-    return SimpleAuthProvider(users=users, jwt_secret=_JWT_SECRET, user_ids=simple_user_ids())
+    return SimpleAuthProvider(
+        users=users, jwt_secret=_JWT_SECRET, user_ids=simple_user_ids(control_plane)
+    )
 
 
 def _echo_identity(request: Request) -> JSONResponse:
@@ -189,9 +191,9 @@ class TestAuthProviderInterface:
 
 
 class TestSimpleAuthProvider:
-    def test_login_valid_credentials_returns_jwt(self):
+    def test_login_valid_credentials_returns_jwt(self, control_plane):
         # REQ-124: valid credentials must return a signed JWT.
-        provider = _make_simple_provider()
+        provider = _make_simple_provider(control_plane)
         token = asyncio.run(provider.login("alice", "s3cr3t"))
         assert isinstance(token, str)
         decoded = jwt.decode(token, _JWT_SECRET, algorithms=["HS256"])
@@ -199,34 +201,34 @@ class TestSimpleAuthProvider:
         assert decoded["sub"] != "alice"
         assert decoded["username"] == "alice"
 
-    def test_login_invalid_password_raises(self):
+    def test_login_invalid_password_raises(self, control_plane):
         # REQ-124: wrong password must raise ValueError.
-        provider = _make_simple_provider()
+        provider = _make_simple_provider(control_plane)
         with pytest.raises(ValueError, match="Invalid credentials"):
             asyncio.run(provider.login("alice", "wrong-password"))
 
-    def test_login_unknown_user_raises(self):
+    def test_login_unknown_user_raises(self, control_plane):
         # REQ-124: unknown username must raise ValueError.
-        provider = _make_simple_provider()
+        provider = _make_simple_provider(control_plane)
         with pytest.raises(ValueError, match="Invalid credentials"):
             asyncio.run(provider.login("nobody", "any"))
 
-    def test_validate_token_returns_identity(self):
+    def test_validate_token_returns_identity(self, control_plane):
         # REQ-124: validate_token must decode JWT and return AuthIdentity.
         import asyncio
 
-        provider = _make_simple_provider()
+        provider = _make_simple_provider(control_plane)
         token = asyncio.run(provider.login("alice", "s3cr3t"))
         identity = asyncio.run(provider.validate_token(token))
         assert identity.user_id != "alice"
         assert identity.display_name == "alice"
         assert ROLE_ANALYST in identity.roles
 
-    def test_validate_token_expired_raises(self):
+    def test_validate_token_expired_raises(self, control_plane):
         # REQ-124: expired token must raise (jwt.ExpiredSignatureError).
         import asyncio
 
-        provider = _make_simple_provider()
+        provider = _make_simple_provider(control_plane)
         now = datetime.datetime.now(datetime.timezone.utc)
         payload = {
             "sub": "alice",
@@ -239,16 +241,16 @@ class TestSimpleAuthProvider:
         with pytest.raises(jwt.ExpiredSignatureError):
             asyncio.run(provider.validate_token(expired_token))
 
-    def test_jwt_contains_role_claims(self):
+    def test_jwt_contains_role_claims(self, control_plane):
         # REQ-124: JWT payload must contain roles claim.
-        provider = _make_simple_provider()
+        provider = _make_simple_provider(control_plane)
         token = asyncio.run(provider.login("bob", "passw0rd"))
         decoded = jwt.decode(token, _JWT_SECRET, algorithms=["HS256"])
         assert ROLE_ADMIN in decoded["roles"]
 
-    def test_token_has_short_expiry(self):
+    def test_token_has_short_expiry(self, control_plane):
         # REQ-124: JWT must have a short expiry (30 min or less for simple/test use).
-        provider = _make_simple_provider()
+        provider = _make_simple_provider(control_plane)
         token = asyncio.run(provider.login("alice", "s3cr3t"))
         decoded = jwt.decode(token, _JWT_SECRET, algorithms=["HS256"])
         expiry = datetime.datetime.fromtimestamp(decoded["exp"], tz=datetime.timezone.utc)

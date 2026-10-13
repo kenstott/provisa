@@ -81,7 +81,7 @@ def _handler(shared_data):
     return handler
 
 
-def _authenticate(shared_data, *, user: str = "alice") -> None:
+def _authenticate(shared_data, control_plane, *, user: str = "alice") -> None:
     """Run the real startup-packet auth path with the pending config and secret."""
     from unittest.mock import patch
 
@@ -94,7 +94,7 @@ def _authenticate(shared_data, *, user: str = "alice") -> None:
         multitenancy=False,
         org_id="default",  # the one org a single-org deployment binds (REQ-1266)
         # The simple provider keeps its users' ids on the platform plane.
-        admin_db=platform_db(),
+        admin_db=platform_db(control_plane),
     )
     handler, ctx = _handler(shared_data), cast(Any, _Ctx(user))
     shared_data["ctx"] = ctx
@@ -186,11 +186,11 @@ def given_oidc_provider(shared_data):
 
 
 @when("a client presents an OIDC ID token (JWT) as the password")
-def when_client_presents_token(shared_data):
+def when_client_presents_token(shared_data, control_plane):
     shared_data["password"] = jwt.encode(
         {"email": "ada@x.io", "aud": "provisa", "iss": "https://issuer"}, _SECRET, algorithm="HS256"
     )
-    _authenticate(shared_data, user="ada")
+    _authenticate(shared_data, control_plane, user="ada")
 
 
 @then("the token is verified against the issuer JWKS and mapped to a role via resolve_role")
@@ -215,8 +215,8 @@ def given_tampered_token(shared_data):
 
 
 @when("authentication is attempted")
-def when_auth_attempted(shared_data):
-    _authenticate(shared_data)
+def when_auth_attempted(shared_data, control_plane):
+    _authenticate(shared_data, control_plane)
 
 
 @then("a FATAL 28P01 is returned and no session is established")
@@ -239,9 +239,9 @@ def given_simple_not_enabled(shared_data):
 
 
 @when("a client attempts cleartext auth")
-def when_cleartext_auth(shared_data):
+def when_cleartext_auth(shared_data, control_plane):
     shared_data["password"] = "s3cret"
-    _authenticate(shared_data)
+    _authenticate(shared_data, control_plane)
 
 
 @then("the connection is refused")
@@ -268,9 +268,9 @@ def given_any_provider(shared_data):
 
 
 @when("a client presents an ordinary password in the startup packet")
-def when_password_presented(shared_data):
+def when_password_presented(shared_data, control_plane):
     shared_data["password"] = "s3cret"
-    _authenticate(shared_data, user="alice")
+    _authenticate(shared_data, control_plane, user="alice")
 
 
 @then(
@@ -343,11 +343,11 @@ def given_no_default_role(shared_data):
 
 
 @when("an authenticated identity matches no role-mapping rule")
-def when_identity_matches_no_rule(shared_data):
+def when_identity_matches_no_rule(shared_data, control_plane):
     # The credential is good — role_mapping is empty, so nothing but a default could admit it.
     assert shared_data["auth_config"]["role_mapping"] == []
     shared_data["password"] = "s3cret"
-    _authenticate(shared_data)
+    _authenticate(shared_data, control_plane)
 
 
 @then("the connection fails rather than landing on an arbitrary role")

@@ -34,7 +34,7 @@ def _hash_pw(password: str) -> str:
 
 
 @pytest.fixture
-def provider():
+def provider(control_plane):
     users = [
         {
             "username": "alice",
@@ -47,7 +47,9 @@ def provider():
             "roles": ["admin", "analyst"],
         },
     ]
-    return SimpleAuthProvider(users=users, jwt_secret=JWT_SECRET, user_ids=simple_user_ids())
+    return SimpleAuthProvider(
+        users=users, jwt_secret=JWT_SECRET, user_ids=simple_user_ids(control_plane)
+    )
 
 
 class TestSimpleAuthValidCredentials:
@@ -98,9 +100,11 @@ class TestJWTValidationRoundTrip:
         with pytest.raises(Exception):
             await provider.validate_token(tampered)
 
-    async def test_wrong_secret_rejected(self):
+    async def test_wrong_secret_rejected(self, control_plane):
         provider_b = SimpleAuthProvider(
-            users=[], jwt_secret="secret-b-for-unit-tests-padded!x", user_ids=simple_user_ids()
+            users=[],
+            jwt_secret="secret-b-for-unit-tests-padded!x",
+            user_ids=simple_user_ids(control_plane),
         )
         token = jwt.encode(
             {"sub": "x", "username": "x", "roles": []},
@@ -134,11 +138,11 @@ class TestAllowSimpleAuthGuard:
         with pytest.raises(ValueError, match="allow_simple_auth"):
             build_auth_provider(self._simple_cfg(allow_simple_auth=False))
 
-    async def test_simple_with_flag_true_builds(self):
+    async def test_simple_with_flag_true_builds(self, control_plane):
         from provisa.auth.wiring import build_auth_provider
 
         provider = build_auth_provider(
-            self._simple_cfg(allow_simple_auth=True), admin_pool=platform_db()
+            self._simple_cfg(allow_simple_auth=True), admin_pool=platform_db(control_plane)
         )
         assert isinstance(provider, SimpleAuthProvider)
 

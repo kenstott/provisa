@@ -58,7 +58,7 @@ def app_state(monkeypatch):
 
 
 @pytest.fixture()
-def simple_provider(monkeypatch):
+def simple_provider(monkeypatch, control_plane):
     """Wire a real SimpleAuthProvider in, so the scheme dispatch runs against real validators."""
     import provisa.auth.wiring as wiring
     from provisa.auth.providers.simple import SimpleAuthProvider
@@ -66,7 +66,7 @@ def simple_provider(monkeypatch):
     provider = SimpleAuthProvider(
         users=[{"username": "alice", "password_hash": _HASH, "roles": ["steward"]}],
         jwt_secret="unit-test-secret",
-        user_ids=simple_user_ids(),
+        user_ids=simple_user_ids(control_plane),
     )
     monkeypatch.setattr(wiring, "build_auth_provider", lambda config, admin_pool=None: provider)
     return provider

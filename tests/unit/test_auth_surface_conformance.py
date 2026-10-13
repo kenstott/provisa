@@ -46,22 +46,25 @@ _USERNAME = "alice"
 _PAT = "provisa_pat_conformance"
 _PAT_USER = "pat-user"
 
-# A stand-in for the platform control plane. Its only job is to be non-None so
-# ``build_auth_provider`` attaches a PAT store; the store itself is faked below.
-# A real platform plane: the simple provider keeps each user's id there, and every surface's own
-# provider reads the same row, so one user is one id on every surface.
-_ADMIN_POOL = platform_db()
+
+@pytest.fixture
+def admin_pool(control_plane):
+    """A real platform plane: the simple provider keeps each user's id there, and every surface's
+    own provider reads the same row, so one user is one id on every surface."""
+    return platform_db(control_plane)
 
 
-def _stored_id(username: str) -> str:
+def _stored_id(pool, username: str) -> str:
     import asyncio
 
     from provisa.auth.simple_user_ids import SimpleUserIds
 
-    return asyncio.run(SimpleUserIds(_ADMIN_POOL).id_for(username))
+    return asyncio.run(SimpleUserIds(pool).id_for(username))
 
 
-_USER_ID = _stored_id(_USERNAME)
+def _expected_id(cred: Credential, pool) -> str:
+    """The id a surface must report: the credential's own, or the user's stored id when None."""
+    return _stored_id(pool, _USERNAME) if cred.user_id is None else cred.user_id
 
 
 class _Rejected(Exception):
@@ -107,13 +110,13 @@ def _auth_config() -> dict:
     }
 
 
-def _state() -> SimpleNamespace:
+def _state(pool) -> SimpleNamespace:
     return SimpleNamespace(
         auth_config=_auth_config(),
         auth_middleware_active=True,
         multitenancy=False,
         org_id="default",
-        admin_db=_ADMIN_POOL,
+        admin_db=pool,
         roles={},
         platform_roles={},
         contexts={"analyst": object(), "steward": object()},
@@ -142,14 +145,14 @@ def pgwire_loop():
 # --- credentials --------------------------------------------------------------------------------
 
 
-def _provider_token() -> str:
+def _provider_token(pool) -> str:
     import asyncio
 
-    provider = build_auth_provider(_auth_config(), admin_pool=_ADMIN_POOL)
+    provider = build_auth_provider(_auth_config(), admin_pool=pool)
     return asyncio.run(provider.login(_USERNAME, _PASSWORD))  # type: ignore[attr-defined]
 
 
-def _tampered_token() -> str:
+def _tampered_token(pool) -> str:
     """A token whose signature no longer matches its payload.
 
     The edit is to the first signature character, not the last: a 32-byte HMAC encodes to 43
@@ -157,7 +160,7 @@ def _tampered_token() -> str:
     sixty-four values decode to the byte its neighbours do. Flipping it leaves a token that still
     verifies, and the surface under test rightly accepts it.
     """
-    head, _, signature = _provider_token().rpartition(".")
+    head, _, signature = _provider_token(pool).rpartition(".")
     return f"{head}.{'A' if signature[0] != 'A' else 'B'}{signature[1:]}"
 
 
@@ -168,18 +171,18 @@ class Credential:
     kind: str
     scheme: str  # the presentation the protocol carries it under
     principal: str
-    good: Callable[[], str]
-    bad: Callable[[], str]
-    user_id: str
+    good: Callable[[Any], str]  # given the platform pool
+    bad: Callable[[Any], str]
+    user_id: str | None  # None: the user's stored id on the platform plane
 
 
 _PASSWORD_CRED = Credential(
     kind="password",
     scheme="basic",
     principal=_USERNAME,
-    good=lambda: _PASSWORD,
-    bad=lambda: "wrong-password",
-    user_id=_USER_ID,
+    good=lambda pool: _PASSWORD,
+    bad=lambda pool: "wrong-password",
+    user_id=None,
 )
 _TOKEN_CRED = Credential(
     kind="provider-token",
@@ -187,14 +190,14 @@ _TOKEN_CRED = Credential(
     principal=_USERNAME,
     good=_provider_token,
     bad=_tampered_token,
-    user_id=_USER_ID,
+    user_id=None,
 )
 _PAT_CRED = Credential(
     kind="personal-access-token",
     scheme="bearer",
     principal=_USERNAME,
-    good=lambda: _PAT,
-    bad=lambda: "provisa_pat_revoked",
+    good=lambda pool: _PAT,
+    bad=lambda pool: "provisa_pat_revoked",
     user_id=_PAT_USER,
 )
 
@@ -206,11 +209,11 @@ _PAT_CRED = Credential(
 # decided.
 
 
-def _http(cred: Credential, secret: str) -> str:
+def _http(cred: Credential, secret: str, pool) -> str:
     app = FastAPI()
     app.add_middleware(
         AuthMiddleware,
-        provider=build_auth_provider(_auth_config(), admin_pool=_ADMIN_POOL),
+        provider=build_auth_provider(_auth_config(), admin_pool=pool),
         mapping_rules=[],
         default_role="analyst",
         default_org_id="default",  # the deployment org the platform plane is read in (REQ-1266)
@@ -230,16 +233,18 @@ def _http(cred: Credential, secret: str) -> str:
     return resp.json()["user_id"]
 
 
-def _bolt(cred: Credential, secret: str) -> str:
+def _bolt(cred: Credential, secret: str, pool) -> str:
     from provisa.bolt.session import BoltSession
 
-    identity = asyncio.run(BoltSession._authenticate(_state(), cred.scheme, cred.principal, secret))
+    identity = asyncio.run(
+        BoltSession._authenticate(_state(pool), cred.scheme, cred.principal, secret)
+    )
     if identity is None:
         raise _Rejected("bolt refused the credential")
     return identity.user_id
 
 
-def _pgwire(cred: Credential, secret: str) -> str:
+def _pgwire(cred: Credential, secret: str, pool) -> str:
     """pgwire carries a username and one cleartext secret; what the secret IS picks the
     presentation, so the adapter simply hands it over as the startup packet does."""
     import io
@@ -261,54 +266,56 @@ def _pgwire(cred: Credential, secret: str) -> str:
 
     session = ProvisaSession()
     ctx = cast(Any, SimpleNamespace(params={"user": cred.principal}, session=session))
-    with patch("provisa.pgwire.server.state", _state()):
+    with patch("provisa.pgwire.server.state", _state(pool)):
         handler.handle_md5_password(ctx, secret.encode("utf-8") + b"\x00")
     if errors:
         raise _Rejected(str(errors[0]))
     # pgwire admits a ROLE, not an identity — the identity never reaches the session. The role is
     # the mapped default here, which is what proves the credential validated.
-    return cred.user_id if session.role_id == "analyst" else "unmapped"
+    return _expected_id(cred, pool) if session.role_id == "analyst" else "unmapped"
 
 
-def _mcp(cred: Credential, secret: str) -> str:
+def _mcp(cred: Credential, secret: str, pool) -> str:
     from provisa.api.mcp.server import _validate_mcp_token
 
     del cred
     try:
-        identity = asyncio.run(_validate_mcp_token(secret, _state()))
+        identity = asyncio.run(_validate_mcp_token(secret, _state(pool)))
     except (ValueError, PermissionError, jwt.PyJWTError) as exc:
         raise _Rejected(str(exc)) from exc
     return identity.user_id
 
 
-def _flight(cred: Credential, secret: str) -> str:
+def _flight(cred: Credential, secret: str, pool) -> str:
     from provisa.api.flight.server import _validate_flight_credential
 
     del cred
     try:
-        identity = asyncio.run(_validate_flight_credential(_state(), secret))
+        identity = asyncio.run(_validate_flight_credential(_state(pool), secret))
     except (ValueError, PermissionError, jwt.PyJWTError) as exc:
         raise _Rejected(str(exc)) from exc
     return identity.user_id
 
 
-def _grpc(cred: Credential, secret: str) -> str:
+def _grpc(cred: Credential, secret: str, pool) -> str:
     from provisa.grpc.auth import validate_grpc_credential
 
     del cred
     try:
-        identity = asyncio.run(validate_grpc_credential(_state(), secret))
+        identity = asyncio.run(validate_grpc_credential(_state(pool), secret))
     except (ValueError, PermissionError, jwt.PyJWTError) as exc:
         raise _Rejected(str(exc)) from exc
     return identity.user_id
 
 
-def _airport(cred: Credential, secret: str) -> str:
+def _airport(cred: Credential, secret: str, pool) -> str:
     from provisa.auth.bearer import validate_bearer_credential
 
     del cred
     try:
-        identity = asyncio.run(validate_bearer_credential(_state(), secret, "an airport client"))
+        identity = asyncio.run(
+            validate_bearer_credential(_state(pool), secret, "an airport client")
+        )
     except (ValueError, PermissionError, jwt.PyJWTError) as exc:
         raise _Rejected(str(exc)) from exc
     return identity.user_id
@@ -317,7 +324,7 @@ def _airport(cred: Credential, secret: str) -> str:
 @dataclass(frozen=True)
 class Surface:
     name: str
-    authenticate: Callable[[Credential, str], str]
+    authenticate: Callable[[Credential, str, Any], str]
     credentials: tuple[Credential, ...]
     needs_pgwire_loop: bool = False
 
@@ -354,27 +361,31 @@ def maybe_pgwire_loop(request):
 
 @pytest.mark.parametrize(("surface", "credential"), _CASES)
 def test_a_surface_accepts_every_credential_its_protocol_can_carry(
-    surface, credential, maybe_pgwire_loop
+    surface, credential, maybe_pgwire_loop, admin_pool
 ):
     del maybe_pgwire_loop
 
-    assert surface.authenticate(credential, credential.good()) == credential.user_id
+    assert surface.authenticate(credential, credential.good(admin_pool), admin_pool) == (
+        _expected_id(credential, admin_pool)
+    )
 
 
 @pytest.mark.parametrize(("surface", "credential"), _CASES)
-def test_a_surface_refuses_a_bad_credential_of_every_kind(surface, credential, maybe_pgwire_loop):
+def test_a_surface_refuses_a_bad_credential_of_every_kind(
+    surface, credential, maybe_pgwire_loop, admin_pool
+):
     del maybe_pgwire_loop
 
     with pytest.raises(_Rejected):
-        surface.authenticate(credential, credential.bad())
+        surface.authenticate(credential, credential.bad(admin_pool), admin_pool)
 
 
 @pytest.mark.parametrize("surface", _SURFACES, ids=lambda s: s.name)
-def test_the_personal_access_token_works_on_every_surface(surface, maybe_pgwire_loop):
+def test_the_personal_access_token_works_on_every_surface(surface, maybe_pgwire_loop, admin_pool):
     """REQ-1263: one credential a user can issue for themselves, good on every protocol."""
     del maybe_pgwire_loop
 
-    assert surface.authenticate(_PAT_CRED, _PAT) == _PAT_USER
+    assert surface.authenticate(_PAT_CRED, _PAT, admin_pool) == _PAT_USER
 
 
 def test_every_authenticating_surface_is_in_the_matrix():

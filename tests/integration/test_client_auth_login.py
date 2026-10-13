@@ -42,7 +42,7 @@ def _free_port() -> int:
 
 
 @pytest.fixture()
-def login_server(monkeypatch):
+def login_server(monkeypatch, control_plane):
     """A real uvicorn server serving /auth/login for a deployment configured with the simple
     provider, read from the app state the way a started deployment holds it."""
     import uvicorn
@@ -71,7 +71,7 @@ def login_server(monkeypatch):
         },
     )
     # The simple provider keeps its users' ids on the platform plane.
-    monkeypatch.setattr(state, "admin_db", platform_db())
+    monkeypatch.setattr(state, "admin_db", platform_db(control_plane))
     app = FastAPI()
     app.include_router(login_router)
 

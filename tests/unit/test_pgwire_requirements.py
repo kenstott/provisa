@@ -364,7 +364,7 @@ class TestPgwireBasicAndPat:
         ctx.session = _session()
         return ctx
 
-    def _state(self, auth_config):
+    def _state(self, auth_config, control_plane):
         fake_state = MagicMock()
         # A single-tenant deployment: its catalog serves the one database, provisa.
         fake_state.multitenancy = False
@@ -372,7 +372,7 @@ class TestPgwireBasicAndPat:
         fake_state.auth_middleware_active = True
         fake_state.multitenancy = False
         # The simple provider keeps its users' ids on the platform plane.
-        fake_state.admin_db = platform_db()
+        fake_state.admin_db = platform_db(control_plane)
         return fake_state
 
     def _simple_config(self):
@@ -395,36 +395,42 @@ class TestPgwireBasicAndPat:
             "default_role": "analyst",
         }
 
-    def test_a_password_authenticates_under_a_non_oidc_provider(self, pgwire_loop):
+    def test_a_password_authenticates_under_a_non_oidc_provider(self, pgwire_loop, control_plane):
         handler, ctx = self._handler(), self._ctx()
-        with patch("provisa.pgwire.server.state", self._state(self._simple_config())):
+        with patch(
+            "provisa.pgwire.server.state", self._state(self._simple_config(), control_plane)
+        ):
             handler.handle_md5_password(ctx, b"s3cret\x00")
 
         assert ctx.session.role_id == "analyst"
         handler.send_authentication_ok.assert_called_once()
         handler._send_pg_error.assert_not_called()
 
-    def test_a_wrong_password_is_refused(self, pgwire_loop):
+    def test_a_wrong_password_is_refused(self, pgwire_loop, control_plane):
         handler, ctx = self._handler(), self._ctx()
-        with patch("provisa.pgwire.server.state", self._state(self._simple_config())):
+        with patch(
+            "provisa.pgwire.server.state", self._state(self._simple_config(), control_plane)
+        ):
             handler.handle_md5_password(ctx, b"wrong\x00")
 
         handler.send_authentication_ok.assert_not_called()
         assert handler._send_pg_error.call_args[0][1] == "28P01"
 
-    def test_the_role_comes_from_the_identity_not_the_username(self, pgwire_loop):
+    def test_the_role_comes_from_the_identity_not_the_username(self, pgwire_loop, control_plane):
         """The client names a user, never a role — a mapping rule decides what it runs as."""
         config = self._simple_config()
         config["role_mapping"] = [
             {"type": "contains", "claim": "roles", "value": "steward", "role": "steward"}
         ]
         handler, ctx = self._handler(), self._ctx()
-        with patch("provisa.pgwire.server.state", self._state(config)):
+        with patch("provisa.pgwire.server.state", self._state(config, control_plane)):
             handler.handle_md5_password(ctx, b"s3cret\x00")
 
         assert ctx.session.role_id == "steward"
 
-    def test_a_personal_access_token_is_accepted_as_a_bearer_credential(self, pgwire_loop):
+    def test_a_personal_access_token_is_accepted_as_a_bearer_credential(
+        self, pgwire_loop, control_plane
+    ):
         # REQ-1263: the PAT store hangs off the provider, so pgwire needs no notion of a PAT.
         from provisa.auth.models import AuthIdentity
 
@@ -453,7 +459,7 @@ class TestPgwireBasicAndPat:
         config = self._simple_config()
         handler, ctx = self._handler(), self._ctx()
         with (
-            patch("provisa.pgwire.server.state", self._state(config)),
+            patch("provisa.pgwire.server.state", self._state(config, control_plane)),
             patch("provisa.auth.wiring.build_auth_provider", return_value=_FakeProvider()),
         ):
             handler.handle_md5_password(ctx, b"provisa_pat_abc\x00")
@@ -462,10 +468,12 @@ class TestPgwireBasicAndPat:
         assert ctx.session.role_id == "analyst"
         handler.send_authentication_ok.assert_called_once()
 
-    def test_a_provider_that_cannot_be_built_refuses_on_the_wire(self, pgwire_loop):
+    def test_a_provider_that_cannot_be_built_refuses_on_the_wire(self, pgwire_loop, control_plane):
         """An unknown provider name authenticates nobody, and the client is told so."""
         handler, ctx = self._handler(), self._ctx()
-        with patch("provisa.pgwire.server.state", self._state({"provider": "kerberos"})):
+        with patch(
+            "provisa.pgwire.server.state", self._state({"provider": "kerberos"}, control_plane)
+        ):
             handler.handle_md5_password(ctx, b"whatever\x00")
 
         handler.send_authentication_ok.assert_not_called()
@@ -473,12 +481,12 @@ class TestPgwireBasicAndPat:
 
     @pytest.mark.parametrize("provider", ["ldap", "saml"])
     def test_a_provider_selected_without_its_settings_refuses_on_the_wire(
-        self, pgwire_loop, provider
+        self, pgwire_loop, control_plane, provider
     ):
         """REQ-1265: a known provider with no config block cannot be built either."""
         handler, ctx = self._handler(), self._ctx()
         config = {"provider": provider, "jwt_secret": "s" * 48}
-        with patch("provisa.pgwire.server.state", self._state(config)):
+        with patch("provisa.pgwire.server.state", self._state(config, control_plane)):
             handler.handle_md5_password(ctx, b"whatever\x00")
 
         handler.send_authentication_ok.assert_not_called()

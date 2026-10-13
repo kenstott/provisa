@@ -268,14 +268,14 @@ def _auth_config() -> dict:
     }
 
 
-def _state(auth_config: dict) -> SimpleNamespace:
+def _state(auth_config: dict, control_plane) -> SimpleNamespace:
     return SimpleNamespace(
         auth_config=auth_config,
         auth_middleware_active=True,
         multitenancy=False,
         org_id="default",
         # The simple provider keeps its users' ids on the platform plane.
-        admin_db=platform_db(),
+        admin_db=platform_db(control_plane),
     )
 
 
@@ -291,7 +291,7 @@ def pgwire_loop():
         yield cl
 
 
-def _pgwire_attempt(auth_config: dict, password: str) -> list[tuple]:
+def _pgwire_attempt(auth_config: dict, control_plane, password: str) -> list[tuple]:
     """One pgwire startup-packet attempt; returns the FATAL frames the handler wrote."""
     from provisa.pgwire.server import ProvisaHandler, ProvisaSession
 
@@ -307,18 +307,20 @@ def _pgwire_attempt(auth_config: dict, password: str) -> list[tuple]:
     handler.wfile = handler._meter
     handler.handle_post_auth = lambda ctx: None  # noqa: ARG005 — signature match
     ctx = cast(Any, SimpleNamespace(params={"user": _USERNAME}, session=ProvisaSession()))
-    with patch("provisa.pgwire.server.state", _state(auth_config)):
+    with patch("provisa.pgwire.server.state", _state(auth_config, control_plane)):
         handler.handle_md5_password(ctx, password.encode("utf-8") + b"\x00")
     return errors
 
 
-async def _bolt_attempt(auth_config: dict, password: str):
+async def _bolt_attempt(auth_config: dict, control_plane, password: str):
     from provisa.bolt.session import BoltSession
 
-    return await BoltSession._authenticate(_state(auth_config), "basic", _USERNAME, password)
+    return await BoltSession._authenticate(
+        _state(auth_config, control_plane), "basic", _USERNAME, password
+    )
 
 
-def _http_client(auth_config: dict):
+def _http_client(auth_config: dict, control_plane):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -333,7 +335,7 @@ def _http_client(auth_config: dict):
 
     app.add_middleware(
         AuthMiddleware,
-        provider=build_auth_provider(auth_config, admin_pool=platform_db()),
+        provider=build_auth_provider(auth_config, admin_pool=platform_db(control_plane)),
         mapping_rules=[],
         default_role="analyst",
         db_pool=None,
@@ -348,7 +350,7 @@ def _basic_header(password: str) -> dict:
     }
 
 
-def test_one_bad_password_per_surface_locks_the_account_on_all_of_them(pgwire_loop):
+def test_one_bad_password_per_surface_locks_the_account_on_all_of_them(pgwire_loop, control_plane):
     """The design claim, asserted end to end.
 
     Three failures — one over HTTP, one over pgwire, one over Bolt — reach the limit that no single
@@ -358,51 +360,51 @@ def test_one_bad_password_per_surface_locks_the_account_on_all_of_them(pgwire_lo
     """
     del pgwire_loop
     auth_config = _auth_config()
-    client = _http_client(auth_config)
+    client = _http_client(auth_config, control_plane)
 
     assert client.get("/data/probe", headers=_basic_header("wrong")).status_code == 401
-    assert _pgwire_attempt(auth_config, "wrong")[0][1] == "28P01"
-    assert asyncio.run(_bolt_attempt(auth_config, "wrong")) is None
+    assert _pgwire_attempt(auth_config, control_plane, "wrong")[0][1] == "28P01"
+    assert asyncio.run(_bolt_attempt(auth_config, control_plane, "wrong")) is None
 
     locked = client.get("/data/probe", headers=_basic_header("wrong"))
     assert locked.status_code == 429
     assert int(locked.headers["Retry-After"]) > 0
 
-    severity, sqlstate, message = _pgwire_attempt(auth_config, "wrong")[0]
+    severity, sqlstate, message = _pgwire_attempt(auth_config, control_plane, "wrong")[0]
     assert (severity, sqlstate) == ("FATAL", "28000")
     assert "too many failed authentication attempts" in message
 
     with pytest.raises(LockedOut):
-        asyncio.run(_bolt_attempt(auth_config, "wrong"))
+        asyncio.run(_bolt_attempt(auth_config, control_plane, "wrong"))
 
 
-def test_the_lockout_refuses_the_correct_password_too(pgwire_loop):
+def test_the_lockout_refuses_the_correct_password_too(pgwire_loop, control_plane):
     """A lockout that the right password walks through is not a lockout — an attacker who guesses
     it on attempt n+1 is admitted."""
     del pgwire_loop
     auth_config = _auth_config()
-    client = _http_client(auth_config)
+    client = _http_client(auth_config, control_plane)
 
     for _ in range(3):
         client.get("/data/probe", headers=_basic_header("wrong"))
 
     assert client.get("/data/probe", headers=_basic_header(_PASSWORD)).status_code == 429
-    assert _pgwire_attempt(auth_config, _PASSWORD)[0][1] == "28000"
+    assert _pgwire_attempt(auth_config, control_plane, _PASSWORD)[0][1] == "28000"
 
 
-def test_a_good_password_still_authenticates_under_the_throttle(pgwire_loop):
+def test_a_good_password_still_authenticates_under_the_throttle(pgwire_loop, control_plane):
     """The brake must not be a wall: an unremarkable login is untouched."""
     del pgwire_loop
     auth_config = _auth_config()
 
-    assert _pgwire_attempt(auth_config, _PASSWORD) == []
-    identity = asyncio.run(_bolt_attempt(auth_config, _PASSWORD))
+    assert _pgwire_attempt(auth_config, control_plane, _PASSWORD) == []
+    identity = asyncio.run(_bolt_attempt(auth_config, control_plane, _PASSWORD))
     assert identity is not None
     # The simple provider names a user by a stored id, shown under the username.
     assert identity.display_name == _USERNAME
 
 
-def test_the_login_route_counts_into_the_same_store():
+def test_the_login_route_counts_into_the_same_store(control_plane):
     """/auth/login is on the middleware skip list, so it needs its own entry into the throttle —
     and it must be the same store, or the route is an unmetered guessing oracle."""
     from fastapi import FastAPI
@@ -425,7 +427,7 @@ def test_the_login_route_counts_into_the_same_store():
 
     with (
         patch.object(state, "auth_config", auth_config),
-        patch.object(state, "admin_db", platform_db()),
+        patch.object(state, "admin_db", platform_db(control_plane)),
     ):
         client = TestClient(app)
         body = {"username": _USERNAME, "password": "wrong"}
@@ -435,7 +437,7 @@ def test_the_login_route_counts_into_the_same_store():
         assert client.post("/auth/login", json=body).status_code == 429
         # The same account is now locked on a wire surface it never touched.
         assert (
-            _http_client(auth_config)
+            _http_client(auth_config, control_plane)
             .get("/data/probe", headers=_basic_header(_PASSWORD))
             .status_code
             == 429
