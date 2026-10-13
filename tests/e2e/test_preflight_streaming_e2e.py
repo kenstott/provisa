@@ -27,10 +27,7 @@ from types import SimpleNamespace
 
 import duckdb
 import pytest
-from provisa.core.database import create_engine_from_url
 
-from provisa.core.database import Database
-from provisa.core.schema_org import event_status, events, node_freshness_state
 from provisa.events import queue
 from provisa.events.handlers import make_mv_generate, make_source_land
 from provisa.events.processor import MVTableProcessor, SourceTableProcessor
@@ -96,14 +93,8 @@ class _DuckEngine(_StoreWriteFace):
 
 
 @asynccontextmanager
-async def _cp(tmp_path):
-    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
-    with engine.begin() as c:
-        events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
-    try:
-        yield Database(engine, name="cp")
-    finally:
-        engine.dispose()
+async def _cp(control_plane):
+    yield control_plane.org()
 
 
 # The gate inspects the INPUT (orders): abort if any order has a negative amount — even though the
@@ -154,11 +145,11 @@ async def _events_for(conn, node):
     return [r for r in await queue.read_since(conn, cursor=0) if r["source_table"] == node]
 
 
-async def test_continue_lands_output_when_input_is_clean(tmp_path):
+async def test_continue_lands_output_when_input_is_clean(tmp_path, control_plane):
     store_dsn = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE orders AS SELECT * FROM (VALUES (1,10),(2,5)) AS v(id, amount)")
-    async with _cp(tmp_path) as db:
+    async with _cp(control_plane) as db:
         await _fire(db, MV_NODE)
         proc = _processor(db, _DuckEngine(con, store_dsn))
         async with db.acquire() as conn:
@@ -168,11 +159,11 @@ async def test_continue_lands_output_when_input_is_clean(tmp_path):
         assert [(r[0], r[1]) for r in rows] == [(1, "east"), (2, "west")]  # gate passed → landed
 
 
-async def test_abort_blocks_land_when_input_has_negative(tmp_path):
+async def test_abort_blocks_land_when_input_has_negative(tmp_path, control_plane):
     store_dsn = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE orders AS SELECT * FROM (VALUES (1,10),(2,-4)) AS v(id, amount)")
-    async with _cp(tmp_path) as db:
+    async with _cp(control_plane) as db:
         await _fire(db, MV_NODE)
         proc = _processor(db, _DuckEngine(con, store_dsn))
         async with db.acquire() as conn:
@@ -240,7 +231,7 @@ _ORDERS_CLEAN = (
 _ORDERS_NEG = "CREATE TABLE orders AS SELECT * FROM (VALUES (1,10),(2,-4)) AS v(id, amount)"
 
 
-async def test_quarantine_holds_no_land_no_poison(tmp_path):
+async def test_quarantine_holds_no_land_no_poison(tmp_path, control_plane):
     # A streaming (cross-row) QUARANTINE holds: no land, a non-fanned quarantine event, no poison.
     store_dsn = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     con = duckdb.connect(":memory:")
@@ -251,7 +242,7 @@ async def test_quarantine_holds_no_land_no_poison(tmp_path):
         "        return ctx.quarantine('sum too low')\n"
         "    return ctx.ok()"
     )
-    async with _cp(tmp_path) as db:
+    async with _cp(control_plane) as db:
         await _fire(db, MV_NODE)
         proc = _mv_proc(db, con, store_dsn, gate_src=gate)
         async with db.acquire() as conn:
@@ -262,13 +253,13 @@ async def test_quarantine_holds_no_land_no_poison(tmp_path):
     assert await _store_rows(store_dsn, "SELECT id FROM summary") == []
 
 
-async def test_warn_advisory_still_lands(tmp_path):
+async def test_warn_advisory_still_lands(tmp_path, control_plane):
     # A CONTINUE with ctx.warn(...) emits an advisory warn event AND still lands the output.
     store_dsn = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     con = duckdb.connect(":memory:")
     con.execute(_ORDERS_CLEAN)
     gate = "def preflight(streams, ctx):\n    ctx.warn('low sum, but allowed')\n    return ctx.ok()"
-    async with _cp(tmp_path) as db:
+    async with _cp(control_plane) as db:
         await _fire(db, MV_NODE)
         proc = _mv_proc(db, con, store_dsn, gate_src=gate)
         async with db.acquire() as conn:
@@ -279,7 +270,7 @@ async def test_warn_advisory_still_lands(tmp_path):
     assert [(r[0], r[1]) for r in rows] == [(1, "east"), (2, "west")]  # landed despite the warn
 
 
-async def test_streaming_abort_blocks_land(tmp_path):
+async def test_streaming_abort_blocks_land(tmp_path, control_plane):
     # A cross-row (non-pushdown) ABORT blocks the land and fans the error to dependents.
     store_dsn = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     con = duckdb.connect(":memory:")
@@ -296,7 +287,7 @@ async def test_streaming_abort_blocks_land(tmp_path):
         "        return ctx.abort('negative in stream')\n"
         "    return ctx.ok()"
     )
-    async with _cp(tmp_path) as db:
+    async with _cp(control_plane) as db:
         await _fire(db, MV_NODE)
         proc = _mv_proc(db, con, store_dsn, gate_src=gate)
         async with db.acquire() as conn:
@@ -339,10 +330,10 @@ _SRC_GATE = (
 )
 
 
-async def test_source_preflight_aborts_before_land(tmp_path):
+async def test_source_preflight_aborts_before_land(tmp_path, control_plane):
     # The LANDED-SOURCE gate runs over the fetched rows and blocks the land on abort.
     store_dsn = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
-    async with _cp(tmp_path) as db:
+    async with _cp(control_plane) as db:
         await _fire(db, "s.orders")
         proc = _source_proc(
             db,
@@ -356,10 +347,10 @@ async def test_source_preflight_aborts_before_land(tmp_path):
     assert await _store_rows(store_dsn, "SELECT id FROM orders_src") == []
 
 
-async def test_source_preflight_continues_and_lands(tmp_path):
+async def test_source_preflight_continues_and_lands(tmp_path, control_plane):
     # Clean source rows → the gate continues and the source lands unchanged.
     store_dsn = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
-    async with _cp(tmp_path) as db:
+    async with _cp(control_plane) as db:
         await _fire(db, "s.orders")
         proc = _source_proc(
             db,

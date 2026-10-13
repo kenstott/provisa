@@ -14,7 +14,7 @@ The feature file is GENERATED from the REQ-1387 scenario block in
 docs/arch/requirements.yaml (do not hand-edit it; these steps track its text).
 Terms derive at registration through the real table repository — the single
 table_columns write path carries the glossary sync — so the steps drive
-table_repo.upsert against a real SQLite store and observe the derived
+table_repo.upsert against a real PostgreSQL control plane and observe the derived
 vocabulary: normalization dedup, curation, and the remove-or-deprecate
 lifecycle with dangling-abstract-term prevention.
 """
@@ -27,46 +27,34 @@ import asyncio
 
 import pytest
 from pytest_bdd import given, scenarios, then, when
-from provisa.core.database import create_engine_from_url
 
-from provisa.core.database import Database
 from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
-from provisa.core.schema_org import (
-    registered_tables,
-)
 
 scenarios("../features/REQ-1387.feature")
 
 
 @pytest.fixture
-def shared_data(tmp_path) -> dict:
-    """Per-scenario SQLite store + state passed between steps."""
-    path = tmp_path / "glossary.db"
+def shared_data(control_plane) -> dict:
+    """Per-scenario PostgreSQL control plane (REQ-2014) + state passed between steps."""
 
     async def _init() -> None:
-        engine = create_engine_from_url(f"sqlite+pysqlite:///{path}")
-        with engine.begin() as c:
-            # The whole org schema: a registration asks the dependency guard, which reads every
-            # table that can refer to a column (REQ-1918).
-            registered_tables.metadata.create_all(c)
-        engine.dispose()
+        # The parents a registered table refers to.
+        async with control_plane.org().acquire() as conn:
+            await conn.execute("INSERT INTO domains (id) VALUES ('d')")
+            await conn.execute("INSERT INTO sources (id, type) VALUES ('__derived__', 'derived')")
 
     asyncio.run(_init())
-    return {"db_path": path}
+    return {"plane": control_plane}
 
 
 def _run(shared_data: dict, fn):
     """Run one async repository interaction against the scenario's store."""
 
     async def _go():
-        engine = create_engine_from_url(f"sqlite+pysqlite:///{shared_data['db_path']}")
-        try:
-            async with Database(engine, name="bdd").acquire() as conn:
-                return await fn(conn)
-        finally:
-            engine.dispose()
+        async with shared_data["plane"].org().acquire() as conn:
+            return await fn(conn)
 
     return asyncio.run(_go())
 

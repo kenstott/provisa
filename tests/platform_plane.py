@@ -8,32 +8,36 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A real platform plane for unit tests, on a throwaway SQLite file.
+"""A real platform plane for tests, on PostgreSQL (REQ-2014).
 
 The simple provider keeps each user's id there (provisa/auth/simple_user_ids.py), so a test that
-signs a simple user in needs one. The registry tables are created from the product's own
-metadata, the way init_registry_schema creates them.
+signs a simple user in needs one. A test that has the ``control_plane`` fixture passes it
+(``platform_db(control_plane)``); a helper without one gets a control plane cloned on the session's
+PostgreSQL (tests/pg_control_plane.fresh_control_plane), left to the session's PostgreSQL to discard.
 """
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-from provisa.core import schema_admin
-from provisa.core.database import Database, create_engine_from_url
+from provisa.core.database import Database
 
-
-def platform_db(directory: str | Path | None = None) -> Database:
-    """A fresh platform-plane Database. ``directory`` defaults to a new temporary directory."""
-    root = Path(directory) if directory is not None else Path(tempfile.mkdtemp(prefix="platform-"))
-    engine = create_engine_from_url(f"sqlite+pysqlite:///{root / 'platform.db'}")
-    schema_admin.metadata.create_all(engine, tables=schema_admin.REGISTRY_TABLES)
-    return Database(engine, "test")
+if TYPE_CHECKING:
+    from tests.pg_control_plane import ControlPlane
 
 
-def simple_user_ids(directory: str | Path | None = None):
-    """The simple provider's id store over a fresh platform plane."""
+def platform_db(plane: ControlPlane | None = None) -> Database:
+    """A platform-plane Database: ``plane``'s, else a fresh control plane's."""
+    if plane is None:
+        from tests.pg_control_plane import fresh_control_plane
+
+        # Never closed: it lives as long as the session's PostgreSQL, which is torn down with it.
+        plane = fresh_control_plane()
+    return plane.platform
+
+
+def simple_user_ids(plane: ControlPlane | None = None):
+    """The simple provider's id store over a platform plane."""
     from provisa.auth.simple_user_ids import SimpleUserIds
 
-    return SimpleUserIds(platform_db(directory))
+    return SimpleUserIds(platform_db(plane))

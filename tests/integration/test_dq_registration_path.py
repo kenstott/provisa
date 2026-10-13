@@ -25,42 +25,18 @@ from contextlib import asynccontextmanager
 import pytest
 from sqlalchemy import insert, select
 from sqlalchemy import inspect as sa_inspect
-from provisa.core.database import create_engine_from_url
 
 from provisa.api.admin._dq_registration import apply_dq_registration
-from provisa.core.database import Database
 from provisa.core.models import Column, Table
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
-    glossary_term_domains,
-    glossary_term_edges,
-    glossary_term_experts,
-    glossary_term_refs,
-    glossary_terms,
     registered_tables,
-    naming_rules,
-    roles,
     sources,
-    table_columns,
 )
 from provisa.dq.results import DQ_PROMOTIONS, DQ_WATERMARK_COLUMN, RESULT_FIELDS
 from tests.helpers import dq_contexts
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
-
-_TABLES = [
-    sources,
-    registered_tables,
-    table_columns,
-    # naming_rules: the table upsert refuses a taken SQL address under them (REQ-1933).
-    naming_rules,
-    roles,
-    glossary_terms,
-    glossary_term_refs,
-    glossary_term_domains,
-    glossary_term_edges,
-    glossary_term_experts,
-]
 
 CONTRACT = """
 dataset: provisa/sales/orders
@@ -88,31 +64,24 @@ def _compiled_estate():
 
 
 @asynccontextmanager
-async def _conn(tmp_path):
-    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'dq.db'}")
-    with engine.begin() as c:
-        registered_tables.metadata.create_all(c, tables=_TABLES)
-    try:
-        async with Database(engine, name="dq").acquire() as conn:
-            yield conn
-    finally:
-        engine.dispose()
+async def _conn(control_plane):
+    async with control_plane.org().acquire() as conn:
+        # The domains the estate registers its tables under (a registered table references one).
+        await conn.execute(
+            "INSERT INTO domains (id) VALUES ('sales'), ('default') ON CONFLICT DO NOTHING"
+        )
+        yield conn
 
 
 @pytest.fixture
-def org_vault(tmp_path, monkeypatch):
+def org_vault(control_plane, monkeypatch):
     """The dry run reads the checker's connection inside the request org's vault, so a ``${secret:}``
     in the mapping resolves. The deployment's org is bound (conftest); its vault -- empty here, the
     mapping holds plain values -- lives in the same control plane as the estate."""
     from provisa.api.app import state
-    from provisa.core.schema_admin import secrets_store
 
-    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'dq.db'}")
-    with engine.begin() as c:
-        secrets_store.metadata.create_all(c, tables=[secrets_store])
-    monkeypatch.setattr(state, "admin_db", Database(engine, name="admin"))
+    monkeypatch.setattr(state, "admin_db", control_plane.platform)
     yield
-    engine.dispose()
 
 
 _MAPPING = {
@@ -151,10 +120,10 @@ def _results_table(contract: str | None = CONTRACT) -> Table:
     )
 
 
-async def test_the_admin_path_derives_the_same_registration_the_loader_does(tmp_path):
+async def test_the_admin_path_derives_the_same_registration_the_loader_does(control_plane):
     """One helper, two surfaces: a table registered through the UI must come out identical to the
     same table written in YAML, or the two surfaces disagree about what a checker table IS."""
-    async with _conn(tmp_path) as conn:
+    async with _conn(control_plane) as conn:
         await _seed_estate(conn)
         model = _results_table()
         await apply_dq_registration(conn, model)
@@ -163,21 +132,19 @@ async def test_the_admin_path_derives_the_same_registration_the_loader_does(tmp_
     assert all(c.visible_to == ["analyst"] for c in model.columns)
     # Registered under its result relation, which exists, empty, before the first scan.
     assert (model.table_name, model.alias) == ("orders_scans_dq_dq", "orders_scans")
-    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'dq.db'}")
-    try:
-        assert "orders_scans_dq_dq" in sa_inspect(engine).get_table_names()
-    finally:
-        engine.dispose()
+    assert "orders_scans_dq_dq" in sa_inspect(control_plane.engine()).get_table_names(
+        schema="org_default"
+    )
     assert model.watermark_column == DQ_WATERMARK_COLUMN
     assert [p["target_column"] for p in model.promotions] == [
         p["target_column"] for p in DQ_PROMOTIONS
     ]
 
 
-async def test_the_derived_table_and_its_contract_survive_the_round_trip(tmp_path):
+async def test_the_derived_table_and_its_contract_survive_the_round_trip(control_plane):
     """The scan runner reads the contract back off the registered table, so persistence is part of
     the registration rather than an afterthought."""
-    async with _conn(tmp_path) as conn:
+    async with _conn(control_plane) as conn:
         await _seed_estate(conn)
         model = _results_table()
         await apply_dq_registration(conn, model)
@@ -193,17 +160,17 @@ async def test_the_derived_table_and_its_contract_survive_the_round_trip(tmp_pat
     assert tuple(c["column_name"] for c in stored["columns"]) == RESULT_FIELDS
 
 
-async def test_a_checker_table_registered_without_a_contract_is_rejected(tmp_path):
-    async with _conn(tmp_path) as conn:
+async def test_a_checker_table_registered_without_a_contract_is_rejected(control_plane):
+    async with _conn(control_plane) as conn:
         await _seed_estate(conn)
         with pytest.raises(ValueError, match="must carry a dq_contract"):
             await apply_dq_registration(conn, _results_table(contract=None))
 
 
-async def test_a_checker_table_declaring_its_own_product_is_rejected(tmp_path):
+async def test_a_checker_table_declaring_its_own_product_is_rejected(control_plane):
     """REQ-1443 clause 10: the same rule the YAML loader applies — the product is the scanned
     table's, derived at read time, never a column on the results table."""
-    async with _conn(tmp_path) as conn:
+    async with _conn(control_plane) as conn:
         await _seed_estate(conn)
         model = _results_table()
         model.product_id = "orders-product"
@@ -211,10 +178,10 @@ async def test_a_checker_table_declaring_its_own_product_is_rejected(tmp_path):
             await apply_dq_registration(conn, model)
 
 
-async def test_a_contract_on_a_non_checker_source_is_rejected(tmp_path):
+async def test_a_contract_on_a_non_checker_source_is_rejected(control_plane):
     """The same whole-estate rule the YAML loader applies — its rows would come from wherever that
     source's loader fetched them, which the results schema does not describe."""
-    async with _conn(tmp_path) as conn:
+    async with _conn(control_plane) as conn:
         await _seed_estate(conn)
         model = _results_table()
         model.source_id = "warehouse"
@@ -222,22 +189,22 @@ async def test_a_contract_on_a_non_checker_source_is_rejected(tmp_path):
             await apply_dq_registration(conn, model)
 
 
-async def test_a_contract_naming_an_ungoverned_table_is_rejected(tmp_path):
+async def test_a_contract_naming_an_ungoverned_table_is_rejected(control_plane):
     """A checker may only observe what Provisa governs (REQ-967) — and on this path "governed" means
     what the compiled schema actually publishes, not what a config file listed."""
     from provisa.api.app import state
 
     state.contexts = {}
-    async with _conn(tmp_path) as conn:
+    async with _conn(control_plane) as conn:
         await conn.execute_core(insert(sources).values(id="dq", type="soda"))
         with pytest.raises(ValueError, match="resolves to no governed table"):
             await apply_dq_registration(conn, _results_table())
 
 
-async def test_a_contract_pointed_at_its_own_results_table_is_rejected(tmp_path):
+async def test_a_contract_pointed_at_its_own_results_table_is_rejected(control_plane):
     """Matching is by NAME here: the results table's own registered row is a different object than
     the model being registered, so identity would miss the self-reference entirely."""
-    async with _conn(tmp_path) as conn:
+    async with _conn(control_plane) as conn:
         await _seed_estate(conn)
         registered = _results_table()
         await apply_dq_registration(conn, registered)
@@ -248,9 +215,9 @@ async def test_a_contract_pointed_at_its_own_results_table_is_rejected(tmp_path)
             await apply_dq_registration(conn, model)
 
 
-async def test_a_plain_table_registers_untouched(tmp_path):
+async def test_a_plain_table_registers_untouched(control_plane):
     """Every non-checker registration goes through the same call, so it must be a no-op on one."""
-    async with _conn(tmp_path) as conn:
+    async with _conn(control_plane) as conn:
         await _seed_estate(conn)
         plain = Table(
             source_id="warehouse",
@@ -269,7 +236,9 @@ async def test_a_plain_table_registers_untouched(tmp_path):
 # ── The dry run (REQ-1443 clause 7) ──
 
 
-async def test_a_dry_run_reports_the_outcomes_and_lands_nothing(tmp_path, monkeypatch, org_vault):
+async def test_a_dry_run_reports_the_outcomes_and_lands_nothing(
+    control_plane, monkeypatch, org_vault
+):
     """The scan is real; the landing is not. What the panel needs back is the per-check outcomes AND
     the table the dataset actually resolved to, since a contract aimed at the wrong table still scans
     cleanly and still lands nothing but passing rows."""
@@ -302,7 +271,7 @@ async def test_a_dry_run_reports_the_outcomes_and_lands_nothing(tmp_path, monkey
 
     monkeypatch.setattr("provisa.dq.runner.run_contract", _fake_run_contract)
 
-    async with _conn(tmp_path) as conn:
+    async with _conn(control_plane) as conn:
         await _seed_estate(conn)
         result = await dry_run_contract(conn, source_id="dq", contract_text=CONTRACT)
 
@@ -328,14 +297,14 @@ async def test_a_dry_run_reports_the_outcomes_and_lands_nothing(tmp_path, monkey
     assert seen["connection"] == _MAPPING
 
 
-async def test_a_dry_run_against_an_ungoverned_dataset_reports_where_it_resolved(tmp_path):
+async def test_a_dry_run_against_an_ungoverned_dataset_reports_where_it_resolved(control_plane):
     """The whole point of the dry run: the contract parses, the checker would happily scan, and the
     panel still has to say that the dataset names nothing Provisa governs."""
     from provisa.api.admin._dq_resolvers import dry_run_contract
     from provisa.api.app import state
 
     state.contexts = {}
-    async with _conn(tmp_path) as conn:
+    async with _conn(control_plane) as conn:
         await conn.execute_core(insert(sources).values(id="dq", type="soda", mapping=_MAPPING))
         result = await dry_run_contract(conn, source_id="dq", contract_text=CONTRACT)
 
@@ -343,10 +312,10 @@ async def test_a_dry_run_against_an_ungoverned_dataset_reports_where_it_resolved
     assert "resolves to no governed table" in result["message"]
 
 
-async def test_a_dry_run_against_a_non_checker_source_is_refused(tmp_path):
+async def test_a_dry_run_against_a_non_checker_source_is_refused(control_plane):
     from provisa.api.admin._dq_resolvers import dry_run_contract
 
-    async with _conn(tmp_path) as conn:
+    async with _conn(control_plane) as conn:
         await _seed_estate(conn)
         result = await dry_run_contract(conn, source_id="warehouse", contract_text=CONTRACT)
 
@@ -354,10 +323,10 @@ async def test_a_dry_run_against_a_non_checker_source_is_refused(tmp_path):
     assert "not a data-quality checker" in result["message"]
 
 
-async def test_a_dry_run_against_an_unknown_source_is_refused(tmp_path):
+async def test_a_dry_run_against_an_unknown_source_is_refused(control_plane):
     from provisa.api.admin._dq_resolvers import dry_run_contract
 
-    async with _conn(tmp_path) as conn:
+    async with _conn(control_plane) as conn:
         await _seed_estate(conn)
         result = await dry_run_contract(conn, source_id="nope", contract_text=CONTRACT)
 
@@ -366,7 +335,7 @@ async def test_a_dry_run_against_an_unknown_source_is_refused(tmp_path):
 
 
 async def test_a_dry_run_reports_a_checker_failure_rather_than_raising(
-    tmp_path, monkeypatch, org_vault
+    control_plane, monkeypatch, org_vault
 ):
     """A wedged or missing checker is an answer the panel shows, not a GraphQL error it swallows."""
     from provisa.api.admin._dq_resolvers import dry_run_contract
@@ -377,7 +346,7 @@ async def test_a_dry_run_reports_a_checker_failure_rather_than_raising(
 
     monkeypatch.setattr("provisa.dq.runner.run_contract", _boom)
 
-    async with _conn(tmp_path) as conn:
+    async with _conn(control_plane) as conn:
         await _seed_estate(conn)
         result = await dry_run_contract(conn, source_id="dq", contract_text=CONTRACT)
 

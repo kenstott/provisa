@@ -5,13 +5,13 @@
 
 """Step definitions for REQ-1072 — how a metadata change reaches the external catalog.
 
-The queue is a real SQLite control plane, so the claim/complete behaviour under test is the
+The queue is a real PostgreSQL control plane, so the claim/complete behaviour under test is the
 REQ-942 substrate's own. Only the publish is stubbed: what the scenario asserts is the lifecycle
 around it, and a live catalog is exercised by the Atlas e2e instead.
 
-One event loop is created for the scenario and reused by every step — the SQLite connections are
-bound to the loop that opened them, so a per-step ``asyncio.run`` would hand the next step a
-connection whose loop is closed.
+One event loop is created for the scenario and reused by every step — the connections are bound
+to the loop that opened them, so a per-step ``asyncio.run`` would hand the next step a connection
+whose loop is closed.
 """
 
 from __future__ import annotations
@@ -24,12 +24,13 @@ import pytest
 
 from pytest_bdd import given, scenarios, then, when
 from sqlalchemy import select
-from provisa.core.database import create_engine_from_url
 
 from provisa.api.metadata_export import publishing
 from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
 from provisa.core.database import Database
-from provisa.core.schema_org import event_status, events
+from provisa.core.db import init_schema
+from provisa.core.schema_org import event_status
+from tests.pg_control_plane import SCHEMA_SQL
 
 scenarios("../features/REQ-1072.feature")
 
@@ -41,10 +42,8 @@ _T0 = datetime(2026, 8, 4, 9, 0, 0, tzinfo=timezone.utc)
 @pytest.fixture
 def shared_data():
     loop = asyncio.new_event_loop()
-    data = {"loop": loop, "engines": []}
+    data = {"loop": loop}
     yield data
-    for engine in data["engines"]:
-        engine.dispose()  # the control-plane engine is synchronous: nothing to await
     loop.close()
 
 
@@ -63,17 +62,16 @@ def _publishes_ok(published: list[str]):
 
 
 @given("an org whose metadata export target is configured and entitled")
-def _configured_org(shared_data, tmp_path, monkeypatch):
+def _configured_org(shared_data, control_plane, monkeypatch):
     published: list[str] = []
     monkeypatch.setattr(publishing, "publish_snapshot", _publishes_ok(published))
     shared_data["published"] = published
 
     async def _open(name: str) -> Database:
-        engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / name}.db")
-        with engine.begin() as conn:
-            events.metadata.create_all(conn, tables=[events, event_status])
-        shared_data["engines"].append(engine)
-        return Database(engine, name=name)
+        # Each org's queue lives in its own schema of the test's PostgreSQL control plane.
+        db = control_plane.org(name)
+        await init_schema(db, SCHEMA_SQL, org_id=name)
+        return db
 
     shared_data["dbs"] = {org: _run(shared_data, _open(org)) for org in (ORG, OTHER_ORG)}
 

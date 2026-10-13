@@ -26,6 +26,8 @@ from pathlib import Path
 
 import yaml
 
+from tests.pg_control_plane import ControlPlane
+
 _REPO_ROOT = Path(__file__).parents[2]
 
 
@@ -170,7 +172,11 @@ class IsolatedServer:
         self._enable_bolt = enable_bolt
         self._enable_pgwire = enable_pgwire
         self._config = config
+        if control_plane not in ("postgres", "own", "sqlite"):
+            raise ValueError(f"control_plane is 'postgres' or 'own', not {control_plane!r}")
         self._control_plane = control_plane
+        self._owns_plane = control_plane != "postgres"
+        self.plane: ControlPlane | None = None
         self._materialize_store_url = materialize_store_url
         self.http_port = free_port()
         self.flight_port = free_port()
@@ -179,7 +185,6 @@ class IsolatedServer:
         self.grpc_port = free_port()
         self._proc: subprocess.Popen | None = None
         self._cfg_path: str | None = None
-        self._tmpdir: tempfile.TemporaryDirectory | None = None
 
     @property
     def base_url(self) -> str:
@@ -222,15 +227,18 @@ class IsolatedServer:
         return tmp.name
 
     def _control_plane_env(self) -> dict:
-        """Env overriding the control-plane store. ``sqlite`` points the tenant + platform planes
-        at throwaway SQLite files (file-per-org backend) and uses embedded redis — no Postgres."""
-        if self._control_plane != "sqlite":
+        """Env overriding the control-plane store. ``own`` (REQ-2014; ``sqlite`` is its former
+        spelling, still passed by callers not yet repointed) gives the server a PostgreSQL database
+        of its own cloned from the test template (tests/pg_control_plane.py), dropped by
+        ``stop_process``, and uses embedded redis. ``postgres`` uses the session's shared one."""
+        if not self._owns_plane:
             return {}
-        self._tmpdir = tempfile.TemporaryDirectory()
-        d = Path(self._tmpdir.name)
+        from tests.pg_control_plane import fresh_control_plane
+
+        self.plane = fresh_control_plane()
         return {
-            "TENANT_DATABASE_URL": f"sqlite+pysqlite:///{d / 'tenant.db'}",
-            "PLATFORM_DATABASE_URL": f"sqlite+pysqlite:///{d / 'platform.db'}",
+            "TENANT_DATABASE_URL": self.plane.url,
+            "PLATFORM_DATABASE_URL": self.plane.url,
             "PROVISA_REDIS_EMBEDDED": "1",
         }
 
@@ -238,7 +246,7 @@ class IsolatedServer:
     # is booting rather than broken still says why in its stderr when the deadline passes.
     def start(self, *, timeout: float = 300.0) -> None:
         self._cfg_path = self._write_config()
-        if self._control_plane != "sqlite":
+        if not self._owns_plane:
             # REQ-1919: a configuration seeds the model store once, at a deployment's first start.
             # A server on a configuration other than the one its org's store was seeded from is a
             # new deployment, so its start is a first start: the org's model is emptied and seeded
@@ -270,7 +278,7 @@ class IsolatedServer:
             # session exports a Postgres default — so a requested store must be set here too, or the
             # server silently runs on the session's Postgres store instead.
             env["PROVISA_MATERIALIZE_URL"] = self._materialize_store_url
-        if self._engine == "trino" and self._control_plane != "sqlite":
+        if self._engine == "trino" and not self._owns_plane:
             # This app subprocess runs on the bare host, but Trino runs inside the compose
             # network's container — see trino_system_catalogs.engine_visible_address(). Without
             # these, the JDBC catalog Trino registers dials the app's own host-published Postgres
@@ -360,9 +368,9 @@ class IsolatedServer:
         if self._cfg_path is not None:
             Path(self._cfg_path).unlink(missing_ok=True)
             self._cfg_path = None
-        if self._tmpdir is not None:
-            self._tmpdir.cleanup()
-            self._tmpdir = None
+        if self.plane is not None:
+            self.plane.close()
+            self.plane = None
         _sf = getattr(self, "_stderr_file", None)
         if _sf is not None:
             _sf.close()

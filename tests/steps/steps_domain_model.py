@@ -589,19 +589,11 @@ _SRC_TBL_ID = 10
 _TGT_TBL_ID = 20
 
 
-async def _open_domain_db(dsn: str):
-    """Real file-backed sqlite Database with relationships + table_columns, so the relationship repo
-    (SQLAlchemy Core upsert / execute_core, migrated off asyncpg) runs against a real backend and the
-    PK/AK flags can be asserted from the stored rows rather than by scraping raw SQL strings."""
-    from provisa.core.database import create_engine_from_url
-
-    from provisa.core.database import Database
-    from provisa.core.schema_org import relationships, table_columns
-
-    engine = create_engine_from_url(dsn)
-    with engine.begin() as _c:
-        relationships.metadata.create_all(_c, tables=[relationships, table_columns])
-    return Database(engine, name="domain-test")
+def _open_domain_db(plane):
+    """The test's own PostgreSQL control plane (REQ-2014) as a Database, so the relationship repo
+    (SQLAlchemy Core upsert / execute_core) runs against a real backend and the PK/AK flags can be
+    asserted from the stored rows rather than by scraping raw SQL strings."""
+    return plane.org()
 
 
 def _build_relationship(
@@ -621,14 +613,25 @@ def _build_relationship(
     )
 
 
-async def _run_upsert(rel: Relationship, dsn: str, existing_pk_count: int) -> None:
+async def _run_upsert(rel: Relationship, plane, existing_pk_count: int) -> None:
     """Seed the target table's columns (the target_column plus `existing_pk_count` pre-existing PKs),
     then run relationship_repo.upsert with the table lookups mocked to the seeded ids."""
     from provisa.core.repositories import relationship as rel_repo
     from provisa.core.schema_org import table_columns
 
-    db = await _open_domain_db(dsn)
+    db = _open_domain_db(plane)
     async with db.acquire() as conn:
+        # The registered tables the relationship and the column rows refer to.
+        await conn.execute("INSERT INTO domains (id) VALUES ('d')")
+        await conn.execute("INSERT INTO sources (id, type) VALUES ('s', 'postgresql')")
+        for table_id, name in (
+            (_SRC_TBL_ID, rel.source_table_id),
+            (_TGT_TBL_ID, rel.target_table_id),
+        ):
+            await conn.execute(
+                "INSERT INTO registered_tables (id, source_id, domain_id, schema_name, table_name)"
+                f" VALUES ({table_id}, 's', 'd', 'public', '{name}')"
+            )
         await conn.execute_core(
             table_columns.insert().values(
                 table_id=_TGT_TBL_ID, column_name=rel.target_column, is_primary_key=False
@@ -664,13 +667,12 @@ def given_relationship_no_existing_pk(shared_data: dict) -> None:
 
 
 @when("the relationship is persisted")
-def when_relationship_is_persisted(shared_data: dict, tmp_path) -> None:
-    """Persist the relationship through the real repo against a file-backed sqlite store."""
+def when_relationship_is_persisted(shared_data: dict, control_plane) -> None:
+    """Persist the relationship through the real repo against the test's PostgreSQL control plane."""
     rel: Relationship = shared_data["relationship"]
     existing_pk_count: int = shared_data.get("existing_pk_count", 0)
-    dsn = f"sqlite+pysqlite:///{tmp_path / 'domain.db'}"
-    asyncio.run(_run_upsert(rel, dsn, existing_pk_count))
-    shared_data["dsn"] = dsn
+    asyncio.run(_run_upsert(rel, control_plane, existing_pk_count))
+    shared_data["plane"] = control_plane
 
 
 @then(
@@ -686,7 +688,7 @@ def then_target_column_marked_pk_or_alternate(shared_data: dict) -> None:
     existing_pk_count: int = shared_data.get("existing_pk_count", 0)
 
     async def _q():
-        db = await _open_domain_db(shared_data["dsn"])
+        db = _open_domain_db(shared_data["plane"])
         async with db.acquire() as conn:
             result = await conn.execute_core(
                 select(table_columns.c.is_primary_key, table_columns.c.is_alternate_key).where(

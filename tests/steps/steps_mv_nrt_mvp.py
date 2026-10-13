@@ -22,12 +22,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from pytest_bdd import given, scenarios, then, when
-from provisa.core.database import create_engine_from_url
 
 import provisa.events.processor as processor_mod
 from provisa.api.admin import schema_common
-from provisa.core.database import Database
-from provisa.core.schema_org import event_status, events, node_freshness_state
 from provisa.events import queue
 from provisa.events.processor import TableProcessor
 
@@ -37,29 +34,16 @@ _T0 = datetime(2026, 7, 8, 12, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture
-def ctx(tmp_path) -> dict:
-    path = str(tmp_path / "cp.db")
-
-    async def _init():
-        engine = create_engine_from_url(f"sqlite+pysqlite:///{path}")
-        with engine.begin() as c:
-            events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
-        engine.dispose()
-
-    asyncio.run(_init())
-    return {"cp_path": path}
+def ctx(control_plane) -> dict:
+    return {"plane": control_plane}
 
 
 def _run(ctx, coro_fn):
-    """Open a fresh control-plane Database on the shared file, run coro_fn(conn), dispose."""
+    """Open a fresh handle on the scenario's control plane, run coro_fn(conn)."""
 
     async def _():
-        engine = create_engine_from_url(f"sqlite+pysqlite:///{ctx['cp_path']}")
-        try:
-            async with Database(engine, name="cp").acquire() as conn:
-                return await coro_fn(conn)
-        finally:
-            engine.dispose()
+        async with ctx["plane"].org().acquire() as conn:
+            return await coro_fn(conn)
 
     return asyncio.run(_())
 

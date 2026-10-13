@@ -32,16 +32,46 @@ if TYPE_CHECKING:
     from provisa.core.database import Database
     from tests.embedded_pg import LocalPostgres
 
+
+@dataclass(frozen=True)
+class SessionPostgres:
+    """The PostgreSQL the session exported for its stack (PG_HOST, PG_PORT, PG_USER, PG_PASSWORD:
+    the docker stack's, or the local platform's): what an integration or steps test clones its
+    control plane on. The same face as tests/embedded_pg.py's ``LocalPostgres``."""
+
+    host: str
+    port: int
+    user: str
+    password: str
+
+    @classmethod
+    def from_env(cls) -> SessionPostgres:
+        return cls(
+            os.environ["PG_HOST"],
+            int(os.environ["PG_PORT"]),
+            os.environ["PG_USER"],
+            os.environ["PG_PASSWORD"],
+        )
+
+    def url(self, database: str, *, driver: str = "psycopg") -> str:
+        return (
+            f"postgresql+{driver}://{self.user}:{self.password}@{self.host}:{self.port}/{database}"
+        )
+
+    def dsn(self, database: str = "postgres") -> str:
+        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{database}"
+
+
 SCHEMA_SQL = (
     Path(__file__).resolve().parent.parent / "provisa" / "core" / "schema.sql"
 ).read_text()
-TEMPLATE = "cp_template"
+TEMPLATE = f"cp_template_{os.getpid()}"  # one per process: a server may be shared
 ORG = "default"
 
 _serial = itertools.count()
 
 
-def _admin(pg: LocalPostgres, *statements: str) -> None:
+def _admin(pg: LocalPostgres | SessionPostgres, *statements: str) -> None:
     """Run database-level statements (no transaction: CREATE/DROP DATABASE refuse one)."""
     import psycopg
 
@@ -50,7 +80,7 @@ def _admin(pg: LocalPostgres, *statements: str) -> None:
             conn.execute(statement)  # type: ignore[arg-type]
 
 
-def build_template(pg: LocalPostgres) -> str:
+def build_template(pg: LocalPostgres | SessionPostgres) -> str:
     """The worker's template database, laid out as a deployment lays out its control plane."""
     from provisa.core.database import Database, create_engine_from_url
     from provisa.core.db import init_schema
@@ -75,7 +105,7 @@ class ControlPlane:
     ``platform`` is the platform registry's handle; ``org()`` an org's handle (search_path
     ``org_<id>``), its tables the template's for org ``default``."""
 
-    pg: LocalPostgres
+    pg: LocalPostgres | SessionPostgres
     name: str
     _engines: list[Engine] = field(default_factory=list)
 
@@ -116,7 +146,21 @@ class ControlPlane:
         _admin(self.pg, f'DROP DATABASE IF EXISTS "{self.name}" WITH (FORCE)')
 
 
-def clone(pg: LocalPostgres, template: str) -> ControlPlane:
+def clone(pg: LocalPostgres | SessionPostgres, template: str) -> ControlPlane:
     name = f"cp_{os.getpid()}_{next(_serial)}"
     _admin(pg, f'CREATE DATABASE "{name}" TEMPLATE "{template}"')
     return ControlPlane(pg, name)
+
+
+_built: dict[tuple[str, int], str] = {}
+
+
+def fresh_control_plane() -> ControlPlane:
+    """A control plane cloned on the session's PostgreSQL, for a helper that is not a fixture (a
+    server a test boots, a world a steps file builds): the process's template is built on the
+    first call. The caller closes it (``ControlPlane.close``)."""
+    server = SessionPostgres.from_env()
+    key = (server.host, server.port)
+    if key not in _built:
+        _built[key] = build_template(server)
+    return clone(server, _built[key])

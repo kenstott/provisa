@@ -136,7 +136,7 @@ def _start(config: Path, org: str, platform_url: str) -> _Instance:
         enable_pgwire=True,
         await_flight=True,
         config=str(config),
-        control_plane="sqlite",
+        control_plane="own",
         env={
             "PLATFORM_DATABASE_URL": platform_url,
             "OTEL_SDK_DISABLED": "false",
@@ -169,18 +169,26 @@ class _Stack:
 def stack(tmp_path_factory):
     work = tmp_path_factory.mktemp("trace_scope")
     config = _config(work)
-    platform_url = f"sqlite+pysqlite:///{work / 'platform.db'}"
-    a = _start(config, _ORG_A, platform_url)
+    from tests.pg_control_plane import fresh_control_plane
+
+    # The ONE platform control plane both instances share: a PostgreSQL database of its own
+    # (REQ-2014); each instance's tenant store is its own database too.
+    platform = fresh_control_plane()
+    platform_url = platform.url
     try:
-        b = _start(config, _ORG_B, platform_url)
-    except BaseException:
-        _stop(a)
-        raise
-    try:
-        yield _Stack(a, b, platform_url)
+        a = _start(config, _ORG_A, platform_url)
+        try:
+            b = _start(config, _ORG_B, platform_url)
+        except BaseException:
+            _stop(a)
+            raise
+        try:
+            yield _Stack(a, b, platform_url)
+        finally:
+            _stop(b)
+            _stop(a)
     finally:
-        _stop(b)
-        _stop(a)
+        platform.close()
 
 
 @pytest.fixture(autouse=True)

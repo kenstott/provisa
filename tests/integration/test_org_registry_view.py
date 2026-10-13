@@ -20,18 +20,19 @@ The two facts sit in different planes — the org row is admin-plane, the org_ad
 an org with an admin, an org whose schema does not exist yet, and the confinement of the view to the
 root org.
 
-DDL and seeding run on a synchronous psycopg2 engine so the async engines are only ever driven
-inside the test's own event loop.
+The control plane is the test's own PostgreSQL database (REQ-2014): the platform registry in
+``public``, the root org ``default``'s schema and a second org's beside it. Seeding runs on the
+control plane's synchronous engine so the async engines are only ever driven inside the test's own
+event loop.
 """
 
 from __future__ import annotations
 
-import os
-
 import pytest
-from sqlalchemy import create_engine, text
+import pytest_asyncio
+from sqlalchemy import text
 
-from provisa.core.database import Database, create_engine_from_url
+from provisa.core.db import init_schema
 from provisa.core.org_registry_view import (
     VIEW_COLUMNS,
     VIEW_NAME,
@@ -39,48 +40,25 @@ from provisa.core.org_registry_view import (
     build_view_sql,
     refresh_org_registry_view,
 )
-from provisa.core.schema_admin import REGISTRY_TABLES
-from provisa.core.schema_admin import metadata as admin_metadata
-from provisa.core.schema_org import (
-    data_products,
-    domains,
-    registered_tables,
-    roles,
-    sources,
-    table_columns,
-    user_directory,
-    user_role_assignments,
-)
-from provisa.core.schema_org import metadata as org_metadata
+from provisa.core.database import Database, create_engine_from_url
+from tests.pg_control_plane import SCHEMA_SQL
 
 pytestmark = [pytest.mark.integration]
 
-_PG_HOST = os.environ.get("PG_HOST", "localhost")
-_PG_PORT = os.environ.get("PG_PORT", "5432")
-_SYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
-_ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
-
-_ADMIN_SCHEMA = "test_req1301_admin"
-_ROOT = "r1301root"
+_ROOT = "default"
 _ACME = "r1301acme"
 _ROOT_SCHEMA = f"org_{_ROOT}"
 _ACME_SCHEMA = f"org_{_ACME}"
 
 
-def _prepare_sync():
-    """Two provisioned orgs, each with its own org_admin, plus the root org's catalog tables."""
-    engine = create_engine(_SYNC_URL, pool_pre_ping=True)
+async def _prepare(plane):
+    """Two provisioned orgs, each with its own org_admin: the control plane's org ``default`` (the
+    root, named Enterprise) and a second org laid out from schema.sql."""
+    await init_schema(plane.org(_ACME), SCHEMA_SQL, org_id=_ACME)
+    engine = plane.engine()
     with engine.begin() as conn:
-        for schema in (_ADMIN_SCHEMA, _ROOT_SCHEMA, _ACME_SCHEMA):
-            conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
-            conn.execute(text(f"CREATE SCHEMA {schema}"))
-
-        conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
-        admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
-        conn.execute(
-            text("INSERT INTO orgs (id, name) VALUES (:i, :n)"),
-            [{"i": _ROOT, "n": "Enterprise"}, {"i": _ACME, "n": "Acme"}],
-        )
+        conn.execute(text("UPDATE orgs SET name = 'Enterprise' WHERE id = :i"), {"i": _ROOT})
+        conn.execute(text("INSERT INTO orgs (id, name) VALUES (:i, :n)"), {"i": _ACME, "n": "Acme"})
         conn.execute(
             text("INSERT INTO user_profiles (user_id, email, display_name) VALUES (:u, :e, :d)"),
             [
@@ -88,61 +66,31 @@ def _prepare_sync():
                 {"u": "uid-acme", "e": "acme@example.test", "d": "Acme Admin"},
             ],
         )
-
-        # The root org additionally carries the dataset catalog, because the view is registered
-        # there as a meta-domain table.
-        conn.execute(text(f"SET search_path TO {_ROOT_SCHEMA}"))
-        org_metadata.create_all(
-            conn,
-            tables=[
-                roles,
-                user_role_assignments,
-                # every authenticated request mirrors the caller into user_directory (REQ-1439).
-                user_directory,
-                sources,
-                domains,
-                # registered_tables.product_id references data_products (REQ-1634).
-                data_products,
-                registered_tables,
-                table_columns,
-            ],
-        )
-        conn.execute(text("INSERT INTO roles (id) VALUES ('org_admin')"))
+        # every authenticated request mirrors the caller into user_directory (REQ-1439).
+        for schema, uid in ((_ROOT_SCHEMA, "uid-root"), (_ACME_SCHEMA, "uid-acme")):
+            conn.execute(
+                text(
+                    f"INSERT INTO {schema}.user_role_assignments (user_id, role_id, domain_id)"
+                    f" VALUES ('{uid}', 'org_admin', '*')"
+                )
+            )
+        # The root org carries the dataset catalog: the view is registered there as a meta-domain
+        # table, whose source is the platform database.
         conn.execute(
             text(
-                "INSERT INTO user_role_assignments (user_id, role_id, domain_id)"
-                " VALUES ('uid-root', 'org_admin', '*')"
+                f"INSERT INTO {_ROOT_SCHEMA}.sources (id, type) VALUES ('provisa-admin', 'postgres')"
             )
         )
-        conn.execute(text("INSERT INTO sources (id, type) VALUES ('provisa-admin', 'postgres')"))
-        conn.execute(text("INSERT INTO domains (id) VALUES ('meta')"))
-
-        conn.execute(text(f"SET search_path TO {_ACME_SCHEMA}"))
-        org_metadata.create_all(conn, tables=[roles, user_role_assignments, user_directory])
-        conn.execute(text("INSERT INTO roles (id) VALUES ('org_admin')"))
         conn.execute(
-            text(
-                "INSERT INTO user_role_assignments (user_id, role_id, domain_id)"
-                " VALUES ('uid-acme', 'org_admin', '*')"
-            )
+            text(f"INSERT INTO {_ROOT_SCHEMA}.domains (id) VALUES ('meta') ON CONFLICT DO NOTHING")
         )
     return engine
 
 
-@pytest.fixture
-def planes():
-    # The suite provisions this PG, so a setup failure is a real fault and fails the test — never a
-    # skip (a skip here once hid REQ-1634's missing data_products table as "not reachable").
-    sync_engine = _prepare_sync()
-
-    admin_db = Database(create_engine_from_url(_ASYNC_URL), name="admin", search_path=_ADMIN_SCHEMA)
-    tenant_db = Database(create_engine_from_url(_ASYNC_URL), name="org", search_path=_ROOT_SCHEMA)
-    yield admin_db, tenant_db, sync_engine
-
-    with sync_engine.begin() as conn:
-        for schema in (_ADMIN_SCHEMA, _ROOT_SCHEMA, _ACME_SCHEMA):
-            conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
-    sync_engine.dispose()
+@pytest_asyncio.fixture
+async def planes(control_plane):
+    sync_engine = await _prepare(control_plane)
+    yield control_plane.platform, control_plane.org(_ROOT), sync_engine
 
 
 def _read_view(sync_engine) -> list[tuple]:
@@ -161,8 +109,8 @@ async def test_view_names_each_org_and_its_admin(planes):
     await refresh_org_registry_view(model_db=tenant_db, admin_db=admin_db)
 
     assert _read_view(sync_engine) == [
-        (_ACME, "Acme", "ready", "uid-acme", "acme@example.test", "Acme Admin"),
         (_ROOT, "Enterprise", "ready", "uid-root", "root@example.test", "Root Admin"),
+        (_ACME, "Acme", "ready", "uid-acme", "acme@example.test", "Acme Admin"),
     ]
 
 
@@ -173,10 +121,7 @@ async def test_view_reads_live_rows_without_a_rebuild(planes):
 
     with sync_engine.begin() as conn:
         conn.execute(
-            text(
-                f"INSERT INTO {_ADMIN_SCHEMA}.user_profiles (user_id, email, display_name)"
-                " VALUES (:u, :e, :d)"
-            ),
+            text("INSERT INTO user_profiles (user_id, email, display_name) VALUES (:u, :e, :d)"),
             {"u": "uid-acme2", "e": "second@example.test", "d": "Second Admin"},
         )
         conn.execute(
@@ -187,7 +132,7 @@ async def test_view_reads_live_rows_without_a_rebuild(planes):
         )
 
     rows = _read_view(sync_engine)
-    assert [r[0] for r in rows] == [_ACME, _ACME, _ROOT]
+    assert [r[0] for r in rows] == [_ROOT, _ACME, _ACME]
     assert {r[3] for r in rows if r[0] == _ACME} == {"uid-acme", "uid-acme2"}
 
 
@@ -198,7 +143,7 @@ async def test_org_without_a_provisioned_schema_keeps_its_row(planes):
     with sync_engine.begin() as conn:
         conn.execute(
             text(
-                f"INSERT INTO {_ADMIN_SCHEMA}.orgs (id, name, provisioning_state)"
+                "INSERT INTO orgs (id, name, provisioning_state)"
                 " VALUES ('r1301pending', 'Pending', 'provisioning')"
             )
         )

@@ -26,10 +26,7 @@ from types import SimpleNamespace
 
 import duckdb
 import pytest
-from provisa.core.database import create_engine_from_url
 
-from provisa.core.database import Database
-from provisa.core.schema_org import event_status, events, node_freshness_state
 from provisa.events import queue
 from provisa.events.calendars import Calendar
 from provisa.events.deadlines import PeriodicCalendar
@@ -74,14 +71,8 @@ class _DuckEngine:
 
 
 @asynccontextmanager
-async def _control_plane(tmp_path):
-    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
-    with engine.begin() as c:
-        events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
-    try:
-        yield Database(engine, name="cp")
-    finally:
-        engine.dispose()
+async def _control_plane(control_plane):
+    yield control_plane.org()
 
 
 def _mv() -> MVDefinition:
@@ -138,12 +129,12 @@ def _as_of(con, spec, ts: datetime) -> set:
     return set(con.execute(sql).fetchall())
 
 
-async def test_calendar_boundary_seals_addressable_snapshots(tmp_path, monkeypatch):
+async def test_calendar_boundary_seals_addressable_snapshots(control_plane, monkeypatch):
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE base (id INTEGER, region VARCHAR, amount INTEGER)")
     engine = _DuckEngine(con)
     mv = _mv()
-    async with _control_plane(tmp_path) as db:
+    async with _control_plane(control_plane) as db:
         proc = _processor(db, engine, mv)
 
         # January closes at Feb 1 → seal the January snapshot, stamped 2026-02-01.
@@ -182,13 +173,13 @@ async def test_calendar_boundary_seals_addressable_snapshots(tmp_path, monkeypat
     assert versions == 2
 
 
-async def test_downstream_ripple_on_each_seal(tmp_path, monkeypatch):
+async def test_downstream_ripple_on_each_seal(control_plane, monkeypatch):
     """Each sealed boundary re-posts a replace so dependents recompute (REQ-965 fan-out)."""
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE base (id INTEGER, region VARCHAR, amount INTEGER)")
     engine = _DuckEngine(con)
     mv = _mv()
-    async with _control_plane(tmp_path) as db:
+    async with _control_plane(control_plane) as db:
         proc = _processor(db, engine, mv)
         await _fire(
             db,

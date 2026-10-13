@@ -7,7 +7,7 @@
 """pytest-bdd steps for REQ-961 — the periodic MV freshness contract on its inputs.
 
 Drives the REAL ``MVTableProcessor`` + REAL DB-backed ``make_db_freshness_of`` reader + REAL
-``node_freshness_state`` persistence over an isolated sqlite control plane. The one scenario bundles
+``node_freshness_state`` persistence over an isolated PostgreSQL control plane. The one scenario bundles
 four independent cases (trusted / trustworthy-zero / outage / holiday); each ``When`` runs a fresh
 case so state never leaks between them.
 """
@@ -15,20 +15,17 @@ case so state never leaks between them.
 from __future__ import annotations
 
 import asyncio
-import uuid
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from pytest_bdd import given, when, then, scenarios
-from provisa.core.database import create_engine_from_url
 
-from provisa.core.database import Database
-from provisa.core.schema_org import event_status, events, node_freshness_state
 from provisa.events import queue
 from provisa.events.calendars import Calendar
 from provisa.events.deadlines import PeriodicCalendar
 from provisa.events.freshness_reader import make_db_freshness_of
 from provisa.events.processor import MVTableProcessor
+from tests.pg_control_plane import fresh_control_plane
 
 scenarios("../features/REQ-961.feature")
 
@@ -48,23 +45,22 @@ def loop():
 
 
 @pytest.fixture
-def ctx(loop, tmp_path) -> dict:
-    return {"loop": loop, "tmp_path": tmp_path}
+def ctx(loop) -> dict:
+    return {"loop": loop}
 
 
-async def _build_db(tmp_path):
-    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / (uuid.uuid4().hex + '.db')}")
-    with engine.begin() as c:
-        events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
-    return engine, Database(engine, name="q")
+async def _build_db():
+    """A control plane of this case's own (REQ-2014): each case starts from an empty event queue."""
+    plane = fresh_control_plane()
+    return plane, plane.org()
 
 
-async def _run_case(tmp_path, monkeypatch, *, input_state, generate, holidays=frozenset()):
+async def _run_case(monkeypatch, *, input_state, generate, holidays=frozenset()):
     """Build a fresh control plane, seed the input's freshness state, fan a change into the MV, and
     run the REAL processor with the REAL reader. Returns (fired, posted_for_mv)."""
     import provisa.events.processor as pm
 
-    engine, db = await _build_db(tmp_path)
+    plane, db = await _build_db()
     try:
         async with db.acquire() as conn:
             e = await queue.post_event(conn, source_table=INPUT, event_type="append")
@@ -101,11 +97,11 @@ async def _run_case(tmp_path, monkeypatch, *, input_state, generate, holidays=fr
             ]
         return fired, posted
     finally:
-        engine.dispose()
+        plane.close()
 
 
 def _run(ctx, monkeypatch, **kw):
-    fired, posted = ctx["loop"].run_until_complete(_run_case(ctx["tmp_path"], monkeypatch, **kw))
+    fired, posted = ctx["loop"].run_until_complete(_run_case(monkeypatch, **kw))
     ctx["fired"] = fired
     ctx["posted"] = posted
 

@@ -23,14 +23,12 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
-from provisa.core import config_stamp, settings_registry
-from provisa.core.database import Database, create_engine_from_url
+from provisa.core import settings_registry
 from provisa.core.models import Source, SourceType
-from provisa.core.schema_org import config_stamp as stamps
-from provisa.core.schema_org import metadata, replica_state as replica_state_table
 from provisa.federation import replica_state
 from provisa.federation.engine import build_engine
 from provisa.federation.replica_hot import HotCounts, count_scope, evaluate
+from tests.pg_control_plane import fresh_control_plane
 
 INTERVAL = 60
 THRESHOLD = 100
@@ -78,11 +76,11 @@ class _Engine:
 
 class World:
     def __init__(self, tmp_path: Any, monkeypatch: Any, tables: dict[str, int]) -> None:
-        self._engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
-        with self._engine.begin() as raw:
-            metadata.create_all(raw, tables=[replica_state_table, stamps])
-            config_stamp.install(raw, {}, advanced=config_stamp.TENANT_ADVANCED)
-        self.db = Database(self._engine, "test")
+        # REQ-2014: a PostgreSQL control plane of this world's own, closed by ``close``. The
+        # world needs no files, so ``tmp_path`` is the caller's and goes unused.
+        del tmp_path
+        self._plane = fresh_control_plane()
+        self.db = self._plane.org()
         self.ids = tables
         self.source = Source(
             id="pg",
@@ -179,4 +177,4 @@ class World:
         return asyncio.run(_go())
 
     def close(self) -> None:
-        self._engine.dispose()
+        self._plane.close()

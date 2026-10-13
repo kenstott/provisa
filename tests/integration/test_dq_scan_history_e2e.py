@@ -11,7 +11,7 @@
 """E2E (REQ-1443, amended 2026-10-12): a checker table's scans accumulate, read in place.
 
 A real server registers a Great Expectations checker table from its configuration, once on the DuckDB
-engine (SQLite control plane, read through its control-plane attach) and once on the test stack's
+engine (a control plane database of its own, read through its control-plane attach) and once on the test stack's
 Trino (Postgres control plane, read through the provisa_admin catalog). The table's result relation
 is created in the org's control plane at registration, under ``<name>_<source>_dq``, and the table
 publishes the name it was given: SQL reads it as ``dqh.orders_quality``.
@@ -28,7 +28,6 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -83,15 +82,10 @@ async def _drop() -> None:
 
 
 def _relation_engine(server) -> tuple[sa.Engine, str | None]:
-    """The control-plane store holding the relation, and its schema: on Postgres the org's
-    schema; on SQLite the org's own file (file-per-org), searched for among the server's files."""
-    if server._control_plane == "sqlite":
-        for db in sorted(Path(server._tmpdir.name).glob("*.db")):
-            engine = sa.create_engine(f"sqlite+pysqlite:///{db}")
-            if _RELATION in sa.inspect(engine).get_table_names():
-                return engine, None
-            engine.dispose()
-        raise AssertionError(f"no control-plane file holds {_RELATION}")
+    """The control-plane store holding the relation, and its schema (the org's): the server's own
+    database when it has one, else the session's PostgreSQL."""
+    if server.plane is not None:
+        return server.plane.engine(), f"org_{server.org_id}"
     user = os.environ.get("PG_USER", "provisa")
     password = os.environ.get("PG_PASSWORD", "provisa")
     host = os.environ.get("PG_HOST", "localhost")
@@ -135,7 +129,7 @@ async def server(request):
     await _seed()
     org = f"{_ORG}_{request.param}"
     if request.param == "duckdb":
-        srv = IsolatedServer(org, engine="duckdb", config=_CONFIG, control_plane="sqlite")
+        srv = IsolatedServer(org, engine="duckdb", config=_CONFIG, control_plane="own")
     else:
         srv = IsolatedServer(org, engine="trino", config=_CONFIG)
     srv.start()

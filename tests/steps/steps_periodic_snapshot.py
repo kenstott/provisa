@@ -9,25 +9,22 @@
 Binds the GENERATED tests/features/REQ-1166.feature (scenario text lives in requirements.yaml — the
 feature file is a generated artifact, never hand-edited). Drives the REAL assembled pipeline
 (MVTableProcessor + make_mv_bitemporal_generate + apply_bitemporal_append + the REQ-1162 append SQL)
-over an in-memory DuckDB store and a sqlite control plane on one event loop, asserting a boundary cuts
+over an in-memory DuckDB store and a PostgreSQL control plane on one event loop, asserting a boundary cuts
 a window_id-addressable version whose as-of read reconstructs it — in BOTH snapshot and delta storage.
 """
 
 from __future__ import annotations
 
 import asyncio
-import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import duckdb
 import pytest
 from pytest_bdd import given, when, then, scenarios
-from provisa.core.database import create_engine_from_url
 
-from provisa.core.database import Database
-from provisa.core.schema_org import event_status, events, node_freshness_state
 from provisa.events import queue
+from tests.pg_control_plane import fresh_control_plane
 from provisa.events.calendars import Calendar
 from provisa.events.deadlines import PeriodicCalendar
 from provisa.events.handlers import make_mv_bitemporal_generate
@@ -76,23 +73,24 @@ def loop():
 
 
 @pytest.fixture
-def ctx(loop, tmp_path) -> dict:
-    return {"loop": loop, "tmp_path": tmp_path, "modes": {}}
+def ctx(loop) -> dict:
+    data = {"loop": loop, "modes": {}}
+    yield data
+    for state in data["modes"].values():
+        state["plane"].close()
 
 
 def _run(ctx, coro):
     return ctx["loop"].run_until_complete(coro)
 
 
-async def _build_mode(tmp_path, mode: str):
+async def _build_mode(mode: str):
     """A fresh assembled pipeline (control plane + DuckDB store + processor) for one storage mode."""
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE base (id INTEGER, region VARCHAR, amount INTEGER)")
     target = f'"memory"."main"."mv_snap_{mode}"'
-    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / (uuid.uuid4().hex + '.db')}")
-    with engine.begin() as c:
-        events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
-    db = Database(engine, name="cp")
+    plane = fresh_control_plane()  # REQ-2014: one PostgreSQL control plane per storage mode
+    db = plane.org()
     mv = MVDefinition(
         id=f"view-snap-{mode}",
         source_tables=["base"],
@@ -123,7 +121,7 @@ async def _build_mode(tmp_path, mode: str):
         expected_events=[],  # freshness gates satisfied (calendar-only contract)
         freshness_of=lambda _i: None,
     )
-    return {"con": con, "db": db, "mv": mv, "proc": proc, "engine": engine, "target": target}
+    return {"con": con, "db": db, "mv": mv, "proc": proc, "plane": plane, "target": target}
 
 
 async def _fire(state, rows, now):
@@ -146,8 +144,8 @@ async def _fire(state, rows, now):
 @given("a materialized view with a repeating calendar trigger on a named boundary")
 def _given(ctx):
     # both storage strategies, to assert addressability "regardless of storage"
-    ctx["modes"]["snapshot"] = _run(ctx, _build_mode(ctx["tmp_path"], "snapshot"))
-    ctx["modes"]["delta"] = _run(ctx, _build_mode(ctx["tmp_path"], "delta"))
+    ctx["modes"]["snapshot"] = _run(ctx, _build_mode("snapshot"))
+    ctx["modes"]["delta"] = _run(ctx, _build_mode("delta"))
 
 
 @when("each calendar boundary is reached and input freshness gates are satisfied")

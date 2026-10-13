@@ -389,26 +389,18 @@ def assert_cdc_validation_fails(shared_data: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _open_wm_db(dsn: str):
-    """Real file-backed sqlite Database with the live_query_state table, so watermark get/set
-    (SQLAlchemy Core execute_core / upsert, migrated off asyncpg) run against a real backend and
-    each per-output row is a genuine (source, output_type)-keyed row."""
-    from provisa.core.database import create_engine_from_url
-
-    from provisa.core.database import Database
-    from provisa.core.schema_org import live_query_state
-
-    engine = create_engine_from_url(dsn)
-    with engine.begin() as _c:
-        live_query_state.metadata.create_all(_c, tables=[live_query_state])
-    return Database(engine, name="wm-test")
+def _open_wm_db(plane):
+    """The test's own PostgreSQL control plane (REQ-2014) as a Database, so watermark get/set
+    (SQLAlchemy Core execute_core / upsert) run against a real backend and each per-output row is a
+    genuine (source, output_type)-keyed row."""
+    return plane.org()
 
 
 @given("a table with both sse_subscription and kafka_sink outputs configured")
-def configure_dual_output_watermarks(shared_data: dict, tmp_path, sse_subscriber) -> None:
+def configure_dual_output_watermarks(shared_data: dict, control_plane, sse_subscriber) -> None:
     source = "req-286-orders"
-    # File-backed sqlite so the store survives the separate asyncio.run() calls in later steps.
-    dsn = f"sqlite+pysqlite:///{tmp_path / 'watermarks.db'}"
+    # The control plane outlives the separate asyncio.run() calls in later steps.
+    plane = control_plane
 
     # The poll engine produces a sequence of watermark values, one per interval.
     poll_watermarks = [
@@ -422,7 +414,7 @@ def configure_dual_output_watermarks(shared_data: dict, tmp_path, sse_subscriber
     fanout = SSEFanout(source)
     sse_queue = sse_subscriber(fanout)
 
-    shared_data["wm_dsn"] = dsn
+    shared_data["wm_plane"] = plane
     shared_data["source"] = source
     shared_data["poll_watermarks"] = poll_watermarks
     shared_data["fanout"] = fanout
@@ -432,7 +424,7 @@ def configure_dual_output_watermarks(shared_data: dict, tmp_path, sse_subscriber
     async def _seed() -> None:
         # Initialise both outputs at the same starting watermark, proving they
         # are independent rows in live_query_state keyed by output_type.
-        db = await _open_wm_db(dsn)
+        db = _open_wm_db(plane)
         async with db.acquire() as conn:
             await set_watermark(conn, source, "sse_subscription", "2026-01-01T00:00:00")
             await set_watermark(conn, source, "kafka_sink", "2026-01-01T00:00:00")
@@ -444,13 +436,13 @@ def configure_dual_output_watermarks(shared_data: dict, tmp_path, sse_subscriber
 
 @when("the Kafka consumer falls behind")
 def kafka_consumer_falls_behind(shared_data: dict) -> None:
-    dsn: str = shared_data["wm_dsn"]
+    plane = shared_data["wm_plane"]
     source: str = shared_data["source"]
     fanout: SSEFanout = shared_data["fanout"]
     poll_watermarks: list[str] = shared_data["poll_watermarks"]
 
     async def _run_intervals() -> None:
-        db = await _open_wm_db(dsn)
+        db = _open_wm_db(plane)
         async with db.acquire() as conn:
             delivered = 0
             for wm in poll_watermarks:
@@ -470,7 +462,7 @@ def kafka_consumer_falls_behind(shared_data: dict) -> None:
 
     # Capture the resulting independent watermarks for assertion.
     async def _read() -> None:
-        db = await _open_wm_db(dsn)
+        db = _open_wm_db(plane)
         async with db.acquire() as conn:
             shared_data["sse_watermark"] = await get_watermark(conn, source, "sse_subscription")
             shared_data["kafka_watermark"] = await get_watermark(conn, source, "kafka_sink")
@@ -499,7 +491,7 @@ def assert_sse_unaffected_by_kafka_lag(shared_data: dict) -> None:
     source: str = shared_data["source"]
 
     async def _reads() -> tuple:
-        db = await _open_wm_db(shared_data["wm_dsn"])
+        db = _open_wm_db(shared_data["wm_plane"])
         async with db.acquire() as conn:
             return (
                 await get_watermark(conn, source, "sse_subscription"),

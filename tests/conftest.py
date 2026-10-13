@@ -1261,6 +1261,29 @@ def pg_dsn() -> str:
     )
 
 
+@pytest.fixture(scope="session")
+def control_plane_template():
+    """The process's control-plane template database on the session's PostgreSQL
+    (tests/pg_control_plane.py), built once; tests/unit/conftest.py builds its own on the unit
+    session's embedded PostgreSQL."""
+    from tests.pg_control_plane import SessionPostgres, TEMPLATE, _admin, build_template
+
+    server = SessionPostgres.from_env()
+    yield build_template(server)
+    _admin(server, f'DROP DATABASE IF EXISTS "{TEMPLATE}" WITH (FORCE)')
+
+
+@pytest.fixture
+def control_plane(control_plane_template):
+    """A control plane of this test's own (REQ-2014: PostgreSQL only), cloned from the template
+    on the session's PostgreSQL and dropped afterwards (tests/pg_control_plane.py)."""
+    from tests.pg_control_plane import SessionPostgres, clone
+
+    plane = clone(SessionPostgres.from_env(), control_plane_template)
+    yield plane
+    plane.close()
+
+
 @pytest_asyncio.fixture(scope="session")
 async def tenant_db(_reserve_flight_port):
     # The tenant control plane is the SQLAlchemy-backed Database shim (execute_core,

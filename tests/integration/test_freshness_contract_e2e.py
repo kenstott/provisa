@@ -36,8 +36,6 @@ import pytest_asyncio
 from sqlalchemy import text
 from provisa.core.database import create_engine_from_url
 
-from provisa.core.database import Database
-from provisa.core.schema_org import event_status, events, node_freshness_state
 from provisa.events import queue, supervisor
 from provisa.events.calendars import Calendar
 from provisa.events.deadlines import PeriodicCalendar
@@ -53,7 +51,6 @@ SRC = "s.transactions"
 MV = "mat.daily_sales"
 IN_WINDOW = datetime(2026, 7, 9, 12, tzinfo=UTC)  # inside the 2026-07-09 window (before its end)
 AFTER_BOUNDARY = datetime(2026, 7, 10, 1, 30, tzinfo=UTC)  # past the 2026-07-09 window's close
-_TABLES = [events, event_status, node_freshness_state]
 _SRC_COLS = [("id", "INTEGER"), ("amount", "INTEGER")]
 _MV_COLS = [("day", "TEXT"), ("total", "INTEGER")]
 
@@ -65,15 +62,9 @@ async def store(tmp_path):
 
 
 @pytest_asyncio.fixture
-async def db(tmp_path):
+async def db(control_plane):
     """A real control-plane Database (event queue + freshness state)."""
-    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
-    with engine.begin() as c:
-        events.metadata.create_all(c, tables=_TABLES)
-    try:
-        yield Database(engine, name="cp")
-    finally:
-        engine.dispose()
+    return control_plane.org()
 
 
 def _now_at(monkeypatch, instant):
