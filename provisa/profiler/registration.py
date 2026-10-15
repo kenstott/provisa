@@ -34,6 +34,15 @@ def is_profiler_source_type(source_type: Any) -> bool:
     return str(getattr(source_type, "value", source_type)) == PROFILER_SOURCE_TYPE
 
 
+def result_of(table: Any) -> tuple[str, int | None, str]:
+    """``(member, its id, kind)`` of a result table: from its name, or -- one named by its member
+    (REQ-2052) -- from ``profile_of`` and ``kind``, its id None until the seed resolves it."""
+    if table.profile_of is not None:
+        kind_fields(table.profile_kind)  # refuses an unknown kind, naming the kinds
+        return table.profile_of, None, table.profile_kind
+    return parse_result_table_name(table.table_name)
+
+
 def derive_result_table(table: Any) -> None:
     """Fix ``table``'s columns to its result kind's shipped schema, IN PLACE, or ValueError.
 
@@ -42,7 +51,7 @@ def derive_result_table(table: Any) -> None:
     must be a field of the kind, its data type is the shipped one, and the run key (``run_id``,
     ``run_time``) must be declared, ``run_time`` being the watermark.
     """
-    _, _, kind = parse_result_table_name(table.table_name)
+    _, _, kind = result_of(table)
     if table.profiler_source_id is not None:
         raise ValueError(
             f"Table {table.table_name!r}: a profile result table cannot itself join a profiler"
@@ -84,7 +93,7 @@ def validate_config(config: Any) -> None:
         source = sources_by_id.get(table.source_id)
         if source is not None and is_profiler_source_type(source.type):
             derive_result_table(table)
-            member, _, _ = parse_result_table_name(table.table_name)
+            member, _, _ = result_of(table)
             if not any(
                 t.table_name == member and t.profiler_source_id == source.id for t in config.tables
             ):
