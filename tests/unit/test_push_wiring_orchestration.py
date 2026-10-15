@@ -284,7 +284,9 @@ async def test_a_debezium_captured_table_lands_its_topic_into_its_replica(
     kwargs = run.call_args.kwargs
     provider = kwargs["provider"]
     assert provider._build_topic(kwargs["watch_target"]) == "shopdb.sales.orders"
-    assert provider._consumer_group_id == "provisa-debezium"
+    # The operator's group, made the bound org's own: each org reads the whole topic.
+    org, _env, _ = _key("")
+    assert provider._consumer_group_id == f"provisa-debezium-{org}"
     assert kwargs["pk_columns"] == ["id"]
 
 
@@ -339,7 +341,32 @@ async def test_a_kafka_signal_table_of_a_database_lands_its_delta_topic():
     assert built == {
         "kind": "kafka",
         "bootstrap_servers": "broker:9092",
-        "group_id": "provisa-debezium",
+        "group_id": f"provisa-debezium-{_key('')[0]}",  # the operator's group, the org's own
         "registry": None,  # the source's CDC block names no schema registry
         "field_mapping": {},
     }
+
+
+@pytest.mark.unbound
+def test_a_cdc_consumer_group_is_each_org_s_and_each_environment_s():
+    """Two orgs (or an org's environment) landing one CDC topic each read every message: the
+    operator's configured group is the base, and each reads under its own."""
+    from provisa.core.request_context import (
+        reset_current_env,
+        reset_current_org,
+        set_current_env,
+        set_current_org,
+    )
+    from provisa.events.push_wiring import _consumer_group
+
+    def _group(org: str, env: str | None) -> str:
+        org_token, env_token = set_current_org(org), set_current_env(env)
+        try:
+            return _consumer_group("cdc-readers")
+        finally:
+            reset_current_env(env_token)
+            reset_current_org(org_token)
+
+    assert _group("acme", None) == "cdc-readers-acme"
+    assert _group("globex", None) == "cdc-readers-globex"
+    assert _group("acme", "dev") == "cdc-readers-acme-dev"
