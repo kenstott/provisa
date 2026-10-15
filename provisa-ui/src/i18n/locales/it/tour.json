@@ -687,6 +687,54 @@
       "testdataDone": {
         "title": "Che cos'è",
         "description": "Gli ambienti sono rami di un modello, e un valore fittizio si dichiara una volta per colonna. Un ambiente di test (valori fittizi) risponde a ogni query con valori generati realistici, mantiene le chiavi unibili ed è rifiutato finché una colonna di dati personali non ha un valore fittizio. I dati di produzione non escono mai dalla produzione."
+      },
+      "profilingScenario": {
+        "title": "Che cos'è questa demo",
+        "description": "Un rivenditore di articoli outdoor ha acquistato un'azienda più piccola, Harbor Outfitters, e ne ha ricevuto clienti e ordini del CRM. Prima che qualcuno ci costruisca sopra, la domanda è: che cosa c'è davvero in questi dati? Il Data Profiler integrato di Provisa risponde, e i suoi risultati sono tabelle governate come le altre, lette in SQL, GraphQL e REST."
+      },
+      "profilingProfiler": {
+        "title": "Il Data Profiler",
+        "description": "Un profiler contiene una pianificazione e le sue impostazioni di esecuzione, nient'altro: questo viene eseguito ogni notte alle 02:00. La prima esecuzione è avvenuta alla creazione della demo, quindi i risultati sono già qui."
+      },
+      "profilingMember": {
+        "title": "Una tabella si unisce al profiler",
+        "description": "Le tabelle customers e orders sono membri del profiler. Dall'editor di un membro si può eseguire subito un profilo o vederne le esecuzioni: ogni esecuzione, le sue righe e la sua durata."
+      },
+      "profilingRuns": {
+        "title": "Ogni esecuzione viene conservata",
+        "description": "I risultati di un'esecuzione finiscono in tabelle proprie, una per tipo di misura, e ogni esecuzione è conservata accanto alle precedenti. Ecco le esecuzioni della tabella customers, con le righe lette e le righe ripetute trovate."
+      },
+      "profilingTerms": {
+        "title": "Il vocabolario",
+        "description": "Profilo dei dati, tipo plausibile, forma del valore, riga duplicata e valore segnaposto, nel glossario, ciascuno collegato alle misure a cui si riferisce."
+      },
+      "profilingAnswer": {
+        "title": "Che cosa contiene ogni colonna",
+        "description": "La vista customer_columns mostra ogni colonna di customers come l'ha trovata l'ultima esecuzione, prima le più vuote. Un quinto dei clienti non ha mai risposto alla domanda sul marketing; alcune email mancano e altre contengono un nome; le date di iscrizione partono dal segnaposto 1900-01-01, e il valore dei clienti va da rimborsi sotto zero ad account di prova a 999.999,99."
+      },
+      "profilingTypes": {
+        "title": "Che cosa contiene plausibilmente ogni colonna",
+        "description": "Il profilo deduce cosa contiene una colonna da valori, nome e tag: un'email, un numero di telefono, un CAP, un identificativo. Ciascuno con la sua confidenza e le prove."
+      },
+      "profilingPhones": {
+        "title": "Una colonna, quattro formati",
+        "description": "Ogni numero di telefono ridotto alla sua forma: una cifra diventa 9. Il CRM non ha mai controllato il formato, così una colonna ne contiene quattro, che un join o un compositore dovrebbe prima conciliare."
+      },
+      "profilingCountries": {
+        "title": "Un paese, più grafie",
+        "description": "I cinque valori più frequenti della colonna country: US, USA e United States sono lo stesso paese, scritto in tre modi solo tra questi. Un conteggio per paese lo dividerebbe."
+      },
+      "profilingDuplicates": {
+        "title": "Le righe scritte due volte",
+        "description": "Il modello dichiara customer_id come chiave, ma l'esportazione non aveva vincoli: 150 clienti compaiono due volte, con tutti i campi uguali. Il profilo conta le righe ripetute e i valori di chiave presenti in più di una riga."
+      },
+      "profilingRest": {
+        "title": "La stessa risposta via REST",
+        "description": "La vista è anche un endpoint REST. Uno strumento di qualità dei dati o uno script di migrazione ottiene il profilo senza scrivere SQL."
+      },
+      "profilingRecap": {
+        "title": "Cosa avete visto",
+        "description": "Le tabelle acquisite, lette in tempo reale, e un loro profilo creato dal profiler integrato e conservato come tabelle governate: valori nulli, intervalli, formati, tipi plausibili e duplicati rispondono a cosa c'è davvero in questi dati, in SQL, GraphQL e REST, secondo l'accesso di ogni ruolo."
       }
     },
     "status": {
@@ -735,6 +783,10 @@
       "testdata": {
         "title": "Dati di test",
         "summary": "Il database di produzione di un negozio, letto in prod così com'è e in due ambienti di test come dati generati realistici; le stesse query e join rispondono in tutti e tre."
+      },
+      "profiling": {
+        "title": "Che cosa c'è davvero in questi dati?",
+        "summary": "Clienti e ordini di un'azienda acquisita, profilati dal Data Profiler integrato: valori nulli, intervalli, formati, tipi plausibili e duplicati, conservati come tabelle governate e letti in SQL, GraphQL e REST."
       }
     }
   }

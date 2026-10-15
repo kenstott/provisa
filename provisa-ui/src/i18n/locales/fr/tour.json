@@ -687,6 +687,54 @@
       "testdataDone": {
         "title": "Ce que c'est",
         "description": "Les environnements sont des branches d'un modèle, et une valeur fictive se déclare une fois par colonne. Un environnement de test (valeurs fictives) répond à chaque requête avec des valeurs générées réalistes, garde les clés joignables, et est refusé tant qu'une colonne de données personnelles n'a pas de valeur fictive. Les données de production ne quittent jamais la production."
+      },
+      "profilingScenario": {
+        "title": "Ce que montre cette démo",
+        "description": "Un détaillant d'équipement de plein air a racheté une entreprise plus petite, Harbor Outfitters, et reçu les clients et commandes de son CRM. Avant que quiconque ne s'appuie dessus, la question est : que contiennent réellement ces données ? Le Data Profiler intégré de Provisa y répond, et ses résultats sont des tables gouvernées comme les autres, lues en SQL, GraphQL et REST."
+      },
+      "profilingProfiler": {
+        "title": "Le Data Profiler",
+        "description": "Un profileur contient une planification et ses paramètres d'exécution, rien d'autre : celui-ci s'exécute chaque nuit à 02:00. Sa première exécution a eu lieu à la construction de la démo, les résultats sont donc déjà là."
+      },
+      "profilingMember": {
+        "title": "Une table rejoint le profileur",
+        "description": "Les tables customers et orders sont membres du profileur. Depuis l'éditeur d'un membre, vous pouvez lancer un profil immédiatement ou consulter ses exécutions : chaque exécution, ses lignes et sa durée."
+      },
+      "profilingRuns": {
+        "title": "Chaque exécution est conservée",
+        "description": "Les résultats d'une exécution arrivent dans des tables à part, une par type de mesure, et chaque exécution est conservée à côté des précédentes. Voici les exécutions de la table customers, avec les lignes lues et les lignes répétées trouvées."
+      },
+      "profilingTerms": {
+        "title": "Le vocabulaire",
+        "description": "Profil de données, type plausible, forme de valeur, ligne en double et valeur de substitution, dans le glossaire, chacun relié aux mesures qu'il concerne."
+      },
+      "profilingAnswer": {
+        "title": "Ce que contient chaque colonne",
+        "description": "La vue customer_columns présente chaque colonne de customers telle que la dernière exécution l'a trouvée, les plus vides d'abord. Un cinquième des clients n'a jamais répondu à la question marketing ; certains e-mails manquent, d'autres contiennent un nom ; les dates d'inscription commencent à la valeur de substitution 1900-01-01, et la valeur client va de remboursements négatifs à des comptes de test à 999 999,99."
+      },
+      "profilingTypes": {
+        "title": "Ce que contient plausiblement chaque colonne",
+        "description": "Le profil déduit ce que contient une colonne à partir de ses valeurs, de son nom et de ses étiquettes : un e-mail, un numéro de téléphone, un code postal, un identifiant. Chacun avec sa confiance et ses éléments de preuve."
+      },
+      "profilingPhones": {
+        "title": "Une colonne, quatre formats",
+        "description": "Chaque numéro de téléphone réduit à sa forme : un chiffre devient 9. Le CRM n'a jamais vérifié le format, si bien qu'une colonne en contient quatre, qu'une jointure ou un numéroteur devrait d'abord concilier."
+      },
+      "profilingCountries": {
+        "title": "Un pays, plusieurs graphies",
+        "description": "Les cinq valeurs les plus fréquentes de la colonne country : US, USA et United States sont un même pays, écrit de trois façons rien que parmi elles. Un décompte par pays le scinderait."
+      },
+      "profilingDuplicates": {
+        "title": "Les lignes écrites deux fois",
+        "description": "Le modèle déclare customer_id comme clé, mais l'export n'avait aucune contrainte : 150 clients y figurent deux fois, tous les champs identiques. Le profil compte les lignes répétées et les valeurs de clé portées par plus d'une ligne."
+      },
+      "profilingRest": {
+        "title": "La même réponse en REST",
+        "description": "La vue est aussi un endpoint REST. Un outil de qualité des données ou un script de migration obtient le profil sans écrire de SQL."
+      },
+      "profilingRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Les tables acquises, lues en direct, et leur profil, établi par le profileur intégré et conservé sous forme de tables gouvernées : valeurs nulles, plages, formats, types plausibles et doublons répondent à ce que contiennent réellement ces données, en SQL, GraphQL et REST, selon l'accès de chaque rôle."
       }
     },
     "status": {
@@ -735,6 +783,10 @@
       "testdata": {
         "title": "Données de test",
         "summary": "La base de production d'une boutique, lue en prod telle quelle et dans deux environnements de test comme des données générées réalistes ; les mêmes requêtes et jointures répondent dans les trois."
+      },
+      "profiling": {
+        "title": "Que contiennent réellement ces données ?",
+        "summary": "Les clients et commandes d'une entreprise rachetée, profilés par le Data Profiler intégré : valeurs nulles, plages, formats, types plausibles et doublons, conservés comme tables gouvernées et lus en SQL, GraphQL et REST."
       }
     }
   }

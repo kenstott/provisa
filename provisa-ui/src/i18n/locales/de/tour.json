@@ -687,6 +687,54 @@
       "testdataDone": {
         "title": "Was das ist",
         "description": "Umgebungen sind Zweige eines Modells, und ein Fake-Wert wird einmal pro Spalte deklariert. Eine Test-Umgebung (Fake-Werte) beantwortet jede Abfrage mit realistischen generierten Werten, hält Schlüssel verknüpfbar und wird verweigert, solange eine Spalte mit personenbezogenen Daten keinen Fake-Wert hat. Produktionsdaten verlassen die Produktion nie."
+      },
+      "profilingScenario": {
+        "title": "Worum es in dieser Demo geht",
+        "description": "Ein Outdoor-Händler hat ein kleineres Unternehmen, Harbor Outfitters, übernommen und die Kunden und Bestellungen aus dessen CRM erhalten. Bevor jemand darauf aufbaut, lautet die Frage: Was steckt eigentlich in diesen Daten? Der integrierte Data Profiler von Provisa beantwortet sie, und seine Ergebnisse sind gesteuerte Tabellen wie alle anderen, gelesen in SQL, GraphQL und REST."
+      },
+      "profilingProfiler": {
+        "title": "Der Data Profiler",
+        "description": "Ein Profiler enthält einen Zeitplan und seine Laufeinstellungen, sonst nichts: Dieser läuft jede Nacht um 02:00 Uhr. Sein erster Lauf fand beim Erstellen der Demo statt, die Ergebnisse sind also schon da."
+      },
+      "profilingMember": {
+        "title": "Eine Tabelle tritt dem Profiler bei",
+        "description": "Die Tabellen customers und orders sind Mitglieder des Profilers. Im Editor eines Mitglieds können Sie sofort ein Profil erstellen oder seine Läufe ansehen: jeden Lauf, seine Zeilen und wie lange er dauerte."
+      },
+      "profilingRuns": {
+        "title": "Jeder Lauf bleibt erhalten",
+        "description": "Die Ergebnisse eines Laufs landen in eigenen Tabellen, eine je Art von Messung, und jeder Lauf bleibt neben den früheren erhalten. Hier die Läufe der Tabelle customers mit den gelesenen Zeilen und den gefundenen wiederholten Zeilen."
+      },
+      "profilingTerms": {
+        "title": "Das Vokabular",
+        "description": "Datenprofil, plausibler Typ, Wertform, doppelte Zeile und Platzhalterwert im Glossar, jeweils mit den Messungen verknüpft, um die es geht."
+      },
+      "profilingAnswer": {
+        "title": "Was jede Spalte enthält",
+        "description": "Die Sicht customer_columns zeigt jede Spalte von customers, wie der letzte Lauf sie fand, die leersten zuerst. Ein Fünftel der Kunden hat die Marketingfrage nie beantwortet; manche E-Mails fehlen, manche enthalten einen Namen; Anmeldedaten beginnen mit dem Platzhalter 1900-01-01, und Kundenwerte reichen von Erstattungen unter null bis zu Testkonten mit 999.999,99."
+      },
+      "profilingTypes": {
+        "title": "Was jede Spalte plausibel enthält",
+        "description": "Das Profil leitet aus Werten, Namen und Tags einer Spalte ab, was sie enthält: eine E-Mail, eine Telefonnummer, eine Postleitzahl, eine Kennung. Jeweils mit Konfidenz und Begründung."
+      },
+      "profilingPhones": {
+        "title": "Eine Spalte, vier Formate",
+        "description": "Jede Telefonnummer auf ihre Form reduziert: Eine Ziffer wird zu 9. Das CRM hat das Format nie geprüft, also enthält eine Spalte vier Formate, die ein Join oder ein Wählprogramm erst vereinheitlichen müsste."
+      },
+      "profilingCountries": {
+        "title": "Ein Land, mehrere Schreibweisen",
+        "description": "Die fünf häufigsten Werte der Spalte country: US, USA und United States sind ein Land, allein darunter dreimal anders geschrieben. Eine Zählung nach Land würde es aufteilen."
+      },
+      "profilingDuplicates": {
+        "title": "Die doppelt geschriebenen Zeilen",
+        "description": "Das Modell erklärt customer_id zum Schlüssel, doch der Export hatte keine Einschränkung: 150 Kunden stehen zweimal darin, jedes Feld gleich. Das Profil zählt die wiederholten Zeilen und die Schlüsselwerte, die mehr als eine Zeile hat."
+      },
+      "profilingRest": {
+        "title": "Dieselbe Antwort über REST",
+        "description": "Die Sicht ist auch ein REST-Endpunkt. Ein Datenqualitätswerkzeug oder ein Migrationsskript erhält das Profil, ohne SQL zu schreiben."
+      },
+      "profilingRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Die übernommenen Tabellen, live gelesen, und ein Profil davon, erstellt vom integrierten Profiler und als gesteuerte Tabellen aufbewahrt: Nullwerte, Wertebereiche, Formate, plausible Typen und Duplikate beantworten, was eigentlich in diesen Daten steckt, in SQL, GraphQL und REST, unter dem Zugriff jeder Rolle."
       }
     },
     "status": {
@@ -735,6 +783,10 @@
       "testdata": {
         "title": "Testdaten",
         "summary": "Die Produktionsdatenbank eines Shops, in prod so gelesen, wie sie ist, und in zwei Testumgebungen als realistische generierte Daten; dieselben Abfragen und Joins antworten in allen dreien."
+      },
+      "profiling": {
+        "title": "Was steckt eigentlich in diesen Daten?",
+        "summary": "Die Kunden und Bestellungen eines übernommenen Unternehmens, profiliert vom integrierten Data Profiler: Nullwerte, Wertebereiche, Formate, plausible Typen und Duplikate, als gesteuerte Tabellen abgelegt und in SQL, GraphQL und REST gelesen."
       }
     }
   }

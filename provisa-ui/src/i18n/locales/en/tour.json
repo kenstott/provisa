@@ -687,6 +687,54 @@
       "testdataDone": {
         "title": "What this is",
         "description": "Environments are branches of one model, and a fake is declared once per column. A Test (fake) environment answers every query with realistic generated values, keeps keys joinable, and is refused while a personal-data column has no fake. Production data never leaves production."
+      },
+      "profilingScenario": {
+        "title": "What this demo is",
+        "description": "An outdoor retailer has bought a smaller one, Harbor Outfitters, and received its CRM's customers and orders. Before anyone builds on them, the question is: what is actually in this data? Provisa's built-in Data Profiler answers it, and its results are governed tables like any other, read in SQL, GraphQL and REST."
+      },
+      "profilingProfiler": {
+        "title": "The Data Profiler",
+        "description": "A profiler holds a schedule and its run settings, nothing else: this one runs every night at 02:00. Its first run was made when the demo was built, so the results are already here."
+      },
+      "profilingMember": {
+        "title": "A table joins the profiler",
+        "description": "The customers and orders tables are members of the profiler. From a member's editor you can run a profile at once or view its runs: each run, its rows and how long it took."
+      },
+      "profilingRuns": {
+        "title": "Each run is kept",
+        "description": "A run's results land as tables of their own, one for each kind of measure, and every run is kept beside the ones before it. Here are the customers table's runs, with the rows each read and the repeated rows it found."
+      },
+      "profilingTerms": {
+        "title": "The vocabulary",
+        "description": "Data profile, plausible type, value shape, duplicate row and placeholder value, in the glossary, each tied to the measures it is about."
+      },
+      "profilingAnswer": {
+        "title": "What each column holds",
+        "description": "The view customer_columns keeps each customers column as the latest run found it, emptiest first. A fifth of the customers never answered the marketing question; some emails are missing and some hold a name instead; signup dates start at a 1900-01-01 placeholder, and lifetime values run from refunds below zero to test accounts at 999,999.99."
+      },
+      "profilingTypes": {
+        "title": "What each column plausibly holds",
+        "description": "The profile infers what a column holds from its values, its name and its tags: an email, a phone number, a postal code, an identifier. Each comes with its confidence and the evidence for it."
+      },
+      "profilingPhones": {
+        "title": "One column, four formats",
+        "description": "Each phone number reduced to its shape: a digit becomes 9. The CRM never checked the format, so one column holds four of them, which a join or a dialer would have to reconcile first."
+      },
+      "profilingCountries": {
+        "title": "One country, several spellings",
+        "description": "The five commonest values of the country column: US, USA and United States are one country, written three ways among them alone. A count by country would split it."
+      },
+      "profilingDuplicates": {
+        "title": "The rows written twice",
+        "description": "The model declares customer_id the key, but the export held no constraint: 150 customers are in it twice, every field the same. The profile counts the repeated rows and the key values held by more than one row."
+      },
+      "profilingRest": {
+        "title": "The same answer over REST",
+        "description": "The view is a REST endpoint too. A data quality tool or a migration script gets the profile without writing SQL."
+      },
+      "profilingRecap": {
+        "title": "What you saw",
+        "description": "The acquired tables, read live, and a profile of them made by the built-in profiler and kept as governed tables: nulls, ranges, formats, plausible types and duplicates, each answering what is actually in this data, in SQL, GraphQL and REST, under each role's access."
       }
     },
     "status": {
@@ -735,6 +783,10 @@
       "testdata": {
         "title": "Test data",
         "summary": "A shop's production database, read in prod as it is and in two test environments as realistic generated data, the same queries and joins answering in all three."
+      },
+      "profiling": {
+        "title": "What is actually in this data?",
+        "summary": "An acquired company's customers and orders, profiled by the built-in Data Profiler: nulls, ranges, formats, plausible types and duplicates, landed as governed tables and read in SQL, GraphQL and REST."
       }
     }
   }

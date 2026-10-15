@@ -1,0 +1,12 @@
+# The commonest values of the country column: the United States spelled three ways among them.
+query CountrySpellings {
+  h__customerTopValues(
+    where: { columnName: { eq: "country" } }
+    order_by: [{ runTime: desc }, { rank: asc }]
+    limit: 10
+  ) {
+    rank
+    value
+    rowCount
+  }
+}

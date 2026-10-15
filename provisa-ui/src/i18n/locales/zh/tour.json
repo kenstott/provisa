@@ -687,6 +687,54 @@
       "testdataDone": {
         "title": "这是什么",
         "description": "环境是一个模型的分支，虚构值按列声明一次。测试（虚构值）环境用逼真的生成值回答每个查询，保持键可连接，并且在个人数据列没有虚构值时拒绝创建。生产数据从不离开生产。"
+      },
+      "profilingScenario": {
+        "title": "这个演示是什么",
+        "description": "一家户外用品零售商收购了一家较小的公司 Harbor Outfitters，并收到了其 CRM 中的客户和订单。在任何人以此为基础之前，问题是：这些数据里到底有什么？Provisa 内置的 Data Profiler 回答了这个问题，其结果与其他表一样是受治理的表，可通过 SQL、GraphQL 和 REST 读取。"
+      },
+      "profilingProfiler": {
+        "title": "Data Profiler",
+        "description": "分析器只包含一个计划及其运行设置：这个分析器每晚 02:00 运行。它的首次运行在构建演示时完成，所以结果已经在这里了。"
+      },
+      "profilingMember": {
+        "title": "表加入分析器",
+        "description": "customers 和 orders 表是分析器的成员。在成员的编辑器中，可以立即运行分析，或查看其运行记录：每次运行、读取的行数和耗时。"
+      },
+      "profilingRuns": {
+        "title": "每次运行都会保留",
+        "description": "一次运行的结果写入各自的表，每种度量一张，每次运行都与之前的运行一起保留。这里是 customers 表的运行记录，包括每次读取的行数和发现的重复行。"
+      },
+      "profilingTerms": {
+        "title": "术语",
+        "description": "数据画像、可能类型、值形态、重复行和占位值都在术语表中，各自关联到相关的度量。"
+      },
+      "profilingAnswer": {
+        "title": "每一列包含什么",
+        "description": "视图 customer_columns 按最近一次运行的结果显示 customers 的每一列，最空的排在前面。五分之一的客户从未回答营销问题；有些电子邮件缺失，有些写的是姓名；注册日期从占位值 1900-01-01 开始，客户价值从低于零的退款到 999,999.99 的测试账户不等。"
+      },
+      "profilingTypes": {
+        "title": "每一列可能包含什么",
+        "description": "画像根据列的值、名称和标签推断其内容：电子邮件、电话号码、邮政编码、标识符。每项都附有置信度和依据。"
+      },
+      "profilingPhones": {
+        "title": "一列，四种格式",
+        "description": "每个电话号码都化为其形态：数字变为 9。CRM 从未检查格式，所以一列中有四种格式，连接或拨号程序必须先统一它们。"
+      },
+      "profilingCountries": {
+        "title": "一个国家，多种写法",
+        "description": "country 列中最常见的五个值：US、USA 和 United States 是同一个国家，仅在这五个值中就有三种写法。按国家计数会把它拆开。"
+      },
+      "profilingDuplicates": {
+        "title": "写了两次的行",
+        "description": "模型将 customer_id 声明为键，但导出中没有约束：150 位客户出现了两次，所有字段都相同。画像统计重复的行以及出现在多行中的键值。"
+      },
+      "profilingRest": {
+        "title": "通过 REST 获得同样的答案",
+        "description": "该视图也是一个 REST 终结点。数据质量工具或迁移脚本无需编写 SQL 即可获得画像。"
+      },
+      "profilingRecap": {
+        "title": "你看到了什么",
+        "description": "被收购的表（实时读取）及其画像（由内置分析器生成并作为受治理的表保存）：缺失值、范围、格式、可能类型和重复项，用 SQL、GraphQL 和 REST 回答这些数据里到底有什么，并遵循每个角色的访问权限。"
       }
     },
     "status": {
@@ -735,6 +783,10 @@
       "testdata": {
         "title": "测试数据",
         "summary": "一家商店的生产数据库：在 prod 中按原样读取，在两个测试环境中作为逼真的生成数据读取；相同的查询和连接在三者中都能给出答案。"
+      },
+      "profiling": {
+        "title": "这些数据里到底有什么？",
+        "summary": "一家被收购公司的客户和订单，由内置的 Data Profiler 进行画像：缺失值、范围、格式、可能类型和重复项，作为受治理的表保存，并通过 SQL、GraphQL 和 REST 读取。"
       }
     }
   }

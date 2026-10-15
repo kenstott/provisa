@@ -1,0 +1,83 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The profiling demo's own tour (REQ-2010): the story of the demo, told with its own data. The step
+# kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name here is checked
+# against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
+# tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: the scenario and the features it shows; how the pieces fit, each step on its real
+# object; the solution, as predesigned queries over the transports that fit it (a Polly step is
+# optional, its answer stored); a recap; and "Where next?", the landing page below.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+# The scenario and the features the demo shows.
+- key: profilingScenario
+  route: /sources
+  capability: source_registration
+  source: crm
+- key: profilingProfiler
+  source: harbor-profiler
+# How the pieces fit: a table joins the profiler, its runs land as governed tables, and the
+# vocabulary names what a profile measures.
+- key: profilingMember
+  route: /tables
+  capability: table_registration
+  table: crm.customers
+- key: profilingRuns
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT r.run_time, r.status, r.row_count, r.profiled_rows, r.duplicate_rows, r.duration_ms
+    FROM "harbor"."customer_profile_runs" AS r
+    ORDER BY r.run_time DESC
+    LIMIT 5
+- key: profilingTerms
+  route: /admin/glossary
+  capability: glossary_read
+  term: plausible type
+# What is actually in the data: the answer, in SQL, GraphQL and REST.
+- key: profilingAnswer
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT c.column_name, c.null_share, c.distinct_count, c.min_value, c.max_value
+    FROM "harbor"."view_customer_columns" AS c
+    ORDER BY c.null_share DESC
+    LIMIT 20
+- key: profilingTypes
+  route: /query
+  capability: query_development
+  example: 5-plausible-types
+- key: profilingPhones
+  route: /query
+  capability: query_development
+  example: 2-phone-formats
+- key: profilingCountries
+  route: /query
+  capability: query_development
+  example: 3-country-spellings
+- key: profilingDuplicates
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT d.subject, d.key_name, d.repeated_values, d.extra_rows, d.extra_share
+    FROM "harbor"."customer_duplicates" AS d
+    WHERE d.run_time = (SELECT MAX(p.run_time) FROM "harbor"."customer_duplicates" AS p)
+    LIMIT 10
+- key: profilingRest
+  route: /openapi
+  capability: query_development
+  api: GET /data/rest/harbor/view_customer_columns?limit=20
+- key: profilingRecap
+  route: /sources
+  capability: source_registration
+  source: harbor-profiler

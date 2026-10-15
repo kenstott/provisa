@@ -1,0 +1,12 @@
+# Each profile run of the customers table: when, how many rows, and the duplicate rows it found.
+query ProfileRuns {
+  h__customerProfileRuns(order_by: [{ runTime: desc }], limit: 10) {
+    runTime
+    status
+    rowCount
+    profiledRows
+    duplicateRows
+    duplicateShare
+    durationMs
+  }
+}

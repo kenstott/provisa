@@ -1,0 +1,10 @@
+# What each customers column plausibly holds, and the evidence: an email, a phone number, a
+# postal code -- whatever its name says.
+query PlausibleTypes {
+  h__customerColumnTypes(order_by: [{ runTime: desc }, { columnName: asc }], limit: 10) {
+    columnName
+    plausibleType
+    confidence
+    evidence
+  }
+}

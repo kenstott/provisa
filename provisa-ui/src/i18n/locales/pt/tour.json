@@ -687,6 +687,54 @@
       "testdataDone": {
         "title": "O que é isto",
         "description": "Ambientes são ramos de um modelo, e um valor fictício é declarado uma vez por coluna. Um ambiente de teste (valores fictícios) responde cada consulta com valores gerados realistas, mantém as chaves juntáveis e é recusado enquanto uma coluna de dados pessoais não tiver valor fictício. Os dados de produção nunca saem da produção."
+      },
+      "profilingScenario": {
+        "title": "O que é esta demo",
+        "description": "Um retalhista de artigos de exterior comprou uma empresa mais pequena, a Harbor Outfitters, e recebeu os clientes e encomendas do seu CRM. Antes que alguém construa sobre eles, a pergunta é: o que há realmente nestes dados? O Data Profiler integrado do Provisa responde-lhe, e os seus resultados são tabelas governadas como quaisquer outras, lidas em SQL, GraphQL e REST."
+      },
+      "profilingProfiler": {
+        "title": "O Data Profiler",
+        "description": "Um profiler contém um agendamento e as suas definições de execução, nada mais: este corre todas as noites às 02:00. A sua primeira execução foi feita quando a demo foi construída, por isso os resultados já cá estão."
+      },
+      "profilingMember": {
+        "title": "Uma tabela junta-se ao profiler",
+        "description": "As tabelas customers e orders são membros do profiler. No editor de um membro pode gerar um perfil de imediato ou ver as suas execuções: cada execução, as suas linhas e quanto demorou."
+      },
+      "profilingRuns": {
+        "title": "Cada execução é guardada",
+        "description": "Os resultados de uma execução ficam em tabelas próprias, uma por tipo de medida, e cada execução é guardada ao lado das anteriores. Aqui estão as execuções da tabela customers, com as linhas lidas e as linhas repetidas encontradas."
+      },
+      "profilingTerms": {
+        "title": "O vocabulário",
+        "description": "Perfil de dados, tipo plausível, forma de valor, linha duplicada e valor de marcador, no glossário, cada um ligado às medidas a que se refere."
+      },
+      "profilingAnswer": {
+        "title": "O que contém cada coluna",
+        "description": "A vista customer_columns mostra cada coluna de customers como a última execução a encontrou, as mais vazias primeiro. Um quinto dos clientes nunca respondeu à pergunta de marketing; faltam alguns emails e outros contêm um nome; as datas de registo começam no marcador 1900-01-01, e o valor dos clientes vai de reembolsos abaixo de zero a contas de teste de 999 999,99."
+      },
+      "profilingTypes": {
+        "title": "O que contém plausivelmente cada coluna",
+        "description": "O perfil deduz o que uma coluna contém a partir dos valores, do nome e das etiquetas: um email, um telefone, um código postal, um identificador. Cada um com a sua confiança e a evidência."
+      },
+      "profilingPhones": {
+        "title": "Uma coluna, quatro formatos",
+        "description": "Cada número de telefone reduzido à sua forma: um dígito passa a 9. O CRM nunca verificou o formato, por isso uma coluna contém quatro, que uma junção ou um marcador teria de conciliar primeiro."
+      },
+      "profilingCountries": {
+        "title": "Um país, várias grafias",
+        "description": "Os cinco valores mais frequentes da coluna country: US, USA e United States são o mesmo país, escrito de três formas só entre eles. Uma contagem por país dividi-lo-ia."
+      },
+      "profilingDuplicates": {
+        "title": "As linhas escritas duas vezes",
+        "description": "O modelo declara customer_id como chave, mas a exportação não tinha restrição: 150 clientes aparecem duas vezes, com todos os campos iguais. O perfil conta as linhas repetidas e os valores de chave com mais de uma linha."
+      },
+      "profilingRest": {
+        "title": "A mesma resposta por REST",
+        "description": "A vista é também um endpoint REST. Uma ferramenta de qualidade de dados ou um script de migração obtém o perfil sem escrever SQL."
+      },
+      "profilingRecap": {
+        "title": "O que viu",
+        "description": "As tabelas adquiridas, lidas em direto, e um perfil delas feito pelo profiler integrado e guardado como tabelas governadas: nulos, intervalos, formatos, tipos plausíveis e duplicados respondem ao que há realmente nestes dados, em SQL, GraphQL e REST, segundo o acesso de cada função."
       }
     },
     "status": {
@@ -735,6 +783,10 @@
       "testdata": {
         "title": "Dados de teste",
         "summary": "O banco de produção de uma loja, lido em prod como é e em dois ambientes de teste como dados gerados realistas; as mesmas consultas e joins respondem nos três."
+      },
+      "profiling": {
+        "title": "O que há realmente nestes dados?",
+        "summary": "Os clientes e encomendas de uma empresa adquirida, analisados pelo Data Profiler integrado: nulos, intervalos, formatos, tipos plausíveis e duplicados, guardados como tabelas governadas e lidos em SQL, GraphQL e REST."
       }
     }
   }

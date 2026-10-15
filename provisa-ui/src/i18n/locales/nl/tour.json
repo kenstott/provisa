@@ -687,6 +687,54 @@
       "testdataDone": {
         "title": "Wat dit is",
         "description": "Omgevingen zijn takken van één model, en een nepwaarde wordt één keer per kolom gedeclareerd. Een testomgeving (nepwaarden) beantwoordt elke query met realistische gegenereerde waarden, houdt sleutels koppelbaar en wordt geweigerd zolang een kolom met persoonsgegevens geen nepwaarde heeft. Productiegegevens verlaten productie nooit."
+      },
+      "profilingScenario": {
+        "title": "Wat deze demo is",
+        "description": "Een outdoorwinkelketen heeft een kleiner bedrijf, Harbor Outfitters, overgenomen en de klanten en bestellingen uit diens CRM ontvangen. Voordat iemand erop voortbouwt, is de vraag: wat zit er eigenlijk in deze data? De ingebouwde Data Profiler van Provisa beantwoordt die, en zijn resultaten zijn beheerde tabellen zoals alle andere, gelezen in SQL, GraphQL en REST."
+      },
+      "profilingProfiler": {
+        "title": "De Data Profiler",
+        "description": "Een profiler bevat een schema en zijn uitvoeringsinstellingen, verder niets: deze draait elke nacht om 02:00. Zijn eerste run is gemaakt toen de demo werd gebouwd, dus de resultaten zijn er al."
+      },
+      "profilingMember": {
+        "title": "Een tabel sluit zich aan bij de profiler",
+        "description": "De tabellen customers en orders zijn leden van de profiler. Vanuit de editor van een lid kunt u direct een profiel maken of de runs bekijken: elke run, de rijen en hoe lang hij duurde."
+      },
+      "profilingRuns": {
+        "title": "Elke run blijft bewaard",
+        "description": "De resultaten van een run komen in eigen tabellen terecht, één per soort meting, en elke run blijft naast de eerdere bewaard. Hier de runs van de tabel customers, met de gelezen rijen en de gevonden herhaalde rijen."
+      },
+      "profilingTerms": {
+        "title": "De woordenschat",
+        "description": "Dataprofiel, plausibel type, waardevorm, dubbele rij en plaatshouderwaarde, in de woordenlijst, elk gekoppeld aan de metingen waar het over gaat."
+      },
+      "profilingAnswer": {
+        "title": "Wat elke kolom bevat",
+        "description": "De view customer_columns toont elke kolom van customers zoals de laatste run hem vond, de leegste eerst. Een vijfde van de klanten beantwoordde de marketingvraag nooit; sommige e-mails ontbreken en andere bevatten een naam; aanmelddatums beginnen bij de plaatshouder 1900-01-01, en klantwaarden lopen van terugbetalingen onder nul tot testaccounts van 999.999,99."
+      },
+      "profilingTypes": {
+        "title": "Wat elke kolom plausibel bevat",
+        "description": "Het profiel leidt uit de waarden, naam en tags van een kolom af wat die bevat: een e-mailadres, een telefoonnummer, een postcode, een identificatie. Elk met zijn betrouwbaarheid en het bewijs."
+      },
+      "profilingPhones": {
+        "title": "Eén kolom, vier formaten",
+        "description": "Elk telefoonnummer teruggebracht tot zijn vorm: een cijfer wordt 9. Het CRM controleerde het formaat nooit, dus één kolom bevat er vier, die een join of een kiesprogramma eerst zou moeten verzoenen."
+      },
+      "profilingCountries": {
+        "title": "Eén land, meerdere spellingen",
+        "description": "De vijf meest voorkomende waarden van de kolom country: US, USA en United States zijn één land, alleen al daaronder op drie manieren geschreven. Een telling per land zou het opsplitsen."
+      },
+      "profilingDuplicates": {
+        "title": "De rijen die twee keer zijn geschreven",
+        "description": "Het model verklaart customer_id tot sleutel, maar de export had geen beperking: 150 klanten staan er twee keer in, elk veld gelijk. Het profiel telt de herhaalde rijen en de sleutelwaarden die meer dan één rij hebben."
+      },
+      "profilingRest": {
+        "title": "Hetzelfde antwoord via REST",
+        "description": "De view is ook een REST-endpoint. Een datakwaliteitstool of een migratiescript krijgt het profiel zonder SQL te schrijven."
+      },
+      "profilingRecap": {
+        "title": "Wat u zag",
+        "description": "De overgenomen tabellen, live gelezen, en een profiel ervan, gemaakt door de ingebouwde profiler en bewaard als beheerde tabellen: lege waarden, bereiken, formaten, plausibele types en duplicaten beantwoorden wat er eigenlijk in deze data zit, in SQL, GraphQL en REST, volgens de toegang van elke rol."
       }
     },
     "status": {
@@ -735,6 +783,10 @@
       "testdata": {
         "title": "Testgegevens",
         "summary": "De productiedatabase van een winkel, in prod gelezen zoals hij is en in twee testomgevingen als realistische gegenereerde gegevens; dezelfde queries en joins antwoorden in alle drie."
+      },
+      "profiling": {
+        "title": "Wat zit er eigenlijk in deze data?",
+        "summary": "De klanten en bestellingen van een overgenomen bedrijf, geprofileerd door de ingebouwde Data Profiler: lege waarden, bereiken, formaten, plausibele types en duplicaten, bewaard als beheerde tabellen en gelezen in SQL, GraphQL en REST."
       }
     }
   }

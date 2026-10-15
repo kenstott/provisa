@@ -687,6 +687,54 @@
       "testdataDone": {
         "title": "Qué es esto",
         "description": "Los entornos son ramas de un modelo, y un valor ficticio se declara una vez por columna. Un entorno de prueba (valores ficticios) responde cada consulta con valores generados realistas, mantiene las claves unibles y se rechaza mientras una columna de datos personales no tenga valor ficticio. Los datos de producción nunca salen de producción."
+      },
+      "profilingScenario": {
+        "title": "Qué es esta demo",
+        "description": "Un minorista de artículos de exterior ha comprado una empresa más pequeña, Harbor Outfitters, y ha recibido los clientes y pedidos de su CRM. Antes de que nadie construya sobre ellos, la pregunta es: ¿qué hay realmente en estos datos? El Data Profiler integrado de Provisa la responde, y sus resultados son tablas gobernadas como cualquier otra, leídas en SQL, GraphQL y REST."
+      },
+      "profilingProfiler": {
+        "title": "El Data Profiler",
+        "description": "Un perfilador contiene una programación y su configuración de ejecución, nada más: este se ejecuta cada noche a las 02:00. Su primera ejecución se hizo al construir la demo, así que los resultados ya están aquí."
+      },
+      "profilingMember": {
+        "title": "Una tabla se une al perfilador",
+        "description": "Las tablas customers y orders son miembros del perfilador. Desde el editor de un miembro puede generar un perfil al momento o ver sus ejecuciones: cada ejecución, sus filas y cuánto tardó."
+      },
+      "profilingRuns": {
+        "title": "Cada ejecución se conserva",
+        "description": "Los resultados de una ejecución se guardan en tablas propias, una por cada tipo de medida, y cada ejecución se conserva junto a las anteriores. Aquí están las ejecuciones de la tabla customers, con las filas que leyó cada una y las filas repetidas que encontró."
+      },
+      "profilingTerms": {
+        "title": "El vocabulario",
+        "description": "Perfil de datos, tipo plausible, forma de valor, fila duplicada y valor de marcador, en el glosario, cada uno vinculado a las medidas de las que trata."
+      },
+      "profilingAnswer": {
+        "title": "Qué contiene cada columna",
+        "description": "La vista customer_columns muestra cada columna de customers tal como la encontró la última ejecución, primero las más vacías. Una quinta parte de los clientes nunca respondió la pregunta de marketing; faltan algunos correos y otros contienen un nombre; las fechas de alta empiezan en el marcador 1900-01-01, y el valor de los clientes va de reembolsos bajo cero a cuentas de prueba de 999.999,99."
+      },
+      "profilingTypes": {
+        "title": "Qué contiene plausiblemente cada columna",
+        "description": "El perfil deduce qué contiene una columna a partir de sus valores, su nombre y sus etiquetas: un correo, un teléfono, un código postal, un identificador. Cada uno con su confianza y la evidencia."
+      },
+      "profilingPhones": {
+        "title": "Una columna, cuatro formatos",
+        "description": "Cada número de teléfono reducido a su forma: un dígito se convierte en 9. El CRM nunca comprobó el formato, así que una columna contiene cuatro, que una unión o un marcador tendría que conciliar antes."
+      },
+      "profilingCountries": {
+        "title": "Un país, varias grafías",
+        "description": "Los cinco valores más frecuentes de la columna country: US, USA y United States son un mismo país, escrito de tres maneras solo entre ellos. Un recuento por país lo dividiría."
+      },
+      "profilingDuplicates": {
+        "title": "Las filas escritas dos veces",
+        "description": "El modelo declara customer_id como clave, pero la exportación no tenía restricción: 150 clientes aparecen dos veces, con todos los campos iguales. El perfil cuenta las filas repetidas y los valores de clave que tienen más de una fila."
+      },
+      "profilingRest": {
+        "title": "La misma respuesta por REST",
+        "description": "La vista también es un endpoint REST. Una herramienta de calidad de datos o un script de migración obtiene el perfil sin escribir SQL."
+      },
+      "profilingRecap": {
+        "title": "Lo que ha visto",
+        "description": "Las tablas adquiridas, leídas en vivo, y un perfil de ellas hecho por el perfilador integrado y conservado como tablas gobernadas: nulos, rangos, formatos, tipos plausibles y duplicados responden qué hay realmente en estos datos, en SQL, GraphQL y REST, según el acceso de cada rol."
       }
     },
     "status": {
@@ -735,6 +783,10 @@
       "testdata": {
         "title": "Datos de prueba",
         "summary": "La base de datos de producción de una tienda, leída en prod tal cual y en dos entornos de prueba como datos generados realistas; las mismas consultas y joins responden en los tres."
+      },
+      "profiling": {
+        "title": "¿Qué hay realmente en estos datos?",
+        "summary": "Los clientes y pedidos de una empresa adquirida, perfilados por el Data Profiler integrado: nulos, rangos, formatos, tipos plausibles y duplicados, guardados como tablas gobernadas y leídos en SQL, GraphQL y REST."
       }
     }
   }
