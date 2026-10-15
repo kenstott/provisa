@@ -687,6 +687,46 @@
       "testdataDone": {
         "title": "這是甚麼",
         "description": "環境是一個模型的分支，虛構值按欄聲明一次。測試（虛構值）環境用逼真的生成值回答每個查詢，保持鍵可連接，並且在個人資料欄沒有虛構值時拒絕建立。生產數據從不離開生產。"
+      },
+      "streamingScenario": {
+        "title": "即時訂單",
+        "description": "一間咖啡店的訂單每秒幾張地到達一個 Kafka 主題,它的商品目錄在它的 Postgres 中。問題:過去五分鐘內哪些地區落單最多?<strong>orders</strong> 是訂單到達的 broker。"
+      },
+      "streamingJoin": {
+        "title": "按目錄價格計價的訂單",
+        "description": "<strong>PLACED_IN</strong> 把每張訂單連接到其地區,ORDERED 連接到其商品,因此訂單的收入來自目錄中的價格。"
+      },
+      "streamingAnswer": {
+        "title": "此刻最繁忙的地區",
+        "description": "<strong>orders_last_five_minutes</strong> 是一個物化視圖:每個地區過去五分鐘的訂單數和收入。每載入一批訂單都會刷新它,所以這次讀取的是幾秒前儲存的行,而不是主題本身。一分鐘後再執行一次,數字就變了。"
+      },
+      "streamingRecap": {
+        "title": "您看到了甚麼",
+        "description": "一個 Kafka 主題被載入為表,並與即時讀取的目錄連接;一個由每批載入保持最新的視圖;同一答案的 SQL、GraphQL 和 REST 形式,按要求快取;以及一個隨資料流變化的訂閱。請從查詢頁面自行瀏覽。"
+      },
+      "streamingCatalog": {
+        "title": "商品目錄",
+        "description": "<strong>catalog</strong> 是咖啡店的 Postgres,即時讀取:每件商品是甚麼、價錢多少,以及咖啡店銷售的地區。"
+      },
+      "streamingOrders": {
+        "title": "主題變成表",
+        "description": "<strong>orders</strong> 是該主題,隨訂單到達而載入它自己的表:最多每兩秒一批,每張訂單按其 id 載入。每載入一批,就會刷新讀取它的視圖,並通知它的訂閱者。"
+      },
+      "streamingFresh": {
+        "title": "載入中的訂單",
+        "description": "表中最新的訂單,比主題晚幾秒。每個沙盒都把整個主題載入自己的表,使用自己的消費者群組。"
+      },
+      "streamingCached": {
+        "title": "GraphQL 中的答案(已快取)",
+        "description": "同一視圖的 GraphQL 形式。<strong>@cached(ttl: 10)</strong> 要求回應快取:十秒內的相同問題由快取回答,X-Provisa-Cache 標頭顯示 HIT。"
+      },
+      "streamingLive": {
+        "title": "看著訂單到達",
+        "description": "對訂單的 GraphQL 訂閱:每載入一批,就會在到達時重新發送最新訂單。讓它保持運行,看著列表變化。"
+      },
+      "streamingRest": {
+        "title": "透過 REST 的答案",
+        "description": "同一視圖的 REST 呼叫,適合定期輪詢它的儀表板。"
       }
     },
     "status": {
@@ -735,6 +775,10 @@
       "testdata": {
         "title": "測試數據",
         "summary": "一間商店的生產數據庫：在 prod 中按原樣讀取，在兩個測試環境中作為逼真的生成數據讀取；相同的查詢和連接在三者中都能給出答案。"
+      },
+      "streaming": {
+        "title": "即時訂單流",
+        "summary": "一間咖啡店的訂單透過 Kafka 即時到達,並與其商品目錄連接:一個過去五分鐘最繁忙地區的視圖,由每批載入刷新,以 SQL、GraphQL 和 REST 回答,可快取,並可透過訂閱觀察。"
       }
     }
   }

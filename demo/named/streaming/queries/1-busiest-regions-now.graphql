@@ -1,0 +1,11 @@
+# Which regions placed the most orders in the last five minutes: the view the landing orders keep
+# current, its answer kept in the response cache for ten seconds (@cached).
+query BusiestRegionsNow @cached(ttl: 10) {
+  s__viewOrdersLastFiveMinutes(order_by: [{ orders: desc }]) {
+    region
+    orders
+    items
+    revenue
+    lastOrderAt
+  }
+}

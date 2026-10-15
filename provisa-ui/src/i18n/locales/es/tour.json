@@ -687,6 +687,46 @@
       "testdataDone": {
         "title": "Qué es esto",
         "description": "Los entornos son ramas de un modelo, y un valor ficticio se declara una vez por columna. Un entorno de prueba (valores ficticios) responde cada consulta con valores generados realistas, mantiene las claves unibles y se rechaza mientras una columna de datos personales no tenga valor ficticio. Los datos de producción nunca salen de producción."
+      },
+      "streamingScenario": {
+        "title": "Pedidos, en vivo",
+        "description": "Los pedidos de una cafetería llegan a un tópico de Kafka, varios por segundo, y su catálogo está en su Postgres. La pregunta: ¿qué regiones hicieron más pedidos en los últimos cinco minutos? <strong>orders</strong> es el broker por el que llegan los pedidos."
+      },
+      "streamingJoin": {
+        "title": "Pedidos con precio del catálogo",
+        "description": "<strong>PLACED_IN</strong> une cada pedido con su región, y ORDERED con su producto, así que los ingresos de un pedido salen del precio del catálogo."
+      },
+      "streamingAnswer": {
+        "title": "Las regiones más activas, ahora",
+        "description": "<strong>orders_last_five_minutes</strong> es una vista materializada: los pedidos e ingresos de cada región en los últimos cinco minutos. Cada lote de pedidos que se carga la actualiza, así que esta lectura es de filas almacenadas de hace pocos segundos, nunca del tópico. Ejecútela de nuevo en un minuto y las cifras habrán cambiado."
+      },
+      "streamingRecap": {
+        "title": "Lo que vio",
+        "description": "Un tópico de Kafka cargado como tabla y unido a un catálogo leído en vivo; una vista que cada lote cargado mantiene al día; la misma respuesta en SQL, GraphQL y REST, en caché cuando se pide; y una suscripción que se mueve con el flujo. Explore por su cuenta desde la página de consultas."
+      },
+      "streamingCatalog": {
+        "title": "El catálogo",
+        "description": "<strong>catalog</strong> es el Postgres de la cafetería, leído en vivo: qué es y cuánto cuesta cada producto, y las regiones en las que vende la cafetería."
+      },
+      "streamingOrders": {
+        "title": "Un tópico se convierte en tabla",
+        "description": "<strong>orders</strong> es el tópico, cargado en una tabla propia a medida que llegan los pedidos: un lote como máximo cada dos segundos, cada pedido por su id. Cada lote que se carga actualiza las vistas que lo leen y avisa a sus suscriptores."
+      },
+      "streamingFresh": {
+        "title": "Los pedidos según se cargan",
+        "description": "Los pedidos más recientes de la tabla, unos segundos por detrás del tópico. Cada sandbox carga el tópico entero en su propia tabla, con su propio grupo de consumidores."
+      },
+      "streamingCached": {
+        "title": "La respuesta en GraphQL, en caché",
+        "description": "La misma vista en GraphQL. <strong>@cached(ttl: 10)</strong> pide la caché de respuestas: la misma pregunta en diez segundos se responde desde la caché, y la cabecera X-Provisa-Cache indica HIT."
+      },
+      "streamingLive": {
+        "title": "Vea llegar los pedidos",
+        "description": "Una suscripción GraphQL a los pedidos: cada lote que se carga vuelve a enviar los pedidos más recientes en cuanto llega. Déjela abierta y vea moverse la lista."
+      },
+      "streamingRest": {
+        "title": "La respuesta por REST",
+        "description": "La misma vista como llamada REST, para un panel que la consulta periódicamente."
       }
     },
     "status": {
@@ -735,6 +775,10 @@
       "testdata": {
         "title": "Datos de prueba",
         "summary": "La base de datos de producción de una tienda, leída en prod tal cual y en dos entornos de prueba como datos generados realistas; las mismas consultas y joins responden en los tres."
+      },
+      "streaming": {
+        "title": "Flujo de pedidos en vivo",
+        "summary": "Los pedidos de una cafetería llegan en vivo por Kafka y se unen a su catálogo: una vista de las regiones más activas de los últimos cinco minutos, actualizada por cada lote que se carga, respondida en SQL, GraphQL y REST, en caché y seguida con una suscripción."
       }
     }
   }

@@ -1,0 +1,11 @@
+# The latest orders, live: every batch that lands sends the list again.
+subscription WatchTheOrders {
+  s__orders(limit: 10, order_by: [{ orderedAt: desc }]) {
+    orderId
+    quantity
+    orderedAt
+    region {
+      name
+    }
+  }
+}

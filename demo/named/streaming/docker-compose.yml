@@ -1,0 +1,107 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The named demo "streaming" (start-ui-install.sh --demo streaming; REQ-2033). This file is its one
+# start point: `docker compose up -d` brings up its catalog, its broker and its order feed.
+#
+#   postgres  the shop's catalog, products and regions (db/init.sql), read live as provisa_reader.
+#   kafka     the broker the orders arrive on, the topic `orders`.
+#   producer  the live order feed (producer.py): a few orders a second, for as long as it runs.
+#
+# Ports: 28732 the catalog (moved by its variable); 29092 the broker, fixed: a broker tells its
+# clients the address to dial, and that address is its own published port.
+x-demo-labels: &demo-labels
+  com.provisa.demo: streaming
+name: provisa-demo-streaming
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: streaming
+    ports:
+      - "127.0.0.1:${STREAMING_PG_PORT:-28732}:5432"
+    volumes:
+      - streaming_pg:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+      - ./db/reader.sql:/docker-entrypoint-initdb.d/20-reader.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d streaming"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: stream
+      # Where config.yaml's orders source reaches it, for the sandbox tier's node (REQ-2049,
+      # scripts/demo_stores_sync.sh). No port_env: a broker advertises the port its clients dial,
+      # so its port is fixed and never one docker picks (see the header).
+      com.provisa.demo.host_env: STREAMING_KAFKA_HOST
+      com.provisa.demo.port: "29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,HOST://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      CLUSTER_ID: c3RyZWFtaW5nLWRlbW8tMQ
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # An hour of orders is all any reader of the demo looks back over.
+      KAFKA_LOG_RETENTION_MS: 3600000
+      KAFKA_HEAP_OPTS: "-Xmx256m -Xms256m"
+      DEMO_STORES_NETWORK: ${DEMO_STORES_NETWORK:-}
+    # The HOST listener advertises the address its client dials: on this host, 127.0.0.1; on the
+    # sandbox tier's network (DEMO_STORES_NETWORK, which the node joins the stores to), this
+    # container's own name there, its hostname. Decided when it starts.
+    command:
+      - bash
+      - -c
+      - >-
+        if [ -n "$$DEMO_STORES_NETWORK" ]; then host="$$(hostname)"; else host=127.0.0.1; fi;
+        export KAFKA_ADVERTISED_LISTENERS="INTERNAL://kafka:9092,HOST://$$host:29092";
+        exec /etc/confluent/docker/run
+    ports:
+      - "127.0.0.1:29092:29092"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+      start_period: 30s
+  producer:
+    image: provisa-demo-streaming-producer:1
+    build:
+      context: .
+      dockerfile: Dockerfile.producer
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: producer
+    environment:
+      ORDERS_BOOTSTRAP: kafka:9092
+      ORDERS_PER_SECOND: "4"
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+volumes:
+  streaming_pg:

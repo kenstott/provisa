@@ -687,6 +687,46 @@
       "testdataDone": {
         "title": "Was das ist",
         "description": "Umgebungen sind Zweige eines Modells, und ein Fake-Wert wird einmal pro Spalte deklariert. Eine Test-Umgebung (Fake-Werte) beantwortet jede Abfrage mit realistischen generierten Werten, hält Schlüssel verknüpfbar und wird verweigert, solange eine Spalte mit personenbezogenen Daten keinen Fake-Wert hat. Produktionsdaten verlassen die Produktion nie."
+      },
+      "streamingScenario": {
+        "title": "Bestellungen, live",
+        "description": "Die Bestellungen eines Cafés treffen auf einem Kafka-Topic ein, einige pro Sekunde, und sein Katalog liegt in seiner Postgres-Datenbank. Die Frage: Welche Regionen haben in den letzten fünf Minuten die meisten Bestellungen aufgegeben? <strong>orders</strong> ist der Broker, auf dem die Bestellungen eintreffen."
+      },
+      "streamingJoin": {
+        "title": "Bestellungen, bepreist aus dem Katalog",
+        "description": "<strong>PLACED_IN</strong> verbindet jede Bestellung mit ihrer Region und ORDERED mit ihrem Produkt, sodass der Umsatz einer Bestellung aus dem Katalogpreis stammt."
+      },
+      "streamingAnswer": {
+        "title": "Die aktivsten Regionen, jetzt",
+        "description": "<strong>orders_last_five_minutes</strong> ist eine materialisierte View: Bestellungen und Umsatz jeder Region in den letzten fünf Minuten. Jeder übernommene Stapel von Bestellungen aktualisiert sie, daher liest diese Abfrage gespeicherte Zeilen, wenige Sekunden alt, nie das Topic. Führen Sie sie in einer Minute erneut aus, und die Zahlen haben sich bewegt."
+      },
+      "streamingRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Ein Kafka-Topic als Tabelle übernommen und mit einem live gelesenen Katalog verbunden; eine View, aktuell gehalten durch jeden übernommenen Stapel; dieselbe Antwort in SQL, GraphQL und REST, auf Anfrage gecacht; und ein Abonnement, das sich mit dem Feed bewegt. Sehen Sie sich von der Abfrageseite aus selbst um."
+      },
+      "streamingCatalog": {
+        "title": "Der Katalog",
+        "description": "<strong>catalog</strong> ist die Postgres-Datenbank des Cafés, live gelesen: was jedes Produkt ist und kostet, und die Regionen, in denen das Café verkauft."
+      },
+      "streamingOrders": {
+        "title": "Aus einem Topic wird eine Tabelle",
+        "description": "<strong>orders</strong> ist das Topic, in eine eigene Tabelle übernommen, während die Bestellungen eintreffen: höchstens alle zwei Sekunden ein Stapel, jede Bestellung über ihre ID. Jeder übernommene Stapel aktualisiert die Views, die ihn lesen, und benachrichtigt seine Abonnenten."
+      },
+      "streamingFresh": {
+        "title": "Die Bestellungen, wie sie ankommen",
+        "description": "Die neuesten Bestellungen in der Tabelle, wenige Sekunden hinter dem Topic. Jede Sandbox übernimmt das ganze Topic in ihre eigene Tabelle, unter ihrer eigenen Consumer-Gruppe."
+      },
+      "streamingCached": {
+        "title": "Die Antwort in GraphQL, gecacht",
+        "description": "Dieselbe View in GraphQL. <strong>@cached(ttl: 10)</strong> fordert den Antwort-Cache an: Dieselbe Frage innerhalb von zehn Sekunden wird aus dem Cache beantwortet, und der Header X-Provisa-Cache meldet HIT."
+      },
+      "streamingLive": {
+        "title": "Den Bestellungen zusehen",
+        "description": "Ein GraphQL-Abonnement auf die Bestellungen: Jeder übernommene Stapel sendet die neuesten Bestellungen erneut, sobald er ankommt. Lassen Sie es laufen und sehen Sie zu, wie sich die Liste bewegt."
+      },
+      "streamingRest": {
+        "title": "Die Antwort über REST",
+        "description": "Dieselbe View als REST-Aufruf, für ein Dashboard, das sie abfragt."
       }
     },
     "status": {
@@ -735,6 +775,10 @@
       "testdata": {
         "title": "Testdaten",
         "summary": "Die Produktionsdatenbank eines Shops, in prod so gelesen, wie sie ist, und in zwei Testumgebungen als realistische generierte Daten; dieselben Abfragen und Joins antworten in allen dreien."
+      },
+      "streaming": {
+        "title": "Live-Bestellstrom",
+        "summary": "Die Bestellungen eines Cafés treffen live über Kafka ein und werden mit seinem Katalog verbunden: eine View der aktivsten Regionen der letzten fünf Minuten, aktualisiert durch jeden übernommenen Stapel, beantwortet in SQL, GraphQL und REST, gecacht und per Abonnement beobachtet."
       }
     }
   }

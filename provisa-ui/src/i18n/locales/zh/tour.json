@@ -687,6 +687,46 @@
       "testdataDone": {
         "title": "这是什么",
         "description": "环境是一个模型的分支，虚构值按列声明一次。测试（虚构值）环境用逼真的生成值回答每个查询，保持键可连接，并且在个人数据列没有虚构值时拒绝创建。生产数据从不离开生产。"
+      },
+      "streamingScenario": {
+        "title": "实时订单",
+        "description": "一家咖啡店的订单每秒几笔地到达一个 Kafka 主题,它的商品目录在它的 Postgres 中。问题:过去五分钟内哪些地区下单最多?<strong>orders</strong> 是订单到达的 broker。"
+      },
+      "streamingJoin": {
+        "title": "按目录价格计价的订单",
+        "description": "<strong>PLACED_IN</strong> 把每笔订单连接到其地区,ORDERED 连接到其商品,因此订单的收入来自目录中的价格。"
+      },
+      "streamingAnswer": {
+        "title": "此刻最繁忙的地区",
+        "description": "<strong>orders_last_five_minutes</strong> 是一个物化视图:每个地区过去五分钟的订单数和收入。每载入一批订单都会刷新它,所以这次读取的是几秒前存储的行,而不是主题本身。一分钟后再运行一次,数字就变了。"
+      },
+      "streamingRecap": {
+        "title": "您看到了什么",
+        "description": "一个 Kafka 主题被载入为表,并与实时读取的目录连接;一个由每批载入保持最新的视图;同一答案的 SQL、GraphQL 和 REST 形式,按请求缓存;以及一个随数据流变化的订阅。请从查询页面自行浏览。"
+      },
+      "streamingCatalog": {
+        "title": "商品目录",
+        "description": "<strong>catalog</strong> 是咖啡店的 Postgres,实时读取:每种商品是什么、价格多少,以及咖啡店销售的地区。"
+      },
+      "streamingOrders": {
+        "title": "主题变成表",
+        "description": "<strong>orders</strong> 是该主题,随着订单到达被载入它自己的表:最多每两秒一批,每笔订单按其 id 载入。每载入一批,就会刷新读取它的视图,并通知它的订阅者。"
+      },
+      "streamingFresh": {
+        "title": "载入中的订单",
+        "description": "表中最新的订单,比主题晚几秒。每个沙箱都把整个主题载入自己的表,使用自己的消费者组。"
+      },
+      "streamingCached": {
+        "title": "GraphQL 中的答案(已缓存)",
+        "description": "同一视图的 GraphQL 形式。<strong>@cached(ttl: 10)</strong> 请求响应缓存:十秒内的相同问题由缓存回答,X-Provisa-Cache 头显示 HIT。"
+      },
+      "streamingLive": {
+        "title": "看着订单到达",
+        "description": "对订单的 GraphQL 订阅:每载入一批,就会在到达时重新发送最新订单。让它保持运行,看着列表变化。"
+      },
+      "streamingRest": {
+        "title": "通过 REST 的答案",
+        "description": "同一视图的 REST 调用,适合定期轮询它的仪表板。"
       }
     },
     "status": {
@@ -735,6 +775,10 @@
       "testdata": {
         "title": "测试数据",
         "summary": "一家商店的生产数据库：在 prod 中按原样读取，在两个测试环境中作为逼真的生成数据读取；相同的查询和连接在三者中都能给出答案。"
+      },
+      "streaming": {
+        "title": "实时订单流",
+        "summary": "一家咖啡店的订单通过 Kafka 实时到达,并与其商品目录连接:一个过去五分钟最繁忙地区的视图,由每批载入刷新,以 SQL、GraphQL 和 REST 回答,可缓存,并可通过订阅观察。"
       }
     }
   }

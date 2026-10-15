@@ -687,6 +687,46 @@
       "testdataDone": {
         "title": "Wat dit is",
         "description": "Omgevingen zijn takken van één model, en een nepwaarde wordt één keer per kolom gedeclareerd. Een testomgeving (nepwaarden) beantwoordt elke query met realistische gegenereerde waarden, houdt sleutels koppelbaar en wordt geweigerd zolang een kolom met persoonsgegevens geen nepwaarde heeft. Productiegegevens verlaten productie nooit."
+      },
+      "streamingScenario": {
+        "title": "Bestellingen, live",
+        "description": "De bestellingen van een koffiezaak komen binnen op een Kafka-topic, een paar per seconde, en de catalogus staat in de eigen Postgres. De vraag: welke regio's plaatsten de afgelopen vijf minuten de meeste bestellingen? <strong>orders</strong> is de broker waarop de bestellingen binnenkomen."
+      },
+      "streamingJoin": {
+        "title": "Bestellingen geprijsd uit de catalogus",
+        "description": "<strong>PLACED_IN</strong> koppelt elke bestelling aan haar regio, en ORDERED aan haar product, zodat de omzet van een bestelling uit de catalogusprijs komt."
+      },
+      "streamingAnswer": {
+        "title": "De drukste regio's, nu",
+        "description": "<strong>orders_last_five_minutes</strong> is een gematerialiseerde view: de bestellingen en omzet van elke regio in de afgelopen vijf minuten. Elke geladen batch bestellingen ververst hem, dus deze lezing gaat over opgeslagen rijen van een paar seconden oud, nooit over het topic. Voer hem over een minuut opnieuw uit en de cijfers zijn verschoven."
+      },
+      "streamingRecap": {
+        "title": "Wat u zag",
+        "description": "Een Kafka-topic geladen als tabel en gekoppeld aan een live gelezen catalogus; een view die elke geladen batch actueel houdt; hetzelfde antwoord in SQL, GraphQL en REST, op verzoek uit de cache; en een abonnement dat met de feed meebeweegt. Kijk zelf rond vanaf de querypagina."
+      },
+      "streamingCatalog": {
+        "title": "De catalogus",
+        "description": "<strong>catalog</strong> is de Postgres van de koffiezaak, live gelezen: wat elk product is en kost, en de regio's waarin de zaak verkoopt."
+      },
+      "streamingOrders": {
+        "title": "Een topic wordt een tabel",
+        "description": "<strong>orders</strong> is het topic, geladen in een eigen tabel terwijl de bestellingen binnenkomen: hooguit elke twee seconden een batch, elke bestelling op haar id. Elke geladen batch ververst de views die hem lezen en meldt het aan de abonnees."
+      },
+      "streamingFresh": {
+        "title": "De bestellingen zoals ze binnenkomen",
+        "description": "De nieuwste bestellingen in de tabel, een paar seconden achter het topic. Elke sandbox laadt het hele topic in een eigen tabel, onder een eigen consumer group."
+      },
+      "streamingCached": {
+        "title": "Het antwoord in GraphQL, uit de cache",
+        "description": "Dezelfde view in GraphQL. <strong>@cached(ttl: 10)</strong> vraagt om de responscache: dezelfde vraag binnen tien seconden wordt uit de cache beantwoord, en de header X-Provisa-Cache meldt HIT."
+      },
+      "streamingLive": {
+        "title": "Zie de bestellingen binnenkomen",
+        "description": "Een GraphQL-abonnement op de bestellingen: elke geladen batch stuurt de nieuwste bestellingen opnieuw zodra hij binnenkomt. Laat het lopen en zie de lijst bewegen."
+      },
+      "streamingRest": {
+        "title": "Het antwoord via REST",
+        "description": "Dezelfde view als REST-aanroep, voor een dashboard dat hem periodiek opvraagt."
       }
     },
     "status": {
@@ -735,6 +775,10 @@
       "testdata": {
         "title": "Testgegevens",
         "summary": "De productiedatabase van een winkel, in prod gelezen zoals hij is en in twee testomgevingen als realistische gegenereerde gegevens; dezelfde queries en joins antwoorden in alle drie."
+      },
+      "streaming": {
+        "title": "Live bestelstroom",
+        "summary": "De bestellingen van een koffiezaak komen live binnen via Kafka en worden gekoppeld aan de catalogus: een view van de drukste regio's in de afgelopen vijf minuten, ververst door elke geladen batch, beantwoord in SQL, GraphQL en REST, uit de cache en gevolgd met een abonnement."
       }
     }
   }
