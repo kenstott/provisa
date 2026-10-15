@@ -74,5 +74,13 @@
     "confirmDeleteTitle": "Supprimer ce compte ?",
     "confirmDeleteBody": "{{username}} quitte toutes les organisations et son profil est supprimé. Les organisations dont il fait partie sont conservées. Cette action est irréversible.",
     "confirmDeleteButton": "Supprimer le compte"
+  },
+  "grantPicker": {
+    "and": "et",
+    "combine": "Combiner des rôles en une autorisation",
+    "combineHelp": "Un lecteur doit détenir chacun des rôles indiqués ici. Saisissez un rôle de revendication tel que region__eu s'il n'est pas proposé.",
+    "parts": "Rôles qu'un lecteur doit tous détenir",
+    "partsPlaceholder": "Choisissez ou saisissez un rôle et appuyez sur Entrée",
+    "add": "Ajouter"
   }
 }

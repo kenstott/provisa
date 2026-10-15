@@ -74,5 +74,13 @@
     "confirmDeleteTitle": "Eliminare questo account?",
     "confirmDeleteBody": "{{username}} lascia tutte le organizzazioni e il suo profilo viene eliminato. Le organizzazioni di cui fa parte restano. L'operazione non può essere annullata.",
     "confirmDeleteButton": "Elimina account"
+  },
+  "grantPicker": {
+    "and": "e",
+    "combine": "Combina ruoli in un'unica concessione",
+    "combineHelp": "Un lettore deve avere ogni ruolo elencato qui. Digita un ruolo di attestazione come region__eu se non è proposto.",
+    "parts": "Ruoli che un lettore deve avere tutti",
+    "partsPlaceholder": "Scegli o digita un ruolo e premi Invio",
+    "add": "Aggiungi"
   }
 }

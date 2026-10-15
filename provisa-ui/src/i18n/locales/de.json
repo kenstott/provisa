@@ -74,5 +74,13 @@
     "confirmDeleteTitle": "Dieses Konto löschen?",
     "confirmDeleteBody": "{{username}} verlässt alle Organisationen und das Profil wird gelöscht. Die Organisationen selbst bleiben bestehen. Dies kann nicht rückgängig gemacht werden.",
     "confirmDeleteButton": "Konto löschen"
+  },
+  "grantPicker": {
+    "and": "und",
+    "combine": "Rollen zu einer Freigabe kombinieren",
+    "combineHelp": "Ein Leser muss jede hier aufgeführte Rolle besitzen. Geben Sie eine Claim-Rolle wie region__eu ein, wenn sie nicht angeboten wird.",
+    "parts": "Rollen, die ein Leser alle besitzen muss",
+    "partsPlaceholder": "Rolle wählen oder eingeben und Enter drücken",
+    "add": "Hinzufügen"
   }
 }

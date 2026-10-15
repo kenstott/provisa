@@ -74,5 +74,13 @@
     "confirmDeleteTitle": "Delete this account?",
     "confirmDeleteBody": "{{username}} leaves every organization and their profile is deleted. Organizations they belong to stay. This cannot be undone.",
     "confirmDeleteButton": "Delete account"
+  },
+  "grantPicker": {
+    "and": "and",
+    "combine": "Combine roles into one grant",
+    "combineHelp": "A reader must hold every role you list here. Type a claim role such as region__eu if it is not offered.",
+    "parts": "Roles a reader must all hold",
+    "partsPlaceholder": "Pick or type a role and press Enter",
+    "add": "Add"
   }
 }

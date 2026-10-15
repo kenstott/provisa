@@ -1732,7 +1732,11 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
 
     # What any role's surface is built from, kept so a role made later in this generation — a
     # meta-role (security/meta_role.py) — is built exactly as the stored roles are here.
+    from provisa.security.inheritance import role_chains as _role_chains
+
     state.role_build_inputs = {
+        # REQ-2058: each stored role with its ancestors -- what a meta-role made later holds.
+        "role_chains": _role_chains(roles),
         "relationships": relationships,
         "column_types": col_types_converted,
         "naming_rules": naming_rules,

@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import type { TFunction } from "i18next";
+import { grantsLabel } from "../../lib/grants";
 import type { RegisteredTable } from "../../types/admin";
 
 /** Map a RegisteredTable to the full TableInput payload for updateTable. Shared by the
@@ -228,4 +230,9 @@ export function shownGrants(list: string[] | null): string[] {
     throw new Error("grant lists were withheld; the table editor is not offered without them");
   }
   return list;
+}
+
+/** A grant list as a reader reads it, composites as "a and b" (REQ-2058). */
+export function shownGrantsLabel(list: string[] | null, t: TFunction): string {
+  return grantsLabel(shownGrants(list), t);
 }

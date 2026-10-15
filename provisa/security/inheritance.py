@@ -34,6 +34,20 @@ from collections.abc import Iterable
 
 GRANT_LISTS = ("visible_to", "writable_by", "unmasked_to")
 
+#: Joins the roles of a composite grant entry (REQ-2058): ``analyst+region__eu`` is held by a
+#: reader holding ALL of them. Across a grant list's entries the reader needs ANY one.
+COMPOSITE = "+"
+
+
+def grant_parts(entry: str) -> frozenset[str]:
+    """The roles a grant entry asks a reader to hold, all of them: one for a plain entry."""
+    return frozenset(entry.split(COMPOSITE))
+
+
+def holds_entry(entry: str, chain: Iterable[str]) -> bool:
+    """Whether a reader whose roles (each with its ancestors) are ``chain`` holds ``entry``."""
+    return grant_parts(entry) <= set(chain)
+
 
 def parent_map(roles: Iterable[dict]) -> dict[str, str | None]:
     """role id → parent role id (None when the role has no parent)."""
@@ -137,15 +151,21 @@ def effective_domain_access(role_id: str, roles: Iterable[dict]) -> list[str]:
 
 
 def expand_grants(items: Iterable[dict], chains: dict[str, list[str]]) -> None:
-    """Add each role to every grant list on ``items`` that names one of its ancestors."""
+    """Add each role to every grant list on ``items`` that names one of its ancestors, or a
+    composite entry whose every role is in its chain (REQ-2058)."""
     for item in items:
         for key in GRANT_LISTS:
             granted = item.get(key)
             if not granted:
                 continue
             present = set(granted)
+            composites = [e for e in granted if COMPOSITE in e]
             for rid, chain in chains.items():
-                if rid not in present and any(anc in present for anc in chain[1:]):
+                if rid in present:
+                    continue
+                if any(anc in present for anc in chain[1:]) or any(
+                    holds_entry(e, chain) for e in composites
+                ):
                     granted.append(rid)
                     present.add(rid)
 
@@ -156,9 +176,13 @@ def expand_column_grants(tables: Iterable[dict], chains: dict[str, list[str]]) -
 
 
 def holds_grant(role_id: str, granted: Iterable[str], chains: dict[str, list[str]]) -> bool:
-    """Whether ``role_id`` or an ancestor is in ``granted``."""
+    """Whether ``role_id`` or an ancestor is in ``granted``, or ``role_id``'s chain holds every
+    role of a composite entry in it (REQ-2058)."""
+    chain = chains.get(role_id, [role_id])
     present = set(granted)
-    return any(rid in present for rid in chains.get(role_id, [role_id]))
+    return any(rid in present for rid in chain) or any(
+        holds_entry(e, chain) for e in present if COMPOSITE in e
+    )
 
 
 def materialize_rls(

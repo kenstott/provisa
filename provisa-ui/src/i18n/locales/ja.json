@@ -74,5 +74,13 @@
     "confirmDeleteTitle": "このアカウントを削除しますか?",
     "confirmDeleteBody": "{{username}} はすべての組織から外れ、プロフィールが削除されます。所属していた組織は残ります。この操作は元に戻せません。",
     "confirmDeleteButton": "アカウントを削除"
+  },
+  "grantPicker": {
+    "and": "かつ",
+    "combine": "ロールを 1 つの付与にまとめる",
+    "combineHelp": "読み手はここに挙げたすべてのロールを持っている必要があります。region__eu のような要求ロールが候補にない場合は入力してください。",
+    "parts": "読み手がすべて持つ必要があるロール",
+    "partsPlaceholder": "ロールを選ぶか入力して Enter キーを押します",
+    "add": "追加"
   }
 }

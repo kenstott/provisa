@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { grantLabel } from "../../lib/grants";
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { ChartColumn, DatabaseZap, Eye, Pencil, ShieldCheck, Trash2 } from "lucide-react";
@@ -574,11 +575,17 @@ export function TableReadView({
                             },
                             {
                               label: t("tableReadView.colVisibleTo"),
-                              value: c.visibleTo === null ? "" : c.visibleTo.join(", "),
+                              value:
+                                c.visibleTo === null
+                                  ? ""
+                                  : c.visibleTo.map((e) => grantLabel(e, t)).join(", "),
                             },
                             {
                               label: t("tableReadView.colWritableBy"),
-                              value: c.writableBy === null ? "" : c.writableBy.join(", "),
+                              value:
+                                c.writableBy === null
+                                  ? ""
+                                  : c.writableBy.map((e) => grantLabel(e, t)).join(", "),
                             },
                             { label: t("tableReadView.colMasking"), value: c.maskType || "" },
                           ]}
@@ -692,7 +699,7 @@ export function TableReadView({
                               <Group gap={4} wrap="nowrap">
                                 <Text span size="sm">
                                   {c.visibleTo.length > 0
-                                    ? c.visibleTo.join(", ")
+                                    ? c.visibleTo.map((e) => grantLabel(e, t)).join(", ")
                                     : t("tableReadView.all")}
                                 </Text>
                                 {c.visibleTo.length > 0 && (
@@ -708,7 +715,7 @@ export function TableReadView({
                             {c.writableBy === null
                               ? t("tableReadView.notShown")
                               : c.writableBy.length > 0
-                                ? c.writableBy.join(", ")
+                                ? c.writableBy.map((e) => grantLabel(e, t)).join(", ")
                                 : t("tableReadView.none")}
                           </Table.Td>
                           <Table.Td c={c.visibleTo === null ? "dimmed" : undefined}>
@@ -738,7 +745,7 @@ export function TableReadView({
                           {t("tableReadView.unmaskedTo", {
                             list:
                               c.unmaskedTo !== null && c.unmaskedTo.length > 0
-                                ? c.unmaskedTo.join(", ")
+                                ? c.unmaskedTo.map((e) => grantLabel(e, t)).join(", ")
                                 : t("tableReadView.none"),
                           })}
                         </Table.Td>

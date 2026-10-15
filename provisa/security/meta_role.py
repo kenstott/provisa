@@ -220,7 +220,14 @@ def _build(
 
     member_roles = [state.roles[m] for m in member_ids]
     inputs = state.role_build_inputs
-    chains = {meta_id: [meta_id, *member_ids, *qualifiers]}
+    # The child holds every member and each member's ancestors (a composite grant names them,
+    # REQ-2058), and the pseudo-roles it was named with.
+    held: list[str] = []
+    for m in member_ids:
+        for rid in inputs["role_chains"][m]:
+            if rid not in held:
+                held.append(rid)
+    chains = {meta_id: [meta_id, *held, *(q for q in qualifiers if q not in held)]}
     # Inheritance with several parents: every grant to a member reaches the child.
     for t in inputs["tables"]:
         expand_grants(t.get("columns") or [], chains)
