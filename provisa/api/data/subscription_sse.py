@@ -254,6 +254,11 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
 
             effective_watermark = _watermark
 
+            # A table a push listener lands (Kafka, WebSocket) changes when a batch lands in it:
+            # its subscription waits for that, never reading the source's feed itself.
+            from provisa.core.change_signal import PUSH_SOURCE_TYPES
+
+            use_landed = source_type in PUSH_SOURCE_TYPES and source_type != "ingest"
             # Watch for table changes — pg_notify triggers preferred; poll as fallback
             use_polling_fallback = (
                 source_type == "postgresql"
@@ -262,6 +267,7 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
             )
             use_engine_polling = (
                 not use_polling_fallback
+                and not use_landed
                 and source_type != "postgresql"
                 and effective_watermark is not None
             )
@@ -281,7 +287,11 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
                 provider_config["database"] = source_pool
 
             try:
-                if use_polling_fallback:
+                if use_landed:
+                    from provisa.subscriptions.landed import LandedNotificationProvider
+
+                    provider = LandedNotificationProvider(source_id, table_meta.schema_name)
+                elif use_polling_fallback:
                     from provisa.subscriptions.polling_provider import PollingNotificationProvider
 
                     watermark_col: str = cast(str, provider_config["watermark_column"])

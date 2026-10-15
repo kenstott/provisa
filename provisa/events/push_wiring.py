@@ -982,6 +982,10 @@ async def _run_listener(
 
             await ripple(state, node, event_type="delta", payload={"landed": counts})
         if any(counts.values()):
+            # Its subscriptions re-run on the landed table now that the batch is in it.
+            from provisa.subscriptions.landed import landed
+
+            landed(*key)
             # REQ-2054: a landed batch is a burst of changes to the table.
             from provisa.scheduler.table_triggers import table_changed
 

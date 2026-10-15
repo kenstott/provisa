@@ -12,9 +12,10 @@
 # only; the broker and the live order feed, as in the build. Every sandbox of the demo lands the
 # orders from the one broker into its own table, under its own consumer group.
 #
-# The broker's port is fixed, 29092: it advertises the address its clients dial (see the kafka
-# service). So two versions of the demo do not run on one host from their bundles at once, where
-# the stores are reached on 127.0.0.1; on the sandbox tier's network each is reached by name.
+# The broker's port is STREAMING_KAFKA_PORT, 29092 unless set, never one docker picks: it advertises
+# the address its clients dial (see the kafka service). So two versions of the demo do not run on
+# one host from their bundles at once where the stores are reached on 127.0.0.1; on the sandbox
+# tier's network each is reached by name.
 
 x-demo-labels: &demo-labels
   com.provisa.demo: streaming
@@ -58,15 +59,15 @@ services:
       com.provisa.demo.role: stream
       # Where config.yaml's orders source reaches it, for the sandbox tier's node (REQ-2049,
       # scripts/demo_stores_sync.sh). No port_env: a broker advertises the port its clients dial,
-      # so its port is fixed and never one docker picks (see the header).
+      # so its port is never one docker picks (see the header).
       com.provisa.demo.host_env: STREAMING_KAFKA_HOST
-      com.provisa.demo.port: "29092"
+      com.provisa.demo.port: "${STREAMING_KAFKA_PORT:-29092}"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:29093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,HOST://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,HOST://0.0.0.0:${STREAMING_KAFKA_PORT:-29092},CONTROLLER://0.0.0.0:29093
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       CLUSTER_ID: c3RyZWFtaW5nLWRlbW8tMQ
@@ -86,10 +87,11 @@ services:
       - -c
       - >-
         if [ -n "$$DEMO_STORES_NETWORK" ]; then host="$$(hostname)"; else host=127.0.0.1; fi;
-        export KAFKA_ADVERTISED_LISTENERS="INTERNAL://kafka:9092,HOST://$$host:29092";
+        export KAFKA_ADVERTISED_LISTENERS="INTERNAL://kafka:9092,HOST://$$host:${STREAMING_KAFKA_PORT:-29092}";
         exec /etc/confluent/docker/run
     ports:
-      - "127.0.0.1:29092:29092"
+      # The same port inside and out: the address the broker advertises is the one dialled.
+      - "127.0.0.1:${STREAMING_KAFKA_PORT:-29092}:${STREAMING_KAFKA_PORT:-29092}"
     healthcheck:
       test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null || exit 1"]
       interval: 5s
