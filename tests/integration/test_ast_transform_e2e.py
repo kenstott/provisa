@@ -6,34 +6,28 @@
 
 """Differential e2e proof that the governance pipeline is AST-based (REQ-913).
 
-Runs the FULL path — compile → mask-inject → transpile → execute — against in-process
+Runs the FULL path — compile → govern (compiler/stage2) → transpile → execute — against in-process
 DuckDB and inspects the RETURNED ROWS, not the SQL text. The two tests share one governor,
 one dataset, and one execution harness; they differ ONLY in the shape of the projection:
 
-  - control:  a plain projection — the string masker's regex boundary happens to be right,
-              so the SSN cell comes back masked. Proves the harness works.
-  - defeating: a projected string literal containing the word ``from``. `_find_select_end`
-              matches that keyword INSIDE the literal, moves the SELECT boundary, and the
-              masker never reaches "ssn" — the real SSN is returned to the caller.
+  - control:  a plain projection — the SSN cell comes back masked. Proves the harness works.
+  - defeating: a projected string literal containing the word ``from``. A text scan for the
+              projection's end would match that keyword INSIDE the literal, move the SELECT
+              boundary, and never reach "ssn" — returning the real SSN to the caller.
 
-If the pipeline were AST-based, the literal's contents could not move a clause boundary and
-both would mask identically. The defeating case is xfail(strict): it leaks today and flips to
-a hard failure (forcing marker removal) once transforms operate on the tree.
+The pipeline is AST-based, so the literal's contents cannot move a clause boundary and both
+mask identically.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from provisa.compiler.mask_inject import MaskingRules, inject_masking
-from provisa.compiler.sql_gen import (
-    ColumnRef,
-    CompilationContext,
-    CompiledQuery,
-    TableMeta,
-)
+from provisa.compiler.mask_inject import MaskingRules
+from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.security.masking import MaskType, MaskingRule
 from provisa.transpiler.transpile import transpile
+from tests.helpers import governed_for_role
 
 pytestmark = pytest.mark.integration
 
@@ -76,16 +70,9 @@ def _ssn_rule() -> MaskingRules:
 
 
 def _govern_and_execute(pg_sql: str) -> list[tuple]:
-    """compile → mask-inject → transpile(duckdb) → execute → rows."""
-    compiled = CompiledQuery(
-        sql=pg_sql,
-        params=[],
-        root_field="customers",
-        columns=[ColumnRef(alias=None, column="ssn", field_name="ssn", nested_in=None)],
-        sources={"duck"},
-    )
-    governed = inject_masking(compiled, _ctx(), _ssn_rule(), "analyst")
-    return _con().execute(transpile(governed.sql, "duckdb")).fetchall()
+    """compile → govern → transpile(duckdb) → execute → rows."""
+    governed = governed_for_role(pg_sql, _ctx(), "analyst", masking_rules=_ssn_rule())
+    return _con().execute(transpile(governed, "duckdb")).fetchall()
 
 
 def test_control_plain_projection_masks_ssn_in_executed_rows():

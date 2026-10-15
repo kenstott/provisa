@@ -13,16 +13,12 @@
 from provisa.compiler.rls import (
     RLSContext,
     build_rls_context,
-    inject_rls,
     _inject_where,
     _qualify_filter,
 )
-from provisa.compiler.sql_gen import (
-    ColumnRef,
-    CompilationContext,
-    CompiledQuery,
-    TableMeta,
-)
+from provisa.compiler.sql_gen import CompilationContext, TableMeta
+from provisa.security.row_filters import resolve_table_rules
+from tests.helpers import governed_for_role
 
 
 def _meta(table_id=1, field_name="orders", table_name="orders", source_id="pg"):
@@ -37,21 +33,18 @@ def _meta(table_id=1, field_name="orders", table_name="orders", source_id="pg"):
     )
 
 
-def _compiled(sql, root_field="orders", sources=None):
-    return CompiledQuery(
-        sql=sql,
-        params=[],
-        root_field=root_field,
-        columns=[ColumnRef(alias=None, column="id", field_name="id", nested_in=None)],
-        sources=sources or {"pg"},
-    )
-
-
 def _ctx(tables=None, joins=None):
     ctx = CompilationContext()
     ctx.tables = tables or {"orders": _meta()}
     ctx.joins = joins or {}
     return ctx
+
+
+def _resolved(rules: list[dict], meta: TableMeta, role: str = "a") -> RLSContext:
+    """The role's row filters as the server builds them: each table's own rule, else its
+    domain's, folded into one table-level rule (security/row_filters.resolve_table_rules)."""
+    tables = [{"id": meta.table_id, "domain_id": meta.domain_id}]
+    return build_rls_context(resolve_table_rules(rules, tables, {role: [role]}, [], {}), role)
 
 
 class TestBuildRLSContext:
@@ -116,7 +109,7 @@ class TestDomainRLS:
             domain_id="sales",
         )
         ctx = _ctx(tables={"orders": meta})
-        rls = build_rls_context(
+        rls = _resolved(
             [
                 {
                     "table_id": None,
@@ -125,10 +118,10 @@ class TestDomainRLS:
                     "filter_expr": "\"region\" = 'us'",
                 }
             ],
-            "a",
+            meta,
         )
-        result = inject_rls(_compiled('SELECT "id" FROM "public"."orders"'), ctx, rls)
-        assert "\"region\" = 'us'" in result.sql
+        result = governed_for_role('SELECT "id" FROM "public"."orders"', ctx, "a", rls=rls)
+        assert result == 'SELECT "id" FROM "public"."orders" WHERE ("orders"."region" = \'us\')'
 
     def test_table_rule_takes_precedence_over_domain_rule(self):
         meta = TableMeta(
@@ -142,7 +135,7 @@ class TestDomainRLS:
             domain_id="sales",
         )
         ctx = _ctx(tables={"orders": meta})
-        rls = build_rls_context(
+        rls = _resolved(
             [
                 {
                     "table_id": 1,
@@ -157,11 +150,10 @@ class TestDomainRLS:
                     "filter_expr": "\"region\" = 'us'",
                 },
             ],
-            "a",
+            meta,
         )
-        result = inject_rls(_compiled('SELECT "id" FROM "public"."orders"'), ctx, rls)
-        assert "\"owner\" = 'me'" in result.sql
-        assert "\"region\" = 'us'" not in result.sql
+        result = governed_for_role('SELECT "id" FROM "public"."orders"', ctx, "a", rls=rls)
+        assert result == 'SELECT "id" FROM "public"."orders" WHERE ("orders"."owner" = \'me\')'
 
     def test_startup_loader_selects_domain_id(self):
         """Regression: the app RLS loader must load domain_id (else domain rules drop).
@@ -185,68 +177,53 @@ class TestDomainRLS:
 
 class TestInjectRLS:
     def test_no_rules_returns_unchanged(self):
-        compiled = _compiled('SELECT "id" FROM "public"."orders"')
-        ctx = _ctx()
-        result = inject_rls(compiled, ctx, RLSContext.empty())
-        assert result.sql == compiled.sql
+        sql = 'SELECT "id" FROM "public"."orders"'
+        assert governed_for_role(sql, _ctx(), "a", rls=RLSContext.empty()) == sql
 
     def test_injects_where_on_simple_query(self):
-        compiled = _compiled('SELECT "id" FROM "public"."orders"')
-        ctx = _ctx()
-        rls = RLSContext(rules={1: "\"region\" = 'us'"})
-        result = inject_rls(compiled, ctx, rls)
-        assert "WHERE" in result.sql
-        assert "\"region\" = 'us'" in result.sql
+        result = governed_for_role(
+            'SELECT "id" FROM "public"."orders"', _ctx(), "a", rls={1: "\"region\" = 'us'"}
+        )
+        assert result == 'SELECT "id" FROM "public"."orders" WHERE ("orders"."region" = \'us\')'
 
     def test_ands_with_existing_where(self):
-        compiled = _compiled('SELECT "id" FROM "public"."orders" WHERE "status" = $1')
-        compiled = CompiledQuery(
-            sql=compiled.sql,
-            params=["active"],
-            root_field="orders",
-            columns=compiled.columns,
-            sources=compiled.sources,
+        result = governed_for_role(
+            'SELECT "id" FROM "public"."orders" WHERE "status" = $1',
+            _ctx(),
+            "a",
+            rls={1: "\"region\" = 'us'"},
         )
-        ctx = _ctx()
-        rls = RLSContext(rules={1: "\"region\" = 'us'"})
-        result = inject_rls(compiled, ctx, rls)
-        assert "AND" in result.sql
-        assert "\"region\" = 'us'" in result.sql
-        assert '"status" = $1' in result.sql
+        assert result == (
+            'SELECT "id" FROM "public"."orders" WHERE "status" = $1 '
+            'AND ("orders"."region" = \'us\')'
+        )
 
     def test_injects_before_order_by(self):
-        compiled = _compiled('SELECT "id" FROM "public"."orders" ORDER BY "id"')
-        ctx = _ctx()
-        rls = RLSContext(rules={1: "\"region\" = 'us'"})
-        result = inject_rls(compiled, ctx, rls)
-        assert result.sql.index("WHERE") < result.sql.index("ORDER BY")
+        result = governed_for_role(
+            'SELECT "id" FROM "public"."orders" ORDER BY "id"',
+            _ctx(),
+            "a",
+            rls={1: "\"region\" = 'us'"},
+        )
+        assert result == (
+            'SELECT "id" FROM "public"."orders" WHERE ("orders"."region" = \'us\') ORDER BY "id"'
+        )
 
     def test_injects_before_limit(self):
-        compiled = _compiled('SELECT "id" FROM "public"."orders" LIMIT 10')
-        ctx = _ctx()
-        rls = RLSContext(rules={1: "\"region\" = 'us'"})
-        result = inject_rls(compiled, ctx, rls)
-        assert result.sql.index("WHERE") < result.sql.index("LIMIT")
+        result = governed_for_role(
+            'SELECT "id" FROM "public"."orders" LIMIT 10',
+            _ctx(),
+            "a",
+            rls={1: "\"region\" = 'us'"},
+        )
+        assert result == (
+            'SELECT "id" FROM "public"."orders" WHERE ("orders"."region" = \'us\') LIMIT 10'
+        )
 
     def test_no_rule_for_table_unchanged(self):
-        compiled = _compiled('SELECT "id" FROM "public"."orders"')
-        ctx = _ctx()
-        rls = RLSContext(rules={99: "x = 1"})  # table_id 99 doesn't match
-        result = inject_rls(compiled, ctx, rls)
-        assert result.sql == compiled.sql
-
-    def test_preserves_params(self):
-        compiled = CompiledQuery(
-            sql='SELECT "id" FROM "public"."orders" WHERE "x" = $1',
-            params=["val"],
-            root_field="orders",
-            columns=[],
-            sources={"pg"},
-        )
-        ctx = _ctx()
-        rls = RLSContext(rules={1: "\"region\" = 'us'"})
-        result = inject_rls(compiled, ctx, rls)
-        assert result.params == ["val"]
+        sql = 'SELECT "id" FROM "public"."orders"'
+        # table_id 99 doesn't match
+        assert governed_for_role(sql, _ctx(), "a", rls={99: "x = 1"}) == sql
 
 
 class TestInjectWhere:

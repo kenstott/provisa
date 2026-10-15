@@ -238,6 +238,73 @@ def assert_sql_contains(sql: str, fragment: str) -> None:
     )
 
 
+def governance_for_role(
+    ctx,
+    role_id: str,
+    *,
+    rls=None,
+    masking_rules: dict | None = None,
+    column_types: dict[int, list[tuple[str, str]]] | None = None,
+):
+    """The GovernanceContext the server builds for ``role_id`` (compiler/stage2): every table
+    ``ctx`` registers and every join target, ``rls`` (an RLSContext or a table_id -> predicate
+    map), ``masking_rules`` keyed ``(table_id, role_id)``.
+
+    The role holds ``full_results`` so no default row cap is added: a statement governed with
+    it carries its row filters and masks alone. ``column_types`` registers each table's columns
+    (table_id -> [(name, type)]) where a test reads them (a session-variable cast).
+    """
+    from provisa.compiler.rls import RLSContext
+    from provisa.compiler.stage2 import build_governance_context
+
+    metas = {m.table_id: m for m in ctx.tables.values()}
+    for join in ctx.joins.values():
+        metas.setdefault(join.target.table_id, join.target)
+    tables = [
+        {
+            "id": tid,
+            "domain_id": m.domain_id,
+            "source_id": m.source_id,
+            "schema_name": m.schema_name,
+            "table_name": m.table_name,
+            "columns": [
+                {"column_name": name, "data_type": dtype, "visible_to": []}
+                for name, dtype in (column_types or {}).get(tid, [])
+            ],
+        }
+        for tid, m in metas.items()
+    ]
+    if not isinstance(rls, RLSContext):
+        rls = RLSContext(rules=dict(rls or {}))
+    return build_governance_context(
+        role_id,
+        rls,
+        masking_rules or {},
+        ctx,
+        tables,
+        unscoped_role(role_id, Capability.FULL_RESULTS.value),
+    )
+
+
+def governed_for_role(
+    sql: str,
+    ctx,
+    role_id: str,
+    *,
+    rls=None,
+    masking_rules: dict | None = None,
+    column_types: dict[int, list[tuple[str, str]]] | None = None,
+) -> str:
+    """``sql`` as the one governed pipeline serves it to ``role_id``: ``apply_governance`` with
+    the role's :func:`governance_for_role` context."""
+    from provisa.compiler.stage2 import apply_governance
+
+    gov = governance_for_role(
+        ctx, role_id, rls=rls, masking_rules=masking_rules, column_types=column_types
+    )
+    return apply_governance(sql, gov)
+
+
 def assert_span_emitted(exporter, name_fragment: str) -> None:
     spans = exporter.get_finished_spans()
     names = [s.name for s in spans]

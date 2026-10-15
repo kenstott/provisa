@@ -26,9 +26,9 @@ from provisa.compiler.stage2 import (
     GovernanceContext,
     apply_governance,
 )
-from provisa.compiler.rls import RLSContext, inject_rls
-from provisa.compiler.mask_inject import inject_masking
+from provisa.compiler.rls import RLSContext
 from provisa.security.masking import MaskingRule, MaskType
+from tests.helpers import governed_for_role
 
 
 # ---------------------------------------------------------------------------
@@ -257,60 +257,48 @@ class TestStage2:
 
 class TestFullPipeline:
     def test_full_pipeline_graphql_to_governed_sql_rls(self):
-        """Stage1 output fed into inject_rls produces governed SQL with WHERE clause."""
+        """Stage1 output governed for a role with a row filter carries the filter."""
         doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
-        compiled_list = compile_graphql(doc, ctx)
-        compiled = compiled_list[0]
+        compiled = compile_graphql(doc, ctx)[0]
 
         rls = RLSContext(rules={ORDERS_TABLE_ID: "region = 'us-east'"})
-        governed = inject_rls(compiled, ctx, rls)
-        assert "WHERE" in governed.sql.upper()
-        assert "us-east" in governed.sql
+        governed = governed_for_role(compiled.sql, ctx, "analyst", rls=rls)
+        assert governed == f'{compiled.sql} WHERE ("orders"."region" = \'us-east\')'
 
     def test_full_pipeline_graphql_to_governed_sql_masking(self):
-        """Stage1 output fed into inject_masking rewrites masked column."""
+        """Stage1 output governed for a role with a mask on a column projects the mask."""
         doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
-        # Inject email column into orders table meta and context
-        meta = _orders_meta()
-        ctx.tables["orders"] = meta
-
-        compiled_list = compile_graphql(doc, ctx)
-        compiled = compiled_list[0]
+        ctx.tables["orders"] = _orders_meta()
+        compiled = compile_graphql(doc, ctx)[0]
 
         rule = MaskingRule(mask_type=MaskType.constant, value=None)
         masking_rules = {(ORDERS_TABLE_ID, "analyst"): {"id": (rule, "integer")}}
-        governed = inject_masking(compiled, ctx, masking_rules, "analyst")
-        # With masking applied, the SQL should have changed or the rule should have matched
-        assert isinstance(governed.sql, str)
+        governed = governed_for_role(compiled.sql, ctx, "analyst", masking_rules=masking_rules)
+        assert governed == 'SELECT NULL AS "id" FROM "public"."orders"'
 
     def test_full_pipeline_rls_then_masking(self):
-        """Chaining inject_rls + inject_masking produces both WHERE and masked projection."""
+        """A role with a row filter and a mask gets both the WHERE and the masked projection."""
         doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
-        compiled_list = compile_graphql(doc, ctx)
-        compiled = compiled_list[0]
+        compiled = compile_graphql(doc, ctx)[0]
 
-        # Apply RLS
         rls = RLSContext(rules={ORDERS_TABLE_ID: "region = 'eu-west'"})
-        after_rls = inject_rls(compiled, ctx, rls)
-        assert "eu-west" in after_rls.sql
-
-        # Then masking
         rule = MaskingRule(mask_type=MaskType.constant, value=None)
         masking_rules = {(ORDERS_TABLE_ID, "viewer"): {"id": (rule, "integer")}}
-        after_mask = inject_masking(after_rls, ctx, masking_rules, "viewer")
-        # Both transformations are present
-        assert "eu-west" in after_mask.sql or "WHERE" in after_mask.sql.upper()
+        governed = governed_for_role(
+            compiled.sql, ctx, "viewer", rls=rls, masking_rules=masking_rules
+        )
+        assert governed == (
+            'SELECT NULL AS "id" FROM "public"."orders" WHERE ("orders"."region" = \'eu-west\')'
+        )
 
     def test_full_pipeline_empty_rls_no_where(self):
         """Empty RLS context leaves SQL unchanged — no WHERE appended."""
         doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
-        compiled_list = compile_graphql(doc, ctx)
-        original_sql = compiled_list[0].sql
+        original_sql = compile_graphql(doc, ctx)[0].sql
 
-        rls = RLSContext.empty()
-        governed = inject_rls(compiled_list[0], ctx, rls)
-        assert governed.sql == original_sql
+        governed = governed_for_role(original_sql, ctx, "analyst", rls=RLSContext.empty())
+        assert governed == original_sql

@@ -4,5 +4,5 @@ Feature: REQ-745 — Security
 
   Scenario: REQ-745 default behaviour
     Given the same column with different masking rules per role
-    When inject_masking is called for two different roles
+    When each role runs the same query
     Then admin sees raw values; analyst sees regex mask; masked_viewer sees constant mask

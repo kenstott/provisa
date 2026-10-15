@@ -17,7 +17,7 @@ import os
 import pytest
 import pytest_asyncio
 
-from provisa.compiler.rls import RLSContext, inject_rls
+from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import (
     ColumnRef,
     CompilationContext,
@@ -27,6 +27,7 @@ from provisa.compiler.sql_gen import (
 )
 from provisa.executor.direct import execute_direct
 from provisa.executor.pool import SourcePool
+from tests.helpers import governed_for_role
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -153,9 +154,9 @@ class TestRLSExecution:
         compiled = _simple_orders_query()
 
         rls = RLSContext(rules={ORDERS_TABLE_ID: "region = 'us-east'"})
-        compiled_rls = inject_rls(compiled, ctx, rls)
+        compiled_rls = governed_for_role(compiled.sql, ctx, "analyst", rls=rls)
 
-        result = await execute_direct(source_pool, "test-pg", compiled_rls.sql, compiled_rls.params)
+        result = await execute_direct(source_pool, "test-pg", compiled_rls, compiled.params)
 
         assert result.rows, "Expected at least one us-east row in test data"
         region_idx = _col_index(result, "region")
@@ -170,31 +171,21 @@ class TestRLSExecution:
         compiled = _simple_orders_query()
 
         rls = RLSContext(rules={ORDERS_TABLE_ID: "region = 'nonexistent-region-xyz'"})
-        compiled_rls = inject_rls(compiled, ctx, rls)
+        compiled_rls = governed_for_role(compiled.sql, ctx, "analyst", rls=rls)
 
-        result = await execute_direct(source_pool, "test-pg", compiled_rls.sql, compiled_rls.params)
+        result = await execute_direct(source_pool, "test-pg", compiled_rls, compiled.params)
 
         assert result.rows == [], f"Expected empty result but got {len(result.rows)} rows"
 
     async def test_rls_multiple_rules_anded(self, source_pool):
         """Two RLS rules on the same table must be ANDed together."""
-        # We test this by injecting RLS twice (simulating two rules combined by the caller)
-        # and verifying both constraints are satisfied.
         ctx = _make_orders_ctx()
         compiled = _simple_orders_query()
 
-        # Inject first rule: region = 'us-east'
-        rls1 = RLSContext(rules={ORDERS_TABLE_ID: "region = 'us-east'"})
-        compiled_after_first = inject_rls(compiled, ctx, rls1)
-
-        # Inject a second rule (amount > 0) on top — simulates AND logic
-        # In real usage both filters would be in a single RLSContext; here we
-        # manually construct the combined SQL to verify the AND is honoured.
-        combined_sql = compiled_after_first.sql.replace(
-            "(region = 'us-east')",
-            "(region = 'us-east') AND (amount > 0)",
-        )
-        result = await execute_direct(source_pool, "test-pg", combined_sql, [])
+        # The role's effective filter on the table: both rules, ANDed.
+        rls = RLSContext(rules={ORDERS_TABLE_ID: "(region = 'us-east') AND (amount > 0)"})
+        governed = governed_for_role(compiled.sql, ctx, "analyst", rls=rls)
+        result = await execute_direct(source_pool, "test-pg", governed, compiled.params)
 
         region_idx = _col_index(result, "region")
         amount_idx = _col_index(result, "amount")
@@ -208,13 +199,13 @@ class TestRLSExecution:
         ctx = _make_orders_ctx()
 
         rls = RLSContext.empty()
-        compiled_no_rls = inject_rls(compiled, ctx, rls)
+        compiled_no_rls = governed_for_role(compiled.sql, ctx, "analyst", rls=rls)
 
         # Ensure SQL is unchanged
-        assert compiled_no_rls.sql == compiled.sql
+        assert compiled_no_rls == compiled.sql
 
         result_all = await execute_direct(source_pool, "test-pg", compiled.sql, [])
-        result_rls = await execute_direct(source_pool, "test-pg", compiled_no_rls.sql, [])
+        result_rls = await execute_direct(source_pool, "test-pg", compiled_no_rls, [])
 
         assert len(result_all.rows) == len(result_rls.rows)
 
@@ -228,9 +219,9 @@ class TestRLSExecution:
         # The caller resolves :session_var before building RLSContext.
         filter_expr = f"region = '{session_region}'"
         rls = RLSContext(rules={ORDERS_TABLE_ID: filter_expr})
-        compiled_rls = inject_rls(compiled, ctx, rls)
+        compiled_rls = governed_for_role(compiled.sql, ctx, "analyst", rls=rls)
 
-        result = await execute_direct(source_pool, "test-pg", compiled_rls.sql, compiled_rls.params)
+        result = await execute_direct(source_pool, "test-pg", compiled_rls, compiled.params)
 
         region_idx = _col_index(result, "region")
         for row in result.rows:
@@ -245,9 +236,9 @@ class TestRLSExecution:
 
         # Apply RLS only to the root orders table (region filter)
         rls = RLSContext(rules={ORDERS_TABLE_ID: "region = 'us-east'"})
-        compiled_rls = inject_rls(compiled, ctx, rls)
+        compiled_rls = governed_for_role(compiled.sql, ctx, "analyst", rls=rls)
 
-        result = await execute_direct(source_pool, "test-pg", compiled_rls.sql, compiled_rls.params)
+        result = await execute_direct(source_pool, "test-pg", compiled_rls, compiled.params)
 
         assert "region" in result.column_names
         region_idx = _col_index(result, "region")

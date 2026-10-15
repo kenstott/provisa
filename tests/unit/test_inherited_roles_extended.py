@@ -28,16 +28,14 @@ New coverage here:
 from __future__ import annotations
 
 
-from provisa.compiler.rls import RLSContext, build_rls_context, inject_rls
-from provisa.compiler.mask_inject import MaskingRules, inject_masking
-from provisa.compiler.sql_gen import (
-    ColumnRef,
-    CompilationContext,
-    CompiledQuery,
-    TableMeta,
-)
+from provisa.compiler.rls import RLSContext, build_rls_context
+from provisa.compiler.mask_inject import MaskingRules
+from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.core.models import Role, flatten_roles
+from provisa.security.inheritance import materialize_rls
 from provisa.security.masking import MaskType, MaskingRule
+from provisa.security.row_filters import resolve_table_rules
+from tests.helpers import governed_for_role
 
 # ---------------------------------------------------------------------------
 # Shared table IDs
@@ -80,20 +78,6 @@ def _make_ctx(*tables: tuple[int, str, str]) -> CompilationContext:
             table_name=table_name,
         )
     return ctx
-
-
-def _compiled_for(
-    sql: str,
-    root_field: str,
-    columns: list[ColumnRef] | None = None,
-) -> CompiledQuery:
-    return CompiledQuery(
-        sql=sql,
-        params=[],
-        root_field=root_field,
-        columns=columns or [ColumnRef(alias=None, column="id", field_name="id", nested_in=None)],
-        sources={"test-pg"},
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +215,7 @@ class TestConflictResolution:
 
 
 # ---------------------------------------------------------------------------
-# RLS rule accumulation through inheritance (build_rls_context + inject_rls)
+# RLS rule accumulation through inheritance (build_rls_context + governed pipeline)
 # ---------------------------------------------------------------------------
 
 
@@ -254,46 +238,61 @@ class TestRLSAccumulationThroughInheritance:
         assert len(rls.rules) == 3
 
     def test_inherited_rls_rules_applied_to_inherited_role(self):
-        """Simulates a child role using the parent's RLS filter on two tables.
-
-        In practice the system calls build_rls_context with the parent role_id
-        when the child has no own rule.  We verify inject_rls applies both table
-        filters when the combined RLSContext covers two tables.
-        """
+        """A child role with no rule of its own reads each table under its parent's rule."""
+        tables = [
+            {"id": ORDERS_TABLE_ID, "domain_id": ""},
+            {"id": CUSTOMERS_TABLE_ID, "domain_id": ""},
+        ]
+        chains = {"parent": ["parent"], "child": ["child", "parent"]}
+        rules = [
+            {
+                "role_id": "parent",
+                "table_id": ORDERS_TABLE_ID,
+                "domain_id": None,
+                "filter_expr": "\"region\" = 'eu-west'",
+            },
+            {
+                "role_id": "parent",
+                "table_id": CUSTOMERS_TABLE_ID,
+                "domain_id": None,
+                "filter_expr": "active = true",
+            },
+        ]
+        resolved = resolve_table_rules(
+            materialize_rls(rules, tables, chains), tables, chains, [], {}
+        )
+        inherited_rls = build_rls_context(resolved, "child")
         ctx = _make_ctx(
             (ORDERS_TABLE_ID, "orders", "orders"),
+            (CUSTOMERS_TABLE_ID, "customers", "customers"),
         )
-        compiled = _compiled_for(
-            sql='SELECT "id", "amount" FROM "public"."orders"',
-            root_field="orders",
-            columns=[
-                ColumnRef(alias=None, column="id", field_name="id", nested_in=None),
-                ColumnRef(alias=None, column="amount", field_name="amount", nested_in=None),
-            ],
+        result = governed_for_role(
+            'SELECT "o"."id", "o"."amount" FROM "public"."orders" "o" '
+            'JOIN "public"."customers" "c" ON "o"."customer_id" = "c"."id"',
+            ctx,
+            "child",
+            rls=inherited_rls,
         )
-        # Child inherits parent's rule: the caller passes the parent's filter for the child
-        inherited_rls = RLSContext(rules={ORDERS_TABLE_ID: "\"region\" = 'eu-west'"})
-        result = inject_rls(compiled, ctx, inherited_rls)
-
-        assert "region" in result.sql
-        assert "eu-west" in result.sql
-        assert "WHERE" in result.sql.upper()
+        assert result == (
+            'SELECT "o"."id", "o"."amount" FROM "public"."orders" AS "o" '
+            'JOIN "public"."customers" AS "c" ON "o"."customer_id" = "c"."id" '
+            'WHERE ("o"."region" = \'eu-west\') AND ("c"."active" = TRUE)'
+        )
 
     def test_combined_parent_and_child_rls_anded(self):
-        """Parent and child RLS filters for the same table must be AND-ed."""
+        """A compound effective filter (parent's predicate AND the child's) is applied whole."""
         ctx = _make_ctx((ORDERS_TABLE_ID, "orders", "orders"))
-        compiled = _compiled_for(
-            sql='SELECT "id" FROM "public"."orders"',
-            root_field="orders",
-        )
-        # Caller composes: parent filter AND child filter before injecting
         combined_filter = "region = 'us-west' AND tier = 'premium'"
-        rls = RLSContext(rules={ORDERS_TABLE_ID: combined_filter})
-        result = inject_rls(compiled, ctx, rls)
-
-        assert "\"region\" = 'us-west'" in result.sql
-        assert "\"tier\" = 'premium'" in result.sql
-        assert "AND" in result.sql
+        result = governed_for_role(
+            'SELECT "id" FROM "public"."orders"',
+            ctx,
+            "child",
+            rls={ORDERS_TABLE_ID: combined_filter},
+        )
+        assert result == (
+            'SELECT "id" FROM "public"."orders" WHERE '
+            '("orders"."region" = \'us-west\' AND "orders"."tier" = \'premium\')'
+        )
 
     def test_rls_context_empty_when_role_has_no_rules(self):
         """A role not present in the rules list should produce an empty RLSContext."""
@@ -304,11 +303,10 @@ class TestRLSAccumulationThroughInheritance:
         assert not rls.has_rules()
 
     def test_inject_rls_no_op_for_empty_context(self):
-        """inject_rls with an empty RLSContext must return the query unchanged."""
+        """An empty RLSContext leaves the governed query unchanged."""
         ctx = _make_ctx((ORDERS_TABLE_ID, "orders", "orders"))
-        compiled = _compiled_for('SELECT "id" FROM "public"."orders"', "orders")
-        result = inject_rls(compiled, ctx, RLSContext.empty())
-        assert result.sql == compiled.sql
+        sql = 'SELECT "id" FROM "public"."orders"'
+        assert governed_for_role(sql, ctx, "viewer", rls=RLSContext.empty()) == sql
 
 
 # ---------------------------------------------------------------------------
@@ -320,62 +318,32 @@ class TestMaskingInheritanceExtended:
     def test_two_masked_columns_with_different_rules_applied(self):
         """An inherited masking context with two column rules must mask both columns."""
         ctx = _make_ctx((ORDERS_TABLE_ID, "orders", "orders"))
-        compiled = CompiledQuery(
-            sql='SELECT "amount", "region" FROM "public"."orders"',
-            params=[],
-            root_field="orders",
-            columns=[
-                ColumnRef(alias=None, column="amount", field_name="amount", nested_in=None),
-                ColumnRef(alias=None, column="region", field_name="region", nested_in=None),
-            ],
-            sources={"test-pg"},
-        )
-
         masking: MaskingRules = {
             (ORDERS_TABLE_ID, "viewer"): {
                 "amount": (MaskingRule(mask_type=MaskType.constant, value=0), "integer"),
                 "region": (MaskingRule(mask_type=MaskType.constant, value="HIDDEN"), "varchar"),
             }
         }
-        result = inject_masking(compiled, ctx, masking, "viewer")
-
-        assert '0 AS "amount"' in result.sql
-        assert "'HIDDEN' AS \"region\"" in result.sql
+        result = governed_for_role(
+            'SELECT "amount", "region" FROM "public"."orders"', ctx, "viewer", masking_rules=masking
+        )
+        assert result == ('SELECT 0 AS "amount", \'HIDDEN\' AS "region" FROM "public"."orders"')
 
     def test_inherited_masking_not_applied_to_different_role(self):
         """Masking rules for 'viewer' must not be applied when role is 'analyst'."""
         ctx = _make_ctx((ORDERS_TABLE_ID, "orders", "orders"))
-        compiled = CompiledQuery(
-            sql='SELECT "amount" FROM "public"."orders"',
-            params=[],
-            root_field="orders",
-            columns=[
-                ColumnRef(alias=None, column="amount", field_name="amount", nested_in=None),
-            ],
-            sources={"test-pg"},
-        )
         masking: MaskingRules = {
             (ORDERS_TABLE_ID, "viewer"): {
                 "amount": (MaskingRule(mask_type=MaskType.constant, value=0), "integer"),
             }
         }
-        result = inject_masking(compiled, ctx, masking, "analyst")
+        sql = 'SELECT "amount" FROM "public"."orders"'
         # SQL must be unchanged for 'analyst'
-        assert result.sql == compiled.sql
+        assert governed_for_role(sql, ctx, "analyst", masking_rules=masking) == sql
 
     def test_regex_mask_inherited_via_assigned_role_id(self):
-        """Caller assigns parent's regex rule to the child role_id; injection works."""
+        """A regex rule held by the child role is applied to its read."""
         ctx = _make_ctx((CUSTOMERS_TABLE_ID, "customers", "customers"))
-        compiled = CompiledQuery(
-            sql='SELECT "email" FROM "public"."customers"',
-            params=[],
-            root_field="customers",
-            columns=[
-                ColumnRef(alias=None, column="email", field_name="email", nested_in=None),
-            ],
-            sources={"test-pg"},
-        )
-        # Parent's regex rule is assigned to child's role_id by the caller
         masking: MaskingRules = {
             (CUSTOMERS_TABLE_ID, "child-role"): {
                 "email": (
@@ -388,6 +356,10 @@ class TestMaskingInheritanceExtended:
                 ),
             }
         }
-        result = inject_masking(compiled, ctx, masking, "child-role")
-        assert "REGEXP_REPLACE" in result.sql
-        assert 'AS "email"' in result.sql
+        result = governed_for_role(
+            'SELECT "email" FROM "public"."customers"', ctx, "child-role", masking_rules=masking
+        )
+        assert result == (
+            "SELECT REGEXP_REPLACE(\"email\", '^(.{2}).*(@.*)$', '$1***$2') AS \"email\" "
+            'FROM "public"."customers"'
+        )

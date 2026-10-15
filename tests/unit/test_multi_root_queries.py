@@ -34,13 +34,14 @@ import pytest
 
 from graphql import build_schema, parse
 
-from provisa.compiler.rls import RLSContext, inject_rls
+from provisa.compiler.rls import RLSContext
 from provisa.compiler.sampling import apply_sampling
 from provisa.compiler.sql_gen import (
     CompilationContext,
     TableMeta,
     compile_query,
 )
+from tests.helpers import governed_for_role
 
 # ---------------------------------------------------------------------------
 # Shared schema / context helpers
@@ -233,7 +234,7 @@ class TestIndependentFieldCompilation:
 
 
 class TestRLSAppliedPerRootField:
-    """inject_rls applies rules per-table; multi-root queries each get correct RLS."""
+    """The governed pipeline applies rules per table; multi-root queries each get correct RLS."""
 
     def test_orders_rls_injected_into_orders_query_only(self):
         """RLS rule for orders table is injected only into the orders SQL."""
@@ -246,13 +247,13 @@ class TestRLSAppliedPerRootField:
 
         rls = RLSContext(rules={ORDERS_TABLE_ID: "\"region\" = 'us-east'"})
 
-        orders_with_rls = inject_rls(orders_q, ctx, rls)
-        customers_with_rls = inject_rls(customers_q, ctx, rls)
+        orders_with_rls = governed_for_role(orders_q.sql, ctx, "analyst", rls=rls)
+        customers_with_rls = governed_for_role(customers_q.sql, ctx, "analyst", rls=rls)
 
         # Orders gets the filter
-        assert "\"region\" = 'us-east'" in orders_with_rls.sql
+        assert "\"region\" = 'us-east'" in orders_with_rls
         # Customers does NOT (different table_id, no rule for it)
-        assert "\"region\" = 'us-east'" not in customers_with_rls.sql
+        assert "\"region\" = 'us-east'" not in customers_with_rls
 
     def test_customers_rls_injected_into_customers_query_only(self):
         """RLS rule for customers table is injected only into the customers SQL."""
@@ -265,11 +266,11 @@ class TestRLSAppliedPerRootField:
 
         rls = RLSContext(rules={CUSTOMERS_TABLE_ID: "\"region\" = 'eu-west'"})
 
-        orders_with_rls = inject_rls(orders_q, ctx, rls)
-        customers_with_rls = inject_rls(customers_q, ctx, rls)
+        orders_with_rls = governed_for_role(orders_q.sql, ctx, "analyst", rls=rls)
+        customers_with_rls = governed_for_role(customers_q.sql, ctx, "analyst", rls=rls)
 
-        assert "\"region\" = 'eu-west'" not in orders_with_rls.sql
-        assert "\"region\" = 'eu-west'" in customers_with_rls.sql
+        assert "\"region\" = 'eu-west'" not in orders_with_rls
+        assert "\"region\" = 'eu-west'" in customers_with_rls
 
     def test_both_tables_have_rls_each_receives_its_own_filter(self):
         """When both tables have RLS rules, each query receives only its own filter."""
@@ -287,14 +288,14 @@ class TestRLSAppliedPerRootField:
             }
         )
 
-        orders_final = inject_rls(orders_q, ctx, rls)
-        customers_final = inject_rls(customers_q, ctx, rls)
+        orders_final = governed_for_role(orders_q.sql, ctx, "analyst", rls=rls)
+        customers_final = governed_for_role(customers_q.sql, ctx, "analyst", rls=rls)
 
-        assert "us-east" in orders_final.sql
-        assert "eu-west" not in orders_final.sql
+        assert "us-east" in orders_final
+        assert "eu-west" not in orders_final
 
-        assert "eu-west" in customers_final.sql
-        assert "us-east" not in customers_final.sql
+        assert "eu-west" in customers_final
+        assert "us-east" not in customers_final
 
     def test_no_rls_rules_sql_unchanged(self):
         """Empty RLS context leaves SQL unchanged for all root fields."""
@@ -305,8 +306,8 @@ class TestRLSAppliedPerRootField:
         rls = RLSContext.empty()
 
         for r in results:
-            after = inject_rls(r, ctx, rls)
-            assert after.sql == r.sql
+            after = governed_for_role(r.sql, ctx, "analyst", rls=rls)
+            assert after == r.sql
 
 
 # ---------------------------------------------------------------------------
