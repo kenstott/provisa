@@ -1,89 +1,89 @@
-# 安全模型
+# 安全模型 {: #security-model }
 
-Provisa在所有查询语言（GraphQL、SQL、Cypher）及所有传输方式（REST、gRPC、Arrow Flight、JDBC、WebSocket）上，均实施多层次的安全模型。（REQ-001、REQ-266）治理统一应用——不存在任何可绕过治理的查询路径。（REQ-002、REQ-266）
+Provisa 在所有查询语言（GraphQL、SQL、Cypher）和所有传输（REST、gRPC、Arrow Flight、JDBC、WebSocket）上执行分层安全模型。（REQ-001、REQ-266） 治理统一适用——不存在绕过它的查询路径。（REQ-002、REQ-266）
 
-各层按顺序应用。每个请求必须先通过每一层，才会评估下一层。
+各层按顺序应用。请求必须通过每一层，下一层才会被评估。
 
-## 分层模型
+## 分层模型 {: #layered-model }
 
-### 第0层——内省过滤
+### 第0层——内省过滤 {: #layer-0-introspection-filtering }
 
-呈现给某个角色的架构 (Schema) 及目录，只包含其`domain_access`清单中的数据表，以及通过逐列`visible_to`规则的列。（REQ-039）角色权限之外的对象，在发现阶段即不可见——无法查询、无法自动补全，也无法推断其存在。（REQ-039）此规则适用于GraphQL架构、SQL目录以及查询编辑器的架构浏览器。（REQ-039、REQ-363）
+呈现给角色的 schema 和目录只包含其 `domain_access` 列表中的表，以及通过每列 `visible_to` 规则的列。（REQ-039） 角色访问范围之外的对象在发现时不可见——无法查询、自动补全或推断其存在。（REQ-039） 这适用于 GraphQL schema、SQL 目录以及查询编辑器中的 schema 浏览器。（REQ-039、REQ-363）
 
-参阅[架构可见性](#_10)。
+参见[架构可见性](#schema-visibility)。
 
-### 第1层——公开访问
+### 第1层——公开访问 {: #layer-1-public-access }
 
-没有`domain_access`限制的域中的数据表，无需额外配置即可供所有已通过身份验证的用户查看。对于真正公开的数据，完全没有阻力。
+以 `public` 范围发布的列会提供给组织中的每个角色，包括其 `domain_access` 未覆盖该表所在域的角色；这样的角色只能看到带有公开列的该表。在注册表的人明确说明之前，没有任何内容是公开的。（REQ-1959） 参见[公开列](#public-columns)。
 
-### 第2层——域访问
+### 第2层——域访问 {: #layer-2-domain-access }
 
-每个角色都有一份`domain_access`域ID清单。凡涉及该等域以外数据表的查询，均会在执行前被拒绝。（REQ-038、REQ-039）这是粗粒度的所有权边界——无论SQL如何编写，人力资源角色都无法访问财务数据表。（REQ-002）
+每个角色携带一个由域 id 组成的 `domain_access` 列表。涉及这些域之外的表的查询会在执行前被拒绝。（REQ-038、REQ-039） 这是粗粒度的所有权边界——无论 SQL 如何编写，HR 角色都无法触及财务表。（REQ-002）
 
-参阅[权限模型](#_3)。
+参见[权限模型](#rights-model)。
 
-### 第3层——行级安全
+### 第3层——行级安全 {: #layer-3-row-level-security }
 
-域访问获确认后，系统会在执行时，将按数据表、按角色设定的`WHERE`谓词注入每个`SELECT`语句中。（REQ-041、REQ-263）该等谓词是针对原始数据进行评估的。即使使用`SELECT *`，查询共享订单表的区域经理也只会看到其所属区域的数据行。（REQ-264）
+确认域访问之后，按表、按角色的 `WHERE` 谓词会在执行时注入每一个 `SELECT`。（REQ-041、REQ-263） 谓词针对数据源数据求值。查询共享订单表的区域经理即使使用 `SELECT *`，也只能看到其所在区域的行。（REQ-264）
 
-参阅[行级安全 (RLS)](#rls)。
+参见[行级安全 (RLS)](#row-level-security-rls)。
 
-### 第4层——列可见性及脱敏
+### 第4层——列可见性及脱敏 {: #layer-4-column-visibility-and-masking }
 
-`visible_to`清单中不包括请求角色的列，会从查询结果中剥离。（REQ-040、REQ-263）设有脱敏规则的列，其值会在结果离开服务器前被替换——方式包括正则表达式编修、常量替换或截断。（REQ-263）脱敏适用于所有查询语言及输出格式。（REQ-263）
+`visible_to` 列表不包含请求角色的列会从查询输出中移除。（REQ-040、REQ-263） 带有脱敏规则的列，其值会在结果离开服务器之前被替换——通过正则编辑、常量替换或截断。（REQ-263） 脱敏适用于所有查询语言和输出格式。（REQ-263）
 
-参阅[列权限模型](#_5)及[列级脱敏](#_11)。
+参见[列权限模型](#column-permission-model)和[列级脱敏](#column-level-masking)。
 
-### 第5层——谓词防护
+### 第5层——谓词防护 {: #layer-5-predicate-guard }
 
-被脱敏的列会在`WHERE`及`HAVING`子句中被拒绝使用。（REQ-263）若无此防护，即使输出结果已脱敏，调用方仍可通过在筛选条件中进行二分查找，推断出未脱敏的值。此项拒绝会在查询解析阶段（执行前）强制执行。（REQ-531）
+被脱敏的列在 `WHERE` 和 `HAVING` 子句中会被拒绝。（REQ-263） 否则，即使输出已脱敏，调用者也可以在过滤条件中通过二分查找推断出未脱敏的值。拒绝在解析查询时、执行之前发生。（REQ-531）
 
-### 关系治理（V002）
+### 关系治理（V002） {: #relationship-governance-v002 }
 
-SQL中的JOIN条件，必须匹配数据表之间已登记并获批准的关系。（REQ-001）未经批准的join会被拒绝。每个关系均附有人类可读的原因及描述——为用户及自主代理提供指引，说明某遍历路径存在的原因。这属于治理策略，而非硬性的安全边界：无论join结构如何，第2至5层依然有效，因此刻意的规避行为，并不会使角色接触到其原本无法通过两次独立查询获取的数据。规避尝试会被记录并可供审计。
+SQL 的 JOIN 条件必须与表之间一个已注册且已批准的关系相匹配。（REQ-001） 未经批准的联接会被拒绝。每个关系都带有人类可读的原因和描述——为用户和自主智能体说明该遍历路径为何存在。这是一项治理策略，而不是硬性的安全边界：第 2–5 层的执行与联接结构无关，因此有意的绕过不会暴露该角色用两条独立查询无法获得的数据。绕过尝试会被记录并可审计。
 
-**绕过机制**——V002 有两种绕过方式。第一种是一项功能：持有 `ignore_relationships` 的角色可以跨目录未涵盖的关系进行联接。在预置的系统角色中只有 `modeler` 持有它——这是负责确定模型而非强制执行模型的探索角色。（REQ-1297）`analyst` 并不持有。[tool-verified: `provisa/core/db.py:84`]
+**绕过机制**——V002 可以通过两种方式绕过。第一种是能力：持有 `ignore_relationships` 的角色可以联接目录未覆盖的关系。预置的系统角色中只有 `modeler` 拥有它——这是一个探索角色，其职责是定义模型，而不是执行模型。（REQ-1297） `analyst` 没有它。
 
-第二种是需同时成立两项条件的退出机制：
+第二种是双条件例外，两个条件必须同时满足：
 
-1. **角色标志**——角色定义中的`relationship_guard: false`（默认值：`true`）。[tool-verified: `provisa/core/models.py:349`]
-2. **按查询退出**——SQL中包含`--relationship-guard=false`注释。[tool-verified: `provisa/compiler/params.py:80`]
+1. **角色标志**——角色定义中的 `relationship_guard: false`（默认：`true`）。
+2. **查询内例外**——SQL 包含注释 `--relationship-guard=false`。
 
-仅靠角色标志无法绕过V002；仅靠注释也无法绕过V002。
+仅有角色标志不会绕过 V002；仅有注释也不会绕过 V002。
 
-**高安全模式将该防护固定。**在 `security.mode: high` 下两种绕过均不适用：`ignore_relationships` 被忽略，`relationship_guard: false` 被忽略，且每个联接都必须存在于已批准的关系目录中。（REQ-693）这是刻意的冗余——即便某个生产角色被误授予该功能，它仍然无法突破模型。[tool-verified: `provisa/pgwire/_pipeline.py:377`]
+**高安全模式锁定防护。** 在 `security.mode: high` 下，任何绕过都不起作用：`ignore_relationships` 被忽略，`relationship_guard: false` 被忽略，每个联接都必须存在于已批准关系目录中。（REQ-693） 这是有意的冗余——被误授予该能力的生产角色仍然无法跳出模型。
 
-**GraphQL路径**——对于GraphQL查询，V002会被无条件跳过。SDL中定义的关系，按设计已预先获批准；该项检查属于多余，因此不会执行。[tool-verified: `provisa/api/data/endpoint.py:468`]
+**GraphQL 路径**——GraphQL 查询总是跳过 V002。SDL 中定义的关系本质上已预先批准；该检查是冗余的，不会应用。
 
-**SQL及Cypher路径**——V002默认处于启用状态。`endpoint_dev.py`及`cypher_router.py`均会在调用`validate_sql`之前，执行两项条件的检查。[tool-verified: `provisa/api/data/endpoint_dev.py:127`、`provisa/api/rest/cypher_router.py:260`]
+**SQL 和 Cypher 路径**——V002 默认启用。`endpoint_dev.py` 和 `cypher_router.py` 都会在调用 `validate_sql` 之前应用双条件检查。
 
-**pgwire路径**——与SQL相同的两项条件检查。`--relationship-guard=false`注释会在执行前从查询中剥离；不会传递到数据库。[tool-verified: `provisa/pgwire/_pipeline.py:60`]
-
----
-
-这些层次会相互组合。同时具备域访问、RLS及脱敏列的角色，其五项约束会同时生效。新增数据源、列或关系，无需逐一更新所有规则——每一层均独立配置，并会自动应用于任何涉及受治理对象的查询。
+**pgwire 路径**——与 SQL 相同的双条件检查。注释 `--relationship-guard=false` 会在执行前从查询中剥离；它不会到达数据库。
 
 ---
 
-## 权限模型
+这些层相互叠加。对于同时具有域访问、行级安全和脱敏列的角色，所有五项限制会同时生效。添加数据源、列或关系不需要更新每条规则——每一层独立配置，并自动应用于任何触及受治理对象的查询。
 
-各项能力独立分配，并可通过`parent_role_id`实现可选的角色层级结构。`admin`授予全部能力。（REQ-042）
+---
+
+## 权限模型 {: #rights-model }
+
+可独立分配的能力，可通过 `parent_role_id` 构成可选的角色层级。`admin` 授予一切。（REQ-042）
 
 | 能力 | 说明 |
 | ----------- | ------------- |
 | `source_registration` | 注册数据源 |
-| `table_registration` | 注册数据表、列 |
+| `table_registration` | 注册表和列 |
 | `create_relationship` | 定义外键关系 |
-| `access_config` | 配置RLS、脱敏 |
-| `query_development` | 执行查询 |
-| `write` | 调用已注册的变更操作（粗粒度控制；参阅“变更操作授权”） |
+| `access_config` | 配置行级安全和脱敏 |
+| `query_development` | 运行查询 |
+| `write` | 调用已注册的变更（粗粒度控制；参见变更操作授权） |
 | `full_results` | 绕过采样限制 |
-| `ignore_relationships` | 绕过关系治理（V002）。在系统角色中仅由 `modeler` 持有，且在高安全模式下被完全忽略 |
-| `admin` | 超级用户——授予全部能力 |
+| `ignore_relationships` | 绕过关系治理 (V002)。系统角色中只有 `modeler` 拥有它，在高安全模式下会被完全忽略 |
+| `admin` | 超级用户——授予一切 |
 
-### 角色继承
+### 角色继承 {: #role-inheritance }
 
-角色可通过`parent_role_id`（在配置中设置，或在安全页面上设为“继承自”）从一个父角色继承。（REQ-215）该继承链会在启动时被折叠合并：子角色持有其所有祖先角色的能力及域访问权的并集，持有每一项指名某祖先角色的列、指标、函数及webhook授权，并持有祖先角色按数据表设置的RLS规则——链中最靠近子角色、且对某数据表设有规则的角色，为该数据表提供其谓词，而为子角色本身保存的规则，会替换该数据表上父角色的规则。（REQ-1677）
+角色可以通过 `parent_role_id`（在配置中设置，或在安全页面上设为“继承自”）从一个父角色继承。（REQ-215） 继承链在启动时展开：子角色获得其祖先的能力与域访问的并集、每一项指名某个祖先的列、指标、函数和 webhook 授权，以及祖先按表的行级安全规则，子角色优先——链中最近一个对某表有规则的角色提供该表的谓词，为子角色保存的规则会替换父角色对该表的规则。（REQ-1677）
 
 ```yaml
 roles:
@@ -95,74 +95,157 @@ roles:
     domain_access: [sales, analytics]
     parent_role_id: basic_user   # inherits query_development + public domain
 ```
+## 角色：授予角色、伪角色和元角色 {: #roles-granted-pseudo-and-meta }
 
-## 列权限模型
+三种角色在 Provisa 的访问模型中协同工作。
 
-每个列均设有由四个字段组成的权限模型，用于按角色控制读取、写入及脱敏访问权。（REQ-042、REQ-249）
+### 授予角色 {: #granted-roles }
 
-### 三级可见性
+授予角色直接分配给用户。它携带权利：能力、域访问、脱敏条目、行过滤。继承（`parent_role_id`）在启动时把祖先的权利折叠进子角色。权利只做加法，没有减法。要限制读取者，请授予一个同时指名角色和条件的复合条目，或把一条脱敏条目放在宽松条目之前。（REQ-215、REQ-1677）
+
+### 伪角色 {: #pseudo-roles }
+
+伪角色从用户的属性派生。组织声明哪些属性类型会成为角色（`claim_roles`）。对于每个已声明的类型 `t`，若用户的属性为其提供了值 `v`，则用户拥有父角色 `t` 及其子角色 `t__v`。没有值，就两个都没有。
+
+属性的解析很重要。组织自己关于成员的记录优先于身份提供程序给出的内容：两者指明同一属性时，使用组织的值，提供程序的值被标记为已覆盖。
+
+伪角色不携带权利，也从不手动分配。授权列表指名它们的方式与指名授予角色完全相同；请求在 `X-Provisa-Role` 中指名它们并以其身份执行。（REQ-2057）
+
+想想 JWT：它的 claim 是关于这个人的事实。伪角色把选定的事实变成角色，这样授权就能针对它们，而不必为每种组合创建一个角色。
+
+### 元角色 {: #meta-roles }
+
+当请求指名多个角色时，Provisa 会构建一个临时元角色，其标识为 `meta:<ids sorted, joined by +>`。它是所指名集合中每个角色的唯一子角色。整个管道随后像对待任何单一角色一样以它运行。
+
+权利是每个成员权利的并集。行过滤是每个成员所允许过滤的 OR；若读取某表的任何成员没有过滤，元角色也没有——没有过滤意味着所有行。元角色从不保存、列出或导出。模型变更时，它会根据其成员重新构建。（REQ-1620）
+
+审计记录指明每个执行中的角色，而不是元角色 id。
+
+### 请求如何指名角色 {: #how-a-request-names-roles }
+
+客户端在 `X-Provisa-Role` 中发送一个角色或逗号分隔的集合。所指名的每个角色都必须为用户所持有。未分配给该身份的角色会被点名拒绝。
+
+权利和数据只跟随请求所执行的角色：持有一个角色不等于以它执行。一个角色就是该角色；两个或更多角色以它们的元角色执行。如果执行角色会带上所持有的每个角色的权利，它就没有意义，因此请求获得最小权限，审计记录准确指明实际执行的内容。
+
+被指名的伪角色以限定符身份进入。限定符没有自己的权利、域访问、脱敏或行过滤，因此它不是元角色的权利成员：作为没有脱敏的成员，它会解除每一列的脱敏；作为不读取任何表的成员，它会终结任何行过滤的 OR。它只进入授权：指名 `region__eu` 的授权或脱敏条目，会触达同时指名该限定符和一个授予角色的请求。（REQ-2057）
+
+### `+` 的含义 {: #what-means }
+
+`+` 出现在两个地方，各有不同含义。
+
+**在授权条目中。** `visible_to` 或 `to` 列表中的 `analyst+region__eu` 表示读取者同时持有全部——`analyst` 与 `region__eu` 同时持有。不是复合的条目就是一个角色。列表条目之间的规则是任一：读取者持有任一条目即拥有该授权。内部为 AND，之间为 OR。
+
+**在元角色 id 中。** `meta:analyst+engineer` 是集合 {analyst, engineer} 的元角色在服务端的标识。它的权利是两者的并集。客户端从不直接指名元角色 id；它指名自己持有的角色，由服务器构建元角色。
+
+### 将 ABAC 列规则化为简单的 RBAC {: #abac-column-rules-as-plain-rbac }
+
+基于属性的策略问：“具有这些属性的这个用户能看到这一列吗？”RBAC 问：“哪些角色能看到这一列？”复合授权和伪角色把它变成同一个问题。
+
+“仅对欧盟的分析师解除这个电子邮件的脱敏”就是脱敏条目 `{to: [analyst+region__eu], mask: null}`。任何同时持有 `analyst` 角色和 `region__eu` 伪角色的读取者都能读取未脱敏的该列。无需策略语言。无需为每种组合创建角色。
+
+其代价是以计算代替枚举。小型角色目录降低了维护成本，但“谁能看到这个欧盟电子邮件？”变成了一个计算出的答案：复合条目会对照每个用户的分配和 claim 求值。Provisa 可以双向回答，因为模型是一份定义。列编辑器中的访问检查（`POST /admin/masks/check`）会为选定的角色集合运行这一求值。
+
+### 好处 {: #benefits }
+
+- ABAC 列规则成为 RBAC 授权条目。
+- 小型角色目录，而不是每种组合一个角色。
+- 一份定义协调每个区域的规则。
+- 每个请求都是最小权限和精确的审计记录。
+
+### 指南 {: #best-practices }
+
+- 在组织允许的范围内尽量保持角色目录小巧。
+- 在同一维度内继承（资历、密级）。跨独立维度组合（角色 + 区域、角色 + 部门）。
+- 把最具体的脱敏条目放在最前——即使读取者持有后面的条目，前面的条目也优先。
+- 在组合投入生产之前，用 `POST /admin/masks/check` 检查实际访问。
+
+## 列权限模型 {: #column-permission-model }
+
+每一列都有一个权限模型，按角色控制读取、写入和脱敏。（REQ-042、REQ-249）
+
+### 三级可见性 {: #three-tier-visibility }
 
 | 级别 | 条件 | 结果 |
 | ------ | ----------- | -------- |
-| **隐藏** | 角色不在`visible_to`中 | 列不会出现在GraphQL SDL中 |
-| **已脱敏** | 角色在`visible_to`中、设有脱敏规则、角色不在`unmasked_to`中 | 列可见，但SQL中数据已脱敏 |
-| **未脱敏** | 角色同时在`visible_to`及`unmasked_to`中（或没有脱敏规则） | 完整读取访问权 |
+| **隐藏** | 角色不在 `visible_to` 中 | 该列不在 schema 和目录中 |
+| **脱敏** | 角色在 `visible_to` 中；它所持有的第一条脱敏条目有 `mask` | 列可见，输出中的值被替换 |
+| **未脱敏** | 角色在 `visible_to` 中；它所持有的第一条脱敏条目没有 `mask`，或它没有任何条目 | 完全读取权限 |
 
-### 写入权限
+### 公开列 {: #public-columns }
 
-| 字段 | 空白表示 | 用途 |
+每一列都有一个 `scope`，在模型文件、通过管理 API 或在表页面上设置。三种范围按其服务对象排序：`restricted`，然后 `domain`，然后 `public`。表的编辑者（表所在域的 `table_registration`）可以收窄列的范围。放宽它——`restricted` 到 `domain` 或 `public`，`domain` 到 `public`——会把该列提供给更多角色，并需要其授权所需的权利：表所在域的 `column_grant` 或 `access_config`。正在注册的列以 `domain` 为基准衡量，因此将其注册为 `public` 属于放宽。对于带敏感标签的列，任何范围变更都需要 `sensitive_data`。被拒绝的变更会指明列和权利。（REQ-1959、REQ-1943、REQ-1944）
+
+| 范围 | 提供给 |
+| ------- | ----------- |
+| `domain`（默认） | 覆盖该表所在域的角色，按 `visible_to` 所述。空的 `visible_to` 即每个这样的角色。 |
+| `public` | 同样这些角色，以及未覆盖该表所在域的角色。 |
+| `restricted` | 仅 `visible_to` 所指名的角色。空的 `visible_to` 即没有人。 |
+
+发布一列只为该列解除域条件，仅此而已：
+
+- 对于域外的角色，表只带着其公开列提供。表的其他列，以及不发布任何内容的表，都不在它的 schema、目录和 SQL 中。
+- 列自身的 `visible_to` 仍决定提供给谁：只授予一个角色的公开列只对该角色公开。
+- 脱敏、行过滤、行数上限和关系防护的适用方式与域内相同。角色没有行过滤时，已发布的列不经过滤读取；表或其所在域上的行过滤仍然适用。
+- 关系在其两端的列都被提供时才被提供。
+- API 表的参数列（路径或查询参数）不是数据，也不发布任何内容。
+- `ops` 域要求逐列显式授权（REQ-1133）；无论范围如何，其中任何内容都不会跨域提供。
+
+该规则在每个界面上都相同，因为每个界面都读取角色编译后的 schema：GraphQL、SQL（HTTP、pgwire、Flight、JDBC）、Cypher 和 Bolt、gRPC、REST 和 JSON:API、Flight 和 MCP 目录，以及管理列表。不是这三个值之一的范围会在保存列时被拒绝。
+
+### 写入权限 {: #write-permissions }
+
+| 字段 | 为空表示 | 用途 |
 | ------- | ------------ | --------- |
-| `visible_to` | 所有角色均可读取 | 控制谁可以看到该列（已脱敏或未脱敏） |
-| `unmasked_to` | 没有角色可以看到未脱敏的值 | 控制谁可以绕过脱敏 |
-| `writable_by` | 没有角色可以写入 | 控制谁可以进行变更 (INSERT/UPDATE) |
+| `visible_to` | 所有角色都可以读取 | 控制谁能看到该列（脱敏或未脱敏） |
+| `writable_by` | 没有角色可以写入 | 控制谁能修改（INSERT/UPDATE） |
 
-写入权限会在变更操作管道中强制执行。不在`writable_by`中的角色，尝试写入受限列时会收到403错误。（REQ-033、REQ-034）
+写入权限在变更管道中执行。不在 `writable_by` 中的角色尝试写入受限列时会收到 403 错误。（REQ-033、REQ-034）
 
-### 示例
+### 示例 {: #example }
 
 ```yaml
 columns:
   - name: email
     visible_to: [admin, analyst, viewer]
     writable_by: [admin]
-    unmasked_to: [admin]
-    mask_type: regex
-    mask_pattern: "(.).*@"
-    mask_replace: "$1***@"
+    masks:
+      - to: [admin]                   # admin sees raw value (no mask)
+      - to: ["*"]                     # everyone else sees it masked
+        mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
   - name: salary
     visible_to: [admin, hr]
     writable_by: [hr]
-    unmasked_to: [admin, hr]
-    mask_type: constant
-    mask_value: "0"
+    masks:
+      - to: [admin, hr]               # admin and hr see real value
+      - to: ["*"]                     # all other visible roles see 0
+        mask: {type: constant, value: 0}
   - name: created_at
-    visible_to: []           # all can read
-    writable_by: []          # nobody can write (auto-set)
+    visible_to: []                    # all can read
+    writable_by: []                   # nobody can write (auto-set)
 ```
-
 在此示例中：
 
-- `email`：admin可以看到`alice@example.com`并可编辑；analyst/viewer则会看到`a***@example.com`
-- `salary`：admin及hr可以看到真实值；hr可以编辑；其余所有角色完全看不到此列
-- `created_at`：所有人均可读取，任何人都不可写入
+- `email`：admin 看到 `alice@example.com` 并可编辑；analyst 和 viewer 看到 `a***@example.com`
+- `salary`：admin 和 hr 看到真实值；hr 可编辑；其他任何可见角色看到 `0`
+- `created_at`：所有人都可读取，没有人可以写入，不脱敏
 
-## 变更操作授权
+## 变更操作授权 {: #mutation-authorization }
 
-已注册的变更操作（远程GraphQL、OpenAPI、gRPC、Hasura）须经过两项独立检查。（REQ-867、REQ-868）角色只有在同时具备全局`write`能力，并列于该项变更操作的`writable_by`清单中时，才可调用该操作。（REQ-868）空白的`writable_by`即代表默认拒绝——任何角色均不可调用。（REQ-867）
+已注册的变更（远程 GraphQL、OpenAPI、gRPC、Hasura）受两项独立检查保护。（REQ-867、REQ-868） 只有当角色同时具有全局 `write` 能力并且列在该变更的 `writable_by` 列表中时，才能调用该变更。（REQ-868） 空的 `writable_by` 默认拒绝——没有角色可以调用它。（REQ-867）
 
-变更操作按合约分类为写入操作，而非按调用方的声明而定。（REQ-869）若`SELECT`语句引用了属于变更操作类型的函数，会被提升为写入操作，并须经过相同的两重把关检查，因此调用方无法通过将变更操作伪装为读取操作而绕过限制。（REQ-869）将某项变更操作重新分类为读取安全，须具备`access_config`能力，并会被记录为治理决定；并无按请求逐次退出的选项。（REQ-870）
+变更按契约而非调用者的声明被归类为写入。（REQ-869） 引用变更类函数的 `SELECT` 会被提升为写入，并接受相同的双重门检查，因此调用者无法把变更伪装成读取来调用。（REQ-869） 将变更重新归类为读取安全需要 `access_config` 能力，并作为治理决定记录；没有按请求的例外。（REQ-870）
 
-## 架构可见性
+## 架构可见性 {: #schema-visibility }
 
-按角色划分的GraphQL架构，会隐藏未经授权的内容：（REQ-039）
+每个角色的 GraphQL schema 会隐藏未授权内容：（REQ-039）
 
-- **域访问**：角色只会看到其`domain_access`域内的数据表（`"*"` = 全部）（REQ-039）
-- **列可见性**：对某角色而言不在`visible_to`中的列，会从SDL中省略（REQ-039）
-- 未经授权的数据表／列，不会出现在架构中（REQ-039）
+- **域访问**：角色只能看到其 `domain_access` 域中的表（`"*"` = 全部）（REQ-039）
+- **列可见性**：不在角色 `visible_to` 中的列会从 SDL 中排除（REQ-039）
+- 未授权的表/列不会出现在 schema 中（REQ-039）
 
-## 行级安全 (RLS)
+## 行级安全 (RLS) {: #row-level-security-rls }
 
-按数据表、按角色注入SQL WHERE子句。此项操作在编译之后、执行之前进行。（REQ-041、REQ-263）
+按表、按角色注入 SQL WHERE 子句。在编译之后、执行之前应用。（REQ-041、REQ-263）
 
 ```yaml
 rls_rules:
@@ -170,62 +253,84 @@ rls_rules:
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
 ```
+过滤条件以 AND 追加到查询的 WHERE 子句。适用于查询和变更（UPDATE/DELETE）。（REQ-035、REQ-041）
 
-筛选条件会以AND方式并入查询的WHERE子句中。此机制同时适用于查询及变更操作 (UPDATE/DELETE)。（REQ-035、REQ-041）
+`current_setting('provisa.<name>')` 项从请求所绑定的会话变量解析：来自已验证身份的 `user_id`、来自执行角色的 `role`，以及令牌中每个标量 claim，以其去掉 `x-hasura-` 前缀后的小写名称绑定，因此导入的基于 `X-Hasura-User-Id` 的 Hasura 过滤会读取 `provisa.user_id`。角色配置的 `session_vars` 是基础常量；请求的绑定叠加在其上。在不安全模式下，标头 `x-provisa-session-<name>` 绑定 `<name>`。任何地方都未绑定的变量解析为 NULL，不匹配任何行。（REQ-1682）
 
-`current_setting('provisa.<name>')`项，会针对请求所绑定的会话变量进行解析：`user_id`来自已通过身份验证的身份，`role`来自当前生效的角色，令牌的每一项标量声明（claim）则以其小写名称解析，并去除开头的`x-hasura-`前缀，因此导入的Hasura筛选条件`X-Hasura-User-Id`会被读作`provisa.user_id`。角色配置的`session_vars`是底层的常量值；请求的绑定值会覆盖它们。在未启用安全机制的模式下，`x-provisa-session-<name>`标头会绑定`<name>`。任何未在任何地方绑定的变量，均会解析为NULL，且不匹配任何数据行。（REQ-1682）
+## 列级脱敏 {: #column-level-masking }
 
-## 列级脱敏
+脱敏以每列一个有序列表的形式配置。读取者持有的第一条条目决定其看到的内容。（REQ-2059、REQ-263）
 
-脱敏设置只需为每个列定义一次——这是列本身的属性，而非角色的属性。`unmasked_to`字段控制哪些角色可以绕过脱敏。（REQ-249）
+| 脱敏类型 | 支持的列类型 | SQL 表达式 |
+| ----------- | ----------------------- | --------------- |
+| `regex` | 字符串（varchar、char、text） | `REGEXP_REPLACE(col, pattern, replace)` |
+| `constant` | 任意 | 字面量值（`NULL`、`0`、自定义字符串） |
+| `truncate` | 日期/时间戳 | `DATE_TRUNC(precision, col)` |
 
-| 脱敏类型 | 支持的类型 | SQL表达式 |
-| ----------- | ---------------- | ---------------- |
-| `regex` | 字符串 (varchar, char, text) | `REGEXP_REPLACE(col, pattern, replace)` |
-| `constant` | 任意类型 | 字面量值 (NULL、0、自定义) |
-| `truncate` | 日期／时间戳 | `DATE_TRUNC(precision, col)` |
+每条条目都有一个 `to` 列表，指名其针对的读取者，以及一个可选的 `mask`。没有 `mask` 的条目对这些读取者表示“不脱敏”。`to` 中的 `*` 匹配任何读取者。
 
-脱敏会被下推到SQL SELECT投影中——由数据库直接返回已脱敏的数据。（REQ-263）对于已脱敏的角色而言，未脱敏的数据绝不会经网络传输。（REQ-263）已脱敏的列也会在`WHERE`及`HAVING`子句中被屏蔽（第5层谓词防护），以防止通过筛选推断出未脱敏的值。（REQ-263、REQ-531）
+脱敏表达式被下推到 SQL SELECT 投影中。数据库返回脱敏后的值；对于脱敏角色，未脱敏数据从不经过网络传输。（REQ-263） 脱敏列在 `WHERE` 和 `HAVING` 子句中也被阻止（第 5 层谓词防护），以防止通过过滤推断值。（REQ-263、REQ-531）
 
-## 治理操作响应
+**没有条目，就不脱敏。** 不持有任何条目的读取者读取未脱敏的列。当每个读取者都应受到某种脱敏时，请以一条 `*` 条目结束列表。列表没有 `*` 条目时，列编辑器会发出警告（`unlisted_unmasked`）。
 
-受追踪的函数或webhook的响应，会像数据表的行一样受到治理。（REQ-1679）操作返回的行，会被绑定为一个关系，其列即为该操作声明的输出合约——函数对应`output_columns`，webhook对应`inline_return_type`，或函数数组型`return_schema`的对象属性——该关系会在一个承载这些行的VALUES CTE之上，经过与每次数据表读取相同的治理阶段。（REQ-1679）RLS、脱敏及可见性方面的逻辑，均无需为操作重新实现。
+**按顺序拒绝。** 即使读取者还持有后面一条更宽松的条目，前面的条目也优先。要让承包商无论还有哪些其他角色都始终看到脱敏的薪资，请把承包商条目放在不脱敏条目之前。授予角色从不失去父角色通过继承给予的内容，但在列表中位置靠前的脱敏条目会先适用——这就是这里限制的方式。
 
-以下三项会按与数据表相同的顺序应用。（REQ-1679）
+**元角色。** 元角色的链包括每个成员的角色、它们的祖先以及所有被指名的伪角色。授予任何成员的条目都会触达元角色。另一个成员持有的、排在其前面的条目仍然先适用。
 
-- 行筛选条件：按名称保存于该操作之上的角色RLS规则（通过带`actionName`的`upsertRlsRule`），或者，当该操作没有自身的规则时，采用该操作所属域的域规则。该谓词会在保存时按数据表规则相同的方式，针对合约进行校验。（REQ-1676）
-- 列可见性：合约中声明了`visible_to`的列，会针对清单中未列出的角色被剔除；未声明该字段的列，则属于该操作对外公开形态的一部分，会予以保留。
-- 脱敏：合约中的列可携带`mask_type`、`mask_pattern`、`mask_replace`、`mask_value`、`mask_precision`及`unmasked_to`，与数据表列所携带的字段相同。
+**访问检查。** `POST /admin/masks/check` 接受一个脱敏列表和可选的角色集合，返回对这些角色适用的条目，以及任何读取者都无法触达的条目。受 `masking_config` 保护。
 
-角色继承会为这三项分别解析继承链。（REQ-1677）若响应返回了声明合约之外的列，会以502拒绝，而不会在未经治理的情况下放行。未声明列合约的操作，返回的是标量值，无可绑定的内容；此类响应会原样返回。管理员的测试调用（test-invoke）会报告所应用的筛选条件、排除项及脱敏规则，且经治理的语句会被写入查询审计日志。
+```yaml
+# email column: analyst+region__eu sees raw; everyone else sees masked
+masks:
+  - to: [analyst+region__eu]          # composite: analyst AND in EU region
+  - to: ["*"]                         # all others
+    mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
 
-## 采样
+# hire_date column: hr sees raw; all other visible roles see year only
+masks:
+  - to: [hr]
+  - to: ["*"]
+    mask: {type: truncate, precision: year}
+```
+## 治理操作响应 {: #governing-action-responses }
 
-除非具备`full_results`能力，否则所有角色看到的均为经采样的结果（默认：100行）。（REQ-554）可通过`PROVISA_SAMPLE_SIZE`环境变量控制。（REQ-554）
+被跟踪函数或 webhook 的响应像表的行一样受治理。（REQ-1679） 操作返回的行被绑定为一个关系，其列是该操作声明的输出契约（函数的 `output_columns`、webhook 的 `inline_return_type`，或函数数组型 `return_schema` 的对象属性），并且该关系通过带有这些行的 VALUES CTE，经过与每次表读取相同的治理阶段。（REQ-1679） 行级安全、脱敏或可见性都不会为操作重新实现。
 
-## 审计日志
+有三件事适用，顺序与表相同。（REQ-1679）
 
-任何涉及域资产的查询，均会记录在只可追加的`query_audit_log`中。（REQ-596、REQ-613）每行会捕获`tenant_id`、`user_id`、`role_id`、查询文本的SHA-256哈希值、`table_ids`、`source`、`status_code`、`duration_ms`及`logged_at`。（REQ-596）查询文本绝不会以原文存储——只会存储其哈希值。（REQ-596）
+- 行过滤：为该操作按名称保存的角色行级安全规则（带 `actionName` 的 `upsertRlsRule`），或者在操作没有自己的规则时，操作所在域的域规则。保存时会像表规则一样对照契约检查谓词。（REQ-1676）
+- 列可见性：声明了 `visible_to` 的契约列会对列表未指名的角色移除；未声明任何内容的列属于该操作的公开形态并保留。
+- 脱敏：契约列携带 `masks`，即与表列相同的有序脱敏列表。（REQ-2059）
 
-该日志在数据库层面属于只可追加：PostgreSQL规则会阻止`DELETE`及`UPDATE`。（REQ-596、REQ-613）两个索引——`(tenant_id, logged_at)`及`(user_id, logged_at)`——支持按租户范围及按用户的时间范围合规查询。（REQ-596、REQ-613）
+角色继承为三者解析继承链。（REQ-1677） 返回声明契约之外的列的响应会以 502 被拒绝，而不是不受治理地通过。未声明列契约的操作返回标量，没有可绑定的内容；它按原样返回。管理端的测试调用会报告所应用的过滤、排除和脱敏，受治理的语句会记录在查询审计日志中。
 
-启用加密后，查询文本哈希值所在的列会以加密方式存储，并只会在获授权的管理员读取时解密。（REQ-689）
+## 采样 {: #sampling }
 
-## 速率限制
+除非拥有 `full_results` 能力，所有角色看到的都是采样结果（默认：100 行）。（REQ-554） 由环境变量 `PROVISA_SAMPLE_SIZE` 控制。（REQ-554）
 
-按角色设置的速率限制，会在`provisa.yaml`中配置：包括每秒最大请求数、最大并发SSE订阅数，以及最大并发Arrow Flight流数。（REQ-369）该等限制会在编译或执行之前，在API层强制执行；超出限制的请求会被拒绝，并返回HTTP 429及`Retry-After`标头。（REQ-369）
+## 审计日志 {: #audit-logging }
 
-自然语言查询服务（`POST /query/nl`）另设有独立限制，通过`nl.rate_limit`（每分钟、每角色的请求数）控制。超出限制的请求会在调用任何LLM之前被拒绝。（REQ-370）
+每个触及域资产的查询都会记录到仅追加的 `query_audit_log`。（REQ-596、REQ-613） 每一行记录 `tenant_id`、`user_id`、`role_id`、查询文本的 SHA-256 哈希、`table_ids`、`source`、`status_code`、`duration_ms` 和 `logged_at`。（REQ-596） 查询文本从不逐字保存——只保存其哈希。（REQ-596）
 
-速率限制的状态存储于Redis（`cache.redis_url`）中，以滑动窗口计数器方式运作——并无按实例存储的状态——因此限制会在所有水平扩展的Provisa实例之间保持一致。（REQ-371）
+该日志在数据库层面是仅追加的：PostgreSQL 规则阻止 `DELETE` 和 `UPDATE`。（REQ-596、REQ-613） 两个索引——`(tenant_id, logged_at)` 和 `(user_id, logged_at)`——支持按租户和按用户在时间范围内的合规查询。（REQ-596、REQ-613）
 
-## 查询复杂度上限
+启用加密时，查询文本哈希列以加密形式存储，只在授权的管理读取中解密。（REQ-689）
 
-速率限制约束角色发送请求的数量；复杂度上限约束单条语句可以请求的内容。（REQ-1174）
+## 速率限制 {: #rate-limiting }
 
-每条语句都有一个复杂度分数：它读取的关系、其连接、所选的列（`*` 按它所代表的列数计算），以及其中嵌套的查询。从远程 API 数据源（OpenAPI、远程 GraphQL、远程 gRPC）读取的关系计为 10，因为每次读取都会消耗远程系统为该数据源所有使用者设定的额度。
+每个角色的速率限制在 `provisa.yaml` 中配置：每秒最大查询数、最大并发 SSE 订阅数和最大并发 Arrow Flight 流数。（REQ-369） 限制在 API 层、编译或执行之前执行；超出限制的请求以 HTTP 429 和 `Retry-After` 标头被拒绝。（REQ-369）
 
-上限是角色 `rate_limit` 中的 `max_query_complexity`。全组织设置 `limits.max_query_complexity` 是每个角色的上限天花板：角色可以设置更低的上限，更高的则不起作用。默认两者均未设置。
+自然语言查询服务（`POST /query/nl`）通过 `nl.rate_limit`（每个角色每分钟请求数）有单独的限制。超出限制的请求在调用任何 LLM 之前被拒绝。（REQ-370）
+
+速率限制状态以滑动窗口计数器保存在 Redis（`cache.redis_url`）中——不在单个实例内保存状态——因此限制在所有水平扩展的 Provisa 实例上执行。（REQ-371）
+
+## 查询复杂度上限 {: #query-complexity-limit }
+
+速率限制约束角色发送多少请求。复杂度上限约束单条语句可以请求什么。（REQ-1174）
+
+每条语句都有一个复杂度分数：它读取的关系、它的联接、它选择的列（`*` 按其代表的列计数）以及嵌套在其中的查询。从远程 API 数据源（OpenAPI、远程 GraphQL、远程 gRPC）读取的关系计为 10，因为每次读取都会消耗远程系统为该数据源所有用户设定的预算。
+
+上限是角色 `rate_limit` 中的 `max_query_complexity`。组织范围的设置 `limits.max_query_complexity` 是每个角色的上限：角色可以设置更低的上限，更高的上限不生效。默认两者都未设置。
 
 ```yaml
 roles:
@@ -233,127 +338,152 @@ roles:
     rate_limit:
       max_query_complexity: 200
 ```
+分数在查询解析之后、治理或执行之前测量，因此同一个上限适用于语句可能到达的每个接口：GraphQL、HTTP 上的 SQL、pgwire、Arrow Flight、gRPC、Cypher、JSON:API 和 MCP。超出上限的语句会被拒绝，并附上其分数、上限以及它所请求的内容。HTTP 接口应答 413。该拒绝作为策略拒绝记录。
 
-分数在请求解析之后、治理或执行之前测量，因此同一上限适用于语句可到达的每个接口：GraphQL、HTTP 上的 SQL、pgwire、Arrow Flight、gRPC、Cypher、JSON:API 和 MCP。超过上限的语句会被拒绝，并附上其分数、上限以及所请求的内容。HTTP 接口返回 413。该拒绝会记录为策略拒绝。
-
-## 身份验证
+## 身份验证 {: #authentication }
 
 可插拔的身份验证提供程序：（REQ-120）
 
-| 提供程序 | 令牌类型 | 使用场景 |
+| 提供程序 | 令牌类型 | 场景 |
 | ---------- | ----------- | ---------- |
-| `none` | X-Provisa-Role标头 | 开发 |
-| `basic` | bcrypt 本地账户 + JWT | 自包含部署 |
-| `firebase` | Firebase ID令牌 | 生产环境 |
-| `keycloak` | Keycloak JWT | 企业版 |
+| `none` | X-Provisa-Role 标头 | 开发 |
+| `basic` | 本地 bcrypt 账户 + JWT | 自托管部署 |
+| `firebase` | Firebase ID 令牌 | 生产 |
+| `keycloak` | Keycloak JWT | 企业 |
 | `oauth` | OIDC JWT | PingFed、Okta、Azure AD、Auth0 |
 | `simple` | bcrypt + JWT | 测试 |
 
-角色映射：通过可配置的规则，将身份声明映射至Provisa角色。（REQ-120）`assignments_source`字段控制角色分配的来源：`claims`会从JWT令牌的声明中读取（默认值）；`provisa`则会从Provisa内部的分配存储中读取。（REQ-551）
+角色映射：身份 claim → 通过可配置规则映射为 Provisa 角色。（REQ-120） `assignments_source` 字段控制角色分配的来源：`claims` 从 JWT 令牌 claim 中读取（默认），`provisa` 从 Provisa 内部的分配存储中读取。（REQ-551） 多租户部署（`multitenancy: true`）按组织自行分配角色，因此必须使用 `assignments_source: provisa`：使用 `claims` 时它不会启动，会导致这一组合的设置变更也会被拒绝。单租户部署可以使用任一选项。
 
-在`provisa.yaml`中配置的超级用户（用户名加上来自环境密钥的密码），无论配置何种提供程序，均一律获授予admin角色及全部能力——这是用于初始配置的引导路径。（REQ-125）
+在 `provisa.yaml` 中配置的超级用户（用户名加来自环境密钥的密码）无论配置了哪个提供程序，总是获得 admin 角色和所有能力——这是初始设置的引导路径。（REQ-125）
 
-### 接口与凭据
+### 接口与凭据 {: #surfaces-and-credentials }
 
-每个接口都通过同一套提供程序契约进行认证，因此在一个接口上可用的凭据，只要协议能够承载，就在所有接口上可用。（REQ-124、REQ-1263）本表是唯一参考；各接口文档不再重复。
+每个接口都通过同一个提供程序契约进行身份验证，因此在一个接口上可用的凭据，在协议能携带它的所有接口上都可用。（REQ-124、REQ-1263） 此表是唯一的参考；各接口的文档不再重复。
 
-| 接口 | 密码 | 提供程序令牌 | 个人访问令牌 | 客户端证书（mTLS） |
+| 接口 | 密码 | 提供程序令牌 | 个人访问令牌 | 客户端证书 (mTLS) |
 | --------- | ---------- | ---------------- | ----------------------- | --------------------------- |
-| HTTP（REST、JSON:API、GraphQL） | `Authorization: Basic` | `Authorization: Bearer` | `Authorization: Bearer` | 经由终止代理 |
+| HTTP（REST、JSON:API、GraphQL） | `Authorization: Basic` | `Authorization: Bearer` | `Authorization: Bearer` | 通过终止代理 |
 | pgwire | 密码字段（明文或 SCRAM） | 密码字段，OIDC 部署 | 密码字段 | 是 |
 | Bolt | `basic` 方案 | `bearer` 方案 | `bearer` 方案 | 是 |
-| Arrow Flight | — | 握手或票据负载中的 `token` | 同上 | 是 |
+| Arrow Flight | — | 握手或 ticket 负载中的 `token`；`list_flights`、`get_flight_info` 和 `get_schema` 使用调用标头 `authorization: Bearer` | 同上 | 是 |
 | gRPC | — | `authorization` 元数据 | `authorization` 元数据 | 是 |
-| MCP | — | `Authorization: Bearer` | `Authorization: Bearer` | 经由终止代理 |
+| Airport（DuckDB `airport` 扩展，可选） | — | `authorization: Bearer`（密钥的 `auth_token`） | 同上 | — |
+| MCP | — | `Authorization: Bearer` | `Authorization: Bearer` | 通过终止代理 |
 
-单元格为 `—` 之处，表示该协议没有可与密码配对的用户名字段；这些情形由令牌形式覆盖。pgwire 则是镜像情形：启动包只有一个密钥字段且没有方案，因此密钥*是什么*决定了采用哪种方法——PAT 由其前缀识别，当配置的提供程序为令牌提供程序时该密钥按 bearer 令牌读取，其余一律视为密码。选择只做一次——被选定校验器拒绝的凭据不会再拿去试另一个。
+DuckDB `airport` 扩展唯一的身份验证选项是其密钥的 bearer `auth_token`，因此 DuckDB 客户端在那里出示提供程序令牌或个人访问令牌，并以其身份解析到的角色执行。能够设置调用标头的客户端，可以在 `x-provisa-role` 中请求一个已持有的角色或逗号分隔的集合。（REQ-1120、REQ-1263）
 
-该矩阵由 `tests/unit/test_auth_surface_conformance.py` 强制执行，它驱动每个接口真实的校验入口，并在新增接口而未添加对应行时失败。
+在这些接口上，拒绝都会报告其类别。缺失、被拒绝或不可用的凭据是身份验证失败：HTTP 401、gRPC `UNAUTHENTICATED`、Arrow Flight 和 Airport `Unauthenticated`。有效凭据请求以身份不持有的角色执行，是授权失败，并会指明该角色：HTTP 403、gRPC `PERMISSION_DENIED`、Arrow Flight 和 Airport `Unauthorized`。（REQ-273、REQ-1263） 有一个例外位于 Arrow 客户端库而非服务器：Flight `get_schema` 调用的拒绝会以带有服务器原因、但不带其类别的通用 Arrow 错误到达 Python 客户端；`list_flights`、`get_flight_info` 和 `do_get` 会传递类别。
+
+单元格为 `—` 之处，协议不携带可以附加密码的用户名字段；令牌形式覆盖了这种情况。pgwire 则相反：启动包中只有一个密钥字段且没有方案，因此方法根据密钥*是什么*来选择：PAT 按前缀识别；当配置的提供程序是令牌提供程序时，密钥作为 bearer 令牌读取；其他一切都是密码。选择只做一次——被所选验证器拒绝的凭据不会再由另一个验证器检查。
+
+该矩阵由 `tests/unit/test_auth_surface_conformance.py` 执行，它调用每个接口真实的身份验证入口点，若新增接口而没有对应的行则失败。
 
 ### 个人访问令牌 {: #personal-access-tokens }
 
-PAT 是用户为无法完成交互式登录的客户端——脚本、BI 工具、驱动程序——铸造的长期 bearer 密钥。（REQ-1263）它自带组织与角色，且每个接口都通过同一个校验器解析它，因此任何接口都无需知道 PAT 为何物。
+PAT 是用户为无法完成交互式登录的客户端（脚本、BI 工具、驱动）创建的长期 bearer 密钥。（REQ-1263） 它携带自己的组织和角色，每个接口都通过同一个验证器解析它，因此任何接口都不需要知道 PAT 是什么。
 
-其传输形式为 `provisa_pat_` 后跟 43 个 URL 安全的 base64 字符。正是这个前缀把呈交的密钥路由到令牌存储而非身份提供程序，也使泄漏的令牌可在日志与代码库中被 grep 检出。
+线上形式为 `provisa_pat_` 后接 43 个 URL 安全的 base64 字符。该前缀将出示的密钥路由到令牌存储而不是身份提供程序，并使泄露的令牌能在日志和代码仓库中被找到。
 
-- **存储**——仅保留密钥的 SHA-256。密钥本身仅在创建时显示一次，且无法找回。列表中携带显示前缀与生命周期时间戳，绝不会是可用凭据。
-- **签发与吊销**——`POST /auth/tokens`、`GET /auth/tokens`、`DELETE /auth/tokens/{token_hash}`，以及管理界面中用户自身资料页上的自助区域。铸造与吊销凭据是令牌持有者本人的行为。
-- **归属**——通过校验的 PAT 解析为其所有者的账户：用户 id、电子邮件与显示名称。因此在 PAT 之下写入的审计行或使用报表指向的是人，而非凭据。该人的哪一个令牌参与了操作则单独记录于 `raw_claims["token_name"]`。
-- **过期**——令牌可携带过期时间；已过期的令牌在校验时被拒。删除用户的成员资格会连同吊销其令牌。
+- **存储**——只保存密钥的 SHA-256。密钥本身只在创建时显示一次，且无法恢复。列表携带显示前缀和生命周期时间戳，但从不携带有效凭据。
+- **签发与吊销**——`POST /auth/tokens`、`GET /auth/tokens`、`DELETE /auth/tokens/{token_hash}`，以及管理界面中用户自己个人资料里的自助区域。创建和吊销凭据是令牌所有者的操作。
+- **归属**——经过验证的 PAT 解析为其所有者的账户：用户 id、电子邮件和显示名称。因此在 PAT 下写入的审计行或用量报告指明的是人，而不是凭据。该人的哪个令牌在执行，会单独放在 `raw_claims["token_name"]` 中传递。
+- **过期**——令牌可以设置过期时间；过期的令牌在验证时被拒绝。移除用户的成员资格会一并吊销其令牌。
 
-### pgwire 上的 SCRAM-SHA-256
+### pgwire 上的 SCRAM-SHA-256 {: #scram-sha-256-on-pgwire }
 
-在 `basic` 提供程序下，设置 `auth.scram: true` 会让 pgwire 通告 SASL（认证码 10）并使用 `SCRAM-SHA-256` 机制，从而以证明密码取代发送密码。（REQ-1394）不提供通道绑定（`SCRAM-SHA-256-PLUS`）。
+使用 `basic` 提供程序时，设置 `auth.scram: true` 会让 pgwire 以 `SCRAM-SHA-256` 机制提供 SASL（身份验证代码 10），从而证明密码而不是发送密码。（REQ-1394） 不提供通道绑定（`SCRAM-SHA-256-PLUS`）。
 
-SCRAM 需要一个 RFC 5802 验证器，而它无法从 bcrypt 哈希推导得出。只要密码以明文经过——注册、登录、修改密码、管理员重置——就会写入一个验证器，因此开启 SCRAM 的部署会随着用户下一次认证逐步收集验证器，而每位用户的首次 SCRAM 连接紧随其下一次输入密码之后。对尚无验证器的用户，会以与真实交换无法区分的模拟交换作答，因此线路上不会泄露谁已完成迁移。
+SCRAM 需要 RFC 5802 验证器，它无法从 bcrypt 哈希推导出来。每当密码以明文经过时——注册、登录、修改密码、管理员重置——都会写入验证器，因此启用 SCRAM 的部署会在用户下一次进行身份验证时收集验证器，每个用户的第一次 SCRAM 连接发生在其下一次输入密码之后。尚无验证器的用户会得到一次与真实交换无法区分的模拟交换，因此网络不会暴露谁已经迁移。
 
-### 双向 TLS
+### 双向 TLS {: #mutual-tls }
 
-客户端证书验证把第一道检查移到 TLS 握手：没有部署方 CA 签名证书的调用方永远到不了凭据层。（REQ-1228）它可用于 pgwire、Bolt、gRPC 与 Arrow Flight——这四种自行终止 TLS 的传输。
+客户端证书验证把第一道检查移到 TLS 握手中：没有由部署的 CA 签发的证书的调用者，永远到达不了凭据层。（REQ-1228） 它在 pgwire、Bolt、gRPC 和 Arrow Flight 上可用——这四种传输自行终止其 TLS。
 
 | 变量 | 含义 |
 | ---------- | --------- |
 | `PROVISA_MTLS_CLIENT_CA` | 允许签发客户端证书的 CA 的 PEM 包 |
-| `PROVISA_MTLS_MODE` | `required`（设置 CA 后的默认值）或 `optional` |
-| `PROVISA_MTLS_BIND_PRINCIPAL` | 为真时，证书的 common name 必须与该连接随后认证所用的用户名相同 |
+| `PROVISA_MTLS_MODE` | `required`（一旦设置 CA 即为默认）或 `optional` |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | 为 true 时，证书的通用名必须与连接随后进行身份验证所用的用户名相匹配 |
 
-各协议的覆盖设置沿用与 TLS 设置相同的命名。没有任何东西靠推断：设置了模式却未设置 CA 会拒绝启动，无法识别的模式也会拒绝启动，而不会被读作最接近的安全取值——一个自以为要求客户端证书而实际并未要求的部署，处境比启动失败的部署更糟。
+按协议的覆盖遵循与 TLS 设置相同的命名。不做任何推断：没有 CA 而设置了模式会拒绝启动，无法识别的模式也会拒绝启动，而不是被读作最安全的相邻值——一个以为自己要求客户端证书但实际并未要求的部署，比一个不启动的部署处境更糟。
 
-### 登录限流
+### 登录限流 {: #login-throttling }
 
-猜测密码与协议无关：同一个账户可以经由 HTTP、pgwire 与 Bolt 被反复轰击。因此计数器位于凭据校验层，而非任何单一接口，这样在任何地方触发的锁定都会处处生效。（REQ-1393）
+密码猜测与协议无关：同一个账户可以通过 HTTP、pgwire 和 Bolt 受到攻击。因此计数器位于凭据验证层，而不是任何单个接口上，从而在任何地方触发的锁定在所有地方都有效。（REQ-1393）
 
-它默认开启——五分钟内五次失败会将该主体锁定十五分钟——并在 `auth.login_throttle` 下调整。被锁定的主体在凭据被检查之前就已遭拒，而一次成功认证会清空该主体的历史。
+它默认启用——五分钟内失败五次会将主体锁定十五分钟——并可在 `auth.login_throttle` 中配置。被锁定的主体会在凭据被检查之前就被拒绝，成功的身份验证会清除该主体的历史。
 
-键是协议所携带的 principal。仅支持 bearer 的接口不携带 principal，因此键是凭据自身的摘要；这样阻止的是同一个坏令牌被无限重放。该存储按进程划分，因此运行多个 API worker 的部署每个 worker 最多允许 `max_attempts` 次——限流是对猜测的刹车，不是分布式配额。
+键是协议所携带的主体。仅 bearer 的接口不携带主体，因此键是凭据本身的摘要；这可防止无限制地重放错误的令牌。存储在进程内，因此有多个 API worker 的部署允许每个 worker 最多 `max_attempts` 次——该限流是减慢猜测，而不是分布式配额。
 
-### 在传输协议上指定组织
+### 指定组织 {: #naming-the-org }
 
-在多租户下，组织通过主机名寻址：`acme.provisa.dev` 即组织 `acme`。在 HTTP 上该名称随 `Host` 标头到达。pgwire 或 Bolt 客户端不发送此类标头，但它确实会在 TLS ClientHello 中发送所拨的主机名，Provisa 便从中读取组织。（REQ-1234）客户端无需任何改动——连接到 `acme.provisa.dev` 即可。
+在多租户模式下，每个请求都指名其目标组织。只属于一个组织并不等于指名了它：未指名任何组织的请求会被拒绝，拒绝会说明应发送什么。（REQ-1235） 各接口指名组织的方式如下：
 
-主机名是一项请求，而非授予。它抵达的是与 `Host` 标头相同的解析器，该解析器会拒绝任何认证 principal 既非成员、也不持有跨组织权限的组织。拨向你并无成员资格的主机名，触及不到任何数据。以 IP 地址连接的客户端不发送主机名，仅从 principal 解析其组织——在单组织部署中，每条连接都是如此。
+| 接口 | 客户端如何指名组织 |
+| ------- | -------------------------- |
+| HTTP（界面、REST、GraphQL） | 组织自己的主机名 `acme.provisa.dev`，或在控制平面主机上使用 `X-Org-Provisa` 标头 |
+| pgwire | 数据库名（`psql -d acme`、BI 工具的数据库字段），或通过 TLS 拨号的组织自己的主机名 |
+| Bolt | 数据库名 `<org>.provisa_<role>`（或 `<org>.provisa_ops_<role>`），或通过 TLS 拨号的组织自己的主机名 |
+| Arrow Flight | ticket 中的 `"org"` |
+| gRPC | `x-provisa-org` 元数据标头 |
+| MCP（HTTP 传输） | 组织自己的主机名或 `X-Org-Provisa` 标头 |
+| Python 客户端 | `ProvisaClient`、`connect()` 和 `adbc_connect()` 中的 `org=`；SQLAlchemy URL 中的 `?org=` |
 
-gRPC、Arrow Flight 与 MCP 把证书交给不暴露主机名回调的库；这些传输改用 `x-provisa-org` 元数据标头来指定组织。
+通过 TLS 拨号主机名的 pgwire 客户端会在 TLS ClientHello 中发送该主机名，Provisa 从中读取组织（REQ-1234）。当主机名和数据库名都指名了组织且二者不同时，连接会被拒绝；二者都不优先。默认使用的数据库名 `provisa` 不指名组织，连接到某组织的 BI 工具会把
+该组织显示为其数据库。在 Bolt 上，`SHOW DATABASES` 为用户所属的每个组织
+列出一个 `<org>.provisa_<role>`；在多租户模式下，单独的 `provisa_<role>` 会被拒绝，会话保持在
+它最先指名的组织中。
 
-## 高安全模式
+名称是请求，而不是授权。在任何地方它都会到达同一个解析器，该解析器会拒绝已验证主体不是其成员、且对其没有跨组织权利的组织。
 
-`provisa.yaml` 中的 `security.mode: high` 主张一项保证：Provisa 后端绝不处理明文数据。（REQ-693）每个重要的列都在源端加密，只有持有解密密钥的客户端才能读取。这项保证带来的后果，部署方必须提前规划。
+个人访问令牌为一个组织签发，并自行指名该组织。它只开放该组织：指名另一个组织的请求会被拒绝，即使令牌所有者同时属于两者。
 
-**该模式的作用：**
+单租户部署没有需要指名的组织。在那里，没有任何接口为此读取主机名、数据库名或标头。
 
-- **数据端点要求出示客户端解密的凭证。**`/data/` 之下的一切都返回 403，除非调用方带上 `X-Provisa-KMS-Key` 标头——这是配置为本地解密的 JDBC 或 Python 客户端的标记。浏览器或明文 REST 消费方不带此类密钥，会被拒绝。该关卡是对整棵树的默认拒绝：明天新增的路由在其发布当天即受管控，豁免则必须逐一论证。
-- **模式元数据端点保持开放。**`/data/sdl`、`/data/introspection`、`/data/schema-version`、`/data/domains`、`/data/proto` 与 `/data/compile` 不返回行数据，而客户端在能够连接之前必须先读取模式——包括哪些字段带 `@encrypted`。
-- **gRPC 与 Arrow Flight 在同一凭证要求下继续服务。**它们正是执行加密的客户端实际使用的传输；关闭它们会让高安全部署失去所有传输协议。在其中任一上的数据调用都必须以调用元数据携带同样的 KMS 密钥。
-- **pgwire、Bolt 与 MCP 不会启动。**三者都没有能够承载解密上下文的逐连接握手：pgwire 行集与 Cypher 结果在线路上都是明文，而 MCP 工具调用会把结果以文本交给模型。为其中任一配置的端口在启动时会被拒绝而非提供服务。
-- **关系防护无法绕过。**`ignore_relationships` 与 `relationship_guard: false` 均被忽略；参见[关系治理](#v002)。
+## 跨组织的密钥 {: #secrets-across-organizations }
 
-**如何确认部署处于该模式：**启动日志会指明它；不带 KMS 密钥的 `/data/sql` 请求会以 403 应答并给出提及 REQ-693 的消息；pgwire、Bolt 与 MCP 端口未在监听。
+组织的密钥只由该组织读取。在 Provisa 自己的存储中，每个密钥都保存在其组织之下。在承载多个组织的部署的中央服务中（Vault、AWS Secrets Manager、GCP Secret Manager、Azure Key Vault），每次读取都在读取方组织的前缀内进行，会离开该前缀的引用会被拒绝。（REQ-1557） 前缀以及将已有密钥迁移到前缀下的步骤，参见[密钥](secrets.md#one-organizations-secrets-in-a-central-service)。
 
-## ABAC批准钩子 (Hook)
+## 高安全模式 {: #high-security-mode }
 
-可选的外部策略钩子，会在查询执行前触发。（REQ-203）配置此项功能后，Provisa会调用您的策略引擎，并传递用户身份、角色、数据表、列及操作类型。响应结果会决定该查询是否继续执行。（REQ-203）以 **需要审批** 注册的命令，在每次调用前都会提交给同一个钩子；参见[命令调用](#command-calls)。（REQ-1924）
+`provisa.yaml` 中的 `security.mode: high` 声明一项保证：Provisa 后端从不处理明文数据。（REQ-693） 每个有意义的列都在数据源处加密，只有持有解密密钥的客户端才能读取它。这项保证有一些部署必须为之规划的后果。
 
-### 适用范围
+**该模式做什么：**
 
-只有当查询涉及已设置范围的数据表或数据源时，该钩子才会触发——其余情况则完全没有额外开销。（REQ-204）
+- **数据端点要求客户端解密的证明。** `/data/` 下的一切都返回 403，除非调用者出示 `X-Provisa-KMS-Key` 标头——这是配置为本地解密的 JDBC 或 Python 客户端的标志。明文的浏览器或 REST 使用者不携带这样的密钥，因此被拒绝。该控制是对整棵树的默认拒绝：明天新增的路由在发布当天就受到保护，例外需要正当理由。
+- **schema 元数据端点保持开放。** `/data/sdl`、`/data/introspection`、`/data/schema-version`、`/data/domains`、`/data/proto` 和 `/data/compile` 不返回行数据，而客户端必须先读取 schema——包括哪些字段是 `@encrypted`——才能连接。
+- **gRPC 和 Arrow Flight 继续提供服务，要求相同的证明。** 它们是加密客户端实际使用的传输；关闭它们会让高安全部署没有线协议可用。两者上的数据调用都必须以调用元数据携带同一个 KMS 密钥。
+- **pgwire、Bolt 和 MCP 不会启动。** 这三者都没有能携带解密上下文的逐连接握手：pgwire 的行集和 Cypher 结果以明文传输，MCP 的工具调用把结果作为文本交给模型。为其中任何一个配置的端口都会在启动时被拒绝，而不是提供服务。
+- **关系防护无法绕过。** `ignore_relationships` 和 `relationship_guard: false` 都被忽略；参见[关系治理](#relationship-governance-v002)。
+
+**如何验证部署处于该模式：** 启动日志会指明它，不带 KMS 密钥的 `/data/sql` 查询会以 403 应答并附上指名 REQ-693 的消息，pgwire、Bolt 和 MCP 端口不在监听。
+
+## ABAC批准钩子 (Hook) {: #abac-approval-hook }
+
+在查询执行之前触发的可选外部策略钩子。（REQ-203） 配置后，Provisa 会带着用户身份、角色、表、列和操作调用你的策略引擎。应答决定查询是否继续。（REQ-203） 以**需要批准**注册的命令在每次调用前都会交给同一个钩子；参见[命令调用](#command-calls)。（REQ-1924）
+
+### 适用范围 {: #scoping }
+
+钩子只在查询触及启用了它的表或数据源时触发——其他一切都没有开销。（REQ-204）
 
 | 配置 | 效果 |
 | -------- | -------- |
-| `auth.approval_hook.scope: all` | 每个查询均会触发此钩子 |
-| `sources[].approval_hook: true` | 该数据源上的所有数据表均会触发此钩子 |
-| `tables[].approval_hook: true` | 该数据表会触发此钩子 |
+| `auth.approval_hook.scope: all` | 每个查询都调用钩子 |
+| `sources[].approval_hook: true` | 该数据源的所有表都调用钩子 |
+| `tables[].approval_hook: true` | 该表调用钩子 |
 
-### 协议
+### 协议 {: #protocols }
 
-支持三种传输方式：（REQ-246）
+支持三种传输：（REQ-246）
 
-| 类型 | 使用场景 | 配置字段 |
+| 类型 | 场景 | 配置字段 |
 | ------ | ---------- | ------------- |
-| `webhook` | 任何支持HTTP的策略服务（OPA、自定义） | `url` |
-| `unix_socket` | 位于同一台机器上的OPA或策略边车 (sidecar) | `socket_path` + `url` |
-| `grpc` | 同址部署、高吞吐量的策略服务 | `url` (host:port) |
+| `webhook` | 任何 HTTP 策略服务（OPA、自定义） | `url` |
+| `unix_socket` | 同一主机上的 OPA 或策略 sidecar | `socket_path` + `url` |
+| `grpc` | 就近的高性能策略服务 | `url` (host:port) |
 
-gRPC传输方式采用`provisa/auth/approval.proto`中定义的`provisa.auth.ApprovalService`合约。请在您的策略引擎中实现此服务：（REQ-246）
+gRPC 传输使用 `provisa/auth/approval.proto` 中定义的 `provisa.auth.ApprovalService` 契约。在你的策略引擎中实现此服务：（REQ-246）
 
 ```proto
 service ApprovalService {
@@ -376,28 +506,27 @@ message ApprovalResponse {
   string reason = 2;
 }
 ```
+gRPC 通道是持久的——每个 Provisa 实例一个通道，在对该钩子端点的所有调用中复用。（REQ-555）
 
-gRPC通道属于持久化连接——每个Provisa实例使用一条通道，并会在所有对该钩子端点的调用中被重复使用。（REQ-555）
+### 请求／响应 {: #request-response }
 
-### 请求／响应
-
-三种传输方式均携带相同的载荷：（REQ-246）
+三种传输都携带相同的负载：（REQ-246）
 
 | 字段 | 类型 | 说明 |
 | ------- | ------ | ------------- |
-| `user` | string | 已通过身份验证的用户身份 |
-| `roles` | string[] | 用户的Provisa角色 |
-| `tables` | string[] | 查询中引用的数据表ID |
-| `columns` | string[] | 查询中选取的列 |
-| `operation` | string | `"query"`或`"mutation"`；命令调用为 `"command"` |
-| `command` | string | 命令调用时为命令名称；查询时为空 |
-| `arguments` | object | 调用命令时所用的参数；查询时为空 |
+| `user` | string | 已验证用户的身份 |
+| `roles` | string[] | 用户的 Provisa 角色 |
+| `tables` | string[] | 查询引用的表 id |
+| `columns` | string[] | 查询中选择的列 |
+| `operation` | string | `"query"` 或 `"mutation"`；命令调用为 `"command"` |
+| `command` | string | 命令调用时的命令名称；查询时为空 |
+| `arguments` | object | 调用命令所用的参数；查询时为空 |
 
-webhook及Unix socket传输方式均以JSON交换数据，以 `command` 和 `arguments` 为键。在 gRPC 上，参数以 JSON 文本 `arguments_json` 传送。响应必须包含`approved`（布尔值），并可选择性包含`reason`（字符串）。（REQ-246） [tool-verified: `provisa/auth/approval_hook.py` `ApprovalRequest`, `_request_to_dict`, `GrpcApprovalHook` (`arguments_json=json.dumps(request.arguments, default=str)`); `provisa/auth/approval.proto`]
+webhook 和 Unix socket 传输交换 JSON，以 `command` 和 `arguments` 为键。在 gRPC 上，参数以 JSON 文本 `arguments_json` 传递。响应必须包含 `approved`（bool），并可选包含 `reason`（string）。（REQ-246）
 
 ### 命令调用 {: #command-calls }
 
-设置了 `requires_approval` 的命令（命令表单上的 **需要审批** 开关）在每次调用前都会交给钩子，在所有界面上均如此。仅当钩子批准时才会运行。请求携带 `operation: "command"`、命令名称及其参数；`tables` 和 `columns` 为空。（REQ-1924）[tool-verified: `provisa/api/data/action_exec.py` `_require_approval` (`operation="command"`, `tables=[]`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
+设置了 `requires_approval`（命令表单上的**需要批准**开关）的命令，在任何界面上每次调用之前都会交给钩子。只有钩子批准时它才运行。请求携带 `operation: "command"`、命令名称及其参数；`tables` 和 `columns` 为空。（REQ-1924） [tool-verified: `provisa/api/data/action_exec.py` `_require_approval` (`operation="command"`, `tables=[]`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
 
 ```json
 {
@@ -410,15 +539,14 @@ webhook及Unix socket传输方式均以JSON交换数据，以 `command` 和 `arg
   "arguments": {"input": {"title": "Crash on save"}}
 }
 ```
-
 [inferred: the payload also carries `session_vars`; values shown are placeholders]
 
-两种拒绝，均为 403 [tool-verified: `_require_approval`]：
+两种拒绝，均为 403：
 
-- `functions.approval_unavailable`: 未配置钩子。与查询不同，需要审批的命令绝不会在没有钩子的情况下放行。
-- `functions.approval_denied`: 钩子应答了 `approved: false`。原因见消息。
+- `functions.approval_unavailable`：未配置钩子。与查询不同，需要批准的命令在没有钩子时从不放行。
+- `functions.approval_denied`：钩子应答了 `approved: false`。原因在消息中。
 
-### 超时及回退处理
+### 超时及回退处理 {: #timeout-and-fallback }
 
 ```yaml
 auth:
@@ -429,10 +557,9 @@ auth:
     fallback: deny      # allow | deny — applied on timeout or error
     scope: ""           # "" = use per-table/per-source flags; "all" = every query
 ```
+超时或传输错误时，适用 `fallback` 策略。（REQ-247） 熔断器（默认：连续 5 次错误后断开，30 秒后半开）可防止缓慢的钩子端点引发级联故障。（REQ-556）
 
-发生超时或传输错误时，会应用`fallback`策略。（REQ-247）熔断器 (circuit breaker)（默认：连续失败5次后开启，30秒后转为半开状态）可防止因钩子端点响应缓慢而引发的级联故障。（REQ-556）
-
-### 配置示例
+### 配置示例 {: #configuration-example }
 
 ```yaml
 auth:
@@ -450,9 +577,8 @@ tables:
   - id: salary_data
     approval_hook: true   # this table always requires hook approval
 ```
+## 密钥 {: #secrets }
 
-## 密钥
+凭据使用 `${env:VAR_NAME}` 语法，在运行时解析。（REQ-557） 密码从不保存在配置数据库中。（REQ-557）
 
-凭据使用`${env:VAR_NAME}`语法，并在运行时解析。（REQ-557）密码绝不会存储在配置数据库中。（REQ-557）
-
-完整的密钥服务——保管库、引用语法与提供程序——参见[密钥](secrets.md)。
+关于密钥服务的完整说明——存储、引用语法和提供程序——参见[密钥](secrets.md)。

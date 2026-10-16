@@ -1,8 +1,8 @@
-# 从 Hasura 导入
+# 从 Hasura 导入 {: #importing-from-hasura }
 
 Provisa 可以将现有的 Hasura 元数据转换为 Provisa 的 `config.yaml`，保留已跟踪的表、关系、权限和远程架构。
 
-## 交互式导入（管理 → 导入 Hasura 配置）
+## 交互式导入（管理 → 导入 Hasura 配置） {: #interactive-import-admin-import-hasura-config }
 
 管理界面运行相同的转换器，因此导入无需 shell 访问权限，也无需配置文件的往返操作。需要 `org_settings` 能力；导入落入会话当前操作的组织中。
 
@@ -18,7 +18,7 @@ Provisa 可以将现有的 Hasura 元数据转换为 Provisa 的 `config.yaml`�
 
 ## Hasura v2
 
-### 导出元数据
+### 导出元数据 {: #export-metadata }
 
 从 Hasura 控制台或 CLI：
 
@@ -35,7 +35,7 @@ curl -X POST http://localhost:8080/v1/metadata \
   > metadata.json
 ```
 
-### 转换
+### 转换 {: #convert }
 
 v2 转换器读取一个 Hasura 元数据**目录**（`hasura metadata export` 生成的布局，或扁平的 `tables.yaml` / `actions.yaml` 布局），并写出一个 Provisa 配置：
 
@@ -55,7 +55,7 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 | `--auth-env-file` | 包含身份验证配置的 `.env` 文件；转换 JWT/JWK、管理员密钥和声明映射 |
 | `--dry-run` | 解析并校验，但不写出输出 |
 
-### 转换内容
+### 转换内容 {: #what-gets-converted }
 
 | Hasura 概念 | Provisa 对应物 |
 | --------------- | ------------------- |
@@ -68,15 +68,15 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 | 远程架构 | `graphql_remote` 数据源注册，加上按角色 SDL 暴露的每个 Query 根字段各一张落地表；一列对每个其 SDL 暴露该列的角色可见，非空的根参数变为 `_nf_` 原生过滤列，嵌套字段会在警告中被命名。(REQ-1681) |
 | 计算字段 | `functions[]` 条目，`kind: query` |
 
-### 导入标签页上的连接与域
+### 导入标签页上的连接与域 {: #connections-and-domains-on-the-import-tab }
 
-导出按环境变量为其数据库命名，因此在第一次转换后，标签页会列出每个 SQL 数据源及转换猜测出的连接信息。填写主机、端口、数据库、用户名和密码后再次转换；只有你更改过的字段会作为数据源覆盖项被传递。域行覆盖上传内容所携带的每个架构、子图和远程架构；每一行都是一个对组织现有域的选择器，也接受输入一个自定义名称，若不匹配任何现有域则标记为「新域」。除非勾选替换复选框，否则应用会合并到组织已有的内容中。(REQ-1687)
+导出按环境变量为其数据库命名，因此在第一次转换后，标签页会列出每个 SQL 数据源及转换猜测出的连接信息。填写主机、端口、数据库、用户名和密码后再次转换；只有你更改过的字段会作为数据源覆盖项被传递。域行覆盖上传内容所携带的每个架构、子图和远程架构；每一行都是一个对组织现有域的选择器，也接受输入一个自定义名称，若不匹配任何现有域则标记为「新域」。应用会合并到组织已有的内容中。 (REQ-1687)
 
-### 类型在预览时来自数据源
+### 类型在预览时来自数据源 {: #types-come-from-the-source-at-preview }
 
 Hasura 导出为列命名时不带类型，而没有权限的已跟踪表则不带任何列名。预览使用你提供的数据源连接运行，因此它会读取每个可达 SQL 数据源的 `information_schema.columns`：每个无类型的列都会得到该数据源类型映射到 IR 词汇后的类型，而没有列的表会获取该数据源拥有的每一列，且仅对 `org_admin` 可见，因为 Hasura 未将其暴露给任何其他角色。预览无法访问的数据源会被报告为 `[sources]` 警告，其列在应用前会保持无类型，等待你自行完成。(REQ-1691, REQ-1684)
 
-### 局限性
+### 局限性 {: #limitations }
 
 - **操作（Actions）** 自动转换：HTTP 处理程序操作变为 `webhooks[]` 变更；具有非 HTTP（数据库）处理程序的操作变为 `functions[]` 占位符，并发出警告要求审查该处理程序
 - **事件触发器** 转换为按表的 `event_triggers` 配置（操作、Webhook URL、重试策略），并发出说明保真度有限的警告
@@ -86,13 +86,13 @@ Hasura 导出为列命名时不带类型，而没有权限的已跟踪表则不�
 
 ---
 
-## Hasura DDN（v3）
+## Hasura DDN（v3） {: #hasura-ddn-v3 }
 
-### 定位 HML 项目
+### 定位 HML 项目 {: #locate-the-hml-project }
 
 DDN 转换器直接读取由 `.hml` 文件组成的 DDN 项目**目录**——无需超图（supergraph）构建步骤。项目根目录下的第一级目录名会被作为子图名称；`globals/` 下的文件会被分配到 `globals` 子图。
 
-### 转换
+### 转换 {: #convert_1 }
 
 ```bash
 python -m provisa.ddn ./my-ddn-project -o config.yaml
@@ -112,7 +112,7 @@ python -m provisa.ddn ./my-ddn-project -o config.yaml
 
 `AggregateExpression` 元数据会保留在一个旁挂的 `*-aggregates.yaml` 文件中。
 
-### 转换内容
+### 转换内容 {: #what-gets-converted_1 }
 
 | DDN 概念 | Provisa 对应物 |
 | ------------ | ------------------- |
@@ -122,7 +122,7 @@ python -m provisa.ddn ./my-ddn-project -o config.yaml
 | 命令 | Webhook 变更或视图 |
 | 连接器 | 带连接详情的数据源条目 |
 
-### 局限性
+### 局限性 {: #limitations_1 }
 
 - **Lambda 连接器**（TypeScript/Python 函数）需要手动设置 Webhook
 - **生命周期插件** 没有直接对应物
@@ -130,7 +130,7 @@ python -m provisa.ddn ./my-ddn-project -o config.yaml
 
 ---
 
-## 导入之后
+## 导入之后 {: #after-import }
 
 1. 审查生成的 `config.yaml`——留意转换器给出的 `warnings`
 2. 校验连接凭据（转换器使用占位值）

@@ -1,6 +1,6 @@
-# 从 Hasura v2 迁移到 Provisa
+# 从 Hasura v2 迁移到 Provisa {: #migrating-from-hasura-v2-to-provisa }
 
-## 前提条件
+## 前提条件 {: #prerequisites }
 
 1. 一个正在运行的 Hasura v2 实例（v2.x），并已导出元数据。
 2. 使用 Hasura CLI 导出元数据：
@@ -13,19 +13,19 @@
    `cron_triggers.yaml`、`inherited_roles.yaml`、`remote_schemas.yaml` 等文件。
 3. Python 3.11+，并已安装 `provisa` 包。
 
-## CLI 用法
+## CLI 用法 {: #cli-usage }
 
 ```bash
 python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 ```
 
-### 参数
+### 参数 {: #arguments }
 
 | 参数 | 是否必需 | 说明 |
 | ---------- | ---------- | ------------- |
 | `metadata_dir` | 是 | 已导出的 Hasura v2 元数据目录的路径 |
 
-### 选项
+### 选项 {: #options }
 
 | 选项 | 默认值 | 说明 |
 | -------- | --------- | ------------- |
@@ -35,7 +35,7 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 | `--auth-env-file FILE` | 无 | 包含 JWT/admin-secret 身份验证配置的 `.env` 文件路径 |
 | `--dry-run` | 关闭 | 仅解析并验证，不写入输出 |
 
-### 数据源覆盖文件
+### 数据源覆盖文件 {: #source-overrides-file }
 
 一个以数据源名称为键的 YAML 文件，包含要覆盖的连接属性：
 
@@ -48,7 +48,7 @@ default:
   password: "${env:PROD_DB_PASSWORD}"
 ```
 
-### 身份验证环境文件
+### 身份验证环境文件 {: #auth-env-file }
 
 一个 `.env` 风格的文件，包含要转换的 Hasura 身份验证配置。转换器执行以下映射：
 
@@ -57,7 +57,7 @@ default:
 - Admin secret -> Provisa `superuser`。
 - Webhook 身份验证 -> 系统会发出警告（Provisa 无对应功能）。
 
-## 功能对等表
+## 功能对等表 {: #feature-parity-matrix }
 
 | Hasura v2 功能 | Provisa 对应项 | 说明 |
 | --- | --- | --- |
@@ -81,7 +81,7 @@ default:
 | **枚举表** | 创建表 | `is_enum` 标志不会被带入（Provisa 无对应功能）。 |
 | **允许列表** | 跳过 | 元数据模型中不存在该项。 |
 
-## 转换后步骤
+## 转换后步骤 {: #post-conversion-steps }
 
 1. **检查输出的 YAML。** 确认数据源、表和角色是否正确。
 2. **配置数据源连接。** 转换器会解析连接 URL，但在解析失败时默认使用 `localhost`。
@@ -96,36 +96,36 @@ default:
    并使用 `--auth-env-file` 重新运行。
 7. **测试。** 启动 Provisa 服务器，并针对您的数据源验证查询。
 
-## 常见问题与故障排查
+## 常见问题与故障排查 {: #common-issues-and-troubleshooting }
 
-### 连接 URL 未被解析
+### 连接 URL 未被解析 {: #connection-url-not-parsed }
 
 如果数据源的 `database_url` 是一个环境变量引用（`{"from_env": "PG_URL"}`），转换器
 无法在转换时解析它。该数据源将带有占位符值（`host: localhost`、`database: default`）。
 请使用 `--source-overrides` 修复。
 
-### 通配符列
+### 通配符列 {: #wildcard-columns }
 
 当某项权限授予 `columns: "*"` 时，转换器会创建一个通配符列条目。转换后，
 您可能希望通过检查实际的数据库架构，将其替换为明确的列列表。
 
-### 事件触发器的保真度
+### 事件触发器的保真度 {: #event-trigger-fidelity }
 
 事件触发器会连同 `operations` 和 `webhook_url` 一起转换，但 Hasura 特有的传递保证
 （恰好一次、重新传递）在 Provisa 中没有直接对应项。请查看 `event_triggers` 部分，
 并相应地配置您的 webhook 基础设施。
 
-### 缺失角色
+### 缺失角色 {: #missing-roles }
 
 角色仅从权限条目中收集。如果某个角色存在于 Hasura 中，但在任何表或 action
 上都没有权限，则不会出现在输出结果中。
 
-### 自定义根字段
+### 自定义根字段 {: #custom-root-fields }
 
 只有 `select` 和 `select_by_pk` 根字段用于表别名。其他自定义根字段
 （`select_aggregate`、`insert`、`update`、`delete`）不会被映射。
 
-## 示例
+## 示例 {: #example }
 
 转换一个典型的 Hasura v2 项目，其中两个架构映射到不同的域：
 

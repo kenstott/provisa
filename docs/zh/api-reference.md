@@ -1,12 +1,12 @@
-# API 参考
+# API 参考 {: #api-reference }
 
-## 概述
+## 概述 {: #overview }
 
 Provisa 在两个前缀下暴露 REST 端点：`/data` 用于查询执行和架构自省，`/admin` 用于配置管理。(REQ-043) 大多数数据端点需要一个角色标识符。管理配置操作使用 `/admin/graphql` 处的 Strawberry GraphQL API。(REQ-164)
 
 ---
 
-## 身份验证
+## 身份验证 {: #authentication }
 
 当 `provisa.yaml` 中配置了 `auth.provider` 时，除 `/health` 和 `/setup/status` 外的所有端点都需要 `Authorization: Bearer <token>` 请求头。(REQ-120) [tool-verified: `provisa/api/app.py`, `provisa/auth/wiring.py`]
 
@@ -30,7 +30,7 @@ GET /auth/provider-type
 
 ---
 
-## 数据端点
+## 数据端点 {: #data-endpoints }
 
 ### `POST /data/graphql`
 
@@ -42,12 +42,12 @@ GET /auth/provider-type
 {
   "query": "{ orders(where: {region: {eq: \"us\"}}) { id amount } }",
   "variables": {},
-  "role": "admin",
+  "role": "org_admin",
   "extensions": {}
 }
 ```
 
-`role` 字段仅在开发模式（未启用身份验证）下使用。启用身份验证后，将使用已验证用户的角色，请求体中的 `role` 会被忽略。
+请求以其执行角色运行：已验证用户的角色，或在开发模式（无身份验证）下取 `X-Provisa-Role` 标头，缺省时为 `org_admin`。正文中的 `role` 字段不选择角色。若存在，它必须与执行角色一致；不同的值返回 `400`，代码为 `data.role_mismatch`，并指明两个角色。同一规则适用于 `POST /data/sql`、`POST /data/query` 和 `POST /query/nl`。(REQ-273) [tool-verified: `provisa/api/acting_role.py`]
 
 `extensions` 字段支持自动持久化查询（APQ）协议：(REQ-288)
 
@@ -59,18 +59,18 @@ GET /auth/provider-type
 
 **请求头：**
 
-- `X-Provisa-Role` — 覆盖角色（开发模式）
+- `X-Provisa-Role` — 要代为执行的角色（开发模式）；启用身份验证时为角色请求，仅当该角色已分配给用户时才生效
 - `Accept` — 响应格式（参见内容协商）
 - `Authorization` — 启用身份验证时为 `Bearer <token>`
 - `X-Provisa-Redirect-Format` — S3 重定向输出的 MIME 类型 (REQ-137)
 - `X-Provisa-Redirect-Threshold` — 触发重定向的行数阈值 (REQ-137)
 - `X-Provisa-Redirect` — `true` 表示无条件强制重定向 (REQ-029)
 
-**响应缓存：** 通过操作级指令 `@cached` 按请求选择启用（`query @cached(ttl: 60) { ... }`，`ttl` 可选）；同一指令也适用于经 Arrow Flight 发送的 GraphQL。Cypher 以 `// @provisa cache=true` 或 `// @provisa cache_ttl=N` 行选择启用，gRPC 以调用元数据 `x-provisa-cache: true` 或 `x-provisa-cache-ttl: N` 选择启用。没有该指令时，请求既不读取也不写入响应缓存。响应头 `X-Provisa-Cache` 报告 `HIT` 或 `MISS`。请参阅[缓存](configuration.md)。（REQ-544）
+**响应缓存：** 通过操作级指令 `@cached` 按请求选择启用（`query @cached(ttl: 60) { ... }`，`ttl` 可选）；同一指令也适用于经 Arrow Flight 发送的 GraphQL。Cypher 以 `// @provisa cache=true` 或 `// @provisa cache_ttl=N` 行选择启用，gRPC 以调用元数据 `x-provisa-cache: true` 或 `x-provisa-cache-ttl: N` 选择启用。没有该指令时，请求既不读取也不写入响应缓存。响应头 `X-Provisa-Cache` 报告 `HIT` 或 `MISS`。请参阅[缓存](configuration.md#per-request-opt-in)。（REQ-544）
 
 <a id="response-cache-request-headers"></a>
 
-#### 响应缓存请求头
+#### 响应缓存请求头 {: #response-cache-request-headers }
 
 `/data/graphql`、`/data/cypher`、Neo4j Query API（`/db/{database}/query/v2`）、`/data/rest` 和 `/data/jsonapi` 也接受以请求头形式选择启用。下列每种形式的行为都与 `@cached(ttl: N)` 相同：（REQ-544）
 
@@ -147,7 +147,7 @@ curl -H 'Cache-Control: max-age=120' -H 'X-Provisa-Role: analyst' \
 
 ---
 
-### 内容协商
+### 内容协商 {: #content-negotiation }
 
 | Accept 请求头 | 格式 |
 | --- | --- |
@@ -161,7 +161,7 @@ curl -H 'Cache-Control: max-age=120' -H 'X-Provisa-Role: analyst' \
 
 ---
 
-### 重定向
+### 重定向 {: #redirect }
 
 超过配置行数阈值的结果（或当 `X-Provisa-Redirect: true` 时）会写入 S3，并返回一个预签名 URL。(REQ-029, REQ-044)
 
@@ -192,9 +192,20 @@ X-Provisa-Redirect-Threshold: 1000
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
-  "role": "admin"
+  "role": "org_admin"
 }
 ```
+
+`params`（可选）按顺序携带语句 `$1…$n` 占位符的值，与其文本分开：
+
+```json
+{
+  "sql": "SELECT id, amount FROM orders WHERE region = $1 AND amount > $2",
+  "params": ["us", 100]
+}
+```
+
+这些值在语句运行时由引擎或数据源的驱动绑定，从不写入语句，因此值无法改变语句本身。它们只属于一条语句，其占位符精确地为它们编号：语句批次、没有值的占位符，或没有占位符接收的值，都会在语句被治理或运行之前以 `400` 和代码 `data.sql_parameters_do_not_fit` 被拒绝。没有占位符的语句不带 `params` 发送，与之前一样。(REQ-1937)
 
 **所需能力：** `QUERY_DEVELOPMENT`。
 
@@ -217,7 +228,7 @@ Cypher 查询也可以提交到仅支持 Cypher 的 `POST /query/cypher` 端点�
   "query": "{ orders { id } }",
   "params": {},
   "variables": {},
-  "role": "admin"
+  "role": "org_admin"
 }
 ```
 
@@ -236,7 +247,7 @@ GraphQL 返回 `{"data": ...}`，SQL 和 Cypher 返回 `{"columns": [...], "rows
 ```json
 {
   "sql": "SELECT id, amount FROM orders",
-  "role": "admin",
+  "role": "org_admin",
   "analyze": false
 }
 ```
@@ -294,7 +305,7 @@ UI 会轮询此端点，在引擎冷启动期间显示启动横幅。它从不�
 
 - `limit` — 最大行数（≥ 1）
 - `offset` — 跳过的行数（≥ 0）
-- `fields` — 逗号分隔的列名（默认为所有标量字段）
+- `fields` — 以逗号分隔的字段名，采用 GraphQL schema 的拼写，在默认命名约定下为 camelCase，例如 `?fields=orderId,amount`（默认：所有标量字段）。`filter` 和 `orderBy` 中的字段名遵循相同拼写。JSON:API 则接受物理列名（`fields[orders]=order_id`）。[tool-verified: `provisa/api/rest/generator.py:547`]
 - `filter` — `{"field", "comparator", "value"}` 过滤对象的 JSON 数组。值按其列的类型读取，因此数值列上的 `"100"` 按 100 比较；列类型无法容纳的值返回 `400`。
 - `orderBy` — `{"field", "direction"}` 排序对象的 JSON 数组
 - `params` — 表的参数，作为一个按参数名索引的 JSON 对象，例如 `?params={"region":"EU"}`。基于 API 注册的表或查询表，其源接受的每个输入都有一个参数。缺少必填参数的读取返回 `400` 并指出其名称，表中没有的参数名同样如此。每个值都按其参数的类型检查。(REQ-1986) [tool-verified: `provisa/api/_query_helpers.py`]
@@ -305,7 +316,7 @@ UI 会轮询此端点，在引擎冷启动期间显示启动横幅。它从不�
 
 **响应缓存：** 通过请求头选择启用，`Cache-Control: max-age=N` 或 `x-provisa-cache: true`（参见[响应缓存请求头](#response-cache-request-headers)）。每个响应都带有 `X-Provisa-Cache: HIT|MISS`，命中时还带有 `X-Provisa-Cache-Age`。（REQ-544、REQ-536）[tool-verified: `provisa/api/rest/generator.py`]
 
-#### OpenAPI / Swagger UI 浏览器
+#### OpenAPI / Swagger UI 浏览器 {: #openapi-swagger-ui-explorer }
 
 OpenAPI 浏览器页面（`/app/openapi`）在一个沙盒 iframe 中嵌入 Swagger UI。该规范按角色范围限定——只有当前角色可见的表和列会出现——并可通过域选择器进一步按域过滤。UI 会自动在浅色和深色主题之间切换。[tool-verified: `provisa-ui/src/pages/OpenApiPage.tsx:20-34`]
 
@@ -323,11 +334,12 @@ OpenAPI 浏览器页面（`/app/openapi`）在一个沙盒 iframe 中嵌入 Swag
 
 **查询参数：**
 
-- `fields[<type>]` — 稀疏字段集，例如 `?fields[orders]=amount`
+- `fields[<type>]` — 稀疏字段集，例如 `?fields[orders]=amount`。名称是物理列名，例如 `fields[orders]=order_id`，与 `filter[...]`、`sort` 以及返回属性的键相同 (REQ-1417)。REST 则接受 GraphQL 拼写（`fields=orderId`）。[tool-verified: `provisa/api/jsonapi/generator.py:674`]
 - `filter[<col>]` / `filter[<col>][<op>]` — 例如 `?filter[region]=US`、`?filter[amount][gt]=100`。值按其列的类型读取；类型无法容纳的值返回 `400`。
 - `params` — 表的参数，作为一个按参数名索引的 JSON 对象，例如 `?params={"region":"EU"}`，与 REST 端点相同。缺少必填参数返回 `400` 并指出其名称；未知名称或类型错误的值返回 `400`，`source.parameter` 为 `params`。分页链接保留该参数。(REQ-1986) [tool-verified: `provisa/api/jsonapi/generator.py`]
 - `sort` — 逗号分隔，`-` 前缀表示降序，例如 `?sort=-created_at,amount`
 - `page[number]` / `page[size]` — 分页
+- `page[total]` — `true` 统计与过滤条件匹配的行数，并返回 `meta.total` 和 `links.last`。不带它时，响应只携带 `links.self`、`links.first`、`links.prev` 和 `links.next`，数据库不执行计数。`true` 或 `false` 以外的任何值返回 `400`。响应中的链接保留该参数。(REQ-1197) [tool-verified: `provisa/api/jsonapi/pagination.py:58`]
 - `aggregate` — 逗号分隔的聚合函数，用于代替行检索：`count`、`sum`、`avg`、`stddev`、`variance`、`min`、`max`。使用 `?aggregate=count,sum` 请求子集。聚合响应返回 `data: null`，结果放在 `meta.aggregate` 中。(REQ-1359) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:238`]
 - `groupBy` — 逗号分隔的列名；与 `?aggregate=` 一起使用以对结果分组。只有表的 `DistinctOnColumn` 枚举中的列有效；对角色不可见的列，服务器返回 `400`。(REQ-1361) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:447`]
 - `includeNodes` — `true` 表示在每个分组行的 `nodes` 数组中包含基表标量列（以及 `include=` 中命名的已联接维度标量）。当 NL 分组查询同时请求维度详情时需要此参数。(REQ-1405)
@@ -336,7 +348,7 @@ OpenAPI 浏览器页面（`/app/openapi`）在一个沙盒 iframe 中嵌入 Swag
 
 **响应缓存：** 通过请求头选择启用，`Cache-Control: max-age=N` 或 `x-provisa-cache: true`（参见[响应缓存请求头](#response-cache-request-headers)）。每个响应都带有 `X-Provisa-Cache: HIT|MISS`，命中时还带有 `X-Provisa-Cache-Age`。两种形式不一致时，以 JSON:API 错误对象返回 `400`。（REQ-544、REQ-536）[tool-verified: `provisa/api/jsonapi/generator.py`]
 
-#### JSON:API 浏览器
+#### JSON:API 浏览器 {: #jsonapi-explorer }
 
 JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI。从按域分组的列表中选择一张表，然后配置：
 
@@ -360,7 +372,7 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 **请求体：**
 
 ```json
-{"q": "How many orders were placed last month?", "role": "admin"}
+{"q": "How many orders were placed last month?", "role": "org_admin"}
 ```
 
 返回 `{"job_id": "<id>"}`。超出每角色 NL 速率限制时返回带 `Retry-After` 请求头的 `429`。(REQ-370)
@@ -386,7 +398,7 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 耗尽迭代次数上限的分支返回 `query: null`、`result: null`，并附带一个 `error` 字符串。每个生成的查询都在使用者的权限下执行，并应用第二阶段治理——该服务从不绕过治理。(REQ-359)
 
-#### 带维度详情的 NL 分组查询 (REQ-1405)
+#### 带维度详情的 NL 分组查询 (REQ-1405) {: #nl-group-by-with-dimension-details-req-1405 }
 
 当 NL 分组查询还从已联接的维度表中投影列时——例如「按用户统计的询价数量，附带用户名和邮箱」——运行器会从 SELECT 投影的维度列中派生每字段的点路径（`dim_paths`）。这些路径填充到 JSON:API 和 OpenAPI 面板生成的 URL 上的 `includeNodes=` 参数中，使这些面板请求与 SQL 和 GraphQL 分支所解析出的相同已联接维度字段。若没有此机制，`includeNodes=true` 将只返回基础聚合表自身的标量字段。(REQ-1405) [tool-verified: `docs/arch/requirements.md:REQ-1405`]
 
@@ -398,7 +410,7 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 返回某个角色架构的 GraphQL SDL。(REQ-008) [tool-verified: `provisa/api/data/sdl.py:137`]
 
-**请求头：** `X-Role: <role_id>`（必需）
+**请求头：** `X-Provisa-Role: <role_id>`（必需）
 
 **查询参数：**
 
@@ -434,7 +446,7 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 返回请求角色可访问的域 ID。[tool-verified: `provisa/api/data/sdl.py:116`]
 
-**请求头：** `X-Role: <role_id>`（必需）
+**请求头：** `X-Provisa-Role: <role_id>`（必需）
 
 **响应：** `["sales", "support", ...]`
 
@@ -448,6 +460,16 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 ---
 
+### `GET /data/catalog`
+
+返回请求所执行角色的目录：提供给该角色的表，与 Arrow Flight 列表给出的形式相同。(REQ-128) [tool-verified: `provisa/api/data/endpoint_dev.py`]
+
+**响应：** `{"tables": [{"path": ["<domain>", "<table>"], "schema": "<base64>"}]}`。`schema` 是该表以 Arrow IPC 编码的 Arrow schema：每一列以 SQL 读取它所用的名称出现，字段元数据中带有其注册类型、描述和键元数据（`primary_key`、`references`）。命令和指标不列出。
+
+角色是身份验证层确定的角色（`X-Provisa-Role` 可以请求一个已持有的角色或逗号分隔的集合）。没有身份验证提供程序的部署会列出整个目录，与 Flight 列表相同。当 Flight 端口不可达时，JDBC 驱动读取此路由。
+
+---
+
 ### `GET /data/proto/{role_id}`
 
 返回某个角色自动生成的 `.proto` 文件。[tool-verified: `provisa/api/data/endpoint_dev.py:49`]
@@ -456,13 +478,11 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 `{role_id}` 是调用方持有的一个角色，或以逗号分隔的一组已持有角色（`analyst,org_admin`），该组以其元角色的身份提供服务：即其成员所获授权的并集。调用方未持有的角色以 `403 auth.role_not_assigned` 拒绝，直接指定的元角色 id 以 `403 auth.meta_role_named` 拒绝。`?domains=a,b` 将 proto 限定到这些域；角色无法访问的域以 `403 data.domain_not_accessible` 拒绝。没有数据面的角色返回 `404 data.no_proto_for_role`，未知角色返回 `404 data.no_role`，模型尚未构建时返回 `503 data.schema_cache_not_ready`。(REQ-1620, REQ-273) [tool-verified: `provisa/api/data/endpoint_dev.py`, `provisa/api/acting_role.py`]
 
-每个已注册表生成一个 proto `message`。关系生成嵌套的消息字段。类型映射：`integer → int32`、`bigint → int64`、`varchar → string`、`decimal → double`、`boolean → bool`、`timestamp → google.protobuf.Timestamp`。(REQ-538)
-
-服务只为角色架构根部的表列出 RPC，即其 GraphQL `Query` 类型所列的那些表；关联表有自己的消息，并通过其关系访问。 [tool-verified: `provisa/grpc/proto_gen.py`]
+角色 schema 中的每张表都生成一个 proto `message`。关系生成嵌套的消息字段。 服务只为角色架构根部的表列出 RPC，即其 GraphQL `Query` 类型所列的那些表；关联表有自己的消息，并通过其关系访问。 [tool-verified: `provisa/grpc/proto_gen.py`]
 
 添加 `?domains=a,b` 可将文件限制在这些域内。此时服务为所选域自身的表列出 RPC；与之关联的表以消息形式出现。 [tool-verified: `provisa/api/data/endpoint_dev.py`]
 
-该文件随模型而变。每当模型或角色发生变化时，它会随角色的架构一起重新生成，元角色也是如此。
+该文件随模型而变。每当模型或角色发生变化时，它会随角色的架构一起重新生成，元角色也是如此。类型映射：`integer → int32`、`bigint → int64`、`varchar → string`、`decimal → double`、`boolean → bool`、`timestamp → google.protobuf.Timestamp`。(REQ-538)
 
 ---
 
@@ -474,11 +494,23 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 **请求头 —— `X-Provisa-Sink`：** 设置为一个 Kafka 目标（例如 `kafka://broker:9092/topic`）以将变更事件重定向到 Kafka 接收端，而不是 SSE 响应。服务器会启动一个接收端消费者并返回 `202 Accepted`，而不是打开一个流。(REQ-812) [tool-verified: `provisa/api/data/subscription_sse.py:137`]
 
+### `POST /data/sources/{source_id}/signal`
+
+在不带行的情况下告诉 Provisa 某个数据源已变化：`signal` 变更信号的接收端。数据源中变更信号为 `signal` 的每张表（自身的，或在没有自身信号时为数据源的）都被视为已写入，与通过 Provisa 写入相同：其缓存的应答被丢弃，基于它的物化视图变为过期，并请求构建其副本。受负载保护的表的构建会等待其非高峰窗口。`?table=schema.table` 只通知一张表。(REQ-1149) [tool-verified: `provisa/api/data/signal.py`, `provisa/api/data/table_written.py`]
+
+调用者的角色需要写入权，并且必须覆盖它所通知的每张表的域。响应为 `202 Accepted`，附带被通知的表：
+
+```json
+{"signalled": ["public.orders"]}
+```
+
+不存在的数据源，或它没有的 `table`，应答 `404`；`signal` 变更信号上没有表的数据源应答 `409`，因为没有可刷新的内容。[tool-verified: `tests/unit/test_signal_webhook.py`]
+
 ---
 
-## 管理 REST 端点
+## 管理 REST 端点 {: #admin-rest-endpoints }
 
-### 配置
+### 配置 {: #config }
 
 #### `GET /admin/config`
 
@@ -486,23 +518,25 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 #### `PUT /admin/config`
 
-上传修订后的配置 YAML。服务器会写入 `.bak` 备份文件，保存新文件，并重新加载所有架构、数据源和物化视图。(REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:32`]
+上传修订后的配置 YAML。服务器写入 `.bak` 备份，保存新文件，从中重新加载部署设置，并把它作为显式的一次性填充应用到模型存储：文件声明的内容通过模型存储添加或更新，不移除任何内容。之后的重启会读取文件的设置，但从不再次应用其模型；首次启动之后，只有模型存储拥有模型。(REQ-164, REQ-1919) [tool-verified: `provisa/api/admin/settings_router.py` `upload_config`]
 
 **请求体：** 原始 YAML 内容。
 
 **响应：**
 
 ```json
-{"success": true, "message": "Config uploaded and reloaded"}
+{"success": true, "message": "Config uploaded and applied"}
 ```
 
 重新加载失败时：`{"success": false, "message": "<error>"}`。
 
 #### `GET /admin/config/live`
 
-下载**当前的实时配置**——即 Provisa 今天会写出的配置，反映自启动以来通过管理端点累积创建的每一张表、每一个关系、每一个域、每一个角色和每一条行级安全规则。(REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:67`]
+以配置文件的形式下载当前的模型：部署文件的设置，以及从模型存储读取的每个模型部分——存储、区域、数据源、域、角色、数据产品、术语表术语、表及其列、关系、指标、标签及其分配、行过滤、命令、webhook、定时触发器和命名规则。应用到空的模型存储时，该文件会构建出相同的模型。部署为每个存储添加的内容（内置数据源及其表、系统域、`org_admin` 和 `platform_admin`）不包括在内。(REQ-164, REQ-1919) [tool-verified: `provisa/api/admin/config_export.py` `build_live_config`, `provisa/core/store_config.py`]
 
-如果在没有随后上传的情况下通过管理 API 进行了更改，磁盘上的文件可能落后于实时状态。此端点弥补了这一差距：它的输出正是 `PUT /admin/config` 需要接收的内容，以使磁盘文件与实时状态保持一致。
+**查询参数：** `sections`（可选）——以逗号分隔的模型部分列表，例如 `sources,tables`。只写出这些部分；未知名称应答 400 `settings.export_unknown_section`。
+
+该端点在任何部署中都对拥有部署设置权利的调用者开放；管理页面的配置文件区域以**导出模型**提供它。
 
 返回 `application/x-yaml`，带 `Content-Disposition: attachment; filename=provisa.live.yaml`。
 
@@ -524,7 +558,7 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 ---
 
-### 设置
+### 设置 {: #settings }
 
 #### `GET /admin/settings`
 
@@ -598,7 +632,7 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 ---
 
-### AI 模型
+### AI 模型 {: #ai-models }
 
 #### `GET /admin/ai-models`
 
@@ -634,7 +668,7 @@ API 密钥从不回显——`api_keys_set` 仅报告每个厂商是否配置了�
 
 ---
 
-### 联邦引擎
+### 联邦引擎 {: #federation-engine }
 
 #### `GET /admin/federation-engine`
 
@@ -670,13 +704,13 @@ API 密钥从不回显——`api_keys_set` 仅报告每个厂商是否配置了�
 
 ---
 
-### 域策略
+### 域策略 {: #domain-policy }
 
 #### `POST /admin/domain-policy`
 
 更改当前操作组织的域策略（`use_domains` / `default_domain`）。(REQ-165, REQ-1266, REQ-1349) [tool-verified: `provisa/api/admin/settings_router.py:632`]
 
-这是一个作用范围限于当前操作组织的破坏性操作。每一个已注册的数据源、表、域和关系都会被清除并按新策略重建。在将某个组织从按域命名空间切换为扁平结构（或反之）时使用此操作。
+切换不会删除任何内容。只要当前组织拥有目录——部署未自行添加的已注册表、数据源或域——它就以 `409` 和代码 `settings.domain_policy_catalog_exists` 被拒绝。拒绝的 `params` 统计每一类（`tables`、`sources`、`domains`）。先通过各自的操作移除这些对象，再进行切换。当配置文件声明了该目录的一部分时，代码为 `settings.domain_policy_catalog_in_config`：下一次加载会把它恢复，因此该策略在配置文件中设置。(REQ-1919)
 
 **请求体：**
 
@@ -691,7 +725,7 @@ API 密钥从不回显——`api_keys_set` 仅报告每个厂商是否配置了�
 
 ---
 
-### 可观测性
+### 可观测性 {: #observability }
 
 #### `GET /admin/traces/recent`
 
@@ -721,7 +755,7 @@ API 密钥从不回显——`api_keys_set` 仅报告每个厂商是否配置了�
 
 ---
 
-### 发现
+### 发现 {: #discovery }
 
 #### `POST /admin/discover/relationships`
 
@@ -766,7 +800,7 @@ API 密钥从不回显——`api_keys_set` 仅报告每个厂商是否配置了�
 
 ---
 
-### 数据源爬取
+### 数据源爬取 {: #source-crawl }
 
 #### `POST /admin/sources/crawl`
 
@@ -774,7 +808,7 @@ API 密钥从不回显——`api_keys_set` 仅报告每个厂商是否配置了�
 
 ---
 
-### 数据源表搜索
+### 数据源表搜索 {: #source-table-search }
 
 #### `GET /admin/sources/{source_id}/tables/search`
 
@@ -782,7 +816,7 @@ API 密钥从不回显——`api_keys_set` 仅报告每个厂商是否配置了�
 
 ---
 
-### 表画像分析
+### 表画像分析 {: #table-profiling }
 
 #### `POST /admin/tables/{table_id}/profile`
 
@@ -790,7 +824,7 @@ API 密钥从不回显——`api_keys_set` 仅报告每个厂商是否配置了�
 
 ---
 
-### 数据源描述
+### 数据源描述 {: #source-descriptions }
 
 #### `POST /admin/source-meta/db-description`
 
@@ -798,7 +832,7 @@ API 密钥从不回显——`api_keys_set` 仅报告每个厂商是否配置了�
 
 ---
 
-### 对象存储 (REQ-1046, REQ-1048, REQ-1049)
+### 对象存储 (REQ-1046, REQ-1048, REQ-1049) {: #object-storage-req-1046-req-1048-req-1049 }
 
 #### `GET /admin/org-storage`
 
@@ -822,7 +856,7 @@ DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在�
 
 ---
 
-### 组织加密 (REQ-1574)
+### 组织加密 (REQ-1574) {: #org-encryption-req-1574 }
 
 #### `GET /admin/org-encryption`
 
@@ -848,7 +882,7 @@ DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在�
 
 ---
 
-### Hasura / DDN 导入 (REQ-1483)
+### Hasura / DDN 导入 (REQ-1483) {: #hasura-ddn-import-req-1483 }
 
 #### `POST /admin/import/hasura/preview`
 
@@ -893,11 +927,13 @@ DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在�
 {"config_yaml": "<yaml string>"}
 ```
 
-使用与 `PUT /admin/config` 相同的热重载路径。响应返回之前，组织的目录、架构和连接池会被重建。
+导入是对当前组织模型存储的显式一次性填充，与 `PUT /admin/config` 的应用方式相同：它通过模型存储（带防护和版本）添加并更新导入配置所声明的内容，不删除其中未提及的任何内容。没有 `replace` 字段。所声明数据源的引擎目录、组织的连接池及其 schema 会在响应返回之前重建。(REQ-1919) [tool-verified: `provisa/api/app_loaders.py` `apply_configuration`]
+
+**响应:** `{"summary": {...}}` — 导入配置所声明内容的计数。
 
 ---
 
-### Apache Ossie 互操作 (REQ-1316, REQ-1321)
+### Apache Ossie 互操作 (REQ-1316, REQ-1321) {: #apache-ossie-interchange-req-1316-req-1321 }
 
 #### `GET /admin/ossie`
 
@@ -905,7 +941,15 @@ DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在�
 
 该文档在每次请求时都从实时状态派生——从不缓存——因此不会过时。表变为 `dataset` 对象，列变为 `field` 对象，关系映射到 Ossie 的 `relationship` 对象。
 
-返回 `text/yaml`，带 `Content-Disposition: attachment; filename=provisa-ossie.yaml`。
+返回 `text/yaml`，带 `Content-Disposition: attachment; filename=provisa.ossie.yaml`。
+
+#### `GET /admin/dbt/sources`
+
+以 dbt `sources.yml` 的形式下载受治理目录，按提供给某一个角色的样子。(REQ-1967) [tool-verified: `provisa/api/admin/ossie_router.py`]
+
+**查询参数:** `role` — 调用者持有的角色，或对 `access_config` 持有者而言的任何角色。
+
+返回 `text/yaml`，带有 `Content-Disposition: attachment; filename=provisa.sources.yml`。未知角色为 `404`，代码为 `dbt_sources.unknown_role`。该文件包含什么，参见[集成](integrations.md#dbt-sources-file-req-1967)。
 
 #### `POST /admin/ossie/import`
 
@@ -928,7 +972,7 @@ DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在�
 
 ---
 
-### 操作（函数与 Webhook）
+### 操作（函数与 Webhook） {: #actions-functions-and-webhooks }
 
 所有端点都在 `/admin/actions` 前缀下。(REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
 
@@ -1030,7 +1074,7 @@ DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在�
 
 ---
 
-### 角色
+### 角色 {: #roles }
 
 所有端点都在 `/admin/roles` 前缀下。[tool-verified: `provisa/api/admin/roles_router.py:18`]
 
@@ -1045,7 +1089,7 @@ DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在�
 
 ---
 
-### 用户
+### 用户 {: #users }
 
 所有端点都在 `/admin/users` 前缀下。[tool-verified: `provisa/api/admin/local_users_router.py:21`]
 
@@ -1063,7 +1107,7 @@ DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在�
 
 ---
 
-### 组织
+### 组织 {: #organizations }
 
 所有端点都在 `/admin/orgs` 下。[tool-verified: `provisa/api/admin/orgs_router.py:18`]
 
@@ -1079,7 +1123,7 @@ DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在�
 
 ---
 
-### 邀请
+### 邀请 {: #invites }
 
 所有端点都在 `/admin/invites` 下。[tool-verified: `provisa/api/admin/invites_router.py:18`]
 
@@ -1091,7 +1135,7 @@ DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在�
 
 ---
 
-### 管理 GraphQL
+### 管理 GraphQL {: #admin-graphql }
 
 #### `POST /admin/graphql`
 
@@ -1126,7 +1170,7 @@ mutation {
 
 ---
 
-### 初始设置
+### 初始设置 {: #setup }
 
 #### `GET /setup/status`
 
@@ -1138,15 +1182,15 @@ mutation {
 
 ---
 
-## 健康检查
+## 健康检查 {: #health-check }
 
-#### `GET /health` 或 `HEAD /health`
+#### `GET /health` 或 `HEAD /health` {: #get-health-or-head-health }
 
 返回 `{"status": "ok"}`。始终无需身份验证。(REQ-539) [tool-verified: `provisa/api/app.py:2258`]
 
 ---
 
-## 错误响应
+## 错误响应 {: #error-responses }
 
 | 状态码 | 含义 |
 | --- | --- |
@@ -1154,7 +1198,7 @@ mutation {
 | 401 | 缺少或无效的身份验证令牌 |
 | 403 | 能力不足；治理违规 |
 | 404 | 未找到角色、资源或配置文件 |
-| 422 | 缺少必需的请求头（例如 `X-Role`） |
+| 422 | 缺少必需的请求头（例如 `X-Provisa-Role`） |
 | 503 | 数据库或数据源未连接；依赖项不可用 |
 | 504 | 请求超时 |
 
@@ -1174,11 +1218,13 @@ mutation {
 
 ---
 
-## Arrow Flight 端点
+## Arrow Flight 端点 {: #arrow-flight-endpoint }
 
 端口 `8815`。基于 gRPC 的原生 Arrow 列式传输。(REQ-143, REQ-045) [tool-verified: `provisa/api/flight/server.py`]
 
 查询和目录发现都在同一连接上可用。完整的治理管道（行级安全、脱敏、抽样）应用于每一个查询。(REQ-130, REQ-143)
+
+目录发现（`list_flights`、`get_flight_info`、`get_schema` 以及不带 `query` 的 ticket）列出授予调用者角色的内容。启用身份验证时，这三个不带 ticket 的调用从调用标头 `authorization: Bearer` 获取凭据、从 `x-provisa-role` 获取角色，没有凭据时被拒绝；参见[集成](integrations.md)。(REQ-1263, REQ-127) [tool-verified: `provisa/api/flight/server.py`]
 
 **票据格式**（JSON）：
 
@@ -1202,9 +1248,11 @@ table = client.do_get(ticket).read_all()
 
 当 Zaychik Flight SQL 代理可用时（端口 8480），记录批次会端到端流式传输，无需完全物化。(REQ-144) 若 Zaychik 不可用，则回退到通过联邦查询层进行物化。(REQ-146)
 
+**警告。** 响应关于自身报告的内容，在流中作为不带行的批次的 `app_metadata` 传递：`{"provisa_warnings": [{"code", "params", "message"}]}`。读取行之前已知的警告，在行之前的不带行批次中到达。只有读取行之后才知道的警告，在第二个不带行的批次中到达，它是流中的最后一批：`statement.rows_cut` 表示响应在行数上限处被截断，且还有更多行匹配 (REQ-1949)。请读取每一批的 `app_metadata`，包括最后一批。[tool-verified: `provisa/api/flight/compression.py`]
+
 ---
 
-## Protobuf gRPC 端点
+## Protobuf gRPC 端点 {: #protobuf-grpc-endpoint }
 
 端口 `50051`（可通过 `GRPC_PORT` 环境变量或 `server.grpc_port` 配置覆盖）。(REQ-529) [tool-verified: `provisa/grpc/server.py`, `provisa/api/app.py`]
 
@@ -1237,7 +1285,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' \
 
 当启动时加载的模型定义了 gRPC 服务时，gRPC 服务器才会启动。(REQ-529) 此后每次调用都按模型的当前状态提供服务：服务器运行期间注册或更改的表，会在下一次调用时即被提供和描述，无需重启。 [tool-verified: `provisa/api/app_startup.py`, `provisa/grpc/descriptor.py`]
 
-#### 聚合与分组 RPC (REQ-1359, REQ-1361, REQ-1405)
+#### 聚合与分组 RPC (REQ-1359, REQ-1361, REQ-1405) {: #aggregate-and-group-by-rpcs-req-1359-req-1361-req-1405 }
 
 当某张表设置了 `enable_aggregates` 时，生成的 proto 会在 `Query{TypeName}` 之外额外包含两个 RPC：
 
@@ -1252,9 +1300,9 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' \
 
 ---
 
-## JDBC 驱动
+## JDBC 驱动 {: #jdbc-driver }
 
-Provisa JDBC 驱动（`provisa-jdbc-0.1.0.jar`）向 BI 工具（Tableau、PowerBI、DBeaver）暴露语义目录。(REQ-126)
+Provisa JDBC 驱动（`provisa-jdbc-<release>.jar`）向 BI 工具（Tableau、PowerBI、DBeaver）暴露语义目录。(REQ-126)
 
 **连接 URL：** `jdbc:provisa://host:port` (REQ-131)
 
@@ -1266,7 +1314,7 @@ Provisa JDBC 驱动（`provisa-jdbc-0.1.0.jar`）向 BI 工具（Tableau、Power
 
 ---
 
-## `orderBy` 参数格式
+## `orderBy` 参数格式 {: #orderby-argument-format }
 
 `order_by` 参数使用 `{column: direction}` 对象，direction 是一个包含 6 个取值的枚举：(REQ-200)
 
@@ -1281,17 +1329,17 @@ Provisa JDBC 驱动（`provisa-jdbc-0.1.0.jar`）向 BI 工具（Tableau、Power
 
 ---
 
-## 订阅
+## 订阅 {: #subscriptions }
 
 SSE 订阅在 `GET /data/subscribe/{table}` 处提供。(REQ-219, REQ-258) 通知投递使用按源类型选择的可插拔提供程序：PostgreSQL 源使用 `LISTEN/NOTIFY`，MongoDB 源使用变更流，Kafka 源使用消费者组。无论使用哪种提供程序，都会应用行级安全过滤和架构验证。同一端点也支持 WebSocket 和 RSS 源。(REQ-338, REQ-342) [tool-verified: `provisa/api/data/subscribe.py:239`, `provisa/subscriptions/registry.py`, `provisa/api/app.py` `_rebuild_schemas`]
 
 ---
 
-## 业务术语表 (REQ-1387)
+## 业务术语表 (REQ-1387) {: #business-glossary-req-1387 }
 
 业务术语表将物理字段名——即它们在源数据库中存在的样子——映射到一套共享的人类可读词汇。模型中注册的每一列都会自动获得一个术语。填充术语表无需任何手动录入；策展人在系统派生的基础上添加定义、关系和专家。
 
-### 术语如何派生
+### 术语如何派生 {: #how-terms-are-derived }
 
 当 Provisa 注册或更新一张表的列时，`normalize_term`（`provisa/core/glossary.py`）会针对每个列名运行，产生一个规范化短语。[tool-verified: `provisa/core/repositories/glossary.py:sync_table_refs`]
 
@@ -1301,7 +1349,7 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。(REQ-219, REQ-258) 通�
 2. 将结果转为小写。
 3. 展开一个固定的缩写表（例如 `cust` → `customer`、`amt` → `amount`、`dt` → `date`、`id` → `identifier`、`key` → `identifier`、`guid` → `identifier`）。
 4. 剥除末尾的**代理标记**（`identifier`、`code`、`index` 或 `reference`）——以键或代码命名的列是通过一个代替值指向底层概念的，因此术语应该是概念本身。最后剩余的标记从不会被剥除。
-5. 用表的概念限定**过于泛化的短语**。当完整的规范化短语是一个裸属性词（`name`、`identifier`、`date`、`location`、`message`、`first name`、`last name` 及类似词）时，术语会变为 `<表概念> <短语>`——`employees.first_name` → `employee first name`，`orders.id` → `order identifier`。若在不相关的表之间共用一个 `name` 术语，会把不同的含义混为一谈；限定操作则将每一列与其所属概念关联起来。表概念是该表的业务名称，并规范化为单数中心名词（`order_lines` → `order line`）。
+5. 用表的概念限定**过于泛化的短语**。当完整的规范化短语是一个裸属性词（`name`、`identifier`、`date`、`location`、`message`、`first name`、`last name` 及类似词）时，术语会变为 `<table concept> <phrase>`——`employees.first_name` → `employee first name`，`orders.id` → `order identifier`。若在不相关的表之间共用一个 `name` 术语，会把不同的含义混为一谈；限定操作则将每一列与其所属概念关联起来。表概念是该表的业务名称，并规范化为单数中心名词（`order_lines` → `order line`）。
 
 原生过滤器伪列（以 `_nf_` 为前缀，或任何携带 `native_filter_type` 的列）是查询参数机制，不是业务字段，不会派生任何术语。
 
@@ -1316,7 +1364,7 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。(REQ-219, REQ-258) 通�
 
 前三者合并为一个术语。`transaction amount` 保留两个标记，因为 `amount` 不是代理标记。裸 `id` 列——前面没有其他标记——无法被剥除；它规范化为 `identifier`，使术语非空。[tool-verified: `provisa/core/glossary.py:normalize_term`]
 
-### 生命周期
+### 生命周期 {: #lifecycle }
 
 术语是**从模型成员关系中派生**的，而不是由用户按需创建的。表存储库是唯一的写入路径：`sync_table_refs` 会在每次列集更新（upsert）中运行，`sweep_refless_terms` 会在任何删除路径之后运行。[tool-verified: `provisa/core/repositories/glossary.py`]
 
@@ -1328,7 +1376,7 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。(REQ-219, REQ-258) 通�
 
 **恢复：** 如果一个已弃用术语的规范化名称再次出现（某列被重新注册），该术语会被取消弃用标记，其引用重新开始累积。
 
-### 策展端点
+### 策展端点 {: #curation-endpoints }
 
 所有端点都在 `/admin/glossary` 下。它们需要 `org_admin` 访问权限和一个已配置的组织。每次变更都会触发一次元数据发布。[tool-verified: `provisa/api/admin/glossary_router.py`]
 
@@ -1388,7 +1436,7 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。(REQ-219, REQ-258) 通�
 
 将 `export_excluded` 设置为 `true` 会将该术语从所有元数据导出快照中排除，无论其物理引用或抽象状态如何。将其设回 `false` 会在下一次发布时将该术语恢复到快照中。策展数据（定义、边、专家）不受影响。[tool-verified: `provisa/core/repositories/glossary.py:set_export_excluded`, `provisa/api/admin/glossary_router.py:update_term`]
 
-### AI 辅助策展
+### AI 辅助策展 {: #ai-assisted-curation }
 
 组织配置的 AI 模型可以在一次操作中为整个术语表起草定义并提出关系边。这两个批量操作都需要 `org_admin` 访问权限和一个已配置的组织。
 
@@ -1416,7 +1464,7 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。(REQ-219, REQ-258) 通�
 
 `added` 是写入的边数量。已存在的边仍会计入——更新插入操作成功执行，但边数据不会改变。
 
-### MCP `search_terms` 工具
+### MCP `search_terms` 工具 {: #mcp-search_terms-tool }
 
 ```
 search_terms(query, role=None, limit=25)
@@ -1426,7 +1474,7 @@ search_terms(query, role=None, limit=25)
 
 在编写 SQL 之前使用 `search_terms`，按名称查找代表某个概念的每一个物理字段。例如，搜索 `"order date"` 会返回该术语以及所有已注册表中的 `order_dt`、`orderDate`、`ORDER_DATE` 等列。
 
-### 元数据导出
+### 元数据导出 {: #metadata-export }
 
 术语图被包含在 `build_snapshot` 构建的每个 `MetadataSnapshot` 中。[tool-verified: `provisa/api/metadata_export/builder.py:_glossary_assets`]
 
@@ -1452,11 +1500,11 @@ search_terms(query, role=None, limit=25)
 
 ---
 
-## 数据产品 (REQ-1634)
+## 数据产品 (REQ-1634) {: #data-products-req-1634 }
 
 数据产品将一组共同发布以供消费的表分组，归属于恰好一个域。字段遵循 ODPS（开放数据产品标准）词汇——在 Provisa 已经拥有真实来源的地方。管理 UI 在**管理 → 数据产品**下暴露数据产品。[tool-verified: `provisa/core/models.py:318-342`, `provisa/api/admin/schema_mutation.py:949-1017`, `provisa/api/admin/schema_query.py:352-362`]
 
-### 能力
+### 能力 {: #capabilities }
 
 | 能力 | 授予内容 |
 | --- | --- |
@@ -1465,7 +1513,7 @@ search_terms(query, role=None, limit=25)
 
 [tool-verified: `provisa/api/admin/schema_mutation.py:959,1001`, `provisa/api/admin/schema_query.py:357`]
 
-### 管理 GraphQL
+### 管理 GraphQL {: #admin-graphql_1 }
 
 所有数据产品操作都通过 `POST /admin/graphql` 进行。
 
@@ -1528,7 +1576,7 @@ mutation {
 
 删除一个产品会清除每张成员表上的 `product_id`，移除其成员资格。需要 `data_product_rw`。[tool-verified: `provisa/api/admin/schema_mutation.py:995-1017`]
 
-### 字段架构
+### 字段架构 {: #field-schema }
 
 | 字段 | 类型 | 是否必需 | 说明 |
 | --- | --- | --- | --- |
@@ -1555,19 +1603,19 @@ mutation {
 
 [tool-verified: `provisa/core/models.py:338-341`, `provisa/api/admin/types.py:104-118,538-551`]
 
-### 表成员关系
+### 表成员关系 {: #table-membership }
 
 一张表通过在表编辑表单中设置其 `product_id` 字段来加入某个数据产品。选择器的范围限定为 `domain_id` 与该表自身域相匹配的产品——`marketing` 域中的表永远不会被提供 `sales` 域中的产品。[tool-verified: `provisa/api/admin/actions_router.py:244-260`, `docs/arch/requirements.yaml:54585-54586`]
 
 同一域中的命令也可以被指派为成员。[tool-verified: `provisa-ui/src/i18n/locales/en/dataProductsTab.json:commandsLabel`]
 
-### 元数据导出过滤
+### 元数据导出过滤 {: #metadata-export-filter }
 
 `build_snapshot` 在每次目录发布时应用 `data_products_only=True`。没有 `product_id` 的表会被从快照中排除，连同其关系边、血缘边和治理标签一起。数据源和域始终发布。术语表术语只有在其至少一个物理引用属于某个已导出（产品成员）表时才会发布。[tool-verified: `provisa/api/metadata_export/builder.py:594,609,641`]
 
 一个没有已导出成员的产品不会构建快照条目——一个没有成员的列表会向目录错误地呈现该产品。[tool-verified: `provisa/api/metadata_export/model.py:106-113`]
 
-### 按目录目标的数据产品支持
+### 按目录目标的数据产品支持 {: #data-product-support-by-catalog-target }
 
 `MetadataSnapshot.data_products` 会传递给每个适配器，但只有平台具备原生数据产品概念的适配器会将其作为一等实体发布；其余适配器只发布成员表（已如上过滤），不带产品分组。
 

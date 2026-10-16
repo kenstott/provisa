@@ -1,18 +1,18 @@
-# 数据产品（REQ-1634）
+# 数据产品（REQ-1634） {: #data-products-req-1634 }
 
 数据产品是一组具名的、有归属方的表束，被一起发布以供消费。这是目录向消费者暴露的单位 —— 不是单独的表，而是某个域明确声明已就绪的一个经过整理的界面。字段遵循 ODPS（Open Data Product Standard）词汇体系，前提是 Provisa 已经拥有相应的权威来源。[tool-verified: `provisa/core/models.py:318-342`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json`]
 
-## 域归属规则
+## 域归属规则 {: #domain-ownership-rule }
 
 每个数据产品都恰好归属于一个域（`domain_id` 是必填字段）。只有当一张表与某个数据产品共享相同的 `domain_id` 时，该表才能加入该数据产品。UI 会将表选择器限定在该产品所属的域内；后端会在保存时拒绝任何域不匹配该产品所属域的 `product_id` 赋值。[tool-verified: `provisa/core/models.py:320`, `docs/arch/requirements.yaml:54573-54574`]
 
 需要来自另一个域的数据的产品，必须先将该数据以域视图的形式引入，然后再将该视图作为成员纳入。
 
-## 输出端口
+## 输出端口 {: #output-ports }
 
 被分配给某个数据产品的表和命令是它的**输出端口** —— 也就是消费者所看到的可查询界面。为某张表分配产品会设置 `Table.product_id`；清除该分配则会移除其成员关系。一张表最多只能属于一个产品。同一个域中的命令也可以被分配为成员。[tool-verified: `provisa/core/models.py:941`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json:tablesLabel,commandsLabel`]
 
-## 详情面板各部分
+## 详情面板各部分 {: #detail-panel-sections }
 
 在管理 UI 中打开一个数据产品会显示以下面板：
 
@@ -49,7 +49,7 @@
 
 [tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:389-418`, `provisa/api/metadata_export/bigquery_dataplex.py:112-136`, `provisa/api/metadata_export/openmetadata.py:326-344`, `provisa/api/metadata_export/datahub.py:133-136,443-483`, `provisa/api/metadata_export/collibra.py:129-133,371-388`, `provisa/api/metadata_export/atlas.py:134-147`, `provisa/api/metadata_export/atlan.py:60`, `provisa/api/metadata_export/openlineage.py:243,348`]
 
-## 字段
+## 字段 {: #fields }
 
 | 字段 | 是否必填 | 说明 |
 | --- | --- | --- |

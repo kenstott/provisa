@@ -1,6 +1,6 @@
-# 从 Hasura DDN (v3) 迁移到 Provisa
+# 从 Hasura DDN (v3) 迁移到 Provisa {: #migrating-from-hasura-ddn-v3-to-provisa }
 
-## 前提条件
+## 前提条件 {: #prerequisites }
 
 1. 一个包含 HML 文件（扩展名为 `.hml`）的 Hasura DDN 项目。
    DDN 项目通常具有如下目录结构：
@@ -21,19 +21,19 @@
 
 2. Python 3.11+ 并已安装 `provisa` 软件包。
 
-## CLI 用法
+## CLI 用法 {: #cli-usage }
 
 ```bash
 python -m provisa.ddn <hml-dir> -o provisa.yaml
 ```
 
-### 参数
+### 参数 {: #arguments }
 
 | 参数 | 是否必需 | 说明 |
 | ---------- | ---------- | ------------- |
 | `hml_dir` | 是 | DDN HML 项目目录的路径（会递归扫描其中的 `.hml` 文件） |
 
-### 选项
+### 选项 {: #options }
 
 | 选项 | 默认值 | 说明 |
 | -------- | --------- | ------------- |
@@ -42,7 +42,7 @@ python -m provisa.ddn <hml-dir> -o provisa.yaml
 | `--domain-map KEY=VAL ...` | 无 | Subgraph 到 domain 的映射关系（例如 `app=core analytics=reporting`） |
 | `--dry-run` | 关闭 | 仅解析并验证，不写入输出 |
 
-### 数据源覆盖文件
+### 数据源覆盖文件 {: #source-overrides-file }
 
 一个以连接器（connector）名称为键的 YAML 文件（经过 ID 清理后：空格、点号、斜杠
 会转换为下划线），并包含连接属性：
@@ -56,7 +56,7 @@ my_pg_connector:
   password: "${env:PROD_DB_PASSWORD}"
 ```
 
-## 功能对照表
+## 功能对照表 {: #feature-parity-matrix }
 
 | DDN 类型 | Provisa 对应项 | 备注 |
 | --- | --- | --- |
@@ -75,7 +75,7 @@ my_pg_connector:
 | **CompatibilityConfig** | 跳过 | 会输出带计数的警告。 |
 | **其他无法识别的类型** | 跳过 | 会按类型输出带计数的警告。 |
 
-## 核心概念：GraphQL 字段到物理列的解析
+## 核心概念：GraphQL 字段到物理列的解析 {: #key-concept-graphql-field-to-physical-column-resolution }
 
 DDN 通过 ObjectType 上的 `dataConnectorTypeMapping`，将 GraphQL 架构（字段名）
 与物理数据库架构（列名）分离开来。转换器会：
@@ -88,7 +88,7 @@ DDN 通过 ObjectType 上的 `dataConnectorTypeMapping`，将 GraphQL 架构（�
 这意味着输出的 `provisa.yaml` 会在 `columns[].name` 中使用**物理列名**，
 并在名称不同的情况下，将 `columns[].alias` 设置为 GraphQL 字段名。
 
-## 转换后步骤
+## 转换后步骤 {: #post-conversion-steps }
 
 1. **检查输出的 YAML。** 验证数据源、表以及列映射。
 2. **配置数据源连接。** 连接器仅提供用于类型检测的 URL 提示。
@@ -106,44 +106,44 @@ DDN 通过 ObjectType 上的 `dataConnectorTypeMapping`，将 GraphQL 架构（�
    DDN 类型，以及任何引用了未知 ObjectType 的模型。
 7. **进行测试。** 启动 Provisa 服务器，并针对你的数据源验证查询结果。
 
-## 常见问题与故障排查
+## 常见问题与故障排查 {: #common-issues-and-troubleshooting }
 
-### 数据源类型检测失败
+### 数据源类型检测失败 {: #source-type-detection-fails }
 
 连接器 URL 会以启发式方式（heuristically）进行判断（查找诸如 "postgres"、
 "mysql"、"mongo" 之类的关键字）。如果 URL 不包含可识别的关键字，
 数据源将默认使用 `postgresql`。可通过 `--source-overrides` 覆盖。
 
-### Model 缺少 ObjectType
+### Model 缺少 ObjectType {: #missing-objecttype-for-a-model }
 
 如果某个 Model 引用的 ObjectType 名称在任何 `.hml` 文件中都找不到，
 该表会被跳过并输出警告。请确保扫描目录中包含所有 HML 文件。
 
-### Subgraph 发现
+### Subgraph 发现 {: #subgraph-discovery }
 
 Subgraph 根据目录结构推断：项目根目录下的第一层目录名
 被视为 subgraph 名称。HML 文档内部的 `subgraph` 字段不会被使用。
 位于 `globals/` 目录下的文件会被归入 `globals` subgraph，
 并会从 domain 发现中排除。
 
-### 关系来源解析
+### 关系来源解析 {: #relationship-source-resolution }
 
 关系（relationship）引用一个 `source_type`（ObjectType 名称）和一个 `target_model`
 （Model 名称）。如果没有任何 Model 使用指定的 ObjectType，该关系会被静默跳过。
 
-### 随处可见的列别名
+### 随处可见的列别名 {: #column-aliases-everywhere }
 
 如果你的 DDN 项目大量使用 `fieldMapping`，可以预期输出中大多数列都会带有
 `alias`。这是正确的行为——`name` 是物理列，`alias` 则是应用程序
 所使用的 GraphQL 名称。
 
-### 聚合表达式
+### 聚合表达式 {: #aggregate-expressions }
 
 聚合表达式会保留在与输出文件一同写入的附属文件 `provisa-aggregates.yaml`
 中，并转换为 Provisa 的聚合配置。它们不会存储在表的
 `description` 中。
 
-## 示例：转换一个 Chinook DDN 项目
+## 示例：转换一个 Chinook DDN 项目 {: #example-converting-a-chinook-ddn-project }
 
 ```bash
 # Convert the DDN project
