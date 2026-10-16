@@ -1,0 +1,72 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The opioids demo's own tour (REQ-2010): the story of the demo, told with its own data. The step
+# kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name here is checked
+# against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
+# tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: the scenario (the fund's question, and its two kinds of data); how the pieces fit
+# (its own allocations, the public county tables landed once, the join by county, the plain-language
+# terms); the answer in SQL, then as the public sees the council's dashboard, in GraphQL and over
+# REST; a recap.
+# Where the tour's "Look around on my own" leaves the visitor: the SQL page, with its example queries.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+- key: opioidsScenario
+  route: /sources
+  capability: source_registration
+  source: fund
+- key: opioidsGovdata
+  source: govdata
+- key: opioidsAllocations
+  route: /tables
+  capability: table_registration
+  table: fund.allocations
+- key: opioidsDeaths
+  table: govdata.cdc_county_injury_mortality
+- key: opioidsJoin
+  route: /relationships
+  capability: create_relationship
+  relationship: DEATH_RATE_OF
+- key: opioidsTerms
+  route: /admin/glossary
+  capability: glossary_read
+  term: abatement
+- key: opioidsAnswer
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT b.county_name, b.region, b.population, b.deaths, b.death_rate, b.rate_modelled,
+           b.treatment_spent, b.deaths_per_million_spent
+    FROM "opioids"."view_overdose_burden_by_county" AS b
+    ORDER BY b.deaths_per_million_spent DESC
+    LIMIT 15
+- key: opioidsAsPublic
+  role: public
+- key: opioidsPublic
+  sql: >-
+    SELECT b.county_name, b.deaths, b.death_rate, b.treatment_per_resident, b.federal_per_resident
+    FROM "opioids"."view_overdose_burden_by_county" AS b
+    ORDER BY b.death_rate DESC
+    LIMIT 15
+- key: opioidsByRegion
+  route: /query
+  capability: query_development
+  example: 2-by-region
+- key: opioidsRest
+  route: /openapi
+  capability: query_development
+  api: GET /data/rest/opioids/view_overdose_burden_by_county?groupBy=region&aggregate=count,sum
+- key: opioidsRecap
+  route: /sources
+  capability: source_registration
+  source: govdata

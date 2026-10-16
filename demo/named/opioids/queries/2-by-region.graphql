@@ -1,0 +1,14 @@
+# The council's dashboard by the fund's region: its counties, residents, and the treatment and
+# recovery spent there.
+query BurdenByRegion {
+  o__viewOverdoseBurdenByCountyGroupBy(by: [region], order_by: [{ aggregate: { sum: { treatmentSpent: desc } } }]) {
+    groupKey
+    aggregate {
+      count
+      sum {
+        population
+        treatmentSpent
+      }
+    }
+  }
+}

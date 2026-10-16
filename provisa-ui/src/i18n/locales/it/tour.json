@@ -775,6 +775,54 @@
       "profilingRecap": {
         "title": "Cosa avete visto",
         "description": "Le tabelle acquisite, lette in tempo reale, e un loro profilo creato dal profiler integrato e conservato come tabelle governate: valori nulli, intervalli, formati, tipi plausibili e duplicati rispondono a cosa c'è davvero in questi dati, in SQL, GraphQL e REST, secondo l'accesso di ogni ruolo."
+      },
+      "opioidsScenario": {
+        "title": "Che cos'è questa demo",
+        "description": "Un fondo statale degli accordi sugli oppioidi paga le 88 contee dell'Ohio per trattamento, recupero, prevenzione e naloxone. Il consiglio chiede quali contee hanno più morti per overdose rispetto al trattamento che quel denaro finanzia. Le assegnazioni del fondo sono nel suo database; morti, popolazione e spesa federale sono pubblici. Il fondo e i suoi dati sono inventati; le contee e i dati pubblici sono reali."
+      },
+      "opioidsJoin": {
+        "title": "Collegati per contea",
+        "description": "Le contee del fondo e le tabelle pubbliche condividono il codice FIPS della contea, e queste relazioni le collegano. Ogni query che le attraversa usa questo join."
+      },
+      "opioidsAnswer": {
+        "title": "La risposta in SQL",
+        "description": "La vista overdose_burden_by_county collega la spesa del fondo per trattamento e recupero alle morti di ogni contea, ed è mantenuta memorizzata. Ordinata per morti per milione di dollari spesi, mette prima le contee dove il denaro incontra più morti."
+      },
+      "opioidsRecap": {
+        "title": "Che cosa hai visto",
+        "description": "I dati propri del fondo, letti in tempo reale, e dati pubblici sanitari e del censimento, caricati una volta, collegati per contea in un unico modello governato. Una vista memorizzata risponde alla domanda del consiglio in SQL, GraphQL e REST, e personale e pubblico vedono ciascuno ciò che il proprio ruolo consente."
+      },
+      "opioidsGovdata": {
+        "title": "I dati pubblici",
+        "description": "I dati governativi vengono da AskAmerica, un account reale: morti e tassi di mortalità per overdose dei CDC, popolazione del Census Bureau e spesa federale di USAspending, ciascuno per contea. Solo le contee dell'Ohio e il 2023 vengono caricati, una volta, alla creazione della demo, e letti da quella copia per sempre. Il 2023 è l'anno che coprono tutti."
+      },
+      "opioidsAllocations": {
+        "title": "Le assegnazioni del fondo",
+        "description": "Ogni assegnazione del fondo, letta in tempo reale dal suo database: la contea, l'anno fiscale, l'area del programma, il fornitore pagato, quanto assegnato e quanto speso. Il personale vede ogni riga; il ruolo public non ne vede nessuna."
+      },
+      "opioidsDeaths": {
+        "title": "I tassi di morte per overdose dei CDC",
+        "description": "Morti per overdose ogni 100.000 residenti in ogni contea nel 2023. Dove una contea ha avuto da 1 a 9 morti, i CDC oscurano il numero e pubblicano invece un tasso stimato da modello, qui segnalato, così ogni contea ha un tasso confrontabile."
+      },
+      "opioidsTerms": {
+        "title": "In parole semplici",
+        "description": "Il glossario spiega i termini che incontra un consigliere o un cittadino: fondo degli accordi, mitigazione, assegnazione, spesa, numero oscurato, tasso ogni 100.000. Qui la mitigazione: ciò per cui gli accordi impongono di spendere il denaro."
+      },
+      "opioidsAsPublic": {
+        "title": "Esegui come pubblico",
+        "description": "L'esploratore SQL ora viene eseguito con il ruolo public, quello della dashboard del consiglio e dei cittadini. Le query che seguono vedono solo ciò che il ruolo consente."
+      },
+      "opioidsPublic": {
+        "title": "Come la vede il pubblico",
+        "description": "La stessa vista, eseguita con il ruolo public: la dashboard del consiglio. Mostra morti, tassi e spesa per residente per contea, e nessuna assegnazione del fondo né i fornitori pagati."
+      },
+      "opioidsByRegion": {
+        "title": "Per regione, in GraphQL",
+        "description": "La dashboard raggruppata per le cinque regioni del fondo: quanti residenti ha ciascuna e quanto vi è stato speso per trattamento e recupero."
+      },
+      "opioidsRest": {
+        "title": "La stessa risposta via REST",
+        "description": "La vista è anche un endpoint REST, raggruppato e sommato sul server, così un sito del consiglio o un foglio di calcolo può leggere la dashboard via HTTP."
       }
     },
     "status": {
@@ -831,6 +879,10 @@
       "profiling": {
         "title": "Che cosa c'è davvero in questi dati?",
         "summary": "Clienti e ordini di un'azienda acquisita, profilati dal Data Profiler integrato: valori nulli, intervalli, formati, tipi plausibili e duplicati, conservati come tabelle governate e letti in SQL, GraphQL e REST."
+      },
+      "opioids": {
+        "title": "Fondi degli accordi sugli oppioidi e morti per overdose",
+        "summary": "La domanda di un governo locale, quali contee hanno più morti per overdose rispetto al trattamento che finanzia il denaro degli accordi sugli oppioidi: le assegnazioni di un fondo collegate per contea ai dati dei CDC, del censimento e della spesa federale."
       }
     }
   }

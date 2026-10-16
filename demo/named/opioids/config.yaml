@@ -1,0 +1,273 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "opioids" (start-ui-install.sh --demo opioids; REQ-2042):
+# which counties have the highest overdose deaths relative to the treatment their opioid
+# settlement money pays for? A state's settlement fund -- fictional, its records generated -- pays
+# Ohio's 88 counties for treatment, recovery, prevention and naloxone; its own database is read
+# live. Public data on each county comes from govdata.
+#
+#   fund     the settlement fund's Postgres (db/init.sql): the counties it pays and every
+#            allocation it made, what was awarded and what was spent. docker-compose.yml brings it
+#            up.
+#   govdata  AskAmerica's government data: CDC's provisional overdose deaths and its modelled
+#            overdose death rates by county, the Census Bureau's county population and federal
+#            spending by county from USAspending. A real account, so each table is landed once,
+#            when the demo's bundle is built, Ohio's counties and 2023 only (each table's landing
+#            filter), and read from that replica for good (cache_ttl -1, replicate 0).
+#
+# 2023 is the year every table covers: the population ends there, the deaths run on to 2025.
+#
+# overdose_burden_by_county, materialized, joins the fund's treatment spending to the deaths by
+# county FIPS code: the answer, and the council's dashboard. Two roles read it: staff, who see
+# every allocation and the providers paid, and public, who see the dashboard and the counties.
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+domains:
+- id: opioids
+  description: A state opioid settlement fund's payments to Ohio's counties, and each county's
+    overdose deaths, population and federal spending from CDC, the Census Bureau and USAspending
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+# The fund's staff: every allocation, the providers it paid and what each spent.
+- id: staff
+  capabilities:
+  - query_development
+  domain_access:
+  - opioids
+# The public, and the council: the dashboard and the counties, never an allocation.
+- id: public
+  capabilities:
+  - query_development
+  domain_access:
+  - opioids
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- id: fund
+  type: postgresql
+  host: ${env:OPIOIDS_PG_HOST:-localhost}
+  port: ${env:OPIOIDS_PG_PORT:-28832}
+  database: opioids
+  username: provisa_reader
+  password: provisa_reader
+  description: The settlement fund's own database -- the counties it pays and its allocations
+- id: govdata
+  type: govdata
+  # The AskAmerica key, needed only to land the tables: the bundle build has it. A sandbox reads
+  # the landed replicas and never this source, so it runs with none (REQ-2031).
+  username: ${env:ASKAMERICA_API_KEY:-}
+  database: health,census,fiscal
+  cache_ttl: -1
+  replicate: 0
+  description: Government data from AskAmerica -- CDC, Census Bureau and USAspending county
+    tables, landed once when the demo is built
+tables:
+- source_id: fund
+  domain_id: opioids
+  schema: public
+  table: counties
+  description: The counties the fund pays, Ohio's 88
+  columns:
+  - {name: county_fips, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [org_admin, staff, public]}
+  - {name: county_name, data_type: varchar, description: The county's name, visible_to: [org_admin, staff, public]}
+  - {name: region, data_type: varchar, description: 'The fund''s region the county is in: Northeast, Northwest, Central, Southeast or Southwest', visible_to: [org_admin, staff, public]}
+- source_id: fund
+  domain_id: opioids
+  schema: public
+  table: allocations
+  description: Every allocation the fund made -- the county, the program area, the provider paid,
+    what was awarded and what was spent
+  enable_aggregates: true
+  enable_group_by: true
+  columns:
+  - {name: allocation_id, data_type: integer, is_primary_key: true, description: The allocation's number, visible_to: [org_admin, staff]}
+  - {name: county_fips, data_type: varchar, description: The county it went to, visible_to: [org_admin, staff]}
+  - {name: fiscal_year, data_type: integer, description: 'The state fiscal year it was awarded in (July to June, named for its June)', visible_to: [org_admin, staff]}
+  - {name: program_area, data_type: varchar, description: 'What it pays for: treatment, recovery, prevention or naloxone', visible_to: [org_admin, staff]}
+  - {name: provider, data_type: varchar, description: The organisation paid to deliver it, visible_to: [org_admin, staff]}
+  - {name: awarded, data_type: decimal, description: What the fund awarded in USD, visible_to: [org_admin, staff]}
+  - {name: spent, data_type: decimal, description: What has been spent of it in USD, visible_to: [org_admin, staff]}
+- source_id: govdata
+  domain_id: opioids
+  schema: health
+  table: cdc_county_overdose_deaths
+  alias: overdose_deaths
+  # Ohio's counties, the 12 months ending December 2023: calendar 2023.
+  landing_filter: st_abbrev = 'OH' AND year = '2023' AND month = '12'
+  description: CDC's provisional count of each county's drug overdose deaths in the 12 months ending
+    December 2023; a count of 1 to 9 is suppressed
+  columns:
+  - {name: fips, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [org_admin, staff, public]}
+  - {name: countyname, data_type: varchar, description: The county's name, visible_to: [org_admin, staff, public]}
+  - {name: provisional_drug_overdose, data_type: varchar, description: 'The deaths, as CDC publishes them: blank where the count is 1 to 9', visible_to: [org_admin, staff, public]}
+  - {name: footnote, data_type: varchar, description: CDC's note on the count -- why it is suppressed, visible_to: [org_admin, staff, public]}
+- source_id: govdata
+  domain_id: opioids
+  schema: health
+  table: cdc_county_injury_mortality
+  alias: overdose_rates
+  landing_filter: st_name = 'Ohio' AND period = '2023' AND intent = 'Drug_OD'
+  description: CDC's drug overdose death rate in each county in 2023, per 100,000 residents -- for
+    a county whose count is suppressed, CDC's modelled estimate
+  columns:
+  - {name: geoid, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [org_admin, staff, public]}
+  - {name: name, data_type: varchar, description: The county's name, visible_to: [org_admin, staff, public]}
+  - {name: rate, data_type: double, description: 'Overdose deaths per 100,000 residents', visible_to: [org_admin, staff, public]}
+  - {name: rate_m, data_type: boolean, description: Whether the rate is CDC's modelled estimate (the count is suppressed), visible_to: [org_admin, staff, public]}
+  - {name: count_sup, data_type: varchar, description: 'The deaths, as CDC publishes them: blank where the count is 1 to 9', visible_to: [org_admin, staff, public]}
+- source_id: govdata
+  domain_id: opioids
+  schema: census
+  table: acs_population
+  alias: population
+  landing_filter: year = '2023' AND geography = 'county' AND county_fips LIKE '39%'
+  description: The Census Bureau's population of each Ohio county in 2023 (American Community Survey)
+  columns:
+  - {name: county_fips, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [org_admin, staff, public]}
+  - {name: geo_name, data_type: varchar, description: The county's name and state, visible_to: [org_admin, staff, public]}
+  - {name: total_population, data_type: bigint, description: Its residents, visible_to: [org_admin, staff, public]}
+- source_id: govdata
+  domain_id: opioids
+  schema: fiscal
+  table: usaspending_by_county
+  alias: federal_spending
+  landing_filter: year = '2023' AND county_fips LIKE '39%'
+  description: Federal money obligated in each Ohio county in federal fiscal year 2023, from
+    USAspending -- every agency and kind of award, loans aside
+  columns:
+  - {name: county_fips, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [org_admin, staff, public]}
+  - {name: county_name, data_type: varchar, description: The county's name, visible_to: [org_admin, staff, public]}
+  - {name: obligated_amount_excl_loans, data_type: double, description: 'Federal money obligated there in USD, loans aside', visible_to: [org_admin, staff, public]}
+views:
+# The answer, and the council's dashboard: each county's 2023 overdose deaths beside the treatment
+# and recovery the fund paid for there that year. Stored, and built again when its inputs change.
+- id: overdose_burden_by_county
+  domain_id: opioids
+  materialize: true
+  enable_aggregates: true
+  enable_group_by: true
+  description: Each county's 2023 overdose deaths and death rate beside the treatment and recovery
+    the settlement fund spent there that year, and the deaths for each million dollars of it
+  sql: >-
+    SELECT c.county_fips, c.county_name, c.region,
+           p.total_population AS population,
+           CAST(NULLIF(d.provisional_drug_overdose, '') AS INTEGER) AS deaths,
+           r.rate AS death_rate,
+           r.rate_m AS rate_modelled,
+           s.treatment_spent,
+           s.treatment_spent / p.total_population AS treatment_per_resident,
+           r.rate * p.total_population / 100000.0 / (s.treatment_spent / 1000000.0)
+             AS deaths_per_million_spent,
+           f.obligated_amount_excl_loans / p.total_population AS federal_per_resident
+    FROM "opioids"."counties" AS c
+    JOIN (
+      SELECT a.county_fips, SUM(a.spent) AS treatment_spent
+      FROM "opioids"."allocations" AS a
+      WHERE a.fiscal_year = 2023 AND a.program_area IN ('treatment', 'recovery')
+      GROUP BY a.county_fips
+    ) AS s ON s.county_fips = c.county_fips
+    JOIN "opioids"."population" AS p ON p.county_fips = c.county_fips
+    LEFT JOIN "opioids"."overdose_deaths" AS d ON d.fips = c.county_fips
+    LEFT JOIN "opioids"."overdose_rates" AS r ON r.geoid = c.county_fips
+    LEFT JOIN "opioids"."federal_spending" AS f ON f.county_fips = c.county_fips
+  columns:
+  - {name: county_fips, data_type: varchar, description: The county's 5-digit FIPS code, visible_to: [org_admin, staff, public]}
+  - {name: county_name, data_type: varchar, description: The county's name, visible_to: [org_admin, staff, public]}
+  - {name: region, data_type: varchar, description: The fund's region the county is in, visible_to: [org_admin, staff, public]}
+  - {name: population, data_type: bigint, description: Its residents in 2023, visible_to: [org_admin, staff, public]}
+  - {name: deaths, data_type: integer, description: 'Its overdose deaths in 2023; empty where CDC suppresses a count of 1 to 9', visible_to: [org_admin, staff, public]}
+  - {name: death_rate, data_type: double, description: 'Overdose deaths per 100,000 residents in 2023', visible_to: [org_admin, staff, public]}
+  - {name: rate_modelled, data_type: boolean, description: Whether the rate is CDC's modelled estimate, visible_to: [org_admin, staff, public]}
+  - {name: treatment_spent, data_type: decimal, description: What the fund spent there on treatment and recovery in fiscal 2023 in USD, visible_to: [org_admin, staff, public]}
+  - {name: treatment_per_resident, data_type: decimal, description: That spending for each resident in USD, visible_to: [org_admin, staff, public]}
+  - {name: deaths_per_million_spent, data_type: double, description: 'Overdose deaths for each million dollars of it, from the death rate: the higher, the less treatment the deaths are meeting', visible_to: [org_admin, staff, public]}
+  - {name: federal_per_resident, data_type: double, description: 'Federal money obligated there for each resident in USD, loans aside', visible_to: [org_admin, staff, public]}
+relationships:
+- {id: allocation-to-county, alias: PAID_TO, cardinality: many-to-one, source_table_id: allocations, source_column: county_fips, target_table_id: counties, target_column: county_fips}
+- {id: county-to-overdose-deaths, alias: DEATHS_IN, cardinality: one-to-one, source_table_id: counties, source_column: county_fips, target_table_id: overdose_deaths, target_column: fips}
+- {id: county-to-overdose-rate, alias: DEATH_RATE_OF, cardinality: one-to-one, source_table_id: counties, source_column: county_fips, target_table_id: overdose_rates, target_column: geoid}
+- {id: county-to-population, alias: RESIDENTS_OF, cardinality: one-to-one, source_table_id: counties, source_column: county_fips, target_table_id: population, target_column: county_fips}
+- {id: county-to-federal-spending, alias: FEDERAL_MONEY_IN, cardinality: one-to-one, source_table_id: counties, source_column: county_fips, target_table_id: federal_spending, target_column: county_fips}
+# The plain words of public-sector finance and public health, grounded through their edges in the
+# terms the fund's and the public tables' columns derive (spent, awarded, program area, rate).
+glossary_terms:
+- name: opioid settlement fund
+  definition: 'The money drug makers, distributors and pharmacies agreed to pay states and local governments to settle the opioid lawsuits, paid out over many years and to be spent on abating the epidemic.'
+  domains:
+  - opioids
+  edges:
+  - to: awarded
+    rel_type: RELATED_TO
+- name: abatement
+  definition: 'What the settlements require the money be spent on: reducing the harm of the epidemic -- treatment, recovery, prevention and overdose reversal.'
+  domains:
+  - opioids
+  edges:
+  - to: program area
+    rel_type: RELATED_TO
+  - to: opioid settlement fund
+    rel_type: RELATED_TO
+- name: treatment
+  definition: 'Care for opioid use disorder, chiefly medication (buprenorphine, methadone, naltrexone) with counselling.'
+  domains:
+  - opioids
+  edges:
+  - to: abatement
+    rel_type: KIND_OF
+- name: allocation
+  definition: 'An amount set aside for one county, program area and provider in one fiscal year.'
+  domains:
+  - opioids
+  edges:
+  - to: awarded
+    rel_type: RELATED_TO
+- name: expenditure
+  definition: 'Money actually paid out of an allocation, as opposed to what was awarded; the gap between the two is what is still unspent.'
+  domains:
+  - opioids
+  edges:
+  - to: spent
+    rel_type: RELATED_TO
+  - to: allocation
+    rel_type: RELATED_TO
+- name: fiscal year
+  definition: 'The state''s budget year, July to June, named for the June it ends in. The federal fiscal year runs October to September.'
+  domains:
+  - opioids
+  edges:
+  - to: fiscal year
+    rel_type: RELATED_TO
+- name: rate per 100,000
+  definition: 'Deaths for every 100,000 residents, so a small county and a large one can be compared.'
+  domains:
+  - opioids
+  edges:
+  - to: rate
+    rel_type: RELATED_TO
+- name: suppressed count
+  definition: 'A count of 1 to 9 that CDC does not publish, so no one can be identified; CDC publishes a modelled rate for the county instead.'
+  domains:
+  - opioids
+  edges:
+  - to: rate per 100,000
+    rel_type: RELATED_TO

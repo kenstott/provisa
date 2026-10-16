@@ -775,6 +775,54 @@
       "profilingRecap": {
         "title": "Lo que ha visto",
         "description": "Las tablas adquiridas, leídas en vivo, y un perfil de ellas hecho por el perfilador integrado y conservado como tablas gobernadas: nulos, rangos, formatos, tipos plausibles y duplicados responden qué hay realmente en estos datos, en SQL, GraphQL y REST, según el acceso de cada rol."
+      },
+      "opioidsScenario": {
+        "title": "Qué es esta demo",
+        "description": "Un fondo estatal de los acuerdos por opioides paga a los 88 condados de Ohio por tratamiento, recuperación, prevención y naloxona. El concejo pregunta qué condados tienen más muertes por sobredosis para el tratamiento que paga ese dinero. Las asignaciones del fondo están en su propia base de datos; las muertes, la población y el gasto federal son públicos. El fondo y sus cifras son inventados; los condados y los datos públicos son reales."
+      },
+      "opioidsJoin": {
+        "title": "Unidos por condado",
+        "description": "Los condados del fondo y las tablas públicas comparten el código FIPS del condado, y estas relaciones los unen. Toda consulta que cruza ambos usa esta unión."
+      },
+      "opioidsAnswer": {
+        "title": "La respuesta en SQL",
+        "description": "La vista overdose_burden_by_county une el gasto del fondo en tratamiento y recuperación con las muertes de cada condado, y se mantiene almacenada. Ordenada por muertes por cada millón de dólares gastado, pone primero los condados donde el dinero enfrenta más muertes."
+      },
+      "opioidsRecap": {
+        "title": "Lo que ha visto",
+        "description": "Los registros propios del fondo, leídos en vivo, y datos públicos de salud y del censo, cargados una vez, unidos por condado en un modelo gobernado. Una vista almacenada responde la pregunta del concejo en SQL, GraphQL y REST, y el personal y el público ven cada uno lo que su rol permite."
+      },
+      "opioidsGovdata": {
+        "title": "Los datos públicos",
+        "description": "Los datos del gobierno vienen de AskAmerica, una cuenta real: las muertes y tasas de mortalidad por sobredosis de los CDC, la población de la Oficina del Censo y el gasto federal de USAspending, cada uno por condado. Solo se cargan los condados de Ohio y el año 2023, una vez, al construir la demo, y se leen de esa copia para siempre. 2023 es el año que cubren todos."
+      },
+      "opioidsAllocations": {
+        "title": "Las asignaciones del fondo",
+        "description": "Cada asignación que hizo el fondo, leída en vivo de su propia base de datos: el condado, el año fiscal, el área del programa, el proveedor pagado, lo adjudicado y lo gastado. El personal ve todas las filas; el rol public no ve ninguna."
+      },
+      "opioidsDeaths": {
+        "title": "Las tasas de muerte por sobredosis de los CDC",
+        "description": "Muertes por sobredosis por cada 100.000 residentes en cada condado en 2023. Cuando un condado tuvo de 1 a 9 muertes, los CDC suprimen la cifra y publican en su lugar una tasa modelada, marcada aquí, para que cada condado tenga una tasa comparable."
+      },
+      "opioidsTerms": {
+        "title": "En palabras sencillas",
+        "description": "El glosario explica los términos que encuentra un concejal o un vecino: fondo de los acuerdos, mitigación, asignación, gasto, cifra suprimida, tasa por cada 100.000. Aquí, mitigación: en qué exigen los acuerdos que se gaste el dinero."
+      },
+      "opioidsAsPublic": {
+        "title": "Ejecutar como el público",
+        "description": "El explorador SQL ahora se ejecuta con el rol public, el que usan el panel del concejo y los vecinos. Las consultas que siguen ven solo lo que ese rol permite."
+      },
+      "opioidsPublic": {
+        "title": "Como lo ve el público",
+        "description": "La misma vista, ejecutada con el rol public: el panel del concejo. Muestra muertes, tasas y gasto por residente por condado, y ninguna asignación del fondo ni los proveedores pagados."
+      },
+      "opioidsByRegion": {
+        "title": "Por región, en GraphQL",
+        "description": "El panel agrupado por las cinco regiones del fondo: cuántos residentes tiene cada una y cuánto se gastó allí en tratamiento y recuperación."
+      },
+      "opioidsRest": {
+        "title": "La misma respuesta por REST",
+        "description": "La vista también es un endpoint REST, agrupado y sumado en el servidor, para que el sitio web del concejo o una hoja de cálculo lea el panel por HTTP."
       }
     },
     "status": {
@@ -831,6 +879,10 @@
       "profiling": {
         "title": "¿Qué hay realmente en estos datos?",
         "summary": "Los clientes y pedidos de una empresa adquirida, perfilados por el Data Profiler integrado: nulos, rangos, formatos, tipos plausibles y duplicados, guardados como tablas gobernadas y leídos en SQL, GraphQL y REST."
+      },
+      "opioids": {
+        "title": "Fondos de los acuerdos por opioides y muertes por sobredosis",
+        "summary": "La pregunta de un gobierno local, qué condados tienen más muertes por sobredosis para el tratamiento que paga su dinero de los acuerdos por opioides: las asignaciones de un fondo unidas por condado a datos de los CDC, del Censo y del gasto federal."
       }
     }
   }
