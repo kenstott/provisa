@@ -558,8 +558,8 @@ mutation {
 }
 ```
 
-`group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id",
-"customer_id"]`. Keine Measures, also keine `GROUP BY`. Generiert [tool-verified:
+`group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`.
+Keine Measures, also keine `GROUP BY`. Generiert [tool-verified:
 fact_registration modeling.py lines 125-131]:
 
 ```sql
@@ -592,8 +592,8 @@ mutation {
 }
 ```
 
-`group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id",
-"customer_id"]` (das doppelte `order_id` aus der Dimensionsliste wird von `_dedup` entfernt).
+`group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`
+(das doppelte `order_id` aus der Dimensionsliste wird von `_dedup` entfernt).
 Generiert [tool-verified: fact_registration modeling.py lines 125-131]:
 
 ```sql
@@ -767,8 +767,8 @@ management page (list / create / edit / delete). REQ-1323: detail-then-edit"]
 Das Erstellungs-/Bearbeitungsformular bietet einen Drei-Wähler-Builder für Fact-basierte
 Metriken: Wählen Sie die Quell-Fact-Tabelle (gefiltert auf `modelingRole=fact`), eine
 Measure-Spalte und eine Aggregatfunktion (`SUM`, `AVG`, `COUNT`, `MIN`, `MAX`). Der Datentyp
-wird automatisch abgeleitet: `COUNT → bigint`, `AVG → numeric`, `SUM/MIN/MAX → der Typ der
-Measure-Spalte`. Das Ausdrucks-Textfeld bleibt das Hintertürchen für beliebige Ausdrücke.
+wird automatisch abgeleitet: `COUNT → bigint`, `AVG → numeric`, `SUM/MIN/MAX → the measure column's type`
+(der Typ der Measure-Spalte). Das Ausdrucks-Textfeld bleibt das Hintertürchen für beliebige Ausdrücke.
 [tool-verified: `deriveDatatype` function, `MetricsPage.tsx` lines 66–70;
 `applyBuilder`, `MetricsPage.tsx` lines 273–285]
 

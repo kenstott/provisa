@@ -41,7 +41,7 @@ Der Trust-Modus (`provider: none` oder inaktive Auth-Middleware) ist die Ausnahm
 
 **Fehlversuche werden gezählt.** Fünf Fehlversuche in fünf Minuten sperren das Konto für fünfzehn Minuten, und der Zähler wird mit HTTP und Bolt geteilt — eine auf einer Oberfläche erwirkte Sperre gilt auf allen. (REQ-1393)
 
-**Auswahl einer Organisation.** In einem Multi-Org-Deployment verbinden Sie sich mit `<org>.<ihre-domain>`, und pgwire liest die Organisation aus dem Hostnamen im TLS-ClientHello — so, wie HTTP sie aus dem `Host`-Header liest. (REQ-1234) Der Hostname fordert eine Organisation an; er gewährt sie nicht, und ein Principal ohne Mitgliedschaft dort wird abgewiesen. Eine Verbindung über eine IP-Adresse fordert keine Organisation an.
+**Auswahl einer Organisation.** In einem Multi-Org-Deployment verbinden Sie sich mit `<org>.<your-domain>`, und pgwire liest die Organisation aus dem Hostnamen im TLS-ClientHello — so, wie HTTP sie aus dem `Host`-Header liest. (REQ-1234) Der Hostname fordert eine Organisation an; er gewährt sie nicht, und ein Principal ohne Mitgliedschaft dort wird abgewiesen. Eine Verbindung über eine IP-Adresse fordert keine Organisation an.
 
 ---
 

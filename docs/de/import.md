@@ -60,12 +60,12 @@ Flags:
 | Hasura-Konzept | Provisa-Entsprechung |
 | --------------- | ------------------- |
 | Getrackte Tabelle | `tables[]` mit `publish: true` |
-| Object-Relationship | `relationships[]` mit `cardinality: many-to-one` |
+| Object-Relationship | `relationships[]` mit `cardinality: many-to-one`. Eine allein über eine FK-Spalte deklarierte (`foreign_key_constraint_on: artist_id`) nennt im Export kein Ziel; der Konverter löst sie über die inverse Array-Relationship auf und verwirft sie mit einer `[relationships]`-Warnung, wenn es keine gibt. (REQ-1680) |
 | Array-Relationship | `relationships[]` mit `cardinality: one-to-many` |
-| Select-Berechtigung | Rollensichtbarkeit + RLS-Filter |
+| Select-Berechtigung | Rollensichtbarkeit + RLS-Filter. Ein Term mit Sitzungsvariable (`X-Hasura-User-Id`) wird zu `current_setting('provisa.user_id')`, das die Anfrage zur Abfragezeit aus der Benutzer-ID und den Claims der Identität bindet. (REQ-1682) |
 | Spaltenberechtigung | `visible_to` / `writable_by` |
 | Insert/Update/Delete-Berechtigung | Mutation `writable_by` + RLS |
-| Remote Schema | Quellregistrierung `graphql_remote` |
+| Remote Schema | Quellregistrierung `graphql_remote` plus eine gelandete Tabelle pro Query-Wurzelfeld, das die Rollen-SDLs offenlegen; eine Spalte ist für jede Rolle sichtbar, deren SDL sie offenlegt, ein Nicht-Null-Wurzelargument wird zu einer `_nf_`-Spalte für native Filter, verschachtelte Felder werden in einer Warnung genannt. (REQ-1681) |
 | Computed Field | `functions[]`-Eintrag mit `kind: query` |
 
 ### Verbindungen und Domänen auf dem Import-Tab {: #connections-and-domains-on-the-import-tab }
@@ -80,7 +80,7 @@ Ein Hasura-Export benennt Spalten ohne Typen, und eine verfolgte Tabelle ohne Be
 
 - **Actions** konvertieren automatisch: HTTP-Handler-Actions werden zu `webhooks[]`-Mutationen; Actions mit einem Nicht-HTTP-Handler (Datenbank) werden zu einem `functions[]`-Platzhalter und erzeugen eine Warnung, den Handler zu prüfen
 - **Event Triggers** konvertieren zu einer `event_triggers`-Konfiguration pro Tabelle (Operationen, Webhook-URL, Retry-Richtlinie) und erzeugen eine Warnung zur eingeschränkten Genauigkeit
-- **Remote Schemas** konvertieren zu `graphql_remote`-Quelleinträgen
+- **Remote Schemas** konvertieren zu `graphql_remote`-Quelleinträgen und werden aus den Rollen-Berechtigungs-SDLs als Tabellen gelandet; ein Remote Schema ohne Berechtigungen landet nichts, da der Export keine andere Angabe seiner Form trägt (REQ-1681)
 - **Benutzerdefinierte SQL-Funktionen** erfordern Prüfung — einfache Fälle konvertieren zu `functions[]`-Einträgen, komplexe erfordern manuelle Arbeit
 - **Cron Triggers** konvertieren zu `scheduler`-Konfigurationseinträgen unter Beibehaltung des Cron-Ausdrucks und des Enabled-Flags
 

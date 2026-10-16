@@ -793,7 +793,7 @@ roles:
     parent_role_id: analyst      # inherits query_development + sales-analytics
 ```
 
-Rollen mit `parent_role_id` erben Capabilities und Domänenzugriff von der übergeordneten Rolle. (REQ-215) Die Hierarchie wird beim Start flach aufgelöst. (REQ-215)
+Rollen mit `parent_role_id` erben Capabilities, Domänenzugriff, Spalten- und Objektfreigaben sowie RLS-Regeln von der übergeordneten Rolle, wobei die eigene RLS-Regel des Kindes für eine Tabelle Vorrang hat. (REQ-215, REQ-1677) Die Kette wird beim Start flach aufgelöst. (REQ-215)
 
 ### Capabilities
 
@@ -1243,7 +1243,7 @@ Preset-Spalten werden während der Mutationskompilierung vor der SQL-Generierung
 
 ## Vererbte Rollen {: #inherited-roles }
 
-Rollen können Capabilities und Domänenzugriff von einer übergeordneten Rolle über `parent_role_id` erben. (REQ-215) Die Hierarchie wird beim Start flach aufgelöst. (REQ-215)
+Rollen können über `parent_role_id` von einer übergeordneten Rolle erben. (REQ-215) Die Kette wird beim Start flach aufgelöst. (REQ-215) Ein Kind hält die Vereinigung der Capabilities und des Domänenzugriffs seiner Vorfahren; eine Spalte, Metrik, Funktion oder ein Webhook, die einem Vorfahren freigegeben sind, sind dem Kind freigegeben; und die RLS-Regeln eines Vorfahren gelten für das Kind pro Tabelle, die nächstgelegene Rolle zuerst, wobei die eigene Regel des Kindes für eine Tabelle die des Elternteils ersetzt. (REQ-1677)
 
 ```yaml
 roles:
@@ -1263,7 +1263,7 @@ roles:
     parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)
 ```
 
-Mehrstufige Vererbung wird unterstützt. (REQ-215) Die expliziten Capabilities und der domain_access der untergeordneten Rolle werden mit denen der übergeordneten Rolle zusammengeführt. (REQ-215)
+Mehrstufige Vererbung wird unterstützt. (REQ-215) Die expliziten Capabilities und der domain_access der untergeordneten Rolle werden mit denen der übergeordneten Rolle zusammengeführt. (REQ-215) Eine übergeordnete Rolle muss eine bestehende Rolle sein, darf nicht die Rolle selbst sein und keinen Zyklus schließen; jeder dieser Fälle wird beim Speichern abgelehnt. (REQ-1677)
 
 ## Geplante Trigger {: #scheduled-triggers }
 

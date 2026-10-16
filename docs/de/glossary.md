@@ -42,7 +42,7 @@ Manche normalisierten Phrasen sind zu generisch, um für sich ein Konzept zu sei
 Tabelle unabhängiges Konzept. Mitarbeitende haben Namen; Produkte haben Namen; das ist nicht dasselbe.
 
 Fällt eine Phrase in die generische Menge und ist ein Tabellenkontext verfügbar, qualifiziert sich der
-Begriff zu `<Tabellenkonzept> <Phrase>`: `employees.first_name` normalisiert zu `employee first name`,
+Begriff zu `<table concept> <phrase>`: `employees.first_name` normalisiert zu `employee first name`,
 und `orders.id` normalisiert zu `order`, weil das Entfernen des Proxys die qualifizierte Phrase dann auf
 das Konzept zusammenzieht, das sie identifiziert. Dieser letzte Fall ist wichtig: Der Primärschlüssel von
 `orders` und jeder Fremdschlüssel `order_id` auf anderen Tabellen landen alle auf `order`, ohne dass

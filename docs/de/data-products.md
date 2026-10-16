@@ -38,7 +38,7 @@ Nur Kataloge mit einem nativen Datenprodukt-Konzept veröffentlichen es als erst
 
 | Katalog | Veröffentlicht als |
 | --- | --- |
-| Snowflake Horizon | SHARE + Organisations-Listing (natives Datenprodukt); `publish=false` belässt es als DRAFT, `publish=true` schaltet es live |
+| Snowflake Horizon | SHARE + Organisations-Listing (natives Datenprodukt); `publish=false` belässt es als DRAFT, `publish=true` schaltet es live. Das Datenwörterbuch des Listings deckt jedes Mitglied und jede Spalte ab; die ersten fünf Mitglieder werden hervorgehoben, und maskierte Spalten sind in der Vorschau verborgen (REQ-1656) |
 | BigQuery Analytics Hub | Analytics-Hub-Listing (nativ) |
 | OpenMetadata | `DataProduct`-Entität (nativ) |
 | DataHub | Native `dataProduct`-URN-Entität mit eigenen Properties-/Ownership-Aspekten |
