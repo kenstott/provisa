@@ -1079,6 +1079,46 @@
       "provisioningRest": {
         "title": "I prelievi via REST",
         "description": "Com'è andato ogni prelievo dei team, raggruppato sul server: quanti e a che velocità media."
+      },
+      "pharmaScenario": {
+        "title": "Che cos'è questa demo",
+        "description": "La farmacia di un ospedale vuole sapere quali dei suoi prodotti rischiano una carenza o un richiamo. Il suo prontuario terapeutico e le scorte di ogni sede sono nel suo database; le carenze e i richiami della FDA e le prescrizioni Medicaid sono pubblici. Il tour mostra Provisa che unisce i due e risponde alla domanda in SQL, GraphQL e REST."
+      },
+      "pharmaGovdata": {
+        "title": "I dati pubblici sui farmaci",
+        "description": "I dati governativi arrivano da AskAmerica, un account reale. Le sue tre tabelle vengono caricate una volta, quando la demo viene costruita, e solo la parte che la demo legge; da allora sono sempre lette da quella copia, e questa demo non chiama mai l'account."
+      },
+      "pharmaFormulary": {
+        "title": "Il prontuario della farmacia",
+        "description": "Ogni prodotto che la farmacia tiene, letto in tempo reale dal suo database: il suo NDC, il nome generico, il produttore, la classe terapeutica e se è critico. Le sue scorte in ogni sede stanno accanto."
+      },
+      "pharmaShortages": {
+        "title": "Le carenze della FDA",
+        "description": "Ogni carenza pubblicata dalla FDA, una riga per confezione: il suo stato, la disponibilità del prodotto e il suo codice prodotto NDC. I richiami e le prescrizioni Medicaid stanno accanto."
+      },
+      "pharmaJoin": {
+        "title": "Uniti per NDC e per azienda",
+        "description": "Il prontuario incontra le carenze e le prescrizioni Medicaid tramite l'NDC. Un richiamo nomina la sua azienda, non il suo NDC, quindi l'anagrafica fornitori registra il nome di ogni produttore presso la FDA, e questa relazione lo unisce ai richiami."
+      },
+      "pharmaTerms": {
+        "title": "Nei termini della farmacia",
+        "description": "Il glossario nomina ciò che chiede un buyer di farmacia: NDC, prontuario, carenza, classe di richiamo, giorni di copertura. Qui il rischio di fornitura: una carenza, un richiamo del produttore o troppi pochi giorni di scorta."
+      },
+      "pharmaAnswer": {
+        "title": "La risposta in SQL",
+        "description": "La vista product_risk unisce le scorte di ogni prodotto alla sua carenza, ai richiami in corso del suo produttore e alle sue prescrizioni Medicaid, ed è mantenuta memorizzata. Prima i prodotti critici a rischio, quelli con meno giorni di copertura per primi."
+      },
+      "pharmaByRisk": {
+        "title": "Per rischio, in GraphQL",
+        "description": "La stessa vista raggruppata per rischio: quanti prodotti affrontano una carenza, un richiamo o entrambi, le scorte che hanno e quanto Medicaid li prescrive."
+      },
+      "pharmaRest": {
+        "title": "La stessa risposta via REST",
+        "description": "La vista è anche un endpoint REST, raggruppata e sommata sul server. Qualsiasi client che parla HTTP ottiene la risposta senza scrivere SQL."
+      },
+      "pharmaRecap": {
+        "title": "Che cosa hai visto",
+        "description": "I dati della farmacia, letti in tempo reale, e i dati pubblici sui farmaci, caricati una volta, uniti per NDC e per azienda in un unico modello governato: una vista risponde quali prodotti sono a rischio, in SQL, GraphQL e REST, secondo l'accesso di ogni ruolo."
       }
     },
     "status": {
@@ -1155,6 +1195,10 @@
       "provisioning": {
         "title": "Fornire dataset ai team a valle",
         "summary": "La domanda di un warehouse, come i team a valle ottengono grandi dataset appena sono pronti: feed caricati da Kafka, dataset aggiornati all'arrivo, team avvisati su Kafka che prelevano tramite Arrow Flight com'erano in quel momento."
+      },
+      "pharma": {
+        "title": "Rischio di carenza e di richiamo dei farmaci",
+        "summary": "La domanda della farmacia di un ospedale, quali dei suoi prodotti rischiano una carenza o un richiamo: prontuario e scorte uniti alle carenze e ai richiami della FDA e alle prescrizioni Medicaid, con la risposta in SQL, GraphQL e REST."
       }
     }
   }

@@ -1,0 +1,14 @@
+# The formulary's products by their risk -- shortage, recall, both or none: how many, how much
+# stock they hold and how much Medicaid prescribes them.
+query ProductsByRisk {
+  p__viewProductRiskGroupBy(by: [risk], order_by: [{ aggregate: { count: desc } }]) {
+    groupKey
+    aggregate {
+      count
+      sum {
+        onHandUnits
+        prescriptions_2023
+      }
+    }
+  }
+}

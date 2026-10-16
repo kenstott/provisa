@@ -1,0 +1,16 @@
+# The critical products of the formulary in a current shortage, fewest days of supply first: what
+# the pharmacy runs out of first.
+query CriticalProductsAtRisk {
+  p__viewProductRisk(
+    where: { critical: { eq: true }, risk: { in: ["shortage", "shortage and recall"] } }
+    order_by: [{ daysOfSupply: asc }]
+    limit: 10
+  ) {
+    genericName
+    manufacturer
+    productNdc
+    shortageAvailability
+    worstRecallClass
+    daysOfSupply
+  }
+}

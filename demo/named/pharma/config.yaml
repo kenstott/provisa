@@ -1,0 +1,286 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "pharma" (start-ui-install.sh --demo pharma): which of a
+# hospital pharmacy's products face shortage or recall risk. Its own formulary and stock are read
+# live from its Postgres; three tables of public data come from govdata.
+#
+#   pharmacy  the pharmacy's Postgres (db/init.sql): its manufacturers, its formulary of real NDCs
+#             and the stock each site holds. docker-compose.yml brings it up.
+#   govdata   AskAmerica's government data: FDA's drug shortages, FDA's ongoing drug recalls and
+#             CMS's 2023 Medicaid drug utilization for the formulary's products. A real account,
+#             so each table is landed once, when the demo's bundle is built, and read from that
+#             replica for good (cache_ttl -1, replicate 0): a visitor's sandbox never reaches it.
+#             The recalls and the utilization are large; each lands only the slice the demo
+#             reads (landing_filter).
+#
+# product_risk, materialized, joins the formulary to the shortages by NDC, to the recalls by the
+# manufacturer's FDA firm name and to Medicaid's prescriptions by the 9-digit NDC: the answer.
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+domains:
+- id: pharma
+  description: A hospital pharmacy's formulary and stock, and FDA's drug shortages and recalls and
+    Medicaid's prescriptions of the same products
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+- id: analyst
+  capabilities:
+  - query_development
+  domain_access:
+  - pharma
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- id: pharmacy
+  type: postgresql
+  host: ${env:PHARMA_PG_HOST:-localhost}
+  port: ${env:PHARMA_PG_PORT:-28832}
+  database: pharma
+  username: provisa_reader
+  password: provisa_reader
+  description: The pharmacy's own database -- its manufacturers, formulary and stock
+- id: govdata
+  type: govdata
+  # The AskAmerica key, needed only to land the tables: the bundle build has it. A sandbox reads
+  # the landed replicas and never this source, so it runs with none (REQ-2031).
+  username: ${env:ASKAMERICA_API_KEY:-}
+  database: health,ref,geo
+  cache_ttl: -1
+  replicate: 0
+  description: Government data from AskAmerica -- FDA's drug shortages and recalls and Medicaid's
+    drug utilization, landed once when the demo is built
+tables:
+- source_id: pharmacy
+  domain_id: pharma
+  schema: public
+  table: manufacturers
+  description: The manufacturers the pharmacy buys from, with the name FDA's recall records give each
+  columns:
+  - {name: manufacturer_id, data_type: integer, is_primary_key: true, description: The manufacturer's number in the vendor master, visible_to: [org_admin, analyst]}
+  - {name: name, data_type: varchar, description: The manufacturer's name, visible_to: [org_admin, analyst]}
+  - {name: fda_firm_name, data_type: varchar, description: The firm's name as FDA's enforcement reports give it, visible_to: [org_admin, analyst]}
+- source_id: pharmacy
+  domain_id: pharma
+  schema: public
+  table: products
+  description: The pharmacy's formulary, one row a product by its NDC product code
+  columns:
+  - {name: product_ndc, data_type: varchar, is_primary_key: true, description: 'The NDC product code, labeler-product', visible_to: [org_admin, analyst]}
+  - {name: product_ndc9, data_type: varchar, description: 'The same code as 9 digits, as Medicaid reports it', visible_to: [org_admin, analyst]}
+  - {name: generic_name, data_type: varchar, description: The drug's generic name, visible_to: [org_admin, analyst]}
+  - {name: manufacturer_id, data_type: integer, description: Who makes it, visible_to: [org_admin, analyst]}
+  - {name: dosage_form, data_type: varchar, description: 'Its dosage form: tablet, injection...', visible_to: [org_admin, analyst]}
+  - {name: route, data_type: varchar, description: How it is given, visible_to: [org_admin, analyst]}
+  - {name: therapeutic_class, data_type: varchar, description: The therapeutic class the formulary files it under, visible_to: [org_admin, analyst]}
+  - {name: critical, data_type: boolean, description: 'Whether the formulary lists it as critical, with no stock-out tolerated', visible_to: [org_admin, analyst]}
+- source_id: pharmacy
+  domain_id: pharma
+  schema: public
+  table: stock
+  description: The stock of each product at each of the pharmacy's sites
+  columns:
+  - {name: product_ndc, data_type: varchar, is_primary_key: true, description: The product's NDC product code, visible_to: [org_admin, analyst]}
+  - {name: site, data_type: varchar, is_primary_key: true, description: The hospital the stock is held at, visible_to: [org_admin, analyst]}
+  - {name: on_hand_units, data_type: integer, description: The units on hand, visible_to: [org_admin, analyst]}
+  - {name: daily_use_units, data_type: integer, description: The units the site uses a day, visible_to: [org_admin, analyst]}
+- source_id: govdata
+  domain_id: pharma
+  schema: health
+  table: fda_drug_shortages
+  alias: drug_shortages
+  enable_aggregates: true
+  enable_group_by: true
+  description: FDA's drug shortages, one row a shortage episode of a package -- its status and the
+    product's availability
+  columns:
+  - {name: package_ndc, data_type: varchar, is_primary_key: true, description: The package's NDC, visible_to: [org_admin, analyst]}
+  - {name: initial_posting_date, data_type: date, is_primary_key: true, description: When FDA first posted the shortage, visible_to: [org_admin, analyst]}
+  - {name: product_ndc, data_type: varchar, description: The NDC product code of the package, visible_to: [org_admin, analyst]}
+  - {name: generic_name, data_type: varchar, description: The drug's generic name, visible_to: [org_admin, analyst]}
+  - {name: status, data_type: varchar, description: 'Current, To Be Discontinued or Resolved', visible_to: [org_admin, analyst]}
+  - {name: availability, data_type: varchar, description: 'Available, Limited Availability or Unavailable', visible_to: [org_admin, analyst]}
+  - {name: therapeutic_category, data_type: varchar, description: FDA's therapeutic category of the drug, visible_to: [org_admin, analyst]}
+  - {name: company_name, data_type: varchar, description: The company that reported the shortage, visible_to: [org_admin, analyst]}
+  - {name: update_date, data_type: date, description: When FDA last updated it, visible_to: [org_admin, analyst]}
+- source_id: govdata
+  domain_id: pharma
+  schema: health
+  table: fda_drug_recalls
+  alias: drug_recalls
+  # The ongoing recalls only: what the demo asks of them.
+  landing_filter: status = 'Ongoing'
+  enable_aggregates: true
+  enable_group_by: true
+  description: FDA's ongoing drug recalls (enforcement reports) -- the recalling firm, the class and
+    the reason
+  columns:
+  - {name: recall_number, data_type: varchar, is_primary_key: true, description: 'FDA''s recall number, e.g. D-0850-2026', visible_to: [org_admin, analyst]}
+  - {name: status, data_type: varchar, description: The recall's status, visible_to: [org_admin, analyst]}
+  - {name: classification, data_type: varchar, description: 'Class I (most severe), Class II or Class III', visible_to: [org_admin, analyst]}
+  - {name: recalling_firm, data_type: varchar, description: The firm recalling the product, visible_to: [org_admin, analyst]}
+  - {name: product_description, data_type: varchar, description: The product recalled, visible_to: [org_admin, analyst]}
+  - {name: reason_for_recall, data_type: varchar, description: Why it is recalled, visible_to: [org_admin, analyst]}
+  - {name: recall_initiation_date, data_type: varchar, description: When the recall began (YYYYMMDD), visible_to: [org_admin, analyst]}
+- source_id: govdata
+  domain_id: pharma
+  schema: health
+  table: medicaid_drug_utilization
+  alias: medicaid_utilization
+  # 2023 and the formulary's products only: the table holds every NDC of every year.
+  landing_filter: >-
+    "year" = '2023' AND product_ndc9 IN ('000930832', '594170104', '001694060', '633230162',
+    '633230165', '504580586', '004099094', '006410367', '004093795', '004092305', '004091283',
+    '004091891', '001850842', '428060344', '000543270', '001730682', '605052580', '681800980',
+    '000882219', '684620397', '003380049', '317220726', '004092720', '007812613', '678770198',
+    '004060123', '572370014', '512240022', '502420215', '435470425', '004879801', '008321560',
+    '725720122', '167140548', '000025337', '001694524')
+  enable_aggregates: true
+  enable_group_by: true
+  description: CMS's 2023 Medicaid drug utilization of the formulary's products, by state, NDC,
+    quarter and program
+  columns:
+  - {name: state, data_type: varchar, is_primary_key: true, description: The state, visible_to: [org_admin, analyst]}
+  - {name: ndc, data_type: varchar, is_primary_key: true, description: The 11-digit package NDC, visible_to: [org_admin, analyst]}
+  - {name: year, data_type: varchar, is_primary_key: true, description: The year, visible_to: [org_admin, analyst]}
+  - {name: quarter, data_type: varchar, is_primary_key: true, description: 'The quarter, Q1 to Q4', visible_to: [org_admin, analyst]}
+  - {name: utilization_type, data_type: varchar, is_primary_key: true, description: 'FFSU (fee for service) or MCOU (managed care)', visible_to: [org_admin, analyst]}
+  - {name: product_ndc9, data_type: varchar, description: The NDC product code as 9 digits, visible_to: [org_admin, analyst]}
+  - {name: product_name, data_type: varchar, description: The product's name as FDA lists it, visible_to: [org_admin, analyst]}
+  - {name: number_of_prescriptions, data_type: varchar, description: The prescriptions Medicaid paid for, visible_to: [org_admin, analyst]}
+  - {name: total_amount_reimbursed, data_type: varchar, description: What was paid for them in USD, visible_to: [org_admin, analyst]}
+views:
+# The answer: each product of the formulary, its stock beside its shortage, its manufacturer's
+# recalls and its Medicaid prescriptions. Stored, and built again when its inputs change.
+- id: product_risk
+  domain_id: pharma
+  materialize: true
+  enable_aggregates: true
+  enable_group_by: true
+  description: Each product of the formulary -- its days of supply beside FDA's shortage of it, its
+    manufacturer's ongoing Class I and II recalls and Medicaid's 2023 prescriptions of it
+  sql: >-
+    SELECT p.product_ndc, p.generic_name, m.name AS manufacturer, p.therapeutic_class, p.critical,
+           st.on_hand_units, st.days_of_supply,
+           sh.availability AS shortage_availability,
+           COALESCE(r.open_recalls, 0) AS open_recalls,
+           r.worst_class AS worst_recall_class,
+           u.prescriptions_2023,
+           CASE
+             WHEN sh.product_ndc IS NOT NULL AND r.recalling_firm IS NOT NULL THEN 'shortage and recall'
+             WHEN sh.product_ndc IS NOT NULL THEN 'shortage'
+             WHEN r.recalling_firm IS NOT NULL THEN 'recall'
+             ELSE 'none'
+           END AS risk
+    FROM "pharma"."products" AS p
+    JOIN "pharma"."manufacturers" AS m ON m.manufacturer_id = p.manufacturer_id
+    JOIN (
+      SELECT s.product_ndc, SUM(s.on_hand_units) AS on_hand_units,
+             SUM(s.on_hand_units) / SUM(s.daily_use_units) AS days_of_supply
+      FROM "pharma"."stock" AS s
+      GROUP BY s.product_ndc
+    ) AS st ON st.product_ndc = p.product_ndc
+    LEFT JOIN (
+      SELECT d.product_ndc, MAX(d.availability) AS availability
+      FROM "pharma"."drug_shortages" AS d
+      WHERE d.status = 'Current'
+      GROUP BY d.product_ndc
+    ) AS sh ON sh.product_ndc = p.product_ndc
+    LEFT JOIN (
+      SELECT c.recalling_firm, COUNT(*) AS open_recalls, MIN(c.classification) AS worst_class
+      FROM "pharma"."drug_recalls" AS c
+      WHERE c.classification IN ('Class I', 'Class II')
+      GROUP BY c.recalling_firm
+    ) AS r ON r.recalling_firm = m.fda_firm_name
+    LEFT JOIN (
+      SELECT x.product_ndc9, SUM(CAST(x.number_of_prescriptions AS DOUBLE)) AS prescriptions_2023
+      FROM "pharma"."medicaid_utilization" AS x
+      GROUP BY x.product_ndc9
+    ) AS u ON u.product_ndc9 = p.product_ndc9
+  columns:
+  - {name: product_ndc, data_type: varchar, description: The NDC product code, visible_to: [org_admin, analyst]}
+  - {name: generic_name, data_type: varchar, description: The drug's generic name, visible_to: [org_admin, analyst]}
+  - {name: manufacturer, data_type: varchar, description: Who makes it, visible_to: [org_admin, analyst]}
+  - {name: therapeutic_class, data_type: varchar, description: The therapeutic class the formulary files it under, visible_to: [org_admin, analyst]}
+  - {name: critical, data_type: boolean, description: Whether the formulary lists it as critical, visible_to: [org_admin, analyst]}
+  - {name: on_hand_units, data_type: bigint, description: The units on hand across the sites, visible_to: [org_admin, analyst]}
+  - {name: days_of_supply, data_type: double, description: How many days the stock lasts at the sites' daily use, visible_to: [org_admin, analyst]}
+  - {name: shortage_availability, data_type: varchar, description: 'Its availability in FDA''s current shortage of it, or empty when there is none', visible_to: [org_admin, analyst]}
+  - {name: open_recalls, data_type: bigint, description: Its manufacturer's ongoing Class I and II recalls, visible_to: [org_admin, analyst]}
+  - {name: worst_recall_class, data_type: varchar, description: The most severe class among them, visible_to: [org_admin, analyst]}
+  - {name: prescriptions_2023, data_type: double, description: The prescriptions of it Medicaid paid for in 2023, visible_to: [org_admin, analyst]}
+  - {name: risk, data_type: varchar, description: 'shortage and recall, shortage, recall or none', visible_to: [org_admin, analyst]}
+relationships:
+- {id: product-to-manufacturer, alias: MADE_BY, cardinality: many-to-one, source_table_id: products, source_column: manufacturer_id, target_table_id: manufacturers, target_column: manufacturer_id}
+- {id: stock-of-product, alias: STOCK_OF, cardinality: many-to-one, source_table_id: stock, source_column: product_ndc, target_table_id: products, target_column: product_ndc}
+- {id: product-in-shortage, alias: IN_SHORTAGE, cardinality: one-to-many, source_table_id: products, source_column: product_ndc, target_table_id: drug_shortages, target_column: product_ndc}
+- {id: manufacturer-recalls, alias: RECALLED_BY, cardinality: one-to-many, source_table_id: manufacturers, source_column: fda_firm_name, target_table_id: drug_recalls, target_column: recalling_firm}
+- {id: product-medicaid-use, alias: PRESCRIBED_AS, cardinality: one-to-many, source_table_id: products, source_column: product_ndc9, target_table_id: medicaid_utilization, target_column: product_ndc9}
+# The pharmacy's vocabulary: abstract terms, grounded through their edges in the terms the
+# formulary's and the public tables' columns derive (availability, classification, days of supply).
+glossary_terms:
+- name: NDC
+  definition: 'National Drug Code: the labeler, product and package code FDA lists every drug under. The product code (labeler-product) names a drug of one strength and form.'
+  domains:
+  - pharma
+  edges:
+  - to: product ndc
+    rel_type: RELATED_TO
+- name: formulary
+  definition: 'The list of drugs the pharmacy stocks and its prescribers may order, chosen by its pharmacy and therapeutics (P&T) committee.'
+  domains:
+  - pharma
+  edges:
+  - to: therapeutic class
+    rel_type: RELATED_TO
+- name: drug shortage
+  definition: 'A period when the supply of a drug in the US does not meet demand. FDA posts each one, with the availability of each affected package.'
+  domains:
+  - pharma
+  edges:
+  - to: shortage availability
+    rel_type: RELATED_TO
+- name: recall class
+  definition: 'FDA''s severity of a recall: Class I may cause serious harm or death, Class II temporary or reversible harm, Class III is unlikely to cause harm.'
+  domains:
+  - pharma
+  edges:
+  - to: classification
+    rel_type: RELATED_TO
+- name: supply risk
+  definition: 'The chance that the pharmacy cannot give a drug when it is ordered: a shortage of it, a recall by its maker, or too few days of supply on hand.'
+  domains:
+  - pharma
+  edges:
+  - to: drug shortage
+    rel_type: RELATED_TO
+  - to: recall class
+    rel_type: RELATED_TO
+  - to: days of supply
+    rel_type: RELATED_TO
+- name: days of supply
+  definition: 'How long the stock on hand lasts at the current daily use: units on hand divided by units used a day.'
+  domains:
+  - pharma
+  edges:
+  - to: on hand units
+    rel_type: RELATED_TO

@@ -1079,6 +1079,46 @@
       "provisioningRest": {
         "title": "Die Abrufe über REST",
         "description": "Wie die Abrufe jedes Teams liefen, auf dem Server gruppiert: wie viele und wie schnell im Durchschnitt."
+      },
+      "pharmaScenario": {
+        "title": "Worum es in dieser Demo geht",
+        "description": "Eine Krankenhausapotheke will wissen, welche ihrer Produkte von Lieferengpässen oder Rückrufen bedroht sind. Ihre Arzneimittelliste und der Bestand jedes Standorts liegen in ihrer eigenen Datenbank; die Lieferengpässe und Rückrufe der FDA und die Medicaid-Verordnungen sind öffentlich. Die Tour zeigt, wie Provisa beides verknüpft und die Frage in SQL, GraphQL und REST beantwortet."
+      },
+      "pharmaGovdata": {
+        "title": "Die öffentlichen Arzneimitteldaten",
+        "description": "Die Behördendaten stammen von AskAmerica, einem echten Konto. Seine drei Tabellen werden einmal geladen, wenn die Demo gebaut wird, und nur der Ausschnitt, den die Demo liest; danach werden sie dauerhaft aus dieser Kopie gelesen, und diese Demo ruft das Konto nie auf."
+      },
+      "pharmaFormulary": {
+        "title": "Die Arzneimittelliste der Apotheke",
+        "description": "Jedes Produkt, das die Apotheke führt, live aus ihrer eigenen Datenbank gelesen: seine NDC, sein Wirkstoffname, sein Hersteller, seine therapeutische Klasse und ob es kritisch ist. Der Bestand an jedem Standort steht daneben."
+      },
+      "pharmaShortages": {
+        "title": "Die Lieferengpässe der FDA",
+        "description": "Jeder Lieferengpass, den die FDA veröffentlicht hat, eine Zeile pro Packung: sein Status, die Verfügbarkeit des Produkts und sein NDC-Produktcode. Die Rückrufe und die Medicaid-Verordnungen stehen daneben."
+      },
+      "pharmaJoin": {
+        "title": "Über NDC und Firma verknüpft",
+        "description": "Die Arzneimittelliste trifft die Lieferengpässe und die Medicaid-Verordnungen über die NDC. Ein Rückruf nennt seine Firma, nicht seine NDC, daher führt der Lieferantenstamm den FDA-Firmennamen jedes Herstellers, und diese Beziehung verknüpft ihn mit den Rückrufen."
+      },
+      "pharmaTerms": {
+        "title": "In der Sprache der Apotheke",
+        "description": "Das Glossar benennt, wonach ein Apothekeneinkäufer fragt: NDC, Arzneimittelliste, Lieferengpass, Rückrufklasse, Reichweite in Tagen. Hier das Versorgungsrisiko: ein Lieferengpass, ein Rückruf des Herstellers oder zu wenige Tage Bestand."
+      },
+      "pharmaAnswer": {
+        "title": "Die Antwort in SQL",
+        "description": "Die Sicht product_risk verknüpft den Bestand jedes Produkts mit seinem Lieferengpass, den laufenden Rückrufen seines Herstellers und seinen Medicaid-Verordnungen und wird gespeichert vorgehalten. Die gefährdeten kritischen Produkte stehen vorn, die mit der kürzesten Reichweite zuerst."
+      },
+      "pharmaByRisk": {
+        "title": "Nach Risiko, in GraphQL",
+        "description": "Dieselbe Sicht nach Risiko gruppiert: wie viele Produkte von einem Lieferengpass, einem Rückruf oder beidem betroffen sind, welchen Bestand sie haben und wie oft Medicaid sie verordnet."
+      },
+      "pharmaRest": {
+        "title": "Dieselbe Antwort über REST",
+        "description": "Die Sicht ist auch ein REST-Endpunkt, auf dem Server gruppiert und summiert. Jeder Client, der HTTP spricht, erhält die Antwort, ohne SQL zu schreiben."
+      },
+      "pharmaRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Die eigenen Daten der Apotheke, live gelesen, und öffentliche Arzneimitteldaten, einmal geladen, über NDC und Firma in einem governten Modell verknüpft: Eine Sicht beantwortet, welche Produkte gefährdet sind, in SQL, GraphQL und REST, mit den Zugriffsrechten jeder Rolle."
       }
     },
     "status": {
@@ -1155,6 +1195,10 @@
       "provisioning": {
         "title": "Datasets an nachgelagerte Teams bereitstellen",
         "summary": "Die Frage eines Warehouse, wie nachgelagerte Teams große Datasets erhalten, sobald sie fertig sind: Feeds aus Kafka geladen, Datasets beim Eintreffen aktualisiert, Teams über Kafka benachrichtigt und per Arrow Flight zu diesem Zeitpunkt abrufend."
+      },
+      "pharma": {
+        "title": "Lieferengpass- und Rückrufrisiko bei Arzneimitteln",
+        "summary": "Die Frage einer Krankenhausapotheke, welche ihrer Produkte von Lieferengpässen oder Rückrufen bedroht sind: ihre Arzneimittelliste und ihr Bestand, verknüpft mit den Lieferengpässen und Rückrufen der FDA und den Medicaid-Verordnungen, beantwortet in SQL, GraphQL und REST."
       }
     }
   }

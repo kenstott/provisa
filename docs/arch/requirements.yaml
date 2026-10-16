@@ -83161,15 +83161,19 @@
     audit, tax, local government), measured by sandbox events before others are built. Lead''s elaboration: the
     questions and table choices.'
 - id: REQ-2038
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
   feature: product-tour-and-demos-named-demos
   priority: SHOULD
   type: behavioral
-  description: 'An industry vertical demo, pharma: Which of our products face shortage or recall risk? Private data
-    (generated): product catalog and supply. Public data (govdata): fda_drug_shortages, fda_drug_recalls, medicaid_drug_utilization.
+  description: 'An industry vertical demo, pharma: Which of our products face shortage or recall risk? Private data:
+    a hospital pharmacy''s formulary of real NDC products, each present in FDA''s NDC directory with Medicaid
+    utilization and its manufacturer named as FDA''s recall records name the firm (a recall carries no NDC), and its
+    generated stock at each site. Public data (govdata): fda_drug_shortages, fda_drug_recalls (the ongoing recalls)
+    and medicaid_drug_utilization (2023, the formulary''s products), the last two landed through a landing filter
+    (REQ-2062).
     Pattern for every vertical demo: one focused business question, answered by joining generated private company
     data with public government data from govdata; one private source, two or three govdata tables and one materialized
     view. Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources,
@@ -83195,6 +83199,7 @@
   - REQ-2006
   - REQ-2012
   - REQ-2031
+  - REQ-2062
   notes: 'Maintainer 2026-10-14, via the lead: experiment with industry vertical demos, each with a very focused
     problem (banking, markets, insurance, reinsurance, healthcare, pharma, retail, manufacturing, agriculture, then
     audit firms, tax firms, local governments). SHOULD = the first experiment set (insurance, pharma, agriculture,
