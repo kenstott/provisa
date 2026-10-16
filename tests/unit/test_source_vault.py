@@ -139,6 +139,7 @@ def _walking_backend(resolved: list[str]):
     backend = _Backend.__new__(_Backend)
     backend._runtime = None
     backend._walked = None
+    backend._retry_at = None
     return backend
 
 
@@ -181,6 +182,7 @@ async def test_a_statement_with_no_walk_pending_binds_nothing(vault, monkeypatch
 
     backend = _Backend.__new__(_Backend)
     backend._runtime = "runtime"
+    backend._retry_at = None  # the last walk was complete
     state = SimpleNamespace(
         config=object(), runtime_sources={}, tables=[], model_db=None, tenant_db=None
     )

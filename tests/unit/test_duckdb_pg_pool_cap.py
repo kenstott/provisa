@@ -194,6 +194,7 @@ def _walk_attaches(monkeypatch, row_cap: int | None) -> list[dict]:
             self._attached_fields = {}
             self._detached = set()
             self._refused = set()
+            self._failed = {}
 
     row = {
         "id": "shop-db",

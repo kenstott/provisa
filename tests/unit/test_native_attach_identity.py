@@ -43,6 +43,7 @@ class _Backend(NativeEngineBackend):
         self._attached_fields = {}
         self._detached = set()
         self._refused = set()
+        self._failed = {}
 
 
 def _src(source_id: str):
