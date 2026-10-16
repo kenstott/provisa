@@ -963,8 +963,11 @@ if [ -n "$DEMO_NAME" ] && [ -f "$_NAMED_DIR/setup.yaml" ]; then
   if [ "$_DEMO_BUNDLED" = true ]; then _SETUP_SCOPE="--environments-only"; fi
   echo "Named demo '$DEMO_NAME': running its setup (once per control plane)..."
   # shellcheck disable=SC2086  # empty, or the one flag: split on purpose
+  # --flight: where a client step of the setup reads the server (the visitor's node's Flight,
+  # FLIGHT_PORT when set, else the server's own default, 8815).
   if ! "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/run_demo_setup.py" \
-       "$_NAMED_DIR" --url "http://localhost:$PROVISA_API_PORT" $_SETUP_SCOPE; then
+       "$_NAMED_DIR" --url "http://localhost:$PROVISA_API_PORT" \
+       --flight "grpc://localhost:${FLIGHT_PORT:-8815}" $_SETUP_SCOPE; then
     echo "Named demo '$DEMO_NAME': its setup failed (above). Backend log: $LOG_DIR/backend.log"
     exit 1
   fi

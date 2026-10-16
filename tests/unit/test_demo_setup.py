@@ -142,8 +142,68 @@ def test_the_first_step_that_fails_stops_the_run_naming_it(monkeypatch, demo, ca
 
 def test_a_step_that_is_neither_a_command_nor_a_refresh_is_refused(tmp_path):
     (tmp_path / "setup.yaml").write_text(yaml.safe_dump({"steps": [{"sql": "SELECT 1"}]}))
-    with pytest.raises(SystemExit, match="'profile: <profiler>' or 'environment"):
+    with pytest.raises(SystemExit, match="'profile: <profiler>', 'environment.* or 'client"):
         setup.steps(tmp_path)
+
+
+def _client_demo(tmp_path: Path, script: str) -> Path:
+    (tmp_path / "setup.yaml").write_text(yaml.safe_dump({"steps": [{"client": "pulls.py"}]}))
+    (tmp_path / "pulls.py").write_text(script)
+    return tmp_path
+
+
+def test_a_client_step_runs_the_demo_s_script_told_where_the_server_is(monkeypatch, tmp_path):
+    """REQ-2067: the provisioning demo's setup pulls over Arrow Flight from the server it is set
+    up on, and what the client writes to the demo's stores is theirs."""
+    out = tmp_path / "told.txt"
+    demo = _client_demo(
+        tmp_path,
+        "import os, pathlib\n"
+        f"pathlib.Path({str(out)!r}).write_text("
+        "os.environ['PROVISA_URL'] + ' ' + os.environ['PROVISA_FLIGHT'])\n",
+    )
+    server = _Server(done=[])
+    real = httpx.Client
+    monkeypatch.setattr(
+        setup.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(server), **kw)
+    )
+    assert setup.run(demo, "http://provisa.test", flight="grpc://127.0.0.1:8815") == 0
+    assert out.read_text() == "http://provisa.test grpc://127.0.0.1:8815"
+    assert server.stored == [tmp_path.resolve().name]
+
+
+def test_a_client_that_fails_fails_its_step_naming_it(monkeypatch, tmp_path, capsys):
+    demo = _client_demo(tmp_path, "raise SystemExit(3)\n")
+    server = _Server(done=[])
+    real = httpx.Client
+    monkeypatch.setattr(
+        setup.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(server), **kw)
+    )
+    assert setup.run(demo, "http://provisa.test", flight="grpc://127.0.0.1:8815") == 1
+    assert "pulls.py exited 3" in capsys.readouterr().err
+    assert server.stored is None
+
+
+def test_a_client_step_needs_the_servers_flight_address(monkeypatch, tmp_path, capsys):
+    demo = _client_demo(tmp_path, "")
+    server = _Server(done=[])
+    real = httpx.Client
+    monkeypatch.setattr(
+        setup.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(server), **kw)
+    )
+    assert setup.run(demo, "http://provisa.test") == 1
+    assert "--flight" in capsys.readouterr().err
+
+
+def test_a_client_step_names_a_script_of_the_demo(tmp_path):
+    (tmp_path / "setup.yaml").write_text(yaml.safe_dump({"steps": [{"client": "gone.py"}]}))
+    with pytest.raises(SystemExit, match="a client step names a script of the demo's"):
+        setup.steps(tmp_path)
+
+
+def test_the_launcher_tells_the_setup_where_its_flight_is():
+    set_up = _LAUNCHER[_LAUNCHER.index("scripts/run_demo_setup.py") :][:400]
+    assert '--flight "grpc://localhost:${FLIGHT_PORT:-8815}"' in set_up
 
 
 def test_an_environment_step_creates_it_in_the_active_org(monkeypatch, tmp_path):

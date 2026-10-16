@@ -1,0 +1,17 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# What the provisioning demo runs once, in order, after the server is up (REQ-2016;
+# scripts/run_demo_setup.py). At its bundle build this writes the pulls a hosted sandbox shows:
+# the consumers do not run there (docker-compose.run.yml).
+#
+#   client  setup_pulls.py: once the dataset is built from the landed feeds, a notice for each team
+#           and its pull over Arrow Flight as of the notice, recorded in the warehouse's pulls table
+steps:
+- client: setup_pulls.py

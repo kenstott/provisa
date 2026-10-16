@@ -168,6 +168,10 @@ The role value determines what the bundle build does with each store: [tool-veri
 - `graph` — a Neo4j service: stopped, and its `neo4j` database dumped to
   `dump/<service>/neo4j.dump`. It is dumped after every other store.
 - `seeder` — run once during the build (and during development starts); never in a bundle.
+- `client` — a client of the demo's own that reads the Provisa a start runs on (the provisioning
+  demo's `consumer`). The build does not start it: it runs a client a `client:` step of
+  `setup.yaml` names against its own setup server instead. [tool-verified: `scripts/demo_bundle.py`
+  `Stores.up`]
 
 ## config.yaml — the demo's whole config
 
@@ -291,7 +295,8 @@ demo's first start (a new control plane). The bundle build runs it before dumpin
 the setup's effects are in the dumps from the start. [tool-verified: `start-ui-install.sh:875-878`,
 `scripts/demo_bundle.py:417-418`]
 
-The file is a list of steps, each one `command`, `refresh` or `environment` [tool-verified: `scripts/run_demo_setup.py`]:
+The file is a list of steps, each one `command`, `refresh`, `profile`, `environment` or `client`
+[tool-verified: `scripts/run_demo_setup.py`]:
 
 ```yaml
 # demo/named/sonnets/setup.yaml
@@ -317,13 +322,29 @@ steps:
 - environment: {name: test, data_mode: test_fake}
 ```
 
+A `client:` step runs a script of the demo's own directory until it exits. It is given the
+server's addresses as `PROVISA_URL` and `PROVISA_FLIGHT`, beside the stores' addresses the run
+has (the launcher's, or the ports the bundle build ran the stores on). A client that exits non-zero
+fails its step. The provisioning demo uses one to record a notice and a pull for each team at its
+bundle build, so a hosted sandbox shows them:
+
+```yaml
+# demo/named/provisioning/setup.yaml
+steps:
+- client: setup_pulls.py
+```
+
+The launcher passes the server's Flight address (`--flight grpc://localhost:${FLIGHT_PORT:-8815}`),
+and the bundle build gives its setup server a Flight port of its own. [tool-verified:
+`start-ui-install.sh`, `scripts/demo_bundle.py` `_set_up`]
+
 The first step that fails stops the run and names the step. Nothing is retried.
 
 The launcher marks a demo set up by adding its name to the operator setting
 `demo.setup_completed`. A demo already listed there is not set up again against the same control
 plane. [tool-verified: `scripts/run_demo_setup.py`, `SETTING = "demo.setup_completed"`]
 
-A bundled demo's `command` and `refresh` steps do not run again where it runs: what they wrote is
+A bundled demo's `command`, `refresh` and `client` steps do not run again where it runs: what they wrote is
 already in the bundle's dumps. Its `environment` steps do run there (`--environments-only`),
 because an environment is a branch of the model in the control plane, and every start builds the
 control plane anew. [tool-verified: `start-ui-install.sh`, `scripts/run_demo_setup.py`]

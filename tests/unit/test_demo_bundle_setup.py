@@ -454,6 +454,30 @@ def test_a_demo_with_a_seeder_brings_its_stores_up_then_runs_it(tmp_path):
     assert asked[2] == ("run", "--rm", "--no-deps", "seeder")
 
 
+def test_a_demo_s_own_clients_are_not_started_by_the_build(tmp_path):
+    """REQ-2067: the provisioning demo's consumer reads the Provisa a start runs on; the build runs
+    it against its own server from a setup step instead."""
+    demo = tmp_path / "demo"
+    demo.mkdir()
+    (demo / "docker-compose.yml").write_text(
+        yaml.safe_dump(
+            {
+                "services": {
+                    "postgres": {"labels": {"com.provisa.demo.role": "rdb"}},
+                    "consumer": {"labels": {"com.provisa.demo.role": "client"}},
+                }
+            }
+        )
+    )
+    stores = builder.Stores(demo)
+    asked: list[tuple] = []
+    stores._compose = lambda *args, **_kw: (
+        asked.append(args) or type("Done", (), {"stdout": "postgres\nconsumer\n"})()
+    )
+    stores.up()
+    assert asked[1] == ("up", "-d", "--build", "--wait", "--scale", "consumer=0")
+
+
 def test_a_demo_with_no_seeder_brings_its_stores_up(tmp_path):
     """A demo whose data its init SQL loads has no seeder, and compose refuses to scale a service
     it does not have."""

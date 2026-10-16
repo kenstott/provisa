@@ -118,7 +118,7 @@ services:
     restart: unless-stopped
     labels:
       <<: *demo-labels
-      com.provisa.demo.role: consumer
+      com.provisa.demo.role: client
     environment:
       FEEDS_BOOTSTRAP: kafka:9092
       # Provisa's Arrow Flight, on the host this demo's stores run on.

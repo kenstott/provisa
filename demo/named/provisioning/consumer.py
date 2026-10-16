@@ -19,7 +19,10 @@ writes one row to the warehouse's `pulls` table: when it was told, when it had t
 and how fast, or why it was refused.
 
 Any Arrow Flight client can do the same: a ticket is a JSON object naming the query, the role and
-the as-of time. Environment:
+the as-of time.
+
+``--notices N`` pulls for the first N notices addressed to CONSUMERS and exits, under a consumer
+group of its own (the demo's setup runs it once, setup_pulls.py). Environment:
 
   FEEDS_BOOTSTRAP   the Kafka broker the notices are on
   PROVISA_FLIGHT    Provisa's Arrow Flight address, grpc://host:port
@@ -29,10 +32,12 @@ the as-of time. Environment:
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import os
 import time
+import uuid
 from datetime import datetime, timezone
 
 import psycopg
@@ -80,13 +85,17 @@ def record(notice: dict, rows: int | None, seconds: float | None, refused: str |
         )
 
 
-async def main() -> None:
+async def main(notices: int | None) -> None:
+    group = f"provisioning-consumers-{'-'.join(CONSUMERS)}"
+    if notices is not None:
+        group = f"{group}-{uuid.uuid4().hex[:8]}"  # a run of its own: every notice, from the start
     consumer = AIOKafkaConsumer(
         TOPIC,
         bootstrap_servers=BOOTSTRAP,
-        group_id=f"provisioning-consumers-{'-'.join(CONSUMERS)}",
+        group_id=group,
         auto_offset_reset="earliest",
     )
+    handled = 0
     await consumer.start()
     print(f"pulling for {', '.join(CONSUMERS)} from {FLIGHT} on each notice", flush=True)
     try:
@@ -101,9 +110,14 @@ async def main() -> None:
                 rows, seconds = await asyncio.to_thread(
                     pull, notice["dataset"], notice["consumer"], notice["version_time"]
                 )
-            except flight.FlightError as exc:
+            except flight.FlightServerError as exc:
+                # Refused by the server (outside the dataset's window, say): recorded. A server
+                # that cannot be reached is not a refusal, and stops the consumer.
                 record(notice, None, None, str(exc).splitlines()[0])
                 print(f"refused: {notice['consumer']} {notice['dataset']}: {exc}", flush=True)
+                handled += 1
+                if notices is not None and handled >= notices:
+                    return
                 continue
             record(notice, rows, seconds, None)
             print(
@@ -111,9 +125,14 @@ async def main() -> None:
                 f"{notice['version_time']} in {seconds:.2f}s ({rows / seconds:,.0f} rows/s)",
                 flush=True,
             )
+            handled += 1
+            if notices is not None and handled >= notices:
+                return
     finally:
         await consumer.stop()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    parser.add_argument("--notices", type=int, help="pull for this many notices, then exit")
+    asyncio.run(main(parser.parse_args().notices))
