@@ -1,4 +1,4 @@
-# לקוח Python (`provisa-client`)
+# לקוח Python (`provisa-client`) {: #python-client-provisa-client }
 
 לקוח Python עבור Provisa. מספק ארבע ממשקים:
 
@@ -9,7 +9,7 @@
 | דיאלקט SQLAlchemy | כלי BI, ORM, `read_sql`‏ Pandas (REQ-270) |
 | ADBC | סטרימינג עמודתי ילידי-Arrow דרך Flight (REQ-271) |
 
-## התקנה
+## התקנה {: #install }
 
 ```bash
 pip install provisa-client                      # core (ProvisaClient + DB-API)
@@ -22,7 +22,7 @@ pip install "provisa-client[adbc]"              # adds ADBC over Arrow Flight
 
 ## ProvisaClient
 
-### התחלה מהירה
+### התחלה מהירה {: #quick-start }
 
 ```python
 from provisa_client import ProvisaClient
@@ -50,7 +50,7 @@ client = ProvisaClient("http://localhost:8001", token=body["access_token"])
 
 נקודות הכניסה של DB-API ושל ADBC מבצעות עבורכם את ההמרה הזו — ראו להלן.
 
-### שאילתות GraphQL
+### שאילתות GraphQL {: #graphql-queries }
 
 ```python
 # Raw response dict
@@ -72,7 +72,7 @@ df = client.query_df("{ orders { id amount region } }")
 result = await client.aquery("{ orders { id amount } }")
 ```
 
-### Arrow Flight (עמודתי בעל-תפוקה-גבוהה)
+### Arrow Flight (עמודתי בעל-תפוקה-גבוהה) {: #arrow-flight-high-throughput-columnar }
 
 השתמשו ב-Flight עבור סטי תוצאות גדולים — נתונים זורמים בסטרימינג כ-batches‏ רשומה של Arrow ללא מימוש בשרת. (REQ-143, REQ-145)
 
@@ -89,22 +89,22 @@ Flight מתחבר לפורט 8815 כברירת מחדל. (REQ-143) עקפו עם
 client = ProvisaClient("http://prod.example.com", flight_port=8815)
 ```
 
-### סקירת קטלוג
+### סקירת קטלוג {: #catalog-exploration }
 
 ```python
 tables_df = client.list_tables()
 ```
 
-### רפרנס חיבור
+### רפרנס חיבור {: #connection-reference }
 
 | פרמטר | ברירת מחדל | תיאור |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | URL בסיס של שרת Provisa |
 | `token` | `None` | אישור bearer — אסימון של הספק או אסימון גישה אישי; השמיטו עבור אימות סיסמה (REQ-606, REQ-1263) |
-| `role` | `"admin"` | תפקיד הנשלח עם כל בקשה (REQ-273) |
+| `role` | `None` | התפקיד שבשמו לפעול, נשלח כ-`X-Provisa-Role` ומכובד רק אם הוא מוקצה למשתמש; אם הוא מושמט, הבקשה רצה בתפקיד של הזהות עצמה (REQ-273) |
 | `flight_port` | `8815` | פורט gRPC של Arrow Flight (REQ-143) |
 
-### טיפול בשגיאות
+### טיפול בשגיאות {: #error-handling }
 
 `query()` מעלה `httpx.HTTPStatusError` על שגיאות HTTP. (REQ-607)
 `query_df()` מעלה `RuntimeError` אם התגובה מכילה שגיאות GraphQL. (REQ-607)
@@ -128,7 +128,7 @@ conn = connect(
 
 `connect` שולח את שם המשתמש והסיסמה ב-POST אל `/auth/login` ושומר את ה-`access_token` שחוזר, כך שהחיבור נושא אישור אמיתי ולא רק שם. `role` *מבקש* תפקיד, והשרת נעתר רק אם התפקיד מוקצה לזהות (REQ-273); בהשמטה, החיבור רץ בתפקיד שההתחברות פתרה.
 
-### ביצוע שאילתות
+### ביצוע שאילתות {: #executing-queries }
 
 הסמן מקבל GraphQL או SQL — מזוהה אוטומטית. (REQ-268, REQ-274)
 
@@ -146,7 +146,7 @@ cur.execute("SELECT id, amount FROM orders WHERE region = 'west'")
 rows = cur.fetchall()
 ```
 
-### מטא-דאטה עמודות
+### מטא-דאטה עמודות {: #column-metadata }
 
 ```python
 cur.execute("{ orders { id amount } }")
@@ -155,7 +155,7 @@ print(cur.description)
 print(cur.rowcount)
 ```
 
-### פרמטרים בעלי-שם
+### פרמטרים בעלי-שם {: #named-parameters }
 
 ```python
 cur.execute(
@@ -175,7 +175,7 @@ with connect("http://localhost:8001", username="alice", password="secret") as co
 
 ---
 
-## דיאלקט SQLAlchemy
+## דיאלקט SQLAlchemy {: #sqlalchemy-dialect }
 
 ```bash
 pip install "provisa-client[sqlalchemy]"
@@ -194,7 +194,7 @@ with engine.connect() as conn:
         print(row)
 ```
 
-### עם pandas
+### עם pandas {: #with-pandas }
 
 ```python
 import pandas as pd
@@ -202,7 +202,7 @@ import pandas as pd
 df = pd.read_sql("{ orders { id amount } }", engine)
 ```
 
-### פרמטרי URL
+### פרמטרי URL {: #url-parameters }
 
 | פרמטר | תיאור | ברירת מחדל |
 | ----------- | ------------- | --------- |
@@ -214,7 +214,7 @@ engine = create_engine(
 )
 ```
 
-### Introspection סכמה
+### Introspection סכמה {: #schema-introspection }
 
 הדיאלקט מממש `get_table_names()`, `get_columns()`, ו-`has_table()` — כלי קטלוג (DBeaver, SQLAlchemy automap) יכולים לבחון את הסכמה. (REQ-363, REQ-270)
 
@@ -242,7 +242,7 @@ conn = adbc_connect(
 
 `adbc_connect` מתחבר תחילה מעל HTTP ומשבץ את האסימון שהתקבל בכל כרטיס Flight, כך ששרת ה-Flight מאמת את החיבור בדיוק כפי שממשק ה-REST עושה זאת. (REQ-1263) הארגומנט `role` הוא בקשה, המאומתת בצד השרת מול ההקצאות של הזהות — הוא לעולם אינו הופך לזהות. (REQ-273)
 
-### שליפה כטבלת Arrow
+### שליפה כטבלת Arrow {: #fetch-as-arrow-table }
 
 ```python
 with conn.cursor() as cur:
@@ -251,7 +251,7 @@ with conn.cursor() as cur:
     df = table.to_pandas()
 ```
 
-### שליפה כ-tuples
+### שליפה כ-tuples {: #fetch-as-tuples }
 
 ```python
 with conn.cursor() as cur:
@@ -260,7 +260,7 @@ with conn.cursor() as cur:
     one  = cur.fetchone()    # single tuple or None
 ```
 
-### מטא-דאטה עמודות
+### מטא-דאטה עמודות {: #column-metadata_1 }
 
 ```python
 cur.execute("{ orders { id amount } }")

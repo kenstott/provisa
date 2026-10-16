@@ -1,4 +1,4 @@
-# שרת ה-pgwire של Provisa
+# שרת ה-pgwire של Provisa {: #provisa-pgwire-server }
 
 Provisa חושפת נקודת קצה של פרוטוקול חיווט PostgreSQL (pgwire). כל כלי שדובר את פרוטוקול הלקוח של PostgreSQL — psycopg2, asyncpg, DBeaver, Tableau, JDBC — יכול להתחבר ולשאול נתוני Provisa דרך אותו צינור ממשל השולט ב-API של HTTP. (REQ-266)
 
@@ -6,7 +6,7 @@ Provisa חושפת נקודת קצה של פרוטוקול חיווט PostgreSQL
 
 ---
 
-## פרטי חיבור
+## פרטי חיבור {: #connection-details }
 
 השרת מופעל כאשר `PROVISA_PGWIRE_PORT` מוגדר למספר שלם שאינו אפס. הוא מושבת כברירת מחדל. (REQ-527) [tool-verified: `app.py:1739`]
 
@@ -41,11 +41,11 @@ Port: $PROVISA_PGWIRE_PORT
 
 **ניסיונות כושלים נספרים.** חמישה כשלונות בחמש דקות נועלים את החשבון לחמש-עשרה דקות, והמונה משותף עם HTTP ועם Bolt — נעילה שהושגה בכל אחת מהממשקים חלה על כולם. (REQ-1393)
 
-**בחירת ארגון.** בפריסה מרובת-ארגונים, התחברו אל `<org>.<הדומיין-שלכם>` ו-pgwire יקרא את הארגון משם המארח שב-ClientHello של TLS, בדיוק כפי ש-HTTP קורא אותו מכותרת `Host`. (REQ-1234) שם המארח מבקש ארגון; הוא אינו מעניק אותו, ו-principal שאינו חבר בו נדחה. התחברות לפי כתובת IP אינה מבקשת ארגון כלל.
+**בחירת ארגון.** בפריסה מרובת-ארגונים, התחברו אל `<org>.<your-domain>` ו-pgwire יקרא את הארגון משם המארח שב-ClientHello של TLS, בדיוק כפי ש-HTTP קורא אותו מכותרת `Host`. (REQ-1234) שם המארח מבקש ארגון; הוא אינו מעניק אותו, ו-principal שאינו חבר בו נדחה. התחברות לפי כתובת IP אינה מבקשת ארגון כלל.
 
 ---
 
-## מה עובד
+## מה עובד {: #what-works }
 
 ### SELECT
 
@@ -62,11 +62,11 @@ Port: $PROVISA_PGWIRE_PORT
 
 `SELECT * FROM fn(args)` ו-`SELECT fn(args)` — כאשר `fn` נותן שם לפונקציה עוקבת (tracked) רשומה — מיורטים לפני צינור הממשל ומנותבים דרך ה-executor המנוהל היחיד (`invoke_tracked_function`). התוצאה היא סט שורות מוקלד זהה למה שכל surface אחר מחזיר עבור אותו command. `writable_by` וכללי ממשל נאכפים בתוך ה-executor. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
 
-### סמנים (DECLARE / FETCH / MOVE / CLOSE)
+### סמנים (DECLARE / FETCH / MOVE / CLOSE) {: #cursors-declare-fetch-move-close }
 
-Provisa מטפלת בתחביר SQL טקסטואלי של סמנים מעל פרוטוקול השאילתה-הפשוטה. (REQ-1862) לקוחות השולחים `DECLARE`/`FETCH`/`MOVE`/`CLOSE` כמשפטי SQL רגילים מקבלים streaming אמיתי בצד השרת, ולא שגיאת פרוטוקול ולא טעינת התוצאה כולה לזיכרון הלקוח.
+Provisa מטפלת בתחביר הטקסטואלי של סמני SQL על פרוטוקול השאילתה הפשוטה. (REQ-1862) לקוחות ששולחים `DECLARE`/`FETCH`/`MOVE`/`CLOSE` כהצהרות SQL רגילות מקבלים הזרמה אמיתית בצד השרת במקום שגיאת פרוטוקול או חוצץ של התוצאה כולה בזיכרון הלקוח.
 
-**מנגנון זה נפרד מ-streaming מבוסס-portal.** פרוטוקול השאילתה-המורחבת — Bind/Execute עם שדה row-limit — הוא מנגנון תקשורת שונה. asyncpg ורוב דרייברי PostgreSQL המודרניים משתמשים בו אוטומטית, ללא כל תחביר SQL של סמנים. אם הדרייבר שלכם כבר משתמש ב-portals, אין צורך בתחביר זה. `DECLARE CURSOR` מיועד ללקוחות השולחים SQL של סמנים ממש: תכונת ה-named/server-side cursor של psycopg2 (`conn.cursor(name="...")`), כלי BI מסוימים, ו-JDBC drivers לגסי מסוימים.
+**זה שונה מהזרמה מבוססת portal.** פרוטוקול השאילתה המורחבת — Bind/Execute עם שדה מגבלת שורות — הוא מנגנון אחר של פרוטוקול התעבורה. asyncpg ורוב הדרייברים המודרניים של PostgreSQL משתמשים בו אוטומטית, ללא SQL של סמנים. אם הדרייבר שלכם כבר משתמש ב-portals, אינכם צריכים את התחביר הזה. `DECLARE CURSOR` מיועד ללקוחות ששולחים SQL של סמנים כלשונו: סמנים בעלי שם/בצד השרת של psycopg2 (`conn.cursor(name="...")`), חלק מכלי ה-BI וחלק מדרייברי JDBC ישנים.
 
 **DECLARE**
 
@@ -75,81 +75,93 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
+ה-SELECT הפנימי עובר בצינור המנוהל הרגיל של Provisa — אותה אכיפת RLS, אותה מיסוך ואותן בדיקות גישה לדומיין כמו כל SELECT עצמאי. [tool-verified: `server.py:1367` — `ctx.execute_sql(inner_sql)`, the same call path as a plain SELECT] הצהרה על סמן אינה עוקפת את הממשל.
 
-ה-SELECT הפנימי עובר דרך צינור הממשל הרגיל של Provisa — אותה אכיפת RLS, מיסוך, ובדיקות גישת-דומיין החלות על כל SELECT עצמאי. [tool-verified: `server.py:1367` — `ctx.execute_sql(inner_sql)`, אותו נתיב קריאה כמו SELECT רגיל] הצהרת סמן אינה עוקפת ממשל.
-
-מילת המפתח `SCROLL` שולטת הן בניווט המותר והן בצריכת הזיכרון של הסמן:
+מילת המפתח `SCROLL` שולטת הן בניווט המותר והן בטביעת הזיכרון של הסמן:
 
 | הצהרה | ניווט לאחור | עלות זיכרון |
 |---|---|---|
-| `DECLARE c CURSOR FOR ...` (ברירת מחדל) | אינו מותר | מוגבל לאצווה אחת של FETCH |
-| `DECLARE c NO SCROLL CURSOR FOR ...` | אינו מותר | מוגבל לאצווה אחת של FETCH |
-| `DECLARE c SCROLL CURSOR FOR ...` | מותר | התוצאה המלאה מאוחסנת בזיכרון Python |
+| `DECLARE c CURSOR FOR ...` (ברירת מחדל) | אסור | מוגבלת לאצוות FETCH אחת |
+| `DECLARE c NO SCROLL CURSOR FOR ...` | אסור | מוגבלת לאצוות FETCH אחת |
+| `DECLARE c SCROLL CURSOR FOR ...` | מותר | התוצאה כולה בחוצץ בזיכרון Python |
 
-כאשר לא כתובה לא `SCROLL` ולא `NO SCROLL`, ברירת המחדל היא `NO SCROLL` — תואמת לברירת המחדל של PostgreSQL עצמה. [tool-verified: `server.py:1361-1362`] סמן `NO SCROLL` מסלק שורות שנצרכו מהמאגר הפנימי שלו לאחר כל צעד קדימה, כך שסריקת `FETCH FORWARD` דרך תוצאה גדולה לעולם אינה מחזיקה יותר מאצווה אחת בזיכרון Python בו-זמנית. [tool-verified: `server.py:443-447`] סמן `SCROLL` שומר כל שורה שמשך אי-פעם — זוהי העלות של תמיכה ב-`FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, ו-`LAST`. לפני הצהרת סמן `SCROLL` מול תוצאה גדולה, תקצבו את גודל התוצאה המלאה כ-heap של Python. [tool-verified: `server.py:383-389`]
+כשלא צוינו `SCROLL` ולא `NO SCROLL`, ברירת המחדל היא `NO SCROLL` — כמו ב-PostgreSQL עצמה. [tool-verified: `server.py:1361-1362`] סמן `NO SCROLL` משליך מהחוצץ הפנימי שלו שורות שנצרכו אחרי כל צעד קדימה, כך שמעבר `FETCH FORWARD` על תוצאה גדולה לעולם אינו מחזיק בזיכרון Python יותר מאצווה אחת בערך בכל פעם. [tool-verified: `server.py:443-447`] סמן `SCROLL` שומר כל שורה שאי פעם משך — זה המחיר של תמיכה ב-`FETCH BACKWARD`, `ABSOLUTE`, `FIRST` ו-`LAST`. לפני שמצהירים על סמן `SCROLL` מעל תוצאה גדולה, תכננו את מלוא גודל התוצאה ב-heap של Python. [tool-verified: `server.py:383-389`]
 
-הצהרה מחודשת על שם סמן שכבר פתוח סוגרת תחילה את הסמן הקודם. [tool-verified: `server.py:1369-1371`] `WITH HOLD` ו-`WITHOUT HOLD` מתקבלים בתחביר; ראו "אורך חיי הסמן" להלן.
+הצהרה מחדש על שם סמן שכבר פתוח סוגרת קודם את הסמן הקודם. [tool-verified: `server.py:1369-1371`] `WITH HOLD` ו-`WITHOUT HOLD` מתקבלים על ידי התחביר; ראו את משך החיים של הסמן בהמשך.
 
 **FETCH ו-MOVE**
 
 ```sql
-FETCH 100 FROM c1            -- 100 השורות הבאות
-FETCH FORWARD 100 FROM c1    -- זהה לפקודה הקודמת
-FETCH ALL FROM c1            -- כל השורות הנותרות
-FETCH BACKWARD 10 FROM c1    -- 10 השורות הקודמות (סמני SCROLL בלבד)
-FETCH ABSOLUTE 50 FROM c1    -- השורה במיקום מוחלט 50 (סמני SCROLL בלבד)
-FETCH RELATIVE -5 FROM c1    -- 5 מיקומים אחורה (סמני SCROLL בלבד)
-FETCH FIRST FROM c1          -- שורה 1 (סמני SCROLL בלבד)
-FETCH LAST FROM c1           -- השורה האחרונה (סמני SCROLL בלבד)
-MOVE 100 FROM c1             -- הקדמת מיקום ללא החזרת שורות
+FETCH 100 FROM c1            -- next 100 rows
+FETCH FORWARD 100 FROM c1    -- same
+FETCH ALL FROM c1            -- all remaining rows
+FETCH BACKWARD 10 FROM c1    -- previous 10 rows (SCROLL cursors only)
+FETCH ABSOLUTE 50 FROM c1    -- the row at absolute position 50 (SCROLL cursors only)
+FETCH RELATIVE -5 FROM c1    -- 5 positions back (SCROLL cursors only)
+FETCH FIRST FROM c1          -- row 1 (SCROLL cursors only)
+FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
+MOVE 100 FROM c1             -- advance position without returning rows
 ```
+`FETCH` מחזיר שורות ושולח את תג הפקודה `FETCH <n>`, כאשר `n` הוא המספר שהוחזר בפועל, שעשוי להיות קטן מהמבוקש כשהסמן מגיע לסוף. `MOVE` מזיז את המיקום בלי להחזיר שורות ושולח `MOVE <n>`. [tool-verified: `server.py:1417`, `server.py:1419`]
 
-`FETCH` מחזיר שורות ושולח תגית פקודה `FETCH <n>`, כאשר `n` הוא המספר בפועל שהוחזר — שעשוי להיות פחות מהמבוקש כשהסמן מגיע לסוף. `MOVE` מקדים את המיקום ללא החזרת שורות ושולח `MOVE <n>`. [tool-verified: `server.py:1417`, `server.py:1419`]
+`FROM` ו-`IN` ניתנים להחלפה לפני שם הסמן. שמות סמנים ללא מירכאות מומרים לאותיות קטנות; שמות במירכאות (`"CaseSensitive"`) שומרים על הרישיות. [tool-verified: `test_cursor.py:74-79`]
 
-`FROM` ו-`IN` חילופיים כמציגי שם הסמן. שמות סמן ללא מירכאות מוסבים לאותיות קטנות; שמות עם מירכאות (`"CaseSensitive"`) שומרים על רישיות. [tool-verified: `test_cursor.py:74-79`]
-
-ניווט לאחור (`BACKWARD`, `ABSOLUTE`, `FIRST`, `LAST`, `RELATIVE` שלילי) מול סמן `NO SCROLL` מחזיר SQLSTATE 55000 (`object_not_in_prerequisite_state`), בהתאמה לדחיית PostgreSQL האמיתית. [tool-verified: `server.py:1402-1406`] FETCH או MOVE המציין שם סמן שלא הוצהר מעולם מחזיר SQLSTATE 34000 (`invalid_cursor_name`). [tool-verified: `server.py:1398-1400`]
+ניווט לאחור (`BACKWARD`, `ABSOLUTE`, `FIRST`, `LAST`, `RELATIVE` שלילי) על סמן `NO SCROLL` מחזיר SQLSTATE 55000 (`object_not_in_prerequisite_state`), כמו הדחייה של PostgreSQL עצמה. [tool-verified: `server.py:1402-1406`] FETCH או MOVE עם שם של סמן שמעולם לא הוצהר מחזיר SQLSTATE 34000 (`invalid_cursor_name`). [tool-verified: `server.py:1398-1400`]
 
 **CLOSE**
 
 ```sql
-CLOSE c1;    -- שחרר סמן אחד ופנה את stream התוצאות שלו
-CLOSE ALL;   -- שחרר כל הסמנים הפתוחים בחיבור זה
+CLOSE c1;    -- release one cursor and free its result stream
+CLOSE ALL;   -- release every open cursor on this connection
 ```
+`CLOSE` משחרר את זרם התוצאות שמתחת ומסיר את הסמן מהסשן. [tool-verified: `server.py:1421-1436`] ניתוק בלי `CLOSE` בטוח: `ProvisaSession.close()` משחרר אוטומטית בניתוק כל סמן שעדיין פתוח. [tool-verified: `test_cursor.py:335-346`]
 
-`CLOSE` משחרר את stream התוצאות הבסיסי ומסיר את הסמן מה-session. [tool-verified: `server.py:1421-1436`] ניתוק ללא הוצאת `CLOSE` הוא בטוח: `ProvisaSession.close()` משחרר את כל הסמנים שעדיין פתוחים אוטומטית בעת ניתוק. [tool-verified: `test_cursor.py:335-346`]
+**משך החיים של סמן.** לשרת ה-pgwire של Provisa אין מכונת מצבים של טרנזקציות (`ProvisaSession.in_transaction()` מחזיר קבוע `False`). לכן כל סמן מתנהג כאילו הוצהר `WITH HOLD`: הוא חי לאורך כל החיבור, לא עד `COMMIT`. [tool-verified: `server.py:200` — `in_transaction()` always returns `False`] מילות המפתח `WITH HOLD` ו-`WITHOUT HOLD` מתקבלות ומתעלמים מהן בשקט — אין מחזור חיים של סמנים לפי טרנזקציה לאכוף.
 
-**אורך חיי הסמן.** לשרת ה-pgwire של Provisa אין מכונת מצב עסקאות (`ProvisaSession.in_transaction()` מקודד-קשיח ל-`False`). כל סמן לכן מתנהג כאילו הוצהר `WITH HOLD`: הוא חי למשך תקופת החיבור, לא עד `COMMIT`. [tool-verified: `server.py:200` — `in_transaction()` מחזיר תמיד `False`] מילות המפתח `WITH HOLD` ו-`WITHOUT HOLD` מתקבלות ומתעלמות בשקט — אין מחזור חיים של סמן לעסקה לאכוף.
+### הגדרות (CREATE, ALTER, DROP, TRUNCATE) {: #definitions-create-alter-drop-truncate }
 
-### DDL
+דבר אינו מוגדר דרך pgwire. הצהרה שיוצרת, משנה או מסירה אובייקט (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, אינדקס, רצף או סכמה) נדחית עם SQLSTATE 0A000, לא משנה מה התפקיד מחזיק; היוצא מן הכלל הוא טבלה זמנית של הסשן עצמו (ראו [טבלאות זמניות](#temporary-tables)). טבלה או view הם אובייקט מודל: צרו אותם במודל (עמודי הניהול, API הניהול או הקונפיגורציה), או צרו אותם במקור הנתונים וקבלו אותם למודל. `TRUNCATE` נדחה באותו אופן; `DELETE` היא הדרך המנוהלת להסיר שורות. [tool-verified: `provisa/compiler/definitions.py`]
 
-משפטי DDL מזוהים על ידי ה-regex ב-`server.py` ומנותבים ל-`DdlHandler`. לתפקיד חייבת להיות היכולת `"ddl"`. (REQ-042) בלעדיה, המשפט נדחה עם SQLSTATE 42501. [tool-verified: `ddl_handler.py:82-83`]
+הדחייה מתבצעת פעם אחת, בצינור שכל משטח SQL עובר בו, כך ש-SQL על HTTP, Flight ו-MCP דוחים את אותן הצהרות עם אותה הודעה.
 
-צורות ה-DDL המזוהות הן:
+### טבלאות זמניות {: #temporary-tables }
+
+סשן יכול ליצור, לכתוב, לקרוא ולהסיר טבלאות זמניות משלו:
 
 ```sql
-CREATE TABLE / VIEW / INDEX / UNIQUE INDEX / SEQUENCE / SCHEMA
-ALTER TABLE / INDEX / SEQUENCE / VIEW
-DROP TABLE / VIEW / INDEX / SEQUENCE / SCHEMA
+CREATE TEMP TABLE busy AS SELECT customer_id, COUNT(*) AS n FROM sales.orders GROUP BY customer_id;
+INSERT INTO busy VALUES (0, 0);
+UPDATE busy SET n = n + 1 WHERE customer_id = 0;
+DELETE FROM busy WHERE n < 5;
+SELECT c.name, b.n FROM sales.customers c JOIN busy b ON b.customer_id = c.id;
+DROP TABLE busy;
 ```
+- **יצירה** — `CREATE TEMP TABLE name (column type, ...)` או `CREATE TEMP TABLE name AS SELECT ...`. השם אינו מקבל סכמה. ה-`SELECT` שממנו היא נוצרת הוא קריאה כמו כל קריאה אחרת: כללי השורות, המסכות, הנתונים המזויפים ומגבלת השורות של התפקיד חלים על השורות שהוא לוקח.
+- **סוגי עמודות**: `smallint`, `integer`, `bigint`, `real`, `double precision`, `boolean`, `date`, `timestamp`, `text`, `varchar` ו-`DECIMAL(precision, scale)`. מספר עשרוני שומר על הדיוק וקנה המידה שלו. כל סוג אחר נדחה תוך ציון העמודה והסוג: ערך לעולם אינו נשמר כסוג שאינו שלו. עמודה שנוצרה מ-`SELECT` לוקחת את סוג הערכים שלה; עמודה בלי ערך שממנו אפשר לקבוע סוג נדחית, אז החילו `CAST` ב-`SELECT`.
+- **מגבלת שורות.** השורות ש-`CREATE ... AS SELECT` או `INSERT ... SELECT` לוקחים נקראות כפי שהתפקיד קורא כל דבר, ולכן מגבלת השורות של התפקיד חלה. טבלה זמנית שמולאה מקריאה שהמגבלה קיצצה נושאת את אותה אזהרת הצהרה כמו כל קריאה מקוצצת (`statement.rows_cut`), עם ציון המגבלה.
+- **כתיבה** — `INSERT ... VALUES`, `INSERT ... SELECT`, `UPDATE` ו-`DELETE`, ללא `RETURNING` וללא `FROM`. כתיבה לטבלה זמנית אינה מוטציה: היא אינה מגיעה למקור ולא לנתוני הסביבה, ולכן היא עובדת תחת כל טיפול במוטציות של הסביבה ואינה דורשת זכות כתיבה.
+- **קריאה** — לפי שמה, לבד או ב-join עם טבלאות המודל. המנוע מחשב את הקריאה.
+- **משך חיים.** טבלה זמנית אינה אובייקט מודל, סשנים אחרים אינם רואים אותה, והיא מסתיימת עם הסשן. ב-pgwire הסשן הוא החיבור. במשטח ללא חיבור משלו (SQL על HTTP, Flight, MCP) הסשן הוא הבקשה, ולכן טבלה זמנית חיה עבור ההצהרות שנשלחו יחד בבקשה זו.
+- **אחסון.** השורות נשמרות בסכמה משלו של הסשן במאגר של המנוע ומוסרות כשהסשן מסתיים. `INSERT`, `UPDATE` או `DELETE` כותב מחדש את הטבלה כולה דרך המנוע, כך שטבלה זמנית מתאימה לנתוני עבודה, לא לטבלאות גדולות שנכתבות שורה אחר שורה. תהליך שנעצר בלי לסיים את הסשנים שלו משאיר את הסכמות שלהם במאגר; הן מוסרות כשהסביבה יוצאת משימוש.
 
-[tool-verified: `server.py:56-61`]
+אותן הצהרות עובדות בכל משטח SQL: הן מטופלות בצינור המשותף לכולם. [inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; the pgwire connection-long session is not yet covered by a test]
 
-שני נתיבי ביצוע קיימים, תלוי ב-`ddl_catalog`: (REQ-582)
+### כתיבת נתונים (INSERT, UPDATE, DELETE, MERGE, COPY FROM STDIN) {: #data-writes-insert-update-delete-merge-copy-from-stdin }
 
-**נתיב Trino** — משמש כאשר `ddl_catalog` הוא Iceberg, Hive, או קטלוג Trino לא-רשום אחר (למשל `iceberg`, `hive`, `otel`, `results`). רק `CREATE TABLE` ו-`CREATE VIEW` נתמכים בנתיב זה. ניסיון `ALTER`, `DROP`, או `CREATE INDEX` מעלה שגיאה. שם הטבלה מוסמך במלואו כ-`catalog.schema.table`. [tool-verified: `ddl_handler.py:92-100`]
+שורות של טבלה רשומה קיימת נכתבות דרך pgwire כמו בכל משטח SQL אחר, דרך קבלת כתיבה אחת (`provisa/compiler/write_admission.py`):
 
-**נתיב ישיר** — משמש כאשר `ddl_catalog` תואם מזהה מקור רשום. DDL מלא נתמך: CREATE, ALTER, DROP, אינדקסים, רצפים. `CREATE TABLE` ו-`CREATE VIEW` מוסמכים-סכמה כ-`schema.table`. כל שאר ה-DDL (ALTER, DROP, CREATE INDEX) עובר כפי-שהוא לאחר הגדרת הקשר הסכמה. עבור מקורות PostgreSQL ו-SQLite, ההקשר מוגדר עם `SET search_path TO schema`. עבור MySQL ו-MariaDB, ההקשר מוגדר עם `USE schema`. [tool-verified: `ddl_handler.py:139-170`, `ddl_handler.py:207-213`]
+1. **הזכות.** לתפקיד יש `write`. (REQ-868)
+2. **העמודות.** כל עמודה שההצהרה כותבת נוקבת בתפקיד ב-`writable_by` שלה; עמודה שאינה מצהירה דבר אינה ניתנת לכתיבה על ידי אף אחד. (REQ-663)
+3. **השורות שאפשר לגעת בהן.** מסנן השורות של התפקיד, אותו פרדיקט שהקריאות שלו נושאות, מתווסף ל-`WHERE` של `UPDATE` או `DELETE`.
+4. **השורות שנשארות.** תפקיד מסונן יכול לכתוב רק שורות שהוא יוכל לקרוא אחר כך: שורות `INSERT` והערכים החדשים של `UPDATE` שקובע עמודה שהמסנן קורא נבדקים מול המסנן לפני שדבר נשלח למקור.
 
-לאחר DDL בכל אחד מהנתיבים, הטבלה החדשה נרשמת להקשר הקימפול של התפקיד כך שהיא ניתנת לשאילתה מיידית. (REQ-583) [tool-verified: `ddl_handler.py:216-250`]
-
-**פתירת יעד כתיבה.** קטלוג ה-DDL והסכמה מגיעים משדות `ddl_catalog` ו-`ddl_schema` של הדומיין. אם `ddl_catalog` אינו מוגדר, המערכת ברירת-מחדל לקטלוג Iceberg. אם `ddl_schema` אינו מוגדר, ברירת המחדל היא מזהה הדומיין. הדומיין נפתר דרך רשימת `domain_access` של התפקיד. (REQ-584) [tool-verified: `app.py:804-811`, `ddl_handler.py:104-115`]
+מה שאי אפשר להכריע נדחה בשמו ולא מתקבל מספק (`INSERT … SELECT`, ערך שאינו ליטרל ולא פרמטר קשור, מסנן שקורא עמודה שההצהרה אינה מספקת). [tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
 ### COPY
 
-הן `COPY ... TO STDOUT` והן `COPY ... FROM STDIN` נתמכים. (REQ-585) [tool-verified: `copy_handler.py:231-257`]
+הן `COPY ... TO STDOUT` והן `COPY ... FROM STDIN` נתמכים. (REQ-585)
 
-**COPY TO STDOUT** — מייצא תוצאות שאילתה בפורמט חיווט COPY של PG. שתי צורות עובדות:
+**COPY TO STDOUT** — מייצא תוצאות שאילתה בפורמט התעבורה של PG COPY. שתי צורות עובדות:
 
 ```sql
 -- Table reference
@@ -158,18 +170,11 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
+פורמטים נתמכים: `text` (מופרד בטאבים, ברירת מחדל) ו-`csv`. פורמט בינארי אינו נתמך בפלט COPY. [tool-verified: `copy_handler.py:36-52`]
 
-פורמטים נתמכים: `text` (מופרד-tab, ברירת מחדל) ו-`csv`. פורמט בינארי אינו נתמך בפלט COPY. [tool-verified: `copy_handler.py:36-52`]
+**COPY FROM STDIN** הוא כתיבת נתונים לטבלה רשומה קיימת: הוא מתקבל באותה קבלת כתיבה כמו `INSERT` של אותן שורות (ראו [כתיבת נתונים](#data-writes-insert-update-delete-merge-copy-from-stdin)).
 
-**COPY FROM STDIN** — מכניס שורות לטבלת יעד. מוגבל למקורות מסוג `postgresql`, `mysql`, `sqlite`, או `mariadb`. (REQ-586) ניסיון COPY FROM מול מקור Trino-בלבד (למשל Iceberg) מעלה שגיאת הרשאה. [tool-verified: `copy_handler.py:65`, `copy_handler.py:351-356`]
-
-```sql
-COPY my_table (col1, col2) FROM STDIN WITH (FORMAT text)
-```
-
-אם לא סופקה רשימת עמודות, העמודות נגזרות מהסכמה הרשומה. [tool-verified: `copy_handler.py:357`]
-
-### עסקאות ופקודות Session
+### עסקאות ופקודות Session {: #transactions-and-session-commands }
 
 SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, ו-DEALLOCATE מיורטים ומחזירים תגובת הצלחה ריקה. (REQ-587) השרת חסר-מצב (stateless) ביחס לעסקאות — אין תמיכה בבידוד עסקאות או rollback. (REQ-587) [tool-verified: `catalog.py:27-31`, `catalog.py:1129-1132`]
 
@@ -207,7 +212,7 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, ו-DEALLOCATE 
 
 ---
 
-## קידוד פרמטרים בינארי
+## קידוד פרמטרים בינארי {: #binary-parameter-encoding }
 
 פרוטוקול השאילתה-המורחבת (Bind/Execute) תומך בפרמטרים מקודדים-בינארית. (REQ-589) OID-ים של הטיפוסים הבאים מפוענחים מבינארי: [tool-verified: `postgres.py:69-97`]
 
@@ -234,7 +239,7 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, ו-DEALLOCATE 
 
 ---
 
-## המלצות דרייבר
+## המלצות דרייבר {: #driver-recommendations }
 
 **דרייברי Python ילידיים (psycopg2, asyncpg).** אלה מנהלים משא-ומתן על פרוטוקול השאילתה-המורחבת כברירת מחדל ומשתמשים בקידוד בינארי עבור רוב הטיפוסים. נאמנות הטיפוסים הגבוהה ביותר כאן — עמודות `NUMERIC` מגיעות כ-`Decimal`, `TIMESTAMP` כ-`datetime`, וכן הלאה. השתמשו באלה עבור ETL מבוסס-Python, סקריפטים, או אינטגרציה ישירה.
 
@@ -250,24 +255,20 @@ jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<
 
 ---
 
-## אזהרות ואילוצים
+## אזהרות ואילוצים {: #caveats-and-constraints }
 
-**SQL בלבד; ללא מוטציות DML.** מאזין ה-pgwire מפענח ומבצע SQL בלבד — מחרוזות GraphQL ו-Cypher אינן מתקבלות. (REQ-614) `INSERT`, `UPDATE`, ו-`DELETE` פשוטים אינם מנותבים לנתיב כתיבה. (REQ-615) כתבו נתונים דרך `COPY FROM STDIN` (מקורות בני-כתיבה) או `CREATE TABLE AS`; מוטציות ברמת-שורה עוברות במקום זאת דרך נתיבי הכתיבה של GraphQL, Cypher, או Trino.
+**SQL בלבד.** מאזין ה-pgwire מפענח ומבצע SQL בלבד — מחרוזות GraphQL ו-Cypher אינן מתקבלות. (REQ-614) כתיבת נתונים לטבלאות קיימות מתקבלת לפי הזכויות של התפקיד, הענקות העמודות שלו ומסנן השורות שלו; ראו [כתיבת נתונים](#data-writes-insert-update-delete-merge-copy-from-stdin).
 
-**COPY ו-DDL דורשים את היכולת `ddl`.** הן `COPY` (בכל כיוון) והן DDL מסויגים ביכולת `ddl` של התפקיד; תפקידים בלעדיה מקבלים SQLSTATE 42501. (REQ-616)
+**ללא הגדרות.** `CREATE`, `ALTER`, `DROP` ו-`TRUNCATE` נדחים עם SQLSTATE 0A000 לא משנה מה התפקיד מחזיק, למעט טבלה זמנית של הסשן עצמו; ראו [טבלאות זמניות](#temporary-tables). (REQ-615, REQ-616)
 
 **אין תמיכת עסקאות אמיתית.** BEGIN/COMMIT/ROLLBACK מתקבלים ומתעלמים בשקט. כל משפט פועל באופן עצמאי. (REQ-587) [tool-verified: `server.py:146-158` — `in_transaction()` מחזיר תמיד `False`]
 
-**timeout של 60 שניות ל-DDL, timeout של 120 שניות לשאילתה.** אלה מקודדים-קשיח ב-threads המטפלים. (REQ-590) DDL ארוך-ריצה מול מקורות מרוחקים (שינויי סכמה על טבלאות גדולות) עשוי לפוג. [tool-verified: `ddl_handler.py:136`, `server.py:186`]
-
-**COPY FROM הוא מקור-בר-כתיבה-בלבד.** Iceberg, Hive, מקורות Trino-בלבד, וסוגי מקור לקריאה-בלבד אינם מקבלים COPY FROM. השגיאה היא SQLSTATE 42501. (REQ-586) [tool-verified: `copy_handler.py:65`]
+**Timeout לשאילתה.** הצהרה רשאית לקחת את ה-timeout לבקשה של pgwire עצמו, `limits.request_timeouts.pgwire`, או את `limits.request_timeout` המשותף כשהוא אינו מוגדר; שניהם הגדרות של המפעיל. (REQ-590, REQ-1905) [tool-verified: `provisa/core/limits.py`, `server.py`]
 
 **פורמט פלט COPY הוא text או csv.** פורמט COPY בינארי של PG (`FORMAT binary`) אינו ממומש. [inferred: only `text` and `csv` branches exist in `_rows_to_copy_text` / `_rows_to_copy_csv`]
 
-**DDL בנתיב Trino הוא CREATE בלבד.** ALTER, DROP, ו-CREATE INDEX מול קטלוגי Iceberg או Hive אינם נתמכים. השתמשו במקור SQL רשום כ-`ddl_catalog` אם אתם זקוקים ל-DDL מלא. (REQ-582) [tool-verified: `ddl_handler.py:92-100`]
-
 **החלפת פרמטרים היא ליטרלית.** פרמטרים `$1`, `$2`, ... מוחלפים כליטרלי SQL לפני הביצוע, לא נשלחים כפרמטרי bind למנוע ה-upstream. משמעות הדבר שמנוע ה-upstream לעולם לא רואה משפט מוכן (prepared statement). עבור Trino אין לכך השפעה מעשית; עבור מקורות pool-ישיר זה עוקף מטמון prepared-statement. (REQ-581) [tool-verified: `server.py:78-85`]
 
-**`DECLARE SCROLL` מאחסן את התוצאה המלאה בזיכרון.** סמן `SCROLL` צובר כל שורה שמשך מהמנוע ב-heap של Python, כדי ש-`FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, ו-`LAST` יוכלו להגישה לפי דרישה. מול תוצאה גדולה, פירוש הדבר שהתוצאה כולה חיה בזיכרון כל עוד הסמן פתוח. השתמשו ב-`NO SCROLL` (ברירת המחדל) לסריקות forward-only. (REQ-1862) [tool-verified: `server.py:383-389`]
+**DECLARE SCROLL מחזיק את התוצאה כולה בחוצץ.** סמן `SCROLL` צובר כל שורה שהוא מושך מהמנוע ב-heap של Python כדי ש-`FETCH BACKWARD`, `ABSOLUTE`, `FIRST` ו-`LAST` יוכלו להיענות לפי דרישה. מול תוצאה גדולה, פירוש הדבר שהתוצאה כולה חיה בזיכרון כל עוד הסמן פתוח. השתמשו בברירת המחדל `NO SCROLL` להזרמה קדימה בלבד. (REQ-1862) [tool-verified: `server.py:383-389`]
 
 **`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** טבלאות אלה קיימות בשכבת הקטלוג אך הן stubs ריקים. כלי ניטור השואלים אותן יקבלו אפס שורות במקום שגיאות. (REQ-532) [tool-verified: `catalog.py:519-535`, `catalog.py:639-934`] (`pg_index` מאוכלס — ראו יירוט קטלוג.)

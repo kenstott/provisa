@@ -1,4 +1,4 @@
-# סביבות
+# סביבות {: #environments }
 
 סביבה היא עותק בעל שם של המודל הממושל של ארגון. העותק הוא פיזית
 סכמת PostgreSQL נפרדת — לא עמודת מבחין, לא קידומת, סכמה אמיתית — כך שכל
@@ -13,7 +13,9 @@ at env_routing.py lines 93-129]
 
 סביבות זמינות לארגונים בתוכנית בתשלום. [inferred: REQ-1507]
 
-## שמות סביבות
+כדי למלא סביבה שאינה סביבת ייצור בנתונים שבטוח להשתמש בהם, ראו [בניית סביבות בדיקה](test-data.md).
+
+## שמות סביבות {: #environment-names }
 
 שם חייב להתאים ל-`[a-z][a-z0-9_]{1,31}` — שניים עד שלושים ושניים תווים של אותיות קטנות,
 ספרות וקווים תחתונים, המתחילים באות. ‏`prod` ושמות המתחילים ב-`pg_` נדחים.
@@ -22,7 +24,7 @@ at env_routing.py lines 93-129]
 מפניו. [tool-verified: `ENV_NAME_PATTERN` at environments.py line 59; `validate_env_name()` at
 environments.py lines 119-142; `max_env_name_length()` at environments.py lines 108-116]
 
-## מה עותק נושא
+## מה עותק נושא {: #what-a-copy-carries }
 
 כל טבלה בסכמת הארגון נופלת במחלקה אחת בדיוק (REQ-1489). הסיווג הוא
 רשימת היתר, לא רשימת החרגה: טבלה שנוספת מאוחר יותר אינה נודדת עד שמישהו נוקב במחלקתה
@@ -47,7 +49,7 @@ constant and module docstring, env_classes.py lines 19-22]
 לדרך ההסלמה. לכן תפקידים והקצאות נודדים פעם אחת, ביצירה, ולאחר מכן הם התשובה של כל
 סביבה עצמה. [tool-verified: env_classes.py lines 65-71; env_copy.py lines 41-44]
 
-## קישורים
+## קישורים {: #bindings }
 
 קישורים הם העמודות האומרות לאן מקור מצביע בפועל — `host`, `port`, `database`,
 ‏`username`, וכל היתר. הם לעולם אינם נודדים בשום עותק. סביבה שלא נקשרה
@@ -55,29 +57,21 @@ constant and module docstring, env_classes.py lines 19-22]
 החיבור היה קורא אותו כ-`localhost:5432`. [tool-verified: `BOUND_COLUMN = "bound"` at
 env_classes.py line 143; `BINDING_COLUMNS` dict at env_classes.py lines 155-172]
 
-המקורות של סביבה מתפענחים באחת משתי דרכים.
+סביבה שנוצרת בכל אופן מלבד Unbound מעתיקה את החיבור של כל מקור מההורה שלה,
+בדיוק כפי שההורה כתב אותו: הפניית `${secret:...}` או `${env:...}` מועתקת כאותה
+הפניה, לעולם לא נפתרת. לאחר היצירה העותק הוא השורה של הסביבה עצמה, הניתנת לעריכה בעמוד
+המקורות, ודבר אינו נפתר דרך ההורה כשה-runtime של הסביבה נבנה.
+השדה `binding` של כל מקור אומר מאיפה הגיע החיבור שלו: `copied`, `own` (ניתן בסביבה זו)
+או `unbound`. עריכת חיבור מועתק הופכת אותו ל-`own`. **העתקה מחדש מההורה**
+(`POST /admin/orgs/{org}/environments/{name}/sources/recopy`) מעתיקה שוב את החיבורים של ההורה.
+מיזוג או פריסה אינם נושאים חיבורים, ולכן מקור שהם מכניסים מגיע כ-`unbound`.
+[tool-verified: `_copy_table` at env_copy.py; `recopy` and `unbind` at env_data.py;
+`owned_if_reconnected` at repositories/source.py]
 
-**בסיס** — הסביבה נושאת אישורי גישה משלה. ‏org_admin יוצר בסיס ואז קושר
-כל מקור במפורש. [tool-verified: `CreateEnvBody.inherit_connections = False` (default) at
-environments_router.py line 227; "binding a base is an org_admin's act" comment at line 358]
+## הטלת ה-git {: #the-git-projection }
 
-**ענף** — הסביבה יורשת את אישורי הגישה של הבסיס בהפניה. שום דבר אינו מועתק.
-כששאילתה זקוקה לחיבור, הפענוח מטפס במעלה שרשרת ה-`branched_from` ועוצר
-בסביבה הראשונה ששורתה קשורה. סבב אישור גישה בבסיס מתפשט לכל ענף
-שלו ללא כל פעולה נדרשת. שלילתו שוללת עבור כולם בבת אחת. שום סוד אינו ממוטריאל
-בשום מקום שממנו ענף, ייצוא או מאגר יכלו לשאת אותו הלאה.
-[tool-verified: `resolve()` at env_bindings.py lines 114-151; `lineage()` at env_bindings.py
-lines 74-102; env_bindings.py module docstring lines 11-33]
-
-כדי ליצור ענף, קבעו **Inherit connections** בפאנל הסביבות. ברירת המחדל היא כבוי.
-[tool-verified: `environmentsTab.json` key `inheritConnections`; `inheritHelp2` string]
-
-## הטלת ה-git
-
-כל כתיבה למודל מבצעת קומיט של התוצאה לענף ה-git של הסביבה. המאגר הוא
-הטלה של המודל, לעולם לא סמכותו: Provisa קוראת וכותבת אל מישור הבקרה;
-המאגר הוא הרשומה, לא המקור. פריסת עץ דורשת קריאה מפורשת — pull request
-שמוזג במארח ה-git אינו פורס את עצמו (REQ-1524, REQ-1526). [tool-verified:
+כל כתיבה למודל מבצעת commit של התוצאה לענף ה-git של הסביבה. פריסת עץ
+מחייבת קריאה מפורשת — pull request שמוזג במארח ה-git אינו פורס את עצמו (REQ-1524, REQ-1526). [tool-verified:
 deploy endpoint docstring at environments_router.py lines 777-791]
 
 כל ישות מקבלת קובץ אחד. הנתיב הוא ה-URI מ-REQ-1385 עם קיצוץ הסכמה והארגון:
@@ -104,7 +98,7 @@ env_project.py docstring lines 26-27]
 כתובתם, וסגנון ה-YAML קבוע. שתי סביבות המחזיקות באותו מודל מייצרות
 עצים זהים בית-בבית. [tool-verified: `dump()` at env_files.py lines 131-143]
 
-## מיזוג
+## מיזוג {: #merge }
 
 מיזוג המודל של סביבה לתוך אחרת מעדכן לפי זהות: כל אובייקט שיש למקור
 נוצר או מעודכן ביעד. אובייקטים שכבר אין למקור מוסרים רק כשהקורא מבקש
@@ -120,7 +114,7 @@ env_project.py docstring lines 26-27]
 אינה מאבדת את חיבורי מסד הנתונים שלה עצמה כשהיא לוקחת מודל חדש יותר מ-prod. ‏prod אינו רוכש
 את ההרשאות של dev. [tool-verified: env_copy.py lines 269-287; REQ-1490 scenario]
 
-### במה הדוח נוקב
+### במה הדוח נוקב {: #what-the-report-names }
 
 דוח המיזוג מונה, לפי נתיב, מה נוסף, מה השתנה, מה הוסר ומה נשאר ללא שינוי. הוא גם
 נוקב בשם כל **התנגשות** — אובייקטים ששני הצדדים שינו מאז שחלקו קומיט לאחרונה. התנגשות
@@ -141,7 +135,7 @@ property at env_copy.py lines 164-166; env_copy.py lines 255-264]
 [tool-verified: `_squash()` docstring at environments_router.py lines 663-680;
 `MergeBody.message` comment at environments_router.py lines 258-260]
 
-## משיכה
+## משיכה {: #pull }
 
 משיכה לוקחת את מה שה-remote מחזיק עבור סביבה והופכת אותו למודל. היא אינה מקדמת
 את הענף המקומי ישירות ב-fast-forward; היא מיישמת את העץ שהובא דרך נתיב הפריסה הרגיל,
@@ -160,7 +154,7 @@ lines 1485-1519]
 environments_router.py lines 1491-1503; `_collisions()` at environments_router.py
 lines 1581-1602]
 
-## היסטוריה
+## היסטוריה {: #history }
 
 כל פריסה מקדמת את הסמן של הסביבה קדימה בקו הקומיטים שלה עצמה. ביטול מדלג אחורה
 קומיט אחד; ביצוע חוזר מדלג קדימה שוב לעבר המיקום שהביטול יצא ממנו. אף אחת
@@ -178,7 +172,7 @@ environments_router.py lines 907-916]
 סביבותיו; רק תשובות ההיסטוריה משתנות (REQ-1561). [tool-verified: `_with_history()`
 at environments_router.py lines 316-344; REQ-1561 description]
 
-## הרשאה
+## הרשאה {: #authorization }
 
 סביבות ממושלות על ידי שתי זכויות. אף אחת מהן אינה של אנליסט כברירת מחדל (REQ-1573).
 [tool-verified: REQ-1573 description; `MANAGE_CAPABILITY = "environment_management"` and
@@ -203,7 +197,7 @@ module docstring lines 28-34]
 קבלן שקיבל את תפקיד האנליסט אינו רואה משטח סביבות ואינו יכול ליצור סביבה כלשהי שאינה
 ייצור ולא לעבור אליה. [tool-verified: REQ-1573 use_case and scenario]
 
-### סמכות בעלי הסביבה
+### סמכות בעלי הסביבה {: #environment-owner-authority }
 
 יצירת סביבה היא הנתיב היחיד שדרכו חבר לקריאה בלבד רוכש זכויות עריכת מודל
 (REQ-1528). בתוך הסביבה שיצר, היוצר מחזיק ביכולות של תפקיד ה-`developer` —
@@ -220,7 +214,7 @@ env_authority.py lines 84-98]
 היא לעולם אינה משנה לאילו דומיינים הוא רשאי לעשות זאת (REQ-1530).
 [tool-verified: `domains_within()` at env_authority.py lines 121-145]
 
-## סביבות מוגנות (REQ-1504)
+## סביבות מוגנות (REQ-1504) {: #protected-environments-req-1504 }
 
 ניתן להגן על סביבה. מיזוג או פריסה לתוך סביבה מוגנת אינם מיושמים
 כשהם מתבקשים; הם מוצעים, ומישהו שאינו המבקש חייב לאשר אותם.
@@ -289,7 +283,9 @@ provisa env deploy --org acme --env prod --ref "origin/main" \
 
 ---
 
-## ראו גם
+## ראו גם {: #see-also }
 
 - [פריסה](deployment.md) — כיצד להקים את מישור הבקרה שאליו סביבות מתחברות
 - [פקודות](commands.md) — פונקציות ו-webhooks נמעקבים המופיעים בעץ של כל סביבה
+- [בניית סביבות בדיקה](test-data.md) — פרופיילינג של סביבת הייצור, הצהרה על נתונים מזויפים, יצירת נתונים סינתטיים לסביבה שאינה סביבת ייצור
+- [שיטות נתונים מזויפים](fake-methods.md) — כל סוג של נתון מזויף וכל שיטה שעמודה יכולה להצהיר

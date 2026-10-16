@@ -1,6 +1,6 @@
-# מעבר מ-Hasura DDN‏ (v3) ל-Provisa
+# מעבר מ-Hasura DDN‏ (v3) ל-Provisa {: #migrating-from-hasura-ddn-v3-to-provisa }
 
-## דרישות מוקדמות
+## דרישות מוקדמות {: #prerequisites }
 
 1. פרויקט Hasura DDN עם קבצי HML (סיומת `.hml`).
    לפרויקטי DDN בדרך-כלל יש מבנה ספריות כמו:
@@ -21,19 +21,19 @@
 
 2. Python 3.11+ עם חבילת `provisa` מותקנת.
 
-## שימוש ב-CLI
+## שימוש ב-CLI {: #cli-usage }
 
 ```bash
 python -m provisa.ddn <hml-dir> -o provisa.yaml
 ```
 
-### ארגומנטים
+### ארגומנטים {: #arguments }
 
 | ארגומנט | נדרש | תיאור |
 | ---------- | ---------- | ------------- |
 | `hml_dir` | כן | נתיב לספריית פרויקט DDN HML (נסרקת רקורסיבית עבור קבצי `.hml`) |
 
-### אפשרויות
+### אפשרויות {: #options }
 
 | אפשרות | ברירת מחדל | תיאור |
 | -------- | --------- | ------------- |
@@ -42,7 +42,7 @@ python -m provisa.ddn <hml-dir> -o provisa.yaml
 | `--domain-map KEY=VAL ...` | None | מיפויי subgraph-לדומיין (למשל `app=core analytics=reporting`) |
 | `--dry-run` | כבוי | פענוח ואימות ללא כתיבת פלט |
 
-### קובץ דריסות מקור
+### קובץ דריסות מקור {: #source-overrides-file }
 
 קובץ YAML עם מפתחות לפי שם מחבר (לאחר סניטציה של מזהה: רווחים, נקודות, לוכסנים
 הופכים לקווים-תחתיים) עם תכונות חיבור:
@@ -56,7 +56,7 @@ my_pg_connector:
   password: "${env:PROD_DB_PASSWORD}"
 ```
 
-## מטריצת שוויון תכונות
+## מטריצת שוויון תכונות {: #feature-parity-matrix }
 
 | סוג DDN | שווה-ערך Provisa | הערות |
 | --- | --- | --- |
@@ -75,7 +75,7 @@ my_pg_connector:
 | **CompatibilityConfig** | מדולג | אזהרה נפלטת עם ספירה. |
 | **סוגים לא-מזוהים אחרים** | מדולגים | אזהרה נפלטת עם ספירה לכל סוג. |
 
-## מושג מפתח: פתירת שדה GraphQL לעמודה פיזית
+## מושג מפתח: פתירת שדה GraphQL לעמודה פיזית {: #key-concept-graphql-field-to-physical-column-resolution }
 
 DDN מפריד את סכמת ה-GraphQL (שמות שדה) מסכמת מסד הנתונים הפיזית
 (שמות עמודה) דרך `dataConnectorTypeMapping` על ObjectTypes. הממיר:
@@ -88,7 +88,7 @@ DDN מפריד את סכמת ה-GraphQL (שמות שדה) מסכמת מסד הנ
 משמעות הדבר שה-`provisa.yaml` הפלט משתמש ב-**שמות עמודה פיזיים** עבור `columns[].name`
 ומגדיר `columns[].alias` לשם שדה ה-GraphQL כשהם שונים.
 
-## שלבים לאחר-המרה
+## שלבים לאחר-המרה {: #post-conversion-steps }
 
 1. **סקרו את ה-YAML הפלט.** אמתו מקורות, טבלאות, ושיוכי עמודה.
 2. **הגדירו חיבורי מקור.** מחברים מספקים רק רמז URL עבור זיהוי
@@ -106,45 +106,45 @@ DDN מפריד את סכמת ה-GraphQL (שמות שדה) מסכמת מסד הנ
    סוגי DDN שדולגו וכל model המפנה ל-ObjectTypes לא-ידועים.
 7. **בדקו.** הפעילו את שרת Provisa ואמתו שאילתות מול מקורות הנתונים שלכם.
 
-## בעיות נפוצות ופתרון תקלות
+## בעיות נפוצות ופתרון תקלות {: #common-issues-and-troubleshooting }
 
-### זיהוי סוג מקור נכשל
+### זיהוי סוג מקור נכשל {: #source-type-detection-fails }
 
 ה-URL של המחבר משמש היוריסטית (בודק מילות מפתח כמו "postgres",
 "mysql", "mongo"). אם ה-URL אינו מכיל מילת מפתח מזוהה, המקור
 ברירת-מחדל ל-`postgresql`. דרסו עם `--source-overrides`.
 
-### ObjectType חסר עבור Model
+### ObjectType חסר עבור Model {: #missing-objecttype-for-a-model }
 
 אם Model מפנה לשם ObjectType שלא נמצא באף קובץ `.hml`,
 הטבלה מדולגת ואזהרה נפלטת. ודאו שכל קבצי ה-HML כלולים
 בספרייה הנסרקת.
 
-### גילוי Subgraph
+### גילוי Subgraph {: #subgraph-discovery }
 
 Subgraphs נגזרים ממבנה הספרייה: רכיב הספרייה הראשון
 תחת שורש הפרויקט נלקח כשם ה-subgraph. שדה ה-`subgraph` בתוך
 מסמכי HML אינו בשימוש. קבצים תחת ספריית `globals/` משוייכים ל-
 subgraph‏ `globals` ומוחרגים מגילוי דומיין.
 
-### פתירת מקור קשר
+### פתירת מקור קשר {: #relationship-source-resolution }
 
 קשרים מפנים ל-`source_type` (שם ObjectType) ו-`target_model` (שם
 Model). אם אף Model אינו משתמש ב-ObjectType הנתון, הקשר מדולג בשקט.
 
-### aliases עמודה בכל מקום
+### aliases עמודה בכל מקום {: #column-aliases-everywhere }
 
 אם פרויקט ה-DDN שלכם משתמש נרחבות ב-`fieldMapping`, ציפו שלרוב העמודות יהיה
 `alias` בפלט. זו התנהגות נכונה -- `name` הוא העמודה הפיזית,
 `alias` הוא שם ה-GraphQL שהאפליקציה שלכם השתמשה בו.
 
-### ביטויי אגרגט
+### ביטויי אגרגט {: #aggregate-expressions }
 
 ביטויי אגרגט נשמרים בקובץ צד `provisa-aggregates.yaml` הנכתב
 לצד הפלט ומומרים לתצורת אגרגט Provisa. הם אינם נשמרים על
 ה-`description` של הטבלה.
 
-## דוגמה: המרת פרויקט DDN‏ Chinook
+## דוגמה: המרת פרויקט DDN‏ Chinook {: #example-converting-a-chinook-ddn-project }
 
 ```bash
 # Convert the DDN project

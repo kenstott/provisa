@@ -2,7 +2,7 @@
 
 שחרורי גרסאות מופעלים על ידי דחיפת תגית git. שם התגית קובע את הערוץ (channel).
 
-## מוסכמות תגיות
+## מוסכמות תגיות {: #tag-conventions }
 
 | פורמט תגית | ערוץ | סוג GitHub Release |
 | ----------- | --------- | ------------------- |
@@ -11,7 +11,7 @@
 | `v1.2.3-rc.1` | rc | Pre-release |
 | `v1.2.3` | stable | Latest release |
 
-## יצירת שחרור
+## יצירת שחרור {: #creating-a-release }
 
 ```bash
 # Alpha
@@ -40,7 +40,7 @@ git tag v1.2.3 && git push origin v1.2.3
 9. **בנייה ובדיקת לקוח Python**, ואז **פרסום ל-PyPI**
 10. **פרסום GitHub Release** — מעלה את כל ה-assets, מגדיר דגל pre-release עבור alpha/beta/rc
 
-## Assets של שחרור
+## Assets של שחרור {: #release-assets }
 
 כל שחרור מפרסם את ה-assets הבאים, כולם מצורפים ל-GitHub Release (ה-wheel הולך גם ל-PyPI):
 
@@ -64,14 +64,14 @@ git tag v1.2.3 && git push origin v1.2.3
 גרסת לקוח ה-Python מומרת אוטומטית לפורמט PEP 440:
 `v0.1.0-alpha.1` → `0.1.0a1`, `v0.1.0-beta.1` → `0.1.0b1`, `v0.1.0-rc.1` → `0.1.0rc1`.
 
-## הגדרת פרסום PyPI (חד-פעמי)
+## הגדרת פרסום PyPI (חד-פעמי) {: #pypi-publishing-setup-one-time }
 
 1. העתיקו את טוקן ה-API שלכם מ-`~/.pypirc` (הערך `pypi-...` עבור `pypi.org`)
 2. הוסיפו אותו כ-secret של המאגר בשם `PYPI_API_TOKEN` תחת **Settings → Secrets → Actions**
 
 ה-job‏ `publish-pypi` יפרסם אז אוטומטית על כל תגית.
 
-## Secrets נדרשים במאגר
+## Secrets נדרשים במאגר {: #required-repository-secrets }
 
 הגדירו אלה תחת **Settings → Secrets → Actions**:
 
@@ -87,7 +87,7 @@ git tag v1.2.3 && git push origin v1.2.3
 
 build-ים ללא secrets אלה מצליחים אך מייצרים DMG לא-חתום/לא-מאושר-notarization (משתמשים יראו אזהרת Gatekeeper).
 
-## ייצוא תעודת ה-.p12
+## ייצוא תעודת ה-.p12 {: #exporting-the-p12-certificate }
 
 1. פתחו את **Keychain Access** → login keychain → **My Certificates**
 2. מצאו את **Developer ID Application: Your Name (TEAMID)** — הרחיבו אותה כדי לאשר שהמפתח הפרטי מקונן מתחת
@@ -100,7 +100,7 @@ build-ים ללא secrets אלה מצליחים אך מייצרים DMG לא-ח�
 
 5. הדביקו כערך של `APPLE_CERT_P12_BASE64`; הגדירו את `APPLE_CERT_P12_PASSWORD` לסיסמה משלב 3
 
-## מציאת שם התעודה שלכם
+## מציאת שם התעודה שלכם {: #finding-your-certificate-name }
 
 ```bash
 security find-identity -v -p codesigning | grep "Developer ID Application"
@@ -108,7 +108,7 @@ security find-identity -v -p codesigning | grep "Developer ID Application"
 
 העתיקו את המחרוזת המלאה במרכאות — זהו הערך עבור `APPLE_DEVELOPER_ID`.
 
-## מחיקת תגית שגויה
+## מחיקת תגית שגויה {: #deleting-a-bad-tag }
 
 ```bash
 git tag -d v1.2.3-alpha.1

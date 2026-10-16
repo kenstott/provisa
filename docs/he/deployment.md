@@ -1,6 +1,6 @@
 # פריסה (Deployment)
 
-## בחירת נתיב פריסה
+## בחירת נתיב פריסה {: #choosing-a-deployment-path }
 
 Provisa תומכת בשישה נתיבי פריסה. בחרו בהתבסס על הקהל וההקשר התפעולי שלכם:
 
@@ -13,13 +13,13 @@ Provisa תומכת בשישה נתיבי פריסה. בחרו בהתבסס על 
 | **VM-ים בענן (AWS)** | `terraform/deploy.sh` | פריסה רב-node בענן עם load balancer-ים |
 | **Kubernetes** | `helm/provisa/` | צוותים המפעילים כבר K8s |
 
-### VM לעומת Kubernetes
+### VM לעומת Kubernetes {: #vm-vs-kubernetes }
 
 שניהם ברמה ארגונית (enterprise-grade). נתיב ה-VM/AppImage פשוט יותר: אין אשכול לספק, אין מדיניות CNI או RBAC להגדיר, וה-AppImage הוא לגמרי self-contained (REQ-223). הוא משתלב באופן טבעי בכלי ניהול שרתים קיימים (Ansible, Puppet, סוכני Datadog, מעבירי Splunk, וכו').
 
 בחרו Kubernetes רק אם הצוות שלכם כבר מפעיל אשכול K8s ורוצה ש-Provisa ישתתף באותו מודל תפעולי (rolling deploys, HPA, observability מאוחד) (REQ-056). היכולות שוות-ערך — Kubernetes מוסיף overhead תפעולי, לא יכולת.
 
-### רכישת image ו-סריקת אבטחה
+### רכישת image ו-סריקת אבטחה {: #image-acquisition-and-security-scanning }
 
 כל נתיבי הייצור דורשים השגת ה-artifacts של Provisa לפני שכל פריסה יכולה לרוץ. "Air-gapped" מתייחס למה שקורה בזמן ההתקנה על המכונה היעד — ה-artifacts חייבים להיות מושגים תחילה.
 
@@ -33,9 +33,9 @@ Provisa תומכת בשישה נתיבי פריסה. בחרו בהתבסס על 
 
 ---
 
-## פיתוח (מקוד-מקור)
+## פיתוח (מקוד-מקור) {: #development-from-source }
 
-### מומלץ: `start-ui.sh`
+### מומלץ: `start-ui.sh` {: #recommended-start-uish }
 
 הדרך הקלה ביותר להריץ את Provisa מקוד-מקור. מתחיל את כל התשתית, ה-API של הbackend, ושרת הפיתוח של ה-UI בפקודה אחת (REQ-055). Ctrl+C מכבה הכל בצורה נקייה.
 
@@ -65,7 +65,7 @@ UI:      http://localhost:3000
 
 `--observability` — מוסיף instrumentation מלא של tracing ומטריקות. מוריד את סוכן ה-Java של OpenTelemetry ומתקן את `jvm.config` של Trino לטעון אותו, מציין (instruments) את ה-backend של Provisa עם ייצוא OTLP, ומתחיל את ה-collector של OTel, Prometheus, Tempo, ו-Grafana (`http://localhost:3100`) (REQ-330). התיקון ל-`jvm.config` מוחזר אוטומטית ב-Ctrl+C.
 
-### שלבים ידניים (backend בלבד, ללא UI)
+### שלבים ידניים (backend בלבד, ללא UI) {: #manual-steps-backend-only-no-ui }
 
 אם אתם צריכים רק את ה-API:
 
@@ -84,7 +84,7 @@ UI:      http://localhost:3000
 
 4. אמתו: `curl http://localhost:8001/health`
 
-### מחסנית מלאה (Provisa בקונטיינר)
+### מחסנית מלאה (Provisa בקונטיינר) {: #full-stack-provisa-in-container }
 
 כדי להריץ את ה-API כקונטיינר במקום על ה-host:
 
@@ -92,7 +92,7 @@ UI:      http://localhost:3000
 docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 ```
 
-### שירותים
+### שירותים {: #services }
 
 **ליבה (`docker-compose.core.yml`) — נדרש תמיד:**
 
@@ -120,7 +120,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | Tempo | — | אחסון trace (עם `--observability`) (REQ-330) |
 | Grafana | 3100 | dashboards (עם `--observability`) (REQ-330) |
 
-### Backend טלמטריה (`otlp2sql`)
+### Backend טלמטריה (`otlp2sql`) {: #telemetry-backend-otlp2sql }
 
 מחסנית ה-`--observability` שלמעלה (Collector ← Tempo/Prometheus/Grafana) היא נתיב
 טלמטריה אחד. השני הוא `otlp2sql` (`provisa.observability.otlp2sql`): מקלט
@@ -158,13 +158,13 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ---
 
-## מתקין macOS
+## מתקין macOS {: #macos-installer }
 
 עבור תחנות עבודה למפתחים והערכה. air-gapped לחלוטין — אינטרנט אינו נדרש לאחר ההורדה (REQ-227).
 
 מתקין הבסיס הוא **התקנה ילידית**: מנוע פדרציה DuckDB + control plane‏ SQLite + מטמון בזיכרון (fakeredis), ללא Docker, VM, Trino, Redis, או MinIO (REQ-972, REQ-979). מנוע הפדרציה הוא בחירת-אשף — DuckDB (ילידי, ברירת מחדל), Trino-על-Docker, או מנוע חיצוני (REQ-973). Observability הוא תמיד-פעיל self-telemetry הניתן לצפייה ב-Admin; מחסנית ה-collector/Prometheus/Grafana של Docker היא הדגמה חיצונית אופציונלית, לא מתג הפעלה/כיבוי (REQ-975). חבילת נתוני ההדגמה אופציונלית וכבויה כברירת מחדל (REQ-978). Trino, מחסנית ה-observability של Docker, וההדגמה הם תוספים כבדים הנפתרים local-first (תיקייה סמוכה-למתקין, volumes מותקנים, `~/Downloads`, ואז release ב-GitHub), כך שארגונים יכולים לטעון מראש tarballs עבור התקנות air-gapped (REQ-977).
 
-### שלבים
+### שלבים {: #steps }
 
 1. הורידו את `Provisa-<version>-macOS.dmg` מ[עמוד releases ב-GitHub](https://github.com/provisa/provisa/releases)
 2. פתחו את ה-DMG וגררו את **Provisa.app** ל-`/Applications`
@@ -185,13 +185,13 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ---
 
-## מתקין Windows
+## מתקין Windows {: #windows-installer }
 
 עבור תחנות עבודה למפתחים והערכה. air-gapped לחלוטין — אינטרנט אינו נדרש לאחר ההורדה (REQ-227).
 
 כמו macOS, מתקין ה-Windows הבסיסי הוא **שכבה ילידית**: runtime‏ Python עצמאי + wheel‏ provisa + DuckDB/pg_duckdb + control plane‏ SQLite, ללא משלוח Docker, VM, או image-י קונטיינר (REQ-979). מנוע הפדרציה (Trino), מחסנית ה-observability, וחבילת נתוני ההדגמה נוספים מאוחר יותר דרך מתקינים שכבתיים נפרדים, לפי סדר: מתקין ה-Container (‏`Provisa-Container-<version>.exe`, המוסיף WSL2 + containerd + Trino), אז מתקין ה-Obs (דורש את שכבת ה-container), ואז מתקין ה-Demo (דורש Core + Obs). הנחיית הפעלה-ראשונה מסבירה כיצד לאתחל את מנוע הפדרציה על ידי הרצת מתקין ה-Container (REQ-1005).
 
-### שלבים
+### שלבים {: #steps_1 }
 
 1. הורידו את `Provisa-<version>-windows-x64.exe` מ[עמוד releases ב-GitHub](https://github.com/provisa/provisa/releases)
 2. הריצו את המתקין — אין צורך בהרשאות admin; מתקין ל-`%LOCALAPPDATA%\Programs\Provisa\`
@@ -205,15 +205,15 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
    (REQ-224)
 
-### התמדת נתונים
+### התמדת נתונים {: #data-persistence_1 }
 
 כל הנתונים מאוחסנים ב-`%USERPROFILE%\.provisa\`.
 
 ---
 
-## Linux AppImage — VM יחיד או רב-Node
+## Linux AppImage — VM יחיד או רב-Node {: #linux-appimage-single-or-multi-node-vm }
 
-### מה זה
+### מה זה {: #what-it-is }
 
 `Provisa.AppImage` הוא קובץ הרצה יחיד self-contained הארוז (REQ-223, REQ-228):
 
@@ -223,7 +223,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ה-image של Provisa נבנה מראש בזמן האריזה — קוד מקור Python לעולם אינו נכלל.
 
-### מתי להשתמש
+### מתי להשתמש {: #when-to-use }
 
 - On-premises bare metal או VM (node יחיד או רב-node)
 - VM-ים בענן ללא אשכול K8s
@@ -232,7 +232,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ---
 
-### שלבים — Node יחיד
+### שלבים — Node יחיד {: #steps-single-node }
 
 1. הורידו את `Provisa.AppImage` מ[עמוד releases ב-GitHub](https://github.com/provisa/provisa/releases) והעבירו למכונה היעד
 2. הפכו אותו להרצה:
@@ -262,7 +262,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ---
 
-### שלבים — רב-Node (Primary)
+### שלבים — רב-Node (Primary) {: #steps-multi-node-primary }
 
 הריצו שלבים אלה על ה-node ה-primary תחילה. secondaries חייבים להיות מוגדרים לאחר שה-primary רץ.
 
@@ -298,7 +298,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ---
 
-### שלבים — רב-Node (כל Secondary)
+### שלבים — רב-Node (כל Secondary) {: #steps-multi-node-each-secondary }
 
 חזרו על שלבים אלה על כל node נוסף לאחר שה-primary רץ ונגיש.
 
@@ -332,7 +332,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ---
 
-### טופולוגיית Primary / Secondary
+### טופולוגיית Primary / Secondary {: #primary-secondary-topology }
 
 **Node ה-primary** מריץ את כל שירותי ה-singleton:
 
@@ -352,7 +352,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ---
 
-### הפעלה-ראשונה לא-אינטראקטיבית (אוטומטית)
+### הפעלה-ראשונה לא-אינטראקטיבית (אוטומטית) {: #non-interactive-automated-first-launch }
 
 עבור Terraform, cloud-init, או Ansible — העבירו דגלים במקום לענות על prompts:
 
@@ -375,11 +375,11 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ---
 
-## פריסת VM בענן — Terraform (AWS)
+## פריסת VM בענן — Terraform (AWS) {: #cloud-vm-deployment-terraform-aws }
 
 מספק אשכול Provisa רב-node מלא על AWS — VPC, security groups, מופעי EC2, ALB, NLB — בפקודה אינטראקטיבית אחת. (REQ-564)
 
-### קבצים
+### קבצים {: #files }
 
 | קובץ | מטרה |
 | ------ | --------- |
@@ -388,7 +388,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 | `terraform/aws/main.tf` | VPC, subnets, security groups, IAM, EC2, ALB, NLB |
 | `terraform/aws/outputs.tf` | URL-י נקודת קצה ו-IP-י node |
 
-### שלבים
+### שלבים {: #steps_2 }
 
 1. הורידו את `Provisa.AppImage` מ[עמוד releases ב-GitHub](https://github.com/provisa/provisa/releases)
 
@@ -434,7 +434,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
     curl http://<api_endpoint>/health
     ```
 
-### שאלות האשף
+### שאלות האשף {: #wizard-questions }
 
 | שאלה | ברירת מחדל | הערות |
 | ---------- | --------- | ------- |
@@ -450,7 +450,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 | גישת SSH | לא | דורש שם זוג-מפתחות קיים + CIDR admin |
 | CIDR‏ VPC | `10.0.0.0/16` | |
 
-### מדריך גודל מופע
+### מדריך גודל מופע {: #instance-sizing-guide }
 
 | סוג | vCPU | RAM | עובדי Trino/node | מקרה שימוש |
 | ------ | ------ | ----- | -------------------- | ---------- |
@@ -461,7 +461,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 כל ה-nodes תורמים עובדים לקואורדינטור אחד על ה-primary (REQ-028). אשכול `m7i.4xlarge` בן 3 nodes מניב 6 עובדי Trino בסך הכל.
 
-### מה מסופק
+### מה מסופק {: #what-gets-provisioned }
 
 - VPC עם שני subnets ציבוריים על פני שני אזורי זמינות (REQ-564)
 - Security groups: קבוצת LB (‏ingress ציבורי על 8000/8815), קבוצת nodes (LB ← nodes, תוך-אשכולי, SSH אופציונלי)
@@ -472,7 +472,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 - NLB על פורט 8815 — Arrow Flight / gRPC (REQ-143)
 - שני ה-LB-ים מצורפים לכל ה-nodes
 
-### רשימת דרישות מוקדמות
+### רשימת דרישות מוקדמות {: #prerequisites-checklist }
 
 - [ ] הרשאות IAM: EC2 מלא, ELB מלא, VPC מלא, יצירת תפקיד IAM, S3‏ GetObject על bucket ה-AppImage
 - [ ] `Provisa.AppImage` הועלה ל-S3
@@ -482,7 +482,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 - [ ] רשומות DNS מתוכננות עבור ALB / NLB (אופציונלי אך מומלץ)
 - [ ] תעודת ACM מוכנה אם HTTPS נדרש (לא כלולה ב-Terraform הבסיסי)
 
-### סודות
+### סודות {: #secrets }
 
 אין סודות משובצים ב-Terraform. ה-AppImage מייצר אישורים בעת הפעלה-ראשונה וכותב אותם ל-`~/.provisa/config.yaml` על כל node (REQ-563). עבור ייצור, שלפו את טוקן ה-admin מה-node ה-primary לאחר הפריסה:
 
@@ -494,13 +494,13 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 ## Kubernetes / Helm
 
-### מתי להשתמש
+### מתי להשתמש {: #when-to-use_1 }
 
 הצוות שלכם כבר מפעיל אשכול Kubernetes ורוצה ש-Provisa ישתתף באותו מודל תפעולי (REQ-056). אם אתם מעריכים את Provisa או פורסים on-premises ללא אשכול קיים, נתיב ה-AppImage פשוט יותר.
 
 הערה: ה-AppImage של Provisa אינו יכול לרוץ בתוך pod‏ Kubernetes — הוא דורש FUSE ודמון Docker חסר-שורש, שאינם זמינים בפרופילי אבטחת pod סטנדרטיים.
 
-### שלבים
+### שלבים {: #steps_3 }
 
 1. אשרו גישת אשכול:
 
@@ -529,17 +529,48 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    - **Redis** — בתוך-אשכולי או חיצוני (‏`redis.host`)? שנו את הסיסמה ברירת המחדל (`redis.password`)
    - **MinIO / S3** — MinIO בתוך-אשכולי או S3 ילידי? עבור AWS, השתמשו ב-S3 עם תפקיד IAM
    - **סודות** — העבירו דרך `--set` להערכה; השתמשו ב-External Secrets או Vault Agent לייצור
+   - **מטמון ה-coordinator של Trino** — כרך של 1Gi שנדרש כברירת מחדל ומעוגן ב-`/data/trino/cache` (`trino.coordinator.cache.persistence`: `enabled`, `size`, `storageClass`). תוצאות ה-describe של מקור Salesforce נשמרות שם, כדי ש-coordinator שהופעל מחדש לא יבזבז שוב את מכסת ה-API של הארגון על תיאורו. כבו אותו רק כשאף מקור אינו זקוק לו (REQ-1946)
 
-4. התקינו את ה-chart:
+4. תנו לפריסה את מפתח המאסטר שלה. המפתח מצפין את כספת הסודות; כל pod של ה-API חייב
+   להחזיק באותו מפתח, והוא חייב לשרוד כל pod. ה-chart אינו מתרנדר בלעדיו.
+
+   ```bash
+   kubectl create namespace provisa
+   kubectl create secret generic provisa-master-key --namespace provisa \
+     --from-literal=master-key="$(openssl rand -base64 32)"
+   ```
+
+   שמרו עותק של המפתח מחוץ ל-cluster. כספת שנכתבה במפתח שאבד לאחר מכן
+   אינה ניתנת לפתיחה. החלופה ל-Secret היא כרך נתונים קבוע
+   (`encryption.dataVolume.enabled=true`), שבו המוצר שומר את המפתח שהוא מייצר; ראו
+   `encryption` ב-`values.yaml`.
+
+5. התקינו את ה-chart:
 
    ```bash
    helm install provisa helm/provisa/ \
+     --set encryption.existingSecret=provisa-master-key \
+     --set auth.provider=oidc \
+     --set auth.oidc.issuerUrl=https://login.example.com/realms/main \
+     --set auth.oidc.clientId=provisa \
      --set config.pgPassword=<password> \
      --set config.adminToken=<token> \
      --set s3.endpoint=https://s3.amazonaws.com \
      --set s3.bucket=my-provisa-results \
      --namespace provisa --create-namespace
    ```
+
+   ה-chart אינו מתרנדר עד שנבחר `auth.provider`: `oidc` (מנפיק OpenID Connect
+   ארגוני), `saml` (`auth.saml.idpMetadataUrl` ו-`auth.saml.publicUrl`), `ldap` (`auth.ldap.*`),
+   `local` (חשבון החירום בלבד, `auth.breakGlass.*`) או `none` (ללא אימות,
+   לפיתוח בלבד). כל אישור מגיע מ-Secret של Kubernetes; `ldap`, `saml` ו-`local`
+   צריכים גם את `auth.sessionSecret.existingSecret`, המפתח שחותם על סשנים של הדפדפן. ראו `auth`
+   ב-`values.yaml`.
+
+   ה-coordinator של Trino מריץ את ההצהרות של כל ארגון בקבוצת המשאבים שלו,
+   `global.tenant-<org>`, מתוך קובץ קבוצות המשאבים שה-chart מספק. הצהרות שעוברות דרך
+   ה-proxy של Arrow Flight חולקות קבוצה אחת, `global.flight`: ה-proxy פותח חיבור Trino משלו
+   ואינו יכול לשאת את הארגון.
 
    אם משתמשים ברישום פנימי, הוסיפו דריסות image:
 
@@ -550,22 +581,22 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    --set trino.image.tag=480
    ```
 
-5. אמתו ש-pods רצים:
+6. אמתו ש-pods רצים:
 
    ```bash
    kubectl get pods -n provisa
    ```
 
-6. בדקו את ה-API:
+7. בדקו את ה-API:
 
    ```bash
    kubectl port-forward svc/provisa 8000:8000 -n provisa
    curl http://localhost:8000/health
    ```
 
-7. (אופציונלי) הפעילו ingress עבור גישה חיצונית — הגדירו `ingress.enabled: true` והגדירו את בקר ה-ingress שלכם
+8. (אופציונלי) הפעילו ingress עבור גישה חיצונית — הגדירו `ingress.enabled: true` והגדירו את בקר ה-ingress שלכם
 
-### רשימת דרישות מוקדמות
+### רשימת דרישות מוקדמות {: #prerequisites-checklist_1 }
 
 - [ ] Kubernetes 1.26+, Helm 3.12+
 - [ ] מחלקת אחסון התומכת ב-PVC-ים `ReadWriteOnce` (עבור שירותים stateful בתוך-אשכוליים)
@@ -576,7 +607,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 - [ ] טוקן admin נבחר
 - [ ] בקר ingress מוגדר (אם נדרשת גישה חיצונית)
 
-### ערכים מרכזיים
+### ערכים מרכזיים {: #key-values }
 
 | ערך | ברירת מחדל | תיאור |
 | ------- | --------- | ------------- |
@@ -606,7 +637,7 @@ kubectl scale deployment/provisa --replicas=5 --namespace provisa
 
 עובדי מנוע פדרציה scale-ים באופן עצמאי — יותר עובדים מגדילים תפוקה ויכולת שאילתות במקביל (REQ-056). (REQ-057)
 
-### עדכון תצורה
+### עדכון תצורה {: #updating-config }
 
 ```bash
 kubectl create configmap provisa-config \
@@ -617,7 +648,7 @@ kubectl rollout restart deployment/provisa --namespace provisa
 
 ---
 
-## זמינות גבוהה (High Availability) והתאוששות
+## זמינות גבוהה (High Availability) והתאוששות {: #high-availability-recovery }
 
 Provisa מחילה מודל התאוששות דו-שכבתי על פני כל מצבי הפריסה (REQ-703):
 
@@ -626,13 +657,13 @@ Provisa מחילה מודל התאוששות דו-שכבתי על פני כל מ
 
 כשלים ברמת-מכונה וברמת-אשכול נותרים באחריות המפעיל — ספקו nodes מיותרים (redundant) ו-load balancer (נתיבי Terraform ו-Helm שלמעלה) עבור סובלנות אובדן-node.
 
-## תלויות מנוע פדרציה
+## תלויות מנוע פדרציה {: #federation-engine-dependencies }
 
 מנועי הפדרציה של ה-warehouse דורשים חבילות Python ורכיבים ברמת-מערכת מעבר להתקנת ברירת המחדל של Provisa. כל חבילות ה-Python הרשומות כאן מוצהרות ב-`pyproject.toml` ומותקנות כחלק מ-`pip install provisa` הסטנדרטי או `pip install -e .` [tool-verified: `pyproject.toml` lines 44–52].
 
 חבילות ה-Python מגיעות עם התקנת ברירת המחדל של Provisa — אין צורך ב-extras אופציונליים עבור אף מנוע warehouse. הפריטים ברמת-המערכת (דרייבר ODBC, CLI-י ענן, מפתחות service-account) חייבים להיות מותקנים בנפרד.
 
-### חבילות Python (כבר בתלויות הליבה)
+### חבילות Python (כבר בתלויות הליבה) {: #python-packages-already-in-core-dependencies }
 
 [tool-verified: `pyproject.toml` lines 41–52]
 
@@ -649,7 +680,7 @@ Provisa מחילה מודל התאוששות דו-שכבתי על פני כל מ
 | `protobuf>=6.33.5,<7` | BigQuery, gRPC | נעילת תאימות — `google-cloud-*` ו-OTel חולקים runtime protobuf; `<7` שומר עליהם מיושרים |
 | `grpcio-status<1.82` | gRPC | מתיישר עם נעילת `protobuf<7` |
 
-### דרישות ברמת-מערכת
+### דרישות ברמת-מערכת {: #system-level-requirements }
 
 אלה אינן חבילות Python — הן חייבות להיות מותקנות על ה-host או הקונטיינר המריץ את Provisa.
 
@@ -722,7 +753,7 @@ export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 
 מחבר ה-Databricks יורש זאת מ-`requests` — אין צורך במשתנה סביבה ספציפי ל-Databricks.
 
-### רשימת בדיקה לפי מנוע
+### רשימת בדיקה לפי מנוע {: #per-engine-checklist }
 
 **Databricks** (REQ-987)
 
@@ -766,7 +797,7 @@ export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 
 ---
 
-## משתני סביבה
+## משתני סביבה {: #environment-variables }
 
 | משתנה | ברירת מחדל | מטרה |
 | ---------- | --------- | --------- |
@@ -801,7 +832,7 @@ export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 
 ---
 
-## פקודות CLI
+## פקודות CLI {: #cli-commands }
 
 ```bash
 provisa start              # Start all services
@@ -817,7 +848,7 @@ provisa import FILE        # Replace running config with YAML from FILE
 
 (REQ-224, REQ-164)
 
-### זרימת קידום תצורה (dev ← test ← prod)
+### זרימת קידום תצורה (dev ← test ← prod) {: #config-promotion-workflow-dev-test-prod }
 
 כל ההגדרות הספציפיות-לסביבה (מחרוזות חיבור, סודות, פורטים) שייכות במשתני סביבה או מנהלי סודות — לא בתצורה המיוצאת. ה-YAML המיוצא לוכד את המודל הסמנטי שלכם: מקורות, דומיינים, תפקידים, תצוגות. (REQ-164)
 

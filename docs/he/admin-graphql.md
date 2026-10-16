@@ -1,4 +1,4 @@
-# הפניית Admin GraphQL API
+# הפניית Admin GraphQL API {: #admin-graphql-api-reference }
 
 ה-API של Admin GraphQL הוא מישור ההגדרות של Provisa. זהו ה-API שאפליקציית ה-Web של הניהול קוראת לו בכל פעולת ניהול — יצירת מקורות, רישום טבלאות, הגדרת קשרים, הגדרת כללי RLS, וכל דבר אחר שמעצב את המודל.
 
@@ -8,7 +8,7 @@
 
 ---
 
-## כיצד ה-UI מדבר עם API זה
+## כיצד ה-UI מדבר עם API זה {: #how-the-ui-talks-to-this-api }
 
 אפליקציית ה-Web של הניהול משתמשת ב-Apollo Client, המצביע על `${API_BASE}/admin/graphql`. [tool-verified: `provisa-ui/src/apolloClient.ts:19`]
 
@@ -18,7 +18,7 @@
 
 ---
 
-## הרשאה
+## הרשאה {: #authorization }
 
 **מצב פיתוח:** כאשר אין אימות מוגדר וכל בקשה מגיעה כעקרון אנונימי, כל בדיקות היכולת מדולגות. זה שומר על התקנה מקומית פונקציונלית ללא הגדרת אימות. [tool-verified: `provisa/api/admin/capabilities.py:98-99`]
 
@@ -30,7 +30,7 @@
 
 ---
 
-## סוג החזרה משותף
+## סוג החזרה משותף {: #common-return-type }
 
 רוב ה-mutations מחזירות `MutationResult`. [tool-verified: `provisa/api/admin/types.py:1181-1188`]
 
@@ -49,7 +49,7 @@ type MutationResult {
 
 ## Queries
 
-### מקורות
+### מקורות {: #sources }
 
 #### `sources → [SourceType!]!`
 
@@ -59,12 +59,16 @@ type MutationResult {
 query {
   sources {
     id type host port database username dialect
-    cacheEnabled cacheTtl preferMaterialized
+    cacheEnabled cacheTtl replicate
     loadProtected offPeakWindow offPeakTz
     gqlNamingConvention path allowedDomains
     description mappingJson federationHintsJson
     changeSignal passwordRef
-    cdc { bootstrapServers topicPrefix schemaRegistryUrl consumerGroupId }
+    cdc {
+      bootstrapServers topicPrefix consumerGroupId
+      schemaRegistryUrl schemaRegistryAuth schemaRegistryUsername schemaRegistryPassword
+      schemaRegistryToken schemaRegistryClientCert schemaRegistryClientKey schemaRegistryCa
+    }
   }
 }
 ```
@@ -105,7 +109,7 @@ query {
 
 ---
 
-### טבלאות
+### טבלאות {: #tables }
 
 #### `tables → [RegisteredTableType!]!`
 
@@ -122,7 +126,7 @@ query {
 
 תצוגה מקדימה של סיכום הרענון/השירות האפקטיבי עבור ידיות טבלה *טיוטה* (שאינן שמורות), כך שסיכום ראש הטופס מתעדכן ככל שהשדות משתנים ללא שמירה של דבר. אותה גזירה כמו `refreshPolicySummary` לעיל. (REQ-1143) [tool-verified: `provisa/api/admin/schema_query.py:947-979`]
 
-ארגומנטים: `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `preferMaterialized`, `loadProtected`, `offPeakWindow`, `offPeakTz`, `changeSignal`.
+ארגומנטים: `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `replicate`, `loadProtected`, `offPeakWindow`, `offPeakTz`, `changeSignal`.
 
 #### `columnDependents(tableId: String!, renamed: [String!], removed: [String!]) → [ColumnDependentsType!]!`
 
@@ -130,7 +134,7 @@ query {
 
 ---
 
-### קשרים
+### קשרים {: #relationships }
 
 #### `relationships → [RelationshipType!]!`
 
@@ -147,7 +151,7 @@ query {
 
 ---
 
-### תחומים, תפקידים ומשתמשים
+### תחומים, תפקידים ומשתמשים {: #domains-roles-users }
 
 #### `domains → [DomainType!]!`
 
@@ -163,7 +167,7 @@ query {
 
 ---
 
-### כללי RLS
+### כללי RLS {: #rls-rules }
 
 #### `rlsRules → [RLSRuleType!]!`
 
@@ -171,7 +175,7 @@ query {
 
 ---
 
-### מוצרי נתונים
+### מוצרי נתונים {: #data-products }
 
 #### `dataProducts → [DataProductType!]!`
 
@@ -179,7 +183,7 @@ query {
 
 ---
 
-### תגים
+### תגים {: #tags }
 
 #### `tags → [TagType!]!`
 
@@ -199,7 +203,7 @@ query {
 
 ---
 
-### מטמון
+### מטמון {: #cache }
 
 #### `cacheStats → CacheStatsType`
 
@@ -219,7 +223,7 @@ query {
 
 ---
 
-### תקינות המערכת
+### תקינות המערכת {: #system-health }
 
 #### `systemHealth → SystemHealthType`
 
@@ -238,7 +242,7 @@ query {
 
 ---
 
-### משימות מתוזמנות
+### משימות מתוזמנות {: #scheduled-tasks }
 
 #### `scheduledTasks → [ScheduledTaskType!]!`
 
@@ -246,7 +250,7 @@ query {
 
 ---
 
-### איכות נתונים
+### איכות נתונים {: #data-quality }
 
 #### `dqContractParse(checker: String!, contractText: String!) → DqContractType`
 
@@ -266,7 +270,7 @@ query {
 
 ---
 
-### תצוגות מקדימות של מקורות
+### תצוגות מקדימות של מקורות {: #source-previews }
 
 #### `neo4jPreview(sourceId: String!, cypher: String!) → QueryPreviewType`
 
@@ -290,7 +294,7 @@ query {
 
 ---
 
-### לוחות שנה
+### לוחות שנה {: #calendars }
 
 #### `calendars → [CalendarType!]!`
 
@@ -298,7 +302,7 @@ query {
 
 ---
 
-### מדדים
+### מדדים {: #metrics }
 
 #### `metrics → [MetricType!]!`
 
@@ -306,7 +310,7 @@ query {
 
 ---
 
-### גרסת סכמה
+### גרסת סכמה {: #schema-version }
 
 #### `schemaVersion → String!`
 
@@ -314,7 +318,7 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### עוזרי AI
+### עוזרי AI {: #ai-helpers }
 
 #### `generateTableDescription(tableId: String!) → String!`
 
@@ -326,25 +330,25 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### בקשות יצירה
+### בקשות יצירה {: #creation-requests }
 
 #### `creationRequests → [CreationRequestType!]!`
 
-בקשות יצירה ממתינות, גלויות לקוראים המחזיקים ביכולת היצירה הרלוונטית. משמש כאשר חבר ללא `create_relationship` או `create_view` מגיש בקשה שמחזיק זכות חייב לאשר. (REQ-434, REQ-063) [tool-verified: `provisa/api/admin/schema_query.py:267-289`]
+בקשות יצירה ממתינות, הגלויות לקוראים שיש להם יכולת היצירה המתאימה. משמש כשחבר ללא `create_relationship` או `create_view` שולח בקשה שמחזיק הזכות צריך לאשר. בקשת קשר מוצגת למשתמשים שזכות ה-`create_relationship` שלהם מגיעה לתחום של טבלת המקור או היעד שלה, ולמשתמש שהגיש אותה. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_query.py:371-420`]
 
 ---
 
 ## Mutations
 
-### מקורות
+### מקורות {: #sources_1 }
 
 #### `createSource(input: SourceInput!) → MutationResult`
 
-רישום מקור נתונים חדש. מאמת את החיבור לפני שמירה — מקור שנדחה אינו משאיר רשומת כספת מאחוריו. שומר אישורים בכספת הארגון ומתעד את ההפניה; הטקסט הגלוי לעולם אינו נוחת במסד הנתונים. (REQ-012, REQ-013) דורש את היכולת `source_registration`. [tool-verified: `provisa/api/admin/schema_mutation.py:616-781`]
+רושם מקור נתונים חדש. מזהה שכבר קיים נדחה (`schema.source_id_taken`) אחרי בדיקות ההגדרה ולפני שדבר מוכן או נכתב; מקור משתנה עם `updateSource`. בודק את החיבור לפני השמירה — מקור שנדחה אינו משאיר רשומה במאגר. שומר אישורים בכספת של הארגון ורושם הפניה; טקסט גלוי לעולם אינו מגיע למסד הנתונים. (REQ-012, REQ-013) דורש את היכולת `source_registration`. [tool-verified: `provisa/api/admin/schema_mutation.py:616-781`]
 
 #### `updateSource(input: SourceInput!) → MutationResult`
 
-עדכון פרטי חיבור, תיאור והגדרות של מקור קיים. מפרק ומחבר מחדש את נקודת הקצה של pgwire עבור מקורות file/SharePoint כך ששינוי נתיב נכנס לתוקף מיידית. דורש `source_registration`. [tool-verified: `provisa/api/admin/schema_mutation.py:922-1073`]
+מעדכן את פרמטרי החיבור, התיאור והקונפיגורציה של מקור קיים, ואז מכין אותו מחדש על המנוע הקשור, בונה מחדש את הסכמות ומיישב את הטבלאות הטעונות שלו, כך שמקור שנשמר תחת מנוע אחד מוגש על ידי מנוע שעברו אליו מאוחר יותר (REQ-1730). מנתק ומחבר מחדש את נקודת הקצה של pgwire למקורות קבצים/SharePoint כדי ששינוי נתיב ייכנס לתוקף מיד. דורש `source_registration`. [tool-verified: `provisa/api/admin/schema_mutation.py:922-1073`]
 
 #### `deleteSource(id: String!) → MutationResult`
 
@@ -352,15 +356,15 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 #### `renameSource(oldId: String!, newId: String!) → MutationResult`
 
-שינוי שם מזהה מקור. [tool-verified: `provisa/api/admin/schema_mutation.py:1076-1098`]
+משנה את מזהה המקור. מזהה חדש שבבעלות מקור אחר נדחה (`schema.source_id_taken`) ודבר אינו נכתב; שינוי שם של מקור למזהה שלו עצמו אינו משנה דבר. [tool-verified: `provisa/core/repositories/source.py` `rename`]
 
 #### `updateSourceCache(sourceId: String!, cacheEnabled: Boolean!, cacheTtl: Int) → MutationResult`
 
 הפעלה או השבתה של מטמון תוצאות שאילתה עבור מקור, וקביעת ה-TTL בשניות. [tool-verified: `provisa/api/admin/schema_mutation.py:2327-2350`]
 
-#### `updateSourcePreferMaterialized(sourceId: String!, preferMaterialized: Boolean!) → MutationResult`
+#### `updateSourceReplicate(sourceId: String!, replicate: Int) → MutationResult`
 
-כפיה (או שחרור) של פדרציה מטריאליזית עבור כל הטבלאות במקור. (REQ-826) [tool-verified: `provisa/api/admin/schema_mutation.py:2379-2402`]
+קובע מתי טבלאות המקור מוגשות מהעותקים שלהן: `null` Default, `-1` Never, `N` גדול מ-0 — ברגע שטבלה חוצה N הצהרות מנוהלות במרווח, `0` Always. טבלה ללא ערך משלה יורשת אותו. נדחה אם היה משלב `load_protected` עם `-1` או משאיר בלי `cache_ttl` טבלת `ttl` שהוא משכפל. דורש `source_registration`. (REQ-826, REQ-1907) [tool-verified: `provisa/api/admin/schema_mutation.py` `update_source_replicate`]
 
 #### `updateSourceLoadProtection(sourceId, loadProtected, offPeakWindow, offPeakTz) → MutationResult`
 
@@ -388,7 +392,7 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### טבלאות
+### טבלאות {: #tables_1 }
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
@@ -406,9 +410,9 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 דריסת ה-TTL של המטמון עבור טבלה אחת. [tool-verified: `provisa/api/admin/schema_mutation.py:2353-2376`]
 
-#### `updateTablePreferMaterialized(tableId: Int!, preferMaterialized: Boolean) → MutationResult`
+#### `updateTableReplicate(tableId: Int!, replicate: Int) → MutationResult`
 
-דריסת פדרציה מטריאליזית עבור טבלה אחת. `null` = ירושה מברירת המחדל של המקור. (REQ-826) [tool-verified: `provisa/api/admin/schema_mutation.py:2405-2428`]
+קובע מתי טבלה אחת מוגשת מהעותק שלה. `null` = ירושת הערך של המקור. אותם ערכים ודחיות כמו `updateSourceReplicate`. דורש `table_registration`. (REQ-826, REQ-1907) [tool-verified: `provisa/api/admin/schema_mutation.py` `update_table_replicate`]
 
 #### `updateTableLoadProtection(tableId, loadProtected, offPeakWindow, offPeakTz) → MutationResult`
 
@@ -440,11 +444,15 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### קשרים
+### קשרים {: #relationships_1 }
 
-#### `upsertRelationship(input: RelationshipInput!) → MutationResult`
+#### `createRelationship(input: RelationshipInput!) → MutationResult`
 
-יצירה או עדכון קשר. השער בודק את תחום טבלת המקור (לא זה של היעד). קשת חוצת-תחומים נשמרת עם `needsReview: true`. קורא שאין לו `create_relationship` מועמד בתור כבקשת יצירה. קשתות צומת (many-to-many) דורשות אורכי רשימת-מפתח תואמים. (REQ-019, REQ-020, REQ-366, REQ-434) [tool-verified: `provisa/api/admin/schema_mutation.py:2297-2300`]
+יוצר קשר. הבדיקה מסתכלת על התחום של טבלת המקור (לא היעד). קשת בין תחומים נשמרת עם `needsReview: true`. קורא ללא `create_relationship` נכנס לתור כבקשת יצירה. קשתות junction (רבים-לרבים) דורשות רשימות מפתחות באורך שווה. נדחה בשמו לפני כל כתיבה: מזהה שכבר קיים (`schema.relationship_id_taken`); שם טבלה שאינו מתפענח לאף טבלה רשומה או מתפענח לכמה (`schema.relationship_unknown_source`, `_target`, `_junction`, `schema.relationship_ambiguous_table`); כינוי Cypher או GraphQL שכבר תפוס על ידי קשר אחר של אותה טבלת מקור (`schema.relationship_alias_taken`, `schema.relationship_graphql_alias_taken`). טבלה נקובה בשמה הווירטואלי: הכינוי שלה, כשיש לה. (REQ-019, REQ-020, REQ-366, REQ-434) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_relationship_as_caller`, `save_relationship`]
+
+#### `updateRelationship(input: RelationshipInput!) → MutationResult`
+
+משנה קשר קיים עם אותן בדיקות כמו `createRelationship`. מזהה שאינו בבעלות אף קשר נדחה (`schema.relationship_not_found`). שינוי צריך את הזכות עצמה; הוא לעולם אינו נכנס לתור כבקשה. (REQ-019, REQ-020) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_relationship_as_caller`]
 
 #### `deleteRelationship(id: String!) → MutationResult`
 
@@ -452,11 +460,11 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### תחומים
+### תחומים {: #domains }
 
 #### `createDomain(input: DomainInput!) → MutationResult`
 
-יצירת תחום. מילות מקטע שמורות (`tables`, `relationships`, ומקטעי נתיב URI אחרים) נדחות, וכך גם ה-wildcard המילולי `*`. דורש את היכולת `org_settings`. (REQ-021, REQ-1531) [tool-verified: `provisa/api/admin/schema_mutation.py:1135-1189`]
+יוצר תחום. מזהה שכבר קיים נדחה (`schema.domain_id_taken`). מילות מקטע שמורות (`tables`, `relationships` ושאר מקטעי נתיב ה-URI) נדחות, וכך גם ליטרל התו הכללי `*`. דורש את היכולת `org_settings`. (REQ-021, REQ-1531) [tool-verified: `provisa/api/admin/schema_mutation.py:1135-1189`]
 
 #### `deleteDomain(id: String!) → MutationResult`
 
@@ -468,11 +476,15 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### תפקידים
+### תפקידים {: #roles }
 
 #### `createRole(input: RoleInput!) → MutationResult`
 
-יצירה או החלפה של תפקיד עם יכולות, גישת תחום, מגבלות קצב אופציונליות, ותפקיד הורה אופציונלי. מאמת שההורה קיים ושרשרת ההורים חופשית ממעגלים. דורש `user_management`. (REQ-042, REQ-1531, REQ-1677) [tool-verified: `provisa/api/admin/schema_mutation.py:1657-1712`]
+יוצר תפקיד עם יכולות, גישה לתחומים, מגבלות בקשות אופציונליות ותפקיד הורה אופציונלי. בודק שההורה קיים ושרשרת ההורים אינה מכילה מעגלים. אחרי בדיקות ההגדרה, מזהה שכבר קיים נדחה (`schema.role_id_taken`). דורש `user_management`. (REQ-042, REQ-1531, REQ-1677) [tool-verified: `provisa/api/admin/schema_mutation.py:1657-1712`]
+
+#### `updateRole(input: RoleInput!) → MutationResult`
+
+משנה תפקיד קיים עם אותן בדיקות כמו `createRole`. מזהה שאינו בבעלות אף תפקיד נדחה (`schema.role_not_found`). הגדרה מחדש של תפקיד היא פעולה בכל תחום שהוא מגיע אליו. (REQ-042, REQ-1531) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_role`]
 
 #### `deleteRole(id: String!) → MutationResult`
 
@@ -480,7 +492,7 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### כללי RLS
+### כללי RLS {: #rls-rules_1 }
 
 #### `upsertRlsRule(input: RLSRuleInput!) → MutationResult`
 
@@ -494,11 +506,15 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### מוצרי נתונים
+### מוצרי נתונים {: #data-products_1 }
 
 #### `createDataProduct(input: DataProductInput!) → MutationResult`
 
-יצירה או החלפה של מוצר נתונים. דורש את היכולת `data_product_rw`. (REQ-1634) [tool-verified: `provisa/api/admin/schema_mutation.py:1216-1259`]
+יוצר מוצר נתונים. מזהה שכבר קיים נדחה (`schema.data_product_id_taken`). דורש את היכולת `data_product_rw`. (REQ-1634) [tool-verified: `provisa/api/admin/schema_mutation.py:1216-1259`]
+
+#### `updateDataProduct(input: DataProductInput!) → MutationResult`
+
+משנה מוצר נתונים קיים. מזהה שאינו בבעלות אף מוצר נדחה (`schema.data_product_not_found`). דורש `data_product_rw`. (REQ-1634) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_data_product`]
 
 #### `deleteDataProduct(id: String!) → MutationResult`
 
@@ -506,11 +522,15 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### תגים
+### תגים {: #tags_1 }
 
-#### `upsertTag(input: TagInput!) → MutationResult`
+#### `createTag(input: TagInput!) → MutationResult`
 
-יצירה או עדכון של הגדרת תג. תגי מערכת ותגים נגזרים אינם ניתנים להגדרה מחדש. `appliesTo` חייב להיות תת-קבוצה לא-ריקה של `["source", "table", "column", "relationship", "command"]`. (REQ-1373, REQ-1375) [tool-verified: `provisa/api/admin/schema_mutation.py:1288-1361`]
+יוצר הגדרת תג. מזהה שכבר קיים נדחה (`schema.tag_id_taken`). תגי מערכת ותגים נגזרים אינם ניתנים להגדרה מחדש. `appliesTo` חייב להיות תת-קבוצה לא ריקה של `["source", "table", "column", "relationship", "command"]`. (REQ-1373, REQ-1375) [tool-verified: `provisa/api/admin/schema_mutation.py:1288-1361`]
+
+#### `updateTag(input: TagInput!) → MutationResult`
+
+משנה הגדרת תג קיימת עם אותן בדיקות כמו `createTag`. מזהה שאינו בבעלות אף תג נדחה (`schema.tag_not_found`). (REQ-1373) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_tag`]
 
 #### `deleteTag(id: String!) → MutationResult`
 
@@ -534,11 +554,15 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### מדדים
+### מדדים {: #metrics_1 }
 
-#### `upsertMetric(input: MetricInput!) → MutationResult`
+#### `createMetric(input: MetricInput!) → MutationResult`
 
-יצירה או החלפה של הגדרת מדד מנוהל. הביטוי חייב להתפענח תחת sqlglot ולהכיל לפחות פונקציית צבירה אחת. יוצר מחדש את כל ה-views המורכבים-מדד המפנים למדד זה. דורש `table_registration`. (REQ-1317, REQ-1318) [tool-verified: `provisa/api/admin/schema_mutation.py:1779-1831`]
+יוצר הגדרת מדד מנוהל. שם שכבר קיים נדחה (`schema.metric_name_taken`). הביטוי חייב להיות ניתן לניתוח על ידי sqlglot ולהכיל לפחות פונקציית צבירה אחת. יוצר מחדש כל view המורכב ממדדים שמפנה למדד זה. דורש `table_registration`. (REQ-1317, REQ-1318) [tool-verified: `provisa/api/admin/schema_mutation.py:1779-1831`]
+
+#### `updateMetric(input: MetricInput!) → MutationResult`
+
+מחליף את ההגדרה של מדד קיים עם אותן בדיקות כמו `createMetric`. שם שאינו בבעלות אף מדד נדחה (`schema.metric_not_found`). השמירה צריכה את התחומים של הביטוי החדש ושל ההגדרה המוחלפת. (REQ-1317, REQ-1531) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_metric`]
 
 #### `deleteMetric(name: String!) → MutationResult`
 
@@ -546,7 +570,7 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### לוחות שנה
+### לוחות שנה {: #calendars_1 }
 
 #### `createCalendar(input: CalendarInput!) → MutationResult`
 
@@ -570,7 +594,7 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### מטמון
+### מטמון {: #cache_1 }
 
 #### `purgeCache → MutationResult`
 
@@ -582,7 +606,7 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### משימות מתוזמנות
+### משימות מתוזמנות {: #scheduled-tasks_1 }
 
 #### `createScheduledTask(id, name, cron, kind, webhookName, argsJson, sql) → MutationResult`
 
@@ -598,7 +622,7 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### איכות נתונים
+### איכות נתונים {: #data-quality_1 }
 
 #### `dryRunDqContract(sourceId: String!, contractText: String!) → DqDryRunType`
 
@@ -610,7 +634,7 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### תחזוקת סכמה
+### תחזוקת סכמה {: #schema-maintenance }
 
 #### `rebuildSchemas → MutationResult`
 
@@ -618,19 +642,23 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 ---
 
-### בקשות יצירה
+### בקשות יצירה {: #creation-requests_1 }
+
+#### `approveCreationRequest(requestId: Int!) → MutationResult`
+
+מאשר בקשת יצירה: אותו כלל, אותן דחיות ואותן רשומות ביומן הניהול כמו `POST /admin/creation-requests/{id}/approve`. מגיש הבקשה אינו יכול לאשר את הבקשה שלו, ואישור של משתמש אחד נספר פעם אחת. אישור שמשלים את הספירה של הבקשה יוצר את מה שהיא מבקשת; `params.status` הוא `executed` כשהוא עשה זאת, אחרת `pending`, ו-`params.waitingOn` מפרט את התחומים שבקשת קשר עדיין ממתינה להם. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py` `approve_creation_request`]
 
 #### `executeCreationRequest(requestId: Int!) → MutationResult`
 
-מחזיק זכות מבצע בקשת יצירה שהועמדה בתור — קשר, view, או webhook. דורש את היכולת שהבקשה ממתינה לה. (REQ-434, REQ-063) [tool-verified: `provisa/api/admin/schema_mutation.py:2181-2255`]
+מבצע בקשת יצירה שקיבלה את האישורים שלה — קשר, view, טבלה, מקור או webhook — דרך אותו קוד שהמוטציה הישירה משתמשת בו. נדחה עם `requests.approvals_incomplete` עד שהאישורים הנדרשים של הבקשה (אחד, או שניים לקשר) התקבלו ממשתמשים שאינם המגיש; בקשת קשר נדחית גם עם `requests.waiting_on_domains` עד שלכל תחום שהיא נוגעת בו יש מאשר. אישורים ניתנים דרך `POST /admin/creation-requests/{id}/approve`, והאישור שמשלים את הספירה מבצע את היצירה, ולכן מוטציה זו משמשת לניסיון חוזר של יצירה שנכשלה. יצירה שנכשלה משאירה את הבקשה ממתינה ועונה עם קוד השגיאה שלה. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py` `execute_creation_request`, `perform_request_creation`; `provisa/api/admin/creation_requests_router.py`]
 
 #### `rejectCreationRequest(requestId: Int!, reason: String!) → MutationResult`
 
-דחיית בקשה שהועמדה בתור עם סיבה הניתנת לפעולה. `reason` נדרש. (REQ-434, REQ-063) [tool-verified: `provisa/api/admin/schema_mutation.py:2258-2294`]
+דוחה בקשה מהתור עם סיבה מעשית. `reason` נדרש. בקשת קשר יכולה להידחות על ידי כל משתמש שהיה יכול לאשר אותה. המגיש של בקשה מכל סוג אחר יכול לבטל אותה; הדבר נרשם ביומן הניהול כביטול. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py:3064-3106`]
 
 ---
 
-### הידור שאילתה
+### הידור שאילתה {: #query-compilation }
 
 #### `compileQuery(input: CompileQueryInput!) → [CompileQueryResult!]!`
 
@@ -669,7 +697,7 @@ mutation {
 
 ---
 
-## טיפוסי קלט מפתח
+## טיפוסי קלט מפתח {: #key-input-types }
 
 ### `SourceInput`
 
@@ -690,7 +718,7 @@ mutation {
 | `loadProtected` | `Boolean` | רענון מתוזמן בלבד (REQ-1141) |
 | `offPeakWindow` | `String` | חלון תחזוקה `HH:MM-HH:MM` |
 | `offPeakTz` | `String` | אזור זמן IANA |
-| `cdc` | `SourceCdcConfigInput` | הגדרת תעבורת Kafka CDC (REQ-824) |
+| `cdc` | `SourceCdcConfigInput` | קונפיגורציית תעבורת Kafka CDC (REQ-824), כולל הדרך לפנות ל-schema registry שלה (REQ-1951; ראו [אימות מול schema registry](subscriptions.md#schema-registry-authentication)). `schemaRegistryPassword` ו-`schemaRegistryToken` מוחזרים כהפניות לכספת, לעולם לא כאישורים. |
 
 ### `TableInput`
 
@@ -733,7 +761,7 @@ mutation {
 
 ---
 
-## דוגמה: רישום טבלה
+## דוגמה: רישום טבלה {: #example-registering-a-table }
 
 ```graphql
 mutation {
@@ -756,7 +784,7 @@ mutation {
 }
 ```
 
-## דוגמה: יצירת כלל RLS
+## דוגמה: יצירת כלל RLS {: #example-creating-an-rls-rule }
 
 ```graphql
 mutation {

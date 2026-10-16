@@ -1,8 +1,8 @@
-# מוצרי נתונים (REQ-1634)
+# מוצרי נתונים (REQ-1634) {: #data-products-req-1634 }
 
 מוצר נתונים (Data Product) הוא חבילת טבלאות בעלת שם ובעלים, המתפרסמת יחד לצריכה. זוהי היחידה שהקטלוג חושף לצרכנים — לא טבלאות בודדות, אלא משטח אצור (Curated) שתחום מצהיר במפורש שהוא מוכן. שדות עוקבים אחר אוצר המילים של ODPS (Open Data Product Standard) במקום שבו כבר קיים ל-Provisa מקור האמת. [tool-verified: `provisa/core/models.py:318-342`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json`]
 
-## כלל בעלות תחום
+## כלל בעלות תחום {: #domain-ownership-rule }
 
 כל מוצר נתונים הוא בבעלות תחום אחד בלבד (`domain_id` הוא שדה חובה). טבלה יכולה להצטרף למוצר נתונים רק כאשר לשניהם אותו `domain_id`. ה-UI מגביל את בורר הטבלאות לתחום המוצר; ה-Backend דוחה שיוך `product_id` שהתחום שלו אינו תואם לתחום המוצר בעת השמירה. [tool-verified: `provisa/core/models.py:320`, `docs/arch/requirements.yaml:54573-54574`]
 
@@ -12,7 +12,7 @@
 
 הטבלאות והפקודות המשויכות למוצר נתונים הן ה-**Output Ports** שלו — משטח בר-שאילתה (Queryable) שהצרכנים רואים. שיוך טבלה קובע את `Table.product_id`; ביטול השיוך מסיר את החברות. טבלה שייכת למוצר אחד לכל היותר. פקודות (Commands) באותו תחום יכולות גם הן להיות משויכות כחברות. [tool-verified: `provisa/core/models.py:941`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json:tablesLabel,commandsLabel`]
 
-## קטעי חלונית פרטים
+## קטעי חלונית פרטים {: #detail-panel-sections }
 
 פתיחת מוצר נתונים ב-UI המנהל מציגה את החלוניות הבאות:
 
@@ -38,7 +38,7 @@
 
 | קטלוג | מתפרסם כ- |
 | --- | --- |
-| Snowflake Horizon | SHARE + רשימת ארגון (Data Product ילידי); `publish=false` משאיר אותו כ-DRAFT, `publish=true` מפעיל אותו |
+| Snowflake Horizon | SHARE + רשימת ארגון (Data Product ילידי); `publish=false` משאיר אותו כ-DRAFT, `publish=true` מפעיל אותו. מילון הנתונים של הרשימה מכסה כל חבר וכל עמודה; חמשת החברים הראשונים מודגשים, ועמודות ממוסכות מוסתרות בתצוגה המקדימה (REQ-1656) |
 | BigQuery Analytics Hub | רשימת Analytics Hub (ילידי) |
 | OpenMetadata | ישות `DataProduct` (ילידית) |
 | DataHub | ישות `dataProduct` URN ילידית עם היבטי properties/ownership משלה |
@@ -49,7 +49,7 @@
 
 [tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:389-418`, `provisa/api/metadata_export/bigquery_dataplex.py:112-136`, `provisa/api/metadata_export/openmetadata.py:326-344`, `provisa/api/metadata_export/datahub.py:133-136,443-483`, `provisa/api/metadata_export/collibra.py:129-133,371-388`, `provisa/api/metadata_export/atlas.py:134-147`, `provisa/api/metadata_export/atlan.py:60`, `provisa/api/metadata_export/openlineage.py:243,348`]
 
-## שדות
+## שדות {: #fields }
 
 | שדה | חובה | הערות |
 | --- | --- | --- |

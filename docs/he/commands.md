@@ -1,4 +1,4 @@
-# פקודות
+# פקודות {: #commands }
 
 פקודה היא פונקציה רשומה וממושלת המכניסה חישוב חיצוני תחת מערכת הממשל, הביקורת
 וה-Data Lineage של Provisa. במקום שמנוע הפדרציה מטפל ב-SQL באופן טבעי, פקודה
@@ -11,7 +11,7 @@
 מוצהרים, מוקלדים, מאומתים, נמעקבים ומחווטים אל ה-Data Lineage. קריאת curl או תת-תהליך לא ממושלים
 אינם אף אחד מהדברים האלה.
 
-## סוגי מימוש
+## סוגי מימוש {: #implementation-kinds }
 
 שישה ערכי `impl_kind` נתמכים [tool-verified: `_EXECUTORS` dict in `provisa/executor/function_dispatch.py`]:
 
@@ -28,7 +28,7 @@
 ומיקום). החליפו את ה-binding והממשל, ה-Data Lineage וחוזי הקורא של הפקודה יישארו
 ללא שינוי. [tool-verified: Function model in models.py:710-750]
 
-## סוגי ארגומנטים
+## סוגי ארגומנטים {: #argument-kinds }
 
 כל ארגומנט מצהיר על `arg_kind` [tool-verified: FunctionArgument.arg_kind in models.py:691-700]:
 
@@ -47,7 +47,7 @@
 פונקציה מוערכת-טבלה. השתמשו בה בסעיף `FROM` או ב-`JOIN`. [inferred from models.py:744-748
 and command_localize.py:52-63]
 
-## חוזה ערכת הנתונים (REQ-1159)
+## חוזה ערכת הנתונים (REQ-1159) {: #the-dataset-contract-req-1159 }
 
 כל ארגומנט `table_ref` או `result_set` רשאי להצהיר על **חוזה עמודות קלט**: רשימה מסודרת
 של עמודות מוקלדות-IR ב-`FunctionArgument.columns`. הפקודה עצמה מצהירה על
@@ -66,7 +66,7 @@ models.py:675-683, Function.output_columns in models.py:748]
   [tool-verified: `_materialize_relation` at function_dispatch.py:155-177, col_names passed
   to projection at line 171]
 
-### אוצר מילות הסוגים של IR
+### אוצר מילות הסוגים של IR {: #the-ir-type-vocabulary }
 
 סוגי עמודות בחוזה משתמשים במערכת סוגי ה-IR הקנונית (REQ-846), לא בסקלרים של GraphQL או
 באיותים טבעיים של מקורות. השמות התקפים הם [tool-verified: `_IR_TO_SA` keys in ir_types.py:45-63]:
@@ -81,9 +81,9 @@ models.py:675-683, Function.output_columns in models.py:748]
 הצהירו על `output_columns` לצורך אימות ו-Data Lineage; הוסיפו `return_schema` לצורך יצירת
 סוגי GraphQL. [tool-verified: models.py:744-748, comment "return_schema is its GraphQL projection"]
 
-## כתיבת פקודה
+## כתיבת פקודה {: #authoring-a-command }
 
-### קובץ תצורה
+### קובץ תצורה {: #config-file }
 
 ```yaml
 functions:
@@ -145,13 +145,13 @@ functions:
 
 [tool-verified: config/provisa.yaml enrich_grpc_set block]
 
-### ממשק הניהול
+### ממשק הניהול {: #admin-ui }
 
 טופס הפקודה ב-**Settings ← Commands** כולל עורך עמודות-קלט לכל ערכת נתונים (שורה אחת
 לכל עמודה מוצהרת, עם בורר סוג IR) ועורך עמודות-פלט. שמרו את הטופס כדי
 לרשום או לעדכן את הפקודה ללא טעינת תצורה מחדש. [inferred from CommandFormFields.tsx]
 
-## הרכבה מוטבעת (REQ-1159)
+## הרכבה מוטבעת (REQ-1159) {: #inline-composition-req-1159 }
 
 פקודות רשאיות להופיע **בתוך** משפט SQL גדול יותר — מצורפות ב-join, בתת-שאילתה או מוטלות. אינכם
 מוגבלים ל-`SELECT * FROM fn(args)`. היוצא מן הכלל הוא פעולת כתיבה של מקור מרוחק, הנקראת לבדה (ראו [מדוע אי אפשר להרכיב אותה](#why-it-cannot-be-composed)).
@@ -275,13 +275,13 @@ curl -X POST https://acme.provisa.org/data/rest/engineering/commands/create_issu
 - לא הוגדר hook: 403, `functions.approval_unavailable`.
 - ה-hook דוחה: 403, `functions.approval_denied`, עם הנימוק של ה-hook.
 
-ה-hook מקבל את הקורא, התפקיד, שם הפקודה והארגומנטים שלה. ראו [Hook אישור ABAC](security.md#hook-abac). הדגל נשמר כ-`Function.requires_approval`, והבדיקה חלה על כל פקודה שמגדירה אותו. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
+ה-hook מקבל את הקורא, התפקיד, שם הפקודה והארגומנטים שלה. ראו [Hook אישור ABAC](security.md#abac-approval-hook). הדגל נשמר כ-`Function.requires_approval`, והבדיקה חלה על כל פקודה שמגדירה אותו. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
 
 ### כותב לטבלה {: #writes-table }
 
 ציינו בשדה **כותב לטבלה** את הטבלה שהפעולה כותבת אליה, בצורת `schema.table`. היא חייבת להיות טבלה רשומה של המקור של הפקודה עצמה, אחרת השמירה נדחית ב-422, `actions.written_table_not_registered`. ההגדרה אופציונלית. [tool-verified: `_check_written_table` in `actions_router.py`; `written_table` in `source_operation.py`]
 
-אחרי כל קריאה שהשירות המרוחק מקבל, Provisa מתייחס אליה ככתיבה לטבלה זו. הוא משליך את התשובות השמורות במטמון של הטבלה, מסמן כמיושנות את התצוגות הממומשות שמעליה, פולט את אירוע השינוי, מריץ את ה-sinks של הטבלה וטוען מחדש את הטבלה כשהיא מוחזקת במצב hot. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
+אחרי כל קריאה שהשירות המרוחק מקבל, Provisa מתייחס אליה ככתיבה לטבלה זו. הוא משליך את התשובות השמורות במטמון של הטבלה, מסמן כמיושנות את התצוגות הממומשות שמעליה, פולט את אירוע השינוי, מריץ את הפקודות שרצות כשהיא משתנה וטוען מחדש את הטבלה כשהיא מוחזקת במצב hot. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
 
 כאשר הטבלה נקראת מההעתק המלא שלה (הגדרות המפעיל מציבות אותה שם, או שהמנוע אינו יכול לקרוא את המקור שלה במקומו), לאחר הקריאה מתבקשת בנייה של ההעתק, עם הסיבה `write`. הקוראים שומרים על ההעתק הישן עד שהחדש מחליף אותו. לטבלה המשוכפלת שורה אחר שורה, או לטבלה עם עמודת פרמטר, אין העתק מלא לבנות מחדש. [tool-verified: `provisa/api/data/table_written.py` `_request_replica_build`; `provisa/federation/replica_state.py` `REASON_WRITE`]
 
@@ -297,7 +297,7 @@ command 'create_issue' writes to its source and is called on its own: it cannot 
 
 פעולת מקור אינה גם צומת lineage: ה-lineage נקרא מה-SQL של תצוגות ושאילתות, שבו פקודה מופיעה כצומת, ושום הגדרה שמורה אינה יכולה לקרוא לפעולת מקור. [tool-verified: `provisa/lineage/graph.py` (`kind="command"` for a call in the SQL); `refuse_writes_in_definition`]
 
-## פקודות ו-Data Lineage
+## פקודות ו-Data Lineage {: #commands-and-lineage }
 
 משום שכל פקודה מצהירה על עמודות הקלט והפלט שלה, Data Lineage ברמת העמודה **נסגר על פני
 גבול הפקודה האטום**. מנוע ה-Data Lineage מיישם סגור זיהום: כל עמודת פלט מוצהרת
@@ -314,14 +314,14 @@ _splice_commands behavior in graph.py and _materialize_relation narrow-projectio
 
 ראו [Data Lineage](lineage.md) לאופן שבו צמתי פקודה מופיעים ב-DAG וכיצד לקרוא אותם.
 
-## רשימת היתר ליציאה
+## רשימת היתר ליציאה {: #egress-allowlist }
 
 פקודות `http` ו-`grpc` קוראות לנקודות קצה חיצוניות. כל מארח יעד חייב להופיע ב-
 `udf_egress_allowlist` של הפריסה. ‏Loopback (`localhost`, `127.0.0.1`, `::1`) מותר
 תמיד. רשימת היתר נעדרת דוחה כל יציאה חיצונית עם HTTP 403 — אין ברירת מחדל
 שקטה. [tool-verified: `_check_egress` in function_dispatch.py:292-311]
 
-## מעקב הפעלות (REQ-886)
+## מעקב הפעלות (REQ-886) {: #invocation-tracing-req-886 }
 
 כל הפעלה פולטת מעקב ללא קשר לתוצאה. המעקב כולל את שם הפקודה,
 סוג התעבורה, מודל הזהות (DEFINER או INVOKER), הפניות ליחסי הקלט, מזהה התפקיד,

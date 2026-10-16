@@ -1,4 +1,4 @@
-# מדריך התחלה מהירה למפתחים
+# מדריך התחלה מהירה למפתחים {: #developer-quick-start }
 
 להערכת Provisa ללא בנייה מהמקור, ראו [התחלה מהירה](index.md) — הורידו את מתקין ה-macOS, Windows או Linux והריצו `provisa start`. (REQ-223, REQ-224, REQ-227)
 
@@ -6,7 +6,7 @@
 
 ---
 
-## דרישות מוקדמות
+## דרישות מוקדמות {: #prerequisites }
 
 - **Docker Desktop** (פועל)
 - **Python 3.12+**
@@ -15,7 +15,7 @@
 
 ---
 
-## 1. שכפול והגדרה
+## 1. שכפול והגדרה {: #1-clone-and-set-up }
 
 ```bash
 git clone https://github.com/kenstott/provisa.git
@@ -27,7 +27,7 @@ cd provisa
 
 ---
 
-## 2. הפעלת הכול
+## 2. הפעלת הכול {: #2-start-everything }
 
 ```bash
 ./start-ui.sh
@@ -53,7 +53,7 @@ Provisa running:
 
 **Ctrl+R** מפעיל מחדש רק את ה-Backend (שימושי לאחר שינוי קונפיגורציה שה-hot-reload לא תופס). (REQ-619)
 
-### אפשרויות
+### אפשרויות {: #options }
 
 `--no-observability` — משבית מעקב מבוזר (distributed tracing). כברירת מחדל, `start-ui.sh` מוריד את סוכן ה-Java של OpenTelemetry אם עדיין אינו קיים, מתקן (patches) את `jvm.config` של Trino כדי לטעון אותו, ומפעיל את OTel collector, Prometheus, Tempo, ו-Grafana. העבירו `--no-observability` כדי לדלג על כל זה. תיקון ה-`jvm.config` מבוטל בעת Ctrl+C. [tool-verified: start-ui.sh lines 15, 67–82] (REQ-330)
 
@@ -89,7 +89,7 @@ Provisa running:
 
 ---
 
-## 3. חיבור מקור נתונים
+## 3. חיבור מקור נתונים {: #3-connect-a-data-source }
 
 Provisa קוראת קונפיגורציה מתוך `config/`. הוסיפו קובץ מקור — לדוגמה `config/sources/my-db.yaml`:
 
@@ -122,7 +122,7 @@ export MY_DB_PASSWORD=secret
 
 ---
 
-## 4. הרצת השאילתה הראשונה שלכם
+## 4. הרצת השאילתה הראשונה שלכם {: #4-run-your-first-query }
 
 ```bash
 # GraphQL
@@ -140,7 +140,7 @@ curl -s -X POST http://localhost:8001/data/sql \
 
 ---
 
-## 5. פתיחת ה-UI
+## 5. פתיחת ה-UI {: #5-open-the-ui }
 
 פתחו את `http://localhost:3000` בדפדפן.
 
@@ -155,7 +155,7 @@ curl -s -X POST http://localhost:8001/data/sql \
 
 ---
 
-## פתרון בעיות
+## פתרון בעיות {: #troubleshooting }
 
 **ה-Backend לא מתחיל** — בדקו את `.logs/server.log`. הגורם הנפוץ ביותר הוא משתנה סביבה חסר או התנגשות פורטים בפורט 8001. [tool-verified: start-ui.sh line 202] (REQ-618)
 
@@ -167,7 +167,7 @@ curl -s -X POST http://localhost:8001/data/sql \
 
 ---
 
-## הצעדים הבאים
+## הצעדים הבאים {: #next-steps }
 
 | מטרה | מסמך |
 | ------ | ----- |
