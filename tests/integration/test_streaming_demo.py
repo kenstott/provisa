@@ -148,6 +148,14 @@ def _views(server) -> dict[str, tuple[str, int | None]]:
     }
 
 
+def _listener_lines(server) -> str:
+    """What the server said about its push listeners, the broker and the landing: the lines that
+    say why no batch landed, when none did."""
+    said = server.dump_stderr_debug().splitlines()
+    wanted = ("push listener", "kafka", "land", "orders", "Traceback", "ERROR", "WARNING")
+    return "\n".join([line for line in said if any(w in line for w in wanted)][-80:])
+
+
 @pytest.fixture(scope="module")
 def flowing(stack, server):
     """Orders landed, and the view that answers the question refreshed by them."""
@@ -159,7 +167,8 @@ def flowing(stack, server):
             return server
         assert time.monotonic() < deadline, (
             f"no orders landed or the view did not follow: {landed} orders, view {status} "
-            f"{rows}\n{stack.logs()[-4000:]}"
+            f"{rows}\nthe server's listener and landing:\n{_listener_lines(server)}"
+            f"\nthe stack:\n{stack.logs()[-4000:]}"
         )
         time.sleep(2)
 
