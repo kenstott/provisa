@@ -74,5 +74,13 @@
     "confirmDeleteTitle": "Excluir esta conta?",
     "confirmDeleteBody": "{{username}} sai de todas as organizações e seu perfil é excluído. As organizações de que faz parte permanecem. Isso não pode ser desfeito.",
     "confirmDeleteButton": "Excluir conta"
+  },
+  "grantPicker": {
+    "and": "e",
+    "combine": "Combinar funções em uma concessão",
+    "combineHelp": "Um leitor deve ter todas as funções listadas aqui. Digite uma função de declaração como region__eu se ela não for oferecida.",
+    "parts": "Funções que um leitor deve ter todas",
+    "partsPlaceholder": "Escolha ou digite uma função e pressione Enter",
+    "add": "Adicionar"
   }
 }

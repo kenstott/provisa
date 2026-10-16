@@ -14,7 +14,7 @@ import { TableDraftTick, TableRegionField } from "./TablePlacementFields";
 import { Fragment, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Box, Checkbox, Select, Table, Text, TextInput } from "@mantine/core";
-import { MultiSelect } from "../../components/MultiSelect";
+import { GrantPicker } from "../../components/GrantPicker";
 import { ColumnPresetsEditor } from "../../components/admin/ColumnPresetsEditor";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
 import type {
@@ -44,7 +44,7 @@ import { DataQualityPanel } from "./DataQualityPanel";
 import { ProfilerPanel } from "./ProfilerPanel";
 import { useLivePolicyPreview } from "./useLivePolicyPreview";
 import { roleTtlRowError, tableTtlSignalError } from "./roleTtl";
-import { governanceWithheld, shownGrants } from "./helpers";
+import { governanceWithheld, shownGrants, shownGrantsLabel } from "./helpers";
 import {
   FormChecks,
   FormField,
@@ -199,10 +199,10 @@ export function TableEditForm({
     ...(governanceHidden
       ? []
       : [
-          { label: t("tableEditForm.visibleToHeader"), value: shownGrants(c.visibleTo).join(", ") },
+          { label: t("tableEditForm.visibleToHeader"), value: shownGrantsLabel(c.visibleTo, t) },
           {
             label: t("tableEditForm.writableByHeader"),
-            value: shownGrants(c.writableBy).join(", "),
+            value: shownGrantsLabel(c.writableBy, t),
           },
           { label: t("tableEditForm.maskingHeader"), value: c.maskType || "" },
         ]),
@@ -941,7 +941,7 @@ export function TableEditForm({
                         {tab === "access" && (
                           <>
                             <Table.Td>
-                              <MultiSelect
+                              <GrantPicker
                                 options={roleOptions}
                                 value={shownGrants(c.visibleTo)}
                                 onChange={(selected) => updateEditCol(i, "visibleTo", selected)}
@@ -949,7 +949,7 @@ export function TableEditForm({
                               />
                             </Table.Td>
                             <Table.Td>
-                              <MultiSelect
+                              <GrantPicker
                                 options={roleOptions}
                                 value={shownGrants(c.writableBy)}
                                 onChange={(selected) => updateEditCol(i, "writableBy", selected)}
@@ -1029,7 +1029,7 @@ export function TableEditForm({
                             </Table.Td>
                           )}
                           <Table.Td colSpan={2}>
-                            <MultiSelect
+                            <GrantPicker
                               options={roleOptions}
                               value={shownGrants(c.unmaskedTo)}
                               onChange={(selected) => updateEditCol(i, "unmaskedTo", selected)}

@@ -74,5 +74,13 @@
     "confirmDeleteTitle": "刪除此帳戶？",
     "confirmDeleteBody": "{{username}} 將退出所有機構，其個人資料將被刪除。其所屬的機構會保留。此操作無法復原。",
     "confirmDeleteButton": "刪除帳戶"
+  },
+  "grantPicker": {
+    "and": "且",
+    "combine": "將角色組合為一項授權",
+    "combineHelp": "讀者必須擁有此處列出的每個角色。如果未列出 region__eu 之類的宣告角色，請直接輸入。",
+    "parts": "讀者必須全部擁有的角色",
+    "partsPlaceholder": "選擇或輸入角色並按 Enter",
+    "add": "新增"
   }
 }

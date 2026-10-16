@@ -74,5 +74,13 @@
     "confirmDeleteTitle": "¿Eliminar esta cuenta?",
     "confirmDeleteBody": "{{username}} sale de todas las organizaciones y su perfil se elimina. Las organizaciones a las que pertenece se conservan. Esto no se puede deshacer.",
     "confirmDeleteButton": "Eliminar cuenta"
+  },
+  "grantPicker": {
+    "and": "y",
+    "combine": "Combinar roles en una concesión",
+    "combineHelp": "Un lector debe tener todos los roles que indique aquí. Escriba un rol de notificación como region__eu si no se ofrece.",
+    "parts": "Roles que un lector debe tener todos",
+    "partsPlaceholder": "Elija o escriba un rol y pulse Intro",
+    "add": "Agregar"
   }
 }

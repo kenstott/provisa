@@ -74,5 +74,13 @@
     "confirmDeleteTitle": "删除此账户？",
     "confirmDeleteBody": "{{username}} 将退出所有组织，其个人资料将被删除。其所属的组织会保留。此操作无法撤销。",
     "confirmDeleteButton": "删除账户"
+  },
+  "grantPicker": {
+    "and": "且",
+    "combine": "将角色组合为一项授权",
+    "combineHelp": "读者必须拥有此处列出的每个角色。如果未列出 region__eu 之类的声明角色，请直接键入。",
+    "parts": "读者必须全部拥有的角色",
+    "partsPlaceholder": "选择或键入角色并按 Enter",
+    "add": "添加"
   }
 }
