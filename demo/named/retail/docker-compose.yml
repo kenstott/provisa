@@ -1,0 +1,37 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# The named demo "retail" (start-ui-install.sh --demo retail; REQ-2035): one Postgres container
+# holding the retail group's three databases (db/*.sql, run in order at its first start):
+#
+#   eu_shop    the EU subsidiary's loyalty customers, orders, staff and outbound mail (region eu)
+#   us_shop    the US subsidiary's own (region us)
+#   group_ref  products, stores and the register of data subject requests (no region)
+#
+# Port: 28932 the database; it can be moved by its variable.
+x-demo-labels: &demo-labels
+  com.provisa.demo: retail
+name: provisa-demo-retail
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:${RETAIL_PG_PORT:-28932}:5432"
+    volumes:
+      - retail_pg:/var/lib/postgresql/data
+      - ./db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d group_ref"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+volumes:
+  retail_pg:

@@ -49,6 +49,30 @@ def held_pseudo_roles(declared: Iterable[str], attributes: Mapping[str, str]) ->
     return held
 
 
+def named_unsecured(
+    names: Iterable[str], declared: Iterable[str]
+) -> tuple[list[str], dict[str, str], dict[str, str]]:
+    """An unsecured request's named roles split (REQ-2057, REQ-2035): the data roles, the declared
+    pseudo-roles it names -- held, each with its parent, as unsecured mode takes any role it is
+    named at its word -- and the attributes those imply (``region__eu``: region=eu), which bind its
+    session variables. A signed-in request holds a pseudo-role only by its claims, never so."""
+    types = {normalize_name(t) for t in declared}
+    roles: list[str] = []
+    held: dict[str, str] = {}
+    attributes: dict[str, str] = {}
+    for name in names:
+        claim_type, sep, value = name.partition(SEPARATOR)
+        if sep and value and claim_type in types:
+            held[name] = claim_type
+            held.setdefault(claim_type, "")
+            attributes[claim_type] = value
+        elif name in types:
+            held.setdefault(name, "")
+        else:
+            roles.append(name)
+    return roles, held, attributes
+
+
 def declared_claim_roles(state) -> list[str]:
     """The claim types the bound org declares: its own ``claim_roles`` setting (org_settings)
     where it has one, which replaces the deployment config's as every org-owned key does

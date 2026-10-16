@@ -1,0 +1,29 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The retail demo's card on provisa.dev's live demos page (REQ-2006), generated from this file
+# by scripts/gen-site-demos.mjs. published: true once card.png, a screenshot of the demo in
+# Provisa, is beside it.
+title: One retail group, two regions
+description: >-
+  A retail group with an EU and a US subsidiary, run as one business in two regions under one
+  model: can it do that without breaking GDPR? EU customer data stays in the EU, group reporting
+  reads EU customers pseudonymised, and access and erasure requests, the insider review and the
+  audit are each one query.
+screenshot: card.png
+published: false
+# REQ-2035: the regions the demo runs in. start-ui-install.sh starts a headless node for each
+# region in headless -- it lands that region's tables and builds its views in its own store -- and
+# the node the visitor uses in visitor's region; both on one model store.
+regions:
+  visitor: us
+  headless: [eu]
+# The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
+# by name. The first release carrying the demo.
+requires_provisa: 0.1.0a488

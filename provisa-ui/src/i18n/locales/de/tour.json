@@ -887,6 +887,90 @@
       "datavaultRecap": {
         "title": "Was Sie gesehen haben",
         "description": "Zwei Live-Systeme und ein Data Vault darüber, als Sichten deklariert: Hubs, Links und Satellites mit jeder Version, von der Engine beim Eintreffen von Zeilen aktualisiert, in den Satellites gesteuert und per Point-in-Time in SQL, GraphQL und REST abgefragt, mit Lineage zurück zu den Quellfeldern. Keine separate ETL-Plattform, kein Job-Server, kein Pipeline-Code."
+      },
+      "retailScenario": {
+        "title": "Ein Konzern, zwei Regionen",
+        "description": "Ein Einzelhandelskonzern führt eine EU- und eine US-Tochtergesellschaft als ein Unternehmen. Geht das, ohne gegen die GDPR zu verstoßen? Jede Tochtergesellschaft hat ihre eigene Datenbank: Dies ist die der EU, mit ihren Treuekunden, deren Marketing-Einwilligung, Bestellungen, Mitarbeitenden und der Post, die Mitarbeitende aus dem Konzern hinaus senden."
+      },
+      "retailRegions": {
+        "title": "Eine Definition jeder Region",
+        "description": "Die Datenbank der US-Tochtergesellschaft, beheimatet in der Region US. Das Modell deklariert beide Regionen und legt einmal fest, wo jede Tabelle liegt und welche Ansichten wo erstellt werden. Ein zweiter Provisa-Knoten läuft in der EU: Er kopiert die EU-Tabellen in den eigenen Speicher der EU und erstellt dort die EU-Ansichten. Sie sind auf dem US-Knoten, der EU-Daten nur aus diesem EU-Speicher liest, sodass jede grenzüberschreitende Regel an einer Stelle angewendet wird."
+      },
+      "retailEuCustomers": {
+        "title": "Eine EU-Tabelle, beheimatet in der EU",
+        "description": "Die EU-Kunden. Die Tabelle nennt die EU als ihre Region: Ihre Zeilen werden nur in den Speicher der EU kopiert und nur dort berechnet. Leser anderswo erhalten sie über die Ansichten der EU oder gar nicht."
+      },
+      "retailRequests": {
+        "title": "Anfragen betroffener Personen",
+        "description": "Das Anfragenregister des Konzerns: wer Einsicht in seine Daten verlangt hat, wer ihre Löschung verlangt hat, und wann. Es enthält selbst keine Kundendaten."
+      },
+      "retailJoin": {
+        "title": "Wie eine Anfrage eine Person findet",
+        "description": "Eine Anfrage wird über die E-Mail-Adresse mit den Kunden jeder Tochtergesellschaft verknüpft. So findet eine Anfrage dieselbe Person in beiden."
+      },
+      "retailAsAnalyst": {
+        "title": "Als Konzernanalyst",
+        "description": "Als Nächstes läuft der SQL-Explorer als group_analyst, der in der Region US am Konzernreporting arbeitet."
+      },
+      "retailGroupView": {
+        "title": "Konzernreporting, EU-Kunden pseudonymisiert",
+        "description": "Jeder Treuekunde des Konzerns. US-Kunden erscheinen unverändert; EU-Kunden erscheinen unter einem Pseudonym, das die EU berechnet hat, ohne Name oder Adresse. Der EU-Teil wurde aus dem Speicher der EU gelesen, und der Eintrag zu dieser Abfrage nennt die EU als die Region, die geantwortet hat."
+      },
+      "retailGroupGraphql": {
+        "title": "Dasselbe in GraphQL",
+        "description": "Dieselbe Konzernsicht über GraphQL: ein Modell, jeder Transport, dieselben Regeln."
+      },
+      "retailAsMarketing": {
+        "title": "Als EU-Marketing",
+        "description": "Als Nächstes läuft der SQL-Explorer als marketing_eu."
+      },
+      "retailAudience": {
+        "title": "Nur Kunden, die eingewilligt haben",
+        "description": "Das EU-Marketing liest die EU-Kunden, die in Marketing eingewilligt haben, und nur diese. Die Ansicht wird in der EU aus EU-Zeilen erstellt."
+      },
+      "retailAsDpo": {
+        "title": "Als Datenschutzbeauftragter",
+        "description": "Als Nächstes läuft der SQL-Explorer als dpo, der Anfragen betroffener Personen beantwortet."
+      },
+      "retailAccess": {
+        "title": "Ein Auskunftsersuchen, beantwortet",
+        "description": "Alles, was der Konzern über die Person hinter jedem Auskunftsersuchen gespeichert hat, aus beiden Tochtergesellschaften, in einer Abfrage. Amélie Fournier ist Mitglied in der EU und in der Region US."
+      },
+      "retailErasure": {
+        "title": "Eine Löschung, geplant",
+        "description": "Für jedes Löschersuchen jede Zeile, die der Konzern löscht: ihre Tochtergesellschaft, ihre Tabelle und ihr Schlüssel. Jede Tochtergesellschaft löscht ihre eigenen Zeilen, in ihrer eigenen Region."
+      },
+      "retailAsReviewer": {
+        "title": "Als Insider-Prüfer",
+        "description": "Als Nächstes läuft der SQL-Explorer als reviewer, die Insider-Prüfung des Konzerns."
+      },
+      "retailQueue": {
+        "title": "Die Prüfwarteschlange",
+        "description": "Die ausgehende Post der EU-Mitarbeitenden, in der EU bewertet: eine private Adresse, angehängte Kundendatensätze, ein Massenexport. Die Warteschlange enthält die Bewertung, die Signale und ein Pseudonym des Absenders. Kein Nachrichtentext verlässt die EU, und der Absender wird zurückgehalten."
+      },
+      "retailAsEuReviewer": {
+        "title": "Als Prüfer in der EU",
+        "description": "Als Nächstes läuft der SQL-Explorer als reviewer mit region__eu: ein Prüfer, dessen Region die EU ist."
+      },
+      "retailReveal": {
+        "title": "Der Absender, offengelegt in der EU",
+        "description": "Dieselbe Warteschlange. Die Maskierungsliste der Absenderspalte legt den Absender nur einem Prüfer offen, der zusätzlich region__eu hat; alle anderen lesen ihn zurückgehalten. Es ist eine einzige Berechtigung, reviewer und region__eu, ohne eine eigene Rolle für die Kombination."
+      },
+      "retailAsAdmin": {
+        "title": "Zurück zu jeder Rolle",
+        "description": "Als Nächstes läuft der SQL-Explorer wieder als jede Rolle."
+      },
+      "retailAudit": {
+        "title": "Ein Protokoll, beide Regionen",
+        "description": "Jede Anweisung, die die Tour ausgeführt hat: wer sie ausgeführt hat, worauf, und welche Region sie beantwortet hat. Ein Audit-Trail über beide Regionen."
+      },
+      "retailLimits": {
+        "title": "Was dies ist und was nicht",
+        "description": "Diese Funktionen können dabei helfen, die Regeln der GDPR dazu einzuhalten, wo Daten liegen und wer sie liest, aber sie machen einen Konzern nicht konform. Dazu braucht es aktive Gestaltung durch Menschen, die die geltenden Regeln zum Datenschutz und zur grenzüberschreitenden Übermittlung kennen. Rechtsgrundlage, Folgenabschätzung, Aufbewahrung und eine etwaige Betriebsvereinbarung bleiben der eigene rechtliche Prozess des Konzerns."
+      },
+      "retailRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Ein Modell hat beide Regionen definiert: wo jede Tabelle liegt, welche Ansichten wo erstellt werden und wer was liest. Das Konzernreporting las EU-Kunden pseudonymisiert, das EU-Marketing las nur einwilligende Kunden, und ein Auskunftsersuchen und eine Löschung waren jeweils eine Abfrage. Die Insider-Prüfung legte einen Absender nur in der EU offen, und jedes Lesen steht in einem Protokoll."
       }
     },
     "status": {
@@ -951,6 +1035,10 @@
       "datavault": {
         "title": "Data Vault",
         "summary": "Ein Data Vault, deklariert über einem Bestellsystem und einem CRM: Hubs, Links und Satellites, die die Engine beim Eintreffen von Zeilen baut und aktualisiert, personenbezogene Daten in den Satellites maskiert, und eine Point-in-Time-Abfrage dazu, was über einen Kunden bekannt war, aus welcher Quelle und wann."
+      },
+      "retail": {
+        "title": "Ein Konzern, zwei Regionen",
+        "summary": "Ein Einzelhandelskonzern mit einer EU- und einer US-Tochtergesellschaft, als ein Unternehmen unter der GDPR geführt: EU-Daten bleiben in der EU, das Konzernreporting liest sie pseudonymisiert, und Auskunft, Löschung, Insider-Prüfung und Audit sind jeweils eine Abfrage."
       }
     }
   }

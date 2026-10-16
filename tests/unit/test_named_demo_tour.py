@@ -225,7 +225,14 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
         if "term" in step:
             assert step["term"] in terms, step
         if "role" in step:
-            assert step["role"] in roles, step
+            # One role, "all", or a set of the demo's roles and its declared pseudo-roles
+            # (reviewer,region__eu, REQ-2057), which the tour hands to the explorer.
+            claim_types = set(config.get("claim_roles") or [])
+            for part in step["role"].split(","):
+                claim, sep, value = part.partition("__")
+                assert (
+                    part in roles or part in claim_types or (sep and value and claim in claim_types)
+                ), step
             # Picked in the SQL explorer's run-as picker, which is on that page alone.
             assert page == "/sql", f"{step['key']}: a role is picked on /sql, not {page}"
         if "env" in step:

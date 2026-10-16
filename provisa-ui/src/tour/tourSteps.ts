@@ -73,7 +73,8 @@ export interface TourStep {
    * opens its own statement.
    */
   openQuery?: {
-    stateKey: "sql" | "query" | "openApiUrl" | "jsonapiUrl" | "grpcMethod";
+    // "role": a set of roles the SQL explorer runs as (REQ-2057).
+    stateKey: "sql" | "query" | "openApiUrl" | "jsonapiUrl" | "grpcMethod" | "role";
     text: string;
   };
   /**

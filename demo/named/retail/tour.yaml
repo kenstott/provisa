@@ -1,0 +1,103 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The retail demo's own tour (REQ-2010, REQ-2035): one group, two regions, one definition. The
+# scenario and its question; how it fits -- the subsidiaries' sources, an EU table homed in the EU,
+# the register of data subject requests and how it joins; then the answer, one reader at a time on
+# the visitor's US node: group reporting with EU customers pseudonymised and the record naming eu
+# as the region that answered, EU marketing reading consenting customers only, the data protection
+# officer's access and erasure views, the insider review queue and its reveal to an EU reviewer;
+# then the one audit record across both regions, the legal limits, and a recap. Step kinds and
+# checks are as tour.yaml of the weblogs demo describes them. No Polly step: nothing here asks
+# for a conversation.
+# Where the tour's "Look around on my own" leaves the visitor: the SQL page.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+# The scenario, and the two regions one model defines.
+- key: retailScenario
+  route: /sources
+  capability: source_registration
+  source: eu-shop
+- key: retailRegions
+  source: us-shop
+# How it fits: an EU table, homed in the EU; the register of requests and how it joins.
+- key: retailEuCustomers
+  route: /tables
+  capability: table_registration
+  table: eu-shop.customers
+- key: retailRequests
+  table: group-ref.subject_requests
+- key: retailJoin
+  route: /relationships
+  capability: create_relationship
+  relationship: ASKS_ABOUT
+# Group reporting, as the group's analysts read it.
+- key: retailAsAnalyst
+  route: /sql
+  capability: query_development
+  role: group_analyst
+- key: retailGroupView
+  sql: >-
+    SELECT subsidiary, customer, country, joined_on FROM "retail"."view_group_customers"
+    ORDER BY subsidiary, joined_on DESC LIMIT 20
+- key: retailGroupGraphql
+  route: /query
+  capability: query_development
+  example: 1-group-customers
+# EU marketing reads only the customers who agreed.
+- key: retailAsMarketing
+  route: /sql
+  capability: query_development
+  role: marketing_eu
+- key: retailAudience
+  sql: >-
+    SELECT customer_id, full_name, country, consent_recorded_at
+    FROM "retail"."view_eu_marketing_audience" ORDER BY consent_recorded_at DESC LIMIT 20
+# The data protection officer answers a request for access and plans an erasure.
+- key: retailAsDpo
+  role: dpo
+- key: retailAccess
+  sql: >-
+    SELECT request_id, email, subsidiary, customer_id, full_name, country, marketing_consent
+    FROM "retail"."view_subject_access" ORDER BY subsidiary
+- key: retailErasure
+  sql: >-
+    SELECT request_id, subsidiary, table_name, row_key FROM "retail"."view_erasure_plan"
+    ORDER BY subsidiary, table_name, row_key
+# The insider review: the queue, then the sender revealed to an EU reviewer.
+- key: retailAsReviewer
+  role: reviewer
+- key: retailQueue
+  sql: >-
+    SELECT message_id, sent_at, sender_pseudonym, sender_email, recipient_domain, score, signals
+    FROM "retail"."view_eu_mail_review" WHERE score >= 70 ORDER BY score DESC, sent_at DESC
+- key: retailAsEuReviewer
+  role: reviewer,region__eu
+- key: retailReveal
+  sql: >-
+    SELECT message_id, sent_at, sender_pseudonym, sender_email, recipient_domain, score, signals
+    FROM "retail"."view_eu_mail_review" WHERE score >= 70 ORDER BY score DESC, sent_at DESC
+# One record across both regions: who read what, and which region answered.
+- key: retailAsAdmin
+  role: all
+- key: retailAudit
+  sql: >-
+    SELECT logged_at, role_id, table_name, region, row_count FROM "ops"."queries"
+    WHERE domain_id = 'retail' ORDER BY logged_at DESC LIMIT 20
+# What the features do not do, and a recap.
+- key: retailLimits
+  route: /sources
+  capability: source_registration
+  source: group-ref
+- key: retailRecap
+  route: /relationships
+  capability: create_relationship
+  relationship: ASKS_ABOUT

@@ -117,12 +117,20 @@ export function SqlPage() {
     () => (rolesData.length ? rolesData.map((r) => r.id) : ["org_admin"]),
     [rolesData],
   );
+  // REQ-2010, REQ-2057: a set of roles a demo's tour hands over (reviewer,region__eu), offered as
+  // its own entry beside the roles.
+  const [handedRole, setHandedRole] = useState<string | null>(null);
   const roleOptions = useMemo(
-    () =>
-      allRolesValue.includes(",")
-        ? [{ value: allRolesValue, label: t("roleSelector.all") }, ...roles]
-        : roles,
-    [roles, allRolesValue, t],
+    () => [
+      ...(allRolesValue.includes(",")
+        ? [{ value: allRolesValue, label: t("roleSelector.all") }]
+        : []),
+      ...(handedRole !== null && handedRole !== allRolesValue
+        ? [{ value: handedRole, label: handedRole.split(",").join(" + ") }]
+        : []),
+      ...roles,
+    ],
+    [roles, allRolesValue, handedRole, t],
   );
   const roleIds = useMemo(
     () => roleOptions.map((r) => (typeof r === "string" ? r : r.value)),
@@ -491,16 +499,23 @@ export function SqlPage() {
 
   // A hand-off from another page or from Polly: open the SQL in a new tab (and run it when asked),
   // or offer to save a view of a table. Handled whether or not the page was already open.
-  useNavPayload<{ sql?: string; autoRun?: boolean; viewTable?: RegisteredTable }>((payload) => {
-    if (payload.viewTable) setViewTable(payload.viewTable);
-    if (payload.sql == null) return;
-    const merged = mergeActive();
-    const tab = emptyTab(newTabId(), nextTabTitle(merged), payload.sql);
-    setTabs([...merged, tab]);
-    setActiveTabId(tab.id);
-    loadTabIntoWorkingState(tab);
-    pendingAutoRunRef.current = payload.autoRun === true ? payload.sql : null;
-  });
+  useNavPayload<{ sql?: string; autoRun?: boolean; viewTable?: RegisteredTable; role?: string }>(
+    (payload) => {
+      if (payload.viewTable) setViewTable(payload.viewTable);
+      if (payload.role != null) {
+        setHandedRole(payload.role);
+        setRole(payload.role);
+        return;
+      }
+      if (payload.sql == null) return;
+      const merged = mergeActive();
+      const tab = emptyTab(newTabId(), nextTabTitle(merged), payload.sql);
+      setTabs([...merged, tab]);
+      setActiveTabId(tab.id);
+      loadTabIntoWorkingState(tab);
+      pendingAutoRunRef.current = payload.autoRun === true ? payload.sql : null;
+    },
+  );
 
   // REQ-1322: the server expansion severs the metric link permanently (no re-ingestion path), so it
   // opens as a NEW query rather than overwriting the one it came from: the metric-referencing SQL is

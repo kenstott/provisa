@@ -201,6 +201,63 @@ class TestTheRequest:
         assert "region__us" in resp.json()["detail"]
 
 
+@pytest.fixture
+def unsecured(monkeypatch, serve_deployment_org):
+    serve_deployment_org("root")
+    monkeypatch.setattr("provisa.auth.middleware._loaded_claim_roles", lambda: ["region"])
+    monkeypatch.setattr(
+        "provisa.security.meta_role.ensure_meta_role",
+        lambda _s, members, quals=(): "meta:" + "+".join(sorted([*members, *quals])),
+    )
+    app = FastAPI()
+    app.add_middleware(AuthMiddleware, provider=None, default_org_id="root")
+
+    @app.get("/test")
+    async def _t(request: Request):
+        identity = request.state.identity
+        return {
+            "role": request.state.role,
+            "pseudo": identity.pseudo_roles,
+            "acting": identity.acting_roles,
+            "attributes": identity.org_attributes,
+        }
+
+    return TestClient(app)
+
+
+class TestUnsecured:
+    """Unsecured, a named declared pseudo-role is held as a named role is, with its parent and the
+    attribute it implies; a signed-in request still holds one only by its claim (above)."""
+
+    def test_named_it_is_held_with_its_parent_and_binds_its_attribute(self, unsecured):
+        data = unsecured.get("/test", headers={"X-Provisa-Role": "reviewer,region__eu"}).json()
+        assert data["role"] == "meta:region+region__eu+reviewer"
+        assert data["acting"] == ["reviewer"]
+        assert data["pseudo"] == {"region__eu": "region", "region": ""}
+        assert data["attributes"] == {"region": "eu"}
+
+    def test_a_name_that_is_no_declared_claim_type_is_a_role(self, unsecured):
+        data = unsecured.get("/test", headers={"X-Provisa-Role": "dept__ops"}).json()
+        assert data["role"] == "dept__ops" and data["pseudo"] == {}
+
+    def test_named_alone_it_reaches_no_data(self, unsecured, monkeypatch):
+        def refuse(_s, members, quals=()):
+            raise PermissionError("No schema available for the roles named")
+
+        monkeypatch.setattr("provisa.security.meta_role.ensure_meta_role", refuse)
+        assert unsecured.get("/test", headers={"X-Provisa-Role": "region__eu"}).status_code == 403
+
+
+def test_the_unsecured_split_names_each_part():
+    from provisa.auth.pseudo_roles import named_unsecured
+
+    assert named_unsecured(["reviewer", "region__eu", "region"], ["region"]) == (
+        ["reviewer"],
+        {"region__eu": "region", "region": ""},
+        {"region": "eu"},
+    )
+
+
 class TestTheNodesOwnWork:
     """A service call a regional node makes on its own behalf carries the node's region
     pseudo-role; a user's request never takes its region from the node (REQ-2057)."""

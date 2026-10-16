@@ -136,6 +136,8 @@ _VIEW_KEYS = {
     # REQ-2066: a materialized view's load management window, when consumers may read it.
     "off_peak_window": "off_peak_window",
     "off_peak_tz": "off_peak_tz",
+    # REQ-1921: a view naming a region is built and refreshed there alone.
+    "region": "region",
 }
 
 

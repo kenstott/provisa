@@ -581,18 +581,29 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 for r in (request.headers.get("x-provisa-role") or ORG_ADMIN_ROLE).split(",")
                 if r.strip()
             ] or [ORG_ADMIN_ROLE]
+            from provisa.auth.pseudo_roles import named_unsecured
             from provisa.security.meta_role import MetaRoleNamed, refuse_named_meta_role
 
             try:
                 refuse_named_meta_role(unsecured_roles)
             except MetaRoleNamed as exc:
                 return JSONResponse(status_code=403, content={"detail": str(exc)})
-            # Several roles: the request acts as their meta-role (security/meta_role.py).
-            unsecured_role = (
-                self._meta_role(unsecured_roles, None)
-                if len(set(unsecured_roles)) > 1
-                else unsecured_roles[0]
+            # REQ-2057: a named declared pseudo-role is held, as a named role is here; it qualifies
+            # the roles it is named with and binds its attribute (region__eu: region=eu).
+            unsecured_roles, held_pseudo, unsecured_attributes = named_unsecured(
+                unsecured_roles, _loaded_claim_roles()
             )
+            named_pseudo = tuple(held_pseudo)
+            if named_pseudo:
+                try:
+                    unsecured_role = self._meta_role(unsecured_roles, None, named_pseudo)
+                except PermissionError as refused:
+                    return _deny(request, 403, str(refused))
+            # Several roles: the request acts as their meta-role (security/meta_role.py).
+            elif len(set(unsecured_roles)) > 1:
+                unsecured_role = self._meta_role(unsecured_roles, None)
+            else:
+                unsecured_role = unsecured_roles[0]
             request.state.identity = AuthIdentity(
                 user_id="anonymous",
                 email=None,
@@ -600,9 +611,10 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 roles=unsecured_roles,
                 raw_claims={},
                 acting_roles=list(unsecured_roles),
-                # No member to have a record of: the session headers are this deployment's context.
-                org_attributes={},
-                pseudo_roles={},
+                # No member to have a record of: the session headers are this deployment's
+                # context, and a named pseudo-role's attribute (REQ-2057).
+                org_attributes=unsecured_attributes,
+                pseudo_roles=held_pseudo,
             )
             request.state.role = unsecured_role
             request.state.assignments = [

@@ -597,6 +597,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "row_count": "Rows the statement delivered; empty when it failed or was refused",
         "query_hash": "SHA-256 of the statement text; the text itself is read per statement by "
         "an admin and is never a column",
+        # REQ-2035: who saw which data, where -- one record across the org's regions.
+        "region": "Region that answered the statement — the one whose copy it read",
         "table_id": "Registered table the statement read — its first, when it read several",
         "table_name": "Name of that table",
         "domain_id": "Domain of that table",

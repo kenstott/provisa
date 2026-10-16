@@ -887,6 +887,90 @@
       "datavaultRecap": {
         "title": "Ce que vous avez vu",
         "description": "Deux systèmes en direct et un data vault par-dessus, déclaré sous forme de vues : hubs, links et satellites avec chaque version conservée, rafraîchis par le moteur à mesure que les lignes arrivent, gouvernés dans les satellites et interrogés en point in time en SQL, GraphQL et REST, avec une traçabilité jusqu'aux champs sources. Aucune plateforme ETL distincte, aucun serveur de tâches, aucun code de pipeline."
+      },
+      "retailScenario": {
+        "title": "Un groupe, deux régions",
+        "description": "Un groupe de distribution exploite une filiale EU et une filiale US comme une seule entreprise. Peut-il le faire sans enfreindre le GDPR ? Chaque filiale garde sa propre base de données : voici celle de l'EU, avec ses clients fidélité, leur consentement marketing, les commandes, le personnel et le courrier que le personnel envoie hors du groupe."
+      },
+      "retailRegions": {
+        "title": "Une seule définition de chaque région",
+        "description": "La base de données de la filiale US, hébergée aux US. Le modèle déclare les deux régions et indique, une seule fois, où vit chaque table et quelles vues sont construites où. Un second nœud Provisa tourne dans l'EU : il copie les tables EU dans le magasin propre de l'EU et y construit les vues EU. Vous êtes sur le nœud US, qui ne lit les données EU que depuis ce magasin EU ; chaque règle transfrontalière est donc appliquée en un seul endroit."
+      },
+      "retailEuCustomers": {
+        "title": "Une table EU, hébergée dans l'EU",
+        "description": "Les clients EU. La table désigne l'EU comme sa région : ses lignes ne sont copiées que dans le magasin de l'EU et calculées uniquement là. Les lecteurs d'ailleurs les obtiennent par les vues de l'EU, ou pas du tout."
+      },
+      "retailRequests": {
+        "title": "Demandes des personnes concernées",
+        "description": "Le registre des demandes du groupe : qui a demandé à voir ses données, qui a demandé leur effacement, et quand. Il ne contient lui-même aucune donnée client."
+      },
+      "retailJoin": {
+        "title": "Comment une demande trouve une personne",
+        "description": "Une demande est jointe aux clients de chaque filiale par l'adresse e-mail. C'est ainsi qu'une demande trouve la même personne dans les deux."
+      },
+      "retailAsAnalyst": {
+        "title": "En tant qu'analyste du groupe",
+        "description": "Ensuite, l'explorateur SQL s'exécute en tant que group_analyst, qui travaille sur le reporting du groupe aux US."
+      },
+      "retailGroupView": {
+        "title": "Reporting du groupe, clients EU pseudonymisés",
+        "description": "Chaque client fidélité du groupe. Les clients US apparaissent tels quels ; les clients EU apparaissent sous un pseudonyme calculé par l'EU, sans nom ni adresse. La partie EU a été lue depuis le magasin de l'EU, et l'enregistrement de cette requête désigne l'EU comme la région qui a répondu."
+      },
+      "retailGroupGraphql": {
+        "title": "La même chose, en GraphQL",
+        "description": "La même vue du groupe en GraphQL : un modèle, chaque transport, les mêmes règles."
+      },
+      "retailAsMarketing": {
+        "title": "En tant que marketing EU",
+        "description": "Ensuite, l'explorateur SQL s'exécute en tant que marketing_eu."
+      },
+      "retailAudience": {
+        "title": "Seulement les clients qui ont accepté",
+        "description": "Le marketing EU lit les clients EU qui ont accepté le marketing, et eux seuls. La vue est construite dans l'EU à partir de lignes EU."
+      },
+      "retailAsDpo": {
+        "title": "En tant que délégué à la protection des données",
+        "description": "Ensuite, l'explorateur SQL s'exécute en tant que dpo, qui répond aux demandes des personnes concernées."
+      },
+      "retailAccess": {
+        "title": "Une demande d'accès, traitée",
+        "description": "Tout ce que le groupe détient sur la personne derrière chaque demande d'accès, dans les deux filiales, en une seule requête. Amélie Fournier est membre dans l'EU et aux US."
+      },
+      "retailErasure": {
+        "title": "Un effacement, planifié",
+        "description": "Pour chaque demande d'effacement, chaque ligne que le groupe supprime : sa filiale, sa table et sa clé. Chaque filiale supprime ses propres lignes, dans sa propre région."
+      },
+      "retailAsReviewer": {
+        "title": "En tant que réviseur de la revue d'initiés",
+        "description": "Ensuite, l'explorateur SQL s'exécute en tant que reviewer, la revue d'initiés du groupe."
+      },
+      "retailQueue": {
+        "title": "La file de revue",
+        "description": "Le courrier sortant du personnel EU, noté dans l'EU : une adresse personnelle, des fiches clients en pièce jointe, un export en masse. La file porte la note, les signaux et un pseudonyme de l'expéditeur. Aucun texte de message ne quitte l'EU, et l'expéditeur est masqué."
+      },
+      "retailAsEuReviewer": {
+        "title": "En tant que réviseur dans l'EU",
+        "description": "Ensuite, l'explorateur SQL s'exécute en tant que reviewer avec region__eu : un réviseur dont la région est l'EU."
+      },
+      "retailReveal": {
+        "title": "L'expéditeur, révélé dans l'EU",
+        "description": "La même file. La liste de masquage de la colonne de l'expéditeur ne révèle l'expéditeur qu'à un réviseur qui détient aussi region__eu ; tous les autres le lisent masqué. C'est une seule attribution, reviewer et region__eu, sans aucun rôle créé pour la combinaison."
+      },
+      "retailAsAdmin": {
+        "title": "Retour à tous les rôles",
+        "description": "Ensuite, l'explorateur SQL s'exécute de nouveau en tant que tous les rôles."
+      },
+      "retailAudit": {
+        "title": "Un seul journal, deux régions",
+        "description": "Chaque instruction exécutée par la visite : qui l'a exécutée, sur quoi, et quelle région y a répondu. Une seule piste d'audit sur les deux régions."
+      },
+      "retailLimits": {
+        "title": "Ce que c'est, et ce que ce n'est pas",
+        "description": "Ces fonctionnalités peuvent aider à respecter les règles du GDPR sur l'endroit où vivent les données et sur qui les lit, mais elles ne rendent pas un groupe conforme. Cela demande une conception active par des personnes qui connaissent les règles de protection des données et de transfert transfrontalier applicables. La base légale, l'analyse d'impact, la conservation et tout accord avec le comité d'entreprise restent le processus juridique propre au groupe."
+      },
+      "retailRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Un seul modèle a défini les deux régions : où vit chaque table, quelles vues sont construites où, et qui lit quoi. Le reporting du groupe a lu les clients EU pseudonymisés, le marketing EU n'a lu que les clients consentants, et une demande d'accès et un effacement ont chacun tenu en une requête. La revue d'initiés n'a révélé un expéditeur que dans l'EU, et chaque lecture figure dans un seul journal."
       }
     },
     "status": {
@@ -951,6 +1035,10 @@
       "datavault": {
         "title": "Data vault",
         "summary": "Un data vault déclaré sur un système de commandes et un CRM : des hubs, des links et des satellites que le moteur construit et rafraîchit à mesure que les lignes arrivent, des données personnelles masquées dans les satellites, et une requête point in time pour savoir ce qui était connu d'un client, de quelle source et quand."
+      },
+      "retail": {
+        "title": "Un groupe, deux régions",
+        "summary": "Un groupe de distribution avec une filiale EU et une filiale US, exploité comme une seule entreprise sous le GDPR : les données EU restent dans l'EU, le reporting du groupe les lit pseudonymisées, et l'accès, l'effacement, la revue d'initiés et l'audit tiennent chacun en une requête."
       }
     }
   }

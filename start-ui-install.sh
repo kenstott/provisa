@@ -717,6 +717,66 @@ else
 fi
 
 BACKEND_PID=""
+# REQ-2035: a named demo that runs in regions (demo.yaml `regions`) runs a node per region on the
+# one control plane: the visitor's node, and a headless node (API only) for each other region, which
+# lands that region's tables and builds its views in its own store.
+DEMO_VISITOR_REGION=""
+DEMO_HEADLESS_REGIONS=()
+HEADLESS_PIDS=()
+DEMO_REDIS_PID=""
+if [ -n "${DEMO_NAME:-}" ] && [ -f "$_DEMO_DIR/demo.yaml" ]; then
+  _DEMO_REGIONS="$("$SCRIPT_DIR/.venv/bin/python" -c '
+import sys, yaml
+regions = (yaml.safe_load(open(sys.argv[1])) or {}).get("regions") or {}
+if regions:
+    print(regions["visitor"], *regions["headless"])
+' "$_DEMO_DIR/demo.yaml")"
+  if [ -n "$_DEMO_REGIONS" ]; then
+    read -r DEMO_VISITOR_REGION _rest <<<"$_DEMO_REGIONS"
+    read -r -a DEMO_HEADLESS_REGIONS <<<"$_rest"
+    # The nodes share one cache, so a fakeredis server of its own, not each node's in-process one.
+    _DEMO_REDIS_PORT="$("$SCRIPT_DIR/.venv/bin/python" -c '
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+')"
+    "$SCRIPT_DIR/.venv/bin/python" -c '
+import sys, fakeredis
+fakeredis.TcpFakeServer(("127.0.0.1", int(sys.argv[1])), server_type="redis").serve_forever()
+' "$_DEMO_REDIS_PORT" >>"$LOG_DIR/demo-redis.log" 2>&1 &
+    DEMO_REDIS_PID=$!
+    export PROVISA_SHARED_REDIS_URL="redis://127.0.0.1:$_DEMO_REDIS_PORT/0"
+    # Each region keeps its replicas, views, build state and record in the control plane's
+    # PostgreSQL, in schemas of its own; its DuckDB engine in a file under the demo's data/.
+    export PROVISA_DEMO_REGIONS_PG_URL="$TENANT_DATABASE_URL"
+    mkdir -p "$PROVISA_NAMED_DEMO_DIR/data"
+    _rid_upper="$(echo "$DEMO_VISITOR_REGION" | tr '[:lower:]' '[:upper:]')"
+    export "PROVISA_DEMO_${_rid_upper}_ADDRESS=http://127.0.0.1:$PROVISA_API_PORT"
+    _i=0
+    for _r in "${DEMO_HEADLESS_REGIONS[@]}"; do
+      _i=$((_i + 1))
+      _rid_upper="$(echo "$_r" | tr '[:lower:]' '[:upper:]')"
+      export "PROVISA_DEMO_${_rid_upper}_ADDRESS=http://127.0.0.1:$((PROVISA_API_PORT + _i))"
+    done
+    echo "Named demo '$DEMO_NAME': regions ${DEMO_VISITOR_REGION} (yours) and ${DEMO_HEADLESS_REGIONS[*]} (headless)"
+  fi
+fi
+
+start_headless_nodes() {
+  # Each on its own API port, with the protocol servers of the visitor's node off or moved: the
+  # visitor reaches only the visitor's node.
+  local _i=0
+  for _r in "${DEMO_HEADLESS_REGIONS[@]}"; do
+    _i=$((_i + 1))
+    env "${_BACKEND_ENV[@]}" PROVISA_REGION="$_r" \
+      PROVISA_PGWIRE_PORT=0 PROVISA_MCP_PORT=0 PROVISA_BOLT_PORT=0 PROVISA_AIRPORT_PORT=0 \
+      GRPC_PORT="$((50051 + 100 * _i))" FLIGHT_PORT="$((8815 + 100 * _i))" \
+      "$SCRIPT_DIR/.venv/bin/uvicorn" main:app --host 127.0.0.1 --port "$((PROVISA_API_PORT + _i))" \
+        >> "$LOG_DIR/backend-$_r.log" 2>&1 &
+    HEADLESS_PIDS+=($!)
+  done
+}
 
 start_backend() {
   cd "$SCRIPT_DIR"
@@ -769,6 +829,8 @@ start_backend() {
   fi
   # Telemetry lands in its own embedded-pg instance when available.
   [ -n "${TELEM_OPS_URL:-}" ] && _BACKEND_ENV+=( PROVISA_OPS_DB_URL="$TELEM_OPS_URL" )
+  # REQ-2035: the visitor's node of a named demo that runs in regions is its region's node.
+  [ -n "$DEMO_VISITOR_REGION" ] && _BACKEND_ENV+=( PROVISA_REGION="$DEMO_VISITOR_REGION" )
   # A demo runs native: it starts no MinIO and no OTel receiver, so it names neither -- no
   # result redirect, no OTel object store, no exporter endpoint.
   # One auto-reloading process for development. PROVISA_WORKERS=N runs N worker processes
@@ -821,6 +883,10 @@ trap restart_backend USR1
 
 echo "Starting Provisa backend on port $PROVISA_API_PORT..."
 start_backend
+if [ "${#DEMO_HEADLESS_REGIONS[@]}" -gt 0 ]; then
+  echo "Starting the headless node of region(s) ${DEMO_HEADLESS_REGIONS[*]}..."
+  start_headless_nodes
+fi
 
 # Stream the backend's startup-phase log lines to the console so the wait isn't a
 # silent black box (the backend logs to backend.log, not this terminal).
@@ -989,6 +1055,10 @@ cleanup() {
   # the `tail -f` follower survives as an orphan.
   [ -n "${BACKEND_TAIL_PID:-}" ] && pkill -P "$BACKEND_TAIL_PID" 2>/dev/null || true
   kill $UI_PID "${UI_TAIL_PID:-}" "${BACKEND_TAIL_PID:-}" "${KEY_READER_PID:-}" "${VERSION_WATCHER_PID:-}" "$BACKEND_PID" 2>/dev/null || true
+  # REQ-2035: a regional named demo's headless nodes and its shared cache.
+  for _pid in "${HEADLESS_PIDS[@]}" ${DEMO_REDIS_PID:+"$DEMO_REDIS_PID"}; do
+    kill "$_pid" 2>/dev/null || true
+  done
   wait $UI_PID "$BACKEND_PID" 2>/dev/null || true
   if [ "$DEMO" = true ]; then
     "$SCRIPT_DIR/demo/run-demo-servers.sh" stop 2>/dev/null || true
