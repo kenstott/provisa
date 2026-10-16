@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { ActionIcon, Button, Group, Popover, Stack, TagsInput, Text } from "@mantine/core";
 import { Combine } from "lucide-react";
 import { MultiSelect } from "./MultiSelect";
+import { Tip } from "./Tip";
 import { COMPOSITE, compositeEntry, grantLabel } from "../lib/grants";
 
 export function GrantPicker({
@@ -79,17 +80,18 @@ export function GrantPicker({
       />
       <Popover opened={open} onChange={setOpen} withinPortal position="bottom-end" shadow="md">
         <Popover.Target>
-          <ActionIcon
-            variant="subtle"
-            mt={label ? 24 : 4}
-            disabled={disabled}
-            aria-label={t("grantPicker.combine")}
-            title={t("grantPicker.combine")}
-            onClick={() => setOpen((o) => !o)}
-            data-testid={testId ? `${testId}-combine` : undefined}
-          >
-            <Combine size={16} />
-          </ActionIcon>
+          <Tip text={t("grantPicker.combine")} named>
+            <ActionIcon
+              variant="subtle"
+              mt={label ? 24 : 4}
+              disabled={disabled}
+              aria-label={t("grantPicker.combine")}
+              onClick={() => setOpen((o) => !o)}
+              data-testid={testId ? `${testId}-combine` : undefined}
+            >
+              <Combine size={16} />
+            </ActionIcon>
+          </Tip>
         </Popover.Target>
         <Popover.Dropdown maw={340}>
           <Stack gap="xs">

@@ -84,10 +84,11 @@ describe("the tooltip rules fail what they are meant to fail", () => {
 /**
  * Every control that has a hint AND is the trigger of a menu or popover, by file. A new one is
  * added here on purpose, after its menu has been opened by a click with the hint in place (the
- * four below were, in the render harness: tip-menus.cjs). A Tip passes the trigger through; this
- * list is what makes someone look.
+ * first four were, in the render harness: tip-menus.cjs; the grant picker's in grants.cjs). A Tip
+ * passes the trigger through; this list is what makes someone look.
  */
 const TIPS_INSIDE_TRIGGERS: Readonly<Record<string, number>> = {
+  "components/GrantPicker.tsx": 1, // a column grant's "combine roles" popover
   "components/TagControl.tsx": 1, // the tag picker's toggle
   "components/graph/GraphFrame.tsx": 1, // the frame's download menu
   "components/graph/Inspector.tsx": 1, // the inspector's colour chip
