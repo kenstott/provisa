@@ -6,7 +6,7 @@ Aucun endpoint d'API ne renvoie la valeur d'un secret stocké. Aucune interface 
 
 ---
 
-## Syntaxe des références
+## Syntaxe des références {: #reference-syntax }
 
 Trois formes de référence sont valides partout où Provisa résout des identifiants :
 
@@ -16,15 +16,17 @@ Trois formes de référence sont valides partout où Provisa résout des identif
 | `${secret:NAME}` | Le coffre-fort de l'organisation — partagé par tous les membres | Tout champ acceptant une référence d'identifiant |
 | `${user:NAME}` | Le coffre-fort personnel de la personne qui agit | Tout champ acceptant une référence d'identifiant |
 
+Sur un déploiement multi-tenant, conservez les identifiants de la plateforme dans un service de secrets plutôt que dans des variables d'environnement. Un administrateur de tenant peut écrire `${env:...}` dans un champ d'identifiant qui lui appartient, de sorte que toute valeur de l'environnement du processus est à la portée de chaque tenant. Ne laissez dans l'environnement que l'identifiant propre du backend de secrets.
+
 La résolution est à sécurité intégrée (fail-closed) de bout en bout. Un nom de fournisseur inconnu, un nom non défini et un backend injoignable lèvent tous une erreur. Une référence qui n'a pas pu être résolue n'est jamais remplacée silencieusement par une chaîne vide. (REQ-1557) [tool-verified: `provisa/core/secrets.py:92-117`]
 
-### Format des noms
+### Format des noms {: #name-format }
 
 Les noms de secrets doivent correspondre à `[A-Za-z_][A-Za-z0-9_]*` — lettres, chiffres et tirets bas, commençant par une lettre ou un tiret bas. La contrainte est pratique : `${secret:NAME}` est analysé par la grammaire des références, qui lit jusqu'à l'accolade fermante `}`. Un nom contenant une accolade, une espace ou un deux-points produirait une référence qui s'analyse comme autre chose. [tool-verified: `provisa/core/secrets_store.py:61`]
 
 ---
 
-## Deux coffres-forts, un seul service
+## Deux coffres-forts, un seul service {: #two-vaults-one-service }
 
 Chaque organisation possède deux coffres-forts. Tous deux vivent à l'intérieur du même service de secrets. (REQ-1560)
 
@@ -36,7 +38,7 @@ La portée fait partie de la référence, elle n'est pas une autorisation qui l'
 
 ---
 
-## Choisir un service de secrets
+## Choisir un service de secrets {: #choosing-a-secrets-service }
 
 **Admin → Sécurité → Service de secrets.** Le panneau est visible par quiconque détient la capacité `platform_settings`. Chaque backend que connaît la version compilée est listé, que le SDK soit installé ou non. Une ligne grisée vous indique quel paquet Python manque — le panneau le nomme plutôt que de masquer entièrement l'option.
 
@@ -54,7 +56,7 @@ Cinq backends sont livrés :
 
 La sélection est à sécurité intégrée : un backend inconnu ou indisponible lève une erreur au démarrage plutôt que de se rabattre silencieusement sur un autre. (REQ-1557)
 
-### L'identifiant propre au backend
+### L'identifiant propre au backend {: #the-backends-own-credential }
 
 L'identifiant de connexion d'un backend centralisé relève de la configuration du processus. Il provient de `${env:...}` uniquement — jamais de `${secret:...}`. Un service de secrets dont le propre identifiant vit à l'intérieur de lui-même ne peut pas être ouvert : la chaîne de confiance se termine donc dans l'environnement hôte, par conception. Le registre l'impose : toute valeur de configuration figurant dans la spécification d'un backend est résolue avec `providers=("env",)` avant que le backend ne soit construit. [tool-verified: `provisa/core/secrets_registry.py:128-141`]
 
@@ -69,7 +71,7 @@ secrets:
     mount: secret
 ```
 
-### Service centralisé ou magasin intégré
+### Service centralisé ou magasin intégré {: #central-service-vs-built-in }
 
 Lorsqu'un service centralisé est configuré, Provisa y lit mais n'y écrit pas. Le service centralisé possède la création et la suppression des entrées — ces opérations relèvent de son propre outillage. La page Secrets le dit et n'offre pas de bouton de création. (REQ-1557)
 
@@ -77,7 +79,28 @@ Lorsque le backend intégré `provisa` est actif, la page Secrets est pleinement
 
 ---
 
-## Le magasin intégré de Provisa
+### Les secrets d'une organisation dans un service central {: #one-organizations-secrets-in-a-central-service }
+
+Un déploiement qui héberge de nombreuses organisations et lit un service central le lit, pour chaque organisation, à l'intérieur du préfixe propre à cette organisation. Une référence reste le nom court (`${secret:db#password}`) ; le préfixe est ajouté à la lecture. (REQ-1557) [tool-verified: `provisa/core/secrets_providers.py`, `org_namespace`]
+
+| Service | Où est conservé le secret `db` de l'organisation `acme` |
+|---|---|
+| HashiCorp Vault (KV v2) | `orgs/acme/db` |
+| AWS Secrets Manager | `orgs/acme/db` |
+| GCP Secret Manager | `org-acme--db` |
+| Azure Key Vault | `o4-acme-db` (`o`, la longueur de l'identifiant de l'organisation, l'identifiant avec `_` écrit `-`, puis le nom) |
+
+Une référence est refusée, nommément, lorsque :
+
+- son nom sortirait du préfixe : il commence par `/`, contient un segment `..` ou une barre oblique inverse, ou contient `/` dans GCP ou Azure, dont les noms sont plats ;
+- son nom est trop long pour le service une fois préfixé (GCP 255 caractères, Azure 127) ; c'est refusé à l'enregistrement de la référence, avec la limite indiquée ;
+- aucune organisation n'est liée à l'opération qui la lit.
+
+Un déploiement à une seule organisation lit une référence exactement telle qu'elle est écrite, sans préfixe : le service auquel il est relié est celui de cette organisation, et rien n'est à déplacer.
+
+**Passer au préfixe.** Sur un déploiement de nombreuses organisations, chaque secret auquel une organisation fait référence doit se trouver sous le préfixe de cette organisation. Copiez chacun à cet endroit avec l'outillage propre du service, puis raccourcissez la référence au nom à l'intérieur du préfixe (`${secret:teams/data/db}`, conservé sous `orgs/acme/db`, devient `${secret:db}`). Une référence dont le secret n'a pas été déplacé échoue comme introuvable ; elle n'est pas lue depuis l'endroit où il se trouvait.
+
+## Le magasin intégré de Provisa {: #provisas-built-in-store }
 
 La valeur par défaut lorsqu'aucun service centralisé n'est configuré. Chaque ligne de `secrets_store` contient un blob d'enveloppe chiffrée — la colonne `value` est binaire, pas textuelle, et la clé de déchiffrement vit dans l'environnement du processus, pas dans la base de données. Une copie du plan de contrôle privée de la clé maîtresse du déploiement ne contient que du chiffré, rien d'autre. (REQ-1558)
 
@@ -98,7 +121,7 @@ La colonne `value` n'est sélectionnée par aucune requête de listage. [tool-ve
 
 ---
 
-## Endpoints d'API
+## Endpoints d'API {: #api-endpoints }
 
 Toutes les routes sont sous `/admin/orgs/{org_id}`. Le coffre-fort de l'organisation exige `org_settings` dans cette organisation. Le coffre-fort personnel n'exige aucune capacité — le propriétaire est lu depuis l'identité authentifiée ; il n'existe aucun paramètre de requête permettant de désigner le coffre-fort de quelqu'un d'autre.
 
@@ -117,7 +140,7 @@ Chaque écriture est consignée dans le journal d'audit. L'entrée nomme l'acteu
 
 ---
 
-## Où `${secret:NAME}` se résout
+## Où `${secret:NAME}` se résout {: #where-secretname-resolves }
 
 La résolution a lieu à l'intérieur d'une opération liée à un contexte, non à l'import ni au démarrage. Le magasin lit et déchiffre les secrets de l'organisation une seule fois au début de cette opération et conserve la table pour toute sa durée dans un `ContextVar`. En dehors d'une opération liée, `${secret:NAME}` lève une erreur. (REQ-1557) [tool-verified: `provisa/core/secrets_store.py:269-290`]
 
@@ -129,7 +152,7 @@ Deux sites d'appel établissent cette liaison :
 
 ---
 
-## Clés de fournisseur d'IA d'une organisation comme références de secret
+## Clés de fournisseur d'IA d'une organisation comme références de secret {: #org-ai-vendor-keys-as-secret-references }
 
 La clé de fournisseur d'IA d'une organisation (Anthropic, OpenAI et d'autres) peut être stockée sous forme de référence `${secret:NAME}` plutôt que de clé littérale. (REQ-1580)
 
@@ -150,13 +173,13 @@ La référence est stockée chiffrée dans `org_secrets`. Au moment de la requê
 
 ---
 
-## Accès de l'administrateur de la plateforme
+## Accès de l'administrateur de la plateforme {: #platform-admin-access }
 
 Un administrateur de la plateforme qui exploite le plan de contrôle n'a aucune lecture des valeurs de secrets d'une organisation. Le garde `org_settings` refuse explicitement `cross_org` et le contournement de la plateforme : administrer le cycle de vie d'une organisation n'est pas une lecture des identifiants que cette organisation conserve. Le serveur l'impose indépendamment de l'interface. (REQ-1361) [tool-verified: `provisa/api/admin/secrets_router.py:53-83`]
 
 ---
 
-## Voir aussi
+## Voir aussi {: #see-also }
 
 - [Modèle de sécurité](security.md) — contrôle d'accès en couches, authentification et journalisation d'audit
 - [Référence de configuration](configuration.md) — syntaxe `${env:VAR}` pour les identifiants au niveau du processus

@@ -4,7 +4,7 @@
 
 Provisa dessert toutes les surfaces d'API (REST, GraphQL, SQL, gRPC, MCP et d'autres encore) sur le résultat joint de vos sources. Il le peut parce que **la fédération, les métriques, l'ontologie et la gouvernance viennent d'un seul modèle, sans rien à garder synchronisé**. Ce modèle est une définition unique de votre patrimoine de données — chaque domaine, chaque relation et chaque politique de vos sources, à l'exclusion des seuls systèmes d'origine eux-mêmes — qui à la fois exploite le patrimoine et le gouverne. Cette définition n'est pas une documentation qu'un moteur peut consulter ; elle *est* le moteur. Les domaines et relations enregistrés sont les seuls chemins de jointure licites, et les politiques d'accès sont compilées dans chaque plan de requête. Un modèle, quatre propriétés :
 
-- **Fédération** — 62 connecteurs atteignant plus de 75 types de source, dont Salesforce, ServiceNow et Stripe, sont lus sur place : les systèmes SaaS sur lesquels tourne l'entreprise sont des tables à côté des bases de données, sans pipeline préalable vers un entrepôt. Interrogez en SQL, GraphQL ou Cypher sur neuf protocoles.
+- **Fédération** — 72 connecteurs atteignant plus de 85 types de source, dont Salesforce, ServiceNow et Stripe, sont lus sur place : les systèmes SaaS sur lesquels tourne l'entreprise sont des tables à côté des bases de données, sans pipeline préalable vers un entrepôt. Interrogez en SQL, GraphQL ou Cypher sur neuf protocoles.
 - **Métriques** — Une métrique est un agrégat nommé et gouverné. Elle est définie une fois, et chaque outil et chaque langage qui la demande reçoit la même définition.
 - **Ontologie** — Le glossaire métier est un graphe de concepts, de leurs définitions et des relations entre eux. Provisa le fait correspondre aux structures de base de données qui contiennent les valeurs, ce qui lui permet de répondre à des questions sur vos données. Un concept reste un brouillon tant qu'il n'atteint pas les données, directement ou par d'autres concepts. Le glossaire est distinct des métriques : un terme dit ce qu'est un concept, une métrique dit comment un chiffre est calculé.
 - **Gouvernance** — Six couches sont compilées dans chaque plan de requête, pour chaque langage et chaque protocole, et chaque requête est consignée de la même façon : qui a interrogé quoi, sous quel rôle, selon quelle politique. Les traces, métriques et journaux sont eux-mêmes enregistrés comme tables interrogeables à côté de vos données métier.
@@ -20,7 +20,7 @@ Cette conception permet deux façons de l'employer, qui ne s'excluent pas :
 - **Comme échafaudage de modernisation** — Modélisez votre patrimoine, laissez Provisa générer le SQL natif de chaque source, puis récupérez ce SQL et adoptez-le directement dans le système cible. Provisa est la couche de transition, non une dépendance permanente.
 - **Comme infrastructure permanente d'application des politiques** — Gardez-le en place comme le chemin gouverné qu'emprunte chaque requête, afin que définition, application et audit restent unifiés aussi longtemps que le patrimoine existe.
 
-## Essayer une démo
+## Essayer une démo {: #try-a-demo }
 
 Le plus rapide est une démo en direct dans le navigateur, sans rien installer : [provisa.dev/demos](https://provisa.dev/demos). Chacune ouvre un sandbox privé avec une visite guidée.
 
@@ -33,7 +33,7 @@ Depuis une copie de ce dépôt, vous pouvez exécuter n'importe quelle démo sur
 
 Une démo publiée est récupérée sous forme de bundle prêt à l'emploi ; les autres s'exécutent depuis `demo/named/<name>/`. Voir [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) pour toutes les options.
 
-## Le modèle de fédération
+## Le modèle de fédération {: #the-federation-model }
 
 Le modèle tout entier tient en deux contrats et deux politiques : les sources se réduisent à des tables 2D sur un seul système de types, les requêtes se réduisent à une RI de type SQL, l'atteignabilité décide de ce qui est interrogé en direct plutôt que matérialisé, et une stratégie de fraîcheur gouverne chaque copie matérialisée et chaque jeu de données dérivé. Forme des données en entrée, forme des requêtes en entrée, gouvernance à la jointure, requêtes natives en sortie. La suite de cette section parcourt chaque pièce.
 
@@ -60,7 +60,7 @@ Les deux patrons se déclarent au moyen de **deux raccourcis de première classe
 
 Parce que l'abaissement est pur — une spécification `entity`/`fact` devient exactement les définitions de MV, de bitemporalité et de relations qu'un modélisateur écrirait sinon à la main —, l'entrepôt est de la RI de bout en bout et se recible d'un moteur à l'autre sans remodélisation. Déclarez un entrepôt dans l'interface d'administration (un formulaire **Model** pour les entités et les faits) ou via l'API d'administration (`registerEntity` / `registerFact`) ; le modèle *génère* l'étoile Kimball ou le Data Vault, il n'en impose aucun.
 
-### Voyage dans le temps
+### Voyage dans le temps {: #time-travel }
 
 Le voyage dans le temps est une idée simple — conserver chaque version d'une ligne au lieu de l'écraser, afin de pouvoir demander ce que la donnée *était* à n'importe quel instant passé. Ce qui diffère, c'est l'efficacité avec laquelle chaque moteur sait le faire, et c'est exactement pourquoi Provisa en fait une propriété de la **définition** de la vue matérialisée plutôt que du moteur de stockage (REQ-1162). Déclarez-le une fois ; il fonctionne sur tout backend de matérialisation.
 
@@ -75,16 +75,16 @@ La lecture est transparente. Une requête ordinaire contre une MV bitemporelle r
 
 Atteignabilité plus fraîcheur constitue un modèle général de fédération de données : une définition qui dit ce qui est en direct, ce qui est matérialisé et à quel point chaque copie reste fraîche — indépendamment de la portée d'un moteur particulier. Le résultat est l'affranchissement du verrouillage propriétaire. Le modèle est portable ; le patrimoine n'est pas captif du fournisseur dont la fédération atteint le plus de sources aujourd'hui.
 
-## Fonctionnalités
+## Fonctionnalités {: #features }
 
-### Interfaces de requête
+### Interfaces de requête {: #query-interfaces }
 
 Ce sont les langages et les API structurées dans lesquels vous écrivez vos requêtes. Chacun a sa syntaxe et ses sémantiques ; la gouvernance (RLS, masquage, visibilité des colonnes, application des relations) s'applique uniformément à tous, quel que soit le protocole de transport qui les achemine.
 
 - **GraphQL** — Schémas par rôle avec visibilité au niveau des champs, filtrage, pagination par curseur et requêtes d'agrégat (`count`, `sum`, `avg`, `min`, `max`). Contraint par le schéma aux relations enregistrées — structurellement valide par construction, le chemin le plus rapide vers une requête simple correcte. Apollo APQ inclus : les requêtes sont hachées et enregistrées côté serveur ; les appels suivants n'envoient que le hachage en HTTP GET, rendant les réponses cachables par CDN sans aucun changement client. Les tables de correspondance sous un seuil de lignes configurable sont exposées comme types énumérés.
 - **SQL** — SQL complet sur les données fédérées ; sans contrainte et plus expressif que GraphQL. Écrivez du SQL standard — sous-requêtes corrélées comprises — et il s'exécute inchangé à travers les sources. Les requêtes mono-source contournent entièrement la couche de fédération (sous les 100 ms).
 - **Cypher** — Langage de requête de graphe sur le même schéma fédéré. Parcourez les relations comme des arêtes de graphe ; unissez les sources ; chemins de longueur variable. La gouvernance s'applique à l'identique de GraphQL et SQL.
-- **API de modèle gRPC** — `.proto` auto-généré depuis le schéma enregistré ; RPC typés de requête et d'insertion par table, réponses en flux. Piloté par le schéma au même sens que GraphQL — le modèle d'enregistrement est le contrat, protobuf est l'encodage de transport. À la différence d'Arrow Flight (qui est un transport de streaming colonnaire), il s'agit d'une interface de requête complète par table.
+- **API de modèle gRPC** — `.proto` auto-généré depuis le schéma enregistré ; RPC typés de requête et d'insertion pour chaque table à la racine du schéma d'un rôle, réponses en flux. Piloté par le schéma au même sens que GraphQL — le modèle d'enregistrement est le contrat, protobuf est l'encodage de transport. À la différence d'Arrow Flight (qui est un transport de streaming colonnaire), il s'agit d'une interface de requête complète par table.
 - **JSON:API** — API de requête structurée à `/data/jsonapi/{table}`, HTTP uniquement par conception. Prend en charge JSON:API 1.1 : jeux de champs partiels (`fields[table]=col1,col2`), expressions de filtre (`filter[field][op]=value`), documents composés (`include=relation`) et tri. Ce n'est pas un langage de requête généraliste — il interroge une table à la fois avec une syntaxe de filtre normalisée plutôt qu'une chaîne de requête ad hoc.
 - **Explorateur de langages de requête** — Écrivez une requête GraphQL et voyez ses traductions **Semantic SQL** et **Cypher** en direct dans des panneaux latéraux ; copiez l'une ou l'autre ou passez directement dans l'éditeur SQL ou Graphe. Un flux de travail pratique consiste à esquisser des fragments de requête en GraphQL, puis à assembler le SQL obtenu en vues ou rapports complexes.
 
@@ -96,7 +96,7 @@ Le même schéma fédéré est explorable comme un graphe vivant — étiquettes
 
 ![Visualisation du graphe](docs/images/graph-view.png)
 
-### Outils de composition de requêtes
+### Outils de composition de requêtes {: #query-composition-tools }
 
 Ces outils vous aident à écrire des requêtes dans les langages ci-dessus — ce ne sont pas eux-mêmes des langages de requête.
 
@@ -104,7 +104,7 @@ Ces outils vous aident à écrire des requêtes dans les langages ci-dessus — 
 
 ![Requête en langage naturel](docs/images/natural-language.png)
 
-### Protocoles de transport
+### Protocoles de transport {: #wire-protocols }
 
 Ce sont les protocoles de connexion. SQL, GraphQL et Cypher circulent dessus — le choix du protocole de transport ne change ni l'interface de requête ni le comportement de gouvernance.
 
@@ -114,9 +114,9 @@ Ce sont les protocoles de connexion. SQL, GraphQL et Cypher circulent dessus —
 - **JDBC** — Intégration aux outils de BI (Tableau, Power BI, DBeaver).
 - **WebSocket / SSE** — Abonnements : événements de changement en quasi temps réel ; backends : PG natif, MongoDB natif, CDC, interrogation périodique. Également exposés via Kafka.
 
-### Sources de données
+### Sources de données {: #data-sources }
 
-- **62 connecteurs, plus de 75 types de source** — Le chiffre le plus élevé compte séparément les services PostgreSQL hébergés (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) et les formats de fichier du File Crawler. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, triplestores SPARQL, Kafka, Google Sheets, Kaggle et d'autres encore à travers une seule API ; les sources graphe et RDF sont de première classe, non des adaptateurs
+- **72 connecteurs, plus de 85 types de source** — Le chiffre le plus élevé compte séparément les services PostgreSQL hébergés (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) et les formats de fichier du File Crawler. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, triplestores SPARQL, Kafka, Google Sheets, Kaggle et d'autres encore à travers une seule API ; les sources graphe et RDF sont de première classe, non des adaptateurs
 - **Routage intelligent** — Les requêtes mono-source contournent la fédération (sous les 100 ms) ; les requêtes multi-sources passent par la couche de fédération — apportez votre propre cluster ou employez les workers embarqués
 - **Sources API** — Enregistrez des endpoints REST, GraphQL, gRPC, WebSocket ou RSS comme tables interrogeables ; assistants SPARQL inclus ; les jointures fédérées entre sources API et sources relationnelles fonctionnent de façon transparente
 - **Introspection de schémas distants** — Pointez vers n'importe quel endpoint GraphQL, OpenAPI ou gRPC ; les opérations documentées sont automatiquement exposées comme tables interrogeables, nœuds et arêtes de graphe, avec toute la gouvernance appliquée par-dessus
@@ -132,7 +132,7 @@ Sources, fichiers et endpoints distants sont enregistrés comme tables gouverné
 
 ![Enregistrement de table](docs/images/table-registration.png)
 
-### Sécurité et gouvernance
+### Sécurité et gouvernance {: #security-governance }
 
 - **Sécurité au niveau des lignes** — Injection de clause WHERE par table et par rôle
 - **Masquage de colonnes** — Masquage par colonne (expression régulière, constante, troncature) avec contournement selon le rôle
@@ -145,14 +145,14 @@ Sources, fichiers et endpoints distants sont enregistrés comme tables gouverné
 
 ![Rôles de sécurité](docs/images/security-roles.png)
 
-### Livraison et performance
+### Livraison et performance {: #delivery-performance }
 
 - **Vues matérialisées comme transformations enregistrées** — Une MV capture la transformation qui l'a produite : sa forme de jointure ou son SQL, les signaux d'entrée par source (instantané Iceberg, filigrane de SGBD) à partir desquels elle a été construite, et un contrôle de déterminisme à l'enregistrement. Parce que la transformation est enregistrée, les requêtes (ou sous-expressions) sont réécrites de façon transparente sur une MV fraîche — correspondance structurelle de motif de jointure avec prise en charge des correspondances partielles, si bien qu'une MV couvrant un sous-ensemble de jointures s'applique tout de même, les jointures restantes étant préservées
 - **Inlining des tables chaudes** — Les petites tables de correspondance fréquemment jointes sont insérées comme CTE VALUES directement dans le plan de requête, éliminant les allers-retours inter-sources pour les données dimensionnelles
 - **Cache de requêtes** — Cache de résultats Redis partitionné par rôle et RLS ; cache de hachages APQ inclus
 - **L'observabilité comme donnée** — Traces distribuées, métriques et journaux sont collectés via OpenTelemetry, compactés en Iceberg sur S3 et automatiquement enregistrés comme tables interrogeables (`traces`, `metrics`, `logs`, `queries`) dans le schéma fédéré ; interrogez-les en SQL, GraphQL ou Cypher aux côtés de vos données métier — joignez une table `customers` à la table `queries` pour voir qui a exécuté quoi et combien de temps cela a pris
 
-### Administration et intégration
+### Administration et intégration {: #administration-integration }
 
 - **API d'administration** — GraphQL à `/admin/graphql` ; téléversement/téléchargement de configuration, édition des relations, approbation des requêtes
 - **Visionneuse de rapports** — `/admin/reports` liste les vues de gestion intégrées du domaine ops ainsi que tout rapport personnalisé enregistré ; exige la capacité `observability`
@@ -172,37 +172,37 @@ Les relations sont enregistrées, approuvées et appliquées comme les seuls che
 
 ![Relations](docs/images/relationships.png)
 
-## Modèle de sécurité
+## Modèle de sécurité {: #security-model }
 
 C'est ici que « sur le chemin qu'emprunte déjà chaque requête » cesse d'être un slogan. Provisa applique un modèle de sécurité multicouche à travers chaque langage de requête (GraphQL, SQL, Cypher) et chaque transport (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket). La gouvernance s'applique uniformément — aucun chemin de requête ne la contourne. La couverture est totale par construction, non par diligence : ajoutez une source, une colonne ou une relation et chaque couche s'y applique automatiquement, sans rien à penser à enregistrer.
 
 Les couches s'appliquent dans l'ordre. Une demande doit franchir chaque couche avant que la suivante soit évaluée.
 
-### Couche 0 — Filtrage de l'introspection
+### Couche 0 — Filtrage de l'introspection {: #layer-0-introspection-filtering }
 
 Le schéma et le catalogue présentés à un rôle ne contiennent que les tables de sa liste `domain_access` et les colonnes qui passent les règles `visible_to` par colonne. Les objets hors de l'accès d'un rôle sont invisibles au moment de la découverte — ils ne peuvent être ni interrogés, ni autocomplétés, ni supposés exister. Cela vaut pour le schéma GraphQL, le catalogue SQL et l'explorateur de schéma de l'éditeur de requêtes.
 
-### Couche 1 — Accès public
+### Couche 1 — Accès public {: #layer-1-public-access }
 
 Les tables des domaines sans restriction `domain_access` sont visibles de toutes les identités authentifiées, sans configuration supplémentaire. Zéro friction pour les données réellement publiques.
 
-### Couche 2 — Accès au domaine
+### Couche 2 — Accès au domaine {: #layer-2-domain-access }
 
 Chaque rôle porte une liste `domain_access` d'identifiants de domaines. Une requête qui touche une table hors de ces domaines est rejetée avant exécution. C'est la limite grossière de propriété — un rôle RH ne peut pas atteindre les tables financières, quelle que soit la façon dont le SQL est écrit.
 
-### Couche 3 — Sécurité au niveau des lignes
+### Couche 3 — Sécurité au niveau des lignes {: #layer-3-row-level-security }
 
 Une fois l'accès au domaine confirmé, des prédicats `WHERE` par table et par rôle sont injectés dans chaque `SELECT` au moment de l'exécution. Les prédicats s'évaluent contre les données brutes. Un responsable régional interrogeant une table de commandes partagée ne voit que les lignes de sa région, même sur un `SELECT *`.
 
-### Couche 4 — Visibilité et masquage des colonnes
+### Couche 4 — Visibilité et masquage des colonnes {: #layer-4-column-visibility-and-masking }
 
 Les colonnes dont la liste `visible_to` exclut le rôle demandeur sont retirées de la sortie de requête. Les colonnes portant une règle de masquage voient leurs valeurs remplacées — caviardage par expression régulière, remplacement par une constante ou troncature — avant que les résultats quittent le serveur. Le masquage s'applique dans tous les langages de requête et tous les formats de sortie.
 
-### Couche 5 — Garde des prédicats
+### Couche 5 — Garde des prédicats {: #layer-5-predicate-guard }
 
 Les colonnes masquées sont rejetées des clauses `WHERE` et `HAVING`. Sans cela, un appelant pourrait déduire la valeur non masquée en la cherchant par dichotomie dans un filtre, alors même que la sortie est masquée. Le rejet est appliqué à l'analyse de la requête, avant exécution.
 
-### Gouvernance des relations
+### Gouvernance des relations {: #relationship-governance }
 
 Les conditions de JOIN en SQL doivent correspondre à une relation enregistrée et approuvée entre tables. Les jointures non approuvées sont rejetées. Chaque relation porte une raison et une description lisibles — un guide, tant pour les utilisateurs que pour les agents autonomes, sur la raison d'être d'un chemin de parcours. C'est une politique de gouvernance, non une frontière de sécurité dure : les couches 2 à 5 tiennent quelle que soit la structure de jointure, si bien qu'un contournement délibéré n'expose pas de données que le rôle ne pourrait atteindre par deux requêtes séparées. Les tentatives de contournement sont journalisées et auditables.
 
@@ -246,7 +246,7 @@ provisa start && provisa open
 provisa start
 ```
 
-### Première requête
+### Première requête {: #first-query }
 
 En développement local (`PROVISA_MODE=test`), aucun identifiant n'est requis. En production, authentifiez-vous avec un jeton Bearer — le rôle en est extrait automatiquement.
 
@@ -280,7 +280,7 @@ Authentifiez-vous avec vos nom d'utilisateur et mot de passe Provisa — le serv
 
 Voir [docs/integrations.md](docs/integrations.md) pour les étapes de configuration de Tableau et Power BI.
 
-### Protocole de transport PostgreSQL (pgwire)
+### Protocole de transport PostgreSQL (pgwire) {: #postgresql-wire-protocol-pgwire }
 
 Provisa parle le protocole de transport PostgreSQL sur le port 5439. Tout client capable de se connecter à Postgres se connecte à Provisa — sans pilote, sans adaptateur, sans changement à l'outillage existant.
 
@@ -312,7 +312,7 @@ DataGrip parcourant le schéma gouverné et son diagramme de clés étrangères 
 
 Le TLS s'active en définissant `PROVISA_PGWIRE_CERT` et `PROVISA_PGWIRE_KEY`. Le port est configurable via `PROVISA_PGWIRE_PORT` (`5439` par défaut).
 
-### Bolt (protocole de transport Neo4j)
+### Bolt (protocole de transport Neo4j) {: #bolt-neo4j-wire-protocol }
 
 Provisa parle également le protocole **Bolt** de Neo4j, si bien que les outils nativement orientés graphe se connectent directement et exécutent du Cypher contre le graphe fédéré — sans export, sans base de données graphe distincte. Pointez **Neo4j Browser** ou **Bloom** vers Provisa et parcourez les relations à travers les sources avec la même gouvernance (accès au domaine, RLS, masquage) appliquée.
 
@@ -322,7 +322,7 @@ Neo4j Browser exécutant du Cypher contre Provisa — étiquettes de nœuds, typ
 
 Activez-le en définissant `PROVISA_BOLT_PORT` (le port par défaut de Neo4j est `7687`). Le TLS s'active avec `PROVISA_BOLT_CERT` et `PROVISA_BOLT_KEY`. Chaque rôle Provisa que détient l'utilisateur authentifié apparaît comme une base `provisa_<role>` sélectionnable (le sélecteur `provisa_admin` ci-dessus) — en choisir une restreint la session aux droits de domaine de ce rôle ; l'utilisateur ne peut jamais dépasser les rôles qu'il détient.
 
-### Client Python
+### Client Python {: #python-client }
 
 ```bash
 pip install provisa-client                       # core
@@ -397,6 +397,9 @@ Voir [docs/python-client.md](docs/python-client.md) pour la référence complèt
 | Stockage des secrets et références `${secret:NAME}` | [docs/secrets.md](docs/secrets.md) |
 | Glossaire métier et curation des termes | [docs/glossary.md](docs/glossary.md) |
 | Environnements (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
+| Construire des environnements de test (profilage, données factices, données synthétiques) | [docs/test-data.md](docs/test-data.md) |
+| Référence des méthodes de données factices | [docs/fake-methods.md](docs/fake-methods.md) |
+| Exécuter et construire des démos sur un portable (ingénieurs avant-vente) | [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) |
 | Types de sources pris en charge | [docs/sources.md](docs/sources.md) |
 | Abonnements SSE | [docs/subscriptions.md](docs/subscriptions.md) |
 | JDBC, outils de BI, clients Arrow Flight, Apollo Federation | [docs/integrations.md](docs/integrations.md) |
@@ -406,7 +409,7 @@ Voir [docs/python-client.md](docs/python-client.md) pour la référence complèt
 | Import Hasura v2 / DDN | [docs/import.md](docs/import.md) |
 | Flux de publication (étiquettes alpha/beta/stable) | [docs/releasing.md](docs/releasing.md) |
 
-## Dimensionnement
+## Dimensionnement {: #sizing }
 
 Provisa embarque un moteur de fédération pour les requêtes multi-sources. Au premier lancement vous choisissez un budget de RAM ; Provisa en dérive automatiquement le nombre de workers de fédération locaux.
 
@@ -419,7 +422,7 @@ Provisa embarque un moteur de fédération pour les requêtes multi-sources. Au 
 
 Le nombre de workers peut être changé à tout moment en modifiant `~/.provisa/config.yaml` (`federation_workers: N`) puis en exécutant `provisa restart`. Mettez-le à `0` pour n'exécuter que la coordination (nœud unique).
 
-### Passer à l'échelle au-delà d'une seule machine
+### Passer à l'échelle au-delà d'une seule machine {: #scaling-beyond-a-single-box }
 
 **Montée en charge horizontale** — Exécutez plusieurs instances Provisa derrière un répartiteur de charge. Chaque instance est un système pleinement fonctionnel. Toutes les instances doivent pointer vers la même base de configuration (définissez `CONFIG_DB_HOST` sur les machines secondaires) et, facultativement, vers une instance Redis partagée (`REDIS_URL`) pour un cache unifié. La plupart des requêtes se distribuent de façon transparente ; de très grandes jointures inter-sources peuvent dépasser les ressources d'une seule instance et exiger une machine plus grande ou un cluster de fédération externe.
 
@@ -427,7 +430,7 @@ Le nombre de workers peut être changé à tout moment en modifiant `~/.provisa/
 
 **Apportez votre propre cluster de fédération** — Pointez Provisa vers un cluster de fédération externe existant plutôt que vers les workers embarqués. Recommandé pour les déploiements à grande échelle ou en cloud ; voir [docs/deployment.md](docs/deployment.md) pour la configuration.
 
-## Licence
+## Licence {: #license }
 
 Business Source License 1.1 (non modifiée, selon les engagements du concédant de
 MariaDB). Chaque version publiée bascule vers la Change License (GPL v2.0 ou

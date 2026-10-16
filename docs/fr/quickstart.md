@@ -1,4 +1,4 @@
-# Guide de démarrage rapide pour les développeurs
+# Guide de démarrage rapide pour les développeurs {: #developer-quick-start }
 
 Pour évaluer Provisa sans compiler à partir du code source, consultez le [Guide de démarrage rapide](index.md) — téléchargez le programme d'installation pour macOS, Windows ou Linux et exécutez `provisa start`. (REQ-223, REQ-224, REQ-227)
 
@@ -6,7 +6,7 @@ Ce guide est destiné à l'exécution de Provisa **depuis le dépôt** — déve
 
 ---
 
-## Prérequis
+## Prérequis {: #prerequisites }
 
 - **Docker Desktop** (en cours d'exécution)
 - **Python 3.12+**
@@ -15,7 +15,7 @@ Ce guide est destiné à l'exécution de Provisa **depuis le dépôt** — déve
 
 ---
 
-## 1. Cloner et configurer
+## 1. Cloner et configurer {: #1-clone-and-set-up }
 
 ```bash
 git clone https://github.com/kenstott/provisa.git
@@ -27,7 +27,7 @@ cd provisa
 
 ---
 
-## 2. Tout démarrer
+## 2. Tout démarrer {: #2-start-everything }
 
 ```bash
 ./start-ui.sh
@@ -89,7 +89,7 @@ Sources fournies :
 
 ---
 
-## 3. Connecter une source de données
+## 3. Connecter une source de données {: #3-connect-a-data-source }
 
 Provisa lit la configuration depuis `config/`. Ajoutez un fichier source — par exemple `config/sources/my-db.yaml` :
 
@@ -122,7 +122,7 @@ Consultez [docs/configuration.md](configuration.md) pour la référence YAML com
 
 ---
 
-## 4. Exécuter votre première requête
+## 4. Exécuter votre première requête {: #4-run-your-first-query }
 
 ```bash
 # GraphQL
@@ -140,7 +140,7 @@ Aucune authentification n'est requise lorsqu'aucune section `auth` n'est présen
 
 ---
 
-## 5. Ouvrir l'UI
+## 5. Ouvrir l'UI {: #5-open-the-ui }
 
 Ouvrez `http://localhost:3000` dans un navigateur.
 
@@ -155,7 +155,7 @@ L'API GraphQL d'administration se trouve à l'adresse `http://localhost:8001/adm
 
 ---
 
-## Dépannage
+## Dépannage {: #troubleshooting }
 
 **Le backend ne démarre pas** — vérifiez `.logs/server.log`. La cause la plus courante est une variable d'environnement manquante ou un conflit de port sur le 8001. [tool-verified: start-ui.sh line 202] (REQ-618)
 
@@ -167,7 +167,7 @@ L'API GraphQL d'administration se trouve à l'adresse `http://localhost:8001/adm
 
 ---
 
-## Étapes suivantes
+## Étapes suivantes {: #next-steps }
 
 | Objectif | Document |
 | ------ | ----- |

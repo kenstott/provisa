@@ -1,12 +1,12 @@
-# Schémas distants
+# Schémas distants {: #remote-schemas }
 
 Une source de schéma distant connecte une API externe — GraphQL (y compris GitHub), gRPC ou REST (OpenAPI) — à le modèle de Provisa. Ajouter une source n'enregistre aucune table. La source propose des tables, et un data steward enregistre chaque table souhaitée via le sélecteur « Register Table » ; cet enregistrement est l'étape de curation. (REQ-308, REQ-316, REQ-322) Une table enregistrée est une table Provisa de première classe. (REQ-308, REQ-316, REQ-325) Chaque règle de gouvernance, chaque interface de requête et chaque couche de sécurité s'applique automatiquement. (REQ-310, REQ-319, REQ-328) Le service distant ne voit jamais les règles de gouvernance de Provisa. (REQ-310, REQ-319, REQ-328)
 
 ---
 
-## Trois types de source
+## Trois types de source {: #three-source-types }
 
-### Schéma distant GraphQL (REQ-307–313)
+### Schéma distant GraphQL (REQ-307–313) {: #graphql-remote-schema-req-307313 }
 
 **Comment ajouter la source.** Envoyer une requête POST à `/admin/sources/graphql-remote` avec l'URL du endpoint, un namespace et une authentification facultative. Provisa déclenche une requête d'introspection `__schema` standard sur le endpoint distant afin de confirmer le endpoint et l'identifiant. (REQ-307) [tool-verified: `provisa/graphql_remote/introspect.py:47–59`]
 
@@ -160,7 +160,7 @@ GitLab est un type de source ordinaire, ajouté et enregistré comme GitHub : aj
 
 ---
 
-### Schéma distant gRPC (REQ-322–329)
+### Schéma distant gRPC (REQ-322–329) {: #grpc-remote-schema-req-322329 }
 
 **Comment ajouter la source.** Envoyer une requête POST à `/admin/grpc-remote/register` avec l'adresse du serveur, un chemin ou une URL vers un fichier `.proto` et une configuration TLS facultative. Ajouter la source n'enregistre aucune table.
 
@@ -288,7 +288,7 @@ Ordre de priorité de la classification : `operation_overrides` (payload) est pr
 
 ---
 
-## Impact de l'enregistrement d'une table distante
+## Impact de l'enregistrement d'une table distante {: #impact-of-registering-a-remote-table }
 
 Une table enregistrée depuis n'importe quelle source de schéma distant est une table Provisa de première classe. Rien ne la distingue, au moment de l'exécution, d'une table relationnelle connectée localement. (REQ-308, REQ-313)
 
@@ -312,7 +312,7 @@ Les requêtes ad hoc sur les tables distantes sont autorisées sous les seuls dr
 
 ---
 
-## Impact de la création d'une relation de couverture
+## Impact de la création d'une relation de couverture {: #impact-of-creating-a-covering-relationship }
 
 Lorsqu'un data steward enregistre une relation entre deux tables distantes (ou entre une table distante et une table locale), cette relation devient le chemin de jointure utilisé au moment de la requête.
 
@@ -330,7 +330,7 @@ Dans le SDL GraphQL, un champ OBJECT inline non gouverné est typé comme le typ
 
 ---
 
-## Comportement de définition de type seule
+## Comportement de définition de type seule {: #type-def-only-behavior }
 
 Tous les types d'un schéma distant n'ont pas besoin d'être une table interrogeable.
 

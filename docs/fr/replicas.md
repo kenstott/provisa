@@ -1,8 +1,8 @@
-# Répliques
+# Répliques {: #replicas }
 
 Une réplique est une copie d'une table source que Provisa conserve dans le magasin de matérialisation du moteur et lit à la place de la source. Cette page traite de ce sur quoi une réplique est indexée, de l'endroit où conserver les répliques et de leur fraîcheur. Qu'une table soit répliquée ou non est déterminé par [`replicate`](configuration.md#the-replicate-setting) et par ce que le moteur peut atteindre ; voir [Ce qu'un moteur change](engines.md#what-an-engine-changes). (REQ-826)
 
-## Les répliques sont indexées
+## Les répliques sont indexées {: #replicas-are-indexed }
 
 Provisa indexe une réplique selon la façon dont le modèle utilise sa table. (REQ-2015) [tool-verified: `provisa/federation/replica_indexes.py` `plan`, `join_columns`]
 
@@ -28,7 +28,7 @@ La réplique de `orders` reçoit sa clé et un index sur `customer_id`. La répl
 
 Déclarez la clé avec `is_primary_key: true` sur la colonne. Une réplique sans clé déclarée ne reçoit que ses index de jointure. [tool-verified: `provisa/federation/replica_builds.py` `plan_indexes`]
 
-### Lisible d'abord, indexée ensuite
+### Lisible d'abord, indexée ensuite {: #readable-first-indexed-after }
 
 Un atterrissage n'attend jamais les index. La réplique est lue dès l'instant où elle est substituée ; le runner de répliques construit ensuite ses index un par un, dans une passe distincte, sous un verrou d'index par réplique. [tool-verified: `provisa/federation/replica_runner.py` `_planned`, `_start_index_builds`] Attendez-vous à ce que les premières requêtes après un atterrissage s'exécutent sans eux.
 
@@ -81,7 +81,7 @@ Il s'agit d'une recommandation générale, pas d'une règle. Son intérêt dépe
 - **La charge propre de la base.** Les lectures de répliques, les atterrissages et les constructions d'index s'exécutent tous sur cette base. Dimensionnez-la en conséquence. [inferred]
 - **Grands parcours.** Un index n'apporte rien à une requête qui lit l'essentiel d'une grande table. Un magasin en colonnes la parcourt plus vite qu'un magasin en lignes. [inferred]
 
-## Choisir où vivent les répliques
+## Choisir où vivent les répliques {: #choosing-where-replicas-live }
 
 Le magasin est un levier parmi plusieurs, et ils se recoupent. Réglez d'abord les autres ; le magasin ne décide que de ce qu'ils laissent.
 
@@ -98,7 +98,7 @@ Ce qui dépend encore du magasin : les parcours et jointures ad hoc sur de gran
 
 Les résultats varient selon la charge. Mesurez avant et après un changement avec l'[outil de dimensionnement](sizing.md) ; ses [exécutions en direct ou en réplique](sizing.md#live-or-replica-reads-and-the-ttl) donnent le coût d'une lecture en réplique par rapport à celui d'une lecture en direct sur votre déploiement.
 
-## Fraîcheur
+## Fraîcheur {: #freshness }
 
 Faites de la fraîcheur une part de la décision, à côté de la vitesse. L'ancienneté acceptable d'une réponse, et ce que coûte à la source le fait de la maintenir à jour, déterminent si une table est lue en direct ou depuis une réplique, et donc ce que le magasin doit contenir.
 
@@ -120,7 +120,7 @@ Les sources d'entreprise prennent rarement en charge le temps réel. Les donnée
 
 Une sonde qui n'a rien à comparer (ni filigrane, ni sentinelle, ni requête de sonde) se rabat sur le TTL. [tool-verified: `provisa/federation/replica_builds.py` `_probe_decides`]
 
-### Quasi temps réel depuis un flux de changements
+### Quasi temps réel depuis un flux de changements {: #near-real-time-from-a-change-feed }
 
 Lorsqu'une source ne peut pas supporter de charge de requêtes en direct mais publie déjà ses changements, un flux de changements donne des données quasi temps réel sans toucher la source au moment de la requête. Les requêtes lisent la réplique locale, rapide et sans charge pour la source, tandis que la boucle d'événements applique les changements à mesure qu'ils arrivent. Les données ne sont en retard que du retard du flux, typiquement quelques secondes. [inferred: the lag figure]
 

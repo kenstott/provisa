@@ -1,18 +1,18 @@
-# Produits de données (REQ-1634)
+# Produits de données (REQ-1634) {: #data-products-req-1634 }
 
 Un produit de données est un ensemble nommé et possédé de tables publiées ensemble pour la consommation. C'est l'unité que le catalogue expose aux consommateurs — non pas des tables individuelles, mais une surface sélectionnée qu'un domaine déclare explicitement prête. Les champs suivent le vocabulaire ODPS (Open Data Product Standard) là où Provisa possède déjà la source de vérité. [tool-verified: `provisa/core/models.py:318-342`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json`]
 
-## Règle de propriété du domaine
+## Règle de propriété du domaine {: #domain-ownership-rule }
 
 Chaque produit de données appartient à exactement un domaine (`domain_id` est un champ requis). Une table ne peut rejoindre un produit de données que si les deux partagent le même `domain_id`. L'interface restreint le sélecteur de tables au domaine du produit ; le backend rejette une affectation `product_id` dont le domaine ne correspond pas à celui du produit au moment de l'enregistrement. [tool-verified: `provisa/core/models.py:320`, `docs/arch/requirements.yaml:54573-54574`]
 
 Un produit qui a besoin de données d'un autre domaine doit d'abord faire entrer ces données sous forme de vue de domaine, puis inclure la vue comme membre.
 
-## Ports de sortie
+## Ports de sortie {: #output-ports }
 
 Les tables et commandes affectées à un produit de données constituent ses **ports de sortie** — la surface interrogeable que voient les consommateurs. Affecter une table définit `Table.product_id` ; l'effacer supprime l'appartenance. Une table appartient à au plus un produit. Les commandes du même domaine peuvent également être affectées comme membres. [tool-verified: `provisa/core/models.py:941`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json:tablesLabel,commandsLabel`]
 
-## Sections du panneau de détail
+## Sections du panneau de détail {: #detail-panel-sections }
 
 Ouvrir un produit de données dans l'interface d'administration affiche les panneaux suivants :
 
@@ -49,7 +49,7 @@ Seuls les catalogues disposant d'un concept natif de produit de données le publ
 
 [tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:389-418`, `provisa/api/metadata_export/bigquery_dataplex.py:112-136`, `provisa/api/metadata_export/openmetadata.py:326-344`, `provisa/api/metadata_export/datahub.py:133-136,443-483`, `provisa/api/metadata_export/collibra.py:129-133,371-388`, `provisa/api/metadata_export/atlas.py:134-147`, `provisa/api/metadata_export/atlan.py:60`, `provisa/api/metadata_export/openlineage.py:243,348`]
 
-## Champs
+## Champs {: #fields }
 
 | Champ | Requis | Notes |
 | --- | --- | --- |
