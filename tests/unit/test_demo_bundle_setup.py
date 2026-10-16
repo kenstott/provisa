@@ -456,3 +456,14 @@ def test_a_demo_with_no_seeder_brings_its_stores_up(tmp_path):
     it does not have."""
     asked = _stores_up(tmp_path, "postgres\n")
     assert asked[1:] == [("up", "-d", "--build", "--wait")]
+
+
+def test_the_sonnets_vectors_source_reads_with_the_stores_read_only_key():
+    """The run-time Qdrant asks for a key (docker-compose.run.yml), and the source reads with the
+    read-only one: without it every lines_like answered 401 (cloud-dev, 2026-10-16)."""
+    run = yaml.safe_load((_SONNETS / "docker-compose.run.yml").read_text())
+    reader = run["services"]["qdrant"]["environment"]["QDRANT__SERVICE__READ_ONLY_API_KEY"]
+    config = yaml.safe_load((_SONNETS / "config.yaml").read_text())
+    vectors = next(s for s in config["sources"] if s["id"] == "vectors")
+    assert reader == "${SONNETS_QDRANT_KEY:-sonnets-reader}"
+    assert vectors["password"] == "${env:SONNETS_QDRANT_KEY:-sonnets-reader}"

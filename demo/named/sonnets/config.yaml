@@ -61,6 +61,10 @@ sources:
 - id: vectors
   type: qdrant
   host: http://${env:SONNETS_QDRANT_HOST:-localhost}:${env:SONNETS_QDRANT_PORT:-28533}
+  # Qdrant's read-only key (docker-compose.run.yml): the store is shared by every sandbox of the
+  # demo, and Provisa writes nothing to it. A store started without keys (the bundle build's)
+  # does not ask for one.
+  password: ${env:SONNETS_QDRANT_KEY:-sonnets-reader}
   description: The vector store holding the embedding of every line
 tables:
 - source_id: sonnets
