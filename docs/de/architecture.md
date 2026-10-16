@@ -134,7 +134,7 @@ flowchart TD
 | **Direct** | Einzelne Quelle + hat nativen Treiber + hat Federation-Connector |
 | **Federation** | Mehrquellen-Federation, oder Quelle hat Connector, aber keinen Treiber |
 | **Materialize** | Quelle hat keinen Federation-Connector — zuerst nach S3/PG abrufen und cachen |
-| **Mutation** | GraphQL-Mutation — immer direkt, nie föderiert |
+| **Mutation** | Ein Schreibvorgang: der eigene Treiber der Quelle, wenn sie einen hat; sonst die Engine, über einen Connector, der die Quelle schreibt (REQ-031, REQ-910) |
 
 Das Routing verbraucht die Ausgabe der Post-Governance-Optimierungsstufe, nie das vor der Optimierung geregelte SQL. Governance kann Quellen HINZUFÜGEN (RLS-Subquery-Prädikate); die Optimierungsstufe kann sie ENTFERNEN (Hot-Table-VALUES-CTE-Inlining, API-Cache-Rewrites, Union-Branch-Pruning). Eine föderierte Abfrage, die nach dem Inlining zu einer einzigen Live-Quelle kollabiert, wird daher als direkt neu geroutet. (REQ-863)
 
@@ -239,6 +239,22 @@ Ergebnisse, die einen Zeilenschwellenwert überschreiten, werden statt inline zu
 | **Provisa-Upload** (JSON, NDJSON, CSV, Arrow IPC) | Provisa serialisiert und lädt via boto3 hoch | Ja |
 
 Bei CTAS-nativen Formaten verarbeitet Provisa die Daten nie — die Federation-Engine schreibt Dateien direkt nach MinIO/S3. (REQ-138) Das ist der bevorzugte Pfad für große analytische Exporte.
+
+### Ohne Objektspeicher
+
+Ein Ergebnis geht in den Objektspeicher, wenn einer konfiguriert ist (ein Endpunkt oder Anmeldedaten für AWS S3) und die Engine das angeforderte Format selbst dorthin schreibt. Andernfalls wird es in eine Datei im Ordner der Org geschrieben, `<data directory>/orgs/<org>/results/`. [tool-verified: `provisa/executor/redirect.py` `uses_object_store`, `run_materialize`] (REQ-1195) Ein konfigurierter Speicher, in den die Engine schreibt, den sie aber nicht erreicht, lässt die Anfrage namentlich fehlschlagen. Das Ergebnis wird dann nicht stattdessen in den Ordner geschrieben.
+
+| Engine | Schreibt die Datei selbst | Formate |
+| ------ | ---------------------- | ------- |
+| DuckDB | `COPY (query) TO '<file>'` | parquet, csv, json, ndjson |
+| PostgreSQL | `COPY (query) TO STDOUT`, in die Datei auf dem Host von Provisa gestreamt | csv |
+| Jedes andere Format oder jede andere Engine | Provisa schreibt sie aus den Zeilen | parquet, orc, csv, arrow, json, ndjson |
+
+[tool-verified: `provisa/federation/result_sink.py` `DUCKDB_FILE_FORMATS`; `provisa/federation/pg_backend.py`; `provisa/executor/local_results.py` `FILE_FORMATS`]
+
+Das Handle hat dieselben Schlüssel wie das des Objektspeichers, mit `"sink": "local"` und einer `redirect_url` von `/data/redirect-file/<name>`, einem Pfad auf dem Server, der geantwortet hat. (REQ-1191) Nur der Benutzer, der das Ergebnis angefordert hat, darf es abrufen. Jeder Abruf vergleicht die eigene Identität der Anfrage mit dem neben der Datei vermerkten Eigentümer und antwortet jedem anderen mit 403 und einer Anfrage ohne Identität mit 401. (REQ-1192) [tool-verified: `provisa/api/data/redirect_file.py`; `tests/unit/test_local_result_sink.py`]
+
+Eine Datei, die älter als `redirect.ttl` ist, wird mit 404 beantwortet und gelöscht. Ein Timer löscht sie bei ihrem Ablauf, so wie die Ergebnisse des Objektspeichers gelöscht werden. Jedes neue Ergebnis räumt außerdem den Ergebnisordner der Org auf, wodurch Dateien entfernt werden, deren Timer durch einen Neustart beendet wurde. (REQ-1193) [tool-verified: `provisa/executor/local_results.py` `schedule_removal`, `reap_expired`]
 
 ### Redirect-Header
 
@@ -534,21 +550,21 @@ Vier Hintergrundschleifen starten während der App-Lifespan (`api/app.py`):
 | Dienst | Intervall | Zweck |
 | --------- | ---------- | --------- |
 | MV-Refresh-Schleife | 30 s | Pollt `get_due_for_refresh()`, führt CTAS oder DELETE+INSERT auf veralteten materialisierten Sichten aus |
-| Warm-Table-Manager | konfigurierbar | Befördert häufig abgefragte Tabellen in den Iceberg-Local-SSD-Cache |
+| Hot-Replikations-Auswertung | `replication.hot_interval` | Befördert eine Tabelle, deren Anweisungszahl ihren Schwellenwert überschritten hat, und fordert ihr Replikat an; stuft eine herab, die unter die Hälfte gefallen ist. Läuft in dem einen Prozess, der die Scheduler-Sperre hält |
 | Hot-Table-Loader | konfigurierbar | Lädt kleine Referenztabellen in den In-Memory-Cache für Zugriff unter einer Millisekunde |
 | API-Source-Poller | Intervall pro Quelle | Ruft entfernte REST-/GraphQL-/gRPC-Quellen erneut ab und cacht sie neu |
 
 (REQ-160, REQ-238, REQ-239, REQ-236)
 
-### Hot-/Warm-Table-Caching-Stufen
+### Hot-Tabellen und bei Last replizierte Tabellen
 
 | Stufe | Storage | Beförderungskriterium | Zugriffslatenz |
 | ------ | --------- | ------------------- | ---------------- |
 | Hot | In-Process-Speicher | Zeilenanzahl < Schwellenwert, oder ist Beziehungsziel | <1 ms |
-| Warm | Iceberg auf lokaler SSD | Abfragehäufigkeits-Schwellenwert überschritten | ~5–20 ms |
+| Bei Last repliziert | Replikat im Store der Engine | `replicate` ist Default oder Hot-N und die regulierten Anweisungen, die die Tabelle lesen, haben ihren Schwellenwert überschritten | Der eigene Lesezugriff der Engine auf ihren Store |
 | Cold | Entfernte Quelle | Standard | 50–500 ms |
 
-(REQ-230, REQ-236, REQ-238, REQ-241)
+Eine Tabelle liegt in höchstens einer der beiden: Eine Tabelle, die die Hot-Stufe verwaltet, wird nicht wegen Last repliziert. (REQ-230, REQ-236, REQ-238, REQ-241, REQ-826)
 
 ## Metadaten-Import (Hasura v2 / DDN)
 
@@ -578,7 +594,7 @@ Alle Listenabfragen unterstützen Relay-artige Cursor-Paginierung über `compile
 
 ## Aggregatabfragen
 
-Jede registrierte Tabelle erhält ein automatisch generiertes `{table}_aggregate`-Root-Feld (`compiler/aggregate_gen.py`). (REQ-196) Der Aggregat-Typ legt `count`, `sum`, `avg`, `min`, `max` pro numerischer Spalte offen sowie `nodes` für gefilterten Zeilenzugriff mit voller Feldauswahl (dieselbe RLS/Maskierung wie die Basisabfrage). (REQ-196, REQ-198) Aggregatabfragen sind für das Aggregate-MV-Routing geeignet — siehe `mv/aggregate_catalog.py`. (REQ-198)
+Jede registrierte Tabelle erhält ein automatisch generiertes `{table}_aggregate`-Root-Feld (`compiler/aggregate_gen.py`). (REQ-196) Der Aggregat-Typ legt `count`, `sum`, `avg`, `min`, `max` pro numerischer Spalte offen sowie `nodes` für gefilterten Zeilenzugriff mit voller Feldauswahl (dieselbe RLS/Maskierung wie die Basisabfrage). (REQ-196, REQ-198) Ein Aggregat über eine Tabelle, von jeder Oberfläche (SQL oder kompiliert), wird ohne jede Deklaration aus einer frischen materialisierten Sicht beantwortet, die es vorab aggregiert: Eine Sicht, deren SQL ein `GROUP BY` über eine Tabelle mit benannten `SUM`, `COUNT`, `MIN` und `MAX` ist, bedient die Aggregate, die nach einer Teilmenge ihrer Gruppierungsspalten gruppieren und nur auf ihnen filtern. Jedes Aggregat wird über die gespeicherten neu aggregiert (`COUNT` als Summe der gespeicherten Zählungen, `AVG` aus einer gespeicherten Summe und Zählung derselben Spalte); was die Sicht nicht exakt beantworten kann, bleibt der Tabelle überlassen. Die Umschreibung läuft nach der Governance, sodass ein Zeilenfilter auf einer der Gruppierungsspalten der Sicht auf die Sicht übertragen wird, und ein Zeilenfilter auf einer anderen Spalte oder eine Maske über einer summierten Spalte überlässt das Lesen der Tabelle. (REQ-198, REQ-882) [tool-verified: `provisa/mv/aggregate_catalog.py`, `provisa/mv/view_reinject.py` `reinject`, `provisa/pgwire/_pipeline.py` `_view_answering`]
 
 ## Automatic Persisted Queries (APQ)
 
@@ -586,7 +602,7 @@ Jede registrierte Tabelle erhält ein automatisch generiertes `{table}_aggregate
 
 ## Vererbte Rollen
 
-Eine Rolle benennt über `parent_role_id` höchstens eine übergeordnete Rolle. (REQ-215) Beim Runtime-Build durchläuft `security/inheritance.py` die Kette jeder Rolle vom Kind aufwärts und faltet sie in die eigenen Kopien der geladenen Daten des Builds, sodass jeder spätere Lookup weiterhin nach der handelnden Rollen-ID indiziert bleibt. (REQ-1677) Capabilities und Domänenzugriff sind die Vereinigung der Kette. Die `visible_to`, `writable_by` und `unmasked_to` einer Spalte sowie das `visible_to` einer Metrik, Funktion oder eines Webhooks gelten für eine Rolle, wenn sie diese oder einen Vorfahren nennen. RLS wird pro Tabelle aufgelöst, wobei das Kind Vorrang hat: die nächstgelegene Rolle in der Kette, die eine Regel für die Tabelle hat, ihre eigene Tabellenregel vor ihrer Domänenregel, liefert das eine Prädikat, das läuft; die Regel eines Vorfahren wird nie damit kombiniert. Eine Rolle erbt das Rate-Limit ihrer übergeordneten Rolle, wenn sie keines setzt. Eine übergeordnete Rolle muss existieren, darf nicht die Rolle selbst sein und darf keinen Zyklus schließen; eine Rolle, von der andere Rollen erben, kann nicht gelöscht werden, bis sie umgehängt wurden. (REQ-1677)
+Eine Rolle benennt über `parent_role_id` höchstens eine übergeordnete Rolle. (REQ-215) Beim Runtime-Build durchläuft `security/inheritance.py` die Kette jeder Rolle vom Kind aufwärts und faltet sie in die eigenen Kopien der geladenen Daten des Builds, sodass jeder spätere Lookup weiterhin nach der handelnden Rollen-ID indiziert bleibt. (REQ-1677) Capabilities und Domänenzugriff sind die Vereinigung der Kette. Das `visible_to` und `writable_by` einer Spalte, jeder Eintrag ihrer Maskenliste sowie das `visible_to` einer Metrik, Funktion oder eines Webhooks gelten für eine Rolle, wenn sie diese oder einen Vorfahren nennen. RLS wird pro Tabelle aufgelöst, wobei das Kind Vorrang hat: die nächstgelegene Rolle in der Kette, die eine Regel für die Tabelle hat, ihre eigene Tabellenregel vor ihrer Domänenregel, liefert das eine Prädikat, das läuft; die Regel eines Vorfahren wird nie damit kombiniert. Eine Rolle erbt das Rate-Limit ihrer übergeordneten Rolle, wenn sie keines setzt. Eine übergeordnete Rolle muss existieren, darf nicht die Rolle selbst sein und darf keinen Zyklus schließen; eine Rolle, von der andere Rollen erben, kann nicht gelöscht werden, bis sie umgehängt wurden. (REQ-1677)
 
 ## ABAC-Genehmigungs-Hook
 

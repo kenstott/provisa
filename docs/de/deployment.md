@@ -529,17 +529,48 @@ Hinweis: Das Provisa-AppImage kann nicht innerhalb eines Kubernetes-Pods ausgef�
    - **Redis** — im Cluster oder extern (`redis.host`)? Ändern Sie das Standardpasswort (`redis.password`)
    - **MinIO / S3** — MinIO im Cluster oder natives S3? Für AWS verwenden Sie S3 mit einer IAM-Rolle
    - **Secrets** — für die Evaluierung über `--set` übergeben; für Produktion External Secrets oder Vault Agent verwenden
+   - **Trino-Coordinator-Cache** — ein 1Gi-Volume, standardmäßig angefordert und unter `/data/trino/cache` eingehängt (`trino.coordinator.cache.persistence`: `enabled`, `size`, `storageClass`). Dort werden die Describe-Ergebnisse einer Salesforce-Quelle gehalten, damit ein neu gestarteter Coordinator nicht erneut das API-Kontingent der Org für deren Beschreibung verbraucht. Schalten Sie ihn nur aus, wenn keine Quelle ihn braucht (REQ-1946)
 
-4. Installieren Sie das Chart:
+4. Geben Sie dem Deployment seinen Master-Key. Der Key verschlüsselt den Secrets-Vault; jeder API-Pod muss
+   denselben halten, und er muss jeden Pod überdauern. Ohne ihn rendert das Chart nicht.
+
+   ```bash
+   kubectl create namespace provisa
+   kubectl create secret generic provisa-master-key --namespace provisa \
+     --from-literal=master-key="$(openssl rand -base64 32)"
+   ```
+
+   Bewahren Sie eine Kopie des Keys außerhalb des Clusters auf. Ein Vault, der unter einem später verlorenen Key
+   geschrieben wurde, lässt sich nicht öffnen. Die Alternative zu einem Secret ist ein persistentes Datenvolume
+   (`encryption.dataVolume.enabled=true`), auf dem das Produkt den Key hält, den es erzeugt; siehe
+   `encryption` in `values.yaml`.
+
+5. Installieren Sie das Chart:
 
    ```bash
    helm install provisa helm/provisa/ \
+     --set encryption.existingSecret=provisa-master-key \
+     --set auth.provider=oidc \
+     --set auth.oidc.issuerUrl=https://login.example.com/realms/main \
+     --set auth.oidc.clientId=provisa \
      --set config.pgPassword=<password> \
      --set config.adminToken=<token> \
      --set s3.endpoint=https://s3.amazonaws.com \
      --set s3.bucket=my-provisa-results \
      --namespace provisa --create-namespace
    ```
+
+   Das Chart rendert erst, wenn `auth.provider` gewählt ist: `oidc` (ein OpenID-Connect-Issuer des Unternehmens),
+   `saml` (`auth.saml.idpMetadataUrl` und `auth.saml.publicUrl`), `ldap` (`auth.ldap.*`),
+   `local` (nur das Break-Glass-Konto, `auth.breakGlass.*`) oder `none` (keine Authentifizierung,
+   nur für die Entwicklung). Jede Anmeldedate kommt aus einem Kubernetes-Secret; `ldap`, `saml` und `local`
+   brauchen außerdem `auth.sessionSecret.existingSecret`, den Key, der Browser-Sitzungen signiert. Siehe `auth`
+   in `values.yaml`.
+
+   Der Trino-Coordinator führt die Anweisungen jeder Org in deren eigener Ressourcengruppe aus,
+   `global.tenant-<org>`, aus der Ressourcengruppen-Datei, die das Chart mitliefert. Anweisungen über den
+   Arrow-Flight-Proxy teilen sich eine Gruppe, `global.flight`: Der Proxy öffnet seine eigene Trino-Verbindung
+   und kann die Org nicht mitführen.
 
    Bei Verwendung einer internen Registry fügen Sie Image-Overrides hinzu:
 
@@ -550,20 +581,20 @@ Hinweis: Das Provisa-AppImage kann nicht innerhalb eines Kubernetes-Pods ausgef�
    --set trino.image.tag=480
    ```
 
-5. Überprüfen Sie, ob die Pods laufen:
+6. Überprüfen Sie, ob die Pods laufen:
 
    ```bash
    kubectl get pods -n provisa
    ```
 
-6. Überprüfen Sie die API:
+7. Überprüfen Sie die API:
 
    ```bash
    kubectl port-forward svc/provisa 8000:8000 -n provisa
    curl http://localhost:8000/health
    ```
 
-7. (Optional) Aktivieren Sie Ingress für externen Zugriff — setzen Sie `ingress.enabled: true` und konfigurieren Sie Ihren Ingress-Controller
+8. (Optional) Aktivieren Sie Ingress für externen Zugriff — setzen Sie `ingress.enabled: true` und konfigurieren Sie Ihren Ingress-Controller
 
 ### Checkliste der Voraussetzungen
 

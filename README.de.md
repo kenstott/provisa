@@ -4,7 +4,7 @@
 
 Provisa bedient jede API-Oberfläche (REST, GraphQL, SQL, gRPC, MCP und mehr) über das zusammengeführte Ergebnis Ihrer Quellen. Das kann es, weil **Föderation, Metriken, Ontologie und Governance aus einem einzigen Modell stammen, ohne dass etwas synchron gehalten werden muss**. Das Modell ist eine einzige Definition Ihres Datenbestands — jede Domäne, Beziehung und Richtlinie über Ihre Quellen hinweg, ausgenommen nur die Ursprungssysteme selbst — die den Bestand gleichzeitig betreibt und regelt. Die Definition ist keine Dokumentation, die eine Engine konsultieren kann; sie *ist* die Engine. Registrierte Domänen und Beziehungen sind die einzigen legalen Join-Pfade, und Zugriffsrichtlinien werden in jeden Abfrageplan hineinkompiliert. Ein Modell, vier Eigenschaften:
 
-- **Föderation** — 62 Konnektoren, die 75+ Arten von Quellen erreichen, darunter Salesforce, ServiceNow und Stripe, werden an Ort und Stelle gelesen: Die SaaS-Systeme, auf denen das Unternehmen läuft, sind Tabellen neben den Datenbanken, ohne vorgeschaltete Pipeline in ein Warehouse. Abfragen in SQL, GraphQL oder Cypher über neun Protokolle.
+- **Föderation** — 72 Konnektoren, die 85+ Arten von Quellen erreichen, darunter Salesforce, ServiceNow und Stripe, werden an Ort und Stelle gelesen: Die SaaS-Systeme, auf denen das Unternehmen läuft, sind Tabellen neben den Datenbanken, ohne vorgeschaltete Pipeline in ein Warehouse. Abfragen in SQL, GraphQL oder Cypher über neun Protokolle.
 - **Metriken** — Eine Metrik ist ein benanntes, reguliertes Aggregat. Sie wird einmal definiert, und jedes Werkzeug und jede Sprache, die danach fragt, erhält dieselbe Definition.
 - **Ontologie** — Das Geschäftsglossar ist ein Graph aus Konzepten, ihren Definitionen und den Beziehungen zwischen ihnen. Provisa bildet ihn auf die Datenbankstrukturen ab, in denen die Werte liegen; dadurch kann es Fragen zu Ihren Daten beantworten. Ein Konzept ist ein Entwurf, bis es die Daten erreicht, direkt oder über andere Konzepte. Das Glossar ist von den Metriken getrennt: Ein Begriff sagt, was ein Konzept ist, eine Metrik sagt, wie eine Zahl berechnet wird.
 - **Governance** — Sechs Schichten werden in jeden Abfrageplan kompiliert, für jede Sprache und jedes Protokoll, und jede Anfrage wird gleich erfasst: wer was abgefragt hat, unter welcher Rolle, gegen welche Richtlinie. Traces, Metriken und Logs sind selbst als abfragbare Tabellen neben Ihren Geschäftsdaten registriert.
@@ -27,8 +27,8 @@ Am schnellsten geht es mit einer Live-Demo im Browser, ohne Installation: [provi
 In einem Checkout dieses Repositorys können Sie jede Demo auf Ihrem eigenen Rechner ausführen:
 
 ```bash
-./start-ui-install.sh --list-demos     # die Demos, die Sie ausführen können, und welche veröffentlicht sind
-./start-ui-install.sh --demo weblogs   # eine starten, mit ihrer Tour
+./start-ui-install.sh --list-demos     # the demos you can run, and which are published
+./start-ui-install.sh --demo weblogs   # start one, with its tour
 ```
 
 Eine veröffentlichte Demo wird als fertiges Bundle geladen; die anderen laufen aus `demo/named/<name>/`. Alle Optionen finden Sie in [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md).
@@ -84,7 +84,7 @@ Dies sind die Sprachen und strukturierten APIs, in denen Sie Abfragen schreiben.
 - **GraphQL** — Rollenspezifische Schemas mit feldgenauer Sichtbarkeit, Filterung, Cursor-basierter Paginierung und Aggregatabfragen (`count`, `sum`, `avg`, `min`, `max`). Schema-eingeschränkt auf registrierte Beziehungen — durch Konstruktion strukturell gültig, der schnellste Weg zu einer korrekten einfachen Abfrage. Apollo APQ inklusive: Abfragen werden gehasht und serverseitig registriert; nachfolgende Aufrufe senden nur den Hash über HTTP GET, was Antworten CDN-cachebar macht, ohne dass Client-Änderungen nötig sind. Lookup-Tabellen unterhalb eines konfigurierbaren Zeilenschwellenwerts werden als Enum-Typen exponiert.
 - **SQL** — Vollständiges SQL über föderierte Daten; uneingeschränkt und ausdrucksstärker als GraphQL. Schreiben Sie Standard-SQL — korrelierte Unterabfragen inklusive — und es läuft unverändert über Quellen hinweg. Einzelquellen-Abfragen umgehen die Föderationsschicht vollständig (unter 100 ms).
 - **Cypher** — Graph-Abfragesprache über demselben föderierten Schema. Beziehungen als Graph-Kanten traversieren; Quellen vereinigen; Pfade variabler Länge. Governance gilt identisch wie bei GraphQL und SQL.
-- **gRPC-Model-API** — Automatisch generiertes `.proto` aus dem registrierten Schema; typisierte Query- und Insert-RPCs pro Tabelle, gestreamte Antworten. Schema-getrieben im selben Sinne wie GraphQL — das Registrierungsmodell ist der Vertrag, Protobuf ist die Wire-Kodierung. Anders als Arrow Flight (das ein Columnar-Streaming-Transport ist) ist dies eine vollständige Pro-Tabelle-Abfrageschnittstelle.
+- **gRPC-Model-API** — Automatisch generiertes `.proto` aus dem registrierten Schema; typisierte Query- und Insert-RPCs für jede Tabelle an der Wurzel des Schemas einer Rolle, gestreamte Antworten. Schema-getrieben im selben Sinne wie GraphQL — das Registrierungsmodell ist der Vertrag, Protobuf ist die Wire-Kodierung. Anders als Arrow Flight (das ein Columnar-Streaming-Transport ist) ist dies eine vollständige Pro-Tabelle-Abfrageschnittstelle.
 - **JSON:API** — Strukturierte Abfrage-API unter `/data/jsonapi/{table}`, per Design nur HTTP. Unterstützt JSON:API 1.1: Sparse Fieldsets (`fields[table]=col1,col2`), Filterausdrücke (`filter[field][op]=value`), zusammengesetzte Dokumente (`include=relation`) und Sortierung. Keine Allzweck-Abfragesprache — fragt eine Tabelle nach der anderen mit standardisierter Filtersyntax ab statt mit einem Ad-hoc-Abfragestring.
 - **Query Language Explorer** — Schreiben Sie eine GraphQL-Abfrage und sehen Sie live **Semantic-SQL**- und **Cypher**-Übersetzungen in Seitenpanels; kopieren Sie eine davon oder springen Sie direkt in den SQL- oder Graph-Editor. Ein praktischer Workflow ist, Abfragefragmente in GraphQL zu skizzieren und dann das resultierende SQL in komplexe Views oder Reports einzufügen.
 
@@ -116,7 +116,7 @@ Dies sind die Verbindungsprotokolle. SQL, GraphQL und Cypher reiten über ihnen 
 
 ### Datenquellen
 
-- **62 Konnektoren, 75+ Arten von Quellen** — Die größere Zahl zählt die gehosteten PostgreSQL-Dienste (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) und die Dateiformate des File Crawlers einzeln. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL-Triplestores, Kafka, Google Sheets und mehr über eine einzige API; Graph- und RDF-Quellen sind erstklassig, keine Adapter
+- **72 Konnektoren, 85+ Arten von Quellen** — Die größere Zahl zählt die gehosteten PostgreSQL-Dienste (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) und die Dateiformate des File Crawlers einzeln. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL-Triplestores, Kafka, Google Sheets und mehr über eine einzige API; Graph- und RDF-Quellen sind erstklassig, keine Adapter
 - **Smart Routing** — Einzelquellen-Abfragen umgehen die Föderation (unter 100 ms); Multi-Quellen-Abfragen routen durch die Föderationsschicht — eigenen Cluster mitbringen oder die eingebetteten Worker nutzen
 - **API-Quellen** — REST-, GraphQL-, gRPC-, WebSocket- oder RSS-Endpunkte als abfragbare Tabellen registrieren; SPARQL-Helfer inklusive; föderierte Joins über API-Quellen und relationale Quellen hinweg funktionieren transparent
 - **Remote-Schema-Introspektion** — Auf jeden GraphQL-, OpenAPI- oder gRPC-Endpunkt zeigen; dokumentierte Operationen werden automatisch als abfragbare Tabellen, Graph-Knoten und -Kanten mit voller Governance obendrauf exponiert
@@ -396,6 +396,9 @@ Siehe [docs/python-client.md](docs/python-client.md) für die vollständige Refe
 | Secret-Speicherung und `${secret:NAME}`-Referenzen | [docs/secrets.md](docs/secrets.md) |
 | Business-Glossar und Begriffskuratierung | [docs/glossary.md](docs/glossary.md) |
 | Umgebungen (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
+| Testumgebungen aufbauen (Profiling, Fakes, synthetische Daten) | [docs/test-data.md](docs/test-data.md) |
+| Referenz der Fake-Methoden | [docs/fake-methods.md](docs/fake-methods.md) |
+| Demos auf einem Laptop ausführen und bauen (Sales Engineers) | [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) |
 | Unterstützte Quelltypen | [docs/sources.md](docs/sources.md) |
 | SSE-Subscriptions | [docs/subscriptions.md](docs/subscriptions.md) |
 | JDBC, BI-Tools, Arrow-Flight-Clients, Apollo Federation | [docs/integrations.md](docs/integrations.md) |

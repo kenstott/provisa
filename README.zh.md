@@ -27,8 +27,8 @@ Provisa 在你所有数据源的联接结果之上服务每一个 API 表面（R
 在本仓库的检出副本中，你可以在自己的机器上运行任何演示：
 
 ```bash
-./start-ui-install.sh --list-demos     # 可以运行的演示，以及哪些已发布
-./start-ui-install.sh --demo weblogs   # 启动一个演示及其导览
+./start-ui-install.sh --list-demos     # the demos you can run, and which are published
+./start-ui-install.sh --demo weblogs   # start one, with its tour
 ```
 
 已发布的演示以现成的包拉取；其他演示从 `demo/named/<name>/` 运行。所有选项见 [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md)。

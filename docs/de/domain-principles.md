@@ -77,9 +77,9 @@ Eine Beziehung ist ein genehmigter Traversierungspfad zwischen zwei Assets. Dom�
 
 **Genehmigung:**
 
-- Die Genehmigung ist von jedem einzelnen Steward erforderlich, der ein an der Beziehung beteiligtes Asset besitzt
-- Wenn ein Steward beide Assets besitzt, ist eine Genehmigung erforderlich. Sind zwei Stewards beteiligt, sind zwei Genehmigungen erforderlich
-- Es gibt keine Klassifizierung in intradomän/domänenübergreifend — die Eigentümerschaft bestimmt den Genehmigungsaufwand auf natürliche Weise
+- Über einen Beziehungsantrag entscheiden die Domänen, die er berührt: die Domäne seiner Quelltabelle und die Domäne seiner Zieltabelle (REQ-1948)
+- Eine Genehmigung zählt nur von einem Benutzer, dessen Recht, Beziehungen anzulegen, eine dieser Domänen erreicht; ablehnen kann jeder solche Benutzer
+- Der Antrag wird ausgeführt, sobald zwei verschiedene Benutzer, keiner davon der Antragsteller, zugestimmt haben und jede beteiligte Domäne einen Genehmiger hat: Eine Beziehung über zwei Domänen braucht ein Ja von jeder Seite, eine Beziehung innerhalb einer Domäne zwei Genehmiger dieser Domäne
 - Die Genehmigung einer Beziehung baut den Abhängigkeitsgraphen jedes Stewards auf und ermöglicht proaktive Benachrichtigungen über Schemaentwicklung
 
 Beziehungen werden bedarfsgesteuert erstellt, nicht spekulativ. Das erste Team mit dem Geschäftsbedarf leistet die Arbeit; nachfolgende Teams erben die Infrastruktur.

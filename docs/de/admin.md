@@ -102,11 +102,11 @@ query {
 }
 ```
 
-Eine Relationship erstellen (REQ-019):
+Eine Relationship erstellen (REQ-019). Eine bereits vorhandene ID wird abgelehnt; eine Relationship wird mit `updateRelationship` geändert, das dieselbe Eingabe nimmt:
 
 ```graphql
 mutation {
-  upsertRelationship(input: {
+  createRelationship(input: {
     id: "orders-to-customers"
     sourceTableId: "orders"
     targetTableId: "customers"
@@ -123,7 +123,7 @@ Eine Junction-gestützte Beziehung deklarieren (REQ-1586):
 
 ```graphql
 mutation {
-  upsertRelationship(input: {
+  createRelationship(input: {
     id: "pets-bonded-pair"
     sourceTableId: "pets"
     targetTableId: "pets"
@@ -304,9 +304,9 @@ GET  /admin/ossie
 POST /admin/ossie/import
 ```
 
-**Export** (`GET /admin/ossie`) leitet das Ossie-YAML-Dokument bei jeder Anfrage aus dem lebenden regierten Modell ab — es wird nie gecacht und kann daher nicht veralten. Die Antwort ist `text/yaml` mit einem `Content-Disposition: attachment`-Header. Tabellen werden zu `dataset`-Objekten, Spalten zu `field`-Objekten, und Relationships bilden auf Ossie-`relationship`-Objekte ab. (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py:download_ossie`]
+**Export** (`GET /admin/ossie`) leitet das Ossie-YAML-Dokument bei jeder Anfrage aus dem lebenden regierten Modell ab — es wird nie gecacht und kann daher nicht veralten. Die Antwort ist `text/yaml` mit einem `Content-Disposition: attachment`-Header. Das Dokument ist ein Modell mit `version`, `name`, `datasets`, `relationships` und `metrics` an seiner Wurzel: Tabellen werden zu `dataset`-Objekten, Spalten zu `field`-Objekten, und Relationships bilden auf Ossie-`relationship`-Objekte ab. Ein Modell ohne Tabelle wird mit `422` abgelehnt. (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py:download_ossie`]
 
-**Import** (`POST /admin/ossie/import`) akzeptiert ein Ossie-Dokument in YAML oder JSON (das Format wird automatisch erkannt). Es parst das Dokument und liefert vorgeschlagene Tabellen- und Relationship-Registrierungen als JSON-Objekt zurück — nichts wird registriert. Der Prüfbildschirm in der Admin-UI lässt Sie Vorschläge annehmen oder kürzen, bevor irgendeine Mutation ausgelöst wird. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py:import_ossie`]
+**Import** (`POST /admin/ossie/import`) akzeptiert ein Ossie-Dokument in YAML oder JSON (das Format wird automatisch erkannt). Es parst das Dokument und liefert vorgeschlagene Tabellen-, Relationship- und Metrik-Registrierungen als JSON-Objekt zurück — nichts wird registriert. Es liest nur die flache Dokumentform; ein Dokument, das sein Modell in `semantic_model` einhüllt, wird namentlich abgelehnt. Der Prüfbildschirm in der Admin-UI lässt Sie Vorschläge annehmen oder kürzen, bevor irgendeine Mutation ausgelöst wird. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py:import_ossie`]
 
 ### Objektspeicher (REQ-1046, REQ-1048, REQ-1049)
 

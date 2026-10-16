@@ -16,6 +16,8 @@ Kein API-Endpunkt gibt einen gespeicherten Secret-Wert zurück. Keine Oberfläch
 | `${secret:NAME}` | Dem Org-Vault — geteilt von allen Mitgliedern | Jedes Feld, das eine Anmeldedaten-Referenz akzeptiert |
 | `${user:NAME}` | Dem persönlichen Vault der handelnden Person | Jedes Feld, das eine Anmeldedaten-Referenz akzeptiert |
 
+Halten Sie Plattform-Anmeldedaten auf einem mandantenfähigen Deployment in einem Secrets-Dienst statt in Umgebungsvariablen. Ein Mandanten-Admin kann `${env:...}` in ein eigenes Anmeldedatenfeld schreiben, sodass jeder Wert in der Prozessumgebung für jeden Mandanten erreichbar ist. Lassen Sie nur die eigenen Anmeldedaten des Secrets-Backends in der Umgebung.
+
 Die Auflösung ist durchgängig fail-closed. Ein unbekannter Anbietername, ein nicht gesetzter Name und ein nicht erreichbares Backend lösen jeweils einen Fehler aus. Eine Referenz, die nicht aufgelöst werden konnte, wird nie stillschweigend durch eine leere Zeichenkette ersetzt. (REQ-1557) [tool-verified: `provisa/core/secrets.py:92-117`]
 
 ### Namensformat
@@ -76,6 +78,27 @@ Ist ein zentraler Dienst konfiguriert, liest Provisa aus ihm, schreibt aber nich
 Ist das integrierte Backend `provisa` aktiv, ist die Secrets-Seite voll schreibbar: anlegen, ersetzen und löschen über die Oberfläche oder die API.
 
 ---
+
+### Die Secrets einer Organisation in einem zentralen Dienst {: #one-organizations-secrets-in-a-central-service }
+
+Ein Deployment, das viele Organisationen hält und einen zentralen Dienst liest, liest ihn für jede Organisation innerhalb des eigenen Präfixes dieser Organisation. Eine Referenz bleibt der kurze Name (`${secret:db#password}`); das Präfix wird beim Lesen hinzugefügt. (REQ-1557) [tool-verified: `provisa/core/secrets_providers.py`, `org_namespace`]
+
+| Dienst | Wo das Secret `db` der Organisation `acme` liegt |
+|---|---|
+| HashiCorp Vault (KV v2) | `orgs/acme/db` |
+| AWS Secrets Manager | `orgs/acme/db` |
+| GCP Secret Manager | `org-acme--db` |
+| Azure Key Vault | `o4-acme-db` (`o`, die Länge der Organisations-ID, die ID mit `_` als `-` geschrieben, dann der Name) |
+
+Eine Referenz wird namentlich abgelehnt, wenn:
+
+- ihr Name das Präfix verlassen würde: Er beginnt mit `/`, enthält ein `..`-Segment oder einen Backslash, oder enthält `/` bei GCP oder Azure, deren Namen flach sind;
+- ihr Name mit Präfix für den Dienst zu lang ist (GCP 255 Zeichen, Azure 127); das wird beim Speichern der Referenz abgelehnt, mit Angabe der Grenze;
+- an die Operation, die sie liest, keine Organisation gebunden ist.
+
+Ein Deployment mit einer Organisation liest eine Referenz genau so, wie sie geschrieben ist, ohne Präfix: Der Dienst, an den es angebunden ist, gehört dieser Organisation, und nichts muss verschoben werden.
+
+**Umzug unter das Präfix.** Auf einem Deployment mit vielen Organisationen muss jedes Secret, auf das eine Organisation verweist, unter dem Präfix dieser Organisation liegen. Kopieren Sie jedes dorthin mit dem eigenen Werkzeug des Dienstes und kürzen Sie dann die Referenz auf den Namen innerhalb des Präfixes (`${secret:teams/data/db}`, abgelegt unter `orgs/acme/db`, wird zu `${secret:db}`). Eine Referenz, deren Secret nicht verschoben wurde, schlägt als nicht gefunden fehl; sie wird nicht von dort gelesen, wo es lag.
 
 ## Der integrierte Speicher von Provisa
 

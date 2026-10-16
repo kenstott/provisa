@@ -27,8 +27,8 @@ Provisa обслуживает любую поверхность API (REST, Grap
 Из копии этого репозитория можно запустить любую демонстрацию на своей машине:
 
 ```bash
-./start-ui-install.sh --list-demos     # доступные демонстрации и какие из них опубликованы
-./start-ui-install.sh --demo weblogs   # запустить одну, с её экскурсией
+./start-ui-install.sh --list-demos     # the demos you can run, and which are published
+./start-ui-install.sh --demo weblogs   # start one, with its tour
 ```
 
 Опубликованная демонстрация загружается готовым пакетом; остальные запускаются из `demo/named/<name>/`. Все параметры описаны в [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md).

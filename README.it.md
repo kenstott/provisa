@@ -27,8 +27,8 @@ Il modo più rapido è una demo dal vivo nel browser, senza installare nulla: [p
 Da una copia di questo repository puoi eseguire qualsiasi demo sulla tua macchina:
 
 ```bash
-./start-ui-install.sh --list-demos     # le demo che puoi eseguire, e quali sono pubblicate
-./start-ui-install.sh --demo weblogs   # avviarne una, con il suo tour
+./start-ui-install.sh --list-demos     # the demos you can run, and which are published
+./start-ui-install.sh --demo weblogs   # start one, with its tour
 ```
 
 Una demo pubblicata viene scaricata come bundle pronto; le altre vengono eseguite da `demo/named/<name>/`. Vedi [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) per tutte le opzioni.

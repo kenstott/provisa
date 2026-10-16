@@ -668,24 +668,26 @@ tables:
       - name: email
         visible_to: [admin, analyst]
         writable_by: [admin]      # only admin can mutate
-        unmasked_to: [admin]      # admin sees raw, analyst sees masked
-        mask_type: regex
-        mask_pattern: "^(.{2}).*(@.*)$"
-        mask_replace: "$1***$2"
+        masks:                    # first entry the reader holds applies
+          - to: [admin]           # admin sees raw
+          - to: ["*"]             # everyone else sees it masked
+            mask: {type: regex, pattern: "^(.{2}).*(@.*)$", replace: "$1***$2"}
         alias: email_address      # optional: override GraphQL field name
         description: "Primary email address"  # optional: appears in SDL
       - name: amount
         visible_to: [admin]
         writable_by: [admin]
-        unmasked_to: [admin]
-        mask_type: constant
-        mask_value: "0"
+        masks:
+          - to: [admin]
+          - to: ["*"]
+            mask: {type: constant, value: 0}
       - name: created_at
         visible_to: [admin, analyst]
         writable_by: []           # nobody can write
-        unmasked_to: [admin]
-        mask_type: truncate
-        mask_precision: month
+        masks:
+          - to: [admin]
+          - to: ["*"]
+            mask: {type: truncate, precision: month}
     column_presets:               # auto-set values on insert/update
       - column: created_by
         source: header            # from request header
@@ -881,6 +883,59 @@ views:
 - **`materialize: false`**: Provisa erstellt eine föderierte Sicht. (REQ-135) Abfragen liefern immer Live-Daten, können aber bei komplexen Aggregationen langsamer sein.
 
 Sichten durchlaufen dieselbe Governance-Pipeline wie Tabellen — RLS, Maskierung, Sampling und rollenbasierte Sichtbarkeit. (REQ-134) Dies stellt sicher, dass keine neue Semantik ohne Steward-Aufsicht zur Plattform hinzugefügt werden kann. (REQ-136)
+
+### Sichten mit Historie (Zeitreise)
+
+Eine materialisierte Sicht kann jede Version ihrer Zeilen behalten und zu einem vergangenen Zeitpunkt gelesen werden. (REQ-1162, REQ-1163) Sie deklariert, wie sie sie behält und zu welchem Schlüssel eine Version gehört:
+
+```yaml
+views:
+  - id: customer-history
+    sql: SELECT customer_id, tier, updated_at FROM crm.customers
+    domain_id: sales
+    materialize: true
+    bitemporal_mode: delta            # snapshot | delta
+    bitemporal_key: [customer_id]     # required
+    bitemporal_source_time: updated_at  # optional: the source's change time
+    columns:
+      - {name: customer_id, visible_to: [analyst]}
+      - {name: tier, visible_to: [analyst]}
+      - {name: updated_at, visible_to: [analyst]}
+```
+
+| Feld | Erforderlich | Beschreibung |
+| ------- | ---------- | ------------- |
+| `bitemporal_mode` | Ja | `snapshot` hängt bei jedem Refresh das ganze Ergebnis an; `delta` hängt nur an, was sich geändert hat |
+| `bitemporal_key` | Ja | Die Spalten, zu denen eine Version gehört |
+| `bitemporal_source_time` | Nein | Die Spalte, die festhält, wann sich jede Zeile in der Quelle geändert hat: die Uhr, nach der die Zeitreise liest |
+
+**Die Uhr wählen.** Mit `bitemporal_source_time` werden Versionen nach der eigenen Zeit der Quelle geordnet und gelesen: „Stand letzten Dienstag" ist der letzte Dienstag in der Quelle. Ohne sie werden sie danach geordnet und gelesen, wann Provisa jede Änderung gelandet hat, folgen also dem Refresh-Takt und nicht dem Zeitpunkt, zu dem sich die Zeile in der Quelle geändert hat. Beides ist eine Wahl. Die Ladezeit eignet sich für einen häufigen Refresh-Takt, für Daten, deren Zeitpunkt in der Quelle keine Rolle spielt, und für Lesevorgänge, die die Ladezeit betreffen sollen, etwa die Prüfung, was Provisa wann gehalten hat. (REQ-1163)
+
+Eine Version gilt von ihrem Zeitpunkt bis zu dem der nächsten Version. Ein Löschen hat keine Änderungszeit in der Quelle und wirkt ab dem Zeitpunkt, zu dem Provisa es erfasst hat. (REQ-2064)
+
+**Lesen.** Ein einfacher Lesevorgang liefert die jetzt geltende Version jedes Schlüssels. Der Header `X-Provisa-As-Of` liest zu einem Zeitpunkt oder über einen Bereich, angegeben als ISO-8601-Intervall `start/end`:
+
+```
+X-Provisa-As-Of: 2026-03-01T00:00:00
+X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
+```
+
+Ein Zeitpunkt liefert die damals geltende Version jedes Schlüssels. Ein Bereich liefert jede Version, die zu irgendeinem Zeitpunkt darin galt, eine Zeile pro Version. (REQ-2064) Derselbe Wert ist das Argument `as_of` von `resolve` (GraphQL, gRPC, MCP), der REST-Abfrageparameter `as_of` und die Option `as_of` eines Arrow-Flight-Tickets. Ein an `resolve` übergebener Bereich liefert die `versions` der Zeile anstelle ihrer `row`. Rechte, Masken und Zeilenregeln gelten wie bei jedem Lesevorgang. Ein fehlerhafter Wert oder ein Bereich, dessen Ende nicht nach seinem Anfang liegt, wird mit HTTP 400 abgelehnt (`data.invalid_as_of`).
+
+Jede Sicht mit Historie liefert drei weitere Spalten, freigegeben wie ihre Quellzeit-Spalte (sonst ihre erste Schlüsselspalte):
+
+| Spalte | Bedeutung |
+| ------- | ------- |
+| `source_from` | Wann diese Version wirksam wurde: ihre Quellzeit, ohne eine solche ihre Ladezeit |
+| `source_to` | Wann die nächste Version wirksam wurde; leer, solange diese gilt |
+| `recorded_at` | Wann Provisa diese Version erfasst hat |
+
+**Quellzeit aus Change Data Capture.** Eine per Change Data Capture gelandete Tabelle trägt ihre Commit-Zeit als `source_committed_at`, damit eine Sicht mit Historie sie als Quellzeit benennen kann:
+
+- Debezium: die Commit-Zeit der Datenbank, die jedes Änderungsereignis trägt (`source.ts_ms`). Eine durch einen vollständigen Build des Replikats kopierte Zeile hat kein Änderungsereignis, daher ist ihr `source_committed_at` leer, bis sich die Zeile das nächste Mal ändert, es sei denn, die Quelle ist PostgreSQL mit eingeschalteten Commit-Zeitstempeln (nächster Punkt).
+- PostgreSQL mit dem Änderungssignal `native`: die Commit-Zeit, die PostgreSQL für jede Zeile hält (`pg_xact_commit_timestamp(xmin)`), vom eigenen Treiber der Quelle gelesen, wenn das Replikat gebaut wird. PostgreSQL hält sie nur mit `track_commit_timestamp = on`. Schalten Sie es ein, um mit dem nativen Signal Quellzeit zu erhalten; ohne es ist `source_committed_at` leer. Das Ein- oder Ausschalten der Einstellung baut das Replikat neu.
+
+Kafka-Topics ohne Debezium-Hülle tragen keine Commit-Zeit.
 
 ### Nur abfragbare Sichten
 

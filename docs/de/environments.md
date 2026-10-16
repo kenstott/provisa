@@ -14,6 +14,8 @@ Umgebung benennt, wird abgelehnt. [tool-verified: `PROD = "prod"` at environment
 
 Umgebungen stehen Organisationen mit einem kostenpflichtigen Tarif zur Verfügung. [inferred: REQ-1507]
 
+Wie Sie eine Nicht-Produktionsumgebung mit gefahrlos nutzbaren Daten füllen, beschreibt [Testumgebungen aufbauen](test-data.md).
+
 ## Umgebungsnamen
 
 Ein Name muss `[a-z][a-z0-9_]{1,31}` entsprechen — zwei bis zweiunddreißig Zeichen aus Kleinbuchstaben,
@@ -58,28 +60,20 @@ als `unbound` markiert, statt leer gelassen zu werden: Ein leerer Host ist kein 
 Verbindungsaufbau würde ihn als `localhost:5432` lesen. [tool-verified: `BOUND_COLUMN = "bound"` at
 env_classes.py line 143; `BINDING_COLUMNS` dict at env_classes.py lines 155-172]
 
-Die Quellen einer Umgebung lösen auf eine von zwei Arten auf.
-
-**Basis** — die Umgebung trägt ihre eigenen Anmeldedaten. Ein org_admin legt eine Basis an und bindet dann
-jede Quelle ausdrücklich. [tool-verified: `CreateEnvBody.inherit_connections = False` (default) at
-environments_router.py line 227; "binding a base is an org_admin's act" comment at line 358]
-
-**Branch** — die Umgebung erbt die Anmeldedaten der Basis per Referenz. Nichts wird kopiert. Braucht eine
-Abfrage eine Verbindung, läuft die Auflösung die `branched_from`-Kette hinauf und hält bei der ersten
-Umgebung an, deren Zeile gebunden ist. Das Rotieren von Anmeldedaten auf der Basis pflanzt sich ohne
-weiteres Zutun auf jeden ihrer Branches fort. Ein Widerruf widerruft für alle auf einmal. Kein Secret wird
-je irgendwo materialisiert, von wo ein Branch, ein Export oder ein Repository es forttragen könnte.
-[tool-verified: `resolve()` at env_bindings.py lines 114-151; `lineage()` at env_bindings.py
-lines 74-102; env_bindings.py module docstring lines 11-33]
-
-Um einen Branch anzulegen, setzen Sie **Verbindungen erben** im Umgebungs-Panel. Die Voreinstellung ist aus.
-[tool-verified: `environmentsTab.json` key `inheritConnections`; `inheritHelp2` string]
+Eine Umgebung, die nicht als Unbound angelegt wird, kopiert die Verbindung jeder Quelle von ihrer Elternumgebung,
+genau so, wie die Elternumgebung sie geschrieben hat: Ein `${secret:...}`- oder `${env:...}`-Verweis wird als dieser
+Verweis kopiert, nie aufgelöst. Nach dem Anlegen ist die Kopie die eigene Zeile der Umgebung, auf der Seite Quellen
+bearbeitbar, und beim Aufbau der Laufzeit der Umgebung wird nichts über die Elternumgebung aufgelöst.
+Das Feld `binding` jeder Quelle sagt, woher ihre Verbindung stammt: `copied`, `own` (in dieser Umgebung angegeben)
+oder `unbound`. Wird eine kopierte Verbindung bearbeitet, wird sie zu `own`. **Von der Elternumgebung neu kopieren**
+(`POST /admin/orgs/{org}/environments/{name}/sources/recopy`) kopiert die Verbindungen der Elternumgebung erneut.
+Ein Merge oder Deploy trägt keine Verbindungen, daher kommt eine Quelle, die er einführt, als `unbound` an.
+[tool-verified: `_copy_table` at env_copy.py; `recopy` and `unbind` at env_data.py;
+`owned_if_reconnected` at repositories/source.py]
 
 ## Die Git-Projektion
 
-Jeder Schreibvorgang am Modell committet das Ergebnis in den Git-Branch der Umgebung. Das Repository ist eine
-Projektion des Modells, nie seine Autorität: Provisa liest und schreibt die Control Plane; das Repository ist
-die Aufzeichnung, nicht die Quelle. Einen Baum zu deployen erfordert einen ausdrücklichen Aufruf — ein
+Jeder Schreibvorgang am Modell committet das Ergebnis in den Git-Branch der Umgebung. Einen Baum zu deployen erfordert einen ausdrücklichen Aufruf — ein
 gemergter Pull Request auf dem Git-Host deployt sich nicht von selbst (REQ-1524, REQ-1526). [tool-verified:
 deploy endpoint docstring at environments_router.py lines 777-791]
 
@@ -298,3 +292,5 @@ provisa env deploy --org acme --env prod --ref "origin/main" \
 
 - [Deployment](deployment.md) — wie Sie die Control Plane aufsetzen, mit der sich Umgebungen verbinden
 - [Commands](commands.md) — verfolgte Funktionen und Webhooks, die im Baum jeder Umgebung erscheinen
+- [Testumgebungen aufbauen](test-data.md) — Produktion profilieren, Fakes deklarieren, synthetische Daten für eine Nicht-Produktionsumgebung erzeugen
+- [Fake-Methoden](fake-methods.md) — jede Art von Fake und jede Methode, die eine Spalte deklarieren kann

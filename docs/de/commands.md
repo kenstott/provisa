@@ -18,7 +18,7 @@ Sechs `impl_kind`-Werte werden unterstützt [tool-verified: `_EXECUTORS` dict in
 | `impl_kind` | Transport |
 | --- | --- |
 | `source_procedure` | Native Stored Procedure auf einer registrierten Quelle |
-| `source_operation` | Eine Schreiboperation einer OpenAPI-, externen GraphQL- oder gRPC-Quelle, unverändert durchgereicht (siehe [Schreiboperation einer externen Quelle](#schreiboperation-einer-externen-quelle-req-1924)) |
+| `source_operation` | Eine Schreiboperation einer OpenAPI-, externen GraphQL- oder gRPC-Quelle, unverändert durchgereicht (siehe [Schreiboperation einer externen Quelle](#a-remote-sources-write-operation-req-1924)) |
 | `script` | Lokaler Subprozess, dem JSON über stdin zugeführt wird, liest JSON von stdout |
 | `http` | HTTP/S-Endpunkt; JSON-Request-Body, JSON-Antwort |
 | `grpc` | gRPC unary; proto-lose JSON-Brücke |
@@ -154,7 +154,7 @@ den Command ohne Konfigurations-Neuladen zu registrieren oder zu aktualisieren. 
 ## Inline-Komposition (REQ-1159)
 
 Commands können **innerhalb** einer größeren SQL-Anweisung erscheinen — gejoint, als Subquery oder projiziert. Sie
-sind nicht auf `SELECT * FROM fn(args)` beschränkt. Die Ausnahme ist die Schreiboperation einer externen Quelle, die für sich allein aufgerufen wird (siehe [Warum er nicht komponierbar ist](#warum-er-nicht-komponierbar-ist)).
+sind nicht auf `SELECT * FROM fn(args)` beschränkt. Die Ausnahme ist die Schreiboperation einer externen Quelle, die für sich allein aufgerufen wird (siehe [Warum er nicht komponierbar ist](#why-it-cannot-be-composed)).
 
 ```sql
 -- Enrich the orders relation and join the result back inline.
@@ -178,7 +178,7 @@ Eine lokalisierte Anweisung routet normal. Einzelquellen-Abfragen bleiben auf de
 quellenübergreifende Abfragen gehen zur Föderations-Engine. [tool-verified: _pipeline.py:304 Kommentar
 "REQ-1159: a localized statement carries an inline local relation..."]
 
-## Schreiboperation einer externen Quelle (REQ-1924)
+## Schreiboperation einer externen Quelle (REQ-1924) {: #a-remote-sources-write-operation-req-1924 }
 
 Eine OpenAPI-, externe GraphQL- oder gRPC-Quelle bietet Schreiboperationen an. Wird eine davon als Command registriert, ist sie von jeder Oberfläche aus aufrufbar, geregelt und auditiert. Das Hinzufügen der Quelle registriert keine davon; Sie registrieren die gewünschten einzeln, so wie Sie Tabellen registrieren. Die Registrierung ist die Kuration. [tool-verified: `provisa/executor/source_operation.py` module docstring; `provisa/api/admin/schema_common.py` `remote_source_counts`, `"mutations": 0`]
 
@@ -275,17 +275,17 @@ Schalten Sie **Erfordert Genehmigung** ein, und jeder Aufruf wird dem Genehmigun
 - Kein Hook konfiguriert: 403, `functions.approval_unavailable`.
 - Der Hook lehnt ab: 403, `functions.approval_denied`, mit der Begründung des Hooks.
 
-Der Hook erhält den Aufrufer, die Rolle, den Namen des Commands und seine Argumente. Siehe [ABAC-Genehmigungs-Hook](security.md#abac-genehmigungs-hook). Das Flag wird als `Function.requires_approval` gespeichert, und die Prüfung gilt für jeden Command, der es setzt. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
+Der Hook erhält den Aufrufer, die Rolle, den Namen des Commands und seine Argumente. Siehe [ABAC-Genehmigungs-Hook](security.md#abac-approval-hook). Das Flag wird als `Function.requires_approval` gespeichert, und die Prüfung gilt für jeden Command, der es setzt. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
 
 ### Schreibt Tabelle
 
 Tragen Sie im Feld **Schreibt Tabelle** die Tabelle ein, in die die Operation schreibt, als `schema.table`. Es muss eine registrierte Tabelle der eigenen Quelle des Commands sein, sonst wird das Speichern mit 422, `actions.written_table_not_registered`, abgelehnt. Die Einstellung ist optional. [tool-verified: `_check_written_table` in `actions_router.py`; `written_table` in `source_operation.py`]
 
-Nach jedem Aufruf, den der externe Dienst annimmt, behandelt Provisa ihn als Schreibvorgang auf diese Tabelle. Es verwirft die zwischengespeicherten Antworten der Tabelle, markiert die materialisierten Sichten darauf als veraltet, sendet das Änderungsereignis, führt die Senken der Tabelle aus und lädt die Tabelle neu, wenn sie im Hot-Bestand gehalten wird. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
+Nach jedem Aufruf, den der externe Dienst annimmt, behandelt Provisa ihn als Schreibvorgang auf diese Tabelle. Es verwirft die zwischengespeicherten Antworten der Tabelle, markiert die materialisierten Sichten darauf als veraltet, sendet das Änderungsereignis, führt die Commands aus, die bei ihrer Änderung laufen, und lädt die Tabelle neu, wenn sie im Hot-Bestand gehalten wird. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
 
 Wird die Tabelle aus ihrem Replikat der ganzen Tabelle gelesen (die Einstellungen des Betreibers legen sie dorthin, oder die Engine kann ihre Quelle nicht direkt lesen), wird nach dem Aufruf ein Aufbau des Replikats angefordert, mit dem Grund `write`. Leser behalten das alte Replikat, bis das neue an seine Stelle tritt. Eine zeilenweise replizierte Tabelle oder eine mit einer Parameterspalte hat kein ganzes Replikat, das neu aufzubauen wäre. [tool-verified: `provisa/api/data/table_written.py` `_request_replica_build`; `provisa/federation/replica_state.py` `REASON_WRITE`]
 
-### Warum er nicht komponierbar ist
+### Warum er nicht komponierbar ist {: #why-it-cannot-be-composed }
 
 Eine Schreiboperation ist eine Aktion, keine Transformation von Daten. Eine View oder materialisierte View, die eine enthielte, würde den Schreibvorgang bei jedem Lesen oder Aktualisieren ausführen. Der Aufruf steht daher allein: `SELECT * FROM create_issue(...)` für sich führt ihn aus, und derselbe Aufruf innerhalb einer größeren Anweisung wird abgelehnt, wo immer er steht -- in einem Join, einer Subquery oder einer Projektion. [tool-verified: `provisa/pgwire/_pipeline.py` `_refuse_composed_mutators`; `provisa/executor/source_operation.py` `writes_called_in`]
 

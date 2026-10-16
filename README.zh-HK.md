@@ -27,8 +27,8 @@ Provisa 在跨你各個數據來源的聯結結果之上，提供每一個 API �
 在本存放庫的檢出副本中，你可以在自己的機器上執行任何示範：
 
 ```bash
-./start-ui-install.sh --list-demos     # 可以執行的示範，以及哪些已發佈
-./start-ui-install.sh --demo weblogs   # 啟動一個示範及其導覽
+./start-ui-install.sh --list-demos     # the demos you can run, and which are published
+./start-ui-install.sh --demo weblogs   # start one, with its tour
 ```
 
 已發佈的示範以現成的套件拉取；其他示範從 `demo/named/<name>/` 執行。所有選項見 [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md)。

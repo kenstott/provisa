@@ -27,8 +27,8 @@ Le plus rapide est une démo en direct dans le navigateur, sans rien installer :
 Depuis une copie de ce dépôt, vous pouvez exécuter n'importe quelle démo sur votre propre machine :
 
 ```bash
-./start-ui-install.sh --list-demos     # les démos que vous pouvez exécuter, et celles qui sont publiées
-./start-ui-install.sh --demo weblogs   # en démarrer une, avec sa visite
+./start-ui-install.sh --list-demos     # the demos you can run, and which are published
+./start-ui-install.sh --demo weblogs   # start one, with its tour
 ```
 
 Une démo publiée est récupérée sous forme de bundle prêt à l'emploi ; les autres s'exécutent depuis `demo/named/<name>/`. Voir [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) pour toutes les options.

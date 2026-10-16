@@ -27,8 +27,8 @@ Provisa משרתת כל משטח API (REST, GraphQL, SQL, gRPC, MCP ועוד) מ
 מעותק של המאגר הזה אפשר להריץ כל הדגמה במחשב שלכם:
 
 ```bash
-./start-ui-install.sh --list-demos     # ההדגמות שאפשר להריץ, ואילו מהן מפורסמות
-./start-ui-install.sh --demo weblogs   # להפעיל אחת, עם הסיור שלה
+./start-ui-install.sh --list-demos     # the demos you can run, and which are published
+./start-ui-install.sh --demo weblogs   # start one, with its tour
 ```
 
 הדגמה מפורסמת נמשכת כחבילה מוכנה; האחרות רצות מתוך `demo/named/<name>/`. כל האפשרויות מפורטות ב-[docs/sales-engineer-demos.md](docs/sales-engineer-demos.md).
