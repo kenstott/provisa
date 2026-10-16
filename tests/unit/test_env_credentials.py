@@ -16,7 +16,7 @@ refused by name rather than resolved in favour of either, and retiring an enviro
 tokens issued into it and no others.
 """
 
-# Requirements: REQ-1503
+# Requirements: REQ-1503, REQ-2053
 
 from __future__ import annotations
 
@@ -114,6 +114,42 @@ class TestTheEnvironmentComesFromTheCredential:
 
         with pytest.raises(EnvironmentSelectionError):
             await resolve_selected_env(admin, ORG, self._presenting("deleted"), None, set())
+
+
+class TestADemoSandboxTokenAddressesItsWholeOrg:
+    """REQ-2053, REQ-1503's one exception: a demo sandbox is its person's alone and thrown away, so
+    its token is served by whichever of its environments it names."""
+
+    SANDBOX = "sbx0123abcd"
+
+    async def _sandbox_token(self, admin: Database) -> str:
+        async with admin.acquire() as conn:
+            await conn.execute_core(insert(orgs).values(id=self.SANDBOX, name="sandbox"))
+            await conn.execute_core(insert(environments).values(org_id=self.SANDBOX, name="prod"))
+            await conn.execute_core(
+                insert(environments).values(
+                    org_id=self.SANDBOX, name="dev", parent="prod", data_mode="test_fake"
+                )
+            )
+        secret, _row = await PersonalAccessTokenStore(admin).issue(
+            user_id=ALICE, org_id=self.SANDBOX, env_name="prod", name="Demo sandbox"
+        )
+        return secret
+
+    async def test_it_carries_no_one_environment(self, admin):
+        identity = await PersonalAccessTokenStore(admin).validate(await self._sandbox_token(admin))
+        assert identity.credential_env is None
+
+    async def test_it_is_served_by_each_environment_it_names(self, admin):
+        identity = await PersonalAccessTokenStore(admin).validate(await self._sandbox_token(admin))
+        held = {"environment_switch"}
+        for env in ("prod", "dev"):
+            assert await resolve_selected_env(admin, self.SANDBOX, identity, env, held) == env
+        assert await resolve_selected_env(admin, self.SANDBOX, identity, None, held) == "prod"
+
+    async def test_an_ordinary_orgs_token_still_addresses_one(self, admin):
+        identity = await PersonalAccessTokenStore(admin).validate(await _token(admin, "dev"))
+        assert identity.credential_env == "dev"
 
 
 class TestRetiringAnEnvironmentRevokesItsTokens:

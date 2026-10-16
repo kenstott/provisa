@@ -148,6 +148,80 @@ def published_demo(name: str) -> PublishedDemo:
     return demo
 
 
+def demo_environments(directory: Path) -> list[dict[str, str]]:
+    """The environments demo ``directory``'s setup.yaml creates (REQ-2053): each ``environment``
+    step's ``{name, data_mode}``, in order; none when it has no setup.yaml."""
+    path = directory / "setup.yaml"
+    if not path.is_file():
+        return []
+    steps = (yaml.safe_load(path.read_text()) or {}).get("steps") or []
+    return [step["environment"] for step in steps if "environment" in step]
+
+
+async def create_environments(org_id: str, wanted: list[dict[str, str]], created_by: str | None):
+    """Create in ``org_id`` each of ``wanted``'s environments it does not have, from its prod:
+    a demo's template its demo's, a sandbox its template's (REQ-2053)."""
+    from sqlalchemy import select
+
+    from provisa.api.admin.orgs_router import _admin_pool, _org_model_db, _pool
+    from provisa.api.app import state
+    from provisa.core.env_classes import REFUSED
+    from provisa.core.env_create import create_environment
+    from provisa.core.environments import PROD
+    from provisa.core.schema_admin import environments
+
+    async with _admin_pool().acquire() as conn:
+        held = {
+            row[0]
+            for row in (
+                await conn.execute_core(
+                    select(environments.c.name).where(environments.c.org_id == org_id)
+                )
+            ).fetchall()
+        }
+    for env in wanted:
+        if env["name"] in held:
+            continue
+        await create_environment(
+            state,
+            _admin_pool(),
+            _pool(),
+            await _org_model_db(org_id),
+            org_id,
+            env["name"],
+            from_env=PROD,
+            created_by=created_by,
+            expires_at=None,
+            data_mode=env["data_mode"],
+            mutation_handling=env.get("mutation_handling", REFUSED),
+            note="created from prod, as its demo declares",
+        )
+
+
+async def template_environments(template_org: str) -> list[dict[str, str]]:
+    """The template org's environments other than prod, each ``{name, data_mode,
+    mutation_handling}``: what a sandbox cloned from it carries (REQ-2053)."""
+    from sqlalchemy import select
+
+    from provisa.api.admin.orgs_router import _admin_pool
+    from provisa.core.environments import PROD
+    from provisa.core.schema_admin import environments
+
+    async with _admin_pool().acquire() as conn:
+        rows = (
+            await conn.execute_core(
+                select(
+                    environments.c.name,
+                    environments.c.data_mode,
+                    environments.c.mutation_handling,
+                )
+                .where(environments.c.org_id == template_org, environments.c.name != PROD)
+                .order_by(environments.c.created_at)
+            )
+        ).fetchall()
+    return [{"name": r[0], "data_mode": r[1], "mutation_handling": r[2]} for r in rows]
+
+
 def demo_of_template(org_id: str) -> PublishedDemo:
     """The published demo whose template org ``org_id`` is."""
     assert is_template_org(org_id), org_id
@@ -531,6 +605,8 @@ async def _prepare(demo: PublishedDemo, build: bool) -> None:
     if build:
         await _provision_org_task(org_id, True, None, False)
     rt = await ensure_org_runtime(org_id)
+    # REQ-2053: the environments its setup.yaml declares, which every sandbox of it carries.
+    await create_environments(org_id, demo_environments(demo.directory), None)
     from provisa.api.demo_replicas import export_seed
 
     exporting = seeding_release()

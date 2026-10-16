@@ -239,6 +239,11 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
         await write_through(
             conn, _admin_pool(), org_id, PROD, org_schema(org_id), "opened from its demo", person
         )
+    # REQ-2053: the template's environments (a test environment of fakes, say), each created from
+    # the sandbox's prod after its person's roles are granted, so each carries them.
+    from provisa.api.demo_templates import create_environments, template_environments
+
+    await create_environments(org_id, await template_environments(demo.template_org), person)
     await _refresh_root_registry_view()
     async with _admin_pool().acquire() as conn:
         await conn.execute_core(

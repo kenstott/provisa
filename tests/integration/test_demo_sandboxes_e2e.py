@@ -21,11 +21,13 @@ template org and lands its replicas; a visitor then opens sandboxes of them thro
 - an unknown or unpublished demo, and a sandbox past ``sandbox.max_concurrent``, are refused by
   name;
 - an upload past ``sandbox.disk_limit`` is refused by name;
+- a sandbox carries its template's environments (alpha's setup.yaml declares two Test (fake)
+  ones), and its visitor switches between them but creates and deletes none (REQ-2053);
 - a sandbox no request has reached for ``sandbox.idle_ttl`` is deleted with its org, its folder and
   its token.
 """
 
-# Requirements: REQ-2006, REQ-1035, REQ-1263, REQ-1992
+# Requirements: REQ-2006, REQ-1035, REQ-1263, REQ-1992, REQ-2053
 
 from __future__ import annotations
 
@@ -43,6 +45,8 @@ _ORG = "sbxdeploye2e"  # the deployment's own org; never a sandbox (no ``sbx`` +
 _JWT_SECRET = "demo-sandboxes-e2e-signing-secret-0123456789"
 _ROWS = {"alpha": ["ant", "ape"], "beta": ["bee", "bat", "boar"]}
 _CAP = 3
+#: The Test (fake) environments a demo's setup.yaml creates (REQ-2053).
+_ENVIRONMENTS = {"alpha": ["dev", "test"]}
 _DISK = 16 * 1024 * 1024
 
 
@@ -105,6 +109,21 @@ def _demo(root: Path, name: str, *, published: bool) -> None:
     }
     if name in _EMBEDDING_MODELS:
         config["vector_models"] = _EMBEDDING_MODELS[name]
+    if name in _ENVIRONMENTS:
+        # REQ-2053: a demo with Test (fake) environments, as the testdata demo has: every column
+        # declares its fake, and its setup.yaml creates the environments.
+        for column in config["tables"][0]["columns"]:
+            column["fake"] = "hash()" if column["name"] == "id" else "name()"
+        (folder / "setup.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "steps": [
+                        {"environment": {"name": env, "data_mode": "test_fake"}}
+                        for env in _ENVIRONMENTS[name]
+                    ]
+                }
+            )
+        )
     (folder / "config.yaml").write_text(yaml.safe_dump(config))
 
 
@@ -254,6 +273,69 @@ def test_a_sandbox_reads_its_demos_own_source_live(tier, alpha):
         source.execute("DELETE FROM animals WHERE id = 99")
         source.commit()
         source.close()
+
+
+def _envs(tier, sandbox: dict) -> httpx.Response:
+    return httpx.get(
+        f"{tier.base_url}/admin/orgs/{sandbox['org_id']}/environments",
+        headers={
+            "Authorization": f"Bearer {sandbox['token']}",
+            "x-org-provisa": sandbox["org_id"],
+        },
+        timeout=60,
+    )
+
+
+def _sql_in(tier, sandbox: dict, env: str, sql: str) -> httpx.Response:
+    return httpx.post(
+        f"{tier.base_url}/data/sql",
+        json={"sql": sql},
+        headers={
+            "Authorization": f"Bearer {sandbox['token']}",
+            "x-org-provisa": sandbox["org_id"],
+            "x-provisa-env": env,
+        },
+        timeout=120,
+    )
+
+
+def test_a_sandbox_carries_its_templates_environments(tier, alpha, beta):
+    """REQ-2053: a sandbox has the environments its demo's template has (its setup.yaml's), each
+    with the template's data mode; a demo that declares none gives its sandboxes prod alone."""
+    listed = _envs(tier, alpha)
+    assert listed.status_code == 200, listed.text
+    modes = {e["name"]: e["data_mode"] for e in listed.json()["environments"]}
+    assert modes.keys() == {"prod", "dev", "test"}
+    assert modes["dev"] == modes["test"] == "test_fake"
+    listed = _envs(tier, beta)
+    assert listed.status_code == 200, listed.text
+    assert [e["name"] for e in listed.json()["environments"]] == ["prod"]
+
+
+def test_a_visitor_switches_to_a_test_environment_and_reads_fakes(tier, alpha):
+    """REQ-2053: the visitor is served by each existing environment: prod answers the real rows,
+    dev and test the same fakes, none of them a real value."""
+    real = _names(_sql_in(tier, alpha, "prod", "SELECT name FROM animals"))
+    assert real == sorted(_ROWS["alpha"])
+    dev = _names(_sql_in(tier, alpha, "dev", "SELECT name FROM animals"))
+    test = _names(_sql_in(tier, alpha, "test", "SELECT name FROM animals"))
+    assert dev == test and len(dev) == len(real)
+    assert not set(dev) & set(real)
+
+
+def test_a_visitor_neither_creates_nor_deletes_an_environment(tier, alpha):
+    """REQ-2053: switching is the visitor's; making or dropping an environment is not."""
+    headers = {"Authorization": f"Bearer {alpha['token']}", "x-org-provisa": alpha["org_id"]}
+    base = f"{tier.base_url}/admin/orgs/{alpha['org_id']}/environments"
+    made = httpx.post(base, json={"name": "mine", "data_mode": "test_fake"}, headers=headers)
+    assert made.status_code == 403, made.text
+    dropped = httpx.delete(f"{base}/dev", headers=headers)
+    assert dropped.status_code == 403, dropped.text
+    assert {e["name"] for e in _envs(tier, alpha).json()["environments"]} == {
+        "prod",
+        "dev",
+        "test",
+    }
 
 
 def test_an_unknown_or_unpublished_demo_is_refused_by_name(tier):

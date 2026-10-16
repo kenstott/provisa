@@ -41,14 +41,17 @@ from provisa.federation.replica_state import ReplicaKey
 
 log = logging.getLogger(__name__)
 
-#: The scheduler job that runs a process's build pass for one org (suffixed for a non-default
-#: org, as the event loop's jobs are). Run by every worker, not only the scheduler's holder.
+#: The scheduler job that runs a process's build pass for one org environment (suffixed for a
+#: non-default org, as the event loop's jobs are, and then for an environment other than prod).
+#: Run by every worker, not only the scheduler's holder.
 RUNNER_JOB_ID = "replica:builds"
 #: How often a process looks for requested builds when nothing kicked it sooner.
 _PASS_SECONDS = 2
 
-#: This process's runner per org (None: the default org), so a read can start a pass at once.
-_runners: dict[str | None, ReplicaRunner] = {}
+#: This process's runner per org (None: the default org) and environment, so a read can start a
+#: pass at once. Each environment's replicas have their own build state (its tenant schema), so
+#: each has its own runner; one keyed by org alone was replaced by the next environment built (#273).
+_runners: dict[tuple[str | None, str], ReplicaRunner] = {}
 
 
 class ReplicaTableGone(BuildFailure, LookupError):
@@ -1016,35 +1019,45 @@ def wire_replica_runner(scheduler: Any, *, state: Any, platform_url: str) -> Non
     from apscheduler.triggers.interval import IntervalTrigger
 
     from provisa.core import process_mode
-    from provisa.core.request_context import require_current_org, reset_current_org, set_current_org
+    from provisa.core.environments import PROD
+    from provisa.core.request_context import (
+        active_env,
+        require_current_org,
+        reset_current_env,
+        reset_current_org,
+        set_current_env,
+        set_current_org,
+    )
 
     if not process_mode.runs_background_work():
         return
     org_id = require_current_org()
+    env = active_env()
     runner = make_runner(state, org_id, platform_url)
-    _runners[org_id] = runner
+    _runners[(org_id, env)] = runner
 
     async def _pass() -> None:
         token = set_current_org(org_id)
+        env_token = set_current_env(env)
         try:
             await runner.run_pass()
         finally:
+            reset_current_env(env_token)
             reset_current_org(token)
 
     scheduler.add_job(
         _pass,
         trigger=IntervalTrigger(seconds=_PASS_SECONDS),
-        id=f"{RUNNER_JOB_ID}:org_{org_id}",
+        id=f"{RUNNER_JOB_ID}:org_{org_id}" + ("" if env == PROD else f":env_{env}"),
         replace_existing=True,
         next_run_time=datetime.now(UTC),
     )
 
 
 def stop_replica_runner(org_id: str) -> None:
-    """A deleted org's build runner starts no more builds (REQ-2006)."""
-    runner = _runners.pop(org_id, None)
-    if runner is not None:
-        runner.stop()
+    """A deleted org's build runners, one per environment, start no more builds (REQ-2006)."""
+    for key in [k for k in _runners if k[0] == org_id]:
+        _runners.pop(key).stop()
 
 
 def stop_replica_runners() -> None:
@@ -1096,12 +1109,13 @@ async def request_if_replicated(state: Any, table_id: int, source_id: str, reaso
     return True
 
 
-def kick(org_id: str | None) -> None:
-    """Start this process's build pass for ``org_id`` now, without waiting for its next
-    scheduled one — a read has just asked for a build. Does nothing in a process with no
-    runner for the org: another node's pass picks the request up."""
+def kick(org_id: str | None, env: str | None = None) -> None:
+    """Start this process's build pass for ``org_id``'s environment ``env`` (the bound one when
+    None) now, without waiting for its next scheduled one — a read has just asked for a build.
+    Does nothing in a process with no runner for it: another node's pass picks the request up."""
     from provisa.core.connection_loop import spawn_background
+    from provisa.core.request_context import active_env
 
-    runner = _runners.get(org_id)
+    runner = _runners.get((org_id, env or active_env()))
     if runner is not None:
         spawn_background(runner.run_pass(), name="replica-builds:kick")
