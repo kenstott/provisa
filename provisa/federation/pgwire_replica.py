@@ -176,6 +176,10 @@ class ServerCatalogFailed(ServerNotServing):
         self.source_id = source_id
 
 
+#: How soon an unanswered first catalog query is sent again, while its caller still waits.
+_CATALOG_RESEND_SECONDS = 1.0
+
+
 class SourceStillStartingError(ServerNotServing):  # REQ-1824
     """A files/sharepoint/splunk source's bundled Calcite server hasn't finished starting yet —
     raised by a DISCOVERY call (schema/table/column introspection) that chose not to wait the full
@@ -1302,26 +1306,33 @@ class ConnectorReplica:  # REQ-954/955/956
         (a timeout, a refused or dropped connection): a server that has only just opened its port
         can be too busy to answer, so the next request sends it again, and meanwhile the source is
         still starting rather than failed for good."""
-        with self._start_lock:
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._start_lock:
+                if self._catalog_ready:
+                    return
+                if self._catalog_error is None and self._catalog_thread is None:
+                    thread = threading.Thread(
+                        target=self._prepare_catalog_once,
+                        args=(ports, self._catalog_server),
+                        daemon=True,
+                        name=f"pgwire-catalog:{self._source.id}",
+                    )
+                    self._catalog_thread = thread
+                    thread.start()
+                thread = self._catalog_thread
+            left = deadline - time.monotonic()
+            if thread is not None and left > 0:
+                thread.join(left)
             if self._catalog_ready:
                 return
-            if self._catalog_error is None and self._catalog_thread is None:
-                thread = threading.Thread(
-                    target=self._prepare_catalog_once,
-                    args=(ports, self._catalog_server),
-                    daemon=True,
-                    name=f"pgwire-catalog:{self._source.id}",
-                )
-                self._catalog_thread = thread
-                thread.start()
-            thread = self._catalog_thread
-        if thread is not None and timeout > 0:
-            thread.join(timeout)
-        if self._catalog_ready:
-            return
-        if self._catalog_error is not None:
-            raise ServerCatalogFailed(self._source.id, self._catalog_error)
-        raise SourceStillStartingError(self._source.id, preparing_catalog=True)
+            if self._catalog_error is not None:
+                raise ServerCatalogFailed(self._source.id, self._catalog_error)
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise SourceStillStartingError(self._source.id, preparing_catalog=True)
+            # Unanswered (a server only just listening): sent again, within the same bound.
+            time.sleep(min(_CATALOG_RESEND_SECONDS, left))
 
     def _prepare_catalog_once(self, ports: PortPair, server: int) -> None:
         error: BaseException | None = None

@@ -80,6 +80,8 @@ pytestmark.append(
 # The site's built-in document library. Every SharePoint site has one, so it is the only table this
 # test may assume exists without writing to the tenant.
 _LIST_NAME = "documents"
+# The server's start and its first catalog query, which counts the rows of every table served.
+_COLD_START_SECONDS = 600
 
 
 @pytest.fixture(scope="module")
@@ -106,7 +108,9 @@ def attached(source: Source):
     # A module fixture runs before the per-test org binding: the endpoint is the deployment org's,
     # its folder ready, as its runtime's boot starts it (REQ-1266, REQ-1992).
     with deployment_org_on_this_node():
-        details = DuckDBSharepointConnector().details(source)  # boots the JVM, waits for it
+        # Serving first: an attach of its own waits a statement's bound, not a cold start's.
+        pr.ensure_endpoint(source, timeout=_COLD_START_SECONDS)
+        details = DuckDBSharepointConnector().details(source)
     con = duckdb.connect()
     con.execute("INSTALL postgres")
     con.execute("LOAD postgres")
