@@ -506,10 +506,10 @@ renders the star"; provisa/cypher/label_map.py not read in this session]
 
 ### 流式处理
 
-将 `view_metrics` 与 `materialize` 及 Kafka 接收端结合，即可利用现有的物化机制，生成变更即
-推送（push-on-change）的指标输出。无需任何新管道。
-[inferred: per REQ-1319: "Streaming: view_metrics + materialize + Kafka sink yields push-on-change
-metrics from existing machinery"; implementation not verified beyond the requirement text]
+将 `view_metrics` 与 `materialize` 结合，即可利用现有的物化机制，在输入变化时让指标视图保持最新。
+无需任何新管道。
+[inferred: per REQ-1319. The table Kafka sink that requirement named is retired (REQ-176); a
+table publishes its new rows to Kafka through a live output (`live.outputs`, REQ-565)]
 
 ### 可观测性（OTel）
 

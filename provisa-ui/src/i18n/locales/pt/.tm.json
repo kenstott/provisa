@@ -1805,7 +1805,7 @@
   "pt/liveDeliveryFieldset.json::liveDeliveryFieldset.kafkaConsumeTopicLabel": "Topic",
   "pt/liveDeliveryFieldset.json::liveDeliveryFieldset.kafkaKeyColumnLabel": "Key column",
   "pt/liveDeliveryFieldset.json::liveDeliveryFieldset.kafkaNote": "Kafka feed is configured on the source; set the topic this table consumes below.",
-  "pt/liveDeliveryFieldset.json::liveDeliveryFieldset.kafkaSinkLabel": "Kafka sink",
+  "pt/liveDeliveryFieldset.json::liveDeliveryFieldset.kafkaOutputLabel": "Kafka output",
   "pt/liveDeliveryFieldset.json::liveDeliveryFieldset.kafkaTopicLabel": "Topic",
   "pt/liveDeliveryFieldset.json::liveDeliveryFieldset.legend": "Live Delivery",
   "pt/liveDeliveryFieldset.json::liveDeliveryFieldset.legendActive": "Live Delivery — active",

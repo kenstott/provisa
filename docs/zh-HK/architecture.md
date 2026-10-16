@@ -419,7 +419,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 | `mv/` | 具體化檢視登記冊、重新整理、SQL 重寫器 |
 | `events/` | 數據集變更事件及觸發器派發 |
 | `webhooks/` | mutation 及事件的出站 webhook 執行 |
-| `scheduler/` | 以 APScheduler 為基礎的背景工作管理——觸發 webhook、mutation 或 Kafka sink 發佈的 cron 及間隔式觸發器 |
+| `scheduler/` | 以 APScheduler 為基礎的背景工作管理——觸發 webhook 及 mutation 的 cron 及間隔式觸發器，以及即時 Kafka 輸出的輪詢 |
 | `apq/` | Apollo APQ 線路協定——以 Redis 為後端的查詢雜湊快取；與結果快取分開 |
 | `compiler/cursor.py` | Relay 風格的游標式分頁——所有清單查詢上的 `first`/`after`/`last`/`before` 引數及 `pageInfo` 產生 |
 | `compiler/aggregate_gen.py` | 自動產生具 `count`、`sum`、`avg`、`min`、`max` 子欄位及已篩選 `nodes` 存取的 `{table}_aggregate` 查詢型別 |
@@ -606,7 +606,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 
 ## 排程觸發器
 
-`scheduler/jobs.py` 使用 APScheduler 執行以 cron 或間隔式觸發器定義的背景工作。（REQ-216）每項工作可以 POST 至一個 webhook 網址、對數據端點執行一項 mutation，或將查詢結果發佈至一個 Kafka 主題。觸發器透過管理 API（`scheduledTrigger` mutation）或 YAML 設定中的 `scheduled_triggers` 鍵進行設定。（REQ-216）
+`scheduler/jobs.py` 使用 APScheduler 執行以 cron 或間隔式觸發器定義的背景工作。（REQ-216）每項工作可以 POST 至一個 webhook 網址，或對數據端點執行一項 mutation；表的即時 Kafka 輸出（`live.outputs`）在同一排程器上輪詢。觸發器透過管理 API（`scheduledTrigger` mutation）或 YAML 設定中的 `scheduled_triggers` 鍵進行設定。（REQ-216）
 
 ## 聯邦效能提示
 

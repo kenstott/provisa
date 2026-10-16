@@ -35,7 +35,7 @@
     "pushMaxDelayPlaceholder": "max delay",
     "outputsHeading": "Outputs",
     "sseFanoutLabel": "SSE fanout (always on)",
-    "kafkaSinkLabel": "Kafka sink",
+    "kafkaOutputLabel": "Kafka output",
     "kafkaBootstrapLabel": "Bootstrap servers",
     "kafkaBootstrapPlaceholder": "kafka:9092",
     "kafkaTopicLabel": "Topic",

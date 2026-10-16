@@ -419,7 +419,7 @@ Die Refresh-Schleife läuft alle 30 Sekunden, prüft `get_due_for_refresh()` und
 | `mv/` | Registry, Refresh und SQL-Rewriter für materialisierte Sichten |
 | `events/` | Dataset-Change-Events und Trigger-Dispatch |
 | `webhooks/` | Ausgehende Webhook-Ausführung für Mutations und Events |
-| `scheduler/` | APScheduler-basiertes Hintergrund-Job-Management — Cron- und Intervall-Trigger, die Webhooks, Mutations oder Kafka-Sink-Veröffentlichungen auslösen |
+| `scheduler/` | APScheduler-basiertes Hintergrund-Job-Management — Cron- und Intervall-Trigger, die Webhooks und Mutations auslösen, und die Abfragen der Live-Kafka-Ausgaben |
 | `apq/` | Apollo-APQ-Wire-Protokoll — Redis-gestützter Query-Hash-Cache; getrennt vom Result-Caching |
 | `compiler/cursor.py` | Relay-artige Cursor-Paginierung — `first`/`after`/`last`/`before`-Argumente und `pageInfo`-Generierung für alle Listenabfragen |
 | `compiler/aggregate_gen.py` | Automatisch generierte `{table}_aggregate`-Query-Typen mit `count`, `sum`, `avg`, `min`, `max`-Unterfeldern und gefiltertem `nodes`-Zugriff |
@@ -606,7 +606,7 @@ Eine Rolle benennt über `parent_role_id` höchstens eine übergeordnete Rolle. 
 
 ## Geplante Trigger
 
-`scheduler/jobs.py` verwendet APScheduler, um Hintergrund-Jobs auszuführen, die als Cron- oder Intervall-Trigger definiert sind. (REQ-216) Jeder Job kann an eine Webhook-URL POSTen, eine Mutation gegen den Daten-Endpunkt ausführen oder Abfrageergebnisse an ein Kafka-Topic veröffentlichen. Trigger werden über die Admin-API (`scheduledTrigger`-Mutations) oder den Schlüssel `scheduled_triggers` in der YAML-Konfiguration konfiguriert. (REQ-216)
+`scheduler/jobs.py` verwendet APScheduler, um Hintergrund-Jobs auszuführen, die als Cron- oder Intervall-Trigger definiert sind. (REQ-216) Jeder Job kann an eine Webhook-URL POSTen oder eine Mutation gegen den Daten-Endpunkt ausführen; die Live-Kafka-Ausgabe einer Tabelle (`live.outputs`) wird auf demselben Scheduler abgefragt. Trigger werden über die Admin-API (`scheduledTrigger`-Mutations) oder den Schlüssel `scheduled_triggers` in der YAML-Konfiguration konfiguriert. (REQ-216)
 
 ## Federation-Performance-Hinweise
 

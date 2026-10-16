@@ -231,10 +231,10 @@ async def test_compiled_path_expands_metric_refs():
         )
 
 
-def test_streaming_metric_view_config_is_valid():
-    """REQ-1319 streaming freebie: a metric-composed view may carry materialize + a Kafka
-    sink — push-on-change metrics ride the existing machinery, no new validation path."""
-    from provisa.core.models import KafkaSinkAttachment, Table, ViewMetricsSpec
+def test_a_materialized_metric_view_config_is_valid():
+    """REQ-1319: a metric-composed view may be materialized -- push-on-change metrics ride the
+    existing machinery, no new validation path."""
+    from provisa.core.models import Table, ViewMetricsSpec
 
     t = Table(
         source_id="__derived__",
@@ -243,10 +243,8 @@ def test_streaming_metric_view_config_is_valid():
         columns=[],
         view_metrics=ViewMetricsSpec(metrics=["net_revenue"], dimensions=["region"]),
         materialize=True,
-        kafka_sink=KafkaSinkAttachment(topic="metrics.net_revenue"),
     )
     assert t.view_metrics is not None and t.materialize
-    assert t.kafka_sink is not None and t.kafka_sink.topic == "metrics.net_revenue"
 
 
 # ── metric_reference_tables / inline_metric_sql (REQ-1319) ───────────────────

@@ -511,10 +511,10 @@ SQL סמנטי. [tool-verified: `resolve_metric`,
 
 ### זרימה (Streaming)
 
-שילוב `view_metrics` עם `materialize` ופתח יעד (sink) של Kafka מפיק פלט מדד מסוג push-on-change
-באמצעות מכניקת ההמחשה הקיימת. אין צורך ב-pipeline חדש.
-[inferred: per REQ-1319: "Streaming: view_metrics + materialize + Kafka sink yields push-on-change
-metrics from existing machinery"; implementation not verified beyond the requirement text]
+שילוב `view_metrics` עם `materialize` שומר view של מדדים עדכני כשהקלטים שלו משתנים, באמצעות
+מכניקת ההמחשה הקיימת. אין צורך ב-pipeline חדש.
+[inferred: per REQ-1319. The table Kafka sink that requirement named is retired (REQ-176); a
+table publishes its new rows to Kafka through a live output (`live.outputs`, REQ-565)]
 
 ### Observability (OTel)
 

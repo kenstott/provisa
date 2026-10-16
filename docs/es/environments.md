@@ -34,7 +34,7 @@ rojo. [tool-verified: `CLASSIFIED` constant and module docstring, env_classes.py
 | Clase | Tablas | Qué ocurre al copiar |
 | --- | --- | --- |
 | CARRIED | domains, naming_rules, registered_tables, table_columns, relationships, metrics, roles, rls_rules, tags, tag_param_values, tag_assignments, términos del glosario, materialized_views, calendars, api_endpoints, tracked_functions, tracked_webhooks, table_meta_links | Se copian enteras |
-| IDENTITY_ONLY | sources, api_sources, kafka_sources, kafka_sinks | Los campos de identidad y gobierno viajan; los valores de conexión se quedan atrás (véase Vinculaciones) |
+| IDENTITY_ONLY | sources, api_sources, kafka_sources | Los campos de identidad y gobierno viajan; los valores de conexión se quedan atrás (véase Vinculaciones) |
 | SEEDED_AT_CREATION | roles, user_role_assignments | Se copian solo cuando se crea el entorno por primera vez; los merges posteriores no los tocan |
 | PARTIAL | org_settings | Se copian clave por clave: los ajustes de gobierno viajan, y las claves que nombran un destino externo o una ejecución propia de cada entorno se quedan atrás |
 | NEVER_SENSITIVE | org_secrets, user_directory | Nunca se copian |

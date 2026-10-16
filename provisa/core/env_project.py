@@ -56,7 +56,6 @@ KIND_DIRS: dict[str, str] = {
     "sources": "sources",
     "api_sources": "api-sources",
     "kafka_sources": "kafka-sources",
-    "kafka_sinks": "kafka-sinks",
     "metrics": "metrics",
     "roles": "roles",
     "tags": "tags",
@@ -389,8 +388,6 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                 table="api_endpoints",
             ),
         )
-    for row in await _rows(conn, org.kafka_sinks, schema):
-        tree[kind_path(KIND_DIRS["kafka_sinks"], row["id"])] = entity("kafka_sinks", row)
 
     for table, key in (
         (org.metrics, "name"),

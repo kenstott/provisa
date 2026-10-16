@@ -1108,7 +1108,6 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
 
     # 5. Tables + columns
     openapi_specs = _load_openapi_specs(config)
-    _validate_table_kafka_sinks(config)
     _validate_table_live_delivery(config)
     _validate_change_signal(config)
     _validate_dq_contracts(config)
@@ -1131,21 +1130,6 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
     await _upsert_tables(conn, engine, config, openapi_specs)
     await _load_after_tables(conn, config, domains_before=domains_before)
     return failed_feeds
-
-
-def _validate_table_kafka_sinks(config) -> None:
-    """Validate kafka_sink fields on all tables (REQ-176–180)."""
-    valid_triggers = {"change_event", "schedule", "manual", "poll"}
-    for table in config.tables:
-        if table.kafka_sink is None:
-            continue
-        if not table.kafka_sink.topic:
-            raise ValueError(f"Table {table.table_name!r}: kafka_sink.topic is required")
-        if not table.kafka_sink.triggers:
-            raise ValueError(f"Table {table.table_name!r}: kafka_sink.triggers must not be empty")
-        for t in table.kafka_sink.triggers:
-            if t not in valid_triggers:
-                raise ValueError(f"Table {table.table_name!r}: unknown kafka_sink trigger {t!r}")
 
 
 # REQ-824: non-PG RDBMS have no native push mechanism; they reach CDC only through a

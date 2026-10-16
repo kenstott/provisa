@@ -13,15 +13,13 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 import provisa.kafka.change_events as ce
-from provisa.kafka.sink import KafkaProducer, KafkaSinkConfig
-from provisa.kafka.sink_executor import _Encoder, trigger_sinks_for_table
+from provisa.kafka.sink import KafkaProducer
 
 
 # ---------------------------------------------------------------------------
@@ -216,120 +214,6 @@ class TestEmitChangeEvent:
     def test_the_default_kind_of_change_is_mutation(self, producer):
         ce.emit_change_event("orders", "pg-main")
         assert json.loads(producer.sent[0][1].decode())["type"] == "mutation"
-
-
-# ---------------------------------------------------------------------------
-# TestEncoder
-# ---------------------------------------------------------------------------
-
-
-class TestEncoder:
-    def test_encodes_decimal_as_float(self):
-        encoder = _Encoder()
-        result = encoder.default(Decimal("3.14"))
-        assert result == 3.14
-        assert isinstance(result, float)
-
-    def test_encodes_decimal_zero(self):
-        encoder = _Encoder()
-        assert encoder.default(Decimal("0")) == 0.0
-
-    def test_encodes_date_as_isoformat(self):
-        encoder = _Encoder()
-        d = date(2026, 4, 6)
-        result = encoder.default(d)
-        assert result == "2026-04-06"
-
-    def test_encodes_datetime_as_isoformat(self):
-        encoder = _Encoder()
-        dt = datetime(2026, 4, 6, 12, 30, 0)
-        result = encoder.default(dt)
-        assert result == "2026-04-06T12:30:00"
-
-    def test_encodes_unknown_object_as_str(self):
-        encoder = _Encoder()
-
-        class WeirdObj:
-            def __str__(self):
-                return "weird-value"
-
-        result = encoder.default(WeirdObj())
-        assert result == "weird-value"
-
-    def test_regular_types_serialise_normally(self):
-        """int, str, list, dict, None round-trip through json.dumps without error."""
-        data = {"count": 42, "name": "test", "items": [1, 2], "meta": None}
-        result = json.dumps(data, cls=_Encoder)
-        assert json.loads(result) == data
-
-    def test_encoder_used_in_dumps_with_decimal(self):
-        data = {"price": Decimal("9.99"), "qty": 3}
-        result = json.loads(json.dumps(data, cls=_Encoder))
-        assert result["price"] == pytest.approx(9.99)
-        assert result["qty"] == 3
-
-    def test_encoder_used_in_dumps_with_date(self):
-        data = {"created_at": date(2026, 1, 15)}
-        result = json.loads(json.dumps(data, cls=_Encoder))
-        assert result["created_at"] == "2026-01-15"
-
-
-# ---------------------------------------------------------------------------
-# TestTriggerSinksForTable
-# ---------------------------------------------------------------------------
-
-
-class TestTriggerSinksForTable:
-    """REQ-001/003: GPQ approved-query sinks are removed with the registry.
-    ``trigger_sinks_for_table`` is a no-op (returns 0) and no longer reads the
-    ``persisted_queries`` registry. Table/view sinks (REQ-176-181) are forward work.
-    """
-
-    async def test_returns_zero_when_pg_pool_is_none(self):
-        state = MagicMock()
-        state.tenant_db = None
-        assert await trigger_sinks_for_table("orders", state) == 0
-
-    async def test_returns_zero_and_does_not_read_registry(self):
-        mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=[])
-        mock_pool = _mock_pool_with_conn(mock_conn)
-
-        state = MagicMock()
-        state.tenant_db = mock_pool
-
-        result = await trigger_sinks_for_table("orders", state)
-
-        assert result == 0
-        # The deprecated registry must not be queried.
-        mock_conn.fetch.assert_not_awaited()
-
-
-# ---------------------------------------------------------------------------
-# TestKafkaSinkConfig
-# ---------------------------------------------------------------------------
-
-
-class TestKafkaSinkConfig:
-    def test_stores_all_fields(self):
-        config = KafkaSinkConfig(
-            query_stable_id="q-xyz",
-            topic="output-topic",
-            key_column="order_id",
-            value_format="json",
-        )
-        assert config.query_stable_id == "q-xyz"
-        assert config.topic == "output-topic"
-        assert config.key_column == "order_id"
-        assert config.value_format == "json"
-
-    def test_default_key_column_is_none(self):
-        config = KafkaSinkConfig(query_stable_id="q-1", topic="t")
-        assert config.key_column is None
-
-    def test_default_value_format_is_json(self):
-        config = KafkaSinkConfig(query_stable_id="q-1", topic="t")
-        assert config.value_format == "json"
 
 
 # ---------------------------------------------------------------------------

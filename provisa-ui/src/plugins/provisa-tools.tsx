@@ -13,7 +13,7 @@
 /**
  * GraphiQL plugin: Provisa Tools
  *
- * Adds View SQL, Submit for Approval (with optional Kafka sink),
+ * Adds View SQL, Submit for Approval,
  * inside GraphiQL's plugin panel.
  */
 

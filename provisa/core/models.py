@@ -1075,16 +1075,8 @@ class UniqueConstraint(BaseModel):  # REQ-1093
     columns: list[str]
 
 
-class KafkaSinkAttachment(BaseModel):  # REQ-565
-    """Per-table opt-in Kafka sink config (REQ-176–180)."""
-
-    topic: str
-    key_column: str | None = None
-    triggers: list[str] = Field(default_factory=lambda: ["change_event"])
-
-
 class LiveOutputConfig(BaseModel):  # REQ-565, REQ-286
-    """Single output destination for a live query (SSE fanout or Kafka sink).
+    """Single output destination for a live query (SSE fanout or Kafka output).
 
     A Kafka output publishes the table's rows governed as ``role`` -- its row rules, column
     visibility and masks -- so it names one; an output naming none is refused by name."""
@@ -1415,7 +1407,6 @@ class Table(
     enable_aggregates: bool = False  # REQ-653: opt-in for _aggregate root field
     enable_group_by: bool = False  # REQ-653: opt-in for _group_by root field
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this table
-    kafka_sink: KafkaSinkAttachment | None = None  # REQ-176: per-table Kafka sink config
 
     @model_validator(mode="after")
     def _bitemporal_reads_on_source_time(self) -> "Table":

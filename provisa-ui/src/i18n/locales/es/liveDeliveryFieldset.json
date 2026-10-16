@@ -35,7 +35,7 @@
     "pushMaxDelayPlaceholder": "retraso máx.",
     "outputsHeading": "Salidas",
     "sseFanoutLabel": "Difusión SSE (siempre activa)",
-    "kafkaSinkLabel": "Destino Kafka",
+    "kafkaOutputLabel": "Salida Kafka",
     "kafkaBootstrapLabel": "Servidores bootstrap",
     "kafkaBootstrapPlaceholder": "kafka:9092",
     "kafkaTopicLabel": "Topic",

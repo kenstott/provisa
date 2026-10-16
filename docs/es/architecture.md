@@ -419,7 +419,7 @@ El bucle de actualización se ejecuta cada 30 segundos, verifica `get_due_for_re
 | `mv/` | Materialized view registry, refresh, SQL rewriter |
 | `events/` | Dataset change events and trigger dispatch |
 | `webhooks/` | Outbound webhook execution for mutations and events |
-| `scheduler/` | APScheduler-based background job management — cron and interval triggers that fire webhooks, mutations, or Kafka sink publishes |
+| `scheduler/` | APScheduler-based background job management — cron and interval triggers that fire webhooks and mutations, and the polls of live Kafka outputs |
 | `apq/` | Apollo APQ wire protocol — Redis-backed query hash cache; separate from result caching |
 | `compiler/cursor.py` | Relay-style cursor pagination — `first`/`after`/`last`/`before` arguments and `pageInfo` generation on all list queries |
 | `compiler/aggregate_gen.py` | Auto-generated `{table}_aggregate` query types with `count`, `sum`, `avg`, `min`, `max` sub-fields and filtered `nodes` access |
@@ -606,7 +606,7 @@ Un rol nombra como máximo un padre mediante `parent_role_id`. (REQ-215) En la c
 
 ## Disparadores programados
 
-`scheduler/jobs.py` usa APScheduler para ejecutar trabajos en segundo plano definidos como disparadores cron o de intervalo. (REQ-216) Cada trabajo puede hacer POST a una URL de webhook, ejecutar una mutación contra el endpoint de datos, o publicar resultados de consulta en un topic de Kafka. Los disparadores se configuran mediante la API de administración (mutaciones `scheduledTrigger`) o la clave `scheduled_triggers` en la configuración YAML. (REQ-216)
+`scheduler/jobs.py` usa APScheduler para ejecutar trabajos en segundo plano definidos como disparadores cron o de intervalo. (REQ-216) Cada trabajo puede hacer POST a una URL de webhook o ejecutar una mutación contra el endpoint de datos; la salida Kafka en vivo de una tabla (`live.outputs`) se sondea en el mismo planificador. Los disparadores se configuran mediante la API de administración (mutaciones `scheduledTrigger`) o la clave `scheduled_triggers` en la configuración YAML. (REQ-216)
 
 ## Sugerencias de rendimiento de federación
 

@@ -35,7 +35,7 @@
     "pushMaxDelayPlaceholder": "max. vertraging",
     "outputsHeading": "Uitvoer",
     "sseFanoutLabel": "SSE-fanout (altijd aan)",
-    "kafkaSinkLabel": "Kafka-sink",
+    "kafkaOutputLabel": "Kafka-uitvoer",
     "kafkaBootstrapLabel": "Bootstrap-servers",
     "kafkaBootstrapPlaceholder": "kafka:9092",
     "kafkaTopicLabel": "Topic",

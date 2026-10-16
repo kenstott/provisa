@@ -419,7 +419,7 @@ O laço de atualização roda a cada 30 segundos, verifica `get_due_for_refresh(
 | `mv/` | Registro de views materializadas, atualização, reescritor SQL |
 | `events/` | Eventos de mudança de dataset e despacho de gatilhos |
 | `webhooks/` | Execução de webhook de saída para mutações e eventos |
-| `scheduler/` | Gerenciamento de jobs em segundo plano baseado em APScheduler — gatilhos cron e de intervalo que disparam webhooks, mutações, ou publicações no sink Kafka |
+| `scheduler/` | Gerenciamento de jobs em segundo plano baseado em APScheduler — gatilhos cron e de intervalo que disparam webhooks e mutações, e as consultas das saídas Kafka ao vivo |
 | `apq/` | Protocolo de fio Apollo APQ — cache de hash de consulta apoiado em Redis; separado do cache de resultado |
 | `compiler/cursor.py` | Paginação por cursor estilo Relay — argumentos `first`/`after`/`last`/`before` e geração de `pageInfo` em todas as consultas de lista |
 | `compiler/aggregate_gen.py` | Tipos de consulta `{table}_aggregate` auto-gerados com subcampos `count`, `sum`, `avg`, `min`, `max` e acesso a `nodes` filtrado |
@@ -606,7 +606,7 @@ Uma função nomeia no máximo um pai através de `parent_role_id`. (REQ-215) Na
 
 ## Gatilhos Programados
 
-`scheduler/jobs.py` usa o APScheduler para executar jobs em segundo plano definidos como gatilhos cron ou de intervalo. (REQ-216) Cada job pode fazer POST para uma URL de webhook, executar uma mutação contra o endpoint de dados, ou publicar resultados de consulta em um tópico Kafka. Gatilhos são configurados via a API de administração (mutações `scheduledTrigger`) ou a chave `scheduled_triggers` na config YAML. (REQ-216)
+`scheduler/jobs.py` usa o APScheduler para executar jobs em segundo plano definidos como gatilhos cron ou de intervalo. (REQ-216) Cada job pode fazer POST para uma URL de webhook ou executar uma mutação contra o endpoint de dados; a saída Kafka ao vivo de uma tabela (`live.outputs`) é consultada no mesmo agendador. Gatilhos são configurados via a API de administração (mutações `scheduledTrigger`) ou a chave `scheduled_triggers` na config YAML. (REQ-216)
 
 ## Hints de Desempenho de Federação
 

@@ -35,7 +35,7 @@
     "pushMaxDelayPlaceholder": "最大延遲",
     "outputsHeading": "輸出",
     "sseFanoutLabel": "SSE 扇出（永遠開啟）",
-    "kafkaSinkLabel": "Kafka 接收端",
+    "kafkaOutputLabel": "Kafka 輸出",
     "kafkaBootstrapLabel": "Bootstrap 伺服器",
     "kafkaBootstrapPlaceholder": "kafka:9092",
     "kafkaTopicLabel": "主題",

@@ -80,20 +80,15 @@ def run_after_write(table_id: int, table_name: str, source_id: str) -> dict[str,
     from unittest.mock import patch
 
     from provisa.kafka import change_events as _change_mod
-    from provisa.kafka import sink_executor as _sink_mod
     from provisa.pgwire._pipeline import _Plan, finalize_audit
     from provisa.transpiler.router import Route
 
-    calls: dict[str, list] = {"invalidated": [], "stale": [], "events": [], "sinks": []}
+    calls: dict[str, list] = {"invalidated": [], "stale": [], "events": [], "changed": []}
 
     class _Store:
         async def invalidate_by_table(self, tid, tenant_id=None):
             calls["invalidated"].append(tid)
             return 1
-
-    async def _sinks(name, _state):
-        calls["sinks"].append(name)
-        return 0
 
     state = RoleState(
         response_cache_store=_Store(),
@@ -127,24 +122,15 @@ def run_after_write(table_id: int, table_name: str, source_id: str) -> dict[str,
     async def _no_replica(_state, _table_id, _source_id, _reason):
         return False  # no replica store here: the build request has its own tests
 
-    from provisa.api.data import table_written
-    from provisa.core.connection_loop import spawn_background
-
-    spawned: list = []
-
-    def _spawn(coro, **kwargs):
-        # The sink run is spawned onto a background worker; the step is done once it has run.
-        future = spawn_background(coro, **kwargs)
-        spawned.append(future)
-        return future
+    async def _changed(_state, table_id, source_id, reason):
+        # REQ-2054: the commands that run when the table changes are asked for (they have their
+        # own tests); the step only records that they were.
+        calls["changed"].append((table_id, source_id, reason))
 
     with (
         patch.object(_change_mod, "emit_change_event", lambda *a: calls["events"].append(a)),
-        patch.object(_sink_mod, "trigger_sinks_for_table", _sinks),
         patch("provisa.federation.replica_builds.request_if_replicated", _no_replica),
-        patch.object(table_written, "spawn_background", _spawn),
+        patch("provisa.scheduler.table_triggers.source_changed", _changed),
     ):
         asyncio.run(finalize_audit(plan, 200, state))
-        for future in spawned:
-            future.result(timeout=60)
     return calls

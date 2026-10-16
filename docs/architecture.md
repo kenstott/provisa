@@ -435,7 +435,7 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `mv/` | Materialized view registry, refresh, SQL rewriter |
 | `events/` | Dataset change events and trigger dispatch |
 | `webhooks/` | Outbound webhook execution for mutations and events |
-| `scheduler/` | APScheduler-based background job management — cron and interval triggers that fire webhooks, mutations, or Kafka sink publishes |
+| `scheduler/` | APScheduler-based background job management — cron and interval triggers that fire webhooks and mutations, and the polls of live Kafka outputs |
 | `apq/` | Apollo APQ wire protocol — Redis-backed query hash cache; separate from result caching |
 | `compiler/cursor.py` | Relay-style cursor pagination — `first`/`after`/`last`/`before` arguments and `pageInfo` generation on all list queries |
 | `compiler/aggregate_gen.py` | Auto-generated `{table}_aggregate` query types with `count`, `sum`, `avg`, `min`, `max` sub-fields and filtered `nodes` access |
@@ -623,7 +623,7 @@ A role names at most one parent through `parent_role_id`. (REQ-215) At runtime b
 
 ## Scheduled Triggers
 
-`scheduler/jobs.py` uses APScheduler to run background jobs defined as cron or interval triggers. (REQ-216) Each job can POST to a webhook URL, execute a mutation against the data endpoint, or publish query results to a Kafka topic. Triggers are configured via the admin API (`scheduledTrigger` mutations) or the `scheduled_triggers` key in the YAML config. (REQ-216)
+`scheduler/jobs.py` uses APScheduler to run background jobs defined as cron or interval triggers. (REQ-216) Each job can POST to a webhook URL or execute a mutation against the data endpoint; a table's live Kafka output (`live.outputs`) is polled on the same scheduler. Triggers are configured via the admin API (`scheduledTrigger` mutations) or the `scheduled_triggers` key in the YAML config. (REQ-216)
 
 ## Federation Performance Hints
 

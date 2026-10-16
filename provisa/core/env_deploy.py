@@ -96,7 +96,7 @@ _ROOT_DIRS: dict[str, str] = {
 
 #: The registries whose files say how a source is REACHED rather than what it holds (REQ-1544). A
 #: change to one of these invalidates open connections; a change to anything else does not.
-CONNECTIVITY = frozenset({"sources", "api_sources", "kafka_sources", "kafka_sinks"})
+CONNECTIVITY = frozenset({"sources", "api_sources", "kafka_sources"})
 
 #: The column that tells the two command registries apart. ``tracked_functions.impl_kind`` is NOT
 #: NULL with a server default, so every function row has one and every projected function file
@@ -641,15 +641,10 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                 rows["naming_rules"].append({**rule, "id": order})
 
         else:
-            # metrics, roles, materialized_views, kafka_sinks, stores, regions -- a flat kind
-            # keyed by its path.
+            # metrics, roles, materialized_views, stores, regions -- a flat kind keyed by its
+            # path.
             key = "name" if table == "metrics" else "id"
             entry = {**body, key: _name_of(path)[0]}
-            if table == "kafka_sinks":
-                # The one flat kind with a surrogate: its address is the name it was projected
-                # under, and nothing references the serial.
-                entry = {k: v for k, v in entry.items() if k != "id"}
-                entry["id"] = ids.of("kafka_sinks", _name_of(path)[0])
             if table == "roles":
                 named(path, "parent role", entry.get("parent_role_id"), roles)
             rows[table].append(entry)

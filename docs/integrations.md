@@ -655,10 +655,10 @@ matcher biases join paths fact-to-dimension when resolving questions.
 
 ### Streaming
 
-Combine `view_metrics` with `materialize` and a Kafka sink to produce push-on-change metric output
-using the existing materialization machinery. No new pipeline is required.
-[inferred: per REQ-1319: "Streaming: view_metrics + materialize + Kafka sink yields push-on-change
-metrics from existing machinery"; implementation not verified beyond the requirement text]
+Combine `view_metrics` with `materialize` to keep a metric view current as its inputs change, using
+the existing materialization machinery. No new pipeline is required.
+[inferred: per REQ-1319. The table Kafka sink that requirement named is retired (REQ-176); a
+table publishes its new rows to Kafka through a live output (`live.outputs`, REQ-565)]
 
 ### Observability (OTel)
 

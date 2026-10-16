@@ -419,7 +419,7 @@ Il loop di refresh gira ogni 30 secondi, controlla `get_due_for_refresh()` ed es
 | `mv/` | Materialized view registry, refresh, SQL rewriter |
 | `events/` | Dataset change events and trigger dispatch |
 | `webhooks/` | Outbound webhook execution for mutations and events |
-| `scheduler/` | APScheduler-based background job management — cron and interval triggers that fire webhooks, mutations, or Kafka sink publishes |
+| `scheduler/` | APScheduler-based background job management — cron and interval triggers that fire webhooks and mutations, and the polls of live Kafka outputs |
 | `apq/` | Apollo APQ wire protocol — Redis-backed query hash cache; separate from result caching |
 | `compiler/cursor.py` | Relay-style cursor pagination — `first`/`after`/`last`/`before` arguments and `pageInfo` generation on all list queries |
 | `compiler/aggregate_gen.py` | Auto-generated `{table}_aggregate` query types with `count`, `sum`, `avg`, `min`, `max` sub-fields and filtered `nodes` access |
@@ -606,7 +606,7 @@ Un ruolo nomina al massimo un padre tramite `parent_role_id`. (REQ-215) Al build
 
 ## Trigger pianificati
 
-`scheduler/jobs.py` usa APScheduler per eseguire job in background definiti come trigger cron o a intervallo. (REQ-216) Ogni job può inviare una POST a un URL webhook, eseguire una mutazione contro l'endpoint dati, o pubblicare i risultati di una query su un topic Kafka. I trigger vengono configurati tramite l'Admin API (mutazioni `scheduledTrigger`) o la chiave `scheduled_triggers` nella configurazione YAML. (REQ-216)
+`scheduler/jobs.py` usa APScheduler per eseguire job in background definiti come trigger cron o a intervallo. (REQ-216) Ogni job può inviare una POST a un URL webhook o eseguire una mutazione contro l'endpoint dati; l'output Kafka in tempo reale di una tabella (`live.outputs`) viene interrogato sullo stesso scheduler. I trigger vengono configurati tramite l'Admin API (mutazioni `scheduledTrigger`) o la chiave `scheduled_triggers` nella configurazione YAML. (REQ-216)
 
 ## Hint di performance per la federazione
 
