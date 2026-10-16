@@ -19,22 +19,40 @@ while no test is running. A serverless SQL pool is what makes that affordable: t
 scanned rather than by wall clock, the workspace itself is free, and the only clock-billed resource
 is the ADLS account holding one ~2 KB Parquet -- so a run costs a fraction of a cent.
 
-Everything is created inside ONE stamped resource group, and teardown deletes that group. A single
-delete cannot half-succeed and leave an orphan the way per-resource deletes can, and the stamp means
-a leaked group from an aborted run can never be silently reused by the next one (reuse would also
-mean querying its stale seed data).
+Everything is created inside ``FABRIC_RESOURCE_GROUP`` (the CI principal holds rights on that group
+only) under one stamp -- a workspace and an ADLS account -- and teardown deletes what that stamp
+names, never the group. The stamp means a resource leaked by an aborted run is never reused by the
+next one (reuse would also mean querying its stale seed data).
 
 Auth
 ----
 There is no secret to configure. ``MssqlWarehouseRuntime`` authenticates with
-``DefaultAzureCredential`` and the Azure CLI is the credential source, so ``az login`` is both the
-provisioning credential and the query credential -- one identity, no keys in ``.env``. Serverless
-``OPENROWSET`` without an explicit DATA_SOURCE reads storage as the *calling* AAD identity, which is
-why the signed-in user is granted Storage Blob Data Contributor on the account it creates.
+``DefaultAzureCredential``: a developer's ``az login``, or in CI the service principal provisa-ci
+(``AZURE_CLIENT_ID`` / ``AZURE_CLIENT_SECRET`` / ``AZURE_TENANT_ID``). Serverless ``OPENROWSET``
+without an explicit DATA_SOURCE reads storage as the *calling* AAD identity, which is why the
+signed-in principal is granted Storage Blob Data Contributor on the account it creates.
 
-Set ``SYNAPSE_SQL_SERVER`` / ``SYNAPSE_DATABASE`` / ``SYNAPSE_ADLS_URL`` to pin a pre-existing
-workspace; provisioning and teardown are then both skipped and the standing resources are used
-as-is.
+A workspace created by a USER admits that user; one created by a service principal never admits it.
+The endpoint's own login for its creator is keyed by the creator's object id, which is how a
+user's token is matched, but an application's token is matched by its application (client) id. The
+workspace's Azure AD admin setting did not admit anyone at the serverless endpoint (provisa-ci by
+either id, nor a user), and a SQL login cannot create an Azure AD login (error 33159). So CI pins a
+standing workspace whose login for provisa-ci was created once from Azure AD.
+
+A standing workspace (CI)
+-------------------------
+Set ``SYNAPSE_SQL_SERVER`` / ``SYNAPSE_DATABASE`` / ``SYNAPSE_ADLS_URL`` to pin it: nothing is
+created or deleted, except a firewall rule for this host's egress address, opened for the lane and
+removed after it (a runner's address changes every run). Its one-time setup, by a user who is a
+Synapse Administrator of the workspace (``az synapse role assignment create --role "Synapse
+Administrator"``), on its ``-ondemand`` endpoint:
+
+- in ``master``: ``CREATE LOGIN [provisa-ci] FROM EXTERNAL PROVIDER``, then
+  ``CREATE DATABASE [provisa_syn]``;
+- in ``provisa_syn``: ``CREATE USER [provisa-ci] FROM LOGIN [provisa-ci]`` and
+  ``ALTER ROLE db_owner ADD MEMBER [provisa-ci]``;
+- provisa-ci holds Storage Blob Data Contributor on the ADLS account, and the account holds the seed
+  Parquet at ``SYNAPSE_ADLS_URL`` (what ``_provision`` uploads).
 """
 
 from __future__ import annotations
@@ -597,40 +615,7 @@ def _provision() -> tuple[dict[str, str], str, str, str]:
             "-o",
             "none",
         )
-        # The workspace SQL endpoint denies every client IP by default. Scoped to this host's egress
-        # address: a 0.0.0.0-255.255.255.255 rule leaves a public SQL endpoint open to the internet
-        # for as long as the workspace stands.
-        egress = _az(
-            "rest",
-            "--method",
-            "get",
-            "--url",
-            "https://api.ipify.org?format=json",
-            "--skip-authorization-header",
-            "--query",
-            "ip",
-            "-o",
-            "tsv",
-            timeout=120,
-        )
-        _az(
-            "synapse",
-            "workspace",
-            "firewall-rule",
-            "create",
-            "-n",
-            "provisa-e2e-client",
-            "--workspace-name",
-            workspace,
-            "-g",
-            resource_group,
-            "--start-ip-address",
-            egress,
-            "--end-ip-address",
-            egress,
-            "-o",
-            "none",
-        )
+        _open_firewall(workspace, resource_group, "provisa-e2e-client")
 
         sql_server = f"{workspace}-ondemand.sql.azuresynapse.net"
         adls_url = f"https://{storage}.dfs.core.windows.net/{_FILESYSTEM}/{_PARQUET_PATH}"
@@ -656,6 +641,79 @@ def _provision() -> tuple[dict[str, str], str, str, str]:
     return lane, sql_server, _DATABASE, adls_url
 
 
+def _open_firewall(workspace: str, resource_group: str, rule: str) -> None:
+    """Admit this host's egress address at the workspace's SQL endpoints, which deny every client
+    address by default. Scoped to the one address: a 0.0.0.0-255.255.255.255 rule leaves a public SQL
+    endpoint open to the internet for as long as the workspace stands."""
+    egress = _az(
+        "rest",
+        "--method",
+        "get",
+        "--url",
+        "https://api.ipify.org?format=json",
+        "--skip-authorization-header",
+        "--query",
+        "ip",
+        "-o",
+        "tsv",
+        timeout=120,
+    )
+    _az(
+        "synapse",
+        "workspace",
+        "firewall-rule",
+        "create",
+        "-n",
+        rule,
+        "--workspace-name",
+        workspace,
+        "-g",
+        resource_group,
+        "--start-ip-address",
+        egress,
+        "--end-ip-address",
+        egress,
+        "-o",
+        "none",
+    )
+
+
+def _close_firewall(workspace: str, resource_group: str, rule: str) -> None:
+    _az(
+        "synapse",
+        "workspace",
+        "firewall-rule",
+        "delete",
+        "-n",
+        rule,
+        "--workspace-name",
+        workspace,
+        "-g",
+        resource_group,
+        "--yes",
+        "-o",
+        "none",
+    )
+
+
+def _wait_admitted(server: str, database: str) -> None:
+    """Block until this host reaches the endpoint: a new firewall rule takes a while to reach it,
+    and until then a connection is refused (40615)."""
+    import pyodbc
+
+    from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime
+
+    deadline = time.monotonic() + _RBAC_TIMEOUT_S
+    while True:
+        try:
+            MssqlWarehouseRuntime(server=server, database=database, engine_name="synapse").close()
+            return
+        except pyodbc.Error as exc:
+            if "(40615)" not in str(exc) or time.monotonic() >= deadline:
+                raise
+            time.sleep(15)
+
+
 @contextmanager
 def synapse_lane():
     """Yield ``(sql_server, database, adls_url)``, destroying every resource on exit.
@@ -665,7 +723,18 @@ def synapse_lane():
     """
     pinned = os.environ.get("SYNAPSE_SQL_SERVER")
     if pinned:
-        yield pinned, os.environ["SYNAPSE_DATABASE"], os.environ["SYNAPSE_ADLS_URL"]
+        # A standing workspace (the module docstring): only this host's firewall rule is made, and
+        # removed after.
+        workspace = pinned.removesuffix("-ondemand.sql.azuresynapse.net")
+        resource_group = os.environ["FABRIC_RESOURCE_GROUP"]
+        database = os.environ["SYNAPSE_DATABASE"]
+        rule = "provisa-lane-" + datetime.now(timezone.utc).strftime("%y%m%d%H%M%S")
+        _open_firewall(workspace, resource_group, rule)
+        try:
+            _wait_admitted(pinned, database)
+            yield pinned, database, os.environ["SYNAPSE_ADLS_URL"]
+        finally:
+            _close_firewall(workspace, resource_group, rule)
         return
 
     lane, sql_server, database, adls_url = _provision()

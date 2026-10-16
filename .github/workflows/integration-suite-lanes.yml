@@ -136,6 +136,13 @@ on:
         required: false
       FABRIC_WORKSPACE_ID:
         required: false
+      # The standing Synapse workspace CI pins (tests/integration/synapse_provision.py).
+      SYNAPSE_SQL_SERVER:
+        required: false
+      SYNAPSE_DATABASE:
+        required: false
+      SYNAPSE_ADLS_URL:
+        required: false
       GOOGLE_APPLICATION_CREDENTIALS_JSON:
         required: false
       GOOGLE_CLOUD_PROJECT:
@@ -417,9 +424,11 @@ jobs:
       CLOUDOPS_AWS_REGION: ${{ secrets.CLOUDOPS_AWS_REGION }}
       CLOUDOPS_AWS_ROLE_ARN: ""
       CLOUDOPS_GCP_PROJECT_IDS: ${{ secrets.CLOUDOPS_GCP_PROJECT_IDS }}
-      # Synapse's region, pinned: probing which regions accept a new SQL server reads the
-      # subscription, and the CI principal holds rights on FABRIC_RESOURCE_GROUP only.
-      SYNAPSE_AZ_LOCATION: centralus
+      # The standing Synapse workspace the lane pins: a workspace the CI principal creates never
+      # admits it (tests/integration/synapse_provision.py says why, and its one-time setup).
+      SYNAPSE_SQL_SERVER: ${{ secrets.SYNAPSE_SQL_SERVER }}
+      SYNAPSE_DATABASE: ${{ secrets.SYNAPSE_DATABASE }}
+      SYNAPSE_ADLS_URL: ${{ secrets.SYNAPSE_ADLS_URL }}
       # The Google Sheets read reaches the live sheet only when asked to.
       PROVISA_GSHEETS_LIVE: "1"
     steps:
