@@ -84229,3 +84229,28 @@ Then only the matching rows are in the replica'
   - REQ-2031
   - REQ-2036
   notes: 'Maintainer 2026-10-15, on the vulnerabilities demo: landing_filter on the table.'
+- id: REQ-2063
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: 'A feature demo, data vault: how to set up a data vault in Provisa. Two or three operational sources with overlapping entities (for example a CRM and an orders system sharing customers), generated, in the demo''s own stores and read live. Hubs: one per business entity (customer, product, order), each a materialized view of the distinct business keys with a hash key (md5 of the key), the record source and the first-seen time. Links: the relationships between hubs (customer placed order, order contains product), each a materialized view of hash-key pairs. Satellites: the descriptive attributes with their history, kept bitemporally (REQ-1162: when each value was valid and when it was recorded), with a hashdiff column marking real changes. Loading: when a source changes, its hubs, links and satellites refresh through the existing view cascade from the source''s change signal, with no orchestration code. Governance where a vault needs it: personal data lives in satellites, so masks and row rules are declared there while hubs and links stay readable for joining. On top: a business vault and marts as further views (a point-in-time customer view, a current-state dimension), with the hub-link-hub relationships declared so GraphQL walks them, and lineage from a mart column back through satellite and hub to the source field. Its tour states as a benefit that the vault is declared and the engine builds and refreshes it: there is no separate ETL platform, job server or pipeline code to run, the work runs on the engine where it scales, and one declared vault feeds the marts, the governed APIs and the lineage. Its tour follows the settled demo tour shape. Its business question: "What did we know about this customer, from which source, and when?", answered by one point-in-time query.'
+  use_case: 'A data engineer opens the data vault demo and sees hubs, links and satellites declared over live sources, loaded by change signals, governed, and queried point-in-time.'
+  scenario: 'Given the data vault demo started from its bundle
+
+
+When a source record changes
+
+
+Then the satellite keeps the old and new values with their valid and recorded times, and the point-in-time query answers what was known at each time
+
+
+And every tour step shows its real object and every predesigned query returns rows'
+  related_reqs:
+  - REQ-1162
+  - REQ-2006
+  - REQ-2051
+  notes: 'Maintainer 2026-10-15: a feature demo showing how to set up a data vault; that the jobs run on the engine is stated as a benefit, not a caution.'
