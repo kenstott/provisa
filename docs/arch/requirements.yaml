@@ -84288,14 +84288,14 @@ And the same read with a single time answers the one version in force then'
   - REQ-2063
   notes: 'Maintainer 2026-10-16: we should allow the as-of date header to request a range.'
 - id: REQ-2065
-  status: proposed
+  status: complete
   since: 2026-10
   group: 11. Platform, Infrastructure & Delivery
   category: Demo Provisioning
   feature: product-tour-and-demos-sandbox
   priority: SHOULD
   type: behavioral
-  description: 'A visitor''s demo sandbox is released soon after its tab closes. When the visitor''s page is hidden for unloading (pagehide), it sends a closing beacon (navigator.sendBeacon) to the server, which marks the visitor''s sandbox as closing. A sandbox marked closing that no request reaches within a short grace period (a couple of minutes) is removed through the normal sandbox cleanup; any request within the grace period (a reload, another tab of the same sandbox) clears the mark. The idle expiry (sandbox.idle_ttl) stays as the backstop for a beacon that never arrives (a crashed browser, a killed mobile tab, a lost connection). A signed-in person''s named sandbox is never removed by a beacon.'
+  description: 'A visitor''s demo sandbox is released soon after its tab closes. When the visitor''s page is hidden for unloading (pagehide), it sends a closing signal to the server (fetch with keepalive, which survives the unload; navigator.sendBeacon cannot carry the Authorization header the visitor''s token rides in), which marks the visitor''s sandbox as closing. A sandbox marked closing that no request reaches within a short grace period (a couple of minutes) is removed through the normal sandbox cleanup; any request within the grace period (a reload, another tab of the same sandbox) clears the mark; another open tab of the sandbox, told over a BroadcastChannel, sends one. The idle expiry (sandbox.idle_ttl) stays as the backstop for a beacon that never arrives (a crashed browser, a killed mobile tab, a lost connection). A signed-in person''s named sandbox is never removed by a beacon.'
   use_case: 'A visitor finishes a live demo and closes the tab; the sandbox slot is free again within minutes, not after an hour.'
   scenario: 'Given a visitor with an open demo sandbox
 

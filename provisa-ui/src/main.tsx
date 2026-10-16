@@ -12,6 +12,7 @@ import { createRoot } from "react-dom/client";
 // Install the same-origin bearer-token fetch interceptor before anything issues a request.
 import { installAuthFetch } from "./lib/authFetch.ts";
 import { adoptSandboxTokenFromLocation } from "./lib/sandboxSession.ts";
+import { installSandboxClosing } from "./lib/sandboxClosing.ts";
 // Mantine styles must load before app CSS so local overrides win the cascade.
 import "@mantine/core/styles.css";
 import "@mantine/dates/styles.css";
@@ -39,6 +40,8 @@ declare global {
 // Key must match the inline anti-flash script in index.html.
 // REQ-2006: before anything reads the bearer, a demo sandbox token handed over in the fragment.
 adoptSandboxTokenFromLocation();
+// REQ-2065: the tab says it is closing as it unloads; it takes the native fetch, before the wrap.
+installSandboxClosing();
 installAuthFetch();
 
 const colorSchemeManager = localStorageColorSchemeManager({

@@ -361,6 +361,8 @@ demo_sandboxes = Table(
     Column("user_id", Text, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("last_active_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # REQ-2065: when the visitor's tab said it was closing; cleared by the next request.
+    Column("closing_at", DateTime(timezone=True)),
     CheckConstraint("kind IN ('visitor','named')", name="demo_sandboxes_kind_check"),
 )
 

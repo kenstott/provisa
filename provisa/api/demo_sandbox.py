@@ -24,10 +24,12 @@ its demo's template org (demo_templates.py), on the sandbox tier (sandbox_tier.p
 
 How many sandboxes may be open at once is ``sandbox.max_concurrent``; past it, a visitor is asked
 to try again shortly. A sandbox no request has reached for ``sandbox.idle_ttl`` seconds is deleted
-whole -- its org, its folder and its file, its engine, and its visitor's token.
+whole -- its org, its folder and its file, its engine, and its visitor's token. A visitor's
+sandbox whose tab said it was closing, and that no request has reached since for
+``CLOSE_GRACE_S``, is deleted the same way (REQ-2065).
 """
 
-# Requirements: REQ-2006, REQ-1597, REQ-1263, REQ-1035, REQ-1600, REQ-2049
+# Requirements: REQ-2006, REQ-1597, REQ-1263, REQ-1035, REQ-1600, REQ-2049, REQ-2065
 
 from __future__ import annotations
 
@@ -308,6 +310,9 @@ async def note_in_use(name: str) -> None:
 
 _touched: dict[str, float] = {}
 _TOUCH_EVERY_S = 60.0
+#: REQ-2065: "a couple of minutes" -- how long a sandbox whose tab said it was closing waits for a
+#: request (a reload, another tab of it) before it is deleted.
+CLOSE_GRACE_S = 120
 
 
 async def touch(org_id: str) -> None:
@@ -326,12 +331,28 @@ async def touch(org_id: str) -> None:
         await conn.execute_core(
             update(demo_sandboxes)
             .where(demo_sandboxes.c.org_id == org_id)
-            .values(last_active_at=datetime.now(UTC))
+            .values(last_active_at=datetime.now(UTC), closing_at=None)  # REQ-2065: still in use
+        )
+
+
+async def mark_closing(org_id: str) -> None:
+    """The visitor's tab of sandbox ``org_id`` is closing (REQ-2065): it is deleted unless a
+    request reaches it within ``CLOSE_GRACE_S``. That request's touch is written at once, not
+    held back by the once-a-minute throttle, so it clears the mark."""
+    from provisa.api.admin.orgs_router import _admin_pool
+
+    _touched.pop(org_id, None)
+    async with _admin_pool().acquire() as conn:
+        await conn.execute_core(
+            update(demo_sandboxes)
+            .where(demo_sandboxes.c.org_id == org_id, demo_sandboxes.c.kind == VISITOR)
+            .values(closing_at=datetime.now(UTC))
         )
 
 
 async def expired(now: datetime | None = None) -> list[str]:
-    """The sandboxes no request has reached for ``sandbox.idle_ttl`` seconds, oldest first."""
+    """The sandboxes no request has reached for ``sandbox.idle_ttl`` seconds, and those whose tab
+    said it was closing ``CLOSE_GRACE_S`` ago with no request since (REQ-2065), oldest first."""
     from provisa.api.admin.orgs_router import _admin_pool
 
     at = now if now is not None else datetime.now(UTC)
@@ -340,7 +361,10 @@ async def expired(now: datetime | None = None) -> list[str]:
         rows = (
             await conn.execute_core(
                 select(demo_sandboxes.c.org_id)
-                .where(demo_sandboxes.c.last_active_at <= at - idle)
+                .where(
+                    (demo_sandboxes.c.last_active_at <= at - idle)
+                    | (demo_sandboxes.c.closing_at <= at - timedelta(seconds=CLOSE_GRACE_S))
+                )
                 .order_by(demo_sandboxes.c.last_active_at)
             )
         ).fetchall()
