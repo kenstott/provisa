@@ -22,6 +22,7 @@ locals {
   coordinator_sandbox_vm_exports = <<-SHELL
     export COMPOSE_PROFILES=control
     export PROVISA_SANDBOX_API_URL="https://${var.sandbox_internal_ip}:8000"
+    export PROVISA_SANDBOX_REGIONS_API_URL="https://${var.sandbox_internal_ip}:8100"
     export PROVISA_SANDBOX_INSTANCE="${local.sandbox_instance_path}"
   SHELL
 
@@ -40,7 +41,7 @@ locals {
       echo "$b64" | base64 -d > /etc/systemd/system/provisa-demo-stores.$unit
     done
     cat > /root/.provisa/demo-stores.env <<'ENV'
-    PROVISA_DEMO_BUNDLES=weblogs,files,sonnets,reviews
+    PROVISA_DEMO_BUNDLES=weblogs,files,sonnets,reviews,retail
     DEMO_BUNDLES_DIR=/root/.provisa/sandbox-data/demo-bundles
     DEMO_PULL=docker exec compose-provisa-sandbox-1 python -m provisa.core.demo_bundles
     DEMO_PULL_INTO=/var/lib/provisa/demo-bundles

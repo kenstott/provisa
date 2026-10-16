@@ -58,8 +58,13 @@ def template_org_id(demo: str) -> str:
 
 def new_sandbox_org_id() -> str:
     """A fresh sandbox org id: ``sbx`` and 12 random hex digits (``t`` is not one, so a sandbox's
-    id never begins as a template's)."""
-    return f"{SANDBOX_PREFIX}{secrets.token_hex(6)}"
+    id never begins as a template's) -- ``sbxr`` and them on the regions sandbox tier (REQ-2068),
+    so the UI server routes it there by its id."""
+    from provisa.api.demo_region_seed import regional
+    from provisa.core.org_ids import REGIONS_SANDBOX_PREFIX
+
+    prefix = REGIONS_SANDBOX_PREFIX if regional() else SANDBOX_PREFIX
+    return f"{prefix}{secrets.token_hex(6)}"
 
 
 def serves_sandboxes() -> bool:

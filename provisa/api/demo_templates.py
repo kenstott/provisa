@@ -442,7 +442,9 @@ async def land_from_seed(org_id: str) -> None:
         logging.getLogger(__name__).info(
             "demo template %s: views' history from its seed", demo.name
         )
-    if await landed_here(org_id) >= len(replicated_tables(template_seed(org_id))):
+    from provisa.api.demo_region_seed import kept_here
+
+    if await landed_here(org_id) >= len(kept_here(replicated_tables(template_seed(org_id)))):
         return
     if await adopt_seed(org_id, demo.directory):
         logging.getLogger(__name__).info("demo template %s: landed from its seed", demo.name)
@@ -626,7 +628,15 @@ async def _prepare(demo: PublishedDemo, build: bool) -> None:
             break
         await asyncio.sleep(_LANDED_POLL_S)
     log.info("demo template %s: every replica landed", demo.name)
-    if exporting and replicated_tables(template_seed(org_id)):
+    from provisa.api.demo_region_seed import regional, views_built_here, views_kept_here
+
+    if exporting and regional():
+        # REQ-2068: a region's seed carries its views too; no node of it builds them after.
+        while await views_built_here(org_id) < views_kept_here(template_seed(org_id)):
+            await asyncio.sleep(_LANDED_POLL_S)
+        await export_seed(org_id, demo.directory)
+        log.info("demo template %s: region seed written to %s", demo.name, demo.directory)
+    elif exporting and replicated_tables(template_seed(org_id)):
         # Only what the demo serves from replicas has a seed; its own sources are read live.
         await export_seed(org_id, demo.directory)
         log.info("demo template %s: seed written to %s", demo.name, demo.directory)
@@ -649,7 +659,9 @@ async def _replica_progress(rt) -> tuple[int, list[str], int]:
 
     from provisa.api.demo_replicas import landed_here
 
-    declared = len(replicated_tables(template_seed(rt.org_id)))
+    from provisa.api.demo_region_seed import kept_here
+
+    declared = len(kept_here(replicated_tables(template_seed(rt.org_id))))
     async with rt.tenant_db.acquire() as conn:
         _recorded, failed = await replica_state.progress(conn)
     # Landed: recorded as built for this store AND held by it, rows and all.

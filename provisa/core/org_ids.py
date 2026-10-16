@@ -43,11 +43,19 @@ def is_org_id(value: str | None) -> bool:  # REQ-1309
 # them is provisa/api/sandbox_tier.py.
 SANDBOX_PREFIX = "sbx"
 TEMPLATE_PREFIX = "sbxtpl"
+#: A sandbox of the regions sandbox tier (REQ-2068): ``r`` is no hex digit, so no sandbox of the
+#: other tier begins so.
+REGIONS_SANDBOX_PREFIX = "sbxr"
 
 
 def is_sandbox_tier_org(org_id: str) -> bool:
     """Whether ``org_id`` is served by the sandbox tier: a sandbox or a demo's template org."""
     return org_id.startswith(SANDBOX_PREFIX)
+
+
+def is_regions_sandbox(org_id: str) -> bool:
+    """Whether ``org_id`` is a sandbox of the regions sandbox tier (REQ-2068)."""
+    return org_id.startswith(REGIONS_SANDBOX_PREFIX)
 
 
 def is_template_org(org_id: str) -> bool:

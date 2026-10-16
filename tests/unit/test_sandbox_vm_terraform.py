@@ -49,6 +49,8 @@ def test_the_coordinator_hands_the_tier_over_only_when_asked():
     for line in (
         "export COMPOSE_PROFILES=control",
         'export PROVISA_SANDBOX_API_URL="https://${var.sandbox_internal_ip}:8000"',
+        # REQ-2068: the regions sandbox tier, on the same VM.
+        'export PROVISA_SANDBOX_REGIONS_API_URL="https://${var.sandbox_internal_ip}:8100"',
     ):
         assert line in sandbox, line
     variables = (_TF / "variables.tf").read_text()
@@ -63,3 +65,9 @@ def test_the_vm_may_be_started_and_stopped_by_the_node_account_and_on_it_alone()
         assert f'"compute.instances.{permission}"' in role
     assert 'resource "google_compute_instance_iam_member" "sandbox_power"' in sandbox
     assert "instance_name = google_compute_instance.sandbox[0].name" in sandbox
+
+
+def test_the_vm_runs_the_retail_demos_stores():
+    """REQ-2068: the regions tier's demo is synced with the others, its stores run there."""
+    sandbox = (_TF / "sandbox.tf").read_text()
+    assert "PROVISA_DEMO_BUNDLES=weblogs,files,sonnets,reviews,retail" in sandbox

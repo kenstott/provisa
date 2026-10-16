@@ -47,6 +47,10 @@ def test_every_service_is_the_control_planes_or_the_sandbox_tiers(tmp_path):
     assert profiles == {
         "provisa": ["control"],
         "provisa-sandbox": ["sandbox"],
+        # REQ-2068: the regions sandbox tier and each region's own PostgreSQL.
+        "provisa-sandbox-regions": ["sandbox"],
+        "region-pg-eu": ["sandbox"],
+        "region-pg-us": ["sandbox"],
         "provisa-ui": ["control"],
         "redis": ["control"],
         "minio": ["control"],
@@ -94,3 +98,25 @@ def test_a_control_plane_node_runs_both_unless_told_otherwise():
         "PROVISA_SANDBOX_API_URL",
     ):
         assert name in env_vars.split(), name
+
+
+def test_the_regions_tier_runs_as_its_visitor_region_with_a_store_per_region(tmp_path):
+    """REQ-2068: its own boot org and config, the us region, a PostgreSQL per region (never one
+    shared), the demo bundles the sync pulls, and the demos that select regions."""
+    services = _compose(tmp_path)["services"]
+    tier = services["provisa-sandbox-regions"]
+    env = tier["environment"]
+    assert env["ORG_ID"] == "sbxrtier"
+    assert env["PROVISA_CONFIG"] == "/app/config/provisa-sandbox-regions.yaml"
+    assert env["PROVISA_REGION"] == "us"
+    assert env["PROVISA_DEMO_BUNDLES"] == "retail"
+    assert "@region-pg-eu:5432/" in env["PROVISA_DEMO_EU_PG_URL"]
+    assert "@region-pg-us:5432/" in env["PROVISA_DEMO_US_PG_URL"]
+    assert "--port" in tier["command"] and "8100" in tier["command"]
+    assert f"{tmp_path}/sandbox-data/demo-bundles:/var/lib/provisa/demo-bundles" in tier["volumes"]
+    eu, us = services["region-pg-eu"], services["region-pg-us"]
+    assert eu["volumes"] != us["volumes"]
+    assert "ports" not in eu and "ports" not in us
+    ui = services["provisa-ui"]["environment"]
+    assert ui["PROVISA_SANDBOX_REGIONS_DEMOS"] == "retail"
+    assert "provisa-sandbox-regions:8100" in ui["PROVISA_SANDBOX_REGIONS_API_URL"]

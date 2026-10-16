@@ -762,10 +762,21 @@ fakeredis.TcpFakeServer(("127.0.0.1", int(sys.argv[1])), server_type="redis").se
 ' "$_DEMO_REDIS_PORT" >>"$LOG_DIR/demo-redis.log" 2>&1 &
     DEMO_REDIS_PID=$!
     export PROVISA_SHARED_REDIS_URL="redis://127.0.0.1:$_DEMO_REDIS_PORT/0"
-    # Each region keeps its replicas, views, build state and record in the control plane's
-    # PostgreSQL, in schemas of its own; its DuckDB engine in a file under the demo's data/.
-    export PROVISA_DEMO_REGIONS_PG_URL="$TENANT_DATABASE_URL"
+    # REQ-2068: each region keeps its replicas, views, build state and record in a captive
+    # PostgreSQL of its own under the demo's data/ (PROVISA_DEMO_<REGION>_PG_URL); its DuckDB
+    # engine in a file there.
     mkdir -p "$PROVISA_NAMED_DEMO_DIR/data"
+    for _r in "$DEMO_VISITOR_REGION" "${DEMO_HEADLESS_REGIONS[@]}"; do
+      _rid_upper="$(echo "$_r" | tr '[:lower:]' '[:upper:]')"
+      _RPG_OUT="$("$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg start \
+        "$PROVISA_NAMED_DEMO_DIR/data/region-pg/$_r" 2>>"$LOG_DIR/region-pg-$_r.log")" || {
+        echo "ERROR: region $_r's PostgreSQL did not start (see $LOG_DIR/region-pg-$_r.log)" >&2
+        exit 1
+      }
+      _RPG_HOST="$(sed -n 's/^PG_HOST=//p' <<<"$_RPG_OUT")"
+      _RPG_PORT="$(sed -n 's/^PG_PORT=//p' <<<"$_RPG_OUT")"
+      export "PROVISA_DEMO_${_rid_upper}_PG_URL=postgresql+psycopg://provisa:provisa@/provisa?host=$_RPG_HOST&port=$_RPG_PORT"
+    done
     _rid_upper="$(echo "$DEMO_VISITOR_REGION" | tr '[:lower:]' '[:upper:]')"
     export "PROVISA_DEMO_${_rid_upper}_ADDRESS=http://127.0.0.1:$PROVISA_API_PORT"
     _i=0

@@ -40,13 +40,13 @@ platform:
   regions:
   - {id: eu, address: '${env:PROVISA_DEMO_EU_ADDRESS}'}
   - {id: us, address: '${env:PROVISA_DEMO_US_ADDRESS}'}
-# Each region keeps its replicas, views, build state and record in its own store (one Postgres
-# serves both here, in schemas of each region's own); each runs its own DuckDB engine.
+# Each region keeps its replicas, views, build state and record in its own PostgreSQL store; each
+# runs its own DuckDB engine.
 stores:
 - {id: eu_engine, url: 'duckdb:///${env:PROVISA_NAMED_DEMO_DIR}/data/eu-engine.duckdb', kind: duckdb}
 - {id: us_engine, url: 'duckdb:///${env:PROVISA_NAMED_DEMO_DIR}/data/us-engine.duckdb', kind: duckdb}
-- {id: eu_data, url: '${env:PROVISA_DEMO_REGIONS_PG_URL}'}
-- {id: us_data, url: '${env:PROVISA_DEMO_REGIONS_PG_URL}'}
+- {id: eu_data, url: '${env:PROVISA_DEMO_EU_PG_URL}'}
+- {id: us_data, url: '${env:PROVISA_DEMO_US_PG_URL}'}
 - {id: cache, url: '${env:REDIS_URL}'}
 regions:
 - {id: eu, engine: eu_engine, replicas: eu_data, views: eu_data, cache: cache, state: eu_data, record: eu_data}

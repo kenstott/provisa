@@ -219,9 +219,12 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
     )
     from provisa.api.demo_templates import replicated_tables, template_seed
 
+    from provisa.api.demo_region_seed import regional
+
     seed = template_seed(demo.template_org)
     # Only what the demo serves from replicas is copied (REQ-2049): its own sources are read live.
-    if replicated_tables(seed):
+    # A regions demo's other regions' views are copied with them (REQ-2068).
+    if replicated_tables(seed) or regional():
         await copy_to_sandbox(demo.template_org, org_id)
     # REQ-1162: and its bitemporal views' history, which no refresh of those sources gives back.
     if views := bitemporal_view_tables(seed):
@@ -360,8 +363,12 @@ async def mark_closing(org_id: str) -> None:
 
 async def expired(now: datetime | None = None) -> list[str]:
     """The sandboxes no request has reached for ``sandbox.idle_ttl`` seconds, and those whose tab
-    said it was closing ``CLOSE_GRACE_S`` ago with no request since (REQ-2065), oldest first."""
+    said it was closing ``CLOSE_GRACE_S`` ago with no request since (REQ-2065), oldest first --
+    this tier's: the regions sandbox tier reaps its own (REQ-2068), whose stores the other cannot
+    reach, and the other tier the rest."""
     from provisa.api.admin.orgs_router import _admin_pool
+    from provisa.api.demo_region_seed import regional
+    from provisa.core.org_ids import REGIONS_SANDBOX_PREFIX
 
     at = now if now is not None else datetime.now(UTC)
     idle = timedelta(seconds=int(settings_registry.value("sandbox.idle_ttl")))
@@ -376,7 +383,7 @@ async def expired(now: datetime | None = None) -> list[str]:
                 .order_by(demo_sandboxes.c.last_active_at)
             )
         ).fetchall()
-    return [r[0] for r in rows]
+    return [r[0] for r in rows if r[0].startswith(REGIONS_SANDBOX_PREFIX) == regional()]
 
 
 async def last_active() -> datetime | None:
