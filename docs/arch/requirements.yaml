@@ -28532,13 +28532,15 @@
   feature: observability-otel
   priority: SHOULD
   type: behavioral
-  description: 'Each query-pipeline boundary (govern.in, govern.rls, govern.mask, govern.out, and transpile.<dialect>)
+  description: 'Each query-pipeline boundary (metric.expand, govern.in, govern.out, and transpile.<dialect>)
     emits an OpenTelemetry span event carrying the canonical SQL, so the transform sequence is inspectable
     per request and the pre/post-governance pair serves as a compliance receipt. SQL capture is OFF by
     default; PROVISA_TRACE_SQL=redacted blanks every literal to a placeholder before attaching, and =full
     attaches raw SQL for dev only. Telemetry never fails the request: a redaction parse error is surfaced
     as a span attribute. PROVISA_TRACE_AST=1 attaches the SQLGlot AST repr, redacted the same way (literals
-    blanked), so it is safe to enable independently of the SQL mode.'
+    blanked), so it is safe to enable independently of the SQL mode. (Amended 2026-10-15: governance is
+    one stage, govern.in to govern.out; the govern.rls and govern.mask events went with the per-step
+    injectors they came from.)'
   use_case: Debugging special-case query transforms previously meant reading regex and guessing where
     text was mangled; per-stage canonical SQL turns that into a diff. The redaction default prevents literal
     values (RLS predicate values, PII) from leaking into traces in a governance product.
@@ -28562,7 +28564,7 @@
   code:
   - provisa/observability/stage_trace.py
   - provisa/compiler/stage2.py
-  - provisa/compiler/rls.py
+  - provisa/compiler/prepared.py
   - provisa/transpiler/transpile.py
   tests:
   - tests/unit/test_stage_trace.py

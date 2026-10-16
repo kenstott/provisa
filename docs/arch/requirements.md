@@ -2778,11 +2778,11 @@ One-to-many relationships on action result rows must return an array field; many
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-RLS injection via `inject_rls()` checks for table-specific rules first, then falls back to domain-level rules; table-level rules take precedence.
+[SUPERSEDED by REQ-403, 2026-10-15 -- the rule is resolved at runtime build, not by an inject_rls() step. Kept here for history; do not implement against it.] RLS injection via `inject_rls()` checks for table-specific rules first, then falls back to domain-level rules; table-level rules take precedence. [END SUPERSEDED BLOCK] (Amended 2026-10-15, one governed pipeline:) A table's row filter for a role is its table-specific rule when it has one, else its domain's rule; the table-level rule takes precedence. The rule list is folded to one table-level rule per (role, table) at runtime build (security/row_filters.resolve_table_rules), and the governed pipeline (compiler/stage2) ANDs it into every SELECT that reads the table.
 
 **Use case:** Table-level RLS precedence lets stewards override domain rules selectively for exceptions without duplicating configuration.
 
-**Code:** `provisa/compiler/sql_gen.py`
+**Code:** `provisa/security/row_filters.py`, `provisa/compiler/stage2.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_rls_compiler_fallback.py`, `tests/unit/test_schema_service.py`
 
@@ -6048,7 +6048,7 @@ Envelope encryption for all encrypted payloads. A unique Data Encryption Key (DE
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
-Application-layer column encryption for sensitive PG data. API keys and RLS rules are encrypted via EncryptionService before write and decrypted after read; encrypted columns stored as BYTEA. Structural metadata (table names, column names) remains plaintext to support query planning. DONE (2026-07) — the two sensitive DB-resident columns are both encrypted at rest. (1) api_sources.auth (keys/tokens) is BYTEA, encrypted on write (openapi register) via the process-configured EncryptionService accessor and decrypted before use (api_source loader). (2) rls_rules.filter_expr — the RLS predicate is injected as SQL by inject_rls at every governance read, so it is sensitive metadata. Encryption is confined to the repository boundary (provisa/core/repositories/rls.py) where upsert encrypts and get_for_table_role/list_for_role/ list_all decrypt. The two raw reads that bypassed the repo (the app startup RLS loader and the admin GraphQL rls_rules field) were funnelled through list_all so decryption is applied uniformly; upsert is the single write choke point (config_loader + admin both use it). The meta-RLS projection exposes the row over the introspection surfaces as ciphertext, consistent with the threat model. NullEncryption passthrough stores plaintext-bytes in the same BYTEA column, so the encrypted path is exercised identically whether or not a provider is configured. Both proven end-to-end against the live Postgres store (ciphertext at rest, decrypted round-trip through the repo, wrong master key rejected). COMPLETE — these are the only sensitive DB-resident columns: the sources and kafka_sources tables persist no credentials at all (the schema stores host/username/auth_type only; passwords/keys are never written, resolved at runtime via the secrets provider), and there is no tenant_config table. Nothing else in the config DB requires column encryption.
+Application-layer column encryption for sensitive PG data. API keys and RLS rules are encrypted via EncryptionService before write and decrypted after read; encrypted columns stored as BYTEA. Structural metadata (table names, column names) remains plaintext to support query planning. DONE (2026-07) — the two sensitive DB-resident columns are both encrypted at rest. (1) api_sources.auth (keys/tokens) is BYTEA, encrypted on write (openapi register) via the process-configured EncryptionService accessor and decrypted before use (api_source loader). (2) rls_rules.filter_expr — the RLS predicate is injected as SQL [SUPERSEDED by REQ-686, 2026-10-15 -- inject_rls was removed. Kept here for history; do not implement against it.] by inject_rls [END SUPERSEDED BLOCK] by the governed pipeline (compiler/stage2) at every governance read, so it is sensitive metadata. Encryption is confined to the repository boundary (provisa/core/repositories/rls.py) where upsert encrypts and get_for_table_role/list_for_role/ list_all decrypt. The two raw reads that bypassed the repo (the app startup RLS loader and the admin GraphQL rls_rules field) were funnelled through list_all so decryption is applied uniformly; upsert is the single write choke point (config_loader + admin both use it). The meta-RLS projection exposes the row over the introspection surfaces as ciphertext, consistent with the threat model. NullEncryption passthrough stores plaintext-bytes in the same BYTEA column, so the encrypted path is exercised identically whether or not a provider is configured. Both proven end-to-end against the live Postgres store (ciphertext at rest, decrypted round-trip through the repo, wrong master key rejected). COMPLETE — these are the only sensitive DB-resident columns: the sources and kafka_sources tables persist no credentials at all (the schema stores host/username/auth_type only; passwords/keys are never written, resolved at runtime via the secrets provider), and there is no tenant_config table. Nothing else in the config DB requires column encryption.
 
 **Use case:** Compromised PG instance exposes only opaque blobs for sensitive fields. Defense in depth beyond schema-per-org isolation.
 
@@ -6568,11 +6568,11 @@ Table configuration persists `enable_aggregates` and `enable_group_by` boolean c
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-A masked column is its mask wherever the statement references it -- the select list, expressions, JOIN ON, GROUP BY, ORDER BY and window clauses -- and a hidden column is NULL; a user-written WHERE or HAVING reference to a masked column is refused at validation by V005 ([REQ-531](#REQ-531)). So a join on a masked key does not use the real value, and a role that may not see a key cannot recover it by joining on it. A demo or model that needs the join for a masked role exposes a non-sensitive surrogate key. RLS-injected filters read the physical columns. Masking returns a new immutable CompiledQuery, never mutating the input (absorbs [REQ-744](#REQ-744)).
+A masked column is its mask wherever the statement references it -- the select list, expressions, JOIN ON, GROUP BY, ORDER BY and window clauses -- and a hidden column is NULL; a user-written WHERE or HAVING reference to a masked column is refused at validation by V005 ([REQ-531](#REQ-531)). So a join on a masked key does not use the real value, and a role that may not see a key cannot recover it by joining on it. A demo or model that needs the join for a masked role exposes a non-sensitive surrogate key. RLS-injected filters read the physical columns. [SUPERSEDED by REQ-740, 2026-10-15 -- masks are applied by the governed pipeline to the statement; there is no separate masking step returning a CompiledQuery. Kept here for history; do not implement against it.] Masking returns a new immutable CompiledQuery, never mutating the input (absorbs [REQ-744](#REQ-744)). [END SUPERSEDED BLOCK] (Amended 2026-10-15, one governed pipeline:) masks are applied by compiler/stage2 (apply_governance) to the statement every transport compiles.
 
 **Use case:** A role sees masked values everywhere it reads them, and cannot use a masked key in a join to reach the rows or values the mask withholds.
 
-**Code:** `provisa/compiler/mask_inject.py`, `provisa/compiler/stage2.py`
+**Code:** `provisa/compiler/stage2.py`
 
 **Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`, `tests/integration/test_security_integration_extra.py`
 
@@ -6584,7 +6584,7 @@ Column masking output uses ANSI SQL dialects (REGEXP_REPLACE, DATE_TRUNC, SQL li
 
 **Use case:** Dialect-agnostic masking generation ensures consistent governance behavior across heterogeneous federated sources (PostgreSQL, MySQL, Snowflake, BigQuery).
 
-**Code:** `provisa/security/masking.py`, `provisa/compiler/mask_inject.py`
+**Code:** `provisa/security/masking.py`, `provisa/compiler/stage2.py`
 
 **Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`
 
@@ -6620,7 +6620,7 @@ Masking preserves query structure — ORDER BY, LIMIT, GROUP BY, and other claus
 
 **Use case:** Immutable masking injection and preservation of query structure ensure correct sorting, pagination, and aggregation behavior.
 
-**Code:** `provisa/compiler/mask_inject.py`
+**Code:** `provisa/compiler/stage2.py`
 
 **Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`, `tests/integration/test_security_integration_extra.py`
 
@@ -6632,7 +6632,7 @@ Role-based masking — different roles can have different masks for the same col
 
 **Use case:** Role-specific masking lets different users see different representations of the same data based on their role permissions.
 
-**Code:** `provisa/compiler/mask_inject.py`, `provisa/compiler/stage2.py`
+**Code:** `provisa/compiler/stage2.py`
 
 **Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`, `tests/integration/test_security_integration_extra.py`
 
@@ -8718,7 +8718,7 @@ Every query transform — governance (RLS, masking, visibility, row-cap), correl
 
 **Use case:** String/regex transforms silently mis-apply governance: a scalar subquery in the projection moves the masking boundary (PII leak), a non-t0 alias convention skips RLS qualification (scope-ambiguous predicate), and a parameterized LIMIT bypasses the row-cap ceiling. AST transforms make "governance applied" a structural property of the tree rather than a textual coincidence each frontend must keep satisfying.
 
-**Code:** `provisa/compiler/stage2.py`, `provisa/compiler/rls.py`, `provisa/compiler/mask_inject.py`, `provisa/transpiler/transpile.py`, `provisa/cypher/translator.py`, `provisa/cypher/expr_parser.py`
+**Code:** `provisa/compiler/stage2.py`, `provisa/compiler/rls.py`, `provisa/transpiler/transpile.py`, `provisa/cypher/translator.py`, `provisa/cypher/expr_parser.py`
 
 **Tests:** `tests/unit/test_ast_transform_invariants.py`, `tests/unit/test_ast_transforms.py`, `tests/integration/test_ast_transform_e2e.py`, `tests/unit/test_cypher_expr_parser.py`
 
@@ -8728,11 +8728,11 @@ Every query transform — governance (RLS, masking, visibility, row-cap), correl
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Each query-pipeline boundary (govern.in, govern.rls, govern.mask, govern.out, and transpile.<dialect>) emits an OpenTelemetry span event carrying the canonical SQL, so the transform sequence is inspectable per request and the pre/post-governance pair serves as a compliance receipt. SQL capture is OFF by default; PROVISA_TRACE_SQL=redacted blanks every literal to a placeholder before attaching, and =full attaches raw SQL for dev only. Telemetry never fails the request: a redaction parse error is surfaced as a span attribute. PROVISA_TRACE_AST=1 attaches the SQLGlot AST repr, redacted the same way (literals blanked), so it is safe to enable independently of the SQL mode.
+Each query-pipeline boundary (metric.expand, govern.in, govern.out, and transpile.<dialect>) emits an OpenTelemetry span event carrying the canonical SQL, so the transform sequence is inspectable per request and the pre/post-governance pair serves as a compliance receipt. SQL capture is OFF by default; PROVISA_TRACE_SQL=redacted blanks every literal to a placeholder before attaching, and =full attaches raw SQL for dev only. Telemetry never fails the request: a redaction parse error is surfaced as a span attribute. PROVISA_TRACE_AST=1 attaches the SQLGlot AST repr, redacted the same way (literals blanked), so it is safe to enable independently of the SQL mode. (Amended 2026-10-15: governance is one stage, govern.in to govern.out; the govern.rls and govern.mask events went with the per-step injectors they came from.)
 
 **Use case:** Debugging special-case query transforms previously meant reading regex and guessing where text was mangled; per-stage canonical SQL turns that into a diff. The redaction default prevents literal values (RLS predicate values, PII) from leaking into traces in a governance product.
 
-**Code:** `provisa/observability/stage_trace.py`, `provisa/compiler/stage2.py`, `provisa/compiler/rls.py`, `provisa/compiler/mask_inject.py`, `provisa/transpiler/transpile.py`
+**Code:** `provisa/observability/stage_trace.py`, `provisa/compiler/stage2.py`, `provisa/compiler/prepared.py`, `provisa/transpiler/transpile.py`
 
 **Tests:** `tests/unit/test_stage_trace.py`
 
@@ -9394,7 +9394,7 @@ Column-level data masking MUST be expressed as semantic SQL projection expressio
 
 **Use case:** Masking today injects scalar SQL expressions (REGEXP_REPLACE, DATE_TRUNC, constant) into the governed SELECT projection after RLS injection. This works correctly but lacks first-class pushdown capability: the planner cannot reason about whether a mask pushed to the source, and no Capability flag tracks whether the source can evaluate the mask's functions. Without projection pushdown, the raw cleartext value must transit to the engine even if the source could mask it — a confidentiality gap analogous to forcing RLS evaluation server-side when the source supports it. The design must model masking as a pushdown-capable expression so confidentiality-aware masking (including a governance guard that acknowledges non-pushable masks) becomes explicit in the planner. For masks that cannot push down, the fallback must evaluate them in a streaming stage to prevent the middle tier from buffering the full unmasked relation into memory — rationale: masking correctness must never depend on pushdown capability (a gap is never a data leak), and the middle tier must bound memory to O(batch), not O(relation), with minimal cleartext residence time.
 
-**Code:** `provisa/compiler/mask_inject.py`, `provisa/compiler/stage2.py`, `provisa/federation/connector.py`, `provisa/federation/promote.py`, `provisa/federation/cardinality.py`, `provisa/api/data/subscribe.py`
+**Code:** `provisa/compiler/stage2.py`, `provisa/federation/connector.py`, `provisa/federation/promote.py`, `provisa/federation/cardinality.py`, `provisa/api/data/subscribe.py`
 
 **Tests:** `tests/unit/test_mask_pushdown.py`
 
@@ -15554,7 +15554,7 @@ Masking has a consistent form. A column masked this way shows a fake in place of
 
 **Use case:** A data scientist, or an LLM acting under its own identity, works on masked data that behaves like the real data (joins match, counts are right, values look real) without any personal data reaching them. An analyst joins a masked customer table to a masked orders table and gets the row counts the real data would give.
 
-**Code:** `provisa/security/masking.py`, `provisa/compiler/mask_inject.py`, `provisa/fakes/platform_key.py`, `provisa/fakes/projection.py`, `provisa/fakes/pg_functions.py`
+**Code:** `provisa/security/masking.py`, `provisa/compiler/stage2.py`, `provisa/fakes/platform_key.py`, `provisa/fakes/projection.py`, `provisa/fakes/pg_functions.py`
 
 **Tests:** `tests/unit/test_fake_engine_functions.py`, `tests/unit/test_fake_pg_functions.py`, `tests/unit/test_fake_kinds.py`
 
@@ -20800,7 +20800,7 @@ Column visibility is determined by visible_to on each column, [SUPERSEDED by [RE
 
 Column masking is determined by unmasked_to on each column, [SUPERSEDED by [REQ-808](#REQ-808), 2026-10-03 -- checked against the role only; domain scoping is role.domain_access. Kept here for history; do not implement against it.] checked against the identity's role for the matching domain [END SUPERSEDED BLOCK]. Role proliferation is the accepted trade-off for keeping visible_to/unmasked_to as plain role ID lists (no domain-role pair syntax in column config).
 
-**Code:** `provisa/security/masking.py`, `provisa/compiler/mask_inject.py`
+**Code:** `provisa/security/masking.py`, `provisa/compiler/stage2.py`
 
 **Tests:** `tests/e2e/test_masking.py`, `tests/unit/test_inherited_roles.py`
 
@@ -21740,7 +21740,7 @@ When a creation or approval request is raised, admin approvers for the org are n
 
 Per-column, per-role data masking at the SQL level. Masked columns return transformed values — raw data never reaches the client. Masking is per-column, per-role. Same column can have different masks for different roles. Masking is applied at SQL level — the mask expression replaces the column in the SELECT projection. The DB engine performs the transformation. A column can be both visible AND masked — the user sees the column exists and [SUPERSEDED by [REQ-531](#REQ-531), 2026-10-03 -- masked columns are rejected from WHERE and HAVING (V005, sql_validator.py:15). Kept here for history; do not implement against it.] can filter/sort on it [END SUPERSEDED BLOCK], but the returned values are masked.
 
-**Code:** `provisa/security/masking.py`, `provisa/compiler/mask_inject.py`
+**Code:** `provisa/security/masking.py`, `provisa/compiler/stage2.py`
 
 **Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`, `tests/unit/test_inherited_roles.py`
 
@@ -23694,15 +23694,15 @@ A feature demo, data profiling: The built-in Data Profiler ([REQ-1934](#REQ-1934
 
 ### REQ-2053 · UI {#REQ-2053}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 A feature demo, environments and test data: The model's git-branch environments (dev, test, prod) with fake data generated per environment ([REQ-1494](#REQ-1494), computed by the serving engine) and masking, over a demo's schema (weblogs'): the same queries return production-shaped but generated rows in dev and test, and real rows only in prod. Its tour follows the settled demo tour shape (scenario and features; how the pieces fit, each step on its real row; the solution as predesigned queries and views over fitting transports; recap; then "Where next?" with its landing page). Its business question: "Can I test against realistic data without touching production?"
 
 **Use case:** A visitor opens the environments and test data demo and sees how Provisa answers: Can I test against realistic data without touching production?
 
-**Code:** —
+**Code:** `demo/named/testdata/config.yaml`, `demo/named/testdata/setup.yaml`, `demo/named/testdata/tour.yaml`, `demo/named/testdata/generate.py`, `scripts/run_demo_setup.py`, `start-ui-install.sh`, `provisa-ui/src/tour/demoTour.ts`
 
-**Tests:** —
+**Tests:** `tests/integration/test_testdata_demo.py`, `tests/unit/test_demo_setup.py`, `tests/unit/test_named_demo_tour.py`, `provisa-ui/src/__tests__/tourDemoTrack.test.tsx`
 
 ## 9. Live Data & Events
 
