@@ -47,7 +47,7 @@ _CONSTANTS: dict[tuple[str, str], frozenset[str]] = {
     # Only a source is bound to an environment's synthetic store (REQ-1942).
     **{
         (table, "binding"): frozenset(BINDINGS) - {SYNTHETIC}
-        for table in ("stores", "kafka_sources", "kafka_sinks", "api_sources")
+        for table in ("stores", "kafka_sources", "api_sources")
     },
     ("glossary_term_edges", "rel_type"): frozenset(TERM_EDGE_TYPES),
     ("tag_assignments", "object_type"): frozenset(TAG_OBJECT_TYPES),

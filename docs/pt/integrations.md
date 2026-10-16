@@ -512,10 +512,10 @@ matcher favorece caminhos de join fact-para-dimensão ao resolver perguntas.
 
 ### Streaming
 
-Combine `view_metrics` com `materialize` e um sink Kafka para produzir saída de métrica push-on-change
-usando a maquinaria de materialização existente. Nenhum pipeline novo é exigido.
-[inferred: per REQ-1319: "Streaming: view_metrics + materialize + Kafka sink yields push-on-change
-metrics from existing machinery"; implementation not verified beyond the requirement text]
+Combine `view_metrics` com `materialize` para manter uma view de métricas atualizada conforme suas
+entradas mudam, usando a maquinaria de materialização existente. Nenhum pipeline novo é exigido.
+[inferred: per REQ-1319. The table Kafka sink that requirement named is retired (REQ-176); a
+table publishes its new rows to Kafka through a live output (`live.outputs`, REQ-565)]
 
 ### Observabilidade (OTel)
 

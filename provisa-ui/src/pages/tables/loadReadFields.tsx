@@ -83,7 +83,7 @@ export function liveFields(t: TFunction, table: RegisteredTable): DetailField[] 
       : []),
     // Every live table fans out over SSE; Kafka is the one output that is chosen.
     { label: t("liveDeliveryFieldset.sseFanoutLabel"), value: yesNo(t, true) },
-    { label: t("liveDeliveryFieldset.kafkaSinkLabel"), value: yesNo(t, sink != null) },
+    { label: t("liveDeliveryFieldset.kafkaOutputLabel"), value: yesNo(t, sink != null) },
     ...(sink
       ? [
           {

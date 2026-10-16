@@ -29,8 +29,8 @@ object's domain will ask the same inventory.
 
 Not covered here: objects kept in the platform plane (org, environment, user, secret, personal
 access token, invite) and their references — among them the sources and configuration that
-name an org secret; ``kafka_sinks.query_stable_id`` and the config file's scheduled triggers,
-which name a table in forms not yet established; data held outside the control plane (replicas, view storage,
+name an org secret; the config file's scheduled triggers, which name a table in a form not yet
+established; data held outside the control plane (replicas, view storage,
 caches).
 
 One reference is in no column: a materialized view relies on the relationships its SQL joins

@@ -128,7 +128,7 @@ def _r818_then_direct_write(r818: dict) -> None:
     assert calls["invalidated"] == [_USERS_TABLE_ID]
     assert calls["stale"] == ["users"]
     assert calls["events"] == [("users", "pg-main")]
-    assert calls["sinks"] == ["users"]
+    assert [c[:2] for c in calls["changed"]] == [(_USERS_TABLE_ID, "pg-main")]
 
 
 @given("a MERGE or DETACH statement", target_fixture="r818_bad")

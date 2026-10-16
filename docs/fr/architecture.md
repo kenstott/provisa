@@ -419,7 +419,7 @@ La boucle de rafraîchissement s'exécute toutes les 30 secondes, vérifie `get_
 | `mv/` | Registre de vues matérialisées, rafraîchissement, réécrivain SQL |
 | `events/` | Événements de changement de jeu de données et dispatch de déclencheur |
 | `webhooks/` | Exécution de webhook sortant pour mutations et événements |
-| `scheduler/` | Gestion de tâche en arrière-plan basée sur APScheduler — déclencheurs cron et intervalle qui déclenchent des webhooks, mutations, ou publications vers sink Kafka |
+| `scheduler/` | Gestion de tâche en arrière-plan basée sur APScheduler — déclencheurs cron et intervalle qui déclenchent des webhooks et des mutations, et les interrogations des sorties Kafka en direct |
 | `apq/` | Protocole de fil Apollo APQ — cache de hash de requête adossé à Redis ; séparé de la mise en cache de résultat |
 | `compiler/cursor.py` | Pagination par curseur de style Relay — arguments `first`/`after`/`last`/`before` et génération de `pageInfo` sur toutes les requêtes de liste |
 | `compiler/aggregate_gen.py` | Types de requête `{table}_aggregate` auto-générés avec sous-champs `count`, `sum`, `avg`, `min`, `max` et accès `nodes` filtré |
@@ -606,7 +606,7 @@ Un rôle nomme au plus un parent via `parent_role_id`. (REQ-215) Lors de la cons
 
 ## Déclencheurs planifiés
 
-`scheduler/jobs.py` utilise APScheduler pour exécuter des jobs en arrière-plan définis comme déclencheurs cron ou intervalle. (REQ-216) Chaque job peut faire un POST vers une URL de webhook, exécuter une mutation contre l'endpoint de données, ou publier des résultats de requête vers un sujet Kafka. Les déclencheurs sont configurés via l'API admin (mutations `scheduledTrigger`) ou la clé `scheduled_triggers` dans la config YAML. (REQ-216)
+`scheduler/jobs.py` utilise APScheduler pour exécuter des jobs en arrière-plan définis comme déclencheurs cron ou intervalle. (REQ-216) Chaque job peut faire un POST vers une URL de webhook ou exécuter une mutation contre l'endpoint de données ; la sortie Kafka en direct d'une table (`live.outputs`) est interrogée sur le même planificateur. Les déclencheurs sont configurés via l'API admin (mutations `scheduledTrigger`) ou la clé `scheduled_triggers` dans la config YAML. (REQ-216)
 
 ## Indices de performance de fédération
 

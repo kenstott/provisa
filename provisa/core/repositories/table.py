@@ -411,7 +411,6 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         # REQ-1919: every setting a configuration can give a table is the store's to hold.
         "approval_hook": table.approval_hook,
         "hot": table.hot,
-        "kafka_sink": table.kafka_sink.model_dump() if table.kafka_sink else None,
         "promotions": list(table.promotions),
         "query_template": table.query_template,
         "relay_pagination": table.relay_pagination,
@@ -474,7 +473,6 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "landing_filter",  # REQ-2062
         "approval_hook",  # REQ-1919
         "hot",
-        "kafka_sink",
         "promotions",
         "query_template",
         "relay_pagination",
@@ -657,7 +655,6 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
 KEPT_ON_FORM_EDIT: tuple[str, ...] = (
     "approval_hook",
     "hot",
-    "kafka_sink",
     "promotions",
     "relay_pagination",
 )
@@ -693,11 +690,7 @@ async def keep_unedited(conn: "Connection", table: Table) -> Table:
         else col
         for col in table.columns
     ]
-    from provisa.core.models import KafkaSinkAttachment
-
     kept: dict[str, Any] = {name: stored[name] for name in KEPT_ON_FORM_EDIT}
-    if kept["kafka_sink"] is not None:
-        kept["kafka_sink"] = KafkaSinkAttachment.model_validate(kept["kafka_sink"])
     kept["promotions"] = list(kept["promotions"])
     return table.model_copy(update={**kept, "columns": columns})
 

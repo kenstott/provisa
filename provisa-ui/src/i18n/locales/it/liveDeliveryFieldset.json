@@ -35,7 +35,7 @@
     "pushMaxDelayPlaceholder": "ritardo massimo",
     "outputsHeading": "Output",
     "sseFanoutLabel": "Fanout SSE (sempre attivo)",
-    "kafkaSinkLabel": "Sink Kafka",
+    "kafkaOutputLabel": "Output Kafka",
     "kafkaBootstrapLabel": "Bootstrap server",
     "kafkaBootstrapPlaceholder": "kafka:9092",
     "kafkaTopicLabel": "Topic",

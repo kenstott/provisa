@@ -210,7 +210,6 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     -- REQ-1919: the rest of a table's settings, held here so the store alone owns the model.
     approval_hook BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-204/247
     hot           BOOLEAN,  -- NULL = auto-detect
-    kafka_sink    JSONB,  -- REQ-176
     promotions    JSONB NOT NULL DEFAULT '[]',  -- REQ-119
     query_template TEXT,  -- REQ-1668/1683: neo4j / sparql tables
     relay_pagination BOOLEAN,  -- NULL = inherit
@@ -894,23 +893,6 @@ CREATE TABLE IF NOT EXISTS kafka_topics (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (source_id, topic)
 );
-
-CREATE TABLE IF NOT EXISTS kafka_sinks (
-    id              SERIAL PRIMARY KEY,
-    query_stable_id TEXT NOT NULL,
-    topic           TEXT NOT NULL,
-    key_column      TEXT,
-    value_format    TEXT NOT NULL DEFAULT 'json',
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (query_stable_id)
-);
-ALTER TABLE kafka_sinks ALTER COLUMN topic SET DEFAULT '';
-
--- REQ-1491, REQ-1942: how this environment reaches -- a connection given in it (own), one copied from its parent
--- (copied), or nothing (unbound) -- the sink's target topic. A copy between environments carries the
--- row and never the binding, and an empty value is not an absent one, so an unbound kafka sink is
--- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
-ALTER TABLE kafka_sinks ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'copied', 'unbound'));
 
 -- API Sources (Phase U)
 CREATE TABLE IF NOT EXISTS api_sources (

@@ -92,9 +92,7 @@ SEEDED_AT_CREATION: frozenset[str] = frozenset(
 #: (REQ-1491). They cannot simply be excluded — registered_tables references a source, and dropping
 #: the row would cascade the model away — so they travel stripped, and the environment marks them
 #: unbound rather than leaving a blank host the connection builder would read as localhost:5432.
-IDENTITY_ONLY: frozenset[str] = frozenset(
-    {"sources", "api_sources", "kafka_sources", "kafka_sinks", "stores"}
-)
+IDENTITY_ONLY: frozenset[str] = frozenset({"sources", "api_sources", "kafka_sources", "stores"})
 
 #: Never copied: a credential or an identity. ``user_role_assignments`` used to be here, on
 #: REQ-1492's reasoning that a copied environment inheriting where it points TOGETHER WITH
@@ -274,7 +272,6 @@ BINDING_COLUMNS: dict[str, frozenset[str]] = {
     ),
     "api_sources": frozenset({"base_url", "spec_url", "auth"}),
     "kafka_sources": frozenset({"bootstrap_servers", "schema_registry_url", "auth_type"}),
-    "kafka_sinks": frozenset({"topic"}),
     "stores": frozenset({"url"}),  # REQ-1922: where a region's data is kept is the environment's
 }
 

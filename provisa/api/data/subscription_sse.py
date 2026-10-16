@@ -397,7 +397,7 @@ def _parse_sink_uri(sink_header: str) -> tuple[str, str]:
     return parsed.netloc, topic
 
 
-async def _launch_kafka_sink(  # REQ-176, REQ-177, REQ-286
+async def _launch_kafka_sink(  # REQ-812, REQ-286
     sink_header: str,
     table_name: str,
     table_meta,

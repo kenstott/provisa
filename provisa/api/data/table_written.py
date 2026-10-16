@@ -20,8 +20,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from provisa.core.connection_loop import spawn_background
-
 
 async def after_table_written(
     state: Any,
@@ -31,17 +29,16 @@ async def after_table_written(
     source_id: str,
 ) -> None:
     """Drop the table's cached responses (REQ-080), mark the materialized views over it stale
-    (REQ-084), announce the change (REQ-172), run its sinks (REQ-176), ask for a build of its
-    whole-table replica (REQ-1915), and reload it when it is held hot."""
+    (REQ-084), announce the change (REQ-172), ask for a build of its whole-table replica
+    (REQ-1915), and reload it when it is held hot. A table publishes its new rows to Kafka through
+    a live output (live.outputs, REQ-565), not here."""
     from provisa.cache.tenancy import invalidate_tables
     from provisa.kafka.change_events import emit_change_event
-    from provisa.kafka.sink_executor import trigger_sinks_for_table
 
     # REQ-595: the acting org's entries — the tenant they were written under.
     await invalidate_tables(state, [table_id])
     state.mv_registry.mark_stale(table_name)
     emit_change_event(table_name, source_id)
-    spawn_background(trigger_sinks_for_table(table_name, state))
     # REQ-1915, REQ-1924: a table read from its whole-table replica is out of date once it is
     # written, so a build of the replica is asked for. Readers keep the old replica until the new
     # one swaps in.

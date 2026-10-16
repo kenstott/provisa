@@ -484,9 +484,9 @@ Fact 資料表在自然語言提示中會標記為 `[fact]`；Dimension 資料�
 
 ### 串流
 
-將 `view_metrics` 與 `materialize` 及一個 Kafka 接收端 (sink) 結合，即可利用既有的具體化機制，產生異動即推送 (push-on-change) 的指標輸出。不需要新的管線。
-[inferred: per REQ-1319: "Streaming: view_metrics + materialize + Kafka sink yields push-on-change
-metrics from existing machinery"; implementation not verified beyond the requirement text]
+將 `view_metrics` 與 `materialize` 結合，即可利用既有的具體化機制，在輸入變化時令指標視圖保持最新。不需要新的管線。
+[inferred: per REQ-1319. The table Kafka sink that requirement named is retired (REQ-176); a
+table publishes its new rows to Kafka through a live output (`live.outputs`, REQ-565)]
 
 ### 可觀測性（OTel）
 

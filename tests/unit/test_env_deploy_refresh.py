@@ -39,7 +39,7 @@ class TestWhichChangesReachAConnection:
 
     @pytest.mark.parametrize(
         "path",
-        ["api-sources/stripe.yaml", "kafka-sources/events.yaml", "kafka-sinks/audit.yaml"],
+        ["api-sources/stripe.yaml", "kafka-sources/events.yaml"],
     )
     def test_every_connection_registry_counts_not_only_sources(self, path):
         """A stream and an HTTP source are reached over a connection exactly as a database is."""

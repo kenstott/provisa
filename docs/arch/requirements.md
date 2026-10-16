@@ -4502,7 +4502,7 @@ Change event topic configurable via `PROVISA_CHANGE_EVENT_TOPIC` (default: `prov
 
 ### REQ-176 · Kafka Sinks (Table/View Publishing) {#REQ-176}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-565](#REQ-565) · **Priority:** SHOULD · **Type:** behavioral
 
 Registered tables and views can optionally have a Kafka sink — results published to a topic on trigger. Sinks may use change_event, schedule, manual, or poll depending on source capability.
 
@@ -4510,11 +4510,11 @@ Registered tables and views can optionally have a Kafka sink — results publish
 
 **Code:** `provisa/kafka/`
 
-**Tests:** `tests/unit/test_kafka_sink.py`, `tests/integration/test_kafka_sink.py`
+**Tests:** `tests/unit/test_kafka_publish_rows.py`, `tests/integration/test_kafka_publish.py`
 
 ### REQ-177 · Kafka Sinks (Table/View Publishing) {#REQ-177}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+**Status:** ↪ superseded by [REQ-565](#REQ-565) · **Priority:** SHOULD · **Type:** structural
 
 Sink triggers: `change_event` (re-run when source table changes), `schedule` (cron/interval), `manual` (on-demand), `poll` (watermark-based continuous polling — required when CDC is unavailable).
 
@@ -4522,11 +4522,11 @@ Sink triggers: `change_event` (re-run when source table changes), `schedule` (cr
 
 **Code:** `provisa/kafka/`
 
-**Tests:** `tests/integration/test_kafka_sink.py`, `tests/unit/test_event_triggers.py`, `tests/unit/test_kafka_sink.py`
+**Tests:** `tests/integration/test_kafka_publish.py`, `tests/unit/test_event_triggers.py`, `tests/unit/test_kafka_publish_rows.py`
 
 ### REQ-178 · Kafka Sinks (Table/View Publishing) {#REQ-178}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-565](#REQ-565) · **Priority:** MUST · **Type:** behavioral
 
 Sinks are opt-in per registered table or view, configured by the steward.
 
@@ -4534,11 +4534,11 @@ Sinks are opt-in per registered table or view, configured by the steward.
 
 **Code:** `provisa/kafka/`
 
-**Tests:** `tests/unit/test_kafka_sink.py`, `tests/integration/test_kafka_sink.py`
+**Tests:** `tests/unit/test_kafka_publish_rows.py`, `tests/integration/test_kafka_publish.py`
 
 ### REQ-180 · Kafka Sinks (Table/View Publishing) {#REQ-180}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-565](#REQ-565) · **Priority:** SHOULD · **Type:** behavioral
 
 Sinks can be added to or removed from a table/view at any time, independently of other config.
 
@@ -4546,11 +4546,11 @@ Sinks can be added to or removed from a table/view at any time, independently of
 
 **Code:** `provisa/kafka/`
 
-**Tests:** `tests/unit/test_kafka_sink.py`, `tests/integration/test_kafka_sink.py`
+**Tests:** `tests/unit/test_kafka_publish_rows.py`, `tests/integration/test_kafka_publish.py`
 
 ### REQ-181 · Kafka Sinks (Table/View Publishing) {#REQ-181}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+**Status:** ↪ superseded by [REQ-565](#REQ-565) · **Priority:** SHOULD · **Type:** structural
 
 Sink output format is JSON (one message per row, keyed by optional column).
 
@@ -4558,7 +4558,7 @@ Sink output format is JSON (one message per row, keyed by optional column).
 
 **Code:** `provisa/kafka/`
 
-**Tests:** `tests/unit/test_kafka_sink.py`, `tests/integration/test_kafka_sink.py`
+**Tests:** `tests/unit/test_kafka_publish_rows.py`, `tests/integration/test_kafka_publish.py`
 
 ### REQ-260 · Subscriptions {#REQ-260}
 
@@ -7454,7 +7454,7 @@ The `X-Provisa-Sink` request header on a subscription request redirects the subs
 
 **Code:** `provisa/api/data/subscription_sse.py`
 
-**Tests:** `tests/unit/test_subscription_sink_header.py`, `tests/integration/test_kafka_sink.py`, `tests/unit/test_subscription_operator_floor.py`
+**Tests:** `tests/unit/test_subscription_sink_header.py`, `tests/integration/test_kafka_publish.py`, `tests/unit/test_subscription_operator_floor.py`
 
 ## 9. Live Data & Events
 
@@ -21980,13 +21980,13 @@ Kafka topic registration as data source: register a Kafka cluster (bootstrap ser
 
 ### REQ-115 · Kafka Sources & Sink {#REQ-115}
 
-**Status:** ↪ superseded by [REQ-176](#REQ-176) · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-565](#REQ-565) · **Priority:** SHOULD · **Type:** behavioral
 
 publish query results to Kafka topics: new output format (Accept: application/x-kafka or approved query config output: kafka); after query execution serialize result rows as JSON messages and produce to the configured topic; topic + key config per approved query: { topic, key_column }; async production - fire-and-forget with delivery callback.
 
 **Code:** `provisa/kafka/sink.py`
 
-**Tests:** `tests/unit/test_kafka_sink.py`
+**Tests:** `tests/unit/test_kafka_publish_rows.py`
 
 ## 3. Source Registration & Data Modeling
 
@@ -22346,7 +22346,7 @@ Salesforce is a source type. A Salesforce source names the org's My Domain login
 
 **Code:** `provisa/federation/salesforce.py`, `provisa/federation/trino_connectors.py`, `provisa/runtime_deps/pgwire_bundles.py`
 
-**Tests:** `tests/unit/test_salesforce_connector.py`, `tests/unit/test_pgwire_write_route.py`, `provisa-ui/src/pages/sources/__tests__/salesforce.test.tsx`
+**Tests:** `tests/unit/test_pg_driver_type_names.py`, `tests/unit/test_salesforce_connector.py`, `tests/unit/test_pgwire_write_route.py`, `provisa-ui/src/pages/sources/__tests__/salesforce.test.tsx`
 
 ### REQ-1947 · Enterprise Sources {#REQ-1947}
 

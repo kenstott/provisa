@@ -32,7 +32,7 @@ constant and module docstring, env_classes.py lines 19-22]
 | מחלקה | טבלאות | מה קורה בהעתקה |
 | --- | --- | --- |
 | CARRIED | domains, naming_rules, registered_tables, table_columns, relationships, metrics, roles, rls_rules, tags, tag_param_values, tag_assignments, glossary terms, materialized_views, calendars, api_endpoints, tracked_functions, tracked_webhooks, table_meta_links | מועתקות במלואן |
-| IDENTITY_ONLY | sources, api_sources, kafka_sources, kafka_sinks | שדות זהות וממשל נודדים; ערכי חיבור נשארים מאחור (ראו קישורים) |
+| IDENTITY_ONLY | sources, api_sources, kafka_sources | שדות זהות וממשל נודדים; ערכי חיבור נשארים מאחור (ראו קישורים) |
 | SEEDED_AT_CREATION | roles, user_role_assignments | מועתקות רק כשסביבה נוצרת לראשונה; מיזוגים מאוחרים יותר משאירים אותן לנפשן |
 | PARTIAL | org_settings | מועתקות לכל מפתח: הגדרות ממשל נודדות, מפתחות הנוקבים ביעד חיצוני או בזמן ריצה לכל סביבה נשארים מאחור |
 | NEVER_SENSITIVE | org_secrets, user_directory | לעולם אינן מועתקות |

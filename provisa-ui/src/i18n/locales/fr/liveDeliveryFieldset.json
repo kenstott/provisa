@@ -35,7 +35,7 @@
     "pushMaxDelayPlaceholder": "délai max",
     "outputsHeading": "Sorties",
     "sseFanoutLabel": "Diffusion SSE (toujours active)",
-    "kafkaSinkLabel": "Puits Kafka",
+    "kafkaOutputLabel": "Sortie Kafka",
     "kafkaBootstrapLabel": "Serveurs bootstrap",
     "kafkaBootstrapPlaceholder": "kafka:9092",
     "kafkaTopicLabel": "Topic",

@@ -35,7 +35,7 @@
     "pushMaxDelayPlaceholder": "макс. задержка",
     "outputsHeading": "Выходы",
     "sseFanoutLabel": "Рассылка SSE (всегда включена)",
-    "kafkaSinkLabel": "Приёмник Kafka",
+    "kafkaOutputLabel": "Вывод Kafka",
     "kafkaBootstrapLabel": "Bootstrap-серверы",
     "kafkaBootstrapPlaceholder": "kafka:9092",
     "kafkaTopicLabel": "Топик",

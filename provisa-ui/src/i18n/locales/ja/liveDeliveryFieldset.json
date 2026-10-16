@@ -35,7 +35,7 @@
     "pushMaxDelayPlaceholder": "最大遅延",
     "outputsHeading": "出力",
     "sseFanoutLabel": "SSEファンアウト（常時オン）",
-    "kafkaSinkLabel": "Kafkaシンク",
+    "kafkaOutputLabel": "Kafka 出力",
     "kafkaBootstrapLabel": "ブートストラップサーバー",
     "kafkaBootstrapPlaceholder": "kafka:9092",
     "kafkaTopicLabel": "トピック",

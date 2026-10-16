@@ -557,11 +557,11 @@ Matcher bevorzugt Join-Pfade von Fact zu Dimension bei der Auflösung von Fragen
 
 ### Streaming
 
-Kombinieren Sie `view_metrics` mit `materialize` und einer Kafka-Senke, um mit der bestehenden
-Materialisierungsmaschinerie eine Push-on-Change-Metrikausgabe zu erzeugen. Keine neue Pipeline
-ist erforderlich.
-[inferred: per REQ-1319: "Streaming: view_metrics + materialize + Kafka sink yields push-on-change
-metrics from existing machinery"; implementation not verified beyond the requirement text]
+Kombinieren Sie `view_metrics` mit `materialize`, um eine Metrik-View aktuell zu halten, wenn sich
+ihre Eingaben ändern, mit der bestehenden Materialisierungsmaschinerie. Keine neue Pipeline ist
+erforderlich.
+[inferred: per REQ-1319. The table Kafka sink that requirement named is retired (REQ-176); a
+table publishes its new rows to Kafka through a live output (`live.outputs`, REQ-565)]
 
 ### Observability (OTel)
 

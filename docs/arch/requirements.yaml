@@ -15033,7 +15033,8 @@
     status: neutral
     rationale: ''
 - id: REQ-176
-  status: complete
+  status: superseded
+  superseded_by: REQ-565
   group: 9. Live Data & Events
   category: Kafka Sinks (Table/View Publishing)
   feature: change-events-and-streams-sinks-and-events
@@ -15045,8 +15046,8 @@
   code:
   - provisa/kafka/
   tests:
-  - tests/unit/test_kafka_sink.py
-  - tests/integration/test_kafka_sink.py
+  - tests/unit/test_kafka_publish_rows.py
+  - tests/integration/test_kafka_publish.py
   since: 2026-01
   scenario: 'Given a registered table or view has a Kafka sink configured
 
@@ -15068,8 +15069,10 @@
     status: ahead
     rationale: Kafka sinks on registered tables/views with multiple trigger modes (change_event, schedule,
       manual, poll) is more flexible than Hasura's event trigger model and not native to Dremio or Trino.
+  notes: 'Superseded 2026-10-16 (maintainer, #274): the table Kafka sink is retired; a table publishes its new rows to Kafka through a live output (live.outputs, REQ-565), governed as a role. A subscription redirected to Kafka (X-Provisa-Sink) is REQ-812.'
 - id: REQ-177
-  status: complete
+  status: superseded
+  superseded_by: REQ-565
   group: 9. Live Data & Events
   category: Kafka Sinks (Table/View Publishing)
   feature: change-events-and-streams-sinks-and-events
@@ -15082,9 +15085,9 @@
   code:
   - provisa/kafka/
   tests:
-  - tests/integration/test_kafka_sink.py
+  - tests/integration/test_kafka_publish.py
   - tests/unit/test_event_triggers.py
-  - tests/unit/test_kafka_sink.py
+  - tests/unit/test_kafka_publish_rows.py
   since: 2026-01
   integration_test: required
   integration_test_reason: Sink trigger behavior (CDC, schedule, manual, poll) requires real event sources
@@ -15096,8 +15099,10 @@
     status: ahead
     rationale: Four sink trigger modes including watermark-based poll (for CDC-unavailable sources) is
       more operationally complete than Hasura's insert/update/delete-only event triggers.
+  notes: 'Superseded 2026-10-16 (maintainer, #274): the table Kafka sink is retired; a table publishes its new rows to Kafka through a live output (live.outputs, REQ-565), governed as a role. A subscription redirected to Kafka (X-Provisa-Sink) is REQ-812.'
 - id: REQ-178
-  status: complete
+  status: superseded
+  superseded_by: REQ-565
   group: 9. Live Data & Events
   category: Kafka Sinks (Table/View Publishing)
   feature: change-events-and-streams-sinks-and-events
@@ -15108,8 +15113,8 @@
   code:
   - provisa/kafka/
   tests:
-  - tests/unit/test_kafka_sink.py
-  - tests/integration/test_kafka_sink.py
+  - tests/unit/test_kafka_publish_rows.py
+  - tests/integration/test_kafka_publish.py
   since: 2026-01
   scenario: 'Given a registered table has no Kafka sink configured
 
@@ -15127,8 +15132,10 @@
   competitive_position:
     status: parity
     rationale: Opt-in per-table sink configuration is standard in event-driven data platforms.
+  notes: 'Superseded 2026-10-16 (maintainer, #274): the table Kafka sink is retired; a table publishes its new rows to Kafka through a live output (live.outputs, REQ-565), governed as a role. A subscription redirected to Kafka (X-Provisa-Sink) is REQ-812.'
 - id: REQ-180
-  status: complete
+  status: superseded
+  superseded_by: REQ-565
   group: 9. Live Data & Events
   category: Kafka Sinks (Table/View Publishing)
   feature: change-events-and-streams-sinks-and-events
@@ -15141,8 +15148,8 @@
   code:
   - provisa/kafka/
   tests:
-  - tests/unit/test_kafka_sink.py
-  - tests/integration/test_kafka_sink.py
+  - tests/unit/test_kafka_publish_rows.py
+  - tests/integration/test_kafka_publish.py
   since: 2026-01
   scenario: 'Given a table with an existing Kafka sink
 
@@ -15161,8 +15168,10 @@
   competitive_position:
     status: neutral
     rationale: ''
+  notes: 'Superseded 2026-10-16 (maintainer, #274): the table Kafka sink is retired; a table publishes its new rows to Kafka through a live output (live.outputs, REQ-565), governed as a role. A subscription redirected to Kafka (X-Provisa-Sink) is REQ-812.'
 - id: REQ-181
-  status: complete
+  status: superseded
+  superseded_by: REQ-565
   group: 9. Live Data & Events
   category: Kafka Sinks (Table/View Publishing)
   feature: change-events-and-streams-sinks-and-events
@@ -15174,8 +15183,8 @@
   code:
   - provisa/kafka/
   tests:
-  - tests/unit/test_kafka_sink.py
-  - tests/integration/test_kafka_sink.py
+  - tests/unit/test_kafka_publish_rows.py
+  - tests/integration/test_kafka_publish.py
   since: 2026-01
   integration_test: required
   integration_test_reason: JSON message format and keying strategy require real Kafka message inspection.
@@ -15185,6 +15194,7 @@
   competitive_position:
     status: parity
     rationale: JSON output format keyed by optional column is standard for Kafka sinks.
+  notes: 'Superseded 2026-10-16 (maintainer, #274): the table Kafka sink is retired; a table publishes its new rows to Kafka through a live output (live.outputs, REQ-565), governed as a role. A subscription redirected to Kafka (X-Provisa-Sink) is REQ-812.'
 - id: REQ-260
   status: complete
   group: 9. Live Data & Events
@@ -23895,7 +23905,7 @@
   - provisa/api/data/subscription_sse.py
   tests:
   - tests/unit/test_subscription_sink_header.py
-  - tests/integration/test_kafka_sink.py
+  - tests/integration/test_kafka_publish.py
   - tests/unit/test_subscription_operator_floor.py
   since: 2026-04
   scenario: 'Given a subscription request with the header "X-Provisa-Sink" set to a Kafka target
@@ -78514,7 +78524,7 @@
     restored from the same plan phase.'
 - id: REQ-115
   status: superseded
-  superseded_by: REQ-176
+  superseded_by: REQ-565
   group: 9. Live Data & Events
   category: Kafka Sources & Sink
   feature: change-events-and-streams-sinks-and-events
@@ -78527,7 +78537,7 @@
   code:
   - provisa/kafka/sink.py
   tests:
-  - tests/unit/test_kafka_sink.py
+  - tests/unit/test_kafka_publish_rows.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (deleted in 903defcc);
     the id was never entered in requirements.yaml though code or tests cite it. Text verbatim. Citing
     files: provisa/kafka/sink.py. Audited 2026-10-03 against the code: Per-approved-query sink is gone

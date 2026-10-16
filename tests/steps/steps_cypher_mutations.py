@@ -584,9 +584,9 @@ def then_post_mutation_hooks_fire(shared_data):
 
     The steps after a write run once, at the pipeline's terminal, for a write on any surface
     (pgwire._pipeline._after_write, from finalize_audit): the response cache is invalidated for
-    the written tables, views over the table are marked stale, its change event is emitted and
-    its change-event sinks run. Driven here through the real terminal; only the Kafka publish
-    and the sink run are recorded instead of performed.
+    the written tables, views over the table are marked stale and its change event is emitted.
+    Driven here through the real terminal; only the Kafka publish is recorded instead of
+    performed.
     """
     mutation_result = shared_data["mutation_result"]
     execute_result = shared_data["execute_result"]
@@ -597,5 +597,5 @@ def then_post_mutation_hooks_fire(shared_data):
     assert calls["invalidated"] == [10]
     assert calls["stale"] == [mutation_result.table_name]
     assert calls["events"] == [(mutation_result.table_name, mutation_result.source_id)]
-    assert calls["sinks"] == [mutation_result.table_name]
+    assert [c[:2] for c in calls["changed"]] == [(10, mutation_result.source_id)]
     shared_data["hooks_fired"] = calls

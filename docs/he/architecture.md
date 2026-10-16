@@ -419,7 +419,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 | `mv/` | רישום Materialized Views, רענון, שכתוב SQL |
 | `events/` | אירועי שינוי ערכת נתונים ושליחת טריגרים |
 | `webhooks/` | ביצוע webhook יוצא עבור מוטציות ואירועים |
-| `scheduler/` | ניהול משימות רקע מבוסס APScheduler — טריגרי cron ומרווח שמפעילים webhooks, מוטציות, או פרסום ל-sink של Kafka |
+| `scheduler/` | ניהול משימות רקע מבוסס APScheduler — טריגרי cron ומרווח שמפעילים webhooks ומוטציות, ואת הדגימות של פלטי Kafka חיים |
 | `apq/` | פרוטוקול חוט APQ של Apollo — מטמון hash שאילתה מבוסס Redis; נפרד ממטמון התוצאות |
 | `compiler/cursor.py` | pagination בסגנון Relay מבוסס cursor — פרמטרים `first`/`after`/`last`/`before` ויצירת `pageInfo` בכל שאילתות הרשימה |
 | `compiler/aggregate_gen.py` | סוגי שאילתת `{table}_aggregate` מיוצרים אוטומטית עם שדות משנה `count`, `sum`, `avg`, `min`, `max` וגישת `nodes` מסוננת |
@@ -606,7 +606,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 
 ## טריגרים מתוזמנים
 
-`scheduler/jobs.py` משתמש ב-APScheduler כדי להריץ משימות רקע המוגדרות כטריגרי cron או מרווח. (REQ-216) כל משימה יכולה לשלוח POST לכתובת webhook, לבצע מוטציה מול נקודת הקצה של הנתונים, או לפרסם תוצאות שאילתה ל-topic של Kafka. הטריגרים מוגדרים דרך ה-API הניהולי (מוטציות `scheduledTrigger`) או המפתח `scheduled_triggers` בקונפיגורציית ה-YAML. (REQ-216)
+`scheduler/jobs.py` משתמש ב-APScheduler כדי להריץ משימות רקע המוגדרות כטריגרי cron או מרווח. (REQ-216) כל משימה יכולה לשלוח POST לכתובת webhook או לבצע מוטציה מול נקודת הקצה של הנתונים; פלט ה-Kafka החי של טבלה (`live.outputs`) נדגם על אותו מתזמן. הטריגרים מוגדרים דרך ה-API הניהולי (מוטציות `scheduledTrigger`) או המפתח `scheduled_triggers` בקונפיגורציית ה-YAML. (REQ-216)
 
 ## רמזי ביצועים לפדרציה
 

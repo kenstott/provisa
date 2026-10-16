@@ -8,36 +8,24 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Kafka sink — publish query results to Kafka topics (REQ-115).
-
-After query execution, serialize result rows as JSON and produce to a topic.
-Async fire-and-forget with delivery callback.
+"""Publish query result rows to a Kafka topic: a subscription redirected to Kafka with the
+X-Provisa-Sink header (REQ-812) publishes each re-run of its query through it. A table publishes its
+new rows to Kafka through a live output instead (live.outputs, REQ-565).
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
 
 from provisa.kafka.producer import Producer, shared
 
-# Requirements: REQ-176, REQ-177, REQ-178, REQ-180, REQ-181
+# Requirements: REQ-812, REQ-286
 
 log = logging.getLogger(__name__)
 
 
-@dataclass
-class KafkaSinkConfig:  # REQ-176, REQ-177, REQ-178, REQ-180
-    """Configuration for publishing query results to a Kafka topic."""
-
-    query_stable_id: str  # sink query stable_id
-    topic: str
-    key_column: str | None = None  # column to use as message key
-    value_format: str = "json"
-
-
-class KafkaProducer:  # REQ-176, REQ-181
+class KafkaProducer:  # REQ-812
     """Publishes query result rows to topics of one Kafka cluster, through the process's producer
     for that cluster (``provisa.kafka.producer``)."""
 
@@ -49,7 +37,7 @@ class KafkaProducer:  # REQ-176, REQ-181
         if self._producer is None:
             self._producer = shared(self._bootstrap_servers)
 
-    async def publish_rows(  # REQ-181
+    async def publish_rows(  # REQ-812
         self,
         topic: str,
         rows: list[dict],

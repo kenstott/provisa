@@ -34,7 +34,7 @@ environments.py line 59; `validate_env_name()` at environments.py lines 119-142;
 | Класс | Таблицы | Что происходит при копировании |
 | --- | --- | --- |
 | CARRIED | domains, naming_rules, registered_tables, table_columns, relationships, metrics, roles, rls_rules, tags, tag_param_values, tag_assignments, glossary terms, materialized_views, calendars, api_endpoints, tracked_functions, tracked_webhooks, table_meta_links | Копируется целиком |
-| IDENTITY_ONLY | sources, api_sources, kafka_sources, kafka_sinks | Поля идентичности и управления путешествуют; значения подключения остаются на месте (см. «Привязки») |
+| IDENTITY_ONLY | sources, api_sources, kafka_sources | Поля идентичности и управления путешествуют; значения подключения остаются на месте (см. «Привязки») |
 | SEEDED_AT_CREATION | roles, user_role_assignments | Копируется только при первом создании окружения; последующие слияния их не трогают |
 | PARTIAL | org_settings | Копируется по ключам: настройки управления путешествуют, ключи, называющие внешнюю цель или среду выполнения конкретного окружения, остаются на месте |
 | NEVER_SENSITIVE | org_secrets, user_directory | Не копируется никогда |

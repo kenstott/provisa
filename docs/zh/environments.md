@@ -21,7 +21,7 @@ constant and module docstring, env_classes.py lines 19-22]
 | 类别 | 表 | 复制时会发生什么 |
 | --- | --- | --- |
 | CARRIED | domains, naming_rules, registered_tables, table_columns, relationships, metrics, roles, rls_rules, tags, tag_param_values, tag_assignments, glossary terms, materialized_views, calendars, api_endpoints, tracked_functions, tracked_webhooks, table_meta_links | 整体复制 |
-| IDENTITY_ONLY | sources, api_sources, kafka_sources, kafka_sinks | 身份与治理字段随行；连接值留在原处（见"绑定"） |
+| IDENTITY_ONLY | sources, api_sources, kafka_sources | 身份与治理字段随行；连接值留在原处（见"绑定"） |
 | SEEDED_AT_CREATION | roles, user_role_assignments | 仅在环境首次创建时复制；之后的合并不会碰它们 |
 | PARTIAL | org_settings | 按键复制：治理设置随行，指向外部目标或按环境运行时的键留在原处 |
 | NEVER_SENSITIVE | org_secrets, user_directory | 从不复制 |

@@ -879,8 +879,8 @@
       a view, never at the source. Subscriptions deliver inserts and updates. Hard deletes are not delivered.
   - id: subscriptions-and-live-queries-sinks
     text: The same live query can feed a Kafka topic instead of a browser. A request header redirects
-      a subscription's events to a sink, and a table or view can be configured to publish there. The Kafka
-      sink and the event stream are two outputs of one mechanism.
+      a subscription's events to a Kafka topic, and a table's live output publishes its new rows there,
+      governed as the role it names. The Kafka output and the event stream are two outputs of one mechanism.
 - id: change-events-and-streams
   name: Change events and streams
   section: Live data
@@ -895,8 +895,9 @@
   - id: change-events-and-streams-sinks-and-events
     text: Provisa can announce that a dataset changed. Each mutation emits a small event naming the table,
       with no row detail, to a Kafka topic you configure, and an external ETL job can send the same signal
-      with a trivial mutation. Tables and views can also publish their rows to Kafka as JSON, one message
-      per row, on a change event or a schedule. Sinks are opt-in and can be added or removed at any time.
+      with a trivial mutation. A table can also publish its new rows to Kafka as JSON, one message per
+      row, through a live output governed as a role; it is opt-in and can be added or removed at any
+      time.
   - id: change-events-and-streams-push-sources
     text: Not every feed lives in a database. An ingest source is an HTTP endpoint that accepts JSON from
       collectors and webhooks. The steward declares the columns and where to find each in the payload.

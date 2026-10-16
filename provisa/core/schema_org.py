@@ -326,7 +326,6 @@ registered_tables = Table(
     # REQ-1919: the rest of a table's settings, held here so the store alone owns the model.
     Column("approval_hook", Boolean, nullable=False, server_default=false()),  # REQ-204/247
     Column("hot", Boolean),  # NULL = auto-detect
-    Column("kafka_sink", JSON(none_as_null=True)),  # REQ-176
     Column("promotions", JSON, nullable=False, default=list, server_default="[]"),  # REQ-119
     Column("query_template", Text),  # REQ-1668/1683: neo4j / sparql tables
     Column("relay_pagination", Boolean),  # NULL = inherit
@@ -868,25 +867,6 @@ kafka_topics = Table(
     CheckConstraint(
         "value_format IN ('json', 'avro', 'protobuf')", name="kafka_topics_value_format_check"
     ),
-)
-
-kafka_sinks = Table(
-    "kafka_sinks",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("query_stable_id", Text, nullable=False, unique=True),
-    Column("topic", Text, nullable=False, server_default=""),
-    Column("key_column", Text),
-    Column("value_format", Text, nullable=False, server_default="json"),
-    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-    # REQ-1491: whether this environment has supplied this source's connection values. A copy
-    # carries the row and never the binding, and an empty host is not an absent one — the
-    # connection builder reads it as localhost — so an unbound source is MARKED, and the query
-    # path refuses a query naming it rather than dialling whatever is local to the node.
-    Column(
-        "binding", Text, nullable=False, server_default="own"
-    ),  # REQ-1942: own | copied | unbound
-    CheckConstraint("binding IN ('own', 'copied', 'unbound')", name="kafka_sinks_binding_check"),
 )
 
 api_sources = Table(

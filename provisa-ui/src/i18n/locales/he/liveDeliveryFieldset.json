@@ -35,7 +35,7 @@
     "pushMaxDelayPlaceholder": "השהיה מרבית",
     "outputsHeading": "פלטים",
     "sseFanoutLabel": "SSE fanout (פעיל תמיד)",
-    "kafkaSinkLabel": "Kafka sink",
+    "kafkaOutputLabel": "פלט Kafka",
     "kafkaBootstrapLabel": "Bootstrap servers",
     "kafkaBootstrapPlaceholder": "kafka:9092",
     "kafkaTopicLabel": "Topic",

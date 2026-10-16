@@ -198,7 +198,6 @@ PROVISA_INTERNAL_TABLES: frozenset[str] = frozenset(
         "relationship_candidates",
         "kafka_sources",
         "kafka_topics",
-        "kafka_sinks",
         "api_sources",
         "api_endpoints",
         "live_query_state",

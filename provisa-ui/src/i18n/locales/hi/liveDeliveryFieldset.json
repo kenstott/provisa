@@ -35,7 +35,7 @@
     "pushMaxDelayPlaceholder": "max delay",
     "outputsHeading": "आउटपुट",
     "sseFanoutLabel": "SSE फ़ैनआउट (हमेशा चालू)",
-    "kafkaSinkLabel": "Kafka सिंक",
+    "kafkaOutputLabel": "Kafka आउटपुट",
     "kafkaBootstrapLabel": "बूटस्ट्रैप सर्वर",
     "kafkaBootstrapPlaceholder": "kafka:9092",
     "kafkaTopicLabel": "टॉपिक",

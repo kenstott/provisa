@@ -338,9 +338,9 @@ export function LiveDeliveryFieldset({
                 </FormField>
                 <FormField size="short">
                   <Checkbox
-                    data-testid="kafka-sink-checkbox"
+                    data-testid="kafka-output-checkbox"
                     checked={!!kafkaOut}
-                    label={t("liveDeliveryFieldset.kafkaSinkLabel")}
+                    label={t("liveDeliveryFieldset.kafkaOutputLabel")}
                     onChange={(e) => {
                       if (e.currentTarget.checked) setKafkaOut({});
                       else

@@ -37,27 +37,9 @@ async def client():
 
 # NOTE: The `submitQuery` mutation / `SubmitQueryInput` type and the
 # `governedQueries` query were removed; Kafka sinks are now configured via the
-# `@sink` GraphQL directive (see provisa/api/data/subscription_sse.py) and
-# executed from the persisted_queries table by provisa.kafka.sink_executor.
-# The former TestKafkaSinkConfiguration tests targeted that removed API and were
-# deleted as no longer valid.
-
-
-class TestKafkaSinkExecution:
-    async def test_sink_executor_handles_missing_kafka(self, client):
-        """Sink execution should not crash when Kafka is unavailable."""
-        from provisa.kafka.sink_executor import trigger_sinks_for_table
-
-        # This should handle missing Kafka gracefully (log warning, not crash)
-        try:
-            from provisa.api.app import state
-
-            count = await trigger_sinks_for_table("orders", state)
-            # count may be 0 if no sinks configured, or > 0 if Kafka is available
-            assert isinstance(count, int)
-        except Exception:
-            # If state isn't initialized, that's expected in test context
-            pass
+# `@sink` GraphQL directive (see provisa/api/data/subscription_sse.py), and a
+# table publishes its new rows through a live output (live.outputs); the table
+# Kafka sink and its executor were retired.
 
 
 class TestKafkaSourceRegistration:

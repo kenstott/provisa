@@ -35,7 +35,7 @@ _INTEGRATION_GROUP_PATTERNS: list[tuple[str, re.Pattern]] = [
         re.compile(
             r"^test_("
             r".+_source_e2e"
-            r"|kafka_source|kafka_sink"
+            r"|kafka_source|kafka_publish"
             r"|graphql_remote_source|graphql_remote_integration"
             r"|openapi_source|openapi_pet_by_status|openapi_spec"
             r"|govdata_source|nosql_catalogs|elasticsearch_introspect"

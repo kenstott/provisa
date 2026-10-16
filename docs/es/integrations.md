@@ -517,11 +517,11 @@ resolver preguntas.
 
 ### Streaming
 
-Combine `view_metrics` con `materialize` y un receptor de Kafka para producir una salida de métrica
-de tipo push-on-change usando la maquinaria de materialización existente. No se requiere ningún
+Combine `view_metrics` con `materialize` para mantener una vista de métricas al día a medida que
+cambian sus entradas, usando la maquinaria de materialización existente. No se requiere ningún
 pipeline nuevo.
-[inferred: per REQ-1319: "Streaming: view_metrics + materialize + Kafka sink yields push-on-change
-metrics from existing machinery"; implementation not verified beyond the requirement text]
+[inferred: per REQ-1319. The table Kafka sink that requirement named is retired (REQ-176); a
+table publishes its new rows to Kafka through a live output (`live.outputs`, REQ-565)]
 
 ### Observabilidad (OTel)
 

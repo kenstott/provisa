@@ -44,7 +44,6 @@ RESERVED_KIND_KEYWORDS = (
     "sources",
     "api-sources",
     "kafka-sources",
-    "kafka-sinks",
     "tags",
     "roles",
     "commands",

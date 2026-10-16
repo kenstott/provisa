@@ -8,13 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Integration tests for Kafka sink — query results published to a Kafka topic.
+"""Rows published to Kafka, on a real broker: by the product's own producer, as a subscription
+redirected to Kafka publishes them (X-Provisa-Sink, REQ-812), and by a table's live output
+(live.outputs, REQ-565). The mocked-producer tests are tests/unit/test_kafka_publish_rows.py."""
 
-JSON encoder unit tests (TestKafkaSinkEncoder) and mocked-producer unit tests
-(TestKafkaProducerMocked) have been moved to tests/unit/test_kafka_sink.py.
-
-Only live-Kafka tests requiring a running broker remain here.
-"""
+# Requirements: REQ-812, REQ-565, REQ-286
 
 from __future__ import annotations
 
@@ -24,7 +22,6 @@ import uuid
 
 import pytest
 
-from provisa.kafka.sink_executor import _Encoder
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -99,7 +96,7 @@ class TestKafkaSinkReal:
                 {"id": 2002, "amount": 12.0, "region": "eu-west"},
             ]
             for row in rows:
-                await ak_producer.send_and_wait(topic, value=json.dumps(row, cls=_Encoder).encode())
+                await ak_producer.send_and_wait(topic, value=json.dumps(row).encode())
         finally:
             await ak_producer.stop()
 
@@ -187,42 +184,6 @@ class TestTheProductsOwnProducerOnARealBroker:
         await kafka_producer.stop_all()  # as the lifespan does: what was handed over is sent
 
         assert await _read(topic, 2) == [(b"1", rows[0]), (b"2", rows[1])]
-
-    async def test_a_change_triggered_table_sink_publishes_the_tables_rows(self):
-        """REQ-176, REQ-177: the sink executor reads the table and publishes its rows."""
-        from datetime import date
-        from decimal import Decimal
-        from types import SimpleNamespace
-
-        from provisa.kafka import producer as kafka_producer
-        from provisa.kafka.sink_executor import trigger_sinks_for_table
-
-        topic = f"provisa-table-sink-{uuid.uuid4().hex[:8]}"
-
-        class _Conn:
-            async def fetch(self, _sql):
-                return [{"id": 7, "total": Decimal("12.50"), "day": date(2026, 10, 8)}]
-
-        class _Acquire:
-            async def __aenter__(self):
-                return _Conn()
-
-            async def __aexit__(self, *_exc):
-                return False
-
-        table = SimpleNamespace(
-            table_name="orders",
-            schema_name="public",
-            kafka_sink=SimpleNamespace(topic=topic, key_column="id", triggers=["change_event"]),
-        )
-        state = SimpleNamespace(
-            config=SimpleNamespace(tables=[table]),
-            tenant_db=SimpleNamespace(acquire=lambda: _Acquire()),
-        )
-        assert await trigger_sinks_for_table("orders", state) == 1
-        await kafka_producer.stop_all()
-
-        assert await _read(topic, 1) == [(b"7", {"id": 7, "total": 12.5, "day": "2026-10-08"})]
 
     async def test_a_live_outputs_rows_reach_its_topic(self):
         """REQ-286: the rows a live query emits are produced to the output's topic."""

@@ -419,7 +419,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 | `mv/` | 物化视图注册表、刷新、SQL 重写器 |
 | `events/` | 数据集变更事件与触发调度 |
 | `webhooks/` | 面向变更与事件的出站 webhook 执行 |
-| `scheduler/` | 基于 APScheduler 的后台任务管理——触发 webhook、变更或 Kafka sink 发布的 cron 与间隔触发器 |
+| `scheduler/` | 基于 APScheduler 的后台任务管理——触发 webhook 与变更的 cron 与间隔触发器，以及实时 Kafka 输出的轮询 |
 | `apq/` | Apollo APQ wire protocol——基于 Redis 的查询哈希缓存；与结果缓存相互独立 |
 | `compiler/cursor.py` | Relay 风格的游标分页——所有列表查询上的 `first`/`after`/`last`/`before` 参数与 `pageInfo` 生成 |
 | `compiler/aggregate_gen.py` | 自动生成 `{table}_aggregate` 查询类型，含 `count`、`sum`、`avg`、`min`、`max` 子字段与经过滤的 `nodes` 访问 |
@@ -606,7 +606,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 
 ## 定时触发器
 
-`scheduler/jobs.py` 使用 APScheduler 运行定义为 cron 或间隔触发器的后台任务。(REQ-216) 每个任务可以向 webhook URL 发起 POST、针对数据端点执行一次变更，或将查询结果发布到某个 Kafka 主题。触发器通过管理 API（`scheduledTrigger` 变更）或 YAML 配置中的 `scheduled_triggers` 键进行配置。(REQ-216)
+`scheduler/jobs.py` 使用 APScheduler 运行定义为 cron 或间隔触发器的后台任务。(REQ-216) 每个任务可以向 webhook URL 发起 POST，或针对数据端点执行一次变更；表的实时 Kafka 输出（`live.outputs`）在同一调度器上轮询。触发器通过管理 API（`scheduledTrigger` 变更）或 YAML 配置中的 `scheduled_triggers` 键进行配置。(REQ-216)
 
 ## 联邦性能提示
 

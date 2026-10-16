@@ -534,10 +534,11 @@ renders the star"; provisa/cypher/label_map.py not read in this session]
 
 ### Потоковая передача
 
-Комбинируйте `view_metrics` с `materialize` и приёмником Kafka, чтобы получить push-вывод метрик
-при изменении, используя существующий механизм материализации. Новый конвейер не требуется.
-[inferred: per REQ-1319: "Streaming: view_metrics + materialize + Kafka sink yields push-on-change
-metrics from existing machinery"; implementation not verified beyond the requirement text]
+Комбинируйте `view_metrics` с `materialize`, чтобы представление метрик оставалось актуальным при
+изменении его входных данных, используя существующий механизм материализации. Новый конвейер не
+требуется.
+[inferred: per REQ-1319. The table Kafka sink that requirement named is retired (REQ-176); a
+table publishes its new rows to Kafka through a live output (`live.outputs`, REQ-565)]
 
 ### Наблюдаемость (OTel)
 

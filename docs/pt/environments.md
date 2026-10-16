@@ -32,7 +32,7 @@ constant and module docstring, env_classes.py lines 19-22]
 | Classe | Tabelas | O que acontece na cópia |
 | --- | --- | --- |
 | CARRIED | domains, naming_rules, registered_tables, table_columns, relationships, metrics, roles, rls_rules, tags, tag_param_values, tag_assignments, glossary terms, materialized_views, calendars, api_endpoints, tracked_functions, tracked_webhooks, table_meta_links | Copiadas por inteiro |
-| IDENTITY_ONLY | sources, api_sources, kafka_sources, kafka_sinks | Campos de identidade e governança viajam; valores de conexão ficam para trás (veja Vínculos) |
+| IDENTITY_ONLY | sources, api_sources, kafka_sources | Campos de identidade e governança viajam; valores de conexão ficam para trás (veja Vínculos) |
 | SEEDED_AT_CREATION | roles, user_role_assignments | Copiadas apenas quando um ambiente é criado pela primeira vez; merges posteriores não as tocam |
 | PARTIAL | org_settings | Copiadas por chave: configurações de governança viajam, chaves que nomeiam um destino externo ou runtime por ambiente ficam para trás |
 | NEVER_SENSITIVE | org_secrets, user_directory | Nunca copiadas |

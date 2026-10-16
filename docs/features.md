@@ -804,7 +804,7 @@ How changes are detected depends on the source. Databases with change capture us
 A watermark column is a monotonically increasing value, such as an update timestamp, that tells Provisa which rows are new. Subscriptions need one. If the source has none, you can build one in a view, never at the source. Subscriptions deliver inserts and updates. Hard deletes are not delivered.
 { #subscriptions-and-live-queries-watermarks }
 
-The same live query can feed a Kafka topic instead of a browser. A request header redirects a subscription's events to a sink, and a table or view can be configured to publish there. The Kafka sink and the event stream are two outputs of one mechanism.
+The same live query can feed a Kafka topic instead of a browser. A request header redirects a subscription's events to a Kafka topic, and a table's live output publishes its new rows there, governed as the role it names. The Kafka output and the event stream are two outputs of one mechanism.
 { #subscriptions-and-live-queries-sinks }
 
 ??? note "Requirements"
@@ -821,7 +821,7 @@ The same live query can feed a Kafka topic instead of a browser. A request heade
 A Kafka cluster registers as a source, and each topic becomes a table you can query. Schemas come from a Schema Registry when there is one, or you declare them by hand. A default time window keeps an unbounded topic from being scanned end to end, and a discriminator filter lets one topic with several message types appear as several tables.
 { #change-events-and-streams-kafka-topics }
 
-Provisa can announce that a dataset changed. Each mutation emits a small event naming the table, with no row detail, to a Kafka topic you configure, and an external ETL job can send the same signal with a trivial mutation. Tables and views can also publish their rows to Kafka as JSON, one message per row, on a change event or a schedule. Sinks are opt-in and can be added or removed at any time.
+Provisa can announce that a dataset changed. Each mutation emits a small event naming the table, with no row detail, to a Kafka topic you configure, and an external ETL job can send the same signal with a trivial mutation. A table can also publish its new rows to Kafka as JSON, one message per row, through a live output governed as a role; it is opt-in and can be added or removed at any time.
 { #change-events-and-streams-sinks-and-events }
 
 Not every feed lives in a database. An ingest source is an HTTP endpoint that accepts JSON from collectors and webhooks. The steward declares the columns and where to find each in the payload. A WebSocket source connects out, reconnects on its own, and turns messages into rows. An RSS or Atom source polls a feed. All three become governed tables that can be queried and subscribed to like any other.
