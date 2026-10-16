@@ -94,12 +94,14 @@
         </p>
         <p>
           Regions place that processing. A region is an engine and its stores in a place, and
-          a table names the region it calls home. Why you would create one falls into two
+          a table names the region it calls home. Why you would create one falls into three
           groups. Performance: put work on the engine whose properties fit it, whether that is
           its data center's location, the nature of its storage, or the size of its CPU and
-          memory, for lower latency, fresher data or a smaller bill; or two identical regions
-          in different data centers, each serving the users nearest it. Sovereignty: keep data
-          where the law says it must be processed and stored. Either way it's the same
+          memory, for lower latency or fresher data; or two identical regions in different
+          data centers, each serving the users nearest it. Cost: keep steady workloads on
+          hardware you already own on-premises and send the rest to the cloud, or put
+          occasional heavy work on a large engine and everyday reads on a small one.
+          Sovereignty: keep data where the law says it must be processed and stored. Either way it's the same
           primitive and the same model, and a copy in another region is governed exactly like
           the original.
         </p>
