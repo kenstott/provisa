@@ -183,7 +183,9 @@ def build_mask_expression(  # REQ-040, REQ-263
         assert rule.replace is not None
         pattern = sql_literal(rule.pattern, "postgres")
         replace = sql_literal(rule.replace, "postgres")
-        return f"REGEXP_REPLACE({column_ref}, {pattern}, {replace})"
+        # Every match ('g'), as apply_mask_to_value's re.sub does; the transpiler writes it in
+        # each engine's own form.
+        return f"REGEXP_REPLACE({column_ref}, {pattern}, {replace}, 'g')"
 
     if rule.mask_type == MaskType.constant:
         return _resolve_constant(rule.value, data_type)

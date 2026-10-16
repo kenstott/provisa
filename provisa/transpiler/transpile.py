@@ -324,6 +324,7 @@ def transpile(
     # too (materialize_exec.py's `build_table`, `quoted_name(..., quote=True)`) so both sides of
     # the seam agree on always-quoted.
     identify = target_dialect in ("snowflake", "oracle")
+    pg_sql = _every_match_unflagged(pg_sql, target_dialect)
     if target_dialect == "exasol":
         result = _exasol_stored_case(sqlglot.parse_one(pg_sql, read="postgres"))
     else:
@@ -353,6 +354,31 @@ def transpile(
 
     trace_stage(f"transpile.{target_dialect}", result)
     return result
+
+
+# Where REGEXP_REPLACE with the 'g' flag means every match as it does in PostgreSQL. Everywhere
+# else its three-argument form already replaces every match, and a fourth argument is something
+# other than flags (Trino's is a function, Snowflake's and MySQL's a position).
+_REGEXP_FLAGS_KEPT = frozenset({"postgres", "duckdb"})
+
+
+def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
+    """``pg_sql`` with the 'g' flag taken off each REGEXP_REPLACE for a target whose
+    three-argument form replaces every match already (a regex mask masks every match)."""
+    if target_dialect in _REGEXP_FLAGS_KEPT or "REGEXP_REPLACE" not in pg_sql.upper():
+        return pg_sql
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    flagged = [
+        node
+        for node in tree.find_all(exp.RegexpReplace)
+        if isinstance(node.args.get("modifiers"), exp.Literal)
+        and node.args["modifiers"].this == "g"
+    ]
+    if not flagged:
+        return pg_sql
+    for node in flagged:
+        node.set("modifiers", None)
+    return tree.sql(dialect="postgres")
 
 
 # T-SQL fixed database principals: a schema cannot share a principal's name, so `CREATE SCHEMA
