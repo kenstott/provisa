@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-914 — Pipeline Stage Tracing
-  # Each query-pipeline boundary (govern.in, govern.rls, govern.mask, govern.out, and transpile.<dialect>) emits an OpenTele…
+  # Each query-pipeline boundary (metric.expand, govern.in, govern.out, and transpile.<dialect>) emits an OpenTelemetry span…
 
   Scenario: REQ-914 default behaviour
     Given the query pipeline processes a request

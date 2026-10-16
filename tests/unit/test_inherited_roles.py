@@ -169,15 +169,26 @@ class TestInheritedRolesRLS:
         result = governed_for_role(_ORDERS_SQL, _orders_ctx(), "child", rls=rls)
         assert result == f'{_ORDERS_SQL} WHERE ("orders"."region" = \'us-east\')'
 
-    def test_child_rls_added_to_parent_rls(self):
-        """A compound effective filter (parent's predicate AND the child's) is applied whole."""
-        combined_filter = "region = 'us-east' AND amount > 100"
-        result = governed_for_role(
-            _ORDERS_SQL, _orders_ctx(), "child", rls={ORDERS_TABLE_ID: combined_filter}
-        )
-        assert result == (
-            f'{_ORDERS_SQL} WHERE ("orders"."region" = \'us-east\' AND "orders"."amount" > 100)'
-        )
+    def test_child_s_own_rule_replaces_its_parent_s(self):
+        """Child-first (REQ-1677): a child's own rule for a table replaces its parent's; the two
+        are never ANDed."""
+        rules = [
+            {
+                "role_id": "parent",
+                "table_id": ORDERS_TABLE_ID,
+                "domain_id": None,
+                "filter_expr": "\"region\" = 'us-east'",
+            },
+            {
+                "role_id": "child",
+                "table_id": ORDERS_TABLE_ID,
+                "domain_id": None,
+                "filter_expr": '"amount" > 100',
+            },
+        ]
+        rls = _inherited_rls(rules, {"parent": ["parent"], "child": ["child", "parent"]}, "child")
+        result = governed_for_role(_ORDERS_SQL, _orders_ctx(), "child", rls=rls)
+        assert result == f'{_ORDERS_SQL} WHERE ("orders"."amount" > 100)'
 
     def test_grandchild_inherits_two_levels(self):
         """Three-level chain: grandchild receives grandparent + parent + own rules."""

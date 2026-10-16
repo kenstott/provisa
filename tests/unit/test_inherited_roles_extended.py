@@ -279,20 +279,34 @@ class TestRLSAccumulationThroughInheritance:
             'WHERE ("o"."region" = \'eu-west\') AND ("c"."active" = TRUE)'
         )
 
-    def test_combined_parent_and_child_rls_anded(self):
-        """A compound effective filter (parent's predicate AND the child's) is applied whole."""
+    def test_child_s_own_rule_replaces_its_parent_s_parent_reads_its_own(self):
+        """Child-first (REQ-1677): the child reads under its own rule alone, the parent under
+        its own; neither rule is ANDed into the other."""
+        tables = [{"id": ORDERS_TABLE_ID, "domain_id": ""}]
+        chains = {"parent": ["parent"], "child": ["child", "parent"]}
+        rules = [
+            {
+                "role_id": "parent",
+                "table_id": ORDERS_TABLE_ID,
+                "domain_id": None,
+                "filter_expr": "region = 'us-west'",
+            },
+            {
+                "role_id": "child",
+                "table_id": ORDERS_TABLE_ID,
+                "domain_id": None,
+                "filter_expr": "tier = 'premium'",
+            },
+        ]
+        resolved = resolve_table_rules(
+            materialize_rls(rules, tables, chains), tables, chains, [], {}
+        )
         ctx = _make_ctx((ORDERS_TABLE_ID, "orders", "orders"))
-        combined_filter = "region = 'us-west' AND tier = 'premium'"
-        result = governed_for_role(
-            'SELECT "id" FROM "public"."orders"',
-            ctx,
-            "child",
-            rls={ORDERS_TABLE_ID: combined_filter},
-        )
-        assert result == (
-            'SELECT "id" FROM "public"."orders" WHERE '
-            '("orders"."region" = \'us-west\' AND "orders"."tier" = \'premium\')'
-        )
+        sql = 'SELECT "id" FROM "public"."orders"'
+        child = governed_for_role(sql, ctx, "child", rls=build_rls_context(resolved, "child"))
+        parent = governed_for_role(sql, ctx, "parent", rls=build_rls_context(resolved, "parent"))
+        assert child == f'{sql} WHERE ("orders"."tier" = \'premium\')'
+        assert parent == f'{sql} WHERE ("orders"."region" = \'us-west\')'
 
     def test_rls_context_empty_when_role_has_no_rules(self):
         """A role not present in the rules list should produce an empty RLSContext."""

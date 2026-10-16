@@ -89,7 +89,7 @@ def when_trace_sql_redacted(monkeypatch, shared_data):
 
     from provisa.observability.stage_trace import trace_stage
 
-    stages = ["govern.in", "govern.rls", "govern.mask", "govern.out"]
+    stages = ["metric.expand", "govern.in", "govern.out", "transpile.trino"]
     # Use SQL with realistic literals including a fake SSN and an RLS predicate value
     sql_with_pii = (
         "SELECT ssn, name FROM customers "
