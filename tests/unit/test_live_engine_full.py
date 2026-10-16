@@ -627,6 +627,33 @@ class TestKafkaSinkOutput:
         value_arg = call_kwargs[1].get("value") or call_kwargs[0][1]
         assert json.loads(value_arg) == rows[0]
 
+    async def test_a_row_with_times_and_decimals_is_published_as_json_carries_them(self):
+        """A notices row's timestamptz (the provisioning demo) was refused by json.dumps, so
+        nothing of the table was ever published."""
+        import uuid
+        from datetime import date, datetime, timezone
+        from decimal import Decimal
+
+        sink = self._make_sink()
+        producer = self._inject_producer(sink)
+        at = datetime(2026, 10, 16, 2, 0, tzinfo=timezone.utc)
+        ident = uuid.UUID(int=7)
+        row = {"at": at, "day": date(2026, 10, 16), "price": Decimal("19.50"), "id": ident}
+        await sink.send([row])
+        sent = json.loads(producer.send.call_args.kwargs["value"])
+        assert sent == {
+            "at": "2026-10-16T02:00:00+00:00",
+            "day": "2026-10-16",
+            "price": "19.50",
+            "id": str(ident),
+        }
+
+    async def test_a_value_json_has_no_form_for_is_refused(self):
+        sink = self._make_sink()
+        self._inject_producer(sink)
+        with pytest.raises(TypeError, match="has no JSON form"):
+            await sink.send([{"blob": object()}])
+
     async def test_send_uses_key_column_when_configured(self):
         sink = self._make_sink(key_column="id")
         producer = self._inject_producer(sink)
