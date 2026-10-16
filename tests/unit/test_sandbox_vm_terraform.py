@@ -27,6 +27,7 @@ def test_the_sandbox_vm_runs_the_tier_alone_against_the_coordinator():
         'export CONFIG_DB_HOST="${local.coordinator_ip}"',
         'export PROVISA_REDIS_HOST="${local.coordinator_ip}"',
         'export PROVISA_MINIO_HOST="${local.coordinator_ip}"',
+        'export PROVISA_SANDBOX_PUBLISH="${var.sandbox_internal_ip}:8000"',
         'export PROVISA_SANDBOX_INSTANCE="${local.sandbox_instance_path}"',
         'export PROVISA_SANDBOX_IDLE_STOP_SECONDS="${var.sandbox_idle_stop_minutes * 60}"',
         "--role control-plane",

@@ -73,6 +73,10 @@ def test_the_sandbox_tier_reaches_the_control_plane_by_address_when_it_runs_alon
     )
     assert ui["depends_on"]["provisa-sandbox"]["required"] is False
     assert ui["environment"]["PROVISA_SANDBOX_INSTANCE"] == "${PROVISA_SANDBOX_INSTANCE:-}"
+    # A sandbox VM publishes the tier on its VPC address; a node running both, on loopback only.
+    assert services["provisa-sandbox"]["ports"] == [
+        "${PROVISA_SANDBOX_PUBLISH:-127.0.0.1:18000}:8000"
+    ]
     # Published on the VPC address only, as minio is: a sandbox node's tier reaches it there.
     assert services["redis"]["ports"] == [
         "${PROVISA_MINIO_BIND_IP:?the node's VPC-internal address}:6379:6379"
@@ -92,5 +96,6 @@ def test_a_control_plane_node_runs_both_unless_told_otherwise():
         "PROVISA_REDIS_HOST",
         "PROVISA_MINIO_HOST",
         "PROVISA_SANDBOX_API_URL",
+        "PROVISA_SANDBOX_PUBLISH",
     ):
         assert name in env_vars.split(), name

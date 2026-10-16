@@ -106,6 +106,8 @@ resource "google_compute_instance" "sandbox" {
       export PROVISA_MINIO_HOST="${local.coordinator_ip}"
       # Interpolated by the compose for the control profile's minio, which does not run here.
       export PROVISA_OBJECT_STORE_DIR=/var/lib/provisa-object-store
+      # The tier's port on this VM's VPC address, where the coordinator's UI server reaches it.
+      export PROVISA_SANDBOX_PUBLISH="${var.sandbox_internal_ip}:8000"
       export PROVISA_SANDBOX_INSTANCE="${local.sandbox_instance_path}"
       export PROVISA_SANDBOX_IDLE_STOP_SECONDS="${var.sandbox_idle_stop_minutes * 60}"
       ${local.sandbox_demo_stores}
