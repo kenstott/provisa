@@ -787,24 +787,59 @@ verify_engine() {
   esac
 }
 
+# The sandbox tier's own VM (terraform/gcp-saas/sandbox.tf, var.sandbox_vm), when the deployment
+# has one: the same overlay (its tree, configs and demo-stores sync) on its disk, so the tier runs
+# the code the coordinator runs. It powers itself off when no sandbox is used, and a tree pushed
+# to it only while it runs would leave it on the old one at its next start -- so a stopped VM is
+# started for the push (it stops itself again once idle).
+SANDBOX_NODE="${SANDBOX_NODE:-provisa-saas-sandbox}"
+
+deploy_sandbox_vm() {
+  local status
+  status="$(gcloud compute instances describe "$SANDBOX_NODE" --zone "$ZONE" --project "$PROJECT" \
+    --format='value(status)' 2>/dev/null)" || status=""
+  if [ -z "$status" ]; then
+    echo "== sandbox VM: none ($SANDBOX_NODE); the tier runs on $NODE"
+    return
+  fi
+  if [ "$status" != "RUNNING" ]; then
+    echo "== sandbox VM: $status; starting it for the push"
+    gcloud compute instances start "$SANDBOX_NODE" --zone "$ZONE" --project "$PROJECT" >/dev/null
+  fi
+  NODE="$SANDBOX_NODE" API_CONTAINER=compose-provisa-sandbox-1 CONTAINERS=compose-provisa-sandbox-1
+  local i
+  for i in $(seq 1 120); do
+    ssh_node "sudo docker inspect -f '{{.State.Running}}' $API_CONTAINER 2>/dev/null" 2>/dev/null \
+      | grep -q true && break
+    [ "$i" = 120 ] && { echo "sandbox VM: $API_CONTAINER never came up" >&2; exit 1; }
+    sleep 15
+  done
+  echo "== sandbox VM: $SANDBOX_NODE"
+  push_demo_stores; push_overlay
+  # What this deploy built: the api arm has no configs, the cfg arm no package.
+  [ -f "$STAGE/api.tgz" ] && push_api
+  [ -f "$STAGE/cfg.tgz" ] && push_cfg
+  restart
+}
+
 case "$TARGET" in
   ui)
     push_overlay; build_ui; push_ui; verify ;;
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    preflight_engine; push_commerce_env; preflight_commerce; build_api; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_api; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    preflight_engine; push_commerce_env; preflight_commerce; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
   all)
-    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
     preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
 esac
 echo "== deployed $TARGET"
