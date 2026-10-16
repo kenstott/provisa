@@ -15,7 +15,7 @@ and its synthetic rule. Each of those is governed by its own right, exercised on
 the table it changes:
 
 - ``visible_to`` (column grants): ``column_grant`` or ``access_config``;
-- ``unmasked_to`` and the ``mask_*`` fields (role masks): ``masking_config``;
+- ``masks`` (the column's ordered mask list, REQ-2059): ``masking_config``;
 - ``fake``, ``fake_stable``, ``synthetic_rule``: open to the table's editor; a caller saving
   without ``table_registration`` needs one of the governance rights above in the table's domain;
 - any of them on a SENSITIVE column (one carrying a sensitive tag): ``sensitive_data``.
@@ -50,21 +50,14 @@ GOVERNANCE_RIGHTS: tuple[str, ...] = (
     "masking_config",
     SENSITIVE_DATA,
 )
-_MASK_FIELDS = frozenset(
-    {"unmasked_to", "mask_type", "mask_pattern", "mask_replace", "mask_value", "mask_precision"}
-)
+_MASK_FIELDS = frozenset({"masks"})
 _FAKE_FIELDS = frozenset({"fake", "fake_stable", "synthetic_rule"})
 
 #: A column not yet stored: hidden by nothing (visible_to [] is visible to every role).
 _UNSTORED_COLUMN: dict[str, Any] = {
     "visible_to": [],
     "scope": "domain",
-    "unmasked_to": [],
-    "mask_type": None,
-    "mask_pattern": None,
-    "mask_replace": None,
-    "mask_value": None,
-    "mask_precision": None,
+    "masks": [],
     "fake": None,
     "fake_stable": False,
     "synthetic_rule": None,
@@ -255,12 +248,7 @@ async def steward_input(input_: Any) -> tuple[Any, list[str]]:
 GOVERNANCE_FIELDS = (
     "visible_to",
     "writable_by",
-    "unmasked_to",
-    "mask_type",
-    "mask_pattern",
-    "mask_replace",
-    "mask_value",
-    "mask_precision",
+    "masks",
 )
 
 

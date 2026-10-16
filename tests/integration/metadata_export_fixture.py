@@ -84,10 +84,17 @@ def governed_config() -> ProvisaConfig:
                         name="ssn",
                         data_type="text",
                         visible_to=["analyst", "admin"],
-                        mask_type="regex",
-                        mask_pattern=MASK_PATTERN,
-                        mask_replace="XXX-XX-\\3",
-                        unmasked_to=["admin"],
+                        masks=[
+                            {"to": ["admin"], "mask": None},
+                            {
+                                "to": ["*"],
+                                "mask": {
+                                    "type": "regex",
+                                    "pattern": MASK_PATTERN,
+                                    "replace": "XXX-XX-\\3",
+                                },
+                            },
+                        ],
                     ),
                     Column(name="margin", data_type="numeric", visible_to=["admin"]),
                 ],

@@ -91,8 +91,7 @@ class ColumnRule:
     physical: str
     exposed: str  # the column as the profile names it (as the org admin reads it)
     visible_to: frozenset[str]
-    unmasked_to: frozenset[str]
-    masked: bool
+    masks: tuple[dict, ...]  # REQ-2059: the column's ordered mask list
     pii: bool
     # The many-to-one relationship a parent table's column is reached through (named
     # ``<relationship>.<column>`` in the dependence measures); None for the profiled table's own.
@@ -102,8 +101,10 @@ class ColumnRule:
         return bool(self.visible_to & roles)
 
     def restricted_for(self, roles: frozenset[str]) -> bool:
-        """Masked to every one of ``roles``, or tagged pii."""
-        return self.pii or (self.masked and not (self.unmasked_to & roles))
+        """Masked to a reader holding ``roles``, or tagged pii."""
+        from provisa.security.masking import resolve
+
+        return self.pii or resolve(list(self.masks), sorted(roles)) is not None
 
 
 async def column_rules(conn: Any, state: Any, table_id: int) -> list[ColumnRule]:
@@ -129,12 +130,10 @@ async def _table_rules(
         raise ValueError(f"no compiled schema for role {PROFILE_ROLE!r}")
     tags = await column_tags(conn, table_id)
     result = await conn.execute_core(
-        select(tc.c.column_name, tc.c.visible_to, tc.c.unmasked_to, tc.c.mask_type).where(
-            tc.c.table_id == table_id
-        )
+        select(tc.c.column_name, tc.c.visible_to, tc.c.masks).where(tc.c.table_id == table_id)
     )
     rules = []
-    for name, visible_to, unmasked_to, mask_type in result.fetchall():
+    for name, visible_to, masks in result.fetchall():
         exposed = ctx.physical_to_sql.get((table_id, name))
         if exposed is None:
             continue  # the org admin cannot read it, so no profile describes it
@@ -143,8 +142,7 @@ async def _table_rules(
                 physical=name,
                 exposed=exposed if relationship is None else f"{relationship}.{exposed}",
                 visible_to=frozenset(visible_to),
-                unmasked_to=frozenset(unmasked_to),
-                masked=mask_type is not None,
+                masks=tuple(masks),
                 pii="pii" in tags.get(name, set()),
                 relationship=relationship,
             )
@@ -223,10 +221,19 @@ def _involved_filter(kind: str, rules: list[ColumnRule], role: str) -> str | Non
     return " AND ".join(conditions) if conditions else None
 
 
+def _prefill_masks(readers: list[str], restricted: set[str]) -> list[dict]:
+    """A value field's mask list (REQ-2059): unmasked to the readers it is not restricted for,
+    then NULL to everyone else."""
+    open_to = [r for r in readers if r not in restricted]
+    return ([{"to": open_to, "mask": None}] if open_to else []) + [
+        {"to": ["*"], "mask": {"type": "constant", "value": None}}
+    ]
+
+
 def prefill(kind: str, fields: list[str], rules: list[ColumnRule]) -> dict:
     """The default rules a result table of ``kind`` is registered with.
 
-    ``{"columns": [{name, visibleTo, unmaskedTo, maskType}], "rowRules": [{roleId, filter}]}``:
+    ``{"columns": [{name, visibleTo, masks}], "rowRules": [{roleId, filter}]}``:
     every field granted to the profiled table's readers; on the columns table the value fields
     masked (to NULL) for each reader with a column masked to it or tagged pii; and per reader a
     row rule keeping the rows that speak only of described columns it may see -- for the value
@@ -246,8 +253,7 @@ def prefill(kind: str, fields: list[str], rules: list[ColumnRule]) -> dict:
             {
                 "name": name,
                 "visibleTo": readers,
-                "unmaskedTo": [r for r in readers if r not in restricted_readers] if masked else [],
-                "maskType": "constant" if masked else None,
+                "masks": _prefill_masks(readers, restricted_readers) if masked else [],
             }
         )
     row_rules = []

@@ -266,12 +266,7 @@ def _trim_table(scope: CatalogScope, table: RegisteredTableType) -> RegisteredTa
         for column in table.columns:
             column.visible_to = None
             column.writable_by = None
-            column.unmasked_to = None
-            column.mask_type = None
-            column.mask_pattern = None
-            column.mask_replace = None
-            column.mask_value = None
-            column.mask_precision = None
+            column.masks = None
     return table
 
 

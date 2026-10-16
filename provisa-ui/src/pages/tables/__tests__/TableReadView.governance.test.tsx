@@ -89,12 +89,7 @@ function column(name: string, grants: Partial<TableColumn>): TableColumn {
     columnName: name,
     visibleTo: [],
     writableBy: [],
-    unmaskedTo: [],
-    maskType: null,
-    maskPattern: null,
-    maskReplace: null,
-    maskValue: null,
-    maskPrecision: null,
+    masks: [],
     alias: null,
     computedSqlAlias: name,
     computedGqlAlias: name,
@@ -132,7 +127,7 @@ function renderView(table: RegisteredTable, startEditing = vi.fn()) {
 
 describe("TableReadView with grant lists withheld (REQ-1958)", () => {
   const withheld = makeTable({
-    columns: [column("id", { visibleTo: null, writableBy: null, unmaskedTo: null })],
+    columns: [column("id", { visibleTo: null, writableBy: null, masks: null })],
   });
 
   it("says the grants are not shown, never 'all' or 'none'", () => {
@@ -158,7 +153,7 @@ describe("TableReadView with grant lists withheld (REQ-1958)", () => {
 
 describe("TableReadView with grant lists shown", () => {
   const shown = makeTable({
-    columns: [column("id", { visibleTo: ["analyst"], writableBy: [], unmaskedTo: [] })],
+    columns: [column("id", { visibleTo: ["analyst"], writableBy: [], masks: [] })],
   });
 
   it("shows them and offers the editor", () => {

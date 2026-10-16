@@ -181,8 +181,8 @@ def run(order: list[Worker], rows: list, tag: str) -> None:
         'mutation { updateTable(input: {sourceId: "sales-pg", domainId: "sales", '
         'schemaName: "public", tableName: "customers", columns: ['
         '{name: "id", visibleTo: ["org_admin", "analyst"], dataType: "integer"}, '
-        '{name: "name", visibleTo: ["org_admin", "analyst"], unmaskedTo: ["org_admin"], '
-        'maskType: "constant", maskValue: "MASKED", dataType: "varchar"}]}) '
+        '{name: "name", visibleTo: ["org_admin", "analyst"], masks: [{to: ["org_admin"]}, '
+        '{to: ["*"], mask: {type: "constant", value: "MASKED"}}], dataType: "varchar"}]}) '
         "{ success message } }"
     )
     print(f"[{tag}] updateTable(mask) -> {json.dumps(res)[:200]}")

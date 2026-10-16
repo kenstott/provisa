@@ -14,6 +14,8 @@ import { serverMessage, requestFailed } from "../i18n/serverMessage";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
+import type { MaskEntry } from "../lib/masks";
+
 export interface Profiler {
   id: string;
   cron: string;
@@ -31,8 +33,7 @@ export interface ProfilerCatalogColumn {
   dataType: string;
   description: string;
   visibleTo: string[];
-  unmaskedTo: string[];
-  maskType: string | null;
+  masks: MaskEntry[];
 }
 
 // A row rule a result table is registered with: the described columns ``roleId`` may see.

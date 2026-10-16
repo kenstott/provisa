@@ -11,6 +11,7 @@
 import type { TFunction } from "i18next";
 import { grantsLabel } from "../../lib/grants";
 import type { RegisteredTable } from "../../types/admin";
+import type { MaskEntry } from "../../lib/masks";
 
 /** Map a RegisteredTable to the full TableInput payload for updateTable. Shared by the
  * table edit form and the REQ-1318 view definition-mode editor so both send the same
@@ -189,14 +190,7 @@ export function governanceWithheld(table: { columns: { visibleTo: string[] | nul
 
 type GovernanceColumn = Pick<
   RegisteredTable["columns"][number],
-  | "visibleTo"
-  | "writableBy"
-  | "unmaskedTo"
-  | "maskType"
-  | "maskPattern"
-  | "maskReplace"
-  | "maskValue"
-  | "maskPrecision"
+  "visibleTo" | "writableBy" | "masks"
 >;
 
 /**
@@ -212,12 +206,7 @@ export function governanceInput(c: GovernanceColumn, withheld: boolean) {
   return {
     visibleTo: shownGrants(c.visibleTo),
     writableBy: shownGrants(c.writableBy),
-    unmaskedTo: shownGrants(c.unmaskedTo),
-    maskType: c.maskType || undefined,
-    maskPattern: c.maskPattern || undefined,
-    maskReplace: c.maskReplace || undefined,
-    maskValue: c.maskValue || undefined,
-    maskPrecision: c.maskPrecision || undefined,
+    masks: shownMasks(c.masks),
   };
 }
 
@@ -230,6 +219,20 @@ export function shownGrants(list: string[] | null): string[] {
     throw new Error("grant lists were withheld; the table editor is not offered without them");
   }
   return list;
+}
+
+/** A mask list the caller was shown (see :func:`shownGrants`). */
+export function shownMasks(list: MaskEntry[] | null): MaskEntry[] {
+  if (list === null) {
+    throw new Error("mask lists were withheld; the table editor is not offered without them");
+  }
+  return list;
+}
+
+/** A mask list in a few words: its entries' count, or none. */
+export function masksSummary(list: MaskEntry[] | null, t: TFunction): string {
+  const shown = shownMasks(list);
+  return shown.length === 0 ? t("maskList.none") : t("maskList.entries", { count: shown.length });
 }
 
 /** A grant list as a reader reads it, composites as "a and b" (REQ-2058). */

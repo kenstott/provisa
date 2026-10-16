@@ -13,7 +13,7 @@ import { Tip } from "../../components/Tip";
 import { TableDraftTick, TableRegionField } from "./TablePlacementFields";
 import { Fragment, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Box, Checkbox, Select, Table, Text, TextInput } from "@mantine/core";
+import { Alert, Box, Button, Checkbox, Select, Table, Text, TextInput } from "@mantine/core";
 import { GrantPicker } from "../../components/GrantPicker";
 import { ColumnPresetsEditor } from "../../components/admin/ColumnPresetsEditor";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
@@ -32,7 +32,8 @@ import { NumericSizeInputs } from "./NumericSizeInputs";
 import { fetchIrTypes } from "../../api/admin";
 import { NAMING_CONVENTIONS } from "./constants";
 import { TestDataColumns } from "./testdata/TestDataColumns";
-import { maskOptions } from "./maskOptions";
+import { MaskListEditor } from "../../components/MaskListEditor";
+import type { MaskEntry } from "../../lib/masks";
 import { DescriptionField } from "./DescriptionField";
 import { ColumnNameCell } from "./ColumnNameCell";
 import { FieldLabel } from "./FieldLabel";
@@ -44,7 +45,13 @@ import { DataQualityPanel } from "./DataQualityPanel";
 import { ProfilerPanel } from "./ProfilerPanel";
 import { useLivePolicyPreview } from "./useLivePolicyPreview";
 import { roleTtlRowError, tableTtlSignalError } from "./roleTtl";
-import { governanceWithheld, shownGrants, shownGrantsLabel } from "./helpers";
+import {
+  governanceWithheld,
+  masksSummary,
+  shownGrants,
+  shownGrantsLabel,
+  shownMasks,
+} from "./helpers";
 import {
   FormChecks,
   FormField,
@@ -103,7 +110,7 @@ interface TableEditFormProps {
   problem?: string | null;
   /** Whether anything of the table has been changed since the form opened. */
   dirty?: boolean;
-  updateEditCol: (i: number, key: string, value: string | string[] | boolean) => void;
+  updateEditCol: (i: number, key: string, value: string | string[] | boolean | MaskEntry[]) => void;
   /**
    * REQ-1944: the editor holds a hiding right but not table_registration -- only how the columns
    * are hidden (grants, masks, fakes, synthetic rules) is editable; the server refuses the rest.
@@ -147,6 +154,15 @@ export function TableEditForm({
   const { t } = useTranslation();
   const [section, setSection] = useTableSection(sectionIn, onSectionChange);
   const roleOptions = roles.map((r) => ({ id: r.id, label: r.id }));
+  // The columns whose mask list is open below their row.
+  const [masksOpen, setMasksOpen] = useState<Set<string>>(new Set());
+  const toggleMasks = (column: string) =>
+    setMasksOpen((open) => {
+      const next = new Set(open);
+      if (next.has(column)) next.delete(column);
+      else next.add(column);
+      return next;
+    });
 
   // REQ-846: canonical IR type vocabulary for the per-column Data Type override dropdown, fetched
   // from the backend (authoritative list in provisa/core/ir_types.py); fallback if the fetch fails.
@@ -204,7 +220,7 @@ export function TableEditForm({
             label: t("tableEditForm.writableByHeader"),
             value: shownGrantsLabel(c.writableBy, t),
           },
-          { label: t("tableEditForm.maskingHeader"), value: c.maskType || "" },
+          { label: t("tableEditForm.maskingHeader"), value: masksSummary(c.masks, t) },
         ]),
   ];
   // REQ-1443: a checker source's table is a results table; the source's type is the one authority.
@@ -958,82 +974,27 @@ export function TableEditForm({
                               />
                             </Table.Td>
                             <Table.Td>
-                              <Select
-                                aria-label={t("tableEditForm.maskingHeader")}
-                                data={maskOptions(t)}
-                                value={c.maskType || ""}
-                                onChange={(v) => updateEditCol(i, "maskType", v ?? "")}
-                                comboboxProps={{ withinPortal: true }}
-                                allowDeselect={false}
-                              />
+                              <Button
+                                variant="subtle"
+                                size="xs"
+                                aria-expanded={masksOpen.has(c.columnName)}
+                                onClick={() => toggleMasks(c.columnName)}
+                                data-testid={`mask-toggle-${c.columnName}`}
+                              >
+                                {masksSummary(c.masks, t)}
+                              </Button>
                             </Table.Td>
                           </>
                         )}
                       </Table.Tr>
-                      {tab === "access" && c.maskType && (
+                      {tab === "access" && masksOpen.has(c.columnName) && (
                         <Table.Tr>
-                          <Table.Td
-                            style={{
-                              paddingInlineStart: "1.5rem",
-                              color: "var(--text-muted)",
-                              fontSize: "0.75rem",
-                            }}
-                          >
-                            {t("tableEditForm.maskingTemplateLabel")}
-                          </Table.Td>
-                          {c.maskType === "regex" && (
-                            <>
-                              <Table.Td>
-                                <TextInput
-                                  aria-label={t("tableEditForm.regexPatternPlaceholder")}
-                                  value={c.maskPattern || ""}
-                                  onChange={(e) => updateEditCol(i, "maskPattern", e.target.value)}
-                                  placeholder={t("tableEditForm.regexPatternPlaceholder")}
-                                />
-                              </Table.Td>
-                              <Table.Td>
-                                <TextInput
-                                  aria-label={t("tableEditForm.regexReplacementPlaceholder")}
-                                  value={c.maskReplace || ""}
-                                  onChange={(e) => updateEditCol(i, "maskReplace", e.target.value)}
-                                  placeholder={t("tableEditForm.regexReplacementPlaceholder")}
-                                />
-                              </Table.Td>
-                            </>
-                          )}
-                          {c.maskType === "constant" && (
-                            <Table.Td colSpan={2}>
-                              <TextInput
-                                aria-label={t("tableEditForm.constantValuePlaceholder")}
-                                value={c.maskValue || ""}
-                                onChange={(e) => updateEditCol(i, "maskValue", e.target.value)}
-                                placeholder={t("tableEditForm.constantValuePlaceholder")}
-                              />
-                            </Table.Td>
-                          )}
-                          {c.maskType === "truncate" && (
-                            <Table.Td colSpan={2}>
-                              <Select
-                                aria-label={t("tableEditForm.truncatePrecisionPlaceholder")}
-                                data={[
-                                  { value: "year", label: t("tableEditForm.precisionYear") },
-                                  { value: "month", label: t("tableEditForm.precisionMonth") },
-                                  { value: "day", label: t("tableEditForm.precisionDay") },
-                                  { value: "hour", label: t("tableEditForm.precisionHour") },
-                                ]}
-                                placeholder={t("tableEditForm.truncatePrecisionPlaceholder")}
-                                value={c.maskPrecision || null}
-                                onChange={(v) => updateEditCol(i, "maskPrecision", v ?? "")}
-                                comboboxProps={{ withinPortal: true }}
-                              />
-                            </Table.Td>
-                          )}
-                          <Table.Td colSpan={2}>
-                            <GrantPicker
-                              options={roleOptions}
-                              value={shownGrants(c.unmaskedTo)}
-                              onChange={(selected) => updateEditCol(i, "unmaskedTo", selected)}
-                              label={t("tableEditForm.unmaskedToAria")}
+                          <Table.Td colSpan={4} style={{ paddingInlineStart: "1.5rem" }}>
+                            <MaskListEditor
+                              value={shownMasks(c.masks)}
+                              onChange={(next) => updateEditCol(i, "masks", next)}
+                              roleOptions={roleOptions}
+                              testId={`mask-list-${c.columnName}`}
                             />
                           </Table.Td>
                         </Table.Tr>

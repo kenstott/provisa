@@ -419,6 +419,12 @@ def _column(table_input: Any, name: str) -> Any:
     return next(c for c in table_input.columns if c.name == name)
 
 
+def _mask_to_zero() -> list:
+    from provisa.api.admin.types import MaskEntryInput, MaskSpecInput
+
+    return [MaskEntryInput(to=["*"], mask=MaskSpecInput(type="constant", value=0))]
+
+
 async def _stored(db: Database, table_id: int, column: str) -> dict:
     from provisa.core.repositories.table import load_columns
 
@@ -428,24 +434,24 @@ async def _stored(db: Database, table_id: int, column: str) -> dict:
 
 async def test_a_steward_masks_and_grants_a_column_of_its_domain_without_table_registration(plane):
     edited = await _input(plane.ids["orders"])
-    _column(edited, "amount").mask_type = "constant"
-    _column(edited, "amount").mask_value = "0"
+    _column(edited, "amount").masks = _mask_to_zero()
     _column(edited, "id").visible_to = ["sales_role"]
     _column(edited, "email").fake = "email()"  # sensitive: sensitive_data
     result = await M().update_table(_info(plane.steward), edited)
     assert result.success is True, result.message
-    assert (await _stored(plane.db, plane.ids["orders"], "amount"))["mask_type"] == "constant"
+    assert (await _stored(plane.db, plane.ids["orders"], "amount"))["masks"][0]["mask"][
+        "value"
+    ] == 0
     assert (await _stored(plane.db, plane.ids["orders"], "id"))["visible_to"] == ["sales_role"]
 
 
 async def test_a_steward_may_not_mask_another_domains_column(plane):
     edited = await _input(plane.ids["invoices"])
-    _column(edited, "amount").mask_type = "constant"
-    _column(edited, "amount").mask_value = "0"
+    _column(edited, "amount").masks = _mask_to_zero()
     result = await M().update_table(_info(plane.steward, "finance_reader"), edited)
     assert result.success is False
-    assert "amount (mask_type)" in result.message and "'finance'" in result.message
-    assert (await _stored(plane.db, plane.ids["invoices"], "amount"))["mask_type"] is None
+    assert "amount (masks)" in result.message and "'finance'" in result.message
+    assert (await _stored(plane.db, plane.ids["invoices"], "amount"))["masks"] == []
 
 
 async def test_a_steward_may_not_change_anything_but_hiding(plane):
@@ -459,8 +465,7 @@ async def test_a_stewards_save_keeps_what_its_form_leaves_unset(plane):
     # A form that omits a setting it does not govern (here the modeling role) leaves it as stored.
     edited = await _input(plane.ids["orders"])
     edited.modeling_role = None
-    _column(edited, "amount").mask_type = "constant"
-    _column(edited, "amount").mask_value = "0"
+    _column(edited, "amount").masks = _mask_to_zero()
     result = await M().update_table(_info(plane.steward), edited)
     assert result.success is True, result.message
     from provisa.core.repositories import table as table_repo
@@ -478,8 +483,7 @@ async def test_a_steward_may_not_set_what_it_does_not_govern(plane):
 
 async def test_a_table_editor_without_the_governance_rights_may_not_mask_or_grant(plane):
     edited = await _input(plane.ids["orders"])
-    _column(edited, "amount").mask_type = "constant"
-    _column(edited, "amount").mask_value = "0"
+    _column(edited, "amount").masks = _mask_to_zero()
     _column(edited, "id").visible_to = ["sales_role"]
     result = await M().update_table(_info("editor"), edited)
     assert result.success is False

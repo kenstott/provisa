@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import type { MaskEntry } from "../../lib/masks";
 import { Stack, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { FormField } from "../../components/form/FormLayout";
@@ -26,7 +27,11 @@ export function RegisterColumnsField({
 }: {
   columns: ColumnForm[];
   loadingColumns: boolean;
-  updateCol: (i: number, key: keyof ColumnForm, value: string | boolean | string[]) => void;
+  updateCol: (
+    i: number,
+    key: keyof ColumnForm,
+    value: string | boolean | string[] | MaskEntry[],
+  ) => void;
   roles: Role[];
   irTypes: string[];
   sourceType: string;

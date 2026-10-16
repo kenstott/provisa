@@ -537,6 +537,65 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
 
 
 @strawberry.type
+class MaskSpecType:  # REQ-2059: how a mask entry masks the value
+    type: str  # regex | constant | truncate
+    pattern: str | None = None
+    replace: str | None = None
+    value: JsonScalar | None = None  # a constant's value, as typed (a number stays a number)
+    precision: str | None = None
+
+
+@strawberry.type
+class MaskEntryType:  # REQ-2059: one entry of a column's ordered mask list
+    to: list[str]  # grant entries, composites included; "*" is everyone
+    mask: MaskSpecType | None = None  # None: the readers it is for read the column unmasked
+
+
+@strawberry.input
+class MaskSpecInput:  # REQ-2059
+    type: str
+    pattern: str | None = None
+    replace: str | None = None
+    value: JsonScalar | None = None
+    precision: str | None = None
+
+
+@strawberry.input
+class MaskEntryInput:  # REQ-2059
+    to: list[str]
+    mask: MaskSpecInput | None = None
+
+
+def mask_entry_types(masks: list[dict]) -> list[MaskEntryType]:
+    """A stored mask list (REQ-2059) as the admin API answers it."""
+    return [
+        MaskEntryType(
+            to=list(e["to"]), mask=None if e["mask"] is None else MaskSpecType(**e["mask"])
+        )
+        for e in masks
+    ]
+
+
+def mask_entries_of(masks: list[MaskEntryInput]) -> list[dict]:
+    """A mask list as sent (REQ-2059), as the model takes it."""
+    return [
+        {
+            "to": list(e.to),
+            "mask": None
+            if e.mask is None
+            else {
+                "type": e.mask.type,
+                "pattern": e.mask.pattern,
+                "replace": e.mask.replace,
+                "value": e.mask.value,
+                "precision": e.mask.precision,
+            },
+        }
+        for e in masks
+    ]
+
+
+@strawberry.type
 class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     id: int
     column_name: str
@@ -544,12 +603,7 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     # REQ-1958): null is "not shown to you", an empty list is "granted to nobody / everybody".
     visible_to: list[str] | None
     writable_by: list[str] | None
-    unmasked_to: list[str] | None
-    mask_type: str | None
-    mask_pattern: str | None
-    mask_replace: str | None
-    mask_value: str | None
-    mask_precision: str | None
+    masks: list[MaskEntryType] | None  # REQ-2059: the ordered mask list
     alias: str | None
     computed_sql_alias: str
     computed_gql_alias: str  # REQ-1634: this column's field name in the compiled GraphQL schema
@@ -948,12 +1002,7 @@ class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
     name: str
     visible_to: list[str]
     writable_by: list[str] = strawberry.field(default_factory=list)
-    unmasked_to: list[str] = strawberry.field(default_factory=list)
-    mask_type: str | None = None
-    mask_pattern: str | None = None
-    mask_replace: str | None = None
-    mask_value: str | None = None
-    mask_precision: str | None = None
+    masks: list[MaskEntryInput] = strawberry.field(default_factory=list)  # REQ-2059
     alias: str | None = None
     description: str | None = None
     # Canonical IR data-type (REQ-846) a steward assigned during schema discovery. Authoritative for

@@ -35,19 +35,16 @@ async def _get_pool() -> "Database":
 
 
 def _build_column_models(columns: list) -> list:
+    from provisa.api.admin.types import mask_entries_of
     from provisa.core.models import Column as ColumnModel
+    from provisa.core.models import MaskEntry
 
     return [
         ColumnModel(
             name=c.name,
             visible_to=c.visible_to,
             writable_by=c.writable_by,
-            unmasked_to=c.unmasked_to,
-            mask_type=c.mask_type,
-            mask_pattern=c.mask_pattern,
-            mask_replace=c.mask_replace,
-            mask_value=c.mask_value,
-            mask_precision=c.mask_precision,
+            masks=[MaskEntry.model_validate(e) for e in mask_entries_of(c.masks)],
             alias=c.alias,
             description=c.description,
             data_type=getattr(c, "data_type", None),

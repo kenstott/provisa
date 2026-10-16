@@ -90,18 +90,26 @@ def contract_columns(action: dict) -> list[dict] | None:
     ``return_schema`` is a JSON-schema array of objects, that object's properties are the contract
     (the demo functions declare their datasets that way). A webhook's is ``inline_return_type``.
     """
+    from provisa.core.models import DatasetColumn, InlineType
+
+    # Each column as its model reads it, so its governance fields are all there (a column posted
+    # with no mask list has an empty one, REQ-2059).
     cols = _as_list(action.get("output_columns"))
     if cols:
-        return [dict(c) for c in cols]
+        return [DatasetColumn(**c).model_dump() for c in cols]
     inline = _as_list(action.get("inline_return_type"))
     if inline:
-        return [dict(c) for c in inline]
+        return [InlineType(**c).model_dump() for c in inline]
     schema = _as_dict(action.get("return_schema"))
     items = schema.get("items") if schema.get("type") == "array" else None
     props = (items or {}).get("properties") if isinstance(items, dict) else None
     if props:
         return [
-            {"name": name, "type": _JSON_TO_IR.get((spec or {}).get("type", "string"), "varchar")}
+            {
+                "name": name,
+                "type": _JSON_TO_IR.get((spec or {}).get("type", "string"), "varchar"),
+                "masks": [],  # a JSON schema declares no masks
+            }
             for name, spec in props.items()
         ]
     return None
@@ -141,7 +149,8 @@ def _governance_context(
 ) -> tuple[Any, ActionEnforcement]:
     from provisa.compiler.stage2 import GovernanceContext, resolve_row_cap
     from provisa.security.inheritance import holds_grant
-    from provisa.security.masking import MaskingRule, MaskType, validate_masking_rule
+    from provisa.security.masking import resolve, validate_masking_rule
+    from provisa.security.meta_role import reader_chain
 
     name = action["name"]
     tid = synthetic_table_id(name)
@@ -166,18 +175,12 @@ def _governance_context(
             enforcement.columns_excluded.append(c["name"])
     gov.visible_columns[tid] = frozenset(visible)
 
+    # REQ-2059: each column through the first entry of its mask list the reader's chain holds.
+    reader = reader_chain(state, role_id)
     for c in cols:
-        if not c.get("mask_type"):
+        rule = resolve(c["masks"], reader)
+        if rule is None:
             continue
-        if holds_grant(role_id, c.get("unmasked_to") or [], chains):
-            continue
-        rule = MaskingRule(
-            mask_type=MaskType(c["mask_type"]),
-            pattern=c.get("mask_pattern"),
-            replace=c.get("mask_replace"),
-            value=c.get("mask_value"),
-            precision=c.get("mask_precision"),
-        )
         dtype = c.get("type") or "varchar"
         validate_masking_rule(rule, c["name"], dtype, True)
         gov.masking_rules[(tid, c["name"])] = (rule, dtype)

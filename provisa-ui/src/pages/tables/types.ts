@@ -8,16 +8,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import type { MaskEntry } from "../../lib/masks";
+
 export interface ColumnForm {
   name: string;
   visibleTo: string[];
   writableBy: string[];
-  unmaskedTo: string;
-  maskType: string;
-  maskPattern: string;
-  maskReplace: string;
-  maskValue: string;
-  maskPrecision: string;
+  masks: MaskEntry[];
   alias: string;
   description: string;
   selected: boolean;
@@ -46,12 +43,7 @@ export function blankColumn(name: string, dataType: string, visibleTo: string[])
     name,
     visibleTo,
     writableBy: [],
-    unmaskedTo: "",
-    maskType: "",
-    maskPattern: "",
-    maskReplace: "",
-    maskValue: "",
-    maskPrecision: "",
+    masks: [],
     alias: "",
     description: "",
     selected: true,

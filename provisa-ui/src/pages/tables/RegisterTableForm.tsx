@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import type { MaskEntry } from "../../lib/masks";
 import { NEVER_EXPIRES, cacheTtlHint } from "../../components/form/cacheTtl";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { UntypedColumns } from "./UntypedColumns";
@@ -387,12 +388,7 @@ export function RegisterTableForm({
           name: c.name,
           visibleTo: c.visibleTo,
           writableBy: [],
-          unmaskedTo: c.unmaskedTo.join(", "),
-          maskType: c.maskType ?? "",
-          maskPattern: "",
-          maskReplace: "",
-          maskValue: "",
-          maskPrecision: "",
+          masks: c.masks,
           alias: "",
           description: c.description,
           selected: true,
@@ -419,12 +415,7 @@ export function RegisterTableForm({
             name: c.name,
             visibleTo: roles.map((r) => r.id),
             writableBy: [],
-            unmaskedTo: "",
-            maskType: "",
-            maskPattern: "",
-            maskReplace: "",
-            maskValue: "",
-            maskPrecision: "",
+            masks: [],
             alias: snake !== c.name ? snake : "",
             description: c.comment || "",
             // REQ-1983: a Qdrant collection's vectors are offered, left unselected.
@@ -502,7 +493,11 @@ export function RegisterTableForm({
     }
   };
 
-  const updateCol = (i: number, key: keyof ColumnForm, value: string | boolean | string[]) => {
+  const updateCol = (
+    i: number,
+    key: keyof ColumnForm,
+    value: string | boolean | string[] | MaskEntry[],
+  ) => {
     const next = [...columns];
     next[i] = { ...next[i], [key]: value };
     setColumns(next);
@@ -524,12 +519,7 @@ export function RegisterTableForm({
         dataType: c.dataType,
         visibleTo: c.visibleTo,
         writableBy: c.writableBy,
-        unmaskedTo: c.unmaskedTo.trim() ? c.unmaskedTo.split(",").map((s) => s.trim()) : [],
-        maskType: c.maskType || undefined,
-        maskPattern: c.maskPattern || undefined,
-        maskReplace: c.maskReplace || undefined,
-        maskValue: c.maskValue || undefined,
-        maskPrecision: c.maskPrecision || undefined,
+        masks: c.masks,
         alias: c.alias || undefined,
         description: c.description || undefined,
         nativeFilterType: c.nativeFilterType || undefined,
@@ -705,7 +695,7 @@ export function RegisterTableForm({
             ...DQ_PLACEHOLDER_COLUMN,
             visibleTo: dqVisibleTo,
             writableBy: [],
-            unmaskedTo: [],
+            masks: [],
             scope: "domain",
           },
         ],

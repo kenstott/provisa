@@ -45,7 +45,7 @@ def test_entries_are_any_of_and_a_plain_entry_keeps_its_meaning():
 
 
 def test_expansion_reaches_a_role_whose_chain_holds_a_composite():
-    col = {"column_name": "email", "visible_to": ["developer+marketing"], "unmasked_to": []}
+    col = {"column_name": "email", "visible_to": ["developer+marketing"]}
     chains = {**CHAINS, "meta:m": ["meta:m", "analyst", "developer", "marketing"]}
     expand_grants([col], chains)
     assert col["visible_to"] == ["developer+marketing", "meta:m"]
@@ -65,7 +65,6 @@ def test_a_meta_role_holds_its_members_ancestors_and_its_pseudo_roles(monkeypatc
         "column_name": "sender",
         "visible_to": ["developer+region__eu"],
         "writable_by": [],
-        "unmasked_to": ["developer+region__eu"],
     }
     state = SimpleNamespace(
         roles={"analyst": {"id": "analyst", "capabilities": [], "domain_access": ["*"]}},
@@ -77,6 +76,18 @@ def test_a_meta_role_holds_its_members_ancestors_and_its_pseudo_roles(monkeypatc
             "webhooks": [],
         },
         masking_rules={(1, "analyst"): {"sender": SimpleNamespace(mask_type="constant")}},
+        # REQ-2059: sender is unmasked to developer+region__eu, masked to everyone else.
+        masked_columns=[
+            (
+                1,
+                "sender",
+                [
+                    {"to": ["developer+region__eu"], "mask": None},
+                    {"to": ["*"], "mask": {"type": "constant", "value": None}},
+                ],
+                "varchar",
+            )
+        ],
         meta_roles={},
         meta_qualifiers={},
     )
@@ -86,7 +97,7 @@ def test_a_meta_role_holds_its_members_ancestors_and_its_pseudo_roles(monkeypatc
     meta_id = "meta:analyst+region+region__eu"
     meta_role._build(state, meta_id, ["analyst"], ("region", "region__eu"))
     assert meta_id in col["visible_to"]
-    # Its mask is lifted: the composite in unmasked_to names everything it holds.
+    # Its mask list's composite entry names everything it holds: unmasked.
     assert (1, meta_id) not in state.masking_rules
 
 

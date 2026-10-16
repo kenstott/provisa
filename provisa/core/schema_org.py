@@ -349,12 +349,7 @@ table_columns = Table(
     Column("path", Text),
     Column("data_type", Text),
     Column("writable_by", JSON, nullable=False, default=list, server_default="[]"),
-    Column("unmasked_to", JSON, nullable=False, default=list, server_default="[]"),
-    Column("mask_type", Text),
-    Column("mask_pattern", Text),
-    Column("mask_replace", Text),
-    Column("mask_value", Text),
-    Column("mask_precision", Text),
+    Column("masks", JSON, nullable=False, default=list, server_default="[]"),  # REQ-2059
     Column("is_primary_key", Boolean, nullable=False, server_default=false()),
     Column("native_filter_type", Text),
     # Whether the parameter is required by its source; NULL where it is not recorded.
@@ -386,10 +381,6 @@ table_columns = Table(
     Column("encrypted", Boolean, nullable=False, server_default=false()),  # REQ-1919
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),
-    CheckConstraint(
-        "mask_type IN ('regex', 'constant', 'truncate')",
-        name="table_columns_mask_type_check",
-    ),
 )
 
 relationships = Table(

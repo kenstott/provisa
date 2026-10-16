@@ -27,12 +27,7 @@ const column = (name: string, over: Partial<ColumnForm> = {}): ColumnForm => ({
   isPrimaryKey: false,
   visibleTo: ["analyst"],
   writableBy: [],
-  maskType: "",
-  maskPattern: "",
-  maskReplace: "",
-  maskValue: "",
-  maskPrecision: "",
-  unmaskedTo: "",
+  masks: [],
   alias: "",
   description: "",
   scope: "domain",
@@ -142,7 +137,7 @@ describe("the column editor's tabs", () => {
             dataType: "text",
             isPrimaryKey: true,
             visibleTo: ["analyst", "steward"],
-            maskType: "constant",
+            masks: [{ to: ["*"], mask: { type: "constant", value: null } }],
           }),
         ]}
       />,
@@ -160,7 +155,7 @@ describe("the column editor's tabs", () => {
     expect(line("PK")).toHaveTextContent("✓");
     expect(line("Scope")).toHaveTextContent("domain");
     expect(line("Visible To (Read)")).toHaveTextContent("analyst, steward");
-    expect(line("Masking")).toHaveTextContent("constant");
+    expect(line("Masking")).toHaveTextContent("1 entry");
     // An attribute with no value is left out.
     expect(within(card).queryByText("Writable By (R/W)")).toBeNull();
   });

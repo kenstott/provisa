@@ -50,9 +50,10 @@ def server():
             "name": "email",
             "data_type": "varchar",
             "visible_to": _ROLES,
-            "mask_type": "constant",
-            "mask_value": "***",
-            "unmasked_to": ["org_admin"],
+            "masks": [
+                {"to": ["org_admin"], "mask": None},
+                {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+            ],
         },
     ]
     reads = ["query_development", "full_results"]

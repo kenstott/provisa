@@ -188,12 +188,7 @@ async def test_a_column_of_a_table_being_registered_is_checked_against_the_defau
     column = types.SimpleNamespace(
         name="note",
         visible_to=[],
-        unmasked_to=[],
-        mask_type=None,
-        mask_pattern=None,
-        mask_replace=None,
-        mask_value=None,
-        mask_precision=None,
+        masks=[],
         fake=None,
         fake_stable=False,
         synthetic_rule=None,
@@ -244,12 +239,7 @@ def test_a_configuration_apply_names_any_scope_change_on_a_sensitive_column():
 
     fields = {
         "visible_to": [],
-        "unmasked_to": [],
-        "mask_type": None,
-        "mask_pattern": None,
-        "mask_replace": None,
-        "mask_value": None,
-        "mask_precision": None,
+        "masks": [],
         "fake": None,
         "fake_stable": False,
         "synthetic_rule": None,

@@ -30,6 +30,7 @@ function Harness({ initial }: { initial: Partial<FormState> }) {
       availableFunctions={[]}
       loadingFunctions={false}
       dataProducts={[]}
+      roleOptions={[]}
     />
   );
 }
@@ -165,7 +166,8 @@ describe("CommandFormFields — response governance (REQ-1679)", () => {
       />,
     );
     expect(screen.getByTestId("output-column-governance-0-visible-to")).toBeInTheDocument();
-    expect(screen.getByTestId("output-column-governance-0-mask-type")).toBeInTheDocument();
+    // REQ-2059: the column's mask list, empty until a first entry is added.
+    expect(screen.getByTestId("output-column-governance-0-masks-start")).toBeInTheDocument();
   });
 
   it("offers the same controls on each inline return field of a webhook", () => {
@@ -200,6 +202,7 @@ function RemoteHarness({ initial }: { initial: Partial<FormState> }) {
       availableFunctions={[{ name: "createIssue", comment: "Creates a new issue." }]}
       loadingFunctions={false}
       dataProducts={[]}
+      roleOptions={[]}
     />
   );
 }
@@ -288,6 +291,7 @@ describe("CommandFormFields — a database source's routines on offer (REQ-887)"
             availableFunctions={[{ name: "get_customers_by_region", comment: "query" }]}
             loadingFunctions={false}
             dataProducts={[]}
+            roleOptions={[]}
           />
           <output data-testid="picked">{form.functionName}</output>
         </>

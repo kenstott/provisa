@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import type { MaskEntry } from "../../../lib/masks";
 import { ActionIcon, Badge, Button, Checkbox, Group, Table, Text, TextInput } from "@mantine/core";
 import { SlidersHorizontal, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -16,7 +17,7 @@ import { fetchFakeCatalog, proposeFakes, type FakeCatalog } from "../../../api/f
 import type { RegisteredTable } from "../../../types/admin";
 import { ColumnFakeDialog } from "./ColumnFakeDialog";
 
-type Update = (i: number, key: string, value: string | string[] | boolean) => void;
+type Update = (i: number, key: string, value: string | string[] | boolean | MaskEntry[]) => void;
 
 // REQ-1494: per column its fake (blank shows the real value), its synthetic rule, whether the fake
 // is stable, and a marker on a pii column with no fake. A simple fake is typed in its cell; the

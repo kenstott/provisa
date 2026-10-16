@@ -261,7 +261,7 @@ views:
       m.personal_recipients, e.name, e.desk, r.reviewer
   columns:
   - {name: message_id, data_type: varchar, description: The message, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: deal_id, data_type: varchar, description: 'The deal it was matched to; withheld from a first-level reviewer', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben], unmasked_to: [org_admin, control_room], mask_type: constant, mask_value: withheld}
+  - {name: deal_id, data_type: varchar, description: 'The deal it was matched to; withheld from a first-level reviewer', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben], masks: [{to: [org_admin, control_room]}, {to: ['*'], mask: {type: constant, value: withheld}}]}
   - {name: flagged, data_type: varchar, description: 'The flagged entity: the company the deal is about, or customer data', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
   - {name: sender, data_type: varchar, description: Who sent it, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
   - {name: desk, data_type: varchar, description: The sender''s desk, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}

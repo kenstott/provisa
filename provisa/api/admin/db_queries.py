@@ -107,23 +107,6 @@ def derive_cypher_alias(source_column: str, cardinality: str) -> str:  # REQ-351
     return entity
 
 
-def parse_mask_value(raw: str | None) -> int | float | str | None:
-    """Parse a stored mask value string back to a Python value."""
-    if raw is None:
-        return None
-    if raw == "None":
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        pass
-    try:
-        return float(raw)
-    except ValueError:
-        pass
-    return raw
-
-
 def _as_list(v: Any) -> list:
     """A JSON list column. On PostgreSQL the jsonb codec deserializes it to a list; on a SQLite
     control plane (no codec) a raw-SQL read returns the JSON as TEXT, so decode a string here —
@@ -167,8 +150,8 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
     for row in rows:
         table = dict(row)
         col_rows = await conn.fetch(
-            "SELECT column_name, data_type, visible_to, writable_by, unmasked_to, "
-            "mask_type, alias, description, path, is_primary_key, object_fields, native_filter_type, "
+            "SELECT column_name, data_type, visible_to, writable_by, masks, "
+            "alias, description, path, is_primary_key, object_fields, native_filter_type, "
             "native_filter_required, required_by_steward, "  # REQ-1986
             "epoch_unit, fake, fake_stable, fake_stable_version, synthetic_rule, "  # REQ-1908, REQ-1494
             "array_depth, element_type, native_type, native_platform, "  # REQ-1965
@@ -191,8 +174,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
                 "data_type": r.get("data_type"),
                 "visible_to": _as_list(r["visible_to"]),
                 "writable_by": _as_list(r.get("writable_by")),
-                "unmasked_to": _as_list(r.get("unmasked_to")),
-                "mask_type": r.get("mask_type"),
+                "masks": _as_list(r["masks"]),  # REQ-2059
                 "alias": r["alias"],
                 "description": r["description"],
                 "path": r["path"],

@@ -14,6 +14,7 @@ import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
+import type { MaskEntry } from "../lib/masks";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -2501,4 +2502,25 @@ export async function generateOrgFilesKey(): Promise<string> {
   const resp = await fetch(`${API_BASE_RAW}/admin/org-files/generate-key`, { method: "POST" });
   if (!resp.ok) throw httpError("Key generation", resp.status);
   return ((await resp.json()) as { key: string }).key;
+}
+
+export interface MasksReport {
+  unreachable: { entry: number; covered_by: number | null }[];
+  unlisted_unmasked: boolean;
+  applies: number | null;
+}
+
+/** The server's check of a mask list as edited: unreachable entries, readers left unmasked, and
+ *  with ``roles`` the entry a reader acting as them reads the column through. */
+export async function checkMasks(masks: MaskEntry[], roles?: string[]): Promise<MasksReport> {
+  const res = await fetch(`${API_BASE}/admin/masks/check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ masks, roles: roles ?? null }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(data, requestFailed("check masks", res.status)));
+  }
+  return res.json();
 }

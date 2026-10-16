@@ -18,13 +18,22 @@ from provisa.profiler.schema import field_names
 
 _ALL = frozenset({"org_admin", "analyst", "auditor"})
 RULES = [
-    ColumnRule("id", "id", _ALL, frozenset(), masked=False, pii=False),
+    ColumnRule("id", "id", _ALL, (), pii=False),
     # masked to everyone but the auditor and the org admin
-    ColumnRule("email", "email", _ALL, frozenset({"auditor", "org_admin"}), masked=True, pii=False),
+    ColumnRule(
+        "email",
+        "email",
+        _ALL,
+        (
+            {"to": ["auditor", "org_admin"], "mask": None},
+            {"to": ["*"], "mask": {"type": "constant", "value": None}},
+        ),
+        pii=False,
+    ),
     # tagged pii, so restricted whoever sees it unmasked
-    ColumnRule("ssn", "ssn", _ALL, frozenset(), masked=False, pii=True),
+    ColumnRule("ssn", "ssn", _ALL, (), pii=True),
     # not visible to the analyst
-    ColumnRule("salary", "salary", frozenset({"org_admin", "auditor"}), frozenset(), False, False),
+    ColumnRule("salary", "salary", frozenset({"org_admin", "auditor"}), (), False),
 ]
 
 
@@ -93,9 +102,7 @@ def test_one_of_a_viewers_roles_unmasked_is_enough():
 
 def test_a_value_tables_default_rules_follow_each_described_column():
     defaults = prefill("top_values", list(field_names("top_values")), RULES)
-    assert all(
-        c["visibleTo"] == sorted(_ALL) and c["maskType"] is None for c in defaults["columns"]
-    )
+    assert all(c["visibleTo"] == sorted(_ALL) and c["masks"] == [] for c in defaults["columns"])
     rules = {r["roleId"]: r["filter"] for r in defaults["rowRules"]}
     assert rules == {
         "analyst": "column_name IN ('id')",
@@ -108,8 +115,8 @@ def test_the_columns_tables_value_fields_are_masked_to_readers_with_a_restricted
     defaults = prefill("columns", list(field_names("columns")), RULES)
     by = {c["name"]: c for c in defaults["columns"]}
     # Every reader sees a pii column, so the value fields are masked (to NULL) for all of them.
-    assert by["min_value"]["maskType"] == "constant" and by["min_value"]["unmaskedTo"] == []
-    assert by["null_share"]["maskType"] is None
+    assert by["min_value"]["masks"] == [{"to": ["*"], "mask": {"type": "constant", "value": None}}]
+    assert by["null_share"]["masks"] == []
     rules = {r["roleId"]: r["filter"] for r in defaults["rowRules"]}
     # The analyst does not see salary, so its description is withheld from the analyst.
     assert rules == {"analyst": "column_name IN ('id', 'email', 'ssn')"}
@@ -119,7 +126,7 @@ def test_a_reader_with_no_restricted_column_sees_the_columns_values():
     rules = [r for r in RULES if r.physical in ("id", "email")]
     defaults = prefill("columns", list(field_names("columns")), rules)
     by = {c["name"]: c for c in defaults["columns"]}
-    assert by["mean"]["unmaskedTo"] == ["auditor", "org_admin"]
+    assert by["mean"]["masks"][0] == {"to": ["auditor", "org_admin"], "mask": None}
 
 
 def test_table_level_kinds_take_no_row_rule():
@@ -184,8 +191,7 @@ _TIER = ColumnRule(
     "tier",
     "customer.tier",
     frozenset({"org_admin", "analyst", "outsider"}),
-    frozenset({"org_admin", "analyst", "outsider"}),
-    masked=False,
+    (),
     pii=False,
     relationship="customer",
 )

@@ -10,6 +10,8 @@
 
 /** Types matching provisa/api/admin/types.py */
 
+import type { MaskEntry } from "../lib/masks";
+
 // REQ-824: source-level CDC transport (Debezium/Kafka), entered once per source.
 export interface SourceCdcConfig {
   bootstrapServers: string;
@@ -188,12 +190,8 @@ export interface TableColumn {
   // view_governance — "not shown to you", which is not the same as an empty list.
   visibleTo: string[] | null;
   writableBy: string[] | null;
-  unmaskedTo: string[] | null;
-  maskType: string | null;
-  maskPattern: string | null;
-  maskReplace: string | null;
-  maskValue: string | null;
-  maskPrecision: string | null;
+  // The ordered mask list (null when not shown to the caller): the first entry a reader holds applies.
+  masks: MaskEntry[] | null;
   alias: string | null;
   computedSqlAlias: string;
   computedGqlAlias: string;

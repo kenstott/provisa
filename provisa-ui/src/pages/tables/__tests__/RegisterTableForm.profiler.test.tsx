@@ -60,16 +60,17 @@ const CATALOG = [
             dataType: "varchar",
             description: "Run.",
             visibleTo: ["analyst", "org_admin"],
-            unmaskedTo: [],
-            maskType: null,
+            masks: [],
           },
           {
             name: "value",
             dataType: "varchar",
             description: "Value.",
             visibleTo: ["analyst", "org_admin"],
-            unmaskedTo: ["org_admin"],
-            maskType: "constant",
+            masks: [
+              { to: ["org_admin"], mask: null },
+              { to: ["*"], mask: { type: "constant", value: null } },
+            ],
           },
         ],
         rowRules: [{ roleId: "analyst", filter: "column_name IN ('id')" }],
@@ -130,8 +131,10 @@ describe("RegisterTableForm on a Data Profiler source (REQ-1934)", () => {
     const value = input.columns.find((c: { name: string }) => c.name === "value");
     expect(value).toMatchObject({
       visibleTo: ["analyst", "org_admin"],
-      unmaskedTo: ["org_admin"],
-      maskType: "constant",
+      masks: [
+        { to: ["org_admin"], mask: null },
+        { to: ["*"], mask: { type: "constant", value: null } },
+      ],
     });
     expect(upsertRlsRule).toHaveBeenCalledWith({
       tableId: TOP,

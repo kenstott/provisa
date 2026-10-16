@@ -36,12 +36,7 @@ from provisa.security.sensitive import hiding_changes, system_sensitive_tag_ids
 _STORED = {
     "visible_to": ["analyst"],
     "scope": "domain",  # read with the grant list: who is served the column (REQ-1959)
-    "unmasked_to": [],
-    "mask_type": None,
-    "mask_pattern": None,
-    "mask_replace": None,
-    "mask_value": None,
-    "mask_precision": None,
+    "masks": [],
     "fake": None,
     "fake_stable": False,
     "synthetic_rule": None,
@@ -137,10 +132,15 @@ async def _refusal(model: Database, role_id: str, table: SimpleNamespace) -> str
 
 async def test_a_caller_without_the_right_cannot_change_a_sensitive_columns_hiding(model):
     refused = await _refusal(
-        model, "editor", _table(_col("email", fake="email()"), _col("deal", mask_type="constant"))
+        model,
+        "editor",
+        _table(
+            _col("email", fake="email()"),
+            _col("deal", masks=[{"to": ["*"], "mask": {"type": "constant"}}]),
+        ),
     )
     assert refused is not None and "sensitive_data" in refused
-    assert "email (fake)" in refused and "deal (mask_type)" in refused
+    assert "email (fake)" in refused and "deal (masks)" in refused
 
 
 async def test_a_column_that_is_not_sensitive_is_open_to_a_table_editor(model):

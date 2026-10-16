@@ -856,6 +856,40 @@ class NamingConfig(BaseModel):  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-415, R
         return self
 
 
+class Mask(BaseModel):  # REQ-038, REQ-040, REQ-2059
+    """How an entry of a column's mask list masks the value: a regex rewrite (pattern, replace), a
+    constant (value) or a truncation (precision)."""
+
+    type: str
+    pattern: str | None = None
+    replace: str | None = None
+    value: int | float | str | None = None
+    precision: str | None = None
+
+    @model_validator(mode="after")
+    def _a_mask_type(self) -> "Mask":
+        if self.type == "fake":
+            # REQ-1942: a fake is the column's own declaration (``fake``), read in place of the
+            # column's values in a Test (fake) environment, by every role -- never a role mask.
+            raise ValueError(
+                "a fake is not a role mask. Declare it as the column's fake, and read it in a "
+                "Test (fake) environment"
+            )
+        if self.type not in ("regex", "constant", "truncate"):
+            raise ValueError(f"mask type {self.type!r} is not one of regex, constant, truncate")
+        return self
+
+
+class MaskEntry(BaseModel):  # REQ-2059
+    """One entry of a column's ordered mask list: the readers it is for (grant entries, as
+    ``visible_to`` takes them, composites included; ``"*"`` is everyone) and the mask they read
+    the column through, or none (``mask`` None: unmasked). A reader reads the column through the
+    first entry it holds; a reader holding none reads it unmasked."""
+
+    to: list[str]
+    mask: Mask | None = None
+
+
 class ObjectField(BaseModel):
     name: str
     type: str = "string"  # provisa scalar type: string, integer, number, boolean, object
@@ -874,12 +908,7 @@ class Column(
     )
     visible_to: list[str]
     writable_by: list[str] = []  # roles allowed to mutate this column
-    unmasked_to: list[str] = []  # roles that see unmasked data
-    mask_type: str | None = None  # regex, constant, truncate (REQ-1942: a fake is not a mask)
-    mask_pattern: str | None = None  # regex pattern
-    mask_replace: str | None = None  # regex replacement
-    mask_value: str | None = None  # constant value
-    mask_precision: str | None = None  # truncate precision (year, month, day, etc.)
+    masks: list[MaskEntry] = []  # REQ-2059: the ordered mask list, first entry held applies
     alias: str | None = None  # GraphQL field name override
     gql_selection: str | None = (
         None  # literal GraphQL selection override (e.g. "employee_id: employee { id }")
@@ -918,7 +947,7 @@ class Column(
     def _embedding_is_not_masked(self) -> "Column":  # REQ-652
         # A vector cannot be partly masked and still be compared; an embedding column is served
         # whole or not at all (visibility, scope, row filters).
-        if self.embedding and self.mask_type is not None:
+        if self.embedding and any(e.mask is not None for e in self.masks):
             raise ValueError(
                 f"column {self.name!r}: an embedding column cannot be masked; restrict who sees "
                 "it with visible_to or its scope instead"
@@ -995,13 +1024,6 @@ class Column(
 
     @model_validator(mode="after")
     def _fake_is_a_kind(self) -> "Column":
-        if self.mask_type == "fake":
-            # REQ-1942: a fake is the column's own declaration (``fake``), read in place of the
-            # column's values in a Test (fake) environment, by every role -- never a role mask.
-            raise ValueError(
-                f"column {self.name}: a fake is not a role mask. Declare it as the column's fake, "
-                "and read it in a Test (fake) environment"
-            )
         from provisa.fakes.kinds import FakeRefused, parse
 
         try:
@@ -1749,12 +1771,7 @@ class DatasetColumn(BaseModel):  # REQ-1159
     # REQ-1679: per-column governance of the action's response, the shape a table column carries.
     # None = no grant list declared = visible (the contract is the action's public shape).
     visible_to: list[str] | None = None
-    unmasked_to: list[str] = Field(default_factory=list)
-    mask_type: str | None = None
-    mask_pattern: str | None = None
-    mask_replace: str | None = None
-    mask_value: int | float | str | None = None
-    mask_precision: str | None = None
+    masks: list[MaskEntry] = Field(default_factory=list)  # REQ-2059, as a table column's
 
 
 class FunctionArgument(BaseModel):
@@ -1781,12 +1798,7 @@ class InlineType(BaseModel):
     type: str  # GraphQL scalar type name
     # REQ-1679: per-column governance of the webhook's response — see DatasetColumn.
     visible_to: list[str] | None = None
-    unmasked_to: list[str] = Field(default_factory=list)
-    mask_type: str | None = None
-    mask_pattern: str | None = None
-    mask_replace: str | None = None
-    mask_value: int | float | str | None = None
-    mask_precision: str | None = None
+    masks: list[MaskEntry] = Field(default_factory=list)  # REQ-2059, as a table column's
 
 
 class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208

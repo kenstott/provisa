@@ -42,6 +42,7 @@ from provisa.api.admin.types import (
     RoleTtlType,
     UniqueConstraintType,
     TableColumnType,
+    mask_entry_types,
 )
 from provisa.compiler.aggregate_gen import (
     _classify_columns,
@@ -307,12 +308,7 @@ async def _fetch_table_with_columns(
             column_name=r["column_name"],
             visible_to=list(r["visible_to"]),
             writable_by=list(r.get("writable_by") or []),
-            unmasked_to=list(r.get("unmasked_to") or []),
-            mask_type=r.get("mask_type"),
-            mask_pattern=r.get("mask_pattern"),
-            mask_replace=r.get("mask_replace"),
-            mask_value=r.get("mask_value"),
-            mask_precision=r.get("mask_precision"),
+            masks=mask_entry_types(r["masks"]),
             alias=r.get("alias"),
             computed_sql_alias=r.get("alias") or apply_sql_name(r["column_name"]),
             computed_gql_alias=r.get("alias")

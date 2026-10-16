@@ -50,9 +50,10 @@ def server():
             "data_type": "varchar",
             "visible_to": _ROLES,
             "writable_by": ["org_admin"],
-            "mask_type": "constant",
-            "mask_value": "***",
-            "unmasked_to": ["org_admin"],
+            "masks": [
+                {"to": ["org_admin"], "mask": None},
+                {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+            ],
         },
     ]
     boot = WorkerBoot(

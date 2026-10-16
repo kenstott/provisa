@@ -43,12 +43,7 @@ SENSITIVE_DATA = "sensitive_data"
 HIDING_FIELDS = (
     "visible_to",
     "scope",
-    "unmasked_to",
-    "mask_type",
-    "mask_pattern",
-    "mask_replace",
-    "mask_value",
-    "mask_precision",
+    "masks",
     "fake",
     "fake_stable",
     "synthetic_rule",
@@ -91,10 +86,26 @@ async def sensitive_columns(conn: "Connection", table_id: int) -> frozenset[str]
     return frozenset(r[0] for r in rows)
 
 
+def mask_entry_dict(entry: Any) -> dict:
+    """A mask entry (REQ-2059) as stored, whichever surface holds it: the stored dict, the config
+    model's entry, or the admin API's input."""
+    import dataclasses
+
+    from pydantic import BaseModel
+
+    if isinstance(entry, dict):
+        return entry
+    if isinstance(entry, BaseModel):
+        return entry.model_dump()
+    return dataclasses.asdict(entry)
+
+
 def _value(column: Any, field: str) -> Any:
     raw = column[field] if isinstance(column, dict) else getattr(column, field)
-    if field in ("visible_to", "unmasked_to"):
+    if field == "visible_to":
         return sorted(raw or [])
+    if field == "masks":  # REQ-2059: the list in its order, each entry as stored
+        return [mask_entry_dict(e) for e in raw]
     if field == "fake_stable":
         return bool(raw)
     if field == "scope":

@@ -161,11 +161,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "description": "What the column holds, shown to consumers in every catalog surface",
         "path": "Location of the value inside a nested/JSON column, when it is not top level",
         "scope": "Where the column may be used — projection, filtering, or both",
-        "mask_type": "Masking applied to roles outside unmasked_to (hash, redact, partial, …)",
-        "mask_pattern": "Pattern the mask preserves, for pattern-preserving mask types",
-        "mask_replace": "Replacement character the mask substitutes",
-        "mask_value": "Fixed value substituted by a constant mask",
-        "mask_precision": "How much of the value a partial mask leaves visible",
+        "masks": "The ordered mask list: each entry names the roles it is for and the mask they "
+        "read the value through, or none; a reader reads it through the first entry it holds",
         "native_filter_type": "Type the source expects in a filter on this column, when it "
         "differs from the projected type",
         "is_foreign_key": "Whether the column references another registered table",
@@ -174,7 +171,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "object_fields": "Field definitions for a structured (object) column",
         "visible_to": "Roles that may select this column; empty means unrestricted outside "
         "lockdown domains",
-        "unmasked_to": "Roles that see the raw value rather than the masked one",
         "writable_by": "Roles that may write this column",
         "tenant_id": _TENANT,
     },

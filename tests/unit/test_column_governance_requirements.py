@@ -10,69 +10,92 @@ from __future__ import annotations
 
 
 # ---------------------------------------------------------------------------
-# REQ-249: Column-level masking config stored as inline fields on Column in
-# models.py (mask_type, mask_pattern, mask_replace, mask_value, mask_precision).
+# REQ-249, REQ-2059: Column-level masking config stored inline on Column in models.py, as the
+# column's ordered mask list (``masks``): each entry names its readers and its mask (type,
+# pattern, replace, value, precision), or none.
 # ---------------------------------------------------------------------------
 
 
+def _masked(mask: dict) -> list[dict]:
+    return [{"to": ["*"], "mask": mask}]
+
+
 def test_column_has_mask_type_field():
-    # REQ-249: mask_type must be a field on the Column model.
+    # REQ-249: a mask entry's type is on the Column model, inline.
     from provisa.core.models import Column
 
-    col = Column(name="email", visible_to=["analyst"], mask_type="regex")
-    assert col.mask_type == "regex"
+    col = Column(name="email", visible_to=["analyst"], masks=_masked({"type": "regex"}))
+    assert col.masks[0].mask is not None and col.masks[0].mask.type == "regex"
 
 
 def test_column_mask_type_defaults_to_none():
-    # REQ-249: mask_type must default to None when not specified.
+    # REQ-249: a column declares no mask unless given one: its list is empty.
     from provisa.core.models import Column
 
     col = Column(name="name", visible_to=["admin"])
-    assert col.mask_type is None
+    assert col.masks == []
 
 
 def test_column_has_mask_pattern_field():
-    # REQ-249: mask_pattern is an inline field on Column.
+    # REQ-249: a regex mask's pattern is inline on the column's entry.
     from provisa.core.models import Column
 
-    col = Column(name="ssn", visible_to=["admin"], mask_pattern=r"\d{3}-\d{2}-\d{4}")
-    assert col.mask_pattern is not None
+    col = Column(
+        name="ssn",
+        visible_to=["admin"],
+        masks=_masked({"type": "regex", "pattern": r"\d{3}-\d{2}-\d{4}"}),
+    )
+    assert col.masks[0].mask is not None and col.masks[0].mask.pattern is not None
 
 
 def test_column_has_mask_replace_field():
-    # REQ-249: mask_replace is an inline field on Column.
+    # REQ-249: a regex mask's replacement is inline on the column's entry.
     from provisa.core.models import Column
 
-    col = Column(name="ssn", visible_to=["admin"], mask_replace="***-**-****")
-    assert col.mask_replace == "***-**-****"
+    col = Column(
+        name="ssn", visible_to=["admin"], masks=_masked({"type": "regex", "replace": "***-**-****"})
+    )
+    assert col.masks[0].mask is not None and col.masks[0].mask.replace == "***-**-****"
 
 
 def test_column_has_mask_value_field():
-    # REQ-249: mask_value is an inline constant for constant masking.
+    # REQ-249: a constant mask's value is inline on the column's entry.
     from provisa.core.models import Column
 
-    col = Column(name="secret", visible_to=["analyst"], mask_value="[REDACTED]")
-    assert col.mask_value == "[REDACTED]"
+    col = Column(
+        name="secret",
+        visible_to=["analyst"],
+        masks=_masked({"type": "constant", "value": "[REDACTED]"}),
+    )
+    assert col.masks[0].mask is not None and col.masks[0].mask.value == "[REDACTED]"
 
 
 def test_column_has_mask_precision_field():
-    # REQ-249: mask_precision is for truncate-mode masking (year, month, day, etc.).
+    # REQ-249: a truncate mask's precision (year, month, day, etc.) is inline on the entry.
     from provisa.core.models import Column
 
-    col = Column(name="birth_date", visible_to=["analyst"], mask_precision="year")
-    assert col.mask_precision == "year"
+    col = Column(
+        name="birth_date",
+        visible_to=["analyst"],
+        masks=_masked({"type": "truncate", "precision": "year"}),
+    )
+    assert col.masks[0].mask is not None and col.masks[0].mask.precision == "year"
 
 
 def test_column_all_mask_fields_default_none():
-    # REQ-249: All masking fields default to None (co-located on Column, no separate model).
+    # REQ-249: a mask's fields default to None (co-located on Column, no separate model), and an
+    # entry with no mask is unmasked.
     from provisa.core.models import Column
 
-    col = Column(name="value", visible_to=["admin"])
-    assert col.mask_type is None
-    assert col.mask_pattern is None
-    assert col.mask_replace is None
-    assert col.mask_value is None
-    assert col.mask_precision is None
+    col = Column(
+        name="value",
+        visible_to=["admin"],
+        masks=[{"to": ["admin"]}, *_masked({"type": "constant"})],
+    )
+    assert col.masks[0].mask is None
+    mask = col.masks[1].mask
+    assert mask is not None
+    assert (mask.pattern, mask.replace, mask.value, mask.precision) == (None, None, None, None)
 
 
 # ---------------------------------------------------------------------------

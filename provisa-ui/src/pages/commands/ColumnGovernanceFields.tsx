@@ -9,24 +9,21 @@
 // permission from the copyright holder.
 
 // REQ-1679: per-column governance of an action's response — the shape a table column carries
-// (visible_to, unmasked_to, mask), on an output-contract column or an inline return field. The
+// (visible_to and its ordered mask list), on an output-contract column or an inline return field. The
 // keys are the wire keys: the column dict is stored as posted and read back by the server as is.
 
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { Select, TextInput } from "@mantine/core";
+import { Text, TextInput } from "@mantine/core";
+import { MaskListEditor } from "../../components/MaskListEditor";
+import type { MaskEntry } from "../../lib/masks";
 import { FieldGroup, FormField } from "../../components/form/FormLayout";
 
 export interface GovernedColumn {
   name: string;
   type: string;
   visible_to?: string[] | null;
-  unmasked_to?: string[];
-  mask_type?: string | null;
-  mask_pattern?: string | null;
-  mask_replace?: string | null;
-  mask_value?: string | number | null;
-  mask_precision?: string | null;
+  masks?: MaskEntry[];
 }
 
 const splitRoles = (s: string): string[] =>
@@ -39,9 +36,15 @@ interface Props {
   col: GovernedColumn;
   onChange: (patch: Partial<GovernedColumn>) => void;
   testId: string;
+  roleOptions: { id: string; label: string }[];
 }
 
-export function ColumnGovernanceFields({ col, onChange, testId }: Props): React.ReactElement {
+export function ColumnGovernanceFields({
+  col,
+  onChange,
+  testId,
+  roleOptions,
+}: Props): React.ReactElement {
   const { t } = useTranslation();
   return (
     // Who sees the column and how it is masked: one row of fields, set in under the column it governs.
@@ -62,70 +65,17 @@ export function ColumnGovernanceFields({ col, onChange, testId }: Props): React.
           data-testid={`${testId}-visible-to`}
         />
       </FormField>
-      <FormField size="short">
-        <Select
-          label={t("commandFormFields.colMask")}
-          data={[
-            { value: "", label: t("commandFormFields.maskNone") },
-            { value: "regex", label: t("commandFormFields.maskRegex") },
-            { value: "constant", label: t("commandFormFields.maskConstant") },
-            { value: "truncate", label: t("commandFormFields.maskTruncate") },
-          ]}
-          value={col.mask_type ?? ""}
-          onChange={(v) => onChange({ mask_type: v || null })}
-          allowDeselect={false}
-          data-testid={`${testId}-mask-type`}
+      <FormField size="full">
+        <Text size="sm" fw={500} mb={4}>
+          {t("commandFormFields.colMask")}
+        </Text>
+        <MaskListEditor
+          value={col.masks ?? []}
+          onChange={(masks) => onChange({ masks })}
+          roleOptions={roleOptions}
+          testId={`${testId}-masks`}
         />
       </FormField>
-      {col.mask_type === "regex" && (
-        <>
-          <FormField size="short">
-            <TextInput
-              label={t("commandFormFields.maskPattern")}
-              value={col.mask_pattern ?? ""}
-              onChange={(e) => onChange({ mask_pattern: e.currentTarget.value })}
-            />
-          </FormField>
-          <FormField size="short">
-            <TextInput
-              label={t("commandFormFields.maskReplace")}
-              value={col.mask_replace ?? ""}
-              onChange={(e) => onChange({ mask_replace: e.currentTarget.value })}
-            />
-          </FormField>
-        </>
-      )}
-      {col.mask_type === "constant" && (
-        <FormField size="short">
-          <TextInput
-            label={t("commandFormFields.maskValue")}
-            value={col.mask_value == null ? "" : String(col.mask_value)}
-            onChange={(e) => onChange({ mask_value: e.currentTarget.value })}
-            data-testid={`${testId}-mask-value`}
-          />
-        </FormField>
-      )}
-      {col.mask_type === "truncate" && (
-        <FormField size="short">
-          <Select
-            label={t("commandFormFields.maskPrecision")}
-            data={["year", "month", "day", "hour"].map((p) => ({ value: p, label: p }))}
-            value={col.mask_precision ?? null}
-            onChange={(v) => onChange({ mask_precision: v })}
-          />
-        </FormField>
-      )}
-      {col.mask_type && (
-        <FormField size="long">
-          <TextInput
-            label={t("commandFormFields.colUnmaskedTo")}
-            placeholder={t("commandFormFields.colVisibleToPlaceholder")}
-            value={(col.unmasked_to ?? []).join(", ")}
-            onChange={(e) => onChange({ unmasked_to: splitRoles(e.currentTarget.value) })}
-            data-testid={`${testId}-unmasked-to`}
-          />
-        </FormField>
-      )}
     </FieldGroup>
   );
 }

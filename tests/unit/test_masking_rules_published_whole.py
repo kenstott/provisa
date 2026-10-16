@@ -30,15 +30,12 @@ from provisa.security.masking import MaskType
 
 
 def _mask_row(column: str, unmasked_to: list[str]) -> dict:
+    """A masked column's row: unmasked to ``unmasked_to``, then MASKED to everyone (REQ-2059)."""
     return {
         "table_id": 7,
         "column_name": column,
-        "unmasked_to": unmasked_to,
-        "mask_type": "constant",
-        "mask_pattern": None,
-        "mask_replace": None,
-        "mask_value": "MASKED",
-        "mask_precision": None,
+        "masks": ([{"to": unmasked_to, "mask": None}] if unmasked_to else [])
+        + [{"to": ["*"], "mask": {"type": "constant", "value": "MASKED"}}],
         "fake": None,
         "fake_stable": False,
         "fake_stable_version": None,

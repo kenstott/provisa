@@ -118,25 +118,29 @@ def test_the_longest_request_timeout_is_the_largest_any_transport_allows():
 
 
 def test_a_rebuilds_masking_rules_carry_the_meta_roles_masks():
-    """A column masked for every member stays masked for the meta-role in the rules a rebuild
-    publishes — the same assignment as its members' — and one a member reads unmasked does not."""
+    """A rebuild publishes the masks of a meta-role requests act as with its members' -- the same
+    assignment -- read from its own chain (REQ-2059): a column whose list unmasks one member is
+    unmasked for it, and a meta-role whose member is gone gets none."""
     from types import SimpleNamespace
 
     from provisa.security.meta_role import with_meta_masks
 
-    state = SimpleNamespace(meta_roles={_META: ("a", "b"), "meta:a+gone": ("a", "gone")})
-    ssn, email = ("mask", "varchar"), ("mask", "varchar")
-    rules = {
-        (1, "a"): {"ssn": ssn, "email": email},
-        (1, "b"): {"ssn": ssn},  # b reads email unmasked
-        (2, "a"): {"phone": ssn},  # b reads table 2 unmasked
-    }
-    published = with_meta_masks(state, dict(rules), {"a", "b"})
-    assert published[(1, _META)] == {"ssn": ssn}
+    state = SimpleNamespace(
+        meta_roles={_META: ("a", "b"), "meta:a+gone": ("a", "gone")}, meta_qualifiers={}
+    )
+    masked_to_all = [{"to": ["*"], "mask": {"type": "constant", "value": "MASKED"}}]
+    unmasked_to_b = [{"to": ["b"], "mask": None}, *masked_to_all]
+    masked = [
+        (1, "ssn", masked_to_all, "varchar"),
+        (1, "email", unmasked_to_b, "varchar"),
+        (2, "phone", unmasked_to_b, "varchar"),
+    ]
+    rules = {(1, "a"): {"ssn": "kept as given"}}
+    published = with_meta_masks(state, dict(rules), masked, {"a": ["a"], "b": ["b"]})
+    assert list(published[(1, _META)]) == ["ssn"]
     assert (2, _META) not in published
     assert not any(role == "meta:a+gone" for (_table, role) in published)  # a member is not held
-    for key, value in rules.items():
-        assert published[key] == value
+    assert published[(1, "a")] == {"ssn": "kept as given"}
 
 
 def test_the_masking_load_publishes_them_in_its_one_assignment():
@@ -214,7 +218,7 @@ def test_a_meta_role_has_its_masks_at_every_step_of_a_rebuild(state, monkeypatch
     class _ControlPlane:
         async def execute_core(self, _stmt):
             result = MagicMock()
-            # orders.id is masked for every role: nobody is in its unmasked_to.
+            # orders.id is masked for every role: its list unmasks nobody.
             result.fetchall.return_value = [
                 MagicMock(_mapping={**_mask_row("id", unmasked_to=[]), "table_id": SALES})
             ]

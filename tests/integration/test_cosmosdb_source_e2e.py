@@ -162,9 +162,10 @@ def server(emulator, tmp_path_factory):
                         "email",
                         "varchar",
                         both,
-                        unmasked_to=[_ROLE],
-                        mask_type="constant",
-                        mask_value="***",
+                        masks=[
+                            {"to": [_ROLE], "mask": None},
+                            {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+                        ],
                     ),
                 ],
             },

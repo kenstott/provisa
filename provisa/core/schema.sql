@@ -226,12 +226,7 @@ CREATE TABLE IF NOT EXISTS table_columns (
     path        TEXT,
     data_type   TEXT,
     writable_by  JSONB NOT NULL DEFAULT '[]',
-    unmasked_to  JSONB NOT NULL DEFAULT '[]',
-    mask_type    TEXT CHECK (mask_type IN ('regex', 'constant', 'truncate')),
-    mask_pattern TEXT,
-    mask_replace TEXT,
-    mask_value   TEXT,
-    mask_precision TEXT,
+    masks        JSONB NOT NULL DEFAULT '[]',  -- REQ-2059: the ordered mask list
     is_primary_key BOOLEAN NOT NULL DEFAULT FALSE,
     epoch_unit   TEXT,  -- REQ-1908: epoch-number storage unit of a temporal column
     -- REQ-1965: the hidden attributes of a natively array/struct/map column, from its source
@@ -258,12 +253,6 @@ DO $$ BEGIN
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS description TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS path TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS writable_by JSONB NOT NULL DEFAULT '[]';
-    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS unmasked_to JSONB NOT NULL DEFAULT '[]';
-    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_type TEXT;
-    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_pattern TEXT;
-    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_replace TEXT;
-    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_value TEXT;
-    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_precision TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS native_filter_type TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS native_filter_required BOOLEAN;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS required_by_steward BOOLEAN NOT NULL DEFAULT FALSE;  -- REQ-1986

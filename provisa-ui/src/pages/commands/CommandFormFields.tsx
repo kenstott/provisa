@@ -61,6 +61,8 @@ interface CommandFormFieldsProps {
   loadingFunctions: boolean;
   // REQ-1634: optional data-product membership picker, scoped to the command's domain.
   dataProducts: DataProduct[];
+  // REQ-2059: the roles an output column's mask entries may name.
+  roleOptions: { id: string; label: string }[];
 }
 
 export function CommandFormFields({
@@ -73,6 +75,7 @@ export function CommandFormFields({
   availableFunctions,
   loadingFunctions,
   dataProducts,
+  roleOptions,
 }: CommandFormFieldsProps): React.ReactElement {
   const { t } = useTranslation();
 
@@ -579,6 +582,7 @@ export function CommandFormFields({
                             col={f}
                             onChange={(patch) => patchInlineField(i, patch)}
                             testId={`inline-field-governance-${i}`}
+                            roleOptions={roleOptions}
                           />
                         </FormEntry>
                       ))}
@@ -816,6 +820,7 @@ export function CommandFormFields({
                         col={col}
                         onChange={(patch) => patchOutputColumn(ci, patch)}
                         testId={`output-column-governance-${ci}`}
+                        roleOptions={roleOptions}
                       />
                     </FormEntry>
                   ))}

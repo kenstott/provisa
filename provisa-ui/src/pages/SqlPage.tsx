@@ -575,17 +575,7 @@ export function SqlPage() {
         description: c.description || undefined,
         scope: c.scope,
         visibleTo: c.visibleTo,
-        unmaskedTo: c.unmaskedTo
-          ? c.unmaskedTo
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
-          : undefined,
-        maskType: c.maskType || undefined,
-        maskPattern: c.maskPattern || undefined,
-        maskReplace: c.maskReplace || undefined,
-        maskValue: c.maskValue || undefined,
-        maskPrecision: c.maskPrecision || undefined,
+        masks: c.masks,
       }));
       const result = await registerTable({
         sourceId: DERIVED_SOURCE_ID,
@@ -768,12 +758,7 @@ export function SqlPage() {
         description: colDescMap.get(name) ?? "",
         scope: "domain" as const,
         visibleTo: roles,
-        maskType: "" as const,
-        maskPattern: "",
-        maskReplace: "",
-        maskValue: "",
-        maskPrecision: "",
-        unmaskedTo: "",
+        masks: [],
       })),
     );
     setViewOpenings((n) => n + 1);

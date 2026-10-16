@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { MultiSelect as MantineMultiSelect } from "@mantine/core";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 /** Multi-value picker backed by Mantine MultiSelect — provides the ARIA
@@ -21,6 +21,7 @@ export function MultiSelect({
   value,
   onChange,
   className,
+  style,
   label,
   ariaLabel,
   placeholder,
@@ -35,6 +36,7 @@ export function MultiSelect({
   value: string[];
   onChange: (selected: string[]) => void;
   className?: string;
+  style?: CSSProperties;
   // A form field gives the label with its (?) and the explanation shown under the control.
   label?: ReactNode;
   ariaLabel?: string;
@@ -50,6 +52,7 @@ export function MultiSelect({
   return (
     <MantineMultiSelect
       className={className}
+      style={style}
       data={options.map((o) => ({ value: o.id, label: o.label }))}
       value={value}
       onChange={onChange}

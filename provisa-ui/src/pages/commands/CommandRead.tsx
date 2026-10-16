@@ -12,6 +12,7 @@
 // them, an empty one as the shared empty mark. The form's fields that depend on how a function is
 // implemented are shown for that implementation only, as the form shows them.
 
+import { maskSpecLabel, maskToLabel } from "../../lib/masks";
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { Text } from "@mantine/core";
@@ -51,11 +52,6 @@ function ResponseColumns({
   testId: string;
 }) {
   const { t } = useTranslation();
-  const maskLabel: Record<string, string> = {
-    regex: t("commandFormFields.maskRegex"),
-    constant: t("commandFormFields.maskConstant"),
-    truncate: t("commandFormFields.maskTruncate"),
-  };
   return (
     <>
       <ReadHeading>{title}</ReadHeading>
@@ -63,17 +59,6 @@ function ResponseColumns({
         <DetailFields testId={testId} fields={[{ label: title, value: null }]} />
       ) : (
         columns.map((c) => {
-          const mask: DetailField[] =
-            c.mask_type === "regex"
-              ? [
-                  { label: t("commandFormFields.maskPattern"), value: c.mask_pattern },
-                  { label: t("commandFormFields.maskReplace"), value: c.mask_replace },
-                ]
-              : c.mask_type === "constant"
-                ? [{ label: t("commandFormFields.maskValue"), value: c.mask_value }]
-                : c.mask_type === "truncate"
-                  ? [{ label: t("commandFormFields.maskPrecision"), value: c.mask_precision }]
-                  : [];
           return (
             <Fragment key={c.name}>
               <Text size="sm" fw={600} ff="monospace" mb={4}>
@@ -89,10 +74,19 @@ function ResponseColumns({
                   },
                   {
                     label: t("commandFormFields.colMask"),
-                    value: c.mask_type ? maskLabel[c.mask_type] : t("commandFormFields.maskNone"),
+                    value:
+                      (c.masks ?? []).length === 0
+                        ? t("maskList.none")
+                        : (c.masks ?? [])
+                            .map((e, n) =>
+                              t("maskList.entryLine", {
+                                n: n + 1,
+                                to: maskToLabel(e.to, t),
+                                mask: maskSpecLabel(e.mask, t),
+                              }),
+                            )
+                            .join(" · "),
                   },
-                  ...mask,
-                  { label: t("commandFormFields.colUnmaskedTo"), value: roles(c.unmasked_to) },
                 ]}
               />
             </Fragment>

@@ -326,6 +326,7 @@ export function CommandsPage() {
     availableFunctions,
     loadingFunctions,
     dataProducts,
+    roleOptions: roles.map((r) => ({ id: r.id, label: r.id })),
   };
 
   // Hide rows whose domain is unchecked in the NavBar domain filter (an empty set = show all),
