@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { ApolloProvider } from "@apollo/client/react";
 import { client } from "./apolloClient";
@@ -110,7 +111,8 @@ const McpExplorePage = lazy(() =>
 );
 
 function NotAuthorized() {
-  return <div className="page">You do not have permission to view this page.</div>;
+  const { t } = useTranslation();
+  return <div className="page">{t("app.notAuthorized")}</div>;
 }
 
 /**

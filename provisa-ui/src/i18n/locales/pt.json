@@ -82,5 +82,10 @@
     "parts": "Funções que um leitor deve ter todas",
     "partsPlaceholder": "Escolha ou digite uma função e pressione Enter",
     "add": "Adicionar"
+  },
+  "roleSwitch": {
+    "notGranted": "A função com que você está atuando não concede esta página. Uma função que você tem concede:",
+    "switchTo": "Mudar para {{role}}",
+    "noneHeld": "Nenhuma das funções que você tem concede esta página."
   }
 }

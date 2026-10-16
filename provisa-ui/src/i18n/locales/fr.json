@@ -82,5 +82,10 @@
     "parts": "Rôles qu'un lecteur doit tous détenir",
     "partsPlaceholder": "Choisissez ou saisissez un rôle et appuyez sur Entrée",
     "add": "Ajouter"
+  },
+  "roleSwitch": {
+    "notGranted": "Le rôle sous lequel vous agissez n'accorde pas cette page. Un rôle que vous détenez l'accorde :",
+    "switchTo": "Passer à {{role}}",
+    "noneHeld": "Aucun des rôles que vous détenez n'accorde cette page."
   }
 }

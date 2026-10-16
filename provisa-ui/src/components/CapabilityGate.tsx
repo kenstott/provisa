@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { CredentialCheck } from "./CredentialCheck";
 import { useAuth } from "../context/AuthContext";
 import { DemonstratedFeature } from "./DemonstratedFeature";
+import { RoleSwitchOffer } from "./RoleSwitchOffer";
 import { isDemonstrated, meetsRequirement, type CapabilityRequirement } from "../lib/capabilities";
 
 interface Props extends CapabilityRequirement {
@@ -61,6 +62,10 @@ export function CapabilityGate({
       </DemonstratedFeature>
     );
   }
-  if (!allowed) return fallback ?? null;
+  if (!allowed) {
+    // A gate owning a region offers, under its refusal, the held roles that grant it (REQ-2060).
+    if (fallback === undefined) return null;
+    return <RoleSwitchOffer requirement={req}>{fallback}</RoleSwitchOffer>;
+  }
   return <>{children}</>;
 }

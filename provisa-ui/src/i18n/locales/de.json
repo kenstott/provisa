@@ -82,5 +82,10 @@
     "parts": "Rollen, die ein Leser alle besitzen muss",
     "partsPlaceholder": "Rolle wählen oder eingeben und Enter drücken",
     "add": "Hinzufügen"
+  },
+  "roleSwitch": {
+    "notGranted": "Die Rolle, als die Sie handeln, gewährt diese Seite nicht. Eine Rolle, die Sie besitzen, schon:",
+    "switchTo": "Zu {{role}} wechseln",
+    "noneHeld": "Keine der Rollen, die Sie besitzen, gewährt diese Seite."
   }
 }

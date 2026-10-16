@@ -82,5 +82,10 @@
     "parts": "Ruoli che un lettore deve avere tutti",
     "partsPlaceholder": "Scegli o digita un ruolo e premi Invio",
     "add": "Aggiungi"
+  },
+  "roleSwitch": {
+    "notGranted": "Il ruolo con cui stai agendo non concede questa pagina. Un ruolo che hai la concede:",
+    "switchTo": "Passa a {{role}}",
+    "noneHeld": "Nessuno dei ruoli che hai concede questa pagina."
   }
 }

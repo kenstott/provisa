@@ -82,5 +82,10 @@
     "parts": "读者必须全部拥有的角色",
     "partsPlaceholder": "选择或键入角色并按 Enter",
     "add": "添加"
+  },
+  "roleSwitch": {
+    "notGranted": "你当前使用的角色无权访问此页面。你拥有的以下角色有权访问：",
+    "switchTo": "切换到 {{role}}",
+    "noneHeld": "你拥有的角色都无权访问此页面。"
   }
 }

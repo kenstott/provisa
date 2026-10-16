@@ -82,5 +82,10 @@
     "parts": "讀者必須全部擁有的角色",
     "partsPlaceholder": "選擇或輸入角色並按 Enter",
     "add": "新增"
+  },
+  "roleSwitch": {
+    "notGranted": "你目前使用的角色無權存取此頁面。你擁有的以下角色有權存取：",
+    "switchTo": "切換到 {{role}}",
+    "noneHeld": "你擁有的角色都無權存取此頁面。"
   }
 }

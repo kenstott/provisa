@@ -82,5 +82,10 @@
     "parts": "Rollen die een lezer allemaal moet hebben",
     "partsPlaceholder": "Kies of typ een rol en druk op Enter",
     "add": "Toevoegen"
+  },
+  "roleSwitch": {
+    "notGranted": "De rol waarmee u werkt, geeft geen toegang tot deze pagina. Een rol die u hebt wel:",
+    "switchTo": "Overschakelen naar {{role}}",
+    "noneHeld": "Geen van de rollen die u hebt, geeft toegang tot deze pagina."
   }
 }

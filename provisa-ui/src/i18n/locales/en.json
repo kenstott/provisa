@@ -82,5 +82,10 @@
     "parts": "Roles a reader must all hold",
     "partsPlaceholder": "Pick or type a role and press Enter",
     "add": "Add"
+  },
+  "roleSwitch": {
+    "notGranted": "The role you are acting as does not grant this page. A role you hold does:",
+    "switchTo": "Switch to {{role}}",
+    "noneHeld": "None of the roles you hold grants this page."
   }
 }

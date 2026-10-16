@@ -20,9 +20,19 @@ import type { Capability } from "../types/auth";
 // context rather than mounting a provider, which would fetch /auth/me. The capabilities are the
 // real ones the gate decides on -- the decision itself is not mocked, because REQ-1361 turns on
 // which set answers which entry.
-const authState: { loading: boolean; capabilities: string[]; demonstrated: string[] } = {
+const selectRole = vi.fn();
+const authState: {
+  loading: boolean;
+  capabilities: string[];
+  demonstrated: string[];
+  availableRoles: { id: string; capabilities: string[] }[];
+  selectRole: typeof selectRole;
+} = {
   loading: false,
   capabilities: [],
+  // REQ-2060: the roles the person holds, each with its rights -- what a refusal offers to switch to.
+  availableRoles: [],
+  selectRole,
   // REQ-1602: rights the caller is SHOWN without holding. Empty for every case below except the
   // demonstration ones -- a role that simply lacks a right is shown nothing.
   demonstrated: [],
@@ -41,6 +51,8 @@ describe("CapabilityGate", () => {
     authState.loading = false;
     authState.capabilities = [];
     authState.demonstrated = [];
+    authState.availableRoles = [];
+    selectRole.mockReset();
   });
 
   it("says credentials are being checked while the bootstrap is in flight", () => {
@@ -378,5 +390,58 @@ describe("CapabilityGate", () => {
     );
 
     expect(screen.getByText("Secrets service")).toBeInTheDocument();
+  });
+});
+
+describe("CapabilityGate refusing a page the acting role does not grant (REQ-2060)", () => {
+  beforeEach(() => {
+    authState.loading = false;
+    authState.capabilities = ["query_development"];
+    authState.demonstrated = [];
+    selectRole.mockReset();
+  });
+
+  const page = () =>
+    render(
+      <CapabilityGate
+        capability={"user_management" as Capability}
+        fallback={<div>Not Authorized</div>}
+      >
+        <span>Team</span>
+      </CapabilityGate>,
+    );
+
+  it("offers each held role that grants it, and a click acts as that role", async () => {
+    authState.availableRoles = [
+      { id: "analyst", capabilities: ["query_development"] },
+      { id: "org_admin", capabilities: ["user_management", "query_development"] },
+      { id: "people_lead", capabilities: ["user_management"] },
+    ];
+    page();
+    expect(screen.getByText("Not Authorized")).toBeInTheDocument();
+    expect(screen.queryByTestId("role-switch-analyst")).not.toBeInTheDocument();
+    expect(screen.getByTestId("role-switch-people_lead")).toHaveTextContent(
+      "Switch to people_lead",
+    );
+    await userEvent.click(screen.getByTestId("role-switch-org_admin"));
+    expect(selectRole).toHaveBeenCalledWith(authState.availableRoles[1]);
+  });
+
+  it("says so when no role the person holds grants it", () => {
+    authState.availableRoles = [{ id: "analyst", capabilities: ["query_development"] }];
+    page();
+    expect(screen.getByTestId("role-switch-none")).toHaveTextContent(
+      "None of the roles you hold grants this page.",
+    );
+  });
+
+  it("offers nothing from a gate that owns no region", () => {
+    authState.availableRoles = [{ id: "org_admin", capabilities: ["user_management"] }];
+    render(
+      <CapabilityGate capability={"user_management" as Capability}>
+        <span>Invite</span>
+      </CapabilityGate>,
+    );
+    expect(screen.queryByTestId("role-switch-offer")).not.toBeInTheDocument();
   });
 });
