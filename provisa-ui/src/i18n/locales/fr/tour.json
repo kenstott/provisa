@@ -775,6 +775,54 @@
       "profilingRecap": {
         "title": "Ce que vous avez vu",
         "description": "Les tables acquises, lues en direct, et leur profil, établi par le profileur intégré et conservé sous forme de tables gouvernées : valeurs nulles, plages, formats, types plausibles et doublons répondent à ce que contiennent réellement ces données, en SQL, GraphQL et REST, selon l'accès de chaque rôle."
+      },
+      "opioidsScenario": {
+        "title": "Ce que montre cette démo",
+        "description": "Un fonds d'État issu des accords sur les opioïdes verse aux 88 comtés de l'Ohio de l'argent pour le traitement, le rétablissement, la prévention et la naloxone. Le conseil demande quels comtés comptent le plus de décès par surdose au regard du traitement que cet argent finance. Les allocations du fonds sont dans sa propre base de données ; les décès, la population et les dépenses fédérales sont publics. Le fonds et ses chiffres sont fictifs ; les comtés et les données publiques sont réels."
+      },
+      "opioidsJoin": {
+        "title": "Reliés par comté",
+        "description": "Les comtés du fonds et les tables publiques partagent le code FIPS du comté, et ces relations les relient. Toute requête qui les croise utilise cette jointure."
+      },
+      "opioidsAnswer": {
+        "title": "La réponse en SQL",
+        "description": "La vue overdose_burden_by_county relie les dépenses du fonds en traitement et rétablissement aux décès de chaque comté, et reste stockée. Triée par décès par million de dollars dépensé, elle place en tête les comtés où l'argent rencontre le plus de décès."
+      },
+      "opioidsRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Les données propres du fonds, lues en direct, et des données publiques de santé et de recensement, chargées une fois, reliées par comté dans un modèle gouverné. Une vue stockée répond à la question du conseil en SQL, GraphQL et REST, le personnel et le public voyant chacun ce que son rôle permet."
+      },
+      "opioidsGovdata": {
+        "title": "Les données publiques",
+        "description": "Les données publiques viennent d'AskAmerica, un compte réel : les décès et taux de mortalité par surdose des CDC, la population du Census Bureau et les dépenses fédérales d'USAspending, chacun par comté. Seuls les comtés de l'Ohio et l'année 2023 sont chargés, une fois, à la construction de la démo, puis lus depuis cette copie pour de bon. 2023 est l'année que tous couvrent."
+      },
+      "opioidsAllocations": {
+        "title": "Les allocations du fonds",
+        "description": "Chaque allocation du fonds, lue en direct dans sa propre base de données : le comté, l'exercice, le domaine du programme, le prestataire payé, le montant accordé et ce qui en a été dépensé. Le personnel voit chaque ligne ; le rôle public n'en voit aucune."
+      },
+      "opioidsDeaths": {
+        "title": "Les taux de décès par surdose des CDC",
+        "description": "Décès par surdose pour 100 000 habitants dans chaque comté en 2023. Quand un comté a eu de 1 à 9 décès, les CDC masquent le nombre et publient à la place un taux modélisé, signalé ici, pour que chaque comté ait un taux comparable."
+      },
+      "opioidsTerms": {
+        "title": "En termes simples",
+        "description": "Le glossaire explique les termes qu'un élu ou un habitant rencontre : fonds des accords, atténuation, allocation, dépense, nombre masqué, taux pour 100 000. Ici l'atténuation : ce à quoi les accords exigent que l'argent soit consacré."
+      },
+      "opioidsAsPublic": {
+        "title": "Exécuter en tant que public",
+        "description": "L'explorateur SQL s'exécute désormais avec le rôle public, celui du tableau de bord du conseil et des habitants. Les requêtes qui suivent ne voient que ce qu'il autorise."
+      },
+      "opioidsPublic": {
+        "title": "Ce que voit le public",
+        "description": "La même vue, exécutée avec le rôle public : le tableau de bord du conseil. Il montre les décès, les taux et les dépenses par habitant par comté, sans aucune allocation du fonds ni les prestataires payés."
+      },
+      "opioidsByRegion": {
+        "title": "Par région, en GraphQL",
+        "description": "Le tableau de bord regroupé par les cinq régions du fonds : le nombre d'habitants de chacune et ce qui y a été dépensé en traitement et rétablissement."
+      },
+      "opioidsRest": {
+        "title": "La même réponse via REST",
+        "description": "La vue est aussi un point de terminaison REST, regroupé et sommé sur le serveur, pour qu'un site du conseil ou un tableur lise le tableau de bord via HTTP."
       }
     },
     "status": {
@@ -831,6 +879,10 @@
       "profiling": {
         "title": "Que contiennent réellement ces données ?",
         "summary": "Les clients et commandes d'une entreprise rachetée, profilés par le Data Profiler intégré : valeurs nulles, plages, formats, types plausibles et doublons, conservés comme tables gouvernées et lus en SQL, GraphQL et REST."
+      },
+      "opioids": {
+        "title": "Fonds des accords sur les opioïdes et décès par surdose",
+        "summary": "La question d'une collectivité locale, quels comtés comptent le plus de décès par surdose au regard du traitement que finance l'argent des accords sur les opioïdes : les allocations d'un fonds reliées par comté aux données des CDC, du recensement et des dépenses fédérales."
       }
     }
   }

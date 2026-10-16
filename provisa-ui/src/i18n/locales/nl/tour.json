@@ -775,6 +775,54 @@
       "profilingRecap": {
         "title": "Wat u zag",
         "description": "De overgenomen tabellen, live gelezen, en een profiel ervan, gemaakt door de ingebouwde profiler en bewaard als beheerde tabellen: lege waarden, bereiken, formaten, plausibele types en duplicaten beantwoorden wat er eigenlijk in deze data zit, in SQL, GraphQL en REST, volgens de toegang van elke rol."
+      },
+      "opioidsScenario": {
+        "title": "Waar deze demo over gaat",
+        "description": "Een staatsfonds uit de opioïdeschikkingen betaalt de 88 county's van Ohio voor behandeling, herstel, preventie en naloxon. De raad vraagt welke county's de meeste overdosisdoden hebben voor de behandeling die dat geld betaalt. De toewijzingen van het fonds staan in zijn eigen database; doden, bevolking en federale uitgaven zijn openbaar. Het fonds en zijn cijfers zijn verzonnen; de county's en de openbare gegevens zijn echt."
+      },
+      "opioidsJoin": {
+        "title": "Gekoppeld per county",
+        "description": "De county's van het fonds en de openbare tabellen delen de FIPS-code van de county, en deze relaties koppelen ze. Elke query over beide gebruikt deze koppeling."
+      },
+      "opioidsAnswer": {
+        "title": "Het antwoord in SQL",
+        "description": "De view overdose_burden_by_county koppelt de uitgaven van het fonds aan behandeling en herstel aan de doden in elke county, en wordt opgeslagen bijgehouden. Gesorteerd op doden per miljoen uitgegeven dollar komen de county's waar het geld de meeste doden tegenkomt bovenaan."
+      },
+      "opioidsRecap": {
+        "title": "Wat u zag",
+        "description": "De eigen gegevens van het fonds, live gelezen, en openbare gezondheids- en volkstellingsgegevens, één keer geladen, per county gekoppeld in één beheerd model. Eén opgeslagen view beantwoordt de vraag van de raad in SQL, GraphQL en REST, waarbij medewerkers en publiek elk zien wat hun rol toestaat."
+      },
+      "opioidsGovdata": {
+        "title": "De openbare gegevens",
+        "description": "De overheidsgegevens komen van AskAmerica, een echt account: de overdosisdoden en sterftecijfers van de CDC, de bevolking van het Census Bureau en de federale uitgaven van USAspending, elk per county. Alleen de county's van Ohio en 2023 worden geladen, één keer, bij het bouwen van de demo, en daarna voorgoed uit die kopie gelezen. 2023 is het jaar dat ze allemaal dekken."
+      },
+      "opioidsAllocations": {
+        "title": "De toewijzingen van het fonds",
+        "description": "Elke toewijzing van het fonds, live gelezen uit zijn eigen database: de county, het boekjaar, het programmagebied, de betaalde aanbieder, wat is toegekend en wat ervan is uitgegeven. Medewerkers zien elke rij; de rol public ziet er geen."
+      },
+      "opioidsDeaths": {
+        "title": "De overdosissterftecijfers van de CDC",
+        "description": "Overdosisdoden per 100.000 inwoners in elke county in 2023. Waar een county 1 tot 9 doden had, onderdrukt de CDC het aantal en publiceert in plaats daarvan een gemodelleerd cijfer, hier gemarkeerd, zodat elke county een vergelijkbaar cijfer heeft."
+      },
+      "opioidsTerms": {
+        "title": "In gewone woorden",
+        "description": "De woordenlijst legt de termen uit die een raadslid of inwoner tegenkomt: schikkingsfonds, schadebeperking, toewijzing, uitgave, onderdrukt aantal, cijfer per 100.000. Hier schadebeperking: waaraan de schikkingen voorschrijven dat het geld wordt besteed."
+      },
+      "opioidsAsPublic": {
+        "title": "Uitvoeren als het publiek",
+        "description": "De SQL-verkenner draait nu als de rol public, de rol van het dashboard van de raad en de inwoners. De query's hierna zien alleen wat die rol toestaat."
+      },
+      "opioidsPublic": {
+        "title": "Zo ziet het publiek het",
+        "description": "Dezelfde view, uitgevoerd als de rol public: het dashboard van de raad. Het toont doden, cijfers en uitgaven per inwoner per county, en geen toewijzingen van het fonds of betaalde aanbieders."
+      },
+      "opioidsByRegion": {
+        "title": "Per regio, in GraphQL",
+        "description": "Het dashboard gegroepeerd per de vijf regio's van het fonds: hoeveel inwoners elk heeft en hoeveel er aan behandeling en herstel is uitgegeven."
+      },
+      "opioidsRest": {
+        "title": "Hetzelfde antwoord via REST",
+        "description": "De view is ook een REST-endpoint, op de server gegroepeerd en opgeteld, zodat een website van de raad of een spreadsheet het dashboard via HTTP kan lezen."
       }
     },
     "status": {
@@ -831,6 +879,10 @@
       "profiling": {
         "title": "Wat zit er eigenlijk in deze data?",
         "summary": "De klanten en bestellingen van een overgenomen bedrijf, geprofileerd door de ingebouwde Data Profiler: lege waarden, bereiken, formaten, plausibele types en duplicaten, bewaard als beheerde tabellen en gelezen in SQL, GraphQL en REST."
+      },
+      "opioids": {
+        "title": "Opioïdeschikkingsgeld en overdosisdoden",
+        "summary": "De vraag van een lokale overheid, welke county's de meeste overdosisdoden hebben voor de behandeling die hun geld uit de opioïdeschikkingen betaalt: de toewijzingen van een fonds per county gekoppeld aan gegevens van de CDC, de volkstelling en federale uitgaven."
       }
     }
   }

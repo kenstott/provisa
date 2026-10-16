@@ -775,6 +775,54 @@
       "profilingRecap": {
         "title": "Was Sie gesehen haben",
         "description": "Die übernommenen Tabellen, live gelesen, und ein Profil davon, erstellt vom integrierten Profiler und als gesteuerte Tabellen aufbewahrt: Nullwerte, Wertebereiche, Formate, plausible Typen und Duplikate beantworten, was eigentlich in diesen Daten steckt, in SQL, GraphQL und REST, unter dem Zugriff jeder Rolle."
+      },
+      "opioidsScenario": {
+        "title": "Worum es in dieser Demo geht",
+        "description": "Ein staatlicher Fonds aus den Opioid-Vergleichen zahlt den 88 Countys von Ohio Geld für Behandlung, Genesung, Prävention und Naloxon. Der Rat fragt, in welchen Countys die meisten Überdosis-Todesfälle auf die Behandlung kommen, die das Geld bezahlt. Die Zuweisungen des Fonds liegen in seiner eigenen Datenbank; Todesfälle, Bevölkerung und Bundesausgaben sind öffentlich. Der Fonds und seine Zahlen sind erfunden; die Countys und die öffentlichen Daten sind echt."
+      },
+      "opioidsJoin": {
+        "title": "Verknüpft über das County",
+        "description": "Die Countys des Fonds und die öffentlichen Tabellen teilen den FIPS-Code des Countys, und diese Beziehungen verknüpfen sie. Jede Abfrage über beide nutzt diese Verknüpfung."
+      },
+      "opioidsAnswer": {
+        "title": "Die Antwort in SQL",
+        "description": "Die View overdose_burden_by_county verknüpft die Ausgaben des Fonds für Behandlung und Genesung mit den Todesfällen jedes Countys und wird gespeichert vorgehalten. Nach Todesfällen je Million ausgegebener Dollar sortiert, stehen die Countys vorn, in denen das Geld auf die meisten Todesfälle trifft."
+      },
+      "opioidsRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Die eigenen Daten des Fonds, live gelesen, und öffentliche Gesundheits- und Zensusdaten, einmal geladen, über das County in einem geregelten Modell verknüpft. Eine gespeicherte View beantwortet die Frage des Rates in SQL, GraphQL und REST, wobei Mitarbeitende und Öffentlichkeit jeweils sehen, was ihre Rolle erlaubt."
+      },
+      "opioidsGovdata": {
+        "title": "Die öffentlichen Daten",
+        "description": "Die Regierungsdaten stammen von AskAmerica, einem echten Konto: die Überdosis-Todesfälle und Sterberaten der CDC, die Bevölkerung laut Census Bureau und die Bundesausgaben laut USAspending, jeweils pro County. Nur die Countys von Ohio und das Jahr 2023 werden einmal beim Erstellen der Demo geladen und danach für immer aus dieser Kopie gelesen. 2023 ist das Jahr, das alle abdecken."
+      },
+      "opioidsAllocations": {
+        "title": "Die Zuweisungen des Fonds",
+        "description": "Jede Zuweisung des Fonds, live aus seiner eigenen Datenbank gelesen: das County, das Haushaltsjahr, der Programmbereich, der bezahlte Anbieter, was bewilligt und was davon ausgegeben wurde. Mitarbeitende sehen jede Zeile; die Rolle public sieht keine."
+      },
+      "opioidsDeaths": {
+        "title": "Die Überdosis-Sterberaten der CDC",
+        "description": "Überdosis-Todesfälle je 100.000 Einwohner in jedem County im Jahr 2023. Hatte ein County 1 bis 9 Todesfälle, unterdrückt die CDC die Zahl und veröffentlicht stattdessen eine modellierte Rate, hier gekennzeichnet, sodass jedes County eine vergleichbare Rate hat."
+      },
+      "opioidsTerms": {
+        "title": "In einfachen Worten",
+        "description": "Das Glossar erklärt die Begriffe, auf die ein Ratsmitglied oder eine Einwohnerin stößt: Vergleichsfonds, Schadensminderung, Zuweisung, Ausgabe, unterdrückte Zahl, Rate je 100.000. Hier Schadensminderung: wofür die Vergleiche das Geld vorschreiben."
+      },
+      "opioidsAsPublic": {
+        "title": "Als Öffentlichkeit ausführen",
+        "description": "Der SQL-Explorer läuft jetzt als Rolle public, die Rolle des Dashboards des Rates und der Einwohner. Die folgenden Abfragen sehen nur, was sie erlaubt."
+      },
+      "opioidsPublic": {
+        "title": "So sieht es die Öffentlichkeit",
+        "description": "Dieselbe View, ausgeführt als Rolle public: das Dashboard des Rates. Es zeigt Todesfälle, Raten und Ausgaben je Einwohner pro County, aber keine Zuweisungen des Fonds und keine bezahlten Anbieter."
+      },
+      "opioidsByRegion": {
+        "title": "Nach Region, in GraphQL",
+        "description": "Das Dashboard gruppiert nach den fünf Regionen des Fonds: wie viele Einwohner jede hat und wie viel dort für Behandlung und Genesung ausgegeben wurde."
+      },
+      "opioidsRest": {
+        "title": "Dieselbe Antwort über REST",
+        "description": "Die View ist auch ein REST-Endpunkt, auf dem Server gruppiert und summiert, sodass eine Website des Rates oder eine Tabellenkalkulation das Dashboard über HTTP lesen kann."
       }
     },
     "status": {
@@ -831,6 +879,10 @@
       "profiling": {
         "title": "Was steckt eigentlich in diesen Daten?",
         "summary": "Die Kunden und Bestellungen eines übernommenen Unternehmens, profiliert vom integrierten Data Profiler: Nullwerte, Wertebereiche, Formate, plausible Typen und Duplikate, als gesteuerte Tabellen abgelegt und in SQL, GraphQL und REST gelesen."
+      },
+      "opioids": {
+        "title": "Opioid-Vergleichsgelder und Überdosis-Todesfälle",
+        "summary": "Die Frage einer Kommunalverwaltung, in welchen Countys die meisten Überdosis-Todesfälle auf die Behandlung kommen, die ihr Geld aus den Opioid-Vergleichen bezahlt: die Zuweisungen eines Fonds, über das County mit Daten von CDC, Census und Bundesausgaben verknüpft."
       }
     }
   }

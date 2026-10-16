@@ -775,6 +775,54 @@
       "profilingRecap": {
         "title": "O que viu",
         "description": "As tabelas adquiridas, lidas em direto, e um perfil delas feito pelo profiler integrado e guardado como tabelas governadas: nulos, intervalos, formatos, tipos plausíveis e duplicados respondem ao que há realmente nestes dados, em SQL, GraphQL e REST, segundo o acesso de cada função."
+      },
+      "opioidsScenario": {
+        "title": "O que é esta demo",
+        "description": "Um fundo estadual dos acordos sobre opioides paga aos 88 condados de Ohio por tratamento, recuperação, prevenção e naloxona. O conselho pergunta quais condados têm mais mortes por overdose para o tratamento que esse dinheiro paga. As alocações do fundo estão no seu próprio banco de dados; mortes, população e gastos federais são públicos. O fundo e os seus números são fictícios; os condados e os dados públicos são reais."
+      },
+      "opioidsJoin": {
+        "title": "Unidos por condado",
+        "description": "Os condados do fundo e as tabelas públicas compartilham o código FIPS do condado, e estes relacionamentos os unem. Toda consulta que cruza os dois usa esta junção."
+      },
+      "opioidsAnswer": {
+        "title": "A resposta em SQL",
+        "description": "A view overdose_burden_by_county une o gasto do fundo com tratamento e recuperação às mortes de cada condado, e é mantida armazenada. Ordenada por mortes por milhão de dólares gastos, coloca primeiro os condados onde o dinheiro encontra mais mortes."
+      },
+      "opioidsRecap": {
+        "title": "O que você viu",
+        "description": "Os registros próprios do fundo, lidos ao vivo, e dados públicos de saúde e do censo, carregados uma vez, unidos por condado num modelo governado. Uma view armazenada responde à pergunta do conselho em SQL, GraphQL e REST, e a equipe e o público veem cada um o que o seu papel permite."
+      },
+      "opioidsGovdata": {
+        "title": "Os dados públicos",
+        "description": "Os dados do governo vêm da AskAmerica, uma conta real: mortes e taxas de mortalidade por overdose do CDC, a população do Census Bureau e os gastos federais do USAspending, cada um por condado. Só os condados de Ohio e o ano de 2023 são carregados, uma vez, quando a demo é construída, e lidos dessa cópia para sempre. 2023 é o ano que todos cobrem."
+      },
+      "opioidsAllocations": {
+        "title": "As alocações do fundo",
+        "description": "Cada alocação feita pelo fundo, lida ao vivo do seu próprio banco de dados: o condado, o ano fiscal, a área do programa, o prestador pago, o valor concedido e o que já foi gasto. A equipe vê todas as linhas; o papel public não vê nenhuma."
+      },
+      "opioidsDeaths": {
+        "title": "As taxas de morte por overdose do CDC",
+        "description": "Mortes por overdose por 100.000 residentes em cada condado em 2023. Quando um condado teve de 1 a 9 mortes, o CDC suprime o número e publica uma taxa modelada, assinalada aqui, para que todo condado tenha uma taxa comparável."
+      },
+      "opioidsTerms": {
+        "title": "Em palavras simples",
+        "description": "O glossário explica os termos que um vereador ou um morador encontra: fundo dos acordos, mitigação, alocação, despesa, número suprimido, taxa por 100.000. Aqui, mitigação: aquilo em que os acordos exigem que o dinheiro seja gasto."
+      },
+      "opioidsAsPublic": {
+        "title": "Executar como o público",
+        "description": "O explorador SQL agora é executado com o papel public, o do painel do conselho e dos moradores. As consultas a seguir veem apenas o que esse papel permite."
+      },
+      "opioidsPublic": {
+        "title": "Como o público vê",
+        "description": "A mesma view, executada com o papel public: o painel do conselho. Mostra mortes, taxas e gasto por residente por condado, e nenhuma alocação do fundo nem os prestadores pagos."
+      },
+      "opioidsByRegion": {
+        "title": "Por região, em GraphQL",
+        "description": "O painel agrupado pelas cinco regiões do fundo: quantos residentes cada uma tem e quanto se gastou ali com tratamento e recuperação."
+      },
+      "opioidsRest": {
+        "title": "A mesma resposta via REST",
+        "description": "A view também é um endpoint REST, agrupado e somado no servidor, para que o site do conselho ou uma planilha leia o painel via HTTP."
       }
     },
     "status": {
@@ -831,6 +879,10 @@
       "profiling": {
         "title": "O que há realmente nestes dados?",
         "summary": "Os clientes e encomendas de uma empresa adquirida, analisados pelo Data Profiler integrado: nulos, intervalos, formatos, tipos plausíveis e duplicados, guardados como tabelas governadas e lidos em SQL, GraphQL e REST."
+      },
+      "opioids": {
+        "title": "Fundos dos acordos sobre opioides e mortes por overdose",
+        "summary": "A pergunta de um governo local, quais condados têm mais mortes por overdose para o tratamento que o dinheiro dos acordos sobre opioides paga: as alocações de um fundo unidas por condado a dados do CDC, do Censo e dos gastos federais."
       }
     }
   }
