@@ -23861,3 +23861,31 @@ A visitor's demo sandbox is released soon after its tab closes. When the visitor
 **Code:** —
 
 **Tests:** —
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-2066 · Caching {#REQ-2066}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The load management window ([REQ-1141](#REQ-1141)''s off-peak window) also applies to a materialized view, meaning: outside the window the view may not be read by a user''s workload. It is the same window, same shape, same place in the table''s load management, with one meaning for a source table (Provisa may load from the source only within it) and one for a materialized view (consumers may read the view only within it). Provisa''s own work is never blocked: refreshes and replica builds under the system''s authorization, the view cascade, and scheduled jobs and triggers running as scheduler:<id>. A read by a person''s or client''s identity outside the window is refused by name, saying when the window next opens. A view with no window is unaffected.
+
+**Use case:** A warehouse sets a 02:00-04:00 window on its daily_sales view so consumer pulls never collide with its daytime load.
+
+**Code:** —
+
+**Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2067 · UI {#REQ-2067}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A capability demo, provisioning: a warehouse takes several feeds (orders, inventory, prices) and builds large datasets as materialized views refreshed by the view cascade as the feeds land, then provisions them downstream to two consumers (a finance mart and a data-science feature store). When a dataset is ready each consumer is told through a Kafka sink ([REQ-176](#REQ-176)), a GraphQL subscription or a trigger running a command ([REQ-2054](#REQ-2054)), with the dataset''s version time, and pulls it at volume over Arrow Flight (columnar, streamed, from the Python client or any ADBC/Flight client), as of that version time so a refresh landing mid-pull cannot mix old and new data. Each consumer reads its own governed view of the same dataset (finance sees margins, data science sees them masked; row rules per team), with no copies. The dataset carries a load management window ([REQ-2066](#REQ-2066)): consumers are notified staggered within it (finance at its start, data science later) as a customization built from scheduled triggers and sinks, not a feature, and a pull outside the window is refused by name. The tour shows the time from ready to pulled, the Kafka message, a Python consumer pulling over Flight with its rows per second, the two consumers'' different views of the same pull, and a refused out-of-window pull. It reuses the streaming demo''s Kafka setup. Its tour follows the settled demo tour shape. Its business question: "How do downstream teams get the big datasets they need as soon as they are ready, without copying them or writing extraction jobs?"
+
+**Use case:** A data platform lead sees datasets provisioned to two consumers on readiness, pulled in bulk over Arrow Flight, each governed differently, within the warehouses window.
+
+**Code:** —
+
+**Tests:** —
