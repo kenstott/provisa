@@ -258,7 +258,7 @@ def _ticket_as_of(request: dict[str, object]) -> str | None:  # REQ-1163
     if not isinstance(as_of, str):
         raise _flight_error(f"ticket option as_of must be an ISO 8601 time, not {as_of!r}")
     try:
-        return parse_as_of(as_of)
+        return parse_as_of(as_of).key()
     except ValueError as exc:
         raise _flight_error(f"invalid ticket option as_of: {exc}", exc) from exc
 

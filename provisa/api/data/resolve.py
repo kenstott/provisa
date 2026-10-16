@@ -222,14 +222,15 @@ async def resolve(
     8601 point in time and is validated here; ``as_of_literal`` is one a surface has already
     validated (the GraphQL endpoint's ``X-Provisa-As-Of``). Returns
     ``{"uri", "as_of", "columns", "row"}`` with ``row`` None when the key matches nothing the
-    caller may see."""
+    caller may see; for an as-of range (REQ-2064), ``versions`` -- every version of the row in
+    force within it -- in place of ``row``."""
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
     if as_of is not None:
         from provisa.mv.bitemporal import parse_as_of
 
         try:
-            as_of_literal = parse_as_of(as_of)  # a validated SQL timestamp literal (REQ-1163)
+            as_of_literal = parse_as_of(as_of).key()  # a validated SQL timestamp literal (REQ-1163)
         except ValueError as exc:
             raise AddressError(f"invalid as_of: {exc}") from exc
     address = parse_address(uri, multitenant=bool(state.multitenancy))
@@ -256,8 +257,12 @@ async def resolve(
     )
     result = await _execute_plan(plan, state)
     columns = list(result.column_names)
-    row = dict(zip(columns, result.rows[0], strict=True)) if result.rows else None
-    return {"uri": uri, "as_of": as_of_literal, "columns": columns, "row": row}
+    rows = [dict(zip(columns, r, strict=True)) for r in result.rows]
+    answer = {"uri": uri, "as_of": as_of_literal, "columns": columns}
+    if as_of_literal is not None and "/" in as_of_literal:
+        # REQ-2064: a range answers each version of the row in force within it, in source order.
+        return {**answer, "versions": rows}
+    return {**answer, "row": rows[0] if rows else None}
 
 
 # -- the GraphQL field (REQ-1929: the other surfaces offer what GraphQL offers) -------------------

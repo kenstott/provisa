@@ -151,6 +151,10 @@ export function mvStoreFields(t: TFunction, table: RegisteredTable): DetailField
             label: t("tableEditForm.bitemporalKeyLabel"),
             value: orDash(table.mvBitemporalKey.join(", ")),
           },
+          {
+            label: t("tableEditForm.bitemporalSourceTimeLabel"),
+            value: table.mvBitemporalSourceTime ?? t("tableEditForm.bitemporalSourceTimeNone"),
+          },
         ]
       : []),
     { label: t("tableEditForm.incrementalLabel"), value: yesNo(t, table.mvIncremental) },

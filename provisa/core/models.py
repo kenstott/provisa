@@ -1401,6 +1401,9 @@ class Table(
     # derived at read time from the immutable append log — no UPDATE ever retires a row.
     mv_bitemporal_mode: str | None = None
     mv_bitemporal_key: list[str] = []
+    # REQ-1163: the view's column holding the source's own change time (an updated_at, or the
+    # commit time a CDC landing carries, source_committed_at): the clock its time travel reads on.
+    mv_bitemporal_source_time: str | None = None
     # REQ-965/969/970: how a materialized view's recompute is applied to its own store, and whether
     # it is maintained incrementally. mv_persist ∈ replace|append|upsert; mv_primary_key is the row
     # identity (required for upsert and for incremental); mv_incremental applies upstream deltas
@@ -1413,6 +1416,21 @@ class Table(
     enable_group_by: bool = False  # REQ-653: opt-in for _group_by root field
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this table
     kafka_sink: KafkaSinkAttachment | None = None  # REQ-176: per-table Kafka sink config
+
+    @model_validator(mode="after")
+    def _bitemporal_reads_on_source_time(self) -> "Table":
+        """REQ-1163, REQ-2064: a bitemporal view names the key its versions belong to. Its clock is
+        its source-time column when it names one, else Provisa's recorded time (REQ-1163 as
+        amended); its three read columns are added where it is declared or saved
+        (mv.bitemporal.with_read_columns)."""
+        if not self.mv_bitemporal_mode:
+            return self
+        if not self.mv_bitemporal_key:
+            raise ValueError(
+                f"view {self.table_name!r}: a bitemporal view names the key its versions belong "
+                "to (bitemporal_key)"
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_view_definition_forms(self) -> "Table":

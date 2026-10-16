@@ -280,6 +280,10 @@
     },
     "offPeakInherited": "Overgenomen: de bron van deze tabel wordt alleen volgens schema gelezen.",
     "mvReadWindowHelp": "Wanneer gebruikers en clients deze view mogen lezen, als HH:MM-HH:MM (24 u). Daarbuiten worden hun leesacties geweigerd, met de melding wanneer het weer opent; de eigen verversingen en geplande taken van Provisa lopen door. Laat leeg om lezen altijd toe te staan.",
-    "mvReadWindowHint": "Gebruikers en clients mogen deze view alleen binnen dit venster lezen; zonder venster altijd."
+    "mvReadWindowHint": "Gebruikers en clients mogen deze view alleen binnen dit venster lezen; zonder venster altijd.",
+    "bitemporalSourceTimeLabel": "Brontijd",
+    "bitemporalSourceTimePlaceholder": "Door Provisa vastgelegde tijd",
+    "bitemporalSourceTimeNone": "Door Provisa vastgelegde tijd",
+    "bitemporalSourceTimeHelp": "De klok waarop tijdreizen leest. Noem de kolom die aangeeft wanneer elke rij in de bron veranderde (een updated_at, of source_committed_at uit een CDC-landing) om versies op de tijd van de bron te lezen. Laat hem leeg om ze te lezen op het moment dat Provisa elke wijziging landde: ze volgen dan de verversingscadans. Dat past bij een frequente cadans, bij gegevens waarvan de tijd in de bron er niet toe doet, of bij leesacties die over de laadtijd moeten gaan, zoals controleren wat Provisa wanneer had."
   }
 }

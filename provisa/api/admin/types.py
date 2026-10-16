@@ -419,6 +419,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
     mv_bitemporal_mode: str | None = None  # REQ-1162: None | "snapshot" | "delta"
     mv_bitemporal_key: list[str] = strawberry.field(default_factory=list)  # REQ-1162: entity key
+    mv_bitemporal_source_time: str | None = None  # REQ-1163: the source's change-time column
     mv_persist: str = "replace"  # REQ-965: replace | append | upsert
     mv_primary_key: list[str] = strawberry.field(default_factory=list)  # REQ-970: row identity
     mv_incremental: bool = False  # REQ-969: incremental maintenance
@@ -1157,6 +1158,7 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
     mv_bitemporal_mode: str | None = None  # REQ-1162: None | "snapshot" | "delta"
     mv_bitemporal_key: list[str] = strawberry.field(default_factory=list)  # REQ-1162: entity key
+    mv_bitemporal_source_time: str | None = None  # REQ-1163: the source's change-time column
     mv_persist: str = "replace"  # REQ-965: replace | append | upsert
     mv_primary_key: list[str] = strawberry.field(default_factory=list)  # REQ-970: row identity
     mv_incremental: bool = False  # REQ-969: incremental maintenance
@@ -1209,6 +1211,8 @@ class EntityInput:  # REQ-1164: dimension / hub+satellite sugar → lowers to a 
     key: list[str]
     attributes: list[str] = strawberry.field(default_factory=list)
     history: str = "none"  # none | scd2 | snapshot
+    # REQ-1163: a historized entity's column holding the source's change time.
+    source_time: str | None = None
     visible_to: list[str] = strawberry.field(default_factory=lambda: ["public"])
 
 

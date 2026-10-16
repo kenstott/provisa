@@ -813,6 +813,7 @@ async def _sync_view_mv(
     preprocess: str | None = None,  # REQ-957
     bitemporal_mode: str | None = None,  # REQ-1162: None | "snapshot" | "delta"
     bitemporal_key: list[str] | None = None,  # REQ-1162: entity key (required for delta)
+    bitemporal_source_time: str | None = None,  # REQ-1163: the source's change-time column
     persist: str = "replace",  # REQ-965: replace | append | upsert
     primary_key: list[str] | None = None,  # REQ-970: row identity
     incremental: bool = False,  # REQ-969: incremental maintenance
@@ -842,7 +843,11 @@ async def _sync_view_mv(
     # REQ-1162: build the bitemporal spec from the declared mode/key (None = ordinary MV). Spec
     # construction validates the mode and that delta has a key — a bad declaration fails loud here.
     bitemporal = (
-        BitemporalSpec(key=tuple(bitemporal_key or []), mode=bitemporal_mode)
+        BitemporalSpec(
+            key=tuple(bitemporal_key or []),
+            mode=bitemporal_mode,
+            source_column=bitemporal_source_time,
+        )
         if bitemporal_mode
         else None
     )

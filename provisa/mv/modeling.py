@@ -66,10 +66,14 @@ class Entity:
     key: tuple[str, ...]
     attributes: tuple[str, ...] = ()
     history: str = HISTORY_NONE
+    # REQ-1163: a historized entity's column holding the source's change time; None reads its
+    # history on Provisa's recorded time.
+    source_time: str | None = None
 
     def __post_init__(self) -> None:
         if not self.key:
             raise ValueError(f"entity {self.name!r} must declare an entity key")
+
         if self.history not in _HISTORY:
             raise ValueError(
                 f"entity {self.name!r} history {self.history!r} must be one of {sorted(_HISTORY)}"
@@ -113,7 +117,7 @@ class Fact:
 
 def entity_registration(e: Entity) -> dict:
     """Lower an entity to a table-registration dict (the same shape a hand-written view would use)."""
-    cols = _dedup([*e.key, *e.attributes])
+    cols = _dedup([*e.key, *e.attributes, *([e.source_time] if e.source_time else [])])
     view_sql = f"SELECT {', '.join(_q(c) for c in cols)} FROM {_qualify(e.source)}"
     reg: dict = {
         "table_name": e.name,
@@ -129,6 +133,7 @@ def entity_registration(e: Entity) -> dict:
         # Historized entity → a bitemporal MV keyed on the entity key (REQ-1162).
         reg["mv_bitemporal_mode"] = mode
         reg["mv_bitemporal_key"] = list(e.key)
+        reg["mv_bitemporal_source_time"] = e.source_time  # REQ-1163
         reg["modeling_history"] = e.history  # REQ-1320: scd2 | snapshot
     return reg
 

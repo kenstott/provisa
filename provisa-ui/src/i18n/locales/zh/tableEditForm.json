@@ -280,6 +280,10 @@
     },
     "offPeakInherited": "继承：此表的来源仅按计划读取。",
     "mvReadWindowHelp": "用户和客户端可以读取此视图的时间，格式为 HH:MM-HH:MM（24 小时制）。在此之外，他们的读取会被拒绝，并说明下次开放的时间；Provisa 自身的刷新和计划作业照常运行。留空则任何时间都可读取。",
-    "mvReadWindowHint": "用户和客户端只能在此时段内读取此视图；未设置时段则任何时间都可读取。"
+    "mvReadWindowHint": "用户和客户端只能在此时段内读取此视图；未设置时段则任何时间都可读取。",
+    "bitemporalSourceTimeLabel": "源时间",
+    "bitemporalSourceTimePlaceholder": "Provisa 记录的时间",
+    "bitemporalSourceTimeNone": "Provisa 记录的时间",
+    "bitemporalSourceTimeHelp": "时间旅行读取所依据的时钟。指定记录每行在源中何时更改的列（例如 updated_at，或 CDC 落地的 source_committed_at），即可按源的时间读取各版本。留空则按 Provisa 落地每次更改的时间读取：版本将遵循刷新频率，适用于刷新频繁、源中时间无关紧要，或本意就是针对加载时间的读取，例如审计 Provisa 在何时持有哪些数据。"
   }
 }

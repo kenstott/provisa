@@ -22,6 +22,7 @@ from provisa.mv.bitemporal import (
     MODE_SNAPSHOT,
     BitemporalSpec,
     append_sql,
+    AsOf,
     as_of_view_map,
     create_sql,
     parse_as_of,
@@ -191,7 +192,7 @@ def test_view_read_sql_current_matches_full_story(mode):
 @pytest.mark.parametrize("mode", [MODE_SNAPSHOT, MODE_DELTA])
 def test_view_read_sql_as_of(mode):
     d = _run_story(mode)
-    inner = view_read_sql(TARGET, d.spec, f"TIMESTAMP '{T2}'")
+    inner = view_read_sql(TARGET, d.spec, AsOf(f"TIMESTAMP '{T2}'"))
     assert _project(d.con, inner) == {(1, "west", 15), (2, "east", 20), (3, "north", 30)}
 
 
@@ -199,8 +200,8 @@ def test_view_read_sql_as_of(mode):
 
 
 def test_parse_as_of_valid_iso_becomes_safe_literal():
-    assert parse_as_of("2026-01-01T00:00:00") == "TIMESTAMP '2026-01-01 00:00:00.000000'"
-    assert parse_as_of("2026-03-02 04:05:06") == "TIMESTAMP '2026-03-02 04:05:06.000000'"
+    assert parse_as_of("2026-01-01T00:00:00") == AsOf("TIMESTAMP '2026-01-01 00:00:00.000000'")
+    assert parse_as_of("2026-03-02 04:05:06").key() == "TIMESTAMP '2026-03-02 04:05:06.000000'"
 
 
 def test_parse_as_of_rejects_malformed_no_injection():
@@ -216,7 +217,8 @@ def test_as_of_view_map_overlays_only_bitemporal_views():
     ts = "TIMESTAMP '2026-01-01 00:00:00.000000'"
     out = as_of_view_map(base, reads, ts)
     assert out["plain_view"] == "SELECT * FROM live"  # non-bitemporal untouched
-    assert out["orders"] == view_read_sql('"c"."s"."mv_orders"', spec, ts)  # overlaid as-of
+    # overlaid as-of, from the canonical form the pipeline carries
+    assert out["orders"] == view_read_sql('"c"."s"."mv_orders"', spec, AsOf.from_key(ts))
     assert base["orders"] == "SELECT * FROM current_recon"  # input not mutated
 
 

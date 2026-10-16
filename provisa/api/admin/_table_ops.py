@@ -491,6 +491,16 @@ async def _build_columns_for_input(pool, input) -> "tuple[list, MutationResult |
                 },
             )
     columns = _build_column_models(input.columns)
+    if input.mv_bitemporal_mode:
+        # REQ-2064: a bitemporal view answers each version's times beside its own columns.
+        from provisa.core.models import Column as ColumnModel
+        from provisa.mv.bitemporal import with_read_columns
+
+        given = [{"name": c.name, "visible_to": c.visible_to} for c in columns]
+        added = with_read_columns(
+            given, list(input.mv_bitemporal_key), input.mv_bitemporal_source_time
+        )[len(given) :]
+        columns += [ColumnModel(**c) for c in added]
     if not input.view_sql:
         from_schema = await _graphql_columns_for_input(input, columns)
         if from_schema is None:

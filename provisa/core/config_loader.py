@@ -133,6 +133,8 @@ _VIEW_KEYS = {
     # keyed on its business identity.
     "bitemporal_mode": "mv_bitemporal_mode",
     "bitemporal_key": "mv_bitemporal_key",
+    # REQ-1163: the column holding the source's change time, the clock its time travel reads on.
+    "bitemporal_source_time": "mv_bitemporal_source_time",
     # REQ-2066: a materialized view's load management window, when consumers may read it.
     "off_peak_window": "off_peak_window",
     "off_peak_tz": "off_peak_tz",
@@ -231,12 +233,21 @@ def views_as_tables(raw: dict) -> dict:
                 f"view {view.get('id')!r}: off_peak_window applies to a materialized view "
                 "(materialize: true)"
             )
-        entry = {
+        entry: dict[str, Any] = {
             "source_id": DERIVED_SOURCE_ID,
             "schema": "views",
             "table": f"view_{view['id'].replace('-', '_')}",
         }
         entry.update({_VIEW_KEYS[k]: v for k, v in view.items() if k in _VIEW_KEYS})
+        if entry.get("mv_bitemporal_mode") and entry.get("columns"):
+            # REQ-2064: a bitemporal view answers each version's times beside its own columns.
+            from provisa.mv.bitemporal import with_read_columns
+
+            entry["columns"] = with_read_columns(
+                entry["columns"],
+                list(entry.get("mv_bitemporal_key") or []),
+                entry.get("mv_bitemporal_source_time"),
+            )
         tables.append(entry)
     return raw
 
