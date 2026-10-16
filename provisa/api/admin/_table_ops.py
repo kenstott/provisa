@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import or_, select
 
@@ -563,7 +563,28 @@ async def _build_columns_for_input(pool, input) -> "tuple[list, MutationResult |
         _err = await _settle_nested_columns(pool, input, columns)
         if _err is not None:
             return [], _err
+        columns += await _commit_time_column(pool, input, columns)
     return columns, None
+
+
+async def _commit_time_column(pool: Any, input: Any, columns: list) -> list:
+    """``source_committed_at`` for a table kept by change data capture, when it has not got it
+    (REQ-1163, federation/commit_time.py); nothing for any other."""
+    from provisa.core.models import Column as ColumnModel
+    from provisa.core.repositories import source as source_repo
+    from provisa.federation.commit_time import carries, with_column
+
+    async with pool.acquire() as conn:
+        row = await source_repo.get(conn, input.source_id)
+    if row is None:
+        return []
+    if not carries(row["type"], input.change_signal or row.get("change_signal")):
+        return []
+    given = [
+        {"name": c.name, "visible_to": c.visible_to, "is_primary_key": c.is_primary_key}
+        for c in columns
+    ]
+    return [ColumnModel(**c) for c in with_column(given)[len(given) :]]
 
 
 async def _settle_nested_columns(pool, input, columns) -> "MutationResult | None":

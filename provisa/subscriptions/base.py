@@ -33,6 +33,9 @@ class ChangeEvent:  # REQ-258, REQ-260, REQ-261, REQ-282, REQ-338
     # never on events still sitting unflushed in a debounce buffer. None for a provider with no
     # offset/position concept (websocket, mongo, postgres LISTEN/NOTIFY).
     ack_token: Any = None
+    # REQ-1163: when the change was committed at the source, where the event says (Debezium's
+    # source.ts_ms); None where it does not.
+    committed_at: datetime | None = None
 
 
 class NotificationProvider(abc.ABC):  # REQ-258, REQ-260, REQ-261, REQ-282, REQ-338

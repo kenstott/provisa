@@ -58,7 +58,13 @@ class PgBackend(NativeEngineBackend):
         from provisa.core.landing_filter import where as landing_where
         from provisa.transpiler.native_json import source_projection
 
-        if select_landing_shape(args.change_signal, args.watermark_column) != REPLACE:
+        from provisa.federation.commit_time import SOURCE_COMMITTED_AT
+
+        if select_landing_shape(args.change_signal, args.watermark_column) != REPLACE or any(
+            name == SOURCE_COMMITTED_AT for name, _type in args.columns
+        ):
+            # REQ-1163: a table carrying its commit time is streamed -- its foreign table here
+            # cannot see the source row's xmin.
             return super().replica_engine(state, source, table, address=address, args=args)
         merged = self._merged_source(source, table.schema_name, table.table_name)
         merged.catalog = state.source_catalogs[source.id]  # REQ-1266/1529: what it attaches under

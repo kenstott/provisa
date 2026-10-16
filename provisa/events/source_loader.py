@@ -113,7 +113,11 @@ def _projection(table: Any, dialect_of: Callable[[], str | None]) -> str:
     with no natively nested column -- the table as it is, and the dialect is not asked for --
     otherwise each column by name, a natively array, struct or map one as the JSON the backend
     that runs the read produces (``native_json.source_projection``)."""
-    if not any(getattr(c, "native_type", None) for c in table.columns):
+    from provisa.federation.commit_time import SOURCE_COMMITTED_AT
+
+    # REQ-1163: the commit time is the landing's, never a column of the source.
+    own = [c for c in table.columns if c.name != SOURCE_COMMITTED_AT]
+    if not any(getattr(c, "native_type", None) for c in own):
         return "*"
     from provisa.transpiler.native_json import source_projection
 
@@ -123,7 +127,16 @@ def _projection(table: Any, dialect_of: Callable[[], str | None]) -> str:
             f"{table.schema_name}.{table.table_name} has a natively nested column and its source "
             "has no SQL dialect to read it as JSON in"
         )
-    return source_projection(table.columns, dialect)
+    return source_projection(own, dialect)
+
+
+_COMMITTED = "source_committed_at"  # federation/commit_time.SOURCE_COMMITTED_AT
+
+
+def _carries_commit_time(table: Any) -> bool:
+    from provisa.federation.commit_time import SOURCE_COMMITTED_AT
+
+    return any(c.name == SOURCE_COMMITTED_AT for c in table.columns)
 
 
 async def engine_table_rows(engine: Any, source: Any, table: Any) -> list[dict]:
@@ -300,6 +313,25 @@ class SourceRowLoader:
 
         stype = _source_type(source)
         pools = getattr(state, "source_pools", None)
+        carries = _carries_commit_time(table)
+        if carries:
+            from provisa.federation.commit_time import reads_commit_time, source_expression
+
+            if (
+                reads_commit_time(source)
+                and pools is not None
+                and pools.has(source.id)
+                and pools.supports_stream(source.id)
+            ):
+                # REQ-1163: PostgreSQL's commit time of each row is read by the source's own driver,
+                # whatever the engine: an engine's attach of the table cannot see its xmin.
+                dialect = state.source_dialects[source.id] or None
+                relation = exp.table_(table.table_name, db=table.schema_name).sql(dialect=dialect)
+                projection = f"{_projection(table, lambda: dialect)}, {source_expression(source)}"
+                sql = f"SELECT {projection} FROM {relation}{landing_where(table, lambda: dialect)}"
+                return DirectTableSource(
+                    lambda: open_direct_stream(pools, source.id, sql, []), columns
+                )
         if (
             floor_setting(source) is not None
             and pools is not None
@@ -312,6 +344,9 @@ class SourceRowLoader:
             relation = exp.table_(table.table_name, db=table.schema_name).sql(dialect=dialect)
             # REQ-1965: a natively array/struct/map column is copied as JSON the source produces.
             projection = _projection(table, lambda: dialect)
+            if carries:
+                # A copy of the row has no change event to take a commit time from: empty.
+                projection += f", CAST(NULL AS TIMESTAMP) AS {_COMMITTED}"
             sql = f"SELECT {projection} FROM {relation}{landing_where(table, lambda: dialect)}"
             return DirectTableSource(lambda: open_direct_stream(pools, source.id, sql, []), columns)
         loader = self._adapter_loaders.get(stype) or _floored_file_loader(source, stype)
@@ -339,11 +374,15 @@ class SourceRowLoader:
                 f"is wired (source {source.id!r})"
             )
         ref = f'"{source_to_catalog(source.id)}"."{table.schema_name}"."{table.table_name}"'
+        projection = _projection(table, lambda: self._engine.dialect)
+        if carries:
+            # Read through the engine, the row's commit time is out of sight: empty (REQ-1163).
+            projection += f", CAST(NULL AS TIMESTAMP) AS {_COMMITTED}"
         return EngineTableSource(
             self._engine,
             ref,
             in_place=engine_attaches(self._engine, stype),
-            projection=_projection(table, lambda: self._engine.dialect),
+            projection=projection,
             where=landing_where(table, lambda: self._engine.dialect),  # REQ-2062
         )
 

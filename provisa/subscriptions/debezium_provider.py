@@ -41,6 +41,21 @@ from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 _UNPARSEABLE_TS = datetime.min.replace(tzinfo=timezone.utc)
 
 
+def _committed_at(payload: dict) -> datetime | None:
+    """When the change was committed in the source database (REQ-1163): the envelope's
+    ``source.ts_ms``. None when the envelope does not carry one (a heartbeat, a connector that
+    omits it): the landed row's commit time is then empty, never a guessed time."""
+    source = payload.get("source")
+    ts_ms = source.get("ts_ms") if isinstance(source, dict) else None
+    if ts_ms is None:
+        return None
+    try:
+        return datetime.fromtimestamp(int(ts_ms) / 1000, tz=timezone.utc)
+    except (ValueError, OSError, OverflowError):
+        log.warning("DebeziumProvider: source.ts_ms %r is no time; commit time left empty", ts_ms)
+        return None
+
+
 @runtime_checkable
 class _KafkaConsumer(Protocol):
     async def start(self) -> None: ...
@@ -169,6 +184,7 @@ class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
             table=table,
             row=row,
             timestamp=timestamp,
+            committed_at=_committed_at(payload),
         )
 
     async def watch(

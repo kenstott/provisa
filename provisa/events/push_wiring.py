@@ -973,6 +973,9 @@ async def _run_listener(
     from provisa.subscriptions.cdc_landing import consume_cdc_into_store
 
     from provisa.events.handlers import _held
+    from provisa.federation.commit_time import SOURCE_COMMITTED_AT
+
+    carries_commit_time = any(name == SOURCE_COMMITTED_AT for name, _type in columns)
 
     async def _land(batch: list) -> dict[str, int]:
         # A change without its key has no row to upsert or delete: landed, it would be a row of
@@ -994,6 +997,10 @@ async def _run_listener(
             events.append(event)
         if not events:
             return {"upsert": 0, "delete": 0}
+        if carries_commit_time:
+            # REQ-1163: the landed row carries the commit time its change event says.
+            for event in events:
+                event.row = {**event.row, SOURCE_COMMITTED_AT: event.committed_at}
         # REQ-1915: a batch of change events is applied under the replica's own lock, so it is
         # never written into a table a build is about to replace. A batch that finds a build
         # running waits for it and lands in the new table; applied by key, a change the build

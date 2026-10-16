@@ -77,6 +77,15 @@ def definition_hash(
     landing filter (REQ-2062). A model that gives a different digest than the last build recorded
     asks for a rebuild."""
     identity = {name: _plain(getattr(source, name, None)) for name in _SOURCE_IDENTITY}
+    from provisa.federation.commit_time import SOURCE_COMMITTED_AT, reads_commit_time
+
+    # REQ-1163: a table carrying its commit time is built anew when its source starts or stops
+    # keeping commit timestamps -- the column fills or empties.
+    commit_time = (
+        {"commit_time": reads_commit_time(source)}
+        if any(name == SOURCE_COMMITTED_AT for name, _type in columns)
+        else {}
+    )
     described = {
         "address": [address.schema, address.table],
         "columns": [[name, ir_type] for name, ir_type in columns],
@@ -84,6 +93,7 @@ def definition_hash(
         "source": identity,
         # Only where it is set: a table without one keeps the digest it always had.
         **({"landing_filter": landing_filter} if landing_filter is not None else {}),
+        **commit_time,
     }
     return hashlib.sha256(json.dumps(described, sort_keys=True).encode()).hexdigest()
 
