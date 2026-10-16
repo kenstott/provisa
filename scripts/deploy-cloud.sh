@@ -401,6 +401,11 @@ services:
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
+    # Where the tier is published (first-launch.sh's PROVISA_SANDBOX_PUBLISH): on a sandbox VM its
+    # VPC address, where the coordinator reaches it. A VM set up by a release from before that
+    # variable has no port in its compose, and its systemd unit passes no such variable through.
+    ports:
+      - "${SANDBOX_PUBLISH}:8000"
     environment:
       # The demos cloud.provisa.dev offers (first-launch.sh's default; a node set up
       # by an earlier release offers its own list until it is set up again).
@@ -793,6 +798,9 @@ verify_engine() {
 # to it only while it runs would leave it on the old one at its next start -- so a stopped VM is
 # started for the push (it stops itself again once idle).
 SANDBOX_NODE="${SANDBOX_NODE:-provisa-saas-sandbox}"
+# The tier's port on the node it runs on: loopback on a node running both profiles, where the UI
+# server reaches it by service name (first-launch.sh's default); deploy_sandbox_vm sets the VM's.
+SANDBOX_PUBLISH="127.0.0.1:18000"
 
 deploy_sandbox_vm() {
   local status
@@ -807,6 +815,8 @@ deploy_sandbox_vm() {
     gcloud compute instances start "$SANDBOX_NODE" --zone "$ZONE" --project "$PROJECT" >/dev/null
   fi
   NODE="$SANDBOX_NODE" API_CONTAINER=compose-provisa-sandbox-1 CONTAINERS=compose-provisa-sandbox-1
+  SANDBOX_PUBLISH="$(gcloud compute instances describe "$SANDBOX_NODE" --zone "$ZONE" \
+    --project "$PROJECT" --format='value(networkInterfaces[0].networkIP)'):8000"
   local i
   for i in $(seq 1 120); do
     ssh_node "sudo docker inspect -f '{{.State.Running}}' $API_CONTAINER 2>/dev/null" 2>/dev/null \

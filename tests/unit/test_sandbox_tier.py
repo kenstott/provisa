@@ -302,6 +302,9 @@ def test_a_cloud_deploy_reaches_the_sandbox_vm_too():
     assert 'NODE="$SANDBOX_NODE" API_CONTAINER=compose-provisa-sandbox-1' in body
     for step in ("push_demo_stores", "push_overlay", "push_api", "push_cfg", "restart"):
         assert step in body, step
+    # The overlay publishes the tier on the VM's VPC address, read from the instance.
+    assert "value(networkInterfaces[0].networkIP)" in body and "SANDBOX_PUBLISH=" in body
+    assert '- "${SANDBOX_PUBLISH}:8000"' in deploy
     arms = re.findall(r"^  (api|cfg|all|patch)\)\n(?:\s*#.*\n)*\s*(.*);;$", deploy, re.M)
     for arm, steps in arms:
         assert steps.strip().split("; ")[-1] == "deploy_sandbox_vm", arm
