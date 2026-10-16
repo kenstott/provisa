@@ -868,7 +868,7 @@ def test_ensure_endpoint_for_discovery_raises_still_starting(tmp_path, monkeypat
     monkeypatch.setattr(pr, "DISCOVERY_READY_SECONDS", 0)
     real_replica_cls = pr.ConnectorReplica
 
-    def _fake_replica(source, allocator):
+    def _fake_replica(source, allocator, key):
         return real_replica_cls(
             source,
             resolver=rd.BundleResolver(cache_root=tmp_path, downloader=_lay_down_bundle),
@@ -901,7 +901,7 @@ def test_a_server_that_exited_is_reported_with_its_log_not_as_still_starting(tmp
         (cwd / pr.SERVER_LOG_NAME).write_text("starting\nsplunk login failed: 401 Unauthorized\n")
         return _FakeProc(exit_code=1)
 
-    def _fake_replica(source, allocator):
+    def _fake_replica(source, allocator, key):
         return real_replica_cls(
             source,
             resolver=rd.BundleResolver(cache_root=tmp_path, downloader=_lay_down_bundle),
@@ -931,7 +931,7 @@ def test_ensure_endpoint_for_discovery_succeeds_when_ready(tmp_path, monkeypatch
     monkeypatch.setattr(pr, "_ENDPOINT_ALLOCATOR", pr.PortAllocator(is_free=lambda _: True))
     real_replica_cls = pr.ConnectorReplica
 
-    def _fake_replica(source, allocator):
+    def _fake_replica(source, allocator, key):
         return real_replica_cls(
             source,
             resolver=rd.BundleResolver(cache_root=tmp_path, downloader=_lay_down_bundle),
@@ -1141,7 +1141,7 @@ def test_two_orgs_with_one_source_id_have_their_own_server_state_and_ports(
 
     # The node's registry holds one server per org's source, not one per source id.
     monkeypatch.setattr(pr, "_ENDPOINTS", {})
-    monkeypatch.setattr(pr, "ConnectorReplica", lambda source, allocator: object())
+    monkeypatch.setattr(pr, "ConnectorReplica", lambda source, allocator, key: object())
     bind_org("org_a")
     first = pr._endpoint_replica(_files_source(id="files", path="/data/a"))
     bind_org("org_b")
