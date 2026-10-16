@@ -54,7 +54,7 @@ sources:
 - id: pharmacy
   type: postgresql
   host: ${env:PHARMA_PG_HOST:-localhost}
-  port: ${env:PHARMA_PG_PORT:-28832}
+  port: ${env:PHARMA_PG_PORT:-29532}
   database: pharma
   username: provisa_reader
   password: provisa_reader
