@@ -1456,6 +1456,36 @@ def test_a_preparation_the_server_did_not_answer_is_sent_again(unanswered):
     request sends the query again -- it is never refused for good (a sandbox's files source was,
     for every later query, on a node where the server took nearly two minutes to start)."""
     answers = [unanswered, None]
+    sent = threading.Event()
+
+    def prepare(ports):
+        answer = answers.pop(0)
+        sent.set()
+        if answer is not None:
+            raise answer
+
+    replica = _replica_with_server(
+        healthy=True, exit_code=None, catalog_ready=False, prepare=prepare
+    )
+    ports = pr.PortPair(5440, "127.0.0.1", 5540)
+    with pytest.raises(pr.SourceStillStartingError):
+        replica.await_catalog(ports, 0)  # an attach: answered at once
+    assert sent.wait(5)
+    while replica._catalog_thread is not None:  # the unanswered preparation has reported
+        time.sleep(0.01)
+    replica.await_catalog(ports, 5)  # sent again, answered: the attach goes ahead
+    assert answers == []
+
+
+@pytest.mark.parametrize("unanswered", [TimeoutError(), ConnectionRefusedError()])
+def test_a_caller_that_waits_has_an_unanswered_preparation_sent_again_within_its_wait(
+    unanswered, monkeypatch
+):
+    """A caller that gives a wait (a cold start's) is not told "still starting" because the
+    server, only just listening, did not answer the first query: the query is sent again
+    until it is answered or the wait is out."""
+    monkeypatch.setattr(pr, "_CATALOG_RESEND_SECONDS", 0.01)
+    answers = [unanswered, unanswered, None]
 
     def prepare(ports):
         answer = answers.pop(0)
@@ -1465,11 +1495,23 @@ def test_a_preparation_the_server_did_not_answer_is_sent_again(unanswered):
     replica = _replica_with_server(
         healthy=True, exit_code=None, catalog_ready=False, prepare=prepare
     )
-    ports = pr.PortPair(5440, "127.0.0.1", 5540)
-    with pytest.raises(pr.SourceStillStartingError):
-        replica.await_catalog(ports, 5)
-    replica.await_catalog(ports, 5)  # sent again, answered: the attach goes ahead
+    replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 5)
     assert answers == []
+
+
+def test_a_caller_that_waits_is_told_still_starting_once_its_wait_is_out(monkeypatch):
+    monkeypatch.setattr(pr, "_CATALOG_RESEND_SECONDS", 0.01)
+
+    def prepare(ports):
+        raise TimeoutError()
+
+    replica = _replica_with_server(
+        healthy=True, exit_code=None, catalog_ready=False, prepare=prepare
+    )
+    started = time.monotonic()
+    with pytest.raises(pr.SourceStillStartingError):
+        replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 0.2)
+    assert 0.2 <= time.monotonic() - started < 2
 
 
 def test_a_restarted_server_has_its_catalog_prepared_afresh():

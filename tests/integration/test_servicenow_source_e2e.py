@@ -45,6 +45,8 @@ _aio = pytest.mark.asyncio(loop_scope="session")
 
 _SOURCE_ID = "servicenow-itest"
 _SCHEMA = "servicenow_itest"
+# The server's start and its first catalog query, which counts the rows of every table served.
+_COLD_START_SECONDS = 600
 
 
 def _source():
@@ -70,7 +72,7 @@ def endpoint():
         # A module fixture runs before the per-test org binding: the endpoint is the
         # deployment org's, its folder ready, as its runtime's boot starts it (REQ-1266, REQ-1992).
         with deployment_org_on_this_node():
-            served = pr.ensure_endpoint(_source())
+            served = pr.ensure_endpoint(_source(), timeout=_COLD_START_SECONDS)
         yield served
     finally:
         with as_deployment_org():

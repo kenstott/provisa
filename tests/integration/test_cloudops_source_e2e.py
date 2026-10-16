@@ -62,6 +62,8 @@ pytestmark = [
 _aio = pytest.mark.asyncio(loop_scope="session")
 
 _SOURCE_ID = "cloudops-itest"
+# The server's start and its first catalog query, which lists every table of every cloud named.
+_COLD_START_SECONDS = 600
 _SCHEMA = _SOURCE_ID.replace("-", "_")
 _TABLES = {
     "compute_resources",
@@ -113,7 +115,7 @@ def _serving(source, data_dir):
         # A module fixture runs before the per-test org binding: the endpoint is the
         # deployment org's, its folder ready, as its runtime's boot starts it (REQ-1266, REQ-1992).
         with deployment_org_on_this_node():
-            served = pr.ensure_endpoint(source)
+            served = pr.ensure_endpoint(source, timeout=_COLD_START_SECONDS)
         yield served
     finally:
         with as_deployment_org():

@@ -109,8 +109,9 @@ def cli_ready() -> str | None:
 
 
 def _sql_password() -> str:
-    """A T-SQL-legal admin password. Never used to connect -- workspace create demands one, and AAD
-    token auth is what the runtime actually uses -- but a weak literal would be a standing account."""
+    """A T-SQL-legal admin password. Workspace create demands one; AAD token auth is what the
+    runtime uses, so it connects only to say why an AAD login is refused (``_who_is_refused``).
+    A weak literal would be a standing account."""
     body = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(24))
     return f"Pv{body}9x"
 
@@ -215,13 +216,18 @@ def _wait_for_openrowset(server: str, adls_url: str) -> None:
     )
 
 
-def _who_is_refused(workspace: str, resource_group: str, assigned_oid: str) -> str:
+def _who_is_refused(
+    workspace: str, resource_group: str, assigned_oid: str, sql_server: str, sql_password: str
+) -> str:
     """Why a login the lane has just made the workspace's Azure AD admin may still be refused:
     the admin the workspace records (login, sid, tenant) beside the identifying claims of the
     token the runtime presents (object id, application id, tenant, audience, identity type).
-    These are identifiers, not credentials."""
+    These are identifiers, not credentials. The lane's runner masks the ones that are also its
+    secrets, so whether they match is said in so many words; and the endpoint is asked, as the
+    workspace's SQL admin, which Azure AD principals it admits."""
     import base64
 
+    import pyodbc
     from azure.identity import DefaultAzureCredential
 
     admin = _az(
@@ -233,10 +239,42 @@ def _who_is_refused(workspace: str, resource_group: str, assigned_oid: str) -> s
     payload = token.split(".")[1]
     claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
     shown = {k: claims.get(k) for k in ("oid", "appid", "azp", "tid", "aud", "idtyp", "sub")}
+    recorded = json.loads(admin)
+    matches = {
+        "recorded sid is the token's appid": recorded["sid"] == claims.get("appid"),
+        "recorded sid is the token's oid": recorded["sid"] == claims.get("oid"),
+        "recorded tenant is the token's tid": recorded["tenantId"] == claims.get("tid"),
+    }
+    driver = os.environ.get("PROVISA_MSSQL_ODBC_DRIVER", "ODBC Driver 18 for SQL Server")
+    driver_clause = driver if driver.startswith("/") else f"{{{driver}}}"
+    try:
+        con = pyodbc.connect(
+            f"DRIVER={driver_clause};SERVER={sql_server};DATABASE=master;UID=provisaadmin;"
+            f"PWD={sql_password};Encrypt=yes;TrustServerCertificate=no;",
+            timeout=120,
+        )
+    except pyodbc.Error as exc:
+        endpoint = f"the SQL admin login was refused too: {exc}"
+    else:
+        try:
+            rows = (
+                con.cursor()
+                .execute(
+                    "SELECT name, type_desc, CONVERT(varchar(100), sid, 1) FROM sys.server_principals"
+                    " WHERE type IN ('E', 'X')"
+                )
+                .fetchall()
+            )
+        finally:
+            con.close()
+        endpoint = (
+            f"the SQL admin login is admitted; Azure AD principals: {[tuple(r) for r in rows]}"
+        )
     return (
         "the workspace's Azure AD admin was still refused at the serverless endpoint after the "
         f"bound (18456).\n  admin the lane assigned (SQL admin id): {assigned_oid}\n"
-        f"  admin the workspace records: {admin}\n  token presented: {json.dumps(shown)}"
+        f"  admin the workspace records: {admin}\n  token presented: {json.dumps(shown)}\n"
+        f"  {json.dumps(matches)}\n  {endpoint}"
     )
 
 
@@ -381,6 +419,7 @@ def _provision() -> tuple[dict[str, str], str, str, str]:
     _register_provider()
     location = _resolve_location()
     user_oid, principal_type, principal_name, sql_admin_id = _signed_in_principal()
+    sql_password = _sql_password()
 
     lane = {"resource_group": resource_group, "workspace": workspace, "storage": storage}
     print(f"== provisioning {workspace} in {resource_group} ({location}) ==", flush=True)
@@ -507,7 +546,7 @@ def _provision() -> tuple[dict[str, str], str, str, str]:
             "--sql-admin-login-user",
             "provisaadmin",
             "--sql-admin-login-password",
-            _sql_password(),
+            sql_password,
             "-o",
             "none",
         )
@@ -603,7 +642,9 @@ def _provision() -> tuple[dict[str, str], str, str, str]:
             # The login was still refused when the bound passed, so it is not the assignment
             # reaching the endpoint (warehouse run 37806460400: twenty refusals over 300 s). Say
             # who the workspace's admin is recorded as and who the token says is logging in.
-            raise AssertionError(_who_is_refused(workspace, resource_group, sql_admin_id)) from exc
+            raise AssertionError(
+                _who_is_refused(workspace, resource_group, sql_admin_id, sql_server, sql_password)
+            ) from exc
         _wait_for_openrowset(sql_server, adls_url)
         print(f"== synapse lane ready: {sql_server} ==", flush=True)
     except Exception:
