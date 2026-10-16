@@ -187,8 +187,8 @@ views:
            v.cvss_v31_score, v.cvss_v31_severity
     FROM "security"."dependabot_alerts" AS a
     JOIN "security"."repositories" AS r ON r.repo_id = a.repo_id
-    JOIN "security"."cves" AS v ON v.cve_id = a.cve_id
-    JOIN "security"."kev" AS k ON k.cve_id = v.cve_id
+    JOIN "security"."kev" AS k ON k.cve_id = a.cve_id
+    LEFT JOIN "security"."cves" AS v ON v.cve_id = a.cve_id
     WHERE a.state = 'open'
   columns:
   - {name: alert_id, data_type: integer, description: The alert's number, visible_to: [org_admin, analyst]}
@@ -210,6 +210,7 @@ relationships:
 - {id: dependency-in-repository, alias: PINNED_IN, graphql_alias: repository, cardinality: many-to-one, source_table_id: dependencies, source_column: repo_id, target_table_id: repositories, target_column: repo_id}
 - {id: alert-in-repository, alias: RAISED_IN, graphql_alias: repository, cardinality: many-to-one, source_table_id: dependabot_alerts, source_column: repo_id, target_table_id: repositories, target_column: repo_id}
 - {id: alert-about-cve, alias: ABOUT, graphql_alias: cve, cardinality: many-to-one, source_table_id: dependabot_alerts, source_column: cve_id, target_table_id: cves, target_column: cve_id}
+- {id: alert-exploited, alias: EXPLOITED_AS, graphql_alias: kev, cardinality: many-to-one, source_table_id: dependabot_alerts, source_column: cve_id, target_table_id: kev, target_column: cve_id}
 - {id: cve-exploited, alias: EXPLOITED_AS, graphql_alias: kev, cardinality: one-to-one, source_table_id: cves, source_column: cve_id, target_table_id: kev, target_column: cve_id}
 - {id: cve-weakness, alias: INSTANCE_OF, graphql_alias: weaknesses, cardinality: one-to-many, source_table_id: cves, source_column: cve_id, target_table_id: cve_weaknesses, target_column: cve_id}
 - {id: weakness-of-catalog, alias: WEAKNESS, graphql_alias: weakness, cardinality: many-to-one, source_table_id: cve_weaknesses, source_column: cwe_id, target_table_id: weaknesses, target_column: cwe_id}
