@@ -20,6 +20,19 @@ Dieses Design unterstützt zwei Nutzungsarten, die sich nicht ausschließen:
 - **Als Gerüst für die Modernisierung** — Modellieren Sie Ihren Bestand, lassen Sie Provisa das native SQL für jede Quelle generieren, erfassen Sie dieses SQL dann und übernehmen Sie es direkt im Zielsystem. Provisa ist die Übergangsschicht, keine dauerhafte Abhängigkeit.
 - **Als dauerhafte richtliniendurchsetzende Infrastruktur** — Behalten Sie es als den regulierten Pfad bei, den jede Abfrage nimmt, sodass Definition, Durchsetzung und Audit vereint bleiben, solange der Bestand existiert.
 
+## Eine Demo ausprobieren
+
+Am schnellsten geht es mit einer Live-Demo im Browser, ohne Installation: [provisa.dev/demos](https://provisa.dev/demos). Jede öffnet eine private Sandbox mit einer geführten Tour.
+
+In einem Checkout dieses Repositorys können Sie jede Demo auf Ihrem eigenen Rechner ausführen:
+
+```bash
+./start-ui-install.sh --list-demos     # die Demos, die Sie ausführen können, und welche veröffentlicht sind
+./start-ui-install.sh --demo weblogs   # eine starten, mit ihrer Tour
+```
+
+Eine veröffentlichte Demo wird als fertiges Bundle geladen; die anderen laufen aus `demo/named/<name>/`. Alle Optionen finden Sie in [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md).
+
 ## Das Föderationsmodell
 
 Das gesamte Modell läuft auf zwei Verträge und zwei Richtlinien hinaus: Quellen reduzieren sich auf 2-D-Tabellen über ein Typsystem, Abfragen reduzieren sich auf eine SQL-ähnliche IR, Erreichbarkeit entscheidet, was live abgefragt versus materialisiert wird, und eine Aktualitätsstrategie regelt jede materialisierte Kopie und jedes abgeleitete Dataset. Datenform rein, Abfrageform rein, Governance am Join, native Abfragen raus. Der Rest dieses Abschnitts geht jeden Teil durch.

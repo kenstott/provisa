@@ -20,6 +20,19 @@ Cette conception permet deux façons de l'employer, qui ne s'excluent pas :
 - **Comme échafaudage de modernisation** — Modélisez votre patrimoine, laissez Provisa générer le SQL natif de chaque source, puis récupérez ce SQL et adoptez-le directement dans le système cible. Provisa est la couche de transition, non une dépendance permanente.
 - **Comme infrastructure permanente d'application des politiques** — Gardez-le en place comme le chemin gouverné qu'emprunte chaque requête, afin que définition, application et audit restent unifiés aussi longtemps que le patrimoine existe.
 
+## Essayer une démo
+
+Le plus rapide est une démo en direct dans le navigateur, sans rien installer : [provisa.dev/demos](https://provisa.dev/demos). Chacune ouvre un sandbox privé avec une visite guidée.
+
+Depuis une copie de ce dépôt, vous pouvez exécuter n'importe quelle démo sur votre propre machine :
+
+```bash
+./start-ui-install.sh --list-demos     # les démos que vous pouvez exécuter, et celles qui sont publiées
+./start-ui-install.sh --demo weblogs   # en démarrer une, avec sa visite
+```
+
+Une démo publiée est récupérée sous forme de bundle prêt à l'emploi ; les autres s'exécutent depuis `demo/named/<name>/`. Voir [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) pour toutes les options.
+
 ## Le modèle de fédération
 
 Le modèle tout entier tient en deux contrats et deux politiques : les sources se réduisent à des tables 2D sur un seul système de types, les requêtes se réduisent à une RI de type SQL, l'atteignabilité décide de ce qui est interrogé en direct plutôt que matérialisé, et une stratégie de fraîcheur gouverne chaque copie matérialisée et chaque jeu de données dérivé. Forme des données en entrée, forme des requêtes en entrée, gouvernance à la jointure, requêtes natives en sortie. La suite de cette section parcourt chaque pièce.

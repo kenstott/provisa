@@ -20,6 +20,19 @@ Ese diseño admite dos formas de usarlo, y no son excluyentes:
 - **Como andamiaje para la modernización** — Modele su patrimonio, deje que Provisa genere el SQL nativo de cada origen y luego capture ese SQL y adóptelo directamente en el sistema destino. Provisa es la capa de transición, no una dependencia permanente.
 - **Como infraestructura permanente de aplicación de políticas** — Manténgalo en su lugar como la ruta gobernada que toma cada consulta, de modo que la definición, la aplicación y la auditoría permanezcan unificadas mientras exista el patrimonio.
 
+## Probar una demo
+
+Lo más rápido es una demo en vivo en el navegador, sin instalar nada: [provisa.dev/demos](https://provisa.dev/demos). Cada una abre un sandbox privado con una visita guiada.
+
+Desde una copia de este repositorio puede ejecutar cualquier demo en su propia máquina:
+
+```bash
+./start-ui-install.sh --list-demos     # las demos que puede ejecutar, y cuáles están publicadas
+./start-ui-install.sh --demo weblogs   # iniciar una, con su visita guiada
+```
+
+Una demo publicada se descarga como un paquete listo; las demás se ejecutan desde `demo/named/<name>/`. Consulte [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) para ver todas las opciones.
+
 ## El modelo de federación
 
 Todo el modelo se reduce a dos contratos y dos políticas: los orígenes se reducen a tablas 2-D sobre un único sistema de tipos, las consultas se reducen a una única IR tipo SQL, la alcanzabilidad decide qué se consulta en vivo frente a qué se materializa, y una estrategia de frescura gobierna cada copia materializada y cada conjunto de datos derivado. Forma de datos de entrada, forma de consulta de entrada, gobierno en la unión, consultas nativas de salida. El resto de esta sección recorre cada pieza.
