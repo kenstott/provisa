@@ -7,7 +7,7 @@
 #   us_shop    the US subsidiary's own (region us)
 #   group_ref  products, stores and the register of data subject requests (no region)
 #
-# Port: 28932 the database; it can be moved by its variable.
+# Port: 29332 the database; it can be moved by its variable.
 x-demo-labels: &demo-labels
   com.provisa.demo: retail
 name: provisa-demo-retail
@@ -23,7 +23,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
     ports:
-      - "127.0.0.1:${RETAIL_PG_PORT:-28932}:5432"
+      - "127.0.0.1:${RETAIL_PG_PORT:-29332}:5432"
     volumes:
       - retail_pg:/var/lib/postgresql/data
       - ./db:/docker-entrypoint-initdb.d:ro

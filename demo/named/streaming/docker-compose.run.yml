@@ -39,9 +39,9 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: streaming
     ports:
-      # Unset: 28732. Set empty (the node, which runs several versions at once): a port docker
+      # Unset: 29032. Set empty (the node, which runs several versions at once): a port docker
       # picks. On the loopback only.
-      - "127.0.0.1:${STREAMING_PG_PORT-28732}:5432"
+      - "127.0.0.1:${STREAMING_PG_PORT-29032}:5432"
     volumes:
       - streaming_run_pg:/var/lib/postgresql/data
       - ./dump/postgres.sql:/docker-entrypoint-initdb.d/10-streaming.sql:ro

@@ -15,7 +15,7 @@
 #   orders  the order system, loaded from dump/orders.sql, read only (db/run-orders.sql)
 #   crm     the CRM, loaded from dump/crm.sql, read only (db/run-crm.sql)
 #
-# Both are shared by every sandbox of the demo. Ports: 28832 and 28833, on the loopback only;
+# Both are shared by every sandbox of the demo. Ports: 29232 and 29233, on the loopback only;
 # each moved by its variable, and set empty, published on a free one.
 x-demo-labels: &demo-labels
   com.provisa.demo: datavault
@@ -38,9 +38,9 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: orders
     ports:
-      # Unset: 28832. Set empty (the node, which runs several versions at once): a port docker
+      # Unset: 29232. Set empty (the node, which runs several versions at once): a port docker
       # picks. On the loopback only.
-      - "127.0.0.1:${DATAVAULT_ORDERS_PORT-28832}:5432"
+      - "127.0.0.1:${DATAVAULT_ORDERS_PORT-29232}:5432"
     volumes:
       - datavault_run_orders:/var/lib/postgresql/data
       - ./dump/orders.sql:/docker-entrypoint-initdb.d/10-orders.sql:ro
@@ -69,9 +69,9 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: crm
     ports:
-      # Unset: 28833. Set empty (the node, which runs several versions at once): a port docker
+      # Unset: 29233. Set empty (the node, which runs several versions at once): a port docker
       # picks. On the loopback only.
-      - "127.0.0.1:${DATAVAULT_CRM_PORT-28833}:5432"
+      - "127.0.0.1:${DATAVAULT_CRM_PORT-29233}:5432"
     volumes:
       - datavault_run_crm:/var/lib/postgresql/data
       - ./dump/crm.sql:/docker-entrypoint-initdb.d/10-crm.sql:ro

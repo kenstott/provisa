@@ -15,7 +15,7 @@
 #   orders  the order system (db/orders.sql): customers, products, orders and their lines
 #   crm     the CRM (db/crm.sql): its own copy of the customers, as accounts with their contacts
 #
-# Ports: 28832 the order system, 28833 the CRM; each can be moved by its variable.
+# Ports: 29232 the order system, 29233 the CRM; each can be moved by its variable.
 x-demo-labels: &demo-labels
   com.provisa.demo: datavault
 name: provisa-demo-datavault
@@ -31,7 +31,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: orders
     ports:
-      - "127.0.0.1:${DATAVAULT_ORDERS_PORT:-28832}:5432"
+      - "127.0.0.1:${DATAVAULT_ORDERS_PORT:-29232}:5432"
     volumes:
       - datavault_orders:/var/lib/postgresql/data
       - ./db/orders.sql:/docker-entrypoint-initdb.d/10-orders.sql:ro
@@ -51,7 +51,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: crm
     ports:
-      - "127.0.0.1:${DATAVAULT_CRM_PORT:-28833}:5432"
+      - "127.0.0.1:${DATAVAULT_CRM_PORT:-29233}:5432"
     volumes:
       - datavault_crm:/var/lib/postgresql/data
       - ./db/crm.sql:/docker-entrypoint-initdb.d/10-crm.sql:ro

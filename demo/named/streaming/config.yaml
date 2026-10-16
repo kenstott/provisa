@@ -49,7 +49,7 @@ sources:
 - id: catalog
   type: postgresql
   host: ${env:STREAMING_PG_HOST:-localhost}
-  port: ${env:STREAMING_PG_PORT:-28732}
+  port: ${env:STREAMING_PG_PORT:-29032}
   database: streaming
   username: provisa_reader
   password: provisa_reader

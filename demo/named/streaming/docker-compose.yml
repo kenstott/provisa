@@ -14,7 +14,7 @@
 #   kafka     the broker the orders arrive on, the topic `orders`.
 #   producer  the live order feed (producer.py): a few orders a second, for as long as it runs.
 #
-# Ports: 28732 the catalog, 29092 the broker, each moved by its variable. The broker's is the same
+# Ports: 29032 the catalog, 29092 the broker, each moved by its variable. The broker's is the same
 # inside and out: a broker tells its clients the address to dial, its own published port.
 x-demo-labels: &demo-labels
   com.provisa.demo: streaming
@@ -31,7 +31,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: streaming
     ports:
-      - "127.0.0.1:${STREAMING_PG_PORT:-28732}:5432"
+      - "127.0.0.1:${STREAMING_PG_PORT:-29032}:5432"
     volumes:
       - streaming_pg:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
