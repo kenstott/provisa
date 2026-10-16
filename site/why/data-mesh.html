@@ -147,7 +147,7 @@
               </tr>
               <tr>
                 <th>Data as a product</th>
-                <td class="is-us">Data products follow the Open Data Product Standard (ODPS) as a thin layer over the model: each names the subset of a domain's tables, views, relationships and ontology that make up the product, with its owner, purpose and terms of use. Every product is addressable, discoverable, and queryable in SQL, GraphQL or Cypher over nine protocols, including MCP for agents.</td>
+                <td class="is-us">Data products follow the Open Data Product Standard (ODPS) as a thin layer over the model: each names the subset of a domain's tables, views, relationships and ontology that make up the product, with its owner, purpose and terms of use, and the quality measurements taken on it. Every product is addressable, discoverable, and queryable in SQL, GraphQL or Cypher over nine protocols, including MCP for agents.</td>
               </tr>
               <tr>
                 <th>Self-serve platform</th>
@@ -238,6 +238,14 @@
         <p>
           No. Import the definitions you have from dbt, Cube or your warehouse's semantic
           layer, and keep your catalog: Provisa publishes into it with lineage.
+        </p>
+        <h3>Will a data product give the same answer every time?</h3>
+        <p>
+          Not by promise. Data changes constantly: sources update, late records arrive, and
+          upstream fixes rewrite history. So each product carries the quality measurements
+          taken on it, and when you need the same answer twice, for a period close, an audit
+          or a training set, you read the same moment: point-in-time and interval reads over
+          the history Provisa records.
         </p>
         <h3>What about load on live systems?</h3>
         <p>
