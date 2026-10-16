@@ -338,6 +338,56 @@ def test_a_process_that_does_background_work_registers_its_build_pass(monkeypatc
         process_mode.set_mode(process_mode.EVERY)
 
 
+def test_each_environment_has_its_own_build_pass_and_prod_keeps_its_own(monkeypatch, tmp_path):
+    """#273: an environment's build state is its own, so wiring dev's runner after prod's leaves
+    prod's in place, under its own job, and a kick reaches the bound environment's runner."""
+    from provisa.core.request_context import reset_current_env, set_current_env
+
+    monkeypatch.setattr(replica_builds, "make_runner", lambda state, org, url: _Runner())
+    monkeypatch.setattr(replica_builds, "_runners", {})
+    kicked: list = []
+    monkeypatch.setattr(
+        "provisa.core.connection_loop.spawn_background", lambda coro, name=None: kicked.append(coro)
+    )
+    scheduler = _Scheduler()
+    url = f"sqlite+pysqlite:///{tmp_path / 'cp.db'}"
+    process_mode.set_mode(process_mode.EVERY)
+    org_token = set_current_org("acme")
+    try:
+        replica_builds.wire_replica_runner(scheduler, state=object(), platform_url=url)
+        env_token = set_current_env("dev")
+        try:
+            replica_builds.wire_replica_runner(scheduler, state=object(), platform_url=url)
+            replica_builds.kick("acme")
+        finally:
+            reset_current_env(env_token)
+        assert set(scheduler.jobs) == {"replica:builds:org_acme", "replica:builds:org_acme:env_dev"}
+        assert runs_in_every_worker("replica:builds:org_acme:env_dev")
+        prod, dev = (
+            replica_builds._runners[("acme", "prod")],
+            replica_builds._runners[("acme", "dev")],
+        )
+        assert prod is not dev and kicked == [dev.passed]
+        replica_builds.kick("acme")
+        assert kicked == [dev.passed, prod.passed]
+        replica_builds.stop_replica_runner("acme")
+        assert replica_builds._runners == {} and prod.stopped and dev.stopped
+    finally:
+        reset_current_org(org_token)
+
+
+class _Runner:
+    def __init__(self):
+        self.passed = object()
+        self.stopped = False
+
+    def run_pass(self):
+        return self.passed
+
+    def stop(self):
+        self.stopped = True
+
+
 def test_a_kick_with_no_runner_for_the_org_does_nothing(monkeypatch):
     monkeypatch.setattr(replica_builds, "_runners", {})
     replica_builds.kick("an-org-this-process-has-no-runner-for")

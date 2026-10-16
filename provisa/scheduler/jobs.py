@@ -878,16 +878,21 @@ async def watch_engine() -> None:
 
 
 def unschedule_org(scheduler: "AsyncIOScheduler | None", org_id: str) -> int:  # REQ-2006
-    """Remove every scheduled job of a deleted org -- each is named ``...:org_<id>`` -- and stop
-    its replica build runner; how many jobs went. A job left behind fires against an org with no
-    runtime, and fails every time it fires."""
+    """Remove every scheduled job of a deleted org -- each is named ``...:org_<id>``, an
+    environment's replica build pass ``...:org_<id>:env_<name>`` -- and stop its replica build
+    runners; how many jobs went. A job left behind fires against an org with no runtime, and fails
+    every time it fires."""
     from provisa.federation.replica_builds import stop_replica_runner
 
     stop_replica_runner(org_id)
     if scheduler is None:
         return 0
     suffix = f":org_{org_id}"
-    gone = [job.id for job in scheduler.get_jobs() if job.id.endswith(suffix)]
+    gone = [
+        job.id
+        for job in scheduler.get_jobs()
+        if job.id.endswith(suffix) or f"{suffix}:env_" in job.id
+    ]
     for job_id in gone:
         scheduler.remove_job(job_id)
     return len(gone)

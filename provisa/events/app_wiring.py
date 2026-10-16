@@ -392,14 +392,17 @@ def _replica_build_factory(state: Any, db: Any) -> Callable[[tuple[str, str, str
     from provisa.events.handlers import make_source_build
     from provisa.federation import replica_builds
 
+    from provisa.core.request_context import active_env
+
     org_id = require_current_org()
+    env = active_env()
 
     def build(key: tuple[str, str, str]) -> Any:
         return make_source_build(
             db=db,
             key=key,
             store_of=lambda: replica_builds.store_identity(state),
-            kick=lambda: replica_builds.kick(org_id),
+            kick=lambda: replica_builds.kick(org_id, env),
         )
 
     return build
