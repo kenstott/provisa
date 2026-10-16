@@ -174,7 +174,7 @@ COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
 支援的格式：`text`（以定位字元分隔，預設）、`csv` 及 `binary`，即 PostgreSQL 的二進位 COPY 格式，DuckDB 的 postgres 擴充以它讀取。（REQ-883） [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
 
-**COPY FROM STDIN** 是向現有已註冊資料表寫入數據：它由與相同資料列的 `INSERT` 相同的寫入准入放行（請參閱[數據寫入](#data-writes-insert-update-delete-merge-copy-from-stdin)）。它讀取 `text`（預設）及 `csv`。[tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
+**COPY FROM STDIN** 是向現有已註冊資料表寫入數據：它由與相同資料列的 `INSERT` 相同的寫入准入放行（請參閱[數據寫入](#data-writes-insert-update-delete-merge-copy-from-stdin)）。它讀取 `text`（預設）及 `csv`。任何其他格式都會在傳送任何數據之前以 SQLSTATE 0A000 被拒絕，並指出該格式。 [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 ### 交易與工作階段命令 {: #transactions-and-session-commands }
 

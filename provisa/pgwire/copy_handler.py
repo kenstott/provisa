@@ -30,6 +30,7 @@ import re
 import struct
 from typing import TYPE_CHECKING, Protocol
 
+from provisa.compiler.definitions import NotAvailableHere
 from provisa.pgwire.copy_binary import (
     _arrow_binary_tag,
     _rows_to_copy_binary,
@@ -67,6 +68,9 @@ class _CopyTransport(Protocol):
 log = logging.getLogger(__name__)
 
 _COPY_RE = re.compile(r"^\s*COPY\b", re.IGNORECASE)
+
+#: The formats ``COPY ... FROM STDIN`` parses (`_parse_copy_data`).
+_COPY_FROM_FORMATS = ("text", "csv")
 
 _PARSE_TO_RE = re.compile(
     r"""^\s*COPY\s+
@@ -306,6 +310,12 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
             table = m_from.group("table")
             cols_raw = m_from.group("cols")
             fmt = (m_from.group("fmt") or "text").lower()
+            if fmt not in _COPY_FROM_FORMATS:
+                # Anything else would be read as text and its rows misread, so it is refused
+                # before the client is asked for data. pgwire answers it 0A000.
+                raise NotAvailableHere(
+                    f"COPY FROM STDIN does not read FORMAT {fmt}: it reads text and csv"
+                )
             explicit_cols = [c.strip() for c in cols_raw.split(",")] if cols_raw else None
             return self._handle_copy_from(ctx, schema, table, explicit_cols, fmt, role_id)
 

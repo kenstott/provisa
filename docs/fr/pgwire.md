@@ -174,7 +174,7 @@ COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
 Formats pris en charge : `text` (séparé par tabulations, par défaut), `csv` et `binary`, le format COPY binaire de PostgreSQL, que l'extension postgres de DuckDB utilise pour lire. (REQ-883) [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
 
-**COPY FROM STDIN** est une écriture de données dans une table enregistrée existante : elle est admise par la même admission d'écriture qu'un `INSERT` des mêmes lignes (voir [Écritures de données](#data-writes-insert-update-delete-merge-copy-from-stdin)). Elle lit `text` (par défaut) et `csv`. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
+**COPY FROM STDIN** est une écriture de données dans une table enregistrée existante : elle est admise par la même admission d'écriture qu'un `INSERT` des mêmes lignes (voir [Écritures de données](#data-writes-insert-update-delete-merge-copy-from-stdin)). Elle lit `text` (par défaut) et `csv`. Tout autre format est refusé avec SQLSTATE 0A000, en le nommant, avant l'envoi de toute donnée. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 ### Transactions et commandes de session {: #transactions-and-session-commands }
 

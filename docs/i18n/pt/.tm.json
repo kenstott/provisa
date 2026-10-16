@@ -16,7 +16,7 @@
   "migration/hasura-ddn.md": "71e83d26dd688d68c72b64eba3dd95c6e7d305b0c313c65e6140eeb9013c9e9a",
   "migration/hasura-v2.md": "191fc313bf034df9d98d1297c2dace635cf5c0b0db85d664a498c1452552c906",
   "modeling.md": "dd0415ff146446911aea3360a7d0408393134b7b54933a7b53d25237eaa55997",
-  "pgwire.md": "2b845db02302dd612e8712813f8e0b7c5b8e959edebd76d3e895b1dd30c3c707",
+  "pgwire.md": "147580ecbf20d8cee310a6bc20cb358f1843dc2d747146a3148832434fed5eb5",
   "python-client.md": "ead2a55e47202c3dc89a8aacb5f8f45facde9d4fecd47d78153fbe3c545c1fda",
   "quickstart.md": "03d442441ed339c6b0d9a5ef40916f7a4f3ee41ef719ae305f20c8a97593e266",
   "releasing.md": "cae10c2a949cbc2dfaf0b80ea2225fc99f1b0dfdd98c2804616508725fdce731",
