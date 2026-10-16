@@ -124,11 +124,13 @@ _ORG_ADMIN_CAPABILITIES: list[str] = [
 # the Admin tab, not the few surfaces this list intended. The design (per REQ-1597/REQ-1598) is that
 # a sandbox visitor can do everything the product does except reach past the environment it was
 # minted in and write back to the shared sample sources it points at -- so the denylist narrows to
-# exactly that: leaving/managing environments, conferring roles, and overriding the org's own
-# glossary terms. Viewing settings and telemetry is no longer withheld.
+# exactly that: managing environments, conferring roles, and overriding the org's own glossary
+# terms. Viewing settings and telemetry is no longer withheld. Switching between the environments
+# that exist is not withheld either (REQ-2053): a demo sandbox is an org of its own, so its
+# environments are the visitor's, and a membership pinned to one environment (REQ-1596) is
+# confined by the pin, which env_routing checks before the right.
 _SANDBOX_DENIED: frozenset[str] = frozenset(
     {
-        "environment_switch",
         "environment_management",
         "user_management",
         "org_glossary_rw",
@@ -207,12 +209,12 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
     # make every new capability invisible to them until someone remembered to add it here; taking
     # away is the direction that stays correct.
     #
-    # Four rights are withheld, each because it reaches something the environment does not contain:
-    # environment_switch would leave the sandbox (REQ-1596 pins the membership to it, and the pin
-    # would be pointless against a role that could name another); environment_management would spend
-    # the org's plan ceiling and can drop another environment's schemas; user_management would let a
-    # visitor confer roles or admit more people; org_glossary_rw is the override over terms the org's
-    # own people authored.
+    # Three rights are withheld, each because it reaches something the environment does not contain:
+    # environment_management would spend the org's plan ceiling and can drop another environment's
+    # schemas; user_management would let a visitor confer roles or admit more people;
+    # org_glossary_rw is the override over terms the org's own people authored. environment_switch
+    # is held (REQ-2053): it moves between environments that exist, and a pinned membership
+    # (REQ-1596) stays confined by its pin.
     ("sandbox", sorted(set(_ORG_ADMIN_CAPABILITIES) - _SANDBOX_DENIED)),
     # REQ-1327/REQ-1337: the two platform rights and nothing else — no data capability, and no
     # capability that stands in for one.

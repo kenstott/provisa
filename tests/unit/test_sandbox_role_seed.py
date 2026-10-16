@@ -14,10 +14,10 @@ A stranger holding a "Try it Out" link is meant to be able to do everything the 
 an environment that expires (REQ-1595). Defining the role by what it may do would make every
 capability added later invisible to visitors until somebody remembered this one row -- so the seed
 subtracts, and this file asserts the subtraction rather than the resulting list: a new right lands
-in the sandbox automatically, and the six that are withheld stay withheld.
+in the sandbox automatically, and the ones that are withheld stay withheld.
 """
 
-# Requirements: REQ-1595, REQ-1596, REQ-1597, REQ-1602, REQ-1608
+# Requirements: REQ-1595, REQ-1596, REQ-1597, REQ-1602, REQ-1608, REQ-2053
 
 from __future__ import annotations
 
@@ -45,10 +45,22 @@ class TestWhatIsWithheld:
     def test_a_denied_right_is_absent(self, right):
         assert right not in _caps(SANDBOX)
 
-    def test_the_visitor_cannot_leave_the_environment_they_were_seated_in(self):
-        """REQ-1596: the membership pin confines them, and the pin is pointless against a role that
-        could name another environment -- the two halves only contain a stranger together."""
-        assert "environment_switch" not in _caps(SANDBOX)
+    @pytest.mark.asyncio
+    async def test_the_visitor_cannot_leave_the_environment_they_were_seated_in(self):
+        """REQ-1596: the membership pin confines them though the role holds environment_switch
+        (REQ-2053): the pin is checked before the right, and before any lookup."""
+        from provisa.api.env_routing import EnvironmentRightError, select_environment
+
+        assert "environment_switch" in _caps(SANDBOX)
+        for named in ("prod", "dev"):
+            with pytest.raises(EnvironmentRightError):
+                await select_environment(None, "acme", named, _caps(SANDBOX), pinned="sbx_ab12")
+
+    def test_it_switches_but_never_creates_or_deletes_an_environment(self):
+        """REQ-2053: a sandbox's person moves between the environments that exist; making or
+        dropping one is environment_management's, which stays withheld."""
+        assert "environment_switch" in _caps(SANDBOX)
+        assert "environment_management" not in _caps(SANDBOX)
 
     def test_it_carries_nothing_from_the_platform_plane(self):
         assert not _caps(SANDBOX) & {"admin", "superadmin", "cross_org", "platform_settings"}

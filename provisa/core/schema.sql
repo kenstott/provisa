@@ -1430,11 +1430,12 @@ ON CONFLICT (id) DO NOTHING;
 -- make every capability added later invisible to them until someone remembered this row; taking
 -- away is the direction that stays correct.
 --
--- Four rights are withheld, each because it reaches something the environment does not contain:
--- environment_switch would leave the sandbox (REQ-1596 pins the membership to it, and the pin is
--- pointless against a role that can name another); environment_management spends the org's plan
--- ceiling and drops other environments' schemas; user_management would let a visitor confer roles
--- or admit more people; org_glossary_rw is the override over terms the org's own people authored.
+-- Three rights are withheld, each because it reaches something the environment does not contain:
+-- environment_management spends the org's plan ceiling and drops other environments' schemas;
+-- user_management would let a visitor confer roles or admit more people; org_glossary_rw is the
+-- override over terms the org's own people authored. environment_switch is held (REQ-2053): it
+-- moves between environments that exist, and a pinned membership (REQ-1596) stays confined by
+-- its pin, which is checked before the right.
 --
 -- org_settings and observability are NOT withheld: REQ-1349 made org_settings the single right
 -- nearly every org-scoped admin page is gated on (cache, AI models, import, tags, secrets,
@@ -1443,7 +1444,7 @@ ON CONFLICT (id) DO NOTHING;
 -- can do everything the product does except reach past the environment it was minted in and write
 -- back to the shared sample sources it points at -- viewing settings and telemetry is not that.
 --
--- REQ-1602/REQ-1608: three of the four are DEMONSTRATED rather than merely absent. A visitor is
+-- REQ-1602/REQ-1608: two of the three are DEMONSTRATED rather than merely absent. A visitor is
 -- being shown the product, so the surfaces those rights open stay on the page -- disabled, and
 -- badged as belonging to the production system. Withholding them by hiding them would make the
 -- sandbox look like a smaller product instead of the same one with the org's own controls held
@@ -1454,11 +1455,12 @@ INSERT INTO roles (id, capabilities, demonstrated, domain_access, org_id)
 VALUES (
     'sandbox',
     '["access_config","approve_relationship","approve_view","column_grant","create_relationship",
-      "create_view","data_product_read","data_product_rw","environment_data","full_results",
+      "create_view","data_product_read","data_product_rw","environment_data","environment_switch",
+      "full_results",
       "glossary_read","glossary_rw","masking_config","observability","org_settings",
       "query_development","sensitive_data","source_registration","table_registration","usage",
       "view_governance","write"]'::jsonb,
-    '["environment_management","environment_switch","org_glossary_rw"]'::jsonb,
+    '["environment_management","org_glossary_rw"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )
@@ -1469,9 +1471,9 @@ ON CONFLICT (id) DO NOTHING;
 -- release of this same reconcile left with `user_management`, `org_settings` or `observability`
 -- still in it.
 UPDATE roles
-SET demonstrated = '["environment_management","environment_switch","org_glossary_rw"]'::jsonb
+SET demonstrated = '["environment_management","org_glossary_rw"]'::jsonb
 WHERE id = 'sandbox'
-  AND demonstrated <> '["environment_management","environment_switch","org_glossary_rw"]'::jsonb;
+  AND demonstrated <> '["environment_management","org_glossary_rw"]'::jsonb;
 
 UPDATE roles
 SET capabilities = (SELECT jsonb_agg(DISTINCT v ORDER BY v)

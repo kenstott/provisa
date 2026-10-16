@@ -32,6 +32,7 @@ import secrets
 from sqlalchemy import delete, select, update
 
 from provisa.auth.models import AuthIdentity
+from provisa.core.org_ids import is_demo_sandbox
 from provisa.core.schema_admin import personal_access_tokens, user_profiles
 
 # Requirements: REQ-1263
@@ -205,8 +206,10 @@ class PersonalAccessTokenStore:  # REQ-1263
             },
             active_org_id=row["org_id"],
             # REQ-1503: the environment comes from the credential. The routing serves the request
-            # from it and refuses a header that names another.
-            credential_env=row["env_name"],
+            # from it and refuses a header that names another. The one exception (REQ-2053): a
+            # demo sandbox's token addresses its whole org, which is its person's alone and thrown
+            # away, so its visitor is served by whichever of its environments they switch to.
+            credential_env=None if is_demo_sandbox(row["org_id"]) else row["env_name"],
         )
 
     async def list_for_user(self, user_id: str, org_id: str) -> list[dict]:

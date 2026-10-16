@@ -51585,11 +51585,14 @@
     is what makes an environment safe to hand out -- an application configured with a dev environment''s
     key reaches dev whatever it sends -- and it is why keys are never carried by a copy or a merge. Rotating
     or revoking an environment''s keys affects that environment alone, and deleting an environment revokes
-    its keys with it.'
+    its keys with it. (Amended 2026-10-15, REQ-2053: one exception -- a demo sandbox''s token addresses its
+    whole sandbox org, which is its visitor''s alone and thrown away, so the visitor is served by whichever
+    of its environments they switch to.)'
   use_case: A staging application is configured with a staging key and cannot reach production data even
     if its configuration is wrong or its host is compromised.
   code:
   - provisa/auth/middleware.py
+  - provisa/auth/pat.py
   - provisa/core/environments.py
   - provisa/api/admin/environments_router.py
   tests:
@@ -57452,7 +57455,11 @@
     settled target is most of org_admin, less the ability to WRITE BACK to the original sample data sources
     -- a visitor''s hour is disposable but the demo sources it points at are shared and outlive it --
     and less further destructive acts still to be enumerated. The four above are the rights withheld today;
-    the denylist is where those additions land, so the subtraction stays the one definition.'
+    the denylist is where those additions land, so the subtraction stays the one definition. (Amended 2026-10-15,
+    REQ-2053: environment_switch is no longer withheld. A demo sandbox is an org of its own, so its
+    environments are its visitor''s, who switches between those that exist; creating and deleting one stays
+    withheld with environment_management. A membership pinned to one environment (REQ-1596) is still
+    confined by the pin, which is checked before the right. Three rights are withheld.)'
   tests:
   - tests/unit/test_sandbox_role_seed.py
   - tests/unit/test_open_invite.py
@@ -57468,11 +57475,11 @@
 
     When the sandbox role is resolved
 
-    Then it holds every capability org_admin holds except the four on the denylist
+    Then it holds every capability org_admin holds except the three on the denylist
 
     And a capability later added to org_admin is held by it without a second edit
 
-    When a sandbox visitor names another environment, edits a role, or opens org settings
+    When a sandbox visitor creates or deletes an environment, edits a role, or opens org settings
 
     Then each is refused for want of the right'
   depends_on:
@@ -83866,7 +83873,10 @@
     schema (weblogs''): the same queries return production-shaped but generated rows in dev and test, and real rows
     only in prod. Its tour follows the settled demo tour shape (scenario and features; how the pieces fit, each
     step on its real row; the solution as predesigned queries and views over fitting transports; recap; then "Where
-    next?" with its landing page). Its business question: "Can I test against realistic data without touching production?"'
+    next?" with its landing page). Its business question: "Can I test against realistic data without touching production?"
+    Hosted, it runs as it does locally: a demo''s template org creates the environments its setup.yaml declares,
+    every sandbox cloned from the template carries them (same names and data modes), and the sandbox''s visitor
+    switches between them but creates and deletes none.'
   use_case: 'A visitor opens the environments and test data demo and sees how Provisa answers: Can I test against
     realistic data without touching production?'
   scenario: 'Given the environments and test data demo started from its bundle
@@ -83875,7 +83885,19 @@
     When a visitor walks its tour to the end
 
 
-    Then every step shows its real object and every predesigned query returns rows'
+    Then every step shows its real object and every predesigned query returns rows
+
+
+    Given a sandbox of the demo opened on the sandbox tier
+
+
+    When its visitor switches to dev and then to test
+
+
+    Then each answers the same fakes and prod answers the real rows
+
+
+    And the visitor''s request to create or delete an environment is refused'
   related_reqs:
   - REQ-2006
   - REQ-2010
@@ -83890,8 +83912,14 @@
   - scripts/run_demo_setup.py
   - start-ui-install.sh
   - provisa-ui/src/tour/demoTour.ts
+  - provisa/api/demo_templates.py
+  - provisa/api/demo_sandbox.py
+  - provisa/auth/pat.py
   tests:
   - tests/integration/test_testdata_demo.py
+  - tests/integration/test_demo_sandboxes_e2e.py
+  - tests/unit/test_env_credentials.py
+  - tests/unit/test_sandbox_role_seed.py
   - tests/unit/test_demo_setup.py
   - tests/unit/test_named_demo_tour.py
   - provisa-ui/src/__tests__/tourDemoTrack.test.tsx
