@@ -602,6 +602,24 @@ def _start_scheduler(_log: logging.Logger) -> None:
                 max_instances=1,
                 coalesce=True,
             )
+            from provisa import sandbox_wake
+
+            if sandbox_wake.SANDBOX_INSTANCE is not None:
+                # REQ-2006: a tier on a VM of its own stops that VM when no sandbox is used.
+                from datetime import UTC, datetime
+
+                from provisa.scheduler.jobs import stop_idle_sandbox_vm
+
+                scheduler.add_job(
+                    stop_idle_sandbox_vm,
+                    trigger=CronTrigger.from_crontab("* * * * *"),
+                    kwargs={"since": datetime.now(UTC)},
+                    id="sandbox_vm_idle_stop",
+                    name="sandboxes:stop_idle_vm",
+                    replace_existing=True,
+                    max_instances=1,
+                    coalesce=True,
+                )
             scheduler.start()
             state._scheduler = scheduler
             _log.info("APScheduler started (sandbox tier)")

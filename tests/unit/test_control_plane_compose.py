@@ -60,6 +60,8 @@ def test_the_sandbox_tier_reaches_the_control_plane_by_address_when_it_runs_alon
     assert env["REDIS_URL"] == "redis://${PROVISA_REDIS_HOST:-redis}:6379"
     assert env["PROVISA_OTEL_S3_ENDPOINT"] == "http://${PROVISA_MINIO_HOST:-minio}:9000"
     assert env["PG_HOST"].startswith("${CONFIG_DB_HOST:?")
+    assert env["PROVISA_SANDBOX_INSTANCE"] == "${PROVISA_SANDBOX_INSTANCE:-}"
+    assert env["PROVISA_SANDBOX_IDLE_STOP_SECONDS"] == "${PROVISA_SANDBOX_IDLE_STOP_SECONDS:-}"
     # Without the control profile there is no redis or minio in the file to wait for.
     assert all(
         dep["required"] is False for dep in services["provisa-sandbox"]["depends_on"].values()
@@ -70,6 +72,7 @@ def test_the_sandbox_tier_reaches_the_control_plane_by_address_when_it_runs_alon
         == "${PROVISA_SANDBOX_API_URL:-https://provisa-sandbox:8000}"
     )
     assert ui["depends_on"]["provisa-sandbox"]["required"] is False
+    assert ui["environment"]["PROVISA_SANDBOX_INSTANCE"] == "${PROVISA_SANDBOX_INSTANCE:-}"
     # Published on the VPC address only, as minio is: a sandbox node's tier reaches it there.
     assert services["redis"]["ports"] == [
         "${PROVISA_MINIO_BIND_IP:?the node's VPC-internal address}:6379:6379"

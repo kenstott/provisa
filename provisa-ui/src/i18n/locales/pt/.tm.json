@@ -6595,5 +6595,6 @@
   "pt/tour.json::tour.steps.opioidsScenario.description": "A state opioid settlement fund pays Ohio's 88 counties for treatment, recovery, prevention and naloxone. The council asks which counties have the most overdose deaths for the treatment the money pays for. The fund's allocations are in its own database; deaths, population and federal spending are public. The fund and its figures are made up; the counties and the public data are real.",
   "pt/tour.json::tour.steps.opioidsScenario.title": "What this demo is",
   "pt/tour.json::tour.steps.opioidsTerms.description": "The glossary explains the terms a council member or a resident meets: settlement fund, abatement, allocation, expenditure, suppressed count, rate per 100,000. Here abatement: what the settlements require the money be spent on.",
-  "pt/tour.json::tour.steps.opioidsTerms.title": "In plain words"
+  "pt/tour.json::tour.steps.opioidsTerms.title": "In plain words",
+  "pt/serverErrors.json::serverErrors.sandbox.starting": "The demo server is starting. Try again in a minute or two."
 }

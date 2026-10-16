@@ -908,6 +908,27 @@ async def reap_demo_sandboxes() -> None:  # REQ-2006
         logger.info("demo sandboxes reaped: %s", ", ".join(reaped))
 
 
+async def stop_idle_sandbox_vm(since: datetime) -> None:  # REQ-2006
+    """Stop the sandbox tier's own VM once no sandbox has been reached for
+    ``PROVISA_SANDBOX_IDLE_STOP_SECONDS`` -- counted from the last request to any sandbox, or from
+    ``since`` (when this process started) if none is open or none was reached since. Its
+    sandboxes and templates are on its disk; the UI server starts it again when a request for the
+    tier finds it down (provisa/sandbox_wake.py). Run by a sandbox tier on a VM of its own."""
+    from provisa import sandbox_wake
+    from provisa.api.demo_sandbox import last_active
+
+    instance = sandbox_wake.SANDBOX_INSTANCE
+    assert instance is not None  # scheduled only where the tier runs on a VM of its own
+    idle = int(os.environ["PROVISA_SANDBOX_IDLE_STOP_SECONDS"])
+    latest = await last_active()
+    quiet_since = since if latest is None or latest < since else latest
+    quiet = (datetime.now(timezone.utc) - quiet_since).total_seconds()
+    if quiet < idle:
+        return
+    logger.warning("sandbox tier idle for %ds; stopping its VM %s", int(quiet), instance)
+    await sandbox_wake.stop(instance)
+
+
 @_in_deployment_org
 async def reap_environments() -> None:  # REQ-1523
     """Delete the environments whose expiry has passed, with their schemas and their stores.

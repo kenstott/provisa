@@ -584,6 +584,7 @@
       "unknown_demo": "Es gibt keine veröffentlichte Demo namens {{demo}}.",
       "demo_not_ready": "Diese Demo wird noch vorbereitet. Versuchen Sie es gleich noch einmal.",
       "at_capacity": "Alle Demo-Sandboxes sind belegt. Versuchen Sie es gleich noch einmal.",
+      "starting": "Der Demo-Server wird gestartet. Versuchen Sie es in ein bis zwei Minuten erneut.",
       "disk_full": "Diese Sandbox hat ihre Speichergrenze von {{limit}} Bytes erreicht; es kann nichts mehr hineingeschrieben werden.",
       "sign_in_required": "Melden Sie sich an, um Ihre eigene Sandbox zu öffnen."
     },
