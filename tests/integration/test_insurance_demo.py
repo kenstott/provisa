@@ -36,6 +36,8 @@ import httpx
 import pytest
 import yaml
 
+from tests.integration.serving_wait import await_tables_serving
+
 pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -132,6 +134,19 @@ def server(stack, tmp_path_factory):
     # which takes minutes on a cold cache.
     srv.start(timeout=900)
     try:
+        # Each govdata table answers before the first read: the server may still be mounting
+        # schemas past what one statement waits, and each replica lands on its first read,
+        # longer than one request lasts.
+        await_tables_serving(
+            srv.base_url,
+            _ROLE,
+            [
+                '"insurance"."hazard_risk"',
+                '"insurance"."wildfire_risk"',
+                '"insurance"."storm_damage"',
+            ],
+            timeout=1800,
+        )
         yield srv
     finally:
         srv.stop_process()

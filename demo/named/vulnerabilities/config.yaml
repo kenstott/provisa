@@ -187,8 +187,8 @@ views:
            v.cvss_v31_score, v.cvss_v31_severity
     FROM "security"."dependabot_alerts" AS a
     JOIN "security"."repositories" AS r ON r.repo_id = a.repo_id
-    JOIN "security"."kev" AS k ON k.cve_id = a.cve_id
-    LEFT JOIN "security"."cves" AS v ON v.cve_id = a.cve_id
+    JOIN "security"."cves" AS v ON v.cve_id = a.cve_id
+    JOIN "security"."kev" AS k ON k.cve_id = v.cve_id
     WHERE a.state = 'open'
   columns:
   - {name: alert_id, data_type: integer, description: The alert's number, visible_to: [org_admin, analyst]}

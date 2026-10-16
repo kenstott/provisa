@@ -757,3 +757,25 @@ async def test_a_statement_that_outruns_its_deadline_is_a_504_naming_the_setting
     assert resp.status_code == 504, resp.text
     assert resp.json()["code"] == "data.request_interrupted"
     assert resp.json()["params"] == {"error": "the server is stopping"}
+
+
+@pytest.mark.asyncio
+async def test_a_statement_on_a_source_still_starting_answers_503_naming_it(
+    sql_client, monkeypatch
+):
+    """A source whose own server is still starting is answered 503 data.source_starting by the
+    app, never the request boundary's 400 for a statement the engine rejected (REQ-1824)."""
+    from provisa.federation.pgwire_replica import SourceStillStartingError
+    from provisa.pgwire import _pipeline
+
+    async def _starting(*_a, **_k):
+        raise SourceStillStartingError("govdata", preparing_catalog=True)
+
+    monkeypatch.setattr(_pipeline, "execute_sql_batch", _starting)
+    resp = await sql_client.post(
+        "/data/sql", json={"sql": "SELECT id FROM orders", "role": "org_admin"}
+    )
+
+    assert resp.status_code == 503, resp.text
+    assert resp.json()["code"] == "data.source_starting"
+    assert resp.json()["params"] == {"source": "govdata"}
