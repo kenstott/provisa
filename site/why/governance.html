@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Active, query-time governance — Provisa</title>
-  <meta name="description" content="Six governance layers compiled into every query plan — introspection filtering, public and domain access, row-level security, column masking, and a predicate guard — plus governed relationships." />
+  <title>Governance, in its complete sense — Provisa</title>
+  <meta name="description" content="Governance answers five questions about every query: where it runs, when, how, for whom, and what the data means. Access control is one of them: six layers compiled into every query plan, plus governed relationships." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -48,16 +48,37 @@
     <div class="container">
       <div class="doc-head">
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Governance</span></p>
-        <h1>Six layers, compiled into the plan.</h1>
+        <h1>Governance, in its complete sense.</h1>
         <p class="lead">
-          Governance is applied at query time, uniformly, on every language and every
-          transport. Add a source, a column, or a relationship and every layer applies
-          automatically — there is nothing to remember and nothing to re-apply per API.
+          Access control is one part of governance. The whole of it answers five questions
+          about every piece of processing, and Provisa declares each answer once, in the
+          model, and applies it to every query.
         </p>
       </div>
 
       <div class="doc-body">
-        <h2>The layers</h2>
+        <h2>Five questions</h2>
+        <ul>
+          <li><strong>Where to process.</strong> Which engine runs the work, and which region
+            homes the data, for performance, cost or sovereignty.
+            <a href="/why/no-lock-in">Engines and regions</a>.</li>
+          <li><strong>When to process.</strong> Declared freshness, materialized views, load
+            management windows and triggers. <a href="/why/materialized-views">Materialized
+            views</a>.</li>
+          <li><strong>How to process.</strong> SQL, GraphQL or Cypher over nine protocols, all
+            compiled to one governed plan. <a href="/why/interfaces">Interfaces</a>.</li>
+          <li><strong>Who to process for.</strong> Access control: the six layers below, and
+            governed relationships.</li>
+          <li><strong>The meaning of what you process.</strong> The glossary, metrics and
+            registered relationships. <a href="/why/one-model">One model</a>.</li>
+        </ul>
+
+        <h2>Access control: six layers, compiled into the plan</h2>
+        <p>
+          Access control is applied at query time, uniformly, on every language and every
+          transport. Add a source, a column, or a relationship and every layer applies
+          automatically — there is nothing to remember and nothing to re-apply per API.
+        </p>
 
         <h3>0 — Introspection filtering</h3>
         <p>

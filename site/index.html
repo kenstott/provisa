@@ -191,7 +191,7 @@
           <h3>An AI agent needs one database, safely.</h3>
           <p>
             Point Claude or any MCP client at Provisa instead of the database. The OAuth
-            token maps to a role, so the agent gets the same six governance layers a
+            token maps to a role, so the agent gets the same six access-control layers a
             person does. No invalid join ever runs on your data: roles are governed by
             default, and opting out is a deliberate grant.
           </p>
@@ -383,14 +383,15 @@
     <section id="governance" class="section section-alt">
       <div class="container">
         <header class="section-head">
-          <p class="eyebrow">Query-time governance</p>
-          <h2>Six layers. Every language. Every transport.</h2>
+          <p class="eyebrow">Access control, compiled in</p>
+          <h2>Six access layers. Every language. Every transport.</h2>
           <p class="section-sub">
             You do not configure any of this to get started — one source and a role is
             enough. It matters later, when the project you started alone has to survive
-            an auditor: governance is applied uniformly, there is no query path that
+            an auditor: access control is applied uniformly, there is no query path that
             bypasses it, and adding a source, column, or relationship applies every layer
-            automatically.
+            automatically. It's one part of governance; where, when and how work runs, and
+            what the data means, are declared in the same model.
           </p>
         </header>
 
@@ -417,7 +418,7 @@
 
         <p class="gov-claim">
           All six are applied while the query is <em>compiled</em>, not checked against a
-          policy list afterwards. What executes is already the governed query — so there is
+          policy list afterwards. What executes is already the controlled query — so there is
           no version of it that could have run ungoverned.
         </p>
 
@@ -427,7 +428,7 @@
           agents can roam the model freely while every path stays inside what policy
           sanctioned. It's a per-role flag: trusted roles can turn it off.
         </p>
-        <a class="more" href="/why/governance">How each layer works</a>
+        <a class="more" href="/why/governance">Governance, in its complete sense</a>
       </div>
     </section>
 
@@ -480,7 +481,7 @@
             <li>
               <span class="spot-step-n">3</span>
               <h4>Register</h4>
-              <p>You pick which of the discovered tables to register — and they land under the same six governance layers as everything else.</p>
+              <p>You pick which of the discovered tables to register — and they land under the same six access-control layers as everything else.</p>
             </li>
           </ol>
 
@@ -791,7 +792,7 @@
             <p>
               An MCP server — stdio and remote Streamable HTTP — exposes governed tables as
               tools. The OAuth token maps to a role, so every agent call passes the same six
-              governance layers as a human query, and traversals are limited to registered
+              access-control layers as a human query, and traversals are limited to registered
               relationships. Agents get no bypass and there's no second policy to keep in
               sync.
             </p>
