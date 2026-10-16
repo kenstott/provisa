@@ -574,6 +574,7 @@ resource "google_compute_instance" "coordinator" {
       ${local.engine_cluster_exports}
       ${local.object_store_mount}
       ${local.control_db_setup}
+      ${local.coordinator_sandbox_exports}
       /opt/Provisa.AppImage \
         --non-interactive \
         --role control-plane \

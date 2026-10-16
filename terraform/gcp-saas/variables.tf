@@ -440,3 +440,47 @@ variable "dns_ttl" {
   type        = number
   default     = 300
 }
+
+# ── Sandbox VM (REQ-2006) ───────────────────────────────────────────────────────
+
+variable "sandbox_vm" {
+  description = <<-DESC
+    Run the sandbox tier -- the demo sandboxes and the demos' own stores -- on a VM of its own
+    (sandbox.tf) instead of on the coordinator. It reaches the coordinator's control-plane
+    database, redis and minio by the coordinator's internal address, so the coordinator is awake
+    whenever it is; it stops itself after sandbox_idle_stop_minutes with no sandbox used, and the
+    coordinator's UI server starts it again on the next demo request.
+  DESC
+  type        = bool
+  default     = false
+}
+
+variable "sandbox_machine_type" {
+  description = <<-DESC
+    Machine type of the sandbox VM. Measured on cloud-dev (2026-10-16): the tier ~0.6 GB, the
+    sonnets embedding model 0.46 GB, one shared files connector ~0.55 GB, the demos' stores
+    ~2 GB (the reviews demo's Elasticsearch, Neo4j and MongoDB most of it), 10-50 MB per open
+    sandbox -- ~4.5 GB for ten sandboxes, with a 12 GB host-memory spike seen at warm-up not
+    yet explained. e2-highmem-2 (2 vCPU, 16 GB) holds that with room.
+  DESC
+  type        = string
+  default     = "e2-highmem-2"
+}
+
+variable "sandbox_internal_ip" {
+  description = "Fixed internal address for the sandbox VM, inside network_cidr: the coordinator's UI server reaches the tier there."
+  type        = string
+  default     = "10.10.0.5"
+}
+
+variable "sandbox_disk_gb" {
+  description = "Boot disk of the sandbox VM: the image, the demo bundles, the templates and the sandboxes' folders."
+  type        = number
+  default     = 50
+}
+
+variable "sandbox_idle_stop_minutes" {
+  description = "Minutes with no sandbox used after which the sandbox VM stops itself."
+  type        = number
+  default     = 30
+}
