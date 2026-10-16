@@ -90,9 +90,17 @@
         <p>
           The model names the engine: embedded, Trino, Snowflake, Databricks, Postgres,
           ClickHouse and more, swappable by config. Single-source queries go straight to the
-          source's own driver. Regions declare where data may be processed and stored, so
-          residency is decided per query by the same model, not by a separate deployment per
-          country.
+          source's own driver.
+        </p>
+        <p>
+          Regions place that processing. A region is an engine and its stores in a place, and
+          a table names the region it calls home. Why you would create one falls into two
+          groups. Performance: put work on the engine whose properties fit it, whether that is
+          its data center's location, the nature of its storage, or the size of its CPU and
+          memory, for lower latency, fresher data or a smaller bill. Sovereignty: keep data
+          where the law says it must be processed and stored. Either way it's the same
+          primitive and the same model, and a copy in another region is governed exactly like
+          the original.
         </p>
         <p>
           This is where central services and central compute part ways. Under data residency
@@ -100,7 +108,8 @@
           model, the policies and the catalog can be shared across every region; the personal
           data is processed by its own region's engine and stays in its own region's store.
           One definition of every region coordinates the cross-border rules, without moving
-          the data to a central platform to apply them.
+          the data to a central platform to apply them. A region placed for performance simply
+          declares no such rules.
         </p>
 
         <h3>When to process</h3>
