@@ -1,8 +1,8 @@
-# Выпуск релизов
+# Выпуск релизов {: #releasing }
 
 Релизы запускаются push'ем git-тега. Имя тега определяет канал.
 
-## Соглашения о тегах
+## Соглашения о тегах {: #tag-conventions }
 
 | Формат тега | Канал | Тип релиза GitHub |
 | ----------- | --------- | ------------------- |
@@ -11,7 +11,7 @@
 | `v1.2.3-rc.1` | rc | Pre-release |
 | `v1.2.3` | stable | Latest release |
 
-## Создание релиза
+## Создание релиза {: #creating-a-release }
 
 ```bash
 # Alpha
@@ -40,7 +40,7 @@ git tag v1.2.3 && git push origin v1.2.3
 9. **Сборка и тестирование Python-клиента**, затем **публикация в PyPI**
 10. **Публикация GitHub Release** — загружает все артефакты, устанавливает флаг pre-release для alpha/beta/rc
 
-## Артефакты релиза
+## Артефакты релиза {: #release-assets }
 
 Каждый релиз публикует следующие артефакты, все прикреплённые к GitHub Release (колесо (wheel) также публикуется в PyPI):
 
@@ -64,14 +64,14 @@ git tag v1.2.3 && git push origin v1.2.3
 Версия Python-клиента автоматически преобразуется в формат PEP 440:
 `v0.1.0-alpha.1` → `0.1.0a1`, `v0.1.0-beta.1` → `0.1.0b1`, `v0.1.0-rc.1` → `0.1.0rc1`.
 
-## Настройка публикации в PyPI (однократно)
+## Настройка публикации в PyPI (однократно) {: #pypi-publishing-setup-one-time }
 
 1. Скопируйте свой API-токен из `~/.pypirc` (значение `pypi-...` для `pypi.org`)
 2. Добавьте его как секрет репозитория с именем `PYPI_API_TOKEN` в **Settings → Secrets → Actions**
 
 Задача `publish-pypi` затем будет публиковать автоматически на каждый тег.
 
-## Обязательные секреты репозитория
+## Обязательные секреты репозитория {: #required-repository-secrets }
 
 Настройте их в **Settings → Secrets → Actions**:
 
@@ -87,7 +87,7 @@ git tag v1.2.3 && git push origin v1.2.3
 
 Сборки без этих секретов завершаются успешно, но производят неподписанный/ненотаризованный DMG (пользователи увидят предупреждение Gatekeeper).
 
-## Экспорт сертификата .p12
+## Экспорт сертификата .p12 {: #exporting-the-p12-certificate }
 
 1. Откройте **Keychain Access** → login keychain → **My Certificates**
 2. Найдите **Developer ID Application: Your Name (TEAMID)** — разверните, чтобы убедиться, что закрытый ключ вложен под ним
@@ -100,7 +100,7 @@ git tag v1.2.3 && git push origin v1.2.3
 
 5. Вставьте как значение `APPLE_CERT_P12_BASE64`; установите `APPLE_CERT_P12_PASSWORD` в пароль из шага 3
 
-## Поиск имени вашего сертификата
+## Поиск имени вашего сертификата {: #finding-your-certificate-name }
 
 ```bash
 security find-identity -v -p codesigning | grep "Developer ID Application"
@@ -108,7 +108,7 @@ security find-identity -v -p codesigning | grep "Developer ID Application"
 
 Скопируйте полную строку в кавычках — это значение для `APPLE_DEVELOPER_ID`.
 
-## Удаление неверного тега
+## Удаление неверного тега {: #deleting-a-bad-tag }
 
 ```bash
 git tag -d v1.2.3-alpha.1

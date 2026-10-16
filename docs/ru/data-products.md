@@ -2,17 +2,17 @@
 
 Продукт данных — это именованный, принадлежащий домену пакет таблиц, публикуемых вместе для потребления. Это единица, которую каталог раскрывает потребителям, — не отдельные таблицы, а курируемая поверхность, которую домен явно объявляет готовой. Поля следуют словарю ODPS (Open Data Product Standard) там, где Provisa уже является источником истины. [tool-verified: `provisa/core/models.py:318-342`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json`]
 
-## Правило владения доменом
+## Правило владения доменом {: #domain-ownership-rule }
 
 Каждый продукт данных принадлежит ровно одному домену (`domain_id` — обязательное поле). Таблица может войти в продукт данных только в том случае, если оба разделяют один и тот же `domain_id`. UI ограничивает выбор таблиц доменом продукта; backend отклоняет назначение `product_id`, чей домен не совпадает с доменом продукта, во время сохранения. [tool-verified: `provisa/core/models.py:320`, `docs/arch/requirements.yaml:54573-54574`]
 
 Продукт, которому нужны данные из другого домена, должен сначала внести эти данные как представление домена, а затем включить это представление как участника.
 
-## Выходные порты
+## Выходные порты {: #output-ports }
 
 Таблицы и команды, назначенные продукту данных, являются его **выходными портами** — запрашиваемой поверхностью, которую видят потребители. Назначение таблицы устанавливает `Table.product_id`; снятие назначения удаляет членство. Таблица принадлежит не более чем одному продукту. Команды в том же домене также могут быть назначены участниками. [tool-verified: `provisa/core/models.py:941`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json:tablesLabel,commandsLabel`]
 
-## Разделы панели детализации
+## Разделы панели детализации {: #detail-panel-sections }
 
 При открытии продукта данных в административном UI показываются следующие панели:
 
@@ -38,7 +38,7 @@
 
 | Каталог | Публикуется как |
 | --- | --- |
-| Snowflake Horizon | SHARE + организационный листинг (нативный Data Product); `publish=false` оставляет его в состоянии DRAFT, `publish=true` публикует его вживую |
+| Snowflake Horizon | SHARE + организационный листинг (нативный Data Product); `publish=false` оставляет его в состоянии DRAFT, `publish=true` публикует его вживую. Словарь данных листинга охватывает каждого участника и каждую колонку; первые пять участников выделяются, а маскированные колонки скрыты в предпросмотре (REQ-1656) |
 | BigQuery Analytics Hub | Листинг Analytics Hub (нативный) |
 | OpenMetadata | Сущность `DataProduct` (нативная) |
 | DataHub | Нативная URN-сущность `dataProduct` с собственными аспектами properties/ownership |
@@ -49,7 +49,7 @@
 
 [tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:389-418`, `provisa/api/metadata_export/bigquery_dataplex.py:112-136`, `provisa/api/metadata_export/openmetadata.py:326-344`, `provisa/api/metadata_export/datahub.py:133-136,443-483`, `provisa/api/metadata_export/collibra.py:129-133,371-388`, `provisa/api/metadata_export/atlas.py:134-147`, `provisa/api/metadata_export/atlan.py:60`, `provisa/api/metadata_export/openlineage.py:243,348`]
 
-## Поля
+## Поля {: #fields }
 
 | Поле | Обязательно | Примечания |
 | --- | --- | --- |

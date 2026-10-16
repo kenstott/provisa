@@ -2,14 +2,14 @@
 <!-- MD046 off: mkdocs-material `===` content-tab bodies are indented, which the linter
      misreads as indented code blocks; the fenced code blocks below are required for rendering. -->
 
-# Моделирование данных (сущности и факты)
+# Моделирование данных (сущности и факты) {: #data-modeling-entities-facts }
 
 Provisa предоставляет два декларативных примитива — `entity` и `fact` — которые покрывают строительные
 блоки, из которых собирается любая звёздная схема (star schema) и Data Vault. Объявите спецификацию; Provisa
 понижает её ровно до тех определений материализованного представления, битемпоральности и связей, которые вы
 иначе писали бы вручную (REQ-1164). [tool-verified: modeling.py module docstring lines 11-28]
 
-## Что такое сущности и факты
+## Что такое сущности и факты {: #what-entities-and-facts-are }
 
 **Сущность (entity)** — это ключевая, дедуплицированная, опционально историзированная проекция исходного отношения. Вы
 даёте ей имя, указываете источник, объявляете ключ сущности и атрибуты, которые хотите перенести,
@@ -27,7 +27,7 @@ lines 123-141; comment at line 130 "a measureless fact is a pure key-set (DV lin
 Databricks или оставленные виртуальными поверх MPP-движка — без переделки модели. [tool-verified: modeling.py
 docstring lines 25-28]
 
-## Режимы истории
+## Режимы истории {: #history-modes }
 
 Для сущности доступны три режима [tool-verified: `_HISTORY` constant at modeling.py line 38,
 `_HISTORY_MODE` dict at modeling.py line 40]:
@@ -44,7 +44,7 @@ docstring lines 25-28]
 
 У фактов нет режима истории — временное покрытие идёт от истории базовой сущности.
 
-## Меры и агрегации
+## Меры и агрегации {: #measures-and-aggregations }
 
 Меры объявляются как пары `column:agg`. Поддерживаемые агрегации [tool-verified: `_AGGS`
 at modeling.py line 41]:
@@ -53,14 +53,14 @@ at modeling.py line 41]:
 
 Агрегация по умолчанию — `sum` [tool-verified: `Measure.agg` default at modeling.py line 75].
 
-## Разобранный пример: сущность Customer + факт Sales
+## Разобранный пример: сущность Customer + факт Sales {: #worked-example-customer-entity-sales-fact }
 
-### Исходные таблицы
+### Исходные таблицы {: #the-source-tables }
 
 - `raw.customers` — id, name, region, tier
 - `raw.orders` — order_id, customer_id, amount, quantity
 
-### Регистрация сущности Customer
+### Регистрация сущности Customer {: #register-the-customer-entity }
 
 === "Admin UI"
 
@@ -101,7 +101,7 @@ SELECT "id", "name", "region", "tier" FROM "raw"."customers"
 -- registered as a bitemporal delta MV, entity key: ["id"]
 ```
 
-### Регистрация факта Sales
+### Регистрация факта Sales {: #register-the-sales-fact }
 
 === "Admin UI"
 
@@ -152,7 +152,7 @@ GROUP BY "order_id", "customer_id"
 Плюс одна зарегистрированная связь: `Sales.customer_id → Customer` (кардинальность: many-to-one).
 [tool-verified: `fact_table_input` in modeling_register.py lines 89-98, cardinality at line 95]
 
-## Форма Model (admin UI)
+## Форма Model (admin UI) {: #the-model-form-admin-ui }
 
 Кнопка **+ Model** появляется на странице **Tables** (подсказка: "Model an entity or fact (star
 schema / Data Vault)"). [tool-verified: tablesPage.json line 13; TablesPage.tsx lines 441-450]
@@ -160,7 +160,7 @@ schema / Data Vault)"). [tool-verified: tablesPage.json line 13; TablesPage.tsx 
 Сегментированный переключатель в верхней части модального окна переключается между **Entity (dimension)** и **Fact**.
 [tool-verified: ModelingForm.tsx lines 102-110]
 
-### Поля сущности
+### Поля сущности {: #entity-fields }
 
 [tool-verified: ModelingForm.tsx lines 141-171; modelingForm.json]
 
@@ -173,7 +173,7 @@ schema / Data Vault)"). [tool-verified: tablesPage.json line 13; TablesPage.tsx 
 | Attributes | нет | Столбцы атрибутов через запятую, например `name, region, tier` |
 | History | нет | `none` / `scd2` / `snapshot`; по умолчанию `none` |
 
-### Поля факта
+### Поля факта {: #fact-fields }
 
 [tool-verified: ModelingForm.tsx lines 172-196; modelingForm.json]
 
@@ -189,7 +189,7 @@ schema / Data Vault)"). [tool-verified: tablesPage.json line 13; TablesPage.tsx 
 Если `agg` опущен в мере (`amount` вместо `amount:sum`), по умолчанию используется `sum`.
 [tool-verified: ModelingForm.tsx line 73 `agg: agg || "sum"`]
 
-## GraphQL API
+## GraphQL API {: #the-graphql-api }
 
 Обе мутации находятся в схеме admin. [tool-verified: schema_mutation.py lines 449-472]
 
@@ -250,11 +250,11 @@ mutation RegisterFact($input: FactInput!) {
 `Fact 'Sales' registered with 1 dimension link(s)`.
 [tool-verified: schema_mutation.py line 471]
 
-## Звёздная схема Kimball и Data Vault
+## Звёздная схема Kimball и Data Vault {: #kimball-star-schema-and-data-vault }
 
 Ни один из паттернов не требует отдельного инструментария. Одни и те же два примитива компонуются в оба.
 
-### Звёздная схема Kimball
+### Звёздная схема Kimball {: #kimball-star-schema }
 
 Этот разбор строит звезду с тремя измерениями. Две исходные таблицы новые:
 
@@ -263,7 +263,7 @@ mutation RegisterFact($input: FactInput!) {
 
 `raw.orders` здесь также получает столбцы `product_id` и `order_date`. [inferred]
 
-#### Выбор типа SCD
+#### Выбор типа SCD {: #choosing-scd-type }
 
 Режим истории — это единственный переключатель между SCD Type 1 и Type 2:
 
@@ -280,7 +280,7 @@ lines 115-119]
 Ось дат никогда не меняется. Каталог продуктов, где нужна только текущая цена, можно пересобирать при
 каждом обновлении.
 
-#### Решение о grain
+#### Решение о grain {: #grain-decision }
 
 Grain — это самый низкий уровень детализации, на который отвечает факт. `order_id` даёт одну строку на заказ,
 сохраняя возможность подсчитывать уникальные заказы и соединяться с любым измерением на уровне заказа.
@@ -288,7 +288,7 @@ Grain — это самый низкий уровень детализации, 
 эту детализацию. Объявляйте самый узкий grain, который нужен бизнесу; более грубые свёртки дёшево
 вывести впоследствии.
 
-#### Регистрация измерений
+#### Регистрация измерений {: #register-the-dimensions }
 
 **Customer** (SCD Type 2 — изменения уровня должны сохраняться):
 
@@ -356,7 +356,7 @@ mutation {
 SELECT "date_key", "year", "quarter", "month" FROM "raw"."date_spine"
 ```
 
-#### Регистрация факта Sales по трём измерениям
+#### Регистрация факта Sales по трём измерениям {: #register-the-sales-fact-across-three-dimensions }
 
 Grain: `order_id`. Три ссылки на измерения — по одному столбцу FK каждая. Обе меры — аддитивные суммы.
 
@@ -516,7 +516,7 @@ SELECT "id", "name", "region", "tier" FROM "raw"."customers"
 `CustomerSat` и `CustomerHub` оба ключуются по `id`. Hub — это стабильная цель соединения; satellite
 предоставляет доступ к атрибутам на определённый момент времени через битемпоральный слой.
 
-#### Link (факт без мер)
+#### Link (факт без мер) {: #link-measureless-fact }
 
 Link фиксирует, какие ключи hub встречались вместе — только ключи, без мер. Provisa опускает `GROUP BY`,
 когда `measures` пуст [tool-verified: modeling.py lines 130-131:
@@ -550,7 +550,7 @@ SELECT "order_id", "customer_id" FROM "raw"."orders"
 `OrderCustomerLink.order_id → OrderHub`, обе many-to-one
 [tool-verified: modeling_register.py lines 89-98].
 
-#### Bridge / агрегатная связь
+#### Bridge / агрегатная связь {: #bridge-aggregate-link }
 
 Добавьте меры к link, и Provisa выдаст `GROUP BY`, произведя предварительно агрегированный bridge. При
 grain `order_id` с одним клиентом на заказ результат — одна агрегированная строка на заказ:
@@ -585,7 +585,7 @@ GROUP BY "order_id", "customer_id"
 остаются решениями моделировщика. Provisa их исполняет. [tool-verified: modeling.py
 docstring lines 25-26]
 
-## Метрики (REQ-1317, REQ-1318, REQ-1320)
+## Метрики (REQ-1317, REQ-1318, REQ-1320) {: #metrics-req-1317-req-1318-req-1320 }
 
 **Метрика (metric)** — это именованное, управляемое определение агрегата без собственного grain. Grain — измерения,
 по которым разбивается агрегат, — привязывается во время запроса вызывающей стороной, а не во время
@@ -594,7 +594,7 @@ docstring lines 25-26]
 452–455: "A named, governed aggregate definition with no grain of its own... grain is bound at
 query time by the requested dimension set"]
 
-### Объект Metric
+### Объект Metric {: #the-metric-object }
 
 [tool-verified: `Metric` class, `provisa/core/models.py` lines 451–476]
 
@@ -627,7 +627,7 @@ metrics:
     ai_context: "Net revenue: total order amounts minus approved refunds. Use for P&L."
 ```
 
-### Запрос метрики
+### Запрос метрики {: #querying-a-metric }
 
 Компилятор резервирует схему `metrics`. [tool-verified: `METRICS_SCHEMA = "metrics"`,
 `provisa/compiler/metric_expand.py` line 43] Каждая метрика адресуема как виртуальное отношение
@@ -656,7 +656,7 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 измерение — жёсткая ошибка с указанием виновника.
 [tool-verified: `_JoinPlan.resolve_dimension`, `provisa/compiler/metric_expand.py` lines 190–228]
 
-### Метрики из спецификаций фактов (REQ-1320)
+### Метрики из спецификаций фактов (REQ-1320) {: #metrics-from-fact-specs-req-1320 }
 
 Когда вы регистрируете факт, каждая объявленная мера автоматически регистрирует соответствующий объект Metric.
 Поле `from_fact` метрики фиксирует имя таблицы-источника факта, а допустимые измерения группировки —
@@ -669,7 +669,7 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 любую другую метрику. [tool-verified: `MetricsPage.tsx` lines 405–408:
 `{m.fromFact && <Badge ... data-testid={`metrics-from-fact-${m.name}`}>...</Badge>}`]
 
-### Представления, составленные из метрик (view_metrics, REQ-1318)
+### Представления, составленные из метрик (view_metrics, REQ-1318) {: #metric-composed-views-view_metrics-req-1318 }
 
 Представление `view_metrics` фиксирует grain метрики во время определения. Объявите имена метрик,
 столбцы измерений и опциональные фильтры; компилятор генерирует SELECT.
@@ -720,7 +720,7 @@ upsert метрики. [tool-verified: `regenerate_metric_views` docstring, `_me
 "Free-hand view_sql born from inline metric() calls carries no stored provenance, so it is not
 regenerated here (config-path views regenerate on config reload)"]
 
-### Административная страница Metrics (REQ-1323, REQ-1324)
+### Административная страница Metrics (REQ-1323, REQ-1324) {: #the-metrics-admin-page-req-1323-req-1324 }
 
 Откройте пункт навигации **Metrics** для управления управляемыми метриками. Нажмите на строку, чтобы развернуть
 доступную только для чтения панель деталей; нажмите **Edit** внутри неё, чтобы переключиться на встроенное редактирование (без модального окна). **New Metric** открывает
@@ -731,12 +731,12 @@ page (list / create / edit / delete). REQ-1323: detail-then-edit"]
 Форма создания/редактирования предлагает конструктор из трёх выпадающих списков для метрик на основе факта: выберите
 исходную таблицу факта (отфильтрованную по `modelingRole=fact`), столбец меры и агрегатную функцию
 (`SUM`, `AVG`, `COUNT`, `MIN`, `MAX`). Тип данных выводится автоматически:
-`COUNT → bigint`, `AVG → numeric`, `SUM/MIN/MAX → тип столбца меры`.
+`COUNT → bigint`, `AVG → numeric`, `SUM/MIN/MAX → the measure column's type` (тип столбца меры).
 Текстовое поле выражения остаётся аварийным выходом для произвольных выражений.
 [tool-verified: `deriveDatatype` function, `MetricsPage.tsx` lines 66–70;
 `applyBuilder`, `MetricsPage.tsx` lines 273–285]
 
-## Выигрыш от IR
+## Выигрыш от IR {: #the-ir-payoff }
 
 Каждый вызов регистрации проходит тем же путём, что и написанный вручную MV. Спецификация entity/fact
 — это промежуточное представление (intermediate representation) — не шаблон, не макрос. Хранилище, на которое она нацелена, — это

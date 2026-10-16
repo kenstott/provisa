@@ -1,4 +1,4 @@
-# Python-клиент (`provisa-client`)
+# Python-клиент (`provisa-client`) {: #python-client-provisa-client }
 
 Python-клиент для Provisa. Предоставляет четыре интерфейса:
 
@@ -9,7 +9,7 @@ Python-клиент для Provisa. Предоставляет четыре ин
 | Диалект SQLAlchemy | BI-инструменты, ORM, Pandas `read_sql` (REQ-270) |
 | ADBC | Нативная колоночная потоковая передача Arrow через Flight (REQ-271) |
 
-## Установка
+## Установка {: #install }
 
 ```bash
 pip install provisa-client                      # core (ProvisaClient + DB-API)
@@ -22,7 +22,7 @@ pip install "provisa-client[adbc]"              # adds ADBC over Arrow Flight
 
 ## ProvisaClient
 
-### Быстрый старт
+### Быстрый старт {: #quick-start }
 
 ```python
 from provisa_client import ProvisaClient
@@ -50,7 +50,7 @@ client = ProvisaClient("http://localhost:8001", token=body["access_token"])
 
 Точки входа DB-API и ADBC выполняют этот обмен за вас — см. ниже.
 
-### Запросы GraphQL
+### Запросы GraphQL {: #graphql-queries }
 
 ```python
 # Raw response dict
@@ -66,13 +66,13 @@ result = client.query(
 df = client.query_df("{ orders { id amount region } }")
 ```
 
-### Асинхронность
+### Асинхронность {: #async }
 
 ```python
 result = await client.aquery("{ orders { id amount } }")
 ```
 
-### Arrow Flight (высокая пропускная способность, колоночный формат)
+### Arrow Flight (высокая пропускная способность, колоночный формат) {: #arrow-flight-high-throughput-columnar }
 
 Используйте Flight для больших наборов результатов — данные передаются потоком как пакеты записей Arrow без материализации на сервере. (REQ-143, REQ-145)
 
@@ -89,22 +89,22 @@ Flight по умолчанию подключается к порту 8815. (REQ
 client = ProvisaClient("http://prod.example.com", flight_port=8815)
 ```
 
-### Исследование каталога
+### Исследование каталога {: #catalog-exploration }
 
 ```python
 tables_df = client.list_tables()
 ```
 
-### Справочник подключения
+### Справочник подключения {: #connection-reference }
 
 | Параметр | По умолчанию | Описание |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | Базовый URL сервера Provisa |
 | `token` | `None` | Bearer-учётные данные — токен провайдера или персональный токен доступа; опустите для аутентификации по паролю (REQ-606, REQ-1263) |
-| `role` | `"admin"` | Роль, передаваемая с каждым запросом (REQ-273) |
+| `role` | `None` | Роль, от имени которой действовать; передаётся как `X-Provisa-Role` и учитывается, только если назначена пользователю; если не указана, запрос выполняется от собственной роли идентичности (REQ-273) |
 | `flight_port` | `8815` | Порт gRPC Arrow Flight (REQ-143) |
 
-### Обработка ошибок
+### Обработка ошибок {: #error-handling }
 
 `query()` выбрасывает `httpx.HTTPStatusError` при ошибках HTTP. (REQ-607)
 `query_df()` выбрасывает `RuntimeError`, если ответ содержит ошибки GraphQL. (REQ-607)
@@ -128,7 +128,7 @@ conn = connect(
 
 `connect` отправляет имя пользователя и пароль POST-запросом на `/auth/login` и сохраняет полученный `access_token`, поэтому соединение несёт настоящие учётные данные, а не имя. `role` *запрашивает* роль, и сервер удовлетворяет запрос лишь тогда, когда роль назначена этой личности (REQ-273); если параметр опущен, соединение работает под ролью, которую разрешил вход.
 
-### Выполнение запросов
+### Выполнение запросов {: #executing-queries }
 
 Курсор принимает либо GraphQL, либо SQL — определяется автоматически. (REQ-268, REQ-274)
 
@@ -146,7 +146,7 @@ cur.execute("SELECT id, amount FROM orders WHERE region = 'west'")
 rows = cur.fetchall()
 ```
 
-### Метаданные столбцов
+### Метаданные столбцов {: #column-metadata }
 
 ```python
 cur.execute("{ orders { id amount } }")
@@ -155,7 +155,7 @@ print(cur.description)
 print(cur.rowcount)
 ```
 
-### Именованные параметры
+### Именованные параметры {: #named-parameters }
 
 ```python
 cur.execute(
@@ -164,7 +164,7 @@ cur.execute(
 )
 ```
 
-### Контекстные менеджеры
+### Контекстные менеджеры {: #context-managers }
 
 ```python
 with connect("http://localhost:8001", username="alice", password="secret") as conn:
@@ -175,7 +175,7 @@ with connect("http://localhost:8001", username="alice", password="secret") as co
 
 ---
 
-## Диалект SQLAlchemy
+## Диалект SQLAlchemy {: #sqlalchemy-dialect }
 
 ```bash
 pip install "provisa-client[sqlalchemy]"
@@ -194,7 +194,7 @@ with engine.connect() as conn:
         print(row)
 ```
 
-### С pandas
+### С pandas {: #with-pandas }
 
 ```python
 import pandas as pd
@@ -202,7 +202,7 @@ import pandas as pd
 df = pd.read_sql("{ orders { id amount } }", engine)
 ```
 
-### Параметры URL
+### Параметры URL {: #url-parameters }
 
 | Параметр | Описание | По умолчанию |
 | ----------- | ------------- | --------- |
@@ -214,7 +214,7 @@ engine = create_engine(
 )
 ```
 
-### Интроспекция схемы
+### Интроспекция схемы {: #schema-introspection }
 
 Диалект реализует `get_table_names()`, `get_columns()` и `has_table()` — инструменты каталогизации (DBeaver, SQLAlchemy automap) могут исследовать схему. (REQ-363, REQ-270)
 
@@ -242,7 +242,7 @@ conn = adbc_connect(
 
 `adbc_connect` сначала выполняет вход по HTTP и помещает полученный токен в каждый Flight-тикет, поэтому Flight-сервер аутентифицирует соединение так же, как это делает REST-поверхность. (REQ-1263) Аргумент `role` — это запрос, проверяемый на сервере по назначениям личности; он никогда не становится самой личностью. (REQ-273)
 
-### Получение как таблицы Arrow
+### Получение как таблицы Arrow {: #fetch-as-arrow-table }
 
 ```python
 with conn.cursor() as cur:
@@ -251,7 +251,7 @@ with conn.cursor() as cur:
     df = table.to_pandas()
 ```
 
-### Получение как кортежей
+### Получение как кортежей {: #fetch-as-tuples }
 
 ```python
 with conn.cursor() as cur:
@@ -260,7 +260,7 @@ with conn.cursor() as cur:
     one  = cur.fetchone()    # single tuple or None
 ```
 
-### Метаданные столбцов
+### Метаданные столбцов {: #column-metadata_1 }
 
 ```python
 cur.execute("{ orders { id amount } }")
@@ -268,7 +268,7 @@ print(cur.description)
 # [('id', None, ...), ('amount', None, ...)]
 ```
 
-### Контекстный менеджер
+### Контекстный менеджер {: #context-manager }
 
 ```python
 with adbc_connect("http://localhost:8001", user="alice", password="secret") as conn:

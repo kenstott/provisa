@@ -1,8 +1,8 @@
-# Подписки SSE
+# Подписки SSE {: #sse-subscriptions }
 
 Provisa поддерживает push-уведомления в реальном времени через Server-Sent Events (SSE). Клиенты получают поток событий изменений без опроса. (REQ-258)
 
-## Источники
+## Источники {: #sources }
 
 Подписки нацелены на **зарегистрированную таблицу**:
 
@@ -12,13 +12,13 @@ Provisa поддерживает push-уведомления в реальном
 | Таблица (РСУБД, отличная от PG, с блоком источника `cdc`) | `debezium`, `kafka`, `poll` |
 | Таблица (федеративное представление / любой другой источник) | только `poll` |
 
-### Автоматическая установка триггеров PostgreSQL
+### Автоматическая установка триггеров PostgreSQL {: #postgresql-trigger-auto-installation }
 
 Provisa автоматически устанавливает триггеры `AFTER INSERT OR UPDATE OR DELETE` на всех **предварительно утверждённых** таблицах PostgreSQL при запуске. (REQ-565) Эти триггеры вызывают `pg_notify('provisa_{table}', ...)`, чтобы сырой DML (а не только мутации Provisa) подхватывался подписками. (REQ-565)
 
 Если установка триггера не удаётся (например, недостаточно прав — роль базы данных должна владеть таблицей), Provisa переключается на опрос по водяному знаку для этой таблицы, при условии что настроен `watermark_column`. (REQ-566) Регистрируется предупреждение. (REQ-566)
 
-### Подписки на кросс-источниковые представления
+### Подписки на кросс-источниковые представления {: #cross-datasource-view-subscriptions }
 
 Для представлений, соединяющих несколько источников данных через движок федерации, добавьте `watermark_column` в регистрацию таблицы. (REQ-260, REQ-283) Столбец должен существовать в SQL представления (он не обязан присутствовать в схеме GraphQL):
 
@@ -33,11 +33,11 @@ JOIN mysql.crm.customer_segments s ON o.customer_id = s.customer_id;
 
 Регистрируйте с `watermark_column: _watermark`. Provisa опрашивает, используя `WHERE _watermark > <last_seen>`. (REQ-260)
 
-### Подписки на вложенные связи
+### Подписки на вложенные связи {: #nested-relationship-subscriptions }
 
 Когда поле подписки выбирает поля из соединённых таблиц (через зарегистрированные связи), Provisa отслеживает **все** вовлечённые физические таблицы одновременно. (REQ-567) Изменение любой соединённой таблицы повторно запускает запрос подписки. (REQ-567)
 
-## Эндпоинт
+## Эндпоинт {: #endpoint }
 
 Подписка на таблицу:
 
@@ -54,7 +54,7 @@ data: {"event":"insert","table":"orders","row":{"id":43,"amount":55.00,"region":
 data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region":"west"}}
 ```
 
-## Режимы доставки
+## Режимы доставки {: #delivery-modes }
 
 Доставка выбирается через `live.strategy` в конфигурации таблицы: (REQ-813, REQ-814)
 
@@ -69,7 +69,7 @@ data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region"
 
 Provisa выполняет `LISTEN <channel>` на постоянном соединении PG. (REQ-258) Мутации Provisa автоматически выдают `NOTIFY`. (REQ-565) Внешние писатели должны вызывать `NOTIFY <channel>, '<payload>'` после записей. Дополнительная инфраструктура не требуется.
 
-### Опрос
+### Опрос {: #polling }
 
 Provisa периодически повторно выполняет запрос источника, выбирая только строки, где `watermark_column > last_watermark`. (REQ-260) Разницы выдаются как события SSE. Опрос не видит жёсткие удаления — удалённая строка не оставляет продвигающегося водяного знака. Чтобы сделать удаление видимым, используйте мягкое удаление (например, установите флаг `deleted_at`), которое продвигает столбец водяного знака; удаление тогда приходит как событие обновления, несущее маркер мягкого удаления. (REQ-260)
 
@@ -106,7 +106,92 @@ sources:
           strategy: debezium
 ```
 
-## Перенаправление приёмника Kafka
+#### Кодировки сообщений {: #message-encodings }
+
+Тема Debezium читается в одной из двух кодировок, и каждое сообщение говорит, в какой. (REQ-1951)
+
+| Кодировка | Что несёт тема | Что нужно источнику |
+|---|---|---|
+| JSON | Конверт JSON-конвертера Debezium, с обёрткой `schema`/`payload` или без неё | Ничего сверх блока `cdc` |
+| Avro | Формат передачи schema registry Confluent: нулевой байт, четырёхбайтовый id схемы, один элемент Avro | `schema_registry_url` и способ аутентификации в нём |
+
+Сообщения Avro декодируются схемой, которую называет их id, получаемой из registry один раз и сохраняемой. Тема, схема которой эволюционировала, читается правильно, потому что каждое сообщение называет схему, которой оно записано. Темы Protobuf и JSON Schema не читаются.
+
+Сообщение Avro никогда не читается как JSON. Каждая причина, по которой его не удаётся прочитать, отклоняется по имени:
+
+| Ситуация | Отказ |
+|---|---|
+| Сообщение Avro, источник не называет registry | `subscribe.avro_topic_without_registry`, с темой |
+| Registry недоступен или не отвечает вовремя | `subscribe.schema_registry_unreachable` |
+| Registry отвергает учётные данные источника | `subscribe.schema_registry_refused_credentials` |
+| Id схемы, которого нет в registry | `subscribe.schema_id_unknown`, с id |
+| Id называет схему Protobuf или JSON | `subscribe.schema_not_avro` |
+
+Registry, который недоступен или отвергает учётные данные, отклоняется при запуске подписки, до открытия потока. Запрос к registry ждёт подключения не более 5 секунд и ответа не более 10 секунд, и меньше, если у запроса осталось меньше времени.
+
+#### Аутентификация schema registry {: #schema-registry-authentication }
+
+`schema_registry_auth` называет метод; поля, нужные этому методу, проверяются при сохранении источника.
+
+| `schema_registry_auth` | Обязательные поля | Отправляется в registry |
+|---|---|---|
+| `none` (по умолчанию) | — | Без учётных данных |
+| `basic` | `schema_registry_username`, `schema_registry_password` | Базовая аутентификация HTTP |
+| `bearer` | `schema_registry_token` | `Authorization: Bearer <token>` (статический токен) |
+| `mtls` | `schema_registry_client_cert`, `schema_registry_client_key` | Клиентский сертификат, в рукопожатии TLS |
+
+`schema_registry_ca` необязателен при любом методе: пакет CA, которому доверять, когда сертификат registry не подписан публичным центром.
+
+Пароль и токен следуют контракту секретов. Значение, введённое в форме источника, хранится в хранилище организации, и источник сохраняет ссылку `${secret:NAME}`; ссылка, записанная в файле конфигурации (`${env:...}`, `${secret:...}`), сохраняется как записана. Сертификат, ключ и пакет CA — это файлы, которые открывает серверный процесс Provisa, указываемые абсолютным путём.
+
+```yaml
+sources:
+  - id: sales-mysql
+    cdc:
+      bootstrap_servers: kafka:9092
+      topic_prefix: debezium
+      schema_registry_url: https://schema-registry:8081
+      schema_registry_auth: basic
+      schema_registry_username: provisa
+      schema_registry_password: ${secret:registry_password}
+      schema_registry_ca: /etc/provisa/registry-ca.pem
+```
+## Когда поток завершается ошибкой {: #when-a-stream-ends-on-a-failure }
+
+Открывшийся поток уже ответил `200`, поэтому ошибка после этого не может быть статусом HTTP. Подписчик получает последний кадр, в котором сказано почему, и затем поток закрывается. Поток никогда не закрывается из-за ошибки без этого кадра.
+
+Кадр несёт то, чем на ту же ошибку ответил бы обычный запрос:
+
+| Ошибка | Тело |
+|---|---|
+| Отказ с кодом (schema registry, региона, отказ governance) | `detail`, `code`, `params` |
+| Крайний срок запроса | `detail: "Request timed out"` |
+| Что-либо неожиданное | `detail: "Internal server error"`, `type` (имя типа исключения) |
+
+Каждое тело несёт также `subscription_id`. При неожиданной ошибке сообщение и трассировка находятся в журнале сервера под этим id, а не в кадре.
+
+Подписка на таблицу (`/data/subscribe/{table}`) отправляет тело как данные события с именем `stream_error`:
+
+```text
+event: stream_error
+data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
+```
+Событие не называется `error`, потому что `EventSource` сам порождает событие `error` при обрыве соединения, и слушатель не смог бы их различить. Слушайте его по имени:
+
+```javascript
+source.addEventListener("stream_error", (e) => {
+  const { detail, code, params } = JSON.parse(e.data);
+  source.close();
+});
+```
+Подписка GraphQL сохраняет форму ответа GraphQL, с кодом и params в `extensions`:
+
+```json
+{"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
+```
+Один случай не завершает подписку GraphQL: когда повторное чтение после одного изменения не удаётся, этот кадр отправляется в той же форме, и поток переходит к следующему изменению. Ошибка начального чтения, самого потока изменений или его запуска — последний кадр.
+
+## Перенаправление приёмника Kafka {: #kafka-sink-redirect }
 
 Любая подписка GraphQL может быть перенаправлена в топик Kafka вместо потоковой передачи обратно клиенту. (REQ-812) Добавьте заголовок `X-Provisa-Sink` к запросу подписки:
 
@@ -141,7 +226,7 @@ curl -X POST http://localhost:8000/data/graphql \
 # → 202 {"status":"streaming","sink":"kafka://kafka:9092/orders-live","table":"orders"}
 ```
 
-### Приёмник Kafka как второй вывод на уровне конфигурации
+### Приёмник Kafka как второй вывод на уровне конфигурации {: #kafka-sink-as-a-config-level-second-output }
 
 Подписка на таблицу на основе опроса может одновременно публиковать в топик Kafka через `provisa.yaml`. (REQ-282, REQ-286) Подписка SSE и приёмник Kafka — оба являются выводами одного и того же движка живых запросов (Live Query Engine). (REQ-282) Каждый вывод отслеживает свой водяной знак независимо. (REQ-286)
 
@@ -158,11 +243,12 @@ tables:
           topic: provisa.active-orders
           bootstrap_servers: kafka:9092
           key_column: id
+          role: analyst           # required: the rows are published governed as this role
 ```
 
-Полный справочник конфигурации приёмника см. в [Приёмники Kafka](sources.md).
+Вывод Kafka публикует строки таблицы, регулируемые как роль, которую он называет: её правила строк, видимость колонок и маски применяются как к чтению этой ролью. Вывод без `role` отклоняется при загрузке конфигурации. (REQ-565) [tool-verified: `provisa/core/models.py` `LiveOutputConfig`]
 
-## Безопасность
+## Безопасность {: #security }
 
 Все режимы подписки применяют тот же конвейер безопасности, что и обычные запросы: (REQ-258, REQ-038)
 
@@ -170,7 +256,7 @@ tables:
 - Замаскированные столбцы отображаются замаскированными в событиях (REQ-040)
 - Авторизация роли проверяется во время подключения (REQ-258)
 
-## Пример клиента
+## Пример клиента {: #client-example }
 
 ```javascript
 // Table subscription (LISTEN/NOTIFY)
