@@ -467,3 +467,98 @@ def test_the_sonnets_vectors_source_reads_with_the_stores_read_only_key():
     vectors = next(s for s in config["sources"] if s["id"] == "vectors")
     assert reader == "${SONNETS_QDRANT_KEY:-sonnets-reader}"
     assert vectors["password"] == "${env:SONNETS_QDRANT_KEY:-sonnets-reader}"
+
+
+_MARKER = ".provisa-init-complete"
+
+
+def _run_composes() -> list[Path]:
+    return [
+        *sorted((_REPO / "demo" / "named").glob("*/docker-compose.run.yml")),
+        _REPO / "scripts" / "new_demo_template" / "docker-compose.run.yml",
+    ]
+
+
+def test_every_store_loaded_at_its_first_start_is_healthy_only_once_loaded():
+    """A store loads its bundle's data at its first start only (an init script, a restore, a
+    load). A start cut off half-way used to pass its healthcheck anyway -- the reviews demo's
+    MongoDB ran with its products and none of its ratings, and no reader -- so every such store
+    writes a marker in its data volume when its load has ended, and its healthcheck requires it
+    (REQ-2049). Init scripts run in name order: the marker's is the last."""
+    checked = 0
+    for compose in _run_composes():
+        for name, service in yaml.safe_load(compose.read_text())["services"].items():
+            volumes = [str(v) for v in service.get("volumes") or []]
+            initdb = [v for v in volumes if "/docker-entrypoint-initdb.d/" in v]
+            loads = initdb or service.get("entrypoint")
+            if not loads:
+                continue
+            checked += 1
+            where = f"{compose.parent.name}/{name}"
+            test = " ".join(service["healthcheck"]["test"])
+            assert _MARKER in test, where
+            assert service["healthcheck"]["start_period"] == "600s", where
+            if initdb:
+                scripts = sorted(v.split("/docker-entrypoint-initdb.d/")[1] for v in initdb)
+                assert scripts[-1] == "99-complete.sh:ro", where
+                assert (compose.parent / "db" / "init-complete.sh").is_file(), where
+            else:
+                script = next(
+                    v
+                    for v in volumes
+                    if v.endswith(":/restore.sh:ro") or v.endswith(":/load.sh:ro")
+                )
+                source = compose.parent / script.split(":")[0]
+                assert _MARKER in source.read_text(), where
+    assert checked >= 12, checked
+
+
+def test_a_store_that_never_turns_healthy_has_its_volumes_recreated_once(tmp_path):
+    """scripts/demo_stores_sync.sh: a version whose stores do not come up healthy is taken down
+    with its volumes and started again; a second failure is the demo's, reported as not synced."""
+    import os
+    import subprocess
+
+    bundles = tmp_path / "bundles"
+    version = "202610160000-abc1234"
+    (bundles / "weblogs" / version).mkdir(parents=True)
+    (bundles / "weblogs" / version / "docker-compose.run.yml").write_text("services: {}\n")
+    calls = tmp_path / "calls"
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    (fake / "docker").write_text(
+        f"""#!/usr/bin/env bash
+echo "$*" >> {calls}
+case "$*" in
+  *"config --format json"*) echo '{{"services": {{}}}}' ;;
+  *" up -d --wait"*) [ "$(grep -c ' up -d --wait' {calls})" -ge 2 ] || exit 1 ;;
+  *"compose ls"*) echo '[]' ;;
+esac
+"""
+    )
+    (fake / "pull").write_text(f"#!/usr/bin/env bash\necho {bundles}/weblogs/{version}\n")
+    for f in fake.iterdir():
+        f.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{fake}:{os.environ['PATH']}",
+        "PROVISA_DEMO_BUNDLES": "weblogs",
+        "DEMO_BUNDLES_DIR": str(bundles),
+        "DEMO_PULL": str(fake / "pull"),
+        "DEMO_PULL_INTO": str(bundles),
+    }
+    run = subprocess.run(
+        ["bash", str(_REPO / "scripts" / "demo_stores_sync.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 0, run.stderr
+    ran = [
+        line.split(" -f ")[1].split(" ", 1)[1]
+        for line in calls.read_text().splitlines()
+        if " -f " in line and ("up" in line or "down" in line)
+    ]
+    assert ran == ["up -d --wait", "down -v --remove-orphans", "up -d --wait"], ran
+    assert "recreating their volumes" in run.stderr
+    assert (bundles / "weblogs" / "ready").read_text().strip() == version

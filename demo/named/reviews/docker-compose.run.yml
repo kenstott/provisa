@@ -47,11 +47,15 @@ services:
       - ./dump/mongodb.archive.gz:/dump/mongodb.archive.gz:ro
       - ./db/mongo-restore.sh:/docker-entrypoint-initdb.d/10-restore.sh:ro
       - ./db/mongo-reader.js:/docker-entrypoint-initdb.d/20-reader.js:ro
+      - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      # mongod answers a ping while its first start still restores: the marker says it is done.
+      test:
+        ["CMD-SHELL", "test -f /data/db/.provisa-init-complete && mongosh --quiet --eval 'db.adminCommand(\"ping\")'"]
       interval: 2s
       timeout: 5s
       retries: 60
+      start_period: 600s
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
     restart: unless-stopped
@@ -74,11 +78,12 @@ services:
       - ./dump/elasticsearch:/snapshots:ro
       - ./db/es-restore.sh:/restore.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "test -f /tmp/restored && curl -sf http://localhost:9200/_cluster/health"]
+      test:
+        ["CMD-SHELL", "test -f /usr/share/elasticsearch/data/.provisa-init-complete && curl -sf http://localhost:9200/_cluster/health"]
       interval: 5s
       timeout: 5s
       retries: 60
-      start_period: 60s
+      start_period: 600s
   neo4j:
     image: neo4j:5.19-community
     restart: unless-stopped
@@ -102,11 +107,12 @@ services:
       - ./dump/neo4j:/dumps:ro
       - ./db/neo4j-load.sh:/load.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:7474 || exit 1"]
+      test:
+        ["CMD-SHELL", "test -f /data/.provisa-init-complete && wget -qO /dev/null http://localhost:7474 || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 60
-      start_period: 30s
+      start_period: 600s
 
 volumes:
   reviews_run_mongo:

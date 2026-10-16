@@ -109,7 +109,15 @@ sync_demo() { # name
         | python3 -c 'import json,sys; print("\n".join(s["labels"]["com.provisa.demo.port_env"] for s in json.load(sys.stdin)["services"].values() if (s.get("labels") or {}).get("com.provisa.demo.port_env")))'); do
       export "$blank="
     done
-    docker compose -p "$project" -f "$dir/docker-compose.run.yml" up -d --wait
+    if ! docker compose -p "$project" -f "$dir/docker-compose.run.yml" up -d --wait; then
+      # A store that never turns healthy is one whose first start was cut off before its init
+      # wrote its marker (db/init-complete.sh, es-restore.sh): it would never load the rest, as
+      # init runs only on an empty volume. The data is the bundle's, read only, so the version's
+      # volumes are recreated and its stores started once more.
+      echo "demo $name: $version stores not healthy; recreating their volumes" >&2
+      docker compose -p "$project" -f "$dir/docker-compose.run.yml" down -v --remove-orphans
+      docker compose -p "$project" -f "$dir/docker-compose.run.yml" up -d --wait
+    fi
     join_network "$project" "$dir/docker-compose.run.yml"
     write_atomically "$dir/stores.env" "$(stores_env "$project" "$dir/docker-compose.run.yml")"
   fi

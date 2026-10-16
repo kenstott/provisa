@@ -12,7 +12,10 @@
 # dumped (scripts/demo_bundle.py: dump/neo4j/neo4j.dump) is loaded, then Neo4j starts as its image
 # starts it, every database read only (NEO4J_dbms_databases_default__to__read__only).
 set -euo pipefail
-if [ ! -d /data/databases/neo4j ]; then
+# Loaded until a load has run to its end: the marker, in the data volume, is written after it, and
+# a load cut off half-way (a database directory and no marker) is loaded again over itself.
+if [ ! -f /data/.provisa-init-complete ]; then
   neo4j-admin database load neo4j --from-path=/dumps --overwrite-destination=true
+  touch /data/.provisa-init-complete
 fi
 exec /startup/docker-entrypoint.sh neo4j

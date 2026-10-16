@@ -20,12 +20,16 @@ until es_api "localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" 
   kill -0 "$es" || exit 1
   sleep 2
 done
-if ! es_api "localhost:9200/_snapshot/bundle" >/dev/null 2>&1; then
+# The marker, in the data volume, is written when the restore has run to its end. A volume with
+# the repository registered and no marker is a restore cut off half-way: it is left unmarked, so
+# the store stays unhealthy and the node's sync (scripts/demo_stores_sync.sh) recreates its volume.
+marker=/usr/share/elasticsearch/data/.provisa-init-complete
+if [ ! -f "$marker" ] && ! es_api "localhost:9200/_snapshot/bundle" >/dev/null 2>&1; then
   es_api -XPUT localhost:9200/_snapshot/bundle \
     -d '{"type": "fs", "settings": {"location": "/snapshots", "readonly": true}}' >/dev/null
   es_api -XPOST "localhost:9200/_snapshot/bundle/data/_restore?wait_for_completion=true" \
     -d '{"include_global_state": false}' >/dev/null
   es_api -XPUT "localhost:9200/_all/_settings" -d '{"index.blocks.write": true}' >/dev/null
+  touch "$marker"
 fi
-touch /tmp/restored
 wait "$es"
