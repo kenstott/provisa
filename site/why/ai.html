@@ -123,6 +123,13 @@
           anything runs. Every path, MCP, natural language, SQL, GraphQL or Cypher, compiles
           to the same governed plan.
         </p>
+        <p>
+          Already have a favorite data agent? Connect it to Provisa over a plain Postgres
+          connection. Provisa speaks the Postgres wire protocol, so any agent or MCP server
+          built for Postgres works unchanged, signing in as a Provisa user and governed by
+          that user's role. You get much of the value that way. Provisa's own MCP server adds
+          the extras: the glossary and ontology, data products and metrics, as tools.
+        </p>
 
         <h3>When it runs</h3>
         <p>
@@ -195,7 +202,8 @@
           <li><strong>Register the sources</strong> the agent needs, where they already live.</li>
           <li><strong>Give it a role.</strong> Grant the tables, rows and columns it should
             see, and nothing else.</li>
-          <li><strong>Point the MCP client at Provisa</strong> instead of the database.</li>
+          <li><strong>Point the agent at Provisa</strong> instead of the database: Provisa's
+            MCP server, or your own agent over a Postgres connection.</li>
           <li><strong>Read the request record</strong> to see what it asked and what it got.</li>
         </ol>
       </div>
