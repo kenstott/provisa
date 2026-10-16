@@ -274,6 +274,7 @@ query TablesQuery {
     mvPreprocess
     mvBitemporalMode
     mvBitemporalKey
+    mvBitemporalSourceTime
     mvPersist
     mvPrimaryKey
     mvIncremental

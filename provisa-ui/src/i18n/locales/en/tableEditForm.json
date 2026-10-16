@@ -280,6 +280,10 @@
     },
     "offPeakInherited": "Inherited: this table's source is read only on schedule.",
     "mvReadWindowHelp": "When users and clients may read this view, as HH:MM-HH:MM (24h). Outside it their reads are refused, saying when it next opens; Provisa's own refreshes and scheduled jobs still run. Leave blank to allow reads at any time.",
-    "mvReadWindowHint": "Users and clients may read this view only within this window; without one, at any time."
+    "mvReadWindowHint": "Users and clients may read this view only within this window; without one, at any time.",
+    "bitemporalSourceTimeLabel": "Source time",
+    "bitemporalSourceTimePlaceholder": "Provisa's recorded time",
+    "bitemporalSourceTimeNone": "Provisa's recorded time",
+    "bitemporalSourceTimeHelp": "The clock time travel reads on. Name the column holding when each row changed in the source (an updated_at, or source_committed_at from a CDC landing) to read versions as of the source's time. Leave it empty to read them as of when Provisa landed each change: they then follow the refresh cadence, which suits a frequent cadence, data whose source timing does not matter, or reads that are meant to be about load time, such as auditing what Provisa held and when."
   }
 }

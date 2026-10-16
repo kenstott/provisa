@@ -280,6 +280,10 @@
     },
     "offPeakInherited": "Hérité : la source de cette table n'est lue que selon la planification.",
     "mvReadWindowHelp": "Quand les utilisateurs et les clients peuvent lire cette vue, au format HH:MM-HH:MM (24 h). En dehors, leurs lectures sont refusées en indiquant quand elle rouvre ; les actualisations et tâches planifiées de Provisa continuent. Laissez vide pour autoriser la lecture à tout moment.",
-    "mvReadWindowHint": "Les utilisateurs et les clients ne peuvent lire cette vue que pendant cette fenêtre ; sans fenêtre, à tout moment."
+    "mvReadWindowHint": "Les utilisateurs et les clients ne peuvent lire cette vue que pendant cette fenêtre ; sans fenêtre, à tout moment.",
+    "bitemporalSourceTimeLabel": "Heure de la source",
+    "bitemporalSourceTimePlaceholder": "Heure enregistrée par Provisa",
+    "bitemporalSourceTimeNone": "Heure enregistrée par Provisa",
+    "bitemporalSourceTimeHelp": "L'horloge sur laquelle lit le voyage dans le temps. Indiquez la colonne qui donne le moment où chaque ligne a changé dans la source (un updated_at, ou source_committed_at d'un chargement CDC) pour lire les versions selon l'heure de la source. Laissez-la vide pour les lire selon le moment où Provisa a chargé chaque changement : elles suivent alors la cadence d'actualisation, ce qui convient à une cadence fréquente, à des données dont l'heure dans la source importe peu, ou à des lectures qui doivent porter sur l'heure de chargement, comme vérifier ce que Provisa détenait et quand."
   }
 }

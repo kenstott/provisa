@@ -414,7 +414,7 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         from provisa.mv.bitemporal import parse_as_of
 
         try:
-            _as_of = parse_as_of(x_provisa_as_of)
+            _as_of = parse_as_of(x_provisa_as_of).key()
         except ValueError as exc:
             raise ApiError(
                 400, "data.invalid_as_of", f"invalid X-Provisa-As-Of: {exc}", error=str(exc)

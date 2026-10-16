@@ -258,7 +258,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         from provisa.mv.bitemporal import parse_as_of
 
         try:
-            _as_of = parse_as_of(x_provisa_as_of)
+            _as_of = parse_as_of(x_provisa_as_of).key()
         except ValueError as exc:
             raise ApiError(
                 400, "data.invalid_as_of", f"invalid X-Provisa-As-Of: {exc}", error=str(exc)
@@ -440,7 +440,7 @@ async def sql_explain_endpoint(  # REQ-1519
         from provisa.mv.bitemporal import parse_as_of
 
         try:
-            _as_of = parse_as_of(x_provisa_as_of)
+            _as_of = parse_as_of(x_provisa_as_of).key()
         except ValueError as exc:
             raise ApiError(
                 400, "data.invalid_as_of", f"invalid X-Provisa-As-Of: {exc}", error=str(exc)

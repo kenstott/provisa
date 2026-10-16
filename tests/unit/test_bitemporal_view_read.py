@@ -27,7 +27,7 @@ import sqlglot
 from sqlglot import exp
 
 from provisa.compiler.stage2 import GovernanceContext
-from provisa.mv.bitemporal import BitemporalSpec, as_of_view_map, view_read_sql
+from provisa.mv.bitemporal import BitemporalSpec, as_of_view_map, parse_as_of, view_read_sql
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
 from provisa.mv.view_read import semantic_statement, unnarrowed_view_bodies
@@ -94,7 +94,7 @@ def test_a_current_read_is_answered_from_the_logs_current_state_not_its_raw_rows
 
 def test_an_as_of_read_is_answered_as_of_that_time_and_governed_the_same_way():
     state = _state()
-    at = "2026-10-01T00:00:00Z"
+    at = parse_as_of("2026-10-01T00:00:00Z").key()  # as the pipeline carries it
     governed, validated = semantic_statement(STATEMENT, {"bt_view": CURRENT}, state, _gov())
     assert governed == STATEMENT and _relations(validated) == {"sales.orders"}
     bodies = unnarrowed_view_bodies(STATEMENT, {"bt_view": CURRENT}, state, as_of=at)

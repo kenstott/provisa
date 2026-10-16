@@ -885,6 +885,59 @@ views:
 
 Views go through the same governance pipeline as tables — RLS, masking, sampling, and role-based visibility. (REQ-134) This ensures no new semantics can be added to the platform without steward oversight. (REQ-136)
 
+### Views with history (time travel)
+
+A materialized view can keep every version of its rows and be read as of a past time. (REQ-1162, REQ-1163) It declares how it keeps them and which key a version belongs to:
+
+```yaml
+views:
+  - id: customer-history
+    sql: SELECT customer_id, tier, updated_at FROM crm.customers
+    domain_id: sales
+    materialize: true
+    bitemporal_mode: delta            # snapshot | delta
+    bitemporal_key: [customer_id]     # required
+    bitemporal_source_time: updated_at  # optional: the source's change time
+    columns:
+      - {name: customer_id, visible_to: [analyst]}
+      - {name: tier, visible_to: [analyst]}
+      - {name: updated_at, visible_to: [analyst]}
+```
+
+| Field | Required | Description |
+| ------- | ---------- | ------------- |
+| `bitemporal_mode` | Yes | `snapshot` appends the whole result each refresh; `delta` appends only what changed |
+| `bitemporal_key` | Yes | The columns a version belongs to |
+| `bitemporal_source_time` | No | The column holding when each row changed in the source: the clock time travel reads on |
+
+**Choosing the clock.** With `bitemporal_source_time`, versions are ordered and read by the source's own time: "as of last Tuesday" is last Tuesday in the source. Without it, they are ordered and read by when Provisa landed each change, so they follow the refresh cadence rather than when the row changed in the source. Either is a choice. Load time suits a frequent refresh cadence, data whose source timing does not matter, and reads that are meant to be about load time, such as auditing what Provisa held and when. (REQ-1163)
+
+A version is in force from its time to the next version's. A delete has no source change time and takes effect when Provisa recorded it. (REQ-2064)
+
+**Reading.** A plain read answers the version of each key in force now. The `X-Provisa-As-Of` header reads as of a time, or over a range given as an ISO 8601 interval `start/end`:
+
+```
+X-Provisa-As-Of: 2026-03-01T00:00:00
+X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
+```
+
+A point answers the version of each key in force then. A range answers every version in force at any time within it, one row per version. (REQ-2064) The same value is the `as_of` argument of `resolve` (GraphQL, gRPC, MCP), the REST `as_of` query parameter, and the `as_of` option of an Arrow Flight ticket. A range given to `resolve` answers the row's `versions` in place of its `row`. Rights, masks and row rules apply as to any read. A malformed value, or a range whose end is not after its start, is refused with HTTP 400 (`data.invalid_as_of`).
+
+Every view with history answers three more columns, granted as its source-time column (else its first key column) is:
+
+| Column | Meaning |
+| ------- | ------- |
+| `source_from` | When this version took effect: its source time, or its load time without one |
+| `source_to` | When the next version took effect; empty while this one is in force |
+| `recorded_at` | When Provisa recorded this version |
+
+**Source time from change data capture.** A table landed by change data capture carries its commit time as `source_committed_at`, for a view with history to name as its source time:
+
+- Debezium: the database commit time each change event carries (`source.ts_ms`).
+- PostgreSQL on the `native` change signal: the commit time PostgreSQL keeps for each row, when the source has `track_commit_timestamp = on`. Enable it to get source time on the native signal; without it the table carries no `source_committed_at`.
+
+Kafka topics without a Debezium envelope carry no commit time.
+
 ### Query-only views
 
 Both `materialize: true` and `materialize: false` views expose their GraphQL type as query-only. No insert, upsert, update, or delete mutations are generated for `view_sql`-backed relations. (REQ-1157) [tool-verified: `provisa/compiler/schema_gen.py:184`, `provisa/compiler/schema_types.py:79`]

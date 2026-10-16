@@ -111,6 +111,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                         _registered_tables_t.c.mv_preprocess,  # REQ-957
                         _registered_tables_t.c.mv_bitemporal_mode,  # REQ-1162
                         _registered_tables_t.c.mv_bitemporal_key,  # REQ-1162
+                        _registered_tables_t.c.mv_bitemporal_source_time,  # REQ-1163
                         _registered_tables_t.c.mv_persist,  # REQ-965
                         _registered_tables_t.c.mv_primary_key,  # REQ-970
                         _registered_tables_t.c.mv_incremental,  # REQ-969
@@ -149,6 +150,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                 _bt_spec = BitemporalSpec(
                     key=tuple(_vr.get("mv_bitemporal_key") or []),
                     mode=_vr["mv_bitemporal_mode"],
+                    source_column=_vr["mv_bitemporal_source_time"],
                 )
             if _bt_spec is not None and _vr.get("materialize"):
                 # REQ-1163: a bitemporal MV is served from its materialized append log — the read

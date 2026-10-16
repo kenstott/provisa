@@ -295,6 +295,8 @@ registered_tables = Table(
     # mv_bitemporal_key is the business-key column list a version belongs to (required for delta).
     Column("mv_bitemporal_mode", Text),
     Column("mv_bitemporal_key", JSON(none_as_null=True)),
+    # REQ-1163: the view's column holding the source's change time -- its time travel's clock.
+    Column("mv_bitemporal_source_time", Text),
     # REQ-965/969/970: MV persistence outcome + row identity + incremental maintenance.
     Column("mv_persist", Text, nullable=False, server_default="replace"),
     Column("mv_primary_key", JSON(none_as_null=True)),

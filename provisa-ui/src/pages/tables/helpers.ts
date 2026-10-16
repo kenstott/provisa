@@ -47,6 +47,7 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     mvPreprocess: t.mvPreprocess || null, // REQ-957
     mvBitemporalMode: t.mvBitemporalMode || null, // REQ-1162
     mvBitemporalKey: t.mvBitemporalKey, // REQ-1162
+    mvBitemporalSourceTime: t.mvBitemporalSourceTime ?? null, // REQ-1163
     mvPersist: t.mvPersist, // REQ-965
     // REQ-970: the MV row-identity key IS the table Primary Key — derive it from the per-column
     // PK checkboxes (single source of truth), not a separate field.

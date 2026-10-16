@@ -167,3 +167,16 @@ describe("TableEditForm — MV preflight check (REQ-1165)", () => {
     expect(screen.queryByRole("textbox", { name: t("tableEditForm.preprocessAria") })).toBeNull();
   });
 });
+
+describe("TableEditForm — a view with history names its clock (REQ-1163)", () => {
+  it("offers the source-time field beside the key", () => {
+    renderForm(makeTable({ mvBitemporalMode: "delta", mvBitemporalKey: ["id"] }));
+    expect(screen.getByTestId("mv-bitemporal-source-time")).toBeInTheDocument();
+    expect(screen.getByTestId("mv-bitemporal-key")).toBeInTheDocument();
+  });
+
+  it("is not offered for a view that keeps no history", () => {
+    renderForm(makeTable());
+    expect(screen.queryByTestId("mv-bitemporal-source-time")).toBeNull();
+  });
+});

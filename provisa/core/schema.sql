@@ -194,6 +194,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     mv_preprocess TEXT,  -- REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity
     mv_bitemporal_mode TEXT,  -- REQ-1162: NULL | 'snapshot' | 'delta' (append-only time travel)
     mv_bitemporal_key JSONB,  -- REQ-1162: entity key columns (required for delta)
+    mv_bitemporal_source_time TEXT,  -- REQ-1163: the column holding the source's change time
     mv_persist TEXT NOT NULL DEFAULT 'replace',  -- REQ-965: replace | append | upsert
     mv_primary_key JSONB,  -- REQ-970: row identity (required for upsert / incremental)
     mv_incremental BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-969: incremental maintenance
@@ -307,6 +308,7 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_preprocess TEXT;  -- REQ-957
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_bitemporal_mode TEXT;  -- REQ-1162
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_bitemporal_key JSONB;  -- REQ-1162
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_bitemporal_source_time TEXT;  -- REQ-1163
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_persist TEXT NOT NULL DEFAULT 'replace';  -- REQ-965
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_primary_key JSONB;  -- REQ-970
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_incremental BOOLEAN NOT NULL DEFAULT FALSE;  -- REQ-969

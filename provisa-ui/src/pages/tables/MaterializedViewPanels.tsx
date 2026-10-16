@@ -223,6 +223,22 @@ export function MaterializedViewPanels({
           />
         </FormField>
       )}
+      {editingTable.materialize && timeTravel && (
+        // REQ-1163: the clock its time travel reads on -- the source's change time, else
+        // Provisa's recorded time; the help says what leaving it empty means.
+        <FormField help={t("tableEditForm.bitemporalSourceTimeHelp")} size="medium">
+          <Select
+            label={t("tableEditForm.bitemporalSourceTimeLabel")}
+            data-testid="mv-bitemporal-source-time"
+            placeholder={t("tableEditForm.bitemporalSourceTimePlaceholder")}
+            data={editingTable.columns.map((c) => c.columnName)}
+            value={editingTable.mvBitemporalSourceTime ?? null}
+            onChange={(v) => setEditingTable({ ...editingTable, mvBitemporalSourceTime: v })}
+            clearable
+            comboboxProps={{ withinPortal: true }}
+          />
+        </FormField>
+      )}
       {/* REQ-970: upsert / incremental need a row-identity key. That key IS the table's Primary Key,
           set via the per-column checkboxes in the columns list below — no second definition here.
           Surface what's derived (or prompt to set it) so the requirement is visible where it's used. */}

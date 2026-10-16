@@ -280,6 +280,10 @@
     },
     "offPeakInherited": "Heredado: el origen de esta tabla solo se lee según la programación.",
     "mvReadWindowHelp": "Cuándo pueden leer esta vista los usuarios y clientes, como HH:MM-HH:MM (24 h). Fuera de ella sus lecturas se rechazan, indicando cuándo vuelve a abrirse; las actualizaciones y trabajos programados de Provisa siguen ejecutándose. Déjelo vacío para permitir lecturas en cualquier momento.",
-    "mvReadWindowHint": "Usuarios y clientes solo pueden leer esta vista dentro de esta ventana; sin ella, en cualquier momento."
+    "mvReadWindowHint": "Usuarios y clientes solo pueden leer esta vista dentro de esta ventana; sin ella, en cualquier momento.",
+    "bitemporalSourceTimeLabel": "Hora de origen",
+    "bitemporalSourceTimePlaceholder": "Hora registrada por Provisa",
+    "bitemporalSourceTimeNone": "Hora registrada por Provisa",
+    "bitemporalSourceTimeHelp": "El reloj con el que lee el viaje en el tiempo. Indique la columna que registra cuándo cambió cada fila en el origen (un updated_at, o source_committed_at de una carga CDC) para leer las versiones según la hora del origen. Déjela vacía para leerlas según cuándo cargó Provisa cada cambio: seguirán entonces la cadencia de actualización, lo que conviene con una cadencia frecuente, con datos cuya hora en el origen no importa, o con lecturas que deben referirse a la hora de carga, como auditar qué tenía Provisa y cuándo."
   }
 }

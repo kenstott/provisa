@@ -41,6 +41,7 @@ def _table_input(**overrides):
         mv_preprocess=None,
         mv_bitemporal_mode=None,
         mv_bitemporal_key=[],
+        mv_bitemporal_source_time=None,  # REQ-1163
         mv_persist="replace",
         mv_primary_key=[],
         mv_incremental=False,

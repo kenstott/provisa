@@ -280,6 +280,10 @@
     },
     "offPeakInherited": "継承: このテーブルのソースはスケジュールに従ってのみ読み取られます。",
     "mvReadWindowHelp": "ユーザーとクライアントがこのビューを読み取れる時間を HH:MM-HH:MM（24 時間制）で指定します。時間外の読み取りは、次に開く時刻を示して拒否されます。Provisa 自身の更新とスケジュールされたジョブは引き続き実行されます。空欄にすると常に読み取れます。",
-    "mvReadWindowHint": "ユーザーとクライアントは、この時間帯の間だけこのビューを読み取れます。時間帯がなければいつでも読み取れます。"
+    "mvReadWindowHint": "ユーザーとクライアントは、この時間帯の間だけこのビューを読み取れます。時間帯がなければいつでも読み取れます。",
+    "bitemporalSourceTimeLabel": "ソース時刻",
+    "bitemporalSourceTimePlaceholder": "Provisa の記録時刻",
+    "bitemporalSourceTimeNone": "Provisa の記録時刻",
+    "bitemporalSourceTimeHelp": "タイムトラベルが読み取りに使う時計です。各行がソースで変更された時刻を持つ列（updated_at や、CDC 取り込みの source_committed_at など）を指定すると、バージョンをソースの時刻で読み取ります。空のままにすると、Provisa が各変更を取り込んだ時刻で読み取り、更新の間隔に従います。更新が頻繁な場合、ソースでの時刻が重要でないデータ、または取り込み時刻を対象とする読み取り（Provisa がいつ何を保持していたかの監査など）に適しています。"
   }
 }

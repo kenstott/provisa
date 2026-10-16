@@ -31,6 +31,10 @@ TWO HARD RULES shape the design:
        an INSERT ... SELECT), never folded in Provisa. Smaller storage; needs an entity key.
 
 SYSTEM time (transaction time — when Provisa recorded it) is Provisa-managed via one append stamp.
+SOURCE time (REQ-1163 as amended, REQ-2064) is the clock reads travel on: the view declares the
+column holding the source's own change time (an updated_at, or the commit time a CDC landing
+carries), and a version is in force from its source time to the next version's. The recorded time
+stays beside it as the answer to when Provisa knew.
 VALID time (business time — when a fact is true) is NOT computed here: the view's own SELECT
 supplies the ``valid_from``/``valid_to`` columns and this module only preserves and queries them.
 
@@ -41,6 +45,7 @@ The append-only path here is the portable floor that is correct on every engine.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -64,6 +69,8 @@ class BitemporalSpec:
 
     key: tuple[str, ...]
     mode: str = MODE_SNAPSHOT
+    # REQ-1163: the view's column holding the source's own change time -- the clock of its reads.
+    source_column: str | None = None
     system_column: str = "sys_recorded_at"
     op_column: str = "sys_op"
     valid_from: str | None = None
@@ -77,7 +84,7 @@ class BitemporalSpec:
         if self.mode == MODE_DELTA and not self.key:
             raise ValueError("delta bitemporal mode requires an entity key (no key ⇒ no delta)")
         managed = [self.system_column, *([self.op_column] if self.mode == MODE_DELTA else [])]
-        valid = [c for c in (self.valid_from, self.valid_to) if c]
+        valid = [c for c in (self.valid_from, self.valid_to, self.source_column) if c]
         allcols = managed + valid
         if len(set(allcols)) != len(allcols):
             raise ValueError(f"bitemporal column names must be distinct: {allcols}")
@@ -227,27 +234,129 @@ def reconstruct_as_of_sql(
     return f"SELECT {cols} FROM ({ranked}) _v WHERE _v._rn = 1 AND _v.{op} <> '{_OP_DELETE}'"
 
 
-def view_read_sql(mv_ref: str, spec: BitemporalSpec, ts_sql: str | None = None) -> str:
-    """A SELECT over the append log that yields the effective rows (current when ``ts_sql`` is None)
-    for READ substitution — used where a bitemporal MV's read is expanded inline (REQ-1163).
+#: REQ-2064: the columns every read of a bitemporal view answers beside its own: the version's
+#: source time, the next version's (NULL while it is in force), and when Provisa recorded it.
+SOURCE_FROM = "source_from"
+SOURCE_TO = "source_to"
+RECORDED_AT = "recorded_at"
+READ_COLUMNS = (SOURCE_FROM, SOURCE_TO, RECORDED_AT)
+_READ_DESCRIPTIONS = {
+    SOURCE_FROM: "When this version took effect",
+    SOURCE_TO: "When the next version took effect; empty while this one is in force",
+    RECORDED_AT: "When Provisa recorded this version",
+}
 
-    Unlike reconstruct_as_of_sql this projects ``*`` (all columns, business + system), because the
-    caller inlines it as ``(<this>) alias`` and the outer consumer query selects the business columns
-    by name — the extra system columns are harmless and it avoids needing the column list here."""
+
+def with_read_columns(columns: list[dict], key: list[str], source_time: str | None) -> list[dict]:
+    """A bitemporal view's columns (as a config or a save gives them, ``name`` and ``visible_to``
+    each) with the three read columns it answers (REQ-2064) appended where missing, granted as its
+    clock column is -- its source-time column, else the first of its key."""
+    names = {c["name"] for c in columns}
+    clock = source_time or (key[0] if key else None)
+    granted = next((c.get("visible_to") for c in columns if c["name"] == clock), None)
+    if granted is None:
+        return columns
+    return columns + [
+        {
+            "name": name,
+            "data_type": "timestamp",
+            "visible_to": list(granted),
+            "description": _READ_DESCRIPTIONS[name],
+        }
+        for name in READ_COLUMNS
+        if name not in names
+    ]
+
+
+@dataclass(frozen=True)
+class AsOf:
+    """A request's time travel (REQ-1163, REQ-2064), as validated SQL timestamp literals measured
+    on source time: a point (``end_sql`` None) answers the version of each key in force then; a
+    range ``[start_sql, end_sql)`` answers every version in force at any time within it."""
+
+    start_sql: str
+    end_sql: str | None = None
+
+    @property
+    def is_range(self) -> bool:
+        return self.end_sql is not None
+
+    def key(self) -> str:
+        """Its canonical form, the one a request's as-of travels the pipeline in -- its cache
+        keys, its kept statements, its record -- turned back by :meth:`from_key` where it is read."""
+        return self.start_sql if self.end_sql is None else f"{self.start_sql}/{self.end_sql}"
+
+    @classmethod
+    def from_key(cls, key: str) -> "AsOf":
+        """The as-of a canonical form names; anything else is refused (never spliced)."""
+        parts = key.split("/")
+        if len(parts) not in (1, 2) or not all(_LITERAL.fullmatch(p) for p in parts):
+            raise ValueError(f"not a canonical as-of: {key!r}")
+        return cls(parts[0], parts[1] if len(parts) == 2 else None)
+
+
+def _versions_sql(mv_ref: str, spec: BitemporalSpec) -> str:
+    """Each version of each key with the span it is in force on source time: ``_bt_from`` its
+    source time, ``_bt_to`` the next version's (NULL while current). Tombstones end a span and are
+    not versions themselves."""
     sys = _q(spec.system_column)
-    upto = f" WHERE {sys} <= {ts_sql}" if ts_sql else ""
-    if not spec.is_delta:
-        return f"SELECT * FROM {mv_ref} WHERE {sys} = (SELECT MAX({sys}) FROM {mv_ref}{upto})"
-    op = _q(spec.op_column)
+    # REQ-1163 (amended): a view that names no source-time column travels on Provisa's recorded
+    # time instead -- its declared clock, which depends on refresh timing, not on when the source
+    # changed.
+    src = sys if spec.source_column is None else _q(spec.source_column)
     part = ", ".join(_q(c) for c in spec.key)
-    ranked = (
-        f"SELECT *, ROW_NUMBER() OVER (PARTITION BY {part} ORDER BY {sys} DESC) AS _bt_rn "
-        f"FROM {mv_ref}{upto}"
+    if spec.is_delta:
+        op = _q(spec.op_column)
+        # REQ-2064: a tombstone has no source change time -- a disappearance is known only when it
+        # was recorded -- so it takes effect, ending the version before it, at its recorded time.
+        eff = f"CASE WHEN {op} = '{_OP_DELETE}' THEN {sys} ELSE {src} END"
+        spans = (
+            f"SELECT *, {eff} AS _bt_from, LEAD({eff}) OVER "
+            f"(PARTITION BY {part} ORDER BY {eff}, {sys}) AS _bt_to FROM {mv_ref}"
+        )
+        return f"SELECT * FROM ({spans}) _bv WHERE _bv.{op} <> '{_OP_DELETE}'"
+    # Snapshot: each refresh appends the whole dataset, so a version is the first recording of a
+    # (key, source time); a key absent from a later batch is gone from that batch's recorded time.
+    firsts = (
+        f"SELECT *, ROW_NUMBER() OVER (PARTITION BY {part}, {src} ORDER BY {sys}) AS _bt_first, "
+        f"MAX({sys}) OVER (PARTITION BY {part}) AS _bt_last_seen FROM {mv_ref}"
     )
-    return f"SELECT * FROM ({ranked}) _bt WHERE _bt._bt_rn = 1 AND _bt.{op} <> '{_OP_DELETE}'"
+    gone = f"(SELECT MIN(_bb.{sys}) FROM {mv_ref} _bb WHERE _bb.{sys} > _bd._bt_last_seen)"
+    return (
+        f"SELECT *, {src} AS _bt_from, COALESCE(LEAD({src}) OVER "
+        f"(PARTITION BY {part} ORDER BY {src}, {sys}), {gone}) AS _bt_to "
+        f"FROM ({firsts}) _bd WHERE _bd._bt_first = 1"
+    )
+
+
+def view_read_sql(mv_ref: str, spec: BitemporalSpec, as_of: AsOf | None = None) -> str:
+    """A SELECT over the append log that yields the versions a read answers, on source time
+    (REQ-1163, REQ-2064): the version of each key in force now (``as_of`` None) or at a point, or
+    every version in force within a range -- each with its source time, the next version's and its
+    recorded time (``READ_COLUMNS``). Used where a bitemporal view's read is expanded inline.
+
+    It projects ``*`` (business and system columns), because the caller inlines it as
+    ``(<this>) alias`` and the outer consumer query selects columns by name."""
+    if as_of is None:
+        when = "_bt._bt_to IS NULL"
+    elif as_of.end_sql is None:
+        t = as_of.start_sql
+        when = f"_bt._bt_from <= {t} AND (_bt._bt_to IS NULL OR _bt._bt_to > {t})"
+    else:
+        when = (
+            f"_bt._bt_from < {as_of.end_sql} "
+            f"AND (_bt._bt_to IS NULL OR _bt._bt_to > {as_of.start_sql})"
+        )
+    return (
+        f"SELECT *, _bt._bt_from AS {_q(SOURCE_FROM)}, _bt._bt_to AS {_q(SOURCE_TO)}, "
+        f"_bt.{_q(spec.system_column)} AS {_q(RECORDED_AT)} "
+        f"FROM ({_versions_sql(mv_ref, spec)}) _bt WHERE {when}"
+    )
 
 
 _TS_FMT = "%Y-%m-%d %H:%M:%S.%f"
+#: A literal system_ts_literal writes, and nothing else.
+_LITERAL = re.compile(r"TIMESTAMP '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}'")
 
 
 def system_ts_literal(instant: datetime) -> str:
@@ -261,28 +370,36 @@ def system_ts_literal(instant: datetime) -> str:
     return f"TIMESTAMP '{instant.strftime(_TS_FMT)}'"
 
 
-def parse_as_of(value: str) -> str:
-    """Validate a request-level as-of value (ISO 8601) and return a SAFE SQL TIMESTAMP literal.
+def parse_as_of(value: str) -> AsOf:
+    """Validate a request-level as-of value -- an ISO 8601 time, or a range ``start/end``
+    (REQ-2064) -- into SAFE SQL TIMESTAMP literals.
 
-    The value is spliced into SQL, so it is never trusted raw: it is parsed to a datetime (raising on
-    anything malformed) and re-emitted in a fixed format — no injection surface (REQ-1163)."""
-    dt = datetime.fromisoformat(value.strip())  # raises ValueError on bad input
-    return system_ts_literal(dt)
+    The value is spliced into SQL, so it is never trusted raw: each part is parsed to a datetime
+    (raising on anything malformed) and re-emitted in a fixed format — no injection surface
+    (REQ-1163)."""
+    start, sep, end = value.strip().partition("/")
+    if not sep:
+        return AsOf(system_ts_literal(datetime.fromisoformat(start)))  # raises on bad input
+    begin, finish = datetime.fromisoformat(start.strip()), datetime.fromisoformat(end.strip())
+    if finish <= begin:
+        raise ValueError(f"the range's end {end.strip()} is not after its start {start.strip()}")
+    return AsOf(system_ts_literal(begin), system_ts_literal(finish))
 
 
 def as_of_view_map(
     view_sql_map: dict[str, str],
     bitemporal_reads: dict[str, tuple[str, BitemporalSpec]],
-    as_of_ts: str,
+    as_of: AsOf | str,
 ) -> dict[str, str]:
     """Overlay a request-level as-of onto the inline-expansion map (REQ-1163): each bitemporal view's
     entry is replaced with an as-of reconstruction over its append log, so the whole query reads as of
-    ``as_of_ts``. Non-bitemporal views are untouched. Returns a new map (input not mutated)."""
+    ``as_of``. Non-bitemporal views are untouched. Returns a new map (input not mutated)."""
     if not bitemporal_reads:
         return view_sql_map
+    point = AsOf.from_key(as_of) if isinstance(as_of, str) else as_of
     out = dict(view_sql_map)
     for name, (mv_ref, spec) in bitemporal_reads.items():
-        out[name] = view_read_sql(mv_ref, spec, as_of_ts)
+        out[name] = view_read_sql(mv_ref, spec, point)
     return out
 
 
