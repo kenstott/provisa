@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
 import logging
 import re
@@ -1025,6 +1026,11 @@ async def destroy_org(org_id: str) -> None:  # REQ-1300, REQ-1312, REQ-2006
 
     # REQ-1488: the org's environments go with it — each holds its own runtime under its own key.
     _app_state.org_registry.invalidate_org(org_id)
+    # And the connector servers started for its sources (a files source's JVM, hundreds of
+    # megabytes): nothing else stops them, so every reaped demo sandbox left its own running.
+    from provisa.federation.pgwire_replica import stop_org_servers
+
+    await asyncio.to_thread(stop_org_servers, org_id)
     # REQ-2006: and its scheduled jobs, which would otherwise fire against the org it no longer is.
     from provisa.scheduler.jobs import unschedule_org
 
