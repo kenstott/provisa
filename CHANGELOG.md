@@ -3,6 +3,221 @@
 All notable changes to Provisa are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.1.0-alpha.490
+
+Released 2026-10-16.
+
+### Features
+
+#### Caching
+
+- The load management window also applies to a materialized view, meaning: outside the window the view may not be read by a user''s workload.
+    - A materialized view's load management window says when a user's read may read it
+
+#### Demo Provisioning
+
+- A visitor's demo sandbox is released soon after its tab closes.
+    - A visitor's sandbox is released soon after its tab closes
+
+#### Tag Registry
+
+- Tag IDs are emitted into the bracketed comment suffix alongside the modeling role, so a catalog surface shows `[dimension, entity, natural_language]` where it shows `[fact, scd2]` today (append_modeling_tag, provisa/core/modeling_tags.py,) — reaching pg_description, GraphQL introspection and the Flight/MCP catalog description through the one shared formatter.
+    - Tag ids ride in the catalog description suffix
+
+#### URI Dereferencing API
+
+- Governed dereference API for semantic data-location URIs: REST and MCP tool `resolve(uri, as_of?)` that takes a Provisa semantic-address URI and returns the governed value(s) it addresses, optionally at a point in time.
+    - Dereference a semantic address on GraphQL, REST and MCP
+    - Every role's service resolves a semantic address
+
+### Changes
+
+#### api
+
+- A vector model error on GraphQL answers 400 naming the model, as SQL does
+
+#### audit
+
+- A GraphQL request's row records the status its client was answered
+
+#### auth
+
+- A member's attributes -- the org's record over the provider's claims
+- pseudo-roles -- a role held for what a member's attributes say about a declared claim type
+- A regional node's own work carries its region pseudo-role
+
+#### billing
+
+- The current bill and the next charge are amounts
+- A billing date shows its calendar day in every time zone
+
+#### data
+
+- A still-starting source answers 503 on /data/sql and REST; demo tests wait for govdata
+
+#### demos
+
+- A demo with no seeder bundles
+- The insider review demo
+- Reviews and vulnerabilities name their fields as their sandbox does
+- A demo's profiler runs at its template build and its sandboxes carry the runs
+- A sandbox's tour is warmed in the background as it opens
+- A demo's setup makes an environment, and its tour picks one
+- The testdata demo -- realistic test data without touching production
+- The sonnets Qdrant store recovers its snapshot at every start
+- The sonnets vectors source reads with the store's read-only key
+- The local government vertical -- opioid settlement spending against overdose deaths
+- A demo store is healthy only once its first-start load has ended
+- A bitemporal view's history travels with its demo's bundle
+- The data vault demo, Northwind in two sources, its vault declared as views
+- The data vault declares its masks as a column's masks list
+
+#### deploy
+
+- Every cloud deploy refreshes the demo-stores sync and its units
+- A cloud deploy reaches the sandbox VM too
+
+#### deps
+
+- Mcp 1.30.0, past CVE-2026-59951
+
+#### domains
+
+- A domain tree -- a business unit and the organizations within it
+- The domains query reads its rows' steward and parent; no requirement id in a view
+- The parent picker's explanation is its field's hint
+
+#### environments
+
+- A whole-model merge request stores its selection as SQL NULL
+
+#### explorer
+
+- Show SQL shows the statement the compiled pipeline runs
+- Show SQL is governed by the compiled pipeline's own stage
+
+#### fakes
+
+- A hash of an integer column narrower than BIGINT fits its type (#272)
+
+#### federation
+
+- The attach walk leaves alone a table Provisa reads itself
+- A statement on a source whose server is still starting waits, then answers 503 by name
+- An incomplete attach walk waits its retry interval, and logs a failure once
+
+#### files
+
+- Connector bundles download off the request path; an unanswered catalog query is retried
+
+#### governance
+
+- A condition on a union's output relates no branch to another (#271)
+
+#### graphql
+
+- A PostgreSQL double precision column maps to Float
+
+#### grpc
+
+- A PostgreSQL double precision column is a proto double
+
+#### install
+
+- The control-plane compose splits into the control plane and the sandbox tier by profile
+
+#### join guard
+
+- A join on a column a view computes relates along the view's relationship (#270)
+
+#### join-guard
+
+- A filter on a value computed over a union view relates nothing
+
+#### kafka
+
+- A Kafka live table lands every message it can read, in every org that declares it
+- Every org reads a CDC topic whole, and keeps its own SingleStore pipelines
+
+#### landing
+
+- A pgwire connector table (govdata among them) lands through its landing filter
+
+#### masking
+
+- A regex mask replaces every match on every engine
+
+#### openapi
+
+- A config-declared OpenAPI source states its auth
+
+#### orgs
+
+- Destroying an org stops its connector servers
+
+#### pgwire
+
+- A server bound off loopback is reached where it listens; endpoint fixtures ready the org folder
+- A caller that waits has an unanswered first catalog query sent again within its wait
+
+#### profiler
+
+- A configuration names a profile result table by its member and kind
+
+#### replicas
+
+- A build waits for a source server that takes minutes to start
+- Each environment has its own build runner; one built after prod no longer replaces prod's (#273)
+
+#### sandbox
+
+- A demo sandbox carries its template's environments, and its visitor switches between them
+
+#### sandbox-tier
+
+- The tier finds the deployment's demo SQLite data
+
+#### sandboxes
+
+- One connector server per demo version, shared by its sandboxes
+- A sandbox tier on a VM of its own stops that VM when no sandbox is used
+
+#### security
+
+- Composite grants -- an entry a+b is held by a reader holding all of it
+- A column's masking is one ordered mask list, first entry held applies
+
+#### sla
+
+- service-level limits are settings, breaches are stored and listed in ops
+
+#### subscriptions
+
+- A subscription on a push-landed table re-runs when a batch lands
+
+#### tables
+
+- A table may fix the arguments its source takes by name
+- A table's landing filter is applied when its replica lands
+
+#### temp-tables
+
+- session_temp_schemas is kept in the region's state store
+
+#### terraform
+
+- The sandbox tier on a VM of its own
+
+#### ui
+
+- A scoped merge's object ticks sit in the form's FormChecks
+- The table form sets a table's landing filter and fixed arguments
+- The grant picker's combine button takes its hint from Tip
+
+#### ui-server
+
+- A request for the sandbox tier starts its VM when it finds it down
+
 ## v0.1.0-alpha.489
 
 Released 2026-10-15.
