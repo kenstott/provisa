@@ -1019,6 +1019,66 @@
       "retailRecap": {
         "title": "Was Sie gesehen haben",
         "description": "Ein Modell hat beide Regionen definiert: wo jede Tabelle liegt, welche Ansichten wo erstellt werden und wer was liest. Das Konzernreporting las EU-Kunden pseudonymisiert, das EU-Marketing las nur einwilligende Kunden, und ein Auskunftsersuchen und eine Löschung waren jeweils eine Abfrage. Die Insider-Prüfung legte einen Absender nur in der EU offen, und jedes Lesen steht in einem Protokoll."
+      },
+      "provisioningScenario": {
+        "title": "Worum es in dieser Demo geht",
+        "description": "Das Data Warehouse einer Kaffeerösterei nimmt drei Feeds auf -- Bestellungen, Preise und Bestandszählungen -- und baut daraus Datasets, sobald sie eintreffen. Zwei Teams brauchen das große Dataset, jede Bestellung mit ihrer Marge: Finance für das Reporting, Data Science für den Feature Store. Die Frage: Wie bekommen sie es, sobald es fertig ist, ohne es zu kopieren oder Extraktionsjobs zu schreiben?"
+      },
+      "provisioningJoin": {
+        "title": "Wie die Feeds verknüpft sind",
+        "description": "Eine Bestellung nennt ihr Produkt, und das Produkt kennt seine Kosten und Kategorie. Das Dataset verknüpft jede Bestellung damit; der Abschluss baut auf dem Dataset und den Bestands- und Preis-Feeds auf -- eine View über einer View, nacheinander aktualisiert."
+      },
+      "provisioningRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Feeds, geladen, sobald sie eintreffen, daraus gebaute und aktualisierte Datasets, jedes Team über Kafka benachrichtigt, wenn eines fertig ist, und per Arrow Flight zu genau diesem Zeitpunkt abrufend, jedes mit dem, was seine Rolle erlaubt, nur innerhalb des Fensters des Datasets. Keine Kopien und keine Extraktionsjobs."
+      },
+      "provisioningWarehouse": {
+        "title": "Die eigene Datenbank des Warehouse",
+        "description": "Seine Produkte und was jedes kostet, die Benachrichtigungen, die es sendet, wenn ein Dataset fertig ist, und die Abrufe, die die Consumer der Teams aufzeichnen. Live gelesen."
+      },
+      "provisioningFeeds": {
+        "title": "Die Feeds, geladen, sobald sie eintreffen",
+        "description": "Bestellungen kommen über Kafka, einige pro Sekunde, nach einem Monat Historie; Preise und Bestandszählungen über eigene Topics. Jeder Feed wird innerhalb von Sekunden in eine eigene Tabelle des Warehouse geladen, und jedes Laden aktualisiert die darauf aufbauenden Datasets."
+      },
+      "provisioningDataset": {
+        "title": "Das Dataset",
+        "description": "order_margins: jede Bestellung mit Umsatz, Kosten und Marge. Es behält jede Version jeder Zeile, sodass es zu jedem Zeitpunkt gelesen werden kann -- das, was ein Team abruft. Sein Ladefenster bestimmt, wann Benutzer und Clients es lesen dürfen: hier den ganzen Tag außer 00:00-00:30 UTC. Ein echtes Warehouse würde meist ein engeres, nächtliches Fenster öffnen; das der Demo ist weit, damit man sie zu jeder Stunde durchgehen kann."
+      },
+      "provisioningNotices": {
+        "title": "Benachrichtigt, wenn es fertig ist",
+        "description": "Innerhalb des Fensters schreibt ein geplanter Trigger eine Benachrichtigung für jedes Team: Finance alle fünf Minuten, Data Science zwei Minuten später. Die Live-Kafka-Ausgabe der Tabelle notices veröffentlicht jede im Topic dataset-ready. Der Zeitpunkt der Benachrichtigung ist der Versionszeitpunkt des Datasets."
+      },
+      "provisioningPulls": {
+        "title": "Die Abrufe",
+        "description": "Der Consumer jedes Teams liest die Benachrichtigung und ruft das ganze Dataset über Arrow Flight zum Versionszeitpunkt ab, sodass eine Aktualisierung mitten im Abruf keine zwei Versionen mischen kann. Er zeichnet Zeilen, Sekunden und Zeilen pro Sekunde auf. Sein Ticket ist ein JSON-Objekt: die Abfrage, die Rolle und der As-of-Zeitpunkt (consumer.py). Ein lokaler Start führt die Consumer live aus; die gehostete Sandbox zeigt die Abrufe, die beim Erstellen der Demo aufgezeichnet wurden."
+      },
+      "provisioningAsFinance": {
+        "title": "Als Finance ausführen",
+        "description": "Der SQL-Explorer läuft jetzt als Rolle finance, das Team, das Margen vollständig liest."
+      },
+      "provisioningFinanceView": {
+        "title": "Was Finance abruft",
+        "description": "Die neuesten Bestellungen, wie Finance sie liest: Umsatz, Kosten und Marge, alle Kategorien."
+      },
+      "provisioningAsDataScience": {
+        "title": "Als Data Science ausführen",
+        "description": "Jetzt als Rolle data_science, deren Feature Store die Bestellungen braucht, aber nicht die Margen."
+      },
+      "provisioningDataScienceView": {
+        "title": "Was Data Science abruft",
+        "description": "Dasselbe Dataset, dieselbe Abfrage: Kosten und Marge zeigen 0, und Bestellungen von Dienstleistungen fehlen (eine Zeilenregel). Ein Dataset, zwei geregelte Sichten, keine Kopien."
+      },
+      "provisioningAsFinanceAgain": {
+        "title": "Zurück zu Finance",
+        "description": "Wieder Finance, für den Abschluss."
+      },
+      "provisioningClose": {
+        "title": "Ein Lesezugriff außerhalb des Fensters",
+        "description": "close_by_category, der Abschluss von Finance, darf nur von 02:00 bis 02:15 UTC gelesen werden. Außerhalb davon wird dieser Lesezugriff abgelehnt, mit dem Namen der View und dem Zeitpunkt, zu dem ihr Fenster wieder öffnet; die eigenen Aktualisierungen des Warehouse laufen jederzeit."
+      },
+      "provisioningRest": {
+        "title": "Die Abrufe über REST",
+        "description": "Wie die Abrufe jedes Teams liefen, auf dem Server gruppiert: wie viele und wie schnell im Durchschnitt."
       }
     },
     "status": {
@@ -1091,6 +1151,10 @@
       "retail": {
         "title": "Ein Konzern, zwei Regionen",
         "summary": "Ein Einzelhandelskonzern mit einer EU- und einer US-Tochtergesellschaft, als ein Unternehmen unter der GDPR geführt: EU-Daten bleiben in der EU, das Konzernreporting liest sie pseudonymisiert, und Auskunft, Löschung, Insider-Prüfung und Audit sind jeweils eine Abfrage."
+      },
+      "provisioning": {
+        "title": "Datasets an nachgelagerte Teams bereitstellen",
+        "summary": "Die Frage eines Warehouse, wie nachgelagerte Teams große Datasets erhalten, sobald sie fertig sind: Feeds aus Kafka geladen, Datasets beim Eintreffen aktualisiert, Teams über Kafka benachrichtigt und per Arrow Flight zu diesem Zeitpunkt abrufend."
       }
     }
   }

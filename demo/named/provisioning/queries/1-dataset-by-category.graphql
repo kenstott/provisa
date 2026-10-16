@@ -1,0 +1,14 @@
+# The dataset the teams pull, by product category: its orders, revenue and margin. Run as finance
+# the margins are what they are; run as data science they read 0 and the service orders are gone.
+query DatasetByCategory {
+  p__viewOrderMarginsGroupBy(by: [category], order_by: [{ aggregate: { sum: { revenue: desc } } }]) {
+    groupKey
+    aggregate {
+      count
+      sum {
+        revenue
+        margin
+      }
+    }
+  }
+}

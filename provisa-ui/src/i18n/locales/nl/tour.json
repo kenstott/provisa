@@ -1019,6 +1019,66 @@
       "retailRecap": {
         "title": "Wat u zag",
         "description": "Eén model definieerde beide regio's: waar elke tabel staat, welke views waar worden gebouwd, en wie wat leest. De concernrapportage las EU-klanten gepseudonimiseerd, EU-marketing las alleen klanten die toestemming gaven, en een inzageverzoek en een wissing waren elk één query. De insidercontrole onthulde een afzender alleen in de EU, en elke lezing staat in één registratie."
+      },
+      "provisioningScenario": {
+        "title": "Waar deze demo over gaat",
+        "description": "Het datawarehouse van een koffiebranderij ontvangt drie feeds -- bestellingen, prijzen en voorraadtellingen -- en bouwt er datasets van zodra ze binnenkomen. Twee teams hebben de grote nodig, elke bestelling met haar marge: finance voor de rapportage, data science voor de feature store. De vraag: hoe krijgen ze die zodra hij klaar is, zonder hem te kopiëren of extractiejobs te schrijven?"
+      },
+      "provisioningJoin": {
+        "title": "Hoe de feeds samenkomen",
+        "description": "Een bestelling noemt haar product, en het product kent zijn kosten en categorie. De dataset koppelt elke bestelling daaraan; de afsluiting bouwt op de dataset en de voorraad- en prijsfeeds -- een view op een view, na elkaar ververst."
+      },
+      "provisioningRecap": {
+        "title": "Wat u zag",
+        "description": "Feeds geladen bij aankomst, datasets daaruit gebouwd en ververst, elk team via Kafka gemeld als er een klaar is en die via Arrow Flight downloadend zoals hij op dat moment was, elk met wat zijn rol toestaat, alleen binnen het venster van de dataset. Geen kopieën en geen extractiejobs."
+      },
+      "provisioningWarehouse": {
+        "title": "De eigen database van het warehouse",
+        "description": "Zijn producten en wat elk kost, de meldingen die het stuurt als een dataset klaar is, en de downloads die de consumers van de teams vastleggen. Live gelezen."
+      },
+      "provisioningFeeds": {
+        "title": "De feeds, geladen bij aankomst",
+        "description": "Bestellingen komen binnen via Kafka, een paar per seconde, na een maand historie; prijzen en voorraadtellingen op eigen topics. Elke feed wordt binnen seconden in een eigen tabel van het warehouse geladen, en elke lading ververst de datasets die erop bouwen."
+      },
+      "provisioningDataset": {
+        "title": "De dataset",
+        "description": "order_margins: elke bestelling met omzet, kosten en marge. Hij bewaart elke versie van elke rij, dus hij kan worden gelezen zoals hij op elk moment was -- wat een team downloadt. Zijn laadvenster bepaalt wanneer gebruikers en clients hem mogen lezen: hier de hele dag behalve 00:00-00:30 UTC. Een echt warehouse zou meestal een smaller, nachtelijk venster openen; dat van de demo is ruim zodat je hem op elk uur kunt doorlopen."
+      },
+      "provisioningNotices": {
+        "title": "Gemeld als hij klaar is",
+        "description": "Binnen het venster schrijft een geplande trigger een melding voor elk team: finance elke vijf minuten, data science twee minuten later. De live Kafka-uitvoer van de tabel notices publiceert elke melding op het topic dataset-ready. Het tijdstip van de melding is het versietijdstip van de dataset."
+      },
+      "provisioningPulls": {
+        "title": "De downloads",
+        "description": "De consumer van elk team leest de melding en downloadt de hele dataset via Arrow Flight op het versietijdstip, zodat een verversing halverwege geen twee versies kan mengen. Hij legt de rijen, de seconden en de rijen per seconde vast. Zijn ticket is een JSON-object: de query, de rol en het as-of-tijdstip (consumer.py). Een lokale start draait de consumers live; de gehoste sandbox toont de downloads die bij het bouwen van de demo zijn vastgelegd."
+      },
+      "provisioningAsFinance": {
+        "title": "Uitvoeren als finance",
+        "description": "De SQL-verkenner draait nu als de rol finance, het team dat marges volledig leest."
+      },
+      "provisioningFinanceView": {
+        "title": "Wat finance downloadt",
+        "description": "De nieuwste bestellingen zoals finance ze leest: omzet, kosten en marge, alle categorieën."
+      },
+      "provisioningAsDataScience": {
+        "title": "Uitvoeren als data science",
+        "description": "Nu als de rol data_science, waarvan de feature store de bestellingen nodig heeft maar niet de marges."
+      },
+      "provisioningDataScienceView": {
+        "title": "Wat data science downloadt",
+        "description": "Dezelfde dataset, dezelfde query: kosten en marge tonen 0 en bestellingen van diensten verdwijnen (een rijregel). Eén dataset, twee beheerde views, geen kopieën."
+      },
+      "provisioningAsFinanceAgain": {
+        "title": "Terug naar finance",
+        "description": "Weer finance, voor de afsluiting."
+      },
+      "provisioningClose": {
+        "title": "Een leesactie buiten het venster",
+        "description": "close_by_category, de afsluiting van finance, mag alleen van 02:00 tot 02:15 UTC worden gelezen. Daarbuiten wordt deze leesactie geweigerd, met de naam van de view en wanneer het venster weer opent; de eigen verversingen van het warehouse lopen op elk moment."
+      },
+      "provisioningRest": {
+        "title": "De downloads via REST",
+        "description": "Hoe de downloads van elk team verliepen, gegroepeerd op de server: hoeveel en hoe snel gemiddeld."
       }
     },
     "status": {
@@ -1091,6 +1151,10 @@
       "retail": {
         "title": "Eén concern, twee regio's",
         "summary": "Een retailconcern met een EU- en een US-dochteronderneming, gerund als één bedrijf onder de GDPR: EU-gegevens blijven in de EU, de concernrapportage leest ze gepseudonimiseerd, en inzage, wissing, insidercontrole en audit zijn elk één query."
+      },
+      "provisioning": {
+        "title": "Datasets leveren aan teams verderop",
+        "summary": "De vraag van een warehouse, hoe teams verderop grote datasets krijgen zodra ze klaar zijn: feeds geladen uit Kafka, datasets ververst bij aankomst, teams gemeld via Kafka en downloadend via Arrow Flight zoals ze op dat moment waren."
       }
     }
   }

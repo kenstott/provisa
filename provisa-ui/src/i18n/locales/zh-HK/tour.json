@@ -1019,6 +1019,66 @@
       "retailRecap": {
         "title": "你看到了甚麼",
         "description": "一個模型定義了兩個區域：每張表位於哪裏，哪些視圖在哪裏建立，以及誰讀取甚麼。集團報告讀取的是假名化的 EU 客戶，EU 市場推廣只讀取同意的客戶，查閱請求和刪除各自只是一次查詢。內幕資料審查只在 EU 顯示發件人，每一次讀取都在同一份紀錄中。"
+      },
+      "provisioningScenario": {
+        "title": "這個示範是甚麼",
+        "description": "一家咖啡烘焙商的數據倉庫接收三個數據流——訂單、價格和庫存點算——並在數據到達時據此建立數據集。下游兩個團隊需要其中的大數據集，即每張訂單及其利潤：財務用於報表，數據科學用於 feature store。問題是：如何在數據集一就緒就取得它，而不必複製它或編寫抽取作業？"
+      },
+      "provisioningJoin": {
+        "title": "數據流如何連結",
+        "description": "訂單指明其產品，產品知道自己的成本和類別。數據集把每張訂單與之連結；結帳匯總建基於數據集以及庫存和價格數據流——視圖之上的視圖，依次重新整理。"
+      },
+      "provisioningRecap": {
+        "title": "你看到了甚麼",
+        "description": "到達即載入的數據流，由此建立並重新整理的數據集，每個團隊在數據集就緒時透過 Kafka 收到通知，並透過 Arrow Flight 按那一刻的狀態拉取，每個團隊只看到其角色容許的內容，且只在數據集的窗口內。沒有副本，也沒有抽取作業。"
+      },
+      "provisioningWarehouse": {
+        "title": "倉庫自己的資料庫",
+        "description": "它的產品及每件的成本、數據集就緒時發出的通知，以及各團隊的消費者記錄的拉取。即時讀取。"
+      },
+      "provisioningFeeds": {
+        "title": "數據流，到達即載入",
+        "description": "訂單在一個月的歷史之後經 Kafka 到達，每秒幾張；價格和庫存點算有各自的 topic。每個數據流在幾秒內載入倉庫的表中，每次載入都會重新整理建基於它的數據集。"
+      },
+      "provisioningDataset": {
+        "title": "數據集",
+        "description": "order_margins：每張訂單及其收入、成本和利潤。它保留每一行的每個版本，因此可以按任何時刻的狀態讀取——這正是團隊拉取的內容。它的載入窗口規定用戶和客戶端何時可以讀取：這裡是除 00:00-00:30 UTC 之外的全日。真實的倉庫通常會開一個較窄的夜間窗口；示範的窗口很闊，方便任何時間體驗。"
+      },
+      "provisioningNotices": {
+        "title": "就緒時通知",
+        "description": "在窗口內，一個排程觸發器為每個團隊寫入一則通知：財務每五分鐘一次，數據科學遲兩分鐘。notices 表的即時 Kafka 輸出把每則通知發佈到 topic dataset-ready。通知的時間就是數據集的版本時間。"
+      },
+      "provisioningPulls": {
+        "title": "拉取",
+        "description": "每個團隊的消費者讀取通知，並透過 Arrow Flight 按版本時間拉取整個數據集，因此拉取期間到達的重新整理不會混入兩個版本。它記錄行數、秒數和每秒行數。它的 ticket 是一個 JSON 物件：查詢、角色和 as-of 時間（consumer.py）。本地啟動會即時執行消費者；託管沙盒顯示建立示範時記錄的拉取。"
+      },
+      "provisioningAsFinance": {
+        "title": "以財務身份執行",
+        "description": "SQL 瀏覽器現在以 finance 角色執行，即可以完整讀取利潤的團隊。"
+      },
+      "provisioningFinanceView": {
+        "title": "財務拉取的內容",
+        "description": "財務看到的最新訂單：收入、成本和利潤，所有類別。"
+      },
+      "provisioningAsDataScience": {
+        "title": "以數據科學身份執行",
+        "description": "現在以 data_science 角色執行，它的 feature store 需要訂單但不需要利潤。"
+      },
+      "provisioningDataScienceView": {
+        "title": "數據科學拉取的內容",
+        "description": "同一個數據集、同一個查詢：成本和利潤顯示為 0，服務類訂單不見了（行規則）。一個數據集，兩個受管治的視圖，沒有副本。"
+      },
+      "provisioningAsFinanceAgain": {
+        "title": "回到財務",
+        "description": "再次以財務身份，查看結帳匯總。"
+      },
+      "provisioningClose": {
+        "title": "窗口之外的讀取",
+        "description": "close_by_category 是財務的結帳匯總，只能在 02:00 至 02:15 UTC 之間讀取。在此之外，這次讀取會被拒絕，並指出視圖名稱和窗口下次開放的時間；倉庫自身的重新整理任何時候都會執行。"
+      },
+      "provisioningRest": {
+        "title": "透過 REST 查看拉取",
+        "description": "各團隊的拉取情況，在伺服器上分組匯總：次數和平均速度。"
       }
     },
     "status": {
@@ -1091,6 +1151,10 @@
       "retail": {
         "title": "一個集團，兩個區域",
         "summary": "一間擁有 EU 和 US 附屬公司的零售集團，在 GDPR 下作為一盤生意經營：EU 數據留在 EU，集團報告以假名化方式讀取，查閱、刪除、內幕資料審查和審計各自只是一次查詢。"
+      },
+      "provisioning": {
+        "title": "向下游團隊提供數據集",
+        "summary": "一個數據倉庫的問題：下游團隊如何在大數據集一就緒就取得它們——從 Kafka 載入的數據流、到達即重新整理的數據集、透過 Kafka 收到通知並透過 Arrow Flight 按那一刻狀態拉取的團隊。"
       }
     }
   }

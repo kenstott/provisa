@@ -1019,6 +1019,66 @@
       "retailRecap": {
         "title": "Ce que vous avez vu",
         "description": "Un seul modèle a défini les deux régions : où vit chaque table, quelles vues sont construites où, et qui lit quoi. Le reporting du groupe a lu les clients EU pseudonymisés, le marketing EU n'a lu que les clients consentants, et une demande d'accès et un effacement ont chacun tenu en une requête. La revue d'initiés n'a révélé un expéditeur que dans l'EU, et chaque lecture figure dans un seul journal."
+      },
+      "provisioningScenario": {
+        "title": "Ce que montre cette démo",
+        "description": "L'entrepôt de données d'un torréfacteur reçoit trois flux -- commandes, prix et inventaires -- et en construit des datasets à mesure qu'ils arrivent. Deux équipes ont besoin du plus gros, chaque commande avec sa marge : la finance pour son reporting, la data science pour son feature store. La question : comment l'obtiennent-elles dès qu'il est prêt, sans le copier ni écrire de tâches d'extraction ?"
+      },
+      "provisioningJoin": {
+        "title": "Comment les flux se relient",
+        "description": "Une commande nomme son produit, et le produit connaît son coût et sa catégorie. Le dataset relie chaque commande à celui-ci ; la clôture s'appuie sur le dataset et sur les flux d'inventaire et de prix -- une vue sur une vue, actualisées à la suite."
+      },
+      "provisioningRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Des flux chargés à leur arrivée, des datasets construits et actualisés à partir d'eux, chaque équipe avertie par Kafka quand l'un est prêt et l'extrayant par Arrow Flight tel qu'il était à cet instant, chacune voyant ce que son rôle permet, seulement dans la fenêtre du dataset. Ni copies ni tâches d'extraction."
+      },
+      "provisioningWarehouse": {
+        "title": "La base de données de l'entrepôt",
+        "description": "Ses produits et ce que chacun coûte, les avis qu'il envoie quand un dataset est prêt, et les extractions que consignent les consommateurs des équipes. Lue en direct."
+      },
+      "provisioningFeeds": {
+        "title": "Les flux, chargés à leur arrivée",
+        "description": "Les commandes arrivent par Kafka, quelques-unes par seconde, après un mois d'historique ; les prix et les inventaires sur leurs propres topics. Chacun est chargé dans une table de l'entrepôt en quelques secondes, et chaque chargement actualise les datasets construits dessus."
+      },
+      "provisioningDataset": {
+        "title": "Le dataset",
+        "description": "order_margins : chaque commande avec son chiffre d'affaires, son coût et sa marge. Il conserve chaque version de chaque ligne et peut donc être lu tel qu'il était à tout instant -- ce qu'une équipe extrait. Sa fenêtre de chargement dit quand utilisateurs et clients peuvent le lire : ici toute la journée sauf de 00:00 à 00:30 UTC. Un vrai entrepôt ouvrirait plutôt une fenêtre plus étroite, la nuit ; celle de la démo est large pour qu'on puisse la parcourir à toute heure."
+      },
+      "provisioningNotices": {
+        "title": "Avertis quand il est prêt",
+        "description": "Dans la fenêtre, un déclencheur planifié écrit un avis pour chaque équipe : la finance toutes les cinq minutes, la data science deux minutes plus tard. La sortie Kafka en direct de la table notices publie chacun sur le topic dataset-ready. L'heure de l'avis est l'heure de version du dataset."
+      },
+      "provisioningPulls": {
+        "title": "Les extractions",
+        "description": "Le consommateur de chaque équipe lit l'avis et extrait tout le dataset par Arrow Flight à l'heure de version, afin qu'une actualisation en cours d'extraction ne mélange pas deux versions. Il consigne les lignes, les secondes et les lignes par seconde. Son ticket est un objet JSON : la requête, le rôle et l'heure as-of (consumer.py). Un démarrage local exécute les consommateurs en direct ; le sandbox hébergé montre les extractions consignées lors de la construction de la démo."
+      },
+      "provisioningAsFinance": {
+        "title": "Exécuter en tant que finance",
+        "description": "L'explorateur SQL s'exécute désormais avec le rôle finance, l'équipe qui lit les marges en entier."
+      },
+      "provisioningFinanceView": {
+        "title": "Ce qu'extrait la finance",
+        "description": "Les dernières commandes telles que la finance les lit : chiffre d'affaires, coût et marge, toutes catégories."
+      },
+      "provisioningAsDataScience": {
+        "title": "Exécuter en tant que data science",
+        "description": "Maintenant avec le rôle data_science, dont le feature store a besoin des commandes mais pas des marges."
+      },
+      "provisioningDataScienceView": {
+        "title": "Ce qu'extrait la data science",
+        "description": "Le même dataset, la même requête : coût et marge valent 0, et les commandes de services disparaissent (une règle de lignes). Un dataset, deux vues gouvernées, aucune copie."
+      },
+      "provisioningAsFinanceAgain": {
+        "title": "Retour à la finance",
+        "description": "La finance à nouveau, pour la clôture."
+      },
+      "provisioningClose": {
+        "title": "Une lecture hors de sa fenêtre",
+        "description": "close_by_category, la clôture de la finance, ne peut être lue que de 02:00 à 02:15 UTC. En dehors, cette lecture est refusée, en nommant la vue et l'heure de réouverture de sa fenêtre ; les actualisations propres à l'entrepôt s'exécutent à toute heure."
+      },
+      "provisioningRest": {
+        "title": "Les extractions via REST",
+        "description": "Comment se sont passées les extractions de chaque équipe, regroupées sur le serveur : combien, et à quelle vitesse moyenne."
       }
     },
     "status": {
@@ -1091,6 +1151,10 @@
       "retail": {
         "title": "Un groupe, deux régions",
         "summary": "Un groupe de distribution avec une filiale EU et une filiale US, exploité comme une seule entreprise sous le GDPR : les données EU restent dans l'EU, le reporting du groupe les lit pseudonymisées, et l'accès, l'effacement, la revue d'initiés et l'audit tiennent chacun en une requête."
+      },
+      "provisioning": {
+        "title": "Fournir des datasets aux équipes en aval",
+        "summary": "La question d'un entrepôt, comment les équipes en aval obtiennent de gros datasets dès qu'ils sont prêts : flux chargés depuis Kafka, datasets actualisés à leur arrivée, équipes averties par Kafka et extrayant par Arrow Flight tel qu'à cet instant."
       }
     }
   }

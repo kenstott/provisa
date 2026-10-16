@@ -1019,6 +1019,66 @@
       "retailRecap": {
         "title": "Lo que ha visto",
         "description": "Un modelo definió ambas regiones: dónde reside cada tabla, qué vistas se construyen en cada lugar y quién lee qué. Los informes del grupo leyeron a los clientes de la EU seudonimizados, el marketing de la EU leyó solo a los clientes que dieron su consentimiento, y una solicitud de acceso y una supresión fueron cada una una sola consulta. La revisión de información privilegiada reveló a un remitente solo en la EU, y cada lectura está en un único registro."
+      },
+      "provisioningScenario": {
+        "title": "Qué es esta demo",
+        "description": "El almacén de datos de un tostador de café recibe tres feeds -- pedidos, precios y recuentos de existencias -- y construye datasets con ellos a medida que llegan. Dos equipos necesitan el grande, cada pedido con su margen: finanzas para sus informes, ciencia de datos para su feature store. La pregunta: ¿cómo lo obtienen en cuanto está listo, sin copiarlo ni escribir trabajos de extracción?"
+      },
+      "provisioningJoin": {
+        "title": "Cómo se unen los feeds",
+        "description": "Un pedido nombra su producto, y el producto conoce su coste y su categoría. El dataset une cada pedido con él; el cierre se construye sobre el dataset y los feeds de existencias y precios -- una vista sobre otra vista, actualizadas en orden."
+      },
+      "provisioningRecap": {
+        "title": "Lo que ha visto",
+        "description": "Feeds cargados al llegar, datasets construidos y actualizados con ellos, cada equipo avisado por Kafka cuando uno está listo y descargándolo por Arrow Flight tal como estaba en ese momento, cada uno viendo lo que su rol permite, solo dentro de la ventana del dataset. Sin copias ni trabajos de extracción."
+      },
+      "provisioningWarehouse": {
+        "title": "La base de datos del almacén",
+        "description": "Sus productos y lo que cuesta cada uno, los avisos que envía cuando un dataset está listo y las descargas que registran los consumidores de los equipos. Leída en vivo."
+      },
+      "provisioningFeeds": {
+        "title": "Los feeds, cargados al llegar",
+        "description": "Los pedidos llegan por Kafka, unos pocos por segundo, tras un mes de historial; los precios y las existencias por sus propios topics. Cada uno se carga en una tabla del almacén en segundos, y cada carga actualiza los datasets construidos sobre ella."
+      },
+      "provisioningDataset": {
+        "title": "El dataset",
+        "description": "order_margins: cada pedido con sus ingresos, coste y margen. Conserva cada versión de cada fila, así que puede leerse tal como estaba en cualquier momento -- lo que descarga un equipo. Su ventana de carga indica cuándo pueden leerlo usuarios y clientes: aquí todo el día salvo de 00:00 a 00:30 UTC. Un almacén real abriría normalmente una ventana más estrecha, nocturna; la de la demo es amplia para poder recorrerla a cualquier hora."
+      },
+      "provisioningNotices": {
+        "title": "Avisados cuando está listo",
+        "description": "Dentro de la ventana, un trigger programado escribe un aviso para cada equipo: finanzas cada cinco minutos, ciencia de datos dos minutos después. La salida Kafka en vivo de la tabla notices publica cada uno en el topic dataset-ready. La hora del aviso es la hora de versión del dataset."
+      },
+      "provisioningPulls": {
+        "title": "Las descargas",
+        "description": "El consumidor de cada equipo lee el aviso y descarga todo el dataset por Arrow Flight a la hora de versión, de modo que una actualización a mitad de la descarga no puede mezclar dos versiones. Registra las filas, los segundos y las filas por segundo. Su ticket es un objeto JSON: la consulta, el rol y la hora as-of (consumer.py). Un arranque local ejecuta los consumidores en vivo; el sandbox alojado muestra las descargas registradas al construir la demo."
+      },
+      "provisioningAsFinance": {
+        "title": "Ejecutar como finanzas",
+        "description": "El explorador SQL ahora se ejecuta con el rol finance, el equipo que lee los márgenes completos."
+      },
+      "provisioningFinanceView": {
+        "title": "Lo que descarga finanzas",
+        "description": "Los pedidos más recientes tal como los lee finanzas: ingresos, coste y margen, todas las categorías."
+      },
+      "provisioningAsDataScience": {
+        "title": "Ejecutar como ciencia de datos",
+        "description": "Ahora con el rol data_science, cuyo feature store necesita los pedidos pero no los márgenes."
+      },
+      "provisioningDataScienceView": {
+        "title": "Lo que descarga ciencia de datos",
+        "description": "El mismo dataset, la misma consulta: coste y margen valen 0 y los pedidos de servicios desaparecen (una regla de filas). Un dataset, dos vistas gobernadas, sin copias."
+      },
+      "provisioningAsFinanceAgain": {
+        "title": "De vuelta a finanzas",
+        "description": "Finanzas otra vez, para el cierre."
+      },
+      "provisioningClose": {
+        "title": "Una lectura fuera de su ventana",
+        "description": "close_by_category, el cierre de finanzas, solo puede leerse de 02:00 a 02:15 UTC. Fuera de ese horario esta lectura se rechaza, nombrando la vista y cuándo vuelve a abrirse su ventana; las actualizaciones propias del almacén se ejecutan a cualquier hora."
+      },
+      "provisioningRest": {
+        "title": "Las descargas por REST",
+        "description": "Cómo fueron las descargas de cada equipo, agrupadas en el servidor: cuántas y a qué velocidad media."
       }
     },
     "status": {
@@ -1091,6 +1151,10 @@
       "retail": {
         "title": "Un grupo, dos regiones",
         "summary": "Un grupo minorista con una filial de la EU y otra de US, gestionado como un solo negocio bajo el GDPR: los datos de la EU se quedan en la EU, los informes del grupo los leen seudonimizados, y el acceso, la supresión, la revisión de información privilegiada y la auditoría son cada uno una sola consulta."
+      },
+      "provisioning": {
+        "title": "Provisión de datasets a equipos posteriores",
+        "summary": "La pregunta de un almacén de datos, cómo obtienen los equipos posteriores grandes datasets en cuanto están listos: feeds cargados desde Kafka, datasets actualizados al llegar, equipos avisados por Kafka y descargando por Arrow Flight tal como estaban en ese momento."
       }
     }
   }

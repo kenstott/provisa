@@ -1019,6 +1019,66 @@
       "retailRecap": {
         "title": "Cosa hai visto",
         "description": "Un solo modello ha definito entrambe le regioni: dove risiede ogni tabella, quali viste vengono costruite dove, e chi legge cosa. Il reporting di gruppo ha letto i clienti EU pseudonimizzati, il marketing EU ha letto solo i clienti che hanno acconsentito, e una richiesta di accesso e una cancellazione sono state ciascuna una sola query. La revisione insider ha rivelato un mittente solo nell'EU, e ogni lettura è in un unico registro."
+      },
+      "provisioningScenario": {
+        "title": "Che cos'è questa demo",
+        "description": "Il data warehouse di una torrefazione riceve tre feed -- ordini, prezzi e conteggi di magazzino -- e ne costruisce dataset man mano che arrivano. Due team hanno bisogno di quello grande, ogni ordine con il suo margine: la finanza per il reporting, la data science per il feature store. La domanda: come lo ottengono appena è pronto, senza copiarlo né scrivere job di estrazione?"
+      },
+      "provisioningJoin": {
+        "title": "Come si collegano i feed",
+        "description": "Un ordine nomina il suo prodotto, e il prodotto conosce costo e categoria. Il dataset collega ogni ordine al prodotto; la chiusura si basa sul dataset e sui feed di giacenze e prezzi -- una vista su una vista, aggiornate in sequenza."
+      },
+      "provisioningRecap": {
+        "title": "Che cosa hai visto",
+        "description": "Feed caricati all'arrivo, dataset costruiti e aggiornati da essi, ogni team avvisato su Kafka quando uno è pronto e che lo preleva tramite Arrow Flight com'era in quel momento, ciascuno vedendo ciò che il suo ruolo consente, solo dentro la finestra del dataset. Nessuna copia e nessun job di estrazione."
+      },
+      "provisioningWarehouse": {
+        "title": "Il database del warehouse",
+        "description": "I suoi prodotti e quanto costa ciascuno, gli avvisi che invia quando un dataset è pronto e i prelievi registrati dai consumer dei team. Letto in tempo reale."
+      },
+      "provisioningFeeds": {
+        "title": "I feed, caricati all'arrivo",
+        "description": "Gli ordini arrivano su Kafka, alcuni al secondo, dopo un mese di storico; prezzi e giacenze sui loro topic. Ciascuno viene caricato in una tabella del warehouse in pochi secondi, e ogni caricamento aggiorna i dataset costruiti su di esso."
+      },
+      "provisioningDataset": {
+        "title": "Il dataset",
+        "description": "order_margins: ogni ordine con ricavi, costo e margine. Conserva ogni versione di ogni riga, quindi può essere letto com'era in qualsiasi momento -- ciò che un team preleva. La sua finestra di caricamento indica quando utenti e client possono leggerlo: qui tutto il giorno tranne 00:00-00:30 UTC. Un warehouse reale aprirebbe di solito una finestra più stretta, notturna; quella della demo è ampia per poterla percorrere a qualsiasi ora."
+      },
+      "provisioningNotices": {
+        "title": "Avvisati quando è pronto",
+        "description": "Dentro la finestra, un trigger pianificato scrive un avviso per ogni team: la finanza ogni cinque minuti, la data science due minuti dopo. L'output Kafka in tempo reale della tabella notices pubblica ciascuno sul topic dataset-ready. L'ora dell'avviso è l'ora di versione del dataset."
+      },
+      "provisioningPulls": {
+        "title": "I prelievi",
+        "description": "Il consumer di ogni team legge l'avviso e preleva l'intero dataset tramite Arrow Flight all'ora di versione, così un aggiornamento a metà prelievo non può mescolare due versioni. Registra le righe, i secondi e le righe al secondo. Il suo ticket è un oggetto JSON: la query, il ruolo e l'ora as-of (consumer.py). Un avvio locale esegue i consumer in tempo reale; la sandbox ospitata mostra i prelievi registrati quando la demo è stata creata."
+      },
+      "provisioningAsFinance": {
+        "title": "Esegui come finanza",
+        "description": "L'esploratore SQL ora viene eseguito con il ruolo finance, il team che legge i margini per intero."
+      },
+      "provisioningFinanceView": {
+        "title": "Cosa preleva la finanza",
+        "description": "Gli ordini più recenti come li legge la finanza: ricavi, costo e margine, tutte le categorie."
+      },
+      "provisioningAsDataScience": {
+        "title": "Esegui come data science",
+        "description": "Ora con il ruolo data_science, il cui feature store ha bisogno degli ordini ma non dei margini."
+      },
+      "provisioningDataScienceView": {
+        "title": "Cosa preleva la data science",
+        "description": "Lo stesso dataset, la stessa query: costo e margine valgono 0 e gli ordini di servizi scompaiono (una regola di riga). Un dataset, due viste governate, nessuna copia."
+      },
+      "provisioningAsFinanceAgain": {
+        "title": "Di nuovo alla finanza",
+        "description": "Di nuovo la finanza, per la chiusura."
+      },
+      "provisioningClose": {
+        "title": "Una lettura fuori dalla sua finestra",
+        "description": "close_by_category, la chiusura della finanza, può essere letta solo dalle 02:00 alle 02:15 UTC. Al di fuori questa lettura viene rifiutata, indicando la vista e quando la sua finestra si riapre; gli aggiornamenti propri del warehouse avvengono a qualsiasi ora."
+      },
+      "provisioningRest": {
+        "title": "I prelievi via REST",
+        "description": "Com'è andato ogni prelievo dei team, raggruppato sul server: quanti e a che velocità media."
       }
     },
     "status": {
@@ -1091,6 +1151,10 @@
       "retail": {
         "title": "Un gruppo, due regioni",
         "summary": "Un gruppo della distribuzione con una controllata EU e una US, gestito come un'unica azienda nel rispetto del GDPR: i dati EU restano nell'EU, il reporting di gruppo li legge pseudonimizzati, e accesso, cancellazione, revisione insider e audit sono ciascuno una sola query."
+      },
+      "provisioning": {
+        "title": "Fornire dataset ai team a valle",
+        "summary": "La domanda di un warehouse, come i team a valle ottengono grandi dataset appena sono pronti: feed caricati da Kafka, dataset aggiornati all'arrivo, team avvisati su Kafka che prelevano tramite Arrow Flight com'erano in quel momento."
       }
     }
   }

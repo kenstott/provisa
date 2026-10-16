@@ -1,0 +1,137 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The named demo "provisioning" (start-ui-install.sh --demo provisioning; REQ-2067). This file is
+# its one start point: `docker compose up -d` brings up the warehouse database, its feeds' broker,
+# the feeds and the downstream consumers.
+#
+#   postgres  the warehouse database (db/init.sql): products, the dataset-ready notices and the
+#             pulls the consumers record, read live as provisa_reader.
+#   kafka     the broker the feeds arrive on (orders, prices, inventory) and the notices leave on
+#             (dataset-ready).
+#   producer  the feeds (producer.py): a month of orders first, then a few a second, with price
+#             changes and stock counts.
+#   consumer  the two downstream teams (consumer.py): on each notice, a pull over Arrow Flight as
+#             of the notice's version time, recorded in the warehouse's pulls table. It reaches
+#             the Provisa this demo runs on at PROVISIONING_PROVISA_FLIGHT.
+#
+# Ports: 28032 the warehouse database, 29192 the broker, each moved by its variable. The broker's
+# is the same inside and out: a broker tells its clients the address to dial, its own published
+# port.
+x-demo-labels: &demo-labels
+  com.provisa.demo: provisioning
+name: provisa-demo-provisioning
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: provisioning
+    ports:
+      - "127.0.0.1:${PROVISIONING_PG_PORT:-28032}:5432"
+    volumes:
+      - provisioning_pg:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+      - ./db/reader.sql:/docker-entrypoint-initdb.d/20-reader.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d provisioning"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: stream
+      # Where config.yaml's feeds source reaches it, for the sandbox tier's node (REQ-2049,
+      # scripts/demo_stores_sync.sh). No port_env: a broker advertises the port its clients dial,
+      # so its port is never one docker picks (see the header).
+      com.provisa.demo.host_env: PROVISIONING_KAFKA_HOST
+      com.provisa.demo.port: "${PROVISIONING_KAFKA_PORT:-29192}"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,HOST://0.0.0.0:${PROVISIONING_KAFKA_PORT:-29192},CONTROLLER://0.0.0.0:29093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      CLUSTER_ID: cHJvdmlzaW9uaW5nLWRlbW8
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_HEAP_OPTS: "-Xmx256m -Xms256m"
+      DEMO_STORES_NETWORK: ${DEMO_STORES_NETWORK:-}
+    # The HOST listener advertises the address its client dials: on this host, 127.0.0.1; on the
+    # sandbox tier's network (DEMO_STORES_NETWORK, which the node joins the stores to), this
+    # container's own name there, its hostname. Decided when it starts.
+    command:
+      - bash
+      - -c
+      - >-
+        if [ -n "$$DEMO_STORES_NETWORK" ]; then host="$$(hostname)"; else host=127.0.0.1; fi;
+        export KAFKA_ADVERTISED_LISTENERS="INTERNAL://kafka:9092,HOST://$$host:${PROVISIONING_KAFKA_PORT:-29192}";
+        exec /etc/confluent/docker/run
+    ports:
+      # The same port inside and out: the address the broker advertises is the one dialled.
+      - "127.0.0.1:${PROVISIONING_KAFKA_PORT:-29192}:${PROVISIONING_KAFKA_PORT:-29192}"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+      start_period: 30s
+  producer:
+    image: provisa-demo-provisioning-producer:1
+    build:
+      context: .
+      dockerfile: Dockerfile.producer
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: producer
+    environment:
+      FEEDS_BOOTSTRAP: kafka:9092
+      ORDERS_HISTORY: "${PROVISIONING_ORDERS_HISTORY:-200000}"
+      ORDERS_PER_SECOND: "5"
+    depends_on:
+      kafka:
+        condition: service_healthy
+  consumer:
+    image: provisa-demo-provisioning-consumer:1
+    build:
+      context: .
+      dockerfile: Dockerfile.consumer
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: consumer
+    environment:
+      FEEDS_BOOTSTRAP: kafka:9092
+      # Provisa's Arrow Flight, on the host this demo's stores run on.
+      PROVISA_FLIGHT: "${PROVISIONING_PROVISA_FLIGHT:-grpc://host.docker.internal:8815}"
+      CONSUMERS: finance,data_science
+      PULLS_DSN: postgresql://consumer:consumer@postgres:5432/provisioning
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+volumes:
+  provisioning_pg:

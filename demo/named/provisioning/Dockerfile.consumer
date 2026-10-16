@@ -1,0 +1,14 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+FROM python:3.12-slim
+RUN pip install --no-cache-dir aiokafka==0.14.0 pyarrow==24.0.0 "psycopg[binary]==3.3.4"
+WORKDIR /app
+COPY consumer.py ./
+ENTRYPOINT ["python", "consumer.py"]

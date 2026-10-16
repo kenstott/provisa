@@ -1,0 +1,89 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The provisioning demo's own tour (REQ-2010, REQ-2067): the story of the demo, told with its own
+# data. The step kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name
+# here is checked against the demo by tests/unit/test_named_demo_tour.py, and the words of each step
+# are tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: the scenario (the warehouse, its feeds and its two teams); how the pieces fit (the
+# feeds landed as they arrive, the dataset built from them, the notices and the pulls); the
+# solution -- the notices on Kafka, the pulls each consumer recorded, the same dataset as finance
+# and as data science, the close refused outside its window, the consumer's code -- then a recap.
+# Where the tour's "Look around on my own" leaves the visitor: the SQL page, with its examples.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+- key: provisioningScenario
+  route: /sources
+  capability: source_registration
+  source: feeds
+- key: provisioningWarehouse
+  source: warehouse
+- key: provisioningFeeds
+  route: /tables
+  capability: table_registration
+  table: feeds.orders
+- key: provisioningJoin
+  route: /relationships
+  capability: create_relationship
+  relationship: ORDERED
+- key: provisioningDataset
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT m.category, COUNT(*) AS orders, SUM(m.revenue) AS revenue, SUM(m.margin) AS margin
+    FROM "provisioning"."view_order_margins" AS m
+    GROUP BY m.category
+    ORDER BY revenue DESC
+- key: provisioningNotices
+  sql: >-
+    SELECT n.notice_id, n.dataset, n.consumer, n.version_time
+    FROM "provisioning"."notices" AS n
+    ORDER BY n.notice_id DESC
+    LIMIT 10
+- key: provisioningPulls
+  sql: >-
+    SELECT p.consumer, p.dataset, p.version_time, p.pulled_at, p.rows, p.seconds, p.rows_per_sec
+    FROM "provisioning"."pulls" AS p
+    WHERE p.refused IS NULL
+    ORDER BY p.pull_id DESC
+    LIMIT 10
+- key: provisioningAsFinance
+  role: finance
+- key: provisioningFinanceView
+  sql: >-
+    SELECT m.order_id, m.product, m.category, m.revenue, m.cost, m.margin
+    FROM "provisioning"."view_order_margins" AS m
+    ORDER BY m.ordered_at DESC
+    LIMIT 10
+- key: provisioningAsDataScience
+  role: data_science
+- key: provisioningDataScienceView
+  sql: >-
+    SELECT m.order_id, m.product, m.category, m.revenue, m.cost, m.margin
+    FROM "provisioning"."view_order_margins" AS m
+    ORDER BY m.ordered_at DESC
+    LIMIT 10
+- key: provisioningAsFinanceAgain
+  role: finance
+- key: provisioningClose
+  sql: >-
+    SELECT c.category, c.revenue, c.margin, c.stock_value
+    FROM "provisioning"."view_close_by_category" AS c
+    ORDER BY c.revenue DESC
+- key: provisioningRest
+  route: /openapi
+  capability: query_development
+  api: GET /data/rest/provisioning/pulls?groupBy=consumer&aggregate=count,avg
+- key: provisioningRecap
+  route: /sources
+  capability: source_registration
+  source: warehouse

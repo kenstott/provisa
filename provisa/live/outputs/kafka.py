@@ -18,6 +18,9 @@ is used as the Kafka message key, enabling per-entity partitioning.
 from __future__ import annotations
 
 import json
+from datetime import date, datetime, time
+from decimal import Decimal
+from uuid import UUID
 import logging
 
 from provisa.kafka.producer import Producer, shared
@@ -26,6 +29,17 @@ from provisa.live.outputs.base import LiveOutput
 log = logging.getLogger(__name__)
 
 # Requirements: REQ-176, REQ-181, REQ-286
+
+
+def _json_value(value: object) -> object:
+    """A row value JSON has no type for, as the message carries it: a time as ISO 8601, a
+    decimal exactly as its digits, a UUID as its text. Any other type is not one a governed row
+    holds, and is refused (``json.dumps`` raises)."""
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    if isinstance(value, (Decimal, UUID)):
+        return str(value)
+    raise TypeError(f"a live row value of type {type(value).__name__} has no JSON form")
 
 
 class KafkaSinkOutput(LiveOutput):  # REQ-176, REQ-181, REQ-286
@@ -52,7 +66,9 @@ class KafkaSinkOutput(LiveOutput):  # REQ-176, REQ-181, REQ-286
         self._ensure_producer()
         assert self._producer is not None
         for row in rows:
-            value = json.dumps(row).encode()
+            # A governed row holds times and decimals (a timestamptz column, a price): written
+            # as JSON can carry them, where json.dumps alone refused the row.
+            value = json.dumps(row, default=_json_value).encode()
             key = None
             if self._key_column and self._key_column in row:
                 key = str(row[self._key_column]).encode()
