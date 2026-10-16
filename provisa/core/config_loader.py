@@ -438,16 +438,19 @@ async def _handle_openapi_table(
     """The endpoint a config-declared OpenAPI table is served from, derived by the same function
     the admin registration uses (REQ-316, REQ-318). REQ-1915: nothing is fetched here. A table
     whose spec has no operation of its name fails the load: it would have nothing to be read
-    from. The config's source carries no auth for the caller."""
+    from. The source's ``auth``, when it declares one, is what the caller sends."""
     from provisa.api_source.openapi_endpoint import (
         register_openapi_endpoint,
         register_openapi_source,
+        store_openapi_auth,
     )
 
     assert src.base_url is not None
-    # ``src`` is the source as written: a reference in its base URL is stored as the reference
-    # and resolved at each call (api_source.caller).
+    # ``src`` is the source as written: a reference in its base URL or auth is stored as the
+    # reference and resolved at each call (api_source.caller).
     await register_openapi_source(conn, src.id, src.base_url)
+    if src.auth is not None:
+        await store_openapi_auth(conn, src.id, src.auth.model_dump())
     await register_openapi_endpoint(conn, tbl, spec=spec, ttl=src.cache_ttl or 300)
 
 

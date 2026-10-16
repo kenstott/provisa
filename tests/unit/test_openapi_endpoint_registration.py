@@ -23,7 +23,7 @@ import respx
 from sqlalchemy import insert, select
 
 from provisa.api_source.caller import answer_rows, call_api
-from provisa.core.models import Column, Table
+from provisa.core.models import Column, Source, Table
 from provisa.core.paging import PaginationConfig
 from provisa.core.schema_org import api_endpoints, api_sources, domains, registered_tables, sources
 
@@ -181,7 +181,7 @@ async def test_the_config_and_the_admin_derive_the_identical_endpoint_row(org_db
     table = _table(max_pages=2)
     async with org_db.acquire() as conn:
         await table_repo.upsert(conn, table)
-        src = SimpleNamespace(id="petstore", base_url=BASE, cache_ttl=None)
+        src = SimpleNamespace(id="petstore", base_url=BASE, cache_ttl=None, auth=None)
         await _handle_openapi_table(conn, table, src, SPEC)  # type: ignore[arg-type]
         from_config = await _row(conn)
         await conn.execute_core(api_endpoints.delete())
@@ -248,6 +248,30 @@ async def test_the_sources_auth_is_stored_and_reaches_the_caller_and_a_refresh_k
     assert stored is not None  # written through the encryption service (REQ-686)
     assert loaded["petstore"].base_url == BASE + "/v2"
     assert loaded["petstore"].auth == ApiAuthApiKey(key="${secret:PETS_KEY}", name="X-Key")
+
+
+async def test_a_config_sources_auth_is_what_its_calls_carry(org_db):
+    """A config-declared OpenAPI source (a branded one: Stripe) declares its auth in the caller's
+    shape, kept as the reference written and resolved at each call."""
+    from provisa.api_source.loader import load_api_sources
+    from provisa.core.auth_models import ApiAuthBearer
+    from provisa.core.config_loader import _handle_openapi_table
+    from provisa.core.repositories import table as table_repo
+
+    table = _table(max_pages=2)
+    src = Source.model_validate(
+        {
+            "id": "petstore",
+            "type": "openapi",
+            "base_url": BASE,
+            "auth": {"type": "bearer", "token": "${env:PETS_KEY}"},
+        }
+    )
+    async with org_db.acquire() as conn:
+        await table_repo.upsert(conn, table)
+        await _handle_openapi_table(conn, table, src, SPEC)  # type: ignore[arg-type]
+        _endpoints, loaded = await load_api_sources(conn, {})
+    assert loaded["petstore"].auth == ApiAuthBearer(token="${env:PETS_KEY}")
 
 
 # -- the offer: paging suggested from the spec (REQ-318) --------------------------------------------

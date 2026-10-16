@@ -30,6 +30,7 @@ from pydantic import (
     model_validator,
 )
 
+from provisa.core.auth_models import ApiAuth
 from provisa.core.paging import PaginationConfig
 from provisa.core.source_registry import (
     _MYSQL_WIRE_TYPES,
@@ -273,6 +274,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     password: str = ""  # Secret reference e.g. ${env:PG_PASSWORD}
     path: str | None = None  # File path or URL for file-based sources (csv, parquet, sqlite)
     base_url: str | None = None  # Base URL for OpenAPI sources (e.g. https://api.example.com/v1)
+    # An OpenAPI source's auth as a config declares it, the caller's own shape (``type: bearer,
+    # token: ${env:STRIPE_API_KEY}``): stored with its secret references as written, resolved at
+    # each call (api_source.openapi_endpoint.store_openapi_auth), never in the sources row.
+    auth: ApiAuth | None = Field(default=None, exclude=True, repr=False)
     # REQ-788: transient (never persisted) — the source's file_glob tables, attached by
     # registry_view so build_model_json can emit each as a glob-url table of the file adapter.
     # Each item: {"name", "file_glob", "source_file_column"}.
