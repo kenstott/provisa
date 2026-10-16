@@ -254,3 +254,20 @@ def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch
     demo_templates.prefetch_connector_bundles()
     assert fetched == [("pgwire-file", None)]
     assert rd.BundleResolver().is_cached(rd.bundle_spec_for("files"))
+
+
+def test_the_sandbox_tier_finds_the_deployments_demo_data():
+    """The sandbox tier builds the deployment's org at startup too, so the demo config's SQLite
+    sources resolve ${env:PROVISA_DEMO_DIR} there: both the compose a node is set up with and the
+    overlay deploy-cloud.sh installs give it the directory the image bakes them into."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    setup = (root / "packaging" / "linux" / "first-launch.sh").read_text()
+    sandbox = setup[setup.index("  provisa-sandbox:\n") :]
+    sandbox = sandbox[: sandbox.index("\n  provisa-ui:\n")]
+    assert 'PROVISA_DEMO_DIR: "/app/config/demo/files"' in sandbox
+    overlay = (root / "scripts" / "deploy-cloud.sh").read_text()
+    overlay = overlay[overlay.index("  provisa-sandbox:\n") :]
+    assert 'PROVISA_DEMO_DIR: "/app/config/demo/files"' in overlay[: overlay.index("\nYAML\n")]
+    assert (root / "demo" / "files" / "pet_store.sqlite").is_file()  # what the Dockerfile bakes

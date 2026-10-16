@@ -405,6 +405,9 @@ services:
       # The demos cloud.provisa.dev offers (first-launch.sh's default; a node set up
       # by an earlier release offers its own list until it is set up again).
       PROVISA_DEMO_BUNDLES: "weblogs,files,sonnets,reviews"
+      # The SQLite sample data of the deployment's demo config, which this tier also builds at
+      # startup (first-launch.sh writes the same on a node set up since).
+      PROVISA_DEMO_DIR: "/app/config/demo/files"
 YAML
   local want have
   want="$(shasum -a 256 "$STAGE/docker-compose.overlay.yml" | cut -d' ' -f1)"

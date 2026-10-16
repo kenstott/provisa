@@ -926,6 +926,10 @@ services:
       PROVISA_DEMO_BUNDLES: "weblogs,files,sonnets,reviews"
       PROVISA_DEMO_REGISTRY: "https://ghcr.io/kenstott"
       PROVISA_LOGS_ALLOWED_ROOTS: /var/lib/provisa/demo-bundles
+      # This tier builds the deployment's org at startup too, from the control plane, and the
+      # demo config's SQLite sources resolve \${env:PROVISA_DEMO_DIR} there: without it they
+      # pointed at ./demo/files, which is not in the image, and every attach of them failed.
+      PROVISA_DEMO_DIR: "/app/config/demo/files"
     depends_on: *provisa_depends
   provisa-ui:
     restart: unless-stopped
