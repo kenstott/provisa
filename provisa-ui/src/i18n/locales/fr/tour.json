@@ -1083,6 +1083,46 @@
       "provisioningRest": {
         "title": "Les extractions via REST",
         "description": "Comment se sont passées les extractions de chaque équipe, regroupées sur le serveur : combien, et à quelle vitesse moyenne."
+      },
+      "pharmaScenario": {
+        "title": "Ce qu'est cette démo",
+        "description": "La pharmacie d'un hôpital veut savoir lesquels de ses produits sont menacés de pénurie ou de rappel. Son livret thérapeutique et le stock de chaque site sont dans sa propre base de données ; les pénuries et les rappels de la FDA et les prescriptions Medicaid sont publics. La visite montre Provisa joignant les deux et répondant à la question en SQL, GraphQL et REST."
+      },
+      "pharmaGovdata": {
+        "title": "Les données publiques sur les médicaments",
+        "description": "Les données publiques viennent d'AskAmerica, un vrai compte. Ses trois tables sont chargées une fois, à la construction de la démo, et seulement la part que la démo lit ; elles sont ensuite toujours lues depuis cette copie, et cette démo n'appelle jamais le compte."
+      },
+      "pharmaFormulary": {
+        "title": "Le livret thérapeutique de la pharmacie",
+        "description": "Chaque produit que la pharmacie référence, lu en direct depuis sa propre base de données : son NDC, sa dénomination commune, son fabricant, sa classe thérapeutique et s'il est critique. Son stock sur chaque site est à côté."
+      },
+      "pharmaShortages": {
+        "title": "Les pénuries de la FDA",
+        "description": "Chaque pénurie publiée par la FDA, une ligne par conditionnement : son statut, la disponibilité du produit et son code produit NDC. Les rappels et les prescriptions Medicaid sont à côté."
+      },
+      "pharmaJoin": {
+        "title": "Joints par NDC et par firme",
+        "description": "Le livret rejoint les pénuries et les prescriptions Medicaid par le NDC. Un rappel nomme sa firme, pas son NDC : le référentiel fournisseurs garde donc le nom de chaque fabricant auprès de la FDA, et cette relation le joint aux rappels."
+      },
+      "pharmaTerms": {
+        "title": "Dans les termes de la pharmacie",
+        "description": "Le glossaire nomme ce que demande un acheteur en pharmacie : NDC, livret thérapeutique, pénurie, classe de rappel, jours de couverture. Ici le risque d'approvisionnement : une pénurie, un rappel par son fabricant ou trop peu de jours de stock."
+      },
+      "pharmaAnswer": {
+        "title": "La réponse en SQL",
+        "description": "La vue product_risk joint le stock de chaque produit à sa pénurie, aux rappels en cours de son fabricant et à ses prescriptions Medicaid, et reste stockée. Les produits critiques à risque viennent d'abord, les moins couverts en premier."
+      },
+      "pharmaByRisk": {
+        "title": "Par risque, en GraphQL",
+        "description": "La même vue groupée par risque : combien de produits font face à une pénurie, à un rappel ou aux deux, le stock qu'ils représentent et combien Medicaid les prescrit."
+      },
+      "pharmaRest": {
+        "title": "La même réponse via REST",
+        "description": "La vue est aussi un point de terminaison REST, groupée et sommée côté serveur. Tout client qui parle HTTP obtient la réponse sans écrire de SQL."
+      },
+      "pharmaRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Les données propres de la pharmacie, lues en direct, et des données publiques sur les médicaments, chargées une fois, jointes par NDC et par firme dans un modèle gouverné : une vue répond quels produits sont à risque, en SQL, GraphQL et REST, selon l'accès de chaque rôle."
       }
     },
     "status": {
@@ -1159,6 +1199,10 @@
       "provisioning": {
         "title": "Fournir des datasets aux équipes en aval",
         "summary": "La question d'un entrepôt, comment les équipes en aval obtiennent de gros datasets dès qu'ils sont prêts : flux chargés depuis Kafka, datasets actualisés à leur arrivée, équipes averties par Kafka et extrayant par Arrow Flight tel qu'à cet instant."
+      },
+      "pharma": {
+        "title": "Risque de pénurie et de rappel de médicaments",
+        "summary": "La question de la pharmacie d'un hôpital, lesquels de ses produits sont menacés de pénurie ou de rappel : son livret et son stock joints aux pénuries et rappels de la FDA et aux prescriptions Medicaid, avec la réponse en SQL, GraphQL et REST."
       }
     }
   }

@@ -1083,6 +1083,46 @@
       "provisioningRest": {
         "title": "通过 REST 查看拉取",
         "description": "各团队的拉取情况，在服务器上分组汇总：次数和平均速度。"
+      },
+      "pharmaScenario": {
+        "title": "这个演示是什么",
+        "description": "一家医院药房想知道其哪些药品面临短缺或召回风险。它的处方集和各院区的库存在自己的数据库中；FDA 的药品短缺和召回信息以及 Medicaid 的处方数据是公开的。本导览展示 Provisa 如何将两者关联，并用 SQL、GraphQL 和 REST 回答这个问题。"
+      },
+      "pharmaGovdata": {
+        "title": "公开的药品数据",
+        "description": "政府数据来自 AskAmerica，一个真实账户。它的三张表在构建演示时加载一次，且只加载演示读取的部分；此后一直从该副本读取，本演示从不调用该账户。"
+      },
+      "pharmaFormulary": {
+        "title": "药房的处方集",
+        "description": "药房所备的每种药品，实时从其自己的数据库读取：NDC、通用名、生产商、治疗类别以及是否为关键药品。各院区的库存列在旁边。"
+      },
+      "pharmaShortages": {
+        "title": "FDA 的药品短缺",
+        "description": "FDA 发布的每一次短缺，每个包装一行：状态、药品的可得性及其 NDC 产品代码。召回信息和 Medicaid 处方数据列在旁边。"
+      },
+      "pharmaJoin": {
+        "title": "按 NDC 和企业关联",
+        "description": "处方集通过 NDC 与短缺信息和 Medicaid 处方数据关联。召回记录的是企业名称而不是 NDC，因此供应商主数据记录了每家生产商在 FDA 的企业名称，这个关系将它与召回信息关联。"
+      },
+      "pharmaTerms": {
+        "title": "用药房的术语",
+        "description": "术语表定义了药房采购人员关心的概念：NDC、处方集、药品短缺、召回等级、供应天数。这里是供应风险：短缺、生产商召回，或库存天数过少。"
+      },
+      "pharmaAnswer": {
+        "title": "SQL 中的答案",
+        "description": "视图 product_risk 将每种药品的库存与其短缺、生产商正在进行的召回及 Medicaid 处方关联，并保持存储。有风险的关键药品排在最前，供应天数最少的优先。"
+      },
+      "pharmaByRisk": {
+        "title": "按风险，在 GraphQL 中",
+        "description": "同一视图按风险分组：有多少药品面临短缺、召回或两者兼有，它们的库存，以及 Medicaid 的处方量。"
+      },
+      "pharmaRest": {
+        "title": "通过 REST 得到同样的答案",
+        "description": "该视图也是一个 REST 端点，在服务器端完成分组和求和。任何使用 HTTP 的客户端都无需编写 SQL 就能得到答案。"
+      },
+      "pharmaRecap": {
+        "title": "你看到了什么",
+        "description": "药房自己的数据实时读取，公开的药品数据加载一次，在一个受治理的模型中按 NDC 和企业关联：一个视图回答哪些药品有风险，以 SQL、GraphQL 和 REST 提供，并遵循每个角色的访问权限。"
       }
     },
     "status": {
@@ -1159,6 +1199,10 @@
       "provisioning": {
         "title": "向下游团队提供数据集",
         "summary": "一个数据仓库的问题：下游团队如何在大数据集一就绪就拿到它们——从 Kafka 加载的数据流、到达即刷新的数据集、通过 Kafka 收到通知并通过 Arrow Flight 按那一刻状态拉取的团队。"
+      },
+      "pharma": {
+        "title": "药品短缺与召回风险",
+        "summary": "医院药房的问题：其哪些药品面临短缺或召回风险。处方集和库存与 FDA 的短缺和召回信息及 Medicaid 处方数据关联，以 SQL、GraphQL 和 REST 作答。"
       }
     }
   }

@@ -1083,6 +1083,46 @@
       "provisioningRest": {
         "title": "As extrações via REST",
         "description": "Como foram as extrações de cada equipe, agrupadas no servidor: quantas e com que velocidade média."
+      },
+      "pharmaScenario": {
+        "title": "O que é esta demo",
+        "description": "A farmácia de um hospital quer saber quais dos seus produtos correm risco de desabastecimento ou de recolhimento. O seu formulário terapêutico e o estoque de cada unidade estão no seu próprio banco de dados; os desabastecimentos e recolhimentos da FDA e as prescrições do Medicaid são públicos. O tour mostra o Provisa unindo os dois e respondendo à pergunta em SQL, GraphQL e REST."
+      },
+      "pharmaGovdata": {
+        "title": "Os dados públicos de medicamentos",
+        "description": "Os dados governamentais vêm do AskAmerica, uma conta real. As suas três tabelas são carregadas uma vez, quando a demo é construída, e apenas a parte que a demo lê; a partir daí são sempre lidas dessa cópia, e esta demo nunca chama a conta."
+      },
+      "pharmaFormulary": {
+        "title": "O formulário terapêutico da farmácia",
+        "description": "Cada produto que a farmácia mantém, lido ao vivo do seu próprio banco de dados: o seu NDC, nome genérico, fabricante, classe terapêutica e se é crítico. O estoque em cada unidade fica ao lado."
+      },
+      "pharmaShortages": {
+        "title": "Os desabastecimentos da FDA",
+        "description": "Cada desabastecimento que a FDA publicou, uma linha por embalagem: o seu status, a disponibilidade do produto e o seu código de produto NDC. Os recolhimentos e as prescrições do Medicaid ficam ao lado."
+      },
+      "pharmaJoin": {
+        "title": "Unidos por NDC e por empresa",
+        "description": "O formulário encontra os desabastecimentos e as prescrições do Medicaid pelo NDC. Um recolhimento nomeia a sua empresa, não o seu NDC, por isso o cadastro de fornecedores registra o nome de cada fabricante na FDA, e esta relação o une aos recolhimentos."
+      },
+      "pharmaTerms": {
+        "title": "Nos termos da farmácia",
+        "description": "O glossário nomeia o que um comprador de farmácia pergunta: NDC, formulário terapêutico, desabastecimento, classe de recolhimento, dias de cobertura. Aqui o risco de abastecimento: um desabastecimento, um recolhimento do fabricante ou poucos dias de estoque."
+      },
+      "pharmaAnswer": {
+        "title": "A resposta em SQL",
+        "description": "A view product_risk une o estoque de cada produto ao seu desabastecimento, aos recolhimentos em andamento do seu fabricante e às suas prescrições do Medicaid, e é mantida armazenada. Os produtos críticos em risco vêm primeiro, os com menos dias de cobertura à frente."
+      },
+      "pharmaByRisk": {
+        "title": "Por risco, em GraphQL",
+        "description": "A mesma view agrupada por risco: quantos produtos enfrentam um desabastecimento, um recolhimento ou ambos, o estoque que têm e quanto o Medicaid os prescreve."
+      },
+      "pharmaRest": {
+        "title": "A mesma resposta via REST",
+        "description": "A view também é um endpoint REST, agrupada e somada no servidor. Qualquer cliente que fale HTTP obtém a resposta sem escrever SQL."
+      },
+      "pharmaRecap": {
+        "title": "O que você viu",
+        "description": "Os dados da própria farmácia, lidos ao vivo, e dados públicos de medicamentos, carregados uma vez, unidos por NDC e por empresa em um modelo governado: uma view responde quais produtos estão em risco, em SQL, GraphQL e REST, com o acesso de cada papel."
       }
     },
     "status": {
@@ -1159,6 +1199,10 @@
       "provisioning": {
         "title": "Provisionando datasets para equipes downstream",
         "summary": "A pergunta de um warehouse, como as equipes downstream obtêm grandes datasets assim que ficam prontos: feeds carregados do Kafka, datasets atualizados ao chegar, equipes avisadas pelo Kafka e extraindo pelo Arrow Flight como estavam naquele momento."
+      },
+      "pharma": {
+        "title": "Risco de desabastecimento e recolhimento de medicamentos",
+        "summary": "A pergunta da farmácia de um hospital, quais dos seus produtos correm risco de desabastecimento ou de recolhimento: o seu formulário e estoque unidos aos desabastecimentos e recolhimentos da FDA e às prescrições do Medicaid, respondida em SQL, GraphQL e REST."
       }
     }
   }

@@ -1083,6 +1083,46 @@
       "provisioningRest": {
         "title": "De downloads via REST",
         "description": "Hoe de downloads van elk team verliepen, gegroepeerd op de server: hoeveel en hoe snel gemiddeld."
+      },
+      "pharmaScenario": {
+        "title": "Wat deze demo is",
+        "description": "Een ziekenhuisapotheek wil weten welke van haar producten een tekort of terugroeping dreigen. Haar formularium en de voorraad van elke locatie staan in haar eigen database; de tekorten en terugroepingen van de FDA en de Medicaid-voorschriften zijn openbaar. De tour laat zien hoe Provisa die twee koppelt en de vraag beantwoordt in SQL, GraphQL en REST."
+      },
+      "pharmaGovdata": {
+        "title": "De openbare geneesmiddelendata",
+        "description": "De overheidsdata komt van AskAmerica, een echt account. De drie tabellen worden eenmaal geladen, wanneer de demo wordt gebouwd, en alleen het deel dat de demo leest; daarna worden ze altijd uit die kopie gelezen, en deze demo roept het account nooit aan."
+      },
+      "pharmaFormulary": {
+        "title": "Het formularium van de apotheek",
+        "description": "Elk product dat de apotheek voert, live gelezen uit haar eigen database: de NDC, de generieke naam, de fabrikant, de therapeutische klasse en of het kritiek is. De voorraad op elke locatie staat ernaast."
+      },
+      "pharmaShortages": {
+        "title": "De tekorten van de FDA",
+        "description": "Elk tekort dat de FDA heeft gepubliceerd, één rij per verpakking: de status, de beschikbaarheid van het product en de NDC-productcode. De terugroepingen en de Medicaid-voorschriften staan ernaast."
+      },
+      "pharmaJoin": {
+        "title": "Gekoppeld op NDC en op firma",
+        "description": "Het formularium ontmoet de tekorten en de Medicaid-voorschriften via de NDC. Een terugroeping noemt haar firma, niet haar NDC, dus het leveranciersbestand legt de FDA-firmanaam van elke fabrikant vast, en deze relatie koppelt die aan de terugroepingen."
+      },
+      "pharmaTerms": {
+        "title": "In de termen van de apotheek",
+        "description": "De woordenlijst benoemt waar een apotheekinkoper naar vraagt: NDC, formularium, geneesmiddelentekort, terugroepklasse, voorraaddagen. Hier het leveringsrisico: een tekort, een terugroeping door de fabrikant of te weinig dagen voorraad."
+      },
+      "pharmaAnswer": {
+        "title": "Het antwoord in SQL",
+        "description": "De view product_risk koppelt de voorraad van elk product aan zijn tekort, de lopende terugroepingen van zijn fabrikant en zijn Medicaid-voorschriften, en wordt opgeslagen bewaard. De kritieke producten met risico staan voorop, die met de minste voorraaddagen eerst."
+      },
+      "pharmaByRisk": {
+        "title": "Per risico, in GraphQL",
+        "description": "Dezelfde view gegroepeerd per risico: hoeveel producten een tekort, een terugroeping of beide hebben, de voorraad die ze vertegenwoordigen en hoe vaak Medicaid ze voorschrijft."
+      },
+      "pharmaRest": {
+        "title": "Hetzelfde antwoord via REST",
+        "description": "De view is ook een REST-endpoint, gegroepeerd en opgeteld op de server. Elke client die HTTP spreekt, krijgt het antwoord zonder SQL te schrijven."
+      },
+      "pharmaRecap": {
+        "title": "Wat u hebt gezien",
+        "description": "De eigen data van de apotheek, live gelezen, en openbare geneesmiddelendata, eenmaal geladen, gekoppeld op NDC en op firma in één beheerd model: één view beantwoordt welke producten risico lopen, in SQL, GraphQL en REST, met de toegang van elke rol."
       }
     },
     "status": {
@@ -1159,6 +1199,10 @@
       "provisioning": {
         "title": "Datasets leveren aan teams verderop",
         "summary": "De vraag van een warehouse, hoe teams verderop grote datasets krijgen zodra ze klaar zijn: feeds geladen uit Kafka, datasets ververst bij aankomst, teams gemeld via Kafka en downloadend via Arrow Flight zoals ze op dat moment waren."
+      },
+      "pharma": {
+        "title": "Risico op geneesmiddelentekort en terugroeping",
+        "summary": "De vraag van een ziekenhuisapotheek, welke van haar producten een tekort of terugroeping dreigen: haar formularium en voorraad gekoppeld aan de tekorten en terugroepingen van de FDA en de Medicaid-voorschriften, beantwoord in SQL, GraphQL en REST."
       }
     }
   }

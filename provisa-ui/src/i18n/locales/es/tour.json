@@ -1083,6 +1083,46 @@
       "provisioningRest": {
         "title": "Las descargas por REST",
         "description": "Cómo fueron las descargas de cada equipo, agrupadas en el servidor: cuántas y a qué velocidad media."
+      },
+      "pharmaScenario": {
+        "title": "Qué es esta demo",
+        "description": "La farmacia de un hospital quiere saber cuáles de sus productos corren riesgo de desabastecimiento o de retirada. Su formulario terapéutico y las existencias de cada centro están en su propia base de datos; los desabastecimientos y las retiradas de la FDA y las prescripciones de Medicaid son públicos. El recorrido muestra a Provisa uniendo ambos y respondiendo la pregunta en SQL, GraphQL y REST."
+      },
+      "pharmaGovdata": {
+        "title": "Los datos públicos de medicamentos",
+        "description": "Los datos gubernamentales vienen de AskAmerica, una cuenta real. Sus tres tablas se cargan una vez, cuando se construye la demo, y solo la parte que la demo lee; desde entonces se leen siempre de esa copia, y esta demo nunca llama a la cuenta."
+      },
+      "pharmaFormulary": {
+        "title": "El formulario terapéutico de la farmacia",
+        "description": "Cada producto que la farmacia tiene, leído en vivo de su propia base de datos: su NDC, su nombre genérico, su fabricante, su clase terapéutica y si es crítico. Sus existencias en cada centro están al lado."
+      },
+      "pharmaShortages": {
+        "title": "Los desabastecimientos de la FDA",
+        "description": "Cada desabastecimiento que la FDA ha publicado, una fila por envase: su estado, la disponibilidad del producto y su código de producto NDC. Las retiradas y las prescripciones de Medicaid están al lado."
+      },
+      "pharmaJoin": {
+        "title": "Unidos por NDC y por empresa",
+        "description": "El formulario se une a los desabastecimientos y a las prescripciones de Medicaid por NDC. Una retirada nombra a su empresa, no su NDC, así que el maestro de proveedores guarda el nombre de cada fabricante ante la FDA, y esta relación lo une a las retiradas."
+      },
+      "pharmaTerms": {
+        "title": "En los términos de la farmacia",
+        "description": "El glosario nombra lo que pregunta un comprador de farmacia: NDC, formulario terapéutico, desabastecimiento, clase de retirada, días de cobertura. Aquí el riesgo de suministro: un desabastecimiento, una retirada de su fabricante o muy pocos días de existencias."
+      },
+      "pharmaAnswer": {
+        "title": "La respuesta en SQL",
+        "description": "La vista product_risk une las existencias de cada producto a su desabastecimiento, a las retiradas en curso de su fabricante y a sus prescripciones de Medicaid, y se mantiene almacenada. Primero los productos críticos en riesgo, y entre ellos los de menos días de cobertura."
+      },
+      "pharmaByRisk": {
+        "title": "Por riesgo, en GraphQL",
+        "description": "La misma vista agrupada por riesgo: cuántos productos afrontan un desabastecimiento, una retirada o ambos, las existencias que tienen y cuánto los prescribe Medicaid."
+      },
+      "pharmaRest": {
+        "title": "La misma respuesta por REST",
+        "description": "La vista también es un endpoint REST, agrupada y sumada en el servidor. Cualquier cliente que hable HTTP obtiene la respuesta sin escribir SQL."
+      },
+      "pharmaRecap": {
+        "title": "Lo que ha visto",
+        "description": "Los datos propios de la farmacia, leídos en vivo, y datos públicos de medicamentos, cargados una vez, unidos por NDC y por empresa en un modelo gobernado: una vista responde qué productos están en riesgo, en SQL, GraphQL y REST, con el acceso de cada rol."
       }
     },
     "status": {
@@ -1159,6 +1199,10 @@
       "provisioning": {
         "title": "Provisión de datasets a equipos posteriores",
         "summary": "La pregunta de un almacén de datos, cómo obtienen los equipos posteriores grandes datasets en cuanto están listos: feeds cargados desde Kafka, datasets actualizados al llegar, equipos avisados por Kafka y descargando por Arrow Flight tal como estaban en ese momento."
+      },
+      "pharma": {
+        "title": "Riesgo de desabastecimiento y retirada de medicamentos",
+        "summary": "La pregunta de la farmacia de un hospital, cuáles de sus productos corren riesgo de desabastecimiento o de retirada: su formulario y sus existencias unidos a los desabastecimientos y retiradas de la FDA y a las prescripciones de Medicaid, respondida en SQL, GraphQL y REST."
       }
     }
   }
