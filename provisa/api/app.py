@@ -2117,7 +2117,15 @@ async def _build_org_runtime(
 
             rt.isolated_engine = True
             rt.federation_engine = EngineRuntime(build_engine("duckdb"), state)
-            rt.federation_engine.engine.pin_materialize_store(embedded_store_dsn(org_id))
+            # REQ-2068: on the regions sandbox tier the org's region names its store (its own
+            # schemas in that region's PostgreSQL, the region lane's ``storage_url``).
+            from provisa.api.demo_region_seed import regional
+
+            rt.federation_engine.engine.pin_materialize_store(
+                storage_url
+                if regional() and storage_url is not None
+                else embedded_store_dsn(org_id)
+            )
             rt.federation_engine.engine.memory_limit = int(
                 settings_registry.value("sandbox.memory_limit")
             )

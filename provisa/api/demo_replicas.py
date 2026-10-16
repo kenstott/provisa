@@ -68,16 +68,17 @@ _SEED_FIELDS = (
 )
 
 
-def store_identity(org_id: str) -> str:
+def store_identity(org_id: str, store: str | None = None) -> str:
     """What a replica built by ``org_id``'s own engine records as its store: the build's own
-    reading (replica_builds.store_identity) of the engine an org of the sandbox tier runs."""
+    reading (replica_builds.store_identity) of the engine an org of the sandbox tier runs, landing
+    in its embedded file -- or in ``store``, its region's (REQ-2068, demo_region_seed)."""
     from types import SimpleNamespace
 
     from provisa.federation.engine import build_engine, embedded_store_dsn
     from provisa.federation.replica_builds import store_identity as build_identity
 
     engine = build_engine("duckdb")
-    engine.pin_materialize_store(embedded_store_dsn(org_id))
+    engine.pin_materialize_store(store if store is not None else embedded_store_dsn(org_id))
     return build_identity(SimpleNamespace(federation_engine=SimpleNamespace(engine=engine)))
 
 
@@ -122,9 +123,9 @@ def _state_db(org_id: str) -> Any:
     from provisa.core.regions import DEFAULT_REGION
 
     if process_region.region() != DEFAULT_REGION:
-        # A region keeps its replicas' record in a store of its own (REQ-1922); the sandbox tier
-        # runs where there are no platform regions.
-        raise RuntimeError("demo sandboxes run on a deployment without platform regions")
+        # A region keeps its replicas' record in a store of its own (REQ-1922): the regions
+        # sandbox tier's demos are copied by demo_region_seed, never through this handle.
+        raise RuntimeError("a region's demo record is kept in its own store (demo_region_seed)")
     return Database(_pool().engine, name="org-state", search_path=org_schema(org_id), holds="state")
 
 
@@ -160,8 +161,10 @@ async def _bound_definitions(
     return {key: shapes[key][0] for key in keys}
 
 
-def _as_built(rows: list[dict], org_id: str, defined: dict, now: datetime) -> list[dict]:
-    built = store_identity(org_id)
+def _as_built(
+    rows: list[dict], org_id: str, defined: dict, now: datetime, store: str | None = None
+) -> list[dict]:
+    built = store_identity(org_id, store)
     return [
         {
             **{field: row[field] for field in _SEED_FIELDS},
@@ -182,8 +185,14 @@ async def copy_to_sandbox(template_org: str, org_id: str) -> None:
     """The template's landed replicas, into a sandbox's own store and its own record. Each
     template digest is checked first: a replica not built from the template's model as this
     deployment has it is refused by name rather than handed to a visitor."""
+    from provisa.api import demo_region_seed
     from provisa.federation import replica_state
     from provisa.federation.materialize_broker import copy_schema
+
+    if demo_region_seed.regional():
+        # REQ-2068: each region's replicas and views, in that region's stores.
+        await demo_region_seed.copy_to_sandbox(template_org, org_id)
+        return
 
     await asyncio.to_thread(
         copy_schema,
@@ -213,7 +222,11 @@ async def copy_views_to_sandbox(template_org: str, org_id: str, tables: list[str
     """The template's bitemporal views' append logs (``tables``), into a sandbox's own store: the
     sandbox keeps their history, and its first refresh over the demo's unchanged sources appends
     nothing (REQ-1162)."""
+    from provisa.api import demo_region_seed
     from provisa.federation.materialize_broker import copy_schema
+
+    if demo_region_seed.regional():
+        return  # REQ-2068: copied with each region's replicas (copy_to_sandbox)
 
     await asyncio.to_thread(
         copy_schema,
@@ -260,7 +273,11 @@ def adopt_views(template_org: str, demo_directory: Path) -> bool:
     carries them and the store does not hold them yet. Run within the template's runtime build,
     before its views' refreshes are scheduled, so its first refresh appends to the history rather
     than starting one. Whether they were copied."""
+    from provisa.api import demo_region_seed
     from provisa.federation.materialize_broker import copy_schema
+
+    if demo_region_seed.regional():
+        return False  # REQ-2068: landed with each region's seed (adopt_seed)
 
     store, record = views_seed_paths(demo_directory)
     if not record.exists():
@@ -276,8 +293,13 @@ def adopt_views(template_org: str, demo_directory: Path) -> bool:
 
 async def export_seed(template_org: str, demo_directory: Path) -> None:
     """Write the template's landed replicas out as the demo's seed (the bundle build)."""
+    from provisa.api import demo_region_seed
     from provisa.federation import replica_state
     from provisa.federation.materialize_broker import copy_schema
+
+    if demo_region_seed.regional():
+        await demo_region_seed.export_seed(template_org, demo_directory)
+        return
 
     store, record = seed_paths(demo_directory)
     store.parent.mkdir(parents=True, exist_ok=True)
@@ -310,8 +332,12 @@ async def landed_here(template_org: str) -> int:
     built for it, and held by it with the rows recorded (a table's shape is re-created empty from
     its record when the runtime is built, so a table that is there is not yet one that is landed:
     a data directory replaced since keeps the records and loses the rows)."""
+    from provisa.api import demo_region_seed
     from provisa.federation import replica_state
     from provisa.federation.replica_address import replica_table_name
+
+    if demo_region_seed.regional():
+        return await demo_region_seed.landed_here(template_org)
 
     async with _state_db(template_org).acquire() as conn:
         rows = await replica_state.completed_rows(conn)
@@ -350,8 +376,12 @@ async def adopt_seed(template_org: str, demo_directory: Path) -> bool:
     the template's runtime build (app._build_org_runtime), before its replica convergence is
     wired, so convergence finds them built and asks for no build -- a build would read a source
     the deployment does not run. Whether there was a seed."""
+    from provisa.api import demo_region_seed
     from provisa.federation import replica_state
     from provisa.federation.materialize_broker import copy_schema
+
+    if demo_region_seed.regional():
+        return await demo_region_seed.adopt_seed(template_org, demo_directory)
 
     store, record = seed_paths(demo_directory)
     if not record.exists():

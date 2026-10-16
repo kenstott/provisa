@@ -86,6 +86,36 @@ def test_the_ui_server_sends_a_sandbox_and_a_demo_opening_to_the_sandbox_tier(mo
     assert route("auth/me", {"host": "cloud.provisa.dev"}) == main
 
 
+def test_a_regions_demo_and_its_sandboxes_reach_the_regions_tier(monkeypatch):
+    """REQ-2068: a demo whose model selects regions is opened by, and its sandboxes (an ``sbxr``
+    id) served by, the regions sandbox tier; every other demo and sandbox as before."""
+    import provisa.ui_server as ui_server
+
+    monkeypatch.setattr(ui_server, "API_BASE_URL", "http://provisa:8000")
+    monkeypatch.setattr(ui_server, "SANDBOX_API_URL", "http://provisa-sandbox:8000")
+    monkeypatch.setattr(ui_server, "SANDBOX_REGIONS_API_URL", "http://provisa-sandbox-regions:8100")
+    monkeypatch.setattr(ui_server, "SANDBOX_REGIONS_DEMOS", frozenset({"retail"}))
+    tier, regions = "http://provisa-sandbox:8000", "http://provisa-sandbox-regions:8100"
+    route = ui_server.api_base_for
+    assert route("public/demos/retail", {"host": "cloud.provisa.dev"}) == regions
+    assert route("sandboxes/retail", {"host": "cloud.provisa.dev"}) == regions
+    assert route("data/sql", {"host": "sbxr0123456789ab.provisa.dev"}) == regions
+    assert route("public/demos/weblogs", {"host": "cloud.provisa.dev"}) == tier
+    assert route("public/demos/retailer", {"host": "cloud.provisa.dev"}) == tier
+    assert route("data/sql", {"host": "sbx0123456789ab.provisa.dev"}) == tier
+
+
+def test_a_regions_tier_mints_its_own_sandbox_ids(monkeypatch):
+    from provisa.api import demo_region_seed
+    from provisa.core.org_ids import is_regions_sandbox, is_sandbox_tier_org, is_template_org
+
+    monkeypatch.setattr(demo_region_seed, "regional", lambda: True)
+    org = new_sandbox_org_id()
+    assert is_regions_sandbox(org) and is_sandbox_tier_org(org) and not is_template_org(org)
+    monkeypatch.setattr(demo_region_seed, "regional", lambda: False)
+    assert not is_regions_sandbox(new_sandbox_org_id())
+
+
 def test_with_no_sandbox_tier_everything_reaches_the_deployments_api(monkeypatch):
     import provisa.ui_server as ui_server
 
