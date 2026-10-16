@@ -191,8 +191,13 @@ async def test_the_batch_poll_ripples_a_changed_table_once_and_remembers_the_bat
             name="box-1",
             land=lambda *a, **k: None,
         )
+        from provisa.events.push_wiring import _listener_key
+
         state = SimpleNamespace(
-            tenant_db=db, event_loop_processors=[processor], kafka_pipelines={node: "p1"}
+            tenant_db=db,
+            event_loop_processors=[processor],
+            # Another org's pipeline of the same table is never this org's to ripple.
+            kafka_pipelines={_listener_key(node): "p1", ("org_other", None, node): "p9"},
         )
         batches = [{"p1": (6, 3)}, {}]
         seen_since: list[dict] = []
@@ -282,9 +287,25 @@ def test_settling_forgets_unwired_tables_and_sweeps_this_org_schema(monkeypatch)
     state = SimpleNamespace(
         org_id="org_a",
         kafka_pipeline_store=object(),
-        kafka_pipelines={"a": "provisa_kp_a_1", "b": None, "gone": "provisa_kp_gone_1"},
-        kafka_pipeline_delays={"a": 5.0, "b": 2.0, "gone": 1.0},
-        kafka_pipeline_tables={"a": (_SCHEMA, "ta"), "b": (_SCHEMA, "tb"), "gone": (_SCHEMA, "tg")},
+        kafka_pipelines={
+            ("org_a", None, "a"): "provisa_kp_a_1",
+            ("org_a", None, "b"): None,
+            ("org_a", None, "gone"): "provisa_kp_gone_1",
+            # Another org's pipeline: settled by its own pass, neither forgotten nor kept here.
+            ("org_b", None, "gone"): "provisa_kp_b_1",
+        },
+        kafka_pipeline_delays={
+            ("org_a", None, "a"): 5.0,
+            ("org_a", None, "b"): 2.0,
+            ("org_a", None, "gone"): 1.0,
+            ("org_b", None, "gone"): 0.5,
+        },
+        kafka_pipeline_tables={
+            ("org_a", None, "a"): (_SCHEMA, "ta"),
+            ("org_a", None, "b"): (_SCHEMA, "tb"),
+            ("org_a", None, "gone"): (_SCHEMA, "tg"),
+            ("org_b", None, "gone"): ("other", "tg"),
+        },
     )
     log = SimpleNamespace(info=lambda *a, **k: None)
     from provisa.core.request_context import reset_current_org, set_current_org
@@ -295,7 +316,11 @@ def test_settling_forgets_unwired_tables_and_sweeps_this_org_schema(monkeypatch)
     finally:
         reset_current_org(tok)
 
-    assert set(state.kafka_pipelines) == {"a", "b"}
+    assert set(state.kafka_pipelines) == {
+        ("org_a", None, "a"),
+        ("org_a", None, "b"),
+        ("org_b", None, "gone"),
+    }
     assert swept == [
         {
             "schema": _SCHEMA,

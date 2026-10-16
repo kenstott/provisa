@@ -171,8 +171,15 @@ async def ripple_new_batches(state: Any, sa_engine: Any, *, schema: str) -> int:
     from provisa.events import queue
     from provisa.events.ripple import ripple
 
+    from provisa.core.request_context import current_env, require_current_org
+
+    # The bound org and environment's pipelines only, keyed (org, env, node) by push_wiring: one
+    # process holds every org's, and another org's batches are not this one's to ripple.
+    scope = (require_current_org(), current_env.get())
     pipelines: dict[str, str] = {
-        node: name for node, name in (getattr(state, "kafka_pipelines", {}) or {}).items() if name
+        key[2]: name
+        for key, name in (getattr(state, "kafka_pipelines", {}) or {}).items()
+        if name and key[:2] == scope
     }
     if not pipelines:
         return 0

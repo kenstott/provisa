@@ -73,6 +73,14 @@ def _effective_signal(src: Any, tbl: dict) -> str | None:
 _CDC_TRANSPORT_SIGNALS = frozenset({"debezium", "kafka"})
 
 
+def _consumer_group(base: str) -> str:
+    """The bound org's (and environment's) own consumer group, from ``base``: each org lands a
+    topic into its own table, so each must read every message, and one group shared by every
+    org would split the topic among them. An operator's configured group is the base."""
+    org, env, _ = _listener_key("")
+    return f"{base}-{org}" if env is None else f"{base}-{org}-{env}"
+
+
 def _listener_key(node: str) -> tuple[str, str | None, str]:
     """A running listener's key: the org and environment it lands for, and its node. One process
     serves many orgs (a demo's sandboxes) and each org's environments; a node name alone is the
@@ -103,7 +111,7 @@ def _cdc_provider(state: Any, src: Any, tbl: dict) -> tuple[Any, str]:
     from provisa.subscriptions.registry import get_provider
 
     cdc = src.cdc
-    group = cdc.consumer_group_id or state.config.cdc_consumer_group_id
+    group = _consumer_group(cdc.consumer_group_id or state.config.cdc_consumer_group_id)
     if _effective_signal(src, tbl) == "kafka":
         topic = ((tbl.get("live") or {}).get("kafka") or {})["topic"]
         provider = get_provider(
@@ -588,9 +596,12 @@ async def _wire_pipeline(
         state.kafka_pipelines = {}
         state.kafka_pipeline_delays = {}
         state.kafka_pipeline_tables = {}
-    state.kafka_pipeline_delays[node] = float(tbl.get("push_debounce_max_delay") or 5.0)
-    state.kafka_pipeline_tables[node] = (address.schema, address.table)
-    if state.kafka_pipelines.get(node) == expected:
+    # Keyed as the listeners are (``_listener_key``): one process serves many orgs and their
+    # environments, each with its own pipeline for a table of the same name.
+    key = _listener_key(node)
+    state.kafka_pipeline_delays[key] = float(tbl.get("push_debounce_max_delay") or 5.0)
+    state.kafka_pipeline_tables[key] = (address.schema, address.table)
+    if state.kafka_pipelines.get(key) == expected:
         return
     try:
         name = await asyncio.to_thread(
@@ -612,9 +623,9 @@ async def _wire_pipeline(
             node,
             origin.location,
         )
-        state.kafka_pipelines.setdefault(node, None)  # keep whatever pipeline it had
+        state.kafka_pipelines.setdefault(key, None)  # keep whatever pipeline it had
         return
-    state.kafka_pipelines[node] = name
+    state.kafka_pipelines[key] = name
     log.info("kafka pipeline %s lands %s (topic %r)", name, node, origin.location)
 
 
@@ -631,20 +642,25 @@ async def _settle_pipelines(state: Any, engine: Any, wired: set[str], *, log: An
     from provisa.core.request_context import require_current_org
     from provisa.federation.replica_address import replica_schema
 
-    pipelines: dict = getattr(state, "kafka_pipelines", {}) or {}
-    delays: dict = getattr(state, "kafka_pipeline_delays", {}) or {}
-    tables: dict = getattr(state, "kafka_pipeline_tables", {}) or {}
-    for node in [n for n in pipelines if n not in wired]:
-        pipelines.pop(node)
-        delays.pop(node, None)
-        tables.pop(node, None)
+    all_pipelines: dict = getattr(state, "kafka_pipelines", {}) or {}
+    all_delays: dict = getattr(state, "kafka_pipeline_delays", {}) or {}
+    all_tables: dict = getattr(state, "kafka_pipeline_tables", {}) or {}
+    # Only this org and environment's pipelines: another runtime's are settled by its own pass.
+    org, env, _ = _listener_key("")
+    for key in [k for k in all_pipelines if k[:2] == (org, env) and k[2] not in wired]:
+        all_pipelines.pop(key)
+        all_delays.pop(key, None)
+        all_tables.pop(key, None)
+    pipelines = {k: v for k, v in all_pipelines.items() if k[:2] == (org, env)}
+    delays = {k: v for k, v in all_delays.items() if k[:2] == (org, env)}
+    tables = {k: v for k, v in all_tables.items() if k[:2] == (org, env)}
     # REQ-1935: the org being wired is bound (no implied org); its replicas schema in this region
     # is the only one swept.
     org_id = require_current_org()
     schema = replica_schema(org_id)
     # A wired table whose pipeline could not be (re)created this pass keeps any it already has.
     failed = {
-        sp.kafka_table_prefix(*tables[node]) for node, name in pipelines.items() if name is None
+        sp.kafka_table_prefix(*tables[key]) for key, name in pipelines.items() if name is None
     }
     keep = {name for name in pipelines.values() if name is not None}
     store = _pipeline_store(state, engine)
@@ -665,7 +681,11 @@ def _schedule_batch_poll(state: Any, store: Any, schema: str, delays: dict, *, o
     scheduler = getattr(state, "_scheduler", None)
     if scheduler is None:
         return
-    job_id = f"poll:singlestore-kafka-pipelines:org_{org_id}"
+    from provisa.core.request_context import current_env
+
+    env = current_env.get()
+    # One poll per org and environment: each has its own pipelines (``_listener_key``).
+    job_id = f"poll:singlestore-kafka-pipelines:org_{org_id}" + ("" if env is None else f":{env}")
     if not delays:
         if scheduler.get_job(job_id) is not None:
             scheduler.remove_job(job_id)
@@ -677,12 +697,19 @@ def _schedule_batch_poll(state: Any, store: Any, schema: str, delays: dict, *, o
     async def _fire() -> None:
         # A scheduled fire runs outside any request: it binds the org it was wired for
         # (REQ-1935), every time, so its reads and ripples are that org's and no other's.
-        from provisa.core.request_context import reset_current_org, set_current_org
+        from provisa.core.request_context import (
+            reset_current_env,
+            reset_current_org,
+            set_current_env,
+            set_current_org,
+        )
 
         tok = set_current_org(org_id)
+        env_tok = set_current_env(env)
         try:
             await singlestore_kafka.ripple_new_batches(state, store, schema=schema)
         finally:
+            reset_current_env(env_tok)
             reset_current_org(tok)
 
     scheduler.add_job(
