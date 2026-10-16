@@ -945,6 +945,11 @@ services:
       # demo config's SQLite sources resolve \${env:PROVISA_DEMO_DIR} there: without it they
       # pointed at ./demo/files, which is not in the image, and every attach of them failed.
       PROVISA_DEMO_DIR: "/app/config/demo/files"
+      # On a sandbox node: its own Compute Engine instance, which it stops once no sandbox has
+      # been used for PROVISA_SANDBOX_IDLE_STOP_SECONDS (provisa.scheduler.jobs). Empty here
+      # otherwise, and nothing is stopped.
+      PROVISA_SANDBOX_INSTANCE: "\${PROVISA_SANDBOX_INSTANCE:-}"
+      PROVISA_SANDBOX_IDLE_STOP_SECONDS: "\${PROVISA_SANDBOX_IDLE_STOP_SECONDS:-}"
     # On a sandbox node redis and minio are the control plane's, not services of this file.
     depends_on:
       redis:
@@ -966,6 +971,9 @@ services:
       PROVISA_API_URL: "https://provisa:8000"
       # The sandbox tier: this node's, or a sandbox node's (https://<its address>:8000).
       PROVISA_SANDBOX_API_URL: "\${PROVISA_SANDBOX_API_URL:-https://provisa-sandbox:8000}"
+      # Its Compute Engine instance, which the UI server starts when it finds the tier down
+      # (provisa/sandbox_wake.py); empty for a tier on this node.
+      PROVISA_SANDBOX_INSTANCE: "\${PROVISA_SANDBOX_INSTANCE:-}"
       VITE_FIREBASE_API_KEY: "\${VITE_FIREBASE_API_KEY:-}"
       VITE_FIREBASE_AUTH_DOMAIN: "\${VITE_FIREBASE_AUTH_DOMAIN:-}"
       VITE_FIREBASE_PROJECT_ID: "\${VITE_FIREBASE_PROJECT_ID:-}"
@@ -1124,6 +1132,7 @@ install_systemd() {
              PROVISA_ENGINE_IDLE_SECONDS \
              PROVISA_MINIO_BIND_IP PROVISA_ENGINE_OTEL_S3_ENDPOINT PROVISA_OBJECT_STORE_DIR \
              COMPOSE_PROFILES PROVISA_REDIS_HOST PROVISA_MINIO_HOST PROVISA_SANDBOX_API_URL \
+             PROVISA_SANDBOX_INSTANCE PROVISA_SANDBOX_IDLE_STOP_SECONDS \
              TRINO_HOST TRINO_PORT \
              PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE PROVISA_ISOLATED_ENGINE_PORT; do
     if [ -n "${!var:-}" ]; then

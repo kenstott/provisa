@@ -347,6 +347,16 @@ async def expired(now: datetime | None = None) -> list[str]:
     return [r[0] for r in rows]
 
 
+async def last_active() -> datetime | None:
+    """When a request last reached any open sandbox; None when none is open."""
+    from provisa.api.admin.orgs_router import _admin_pool
+
+    async with _admin_pool().acquire() as conn:
+        return (
+            await conn.execute_core(select(func.max(demo_sandboxes.c.last_active_at)))
+        ).scalar_one()
+
+
 async def reap(org_id: str) -> None:
     """Delete the sandbox ``org_id`` whole: its org (schemas, rows, its visitor's token), its
     engine, and its folder with its DuckDB file and uploads."""

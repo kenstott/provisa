@@ -109,3 +109,71 @@ def test_with_the_tier_on_this_node_nothing_is_started(monkeypatch, tmp_path):
     client = _ui(monkeypatch, None, tmp_path)
     monkeypatch.setattr(sandbox_wake, "wake", _never)
     assert client.post("/public/demos/weblogs").status_code == 502
+
+
+def _idle_case(monkeypatch, latest):
+    from datetime import UTC, datetime, timedelta
+
+    from provisa.api import demo_sandbox
+    from provisa.scheduler import jobs
+
+    stopped: list[str] = []
+
+    async def _stop(instance):
+        stopped.append(instance)
+
+    async def _last_active():
+        return None if latest is None else datetime.now(UTC) - timedelta(seconds=latest)
+
+    monkeypatch.setattr(sandbox_wake, "SANDBOX_INSTANCE", INSTANCE)
+    monkeypatch.setattr(sandbox_wake, "stop", _stop)
+    monkeypatch.setattr(demo_sandbox, "last_active", _last_active)
+    monkeypatch.setenv("PROVISA_SANDBOX_IDLE_STOP_SECONDS", "1800")
+    return (
+        stopped,
+        jobs.stop_idle_sandbox_vm,
+        lambda ago: datetime.now(UTC) - timedelta(seconds=ago),
+    )
+
+
+def test_the_tier_stops_its_vm_once_no_sandbox_has_been_used_for_the_idle_window(monkeypatch):
+    stopped, job, ago = _idle_case(monkeypatch, latest=1900)
+    asyncio.run(job(since=ago(7200)))
+    assert stopped == [INSTANCE]
+
+
+def test_a_sandbox_used_within_the_window_keeps_the_vm_up(monkeypatch):
+    stopped, job, ago = _idle_case(monkeypatch, latest=600)
+    asyncio.run(job(since=ago(7200)))
+    assert stopped == []
+
+
+def test_a_vm_just_started_is_given_the_whole_window(monkeypatch):
+    """Counted from when the tier started when no open sandbox was reached since: the request
+    that woke the VM has not opened its sandbox yet."""
+    stopped, job, ago = _idle_case(monkeypatch, latest=None)
+    asyncio.run(job(since=ago(300)))
+    assert stopped == []
+    stopped, job, ago = _idle_case(monkeypatch, latest=9000)
+    asyncio.run(job(since=ago(300)))
+    assert stopped == []
+    asyncio.run(job(since=ago(1900)))
+    assert stopped == [INSTANCE]
+
+
+def test_a_stop_is_a_call_to_the_compute_api(compute):
+    _state, calls = compute
+    asyncio.run(sandbox_wake.stop(INSTANCE))
+    assert calls[-1] == f"POST /compute/v1/{INSTANCE}/stop"
+
+
+def test_an_empty_instance_names_no_vm(monkeypatch):
+    """The compose passes the variable on every node, empty where the tier runs on the node."""
+    import importlib
+
+    monkeypatch.setenv("PROVISA_SANDBOX_INSTANCE", "")
+    try:
+        assert importlib.reload(sandbox_wake).SANDBOX_INSTANCE is None
+    finally:
+        monkeypatch.delenv("PROVISA_SANDBOX_INSTANCE")
+        importlib.reload(sandbox_wake)

@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Starting the sandbox tier's VM (REQ-2006).
+"""Starting and stopping the sandbox tier's VM (REQ-2006).
 
 Where the sandbox tier runs on a VM of its own, that VM powers itself off when no demo sandbox
 has been used for a while, and the UI server starts it again when a request for the tier finds
@@ -25,7 +25,8 @@ import httpx
 
 #: The sandbox tier's Compute Engine instance, ``projects/<p>/zones/<z>/instances/<name>``.
 #: Unset where the tier runs on this node, which then has nothing to start.
-SANDBOX_INSTANCE = os.environ.get("PROVISA_SANDBOX_INSTANCE")
+#: The compose passes the variable on every node, empty where there is no such VM.
+SANDBOX_INSTANCE = os.environ.get("PROVISA_SANDBOX_INSTANCE") or None
 
 _METADATA_TOKEN = (
     "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
@@ -58,6 +59,22 @@ async def wake(instance: str) -> str:
             return status
         await _ok(client.post(f"{_COMPUTE}{instance}/{verb}", headers=auth), f"{verb} {instance}")
         return status
+
+
+async def stop(instance: str) -> None:
+    """Stop ``instance`` -- the sandbox tier stopping its own VM when it has been idle
+    (provisa.scheduler.jobs.stop_idle_sandbox_vm). A failed call raises."""
+    async with _client() as client:
+        token = (
+            await _ok(
+                client.get(_METADATA_TOKEN, headers={"Metadata-Flavor": "Google"}),
+                "the metadata server's token",
+            )
+        ).json()["access_token"]
+        await _ok(
+            client.post(f"{_COMPUTE}{instance}/stop", headers={"Authorization": f"Bearer {token}"}),
+            f"stop {instance}",
+        )
 
 
 def _claimed() -> bool:
