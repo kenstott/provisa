@@ -42,22 +42,22 @@ Masked columns are rejected from `WHERE` and `HAVING` clauses. (REQ-263) Without
 
 JOIN conditions in SQL must match a registered, approved relationship between tables. (REQ-001) Unapproved joins are rejected. Each relationship carries a human-readable reason and description — guidance for both users and autonomous agents about why a traversal path exists. This is governance policy, not a hard security boundary: Layers 2–5 hold regardless of join structure, so a deliberate circumvention does not expose data the role could not reach through two separate queries. Circumvention attempts are logged and auditable.
 
-**Bypass mechanisms** — V002 can be bypassed two ways. The first is a capability: a role holding `ignore_relationships` joins across relations the catalog does not cover. Among the seeded system roles only `modeler` holds it — the discovery role whose job is to determine the model rather than enforce it. (REQ-1297) `analyst` does not. [tool-verified: `provisa/core/db.py:84`]
+**Bypass mechanisms** — V002 can be bypassed two ways. The first is a capability: a role holding `ignore_relationships` joins across relations the catalog does not cover. Among the seeded system roles only `modeler` holds it — the discovery role whose job is to determine the model rather than enforce it. (REQ-1297) `analyst` does not.
 
 The second is a two-condition opt-out, where both must be true:
 
-1. **Role flag** — `relationship_guard: false` on the role definition (default: `true`). [tool-verified: `provisa/core/models.py:349`]
-2. **Per-query opt-out** — the SQL contains the comment `--relationship-guard=false`. [tool-verified: `provisa/compiler/params.py:80`]
+1. **Role flag** — `relationship_guard: false` on the role definition (default: `true`).
+2. **Per-query opt-out** — the SQL contains the comment `--relationship-guard=false`.
 
 The role flag alone does not bypass V002; the comment alone does not bypass V002.
 
-**High-security mode pins the guard.** Under `security.mode: high` neither bypass applies: `ignore_relationships` is ignored, `relationship_guard: false` is ignored, and every join must exist in the approved relationship catalog. (REQ-693) This is deliberate redundancy — a production role that was granted the capability by mistake still cannot break out of the model. [tool-verified: `provisa/pgwire/_pipeline.py:377`]
+**High-security mode pins the guard.** Under `security.mode: high` neither bypass applies: `ignore_relationships` is ignored, `relationship_guard: false` is ignored, and every join must exist in the approved relationship catalog. (REQ-693) This is deliberate redundancy — a production role that was granted the capability by mistake still cannot break out of the model.
 
-**GraphQL path** — V002 is unconditionally skipped for GraphQL queries. SDL-defined relationships are pre-approved by design; the check is redundant and is not applied. [tool-verified: `provisa/api/data/endpoint.py:468`]
+**GraphQL path** — V002 is unconditionally skipped for GraphQL queries. SDL-defined relationships are pre-approved by design; the check is redundant and is not applied.
 
-**SQL and Cypher paths** — V002 is active by default. Both `endpoint_dev.py` and `cypher_router.py` apply the two-condition check before calling `validate_sql`. [tool-verified: `provisa/api/data/endpoint_dev.py:127`, `provisa/api/rest/cypher_router.py:260`]
+**SQL and Cypher paths** — V002 is active by default. Both `endpoint_dev.py` and `cypher_router.py` apply the two-condition check before calling `validate_sql`.
 
-**pgwire path** — same two-condition check as SQL. The `--relationship-guard=false` comment is stripped from the query before execution; it does not reach the database. [tool-verified: `provisa/pgwire/_pipeline.py:60`]
+**pgwire path** — same two-condition check as SQL. The `--relationship-guard=false` comment is stripped from the query before execution; it does not reach the database.
 
 ---
 
@@ -96,17 +96,81 @@ roles:
     parent_role_id: basic_user   # inherits query_development + public domain
 ```
 
+## Roles: granted, pseudo and meta
+
+Three kinds of role work together in Provisa's access model.
+
+### Granted roles
+
+A granted role is assigned directly to a user. It holds rights: capabilities, domain access, masking entries, row filters. Inheritance (`parent_role_id`) folds an ancestor's rights into the child at startup. Rights only add; there is no subtraction. To restrict a reader, grant to a composite that names both the role and a condition, or place a mask entry before the permissive one. (REQ-215, REQ-1677)
+
+### Pseudo-roles
+
+A pseudo-role is derived from a user's attributes. The org declares which attribute types become roles (`claim_roles`). For each declared type `t` whose value `v` the user's attributes supply, the user holds the parent role `t` and its sub-role `t__v`. No value means neither role.
+
+Attribute resolution matters. The org's own record of a member wins over what the identity provider supplies: both name the same attribute, the org's value is used, the provider's is marked overridden.
+
+Pseudo-roles carry no rights and are never assigned by hand. A grant list names them exactly as it names a granted role; a request names them in `X-Provisa-Role` and acts as them. (REQ-2057)
+
+Think of a JWT: its claims are facts about the person. Pseudo-roles turn chosen facts into roles, so a grant can address them without creating a role per combination.
+
+### Meta-roles
+
+When a request names more than one role, Provisa builds an ephemeral meta-role identified as `meta:<ids sorted, joined by +>`. It is a single child of every role in the named set. The whole pipeline then runs with it as an ordinary single role.
+
+Rights are the union of every member's. Row filters are the OR of each member's resolved filter; if any member that reads a table has no filter, the meta-role has none either — no filter means all rows. A meta-role is never stored, listed, or exported. It is rebuilt from its members when the model changes. (REQ-1620)
+
+The audit record names every acting role, not the meta-role id.
+
+### How a request names roles
+
+A client sends one role, or a comma-separated set, in `X-Provisa-Role`. Each named role must be held. A role the identity is not assigned is refused by name.
+
+Rights and data follow only the roles the request acts as: holding a role is not acting as it. One role is that role; two or more act as their meta-role. An acting role that brought every held role's rights with it would mean nothing, so a request gets least privilege and the audit record names exactly what acted.
+
+Named pseudo-roles enter as qualifiers. A qualifier has no rights, domain access, masks or row filters of its own, so it is no member of the meta-role's rights: as a member with no masks it would unmask every column, and as one reading no table it would end every OR of row filters. It enters only the grants: a grant or mask entry naming `region__eu` reaches a request that names that qualifier alongside a granted role. (REQ-2057)
+
+### What `+` means
+
+`+` appears in two places with different meanings in each.
+
+**In a grant entry.** `analyst+region__eu` in a `visible_to` or `to` list means the reader holds all of them — `analyst` AND `region__eu` simultaneously. An entry that is not a composite is a single role. Across a list's entries the rule is any one: a reader holds the grant if it holds any entry. AND-within, OR-across.
+
+**In a meta-role id.** `meta:analyst+engineer` is the server's identifier for the meta-role of the set {analyst, engineer}. Its rights are the union of both. A client never names the meta-role id directly; it names the roles it holds, and the server builds the meta-role.
+
+### ABAC column rules as plain RBAC
+
+An attribute-based policy asks: "can this user, with these attributes, see this column?" RBAC asks: "which roles can see this column?" Composite grants and pseudo-roles make them the same question.
+
+"Unmask this email only for an analyst in the EU" is a mask entry `{to: [analyst+region__eu], mask: null}`. Any reader holding both the `analyst` role and the `region__eu` pseudo-role reads the column unmasked. No policy language. No role per combination.
+
+The trade-off is computation over enumeration. A small role catalogue keeps maintenance low, but "who can see this EU email?" becomes a computed answer: composite entries are evaluated against each user's assignments and claims. Provisa can answer that in both directions because the model is one definition. The column editor's Check access (`POST /admin/masks/check`) runs that evaluation for a chosen set of roles.
+
+### Benefits
+
+- An ABAC column rule becomes an RBAC grant entry.
+- A small role catalogue instead of one role per combination.
+- One definition coordinating every region's rules.
+- Least privilege and an exact audit record per request.
+
+### Best practices
+
+- Keep the role catalogue as small as the organisation allows.
+- Inherit within one axis (seniority, clearance level). Compose across independent axes (role + region, role + department).
+- Put the most specific mask entries first — an earlier entry wins even when the reader holds a later one.
+- Check effective access with `POST /admin/masks/check` before deploying a combination in production.
+
 ## Column Permission Model
 
-Each column has a four-field permission model controlling read, write, and masking access per role. (REQ-042, REQ-249)
+Each column has a permission model controlling read, write, and masking access per role. (REQ-042, REQ-249)
 
 ### Three-Tier Visibility
 
 | Tier | Condition | Result |
 | ------ | ----------- | -------- |
-| **Hidden** | Role not in `visible_to` | Column absent from GraphQL SDL |
-| **Masked** | Role in `visible_to`, has masking rule, role not in `unmasked_to` | Column visible but data masked in SQL |
-| **Unmasked** | Role in `visible_to` AND role in `unmasked_to` (or no masking rule) | Full read access |
+| **Hidden** | Role not in `visible_to` | Column absent from schema and catalog |
+| **Masked** | Role in `visible_to`; first mask entry it holds has a `mask` | Column visible, value replaced in output |
+| **Unmasked** | Role in `visible_to`; first mask entry it holds has no `mask`, or it holds none | Full read access |
 
 ### Public columns
 
@@ -134,7 +198,6 @@ The rule is the same on every surface, because each one reads the role's compile
 | Field | Empty means | Purpose |
 | ------- | ------------ | --------- |
 | `visible_to` | All roles can read | Controls who sees the column (masked or unmasked) |
-| `unmasked_to` | No role sees unmasked | Controls who bypasses masking |
 | `writable_by` | No role can write | Controls who can mutate (INSERT/UPDATE) |
 
 Write permission is enforced in the mutation pipeline. A role not in `writable_by` receives a 403 error when attempting to write to a restricted column. (REQ-033, REQ-034)
@@ -146,26 +209,27 @@ columns:
   - name: email
     visible_to: [admin, analyst, viewer]
     writable_by: [admin]
-    unmasked_to: [admin]
-    mask_type: regex
-    mask_pattern: "(.).*@"
-    mask_replace: "$1***@"
+    masks:
+      - to: [admin]                   # admin sees raw value (no mask)
+      - to: ["*"]                     # everyone else sees it masked
+        mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
   - name: salary
     visible_to: [admin, hr]
     writable_by: [hr]
-    unmasked_to: [admin, hr]
-    mask_type: constant
-    mask_value: "0"
+    masks:
+      - to: [admin, hr]               # admin and hr see real value
+      - to: ["*"]                     # all other visible roles see 0
+        mask: {type: constant, value: 0}
   - name: created_at
-    visible_to: []           # all can read
-    writable_by: []          # nobody can write (auto-set)
+    visible_to: []                    # all can read
+    writable_by: []                   # nobody can write (auto-set)
 ```
 
 In this example:
 
-- `email`: admin sees `alice@example.com` and can edit; analyst/viewer see `a***@example.com`
-- `salary`: admin and hr see the real value; hr can edit; all other roles don't see the column at all
-- `created_at`: everyone can read, nobody can write
+- `email`: admin sees `alice@example.com` and can edit; analyst and viewer see `a***@example.com`
+- `salary`: admin and hr see the real value; hr can edit; every other visible role sees `0`
+- `created_at`: everyone can read, nobody can write, no masking
 
 ## Mutation Authorization
 
@@ -198,15 +262,39 @@ A `current_setting('provisa.<name>')` term resolves against the session variable
 
 ## Column-Level Masking
 
-Masking is defined once per column — it is a property of the column, not the role. The `unmasked_to` field controls which roles bypass it. (REQ-249)
+Masking is defined as an ordered list on each column. The first entry the reader holds decides what it sees. (REQ-2059, REQ-263)
 
-| Mask Type | Supported Types | SQL Expression |
-| ----------- | ---------------- | ---------------- |
+| Mask Type | Supported column types | SQL expression |
+| ----------- | ----------------------- | --------------- |
 | `regex` | String (varchar, char, text) | `REGEXP_REPLACE(col, pattern, replace)` |
-| `constant` | Any | Literal value (NULL, 0, custom) |
+| `constant` | Any | Literal value (`NULL`, `0`, a custom string) |
 | `truncate` | Date/Timestamp | `DATE_TRUNC(precision, col)` |
 
-Masking is pushed into the SQL SELECT projection — the database returns masked data. (REQ-263) Unmasked data never crosses the wire for masked roles. (REQ-263) Masked columns are also blocked from `WHERE` and `HAVING` clauses (Layer 5 predicate guard) to prevent inference of the unmasked value through filtering. (REQ-263, REQ-531)
+Each entry has a `to` list naming the readers it targets, and an optional `mask`. An entry with no `mask` means unmasked for those readers. `*` in `to` matches every reader.
+
+The mask expression is pushed into the SQL SELECT projection. The database returns the masked value; unmasked data never crosses the wire for masked roles. (REQ-263) Masked columns are also blocked from `WHERE` and `HAVING` clauses (Layer 5 predicate guard) to prevent value inference through filtering. (REQ-263, REQ-531)
+
+**No entry held means unmasked.** A reader that holds no entry reads the column unmasked. End a list with a `*` entry when every reader should have some mask applied. The column editor warns when a list lacks a `*` entry (`unlisted_unmasked`).
+
+**Deny by order.** An earlier entry wins even when the reader also holds a later, more permissive one. To ensure contractors always see a masked salary regardless of their other roles, put the contractor entry before the unmasked entry. A granted role never loses what its parent grants through inheritance, but a mask entry placed earlier in the list applies first — that is how restriction works here.
+
+**Meta-roles.** A meta-role's chain includes every member's roles, their ancestors, and any named pseudo-roles. An entry granted to any member reaches the meta-role. An entry before it, held by another member, still applies first.
+
+**Checking access.** `POST /admin/masks/check` accepts a mask list and an optional set of roles, and returns which entry applies for those roles plus any entries no reader can reach. Gated by `masking_config`.
+
+```yaml
+# email column: analyst+region__eu sees raw; everyone else sees masked
+masks:
+  - to: [analyst+region__eu]          # composite: analyst AND in EU region
+  - to: ["*"]                         # all others
+    mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
+
+# hire_date column: hr sees raw; all other visible roles see year only
+masks:
+  - to: [hr]
+  - to: ["*"]
+    mask: {type: truncate, precision: year}
+```
 
 ## Governing Action Responses
 
@@ -216,7 +304,7 @@ Three things apply, in the same order as for a table. (REQ-1679)
 
 - A row filter: the role's RLS rule saved against the action by name (`upsertRlsRule` with `actionName`), or, when the action has none of its own, the domain rule of the action's domain. The predicate is validated against the contract at save the way a table rule is. (REQ-1676)
 - Column visibility: a contract column that declares `visible_to` is dropped for a role the list does not name; a column that declares none is part of the action's public shape and stays.
-- Masks: a contract column may carry `mask_type`, `mask_pattern`, `mask_replace`, `mask_value`, `mask_precision` and `unmasked_to`, the same fields a table column carries.
+- Masks: a contract column carries `masks`, the same ordered mask list a table column carries. (REQ-2059)
 
 Role inheritance resolves the chain for all three. (REQ-1677) A response that returns a column outside the declared contract is refused with a 502 rather than passed through ungoverned. An action that declares no column contract returns a scalar and has nothing to bind; it is returned as is. The admin test-invoke reports the filters, exclusions and masks that applied, and the governed statement is written to the query audit log.
 
@@ -440,11 +528,11 @@ All three transports carry the same payload: (REQ-246)
 | `command` | string | The command's name for a command call; empty for a query |
 | `arguments` | object | The arguments a command is called with; empty for a query |
 
-The webhook and Unix socket transports exchange JSON, with `command` and `arguments` as keys. On gRPC the arguments travel as the JSON text `arguments_json`. Response must include `approved` (bool) and optionally `reason` (string). (REQ-246) [tool-verified: `provisa/auth/approval_hook.py` `ApprovalRequest`, `_request_to_dict`, `GrpcApprovalHook` (`arguments_json=json.dumps(request.arguments, default=str)`); `provisa/auth/approval.proto`]
+The webhook and Unix socket transports exchange JSON, with `command` and `arguments` as keys. On gRPC the arguments travel as the JSON text `arguments_json`. Response must include `approved` (bool) and optionally `reason` (string). (REQ-246)
 
 ### Command calls
 
-A command with `requires_approval` set (the **Requires approval** switch on the command form) goes to the hook before every call, on every surface. It runs only when the hook approves. The request carries `operation: "command"`, the command's name, and its arguments; `tables` and `columns` are empty. (REQ-1924) [tool-verified: `provisa/api/data/action_exec.py` `_require_approval` (`operation="command"`, `tables=[]`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
+A command with `requires_approval` set (the **Requires approval** switch on the command form) goes to the hook before every call, on every surface. It runs only when the hook approves. The request carries `operation: "command"`, the command's name, and its arguments; `tables` and `columns` are empty. (REQ-1924)`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
 
 ```json
 {
@@ -460,7 +548,7 @@ A command with `requires_approval` set (the **Requires approval** switch on the 
 
 [inferred: the payload also carries `session_vars`; values shown are placeholders]
 
-Two refusals, both 403 [tool-verified: `_require_approval`]:
+Two refusals, both 403:
 
 - `functions.approval_unavailable`: no hook is configured. Unlike a query, a command that needs approval is never let through without one.
 - `functions.approval_denied`: the hook answered `approved: false`. The reason is in the message.
