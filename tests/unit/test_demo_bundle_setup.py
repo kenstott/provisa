@@ -156,11 +156,14 @@ def test_the_sonnets_run_time_compose_loads_what_its_build_saves():
         "./dump/postgres.sql:/docker-entrypoint-initdb.d/10-sonnets.sql:ro" in postgres["volumes"]
     )
     assert "./dump/qdrant:/snapshots:ro" in qdrant["volumes"]
-    # Recovered at start from the snapshot the build saved, dump/<service>/<collection>.snapshot.
+    # Recovered at every start from the snapshot the build saved,
+    # dump/<service>/<collection>.snapshot. --force-snapshot: --snapshot alone panics on a restart
+    # that finds the collection already in the volume, and the store restarts forever.
     assert qdrant["command"] == [
         "./qdrant",
         "--snapshot",
         "/snapshots/sonnet_lines.snapshot:sonnet_lines",
+        "--force-snapshot",
     ]
     built = yaml.safe_load((_SONNETS / "docker-compose.yml").read_text())
     assert built["services"]["qdrant"]["image"] == qdrant["image"]

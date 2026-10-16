@@ -15,7 +15,8 @@
 #   postgres  the sonnets' database, loaded from dump/postgres.sql, with the role Provisa reads it
 #             as, read only (db/run-access.sql).
 #   qdrant    the vector store, its collection recovered from dump/qdrant/sonnet_lines.snapshot at
-#             start (Qdrant's --snapshot; a collection already there is kept).
+#             every start (Qdrant's --snapshot with --force-snapshot: without it, a restart that
+#             finds the collection already in its volume panics, and the store never comes back).
 #
 # Ports: 28532 the database, 28533 Qdrant, on the loopback only; each can be moved by its
 # variable. Set empty, a port is published on a free one (the sandbox tier's node runs several
@@ -62,7 +63,8 @@ services:
       com.provisa.demo.port: "6333"
     ports:
       - "127.0.0.1:${SONNETS_QDRANT_PORT-28533}:6333"
-    command: ["./qdrant", "--snapshot", "/snapshots/sonnet_lines.snapshot:sonnet_lines"]
+    command:
+      ["./qdrant", "--snapshot", "/snapshots/sonnet_lines.snapshot:sonnet_lines", "--force-snapshot"]
     # Read only for Provisa: it reads with the read-only key (config.yaml vectors), and writing
     # needs the other, which it is not given. The store is shared by every sandbox of the demo.
     environment:
