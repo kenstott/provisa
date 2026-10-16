@@ -1,0 +1,14 @@
+# Each team's pulls of the dataset, as its consumer recorded them: how many, and how fast on average.
+query PullsByTeam {
+  p__pullsGroupBy(by: [consumer]) {
+    groupKey
+    aggregate {
+      count
+      avg {
+        rows
+        seconds
+        rowsPerSec
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The provisioning demo's card on provisa.dev's live demos page (REQ-2006), generated from this file
+# by scripts/gen-site-demos.mjs. published: true once card.png, a screenshot of the demo in
+# Provisa, is beside it.
+title: Provisioning datasets to downstream teams
+description: >-
+  A coffee roaster's warehouse builds a dataset from its order, price and stock feeds as they land,
+  and provisions it to finance and data science: each team is told on Kafka when it is ready and
+  pulls it over Arrow Flight as of that moment, each seeing its own governed view, with no copies.
+screenshot: card.png
+published: false
+# The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
+# by name. The first release carrying the demo.
+requires_provisa: 0.1.0a490

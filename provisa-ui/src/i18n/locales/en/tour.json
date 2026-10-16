@@ -935,6 +935,66 @@
       "agricultureRecap": {
         "title": "What you saw",
         "description": "The insurer's own data, read live, and public losses, weather and yields, landed once, matched by county and crop year in one governed model: one view answers whether the weather explains the losses, in SQL, GraphQL and REST."
+      },
+      "provisioningScenario": {
+        "title": "What this demo is",
+        "description": "A coffee roaster's warehouse takes three feeds -- orders, prices and stock counts -- and builds datasets from them as they land. Two teams downstream need the big one, every order with its margin: finance for its reporting, data science for its feature store. The question: how do they get it as soon as it is ready, without copying it or writing extraction jobs?"
+      },
+      "provisioningJoin": {
+        "title": "How the feeds join",
+        "description": "An order names its product, and the product knows its cost and category. The dataset joins each order to it; the close builds on the dataset and the stock and price feeds -- a view over a view, refreshed in turn."
+      },
+      "provisioningRecap": {
+        "title": "What you saw",
+        "description": "Feeds landed as they arrive, datasets built and refreshed from them, each team told on Kafka when one is ready and pulling it over Arrow Flight as of that moment, each seeing what its role allows, only inside the dataset's window. No copies and no extraction jobs."
+      },
+      "provisioningWarehouse": {
+        "title": "The warehouse's own database",
+        "description": "Its products and what each costs, the notices it sends when a dataset is ready, and the pulls the teams' consumers record. Read live."
+      },
+      "provisioningFeeds": {
+        "title": "The feeds, landed as they arrive",
+        "description": "Orders arrive on Kafka a few a second, after a month of history; prices and stock counts on their own topics. Each lands into the warehouse's own table within seconds, and each landing refreshes the datasets built on it."
+      },
+      "provisioningDataset": {
+        "title": "The dataset",
+        "description": "order_margins: every order with its revenue, cost and margin. It keeps every version of every row, so it can be read as of any moment -- what a team pulls. Its load window says when users and clients may read it: here all day but 00:00-00:30 UTC. A real warehouse would usually open a narrower, overnight window; the demo's is wide so it can be walked at any hour."
+      },
+      "provisioningNotices": {
+        "title": "Told when it is ready",
+        "description": "Inside the window a scheduled trigger writes a notice for each team: finance every five minutes, data science two minutes later. The notices table's live Kafka output publishes each to the topic dataset-ready. The notice's time is the dataset's version time."
+      },
+      "provisioningPulls": {
+        "title": "The pulls",
+        "description": "Each team's consumer reads the notice and pulls the whole dataset over Arrow Flight as of its version time, so a refresh landing mid-pull cannot mix two versions. It records the rows, the seconds and the rows a second. Its ticket is a JSON object: the query, the role and the as-of time (consumer.py). A local start runs the consumers live; the hosted sandbox shows the pulls recorded when the demo was built."
+      },
+      "provisioningAsFinance": {
+        "title": "Run as finance",
+        "description": "The SQL explorer now runs as the finance role, the team that reads margins in full."
+      },
+      "provisioningFinanceView": {
+        "title": "What finance pulls",
+        "description": "The latest orders as finance reads them: revenue, cost and margin, every category."
+      },
+      "provisioningAsDataScience": {
+        "title": "Run as data science",
+        "description": "Now as the data science role, whose feature store needs the orders but not the margins."
+      },
+      "provisioningDataScienceView": {
+        "title": "What data science pulls",
+        "description": "The same dataset, the same query: cost and margin read 0, and service orders are gone (a row rule). One dataset, two governed views, no copies."
+      },
+      "provisioningAsFinanceAgain": {
+        "title": "Back to finance",
+        "description": "Finance again, for the close."
+      },
+      "provisioningClose": {
+        "title": "A read outside its window",
+        "description": "close_by_category, finance's close, may be read only from 02:00 to 02:15 UTC. Outside it this read is refused, naming the view and when its window next opens; the warehouse's own refreshes run at any time."
+      },
+      "provisioningRest": {
+        "title": "The pulls over REST",
+        "description": "How each team's pulls went, grouped on the server: how many, and how fast on average."
       }
     },
     "status": {
@@ -1003,6 +1063,10 @@
       "agriculture": {
         "title": "Weather and crop insurance losses",
         "summary": "A crop insurer's question, whether weather explains the losses in its portfolio: its own farms, policies and claims joined by county and crop year to the USDA's losses by cause, NOAA's weather and NASS's yields, answered in SQL, GraphQL and REST."
+      },
+      "provisioning": {
+        "title": "Provisioning datasets to downstream teams",
+        "summary": "A warehouse's question, how downstream teams get big datasets as soon as they are ready: feeds landed from Kafka, datasets refreshed as they land, teams told on Kafka and pulling over Arrow Flight as of that moment."
       }
     }
   }
