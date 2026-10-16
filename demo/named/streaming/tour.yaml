@@ -1,0 +1,67 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The streaming demo's own tour (REQ-2010): the story of the demo, told with its own data. The step
+# kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name here is checked
+# against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
+# tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: the scenario and the features it shows; how the pieces fit, each step on its real
+# object; the solution, as predesigned queries over the transports that fit it (a Polly step is
+# optional, its answer stored); a recap; and "Where next?", the landing page below.
+landing:
+  route: /query
+  capability: query_development
+steps:
+# The scenario: orders arriving live on a Kafka topic, and the catalog they are priced from.
+- key: streamingScenario
+  route: /sources
+  capability: source_registration
+  source: orders
+- key: streamingCatalog
+  source: catalog
+# How the pieces fit: the topic becomes a table landed as the orders arrive, joined to the catalog.
+- key: streamingOrders
+  route: /tables
+  capability: table_registration
+  table: orders.orders
+- key: streamingJoin
+  route: /relationships
+  capability: create_relationship
+  relationship: PLACED_IN
+# The solution: the view the landing orders keep current, read in SQL and in GraphQL (cached), then
+# the orders themselves as they land, and the view over REST.
+- key: streamingAnswer
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT region, orders, items, revenue, last_order_at
+    FROM "shop"."view_orders_last_five_minutes"
+    ORDER BY orders DESC
+- key: streamingFresh
+  sql: >-
+    SELECT order_id, region_id, product_id, quantity, ordered_at
+    FROM "shop"."orders"
+    ORDER BY ordered_at DESC
+    LIMIT 10
+- key: streamingCached
+  route: /query
+  capability: query_development
+  example: 1-busiest-regions-now
+- key: streamingLive
+  example: 3-watch-the-orders
+- key: streamingRest
+  route: /openapi
+  capability: query_development
+  api: GET /data/rest/shop/view_orders_last_five_minutes
+# The recap.
+- key: streamingRecap
+  route: /relationships
+  capability: create_relationship
+  relationship: ORDERED

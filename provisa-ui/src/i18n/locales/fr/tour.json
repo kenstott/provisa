@@ -687,6 +687,46 @@
       "testdataDone": {
         "title": "Ce que c'est",
         "description": "Les environnements sont des branches d'un modèle, et une valeur fictive se déclare une fois par colonne. Un environnement de test (valeurs fictives) répond à chaque requête avec des valeurs générées réalistes, garde les clés joignables, et est refusé tant qu'une colonne de données personnelles n'a pas de valeur fictive. Les données de production ne quittent jamais la production."
+      },
+      "streamingScenario": {
+        "title": "Les commandes, en direct",
+        "description": "Les commandes d'un café arrivent sur un topic Kafka, plusieurs par seconde, et son catalogue est dans sa base Postgres. La question : quelles régions ont passé le plus de commandes ces cinq dernières minutes ? <strong>orders</strong> est le broker sur lequel arrivent les commandes."
+      },
+      "streamingJoin": {
+        "title": "Des commandes au prix du catalogue",
+        "description": "<strong>PLACED_IN</strong> relie chaque commande à sa région, et ORDERED à son produit, de sorte que le chiffre d'affaires d'une commande vient du prix du catalogue."
+      },
+      "streamingAnswer": {
+        "title": "Les régions les plus actives, maintenant",
+        "description": "<strong>orders_last_five_minutes</strong> est une vue matérialisée : les commandes et le chiffre d'affaires de chaque région ces cinq dernières minutes. Chaque lot de commandes chargé la rafraîchit : cette lecture porte sur des lignes stockées vieilles de quelques secondes, jamais sur le topic. Relancez-la dans une minute et les chiffres auront bougé."
+      },
+      "streamingRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Un topic Kafka chargé comme une table et relié à un catalogue lu en direct ; une vue tenue à jour par chaque lot chargé ; la même réponse en SQL, GraphQL et REST, mise en cache à la demande ; et un abonnement qui suit le flux. Explorez par vous-même depuis la page des requêtes."
+      },
+      "streamingCatalog": {
+        "title": "Le catalogue",
+        "description": "<strong>catalog</strong> est la base Postgres du café, lue en direct : ce qu'est chaque produit et ce qu'il coûte, et les régions où le café vend."
+      },
+      "streamingOrders": {
+        "title": "Un topic devient une table",
+        "description": "<strong>orders</strong> est le topic, chargé dans une table qui lui est propre à mesure que les commandes arrivent : un lot au plus toutes les deux secondes, chaque commande par son identifiant. Chaque lot chargé rafraîchit les vues qui le lisent et prévient ses abonnés."
+      },
+      "streamingFresh": {
+        "title": "Les commandes à mesure qu'elles arrivent",
+        "description": "Les dernières commandes de la table, quelques secondes derrière le topic. Chaque bac à sable charge le topic entier dans sa propre table, sous son propre groupe de consommateurs."
+      },
+      "streamingCached": {
+        "title": "La réponse en GraphQL, en cache",
+        "description": "La même vue en GraphQL. <strong>@cached(ttl: 10)</strong> demande le cache des réponses : la même question posée dans les dix secondes est servie depuis le cache, et l'en-tête X-Provisa-Cache indique HIT."
+      },
+      "streamingLive": {
+        "title": "Regardez arriver les commandes",
+        "description": "Un abonnement GraphQL aux commandes : chaque lot chargé renvoie les dernières commandes dès son arrivée. Laissez-le tourner et regardez la liste bouger."
+      },
+      "streamingRest": {
+        "title": "La réponse en REST",
+        "description": "La même vue sous forme d'appel REST, pour un tableau de bord qui l'interroge régulièrement."
       }
     },
     "status": {
@@ -735,6 +775,10 @@
       "testdata": {
         "title": "Données de test",
         "summary": "La base de production d'une boutique, lue en prod telle quelle et dans deux environnements de test comme des données générées réalistes ; les mêmes requêtes et jointures répondent dans les trois."
+      },
+      "streaming": {
+        "title": "Flux de commandes en direct",
+        "summary": "Les commandes d'un café arrivent en direct par Kafka et sont reliées à son catalogue : une vue des régions les plus actives ces cinq dernières minutes, rafraîchie par chaque lot chargé, interrogée en SQL, GraphQL et REST, mise en cache et suivie par un abonnement."
       }
     }
   }

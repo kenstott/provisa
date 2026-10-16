@@ -1,0 +1,129 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "streaming" (start-ui-install.sh --demo streaming; REQ-2033):
+# which regions placed the most orders in the last five minutes? A coffee shop's orders arrive
+# live on a Kafka topic, a few a second (producer.py); its catalog -- what each product is and
+# costs, and the regions it sells in -- is in its Postgres. docker-compose.yml brings up both.
+#
+#   catalog  the shop's Postgres, read live as provisa_reader: products and regions
+#   orders   the Kafka broker: the topic `orders`, landed into this org's own table as the orders
+#            arrive, under its own consumer group, and kept current by them
+#
+# The view that answers the question is materialized: every batch of orders that lands refreshes
+# it, so a read of it is a read of stored rows, never the topic.
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+domains:
+- id: shop
+  description: A coffee shop's live orders and the catalog they are priced from
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+- id: analyst
+  capabilities:
+  - query_development
+  domain_access:
+  - shop
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- id: catalog
+  type: postgresql
+  host: ${env:STREAMING_PG_HOST:-localhost}
+  port: ${env:STREAMING_PG_PORT:-28732}
+  database: streaming
+  username: provisa_reader
+  password: provisa_reader
+  description: The shop's catalog -- its products and the regions it sells in
+- id: orders
+  type: kafka
+  host: ${env:STREAMING_KAFKA_HOST:-127.0.0.1}
+  # The address the broker advertises is this port (docker-compose.yml).
+  port: ${env:STREAMING_KAFKA_PORT:-29092}
+  description: The broker the shop's orders arrive on, a few a second
+tables:
+- source_id: catalog
+  domain_id: shop
+  schema: public
+  table: products
+  description: What the shop sells, and for how much
+  columns:
+  - {name: product_id, data_type: integer, is_primary_key: true, description: The product's id, visible_to: [org_admin, analyst]}
+  - {name: name, data_type: varchar, description: The product's name, visible_to: [org_admin, analyst]}
+  - {name: category, data_type: varchar, description: 'coffee, tea, equipment or supplies', visible_to: [org_admin, analyst]}
+  - {name: unit_price, data_type: decimal, description: The price of one in USD, visible_to: [org_admin, analyst]}
+- source_id: catalog
+  domain_id: shop
+  schema: public
+  table: regions
+  description: The regions the shop sells in
+  columns:
+  - {name: region_id, data_type: varchar, is_primary_key: true, description: 'The region''s code, such as eu-west', visible_to: [org_admin, analyst]}
+  - {name: name, data_type: varchar, description: The region's name, visible_to: [org_admin, analyst]}
+- source_id: orders
+  domain_id: shop
+  schema: default
+  table: orders
+  description: Every order as it arrives on the topic, landed here a few seconds later
+  # Landed from the topic as the orders arrive, a batch at most every two seconds; each batch
+  # refreshes the views that read it.
+  live:
+    strategy: kafka
+    kafka:
+      topic: orders
+  push_debounce_quiet: 0.5
+  push_debounce_max_delay: 2
+  enable_aggregates: true
+  enable_group_by: true
+  columns:
+  - {name: order_id, data_type: varchar, is_primary_key: true, description: The order's id, visible_to: [org_admin, analyst]}
+  - {name: product_id, data_type: integer, description: The product ordered, visible_to: [org_admin, analyst]}
+  - {name: region_id, data_type: varchar, description: The region it was placed in, visible_to: [org_admin, analyst]}
+  - {name: quantity, data_type: integer, description: How many were ordered, visible_to: [org_admin, analyst]}
+  - {name: ordered_at, data_type: timestamp, description: When it was placed (UTC), visible_to: [org_admin, analyst]}
+views:
+# The answer: each region's orders and revenue over the last five minutes, refreshed by every batch
+# of orders that lands.
+- id: orders_last_five_minutes
+  domain_id: shop
+  materialize: true
+  enable_aggregates: true
+  enable_group_by: true
+  description: Each region's orders and revenue in the last five minutes, refreshed as the orders
+    land
+  sql: >-
+    SELECT r.name AS region, COUNT(*) AS orders, SUM(o.quantity) AS items,
+      SUM(o.quantity * p.unit_price) AS revenue, MAX(o.ordered_at) AS last_order_at
+    FROM "shop"."orders" AS o
+    JOIN "shop"."products" AS p ON p.product_id = o.product_id
+    JOIN "shop"."regions" AS r ON r.region_id = o.region_id
+    WHERE o.ordered_at >= CURRENT_TIMESTAMP - INTERVAL '5' MINUTE
+    GROUP BY r.name
+  columns:
+  - {name: region, data_type: varchar, description: The region's name, visible_to: [org_admin, analyst]}
+  - {name: orders, data_type: bigint, description: Orders placed in it in the last five minutes, visible_to: [org_admin, analyst]}
+  - {name: items, data_type: bigint, description: Items those orders came to, visible_to: [org_admin, analyst]}
+  - {name: revenue, data_type: decimal, description: What they came to in USD, visible_to: [org_admin, analyst]}
+  - {name: last_order_at, data_type: timestamp, description: When its latest order was placed (UTC), visible_to: [org_admin, analyst]}
+relationships:
+- {id: order-to-product, alias: ORDERED, cardinality: many-to-one, source_table_id: orders, source_column: product_id, target_table_id: products, target_column: product_id}
+- {id: order-to-region, alias: PLACED_IN, cardinality: many-to-one, source_table_id: orders, source_column: region_id, target_table_id: regions, target_column: region_id}

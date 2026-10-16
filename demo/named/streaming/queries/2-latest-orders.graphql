@@ -1,0 +1,15 @@
+# The latest orders as they land from the topic, each with the product and region it names.
+query LatestOrders {
+  s__orders(limit: 20, order_by: [{ orderedAt: desc }]) {
+    orderId
+    quantity
+    orderedAt
+    product {
+      name
+      unitPrice
+    }
+    region {
+      name
+    }
+  }
+}

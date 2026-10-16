@@ -687,6 +687,46 @@
       "testdataDone": {
         "title": "What this is",
         "description": "Environments are branches of one model, and a fake is declared once per column. A Test (fake) environment answers every query with realistic generated values, keeps keys joinable, and is refused while a personal-data column has no fake. Production data never leaves production."
+      },
+      "streamingScenario": {
+        "title": "Orders, live",
+        "description": "A coffee shop's orders arrive on a Kafka topic, a few a second, and its catalog is in its Postgres. The question: which regions placed the most orders in the last five minutes? <strong>orders</strong> is the broker the orders arrive on."
+      },
+      "streamingJoin": {
+        "title": "Orders priced from the catalog",
+        "description": "<strong>PLACED_IN</strong> joins each order to its region, and ORDERED to its product, so an order's revenue comes from the catalog's price."
+      },
+      "streamingAnswer": {
+        "title": "The busiest regions, now",
+        "description": "<strong>orders_last_five_minutes</strong> is a materialized view: each region's orders and revenue in the last five minutes. Every batch of orders that lands refreshes it, so this read is of stored rows a few seconds old, never of the topic. Run it again in a minute and the numbers have moved."
+      },
+      "streamingRecap": {
+        "title": "What you saw",
+        "description": "A Kafka topic landed as a table and joined to a live catalog; a view kept current by every batch that lands; the same answer in SQL, GraphQL and REST, cached on request; and a subscription that moves with the feed. Look around on your own from the query page."
+      },
+      "streamingCatalog": {
+        "title": "The catalog",
+        "description": "<strong>catalog</strong> is the shop's Postgres, read live: what each product is and costs, and the regions the shop sells in."
+      },
+      "streamingOrders": {
+        "title": "A topic becomes a table",
+        "description": "<strong>orders</strong> is the topic, landed into a table of its own as the orders arrive: a batch at most every two seconds, each order by its id. Every batch that lands refreshes the views that read it, and tells its subscribers."
+      },
+      "streamingFresh": {
+        "title": "The orders as they land",
+        "description": "The latest orders in the table, a few seconds behind the topic. Each sandbox lands the whole topic into its own table, under its own consumer group."
+      },
+      "streamingCached": {
+        "title": "The answer in GraphQL, cached",
+        "description": "The same view in GraphQL. <strong>@cached(ttl: 10)</strong> asks for the response cache: the same question within ten seconds is answered from the cache, and the X-Provisa-Cache header says HIT."
+      },
+      "streamingLive": {
+        "title": "Watch the orders arrive",
+        "description": "A GraphQL subscription on the orders: every batch that lands sends the latest orders again, as it lands. Leave it running and watch the list move."
+      },
+      "streamingRest": {
+        "title": "The answer over REST",
+        "description": "The same view as a REST call, for a dashboard that polls it."
       }
     },
     "status": {
@@ -735,6 +775,10 @@
       "testdata": {
         "title": "Test data",
         "summary": "A shop's production database, read in prod as it is and in two test environments as realistic generated data, the same queries and joins answering in all three."
+      },
+      "streaming": {
+        "title": "Live order stream",
+        "summary": "A coffee shop's orders arrive live on Kafka and are joined to its catalog: a view of the busiest regions in the last five minutes, refreshed by every batch that lands, answered in SQL, GraphQL and REST, cached, and watched with a subscription."
       }
     }
   }

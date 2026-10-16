@@ -687,6 +687,46 @@
       "testdataDone": {
         "title": "O que é isto",
         "description": "Ambientes são ramos de um modelo, e um valor fictício é declarado uma vez por coluna. Um ambiente de teste (valores fictícios) responde cada consulta com valores gerados realistas, mantém as chaves juntáveis e é recusado enquanto uma coluna de dados pessoais não tiver valor fictício. Os dados de produção nunca saem da produção."
+      },
+      "streamingScenario": {
+        "title": "Pedidos, ao vivo",
+        "description": "Os pedidos de uma cafeteria chegam a um tópico Kafka, alguns por segundo, e o catálogo dela está no seu Postgres. A pergunta: quais regiões fizeram mais pedidos nos últimos cinco minutos? <strong>orders</strong> é o broker por onde os pedidos chegam."
+      },
+      "streamingJoin": {
+        "title": "Pedidos com preço do catálogo",
+        "description": "<strong>PLACED_IN</strong> liga cada pedido à sua região, e ORDERED ao seu produto, de modo que a receita de um pedido vem do preço do catálogo."
+      },
+      "streamingAnswer": {
+        "title": "As regiões mais movimentadas, agora",
+        "description": "<strong>orders_last_five_minutes</strong> é uma view materializada: os pedidos e a receita de cada região nos últimos cinco minutos. Cada lote de pedidos carregado a atualiza, então esta leitura é de linhas armazenadas com poucos segundos, nunca do tópico. Execute-a de novo daqui a um minuto e os números terão mudado."
+      },
+      "streamingRecap": {
+        "title": "O que você viu",
+        "description": "Um tópico Kafka carregado como tabela e ligado a um catálogo lido ao vivo; uma view mantida atualizada por cada lote carregado; a mesma resposta em SQL, GraphQL e REST, em cache quando pedido; e uma assinatura que acompanha o fluxo. Explore por conta própria a partir da página de consultas."
+      },
+      "streamingCatalog": {
+        "title": "O catálogo",
+        "description": "<strong>catalog</strong> é o Postgres da cafeteria, lido ao vivo: o que é e quanto custa cada produto, e as regiões em que a cafeteria vende."
+      },
+      "streamingOrders": {
+        "title": "Um tópico vira uma tabela",
+        "description": "<strong>orders</strong> é o tópico, carregado numa tabela própria à medida que os pedidos chegam: um lote no máximo a cada dois segundos, cada pedido pelo seu id. Cada lote carregado atualiza as views que o leem e avisa os seus assinantes."
+      },
+      "streamingFresh": {
+        "title": "Os pedidos à medida que chegam",
+        "description": "Os pedidos mais recentes da tabela, alguns segundos atrás do tópico. Cada sandbox carrega o tópico inteiro na sua própria tabela, com o seu próprio grupo de consumidores."
+      },
+      "streamingCached": {
+        "title": "A resposta em GraphQL, em cache",
+        "description": "A mesma view em GraphQL. <strong>@cached(ttl: 10)</strong> pede o cache de respostas: a mesma pergunta em até dez segundos é respondida pelo cache, e o cabeçalho X-Provisa-Cache indica HIT."
+      },
+      "streamingLive": {
+        "title": "Veja os pedidos chegarem",
+        "description": "Uma assinatura GraphQL dos pedidos: cada lote carregado envia de novo os pedidos mais recentes assim que chega. Deixe-a aberta e veja a lista se mover."
+      },
+      "streamingRest": {
+        "title": "A resposta via REST",
+        "description": "A mesma view como chamada REST, para um painel que a consulta periodicamente."
       }
     },
     "status": {
@@ -735,6 +775,10 @@
       "testdata": {
         "title": "Dados de teste",
         "summary": "O banco de produção de uma loja, lido em prod como é e em dois ambientes de teste como dados gerados realistas; as mesmas consultas e joins respondem nos três."
+      },
+      "streaming": {
+        "title": "Fluxo de pedidos ao vivo",
+        "summary": "Os pedidos de uma cafeteria chegam ao vivo pelo Kafka e são ligados ao seu catálogo: uma view das regiões mais movimentadas nos últimos cinco minutos, atualizada por cada lote carregado, respondida em SQL, GraphQL e REST, em cache e acompanhada por uma assinatura."
       }
     }
   }
