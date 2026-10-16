@@ -1,6 +1,6 @@
-# Integrazioni
+# Integrazioni {: #integrations }
 
-## Scegliere un percorso di connessione
+## Scegliere un percorso di connessione {: #choosing-a-connection-path }
 
 | Tipo di client | Percorso consigliato | Perché |
 | ------------- | ----------------- | ----- |
@@ -14,13 +14,13 @@
 
 ---
 
-## pgwire — Driver PostgreSQL nativo
+## pgwire — Driver PostgreSQL nativo {: #pgwire-native-postgresql-driver }
 
 Provisa implementa il protocollo di rete di PostgreSQL (versione protocollo 3.0). Qualsiasi client che parla PostgreSQL si connette senza un driver personalizzato.
 
 Abilitalo impostando `PROVISA_PGWIRE_PORT` (ad esempio `5433`) prima di avviare Provisa. Disabilitato se non impostato o `0`.
 
-### Perché pgwire invece di JDBC?
+### Perché pgwire invece di JDBC? {: #why-pgwire-instead-of-jdbc }
 
 Il driver JDBC usa Arrow Flight come trasporto e richiede la distribuzione di `provisa-jdbc.jar`. pgwire non richiede nulla — se hai già `psql`, DBeaver, SQLAlchemy o un driver JDBC PG, hai finito. È il percorso a minor attrito per i carichi di lavoro solo SQL.
 
@@ -54,13 +54,13 @@ Oppure con `asyncpg`:
 engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa")
 ```
 
-### Autenticazione
+### Autenticazione {: #authentication }
 
 Il campo `password` del pacchetto di avvio trasporta la credenziale, e *cosa sia* la credenziale determina il metodo: un token di accesso personale, un token bearer OIDC oppure una password verso il provider configurato. Con il provider `basic` e `auth.scram: true` la password viene dimostrata tramite SCRAM-SHA-256 anziché inviata. I certificati client sono supportati. In modalità trust (`none`) il nome utente viene mappato direttamente a un ruolo e la password viene ignorata.
 
 La tabella completa interfaccia × metodo si trova nel [Modello di sicurezza](security.md#superfici-e-credenziali). MD5 non è supportato; abilita TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) quando operi su una rete non attendibile.
 
-### Limitazioni
+### Limitazioni {: #limitations }
 
 - Solo SQL. GraphQL e Cypher non sono accettati tramite pgwire.
 - Non è di sola lettura. `COPY ... FROM STDIN` inserisce righe nelle origini `postgresql`, `mysql`, `sqlite` e `mariadb`, e il DDL è supportato (vedi sotto).
@@ -69,11 +69,15 @@ La tabella completa interfaccia × metodo si trova nel [Modello di sicurezza](se
 
 ---
 
-## Driver JDBC
+## Driver JDBC {: #jdbc-driver }
 
 Il driver JDBC di Provisa usa Arrow Flight come trasporto sottostante. È il percorso consigliato per gli strumenti di BI con una procedura guidata di connessione JDBC.
 
-### Connessione
+Le query passano per Arrow Flight ogni volta che la porta Flight risponde all'apertura della connessione, e i risultati arrivano un batch alla volta con i loro tipi di colonna. Come porta Flight si assume quella accanto alla porta HTTP (8815 accanto a 8001); impostate la proprietà `flight_port` quando non è così. Se la porta Flight non è raggiungibile alla connessione, la connessione usa l'API HTTP per le sue query e lo registra a livello INFO. Una volta che una connessione è su Flight, un errore del server — una credenziale rifiutata, un ruolo che l'utente non detiene, un'istruzione fallita — viene sollevato al chiamante con il messaggio del server; non viene ritentato via HTTP. (REQ-293)
+
+La navigazione dello schema (`getTables`, `getColumns`, chiavi primarie ed esterne) viene letta dalla stessa porta Flight, con la credenziale di accesso: il driver elenca il catalogo del ruolo con cui agisce, quindi una tabella o colonna non concessa a quel ruolo non compare. Non viene elencata nemmeno una chiave che fa riferimento a una tabella o colonna non concessa al ruolo. Su una connessione la cui porta Flight non era raggiungibile alla connessione, il driver legge lo stesso catalogo via HTTP (`GET /data/catalog`): il server costruisce entrambi gli elenchi con un'unica funzione, quindi tabelle, nomi di colonna, tipi e chiavi non dipendono dalla porta che ha risposto. (REQ-128)
+
+### Connessione {: #connection }
 
 Scarica [provisa-jdbc.jar](https://provisa.dev/dl/jdbc) (sempre l'ultima versione) e aggiungilo al percorso dei driver del tuo strumento.
 
@@ -83,9 +87,9 @@ URL JDBC:
 jdbc:provisa://<host>:8815
 ```
 
-L'autenticazione usa le proprietà JDBC standard `user` / `password`. Provisa autentica le credenziali rispetto al provider di autenticazione configurato e assegna il ruolo — il client non sceglie il proprio ruolo.
+L'autenticazione usa le proprietà JDBC standard `user` / `password`. Il driver le scambia con un token di sessione e lo invia a ogni richiesta; un accesso rifiutato fa fallire la connessione con lo stato e il motivo del server. Provisa ricava il ruolo dall'identità che ha effettuato l'accesso. La proprietà facoltativa `role` (o `?role=` nell'URL) chiede di agire come un ruolo che l'utente detiene, o un insieme di tali ruoli separati da virgole; un ruolo che l'utente non detiene viene rifiutato. Su un deployment senza provider di autenticazione non c'è accesso, e il nome utente viene preso come ruolo richiesto. (REQ-131, REQ-273)
 
-### Configurazione degli strumenti di BI
+### Configurazione degli strumenti di BI {: #bi-tool-setup }
 
 **Tableau**
 
@@ -105,7 +109,7 @@ L'autenticazione usa le proprietà JDBC standard `user` / `password`. Provisa au
 
 ---
 
-## Client Arrow Flight
+## Client Arrow Flight {: #arrow-flight-clients }
 
 Arrow Flight (porta 8815) è il percorso consigliato per gli strumenti dati che lo supportano. I risultati fluiscono in streaming come RecordBatch Arrow senza essere materializzati nella memoria di Provisa.
 
@@ -134,7 +138,7 @@ df = client.query_df("{ orders { id amount } }")
 
 Consulta [docs/python-client.md](python-client.md) per il riferimento completo, incluso DB-API 2.0, il dialetto SQLAlchemy e ADBC.
 
-### Python (PyArrow puro)
+### Python (PyArrow puro) {: #python-raw-pyarrow }
 
 ```python
 import pyarrow.flight as flight
@@ -152,6 +156,17 @@ ticket = flight.Ticket(json.dumps({
     "token": "provisa_pat_...",
     "role": "analyst",
 }).encode())
+```
+
+Anche la navigazione ha bisogno della credenziale. `list_flights`, `get_flight_info` e `get_schema` non portano un ticket, quindi leggono la credenziale dall'intestazione di chiamata `authorization: Bearer <token>` e il ruolo richiesto da `x-provisa-role` (un ruolo, o un insieme di ruoli detenuti separati da virgole). Con l'autenticazione attiva, una chiamata di navigazione senza credenziale viene rifiutata, e il catalogo restituito è quello del ruolo autorizzato: le tabelle, le colonne e i comandi concessi a quel ruolo, e nient'altro. Un ticket di catalogo (un ticket senza `query`) riceve la stessa risposta dal proprio `token` e `role`. Un client deve quindi inviare la sua credenziale prima di navigare; `provisa-client` lo fa in `list_tables()`. Su un deployment senza provider di autenticazione queste chiamate elencano l'intero catalogo e non richiedono credenziali. (REQ-1263, REQ-127)
+
+```python
+options = flight.FlightCallOptions(headers=[
+    (b"authorization", b"Bearer provisa_pat_..."),
+    (b"x-provisa-role", b"analyst"),
+])
+for info in client.list_flights(b"", options):
+    print(info.descriptor.path)
 ```
 
 ### ADBC
@@ -191,7 +206,7 @@ spark = SparkSession.builder \
 
 ---
 
-## Protobuf gRPC (porta 50051)
+## Protobuf gRPC (porta 50051) {: #protobuf-grpc-port-50051 }
 
 Percorso da servizio a servizio. Provisa genera un `.proto` per ruolo e lo rigenera ogni volta che il modello o il ruolo cambia — ogni ruolo vede solo le tabelle e le colonne a cui ha accesso. Il servizio ha una RPC per ogni tabella alla radice dello schema del ruolo; le tabelle correlate si raggiungono attraverso le loro relazioni, come in GraphQL.
 
@@ -213,7 +228,7 @@ Le query in streaming emettono un messaggio per riga; le mutazioni sono unarie.
 
 ---
 
-## Invocare comandi tra protocolli
+## Invocare comandi tra protocolli {: #invoking-commands-across-protocols }
 
 Un **comando** è una funzione tracciata registrata o un webhook — un elemento invocabile registrato nel modello di Provisa con un `kind` (`query` o `mutation`) e un `impl_kind` che descrive come viene eseguito. Ogni superficie instrada le invocazioni attraverso un unico esecutore governato (`invoke_tracked_function`) che applica `writable_by` e la governance in modo uniforme (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 
@@ -227,7 +242,7 @@ Un **comando** è una funzione tracciata registrata o un webhook — un elemento
 
 Quando un comando dichiara un `return_schema` (JSON Schema con `type: array, items: object`), è a restituzione di insieme — ogni superficie lo proietta come un set di righe tipizzato. I comandi dimostrativi `random_python_set` (impl_kind `python`) e `random_grpc_set` (impl_kind `grpc`) illustrano sia un elemento invocabile ospitato sia un ponte gRPC esterno che restituisce righe con valori casuali; entrambi sono registrati in `config/provisa-install.yaml`. [tool-verified: `config/provisa-install.yaml:809-856`]
 
-### Matrice dei protocolli
+### Matrice dei protocolli {: #protocol-matrix }
 
 | Superficie | Sintassi | Esempio |
 | --------- | -------- | --------- |
@@ -245,7 +260,7 @@ Il campo `kind` controlla solo il posizionamento in GraphQL — le superfici SQL
 
 Provisa può fungere da subgraph Federation v2, esponendo il proprio schema pubblicato a un Apollo Router o Apollo Gateway.
 
-### Configurazione
+### Configurazione {: #setup }
 
 Abilita la federazione in `config.yaml`:
 
@@ -257,7 +272,7 @@ federation:
 
 Provisa genera automaticamente le direttive `@key` sulle colonne di chiave primaria e `@external`/`@provides` sulle relazioni tra subgraph.
 
-### Registrazione con Apollo Router
+### Registrazione con Apollo Router {: #register-with-apollo-router }
 
 Nel tuo `supergraph.yaml`:
 
@@ -271,13 +286,13 @@ subgraphs:
 
 Esegui `rover supergraph compose --config supergraph.yaml` per generare lo schema del supergraph.
 
-### Entità
+### Entità {: #entities }
 
 Provisa risponde alle query `_entities` per i join tra subgraph. Qualsiasi tabella con una chiave primaria è automaticamente risolvibile come entità Federation.
 
 ---
 
-## Import Hasura v2 / DDN
+## Import Hasura v2 / DDN {: #hasura-v2-ddn-import }
 
 Consulta [docs/import.md](import.md) per la migrazione da Hasura a Provisa.
 
@@ -289,7 +304,7 @@ Consulta [docs/sources.md](sources.md#origini-kafka) per la configurazione dei t
 
 ---
 
-## Controlli di qualità dei dati (REQ-1443)
+## Controlli di qualità dei dati (REQ-1443) {: #data-quality-checkers-req-1443 }
 
 Soda Core e Great Expectations si connettono a Provisa nello stesso modo di qualsiasi altro client
 postgres — tramite pgwire. Questa è l'intera integrazione: il checker mantiene un unico driver
@@ -307,7 +322,7 @@ eventi, derivazione, governance, RLS, la griglia e l'esportazione si applicano t
 secondo meccanismo. La stesura del contratto, l'involucro del risultato e la registrazione
 derivata sono trattati in [docs/sources.md](sources.md#controlli-di-qualita-dei-dati-req-1443).
 
-### Installare un checker
+### Installare un checker {: #installing-a-checker }
 
 Nessuna delle due librerie viene distribuita per impostazione predefinita. Il programma di
 installazione chiede quale si desidera, e la risposta diventa `dq_checker: none|soda|gx` in
@@ -329,76 +344,92 @@ per le chiavi di connessione.
 
 ---
 
-## Interscambio semantico Apache Ossie (REQ-1316)
+## Interscambio semantico Apache Ossie (REQ-1316) {: #apache-ossie-semantic-interchange-req-1316 }
 
-Provisa scambia modelli semantici con Apache Ossie (specifica 0.2.0.dev0, in incubazione;
-in precedenza Open Semantic Interchange) tramite un adattatore di confine. Il vocabolario interno di
-Provisa non viene mai rinominato secondo quello di Ossie — la specifica dichiara probabili modifiche
-non retrocompatibili, quindi l'accoppiamento è confinato all'adattatore.
-[tool-verified: `provisa/ossie/convert.py` docstring lines 7–16; `OSSIE_VERSION = "0.2.0.dev0"`,
-`provisa/ossie/convert.py` line 29]
+Provisa scambia modelli semantici con Apache Ossie (specifica 0.2.0.dev0, in incubazione; in precedenza Open
+Semantic Interchange) tramite un adattatore di confine. Il vocabolario interno di Provisa non viene mai rinominato
+in quello di Ossie — la specifica dichiara probabili modifiche incompatibili, quindi l'accoppiamento resta confinato all'adattatore.
+[tool-verified: `provisa/ossie/convert.py` module docstring; `OSSIE_VERSION = "0.2.0.dev0"`]
 
-### Esportazione
+La specifica in bozza ha cambiato forma senza cambiare la sua stringa di versione. L'adattatore segue la
+specifica com'è al commit `642cb894` di `apache/ossie` (2026-10-10): un modello per documento,
+con `version`, `name`, `datasets`, `relationships` e `metrics` alla radice del documento, e
+un `datatype` enumerato. L'export viene verificato nei test unitari rispetto al
+`core-spec/ossie-schema.json` di quel commit.
+[tool-verified: `OSSIE_SPEC_COMMIT`, `provisa/ossie/convert.py`;
+`test_the_export_is_valid_against_ossies_own_schema`, `tests/unit/test_ossie_convert.py`]
 
-La superficie di esportazione canonica è un endpoint HTTP live. Deriva il documento Ossie dallo
-stato live a ogni richiesta — nessuna cache, nessun passaggio di generazione.
+### Export
+
+La superficie di export canonica è un endpoint HTTP attivo. Deriva il documento Ossie dallo stato attivo
+a ogni richiesta — nessuna cache, nessun passo di generazione.
 
 ```http
 GET /admin/ossie
 ```
-
 La risposta è un documento YAML con `Content-Disposition: attachment; filename=provisa.ossie.yaml`.
 [tool-verified: `ossie_router.py` lines 20–33: "THE canonical live Ossie endpoint: the semantic
 model derived from live state on every read — no caching, no regeneration step"]
 
-La pagina Metrics offre anche un pulsante **Download** e un URL dell'endpoint copiabile nel pannello
-Ossie Interchange, entrambi rivolti allo stesso endpoint.
+La pagina Metriche offre anche un pulsante **Scarica** e un URL dell'endpoint copiabile nel pannello Ossie
+Interchange, entrambi diretti allo stesso endpoint.
 [tool-verified: `OssieInterchangePanel.tsx` lines 64–79: `endpointUrl = window.location.origin + OSSIE_ENDPOINT_PATH`]
 
-#### Cosa viene esportato
+#### Cosa viene esportato {: #what-is-exported }
 
-L'adattatore mappa gli oggetti Provisa su oggetti Ossie come segue:
+L'adattatore fa corrispondere gli oggetti Provisa agli oggetti Ossie come segue:
 
 | Oggetto Provisa | Oggetto Ossie | Note |
 | --- | --- | --- |
-| `Table` | `dataset` | `source` = `catalog.schema.table`; chiavi primarie/univoche dalla configurazione delle colonne e da `UniqueConstraint` |
-| `Column` | `field` | `expression` = riferimento di colonna (dialetto ANSI_SQL); le colonne temporali ottengono `dimension.is_time: true` |
-| `Relationship` | `relationship` | L'alias viene usato come nome quando impostato; le relazioni calcolate (target-funzione) vengono saltate |
-| `Metric` | `metric` | `name`, `expression` (ANSI_SQL), `datatype`, `description`, `ai_context` — senza perdita per progettazione |
-| `modeling_role` / `modeling_history` | `custom_extensions[].vendor_name="provisa"` | Solo per il round-trip; altri strumenti possono ignorarlo |
+| `Table` | `dataset` | `source` = `catalog.schema.table`; chiavi primarie/uniche dalla configurazione delle colonne e da `UniqueConstraint` |
+| `Column` | `field` | `expression` = riferimento di colonna (dialetto ANSI_SQL); le colonne temporali ricevono `dimension.is_time: true` |
+| `Relationship` | `relationship` | L'alias viene usato come nome quando è impostato; le relazioni calcolate (con destinazione funzione) vengono saltate |
+| `Metric` | `metric` | `name`, `expression` (ANSI_SQL), `datatype` (mappato come quello di una colonna), `description`, `ai_context` |
+| `modeling_role` / `modeling_history` | `custom_extensions[].vendor_name="provisa"` | Solo andata e ritorno; altri strumenti possono ignorarlo |
 
-[tool-verified: `_table_to_dataset`, `build_ossie_model`, `provisa/ossie/convert.py` lines 90–198;
-`_table_to_dataset` comment at line 153: "Computed (function-target) relationships have no dataset
-target — not representable in Ossie; skipping is the defined export boundary"]
+[tool-verified: `_table_to_dataset`, `build_ossie_model`, `provisa/ossie/convert.py`: "Computed
+(function-target) relationships have no dataset target — not representable in Ossie; skipping
+is the defined export boundary"]
 
-Governance, sicurezza a livello di riga, derivazione e semantica del grafo non vengono esportate.
-Possono viaggiare nello slot opzionale `provisa` di custom_extensions per la fedeltà del round-trip,
-ma l'interscambio non dipende mai dal fatto che altri strumenti lo leggano. [tool-verified: `provisa/ossie/convert.py` docstring lines 13–15]
+Una relazione su più colonne elenca ogni colonna in `from_columns` e `to_columns`. Un
+modello senza tabelle viene rifiutato con `422`: un documento Ossie ha almeno un dataset.
+[tool-verified: `test_a_relationship_over_several_columns_lists_each_column`,
+`test_a_model_with_no_table_is_refused_by_name`, `tests/unit/test_ossie_convert.py`]
 
-I tipi di colonna Provisa sconosciuti passano invariati; l'adattatore non mappa mai silenziosamente
-su un tipo errato. [tool-verified: `_map_datatype`, `provisa/ossie/convert.py` lines 70–77: "Unknown types
-pass through verbatim — mapping silently to a wrong type would corrupt the model"]
+Governance, RLS, lineage e semantica dei grafi non vengono esportati. Possono viaggiare nello slot facoltativo
+`provisa` di custom_extensions per la fedeltà dell'andata e ritorno, ma l'interscambio non dipende mai dalla lettura che ne fanno altri
+strumenti. [tool-verified: `provisa/ossie/convert.py` docstring lines 13–15]
 
-#### Mappatura dei tipi
+Un tipo di colonna fuori dal vocabolario di Ossie viene scritto come `Opaque`, con il nome proprio del tipo nell'estensione
+`provisa` del campo, come la specifica prescrive per un tipo noto per cui non ha un
+membro. Una colonna senza tipo registrato non indica alcun `datatype`. L'adattatore non fa mai corrispondere un tipo che la
+colonna non ha. [tool-verified: `_map_datatype`, `_typed`, `provisa/ossie/convert.py`]
 
-[tool-verified: `_DATATYPE_MAP`, `provisa/ossie/convert.py` lines 35–65]
+#### Mappatura dei tipi {: #type-mapping }
 
-| Tipo Provisa / origine | `datatype` Ossie |
+[tool-verified: `_DATATYPE_MAP`, `provisa/ossie/convert.py`]
+
+| Tipo Provisa / sorgente | `datatype` Ossie |
 | --- | --- |
-| `varchar`, `text`, `char`, `uuid`, `string` | `string` |
-| `int`, `integer`, `bigint`, `smallint`, `int4`, `int8`, `tinyint` | `integer` |
-| `numeric`, `decimal`, `float`, `double`, `real` | `number` |
-| `bool`, `boolean` | `boolean` |
-| `date` | `date` |
-| `time` | `time` |
-| `timestamp`, `timestamptz`, `datetime` | `timestamp` |
-| qualsiasi altro | passato invariato |
+| `varchar`, `text`, `char`, `uuid`, `string` | `String` |
+| `int`, `integer`, `bigint`, `smallint`, `int4`, `int8`, `tinyint` | `Integer` |
+| `numeric`, `decimal` | `Decimal` |
+| `float`, `double`, `real` | `Float` |
+| `bool`, `boolean` | `Boolean` |
+| `date` | `Date` |
+| `time` | `Time` |
+| `timestamp`, `datetime` | `DateTime` |
+| `timestamptz`, `timestamp with time zone` | `DateTimeTz` |
+| qualsiasi altro | `Opaque`, con il nome del tipo nell'estensione `provisa` |
 
-### Importazione
+Il `Decimal` di Ossie non porta precisione né scala, quindi `numeric(10,2)` viene esportato come `Decimal`
+e torna da un import come `decimal`.
+[tool-verified: `test_parse_round_trips_export`, `tests/unit/test_ossie_convert.py`]
 
-L'importazione accetta un documento Ossie (YAML o JSON) e restituisce proposte di registrazione.
-Nulla viene registrato automaticamente — le definizioni importate non aggirano mai il passaggio di
-revisione.
+### Import
+
+L'import accetta un documento Ossie (YAML o JSON) e restituisce proposte di registrazione. Nulla viene
+registrato automaticamente — le definizioni importate non saltano mai il passo di revisione.
 
 ```http
 POST /admin/ossie/import
@@ -406,33 +437,139 @@ Content-Type: text/yaml   (or application/json)
 
 <ossie document>
 ```
-
-Il server analizza il documento con `parse_ossie_model`, che valida la struttura e restituisce una
-dataclass `OssieImport` contenente tabelle, relazioni e metriche proposte come dizionari semplici.
-Qualsiasi problema strutturale genera un `400` con un errore con percorso nominato, ad esempio
-`ossie import: missing semantic_model[0].datasets[1].source`.
-[tool-verified: `import_ossie`, `provisa/api/admin/ossie_router.py` lines 36–52:
+Il server analizza il documento con `parse_ossie_model`, che convalida la struttura e restituisce una
+dataclass `OssieImport` contenente le tabelle, le relazioni e le metriche proposte come semplici dizionari.
+Qualsiasi problema strutturale è un `400` con un errore indicato per percorso, ad es.
+`ossie import: missing $.datasets[1].source`.
+[tool-verified: `import_ossie`, `provisa/api/admin/ossie_router.py`:
 "Nothing is registered here — imported definitions never bypass registration review"]
 
-#### La schermata di revisione
+L'importatore legge solo la forma piatta del documento. Tre cose vengono rifiutate per nome:
 
-Nell'interfaccia, il pulsante **Importa** (pagina Metrics → pannello Ossie Interchange) apre un
-selettore di file. Dopo che il documento è stato inviato e analizzato, si apre un modal di revisione
-con ogni tabella, relazione e metrica proposta elencata come elemento selezionato. Il modellatore può
-deselezionare qualsiasi elemento per escluderlo. Facendo clic su **Applica** vengono registrati gli
-elementi selezionati tramite le mutazioni di registrazione esistenti — prima le tabelle, poi le
-relazioni (che fanno riferimento alle tabelle), quindi le metriche.
+- Un documento che avvolge il suo modello in `semantic_model`, la forma che la specifica in bozza aveva prima di
+  settembre 2026. L'errore dice che il documento è precedente alla forma piatta e come convertirlo.
+- Una `version` diversa da `0.2.0.dev0`.
+- Un `datatype` che non è membro del vocabolario di Ossie; l'errore indica il percorso ed elenca
+  i membri.
+
+Una colonna o una metrica proposta porta il tipo che rappresenta il suo datatype Ossie (`Integer` propone
+`bigint`, `DateTime` propone `timestamp`). `Opaque` propone il tipo che l'estensione `provisa` nomina
+quando il documento proviene da Provisa, e nessun tipo altrimenti. Un `ai_context` dato come
+oggetto viene letto tramite le sue `instructions`.
+
+Un campo viene proposto come colonna solo quando la sua espressione è una colonna della sorgente. Un campo
+la cui espressione è un calcolo non viene proposto; la schermata di revisione lo indica sotto la sua tabella
+come non importato. Un campo che rinomina la sua colonna viene proposto come quella colonna, con il nome del
+campo come alias della colonna. La `source` di un dataset deve avere tre parti,
+`source.schema.table`; una query o un nome più breve viene rifiutato, e l'errore lo dice.
+[tool-verified: `parse_ossie_model`, `_parse_dataset`, `_proposed_type`, `_ai_context`,
+`provisa/ossie/convert.py`; `tests/unit/test_ossie_convert.py`]
+
+#### Da dbt, Cube, Snowflake e altri livelli semantici {: #coming-from-dbt-cube-snowflake-and-other-semantic-layers }
+
+Il progetto Apache Ossie mantiene convertitori tra Ossie e i formati di modello di altri strumenti. Eseguite
+il convertitore del vostro strumento, poi inviate il suo output all'endpoint di import o scegliete il file nella
+schermata di revisione qui sotto. Provisa legge il documento Ossie; non legge i file dell'altro strumento.
+
+| Provenienza | Comando del convertitore | Cosa legge |
+|---|---|---|
+| dbt (livello semantico) | `ossie-dbt msi-to-ossie -i target/semantic_manifest.json -o semantic_model.yaml` | Il `semantic_manifest.json` che dbt scrive per MetricFlow |
+| Cube | `ossie-cube import -i model/ -o model.yaml` | Una directory di modello Cube, o singoli file di cubi e viste |
+
+[tool-verified: `converters/dbt/README.md` and `converters/cube/README.md` in the
+`apache/ossie` repository, read 2026-10-10]
+
+Lo stesso repository contiene convertitori per Snowflake, Databricks, Microsoft, Salesforce,
+ThoughtSpot, Sigma, Omni, Hex, GoodData e altri; ognuno ha il proprio README.
+[tool-verified: directory listing of `converters/` in `apache/ossie`, 2026-10-10]
+
+Due limiti da conoscere prima di convertire:
+
+- Il convertitore dbt legge solo il manifesto del livello semantico. Un progetto dbt senza modelli
+  semantici non ha nulla da convertire. Scarta le metriche di conversione, le metriche private e le
+  entità a chiave naturale, e stampa un avviso per ciascuna.
+  [tool-verified: `converters/dbt/README.md`, the "MSI → Ossie is lossy" table]
+- L'output di un convertitore segue la specifica come la ha il commit proprio di quel convertitore. Provisa legge
+  la forma piatta del commit `642cb894` di `apache/ossie`; un convertitore precedente a settembre 2026
+  scrive l'involucro `semantic_model`, che Provisa rifiuta per nome.
+
+Entrambi i percorsi sono stati eseguiti il 2026-10-10 con i convertitori installati dal commit `642cb894` di `apache/ossie`
+(non sono pubblicati come pacchetti; si installano dalle directory `converters/dbt` e
+`converters/cube` del repository e richiedono Python 3.11 o successivo). Un modello di
+due tabelle, una relazione e una metrica è stato esportato da Provisa, convertito in un manifesto semantico dbt
+e in un modello Cube, riconvertito in Ossie da `ossie-dbt msi-to-ossie` e
+`ossie-cube import`, e letto da `parse_ossie_model`:
+
+| Percorso | Risultato |
+|---|---|
+| Modello Cube → Ossie → Provisa | Letto. Tabelle, chiavi, tipi di colonna, la relazione e la metrica sono tornati tutti; il nome della relazione era quello del convertitore (`orders_to_customers`). |
+| Manifesto semantico dbt → Ossie → Provisa | Letto. Tabelle, chiavi primarie e la metrica sono tornate. I tipi di colonna no (l'output del convertitore non ne indica), e la relazione è tornata come il convertitore l'aveva derivata dalle entità dbt, che non era quella registrata. Rivedete le relazioni prima di applicare. |
+
+[tool-verified: both runs, 2026-10-10, `apache/ossie` commit `642cb894`, `ossie-dbt` and
+`ossie-cube` 0.2.0.dev0, metricflow 0.213.0; inputs were files those converters had written
+from a Provisa export, not files authored in dbt or Cube]
+
+Il convertitore dbt rifiuta un modello in cui una tabella ha un vincolo di unicità su più
+colonne («MetricFlow entities cannot represent composite keys losslessly»).
+[tool-verified: `ossie-dbt ossie-to-msi` on the same export with such a constraint, 2026-10-10]
+
+#### La schermata di revisione {: #the-review-screen }
+
+Nell'interfaccia, il pulsante **Importa** (pagina Metriche → pannello Ossie Interchange) apre un selettore di file.
+Dopo che il documento è stato inviato e analizzato, si apre una finestra di revisione con ogni tabella,
+relazione e metrica proposta elencata come elemento selezionato. Il modellatore può deselezionare qualsiasi cosa per escluderla.
+Facendo clic su **Applica** si registrano gli elementi selezionati tramite le mutazioni di registrazione esistenti — prima le
+tabelle, poi le relazioni (che fanno riferimento alle tabelle), poi le metriche.
 [tool-verified: `OssieInterchangePanel.tsx` lines 88–165: "Review screen opens with everything
 checked; trimming = unchecking"; "Tables first, then relationships... then metrics — each through
 the EXISTING registration mutations (REQ-1316)"]
 
-Il ruolo di modellazione e la cronologia memorizzati in un documento Ossie esportato da Provisa
-effettuano correttamente il round-trip attraverso l'importazione. [tool-verified: `_parse_dataset` custom_extensions handling,
+Il ruolo di modellazione e la cronologia memorizzati in un documento Ossie esportato da Provisa superano correttamente
+l'import. [tool-verified: `_parse_dataset` custom_extensions handling,
 `provisa/ossie/convert.py` lines 287–300: "REQ-1320: round-trip the provisa modeling metadata slot"]
+
+### File di sources dbt (REQ-1967) {: #dbt-sources-file-req-1967 }
+
+Per un progetto dbt che non usa il livello semantico, Provisa scrive direttamente un `sources.yml` dbt.
+Viene derivato dal modello attivo a ogni richiesta.
+
+```http
+GET /admin/dbt/sources?role=<role id>
+```
+La risposta è YAML con `Content-Disposition: attachment; filename=provisa.sources.yml`. Il
+chiamante ha bisogno di `org_settings`, e `role` deve essere un ruolo che detiene; il titolare di
+`access_config` può nominare qualsiasi ruolo. Il pannello di interscambio della pagina Metriche offre lo stesso download
+per il ruolo in uso.
+[tool-verified: `download_dbt_sources`, `provisa/api/admin/ossie_router.py`; `TestTheEndpoint`,
+`tests/unit/test_dbt_sources.py`]
+
+Il file elenca ogni tabella servita al ruolo, sotto una source dbt per sorgente e schema (nominata
+con l'id della sorgente, o `<source>_<schema>` quando una sorgente ha tabelle in più di uno schema),
+con la descrizione della tabella, le descrizioni delle colonne servite e questi test:
+
+| Il modello indica | Il file scrive |
+|---|---|
+| Una chiave primaria di una colonna | `unique` e `not_null` su quella colonna |
+| Una chiave primaria di più colonne | `not_null` su ogni colonna |
+| Un vincolo di unicità di una colonna | `unique` su quella colonna |
+| Una relazione tra due tabelle entrambe servite al ruolo | `relationships` sulla colonna di origine, verso `source('<source>', '<table>')` |
+
+Una colonna non servita al ruolo è assente, così come una tabella senza colonne servite. Una chiave su
+più colonne non ha un test dbt standard; il commento iniziale del file le nomina tutte, e per esse non viene scritto
+alcun test. Il modello non registra la nullabilità, quindi `not_null` compare solo sulle colonne chiave.
+Il file non porta metriche, sicurezza di riga, mascheramento, ruoli o lineage, e il suo commento iniziale
+lo dice.
+[tool-verified: `build_dbt_sources`, `provisa/dbt/sources.py`; `tests/unit/test_dbt_sources.py`]
+
+Un file generato da un modello di due tabelle e una relazione è stato analizzato da dbt-core 1.12.5
+con dbt-duckdb 1.11.0: due source e cinque test, nessun avviso. dbt-core 1.9.11 non legge
+i suoi test `relationships`, che annidano i loro argomenti sotto `arguments`; le versioni intermedie
+non sono state provate. [tool-verified: `dbt parse` and `dbt ls` on both versions, 2026-10-10; `dbt test`
+against data was not run]
 
 ---
 
-## Metriche tra protocolli (REQ-1319)
+## Metriche tra protocolli (REQ-1319) {: #metrics-across-protocols-req-1319 }
 
 La definizione di una metrica governata — la sua espressione, descrizione e `ai_context` — viaggia
 con il valore verso ogni superficie di query attraverso un'unica espansione del compilatore. Non ci
@@ -480,7 +617,7 @@ GraphQL, quindi gli strumenti sensibili allo schema e la generazione di codice l
 automaticamente.
 [inferred: per REQ-1319: "definition in introspection docs"]
 
-### MCP (agenti IA)
+### MCP (agenti IA) {: #mcp-ai-agents }
 
 Due strumenti espongono le metriche ai client MCP:
 
@@ -521,7 +658,7 @@ federato, quindi Bloom rappresenta automaticamente la forma a stella.
 [inferred: per REQ-1319 and REQ-1320: "federated graph labels nodes :Fact/:Dimension so Bloom
 renders the star"; provisa/cypher/label_map.py not read in this session]
 
-### Query in linguaggio naturale
+### Query in linguaggio naturale {: #natural-language-queries }
 
 Il comparatore di schema in linguaggio naturale risolve il vocabolario delle metriche nelle domande
 in linguaggio naturale direttamente in una metrica più dimensioni, quindi genera SQL semantico. [tool-verified: `resolve_metric`,
@@ -543,7 +680,7 @@ nuova pipeline.
 [inferred: per REQ-1319. The table Kafka sink that requirement named is retired (REQ-176); a
 table publishes its new rows to Kafka through a live output (`live.outputs`, REQ-565)]
 
-### Osservabilità (OTel)
+### Osservabilità (OTel) {: #observability-otel }
 
 Le valutazioni delle metriche vengono tracciate ed esportabili come metriche OpenTelemetry.
 [inferred: per REQ-1319: "Observability: metric evaluations traced and exportable as OTel metrics";

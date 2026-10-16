@@ -1,6 +1,6 @@
-# Migrazione da Hasura DDN (v3) a Provisa
+# Migrazione da Hasura DDN (v3) a Provisa {: #migrating-from-hasura-ddn-v3-to-provisa }
 
-## Prerequisiti
+## Prerequisiti {: #prerequisites }
 
 1. Un progetto Hasura DDN con file HML (estensione `.hml`).
    I progetti DDN hanno tipicamente una struttura di directory come:
@@ -21,19 +21,19 @@
 
 2. Python 3.11+ con il pacchetto `provisa` installato.
 
-## Utilizzo della CLI
+## Utilizzo della CLI {: #cli-usage }
 
 ```bash
 python -m provisa.ddn <hml-dir> -o provisa.yaml
 ```
 
-### Argomenti
+### Argomenti {: #arguments }
 
 | Argomento | Obbligatorio | Descrizione |
 | ---------- | ---------- | ------------- |
 | `hml_dir` | Sì | Percorso della directory del progetto DDN HML (analizzata ricorsivamente alla ricerca di file `.hml`) |
 
-### Opzioni
+### Opzioni {: #options }
 
 | Opzione | Predefinito | Descrizione |
 | -------- | --------- | ------------- |
@@ -42,7 +42,7 @@ python -m provisa.ddn <hml-dir> -o provisa.yaml
 | `--domain-map KEY=VAL ...` | Nessuno | Mappature da subgraph a domain (ad es. `app=core analytics=reporting`) |
 | `--dry-run` | disattivato | Analizza e valida senza scrivere l'output |
 
-### File di override dell'origine
+### File di override dell'origine {: #source-overrides-file }
 
 Un file YAML indicizzato per nome del connettore (dopo la sanificazione dell'ID: spazi, punti e
 barre diventano trattini bassi) con le proprietà di connessione:
@@ -56,7 +56,7 @@ my_pg_connector:
   password: "${env:PROD_DB_PASSWORD}"
 ```
 
-## Matrice di equivalenza delle funzionalità
+## Matrice di equivalenza delle funzionalità {: #feature-parity-matrix }
 
 | Tipo DDN | Equivalente Provisa | Note |
 | --- | --- | --- |
@@ -75,7 +75,7 @@ my_pg_connector:
 | **CompatibilityConfig** | Ignorato | Viene emesso un avviso con il conteggio. |
 | **Altri tipi non riconosciuti** | Ignorato | Viene emesso un avviso con il conteggio per ciascun tipo. |
 
-## Concetto chiave: risoluzione dal campo GraphQL alla colonna fisica
+## Concetto chiave: risoluzione dal campo GraphQL alla colonna fisica {: #key-concept-graphql-field-to-physical-column-resolution }
 
 DDN separa lo schema GraphQL (nomi dei campi) dallo schema fisico del database
 (nomi delle colonne) tramite `dataConnectorTypeMapping` sugli ObjectType. Il convertitore:
@@ -88,7 +88,7 @@ DDN separa lo schema GraphQL (nomi dei campi) dallo schema fisico del database
 Questo significa che il file `provisa.yaml` di output utilizza **nomi di colonna fisici** per `columns[].name`
 e imposta `columns[].alias` sul nome del campo GraphQL quando differiscono.
 
-## Passaggi successivi alla conversione
+## Passaggi successivi alla conversione {: #post-conversion-steps }
 
 1. **Rivedere il file YAML di output.** Verificare origini, tabelle e mappature delle colonne.
 2. **Configurare le connessioni alle origini.** I connettori forniscono solo un suggerimento nell'URL
@@ -106,45 +106,45 @@ e imposta `columns[].alias` sul nome del campo GraphQL quando differiscono.
    e qualsiasi model che fa riferimento a ObjectType sconosciuti.
 7. **Eseguire i test.** Avviare il server Provisa e verificare le query rispetto alle proprie origini dati.
 
-## Problemi comuni e risoluzione dei problemi
+## Problemi comuni e risoluzione dei problemi {: #common-issues-and-troubleshooting }
 
-### Il rilevamento del tipo di origine non riesce
+### Il rilevamento del tipo di origine non riesce {: #source-type-detection-fails }
 
 L'URL del connettore viene utilizzato in modo euristico (verificando parole chiave come "postgres",
 "mysql", "mongo"). Se l'URL non contiene una parola chiave riconoscibile, l'origine utilizza per
 impostazione predefinita `postgresql`. Sovrascrivere con `--source-overrides`.
 
-### ObjectType mancante per un Model
+### ObjectType mancante per un Model {: #missing-objecttype-for-a-model }
 
 Se un Model fa riferimento a un nome di ObjectType non trovato in alcun file `.hml`,
 la tabella viene ignorata e viene emesso un avviso. Assicurarsi che tutti i file HML siano
 inclusi nella directory analizzata.
 
-### Individuazione dei subgraph
+### Individuazione dei subgraph {: #subgraph-discovery }
 
 I subgraph vengono derivati dalla struttura di directory: il primo componente di directory sotto
 la root del progetto viene considerato come nome del subgraph. Il campo `subgraph` all'interno dei
 documenti HML non viene utilizzato. I file all'interno di una directory `globals/` vengono assegnati
 al subgraph `globals` ed esclusi dall'individuazione dei domain.
 
-### Risoluzione dell'origine della relazione
+### Risoluzione dell'origine della relazione {: #relationship-source-resolution }
 
 Le relazioni fanno riferimento a un `source_type` (nome ObjectType) e a un `target_model` (nome
 Model). Se nessun Model utilizza l'ObjectType indicato, la relazione viene ignorata silenziosamente.
 
-### Alias di colonna ovunque
+### Alias di colonna ovunque {: #column-aliases-everywhere }
 
 Se il proprio progetto DDN utilizza `fieldMapping` in modo estensivo, ci si può aspettare che la
 maggior parte delle colonne abbia un `alias` nell'output. Questo è un comportamento corretto -- `name`
 è la colonna fisica, `alias` è il nome GraphQL utilizzato dall'applicazione.
 
-### Espressioni di aggregazione
+### Espressioni di aggregazione {: #aggregate-expressions }
 
 Le espressioni di aggregazione vengono mantenute in un file collaterale `provisa-aggregates.yaml`
 scritto accanto all'output e convertite nella configurazione di aggregazione di Provisa. Non vengono
 memorizzate nella `description` della tabella.
 
-## Esempio: conversione di un progetto DDN Chinook
+## Esempio: conversione di un progetto DDN Chinook {: #example-converting-a-chinook-ddn-project }
 
 ```bash
 # Convert the DDN project

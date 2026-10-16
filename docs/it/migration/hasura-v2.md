@@ -1,6 +1,6 @@
-# Migrazione da Hasura v2 a Provisa
+# Migrazione da Hasura v2 a Provisa {: #migrating-from-hasura-v2-to-provisa }
 
-## Prerequisiti
+## Prerequisiti {: #prerequisites }
 
 1. Un'istanza Hasura v2 (v2.x) in esecuzione con i metadati esportati.
 2. Esportare i metadati con la CLI di Hasura:
@@ -13,19 +13,19 @@
    `cron_triggers.yaml`, `inherited_roles.yaml`, `remote_schemas.yaml`, ecc.
 3. Python 3.11+ con il pacchetto `provisa` installato.
 
-## Utilizzo della CLI
+## Utilizzo della CLI {: #cli-usage }
 
 ```bash
 python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 ```
 
-### Argomenti
+### Argomenti {: #arguments }
 
 | Argomento | Obbligatorio | Descrizione |
 | ---------- | ---------- | ------------- |
 | `metadata_dir` | Sì | Percorso della directory dei metadati Hasura v2 esportata |
 
-### Opzioni
+### Opzioni {: #options }
 
 | Opzione | Predefinito | Descrizione |
 | -------- | --------- | ------------- |
@@ -35,7 +35,7 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 | `--auth-env-file FILE` | Nessuno | Percorso del file `.env` con la configurazione di autenticazione JWT/admin-secret |
 | `--dry-run` | disattivato | Analizza e valida senza scrivere l'output |
 
-### File di override delle origini
+### File di override delle origini {: #source-overrides-file }
 
 Un file YAML indicizzato per nome dell'origine, con le proprietà di connessione da sovrascrivere:
 
@@ -48,7 +48,7 @@ default:
   password: "${env:PROD_DB_PASSWORD}"
 ```
 
-### File dell'ambiente di autenticazione
+### File dell'ambiente di autenticazione {: #auth-env-file }
 
 Un file in stile `.env` che contiene la configurazione di autenticazione di Hasura da
 convertire. Il convertitore effettua le seguenti mappature:
@@ -58,7 +58,7 @@ convertire. Il convertitore effettua le seguenti mappature:
 - Admin secret -> Provisa `superuser`.
 - Autenticazione tramite webhook -> viene emesso un avviso (nessun equivalente in Provisa).
 
-## Matrice di parità delle funzionalità
+## Matrice di parità delle funzionalità {: #feature-parity-matrix }
 
 | Funzionalità di Hasura v2 | Equivalente in Provisa | Note |
 | --- | --- | --- |
@@ -82,7 +82,7 @@ convertire. Il convertitore effettua le seguenti mappature:
 | **Tabelle enum** | Tabella creata | Il flag `is_enum` non viene riportato (nessun equivalente in Provisa). |
 | **Allow list** | Ignorate | Non presenti nel modello dei metadati. |
 
-## Passaggi post-conversione
+## Passaggi post-conversione {: #post-conversion-steps }
 
 1. **Rivedere il YAML di output.** Verificare che origini, tabelle e ruoli siano corretti.
 2. **Configurare le connessioni delle origini.** Il convertitore analizza gli URL di connessione, ma
@@ -97,37 +97,37 @@ convertire. Il convertitore effettua le seguenti mappature:
    un file di ambiente di autenticazione e rieseguire con `--auth-env-file`.
 7. **Testare.** Avviare il server Provisa e verificare le query sulle proprie origini dati.
 
-## Problemi comuni e risoluzione dei problemi
+## Problemi comuni e risoluzione dei problemi {: #common-issues-and-troubleshooting }
 
-### L'URL di connessione non viene analizzato
+### L'URL di connessione non viene analizzato {: #connection-url-not-parsed }
 
 Se `database_url` dell'origine è un riferimento a una variabile d'ambiente (`{"from_env": "PG_URL"}`),
 il convertitore non può risolverlo al momento della conversione. L'origine avrà valori
 segnaposto (`host: localhost`, `database: default`). Correggere con `--source-overrides`.
 
-### Colonne con carattere jolly
+### Colonne con carattere jolly {: #wildcard-columns }
 
 Quando un'autorizzazione concede `columns: "*"`, il convertitore crea una singola voce di
 colonna con carattere jolly. Dopo la conversione, potrebbe essere opportuno sostituirla con elenchi
 di colonne espliciti ispezionando lo schema effettivo del database.
 
-### Fedeltà dei trigger di evento
+### Fedeltà dei trigger di evento {: #event-trigger-fidelity }
 
 I trigger di evento vengono convertiti con `operations` e `webhook_url`, ma le garanzie di
 consegna specifiche di Hasura (esattamente una volta, riconsegna) non hanno equivalenti diretti
 in Provisa. Rivedere la sezione `event_triggers` e configurare di conseguenza l'infrastruttura webhook.
 
-### Ruoli mancanti
+### Ruoli mancanti {: #missing-roles }
 
 I ruoli vengono raccolti solo dalle voci di autorizzazione. Se un ruolo esiste in Hasura ma
 non ha autorizzazioni su alcuna tabella o action, non comparirà nell'output.
 
-### Campi root personalizzati
+### Campi root personalizzati {: #custom-root-fields }
 
 Solo i campi root `select` e `select_by_pk` vengono utilizzati per l'alias della tabella. Altri
 campi root personalizzati (`select_aggregate`, `insert`, `update`, `delete`) non vengono mappati.
 
-## Esempio
+## Esempio {: #example }
 
 Conversione di un tipico progetto Hasura v2 con due schemi mappati su domini:
 

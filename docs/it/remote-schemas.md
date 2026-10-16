@@ -1,12 +1,12 @@
-# Schemi remoti
+# Schemi remoti {: #remote-schemas }
 
 Un'origine di schema remoto collega un'API esterna — GraphQL (incluso GitHub), gRPC o REST (OpenAPI) — al modello di Provisa. Aggiungere un'origine non registra alcuna tabella. L'origine offre tabelle, e un data steward registra ogni tabella desiderata tramite il selettore «Register Table»; tale registrazione è il passaggio di curation. (REQ-308, REQ-316, REQ-322) Una tabella registrata è una tabella Provisa a tutti gli effetti. (REQ-308, REQ-316, REQ-325) Ogni regola di governance, interfaccia di query e livello di sicurezza si applica automaticamente. (REQ-310, REQ-319, REQ-328) Il servizio remoto non vede mai le regole di governance di Provisa. (REQ-310, REQ-319, REQ-328)
 
 ---
 
-## Tre tipi di origine
+## Tre tipi di origine {: #three-source-types }
 
-### Schema remoto GraphQL (REQ-307–313)
+### Schema remoto GraphQL (REQ-307–313) {: #graphql-remote-schema-req-307313 }
 
 **Come aggiungere l'origine.** Inviare una richiesta POST a `/admin/sources/graphql-remote` con l'URL dell'endpoint, un namespace e un'autenticazione facoltativa. Provisa avvia una query di introspezione standard `__schema` verso l'endpoint remoto per confermare l'endpoint e le credenziali. (REQ-307) [tool-verified: `provisa/graphql_remote/introspect.py:47–59`]
 
@@ -160,7 +160,7 @@ GitLab è un tipo di origine ordinario e viene aggiunto e registrato come GitHub
 
 ---
 
-### Schema remoto gRPC (REQ-322–329)
+### Schema remoto gRPC (REQ-322–329) {: #grpc-remote-schema-req-322329 }
 
 **Come aggiungere l'origine.** Inviare una richiesta POST a `/admin/grpc-remote/register` con l'indirizzo del server, un percorso o un URL a un file `.proto` e una configurazione TLS facoltativa. Aggiungere l'origine non registra alcuna tabella.
 
@@ -288,7 +288,7 @@ Priorità di classificazione: `operation_overrides` (payload) ha priorità su `x
 
 ---
 
-## Impatto della registrazione di una tabella remota
+## Impatto della registrazione di una tabella remota {: #impact-of-registering-a-remote-table }
 
 Una tabella registrata da qualsiasi origine di schema remoto è una tabella Provisa a tutti gli effetti. Nulla al suo interno viene trattato in modo diverso rispetto a una tabella relazionale connessa localmente in fase di esecuzione. (REQ-308, REQ-313)
 
@@ -312,7 +312,7 @@ Le query ad hoc contro tabelle remote sono consentite esclusivamente in base ai 
 
 ---
 
-## Impatto della creazione di una relazione di copertura
+## Impatto della creazione di una relazione di copertura {: #impact-of-creating-a-covering-relationship }
 
 Quando un data steward registra una relazione tra due tabelle remote (o tra una tabella remota e una tabella locale), tale relazione diventa il percorso di join utilizzato in fase di query.
 
@@ -330,7 +330,7 @@ Nella SDL GraphQL, un campo OBJECT inline non governato viene tipizzato come il 
 
 ---
 
-## Comportamento delle sole definizioni di tipo
+## Comportamento delle sole definizioni di tipo {: #type-def-only-behavior }
 
 Non tutti i tipi in uno schema remoto devono essere una tabella interrogabile.
 
