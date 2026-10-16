@@ -70,6 +70,21 @@ def test_kafka_builds_provider_with_topic_as_watch_target():
     )
 
 
+def test_kafka_resolves_a_host_its_config_names_by_environment_variable(monkeypatch):
+    """The streaming demo names its broker ${env:STREAMING_KAFKA_HOST:-127.0.0.1}: the listener
+    dialled that text as a host name, and no batch ever landed (CI run 38886673581)."""
+    monkeypatch.setenv("TEST_PUSH_KAFKA_HOST", "broker.internal")
+    src = _source(type=SourceType.kafka, host="${env:TEST_PUSH_KAFKA_HOST:-127.0.0.1}", port=29092)
+    tbl = {"live": {"kafka": {"topic": "orders"}}}
+    with patch("provisa.subscriptions.registry.get_provider", return_value=MagicMock()) as gp:
+        _build_provider(src, tbl, node="s.t")
+    assert gp.call_args.args[1]["bootstrap_servers"] == "broker.internal:29092"
+    monkeypatch.delenv("TEST_PUSH_KAFKA_HOST")
+    with patch("provisa.subscriptions.registry.get_provider", return_value=MagicMock()) as gp:
+        _build_provider(src, tbl, node="s.t")
+    assert gp.call_args.args[1]["bootstrap_servers"] == "127.0.0.1:29092"  # its default
+
+
 def test_websocket_missing_url_and_host_returns_none(caplog):
     src = _source(type=SourceType.websocket, host="", port=0)
     with caplog.at_level(logging.WARNING):

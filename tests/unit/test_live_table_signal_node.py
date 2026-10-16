@@ -100,3 +100,55 @@ async def test_its_handle_lands_nothing_and_reports_the_change(monkeypatch):
     event_type, payload, content_hash = await spec.handle([{"id": 1}, {"id": 2}], prior_hash="h")
     assert event_type == "replace" and payload == {"signals": 2, "landed": None}
     assert content_hash is None  # never gated: every claimed signal ripples to the views
+
+
+@pytest.mark.parametrize("stype", ["kafka", "websocket"])
+def test_a_push_fed_table_is_a_signal_node_that_asks_for_no_build(monkeypatch, stype):
+    """Its push listener lands each batch and posts it to this node; the node lands nothing, and
+    never asks for a whole-table build its source cannot give (it was refused, and retried, for
+    ever)."""
+    from provisa.federation.strategy import Strategy
+
+    monkeypatch.setattr(
+        "provisa.federation.strategy.federate", lambda src, engine, **kw: Strategy.MATERIALIZED
+    )
+    monkeypatch.setattr(
+        "provisa.federation.residency.resolve_landing_args",
+        lambda src, tbl, platform=None: SimpleNamespace(
+            columns=[("order_id", "varchar")],
+            change_signal="ttl",
+            watermark_column=None,
+            pk_columns=["order_id"],
+            probe_type="none",
+        ),
+    )
+    table = SimpleNamespace(
+        source_id="orders",
+        schema_name="default",
+        table_name="orders",
+        columns=[SimpleNamespace(name="order_id", native_filter_type=None)],
+        row_materialize=False,
+        cache_ttl=None,
+        mv_preprocess=None,
+        change_signal=None,
+        file_glob=None,
+    )
+    source = SimpleNamespace(
+        id="orders", type=SimpleNamespace(value=stype), change_signal=None, cache_ttl=None
+    )
+    runtime = SimpleNamespace(
+        replica_address=lambda *, source_id, schema_name, table_name: SimpleNamespace(
+            schema="org_replicas", table="orders__default__orders"
+        )
+    )
+    spec = build_source_node_spec(
+        table,
+        source,
+        engine=SimpleNamespace(dialect="duckdb"),
+        engine_runtime=runtime,
+        source_fetch=lambda src, tbl: pytest.fail("a push-fed table is never fetched to land"),
+        probe_scalar=lambda src, tbl: None,
+        replica_build=lambda key: pytest.fail(f"a build was asked for {key}"),
+    )
+    assert spec is not None and spec.kind == "source"
+    assert not hasattr(spec.handle, "replica_key")

@@ -141,10 +141,14 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
     """A (NotificationProvider, watch_target) pair for *src*, or None (logged) when its config is
     incomplete. ``watch_target`` is what gets passed to ``provider.watch()`` — the Kafka topic for
     kafka, the registered table name for websocket (one socket, one stream, no per-topic routing)."""
+    from provisa.core.secrets import resolve_secrets
     from provisa.kafka.avro_registry import RegistrySettings
     from provisa.subscriptions.registry import get_provider
 
     source_type = src.type.value if hasattr(src.type, "value") else str(src.type)
+    # The address as configured may name an environment variable or a secret (${env:...}), as any
+    # source's does: resolved here, where the listener connects, as a source pool's is.
+    host = resolve_secrets(src.host) if src.host else src.host
 
     if source_type == "kafka":
         live = tbl.get("live") or {}
@@ -158,7 +162,7 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
                 src.id,
             )
             return None
-        if not src.host:
+        if not host:
             log.warning(
                 "push listener %s: kafka source %r has no host configured — skipping",
                 node,
@@ -170,7 +174,7 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
         # the same shape websocket's own ws://host:port derivation uses just below. Passing bare
         # host as bootstrap_servers silently used aiokafka's default port (9092) regardless of
         # what the user actually registered, rather than failing loudly or connecting correctly.
-        bootstrap_servers = f"{src.host}:{src.port}" if src.port else src.host
+        bootstrap_servers = f"{host}:{src.port}" if src.port else host
         # Each org (and each of its environments) lands the topic into its own table, so each
         # reads every message: its own consumer group. One shared by every org would split the
         # topic's messages among them.
@@ -181,7 +185,9 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
             {
                 "bootstrap_servers": bootstrap_servers,
                 "group_id": group,
-                "registry": RegistrySettings(url=src.database) if src.database else None,
+                "registry": RegistrySettings(url=resolve_secrets(src.database))
+                if src.database
+                else None,
                 "field_mapping": kafka_cfg.get("field_mapping") or {},
             },
         )
@@ -192,7 +198,8 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
         # explicit override) else derive ws://host:port from host+port, the SAME override-else-
         # derive shape airport/neo4j already use (REQ-1730, DuckDBAirportConnector /
         # neo4j_config_from_source) rather than inventing a third convention.
-        url = src.base_url or (f"ws://{src.host}:{src.port}" if src.host else None)
+        url = resolve_secrets(src.base_url) if src.base_url else None
+        url = url or (f"ws://{host}:{src.port}" if host else None)
         if not url:
             log.warning(
                 "push listener %s: websocket source %r has no base_url or host — skipping",

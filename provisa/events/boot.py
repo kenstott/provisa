@@ -233,8 +233,14 @@ def build_source_node_spec(
     from provisa.core.change_signal import REPLACE as _REPLACE
 
     whole_copy = probe_shape(args.probe_type) == _REPLACE
-    if live:
-        # Read where it lies: nothing lands; its probe's change is posted to the views over it.
+    from provisa.core.change_signal import PUSH_SOURCE_TYPES
+
+    stype = src.type.value if hasattr(src.type, "value") else str(src.type)
+    if live or stype in PUSH_SOURCE_TYPES:
+        # Read where it lies, or fed by its push listener (kafka, websocket: push_wiring lands each
+        # batch and posts it here): nothing lands through this node, which has no whole copy to
+        # build -- asking for one was refused, and retried, for ever. A change is posted to the
+        # views over it.
         from provisa.events.handlers import make_source_signal
 
         handle = make_source_signal()
