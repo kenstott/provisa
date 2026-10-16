@@ -532,7 +532,7 @@ The webhook and Unix socket transports exchange JSON, with `command` and `argume
 
 ### Command calls
 
-A command with `requires_approval` set (the **Requires approval** switch on the command form) goes to the hook before every call, on every surface. It runs only when the hook approves. The request carries `operation: "command"`, the command's name, and its arguments; `tables` and `columns` are empty. (REQ-1924)`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
+A command with `requires_approval` set (the **Requires approval** switch on the command form) goes to the hook before every call, on every surface. It runs only when the hook approves. The request carries `operation: "command"`, the command's name, and its arguments; `tables` and `columns` are empty. (REQ-1924) [tool-verified: `provisa/api/data/action_exec.py` `_require_approval` (`operation="command"`, `tables=[]`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
 
 ```json
 {
