@@ -32,9 +32,9 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: testdata
     ports:
-      # Unset: 28332. Set empty (the node, which runs several versions at once): a port docker
+      # Unset: 29432. Set empty (the node, which runs several versions at once): a port docker
       # picks. On the loopback only.
-      - "127.0.0.1:${TESTDATA_PG_PORT-28332}:5432"
+      - "127.0.0.1:${TESTDATA_PG_PORT-29432}:5432"
     volumes:
       - testdata_run_pg:/var/lib/postgresql/data
       - ./dump/postgres.sql:/docker-entrypoint-initdb.d/10-testdata.sql:ro

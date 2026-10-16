@@ -84,7 +84,7 @@ sources:
 - id: eu-shop
   type: postgresql
   host: ${env:RETAIL_PG_HOST:-localhost}
-  port: ${env:RETAIL_PG_PORT:-28932}
+  port: ${env:RETAIL_PG_PORT:-29332}
   database: eu_shop
   username: provisa_reader
   password: provisa_reader
@@ -95,7 +95,7 @@ sources:
 - id: us-shop
   type: postgresql
   host: ${env:RETAIL_PG_HOST:-localhost}
-  port: ${env:RETAIL_PG_PORT:-28932}
+  port: ${env:RETAIL_PG_PORT:-29332}
   database: us_shop
   username: provisa_reader
   password: provisa_reader
@@ -104,7 +104,7 @@ sources:
 - id: group-ref
   type: postgresql
   host: ${env:RETAIL_PG_HOST:-localhost}
-  port: ${env:RETAIL_PG_PORT:-28932}
+  port: ${env:RETAIL_PG_PORT:-29332}
   database: group_ref
   username: provisa_reader
   password: provisa_reader

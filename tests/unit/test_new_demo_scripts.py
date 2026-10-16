@@ -93,10 +93,33 @@ def test_a_name_no_demo_can_have_or_one_a_demo_has_is_refused(tmp_path):
 
 
 def test_the_next_port_is_the_first_block_no_demo_publishes(tmp_path):
-    for name, port in (("a", 28132), ("b", 28232), ("c", 28432)):
+    for name, port in (("a", 28032), ("b", 28132), ("c", 28232), ("d", 28432)):
         (tmp_path / name).mkdir()
         (tmp_path / name / "docker-compose.yml").write_text(f'ports: ["{port}:5432"]\n')
     assert new_demo.next_port(tmp_path) == 28332
+
+
+def test_a_block_is_taken_by_any_port_a_demo_publishes_in_it(tmp_path):
+    """A demo's broker or second store takes its block too (the streaming demo's 29092), and a
+    port its config.yaml names counts as one its compose does."""
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "docker-compose.yml").write_text(
+        'ports: ["127.0.0.1:${A_PG_PORT:-28032}:5432", "127.0.0.1:${A_KAFKA_PORT-28192}:9092"]\n'
+    )
+    (tmp_path / "b").mkdir()
+    (tmp_path / "b" / "config.yaml").write_text("port: ${env:B_PG_PORT:-28250}\n")
+    assert new_demo.next_port(tmp_path) == 28332
+
+
+def test_no_two_demos_publish_the_same_host_port():
+    """Two demos defaulting to one port cannot run at once, and the next demo scaffolded would be
+    handed a port already taken (opioids and datavault both took 28832, 2026-10-16)."""
+    shared = {
+        port: sorted(demos)
+        for port, demos in new_demo.published_ports(_NAMED).items()
+        if len(demos) > 1
+    }
+    assert shared == {}
 
 
 @pytest.mark.parametrize("name", ["weblogs", "sonnets", "files"])

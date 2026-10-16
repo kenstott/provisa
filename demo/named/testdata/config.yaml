@@ -49,7 +49,7 @@ sources:
 - id: shop-db
   type: postgresql
   host: ${env:TESTDATA_PG_HOST:-localhost}
-  port: ${env:TESTDATA_PG_PORT:-28332}
+  port: ${env:TESTDATA_PG_PORT:-29432}
   database: testdata
   username: provisa_reader
   password: provisa_reader

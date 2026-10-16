@@ -33,9 +33,9 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
     ports:
-      # Unset: 28932. Set empty (the node, which runs several versions at once): a port docker
+      # Unset: 29332. Set empty (the node, which runs several versions at once): a port docker
       # picks. On the loopback only.
-      - "127.0.0.1:${RETAIL_PG_PORT-28932}:5432"
+      - "127.0.0.1:${RETAIL_PG_PORT-29332}:5432"
     volumes:
       - retail_run_pg:/var/lib/postgresql/data
       - ./dump/postgres.sql:/docker-entrypoint-initdb.d/10-retail.sql:ro

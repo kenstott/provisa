@@ -36,8 +36,12 @@ LOCALES = ROOT / "provisa-ui" / "src" / "i18n" / "locales"
 
 #: A demo's name is its directory, its compose project's suffix and its tour keys' prefix.
 NAME = re.compile(r"[a-z][a-z0-9]*")
-#: The ports the named demos' stores publish by default: 28<N>32, one block of 100 a demo.
-_PORT = re.compile(r"\b28(\d)32\b")
+#: A host port a named demo publishes by default: a variable's default (``${X_PORT:-28132}``,
+#: ``${env:X_PORT:-28132}``, ``${X_PORT-28132}``) or a fixed mapping (``"28132:5432"``).
+_PORT = re.compile(r"\$\{(?:env:)?[A-Z][A-Z0-9_]*_PORT:?-(\d{4,5})\}|\b(\d{4,5}):\d+\b")
+#: Each demo's stores take a block of 100 ports, 28000-29999; a new demo's database is the
+#: block's <block>32.
+_BLOCKS = range(280, 300)
 
 #: The words of each step the template's tour has, in English: tour.steps.<name><Suffix>.
 STEP_WORDS = {
@@ -53,17 +57,26 @@ STEP_WORDS = {
 }
 
 
+def published_ports(named: Path = NAMED) -> dict[int, set[str]]:
+    """Every host port the named demos publish by default, and the demos publishing each: what
+    their compose files and config.yaml name."""
+    ports: dict[int, set[str]] = {}
+    for demo in sorted(p for p in named.iterdir() if p.is_dir()):
+        for path in [*demo.glob("docker-compose*.yml"), demo / "config.yaml"]:
+            if not path.is_file():
+                continue
+            for m in _PORT.finditer(path.read_text()):
+                ports.setdefault(int(m.group(1) or m.group(2)), set()).add(demo.name)
+    return ports
+
+
 def next_port(named: Path = NAMED) -> int:
-    """The first 28<N>32 no named demo's compose files publish."""
-    used = {
-        int(m.group(1))
-        for compose in named.glob("*/docker-compose*.yml")
-        for m in _PORT.finditer(compose.read_text())
-    }
-    free = [n for n in range(1, 10) if n not in used]
+    """The <block>32 of the first block of 100 ports no named demo publishes in."""
+    used = {port // 100 for port in published_ports(named)}
+    free = [block for block in _BLOCKS if block not in used]
     if not free:
-        raise SystemExit("every 28<N>32 is a named demo's: pass --port")
-    return 28032 + free[0] * 100
+        raise SystemExit("every block of 28000-29999 is a named demo's: pass --port")
+    return free[0] * 100 + 32
 
 
 def latest_release() -> str:

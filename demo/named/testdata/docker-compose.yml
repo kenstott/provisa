@@ -13,7 +13,7 @@
 #
 #   postgres  the demo's database, with the role Provisa reads it as.
 #
-# Port: 28332 the database; it can be moved by its variable.
+# Port: 29432 the database; it can be moved by its variable.
 x-demo-labels: &demo-labels
   com.provisa.demo: testdata
 name: provisa-demo-testdata
@@ -29,7 +29,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: testdata
     ports:
-      - "127.0.0.1:${TESTDATA_PG_PORT:-28332}:5432"
+      - "127.0.0.1:${TESTDATA_PG_PORT:-29432}:5432"
     volumes:
       - testdata_pg:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
