@@ -35,11 +35,26 @@ while [ "$_i" -lt "${#_ARGV[@]}" ]; do
       fi
       ;;
     --keep-data) KEEP_DATA=true ;;
+    # The demos this checkout can run: each demo/named/<name>/demo.yaml's title, and whether it is
+    # published (pulled as its bundle) or runs from this checkout's demo/named/<name>/.
+    --list-demos)
+      _here="$(cd "$(dirname "$0")" && pwd)"
+      printf '%-18s %-12s %s\n' "NAME" "STATUS" "TITLE"
+      for _spec in "$_here"/demo/named/*/demo.yaml; do
+        _name="$(basename "$(dirname "$_spec")")"
+        _title="$(sed -n 's/^title: *//p' "$_spec" | head -1)"
+        if grep -q '^published: *true' "$_spec"; then _status=published; else _status=unpublished; fi
+        printf '%-18s %-12s %s\n' "$_name" "$_status" "$_title"
+      done
+      echo
+      echo "Run one:  $0 --demo <name>   (a published demo is pulled as its bundle; the others run from this checkout)"
+      exit 0
+      ;;
     --from-source) DEMO_FROM_SOURCE=true ;;
     --native) NATIVE=true ;;
     --idp=*) IDP="${arg#--idp=}" ;;
     --source=*) SOURCES+=("${arg#--source=}") ;;
-    *) echo "Unknown option: $arg"; echo "Usage: $0 [--keep-docker] [--fast] [--keep-data] [--demo [name[@version]]] [--from-source] [--native] [--idp=basic|firebase] [--source=<name>]..."; echo "  --demo [name[@version]]: standard demo, or a named demo variant (e.g. 'perf' — see demo/named/<name>/). A published demo is pulled as its bundle: its latest, or the version named"; echo "  --from-source: run a published demo from this checkout's demo/named/<name>/, built here (development)"; echo "  --keep-data: with a named demo, reuse its seeded data; without it the demo is reseeded from empty on every start"; echo "  --source=<name>: provision demo/sources/<name> (a Docker container, primed with data) and include its config fragment"; exit 1 ;;
+    *) echo "Unknown option: $arg"; echo "Usage: $0 [--keep-docker] [--fast] [--keep-data] [--demo [name[@version]]] [--list-demos] [--from-source] [--native] [--idp=basic|firebase] [--source=<name>]..."; echo "  --demo [name[@version]]: standard demo, or a named demo variant (e.g. 'perf' — see demo/named/<name>/). A published demo is pulled as its bundle: its latest, or the version named"; echo "  --list-demos: list the demos this checkout can run"; echo "  --from-source: run a published demo from this checkout's demo/named/<name>/, built here (development)"; echo "  --keep-data: with a named demo, reuse its seeded data; without it the demo is reseeded from empty on every start"; echo "  --source=<name>: provision demo/sources/<name> (a Docker container, primed with data) and include its config fragment"; exit 1 ;;
   esac
   _i=$((_i + 1))
 done

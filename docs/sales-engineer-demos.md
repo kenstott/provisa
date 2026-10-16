@@ -31,6 +31,7 @@ The launcher reads `.env` in the repository root if one exists, and `.env` is no
 
 | Command | What starts |
 | --- | --- |
+| `./start-ui-install.sh --list-demos` | Nothing: it lists the named demos this checkout can run, each with its title and whether it is published |
 | `./start-ui-install.sh --demo` | The standard demo: a pet store with four sources |
 | `./start-ui-install.sh --demo <name>` | A named demo. A published one (`weblogs`) is pulled as a bundle; any other runs from `demo/named/<name>/` |
 | `./start-ui-install.sh --demo <name>@<version>` | A published demo, pinned to one version |

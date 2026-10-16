@@ -20,6 +20,19 @@ That design supports two ways of using it, and they are not exclusive:
 - **As scaffolding for modernization** — Model your estate, let Provisa generate the native SQL for each source, then capture that SQL and adopt it directly in the target system. Provisa is the transition layer, not a permanent dependency.
 - **As permanent policy-enforcing infrastructure** — Keep it in place as the governed path every query takes, so definition, enforcement, and audit stay unified for as long as the estate exists.
 
+## Try a demo
+
+The quickest look is a live demo in your browser, with nothing to install: [provisa.dev/demos](https://provisa.dev/demos). Each one opens a private sandbox with a guided tour.
+
+From a checkout of this repository you can run any demo on your own machine:
+
+```bash
+./start-ui-install.sh --list-demos     # the demos you can run, and which are published
+./start-ui-install.sh --demo weblogs   # start one, with its tour
+```
+
+A published demo is pulled as a ready-made bundle; the others run from `demo/named/<name>/`. See [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) for every option.
+
 ## The federation model
 
 The whole model comes down to two contracts and two policies: sources reduce to 2-D tables over one type system, queries reduce to one SQL-like IR, reachability decides what is queried live versus materialized, and a freshness strategy governs each materialized copy and derived dataset. Data shape in, query shape in, governance at the join, native queries out. The rest of this section walks each piece.
