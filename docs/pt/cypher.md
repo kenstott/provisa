@@ -1,10 +1,10 @@
-# Suporte a Consulta Cypher
+# Suporte a Consulta Cypher {: #cypher-query-support }
 
 O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cypher/`. (REQ-345, REQ-347) Consultas são analisadas por um parser recursivo-descendente personalizado (nenhuma biblioteca Cypher externa) (REQ-571), resolvidas de esquema contra o modelo (REQ-351), e emitidas como SQL, depois roteadas para o motor de execução alvo. (REQ-066, REQ-067, REQ-347)
 
-## Funcionalidades Implementadas
+## Funcionalidades Implementadas {: #implemented-features }
 
-### Cláusulas
+### Cláusulas {: #clauses }
 
 | Cláusula | Status | Notas |
 | -------- | -------- | ------- |
@@ -24,7 +24,7 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 | `CALL db.propertyKeys()` | ✓ | Retorna todos os nomes de chave de propriedade em todos os tipos de nó (REQ-572) |
 | `UNWIND` | ✓ | Expansão de array para linhas; primeiro item se torna FROM, subsequentes se tornam CROSS JOIN UNNEST |
 
-### Padrões de Match
+### Padrões de Match {: #match-patterns }
 
 | Padrão | Status | Notas |
 | --------- | -------- | ------- |
@@ -42,7 +42,7 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 | `shortestPath(…)` | ✓ | JOIN plano para endpoints heterogêneos; CTE WITH RECURSIVE para mesmo-tipo/auto-referencial |
 | `allShortestPaths(…)` | ✓ | Igual a shortestPath sem LIMIT 1 |
 
-### Expressões e Predicados
+### Expressões e Predicados {: #expressions-and-predicates }
 
 | Funcionalidade | Status | Mapeamento SQL |
 | --------- | -------- | ------------ |
@@ -69,7 +69,7 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 | `CASE WHEN … THEN … ELSE … END` | ✓ | Direto (formas buscadas e simples) |
 | GROUP BY implícito | ✓ | Itens RETURN não agregados se tornam chaves GROUP BY quando qualquer item tem um agregado |
 
-### Projeções de Mapa
+### Projeções de Mapa {: #map-projections }
 
 | Sintaxe | Mapeamento SQL |
 | -------- | ------------ |
@@ -80,7 +80,7 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 
 **Propriedades de objeto.** Uma coluna que contém um objeto declarado (o objeto embutido de um tipo GraphQL remoto, ou qualquer coluna registrada com campos de objeto) é uma propriedade de mapa: `RETURN n.address` a retorna como mapa, seja qual for a forma em que o motor a devolve, e o nó `n` a traz entre suas propriedades. Um campo GraphQL remoto que aponta para um tipo registrado, um objeto ou uma lista, não é uma propriedade; é alcançado pelo seu relacionamento. (REQ-1991) [tool-verified: `provisa/cypher/label_map.py`, `provisa/cypher/assembler.py`]
 
-### Funções de Agregação
+### Funções de Agregação {: #aggregation-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -93,7 +93,7 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 | `percentileCont(x, p)` | `approx_percentile(x, p)` |
 | `percentileDisc(x, p)` | `approx_percentile(x, p)` |
 
-### Funções de String
+### Funções de String {: #string-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -109,7 +109,7 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 | `size(string)` | `char_length(string)` |
 | `size(list)` | `cardinality(list)` |
 
-### Funções de Conversão de Tipo
+### Funções de Conversão de Tipo {: #type-conversion-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -119,7 +119,7 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 | `toBoolean(x)` | `TRY_CAST(x AS BOOLEAN)` |
 | `toStringOrNull`, `toIntegerOrNull`, `toFloatOrNull`, `toBooleanOrNull` | variantes `TRY_CAST` |
 
-### Funções Matemáticas
+### Funções Matemáticas {: #math-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -128,7 +128,7 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 | `range(start, end)` | `sequence(start, end)` |
 | `abs`, `sqrt`, `ceil`, `floor`, `round`, `sign` | repassado |
 
-### Funções de Lista
+### Funções de Lista {: #list-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -137,7 +137,7 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 | `tail(list)` | `slice(list, 2, cardinality(list))` |
 | `isEmpty(list)` | `cardinality(list) = 0` |
 
-### Compreensões de Lista
+### Compreensões de Lista {: #list-comprehensions }
 
 | Sintaxe | Mapeamento SQL |
 | -------- | ------------ |
@@ -150,14 +150,14 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 | `single(x IN list WHERE p(x))` | `cardinality(filter(list, x -> p(x))) = 1` |
 | `reduce(acc = init, x IN list \| expr)` | `reduce(list, init, (acc, x) -> expr, acc -> acc)` |
 
-### Compreensões de Padrão
+### Compreensões de Padrão {: #pattern-comprehensions }
 
 | Sintaxe | Mapeamento SQL |
 | -------- | ------------ |
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
 | `[(a)-[]->(b:Label) \| b.prop]` | tipo inferido do modelo; mesma forma de subconsulta ARRAY |
 
-### Subconsultas CALL Correlacionadas
+### Subconsultas CALL Correlacionadas {: #correlated-call-subqueries }
 
 `CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` traduz para `CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`. (REQ-573) Regras:
 
@@ -168,7 +168,7 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 
 ---
 
-## Escritas
+## Escritas {: #writes }
 
 Cypher suporta três padrões de escrita através do endpoint `/data/cypher`, executados por `provisa/cypher/write_translator.py`. (REQ-818) [tool-verified: `provisa/api/rest/cypher_router.py:415-545`]
 
@@ -191,22 +191,22 @@ Regras:
 
 ---
 
-## Acesso por Protocolo
+## Acesso por Protocolo {: #protocol-access }
 
 Cypher alcança o mesmo pipeline governado através de dois transportes:
 
 - **HTTP** — `POST /data/cypher` com um corpo JSON (`{"query": "...", "params": {...}}`). Retorna linhas tipadas, ou `affected_rows` para escritas. Variáveis de grafo na cláusula `RETURN` serializam como JSON: nós carregam `id`, `label`, `tableLabel`, e `properties`; arestas carregam `identity`, `start`, `end`, `type`, `properties`, `startNode`, e `endNode`; caminhos carregam `nodes`, `edges`, e `length`/`hops`. (REQ-750) Commands registrados também são chamáveis aqui via `CALL fn(args) YIELD col1, col2` — args posicionais mapeiam para os nomes de argumento declarados do command em ordem. (REQ-1156) [tool-verified: `provisa/api/rest/registered_call.py:113-143`]
 - **Bolt** — um servidor de protocolo binário compatível com Neo4j (codec PackStream, framing em chunks) que permite ao Neo4j Browser, Bloom, e drivers Bolt rodar Cypher sobre o grafo federado. (REQ-802) Ele inicia quando `PROVISA_BOLT_PORT` é definido para um valor não-zero e é desabilitado por padrão; defina `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` para TLS. [tool-verified: `provisa/api/app_startup.py:317-338`] A autenticação Bolt mapeia principal para usuário e banco de dados para função: `SHOW DATABASES` lista uma entrada por par (view × função), nomeada `provisa_<role>` (domínios de negócio) ou `provisa_ops_<role>` (com domínios system/meta/ops); `:use` seleciona a função e view ativas. (REQ-807) Relacionamentos recebem IDs inteiros duráveis via uma tabela `rel_ids`, espelhando o design de `node_ids`. (REQ-806) Commands registrados são chamáveis com `CALL command(args)` — args posicionais mapeiam para nomes de argumento declarados em ordem; procedimentos `CALL dbms.*` / `CALL db.*` têm precedência. (REQ-1156) [tool-verified: `provisa/bolt/session.py:722-749`]
 
-### Análise de Grafo (Graph Analytics)
+### Análise de Grafo (Graph Analytics) {: #graph-analytics }
 
 `POST /data/graph-analytics` roda uma consulta Cypher, constrói um grafo NetworkX em memória a partir dos nós e arestas resultantes, executa um algoritmo nomeado, e mescla um dict `_analytics` em cada nó e aresta antes de retorná-los como JSON com um campo `elapsed_ms`. (REQ-642) As chaves de `_analytics` variam por algoritmo: centralidade produz `score`; detecção de comunidade produz `cluster`; k-core produz `core_number`; centralidade de grau adiciona `in_degree` e `out_degree`. (REQ-643) O endpoint rejeita grafos acima de um tamanho configurável (padrão 10.000 nós / 50.000 arestas) com HTTP 413; Girvan-Newman é limitado a 500 nós a menos que o chamador passe `force=true`. (REQ-650, REQ-651)
 
 ---
 
-## Limitações
+## Limitações {: #limitations }
 
-### Restrições de design
+### Restrições de design {: #design-constraints }
 
 1. **Escritas são limitadas a `CREATE`, `SET`, e `DELETE`.** Estas executam como escritas de tabela diretas através do mesmo pipeline que mutações GraphQL e SQL. (REQ-818, REQ-666, REQ-667, REQ-668) Veja §Escritas acima. `MERGE`, `DETACH DELETE`, e `REMOVE` são rejeitados no momento da análise. (REQ-671, REQ-818) Procedimentos APOC também são rejeitados.
 
@@ -216,7 +216,7 @@ Cypher alcança o mesmo pipeline governado através de dois transportes:
 
 4. **Caminhos recursivos exigem um limite.** Padrões de comprimento variável (`[*]`) devem incluir um limite superior (ex.: `[*..10]`). (REQ-348) Travessia sem limite é rejeitada no momento da análise para prevenir CTEs recursivos descontrolados.
 
-### Notas de comportamento
+### Notas de comportamento {: #behaviour-notes }
 
 5. **`shortestPath` em caminhos não auto-referenciais usa JOIN plano, não ordenação por hops.** Quando os tipos de início e fim diferem e nenhum relacionamento auto-referencial existe no esquema, o tradutor emite uma cadeia de JOIN plana (o caminho de esquema mais curto). (REQ-576) Ele não emite `ORDER BY hops` porque hops não são rastreados nesse caminho de código. O resultado é o caminho de esquema estruturalmente mais curto, não o caminho mais curto de dados através de múltiplas linhas.
 
@@ -226,7 +226,7 @@ Cypher alcança o mesmo pipeline governado através de dois transportes:
 
 8. **CTEs de cláusula `WITH` são nomeados `_w0`, `_w1`, …** (REQ-578) Nomes são atribuídos posicionalmente dentro de uma única chamada de tradução. Compor múltiplas consultas traduzidas (ex.: em um batch) pode produzir nomes de CTE colidentes se forem concatenadas ingenuamente.
 
-### Cobertura de expressão e padrão (REQ-913)
+### Cobertura de expressão e padrão (REQ-913) {: #expression-and-pattern-coverage-req-913 }
 
 Expressões Cypher são analisadas em uma AST e reduzidas nó a nó para SQL (`provisa/cypher/expr_parser.py`, `provisa/cypher/expr_visitor.py`). A gramática segue a torre de precedência `oC_Expression` do openCypher. Suportado: literais, parâmetros, acesso a propriedade, `n.prop`, índice e slice, aritmética (`+ - * / % ^`), comparação, `IN`, `STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`, `IS [NOT] NULL`, booleano `AND` / `OR` / `XOR` / `NOT`, `CASE`, literais de lista e mapa, compreensões de lista e padrão (incluindo a vinculação de caminho `p = (…)`), projeção de mapa, `reduce`, os quantificadores `all` / `any` / `none` / `single`, subconsultas existenciais, e chamadas de função.
 

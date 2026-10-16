@@ -1,10 +1,10 @@
-# Princípios do Modelo de Domínio
+# Princípios do Modelo de Domínio {: #domain-model-principles }
 
 ---
 
-## 1. Governança
+## 1. Governança {: #1-governance }
 
-### Princípios Centrais
+### Princípios Centrais {: #core-principles }
 
 1. **Todo recurso deve pertencer a um domínio.** Tabelas, views, e relacionamentos são todos ativos
    de domínio. Não há recursos flutuantes não governados. O domínio é a unidade de responsabilidade.
@@ -28,7 +28,7 @@
    recurso, não no nível da consulta. Se você tem acesso a um recurso, pode consultá-lo. A
    governança é aplicada em tempo de execução através do pipeline.
 
-### Recursos: Tabelas e Views como Pares
+### Recursos: Tabelas e Views como Pares {: #resources-tables-and-views-as-peers }
 
 A distinção entre uma tabela e uma view é somente de origem — uma tabela é reivindicada de uma
 fonte, uma view é definida por um steward. Uma vez que qualquer uma exista como um ativo de
@@ -42,7 +42,7 @@ domínio, o modelo de governança as trata de forma idêntica:
 Um steward pode reivindicar tabelas privadamente e expor somente views curadas como produtos de
 dados voltados ao público.
 
-### Composição de View
+### Composição de View {: #view-composition }
 
 Uma view sempre pertence a um único domínio — há somente um tipo de view, sempre intradomínio. Uma
 view existe para um de dois propósitos:
@@ -70,7 +70,7 @@ Toda view carrega um propósito de negócio declarado, estabelecido no momento d
   adequação
 - Acompanha a view desde a criação através de todo o fluxo de governança
 
-### Consultas (Queries)
+### Consultas (Queries) {: #queries }
 
 Uma Query percorre caminhos de relacionamento aprovados sobre ativos de domínio. Diferente das
 Views, Queries não criam novo significado semântico — elas percorrem a estrutura aprovada do
@@ -103,19 +103,16 @@ Cada linguagem suportada expõe o domínio como um namespace estrutural nativo �
 O compilador resolve a associação de domínio a partir dessas posições estruturais — nenhuma
 anotação ou dica é necessária.
 
-### Relacionamentos
+### Relacionamentos {: #relationships }
 
 Um relacionamento é um caminho de travessia aprovado entre dois ativos. Fronteiras de domínio são
 irrelevantes para o que um relacionamento é — elas só determinam quem o aprova.
 
 **Aprovação:**
 
-- A aprovação é necessária de todo steward distinto que possui um ativo envolvido no
-  relacionamento
-- Se um steward possui ambos os ativos, uma aprovação é necessária. Se dois stewards estão
-  envolvidos, duas aprovações são necessárias
-- Não há classificação intradomínio/entre domínios — a propriedade determina o ônus de aprovação
-  naturalmente
+- Uma solicitação de relacionamento é decidida pelos domínios que ela toca: o domínio da sua tabela de origem e o domínio da sua tabela de destino (REQ-1948)
+- Uma aprovação só conta se vier de um usuário cujo direito de criar relacionamentos alcança um desses domínios; qualquer usuário assim pode rejeitá-la
+- A solicitação é executada quando dois usuários diferentes, nenhum deles o solicitante, a aprovaram e cada domínio envolvido tem um aprovador: um relacionamento entre dois domínios precisa de um sim de cada lado, e um relacionamento dentro de um domínio precisa de dois aprovadores desse domínio
 - Aprovar um relacionamento constrói o grafo de dependência de cada steward, habilitando
   notificações proativas de evolução de esquema
 
@@ -131,7 +128,7 @@ join pré-materializadas; relacionamentos na mesma fonte podem optar por isso vi
 consulta como um subproduto direto — trabalho de governança e trabalho de otimização são o mesmo
 ato.
 
-### Concessões de Acesso de Campo
+### Concessões de Acesso de Campo {: #field-access-grants }
 
 Uma concessão de acesso de campo é uma permissão domínio-para-domínio — o Domínio A pode usar
 campos específicos do Domínio B em suas views.
@@ -156,7 +153,7 @@ declarado, os campos específicos usados, e qual steward a aprovou. Isso dá ao 
 O tradeoff: o domínio de origem aprova acesso de campo sem conhecer todo uso futuro. Aprovação
 por-view é correta em teoria e inviável na prática.
 
-### Fluxo de Trabalho de Criação de Consulta
+### Fluxo de Trabalho de Criação de Consulta {: #query-creation-workflow }
 
 Três estágios, em ordem.
 
@@ -186,7 +183,7 @@ Três estágios, em ordem.
 - Nenhuma aprovação necessária — visibilidade de coluna e aprovação de relacionamento são os únicos
   portões
 
-### HITL como o Controle Primário
+### HITL como o Controle Primário {: #hitl-as-the-primary-control }
 
 Regras técnicas tratam do que é objetivo — rastreamento de proveniência de campo, aplicação de
 fronteira de domínio, validação de compilador. O julgamento contextual permanece com o steward.
@@ -202,9 +199,9 @@ fronteiras concedidas:
 
 ---
 
-## 2. Descobribilidade
+## 2. Descobribilidade {: #2-discoverability }
 
-### Camadas de Descoberta
+### Camadas de Descoberta {: #discovery-tiers }
 
 A descoberta é estruturada através de cinco camadas de governança crescente. Cada camada é um
 pré-requisito para a próxima.
@@ -221,7 +218,7 @@ Uma tabela não reivindicada é um sinal de lacuna — se dados necessários exi
 2, um steward deve reivindicá-los antes que a governança possa prosseguir. A ausência de qualquer
 candidato em todas as camadas requer escalonamento ao admin.
 
-### Restrições FK
+### Restrições FK {: #fk-constraints }
 
 Restrições FK são uma construção em nível de fonte — não podem abranger múltiplas fontes de dados.
 Caminhos de join entre fontes são derivados inteiramente de relacionamentos de catálogo aprovados
@@ -235,7 +232,7 @@ Dentro de uma fonte:
 - A validação do steward ainda é necessária antes que um candidato se torne um relacionamento
   aprovado
 
-### Hierarquia de Confiança de Relacionamento
+### Hierarquia de Confiança de Relacionamento {: #relationship-confidence-hierarchy }
 
 | Evidência | Confiança |
 | --- | --- |
@@ -246,7 +243,7 @@ Dentro de uma fonte:
 
 Sugestões corroboradas por múltiplos tipos de evidência acumulam confiança.
 
-### Sondagem e Correlação de Dados
+### Sondagem e Correlação de Dados {: #data-probing-and-correlation }
 
 Para candidatos inferidos semanticamente, a sondagem de dados fornece uma etapa de validação:
 
@@ -259,7 +256,7 @@ evidência corroborante, não prova — faixas de inteiro podem se sobrepor coin
 integridade referencial parcial é comum em sistemas analíticos. Uma margem de erro significativa
 permanece. O julgamento semântico do steward é a única verificação final confiável.
 
-### Descoberta Assistida por LLM
+### Descoberta Assistida por LLM {: #llm-assisted-discovery }
 
 O LLM opera em todas as cinco camadas simultaneamente, sugerindo relacionamentos, reivindicações
 candidatas, e caminhos de travessia classificados por confiança.
@@ -326,9 +323,9 @@ real aos dados, não a visibilidade de esquema.
 
 ---
 
-## 3. Uso
+## 3. Uso {: #3-usage }
 
-### Trilha de Auditoria de Consulta
+### Trilha de Auditoria de Consulta {: #query-audit-trail }
 
 Toda consulta que toca um ativo de domínio é registrada em um `query_audit_log` somente-anexação.
 Cada entrada captura:

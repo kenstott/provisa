@@ -1,4 +1,4 @@
-# Servidor pgwire do Provisa
+# Servidor pgwire do Provisa {: #provisa-pgwire-server }
 
 O Provisa expõe um endpoint de protocolo de wire do PostgreSQL (pgwire). Qualquer ferramenta que
 fale o protocolo de cliente PostgreSQL — psycopg2, asyncpg, DBeaver, Tableau, JDBC — consegue se
@@ -11,7 +11,7 @@ pgwire não é um desvio (bypass). (REQ-002, REQ-266)
 
 ---
 
-## Detalhes de Conexão
+## Detalhes de Conexão {: #connection-details }
 
 O servidor inicia quando `PROVISA_PGWIRE_PORT` é definido como um inteiro diferente de zero. É
 desabilitado por padrão. (REQ-527) [tool-verified: `app.py:1739`]
@@ -32,7 +32,7 @@ recursos ao número de versão podem se comportar como se estivessem conectadas 
 
 ---
 
-## Autenticação
+## Autenticação {: #authentication }
 
 O pacote de startup carrega um nome de usuário e um único campo de segredo, e nenhum esquema que
 diga o que é esse segredo. O Provisa decide a partir do próprio segredo, de modo que um cliente não
@@ -69,14 +69,14 @@ minutos, e o contador é compartilhado com HTTP e Bolt — um bloqueio conquista
 superfície vale em todas. (REQ-1393)
 
 **Escolhendo uma organização.** Em um deployment multi-organização, conecte-se a
-`<org>.<seu-domínio>` e o pgwire lê a organização do hostname no ClientHello do TLS, do mesmo modo
+`<org>.<your-domain>` e o pgwire lê a organização do hostname no ClientHello do TLS, do mesmo modo
 que o HTTP a lê do cabeçalho `Host`. (REQ-1234) O hostname solicita uma organização; ele não a
 concede, e um principal sem participação nela é recusado. Conectar-se por endereço IP não solicita
 organização alguma.
 
 ---
 
-## O Que Funciona
+## O Que Funciona {: #what-works }
 
 ### SELECT
 
@@ -101,52 +101,106 @@ são interceptados antes do pipeline de governança e roteados através do execu
 superfície retorna para esse command. `writable_by` e regras de governança são aplicadas dentro do
 executor. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
 
-### DDL
+### Cursores (DECLARE / FETCH / MOVE / CLOSE) {: #cursors-declare-fetch-move-close }
 
-Declarações DDL são detectadas pela regex em `server.py` e despachadas para `DdlHandler`. A função
-deve ter a capacidade `"ddl"`. (REQ-042) Sem ela, a declaração é rejeitada com SQLSTATE 42501.
-[tool-verified: `ddl_handler.py:82-83`]
+O Provisa trata a sintaxe textual de cursores SQL sobre o protocolo de consulta simples. (REQ-1862) Clientes que enviam `DECLARE`/`FETCH`/`MOVE`/`CLOSE` como instruções SQL simples recebem streaming real do lado do servidor em vez de um erro de protocolo ou de um buffer com o resultado completo carregado na memória do cliente.
 
-As formas de DDL reconhecidas são:
+**Isso é diferente do streaming baseado em portais.** O protocolo de consulta estendida — Bind/Execute com um campo de limite de linhas — é um mecanismo diferente do protocolo de transmissão. O asyncpg e a maioria dos drivers PostgreSQL modernos o usam automaticamente, sem SQL de cursor. Se o seu driver já usa portais, você não precisa desta sintaxe. `DECLARE CURSOR` é para clientes que enviam SQL de cursor literalmente: os cursores nomeados/do lado do servidor do psycopg2 (`conn.cursor(name="...")`), certas ferramentas de BI e alguns drivers JDBC antigos.
+
+**DECLARE**
 
 ```sql
-CREATE TABLE / VIEW / INDEX / UNIQUE INDEX / SEQUENCE / SCHEMA
-ALTER TABLE / INDEX / SEQUENCE / VIEW
-DROP TABLE / VIEW / INDEX / SEQUENCE / SCHEMA
+DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
+DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
+DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
+O SELECT interno passa pelo pipeline governado normal do Provisa — a mesma aplicação de RLS, o mesmo mascaramento e as mesmas verificações de acesso a domínios que valem para qualquer SELECT avulso. [tool-verified: `server.py:1367` — `ctx.execute_sql(inner_sql)`, the same call path as a plain SELECT] Declarar um cursor não contorna a governança.
 
-[tool-verified: `server.py:56-61`]
+A palavra-chave `SCROLL` controla tanto a navegação permitida quanto a memória que o cursor usa:
 
-Dois caminhos de execução existem dependendo de `ddl_catalog`: (REQ-582)
+| Declaração | Navegação para trás | Custo de memória |
+|---|---|---|
+| `DECLARE c CURSOR FOR ...` (padrão) | Não permitida | Limitado a um lote de FETCH |
+| `DECLARE c NO SCROLL CURSOR FOR ...` | Não permitida | Limitado a um lote de FETCH |
+| `DECLARE c SCROLL CURSOR FOR ...` | Permitida | Resultado completo em buffer na memória Python |
 
-**Caminho Trino** — usado quando `ddl_catalog` é um Iceberg, Hive, ou outro catálogo Trino não
-registrado (ex.: `iceberg`, `hive`, `otel`, `results`). Somente `CREATE TABLE` e `CREATE VIEW` são
-suportados neste caminho. Tentar `ALTER`, `DROP`, ou `CREATE INDEX` lança um erro. O nome da tabela
-é totalmente qualificado como `catalog.schema.table`. [tool-verified: `ddl_handler.py:92-100`]
+Quando nem `SCROLL` nem `NO SCROLL` é escrito, o padrão é `NO SCROLL` — igual ao padrão do PostgreSQL. [tool-verified: `server.py:1361-1362`] Um cursor `NO SCROLL` remove do seu buffer interno as linhas consumidas a cada passo para frente, então uma varredura `FETCH FORWARD` por um resultado grande nunca mantém mais que aproximadamente um lote na memória Python de cada vez. [tool-verified: `server.py:443-447`] Um cursor `SCROLL` guarda cada linha que já buscou — esse é o custo de suportar `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` e `LAST`. Antes de declarar um cursor `SCROLL` sobre um resultado grande, reserve o tamanho completo do resultado como heap Python. [tool-verified: `server.py:383-389`]
 
-**Caminho direto** — usado quando `ddl_catalog` corresponde a um ID de fonte registrado. DDL
-completo é suportado: CREATE, ALTER, DROP, índices, sequências. `CREATE TABLE` e `CREATE VIEW` são
-qualificados por esquema como `schema.table`. Todo outro DDL (ALTER, DROP, CREATE INDEX) passa
-como está após definir o contexto de esquema. Para fontes PostgreSQL e SQLite, o contexto é
-definido com `SET search_path TO schema`. Para MySQL e MariaDB, o contexto é definido com
-`USE schema`. [tool-verified: `ddl_handler.py:139-170`, `ddl_handler.py:207-213`]
+Declarar de novo um nome de cursor já aberto fecha primeiro o cursor anterior. [tool-verified: `server.py:1369-1371`] `WITH HOLD` e `WITHOUT HOLD` são aceitos na sintaxe; veja a duração do cursor abaixo.
 
-Após DDL em qualquer caminho, a nova tabela é registrada no contexto de compilação da função para
-que fique imediatamente consultável. (REQ-583) [tool-verified: `ddl_handler.py:216-250`]
+**FETCH e MOVE**
 
-**Resolução de alvo de escrita.** O catálogo e esquema de DDL vêm dos campos `ddl_catalog` e
-`ddl_schema` do domínio. Se `ddl_catalog` não estiver definido, o sistema assume como padrão o
-catálogo Iceberg. Se `ddl_schema` não estiver definido, assume como padrão o ID do domínio. O
-domínio é resolvido através da lista `domain_access` da função. (REQ-584) [tool-verified:
-`app.py:804-811`, `ddl_handler.py:104-115`]
+```sql
+FETCH 100 FROM c1            -- next 100 rows
+FETCH FORWARD 100 FROM c1    -- same
+FETCH ALL FROM c1            -- all remaining rows
+FETCH BACKWARD 10 FROM c1    -- previous 10 rows (SCROLL cursors only)
+FETCH ABSOLUTE 50 FROM c1    -- the row at absolute position 50 (SCROLL cursors only)
+FETCH RELATIVE -5 FROM c1    -- 5 positions back (SCROLL cursors only)
+FETCH FIRST FROM c1          -- row 1 (SCROLL cursors only)
+FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
+MOVE 100 FROM c1             -- advance position without returning rows
+```
+`FETCH` retorna linhas e envia a tag de comando `FETCH <n>`, onde `n` é a quantidade realmente retornada — que pode ser menor que a pedida quando o cursor chega ao fim. `MOVE` avança a posição sem retornar linhas e envia `MOVE <n>`. [tool-verified: `server.py:1417`, `server.py:1419`]
+
+`FROM` e `IN` são intercambiáveis para introduzir o nome do cursor. Nomes de cursor sem aspas são convertidos para minúsculas; nomes entre aspas (`"CaseSensitive"`) preservam maiúsculas e minúsculas. [tool-verified: `test_cursor.py:74-79`]
+
+A navegação para trás (`BACKWARD`, `ABSOLUTE`, `FIRST`, `LAST`, `RELATIVE` negativo) em um cursor `NO SCROLL` retorna SQLSTATE 55000 (`object_not_in_prerequisite_state`), igual à recusa do próprio PostgreSQL. [tool-verified: `server.py:1402-1406`] Um FETCH ou MOVE que nomeia um cursor nunca declarado retorna SQLSTATE 34000 (`invalid_cursor_name`). [tool-verified: `server.py:1398-1400`]
+
+**CLOSE**
+
+```sql
+CLOSE c1;    -- release one cursor and free its result stream
+CLOSE ALL;   -- release every open cursor on this connection
+```
+`CLOSE` libera o fluxo de resultados subjacente e remove o cursor da sessão. [tool-verified: `server.py:1421-1436`] Desconectar sem emitir `CLOSE` é seguro: `ProvisaSession.close()` libera automaticamente todos os cursores ainda abertos na desconexão. [tool-verified: `test_cursor.py:335-346`]
+
+**Duração do cursor.** O servidor pgwire do Provisa não tem máquina de estados de transação (`ProvisaSession.in_transaction()` é fixo em `False`). Por isso cada cursor se comporta como se tivesse sido declarado `WITH HOLD`: vive durante toda a conexão, não até o `COMMIT`. [tool-verified: `server.py:200` — `in_transaction()` always returns `False`] As palavras-chave `WITH HOLD` e `WITHOUT HOLD` são aceitas e ignoradas sem aviso — não há ciclo de vida de cursor por transação a aplicar.
+
+### Definições (CREATE, ALTER, DROP, TRUNCATE) {: #definitions-create-alter-drop-truncate }
+
+Nada é definido pelo pgwire. Uma instrução que cria, altera ou remove um objeto (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, um índice, uma sequência ou um esquema) é recusada com SQLSTATE 0A000, seja o que for que a função tenha; a exceção é uma tabela temporária da própria sessão (veja [Tabelas temporárias](#temporary-tables)). Uma tabela ou view é um objeto do modelo: crie-a no modelo (páginas de administração, API de administração ou configuração), ou crie-a na fonte de dados e admita-a no modelo. `TRUNCATE` é recusado da mesma forma; `DELETE` é a forma governada de remover linhas. [tool-verified: `provisa/compiler/definitions.py`]
+
+A recusa é feita uma vez, no pipeline por onde passa toda superfície SQL, então SQL sobre HTTP, Flight e MCP recusam as mesmas instruções com a mesma mensagem.
+
+### Tabelas temporárias {: #temporary-tables }
+
+Uma sessão pode criar, gravar, ler e remover tabelas temporárias próprias:
+
+```sql
+CREATE TEMP TABLE busy AS SELECT customer_id, COUNT(*) AS n FROM sales.orders GROUP BY customer_id;
+INSERT INTO busy VALUES (0, 0);
+UPDATE busy SET n = n + 1 WHERE customer_id = 0;
+DELETE FROM busy WHERE n < 5;
+SELECT c.name, b.n FROM sales.customers c JOIN busy b ON b.customer_id = c.id;
+DROP TABLE busy;
+```
+- **Criar** com `CREATE TEMP TABLE name (column type, ...)` ou `CREATE TEMP TABLE name AS SELECT ...`. O nome não leva esquema. Um `SELECT` a partir do qual ela é criada é uma leitura como qualquer outra: as regras de linha, as máscaras, os dados falsos e o limite de linhas da função se aplicam às linhas que ele pega.
+- **Tipos de coluna**: `smallint`, `integer`, `bigint`, `real`, `double precision`, `boolean`, `date`, `timestamp`, `text`, `varchar` e `DECIMAL(precision, scale)`. Um decimal mantém sua precisão e escala. Qualquer outro tipo é recusado, nomeando a coluna e o tipo: um valor nunca é armazenado como um tipo diferente do seu. Uma coluna criada a partir de um `SELECT` assume o tipo dos seus valores; uma sem valor pelo qual deduzir um tipo é recusada, então aplique `CAST` no `SELECT`.
+- **Limite de linhas.** As linhas que um `CREATE ... AS SELECT` ou um `INSERT ... SELECT` pega são lidas como a função lê qualquer coisa, então o limite de linhas da função se aplica. Uma tabela temporária preenchida a partir de uma leitura que o limite cortou traz o mesmo aviso de instrução que qualquer leitura cortada (`statement.rows_cut`), com o limite.
+- **Gravar** com `INSERT ... VALUES`, `INSERT ... SELECT`, `UPDATE` e `DELETE`, sem `RETURNING` e sem `FROM`. Uma gravação em uma tabela temporária não é uma mutação: não chega a nenhuma fonte nem a nenhum dado do ambiente, então funciona qualquer que seja o tratamento de mutações do ambiente e não precisa de direito de escrita.
+- **Ler** pelo seu nome, sozinha ou em join com tabelas do modelo. O motor calcula a leitura.
+- **Duração.** Uma tabela temporária não é um objeto do modelo, nenhuma outra sessão a vê, e ela termina com a sessão. No pgwire uma sessão é a conexão. Em uma superfície sem conexão própria (SQL sobre HTTP, Flight, MCP) uma sessão é uma requisição, então uma tabela temporária vive para as instruções enviadas juntas nessa requisição.
+- **Armazenamento.** As linhas ficam em um esquema próprio da sessão no store do motor e são removidas quando a sessão termina. Um `INSERT`, `UPDATE` ou `DELETE` reescreve a tabela inteira pelo motor, então uma tabela temporária serve para dados de trabalho, não para tabelas grandes gravadas linha a linha. Um processo que para sem encerrar suas sessões deixa os esquemas delas no store; eles são removidos quando o ambiente é aposentado.
+
+As mesmas instruções funcionam em toda superfície SQL: elas são tratadas no pipeline que todas compartilham. [inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; the pgwire connection-long session is not yet covered by a test]
+
+### Gravações de dados (INSERT, UPDATE, DELETE, MERGE, COPY FROM STDIN) {: #data-writes-insert-update-delete-merge-copy-from-stdin }
+
+As linhas de uma tabela registrada existente são gravadas pelo pgwire como em qualquer outra superfície SQL, pela única admissão de gravações (`provisa/compiler/write_admission.py`):
+
+1. **O direito.** A função tem `write`. (REQ-868)
+2. **As colunas.** Cada coluna que a instrução grava nomeia a função no seu `writable_by`; uma coluna que não declara nenhum não pode ser gravada por ninguém. (REQ-663)
+3. **As linhas que ela pode tocar.** O filtro de linha da função, o mesmo predicado que suas leituras levam, é adicionado ao `WHERE` de um `UPDATE` ou `DELETE`.
+4. **As linhas que ela deixa.** Uma função filtrada só pode gravar linhas que depois poderia ler: as linhas de um `INSERT`, e os novos valores de um `UPDATE` que define uma coluna lida pelo filtro, são verificados contra o filtro antes de qualquer coisa ser enviada à fonte.
+
+O que não pode ser decidido é recusado pelo nome em vez de admitido na dúvida (um `INSERT … SELECT`, um valor que não é nem um literal nem um parâmetro vinculado, um filtro que lê uma coluna que a instrução não fornece). [tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
 ### COPY
 
-`COPY ... TO STDOUT` e `COPY ... FROM STDIN` são ambos suportados. (REQ-585) [tool-verified:
-`copy_handler.py:231-257`]
+`COPY ... TO STDOUT` e `COPY ... FROM STDIN` são ambos suportados. (REQ-585)
 
-**COPY TO STDOUT** — exporta resultados de consulta no formato de wire COPY do PG. Duas formas
-funcionam:
+**COPY TO STDOUT** — exporta resultados de consulta no formato de transmissão COPY do PG. Duas formas funcionam:
 
 ```sql
 -- Table reference
@@ -155,22 +209,11 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
+Formatos suportados: `text` (delimitado por tabulações, padrão) e `csv`. O formato binário não é suportado na saída de COPY. [tool-verified: `copy_handler.py:36-52`]
 
-Formatos suportados: `text` (delimitado por tab, padrão) e `csv`. O formato binário não é suportado
-na saída de COPY. [tool-verified: `copy_handler.py:36-52`]
+**COPY FROM STDIN** é uma gravação de dados em uma tabela registrada existente: é admitida pela mesma admissão de gravações que um `INSERT` das mesmas linhas (veja [Gravações de dados](#data-writes-insert-update-delete-merge-copy-from-stdin)).
 
-**COPY FROM STDIN** — insere linhas em uma tabela alvo. Restrito a fontes com tipos `postgresql`,
-`mysql`, `sqlite`, ou `mariadb`. (REQ-586) Tentar COPY FROM contra uma fonte somente-Trino (ex.:
-Iceberg) lança um erro de permissão. [tool-verified: `copy_handler.py:65`, `copy_handler.py:351-356`]
-
-```sql
-COPY my_table (col1, col2) FROM STDIN WITH (FORMAT text)
-```
-
-Se nenhuma lista de colunas for fornecida, colunas são inferidas do esquema registrado.
-[tool-verified: `copy_handler.py:357`]
-
-### Transações e Comandos de Sessão
+### Transações e Comandos de Sessão {: #transactions-and-session-commands }
 
 SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, e DEALLOCATE são interceptados e
 retornam uma resposta de sucesso vazia. (REQ-587) O servidor é stateless em relação a transações —
@@ -179,7 +222,7 @@ não há isolamento de transação ou suporte a rollback. (REQ-587) [tool-verifi
 
 ---
 
-## Interceptação de Catálogo
+## Interceptação de Catálogo {: #catalog-intercept }
 
 Consultas contra `information_schema` e `pg_catalog` são respondidas localmente sem uma ida e volta
 ao Trino. (REQ-532) A camada de interceptação constrói um banco de dados DuckDB em memória por
@@ -227,7 +270,7 @@ As seguintes expressões escalares também são interceptadas: (REQ-588)
 
 ---
 
-## Codificação Binária de Parâmetro
+## Codificação Binária de Parâmetro {: #binary-parameter-encoding }
 
 O protocolo de consulta estendida (Bind/Execute) suporta parâmetros codificados em binário.
 (REQ-589) Os seguintes OIDs de tipo são decodificados de binário: [tool-verified:
@@ -259,7 +302,7 @@ conjunto de tipos mais ARRAY, JSON, INTERVAL, e BIGINT. (REQ-589) [tool-verified
 
 ---
 
-## Recomendações de Driver
+## Recomendações de Driver {: #driver-recommendations }
 
 **Drivers Python nativos (psycopg2, asyncpg).** Estes negociam o protocolo de consulta estendida
 por padrão e usam codificação binária para a maioria dos tipos. A fidelidade de tipo é mais alta
@@ -285,42 +328,29 @@ conversão de tipo — o comportamento de modo texto do JDBC é mais simples de 
 
 ---
 
-## Ressalvas e Restrições
+## Ressalvas e Restrições {: #caveats-and-constraints }
 
-**Somente SQL; sem mutações DML.** O listener pgwire analisa e executa somente SQL — strings
-GraphQL e Cypher não são aceitas. (REQ-614) `INSERT`, `UPDATE`, e `DELETE` simples não são roteados
-para um caminho de escrita. (REQ-615) Escreva dados através de `COPY FROM STDIN` (fontes graváveis)
-ou `CREATE TABLE AS`; mutações em nível de linha passam pelos caminhos de escrita GraphQL, Cypher,
-ou Trino.
+**Somente SQL.** O listener pgwire analisa e executa somente SQL — strings GraphQL e Cypher não são aceitas. (REQ-614) Gravações de dados em tabelas existentes são admitidas pelos direitos da função, suas concessões de coluna e seu filtro de linha; veja [Gravações de dados](#data-writes-insert-update-delete-merge-copy-from-stdin).
 
-**COPY e DDL exigem a capacidade `ddl`.** Tanto `COPY` (em qualquer direção) quanto DDL são
-condicionados pela capacidade `ddl` da função; funções sem ela recebem SQLSTATE 42501. (REQ-616)
+**Sem definições.** `CREATE`, `ALTER`, `DROP` e `TRUNCATE` são recusados com SQLSTATE 0A000 seja o que for que a função tenha, exceto uma tabela temporária da própria sessão; veja [Tabelas temporárias](#temporary-tables). (REQ-615, REQ-616)
 
 **Sem suporte real a transação.** BEGIN/COMMIT/ROLLBACK são aceitos e silenciosamente ignorados.
 Cada declaração roda independentemente. (REQ-587) [tool-verified: `server.py:146-158` —
 `in_transaction()` sempre retorna `False`]
 
-**Timeout de 60 segundos para DDL, 120 segundos para consulta.** Estes são fixos no código nas
-threads do handler. (REQ-590) DDL de longa duração contra fontes remotas (mudanças de esquema em
-tabelas grandes) pode expirar. [tool-verified: `ddl_handler.py:136`, `server.py:186`]
-
-**COPY FROM é somente para fonte gravável.** Iceberg, Hive, fontes somente-Trino, e tipos de fonte
-somente-leitura não aceitam COPY FROM. O erro é SQLSTATE 42501. (REQ-586) [tool-verified:
-`copy_handler.py:65`]
+**Timeout de consulta.** Uma instrução pode usar o timeout de requisição próprio do pgwire, `limits.request_timeouts.pgwire`, ou o compartilhado `limits.request_timeout` quando aquele não está definido; ambos são configurações do operador. (REQ-590, REQ-1905) [tool-verified: `provisa/core/limits.py`, `server.py`]
 
 **O formato de saída COPY é text ou csv.** O formato binário COPY do PG (`FORMAT binary`) não está
 implementado. [inferred: only `text` and `csv` branches exist in `_rows_to_copy_text` /
 `_rows_to_copy_csv`]
-
-**DDL no caminho Trino é somente CREATE.** ALTER, DROP, e CREATE INDEX contra catálogos Iceberg ou
-Hive não são suportados. Use uma fonte SQL registrada como `ddl_catalog` se precisar de DDL
-completo. (REQ-582) [tool-verified: `ddl_handler.py:92-100`]
 
 **A substituição de parâmetro é literal.** Parâmetros `$1`, `$2`, ... são substituídos como
 literais SQL antes da execução, não enviados como parâmetros de bind ao motor upstream. Isso
 significa que o motor upstream nunca vê uma declaração preparada. Para o Trino isso não tem impacto
 prático; para fontes de pool direto isso ignora o cache de declaração preparada. (REQ-581)
 [tool-verified: `server.py:78-85`]
+
+**DECLARE SCROLL guarda em buffer o resultado completo.** Um cursor `SCROLL` acumula no heap Python cada linha que busca do motor para poder servir `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` e `LAST` sob demanda. Com um resultado grande, o resultado inteiro vive na memória enquanto o cursor estiver aberto. Use o padrão `NO SCROLL` para streaming só para frente. (REQ-1862) [tool-verified: `server.py:383-389`]
 
 **`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.**
 Estas tabelas existem na camada de catálogo mas são stubs vazios. Ferramentas de monitoramento que

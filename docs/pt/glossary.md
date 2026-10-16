@@ -1,4 +1,4 @@
-# Glossário de Negócios
+# Glossário de Negócios {: #business-glossary }
 
 O glossário de negócios é um vocabulário vivo sobre o seu modelo de dados. Toda coluna física no
 modelo resolve para um termo — um único termo compartilhado sempre que múltiplas colunas
@@ -13,7 +13,7 @@ de IA que sabe que "customer" nomeia toda coluna que carrega um identificador de
 adivinhar qual de `cust_id`, `customerId` e `CUSTOMER_KEY` é a certa — todas resolvem para o mesmo
 termo, e o termo carrega a definição.
 
-## Como os termos são derivados
+## Como os termos são derivados {: #how-terms-are-derived }
 
 O Provisa deriva um termo de cada nome de coluna automaticamente, usando uma regra de normalização
 determinística (REQ-1387): dobra de maiúsculas e minúsculas, tokenização por separador e camelCase,
@@ -35,14 +35,14 @@ Somente tokens finais são removidos, e nunca o último token restante: uma colu
 termo resultante em vez de três termos separados. A curadoria então tem um único lugar para adicionar a definição,
 não três.
 
-### Frases genéricas
+### Frases genéricas {: #generic-phrases }
 
 Algumas frases normalizadas são genéricas demais para serem um conceito por si só. Uma coluna `name`, `date` ou
 `identifier` isolada nomeia um atributo do conceito da sua tabela, não um conceito independente daquela
 tabela. Funcionários têm nomes; produtos têm nomes; não são a mesma coisa.
 
 Quando uma frase cai no conjunto genérico e há contexto de tabela disponível, o termo se qualifica para
-`<conceito da tabela> <frase>`: `employees.first_name` normaliza para `employee first name`, e
+`<table concept> <phrase>`: `employees.first_name` normaliza para `employee first name`, e
 `orders.id` normaliza para `order`, porque a remoção do proxy então colapsa a frase qualificada
 sobre o conceito que ela identifica. Este último caso é importante: a chave primária de `orders` e cada
 chave estrangeira `order_id` em outras tabelas pousam todas em `order`, sem necessidade de curadoria extra.
@@ -51,7 +51,7 @@ O conjunto genérico cobre substantivos de atributo (`name`, `date`, `status`, `
 frases de trilha de auditoria (`created_at`, `modified_by`, `submitted_timestamp`) e um punhado de outras
 que aparecem em quase toda tabela.
 
-### O nome de negócio, não o nome físico
+### O nome de negócio, não o nome físico {: #the-business-name-not-the-physical-name }
 
 Um termo derivado segue o **nome de negócio** da coluna — seu alias quando o modelador definiu um, seu
 nome físico quando não definiu (REQ-1581). Quando `usr_nm` recebe o alias `user name`, o termo derivado
@@ -67,7 +67,7 @@ Realiasar uma coluna re-deriva seu termo proposto, então o glossário acompanha
 pedir a mesma correção duas vezes. Uma vez que um curador tenha adicionado uma definição, um relacionamento ou um
 especialista a um termo, uma edição de alias não move o ref — aquele trabalho é do curador, e permanece.
 
-### Nomes de tabela de caminho de acesso
+### Nomes de tabela de caminho de acesso {: #access-path-table-names }
 
 Alguns nomes de tabela descrevem um caminho de acesso em vez de um conceito: `user_by_name` é um usuário alcançado
 através de uma busca por nome, não um tipo distinto de entidade. Quando o Provisa deriva o conceito da tabela para
@@ -79,7 +79,7 @@ com o atributo genuíno `users.name` — um termo contendo uma coisa e um dos se
 O corte se aplica somente a conceitos de tabela. Em um nome de coluna, `by` faz parte do substantivo composto:
 `pet_by_name` e `pet_name` normalizam para o mesmo termo, `pet name`.
 
-## O que torna um termo curado
+## O que torna um termo curado {: #what-makes-a-term-curated }
 
 Um termo nascido da normalização de coluna começa em branco — uma proposta, ainda não vocabulário. Ele se torna
 curado quando qualquer uma das condições a seguir for verdadeira:
@@ -94,7 +94,7 @@ do modelo, o termo é depreciado em vez de excluído: ele sai de serviço, mant�
 fornecido pelo editor e é revivido automaticamente se a mesma coluna reaparecer. Um termo não curado
 sem mais colunas é simplesmente removido.
 
-## Ressincronizando a partir das tabelas
+## Ressincronizando a partir das tabelas {: #re-syncing-from-tables }
 
 Toda vez que uma tabela é salva ou recarregada, `sync_table_refs` reconcilia as colunas daquela tabela com
 os refs existentes. Colunas novas criam ou vinculam termos; colunas que partiram descartam seus refs; e a
@@ -107,7 +107,7 @@ não sobrepôs a escolha de termo do curador.
 Um termo abstrato cujo único caminho até dados físicos passava por um termo que parte é depreciado em vez
 de removido, preservando a estrutura conceitual até que seja religado.
 
-## Relacionamentos
+## Relacionamentos {: #relationships }
 
 Termos se relacionam com outros termos através de arestas tipadas. Os tipos de relacionamento suportados são:
 
@@ -135,7 +135,7 @@ relação Cypher distinto entre dois nós `GlossaryTerm`, e não uma propriedade
 sobre as suas próprias tabelas, e é lida pelo mesmo código.
 [tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
 
-## Termos abstratos
+## Termos abstratos {: #abstract-terms }
 
 Um termo abstrato não tem refs de coluna física próprios. Use um para um conceito de negócio que abrange
 múltiplos termos concretos — um guarda-chuva que você então liga aos termos específicos que de fato contêm colunas.
@@ -146,7 +146,7 @@ Um termo abstrato que não consegue alcançar nenhuma coluna física através do
 solta. Ele não aparece na busca de termos por agentes nem na exportação de metadados — um termo que não nomeia dado algum
 não pode responder nada.
 
-## A regra de admissão para interfaces consumidoras
+## A regra de admissão para interfaces consumidoras {: #the-admission-rule-for-consuming-surfaces }
 
 Um termo que uma interface consumidora pode oferecer precisa satisfazer três condições (REQ-1387):
 
@@ -163,7 +163,7 @@ A conectividade se propaga pelo grafo: um termo abstrato alcança dados através
 que os alcance. Termos fora de serviço não conduzem — um termo aposentado não mantém seus
 dependentes vivos.
 
-## Exportação de metadados
+## Exportação de metadados {: #metadata-export }
 
 O glossário publica em catálogos de dados externos como parte da exportação de metadados. A mesma regra de
 admissão se aplica, com um estreitamento: o enraizamento de um termo é julgado apenas contra colunas que de fato
@@ -175,7 +175,7 @@ Arestas de relacionamento publicam apenas quando ambos os termos das pontas publ
 
 Ativos de coluna exportam independentemente. Um termo ser excluído não esconde os dados subjacentes.
 
-### Excluindo um termo da exportação
+### Excluindo um termo da exportação {: #excluding-a-term-from-export }
 
 Algumas colunas carregam encanamento em vez de dados de negócio: identificadores de lote de ETL, versões de linha,
 timestamps de ingestão. Um termo derivado de tal coluna pode ter uma definição perfeitamente precisa
@@ -187,7 +187,7 @@ O teste é se o negócio fala esta palavra, não se a definição é boa. Um ide
 lote de ETL tem um significado claro que pertence ao glossário para engenheiros; ele não pertence
 a um catálogo de negócios ao lado de `customer` e `revenue`.
 
-## Trabalhando com o glossário
+## Trabalhando com o glossário {: #working-with-the-glossary }
 
 Abra **Administração → Glossário** na UI. O painel esquerdo lista todos os termos; clique em um para abrir sua
 visão de detalhe. A partir daí:
@@ -213,7 +213,7 @@ O banner **Proposto** em um termo sem definição diz se o termo está indefinid
 (dê alias à coluna ou adicione uma definição) ou não fundamentado (relacione-o a um termo que tenha colunas).
 Quando você o vê, o termo ainda não é alcançável por agentes ou catálogos.
 
-## Veja também
+## Veja também {: #see-also }
 
 - [Exportação de Metadados](metadata-export.md) — como termos e relacionamentos publicam em catálogos
   de dados externos, incluindo quais termos a regra de admissão da exportação admite.

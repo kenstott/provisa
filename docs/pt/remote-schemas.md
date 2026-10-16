@@ -1,12 +1,12 @@
-# Esquemas Remotos (Remote Schemas)
+# Esquemas Remotos (Remote Schemas) {: #remote-schemas }
 
 Uma fonte de esquema remoto conecta uma API externa — GraphQL (incluindo GitHub), gRPC, ou REST (OpenAPI) — ao modelo do Provisa. Adicionar uma fonte não registra nenhuma tabela. A fonte oferece tabelas, e um steward registra cada tabela desejada pelo seletor «Register Table»; esse registro é a etapa de curadoria. (REQ-308, REQ-316, REQ-322) Uma tabela registrada é uma tabela Provisa de primeira classe. (REQ-308, REQ-316, REQ-325) Toda regra de governança, interface de consulta, e camada de segurança se aplica automaticamente. (REQ-310, REQ-319, REQ-328) O serviço remoto nunca vê as regras de governança do Provisa. (REQ-310, REQ-319, REQ-328)
 
 ---
 
-## Três tipos de fonte
+## Três tipos de fonte {: #three-source-types }
 
-### Esquema remoto GraphQL (REQ-307–313)
+### Esquema remoto GraphQL (REQ-307–313) {: #graphql-remote-schema-req-307313 }
 
 **Como adicionar a fonte.** Faça POST para `/admin/sources/graphql-remote` com a URL do endpoint, um namespace, e auth opcional. O Provisa dispara uma consulta de introspecção `__schema` padrão contra o endpoint remoto para confirmar o endpoint e a credencial. (REQ-307) [tool-verified: `provisa/graphql_remote/introspect.py:47–59`]
 
@@ -160,7 +160,7 @@ GitLab é um tipo de fonte comum e é adicionado e registrado da mesma forma que
 
 ---
 
-### Esquema remoto gRPC (REQ-322–329)
+### Esquema remoto gRPC (REQ-322–329) {: #grpc-remote-schema-req-322329 }
 
 **Como adicionar a fonte.** Faça POST para `/admin/grpc-remote/register` com o endereço do servidor, um caminho ou URL para um arquivo `.proto`, e configuração TLS opcional. Adicionar a fonte não registra nenhuma tabela.
 
@@ -288,7 +288,7 @@ Prioridade de classificação: `operation_overrides` (payload) sobrepõe `x-prov
 
 ---
 
-## Impacto de registrar uma tabela remota
+## Impacto de registrar uma tabela remota {: #impact-of-registering-a-remote-table }
 
 Uma tabela registrada a partir de qualquer fonte de esquema remoto é uma tabela Provisa de primeira classe. Nada nela é tratado de forma diferente de uma tabela relacional conectada localmente em tempo de execução. (REQ-308, REQ-313)
 
@@ -304,7 +304,7 @@ Uma tabela registrada a partir de qualquer fonte de esquema remoto é uma tabela
 
 Consultas ad-hoc contra tabelas remotas são permitidas somente sob os direitos do usuário — o acesso é uniformemente baseado em direitos (direitos de tabela/coluna + relacionamentos aprovados), sem modo de governança por tabela. (REQ-001, REQ-003)
 
-**Governança de relacionamento (V002).** Condições JOIN contra tabelas remotas — quando consultadas via SQL ou Cypher — devem corresponder a um relacionamento registrado e aprovado. (REQ-604) A verificação V002 é pulada para consultas GraphQL porque relacionamentos definidos na SDL são pré-aprovados por design. Veja [docs/security.md](security.md#governanca-de-relacionamento-v002).
+**Governança de relacionamento (V002).** Condições JOIN contra tabelas remotas — quando consultadas via SQL ou Cypher — devem corresponder a um relacionamento registrado e aprovado. (REQ-604) A verificação V002 é pulada para consultas GraphQL porque relacionamentos definidos na SDL são pré-aprovados por design. Veja [docs/security.md](security.md#relationship-governance-v002).
 
 **Colunas do tipo OBJECT.** Quando uma coluna mapeia para um OBJECT GQL inline não governado ou tipo de objeto OpenAPI, seu tipo Provisa é `jsonb`. A coluna armazena o blob JSON aninhado completo. Quando sub-campos são declarados (`gql_object_fields` ou `object_fields`), o mapa `gql_object_columns` é populado no momento da construção do esquema. O gerador SQL usa esse mapa para emitir expressões de extração `->>` para sub-campos quando uma consulta os seleciona. [tool-verified: `provisa/api/app.py:1305–1315`, `provisa/compiler/schema_gen.py:80–82`]
 
@@ -312,7 +312,7 @@ Consultas ad-hoc contra tabelas remotas são permitidas somente sob os direitos 
 
 ---
 
-## Impacto de criar um relacionamento de cobertura
+## Impacto de criar um relacionamento de cobertura {: #impact-of-creating-a-covering-relationship }
 
 Quando um steward registra um relacionamento entre duas tabelas remotas (ou entre uma tabela remota e uma tabela local), o relacionamento se torna o caminho de join usado no momento da consulta.
 
@@ -330,7 +330,7 @@ Na SDL GraphQL, um campo OBJECT inline não governado é tipado como o tipo de o
 
 ---
 
-## Comportamento somente-type-def
+## Comportamento somente-type-def {: #type-def-only-behavior }
 
 Nem todo tipo em um esquema remoto precisa ser uma tabela consultável.
 

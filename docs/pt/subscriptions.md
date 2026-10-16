@@ -1,8 +1,8 @@
-# Subscriptions SSE
+# Subscriptions SSE {: #sse-subscriptions }
 
 O Provisa suporta push em tempo real via Server-Sent Events (SSE). Clientes recebem um stream de eventos de mudança sem polling. (REQ-258)
 
-## Fontes
+## Fontes {: #sources }
 
 Subscriptions têm como alvo uma **tabela registrada**:
 
@@ -12,13 +12,13 @@ Subscriptions têm como alvo uma **tabela registrada**:
 | Tabela (RDBMS não-PG com um bloco `cdc` na fonte) | `debezium`, `kafka`, `poll` |
 | Tabela (view federada / qualquer outra fonte) | somente `poll` |
 
-### Auto-instalação de trigger PostgreSQL
+### Auto-instalação de trigger PostgreSQL {: #postgresql-trigger-auto-installation }
 
 O Provisa automaticamente instala triggers `AFTER INSERT OR UPDATE OR DELETE` em todas as tabelas PostgreSQL **pré-aprovadas** na inicialização. (REQ-565) Esses triggers chamam `pg_notify('provisa_{table}', ...)` para que DML bruto (não apenas mutações do Provisa) seja captado pelas subscriptions. (REQ-565)
 
 Se a instalação do trigger falhar (ex.: privilégio insuficiente — a função do banco de dados deve possuir a tabela), o Provisa recorre ao polling por marca d'água para aquela tabela, desde que um `watermark_column` esteja configurado. (REQ-566) Um aviso é registrado no log. (REQ-566)
 
-### Subscriptions de view entre fontes de dados
+### Subscriptions de view entre fontes de dados {: #cross-datasource-view-subscriptions }
 
 Para views que unem múltiplas fontes de dados via o motor de federação, adicione um `watermark_column` ao registro da tabela. (REQ-260, REQ-283) A coluna deve existir no SQL da view (não precisa aparecer no esquema GraphQL):
 
@@ -33,7 +33,7 @@ JOIN mysql.crm.customer_segments s ON o.customer_id = s.customer_id;
 
 Registre com `watermark_column: _watermark`. O Provisa faz polling usando `WHERE _watermark > <last_seen>`. (REQ-260)
 
-### Subscriptions de relacionamento aninhado
+### Subscriptions de relacionamento aninhado {: #nested-relationship-subscriptions }
 
 Quando o campo de subscription seleciona campos de tabelas unidas (via relacionamentos registrados), o Provisa observa **todas** as tabelas físicas envolvidas simultaneamente. (REQ-567) Uma mudança em qualquer tabela unida dispara novamente a consulta de subscription. (REQ-567)
 
@@ -54,7 +54,7 @@ data: {"event":"insert","table":"orders","row":{"id":43,"amount":55.00,"region":
 data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region":"west"}}
 ```
 
-## Modos de Entrega
+## Modos de Entrega {: #delivery-modes }
 
 A entrega é selecionada por `live.strategy` na config da tabela: (REQ-813, REQ-814)
 
@@ -87,7 +87,7 @@ tables:
         - type: sse
 ```
 
-### CDC Debezium
+### CDC Debezium {: #debezium-cdc }
 
 Requer um conector Debezium em execução escrevendo no Kafka. (REQ-261) O Provisa consome o tópico Kafka e encaminha eventos de mudança para os clientes SSE conectados. (REQ-261)
 
@@ -106,7 +106,92 @@ sources:
           strategy: debezium
 ```
 
-## Redirecionamento de Sink Kafka
+#### Codificações de mensagens {: #message-encodings }
+
+Um tópico Debezium é lido em uma de duas codificações, e cada mensagem diz qual é. (REQ-1951)
+
+| Codificação | O que o tópico traz | O que a fonte precisa |
+|---|---|---|
+| JSON | O envelope do conversor JSON do Debezium, com ou sem o invólucro `schema`/`payload` | Nada além do bloco `cdc` |
+| Avro | O formato de transmissão do schema registry da Confluent: um byte zero, um id de esquema de quatro bytes, um dado Avro | `schema_registry_url`, e como se autenticar nele |
+
+As mensagens Avro são decodificadas com o esquema que o seu id nomeia, buscado no registry uma vez e guardado. Um tópico cujo esquema evoluiu é lido corretamente, porque cada mensagem nomeia o esquema que a escreveu. Tópicos Protobuf e JSON Schema não são lidos.
+
+Uma mensagem Avro nunca é lida como JSON. Cada forma de não conseguir ler uma é recusada pelo nome:
+
+| Situação | Recusa |
+|---|---|
+| Mensagem Avro, a fonte não nomeia nenhum registry | `subscribe.avro_topic_without_registry`, com o tópico |
+| Registry fora do ar ou sem responder a tempo | `subscribe.schema_registry_unreachable` |
+| O registry rejeita as credenciais da fonte | `subscribe.schema_registry_refused_credentials` |
+| Id de esquema que o registry não tem | `subscribe.schema_id_unknown`, com o id |
+| O id nomeia um esquema Protobuf ou JSON | `subscribe.schema_not_avro` |
+
+Um registry fora do ar ou que rejeita as credenciais é recusado quando a assinatura começa, antes de o fluxo abrir. Uma consulta ao registry espera no máximo 5 segundos para conectar e 10 segundos por uma resposta, e menos quando resta menos tempo à requisição.
+
+#### Autenticação do schema registry {: #schema-registry-authentication }
+
+`schema_registry_auth` nomeia um método; os campos de que esse método precisa são verificados quando a fonte é salva.
+
+| `schema_registry_auth` | Campos obrigatórios | Enviado ao registry |
+|---|---|---|
+| `none` (padrão) | — | Nenhuma credencial |
+| `basic` | `schema_registry_username`, `schema_registry_password` | Autenticação HTTP basic |
+| `bearer` | `schema_registry_token` | `Authorization: Bearer <token>` (um token estático) |
+| `mtls` | `schema_registry_client_cert`, `schema_registry_client_key` | O certificado do cliente, no handshake TLS |
+
+`schema_registry_ca` é opcional com qualquer método: um pacote de CA em que confiar quando o certificado do registry não é assinado por uma autoridade pública.
+
+A senha e o token seguem o contrato de segredos. Um valor digitado no formulário da fonte é guardado no cofre da organização e a fonte mantém uma referência `${secret:NAME}`; uma referência escrita em um arquivo de configuração (`${env:...}`, `${secret:...}`) é mantida como foi escrita. O certificado, a chave e o pacote de CA são arquivos que o processo do servidor do Provisa abre, nomeados por caminho absoluto.
+
+```yaml
+sources:
+  - id: sales-mysql
+    cdc:
+      bootstrap_servers: kafka:9092
+      topic_prefix: debezium
+      schema_registry_url: https://schema-registry:8081
+      schema_registry_auth: basic
+      schema_registry_username: provisa
+      schema_registry_password: ${secret:registry_password}
+      schema_registry_ca: /etc/provisa/registry-ca.pem
+```
+## Quando um fluxo termina com uma falha {: #when-a-stream-ends-on-a-failure }
+
+Um fluxo que abriu já respondeu `200`, então uma falha depois disso não pode ser um status HTTP. O assinante recebe um último quadro dizendo por quê, e então o fluxo fecha. Um fluxo nunca fecha por uma falha sem esse quadro.
+
+O quadro traz aquilo com que a mesma falha seria respondida em uma requisição comum:
+
+| Falha | Corpo |
+|---|---|
+| Uma recusa com código (a de um schema registry, a de uma região, uma recusa de governança) | `detail`, `code`, `params` |
+| O prazo da requisição | `detail: "Request timed out"` |
+| Qualquer coisa inesperada | `detail: "Internal server error"`, `type` (o nome do tipo da exceção) |
+
+Todo corpo também traz `subscription_id`. Em uma falha inesperada, a mensagem e o traceback ficam no log do servidor sob esse id, não no quadro.
+
+A assinatura de tabela (`/data/subscribe/{table}`) envia o corpo como os dados de um evento chamado `stream_error`:
+
+```text
+event: stream_error
+data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
+```
+O evento não se chama `error`, porque um `EventSource` dispara seu próprio evento `error` quando uma conexão cai e um ouvinte não conseguiria distinguir os dois. Escute-o pelo nome:
+
+```javascript
+source.addEventListener("stream_error", (e) => {
+  const { detail, code, params } = JSON.parse(e.data);
+  source.close();
+});
+```
+Uma assinatura GraphQL mantém a forma de resposta do GraphQL, com o código e os params em `extensions`:
+
+```json
+{"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
+```
+Um caso não encerra uma assinatura GraphQL: quando a releitura após uma única mudança falha, esse quadro é enviado na mesma forma e o fluxo segue para a próxima mudança. Uma falha da leitura inicial, do próprio feed de mudanças ou do seu início é o último quadro.
+
+## Redirecionamento de Sink Kafka {: #kafka-sink-redirect }
 
 Qualquer subscription GraphQL pode ser redirecionada para um tópico Kafka em vez de fazer streaming de volta ao cliente. (REQ-812) Adicione o cabeçalho `X-Provisa-Sink` à requisição de subscription:
 
@@ -141,7 +226,7 @@ curl -X POST http://localhost:8000/data/graphql \
 # → 202 {"status":"streaming","sink":"kafka://kafka:9092/orders-live","table":"orders"}
 ```
 
-### Sink Kafka como Segunda Saída em Nível de Config
+### Sink Kafka como Segunda Saída em Nível de Config {: #kafka-sink-as-a-config-level-second-output }
 
 Uma subscription de tabela baseada em poll pode simultaneamente publicar em um tópico Kafka via `provisa.yaml`. (REQ-282, REQ-286) A subscription SSE e o sink Kafka são ambos saídas do mesmo Live Query Engine. (REQ-282) Cada saída rastreia sua marca d'água independentemente. (REQ-286)
 
@@ -158,11 +243,12 @@ tables:
           topic: provisa.active-orders
           bootstrap_servers: kafka:9092
           key_column: id
+          role: analyst           # required: the rows are published governed as this role
 ```
 
-Veja [Sinks Kafka](sources.md) para a referência completa de configuração de sink.
+Uma saída Kafka publica as linhas da tabela governadas como a função que ela nomeia: suas regras de linha, a visibilidade das colunas e as máscaras se aplicam como em uma leitura dessa função. Uma saída sem `role` é recusada quando a configuração é carregada. (REQ-565) [tool-verified: `provisa/core/models.py` `LiveOutputConfig`]
 
-## Segurança
+## Segurança {: #security }
 
 Todos os modos de subscription aplicam o mesmo pipeline de segurança das consultas regulares: (REQ-258, REQ-038)
 
@@ -170,7 +256,7 @@ Todos os modos de subscription aplicam o mesmo pipeline de segurança das consul
 - Colunas mascaradas aparecem mascaradas nos eventos (REQ-040)
 - A autorização de função é verificada no momento da conexão (REQ-258)
 
-## Exemplo de Cliente
+## Exemplo de Cliente {: #client-example }
 
 ```javascript
 // Table subscription (LISTEN/NOTIFY)

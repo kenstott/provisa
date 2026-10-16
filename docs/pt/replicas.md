@@ -2,7 +2,7 @@
 
 Uma réplica é uma cópia de uma tabela de origem que o Provisa mantém no armazenamento de materialização do motor e lê no lugar da fonte. Esta página trata do que uma réplica indexa, de onde guardar as réplicas e de quão atuais elas são. Se uma tabela é replicada ou não é definido por [`replicate`](configuration.md#the-replicate-setting) e pelo que o motor consegue alcançar; veja [What an engine changes](engines.md#what-an-engine-changes). (REQ-826)
 
-## As réplicas são indexadas
+## As réplicas são indexadas {: #replicas-are-indexed }
 
 O Provisa indexa uma réplica da forma como o modelo usa a tabela dela. (REQ-2015) [tool-verified: `provisa/federation/replica_indexes.py` `plan`, `join_columns`]
 
@@ -28,7 +28,7 @@ A réplica de `orders` recebe a sua chave e um índice em `customer_id`. A répl
 
 Declare a chave com `is_primary_key: true` na coluna. Uma réplica sem chave declarada recebe apenas os índices de junção. [tool-verified: `provisa/federation/replica_builds.py` `plan_indexes`]
 
-### Legível primeiro, indexada depois
+### Legível primeiro, indexada depois {: #readable-first-indexed-after }
 
 Um pouso nunca espera pelos índices. A réplica é lida desde o momento em que é trocada; o executor de réplicas (replica runner) constrói então os índices dela, um de cada vez, em uma passagem separada, sob um bloqueio de índice por réplica. [tool-verified: `provisa/federation/replica_runner.py` `_planned`, `_start_index_builds`] Espere que as primeiras consultas após um pouso rodem sem eles.
 
@@ -41,7 +41,7 @@ Cada pouso registra os índices que pediu, os construídos e os que falharam, pe
 
 A interface de administração não mostra o registro de índices. Leia o log do servidor ou a coluna `index_state` da linha da réplica. [tool-verified: no reader of `index_state` outside `provisa/federation/replica_state.py` and `replica_indexes.py`]
 
-### O que cada armazenamento constrói
+### O que cada armazenamento constrói {: #what-each-store-builds }
 
 | Armazenamento | O que é construído | Como |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ Um índice só ajuda uma junção que roda onde o índice está. Dois motores le
 
 Um armazenamento MotherDuck é anexado e lido no local. [tool-verified: `provisa/federation/duckdb_runtime.py` `_store_is_file`]
 
-## Use um banco relacional como armazenamento das réplicas onde o motor executa SQL nele
+## Use um banco relacional como armazenamento das réplicas onde o motor executa SQL nele {: #use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it }
 
 Quando o motor executa as suas junções dentro de um banco relacional, mantenha as réplicas ali. As junções leem então os índices acima. Três configurações fazem isso:
 
@@ -81,7 +81,7 @@ Esta é uma recomendação geral, não uma regra. Se compensa depende do motor, 
 - **A carga do próprio banco.** Leituras de réplica, pousos e construções de índice rodam todos nesse banco. Dimensione-o para eles. [inferred]
 - **Varreduras grandes.** Um índice não faz nada por uma consulta que lê a maior parte de uma tabela grande. Um armazenamento colunar a varre mais rápido que um armazenamento de linhas. [inferred]
 
-## Escolhendo onde as réplicas ficam
+## Escolhendo onde as réplicas ficam {: #choosing-where-replicas-live }
 
 O armazenamento é uma alavanca entre várias, e elas se sobrepõem. Resolva primeiro as outras; o armazenamento decide apenas o que elas deixam.
 
@@ -98,7 +98,7 @@ O que ainda depende do armazenamento: varreduras e junções ad hoc sobre tabela
 
 Os resultados variam conforme a carga de trabalho. Meça antes e depois de uma mudança com a [ferramenta de dimensionamento](sizing.md); as [execuções ao vivo-ou-réplica](sizing.md#live-or-replica-reads-and-the-ttl) dela dão o custo de uma leitura de réplica frente ao de uma leitura ao vivo na sua implantação.
 
-## Atualidade
+## Atualidade {: #freshness }
 
 Faça da atualidade parte da decisão, ao lado da velocidade. Quão antiga uma resposta pode ser, e o que custa à fonte mantê-la atual, decidem se uma tabela é lida ao vivo ou de uma réplica e, portanto, o que o armazenamento precisa guardar.
 
@@ -120,7 +120,7 @@ Fontes corporativas raramente suportam tempo real. Os dados chegam por carga em 
 
 Uma sonda que não tem com o que comparar (sem watermark, sentinel ou consulta de sonda) degrada para o TTL. [tool-verified: `provisa/federation/replica_builds.py` `_probe_decides`]
 
-### Quase tempo real a partir de um feed de mudanças
+### Quase tempo real a partir de um feed de mudanças {: #near-real-time-from-a-change-feed }
 
 Quando uma fonte não aguenta carga de consultas ao vivo, mas já publica suas mudanças, um feed de mudanças dá dados quase em tempo real sem tocar a fonte no momento da consulta. As consultas leem a réplica local, que é rápida e não coloca carga na fonte, enquanto o laço de eventos aplica as mudanças conforme chegam. Os dados atrasam apenas o que o feed atrasa, tipicamente segundos. [inferred: the lag figure]
 
