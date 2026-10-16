@@ -96,8 +96,10 @@ def test_a_qdrant_store_is_saved_as_one_snapshot_a_collection(tmp_path, monkeypa
 @pytest.mark.parametrize(
     ("has_setup", "replicates", "expected"),
     [
-        (True, False, ["up", "set up", "dump", "down"]),  # sonnets: its sources are read live
-        (True, True, ["up", "set up", "seed", "no empty replica", "dump", "down"]),
+        # sonnets: its sources are read live. A setup's bitemporal views' history is exported after
+        # it (REQ-1162).
+        (True, False, ["up", "set up", "export views", "dump", "down"]),
+        (True, True, ["up", "set up", "export views", "seed", "no empty replica", "dump", "down"]),
         (False, True, ["up", "seed", "no empty replica", "dump", "down"]),
     ],
     ids=["setup-live", "setup-replicated", "no-setup"],
@@ -116,6 +118,7 @@ def test_a_demo_s_setup_runs_after_its_stores_come_up_and_before_its_seed(
     monkeypatch.setattr(builder.Stores, "dump", lambda self: done.append("dump") or [])
     monkeypatch.setattr(builder.Stores, "down", lambda self: done.append("down"))
     monkeypatch.setattr(builder, "_set_up", lambda *_a: done.append("set up"))
+    monkeypatch.setattr(builder, "_export_views", lambda *_a: done.append("export views"))
     monkeypatch.setattr(builder, "_seed", lambda *_a: done.append("seed"))
     monkeypatch.setattr(
         builder, "_refuse_empty_replicas", lambda *_a: done.append("no empty replica")

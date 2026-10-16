@@ -39,11 +39,15 @@ services:
     volumes:
       - retail_run_pg:/var/lib/postgresql/data
       - ./dump/postgres.sql:/docker-entrypoint-initdb.d/10-retail.sql:ro
+      - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d group_ref"]
+      test: ["CMD-SHELL", "test -f /var/lib/postgresql/data/.provisa-init-complete && pg_isready -U postgres -d group_ref"]
       interval: 2s
       timeout: 5s
       retries: 60
+      # The first start loads the dump before the marker is written; failures meanwhile do
+      # not count.
+      start_period: 600s
 
 volumes:
   retail_run_pg:
