@@ -4058,6 +4058,7 @@ async def govern_batch_final_plan(
     session_vars: dict[str, str] | None = None,
     serve_cached: bool = False,
     deliver: Delivery | None,
+    as_of: str | None = None,
 ) -> _Plan:
     """Govern+execute all but the LAST statement of a batch, and return the governed+stamped plan for
     the last statement — for Arrow/streaming surfaces (Flight SQL, airport) that render the final
@@ -4065,7 +4066,9 @@ async def govern_batch_final_plan(
     (governed), rather than being silently dropped by ``parse_one``. A single statement runs nothing
     extra and just returns its plan. ``serve_cached``: the caller serves a Route.CACHE final plan
     (see :func:`route_governed`). ``deliver``: the forced redirect the request asked for
-    (REQ-1194), applied to the last statement -- the one whose result is answered."""
+    (REQ-1194), applied to the last statement -- the one whose result is answered. ``as_of``: the
+    request's as-of time, a validated SQL timestamp literal (``mv.bitemporal.parse_as_of``): every
+    statement of the batch reads bitemporal views as of it (REQ-1163)."""
     from provisa.compiler.sql_rewrite import split_sql_statements
 
     if state is None:
@@ -4074,7 +4077,9 @@ async def govern_batch_final_plan(
     if not statements:
         raise ValueError("empty SQL batch")
     for stmt in statements[:-1]:
-        plan = await _govern_and_route(stmt, role_id, session_vars=session_vars, serve_cached=True)
+        plan = await _govern_and_route(
+            stmt, role_id, session_vars=session_vars, serve_cached=True, as_of=as_of
+        )
         await _execute_plan(plan, state)
     return await _govern_and_route(
         statements[-1],
@@ -4082,6 +4087,7 @@ async def govern_batch_final_plan(
         session_vars=session_vars,
         serve_cached=serve_cached,
         deliver=deliver,
+        as_of=as_of,
     )
 
 
@@ -4093,6 +4099,7 @@ async def govern_batch_final_plan_with_fn(
     session_vars: dict[str, str] | None = None,
     serve_cached: bool = False,
     deliver: Delivery | None,
+    as_of: str | None = None,
 ) -> _Plan | QueryResult:
     """``govern_batch_final_plan`` with the registered-function check folded into the SAME
     coroutine (REQ-1887).
@@ -4121,6 +4128,7 @@ async def govern_batch_final_plan_with_fn(
         session_vars=session_vars,
         serve_cached=serve_cached,
         deliver=deliver,
+        as_of=as_of,
     )
 
 

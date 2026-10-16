@@ -134,7 +134,9 @@ class ProvisaClient:
             headers.append((b"x-provisa-role", self._role.encode()))
         return fl.FlightCallOptions(headers=headers)  # pyright: ignore[reportPrivateImportUsage]
 
-    def _flight_ticket(self, query: str, variables: dict[str, Any] | None) -> fl.Ticket:  # pyright: ignore[reportPrivateImportUsage]
+    def _flight_ticket(
+        self, query: str, variables: dict[str, Any] | None, as_of: str | None = None
+    ) -> fl.Ticket:  # pyright: ignore[reportPrivateImportUsage]
         data: dict[str, Any] = {"query": query}
         if self._role:
             data["role"] = self._role
@@ -142,6 +144,8 @@ class ProvisaClient:
             data["org"] = self._org
         if variables:
             data["variables"] = variables
+        if as_of is not None:  # REQ-1163: read bitemporal views as of this ISO 8601 time
+            data["as_of"] = as_of
         # REQ-1263: Flight authenticates every ticket. Without the credential here the HTTP path
         # would authenticate and the Flight path would be rejected by the same server.
         if self._token:
@@ -152,18 +156,23 @@ class ProvisaClient:
         self,
         query: str,
         variables: dict[str, Any] | None = None,
+        *,
+        as_of: str | None = None,
     ) -> pa.Table:
-        """Execute a GraphQL, SQL, or Cypher query via Arrow Flight. Returns a pyarrow Table."""
-        reader = self._flight_client().do_get(self._flight_ticket(query, variables))
+        """Execute a GraphQL, SQL, or Cypher query via Arrow Flight. Returns a pyarrow Table.
+        ``as_of``: an ISO 8601 time the query reads bitemporal materialized views as of."""
+        reader = self._flight_client().do_get(self._flight_ticket(query, variables, as_of))
         return reader.read_all()
 
     def flight_df(
         self,
         query: str,
         variables: dict[str, Any] | None = None,
+        *,
+        as_of: str | None = None,
     ):
         """Execute a GraphQL, SQL, or Cypher query via Arrow Flight. Returns a pandas DataFrame."""
-        return self.flight(query, variables).to_pandas()
+        return self.flight(query, variables, as_of=as_of).to_pandas()
 
     # ── Catalog / discovery ───────────────────────────────────────────────
 
