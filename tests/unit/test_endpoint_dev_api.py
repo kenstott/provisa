@@ -79,6 +79,15 @@ async def sql_client(monkeypatch):
 
     _prev_auth_config = getattr(app_mod.state, "auth_config", None)
     app_mod.state.auth_config = None
+    # A served app always has its config: lifespan loads it before the first request
+    # (_load_and_build), and every request reads the claim types it declares (REQ-2057).
+    from provisa.core.config_loader import parse_config_dict
+
+    monkeypatch.setattr(
+        app_mod.state,
+        "config",
+        parse_config_dict({"sources": [], "domains": [], "tables": [], "roles": []}),
+    )
 
     # REQ-074/REQ-1386: every governed statement appends a query_audit_log row to the org's tenant
     # database. These tests stub the executor, not the audit write, so stand in for the tenant

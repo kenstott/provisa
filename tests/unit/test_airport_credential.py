@@ -49,6 +49,21 @@ class _Call:
         return types.SimpleNamespace(headers=self._headers)
 
 
+@pytest.fixture(autouse=True)
+def _call_bindings_end_with_the_test():
+    """A served call binds its principal and session variables in the context of its own Flight
+    RPC thread. These tests call the handler on the test's thread instead, so what a call binds
+    is put back when the test ends rather than carried into the next test."""
+    from provisa.api.airport.query import _call_principal
+    from provisa.core.request_context import current_session_vars
+
+    principal = _call_principal.set(_call_principal.get())
+    session_vars = current_session_vars.set(current_session_vars.get())
+    yield
+    current_session_vars.reset(session_vars)
+    _call_principal.reset(principal)
+
+
 def _identity(roles: list[str]) -> AuthIdentity:
     return AuthIdentity(
         user_id="u-1",

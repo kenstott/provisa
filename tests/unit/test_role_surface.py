@@ -347,13 +347,22 @@ def test_an_unknown_root_field_is_a_client_error_by_name():
     assert isinstance(refused.value, ValueError)  # surfaces that answer compiler refusals do
 
 
-def test_over_http_it_is_a_400_with_its_code_never_an_unhandled_exception():
+def test_over_http_it_is_a_400_with_its_code_never_an_unhandled_exception(monkeypatch):
     """It was a 500 and a closed connection. The handler the application registers, driven
     through a route that raises what the compiler raises."""
     from fastapi.testclient import TestClient
 
+    import provisa.api.app as app_mod
     from provisa.api.app import create_app
     from provisa.compiler.sql_gen import UnknownRootField
+    from provisa.core.config_loader import parse_config_dict
+
+    # A served app always has its config: lifespan loads it before the first request.
+    monkeypatch.setattr(
+        app_mod.state,
+        "config",
+        parse_config_dict({"sources": [], "domains": [], "tables": [], "roles": []}),
+    )
 
     app = create_app()
 
