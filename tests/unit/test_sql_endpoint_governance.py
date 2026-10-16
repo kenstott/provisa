@@ -89,6 +89,9 @@ async def sql_client(monkeypatch):
         return []
 
     monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_registered_sources)
+    # The middleware reads the bound org's declared claim types (REQ-2057); the state here
+    # carries no config, and no org declares any.
+    monkeypatch.setattr("provisa.auth.middleware._loaded_claim_roles", lambda: [])
 
     # Pin unsecured auth BEFORE create_app(): wire_auth reads state.auth_config at
     # app-construction time. These governance tests post a `role` with no bearer

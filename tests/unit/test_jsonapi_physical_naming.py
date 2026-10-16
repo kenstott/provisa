@@ -180,6 +180,9 @@ def client(monkeypatch):
     monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route_compiled", _fake_govern)
     monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", _fake_execute)
     monkeypatch.setattr("provisa.executor.serialize.serialize_rows", _fake_serialize)
+    # The middleware reads the bound org's declared claim types from its runtime (REQ-2057); no
+    # org runtime is built here, and none declares any.
+    monkeypatch.setattr("provisa.auth.middleware._loaded_claim_roles", lambda: [])
 
     app = FastAPI()
     app.add_middleware(AuthMiddleware)
