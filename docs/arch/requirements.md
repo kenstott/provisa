@@ -23847,3 +23847,17 @@ The as-of header (X-Provisa-As-Of, [REQ-1163](#REQ-1163)) also accepts a range, 
 **Code:** —
 
 **Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2065 · Demo Provisioning {#REQ-2065}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A visitor's demo sandbox is released soon after its tab closes. When the visitor's page is hidden for unloading (pagehide), it sends a closing beacon (navigator.sendBeacon) to the server, which marks the visitor's sandbox as closing. A sandbox marked closing that no request reaches within a short grace period (a couple of minutes) is removed through the normal sandbox cleanup; any request within the grace period (a reload, another tab of the same sandbox) clears the mark. The idle expiry (sandbox.idle_ttl) stays as the backstop for a beacon that never arrives (a crashed browser, a killed mobile tab, a lost connection). A signed-in person's named sandbox is never removed by a beacon.
+
+**Use case:** A visitor finishes a live demo and closes the tab; the sandbox slot is free again within minutes, not after an hour.
+
+**Code:** —
+
+**Tests:** —
