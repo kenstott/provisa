@@ -89,3 +89,5 @@ def test_the_warmup_sends_each_request_as_the_visitor_and_carries_on_past_a_refu
     assert {(a, o) for _, _, a, o, _ in seen} == {("Bearer t", "sbxabc")}
     assert json.loads(seen[0][4]) == expected[0][3]
     assert "answered 500" in caplog.text  # the refusal is logged, and the rest still sent
+    # the completion line shows at the hosted tier's WARNING level, once
+    assert caplog.text.count("sandbox sbxabc tour warmed") == 1

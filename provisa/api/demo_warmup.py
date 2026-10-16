@@ -82,7 +82,9 @@ async def _warm(app: Any, org_id: str, headers: dict[str, str], directory: Path)
                     resp.status_code,
                     resp.text[:300],
                 )
-    log.info("sandbox %s tour warmed", org_id)
+    # At WARNING: the hosted demo tier logs at WARNING, and this one line per sandbox is how its
+    # operator sees that a sandbox's tour was warmed.
+    log.warning("sandbox %s tour warmed", org_id)
 
 
 def warm_tour(app: Any, org_id: str, demo: str, headers: dict[str, str]) -> None:
