@@ -13,17 +13,14 @@
 from __future__ import annotations
 
 
-from provisa.compiler.rls import RLSContext
-from provisa.compiler.sql_gen import (
-    ColumnRef,
-    CompilationContext,
-    CompiledQuery,
-    TableMeta,
-)
-from provisa.compiler.rls import inject_rls
-from provisa.compiler.mask_inject import MaskingRules, inject_masking
+from provisa.compiler.rls import RLSContext, build_rls_context
+from provisa.compiler.sql_gen import CompilationContext, TableMeta
+from provisa.compiler.mask_inject import MaskingRules
 from provisa.core.models import Role, flatten_roles
+from provisa.security.inheritance import materialize_rls
 from provisa.security.masking import MaskType, MaskingRule
+from provisa.security.row_filters import resolve_table_rules
+from tests.helpers import governed_for_role
 
 
 # ---------------------------------------------------------------------------
@@ -67,19 +64,16 @@ def _rls_for_role(
 # ---------------------------------------------------------------------------
 
 
-def _orders_compiled() -> CompiledQuery:
-    sql = 'SELECT "id", "amount", "region" FROM "public"."orders"'
-    return CompiledQuery(
-        sql=sql,
-        params=[],
-        root_field="orders",
-        columns=[
-            ColumnRef(alias=None, column="id", field_name="id", nested_in=None),
-            ColumnRef(alias=None, column="amount", field_name="amount", nested_in=None),
-            ColumnRef(alias=None, column="region", field_name="region", nested_in=None),
-        ],
-        sources={"test-pg"},
-    )
+_ORDERS_SQL = 'SELECT "id", "amount", "region" FROM "public"."orders"'
+_ORDERS_T0_SQL = 'SELECT "t0"."id", "t0"."amount" FROM "public"."orders" "t0"'
+
+
+def _inherited_rls(rules: list[dict], chains: dict[str, list[str]], role_id: str) -> RLSContext:
+    """The role's row filters as the server builds them: inherited rules materialized down the
+    role chain (security/inheritance.materialize_rls), folded per table (row_filters)."""
+    tables = [{"id": ORDERS_TABLE_ID, "domain_id": ""}]
+    resolved = resolve_table_rules(materialize_rls(rules, tables, chains), tables, chains, [], {})
+    return build_rls_context(resolved, role_id)
 
 
 def _orders_ctx() -> CompilationContext:
@@ -162,45 +156,28 @@ class TestFlattenRoles:
 
 class TestInheritedRolesRLS:
     def test_child_inherits_parent_rls(self):
-        """Child role that inherits parent should be eligible for parent RLS.
-
-        RLSContext is built per-role by the caller using flatten_roles output;
-        here we verify that when the parent's filter is applied to a child
-        query the WHERE clause is correctly injected.
-        """
-        ctx = _orders_ctx()
-        compiled = _orders_compiled()
-
-        # Parent has a region rule; child inherits it (caller applies parent's rule)
-        parent_rule_table_id = ORDERS_TABLE_ID
-        parent_filter = "\"region\" = 'us-east'"
-
-        # Simulate: child inherits parent RLS rule
-        rls = RLSContext(rules={parent_rule_table_id: parent_filter})
-        result = inject_rls(compiled, ctx, rls)
-
-        assert "region" in result.sql
-        assert "us-east" in result.sql
-        assert "WHERE" in result.sql.upper()
+        """A child role with no rule of its own for a table reads under its parent's rule."""
+        parent_rule = {
+            "role_id": "parent",
+            "table_id": ORDERS_TABLE_ID,
+            "domain_id": None,
+            "filter_expr": "\"region\" = 'us-east'",
+        }
+        rls = _inherited_rls(
+            [parent_rule], {"parent": ["parent"], "child": ["child", "parent"]}, "child"
+        )
+        result = governed_for_role(_ORDERS_SQL, _orders_ctx(), "child", rls=rls)
+        assert result == f'{_ORDERS_SQL} WHERE ("orders"."region" = \'us-east\')'
 
     def test_child_rls_added_to_parent_rls(self):
-        """When child has its own RLS rule, both parent and child rules are ANDed.
-
-        In the production system, flatten_roles merges the role hierarchy and a
-        single RLSContext is built for the effective role.  We verify the AND by
-        manually composing a combined filter.
-        """
-        ctx = _orders_ctx()
-        compiled = _orders_compiled()
-
-        # Child's effective filter = parent's rule AND child's own rule
+        """A compound effective filter (parent's predicate AND the child's) is applied whole."""
         combined_filter = "region = 'us-east' AND amount > 100"
-        rls = RLSContext(rules={ORDERS_TABLE_ID: combined_filter})
-        result = inject_rls(compiled, ctx, rls)
-
-        assert "\"region\" = 'us-east'" in result.sql
-        assert '"amount" > 100' in result.sql
-        assert "AND" in result.sql
+        result = governed_for_role(
+            _ORDERS_SQL, _orders_ctx(), "child", rls={ORDERS_TABLE_ID: combined_filter}
+        )
+        assert result == (
+            f'{_ORDERS_SQL} WHERE ("orders"."region" = \'us-east\' AND "orders"."amount" > 100)'
+        )
 
     def test_grandchild_inherits_two_levels(self):
         """Three-level chain: grandchild receives grandparent + parent + own rules."""
@@ -222,33 +199,17 @@ class TestInheritedRolesRLS:
         assert "finance" in by_id["child"].domain_access
 
     def test_child_rls_sql_where_injected_correctly(self):
-        """Verify WHERE is injected in the right position (before ORDER BY / end)."""
-        import re as _re
-
-        ctx = _orders_ctx()
-        # Use a table alias so ORDER BY is unambiguous (avoids matching "orders")
-        base_sql = 'SELECT "t0"."id", "t0"."amount" FROM "public"."orders" "t0" ORDER BY "t0"."id"'
-        compiled = CompiledQuery(
-            sql=base_sql,
-            params=[],
-            root_field="orders",
-            columns=[
-                ColumnRef(alias="t0", column="id", field_name="id", nested_in=None),
-                ColumnRef(alias="t0", column="amount", field_name="amount", nested_in=None),
-            ],
-            sources={"test-pg"},
+        """The row filter is placed before ORDER BY, on the table's alias."""
+        result = governed_for_role(
+            f'{_ORDERS_T0_SQL} ORDER BY "t0"."id"',
+            _orders_ctx(),
+            "child",
+            rls={ORDERS_TABLE_ID: "\"region\" = 'us-east'"},
         )
-
-        rls = RLSContext(rules={ORDERS_TABLE_ID: "\"region\" = 'us-east'"})
-        result = inject_rls(compiled, ctx, rls)
-
-        # Use word-boundary regex to find keyword positions
-        where_m = _re.search(r"\bWHERE\b", result.sql, _re.IGNORECASE)
-        order_m = _re.search(r"\bORDER\s+BY\b", result.sql, _re.IGNORECASE)
-
-        assert where_m is not None, "WHERE clause was not injected"
-        assert order_m is not None, "ORDER BY was unexpectedly removed"
-        assert where_m.start() < order_m.start(), "WHERE must appear before ORDER BY"
+        assert result == (
+            'SELECT "t0"."id", "t0"."amount" FROM "public"."orders" AS "t0" '
+            'WHERE ("t0"."region" = \'us-east\') ORDER BY "t0"."id"'
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -258,81 +219,32 @@ class TestInheritedRolesRLS:
 
 class TestInheritedRolesMasking:
     def test_child_overrides_parent_mask(self):
-        """Child's masking rule for a column takes precedence over parent's.
-
-        In the production system, the effective masking rules for a role are
-        built from the child's config; the child's rule for a column replaces
-        any parent rule for the same column.  We verify this by building two
-        separate MaskingRules dicts and checking which SQL expression is emitted.
-        """
-        ctx = _orders_ctx()
-        compiled = CompiledQuery(
-            sql='SELECT "t0"."id", "t0"."amount" FROM "public"."orders" "t0"',
-            params=[],
-            root_field="orders",
-            columns=[
-                ColumnRef(alias="t0", column="id", field_name="id", nested_in=None),
-                ColumnRef(alias="t0", column="amount", field_name="amount", nested_in=None),
-            ],
-            sources={"test-pg"},
-        )
-
-        # Parent masks amount to 0; child overrides to 999
+        """The mask the child role is given for a column is the one its reads carry."""
         child_rule = MaskingRule(mask_type=MaskType.constant, value=999)
-        # Only child rules are applied (caller resolves effective rules before injection)
         child_masking: MaskingRules = {
             (ORDERS_TABLE_ID, "child"): {"amount": (child_rule, "integer")},
+            (ORDERS_TABLE_ID, "parent"): {
+                "amount": (MaskingRule(mask_type=MaskType.constant, value=0), "integer")
+            },
         }
-        result = inject_masking(compiled, ctx, child_masking, "child")
-
-        assert "999" in result.sql, "Child's mask value (999) must appear in SQL"
-        # Parent's value (0) should NOT override child
-        # (Parent's value does not appear because we only applied child rules)
+        result = governed_for_role(
+            _ORDERS_T0_SQL, _orders_ctx(), "child", masking_rules=child_masking
+        )
+        assert result == ('SELECT "t0"."id", 999 AS "amount" FROM "public"."orders" AS "t0"')
 
     def test_no_masking_rules_for_role_leaves_sql_unchanged(self):
         """A role with no masking rules must not alter the compiled SQL."""
-        ctx = _orders_ctx()
-        compiled = CompiledQuery(
-            sql='SELECT "t0"."id", "t0"."amount" FROM "public"."orders" "t0"',
-            params=[],
-            root_field="orders",
-            columns=[
-                ColumnRef(alias="t0", column="id", field_name="id", nested_in=None),
-                ColumnRef(alias="t0", column="amount", field_name="amount", nested_in=None),
-            ],
-            sources={"test-pg"},
-        )
-
-        masking_rules: MaskingRules = {}  # no rules for any role
-        result = inject_masking(compiled, ctx, masking_rules, "some-role")
-
-        assert result.sql == compiled.sql
+        result = governed_for_role(_ORDERS_T0_SQL, _orders_ctx(), "some-role", masking_rules={})
+        assert result == 'SELECT "t0"."id", "t0"."amount" FROM "public"."orders" AS "t0"'
 
     def test_parent_mask_applied_when_child_has_none(self):
-        """When child has no override, parent's masking rule is applied (by caller).
-
-        In practice the caller assigns the parent's rule to the child's role_id
-        when no child override exists.  We verify the injection path works.
-        """
-        ctx = _orders_ctx()
-        compiled = CompiledQuery(
-            sql='SELECT "t0"."id", "t0"."amount" FROM "public"."orders" "t0"',
-            params=[],
-            root_field="orders",
-            columns=[
-                ColumnRef(alias="t0", column="id", field_name="id", nested_in=None),
-                ColumnRef(alias="t0", column="amount", field_name="amount", nested_in=None),
-            ],
-            sources={"test-pg"},
-        )
-
+        """The parent's mask, held by the child (it is not in the column's ``unmasked_to``),
+        is applied to the child's read."""
         parent_rule = MaskingRule(mask_type=MaskType.constant, value=0)
-        # Caller assigns parent's rule to the child role_id
         inherited_masking: MaskingRules = {
             (ORDERS_TABLE_ID, "child"): {"amount": (parent_rule, "integer")},
         }
-        result = inject_masking(compiled, ctx, inherited_masking, "child")
-
-        assert "0" in result.sql or "AS" in result.sql, (
-            "Parent's inherited mask rule was not injected into child's SQL"
+        result = governed_for_role(
+            _ORDERS_T0_SQL, _orders_ctx(), "child", masking_rules=inherited_masking
         )
+        assert result == 'SELECT "t0"."id", 0 AS "amount" FROM "public"."orders" AS "t0"'

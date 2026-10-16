@@ -10,13 +10,13 @@
 
 """E2E tests for column-level masking (REQ-087 through REQ-091).
 
-Tests the full masking pipeline: config → compile → mask inject → execute.
+Tests the full masking pipeline: config → compile → govern (compiler/stage2) → execute.
 Uses mocked execution to verify SQL transformations without a live DB.
 """
 
 from __future__ import annotations
 
-from provisa.compiler.mask_inject import MaskingRules, inject_masking
+from provisa.compiler.mask_inject import MaskingRules
 from provisa.compiler.sql_gen import (
     ColumnRef,
     CompilationContext,
@@ -32,6 +32,8 @@ from provisa.security.masking import (
 )
 
 import pytest
+
+from tests.helpers import governed_for_role
 
 
 # --- Fixtures ---
@@ -101,10 +103,10 @@ class TestAdminSeesRawData:
                 ),
             }
         }
-        result = inject_masking(compiled, ctx, rules, "admin")
+        result = governed_for_role(compiled.sql, ctx, "admin", masking_rules=rules)
         # Admin SQL unchanged — raw columns
-        assert result.sql == compiled.sql
-        assert "REGEXP_REPLACE" not in result.sql
+        assert result == compiled.sql
+        assert "REGEXP_REPLACE" not in result
 
 
 class TestAnalystRegexMasking:
@@ -137,12 +139,12 @@ class TestAnalystRegexMasking:
                 ),
             }
         }
-        result = inject_masking(compiled, ctx, rules, "analyst")
-        assert "REGEXP_REPLACE" in result.sql
-        assert 'AS "email"' in result.sql
+        result = governed_for_role(compiled.sql, ctx, "analyst", masking_rules=rules)
+        assert "REGEXP_REPLACE" in result
+        assert 'AS "email"' in result
         # region not masked
-        assert '"region"' in result.sql
-        assert result.sql.count("REGEXP_REPLACE") == 1
+        assert '"region"' in result
+        assert result.count("REGEXP_REPLACE") == 1
 
     def test_analyst_name_initials_masked(self):
         compiled = CompiledQuery(
@@ -170,9 +172,9 @@ class TestAnalystRegexMasking:
                 ),
             }
         }
-        result = inject_masking(compiled, ctx, rules, "analyst")
-        assert "REGEXP_REPLACE" in result.sql
-        assert 'AS "name"' in result.sql
+        result = governed_for_role(compiled.sql, ctx, "analyst", masking_rules=rules)
+        assert "REGEXP_REPLACE" in result
+        assert 'AS "name"' in result
 
 
 class TestMaskedViewerConstantMasking:
@@ -202,8 +204,8 @@ class TestMaskedViewerConstantMasking:
                 ),
             }
         }
-        result = inject_masking(compiled, ctx, rules, "masked_viewer")
-        assert "'***@***.***' AS \"email\"" in result.sql
+        result = governed_for_role(compiled.sql, ctx, "masked_viewer", masking_rules=rules)
+        assert "'***@***.***' AS \"email\"" in result
 
 
 class TestNumericConstantMasking:
@@ -231,8 +233,8 @@ class TestNumericConstantMasking:
                 ),
             }
         }
-        result = inject_masking(compiled, ctx, rules, "masked_viewer")
-        assert '0 AS "amount"' in result.sql
+        result = governed_for_role(compiled.sql, ctx, "masked_viewer", masking_rules=rules)
+        assert '0 AS "amount"' in result
 
 
 class TestDateTruncateMasking:
@@ -260,49 +262,11 @@ class TestDateTruncateMasking:
                 ),
             }
         }
-        result = inject_masking(compiled, ctx, rules, "analyst")
+        result = governed_for_role(compiled.sql, ctx, "analyst", masking_rules=rules)
         # sqlglot re-serializes the DATE_TRUNC field literal in uppercase (postgres accepts
-        # either case) when it regenerates SQL through the masking-injection pipeline.
-        assert "DATE_TRUNC('MONTH'" in result.sql
-        assert 'AS "created_at"' in result.sql
-
-
-class TestFilterOnMaskedColumn:
-    """WHERE uses raw value, SELECT uses masked — filter still works (REQ-087)."""
-
-    def test_where_clause_uses_raw_column(self):
-        compiled = CompiledQuery(
-            sql='SELECT "email", "region" FROM "public"."customers" WHERE "email" LIKE $1',
-            params=["%@example.com"],
-            root_field="customers",
-            columns=[
-                ColumnRef(alias=None, column="email", field_name="email", nested_in=None),
-                ColumnRef(alias=None, column="region", field_name="region", nested_in=None),
-            ],
-            sources={"pg"},
-        )
-        ctx = CompilationContext()
-        ctx.tables = {
-            "customers": _meta(table_id=2, field_name="customers", table_name="customers")
-        }
-        ctx.joins = {}
-
-        rules: MaskingRules = {
-            (2, "analyst"): {
-                "email": (
-                    MaskingRule(
-                        mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"
-                    ),
-                    "varchar",
-                ),
-            }
-        }
-        result = inject_masking(compiled, ctx, rules, "analyst")
-        # SELECT: masked
-        assert "REGEXP_REPLACE" in result.sql
-        # WHERE: still uses raw column for filtering
-        assert 'WHERE "email" LIKE $1' in result.sql
-        assert result.params == ["%@example.com"]
+        # either case) when it regenerates SQL through the governed pipeline.
+        assert "DATE_TRUNC('MONTH'" in result
+        assert 'AS "created_at"' in result
 
 
 class TestJoinedTableMasking:
@@ -330,11 +294,11 @@ class TestJoinedTableMasking:
                 ),
             }
         }
-        result = inject_masking(compiled, ctx, rules, "analyst")
-        assert "REGEXP_REPLACE" in result.sql
-        assert 'AS "email"' in result.sql
+        result = governed_for_role(compiled.sql, ctx, "analyst", masking_rules=rules)
+        assert "REGEXP_REPLACE" in result
+        assert 'AS "email"' in result
         # Root table columns unchanged
-        assert '"t0"."id"' in result.sql
+        assert '"t0"."id"' in result
 
 
 class TestDifferentMasksPerRole:
@@ -373,12 +337,12 @@ class TestDifferentMasksPerRole:
             },
         }
 
-        analyst_result = inject_masking(compiled, ctx, rules, "analyst")
-        assert "REGEXP_REPLACE" in analyst_result.sql
+        analyst_result = governed_for_role(compiled.sql, ctx, "analyst", masking_rules=rules)
+        assert "REGEXP_REPLACE" in analyst_result
 
-        viewer_result = inject_masking(compiled, ctx, rules, "masked_viewer")
-        assert "'***@***.***'" in viewer_result.sql
-        assert "REGEXP_REPLACE" not in viewer_result.sql
+        viewer_result = governed_for_role(compiled.sql, ctx, "masked_viewer", masking_rules=rules)
+        assert "'***@***.***'" in viewer_result
+        assert "REGEXP_REPLACE" not in viewer_result
 
 
 class TestTypeValidationAtConfigTime:

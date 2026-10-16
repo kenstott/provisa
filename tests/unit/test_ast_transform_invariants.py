@@ -10,8 +10,8 @@ Every governance/compilation transform must operate on a parsed AST, not on the
 SQL text. These tests encode that invariant by exercising inputs that defeat the
 current *string/regex* transforms:
 
-  - mask_inject._find_select_end takes the FIRST `FROM` → a scalar subquery in the
-    projection moves the boundary, so masking silently skips the real columns (leak).
+  - a text scan for the projection's end takes the FIRST `FROM` → a scalar subquery in
+    the projection moves the boundary, so masking silently skips the real columns (leak).
   - rls._has_alias tests literal `'"t0"' in sql` → any other alias convention
     (Cypher-derived SQL, hand-written aliases) skips qualification, emitting a bare,
     scope-ambiguous predicate.
@@ -23,15 +23,11 @@ move to AST-based transforms. Marked xfail(strict) so the suite stays green whil
 and flips to a hard failure (forcing marker removal) once the restructure lands.
 """
 
-from provisa.compiler.mask_inject import inject_masking, MaskingRules
-from provisa.compiler.rls import RLSContext, inject_rls
-from provisa.compiler.sql_gen import (
-    ColumnRef,
-    CompilationContext,
-    CompiledQuery,
-    TableMeta,
-)
+from provisa.compiler.mask_inject import MaskingRules
+from provisa.compiler.rls import RLSContext
+from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.security.masking import MaskType, MaskingRule
+from tests.helpers import governed_for_role
 
 
 def _meta(table_id=2, field_name="customers", table_name="customers", source_id="pg"):
@@ -59,23 +55,20 @@ def test_masking_survives_scalar_subquery_in_projection():
     The first `FROM` belongs to the inner subquery, so the string transform never
     reaches "ssn" and the sensitive column leaks unmasked.
     """
-    compiled = CompiledQuery(
-        sql=(
-            'SELECT (SELECT MAX("total") FROM "public"."orders") AS "cnt", '
-            '"ssn" FROM "public"."customers"'
-        ),
-        params=[],
-        root_field="customers",
-        columns=[ColumnRef(alias=None, column="ssn", field_name="ssn", nested_in=None)],
-        sources={"pg"},
+    sql = (
+        'SELECT (SELECT MAX("total") FROM "public"."orders") AS "cnt", '
+        '"ssn" FROM "public"."customers"'
     )
     rules: MaskingRules = {
         (2, "analyst"): {
             "ssn": (MaskingRule(mask_type=MaskType.constant, value="HIDDEN"), "varchar"),
         }
     }
-    result = inject_masking(compiled, _ctx(), rules, "analyst")
-    assert "'HIDDEN' AS \"ssn\"" in result.sql, "ssn leaked unmasked"
+    result = governed_for_role(sql, _ctx(), "analyst", masking_rules=rules)
+    assert result == (
+        'SELECT (SELECT MAX("total") FROM "public"."orders") AS "cnt", '
+        '\'HIDDEN\' AS "ssn" FROM "public"."customers"'
+    ), "ssn leaked unmasked"
 
 
 def test_rls_predicate_is_scoped_to_root_alias_regardless_of_alias_name():
@@ -84,17 +77,14 @@ def test_rls_predicate_is_scoped_to_root_alias_regardless_of_alias_name():
     The query aliases the root as "c" (not "t0"); the injected predicate must be
     qualified `"c"."region"`, not a bare `region` that binds ambiguously under joins.
     """
-    compiled = CompiledQuery(
-        sql='SELECT "c"."id" FROM "public"."customers" "c"',
-        params=[],
-        root_field="customers",
-        columns=[ColumnRef(alias="c", column="id", field_name="id", nested_in=None)],
-        sources={"pg"},
-    )
     rls = RLSContext(rules={2: "region = 'us'"})
-    result = inject_rls(compiled, _ctx(), rls)
+    result = governed_for_role(
+        'SELECT "c"."id" FROM "public"."customers" "c"', _ctx(), "analyst", rls=rls
+    )
     # The predicate column must be qualified with the root alias, not emitted bare.
-    assert '"c"."region"' in result.sql, "RLS predicate not scoped to root alias"
+    assert result == (
+        'SELECT "c"."id" FROM "public"."customers" AS "c" WHERE ("c"."region" = \'us\')'
+    ), "RLS predicate not scoped to root alias"
 
 
 def test_row_cap_ceiling_enforced_over_parameterized_limit():

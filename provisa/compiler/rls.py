@@ -8,10 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Inject RLS WHERE clauses into compiled SQL per role (REQ-040, REQ-041).
+"""Per-role row filters (RLS, REQ-040, REQ-041) and the predicate helpers that qualify them.
 
-Applied every request after SQL compilation, before transpilation.
-RLS filter expressions are stored per (table_id, role_id) in the config DB.
+RLS filter expressions are stored per (table_id, role_id) in the config DB; the governed
+pipeline (compiler/stage2) ANDs each table's filter into every SELECT that reads it.
 """
 
 # Requirements: REQ-038, REQ-039, REQ-040, REQ-041, REQ-402, REQ-403
@@ -22,12 +22,6 @@ from dataclasses import dataclass, field
 
 import sqlglot
 from sqlglot import exp
-
-from provisa.compiler.sql_gen import CompiledQuery, CompilationContext
-from provisa.otel_compat import get_tracer as _get_tracer
-from provisa.otel_compat import stage as _stage
-
-_tracer = _get_tracer(__name__)
 
 
 @dataclass
@@ -69,92 +63,6 @@ def build_rls_context(rls_rules: list[dict], role_id: str) -> RLSContext:  # REQ
         elif rule.get("table_id") is not None:
             rules[rule["table_id"]] = rule["filter_expr"]
     return RLSContext(rules=rules, domain_rules=domain_rules, action_rules=action_rules)
-
-
-def inject_rls(  # REQ-038, REQ-040, REQ-041, REQ-402, REQ-403
-    compiled: CompiledQuery,
-    ctx: CompilationContext,
-    rls: RLSContext,
-) -> CompiledQuery:
-    """Inject RLS WHERE clauses into a compiled query.
-
-    For each table referenced in the query that has an RLS rule,
-    the filter expression is ANDed into the WHERE clause.
-
-    Returns a new CompiledQuery with the modified SQL.
-    """
-    with _stage(_tracer, "rls.inject", name="govern") as span:
-        if not rls.has_rules():
-            span.set_attribute("rls.rules_applied", 0)
-            return compiled
-
-        def _rule_for_table(table_id: int, domain_id: str) -> str | None:
-            if table_id in rls.rules:
-                return rls.rules[table_id]
-            if domain_id and domain_id in rls.domain_rules:
-                return rls.domain_rules[domain_id]
-            return None
-
-        tree = sqlglot.parse_one(compiled.sql, read="postgres")
-        # Map each physical table_name to the alias it carries in the query (its own name when
-        # unaliased) — read from the AST, so any alias convention works, not just "t0"/"tN".
-        alias_by_table = _alias_by_table(tree)  # pyright: ignore[reportArgumentType]  # sqlglot stub
-
-        # Build a qualified predicate AST per applicable table.
-        predicates: list[exp.Expression] = []
-        # canonical_field is the pre-alias schema field; root_field may be a client alias
-        # absent from ctx.tables — using it alone would skip the RLS predicate on aliased roots.
-        root_table = ctx.tables.get(compiled.canonical_field or compiled.root_field)
-        if root_table:
-            filter_expr = _rule_for_table(root_table.table_id, root_table.domain_id)
-            if filter_expr:
-                predicates.append(
-                    _qualified_predicate(filter_expr, alias_by_table.get(root_table.table_name))
-                )
-
-        for (type_name, _), join_meta in ctx.joins.items():
-            if root_table and type_name == root_table.type_name:
-                filter_expr = _rule_for_table(join_meta.target.table_id, join_meta.target.domain_id)
-                if filter_expr:
-                    predicates.append(
-                        _qualified_predicate(
-                            filter_expr, alias_by_table.get(join_meta.target.table_name)
-                        )
-                    )
-
-        span.set_attribute("rls.rules_applied", len(predicates))
-        if not predicates:
-            return compiled
-
-        select = tree if isinstance(tree, exp.Select) else tree.find(exp.Select)
-        if select is None:
-            raise ValueError("inject_rls: query has no SELECT to attach the RLS predicate to")
-        for pred in predicates:
-            select.where(pred, copy=False)  # ANDs into the existing WHERE at the right position
-
-        sql = tree.sql(dialect="postgres")
-
-        from provisa.observability.stage_trace import trace_stage
-
-        trace_stage("govern.rls", sql)
-        return CompiledQuery(
-            sql=sql,
-            params=compiled.params,
-            root_field=compiled.root_field,
-            canonical_field=compiled.canonical_field,
-            columns=compiled.columns,
-            sources=compiled.sources,
-            table_ids=compiled.table_ids,
-        )
-
-
-def _alias_by_table(tree: exp.Expression) -> dict[str, str]:
-    """Map each table's physical name to the alias it carries in the query (its own name when
-    unaliased). Read structurally from the AST — no regex over the SQL text."""
-    out: dict[str, str] = {}
-    for tbl in tree.find_all(exp.Table):
-        out.setdefault(tbl.name, tbl.alias or tbl.name)
-    return out
 
 
 def _qualified_predicate(filter_expr: str, alias: str | None) -> exp.Expression:

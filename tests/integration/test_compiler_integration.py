@@ -1111,15 +1111,9 @@ class TestGraphAnalyticsPipeline:
 
 
 class TestRLSCompilerFallback:
-    """REQ-403: inject_rls() checks table-specific rules first, then domain-level fallback.
-    Table-level rules take precedence.
+    """REQ-403: a table's row filter is its table-specific rule, else its domain's rule.
+    Table-level rules take precedence; the governed pipeline applies the resolved rule.
     """
-
-    def test_rls_injection_is_importable(self):
-        # REQ-403: inject_rls symbol must exist in compiler
-        from provisa.compiler.rls import inject_rls
-
-        assert callable(inject_rls)
 
     def test_rls_context_table_rule_takes_precedence(self):
         # REQ-403: table-level rule takes precedence over domain-level rule
@@ -1167,35 +1161,47 @@ class TestRLSCompilerFallback:
         assert ctx.domain_rules["sales"] == "region = 'global'"
 
     def test_rls_inject_applies_table_rule_to_compiled_query(self):
-        # REQ-403: inject_rls adds table-level WHERE predicate to compiled SQL
-        from provisa.compiler.rls import inject_rls, RLSContext
+        # REQ-403: the governed pipeline adds the table-level WHERE predicate to compiled SQL
+        from provisa.compiler.rls import RLSContext
+        from tests.helpers import governed_for_role
 
         si = _make_schema_input()
         schema = generate_schema(si)
         ctx = build_context(si)
         doc = parse("{ orders { id region } }")
         assert not validate(schema, doc)
-        compiled_list = compile_query(doc, ctx)
-        compiled = compiled_list[0]
+        compiled = compile_query(doc, ctx)[0]
 
         # table_id=1 is the orders table
         rls = RLSContext(rules={1: "region = 'us-east'"}, domain_rules={})
-        modified = inject_rls(compiled, ctx, rls)
-        assert "us-east" in modified.sql
+        governed = governed_for_role(compiled.sql, ctx, "admin", rls=rls)
+        assert governed == f'{compiled.sql} WHERE ("orders"."region" = \'us-east\')'
 
     def test_rls_domain_fallback_injected_when_no_table_rule(self):
-        # REQ-403: domain-level predicate injected when no table-specific rule matches
-        from provisa.compiler.rls import inject_rls, RLSContext
+        # REQ-403: domain-level predicate applied when no table-specific rule matches
+        from provisa.compiler.rls import build_rls_context
+        from provisa.security.row_filters import resolve_table_rules
+        from tests.helpers import governed_for_role
 
         si = _make_schema_input()
         schema = generate_schema(si)
         ctx = build_context(si)
         doc = parse("{ orders { id region } }")
         assert not validate(schema, doc)
-        compiled_list = compile_query(doc, ctx)
-        compiled = compiled_list[0]
+        compiled = compile_query(doc, ctx)[0]
 
         # No table-level rule; domain-level rule for "sales"
-        rls = RLSContext(rules={}, domain_rules={"sales": "region = 'global'"})
-        modified = inject_rls(compiled, ctx, rls)
-        assert "global" in modified.sql
+        rules = [
+            {
+                "role_id": "admin",
+                "table_id": None,
+                "domain_id": "sales",
+                "filter_expr": "region = 'global'",
+            },
+        ]
+        tables = [{"id": t["id"], "domain_id": t["domain_id"]} for t in si.tables]
+        rls = build_rls_context(
+            resolve_table_rules(rules, tables, {"admin": ["admin"]}, [], {}), "admin"
+        )
+        governed = governed_for_role(compiled.sql, ctx, "admin", rls=rls)
+        assert governed == f'{compiled.sql} WHERE ("orders"."region" = \'global\')'

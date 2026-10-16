@@ -44,8 +44,8 @@ from provisa.auth.approval_hook import (
     FallbackPolicy,
     HookType,
 )
-from provisa.compiler.mask_inject import MaskingRules, inject_masking
-from provisa.compiler.rls import RLSContext, inject_rls
+from provisa.compiler.mask_inject import MaskingRules
+from provisa.compiler.rls import RLSContext, build_rls_context
 from provisa.compiler.sql_gen import (
     ColumnRef,
     CompilationContext,
@@ -71,7 +71,8 @@ from provisa.security.visibility import (
     visible_column_names,
     visible_tables,
 )
-from tests.helpers import ALL_DATA_CAPABILITIES
+from provisa.security.row_filters import resolve_table_rules
+from tests.helpers import ALL_DATA_CAPABILITIES, governed_for_role
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -267,9 +268,9 @@ class TestRLSEnforcement:
         compiled = _orders_compiled()
 
         rls = RLSContext(rules={ORDERS_TABLE_ID: "region = 'us-east'"})
-        with_rls = inject_rls(compiled, ctx, rls)
+        with_rls = governed_for_role(compiled.sql, ctx, ROLE_ANALYST, rls=rls)
 
-        result = await execute_direct(source_pool, "test-pg", with_rls.sql, with_rls.params)
+        result = await execute_direct(source_pool, "test-pg", with_rls, compiled.params)
 
         assert result.rows, "REQ-041: expected at least one us-east row in test data"
         region_idx = _col_index(result, "region")
@@ -284,12 +285,11 @@ class TestRLSEnforcement:
         compiled = _orders_compiled()
 
         rls = RLSContext(rules={ORDERS_TABLE_ID: "amount > 0"})
-        with_rls = inject_rls(compiled, ctx, rls)
+        with_rls = governed_for_role(compiled.sql, ctx, ROLE_ANALYST, rls=rls)
 
-        assert "WHERE" in with_rls.sql.upper(), (
+        assert with_rls == f'{compiled.sql} WHERE ("orders"."amount" > 0)', (
             "REQ-040: WHERE clause must be present in governed SQL"
         )
-        assert '"amount" > 0' in with_rls.sql
 
     async def test_empty_rls_context_returns_all_rows(self, source_pool):
         # REQ-040: empty RLS (no rules) must not restrict rows.
@@ -297,10 +297,10 @@ class TestRLSEnforcement:
         compiled = _orders_compiled()
 
         rls = RLSContext.empty()
-        with_rls = inject_rls(compiled, ctx, rls)
+        with_rls = governed_for_role(compiled.sql, ctx, ROLE_ANALYST, rls=rls)
 
         result_all = await execute_direct(source_pool, "test-pg", compiled.sql, [])
-        result_rls = await execute_direct(source_pool, "test-pg", with_rls.sql, with_rls.params)
+        result_rls = await execute_direct(source_pool, "test-pg", with_rls, compiled.params)
 
         assert len(result_all.rows) == len(result_rls.rows), (
             "REQ-040: empty RLS must not restrict rows"
@@ -312,9 +312,9 @@ class TestRLSEnforcement:
         compiled = _orders_compiled()
 
         rls = RLSContext(rules={ORDERS_TABLE_ID: "region = 'nonexistent-region-xyz'"})
-        with_rls = inject_rls(compiled, ctx, rls)
+        with_rls = governed_for_role(compiled.sql, ctx, ROLE_ANALYST, rls=rls)
 
-        result = await execute_direct(source_pool, "test-pg", with_rls.sql, with_rls.params)
+        result = await execute_direct(source_pool, "test-pg", with_rls, compiled.params)
         assert result.rows == [], f"REQ-041: expected empty result, got {len(result.rows)} rows"
 
 
@@ -418,9 +418,9 @@ class TestTwoIndependentEnforcementLayers:
         compiled = _orders_compiled()
 
         rls = RLSContext(rules={ORDERS_TABLE_ID: "region = 'us-east'"})
-        governed = inject_rls(compiled, ctx, rls)
+        governed = governed_for_role(compiled.sql, ctx, ROLE_ANALYST, rls=rls)
 
-        result = await execute_direct(source_pool, "test-pg", governed.sql, governed.params)
+        result = await execute_direct(source_pool, "test-pg", governed, compiled.params)
         region_idx = _col_index(result, "region")
         for row in result.rows:
             assert row[region_idx] == "us-east", (
@@ -436,9 +436,9 @@ class TestTwoIndependentEnforcementLayers:
         masking_rules: MaskingRules = {
             (ORDERS_TABLE_ID, ROLE_ANALYST): {"amount": (rule, "integer")},
         }
-        masked = inject_masking(compiled, ctx, masking_rules, ROLE_ANALYST)
+        masked = governed_for_role(compiled.sql, ctx, ROLE_ANALYST, masking_rules=masking_rules)
 
-        result = await execute_direct(source_pool, "test-pg", masked.sql, masked.params)
+        result = await execute_direct(source_pool, "test-pg", masked, compiled.params)
 
         assert result.rows, "REQ-038: expected rows for masking verification"
         amount_idx = _col_index(result, "amount")
@@ -791,17 +791,25 @@ class TestStage2AllClientPaths:
 class TestDomainLevelRLS:
     async def test_domain_rls_rule_filters_table_in_domain(self, source_pool):
         # REQ-402: domain-level RLS applies to all tables in the domain.
-        # Simulate by applying a domain-scoped RLS to the orders table.
         ctx = _make_ctx()
         compiled = _orders_compiled()
 
-        # The domain-level RLS is the same SQL expression but applies via domain scoping.
-        # We verify the row filtering is correct when the rule is table-scoped here
-        # (integration of domain scoping is tested at the config-loader level in unit tests).
-        rls = RLSContext(rules={ORDERS_TABLE_ID: "region = 'us-east'"})
-        with_rls = inject_rls(compiled, ctx, rls)
+        # The domain rule is folded into the table's rule at runtime build
+        # (security/row_filters.resolve_table_rules), as the server does.
+        domain_rule = {
+            "role_id": ROLE_ANALYST,
+            "table_id": None,
+            "domain_id": "sales",
+            "filter_expr": "region = 'us-east'",
+        }
+        tables = [{"id": ORDERS_TABLE_ID, "domain_id": "sales"}]
+        rls = build_rls_context(
+            resolve_table_rules([domain_rule], tables, {ROLE_ANALYST: [ROLE_ANALYST]}, [], {}),
+            ROLE_ANALYST,
+        )
+        with_rls = governed_for_role(compiled.sql, ctx, ROLE_ANALYST, rls=rls)
 
-        result = await execute_direct(source_pool, "test-pg", with_rls.sql, with_rls.params)
+        result = await execute_direct(source_pool, "test-pg", with_rls, compiled.params)
         region_idx = _col_index(result, "region")
         for row in result.rows:
             assert row[region_idx] == "us-east", (

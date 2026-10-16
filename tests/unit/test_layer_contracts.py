@@ -11,11 +11,12 @@ import dataclasses
 from graphql import parse, validate
 
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.rls import RLSContext, inject_rls
+from provisa.compiler.rls import RLSContext
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import CompilationContext, CompiledQuery, TableMeta, compile_query
 from provisa.compiler.context import build_context
 from provisa.executor.result import QueryResult
+from tests.helpers import governed_for_role
 
 
 # --- TableMeta field contract ---
@@ -175,7 +176,7 @@ def _build_minimal_ctx():
     return schema, ctx
 
 
-# --- Round-trip: CompilationContext → compile_query → CompiledQuery → inject_rls ---
+# --- Round-trip: CompilationContext → compile_query → CompiledQuery → governed SQL ---
 
 
 class TestRoundTripContracts:
@@ -199,42 +200,20 @@ class TestRoundTripContracts:
         results = compile_query(doc, ctx)
         assert len(results[0].sql) > 0
 
-    def test_inject_rls_accepts_compiled_query_output(self):
-        schema, ctx = _build_minimal_ctx()
-        doc = parse("{ orders { id amount } }")
-        results = compile_query(doc, ctx)
-        compiled = results[0]
-        rls = RLSContext.empty()
-        # inject_rls must accept CompiledQuery + CompilationContext + RLSContext
-        result = inject_rls(compiled, ctx, rls)
-        assert isinstance(result, CompiledQuery)
-
-    def test_inject_rls_output_sql_is_str(self):
-        schema, ctx = _build_minimal_ctx()
-        doc = parse("{ orders { id amount } }")
-        results = compile_query(doc, ctx)
-        compiled = results[0]
-        rls = RLSContext(rules={1: '"amount" > 0'})
-        result = inject_rls(compiled, ctx, rls)
-        assert isinstance(result.sql, str)
-
     def test_inject_rls_with_rule_modifies_sql(self):
         schema, ctx = _build_minimal_ctx()
         doc = parse("{ orders { id amount } }")
-        results = compile_query(doc, ctx)
-        compiled = results[0]
+        compiled = compile_query(doc, ctx)[0]
         rls = RLSContext(rules={1: '"amount" > 0'})
-        result = inject_rls(compiled, ctx, rls)
-        assert '"amount" > 0' in result.sql
+        result = governed_for_role(compiled.sql, ctx, "admin", rls=rls)
+        assert result == f'{compiled.sql} WHERE ("orders"."amount" > 0)'
 
     def test_inject_rls_empty_rules_returns_same_sql(self):
         schema, ctx = _build_minimal_ctx()
         doc = parse("{ orders { id amount } }")
-        results = compile_query(doc, ctx)
-        compiled = results[0]
-        rls = RLSContext.empty()
-        result = inject_rls(compiled, ctx, rls)
-        assert result.sql == compiled.sql
+        compiled = compile_query(doc, ctx)[0]
+        result = governed_for_role(compiled.sql, ctx, "admin", rls=RLSContext.empty())
+        assert result == compiled.sql
 
 
 class TestImportBoundaries:  # REQ-1678

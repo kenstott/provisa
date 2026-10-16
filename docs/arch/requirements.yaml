@@ -9245,12 +9245,19 @@
   feature: row-security-and-masking-row-rules
   priority: MUST
   type: behavioral
-  description: RLS injection via `inject_rls()` checks for table-specific rules first, then falls back
-    to domain-level rules; table-level rules take precedence.
+  description: '[SUPERSEDED by REQ-403, 2026-10-15 -- the rule is resolved at runtime build, not by an
+    inject_rls() step. Kept here for history; do not implement against it.] RLS injection via `inject_rls()`
+    checks for table-specific rules first, then falls back to domain-level rules; table-level rules take
+    precedence. [END SUPERSEDED BLOCK] (Amended 2026-10-15, one governed pipeline:) A table''s row filter
+    for a role is its table-specific rule when it has one, else its domain''s rule; the table-level rule
+    takes precedence. The rule list is folded to one table-level rule per (role, table) at runtime build
+    (security/row_filters.resolve_table_rules), and the governed pipeline (compiler/stage2) ANDs it into
+    every SELECT that reads the table.'
   use_case: Table-level RLS precedence lets stewards override domain rules selectively for exceptions
     without duplicating configuration.
   code:
-  - provisa/compiler/sql_gen.py
+  - provisa/security/row_filters.py
+  - provisa/compiler/stage2.py
   tests:
   - tests/integration/test_compiler_integration.py
   - tests/unit/test_rls_compiler_fallback.py
@@ -9258,7 +9265,7 @@
   since: 2026-01
   scenario: 'Given a table with both table-specific and domain-level RLS rules
 
-    When inject_rls() runs
+    When the role''s query is governed
 
     Then table-specific rules take precedence over domain-level rules
 
@@ -19770,7 +19777,9 @@
     DONE (2026-07) — the two sensitive DB-resident columns are both encrypted at rest. (1) api_sources.auth
     (keys/tokens) is BYTEA, encrypted on write (openapi register) via the process-configured EncryptionService
     accessor and decrypted before use (api_source loader). (2) rls_rules.filter_expr — the RLS predicate
-    is injected as SQL by inject_rls at every governance read, so it is sensitive metadata. Encryption
+    is injected as SQL [SUPERSEDED by REQ-686, 2026-10-15 -- inject_rls was removed. Kept here for history;
+    do not implement against it.] by inject_rls [END SUPERSEDED BLOCK] by the governed pipeline
+    (compiler/stage2) at every governance read, so it is sensitive metadata. Encryption
     is confined to the repository boundary (provisa/core/repositories/rls.py) where upsert encrypts and
     get_for_table_role/list_for_role/ list_all decrypt. The two raw reads that bypassed the repo (the
     app startup RLS loader and the admin GraphQL rls_rules field) were funnelled through list_all so decryption
@@ -21182,12 +21191,15 @@
     user-written WHERE or HAVING reference to a masked column is refused at validation by V005 (REQ-531).
     So a join on a masked key does not use the real value, and a role that may not see a key cannot
     recover it by joining on it. A demo or model that needs the join for a masked role exposes a
-    non-sensitive surrogate key. RLS-injected filters read the physical columns. Masking returns a new
-    immutable CompiledQuery, never mutating the input (absorbs REQ-744).
+    non-sensitive surrogate key. RLS-injected filters read the physical columns. [SUPERSEDED by REQ-740,
+    2026-10-15 -- masks are applied by the governed pipeline to the statement; there is no separate
+    masking step returning a CompiledQuery. Kept here for history; do not implement against it.] Masking
+    returns a new immutable CompiledQuery, never mutating the input (absorbs REQ-744). [END SUPERSEDED
+    BLOCK] (Amended 2026-10-15, one governed pipeline:) masks are applied by compiler/stage2 (apply_governance)
+    to the statement every transport compiles.
   use_case: A role sees masked values everywhere it reads them, and cannot use a masked key in a join to
     reach the rows or values the mask withholds.
   code:
-  - provisa/compiler/mask_inject.py
   - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
@@ -21230,7 +21242,7 @@
     federated sources (PostgreSQL, MySQL, Snowflake, BigQuery).
   code:
   - provisa/security/masking.py
-  - provisa/compiler/mask_inject.py
+  - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
   - tests/e2e/test_masking.py
@@ -21337,7 +21349,7 @@
   use_case: Immutable masking injection and preservation of query structure ensure correct sorting, pagination,
     and aggregation behavior.
   code:
-  - provisa/compiler/mask_inject.py
+  - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
   - tests/e2e/test_masking.py
@@ -21373,7 +21385,6 @@
   use_case: Role-specific masking lets different users see different representations of the same data
     based on their role permissions.
   code:
-  - provisa/compiler/mask_inject.py
   - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
@@ -21382,7 +21393,7 @@
   since: 2026-06
   scenario: 'Given the same column with different masking rules per role
 
-    When inject_masking is called for two different roles
+    When each role runs the same query
 
     Then admin sees raw values; analyst sees regex mask; masked_viewer sees constant mask
 
@@ -28493,7 +28504,6 @@
   code:
   - provisa/compiler/stage2.py
   - provisa/compiler/rls.py
-  - provisa/compiler/mask_inject.py
   - provisa/transpiler/transpile.py
   - provisa/cypher/translator.py
   - provisa/cypher/expr_parser.py
@@ -28553,7 +28563,6 @@
   - provisa/observability/stage_trace.py
   - provisa/compiler/stage2.py
   - provisa/compiler/rls.py
-  - provisa/compiler/mask_inject.py
   - provisa/transpiler/transpile.py
   tests:
   - tests/unit/test_stage_trace.py
@@ -30481,7 +30490,6 @@
     capability (a gap is never a data leak), and the middle tier must bound memory to O(batch), not O(relation),
     with minimal cleartext residence time.'
   code:
-  - provisa/compiler/mask_inject.py
   - provisa/compiler/stage2.py
   - provisa/federation/connector.py
   - provisa/federation/promote.py
@@ -50985,7 +50993,7 @@
     real data would give.
   code:
   - provisa/security/masking.py
-  - provisa/compiler/mask_inject.py
+  - provisa/compiler/stage2.py
   - provisa/fakes/platform_key.py
   - provisa/fakes/projection.py
   - provisa/fakes/pg_functions.py
@@ -75583,7 +75591,7 @@
   since: 2026-04
   code:
   - provisa/security/masking.py
-  - provisa/compiler/mask_inject.py
+  - provisa/compiler/stage2.py
   tests:
   - tests/e2e/test_masking.py
   - tests/unit/test_inherited_roles.py
@@ -77794,7 +77802,7 @@
     against it.] can filter/sort on it [END SUPERSEDED BLOCK], but the returned values are masked.
   code:
   - provisa/security/masking.py
-  - provisa/compiler/mask_inject.py
+  - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
   - tests/e2e/test_masking.py
@@ -77804,7 +77812,8 @@
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
     taken from the plan''s own sentences. Audited 2026-10-03 against the code: mask_inject.py rewrites
     SELECT projection; test_masking.py::test_analyst_gets_regex_viewer_gets_constant:343. Filtering on
-    masked columns now rejected by V005/REQ-531.'
+    masked columns now rejected by V005/REQ-531. 2026-10-15: inject_masking (mask_inject.py) removed;
+    compiler/stage2.py applies masks, wherever the statement references the column (REQ-740).'
   since: 2026-01
   scenario: 'Given a column with different mask rules for two roles
 

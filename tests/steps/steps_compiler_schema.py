@@ -658,19 +658,6 @@ def _make_rls_ctx(meta):
     return ctx
 
 
-def _make_rls_compiled():
-    """Build a minimal CompiledQuery for the orders table."""
-    from provisa.compiler.sql_gen import ColumnRef, CompiledQuery
-
-    return CompiledQuery(
-        sql='SELECT "id" FROM "public"."orders"',
-        params=[],
-        root_field="orders",
-        columns=[ColumnRef(alias=None, column="id", field_name="id", nested_in=None)],
-        sources={"pg"},
-    )
-
-
 # ---------------------------------------------------------------------------
 # Helpers for REQ-409: Cypher datetime coercion
 # ---------------------------------------------------------------------------
@@ -882,7 +869,9 @@ def _make_graphql_default_schema_input() -> SchemaInput:
 from graphql import print_schema, parse  # noqa: E402
 from pytest_bdd import given, when, then, scenarios  # noqa: E402
 
-from provisa.compiler.rls import build_rls_context, inject_rls  # noqa: E402
+from provisa.compiler.rls import build_rls_context  # noqa: E402
+from provisa.security.row_filters import resolve_table_rules  # noqa: E402
+from tests.helpers import governed_for_role  # noqa: E402
 from provisa.compiler.sql_gen import compile_query  # noqa: E402
 from provisa.compiler.context import build_context  # noqa: E402
 from provisa.cypher.translator_helpers import _coerce_ts_literals  # noqa: E402
@@ -1000,44 +989,47 @@ def req253_assert_fresh(shared_data):
 
 @given("a table with both table-specific and domain-level RLS rules")
 def req403_rules(shared_data):
-    shared_data["req403_rls"] = build_rls_context(
-        [
-            {
-                "table_id": 1,
-                "domain_id": None,
-                "role_id": "analyst",
-                "filter_expr": "owner_id = current_user",
-            },
-            {
-                "table_id": None,
-                "domain_id": "sales",
-                "role_id": "analyst",
-                "filter_expr": "region = 'us'",
-            },
-        ],
-        "analyst",
-    )
+    rules = [
+        {
+            "table_id": 1,
+            "domain_id": None,
+            "role_id": "analyst",
+            "filter_expr": "owner_id = current_user",
+        },
+        {
+            "table_id": None,
+            "domain_id": "sales",
+            "role_id": "analyst",
+            "filter_expr": "region = 'us'",
+        },
+    ]
     meta = _make_rls_meta(domain_id="sales")
+    # The rule list as the server folds it at runtime build: one table-level rule per
+    # (role, table) -- the table's own rule, else its domain's.
+    tables = [{"id": meta.table_id, "domain_id": meta.domain_id}]
+    shared_data["req403_rls"] = build_rls_context(
+        resolve_table_rules(rules, tables, {"analyst": ["analyst"]}, [], {}), "analyst"
+    )
     shared_data["req403_ctx"] = _make_rls_ctx(meta)
-    shared_data["req403_compiled"] = _make_rls_compiled()
+    shared_data["req403_sql"] = 'SELECT "id" FROM "public"."orders"'
 
 
-@when("inject_rls() runs")
+@when("the role's query is governed")
 def req403_run(shared_data):
-    shared_data["req403_result"] = inject_rls(
-        shared_data["req403_compiled"],
+    shared_data["req403_result"] = governed_for_role(
+        shared_data["req403_sql"],
         shared_data["req403_ctx"],
-        shared_data["req403_rls"],
+        "analyst",
+        rls=shared_data["req403_rls"],
     )
 
 
 @then("table-specific rules take precedence over domain-level rules")
 def req403_assert(shared_data):
-    sql = shared_data["req403_result"].sql
-    # Table-specific filter is applied.
-    assert '"owner_id" = CURRENT_USER' in sql
-    # Domain-level filter is NOT applied (table rule wins, no fallback).
-    assert "region = 'us'" not in sql
+    # Table-specific filter is applied; the domain-level filter is not (table rule wins).
+    assert shared_data["req403_result"] == (
+        'SELECT "id" FROM "public"."orders" WHERE ("orders"."owner_id" = CURRENT_USER)'
+    )
 
 
 # ---------------------------------------------------------------------------

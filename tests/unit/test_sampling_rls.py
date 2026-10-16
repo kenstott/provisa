@@ -13,10 +13,11 @@
 from __future__ import annotations
 
 
-from provisa.compiler.rls import RLSContext, inject_rls
+from provisa.compiler.rls import RLSContext
 from provisa.compiler.sampling import DEFAULT_SAMPLE_SIZE, apply_sampling, get_sample_size
 from provisa.compiler.sql_gen import ColumnRef, CompilationContext, CompiledQuery, TableMeta
 from provisa.security.rights import Capability, has_capability
+from tests.helpers import governed_for_role
 
 
 # ---------------------------------------------------------------------------
@@ -132,11 +133,11 @@ class TestApplySamplingWithRLS:
     """Verify that sampling and RLS interact correctly when both are applied."""
 
     def _rls_injected(self) -> CompiledQuery:
-        """Build a compiled query with an RLS WHERE clause already injected."""
-        base = _compiled('SELECT "id" FROM "public"."orders"')
-        ctx = _ctx()
+        """Build a compiled query with the role's row filter applied by the governed pipeline."""
         rls = RLSContext(rules={1: "\"region\" = 'us-east'"})
-        return inject_rls(base, ctx, rls)
+        return _compiled(
+            governed_for_role('SELECT "id" FROM "public"."orders"', _ctx(), "a", rls=rls)
+        )
 
     def test_rls_query_without_limit_gets_limit(self):
         rls_query = self._rls_injected()

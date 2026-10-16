@@ -6,19 +6,19 @@
 
 """Spec-named coverage for REQ-403 — RLS rule resolution fallback.
 
-`_rule_for_table` (inside `inject_rls`) resolves the filter for a table by checking
-the table-scoped rule first, then falling back to the table's domain rule. These tests
-exercise that precedence through the public `inject_rls`; the broader domain-RLS load
-path is covered in `test_rls.py::TestDomainRLS`.
+A table's row filter is its own table rule when it has one, else its domain's rule. The rule
+list is folded to one table-level rule per (role, table) at runtime build
+(``security/row_filters.resolve_table_rules``), the role's RLSContext is built from that
+(``build_rls_context``), and the governed pipeline (``compiler/stage2``) applies it. The broader
+domain-RLS load path is covered in ``test_rls.py::TestDomainRLS``.
 """
 
-from provisa.compiler.rls import build_rls_context, inject_rls
-from provisa.compiler.sql_gen import (
-    ColumnRef,
-    CompilationContext,
-    CompiledQuery,
-    TableMeta,
-)
+from provisa.compiler.rls import RLSContext, build_rls_context
+from provisa.compiler.sql_gen import CompilationContext, TableMeta
+from provisa.security.row_filters import resolve_table_rules
+from tests.helpers import governed_for_role
+
+_SQL = 'SELECT "id" FROM "public"."orders"'
 
 
 def _meta(domain_id="sales"):
@@ -41,91 +41,49 @@ def _ctx(meta):
     return ctx
 
 
-def _compiled():
-    return CompiledQuery(
-        sql='SELECT "id" FROM "public"."orders"',
-        params=[],
-        root_field="orders",
-        columns=[ColumnRef(alias=None, column="id", field_name="id", nested_in=None)],
-        sources={"pg"},
-    )
+def _rls(rules: list[dict], meta: TableMeta) -> RLSContext:
+    tables = [{"id": meta.table_id, "domain_id": meta.domain_id}]
+    return build_rls_context(resolve_table_rules(rules, tables, {"a": ["a"]}, [], {}), "a")
+
+
+def _governed(rules: list[dict], meta: TableMeta, sql: str = _SQL) -> str:
+    return governed_for_role(sql, _ctx(meta), "a", rls=_rls(rules, meta))
+
+
+_OWNER = {"table_id": 1, "domain_id": None, "role_id": "a", "filter_expr": "\"owner\" = 'me'"}
+_SALES = {
+    "table_id": None,
+    "domain_id": "sales",
+    "role_id": "a",
+    "filter_expr": "\"region\" = 'us'",
+}
 
 
 def test_table_rule_used_when_present():
-    rls = build_rls_context(
-        [{"table_id": 1, "domain_id": None, "role_id": "a", "filter_expr": "\"owner\" = 'me'"}], "a"
-    )
-    result = inject_rls(_compiled(), _ctx(_meta()), rls)
-    assert "\"owner\" = 'me'" in result.sql
+    assert _governed([_OWNER], _meta()) == f'{_SQL} WHERE ("orders"."owner" = \'me\')'
 
 
 def test_domain_rule_used_as_fallback():
-    rls = build_rls_context(
-        [
-            {
-                "table_id": None,
-                "domain_id": "sales",
-                "role_id": "a",
-                "filter_expr": "\"region\" = 'us'",
-            }
-        ],
-        "a",
-    )
-    result = inject_rls(_compiled(), _ctx(_meta()), rls)
-    assert "\"region\" = 'us'" in result.sql
+    assert _governed([_SALES], _meta()) == f'{_SQL} WHERE ("orders"."region" = \'us\')'
 
 
 def test_table_rule_takes_precedence_over_domain_rule():
-    rls = build_rls_context(
-        [
-            {"table_id": 1, "domain_id": None, "role_id": "a", "filter_expr": "\"owner\" = 'me'"},
-            {
-                "table_id": None,
-                "domain_id": "sales",
-                "role_id": "a",
-                "filter_expr": "\"region\" = 'us'",
-            },
-        ],
-        "a",
-    )
-    result = inject_rls(_compiled(), _ctx(_meta()), rls)
-    assert "\"owner\" = 'me'" in result.sql
-    assert "\"region\" = 'us'" not in result.sql
+    assert _governed([_OWNER, _SALES], _meta()) == (f'{_SQL} WHERE ("orders"."owner" = \'me\')')
 
 
 def test_no_rule_for_table_or_domain_leaves_sql_unchanged():
-    rls = build_rls_context(
-        [{"table_id": 99, "domain_id": None, "role_id": "a", "filter_expr": "x = 1"}], "a"
-    )
-    compiled = _compiled()
-    result = inject_rls(compiled, _ctx(_meta(domain_id="other")), rls)
-    assert result.sql == compiled.sql
+    rules = [{"table_id": 99, "domain_id": None, "role_id": "a", "filter_expr": "x = 1"}]
+    assert _governed(rules, _meta(domain_id="other")) == _SQL
 
 
 def test_domain_rule_does_not_apply_when_table_in_other_domain():
-    rls = build_rls_context(
-        [
-            {
-                "table_id": None,
-                "domain_id": "sales",
-                "role_id": "a",
-                "filter_expr": "\"region\" = 'us'",
-            }
-        ],
-        "a",
-    )
-    result = inject_rls(_compiled(), _ctx(_meta(domain_id="marketing")), rls)
-    assert "\"region\" = 'us'" not in result.sql
+    assert _governed([_SALES], _meta(domain_id="marketing")) == _SQL
 
 
 def test_an_aliased_root_keeps_its_field_through_rls():
-    """The statement for ``a: orders`` is still the ``orders`` field once its rule is applied —
-    what its cache entry is held under and its tables are found by (REQ-544)."""
-    rls = build_rls_context(
-        [{"table_id": 1, "domain_id": None, "role_id": "a", "filter_expr": "\"owner\" = 'me'"}], "a"
+    """The statement for ``a: orders`` is governed by the ``orders`` table's rule — the rule is
+    found by the table the statement reads, whatever the client named the root (REQ-544)."""
+    sql = 'SELECT "t0"."id" AS "id" FROM "public"."orders" "t0"'
+    assert _governed([_OWNER], _meta(), sql) == (
+        'SELECT "t0"."id" AS "id" FROM "public"."orders" AS "t0" WHERE ("t0"."owner" = \'me\')'
     )
-    compiled = _compiled()
-    compiled.root_field, compiled.canonical_field = "a", "orders"
-    result = inject_rls(compiled, _ctx(_meta()), rls)
-    assert "\"owner\" = 'me'" in result.sql
-    assert (result.root_field, result.canonical_field) == ("a", "orders")
