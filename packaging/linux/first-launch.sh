@@ -923,6 +923,12 @@ services:
     restart: unless-stopped
     image: provisa/provisa:local
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--ssl-certfile", "/app/certs/provisa.crt", "--ssl-keyfile", "/app/certs/provisa.key", "--timeout-keep-alive", "620", "--workers", "1"]
+    # On a sandbox VM the coordinator's UI server reaches this tier at the VM's VPC address
+    # (PROVISA_SANDBOX_PUBLISH=<address>:8000, terraform/gcp-saas/sandbox.tf). On a node running
+    # both profiles provisa holds host 8000 and the UI server reaches the tier by service name; a
+    # compose port cannot be left out by a variable, so there it is published on loopback only.
+    ports:
+      - "\${PROVISA_SANDBOX_PUBLISH:-127.0.0.1:18000}:8000"
     volumes:
       - ${CERT_DIR}:/app/certs:ro
       # A host directory, not a named volume: the node's demo stores sync
@@ -1131,7 +1137,7 @@ install_systemd() {
              PROVISA_ENGINE_PORT \
              PROVISA_ENGINE_IDLE_SECONDS \
              PROVISA_MINIO_BIND_IP PROVISA_ENGINE_OTEL_S3_ENDPOINT PROVISA_OBJECT_STORE_DIR \
-             COMPOSE_PROFILES PROVISA_REDIS_HOST PROVISA_MINIO_HOST PROVISA_SANDBOX_API_URL \
+             COMPOSE_PROFILES PROVISA_REDIS_HOST PROVISA_MINIO_HOST PROVISA_SANDBOX_API_URL PROVISA_SANDBOX_PUBLISH \
              PROVISA_SANDBOX_INSTANCE PROVISA_SANDBOX_IDLE_STOP_SECONDS \
              TRINO_HOST TRINO_PORT \
              PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE PROVISA_ISOLATED_ENGINE_PORT; do
