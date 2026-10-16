@@ -287,3 +287,21 @@ def test_every_cloud_deploy_refreshes_the_demo_stores_sync():
     assert {arm for arm, _ in arms} == {"api", "cfg", "all", "patch"}
     for arm, steps in arms:
         assert "push_demo_stores" in steps.split("; "), arm
+
+
+def test_a_cloud_deploy_reaches_the_sandbox_vm_too():
+    """With the sandbox tier on a VM of its own (terraform/gcp-saas/sandbox.tf), every deploy
+    that pushes the app pushes the same tree there, starting a stopped VM for it."""
+    import re
+    from pathlib import Path
+
+    deploy = (Path(__file__).resolve().parents[2] / "scripts" / "deploy-cloud.sh").read_text()
+    body = deploy[deploy.index("deploy_sandbox_vm() {") :]
+    body = body[: body.index("\n}\n")]
+    assert 'gcloud compute instances start "$SANDBOX_NODE"' in body
+    assert 'NODE="$SANDBOX_NODE" API_CONTAINER=compose-provisa-sandbox-1' in body
+    for step in ("push_demo_stores", "push_overlay", "push_api", "push_cfg", "restart"):
+        assert step in body, step
+    arms = re.findall(r"^  (api|cfg|all|patch)\)\n(?:\s*#.*\n)*\s*(.*);;$", deploy, re.M)
+    for arm, steps in arms:
+        assert steps.strip().split("; ")[-1] == "deploy_sandbox_vm", arm
