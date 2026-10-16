@@ -162,11 +162,20 @@ async def test_the_inventory_tables_are_offered(endpoint):
     assert _TABLES <= {r[0] for r in rows}
 
 
+#: The clouds whose accounts hold resources of the table's kind. The Azure subscription holds no
+#: network resource the adapter lists (virtual networks, security groups, public IPs, load
+#: balancers, application gateways) -- only Network Watchers, which it does not.
+_HELD_BY_THE_ACCOUNTS = {
+    "storage_resources": set(_CLOUDS),
+    "network_resources": {"aws", "gcp"},
+}
+
+
 @_aio
-@pytest.mark.parametrize("table", ["storage_resources", "network_resources"])
+@pytest.mark.parametrize("table", sorted(_HELD_BY_THE_ACCOUNTS))
 async def test_each_configured_cloud_has_rows(endpoint, table):
     counts = await _providers(endpoint, _SCHEMA, table)
-    assert set(counts) == set(_CLOUDS), counts
+    assert set(counts) == _HELD_BY_THE_ACCOUNTS[table], counts
 
 
 @_aio
