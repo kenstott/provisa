@@ -170,7 +170,7 @@ O redirecionamento CTAS usa um conector Iceberg (catálogo `results`) apoiado po
 
 ## Motores de Federação {: #federation-engines }
 
-O Provisa seleciona um motor de federação na inicialização via a variável de ambiente `PROVISA_ENGINE`, a configuração persistida na UI de administração, ou o padrão. Quando nada está definido, o DuckDB é o padrão — totalmente em processo, sem serviço externo (REQ-989). Veja [Configuração](configuration.md#motor-de-federacao) para detalhes de seleção.
+O Provisa seleciona um motor de federação na inicialização via a variável de ambiente `PROVISA_ENGINE`, a configuração persistida na UI de administração, ou o padrão. Quando nada está definido, o DuckDB é o padrão — totalmente em processo, sem serviço externo (REQ-989). Veja [Configuração](configuration.md#federation-engine) para detalhes de seleção.
 
 Cada motor é uma instância de `FederationEngine` definida em `provisa/federation/engine.py`. A instância possui uma coleção de conectores que determina quais tipos de fonte o motor pode ler ao vivo (ATTACH) versus quais devem pousar no armazenamento de materialização do motor primeiro. [tool-verified: `engine.py` `_ENGINE_BUILDERS`, `ENGINE_REGISTRY`]
 
@@ -182,7 +182,7 @@ Cada motor é uma instância de `FederationEngine` definida em `provisa/federati
 | `PARTIAL` | Alcança um subconjunto (relacional, arquivos, objeto/lake em nuvem) além de pousar tudo o mais | DuckDB, PostgreSQL, ClickHouse, Databricks, Snowflake, BigQuery, Fabric, Synapse |
 | `SELF_ONLY` | Alcança apenas seu próprio armazenamento; toda outra fonte pousa nele | SQLAlchemy |
 
-### Motores disponíveis [tool-verified: `engine.py` `_ENGINE_BUILDERS`] {: #available-engines-tool-verified-enginepy-enginebuilders }
+### Motores disponíveis [tool-verified: `engine.py` `_ENGINE_BUILDERS`] {: #available-engines-tool-verified-enginepy-engine_builders }
 
 | Chave do motor | Dialeto | MPP | Mecanismo de link externo | Autenticação |
 | ----------- | --------- | ----- | ------------------------ | ------ |
@@ -197,17 +197,17 @@ Cada motor é uma instância de `FederationEngine` definida em `provisa/federati
 | `synapse` | T-SQL | Sim | ADLS OPENROWSET / tabelas externas | Azure AD |
 | `sqlalchemy` | Qualquer dialeto SQLAlchemy | Não | Nenhum (apenas pouso) | Credenciais por dialeto |
 
-### Padrão zero-config: DuckDB (REQ-989) [tool-verified: `engine.py` `build_duckdb_engine`, `_embedded_duckdb_materialize_default`] {: #zero-config-default-duckdb-req-989-tool-verified-enginepy-buildduckdbengine-embeddedduckdbmaterializedefault }
+### Padrão zero-config: DuckDB (REQ-989) [tool-verified: `engine.py` `build_duckdb_engine`, `_embedded_duckdb_materialize_default`] {: #zero-config-default-duckdb-req-989-tool-verified-enginepy-build_duckdb_engine-embedded_duckdb_materialize_default }
 
 Quando `PROVISA_ENGINE` não está definido, o Provisa usa o motor DuckDB totalmente embutido, em processo. O armazenamento de materialização do DuckDB é um arquivo DuckDB embutido em `$PROVISA_DATA_DIR/materialize.duckdb` (padrão `~/.provisa/materialize.duckdb`). Nenhum banco de dados ou serviço externo é necessário.
 
 Como o DuckDB impõe um único gravador por arquivo, `store_connection.py` grava no armazenamento embutido através da própria conexão do motor — nunca uma segunda conexão independente. Este é o único caso em que o motor e o armazenamento de materialização compartilham um handle de arquivo por design. [tool-verified: `store_connection.py` module docstring]
 
-### Transporte de leitura nativo Arrow (REQ-986, REQ-987, REQ-988) [tool-verified: `engine.py` `build_*_engine` `capabilities=`] {: #arrow-native-read-transport-req-986-req-987-req-988-tool-verified-enginepy-buildengine-capabilities }
+### Transporte de leitura nativo Arrow (REQ-986, REQ-987, REQ-988) [tool-verified: `engine.py` `build_*_engine` `capabilities=`] {: #arrow-native-read-transport-req-986-req-987-req-988-tool-verified-enginepy-build__engine-capabilities }
 
 ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric, e Synapse todos anunciam `EngineCapability.ARROW` e `EngineCapability.ARROW_STREAM`. Consultas contra esses motores retornam RecordBatches Arrow diretamente — o caminho de serialização por linha é completamente contornado. O servidor Flight faz streaming desses batches para clientes sem materializar o resultado completo na memória do processo do Provisa. Para o Trino, o streaming Arrow depende do proxy Zaychik; para os motores de warehouse, a própria API Arrow-nativa do motor (Cloud Fetch para Databricks, Storage Read API para BigQuery, `fetch_arrow_table` para DuckDB e Snowflake) alimenta o stream Flight.
 
-### Links de dados externos (ATTACH) [tool-verified: `engine.py` `_warehouse_connectors`] {: #external-data-links-attach-tool-verified-enginepy-warehouseconnectors }
+### Links de dados externos (ATTACH) [tool-verified: `engine.py` `_warehouse_connectors`] {: #external-data-links-attach-tool-verified-enginepy-warehouse_connectors }
 
 Todo motor de warehouse pode escanear dados de objeto/lake em nuvem no lugar, sem pousar uma cópia. Arquivos Parquet, CSV, Iceberg e Delta Lake em S3, GCS, ou OneLake se conectam (attach) diretamente ao motor como se fossem tabelas nativas. A estratégia — ATTACH (escanear no lugar) ou LAND (copiar para o armazenamento) — é determinada pelo `Mechanism` declarado do conector; não existe ramificação específica de motor no planejador. Um conector `Mechanism.ATTACH_R` aciona escaneamento zero-cópia; um conector `Mechanism.DIRECT` ou ausente aciona um pouso. [tool-verified: `connector_base.py` `Mechanism`, `engine.py` `_warehouse_connectors`]
 
@@ -221,9 +221,9 @@ O attach auto-provisiona todos os pré-requisitos no momento do attach:
 | Fabric | parquet, csv, iceberg, delta_lake | Atalho OneLake → OPENROWSET (`ATTACH_R`) | REST cria uma conexão `AmazonS3Compatible` + lakehouse + atalho; retorna o caminho `BULK` do OneLake — verificado ao vivo lendo R2 através do Fabric |
 | Snowflake | parquet, csv, json, iceberg, delta_lake | External stage + tabela externa (`ATTACH_R`) | `CREATE STAGE … URL=… CREDENTIALS=…`, depois `CREATE OR REPLACE EXTERNAL TABLE … LOCATION=@stage FILE_FORMAT=(TYPE=…)` — implementado; não testado ao vivo (nenhuma conta disponível) |
 
-Credenciais para armazenamento em nuvem viajam em `federation_hints` da fonte (veja [Fontes](sources.md#warehouses-como-fontes-nomeadas)). Qualquer tipo de fonte que não pode fazer ATTACH pousa primeiro no armazenamento de materialização do motor.
+Credenciais para armazenamento em nuvem viajam em `federation_hints` da fonte (veja [Fontes](sources.md#warehouses-as-named-sources)). Qualquer tipo de fonte que não pode fazer ATTACH pousa primeiro no armazenamento de materialização do motor.
 
-### Escritas de materialização colunar (REQ-990) [tool-verified: `core/database.py:436`, `store_connection.py:99`] {: #columnar-materialization-writes-req-990-tool-verified-coredatabasepy436-storeconnectionpy99 }
+### Escritas de materialização colunar (REQ-990) [tool-verified: `core/database.py:436`, `store_connection.py:99`] {: #columnar-materialization-writes-req-990-tool-verified-coredatabasepy436-store_connectionpy99 }
 
 `Connection.bulk_copy` em `provisa/core/database.py` escolhe o caminho de ingestão em massa mais rápido por dialeto de armazenamento: `COPY` binário (`copy_records_to_table` do asyncpg) para armazenamentos PostgreSQL, e uma única declaração preparada `executemany` para todos os outros armazenamentos relacionais. O armazenamento embutido DuckDB pousa através de `land_duckdb_native` em `store_connection.py` — uma única chamada `executemany` para o lote inteiro, nunca um laço linha a linha.
 
@@ -653,7 +653,7 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 (REQ-279, REQ-277, REQ-278)
 
-O cache de respostas é por adesão a cada requisição: GraphQL usa a diretiva `@cached(ttl: Int)`, SQL e Cypher o comentário `cache`/`cache_ttl`, gRPC os metadados de chamada `x-provisa-cache` / `x-provisa-cache-ttl`. A dica vale em todo transporte que carrega a linguagem (Cypher sobre HTTP, Bolt e Arrow Flight; GraphQL sobre HTTP e Arrow Flight). Uma requisição sem dica nunca lê nem grava o cache, e nenhuma forma lê dados mais recentes do que as configurações de fonte e tabela do operador permitem. Veja [Cache](configuration.md). (REQ-544)
+O cache de respostas é por adesão a cada requisição: GraphQL usa a diretiva `@cached(ttl: Int)`, SQL e Cypher o comentário `cache`/`cache_ttl`, gRPC os metadados de chamada `x-provisa-cache` / `x-provisa-cache-ttl`. A dica vale em todo transporte que carrega a linguagem (Cypher sobre HTTP, Bolt e Arrow Flight; GraphQL sobre HTTP e Arrow Flight). Uma requisição sem dica nunca lê nem grava o cache, e nenhuma forma lê dados mais recentes do que as configurações de fonte e tabela do operador permitem. Veja [Cache](configuration.md#per-request-opt-in). (REQ-544)
 
 ## Presets de Coluna em Mutações {: #column-presets-in-mutations }
 

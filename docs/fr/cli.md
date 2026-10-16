@@ -450,7 +450,7 @@ provisa maintenance on [--message MSG] [--ends-at ISO8601]
 | --- | --- |
 | `--message` | Surcharge le libellé standard du déploiement ; le défaut est le message standard du serveur |
 | `--ends-at` | Instant ISO-8601 auquel le travail devrait se terminer, par ex. `2026-08-14T22:30:00Z` ; le défaut est l'absence d'estimation |
-| `--api` | Voir [Options partagées](#options-partagees) |
+| `--api` | Voir [Options partagées](#shared-options) |
 | `--token` | Jeton Bearer pour une identité détenant `platform_settings` |
 | `--timeout` | Défaut 30 s |
 

@@ -695,7 +695,7 @@ Las métricas registradas automáticamente aparecen en la página Metrics con un
 lines 405–408: `{m.fromFact && <Badge ... data-testid={`metrics-from-fact-${m.name}`}>...
 </Badge>}`]
 
-### Vistas compuestas por métricas (view_metrics, REQ-1318) {: #metric-composed-views-viewmetrics-req-1318 }
+### Vistas compuestas por métricas (view_metrics, REQ-1318) {: #metric-composed-views-view_metrics-req-1318 }
 
 Una vista `view_metrics` fija el grano de una métrica en el momento de la definición. Declare
 los nombres de las métricas, las columnas de dimensión y los filtros opcionales; el compilador

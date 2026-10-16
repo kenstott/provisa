@@ -16,7 +16,7 @@ Les sources **capables en direct** exécutent les requêtes mono-source via leur
 
 Les sources en **fédération seule** sont toujours interrogées à travers la couche de fédération. Aucun pilote direct n'existe (REQ-229).
 
-Les sources en **lecture directe (réplica)** disposent d'un DirectDriver qui lit depuis l'entrepôt nativement (nativement Arrow lorsque c'est possible), dépose un réplica dans le magasin de matérialisation du moteur actif, puis les requêtes s'exécutent contre ce réplica. Voir [Entrepôts de données comme sources nommées](#entrepots-de-donnees-comme-sources-nommees).
+Les sources en **lecture directe (réplica)** disposent d'un DirectDriver qui lit depuis l'entrepôt nativement (nativement Arrow lorsque c'est possible), dépose un réplica dans le magasin de matérialisation du moteur actif, puis les requêtes s'exécutent contre ce réplica. Voir [Entrepôts de données comme sources nommées](#warehouses-as-named-sources).
 
 Les sources **directes (sans connecteur inter-sources)** disposent d'un DirectDriver qui exécute les instructions mono-source entièrement dans la source — chaque filtre, chaque colonne et chaque limite est poussé vers elle. Lorsqu'une instruction joint la source à une autre, le pilote lit les données et dépose un réplica ; la jointure s'exécute contre ce réplica dans le moteur actif. Aucun connecteur Trino n'existe pour ces sources.
 
@@ -30,21 +30,21 @@ Provisa enregistre **72** types de sources, ceux que propose le formulaire Sourc
 
 | # | Groupe | Types de sources |
 | --- | --- | --- |
-| 1–15 | [SGBDR](#sgbdr) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2` |
-| 16–24 | [Entrepôts de données cloud](#entrepots-de-donnees-cloud) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
-| 25–29 | [Analytique / OLAP](#analytique-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
-| 30–33 | [Lac de données / formats de tables ouverts](#lac-de-donnees-formats-de-tables-ouverts) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
+| 1–15 | [SGBDR](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2` |
+| 16–24 | [Entrepôts de données cloud](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
+| 25–29 | [Analytique / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 30–33 | [Lac de données / formats de tables ouverts](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
 | 39–40 | [Sources de code](arch/code-sources.md) | `node`, `python` |
-| 41–43 | [Flux (streaming)](#flux-streaming) | `kafka`, `websocket`, `rss` |
-| 44 | [Récepteur push](#recepteur-push) | `ingest` |
-| 45–46 | [Graphe et sémantique](#graphe-et-semantique) | `neo4j`, `sparql` |
-| 47–51 | [Fondées sur des fichiers](#fondees-sur-des-fichiers) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 52–53 | [Observabilité et autres](#observabilite-et-autres) | `google_sheets`, `prometheus` |
-| 54–60 | [SaaS d'entreprise](#connecteurs-saas-dentreprise) | `sharepoint`, `salesforce`, `servicenow`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 61–66 | [Sources API](#sources-api) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
+| 41–43 | [Flux (streaming)](#streaming) | `kafka`, `websocket`, `rss` |
+| 44 | [Récepteur push](#push-receiver) | `ingest` |
+| 45–46 | [Graphe et sémantique](#graph-semantic) | `neo4j`, `sparql` |
+| 47–51 | [Fondées sur des fichiers](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 52–53 | [Observabilité et autres](#observability-other) | `google_sheets`, `prometheus` |
+| 54–60 | [SaaS d'entreprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
+| 61–66 | [Sources API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
 | 67 | [GovData](#govdata) | `govdata` |
-| 68–69 | [Vérificateurs de qualité des données](#verificateurs-de-qualite-des-donnees-req-1443) | `soda`, `great_expectations` |
+| 68–69 | [Vérificateurs de qualité des données](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
 | 70 | [Profileur de données](#data-profiler) | `data_profiler` |
 | 71 | [Jeux de données Kaggle](#kaggle-datasets) | Kaggle (mis en scène via le formulaire Sources ; s'enregistre comme source `files` — voir [Jeux de données Kaggle](#kaggle-datasets)) |
 | 72 | [Wikipedia](#wikipedia) | Wikipedia (s'enregistre comme source `files` qui parcourt les pages nommées — voir [Wikipedia](#wikipedia)) |
@@ -332,7 +332,7 @@ Un dossier partagé sans chiffrement doit être monté avec des verrous qui atte
 
 Toute source `files` peut aussi déclarer un `crawl` dans son mapping, avec les mêmes réglages que ceux listés sous [Wikipedia](#wikipedia) : la source lit alors d'abord des pages web et dépose chaque tableau de données HTML et chaque fichier de données lié dans son répertoire sous forme de table. [tool-verified: `provisa/file_source/crawl.py` `crawl_operand`]
 
-Sur le moteur DuckDB, `files` est lu nativement — une vue de scan `read_csv_auto` par `<table>.csv` sous le répertoire résolu (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. Sur un moteur sans connecteur `files` propre, les lignes atterrissent via le même serveur pgwire Calcite intégré au connecteur (`pgwire-file`) qu'utilisent sharepoint/splunk (REQ-954) — voir [Connecteurs SaaS d'entreprise](#connecteurs-saas-dentreprise) ci-dessous. La couverture de bout en bout de l'interface (formulaire Sources → Register Table → requête SQL) et le chemin d'atterrissage pgwire sont validés dans REQ-1694.
+Sur le moteur DuckDB, `files` est lu nativement — une vue de scan `read_csv_auto` par `<table>.csv` sous le répertoire résolu (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. Sur un moteur sans connecteur `files` propre, les lignes atterrissent via le même serveur pgwire Calcite intégré au connecteur (`pgwire-file`) qu'utilisent sharepoint/splunk (REQ-954) — voir [Connecteurs SaaS d'entreprise](#enterprise-saas-connectors) ci-dessous. La couverture de bout en bout de l'interface (formulaire Sources → Register Table → requête SQL) et le chemin d'atterrissage pgwire sont validés dans REQ-1694.
 
 #### Logs (REQ-1996) {: #logs }
 

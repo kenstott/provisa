@@ -33,16 +33,16 @@ Provisa registriert **72** Quelltypen, die das Sources-Formular anbietet. Die fo
 | 1–15 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2` |
 | 16–24 | [Cloud-Data-Warehouses](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
 | 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
-| 30–33 | [Data-Lake / offene Tabellenformate](#data-lake-offene-tabellenformate) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
+| 30–33 | [Data-Lake / offene Tabellenformate](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
 | 39–40 | [Code-Quellen](arch/code-sources.md) | `node`, `python` |
 | 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 44 | [Push-Empfänger](#push-empfänger) | `ingest` |
+| 44 | [Push-Empfänger](#push-receiver) | `ingest` |
 | 45–46 | [Graph & Semantic](#graph-semantic) | `neo4j`, `sparql` |
-| 47–51 | [Dateibasiert](#dateibasiert) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 52–53 | [Observability & Sonstiges](#observability-sonstiges) | `google_sheets`, `prometheus` |
+| 47–51 | [Dateibasiert](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 52–53 | [Observability & Sonstiges](#observability-other) | `google_sheets`, `prometheus` |
 | 54–60 | [Enterprise-SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 61–66 | [API-Quellen](#api-quellen) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
+| 61–66 | [API-Quellen](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
 | 67 | [GovData](#govdata) | `govdata` |
 | 68–69 | [Data-Quality-Checker](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
 | 70 | [Data-Profiler](#data-profiler) | `data_profiler` |

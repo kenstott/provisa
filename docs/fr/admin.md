@@ -22,7 +22,7 @@ Un jeton d'accès personnel est accepté partout où un jeton bearer l'est, y co
 | `GET /auth/tokens` | Les jetons actifs de l'appelant dans cette organisation — préfixe d'affichage, nom, horodatages de cycle de vie et l'empreinte qui identifie un jeton en vue de sa révocation. Jamais un identifiant utilisable |
 | `DELETE /auth/tokens/{token_hash}` | Révoque l'un des jetons de l'appelant. 404 lorsqu'il ne lui appartient pas ou a déjà été révoqué |
 
-Omettre `role_id` laisse le jeton se résoudre vers le rôle que détient son propriétaire ; en nommer un restreint le jeton en deçà de son propriétaire. La révocation a lieu aussi implicitement : retirer l'appartenance d'un utilisateur à une organisation révoque ses jetons pour celle-ci. Voir [Modèle de sécurité](security.md#jetons-dacces-personnels) pour l'identifiant lui-même.
+Omettre `role_id` laisse le jeton se résoudre vers le rôle que détient son propriétaire ; en nommer un restreint le jeton en deçà de son propriétaire. La révocation a lieu aussi implicitement : retirer l'appartenance d'un utilisateur à une organisation révoque ses jetons pour celle-ci. Voir [Modèle de sécurité](security.md#personal-access-tokens) pour l'identifiant lui-même.
 
 ## Capacités {: #capabilities }
 

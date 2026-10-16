@@ -22,7 +22,7 @@ Um token de acesso pessoal é aceito em qualquer lugar onde um token bearer seja
 | `GET /auth/tokens` | Os tokens ativos de quem chama nesta organização — prefixo de exibição, nome, marcações de ciclo de vida e o hash que identifica um token para revogação. Nunca uma credencial funcional |
 | `DELETE /auth/tokens/{token_hash}` | Revoga um dos tokens de quem chama. 404 quando o token não é dele ou já foi revogado |
 
-Omitir `role_id` deixa o token resolvendo para a função que seu dono tiver; nomear uma função restringe o token abaixo do seu dono. A revogação também acontece de forma implícita: remover a associação de um usuário a uma organização revoga os tokens dele naquela organização. Veja [Modelo de Segurança](security.md#tokens-de-acesso-pessoal) para a credencial em si.
+Omitir `role_id` deixa o token resolvendo para a função que seu dono tiver; nomear uma função restringe o token abaixo do seu dono. A revogação também acontece de forma implícita: remover a associação de um usuário a uma organização revoga os tokens dele naquela organização. Veja [Modelo de Segurança](security.md#personal-access-tokens) para a credencial em si.
 
 ## Capacidades {: #capabilities }
 

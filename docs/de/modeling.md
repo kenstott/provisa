@@ -698,7 +698,7 @@ Automatisch registrierte Metriken erscheinen auf der Metrics-Seite mit einem **f
 Sie können wie jede andere Metrik bearbeitet werden. [tool-verified: `MetricsPage.tsx` lines
 405–408: `{m.fromFact && <Badge ... data-testid={`metrics-from-fact-${m.name}`}>...</Badge>}`]
 
-### Aus Metriken zusammengesetzte Sichten (view_metrics, REQ-1318) {: #metric-composed-views-viewmetrics-req-1318 }
+### Aus Metriken zusammengesetzte Sichten (view_metrics, REQ-1318) {: #metric-composed-views-view_metrics-req-1318 }
 
 Eine `view_metrics`-Sicht legt den Grain einer Metrik zum Definitionszeitpunkt fest.
 Deklarieren Sie die Metriknamen, Dimensionsspalten und optionale Filter; der Compiler generiert

@@ -58,7 +58,7 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 
 Le champ `password` du paquet de démarrage porte l'identifiant, et ce que l'identifiant *est* détermine la méthode : un jeton d'accès personnel, un jeton porteur OIDC, ou un mot de passe contre le fournisseur configuré. Sous le fournisseur `basic` avec `auth.scram: true`, le mot de passe est prouvé via SCRAM-SHA-256 plutôt qu'envoyé. Les certificats client sont pris en charge. En mode de confiance (`none`) le nom d'utilisateur se mappe directement à un rôle et le mot de passe est ignoré.
 
-Le tableau complet surface × méthode se trouve dans [Security Model](security.md#surfaces-et-identifiants). MD5 n'est pas pris en charge ; activez TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) en cas d'exécution sur un réseau non fiable.
+Le tableau complet surface × méthode se trouve dans [Security Model](security.md#surfaces-and-credentials). MD5 n'est pas pris en charge ; activez TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) en cas d'exécution sur un réseau non fiable.
 
 ### Limitations
 
@@ -148,7 +148,7 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-Flight porte son identifiant dans la charge utile JSON, comme champ `token` — un jeton porteur de fournisseur ou un jeton d'accès personnel. La poignée de main et chaque ticket l'acceptent tous deux, et les deux le valident de la même manière, de sorte qu'un client authentifié à la poignée de main présente toujours le jeton à chaque `do_get`. Un champ `role` à ses côtés *demande* un rôle ; le serveur dérive les rôles autorisés de l'identité et substitue la valeur autorisée, de sorte qu'une chaîne de rôle dans un ticket n'est jamais l'identité elle-même. (REQ-1263) Voir [Security Model](security.md#surfaces-et-identifiants).
+Flight porte son identifiant dans la charge utile JSON, comme champ `token` — un jeton porteur de fournisseur ou un jeton d'accès personnel. La poignée de main et chaque ticket l'acceptent tous deux, et les deux le valident de la même manière, de sorte qu'un client authentifié à la poignée de main présente toujours le jeton à chaque `do_get`. Un champ `role` à ses côtés *demande* un rôle ; le serveur dérive les rôles autorisés de l'identité et substitue la valeur autorisée, de sorte qu'une chaîne de rôle dans un ticket n'est jamais l'identité elle-même. (REQ-1263) Voir [Security Model](security.md#surfaces-and-credentials).
 
 ```python
 ticket = flight.Ticket(json.dumps({
@@ -222,7 +222,7 @@ Utilisez `grpc_server_reflection` pour découvrir le schéma par programme. La r
 grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 ```
 
-Chaque RPC doit porter un identifiant dans la clé de métadonnées `authorization` — un jeton de fournisseur ou un jeton d'accès personnel. `x-provisa-role` demande un rôle parmi l'ensemble autorisé de l'identité ; ce n'est pas un identifiant et ça ne l'a jamais été. Les certificats client sont pris en charge. Voir [Security Model](security.md#surfaces-et-identifiants).
+Chaque RPC doit porter un identifiant dans la clé de métadonnées `authorization` — un jeton de fournisseur ou un jeton d'accès personnel. `x-provisa-role` demande un rôle parmi l'ensemble autorisé de l'identité ; ce n'est pas un identifiant et ça ne l'a jamais été. Les certificats client sont pris en charge. Voir [Security Model](security.md#surfaces-and-credentials).
 
 Les requêtes en streaming émettent un message par ligne ; les mutations sont unaires.
 
@@ -300,7 +300,7 @@ Voir [docs/import.md](import.md) pour la migration depuis Hasura vers Provisa.
 
 ## Kafka
 
-Voir [docs/sources.md](sources.md#sources-kafka) pour la configuration des topics Kafka comme tables en lecture seule et receveurs de résultats de requête.
+Voir [docs/sources.md](sources.md#kafka-sources) pour la configuration des topics Kafka comme tables en lecture seule et receveurs de résultats de requête.
 
 ---
 
@@ -310,7 +310,7 @@ Soda Core et Great Expectations se connectent à Provisa de la même manière qu
 
 Le balayage s'exécute dans un interpréteur enfant — `python -m provisa.dq.worker` — qui est le seul endroit où `soda_core` ou `great_expectations` est importé. Rien n'est lié au processus serveur, et un plantage de vérificateur fait tomber un sous-processus plutôt que la boucle d'événements. [tool-verified: `provisa/dq/runner.py` `build_command`]
 
-Les résultats de balayage atterrissent comme des lignes source ordinaires, de sorte que la cadence, la fraîcheur, les événements, la traçabilité, la gouvernance, RLS, la grille et l'export s'appliquent tous sans mécanisme secondaire. La rédaction de contrats, l'enveloppe de résultat et l'enregistrement dérivé sont couverts dans [docs/sources.md](sources.md#verificateurs-de-qualite-des-donnees-req-1443).
+Les résultats de balayage atterrissent comme des lignes source ordinaires, de sorte que la cadence, la fraîcheur, les événements, la traçabilité, la gouvernance, RLS, la grille et l'export s'appliquent tous sans mécanisme secondaire. La rédaction de contrats, l'enveloppe de résultat et l'enregistrement dérivé sont couverts dans [docs/sources.md](sources.md#data-quality-checkers-req-1443).
 
 ### Installer un vérificateur {: #installing-a-checker }
 
@@ -321,7 +321,7 @@ Aucune des deux bibliothèques n'est livrée par défaut. L'installateur demande
 | `soda` | `soda-postgres` | Elastic License 2.0 | Refusé (`cloud_eligible: false`) |
 | `gx` | `great-expectations[postgresql]` | Apache 2.0 | Autorisé |
 
-La Elastic License 2.0 interdit de fournir le logiciel à des tiers en tant que service hébergé, ce que serait l'exécution de Soda à l'intérieur du plan SaaS pour le compte d'un locataire. Un déploiement hébergé qui souhaite Soda pointe vers un endpoint Soda que l'opérateur exécute lui-même. Voir [docs/configuration.md](configuration.md#verificateurs-de-qualite-des-donnees-soda-great_expectations) pour les clés de connexion.
+La Elastic License 2.0 interdit de fournir le logiciel à des tiers en tant que service hébergé, ce que serait l'exécution de Soda à l'intérieur du plan SaaS pour le compte d'un locataire. Un déploiement hébergé qui souhaite Soda pointe vers un endpoint Soda que l'opérateur exécute lui-même. Voir [docs/configuration.md](configuration.md#data-quality-checkers-soda-great_expectations) pour les clés de connexion.
 
 ---
 

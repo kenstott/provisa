@@ -19,7 +19,7 @@ Six valeurs d'`impl_kind` sont prises en charge [tool-verified: `_EXECUTORS` dic
 | `impl_kind` | Transport |
 | --- | --- |
 | `source_procedure` | Procédure stockée native sur une source enregistrée |
-| `source_operation` | Une opération d'écriture d'une source OpenAPI, GraphQL distante ou gRPC, transmise telle quelle (voir [Opération d'écriture d'une source distante](#operation-decriture-dune-source-distante-req-1924)) |
+| `source_operation` | Une opération d'écriture d'une source OpenAPI, GraphQL distante ou gRPC, transmise telle quelle (voir [Opération d'écriture d'une source distante](#a-remote-sources-write-operation-req-1924)) |
 | `script` | Sous-processus local alimenté en JSON sur stdin, lisant du JSON sur stdout |
 | `http` | Endpoint HTTP/S ; corps de requête JSON, réponse JSON |
 | `grpc` | gRPC unaire ; passerelle JSON sans proto |
@@ -158,7 +158,7 @@ recharger la configuration. [inferred from CommandFormFields.tsx]
 ## Composition en ligne (REQ-1159) {: #inline-composition-req-1159 }
 
 Les commandes peuvent apparaître **à l'intérieur** d'une instruction SQL plus large — jointes,
-placées en sous-requête ou projetées. Vous n'êtes pas limité à `SELECT * FROM fn(args)`. L'exception est l'opération d'écriture d'une source distante, qui est appelée seule (voir [Pourquoi elle ne peut pas être composée](#pourquoi-elle-ne-peut-pas-etre-composee)).
+placées en sous-requête ou projetées. Vous n'êtes pas limité à `SELECT * FROM fn(args)`. L'exception est l'opération d'écriture d'une source distante, qui est appelée seule (voir [Pourquoi elle ne peut pas être composée](#why-it-cannot-be-composed)).
 
 ```sql
 -- Enrich the orders relation and join the result back inline.
@@ -282,7 +282,7 @@ Activez **Nécessite une approbation** et chaque appel est soumis au point d'anc
 - Aucun point d'ancrage configuré : 403, `functions.approval_unavailable`.
 - Le point d'ancrage refuse : 403, `functions.approval_denied`, avec le motif du point d'ancrage.
 
-Le point d'ancrage reçoit l'appelant, le rôle, le nom de la commande et ses arguments. Voir [Point d'ancrage d'approbation ABAC](security.md#point-dancrage-dapprobation-abac). Le drapeau est stocké sous `Function.requires_approval`, et la vérification s'applique à toute commande qui l'active. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
+Le point d'ancrage reçoit l'appelant, le rôle, le nom de la commande et ses arguments. Voir [Point d'ancrage d'approbation ABAC](security.md#abac-approval-hook). Le drapeau est stocké sous `Function.requires_approval`, et la vérification s'applique à toute commande qui l'active. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
 
 ### Écrit dans la table {: #writes-table }
 

@@ -14,7 +14,7 @@ Los orígenes **con capacidad directa** ejecutan consultas de un solo origen med
 
 Los orígenes **solo federación** siempre se consultan a través de la capa de federación. No existe un controlador directo (REQ-229).
 
-Los orígenes de **lectura directa (réplica)** tienen un DirectDriver que lee del almacén de datos de forma nativa (nativo en Arrow cuando está disponible), crea una réplica en el almacén de materialización del motor activo, y luego las consultas se ejecutan contra esa réplica. Consulte [Almacenes de datos como orígenes con nombre](#almacenes-de-datos-como-origenes-con-nombre).
+Los orígenes de **lectura directa (réplica)** tienen un DirectDriver que lee del almacén de datos de forma nativa (nativo en Arrow cuando está disponible), crea una réplica en el almacén de materialización del motor activo, y luego las consultas se ejecutan contra esa réplica. Consulte [Almacenes de datos como orígenes con nombre](#warehouses-as-named-sources).
 
 Los orígenes **directos (sin conector entre orígenes)** tienen un DirectDriver que ejecuta las instrucciones de un solo origen íntegras en el origen — cada filtro, columna y límite se traslada. Cuando una instrucción une el origen con cualquier otro, el controlador lee los datos y crea una réplica; la unión se ejecuta contra esa réplica en el motor activo. No existe ningún conector de Trino para estos orígenes.
 

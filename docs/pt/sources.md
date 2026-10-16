@@ -16,7 +16,7 @@ Fontes **direta-capazes** executam consultas de fonte única via seu driver nati
 
 Fontes **somente federação** são sempre consultadas através da camada de federação. Nenhum driver direto existe (REQ-229).
 
-Fontes de **leitura direta (réplica)** têm um DirectDriver que lê do warehouse nativamente (transporte Arrow-nativo quando disponível), pousa uma réplica no armazenamento de materialização do motor ativo, e então as consultas rodam contra essa réplica. Veja [Warehouses como Fontes Nomeadas](#warehouses-como-fontes-nomeadas).
+Fontes de **leitura direta (réplica)** têm um DirectDriver que lê do warehouse nativamente (transporte Arrow-nativo quando disponível), pousa uma réplica no armazenamento de materialização do motor ativo, e então as consultas rodam contra essa réplica. Veja [Warehouses como Fontes Nomeadas](#warehouses-as-named-sources).
 
 Fontes **diretas (sem conector entre fontes)** têm um DirectDriver que executa instruções de fonte única inteiras na própria fonte — todo filtro, coluna e limite é empurrado até ela. Quando uma instrução une a fonte a qualquer outra, o driver lê os dados e pousa uma réplica; o join roda contra essa réplica no motor ativo. Não existe conector Trino para essas fontes.
 
@@ -31,20 +31,20 @@ O Provisa registra **72** tipos de fonte, os que o formulário de Fontes oferece
 | # | Grupo | Tipos de fonte |
 | --- | --- | --- |
 | 1–15 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2` |
-| 16–24 | [Data warehouses em nuvem](#data-warehouses-em-nuvem) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
+| 16–24 | [Data warehouses em nuvem](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
 | 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
-| 30–33 | [Data lake / formatos de tabela aberta](#data-lake-formatos-de-tabela-aberta) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
+| 30–33 | [Data lake / formatos de tabela aberta](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
 | 39–40 | [Fontes de código](arch/code-sources.md) | `node`, `python` |
 | 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 44 | [Receptor push](#receptor-push) | `ingest` |
-| 45–46 | [Grafo e semântico](#grafo-e-semantico) | `neo4j`, `sparql` |
-| 47–51 | [Baseado em arquivo](#baseado-em-arquivo) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 52–53 | [Observabilidade e outros](#observabilidade-e-outros) | `google_sheets`, `prometheus` |
-| 54–60 | [SaaS empresarial](#conectores-saas-empresariais) | `sharepoint`, `salesforce`, `servicenow`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 61–66 | [Fontes de API](#fontes-de-api) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
+| 44 | [Receptor push](#push-receiver) | `ingest` |
+| 45–46 | [Grafo e semântico](#graph-semantic) | `neo4j`, `sparql` |
+| 47–51 | [Baseado em arquivo](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 52–53 | [Observabilidade e outros](#observability-other) | `google_sheets`, `prometheus` |
+| 54–60 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
+| 61–66 | [Fontes de API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
 | 67 | [GovData](#govdata) | `govdata` |
-| 68–69 | [Verificadores de qualidade de dados](#verificadores-de-qualidade-de-dados-req-1443) | `soda`, `great_expectations` |
+| 68–69 | [Verificadores de qualidade de dados](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
 | 70 | [Data profiler](#data-profiler) | `data_profiler` |
 | 71 | [Conjuntos de dados Kaggle](#kaggle-datasets) | Kaggle (preparado pelo formulário de Fontes; registra-se como fonte `files` — veja [Conjuntos de dados Kaggle](#kaggle-datasets)) |
 | 72 | [Wikipedia](#wikipedia) | Wikipedia (registra-se como fonte `files` que percorre as páginas indicadas — veja [Wikipedia](#wikipedia)) |
@@ -331,7 +331,7 @@ Uma pasta compartilhada sem criptografia deve ser montada com bloqueios que alca
 
 Qualquer fonte `files` também pode declarar um `crawl` em seu mapping, com as mesmas configurações listadas em [Wikipedia](#wikipedia): a fonte então lê páginas web primeiro e pousa cada tabela de dados HTML e cada arquivo de dados vinculado em seu diretório como uma tabela. [tool-verified: `provisa/file_source/crawl.py` `crawl_operand`]
 
-No motor DuckDB, `files` é lido nativamente — uma view scanner `read_csv_auto` por `<table>.csv` sob o diretório resolvido (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. Em um motor sem conector `files` próprio, as linhas pousam através do mesmo servidor pgwire Calcite empacotado pelo conector (`pgwire-file`) que sharepoint/splunk usam (REQ-954) — veja [Conectores SaaS Empresariais](#conectores-saas-empresariais) abaixo. A cobertura end-to-end da UI (formulário de Fontes → Register Table → consulta SQL) e o caminho de pouso pgwire são comprovados na REQ-1694.
+No motor DuckDB, `files` é lido nativamente — uma view scanner `read_csv_auto` por `<table>.csv` sob o diretório resolvido (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. Em um motor sem conector `files` próprio, as linhas pousam através do mesmo servidor pgwire Calcite empacotado pelo conector (`pgwire-file`) que sharepoint/splunk usam (REQ-954) — veja [Conectores SaaS Empresariais](#enterprise-saas-connectors) abaixo. A cobertura end-to-end da UI (formulário de Fontes → Register Table → consulta SQL) e o caminho de pouso pgwire são comprovados na REQ-1694.
 
 #### Logs (REQ-1996) {: #logs }
 
@@ -826,7 +826,7 @@ Como em qualquer fonte OpenAPI, cada operação `GET` é uma tabela oferecida e 
 
 **Atualização e frescor.** Uma tabela Stripe é uma réplica, como toda tabela OpenAPI. Suas respostas em cache duram o `cache_ttl` da fonte, que uma requisição de registro define como 300 segundos, a menos que diga outra coisa. Aplicam-se os tipos de sondagem do OpenAPI. [tool-verified: `provisa/api/admin/openapi_router.py` `OpenAPIRegisterRequest.cache_ttl`; `provisa/events/probes.py` `_HTTP_API_TYPES`] O REQ-1923 prevê que um preset possa indicar o parâmetro que uma atualização usa para buscar só o que mudou. A marca Stripe não indica nenhum, então cada atualização lê suas tabelas inteiras. [tool-verified: `provisa/openapi/brands.py` `Brand` has no such field]
 
-**Exclusões.** A integração de pagamento descontinuada do Stripe baseada em token e Sources fica de fora da especificação que acompanha o produto. A lista está em [Exclusões em uma fonte construída a partir de uma especificação](#exclusoes-em-uma-fonte-construida-a-partir-de-uma-especificacao). As `exclusions` do próprio operador são somadas às da marca. [tool-verified: `provisa/openapi/_known_specs/stripe.exclusions.json`; `provisa/openapi/brands.py` `brand_spec`] (REQ-1957)
+**Exclusões.** A integração de pagamento descontinuada do Stripe baseada em token e Sources fica de fora da especificação que acompanha o produto. A lista está em [Exclusões em uma fonte construída a partir de uma especificação](#exclusions-on-a-specification-built-source). As `exclusions` do próprio operador são somadas às da marca. [tool-verified: `provisa/openapi/_known_specs/stripe.exclusions.json`; `provisa/openapi/brands.py` `brand_spec`] (REQ-1957)
 
 `stripe` também aparece em `SourceType` entre os tipos stub do Supabase `wrappers`. Uma fonte Stripe adicionada pelo formulário é uma fonte `openapi`, não esse stub. [tool-verified: `provisa/core/models.py` `SourceType`]
 

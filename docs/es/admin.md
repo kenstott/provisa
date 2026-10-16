@@ -22,7 +22,7 @@ Un token de acceso personal se acepta en todos los sitios donde se acepta un tok
 | `GET /auth/tokens` | Los tokens activos de quien llama en esta organización: prefijo de visualización, nombre, marcas de tiempo del ciclo de vida y el hash que identifica un token para revocarlo. Nunca una credencial utilizable |
 | `DELETE /auth/tokens/{token_hash}` | Revoca uno de los tokens de quien llama. 404 cuando no es suyo o ya está revocado |
 
-Omitir `role_id` deja que el token se resuelva al rol que tenga su propietario; nombrar uno estrecha el token por debajo de su propietario. La revocación también ocurre de forma implícita: retirar la pertenencia de un usuario a una organización revoca sus tokens para esa organización. Para la credencial en sí, consulte [Modelo de seguridad](security.md#tokens-de-acceso-personal).
+Omitir `role_id` deja que el token se resuelva al rol que tenga su propietario; nombrar uno estrecha el token por debajo de su propietario. La revocación también ocurre de forma implícita: retirar la pertenencia de un usuario a una organización revoca sus tokens para esa organización. Para la credencial en sí, consulte [Modelo de seguridad](security.md#personal-access-tokens).
 
 ## Capacidades {: #capabilities }
 

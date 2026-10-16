@@ -542,7 +542,7 @@ sources:
       disable_ssl_validation: false
 ```
 
-#### Verificadores de calidad de datos (soda / great_expectations) {: #data-quality-checkers-soda-greatexpectations }
+#### Verificadores de calidad de datos (soda / great_expectations) {: #data-quality-checkers-soda-great_expectations }
 
 [tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
 
@@ -991,7 +991,7 @@ Un `ttl` que no sea un entero hace fallar la solicitud. Una solicitud que indica
 
 Sin la indicación, la solicitud no lee ni escribe la caché. Con ella, siguen decidiendo los ajustes anteriores: el resultado se guarda en caché solo si cada origen que lee tiene `cache_enabled: true` y el TTL resuelto de cada tabla es mayor que 0. La entrada dura el `ttl` de la solicitud si lo indica; si no, el TTL resuelto más corto de las tablas leídas. (REQ-544)
 
-La indicación solo acepta datos más antiguos a cambio de velocidad. Nunca hace una lectura más reciente de lo que permiten los ajustes del operador: la frescura de la carga y de la réplica (`cache_ttl`, `change_signal`), `row_materialize`, las instantáneas `load_protected` y las comprobaciones de frescura se aplican a una solicitud con indicación exactamente igual que a una sin ella. Consulte la sección sobre frescura y carga en este documento. (REQ-544)
+La indicación solo acepta datos más antiguos a cambio de velocidad. Nunca hace una lectura más reciente de lo que permiten los ajustes del operador: la frescura de la carga y de la réplica (`cache_ttl`, `change_signal`), `row_materialize`, las instantáneas `load_protected` y las comprobaciones de frescura se aplican a una solicitud con indicación exactamente igual que a una sin ella. Consulte [Frescura y carga: quién decide](#freshness-and-load-who-decides). (REQ-544)
 
 `@noCache` y `-- @provisa no_cache=true` ya no existen: con la caché desactivada por defecto no hay nada que omitir.
 
@@ -1114,7 +1114,7 @@ Hace que pgwire anuncie SASL con `SCRAM-SHA-256`, de modo que una contraseña se
 
 Los verificadores no pueden derivarse de hashes bcrypt existentes. Se escribe uno cada vez que una contraseña pasa en texto plano, así que la primera conexión SCRAM de cada usuario sigue a su siguiente registro, inicio de sesión, cambio de contraseña o restablecimiento por un administrador. Hasta entonces, las conexiones de ese usuario recurren al intercambio en texto claro sobre TLS; el cable no revela quién ha migrado.
 
-### Limitación de intentos de inicio de sesión (`auth.login_throttle`) {: #login-throttling-authloginthrottle }
+### Limitación de intentos de inicio de sesión (`auth.login_throttle`) {: #login-throttling-authlogin_throttle }
 
 ```yaml
 auth:
@@ -1128,7 +1128,7 @@ Activado por defecto con los valores mostrados; el bloque solo los ajusta. (REQ-
 
 ### Tokens de acceso personal {: #personal-access-tokens }
 
-Los PAT no necesitan ningún bloque de configuración — siempre se aceptan, y el almacén se crea junto con el resto del esquema del plano de control. (REQ-1263) Lo configurable es la expiración que un usuario puede solicitar al emitirlo: de 1 a 366 días, o ninguna para un token que no expira. Ver [Modelo de seguridad](security.md#tokens-de-acceso-personal).
+Los PAT no necesitan ningún bloque de configuración — siempre se aceptan, y el almacén se crea junto con el resto del esquema del plano de control. (REQ-1263) Lo configurable es la expiración que un usuario puede solicitar al emitirlo: de 1 a 366 días, o ninguna para un token que no expira. Ver [Modelo de seguridad](security.md#personal-access-tokens).
 
 ### TLS mutuo {: #mutual-tls }
 
@@ -1392,7 +1392,7 @@ Configurar un motor de federación es opcional. El valor por defecto es `duckdb`
 
 Precedencia: variable de entorno `PROVISA_ENGINE` → campo de configuración `federation_engine` persistido en la interfaz de administración → `duckdb`. Los cambios surten efecto al reiniciar el servicio. [tool-verified: `engine.py` `build_engine`]
 
-### Resumen de motores [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`] {: #engine-overview-tool-verified-enginepy-engineregistry-enginebuilders }
+### Resumen de motores [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`] {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
 
 | Clave de motor | Etiqueta | Dialecto | MPP | Mecanismo de enlace externo | Autenticación |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |

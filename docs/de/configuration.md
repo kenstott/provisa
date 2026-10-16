@@ -541,7 +541,7 @@ sources:
       disable_ssl_validation: false
 ```
 
-#### Data-Quality-Checker (soda / great_expectations) {: #data-quality-checkers-soda-greatexpectations }
+#### Data-Quality-Checker (soda / great_expectations) {: #data-quality-checkers-soda-great_expectations }
 
 [tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
 
@@ -992,7 +992,7 @@ Ein `ttl`, der keine Ganzzahl ist, lässt die Anfrage fehlschlagen. Eine Anfrage
 
 Ohne den Hinweis liest und schreibt die Anfrage den Cache nicht. Mit ihm entscheiden weiterhin die obigen Einstellungen: Das Ergebnis wird nur gecacht, wenn jede gelesene Quelle `cache_enabled: true` hat und die aufgelöste TTL jeder Tabelle über 0 liegt. Der Eintrag lebt so lange wie die `ttl` der Anfrage, falls sie eine angibt, sonst so lange wie die kürzeste aufgelöste TTL der gelesenen Tabellen. (REQ-544)
 
-Der Hinweis nimmt nur ältere Daten im Tausch gegen Geschwindigkeit in Kauf. Er macht einen Lesevorgang nie aktueller, als die Einstellungen des Betreibers erlauben: Landungs- und Replikat-Aktualität (`cache_ttl`, `change_signal`), `row_materialize`, `load_protected`-Snapshots und Aktualitätsprüfungen gelten für eine Anfrage mit Hinweis genauso wie für eine ohne. Siehe den Abschnitt zu Aktualität und Last in diesem Dokument. (REQ-544)
+Der Hinweis nimmt nur ältere Daten im Tausch gegen Geschwindigkeit in Kauf. Er macht einen Lesevorgang nie aktueller, als die Einstellungen des Betreibers erlauben: Landungs- und Replikat-Aktualität (`cache_ttl`, `change_signal`), `row_materialize`, `load_protected`-Snapshots und Aktualitätsprüfungen gelten für eine Anfrage mit Hinweis genauso wie für eine ohne. Siehe [Aktualität und Last: wer entscheidet](#freshness-and-load-who-decides). (REQ-544)
 
 `@noCache` und `-- @provisa no_cache=true` gibt es nicht mehr: Da Caching standardmäßig aus ist, gibt es nichts zu umgehen.
 
@@ -1115,7 +1115,7 @@ Lässt pgwire SASL mit `SCRAM-SHA-256` ankündigen, sodass ein Passwort bewiesen
 
 Verifier lassen sich nicht aus vorhandenen bcrypt-Hashes ableiten. Einer wird immer dann geschrieben, wenn ein Passwort im Klartext durchläuft, sodass die erste SCRAM-Verbindung jedes Nutzers auf dessen nächste Registrierung, Anmeldung, Passwortänderung oder Admin-Zurücksetzung folgt. Bis dahin fallen die Verbindungen dieses Nutzers auf den Klartext-Austausch über TLS zurück; die Leitung verrät nicht, wer bereits migriert ist.
 
-### Anmelde-Drosselung (`auth.login_throttle`) {: #login-throttling-authloginthrottle }
+### Anmelde-Drosselung (`auth.login_throttle`) {: #login-throttling-authlogin_throttle }
 
 ```yaml
 auth:
@@ -1393,7 +1393,7 @@ Die Konfiguration einer Föderations-Engine ist optional. Der Standard ist `duck
 
 Vorrang: `PROVISA_ENGINE`-Umgebungsvariable → persistiertes Admin-UI-Konfigurationsfeld `federation_engine` → `duckdb`. Änderungen werden beim Neustart des Dienstes wirksam. [tool-verified: `engine.py` `build_engine`]
 
-### Engine-Übersicht [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`] {: #engine-overview-tool-verified-enginepy-engineregistry-enginebuilders }
+### Engine-Übersicht [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`] {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
 
 | Engine-Schlüssel | Bezeichnung | Dialekt | MPP | Externer-Link-Mechanismus | Auth |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |

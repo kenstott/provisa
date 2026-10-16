@@ -541,7 +541,7 @@ sources:
       disable_ssl_validation: false
 ```
 
-#### Verificadores de qualidade de dados (soda / great_expectations) {: #data-quality-checkers-soda-greatexpectations }
+#### Verificadores de qualidade de dados (soda / great_expectations) {: #data-quality-checkers-soda-great_expectations }
 
 [tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
 
@@ -560,7 +560,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-Cada tabela de resultados carrega `dq_contract` — YAML de contrato Soda ou JSON de suíte Great Expectations, na íntegra. Colunas, watermark e promoções são derivadas dele; veja [Verificadores de Qualidade de Dados](sources.md#verificadores-de-qualidade-de-dados-req-1443) para a derivação completa.
+Cada tabela de resultados carrega `dq_contract` — YAML de contrato Soda ou JSON de suíte Great Expectations, na íntegra. Colunas, watermark e promoções são derivadas dele; veja [Verificadores de Qualidade de Dados](sources.md#data-quality-checkers-req-1443) para a derivação completa.
 
 **Seleção no momento da instalação.** O verificador não vem vinculado — a varredura roda em um interpretador filho, e a biblioteca só é instalada quando um operador a nomeia. Todo caminho de instalador (`install.sh`, `packaging/linux/first-launch.sh`, e o assistente do macOS via `PROVISA_DQ_CHECKER`) grava a escolha em `~/.provisa/config.yaml`:
 
@@ -990,7 +990,7 @@ Um `ttl` que não seja inteiro faz a requisição falhar. Uma requisição que i
 
 Sem a indicação, a requisição não lê nem grava o cache. Com ela, as configurações acima continuam decidindo: o resultado só é armazenado se cada fonte lida tiver `cache_enabled: true` e o TTL resolvido de cada tabela for maior que 0. A entrada dura o `ttl` da requisição, se ela informar um; caso contrário, o menor TTL resolvido das tabelas lidas. (REQ-544)
 
-A indicação apenas aceita dados mais antigos em troca de velocidade. Ela nunca torna uma leitura mais recente do que as configurações do operador permitem: o frescor do carregamento e da réplica (`cache_ttl`, `change_signal`), `row_materialize`, os snapshots `load_protected` e as verificações de frescor valem para uma requisição com indicação exatamente como para uma sem. Veja a seção sobre frescor e carga neste documento. (REQ-544)
+A indicação apenas aceita dados mais antigos em troca de velocidade. Ela nunca torna uma leitura mais recente do que as configurações do operador permitem: o frescor do carregamento e da réplica (`cache_ttl`, `change_signal`), `row_materialize`, os snapshots `load_protected` e as verificações de frescor valem para uma requisição com indicação exatamente como para uma sem. Veja [Frescor e carga: quem decide](#freshness-and-load-who-decides). (REQ-544)
 
 `@noCache` e `-- @provisa no_cache=true` não existem mais: com o cache desligado por padrão, não há o que contornar.
 
@@ -1113,7 +1113,7 @@ Faz o pgwire anunciar SASL com `SCRAM-SHA-256`, de modo que uma senha é provada
 
 Verificadores não podem ser derivados dos hashes bcrypt existentes. Um é gravado sempre que uma senha passa em texto plano, então a primeira conexão SCRAM de cada usuário vem após seu próximo cadastro, login, troca de senha ou redefinição pelo administrador. Até lá, as conexões desse usuário recaem na troca em texto claro sobre TLS; o fio não revela quem já migrou.
 
-### Limitação de tentativas de login (`auth.login_throttle`) {: #login-throttling-authloginthrottle }
+### Limitação de tentativas de login (`auth.login_throttle`) {: #login-throttling-authlogin_throttle }
 
 ```yaml
 auth:
@@ -1127,7 +1127,7 @@ Ativa por padrão com os valores exibidos; o bloco apenas os ajusta. (REQ-1393) 
 
 ### Tokens de acesso pessoal {: #personal-access-tokens }
 
-PATs não precisam de bloco de configuração — são sempre aceitos, e o armazenamento é criado junto com o restante do esquema do plano de controle. (REQ-1263) O que é configurável é a expiração que um usuário pode solicitar na emissão: de 1 a 366 dias, ou nenhuma para um token que não expira. Veja [Modelo de segurança](security.md#tokens-de-acesso-pessoal).
+PATs não precisam de bloco de configuração — são sempre aceitos, e o armazenamento é criado junto com o restante do esquema do plano de controle. (REQ-1263) O que é configurável é a expiração que um usuário pode solicitar na emissão: de 1 a 366 dias, ou nenhuma para um token que não expira. Veja [Modelo de segurança](security.md#personal-access-tokens).
 
 ### TLS mútuo {: #mutual-tls }
 
@@ -1391,7 +1391,7 @@ Configurar um motor de federação é opcional. O padrão é `duckdb` — zero c
 
 Precedência: variável de ambiente `PROVISA_ENGINE` → campo de configuração `federation_engine` persistido na UI de administração → `duckdb`. As mudanças têm efeito na reinicialização do serviço. [tool-verified: `engine.py` `build_engine`]
 
-### Visão geral dos motores [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`] {: #engine-overview-tool-verified-enginepy-engineregistry-enginebuilders }
+### Visão geral dos motores [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`] {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
 
 | Chave do motor | Rótulo | Dialeto | MPP | Mecanismo de link externo | Autenticação |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |

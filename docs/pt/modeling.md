@@ -674,7 +674,7 @@ Metrics auto-registrados aparecem na página Metrics com um badge **fact**. Voc�
 como qualquer outro metric. [tool-verified: `MetricsPage.tsx` lines 405–408:
 `{m.fromFact && <Badge ... data-testid={`metrics-from-fact-${m.name}`}>...</Badge>}`]
 
-### Views compostas por metric (view_metrics, REQ-1318) {: #metric-composed-views-viewmetrics-req-1318 }
+### Views compostas por metric (view_metrics, REQ-1318) {: #metric-composed-views-view_metrics-req-1318 }
 
 Uma view `view_metrics` fecha o grão de um metric no momento da definição. Declare os nomes dos
 metrics, colunas de dimensão, e filtros opcionais; o compilador gera o SELECT.

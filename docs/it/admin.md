@@ -22,7 +22,7 @@ Un token di accesso personale è accettato ovunque lo sia un bearer token, quest
 | `GET /auth/tokens` | I token attivi di chi chiama in questa organizzazione — prefisso visualizzato, nome, marche temporali del ciclo di vita e l'hash che identifica un token per la revoca. Mai una credenziale funzionante |
 | `DELETE /auth/tokens/{token_hash}` | Revoca uno dei token di chi chiama. 404 quando non è suo oppure è già stato revocato |
 
-Omettere `role_id` lascia che il token si risolva sul ruolo detenuto dal proprietario; nominarne uno restringe il token al di sotto del proprietario. La revoca avviene anche implicitamente: rimuovere l'appartenenza di un utente a un'organizzazione revoca i suoi token per quell'organizzazione. Vedere [Modello di sicurezza](security.md#token-di-accesso-personali) per la credenziale in sé.
+Omettere `role_id` lascia che il token si risolva sul ruolo detenuto dal proprietario; nominarne uno restringe il token al di sotto del proprietario. La revoca avviene anche implicitamente: rimuovere l'appartenenza di un utente a un'organizzazione revoca i suoi token per quell'organizzazione. Vedere [Modello di sicurezza](security.md#personal-access-tokens) per la credenziale in sé.
 
 ## Capability {: #capabilities }
 

@@ -542,7 +542,7 @@ sources:
       disable_ssl_validation: false
 ```
 
-#### Controlli di qualità dei dati (soda / great_expectations) {: #data-quality-checkers-soda-greatexpectations }
+#### Controlli di qualità dei dati (soda / great_expectations) {: #data-quality-checkers-soda-great_expectations }
 
 [tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
 
@@ -561,7 +561,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-Ogni tabella dei risultati porta `dq_contract` — YAML del contratto Soda o JSON di una suite Great Expectations, alla lettera. Colonne, watermark e promotion sono derivati da esso; vedi [Controlli di qualità dei dati](sources.md#controlli-di-qualita-dei-dati-req-1443) per la derivazione completa.
+Ogni tabella dei risultati porta `dq_contract` — YAML del contratto Soda o JSON di una suite Great Expectations, alla lettera. Colonne, watermark e promotion sono derivati da esso; vedi [Controlli di qualità dei dati](sources.md#data-quality-checkers-req-1443) per la derivazione completa.
 
 **Selezione al momento dell'installazione.** Il checker non è collegato staticamente — la scansione gira in un interprete figlio, e la libreria viene installata solo quando un operatore la nomina. Ogni percorso di installazione (`install.sh`, `packaging/linux/first-launch.sh`, e la procedura guidata macOS tramite `PROVISA_DQ_CHECKER`) scrive la scelta in `~/.provisa/config.yaml`:
 
@@ -991,7 +991,7 @@ Un `ttl` che non è un intero fa fallire la richiesta. Una richiesta che indica 
 
 Senza l'indicazione la richiesta non legge né scrive la cache. Con essa decidono comunque le impostazioni sopra: il risultato viene messo in cache solo se ogni origine letta ha `cache_enabled: true` e il TTL risolto di ogni tabella è maggiore di 0. La voce dura il `ttl` della richiesta se ne indica uno, altrimenti il TTL risolto più breve delle tabelle lette. (REQ-544)
 
-L'indicazione accetta solo dati più vecchi in cambio di velocità. Non rende mai una lettura più recente di quanto consentano le impostazioni dell'operatore: la freschezza dell'atterraggio e della replica (`cache_ttl`, `change_signal`), `row_materialize`, gli snapshot `load_protected` e i controlli di freschezza valgono per una richiesta con indicazione esattamente come per una senza. Vedere la sezione su freschezza e carico in questo documento. (REQ-544)
+L'indicazione accetta solo dati più vecchi in cambio di velocità. Non rende mai una lettura più recente di quanto consentano le impostazioni dell'operatore: la freschezza dell'atterraggio e della replica (`cache_ttl`, `change_signal`), `row_materialize`, gli snapshot `load_protected` e i controlli di freschezza valgono per una richiesta con indicazione esattamente come per una senza. Vedere [Freschezza e carico: chi decide](#freshness-and-load-who-decides). (REQ-544)
 
 `@noCache` e `-- @provisa no_cache=true` non esistono più: con la cache disattivata per impostazione predefinita non c'è nulla da aggirare.
 
@@ -1114,7 +1114,7 @@ Fa sì che pgwire annunci SASL con `SCRAM-SHA-256`, così che una password venga
 
 I verificatori non possono essere derivati dagli hash bcrypt esistenti. Ne viene scritto uno ogni volta che una password transita in chiaro, quindi la prima connessione SCRAM di ciascun utente segue la sua prossima registrazione, accesso, modifica della password o reimpostazione da parte dell'amministratore. Fino ad allora le connessioni di quell'utente ripiegano sullo scambio in chiaro su TLS; il canale non rivela chi ha già migrato.
 
-### Limitazione dei tentativi di accesso (`auth.login_throttle`) {: #login-throttling-authloginthrottle }
+### Limitazione dei tentativi di accesso (`auth.login_throttle`) {: #login-throttling-authlogin_throttle }
 
 ```yaml
 auth:
@@ -1128,7 +1128,7 @@ Attiva per impostazione predefinita con i valori mostrati; il blocco si limita a
 
 ### Token di accesso personale {: #personal-access-tokens }
 
-I PAT non richiedono alcun blocco di configurazione: sono sempre accettati e l'archivio viene creato insieme al resto dello schema del control plane. (REQ-1263) Ciò che è configurabile è la scadenza che un utente può richiedere all'emissione: da 1 a 366 giorni, oppure nessuna per un token che non scade. Vedi [Modello di sicurezza](security.md#token-di-accesso-personali).
+I PAT non richiedono alcun blocco di configurazione: sono sempre accettati e l'archivio viene creato insieme al resto dello schema del control plane. (REQ-1263) Ciò che è configurabile è la scadenza che un utente può richiedere all'emissione: da 1 a 366 giorni, oppure nessuna per un token che non scade. Vedi [Modello di sicurezza](security.md#personal-access-tokens).
 
 ### TLS reciproco {: #mutual-tls }
 
@@ -1392,7 +1392,7 @@ Configurare un motore di federazione è opzionale. Il default è `duckdb` — ze
 
 Precedenza: variabile d'ambiente `PROVISA_ENGINE` → campo di configurazione persistito `federation_engine` della UI di amministrazione → `duckdb`. Le modifiche hanno effetto al riavvio del servizio. [tool-verified: `engine.py` `build_engine`]
 
-### Panoramica dei motori [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`] {: #engine-overview-tool-verified-enginepy-engineregistry-enginebuilders }
+### Panoramica dei motori [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`] {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
 
 | Chiave motore | Etichetta | Dialetto | MPP | Meccanismo di link esterno | Auth |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |

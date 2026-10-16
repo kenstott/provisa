@@ -16,7 +16,7 @@ Le origini **Direct-capable** eseguono query a singola origine tramite il loro d
 
 Le origini **Solo federazione** vengono sempre interrogate attraverso il layer di federazione. Non esiste un driver diretto (REQ-229).
 
-Le origini **Direct-read (replica)** hanno un DirectDriver che legge dal warehouse nativamente (Arrow-native dove disponibile), atterra una replica nello store di materializzazione del motore attivo, e poi le query girano contro quella replica. Vedi [Warehouse come origini nominate](#warehouse-come-origini-nominate).
+Le origini **Direct-read (replica)** hanno un DirectDriver che legge dal warehouse nativamente (Arrow-native dove disponibile), atterra una replica nello store di materializzazione del motore attivo, e poi le query girano contro quella replica. Vedi [Warehouse come origini nominate](#warehouses-as-named-sources).
 
 Le origini **Direct (nessun connettore cross-source)** hanno un DirectDriver che esegue le istruzioni su singola origine interamente nell'origine — ogni filtro, colonna e limite viene spinto fino ad essa. Quando un'istruzione unisce l'origine a qualsiasi altra, il driver legge i dati e atterra una replica; il join viene eseguito contro quella replica nel motore attivo. Per queste origini non esiste alcun connettore Trino.
 
@@ -31,20 +31,20 @@ Provisa registra **72** tipi di origine, quelli che il modulo Sources offre. Le 
 | # | Gruppo | Tipi di origine |
 | --- | --- | --- |
 | 1–15 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2` |
-| 16–24 | [Data warehouse cloud](#data-warehouse-cloud) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
+| 16–24 | [Data warehouse cloud](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
 | 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
-| 30–33 | [Data Lake / formati tabella aperti](#data-lake-formati-tabella-aperti) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
+| 30–33 | [Data Lake / formati tabella aperti](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
 | 39–40 | [Sorgenti di codice](arch/code-sources.md) | `node`, `python` |
 | 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 44 | [Ricevitore push](#ricevitore-push) | `ingest` |
-| 45–46 | [Grafo e semantico](#grafo-e-semantico) | `neo4j`, `sparql` |
-| 47–51 | [Basate su file](#basate-su-file) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 52–53 | [Osservabilità e altro](#osservabilita-e-altro) | `google_sheets`, `prometheus` |
-| 54–60 | [Connettori SaaS enterprise](#connettori-saas-enterprise) | `sharepoint`, `salesforce`, `servicenow`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 61–66 | [Origini API](#origini-api) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
+| 44 | [Ricevitore push](#push-receiver) | `ingest` |
+| 45–46 | [Grafo e semantico](#graph-semantic) | `neo4j`, `sparql` |
+| 47–51 | [Basate su file](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 52–53 | [Osservabilità e altro](#observability-other) | `google_sheets`, `prometheus` |
+| 54–60 | [Connettori SaaS enterprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
+| 61–66 | [Origini API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
 | 67 | [GovData](#govdata) | `govdata` |
-| 68–69 | [Controlli di qualità dei dati (REQ-1443)](#controlli-di-qualita-dei-dati-req-1443) | `soda`, `great_expectations` |
+| 68–69 | [Controlli di qualità dei dati (REQ-1443)](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
 | 70 | [Data profiler](#data-profiler) | `data_profiler` |
 | 71 | [Dataset Kaggle](#kaggle-datasets) | Kaggle (messo in stage tramite il modulo Sources; si registra come origine `files` — vedere [Dataset Kaggle](#kaggle-datasets)) |
 | 72 | [Wikipedia](#wikipedia) | Wikipedia (si registra come origine `files` che scansiona le pagine indicate — vedere [Wikipedia](#wikipedia)) |
@@ -331,7 +331,7 @@ Una cartella condivisa senza cifratura deve essere montata con lock che raggiung
 
 Qualsiasi origine `files` può anche dichiarare un `crawl` nel proprio mapping, con le stesse impostazioni elencate sotto [Wikipedia](#wikipedia): l'origine legge prima le pagine web e atterra ogni tabella di dati HTML e ogni file di dati collegato nella propria directory come tabella. [tool-verified: `provisa/file_source/crawl.py` `crawl_operand`]
 
-Sul motore DuckDB, `files` viene letta nativamente — una vista scanner `read_csv_auto` per ogni `<table>.csv` sotto la directory risolta (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. Su un motore senza un proprio connettore `files`, le righe atterrano tramite lo stesso server pgwire Calcite integrato nel connettore (`pgwire-file`) usato da sharepoint/splunk (REQ-954) — vedere [Connettori SaaS enterprise](#connettori-saas-enterprise) sotto. La copertura end-to-end della UI (modulo Sources → Registra tabella → query SQL) e il percorso di atterraggio pgwire sono verificati in REQ-1694.
+Sul motore DuckDB, `files` viene letta nativamente — una vista scanner `read_csv_auto` per ogni `<table>.csv` sotto la directory risolta (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. Su un motore senza un proprio connettore `files`, le righe atterrano tramite lo stesso server pgwire Calcite integrato nel connettore (`pgwire-file`) usato da sharepoint/splunk (REQ-954) — vedere [Connettori SaaS enterprise](#enterprise-saas-connectors) sotto. La copertura end-to-end della UI (modulo Sources → Registra tabella → query SQL) e il percorso di atterraggio pgwire sono verificati in REQ-1694.
 
 #### Logs (REQ-1996) {: #logs }
 
@@ -827,7 +827,7 @@ Come per qualsiasi origine OpenAPI, ogni operazione `GET` è una tabella offerta
 
 **Aggiornamento e freschezza.** Una tabella Stripe è una replica, come ogni tabella OpenAPI. Le sue risposte in cache durano per il `cache_ttl` dell'origine, che una richiesta di registrazione imposta a 300 secondi se non dice altrimenti. Si applicano i tipi di sonda OpenAPI. [tool-verified: `provisa/api/admin/openapi_router.py` `OpenAPIRegisterRequest.cache_ttl`; `provisa/events/probes.py` `_HTTP_API_TYPES`] REQ-1923 prevede che un preset possa indicare il parametro che un aggiornamento usa per recuperare solo ciò che è cambiato. Il marchio Stripe non ne indica nessuno, quindi ogni aggiornamento legge le sue tabelle per intero. [tool-verified: `provisa/openapi/brands.py` `Brand` has no such field]
 
-**Esclusioni.** L'integrazione di pagamento deprecata di Stripe basata su token e Sources è lasciata fuori dalla specifica distribuita. L'elenco è sotto [Esclusioni su un'origine costruita da una specifica](#esclusioni-su-unorigine-costruita-da-una-specifica). Le `exclusions` proprie dell'operatore si aggiungono a quelle del marchio. [tool-verified: `provisa/openapi/_known_specs/stripe.exclusions.json`; `provisa/openapi/brands.py` `brand_spec`] (REQ-1957)
+**Esclusioni.** L'integrazione di pagamento deprecata di Stripe basata su token e Sources è lasciata fuori dalla specifica distribuita. L'elenco è sotto [Esclusioni su un'origine costruita da una specifica](#exclusions-on-a-specification-built-source). Le `exclusions` proprie dell'operatore si aggiungono a quelle del marchio. [tool-verified: `provisa/openapi/_known_specs/stripe.exclusions.json`; `provisa/openapi/brands.py` `brand_spec`] (REQ-1957)
 
 `stripe` compare anche in `SourceType` tra i tipi stub di Supabase `wrappers`. Un'origine Stripe aggiunta tramite il modulo è un'origine `openapi`, non quello stub. [tool-verified: `provisa/core/models.py` `SourceType`]
 

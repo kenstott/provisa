@@ -19,7 +19,7 @@ Se admiten seis valores de `impl_kind` [tool-verified: `_EXECUTORS` dict in `pro
 | `impl_kind` | Transporte |
 | --- | --- |
 | `source_procedure` | Procedimiento almacenado nativo en un origen registrado |
-| `source_operation` | Una operación de escritura de un origen OpenAPI, GraphQL remoto o gRPC, pasada tal cual (véase [Operación de escritura de un origen remoto](#operacion-de-escritura-de-un-origen-remoto-req-1924)) |
+| `source_operation` | Una operación de escritura de un origen OpenAPI, GraphQL remoto o gRPC, pasada tal cual (véase [Operación de escritura de un origen remoto](#a-remote-sources-write-operation-req-1924)) |
 | `script` | Subproceso local alimentado con JSON por stdin, lee JSON desde stdout |
 | `http` | Endpoint HTTP/S; cuerpo de solicitud JSON, respuesta JSON |
 | `grpc` | gRPC unario; puente JSON sin proto |
@@ -160,7 +160,7 @@ recargar la configuración. [inferred from CommandFormFields.tsx]
 ## Composición inline (REQ-1159) {: #inline-composition-req-1159 }
 
 Los comandos pueden aparecer **dentro** de una instrucción SQL más amplia — unidos, en
-subconsultas o proyectados. No está limitado a `SELECT * FROM fn(args)`. La excepción es la operación de escritura de un origen remoto, que se invoca por sí sola (véase [Por qué no se puede componer](#por-que-no-se-puede-componer)).
+subconsultas o proyectados. No está limitado a `SELECT * FROM fn(args)`. La excepción es la operación de escritura de un origen remoto, que se invoca por sí sola (véase [Por qué no se puede componer](#why-it-cannot-be-composed)).
 
 ```sql
 -- Enrich the orders relation and join the result back inline.
@@ -284,7 +284,7 @@ Active **Requiere aprobación** y cada llamada se somete al hook de aprobación 
 - Sin hook configurado: 403, `functions.approval_unavailable`.
 - El hook deniega: 403, `functions.approval_denied`, con el motivo del hook.
 
-El hook recibe al invocador, el rol, el nombre del comando y sus argumentos. Véase [Hook de aprobación ABAC](security.md#hook-de-aprobacion-abac). La marca se almacena como `Function.requires_approval`, y la comprobación se aplica a cualquier comando que la active. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
+El hook recibe al invocador, el rol, el nombre del comando y sus argumentos. Véase [Hook de aprobación ABAC](security.md#abac-approval-hook). La marca se almacena como `Function.requires_approval`, y la comprobación se aplica a cualquier comando que la active. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
 
 ### Escribe en la tabla {: #writes-table }
 

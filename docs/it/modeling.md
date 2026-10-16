@@ -696,7 +696,7 @@ Le metriche registrate automaticamente compaiono nella pagina Metrics con un bad
 Possono essere modificate come qualsiasi altra metrica. [tool-verified: `MetricsPage.tsx` lines
 405–408: `{m.fromFact && <Badge ... data-testid={`metrics-from-fact-${m.name}`}>...</Badge>}`]
 
-### Viste composte da metriche (view_metrics, REQ-1318) {: #metric-composed-views-viewmetrics-req-1318 }
+### Viste composte da metriche (view_metrics, REQ-1318) {: #metric-composed-views-view_metrics-req-1318 }
 
 Una vista `view_metrics` fissa il grain di una metrica al momento della definizione.
 Dichiarare i nomi delle metriche, le colonne di dimensione e i filtri opzionali; il compilatore

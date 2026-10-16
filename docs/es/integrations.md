@@ -58,7 +58,7 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 
 El campo `password` del paquete de inicio transporta la credencial, y *qué* es la credencial determina el método: un token de acceso personal, un token bearer OIDC o una contraseña contra el proveedor configurado. Bajo el proveedor `basic` con `auth.scram: true`, la contraseña se demuestra mediante SCRAM-SHA-256 en lugar de enviarse. Se admiten certificados de cliente. En modo de confianza (`none`), el nombre de usuario se asigna directamente a un rol y la contraseña se ignora.
 
-La tabla completa de interfaz × método está en el [Modelo de seguridad](security.md#superficies-y-credenciales). MD5 no es compatible; active TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) cuando opere sobre una red no confiable.
+La tabla completa de interfaz × método está en el [Modelo de seguridad](security.md#surfaces-and-credentials). MD5 no es compatible; active TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) cuando opere sobre una red no confiable.
 
 ### Limitaciones {: #limitations }
 
@@ -148,7 +148,7 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-Flight transporta su credencial en la carga JSON, como un campo `token`: un token bearer del proveedor o un token de acceso personal. Tanto el handshake como cada ticket lo aceptan, y ambos lo validan igual, de modo que un cliente que se autenticó en el handshake sigue presentando el token en cada `do_get`. Un campo `role` junto a él *solicita* un rol; el servidor deriva los roles permitidos de la identidad y sustituye el valor autorizado, así que una cadena de rol en un ticket nunca es la identidad. (REQ-1263) Consulte el [Modelo de seguridad](security.md#superficies-y-credenciales).
+Flight transporta su credencial en la carga JSON, como un campo `token`: un token bearer del proveedor o un token de acceso personal. Tanto el handshake como cada ticket lo aceptan, y ambos lo validan igual, de modo que un cliente que se autenticó en el handshake sigue presentando el token en cada `do_get`. Un campo `role` junto a él *solicita* un rol; el servidor deriva los roles permitidos de la identidad y sustituye el valor autorizado, así que una cadena de rol en un ticket nunca es la identidad. (REQ-1263) Consulte el [Modelo de seguridad](security.md#surfaces-and-credentials).
 
 ```python
 ticket = flight.Ticket(json.dumps({
@@ -222,7 +222,7 @@ Use `grpc_server_reflection` para descubrir el esquema de forma programática. L
 grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 ```
 
-Cada RPC debe llevar una credencial en la clave de metadatos `authorization`: un token del proveedor o un token de acceso personal. `x-provisa-role` solicita un rol del conjunto permitido de la identidad; no es una credencial ni lo fue nunca. Se admiten certificados de cliente. Consulte el [Modelo de seguridad](security.md#superficies-y-credenciales).
+Cada RPC debe llevar una credencial en la clave de metadatos `authorization`: un token del proveedor o un token de acceso personal. `x-provisa-role` solicita un rol del conjunto permitido de la identidad; no es una credencial ni lo fue nunca. Se admiten certificados de cliente. Consulte el [Modelo de seguridad](security.md#surfaces-and-credentials).
 
 Las consultas en streaming emiten un mensaje por fila; las mutaciones son unarias.
 
@@ -300,7 +300,7 @@ Consulte [docs/import.md](import.md) para la migración de Hasura a Provisa.
 
 ## Kafka
 
-Consulte [docs/sources.md](sources.md#origenes-kafka) para la configuración de temas de Kafka como tablas de solo lectura y receptores de resultados de consulta.
+Consulte [docs/sources.md](sources.md#kafka-sources) para la configuración de temas de Kafka como tablas de solo lectura y receptores de resultados de consulta.
 
 ---
 
@@ -321,7 +321,7 @@ Ninguna de las dos bibliotecas se incluye de manera predeterminada. El instalado
 | `soda` | `soda-postgres` | Elastic License 2.0 | Rechazado (`cloud_eligible: false`) |
 | `gx` | `great-expectations[postgresql]` | Apache 2.0 | Permitido |
 
-Elastic License 2.0 prohíbe ofrecer el software a terceros como un servicio alojado, que es justamente lo que sería ejecutar Soda dentro del plano SaaS en nombre de un inquilino. Una implementación alojada que desee usar Soda apunta a un endpoint de Soda que el operador ejecuta por su cuenta. Consulte [docs/configuration.md](configuration.md#verificadores-de-calidad-de-datos-soda-great_expectations) para las claves de conexión.
+Elastic License 2.0 prohíbe ofrecer el software a terceros como un servicio alojado, que es justamente lo que sería ejecutar Soda dentro del plano SaaS en nombre de un inquilino. Una implementación alojada que desee usar Soda apunta a un endpoint de Soda que el operador ejecuta por su cuenta. Consulte [docs/configuration.md](configuration.md#data-quality-checkers-soda-great_expectations) para las claves de conexión.
 
 ---
 

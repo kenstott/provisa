@@ -542,7 +542,7 @@ sources:
       disable_ssl_validation: false
 ```
 
-#### Vérificateurs de qualité des données (soda / great_expectations) {: #data-quality-checkers-soda-greatexpectations }
+#### Vérificateurs de qualité des données (soda / great_expectations) {: #data-quality-checkers-soda-great_expectations }
 
 [tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
 
@@ -561,7 +561,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-Chaque table de résultats porte `dq_contract` — le YAML du contrat Soda ou le JSON d'une suite Great Expectations, mot pour mot. Les colonnes, le point de reprise et les promotions en sont dérivés ; voir [Vérificateurs de qualité des données](sources.md#verificateurs-de-qualite-des-donnees-req-1443) pour la dérivation complète.
+Chaque table de résultats porte `dq_contract` — le YAML du contrat Soda ou le JSON d'une suite Great Expectations, mot pour mot. Les colonnes, le point de reprise et les promotions en sont dérivés ; voir [Vérificateurs de qualité des données](sources.md#data-quality-checkers-req-1443) pour la dérivation complète.
 
 **Sélection à l'installation.** Le vérificateur n'est pas lié au produit — le balayage s'exécute dans un interpréteur enfant, et la bibliothèque n'est installée que lorsqu'un opérateur la nomme. Chaque chemin d'installation (`install.sh`, `packaging/linux/first-launch.sh`, et l'assistant macOS via `PROVISA_DQ_CHECKER`) écrit le choix dans `~/.provisa/config.yaml` :
 
@@ -991,7 +991,7 @@ Un `ttl` qui n'est pas un entier fait échouer la requête. Une requête qui ind
 
 Sans l'indication, la requête ne lit ni n'écrit le cache. Avec elle, les paramètres ci-dessus décident toujours : le résultat n'est mis en cache que si chaque source lue a `cache_enabled: true` et que le TTL résolu de chaque table est supérieur à 0. L'entrée vit le `ttl` de la requête si elle en donne un, sinon le plus court TTL résolu des tables lues. (REQ-544)
 
-L'indication accepte seulement des données plus anciennes en échange de rapidité. Elle ne rend jamais une lecture plus récente que ne le permettent les paramètres de l'opérateur : la fraîcheur de l'atterrissage et du réplica (`cache_ttl`, `change_signal`), `row_materialize`, les instantanés `load_protected` et les contrôles de fraîcheur s'appliquent à une requête avec indication exactement comme à une requête sans. Voir la section sur la fraîcheur et la charge dans ce document. (REQ-544)
+L'indication accepte seulement des données plus anciennes en échange de rapidité. Elle ne rend jamais une lecture plus récente que ne le permettent les paramètres de l'opérateur : la fraîcheur de l'atterrissage et du réplica (`cache_ttl`, `change_signal`), `row_materialize`, les instantanés `load_protected` et les contrôles de fraîcheur s'appliquent à une requête avec indication exactement comme à une requête sans. Voir [Fraîcheur et charge : qui décide](#freshness-and-load-who-decides). (REQ-544)
 
 `@noCache` et `-- @provisa no_cache=true` n'existent plus : le cache étant désactivé par défaut, il n'y a rien à contourner.
 
@@ -1114,7 +1114,7 @@ Fait annoncer SASL avec `SCRAM-SHA-256` par pgwire, de sorte qu'un mot de passe 
 
 Les vérificateurs ne peuvent pas être dérivés des hachages bcrypt existants. Un vérificateur est écrit chaque fois qu'un mot de passe transite en clair, si bien que la première connexion SCRAM d'un utilisateur suit son prochain enregistrement, sa prochaine connexion, son prochain changement de mot de passe ou la prochaine réinitialisation par un administrateur. En attendant, les connexions de cet utilisateur retombent sur l'échange en clair au-dessus de TLS ; le réseau ne révèle pas qui a migré.
 
-### Limitation des tentatives de connexion (`auth.login_throttle`) {: #login-throttling-authloginthrottle }
+### Limitation des tentatives de connexion (`auth.login_throttle`) {: #login-throttling-authlogin_throttle }
 
 ```yaml
 auth:
@@ -1128,7 +1128,7 @@ Activée par défaut avec les valeurs indiquées ; le bloc ne fait que les ajus
 
 ### Jetons d'accès personnels {: #personal-access-tokens }
 
-Les PAT n'ont besoin d'aucun bloc de configuration — ils sont toujours acceptés, et le magasin est créé avec le reste du schéma du plan de contrôle. (REQ-1263) Ce qui est configurable, c'est l'expiration qu'un utilisateur peut demander à l'émission : de 1 à 366 jours, ou aucune pour un jeton qui n'expire pas. Voir [Modèle de sécurité](security.md#jetons-dacces-personnels).
+Les PAT n'ont besoin d'aucun bloc de configuration — ils sont toujours acceptés, et le magasin est créé avec le reste du schéma du plan de contrôle. (REQ-1263) Ce qui est configurable, c'est l'expiration qu'un utilisateur peut demander à l'émission : de 1 à 366 jours, ou aucune pour un jeton qui n'expire pas. Voir [Modèle de sécurité](security.md#personal-access-tokens).
 
 ### TLS mutuel {: #mutual-tls }
 
@@ -1392,7 +1392,7 @@ Configurer un moteur de fédération est facultatif. Le défaut est `duckdb` —
 
 Précédence : variable d'environnement `PROVISA_ENGINE` → champ de configuration `federation_engine` persisté par l'interface d'administration → `duckdb`. Les changements prennent effet au redémarrage du service. [tool-verified: `engine.py` `build_engine`]
 
-### Vue d'ensemble des moteurs [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`] {: #engine-overview-tool-verified-enginepy-engineregistry-enginebuilders }
+### Vue d'ensemble des moteurs [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`] {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
 
 | Clé de moteur | Libellé | Dialecte | MPP | Mécanisme de lien externe | Authentification |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |

@@ -697,7 +697,7 @@ Les métriques enregistrées automatiquement apparaissent sur la page Metrics av
 `MetricsPage.tsx` lines 405–408: `{m.fromFact && <Badge ...
 data-testid={`metrics-from-fact-${m.name}`}>...</Badge>}`]
 
-### Vues composées de métriques (view_metrics, REQ-1318) {: #metric-composed-views-viewmetrics-req-1318 }
+### Vues composées de métriques (view_metrics, REQ-1318) {: #metric-composed-views-view_metrics-req-1318 }
 
 Une vue `view_metrics` fixe le grain d'une métrique au moment de la définition. Déclarez les
 noms des métriques, les colonnes de dimension et les filtres optionnels ; le compilateur

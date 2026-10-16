@@ -304,7 +304,7 @@ Eine aus einer beliebigen Remote-Schema-Quelle registrierte Tabelle ist eine vol
 
 Ad-hoc-Abfragen gegen externe Tabellen sind allein auf Grundlage der Rechte des Benutzers zulässig — der Zugriff basiert einheitlich auf Rechten (Tabellen-/Spaltenrechte + genehmigte Beziehungen), ohne tabellenspezifischen Governance-Modus. (REQ-001, REQ-003)
 
-**Beziehungsgovernance (V002).** JOIN-Bedingungen gegen externe Tabellen — bei Abfrage über SQL oder Cypher — müssen einer registrierten, genehmigten Beziehung entsprechen. (REQ-604) Die V002-Prüfung wird bei GraphQL-Abfragen übersprungen, da in der SDL definierte Beziehungen konstruktionsbedingt bereits genehmigt sind. Siehe [docs/security.md](security.md#governance-der-beziehungen-v002).
+**Beziehungsgovernance (V002).** JOIN-Bedingungen gegen externe Tabellen — bei Abfrage über SQL oder Cypher — müssen einer registrierten, genehmigten Beziehung entsprechen. (REQ-604) Die V002-Prüfung wird bei GraphQL-Abfragen übersprungen, da in der SDL definierte Beziehungen konstruktionsbedingt bereits genehmigt sind. Siehe [docs/security.md](security.md#relationship-governance-v002).
 
 **OBJECT-typisierte Spalten.** Wenn eine Spalte einem nicht governance-pflichtigen Inline-GQL-OBJECT oder einem OpenAPI-Objekttyp entspricht, ist ihr Provisa-Typ `jsonb`. Die Spalte speichert den vollständigen verschachtelten JSON-Blob. Sind Unterfelder deklariert (`gql_object_fields` oder `object_fields`), wird die `gql_object_columns`-Zuordnung beim Schema-Build befüllt. Der SQL-Generator verwendet diese Zuordnung, um `->>`-Extraktionsausdrücke für Unterfelder zu erzeugen, wenn eine Abfrage diese auswählt. [tool-verified: `provisa/api/app.py:1305–1315`, `provisa/compiler/schema_gen.py:80–82`]
 

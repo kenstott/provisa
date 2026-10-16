@@ -450,7 +450,7 @@ provisa maintenance on [--message MSG] [--ends-at ISO8601]
 | --- | --- |
 | `--message` | Sovrascrive il testo standard del deployment; il default è il messaggio standard del server |
 | `--ends-at` | Istante ISO-8601 in cui il lavoro dovrebbe terminare, es. `2026-08-14T22:30:00Z`; il default è nessuna stima |
-| `--api` | Vedi [Opzioni condivise](#opzioni-condivise) |
+| `--api` | Vedi [Opzioni condivise](#shared-options) |
 | `--token` | Token Bearer per un'identità con `platform_settings` |
 | `--timeout` | Default 30 s |
 

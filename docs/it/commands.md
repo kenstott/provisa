@@ -18,7 +18,7 @@ Sono supportati sei valori `impl_kind` [tool-verified: `_EXECUTORS` dict in `pro
 | `impl_kind` | Trasporto |
 | --- | --- |
 | `source_procedure` | Stored procedure nativa su un'origine registrata |
-| `source_operation` | Un'operazione di scrittura di un'origine OpenAPI, GraphQL remota o gRPC, passata così com'è (vedi [Operazione di scrittura di un'origine remota](#operazione-di-scrittura-di-unorigine-remota-req-1924)) |
+| `source_operation` | Un'operazione di scrittura di un'origine OpenAPI, GraphQL remota o gRPC, passata così com'è (vedi [Operazione di scrittura di un'origine remota](#a-remote-sources-write-operation-req-1924)) |
 | `script` | Subprocess locale alimentato con JSON su stdin, legge JSON da stdout |
 | `http` | Endpoint HTTP/S; corpo richiesta JSON, risposta JSON |
 | `grpc` | gRPC unary; bridge JSON senza proto |
@@ -155,7 +155,7 @@ output. Salvando il modulo si registra o si aggiorna il comando senza ricaricare
 ## Composizione inline (REQ-1159) {: #inline-composition-req-1159 }
 
 I comandi possono comparire **dentro** un'istruzione SQL più ampia — in join, in sotto-query o in
-proiezione. Non ci si limita a `SELECT * FROM fn(args)`. L'eccezione è l'operazione di scrittura di un'origine remota, che viene chiamata da sola (vedi [Perché non può essere composta](#perche-non-puo-essere-composta)).
+proiezione. Non ci si limita a `SELECT * FROM fn(args)`. L'eccezione è l'operazione di scrittura di un'origine remota, che viene chiamata da sola (vedi [Perché non può essere composta](#why-it-cannot-be-composed)).
 
 ```sql
 -- Enrich the orders relation and join the result back inline.
@@ -278,7 +278,7 @@ Attivando **Richiede approvazione**, ogni chiamata viene sottoposta all'hook di 
 - Nessun hook configurato: 403, `functions.approval_unavailable`.
 - L'hook nega: 403, `functions.approval_denied`, con il motivo dell'hook.
 
-L'hook riceve il chiamante, il ruolo, il nome del comando e i suoi argomenti. Vedi [Hook di approvazione ABAC](security.md#hook-di-approvazione-abac). Il flag è memorizzato come `Function.requires_approval`, e il controllo si applica a qualsiasi comando che lo imposti. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
+L'hook riceve il chiamante, il ruolo, il nome del comando e i suoi argomenti. Vedi [Hook di approvazione ABAC](security.md#abac-approval-hook). Il flag è memorizzato come `Function.requires_approval`, e il controllo si applica a qualsiasi comando che lo imposti. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
 
 ### Scrive nella tabella {: #writes-table }
 

@@ -323,7 +323,7 @@ Siehe [docs/import.md](import.md) für die Migration von Hasura zu Provisa.
 
 ## Kafka
 
-Siehe [docs/sources.md](sources.md#kafka-quellen) für die Konfiguration von Kafka-Topics als schreibgeschützte Tabellen und Abfrageergebnis-Senken.
+Siehe [docs/sources.md](sources.md#kafka-sources) für die Konfiguration von Kafka-Topics als schreibgeschützte Tabellen und Abfrageergebnis-Senken.
 
 ---
 
@@ -362,7 +362,7 @@ Die Elastic License 2.0 untersagt es, die Software Dritten als gehosteten Dienst
 bereitzustellen — genau das wäre es, Soda innerhalb der SaaS-Ebene im Namen eines Mandanten
 auszuführen. Ein gehostetes Deployment, das Soda nutzen möchte, zeigt auf einen Soda-Endpunkt,
 den der Betreiber selbst betreibt. Die Verbindungsschlüssel finden Sie in
-[docs/configuration.md](configuration.md#data-quality-checker-soda-great_expectations).
+[docs/configuration.md](configuration.md#data-quality-checkers-soda-great_expectations).
 
 ---
 

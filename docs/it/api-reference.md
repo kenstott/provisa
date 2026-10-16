@@ -66,7 +66,7 @@ Il campo `extensions` supporta il protocollo Automatic Persisted Query (APQ): (R
 - `X-Provisa-Redirect-Threshold` — numero di righe sopra il quale scatta il redirect (REQ-137)
 - `X-Provisa-Redirect` — `true` per forzare il redirect incondizionatamente (REQ-029)
 
-**Cache delle risposte:** attivazione per richiesta con la direttiva di operazione `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` facoltativo); la stessa direttiva vale per GraphQL inviato tramite Arrow Flight. Cypher si attiva con una riga `// @provisa cache=true` o `// @provisa cache_ttl=N`, gRPC con i metadati di chiamata `x-provisa-cache: true` o `x-provisa-cache-ttl: N`. Senza di essa la richiesta non legge né scrive la cache delle risposte. L'intestazione di risposta `X-Provisa-Cache` riporta `HIT` o `MISS`. Vedere [Cache](configuration.md). (REQ-544)
+**Cache delle risposte:** attivazione per richiesta con la direttiva di operazione `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` facoltativo); la stessa direttiva vale per GraphQL inviato tramite Arrow Flight. Cypher si attiva con una riga `// @provisa cache=true` o `// @provisa cache_ttl=N`, gRPC con i metadati di chiamata `x-provisa-cache: true` o `x-provisa-cache-ttl: N`. Senza di essa la richiesta non legge né scrive la cache delle risposte. L'intestazione di risposta `X-Provisa-Cache` riporta `HIT` o `MISS`. Vedere [Cache](configuration.md#per-request-opt-in). (REQ-544)
 
 <a id="response-cache-request-headers"></a>
 
@@ -976,7 +976,7 @@ Non viene registrato nulla. Usare la schermata di revisione della UI admin per a
 
 Tutti gli endpoint sono sotto il prefisso `/admin/actions`. (REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
 
-Ogni invocazione — da GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, e Provisa gRPC — passa attraverso un unico executor governato che applica `writable_by` e la governance in modo uniforme. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] Vedi [docs/integrations.md](integrations.md#invocare-comandi-tra-protocolli) per la sintassi di chiamata per protocollo.
+Ogni invocazione — da GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, e Provisa gRPC — passa attraverso un unico executor governato che applica `writable_by` e la governance in modo uniforme. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] Vedi [docs/integrations.md](integrations.md#invoking-commands-across-protocols) per la sintassi di chiamata per protocollo.
 
 #### `GET /admin/actions`
 
@@ -1464,7 +1464,7 @@ Risposta:
 
 `added` è il conteggio degli archi scritti. Un arco già esistente conta comunque — l'upsert riesce, ma i dati dell'arco non cambiano.
 
-### Strumento MCP `search_terms` {: #mcp-searchterms-tool }
+### Strumento MCP `search_terms` {: #mcp-search_terms-tool }
 
 ```
 search_terms(query, role=None, limit=25)

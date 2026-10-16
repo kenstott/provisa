@@ -450,7 +450,7 @@ provisa maintenance on [--message MSG] [--ends-at ISO8601]
 | --- | --- |
 | `--message` | Sobrepõe o texto padrão da implantação; o padrão é a mensagem padrão do servidor |
 | `--ends-at` | Instante ISO-8601 em que o trabalho deve terminar, ex. `2026-08-14T22:30:00Z`; o padrão é sem estimativa |
-| `--api` | Veja [Opções compartilhadas](#opções-compartilhadas) |
+| `--api` | Veja [Opções compartilhadas](#shared-options) |
 | `--token` | Token Bearer para uma identidade que detém `platform_settings` |
 | `--timeout` | Padrão 30 s |
 

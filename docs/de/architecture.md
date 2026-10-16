@@ -182,7 +182,7 @@ Jede Engine ist eine `FederationEngine`-Instanz, definiert in `provisa/federatio
 | `PARTIAL` | Erreicht eine Teilmenge (relational, Dateien, Cloud-Objekt/-Lake) und landet alles andere | DuckDB, PostgreSQL, ClickHouse, Databricks, Snowflake, BigQuery, Fabric, Synapse |
 | `SELF_ONLY` | Erreicht nur seinen eigenen Store; jede andere Quelle landet dort | SQLAlchemy |
 
-### Verfügbare Engines [tool-verified: `engine.py` `_ENGINE_BUILDERS`] {: #available-engines-tool-verified-enginepy-enginebuilders }
+### Verfügbare Engines [tool-verified: `engine.py` `_ENGINE_BUILDERS`] {: #available-engines-tool-verified-enginepy-engine_builders }
 
 | Engine-Key | Dialekt | MPP | Externer-Link-Mechanismus | Auth |
 | ----------- | --------- | ----- | ------------------------ | ------ |
@@ -197,17 +197,17 @@ Jede Engine ist eine `FederationEngine`-Instanz, definiert in `provisa/federatio
 | `synapse` | T-SQL | Ja | ADLS OPENROWSET / External Tables | Azure AD |
 | `sqlalchemy` | Beliebiger SQLAlchemy-Dialekt | Nein | Keiner (nur Landen) | Zugangsdaten pro Dialekt |
 
-### Zero-Config-Standard: DuckDB (REQ-989) [tool-verified: `engine.py` `build_duckdb_engine`, `_embedded_duckdb_materialize_default`] {: #zero-config-default-duckdb-req-989-tool-verified-enginepy-buildduckdbengine-embeddedduckdbmaterializedefault }
+### Zero-Config-Standard: DuckDB (REQ-989) [tool-verified: `engine.py` `build_duckdb_engine`, `_embedded_duckdb_materialize_default`] {: #zero-config-default-duckdb-req-989-tool-verified-enginepy-build_duckdb_engine-embedded_duckdb_materialize_default }
 
 Ist `PROVISA_ENGINE` nicht gesetzt, verwendet Provisa die vollständig eingebettete In-Process-DuckDB-Engine. Der Materialisierungs-Store von DuckDB ist eine eingebettete DuckDB-Datei unter `$PROVISA_DATA_DIR/materialize.duckdb` (Standard `~/.provisa/materialize.duckdb`). Keine externe Datenbank oder Dienst erforderlich.
 
 Da DuckDB pro Datei nur einen einzigen Writer erlaubt, schreibt `store_connection.py` über die eigene Verbindung der Engine in den eingebetteten Store — nie über eine zweite, unabhängige Verbindung. Das ist der eine Fall, in dem Engine und Materialisierungs-Store per Design einen Datei-Handle teilen. [tool-verified: `store_connection.py` module docstring]
 
-### Arrow-natives Lese-Transport (REQ-986, REQ-987, REQ-988) [tool-verified: `engine.py` `build_*_engine` `capabilities=`] {: #arrow-native-read-transport-req-986-req-987-req-988-tool-verified-enginepy-buildengine-capabilities }
+### Arrow-natives Lese-Transport (REQ-986, REQ-987, REQ-988) [tool-verified: `engine.py` `build_*_engine` `capabilities=`] {: #arrow-native-read-transport-req-986-req-987-req-988-tool-verified-enginepy-build__engine-capabilities }
 
 ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric und Synapse bewerben alle `EngineCapability.ARROW` und `EngineCapability.ARROW_STREAM`. Abfragen gegen diese Engines geben Arrow-RecordBatches direkt zurück — der Zeilen-Serialisierungspfad wird vollständig umgangen. Der Flight-Server streamt diese Batches an Clients, ohne das vollständige Ergebnis im Prozessspeicher von Provisa zu materialisieren. Für Trino stützt sich Arrow-Streaming auf den Zaychik-Proxy; für die Warehouse-Engines speist die eigene Arrow-native API der Engine (Cloud Fetch für Databricks, Storage Read API für BigQuery, `fetch_arrow_table` für DuckDB und Snowflake) den Flight-Stream.
 
-### Externe Datenverknüpfungen (ATTACH) [tool-verified: `engine.py` `_warehouse_connectors`] {: #external-data-links-attach-tool-verified-enginepy-warehouseconnectors }
+### Externe Datenverknüpfungen (ATTACH) [tool-verified: `engine.py` `_warehouse_connectors`] {: #external-data-links-attach-tool-verified-enginepy-warehouse_connectors }
 
 Jede Warehouse-Engine kann Cloud-Objekt-/Lake-Daten vor Ort scannen, ohne eine Kopie zu landen. Parquet-, CSV-, Iceberg- und Delta-Lake-Dateien auf S3, GCS oder OneLake werden der Engine direkt angehängt, als wären sie native Tabellen. Die Strategie — ATTACH (vor Ort scannen) oder LAND (in den Store kopieren) — wird durch den deklarierten `Mechanism` des Connectors bestimmt; im Planner existiert kein Engine-spezifisches Branching. Ein `Mechanism.ATTACH_R`-Connector löst einen Zero-Copy-Scan aus; ein `Mechanism.DIRECT`- oder fehlender Connector löst ein Landen aus. [tool-verified: `connector_base.py` `Mechanism`, `engine.py` `_warehouse_connectors`]
 
@@ -223,7 +223,7 @@ Attach stellt alle Voraussetzungen zur Attach-Zeit automatisch bereit:
 
 Zugangsdaten für Cloud-Storage reisen in den `federation_hints` der Quelle (siehe [Sources](sources.md#warehouses-as-named-sources)). Jeder Quelltyp, der nicht ATTACH kann, landet zuerst im Materialisierungs-Store der Engine.
 
-### Columnar-Materialisierungs-Writes (REQ-990) [tool-verified: `core/database.py:436`, `store_connection.py:99`] {: #columnar-materialization-writes-req-990-tool-verified-coredatabasepy436-storeconnectionpy99 }
+### Columnar-Materialisierungs-Writes (REQ-990) [tool-verified: `core/database.py:436`, `store_connection.py:99`] {: #columnar-materialization-writes-req-990-tool-verified-coredatabasepy436-store_connectionpy99 }
 
 `Connection.bulk_copy` in `provisa/core/database.py` wählt den schnellsten Bulk-Ingest-Pfad pro Store-Dialekt: binäres `COPY` (asyncpg `copy_records_to_table`) für PostgreSQL-Stores und ein einzelnes vorbereitetes `executemany`-Statement für alle anderen relationalen Stores. Der eingebettete DuckDB-Store landet über `land_duckdb_native` in `store_connection.py` — ein `executemany`-Aufruf für den gesamten Batch, nie eine Pro-Zeile-Schleife.
 
@@ -653,7 +653,7 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 (REQ-279, REQ-277, REQ-278)
 
-Der Antwort-Cache ist pro Anfrage opt-in: GraphQL nutzt die Direktive `@cached(ttl: Int)`, SQL und Cypher den Kommentar `cache`/`cache_ttl`, gRPC die Aufruf-Metadaten `x-provisa-cache` / `x-provisa-cache-ttl`. Der Hinweis gilt auf jedem Transport, der die Sprache trägt (Cypher über HTTP, Bolt und Arrow Flight; GraphQL über HTTP und Arrow Flight). Eine Anfrage ohne Hinweis liest und schreibt den Cache nie, und keine Form liest aktuellere Daten, als die Quellen- und Tabelleneinstellungen des Betreibers erlauben. Siehe [Cache](configuration.md). (REQ-544)
+Der Antwort-Cache ist pro Anfrage opt-in: GraphQL nutzt die Direktive `@cached(ttl: Int)`, SQL und Cypher den Kommentar `cache`/`cache_ttl`, gRPC die Aufruf-Metadaten `x-provisa-cache` / `x-provisa-cache-ttl`. Der Hinweis gilt auf jedem Transport, der die Sprache trägt (Cypher über HTTP, Bolt und Arrow Flight; GraphQL über HTTP und Arrow Flight). Eine Anfrage ohne Hinweis liest und schreibt den Cache nie, und keine Form liest aktuellere Daten, als die Quellen- und Tabelleneinstellungen des Betreibers erlauben. Siehe [Cache](configuration.md#per-request-opt-in). (REQ-544)
 
 ## Column Presets in Mutations
 
