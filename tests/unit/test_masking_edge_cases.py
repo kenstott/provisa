@@ -150,7 +150,7 @@ class TestMaskedColumnInJoinCondition:
         result = governed_for_role(sql, ctx, "analyst", masking_rules=rules)
 
         assert result == (
-            'SELECT "t0"."id", REGEXP_REPLACE("t1"."email", \'.*\', \'***\') AS "email" '
+            'SELECT "t0"."id", REGEXP_REPLACE("t1"."email", \'.*\', \'***\', \'g\') AS "email" '
             'FROM "public"."orders" AS "t0" LEFT JOIN "public"."customers" AS "t1" '
             'ON "t0"."customer_id" = "t1"."id"'
         )

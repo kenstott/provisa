@@ -629,15 +629,23 @@
     invisible to the role (AST rewrite); (4) row cap — inject/cap LIMIT to the most restrictive per-role/table
     `max_rows` ceiling for any referenced table. A role without the FULL_RESULTS capability receives the
     configured default cap. The row cap is the single mechanism for bounding result size; statistical
-    sampling is a user query feature, not a governance concern (REQ-478).'
+    sampling is a user query feature, not a governance concern (REQ-478).
+
+    (Amended 2026-10-16, REGEX MASK EVERY MATCH:) A regex mask replaces every match of its pattern, on
+    every engine and on a change-event row alike. The governed statement writes it as PostgreSQL''s
+    REGEXP_REPLACE with the ''g'' flag; the transpiler keeps the flag for PostgreSQL and DuckDB and drops
+    it for an engine whose three-argument form already replaces every match.'
   use_case: Stage 2 governance transformer enforces RLS, masking, visibility, and the row cap uniformly
     on every SQL path and transport.
   code:
   - provisa/compiler/stage2.py
   - provisa/compiler/sql_gen.py
+  - provisa/security/masking.py
+  - provisa/transpiler/transpile.py
   tests:
   - tests/integration/test_governance_integration.py
   - tests/unit/test_mask_inject.py
+  - tests/unit/test_regex_mask_every_match.py
   - tests/unit/test_stage2.py
   - tests/unit/test_stage2_complex.py
   - tests/unit/test_two_stage_compiler.py
