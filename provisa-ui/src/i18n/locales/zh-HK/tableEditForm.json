@@ -278,6 +278,8 @@
       "testing": "測試",
       "errors": "{{count}} 項待修正"
     },
-    "offPeakInherited": "繼承：此資料表的來源只會按排程讀取。"
+    "offPeakInherited": "繼承：此資料表的來源只會按排程讀取。",
+    "mvReadWindowHelp": "用戶和客戶端可以讀取此視圖的時間，格式為 HH:MM-HH:MM（24 小時制）。在此之外，他們的讀取會被拒絕，並說明下次開放的時間；Provisa 自身的重新整理和排程作業照常執行。留空則任何時間都可讀取。",
+    "mvReadWindowHint": "用戶和客戶端只能在此時段內讀取此視圖；未設定時段則任何時間都可讀取。"
   }
 }

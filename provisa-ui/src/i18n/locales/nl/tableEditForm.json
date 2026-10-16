@@ -278,6 +278,8 @@
       "testing": "Testen",
       "errors": "{{count}} te herstellen"
     },
-    "offPeakInherited": "Overgenomen: de bron van deze tabel wordt alleen volgens schema gelezen."
+    "offPeakInherited": "Overgenomen: de bron van deze tabel wordt alleen volgens schema gelezen.",
+    "mvReadWindowHelp": "Wanneer gebruikers en clients deze view mogen lezen, als HH:MM-HH:MM (24 u). Daarbuiten worden hun leesacties geweigerd, met de melding wanneer het weer opent; de eigen verversingen en geplande taken van Provisa lopen door. Laat leeg om lezen altijd toe te staan.",
+    "mvReadWindowHint": "Gebruikers en clients mogen deze view alleen binnen dit venster lezen; zonder venster altijd."
   }
 }

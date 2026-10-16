@@ -278,6 +278,8 @@
       "testing": "Testes",
       "errors": "{{count}} por corrigir"
     },
-    "offPeakInherited": "Herdado: a origem desta tabela só é lida de acordo com o agendamento."
+    "offPeakInherited": "Herdado: a origem desta tabela só é lida de acordo com o agendamento.",
+    "mvReadWindowHelp": "Quando usuários e clientes podem ler esta view, no formato HH:MM-HH:MM (24 h). Fora dela, as leituras são recusadas, informando quando ela abre novamente; as atualizações e os jobs agendados do Provisa continuam. Deixe em branco para permitir leituras a qualquer momento.",
+    "mvReadWindowHint": "Usuários e clientes só podem ler esta view dentro desta janela; sem ela, a qualquer momento."
   }
 }

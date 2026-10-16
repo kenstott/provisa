@@ -372,6 +372,10 @@ async def _optimize_and_route(
     from provisa.synthetic.datasets import refuse_unavailable
 
     refuse_unavailable(state.replica_routes, list(table_ids))
+    # REQ-2066: a materialized view a user's read names, outside its load management window.
+    from provisa.mv.load_window import refuse_outside_window
+
+    refuse_outside_window(state, table_ids)
     # REQ-849, REQ-882: a fresh materialized view that answers the governed statement is read in
     # its place -- the one place a view is put back into a statement, for every surface. After
     # governance: the role's row filters and masks are part of what it answers.
@@ -562,9 +566,11 @@ def _view_answering(exec_sql: str, ctx, state, *, is_mutation: bool) -> Any:
     read it (``mv.view_reinject``), or None. A write is never answered from a view."""
     if is_mutation:
         return None
+    from provisa.mv.load_window import readable_now
     from provisa.mv.view_reinject import reinject
 
-    return reinject(exec_sql, state.mv_registry.get_fresh(), ctx)
+    # REQ-2066: a view outside its load management window answers none of a user's reads.
+    return reinject(exec_sql, readable_now(state.mv_registry.get_fresh(), state), ctx)
 
 
 async def _read_live_parts(

@@ -6631,5 +6631,8 @@
   "es/tour.json::tour.steps.datavaultScenario.description": "An order system and a CRM, both from Northwind, both with their own copy of each customer. The question: what did we know about this customer, from which source, and when? A data vault answers it by keeping every version from every source. Here the vault is declared as views, and the engine builds and refreshes it: no ETL platform, job server or pipeline code to run, the work runs on the engine where it scales, and one declared vault feeds the marts, the governed APIs and the lineage.",
   "es/tour.json::tour.steps.datavaultScenario.title": "Two systems, one question",
   "es/tour.json::tour.steps.datavaultWalk.description": "Hub to link to hub: the customer, its orders, the products in them, and every version of each product's name and price.",
-  "es/tour.json::tour.steps.datavaultWalk.title": "The vault walked in GraphQL"
+  "es/tour.json::tour.steps.datavaultWalk.title": "The vault walked in GraphQL",
+  "es/serverErrors.json::serverErrors.data.view_outside_load_window": "The view {{view}} can be read only within its read window. It next opens at {{opens_at}}.",
+  "es/tableEditForm.json::tableEditForm.mvReadWindowHelp": "When users and clients may read this view, as HH:MM-HH:MM (24h). Outside it their reads are refused, saying when it next opens; Provisa's own refreshes and scheduled jobs still run. Leave blank to allow reads at any time.",
+  "es/tableEditForm.json::tableEditForm.mvReadWindowHint": "Users and clients may read this view only within this window; without one, at any time."
 }

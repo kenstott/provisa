@@ -126,7 +126,8 @@
       "address_invalid": "O endereço não pode ser resolvido: {{reason}}",
       "address_not_found": "Nada a resolver: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve não pode ser combinado com outros campos raiz na mesma operação",
-      "source_starting": "A origem {{source}} ainda está sendo iniciada. Tente novamente em instantes."
+      "source_starting": "A origem {{source}} ainda está sendo iniciada. Tente novamente em instantes.",
+      "view_outside_load_window": "A view {{view}} só pode ser lida dentro da sua janela de leitura. Ela abre novamente às {{opens_at}}."
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",

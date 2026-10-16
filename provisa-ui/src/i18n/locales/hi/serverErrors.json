@@ -126,7 +126,8 @@
       "address_invalid": "पते को हल नहीं किया जा सकता: {{reason}}",
       "address_not_found": "हल करने के लिए कुछ नहीं: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve को एक ऑपरेशन में अन्य रूट फ़ील्ड के साथ नहीं जोड़ा जा सकता",
-      "source_starting": "स्रोत {{source}} अभी शुरू हो रहा है। थोड़ी देर में फिर से प्रयास करें।"
+      "source_starting": "स्रोत {{source}} अभी शुरू हो रहा है। थोड़ी देर में फिर से प्रयास करें।",
+      "view_outside_load_window": "view {{view}} केवल उसकी पढ़ने की अवधि में पढ़ा जा सकता है। यह अगली बार {{opens_at}} पर खुलेगी।"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' का अडैप्टर discover_schema लागू नहीं करता",

@@ -278,6 +278,8 @@
       "testing": "Testen",
       "errors": "{{count}} zu beheben"
     },
-    "offPeakInherited": "Geerbt: Die Quelle dieser Tabelle wird nur nach Zeitplan gelesen."
+    "offPeakInherited": "Geerbt: Die Quelle dieser Tabelle wird nur nach Zeitplan gelesen.",
+    "mvReadWindowHelp": "Wann Benutzer und Clients diese View lesen dürfen, als HH:MM-HH:MM (24 h). Außerhalb davon werden ihre Lesezugriffe abgelehnt, mit dem Hinweis, wann es sich wieder öffnet; die eigenen Aktualisierungen und geplanten Jobs von Provisa laufen weiter. Leer lassen, um Lesen jederzeit zu erlauben.",
+    "mvReadWindowHint": "Benutzer und Clients dürfen diese View nur innerhalb dieses Fensters lesen; ohne Fenster jederzeit."
   }
 }

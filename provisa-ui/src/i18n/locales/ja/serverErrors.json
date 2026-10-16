@@ -126,7 +126,8 @@
       "address_invalid": "アドレスを解決できません: {{reason}}",
       "address_not_found": "解決する対象がありません: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve は 1 つの操作で他のルートフィールドと組み合わせることはできません",
-      "source_starting": "ソース {{source}} はまだ起動中です。しばらくしてからもう一度お試しください。"
+      "source_starting": "ソース {{source}} はまだ起動中です。しばらくしてからもう一度お試しください。",
+      "view_outside_load_window": "ビュー {{view}} は読み取り時間帯の間だけ読み取れます。次に開くのは {{opens_at}} です。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
