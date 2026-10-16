@@ -79861,6 +79861,7 @@
   - provisa/federation/trino_connectors.py
   - provisa/runtime_deps/pgwire_bundles.py
   tests:
+  - tests/unit/test_pg_driver_type_names.py
   - tests/unit/test_salesforce_connector.py
   - tests/unit/test_pgwire_write_route.py
   - provisa-ui/src/pages/sources/__tests__/salesforce.test.tsx

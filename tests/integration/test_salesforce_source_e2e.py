@@ -165,12 +165,14 @@ async def test_an_sobject_is_read_through_the_pgwire_server(endpoint):
 
 @_aio
 async def test_the_describe_cache_is_kept_in_the_sources_state_directory(endpoint):
-    from pathlib import Path
-
+    from provisa.core.org_files import node_path
     from provisa.federation import pgwire_replica as pr
 
     del endpoint
-    state = Path(os.environ["PROVISA_DATA_DIR"]) / "pgwire"
+    # The server's state is kept in its org's folder on this node, by bundle version and source id
+    # (REQ-1992; pgwire_replica.server_state_dir).
+    with as_deployment_org():
+        state = node_path("pgwire")
     assert list(state.glob(f"*/{_source_id()}/{pr.DESCRIBE_CACHE_DIR_NAME}/*"))
 
 
