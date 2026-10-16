@@ -185,3 +185,24 @@ def test_the_statement_governance_validates_reads_each_view_as_itself():
     _governed, validated = semantic_statement(_READ, views, state, gov)
     messages = [v.message for v in validate_sql(validated, ctx, gov, _ROLE, []) if v.code == "V002"]
     assert messages == []
+
+
+def test_a_filter_on_a_value_computed_over_a_union_view_relates_nothing():
+    """``known`` is the union of two tables. Its latest row per key, picked by a filter on a
+    window computed over it, reads one row of the view at a time: the filter touches the view and
+    what its SQL reads, which are the same row, and relates no two tables."""
+    line, theme, known = _meta(1, "line"), _meta(2, "theme"), _meta(3, "known")
+    ctx = CompilationContext()
+    ctx.tables = {"line": line, "theme": theme, "known": known}
+    gov = GovernanceContext()
+    gov.table_map = {"line": 1, "theme": 2, "known": 3}
+    columns = {1: ["id", "text"], 2: ["id", "name"], 3: ["id", "text"]}
+    gov.all_columns = {tid: [(c, "varchar") for c in cols] for tid, cols in columns.items()}
+    views = {"known": "SELECT id, text FROM line UNION ALL SELECT id, name AS text FROM theme"}
+    read = (
+        "SELECT id, text FROM (SELECT k.*, ROW_NUMBER() OVER (PARTITION BY id ORDER BY text DESC) "
+        "AS latest FROM known AS k) AS x WHERE latest = 1"
+    )
+    validated = expand_view_refs(read, views, mark=True)
+    messages = [v.message for v in validate_sql(validated, ctx, gov, _ROLE, []) if v.code == "V002"]
+    assert messages == []
