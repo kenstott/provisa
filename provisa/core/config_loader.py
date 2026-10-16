@@ -129,6 +129,9 @@ _VIEW_KEYS = {
     # REQ-2009: a view offers the GraphQL Aggregate and GroupBy root fields as a table does.
     "enable_aggregates": "enable_aggregates",
     "enable_group_by": "enable_group_by",
+    # REQ-2066: a materialized view's load management window, when consumers may read it.
+    "off_peak_window": "off_peak_window",
+    "off_peak_tz": "off_peak_tz",
 }
 
 
@@ -215,6 +218,13 @@ def views_as_tables(raw: dict) -> dict:
         unknown = set(view) - set(_VIEW_KEYS) - {"id"}
         if unknown:
             raise ValueError(f"view {view.get('id')!r}: unknown keys {sorted(unknown)}")
+        if view.get("off_peak_window") and not view.get("materialize"):
+            # REQ-2066: the window says when a stored view may be read; a view not stored is read
+            # through its SQL from what it reads, each with its own load management.
+            raise ValueError(
+                f"view {view.get('id')!r}: off_peak_window applies to a materialized view "
+                "(materialize: true)"
+            )
         entry = {
             "source_id": DERIVED_SOURCE_ID,
             "schema": "views",

@@ -84311,7 +84311,7 @@ And a reload within the grace period keeps the sandbox'
   - REQ-2006
   notes: 'Maintainer 2026-10-16: when a live demo browser window is closed, send a signal so the backend can remove it.'
 - id: REQ-2066
-  status: proposed
+  status: complete
   since: 2026-10
   group: 6. Execution, Routing, Caching & Performance
   category: Caching
@@ -84333,6 +84333,16 @@ And the views own refresh at 05:00 runs, and a read at 02:30 answers'
   related_reqs:
   - REQ-1141
   - REQ-2067
+  code:
+  - provisa/mv/load_window.py
+  - provisa/pgwire/_pipeline.py
+  - provisa/core/config_loader.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/api/admin/schema_mutation_ops.py
+  - provisa-ui/src/pages/tables/MaterializedViewPanels.tsx
+  - provisa-ui/src/components/admin/OffPeakWindowFields.tsx
+  tests:
+  - tests/unit/test_mv_load_window.py
   notes: 'Maintainer 2026-10-16: reuse the exact load management window; for an MV it means do not pull from this MV outside the window; Provisa-scheduled work is told apart from user workloads.'
 - id: REQ-2067
   status: proposed

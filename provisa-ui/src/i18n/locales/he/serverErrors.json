@@ -126,7 +126,8 @@
       "address_invalid": "לא ניתן לפענח את הכתובת: {{reason}}",
       "address_not_found": "אין מה לפענח: {{reason}}",
       "mixed_resolve_and_other_fields": "לא ניתן לשלב את resolve עם שדות שורש אחרים באותה פעולה",
-      "source_starting": "המקור {{source}} עדיין מופעל. נסה שוב בעוד רגע."
+      "source_starting": "המקור {{source}} עדיין מופעל. נסה שוב בעוד רגע.",
+      "view_outside_load_window": "ניתן לקרוא את ה-view ‏{{view}} רק בתוך חלון הקריאה שלו. הוא נפתח שוב ב-{{opens_at}}."
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",

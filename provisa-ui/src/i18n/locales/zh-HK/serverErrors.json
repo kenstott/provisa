@@ -126,7 +126,8 @@
       "address_invalid": "無法解析該地址：{{reason}}",
       "address_not_found": "沒有可解析的內容：{{reason}}",
       "mixed_resolve_and_other_fields": "resolve 不能在同一操作中與其他根欄位組合使用",
-      "source_starting": "來源 {{source}} 仍在啟動。請稍後再試。"
+      "source_starting": "來源 {{source}} 仍在啟動。請稍後再試。",
+      "view_outside_load_window": "視圖 {{view}} 只能在其讀取時段內讀取。下次開放時間為 {{opens_at}}。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",

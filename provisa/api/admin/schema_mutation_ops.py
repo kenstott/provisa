@@ -311,6 +311,15 @@ async def register_table(
         validate_preprocess(input.mv_preprocess)
     except ValueError as _pp_err:
         return MutationResult(success=False, message=str(_pp_err))
+    # REQ-2066: the window a read of the table (a materialized view's) is judged by is parsed when
+    # it is saved, as the load management save does; one that does not parse is refused here. ""
+    # is no window (as scheduled_refresh reads it); a table naming no zone takes its source's, and
+    # only the spec is checked here, so any valid zone checks it.
+    from provisa.api.admin.schema_mutation import _parsed_off_peak
+
+    window_err = _parsed_off_peak(input.off_peak_window or None, input.off_peak_tz or "UTC")
+    if window_err is not None:
+        return window_err
     try:
         model = _table_model_from_input(input, columns, presets, alias)
     except ValueError as _map_err:  # REQ-1318: view_sql+view_metrics conflict / invalid spec

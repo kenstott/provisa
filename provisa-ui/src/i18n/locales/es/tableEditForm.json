@@ -278,6 +278,8 @@
       "testing": "Pruebas",
       "errors": "{{count}} por corregir"
     },
-    "offPeakInherited": "Heredado: el origen de esta tabla solo se lee según la programación."
+    "offPeakInherited": "Heredado: el origen de esta tabla solo se lee según la programación.",
+    "mvReadWindowHelp": "Cuándo pueden leer esta vista los usuarios y clientes, como HH:MM-HH:MM (24 h). Fuera de ella sus lecturas se rechazan, indicando cuándo vuelve a abrirse; las actualizaciones y trabajos programados de Provisa siguen ejecutándose. Déjelo vacío para permitir lecturas en cualquier momento.",
+    "mvReadWindowHint": "Usuarios y clientes solo pueden leer esta vista dentro de esta ventana; sin ella, en cualquier momento."
   }
 }

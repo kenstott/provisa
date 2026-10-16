@@ -202,13 +202,13 @@ Compiler refactored into two explicit stages. Stage 1: GraphQL → plain PG-styl
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Stage 2 governance transformer applies four governance concerns: (1) RLS — inject WHERE predicate per table reference per role (SQLGlot AST rewrite); (2) column masking — wrap masked column expressions with masking function (AST rewrite); (3) column visibility — remove or NULL-out columns invisible to the role (AST rewrite); (4) row cap — inject/cap LIMIT to the most restrictive per-role/table `max_rows` ceiling for any referenced table. A role without the FULL_RESULTS capability receives the configured default cap. The row cap is the single mechanism for bounding result size; statistical sampling is a user query feature, not a governance concern ([REQ-478](#REQ-478)).
+Stage 2 governance transformer applies four governance concerns: (1) RLS — inject WHERE predicate per table reference per role (SQLGlot AST rewrite); (2) column masking — wrap masked column expressions with masking function (AST rewrite); (3) column visibility — remove or NULL-out columns invisible to the role (AST rewrite); (4) row cap — inject/cap LIMIT to the most restrictive per-role/table `max_rows` ceiling for any referenced table. A role without the FULL_RESULTS capability receives the configured default cap. The row cap is the single mechanism for bounding result size; statistical sampling is a user query feature, not a governance concern ([REQ-478](#REQ-478)). (Amended 2026-10-16, REGEX MASK EVERY MATCH:) A regex mask replaces every match of its pattern, on every engine and on a change-event row alike. The governed statement writes it as PostgreSQL's REGEXP_REPLACE with the 'g' flag; the transpiler keeps the flag for PostgreSQL and DuckDB and drops it for an engine whose three-argument form already replaces every match.
 
 **Use case:** Stage 2 governance transformer enforces RLS, masking, visibility, and the row cap uniformly on every SQL path and transport.
 
-**Code:** `provisa/compiler/stage2.py`, `provisa/compiler/sql_gen.py`
+**Code:** `provisa/compiler/stage2.py`, `provisa/compiler/sql_gen.py`, `provisa/security/masking.py`, `provisa/transpiler/transpile.py`
 
-**Tests:** `tests/integration/test_governance_integration.py`, `tests/unit/test_mask_inject.py`, `tests/unit/test_stage2.py`, `tests/unit/test_stage2_complex.py`, `tests/unit/test_two_stage_compiler.py`
+**Tests:** `tests/integration/test_governance_integration.py`, `tests/unit/test_mask_inject.py`, `tests/unit/test_regex_mask_every_match.py`, `tests/unit/test_stage2.py`, `tests/unit/test_stage2_complex.py`, `tests/unit/test_two_stage_compiler.py`
 
 ### REQ-264 · Two-Stage Compiler (Governed SQL) {#REQ-264}
 
@@ -23866,15 +23866,15 @@ A visitor's demo sandbox is released soon after its tab closes. When the visitor
 
 ### REQ-2066 · Caching {#REQ-2066}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 The load management window ([REQ-1141](#REQ-1141)''s off-peak window) also applies to a materialized view, meaning: outside the window the view may not be read by a user''s workload. It is the same window, same shape, same place in the table''s load management, with one meaning for a source table (Provisa may load from the source only within it) and one for a materialized view (consumers may read the view only within it). Provisa''s own work is never blocked: refreshes and replica builds under the system''s authorization, the view cascade, and scheduled jobs and triggers running as scheduler:<id>. A read by a person''s or client''s identity outside the window is refused by name, saying when the window next opens. A view with no window is unaffected.
 
 **Use case:** A warehouse sets a 02:00-04:00 window on its daily_sales view so consumer pulls never collide with its daytime load.
 
-**Code:** —
+**Code:** `provisa/mv/load_window.py`, `provisa/pgwire/_pipeline.py`, `provisa/core/config_loader.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa-ui/src/pages/tables/MaterializedViewPanels.tsx`, `provisa-ui/src/components/admin/OffPeakWindowFields.tsx`
 
-**Tests:** —
+**Tests:** `tests/unit/test_mv_load_window.py`
 
 ## 10. UI & Admin Surfaces
 

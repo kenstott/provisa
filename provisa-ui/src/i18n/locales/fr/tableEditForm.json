@@ -278,6 +278,8 @@
       "testing": "Tests",
       "errors": "{{count}} à corriger"
     },
-    "offPeakInherited": "Hérité : la source de cette table n'est lue que selon la planification."
+    "offPeakInherited": "Hérité : la source de cette table n'est lue que selon la planification.",
+    "mvReadWindowHelp": "Quand les utilisateurs et les clients peuvent lire cette vue, au format HH:MM-HH:MM (24 h). En dehors, leurs lectures sont refusées en indiquant quand elle rouvre ; les actualisations et tâches planifiées de Provisa continuent. Laissez vide pour autoriser la lecture à tout moment.",
+    "mvReadWindowHint": "Les utilisateurs et les clients ne peuvent lire cette vue que pendant cette fenêtre ; sans fenêtre, à tout moment."
   }
 }

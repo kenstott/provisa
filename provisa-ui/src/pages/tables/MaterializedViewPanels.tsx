@@ -10,7 +10,8 @@ import type { RegisteredTable } from "../../types/admin";
 import { useMaterializeStoreInfo } from "../../hooks/useAdminOpsQueries";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { SnapshotSchedulePanel } from "./SnapshotSchedulePanel";
-import { FieldGroup, FormChecks, FormField } from "../../components/form/FormLayout";
+import { FieldGroup, FormChecks, FormField, FormLayout } from "../../components/form/FormLayout";
+import { OffPeakWindowFields } from "../../components/admin/OffPeakWindowFields";
 
 // REQ-961/962/965/969/970/1168/1169: the materialized-view configuration cluster — refresh cadence &
 // NRT debounce, fleet consistency, time-travel (bitemporal) mode, the calendar snapshot schedule, and
@@ -95,6 +96,21 @@ export function MaterializedViewPanels({
                 />
               </FormField>
             </FieldGroup>
+          </FormField>
+          {/* REQ-2066: the table's load management window; on a view, when it may be read. */}
+          <FormField size="full">
+            <FormLayout>
+              <OffPeakWindowFields
+                window={editingTable.offPeakWindow ?? ""}
+                tz={editingTable.offPeakTz ?? ""}
+                windowHelp={t("tableEditForm.mvReadWindowHelp")}
+                windowHint={t("tableEditForm.mvReadWindowHint")}
+                onWindowChange={(window) =>
+                  setEditingTable({ ...editingTable, offPeakWindow: window || null })
+                }
+                onTzChange={(tz) => setEditingTable({ ...editingTable, offPeakTz: tz || null })}
+              />
+            </FormLayout>
           </FormField>
         </CollapsibleSection>
       )}

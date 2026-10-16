@@ -25,6 +25,8 @@ export function OffPeakWindowFields({
   tz,
   onWindowChange,
   onTzChange,
+  windowHelp,
+  windowHint,
 }: {
   /** "HH:MM-HH:MM"; empty is no window. */
   window: string;
@@ -32,6 +34,11 @@ export function OffPeakWindowFields({
   tz: string;
   onWindowChange: (window: string) => void;
   onTzChange: (tz: string) => void;
+  /** What the window means where it is shown, when not a source's loading: a materialized view's
+   * is when it may be read (REQ-2066). */
+  windowHelp?: string;
+  /** The sentence beneath the window, likewise. */
+  windowHint?: string;
 }) {
   const { t } = useTranslation();
   const [opens = "", closes = ""] = window.split("-");
@@ -42,8 +49,8 @@ export function OffPeakWindowFields({
           as they are for a single box. */}
       <FormField
         size="medium"
-        help={t("tableEditForm.offPeakWindowHelp")}
-        hint={t("sourceFormFieldsExtended.offPeakWindowHint")}
+        help={windowHelp ?? t("tableEditForm.offPeakWindowHelp")}
+        hint={windowHint ?? t("sourceFormFieldsExtended.offPeakWindowHint")}
         data-testid="off-peak-window"
       >
         <Input.Wrapper label={t("tableEditForm.offPeakWindowLabel")}>
