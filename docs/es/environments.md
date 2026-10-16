@@ -1,4 +1,4 @@
-# Entornos
+# Entornos {: #environments }
 
 Un entorno es una copia con nombre del modelo gobernado de una organización. Físicamente, la copia
 es un esquema de PostgreSQL aparte —no una columna discriminadora, ni un prefijo, sino un esquema
@@ -14,7 +14,9 @@ inexistente se rechaza. [tool-verified: `PROD = "prod"` at environments.py line 
 
 Los entornos están disponibles para las organizaciones con un plan de pago. [inferred: REQ-1507]
 
-## Nombres de entorno
+Para llenar un entorno que no es de producción con datos seguros de usar, consulte [Crear entornos de prueba](test-data.md).
+
+## Nombres de entorno {: #environment-names }
 
 Un nombre debe coincidir con `[a-z][a-z0-9_]{1,31}`: de dos a treinta y dos caracteres de letras
 minúsculas, dígitos y guiones bajos, empezando por una letra. Se rechazan `prod` y los nombres que
@@ -24,7 +26,7 @@ largo que deriva un entorno es aquello de lo que protege el límite. [tool-verif
 `ENV_NAME_PATTERN` at environments.py line 59; `validate_env_name()` at environments.py lines
 119-142; `max_env_name_length()` at environments.py lines 108-116]
 
-## Qué lleva una copia
+## Qué lleva una copia {: #what-a-copy-carries }
 
 Cada tabla del esquema de la organización cae en exactamente una clase (REQ-1489). La clasificación
 es una lista de permitidos, no una lista de exclusión: una tabla añadida más adelante no viaja hasta
@@ -50,7 +52,7 @@ restringida, convirtiendo la ruta de revisión en la vía de escalada. Así que 
 asignaciones viajan una sola vez, al crear el entorno, y después son la respuesta propia de cada
 entorno. [tool-verified: env_classes.py lines 65-71; env_copy.py lines 41-44]
 
-## Vinculaciones
+## Vinculaciones {: #bindings }
 
 Las vinculaciones son las columnas que indican adónde apunta realmente un origen: `host`, `port`,
 `database`, `username` y las demás. Nunca viajan en ninguna copia. Un entorno que no se ha vinculado
@@ -58,28 +60,20 @@ se marca como `unbound` en vez de dejarse en blanco: un host vacío no es un hos
 constructor de conexiones lo leería como `localhost:5432`. [tool-verified: `BOUND_COLUMN = "bound"`
 at env_classes.py line 143; `BINDING_COLUMNS` dict at env_classes.py lines 155-172]
 
-Los orígenes de un entorno se resuelven de una de estas dos maneras.
+Un entorno creado de cualquier forma salvo Unbound copia la conexión de cada origen desde su padre,
+exactamente como el padre la escribió: una referencia `${secret:...}` o `${env:...}` se copia como esa
+referencia, nunca resuelta. Tras la creación, la copia es la fila propia del entorno, editable en la
+página Orígenes, y nada se resuelve a través del padre cuando se construye el runtime del entorno.
+El campo `binding` de cada origen dice de dónde vino su conexión: `copied`, `own` (dada en este
+entorno) o `unbound`. Editar una conexión copiada la convierte en `own`. **Volver a copiar del padre**
+(`POST /admin/orgs/{org}/environments/{name}/sources/recopy`) copia de nuevo las conexiones del padre.
+Una fusión o un despliegue no llevan conexiones, así que un origen que introducen llega `unbound`.
+[tool-verified: `_copy_table` at env_copy.py; `recopy` and `unbind` at env_data.py;
+`owned_if_reconnected` at repositories/source.py]
 
-**Base**: el entorno lleva sus propias credenciales. Un org_admin crea una base y después vincula
-explícitamente cada origen. [tool-verified: `CreateEnvBody.inherit_connections = False` (default) at
-environments_router.py line 227; "binding a base is an org_admin's act" comment at line 358]
+## La proyección git {: #the-git-projection }
 
-**Rama**: el entorno hereda por referencia las credenciales de la base. No se copia nada. Cuando una
-consulta necesita una conexión, la resolución sube por la cadena `branched_from` y se detiene en el
-primer entorno cuya fila esté vinculada. Rotar una credencial en la base se propaga a todas sus ramas
-sin necesidad de hacer nada. Revocarla la revoca para todas a la vez. Ningún secreto se materializa
-nunca en un lugar del que una rama, una exportación o un repositorio pudiera llevárselo.
-[tool-verified: `resolve()` at env_bindings.py lines 114-151; `lineage()` at env_bindings.py
-lines 74-102; env_bindings.py module docstring lines 11-33]
-
-Para crear una rama, active **Heredar conexiones** en el panel de Entornos. Por defecto está
-desactivado. [tool-verified: `environmentsTab.json` key `inheritConnections`; `inheritHelp2` string]
-
-## La proyección git
-
-Cada escritura en el modelo confirma el resultado en la rama git del entorno. El repositorio es una
-proyección del modelo, nunca su autoridad: Provisa lee y escribe el plano de control; el repositorio
-es el registro, no el origen. Desplegar un árbol exige una llamada explícita: una pull request
+Cada escritura en el modelo confirma el resultado en la rama git del entorno. Desplegar un árbol exige una llamada explícita: una pull request
 fusionada en el host de git no se despliega sola (REQ-1524, REQ-1526). [tool-verified:
 deploy endpoint docstring at environments_router.py lines 777-791]
 
@@ -126,7 +120,7 @@ entorno de desarrollo no pierde sus propias conexiones a bases de datos por toma
 reciente de prod. Prod no adquiere las concesiones de desarrollo. [tool-verified: env_copy.py lines
 269-287; REQ-1490 scenario]
 
-### Qué nombra el informe
+### Qué nombra el informe {: #what-the-report-names }
 
 El informe del merge lista, por ruta, lo que se añadió, cambió, eliminó y quedó sin cambios. También
 nombra los **conflictos**: los objetos que ambos lados cambiaron desde el último commit que
@@ -166,7 +160,7 @@ tiene. El rechazo lleva la lista de objetos que ambos lados tocaron, para que qu
 ahora qué trabajo sobrevive sepa qué objetos mirar. [tool-verified: `state["diverged"]` check at
 environments_router.py lines 1491-1503; `_collisions()` at environments_router.py lines 1581-1602]
 
-## Historial
+## Historial {: #history }
 
 Cada despliegue mueve hacia adelante el cursor del entorno en su propia línea de commits. Deshacer
 retrocede un commit; rehacer avanza de nuevo hacia la posición de la que partió el deshacer. Ninguna
@@ -183,7 +177,7 @@ diseño admite y que se llama **desviado**. Un nodo cuyo almacén de repositorio
 commit concreto sigue listando sus entornos; solo cambian las respuestas del historial (REQ-1561).
 [tool-verified: `_with_history()` at environments_router.py lines 316-344; REQ-1561 description]
 
-## Autorización
+## Autorización {: #authorization }
 
 Los entornos se rigen por dos derechos. Ninguno de los dos es de un analista por defecto (REQ-1573).
 [tool-verified: REQ-1573 description; `MANAGE_CAPABILITY = "environment_management"` and
@@ -209,7 +203,7 @@ entornos. A un contratista al que se le concede el rol de analista no le aparece
 de entornos y no puede crear ninguno ni cambiar a ninguno distinto de producción. [tool-verified:
 REQ-1573 use_case and scenario]
 
-### Autoridad del propietario del entorno
+### Autoridad del propietario del entorno {: #environment-owner-authority }
 
 Crear un entorno es la única vía por la que un miembro de solo lectura adquiere derechos de edición
 del modelo (REQ-1528). Dentro del entorno que ha creado, quien lo creó tiene las capacidades del rol
@@ -226,7 +220,7 @@ La pertenencia a dominios sigue limitando lo que el propietario puede cambiar. C
 lo que un miembro puede hacer; nunca cambia sobre qué dominios puede hacerlo (REQ-1530).
 [tool-verified: `domains_within()` at env_authority.py lines 121-145]
 
-## Entornos protegidos (REQ-1504)
+## Entornos protegidos (REQ-1504) {: #protected-environments-req-1504 }
 
 Un entorno puede estar protegido. Un merge o un despliegue hacia un entorno protegido no se aplica
 cuando se solicita; se propone, y alguien distinto de quien lo solicita debe aprobarlo.
@@ -265,7 +259,7 @@ env_approvals.py lines 150-189; env_approvals.py docstring lines 26-27]
     mostrar el detalle objeto por objeto. [tool-verified: `environmentsTab.json` keys
     `requestsTitle`, `colReport`, `approve`, `reject`]
 
-## Los comandos `env` de la CLI
+## Los comandos `env` de la CLI {: #the-env-cli-commands }
 
 `provisa env deploy` envía a un entorno el modelo que hay en una referencia. Sale con 0 cuando el
 despliegue se aplicó o fue una ejecución de prueba, y con 2 cuando el entorno está protegido y el
@@ -299,7 +293,9 @@ provisa env deploy --org acme --env prod --ref "origin/main" \
 
 ---
 
-## Véase también
+## Véase también {: #see-also }
 
 - [Despliegue](deployment.md) — cómo levantar el plano de control con el que se conectan los entornos
 - [Comandos](commands.md) — funciones y webhooks rastreados que aparecen en el árbol de cada entorno
+- [Crear entornos de prueba](test-data.md) — perfilar producción, declarar datos falsos y generar datos sintéticos para un entorno que no es de producción
+- [Métodos de datos falsos](fake-methods.md) — cada tipo de dato falso y cada método que una columna puede declarar

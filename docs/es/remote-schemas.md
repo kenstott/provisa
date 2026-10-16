@@ -1,12 +1,12 @@
-# Esquemas remotos
+# Esquemas remotos {: #remote-schemas }
 
 Un origen de esquema remoto conecta una API externa —GraphQL (incluido GitHub), gRPC o REST (OpenAPI)— a el modelo de Provisa. Añadir un origen no registra ninguna tabla. El origen ofrece tablas, y un steward registra cada tabla que desea mediante el selector «Register Table»; ese registro es el paso de curación. (REQ-308, REQ-316, REQ-322) Una tabla registrada es una tabla de Provisa de primera clase. (REQ-308, REQ-316, REQ-325) Toda regla de gobierno, interfaz de consulta y capa de seguridad se aplica automáticamente. (REQ-310, REQ-319, REQ-328) El servicio remoto nunca ve las reglas de gobierno de Provisa. (REQ-310, REQ-319, REQ-328)
 
 ---
 
-## Tres tipos de origen
+## Tres tipos de origen {: #three-source-types }
 
-### Esquema remoto GraphQL (REQ-307–313)
+### Esquema remoto GraphQL (REQ-307–313) {: #graphql-remote-schema-req-307313 }
 
 **Cómo añadir el origen.** Enviar un POST a `/admin/sources/graphql-remote` con la URL del endpoint, un namespace y autenticación opcional. Provisa dispara una consulta de introspección `__schema` estándar contra el endpoint remoto para confirmar el endpoint y la credencial. (REQ-307) [tool-verified: `provisa/graphql_remote/introspect.py:47–59`]
 
@@ -160,7 +160,7 @@ GitLab es un tipo de origen ordinario y se añade y registra igual que GitHub: a
 
 ---
 
-### Esquema remoto gRPC (REQ-322–329)
+### Esquema remoto gRPC (REQ-322–329) {: #grpc-remote-schema-req-322329 }
 
 **Cómo añadir el origen.** Enviar un POST a `/admin/grpc-remote/register` con la dirección del servidor, una ruta o URL a un archivo `.proto` y configuración TLS opcional. Añadir el origen no registra ninguna tabla.
 
@@ -288,7 +288,7 @@ Prioridad de clasificación: `operation_overrides` (payload) tiene prioridad sob
 
 ---
 
-## Impacto de registrar una tabla remota
+## Impacto de registrar una tabla remota {: #impact-of-registering-a-remote-table }
 
 Una tabla registrada desde cualquier origen de esquema remoto es una tabla de Provisa de primera clase. Nada en ella se trata de forma diferente a una tabla relacional conectada localmente en tiempo de ejecución. (REQ-308, REQ-313)
 
@@ -312,7 +312,7 @@ Las consultas ad-hoc contra tablas remotas se permiten únicamente bajo los dere
 
 ---
 
-## Impacto de crear una relación de cobertura
+## Impacto de crear una relación de cobertura {: #impact-of-creating-a-covering-relationship }
 
 Cuando un steward registra una relación entre dos tablas remotas (o entre una tabla remota y una tabla local), la relación se convierte en la ruta de unión usada en tiempo de consulta.
 
@@ -330,7 +330,7 @@ En la SDL de GraphQL, un campo OBJECT inline no gobernado se tipa como el tipo d
 
 ---
 
-## Comportamiento de solo definición de tipo
+## Comportamiento de solo definición de tipo {: #type-def-only-behavior }
 
 No todos los tipos de un esquema remoto necesitan ser una tabla consultable.
 

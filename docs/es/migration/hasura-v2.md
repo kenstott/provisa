@@ -1,6 +1,6 @@
-# Migración de Hasura v2 a Provisa
+# Migración de Hasura v2 a Provisa {: #migrating-from-hasura-v2-to-provisa }
 
-## Requisitos previos
+## Requisitos previos {: #prerequisites }
 
 1. Una instancia de Hasura v2 en ejecución (v2.x) con los metadatos exportados.
 2. Exportar los metadatos con la CLI de Hasura:
@@ -13,19 +13,19 @@
    `cron_triggers.yaml`, `inherited_roles.yaml`, `remote_schemas.yaml`, etc.
 3. Python 3.11+ con el paquete `provisa` instalado.
 
-## Uso de la CLI
+## Uso de la CLI {: #cli-usage }
 
 ```bash
 python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 ```
 
-### Argumentos
+### Argumentos {: #arguments }
 
 | Argumento | Obligatorio | Descripción |
 | ---------- | ---------- | ------------- |
 | `metadata_dir` | Sí | Ruta al directorio de metadatos exportado de Hasura v2 |
 
-### Opciones
+### Opciones {: #options }
 
 | Opción | Predeterminado | Descripción |
 | -------- | --------- | ------------- |
@@ -35,7 +35,7 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 | `--auth-env-file FILE` | Ninguno | Ruta a un archivo `.env` con la configuración de autenticación JWT/admin-secret |
 | `--dry-run` | desactivado | Analiza y valida sin escribir la salida |
 
-### Archivo de anulaciones de origen
+### Archivo de anulaciones de origen {: #source-overrides-file }
 
 Un archivo YAML indexado por nombre de origen con propiedades de conexión a anular:
 
@@ -48,7 +48,7 @@ default:
   password: "${env:PROD_DB_PASSWORD}"
 ```
 
-### Archivo de entorno de autenticación
+### Archivo de entorno de autenticación {: #auth-env-file }
 
 Un archivo con estilo `.env` que contiene la configuración de autenticación de Hasura
 a convertir. El convertidor asigna:
@@ -58,7 +58,7 @@ a convertir. El convertidor asigna:
 - Admin secret -> Provisa `superuser`.
 - Autenticación por webhook -> se emite una advertencia (sin equivalente en Provisa).
 
-## Matriz de paridad de funciones
+## Matriz de paridad de funciones {: #feature-parity-matrix }
 
 | Función de Hasura v2 | Equivalente en Provisa | Notas |
 | --- | --- | --- |
@@ -82,7 +82,7 @@ a convertir. El convertidor asigna:
 | **Tablas enum** | Se crea la tabla | El indicador `is_enum` no se traslada (sin equivalente en Provisa). |
 | **Listas de permitidos** | Se omiten | No están presentes en el modelo de metadatos. |
 
-## Pasos posteriores a la conversión
+## Pasos posteriores a la conversión {: #post-conversion-steps }
 
 1. **Revisar el YAML de salida.** Verificar que los orígenes, las tablas y los roles se vean correctos.
 2. **Configurar las conexiones de origen.** El convertidor analiza las URL de conexión, pero
@@ -97,37 +97,37 @@ a convertir. El convertidor asigna:
    archivo de entorno de autenticación y vuelva a ejecutar con `--auth-env-file`.
 7. **Probar.** Inicie el servidor de Provisa y verifique las consultas contra sus orígenes de datos.
 
-## Problemas comunes y solución de problemas
+## Problemas comunes y solución de problemas {: #common-issues-and-troubleshooting }
 
-### La URL de conexión no se analiza
+### La URL de conexión no se analiza {: #connection-url-not-parsed }
 
 Si `database_url` del origen es una referencia a una variable de entorno (`{"from_env": "PG_URL"}`),
 el convertidor no puede resolverla en el momento de la conversión. El origen tendrá valores
 de marcador de posición (`host: localhost`, `database: default`). Corríjalo con `--source-overrides`.
 
-### Columnas comodín
+### Columnas comodín {: #wildcard-columns }
 
 Cuando un permiso otorga `columns: "*"`, el convertidor crea una única entrada de columna
 comodín. Después de la conversión, quizás quiera reemplazarla con listas de columnas explícitas
 inspeccionando el esquema real de la base de datos.
 
-### Fidelidad de los disparadores de eventos
+### Fidelidad de los disparadores de eventos {: #event-trigger-fidelity }
 
 Los disparadores de eventos se convierten con `operations` y `webhook_url`, pero las garantías
 de entrega específicas de Hasura (exactamente una vez, reentrega) no tienen equivalentes directos
 en Provisa. Revise la sección `event_triggers` y configure su infraestructura de webhooks en consecuencia.
 
-### Roles faltantes
+### Roles faltantes {: #missing-roles }
 
 Los roles se recopilan únicamente a partir de las entradas de permisos. Si un rol existe en
 Hasura pero no tiene permisos en ninguna tabla ni action, no aparecerá en la salida.
 
-### Campos raíz personalizados
+### Campos raíz personalizados {: #custom-root-fields }
 
 Solo los campos raíz `select` y `select_by_pk` se usan para el alias de la tabla. Otros
 campos raíz personalizados (`select_aggregate`, `insert`, `update`, `delete`) no se asignan.
 
-## Ejemplo
+## Ejemplo {: #example }
 
 Convertir un proyecto típico de Hasura v2 con dos esquemas asignados a dominios:
 

@@ -2,7 +2,7 @@
 
 Una réplica es una copia de una tabla de origen que Provisa mantiene en el almacén de materialización del motor y lee en lugar del origen. Esta página trata sobre en qué se indexa una réplica, dónde conservar las réplicas y cuán frescas están. Si una tabla se replica o no lo fija [`replicate`](configuration.md#the-replicate-setting) y lo que el motor puede alcanzar; consulte [Qué cambia un motor](engines.md#what-an-engine-changes). (REQ-826)
 
-## Las réplicas están indexadas
+## Las réplicas están indexadas {: #replicas-are-indexed }
 
 Provisa indexa una réplica según cómo el modelo usa su tabla. (REQ-2015) [tool-verified: `provisa/federation/replica_indexes.py` `plan`, `join_columns`]
 
@@ -28,7 +28,7 @@ La réplica de `orders` obtiene su clave y un índice en `customer_id`. La répl
 
 Declare la clave con `is_primary_key: true` en la columna. Una réplica sin clave declarada obtiene solo sus índices de unión. [tool-verified: `provisa/federation/replica_builds.py` `plan_indexes`]
 
-### Legible primero, indexada después
+### Legible primero, indexada después {: #readable-first-indexed-after }
 
 Un aterrizaje nunca espera a los índices. La réplica se lee desde el momento en que se intercambia; el runner de réplicas construye después sus índices uno a uno, en una pasada aparte, bajo un bloqueo de índices por réplica. [tool-verified: `provisa/federation/replica_runner.py` `_planned`, `_start_index_builds`] Cuente con que las primeras consultas tras un aterrizaje se ejecuten sin ellos.
 
@@ -81,7 +81,7 @@ Esta es una recomendación general, no una regla. Que compense depende del motor
 - **La carga propia de la base de datos.** Las lecturas de réplicas, los aterrizajes y las construcciones de índices se ejecutan todos en esa base de datos. Dimensiónela para ellos. [inferred]
 - **Escaneos grandes.** Un índice no sirve de nada para una consulta que lee la mayor parte de una tabla grande. Un almacén columnar la escanea más rápido que uno por filas. [inferred]
 
-## Elegir dónde viven las réplicas
+## Elegir dónde viven las réplicas {: #choosing-where-replicas-live }
 
 El almacén es una palanca entre varias, y se solapan. Resuelva primero las demás; el almacén decide solo lo que ellas dejan.
 
@@ -98,7 +98,7 @@ Lo que aún depende del almacén: los escaneos y uniones ad hoc sobre tablas gra
 
 Los resultados varían según la carga. Mida antes y después de un cambio con la [herramienta de dimensionamiento](sizing.md); sus [ejecuciones en vivo o en réplica](sizing.md#live-or-replica-reads-and-the-ttl) dan el costo de una lectura en réplica frente al de una lectura en vivo en su despliegue.
 
-## Frescura
+## Frescura {: #freshness }
 
 Haga que la frescura forme parte de la decisión, junto a la velocidad. Cuán antigua puede ser una respuesta, y qué le cuesta al origen mantenerla al día, deciden si una tabla se lee en vivo o desde una réplica y, por tanto, lo que debe contener el almacén.
 
@@ -120,7 +120,7 @@ Los orígenes empresariales rara vez admiten tiempo real. Los datos llegan por c
 
 Una sonda que no tiene nada que comparar (sin marca de agua, centinela ni consulta de sonda) recurre al TTL. [tool-verified: `provisa/federation/replica_builds.py` `_probe_decides`]
 
-### Casi tiempo real desde un flujo de cambios
+### Casi tiempo real desde un flujo de cambios {: #near-real-time-from-a-change-feed }
 
 Cuando un origen no puede soportar carga de consultas en vivo pero ya publica sus cambios, un flujo de cambios da datos casi en tiempo real sin tocar el origen en el momento de la consulta. Las consultas leen la réplica local, que es rápida y no pone carga en el origen, mientras el bucle de eventos aplica los cambios a medida que llegan. Los datos solo se retrasan lo que se retrasa el flujo, normalmente segundos. [inferred: the lag figure]
 

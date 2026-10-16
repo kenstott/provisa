@@ -9,7 +9,7 @@ Cliente de Python para Provisa. Ofrece cuatro interfaces:
 | Dialecto de SQLAlchemy | Herramientas de BI, ORM, `read_sql` de Pandas (REQ-270) |
 | ADBC | Transmisión columnar nativa de Arrow mediante Flight (REQ-271) |
 
-## Instalación
+## Instalación {: #install }
 
 ```bash
 pip install provisa-client                      # core (ProvisaClient + DB-API)
@@ -22,7 +22,7 @@ pip install "provisa-client[adbc]"              # adds ADBC over Arrow Flight
 
 ## ProvisaClient
 
-### Inicio rápido
+### Inicio rápido {: #quick-start }
 
 ```python
 from provisa_client import ProvisaClient
@@ -50,7 +50,7 @@ client = ProvisaClient("http://localhost:8001", token=body["access_token"])
 
 Los puntos de entrada de DB-API y ADBC hacen este canje por usted — véase más abajo.
 
-### Consultas de GraphQL
+### Consultas de GraphQL {: #graphql-queries }
 
 ```python
 # Raw response dict
@@ -66,13 +66,13 @@ result = client.query(
 df = client.query_df("{ orders { id amount region } }")
 ```
 
-### Asíncrono
+### Asíncrono {: #async }
 
 ```python
 result = await client.aquery("{ orders { id amount } }")
 ```
 
-### Arrow Flight (columnar de alto rendimiento)
+### Arrow Flight (columnar de alto rendimiento) {: #arrow-flight-high-throughput-columnar }
 
 Use Flight para conjuntos de resultados grandes: los datos se transmiten como lotes de registros Arrow sin materializarse en el servidor. (REQ-143, REQ-145)
 
@@ -89,22 +89,22 @@ Flight se conecta al puerto 8815 de forma predeterminada. (REQ-143) Sobrescríba
 client = ProvisaClient("http://prod.example.com", flight_port=8815)
 ```
 
-### Exploración del catálogo
+### Exploración del catálogo {: #catalog-exploration }
 
 ```python
 tables_df = client.list_tables()
 ```
 
-### Referencia de conexión
+### Referencia de conexión {: #connection-reference }
 
 | Parámetro | Valor predeterminado | Descripción |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | URL base del servidor Provisa |
 | `token` | `None` | Credencial bearer — un token del proveedor o un token de acceso personal; omítalo para autenticación con contraseña (REQ-606, REQ-1263) |
-| `role` | `"admin"` | Rol enviado con cada solicitud (REQ-273) |
+| `role` | `None` | Rol con el que actuar, enviado como `X-Provisa-Role` y atendido solo si está asignado al usuario; si se omite, la solicitud se ejecuta con el rol propio de la identidad (REQ-273) |
 | `flight_port` | `8815` | Puerto gRPC de Arrow Flight (REQ-143) |
 
-### Manejo de errores
+### Manejo de errores {: #error-handling }
 
 `query()` lanza `httpx.HTTPStatusError` en errores HTTP. (REQ-607)  
 `query_df()` lanza `RuntimeError` si la respuesta contiene errores de GraphQL. (REQ-607)
@@ -128,7 +128,7 @@ conn = connect(
 
 `connect` envía el nombre de usuario y la contraseña por POST a `/auth/login` y conserva el `access_token` que recibe, de modo que la conexión lleva una credencial real en vez de un nombre. `role` *solicita* un rol y el servidor lo concede solo si la identidad lo tiene asignado (REQ-273); si se omite, la conexión se ejecuta con el rol que resolvió el inicio de sesión.
 
-### Ejecución de consultas
+### Ejecución de consultas {: #executing-queries }
 
 El cursor acepta GraphQL o SQL: se detecta automáticamente. (REQ-268, REQ-274)
 
@@ -146,7 +146,7 @@ cur.execute("SELECT id, amount FROM orders WHERE region = 'west'")
 rows = cur.fetchall()
 ```
 
-### Metadatos de columnas
+### Metadatos de columnas {: #column-metadata }
 
 ```python
 cur.execute("{ orders { id amount } }")
@@ -155,7 +155,7 @@ print(cur.description)
 print(cur.rowcount)
 ```
 
-### Parámetros con nombre
+### Parámetros con nombre {: #named-parameters }
 
 ```python
 cur.execute(
@@ -164,7 +164,7 @@ cur.execute(
 )
 ```
 
-### Gestores de contexto
+### Gestores de contexto {: #context-managers }
 
 ```python
 with connect("http://localhost:8001", username="alice", password="secret") as conn:
@@ -175,7 +175,7 @@ with connect("http://localhost:8001", username="alice", password="secret") as co
 
 ---
 
-## Dialecto de SQLAlchemy
+## Dialecto de SQLAlchemy {: #sqlalchemy-dialect }
 
 ```bash
 pip install "provisa-client[sqlalchemy]"
@@ -194,7 +194,7 @@ with engine.connect() as conn:
         print(row)
 ```
 
-### Con pandas
+### Con pandas {: #with-pandas }
 
 ```python
 import pandas as pd
@@ -202,7 +202,7 @@ import pandas as pd
 df = pd.read_sql("{ orders { id amount } }", engine)
 ```
 
-### Parámetros de URL
+### Parámetros de URL {: #url-parameters }
 
 | Parámetro | Descripción | Valor predeterminado |
 | ----------- | ------------- | --------- |
@@ -214,7 +214,7 @@ engine = create_engine(
 )
 ```
 
-### Introspección del esquema
+### Introspección del esquema {: #schema-introspection }
 
 El dialecto implementa `get_table_names()`, `get_columns()` y `has_table()`; las herramientas de catálogo (DBeaver, SQLAlchemy automap) pueden inspeccionar el esquema. (REQ-363, REQ-270)
 
@@ -242,7 +242,7 @@ conn = adbc_connect(
 
 `adbc_connect` inicia sesión por HTTP primero y coloca el token resultante en cada ticket de Flight, de modo que el servidor Flight autentica la conexión igual que lo hace la superficie REST. (REQ-1263) El argumento `role` es una solicitud, validada en el servidor contra las asignaciones de la identidad: nunca se convierte en la identidad. (REQ-273)
 
-### Obtención como tabla Arrow
+### Obtención como tabla Arrow {: #fetch-as-arrow-table }
 
 ```python
 with conn.cursor() as cur:
@@ -251,7 +251,7 @@ with conn.cursor() as cur:
     df = table.to_pandas()
 ```
 
-### Obtención como tuplas
+### Obtención como tuplas {: #fetch-as-tuples }
 
 ```python
 with conn.cursor() as cur:
@@ -260,7 +260,7 @@ with conn.cursor() as cur:
     one  = cur.fetchone()    # single tuple or None
 ```
 
-### Metadatos de columnas
+### Metadatos de columnas {: #column-metadata_1 }
 
 ```python
 cur.execute("{ orders { id amount } }")
@@ -268,7 +268,7 @@ print(cur.description)
 # [('id', None, ...), ('amount', None, ...)]
 ```
 
-### Gestor de contexto
+### Gestor de contexto {: #context-manager }
 
 ```python
 with adbc_connect("http://localhost:8001", user="alice", password="secret") as conn:

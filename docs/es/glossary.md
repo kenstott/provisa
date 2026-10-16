@@ -1,4 +1,4 @@
-# Glosario de negocio
+# Glosario de negocio {: #business-glossary }
 
 El glosario de negocio es un vocabulario vivo sobre su modelo de datos. Cada columna física del
 modelo se resuelve a un término: un único término compartido siempre que varias columnas
@@ -13,7 +13,7 @@ de IA que sabe que "customer" nombra todas las columnas que llevan un identifica
 tiene que adivinar cuál de `cust_id`, `customerId` y `CUSTOMER_KEY` es la correcta: todas se
 resuelven al mismo término, y el término lleva la definición.
 
-## Cómo se derivan los términos
+## Cómo se derivan los términos {: #how-terms-are-derived }
 
 Provisa deriva automáticamente un término de cada nombre de columna mediante una regla de
 normalización determinista (REQ-1387): plegado de mayúsculas y minúsculas, tokenización por
@@ -35,7 +35,7 @@ columna `id` desnuda se expande a `identifier` y ahí se queda.
 único término resultante en vez de tres términos separados. La curación tiene entonces un solo
 lugar donde añadir la definición, no tres.
 
-### Frases genéricas
+### Frases genéricas {: #generic-phrases }
 
 Algunas frases normalizadas son demasiado genéricas para ser un concepto por sí solas. Una columna
 `name`, `date` o `identifier` desnuda nombra un atributo del concepto de su tabla, no un concepto
@@ -43,8 +43,8 @@ independiente de esa tabla. Los empleados tienen nombres; los productos tienen n
 mismo.
 
 Cuando una frase cae en el conjunto genérico y hay un contexto de tabla disponible, el término se
-califica a `<concepto de tabla> <frase>`: `employees.first_name` se normaliza a `employee first
-name`, y `orders.id` se normaliza a `order`, porque la eliminación del proxy colapsa entonces la
+califica a `<table concept> <phrase>`: `employees.first_name` se normaliza a `employee first name`,
+y `orders.id` se normaliza a `order`, porque la eliminación del proxy colapsa entonces la
 frase calificada sobre el concepto que identifica. Ese último caso es importante: la clave primaria
 de `orders` y todas las claves foráneas `order_id` de otras tablas aterrizan en `order`, sin
 necesidad de curación adicional.
@@ -53,7 +53,7 @@ El conjunto genérico cubre sustantivos de atributo (`name`, `date`, `status`, `
 `quantity`), frases de rastro de auditoría (`created_at`, `modified_by`, `submitted_timestamp`) y
 unas cuantas más que aparecen en casi todas las tablas.
 
-### El nombre de negocio, no el nombre físico
+### El nombre de negocio, no el nombre físico {: #the-business-name-not-the-physical-name }
 
 Un término derivado sigue el **nombre de negocio** de la columna: su alias cuando el modelador
 estableció uno, y su nombre físico cuando no lo hizo (REQ-1581). Cuando `usr_nm` lleva el alias
@@ -71,7 +71,7 @@ sigue al modelo en vez de pedir dos veces la misma corrección. Una vez que un c
 definición, una relación o un experto a un término, una edición del alias no mueve la referencia:
 ese trabajo es del curador, y se queda.
 
-### Nombres de tabla que describen una ruta de acceso
+### Nombres de tabla que describen una ruta de acceso {: #access-path-table-names }
 
 Algunos nombres de tabla describen una ruta de acceso en vez de un concepto: `user_by_name` es un
 usuario alcanzado mediante una búsqueda por nombre, no una clase distinta de entidad. Cuando Provisa
@@ -83,7 +83,7 @@ atributo genuino `users.name`: un solo término conteniendo una cosa y uno de su
 corte se aplica solo a los conceptos de tabla. En un nombre de columna, `by` forma parte del
 sustantivo compuesto: `pet_by_name` y `pet_name` se normalizan al mismo término, `pet name`.
 
-## Qué hace que un término esté curado
+## Qué hace que un término esté curado {: #what-makes-a-term-curated }
 
 Un término nacido de la normalización de una columna empieza en blanco: es una propuesta, todavía no
 es vocabulario. Pasa a estar curado cuando se cumple cualquiera de estas condiciones:
@@ -98,7 +98,7 @@ columna física de un término curado, el término se marca como obsoleto en vez
 fuera de servicio, conserva el contenido aportado por sus editores y se revive automáticamente si la
 misma columna reaparece. Un término no curado que se queda sin columnas simplemente se elimina.
 
-## Resincronización desde las tablas
+## Resincronización desde las tablas {: #re-syncing-from-tables }
 
 Cada vez que se guarda o se recarga una tabla, `sync_table_refs` reconcilia las columnas de esa tabla
 con las referencias existentes. Las columnas nuevas crean o enlazan términos; las columnas que
@@ -113,7 +113,7 @@ Un término abstracto cuya única ruta a los datos físicos pasaba por un térmi
 marca como obsoleto en vez de eliminarse, preservando la estructura conceptual hasta que se vuelva a
 conectar.
 
-## Relaciones
+## Relaciones {: #relationships }
 
 Los términos se relacionan con otros términos mediante aristas tipadas. Los tipos de relación
 admitidos son:
@@ -143,7 +143,7 @@ nodo en los clientes de grafo — es la arista. Nada en ella es específico del 
 declararías una unión sobre tus propias tablas, y la lee el mismo código.
 [tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
 
-## Términos abstractos
+## Términos abstractos {: #abstract-terms }
 
 Un término abstracto no tiene referencias propias a columnas físicas. Use uno para un concepto de
 negocio que abarque varios términos concretos: un paraguas que después conecta con los términos
@@ -154,7 +154,7 @@ Un término abstracto que no puede alcanzar ninguna columna física a través de
 una propuesta colgante. No aparece en la búsqueda de términos de los agentes ni en la exportación de
 metadatos: un término que no nombra datos no puede responder nada.
 
-## La regla de admisión para las superficies de consumo
+## La regla de admisión para las superficies de consumo {: #the-admission-rule-for-consuming-surfaces }
 
 Un término que una superficie de consumo puede ofrecer debe cumplir tres condiciones (REQ-1387):
 
@@ -171,7 +171,7 @@ La conectividad se propaga por el grafo: un término abstracto alcanza los datos
 cualquier vecino en servicio que lo haga. Los términos fuera de servicio no conducen: un término
 retirado no mantiene vivos a sus dependientes.
 
-## Exportación de metadatos
+## Exportación de metadatos {: #metadata-export }
 
 El glosario se publica en catálogos de datos externos como parte de la exportación de metadatos. Se
 aplica la misma regla de admisión, con un estrechamiento: el enraizamiento de un término se juzga
@@ -185,7 +185,7 @@ Las aristas de relación se publican solo cuando se publican los términos de am
 Los activos de columna se exportan de forma independiente. Que un término quede excluido no oculta
 los datos subyacentes.
 
-### Excluir un término de la exportación
+### Excluir un término de la exportación {: #excluding-a-term-from-export }
 
 Algunas columnas llevan fontanería en vez de datos de negocio: identificadores de lote de ETL,
 versiones de fila, marcas de tiempo de ingesta. Un término derivado de una columna así puede tener
@@ -198,7 +198,7 @@ La prueba es si el negocio usa esta palabra, no si la definición es buena. Un i
 de ETL tiene un significado claro que corresponde al glosario para el equipo de ingeniería; no
 corresponde a un catálogo de negocio junto a `customer` y `revenue`.
 
-## Trabajar con el glosario
+## Trabajar con el glosario {: #working-with-the-glossary }
 
 Abra **Administración → Glosario** en la interfaz. El panel izquierdo lista todos los términos; haga
 clic en uno para abrir su vista de detalle. Desde ahí:
@@ -226,7 +226,7 @@ El banner **Propuesto** de un término sin definición le indica si el término 
 un alias a la columna o añada una definición) o sin anclar (relaciónelo con un término que tenga
 columnas). Cuando lo vea, el término todavía no es alcanzable por los agentes ni por los catálogos.
 
-## Véase también
+## Véase también {: #see-also }
 
 - [Exportación de metadatos](metadata-export.md) — cómo se publican los términos y las relaciones en
   catálogos de datos externos, incluido qué términos admite la regla de admisión de la exportación.

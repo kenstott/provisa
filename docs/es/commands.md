@@ -1,4 +1,4 @@
-# Comandos
+# Comandos {: #commands }
 
 Un comando es una función registrada y gobernada que trae la computación externa bajo el sistema
 de gobierno, auditoría y linaje de Provisa. Donde el motor de federación maneja SQL de forma
@@ -12,7 +12,7 @@ La distinción clave: un comando es un **RPC gobernado**, no un ETL ad hoc. Sus 
 están declaradas, tipadas, validadas, trazadas y conectadas al linaje. Una llamada curl no
 gobernada o un subproceso no son nada de eso.
 
-## Tipos de implementación
+## Tipos de implementación {: #implementation-kinds }
 
 Se admiten seis valores de `impl_kind` [tool-verified: `_EXECUTORS` dict in `provisa/executor/function_dispatch.py`]:
 
@@ -29,7 +29,7 @@ El direccionamiento (el `name` del catálogo y `function_name`) está desacoplad
 (transporte y ubicación). Cambie el binding y el gobierno, el linaje y los contratos del llamador
 del comando permanecen sin cambios. [tool-verified: Function model in models.py:710-750]
 
-## Tipos de argumento
+## Tipos de argumento {: #argument-kinds }
 
 Cada argumento declara un `arg_kind` [tool-verified: FunctionArgument.arg_kind in
 models.py:691-700]:
@@ -49,7 +49,7 @@ Un comando que devuelve un conjunto (declarado mediante `output_columns` y `retu
 función de valor tabular. Úselo en una cláusula `FROM` o en un `JOIN`. [inferred from
 models.py:744-748 and command_localize.py:52-63]
 
-## El contrato del conjunto de datos (REQ-1159)
+## El contrato del conjunto de datos (REQ-1159) {: #the-dataset-contract-req-1159 }
 
 Cada argumento `table_ref` o `result_set` puede declarar un **contrato de columnas de entrada**:
 una lista ordenada y tipada por IR de columnas en `FunctionArgument.columns`. El propio comando
@@ -69,7 +69,7 @@ Ambos contratos se validan de forma estricta (fail-loud) en cada invocación:
   [tool-verified: `_materialize_relation` at function_dispatch.py:155-177, col_names passed
   to projection at line 171]
 
-### El vocabulario de tipos IR
+### El vocabulario de tipos IR {: #the-ir-type-vocabulary }
 
 Los tipos de columna del contrato usan el sistema canónico de tipos IR (REQ-846), no los
 escalares de GraphQL ni las grafías nativas del origen. Los nombres válidos son [tool-verified:
@@ -86,9 +86,9 @@ Los alias comunes se resuelven automáticamente (`varchar` → `text`, `int4` �
 tipos GraphQL. [tool-verified: models.py:744-748, comment "return_schema is its GraphQL
 projection"]
 
-## Cómo crear un comando
+## Cómo crear un comando {: #authoring-a-command }
 
-### Archivo de configuración
+### Archivo de configuración {: #config-file }
 
 ```yaml
 functions:
@@ -150,14 +150,14 @@ La variante gRPC (`enrich_grpc_set`) sigue el mismo patrón pero especifica `imp
 
 [tool-verified: config/provisa.yaml enrich_grpc_set block]
 
-### UI de administración
+### UI de administración {: #admin-ui }
 
 El formulario de comandos en **Configuración → Comandos** incluye un editor de columnas de
 entrada por conjunto de datos (una fila por columna declarada, con un selector de tipo IR) y un
 editor de columnas de salida. Guarde el formulario para registrar o actualizar el comando sin
 recargar la configuración. [inferred from CommandFormFields.tsx]
 
-## Composición inline (REQ-1159)
+## Composición inline (REQ-1159) {: #inline-composition-req-1159 }
 
 Los comandos pueden aparecer **dentro** de una instrucción SQL más amplia — unidos, en
 subconsultas o proyectados. No está limitado a `SELECT * FROM fn(args)`. La excepción es la operación de escritura de un origen remoto, que se invoca por sí sola (véase [Por qué no se puede componer](#por-que-no-se-puede-componer)).
@@ -187,7 +187,7 @@ el origen; solo las consultas genuinamente entre orígenes van al motor de feder
 [tool-verified: _pipeline.py:304 comment "REQ-1159: a localized statement carries an inline local
 relation..."]
 
-## Operación de escritura de un origen remoto (REQ-1924)
+## Operación de escritura de un origen remoto (REQ-1924) {: #a-remote-sources-write-operation-req-1924 }
 
 Un origen OpenAPI, GraphQL remoto o gRPC ofrece operaciones de escritura. Registrar una como comando la hace invocable, gobernada y auditada desde todas las superficies. Añadir el origen no registra ninguna; usted registra las que desea, una por una, igual que registra tablas. El registro es la curación. [tool-verified: `provisa/executor/source_operation.py` module docstring; `provisa/api/admin/schema_common.py` `remote_source_counts`, `"mutations": 0`]
 
@@ -199,7 +199,7 @@ Qué ofrece un origen [tool-verified: `provisa/executor/source_operation.py` `of
 | `graphql_remote` | Todo campo del tipo `Mutation` remoto | El nombre del campo |
 | `grpc_remote` | Todo método clasificado como mutación | `Service.Method` |
 
-### Registrar una
+### Registrar una {: #register-one }
 
 1. Abra **Modelo → Comandos** y añada un comando.
 2. Elija el origen remoto. El formulario cambia a un selector de operaciones que lista lo que ofrece el origen.
@@ -226,7 +226,7 @@ body.arguments = [{"name": a, "type": "json"} for a in operation.arguments]
 
 Cada argumento es de tipo `json`. Los argumentos de la operación son sus parámetros de ruta de OpenAPI (más `body` cuando la operación admite un cuerpo de solicitud), sus argumentos de mutación de GraphQL o sus campos de solicitud de gRPC. [tool-verified: `_openapi_operations`, `_graphql_operations`, `_grpc_operations` in `source_operation.py`] Una operación que el origen no ofrece se rechaza con 422, `functions.operation_not_offered`. [tool-verified: `offered_operation`]
 
-### Invocación
+### Invocación {: #calling-it }
 
 Provisa no da forma, tipo ni valida la entrada. Cada argumento va al servicio remoto sin cambios, con la credencial del origen, y la respuesta del servicio remoto vuelve sin cambios. Provisa gobierna quién puede invocar, en qué dominio, si se necesita aprobación, y registra la llamada. [tool-verified: `source_operation.py` module docstring]
 
@@ -266,7 +266,7 @@ curl -X POST https://acme.provisa.org/data/rest/engineering/commands/create_issu
 
 [inferred: host, domain and command name are placeholders; not run]
 
-### Rechazos
+### Rechazos {: #refusals }
 
 El rechazo del servicio remoto vuelve tal como lo formuló. [tool-verified: `_refused` in `source_operation.py`]
 
@@ -277,7 +277,7 @@ El rechazo del servicio remoto vuelve tal como lo formuló. [tool-verified: `_re
 
 Si la credencial del origen puede ejecutar la operación lo decide el servicio remoto, cuando se invoca la operación. Provisa no puede probar una escritura al registrar sin ejecutarla. [tool-verified: REQ-1924 CREDENTIAL AT CALL amendment in `docs/arch/requirements.yaml`; no credential check in `_as_source_operation`]
 
-### Aprobación
+### Aprobación {: #approval }
 
 Active **Requiere aprobación** y cada llamada se somete al hook de aprobación del despliegue antes de ejecutarse. Solo se ejecuta si el hook la aprueba. [tool-verified: `provisa/api/data/action_exec.py` `_require_approval`]
 
@@ -286,15 +286,15 @@ Active **Requiere aprobación** y cada llamada se somete al hook de aprobación 
 
 El hook recibe al invocador, el rol, el nombre del comando y sus argumentos. Véase [Hook de aprobación ABAC](security.md#hook-de-aprobacion-abac). La marca se almacena como `Function.requires_approval`, y la comprobación se aplica a cualquier comando que la active. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
 
-### Escribe en la tabla
+### Escribe en la tabla {: #writes-table }
 
 Indique en el campo **Escribe en la tabla** la tabla en la que escribe la operación, como `schema.table`. Debe ser una tabla registrada del propio origen del comando; de lo contrario, el guardado se rechaza con 422, `actions.written_table_not_registered`. El ajuste es opcional. [tool-verified: `_check_written_table` in `actions_router.py`; `written_table` in `source_operation.py`]
 
-Tras cada llamada que el servicio remoto acepta, Provisa la trata como una escritura en esa tabla. Descarta las respuestas en caché de la tabla, marca como obsoletas las vistas materializadas sobre ella, emite el evento de cambio, ejecuta los sinks de la tabla y recarga la tabla cuando se mantiene en caliente. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
+Tras cada llamada que el servicio remoto acepta, Provisa la trata como una escritura en esa tabla. Descarta las respuestas en caché de la tabla, marca como obsoletas las vistas materializadas sobre ella, emite el evento de cambio, ejecuta los comandos que corren cuando cambia y recarga la tabla cuando se mantiene en caliente. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
 
 Cuando la tabla se lee de su réplica completa (la configuración del operador la pone allí, o el motor no puede leer su origen en su sitio), tras la llamada se pide una construcción de la réplica, con el motivo `write`. Los lectores conservan la réplica antigua hasta que la nueva la sustituye. Una tabla replicada fila a fila, o una con una columna de parámetro, no tiene una réplica completa que reconstruir. [tool-verified: `provisa/api/data/table_written.py` `_request_replica_build`; `provisa/federation/replica_state.py` `REASON_WRITE`]
 
-### Por qué no se puede componer
+### Por qué no se puede componer {: #why-it-cannot-be-composed }
 
 Una operación de escritura es una acción, no una transformación de datos. Una vista o vista materializada que contuviera una ejecutaría la escritura cada vez que se leyera o actualizara. Por eso la llamada va sola: `SELECT * FROM create_issue(...)` por sí sola la ejecuta, y la misma llamada dentro de una sentencia mayor se rechaza, dondequiera que esté -- en un join, una subconsulta o una proyección. [tool-verified: `provisa/pgwire/_pipeline.py` `_refuse_composed_mutators`; `provisa/executor/source_operation.py` `writes_called_in`]
 
@@ -306,7 +306,7 @@ command 'create_issue' writes to its source and is called on its own: it cannot 
 
 Una operación de origen tampoco es un nodo de linaje: el linaje se lee del SQL de vistas y consultas, donde un comando aparece como nodo, y ninguna definición guardada puede invocar una operación de origen. [tool-verified: `provisa/lineage/graph.py` (`kind="command"` for a call in the SQL); `refuse_writes_in_definition`]
 
-## Comandos y linaje
+## Comandos y linaje {: #commands-and-lineage }
 
 Dado que cada comando declara sus columnas de entrada y salida, el linaje a nivel de columna
 **se cierra a través del límite opaco del comando**. El motor de linaje aplica un cierre de
@@ -327,14 +327,14 @@ narrow-projection in function_dispatch.py:161]
 Consulte [Linaje](lineage.md) para saber cómo aparecen los nodos de comando en el DAG y cómo
 interpretarlos.
 
-## Lista de permitidos de salida (egress)
+## Lista de permitidos de salida (egress) {: #egress-allowlist }
 
 Los comandos `http` y `grpc` llaman a endpoints externos. Cada host de destino debe figurar en el
 `udf_egress_allowlist` de la implementación. El loopback (`localhost`, `127.0.0.1`, `::1`) siempre
 está permitido. Una lista de permitidos ausente deniega toda salida externa con HTTP 403 — no hay
 un valor predeterminado silencioso. [tool-verified: `_check_egress` in function_dispatch.py:292-311]
 
-## Trazado de invocaciones (REQ-886)
+## Trazado de invocaciones (REQ-886) {: #invocation-tracing-req-886 }
 
 Cada invocación emite una traza sin importar el resultado. La traza incluye el nombre del comando,
 el tipo de transporte, el modelo de identidad (DEFINER o INVOKER), las referencias de relación de
