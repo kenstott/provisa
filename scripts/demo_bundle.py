@@ -19,7 +19,10 @@ where the demo runs:
        the weblogs demo's writes its log files into the copy's ``logs/``; a demo with a
        ``setup.yaml`` is then set up against those stores, by a Provisa server on the demo's own
        config.yaml with a throwaway control plane (scripts/run_demo_setup.py, REQ-2016) -- the
-       sonnets demo's embeds its lines into Qdrant and writes its echoes;
+       sonnets demo's embeds its lines into Qdrant and writes its echoes; a demo with bitemporal
+       views (REQ-1162) then has their append logs -- the history its setup's steps gave them --
+       written out as ``seeded/views.duckdb`` and ``seeded/views.json``, which its template and
+       each sandbox start from;
     2. a sandbox tier runs on a throwaway embedded control plane in seeding mode
        (``PROVISA_DEMO_SEED_EXPORT=true``): it lands the demo's template from those stores and
        writes the seed -- ``seeded/replicas.duckdb`` and ``seeded/replicas.json``
@@ -78,6 +81,8 @@ from provisa.core import demo as demo_module  # noqa: E402
 from provisa.core import demo_bundles as bundles  # noqa: E402
 
 _NAMED = _REPO / "demo" / "named"
+# The org the setup server runs as, whose store its views are built in.
+_SETUP_ORG = "default"
 # What a build leaves behind in a demo's directory that is not the demo's: an earlier build's seed
 # and dumps, and the seeder's marker volume.
 _NOT_COPIED = ("seeded", "dump", "data")
@@ -482,6 +487,7 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
         **({"OPENROUTER_API_KEY": os.environ["OPENROUTER_API_KEY"]} if asked else {}),
         "PROVISA_CONFIG": str(answering_config(work, demo) if asked else demo / "config.yaml"),
         "PROVISA_ENGINE": "duckdb",
+        "ORG_ID": _SETUP_ORG,
         "PROVISA_DATA_DIR": str(work / "setup-data"),
         "PROVISA_REDIS_EMBEDDED": "1",
         "TENANT_DATABASE_URL": url,
@@ -591,20 +597,51 @@ def _seed(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
         )
 
 
-def _replicates(demo: Path, stores: Stores) -> bool:
-    """Whether the demo serves any table from a replica, which its seed lands (REQ-2049): a demo's
-    own sources are read live where it runs, so a demo of only those has no seed to write."""
-    from provisa.api.demo_templates import replicated_tables
+def _demo_config(demo: Path, stores: Stores):
+    """The demo's config.yaml, parsed against its running stores."""
     from provisa.core.config_loader import parse_config_dict, read_config_with_includes
 
     saved = dict(os.environ)
     os.environ.update({k: v for k, v in stores.env.items() if k not in saved or saved[k] != v})
     try:
-        config = parse_config_dict(read_config_with_includes(demo / "config.yaml"))
+        return parse_config_dict(read_config_with_includes(demo / "config.yaml"))
     finally:
         os.environ.clear()
         os.environ.update(saved)
-    return bool(replicated_tables(config))
+
+
+def _replicates(demo: Path, stores: Stores) -> bool:
+    """Whether the demo serves any table from a replica, which its seed lands (REQ-2049): a demo's
+    own sources are read live where it runs, so a demo of only those has no seed to write."""
+    from provisa.api.demo_templates import replicated_tables
+
+    return bool(replicated_tables(_demo_config(demo, stores)))
+
+
+def _export_views(work: Path, demo: Path, stores: Stores) -> None:
+    """REQ-1162: the setup server's bitemporal views' append logs, written out beside the seed
+    (demo_replicas.export_views) -- the history its steps gave them, which the demo's template and
+    each sandbox start from. Read from the setup server's store once it has stopped."""
+    from provisa.api.demo_replicas import bitemporal_view_tables
+
+    tables = bitemporal_view_tables(_demo_config(demo, stores))
+    if not tables:
+        return
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from pathlib import Path; "
+            "from provisa.api.demo_replicas import export_views; "
+            "export_views(sys.argv[1], Path(sys.argv[2]), sys.argv[3:])",
+            _SETUP_ORG,
+            str(demo),
+            *tables,
+        ],
+        cwd=_REPO,
+        env={**os.environ, "PROVISA_DATA_DIR": str(work / "setup-data")},
+        check=True,
+    )
 
 
 def _commit() -> str:
@@ -629,6 +666,7 @@ def build(args: argparse.Namespace) -> int:
             stores.up()
             if (demo / "setup.yaml").exists() or polly_steps(demo):
                 _set_up(work, demo, stores, args.timeout)
+                _export_views(work, demo, stores)
             if _replicates(demo, stores):
                 _seed(work, demo, stores, args.timeout)
                 _refuse_empty_replicas(demo)

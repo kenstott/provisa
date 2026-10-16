@@ -823,6 +823,70 @@
       "opioidsRest": {
         "title": "La stessa risposta via REST",
         "description": "La vista è anche un endpoint REST, raggruppato e sommato sul server, così un sito del consiglio o un foglio di calcolo può leggere la dashboard via HTTP."
+      },
+      "datavaultScenario": {
+        "title": "Due sistemi, una domanda",
+        "description": "Un sistema di ordini e un CRM, entrambi di Northwind, entrambi con la propria copia di ogni cliente. La domanda: cosa sapevamo di questo cliente, da quale origine e quando? Un data vault risponde conservando ogni versione di ogni origine. Qui il vault è dichiarato come viste, e il motore lo costruisce e lo aggiorna: nessuna piattaforma ETL, nessun job server, nessun codice di pipeline; il lavoro viene eseguito sul motore, dove scala, e un solo vault dichiarato alimenta i mart, le API governate e la derivazione."
+      },
+      "datavaultCrm": {
+        "title": "La copia del CRM",
+        "description": "Il CRM contiene gli stessi clienti come account, con l'e-mail di ogni contatto, che il sistema di ordini non ha mai avuto. I suoi indirizzi possono differire da quelli del sistema di ordini, e per un periodo è così."
+      },
+      "datavaultInsertOnly": {
+        "title": "Ogni riga conservata",
+        "description": "La tabella dei clienti è insert-only, come la riceve lo staging di un vault: una modifica arriva come nuova riga con la sua data di caricamento e nulla viene sovrascritto. La tabella osserva la propria data di caricamento più recente, così le nuove righe aggiornano ogni vista costruita su di essa tramite la cascata di viste."
+      },
+      "datavaultArrived": {
+        "title": "Cosa è arrivato",
+        "description": "Ogni riga ricevuta da uno dei due sistemi per Alfreds Futterkiste. Il sistema di ordini ha saputo del trasloco il 1° settembre 1997; il CRM ha inviato di nuovo il vecchio indirizzo il 1° ottobre e il trasloco il 15 novembre."
+      },
+      "datavaultHub": {
+        "title": "Un hub",
+        "description": "Una riga per ogni cliente noto a uno dei due sistemi: il suo codice, la chiave hash del codice su cui si uniscono tutti i link e i satellite, il sistema in cui è stato visto per la prima volta e quando."
+      },
+      "datavaultLinks": {
+        "title": "Hub, link, hub",
+        "description": "I link accoppiano le chiavi hash degli hub: un cliente ha effettuato un ordine, un ordine contiene un prodotto. Le relazioni tra loro permettono a GraphQL e Cypher di percorrere il vault da hub a link a hub."
+      },
+      "datavaultSatellites": {
+        "title": "I satellite conservano ogni versione",
+        "description": "Gli attributi di ciascun sistema per il cliente, ogni versione una riga con la sua data di caricamento e un hashdiff sui suoi valori. Il rinvio del CRM del 1° ottobre ha l'hashdiff della riga precedente, quindi non è una versione."
+      },
+      "datavaultProduct": {
+        "title": "Un prodotto rinominato, un prezzo corretto",
+        "description": "Il satellite dei prodotti conserva il vecchio nome di Chai accanto a Chai Tea e il prezzo di Chang prima e dopo la correzione."
+      },
+      "datavaultAnswer": {
+        "title": "Cosa era noto, e quando",
+        "description": "La risposta in un'unica query point in time. A ogni data in cui è stato caricato qualcosa sul cliente, la versione dei valori di ciascun sistema in vigore allora e da quando. Dal 1° settembre al 15 novembre i due sistemi non concordavano su dove abitasse il cliente."
+      },
+      "datavaultGraphql": {
+        "title": "La stessa risposta in GraphQL",
+        "description": "Anche la vista del business vault è un campo GraphQL, filtrato sul cliente e ordinato per tempo."
+      },
+      "datavaultWalk": {
+        "title": "Il vault percorso in GraphQL",
+        "description": "Da hub a link a hub: il cliente, i suoi ordini, i prodotti al loro interno e ogni versione del nome e del prezzo di ciascun prodotto."
+      },
+      "datavaultRest": {
+        "title": "Il mart tramite REST",
+        "description": "La dimensione cliente allo stato corrente, costruita sul vault, è un endpoint REST: un'applicazione a valle la legge senza sapere che il vault è lì."
+      },
+      "datavaultLineage": {
+        "title": "Da dove viene una colonna del mart",
+        "description": "La lineage delle colonne del mart: ognuna ripercorsa attraverso la vista point-in-time e i satelliti fino al campo di origine da cui proviene."
+      },
+      "datavaultAnalyst": {
+        "title": "La vista di un analista",
+        "description": "Segue l'esecuzione dell'esploratore SQL come analista europeo. I dati personali risiedono nei satellite, quindi è lì che vengono governati."
+      },
+      "datavaultMasked": {
+        "title": "Mascherati dove sono i dati personali",
+        "description": "Come analista, il satellite del CRM mostra solo i clienti europei, con i contatti trattenuti e i nomi delle e-mail e le cifre dei telefoni nascosti. Gli hub e i link restano leggibili, quindi l'analista può ancora unire tramite essi."
+      },
+      "datavaultRecap": {
+        "title": "Cosa avete visto",
+        "description": "Due sistemi in tempo reale e un data vault sopra di essi, dichiarato come viste: hub, link e satellite con ogni versione conservata, aggiornati dal motore man mano che arrivano le righe, governati nei satellite e interrogati point in time in SQL, GraphQL e REST, con derivazione fino ai campi di origine. Nessuna piattaforma ETL separata, nessun job server, nessun codice di pipeline."
       }
     },
     "status": {
@@ -883,6 +947,10 @@
       "opioids": {
         "title": "Fondi degli accordi sugli oppioidi e morti per overdose",
         "summary": "La domanda di un governo locale, quali contee hanno più morti per overdose rispetto al trattamento che finanzia il denaro degli accordi sugli oppioidi: le assegnazioni di un fondo collegate per contea ai dati dei CDC, del censimento e della spesa federale."
+      },
+      "datavault": {
+        "title": "Data vault",
+        "summary": "Un data vault dichiarato su un sistema di ordini e un CRM: hub, link e satellite che il motore costruisce e aggiorna man mano che arrivano le righe, dati personali mascherati nei satellite e un'unica query point in time su cosa era noto di un cliente, da quale origine e quando."
       }
     }
   }

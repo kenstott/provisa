@@ -34,6 +34,7 @@ _TARGETS = (
     "jsonapi",
     "grpc",
     "cypher",
+    "lineage",
     "term",
     "role",
     "env",
@@ -230,6 +231,16 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
         if "env" in step:
             # Picked in the header's environment switcher, on any page.
             assert step["env"] in envs, f"{step['key']}: no environment {step['env']!r}"
+        if "lineage" in step:
+            # Built from the Lineage page's deep link, on that page.
+            assert page == "/lineage", f"{step['key']}: a lineage is built on /lineage, not {page}"
+            read = {
+                f"{t.db}.{t.name}"
+                for t in sqlglot.parse_one(step["lineage"], read="postgres").find_all(
+                    sqlglot.exp.Table
+                )
+            }
+            assert read and read <= relations, f"{step['key']}: reads {read - relations}"
         if "sql" in step:
             read = {
                 f"{t.db}.{t.name}"

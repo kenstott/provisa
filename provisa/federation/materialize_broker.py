@@ -730,11 +730,18 @@ def get_broker(db_path: str) -> _SyncedStore:
     return _SyncedStore(db_path)
 
 
-def copy_schema(src_path: str, src_schema: str, dst_path: str, dst_schema: str) -> list[str]:
-    """Copy every table of ``src_schema`` in the store ``src_path`` into ``dst_schema`` of the
-    store ``dst_path``, rows and all, each replacing a table of its name there; the tables copied,
-    by name (REQ-2006: a demo's replicas -- its seed, its template's, a sandbox's -- copied from
-    rows already landed, never read from the demo's sources).
+def copy_schema(
+    src_path: str,
+    src_schema: str,
+    dst_path: str,
+    dst_schema: str,
+    tables: list[str] | None = None,
+) -> list[str]:
+    """Copy every table of ``src_schema`` in the store ``src_path`` -- or those of ``tables`` it
+    holds -- into ``dst_schema`` of the store ``dst_path``, rows and all, each replacing a table of
+    its name there; the tables copied, by name (REQ-2006: a demo's replicas -- its seed, its
+    template's, a sandbox's -- copied from rows already landed, never read from the demo's sources;
+    its bitemporal views' append logs likewise, REQ-1162).
 
     Both stores are held under their own locks for the whole copy: the source READ_ONLY, so a
     template is never changed by being copied, and the target written as one operation."""
@@ -747,6 +754,7 @@ def copy_schema(src_path: str, src_schema: str, dst_path: str, dst_schema: str) 
                 "ORDER BY table_name",
                 [_MAT_STORE_ALIAS, src_schema],
             ).fetchall()
+            if tables is None or r[0] in tables
         ]
 
         def _into(target: Any) -> None:

@@ -25,6 +25,13 @@ deployment needs none of a demo's databases running.
 Each copy's record carries the definition its own convergence computes -- the address a replica
 is written at names the org, and the source's identity is the deployment's -- so nothing the copy
 records is rebuilt for being recorded under another org's or another build's digest.
+
+A demo's bitemporal views (REQ-1162) keep history no rebuild from its sources can give back: each
+version its build's setup appended, as its sources changed. Their append logs travel the same way
+-- written out by the bundle build after the setup (``seeded/views.duckdb`` and
+``seeded/views.json``), copied into the template's store when its runtime is built, and from the
+template into each sandbox's. A refresh over sources unchanged since then appends nothing, so the
+history is the vault's own wherever the demo runs.
 """
 
 # Requirements: REQ-2006, REQ-1992, REQ-1920
@@ -41,6 +48,11 @@ from typing import Any
 SEED_DIR = "seeded"
 SEED_STORE = "replicas.duckdb"
 SEED_RECORD = "replicas.json"
+
+#: A demo's bitemporal views' append logs, beside its seed (REQ-1162).
+VIEWS_STORE = "views.duckdb"
+VIEWS_RECORD = "views.json"
+_VIEWS_SCHEMA = "views"
 
 #: The fields of a replica's record a seed carries; every other one is the copy's own.
 _SEED_FIELDS = (
@@ -80,6 +92,25 @@ def _replicas_schema(org_id: str) -> str:
     from provisa.federation.replica_address import REPLICAS_SUFFIX
 
     return org_schema(org_id, None, REPLICAS_SUFFIX)
+
+
+def _views_schema(org_id: str) -> str:
+    from provisa.core.environments import org_schema
+    from provisa.federation.replica_address import MVS_SUFFIX
+
+    return org_schema(org_id, None, MVS_SUFFIX)
+
+
+def bitemporal_view_tables(config: Any) -> list[str]:
+    """The stored tables of a configuration's bitemporal materialized views (REQ-1162): each one's
+    append log, by name."""
+    from provisa.core.models import DERIVED_SOURCE_ID
+
+    return sorted(
+        f"mv_{table.table_name}"
+        for table in config.tables
+        if table.source_id == DERIVED_SOURCE_ID and table.materialize and table.mv_bitemporal_mode
+    )
 
 
 def _state_db(org_id: str) -> Any:
@@ -178,10 +209,69 @@ async def copy_to_sandbox(template_org: str, org_id: str) -> None:
         await replica_state.record_copied(conn, copied)
 
 
+async def copy_views_to_sandbox(template_org: str, org_id: str, tables: list[str]) -> None:
+    """The template's bitemporal views' append logs (``tables``), into a sandbox's own store: the
+    sandbox keeps their history, and its first refresh over the demo's unchanged sources appends
+    nothing (REQ-1162)."""
+    from provisa.federation.materialize_broker import copy_schema
+
+    await asyncio.to_thread(
+        copy_schema,
+        _store_path(template_org),
+        _views_schema(template_org),
+        _store_path(org_id),
+        _views_schema(org_id),
+        tables,
+    )
+
+
 def seed_paths(demo_directory: Path) -> tuple[Path, Path]:
     """Where a demo's seed is: its replicas' store and their record."""
     seed = demo_directory / SEED_DIR
     return seed / SEED_STORE, seed / SEED_RECORD
+
+
+def views_seed_paths(demo_directory: Path) -> tuple[Path, Path]:
+    """Where a demo's bitemporal views' append logs are: their store and their record."""
+    seed = demo_directory / SEED_DIR
+    return seed / VIEWS_STORE, seed / VIEWS_RECORD
+
+
+def export_views(org_id: str, demo_directory: Path, tables: list[str]) -> None:
+    """Write ``org_id``'s bitemporal views' append logs (``tables``) out beside the demo's seed (the
+    bundle build, after its setup). One the org has not built fails the build by name: the bundle
+    would serve that view with no history."""
+    from provisa.federation.materialize_broker import copy_schema
+
+    store, record = views_seed_paths(demo_directory)
+    store.parent.mkdir(parents=True, exist_ok=True)
+    store.unlink(missing_ok=True)
+    copied = copy_schema(
+        _store_path(org_id), _views_schema(org_id), str(store), _VIEWS_SCHEMA, tables
+    )
+    missing = sorted(set(tables) - set(copied))
+    if missing:
+        raise RuntimeError(f"these bitemporal views were never built: {', '.join(missing)}")
+    record.write_text(json.dumps({"schema": _VIEWS_SCHEMA, "tables": copied}, indent=2) + "\n")
+
+
+def adopt_views(template_org: str, demo_directory: Path) -> bool:
+    """Copy the demo's bitemporal views' append logs into the template's store when its bundle
+    carries them and the store does not hold them yet. Run within the template's runtime build,
+    before its views' refreshes are scheduled, so its first refresh appends to the history rather
+    than starting one. Whether they were copied."""
+    from provisa.federation.materialize_broker import copy_schema
+
+    store, record = views_seed_paths(demo_directory)
+    if not record.exists():
+        return False
+    tables = json.loads(record.read_text())["tables"]
+    if set(tables) <= set(_held_rows(template_org, tables, _views_schema(template_org))):
+        return False
+    copy_schema(
+        str(store), _VIEWS_SCHEMA, _store_path(template_org), _views_schema(template_org), tables
+    )
+    return True
 
 
 async def export_seed(template_org: str, demo_directory: Path) -> None:
@@ -231,12 +321,14 @@ async def landed_here(template_org: str) -> int:
         for r in rows
         if r["built_store"] == built
     }
-    held = await asyncio.to_thread(_held_rows, template_org, list(expected))
+    held = await asyncio.to_thread(
+        _held_rows, template_org, list(expected), _replicas_schema(template_org)
+    )
     return sum(1 for name, count in expected.items() if held.get(name) == count)
 
 
-def _held_rows(org_id: str, tables: list[str]) -> dict[str, int]:
-    """The rows each of ``tables`` holds in ``org_id``'s replicas schema; a table not there is
+def _held_rows(org_id: str, tables: list[str], schema: str) -> dict[str, int]:
+    """The rows each of ``tables`` holds in ``schema`` of ``org_id``'s store; a table not there is
     left out."""
     from provisa.federation.materialize_broker import get_broker
 
@@ -244,7 +336,6 @@ def _held_rows(org_id: str, tables: list[str]) -> dict[str, int]:
     if not Path(store).exists():
         return {}
     broker = get_broker(store)
-    schema = _replicas_schema(org_id)
     present = set(broker.tables(schema))
     return {
         name: int(broker.execute(f'SELECT count(*) FROM mat_store."{schema}"."{name}"')[0][0])

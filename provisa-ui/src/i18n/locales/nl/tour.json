@@ -823,6 +823,70 @@
       "opioidsRest": {
         "title": "Hetzelfde antwoord via REST",
         "description": "De view is ook een REST-endpoint, op de server gegroepeerd en opgeteld, zodat een website van de raad of een spreadsheet het dashboard via HTTP kan lezen."
+      },
+      "datavaultScenario": {
+        "title": "Twee systemen, één vraag",
+        "description": "Een ordersysteem en een CRM, allebei van Northwind, allebei met een eigen kopie van elke klant. De vraag: wat wisten we over deze klant, uit welke bron en wanneer? Een data vault beantwoordt die door elke versie uit elke bron te bewaren. Hier is de vault gedeclareerd als views en bouwt en ververst de engine hem: geen ETL-platform, geen jobserver en geen pipelinecode; het werk draait op de engine, waar het schaalt, en één gedeclareerde vault voedt de marts, de beheerde API's en de lineage."
+      },
+      "datavaultCrm": {
+        "title": "De eigen kopie van het CRM",
+        "description": "Het CRM bevat dezelfde klanten als accounts, met het e-mailadres van elk contact, dat het ordersysteem nooit had. De adressen kunnen afwijken van die van het ordersysteem, en een tijd lang doen ze dat ook."
+      },
+      "datavaultInsertOnly": {
+        "title": "Elke rij bewaard",
+        "description": "De klantentabel is insert-only, zoals de staging van een vault haar ontvangt: een wijziging komt binnen als een nieuwe rij met haar laaddatum en niets wordt overschreven. De tabel bewaakt haar meest recente laaddatum, zodat nieuwe rijen elke view erboven verversen via de view-cascade."
+      },
+      "datavaultArrived": {
+        "title": "Wat er binnenkwam",
+        "description": "Elke rij die een van beide systemen over Alfreds Futterkiste ontving. Het ordersysteem hoorde op 1 september 1997 van de verhuizing; het CRM stuurde op 1 oktober het oude adres opnieuw en op 15 november de verhuizing."
+      },
+      "datavaultHub": {
+        "title": "Een hub",
+        "description": "Eén rij per klant die een van beide systemen kent: zijn code, de hashsleutel van de code waarop elke link en satelliet joint, het systeem waarin hij het eerst werd gezien en wanneer."
+      },
+      "datavaultLinks": {
+        "title": "Hub, link, hub",
+        "description": "Links koppelen de hashsleutels van de hubs: een klant plaatste een order, een order bevat een product. De relaties ertussen laten GraphQL en Cypher de vault doorlopen van hub naar link naar hub."
+      },
+      "datavaultSatellites": {
+        "title": "Satellieten bewaren elke versie",
+        "description": "De attributen van elk systeem voor de klant, elke versie een rij met haar laaddatum en een hashdiff over de waarden. De hernieuwde verzending van het CRM op 1 oktober heeft de hashdiff van de rij ervoor, dus is het geen versie."
+      },
+      "datavaultProduct": {
+        "title": "Een hernoemd product, een gecorrigeerde prijs",
+        "description": "De productsatelliet bewaart de oude naam van Chai naast Chai Tea, en de prijs van Chang voor en na de correctie."
+      },
+      "datavaultAnswer": {
+        "title": "Wat bekend was, en wanneer",
+        "description": "Het antwoord in één point-in-time-query. Op elke datum waarop iets over de klant werd geladen, de versie van de waarden van elk systeem die toen gold, en sinds wanneer. Van 1 september tot 15 november waren de twee systemen het oneens over waar de klant woonde."
+      },
+      "datavaultGraphql": {
+        "title": "Hetzelfde antwoord in GraphQL",
+        "description": "De business-vaultview is ook een GraphQL-veld, gefilterd op de klant en op tijd gesorteerd."
+      },
+      "datavaultWalk": {
+        "title": "De vault doorlopen in GraphQL",
+        "description": "Van hub naar link naar hub: de klant, zijn orders, de producten daarin en elke versie van de naam en prijs van elk product."
+      },
+      "datavaultRest": {
+        "title": "De mart via REST",
+        "description": "De klantdimensie met de huidige stand, gebouwd op de vault, is een REST-endpoint: een downstream-applicatie leest haar zonder te weten dat de vault erachter zit."
+      },
+      "datavaultLineage": {
+        "title": "Waar een martkolom vandaan komt",
+        "description": "De lineage van de kolommen van de mart: elke kolom teruggevolgd via de point-in-time-view en de satellites naar het bronveld waar hij vandaan komt."
+      },
+      "datavaultAnalyst": {
+        "title": "De weergave van een analist",
+        "description": "Hierna draait de SQL-verkenner als de Europese analist. Persoonsgegevens staan in de satellieten, dus daar worden ze beheerd."
+      },
+      "datavaultMasked": {
+        "title": "Gemaskeerd waar de persoonsgegevens zijn",
+        "description": "Als analist toont de CRM-satelliet alleen Europese klanten, met achtergehouden contacten en verborgen e-mailnamen en telefooncijfers. De hubs en links blijven leesbaar, zodat de analist er nog steeds op kan joinen."
+      },
+      "datavaultRecap": {
+        "title": "Wat u zag",
+        "description": "Twee live systemen en een data vault erover, gedeclareerd als views: hubs, links en satellieten met elke versie bewaard, door de engine ververst zodra er rijen binnenkomen, beheerd in de satellieten en point-in-time bevraagd in SQL, GraphQL en REST, met lineage terug naar de bronvelden. Geen apart ETL-platform, geen jobserver en geen pipelinecode."
       }
     },
     "status": {
@@ -883,6 +947,10 @@
       "opioids": {
         "title": "Opioïdeschikkingsgeld en overdosisdoden",
         "summary": "De vraag van een lokale overheid, welke county's de meeste overdosisdoden hebben voor de behandeling die hun geld uit de opioïdeschikkingen betaalt: de toewijzingen van een fonds per county gekoppeld aan gegevens van de CDC, de volkstelling en federale uitgaven."
+      },
+      "datavault": {
+        "title": "Data vault",
+        "summary": "Een data vault gedeclareerd over een ordersysteem en een CRM: hubs, links en satellieten die de engine bouwt en ververst zodra er rijen binnenkomen, persoonsgegevens gemaskeerd in de satellieten, en één point-in-time-query naar wat er over een klant bekend was, uit welke bron en wanneer."
       }
     }
   }

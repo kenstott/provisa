@@ -1,0 +1,83 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The data vault demo where it runs from its bundle (start-ui-install.sh --demo datavault;
+# REQ-2063, REQ-2049). Its two databases are read live (config.yaml orders and crm), holding what
+# the bundle's build left in them -- its setup.yaml had run: every scripted change made. The
+# vault's satellites keep the history of those changes in the bundle's seeded/views.duckdb.
+#
+#   orders  the order system, loaded from dump/orders.sql, read only (db/run-orders.sql)
+#   crm     the CRM, loaded from dump/crm.sql, read only (db/run-crm.sql)
+#
+# Both are shared by every sandbox of the demo. Ports: 28832 and 28833, on the loopback only;
+# each moved by its variable, and set empty, published on a free one.
+x-demo-labels: &demo-labels
+  com.provisa.demo: datavault
+
+name: provisa-demo-datavault-run
+
+services:
+  orders:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+      # Where config.yaml reads it (the sandbox tier's node writes stores.env from these).
+      com.provisa.demo.host_env: DATAVAULT_ORDERS_HOST
+      com.provisa.demo.port_env: DATAVAULT_ORDERS_PORT
+      com.provisa.demo.port: "5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: orders
+    ports:
+      # Unset: 28832. Set empty (the node, which runs several versions at once): a port docker
+      # picks. On the loopback only.
+      - "127.0.0.1:${DATAVAULT_ORDERS_PORT-28832}:5432"
+    volumes:
+      - datavault_run_orders:/var/lib/postgresql/data
+      - ./dump/orders.sql:/docker-entrypoint-initdb.d/10-orders.sql:ro
+      - ./db/run-orders.sql:/docker-entrypoint-initdb.d/20-access.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orders"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+  crm:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+      # Where config.yaml reads it (the sandbox tier's node writes stores.env from these).
+      com.provisa.demo.host_env: DATAVAULT_CRM_HOST
+      com.provisa.demo.port_env: DATAVAULT_CRM_PORT
+      com.provisa.demo.port: "5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: crm
+    ports:
+      # Unset: 28833. Set empty (the node, which runs several versions at once): a port docker
+      # picks. On the loopback only.
+      - "127.0.0.1:${DATAVAULT_CRM_PORT-28833}:5432"
+    volumes:
+      - datavault_run_crm:/var/lib/postgresql/data
+      - ./dump/crm.sql:/docker-entrypoint-initdb.d/10-crm.sql:ro
+      - ./db/run-crm.sql:/docker-entrypoint-initdb.d/20-access.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d crm"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+volumes:
+  datavault_run_orders:
+  datavault_run_crm:

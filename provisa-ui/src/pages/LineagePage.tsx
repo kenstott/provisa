@@ -372,6 +372,7 @@ export function LineagePage(): React.ReactElement {
         <Paper
           withBorder
           p="xs"
+          data-testid="lineage-graph"
           style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}
         >
           <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>

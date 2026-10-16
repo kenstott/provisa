@@ -1,0 +1,20 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The data vault demo's card on provisa.dev's live demos page (REQ-2006, REQ-2063).
+title: Data vault
+description: >-
+  A data vault declared over two live systems from Northwind, an order system and a CRM: hubs,
+  links and satellites as views the engine builds and refreshes as new rows arrive, personal data
+  masked in the satellites, and one point-in-time query that answers what was known about a
+  customer, from which source, and when.
+screenshot: card.png
+published: false
+# The oldest Provisa this demo's bundle runs on (REQ-2049).
+requires_provisa: 0.1.0a489

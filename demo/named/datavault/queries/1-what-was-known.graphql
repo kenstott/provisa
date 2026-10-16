@@ -1,0 +1,16 @@
+# What was known about Alfreds Futterkiste, from which source, and since when: the customer's hub,
+# and along KNOWN_AS, at every date anything about it was loaded, each system's version then.
+query WhatWasKnown {
+  v__viewHubCustomer(where: { customerId: { eq: "ALFKI" } }) {
+    customerId
+    viewCustomerAsKnowns(order_by: [{ asOf: asc }]) {
+      asOf
+      ordersSource
+      ordersLoadDate
+      ordersAddress
+      crmSource
+      crmLoadDate
+      crmAddress
+    }
+  }
+}
