@@ -15,8 +15,12 @@ calls a command of its config.yaml as org_admin with no arguments; ``refresh: <v
 stored rows of a view of its config.yaml with ``materialize: true``; ``profile: <profiler>`` runs a
 Data Profiler source of its config.yaml at once for every member table (REQ-2052): a sandbox
 cloned from the demo's template carries those runs (env_copy.clone_model); ``environment: {name,
-data_mode}`` creates an environment of the model (REQ-2053), as the Environments page does.
-start-ui-install.sh and the demo's template build both call this, so the two set a demo up alike.
+data_mode}`` creates an environment of the model (REQ-2053), as the Environments page does;
+``client: <script>`` runs a client of the demo's own (a script in its directory) against the server
+until it exits, told where the server is -- ``PROVISA_URL`` and ``PROVISA_FLIGHT`` -- beside this
+run's environment: what the client writes to the demo's stores is then theirs (REQ-2067, the
+provisioning demo's recorded pulls). start-ui-install.sh and the demo's template build both call
+this, so the two set a demo up alike.
 
 A bundled demo runs only its environment steps where it runs (``--environments-only``): the other
 steps ran when its bundle was built and what they wrote is in its stores' dumps, but an
@@ -27,12 +31,15 @@ Once per control plane: the demo's name is added to the operator setting ``demo.
 when every step has succeeded, and a demo already listed there is not set up again. The first step
 that fails stops the run: the exit status is 1 and the step is named. Nothing is retried.
 
-Usage: run_demo_setup.py <demo dir> --url <server base url> [--environments-only]
+Usage: run_demo_setup.py <demo dir> --url <server base url> [--flight <grpc://host:port>]
+       [--environments-only]
 """
 
 from __future__ import annotations
 
 import argparse
+import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -51,8 +58,8 @@ class StepFailed(RuntimeError):
 
 
 def steps(demo_dir: Path) -> list[dict]:
-    """The demo's steps, each one ``command``, ``refresh``, ``profile`` or ``environment``; none
-    when it has no setup.yaml."""
+    """The demo's steps, each one ``command``, ``refresh``, ``profile``, ``environment`` or
+    ``client``; none when it has no setup.yaml."""
     path = demo_dir / "setup.yaml"
     if not path.exists():
         return []
@@ -67,13 +74,16 @@ def steps(demo_dir: Path) -> list[dict]:
                 "refresh",
                 "profile",
                 "environment",
+                "client",
             )
         ):
             raise SystemExit(
                 f"{path}: a step is one 'command: <name>', 'refresh: <view>', "
-                f"'profile: <profiler>' or 'environment: {{name: <name>, data_mode: <mode>}}': "
-                f"{step}"
+                f"'profile: <profiler>', 'environment: {{name: <name>, data_mode: <mode>}}' or "
+                f"'client: <script>': {step}"
             )
+        if "client" in step and not (demo_dir / str(step["client"])).is_file():
+            raise SystemExit(f"{path}: a client step names a script of the demo's: {step}")
         if "environment" in step and (
             not isinstance(step["environment"], dict)
             or set(step["environment"]) != {"name", "data_mode"}
@@ -138,6 +148,22 @@ def _mutation_field(client: httpx.Client, command: str, step: dict) -> tuple[str
     return found[0]["name"], selection
 
 
+def run_client(demo_dir: Path, step: dict, url: str, flight: str | None) -> str:
+    """Run the demo's own client script against the server, until it exits."""
+    if flight is None:
+        raise StepFailed(step, "a client step needs the server's Arrow Flight address (--flight)")
+    script = demo_dir / step["client"]
+    done = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=demo_dir,
+        env={**os.environ, "PROVISA_URL": url, "PROVISA_FLIGHT": flight},
+        timeout=_TIMEOUT,
+    )
+    if done.returncode != 0:
+        raise StepFailed(step, f"{script.name} exited {done.returncode}")
+    return f"client {script.name}: done"
+
+
 def run_step(client: httpx.Client, step: dict) -> str:
     """Run one step; what it did, for the log."""
     if "command" in step:
@@ -181,7 +207,9 @@ def run_step(client: httpx.Client, step: dict) -> str:
     return f"refresh {view}: {data['refreshMv']['message']}"
 
 
-def run(demo_dir: Path, url: str, *, environments_only: bool = False) -> int:
+def run(
+    demo_dir: Path, url: str, *, environments_only: bool = False, flight: str | None = None
+) -> int:
     listed = steps(demo_dir)
     if environments_only:
         listed = [step for step in listed if "environment" in step]
@@ -195,7 +223,12 @@ def run(demo_dir: Path, url: str, *, environments_only: bool = False) -> int:
             return 0
         for step in listed:
             try:
-                print(f"demo {name}: {run_step(client, step)}", flush=True)
+                did = (
+                    run_client(demo_dir, step, url, flight)
+                    if "client" in step
+                    else run_step(client, step)
+                )
+                print(f"demo {name}: {did}", flush=True)
             except StepFailed as failed:
                 print(f"demo {name}: {failed}", file=sys.stderr)
                 return 1
@@ -212,9 +245,14 @@ if __name__ == "__main__":
     parser.add_argument("demo_dir", type=Path)
     parser.add_argument("--url", required=True)
     parser.add_argument(
+        "--flight", help="the server's Arrow Flight address, grpc://host:port (a client step's)"
+    )
+    parser.add_argument(
         "--environments-only",
         action="store_true",
         help="run only the environment steps (a bundled demo, where it runs)",
     )
     args = parser.parse_args()
-    sys.exit(run(args.demo_dir, args.url, environments_only=args.environments_only))
+    sys.exit(
+        run(args.demo_dir, args.url, environments_only=args.environments_only, flight=args.flight)
+    )

@@ -162,8 +162,19 @@ class Stores:
             return
         services = self._compose("config", "--services", capture_output=True, text=True)
         seeded = "seeder" in services.stdout.split()
+        # A demo's own clients (role client: the provisioning demo's consumer) read the Provisa a
+        # start runs on; the build has none listening where they look, and runs a client a setup
+        # step names against its own (run_demo_setup.py), so they are not started here.
+        compose = yaml.safe_load(self.compose_file.read_text())
+        clients = [
+            name
+            for name, service in (compose.get("services") or {}).items()
+            if (service.get("labels") or {}).get("com.provisa.demo.role") == "client"
+        ]
+        scaled = [("seeder", seeded)] + [(name, True) for name in clients]
+        scale = [arg for name, on in scaled if on for arg in ("--scale", f"{name}=0")]
         # The stores first; a demo's seeder, when it has one, runs after them.
-        self._compose("up", "-d", "--build", "--wait", *(("--scale", "seeder=0") if seeded else ()))
+        self._compose("up", "-d", "--build", "--wait", *scale)
         if seeded:
             # Once, to its end, with the stores it writes to left running; its exit fails the build.
             self._compose("run", "--rm", "--no-deps", "seeder")
@@ -481,12 +492,15 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
     host, port = _control_plane(work, "setup-cp")
     url = f"postgresql+psycopg://provisa:provisa@/provisa?host={host}&port={port}"
     http_port = _free_port()
+    # A client step of the setup (run_demo_setup.py) reads the server over Arrow Flight.
+    flight_port = _free_port()
     server_env = {
         **_config_env(demo),
         **stores.env,
         **({"OPENROUTER_API_KEY": os.environ["OPENROUTER_API_KEY"]} if asked else {}),
         "PROVISA_CONFIG": str(answering_config(work, demo) if asked else demo / "config.yaml"),
         "PROVISA_ENGINE": "duckdb",
+        "FLIGHT_PORT": str(flight_port),
         "ORG_ID": _SETUP_ORG,
         "PROVISA_DATA_DIR": str(work / "setup-data"),
         "PROVISA_REDIS_EMBEDDED": "1",
@@ -526,7 +540,9 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
             time.sleep(2)
         subprocess.run(
             [sys.executable, str(_REPO / "scripts" / "run_demo_setup.py"), str(demo)]
-            + ["--url", base],
+            + ["--url", base, "--flight", f"grpc://127.0.0.1:{flight_port}"],
+            # A client step reaches the demo's stores where this build's compose put them.
+            env=stores.env,
             check=True,
         )
         if asked:
