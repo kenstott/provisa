@@ -20,6 +20,8 @@
 #   jsonapi       a JSON:API request, "/data/jsonapi/<domain>/<table>[?<query>]": run on /jsonapi
 #   grpc          a gRPC call, "<Method>(by=[...], funcs=[...])": sent on /grpc
 #   cypher        a Cypher query over the demo's node labels and relationships: run on /graph
+#   lineage       a statement over the demo's tables and views: its lineage built on /lineage,
+#                 each column traced back through the views it reads to the source fields
 #   term          a glossary term of config.yaml, by name: opened on the Glossary page
 #   role          a role of config.yaml (or "all"): picked in the SQL explorer's run-as picker on
 #                 Next, so a step with it is on the SQL explorer

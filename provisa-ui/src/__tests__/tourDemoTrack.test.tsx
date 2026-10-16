@@ -149,6 +149,14 @@ describe("a demo's steps, as the runner walks them", () => {
     for (const step of [api, jsonapi, grpc, cypher]) expect(step.waitMs).toBe(60000);
   });
 
+  it("opens a statement's lineage on the Lineage page and waits for its graph", () => {
+    const sql = 'SELECT address FROM "vault"."view_dim_customer"';
+    const [step] = demoTourSteps([{ key: "l", route: "/lineage", lineage: sql }], EXAMPLES);
+    expect(step.route).toBe(`/lineage?sql=${encodeURIComponent(sql)}`);
+    expect(step.element).toBe('[data-testid="lineage-graph"]');
+    expect(step.waitMs).toBe(60000);
+  });
+
   it("points a table at its row on the Tables page", () => {
     const [table] = demoTourSteps([{ key: "t", table: "shop_access.shop_access" }], EXAMPLES);
     expect(table.element).toBe('[data-table-row="shop_access.shop_access"]');

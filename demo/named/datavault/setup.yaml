@@ -1,0 +1,19 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# What the data vault demo runs once, in order, after the server is up (REQ-2016, REQ-2063;
+# scripts/run_demo_setup.py): the scripted changes to its sources, each a command of config.yaml
+# that sends one new row with its own load date. The vault's views over those sources follow what
+# arrives through their change signals; nothing here refreshes them.
+steps:
+- command: move_alfreds_in_orders
+- command: resend_alfreds_to_crm
+- command: move_alfreds_in_crm
+- command: rename_chai
+- command: correct_chang_price

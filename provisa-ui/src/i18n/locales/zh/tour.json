@@ -823,6 +823,70 @@
       "opioidsRest": {
         "title": "通过 REST 的同一答案",
         "description": "该视图也是一个 REST 端点，在服务器上分组求和，议会网站或电子表格可以通过 HTTP 读取仪表板。"
+      },
+      "datavaultScenario": {
+        "title": "两个系统，一个问题",
+        "description": "一个订单系统和一个 CRM，均来自 Northwind，各自保存着每位客户的副本。问题是：我们对这位客户了解什么，来自哪个数据源，又是什么时候？Data Vault 通过保留每个数据源的每个版本来回答。这里的 Vault 以视图的形式声明，由引擎构建并刷新：无需 ETL 平台、作业服务器或管道代码，工作在可扩展的引擎上运行，一个声明的 Vault 同时为数据集市、受治理的 API 和血缘提供数据。"
+      },
+      "datavaultCrm": {
+        "title": "CRM 自己的副本",
+        "description": "CRM 以账户形式保存同样的客户，并带有每位联系人的电子邮件，这是订单系统从未有过的。它的地址可能与订单系统的不同，而且有一段时间确实不同。"
+      },
+      "datavaultInsertOnly": {
+        "title": "每一行都保留",
+        "description": "客户表是仅插入的，正如 Vault 的暂存区接收它的方式：变更以带有加载日期的新行到达，不会覆盖任何内容。该表监视其最新加载日期，因此新行会通过视图级联刷新其上的每个视图。"
+      },
+      "datavaultArrived": {
+        "title": "到达了什么",
+        "description": "两个系统收到的所有关于 Alfreds Futterkiste 的行。订单系统在 1997 年 9 月 1 日得知其搬迁；CRM 在 10 月 1 日再次发来旧地址，并在 11 月 15 日发来搬迁。"
+      },
+      "datavaultHub": {
+        "title": "Hub",
+        "description": "每位任一系统已知的客户对应一行：其代码、代码的哈希键（每个 Link 和 Satellite 都以它进行关联）、首次出现的系统以及时间。"
+      },
+      "datavaultLinks": {
+        "title": "Hub、Link、Hub",
+        "description": "Link 将 Hub 的哈希键配对：客户下了订单，订单包含产品。它们之间的关系让 GraphQL 和 Cypher 能够沿着 Vault 从 Hub 到 Link 再到 Hub 遍历。"
+      },
+      "datavaultSatellites": {
+        "title": "Satellite 保留每个版本",
+        "description": "每个系统关于该客户的属性，每个版本为一行，带有加载日期和针对其值的 Hashdiff。CRM 在 10 月 1 日的重发与其前一行的 Hashdiff 相同，因此不算新版本。"
+      },
+      "datavaultProduct": {
+        "title": "改名的产品，更正的价格",
+        "description": "产品 Satellite 保留了 Chai 的旧名称及 Chai Tea，以及 Chang 更正前后的价格。"
+      },
+      "datavaultAnswer": {
+        "title": "当时知道什么，以及何时",
+        "description": "答案只需一个时间点（Point in Time）查询。对于客户有任何数据被加载的每个日期，给出当时有效的各系统取值的版本，以及从何时开始。从 9 月 1 日到 11 月 15 日，两个系统对客户住在哪里存在分歧。"
+      },
+      "datavaultGraphql": {
+        "title": "同样的答案，用 GraphQL",
+        "description": "业务 Vault 视图同样是一个 GraphQL 字段，按客户过滤并按时间排序。"
+      },
+      "datavaultWalk": {
+        "title": "在 GraphQL 中遍历 Vault",
+        "description": "从 Hub 到 Link 再到 Hub：客户、其订单、订单中的产品，以及每个产品名称和价格的每个版本。"
+      },
+      "datavaultRest": {
+        "title": "通过 REST 提供的数据集市",
+        "description": "基于 Vault 构建的当前状态客户维度是一个 REST 端点：下游应用读取它，而无需知道背后有 Vault。"
+      },
+      "datavaultLineage": {
+        "title": "数据集市的列来自哪里",
+        "description": "数据集市各列的血缘：每一列都经由时点视图和卫星表追溯到其来源字段。"
+      },
+      "datavaultAnalyst": {
+        "title": "分析师的视角",
+        "description": "接下来，SQL 浏览器以欧洲分析师的身份运行。个人数据存放在 Satellite 中，因此在那里进行治理。"
+      },
+      "datavaultMasked": {
+        "title": "在个人数据所在处脱敏",
+        "description": "以分析师身份查看时，CRM Satellite 仅显示欧洲客户，其联系人被隐藏，电子邮件名称和电话号码数字被脱敏。Hub 和 Link 保持可读，因此分析师仍然可以基于它们进行关联。"
+      },
+      "datavaultRecap": {
+        "title": "你看到了什么",
+        "description": "两个在线系统和其上的 Data Vault，以视图声明：保留每个版本的 Hub、Link 和 Satellite，由引擎在行到达时刷新，在 Satellite 中治理，并以时间点方式在 SQL、GraphQL 和 REST 中查询，血缘可追溯到来源字段。无需单独的 ETL 平台、作业服务器或管道代码。"
       }
     },
     "status": {
@@ -883,6 +947,10 @@
       "opioids": {
         "title": "阿片类药物和解金与药物过量死亡",
         "summary": "一个地方政府的问题：相对于阿片类药物和解金支付的治疗，哪些县的药物过量死亡最多？基金的拨款按县关联 CDC、人口普查和联邦支出数据。"
+      },
+      "datavault": {
+        "title": "Data Vault",
+        "summary": "在订单系统和 CRM 之上声明的 Data Vault：由引擎在行到达时构建并刷新的 Hub、Link 和 Satellite，在 Satellite 中脱敏的个人数据，以及一个时间点查询，说明关于某位客户当时知道什么、来自哪个数据源、是什么时候。"
       }
     }
   }

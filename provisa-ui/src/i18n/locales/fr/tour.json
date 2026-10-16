@@ -823,6 +823,70 @@
       "opioidsRest": {
         "title": "La même réponse via REST",
         "description": "La vue est aussi un point de terminaison REST, regroupé et sommé sur le serveur, pour qu'un site du conseil ou un tableur lise le tableau de bord via HTTP."
+      },
+      "datavaultScenario": {
+        "title": "Deux systèmes, une question",
+        "description": "Un système de commandes et un CRM, tous deux issus de Northwind, chacun avec sa propre copie de chaque client. La question : que savions-nous de ce client, de quelle source et quand ? Un data vault y répond en conservant chaque version de chaque source. Ici, le vault est déclaré sous forme de vues, et le moteur le construit et le rafraîchit : pas de plateforme ETL, pas de serveur de tâches, pas de code de pipeline ; le travail s'exécute sur le moteur, là où il passe à l'échelle, et un seul vault déclaré alimente les marts, les API gouvernées et la traçabilité."
+      },
+      "datavaultCrm": {
+        "title": "La copie propre du CRM",
+        "description": "Le CRM détient les mêmes clients sous forme de comptes, avec l'e-mail de chaque contact, que le système de commandes n'a jamais eu. Ses adresses peuvent différer de celles du système de commandes, et pendant un temps elles diffèrent."
+      },
+      "datavaultInsertOnly": {
+        "title": "Chaque ligne conservée",
+        "description": "La table des clients est en insertion seule, comme la reçoit la zone de staging d'un vault : un changement arrive comme une nouvelle ligne avec sa date de chargement, et rien n'est écrasé. La table surveille sa date de chargement la plus récente, si bien que les nouvelles lignes rafraîchissent chaque vue qui s'appuie sur elle via la cascade de vues."
+      },
+      "datavaultArrived": {
+        "title": "Ce qui est arrivé",
+        "description": "Chaque ligne reçue par l'un ou l'autre système pour Alfreds Futterkiste. Le système de commandes a appris son déménagement le 1er septembre 1997 ; le CRM a renvoyé l'ancienne adresse le 1er octobre, puis le déménagement le 15 novembre."
+      },
+      "datavaultHub": {
+        "title": "Un hub",
+        "description": "Une ligne par client connu de l'un ou l'autre système : son code, la clé de hachage du code sur laquelle chaque link et chaque satellite se joint, le système où il a été vu en premier, et quand."
+      },
+      "datavaultLinks": {
+        "title": "Hub, link, hub",
+        "description": "Les links apparient les clés de hachage des hubs : un client a passé une commande, une commande contient un produit. Les relations entre eux permettent à GraphQL et Cypher de parcourir le vault de hub en link puis en hub."
+      },
+      "datavaultSatellites": {
+        "title": "Les satellites conservent chaque version",
+        "description": "Les attributs de chaque système pour le client, chaque version étant une ligne avec sa date de chargement et un hashdiff de ses valeurs. Le renvoi du CRM du 1er octobre a le hashdiff de la ligne précédente : ce n'est donc pas une version."
+      },
+      "datavaultProduct": {
+        "title": "Un produit renommé, un prix corrigé",
+        "description": "Le satellite des produits conserve l'ancien nom de Chai à côté de Chai Tea, ainsi que le prix de Chang avant et après sa correction."
+      },
+      "datavaultAnswer": {
+        "title": "Ce qui était connu, et quand",
+        "description": "La réponse en une seule requête point in time. À chaque date où quelque chose a été chargé sur le client, la version des valeurs de chaque système en vigueur alors, et depuis quand. Du 1er septembre au 15 novembre, les deux systèmes n'étaient pas d'accord sur le lieu de résidence du client."
+      },
+      "datavaultGraphql": {
+        "title": "La même réponse en GraphQL",
+        "description": "La vue du business vault est aussi un champ GraphQL, filtré sur le client et trié par date."
+      },
+      "datavaultWalk": {
+        "title": "Le vault parcouru en GraphQL",
+        "description": "De hub en link puis en hub : le client, ses commandes, les produits qu'elles contiennent et chaque version du nom et du prix de chaque produit."
+      },
+      "datavaultRest": {
+        "title": "Le mart via REST",
+        "description": "La dimension client à l'état courant, construite sur le vault, est un point de terminaison REST : une application en aval la lit sans savoir que le vault est là."
+      },
+      "datavaultLineage": {
+        "title": "D'où vient une colonne du mart",
+        "description": "La traçabilité des colonnes du mart : chacune remontée à travers la vue point-in-time et les satellites jusqu'au champ source dont elle provient."
+      },
+      "datavaultAnalyst": {
+        "title": "La vue d'un analyste",
+        "description": "La suite exécute l'explorateur SQL en tant qu'analyste européen. Les données personnelles résident dans les satellites ; c'est donc là qu'elles sont gouvernées."
+      },
+      "datavaultMasked": {
+        "title": "Masquées là où se trouvent les données personnelles",
+        "description": "En tant qu'analyste, le satellite du CRM n'affiche que les clients européens, leurs contacts retenus, leurs noms d'e-mail et chiffres de téléphone masqués. Les hubs et les links restent lisibles, de sorte que l'analyste peut toujours joindre sur eux."
+      },
+      "datavaultRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Deux systèmes en direct et un data vault par-dessus, déclaré sous forme de vues : hubs, links et satellites avec chaque version conservée, rafraîchis par le moteur à mesure que les lignes arrivent, gouvernés dans les satellites et interrogés en point in time en SQL, GraphQL et REST, avec une traçabilité jusqu'aux champs sources. Aucune plateforme ETL distincte, aucun serveur de tâches, aucun code de pipeline."
       }
     },
     "status": {
@@ -883,6 +947,10 @@
       "opioids": {
         "title": "Fonds des accords sur les opioïdes et décès par surdose",
         "summary": "La question d'une collectivité locale, quels comtés comptent le plus de décès par surdose au regard du traitement que finance l'argent des accords sur les opioïdes : les allocations d'un fonds reliées par comté aux données des CDC, du recensement et des dépenses fédérales."
+      },
+      "datavault": {
+        "title": "Data vault",
+        "summary": "Un data vault déclaré sur un système de commandes et un CRM : des hubs, des links et des satellites que le moteur construit et rafraîchit à mesure que les lignes arrivent, des données personnelles masquées dans les satellites, et une requête point in time pour savoir ce qui était connu d'un client, de quelle source et quand."
       }
     }
   }

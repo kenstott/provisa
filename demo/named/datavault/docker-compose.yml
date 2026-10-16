@@ -1,0 +1,66 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The named demo "datavault" (start-ui-install.sh --demo datavault; REQ-2063). This file is its one
+# start point: `docker compose up -d` brings up its two operational databases, loaded from
+# Northwind (db/NORTHWIND-LICENSE). Provisa's views over them are the vault (config.yaml); the
+# changes that give its satellites their history are setup.yaml's.
+#
+#   orders  the order system (db/orders.sql): customers, products, orders and their lines
+#   crm     the CRM (db/crm.sql): its own copy of the customers, as accounts with their contacts
+#
+# Ports: 28832 the order system, 28833 the CRM; each can be moved by its variable.
+x-demo-labels: &demo-labels
+  com.provisa.demo: datavault
+name: provisa-demo-datavault
+services:
+  orders:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: orders
+    ports:
+      - "127.0.0.1:${DATAVAULT_ORDERS_PORT:-28832}:5432"
+    volumes:
+      - datavault_orders:/var/lib/postgresql/data
+      - ./db/orders.sql:/docker-entrypoint-initdb.d/10-orders.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orders"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+  crm:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: crm
+    ports:
+      - "127.0.0.1:${DATAVAULT_CRM_PORT:-28833}:5432"
+    volumes:
+      - datavault_crm:/var/lib/postgresql/data
+      - ./db/crm.sql:/docker-entrypoint-initdb.d/10-crm.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d crm"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+volumes:
+  datavault_orders:
+  datavault_crm:

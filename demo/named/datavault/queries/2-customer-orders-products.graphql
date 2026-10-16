@@ -1,0 +1,22 @@
+# The vault walked hub to link to hub: a customer, the orders it placed, and the products in them
+# with every version of each product's name and price.
+query CustomerOrdersProducts {
+  v__viewHubCustomer(where: { customerId: { eq: "ALFKI" } }) {
+    customerId
+    viewLinkCustomerOrders {
+      viewHubOrder {
+        orderId
+        viewLinkOrderProducts {
+          viewHubProduct {
+            productId
+            viewSatProducts {
+              loadDate
+              productName
+              unitPrice
+            }
+          }
+        }
+      }
+    }
+  }
+}

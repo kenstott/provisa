@@ -1,0 +1,98 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The data vault demo's own tour (REQ-2010, REQ-2063); the kinds of step are listed in
+# demo/named/weblogs/tour.yaml. The track: two operational systems, their insert-only rows, then
+# the vault the engine builds over them -- a hub, a link, the satellites with every version, and
+# the masks on the personal data in them -- then the question answered by one point-in-time
+# query, over SQL, GraphQL and REST, the lineage of a mart column back to its source fields, and a
+# recap.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+- key: datavaultScenario
+  route: /sources
+  capability: source_registration
+  source: orders
+- key: datavaultCrm
+  source: crm
+- key: datavaultInsertOnly
+  route: /tables
+  capability: table_registration
+  table: orders.customer
+- key: datavaultArrived
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT 'orders' AS source, customer_id AS customer, address, postal_code, load_date
+    FROM "orders"."customer" WHERE customer_id = 'ALFKI'
+    UNION ALL
+    SELECT 'crm' AS source, account_code AS customer, address, postal_code, load_date
+    FROM "crm"."account" WHERE account_code = 'ALFKI'
+    ORDER BY load_date, source
+- key: datavaultHub
+  sql: >-
+    SELECT customer_hk, customer_id, record_source, first_seen
+    FROM "vault"."view_hub_customer" ORDER BY customer_id LIMIT 10
+- key: datavaultLinks
+  route: /relationships
+  capability: create_relationship
+  relationship: PLACED
+- key: datavaultSatellites
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT record_source, load_date, hashdiff, address, postal_code
+    FROM "vault"."view_sat_customer_orders" WHERE customer_hk = MD5('ALFKI')
+    UNION ALL
+    SELECT record_source, load_date, hashdiff, address, postal_code
+    FROM "vault"."view_sat_customer_crm" WHERE customer_hk = MD5('ALFKI')
+    ORDER BY load_date, record_source
+- key: datavaultProduct
+  sql: >-
+    SELECT h.product_id, s.load_date, s.product_name, s.unit_price
+    FROM "vault"."view_hub_product" AS h
+    JOIN "vault"."view_sat_product" AS s ON s.product_hk = h.product_hk
+    WHERE h.product_id IN (1, 2)
+    ORDER BY h.product_id, s.load_date
+- key: datavaultAnswer
+  sql: >-
+    SELECT as_of, orders_source, orders_load_date, orders_address, crm_source, crm_load_date,
+      crm_address
+    FROM "vault"."view_customer_as_known"
+    WHERE customer_hk = MD5('ALFKI')
+    ORDER BY as_of
+- key: datavaultGraphql
+  route: /query
+  capability: query_development
+  example: 1-what-was-known
+- key: datavaultWalk
+  example: 2-customer-orders-products
+- key: datavaultRest
+  route: /openapi
+  capability: query_development
+  api: GET /data/rest/vault/view_dim_customer?limit=10
+- key: datavaultLineage
+  route: /lineage
+  capability: table_registration
+  lineage: >-
+    SELECT company_name, address, contact_email FROM "vault"."view_dim_customer"
+- key: datavaultAnalyst
+  route: /sql
+  capability: query_development
+  role: analyst_eu
+- key: datavaultMasked
+  sql: >-
+    SELECT country, account_name, contact_name, contact_email, phone
+    FROM "vault"."view_sat_customer_crm" ORDER BY country, account_name LIMIT 20
+- key: datavaultRecap
+  route: /sources
+  capability: source_registration
+  source: orders

@@ -823,6 +823,70 @@
       "opioidsRest": {
         "title": "A mesma resposta via REST",
         "description": "A view também é um endpoint REST, agrupado e somado no servidor, para que o site do conselho ou uma planilha leia o painel via HTTP."
+      },
+      "datavaultScenario": {
+        "title": "Dois sistemas, uma pergunta",
+        "description": "Um sistema de pedidos e um CRM, ambos da Northwind, ambos com a própria cópia de cada cliente. A pergunta: o que sabíamos sobre este cliente, de qual fonte e quando? Um data vault responde mantendo cada versão de cada fonte. Aqui o vault é declarado como exibições, e o motor o constrói e o atualiza: sem plataforma de ETL, sem servidor de jobs e sem código de pipeline; o trabalho roda no motor, onde escala, e um único vault declarado alimenta os marts, as APIs governadas e a linhagem."
+      },
+      "datavaultCrm": {
+        "title": "A cópia própria do CRM",
+        "description": "O CRM guarda os mesmos clientes como contas, com o e-mail de cada contato, que o sistema de pedidos nunca teve. Seus endereços podem diferir dos do sistema de pedidos, e por um tempo diferem."
+      },
+      "datavaultInsertOnly": {
+        "title": "Cada linha mantida",
+        "description": "A tabela de clientes é somente de inserção, como o staging de um vault a recebe: uma mudança chega como uma nova linha com sua data de carga, e nada é sobrescrito. A tabela observa sua data de carga mais recente, de modo que novas linhas atualizam cada exibição sobre ela por meio da cascata de exibições."
+      },
+      "datavaultArrived": {
+        "title": "O que chegou",
+        "description": "Cada linha que qualquer um dos sistemas recebeu sobre Alfreds Futterkiste. O sistema de pedidos soube da mudança em 1º de setembro de 1997; o CRM reenviou o endereço antigo em 1º de outubro e a mudança em 15 de novembro."
+      },
+      "datavaultHub": {
+        "title": "Um hub",
+        "description": "Uma linha por cliente que qualquer um dos sistemas conhece: seu código, a chave hash do código na qual todo link e todo satellite se juntam, o sistema em que foi visto primeiro e quando."
+      },
+      "datavaultLinks": {
+        "title": "Hub, link, hub",
+        "description": "Os links emparelham as chaves hash dos hubs: um cliente fez um pedido, um pedido contém um produto. As relações entre eles permitem que GraphQL e Cypher percorram o vault de hub a link a hub."
+      },
+      "datavaultSatellites": {
+        "title": "Os satellites mantêm cada versão",
+        "description": "Os atributos de cada sistema para o cliente, cada versão uma linha com sua data de carga e um hashdiff sobre seus valores. O reenvio do CRM em 1º de outubro tem o hashdiff da linha anterior, portanto não é uma versão."
+      },
+      "datavaultProduct": {
+        "title": "Um produto renomeado, um preço corrigido",
+        "description": "O satellite de produtos mantém o nome antigo de Chai ao lado de Chai Tea, e o preço de Chang antes e depois da correção."
+      },
+      "datavaultAnswer": {
+        "title": "O que se sabia, e quando",
+        "description": "A resposta em uma única consulta point in time. A cada data em que algo foi carregado sobre o cliente, a versão dos valores de cada sistema em vigor na época e desde quando. De 1º de setembro a 15 de novembro, os dois sistemas discordaram sobre onde o cliente morava."
+      },
+      "datavaultGraphql": {
+        "title": "A mesma resposta em GraphQL",
+        "description": "A exibição do business vault também é um campo GraphQL, filtrado pelo cliente e ordenado por tempo."
+      },
+      "datavaultWalk": {
+        "title": "O vault percorrido em GraphQL",
+        "description": "De hub a link a hub: o cliente, seus pedidos, os produtos neles e cada versão do nome e do preço de cada produto."
+      },
+      "datavaultRest": {
+        "title": "O mart via REST",
+        "description": "A dimensão de clientes no estado atual, construída sobre o vault, é um endpoint REST: uma aplicação downstream a lê sem saber que o vault está ali."
+      },
+      "datavaultLineage": {
+        "title": "De onde vem uma coluna do mart",
+        "description": "A linhagem das colunas do mart: cada uma rastreada através da view point-in-time e dos satélites até o campo de origem de onde veio."
+      },
+      "datavaultAnalyst": {
+        "title": "A visão de um analista",
+        "description": "Em seguida, o explorador SQL é executado como o analista europeu. Os dados pessoais ficam nos satellites, então é ali que são governados."
+      },
+      "datavaultMasked": {
+        "title": "Mascarado onde estão os dados pessoais",
+        "description": "Como analista, o satellite do CRM mostra apenas clientes europeus, com seus contatos retidos e os nomes de e-mail e os dígitos de telefone ocultos. Os hubs e os links continuam legíveis, então o analista ainda pode fazer junções por eles."
+      },
+      "datavaultRecap": {
+        "title": "O que viu",
+        "description": "Dois sistemas ao vivo e um data vault sobre eles, declarado como exibições: hubs, links e satellites com cada versão mantida, atualizados pelo motor conforme as linhas chegam, governados nos satellites e consultados point in time em SQL, GraphQL e REST, com linhagem até os campos de origem. Sem plataforma de ETL separada, servidor de jobs ou código de pipeline."
       }
     },
     "status": {
@@ -883,6 +947,10 @@
       "opioids": {
         "title": "Fundos dos acordos sobre opioides e mortes por overdose",
         "summary": "A pergunta de um governo local, quais condados têm mais mortes por overdose para o tratamento que o dinheiro dos acordos sobre opioides paga: as alocações de um fundo unidas por condado a dados do CDC, do Censo e dos gastos federais."
+      },
+      "datavault": {
+        "title": "Data vault",
+        "summary": "Um data vault declarado sobre um sistema de pedidos e um CRM: hubs, links e satellites que o motor constrói e atualiza conforme as linhas chegam, dados pessoais mascarados nos satellites e uma consulta point in time sobre o que se sabia de um cliente, de qual fonte e quando."
       }
     }
   }

@@ -78,6 +78,9 @@ export interface DemoTourStepDef {
   grpc?: string;
   /** A Cypher query: run in a new frame of the Graph page. */
   cypher?: string;
+  /** A statement: its lineage built on the Lineage page, each column it reads traced back through
+   *  the views it reads to the source fields. */
+  lineage?: string;
   /** A glossary term, by name: opened on the Glossary page, its definition and links shown. */
   term?: string;
   /** A role (or "all"): shown in the SQL explorer's run-as picker, picked on Next. */
@@ -177,6 +180,15 @@ export function demoTourSteps(
         openQuery: { stateKey: "query", text: def.cypher },
         readySelector: '.graph-stream[data-handoff-status="done"]',
         element: ".graph-stream .gf-frame",
+        waitMs: RESULT_WAIT_MS,
+      };
+    }
+    if (def.lineage !== undefined) {
+      // The page builds a statement's graph from its deep link, read when the page opens.
+      return {
+        ...page,
+        route: `${def.route ?? ""}?sql=${encodeURIComponent(def.lineage)}`,
+        element: '[data-testid="lineage-graph"]',
         waitMs: RESULT_WAIT_MS,
       };
     }
