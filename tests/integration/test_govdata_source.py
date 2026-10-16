@@ -53,6 +53,18 @@ _SCHEMA = "fec"
 _COLD_START_SECONDS = 600
 
 
+def _cold_start(source, pr) -> None:
+    """Start the source's server and wait for its first catalog query, failing with the end of
+    the server's own log when the wait runs out: the report otherwise says only "STARTING" (warehouse
+    run 38886673581: the catalog was not answered in 600 s)."""
+    try:
+        pr.ensure_endpoint(source, timeout=_COLD_START_SECONDS)
+    except pr.SourceStillStartingError as exc:
+        server = pr._endpoint_replica(source)._server
+        tail = server.log_tail() if server is not None else "(no server was started)"
+        raise AssertionError(f"{exc}\nthe server's log, its end:\n{tail}") from exc
+
+
 def _api_key() -> str:
     key = os.environ.get("ASKAMERICA_API_KEY")
     if not key:
@@ -80,6 +92,7 @@ def _serving(source, data_dir):
         # A module fixture runs before the per-test org binding: the endpoint is the
         # deployment org's, its folder ready, as its runtime's boot starts it (REQ-1266, REQ-1992).
         with deployment_org_on_this_node():
+            _cold_start(source, pr)
             served = pr.ensure_endpoint(source, timeout=_COLD_START_SECONDS)
         yield served
     finally:

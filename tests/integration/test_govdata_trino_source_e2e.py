@@ -55,6 +55,20 @@ _SCHEMAS = "fec,ref,geo"
 _SCHEMA = "fec"
 _TABLE = "candidates"
 _COLD_START_SECONDS = 600
+
+
+def _cold_start(source, pr) -> None:
+    """Start the source's server and wait for its first catalog query, failing with the end of
+    the server's own log when the wait runs out: the report otherwise says only "STARTING" (warehouse
+    run 38886673581: the catalog was not answered in 600 s)."""
+    try:
+        pr.ensure_endpoint(source, timeout=_COLD_START_SECONDS)
+    except pr.SourceStillStartingError as exc:
+        server = pr._endpoint_replica(source)._server
+        tail = server.log_tail() if server is not None else "(no server was started)"
+        raise AssertionError(f"{exc}\nthe server's log, its end:\n{tail}") from exc
+
+
 _TRINO_HOST = os.environ.get("TRINO_HOST", "localhost")
 _TRINO_PORT = int(os.environ.get("TRINO_PORT", "8080"))
 
@@ -116,7 +130,7 @@ def served(tmp_path_factory):
     source = _source()
     try:
         with deployment_org_on_this_node():
-            pr.ensure_endpoint(source, timeout=_COLD_START_SECONDS)
+            _cold_start(source, pr)
         yield source, data_dir
     finally:
         with as_deployment_org():
