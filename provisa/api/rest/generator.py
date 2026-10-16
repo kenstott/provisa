@@ -35,6 +35,7 @@ from graphql import GraphQLError, GraphQLObjectType, GraphQLSchema
 from provisa.api.errors import ApiError
 from provisa.cache.middleware import build_cache_headers
 from provisa.core.read_refusal import ReadRefused
+from provisa.federation.pgwire_replica import SourceStillStartingError
 from provisa.api.json_response import OrjsonResponse
 from provisa.api._query_helpers import (
     RequestRefused,
@@ -716,6 +717,8 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             raise  # REQ-1174: answered as 413 by the app's handler
         except ReadRefused:
             raise  # refused by name; the app answers it (core/read_refusal.py)
+        except SourceStillStartingError:
+            raise  # a source still starting: the app answers 503 data.source_starting (REQ-1824)
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
         except HTTPException:

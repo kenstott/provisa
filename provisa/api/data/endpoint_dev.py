@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 from provisa.core.read_refusal import ReadRefused
 from provisa.compiler.params import ParametersDoNotFit
 from provisa.compiler.definitions import NotAvailableHere
+from provisa.federation.pgwire_replica import SourceStillStartingError
 from provisa.api.admin._dev_shared import detect_target
 from provisa.api.errors import ApiError
 from provisa.core import domain_policy
@@ -380,6 +381,8 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         raise  # REQ-1174: answered as 413 by the app's handler
     except ReadRefused:
         raise  # refused by name; the app answers it (core/read_refusal.py)
+    except SourceStillStartingError:
+        raise  # a source still starting: the app answers 503 data.source_starting (REQ-1824)
     except NotAvailableHere:
         # A statement this surface or the table cannot take (a definition; a write the table's
         # source cannot carry): answered by the app's handler with its code and parameters.
@@ -451,6 +454,8 @@ async def sql_explain_endpoint(  # REQ-1519
         raise  # REQ-1174: answered as 413 by the app's handler
     except ReadRefused:
         raise  # refused by name; the app answers it (core/read_refusal.py)
+    except SourceStillStartingError:
+        raise  # a source still starting: the app answers 503 data.source_starting (REQ-1824)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except ExplainUnsupported as exc:
