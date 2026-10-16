@@ -404,7 +404,7 @@ services:
     environment:
       # The demos cloud.provisa.dev offers (first-launch.sh's default; a node set up
       # by an earlier release offers its own list until it is set up again).
-      PROVISA_DEMO_BUNDLES: "weblogs,files,sonnets,reviews"
+      PROVISA_DEMO_BUNDLES: "weblogs,files,sonnets,reviews,quality"
       # The SQLite sample data of the deployment's demo config, which this tier also builds at
       # startup (first-launch.sh writes the same on a node set up since).
       PROVISA_DEMO_DIR: "/app/config/demo/files"
