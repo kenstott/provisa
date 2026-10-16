@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 import yaml
+
+from provisa.core.models import config_table_name
 from graphql import parse, validate
 
 from provisa.core import demo
@@ -95,8 +97,8 @@ def _views_schema(home: Path, role: dict, *, include_tables: bool = False):
                 "id": i,
                 "source_id": view["source_id"],
                 "domain_id": view["domain_id"],
-                "schema_name": view["schema"],
-                "table_name": view["table"],
+                "schema_name": view.get("schema", "default"),
+                "table_name": config_table_name(view),
                 "alias": view.get("alias"),
                 **({"view_sql": view["view_sql"]} if "view_sql" in view else {}),
                 **{name: view.get(name, default) for name, default in fields.items()},

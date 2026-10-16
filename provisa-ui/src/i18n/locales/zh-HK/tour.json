@@ -727,6 +727,54 @@
       "streamingRest": {
         "title": "透過 REST 的答案",
         "description": "同一視圖的 REST 呼叫,適合定期輪詢它的儀表板。"
+      },
+      "profilingScenario": {
+        "title": "這個示範是甚麼",
+        "description": "一家戶外用品零售商收購了一家較小的公司 Harbor Outfitters，並收到其 CRM 中的客戶和訂單。在任何人以此為基礎之前，問題是：這些資料裏到底有甚麼？Provisa 內置的 Data Profiler 回答了這個問題，其結果與其他表一樣是受管治的表，可透過 SQL、GraphQL 和 REST 讀取。"
+      },
+      "profilingProfiler": {
+        "title": "Data Profiler",
+        "description": "分析器只包含一個排程及其執行設定：這個分析器每晚 02:00 執行。它的首次執行在建置示範時完成，所以結果已經在這裏了。"
+      },
+      "profilingMember": {
+        "title": "表加入分析器",
+        "description": "customers 和 orders 表是分析器的成員。在成員的編輯器中，可以立即執行分析，或查看其執行記錄：每次執行、讀取的列數和耗時。"
+      },
+      "profilingRuns": {
+        "title": "每次執行都會保留",
+        "description": "一次執行的結果寫入各自的表，每種量度一張，每次執行都與之前的執行一起保留。這裏是 customers 表的執行記錄，包括每次讀取的列數和發現的重複列。"
+      },
+      "profilingTerms": {
+        "title": "詞彙",
+        "description": "資料剖析、可能類型、值形態、重複列和佔位值都在詞彙表中，各自連結到相關的量度。"
+      },
+      "profilingAnswer": {
+        "title": "每一欄包含甚麼",
+        "description": "檢視 customer_columns 按最近一次執行的結果顯示 customers 的每一欄，最空的排在前面。五分之一的客戶從未回答市場推廣問題；有些電郵缺失，有些寫的是姓名；登記日期由佔位值 1900-01-01 開始，客戶價值由低於零的退款到 999,999.99 的測試帳戶不等。"
+      },
+      "profilingTypes": {
+        "title": "每一欄可能包含甚麼",
+        "description": "剖析根據欄的值、名稱和標籤推斷其內容：電郵、電話號碼、郵政編碼、識別碼。每項都附有信心度和依據。"
+      },
+      "profilingPhones": {
+        "title": "一欄，四種格式",
+        "description": "每個電話號碼都化為其形態：數字變為 9。CRM 從未檢查格式，所以一欄中有四種格式，連接或撥號程式必須先統一它們。"
+      },
+      "profilingCountries": {
+        "title": "一個國家，多種寫法",
+        "description": "country 欄中最常見的五個值：US、USA 和 United States 是同一個國家，僅在這五個值中就有三種寫法。按國家計數會把它拆開。"
+      },
+      "profilingDuplicates": {
+        "title": "寫了兩次的列",
+        "description": "模型將 customer_id 宣告為鍵，但匯出中沒有約束：150 位客戶出現了兩次，所有欄位都相同。剖析統計重複的列以及出現在多列中的鍵值。"
+      },
+      "profilingRest": {
+        "title": "透過 REST 取得同樣的答案",
+        "description": "該檢視也是一個 REST 端點。資料質素工具或遷移指令碼無需編寫 SQL 即可取得剖析。"
+      },
+      "profilingRecap": {
+        "title": "你看到了甚麼",
+        "description": "被收購的表（即時讀取）及其剖析（由內置分析器產生並作為受管治的表保存）：缺失值、範圍、格式、可能類型和重複項，以 SQL、GraphQL 和 REST 回答這些資料裏到底有甚麼，並依照每個角色的存取權限。"
       }
     },
     "status": {
@@ -779,6 +827,10 @@
       "streaming": {
         "title": "即時訂單流",
         "summary": "一間咖啡店的訂單透過 Kafka 即時到達,並與其商品目錄連接:一個過去五分鐘最繁忙地區的視圖,由每批載入刷新,以 SQL、GraphQL 和 REST 回答,可快取,並可透過訂閱觀察。"
+      },
+      "profiling": {
+        "title": "這些資料裏到底有甚麼？",
+        "summary": "一家被收購公司的客戶和訂單，由內置的 Data Profiler 進行剖析：缺失值、範圍、格式、可能類型和重複項，作為受管治的表保存，並透過 SQL、GraphQL 和 REST 讀取。"
       }
     }
   }

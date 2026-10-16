@@ -1,0 +1,8 @@
+# The shapes the phone numbers take: one column, four formats.
+query PhoneFormats {
+  h__viewCustomerFormats(where: { columnName: { eq: "phone" } }, order_by: [{ rank: asc }]) {
+    rank
+    shape
+    rowCount
+  }
+}

@@ -1,0 +1,12 @@
+# Each customers column as the latest profile run found it, emptiest first: its nulls, distinct
+# values and range.
+query CustomerColumns {
+  h__viewCustomerColumns(order_by: [{ nullShare: desc }]) {
+    columnName
+    dataType
+    nullShare
+    distinctCount
+    minValue
+    maxValue
+  }
+}

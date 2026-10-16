@@ -16,6 +16,8 @@ import pytest
 import sqlglot
 import yaml
 
+from provisa.core.models import config_table_name
+
 from provisa.core import demo
 from tests.integration.polly_bakeoff_questions import QUESTIONS
 
@@ -79,7 +81,7 @@ def _relations(config: dict) -> set[str]:
 
     tables = views_as_tables(json.loads(json.dumps(config)))["tables"]
     ops = {f"ops.{name}" for name in (*_OPS_LOG_TABLE_VIEWS, *_OPS_REPORT_VIEWS)}
-    return {f"{t['domain_id']}.{t.get('alias') or t['table']}" for t in tables} | ops
+    return {f"{t['domain_id']}.{t.get('alias') or config_table_name(t)}" for t in tables} | ops
 
 
 def _surface(config: dict) -> tuple[set[tuple[str, str]], set[str], set[str]]:
@@ -99,8 +101,8 @@ def _surface(config: dict) -> tuple[set[tuple[str, str]], set[str], set[str]]:
             "id": i,
             "source_id": t["source_id"],
             "domain_id": t["domain_id"],
-            "schema_name": t["schema"],
-            "table_name": t["table"],
+            "schema_name": t.get("schema", "default"),
+            "table_name": config_table_name(t),
             "alias": t.get("alias"),
             "enable_aggregates": t.get("enable_aggregates", False),
             "enable_group_by": t.get("enable_group_by", False),
@@ -167,7 +169,7 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     made = (yaml.safe_load(setup.read_text()) or {}).get("steps") or [] if setup.exists() else []
     envs = {"prod"} | {s["environment"]["name"] for s in made if "environment" in s}
     terms = {t["name"] for t in config.get("glossary_terms", [])}
-    tables = {f"{t['source_id']}.{t['table']}" for t in config["tables"]}
+    tables = {f"{t['source_id']}.{config_table_name(t)}" for t in config["tables"]}
     relations = _relations(config)
     gates = _route_capabilities()
     paths, methods, labels = _surface(config)

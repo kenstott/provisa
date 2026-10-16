@@ -691,6 +691,9 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
     openapi_specs: dict[str, dict],
 ) -> None:
     _expand_view_metrics(config)
+    # REQ-2052: a profile result named by its member takes the member's stored id where the member
+    # is stored already; one whose member this apply registers first is resolved after it is.
+    await _resolve_profile_results(conn, config, required=False)
     await _place_in_control_plane(conn, config)
     _settle_table_names(engine, config)
     await _refuse_published_name_clash(conn, config)
@@ -698,11 +701,63 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
     # The rows a table's source-specific step writes (its API source and endpoint) are stored
     # from the source as written: a credential in its address stays a reference.
     written_by_id = {src.id: src for src in config.written.sources}
-    for tbl in config.tables:
+    pending = [t for t in config.tables if _profile_result_pending(t)]
+    for tbl in [t for t in config.tables if not _profile_result_pending(t)]:
         src = written_by_id.get(tbl.source_id)
         await _upsert_single_table(
             conn, engine, await _keep_unlisted_columns(conn, tbl), src, openapi_specs
         )
+    await _resolve_profile_results(conn, config, required=True)
+    for tbl in pending:
+        src = written_by_id.get(tbl.source_id)
+        await _upsert_single_table(
+            conn, engine, await _keep_unlisted_columns(conn, tbl), src, openapi_specs
+        )
+
+
+def _profile_result_pending(tbl: Table) -> bool:  # REQ-2052
+    from provisa.core.models import pending_profile_result_name
+
+    member, kind = tbl.profile_of, tbl.profile_kind
+    if member is None or kind is None:
+        return False
+    return tbl.table_name == pending_profile_result_name(member, kind)
+
+
+async def _resolve_profile_results(  # REQ-2052
+    conn: "Connection", config: ProvisaConfig, *, required: bool
+) -> None:
+    """Name each result table the configuration names by its member (``profile_of``, ``kind``)
+    by the member's stored id: ``<member>_<id>_profile_<kind>``. A member not stored yet is left
+    pending unless ``required``, which refuses it by name; two members of one profiler sharing
+    the name are refused, naming both."""
+    from provisa.profiler.schema import result_table_name
+
+    for tbl in config.tables:
+        member, kind = tbl.profile_of, tbl.profile_kind
+        if member is None or kind is None or not _profile_result_pending(tbl):
+            continue
+        rows = (
+            await conn.execute_core(
+                select(registered_tables.c.id, registered_tables.c.source_id).where(
+                    registered_tables.c.table_name == tbl.profile_of,
+                    registered_tables.c.profiler_source_id == tbl.source_id,
+                )
+            )
+        ).fetchall()
+        if len(rows) > 1:
+            raise ValueError(
+                f"profile_of {tbl.profile_of!r}: profiler {tbl.source_id!r} has more than one "
+                f"member of that name ({', '.join(r.source_id for r in rows)})"
+            )
+        if not rows:
+            if required:
+                raise ValueError(
+                    f"profile_of {tbl.profile_of!r}: no table of that name is a member of "
+                    f"profiler {tbl.source_id!r}"
+                )
+            continue
+        tbl.table_name = result_table_name(member, rows[0].id, kind)
 
 
 async def _place_in_control_plane(conn: "Connection", config: ProvisaConfig) -> None:

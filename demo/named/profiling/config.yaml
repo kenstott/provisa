@@ -1,0 +1,376 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "profiling" (start-ui-install.sh --demo profiling; REQ-1858).
+# docker-compose.yml in this directory brings up its database. What is actually in this data? An
+# outdoor retailer has bought Harbor Outfitters and received its CRM's customers and orders.
+#
+#   crm              the acquired CRM's Postgres (db/init.sql), read live as provisa_reader.
+#   harbor-profiler  the built-in Data Profiler. Both tables are its members: a run measures each
+#                    column's nulls, distinct values, range, shapes and plausible type, the rows
+#                    repeated and the key values held twice. Its first run is made when the demo is
+#                    built (setup.yaml) and every sandbox opens with it.
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+domains:
+- id: harbor
+  description: The customers and orders of Harbor Outfitters, a retailer just acquired, and the
+    profile of each table
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+- id: analyst
+  capabilities:
+  - query_development
+  domain_access:
+  - harbor
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 120
+    trino_query_timeout: 120
+sources:
+- id: crm
+  type: postgresql
+  host: ${env:PROFILING_PG_HOST:-localhost}
+  port: ${env:PROFILING_PG_PORT:-28732}
+  database: profiling
+  username: provisa_reader
+  password: provisa_reader
+  description: Harbor Outfitters' CRM database, as it came with the acquisition -- its customers and
+    orders
+- id: harbor-profiler
+  type: data_profiler
+  description: Nightly profile of the acquired tables -- what each column holds, its nulls, distinct
+    values, ranges and shapes, the duplicates and how one column depends on another
+  mapping:
+    cron: 0 2 * * *
+    low_cardinality_max: 100
+    drift_window: 7
+    drift_season: none
+    drift_distance: 3.0
+    drift_slope: 3.0
+    drift_ks: 0.2
+    drift_psi: 0.25
+    correlation_max_columns: 20
+    joint_max_distinct: 20
+    category_max_columns: 10
+tables:
+- source_id: crm
+  domain_id: harbor
+  schema: public
+  table: customers
+  profiler_source_id: harbor-profiler
+  description: The acquired company's customers, as its CRM held them
+  columns:
+  - {name: customer_id, data_type: integer, is_primary_key: true, description: The customer's number, visible_to: [org_admin, analyst]}
+  - {name: full_name, data_type: varchar, description: The customer's name, visible_to: [org_admin, analyst]}
+  - {name: email, data_type: varchar, description: The customer's email address, visible_to: [org_admin, analyst]}
+  - {name: phone, data_type: varchar, description: The customer's phone number, visible_to: [org_admin, analyst]}
+  - {name: country, data_type: varchar, description: The customer's country, visible_to: [org_admin, analyst]}
+  - {name: postal_code, data_type: varchar, description: The customer's postal code, visible_to: [org_admin, analyst]}
+  - {name: signup_date, data_type: date, description: When the customer signed up, visible_to: [org_admin, analyst]}
+  - {name: lifetime_value, data_type: decimal, description: 'What the customer has spent in all, net of refunds, in USD', visible_to: [org_admin, analyst]}
+  - {name: status, data_type: varchar, description: 'active, churned or prospect', visible_to: [org_admin, analyst]}
+  - {name: marketing_opt_in, data_type: boolean, description: Whether the customer agreed to marketing, visible_to: [org_admin, analyst]}
+- source_id: crm
+  domain_id: harbor
+  schema: public
+  table: orders
+  profiler_source_id: harbor-profiler
+  description: The acquired company's orders
+  columns:
+  - {name: order_id, data_type: integer, is_primary_key: true, description: The order's number, visible_to: [org_admin, analyst]}
+  - {name: customer_id, data_type: integer, description: The customer who placed it, visible_to: [org_admin, analyst]}
+  - {name: order_date, data_type: date, description: When it was placed, visible_to: [org_admin, analyst]}
+  - {name: amount, data_type: decimal, description: 'Its amount, in its currency', visible_to: [org_admin, analyst]}
+  - {name: currency, data_type: varchar, description: The currency of the amount, visible_to: [org_admin, analyst]}
+  - {name: channel, data_type: varchar, description: 'Where it was placed: web, store or phone', visible_to: [org_admin, analyst]}
+  - {name: discount_pct, data_type: integer, description: 'The discount given, in percent', visible_to: [org_admin, analyst]}
+# The profiler's results, each named by the table it profiles and its kind; the seed names it
+# <member>_<member's id>_profile_<kind>. Every role that reads the member reads its profile.
+- source_id: harbor-profiler
+  domain_id: harbor
+  profile_of: customers
+  kind: runs
+  alias: customer_profile_runs
+  description: 'Each profile run of the customers table: when, how many rows, the duplicates it found'
+  columns:
+  - {name: run_id, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: run_time, data_type: timestamp, visible_to: [org_admin, analyst]}
+  - {name: region, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: profiled_table, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: row_count, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: sampled, data_type: boolean, visible_to: [org_admin, analyst]}
+  - {name: sample_method, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: target_fraction, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: sample_fraction, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: sample_attempts, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: profiled_rows, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: previous_run_id, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: duplicate_rows, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: duplicate_share, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: key_duplicates, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: freshness_seconds, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: window_runs, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: dependence_method, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: dependence_fraction, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: dependence_rows, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: network_rows, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: dependence_attempts, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: duration_ms, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: status, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: error, data_type: varchar, visible_to: [org_admin, analyst]}
+- source_id: harbor-profiler
+  domain_id: harbor
+  profile_of: customers
+  kind: columns
+  alias: customer_profile
+  description: 'What the latest and every earlier profile run found in each customers column: its nulls, distinct values, range and moments'
+  columns:
+  - {name: run_id, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: run_time, data_type: timestamp, visible_to: [org_admin, analyst]}
+  - {name: column_name, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: physical_column, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: data_type, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: family, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: row_count, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: null_count, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: null_share, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: distinct_count, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: distinct_ratio, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: min_value, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: max_value, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: mean, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: stddev, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: variance, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: skewness, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: kurtosis, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: log_mean, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: log_variance, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: integer_only, data_type: boolean, visible_to: [org_admin, analyst]}
+  - {name: zero_share, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: length_min, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: length_max, data_type: bigint, visible_to: [org_admin, analyst]}
+- source_id: harbor-profiler
+  domain_id: harbor
+  profile_of: customers
+  kind: plausible_type
+  alias: customer_column_types
+  description: What each customers column holds, inferred from its profile, name and tags, with the evidence
+  columns:
+  - {name: run_id, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: run_time, data_type: timestamp, visible_to: [org_admin, analyst]}
+  - {name: column_name, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: plausible_type, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: confidence, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: evidence, data_type: varchar, visible_to: [org_admin, analyst]}
+- source_id: harbor-profiler
+  domain_id: harbor
+  profile_of: customers
+  kind: shapes
+  alias: customer_value_shapes
+  description: 'The most common shapes of each text column''s values: each character reduced to its class'
+  columns:
+  - {name: run_id, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: run_time, data_type: timestamp, visible_to: [org_admin, analyst]}
+  - {name: column_name, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: rank, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: shape, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: row_count, data_type: bigint, visible_to: [org_admin, analyst]}
+- source_id: harbor-profiler
+  domain_id: harbor
+  profile_of: customers
+  kind: top_values
+  alias: customer_top_values
+  description: The most frequent values of each customers column
+  columns:
+  - {name: run_id, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: run_time, data_type: timestamp, visible_to: [org_admin, analyst]}
+  - {name: column_name, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: kind, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: rank, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: value, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: row_count, data_type: bigint, visible_to: [org_admin, analyst]}
+- source_id: harbor-profiler
+  domain_id: harbor
+  profile_of: customers
+  kind: duplicates
+  alias: customer_duplicates
+  description: The customers rows that repeat another, and the key values held by more than one row
+  columns:
+  - {name: run_id, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: run_time, data_type: timestamp, visible_to: [org_admin, analyst]}
+  - {name: subject, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: key_name, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: involved_columns, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: repeated_values, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: extra_rows, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: extra_share, data_type: double, visible_to: [org_admin, analyst]}
+- source_id: harbor-profiler
+  domain_id: harbor
+  profile_of: customers
+  kind: quantiles
+  alias: customer_quantiles
+  description: Each numeric customers column's quantiles
+  columns:
+  - {name: run_id, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: run_time, data_type: timestamp, visible_to: [org_admin, analyst]}
+  - {name: column_name, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: measure, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: q, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: value, data_type: double, visible_to: [org_admin, analyst]}
+- source_id: harbor-profiler
+  domain_id: harbor
+  profile_of: orders
+  kind: runs
+  alias: order_profile_runs
+  description: Each profile run of the orders table
+  columns:
+  - {name: run_id, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: run_time, data_type: timestamp, visible_to: [org_admin, analyst]}
+  - {name: region, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: profiled_table, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: row_count, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: sampled, data_type: boolean, visible_to: [org_admin, analyst]}
+  - {name: sample_method, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: target_fraction, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: sample_fraction, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: sample_attempts, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: profiled_rows, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: previous_run_id, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: duplicate_rows, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: duplicate_share, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: key_duplicates, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: freshness_seconds, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: window_runs, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: dependence_method, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: dependence_fraction, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: dependence_rows, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: network_rows, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: dependence_attempts, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: duration_ms, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: status, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: error, data_type: varchar, visible_to: [org_admin, analyst]}
+- source_id: harbor-profiler
+  domain_id: harbor
+  profile_of: orders
+  kind: columns
+  alias: order_profile
+  description: What each profile run found in each orders column
+  columns:
+  - {name: run_id, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: run_time, data_type: timestamp, visible_to: [org_admin, analyst]}
+  - {name: column_name, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: physical_column, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: data_type, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: family, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: row_count, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: null_count, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: null_share, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: distinct_count, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: distinct_ratio, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: min_value, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: max_value, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: mean, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: stddev, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: variance, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: skewness, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: kurtosis, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: log_mean, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: log_variance, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: integer_only, data_type: boolean, visible_to: [org_admin, analyst]}
+  - {name: zero_share, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: length_min, data_type: bigint, visible_to: [org_admin, analyst]}
+  - {name: length_max, data_type: bigint, visible_to: [org_admin, analyst]}
+views:
+# The answer: each column of the customers table as the latest profile run found it -- its nulls,
+# distinct values and range.
+- id: customer_columns
+  domain_id: harbor
+  description: Each customers column as the latest profile run found it -- its nulls, distinct
+    values and range
+  sql: >-
+    SELECT c.column_name, c.data_type, c.row_count, c.null_count, c.null_share,
+           c.distinct_count, c.distinct_ratio, c.min_value, c.max_value
+    FROM "harbor"."customer_profile" AS c
+    WHERE c.run_time = (SELECT MAX(p.run_time) FROM "harbor"."customer_profile" AS p)
+  columns:
+  - {name: column_name, data_type: varchar, description: The customers column, visible_to: [org_admin, analyst]}
+  - {name: data_type, data_type: varchar, description: Its data type, visible_to: [org_admin, analyst]}
+  - {name: row_count, data_type: bigint, description: Rows profiled, visible_to: [org_admin, analyst]}
+  - {name: null_count, data_type: bigint, description: Rows with no value, visible_to: [org_admin, analyst]}
+  - {name: null_share, data_type: double, description: The share of rows with no value, visible_to: [org_admin, analyst]}
+  - {name: distinct_count, data_type: bigint, description: Its distinct values (approximate), visible_to: [org_admin, analyst]}
+  - {name: distinct_ratio, data_type: double, description: Its distinct values per row, visible_to: [org_admin, analyst]}
+  - {name: min_value, data_type: varchar, description: Its smallest value, visible_to: [org_admin, analyst]}
+  - {name: max_value, data_type: varchar, description: Its largest value, visible_to: [org_admin, analyst]}
+# Every shape a text column's values take in the latest run: where one column holds several formats.
+- id: customer_formats
+  domain_id: harbor
+  description: Each shape the values of a customers text column take in the latest profile run, and
+    how many rows take it -- one column holding several formats shows as several shapes
+  sql: >-
+    SELECT s.column_name, s.rank, s.shape, s.row_count
+    FROM "harbor"."customer_value_shapes" AS s
+    WHERE s.run_time = (SELECT MAX(p.run_time) FROM "harbor"."customer_value_shapes" AS p)
+  columns:
+  - {name: column_name, data_type: varchar, description: The customers column, visible_to: [org_admin, analyst]}
+  - {name: rank, data_type: integer, description: 'The shape''s rank by rows, 1 the commonest', visible_to: [org_admin, analyst]}
+  - {name: shape, data_type: varchar, description: 'The shape: A an upper-case letter, a a lower-case one, 9 a digit, other characters as they are', visible_to: [org_admin, analyst]}
+  - {name: row_count, data_type: bigint, description: The rows whose value takes it, visible_to: [org_admin, analyst]}
+relationships:
+- {id: order-of-customer, alias: PLACED_BY, graphql_alias: customer, cardinality: many-to-one, source_table_id: orders, source_column: customer_id, target_table_id: customers, target_column: customer_id}
+# The vocabulary of data profiling: abstract terms, grounded through their edges in the terms the
+# profile's columns derive.
+glossary_terms:
+- name: data profile
+  definition: 'A recorded description of what a table holds: for each column its nulls, distinct values, range, distribution and the shapes its values take, measured by a profile run.'
+  domains:
+  - harbor
+  edges:
+  - to: null share
+    rel_type: RELATED_TO
+- name: plausible type
+  definition: 'What a column actually holds -- an email, a phone number, a postal code, a category -- inferred from its profile, name and tags. A label, not a value.'
+  domains:
+  - harbor
+  edges:
+  - to: data profile
+    rel_type: PART_OF
+- name: value shape
+  definition: 'A value with each character reduced to its class: an upper-case letter A, a lower-case one a, a digit 9. A column whose values take several shapes holds several formats.'
+  domains:
+  - harbor
+  edges:
+  - to: data profile
+    rel_type: PART_OF
+- name: duplicate row
+  definition: 'A row that repeats another in every profiled column -- often one customer entered twice under two numbers.'
+  domains:
+  - harbor
+  edges:
+  - to: data profile
+    rel_type: PART_OF
+- name: placeholder value
+  definition: 'A value written where the real one was unknown -- 1900-01-01 for a date, 999999.99 for an amount -- that looks valid and distorts every measure taken over it.'
+  domains:
+  - harbor
+  edges:
+  - to: data profile
+    rel_type: RELATED_TO

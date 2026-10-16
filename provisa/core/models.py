@@ -1178,6 +1178,19 @@ class ViewMetricsSpec(BaseModel):  # REQ-1318
         return v
 
 
+def pending_profile_result_name(member: str, kind: str) -> str:  # REQ-2052
+    """The name a result table named by its member holds until the seed resolves its id."""
+    return f"{member}_profile_{kind}"
+
+
+def config_table_name(raw: dict) -> str:  # REQ-2052
+    """A configuration table's name as written: its ``table``, or -- a profile result named by its
+    member -- the pending name it holds until the seed resolves it."""
+    if raw.get("profile_of") is not None:
+        return pending_profile_result_name(raw["profile_of"], raw["kind"])
+    return raw["table"]
+
+
 class Table(
     BaseModel
 ):  # REQ-013, REQ-014, REQ-016, REQ-119, REQ-133, REQ-135, REQ-204, REQ-237, REQ-240, REQ-260, REQ-393
@@ -1271,6 +1284,13 @@ class Table(
     # REQ-1934: the Data Profiler source this table is a member of. A table belongs to at most one
     # profiler; the profiler's schedule profiles it and its result relations carry its history.
     profiler_source_id: str | None = None
+    # REQ-2052: a profile result table of a profiler source, named by its member and kind rather
+    # than by the member's id (which a configuration does not know): the seed resolves its name,
+    # <member>_<member's id>_profile_<kind> (provisa.profiler.schema), once the member is stored.
+    profile_of: str | None = None
+    profile_kind: str | None = Field(
+        default=None, validation_alias=AliasChoices("kind", "profile_kind")
+    )
     view_sql: str | None = None  # when set, table is a Provisa-managed view
     # REQ-1318: declarative metric-composed view definition; mutually exclusive with
     # view_sql (one view concept, two definition forms — validated below).
@@ -1397,6 +1417,23 @@ class Table(
                 f"parameters of the table (_nf_ columns); a fixed argument is no parameter"
             )
         return self
+
+    @model_validator(mode="before")
+    @classmethod
+    def _pending_profile_result_name(cls, data: Any) -> Any:
+        """REQ-2052: a result table named by ``profile_of`` and ``kind`` has no table name yet;
+        it takes the pending one, ``<member>_profile_<kind>``, until the seed resolves it."""
+        if not isinstance(data, dict) or data.get("profile_of") is None:
+            return data
+        kind = data.get("kind", data.get("profile_kind"))
+        if kind is None:
+            raise ValueError(f"table profile_of {data['profile_of']!r} names no kind")
+        if data.get("table", data.get("table_name")) is not None:
+            raise ValueError(
+                f"table profile_of {data['profile_of']!r}: its name is resolved from its member; "
+                "it names no table"
+            )
+        return {**data, "table": pending_profile_result_name(data["profile_of"], kind)}
 
     @model_validator(mode="after")
     def _validate_landing_filter(self) -> "Table":
