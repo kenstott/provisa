@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { maskSpecLabel, maskToLabel } from "../../lib/masks";
 import { grantLabel } from "../../lib/grants";
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
@@ -18,7 +19,7 @@ import type { NavigateFunction } from "react-router-dom";
 import type { RegisteredTable, DataProduct, Relationship, Source } from "../../types/admin";
 import type { ReplicaBuild } from "../../api/admin";
 import { ReplicatingMark } from "./ReplicatingMark";
-import { computeProfile } from "./helpers";
+import { computeProfile, masksSummary } from "./helpers";
 import { TagControl } from "../../components/TagControl";
 import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
 import { OwnerResolutionIcon } from "../../components/OwnerResolution";
@@ -587,7 +588,10 @@ export function TableReadView({
                                   ? ""
                                   : c.writableBy.map((e) => grantLabel(e, t)).join(", "),
                             },
-                            { label: t("tableReadView.colMasking"), value: c.maskType || "" },
+                            {
+                              label: t("tableReadView.colMasking"),
+                              value: c.masks === null ? "" : masksSummary(c.masks, t),
+                            },
                           ]}
                         >
                           <code>{c.columnName}</code>
@@ -721,33 +725,29 @@ export function TableReadView({
                           <Table.Td c={c.visibleTo === null ? "dimmed" : undefined}>
                             {c.visibleTo === null
                               ? t("tableReadView.notShown")
-                              : c.maskType || t("tableReadView.maskNone")}
+                              : c.masks !== null && masksSummary(c.masks, t)}
                           </Table.Td>
                         </>
                       )}
                     </Table.Tr>
-                    {tab === "access" && c.maskType && (
+                    {tab === "access" && c.masks !== null && c.masks.length > 0 && (
                       <Table.Tr>
-                        <Table.Td colSpan={2} c="dimmed" fz="0.75rem" pl="1.5rem">
-                          ↳{" "}
-                          {c.maskType === "regex"
-                            ? t("tableReadView.maskRegex", {
-                                pattern: c.maskPattern,
-                                replace: c.maskReplace,
-                              })
-                            : c.maskType === "constant"
-                              ? t("tableReadView.maskConstant", {
-                                  value: c.maskValue ?? t("tableReadView.maskConstantNull"),
-                                })
-                              : t("tableReadView.maskTruncate", { precision: c.maskPrecision })}
-                        </Table.Td>
-                        <Table.Td colSpan={2} c="dimmed" fz="0.75rem">
-                          {t("tableReadView.unmaskedTo", {
-                            list:
-                              c.unmaskedTo !== null && c.unmaskedTo.length > 0
-                                ? c.unmaskedTo.map((e) => grantLabel(e, t)).join(", ")
-                                : t("tableReadView.none"),
-                          })}
+                        <Table.Td
+                          colSpan={4}
+                          c="dimmed"
+                          fz="0.75rem"
+                          pl="1.5rem"
+                          data-testid={`mask-list-read-${c.columnName}`}
+                        >
+                          {c.masks.map((e, n) => (
+                            <div key={n}>
+                              {t("maskList.entryLine", {
+                                n: n + 1,
+                                to: maskToLabel(e.to, t),
+                                mask: maskSpecLabel(e.mask, t),
+                              })}
+                            </div>
+                          ))}
                         </Table.Td>
                       </Table.Tr>
                     )}

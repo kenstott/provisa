@@ -26,6 +26,7 @@ export function GrantPicker({
   label,
   disabled,
   testId,
+  grow,
 }: {
   options: { id: string; label: string }[];
   value: string[];
@@ -34,6 +35,8 @@ export function GrantPicker({
   label?: string;
   disabled?: boolean;
   testId?: string;
+  /** Fill the width it is given (a grid cell), its pills scrolling within it. */
+  grow?: boolean;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -58,8 +61,15 @@ export function GrantPicker({
   };
 
   return (
-    <Group gap={4} wrap="nowrap" align="flex-start" data-testid={testId}>
+    <Group
+      gap={4}
+      wrap="nowrap"
+      align="flex-start"
+      data-testid={testId}
+      style={grow ? { width: "100%", minWidth: 0 } : undefined}
+    >
       <MultiSelect
+        style={grow ? { flex: 1, minWidth: 0 } : undefined}
         options={shown}
         value={value}
         onChange={onChange}

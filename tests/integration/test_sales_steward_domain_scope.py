@@ -136,12 +136,12 @@ def _info(role_id: str) -> Any:
 
 
 async def _masked(table_id: int) -> Any:
+    from provisa.api.admin.types import MaskEntryInput, MaskSpecInput
     from provisa.api.mcp.table_edit import read_table, table_input
 
     edited = table_input(await read_table(table_id))
     column = next(c for c in edited.columns if c.name == "amount")
-    column.mask_type = "constant"
-    column.mask_value = "0"
+    column.masks = [MaskEntryInput(to=["*"], mask=MaskSpecInput(type="constant", value=0))]
     return edited
 
 
@@ -159,8 +159,19 @@ async def test_a_sales_steward_governs_sales_and_is_refused_finance(plane):
     async with plane.db.acquire() as conn:
         orders = {c["column_name"]: c for c in await load_columns(conn, plane.ids["orders"])}
         invoices = {c["column_name"]: c for c in await load_columns(conn, plane.ids["invoices"])}
-    assert orders["amount"]["mask_type"] == "constant"
-    assert invoices["amount"]["mask_type"] is None
+    assert orders["amount"]["masks"] == [
+        {
+            "to": ["*"],
+            "mask": {
+                "type": "constant",
+                "pattern": None,
+                "replace": None,
+                "value": 0,
+                "precision": None,
+            },
+        }
+    ]
+    assert invoices["amount"]["masks"] == []
 
     rule = RLSRuleInput(table_id="orders", role_id="analyst", filter_expr="1 = 1")
     assert (await m.upsert_rls_rule(steward, rule)).success

@@ -222,6 +222,9 @@ class OrgRuntime:
 
     # Governance / masking. (table_id, role_id) → {col: (rule, dtype)}.
     masking_rules: dict[Any, Any] = field(default_factory=dict)
+    # REQ-2059: each masked column as the masks were built from it -- (table id, column, its mask
+    # list, its data type) -- what a meta-role built later resolves its own masks from.
+    masked_columns: list[tuple[int, str, list[dict], str]] = field(default_factory=list)
 
     # Full source-row map from the DB, published by _rebuild_schemas so NativeEngineBackend can
     # attach dynamically registered sources that are not in state.config (YAML-only). Keyed by

@@ -14,12 +14,16 @@ fragment ColumnFields on TableColumnType {
   columnName
   visibleTo
   writableBy
-  unmaskedTo
-  maskType
-  maskPattern
-  maskReplace
-  maskValue
-  maskPrecision
+  masks {
+    to
+    mask {
+      type
+      pattern
+      replace
+      value
+      precision
+    }
+  }
   alias
   computedSqlAlias
   computedGqlAlias

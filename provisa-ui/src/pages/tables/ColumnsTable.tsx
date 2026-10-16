@@ -13,8 +13,8 @@
 // column state; updateCol mutates one column's one field.
 
 import { Tip } from "../../components/Tip";
-import { Fragment } from "react";
-import { Checkbox, Select, Stack, Table, Text, TextInput } from "@mantine/core";
+import { Fragment, useState } from "react";
+import { Button, Checkbox, Select, Table, Text, TextInput } from "@mantine/core";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useTranslation } from "react-i18next";
 
@@ -22,6 +22,9 @@ import { toIrType } from "../../irTypes";
 import { NumericSizeInputs } from "./NumericSizeInputs";
 import type { Role } from "../../types/auth";
 import type { ColumnForm } from "./types";
+import { MaskListEditor } from "../../components/MaskListEditor";
+import type { MaskEntry } from "../../lib/masks";
+import { masksSummary } from "./helpers";
 import { ColumnGlossaryHover, type ColumnDefinitionLine } from "./ColumnGlossaryHover";
 import { ColumnTabs } from "./ColumnTabs";
 import { METADATA_TABS, useColumnTab } from "./columnTopics";
@@ -34,7 +37,11 @@ export function ColumnsTable({
   sourceType,
 }: {
   columns: ColumnForm[];
-  updateCol: (i: number, key: keyof ColumnForm, value: string | boolean | string[]) => void;
+  updateCol: (
+    i: number,
+    key: keyof ColumnForm,
+    value: string | boolean | string[] | MaskEntry[],
+  ) => void;
   roles: Role[];
   irTypes: string[];
   sourceType: string;
@@ -42,6 +49,15 @@ export function ColumnsTable({
   const { t } = useTranslation();
   // A table not registered yet has no test data: its columns' own attributes only.
   const [tab, setTab] = useColumnTab(METADATA_TABS);
+  // The columns whose mask list is open below their row.
+  const [masksOpen, setMasksOpen] = useState<Set<string>>(new Set());
+  const toggleMasks = (column: string) =>
+    setMasksOpen((open) => {
+      const next = new Set(open);
+      if (next.has(column)) next.delete(column);
+      else next.add(column);
+      return next;
+    });
   // What Save will refuse, per tab: a selected column with no data type.
   const errors = { type: columns.filter((c) => c.selected && !c.dataType).length };
   const definitionOf = (col: ColumnForm): ColumnDefinitionLine[] => [
@@ -62,7 +78,7 @@ export function ColumnsTable({
     { label: t("registerTableForm.colHeaderScope"), value: col.scope },
     { label: t("registerTableForm.colHeaderVisibleTo"), value: col.visibleTo.join(", ") },
     { label: t("registerTableForm.colHeaderWritableBy"), value: col.writableBy.join(", ") },
-    { label: t("registerTableForm.colHeaderMasking"), value: col.maskType },
+    { label: t("registerTableForm.colHeaderMasking"), value: masksSummary(col.masks, t) },
   ];
   return (
     <>
@@ -236,78 +252,28 @@ export function ColumnsTable({
                         />
                       </Table.Td>
                       <Table.Td>
-                        <Select
-                          aria-label={t("registerTableForm.colHeaderMasking")}
-                          data={[
-                            { value: "", label: t("registerTableForm.maskNone") },
-                            { value: "regex", label: t("registerTableForm.maskRegex") },
-                            { value: "constant", label: t("registerTableForm.maskConstant") },
-                            { value: "truncate", label: t("registerTableForm.maskTruncate") },
-                          ]}
-                          value={col.maskType}
-                          onChange={(v) => updateCol(i, "maskType", v ?? "")}
-                          allowDeselect={false}
-                        />
+                        <Button
+                          variant="subtle"
+                          size="xs"
+                          aria-expanded={masksOpen.has(col.name)}
+                          onClick={() => toggleMasks(col.name)}
+                          data-testid={`register-mask-toggle-${col.name}`}
+                        >
+                          {masksSummary(col.masks, t)}
+                        </Button>
                       </Table.Td>
                     </>
                   )}
                 </Table.Tr>
-                {tab === "access" && col.maskType && (
+                {tab === "access" && masksOpen.has(col.name) && (
                   <Table.Tr>
                     <Table.Td></Table.Td>
-                    <Table.Td c="dimmed" fz="xs">
-                      {t("registerTableForm.maskingRowLabel")}
-                    </Table.Td>
-                    {col.maskType === "regex" && (
-                      <Table.Td colSpan={2}>
-                        <Stack gap={4}>
-                          <TextInput
-                            value={col.maskPattern}
-                            onChange={(e) => updateCol(i, "maskPattern", e.currentTarget.value)}
-                            placeholder={t("registerTableForm.maskPatternPlaceholder")}
-                            aria-label={t("registerTableForm.maskPatternPlaceholder")}
-                          />
-                          <TextInput
-                            value={col.maskReplace}
-                            onChange={(e) => updateCol(i, "maskReplace", e.currentTarget.value)}
-                            placeholder={t("registerTableForm.maskReplacePlaceholder")}
-                            aria-label={t("registerTableForm.maskReplacePlaceholder")}
-                          />
-                        </Stack>
-                      </Table.Td>
-                    )}
-                    {col.maskType === "constant" && (
-                      <Table.Td colSpan={2}>
-                        <TextInput
-                          value={col.maskValue}
-                          onChange={(e) => updateCol(i, "maskValue", e.currentTarget.value)}
-                          placeholder={t("registerTableForm.maskValuePlaceholder")}
-                          aria-label={t("registerTableForm.maskValuePlaceholder")}
-                        />
-                      </Table.Td>
-                    )}
-                    {col.maskType === "truncate" && (
-                      <Table.Td colSpan={2}>
-                        <Select
-                          aria-label={t("registerTableForm.maskPrecisionPlaceholder")}
-                          placeholder={t("registerTableForm.maskPrecisionPlaceholder")}
-                          data={[
-                            { value: "year", label: t("registerTableForm.precisionYear") },
-                            { value: "month", label: t("registerTableForm.precisionMonth") },
-                            { value: "day", label: t("registerTableForm.precisionDay") },
-                            { value: "hour", label: t("registerTableForm.precisionHour") },
-                          ]}
-                          value={col.maskPrecision || null}
-                          onChange={(v) => updateCol(i, "maskPrecision", v ?? "")}
-                        />
-                      </Table.Td>
-                    )}
-                    <Table.Td>
-                      <TextInput
-                        value={col.unmaskedTo}
-                        onChange={(e) => updateCol(i, "unmaskedTo", e.currentTarget.value)}
-                        placeholder={t("registerTableForm.unmaskedToPlaceholder")}
-                        aria-label={t("registerTableForm.unmaskedToPlaceholder")}
+                    <Table.Td colSpan={4}>
+                      <MaskListEditor
+                        value={col.masks}
+                        onChange={(next) => updateCol(i, "masks", next)}
+                        roleOptions={roles.map((r) => ({ id: r.id, label: r.id }))}
+                        testId={`register-mask-list-${col.name}`}
                       />
                     </Table.Td>
                   </Table.Tr>

@@ -44,20 +44,27 @@ from provisa.core.models import Column, ProvisaConfig, Table
 def _mask_tags(
     table: Table, column: Column, all_roles: tuple[str, ...], org_id: str | None
 ) -> list[GovernanceTag]:
-    if column.mask_type is None:
-        return []
-    exempt = tuple(sorted(column.unmasked_to))
+    """One tag per entry of the column's mask list that masks (REQ-2059): the roles that read the
+    column through it are restricted by it, the roles that read it unmasked are exempt."""
+    from provisa.security.masking import entry_for
+
+    masks = [e.model_dump() for e in column.masks]
+    reads = {r: entry_for(masks, [r]) for r in all_roles}
+    exempt = tuple(sorted(r for r, i in reads.items() if i is None or masks[i]["mask"] is None))
+    uri = column_uri(org_id, table, column.name, column.alias)
     return [
         GovernanceTag(
             asset=column_ref(table, column.name),
             signal=GovernanceSignal.MASKED,
-            # Identifies the rule without carrying it: the masked asset and the mask KIND.
-            # mask_pattern / mask_replace / mask_value are the policy body and stay in Provisa.
+            # Identifies the rule without carrying it: the masked asset, the entry and the mask
+            # KIND. The pattern, replacement and value are the policy body and stay in Provisa.
             # REQ-1385: the governed element is addressed by its URN, not physical coordinates.
-            rule_id=f"mask:{column_uri(org_id, table, column.name, column.alias)}:{column.mask_type}",
-            restricted_roles=tuple(r for r in all_roles if r not in column.unmasked_to),
+            rule_id=f"mask:{uri}:{i}:{entry['mask']['type']}",
+            restricted_roles=tuple(r for r in all_roles if reads[r] == i),
             exempt_roles=exempt,
         )
+        for i, entry in enumerate(masks)
+        if entry["mask"] is not None
     ]
 
 

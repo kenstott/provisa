@@ -163,12 +163,10 @@ def _model(monkeypatch):
                     column_name=c,
                     visible_to=["analyst"],
                     writable_by=[],
-                    unmasked_to=["registrar"],
-                    mask_type="constant",
-                    mask_pattern=None,
-                    mask_replace=None,
-                    mask_value="***",
-                    mask_precision=None,
+                    masks=[
+                        {"to": ["registrar"], "mask": None},
+                        {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+                    ],
                 )
                 for c in _COLUMNS[row["id"]]
             ],
@@ -286,8 +284,7 @@ async def test_grant_lists_and_masks_are_withheld_without_view_governance(role):
         assert table.view_sql is None
         for column in table.columns:
             assert column.visible_to is None and column.writable_by is None
-            assert column.unmasked_to is None
-            assert column.mask_type is None and column.mask_value is None
+            assert column.masks is None
 
 
 @pytest.mark.parametrize("role", ["auditor", "registrar_all"])
@@ -297,8 +294,10 @@ async def test_view_governance_reads_them(role):
     for table in tables:
         assert table.view_sql == "SELECT 1"
         for column in table.columns:
-            assert column.visible_to == ["analyst"] and column.unmasked_to == ["registrar"]
-            assert column.mask_type == "constant" and column.mask_value == "***"
+            assert column.visible_to == ["analyst"]
+            assert (
+                column.masks[0]["to"] == ["registrar"] and column.masks[1]["mask"]["value"] == "***"
+            )
 
 
 async def test_view_governance_does_not_widen_what_is_listed():

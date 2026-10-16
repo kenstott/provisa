@@ -31,10 +31,16 @@ def _tm(table_id: int) -> SimpleNamespace:
     return SimpleNamespace(table_id=table_id)
 
 
+_EMAIL_MASKS = [
+    {"to": ["boss"], "mask": None},
+    {"to": ["*"], "mask": {"type": "constant", "value": None}},
+]
+
+
 def _state(*, rls: dict[str, RLSContext], reads: dict[str, list[int]], roles: dict[str, dict]):
     columns = [
-        {"column_name": "region", "visible_to": ["east", "west"], "unmasked_to": ["boss"]},
-        {"column_name": "email", "visible_to": ["east", "west", "boss"], "unmasked_to": ["boss"]},
+        {"column_name": "region", "visible_to": ["east", "west"]},
+        {"column_name": "email", "visible_to": ["east", "west", "boss"]},
     ]
     tables = [{"id": 1, "domain_id": "sales", "columns": columns}]
     built: dict = {}
@@ -45,6 +51,8 @@ def _state(*, rls: dict[str, RLSContext], reads: dict[str, list[int]], roles: di
             r: SimpleNamespace(tables={str(t): _tm(t) for t in ids}) for r, ids in reads.items()
         },
         masking_rules={(1, r): {"email": ("mask", "varchar")} for r in roles if r != "boss"},
+        # REQ-2059: email is unmasked to boss, and masked to NULL for everyone else.
+        masked_columns=[(1, "email", _EMAIL_MASKS, "varchar")],
         tracked_functions={},
         tracked_webhooks={},
         meta_roles={},
@@ -165,7 +173,9 @@ def test_masked_for_every_member_stays_masked_and_grants_reach_the_child():
         roles={"east": _role("east", max_rows=10), "west": _role("west", max_rows=50)},
     )
     meta = ensure_meta_role(state, ["east", "west"])
-    assert state.masking_rules[(1, meta)] == {"email": ("mask", "varchar")}
+    [(rule, data_type)] = state.masking_rules[(1, meta)].values()
+    assert (rule.mask_type.value, rule.value, data_type) == ("constant", None, "varchar")
+    assert list(state.masking_rules[(1, meta)]) == ["email"]
     columns = state.role_build_inputs["tables"][0]["columns"]
     assert meta in columns[0]["visible_to"] and meta in columns[1]["visible_to"]
     assert state.roles[meta]["max_rows"] == 50

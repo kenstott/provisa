@@ -53,9 +53,10 @@ CONTRACT = [
     {
         "name": "ssn",
         "type": "varchar",
-        "mask_type": "constant",
-        "mask_value": "***",
-        "unmasked_to": ["org_admin"],
+        "masks": [
+            {"to": ["org_admin"], "mask": None},
+            {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+        ],
     },
     {"name": "amount", "type": "double", "visible_to": ["org_admin"]},
 ]
@@ -108,15 +109,16 @@ class TestContract:
                 },
             },
         }
+        # A JSON schema declares no masks (REQ-2059): each column's list is empty.
         assert contract_columns(fn) == [
-            {"name": "id", "type": "integer"},
-            {"name": "ok", "type": "boolean"},
+            {"name": "id", "type": "integer", "masks": []},
+            {"name": "ok", "type": "boolean", "masks": []},
         ]
 
     def test_json_string_column_is_read(self):
         assert contract_columns(
             {"name": "f", "output_columns": '[{"name":"x","type":"varchar"}]'}
-        ) == [{"name": "x", "type": "varchar"}]
+        ) == [{"name": "x", "type": "varchar", "visible_to": None, "masks": []}]
 
     def test_scalar_return_has_no_contract(self):
         assert contract_columns({"name": "f", "returns": "String"}) is None

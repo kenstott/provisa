@@ -20,6 +20,7 @@ Type validation ensures invalid combinations are rejected at config load time.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from provisa.compiler.sql_literals import sql_literal
@@ -303,3 +304,95 @@ def apply_mask_to_value(rule: MaskingRule, value, data_type: str):  # REQ-040, R
             "a faked column is computed by the engine; a row outside a read cannot show its fake"
         )
     raise MaskingValidationError(f"Unknown mask type: {rule.mask_type!r}")
+
+
+# --------------------------------------------------------------------------- #
+# REQ-2059: a column's ordered mask list
+# --------------------------------------------------------------------------- #
+
+#: A mask entry for every reader. It matches any reader, so entries after it are never reached.
+EVERYONE = "*"
+
+
+def holds_mask_entry(to: list[str], chain: list[str]) -> bool:
+    """Whether a reader whose roles (each with its ancestors, and the pseudo-roles it acts with)
+    are ``chain`` holds a mask entry granted ``to``: everyone, or any of its grant entries
+    (composites included, REQ-2058)."""
+    from provisa.security.inheritance import holds_entry
+
+    return EVERYONE in to or any(holds_entry(e, chain) for e in to)
+
+
+def entry_for(masks: list[dict], chain: list[str]) -> int | None:
+    """The index of the first entry of ``masks`` the reader holds, or None when it holds none."""
+    return next((i for i, e in enumerate(masks) if holds_mask_entry(e["to"], chain)), None)
+
+
+def rule_of(mask: dict) -> MaskingRule:
+    """The masking rule of a mask entry's ``mask`` ({type, pattern, replace, value, precision})."""
+    return MaskingRule(
+        mask_type=MaskType(mask["type"]),
+        pattern=mask.get("pattern"),
+        replace=mask.get("replace"),
+        value=mask.get("value"),
+        precision=mask.get("precision"),
+    )
+
+
+def resolve(masks: list[dict], chain: list[str]) -> MaskingRule | None:
+    """The rule the reader reads the column through: the first entry it holds decides, and an
+    entry with no mask, or no entry held, leaves it unmasked."""
+    i = entry_for(masks, chain)
+    if i is None or masks[i].get("mask") is None:
+        return None
+    return rule_of(masks[i]["mask"])
+
+
+def reader_masks(
+    masked_columns: list[tuple[int, str, list[dict], str]], reader_id: str, chain: list[str]
+) -> dict[tuple[int, str], dict[str, tuple[MaskingRule, str]]]:
+    """The masks of one reader (a role or a meta-role, its chain ``chain``) over
+    ``masked_columns`` -- (table id, column, mask list, data type) -- keyed as
+    ``state.masking_rules`` is: {(table id, reader): {column: (rule, data type)}}."""
+    out: dict[tuple[int, str], dict[str, tuple[MaskingRule, str]]] = {}
+    for table_id, column, masks, data_type in masked_columns:
+        rule = resolve(masks, chain)
+        if rule is not None:
+            out.setdefault((table_id, reader_id), {})[column] = (rule, data_type)
+    return out
+
+
+def masks_report(masks: list[dict], chain_of: Any, roles: list[str] | None = None) -> dict:
+    """What the editor shows about a mask list (REQ-2059), from ``chain_of(role id)`` -- a role's
+    chain (itself and its ancestors; a pseudo-role's, its parent):
+
+    - ``unreachable``: each entry no reader reaches, with the earlier entry that covers it
+      (``covered_by``, None for an entry granted to no one). Holding is monotonic -- a reader
+      holding more holds every entry it held -- so an entry's grant is reached only if the
+      reader holding exactly that grant's roles reaches it;
+    - ``unlisted_unmasked``: the list is not empty and has no entry for everyone, so a reader it
+      does not list reads the column unmasked;
+    - ``applies``: with ``roles``, the entry a reader acting as them reads the column through
+      (None: unmasked by no entry)."""
+    from provisa.security.inheritance import grant_parts
+
+    def chain(parts: Iterable[str]) -> list[str]:
+        out: list[str] = []
+        for p in parts:
+            out += [r for r in chain_of(p) if r not in out]
+        return out
+
+    unreachable = []
+    for i, entry in enumerate(masks):
+        firsts = [
+            entry_for(masks, chain(() if grant == EVERYONE else grant_parts(grant)))
+            for grant in entry["to"]
+        ]
+        if i not in firsts:
+            covers = [j for j in firsts if j is not None]
+            unreachable.append({"entry": i, "covered_by": min(covers) if covers else None})
+    return {
+        "unreachable": unreachable,
+        "unlisted_unmasked": bool(masks) and not any(EVERYONE in e["to"] for e in masks),
+        "applies": None if roles is None else entry_for(masks, chain(roles)),
+    }

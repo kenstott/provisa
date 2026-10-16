@@ -32,7 +32,6 @@ from provisa.auth.pseudo_roles import (
 )
 from provisa.security import meta_role
 from provisa.security.inheritance import expand_grants
-from provisa.security.masking import MaskingRule, MaskType
 
 
 class TestHolding:
@@ -100,34 +99,39 @@ class TestNaming:
 class TestTheMetaRole:
     def test_a_grant_to_a_qualifier_reaches_the_meta_role(self):
         meta = "meta:analyst+region+region__eu"
-        col = {"column_name": "email", "unmasked_to": ["region__eu"], "visible_to": ["analyst"]}
+        col = {"column_name": "email", "visible_to": ["analyst", "region__eu"]}
         expand_grants([col], {meta: [meta, "analyst", "region", "region__eu"]})
-        assert meta in col["unmasked_to"] and meta in col["visible_to"]
+        assert meta in col["visible_to"]
 
-    def test_only_a_qualifiers_grant_lifts_a_mask_and_never_a_fake(self):
+    def test_a_mask_entry_naming_a_qualifier_applies_to_the_meta_role(self):
+        # REQ-2059: the meta-role reads each list with its chain, the qualifiers in it.
+        from provisa.security.masking import reader_masks
+
         meta = "meta:analyst+region__eu"
-        mask = MaskingRule(mask_type=MaskType.constant, value=None)
-        fake = MaskingRule(mask_type=MaskType.fake, fake="name")
-        masks = {(1, meta): {"email": mask, "name": fake, "phone": mask}}
-        tables = [
-            {
-                "id": 1,
-                "columns": [
-                    {"column_name": "email", "unmasked_to": ["region__eu", meta]},
-                    {"column_name": "name", "unmasked_to": [meta]},
-                    {"column_name": "phone", "unmasked_to": ["org_admin"]},
-                ],
-            }
+        everyone = {"to": ["*"], "mask": {"type": "constant", "value": None}}
+        masked = [
+            (1, "email", [{"to": ["region__eu"], "mask": None}, everyone], "varchar"),
+            (1, "phone", [{"to": ["org_admin"], "mask": None}, everyone], "varchar"),
         ]
-        lifted = meta_role._lift_qualified(masks, tables, meta)
-        assert set(lifted[(1, meta)]) == {"name", "phone"}
+        out = reader_masks(
+            masked,
+            meta,
+            meta_role.meta_chain(meta, ["analyst"], {"analyst": ["analyst"]}, ("region__eu",)),
+        )
+        assert set(out[(1, meta)]) == {"phone"}
 
-    def test_a_qualifier_is_no_member_of_the_mask_intersection(self):
-        # As a member with no masks it would unmask every column the data members mask.
-        mask = MaskingRule(mask_type=MaskType.constant, value=None)
-        rules = {(1, "analyst"): {"email": mask}}
-        assert meta_role.meta_masks(rules, "meta:m", ["analyst"]) == {
-            (1, "meta:m"): {"email": mask}
+    def test_a_qualifier_does_not_unmask_past_an_earlier_entry(self):
+        # A member's own entry before the qualifier's applies first (deny by order).
+        from provisa.security.masking import reader_masks
+
+        meta = "meta:analyst+region__eu"
+        masks = [
+            {"to": ["analyst"], "mask": {"type": "constant", "value": None}},
+            {"to": ["region__eu"], "mask": None},
+        ]
+        chain = meta_role.meta_chain(meta, ["analyst"], {"analyst": ["analyst"]}, ("region__eu",))
+        assert set(reader_masks([(1, "email", masks, "varchar")], meta, chain)[(1, meta)]) == {
+            "email"
         }
 
 

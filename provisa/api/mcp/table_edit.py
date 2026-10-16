@@ -99,18 +99,19 @@ def _live_input(live: Any) -> Any:
 
 
 def _column_input(c: Any) -> Any:
-    from provisa.api.admin.types import ColumnInput
+    from provisa.api.admin.types import ColumnInput, MaskEntryInput, MaskSpecInput
 
     return ColumnInput(
         name=c.column_name,
         visible_to=list(c.visible_to),
         writable_by=list(c.writable_by),
-        unmasked_to=list(c.unmasked_to),
-        mask_type=c.mask_type or None,
-        mask_pattern=c.mask_pattern or None,
-        mask_replace=c.mask_replace or None,
-        mask_value=c.mask_value or None,
-        mask_precision=c.mask_precision or None,
+        masks=[
+            MaskEntryInput(
+                to=list(e.to),
+                mask=None if e.mask is None else MaskSpecInput(**vars(e.mask)),
+            )
+            for e in c.masks
+        ],
         alias=c.alias or None,
         description=c.description or None,
         data_type=c.data_type or None,

@@ -40,12 +40,7 @@ def _column(name: str, **governance):
     fields = {
         "visible_to": [],
         "writable_by": [],
-        "unmasked_to": [],
-        "mask_type": None,
-        "mask_pattern": None,
-        "mask_replace": None,
-        "mask_value": None,
-        "mask_precision": None,
+        "masks": [],
     }
     fields.update(governance)
     return types.SimpleNamespace(name=name, description=None, **fields)
@@ -58,10 +53,10 @@ def _stored_columns():
             "email",
             visible_to=["analyst", "auditor"],
             writable_by=["steward"],
-            unmasked_to=["auditor"],
-            mask_type="regex",
-            mask_pattern=".+@",
-            mask_replace="***@",
+            masks=[
+                {"to": ["auditor"], "mask": None},
+                {"to": ["*"], "mask": {"type": "regex", "pattern": ".+@", "replace": "***@"}},
+            ],
         ),
         _column("id"),
     ]
@@ -125,9 +120,8 @@ async def test_a_save_without_view_governance_leaves_every_stored_grant_and_mask
         ("visible_to", ["analyst"]),
         ("visible_to", ["analyst", "auditor"]),  # the stored value itself: no oracle
         ("writable_by", ["analyst"]),
-        ("unmasked_to", ["analyst"]),
-        ("mask_type", "constant"),
-        ("mask_value", "***"),
+        ("masks", [{"to": ["analyst"], "mask": None}]),
+        ("masks", [{"to": ["*"], "mask": {"type": "constant", "value": "***"}}]),
     ],
 )
 async def test_an_attempt_to_set_one_is_refused_by_name(monkeypatch, field, value):
@@ -148,11 +142,11 @@ async def test_a_save_that_sets_nothing_is_not_refused(monkeypatch):
 
 async def test_a_caller_holding_view_governance_saves_what_it_sends(monkeypatch):
     info, _ = grant(monkeypatch, "table_registration", "view_governance")
-    sent = _save(_column("email", visible_to=["analyst"], mask_type=None), _column("id"))
+    sent = _save(_column("email", visible_to=["analyst"], masks=[]), _column("id"))
     before = copy.deepcopy(_governance(sent.columns))
     saved = await keep_governance(info, sent)
     assert _governance(saved.columns) == before
-    assert saved.columns[0].visible_to == ["analyst"] and saved.columns[0].unmasked_to == []
+    assert saved.columns[0].visible_to == ["analyst"] and saved.columns[0].masks == []
 
 
 async def test_a_column_the_table_does_not_have_yet_is_saved_open(monkeypatch):
@@ -160,7 +154,7 @@ async def test_a_column_the_table_does_not_have_yet_is_saved_open(monkeypatch):
     saved = await keep_governance(info, _save(_column("email"), _column("id"), _column("phone")))
     by_name = _governance(saved.columns)
     assert by_name["email"] == _governance(_stored_columns())["email"]
-    assert by_name["phone"]["visible_to"] == [] and by_name["phone"]["mask_type"] is None
+    assert by_name["phone"]["visible_to"] == [] and by_name["phone"]["masks"] == []
     assert governance_sets(info, _save(_column("phone", visible_to=["analyst"]))) == [
         "phone.visible_to"
     ]
@@ -223,10 +217,7 @@ async def test_a_tool_that_writes_the_stored_table_back_is_what_the_guard_refuse
     assert governance_sets(info, written_back) == [
         "email.visible_to",
         "email.writable_by",
-        "email.unmasked_to",
-        "email.mask_type",
-        "email.mask_pattern",
-        "email.mask_replace",
+        "email.masks",
     ]
 
 

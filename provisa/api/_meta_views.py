@@ -212,11 +212,10 @@ _META_TABLE_VIEWS: dict[str, str] = {
                CAST(table_id AS TEXT) || ':' || column_name AS column_key,
                data_type, is_primary_key,
                alias, description, path, scope,
-               mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
+               masks,
                native_filter_type, is_foreign_key, is_alternate_key,
                object_fields,
                visible_to,
-               unmasked_to,
                writable_by,
                tenant_id
         FROM table_columns

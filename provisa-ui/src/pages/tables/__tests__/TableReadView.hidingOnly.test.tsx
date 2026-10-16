@@ -145,7 +145,7 @@ describe("TableReadView for a table with a required parameter", () => {
     columnName: "_nf_owner",
     visibleTo: [],
     writableBy: [],
-    unmaskedTo: [],
+    masks: [],
     scope: "domain",
     nativeFilterType: "query_param",
     nativeFilterRequired: true,
@@ -223,8 +223,7 @@ describe("TableReadView — a column's test data is the fourth tab", () => {
     columnName: "email",
     visibleTo: [],
     writableBy: [],
-    unmaskedTo: [],
-    maskType: null,
+    masks: [],
     isPrimaryKey: false,
   };
   const withColumns = (...columns: object[]) =>

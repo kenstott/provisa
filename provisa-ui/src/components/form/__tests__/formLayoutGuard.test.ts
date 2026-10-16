@@ -34,6 +34,8 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "components/RegionSelector.tsx": "the region switch in the page header",
   "components/GrantPicker.tsx":
     "one reusable control (a grant list and its combine popover), placed by the form that uses it",
+  "components/MaskListEditor.tsx":
+    "one reusable control (a column's ordered mask list), placed by the form that uses it",
   "pages/tables/DescriptionField.tsx": "one reusable control, placed by the form that uses it",
   "pages/tables/VectorModelCell.tsx": "one reusable control, placed by the form that uses it",
   "pages/tables/NumericSizeInputs.tsx": "one reusable control, placed by the form that uses it",

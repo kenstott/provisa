@@ -11,7 +11,7 @@
 """Taking a role off an object's grants (REQ-1918).
 
 A role cannot be deleted while a grant names it. The grants are lists of role ids on the object:
-a table's columns (``visible_to``, ``writable_by``, ``unmasked_to``), a metric's ``visible_to``,
+a table's columns (``visible_to``, ``writable_by``, each mask entry's ``to``), a metric's ``visible_to``,
 a command's and a webhook's assigned roles (``visible_to``). Removing the role from them is an
 edit of that object, written here through the model store, one object at a time.
 """
@@ -46,7 +46,10 @@ async def _revoke(
     changed = False
     for row in rows:
         values = {c: list(getattr(row, c) or []) for c in lists}
-        kept = {c: [r for r in v if r != role_id] for c, v in values.items()}
+        kept = {
+            c: [_without(r, role_id) for r in v] if c == "masks" else [r for r in v if r != role_id]
+            for c, v in values.items()
+        }
         if kept != values:
             await conn.execute_core(
                 update(table).where(table.c[key] == getattr(row, key)).values(**kept)
@@ -55,15 +58,20 @@ async def _revoke(
     return changed
 
 
+def _without(entry: dict, role_id: str) -> dict:
+    """A mask entry (REQ-2059) with ``role_id`` taken off its ``to``; the entry keeps its place."""
+    return {**entry, "to": [r for r in entry["to"] if r != role_id]}
+
+
 async def revoke_from_table(conn: "Connection", table_id: int, role_id: str) -> bool | None:
-    """Take ``role_id`` off every column grant of the table: read, write and unmasked."""
+    """Take ``role_id`` off every column grant of the table: read, write and its mask entries."""
     model_change.name("revoke", "table grants", f"{role_id} on table {table_id}")
     return await _revoke(
         conn,
         table_columns,
         "id",
         table_columns.c.table_id == table_id,
-        ("visible_to", "writable_by", "unmasked_to"),
+        ("visible_to", "writable_by", "masks"),
         role_id,
     )
 

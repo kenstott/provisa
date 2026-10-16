@@ -87,10 +87,17 @@ def snapshot():
                         name="ssn",
                         data_type="text",
                         visible_to=["admin"],
-                        mask_type="regex",
-                        mask_pattern=r"(\d{3})-(\d{2})-(\d{4})",
-                        mask_replace="XXX",
-                        unmasked_to=["admin"],
+                        masks=[
+                            {"to": ["admin"], "mask": None},
+                            {
+                                "to": ["*"],
+                                "mask": {
+                                    "type": "regex",
+                                    "pattern": r"(\d{3})-(\d{2})-(\d{4})",
+                                    "replace": "XXX",
+                                },
+                            },
+                        ],
                     ),
                 ],
             )

@@ -48,6 +48,8 @@ class RoleState(SimpleNamespace):
         attrs.setdefault("user_attributes", {})
         attrs.setdefault("settings_overrides", {"claim_roles": []})
         attrs.setdefault("meta_qualifiers", {})
+        # As the real state of a generation no request has acted as a set of roles in yet.
+        attrs.setdefault("meta_roles", {})
         super().__init__(surfaces=surfaces, **attrs)
         for name, values in parts.items():
             set_part(self, _PARTS[name], values)

@@ -210,7 +210,7 @@ class GovernanceTag:  # REQ-039, REQ-040, REQ-1071
     asset: AssetRef
     signal: GovernanceSignal
     rule_id: str
-    # Roles the restriction applies to, and roles exempt from it (``unmasked_to`` for masking).
+    # Roles the restriction applies to, and roles exempt from it (those reading a column unmasked).
     # Naming who is restricted and who is not is an access fact the catalog needs; the rule
     # that computes the value is not. Both are recorded because neither implies the other —
     # an RLS rule names the role it filters, a mask names the roles it spares.

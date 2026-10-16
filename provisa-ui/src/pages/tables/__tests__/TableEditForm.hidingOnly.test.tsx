@@ -94,12 +94,7 @@ const EMAIL = {
   columnName: "email",
   visibleTo: [],
   writableBy: [],
-  unmaskedTo: [],
-  maskType: null,
-  maskPattern: null,
-  maskReplace: null,
-  maskValue: null,
-  maskPrecision: null,
+  masks: [],
   alias: null,
   computedSqlAlias: "email",
   computedGqlAlias: "email",
@@ -178,7 +173,9 @@ describe("TableEditForm for a governance-only editor (REQ-1944)", () => {
     expect(control(row(), "Data Type")).toBeDisabled();
     expect(control(row(), "Primary Key")).toBeDisabled();
     fireEvent.click(screen.getByTestId("column-tab-access"));
-    expect(control(row(), "Masking")).not.toBeDisabled();
+    // REQ-2059: the column's mask list opens under its row, and can be started there.
+    fireEvent.click(screen.getByTestId("mask-toggle-email"));
+    expect(screen.getByTestId("mask-list-email-start")).not.toBeDisabled();
     expect(control(row(), "Visible To (Read)")).not.toBeDisabled();
   });
 

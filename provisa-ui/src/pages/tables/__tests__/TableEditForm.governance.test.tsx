@@ -132,12 +132,7 @@ const EMAIL = {
   columnName: "email",
   visibleTo: [],
   writableBy: [],
-  unmaskedTo: [],
-  maskType: null,
-  maskPattern: null,
-  maskReplace: null,
-  maskValue: null,
-  maskPrecision: null,
+  masks: [],
   alias: null,
   computedSqlAlias: "email",
   computedGqlAlias: "email",
@@ -154,23 +149,16 @@ const EMAIL = {
 
 const H = en.tableEditForm;
 const GOVERNANCE_HEADERS = [H.visibleToHeader, H.writableByHeader, H.maskingHeader];
-const GOVERNANCE_KEYS = [
-  "writableBy",
-  "unmaskedTo",
-  "maskType",
-  "maskPattern",
-  "maskReplace",
-  "maskValue",
-  "maskPrecision",
-];
+const GOVERNANCE_KEYS = ["writableBy", "masks"];
 
 const SHOWN = {
   ...EMAIL,
   visibleTo: ["analyst"],
   writableBy: ["steward"],
-  unmaskedTo: ["auditor"],
-  maskType: "constant",
-  maskValue: "***",
+  masks: [
+    { to: ["auditor"], mask: null },
+    { to: ["*"], mask: { type: "constant", value: "***" } },
+  ],
 } as TableColumn;
 
 // What the server answers a caller without view_governance: null lists, null mask.
@@ -178,7 +166,7 @@ const WITHHELD = {
   ...EMAIL,
   visibleTo: null,
   writableBy: null,
-  unmaskedTo: null,
+  masks: null,
 } as unknown as TableColumn;
 
 describe("the table editor for a caller who is shown governance", () => {
@@ -198,9 +186,10 @@ describe("the table editor for a caller who is shown governance", () => {
       name: "email",
       visibleTo: ["analyst"],
       writableBy: ["steward"],
-      unmaskedTo: ["auditor"],
-      maskType: "constant",
-      maskValue: "***",
+      masks: [
+        { to: ["auditor"], mask: null },
+        { to: ["*"], mask: { type: "constant", value: "***" } },
+      ],
     });
   });
 });

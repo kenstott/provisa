@@ -150,8 +150,7 @@ const TABLES = [
         description: null,
         visibleTo: [],
         writableBy: [],
-        unmaskedTo: [],
-        maskType: null,
+        masks: [],
         scope: null,
         // A remote GraphQL table's required argument: a query_param the registration records
         // as required (#204).

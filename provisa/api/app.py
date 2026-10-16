@@ -856,6 +856,14 @@ class AppState:
         self._active_runtime().masking_rules = value
 
     @property
+    def masked_columns(self) -> list[tuple[int, str, list[dict], str]]:
+        return self._active_runtime().masked_columns
+
+    @masked_columns.setter
+    def masked_columns(self, value: list[tuple[int, str, list[dict], str]]) -> None:
+        self._active_runtime().masked_columns = value
+
+    @property
     def tables(self) -> list[dict]:
         # REQ-263/264/265: full table+column dicts (with visible_to) for every registered
         # table, populated once per org at schema-load time; the raw-SQL governance path
@@ -2706,7 +2714,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             ).fetchall()
         ]
         # REQ-1677: fold each role's inheritance chain into the build's own copies here, once, so
-        # every role-keyed lookup below (rights, visibility, writable_by, unmasked_to, RLS) sees
+        # every role-keyed lookup below (rights, visibility, writable_by, RLS) sees
         # the inherited grants under the acting role's own id.
         from provisa.security.inheritance import (
             expand_column_grants,
@@ -4249,6 +4257,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.claim_roles_router import router as claim_roles_router
 
     app.include_router(claim_roles_router)  # REQ-2057
+    from provisa.api.admin.masks_router import router as masks_router
+
+    app.include_router(masks_router)  # REQ-2059
     from provisa.api.admin.creation_requests_router import router as creation_requests_router
 
     app.include_router(creation_requests_router)

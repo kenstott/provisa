@@ -50,9 +50,10 @@ def server():
         if column["name"] == "id":
             column["is_primary_key"] = True
         if column["name"] == "region":
-            column["unmasked_to"] = ["org_admin"]
-            column["mask_type"] = "constant"
-            column["mask_value"] = "MASKED"
+            column["masks"] = [
+                {"to": ["org_admin"], "mask": None},
+                {"to": ["*"], "mask": {"type": "constant", "value": "MASKED"}},
+            ]
     boot = WorkerBoot(
         1,
         pg_host=_PG_HOST,

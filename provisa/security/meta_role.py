@@ -18,9 +18,10 @@ stored, listed or exported. The whole pipeline then runs with it as an ordinary 
 Everything a role is granted reaches the child exactly as role inheritance gives it
 (security/inheritance.py), so the set acts with the union of its members' rights, grant-if-any:
 
-- grant lists — column ``visible_to``, ``writable_by`` and ``unmasked_to``; metric and command
-  (function and webhook) ``visible_to`` — gain the child wherever they name a member, so a
-  column is masked for the child only when it is masked for every member;
+- grant lists — column ``visible_to`` and ``writable_by``; metric and command (function and
+  webhook) ``visible_to`` — gain the child wherever they name a member;
+- a column's ordered mask list (REQ-2059) is read for the child as for any role: the first entry
+  its own chain (every member's, with their ancestors and qualifiers) holds applies;
 - capabilities and domain_access are unioned; the row cap and rate limit are the least
   restrictive.
 
@@ -157,50 +158,53 @@ def _rls(state: Any, members: list[dict], tables: list[dict]) -> Any:
     return RLSContext(rules=rules, domain_rules={}, action_rules=actions)
 
 
-def _lift_qualified(masks: dict, tables: list[dict], meta_id: str) -> dict:
-    """``masks`` without each column whose grant (``unmasked_to``, after inheritance) names the
-    meta-role -- a qualifier's grant, as no data member is exempt where a mask survived the
-    intersection. A fake stays: it is the column's own declaration, never a role mask."""
-    from provisa.security.masking import MaskType
-
-    out = {key: dict(cols) for key, cols in masks.items()}
-    for t in tables:
-        cols = out.get((t["id"], meta_id))
-        if not cols:
-            continue
-        for c in t.get("columns") or []:
-            rule = cols.get(c["column_name"])
-            if (
-                rule is not None
-                and rule.mask_type != MaskType.fake
-                and meta_id in (c.get("unmasked_to") or [])
-            ):
-                del cols[c["column_name"]]
-    return {key: cols for key, cols in out.items() if cols}
+def meta_chain(
+    meta_id: str,
+    member_ids: list[str] | tuple[str, ...],
+    role_chains: dict[str, list[str]],
+    qualifiers: tuple[str, ...] = (),
+) -> list[str]:
+    """The meta-role's chain: itself, every member with each member's ancestors (a composite
+    grant names them, REQ-2058), and the pseudo-roles it was named with."""
+    held: list[str] = []
+    for m in member_ids:
+        for rid in role_chains[m]:
+            if rid not in held:
+                held.append(rid)
+    return [meta_id, *held, *(q for q in qualifiers if q not in held)]
 
 
-def meta_masks(rules: dict, meta_id: str, member_ids: list[str] | tuple[str, ...]) -> dict:
-    """The meta-role's masks under ``rules`` ({(table id, role id): {column: rule}}): a column
-    is masked for it only where it is masked for every member."""
-    masks: dict[Any, dict[str, Any]] = {}
-    for table_id in {tid for (tid, role_id) in rules if role_id in member_ids}:
-        per_member = [rules.get((table_id, m)) or {} for m in member_ids]
-        common = set(per_member[0]).intersection(*per_member[1:])
-        if common:
-            masks[(table_id, meta_id)] = {c: per_member[0][c] for c in common}
-    return masks
+def reader_chain(state: Any, role_id: str) -> list[str]:
+    """The chain a request acting as ``role_id`` reads with: a meta-role's own
+    (:func:`meta_chain`), else the role's (itself and its ancestors)."""
+    members = state.meta_roles.get(role_id)
+    if members is not None:
+        return meta_chain(
+            role_id, members, state.role_chains, state.meta_qualifiers.get(role_id, ())
+        )
+    return state.role_chains.get(role_id, [role_id])
 
 
-def with_meta_masks(state: Any, rules: dict, role_ids: set[str]) -> dict:
+def with_meta_masks(
+    state: Any,
+    rules: dict,
+    masked_columns: list[tuple[int, str, list[dict], str]],
+    role_chains: dict[str, list[str]],
+) -> dict:
     """``rules`` — a rebuild's masking rules for the roles the control plane holds — with the
-    masks of every meta-role the runtime knows whose members are all among ``role_ids``.
+    masks of every meta-role the runtime knows whose members are all among ``role_chains``.
 
     A meta-role outlives a rebuild (:func:`rebuild_meta_roles`), and requests act as it while
     the rebuild runs. Its masks are part of what the rebuild publishes, in the same assignment
     as its members': there is no moment at which it is served with none."""
+    from provisa.security.masking import reader_masks
+
     for meta_id, member_ids in list(state.meta_roles.items()):
-        if all(m in role_ids for m in member_ids):
-            rules.update(meta_masks(rules, meta_id, member_ids))
+        if all(m in role_chains for m in member_ids):
+            chain = meta_chain(
+                meta_id, member_ids, role_chains, state.meta_qualifiers.get(meta_id, ())
+            )
+            rules.update(reader_masks(masked_columns, meta_id, chain))
     return rules
 
 
@@ -217,28 +221,21 @@ def _build(
     a grant list naming one reaches the child, as a member's does."""
     from provisa.api.app_loaders import register_role_surface
     from provisa.security.inheritance import expand_grants
+    from provisa.security.masking import reader_masks
 
     member_roles = [state.roles[m] for m in member_ids]
     inputs = state.role_build_inputs
-    # The child holds every member and each member's ancestors (a composite grant names them,
-    # REQ-2058), and the pseudo-roles it was named with.
-    held: list[str] = []
-    for m in member_ids:
-        for rid in inputs["role_chains"][m]:
-            if rid not in held:
-                held.append(rid)
-    chains = {meta_id: [meta_id, *held, *(q for q in qualifiers if q not in held)]}
+    chains = {meta_id: meta_chain(meta_id, member_ids, inputs["role_chains"], qualifiers)}
     # Inheritance with several parents: every grant to a member reaches the child.
     for t in inputs["tables"]:
         expand_grants(t.get("columns") or [], chains)
     expand_grants(inputs["metrics"], chains)
     expand_grants(inputs["functions"], chains)
     expand_grants(inputs["webhooks"], chains)
-    # A column is masked for the child only where it is masked for every member: a member in
-    # its unmasked_to puts the child there too (expand_grants above).
-    masks = meta_masks(state.masking_rules, meta_id, member_ids)
-    if qualifiers:
-        masks = _lift_qualified(masks, inputs["tables"], meta_id)
+    # REQ-2059: the child reads each column through the first entry of its mask list its own
+    # chain holds -- as any role does; an entry granted to one member reaches it, and an entry
+    # before it, held by another member, applies first (deny by order).
+    masks = reader_masks(state.masked_columns, meta_id, chains[meta_id])
     rls = _rls(state, member_roles, inputs["tables"])
     role = _role(member_roles, meta_id)
     state.masking_rules = {**state.masking_rules, **masks}

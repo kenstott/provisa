@@ -79,10 +79,17 @@ def test_masked_column_tagged_with_kind_and_exempt_roles():
                         name="ssn",
                         data_type="text",
                         visible_to=["analyst", "admin"],
-                        mask_type="regex",
-                        mask_pattern=MASK_PATTERN,
-                        mask_replace=MASK_REPLACE,
-                        unmasked_to=["admin"],
+                        masks=[
+                            {"to": ["admin"], "mask": None},
+                            {
+                                "to": ["*"],
+                                "mask": {
+                                    "type": "regex",
+                                    "pattern": MASK_PATTERN,
+                                    "replace": MASK_REPLACE,
+                                },
+                            },
+                        ],
                     )
                 ],
             )
@@ -92,7 +99,8 @@ def test_masked_column_tagged_with_kind_and_exempt_roles():
     assert len(tags) == 1
     tag = tags[0]
     assert tag.asset.fqn() == "wh.public.customers.ssn"
-    assert tag.rule_id == "mask:provisa://acme/sales/tables/customers#field:ssn:regex"
+    # REQ-2059: the entry (its place in the list) and its kind.
+    assert tag.rule_id == "mask:provisa://acme/sales/tables/customers#field:ssn:1:regex"
     assert tag.exempt_roles == ("admin",)
     assert tag.restricted_roles == ("analyst",)
 
@@ -243,17 +251,25 @@ def test_rule_bodies_never_appear_anywhere_in_a_published_snapshot():
                         name="ssn",
                         data_type="text",
                         visible_to=["admin"],
-                        mask_type="regex",
-                        mask_pattern=MASK_PATTERN,
-                        mask_replace=MASK_REPLACE,
-                        unmasked_to=["admin"],
+                        masks=[
+                            {"to": ["admin"], "mask": None},
+                            {
+                                "to": ["*"],
+                                "mask": {
+                                    "type": "regex",
+                                    "pattern": MASK_PATTERN,
+                                    "replace": MASK_REPLACE,
+                                },
+                            },
+                        ],
                     ),
                     Column(
                         name="tier",
                         data_type="text",
                         visible_to=["analyst", "admin"],
-                        mask_type="constant",
-                        mask_value="REDACTED-TIER",
+                        masks=[
+                            {"to": ["*"], "mask": {"type": "constant", "value": "REDACTED-TIER"}},
+                        ],
                     ),
                 ],
             )
@@ -279,10 +295,17 @@ def test_build_snapshot_attaches_governance_tags():
                         name="ssn",
                         data_type="text",
                         visible_to=["admin"],
-                        mask_type="regex",
-                        mask_pattern=MASK_PATTERN,
-                        mask_replace=MASK_REPLACE,
-                        unmasked_to=["admin"],
+                        masks=[
+                            {"to": ["admin"], "mask": None},
+                            {
+                                "to": ["*"],
+                                "mask": {
+                                    "type": "regex",
+                                    "pattern": MASK_PATTERN,
+                                    "replace": MASK_REPLACE,
+                                },
+                            },
+                        ],
                     )
                 ],
             )

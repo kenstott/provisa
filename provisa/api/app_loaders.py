@@ -40,7 +40,6 @@ from provisa.core.schema_org import (
 )
 from provisa.core.secrets import resolve_secrets
 from provisa.api._meta_views import _OPS_LOG_TABLE_ALIAS  # REQ-884
-from provisa.api.admin.db_queries import parse_mask_value as _parse_mask_value
 from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
 from provisa.core.models import ProvisaConfig, Source  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
@@ -1305,7 +1304,9 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
 ) -> None:
     """Load masking rules from table_columns and publish them as state.masking_rules.
 
-    REQ-1677: a role is exempt from a mask when it or an ancestor is in ``unmasked_to``.
+    REQ-2059: each role reads a column through the first entry of its mask list the role holds
+    (its chain, REQ-1677: the role and its ancestors); an entry with no mask, or none held, leaves
+    it unmasked.
 
     REQ-1914: the new set is built aside and published in ONE assignment at the end. Every
     worker now rebuilds on every model change, with requests running on their own threads
@@ -1313,11 +1314,17 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
     """
     from provisa.api.app import state
     from provisa.core.env_classes import TEST_FAKE
-    from provisa.security.inheritance import holds_grant
-    from provisa.security.masking import MaskingRule, MaskType, validate_masking_rule
+    from provisa.security.masking import (
+        MaskingRule,
+        MaskType,
+        reader_masks,
+        rule_of,
+        validate_masking_rule,
+    )
 
     chains = role_chains if role_chains is not None else {r["id"]: [r["id"]] for r in roles}
     rules: dict[Any, dict[str, Any]] = {}
+    masked: list[tuple[int, str, list[dict], str]] = []
     # REQ-1942: a fake is the column's own declaration, never a role mask, and it is read only in
     # a Test (fake) environment -- there by every role, whatever the column's masks; prod and
     # every other mode never fake.
@@ -1332,7 +1339,10 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
         uncovered = await uncovered_sensitive(conn, org_schema(require_current_org(), runtime.env))
         if uncovered:
             runtime.data_refusal = sensitive_refusal(runtime.env, uncovered)
-    condition = _table_columns_t.c.mask_type.is_not(None)
+    from sqlalchemy import Text
+    from sqlalchemy import cast as sa_cast
+
+    condition = sa_cast(_table_columns_t.c.masks, Text) != "[]"
     if faking:
         condition = condition | _table_columns_t.c.fake.is_not(None)
 
@@ -1343,12 +1353,7 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
                 select(
                     _table_columns_t.c.table_id,
                     _table_columns_t.c.column_name,
-                    _table_columns_t.c.unmasked_to,
-                    _table_columns_t.c.mask_type,
-                    _table_columns_t.c.mask_pattern,
-                    _table_columns_t.c.mask_replace,
-                    _table_columns_t.c.mask_value,
-                    _table_columns_t.c.mask_precision,
+                    _table_columns_t.c.masks,
                     _table_columns_t.c.fake,  # REQ-1494
                     _table_columns_t.c.fake_stable,
                     _table_columns_t.c.fake_stable_version,
@@ -1357,12 +1362,6 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
         ).fetchall()
     ]
     for mrow in masking_rows:
-        if mrow["mask_type"] == MaskType.fake.value:
-            raise RuntimeError(
-                f"table {mrow['table_id']} column {mrow['column_name']!r} is masked with a fake; "
-                "a fake is the column's own declaration, read in a Test (fake) environment"
-                ", never a role mask"
-            )
         if faking and mrow["fake"] is not None:
             fake_rule = MaskingRule(
                 mask_type=MaskType.fake,
@@ -1389,21 +1388,11 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
                     data_type,
                 )
             continue
-        if mrow["mask_type"] is None:
+        masks = list(mrow["masks"] or [])
+        if not masks:
             continue
-        mask_rule = MaskingRule(
-            mask_type=MaskType(mrow["mask_type"]),
-            pattern=mrow["mask_pattern"],
-            replace=mrow["mask_replace"],
-            value=_parse_mask_value(mrow["mask_value"]),
-            precision=mrow["mask_precision"],
-            fake=mrow["fake"],
-            fake_stable=bool(mrow["fake_stable"]),
-            fake_stable_version=mrow["fake_stable_version"],
-        )
         table_id = mrow["table_id"]
         col_name = mrow["column_name"]
-        unmasked_to = list(mrow.get("unmasked_to") or [])
         col_metas = col_types_converted.get(table_id, [])
         data_type = "varchar"
         is_nullable = True
@@ -1412,14 +1401,17 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
                 data_type = cm.data_type
                 is_nullable = cm.is_nullable
                 break
-        validate_masking_rule(mask_rule, col_name, data_type, is_nullable)
-        for role in roles:
-            if holds_grant(role["id"], unmasked_to, chains):
-                continue
-            rules.setdefault((table_id, role["id"]), {})[col_name] = (mask_rule, data_type)
+        for entry in masks:
+            if entry["mask"] is not None:
+                validate_masking_rule(rule_of(entry["mask"]), col_name, data_type, is_nullable)
+        masked.append((table_id, col_name, masks, data_type))
+    for role in roles:
+        for key, cols in reader_masks(masked, role["id"], chains[role["id"]]).items():
+            rules.setdefault(key, {}).update(cols)
     # The meta-roles requests are acting as keep their masks through the rebuild: they are
     # published here, in the same assignment as their members'.
-    state.masking_rules = with_meta_masks(state, rules, {role["id"] for role in roles})
+    state.masked_columns = masked
+    state.masking_rules = with_meta_masks(state, rules, masked, chains)
 
 
 async def _load_kept(conn: Any) -> None:  # REQ-1942

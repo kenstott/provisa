@@ -39,9 +39,8 @@ CREATE TABLE registered_tables (
 CREATE TABLE table_columns (
     id INTEGER PRIMARY KEY, table_id INTEGER, domain_id TEXT, column_name TEXT, data_type TEXT,
     is_primary_key BOOLEAN, alias TEXT, description TEXT, path TEXT, scope TEXT,
-    mask_type TEXT, mask_pattern TEXT, mask_replace TEXT, mask_value TEXT,
-    mask_precision TEXT, native_filter_type TEXT, is_foreign_key BOOLEAN,
-    is_alternate_key BOOLEAN, object_fields TEXT, visible_to TEXT, unmasked_to TEXT,
+    masks TEXT, native_filter_type TEXT, is_foreign_key BOOLEAN,
+    is_alternate_key BOOLEAN, object_fields TEXT, visible_to TEXT,
     writable_by TEXT, tenant_id TEXT);
 CREATE TABLE tag_assignments (
     id TEXT PRIMARY KEY, tag_id TEXT, base_tag_id TEXT, object_type TEXT, source_id TEXT,
@@ -75,12 +74,20 @@ def db() -> sqlite3.Connection:
         "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1', 0)"
     )
     conn.executemany(
-        "INSERT INTO table_columns (id, table_id, column_name, alias, mask_type, domain_id,"
+        "INSERT INTO table_columns (id, table_id, column_name, alias, masks, domain_id,"
         " tenant_id)"
         " VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
-            (1, 7, "usr_nm", "user name", None, "sales", "org1"),
-            (2, 7, "ssn", "social security number", "regex", "sales", "org1"),
+            (1, 7, "usr_nm", "user name", "[]", "sales", "org1"),
+            (
+                2,
+                7,
+                "ssn",
+                "social security number",
+                '[{"to": ["*"], "mask": {"type": "regex"}}]',
+                "sales",
+                "org1",
+            ),
         ],
     )
     conn.executemany(
@@ -142,12 +149,12 @@ class TestGlossaryMetaViews:
         self, db: sqlite3.Connection
     ) -> None:
         row = db.execute(
-            "SELECT r.column_key, c.alias, c.mask_type"
+            "SELECT r.column_key, c.alias, c.masks"
             " FROM glossary_term_refs_meta r"
             " JOIN table_columns_meta c ON c.column_key = r.column_key"
         ).fetchone()
         assert row["column_key"] == "7:usr_nm"
-        assert (row["alias"], row["mask_type"]) == ("user name", None)
+        assert (row["alias"], row["masks"]) == ("user name", "[]")
 
     def test_the_edge_view_names_both_endpoints_beside_their_ids(
         self, db: sqlite3.Connection

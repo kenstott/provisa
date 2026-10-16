@@ -63,12 +63,18 @@ def server():
             "email",
             "varchar",
             _READERS,
-            mask_type="constant",
-            mask_value="***",
-            unmasked_to=["org_admin", "auditor"],
+            masks=[
+                {"to": ["org_admin", "auditor"], "mask": None},
+                {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+            ],
         ),
         # Masked even to the org admin, and seen by it alone: profiled as the mask.
-        _col("secret", "varchar", ["org_admin"], mask_type="constant", mask_value="***"),
+        _col(
+            "secret",
+            "varchar",
+            ["org_admin"],
+            masks=[{"to": ["*"], "mask": {"type": "constant", "value": "***"}}],
+        ),
         _col("amount", "integer", _READERS),
     ]
     boot = WorkerBoot(
@@ -168,8 +174,7 @@ def _register(boot, entry: dict) -> None:
                         "name": c["name"],
                         "dataType": c["dataType"],
                         "visibleTo": c["visibleTo"],
-                        "unmaskedTo": c["unmaskedTo"],
-                        "maskType": c["maskType"],
+                        "masks": c["masks"],
                     }
                     for c in entry["columns"]
                 ],

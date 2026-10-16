@@ -168,8 +168,6 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "pages/tables/DescriptionField.tsx",
     ],
     notAField: {
-      "tableEditForm.unmaskedToAria":
-        "a column's Unmasked to: shown in Columns as its unmasked-to note",
       "tableEditForm.loadManagementHelp": "a hint beside the load fields, not a value",
       "recurrence.dayOfMonth":
         "a step of the builder that writes the recurrence: shown as Recurrence",

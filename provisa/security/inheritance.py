@@ -14,8 +14,9 @@ One parent per role. A role's chain is the role itself followed by its ancestors
 Everything downstream stays keyed by the acting role id, because the chain is folded into the
 data here rather than consulted at every lookup:
 
-- grant lists (``visible_to``, ``writable_by``, ``unmasked_to``) gain the child wherever they
-  name an ancestor — a grant is a union up the chain;
+- grant lists (``visible_to``, ``writable_by``) gain the child wherever they name an ancestor —
+  a grant is a union up the chain (a column's mask list is read against the chain itself,
+  security/masking.resolve, REQ-2059);
 - RLS resolves per table with the child taking precedence: the nearest role in the chain that
   has a rule for the table supplies the one predicate, its own table rule before its domain rule;
 - role dicts gain the union of ancestor capabilities and domain_access, and the parent's
@@ -32,7 +33,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-GRANT_LISTS = ("visible_to", "writable_by", "unmasked_to")
+GRANT_LISTS = ("visible_to", "writable_by")
 
 #: Joins the roles of a composite grant entry (REQ-2058): ``analyst+region__eu`` is held by a
 #: reader holding ALL of them. Across a grant list's entries the reader needs ANY one.

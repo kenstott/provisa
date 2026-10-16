@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import type { MutationResult } from "../types/admin";
+import type { MaskEntry } from "../lib/masks";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
@@ -19,12 +20,7 @@ export interface DatasetColumn {
   type: string;
   // REQ-1679: per-column governance of the response, stored on the column as posted (wire keys).
   visible_to?: string[] | null;
-  unmasked_to?: string[];
-  mask_type?: string | null;
-  mask_pattern?: string | null;
-  mask_replace?: string | null;
-  mask_value?: string | number | null;
-  mask_precision?: string | null;
+  masks?: MaskEntry[]; // REQ-2059: the ordered mask list
 }
 
 export interface ActionArg {
@@ -43,12 +39,7 @@ export interface InlineField {
   type: string;
   // REQ-1679: per-field governance of the webhook's response — see DatasetColumn.
   visible_to?: string[] | null;
-  unmasked_to?: string[];
-  mask_type?: string | null;
-  mask_pattern?: string | null;
-  mask_replace?: string | null;
-  mask_value?: string | number | null;
-  mask_precision?: string | null;
+  masks?: MaskEntry[]; // REQ-2059: the ordered mask list
 }
 
 export interface TrackedFunction {

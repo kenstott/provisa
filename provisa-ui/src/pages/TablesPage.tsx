@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import type { MaskEntry } from "../lib/masks";
 import { NEVER_EXPIRES, ttlText } from "../components/form/cacheTtl";
 import { resultRedirectText } from "../components/resultRedirectText";
 import { Tip } from "../components/Tip";
@@ -549,7 +550,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setEditingTable(null);
   };
 
-  const updateEditCol = (i: number, key: string, value: string | string[] | boolean) => {
+  const updateEditCol = (
+    i: number,
+    key: string,
+    value: string | string[] | boolean | MaskEntry[],
+  ) => {
     if (!editingTable) return;
     const next = { ...editingTable };
     next.columns = [...next.columns];

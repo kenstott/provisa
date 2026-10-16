@@ -45,10 +45,10 @@ const fn: TrackedFunction = {
       name: "card",
       type: "string",
       visible_to: ["finance"],
-      mask_type: "regex",
-      mask_pattern: "\\d{12}",
-      mask_replace: "****",
-      unmasked_to: ["auditor"],
+      masks: [
+        { to: ["auditor"], mask: null },
+        { to: ["*"], mask: { type: "regex", pattern: "\\d{12}", replace: "****" } },
+      ],
     },
     { name: "status", type: "string" },
   ],
@@ -60,7 +60,13 @@ const wh: TrackedWebhook = {
   method: "POST",
   timeoutMs: 5000,
   returns: null,
-  inlineReturnType: [{ name: "ok", type: "Boolean", mask_type: "constant", mask_value: "hidden" }],
+  inlineReturnType: [
+    {
+      name: "ok",
+      type: "Boolean",
+      masks: [{ to: ["*"], mask: { type: "constant", value: "hidden" } }],
+    },
+  ],
   arguments: [],
   visibleTo: [],
   domainId: "ops",
@@ -92,15 +98,11 @@ describe("a function's read view", () => {
     ]);
     expect(fields("function-read-columns-card")).toEqual([
       ["Visible to (roles, comma-separated; blank = everyone)", "finance"],
-      ["Mask", "Regex"],
-      ["Pattern", "\\d{12}"],
-      ["Replace", "****"],
-      ["Unmasked to (roles, comma-separated)", "auditor"],
+      ["Mask", "1. auditor: Unmasked · 2. Everyone: regex \\d{12} → ****"],
     ]);
     expect(fields("function-read-columns-status")).toEqual([
       ["Visible to (roles, comma-separated; blank = everyone)", "all"],
       ["Mask", "None"],
-      ["Unmasked to (roles, comma-separated)", "—"],
     ]);
   });
 
@@ -143,9 +145,7 @@ describe("a webhook's read view", () => {
     ]);
     expect(fields("webhook-read-columns-ok")).toEqual([
       ["Visible to (roles, comma-separated; blank = everyone)", "all"],
-      ["Mask", "Constant"],
-      ["Value", "hidden"],
-      ["Unmasked to (roles, comma-separated)", "—"],
+      ["Mask", "1. Everyone: constant hidden"],
     ]);
   });
 });

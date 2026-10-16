@@ -10,6 +10,8 @@
 
 import type { Metric, Relationship, RegisteredTable } from "../../types/admin";
 
+import type { MaskEntry } from "../../lib/masks";
+
 export type ResultTab = "results" | "profile" | "errors" | "history" | "stats" | "analyze";
 export type TopTab = "sql" | "canvas";
 
@@ -107,12 +109,7 @@ export interface ViewColumnConfig {
   description: string;
   scope: "domain" | "public" | "restricted";
   visibleTo: string[];
-  maskType: "" | "regex" | "constant" | "truncate";
-  maskPattern: string;
-  maskReplace: string;
-  maskValue: string;
-  maskPrecision: string;
-  unmaskedTo: string;
+  masks: MaskEntry[];
 }
 
 export interface ColumnProfile {

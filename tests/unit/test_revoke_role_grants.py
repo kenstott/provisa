@@ -91,7 +91,7 @@ async def seed(db: Database) -> None:
                         column_name=column,
                         visible_to=both,
                         writable_by=both,
-                        unmasked_to=both,
+                        masks=[{"to": both, "mask": None}],
                     )
                 )
         await conn.execute_core(
@@ -168,12 +168,18 @@ async def _grants(plane: Database) -> dict[str, list]:
                     table_columns.c.table_id,
                     table_columns.c.visible_to,
                     table_columns.c.writable_by,
-                    table_columns.c.unmasked_to,
+                    table_columns.c.masks,
                 )
             )
         ).fetchall()
         out: dict[str, list] = {
-            f"table{r.table_id}": [r.visible_to, r.writable_by, r.unmasked_to] for r in cols
+            # REQ-2059: the roles a column's mask entries name, in their order.
+            f"table{r.table_id}": [
+                r.visible_to,
+                r.writable_by,
+                [role for e in r.masks for role in e["to"]],
+            ]
+            for r in cols
         }
         for name, table in (
             ("metric", metrics),

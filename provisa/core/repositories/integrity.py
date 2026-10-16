@@ -68,6 +68,7 @@ class Match(Enum):
     EQUALS = "equals"  # the column holds the object's key
     MEMBER = "member"  # the column holds a JSON list (or, with ``path``, an object holding one)
     MENTIONS = "mentions"  # the column holds SQL text that names the object
+    MASK_TO = "mask_to"  # the column holds a mask list (REQ-2059); an entry's ``to`` names it
 
 
 @dataclass(frozen=True)
@@ -255,7 +256,7 @@ REFERENCES: tuple[Reference, ...] = (
     _part("rls_rules", "role_id", "role"),
     _dep("table_columns", "visible_to", "role", "column", "id", match=Match.MEMBER),
     _dep("table_columns", "writable_by", "role", "column", "id", match=Match.MEMBER),
-    _dep("table_columns", "unmasked_to", "role", "column", "id", match=Match.MEMBER),
+    _dep("table_columns", "masks", "role", "column", "id", match=Match.MASK_TO),
     _dep("metrics", "visible_to", "role", "metric", "name", match=Match.MEMBER),
     _dep("tracked_functions", "visible_to", "role", "command", "name", match=Match.MEMBER),
     _dep("tracked_webhooks", "visible_to", "role", "webhook", "name", match=Match.MEMBER),
@@ -355,6 +356,8 @@ def _matches(reference: Reference, value: Any, wanted: Any) -> bool:
     if reference.match is Match.MEMBER:
         members = value[reference.path] if reference.path is not None else value
         return wanted in members
+    if reference.match is Match.MASK_TO:
+        return any(wanted in entry["to"] for entry in value)
     relations, metric_names = names_in_sql(value)
     return wanted in (metric_names if reference.to == "metric" else relations)
 

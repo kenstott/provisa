@@ -69,9 +69,10 @@ def _table(schema: str) -> dict:
             _col(
                 "note",
                 "varchar",
-                mask_type="constant",
-                mask_value="***",
-                unmasked_to=["reader"],
+                masks=[
+                    {"to": ["reader"], "mask": None},
+                    {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+                ],
             ),
             _col("ts", "integer"),
         ],

@@ -54,7 +54,12 @@ def server():
     orders = base["tables"][0]
     orders["columns"] = _columns(
         id={"is_primary_key": True},
-        email={"mask_type": "constant", "mask_value": "***", "unmasked_to": ["org_admin"]},
+        email={
+            "masks": [
+                {"to": ["org_admin"], "mask": None},
+                {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+            ]
+        },
     )
 
     def _view(table: str, **kw) -> dict:
