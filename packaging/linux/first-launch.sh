@@ -96,6 +96,14 @@ ask_role() {
     esac
     ROLE="$CLI_ROLE"
     ok "Role: ${ROLE} (from --role flag)"
+    if [ "$ROLE" = "control-plane" ]; then
+      # The control-plane compose's profiles: "control" and "sandbox" both, unless the node is
+      # set up for one (a sandbox node: COMPOSE_PROFILES=sandbox; a control plane whose sandbox
+      # tier runs on a sandbox node: COMPOSE_PROFILES=control). Every service there names a
+      # profile, so a node that named none would start nothing.
+      export COMPOSE_PROFILES="${COMPOSE_PROFILES:-control,sandbox}"
+      ok "Compose profiles: ${COMPOSE_PROFILES}"
+    fi
     return
   fi
 
@@ -781,6 +789,12 @@ write_control_plane_compose() {
 # engine cluster. This node runs the API, the UI, redis, minio and the Flight proxy.
 services:
   provisa:
+    # Profiles (COMPOSE_PROFILES in provisa.env): "control" is the control plane -- the API, the
+    # UI, redis and minio -- and "sandbox" the sandbox tier. A node runs both; a sandbox node
+    # (the sandbox tier on a VM of its own) runs "sandbox" alone, and reaches the control plane's
+    # database, redis and minio at the hosts CONFIG_DB_HOST, PROVISA_REDIS_HOST and
+    # PROVISA_MINIO_HOST name -- the compose services, unless set.
+    profiles: ["control"]
     restart: unless-stopped
     image: provisa/provisa:local
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--ssl-certfile", "/app/certs/provisa.crt", "--ssl-keyfile", "/app/certs/provisa.key", "--timeout-keep-alive", "620"]
@@ -846,7 +860,7 @@ services:
       # the same ready pod it dials for HTTP (shard_flight_endpoint, REQ-1448).
       PROVISA_ZAYCHIK_IMAGE: "\${PROVISA_ZAYCHIK_IMAGE:-}"
       FLIGHT_PORT: "8815"
-      REDIS_URL: "redis://redis:6379"
+      REDIS_URL: "redis://\${PROVISA_REDIS_HOST:-redis}:6379"
       # This base REPLACES docker-compose.app.yml, so the collector endpoint app.yml declares
       # has to be declared again here or it never reaches the container: scripts/provisa
       # exports it when the resolved compose set includes an observability overlay, but an
@@ -855,7 +869,7 @@ services:
       # collector on the same node sat idle. Empty default = telemetry stays local.
       OTEL_EXPORTER_OTLP_ENDPOINT: "\${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
       OTEL_SERVICE_NAME: "\${OTEL_SERVICE_NAME:-provisa}"
-      PROVISA_OTEL_S3_ENDPOINT: "http://minio:9000"
+      PROVISA_OTEL_S3_ENDPOINT: "http://\${PROVISA_MINIO_HOST:-minio}:9000"
       # The same store as Trino sees it. The engine reads the OTel Iceberg tables itself,
       # from pods in the GKE cluster where the compose service name "minio" resolves to
       # nothing (UnknownHostException: minio), so the catalog it is handed carries the
@@ -905,6 +919,7 @@ services:
   # UI server reaches it by PROVISA_SANDBOX_API_URL; it publishes no port. Its data directory
   # holds the demo templates and the sandboxes' folders, and survives a container replacement.
   provisa-sandbox:
+    profiles: ["sandbox"]
     restart: unless-stopped
     image: provisa/provisa:local
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--ssl-certfile", "/app/certs/provisa.crt", "--ssl-keyfile", "/app/certs/provisa.key", "--timeout-keep-alive", "620", "--workers", "1"]
@@ -930,8 +945,16 @@ services:
       # demo config's SQLite sources resolve \${env:PROVISA_DEMO_DIR} there: without it they
       # pointed at ./demo/files, which is not in the image, and every attach of them failed.
       PROVISA_DEMO_DIR: "/app/config/demo/files"
-    depends_on: *provisa_depends
+    # On a sandbox node redis and minio are the control plane's, not services of this file.
+    depends_on:
+      redis:
+        condition: service_healthy
+        required: false
+      minio:
+        condition: service_healthy
+        required: false
   provisa-ui:
+    profiles: ["control"]
     restart: unless-stopped
     image: provisa/provisa:local
     command: ["uvicorn", "provisa.ui_server:app", "--host", "0.0.0.0", "--port", "3000", "--ssl-certfile", "/app/certs/provisa.crt", "--ssl-keyfile", "/app/certs/provisa.key", "--timeout-keep-alive", "620"]
@@ -941,16 +964,24 @@ services:
       - ${CERT_DIR}:/app/certs:ro
     environment:
       PROVISA_API_URL: "https://provisa:8000"
-      PROVISA_SANDBOX_API_URL: "https://provisa-sandbox:8000"
+      # The sandbox tier: this node's, or a sandbox node's (https://<its address>:8000).
+      PROVISA_SANDBOX_API_URL: "\${PROVISA_SANDBOX_API_URL:-https://provisa-sandbox:8000}"
       VITE_FIREBASE_API_KEY: "\${VITE_FIREBASE_API_KEY:-}"
       VITE_FIREBASE_AUTH_DOMAIN: "\${VITE_FIREBASE_AUTH_DOMAIN:-}"
       VITE_FIREBASE_PROJECT_ID: "\${VITE_FIREBASE_PROJECT_ID:-}"
     depends_on:
-      - provisa
-      - provisa-sandbox
+      provisa:
+        condition: service_started
+      provisa-sandbox:
+        condition: service_started
+        required: false
   redis:
+    profiles: ["control"]
     restart: unless-stopped
     image: redis:7-alpine
+    # On the VPC address only, as minio below: a sandbox node's tier reaches it there.
+    ports:
+      - "\${PROVISA_MINIO_BIND_IP:?the node's VPC-internal address}:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -960,6 +991,7 @@ services:
       retries: 30
       start_period: 60s
   minio:
+    profiles: ["control"]
     restart: unless-stopped
     # Docker Hub's minio/minio repo now denies anonymous pulls ("pull access denied ... may
     # require 'docker login'") — verified live, and CI's "UI e2e (Trino lane)" has failed on this
@@ -991,6 +1023,7 @@ services:
       retries: 30
       start_period: 60s
   minio-init:
+    profiles: ["control"]
     image: quay.io/minio/mc:latest
     depends_on:
       minio:
@@ -1090,6 +1123,7 @@ install_systemd() {
              PROVISA_ENGINE_PORT \
              PROVISA_ENGINE_IDLE_SECONDS \
              PROVISA_MINIO_BIND_IP PROVISA_ENGINE_OTEL_S3_ENDPOINT PROVISA_OBJECT_STORE_DIR \
+             COMPOSE_PROFILES PROVISA_REDIS_HOST PROVISA_MINIO_HOST PROVISA_SANDBOX_API_URL \
              TRINO_HOST TRINO_PORT \
              PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE PROVISA_ISOLATED_ENGINE_PORT; do
     if [ -n "${!var:-}" ]; then
