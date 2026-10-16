@@ -1,10 +1,10 @@
-# Externe Schemas
+# Externe Schemas {: #remote-schemas }
 
 Eine Quelle für ein externes Schema (Remote Schema) verbindet eine externe API — GraphQL (einschließlich GitHub), gRPC oder REST (OpenAPI) — mit dem Provisa-Modell. Das Hinzufügen einer Quelle registriert keine Tabelle. Die Quelle bietet Tabellen an, und ein Data Steward registriert jede gewünschte Tabelle über die Auswahl „Tabelle registrieren“ (Register Table); diese Registrierung ist der Kurationsschritt. (REQ-308, REQ-316, REQ-322) Eine registrierte Tabelle ist eine vollwertige Provisa-Tabelle. (REQ-308, REQ-316, REQ-325) Jede Governance-Regel, jede Abfrageschnittstelle und jede Sicherheitsschicht gilt automatisch. (REQ-310, REQ-319, REQ-328) Der externe Dienst sieht die Governance-Regeln von Provisa niemals. (REQ-310, REQ-319, REQ-328)
 
 ---
 
-## Drei Quellentypen
+## Drei Quellentypen {: #three-source-types }
 
 ### GraphQL Remote Schema (REQ-307–313)
 
@@ -38,7 +38,7 @@ Authentifizierungsoptionen: `none`, `bearer` (Authorization-Header), `basic` (Ba
 
 **Beziehungen zum Registrierungszeitpunkt.** `relationships` deklariert FK/PK-Verknüpfungspfade zwischen Tabellen zum Registrierungszeitpunkt. Diese werden als manuell deklarierte Beziehungen gespeichert (ohne `remote_managed`-Flag). Bei einer Aktualisierung werden automatisch erkannte Beziehungen (solche mit `remote_managed: True`) erneut ausgeführt und können sich ändern; manuell deklarierte Beziehungen bleiben unverändert. (REQ-554) [tool-verified: `provisa/api/admin/graphql_remote_router.py`]
 
-**Was die Quelle anbietet.** Jedes Feld des externen Typs `Query`, das ein Objekt oder eine Liste von Objekten zurückgibt, wird als Tabelle angeboten, ebenso jede Relay-Connection unter einem Einzelobjekt-Feld (siehe unten). Das Registrieren einer angebotenen Tabelle macht sie zu einer Tabelle. Jedes Feld des externen Typs `Mutation` ist ein angebotener Command und wird in `available_mutations` gezählt; das Hinzufügen der Quelle registriert keinen. Registrieren Sie die gewünschten als Commands; siehe [Schreiboperation einer externen Quelle](commands.md#schreiboperation-einer-externen-quelle-req-1924). (REQ-308, REQ-1924) [tool-verified: `provisa/graphql_remote/mapper.py:243–278`, `graphql_remote_router.py` `register_graphql_remote_source` (`"functions": 0`)]
+**Was die Quelle anbietet.** Jedes Feld des externen Typs `Query`, das ein Objekt oder eine Liste von Objekten zurückgibt, wird als Tabelle angeboten, ebenso jede Relay-Connection unter einem Einzelobjekt-Feld (siehe unten). Das Registrieren einer angebotenen Tabelle macht sie zu einer Tabelle. Jedes Feld des externen Typs `Mutation` ist ein angebotener Command und wird in `available_mutations` gezählt; das Hinzufügen der Quelle registriert keinen. Registrieren Sie die gewünschten als Commands; siehe [Schreiboperation einer externen Quelle](commands.md#a-remote-sources-write-operation-req-1924). (REQ-308, REQ-1924) [tool-verified: `provisa/graphql_remote/mapper.py:243–278`, `graphql_remote_router.py` `register_graphql_remote_source` (`"functions": 0`)]
 
 **Benennung von Tabellen.** Tabellen werden `{namespace}__{field_name}` benannt. Mit dem Namespace `petstore` und einem Query-Feld `pets`: Der Tabellenname lautet `petstore__pets`. (REQ-312) [tool-verified: `provisa/graphql_remote/mapper.py:250`]
 
@@ -81,7 +81,7 @@ OBJECT-Typen, die NICHT als Wurzel-Query-Felder erreichbar sind (Inline-Typen wi
 
 **Automatisch erkannte Beziehungen.** Provisa durchsucht die OBJECT-typisierten Spalten jeder registrierten Tabelle. Wenn der referenzierte GQL-Typ ebenfalls als Tabelle in derselben Quelle registriert ist und die Spalte, auf der die Beziehung beruht, zu den registrierten Spalten gehört, wird die Beziehung gespeichert. Eine noch nicht registrierte Tabelle erhält keine. [tool-verified: `_graphql_table_registration.py` `sync_detected_relationships`] n:1-Beziehungen leiten Quell- und Zielspalten aus Namenskonventionen ab (`breedName` am Quelltyp → `name` am Zieltyp `Breed`). 1:n-Felder (LIST) erzeugen Beziehungen mit leeren Spaltenreferenzen — der Fremdschlüssel befindet sich auf der Zielseite. (REQ-554) [tool-verified: `provisa/graphql_remote/mapper.py:162–202`]
 
-**Mutationen.** Ein Mutation-Feld wird einzeln als Command der Art `source_operation` registriert. Seine Argumente sind jeweils als `json` typisiert und werden als typisierte Variablen an den externen Dienst übergeben; die Antwort ist das JSON, das der externe Dienst zurückgibt, ohne `return_schema`. Siehe [Schreiboperation einer externen Quelle](commands.md#schreiboperation-einer-externen-quelle-req-1924). (REQ-1924) [tool-verified: `provisa/api/admin/actions_router.py` `_as_source_operation` (`body.returns = ""`, arguments typed `json`); `provisa/executor/source_operation.py` `_call_graphql`]
+**Mutationen.** Ein Mutation-Feld wird einzeln als Command der Art `source_operation` registriert. Seine Argumente sind jeweils als `json` typisiert und werden als typisierte Variablen an den externen Dienst übergeben; die Antwort ist das JSON, das der externe Dienst zurückgibt, ohne `return_schema`. Siehe [Schreiboperation einer externen Quelle](commands.md#a-remote-sources-write-operation-req-1924). (REQ-1924) [tool-verified: `provisa/api/admin/actions_router.py` `_as_source_operation` (`body.returns = ""`, arguments typed `json`); `provisa/executor/source_operation.py` `_call_graphql`]
 
 **Aktualisierung.** POST an `/admin/sources/graphql-remote/{id}/refresh`. Führt eine erneute Introspektion des externen Schemas durch und bringt die bereits registrierten Tabellen auf den Stand dieses Schemas. Es fügt weder eine Tabelle noch eine Spalte hinzu: Eine Tabelle oder Spalte, die das Schema hinzugewonnen hat, bleibt im Angebot, und eine Spalte, die das Schema verloren hat, wird entfernt. Bestehende Governance-Regeln (RLS, Maskierung) bleiben erhalten. (REQ-311) [tool-verified: `provisa/api/admin/graphql_remote_router.py` `refresh_graphql_remote_source`; `_graphql_table_registration.py` `refreshed_registered_tables`: "a column the schema has lost is gone; one it has gained is on offer and is not added"]
 
@@ -195,7 +195,7 @@ Methoden, die keinem dieser Signale entsprechen (unäres RPC mit Rückgabe einer
 
 **Tabellen registrieren.** Jede Query-Methode wird als eine Tabelle angeboten, benannt `{namespace}__{Service}__{Method}`, unter dem Auswahlschema `grpc_remote`. Registrieren Sie die gewünschten über die Register-Table-Auswahl (`availableTables`, `availableColumns`, `registerTable`, wie bei GraphQL-Quellen) und wählen Sie Antwortspalten. Anfragefelder werden zu `_nf_*`-Spalten für native Filter, und diese sind stets enthalten. (REQ-322) [tool-verified: `provisa/api/admin/introspect.py` `_native_tables_grpc` (`if schema_name != "grpc_remote": return []`), `provisa/api/admin/grpc_remote_router.py` `query_table_name`, `query_columns`, `_register_schema` (`if table_name not in registered: continue`), `provisa/api/admin/_table_ops.py` `_grpc_columns_for_input`]
 
-Mutation-Methoden sind angebotene Commands und werden in `available_mutations` gezählt; das Hinzufügen der Quelle erfasst keine. Eine gRPC-Mutation wird auf der Seite „Commands“ registriert, indem man die Quelle und dann die Methode wählt, benannt `Service.Method`; die Art des Commands ist `source_operation`. Siehe [Schreiboperation einer externen Quelle](commands.md#schreiboperation-einer-externen-quelle-req-1924). (REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `grpc_operation_name`, `_grpc_operations`; `provisa/api/admin/actions_router.py` `_as_source_operation`]
+Mutation-Methoden sind angebotene Commands und werden in `available_mutations` gezählt; das Hinzufügen der Quelle erfasst keine. Eine gRPC-Mutation wird auf der Seite „Commands“ registriert, indem man die Quelle und dann die Methode wählt, benannt `Service.Method`; die Art des Commands ist `source_operation`. Siehe [Schreiboperation einer externen Quelle](commands.md#a-remote-sources-write-operation-req-1924). (REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `grpc_operation_name`, `_grpc_operations`; `provisa/api/admin/actions_router.py` `_as_source_operation`]
 
 **Benennung von Tabellen.** Der Standardname lautet `{namespace}__{ServiceName}__{MethodName}`. Ohne Namespace werden Dienst- und Methodenname direkt verbunden. Jeder registrierten Tabelle kann ein `alias` zugewiesen werden; ist dieser gesetzt, wird der Alias überall als Name verwendet (Abfragen, SDL, Beziehungen). Der automatisch generierte Name ist der Registrierungsschlüssel und ändert sich nie. (REQ-322) [tool-verified: `provisa/core/repositories/table.py:129–134`]
 
@@ -221,7 +221,7 @@ Mutation-Methoden sind angebotene Commands und werden in `available_mutations` g
 
 Server-Streaming-Methoden sammeln alle gestreamten Meldungen in einer Liste, bevor Zeilen zurückgegeben werden. (REQ-325) [tool-verified: `provisa/grpc_remote/executor.py:86–119`]
 
-**Mutation-Methoden (REQ-326).** Eine registrierte Mutation-Methode ist ein Command, dessen Argumente die Felder der Eingabemeldung sind, jeweils als `json` typisiert und unverändert durchgereicht. Die Antwort des externen Dienstes kommt als Zeilen zurück; ein abgelehnter Aufruf ist ein 422, `functions.remote_refused`. Siehe [Schreiboperation einer externen Quelle](commands.md#schreiboperation-einer-externen-quelle-req-1924). (REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `_grpc_operations`, `_call_grpc`, `_refused`]
+**Mutation-Methoden (REQ-326).** Eine registrierte Mutation-Methode ist ein Command, dessen Argumente die Felder der Eingabemeldung sind, jeweils als `json` typisiert und unverändert durchgereicht. Die Antwort des externen Dienstes kommt als Zeilen zurück; ein abgelehnter Aufruf ist ein 422, `functions.remote_refused`. Siehe [Schreiboperation einer externen Quelle](commands.md#a-remote-sources-write-operation-req-1924). (REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `_grpc_operations`, `_call_grpc`, `_refused`]
 
 **Kanalverwaltung.** Pro registrierter Quelle wird ein `grpc.aio.Channel` im Anwendungszustand gespeichert und für nachfolgende Anfragen wiederverwendet. Der alte Kanal wird geschlossen, bevor bei einer Aktualisierung ein neuer geöffnet wird. (REQ-327) [tool-verified: `provisa/api/admin/grpc_remote_router.py:107–117`]
 
@@ -237,7 +237,7 @@ Server-Streaming-Methoden sammeln alle gestreamten Meldungen in einer Liste, bev
 
 **Quelle hinzufügen.** POST an `/admin/openapi/register` mit einer Quellen-ID und einer Spezifikation, geladen aus einer lokalen Datei oder URL. Die Spezifikation wird geparst und zusammen mit der Quelle aufbewahrt; es wird weder eine Tabelle noch ein Command registriert. Die Antwort meldet `tables: 0` und `mutations: 0`, die angebotenen Zähler stehen in `available_tables` und `available_mutations`. (REQ-314) [tool-verified: `provisa/openapi/loader.py:30–55`, `provisa/api/admin/openapi_router.py` `_load_and_register` docstring: "Tables and functions are NOT auto-registered here. Users register them individually via the Register Table / Register Action UI."]
 
-**Tabellen registrieren.** Registrieren Sie jede gewünschte GET-Operation über die Register-Table-Auswahl (`availableTables`, `availableColumns`, `registerTable`) und wählen Sie Spalten. Registrieren Sie jede Nicht-GET-Operation einzeln als Command auf der Seite „Commands“, aufgelistet durch `availableFunctions`; siehe [Schreiboperation einer externen Quelle](commands.md#schreiboperation-einer-externen-quelle-req-1924). `PUT /admin/openapi/spec/{source_id}` speichert eine von Hand bearbeitete Spezifikation, registriert nichts und gibt `available_tables` und `available_mutations` zurück. (REQ-316) [tool-verified: `provisa/api/admin/openapi_router.py` `put_openapi_spec`; `provisa/api/admin/schema_query.py` `available_functions` ("returns non-GET operations")] [tool-verified: `provisa/api/admin/_table_ops.py` `_build_columns_for_input`; a registered OpenAPI table is read through the operation in the stored spec, `provisa/api/data/materialization.py` (`state.openapi_specs`)]
+**Tabellen registrieren.** Registrieren Sie jede gewünschte GET-Operation über die Register-Table-Auswahl (`availableTables`, `availableColumns`, `registerTable`) und wählen Sie Spalten. Registrieren Sie jede Nicht-GET-Operation einzeln als Command auf der Seite „Commands“, aufgelistet durch `availableFunctions`; siehe [Schreiboperation einer externen Quelle](commands.md#a-remote-sources-write-operation-req-1924). `PUT /admin/openapi/spec/{source_id}` speichert eine von Hand bearbeitete Spezifikation, registriert nichts und gibt `available_tables` und `available_mutations` zurück. (REQ-316) [tool-verified: `provisa/api/admin/openapi_router.py` `put_openapi_spec`; `provisa/api/admin/schema_query.py` `available_functions` ("returns non-GET operations")] [tool-verified: `provisa/api/admin/_table_ops.py` `_build_columns_for_input`; a registered OpenAPI table is read through the operation in the stored spec, `provisa/api/data/materialization.py` (`state.openapi_specs`)]
 
 **Registrierungs-Payload.** Der Endpunkt `/admin/openapi/register` akzeptiert neben `source_id`, `spec_path` usw. zwei zusätzliche Felder:
 
@@ -251,7 +251,7 @@ Server-Streaming-Methoden sammeln alle gestreamten Meldungen in einer Liste, bev
 }
 ```
 
-**Was die Quelle anbietet.** Jede GET-Operation in der Spezifikation wird als Tabelle angeboten, sofern ihr Antwortschema nicht ein Skalartyp ist (`string`, `number`, `boolean`, `integer`) — GET-Operationen mit skalarer Rückgabe sind stattdessen Funktionen mit einer einzelnen Spalte `value`. Jede Nicht-GET-Operation (POST, PUT, PATCH, DELETE) wird als Command angeboten, benannt nach ihrer `operationId`. Registriert, nimmt sie die Pfadparameter der Operation und ein Argument `body` für den Request-Body entgegen, jeweils als `json` typisiert; jedes andere Argument kommt in den Query-String. Siehe [Schreiboperation einer externen Quelle](commands.md#schreiboperation-einer-externen-quelle-req-1924). (REQ-316, REQ-317, REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `_openapi_operations`, `_call_openapi`]
+**Was die Quelle anbietet.** Jede GET-Operation in der Spezifikation wird als Tabelle angeboten, sofern ihr Antwortschema nicht ein Skalartyp ist (`string`, `number`, `boolean`, `integer`) — GET-Operationen mit skalarer Rückgabe sind stattdessen Funktionen mit einer einzelnen Spalte `value`. Jede Nicht-GET-Operation (POST, PUT, PATCH, DELETE) wird als Command angeboten, benannt nach ihrer `operationId`. Registriert, nimmt sie die Pfadparameter der Operation und ein Argument `body` für den Request-Body entgegen, jeweils als `json` typisiert; jedes andere Argument kommt in den Query-String. Siehe [Schreiboperation einer externen Quelle](commands.md#a-remote-sources-write-operation-req-1924). (REQ-316, REQ-317, REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `_openapi_operations`, `_call_openapi`]
 
 Priorität der Klassifizierung: `operation_overrides` (Payload) hat Vorrang vor `x-provisa-kind` (Spezifikationserweiterung), was wiederum Vorrang vor der GET-Heuristik hat. `operation_overrides` ist der empfohlene Override-Pfad; `x-provisa-kind` ist für Fälle gedacht, in denen die Spezifikation selbst die Klassifizierung tragen soll. (REQ-408) [tool-verified: `provisa/openapi/mapper.py:192–203`]
 
@@ -288,7 +288,7 @@ Priorität der Klassifizierung: `operation_overrides` (Payload) hat Vorrang vor 
 
 ---
 
-## Auswirkung der Registrierung einer externen Tabelle
+## Auswirkung der Registrierung einer externen Tabelle {: #impact-of-registering-a-remote-table }
 
 Eine aus einer beliebigen Remote-Schema-Quelle registrierte Tabelle ist eine vollwertige Provisa-Tabelle. Zur Laufzeit wird sie in keiner Weise anders behandelt als eine lokal verbundene relationale Tabelle. (REQ-308, REQ-313)
 
@@ -304,7 +304,7 @@ Eine aus einer beliebigen Remote-Schema-Quelle registrierte Tabelle ist eine vol
 
 Ad-hoc-Abfragen gegen externe Tabellen sind allein auf Grundlage der Rechte des Benutzers zulässig — der Zugriff basiert einheitlich auf Rechten (Tabellen-/Spaltenrechte + genehmigte Beziehungen), ohne tabellenspezifischen Governance-Modus. (REQ-001, REQ-003)
 
-**Beziehungsgovernance (V002).** JOIN-Bedingungen gegen externe Tabellen — bei Abfrage über SQL oder Cypher — müssen einer registrierten, genehmigten Beziehung entsprechen. (REQ-604) Die V002-Prüfung wird bei GraphQL-Abfragen übersprungen, da in der SDL definierte Beziehungen konstruktionsbedingt bereits genehmigt sind. Siehe [docs/security.md](security.md#governance-der-beziehungen-v002).
+**Beziehungsgovernance (V002).** JOIN-Bedingungen gegen externe Tabellen — bei Abfrage über SQL oder Cypher — müssen einer registrierten, genehmigten Beziehung entsprechen. (REQ-604) Die V002-Prüfung wird bei GraphQL-Abfragen übersprungen, da in der SDL definierte Beziehungen konstruktionsbedingt bereits genehmigt sind. Siehe [docs/security.md](security.md#relationship-governance-v002).
 
 **OBJECT-typisierte Spalten.** Wenn eine Spalte einem nicht governance-pflichtigen Inline-GQL-OBJECT oder einem OpenAPI-Objekttyp entspricht, ist ihr Provisa-Typ `jsonb`. Die Spalte speichert den vollständigen verschachtelten JSON-Blob. Sind Unterfelder deklariert (`gql_object_fields` oder `object_fields`), wird die `gql_object_columns`-Zuordnung beim Schema-Build befüllt. Der SQL-Generator verwendet diese Zuordnung, um `->>`-Extraktionsausdrücke für Unterfelder zu erzeugen, wenn eine Abfrage diese auswählt. [tool-verified: `provisa/api/app.py:1305–1315`, `provisa/compiler/schema_gen.py:80–82`]
 
@@ -312,7 +312,7 @@ Ad-hoc-Abfragen gegen externe Tabellen sind allein auf Grundlage der Rechte des 
 
 ---
 
-## Auswirkung der Erstellung einer abdeckenden Beziehung
+## Auswirkung der Erstellung einer abdeckenden Beziehung {: #impact-of-creating-a-covering-relationship }
 
 Wenn ein Data Steward eine Beziehung zwischen zwei externen Tabellen (oder zwischen einer externen und einer lokalen Tabelle) registriert, wird diese Beziehung zum Join-Pfad, der zur Abfragezeit verwendet wird.
 
@@ -330,7 +330,7 @@ In der GraphQL-SDL wird ein nicht governance-pflichtiges Inline-OBJECT-Feld als 
 
 ---
 
-## Verhalten reiner Typdefinitionen
+## Verhalten reiner Typdefinitionen {: #type-def-only-behavior }
 
 Nicht jeder Typ in einem externen Schema muss eine abfragbare Tabelle sein.
 

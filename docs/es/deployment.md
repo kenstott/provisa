@@ -1,6 +1,6 @@
-# Despliegue
+# Despliegue {: #deployment }
 
-## Elegir una ruta de despliegue
+## Elegir una ruta de despliegue {: #choosing-a-deployment-path }
 
 Provisa admite seis rutas de despliegue. Elija según su audiencia y su contexto operativo:
 
@@ -19,7 +19,7 @@ Ambas son de nivel empresarial. La ruta VM/AppImage es más simple: no hay que a
 
 Elija Kubernetes solo si su equipo ya opera un clúster de K8s y quiere que Provisa participe en ese modelo operativo (despliegues rolling, HPA, observabilidad unificada) (REQ-056). Las capacidades son equivalentes: Kubernetes agrega sobrecarga operativa, no capacidad.
 
-### Adquisición de imágenes y análisis de seguridad
+### Adquisición de imágenes y análisis de seguridad {: #image-acquisition-and-security-scanning }
 
 Todas las rutas de producción requieren obtener los artefactos de Provisa antes de que pueda ejecutarse cualquier despliegue. "Air-gapped" se refiere a lo que ocurre en el momento de la instalación en la máquina de destino: los artefactos deben adquirirse primero.
 
@@ -33,9 +33,9 @@ Todas las rutas de producción requieren obtener los artefactos de Provisa antes
 
 ---
 
-## Desarrollo (desde el código fuente)
+## Desarrollo (desde el código fuente) {: #development-from-source }
 
-### Recomendado: `start-ui.sh`
+### Recomendado: `start-ui.sh` {: #recommended-start-uish }
 
 La forma más sencilla de ejecutar Provisa desde el código fuente. Inicia toda la infraestructura, la API del backend y el servidor de desarrollo de la UI en un solo comando (REQ-055). Ctrl+C detiene todo de forma ordenada.
 
@@ -65,7 +65,7 @@ UI:      http://localhost:3000
 
 `--observability` — Agrega instrumentación completa de trazas y métricas. Descarga el agente Java de OpenTelemetry y parchea el `jvm.config` de Trino para cargarlo, instrumenta el backend de Provisa con exportación OTLP, e inicia el colector OTel, Prometheus, Tempo y Grafana (`http://localhost:3100`) (REQ-330). El parche de `jvm.config` se revierte automáticamente al presionar Ctrl+C.
 
-### Pasos manuales (solo backend, sin UI)
+### Pasos manuales (solo backend, sin UI) {: #manual-steps-backend-only-no-ui }
 
 Si solo necesita la API:
 
@@ -84,7 +84,7 @@ Si solo necesita la API:
 
 4. Verifique: `curl http://localhost:8001/health`
 
-### Stack completo (Provisa en contenedor)
+### Stack completo (Provisa en contenedor) {: #full-stack-provisa-in-container }
 
 Para ejecutar la API como contenedor en lugar de en el host:
 
@@ -92,7 +92,7 @@ Para ejecutar la API como contenedor en lugar de en el host:
 docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 ```
 
-### Servicios
+### Servicios {: #services }
 
 **Core (`docker-compose.core.yml`) — siempre requerido:**
 
@@ -120,7 +120,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | Tempo | — | Almacenamiento de trazas (con `--observability`) (REQ-330) |
 | Grafana | 3100 | Paneles (con `--observability`) (REQ-330) |
 
-### Backend de telemetría (`otlp2sql`)
+### Backend de telemetría (`otlp2sql`) {: #telemetry-backend-otlp2sql }
 
 El stack de `--observability` anterior (Collector → Tempo/Prometheus/Grafana) es una
 ruta de telemetría. La otra es `otlp2sql` (`provisa.observability.otlp2sql`): un
@@ -158,13 +158,13 @@ endpoint de `otlp2sql`, y registre el dominio de operaciones contra la misma
 
 ---
 
-## Instalador de macOS
+## Instalador de macOS {: #macos-installer }
 
 Para estaciones de trabajo de desarrolladores y evaluación. Totalmente air-gapped: no se requiere internet después de la descarga (REQ-227).
 
 El instalador base es una **instalación nativa**: motor de federación DuckDB + plano de control SQLite + caché en memoria (fakeredis), sin Docker, VM, Trino, Redis ni MinIO (REQ-972, REQ-979). El motor de federación es una elección del asistente: DuckDB (nativo, por defecto), Trino-en-Docker, o un motor externo (REQ-973). La observabilidad es autotelemetría siempre activa visible en Admin; el stack de Docker de collector/Prometheus/Grafana es una demostración externa opcional, no un interruptor de encendido/apagado (REQ-975). El paquete de datos de demostración es opcional y está desactivado por defecto (REQ-978). Trino, el stack de observabilidad de Docker y la demo son complementos pesados que se resuelven priorizando lo local (directorio adyacente al instalador, volúmenes montados, `~/Downloads`, y luego el release de GitHub), de modo que las empresas puedan preposicionar los archivos tar para instalaciones air-gapped (REQ-977).
 
-### Pasos
+### Pasos {: #steps }
 
 1. Descargue `Provisa-<version>-macOS.dmg` desde la [página de releases de GitHub](https://github.com/provisa/provisa/releases)
 2. Abra el DMG y arrastre **Provisa.app** a `/Applications`
@@ -179,19 +179,19 @@ El instalador base es una **instalación nativa**: motor de federación DuckDB +
 
    (REQ-224)
 
-### Persistencia de datos
+### Persistencia de datos {: #data-persistence }
 
 Todos los datos se almacenan en `~/.provisa/` (REQ-224). Para eliminar todo: `provisa uninstall`.
 
 ---
 
-## Instalador de Windows
+## Instalador de Windows {: #windows-installer }
 
 Para estaciones de trabajo de desarrolladores y evaluación. Totalmente air-gapped: no se requiere internet después de la descarga (REQ-227).
 
 Al igual que en macOS, el instalador base de Windows es un **nivel nativo**: un runtime de Python independiente + wheel de provisa + DuckDB/pg_duckdb + plano de control SQLite, sin incluir Docker, VM ni imágenes de contenedor (REQ-979). El motor de federación (Trino), el stack de observabilidad y el paquete de datos de demostración se agregan después mediante instaladores en capas separados, en orden: el instalador Container (`Provisa-Container-<version>.exe`, que agrega WSL2 + containerd + Trino), luego el instalador Obs (requiere el nivel container), luego el instalador Demo (requiere Core + Obs). La guía de primer lanzamiento explica cómo inicializar el motor de federación ejecutando el instalador Container (REQ-1005).
 
-### Pasos
+### Pasos {: #steps_1 }
 
 1. Descargue `Provisa-<version>-windows-x64.exe` desde la [página de releases de GitHub](https://github.com/provisa/provisa/releases)
 2. Ejecute el instalador; no se requieren derechos de administrador; instala en `%LOCALAPPDATA%\Programs\Provisa\`
@@ -205,15 +205,15 @@ Al igual que en macOS, el instalador base de Windows es un **nivel nativo**: un 
 
    (REQ-224)
 
-### Persistencia de datos
+### Persistencia de datos {: #data-persistence_1 }
 
 Todos los datos se almacenan en `%USERPROFILE%\.provisa\`.
 
 ---
 
-## AppImage de Linux — VM de nodo único o multinodo
+## AppImage de Linux — VM de nodo único o multinodo {: #linux-appimage-single-or-multi-node-vm }
 
-### Qué es
+### Qué es {: #what-it-is }
 
 `Provisa.AppImage` es un único ejecutable autocontenido que empaqueta (REQ-223, REQ-228):
 
@@ -223,7 +223,7 @@ Todos los datos se almacenan en `%USERPROFILE%\.provisa\`.
 
 La imagen de Provisa se compila previamente en el momento del empaquetado; el código fuente de Python nunca se incluye.
 
-### Cuándo usarlo
+### Cuándo usarlo {: #when-to-use }
 
 - Servidores físicos on-premises o VM (nodo único o multinodo)
 - VM en la nube sin un clúster de K8s
@@ -232,7 +232,7 @@ La imagen de Provisa se compila previamente en el momento del empaquetado; el c�
 
 ---
 
-### Pasos — Nodo único
+### Pasos — Nodo único {: #steps-single-node }
 
 1. Descargue `Provisa.AppImage` desde la [página de releases de GitHub](https://github.com/provisa/provisa/releases) y transfiéralo a la máquina de destino
 2. Hágalo ejecutable:
@@ -262,7 +262,7 @@ La imagen de Provisa se compila previamente en el momento del empaquetado; el c�
 
 ---
 
-### Pasos — Multinodo (Primario)
+### Pasos — Multinodo (Primario) {: #steps-multi-node-primary }
 
 Ejecute estos pasos primero en el nodo primario. Los secundarios deben configurarse después de que el primario esté en ejecución.
 
@@ -298,7 +298,7 @@ Ejecute estos pasos primero en el nodo primario. Los secundarios deben configura
 
 ---
 
-### Pasos — Multinodo (Cada secundario)
+### Pasos — Multinodo (Cada secundario) {: #steps-multi-node-each-secondary }
 
 Repita estos pasos en cada nodo adicional después de que el primario esté en ejecución y sea accesible.
 
@@ -332,7 +332,7 @@ Repita estos pasos en cada nodo adicional después de que el primario esté en e
 
 ---
 
-### Topología primario/secundario
+### Topología primario/secundario {: #primary-secondary-topology }
 
 **El nodo primario** ejecuta todos los servicios singleton:
 
@@ -352,7 +352,7 @@ Todo el estado de la aplicación fluye a través del PostgreSQL del primario. No
 
 ---
 
-### Primer lanzamiento no interactivo (automatizado)
+### Primer lanzamiento no interactivo (automatizado) {: #non-interactive-automated-first-launch }
 
 Para Terraform, cloud-init o Ansible: pase flags en lugar de responder a las preguntas:
 
@@ -375,11 +375,11 @@ El modo no interactivo instala una unidad systemd (`/etc/systemd/system/provisa.
 
 ---
 
-## Despliegue en VM en la nube — Terraform (AWS)
+## Despliegue en VM en la nube — Terraform (AWS) {: #cloud-vm-deployment-terraform-aws }
 
 Aprovisiona un clúster de Provisa multinodo completo en AWS: VPC, grupos de seguridad, instancias EC2, ALB, NLB, en un único comando interactivo. (REQ-564)
 
-### Archivos
+### Archivos {: #files }
 
 | Archivo | Propósito |
 | ------ | --------- |
@@ -388,7 +388,7 @@ Aprovisiona un clúster de Provisa multinodo completo en AWS: VPC, grupos de seg
 | `terraform/aws/main.tf` | VPC, subredes, grupos de seguridad, IAM, EC2, ALB, NLB |
 | `terraform/aws/outputs.tf` | URL de endpoints e IP de nodos |
 
-### Pasos
+### Pasos {: #steps_2 }
 
 1. Descargue `Provisa.AppImage` desde la [página de releases de GitHub](https://github.com/provisa/provisa/releases)
 
@@ -434,7 +434,7 @@ Aprovisiona un clúster de Provisa multinodo completo en AWS: VPC, grupos de seg
     curl http://<api_endpoint>/health
     ```
 
-### Preguntas del asistente
+### Preguntas del asistente {: #wizard-questions }
 
 | Pregunta | Por defecto | Notas |
 | ---------- | --------- | ------- |
@@ -450,7 +450,7 @@ Aprovisiona un clúster de Provisa multinodo completo en AWS: VPC, grupos de seg
 | Acceso SSH | No | Requiere un nombre de par de claves existente + CIDR de administración |
 | CIDR de la VPC | `10.0.0.0/16` | |
 
-### Guía de dimensionamiento de instancias
+### Guía de dimensionamiento de instancias {: #instance-sizing-guide }
 
 | Tipo | vCPU | RAM | Workers de Trino/nodo | Caso de uso |
 | ------ | ------ | ----- | -------------------- | ---------- |
@@ -461,7 +461,7 @@ Aprovisiona un clúster de Provisa multinodo completo en AWS: VPC, grupos de seg
 
 Todos los nodos aportan workers a un único coordinador en el primario (REQ-028). Un clúster de 3 nodos `m7i.4xlarge` produce 6 workers de Trino en total.
 
-### Qué se aprovisiona
+### Qué se aprovisiona {: #what-gets-provisioned }
 
 - VPC con dos subredes públicas en dos zonas de disponibilidad (REQ-564)
 - Grupos de seguridad: grupo de LB (ingreso público en 8000/8815), grupo de nodos (LB → nodos, intra-clúster, SSH opcional)
@@ -472,7 +472,7 @@ Todos los nodos aportan workers a un único coordinador en el primario (REQ-028)
 - NLB en el puerto 8815: Arrow Flight / gRPC (REQ-143)
 - Ambos LB se conectan a todos los nodos
 
-### Lista de verificación de requisitos previos
+### Lista de verificación de requisitos previos {: #prerequisites-checklist }
 
 - [ ] Permisos de IAM: EC2 completo, ELB completo, VPC completo, creación de roles de IAM, S3 GetObject en el bucket del AppImage
 - [ ] `Provisa.AppImage` subido a S3
@@ -482,7 +482,7 @@ Todos los nodos aportan workers a un único coordinador en el primario (REQ-028)
 - [ ] Registros DNS planificados para ALB / NLB (opcional pero recomendado)
 - [ ] Certificado ACM listo si se requiere HTTPS (no incluido en el Terraform base)
 
-### Secretos
+### Secretos {: #secrets }
 
 No hay secretos embebidos en Terraform. El AppImage genera credenciales durante el primer lanzamiento y las escribe en `~/.provisa/config.yaml` en cada nodo (REQ-563). Para producción, recupere el token de administrador desde el nodo primario después del despliegue:
 
@@ -494,13 +494,13 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 ## Kubernetes / Helm
 
-### Cuándo usarlo
+### Cuándo usarlo {: #when-to-use_1 }
 
 Su equipo ya opera un clúster de Kubernetes y quiere que Provisa participe en ese modelo operativo (REQ-056). Si está evaluando Provisa o desplegando on-premises sin un clúster existente, la ruta AppImage es más simple.
 
 Nota: el AppImage de Provisa no puede ejecutarse dentro de un pod de Kubernetes; requiere FUSE y un daemon de Docker sin privilegios de root, que no están disponibles en los perfiles de seguridad de pod estándar.
 
-### Pasos
+### Pasos {: #steps_3 }
 
 1. Confirme el acceso al clúster:
 
@@ -529,17 +529,48 @@ Nota: el AppImage de Provisa no puede ejecutarse dentro de un pod de Kubernetes;
    - **Redis** — ¿en el clúster o externo (`redis.host`)? Cambie la contraseña por defecto (`redis.password`)
    - **MinIO / S3** — ¿MinIO en el clúster o S3 nativo? Para AWS, use S3 con un rol de IAM
    - **Secretos** — páselos vía `--set` para evaluación; use External Secrets o Vault Agent para producción
+   - **Caché del coordinador de Trino** — un volumen de 1Gi reclamado por defecto y montado en `/data/trino/cache` (`trino.coordinator.cache.persistence`: `enabled`, `size`, `storageClass`). Allí se guardan los resultados de describe de un origen Salesforce, para que un coordinador reiniciado no gaste de nuevo la cuota de API de la organización describiéndolo. Desactívelo solo cuando ningún origen lo necesite (REQ-1946)
 
-4. Instale el chart:
+4. Dé al despliegue su clave maestra. La clave cifra la bóveda de secretos; todos los pods de la API deben
+   tener la misma, y debe sobrevivir a cualquier pod. El chart no se renderiza sin ella.
+
+   ```bash
+   kubectl create namespace provisa
+   kubectl create secret generic provisa-master-key --namespace provisa \
+     --from-literal=master-key="$(openssl rand -base64 32)"
+   ```
+
+   Guarde una copia de la clave fuera del clúster. Una bóveda escrita con una clave que luego se pierde
+   no se puede abrir. La alternativa a un Secret es un volumen de datos persistente
+   (`encryption.dataVolume.enabled=true`), donde el producto guarda la clave que genera; consulte
+   `encryption` en `values.yaml`.
+
+5. Instale el chart:
 
    ```bash
    helm install provisa helm/provisa/ \
+     --set encryption.existingSecret=provisa-master-key \
+     --set auth.provider=oidc \
+     --set auth.oidc.issuerUrl=https://login.example.com/realms/main \
+     --set auth.oidc.clientId=provisa \
      --set config.pgPassword=<password> \
      --set config.adminToken=<token> \
      --set s3.endpoint=https://s3.amazonaws.com \
      --set s3.bucket=my-provisa-results \
      --namespace provisa --create-namespace
    ```
+
+   El chart no se renderiza hasta que se elige `auth.provider`: `oidc` (un emisor OpenID Connect
+   corporativo), `saml` (`auth.saml.idpMetadataUrl` y `auth.saml.publicUrl`), `ldap` (`auth.ldap.*`),
+   `local` (solo la cuenta de emergencia, `auth.breakGlass.*`) o `none` (sin autenticación, solo para
+   desarrollo). Cada credencial viene de un Secret de Kubernetes; `ldap`, `saml` y `local`
+   también necesitan `auth.sessionSecret.existingSecret`, la clave que firma las sesiones del navegador. Consulte `auth`
+   en `values.yaml`.
+
+   El coordinador de Trino ejecuta las sentencias de cada organización en su propio grupo de recursos,
+   `global.tenant-<org>`, a partir del archivo de grupos de recursos que incluye el chart. Las sentencias a través del
+   proxy de Arrow Flight comparten un grupo, `global.flight`: el proxy abre su propia conexión a Trino
+   y no puede llevar la organización.
 
    Si usa un registro interno, agregue las sobrescrituras de imagen:
 
@@ -550,22 +581,22 @@ Nota: el AppImage de Provisa no puede ejecutarse dentro de un pod de Kubernetes;
    --set trino.image.tag=480
    ```
 
-5. Verifique que los pods estén en ejecución:
+6. Verifique que los pods estén en ejecución:
 
    ```bash
    kubectl get pods -n provisa
    ```
 
-6. Verifique la API:
+7. Verifique la API:
 
    ```bash
    kubectl port-forward svc/provisa 8000:8000 -n provisa
    curl http://localhost:8000/health
    ```
 
-7. (Opcional) Habilite el ingress para acceso externo: configure `ingress.enabled: true` y ajuste su controlador de ingress
+8. (Opcional) Habilite el ingress para acceso externo: configure `ingress.enabled: true` y ajuste su controlador de ingress
 
-### Lista de verificación de requisitos previos
+### Lista de verificación de requisitos previos {: #prerequisites-checklist_1 }
 
 - [ ] Kubernetes 1.26+, Helm 3.12+
 - [ ] Clase de almacenamiento que admita PVC `ReadWriteOnce` (para servicios con estado en el clúster)
@@ -576,7 +607,7 @@ Nota: el AppImage de Provisa no puede ejecutarse dentro de un pod de Kubernetes;
 - [ ] Token de administrador elegido
 - [ ] Controlador de ingress configurado (si se necesita acceso externo)
 
-### Valores clave
+### Valores clave {: #key-values }
 
 | Valor | Por defecto | Descripción |
 | ------- | --------- | ------------- |
@@ -598,7 +629,7 @@ Nota: el AppImage de Provisa no puede ejecutarse dentro de un pod de Kubernetes;
 | `s3.bucket` | `provisa-results` | Bucket para la redirección de resultados grandes (REQ-029, REQ-137) |
 | `ingress.enabled` | `false` | Habilita el ingress |
 
-### Escalado
+### Escalado {: #scaling }
 
 ```bash
 kubectl scale deployment/provisa --replicas=5 --namespace provisa
@@ -606,7 +637,7 @@ kubectl scale deployment/provisa --replicas=5 --namespace provisa
 
 Los workers del motor de federación escalan de forma independiente: más workers aumentan el throughput y la capacidad de consultas concurrentes (REQ-056). (REQ-057)
 
-### Actualización de la configuración
+### Actualización de la configuración {: #updating-config }
 
 ```bash
 kubectl create configmap provisa-config \
@@ -617,7 +648,7 @@ kubectl rollout restart deployment/provisa --namespace provisa
 
 ---
 
-## Alta disponibilidad y recuperación
+## Alta disponibilidad y recuperación {: #high-availability-recovery }
 
 Provisa aplica un modelo de recuperación de dos niveles en todos los modos de despliegue (REQ-703):
 
@@ -626,13 +657,13 @@ Provisa aplica un modelo de recuperación de dos niveles en todos los modos de d
 
 Los fallos a nivel de máquina y de clúster siguen siendo responsabilidad del operador: aprovisione nodos redundantes y un balanceador de carga (rutas Terraform y Helm anteriores) para tolerancia a la pérdida de nodos.
 
-## Dependencias del motor de federación
+## Dependencias del motor de federación {: #federation-engine-dependencies }
 
 Los motores de federación de almacenes de datos requieren paquetes de Python y componentes a nivel de sistema más allá de la instalación por defecto de Provisa. Todos los paquetes de Python listados aquí están declarados en `pyproject.toml` y se instalan como parte de `pip install provisa` o `pip install -e .` estándar [tool-verified: `pyproject.toml` lines 44–52].
 
 Los paquetes de Python se incluyen en la instalación por defecto de Provisa; no se requieren extras opcionales para ningún motor de almacén de datos. Los elementos a nivel de sistema (driver ODBC, CLI de nube, claves de cuenta de servicio) deben instalarse por separado.
 
-### Paquetes de Python (ya en las dependencias core)
+### Paquetes de Python (ya en las dependencias core) {: #python-packages-already-in-core-dependencies }
 
 [tool-verified: `pyproject.toml` lines 41–52]
 
@@ -649,7 +680,7 @@ Los paquetes de Python se incluyen en la instalación por defecto de Provisa; no
 | `protobuf>=6.33.5,<7` | BigQuery, gRPC | Fijación de compatibilidad: `google-cloud-*` y OTel comparten un runtime de protobuf; `<7` los mantiene alineados |
 | `grpcio-status<1.82` | gRPC | Se alinea con la fijación `protobuf<7` |
 
-### Requisitos a nivel de sistema
+### Requisitos a nivel de sistema {: #system-level-requirements }
 
 Estos no son paquetes de Python; deben instalarse en el host o contenedor que ejecuta Provisa.
 
@@ -722,7 +753,7 @@ export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 
 El conector de Databricks hereda esto de `requests`; no se necesita ninguna variable de entorno específica de Databricks.
 
-### Lista de verificación por motor
+### Lista de verificación por motor {: #per-engine-checklist }
 
 **Databricks** (REQ-987)
 
@@ -766,7 +797,7 @@ El conector de Databricks hereda esto de `requests`; no se necesita ninguna vari
 
 ---
 
-## Variables de entorno
+## Variables de entorno {: #environment-variables }
 
 | Variable | Por defecto | Propósito |
 | ---------- | --------- | --------- |
@@ -801,7 +832,7 @@ El conector de Databricks hereda esto de `requests`; no se necesita ninguna vari
 
 ---
 
-## Comandos de la CLI
+## Comandos de la CLI {: #cli-commands }
 
 ```bash
 provisa start              # Start all services
@@ -817,7 +848,7 @@ provisa import FILE        # Replace running config with YAML from FILE
 
 (REQ-224, REQ-164)
 
-### Flujo de promoción de configuración (dev → test → prod)
+### Flujo de promoción de configuración (dev → test → prod) {: #config-promotion-workflow-dev-test-prod }
 
 Todos los ajustes específicos del entorno (cadenas de conexión, secretos, puertos) deben ir en variables de entorno o gestores de secretos, no en la configuración exportada. El YAML exportado captura su modelo semántico: orígenes, dominios, roles, vistas. (REQ-164)
 

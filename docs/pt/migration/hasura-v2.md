@@ -1,6 +1,6 @@
-# Migrando do Hasura v2 para o Provisa
+# Migrando do Hasura v2 para o Provisa {: #migrating-from-hasura-v2-to-provisa }
 
-## Pré-requisitos
+## Pré-requisitos {: #prerequisites }
 
 1. Uma instância Hasura v2 em execução (v2.x) com metadados exportados.
 2. Exporte os metadados usando a CLI do Hasura:
@@ -13,19 +13,19 @@
    `cron_triggers.yaml`, `inherited_roles.yaml`, `remote_schemas.yaml`, etc.
 3. Python 3.11+ com o pacote `provisa` instalado.
 
-## Uso da CLI
+## Uso da CLI {: #cli-usage }
 
 ```bash
 python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 ```
 
-### Argumentos
+### Argumentos {: #arguments }
 
 | Argumento | Obrigatório | Descrição |
 | ---------- | ---------- | ------------- |
 | `metadata_dir` | Sim | Caminho para o diretório de metadados Hasura v2 exportado |
 
-### Opções
+### Opções {: #options }
 
 | Opção | Padrão | Descrição |
 | -------- | --------- | ------------- |
@@ -35,7 +35,7 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 | `--auth-env-file FILE` | Nenhum | Caminho para um arquivo `.env` com config de auth JWT/admin-secret |
 | `--dry-run` | desligado | Analisa e valida sem escrever saída |
 
-### Arquivo de Overrides de Fonte
+### Arquivo de Overrides de Fonte {: #source-overrides-file }
 
 Um arquivo YAML chaveado pelo nome da fonte com propriedades de conexão a sobrepor:
 
@@ -48,7 +48,7 @@ default:
   password: "${env:PROD_DB_PASSWORD}"
 ```
 
-### Arquivo de Ambiente de Auth
+### Arquivo de Ambiente de Auth {: #auth-env-file }
 
 Um arquivo estilo `.env` contendo a config de auth do Hasura a converter. O conversor mapeia:
 
@@ -57,7 +57,7 @@ Um arquivo estilo `.env` contendo a config de auth do Hasura a converter. O conv
 - Admin secret -> `superuser` do Provisa.
 - Auth via webhook -> aviso emitido (sem equivalente Provisa).
 
-## Matriz de Paridade de Recursos
+## Matriz de Paridade de Recursos {: #feature-parity-matrix }
 
 | Recurso Hasura v2 | Equivalente Provisa | Notas |
 | --- | --- | --- |
@@ -81,7 +81,7 @@ Um arquivo estilo `.env` contendo a config de auth do Hasura a converter. O conv
 | **Enum tables** | Tabela criada | Flag `is_enum` não carregada (sem equivalente Provisa). |
 | **Allow lists** | Ignorado | Não presente no modelo de metadados. |
 
-## Etapas Pós-Conversão
+## Etapas Pós-Conversão {: #post-conversion-steps }
 
 1. **Revise o YAML de saída.** Verifique se fontes, tabelas, e funções parecem corretas.
 2. **Configure conexões de fonte.** O conversor analisa URLs de conexão mas assume `localhost` como
@@ -96,38 +96,38 @@ Um arquivo estilo `.env` contendo a config de auth do Hasura a converter. O conv
    de auth e reexecute com `--auth-env-file`.
 7. **Teste.** Inicie o servidor Provisa e verifique consultas contra suas fontes de dados.
 
-## Problemas Comuns e Solução de Problemas
+## Problemas Comuns e Solução de Problemas {: #common-issues-and-troubleshooting }
 
-### URL de conexão não analisada
+### URL de conexão não analisada {: #connection-url-not-parsed }
 
 Se o `database_url` da fonte é uma referência de variável de ambiente
 (`{"from_env": "PG_URL"}`), o conversor não consegue resolvê-la no momento da conversão. A fonte
 terá valores placeholder (`host: localhost`, `database: default`). Corrija com
 `--source-overrides`.
 
-### Colunas curinga
+### Colunas curinga {: #wildcard-columns }
 
 Quando uma permissão concede `columns: "*"`, o conversor cria uma única entrada de coluna curinga.
 Após a conversão, você pode querer substituí-la por listas de coluna explícitas inspecionando o
 esquema real do banco de dados.
 
-### Fidelidade de event trigger
+### Fidelidade de event trigger {: #event-trigger-fidelity }
 
 Event triggers são convertidos com `operations` e `webhook_url` mas garantias de entrega
 específicas do Hasura (exactly-once, redelivery) não têm equivalentes Provisa diretos. Revise a
 seção `event_triggers` e configure sua infraestrutura de webhook adequadamente.
 
-### Funções ausentes
+### Funções ausentes {: #missing-roles }
 
 Funções são coletadas somente de entradas de permissão. Se uma função existe no Hasura mas não tem
 permissões em nenhuma tabela ou action, ela não aparecerá na saída.
 
-### Campos raiz customizados
+### Campos raiz customizados {: #custom-root-fields }
 
 Somente os campos raiz `select` e `select_by_pk` são usados para o alias da tabela. Outros campos
 raiz customizados (`select_aggregate`, `insert`, `update`, `delete`) não são mapeados.
 
-## Exemplo
+## Exemplo {: #example }
 
 Converta um projeto Hasura v2 típico com dois esquemas mapeados para domínios:
 

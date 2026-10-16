@@ -1,8 +1,8 @@
-# Importando desde Hasura
+# Importando desde Hasura {: #importing-from-hasura }
 
 Provisa puede convertir metadatos existentes de Hasura en un `config.yaml` de Provisa, preservando las tablas rastreadas, relaciones, permisos y esquemas remotos.
 
-## Importación interactiva (Admin → Import Hasura Config)
+## Importación interactiva (Admin → Import Hasura Config) {: #interactive-import-admin-import-hasura-config }
 
 La superficie de administración ejecuta los mismos convertidores, por lo que una importación no requiere acceso a shell ni un ciclo de ida y vuelta de archivo de configuración. Requiere la capacidad `org_settings`; la importación se aplica en la organización en la que la sesión está actuando.
 
@@ -18,7 +18,7 @@ Endpoints: `POST /admin/import/hasura/preview` y `POST /admin/import/hasura/appl
 
 ## Hasura v2
 
-### Exportar metadatos
+### Exportar metadatos {: #export-metadata }
 
 Desde su consola o CLI de Hasura:
 
@@ -35,7 +35,7 @@ curl -X POST http://localhost:8080/v1/metadata \
   > metadata.json
 ```
 
-### Convertir
+### Convertir {: #convert }
 
 El convertidor v2 lee un **directorio** de metadatos de Hasura (el diseño producido por `hasura metadata export`, o el diseño plano `tables.yaml` / `actions.yaml`) y escribe un config de Provisa:
 
@@ -55,7 +55,7 @@ Flags:
 | `--auth-env-file` | Archivo `.env` con configuración de autenticación; convierte JWT/JWK, secreto de administrador y mapa de claims |
 | `--dry-run` | Analiza y valida sin escribir la salida |
 
-### Qué se convierte
+### Qué se convierte {: #what-gets-converted }
 
 | Concepto de Hasura | Equivalente en Provisa |
 | --------------- | ------------------- |
@@ -68,15 +68,15 @@ Flags:
 | Esquema remoto | Registro de origen `graphql_remote` más una tabla aterrizada por cada campo raíz de Query que los SDL de rol exponen; una columna es visible para cada rol cuyo SDL la expone, un argumento raíz no nulo se convierte en una columna de filtro nativo `_nf_`, los campos anidados se nombran en una advertencia. (REQ-1681) |
 | Campo calculado | Entrada de `functions[]` con `kind: query` |
 
-### Conexiones y dominios en la pestaña de importación
+### Conexiones y dominios en la pestaña de importación {: #connections-and-domains-on-the-import-tab }
 
-La exportación nombra sus bases de datos por variable de entorno, así que después de la primera conversión la pestaña lista cada origen SQL con la conexión que la conversión adivinó. Complete el host, puerto, base de datos, usuario y contraseña, y convierta de nuevo; solo los campos que cambió viajan, como anulaciones de origen. Las filas de dominio cubren cada esquema, subgrafo y esquema remoto que trae la carga; cada una es un selector sobre los dominios existentes de la organización que también acepta un nombre escrito, marcado como "new domain" cuando no coincide con ninguno. Aplicar hace merge con lo que la organización ya tiene, a menos que la casilla de reemplazo esté activada. (REQ-1687)
+La exportación nombra sus bases de datos por variable de entorno, así que después de la primera conversión la pestaña lista cada origen SQL con la conexión que la conversión adivinó. Complete el host, puerto, base de datos, usuario y contraseña, y convierta de nuevo; solo los campos que cambió viajan, como anulaciones de origen. Las filas de dominio cubren cada esquema, subgrafo y esquema remoto que trae la carga; cada una es un selector sobre los dominios existentes de la organización que también acepta un nombre escrito, marcado como "new domain" cuando no coincide con ninguno. Aplicar hace merge con lo que la organización ya tiene. (REQ-1687)
 
-### Los tipos provienen del origen en la vista previa
+### Los tipos provienen del origen en la vista previa {: #types-come-from-the-source-at-preview }
 
 Una exportación de Hasura nombra columnas sin tipos, y una tabla rastreada sin permisos no nombra columnas. La vista previa se ejecuta con las conexiones de origen que usted suministra, así que lee `information_schema.columns` de cada origen SQL alcanzable: cada columna sin tipo obtiene el tipo del origen mapeado al vocabulario de la IR, y una tabla sin columnas toma cada columna que tiene el origen, visible solo para `org_admin`, ya que Hasura no la expuso a ningún otro rol. Un origen que la vista previa no puede alcanzar se reporta como una advertencia `[sources]` y sus columnas quedan sin tipo para que usted las complete antes de aplicar. (REQ-1691, REQ-1684)
 
-### Limitaciones
+### Limitaciones {: #limitations }
 
 - **Actions**: se convierten automáticamente: las actions con handler HTTP se convierten en mutaciones `webhooks[]`; las actions con handler no HTTP (base de datos) se convierten en un placeholder de `functions[]` y emiten una advertencia para revisar el handler
 - **Event triggers**: se convierten en configuración `event_triggers` por tabla (operaciones, URL de webhook, política de reintentos) y emiten una advertencia señalando fidelidad limitada
@@ -88,11 +88,11 @@ Una exportación de Hasura nombra columnas sin tipos, y una tabla rastreada sin 
 
 ## Hasura DDN (v3)
 
-### Ubicar el proyecto HML
+### Ubicar el proyecto HML {: #locate-the-hml-project }
 
 El convertidor DDN lee directamente el **directorio** del proyecto DDN con archivos `.hml` — no se requiere un paso de build del supergraph. El primer componente de directorio bajo la raíz del proyecto se toma como el nombre del subgraph; los archivos bajo `globals/` se asignan al subgraph `globals`.
 
-### Convertir
+### Convertir {: #convert_1 }
 
 ```bash
 python -m provisa.ddn ./my-ddn-project -o config.yaml
@@ -112,7 +112,7 @@ Flags:
 
 Los metadatos de `AggregateExpression` se preservan en un archivo complementario `*-aggregates.yaml`.
 
-### Qué se convierte
+### Qué se convierte {: #what-gets-converted_1 }
 
 | Concepto de DDN | Equivalente en Provisa |
 | ------------ | ------------------- |
@@ -122,7 +122,7 @@ Los metadatos de `AggregateExpression` se preservan en un archivo complementario
 | Command | Mutación webhook o vista |
 | Connector | Entrada de origen con detalles de conexión |
 
-### Limitaciones
+### Limitaciones {: #limitations_1 }
 
 - **Lambda connectors** (funciones TypeScript/Python) requieren configuración manual de webhook
 - **Lifecycle plugins** no tienen equivalente directo
@@ -130,7 +130,7 @@ Los metadatos de `AggregateExpression` se preservan en un archivo complementario
 
 ---
 
-## Después de la importación
+## Después de la importación {: #after-import }
 
 1. Revise el `config.yaml` generado — preste atención a las `warnings` del convertidor
 2. Verifique las credenciales de conexión (el convertidor usa valores de marcador de posición)

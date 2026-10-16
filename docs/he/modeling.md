@@ -2,14 +2,14 @@
 <!-- MD046 off: mkdocs-material `===` content-tab bodies are indented, which the linter
      misreads as indented code blocks; the fenced code blocks below are required for rendering. -->
 
-# מידול נתונים (Entities & Facts)
+# מידול נתונים (Entities & Facts) {: #data-modeling-entities-facts }
 
 Provisa נותנת לכם שני פרימיטיבים דקלרטיביים — `entity` ו-`fact` — המכסים את אבני-
 הבניין שכל star schema ו-Data Vault מורכבים מהם. הצהירו את ה-spec; Provisa מורידה אותו
 בדיוק להגדרות ה-materialized-view, בי-טמפורליות (bitemporal), והקשר שהייתם אחרת
 כותבים ידנית (REQ-1164). [tool-verified: modeling.py module docstring lines 11-28]
 
-## מה הם entities ו-facts
+## מה הם entities ו-facts {: #what-entities-and-facts-are }
 
 **entity** הוא הקרנה מוקלדת (keyed), נטולת-כפילויות, אופציונלית-היסטורית של relation מקור. אתם
 נותנים לו שם, מכוונים אותו למקור, מצהירים את מפתח ה-entity והתכונות שברצונכם לשאת,
@@ -27,7 +27,7 @@ lines 123-141; comment at line 130 "a measureless fact is a pure key-set (DV lin
 Databricks, או נשארות וירטואליות מעל מנוע MPP — ללא מידול-מחדש. [tool-verified: modeling.py
 docstring lines 25-28]
 
-## מצבי היסטוריה
+## מצבי היסטוריה {: #history-modes }
 
 שלושה מצבים זמינים על entity [tool-verified: `_HISTORY` constant at modeling.py line 38,
 `_HISTORY_MODE` dict at modeling.py line 40]:
@@ -44,7 +44,7 @@ docstring lines 25-28]
 
 ל-facts אין מצב היסטוריה — כיסוי טמפורלי מגיע מהיסטוריית ה-entity הבסיסית.
 
-## מדדים (Measures) ואגרגציות
+## מדדים (Measures) ואגרגציות {: #measures-and-aggregations }
 
 מדדים מוצהרים כזוגות `column:agg`. אגרגציות נתמכות [tool-verified: `_AGGS`
 at modeling.py line 41]:
@@ -53,14 +53,14 @@ at modeling.py line 41]:
 
 האגרגציה ברירת המחדל היא `sum` [tool-verified: `Measure.agg` default at modeling.py line 75].
 
-## דוגמה מפורטת: entity לקוח + fact מכירות
+## דוגמה מפורטת: entity לקוח + fact מכירות {: #worked-example-customer-entity-sales-fact }
 
-### טבלאות המקור
+### טבלאות המקור {: #the-source-tables }
 
 - `raw.customers` — id, name, region, tier
 - `raw.orders` — order_id, customer_id, amount, quantity
 
-### רישום ה-entity לקוח
+### רישום ה-entity לקוח {: #register-the-customer-entity }
 
 === "Admin UI"
 
@@ -101,7 +101,7 @@ SELECT "id", "name", "region", "tier" FROM "raw"."customers"
 -- registered as a bitemporal delta MV, entity key: ["id"]
 ```
 
-### רישום ה-fact מכירות
+### רישום ה-fact מכירות {: #register-the-sales-fact }
 
 === "Admin UI"
 
@@ -152,7 +152,7 @@ GROUP BY "order_id", "customer_id"
 בתוספת קשר רשום אחד: `Sales.customer_id → Customer` (עוצמה (cardinality): many-to-one).
 [tool-verified: `fact_table_input` in modeling_register.py lines 89-98, cardinality at line 95]
 
-## טופס ה-Model (Admin UI)
+## טופס ה-Model (Admin UI) {: #the-model-form-admin-ui }
 
 הכפתור **+ Model** מופיע בעמוד **Tables** (tooltip: "Model an entity or fact (star
 schema / Data Vault)"). [tool-verified: tablesPage.json line 13; TablesPage.tsx lines 441-450]
@@ -160,7 +160,7 @@ schema / Data Vault)"). [tool-verified: tablesPage.json line 13; TablesPage.tsx 
 בקרה מקוטעת (segmented control) בראש המודל עוברת בין **Entity (dimension)** ו-**Fact**.
 [tool-verified: ModelingForm.tsx lines 102-110]
 
-### שדות Entity
+### שדות Entity {: #entity-fields }
 
 [tool-verified: ModelingForm.tsx lines 141-171; modelingForm.json]
 
@@ -173,7 +173,7 @@ schema / Data Vault)"). [tool-verified: tablesPage.json line 13; TablesPage.tsx 
 | Attributes | לא | עמודות תכונה מופרדות-פסיק, למשל `name, region, tier` |
 | History | לא | `none` / `scd2` / `snapshot`; ברירת מחדל `none` |
 
-### שדות Fact
+### שדות Fact {: #fact-fields }
 
 [tool-verified: ModelingForm.tsx lines 172-196; modelingForm.json]
 
@@ -189,7 +189,7 @@ schema / Data Vault)"). [tool-verified: tablesPage.json line 13; TablesPage.tsx 
 כאשר `agg` מושמט במדד (`amount` במקום `amount:sum`), ברירת המחדל היא `sum`.
 [tool-verified: ModelingForm.tsx line 73 `agg: agg || "sum"`]
 
-## ה-GraphQL API
+## ה-GraphQL API {: #the-graphql-api }
 
 שתי המוטציות חיות בסכמת ה-admin. [tool-verified: schema_mutation.py lines 449-472]
 
@@ -250,11 +250,11 @@ mutation RegisterFact($input: FactInput!) {
 `Fact 'Sales' registered with 1 dimension link(s)`.
 [tool-verified: schema_mutation.py line 471]
 
-## Star schema של Kimball ו-Data Vault
+## Star schema של Kimball ו-Data Vault {: #kimball-star-schema-and-data-vault }
 
 אף דפוס אינו דורש כלים נפרדים. אותם שני פרימיטיבים מרכיבים את שניהם.
 
-### Star schema של Kimball
+### Star schema של Kimball {: #kimball-star-schema }
 
 הליכה מודרכת זו בונה star בעל שלושה ממדים. שתי טבלאות מקור חדשות:
 
@@ -263,7 +263,7 @@ mutation RegisterFact($input: FactInput!) {
 
 `raw.orders` מקבלת גם עמודות `product_id` ו-`order_date` כאן. [inferred]
 
-#### בחירת סוג SCD
+#### בחירת סוג SCD {: #choosing-scd-type }
 
 מצב היסטוריה הוא החוגה היחידה בין SCD Type 1 ל-Type 2:
 
@@ -280,7 +280,7 @@ tier של לקוח ברגע הרכישה, לא ה-tier הנוכחי שלו. הש
 date spine לעולם אינו משתנה. קטלוג מוצרים שבו אתם זקוקים רק למחיר הנוכחי יכול להיבנות-מחדש בכל
 רענון.
 
-#### החלטת Grain
+#### החלטת Grain {: #grain-decision }
 
 ה-grain הוא רמת הפירוט הנמוכה ביותר שה-fact עונה עליה. `order_id` נותן שורה אחת לכל הזמנה,
 שומר על היכולת לספור הזמנות ייחודיות ולצרף לכל ממד ברמת הזמנה. grain
@@ -288,7 +288,7 @@ date spine לעולם אינו משתנה. קטלוג מוצרים שבו אתם
 פרטים אלה לצמיתות. הצהירו את ה-grain הצר-ביותר שהעסק צריך; rollups גסים יותר זולים
 לגזור אחר-כך.
 
-#### רישום הממדים
+#### רישום הממדים {: #register-the-dimensions }
 
 **Customer** (SCD Type 2 — שינויי tier חייבים להישמר):
 
@@ -356,7 +356,7 @@ mutation {
 SELECT "date_key", "year", "quarter", "month" FROM "raw"."date_spine"
 ```
 
-#### רישום ה-fact מכירות על פני שלושה ממדים
+#### רישום ה-fact מכירות על פני שלושה ממדים {: #register-the-sales-fact-across-three-dimensions }
 
 Grain: `order_id`. שלוש הפניות ממד — עמודת FK אחת לכל אחת. שני המדדים הם sums אדיטיביים.
 
@@ -516,7 +516,7 @@ SELECT "id", "name", "region", "tier" FROM "raw"."customers"
 `CustomerSat` ו-`CustomerHub` שניהם מוקלדים על `id`. ה-hub הוא יעד ה-join היציב; ה-satellite
 מספק גישת-תכונה נקודתית-בזמן דרך השכבה הבי-טמפורלית.
 
-#### Link (fact נטול-מדדים)
+#### Link (fact נטול-מדדים) {: #link-measureless-fact }
 
 link מתעד אילו מפתחות hub הופיעו יחד — מפתחות בלבד, ללא מדדים. Provisa משמיטה את ה-`GROUP BY`
 כאשר `measures` ריק [tool-verified: modeling.py lines 130-131:
@@ -594,7 +594,7 @@ docstring lines 25-26]
 452–455: "A named, governed aggregate definition with no grain of its own... grain is bound at
 query time by the requested dimension set"]
 
-### אובייקט ה-Metric
+### אובייקט ה-Metric {: #the-metric-object }
 
 [tool-verified: `Metric` class, `provisa/core/models.py` lines 451–476]
 
@@ -627,7 +627,7 @@ metrics:
     ai_context: "Net revenue: total order amounts minus approved refunds. Use for P&L."
 ```
 
-### שאילתת metric
+### שאילתת metric {: #querying-a-metric }
 
 הקומפיילר שומר את סכמת ה-`metrics`. [tool-verified: `METRICS_SCHEMA = "metrics"`,
 `provisa/compiler/metric_expand.py` line 43] כל metric ניתן לכתובת כ-relation וירטואלי
@@ -655,7 +655,7 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 אחד מצורף אוטומטית. שני hops או ממד דו-משמעי הם שגיאה קשה המציינת בשם את העבריין.
 [tool-verified: `_JoinPlan.resolve_dimension`, `provisa/compiler/metric_expand.py` lines 190–228]
 
-### מטריקות מ-fact specs (REQ-1320)
+### מטריקות מ-fact specs (REQ-1320) {: #metrics-from-fact-specs-req-1320 }
 
 כאשר אתם רושמים fact, כל מדד מוצהר רושם-אוטומטית אובייקט Metric תואם.
 שדה `from_fact` של ה-metric רושם את שם טבלת ה-fact המקור, וממדי הקיבוץ
@@ -668,7 +668,7 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 כל metric אחרת. [tool-verified: `MetricsPage.tsx` lines 405–408:
 `{m.fromFact && <Badge ... data-testid={`metrics-from-fact-${m.name}`}>...</Badge>}`]
 
-### תצוגות מורכבות-מטריקה (view_metrics, REQ-1318)
+### תצוגות מורכבות-מטריקה (view_metrics, REQ-1318) {: #metric-composed-views-view_metrics-req-1318 }
 
 תצוגת `view_metrics` נועלת את ה-grain של metric בזמן ההגדרה. הצהירו את שמות ה-metric,
 עמודות הממד, ופילטרים אופציונליים; הקומפיילר יוצר את ה-SELECT.
@@ -719,7 +719,7 @@ upsert של metric. [tool-verified: `regenerate_metric_views` docstring, `_metri
 "Free-hand view_sql born from inline metric() calls carries no stored provenance, so it is not
 regenerated here (config-path views regenerate on config reload)"]
 
-### עמוד ה-admin של Metrics (REQ-1323, REQ-1324)
+### עמוד ה-admin של Metrics (REQ-1323, REQ-1324) {: #the-metrics-admin-page-req-1323-req-1324 }
 
 פתחו את פריט הניווט **Metrics** כדי לנהל metrics מנוהלות. לחצו על שורה כדי להרחיב פאנל
 פרטים read-only; לחצו **Edit** בתוכו כדי לעבור לעריכה inline (ללא modal). **New Metric** פותח
@@ -735,7 +735,7 @@ fact המקור (מסוננת ל-`modelingRole=fact`), עמודת מדד, ופו
 [tool-verified: `deriveDatatype` function, `MetricsPage.tsx` lines 66–70;
 `applyBuilder`, `MetricsPage.tsx` lines 273–285]
 
-## התועלת של ה-IR
+## התועלת של ה-IR {: #the-ir-payoff }
 
 כל קריאת רישום עוברת דרך אותו נתיב כמו MV כתוב-ידנית. ה-spec entity/fact
 הוא ייצוג ביניים (intermediate representation) — לא template, לא macro. ה-warehouse שאליו הוא מכוון הוא

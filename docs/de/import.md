@@ -1,8 +1,8 @@
-# Import aus Hasura
+# Import aus Hasura {: #importing-from-hasura }
 
 Provisa kann bestehende Hasura-Metadaten in eine Provisa-`config.yaml` umwandeln und dabei getrackte Tabellen, Beziehungen, Berechtigungen und Remote Schemas erhalten.
 
-## Interaktiver Import (Admin → Hasura-Konfiguration importieren)
+## Interaktiver Import (Admin → Hasura-Konfiguration importieren) {: #interactive-import-admin-import-hasura-config }
 
 Die Admin-Oberfläche nutzt dieselben Konverter, sodass ein Import weder Shell-Zugriff noch einen Config-Datei-Roundtrip benötigt. Erfordert die Capability `org_settings`; der Import landet in der Organisation, in der die Sitzung aktiv ist.
 
@@ -18,7 +18,7 @@ Endpunkte: `POST /admin/import/hasura/preview` und `POST /admin/import/hasura/ap
 
 ## Hasura v2
 
-### Metadaten exportieren
+### Metadaten exportieren {: #export-metadata }
 
 Über Ihre Hasura-Konsole oder -CLI:
 
@@ -35,7 +35,7 @@ curl -X POST http://localhost:8080/v1/metadata \
   > metadata.json
 ```
 
-### Konvertieren
+### Konvertieren {: #convert }
 
 Der v2-Konverter liest ein Hasura-Metadaten-**Verzeichnis** (das von `hasura metadata export` erzeugte Layout oder das flache `tables.yaml`/`actions.yaml`-Layout) und schreibt eine Provisa-Konfiguration:
 
@@ -55,24 +55,32 @@ Flags:
 | `--auth-env-file` | `.env`-Datei mit Auth-Konfiguration; konvertiert JWT/JWK, Admin-Secret und Claims-Map |
 | `--dry-run` | Parsen und Validieren ohne Ausgabe zu schreiben |
 
-### Was konvertiert wird
+### Was konvertiert wird {: #what-gets-converted }
 
 | Hasura-Konzept | Provisa-Entsprechung |
 | --------------- | ------------------- |
 | Getrackte Tabelle | `tables[]` mit `publish: true` |
-| Object-Relationship | `relationships[]` mit `cardinality: many-to-one` |
+| Object-Relationship | `relationships[]` mit `cardinality: many-to-one`. Eine allein über eine FK-Spalte deklarierte (`foreign_key_constraint_on: artist_id`) nennt im Export kein Ziel; der Konverter löst sie über die inverse Array-Relationship auf und verwirft sie mit einer `[relationships]`-Warnung, wenn es keine gibt. (REQ-1680) |
 | Array-Relationship | `relationships[]` mit `cardinality: one-to-many` |
-| Select-Berechtigung | Rollensichtbarkeit + RLS-Filter |
+| Select-Berechtigung | Rollensichtbarkeit + RLS-Filter. Ein Term mit Sitzungsvariable (`X-Hasura-User-Id`) wird zu `current_setting('provisa.user_id')`, das die Anfrage zur Abfragezeit aus der Benutzer-ID und den Claims der Identität bindet. (REQ-1682) |
 | Spaltenberechtigung | `visible_to` / `writable_by` |
 | Insert/Update/Delete-Berechtigung | Mutation `writable_by` + RLS |
-| Remote Schema | Quellregistrierung `graphql_remote` |
+| Remote Schema | Quellregistrierung `graphql_remote` plus eine gelandete Tabelle pro Query-Wurzelfeld, das die Rollen-SDLs offenlegen; eine Spalte ist für jede Rolle sichtbar, deren SDL sie offenlegt, ein Nicht-Null-Wurzelargument wird zu einer `_nf_`-Spalte für native Filter, verschachtelte Felder werden in einer Warnung genannt. (REQ-1681) |
 | Computed Field | `functions[]`-Eintrag mit `kind: query` |
 
-### Einschränkungen
+### Verbindungen und Domänen auf dem Import-Tab {: #connections-and-domains-on-the-import-tab }
+
+Der Export benennt seine Datenbanken über Umgebungsvariablen, daher listet der Tab nach der ersten Konvertierung jede SQL-Quelle mit der Verbindung, die die Konvertierung erraten hat. Tragen Sie Host, Port, Datenbank, Benutzername und Passwort ein und konvertieren Sie erneut; nur die geänderten Felder reisen mit, als Quell-Überschreibungen. Die Domänenzeilen decken jedes Schema, jeden Subgraphen und jedes Remote-Schema ab, das der Upload trägt; jede ist eine Auswahl über die bestehenden Domänen der Organisation, die auch einen eingegebenen Namen annimmt, markiert als „neue Domäne", wenn er keiner entspricht. Anwenden führt mit dem zusammen, was die Organisation bereits hat. (REQ-1687)
+
+### Typen kommen bei der Vorschau aus der Quelle {: #types-come-from-the-source-at-preview }
+
+Ein Hasura-Export benennt Spalten ohne Typen, und eine verfolgte Tabelle ohne Berechtigung nennt keine Spalten. Die Vorschau läuft mit den Quellverbindungen, die Sie angeben, und liest daher die `information_schema.columns` jeder erreichbaren SQL-Quelle: Jede typlose Spalte erhält den Typ der Quelle, abgebildet auf das IR-Vokabular, und eine Tabelle ohne Spalten nimmt jede Spalte, die die Quelle hat, sichtbar nur für `org_admin`, da Hasura sie keiner anderen Rolle offengelegt hat. Eine Quelle, die die Vorschau nicht erreicht, wird als `[sources]`-Warnung gemeldet, und ihre Spalten bleiben typlos, damit Sie sie vor dem Anwenden vervollständigen. (REQ-1691, REQ-1684)
+
+### Einschränkungen {: #limitations }
 
 - **Actions** konvertieren automatisch: HTTP-Handler-Actions werden zu `webhooks[]`-Mutationen; Actions mit einem Nicht-HTTP-Handler (Datenbank) werden zu einem `functions[]`-Platzhalter und erzeugen eine Warnung, den Handler zu prüfen
 - **Event Triggers** konvertieren zu einer `event_triggers`-Konfiguration pro Tabelle (Operationen, Webhook-URL, Retry-Richtlinie) und erzeugen eine Warnung zur eingeschränkten Genauigkeit
-- **Remote Schemas** konvertieren zu `graphql_remote`-Quelleinträgen
+- **Remote Schemas** konvertieren zu `graphql_remote`-Quelleinträgen und werden aus den Rollen-Berechtigungs-SDLs als Tabellen gelandet; ein Remote Schema ohne Berechtigungen landet nichts, da der Export keine andere Angabe seiner Form trägt (REQ-1681)
 - **Benutzerdefinierte SQL-Funktionen** erfordern Prüfung — einfache Fälle konvertieren zu `functions[]`-Einträgen, komplexe erfordern manuelle Arbeit
 - **Cron Triggers** konvertieren zu `scheduler`-Konfigurationseinträgen unter Beibehaltung des Cron-Ausdrucks und des Enabled-Flags
 
@@ -80,11 +88,11 @@ Flags:
 
 ## Hasura DDN (v3)
 
-### HML-Projekt lokalisieren
+### HML-Projekt lokalisieren {: #locate-the-hml-project }
 
 Der DDN-Konverter liest das DDN-Projekt-**Verzeichnis** mit `.hml`-Dateien direkt — kein Supergraph-Build-Schritt erforderlich. Die erste Verzeichniskomponente unter der Projektwurzel wird als Subgraph-Name übernommen; Dateien unter `globals/` werden dem Subgraph `globals` zugeordnet.
 
-### Konvertieren
+### Konvertieren {: #convert_1 }
 
 ```bash
 python -m provisa.ddn ./my-ddn-project -o config.yaml
@@ -104,7 +112,7 @@ Flags:
 
 Die `AggregateExpression`-Metadaten werden in einer Sidecar-Datei `*-aggregates.yaml` erhalten.
 
-### Was konvertiert wird
+### Was konvertiert wird {: #what-gets-converted_1 }
 
 | DDN-Konzept | Provisa-Entsprechung |
 | ------------ | ------------------- |
@@ -114,7 +122,7 @@ Die `AggregateExpression`-Metadaten werden in einer Sidecar-Datei `*-aggregates.
 | Command | Webhook-Mutation oder Sicht |
 | Connector | Quelleintrag mit Verbindungsdetails |
 
-### Einschränkungen
+### Einschränkungen {: #limitations_1 }
 
 - **Lambda-Connectors** (TypeScript-/Python-Funktionen) erfordern manuelle Webhook-Einrichtung
 - **Lifecycle-Plugins** haben keine direkte Entsprechung
@@ -122,7 +130,7 @@ Die `AggregateExpression`-Metadaten werden in einer Sidecar-Datei `*-aggregates.
 
 ---
 
-## Nach dem Import
+## Nach dem Import {: #after-import }
 
 1. Prüfen Sie die generierte `config.yaml` — achten Sie auf `warnings` des Konverters
 2. Verifizieren Sie die Verbindungsanmeldedaten (der Konverter verwendet Platzhalterwerte)

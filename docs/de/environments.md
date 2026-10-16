@@ -1,4 +1,4 @@
-# Umgebungen
+# Umgebungen {: #environments }
 
 Eine Umgebung ist eine benannte Kopie des regierten Modells einer Organisation. Die Kopie ist physisch ein
 eigenes PostgreSQL-Schema — keine Diskriminatorspalte, kein Präfix, ein echtes Schema —, sodass jede
@@ -14,7 +14,9 @@ Umgebung benennt, wird abgelehnt. [tool-verified: `PROD = "prod"` at environment
 
 Umgebungen stehen Organisationen mit einem kostenpflichtigen Tarif zur Verfügung. [inferred: REQ-1507]
 
-## Umgebungsnamen
+Wie Sie eine Nicht-Produktionsumgebung mit gefahrlos nutzbaren Daten füllen, beschreibt [Testumgebungen aufbauen](test-data.md).
+
+## Umgebungsnamen {: #environment-names }
 
 Ein Name muss `[a-z][a-z0-9_]{1,31}` entsprechen — zwei bis zweiunddreißig Zeichen aus Kleinbuchstaben,
 Ziffern und Unterstrichen, beginnend mit einem Buchstaben. `prod` und Namen, die mit `pg_` beginnen, werden
@@ -24,7 +26,7 @@ wovor die Obergrenze schützt. [tool-verified: `ENV_NAME_PATTERN` at environment
 `validate_env_name()` at environments.py lines 119-142; `max_env_name_length()` at
 environments.py lines 108-116]
 
-## Was eine Kopie mitnimmt
+## Was eine Kopie mitnimmt {: #what-a-copy-carries }
 
 Jede Tabelle im Org-Schema fällt in genau eine Klasse (REQ-1489). Die Klassifizierung ist eine Allow-List,
 keine Ausschlussliste: Eine später hinzugefügte Tabelle reist nicht mit, bis jemand hier ihre Klasse benennt
@@ -50,7 +52,7 @@ eingeschränkter Branch womöglich braucht — und damit den Review-Pfad zur Esk
 Zuweisungen reisen deshalb einmal mit, beim Anlegen, und sind danach die eigene Antwort jeder Umgebung.
 [tool-verified: env_classes.py lines 65-71; env_copy.py lines 41-44]
 
-## Bindungen
+## Bindungen {: #bindings }
 
 Bindungen sind die Spalten, die sagen, wohin eine Quelle tatsächlich zeigt — `host`, `port`, `database`,
 `username` und der Rest. Sie reisen in keiner Kopie mit. Eine Umgebung, die noch nicht gebunden wurde, wird
@@ -58,28 +60,20 @@ als `unbound` markiert, statt leer gelassen zu werden: Ein leerer Host ist kein 
 Verbindungsaufbau würde ihn als `localhost:5432` lesen. [tool-verified: `BOUND_COLUMN = "bound"` at
 env_classes.py line 143; `BINDING_COLUMNS` dict at env_classes.py lines 155-172]
 
-Die Quellen einer Umgebung lösen auf eine von zwei Arten auf.
+Eine Umgebung, die nicht als Unbound angelegt wird, kopiert die Verbindung jeder Quelle von ihrer Elternumgebung,
+genau so, wie die Elternumgebung sie geschrieben hat: Ein `${secret:...}`- oder `${env:...}`-Verweis wird als dieser
+Verweis kopiert, nie aufgelöst. Nach dem Anlegen ist die Kopie die eigene Zeile der Umgebung, auf der Seite Quellen
+bearbeitbar, und beim Aufbau der Laufzeit der Umgebung wird nichts über die Elternumgebung aufgelöst.
+Das Feld `binding` jeder Quelle sagt, woher ihre Verbindung stammt: `copied`, `own` (in dieser Umgebung angegeben)
+oder `unbound`. Wird eine kopierte Verbindung bearbeitet, wird sie zu `own`. **Von der Elternumgebung neu kopieren**
+(`POST /admin/orgs/{org}/environments/{name}/sources/recopy`) kopiert die Verbindungen der Elternumgebung erneut.
+Ein Merge oder Deploy trägt keine Verbindungen, daher kommt eine Quelle, die er einführt, als `unbound` an.
+[tool-verified: `_copy_table` at env_copy.py; `recopy` and `unbind` at env_data.py;
+`owned_if_reconnected` at repositories/source.py]
 
-**Basis** — die Umgebung trägt ihre eigenen Anmeldedaten. Ein org_admin legt eine Basis an und bindet dann
-jede Quelle ausdrücklich. [tool-verified: `CreateEnvBody.inherit_connections = False` (default) at
-environments_router.py line 227; "binding a base is an org_admin's act" comment at line 358]
+## Die Git-Projektion {: #the-git-projection }
 
-**Branch** — die Umgebung erbt die Anmeldedaten der Basis per Referenz. Nichts wird kopiert. Braucht eine
-Abfrage eine Verbindung, läuft die Auflösung die `branched_from`-Kette hinauf und hält bei der ersten
-Umgebung an, deren Zeile gebunden ist. Das Rotieren von Anmeldedaten auf der Basis pflanzt sich ohne
-weiteres Zutun auf jeden ihrer Branches fort. Ein Widerruf widerruft für alle auf einmal. Kein Secret wird
-je irgendwo materialisiert, von wo ein Branch, ein Export oder ein Repository es forttragen könnte.
-[tool-verified: `resolve()` at env_bindings.py lines 114-151; `lineage()` at env_bindings.py
-lines 74-102; env_bindings.py module docstring lines 11-33]
-
-Um einen Branch anzulegen, setzen Sie **Verbindungen erben** im Umgebungs-Panel. Die Voreinstellung ist aus.
-[tool-verified: `environmentsTab.json` key `inheritConnections`; `inheritHelp2` string]
-
-## Die Git-Projektion
-
-Jeder Schreibvorgang am Modell committet das Ergebnis in den Git-Branch der Umgebung. Das Repository ist eine
-Projektion des Modells, nie seine Autorität: Provisa liest und schreibt die Control Plane; das Repository ist
-die Aufzeichnung, nicht die Quelle. Einen Baum zu deployen erfordert einen ausdrücklichen Aufruf — ein
+Jeder Schreibvorgang am Modell committet das Ergebnis in den Git-Branch der Umgebung. Einen Baum zu deployen erfordert einen ausdrücklichen Aufruf — ein
 gemergter Pull Request auf dem Git-Host deployt sich nicht von selbst (REQ-1524, REQ-1526). [tool-verified:
 deploy endpoint docstring at environments_router.py lines 777-791]
 
@@ -124,7 +118,7 @@ Ein Merge lässt Bindungen, Rollen und Secrets des Ziels genau so, wie sie waren
 ihre eigenen Datenbankverbindungen nicht dadurch, dass sie ein neueres Modell aus prod übernimmt. Prod erwirbt
 nicht die Grants von dev. [tool-verified: env_copy.py lines 269-287; REQ-1490 scenario]
 
-### Was der Bericht benennt
+### Was der Bericht benennt {: #what-the-report-names }
 
 Der Merge-Bericht führt nach Pfad auf, was hinzugefügt, geändert, entfernt und unverändert gelassen wurde.
 Er benennt außerdem alle **Konflikte** — Objekte, die beide Seiten seit dem letzten gemeinsamen Commit
@@ -164,7 +158,7 @@ Person, die nun entscheiden muss, wessen Arbeit überlebt, weiß, welche Objekte
 [tool-verified: `state["diverged"]` check at environments_router.py lines 1491-1503;
 `_collisions()` at environments_router.py lines 1581-1602]
 
-## Historie
+## Historie {: #history }
 
 Jedes Deploy bewegt den Cursor der Umgebung in ihrer eigenen Commit-Linie vorwärts. Ein Undo tritt einen
 Commit zurück; ein Redo tritt wieder vorwärts in Richtung der Position, die das Undo verlassen hat. Keine der
@@ -182,7 +176,7 @@ der **abgedriftet** heißt. Ein Knoten, dessen Repository-Speicher einen bestimm
 listet seine Umgebungen weiterhin auf; nur die Historie-Antworten ändern sich (REQ-1561). [tool-verified:
 `_with_history()` at environments_router.py lines 316-344; REQ-1561 description]
 
-## Autorisierung
+## Autorisierung {: #authorization }
 
 Umgebungen werden von zwei Rechten regiert. Keines gehört standardmäßig einer Analystin (REQ-1573).
 [tool-verified: REQ-1573 description; `MANAGE_CAPABILITY = "environment_management"` and
@@ -207,7 +201,7 @@ Eine Analystin ohne Umgebungsrecht kann `prod` abfragen und sieht den Umgebungsw
 Kraft mit der Analystenrolle sieht keine Umgebungsoberfläche und kann keine andere Umgebung als die Produktion
 anlegen oder in sie wechseln. [tool-verified: REQ-1573 use_case and scenario]
 
-### Die Autorität der Umgebungseigentümerin
+### Die Autorität der Umgebungseigentümerin {: #environment-owner-authority }
 
 Eine Umgebung anzulegen ist der einzige Weg, auf dem ein nur lesendes Mitglied Rechte zur Modellbearbeitung
 erwirbt (REQ-1528). Innerhalb der Umgebung, die sie angelegt hat, hält die erstellende Person die Capabilities
@@ -224,7 +218,7 @@ Die Domänenmitgliedschaft begrenzt weiterhin, was die eigentümende Person änd
 ein Mitglied tun darf; er ändert nie, an welchen Domänen es das tun darf (REQ-1530).
 [tool-verified: `domains_within()` at env_authority.py lines 121-145]
 
-## Geschützte Umgebungen (REQ-1504)
+## Geschützte Umgebungen (REQ-1504) {: #protected-environments-req-1504 }
 
 Eine Umgebung kann geschützt sein. Ein Merge oder Deploy in eine geschützte Umgebung wird nicht auf Anfrage
 angewendet; er wird vorgeschlagen, und jemand anderes als die anfragende Person muss ihn genehmigen.
@@ -294,7 +288,9 @@ provisa env deploy --org acme --env prod --ref "origin/main" \
 
 ---
 
-## Siehe auch
+## Siehe auch {: #see-also }
 
 - [Deployment](deployment.md) — wie Sie die Control Plane aufsetzen, mit der sich Umgebungen verbinden
 - [Commands](commands.md) — verfolgte Funktionen und Webhooks, die im Baum jeder Umgebung erscheinen
+- [Testumgebungen aufbauen](test-data.md) — Produktion profilieren, Fakes deklarieren, synthetische Daten für eine Nicht-Produktionsumgebung erzeugen
+- [Fake-Methoden](fake-methods.md) — jede Art von Fake und jede Methode, die eine Spalte deklarieren kann

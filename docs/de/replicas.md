@@ -1,8 +1,8 @@
-# Replikate
+# Replikate {: #replicas }
 
 Ein Replikat ist eine Kopie einer Quelltabelle, die Provisa im Materialisierungs-Store der Engine hält und anstelle der Quelle liest. Diese Seite behandelt, worauf ein Replikat indiziert wird, wo Replikate abzulegen sind und wie aktuell sie sind. Ob eine Tabelle überhaupt repliziert wird, legt [`replicate`](configuration.md#the-replicate-setting) fest, zusammen mit dem, was die Engine erreichen kann; siehe [Was eine Engine ändert](engines.md#what-an-engine-changes). (REQ-826)
 
-## Replikate sind indiziert
+## Replikate sind indiziert {: #replicas-are-indexed }
 
 Provisa indiziert ein Replikat so, wie das Modell seine Tabelle verwendet. (REQ-2015) [tool-verified: `provisa/federation/replica_indexes.py` `plan`, `join_columns`]
 
@@ -28,7 +28,7 @@ Das Replikat von `orders` erhält seinen Schlüssel und einen Index auf `custome
 
 Deklarieren Sie den Schlüssel mit `is_primary_key: true` an der Spalte. Ein Replikat ohne deklarierten Schlüssel erhält nur seine Join-Indizes. [tool-verified: `provisa/federation/replica_builds.py` `plan_indexes`]
 
-### Zuerst lesbar, danach indiziert
+### Zuerst lesbar, danach indiziert {: #readable-first-indexed-after }
 
 Ein Landen wartet nie auf Indizes. Das Replikat wird ab dem Moment gelesen, in dem es eingetauscht wird; der Replikat-Runner baut seine Indizes danach einzeln in einem getrennten Durchlauf auf, unter einer Index-Sperre pro Replikat. [tool-verified: `provisa/federation/replica_runner.py` `_planned`, `_start_index_builds`] Rechnen Sie damit, dass die ersten Abfragen nach einem Landen ohne sie laufen.
 
@@ -81,7 +81,7 @@ Das ist eine allgemeine Empfehlung, keine Regel. Ob sie sich lohnt, hängt von d
 - **Die eigene Last der Datenbank.** Replikat-Lesezugriffe, Landungen und Index-Aufbauten laufen alle auf dieser Datenbank. Dimensionieren Sie sie dafür. [inferred]
 - **Große Scans.** Ein Index nützt einer Abfrage nichts, die den Großteil einer großen Tabelle liest. Ein spaltenorientierter Store scannt sie schneller als ein zeilenorientierter. [inferred]
 
-## Wo Replikate liegen sollen
+## Wo Replikate liegen sollen {: #choosing-where-replicas-live }
 
 Der Store ist ein Hebel unter mehreren, und sie überschneiden sich. Klären Sie zuerst die anderen; der Store entscheidet nur über das, was sie übrig lassen.
 
@@ -98,7 +98,7 @@ Was weiterhin vom Store abhängt: Ad-hoc-Scans und -Joins über große Tabellen,
 
 Die Ergebnisse hängen von der Last ab. Messen Sie vor und nach einer Änderung mit dem [Dimensionierungswerkzeug](sizing.md); seine [Live-oder-Replikat-Läufe](sizing.md#live-or-replica-reads-and-the-ttl) geben die Kosten eines Replikat-Lesezugriffs im Vergleich zu einem Live-Lesezugriff in Ihrem Deployment an.
 
-## Aktualität
+## Aktualität {: #freshness }
 
 Machen Sie die Aktualität neben der Geschwindigkeit zum Teil der Entscheidung. Wie alt eine Antwort sein darf und was ihre Aktualisierung die Quelle kostet, entscheiden darüber, ob eine Tabelle live oder aus einem Replikat gelesen wird und damit, was der Store halten muss.
 
@@ -120,7 +120,7 @@ Unternehmensquellen unterstützen selten Echtzeit. Daten kommen per Batch-Ladung
 
 Eine Probe, die nichts zum Vergleichen hat (kein Watermark, Sentinel oder keine Probe-Abfrage), fällt auf die TTL zurück. [tool-verified: `provisa/federation/replica_builds.py` `_probe_decides`]
 
-### Nahezu Echtzeit aus einem Change-Feed
+### Nahezu Echtzeit aus einem Change-Feed {: #near-real-time-from-a-change-feed }
 
 Wo eine Quelle keine Live-Abfragelast verträgt, ihre Änderungen aber bereits veröffentlicht, liefert ein Change-Feed Daten in nahezu Echtzeit, ohne die Quelle zur Abfragezeit anzufassen. Abfragen lesen das lokale Replikat, das schnell ist und die Quelle nicht belastet, während die Event-Schleife Änderungen anwendet, sobald sie eintreffen. Die Daten hinken nur um den Feed hinterher, typischerweise Sekunden. [inferred: the lag figure]
 

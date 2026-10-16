@@ -1,6 +1,6 @@
-# 從 Hasura DDN (v3) 遷移至 Provisa
+# 從 Hasura DDN (v3) 遷移至 Provisa {: #migrating-from-hasura-ddn-v3-to-provisa }
 
-## 先決條件
+## 先決條件 {: #prerequisites }
 
 1. 一個包含 HML 檔案（副檔名 `.hml`）的 Hasura DDN 專案。
    DDN 專案通常具有以下目錄結構：
@@ -21,19 +21,19 @@
 
 2. Python 3.11 或以上版本，並已安裝 `provisa` 套件。
 
-## CLI 使用方法
+## CLI 使用方法 {: #cli-usage }
 
 ```bash
 python -m provisa.ddn <hml-dir> -o provisa.yaml
 ```
 
-### 參數
+### 參數 {: #arguments }
 
 | 參數 | 是否必要 | 說明 |
 | ---------- | ---------- | ------------- |
 | `hml_dir` | 是 | DDN HML 專案目錄的路徑（會遞迴掃描 `.hml` 檔案） |
 
-### 選項
+### 選項 {: #options }
 
 | 選項 | 預設值 | 說明 |
 | -------- | --------- | ------------- |
@@ -42,7 +42,7 @@ python -m provisa.ddn <hml-dir> -o provisa.yaml
 | `--domain-map KEY=VAL ...` | 無 | Subgraph 對應到 domain 的映射（例如 `app=core analytics=reporting`） |
 | `--dry-run` | 關閉 | 只進行解析及驗證，不寫入輸出 |
 
-### 數據來源覆寫檔案
+### 數據來源覆寫檔案 {: #source-overrides-file }
 
 一個以連接器（connector）名稱為索引鍵的 YAML 檔案（經過 ID 淨化後：空格、句號、斜線
 會轉換為底線），並包含連線屬性：
@@ -56,7 +56,7 @@ my_pg_connector:
   password: "${env:PROD_DB_PASSWORD}"
 ```
 
-## 功能對應表
+## 功能對應表 {: #feature-parity-matrix }
 
 | DDN 類型 | Provisa 對應項目 | 備註 |
 | --- | --- | --- |
@@ -75,7 +75,7 @@ my_pg_connector:
 | **CompatibilityConfig** | 略過 | 會顯示帶數量的警告。 |
 | **其他未能識別的類型** | 略過 | 會按類型顯示帶數量的警告。 |
 
-## 核心概念：GraphQL 欄位對應至實際資料表欄
+## 核心概念：GraphQL 欄位對應至實際資料表欄 {: #key-concept-graphql-field-to-physical-column-resolution }
 
 DDN 透過 ObjectType 上的 `dataConnectorTypeMapping`，將 GraphQL 結構描述（欄位名稱）
 與實際數據庫結構描述（資料表欄名稱）分開。轉換工具會：
@@ -88,7 +88,7 @@ DDN 透過 ObjectType 上的 `dataConnectorTypeMapping`，將 GraphQL 結構描�
 這代表輸出的 `provisa.yaml` 會在 `columns[].name` 使用**實際資料表欄名稱**，
 並在名稱不同時，將 `columns[].alias` 設為 GraphQL 欄位名稱。
 
-## 轉換後步驟
+## 轉換後步驟 {: #post-conversion-steps }
 
 1. **檢查輸出的 YAML。** 驗證數據來源、資料表及欄位映射。
 2. **設定數據來源連線。** 連接器僅提供 URL 提示以作類型偵測之用。
@@ -106,45 +106,45 @@ DDN 透過 ObjectType 上的 `dataConnectorTypeMapping`，將 GraphQL 結構描�
    DDN 類型，以及任何引用未知 ObjectType 的模型。
 7. **測試。** 啟動 Provisa 伺服器，並針對你的數據來源驗證查詢。
 
-## 常見問題及疑難排解
+## 常見問題及疑難排解 {: #common-issues-and-troubleshooting }
 
-### 數據來源類型偵測失敗
+### 數據來源類型偵測失敗 {: #source-type-detection-fails }
 
 連接器的 URL 會以啟發式方式（heuristically）判斷（尋找如「postgres」、
 「mysql」、「mongo」等關鍵字）。若 URL 未包含可識別的關鍵字，
 數據來源預設會使用 `postgresql`。可透過 `--source-overrides` 覆寫。
 
-### Model 缺少 ObjectType
+### Model 缺少 ObjectType {: #missing-objecttype-for-a-model }
 
 若某個 Model 引用的 ObjectType 名稱未能在任何 `.hml` 檔案中找到，
 該資料表會被略過，並顯示警告。請確保所有 HML 檔案均已包含在
 所掃描的目錄中。
 
-### Subgraph 偵測
+### Subgraph 偵測 {: #subgraph-discovery }
 
 Subgraph 是根據目錄結構推斷：專案根目錄下的第一層目錄名稱
 會被視為 subgraph 名稱。HML 文件內的 `subgraph` 欄位並不會被使用。
 位於 `globals/` 目錄下的檔案會被歸入 `globals` subgraph，
 並會被排除於 domain 偵測之外。
 
-### 關聯來源解析
+### 關聯來源解析 {: #relationship-source-resolution }
 
 關聯會引用一個 `source_type`（ObjectType 名稱）及一個 `target_model`（Model
 名稱）。若沒有任何 Model 使用指定的 ObjectType，該關聯會被靜默略過。
 
-### 隨處可見的資料表欄別名
+### 隨處可見的資料表欄別名 {: #column-aliases-everywhere }
 
 若你的 DDN 專案廣泛使用 `fieldMapping`，可預期大部分資料表欄在輸出中
 都會有 `alias`。這是正常的行為 —— `name` 是實際的資料表欄，
 `alias` 則是應用程式所使用的 GraphQL 名稱。
 
-### 聚合運算式
+### 聚合運算式 {: #aggregate-expressions }
 
 聚合運算式會保留在與輸出檔案並列寫入的附屬檔案
 `provisa-aggregates.yaml` 中，並轉換為 Provisa 的聚合設定。它們並不會
 儲存在資料表的 `description` 中。
 
-## 範例：轉換 Chinook DDN 專案
+## 範例：轉換 Chinook DDN 專案 {: #example-converting-a-chinook-ddn-project }
 
 ```bash
 # Convert the DDN project

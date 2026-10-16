@@ -1,4 +1,4 @@
-# Riferimento API Admin GraphQL
+# Riferimento API Admin GraphQL {: #admin-graphql-api-reference }
 
 L'API GraphQL admin è il piano di configurazione di Provisa. È l'API che l'app web di amministrazione chiama per ogni operazione di gestione — creare origini, registrare tabelle, definire relazioni, configurare regole RLS, e tutto il resto che modella il modello.
 
@@ -8,7 +8,7 @@ Questa non è la stessa API del data plane su `/data/graphql`. Il data plane ser
 
 ---
 
-## Come la UI parla con questa API
+## Come la UI parla con questa API {: #how-the-ui-talks-to-this-api }
 
 L'app web di amministrazione usa Apollo Client, puntato su `${API_BASE}/admin/graphql`. [tool-verified: `provisa-ui/src/apolloClient.ts:19`]
 
@@ -18,7 +18,7 @@ Lo schema è assemblato da due classi `@strawberry.type` — `Query` da `schema_
 
 ---
 
-## Autorizzazione
+## Autorizzazione {: #authorization }
 
 **Modalità dev:** quando non è configurata alcuna autenticazione e ogni richiesta arriva come principal anonimo, tutti i controlli di capability vengono saltati. Questo mantiene un'installazione locale funzionante senza configurazione di autenticazione. [tool-verified: `provisa/api/admin/capabilities.py:98-99`]
 
@@ -30,7 +30,7 @@ Lo schema è assemblato da due classi `@strawberry.type` — `Query` da `schema_
 
 ---
 
-## Tipo di ritorno comune
+## Tipo di ritorno comune {: #common-return-type }
 
 La maggior parte delle mutation restituisce `MutationResult`. [tool-verified: `provisa/api/admin/types.py:1181-1188`]
 
@@ -47,9 +47,9 @@ Quando una mutation fallisce, `success` è `false` e `message` porta la ragione 
 
 ---
 
-## Query
+## Query {: #queries }
 
-### Origini
+### Origini {: #sources }
 
 #### `sources → [SourceType!]!`
 
@@ -59,12 +59,16 @@ Tutte le origini dati registrate. [tool-verified: `provisa/api/admin/schema_quer
 query {
   sources {
     id type host port database username dialect
-    cacheEnabled cacheTtl preferMaterialized
+    cacheEnabled cacheTtl replicate
     loadProtected offPeakWindow offPeakTz
     gqlNamingConvention path allowedDomains
     description mappingJson federationHintsJson
     changeSignal passwordRef
-    cdc { bootstrapServers topicPrefix schemaRegistryUrl consumerGroupId }
+    cdc {
+      bootstrapServers topicPrefix consumerGroupId
+      schemaRegistryUrl schemaRegistryAuth schemaRegistryUsername schemaRegistryPassword
+      schemaRegistryToken schemaRegistryClientCert schemaRegistryClientKey schemaRegistryCa
+    }
   }
 }
 ```
@@ -105,7 +109,7 @@ Restituisce l'alias da usare quando si registra `tableName` in `domainId` da `so
 
 ---
 
-### Tabelle
+### Tabelle {: #tables }
 
 #### `tables → [RegisteredTableType!]!`
 
@@ -122,7 +126,7 @@ Ogni `RegisteredTableType` espone sotto-campi calcolati:
 
 Anteprima del riepilogo effettivo di refresh/serving per manopole di tabella *in bozza* (non salvate), cosicché il riepilogo in cima al modulo si aggiorni man mano che i campi cambiano senza persistere nulla. Stessa derivazione di `refreshPolicySummary` sopra. (REQ-1143) [tool-verified: `provisa/api/admin/schema_query.py:947-979`]
 
-Argomenti: `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `preferMaterialized`, `loadProtected`, `offPeakWindow`, `offPeakTz`, `changeSignal`.
+Argomenti: `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `replicate`, `loadProtected`, `offPeakWindow`, `offPeakTz`, `changeSignal`.
 
 #### `columnDependents(tableId: String!, renamed: [String!], removed: [String!]) → [ColumnDependentsType!]!`
 
@@ -130,7 +134,7 @@ Artefatti che una ridenominazione di alias o rimozione di colonna in sospeso rom
 
 ---
 
-### Relazioni
+### Relazioni {: #relationships }
 
 #### `relationships → [RelationshipType!]!`
 
@@ -147,7 +151,7 @@ Ogni `RelationshipType` espone:
 
 ---
 
-### Domini, ruoli e utenti
+### Domini, ruoli e utenti {: #domains-roles-users }
 
 #### `domains → [DomainType!]!`
 
@@ -163,7 +167,7 @@ Risolve ID di ruolo o ID utente in singoli utenti. Usato per espandere `DataProd
 
 ---
 
-### Regole RLS
+### Regole RLS {: #rls-rules }
 
 #### `rlsRules → [RLSRuleType!]!`
 
@@ -171,7 +175,7 @@ Tutte le regole di sicurezza a livello di riga. Il repository sottostante decifr
 
 ---
 
-### Prodotti dati
+### Prodotti dati {: #data-products }
 
 #### `dataProducts → [DataProductType!]!`
 
@@ -179,7 +183,7 @@ Tutti i prodotti dati. Richiede la capability `data_product_read`. (REQ-1634) [t
 
 ---
 
-### Tag
+### Tag {: #tags }
 
 #### `tags → [TagType!]!`
 
@@ -191,7 +195,7 @@ Tutte le assegnazioni di tag su origini, tabelle, colonne e relazioni. (REQ-1377
 
 ---
 
-### Viste materializzate
+### Viste materializzate {: #materialized-views }
 
 #### `mvList → [MVType!]!`
 
@@ -219,7 +223,7 @@ Identità dello store di materializzazione durevole: nome del motore, riferiment
 
 ---
 
-### Salute del sistema
+### Salute del sistema {: #system-health }
 
 #### `systemHealth → SystemHealthType`
 
@@ -238,7 +242,7 @@ query {
 
 ---
 
-### Task pianificati
+### Task pianificati {: #scheduled-tasks }
 
 #### `scheduledTasks → [ScheduledTaskType!]!`
 
@@ -246,7 +250,7 @@ Trigger pianificati da config con stato a runtime. Ogni voce porta la propria es
 
 ---
 
-### Qualità dei dati
+### Qualità dei dati {: #data-quality }
 
 #### `dqContractParse(checker: String!, contractText: String!) → DqContractType`
 
@@ -266,7 +270,7 @@ Serializza le righe di controllo modificate in testo di contratto. L'inverso di 
 
 ---
 
-### Anteprime origine
+### Anteprime origine {: #source-previews }
 
 #### `neo4jPreview(sourceId: String!, cypher: String!) → QueryPreviewType`
 
@@ -290,7 +294,7 @@ Ricerca nel catalogo pubblico completo dei dataset Kaggle. Vincolata dal token. 
 
 ---
 
-### Calendari
+### Calendari {: #calendars }
 
 #### `calendars → [CalendarType!]!`
 
@@ -298,7 +302,7 @@ Tutte le versioni registrate di calendario dei confini di snapshot. Alimenta il 
 
 ---
 
-### Metriche
+### Metriche {: #metrics }
 
 #### `metrics → [MetricType!]!`
 
@@ -306,7 +310,7 @@ Tutte le definizioni di metriche governate. Le metriche derivate da fact portano
 
 ---
 
-### Versione schema
+### Versione schema {: #schema-version }
 
 #### `schemaVersion → String!`
 
@@ -314,7 +318,7 @@ Hash SHA-256 dello stato corrente dello schema (domini, ID tabella, ID relazione
 
 ---
 
-### Helper IA
+### Helper IA {: #ai-helpers }
 
 #### `generateTableDescription(tableId: String!) → String!`
 
@@ -326,25 +330,25 @@ Usa l'LLM configurato per generare una descrizione di una frase per una singola 
 
 ---
 
-### Richieste di creazione
+### Richieste di creazione {: #creation-requests }
 
 #### `creationRequests → [CreationRequestType!]!`
 
-Richieste di creazione in sospeso, visibili ai chiamanti che possiedono la relativa capability di creazione. Usata quando un membro senza `create_relationship` o `create_view` invia una richiesta che un titolare di diritti deve approvare. (REQ-434, REQ-063) [tool-verified: `provisa/api/admin/schema_query.py:267-289`]
+Richieste di creazione in sospeso, visibili ai chiamanti che hanno la capacità di creazione pertinente. Usato quando un membro senza `create_relationship` o `create_view` invia una richiesta che un titolare del diritto deve approvare. Una richiesta di relazione è elencata per gli utenti il cui diritto `create_relationship` raggiunge il dominio della sua tabella di origine o di destinazione, e per l'utente che l'ha fatta. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_query.py:371-420`]
 
 ---
 
-## Mutation
+## Mutation {: #mutations }
 
-### Origini
+### Origini {: #sources_1 }
 
 #### `createSource(input: SourceInput!) → MutationResult`
 
-Registra una nuova origine dati. Valida la connessione prima di persistere — un'origine rifiutata non lascia alcuna voce nel vault. Memorizza le credenziali nel vault dell'org e registra il riferimento; il testo in chiaro non atterra mai nel database. (REQ-012, REQ-013) Richiede la capability `source_registration`. [tool-verified: `provisa/api/admin/schema_mutation.py:616-781`]
+Registra una nuova sorgente di dati. Un id già esistente viene rifiutato (`schema.source_id_taken`) dopo i controlli della definizione e prima che qualcosa venga preparato o scritto; una sorgente si modifica con `updateSource`. Convalida la connessione prima di persistere — una sorgente rifiutata non lascia alcuna voce nel vault. Memorizza le credenziali nel vault dell'organizzazione e registra il riferimento; il testo in chiaro non arriva mai al database. (REQ-012, REQ-013) Richiede la capacità `source_registration`. [tool-verified: `provisa/api/admin/schema_mutation.py:616-781`]
 
 #### `updateSource(input: SourceInput!) → MutationResult`
 
-Aggiorna i dettagli di connessione, la descrizione e la config di un'origine esistente. Smonta e ricollega l'endpoint pgwire per le origini file/SharePoint, cosicché un cambio di percorso abbia effetto immediato. Richiede `source_registration`. [tool-verified: `provisa/api/admin/schema_mutation.py:922-1073`]
+Aggiorna i dettagli di connessione, la descrizione e la configurazione di una sorgente esistente, poi la riprovvisiona sul motore associato, ricostruisce gli schemi e riconcilia le sue tabelle atterrate, così che una sorgente salvata con un motore sia servita da quello a cui si è passati in seguito (REQ-1730). Smonta e ricollega l'endpoint pgwire delle sorgenti file/SharePoint perché un cambio di percorso abbia effetto subito. Richiede `source_registration`. [tool-verified: `provisa/api/admin/schema_mutation.py:922-1073`]
 
 #### `deleteSource(id: String!) → MutationResult`
 
@@ -352,15 +356,15 @@ Rimuove un'origine e la sua voce nel vault. Elimina il catalogo del motore e ric
 
 #### `renameSource(oldId: String!, newId: String!) → MutationResult`
 
-Rinomina un ID origine. [tool-verified: `provisa/api/admin/schema_mutation.py:1076-1098`]
+Rinomina l'id di una sorgente. Un nuovo id già posseduto da un'altra sorgente viene rifiutato (`schema.source_id_taken`) e non viene scritto nulla; rinominare una sorgente con il suo stesso id non cambia nulla. [tool-verified: `provisa/core/repositories/source.py` `rename`]
 
 #### `updateSourceCache(sourceId: String!, cacheEnabled: Boolean!, cacheTtl: Int) → MutationResult`
 
 Abilita o disabilita il caching dei risultati delle query per un'origine, e imposta il TTL in secondi. [tool-verified: `provisa/api/admin/schema_mutation.py:2327-2350`]
 
-#### `updateSourcePreferMaterialized(sourceId: String!, preferMaterialized: Boolean!) → MutationResult`
+#### `updateSourceReplicate(sourceId: String!, replicate: Int) → MutationResult`
 
-Forza (o rilascia) la federazione materializzata per tutte le tabelle di un'origine. (REQ-826) [tool-verified: `provisa/api/admin/schema_mutation.py:2379-2402`]
+Stabilisce quando le tabelle di una sorgente vengono servite dalle loro repliche: `null` Default, `-1` Never, `N` maggiore di 0 non appena una tabella supera N istruzioni governate per intervallo, `0` Always. Una tabella senza un valore proprio lo eredita. Rifiutato quando abbinerebbe `load_protected` a `-1`, o lascerebbe senza `cache_ttl` una tabella `ttl` che replica. Richiede `source_registration`. (REQ-826, REQ-1907) [tool-verified: `provisa/api/admin/schema_mutation.py` `update_source_replicate`]
 
 #### `updateSourceLoadProtection(sourceId, loadProtected, offPeakWindow, offPeakTz) → MutationResult`
 
@@ -388,7 +392,7 @@ Esegue `ANALYZE` su tutte le tabelle registrate per un'origine. Migliora le deci
 
 ---
 
-### Tabelle
+### Tabelle {: #tables_1 }
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
@@ -406,9 +410,9 @@ Elimina una tabella registrata. Cerca il dominio della tabella per il gate di do
 
 Sovrascrive il TTL della cache per una tabella. [tool-verified: `provisa/api/admin/schema_mutation.py:2353-2376`]
 
-#### `updateTablePreferMaterialized(tableId: Int!, preferMaterialized: Boolean) → MutationResult`
+#### `updateTableReplicate(tableId: Int!, replicate: Int) → MutationResult`
 
-Sovrascrive la federazione materializzata per una tabella. `null` = eredita il default dell'origine. (REQ-826) [tool-verified: `provisa/api/admin/schema_mutation.py:2405-2428`]
+Stabilisce quando una tabella viene servita dalla sua replica. `null` = ereditare il valore della sorgente. Stessi valori e rifiuti di `updateSourceReplicate`. Richiede `table_registration`. (REQ-826, REQ-1907) [tool-verified: `provisa/api/admin/schema_mutation.py` `update_table_replicate`]
 
 #### `updateTableLoadProtection(tableId, loadProtected, offPeakWindow, offPeakTz) → MutationResult`
 
@@ -440,11 +444,15 @@ Zucchero sintattico per registrare un fact a schema a stella. Si riduce a una MV
 
 ---
 
-### Relazioni
+### Relazioni {: #relationships_1 }
 
-#### `upsertRelationship(input: RelationshipInput!) → MutationResult`
+#### `createRelationship(input: RelationshipInput!) → MutationResult`
 
-Crea o aggiorna una relazione. Il gate controlla il dominio della tabella origine (non quella di destinazione). Un arco cross-dominio viene memorizzato con `needsReview: true`. Un chiamante privo di `create_relationship` viene accodato come richiesta di creazione. Gli archi junction (molti-a-molti) richiedono lunghezze corrispondenti delle liste di chiavi. (REQ-019, REQ-020, REQ-366, REQ-434) [tool-verified: `provisa/api/admin/schema_mutation.py:2297-2300`]
+Crea una relazione. Il controllo verifica il dominio della tabella di origine (non quello della destinazione). Un arco tra domini viene memorizzato con `needsReview: true`. Un chiamante senza `create_relationship` viene messo in coda come richiesta di creazione. Gli archi di giunzione (molti-a-molti) richiedono liste di chiavi della stessa lunghezza. Rifiutato per nome, prima di scrivere qualsiasi cosa: un id già esistente (`schema.relationship_id_taken`); un nome di tabella che non si risolve in nessuna tabella registrata o in più di una (`schema.relationship_unknown_source`, `_target`, `_junction`, `schema.relationship_ambiguous_table`); un alias Cypher o un alias GraphQL già posseduto da un'altra relazione della stessa tabella di origine (`schema.relationship_alias_taken`, `schema.relationship_graphql_alias_taken`). Una tabella è indicata con il suo nome virtuale: il suo alias quando ne ha uno. (REQ-019, REQ-020, REQ-366, REQ-434) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_relationship_as_caller`, `save_relationship`]
+
+#### `updateRelationship(input: RelationshipInput!) → MutationResult`
+
+Modifica una relazione esistente, con gli stessi controlli di `createRelationship`. Un id che nessuna relazione possiede viene rifiutato (`schema.relationship_not_found`). Una modifica richiede il diritto stesso; non viene mai messa in coda come richiesta. (REQ-019, REQ-020) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_relationship_as_caller`]
 
 #### `deleteRelationship(id: String!) → MutationResult`
 
@@ -452,11 +460,11 @@ Elimina una relazione per ID e ricostruisce gli schemi. [tool-verified: `provisa
 
 ---
 
-### Domini
+### Domini {: #domains }
 
 #### `createDomain(input: DomainInput!) → MutationResult`
 
-Crea un dominio. Le parole di segmento riservate (`tables`, `relationships`, e altri segmenti di percorso URI) vengono rifiutate, così come il letterale wildcard `*`. Richiede la capability `org_settings`. (REQ-021, REQ-1531) [tool-verified: `provisa/api/admin/schema_mutation.py:1135-1189`]
+Crea un dominio. Un id già esistente viene rifiutato (`schema.domain_id_taken`). Le parole di segmento riservate (`tables`, `relationships` e altri segmenti di percorso URI) vengono rifiutate, così come il letterale jolly `*`. Richiede la capacità `org_settings`. (REQ-021, REQ-1531) [tool-verified: `provisa/api/admin/schema_mutation.py:1135-1189`]
 
 #### `deleteDomain(id: String!) → MutationResult`
 
@@ -468,11 +476,15 @@ Imposta la convenzione di naming GraphQL globale e ricostruisce gli schemi per t
 
 ---
 
-### Ruoli
+### Ruoli {: #roles }
 
 #### `createRole(input: RoleInput!) → MutationResult`
 
-Crea o sostituisce un ruolo con capability, accesso ai domini, rate limit opzionali, e un ruolo padre opzionale. Valida che il padre esista e che la catena dei padri sia priva di cicli. Richiede `user_management`. (REQ-042, REQ-1531, REQ-1677) [tool-verified: `provisa/api/admin/schema_mutation.py:1657-1712`]
+Crea un ruolo con capacità, accesso ai domini, limiti di frequenza facoltativi e un ruolo padre facoltativo. Verifica che il padre esista e che la catena dei padri sia priva di cicli. Dopo i controlli della definizione, un id già esistente viene rifiutato (`schema.role_id_taken`). Richiede `user_management`. (REQ-042, REQ-1531, REQ-1677) [tool-verified: `provisa/api/admin/schema_mutation.py:1657-1712`]
+
+#### `updateRole(input: RoleInput!) → MutationResult`
+
+Modifica un ruolo esistente, con gli stessi controlli di `createRole`. Un id che nessun ruolo possiede viene rifiutato (`schema.role_not_found`). Ridefinire un ruolo è un atto in ogni dominio che raggiunge. (REQ-042, REQ-1531) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_role`]
 
 #### `deleteRole(id: String!) → MutationResult`
 
@@ -480,7 +492,7 @@ Elimina un ruolo. Fallisce se altri ruoli ereditano da esso — ri-assegnali pri
 
 ---
 
-### Regole RLS
+### Regole RLS {: #rls-rules_1 }
 
 #### `upsertRlsRule(input: RLSRuleInput!) → MutationResult`
 
@@ -494,11 +506,15 @@ Elimina una regola RLS. Richiede `masking_config`. (REQ-1531) [tool-verified: `p
 
 ---
 
-### Prodotti dati
+### Prodotti dati {: #data-products_1 }
 
 #### `createDataProduct(input: DataProductInput!) → MutationResult`
 
-Crea o sostituisce un prodotto dati. Richiede la capability `data_product_rw`. (REQ-1634) [tool-verified: `provisa/api/admin/schema_mutation.py:1216-1259`]
+Crea un prodotto dati. Un id già esistente viene rifiutato (`schema.data_product_id_taken`). Richiede la capacità `data_product_rw`. (REQ-1634) [tool-verified: `provisa/api/admin/schema_mutation.py:1216-1259`]
+
+#### `updateDataProduct(input: DataProductInput!) → MutationResult`
+
+Modifica un prodotto dati esistente. Un id che nessun prodotto possiede viene rifiutato (`schema.data_product_not_found`). Richiede `data_product_rw`. (REQ-1634) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_data_product`]
 
 #### `deleteDataProduct(id: String!) → MutationResult`
 
@@ -506,11 +522,15 @@ Elimina un prodotto dati. Richiede `data_product_rw`. (REQ-1634) [tool-verified:
 
 ---
 
-### Tag
+### Tag {: #tags_1 }
 
-#### `upsertTag(input: TagInput!) → MutationResult`
+#### `createTag(input: TagInput!) → MutationResult`
 
-Crea o aggiorna una definizione di tag. I tag di sistema e i tag derivati non possono essere ridefiniti. `appliesTo` deve essere un sottoinsieme non vuoto di `["source", "table", "column", "relationship", "command"]`. (REQ-1373, REQ-1375) [tool-verified: `provisa/api/admin/schema_mutation.py:1288-1361`]
+Crea una definizione di tag. Un id già esistente viene rifiutato (`schema.tag_id_taken`). I tag di sistema e i tag derivati non possono essere ridefiniti. `appliesTo` deve essere un sottoinsieme non vuoto di `["source", "table", "column", "relationship", "command"]`. (REQ-1373, REQ-1375) [tool-verified: `provisa/api/admin/schema_mutation.py:1288-1361`]
+
+#### `updateTag(input: TagInput!) → MutationResult`
+
+Modifica una definizione di tag esistente, con gli stessi controlli di `createTag`. Un id che nessun tag possiede viene rifiutato (`schema.tag_not_found`). (REQ-1373) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_tag`]
 
 #### `deleteTag(id: String!) → MutationResult`
 
@@ -534,11 +554,15 @@ Rimuove un valore permesso. Rifiutato mentre qualche assegnazione lo porta ancor
 
 ---
 
-### Metriche
+### Metriche {: #metrics_1 }
 
-#### `upsertMetric(input: MetricInput!) → MutationResult`
+#### `createMetric(input: MetricInput!) → MutationResult`
 
-Crea o sostituisce una definizione di metrica governata. L'espressione deve essere analizzabile da sqlglot e contenere almeno una funzione di aggregazione. Rigenera tutte le viste composte da metriche che referenziano questa metrica. Richiede `table_registration`. (REQ-1317, REQ-1318) [tool-verified: `provisa/api/admin/schema_mutation.py:1779-1831`]
+Crea una definizione di metrica governata. Un nome già esistente viene rifiutato (`schema.metric_name_taken`). L'espressione deve essere analizzabile da sqlglot e contenere almeno una funzione di aggregazione. Rigenera tutte le viste composte da metriche che fanno riferimento a questa metrica. Richiede `table_registration`. (REQ-1317, REQ-1318) [tool-verified: `provisa/api/admin/schema_mutation.py:1779-1831`]
+
+#### `updateMetric(input: MetricInput!) → MutationResult`
+
+Sostituisce la definizione di una metrica esistente, con gli stessi controlli di `createMetric`. Un nome che nessuna metrica possiede viene rifiutato (`schema.metric_not_found`). Salvarla richiede i domini della nuova espressione e della definizione che sostituisce. (REQ-1317, REQ-1531) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_metric`]
 
 #### `deleteMetric(name: String!) → MutationResult`
 
@@ -546,7 +570,7 @@ Elimina una metrica governata. Ricostruisce gli schemi. Richiede `table_registra
 
 ---
 
-### Calendari
+### Calendari {: #calendars_1 }
 
 #### `createCalendar(input: CalendarInput!) → MutationResult`
 
@@ -558,7 +582,7 @@ Elimina un calendario (tutte le versioni). Rifiutato quando qualche vista materi
 
 ---
 
-### Viste materializzate
+### Viste materializzate {: #materialized-views_1 }
 
 #### `refreshMv(mvId: String!) → MutationResult`
 
@@ -582,7 +606,7 @@ Svuota i risultati in cache per una tabella. [tool-verified: `provisa/api/admin/
 
 ---
 
-### Task pianificati
+### Task pianificati {: #scheduled-tasks_1 }
 
 #### `createScheduledTask(id, name, cron, kind, webhookName, argsJson, sql) → MutationResult`
 
@@ -598,7 +622,7 @@ Abilita o disabilita un task pianificato nel file di config. [tool-verified: `pr
 
 ---
 
-### Qualità dei dati
+### Qualità dei dati {: #data-quality_1 }
 
 #### `dryRunDqContract(sourceId: String!, contractText: String!) → DqDryRunType`
 
@@ -610,7 +634,7 @@ Attiva immediatamente il job di polling di una tabella checker. Atterra le righe
 
 ---
 
-### Manutenzione dello schema
+### Manutenzione dello schema {: #schema-maintenance }
 
 #### `rebuildSchemas → MutationResult`
 
@@ -618,19 +642,23 @@ Ricostruisce lo schema in memoria dallo stato del database. Utile dopo modifiche
 
 ---
 
-### Richieste di creazione
+### Richieste di creazione {: #creation-requests_1 }
+
+#### `approveCreationRequest(requestId: Int!) → MutationResult`
+
+Approva una richiesta di creazione: la stessa regola, gli stessi rifiuti e le stesse voci del registro di amministrazione di `POST /admin/creation-requests/{id}/approve`. Il richiedente non può approvare la propria richiesta e l'approvazione di un utente conta una volta. L'approvazione che completa il conteggio della richiesta crea ciò che chiede; `params.status` è `executed` quando è stata questa, altrimenti `pending`, e `params.waitingOn` elenca i domini che una richiesta di relazione attende ancora. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py` `approve_creation_request`]
 
 #### `executeCreationRequest(requestId: Int!) → MutationResult`
 
-Un titolare di diritti esegue una richiesta di creazione accodata — relazione, vista o webhook. Richiede la capability su cui la richiesta è in attesa. (REQ-434, REQ-063) [tool-verified: `provisa/api/admin/schema_mutation.py:2181-2255`]
+Esegue una richiesta di creazione che ha ottenuto le sue approvazioni — relazione, vista, tabella, sorgente o webhook — tramite il codice che usa la mutazione diretta. Rifiutata con `requests.approvals_incomplete` finché le approvazioni richieste (una, o due per una relazione) non sono raggiunte da utenti diversi dal richiedente; una richiesta di relazione è rifiutata anche con `requests.waiting_on_domains` finché un dominio che tocca non ha un approvatore. Le approvazioni si danno tramite `POST /admin/creation-requests/{id}/approve`, e l'approvazione che completa il conteggio esegue la creazione, quindi questa mutazione serve a ritentare una creazione fallita. Una creazione fallita lascia la richiesta in sospeso e risponde con il codice proprio del fallimento. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py` `execute_creation_request`, `perform_request_creation`; `provisa/api/admin/creation_requests_router.py`]
 
 #### `rejectCreationRequest(requestId: Int!, reason: String!) → MutationResult`
 
-Rifiuta una richiesta accodata con una ragione azionabile. `reason` è obbligatorio. (REQ-434, REQ-063) [tool-verified: `provisa/api/admin/schema_mutation.py:2258-2294`]
+Rifiuta una richiesta in coda con un motivo utilizzabile. `reason` è obbligatorio. Una richiesta di relazione può essere rifiutata da qualsiasi utente che potrebbe approvarla. L'autore di una richiesta di qualsiasi altro tipo può ritirarla; ciò viene registrato nel registro di amministrazione come ritiro. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py:3064-3106`]
 
 ---
 
-### Compilazione query
+### Compilazione query {: #query-compilation }
 
 #### `compileQuery(input: CompileQueryInput!) → [CompileQueryResult!]!`
 
@@ -669,7 +697,7 @@ Campi di `CompileQueryInput`:
 
 ---
 
-## Tipi di input chiave
+## Tipi di input chiave {: #key-input-types }
 
 ### `SourceInput`
 
@@ -690,7 +718,7 @@ Campi di `CompileQueryInput`:
 | `loadProtected` | `Boolean` | Solo-refresh-pianificato (REQ-1141) |
 | `offPeakWindow` | `String` | Finestra di manutenzione `HH:MM-HH:MM` |
 | `offPeakTz` | `String` | Fuso orario IANA |
-| `cdc` | `SourceCdcConfigInput` | Config di trasporto CDC Kafka (REQ-824) |
+| `cdc` | `SourceCdcConfigInput` | Configurazione del trasporto Kafka CDC (REQ-824), incluso il modo di raggiungere il suo schema registry (REQ-1951; vedere [Autenticazione dello schema registry](subscriptions.md#schema-registry-authentication)). `schemaRegistryPassword` e `schemaRegistryToken` vengono restituiti come riferimenti del vault, mai come credenziali. |
 
 ### `TableInput`
 
@@ -733,7 +761,7 @@ L'input principale di registrazione tabella. Campi chiave oltre alle basi:
 
 ---
 
-## Esempio: registrare una tabella
+## Esempio: registrare una tabella {: #example-registering-a-table }
 
 ```graphql
 mutation {
@@ -756,7 +784,7 @@ mutation {
 }
 ```
 
-## Esempio: creare una regola RLS
+## Esempio: creare una regola RLS {: #example-creating-an-rls-rule }
 
 ```graphql
 mutation {

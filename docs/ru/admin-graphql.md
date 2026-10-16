@@ -1,4 +1,4 @@
-# Справочник Admin GraphQL API
+# Справочник Admin GraphQL API {: #admin-graphql-api-reference }
 
 Административный GraphQL API — это плоскость конфигурации Provisa. Это API, который вызывает административное веб-приложение для каждой операции управления — создания источников, регистрации таблиц, определения связей, настройки правил RLS и всего остального, что формирует модель.
 
@@ -8,7 +8,7 @@
 
 ---
 
-## Как интерфейс взаимодействует с этим API
+## Как интерфейс взаимодействует с этим API {: #how-the-ui-talks-to-this-api }
 
 Административное веб-приложение использует Apollo Client, направленный на `${API_BASE}/admin/graphql`. [tool-verified: `provisa-ui/src/apolloClient.ts:19`]
 
@@ -18,7 +18,7 @@
 
 ---
 
-## Авторизация
+## Авторизация {: #authorization }
 
 **Режим разработки:** когда авторизация не настроена и каждый запрос приходит как анонимный принципал, все проверки возможностей пропускаются. Это сохраняет функциональность локальной установки без настройки авторизации. [tool-verified: `provisa/api/admin/capabilities.py:98-99`]
 
@@ -30,7 +30,7 @@
 
 ---
 
-## Общий тип возврата
+## Общий тип возврата {: #common-return-type }
 
 Большинство мутаций возвращают `MutationResult`. [tool-verified: `provisa/api/admin/types.py:1181-1188`]
 
@@ -49,7 +49,7 @@ type MutationResult {
 
 ## Запросы (Queries)
 
-### Источники
+### Источники {: #sources }
 
 #### `sources → [SourceType!]!`
 
@@ -59,12 +59,16 @@ type MutationResult {
 query {
   sources {
     id type host port database username dialect
-    cacheEnabled cacheTtl preferMaterialized
+    cacheEnabled cacheTtl replicate
     loadProtected offPeakWindow offPeakTz
     gqlNamingConvention path allowedDomains
     description mappingJson federationHintsJson
     changeSignal passwordRef
-    cdc { bootstrapServers topicPrefix schemaRegistryUrl consumerGroupId }
+    cdc {
+      bootstrapServers topicPrefix consumerGroupId
+      schemaRegistryUrl schemaRegistryAuth schemaRegistryUsername schemaRegistryPassword
+      schemaRegistryToken schemaRegistryClientCert schemaRegistryClientKey schemaRegistryCa
+    }
   }
 }
 ```
@@ -105,7 +109,7 @@ query {
 
 ---
 
-### Таблицы
+### Таблицы {: #tables }
 
 #### `tables → [RegisteredTableType!]!`
 
@@ -122,7 +126,7 @@ query {
 
 Предпросмотр эффективной сводки обновления/обслуживания для *черновых* (несохранённых) настроек таблицы, чтобы сводка вверху формы обновлялась по мере изменения полей без сохранения чего-либо. Тот же вывод, что и `refreshPolicySummary` выше. (REQ-1143) [tool-verified: `provisa/api/admin/schema_query.py:947-979`]
 
-Аргументы: `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `preferMaterialized`, `loadProtected`, `offPeakWindow`, `offPeakTz`, `changeSignal`.
+Аргументы: `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `replicate`, `loadProtected`, `offPeakWindow`, `offPeakTz`, `changeSignal`.
 
 #### `columnDependents(tableId: String!, renamed: [String!], removed: [String!]) → [ColumnDependentsType!]!`
 
@@ -130,7 +134,7 @@ query {
 
 ---
 
-### Связи
+### Связи {: #relationships }
 
 #### `relationships → [RelationshipType!]!`
 
@@ -147,7 +151,7 @@ query {
 
 ---
 
-### Домены, роли и пользователи
+### Домены, роли и пользователи {: #domains-roles-users }
 
 #### `domains → [DomainType!]!`
 
@@ -163,7 +167,7 @@ query {
 
 ---
 
-### Правила RLS
+### Правила RLS {: #rls-rules }
 
 #### `rlsRules → [RLSRuleType!]!`
 
@@ -171,7 +175,7 @@ query {
 
 ---
 
-### Продукты данных
+### Продукты данных {: #data-products }
 
 #### `dataProducts → [DataProductType!]!`
 
@@ -179,7 +183,7 @@ query {
 
 ---
 
-### Теги
+### Теги {: #tags }
 
 #### `tags → [TagType!]!`
 
@@ -191,7 +195,7 @@ query {
 
 ---
 
-### Материализованные представления
+### Материализованные представления {: #materialized-views }
 
 #### `mvList → [MVType!]!`
 
@@ -199,7 +203,7 @@ query {
 
 ---
 
-### Кеш
+### Кеш {: #cache }
 
 #### `cacheStats → CacheStatsType`
 
@@ -219,7 +223,7 @@ query {
 
 ---
 
-### Состояние системы
+### Состояние системы {: #system-health }
 
 #### `systemHealth → SystemHealthType`
 
@@ -238,7 +242,7 @@ query {
 
 ---
 
-### Запланированные задачи
+### Запланированные задачи {: #scheduled-tasks }
 
 #### `scheduledTasks → [ScheduledTaskType!]!`
 
@@ -246,7 +250,7 @@ query {
 
 ---
 
-### Качество данных
+### Качество данных {: #data-quality }
 
 #### `dqContractParse(checker: String!, contractText: String!) → DqContractType`
 
@@ -266,7 +270,7 @@ query {
 
 ---
 
-### Предпросмотры источников
+### Предпросмотры источников {: #source-previews }
 
 #### `neo4jPreview(sourceId: String!, cypher: String!) → QueryPreviewType`
 
@@ -290,7 +294,7 @@ query {
 
 ---
 
-### Календари
+### Календари {: #calendars }
 
 #### `calendars → [CalendarType!]!`
 
@@ -298,7 +302,7 @@ query {
 
 ---
 
-### Метрики
+### Метрики {: #metrics }
 
 #### `metrics → [MetricType!]!`
 
@@ -306,7 +310,7 @@ query {
 
 ---
 
-### Версия схемы
+### Версия схемы {: #schema-version }
 
 #### `schemaVersion → String!`
 
@@ -314,7 +318,7 @@ query {
 
 ---
 
-### Помощники ИИ
+### Помощники ИИ {: #ai-helpers }
 
 #### `generateTableDescription(tableId: String!) → String!`
 
@@ -326,25 +330,25 @@ query {
 
 ---
 
-### Запросы на создание
+### Запросы на создание {: #creation-requests }
 
 #### `creationRequests → [CreationRequestType!]!`
 
-Ожидающие запросы на создание, видимые вызывающим, обладающим соответствующей возможностью создания. Используется, когда участник без `create_relationship` или `create_view` отправляет запрос, который должен утвердить обладатель прав. (REQ-434, REQ-063) [tool-verified: `provisa/api/admin/schema_query.py:267-289`]
+Ожидающие запросы на создание, видимые вызывающим, у которых есть соответствующая возможность создания. Используется, когда участник без `create_relationship` или `create_view` отправляет запрос, который должен одобрить обладатель права. Запрос на связь показывается пользователям, чьё право `create_relationship` достигает домена её исходной или целевой таблицы, и пользователю, который его сделал. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_query.py:371-420`]
 
 ---
 
-## Мутации
+## Мутации {: #mutations }
 
-### Источники
+### Источники {: #sources_1 }
 
 #### `createSource(input: SourceInput!) → MutationResult`
 
-Зарегистрировать новый источник данных. Проверяет подключение перед сохранением — отклонённый источник не оставляет записи в хранилище секретов. Хранит учётные данные в хранилище секретов организации и записывает ссылку; открытый текст никогда не попадает в базу данных. (REQ-012, REQ-013) Требует возможность `source_registration`. [tool-verified: `provisa/api/admin/schema_mutation.py:616-781`]
+Регистрирует новый источник данных. Уже существующий id отклоняется (`schema.source_id_taken`) после проверок определения и до того, как что-либо подготовлено или записано; источник изменяется через `updateSource`. Проверяет подключение перед сохранением — отклонённый источник не оставляет записи в хранилище. Хранит учётные данные в хранилище организации и записывает ссылку; открытый текст никогда не попадает в базу данных. (REQ-012, REQ-013) Требует возможности `source_registration`. [tool-verified: `provisa/api/admin/schema_mutation.py:616-781`]
 
 #### `updateSource(input: SourceInput!) → MutationResult`
 
-Обновить детали подключения, описание и конфигурацию существующего источника. Разбирает и повторно подключает конечную точку pgwire для источников файлов/SharePoint, чтобы изменение пути вступило в силу немедленно. Требует `source_registration`. [tool-verified: `provisa/api/admin/schema_mutation.py:922-1073`]
+Обновляет параметры подключения, описание и конфигурацию существующего источника, затем заново подготавливает его на привязанном движке, пересобирает схемы и согласует его загруженные таблицы, так что источник, сохранённый при одном движке, обслуживается движком, на который переключились позже (REQ-1730). Отключает и заново подключает endpoint pgwire для источников файлов/SharePoint, чтобы изменение пути вступило в силу сразу. Требует `source_registration`. [tool-verified: `provisa/api/admin/schema_mutation.py:922-1073`]
 
 #### `deleteSource(id: String!) → MutationResult`
 
@@ -352,15 +356,15 @@ query {
 
 #### `renameSource(oldId: String!, newId: String!) → MutationResult`
 
-Переименовать идентификатор источника. [tool-verified: `provisa/api/admin/schema_mutation.py:1076-1098`]
+Переименовывает id источника. Новый id, которым владеет другой источник, отклоняется (`schema.source_id_taken`), и ничего не записывается; переименование источника в его собственный id ничего не меняет. [tool-verified: `provisa/core/repositories/source.py` `rename`]
 
 #### `updateSourceCache(sourceId: String!, cacheEnabled: Boolean!, cacheTtl: Int) → MutationResult`
 
 Включить или отключить кеширование результатов запросов для источника и задать TTL в секундах. [tool-verified: `provisa/api/admin/schema_mutation.py:2327-2350`]
 
-#### `updateSourcePreferMaterialized(sourceId: String!, preferMaterialized: Boolean!) → MutationResult`
+#### `updateSourceReplicate(sourceId: String!, replicate: Int) → MutationResult`
 
-Принудительно включить (или отключить) материализованную федерацию для всех таблиц источника. (REQ-826) [tool-verified: `provisa/api/admin/schema_mutation.py:2379-2402`]
+Задаёт, когда таблицы источника обслуживаются из их реплик: `null` Default, `-1` Never, `N` больше 0 — как только таблица превысит N регулируемых инструкций за интервал, `0` Always. Таблица без собственного значения наследует его. Отклоняется, если сочетало бы `load_protected` с `-1` или оставило бы без `cache_ttl` таблицу `ttl`, которую реплицирует. Требует `source_registration`. (REQ-826, REQ-1907) [tool-verified: `provisa/api/admin/schema_mutation.py` `update_source_replicate`]
 
 #### `updateSourceLoadProtection(sourceId, loadProtected, offPeakWindow, offPeakTz) → MutationResult`
 
@@ -388,7 +392,7 @@ query {
 
 ---
 
-### Таблицы
+### Таблицы {: #tables_1 }
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
@@ -406,9 +410,9 @@ query {
 
 Переопределить TTL кеша для одной таблицы. [tool-verified: `provisa/api/admin/schema_mutation.py:2353-2376`]
 
-#### `updateTablePreferMaterialized(tableId: Int!, preferMaterialized: Boolean) → MutationResult`
+#### `updateTableReplicate(tableId: Int!, replicate: Int) → MutationResult`
 
-Переопределить материализованную федерацию для одной таблицы. `null` = наследовать значение источника по умолчанию. (REQ-826) [tool-verified: `provisa/api/admin/schema_mutation.py:2405-2428`]
+Задаёт, когда одна таблица обслуживается из своей реплики. `null` = наследовать значение источника. Те же значения и отказы, что у `updateSourceReplicate`. Требует `table_registration`. (REQ-826, REQ-1907) [tool-verified: `provisa/api/admin/schema_mutation.py` `update_table_replicate`]
 
 #### `updateTableLoadProtection(tableId, loadProtected, offPeakWindow, offPeakTz) → MutationResult`
 
@@ -440,11 +444,15 @@ query {
 
 ---
 
-### Связи
+### Связи {: #relationships_1 }
 
-#### `upsertRelationship(input: RelationshipInput!) → MutationResult`
+#### `createRelationship(input: RelationshipInput!) → MutationResult`
 
-Создать или обновить связь. Шлюз проверяет домен исходной таблицы (не целевой). Междоменное ребро сохраняется с `needsReview: true`. Вызывающий без `create_relationship` ставится в очередь как запрос на создание. Связующие (многие-ко-многим) рёбра требуют совпадения длин списков ключей. (REQ-019, REQ-020, REQ-366, REQ-434) [tool-verified: `provisa/api/admin/schema_mutation.py:2297-2300`]
+Создаёт связь. Проверка смотрит на домен исходной таблицы (не целевой). Междоменное ребро сохраняется с `needsReview: true`. Вызывающий без `create_relationship` ставится в очередь как запрос на создание. Рёбра соединения (многие-ко-многим) требуют списков ключей одинаковой длины. Отклоняется по имени до какой-либо записи: уже существующий id (`schema.relationship_id_taken`); имя таблицы, которое не разрешается ни в одну зарегистрированную таблицу или разрешается в несколько (`schema.relationship_unknown_source`, `_target`, `_junction`, `schema.relationship_ambiguous_table`); псевдоним Cypher или GraphQL, который уже занят другой связью той же исходной таблицы (`schema.relationship_alias_taken`, `schema.relationship_graphql_alias_taken`). Таблица называется своим виртуальным именем: своим псевдонимом, если он есть. (REQ-019, REQ-020, REQ-366, REQ-434) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_relationship_as_caller`, `save_relationship`]
+
+#### `updateRelationship(input: RelationshipInput!) → MutationResult`
+
+Изменяет существующую связь с теми же проверками, что у `createRelationship`. Id, которым не владеет ни одна связь, отклоняется (`schema.relationship_not_found`). Изменению нужно само право; оно никогда не ставится в очередь как запрос. (REQ-019, REQ-020) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_relationship_as_caller`]
 
 #### `deleteRelationship(id: String!) → MutationResult`
 
@@ -452,11 +460,11 @@ query {
 
 ---
 
-### Домены
+### Домены {: #domains }
 
 #### `createDomain(input: DomainInput!) → MutationResult`
 
-Создать домен. Зарезервированные слова сегментов (`tables`, `relationships` и другие сегменты пути URI) отклоняются, как и литерал подстановочного знака `*`. Требует возможность `org_settings`. (REQ-021, REQ-1531) [tool-verified: `provisa/api/admin/schema_mutation.py:1135-1189`]
+Создаёт домен. Уже существующий id отклоняется (`schema.domain_id_taken`). Зарезервированные слова сегментов (`tables`, `relationships` и другие сегменты пути URI) отклоняются, как и литерал подстановки `*`. Требует возможности `org_settings`. (REQ-021, REQ-1531) [tool-verified: `provisa/api/admin/schema_mutation.py:1135-1189`]
 
 #### `deleteDomain(id: String!) → MutationResult`
 
@@ -468,11 +476,15 @@ query {
 
 ---
 
-### Роли
+### Роли {: #roles }
 
 #### `createRole(input: RoleInput!) → MutationResult`
 
-Создать или заменить роль с возможностями, доступом к доменам, необязательными ограничениями частоты запросов и необязательной родительской ролью. Проверяет, что родитель существует и что родительская цепочка не содержит циклов. Требует `user_management`. (REQ-042, REQ-1531, REQ-1677) [tool-verified: `provisa/api/admin/schema_mutation.py:1657-1712`]
+Создаёт роль с возможностями, доступом к доменам, необязательными лимитами запросов и необязательной родительской ролью. Проверяет, что родитель существует и цепочка родителей не содержит циклов. После проверок определения уже существующий id отклоняется (`schema.role_id_taken`). Требует `user_management`. (REQ-042, REQ-1531, REQ-1677) [tool-verified: `provisa/api/admin/schema_mutation.py:1657-1712`]
+
+#### `updateRole(input: RoleInput!) → MutationResult`
+
+Изменяет существующую роль с теми же проверками, что у `createRole`. Id, которым не владеет ни одна роль, отклоняется (`schema.role_not_found`). Переопределение роли — это действие в каждом домене, которого она достигает. (REQ-042, REQ-1531) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_role`]
 
 #### `deleteRole(id: String!) → MutationResult`
 
@@ -480,7 +492,7 @@ query {
 
 ---
 
-### Правила RLS
+### Правила RLS {: #rls-rules_1 }
 
 #### `upsertRlsRule(input: RLSRuleInput!) → MutationResult`
 
@@ -494,11 +506,15 @@ query {
 
 ---
 
-### Продукты данных
+### Продукты данных {: #data-products_1 }
 
 #### `createDataProduct(input: DataProductInput!) → MutationResult`
 
-Создать или заменить продукт данных. Требует возможность `data_product_rw`. (REQ-1634) [tool-verified: `provisa/api/admin/schema_mutation.py:1216-1259`]
+Создаёт продукт данных. Уже существующий id отклоняется (`schema.data_product_id_taken`). Требует возможности `data_product_rw`. (REQ-1634) [tool-verified: `provisa/api/admin/schema_mutation.py:1216-1259`]
+
+#### `updateDataProduct(input: DataProductInput!) → MutationResult`
+
+Изменяет существующий продукт данных. Id, которым не владеет ни один продукт, отклоняется (`schema.data_product_not_found`). Требует `data_product_rw`. (REQ-1634) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_data_product`]
 
 #### `deleteDataProduct(id: String!) → MutationResult`
 
@@ -506,11 +522,15 @@ query {
 
 ---
 
-### Теги
+### Теги {: #tags_1 }
 
-#### `upsertTag(input: TagInput!) → MutationResult`
+#### `createTag(input: TagInput!) → MutationResult`
 
-Создать или обновить определение тега. Системные теги и производные теги не могут быть переопределены. `appliesTo` должен быть непустым подмножеством `["source", "table", "column", "relationship", "command"]`. (REQ-1373, REQ-1375) [tool-verified: `provisa/api/admin/schema_mutation.py:1288-1361`]
+Создаёт определение тега. Уже существующий id отклоняется (`schema.tag_id_taken`). Системные и производные теги нельзя переопределить. `appliesTo` должен быть непустым подмножеством `["source", "table", "column", "relationship", "command"]`. (REQ-1373, REQ-1375) [tool-verified: `provisa/api/admin/schema_mutation.py:1288-1361`]
+
+#### `updateTag(input: TagInput!) → MutationResult`
+
+Изменяет существующее определение тега с теми же проверками, что у `createTag`. Id, которым не владеет ни один тег, отклоняется (`schema.tag_not_found`). (REQ-1373) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_tag`]
 
 #### `deleteTag(id: String!) → MutationResult`
 
@@ -534,11 +554,15 @@ query {
 
 ---
 
-### Метрики
+### Метрики {: #metrics_1 }
 
-#### `upsertMetric(input: MetricInput!) → MutationResult`
+#### `createMetric(input: MetricInput!) → MutationResult`
 
-Создать или заменить определение управляемой метрики. Выражение должно разбираться под sqlglot и содержать хотя бы одну агрегатную функцию. Регенерирует все представления, составленные из метрик, которые ссылаются на эту метрику. Требует `table_registration`. (REQ-1317, REQ-1318) [tool-verified: `provisa/api/admin/schema_mutation.py:1779-1831`]
+Создаёт определение регулируемой метрики. Уже существующее имя отклоняется (`schema.metric_name_taken`). Выражение должно разбираться sqlglot и содержать хотя бы одну агрегатную функцию. Пересоздаёт все представления, составленные из метрик, которые ссылаются на эту метрику. Требует `table_registration`. (REQ-1317, REQ-1318) [tool-verified: `provisa/api/admin/schema_mutation.py:1779-1831`]
+
+#### `updateMetric(input: MetricInput!) → MutationResult`
+
+Заменяет определение существующей метрики с теми же проверками, что у `createMetric`. Имя, которым не владеет ни одна метрика, отклоняется (`schema.metric_not_found`). Для сохранения нужны домены нового выражения и заменяемого определения. (REQ-1317, REQ-1531) [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_metric`]
 
 #### `deleteMetric(name: String!) → MutationResult`
 
@@ -546,7 +570,7 @@ query {
 
 ---
 
-### Календари
+### Календари {: #calendars_1 }
 
 #### `createCalendar(input: CalendarInput!) → MutationResult`
 
@@ -558,7 +582,7 @@ query {
 
 ---
 
-### Материализованные представления
+### Материализованные представления {: #materialized-views_1 }
 
 #### `refreshMv(mvId: String!) → MutationResult`
 
@@ -570,7 +594,7 @@ query {
 
 ---
 
-### Кеш
+### Кеш {: #cache_1 }
 
 #### `purgeCache → MutationResult`
 
@@ -582,7 +606,7 @@ query {
 
 ---
 
-### Запланированные задачи
+### Запланированные задачи {: #scheduled-tasks_1 }
 
 #### `createScheduledTask(id, name, cron, kind, webhookName, argsJson, sql) → MutationResult`
 
@@ -598,7 +622,7 @@ query {
 
 ---
 
-### Качество данных
+### Качество данных {: #data-quality_1 }
 
 #### `dryRunDqContract(sourceId: String!, contractText: String!) → DqDryRunType`
 
@@ -610,7 +634,7 @@ query {
 
 ---
 
-### Обслуживание схемы
+### Обслуживание схемы {: #schema-maintenance }
 
 #### `rebuildSchemas → MutationResult`
 
@@ -618,19 +642,23 @@ query {
 
 ---
 
-### Запросы на создание
+### Запросы на создание {: #creation-requests_1 }
+
+#### `approveCreationRequest(requestId: Int!) → MutationResult`
+
+Одобряет запрос на создание: то же правило, те же отказы и те же записи журнала администратора, что у `POST /admin/creation-requests/{id}/approve`. Автор запроса не может одобрить собственный запрос, и одобрение одного пользователя засчитывается один раз. Одобрение, которое завершает счёт запроса, создаёт то, что он просит; `params.status` равен `executed`, если это сделало оно, иначе `pending`, а `params.waitingOn` перечисляет домены, которых запрос на связь ещё ждёт. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py` `approve_creation_request`]
 
 #### `executeCreationRequest(requestId: Int!) → MutationResult`
 
-Обладатель прав выполняет поставленный в очередь запрос на создание — связь, представление или вебхук. Требует возможность, которую ожидает запрос. (REQ-434, REQ-063) [tool-verified: `provisa/api/admin/schema_mutation.py:2181-2255`]
+Выполняет запрос на создание, получивший свои одобрения — связь, представление, таблицу, источник или webhook, — через тот же код, что использует прямая мутация. Отклоняется с `requests.approvals_incomplete`, пока требуемые одобрения запроса (одно, или два для связи) не получены от пользователей, отличных от автора; запрос на связь также отклоняется с `requests.waiting_on_domains`, пока у затронутого им домена нет одобряющего. Одобрения даются через `POST /admin/creation-requests/{id}/approve`, и одобрение, которое завершает счёт, выполняет создание, поэтому эта мутация служит для повторной попытки неудавшегося создания. Неудавшееся создание оставляет запрос ожидающим и отвечает собственным кодом ошибки. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py` `execute_creation_request`, `perform_request_creation`; `provisa/api/admin/creation_requests_router.py`]
 
 #### `rejectCreationRequest(requestId: Int!, reason: String!) → MutationResult`
 
-Отклонить поставленный в очередь запрос с действенной причиной. `reason` обязателен. (REQ-434, REQ-063) [tool-verified: `provisa/api/admin/schema_mutation.py:2258-2294`]
+Отклоняет запрос из очереди с практичной причиной. `reason` обязателен. Запрос на связь может отклонить любой пользователь, который мог бы его одобрить. Автор запроса любого другого типа может его отозвать; это записывается в журнал администратора как отзыв. (REQ-434, REQ-063, REQ-1948) [tool-verified: `provisa/api/admin/schema_mutation.py:3064-3106`]
 
 ---
 
-### Компиляция запросов
+### Компиляция запросов {: #query-compilation }
 
 #### `compileQuery(input: CompileQueryInput!) → [CompileQueryResult!]!`
 
@@ -669,7 +697,7 @@ mutation {
 
 ---
 
-## Ключевые входные типы
+## Ключевые входные типы {: #key-input-types }
 
 ### `SourceInput`
 
@@ -690,7 +718,7 @@ mutation {
 | `loadProtected` | `Boolean` | Только по расписанию обновления (REQ-1141) |
 | `offPeakWindow` | `String` | Окно обслуживания `HH:MM-HH:MM` |
 | `offPeakTz` | `String` | Часовой пояс IANA |
-| `cdc` | `SourceCdcConfigInput` | Конфигурация транспорта Kafka CDC (REQ-824) |
+| `cdc` | `SourceCdcConfigInput` | Конфигурация транспорта Kafka CDC (REQ-824), включая способ обращения к его schema registry (REQ-1951; см. [Аутентификация schema registry](subscriptions.md#schema-registry-authentication)). `schemaRegistryPassword` и `schemaRegistryToken` возвращаются как ссылки хранилища, никогда как учётные данные. |
 
 ### `TableInput`
 
@@ -733,7 +761,7 @@ mutation {
 
 ---
 
-## Пример: регистрация таблицы
+## Пример: регистрация таблицы {: #example-registering-a-table }
 
 ```graphql
 mutation {
@@ -756,7 +784,7 @@ mutation {
 }
 ```
 
-## Пример: создание правила RLS
+## Пример: создание правила RLS {: #example-creating-an-rls-rule }
 
 ```graphql
 mutation {

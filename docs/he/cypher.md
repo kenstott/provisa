@@ -1,8 +1,8 @@
-# תמיכה בשאילתות Cypher
+# תמיכה בשאילתות Cypher {: #cypher-query-support }
 
 Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול `provisa/cypher/`. (REQ-345, REQ-347) שאילתות מפוענחות על ידי parser‏ recursive-descent מותאם אישית (ללא ספריית Cypher חיצונית) (REQ-571), נפתרות-סכמה (schema-resolved) מול המודל (REQ-351), ונפלטות כ-SQL, ואז מנותבות למנוע הביצוע היעד. (REQ-066, REQ-067, REQ-347)
 
-## תכונות ממומשות
+## תכונות ממומשות {: #implemented-features }
 
 ### Clauses
 
@@ -24,7 +24,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 | `CALL db.propertyKeys()` | ✓ | מחזיר את כל שמות מפתחות המאפיינים על פני כל סוגי ה-node (REQ-572) |
 | `UNWIND` | ✓ | הרחבת array-לשורות; הפריט הראשון הופך ל-FROM, הבאים הופכים ל-CROSS JOIN UNNEST |
 
-### דפוסי Match
+### דפוסי Match {: #match-patterns }
 
 | דפוס | סטטוס | הערות |
 | --------- | -------- | ------- |
@@ -42,7 +42,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 | `shortestPath(…)` | ✓ | JOIN שטוח עבור endpoints הטרוגניים; CTE‏ WITH RECURSIVE עבור אותו-טיפוס/self-referential |
 | `allShortestPaths(…)` | ✓ | כמו shortestPath ללא LIMIT 1 |
 
-### ביטויים ופרדיקטים
+### ביטויים ופרדיקטים {: #expressions-and-predicates }
 
 | תכונה | סטטוס | מיפוי SQL |
 | --------- | -------- | ------------ |
@@ -80,7 +80,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 
 **מאפייני אובייקט.** עמודה שמחזיקה אובייקט מוצהר (האובייקט המוטמע של טיפוס GraphQL מרוחק, או כל עמודה שנרשמה עם שדות אובייקט) היא מאפיין מסוג map: `RETURN n.address` מחזיר אותה כ-map, בכל צורה שהמנוע מחזיר אותה, והצומת `n` נושא אותה בין המאפיינים שלו. שדה GraphQL מרוחק שמצביע על טיפוס רשום, אובייקט אחד או רשימה, אינו מאפיין; מגיעים אליו דרך הקשר שלו. (REQ-1991) [tool-verified: `provisa/cypher/label_map.py`, `provisa/cypher/assembler.py`]
 
-### פונקציות אגרגציה
+### פונקציות אגרגציה {: #aggregation-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -93,7 +93,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 | `percentileCont(x, p)` | `approx_percentile(x, p)` |
 | `percentileDisc(x, p)` | `approx_percentile(x, p)` |
 
-### פונקציות מחרוזת
+### פונקציות מחרוזת {: #string-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -109,7 +109,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 | `size(string)` | `char_length(string)` |
 | `size(list)` | `cardinality(list)` |
 
-### פונקציות המרת טיפוס
+### פונקציות המרת טיפוס {: #type-conversion-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -119,7 +119,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 | `toBoolean(x)` | `TRY_CAST(x AS BOOLEAN)` |
 | `toStringOrNull`, `toIntegerOrNull`, `toFloatOrNull`, `toBooleanOrNull` | וריאנטים של `TRY_CAST` |
 
-### פונקציות מתמטיות
+### פונקציות מתמטיות {: #math-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -128,7 +128,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 | `range(start, end)` | `sequence(start, end)` |
 | `abs`, `sqrt`, `ceil`, `floor`, `round`, `sign` | מועברים כמו-שהם |
 
-### פונקציות רשימה
+### פונקציות רשימה {: #list-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -157,7 +157,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
 | `[(a)-[]->(b:Label) \| b.prop]` | טיפוס-מוסק מהמודל; אותה צורת תת-שאילתת ARRAY |
 
-### תתי-שאילתות CALL מתואמות (Correlated)
+### תתי-שאילתות CALL מתואמות (Correlated) {: #correlated-call-subqueries }
 
 `CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` מתורגם ל-`CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`. (REQ-573) כללים:
 
@@ -185,38 +185,38 @@ Cypher תומכת בשלושה דפוסי כתיבה דרך נקודת הקצה 
 - התווית חייבת להיפתר בדיוק לטבלה רשומה אחת. תוויות דו-משמעיות או לא-ידועות הן שגיאות קשות; ללא התאמה מטושטשת (fuzzy). (REQ-661) תוויות או טיפוסים חדשים לא ניתנים ליצירה דרך Cypher. (REQ-662)
 - כל כתיבה נשערת (gated) על ACL‏ `writable_by` של הטבלה היעד; תפקיד ללא זכויות כתיבה נדחה בזמן קומפילציה. (REQ-663)
 - מחבר המקור התומך חייב לתמוך ב-DML. מקורות read-only (פדרטיביים-Trino, Iceberg ללא מחבר Delta) דוחים כתיבות בזמן תרגום. (REQ-664)
-- קשרים אינם ניתנים לכתיבה — הם נגזרים מה-joins המוצהרים בשכבה הסמנטית, לא קצוות מאוחסנים. כוונון (targeting) קשר הוא שגיאה קשה. (REQ-665) קשת מגובת junction אינה יוצאת דופן: טבלת השיוך שמאחוריה היא עצמה טבלה רשומה, והשורות נכתבות לטבלה הזו, לא לקשת. (REQ-1586)
+- קשרים אינם ניתנים לכתיבה — הם נגזרים מה-joins המוצהרים במודל, לא קצוות מאוחסנים. כוונון (targeting) קשר הוא שגיאה קשה. (REQ-665) קשת מגובת junction אינה יוצאת דופן: טבלת השיוך שמאחוריה היא עצמה טבלה רשומה, והשורות נכתבות לטבלה הזו, לא לקשת. (REQ-1586)
 - כתיבות רצות דרך צינור הכתיבה המלא: הזרקת RLS ו-hooks לאחר-מוטציה (ביטול תוקף מטמון-תגובה, סימון-מיושן של materialized-view, אירועי שינוי Kafka, טעינה מחדש של טבלה חמה). (REQ-798)
 - `MERGE`, `DETACH DELETE`, ו-`REMOVE` אינם נתמכים ונדחים בזמן פענוח. (REQ-671)
 
 ---
 
-## גישת פרוטוקול
+## גישת פרוטוקול {: #protocol-access }
 
 Cypher מגיעה לאותו צינור מנוהל על פני שתי תעבורות:
 
 - **HTTP** — `POST /data/cypher` עם גוף JSON (`{"query": "...", "params": {...}}`). מחזיר שורות מוקלדות, או `affected_rows` עבור כתיבות. משתני גרף בסעיף `RETURN` מסודרים כ-JSON: nodes נושאים `id`, `label`, `tableLabel`, ו-`properties`; edges נושאים `identity`, `start`, `end`, `type`, `properties`, `startNode`, ו-`endNode`; paths נושאים `nodes`, `edges`, ו-`length`/`hops`. (REQ-750) commands רשומים ניתנים לקריאה גם כאן דרך `CALL fn(args) YIELD col1, col2` — ארגומנטים פוזיציוניים ממופים לשמות הארגומנטים המוצהרים של ה-command לפי סדר. (REQ-1156) [tool-verified: `provisa/api/rest/registered_call.py:113-143`]
 - **Bolt** — שרת פרוטוקול בינארי תואם-Neo4j (קודק PackStream, framing מפוצל-chunk) המאפשר ל-Neo4j Browser, Bloom, ולדרייברי Bolt להריץ Cypher על פני הגרף הפדרטיבי. (REQ-802) הוא מתחיל כאשר `PROVISA_BOLT_PORT` מוגדר לערך שאינו-אפס וכבוי כברירת מחדל; הגדירו `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` עבור TLS. [tool-verified: `provisa/api/app_startup.py:317-338`] אימות Bolt ממפה principal למשתמש ומסד-נתונים לתפקיד: `SHOW DATABASES` מציג רשומה אחת לכל זוג (תצוגה × תפקיד), בשם `provisa_<role>` (דומייני עסקים) או `provisa_ops_<role>` (עם דומייני system/meta/ops); `:use` בוחר את התפקיד והתצוגה הפעילים. (REQ-807) קשרים מקבלים מזהי integer מתמידים דרך טבלת `rel_ids`, המשקפת את עיצוב `node_ids`. (REQ-806) commands רשומים ניתנים לקריאה עם `CALL command(args)` — ארגומנטים פוזיציוניים ממופים לשמות הארגומנטים המוצהרים לפי סדר; פרוצדורות `CALL dbms.*` / `CALL db.*` מקבלות עדיפות. (REQ-1156) [tool-verified: `provisa/bolt/session.py:722-749`]
 
-### אנליטיקת גרף
+### אנליטיקת גרף {: #graph-analytics }
 
 `POST /data/graph-analytics` מריצה שאילתת Cypher, בונה גרף NetworkX בזיכרון מה-nodes וה-edges המתקבלים, מריצה אלגוריתם בעל-שם, וממזגת מילון `_analytics` לתוך כל node ו-edge לפני החזרתם כ-JSON עם שדה `elapsed_ms`. (REQ-642) מפתחות ה-`_analytics` משתנים לפי אלגוריתם: centrality מניב `score`; זיהוי קהילה מניב `cluster`; k-core מניב `core_number`; degree centrality מוסיף `in_degree` ו-`out_degree`. (REQ-643) נקודת הקצה דוחה גרפים מעל גודל הניתן-לתצורה (ברירת מחדל 10,000 nodes / 50,000 edges) עם HTTP 413; Girvan-Newman מוגבל ל-500 nodes אלא אם הקורא מעביר `force=true`. (REQ-650, REQ-651)
 
 ---
 
-## מגבלות
+## מגבלות {: #limitations }
 
-### אילוצי עיצוב
+### אילוצי עיצוב {: #design-constraints }
 
 1. **כתיבות מוגבלות ל-`CREATE`, `SET`, ו-`DELETE`.** אלה מבוצעות ככתיבות טבלה ישירות דרך אותו צינור כמו מוטציות GraphQL ו-SQL. (REQ-818, REQ-666, REQ-667, REQ-668) ראו §כתיבות למעלה. `MERGE`, `DETACH DELETE`, ו-`REMOVE` נדחים בזמן פענוח. (REQ-671, REQ-818) פרוצדורות APOC נדחות אף הן.
 
-2. **מאפייני קשר קיימים רק בקשתות מגובות junction.** קשת המוצהרת מעל זוג עמודות מפתח-זר קיימת אך ורק כמטא-דאטת join בשכבה הסמנטית (REQ-574) ואינה נושאת תכונות מאוחסנות, ולכן ל-`WHERE r.since > 2020` או `RETURN r.weight` אין משמעות עליה. קשת המוצהרת מעל טבלת junction כן נושאת אותן: יתר עמודות טבלת השיוך הן המאפיינים של הקשר, `RETURN r` מחזיר אותם, ו-`WHERE` על אחד מהם מתקמפל לפרדיקט על הכינוי (alias) של ה-junction — כלומר הוא מצמצם את החצייה במקום לסנן שורות מורכבות. (REQ-1586) טבלת ה-junction עצמה נשמטת מצד הצמתים של סכמת הגרף; כאן היא קשת, ובכל מקום אחר היא טבלה.
+2. **מאפייני קשר קיימים רק בקשתות מגובות junction.** קשת המוצהרת מעל זוג עמודות מפתח-זר קיימת אך ורק כמטא-דאטת join במודל (REQ-574) ואינה נושאת תכונות מאוחסנות, ולכן ל-`WHERE r.since > 2020` או `RETURN r.weight` אין משמעות עליה. קשת המוצהרת מעל טבלת junction כן נושאת אותן: יתר עמודות טבלת השיוך הן המאפיינים של הקשר, `RETURN r` מחזיר אותם, ו-`WHERE` על אחד מהם מתקמפל לפרדיקט על הכינוי (alias) של ה-junction — כלומר הוא מצמצם את החצייה במקום לסנן שורות מורכבות. (REQ-1586) טבלת ה-junction עצמה נשמטת מצד הצמתים של סכמת הגרף; כאן היא קשת, ובכל מקום אחר היא טבלה.
 
-3. **מעבר דו-כיווני** `(a)-[]-(b)` נכתב מחדש ל-UNION ALL קדימה+אחורה של כל הקשרים המכוונים התואמים מהמודל. (REQ-575) כל קשר בשכבה הסמנטית הוא כיווני; תחביר דו-כיווני הוא סוכר תחבירי המתרחב לשני הכיוונים. ענפים נוספים נפלטים ברמת השאילתה החיצונית-ביותר — דפוסי MATCH נוספים באותה שאילתה אינם משוכפלים על פני ענפים (מגבלה עבור דו-כיווני מרובה-MATCH).
+3. **מעבר דו-כיווני** `(a)-[]-(b)` נכתב מחדש ל-UNION ALL קדימה+אחורה של כל הקשרים המכוונים התואמים מהמודל. (REQ-575) כל קשר במודל הוא כיווני; תחביר דו-כיווני הוא סוכר תחבירי המתרחב לשני הכיוונים. ענפים נוספים נפלטים ברמת השאילתה החיצונית-ביותר — דפוסי MATCH נוספים באותה שאילתה אינם משוכפלים על פני ענפים (מגבלה עבור דו-כיווני מרובה-MATCH).
 
 4. **נתיבים רקורסיביים דורשים גבול.** דפוסי אורך-משתנה (`[*]`) חייבים לכלול גבול עליון (למשל `[*..10]`). (REQ-348) מעבר לא-חסום נדחה בזמן פענוח כדי למנוע CTE-ים רקורסיביים חסרי-שליטה.
 
-### הערות התנהגות
+### הערות התנהגות {: #behaviour-notes }
 
 5. **`shortestPath` על נתיבים שאינם-self-referential משתמש ב-JOIN שטוח, לא בסידור hops.** כאשר טיפוסי ההתחלה והסיום שונים ולא קיים קשר self-referential בסכמה, המתרגם פולט שרשרת JOIN שטוחה (נתיב הסכמה הקצר-ביותר). (REQ-576) הוא אינו פולט `ORDER BY hops` כי hops אינם נעקבים באותו נתיב קוד. התוצאה היא נתיב הסכמה הקצר-ביותר מבחינה מבנית, לא הנתיב הקצר-ביותר-בנתונים על פני מספר שורות.
 
@@ -226,7 +226,7 @@ Cypher מגיעה לאותו צינור מנוהל על פני שתי תעבור
 
 8. **CTE-ים בסעיף `WITH` נקראים `_w0`, `_w1`, …** (REQ-578) שמות מוקצים פוזיציונית בתוך קריאת תרגום יחידה. הרכבת מספר שאילתות מתורגמות (למשל ב-batch) יכולה לייצר שמות CTE מתנגשים אם הן משורשרות באופן נאיבי.
 
-### כיסוי ביטויים ודפוסים (REQ-913)
+### כיסוי ביטויים ודפוסים (REQ-913) {: #expression-and-pattern-coverage-req-913 }
 
 ביטויי Cypher מפוענחים ל-AST ומורדים node-ל-node ל-SQL (`provisa/cypher/expr_parser.py`, `provisa/cypher/expr_visitor.py`). הדקדוק עוקב אחר מגדל העדיפויות `oC_Expression` של openCypher. נתמך: ליטרלים, פרמטרים, גישת מאפיין, `n.prop`, אינדקס ו-slice, אריתמטיקה (`+ - * / % ^`), השוואה, `IN`, `STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`, `IS [NOT] NULL`, בוליאני `AND` / `OR` / `XOR` / `NOT`, `CASE`, ליטרלי רשימה ומפה, comprehensions של רשימה ודפוס (כולל קשירת נתיב `p = (…)`), הקרנת מפה, `reduce`, המכמתים (quantifiers) `all` / `any` / `none` / `single`, תתי-שאילתות אקזיסטנציאליות, וקריאות פונקציה.
 

@@ -4,7 +4,7 @@
 
 Provisa bedient jede API-Oberfläche (REST, GraphQL, SQL, gRPC, MCP und mehr) über das zusammengeführte Ergebnis Ihrer Quellen. Das kann es, weil **Föderation, Metriken, Ontologie und Governance aus einem einzigen Modell stammen, ohne dass etwas synchron gehalten werden muss**. Das Modell ist eine einzige Definition Ihres Datenbestands — jede Domäne, Beziehung und Richtlinie über Ihre Quellen hinweg, ausgenommen nur die Ursprungssysteme selbst — die den Bestand gleichzeitig betreibt und regelt. Die Definition ist keine Dokumentation, die eine Engine konsultieren kann; sie *ist* die Engine. Registrierte Domänen und Beziehungen sind die einzigen legalen Join-Pfade, und Zugriffsrichtlinien werden in jeden Abfrageplan hineinkompiliert. Ein Modell, vier Eigenschaften:
 
-- **Föderation** — 62 Konnektoren, die 75+ Arten von Quellen erreichen, darunter Salesforce, ServiceNow und Stripe, werden an Ort und Stelle gelesen: Die SaaS-Systeme, auf denen das Unternehmen läuft, sind Tabellen neben den Datenbanken, ohne vorgeschaltete Pipeline in ein Warehouse. Abfragen in SQL, GraphQL oder Cypher über neun Protokolle.
+- **Föderation** — 72 Konnektoren, die 85+ Arten von Quellen erreichen, darunter Salesforce, ServiceNow und Stripe, werden an Ort und Stelle gelesen: Die SaaS-Systeme, auf denen das Unternehmen läuft, sind Tabellen neben den Datenbanken, ohne vorgeschaltete Pipeline in ein Warehouse. Abfragen in SQL, GraphQL oder Cypher über neun Protokolle.
 - **Metriken** — Eine Metrik ist ein benanntes, reguliertes Aggregat. Sie wird einmal definiert, und jedes Werkzeug und jede Sprache, die danach fragt, erhält dieselbe Definition.
 - **Ontologie** — Das Geschäftsglossar ist ein Graph aus Konzepten, ihren Definitionen und den Beziehungen zwischen ihnen. Provisa bildet ihn auf die Datenbankstrukturen ab, in denen die Werte liegen; dadurch kann es Fragen zu Ihren Daten beantworten. Ein Konzept ist ein Entwurf, bis es die Daten erreicht, direkt oder über andere Konzepte. Das Glossar ist von den Metriken getrennt: Ein Begriff sagt, was ein Konzept ist, eine Metrik sagt, wie eine Zahl berechnet wird.
 - **Governance** — Sechs Schichten werden in jeden Abfrageplan kompiliert, für jede Sprache und jedes Protokoll, und jede Anfrage wird gleich erfasst: wer was abgefragt hat, unter welcher Rolle, gegen welche Richtlinie. Traces, Metriken und Logs sind selbst als abfragbare Tabellen neben Ihren Geschäftsdaten registriert.
@@ -20,20 +20,20 @@ Dieses Design unterstützt zwei Nutzungsarten, die sich nicht ausschließen:
 - **Als Gerüst für die Modernisierung** — Modellieren Sie Ihren Bestand, lassen Sie Provisa das native SQL für jede Quelle generieren, erfassen Sie dieses SQL dann und übernehmen Sie es direkt im Zielsystem. Provisa ist die Übergangsschicht, keine dauerhafte Abhängigkeit.
 - **Als dauerhafte richtliniendurchsetzende Infrastruktur** — Behalten Sie es als den regulierten Pfad bei, den jede Abfrage nimmt, sodass Definition, Durchsetzung und Audit vereint bleiben, solange der Bestand existiert.
 
-## Eine Demo ausprobieren
+## Eine Demo ausprobieren {: #try-a-demo }
 
 Am schnellsten geht es mit einer Live-Demo im Browser, ohne Installation: [provisa.dev/demos](https://provisa.dev/demos). Jede öffnet eine private Sandbox mit einer geführten Tour.
 
 In einem Checkout dieses Repositorys können Sie jede Demo auf Ihrem eigenen Rechner ausführen:
 
 ```bash
-./start-ui-install.sh --list-demos     # die Demos, die Sie ausführen können, und welche veröffentlicht sind
-./start-ui-install.sh --demo weblogs   # eine starten, mit ihrer Tour
+./start-ui-install.sh --list-demos     # the demos you can run, and which are published
+./start-ui-install.sh --demo weblogs   # start one, with its tour
 ```
 
 Eine veröffentlichte Demo wird als fertiges Bundle geladen; die anderen laufen aus `demo/named/<name>/`. Alle Optionen finden Sie in [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md).
 
-## Das Föderationsmodell
+## Das Föderationsmodell {: #the-federation-model }
 
 Das gesamte Modell läuft auf zwei Verträge und zwei Richtlinien hinaus: Quellen reduzieren sich auf 2-D-Tabellen über ein Typsystem, Abfragen reduzieren sich auf eine SQL-ähnliche IR, Erreichbarkeit entscheidet, was live abgefragt versus materialisiert wird, und eine Aktualitätsstrategie regelt jede materialisierte Kopie und jedes abgeleitete Dataset. Datenform rein, Abfrageform rein, Governance am Join, native Abfragen raus. Der Rest dieses Abschnitts geht jeden Teil durch.
 
@@ -75,16 +75,16 @@ Lesen ist transparent. Eine schlichte Abfrage gegen eine bitemporale MV rekonstr
 
 Erreichbarkeit plus Aktualität ist ein allgemeines Modell für Datenföderation: eine Definition, die sagt, was live ist, was materialisiert ist und wie aktuell jede Kopie bleibt — unabhängig von der Reichweite einer einzelnen Engine. Das Ergebnis ist Freiheit von proprietärem Lock-in. Das Modell ist portabel; der Bestand ist nicht an die Föderation des einen Anbieters gefesselt, der heute zufällig die meisten Quellen erreicht.
 
-## Funktionen
+## Funktionen {: #features }
 
-### Abfrageschnittstellen
+### Abfrageschnittstellen {: #query-interfaces }
 
 Dies sind die Sprachen und strukturierten APIs, in denen Sie Abfragen schreiben. Jede hat ihre eigene Syntax und Semantik; Governance (RLS, Maskierung, Spaltensichtbarkeit, Beziehungsdurchsetzung) gilt einheitlich über alle hinweg, unabhängig davon, welches Wire-Protokoll sie liefert.
 
 - **GraphQL** — Rollenspezifische Schemas mit feldgenauer Sichtbarkeit, Filterung, Cursor-basierter Paginierung und Aggregatabfragen (`count`, `sum`, `avg`, `min`, `max`). Schema-eingeschränkt auf registrierte Beziehungen — durch Konstruktion strukturell gültig, der schnellste Weg zu einer korrekten einfachen Abfrage. Apollo APQ inklusive: Abfragen werden gehasht und serverseitig registriert; nachfolgende Aufrufe senden nur den Hash über HTTP GET, was Antworten CDN-cachebar macht, ohne dass Client-Änderungen nötig sind. Lookup-Tabellen unterhalb eines konfigurierbaren Zeilenschwellenwerts werden als Enum-Typen exponiert.
 - **SQL** — Vollständiges SQL über föderierte Daten; uneingeschränkt und ausdrucksstärker als GraphQL. Schreiben Sie Standard-SQL — korrelierte Unterabfragen inklusive — und es läuft unverändert über Quellen hinweg. Einzelquellen-Abfragen umgehen die Föderationsschicht vollständig (unter 100 ms).
 - **Cypher** — Graph-Abfragesprache über demselben föderierten Schema. Beziehungen als Graph-Kanten traversieren; Quellen vereinigen; Pfade variabler Länge. Governance gilt identisch wie bei GraphQL und SQL.
-- **gRPC-Model-API** — Automatisch generiertes `.proto` aus dem registrierten Schema; typisierte Query- und Insert-RPCs pro Tabelle, gestreamte Antworten. Schema-getrieben im selben Sinne wie GraphQL — das Registrierungsmodell ist der Vertrag, Protobuf ist die Wire-Kodierung. Anders als Arrow Flight (das ein Columnar-Streaming-Transport ist) ist dies eine vollständige Pro-Tabelle-Abfrageschnittstelle.
+- **gRPC-Model-API** — Automatisch generiertes `.proto` aus dem registrierten Schema; typisierte Query- und Insert-RPCs für jede Tabelle an der Wurzel des Schemas einer Rolle, gestreamte Antworten. Schema-getrieben im selben Sinne wie GraphQL — das Registrierungsmodell ist der Vertrag, Protobuf ist die Wire-Kodierung. Anders als Arrow Flight (das ein Columnar-Streaming-Transport ist) ist dies eine vollständige Pro-Tabelle-Abfrageschnittstelle.
 - **JSON:API** — Strukturierte Abfrage-API unter `/data/jsonapi/{table}`, per Design nur HTTP. Unterstützt JSON:API 1.1: Sparse Fieldsets (`fields[table]=col1,col2`), Filterausdrücke (`filter[field][op]=value`), zusammengesetzte Dokumente (`include=relation`) und Sortierung. Keine Allzweck-Abfragesprache — fragt eine Tabelle nach der anderen mit standardisierter Filtersyntax ab statt mit einem Ad-hoc-Abfragestring.
 - **Query Language Explorer** — Schreiben Sie eine GraphQL-Abfrage und sehen Sie live **Semantic-SQL**- und **Cypher**-Übersetzungen in Seitenpanels; kopieren Sie eine davon oder springen Sie direkt in den SQL- oder Graph-Editor. Ein praktischer Workflow ist, Abfragefragmente in GraphQL zu skizzieren und dann das resultierende SQL in komplexe Views oder Reports einzufügen.
 
@@ -96,7 +96,7 @@ Dasselbe föderierte Schema ist als lebender Graph erkundbar — Domänen- und K
 
 ![Graph Visualization](docs/images/graph-view.png)
 
-### Werkzeuge zur Abfragekomposition
+### Werkzeuge zur Abfragekomposition {: #query-composition-tools }
 
 Diese Werkzeuge helfen Ihnen, Abfragen in den obigen Sprachen zu schreiben — sie sind selbst keine Abfragesprachen.
 
@@ -104,7 +104,7 @@ Diese Werkzeuge helfen Ihnen, Abfragen in den obigen Sprachen zu schreiben — s
 
 ![Natural Language Query](docs/images/natural-language.png)
 
-### Wire-Protokolle
+### Wire-Protokolle {: #wire-protocols }
 
 Dies sind die Verbindungsprotokolle. SQL, GraphQL und Cypher reiten über ihnen — die Wahl des Wire-Protokolls ändert die Abfrageschnittstelle oder das Governance-Verhalten nicht.
 
@@ -114,9 +114,9 @@ Dies sind die Verbindungsprotokolle. SQL, GraphQL und Cypher reiten über ihnen 
 - **JDBC** — BI-Tool-Integration (Tableau, Power BI, DBeaver).
 - **WebSocket / SSE** — Subscriptions: Near-Real-Time-Änderungsereignisse; Backends: PG-nativ, MongoDB-nativ, CDC, Polling. Auch über Kafka exponiert.
 
-### Datenquellen
+### Datenquellen {: #data-sources }
 
-- **62 Konnektoren, 75+ Arten von Quellen** — Die größere Zahl zählt die gehosteten PostgreSQL-Dienste (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) und die Dateiformate des File Crawlers einzeln. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL-Triplestores, Kafka, Google Sheets und mehr über eine einzige API; Graph- und RDF-Quellen sind erstklassig, keine Adapter
+- **72 Konnektoren, 85+ Arten von Quellen** — Die größere Zahl zählt die gehosteten PostgreSQL-Dienste (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) und die Dateiformate des File Crawlers einzeln. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL-Triplestores, Kafka, Google Sheets und mehr über eine einzige API; Graph- und RDF-Quellen sind erstklassig, keine Adapter
 - **Smart Routing** — Einzelquellen-Abfragen umgehen die Föderation (unter 100 ms); Multi-Quellen-Abfragen routen durch die Föderationsschicht — eigenen Cluster mitbringen oder die eingebetteten Worker nutzen
 - **API-Quellen** — REST-, GraphQL-, gRPC-, WebSocket- oder RSS-Endpunkte als abfragbare Tabellen registrieren; SPARQL-Helfer inklusive; föderierte Joins über API-Quellen und relationale Quellen hinweg funktionieren transparent
 - **Remote-Schema-Introspektion** — Auf jeden GraphQL-, OpenAPI- oder gRPC-Endpunkt zeigen; dokumentierte Operationen werden automatisch als abfragbare Tabellen, Graph-Knoten und -Kanten mit voller Governance obendrauf exponiert
@@ -131,7 +131,7 @@ Quellen, Dateien und Remote-Endpunkte werden als regulierte Tabellen aus der UI 
 
 ![Table Registration](docs/images/table-registration.png)
 
-### Sicherheit & Governance
+### Sicherheit & Governance {: #security-governance }
 
 - **Sicherheit auf Zeilenebene** — Injektion von WHERE-Klauseln pro Tabelle, pro Rolle
 - **Spaltenmaskierung** — Maskierung pro Spalte (Regex, Konstante, Trunkierung) mit rollenbasiertem Bypass
@@ -171,37 +171,37 @@ Beziehungen werden als die einzigen legalen JOIN-Pfade registriert, genehmigt un
 
 ![Relationships](docs/images/relationships.png)
 
-## Sicherheitsmodell
+## Sicherheitsmodell {: #security-model }
 
 Hier hört „auf dem Pfad, den jede Abfrage ohnehin nimmt" auf, ein Slogan zu sein. Provisa setzt ein mehrschichtiges Sicherheitsmodell über jede Abfragesprache (GraphQL, SQL, Cypher) und jeden Transport (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket) durch. Governance wird einheitlich angewendet — es gibt keinen Abfragepfad, der sie umgeht. Abdeckung ist durch Konstruktion vollständig, nicht durch Sorgfalt: Fügen Sie eine Quelle, Spalte oder Beziehung hinzu, und jede Schicht gilt automatisch dafür, ohne dass etwas zu registrieren zu merken wäre.
 
 Die Schichten gelten der Reihe nach. Eine Anfrage muss jede Schicht passieren, bevor die nächste ausgewertet wird.
 
-### Schicht 0 — Introspektionsfilterung
+### Schicht 0 — Introspektionsfilterung {: #layer-0-introspection-filtering }
 
 Das Schema und der Katalog, die einer Rolle präsentiert werden, enthalten nur die Tabellen in ihrer `domain_access`-Liste und die Spalten, die pro-Spalte-`visible_to`-Regeln bestehen. Objekte außerhalb des Zugriffs einer Rolle sind zum Zeitpunkt der Entdeckung unsichtbar — sie können nicht abgefragt, autovervollständigt oder als existent erschlossen werden. Dies gilt für das GraphQL-Schema, den SQL-Katalog und den Schema-Browser des Abfrage-Editors.
 
-### Schicht 1 — Öffentlicher Zugriff
+### Schicht 1 — Öffentlicher Zugriff {: #layer-1-public-access }
 
 Tabellen in Domänen ohne `domain_access`-Beschränkung sind für alle authentifizierten Identitäten ohne zusätzliche Konfiguration sichtbar. Keine Reibung für genuin öffentliche Daten.
 
-### Schicht 2 — Domänenzugriff
+### Schicht 2 — Domänenzugriff {: #layer-2-domain-access }
 
 Jede Rolle trägt eine `domain_access`-Liste von Domänen-IDs. Eine Abfrage, die eine Tabelle außerhalb dieser Domänen berührt, wird vor der Ausführung abgelehnt. Dies ist die grobe Eigentumsgrenze — eine HR-Rolle kann Finanztabellen nicht erreichen, unabhängig davon, wie das SQL geschrieben ist.
 
-### Schicht 3 — Sicherheit auf Zeilenebene
+### Schicht 3 — Sicherheit auf Zeilenebene {: #layer-3-row-level-security }
 
 Nachdem der Domänenzugriff bestätigt ist, werden pro-Tabelle, pro-Rolle `WHERE`-Prädikate zur Ausführungszeit in jedes `SELECT` injiziert. Die Prädikate werten gegen Rohdaten aus. Ein regionaler Manager, der eine gemeinsam genutzte Orders-Tabelle abfragt, sieht selbst bei einem `SELECT *` nur die Zeilen seiner Region.
 
-### Schicht 4 — Spaltensichtbarkeit und Maskierung
+### Schicht 4 — Spaltensichtbarkeit und Maskierung {: #layer-4-column-visibility-and-masking }
 
 Spalten mit einer `visible_to`-Liste, die die anfragende Rolle ausschließt, werden aus der Abfrageausgabe entfernt. Spalten mit einer Maskierungsregel haben ihre Werte ersetzt — Regex-Schwärzung, Konstantenersetzung oder Trunkierung — bevor Ergebnisse den Server verlassen. Maskierung gilt in allen Abfragesprachen und Ausgabeformaten.
 
-### Schicht 5 — Prädikat-Guard
+### Schicht 5 — Prädikat-Guard {: #layer-5-predicate-guard }
 
 Maskierte Spalten werden aus `WHERE`- und `HAVING`-Klauseln abgelehnt. Ohne dies könnte ein Aufrufer den unmaskierten Wert durch Binärsuche in einem Filter erschließen, selbst wenn die Ausgabe maskiert ist. Die Ablehnung wird zur Abfrage-Parse-Zeit durchgesetzt, vor der Ausführung.
 
-### Beziehungs-Governance
+### Beziehungs-Governance {: #relationship-governance }
 
 JOIN-Bedingungen in SQL müssen einer registrierten, genehmigten Beziehung zwischen Tabellen entsprechen. Nicht genehmigte Joins werden abgelehnt. Jede Beziehung trägt einen menschenlesbaren Grund und eine Beschreibung — eine Orientierung für sowohl Nutzer als auch autonome Agenten darüber, warum ein Traversierungspfad existiert. Dies ist Governance-Richtlinie, keine harte Sicherheitsgrenze: Die Schichten 2–5 gelten unabhängig von der Join-Struktur, sodass eine gezielte Umgehung keine Daten exponiert, die die Rolle nicht über zwei separate Abfragen erreichen könnte. Umgehungsversuche werden protokolliert und sind auditierbar.
 
@@ -245,7 +245,7 @@ provisa start && provisa open
 provisa start
 ```
 
-### Erste Abfrage
+### Erste Abfrage {: #first-query }
 
 In der lokalen Entwicklung (`PROVISA_MODE=test`) sind keine Anmeldedaten erforderlich. In der Produktion authentifizieren Sie sich mit einem Bearer-Token — die Rolle wird automatisch daraus extrahiert.
 
@@ -384,7 +384,7 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
 
 Siehe [docs/python-client.md](docs/python-client.md) für die vollständige Referenz.
 
-## Dokumentation
+## Dokumentation {: #documentation }
 
 | Thema | Doc |
 | --- | --- |
@@ -396,6 +396,9 @@ Siehe [docs/python-client.md](docs/python-client.md) für die vollständige Refe
 | Secret-Speicherung und `${secret:NAME}`-Referenzen | [docs/secrets.md](docs/secrets.md) |
 | Business-Glossar und Begriffskuratierung | [docs/glossary.md](docs/glossary.md) |
 | Umgebungen (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
+| Testumgebungen aufbauen (Profiling, Fakes, synthetische Daten) | [docs/test-data.md](docs/test-data.md) |
+| Referenz der Fake-Methoden | [docs/fake-methods.md](docs/fake-methods.md) |
+| Demos auf einem Laptop ausführen und bauen (Sales Engineers) | [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) |
 | Unterstützte Quelltypen | [docs/sources.md](docs/sources.md) |
 | SSE-Subscriptions | [docs/subscriptions.md](docs/subscriptions.md) |
 | JDBC, BI-Tools, Arrow-Flight-Clients, Apollo Federation | [docs/integrations.md](docs/integrations.md) |
@@ -418,7 +421,7 @@ Provisa enthält eine eingebaute Föderations-Engine für Multi-Quellen-Abfragen
 
 Die Worker-Anzahl kann jederzeit durch Bearbeiten von `~/.provisa/config.yaml` (`federation_workers: N`) und Ausführen von `provisa restart` geändert werden. Auf `0` setzen für reinen Koordinationsbetrieb (Single-Node).
 
-### Über eine einzelne Box hinaus skalieren
+### Über eine einzelne Box hinaus skalieren {: #scaling-beyond-a-single-box }
 
 **Horizontale Skalierung** — Mehrere Provisa-Instanzen hinter einem Load Balancer betreiben. Jede Instanz ist ein vollständig funktionierendes System. Alle Instanzen müssen auf dieselbe Konfigurations-DB zeigen (`CONFIG_DB_HOST` auf sekundären Boxen setzen) und optional auf eine gemeinsame Redis-Instanz (`REDIS_URL`) für einen vereinheitlichten Cache. Die meisten Abfragen verteilen sich transparent; sehr große quellübergreifende Joins können die Ressourcen einer einzelnen Instanz übersteigen und eine größere Box oder einen externen Föderationscluster erfordern.
 
@@ -426,7 +429,7 @@ Die Worker-Anzahl kann jederzeit durch Bearbeiten von `~/.provisa/config.yaml` (
 
 **Eigenen Föderationscluster mitbringen** — Provisa auf einen bestehenden externen Föderationscluster statt der eingebetteten Worker zeigen. Empfohlen für großskalige oder Cloud-Deployments; siehe [docs/deployment.md](docs/deployment.md) für die Konfiguration.
 
-## Lizenz
+## Lizenz {: #license }
 
 Business Source License 1.1 (unverändert, gemäß den Licensor-Covenants von MariaDB). Jede
 veröffentlichte Version konvertiert am 4. Jahrestag ihrer öffentlichen Veröffentlichung zur

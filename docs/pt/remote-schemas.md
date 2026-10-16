@@ -1,12 +1,12 @@
-# Esquemas Remotos (Remote Schemas)
+# Esquemas Remotos (Remote Schemas) {: #remote-schemas }
 
 Uma fonte de esquema remoto conecta uma API externa — GraphQL (incluindo GitHub), gRPC, ou REST (OpenAPI) — ao modelo do Provisa. Adicionar uma fonte não registra nenhuma tabela. A fonte oferece tabelas, e um steward registra cada tabela desejada pelo seletor «Register Table»; esse registro é a etapa de curadoria. (REQ-308, REQ-316, REQ-322) Uma tabela registrada é uma tabela Provisa de primeira classe. (REQ-308, REQ-316, REQ-325) Toda regra de governança, interface de consulta, e camada de segurança se aplica automaticamente. (REQ-310, REQ-319, REQ-328) O serviço remoto nunca vê as regras de governança do Provisa. (REQ-310, REQ-319, REQ-328)
 
 ---
 
-## Três tipos de fonte
+## Três tipos de fonte {: #three-source-types }
 
-### Esquema remoto GraphQL (REQ-307–313)
+### Esquema remoto GraphQL (REQ-307–313) {: #graphql-remote-schema-req-307313 }
 
 **Como adicionar a fonte.** Faça POST para `/admin/sources/graphql-remote` com a URL do endpoint, um namespace, e auth opcional. O Provisa dispara uma consulta de introspecção `__schema` padrão contra o endpoint remoto para confirmar o endpoint e a credencial. (REQ-307) [tool-verified: `provisa/graphql_remote/introspect.py:47–59`]
 
@@ -38,7 +38,7 @@ Opções de auth: `none`, `bearer` (header Authorization), `basic` (Base64 usern
 
 **Relacionamentos no momento do registro.** `relationships` declara caminhos de join FK/PK entre tabelas no momento do registro. Estes são armazenados como relacionamentos declarados manualmente (sem flag `remote_managed`). Na atualização, relacionamentos auto-detectados (aqueles com `remote_managed: True`) são reexecutados e podem mudar; relacionamentos declarados manualmente não são tocados. (REQ-554) [tool-verified: `provisa/api/admin/graphql_remote_router.py`]
 
-**O que a fonte oferece.** Todo campo do tipo `Query` remoto que retorna um objeto ou uma lista de objetos é oferecido como tabela, e também cada conexão Relay sob um campo de objeto único (veja abaixo). Registrar uma tabela oferecida a torna uma tabela. Cada campo do tipo `Mutation` remoto é um command oferecido, contado em `available_mutations`; adicionar a fonte não registra nenhum. Registre os que quiser como commands; veja [Operação de escrita de uma fonte remota](commands.md#operacao-de-escrita-de-uma-fonte-remota-req-1924). (REQ-308, REQ-1924) [tool-verified: `provisa/graphql_remote/mapper.py:243–278`, `graphql_remote_router.py` `register_graphql_remote_source` (`"functions": 0`)]
+**O que a fonte oferece.** Todo campo do tipo `Query` remoto que retorna um objeto ou uma lista de objetos é oferecido como tabela, e também cada conexão Relay sob um campo de objeto único (veja abaixo). Registrar uma tabela oferecida a torna uma tabela. Cada campo do tipo `Mutation` remoto é um command oferecido, contado em `available_mutations`; adicionar a fonte não registra nenhum. Registre os que quiser como commands; veja [Operação de escrita de uma fonte remota](commands.md#a-remote-sources-write-operation-req-1924). (REQ-308, REQ-1924) [tool-verified: `provisa/graphql_remote/mapper.py:243–278`, `graphql_remote_router.py` `register_graphql_remote_source` (`"functions": 0`)]
 
 **Nomeação de tabela.** Tabelas são nomeadas `{namespace}__{field_name}`. Com namespace `petstore` e um campo de consulta `pets`: o nome da tabela é `petstore__pets`. (REQ-312) [tool-verified: `provisa/graphql_remote/mapper.py:250`]
 
@@ -81,7 +81,7 @@ Tipos OBJECT que NÃO são alcançáveis como campos Query raiz (tipos inline co
 
 **Relacionamentos detectados automaticamente.** O Provisa examina as colunas do tipo OBJECT de cada tabela registrada. Quando o tipo GQL referenciado também é uma tabela registrada na mesma fonte, e a coluna em que o relacionamento se apoia está entre as colunas registradas, o relacionamento é armazenado. Uma tabela ainda não registrada não recebe nenhum. [tool-verified: `_graphql_table_registration.py` `sync_detected_relationships`] Relacionamentos many-to-one inferem as colunas de origem e destino a partir de convenções de nomenclatura (`breedName` no tipo de origem → `name` no tipo de destino `Breed`). Campos one-to-many (LIST) emitem relacionamentos com referências de coluna vazias — a FK fica no lado do destino. (REQ-554) [tool-verified: `provisa/graphql_remote/mapper.py:162–202`]
 
-**Mutações.** Um campo de mutação é registrado, um a um, como um command do tipo `source_operation`. Seus argumentos são cada um tipado como `json` e repassados ao serviço remoto como variáveis tipadas; a resposta é o JSON que o serviço remoto retorna, sem `return_schema`. Veja [Operação de escrita de uma fonte remota](commands.md#operacao-de-escrita-de-uma-fonte-remota-req-1924). (REQ-1924) [tool-verified: `provisa/api/admin/actions_router.py` `_as_source_operation` (`body.returns = ""`, arguments typed `json`); `provisa/executor/source_operation.py` `_call_graphql`]
+**Mutações.** Um campo de mutação é registrado, um a um, como um command do tipo `source_operation`. Seus argumentos são cada um tipado como `json` e repassados ao serviço remoto como variáveis tipadas; a resposta é o JSON que o serviço remoto retorna, sem `return_schema`. Veja [Operação de escrita de uma fonte remota](commands.md#a-remote-sources-write-operation-req-1924). (REQ-1924) [tool-verified: `provisa/api/admin/actions_router.py` `_as_source_operation` (`body.returns = ""`, arguments typed `json`); `provisa/executor/source_operation.py` `_call_graphql`]
 
 **Atualização (refresh).** Faça POST para `/admin/sources/graphql-remote/{id}/refresh`. Reintrospecciona o esquema remoto e atualiza, conforme ele, as tabelas já registradas. Não adiciona nenhuma tabela nem coluna: uma tabela ou coluna que o esquema ganhou continua oferecida, e uma coluna que o esquema perdeu é removida. Regras de governança existentes (RLS, mascaramento) são preservadas. (REQ-311) [tool-verified: `provisa/api/admin/graphql_remote_router.py` `refresh_graphql_remote_source`; `_graphql_table_registration.py` `refreshed_registered_tables`: "a column the schema has lost is gone; one it has gained is on offer and is not added"]
 
@@ -160,7 +160,7 @@ GitLab é um tipo de fonte comum e é adicionado e registrado da mesma forma que
 
 ---
 
-### Esquema remoto gRPC (REQ-322–329)
+### Esquema remoto gRPC (REQ-322–329) {: #grpc-remote-schema-req-322329 }
 
 **Como adicionar a fonte.** Faça POST para `/admin/grpc-remote/register` com o endereço do servidor, um caminho ou URL para um arquivo `.proto`, e configuração TLS opcional. Adicionar a fonte não registra nenhuma tabela.
 
@@ -195,7 +195,7 @@ Métodos que não correspondem a nenhum desses sinais (RPC unário retornando um
 
 **Registrar tabelas.** Cada método de query é oferecido como uma tabela, nomeada `{namespace}__{Service}__{Method}`, sob o esquema de seletor `grpc_remote`. Registre as desejadas com o seletor Register Table (`availableTables`, `availableColumns`, `registerTable`, como para fontes GraphQL), escolhendo as colunas de resposta. Os campos da requisição viram colunas de filtro nativo `_nf_*`, e essas são sempre incluídas. (REQ-322) [tool-verified: `provisa/api/admin/introspect.py` `_native_tables_grpc` (`if schema_name != "grpc_remote": return []`), `provisa/api/admin/grpc_remote_router.py` `query_table_name`, `query_columns`, `_register_schema` (`if table_name not in registered: continue`), `provisa/api/admin/_table_ops.py` `_grpc_columns_for_input`]
 
-Métodos de mutação são commands oferecidos, contados em `available_mutations`; adicionar a fonte não registra nenhum. Uma mutação gRPC é registrada na página Comandos, escolhendo a fonte e depois o método, chamado `Service.Method`; o tipo do command é `source_operation`. Veja [Operação de escrita de uma fonte remota](commands.md#operacao-de-escrita-de-uma-fonte-remota-req-1924). (REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `grpc_operation_name`, `_grpc_operations`; `provisa/api/admin/actions_router.py` `_as_source_operation`]
+Métodos de mutação são commands oferecidos, contados em `available_mutations`; adicionar a fonte não registra nenhum. Uma mutação gRPC é registrada na página Comandos, escolhendo a fonte e depois o método, chamado `Service.Method`; o tipo do command é `source_operation`. Veja [Operação de escrita de uma fonte remota](commands.md#a-remote-sources-write-operation-req-1924). (REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `grpc_operation_name`, `_grpc_operations`; `provisa/api/admin/actions_router.py` `_as_source_operation`]
 
 **Nomeação de tabela.** O nome padrão é `{namespace}__{ServiceName}__{MethodName}`. Sem um namespace, os nomes de serviço e método são unidos diretamente. Qualquer tabela registrada pode receber um `alias`; quando definido, o alias é o nome usado em todo lugar (consultas, SDL, relacionamentos). O nome auto-gerado é a chave de registro e nunca muda. (REQ-322) [tool-verified: `provisa/core/repositories/table.py:129–134`]
 
@@ -221,7 +221,7 @@ Métodos de mutação são commands oferecidos, contados em `available_mutations
 
 Métodos server-streaming coletam todas as mensagens transmitidas em uma lista antes de retornar linhas. (REQ-325) [tool-verified: `provisa/grpc_remote/executor.py:86–119`]
 
-**Métodos de mutação (REQ-326).** Um método de mutação registrado é um command cujos argumentos são os campos da mensagem de entrada, cada um tipado como `json` e repassado sem alteração. A resposta do serviço remoto volta como linhas; uma chamada recusada é um 422, `functions.remote_refused`. Veja [Operação de escrita de uma fonte remota](commands.md#operacao-de-escrita-de-uma-fonte-remota-req-1924). (REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `_grpc_operations`, `_call_grpc`, `_refused`]
+**Métodos de mutação (REQ-326).** Um método de mutação registrado é um command cujos argumentos são os campos da mensagem de entrada, cada um tipado como `json` e repassado sem alteração. A resposta do serviço remoto volta como linhas; uma chamada recusada é um 422, `functions.remote_refused`. Veja [Operação de escrita de uma fonte remota](commands.md#a-remote-sources-write-operation-req-1924). (REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `_grpc_operations`, `_call_grpc`, `_refused`]
 
 **Gerenciamento de canal.** Um `grpc.aio.Channel` por fonte registrada é armazenado no estado da app e reutilizado através das requisições. O canal antigo é fechado antes que um novo abra na atualização. (REQ-327) [tool-verified: `provisa/api/admin/grpc_remote_router.py:107–117`]
 
@@ -237,7 +237,7 @@ Métodos server-streaming coletam todas as mensagens transmitidas em uma lista a
 
 **Como adicionar a fonte.** Faça POST para `/admin/openapi/register` com um ID de fonte e uma spec, carregada de um arquivo local ou de uma URL. A spec é analisada e mantida com a fonte; nenhuma tabela nem command é registrado. A resposta informa `tables: 0` e `mutations: 0`, com os contadores oferecidos em `available_tables` e `available_mutations`. (REQ-314) [tool-verified: `provisa/openapi/loader.py:30–55`, `provisa/api/admin/openapi_router.py` `_load_and_register` docstring: "Tables and functions are NOT auto-registered here. Users register them individually via the Register Table / Register Action UI."]
 
-**Registrar tabelas.** Registre cada operação GET desejada pelo seletor Register Table (`availableTables`, `availableColumns`, `registerTable`), escolhendo as colunas. Registre cada operação não-GET individualmente como command na página Comandos, listadas por `availableFunctions`; veja [Operação de escrita de uma fonte remota](commands.md#operacao-de-escrita-de-uma-fonte-remota-req-1924). `PUT /admin/openapi/spec/{source_id}` armazena uma spec editada à mão, não registra nada e retorna `available_tables` e `available_mutations`. (REQ-316) [tool-verified: `provisa/api/admin/openapi_router.py` `put_openapi_spec`; `provisa/api/admin/schema_query.py` `available_functions` ("returns non-GET operations")] [tool-verified: `provisa/api/admin/_table_ops.py` `_build_columns_for_input`; a registered OpenAPI table is read through the operation in the stored spec, `provisa/api/data/materialization.py` (`state.openapi_specs`)]
+**Registrar tabelas.** Registre cada operação GET desejada pelo seletor Register Table (`availableTables`, `availableColumns`, `registerTable`), escolhendo as colunas. Registre cada operação não-GET individualmente como command na página Comandos, listadas por `availableFunctions`; veja [Operação de escrita de uma fonte remota](commands.md#a-remote-sources-write-operation-req-1924). `PUT /admin/openapi/spec/{source_id}` armazena uma spec editada à mão, não registra nada e retorna `available_tables` e `available_mutations`. (REQ-316) [tool-verified: `provisa/api/admin/openapi_router.py` `put_openapi_spec`; `provisa/api/admin/schema_query.py` `available_functions` ("returns non-GET operations")] [tool-verified: `provisa/api/admin/_table_ops.py` `_build_columns_for_input`; a registered OpenAPI table is read through the operation in the stored spec, `provisa/api/data/materialization.py` (`state.openapi_specs`)]
 
 **Payload de registro.** O endpoint `/admin/openapi/register` aceita dois campos adicionais ao lado de `source_id`, `spec_path`, etc.:
 
@@ -251,7 +251,7 @@ Métodos server-streaming coletam todas as mensagens transmitidas em uma lista a
 }
 ```
 
-**O que a fonte oferece.** Toda operação GET da especificação é oferecida como tabela, a menos que seu esquema de resposta seja um tipo escalar (`string`, `number`, `boolean`, `integer`) — operações GET que retornam um escalar são funções com uma única coluna `value`. Toda operação não-GET (POST, PUT, PATCH, DELETE) é oferecida como command, nomeado por seu `operationId`. Registrado, ele recebe os parâmetros de caminho da operação e um argumento `body` para o corpo da requisição, cada um tipado como `json`; qualquer outro argumento vai na query string. Veja [Operação de escrita de uma fonte remota](commands.md#operacao-de-escrita-de-uma-fonte-remota-req-1924). (REQ-316, REQ-317, REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `_openapi_operations`, `_call_openapi`]
+**O que a fonte oferece.** Toda operação GET da especificação é oferecida como tabela, a menos que seu esquema de resposta seja um tipo escalar (`string`, `number`, `boolean`, `integer`) — operações GET que retornam um escalar são funções com uma única coluna `value`. Toda operação não-GET (POST, PUT, PATCH, DELETE) é oferecida como command, nomeado por seu `operationId`. Registrado, ele recebe os parâmetros de caminho da operação e um argumento `body` para o corpo da requisição, cada um tipado como `json`; qualquer outro argumento vai na query string. Veja [Operação de escrita de uma fonte remota](commands.md#a-remote-sources-write-operation-req-1924). (REQ-316, REQ-317, REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `_openapi_operations`, `_call_openapi`]
 
 Prioridade de classificação: `operation_overrides` (payload) sobrepõe `x-provisa-kind` (extensão de spec) sobrepõe a heurística GET. `operation_overrides` é o caminho de override recomendado; `x-provisa-kind` é para quando a própria spec deve carregar a classificação. (REQ-408) [tool-verified: `provisa/openapi/mapper.py:192–203`]
 
@@ -288,7 +288,7 @@ Prioridade de classificação: `operation_overrides` (payload) sobrepõe `x-prov
 
 ---
 
-## Impacto de registrar uma tabela remota
+## Impacto de registrar uma tabela remota {: #impact-of-registering-a-remote-table }
 
 Uma tabela registrada a partir de qualquer fonte de esquema remoto é uma tabela Provisa de primeira classe. Nada nela é tratado de forma diferente de uma tabela relacional conectada localmente em tempo de execução. (REQ-308, REQ-313)
 
@@ -304,7 +304,7 @@ Uma tabela registrada a partir de qualquer fonte de esquema remoto é uma tabela
 
 Consultas ad-hoc contra tabelas remotas são permitidas somente sob os direitos do usuário — o acesso é uniformemente baseado em direitos (direitos de tabela/coluna + relacionamentos aprovados), sem modo de governança por tabela. (REQ-001, REQ-003)
 
-**Governança de relacionamento (V002).** Condições JOIN contra tabelas remotas — quando consultadas via SQL ou Cypher — devem corresponder a um relacionamento registrado e aprovado. (REQ-604) A verificação V002 é pulada para consultas GraphQL porque relacionamentos definidos na SDL são pré-aprovados por design. Veja [docs/security.md](security.md#governanca-de-relacionamento-v002).
+**Governança de relacionamento (V002).** Condições JOIN contra tabelas remotas — quando consultadas via SQL ou Cypher — devem corresponder a um relacionamento registrado e aprovado. (REQ-604) A verificação V002 é pulada para consultas GraphQL porque relacionamentos definidos na SDL são pré-aprovados por design. Veja [docs/security.md](security.md#relationship-governance-v002).
 
 **Colunas do tipo OBJECT.** Quando uma coluna mapeia para um OBJECT GQL inline não governado ou tipo de objeto OpenAPI, seu tipo Provisa é `jsonb`. A coluna armazena o blob JSON aninhado completo. Quando sub-campos são declarados (`gql_object_fields` ou `object_fields`), o mapa `gql_object_columns` é populado no momento da construção do esquema. O gerador SQL usa esse mapa para emitir expressões de extração `->>` para sub-campos quando uma consulta os seleciona. [tool-verified: `provisa/api/app.py:1305–1315`, `provisa/compiler/schema_gen.py:80–82`]
 
@@ -312,7 +312,7 @@ Consultas ad-hoc contra tabelas remotas são permitidas somente sob os direitos 
 
 ---
 
-## Impacto de criar um relacionamento de cobertura
+## Impacto de criar um relacionamento de cobertura {: #impact-of-creating-a-covering-relationship }
 
 Quando um steward registra um relacionamento entre duas tabelas remotas (ou entre uma tabela remota e uma tabela local), o relacionamento se torna o caminho de join usado no momento da consulta.
 
@@ -330,7 +330,7 @@ Na SDL GraphQL, um campo OBJECT inline não governado é tipado como o tipo de o
 
 ---
 
-## Comportamento somente-type-def
+## Comportamento somente-type-def {: #type-def-only-behavior }
 
 Nem todo tipo em um esquema remoto precisa ser uma tabela consultável.
 

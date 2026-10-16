@@ -281,7 +281,7 @@ The hook receives the caller, the role, the command name and its arguments. See 
 
 Pick the table the operation writes in **Writes table**, as `schema.table`. It must be a registered table of the command's own source, or the save is refused with 422, `actions.written_table_not_registered`. The setting is optional. [tool-verified: `_check_written_table` in `actions_router.py`; `written_table` in `source_operation.py`]
 
-After each call the remote accepts, Provisa treats it as a write to that table. It drops the table's cached responses, marks the materialized views over it stale, emits the change event, runs the table's sinks, and reloads the table when it is held hot. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
+After each call the remote accepts, Provisa treats it as a write to that table. It drops the table's cached responses, marks the materialized views over it stale, emits the change event, runs the commands that run when it changes, and reloads the table when it is held hot. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
 
 When the table is read from its whole-table replica (the operator's settings put it there, or the engine cannot read its source in place), a build of the replica is asked for after the call, with the reason `write`. Readers keep the old replica until the new one swaps in. A table replicated row by row, or one with a parameter column, has no whole replica to rebuild. [tool-verified: `provisa/api/data/table_written.py` `_request_replica_build`; `provisa/federation/replica_state.py` `REASON_WRITE`]
 

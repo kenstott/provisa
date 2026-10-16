@@ -1,4 +1,4 @@
-# 密鑰
+# 密鑰 {: #secrets }
 
 **名稱進得去，值永遠出不來。**
 
@@ -6,7 +6,7 @@
 
 ---
 
-## 引用語法
+## 引用語法 {: #reference-syntax }
 
 在 Provisa 解析憑證的任何位置，以下三種引用形式皆有效：
 
@@ -16,15 +16,17 @@
 | `${secret:NAME}` | 組織保管庫——由全體成員共用 | 任何接受憑證引用的欄位 |
 | `${user:NAME}` | 操作者的個人保管庫 | 任何接受憑證引用的欄位 |
 
+在多租戶部署中，請把平台憑證存放於密鑰服務，而不是環境變數。租戶管理員可以在自己的憑證欄位中寫入 `${env:...}`，因此程序環境中的每個值都在每個租戶的可及範圍之內。只在環境中保留密鑰後端本身的憑證。
+
 整條解析路徑一律失效即關閉。未知的提供者名稱、未設定的名稱、無法連通的後端，三者都會引發錯誤。無法解析的引用絕不會被靜默替換成空字串。（REQ-1557）[tool-verified: `provisa/core/secrets.py:92-117`]
 
-### 名稱格式
+### 名稱格式 {: #name-format }
 
 密鑰名稱必須符合 `[A-Za-z_][A-Za-z0-9_]*`——字母、數字與底線，且以字母或底線開頭。這項限制出於實務考量：`${secret:NAME}` 由引用語法剖析，而它會一直讀到結尾的 `}`。名稱若含大括號、空格或冒號，剖析出來的就會是另一回事。[tool-verified: `provisa/core/secrets_store.py:61`]
 
 ---
 
-## 兩個保管庫，一項服務
+## 兩個保管庫，一項服務 {: #two-vaults-one-service }
 
 每個組織都有兩個保管庫，兩者同處於一項密鑰服務之內。（REQ-1560）
 
@@ -36,7 +38,7 @@
 
 ---
 
-## 選擇密鑰服務
+## 選擇密鑰服務 {: #choosing-a-secrets-service }
 
 **管理 → 安全 → 密鑰服務。** 持有 `platform_settings` 能力的人可以看到這個面板。凡此組建認得的後端一律列出，不論 SDK 是否已安裝。灰底的一列會告訴你缺的是哪個 Python 套件——面板會把它點名，而不是索性把該選項藏起來。
 
@@ -54,7 +56,7 @@
 
 選取一律失效即關閉：未知或不可用的後端會在啟動時引發錯誤，而不是靜默改用另一個。（REQ-1557）
 
-### 後端自己的憑證
+### 後端自己的憑證 {: #the-backends-own-credential }
 
 中央後端的連線憑證屬於行程設定。它只來自 `${env:...}`——絕不來自 `${secret:...}`。連線憑證放在自己裡面的密鑰服務打不開，因此信任鏈按設計終止於主機環境。註冊表會強制這一點：後端規格上的任何設定值，都會先以 `providers=("env",)` 解析，然後才建構該後端。[tool-verified: `provisa/core/secrets_registry.py:128-141`]
 
@@ -69,7 +71,7 @@ secrets:
     mount: secret
 ```
 
-### 中央服務與內建服務之別
+### 中央服務與內建服務之別 {: #central-service-vs-built-in }
 
 設定了中央服務之後，Provisa 只從它讀取，不向它寫入。建立與刪除項目由中央服務自己作主——那些操作屬於它自己的工具鏈。密鑰頁面會如實說明，並且不提供建立按鈕。（REQ-1557）
 
@@ -77,7 +79,28 @@ secrets:
 
 ---
 
-## Provisa 的內建儲存區
+### 組織在中央服務中的密鑰 {: #one-organizations-secrets-in-a-central-service }
+
+承載多個組織並讀取中央服務的部署，會為每個組織在該組織的前綴之內讀取服務。參照維持為短名稱（`${secret:db#password}`）；前綴在讀取時加上。（REQ-1557） [tool-verified: `provisa/core/secrets_providers.py`, `org_namespace`]
+
+| 服務 | 組織 `acme` 的密鑰 `db` 存放位置 |
+|---|---|
+| HashiCorp Vault (KV v2) | `orgs/acme/db` |
+| AWS Secrets Manager | `orgs/acme/db` |
+| GCP Secret Manager | `org-acme--db` |
+| Azure Key Vault | `o4-acme-db`（`o`、組織 id 的長度、把 `_` 寫作 `-` 的 id，然後是名稱） |
+
+在以下情況，參照會被點名拒絕：
+
+- 其名稱會離開前綴：以 `/` 開頭、包含 `..` 段或反斜線，或在名稱為扁平的 GCP 或 Azure 上包含 `/`；
+- 加上前綴後，其名稱對該服務而言過長（GCP 255 個字元，Azure 127 個）；這會在儲存參照時被拒絕，並指出上限；
+- 讀取它的操作沒有綁定任何組織。
+
+單一組織的部署按參照的原樣讀取，不加前綴：它所連接的服務屬於該組織，無需遷移任何內容。
+
+**遷移至前綴之下。** 在多組織部署中，組織參照的每個密鑰都必須位於該組織的前綴之下。用服務本身的工具把每個密鑰複製過去，然後把參照縮短為前綴之內的名稱（存放於 `orgs/acme/db` 的 `${secret:teams/data/db}` 變成 `${secret:db}`）。密鑰尚未遷移的參照會以「找不到」失敗；它不會從原本的位置讀取。
+
+## Provisa 的內建儲存區 {: #provisas-built-in-store }
 
 未設定中央服務時的預設值。`secrets_store` 的每一行都存著一個加密的信封 blob——`value` 欄位是二進位而非文字，而解密金鑰放在行程環境裡，不在資料庫裡。一份沒有該部署主金鑰的控制平面副本，握有的只是密文，別無他物。（REQ-1558）
 
@@ -98,7 +121,7 @@ secrets:
 
 ---
 
-## API 端點
+## API 端點 {: #api-endpoints }
 
 所有路由都位於 `/admin/orgs/{org_id}` 之下。組織保管庫需要在該組織內持有 `org_settings`。個人保管庫不需任何能力——擁有者是從已驗證的身分讀出來的；請求參數中沒有任何辦法指名他人的保管庫。
 
@@ -117,7 +140,7 @@ secrets:
 
 ---
 
-## `${secret:NAME}` 在哪裡解析
+## `${secret:NAME}` 在哪裡解析 {: #where-secretname-resolves }
 
 解析發生在一次繫結了脈絡的操作之內，而非匯入時或啟動時。儲存區在該操作開始時把組織的密鑰讀出並解密一次，然後把這份對應表放在一個 `ContextVar` 裡，供該操作全程使用。不在已繫結的操作之內，`${secret:NAME}` 就會引發錯誤。（REQ-1557）[tool-verified: `provisa/core/secrets_store.py:269-290`]
 
@@ -129,7 +152,7 @@ secrets:
 
 ---
 
-## 組織 AI 供應商金鑰作為密鑰引用
+## 組織 AI 供應商金鑰作為密鑰引用 {: #org-ai-vendor-keys-as-secret-references }
 
 組織的 AI 供應商金鑰（Anthropic、OpenAI 及其他）可以存成 `${secret:NAME}` 引用，而非字面上的金鑰。（REQ-1580）
 
@@ -150,13 +173,13 @@ vendor key field → ${secret:OPENAI_KEY}
 
 ---
 
-## 平台管理員的存取
+## 平台管理員的存取 {: #platform-admin-access }
 
 操作控制平面的平台管理員，讀不到任何組織的密鑰值。`org_settings` 關卡明確拒絕 `cross_org` 以及平台繞道：管理一個組織的生命週期，不等於讀取該組織保存的憑證。伺服器獨立於 UI 強制這一點。（REQ-1361）[tool-verified: `provisa/api/admin/secrets_router.py:53-83`]
 
 ---
 
-## 另見
+## 另見 {: #see-also }
 
 - [安全模型](security.md)——分層存取控制、身份驗證與審計記錄
 - [設定參考](configuration.md)——行程層級憑證的 `${env:VAR}` 語法

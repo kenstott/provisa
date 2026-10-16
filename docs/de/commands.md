@@ -11,14 +11,14 @@ Der entscheidende Unterschied: Ein Command ist ein **geregeltes RPC**, kein ad-h
 deklariert, typisiert, validiert, verfolgt (traced) und in die Lineage verdrahtet. Ein ungeregelter curl-Aufruf oder Subprozess
 ist nichts davon.
 
-## Implementierungsarten
+## Implementierungsarten {: #implementation-kinds }
 
 Sechs `impl_kind`-Werte werden unterstützt [tool-verified: `_EXECUTORS` dict in `provisa/executor/function_dispatch.py`]:
 
 | `impl_kind` | Transport |
 | --- | --- |
 | `source_procedure` | Native Stored Procedure auf einer registrierten Quelle |
-| `source_operation` | Eine Schreiboperation einer OpenAPI-, externen GraphQL- oder gRPC-Quelle, unverändert durchgereicht (siehe [Schreiboperation einer externen Quelle](#schreiboperation-einer-externen-quelle-req-1924)) |
+| `source_operation` | Eine Schreiboperation einer OpenAPI-, externen GraphQL- oder gRPC-Quelle, unverändert durchgereicht (siehe [Schreiboperation einer externen Quelle](#a-remote-sources-write-operation-req-1924)) |
 | `script` | Lokaler Subprozess, dem JSON über stdin zugeführt wird, liest JSON von stdout |
 | `http` | HTTP/S-Endpunkt; JSON-Request-Body, JSON-Antwort |
 | `grpc` | gRPC unary; proto-lose JSON-Brücke |
@@ -28,7 +28,7 @@ Adressierung (der Katalog-`name` und `function_name`) ist entkoppelt von `bindin
 Ort). Tauschen Sie das Binding aus, und die Governance, Lineage und Aufrufer-Verträge des Commands bleiben
 unverändert. [tool-verified: Function-Modell in models.py:710-750]
 
-## Argumentarten
+## Argumentarten {: #argument-kinds }
 
 Jedes Argument deklariert eine `arg_kind` [tool-verified: FunctionArgument.arg_kind in models.py:691-700]:
 
@@ -47,7 +47,7 @@ Ein Command, der eine Menge zurückgibt (deklariert über `output_columns` und `
 tabellenwertige Funktion. Verwenden Sie ihn in einer `FROM`-Klausel oder einem `JOIN`. [abgeleitet aus models.py:744-748
 und command_localize.py:52-63]
 
-## Der Dataset-Vertrag (REQ-1159)
+## Der Dataset-Vertrag (REQ-1159) {: #the-dataset-contract-req-1159 }
 
 Jedes `table_ref`- oder `result_set`-Argument kann einen **Eingabe-Spaltenvertrag** deklarieren: eine geordnete,
 IR-typisierte Liste von Spalten in `FunctionArgument.columns`. Der Command selbst deklariert einen
@@ -66,7 +66,7 @@ Beide Verträge werden bei jedem Aufruf laut fehlschlagend validiert:
   [tool-verified: `_materialize_relation` bei function_dispatch.py:155-177, col_names übergeben
   an Projektion in Zeile 171]
 
-### Das IR-Typvokabular
+### Das IR-Typvokabular {: #the-ir-type-vocabulary }
 
 Vertragsspaltentypen verwenden das kanonische IR-Typsystem (REQ-846), nicht GraphQL-Skalare oder
 quellennative Schreibweisen. Die gültigen Namen sind [tool-verified: `_IR_TO_SA`-Schlüssel in ir_types.py:45-63]:
@@ -81,9 +81,9 @@ usw.). [tool-verified: `_ALIASES`-Dict in ir_types.py:67-90]
 Deklarieren Sie `output_columns` für Validierung und Lineage; fügen Sie `return_schema` für die GraphQL-Typ-
 Generierung hinzu. [tool-verified: models.py:744-748, Kommentar "return_schema is its GraphQL projection"]
 
-## Einen Command verfassen
+## Einen Command verfassen {: #authoring-a-command }
 
-### Konfigurationsdatei
+### Konfigurationsdatei {: #config-file }
 
 ```yaml
 functions:
@@ -151,10 +151,10 @@ Das Command-Formular unter **Einstellungen → Commands** enthält einen Pro-Dat
 pro deklarierter Spalte, mit einem IR-Typ-Selektor) und einen Ausgabespalten-Editor. Speichern Sie das Formular, um
 den Command ohne Konfigurations-Neuladen zu registrieren oder zu aktualisieren. [abgeleitet aus CommandFormFields.tsx]
 
-## Inline-Komposition (REQ-1159)
+## Inline-Komposition (REQ-1159) {: #inline-composition-req-1159 }
 
 Commands können **innerhalb** einer größeren SQL-Anweisung erscheinen — gejoint, als Subquery oder projiziert. Sie
-sind nicht auf `SELECT * FROM fn(args)` beschränkt. Die Ausnahme ist die Schreiboperation einer externen Quelle, die für sich allein aufgerufen wird (siehe [Warum er nicht komponierbar ist](#warum-er-nicht-komponierbar-ist)).
+sind nicht auf `SELECT * FROM fn(args)` beschränkt. Die Ausnahme ist die Schreiboperation einer externen Quelle, die für sich allein aufgerufen wird (siehe [Warum er nicht komponierbar ist](#why-it-cannot-be-composed)).
 
 ```sql
 -- Enrich the orders relation and join the result back inline.
@@ -178,7 +178,7 @@ Eine lokalisierte Anweisung routet normal. Einzelquellen-Abfragen bleiben auf de
 quellenübergreifende Abfragen gehen zur Föderations-Engine. [tool-verified: _pipeline.py:304 Kommentar
 "REQ-1159: a localized statement carries an inline local relation..."]
 
-## Schreiboperation einer externen Quelle (REQ-1924)
+## Schreiboperation einer externen Quelle (REQ-1924) {: #a-remote-sources-write-operation-req-1924 }
 
 Eine OpenAPI-, externe GraphQL- oder gRPC-Quelle bietet Schreiboperationen an. Wird eine davon als Command registriert, ist sie von jeder Oberfläche aus aufrufbar, geregelt und auditiert. Das Hinzufügen der Quelle registriert keine davon; Sie registrieren die gewünschten einzeln, so wie Sie Tabellen registrieren. Die Registrierung ist die Kuration. [tool-verified: `provisa/executor/source_operation.py` module docstring; `provisa/api/admin/schema_common.py` `remote_source_counts`, `"mutations": 0`]
 
@@ -190,7 +190,7 @@ Was eine Quelle anbietet [tool-verified: `provisa/executor/source_operation.py` 
 | `graphql_remote` | Jedes Feld des externen Typs `Mutation` | Der Feldname |
 | `grpc_remote` | Jede als Mutation klassifizierte Methode | `Service.Method` |
 
-### Eines registrieren
+### Eines registrieren {: #register-one }
 
 1. Öffnen Sie **Modell → Befehle** und fügen Sie einen Command hinzu.
 2. Wählen Sie die externe Quelle. Das Formular wechselt zu einer Operationsauswahl, die auflistet, was die Quelle anbietet.
@@ -217,7 +217,7 @@ body.arguments = [{"name": a, "type": "json"} for a in operation.arguments]
 
 Jedes Argument ist als `json` typisiert. Die Argumente der Operation sind ihre OpenAPI-Pfadparameter (plus `body`, wenn die Operation einen Request-Body entgegennimmt), ihre GraphQL-Mutationsargumente oder ihre gRPC-Anfragefelder. [tool-verified: `_openapi_operations`, `_graphql_operations`, `_grpc_operations` in `source_operation.py`] Eine Operation, die die Quelle nicht anbietet, wird mit 422, `functions.operation_not_offered`, abgelehnt. [tool-verified: `offered_operation`]
 
-### Aufruf
+### Aufruf {: #calling-it }
 
 Provisa formt, typisiert oder prüft die Eingabe nicht. Jedes Argument geht unverändert und mit der Zugangsberechtigung der Quelle an den externen Dienst, und dessen Antwort kommt unverändert zurück. Provisa regelt, wer aufrufen darf, in welcher Domäne, ob eine Genehmigung nötig ist, und protokolliert den Aufruf. [tool-verified: `source_operation.py` module docstring]
 
@@ -257,7 +257,7 @@ curl -X POST https://acme.provisa.org/data/rest/engineering/commands/create_issu
 
 [inferred: host, domain and command name are placeholders; not run]
 
-### Ablehnungen
+### Ablehnungen {: #refusals }
 
 Die Ablehnung des externen Dienstes kommt so zurück, wie er sie formuliert hat. [tool-verified: `_refused` in `source_operation.py`]
 
@@ -268,24 +268,24 @@ Die Ablehnung des externen Dienstes kommt so zurück, wie er sie formuliert hat.
 
 Ob die Zugangsberechtigung der Quelle die Operation ausführen darf, entscheidet der externe Dienst beim Aufruf der Operation. Provisa kann bei der Registrierung keinen Schreibvorgang ausprobieren, ohne ihn auszuführen. [tool-verified: REQ-1924 CREDENTIAL AT CALL amendment in `docs/arch/requirements.yaml`; no credential check in `_as_source_operation`]
 
-### Genehmigung
+### Genehmigung {: #approval }
 
 Schalten Sie **Erfordert Genehmigung** ein, und jeder Aufruf wird dem Genehmigungs-Hook der Bereitstellung vorgelegt, bevor er läuft. Er läuft nur, wenn der Hook genehmigt. [tool-verified: `provisa/api/data/action_exec.py` `_require_approval`]
 
 - Kein Hook konfiguriert: 403, `functions.approval_unavailable`.
 - Der Hook lehnt ab: 403, `functions.approval_denied`, mit der Begründung des Hooks.
 
-Der Hook erhält den Aufrufer, die Rolle, den Namen des Commands und seine Argumente. Siehe [ABAC-Genehmigungs-Hook](security.md#abac-genehmigungs-hook). Das Flag wird als `Function.requires_approval` gespeichert, und die Prüfung gilt für jeden Command, der es setzt. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
+Der Hook erhält den Aufrufer, die Rolle, den Namen des Commands und seine Argumente. Siehe [ABAC-Genehmigungs-Hook](security.md#abac-approval-hook). Das Flag wird als `Function.requires_approval` gespeichert, und die Prüfung gilt für jeden Command, der es setzt. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
 
-### Schreibt Tabelle
+### Schreibt Tabelle {: #writes-table }
 
 Tragen Sie im Feld **Schreibt Tabelle** die Tabelle ein, in die die Operation schreibt, als `schema.table`. Es muss eine registrierte Tabelle der eigenen Quelle des Commands sein, sonst wird das Speichern mit 422, `actions.written_table_not_registered`, abgelehnt. Die Einstellung ist optional. [tool-verified: `_check_written_table` in `actions_router.py`; `written_table` in `source_operation.py`]
 
-Nach jedem Aufruf, den der externe Dienst annimmt, behandelt Provisa ihn als Schreibvorgang auf diese Tabelle. Es verwirft die zwischengespeicherten Antworten der Tabelle, markiert die materialisierten Sichten darauf als veraltet, sendet das Änderungsereignis, führt die Senken der Tabelle aus und lädt die Tabelle neu, wenn sie im Hot-Bestand gehalten wird. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
+Nach jedem Aufruf, den der externe Dienst annimmt, behandelt Provisa ihn als Schreibvorgang auf diese Tabelle. Es verwirft die zwischengespeicherten Antworten der Tabelle, markiert die materialisierten Sichten darauf als veraltet, sendet das Änderungsereignis, führt die Commands aus, die bei ihrer Änderung laufen, und lädt die Tabelle neu, wenn sie im Hot-Bestand gehalten wird. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
 
 Wird die Tabelle aus ihrem Replikat der ganzen Tabelle gelesen (die Einstellungen des Betreibers legen sie dorthin, oder die Engine kann ihre Quelle nicht direkt lesen), wird nach dem Aufruf ein Aufbau des Replikats angefordert, mit dem Grund `write`. Leser behalten das alte Replikat, bis das neue an seine Stelle tritt. Eine zeilenweise replizierte Tabelle oder eine mit einer Parameterspalte hat kein ganzes Replikat, das neu aufzubauen wäre. [tool-verified: `provisa/api/data/table_written.py` `_request_replica_build`; `provisa/federation/replica_state.py` `REASON_WRITE`]
 
-### Warum er nicht komponierbar ist
+### Warum er nicht komponierbar ist {: #why-it-cannot-be-composed }
 
 Eine Schreiboperation ist eine Aktion, keine Transformation von Daten. Eine View oder materialisierte View, die eine enthielte, würde den Schreibvorgang bei jedem Lesen oder Aktualisieren ausführen. Der Aufruf steht daher allein: `SELECT * FROM create_issue(...)` für sich führt ihn aus, und derselbe Aufruf innerhalb einer größeren Anweisung wird abgelehnt, wo immer er steht -- in einem Join, einer Subquery oder einer Projektion. [tool-verified: `provisa/pgwire/_pipeline.py` `_refuse_composed_mutators`; `provisa/executor/source_operation.py` `writes_called_in`]
 
@@ -297,7 +297,7 @@ command 'create_issue' writes to its source and is called on its own: it cannot 
 
 Eine Quellenoperation ist außerdem kein Lineage-Knoten: Lineage wird aus dem SQL von Views und Abfragen gelesen, wo ein Command als Knoten erscheint, und keine gespeicherte Definition kann eine Quellenoperation aufrufen. [tool-verified: `provisa/lineage/graph.py` (`kind="command"` for a call in the SQL); `refuse_writes_in_definition`]
 
-## Commands und Lineage
+## Commands und Lineage {: #commands-and-lineage }
 
 Weil jeder Command seine Eingabe- und Ausgabespalten deklariert, schließt sich die Spaltenebene-Lineage **über
 die undurchsichtige Command-Grenze hinweg**. Die Lineage-Engine wendet einen Taint-Closure an: jede deklarierte Ausgabe-
@@ -321,7 +321,7 @@ der Bereitstellung aufgeführt sein. Loopback (`localhost`, `127.0.0.1`, `::1`) 
 erlaubt. Eine fehlende Allowlist verweigert jeden externen Egress mit HTTP 403 — es gibt keinen stillen
 Standard. [tool-verified: `_check_egress` in function_dispatch.py:292-311]
 
-## Aufruf-Tracing (REQ-886)
+## Aufruf-Tracing (REQ-886) {: #invocation-tracing-req-886 }
 
 Jeder Aufruf erzeugt einen Trace, unabhängig vom Ergebnis. Der Trace enthält den Command-Namen,
 die Transportart, das Identitätsmodell (DEFINER oder INVOKER), Eingabe-Relationsreferenzen, die Rollen-ID und

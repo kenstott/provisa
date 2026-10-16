@@ -254,7 +254,7 @@ A search is read per statement under its arguments, its rows kept under those ar
 
 | Source Type | Mechanism | Mutations |
 | ------------ | ----------- | ----------- |
-| `kafka` | Federated Kafka connector; schema via Confluent Schema Registry (Avro, Protobuf, JSON Schema), manual definition, or sample inference (REQ-147, REQ-150) | Sink only (REQ-176) |
+| `kafka` | Federated Kafka connector; schema via Confluent Schema Registry (Avro, Protobuf, JSON Schema), manual definition, or sample inference (REQ-147, REQ-150) | No; a table's live output publishes to Kafka (REQ-565) |
 | `websocket` | External WebSocket feed — connect, subscribe, receive events; results materialized (REQ-338) | No |
 | `rss` | RSS 2.0 / Atom feed — poll, watermark by pubDate/updated; results materialized (REQ-342, REQ-343) | No |
 

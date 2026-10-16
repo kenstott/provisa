@@ -1,12 +1,12 @@
-# Référence API
+# Référence API {: #api-reference }
 
-## Vue d'ensemble
+## Vue d'ensemble {: #overview }
 
 Provisa expose des points de terminaison REST sous deux préfixes : `/data` pour l'exécution de requêtes et l'introspection de schéma, et `/admin` pour la gestion de la configuration. (REQ-043) La plupart des points de terminaison de données requièrent un identifiant de rôle. Les opérations de configuration admin utilisent une API GraphQL Strawberry à `/admin/graphql`. (REQ-164)
 
 ---
 
-## Authentification
+## Authentification {: #authentication }
 
 Lorsque `auth.provider` est configuré dans `provisa.yaml`, tous les points de terminaison à l'exception de `/health` et `/setup/status` requièrent un en-tête `Authorization: Bearer <token>`. (REQ-120) [tool-verified: `provisa/api/app.py`, `provisa/auth/wiring.py`]
 
@@ -30,7 +30,7 @@ Renvoie `{"provider": "<name>"}` ou `{"provider": null}` lorsque l'authentificat
 
 ---
 
-## Points de terminaison de données
+## Points de terminaison de données {: #data-endpoints }
 
 ### `POST /data/graphql`
 
@@ -42,12 +42,12 @@ Exécute une requête ou une mutation GraphQL. (REQ-043) [tool-verified: `provis
 {
   "query": "{ orders(where: {region: {eq: \"us\"}}) { id amount } }",
   "variables": {},
-  "role": "admin",
+  "role": "org_admin",
   "extensions": {}
 }
 ```
 
-Le champ `role` n'est utilisé qu'en mode développement (sans authentification). Lorsque l'authentification est active, le rôle de l'utilisateur authentifié est utilisé et `role` dans le corps est ignoré.
+La requête s'exécute sous son rôle agissant : le rôle de l'utilisateur authentifié ou, en mode développement (sans authentification), l'en-tête `X-Provisa-Role`, `org_admin` en l'absence de l'en-tête. Le champ `role` du corps ne sélectionne pas de rôle. S'il est présent, il doit égaler le rôle agissant ; une valeur différente renvoie `400` avec le code `data.role_mismatch`, en nommant les deux rôles. La même règle s'applique à `POST /data/sql`, `POST /data/query` et `POST /query/nl`. (REQ-273) [tool-verified: `provisa/api/acting_role.py`]
 
 Le champ `extensions` prend en charge le protocole Automatic Persisted Query (APQ) : (REQ-288)
 
@@ -59,18 +59,18 @@ Le champ `extensions` prend en charge le protocole Automatic Persisted Query (AP
 
 **En-têtes :**
 
-- `X-Provisa-Role` — remplace le rôle (mode développement)
+- `X-Provisa-Role` — le rôle sous lequel s'exécuter (mode développement) ; avec l'authentification, une demande de rôle honorée seulement si le rôle est attribué à l'utilisateur
 - `Accept` — format de réponse (voir Négociation de contenu)
 - `Authorization` — `Bearer <token>` lorsque l'authentification est activée
 - `X-Provisa-Redirect-Format` — type MIME pour la sortie de redirection S3 (REQ-137)
 - `X-Provisa-Redirect-Threshold` — nombre de lignes au-delà duquel la redirection se déclenche (REQ-137)
 - `X-Provisa-Redirect` — `true` pour forcer la redirection sans condition (REQ-029)
 
-**Cache de réponses :** activation par requête avec la directive d'opération `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` facultatif) ; la même directive s'applique au GraphQL envoyé via Arrow Flight. Cypher s'active avec une ligne `// @provisa cache=true` ou `// @provisa cache_ttl=N`, gRPC avec les métadonnées d'appel `x-provisa-cache: true` ou `x-provisa-cache-ttl: N`. Sans elle, la requête ne lit ni n'écrit le cache de réponses. L'en-tête de réponse `X-Provisa-Cache` indique `HIT` ou `MISS`. Voir [Cache](configuration.md). (REQ-544)
+**Cache de réponses :** activation par requête avec la directive d'opération `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` facultatif) ; la même directive s'applique au GraphQL envoyé via Arrow Flight. Cypher s'active avec une ligne `// @provisa cache=true` ou `// @provisa cache_ttl=N`, gRPC avec les métadonnées d'appel `x-provisa-cache: true` ou `x-provisa-cache-ttl: N`. Sans elle, la requête ne lit ni n'écrit le cache de réponses. L'en-tête de réponse `X-Provisa-Cache` indique `HIT` ou `MISS`. Voir [Cache](configuration.md#per-request-opt-in). (REQ-544)
 
 <a id="response-cache-request-headers"></a>
 
-#### En-têtes de requête du cache de réponses
+#### En-têtes de requête du cache de réponses {: #response-cache-request-headers }
 
 `/data/graphql`, `/data/cypher`, la Neo4j Query API (`/db/{database}/query/v2`), `/data/rest` et `/data/jsonapi` acceptent aussi l'activation sous forme d'en-tête de requête. Chaque forme ci-dessous se comporte comme `@cached(ttl: N)` : (REQ-544)
 
@@ -147,7 +147,7 @@ Les requêtes à racines multiples exécutent chaque champ racine indépendammen
 
 ---
 
-### Négociation de contenu
+### Négociation de contenu {: #content-negotiation }
 
 | En-tête Accept | Format |
 | --- | --- |
@@ -161,7 +161,7 @@ Les requêtes à racines multiples exécutent chaque champ racine indépendammen
 
 ---
 
-### Redirection
+### Redirection {: #redirect }
 
 Les résultats dépassant un seuil de lignes configuré (ou lorsque `X-Provisa-Redirect: true`) sont écrits sur S3 et une URL pré-signée est renvoyée. (REQ-029, REQ-044)
 
@@ -192,9 +192,20 @@ Exécute du SQL brut à travers le pipeline de gouvernance de l'étape 2. (REQ-2
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
-  "role": "admin"
+  "role": "org_admin"
 }
 ```
+
+`params` (facultatif) porte les valeurs des espaces réservés `$1…$n` de l'instruction, dans l'ordre, séparément de son texte :
+
+```json
+{
+  "sql": "SELECT id, amount FROM orders WHERE region = $1 AND amount > $2",
+  "params": ["us", 100]
+}
+```
+
+Les valeurs sont liées à l'exécution de l'instruction — par le moteur ou par le pilote de la source — et ne sont jamais écrites dans l'instruction, de sorte qu'une valeur ne peut pas changer ce qu'est l'instruction. Elles accompagnent exactement une instruction dont les espaces réservés les numérotent exactement : un lot d'instructions, un espace réservé sans valeur ou une valeur qu'aucun espace réservé ne prend est refusé avec `400` et le code `data.sql_parameters_do_not_fit` avant que l'instruction ne soit gouvernée ou exécutée. Une instruction sans espace réservé s'envoie sans `params`, comme avant. (REQ-1937)
 
 **Capacités requises :** `QUERY_DEVELOPMENT`.
 
@@ -217,7 +228,7 @@ Les requêtes Cypher peuvent aussi être soumises au point de terminaison dédi�
   "query": "{ orders { id } }",
   "params": {},
   "variables": {},
-  "role": "admin"
+  "role": "org_admin"
 }
 ```
 
@@ -236,7 +247,7 @@ Le point de terminaison enveloppe le SQL **gouverné** — l'instruction qui s'e
 ```json
 {
   "sql": "SELECT id, amount FROM orders",
-  "role": "admin",
+  "role": "org_admin",
   "analyze": false
 }
 ```
@@ -294,7 +305,7 @@ Point de terminaison REST simple auto-généré pour chaque table enregistrée. 
 
 - `limit` — nombre maximal de lignes (≥ 1)
 - `offset` — nombre de lignes à ignorer (≥ 0)
-- `fields` — noms de colonnes séparés par des virgules (par défaut, tous les champs scalaires)
+- `fields` — noms de champ séparés par des virgules, tels que les écrit le schéma GraphQL, en camelCase avec la convention de nommage par défaut, par ex. `?fields=orderId,amount` (par défaut, tous les champs scalaires). Les noms de champ de `filter` et `orderBy` suivent la même écriture. JSON:API prend à la place le nom physique de la colonne (`fields[orders]=order_id`). [tool-verified: `provisa/api/rest/generator.py:547`]
 - `filter` — tableau JSON d'objets de filtre `{"field", "comparator", "value"}`. Une valeur est lue selon le type de sa colonne : `"100"` sur une colonne numérique se compare comme 100 ; une valeur que le type de la colonne ne peut contenir renvoie `400`.
 - `orderBy` — tableau JSON d'objets de tri `{"field", "direction"}`
 - `params` — les paramètres de la table en un objet JSON par nom de paramètre, p. ex. `?params={"region":"EU"}`. Une table enregistrée sur une API, ou une table de requête, a un paramètre pour chaque entrée que prend sa source. Une lecture sans un paramètre obligatoire renvoie `400` en le nommant, de même qu'un nom pour lequel la table n'a pas de paramètre. Chaque valeur est vérifiée selon le type de son paramètre. (REQ-1986) [tool-verified: `provisa/api/_query_helpers.py`]
@@ -305,7 +316,7 @@ Le rôle authentifié est requis ; les requêtes non authentifiées renvoient `4
 
 **Cache de réponses :** activation par un en-tête de requête, `Cache-Control: max-age=N` ou `x-provisa-cache: true` (voir [En-têtes de requête du cache de réponses](#response-cache-request-headers)). Chaque réponse porte `X-Provisa-Cache: HIT|MISS`, et `X-Provisa-Cache-Age` en cas de succès. (REQ-544, REQ-536) [tool-verified: `provisa/api/rest/generator.py`]
 
-#### Explorateur OpenAPI / Swagger UI
+#### Explorateur OpenAPI / Swagger UI {: #openapi-swagger-ui-explorer }
 
 La page de l'explorateur OpenAPI (`/app/openapi`) intègre Swagger UI dans un iframe en bac à sable. La spécification est délimitée par rôle — seules les tables et colonnes visibles pour le rôle actuel apparaissent — et optionnellement filtrée par domaine via le sélecteur de domaine. L'interface bascule automatiquement entre les thèmes clair et sombre. [tool-verified: `provisa-ui/src/pages/OpenApiPage.tsx:20-34`]
 
@@ -323,11 +334,12 @@ Point de terminaison conforme à [JSON:API](https://jsonapi.org) auto-généré 
 
 **Paramètres de requête :**
 
-- `fields[<type>]` — jeux de champs partiels, p. ex. `?fields[orders]=amount`
+- `fields[<type>]` — jeux de champs clairsemés, par ex. `?fields[orders]=amount`. Les noms sont les noms physiques des colonnes, par ex. `fields[orders]=order_id`, comme pour `filter[...]`, `sort` et les clés d'attribut émises (REQ-1417). REST prend à la place l'écriture GraphQL (`fields=orderId`). [tool-verified: `provisa/api/jsonapi/generator.py:674`]
 - `filter[<col>]` / `filter[<col>][<op>]` — p. ex. `?filter[region]=US`, `?filter[amount][gt]=100`. Une valeur est lue selon le type de sa colonne ; une valeur que le type ne peut contenir renvoie `400`.
 - `params` — les paramètres de la table en un objet JSON par nom de paramètre, p. ex. `?params={"region":"EU"}`, comme sur l'endpoint REST. Un paramètre obligatoire manquant renvoie `400` en le nommant ; un nom inconnu ou une valeur de mauvais type renvoie `400` avec `source.parameter` égal à `params`. Les liens de pagination conservent le paramètre. (REQ-1986) [tool-verified: `provisa/api/jsonapi/generator.py`]
 - `sort` — séparé par des virgules, préfixe `-` pour l'ordre décroissant, p. ex. `?sort=-created_at,amount`
 - `page[number]` / `page[size]` — pagination
+- `page[total]` — `true` compte les lignes qui correspondent au filtre et renvoie `meta.total` et `links.last`. Sans lui, la réponse ne porte que `links.self`, `links.first`, `links.prev` et `links.next`, et la base de données n'exécute aucun comptage. Toute valeur autre que `true` ou `false` renvoie `400`. Les liens d'une réponse conservent le paramètre. (REQ-1197) [tool-verified: `provisa/api/jsonapi/pagination.py:58`]
 - `aggregate` — fonctions d'agrégation séparées par des virgules à exécuter à la place de la récupération de lignes : `count`, `sum`, `avg`, `stddev`, `variance`, `min`, `max`. Utilisez `?aggregate=count,sum` pour demander un sous-ensemble. Les réponses d'agrégation renvoient `data: null` avec les résultats dans `meta.aggregate`. (REQ-1359) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:238`]
 - `groupBy` — noms de colonnes séparés par des virgules ; utilisé avec `?aggregate=` pour regrouper les résultats. Seules les colonnes dans l'énumération `DistinctOnColumn` de la table sont valides ; le serveur renvoie `400` pour toute colonne que le rôle ne peut pas voir. (REQ-1361) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:447`]
 - `includeNodes` — `true` pour inclure les colonnes scalaires de la table de base (et les scalaires de dimension jointe nommés dans `include=`) à l'intérieur du tableau `nodes` de chaque ligne de groupe. Requis lorsqu'une requête de regroupement NL demande aussi des détails de dimension. (REQ-1405)
@@ -336,7 +348,7 @@ Les réponses sont des objets ressources avec `type`/`id`/`attributes`. Les erre
 
 **Cache de réponses :** activation par un en-tête de requête, `Cache-Control: max-age=N` ou `x-provisa-cache: true` (voir [En-têtes de requête du cache de réponses](#response-cache-request-headers)). Chaque réponse porte `X-Provisa-Cache: HIT|MISS`, et `X-Provisa-Cache-Age` en cas de succès. Deux formes divergentes renvoient `400` sous forme d'objet d'erreur JSON:API. (REQ-544, REQ-536) [tool-verified: `provisa/api/jsonapi/generator.py`]
 
-#### Explorateur JSON:API
+#### Explorateur JSON:API {: #jsonapi-explorer }
 
 La page de l'explorateur JSON:API (`/app/jsonapi`) est une interface navigateur sur ces points de terminaison. Sélectionnez une table dans la liste groupée par domaine, puis configurez :
 
@@ -360,7 +372,7 @@ Soumet une question en langage naturel. Le service démarre une tâche asynchron
 **Corps de la requête :**
 
 ```json
-{"q": "How many orders were placed last month?", "role": "admin"}
+{"q": "How many orders were placed last month?", "role": "org_admin"}
 ```
 
 Renvoie `{"job_id": "<id>"}`. Dépasser la limite de débit NL par rôle renvoie `429` avec un en-tête `Retry-After`. (REQ-370)
@@ -386,7 +398,7 @@ Trois boucles de génération (Cypher, GraphQL, SQL) s'exécutent en parallèle,
 
 Une branche qui épuise sa limite d'itérations renvoie `query: null`, `result: null`, et une chaîne `error`. Chaque requête générée s'exécute sous les droits du consommateur avec la gouvernance de l'étape 2 appliquée — le service ne contourne jamais la gouvernance. (REQ-359)
 
-#### Regroupement NL avec détails de dimension (REQ-1405)
+#### Regroupement NL avec détails de dimension (REQ-1405) {: #nl-group-by-with-dimension-details-req-1405 }
 
 Lorsqu'une requête de regroupement NL projette aussi des colonnes d'une table de dimension jointe — par exemple, « nombre de demandes par utilisateur avec nom et e-mail de l'utilisateur » — l'exécuteur dérive des chemins pointés par champ (`dim_paths`) à partir des colonnes de dimension projetées dans le SELECT. Ces chemins alimentent le paramètre `includeNodes=` sur les URL générées par les panneaux JSON:API et OpenAPI, de sorte que ces panneaux demandent les mêmes champs de dimension jointe que les branches SQL et GraphQL ont résolus. Sans cela, `includeNodes=true` ne renverrait que les champs scalaires propres de la table d'agrégation de base. (REQ-1405) [tool-verified: `docs/arch/requirements.md:REQ-1405`]
 
@@ -398,7 +410,7 @@ Sur le panneau gRPC, le `{Type}GroupByRequest` généré porte `include_nodes` (
 
 Renvoie le SDL GraphQL pour le schéma d'un rôle. (REQ-008) [tool-verified: `provisa/api/data/sdl.py:137`]
 
-**En-têtes :** `X-Role: <role_id>` (requis)
+**En-têtes :** `X-Provisa-Role: <role_id>` (requis)
 
 **Paramètres de requête :**
 
@@ -434,7 +446,7 @@ Chaque type de relation porte aussi `junction_table_name` et `properties` (REQ-1
 
 Renvoie les id de domaine accessibles au rôle demandeur. [tool-verified: `provisa/api/data/sdl.py:116`]
 
-**En-têtes :** `X-Role: <role_id>` (requis)
+**En-têtes :** `X-Provisa-Role: <role_id>` (requis)
 
 **Réponse :** `["sales", "support", ...]`
 
@@ -448,6 +460,16 @@ Renvoie la chaîne de version de schéma actuelle. Combine un nonce par démarra
 
 ---
 
+### `GET /data/catalog`
+
+Renvoie le catalogue du rôle sous lequel s'exécute la requête : les tables servies à ce rôle, telles que les donne la liste Arrow Flight. (REQ-128) [tool-verified: `provisa/api/data/endpoint_dev.py`]
+
+**Réponse :** `{"tables": [{"path": ["<domain>", "<table>"], "schema": "<base64>"}]}`. `schema` est le schéma Arrow de la table dans l'encodage Arrow IPC : chaque colonne sous le nom par lequel SQL la lit, avec son type enregistré, sa description et ses métadonnées de clé (`primary_key`, `references`) dans les métadonnées du champ. Les commandes et les métriques ne sont pas listées.
+
+Le rôle est celui qu'a établi la couche d'authentification (`X-Provisa-Role` peut demander un rôle détenu, ou un ensemble séparé par des virgules). Un déploiement sans fournisseur d'authentification liste le catalogue entier, comme la liste Flight. Le pilote JDBC lit cette route lorsque le port Flight est injoignable.
+
+---
+
 ### `GET /data/proto/{role_id}`
 
 Renvoie le fichier `.proto` auto-généré pour un rôle. [tool-verified: `provisa/api/data/endpoint_dev.py:49`]
@@ -456,13 +478,11 @@ Renvoie le fichier `.proto` auto-généré pour un rôle. [tool-verified: `provi
 
 `{role_id}` est un rôle détenu par l'appelant, ou un ensemble de rôles détenus séparés par des virgules (`analyst,org_admin`), servi comme le méta-rôle de l'ensemble : l'union de ce qui est accordé à ses membres. Un rôle que l'appelant ne détient pas est refusé avec `403 auth.role_not_assigned`, et un identifiant de méta-rôle nommé directement avec `403 auth.meta_role_named`. `?domains=a,b` restreint le proto à ces domaines ; un domaine que le rôle n'atteint pas est refusé avec `403 data.domain_not_accessible`. Un rôle sans surface de données répond `404 data.no_proto_for_role`, un rôle inconnu `404 data.no_role` et un modèle pas encore construit `503 data.schema_cache_not_ready`. (REQ-1620, REQ-273) [tool-verified: `provisa/api/data/endpoint_dev.py`, `provisa/api/acting_role.py`]
 
-Chaque table enregistrée produit un `message` proto. Les relations produisent des champs de message imbriqués. Mappage de types : `integer → int32`, `bigint → int64`, `varchar → string`, `decimal → double`, `boolean → bool`, `timestamp → google.protobuf.Timestamp`. (REQ-538)
-
-Le service ne liste des RPC que pour les tables à la racine du schéma du rôle, les mêmes que celles de son type `Query` GraphQL ; une table liée a son message et s'atteint par sa relation. [tool-verified: `provisa/grpc/proto_gen.py`]
+Chaque table du schéma du rôle produit un `message` proto. Les relations produisent des champs de message imbriqués. Le service ne liste des RPC que pour les tables à la racine du schéma du rôle, les mêmes que celles de son type `Query` GraphQL ; une table liée a son message et s'atteint par sa relation. [tool-verified: `provisa/grpc/proto_gen.py`]
 
 Ajoutez `?domains=a,b` pour restreindre le fichier à ces domaines. Le service liste alors des RPC pour les tables propres aux domaines choisis ; les tables qui leur sont liées apparaissent comme messages. [tool-verified: `provisa/api/data/endpoint_dev.py`]
 
-Le fichier suit le modèle. Il est régénéré avec le schéma du rôle chaque fois que le modèle ou le rôle change, y compris pour un méta-rôle.
+Le fichier suit le modèle. Il est régénéré avec le schéma du rôle chaque fois que le modèle ou le rôle change, y compris pour un méta-rôle. Correspondance des types : `integer → int32`, `bigint → int64`, `varchar → string`, `decimal → double`, `boolean → bool`, `timestamp → google.protobuf.Timestamp`. (REQ-538)
 
 ---
 
@@ -474,9 +494,21 @@ La livraison des notifications utilise un fournisseur enfichable choisi selon le
 
 **En-tête — `X-Provisa-Sink` :** définissez-la sur une cible Kafka (p. ex. `kafka://broker:9092/topic`) pour rediriger les événements de changement vers un puits Kafka au lieu de la réponse SSE. Le serveur lance un consommateur de puits et renvoie `202 Accepted` plutôt qu'un flux ouvert. (REQ-812) [tool-verified: `provisa/api/data/subscription_sse.py:137`]
 
+### `POST /data/sources/{source_id}/signal`
+
+Indique à Provisa qu'une source a changé, sans lignes : le récepteur du signal de changement `signal`. Chaque table de la source dont le signal de changement est `signal` (le sien, sinon celui de sa source) est traitée comme écrite, comme pour une écriture via Provisa : ses réponses en cache sont supprimées, les vues matérialisées qui la lisent deviennent périmées et une construction de sa réplique est demandée. La construction d'une table protégée en charge attend sa fenêtre hors pointe. `?table=schema.table` signale une table. (REQ-1149) [tool-verified: `provisa/api/data/signal.py`, `provisa/api/data/table_written.py`]
+
+Le rôle de l'appelant a besoin du droit d'écriture et doit atteindre le domaine de chaque table qu'il signale. La réponse est `202 Accepted` avec les tables signalées :
+
+```json
+{"signalled": ["public.orders"]}
+```
+
+Une source qui n'existe pas, ou une `table` qu'elle n'a pas, répond `404` ; une source sans table sur le signal de changement `signal` répond `409`, car rien ne serait rafraîchi. [tool-verified: `tests/unit/test_signal_webhook.py`]
+
 ---
 
-## Points de terminaison REST admin
+## Points de terminaison REST admin {: #admin-rest-endpoints }
 
 ### Config
 
@@ -486,23 +518,25 @@ Télécharge le `provisa.yaml` actuel en `application/x-yaml` avec un en-tête `
 
 #### `PUT /admin/config`
 
-Téléverse un YAML de configuration révisé. Le serveur écrit une sauvegarde `.bak`, enregistre le nouveau fichier, et recharge tous les schémas, sources et vues matérialisées. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:32`]
+Téléverse un YAML de configuration révisé. Le serveur écrit une sauvegarde `.bak`, enregistre le nouveau fichier, recharge à partir de lui les réglages du déploiement et l'applique au magasin du modèle comme un amorçage explicite et unique : ce que déclare le fichier est ajouté ou mis à jour via le magasin du modèle, et rien n'est retiré. Un redémarrage ultérieur lit les réglages du fichier et n'applique plus jamais son modèle ; après le premier démarrage, seul le magasin du modèle possède le modèle. (REQ-164, REQ-1919) [tool-verified: `provisa/api/admin/settings_router.py` `upload_config`]
 
 **Corps de la requête :** contenu YAML brut.
 
 **Réponse :**
 
 ```json
-{"success": true, "message": "Config uploaded and reloaded"}
+{"success": true, "message": "Config uploaded and applied"}
 ```
 
 En cas d'échec du rechargement : `{"success": false, "message": "<error>"}`.
 
 #### `GET /admin/config/live`
 
-Télécharge la **configuration en direct actuelle** — la configuration telle que Provisa l'écrirait aujourd'hui, reflétant chaque table, relation, domaine, rôle et règle RLS créés par l'admin et accumulés depuis le démarrage. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:67`]
+Télécharge le modèle tel qu'il est, écrit sous forme de fichier de configuration : les réglages du fichier du déploiement avec chaque section du modèle lue depuis le magasin du modèle — magasins, régions, sources, domaines, rôles, produits de données, termes du glossaire, tables et leurs colonnes, relations, métriques, étiquettes et leurs attributions, filtres de lignes, commandes, webhooks, déclencheurs planifiés et règles de nommage. Appliqué à un magasin du modèle vide, le fichier construit le même modèle. Ce que le déploiement amorce dans chaque magasin (les sources intégrées et leurs tables, les domaines système, `org_admin` et `platform_admin`) est omis. (REQ-164, REQ-1919) [tool-verified: `provisa/api/admin/config_export.py` `build_live_config`, `provisa/core/store_config.py`]
 
-Le fichier sur disque peut être en retard sur l'état en direct si des changements ont été effectués via l'API admin sans téléversement ultérieur. Ce point de terminaison comble cet écart : sa sortie est ce que `PUT /admin/config` devrait recevoir pour que le fichier sur disque corresponde à l'état en direct.
+**Paramètre de requête :** `sections` (facultatif) — une liste de sections du modèle séparées par des virgules, par ex. `sources,tables`. Seules ces sections sont écrites ; un nom inconnu répond 400 `settings.export_unknown_section`.
+
+L'endpoint est ouvert dans chaque déploiement à un appelant qui détient le droit sur les réglages du déploiement ; la section Fichier de configuration de la page d'administration le propose sous **Exporter le modèle**.
 
 Renvoie `application/x-yaml` avec `Content-Disposition: attachment; filename=provisa.live.yaml`.
 
@@ -524,7 +558,7 @@ Envoyez le YAML révisé comme corps de la requête. La réponse est un fichier 
 
 ---
 
-### Paramètres
+### Paramètres {: #settings }
 
 #### `GET /admin/settings`
 
@@ -598,7 +632,7 @@ Champs modifiables par section :
 
 ---
 
-### Modèles IA
+### Modèles IA {: #ai-models }
 
 #### `GET /admin/ai-models`
 
@@ -634,7 +668,7 @@ Renvoie `400` lorsque le fournisseur ne publie aucune API de liste de modèles (
 
 ---
 
-### Moteur de fédération
+### Moteur de fédération {: #federation-engine }
 
 #### `GET /admin/federation-engine`
 
@@ -670,13 +704,13 @@ La sélection est écrite dans la configuration de plateforme. Elle prend effet 
 
 ---
 
-### Politique de domaine
+### Politique de domaine {: #domain-policy }
 
 #### `POST /admin/domain-policy`
 
 Change la politique de domaine de l'organisation agissante (`use_domains` / `default_domain`). (REQ-165, REQ-1266, REQ-1349) [tool-verified: `provisa/api/admin/settings_router.py:632`]
 
-Il s'agit d'une opération destructive délimitée à l'organisation agissante. Chaque source, table, domaine et relation enregistrés sont purgés et reconstruits sous la nouvelle politique. Utilisez ceci pour faire passer une organisation d'un mode à espace de noms de domaine à un mode plat (ou inversement).
+Le basculement ne retire rien. Il est refusé avec `409` et le code `settings.domain_policy_catalog_exists` tant que l'organisation agissante a un catalogue : une table enregistrée, une source ou un domaine que le déploiement n'a pas amorcé. Les `params` du refus comptent chaque type (`tables`, `sources`, `domains`). Supprimez d'abord ces objets, chacun par sa propre action, puis basculez. Lorsqu'un fichier de configuration déclare une partie de ce catalogue, le code est `settings.domain_policy_catalog_in_config` : le chargement suivant le restaurerait, la politique se définit donc dans le fichier de configuration. (REQ-1919)
 
 **Corps de la requête :**
 
@@ -691,7 +725,7 @@ Il s'agit d'une opération destructive délimitée à l'organisation agissante. 
 
 ---
 
-### Observabilité
+### Observabilité {: #observability }
 
 #### `GET /admin/traces/recent`
 
@@ -721,7 +755,7 @@ Redémarre le conteneur du moteur de fédération (développement mono-nœud uni
 
 ---
 
-### Découverte
+### Découverte {: #discovery }
 
 #### `POST /admin/discover/relationships`
 
@@ -766,7 +800,7 @@ Supprime tous les candidats rejetés. [tool-verified: `provisa/api/admin/discove
 
 ---
 
-### Exploration de source
+### Exploration de source {: #source-crawl }
 
 #### `POST /admin/sources/crawl`
 
@@ -774,7 +808,7 @@ Explore une source de données pour introspecter son schéma et enregistrer des 
 
 ---
 
-### Recherche de tables de source
+### Recherche de tables de source {: #source-table-search }
 
 #### `GET /admin/sources/{source_id}/tables/search`
 
@@ -782,7 +816,7 @@ Recherche des tables disponibles (pas encore enregistrées) dans une source par 
 
 ---
 
-### Profilage de tables
+### Profilage de tables {: #table-profiling }
 
 #### `POST /admin/tables/{table_id}/profile`
 
@@ -790,7 +824,7 @@ Exécute un profil de colonne sur une table enregistrée — cardinalité, min/m
 
 ---
 
-### Descriptions de source
+### Descriptions de source {: #source-descriptions }
 
 #### `POST /admin/source-meta/db-description`
 
@@ -798,7 +832,7 @@ Génère des descriptions assistées par LLM pour les tables et colonnes d'une s
 
 ---
 
-### Stockage objet (REQ-1046, REQ-1048, REQ-1049)
+### Stockage objet (REQ-1046, REQ-1048, REQ-1049) {: #object-storage-req-1046-req-1048-req-1049 }
 
 #### `GET /admin/org-storage`
 
@@ -822,7 +856,7 @@ Envoyez `storage_url: null` pour effacer le magasin propre de l'organisation et 
 
 ---
 
-### Chiffrement d'organisation (REQ-1574)
+### Chiffrement d'organisation (REQ-1574) {: #org-encryption-req-1574 }
 
 #### `GET /admin/org-encryption`
 
@@ -848,7 +882,7 @@ L'anneau en direct est reconstitué dans le même appel, de sorte que la prochai
 
 ---
 
-### Import Hasura / DDN (REQ-1483)
+### Import Hasura / DDN (REQ-1483) {: #hasura-ddn-import-req-1483 }
 
 #### `POST /admin/import/hasura/preview`
 
@@ -893,11 +927,13 @@ Charge une configuration précédemment prévisualisée dans l'organisation agis
 {"config_yaml": "<yaml string>"}
 ```
 
-Utilise le même chemin de rechargement à chaud que `PUT /admin/config`. Le catalogue, les schémas et les pools de l'organisation sont reconstruits avant que la réponse ne soit renvoyée.
+Un import est un amorçage explicite et unique du magasin du modèle de l'organisation agissante, la même application que `PUT /admin/config` : il ajoute et met à jour via le magasin du modèle ce que déclare la configuration importée, avec ses gardes et ses versions, et ne retire rien de ce qu'elle ne mentionne pas. Il n'y a pas de champ `replace`. Les catalogues moteur des sources qu'elle déclare, les pools de l'organisation et ses schémas sont reconstruits avant le retour de la réponse. (REQ-1919) [tool-verified: `provisa/api/app_loaders.py` `apply_configuration`]
+
+**Réponse:** `{"summary": {...}}` — les décomptes de ce que déclare la configuration importée.
 
 ---
 
-### Échange Apache Ossie (REQ-1316, REQ-1321)
+### Échange Apache Ossie (REQ-1316, REQ-1321) {: #apache-ossie-interchange-req-1316-req-1321 }
 
 #### `GET /admin/ossie`
 
@@ -905,7 +941,15 @@ Exporte le modèle gouverné de l'organisation en tant que document YAML Apache 
 
 Le document est dérivé de l'état en direct à chaque requête — jamais mis en cache — donc il ne peut pas être périmé. Les tables deviennent des objets `dataset`, les colonnes deviennent des objets `field`, et les relations sont mappées vers des objets `relationship` Ossie.
 
-Renvoie `text/yaml` avec `Content-Disposition: attachment; filename=provisa-ossie.yaml`.
+Renvoie `text/yaml` avec `Content-Disposition: attachment; filename=provisa.ossie.yaml`.
+
+#### `GET /admin/dbt/sources`
+
+Télécharge le catalogue gouverné sous forme de `sources.yml` dbt, tel qu'il est servi à un rôle. (REQ-1967) [tool-verified: `provisa/api/admin/ossie_router.py`]
+
+**Paramètre de requête:** `role` — un rôle que détient l'appelant, ou n'importe quel rôle pour le détenteur de `access_config`.
+
+Renvoie `text/yaml` avec `Content-Disposition: attachment; filename=provisa.sources.yml`. Un rôle inconnu est un `404` avec le code `dbt_sources.unknown_role`. Voir [intégrations](integrations.md#dbt-sources-file-req-1967) pour le contenu du fichier.
 
 #### `POST /admin/ossie/import`
 
@@ -928,11 +972,11 @@ Rien n'est enregistré. Utilisez l'écran de revue de l'interface admin pour acc
 
 ---
 
-### Actions (fonctions et webhooks)
+### Actions (fonctions et webhooks) {: #actions-functions-and-webhooks }
 
 Tous les points de terminaison sont sous le préfixe `/admin/actions`. (REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
 
-Chaque invocation — depuis GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, et Provisa gRPC — passe par un seul exécuteur gouverné qui applique `writable_by` et la gouvernance de façon uniforme. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] Voir [docs/integrations.md](integrations.md#invoquer-des-commandes-a-travers-les-protocoles) pour la syntaxe d'appel par protocole.
+Chaque invocation — depuis GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, et Provisa gRPC — passe par un seul exécuteur gouverné qui applique `writable_by` et la gouvernance de façon uniforme. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] Voir [docs/integrations.md](integrations.md#invoking-commands-across-protocols) pour la syntaxe d'appel par protocole.
 
 #### `GET /admin/actions`
 
@@ -1045,7 +1089,7 @@ Tous les points de terminaison sont sous le préfixe `/admin/roles`. [tool-verif
 
 ---
 
-### Utilisateurs
+### Utilisateurs {: #users }
 
 Tous les points de terminaison sont sous le préfixe `/admin/users`. [tool-verified: `provisa/api/admin/local_users_router.py:21`]
 
@@ -1063,7 +1107,7 @@ Tous les points de terminaison sont sous le préfixe `/admin/users`. [tool-verif
 
 ---
 
-### Organisations
+### Organisations {: #organizations }
 
 Tous les points de terminaison sont sous `/admin/orgs`. [tool-verified: `provisa/api/admin/orgs_router.py:18`]
 
@@ -1079,7 +1123,7 @@ Tous les points de terminaison sont sous `/admin/orgs`. [tool-verified: `provisa
 
 ---
 
-### Invitations
+### Invitations {: #invites }
 
 Tous les points de terminaison sont sous `/admin/invites`. [tool-verified: `provisa/api/admin/invites_router.py:18`]
 
@@ -1091,7 +1135,7 @@ Tous les points de terminaison sont sous `/admin/invites`. [tool-verified: `prov
 
 ---
 
-### GraphQL admin
+### GraphQL admin {: #admin-graphql }
 
 #### `POST /admin/graphql`
 
@@ -1126,7 +1170,7 @@ mutation {
 
 ---
 
-### Configuration initiale
+### Configuration initiale {: #setup }
 
 #### `GET /setup/status`
 
@@ -1138,15 +1182,15 @@ Termine la configuration au premier lancement. [tool-verified: `provisa/api/setu
 
 ---
 
-## Vérification de santé
+## Vérification de santé {: #health-check }
 
-#### `GET /health` ou `HEAD /health`
+#### `GET /health` ou `HEAD /health` {: #get-health-or-head-health }
 
 Renvoie `{"status": "ok"}`. Toujours non authentifié. (REQ-539) [tool-verified: `provisa/api/app.py:2258`]
 
 ---
 
-## Réponses d'erreur
+## Réponses d'erreur {: #error-responses }
 
 | Statut | Signification |
 | --- | --- |
@@ -1154,7 +1198,7 @@ Renvoie `{"status": "ok"}`. Toujours non authentifié. (REQ-539) [tool-verified:
 | 401 | Jeton d'authentification manquant ou invalide |
 | 403 | Capacités insuffisantes ; violation de gouvernance |
 | 404 | Rôle, ressource, ou fichier de configuration introuvable |
-| 422 | En-tête requis manquant (p. ex. `X-Role`) |
+| 422 | En-tête requis manquant (p. ex. `X-Provisa-Role`) |
 | 503 | Base de données ou source non connectée ; dépendance indisponible |
 | 504 | Délai de requête dépassé |
 
@@ -1174,11 +1218,13 @@ Toutes les autres erreurs utilisent : `{"detail": "<message>"}`.
 
 ---
 
-## Point de terminaison Arrow Flight
+## Point de terminaison Arrow Flight {: #arrow-flight-endpoint }
 
 Port `8815`. Transport columnaire Arrow natif sur gRPC. (REQ-143, REQ-045) [tool-verified: `provisa/api/flight/server.py`]
 
 Les requêtes et la découverte de catalogue sont toutes deux disponibles sur la même connexion. Le pipeline de gouvernance complet (sécurité au niveau des lignes, masquage, échantillonnage) est appliqué à chaque requête. (REQ-130, REQ-143)
+
+La découverte du catalogue (`list_flights`, `get_flight_info`, `get_schema` et un ticket sans `query`) liste ce qui est accordé au rôle de l'appelant. Avec l'authentification activée, les trois appels sans ticket prennent l'identifiant dans l'en-tête d'appel `authorization: Bearer` et le rôle dans `x-provisa-role`, et sont refusés sans identifiant ; voir [Intégrations](integrations.md). (REQ-1263, REQ-127) [tool-verified: `provisa/api/flight/server.py`]
 
 **Format du ticket** (JSON) :
 
@@ -1202,9 +1248,11 @@ table = client.do_get(ticket).read_all()
 
 Lorsque le proxy Zaychik Flight SQL est disponible (port 8480), les lots d'enregistrements circulent de bout en bout sans matérialisation complète. (REQ-144) Repli sur la matérialisation via la couche de requête fédérée si Zaychik n'est pas disponible. (REQ-146)
 
+**Avertissements.** Ce qu'une réponse dit d'elle-même voyage dans le flux comme `app_metadata` d'un lot sans ligne : `{"provisa_warnings": [{"code", "params", "message"}]}`. Les avertissements connus avant la lecture des lignes arrivent dans un lot sans ligne qui les précède. Un avertissement connu seulement après la lecture des lignes arrive dans un second lot sans ligne, le dernier du flux : `statement.rows_cut` indique que la réponse a été coupée à une limite de lignes et que d'autres lignes correspondent (REQ-1949). Lisez `app_metadata` sur chaque lot, le dernier compris. [tool-verified: `provisa/api/flight/compression.py`]
+
 ---
 
-## Point de terminaison gRPC Protobuf
+## Point de terminaison gRPC Protobuf {: #protobuf-grpc-endpoint }
 
 Port `50051` (remplacer avec la variable d'environnement `GRPC_PORT` ou la configuration `server.grpc_port`). (REQ-529) [tool-verified: `provisa/grpc/server.py`, `provisa/api/app.py`]
 
@@ -1237,7 +1285,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' \
 
 Le serveur gRPC démarre lorsque le modèle chargé au démarrage définit un service gRPC. (REQ-529) Chaque appel est ensuite servi à partir du modèle tel qu'il est : une table enregistrée ou modifiée pendant que le serveur tourne est servie et décrite dès l'appel suivant, sans redémarrage. [tool-verified: `provisa/api/app_startup.py`, `provisa/grpc/descriptor.py`]
 
-#### RPC d'agrégation et de regroupement (REQ-1359, REQ-1361, REQ-1405)
+#### RPC d'agrégation et de regroupement (REQ-1359, REQ-1361, REQ-1405) {: #aggregate-and-group-by-rpcs-req-1359-req-1361-req-1405 }
 
 Lorsqu'une table a `enable_aggregates` défini, le proto généré inclut deux RPC supplémentaires aux côtés de `Query{TypeName}` :
 
@@ -1252,9 +1300,9 @@ Les deux passent par le même pipeline d'agrégation du compilateur que les cham
 
 ---
 
-## Pilote JDBC
+## Pilote JDBC {: #jdbc-driver }
 
-Le pilote JDBC Provisa (`provisa-jdbc-0.1.0.jar`) expose le catalogue sémantique aux outils BI (Tableau, PowerBI, DBeaver). (REQ-126)
+Le pilote JDBC Provisa (`provisa-jdbc-<release>.jar`) expose le catalogue sémantique aux outils BI (Tableau, PowerBI, DBeaver). (REQ-126)
 
 **URL de connexion :** `jdbc:provisa://host:port` (REQ-131)
 
@@ -1266,7 +1314,7 @@ Le pilote demande une redirection Arrow IPC par défaut. Les résultats circulen
 
 ---
 
-## Format de l'argument `orderBy`
+## Format de l'argument `orderBy` {: #orderby-argument-format }
 
 L'argument `order_by` utilise des objets `{column: direction}` avec une énumération de direction à 6 valeurs : (REQ-200)
 
@@ -1281,17 +1329,17 @@ Directions prises en charge : `asc`, `desc`, `asc_nulls_first`, `asc_nulls_last`
 
 ---
 
-## Abonnements
+## Abonnements {: #subscriptions }
 
 Les abonnements SSE sont disponibles à `GET /data/subscribe/{table}`. (REQ-219, REQ-258) La livraison des notifications utilise un fournisseur enfichable sélectionné selon le type de source : les sources PostgreSQL utilisent `LISTEN/NOTIFY`, les sources MongoDB utilisent Change Streams, et les sources Kafka utilisent des groupes de consommateurs. Le filtrage par sécurité au niveau des lignes et la validation de schéma s'appliquent quel que soit le fournisseur. Les sources WebSocket et RSS sont également prises en charge via le même point de terminaison. (REQ-338, REQ-342) [tool-verified: `provisa/api/data/subscribe.py:239`, `provisa/subscriptions/registry.py`, `provisa/api/app.py` `_rebuild_schemas`]
 
 ---
 
-## Glossaire métier (REQ-1387)
+## Glossaire métier (REQ-1387) {: #business-glossary-req-1387 }
 
 Le glossaire métier fait correspondre les noms de champs physiques — tels qu'ils existent dans les bases de données sources — à un vocabulaire humain partagé. Chaque colonne enregistrée dans le modèle reçoit automatiquement un terme. Aucune saisie manuelle n'est requise pour peupler le glossaire ; les curateurs ajoutent des définitions, des relations et des experts par-dessus ce que le système dérive.
 
-### Comment les termes sont dérivés
+### Comment les termes sont dérivés {: #how-terms-are-derived }
 
 Lorsque Provisa enregistre ou met à jour les colonnes d'une table, `normalize_term` (`provisa/core/glossary.py`) s'exécute sur chaque nom de colonne et produit une expression canonique. [tool-verified: `provisa/core/repositories/glossary.py:sync_table_refs`]
 
@@ -1301,7 +1349,7 @@ La normalisation applique cinq règles en séquence :
 2. Mettre le résultat en minuscules.
 3. Développer une table d'abréviations fixe (p. ex. `cust` → `customer`, `amt` → `amount`, `dt` → `date`, `id` → `identifier`, `key` → `identifier`, `guid` → `identifier`).
 4. Retirer un **jeton de substitution** final (`identifier`, `code`, `index`, ou `reference`) — une colonne nommée d'après sa clé ou son code pointe vers le concept sous-jacent via une valeur de substitution, donc le terme devrait être le concept lui-même. Le dernier jeton restant n'est jamais retiré.
-5. Qualifier une **expression trop générique** avec le concept de la table. Lorsque l'expression normalisée complète est un simple mot d'attribut (`name`, `identifier`, `date`, `location`, `message`, `first name`, `last name`, et similaires), le terme devient `<concept de table> <expression>` — `employees.first_name` → `employee first name`, `orders.id` → `order identifier`. Un seul terme `name` partagé entre des tables non liées fusionnerait des significations distinctes ; la qualification relie chaque colonne à son concept englobant à la place. Le concept de table est le nom métier de la table, normalisé avec un nom de tête singulier (`order_lines` → `order line`).
+5. Qualifier une **expression trop générique** avec le concept de la table. Lorsque l'expression normalisée complète est un simple mot d'attribut (`name`, `identifier`, `date`, `location`, `message`, `first name`, `last name`, et similaires), le terme devient `<table concept> <phrase>` — `employees.first_name` → `employee first name`, `orders.id` → `order identifier`. Un seul terme `name` partagé entre des tables non liées fusionnerait des significations distinctes ; la qualification relie chaque colonne à son concept englobant à la place. Le concept de table est le nom métier de la table, normalisé avec un nom de tête singulier (`order_lines` → `order line`).
 
 Les pseudo-colonnes de filtre natif (préfixées `_nf_`, ou toute colonne portant `native_filter_type`) sont de la mécanique de paramètres de requête, pas des champs métier, et ne dérivent aucun terme.
 
@@ -1316,7 +1364,7 @@ Parce que `id`, `key`, `pk`, et `sk` se développent tous en `identifier` avant 
 
 Les trois premiers se réduisent à un seul terme. `transaction amount` conserve les deux jetons parce que `amount` n'est pas un jeton de substitution. Une colonne `id` isolée — sans jeton précédent — ne peut pas être retirée ; elle se normalise en `identifier` afin que le terme ne soit pas vide. [tool-verified: `provisa/core/glossary.py:normalize_term`]
 
-### Cycle de vie
+### Cycle de vie {: #lifecycle }
 
 Les termes sont **dérivés de l'appartenance au modèle**, pas créés à la demande par les utilisateurs. Le référentiel de table est le chemin d'écriture unique : `sync_table_refs` s'exécute à l'intérieur de chaque mise à jour d'ensemble de colonnes, et `sweep_refless_terms` s'exécute après tout chemin de suppression. [tool-verified: `provisa/core/repositories/glossary.py`]
 
@@ -1328,7 +1376,7 @@ Les termes abstraits ne sont jamais supprimés automatiquement ; ils existent en
 
 **Réactivation :** si le nom normalisé d'un terme déprécié réapparaît (une colonne est réenregistrée), le terme est démarqué et ses références recommencent à s'accumuler.
 
-### Points de terminaison de curation
+### Points de terminaison de curation {: #curation-endpoints }
 
 Tous les points de terminaison sont sous `/admin/glossary`. Ils requièrent un accès `org_admin` et une organisation configurée. Chaque mutation déclenche une publication de métadonnées. [tool-verified: `provisa/api/admin/glossary_router.py`]
 
@@ -1388,7 +1436,7 @@ Supprimer un terme ancré (avec des références physiques) renvoie `400 glossar
 
 Définir `export_excluded` à `true` retient le terme de tous les instantanés d'export de métadonnées, indépendamment de ses références physiques ou de son statut abstrait. Le remettre à `false` restaure le terme dans l'instantané à la prochaine publication. Les données de curation (définition, arêtes, experts) ne sont pas affectées. [tool-verified: `provisa/core/repositories/glossary.py:set_export_excluded`, `provisa/api/admin/glossary_router.py:update_term`]
 
-### Curation assistée par IA
+### Curation assistée par IA {: #ai-assisted-curation }
 
 Le modèle IA configuré de l'organisation peut rédiger des définitions et proposer des arêtes de relation à travers tout le glossaire en une seule opération. Les deux actions groupées requièrent un accès `org_admin` et une organisation configurée.
 
@@ -1416,7 +1464,7 @@ Réponse :
 
 `added` est le nombre d'arêtes écrites. Une arête déjà existante compte quand même — l'insertion réussit, mais les données de l'arête ne changent pas.
 
-### Outil MCP `search_terms`
+### Outil MCP `search_terms` {: #mcp-search_terms-tool }
 
 ```
 search_terms(query, role=None, limit=25)
@@ -1426,7 +1474,7 @@ Recherche les noms et définitions de termes avec une correspondance de sous-cha
 
 Utilisez `search_terms` avant d'écrire du SQL pour trouver chaque champ physique qui représente un concept par nom. Par exemple, rechercher `"order date"` renvoie le terme et toutes les colonnes `order_dt`, `orderDate`, `ORDER_DATE` à travers chaque table enregistrée.
 
-### Export de métadonnées
+### Export de métadonnées {: #metadata-export }
 
 Le graphe de termes du glossaire est inclus dans chaque `MetadataSnapshot` construit par `build_snapshot`. [tool-verified: `provisa/api/metadata_export/builder.py:_glossary_assets`]
 
@@ -1452,11 +1500,11 @@ La propriété est le lien contraignant, pas le nom : l'id fournisseur de chaque
 
 ---
 
-## Produits de données (REQ-1634)
+## Produits de données (REQ-1634) {: #data-products-req-1634 }
 
 Un produit de données regroupe des tables publiées ensemble pour la consommation, possédées par exactement un domaine. Les champs suivent le vocabulaire ODPS (Open Data Product Standard) là où Provisa possède déjà la source de vérité. L'interface admin expose les produits de données sous **Admin → Data Products**. [tool-verified: `provisa/core/models.py:318-342`, `provisa/api/admin/schema_mutation.py:949-1017`, `provisa/api/admin/schema_query.py:352-362`]
 
-### Capacités
+### Capacités {: #capabilities }
 
 | Capacité | Accorde |
 | --- | --- |
@@ -1465,7 +1513,7 @@ Un produit de données regroupe des tables publiées ensemble pour la consommati
 
 [tool-verified: `provisa/api/admin/schema_mutation.py:959,1001`, `provisa/api/admin/schema_query.py:357`]
 
-### GraphQL admin
+### GraphQL admin {: #admin-graphql_1 }
 
 Toutes les opérations sur les produits de données passent par `POST /admin/graphql`.
 
@@ -1528,7 +1576,7 @@ mutation {
 
 Supprimer un produit efface `product_id` de chaque table membre, supprimant leur appartenance. Requiert `data_product_rw`. [tool-verified: `provisa/api/admin/schema_mutation.py:995-1017`]
 
-### Schéma de champs
+### Schéma de champs {: #field-schema }
 
 | Champ | Type | Requis | Notes |
 | --- | --- | --- | --- |
@@ -1555,19 +1603,19 @@ Deux champs supplémentaires existent sur le modèle mais ne sont pas exposés d
 
 [tool-verified: `provisa/core/models.py:338-341`, `provisa/api/admin/types.py:104-118,538-551`]
 
-### Appartenance de table
+### Appartenance de table {: #table-membership }
 
 Une table rejoint un produit de données en définissant son champ `product_id` au formulaire d'édition de table. Le sélecteur est délimité aux produits dont le `domain_id` correspond au domaine propre de la table — une table du domaine `marketing` n'est jamais proposée un produit du domaine `sales`. [tool-verified: `provisa/api/admin/actions_router.py:244-260`, `docs/arch/requirements.yaml:54585-54586`]
 
 Les commandes du même domaine peuvent aussi être affectées comme membres. [tool-verified: `provisa-ui/src/i18n/locales/en/dataProductsTab.json:commandsLabel`]
 
-### Filtre d'export de métadonnées
+### Filtre d'export de métadonnées {: #metadata-export-filter }
 
 `build_snapshot` applique `data_products_only=True` pour chaque publication de catalogue. Les tables sans `product_id` sont retenues de l'instantané, ainsi que leurs arêtes de relation, arêtes de traçabilité, et étiquettes de gouvernance. Les sources et domaines sont toujours publiés. Les termes du glossaire ne publient que lorsqu'au moins une de leurs références physiques appartient à une table exportée (membre d'un produit). [tool-verified: `provisa/api/metadata_export/builder.py:594,609,641`]
 
 Un produit sans membre exporté ne construit pas d'entrée d'instantané — une fiche sans membre représenterait mal le produit auprès du catalogue. [tool-verified: `provisa/api/metadata_export/model.py:106-113`]
 
-### Prise en charge des produits de données par cible de catalogue
+### Prise en charge des produits de données par cible de catalogue {: #data-product-support-by-catalog-target }
 
 `MetadataSnapshot.data_products` atteint chaque adaptateur, mais seuls les adaptateurs dont la plateforme a un concept natif de produit de données le publient comme entité de premier ordre ; les autres publient les tables membres (déjà filtrées ci-dessus) sans regroupement en produit.
 

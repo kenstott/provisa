@@ -1,16 +1,16 @@
-# 欄位層級血緣
+# 欄位層級血緣 {: #column-level-lineage }
 
 Provisa 以靜態方式追蹤欄位層級的數據血緣——由 SQL 定義與命令合約推算而得，毋須實際執行。可用的檢視有兩種：逐陳述式的 DAG，以及橫跨所有已註冊檢視與具體化檢視 (MV) 的聯邦級來源圖。
 
-## 血緣探索器
+## 血緣探索器 {: #the-lineage-explorer }
 
 在 UI 中前往 **血緣**（`/lineage`）。貼上一段 SQL 陳述式並點擊**建立陳述式圖**，即可看到它的欄位層級 DAG。點擊**聯邦圖**則會載入涵蓋註冊表中每個 MV 的來源圖。[tool-verified: LineagePage.tsx:28-119]
 
-## 陳述式層級 DAG（REQ-1160）
+## 陳述式層級 DAG（REQ-1160） {: #statement-level-dag-req-1160 }
 
 你 SQL 中每個具名的輸出欄位都會成為一個節點。建圖器會穿過每個 CTE、子查詢、聯結與內嵌命令呼叫，一路追溯回它的來源欄位，建出一張由來源輸入通往最終輸出的有向圖。
 
-### 實例演練
+### 實例演練 {: #worked-example }
 
 ```sql
 SELECT o.id, e.embedding, upper(e.geo) AS geo_u
@@ -33,7 +33,7 @@ orders.region ─╯
 命令邊界**並非不透明**。由於 `enrich_grpc_set` 宣告了自己的輸入欄位（`id`、`region`）與輸出欄位（`id`、`embedding`、`geo`），血緣引擎得以把污染閉合從來源關聯的已宣告欄位，連續地接合到每個輸出。
 [tool-verified: `_splice_commands` and `_input_relation` in graph.py:245-271]
 
-### 節點種類與視覺提示
+### 節點種類與視覺提示 {: #node-kinds-and-visual-cues }
 
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
@@ -52,7 +52,7 @@ orders.region ─╯
 
 [tool-verified: LineageDag.tsx:88-103 Cytoscape style selectors]
 
-### 邊上的具名轉換
+### 邊上的具名轉換 {: #named-transforms-on-edges }
 
 每條邊都帶著產出目標欄位的原始 SQL 運算式，以及一份具名操作清單：SQL 函式（`sql_function`）、算術／邏輯運算子（`operator`）、已註冊的命令（`command`）、裸欄位引用（`identity`），以及常值（`constant`）。
 [tool-verified: TransformOp and name_transform in graph.py:36-145]
@@ -60,14 +60,14 @@ orders.region ─╯
 由命令呼叫而來的邊，在 UI 中以紫色虛線呈現。
 [tool-verified: LineageDag.tsx:122-124]
 
-## 聯邦級圖（REQ-1161）
+## 聯邦級圖（REQ-1161） {: #federation-wide-graph-req-1161 }
 
 聯邦圖把每個已註冊 MV 的逐陳述式血緣合併成一張來源圖。節點身分為 `relation.column`——某個檢視的輸出欄位，與另一個檢視對同一欄位的輸入引用，會收攏成同一個節點。結果是一張由基底來源欄位通往平台上每個衍生數據集的單一 DAG。[tool-verified: `build_federation_graph` in merge.py:205-229
 and `qualify_outputs` in graph.py:275-299]
 
 用 `focus`、`direction` 與 `depth` 可在聯邦規模下縮限檢視範圍，而毋須重新計算整張圖。[tool-verified: `slice_graph` in merge.py:160-189]
 
-## 循環（REQ-1161）
+## 循環（REQ-1161） {: #cycles-req-1161 }
 
 循環會被描述，而不是被拒絕。血緣引擎會偵測出每個有向循環並加以**分類**。[tool-verified: `Cycle.classification` property in merge.py:43-46]
 
@@ -160,7 +160,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 }
 ```
 
-## 改名或刪除一個欄位會弄壞什麼（REQ-1484）
+## 改名或刪除一個欄位會弄壞什麼（REQ-1484） {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 一個欄位帶著兩個名字，而各由不同的一組構件儲存。
 
@@ -188,7 +188,7 @@ query {
 當待處理的編輯改動了別名或縮減了欄位集合時，表頁面會自動執行這個查詢，並把找到的東西列出來 [tool-verified: `diffEditedColumns` in
 `provisa-ui/src/pages/tables/columnDiff.ts`, dialog in `TablesPage.tsx`]。這項警告只是建議性質：它把受影響的構件點名，由管理員定奪。它不會擋下儲存，因為整個數據體系的消費方不可能全都觸及得到——外部的一個儀表板、或一個按名稱查詢該欄位的用戶端應用程式，都超出註冊表的認知範圍。基於同樣的理由，對自由 SQL 文字的掃描是把欄位當成識別碼權杖來比對，而不解析範圍，因此可能點名到其實並未用到該欄位的構件。就警告而言，寧多勿漏才是安全的方向。
 
-## 用血緣來治理命令合約
+## 用血緣來治理命令合約 {: #using-lineage-to-govern-command-contracts }
 
 由於污染閉合把每個已宣告的輸入欄位連到每個已宣告的輸出欄位，那次閉合有多寬，完全取決於你宣告了什麼。
 

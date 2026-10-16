@@ -1,6 +1,6 @@
-# 数据源类型
+# 数据源类型 {: #source-types }
 
-## 执行模型
+## 执行模型 {: #execution-model }
 
 每个查询最终都通过联邦引擎执行，联邦引擎提供跨所有数据源的联邦能力。数据源根据其连接方式分为三类。[tool-verified: `provisa/core/models.py` lines 84–132] (REQ-550)
 
@@ -24,7 +24,7 @@
 
 ---
 
-## 所有数据源
+## 所有数据源 {: #all-sources }
 
 Provisa 注册了 **72** 种数据源类型，即 Sources 表单所提供的类型。下表覆盖全部 72 种；索引即为计数。[tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`，其中 `graphql` 和 `grpc` 即 `graphql_remote` 和 `grpc_remote`；Kaggle、Wikipedia、GitHub、GitLab 和 Stripe 虽然内部通过 `files`、`graphql_remote` 和 `openapi` 连接器注册，但仍作为独立数据源计数]
 
@@ -254,7 +254,7 @@ MotherDuck 数据源只由 DuckDB 和 Postgres 引擎提供服务。其他引擎
 
 | Source Type | Mechanism | Mutations |
 | ------------ | ----------- | ----------- |
-| `kafka` | 联邦 Kafka 连接器；通过 Confluent Schema Registry（Avro、Protobuf、JSON Schema）、手动定义或样本推断获取 schema（REQ-147, REQ-150） | 仅接收端（REQ-176） |
+| `kafka` | 联邦 Kafka 连接器；通过 Confluent Schema Registry（Avro、Protobuf、JSON Schema）、手动定义或样本推断获取 schema（REQ-147, REQ-150） | 否；表的实时输出发布到 Kafka（REQ-565） |
 | `websocket` | 外部 WebSocket 数据流 — 连接、订阅、接收事件；结果会被物化（REQ-338） | No |
 | `rss` | RSS 2.0 / Atom 订阅源 — 轮询、按 pubDate/updated 设置水位线；结果会被物化（REQ-342, REQ-343） | No |
 
@@ -622,7 +622,7 @@ Salesforce 数据源需要指定组织的“我的域”登录 URL 和一套完�
 
 #### `servicenow`
 
-实例的每张表均可供注册；不会自动注册任何内容（REQ-1954）。完整实例可能有数千张表；Register Table 按主题对它们分组——每个主题是 ServiceNow 包的显示名称，当表不属于任何包时显示"(无包)"。每张表以 `名称 — 标签` 的形式列出。选择一张表会从实例读取其列；列出表格不会这样做。[tool-verified: `provisa/federation/pgwire_replica.py` `servicenow_table_list`、`servicenow_columns`；`provisa/federation/servicenow.py` `TABLE_LIST`、`COLUMN_LIST`]
+实例的每张表均可供注册；不会自动注册任何内容（REQ-1954）。完整实例可能有数千张表；Register Table 按主题对它们分组——每个主题是 ServiceNow 包的显示名称，当表不属于任何包时显示"(无包)"。每张表以 `name — label` 的形式列出。选择一张表会从实例读取其列；列出表格不会这样做。[tool-verified: `provisa/federation/pgwire_replica.py` `servicenow_table_list`、`servicenow_columns`；`provisa/federation/servicenow.py` `TABLE_LIST`、`COLUMN_LIST`]
 
 ServiceNow 数据源指定实例的完整 `https://…` URL 以及用户名和密码。URL 从 `base_url` 或 `host` 获取；裸主机或其他方案将被拒绝，并指出字段名称（`instanceUrl`）。缺少用户名或密码时将被拒绝，并指出字段名称。每个值都可以是 `${secret:…}` 或 `${env:…}` 引用。以字面值输入的密钥会存入组织保管库，数据源保留其引用。
 
@@ -636,7 +636,7 @@ ServiceNow 数据源指定实例的完整 `https://…` URL 以及用户名和�
 
 **读取。** 在 Trino 上，数据源通过只读的 `servicenow` 目录读取。在其他任何引擎上，引擎挂载数据源的 pgwire 服务器并就地读取。实例只接收所选列的请求（`sysparm_fields`）。过滤器仅以适配器已在真实实例上验证过的形式发送到实例（`sysparm_query`）；其他所有过滤器以及每个排序和限制，都应用于已读取的行。[inferred: the adapter's requirements ledger (kenstott/calcite `docs/requirements/servicenow.yaml`, SNOW-022, SNOW-023, SNOW-030)]
 
-引用字段显示为两列：`<字段>` 包含被引用记录的 sys_id，`<字段>__display` 包含显示值。空字段值为 NULL。适配器无法映射其类型的字段会产生错误，错误中指出表、字段和类型。[inferred from adapter behavior；本次会话中未在 Provisa 源代码中直接验证]
+引用字段显示为两列：`<field>` 包含被引用记录的 sys_id，`<field>__display` 包含显示值。空字段值为 NULL。适配器无法映射其类型的字段会产生错误，错误中指出表、字段和类型。[inferred from adapter behavior；本次会话中未在 Provisa 源代码中直接验证]
 
 表搜索（自然语言）与每张表的名称、标签和主题匹配。一旦注册了一张表，其列就会加入搜索。[tool-verified: `provisa/discovery/catalog_cache.py` `COLUMNS_PER_TABLE_KINDS` docstring]
 

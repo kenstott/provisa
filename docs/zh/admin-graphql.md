@@ -1,4 +1,4 @@
-# 管理 GraphQL API 参考
+# 管理 GraphQL API 参考 {: #admin-graphql-api-reference }
 
 管理 GraphQL API 是 Provisa 的配置平面。它是管理 Web 应用为每一项管理操作所调用的 API——创建数据源、注册表、定义关系、配置 RLS 规则，以及塑造该模型的其他一切。
 
@@ -8,7 +8,7 @@
 
 ---
 
-## UI 如何与该 API 通信
+## UI 如何与该 API 通信 {: #how-the-ui-talks-to-this-api }
 
 管理 Web 应用使用 Apollo Client，指向 `${API_BASE}/admin/graphql`。[tool-verified: `provisa-ui/src/apolloClient.ts:19`]
 
@@ -18,7 +18,7 @@
 
 ---
 
-## 授权
+## 授权 {: #authorization }
 
 **开发模式：** 当未配置身份验证且每个请求都以匿名主体身份到达时，所有能力检查都会被跳过。这使本地安装无需身份验证设置即可正常工作。[tool-verified: `provisa/api/admin/capabilities.py:98-99`]
 
@@ -30,7 +30,7 @@
 
 ---
 
-## 通用返回类型
+## 通用返回类型 {: #common-return-type }
 
 大多数变更返回 `MutationResult`。[tool-verified: `provisa/api/admin/types.py:1181-1188`]
 
@@ -47,9 +47,9 @@ type MutationResult {
 
 ---
 
-## 查询
+## 查询 {: #queries }
 
-### 数据源
+### 数据源 {: #sources }
 
 #### `sources → [SourceType!]!`
 
@@ -59,12 +59,16 @@ type MutationResult {
 query {
   sources {
     id type host port database username dialect
-    cacheEnabled cacheTtl preferMaterialized
+    cacheEnabled cacheTtl replicate
     loadProtected offPeakWindow offPeakTz
     gqlNamingConvention path allowedDomains
     description mappingJson federationHintsJson
     changeSignal passwordRef
-    cdc { bootstrapServers topicPrefix schemaRegistryUrl consumerGroupId }
+    cdc {
+      bootstrapServers topicPrefix consumerGroupId
+      schemaRegistryUrl schemaRegistryAuth schemaRegistryUsername schemaRegistryPassword
+      schemaRegistryToken schemaRegistryClientCert schemaRegistryClientKey schemaRegistryCa
+    }
   }
 }
 ```
@@ -105,7 +109,7 @@ OpenAPI 数据源的非 GET 操作（POST、PUT、PATCH、DELETE）。对于非 
 
 ---
 
-### 表
+### 表 {: #tables }
 
 #### `tables → [RegisteredTableType!]!`
 
@@ -122,7 +126,7 @@ OpenAPI 数据源的非 GET 操作（POST、PUT、PATCH、DELETE）。对于非 
 
 为*草稿*（尚未保存）的表配置项预览有效的刷新/服务摘要，使表单顶部的摘要随字段变化而更新，而不持久化任何内容。派生方式与上面的 `refreshPolicySummary` 相同。（REQ-1143）[tool-verified: `provisa/api/admin/schema_query.py:947-979`]
 
-参数：`sourceId`、`domainId`、`schemaName`、`tableName`、`cacheTtl`、`preferMaterialized`、`loadProtected`、`offPeakWindow`、`offPeakTz`、`changeSignal`。
+参数：`sourceId`、`domainId`、`schemaName`、`tableName`、`cacheTtl`、`replicate`、`loadProtected`、`offPeakWindow`、`offPeakTz`、`changeSignal`。
 
 #### `columnDependents(tableId: String!, renamed: [String!], removed: [String!]) → [ColumnDependentsType!]!`
 
@@ -130,7 +134,7 @@ OpenAPI 数据源的非 GET 操作（POST、PUT、PATCH、DELETE）。对于非 
 
 ---
 
-### 关系
+### 关系 {: #relationships }
 
 #### `relationships → [RelationshipType!]!`
 
@@ -147,7 +151,7 @@ OpenAPI 数据源的非 GET 操作（POST、PUT、PATCH、DELETE）。对于非 
 
 ---
 
-### 域、角色与用户
+### 域、角色与用户 {: #domains-roles-users }
 
 #### `domains → [DomainType!]!`
 
@@ -163,7 +167,7 @@ OpenAPI 数据源的非 GET 操作（POST、PUT、PATCH、DELETE）。对于非 
 
 ---
 
-### RLS 规则
+### RLS 规则 {: #rls-rules }
 
 #### `rlsRules → [RLSRuleType!]!`
 
@@ -171,7 +175,7 @@ OpenAPI 数据源的非 GET 操作（POST、PUT、PATCH、DELETE）。对于非 
 
 ---
 
-### 数据产品
+### 数据产品 {: #data-products }
 
 #### `dataProducts → [DataProductType!]!`
 
@@ -179,7 +183,7 @@ OpenAPI 数据源的非 GET 操作（POST、PUT、PATCH、DELETE）。对于非 
 
 ---
 
-### 标签
+### 标签 {: #tags }
 
 #### `tags → [TagType!]!`
 
@@ -191,7 +195,7 @@ OpenAPI 数据源的非 GET 操作（POST、PUT、PATCH、DELETE）。对于非 
 
 ---
 
-### 物化视图
+### 物化视图 {: #materialized-views }
 
 #### `mvList → [MVType!]!`
 
@@ -199,7 +203,7 @@ OpenAPI 数据源的非 GET 操作（POST、PUT、PATCH、DELETE）。对于非 
 
 ---
 
-### 缓存
+### 缓存 {: #cache }
 
 #### `cacheStats → CacheStatsType`
 
@@ -219,7 +223,7 @@ Provisa 正在保留副本的表，分为两个层级：`hot`（镜像到响应�
 
 ---
 
-### 系统健康状态
+### 系统健康状态 {: #system-health }
 
 #### `systemHealth → SystemHealthType`
 
@@ -238,7 +242,7 @@ query {
 
 ---
 
-### 计划任务
+### 计划任务 {: #scheduled-tasks }
 
 #### `scheduledTasks → [ScheduledTaskType!]!`
 
@@ -246,7 +250,7 @@ query {
 
 ---
 
-### 数据质量
+### 数据质量 {: #data-quality }
 
 #### `dqContractParse(checker: String!, contractText: String!) → DqContractType`
 
@@ -266,7 +270,7 @@ query {
 
 ---
 
-### 数据源预览
+### 数据源预览 {: #source-previews }
 
 #### `neo4jPreview(sourceId: String!, cypher: String!) → QueryPreviewType`
 
@@ -290,7 +294,7 @@ query {
 
 ---
 
-### 日历
+### 日历 {: #calendars }
 
 #### `calendars → [CalendarType!]!`
 
@@ -298,7 +302,7 @@ query {
 
 ---
 
-### 指标
+### 指标 {: #metrics }
 
 #### `metrics → [MetricType!]!`
 
@@ -306,7 +310,7 @@ query {
 
 ---
 
-### 架构版本
+### 架构版本 {: #schema-version }
 
 #### `schemaVersion → String!`
 
@@ -314,7 +318,7 @@ query {
 
 ---
 
-### AI 助手
+### AI 助手 {: #ai-helpers }
 
 #### `generateTableDescription(tableId: String!) → String!`
 
@@ -326,25 +330,25 @@ query {
 
 ---
 
-### 创建请求
+### 创建请求 {: #creation-requests }
 
 #### `creationRequests → [CreationRequestType!]!`
 
-待处理的创建请求，对持有相关创建能力的调用者可见。当没有 `create_relationship` 或 `create_view` 能力的成员提交一项需要权限持有者批准的请求时使用。（REQ-434、REQ-063）[tool-verified: `provisa/api/admin/schema_query.py:267-289`]
+待处理的创建请求，对持有相应创建能力的调用者可见。当没有 `create_relationship` 或 `create_view` 的成员提交一项需要权利持有者批准的请求时使用。关系请求向其 `create_relationship` 权利覆盖其源表或目标表所在域的用户显示，也向提出请求的用户显示。（REQ-434、REQ-063、REQ-1948） [tool-verified: `provisa/api/admin/schema_query.py:371-420`]
 
 ---
 
-## 变更
+## 变更 {: #mutations }
 
-### 数据源
+### 数据源 {: #sources_1 }
 
 #### `createSource(input: SourceInput!) → MutationResult`
 
-注册一个新的数据源。在持久化之前验证连接——被拒绝的数据源不会留下保管库条目。将凭据存储在组织保管库中并记录引用；明文永远不会落入数据库。（REQ-012、REQ-013）需要 `source_registration` 能力。[tool-verified: `provisa/api/admin/schema_mutation.py:616-781`]
+注册新的数据源。已存在的 id 会在定义检查之后、准备或写入任何内容之前被拒绝（`schema.source_id_taken`）；数据源通过 `updateSource` 修改。保存前测试连接——被拒绝的数据源不会在存储中留下记录。将凭据存入组织的密钥库并记录引用；明文从不进入数据库。（REQ-012、REQ-013） 需要 `source_registration` 能力。[tool-verified: `provisa/api/admin/schema_mutation.py:616-781`]
 
 #### `updateSource(input: SourceInput!) → MutationResult`
 
-更新现有数据源的连接详情、描述和配置。对于文件/SharePoint 数据源，会拆除并重新连接 pgwire 终结点，使路径更改立即生效。需要 `source_registration`。[tool-verified: `provisa/api/admin/schema_mutation.py:922-1073`]
+更新已有数据源的连接参数、描述和配置，然后在其绑定的引擎上重新准备它、重建 schema 并协调其已加载的表，使在一个引擎下保存的数据源能由之后切换到的引擎提供服务（REQ-1730）。对文件/SharePoint 数据源断开并重新挂载 pgwire 端点，使路径变更立即生效。需要 `source_registration`。[tool-verified: `provisa/api/admin/schema_mutation.py:922-1073`]
 
 #### `deleteSource(id: String!) → MutationResult`
 
@@ -352,15 +356,15 @@ query {
 
 #### `renameSource(oldId: String!, newId: String!) → MutationResult`
 
-重命名数据源 ID。[tool-verified: `provisa/api/admin/schema_mutation.py:1076-1098`]
+重命名数据源 id。由另一个数据源拥有的新 id 会被拒绝（`schema.source_id_taken`），且不写入任何内容；将数据源重命名为其自身的 id 不会改变任何内容。[tool-verified: `provisa/core/repositories/source.py` `rename`]
 
 #### `updateSourceCache(sourceId: String!, cacheEnabled: Boolean!, cacheTtl: Int) → MutationResult`
 
 为一个数据源启用或禁用查询结果缓存，并以秒为单位设置 TTL。[tool-verified: `provisa/api/admin/schema_mutation.py:2327-2350`]
 
-#### `updateSourcePreferMaterialized(sourceId: String!, preferMaterialized: Boolean!) → MutationResult`
+#### `updateSourceReplicate(sourceId: String!, replicate: Int) → MutationResult`
 
-对某数据源上的所有表强制（或释放）物化联邦。（REQ-826）[tool-verified: `provisa/api/admin/schema_mutation.py:2379-2402`]
+设置数据源的表何时从其副本提供服务：`null` Default、`-1` Never、大于 0 的 `N`——一旦表在一个间隔内超过 N 条受治理语句、`0` Always。没有自身值的表继承它。如果会把 `load_protected` 与 `-1` 组合，或让它所复制的 `ttl` 表没有 `cache_ttl`，则被拒绝。需要 `source_registration`。（REQ-826、REQ-1907） [tool-verified: `provisa/api/admin/schema_mutation.py` `update_source_replicate`]
 
 #### `updateSourceLoadProtection(sourceId, loadProtected, offPeakWindow, offPeakTz) → MutationResult`
 
@@ -388,7 +392,7 @@ query {
 
 ---
 
-### 表
+### 表 {: #tables_1 }
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
@@ -406,9 +410,9 @@ query {
 
 覆盖单张表的缓存 TTL。[tool-verified: `provisa/api/admin/schema_mutation.py:2353-2376`]
 
-#### `updateTablePreferMaterialized(tableId: Int!, preferMaterialized: Boolean) → MutationResult`
+#### `updateTableReplicate(tableId: Int!, replicate: Int) → MutationResult`
 
-覆盖单张表的物化联邦设置。`null` 表示继承数据源默认值。（REQ-826）[tool-verified: `provisa/api/admin/schema_mutation.py:2405-2428`]
+设置单张表何时从其副本提供服务。`null` = 继承数据源的值。取值与拒绝情形同 `updateSourceReplicate`。需要 `table_registration`。（REQ-826、REQ-1907） [tool-verified: `provisa/api/admin/schema_mutation.py` `update_table_replicate`]
 
 #### `updateTableLoadProtection(tableId, loadProtected, offPeakWindow, offPeakTz) → MutationResult`
 
@@ -440,11 +444,15 @@ query {
 
 ---
 
-### 关系
+### 关系 {: #relationships_1 }
 
-#### `upsertRelationship(input: RelationshipInput!) → MutationResult`
+#### `createRelationship(input: RelationshipInput!) → MutationResult`
 
-创建或更新一个关系。该关卡检查的是源表的域（而不是目标表的域）。跨域的边会以 `needsReview: true` 存储。缺少 `create_relationship` 能力的调用者会被加入创建请求队列。联结（多对多）边要求键列表长度匹配。（REQ-019、REQ-020、REQ-366、REQ-434）[tool-verified: `provisa/api/admin/schema_mutation.py:2297-2300`]
+创建关系。检查看的是源表所在的域（而非目标表）。跨域的边以 `needsReview: true` 保存。没有 `create_relationship` 的调用者会作为创建请求排队。junction（多对多）边要求键列表长度相同。在写入任何内容之前点名拒绝：已存在的 id（`schema.relationship_id_taken`）；无法解析到任何已注册表或解析到多张表的表名（`schema.relationship_unknown_source`、`_target`、`_junction`、`schema.relationship_ambiguous_table`）；已被同一源表的另一个关系占用的 Cypher 或 GraphQL 别名（`schema.relationship_alias_taken`、`schema.relationship_graphql_alias_taken`）。表以其虚拟名称指定：有别名时即为其别名。（REQ-019、REQ-020、REQ-366、REQ-434） [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_relationship_as_caller`, `save_relationship`]
+
+#### `updateRelationship(input: RelationshipInput!) → MutationResult`
+
+以与 `createRelationship` 相同的检查修改已有关系。不属于任何关系的 id 会被拒绝（`schema.relationship_not_found`）。修改需要该权利本身；它从不作为请求排队。（REQ-019、REQ-020） [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_relationship_as_caller`]
 
 #### `deleteRelationship(id: String!) → MutationResult`
 
@@ -452,11 +460,11 @@ query {
 
 ---
 
-### 域
+### 域 {: #domains }
 
 #### `createDomain(input: DomainInput!) → MutationResult`
 
-创建一个域。保留的字段词（`tables`、`relationships` 以及其他 URI 路径段）会被拒绝，通配符字面量 `*` 也是如此。需要 `org_settings` 能力。（REQ-021、REQ-1531）[tool-verified: `provisa/api/admin/schema_mutation.py:1135-1189`]
+创建域。已存在的 id 会被拒绝（`schema.domain_id_taken`）。保留的段名（`tables`、`relationships` 及其他 URI 路径段）会被拒绝，通配符字面量 `*` 也会被拒绝。需要 `org_settings` 能力。（REQ-021、REQ-1531） [tool-verified: `provisa/api/admin/schema_mutation.py:1135-1189`]
 
 #### `deleteDomain(id: String!) → MutationResult`
 
@@ -468,11 +476,15 @@ query {
 
 ---
 
-### 角色
+### 角色 {: #roles }
 
 #### `createRole(input: RoleInput!) → MutationResult`
 
-创建或替换一个角色，包含能力、域访问权限、可选的速率限制以及可选的父角色。验证父角色是否存在，以及父级链是否不含循环。需要 `user_management`。（REQ-042、REQ-1531、REQ-1677）[tool-verified: `provisa/api/admin/schema_mutation.py:1657-1712`]
+创建一个角色，带有能力、域访问、可选的请求限制和可选的父角色。验证父角色存在且父链中没有环。定义检查之后，已存在的 id 会被拒绝（`schema.role_id_taken`）。需要 `user_management`。（REQ-042、REQ-1531、REQ-1677） [tool-verified: `provisa/api/admin/schema_mutation.py:1657-1712`]
+
+#### `updateRole(input: RoleInput!) → MutationResult`
+
+以与 `createRole` 相同的检查修改已有角色。不属于任何角色的 id 会被拒绝（`schema.role_not_found`）。重新定义角色是在它所覆盖的每个域中的操作。（REQ-042、REQ-1531） [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_role`]
 
 #### `deleteRole(id: String!) → MutationResult`
 
@@ -480,7 +492,7 @@ query {
 
 ---
 
-### RLS 规则
+### RLS 规则 {: #rls-rules_1 }
 
 #### `upsertRlsRule(input: RLSRuleInput!) → MutationResult`
 
@@ -494,11 +506,15 @@ query {
 
 ---
 
-### 数据产品
+### 数据产品 {: #data-products_1 }
 
 #### `createDataProduct(input: DataProductInput!) → MutationResult`
 
-创建或替换一个数据产品。需要 `data_product_rw` 能力。（REQ-1634）[tool-verified: `provisa/api/admin/schema_mutation.py:1216-1259`]
+创建数据产品。已存在的 id 会被拒绝（`schema.data_product_id_taken`）。需要 `data_product_rw` 能力。（REQ-1634） [tool-verified: `provisa/api/admin/schema_mutation.py:1216-1259`]
+
+#### `updateDataProduct(input: DataProductInput!) → MutationResult`
+
+修改已有数据产品。不属于任何产品的 id 会被拒绝（`schema.data_product_not_found`）。需要 `data_product_rw`。（REQ-1634） [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_data_product`]
 
 #### `deleteDataProduct(id: String!) → MutationResult`
 
@@ -506,11 +522,15 @@ query {
 
 ---
 
-### 标签
+### 标签 {: #tags_1 }
 
-#### `upsertTag(input: TagInput!) → MutationResult`
+#### `createTag(input: TagInput!) → MutationResult`
 
-创建或更新一个标签定义。系统标签和派生标签不能被重新定义。`appliesTo` 必须是 `["source", "table", "column", "relationship", "command"]` 的非空子集。（REQ-1373、REQ-1375）[tool-verified: `provisa/api/admin/schema_mutation.py:1288-1361`]
+创建标签定义。已存在的 id 会被拒绝（`schema.tag_id_taken`）。系统标签和派生标签不能被重新定义。`appliesTo` 必须是 `["source", "table", "column", "relationship", "command"]` 的非空子集。（REQ-1373、REQ-1375） [tool-verified: `provisa/api/admin/schema_mutation.py:1288-1361`]
+
+#### `updateTag(input: TagInput!) → MutationResult`
+
+以与 `createTag` 相同的检查修改已有标签定义。不属于任何标签的 id 会被拒绝（`schema.tag_not_found`）。（REQ-1373） [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_tag`]
 
 #### `deleteTag(id: String!) → MutationResult`
 
@@ -534,11 +554,15 @@ query {
 
 ---
 
-### 指标
+### 指标 {: #metrics_1 }
 
-#### `upsertMetric(input: MetricInput!) → MutationResult`
+#### `createMetric(input: MetricInput!) → MutationResult`
 
-创建或替换一个受治理的指标定义。该表达式必须能在 sqlglot 下解析，且至少包含一个聚合函数。重新生成所有引用该指标的、由指标组成的视图。需要 `table_registration`。（REQ-1317、REQ-1318）[tool-verified: `provisa/api/admin/schema_mutation.py:1779-1831`]
+创建受治理的指标定义。已存在的名称会被拒绝（`schema.metric_name_taken`）。表达式必须能被 sqlglot 解析，且至少包含一个聚合函数。会重新创建所有引用此指标的、由指标组成的视图。需要 `table_registration`。（REQ-1317、REQ-1318） [tool-verified: `provisa/api/admin/schema_mutation.py:1779-1831`]
+
+#### `updateMetric(input: MetricInput!) → MutationResult`
+
+以与 `createMetric` 相同的检查替换已有指标的定义。不属于任何指标的名称会被拒绝（`schema.metric_not_found`）。保存需要新表达式和被替换定义的域。（REQ-1317、REQ-1531） [tool-verified: `provisa/api/admin/schema_mutation.py` `_save_metric`]
 
 #### `deleteMetric(name: String!) → MutationResult`
 
@@ -546,7 +570,7 @@ query {
 
 ---
 
-### 日历
+### 日历 {: #calendars_1 }
 
 #### `createCalendar(input: CalendarInput!) → MutationResult`
 
@@ -558,7 +582,7 @@ query {
 
 ---
 
-### 物化视图
+### 物化视图 {: #materialized-views_1 }
 
 #### `refreshMv(mvId: String!) → MutationResult`
 
@@ -570,7 +594,7 @@ query {
 
 ---
 
-### 缓存
+### 缓存 {: #cache_1 }
 
 #### `purgeCache → MutationResult`
 
@@ -582,7 +606,7 @@ query {
 
 ---
 
-### 计划任务
+### 计划任务 {: #scheduled-tasks_1 }
 
 #### `createScheduledTask(id, name, cron, kind, webhookName, argsJson, sql) → MutationResult`
 
@@ -598,7 +622,7 @@ query {
 
 ---
 
-### 数据质量
+### 数据质量 {: #data-quality_1 }
 
 #### `dryRunDqContract(sourceId: String!, contractText: String!) → DqDryRunType`
 
@@ -610,7 +634,7 @@ query {
 
 ---
 
-### 架构维护
+### 架构维护 {: #schema-maintenance }
 
 #### `rebuildSchemas → MutationResult`
 
@@ -618,19 +642,23 @@ query {
 
 ---
 
-### 创建请求
+### 创建请求 {: #creation-requests_1 }
+
+#### `approveCreationRequest(requestId: Int!) → MutationResult`
+
+批准一项创建请求：规则、拒绝情形和管理日志记录与 `POST /admin/creation-requests/{id}/approve` 相同。请求者不能批准自己的请求，同一用户的批准只计一次。使请求计数完成的批准会创建请求所要求的内容；若由它完成创建，`params.status` 为 `executed`，否则为 `pending`，`params.waitingOn` 列出关系请求仍在等待的域。（REQ-434、REQ-063、REQ-1948） [tool-verified: `provisa/api/admin/schema_mutation.py` `approve_creation_request`]
 
 #### `executeCreationRequest(requestId: Int!) → MutationResult`
 
-权限持有者执行一个排队的创建请求——关系、视图或 webhook。需要该请求所等待的能力。（REQ-434、REQ-063）[tool-verified: `provisa/api/admin/schema_mutation.py:2181-2255`]
+通过直接变更所用的同一代码，执行已获得批准的创建请求——关系、视图、表、数据源或 webhook。在请求所需的批准（一个，关系为两个）由请求者以外的用户给出之前，以 `requests.approvals_incomplete` 拒绝；关系请求在其涉及的每个域都有批准者之前，还会以 `requests.waiting_on_domains` 拒绝。批准通过 `POST /admin/creation-requests/{id}/approve` 给出，使计数完成的批准会执行创建，因此此变更用于重试失败的创建。失败的创建会让请求保持待处理，并以其自身的错误代码应答。（REQ-434、REQ-063、REQ-1948） [tool-verified: `provisa/api/admin/schema_mutation.py` `execute_creation_request`, `perform_request_creation`; `provisa/api/admin/creation_requests_router.py`]
 
 #### `rejectCreationRequest(requestId: Int!, reason: String!) → MutationResult`
 
-以一个可操作的原因拒绝一个排队的请求。`reason` 为必填。（REQ-434、REQ-063）[tool-verified: `provisa/api/admin/schema_mutation.py:2258-2294`]
+以可操作的原因从队列中拒绝一项请求。`reason` 为必填。关系请求可由任何本可以批准它的用户拒绝。其他任何类型的请求，其请求者可以撤回；这会作为撤回记入管理日志。（REQ-434、REQ-063、REQ-1948） [tool-verified: `provisa/api/admin/schema_mutation.py:3064-3106`]
 
 ---
 
-### 查询编译
+### 查询编译 {: #query-compilation }
 
 #### `compileQuery(input: CompileQueryInput!) → [CompileQueryResult!]!`
 
@@ -669,7 +697,7 @@ mutation {
 
 ---
 
-## 关键输入类型
+## 关键输入类型 {: #key-input-types }
 
 ### `SourceInput`
 
@@ -690,7 +718,7 @@ mutation {
 | `loadProtected` | `Boolean` | 仅按计划刷新（REQ-1141） |
 | `offPeakWindow` | `String` | `HH:MM-HH:MM` 维护窗口 |
 | `offPeakTz` | `String` | IANA 时区 |
-| `cdc` | `SourceCdcConfigInput` | Kafka CDC 传输配置（REQ-824） |
+| `cdc` | `SourceCdcConfigInput` | Kafka CDC 传输配置（REQ-824），包括如何访问其 schema registry（REQ-1951；参见 [Schema registry 身份验证](subscriptions.md#schema-registry-authentication)）。`schemaRegistryPassword` 和 `schemaRegistryToken` 以密钥库引用返回，从不以凭据返回。 |
 
 ### `TableInput`
 
@@ -733,7 +761,7 @@ mutation {
 
 ---
 
-## 示例：注册一张表
+## 示例：注册一张表 {: #example-registering-a-table }
 
 ```graphql
 mutation {
@@ -756,7 +784,7 @@ mutation {
 }
 ```
 
-## 示例：创建一条 RLS 规则
+## 示例：创建一条 RLS 规则 {: #example-creating-an-rls-rule }
 
 ```graphql
 mutation {

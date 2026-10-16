@@ -1,4 +1,4 @@
-# Business-Glossar
+# Business-Glossar {: #business-glossary }
 
 Das Business-Glossar ist ein lebendes Vokabular über Ihrem Datenmodell. Jede physische Spalte im
 Modell löst auf einen Begriff auf — auf einen gemeinsamen Begriff immer dann, wenn
@@ -13,7 +13,7 @@ der weiß, dass „customer“ jede Spalte benennt, die eine Kundenkennung träg
 welche von `cust_id`, `customerId` und `CUSTOMER_KEY` die richtige ist — sie alle lösen auf denselben
 Begriff auf, und der Begriff trägt die Definition.
 
-## Wie Begriffe abgeleitet werden
+## Wie Begriffe abgeleitet werden {: #how-terms-are-derived }
 
 Provisa leitet aus jedem Spaltennamen automatisch einen Begriff ab, mithilfe einer deterministischen
 Normalisierungsregel (REQ-1387): Groß-/Kleinschreibung angleichen, nach Trennzeichen und camelCase
@@ -35,14 +35,14 @@ Token: Eine bloße `id`-Spalte wird zu `identifier` und bleibt dort.
 entstehenden Begriff statt auf drei getrennte Begriffe. Die Kuratierung hat dann eine Stelle für die
 Definition, nicht drei.
 
-### Generische Phrasen
+### Generische Phrasen {: #generic-phrases }
 
 Manche normalisierten Phrasen sind zu generisch, um für sich ein Konzept zu sein. Eine bloße Spalte
 `name`, `date` oder `identifier` benennt ein Attribut des Konzepts ihrer Tabelle, kein von dieser
 Tabelle unabhängiges Konzept. Mitarbeitende haben Namen; Produkte haben Namen; das ist nicht dasselbe.
 
 Fällt eine Phrase in die generische Menge und ist ein Tabellenkontext verfügbar, qualifiziert sich der
-Begriff zu `<Tabellenkonzept> <Phrase>`: `employees.first_name` normalisiert zu `employee first name`,
+Begriff zu `<table concept> <phrase>`: `employees.first_name` normalisiert zu `employee first name`,
 und `orders.id` normalisiert zu `order`, weil das Entfernen des Proxys die qualifizierte Phrase dann auf
 das Konzept zusammenzieht, das sie identifiziert. Dieser letzte Fall ist wichtig: Der Primärschlüssel von
 `orders` und jeder Fremdschlüssel `order_id` auf anderen Tabellen landen alle auf `order`, ohne dass
@@ -52,7 +52,7 @@ Die generische Menge umfasst Attributsubstantive (`name`, `date`, `status`, `typ
 `quantity`), Audit-Trail-Phrasen (`created_at`, `modified_by`, `submitted_timestamp`) und eine Handvoll
 weiterer, die auf nahezu jeder Tabelle auftauchen.
 
-### Der fachliche Name, nicht der physische
+### Der fachliche Name, nicht der physische {: #the-business-name-not-the-physical-name }
 
 Ein abgeleiteter Begriff folgt dem **fachlichen Namen** der Spalte — ihrem Alias, wenn die modellierende
 Person einen gesetzt hat, ihrem physischen Namen, wenn nicht (REQ-1581). Ist `usr_nm` auf `user name`
@@ -71,7 +71,7 @@ Modell folgt, statt zweimal um dieselbe Korrektur zu bitten. Sobald eine kuratie
 Begriff eine Definition, eine Beziehung oder einen Experten hinzugefügt hat, verschiebt eine
 Alias-Änderung die Ref nicht — diese Arbeit gehört der Kuratierung, und sie bleibt.
 
-### Tabellennamen als Zugriffspfad
+### Tabellennamen als Zugriffspfad {: #access-path-table-names }
 
 Manche Tabellennamen beschreiben einen Zugriffspfad statt eines Konzepts: `user_by_name` ist ein Benutzer,
 der über eine Namenssuche erreicht wird, keine eigene Art von Entität. Wenn Provisa das Tabellenkonzept
@@ -84,7 +84,7 @@ Felder hält. Der Schnitt gilt nur für Tabellenkonzepte. In einem Spaltennamen 
 zusammengesetzten Substantivs: `pet_by_name` und `pet_name` normalisieren auf denselben Begriff,
 `pet name`.
 
-## Was einen Begriff kuratiert macht
+## Was einen Begriff kuratiert macht {: #what-makes-a-term-curated }
 
 Ein Begriff, der aus der Spaltennormalisierung entstanden ist, beginnt leer — als Vorschlag, noch nicht
 als Vokabular. Er wird kuratiert, sobald eines der Folgenden zutrifft:
@@ -99,7 +99,7 @@ eines kuratierten Begriffs aus dem Modell entfernt, wird der Begriff abgekündig
 außer Dienst, behält seine redaktionellen Inhalte und wird automatisch wiederbelebt, wenn dieselbe Spalte
 erneut auftaucht. Ein nicht kuratierter Begriff ohne weitere Spalten wird schlicht entfernt.
 
-## Erneutes Synchronisieren aus Tabellen
+## Erneutes Synchronisieren aus Tabellen {: #re-syncing-from-tables }
 
 Jedes Mal, wenn eine Tabelle gespeichert oder neu geladen wird, gleicht `sync_table_refs` die Spalten
 dieser Tabelle gegen die vorhandenen Refs ab. Neue Spalten legen Begriffe an oder verknüpfen sich mit
@@ -114,7 +114,7 @@ Ein abstrakter Begriff, dessen einziger Pfad zu physischen Daten über einen abg
 abgekündigt statt entfernt, wodurch die konzeptionelle Struktur erhalten bleibt, bis sie neu verdrahtet
 ist.
 
-## Beziehungen
+## Beziehungen {: #relationships }
 
 Begriffe stehen über typisierte Kanten mit anderen Begriffen in Beziehung. Die unterstützten
 Beziehungstypen sind:
@@ -145,7 +145,7 @@ deklariert, wie Sie eine Junction über Ihre eigenen Tabellen deklarieren würde
 Code gelesen.
 [tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
 
-## Abstrakte Begriffe
+## Abstrakte Begriffe {: #abstract-terms }
 
 Ein abstrakter Begriff hat keine eigenen Refs auf physische Spalten. Verwenden Sie einen für ein
 fachliches Konzept, das mehrere konkrete Begriffe überspannt — ein Dach, das Sie anschließend mit den
@@ -156,7 +156,7 @@ Ein abstrakter Begriff, der über den Beziehungsgraphen keine physische Spalte e
 loser Vorschlag. Er erscheint weder in der Begriffssuche von Agenten noch im Metadaten-Export — ein
 Begriff, der keine Daten benennt, kann nichts beantworten.
 
-## Die Zulassungsregel für konsumierende Oberflächen
+## Die Zulassungsregel für konsumierende Oberflächen {: #the-admission-rule-for-consuming-surfaces }
 
 Ein Begriff, den eine konsumierende Oberfläche anbieten darf, muss drei Bedingungen erfüllen (REQ-1387):
 
@@ -173,7 +173,7 @@ Konnektivität pflanzt sich durch den Graphen fort: Ein abstrakter Begriff errei
 Nachbarn im Dienst, der das tut. Begriffe außer Dienst leiten nicht — ein stillgelegter Begriff hält seine
 Abhängigen nicht am Leben.
 
-## Metadaten-Export
+## Metadaten-Export {: #metadata-export }
 
 Das Glossar veröffentlicht im Rahmen des Metadaten-Exports in externe Datenkataloge. Es gilt dieselbe
 Zulassungsregel, mit einer Einschränkung: Die Verankerung eines Begriffs wird nur gegen Spalten beurteilt,
@@ -186,7 +186,7 @@ Beziehungskanten veröffentlichen nur, wenn beide Endpunktbegriffe veröffentlic
 Spalten-Assets exportieren unabhängig davon. Ein ausgeschlossener Begriff verbirgt die zugrunde liegenden
 Daten nicht.
 
-### Einen Begriff vom Export ausschließen
+### Einen Begriff vom Export ausschließen {: #excluding-a-term-from-export }
 
 Manche Spalten tragen Installationstechnik statt Fachdaten: ETL-Batch-Kennungen, Zeilenversionen,
 Ingest-Zeitstempel. Ein aus einer solchen Spalte abgeleiteter Begriff kann eine völlig zutreffende
@@ -199,7 +199,7 @@ Der Maßstab ist, ob das Fachgeschäft dieses Wort spricht, nicht ob die Definit
 ETL-Batch-Kennung hat eine klare Bedeutung, die für Engineers ins Glossar gehört; in einen Fachkatalog
 neben `customer` und `revenue` gehört sie nicht.
 
-## Arbeiten mit dem Glossar
+## Arbeiten mit dem Glossar {: #working-with-the-glossary }
 
 Öffnen Sie in der Oberfläche **Admin → Glossar**. Das linke Panel listet jeden Begriff; klicken Sie einen
 an, um seine Detailansicht zu öffnen. Von dort aus:
@@ -229,7 +229,7 @@ Das Banner **Vorgeschlagen** auf einem Begriff ohne Definition sagt Ihnen, ob de
 Beziehung setzen, der Spalten hat). Wenn Sie es sehen, ist der Begriff für Agenten und Kataloge noch nicht
 erreichbar.
 
-## Siehe auch
+## Siehe auch {: #see-also }
 
 - [Metadaten-Export](metadata-export.md) — wie Begriffe und Beziehungen in externe Datenkataloge
   veröffentlichen, einschließlich der Frage, welche Begriffe die Zulassungsregel des Exports zulässt.

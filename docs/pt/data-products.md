@@ -1,18 +1,18 @@
-# Produtos de dados (REQ-1634)
+# Produtos de dados (REQ-1634) {: #data-products-req-1634 }
 
 Um produto de dados é um conjunto nomeado e possuído de tabelas publicadas juntas para consumo. É a unidade que o catálogo expõe aos consumidores — não tabelas individuais, mas uma superfície curada que um domínio declara explicitamente como pronta. Os campos seguem o vocabulário do ODPS (Open Data Product Standard) onde o Provisa já detém a fonte da verdade. [tool-verified: `provisa/core/models.py:318-342`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json`]
 
-## Regra de propriedade de domínio
+## Regra de propriedade de domínio {: #domain-ownership-rule }
 
 Todo produto de dados é possuído por exatamente um domínio (`domain_id` é um campo obrigatório). Uma tabela pode integrar um produto de dados somente quando ambos compartilham o mesmo `domain_id`. A interface do usuário delimita o seletor de tabelas ao domínio do produto; o backend rejeita uma atribuição de `product_id` cujo domínio não corresponda ao do produto no momento de salvamento. [tool-verified: `provisa/core/models.py:320`, `docs/arch/requirements.yaml:54573-54574`]
 
 Um produto que necessite de dados de outro domínio deve importá-los como uma view de domínio primeiro e só então incluir a view como membro.
 
-## Portas de saída
+## Portas de saída {: #output-ports }
 
 As tabelas e comandos atribuídos a um produto de dados são suas **portas de saída** — a superfície consultável que os consumidores veem. Atribuir uma tabela define `Table.product_id`; removê-la cancela a associação. Uma tabela pertence a no máximo um produto. Comandos do mesmo domínio também podem ser atribuídos como membros. [tool-verified: `provisa/core/models.py:941`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json:tablesLabel,commandsLabel`]
 
-## Seções do painel de detalhes
+## Seções do painel de detalhes {: #detail-panel-sections }
 
 Ao abrir um produto de dados na interface de administração, são exibidos os seguintes painéis:
 
@@ -49,7 +49,7 @@ Somente catálogos com um conceito nativo de produto de dados o publicam como en
 
 [tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:389-418`, `provisa/api/metadata_export/bigquery_dataplex.py:112-136`, `provisa/api/metadata_export/openmetadata.py:326-344`, `provisa/api/metadata_export/datahub.py:133-136,443-483`, `provisa/api/metadata_export/collibra.py:129-133,371-388`, `provisa/api/metadata_export/atlas.py:134-147`, `provisa/api/metadata_export/atlan.py:60`, `provisa/api/metadata_export/openlineage.py:243,348`]
 
-## Campos
+## Campos {: #fields }
 
 | Campo | Obrigatório | Notas |
 | --- | --- | --- |

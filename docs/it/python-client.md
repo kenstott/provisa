@@ -1,4 +1,4 @@
-# Client Python (`provisa-client`)
+# Client Python (`provisa-client`) {: #python-client-provisa-client }
 
 Client Python per Provisa. Fornisce quattro interfacce:
 
@@ -9,7 +9,7 @@ Client Python per Provisa. Fornisce quattro interfacce:
 | Dialetto SQLAlchemy | Strumenti BI, ORM, `read_sql` di Pandas (REQ-270) |
 | ADBC | Streaming columnar Arrow-native via Flight (REQ-271) |
 
-## Installazione
+## Installazione {: #install }
 
 ```bash
 pip install provisa-client                      # core (ProvisaClient + DB-API)
@@ -22,7 +22,7 @@ pip install "provisa-client[adbc]"              # adds ADBC over Arrow Flight
 
 ## ProvisaClient
 
-### Avvio rapido
+### Avvio rapido {: #quick-start }
 
 ```python
 from provisa_client import ProvisaClient
@@ -50,7 +50,7 @@ client = ProvisaClient("http://localhost:8001", token=body["access_token"])
 
 I punti di ingresso DB-API e ADBC eseguono questo scambio per te — vedi sotto.
 
-### Query GraphQL
+### Query GraphQL {: #graphql-queries }
 
 ```python
 # Raw response dict
@@ -72,7 +72,7 @@ df = client.query_df("{ orders { id amount region } }")
 result = await client.aquery("{ orders { id amount } }")
 ```
 
-### Arrow Flight (columnar ad alto throughput)
+### Arrow Flight (columnar ad alto throughput) {: #arrow-flight-high-throughput-columnar }
 
 Usa Flight per grandi result set — i dati vengono trasmessi in streaming come Arrow record batch senza essere materializzati sul server. (REQ-143, REQ-145)
 
@@ -89,22 +89,22 @@ Flight si connette alla porta 8815 per default. (REQ-143) Sovrascrivi con `fligh
 client = ProvisaClient("http://prod.example.com", flight_port=8815)
 ```
 
-### Esplorazione del catalogo
+### Esplorazione del catalogo {: #catalog-exploration }
 
 ```python
 tables_df = client.list_tables()
 ```
 
-### Riferimento connessione
+### Riferimento connessione {: #connection-reference }
 
 | Parametro | Default | Descrizione |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | URL base del server Provisa |
 | `token` | `None` | Credenziale bearer — un token del provider o un token di accesso personale; ometterlo per l'autenticazione con password (REQ-606, REQ-1263) |
-| `role` | `"admin"` | Ruolo inviato con ogni richiesta (REQ-273) |
+| `role` | `None` | Ruolo con cui agire, inviato come `X-Provisa-Role` e rispettato solo se assegnato all'utente; se omesso, la richiesta viene eseguita con il ruolo proprio dell'identità (REQ-273) |
 | `flight_port` | `8815` | Porta gRPC di Arrow Flight (REQ-143) |
 
-### Gestione errori
+### Gestione errori {: #error-handling }
 
 `query()` solleva `httpx.HTTPStatusError` in caso di errori HTTP. (REQ-607)
 `query_df()` solleva `RuntimeError` se la risposta contiene errori GraphQL. (REQ-607)
@@ -128,7 +128,7 @@ conn = connect(
 
 `connect` invia nome utente e password in POST a `/auth/login` e conserva l'`access_token` che riceve, così la connessione porta una credenziale vera anziché un nome. `role` *richiede* un ruolo e il server lo onora solo se l'identità lo ha assegnato (REQ-273); se omesso, la connessione gira con il ruolo risolto dal login.
 
-### Esecuzione di query
+### Esecuzione di query {: #executing-queries }
 
 Il cursore accetta GraphQL o SQL — rilevato automaticamente. (REQ-268, REQ-274)
 
@@ -146,7 +146,7 @@ cur.execute("SELECT id, amount FROM orders WHERE region = 'west'")
 rows = cur.fetchall()
 ```
 
-### Metadati colonna
+### Metadati colonna {: #column-metadata }
 
 ```python
 cur.execute("{ orders { id amount } }")
@@ -155,7 +155,7 @@ print(cur.description)
 print(cur.rowcount)
 ```
 
-### Parametri nominati
+### Parametri nominati {: #named-parameters }
 
 ```python
 cur.execute(
@@ -164,7 +164,7 @@ cur.execute(
 )
 ```
 
-### Context manager
+### Context manager {: #context-managers }
 
 ```python
 with connect("http://localhost:8001", username="alice", password="secret") as conn:
@@ -175,7 +175,7 @@ with connect("http://localhost:8001", username="alice", password="secret") as co
 
 ---
 
-## Dialetto SQLAlchemy
+## Dialetto SQLAlchemy {: #sqlalchemy-dialect }
 
 ```bash
 pip install "provisa-client[sqlalchemy]"
@@ -194,7 +194,7 @@ with engine.connect() as conn:
         print(row)
 ```
 
-### Con pandas
+### Con pandas {: #with-pandas }
 
 ```python
 import pandas as pd
@@ -202,7 +202,7 @@ import pandas as pd
 df = pd.read_sql("{ orders { id amount } }", engine)
 ```
 
-### Parametri URL
+### Parametri URL {: #url-parameters }
 
 | Parametro | Descrizione | Default |
 | ----------- | ------------- | --------- |
@@ -214,7 +214,7 @@ engine = create_engine(
 )
 ```
 
-### Introspezione dello schema
+### Introspezione dello schema {: #schema-introspection }
 
 Il dialetto implementa `get_table_names()`, `get_columns()`, e `has_table()` — gli strumenti di catalogo (DBeaver, SQLAlchemy automap) possono ispezionare lo schema. (REQ-363, REQ-270)
 
@@ -242,7 +242,7 @@ conn = adbc_connect(
 
 `adbc_connect` esegue prima il login su HTTP e inserisce il token ottenuto in ogni ticket Flight, così il server Flight autentica la connessione allo stesso modo della superficie REST. (REQ-1263) L'argomento `role` è una richiesta, validata lato server rispetto alle assegnazioni dell'identità — non diventa mai l'identità. (REQ-273)
 
-### Recupero come Arrow Table
+### Recupero come Arrow Table {: #fetch-as-arrow-table }
 
 ```python
 with conn.cursor() as cur:
@@ -251,7 +251,7 @@ with conn.cursor() as cur:
     df = table.to_pandas()
 ```
 
-### Recupero come tuple
+### Recupero come tuple {: #fetch-as-tuples }
 
 ```python
 with conn.cursor() as cur:
@@ -260,7 +260,7 @@ with conn.cursor() as cur:
     one  = cur.fetchone()    # single tuple or None
 ```
 
-### Metadati colonna
+### Metadati colonna {: #column-metadata_1 }
 
 ```python
 cur.execute("{ orders { id amount } }")
@@ -268,7 +268,7 @@ print(cur.description)
 # [('id', None, ...), ('amount', None, ...)]
 ```
 
-### Context manager
+### Context manager {: #context-manager }
 
 ```python
 with adbc_connect("http://localhost:8001", user="alice", password="secret") as conn:

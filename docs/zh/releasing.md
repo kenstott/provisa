@@ -1,8 +1,8 @@
-# 版本发布
+# 版本发布 {: #releasing }
 
 发布通过推送（push）git 标签触发。标签名称决定发布渠道。
 
-## 标签命名约定
+## 标签命名约定 {: #tag-conventions }
 
 | 标签格式 | 渠道 | GitHub Release 类型 |
 | ----------- | --------- | ------------------- |
@@ -11,7 +11,7 @@
 | `v1.2.3-rc.1` | rc | Pre-release |
 | `v1.2.3` | stable | Latest release |
 
-## 创建发布
+## 创建发布 {: #creating-a-release }
 
 ```bash
 # Alpha
@@ -40,7 +40,7 @@ CI 工作流（`build-dmg.yml`，名为"Build Provisa Packages"）会在任何 `
 9. **Build and test Python client**，然后 **Publish to PyPI**
 10. **Publish GitHub Release** — 上传全部资产，为 alpha/beta/rc 设置 pre-release 标志
 
-## 发布资产
+## 发布资产 {: #release-assets }
 
 每次发布都会发布以下资产，全部附加到 GitHub Release（wheel 也会同步发布到 PyPI）：
 
@@ -64,14 +64,14 @@ CI 工作流（`build-dmg.yml`，名为"Build Provisa Packages"）会在任何 `
 Python 客户端版本会自动转换为 PEP 440 格式：
 `v0.1.0-alpha.1` → `0.1.0a1`，`v0.1.0-beta.1` → `0.1.0b1`，`v0.1.0-rc.1` → `0.1.0rc1`。
 
-## PyPI 发布设置（一次性）
+## PyPI 发布设置（一次性） {: #pypi-publishing-setup-one-time }
 
 1. 从 `~/.pypirc` 复制你的 API 令牌（`pypi.org` 对应的 `pypi-...` 值）
 2. 在 **Settings → Secrets → Actions** 中将其添加为名为 `PYPI_API_TOKEN` 的仓库密钥
 
 之后每次打标签，`publish-pypi` 任务都会自动发布。
 
-## 所需的仓库密钥
+## 所需的仓库密钥 {: #required-repository-secrets }
 
 请在 **Settings → Secrets → Actions** 中配置以下内容：
 
@@ -87,7 +87,7 @@ Python 客户端版本会自动转换为 PEP 440 格式：
 
 没有这些密钥的构建仍能成功完成，但会生成未签名／未公证的 DMG（用户将看到 Gatekeeper 警告）。
 
-## 导出 .p12 证书
+## 导出 .p12 证书 {: #exporting-the-p12-certificate }
 
 1. 打开 **Keychain Access** → 登录钥匙串 → **My Certificates**
 2. 查找 **Developer ID Application: Your Name (TEAMID)** — 展开以确认私钥嵌套在其下方
@@ -100,7 +100,7 @@ Python 客户端版本会自动转换为 PEP 440 格式：
 
 5. 将其粘贴为 `APPLE_CERT_P12_BASE64` 的值；将 `APPLE_CERT_P12_PASSWORD` 设置为步骤 3 中的密码
 
-## 查找你的证书名称
+## 查找你的证书名称 {: #finding-your-certificate-name }
 
 ```bash
 security find-identity -v -p codesigning | grep "Developer ID Application"
@@ -108,7 +108,7 @@ security find-identity -v -p codesigning | grep "Developer ID Application"
 
 复制引号中的完整字符串——这就是 `APPLE_DEVELOPER_ID` 的值。
 
-## 删除错误的标签
+## 删除错误的标签 {: #deleting-a-bad-tag }
 
 ```bash
 git tag -d v1.2.3-alpha.1

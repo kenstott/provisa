@@ -1,6 +1,6 @@
-# Migration von Hasura v2 zu Provisa
+# Migration von Hasura v2 zu Provisa {: #migrating-from-hasura-v2-to-provisa }
 
-## Voraussetzungen
+## Voraussetzungen {: #prerequisites }
 
 1. Eine laufende Hasura-v2-Instanz (v2.x) mit exportierten Metadaten.
 2. Metadaten mit der Hasura-CLI exportieren:
@@ -13,19 +13,19 @@
    `cron_triggers.yaml`, `inherited_roles.yaml`, `remote_schemas.yaml` usw. enthält.
 3. Python 3.11+ mit installiertem Paket `provisa`.
 
-## Verwendung der CLI
+## Verwendung der CLI {: #cli-usage }
 
 ```bash
 python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 ```
 
-### Argumente
+### Argumente {: #arguments }
 
 | Argument | Erforderlich | Beschreibung |
 | ---------- | ---------- | ------------- |
 | `metadata_dir` | Ja | Pfad zum exportierten Hasura-v2-Metadatenverzeichnis |
 
-### Optionen
+### Optionen {: #options }
 
 | Option | Standard | Beschreibung |
 | -------- | --------- | ------------- |
@@ -35,7 +35,7 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 | `--auth-env-file FILE` | Keine | Pfad zur `.env`-Datei mit der JWT/Admin-Secret-Authentifizierungskonfiguration |
 | `--dry-run` | aus | Analysiert und validiert, ohne die Ausgabe zu schreiben |
 
-### Datei mit Quellenüberschreibungen
+### Datei mit Quellenüberschreibungen {: #source-overrides-file }
 
 Eine YAML-Datei, die nach Quellenname indiziert ist und Verbindungseigenschaften enthält, die überschrieben werden sollen:
 
@@ -48,7 +48,7 @@ default:
   password: "${env:PROD_DB_PASSWORD}"
 ```
 
-### Datei für die Authentifizierungsumgebung
+### Datei für die Authentifizierungsumgebung {: #auth-env-file }
 
 Eine Datei im `.env`-Stil mit der zu konvertierenden Hasura-Authentifizierungskonfiguration. Der Konverter
 ordnet Folgendes zu:
@@ -58,7 +58,7 @@ ordnet Folgendes zu:
 - Admin Secret -> Provisa `superuser`.
 - Webhook-Authentifizierung -> es wird eine Warnung ausgegeben (kein Provisa-Äquivalent).
 
-## Feature-Paritätsmatrix
+## Feature-Paritätsmatrix {: #feature-parity-matrix }
 
 | Hasura-v2-Feature | Provisa-Äquivalent | Hinweise |
 | --- | --- | --- |
@@ -82,7 +82,7 @@ ordnet Folgendes zu:
 | **Enum-Tabellen** | Tabelle wird erstellt | Das Flag `is_enum` wird nicht übernommen (kein Provisa-Äquivalent). |
 | **Allow-Listen** | Übersprungen | Im Metadatenmodell nicht vorhanden. |
 
-## Schritte nach der Konvertierung
+## Schritte nach der Konvertierung {: #post-conversion-steps }
 
 1. **Die YAML-Ausgabe prüfen.** Kontrollieren Sie, ob Quellen, Tabellen und Rollen korrekt aussehen.
 2. **Quellverbindungen konfigurieren.** Der Konverter analysiert Verbindungs-URLs, verwendet bei einem
@@ -97,37 +97,37 @@ ordnet Folgendes zu:
    eine Authentifizierungsumgebungsdatei und führen Sie den Vorgang erneut mit `--auth-env-file` aus.
 7. **Testen.** Starten Sie den Provisa-Server und überprüfen Sie Abfragen gegen Ihre Datenquellen.
 
-## Häufige Probleme und Fehlerbehebung
+## Häufige Probleme und Fehlerbehebung {: #common-issues-and-troubleshooting }
 
-### Verbindungs-URL wird nicht analysiert
+### Verbindungs-URL wird nicht analysiert {: #connection-url-not-parsed }
 
 Wenn `database_url` der Quelle eine Referenz auf eine Umgebungsvariable ist (`{"from_env": "PG_URL"}`),
 kann der Konverter diese zum Zeitpunkt der Konvertierung nicht auflösen. Die Quelle erhält
 Platzhalterwerte (`host: localhost`, `database: default`). Beheben Sie dies mit `--source-overrides`.
 
-### Platzhalterspalten
+### Platzhalterspalten {: #wildcard-columns }
 
 Wenn eine Berechtigung `columns: "*"` gewährt, erstellt der Konverter einen einzelnen
 Platzhalter-Spalteneintrag. Nach der Konvertierung möchten Sie diesen möglicherweise durch explizite
 Spaltenlisten ersetzen, indem Sie das tatsächliche Datenbankschema prüfen.
 
-### Genauigkeit von Event-Triggern
+### Genauigkeit von Event-Triggern {: #event-trigger-fidelity }
 
 Event-Trigger werden mit `operations` und `webhook_url` konvertiert, aber Hasura-spezifische
 Zustellgarantien (genau einmal, erneute Zustellung) haben in Provisa keine direkten Entsprechungen.
 Prüfen Sie den Abschnitt `event_triggers` und konfigurieren Sie Ihre Webhook-Infrastruktur entsprechend.
 
-### Fehlende Rollen
+### Fehlende Rollen {: #missing-roles }
 
 Rollen werden ausschließlich aus Berechtigungseinträgen erfasst. Wenn eine Rolle in Hasura existiert,
 aber für keine Tabelle oder Action Berechtigungen hat, erscheint sie nicht in der Ausgabe.
 
-### Benutzerdefinierte Root-Felder
+### Benutzerdefinierte Root-Felder {: #custom-root-fields }
 
 Nur die Root-Felder `select` und `select_by_pk` werden für den Tabellenalias verwendet. Andere
 benutzerdefinierte Root-Felder (`select_aggregate`, `insert`, `update`, `delete`) werden nicht zugeordnet.
 
-## Beispiel
+## Beispiel {: #example }
 
 Konvertierung eines typischen Hasura-v2-Projekts mit zwei Schemas, die Domänen zugeordnet sind:
 

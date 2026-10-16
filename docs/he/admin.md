@@ -2,7 +2,7 @@
 
 ה-admin API הוא נקודת קצה של Strawberry GraphQL בכתובת `POST /admin/graphql` ‏(REQ-533). היא מחייבת תפקיד superuser או admin ‏(REQ-125, REQ-060) והיא נפרדת מנקודת הקצה של GraphQL לנתונים (REQ-533).
 
-## אימות
+## אימות {: #authentication }
 
 העבירו את אישורי הגישה שלכם בכותרת `Authorization` באמצעות ספק האימות הרגיל של Provisa ‏(REQ-120):
 
@@ -12,7 +12,7 @@ Authorization: Bearer <token>
 
 גישת admin ממושלת על ידי היכולת `admin` המוקצית לתפקיד (REQ-060, REQ-042).
 
-### אסימוני גישה אישיים
+### אסימוני גישה אישיים {: #personal-access-tokens }
 
 אסימון גישה אישי מתקבל בכל מקום שבו מתקבל אסימון bearer, כולל נקודת קצה זו. הנפקתו וביטולו הם שירות עצמי — זהו אישור הגישה של מחזיק האסימון עצמו, ולכן הוא שוכן בפרופיל המשתמש בממשק הניהול ולא תחת עמוד admin, לצד עזיבת ארגון ומחיקת החשבון. מנהל אינו מטביע אסימונים בשם מישהו אחר. (REQ-1263)
 
@@ -22,11 +22,11 @@ Authorization: Bearer <token>
 | `GET /auth/tokens` | האסימונים הפעילים של הקורא בארגון זה — קידומת התצוגה, השם, חותמות זמן של מחזור החיים, וה-hash המזהה אסימון לצורך ביטול. לעולם לא אישור גישה עובד |
 | `DELETE /auth/tokens/{token_hash}` | ביטול אחד מאסימוני הקורא. ‏404 כשהוא אינו שלו או כבר בוטל |
 
-השמטת `role_id` משאירה את האסימון מתפענח לכל תפקיד שבעליו מחזיק; נקיבה בשם אחד מצמצמת את האסימון מתחת לבעליו. ביטול קורה גם במשתמע: הסרת חברות ארגון של משתמש מבטלת את אסימוניו עבור אותו ארגון. ראו [מודל אבטחה](security.md#_13) עבור אישור הגישה עצמו.
+השמטת `role_id` משאירה את האסימון מתפענח לכל תפקיד שבעליו מחזיק; נקיבה בשם אחד מצמצמת את האסימון מתחת לבעליו. ביטול קורה גם במשתמע: הסרת חברות ארגון של משתמש מבטלת את אסימוניו עבור אותו ארגון. ראו [מודל אבטחה](security.md#personal-access-tokens) עבור אישור הגישה עצמו.
 
-## יכולות
+## יכולות {: #capabilities }
 
-### ניהול תצורה
+### ניהול תצורה {: #config-management }
 
 הורידו את התצורה הרצה הנוכחית (REQ-164):
 
@@ -42,7 +42,7 @@ PUT /admin/config
 
 ‏Provisa מאמתת את ה-YAML, טוענת מחדש קטלוגים ומייצרת מחדש סכמות (REQ-012, REQ-253). אין צורך באתחול מחדש.
 
-### הגדרות זמן ריצה
+### הגדרות זמן ריצה {: #runtime-settings }
 
 קראו וכתבו הגדרות פלטפורמה בזמן ריצה מבלי לערוך את קובץ התצורה (REQ-165):
 
@@ -73,7 +73,7 @@ PUT  /admin/ai-models
 
 ‏`GET`/`HEAD /health` ו-`GET /setup/status` הם תמיד לא-מאומתים — הם עוקפים את דרישת `Authorization: Bearer` גם כשמוגדר ספק אימות (REQ-539).
 
-### מנוע פדרציה
+### מנוע פדרציה {: #federation-engine }
 
 קראו או שנו באיזה מנוע הפריסה משתמשת (REQ-916):
 
@@ -84,7 +84,7 @@ PUT  /admin/federation-engine
 
 ‏`GET` מחזיר את מפתח המנוע הפעיל ואת שדות התצורה שהוא זקוק להם. `PUT` מקבל גוף עם `engine` (המפתח) וכל שדה ספציפי למנוע; הבחירה נשמרת לתצורת הפלטפורמה ונכבלת באתחול השירות הבא. [tool-verified: `provisa/api/admin/settings_router.py:730-829`]
 
-### עורך קשרים
+### עורך קשרים {: #relationship-editor }
 
 רשימת קשרים (REQ-166):
 
@@ -102,11 +102,11 @@ query {
 }
 ```
 
-יצירת קשר (REQ-019):
+יצירת קשר (REQ-019). מזהה שכבר קיים נדחה; קשר משתנה עם `updateRelationship`, שמקבל את אותו קלט:
 
 ```graphql
 mutation {
-  upsertRelationship(input: {
+  createRelationship(input: {
     id: "orders-to-customers"
     sourceTableId: "orders"
     targetTableId: "customers"
@@ -123,7 +123,7 @@ mutation {
 
 ```graphql
 mutation {
-  upsertRelationship(input: {
+  createRelationship(input: {
     id: "pets-bonded-pair"
     sourceTableId: "pets"
     targetTableId: "pets"
@@ -146,7 +146,7 @@ mutation {
 
 `viaLabelSource` קובע מהיכן מגיע השם הנחשף, ושלוש הצורות מומרות ל-UPPER_SNAKE_CASE עבור Cypher: `column` משתמש ב-`viaTypeValue` (`BONDED_PAIR`), `table` משתמש בשם טבלת ה-junction עצמה (`PET_COMPANIONS`), ו-`fixed` משתמש ב-`alias` המוצהר. טבלת junction שהוצהרה כך היא קשת ולא ישות — היא נשמטת מתוויות הצמתים, ולכן לעולם אינה מופיעה כגלולת צומת בממשק הגרף. [tool-verified: `provisa/api/admin/types.py:606-611`, `provisa/api/admin/db_queries.py:47-82`]
 
-### גילוי קשרים בעזרת AI
+### גילוי קשרים בעזרת AI {: #ai-relationship-discovery }
 
 הפעילו ניתוח FK מונע-Claude דרך REST ‏(REQ-167, REQ-018):
 
@@ -164,7 +164,7 @@ curl -X POST http://localhost:8001/admin/discover/candidates/{id}/accept \
   -d '{"name": "orders_to_customers"}'
 ```
 
-### Introspection של סכמה
+### Introspection של סכמה {: #schema-introspection }
 
 עיינו בטבלאות מפורסמות בכל המקורות (REQ-008):
 
@@ -182,7 +182,7 @@ query {
 }
 ```
 
-### בדיקת תלויות עמודה (REQ-1484)
+### בדיקת תלויות עמודה (REQ-1484) {: #column-dependency-check-req-1484 }
 
 לפני שמירת עריכת טבלה המשנה את שם הכינוי ב-SQL של עמודה או מוחקת עמודה, שאלו מה עוד
 מפנה אליה:
@@ -202,7 +202,7 @@ query {
 מריץ זאת בשמירה ומציג את התוצאה כדיאלוג יידוע. ראו
 [Lineage](lineage.md) לגבי מה השאילתה מכסה ומה אינה יכולה.
 
-### ניהול תצוגות
+### ניהול תצוגות {: #view-management }
 
 רישום תצוגה ממוטריאלת (REQ-133, REQ-135):
 
@@ -228,7 +228,7 @@ mutation {
 }
 ```
 
-### רישום מקורות גרף
+### רישום מקורות גרף {: #graph-source-registration }
 
 מקורות Neo4j ו-SPARQL נרשמים דרך נקודות קצה REST ‏(לא דרך ה-admin API של GraphQL) ‏(REQ-295, REQ-297):
 
@@ -267,7 +267,7 @@ curl -X POST http://localhost:8001/admin/sources/sparql/kg/tables \
 
 לאחר הרישום, טבלאות מופיעות בסכמת GraphQL וניתנות לשאילתה כמו כל מקור אחר (REQ-016).
 
-### ייבוא Hasura / DDN ‏(REQ-1483)
+### ייבוא Hasura / DDN ‏(REQ-1483) {: #hasura-ddn-import-req-1483 }
 
 המירו פרויקט Hasura v2 או Hasura DDN קיים לתצורת Provisa דרך ממשק הניהול או ה-API, מבלי ששום דבר ינחת עד שתאשרו זאת.
 
@@ -294,7 +294,7 @@ POST /admin/import/hasura/apply
 
 התצוגה המקדימה לעולם אינה שומרת את ה-YAML הממיר במטמון בצד השרת; היישום לוקח את ה-YAML שאתם מספקים, ולכן מה שמיושם הוא בדיוק מה שנסקר. [tool-verified: `provisa/api/admin/import_router.py`]
 
-### חילופין עם Apache Ossie ‏(REQ-1316, REQ-1321)
+### חילופין עם Apache Ossie ‏(REQ-1316, REQ-1321) {: #apache-ossie-interchange-req-1316-req-1321 }
 
 ‏Provisa פועלת הדדית עם Apache Ossie ‏(incubating) כגבול ייבוא/ייצוא.
 
@@ -303,11 +303,11 @@ GET  /admin/ossie
 POST /admin/ossie/import
 ```
 
-**ייצוא** ‏(`GET /admin/ossie`) גוזר את מסמך ה-YAML של Ossie מן המודל הממושל החי בכל בקשה — הוא לעולם אינו נשמר במטמון, ולכן אינו יכול להתיישן. התגובה היא `text/yaml` עם כותרת `Content-Disposition: attachment`. טבלאות הופכות לאובייקטי `dataset`, עמודות הופכות לאובייקטי `field`, וקשרים ממופים לאובייקטי `relationship` של Ossie. (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py:download_ossie`]
+**ייצוא** (`GET /admin/ossie`) גוזר את מסמך ה-YAML של Ossie מהמודל המנוהל החי בכל בקשה — הוא לעולם אינו נשמר במטמון, ולכן אינו יכול להתיישן. התגובה היא `text/yaml` עם כותרת `Content-Disposition: attachment`. המסמך הוא מודל אחד עם `version`, `name`, `datasets`, `relationships` ו-`metrics` בשורשו: טבלאות הופכות לאובייקטי `dataset`, עמודות לאובייקטי `field`, וקשרים ממופים לאובייקטי `relationship` של Ossie. מודל ללא טבלה נדחה עם `422`. (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py:download_ossie`]
 
-**ייבוא** ‏(`POST /admin/ossie/import`) מקבל מסמך YAML או JSON של Ossie ‏(הפורמט מזוהה אוטומטית). הוא מנתח את המסמך ומחזיר רישומי טבלאות וקשרים מוצעים כאובייקט JSON — שום דבר אינו נרשם. מסך הסקירה בממשק הניהול מאפשר לכם לקבל או לגזום הצעות לפני שמוטציה כלשהי נורית. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py:import_ossie`]
+**ייבוא** (`POST /admin/ossie/import`) מקבל מסמך Ossie ב-YAML או ב-JSON (הפורמט מזוהה אוטומטית). הוא מנתח את המסמך ומחזיר רישומים מוצעים של טבלאות, קשרים ומטריקות כאובייקט JSON — דבר אינו נרשם. הוא קורא רק את הצורה השטוחה של המסמך; מסמך שעוטף את המודל שלו ב-`semantic_model` נדחה בשמו. מסך הסקירה בממשק הניהול מאפשר לקבל או לקצץ הצעות לפני שמוטציה כלשהי מופעלת. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py:import_ossie`]
 
-### אחסון אובייקטים (REQ-1046, REQ-1048, REQ-1049)
+### אחסון אובייקטים (REQ-1046, REQ-1048, REQ-1049) {: #object-storage-req-1046-req-1048-req-1049 }
 
 קראו או הגדירו את אחסון המטריאליזציה של הארגון:
 
@@ -318,7 +318,7 @@ PUT  /admin/org-storage
 
 ‏`GET` מדווח כמה מקצבת האחסון של הפלטפורמה הארגון מנצל. `PUT` רושם את ה-DSN של האחסון של הארגון עצמו (מוצפן במנוחה; לעולם אינו מוחזר על ידי GET). לאחר שנקבע, המטריאליזציות של הארגון נוחתות בדלי שלו עצמו ואינן נספרות עוד מול קצבת הפלטפורמה. שליחת `storage_url: null` מנקה זאת ומחזירה את הארגון למאגר הפלטפורמה. [tool-verified: `provisa/api/admin/org_storage_router.py`]
 
-### הצפנת ארגון (REQ-1574)
+### הצפנת ארגון (REQ-1574) {: #org-encryption-req-1574 }
 
 קבעו או סבבו את מפתח ההצפנה במנוחה של הארגון:
 
@@ -333,7 +333,7 @@ PUT  /admin/org-encryption
 
 ה-admin API מגיע עם GraphiQL בכתובת `GET /admin/graphql` בדפדפן (REQ-622). השתמשו בו כדי לחקור את סכמת ה-admin המלאה באופן אינטראקטיבי.
 
-## תצוגות ניהול בדומיין ops ‏(REQ-1386)
+## תצוגות ניהול בדומיין ops ‏(REQ-1386) {: #ops-domain-management-views-req-1386 }
 
 שמונה תצוגות SQL נזרעות לתוך דומיין ה-`ops` המובנה בכל התקנה. [tool-verified: `provisa/api/startup_seed.py:225-331` `_seed_ops_domain`] הן חושפות את יומן ביקורת השאילתות כטבלאות ממושלות — ניתנות לשאילתה דרך SQL ‏(pgwire), ‏GraphQL ו-Cypher תחת אותה גישת דומיין, ‏RLS וכללי מיסוך כמו כל טבלה עסקית.
 
@@ -374,7 +374,7 @@ ORDER BY day DESC, query_count DESC;
 
 אותן שאילתות רצות כ-GraphQL או Cypher על פני כל תעבורה ממושלת — pgwire, ‏Arrow Flight, או Bolt. [inferred from governed-surface design]
 
-## מציג הדוחות (REQ-1390)
+## מציג הדוחות (REQ-1390) {: #reports-viewer-req-1390 }
 
 מציג הדוחות נמצא ב-`/admin/reports`. תפקידים ללא היכולת `observability` אינם יכולים להגיע אליו.
 
@@ -384,13 +384,13 @@ ORDER BY day DESC, query_count DESC;
 
 **מחיקה.** סמל הפח מופיע רק עבור דוחות מותאמים. תצוגות ניהול זרועות אינן ניתנות למחיקה מממשק זה. [tool-verified: `ReportsTab.tsx:151` — `const custom = report.sourceId === DERIVED_SOURCE_ID` gates the delete button]
 
-## תצוגה מקדימה של טבלה (REQ-1392)
+## תצוגה מקדימה של טבלה (REQ-1392) {: #table-preview-req-1392 }
 
 הרחיבו שורת טבלה כלשהי בעמוד הטבלאות. הכפתור **Preview** פותח מודאל ברוחב 90% עם הנתונים הממושלים החיים של הטבלה. [tool-verified: `TablePreviewModal.tsx:24` — `size="90%"`; `GovernedTableViewer.tsx` is the underlying viewer]
 
 טבלאות המגובות ב-APIs עם פרמטרי נתיב נדרשים חוסמות תצוגה מקדימה עד שערכים אלה מסופקים. טופס מוטבע אוסף כל פרמטר נדרש לפני שהשאילתה הראשונה רצה; פרמטרי שאילתה אופציונליים מופיעים באותו טופס. [tool-verified: `GovernedTableViewer.tsx:51-55, 153-155` — `requiredParamColumns` check; "paramsRequired" message shown when `activeParams == null`]
 
-## מציג נתונים ממושל (REQ-1391)
+## מציג נתונים ממושל (REQ-1391) {: #governed-data-viewer-req-1391 }
 
 אותו רכיב מציג מפעיל את מודאל התצוגה המקדימה ואת מציג הדוחות. התנהגותו זהה בשני ההקשרים.
 

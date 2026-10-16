@@ -1,8 +1,8 @@
-# Publicación de versiones
+# Publicación de versiones {: #releasing }
 
 Las versiones se activan al enviar (push) una etiqueta de git. El nombre de la etiqueta determina el canal.
 
-## Convenciones de etiquetas
+## Convenciones de etiquetas {: #tag-conventions }
 
 | Formato de etiqueta | Canal | Tipo de GitHub Release |
 | ----------- | --------- | ------------------- |
@@ -11,7 +11,7 @@ Las versiones se activan al enviar (push) una etiqueta de git. El nombre de la e
 | `v1.2.3-rc.1` | rc | Pre-release |
 | `v1.2.3` | stable | Latest release |
 
-## Crear una versión
+## Crear una versión {: #creating-a-release }
 
 ```bash
 # Alpha
@@ -40,7 +40,7 @@ El flujo de trabajo de CI (`build-dmg.yml`, llamado "Build Provisa Packages") se
 9. **Build and test Python client**, y luego **Publish to PyPI**
 10. **Publish GitHub Release** — sube todos los assets, activa la marca de pre-release para alpha/beta/rc
 
-## Recursos de la versión
+## Recursos de la versión {: #release-assets }
 
 Cada versión publica los siguientes assets, todos adjuntos al GitHub Release (el wheel también se publica en PyPI):
 
@@ -64,14 +64,14 @@ Cada versión publica los siguientes assets, todos adjuntos al GitHub Release (e
 La versión del cliente de Python se convierte automáticamente al formato PEP 440:
 `v0.1.0-alpha.1` → `0.1.0a1`, `v0.1.0-beta.1` → `0.1.0b1`, `v0.1.0-rc.1` → `0.1.0rc1`.
 
-## Configuración de publicación en PyPI (una sola vez)
+## Configuración de publicación en PyPI (una sola vez) {: #pypi-publishing-setup-one-time }
 
 1. Copie su token de API desde `~/.pypirc` (el valor `pypi-...` para `pypi.org`)
 2. Agréguelo como un secreto del repositorio llamado `PYPI_API_TOKEN` en **Settings → Secrets → Actions**
 
 El job `publish-pypi` publicará entonces automáticamente en cada etiqueta.
 
-## Secretos requeridos del repositorio
+## Secretos requeridos del repositorio {: #required-repository-secrets }
 
 Configure los siguientes en **Settings → Secrets → Actions**:
 
@@ -87,7 +87,7 @@ Configure los siguientes en **Settings → Secrets → Actions**:
 
 Los builds sin estos secretos se completan correctamente pero producen un DMG sin firmar/sin notarizar (los usuarios verán una advertencia de Gatekeeper).
 
-## Exportar el certificado .p12
+## Exportar el certificado .p12 {: #exporting-the-p12-certificate }
 
 1. Abra **Keychain Access** → llavero de inicio de sesión → **My Certificates**
 2. Busque **Developer ID Application: Your Name (TEAMID)** — expándalo para confirmar que la clave privada está anidada debajo
@@ -100,7 +100,7 @@ Los builds sin estos secretos se completan correctamente pero producen un DMG si
 
 5. Péguelo como el valor de `APPLE_CERT_P12_BASE64`; defina `APPLE_CERT_P12_PASSWORD` con la contraseña del paso 3
 
-## Encontrar el nombre de su certificado
+## Encontrar el nombre de su certificado {: #finding-your-certificate-name }
 
 ```bash
 security find-identity -v -p codesigning | grep "Developer ID Application"
@@ -108,7 +108,7 @@ security find-identity -v -p codesigning | grep "Developer ID Application"
 
 Copie la cadena completa entre comillas — ese es el valor para `APPLE_DEVELOPER_ID`.
 
-## Eliminar una etiqueta incorrecta
+## Eliminar una etiqueta incorrecta {: #deleting-a-bad-tag }
 
 ```bash
 git tag -d v1.2.3-alpha.1

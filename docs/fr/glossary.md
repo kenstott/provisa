@@ -1,4 +1,4 @@
-# Glossaire métier
+# Glossaire métier {: #business-glossary }
 
 Le glossaire métier est un vocabulaire vivant posé sur votre modèle de données. Chaque colonne
 physique du modèle se résout vers un terme — un terme partagé unique dès que
@@ -13,7 +13,7 @@ qui sait que « customer » nomme toutes les colonnes portant un identifiant de 
 deviner lequel de `cust_id`, `customerId` et `CUSTOMER_KEY` est le bon — ils se résolvent tous vers
 le même terme, et le terme porte la définition.
 
-## Comment les termes sont dérivés
+## Comment les termes sont dérivés {: #how-terms-are-derived }
 
 Provisa dérive automatiquement un terme de chaque nom de colonne, à l'aide d'une règle de
 normalisation déterministe (REQ-1387) : mise en casse uniforme, découpage sur les séparateurs et le
@@ -35,7 +35,7 @@ dernier jeton restant : une colonne `id` seule s'étend en `identifier` et y res
 l'unique terme résultant plutôt que trois termes séparés. La curation n'a alors qu'un seul endroit
 où ajouter la définition, pas trois.
 
-### Expressions génériques
+### Expressions génériques {: #generic-phrases }
 
 Certaines expressions normalisées sont trop génériques pour être un concept à elles seules. Une
 colonne `name`, `date` ou `identifier` seule nomme un attribut du concept de sa table, pas un
@@ -43,7 +43,7 @@ concept indépendant de cette table. Les employés ont des noms ; les produits o
 n'est pas la même chose.
 
 Lorsqu'une expression appartient à l'ensemble générique et qu'un contexte de table est disponible,
-le terme est qualifié en `<concept de la table> <expression>` : `employees.first_name` se normalise
+le terme est qualifié en `<table concept> <phrase>` : `employees.first_name` se normalise
 en `employee first name`, et `orders.id` se normalise en `order`, parce que le retrait de la
 substitution fait ensuite retomber l'expression qualifiée sur le concept qu'elle identifie. Ce
 dernier cas est important : la clé primaire de `orders` et chaque clé étrangère `order_id` des
@@ -53,7 +53,7 @@ L'ensemble générique couvre les noms d'attributs (`name`, `date`, `status`, `t
 `quantity`), les expressions de piste d'audit (`created_at`, `modified_by`,
 `submitted_timestamp`) et une poignée d'autres qui apparaissent sur presque chaque table.
 
-### Le nom métier, pas le nom physique
+### Le nom métier, pas le nom physique {: #the-business-name-not-the-physical-name }
 
 Un terme dérivé suit le **nom métier** de la colonne — son alias lorsque le modélisateur en a posé
 un, son nom physique sinon (REQ-1581). Lorsque `usr_nm` est aliasé en `user name`, le terme dérivé
@@ -71,7 +71,7 @@ que de réclamer deux fois la même correction. Une fois qu'un curateur a ajout�
 relation ou un expert à un terme, une modification d'alias ne déplace pas la référence — ce travail
 appartient au curateur, et il reste.
 
-### Noms de table décrivant un chemin d'accès
+### Noms de table décrivant un chemin d'accès {: #access-path-table-names }
 
 Certains noms de table décrivent un chemin d'accès plutôt qu'un concept : `user_by_name` est un
 utilisateur atteint par une recherche sur le nom, pas un genre d'entité distinct. Lorsque Provisa
@@ -84,7 +84,7 @@ l'un de ses propres champs. La coupe ne s'applique qu'aux concepts de table. Dan
 colonne, `by` fait partie du nom composé : `pet_by_name` et `pet_name` se normalisent vers le même
 terme, `pet name`.
 
-## Ce qui fait qu'un terme est curé
+## Ce qui fait qu'un terme est curé {: #what-makes-a-term-curated }
 
 Un terme né de la normalisation d'une colonne démarre vierge — une proposition, pas encore du
 vocabulaire. Il devient curé dès que l'une des conditions suivantes est vraie :
@@ -99,7 +99,7 @@ curé est retirée du modèle, le terme est déprécié plutôt que supprimé : 
 conserve le contenu fourni par ses éditeurs, et est ravivé automatiquement si la même colonne
 réapparaît. Un terme non curé sans plus aucune colonne est simplement supprimé.
 
-## Resynchronisation depuis les tables
+## Resynchronisation depuis les tables {: #re-syncing-from-tables }
 
 Chaque fois qu'une table est enregistrée ou rechargée, `sync_table_refs` réconcilie les colonnes de
 cette table avec les références existantes. Les nouvelles colonnes créent ou lient des termes ; les
@@ -114,7 +114,7 @@ Un terme abstrait dont l'unique chemin vers des données physiques passait par u
 est déprécié plutôt que supprimé, ce qui préserve la structure conceptuelle jusqu'à ce qu'elle soit
 recâblée.
 
-## Relations
+## Relations {: #relationships }
 
 Les termes se relient à d'autres termes par des arêtes typées. Les types de relation pris en charge
 sont :
@@ -144,7 +144,7 @@ dans les clients graphe — elle est l'arête. Rien en elle n'est spécifique au
 exactement comme vous déclareriez une jonction sur vos propres tables, et elle est lue par le même code.
 [tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
 
-## Termes abstraits
+## Termes abstraits {: #abstract-terms }
 
 Un terme abstrait n'a aucune référence de colonne physique en propre. Employez-en un pour un
 concept métier qui couvre plusieurs termes concrets — un chapeau que vous câblez ensuite vers les
@@ -156,7 +156,7 @@ Un terme abstrait qui ne peut atteindre aucune colonne physique à travers le gr
 est une proposition en suspens. Il n'apparaît ni dans la recherche de termes par les agents ni dans
 l'export de métadonnées — un terme qui ne nomme aucune donnée ne peut répondre à rien.
 
-## La règle d'admission pour les surfaces consommatrices
+## La règle d'admission pour les surfaces consommatrices {: #the-admission-rule-for-consuming-surfaces }
 
 Un terme qu'une surface consommatrice peut proposer doit satisfaire trois conditions (REQ-1387) :
 
@@ -174,7 +174,7 @@ La connectivité se propage à travers le graphe : un terme abstrait atteint les
 n'importe quel voisin en service qui les atteint. Les termes hors service ne conduisent pas — un
 terme retiré ne maintient pas ses dépendants en vie.
 
-## Export de métadonnées
+## Export de métadonnées {: #metadata-export }
 
 Le glossaire se publie vers des catalogues de données externes dans le cadre de l'export de
 métadonnées. La même règle d'admission s'applique, avec un resserrement : l'ancrage d'un terme
@@ -188,7 +188,7 @@ Les arêtes de relation ne se publient que lorsque les deux termes qu'elles reli
 Les actifs de colonne s'exportent indépendamment. L'exclusion d'un terme ne masque pas les données
 sous-jacentes.
 
-### Exclure un terme de l'export
+### Exclure un terme de l'export {: #excluding-a-term-from-export }
 
 Certaines colonnes portent de la tuyauterie plutôt que des données métier : identifiants de lot
 ETL, versions de ligne, horodatages d'ingestion. Un terme dérivé d'une telle colonne peut avoir une
@@ -201,7 +201,7 @@ Le critère est de savoir si le métier prononce ce mot, pas si la définition e
 identifiant de lot ETL a un sens clair qui a sa place dans le glossaire pour les ingénieurs ; il
 n'a pas sa place dans un catalogue métier à côté de `customer` et `revenue`.
 
-## Travailler avec le glossaire
+## Travailler avec le glossaire {: #working-with-the-glossary }
 
 Ouvrez **Admin → Glossaire** dans l'interface. Le panneau de gauche liste tous les termes ; cliquez
 sur l'un d'eux pour ouvrir sa vue détaillée. De là :
@@ -229,7 +229,7 @@ La bannière **Proposé** sur un terme sans définition vous indique si le terme
 la colonne ou ajoutez une définition) ou non ancré (reliez-le à un terme qui possède des colonnes).
 Lorsque vous la voyez, le terme n'est pas encore accessible aux agents ni aux catalogues.
 
-## Voir aussi
+## Voir aussi {: #see-also }
 
 - [Export de métadonnées](metadata-export.md) — comment les termes et les relations se publient
   vers des catalogues de données externes, et quels termes la règle d'admission à l'export admet.

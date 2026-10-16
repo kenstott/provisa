@@ -1,10 +1,10 @@
-# Cypher 查詢支援
+# Cypher 查詢支援 {: #cypher-query-support }
 
 Provisa 透過 `provisa/cypher/` 模組將 openCypher 的子集轉譯為 SQL。(REQ-345、REQ-347) 查詢由一個自訂的遞迴下降剖析器剖析（不使用外部 Cypher 程式庫）(REQ-571)，對照模型進行結構描述解析 (REQ-351)，轉譯為 SQL 後，再路由至目標執行引擎。(REQ-066、REQ-067、REQ-347)
 
-## 已實作功能
+## 已實作功能 {: #implemented-features }
 
-### 子句
+### 子句 {: #clauses }
 
 | 子句 | 狀態 | 備註 |
 | -------- | -------- | ------- |
@@ -24,7 +24,7 @@ Provisa 透過 `provisa/cypher/` 模組將 openCypher 的子集轉譯為 SQL。(
 | `CALL db.propertyKeys()` | ✓ | 回傳所有節點型別中的所有屬性鍵名稱 (REQ-572) |
 | `UNWIND` | ✓ | 陣列展開為資料列；第一個項目成為 FROM，後續項目成為 CROSS JOIN UNNEST |
 
-### 比對模式
+### 比對模式 {: #match-patterns }
 
 | 模式 | 狀態 | 備註 |
 | --------- | -------- | ------- |
@@ -42,7 +42,7 @@ Provisa 透過 `provisa/cypher/` 模組將 openCypher 的子集轉譯為 SQL。(
 | `shortestPath(…)` | ✓ | 異質端點使用扁平 JOIN；同型別／自我參照使用 WITH RECURSIVE CTE |
 | `allShortestPaths(…)` | ✓ | 與 shortestPath 相同，惟不含 LIMIT 1 |
 
-### 運算式與述詞
+### 運算式與述詞 {: #expressions-and-predicates }
 
 | 功能 | 狀態 | SQL 對應 |
 | --------- | -------- | ------------ |
@@ -69,7 +69,7 @@ Provisa 透過 `provisa/cypher/` 模組將 openCypher 的子集轉譯為 SQL。(
 | `CASE WHEN … THEN … ELSE … END` | ✓ | 直接對應（搜尋式及簡式兩種形式） |
 | 隱含 GROUP BY | ✓ | 當任一項目含有聚合函式時，未聚合的 RETURN 項目成為 GROUP BY 鍵值 |
 
-### Map 投影
+### Map 投影 {: #map-projections }
 
 | 語法 | SQL 對應 |
 | -------- | ------------ |
@@ -80,7 +80,7 @@ Provisa 透過 `provisa/cypher/` 模組將 openCypher 的子集轉譯為 SQL。(
 
 **物件屬性。** 持有已宣告物件的欄（遠端 GraphQL 類型的嵌入物件，或任何帶物件欄位登記的欄）是映射屬性：`RETURN n.address` 以映射返回它，無論引擎以何種形式返回，節點 `n` 也在其屬性中攜帶它。指向已登記類型的遠端 GraphQL 欄位（一個物件或一個列表）不是屬性；透過其關聯到達。(REQ-1991) [tool-verified: `provisa/cypher/label_map.py`, `provisa/cypher/assembler.py`]
 
-### 聚合函式
+### 聚合函式 {: #aggregation-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -93,7 +93,7 @@ Provisa 透過 `provisa/cypher/` 模組將 openCypher 的子集轉譯為 SQL。(
 | `percentileCont(x, p)` | `approx_percentile(x, p)` |
 | `percentileDisc(x, p)` | `approx_percentile(x, p)` |
 
-### 字串函式
+### 字串函式 {: #string-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -109,7 +109,7 @@ Provisa 透過 `provisa/cypher/` 模組將 openCypher 的子集轉譯為 SQL。(
 | `size(string)` | `char_length(string)` |
 | `size(list)` | `cardinality(list)` |
 
-### 型別轉換函式
+### 型別轉換函式 {: #type-conversion-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -119,7 +119,7 @@ Provisa 透過 `provisa/cypher/` 模組將 openCypher 的子集轉譯為 SQL。(
 | `toBoolean(x)` | `TRY_CAST(x AS BOOLEAN)` |
 | `toStringOrNull`、`toIntegerOrNull`、`toFloatOrNull`、`toBooleanOrNull` | `TRY_CAST` 各變體 |
 
-### 數學函式
+### 數學函式 {: #math-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -128,7 +128,7 @@ Provisa 透過 `provisa/cypher/` 模組將 openCypher 的子集轉譯為 SQL。(
 | `range(start, end)` | `sequence(start, end)` |
 | `abs`、`sqrt`、`ceil`、`floor`、`round`、`sign` | 直接傳遞 |
 
-### 清單函式
+### 清單函式 {: #list-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -137,7 +137,7 @@ Provisa 透過 `provisa/cypher/` 模組將 openCypher 的子集轉譯為 SQL。(
 | `tail(list)` | `slice(list, 2, cardinality(list))` |
 | `isEmpty(list)` | `cardinality(list) = 0` |
 
-### 清單推導式
+### 清單推導式 {: #list-comprehensions }
 
 | 語法 | SQL 對應 |
 | -------- | ------------ |
@@ -150,14 +150,14 @@ Provisa 透過 `provisa/cypher/` 模組將 openCypher 的子集轉譯為 SQL。(
 | `single(x IN list WHERE p(x))` | `cardinality(filter(list, x -> p(x))) = 1` |
 | `reduce(acc = init, x IN list \| expr)` | `reduce(list, init, (acc, x) -> expr, acc -> acc)` |
 
-### 模式推導式
+### 模式推導式 {: #pattern-comprehensions }
 
 | 語法 | SQL 對應 |
 | -------- | ------------ |
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
 | `[(a)-[]->(b:Label) \| b.prop]` | 型別自模型推斷；相同的 ARRAY 子查詢型態 |
 
-### 相關 CALL 子查詢
+### 相關 CALL 子查詢 {: #correlated-call-subqueries }
 
 `CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` 轉譯為 `CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`。(REQ-573) 規則：
 
@@ -168,7 +168,7 @@ Provisa 透過 `provisa/cypher/` 模組將 openCypher 的子集轉譯為 SQL。(
 
 ---
 
-## 寫入
+## 寫入 {: #writes }
 
 Cypher 透過 `/data/cypher` 端點支援三種寫入模式，由 `provisa/cypher/write_translator.py` 執行。(REQ-818) [tool-verified: `provisa/api/rest/cypher_router.py:415-545`]
 
@@ -191,22 +191,22 @@ Cypher 透過 `/data/cypher` 端點支援三種寫入模式，由 `provisa/cyphe
 
 ---
 
-## 協定存取
+## 協定存取 {: #protocol-access }
 
 Cypher 經由兩種傳輸方式抵達相同的受治理管線：
 
 - **HTTP**——`POST /data/cypher`，帶一個 JSON 本文（`{"query": "...", "params": {...}}`）。回傳具型別的資料列，或於寫入時回傳 `affected_rows`。`RETURN` 子句中的圖形變數序列化為 JSON：節點帶有 `id`、`label`、`tableLabel` 及 `properties`；邊帶有 `identity`、`start`、`end`、`type`、`properties`、`startNode` 及 `endNode`；路徑帶有 `nodes`、`edges` 及 `length`/`hops`。(REQ-750) 已註冊的命令亦可於此處經 `CALL fn(args) YIELD col1, col2` 呼叫——位置式引數依序對應至該命令所宣告的引數名稱。(REQ-1156) [tool-verified: `provisa/api/rest/registered_call.py:113-143`]
 - **Bolt**——一個相容於 Neo4j 的二進位協定伺服器（PackStream 編解碼器、分塊 framing），讓 Neo4j Browser、Bloom 及 Bolt 驅動程式可於聯邦圖形上執行 Cypher。(REQ-802) 當 `PROVISA_BOLT_PORT` 設為非零值時啟動，預設為停用；TLS 請設定 `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY`。[tool-verified: `provisa/api/app_startup.py:317-338`] Bolt 驗證將主體對應至使用者，將資料庫對應至角色：`SHOW DATABASES` 會為每個（檢視 × 角色）配對列出一筆項目，命名為 `provisa_<role>`（業務領域）或 `provisa_ops_<role>`（含系統/中繼/ops 領域）；`:use` 選取使用中的角色及檢視。(REQ-807) 關係經由一個 `rel_ids` 資料表取得持久性整數 ID，其設計仿照 `node_ids`。(REQ-806) 已註冊的命令可以 `CALL command(args)` 呼叫——位置式引數依序對應至已宣告的引數名稱；`CALL dbms.*` / `CALL db.*` 程序具優先權。(REQ-1156) [tool-verified: `provisa/bolt/session.py:722-749`]
 
-### 圖形分析
+### 圖形分析 {: #graph-analytics }
 
 `POST /data/graph-analytics` 會執行一個 Cypher 查詢，自所得的節點及邊建立一個記憶體內的 NetworkX 圖形，執行一個具名演算法，並在以 JSON 形式回傳每個節點及邊之前，將一個 `_analytics` 字典合併入其中，並附帶一個 `elapsed_ms` 欄位。(REQ-642) `_analytics` 鍵值依演算法而異：中心性得出 `score`；社群偵測得出 `cluster`；k-core 得出 `core_number`；度中心性加入 `in_degree` 及 `out_degree`。(REQ-643) 該端點對超過可設定大小上限（預設 10,000 個節點／50,000 條邊）的圖形以 HTTP 413 拒絕；Girvan-Newman 上限為 500 個節點，除非呼叫端傳入 `force=true`。(REQ-650、REQ-651)
 
 ---
 
-## 限制
+## 限制 {: #limitations }
 
-### 設計限制
+### 設計限制 {: #design-constraints }
 
 1. **寫入僅限於 `CREATE`、`SET` 及 `DELETE`。**這些會經由與 GraphQL 及 SQL 變異相同的管線，作為直接資料表寫入執行。(REQ-818、REQ-666、REQ-667、REQ-668) 見下方「§寫入」小節。`MERGE`、`DETACH DELETE` 及 `REMOVE` 於剖析時遭拒絕。(REQ-671、REQ-818) APOC 程序亦遭拒絕。
 
@@ -216,7 +216,7 @@ Cypher 經由兩種傳輸方式抵達相同的受治理管線：
 
 4. **遞迴路徑須具上界。**可變長度模式（`[*]`）必須含有上界（例如 `[*..10]`）。(REQ-348) 無界走訪會於剖析時遭拒絕，以防止失控的遞迴 CTE。
 
-### 行為說明
+### 行為說明 {: #behaviour-notes }
 
 5. **非自我參照路徑上的 `shortestPath` 使用扁平 JOIN，而非跳數排序。**當起訖型別不同，且結構描述中無自我參照關係時，轉譯器會產出一個扁平 JOIN 鏈（結構描述最短路徑）。(REQ-576) 它不會發出 `ORDER BY hops`，因為該程式碼路徑並未追蹤跳數。所得結果是結構上最短的結構描述路徑，而非跨多列資料的數據最短路徑。
 
@@ -226,7 +226,7 @@ Cypher 經由兩種傳輸方式抵達相同的受治理管線：
 
 8. **`WITH` 子句 CTE 命名為 `_w0`、`_w1`、……**(REQ-578) 名稱於單次轉譯呼叫內依位置指派。若將多個已轉譯查詢組合（例如批次處理）而以樸素方式串接，可能產生 CTE 名稱衝突。
 
-### 運算式與模式涵蓋範圍 (REQ-913)
+### 運算式與模式涵蓋範圍 (REQ-913) {: #expression-and-pattern-coverage-req-913 }
 
 Cypher 運算式會被剖析為一個 AST，並逐節點降階為 SQL（`provisa/cypher/expr_parser.py`、`provisa/cypher/expr_visitor.py`）。該文法遵循 openCypher 的 `oC_Expression` 優先權層級。支援項目：常值、參數、屬性存取、`n.prop`、索引與切片、算術運算（`+ - * / % ^`）、比較、`IN`、`STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`、`IS [NOT] NULL`、布林 `AND` / `OR` / `XOR` / `NOT`、`CASE`、清單及 map 常值、清單及模式推導式（包含 `p = (…)` 路徑繫結）、map 投影、`reduce`、`all` / `any` / `none` / `single` 量詞、存在性子查詢，以及函式呼叫。
 

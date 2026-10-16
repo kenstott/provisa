@@ -1,4 +1,4 @@
-# Python 用戶端（`provisa-client`）
+# Python 用戶端（`provisa-client`） {: #python-client-provisa-client }
 
 Provisa 的 Python 用戶端。提供四種介面：
 
@@ -9,7 +9,7 @@ Provisa 的 Python 用戶端。提供四種介面：
 | SQLAlchemy 方言 | BI 工具、ORM、Pandas `read_sql` (REQ-270) |
 | ADBC | 經 Flight 的 Arrow 原生欄式串流 (REQ-271) |
 
-## 安裝
+## 安裝 {: #install }
 
 ```bash
 pip install provisa-client                      # core (ProvisaClient + DB-API)
@@ -22,7 +22,7 @@ pip install "provisa-client[adbc]"              # adds ADBC over Arrow Flight
 
 ## ProvisaClient
 
-### 快速上手
+### 快速上手 {: #quick-start }
 
 ```python
 from provisa_client import ProvisaClient
@@ -50,7 +50,7 @@ client = ProvisaClient("http://localhost:8001", token=body["access_token"])
 
 DB-API 和 ADBC 入口會代您完成這項交換——見下文。
 
-### GraphQL 查詢
+### GraphQL 查詢 {: #graphql-queries }
 
 ```python
 # Raw response dict
@@ -66,13 +66,13 @@ result = client.query(
 df = client.query_df("{ orders { id amount region } }")
 ```
 
-### 非同步
+### 非同步 {: #async }
 
 ```python
 result = await client.aquery("{ orders { id amount } }")
 ```
 
-### Arrow Flight（高吞吐量欄式）
+### Arrow Flight（高吞吐量欄式） {: #arrow-flight-high-throughput-columnar }
 
 大型結果集請使用 Flight——數據以 Arrow record batch 形式串流，不會於伺服端具體化。(REQ-143、REQ-145)
 
@@ -89,22 +89,22 @@ Flight 預設連往連接埠 8815。(REQ-143) 可以 `flight_port=` 覆寫：
 client = ProvisaClient("http://prod.example.com", flight_port=8815)
 ```
 
-### 目錄探索
+### 目錄探索 {: #catalog-exploration }
 
 ```python
 tables_df = client.list_tables()
 ```
 
-### 連線參考
+### 連線參考 {: #connection-reference }
 
 | 參數 | 預設值 | 描述 |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | Provisa 伺服器基礎 URL |
 | `token` | `None` | Bearer 憑證——提供者權杖或個人存取權杖；若採密碼驗證則留空 (REQ-606、REQ-1263) |
-| `role` | `"admin"` | 隨每個要求傳送的角色 (REQ-273) |
+| `role` | `None` | 要代為執行的角色，以 `X-Provisa-Role` 傳送，只有在該角色已指派給使用者時才會生效；省略時，請求以身份本身的角色執行 (REQ-273) |
 | `flight_port` | `8815` | Arrow Flight gRPC 連接埠 (REQ-143) |
 
-### 錯誤處理
+### 錯誤處理 {: #error-handling }
 
 `query()` 於 HTTP 錯誤時擲出 `httpx.HTTPStatusError`。(REQ-607)
 `query_df()` 於回應含有 GraphQL 錯誤時擲出 `RuntimeError`。(REQ-607)
@@ -128,7 +128,7 @@ conn = connect(
 
 `connect` 會把用戶名和密碼 POST 至 `/auth/login`，並保留回傳的 `access_token`，因此該連線攜帶的是一份真正的憑證，而不只是一個名字。`role` 是在*請求*某個角色，只有該身分確實獲配該角色時伺服器才會予以滿足 (REQ-273)；若省略，連線就以登入所解析出的角色執行。
 
-### 執行查詢
+### 執行查詢 {: #executing-queries }
 
 游標接受 GraphQL 或 SQL——會自動偵測。(REQ-268、REQ-274)
 
@@ -146,7 +146,7 @@ cur.execute("SELECT id, amount FROM orders WHERE region = 'west'")
 rows = cur.fetchall()
 ```
 
-### 欄位中繼資料
+### 欄位中繼資料 {: #column-metadata }
 
 ```python
 cur.execute("{ orders { id amount } }")
@@ -155,7 +155,7 @@ print(cur.description)
 print(cur.rowcount)
 ```
 
-### 具名參數
+### 具名參數 {: #named-parameters }
 
 ```python
 cur.execute(
@@ -164,7 +164,7 @@ cur.execute(
 )
 ```
 
-### Context Manager
+### Context Manager {: #context-managers }
 
 ```python
 with connect("http://localhost:8001", username="alice", password="secret") as conn:
@@ -175,7 +175,7 @@ with connect("http://localhost:8001", username="alice", password="secret") as co
 
 ---
 
-## SQLAlchemy 方言
+## SQLAlchemy 方言 {: #sqlalchemy-dialect }
 
 ```bash
 pip install "provisa-client[sqlalchemy]"
@@ -194,7 +194,7 @@ with engine.connect() as conn:
         print(row)
 ```
 
-### 搭配 pandas
+### 搭配 pandas {: #with-pandas }
 
 ```python
 import pandas as pd
@@ -202,7 +202,7 @@ import pandas as pd
 df = pd.read_sql("{ orders { id amount } }", engine)
 ```
 
-### URL 參數
+### URL 參數 {: #url-parameters }
 
 | 參數 | 描述 | 預設值 |
 | ----------- | ------------- | --------- |
@@ -214,7 +214,7 @@ engine = create_engine(
 )
 ```
 
-### 結構描述內省
+### 結構描述內省 {: #schema-introspection }
 
 該方言實作了 `get_table_names()`、`get_columns()` 及 `has_table()`——目錄工具（DBeaver、SQLAlchemy automap）可藉此檢視結構描述。(REQ-363、REQ-270)
 
@@ -242,7 +242,7 @@ conn = adbc_connect(
 
 `adbc_connect` 會先透過 HTTP 登入，並把取得的權杖放入每一張 Flight ticket，因此 Flight 伺服器對連線的驗證方式與 REST 介面完全一致。(REQ-1263) `role` 參數是一項請求，由伺服器對照該身分的角色指派進行驗證——它絕不會成為身分本身。(REQ-273)
 
-### 擷取為 Arrow Table
+### 擷取為 Arrow Table {: #fetch-as-arrow-table }
 
 ```python
 with conn.cursor() as cur:
@@ -251,7 +251,7 @@ with conn.cursor() as cur:
     df = table.to_pandas()
 ```
 
-### 擷取為 tuple
+### 擷取為 tuple {: #fetch-as-tuples }
 
 ```python
 with conn.cursor() as cur:
@@ -260,7 +260,7 @@ with conn.cursor() as cur:
     one  = cur.fetchone()    # single tuple or None
 ```
 
-### 欄位中繼資料
+### 欄位中繼資料 {: #column-metadata_1 }
 
 ```python
 cur.execute("{ orders { id amount } }")
@@ -268,7 +268,7 @@ print(cur.description)
 # [('id', None, ...), ('amount', None, ...)]
 ```
 
-### Context Manager
+### Context Manager {: #context-manager }
 
 ```python
 with adbc_connect("http://localhost:8001", user="alice", password="secret") as conn:

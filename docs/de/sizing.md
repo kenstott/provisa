@@ -1,10 +1,10 @@
-# Dimensionierung und Tuning
+# Dimensionierung und Tuning {: #sizing-and-tuning }
 
 Das Dimensionierungswerkzeug misst Ihr eigenes Provisa-Deployment unter Ihrer eigenen Last. Aus diesen Messungen erstellt es einen Leitfaden zur Dimensionierung und zum Tuning: wie viele physische Kerne und Worker-Prozesse die Last braucht und was jede Einstellung bringt. Jede Zahl im Leitfaden stammt aus einer Messung; nach einer Änderung am Deployment oder an der Last führen Sie das Werkzeug daher erneut aus und erzeugen den Leitfaden neu.
 
 Das Werkzeug liegt im Provisa-Repository unter `demo/named/perf/bench/`. Führen Sie jeden der folgenden Befehle aus diesem Verzeichnis mit der Python-Umgebung des Repositorys aus (`../../../../.venv/bin/python3`).
 
-## Was es meldet
+## Was es meldet {: #what-it-reports }
 
 Ein einzelner Dimensionierungslauf besteht aus mehreren Benchmark-Läufen gegen Ihr Deployment. Jeder variiert eine Sache:
 
@@ -23,7 +23,7 @@ Kosten bedeutet hier die CPU-Zeit von Provisa pro Anfrage, in Millisekunden. Die
 
 Aus den Läufen passt `bench_report.py` pro Engine, Transport und Quelle ein Kostenmodell an: Grundkosten plus Kosten pro Feld, Filter, Zeile und Join, wobei ein quellenübergreifender Join danach bewertet wird, wie seine beiden Enden gelesen werden. Läuft die Engine als eigener Server und wird die CPU ihres Containers gemessen, erhält auch die Engine ein Kostenmodell. [tool-verified: `demo/named/perf/bench/cost_model.py:fit`] `sizing_guide.py` macht aus dem Bericht den Leitfaden. Mit einem Vertrag, der Ihre Last beschreibt, dimensioniert es auch diese Last.
 
-## Einen Setup-Vertrag schreiben
+## Einen Setup-Vertrag schreiben {: #write-a-setup-contract }
 
 Der Setup-Vertrag ist eine einzelne YAML-Datei. Er nennt die Endpunkte Ihres Deployments, die Tabellen, die der Benchmark lesen darf, die Form der Anfragen und die Last. Der Benchmark prüft den Vertrag vor dem Lauf gegen das Deployment. Er lehnt eine Tabelle, Spalte oder einen Join ab, den das Deployment nicht bereitstellt. [tool-verified: `demo/named/perf/bench/setup_contract.py:setup_from_dict`]
 
@@ -133,9 +133,9 @@ Das Vertragsformat ist in `setup_contract.py` und `contract_parse.py` definiert;
 
 Beschreiben Sie die Anfragen so, wie sie wirklich sind. Der Leitfaden dimensioniert genau die Anfragen, die dieser Vertrag erzeugt: Die Dimensionierung zieht sie aus demselben Generator mit festem Seed, den auch ein Lauf verwendet. [tool-verified: `demo/named/perf/bench/sizing.py:_transport` uses `request_mix.RequestGenerator`]
 
-## Ausführen
+## Ausführen {: #run-it }
 
-### 1. Die Namen einmal auflösen
+### 1. Die Namen einmal auflösen {: #1-resolve-the-names-once }
 
 Führen Sie den Baseline-Vertrag einmal aus. Der Lauf fragt das Deployment, wie jeder Transport Ihre Tabellen nennt, und schreibt `resolved-names.json` neben seine Ergebnisse. [tool-verified: `demo/named/perf/bench/optimistic_load.py:resolve_names`]
 
@@ -146,7 +146,7 @@ Führen Sie den Baseline-Vertrag einmal aus. Der Lauf fragt das Deployment, wie 
 
 `--engine` nennt die Föderations-Engine, die Ihr Deployment ausführt (`duckdb`, `pg` oder `trino`). `--server-pid` ist die Prozess-ID des Servers; der Lauf liest die CPU-Zeit dieses Prozesses und seiner Kindprozesse (der Worker). Er liest den Prozess direkt und funktioniert daher nur, wenn der Lastgenerator auf dem Host des Servers läuft. [tool-verified: `demo/named/perf/bench/optimistic_load.py:_server_cpu_seconds`]
 
-### Die CPU des Servers von einem anderen Host aus messen
+### Die CPU des Servers von einem anderen Host aus messen {: #measuring-the-servers-cpu-from-another-host }
 
 Lassen Sie den Lastgenerator nach Möglichkeit auf einer eigenen Maschine laufen: Dann nimmt er dem Server keine Kerne weg. Um die CPU des Servers von dort aus zu messen, starten Sie `server_cpu_agent.py` auf dem Host des Servers und übergeben dem Lauf seine URL anstelle von `--server-pid`:
 
@@ -163,7 +163,7 @@ Der Agent beantwortet genau eine Zahl, dieselbe, die `--server-pid` liest: `GET 
 
 `--listen` ist erforderlich: Der Agent hat keine Standardadresse. Binden Sie ihn an eine private Adresse, die nur der Lastgenerator erreichen kann, nie an eine öffentliche Schnittstelle, und beenden Sie ihn (Strg+C), wenn die Läufe abgeschlossen sind.
 
-### 2. Die Läufe planen
+### 2. Die Läufe planen {: #2-plan-the-runs }
 
 ```bash
 ../../../../.venv/bin/python3 sweeps.py plan --setup acme.yaml --out results/sizing \
@@ -185,7 +185,7 @@ Der Plan schreibt einen Vertrag pro Lauf und eine `manifest.json`. Ein Lauf, den
 
 Die Replikat-Läufe messen die Aktualisierungskosten des Replikats in einem Zeitfenster ohne Last. Setzen Sie `load.idle_window_s` in Ihrem Vertrag (zum Beispiel `120`), bevor Sie sie planen. Ohne diesen Wert lehnt der Bericht den Break-even mit `no idle.json` ab. [tool-verified: `demo/named/perf/bench/bench_report.py:_break_even`]
 
-### 3. Jeden geplanten Vertrag ausführen
+### 3. Jeden geplanten Vertrag ausführen {: #3-run-every-planned-contract }
 
 Jeder Manifest-Eintrag nennt seine Vertragsdatei. Führen Sie jeden in `results/sizing/results/<run name>` aus:
 
@@ -202,7 +202,7 @@ Fügen Sie `--apply-replication` zu jedem Lauf hinzu, dessen Manifest-Eintrag `"
 
 Jeder Lauf trägt im Manifest ein `server_env`: Der Server muss damit laufen. Bei einem Stellschrauben-Lauf ist das seine Engine, `{"PROVISA_ENGINE": "duckdb"}`; führen Sie alle Läufe einer Engine aus und starten Sie den Server dann mit der nächsten neu. Bei einem Worker-Lauf kommen seine Worker und die Obergrenze laufender Anfragen hinzu, zum Beispiel `{"PROVISA_WORKERS": "16", "PROVISA_REQUEST_THREADS": "2", "PROVISA_ENGINE": "pg"}`: `PROVISA_WORKERS` ist die Anzahl der Worker-Prozesse, und `PROVISA_REQUEST_THREADS` setzt `concurrency.request_threads`, die laufenden Anfragen, die jeder Worker gleichzeitig bearbeitet. [tool-verified: `provisa/core/settings_catalog.py` `concurrency.request_threads`, `env="PROVISA_REQUEST_THREADS"`] Warten Sie, bis jeder Worker bedient (`/health` meldet `workers.ready` von `workers.expected`), bevor Sie den Lauf starten.
 
-### 4. Den Bericht erstellen
+### 4. Den Bericht erstellen {: #4-build-the-report }
 
 ```bash
 ../../../../.venv/bin/python3 bench_report.py --root results/sizing --out results/sizing/report.json
@@ -210,7 +210,7 @@ Jeder Lauf trägt im Manifest ein `server_env`: Der Server muss damit laufen. Be
 
 `--tolerance` (Standard `0.05`) legt fest, wie nah eine Worker-Einstellung am besten gemessenen Durchsatz liegen muss, um als ausreichend zu gelten. [tool-verified: `demo/named/perf/bench/bench_report.py:DEFAULT_TOLERANCE`]
 
-### 5. Den Leitfaden erzeugen
+### 5. Den Leitfaden erzeugen {: #5-generate-the-guide }
 
 ```bash
 ../../../../.venv/bin/python3 sizing_guide.py --report results/sizing/report.json --out guide.md \
@@ -219,9 +219,9 @@ Jeder Lauf trägt im Manifest ein `server_env`: Der Server muss damit laufen. Be
 
 Ohne `--setup` enthält der Leitfaden nur die Tuning-Abschnitte. Mit `--setup` dimensioniert der Leitfaden die `workload` des Vertrags mit der Engine, die `--engine` nennt (standardmäßig `pg`); eine Engine, die die Läufe nicht gemessen haben, wird abgelehnt.
 
-## Den Leitfaden lesen
+## Den Leitfaden lesen {: #read-the-guide }
 
-### Diese Last dimensionieren
+### Diese Last dimensionieren {: #sizing-this-workload }
 
 Der Leitfaden beendet diesen Abschnitt mit einer Zeile, zum Beispiel: **12 physical cores, 24 worker processes, 2 in-flight requests per worker.** Darüber zeigt eine Tabelle jeden Transport und jede Quelle: den Anteil der Anfragen, die mittleren Felder, Filter, Zeilen und Joins, den Anteil der Cache-Treffer und die CPU, die eine Anfrage kostet.
 
@@ -237,17 +237,17 @@ Das Werkzeug dimensioniert nichts, was es nicht gemessen hat. Ein Teil der Last,
 - eine andere Replikationseinstellung oder TTL als die gemessene
 - Cache-Treffer, wenn die Läufe keine Cache-Zahlen haben
 
-### Worker-Prozesse und laufende Anfragen
+### Worker-Prozesse und laufende Anfragen {: #worker-processes-and-in-flight-requests }
 
 Für jeden Transport zeigt der Leitfaden die wenigsten Worker, deren Spitzendurchsatz innerhalb der Toleranz des besten liegt. Bei dieser Worker-Zahl wählt er dann die wenigsten laufenden Anfragen pro Worker, die dasselbe leisten. Er zeigt diese Einstellung in zwei Formen: Worker pro physischem Kern und laufende Anfragen pro Worker. Mehr von beidem bringt keinen zusätzlichen Durchsatz. Weniger lässt Kerne ungenutzt. Die Tabelle nennt außerdem die Spitzenzahl an Anfragen pro Sekunde und ihre p99-Latenz. Jeder gemessene Punkt ist darunter aufgeführt.
 
 Der Kapazitätsfaktor sind die Anfragen pro Sekunde, die ein physischer Kern leistet, mal die CPU, die eine Anfrage für sich allein kostet, geteilt durch 1000. Über 1 leistet der Kern mehr als die Anfragen eines Threads, wie es der Fall ist, wenn seine Hardware-Threads beide bedienen. [tool-verified: `demo/named/perf/bench/bench_report.py:_server`]
 
-### Was eine Anfrage kostet
+### Was eine Anfrage kostet {: #what-a-request-costs }
 
 Für jede Engine, jeden Transport und jede Quelle nebeneinander: die Grundkosten einer ungecachten Anfrage, die Kosten, die jedes Feld, jeder Filter, jede Zeile und jeder Join hinzufügt, und wie gut das Modell zu den Messungen passt (R², 1 ist eine perfekte Anpassung). Ein quellenübergreifender Join hat drei Kosten, je nachdem, wie seine beiden Enden gelesen werden: beide live, beide aus Replikaten oder eines von jedem. Ein Strich bedeutet, dass die Läufe diese Stellschraube nicht variiert haben. Läuft die Engine als eigener Server, gibt eine zweite Tabelle die CPU der Engine auf dieselbe Weise an: Eine Anfrage, die die Engine bedient, etwa ein quellenübergreifender Join, zeigt dort ihre Engine-Zeit. Anhand dieser Zahlen sehen Sie, was eine Änderung Ihrer Anfragen kosten würde, bevor Sie sie vornehmen: zwei Felder mehr in jeder Anfrage fügen das Doppelte der Kosten pro Feld hinzu.
 
-### Das Opt-in für den Antwort-Cache
+### Das Opt-in für den Antwort-Cache {: #the-response-cache-opt-in }
 
 Für jeden Transport und jede Quelle: die CPU eines Fehlgriffs, eines Treffers und was ein Treffer spart. Eine Anfrage wird nur dann aus dem Cache beantwortet, wenn sie sich dafür entscheidet und eine frühere Anfrage wiederholt; die Einsparung gilt also für wiederholte Anfragen. Aktivieren Sie das Opt-in für die wiederholten Anfragen. [tool-verified: `demo/named/perf/bench/bench_report.py:_cache`]
 

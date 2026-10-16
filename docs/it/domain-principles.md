@@ -1,10 +1,10 @@
-# Principi del Modello di Dominio
+# Principi del Modello di Dominio {: #domain-model-principles }
 
 ---
 
 ## 1. Governance
 
-### Principi fondamentali
+### Principi fondamentali {: #core-principles }
 
 1. **Ogni risorsa deve essere di proprietà di un dominio.** Tabelle, viste e relazioni sono tutti asset di dominio. Non esistono risorse fluttuanti non governate. Il dominio è l'unità di responsabilità.
 2. **Ogni dominio deve avere uno steward.** Un dominio può esistere in uno stato in sospeso finché non viene assegnato uno steward, ma non può servire dati governati senza uno.
@@ -14,7 +14,7 @@
 6. **Gli analisti possono creare query cross-dominio a partire da relazioni approvate.** Le query sono viste interdominio espresse in qualsiasi linguaggio di query supportato. Non creano nuova semantica — attraversano percorsi di relazione approvati. Non è richiesta alcuna approvazione aggiuntiva: la governance è gestita a monte, ai livelli di Relazione e visibilità delle colonne. Il catalogo è il meccanismo di enforcement: il compilatore rifiuta gli attraversamenti non presenti nel catalogo delle relazioni approvate.
 7. **Chiunque può richiedere l'accesso a una risorsa di dominio.** L'accesso è concesso a livello di risorsa, non a livello di query. Se si ha accesso a una risorsa, la si può interrogare. La governance è applicata a runtime attraverso la pipeline.
 
-### Risorse: tabelle e viste come pari
+### Risorse: tabelle e viste come pari {: #resources-tables-and-views-as-peers }
 
 La distinzione tra una tabella e una vista è solo di origine — una tabella è rivendicata da un'origine dati, una vista è definita da uno steward. Una volta che entrambe esistono come asset di dominio, il modello di governance le tratta in modo identico:
 
@@ -25,7 +25,7 @@ La distinzione tra una tabella e una vista è solo di origine — una tabella è
 
 Uno steward può rivendicare tabelle privatamente ed esporre solo viste curate come prodotti dati rivolti al pubblico.
 
-### Composizione delle viste
+### Composizione delle viste {: #view-composition }
 
 Una vista appartiene sempre a un singolo dominio — esiste un solo tipo di vista, sempre intra-dominio. Una vista esiste per uno dei due scopi seguenti:
 
@@ -46,7 +46,7 @@ Ogni vista porta uno scopo di business dichiarato, indicato al momento della cre
 - Viene referenziato dalle richieste di accesso secondo il Principio 7, così lo steward può valutarne l'idoneità
 - Accompagna la vista dalla sua creazione lungo l'intero flusso di governance
 
-### Query
+### Query {: #queries }
 
 Una Query attraversa percorsi di relazione approvati sugli asset di dominio. A differenza delle Viste, le Query non creano nuovo significato semantico — attraversano la struttura approvata del modello. Le Query possono essere espresse in qualsiasi linguaggio di query supportato (SQL, GraphQL, Cypher).
 
@@ -71,22 +71,22 @@ Ogni linguaggio supportato espone il dominio come namespace strutturale nativo d
 
 Il compilatore risolve l'appartenenza al dominio da queste posizioni strutturali — non è richiesta alcuna annotazione o suggerimento.
 
-### Relazioni
+### Relazioni {: #relationships }
 
 Una relazione è un percorso di attraversamento approvato tra due asset. I confini di dominio sono irrilevanti rispetto a cosa sia una relazione — determinano solo chi la approva.
 
 **Approvazione:**
 
-- L'approvazione è richiesta da ogni steward distinto che possiede un asset coinvolto nella relazione
-- Se uno steward possiede entrambi gli asset, è richiesta un'approvazione. Se sono coinvolti due steward, sono richieste due approvazioni
-- Non esiste una classificazione intra-dominio/cross-dominio — la proprietà determina naturalmente l'onere di approvazione
+- Una richiesta di relazione la decidono i domini che tocca: il dominio della sua tabella di origine e il dominio della sua tabella di destinazione (REQ-1948)
+- Un'approvazione conta solo se viene da un utente il cui diritto di creare relazioni raggiunge uno di quei domini; qualsiasi utente di questo tipo può rifiutarla
+- La richiesta viene eseguita quando due utenti diversi, nessuno dei quali il richiedente, l'hanno approvata e ogni dominio coinvolto ha un approvatore: una relazione tra due domini ha bisogno di un sì da ciascun lato, e una relazione all'interno di un dominio ha bisogno di due approvatori di quel dominio
 - Approvare una relazione costruisce il grafo delle dipendenze di ciascuno steward, abilitando notifiche proattive sull'evoluzione dello schema
 
 Le relazioni sono create su richiesta, non speculativamente. Il primo team con l'esigenza di business svolge il lavoro; i team successivi ereditano l'infrastruttura.
 
 **Conseguenza sull'ottimizzazione:** una dichiarazione di relazione non è solo un artefatto di governance — è anche una descrizione strutturale della forma di un join. Le due tabelle, le due colonne e il tipo di join che definiscono una relazione sono esattamente ciò di cui l'ottimizzatore di query ha bisogno per pre-materializzare quel join. Le relazioni cross-source generano automaticamente tabelle di join pre-materializzate; le relazioni same-source possono aderire tramite `materialize: true`. Gli steward che pensano e approvano relazioni valide ottengono l'accelerazione delle query come sottoprodotto diretto — il lavoro di governance e il lavoro di ottimizzazione sono lo stesso atto.
 
-### Concessioni di accesso al campo
+### Concessioni di accesso al campo {: #field-access-grants }
 
 Una concessione di accesso al campo è un permesso da dominio a dominio — il Dominio A può usare campi specifici del Dominio B nelle proprie viste.
 
@@ -106,7 +106,7 @@ Una concessione di accesso al campo è un permesso da dominio a dominio — il D
 
 Il compromesso: il dominio di origine approva l'accesso al campo senza conoscere ogni uso futuro. L'approvazione per singola vista è corretta in teoria e impraticabile nella realtà.
 
-### Flusso di creazione delle query
+### Flusso di creazione delle query {: #query-creation-workflow }
 
 Tre fasi, in ordine.
 
@@ -130,7 +130,7 @@ Tre fasi, in ordine.
 - Solo le relazioni approvate nel catalogo sono attraversabili — il compilatore lo applica strutturalmente
 - Nessuna approvazione richiesta — la visibilità delle colonne e l'approvazione della relazione sono gli unici gate
 
-### HITL come controllo primario
+### HITL come controllo primario {: #hitl-as-the-primary-control }
 
 Le regole tecniche gestiscono ciò che è oggettivo — tracciamento della provenienza dei campi, enforcement dei confini di dominio, validazione del compilatore. Il giudizio contestuale rimane in capo allo steward. Vincoli come la profondità di composizione delle viste, i requisiti di scopo per query e le decisioni di approvazione delle relazioni sono questioni HITL, non regole applicate dal compilatore.
 
@@ -141,9 +141,9 @@ Le regole tecniche gestiscono ciò che è oggettivo — tracciamento della prove
 
 ---
 
-## 2. Rilevabilità
+## 2. Rilevabilità {: #2-discoverability }
 
-### Livelli di scoperta
+### Livelli di scoperta {: #discovery-tiers }
 
 La scoperta è strutturata su cinque livelli di governance crescente. Ogni livello è un prerequisito per il successivo.
 
@@ -157,7 +157,7 @@ La scoperta è strutturata su cinque livelli di governance crescente. Ogni livel
 
 Una tabella non rivendicata è un segnale di lacuna — se i dati necessari esistono solo al Livello 2, uno steward deve rivendicarla prima che la governance possa procedere. L'assenza di qualsiasi candidato in tutti i livelli richiede un'escalation all'admin.
 
-### Vincoli FK
+### Vincoli FK {: #fk-constraints }
 
 I vincoli FK sono un costrutto a livello di origine — non possono estendersi su più origini dati. I percorsi di join cross-source sono derivati interamente da relazioni approvate nel catalogo (Livello 4), che sono più solide, essendo state validate da entrambi gli steward.
 
@@ -167,7 +167,7 @@ All'interno di un'origine:
 - Rappresentano un intento di modellazione esplicito — non applicato nella maggior parte dei sistemi SQL analitici, ma dichiarato con intenzione
 - La validazione dello steward è comunque richiesta prima che un candidato diventi una relazione approvata
 
-### Gerarchia di confidenza delle relazioni
+### Gerarchia di confidenza delle relazioni {: #relationship-confidence-hierarchy }
 
 | Evidenza | Confidenza |
 | --- | --- |
@@ -178,7 +178,7 @@ All'interno di un'origine:
 
 I suggerimenti corroborati da più tipi di evidenza accumulano confidenza.
 
-### Probing dei dati e correlazione
+### Probing dei dati e correlazione {: #data-probing-and-correlation }
 
 Per i candidati inferiti semanticamente, il probing dei dati fornisce un passaggio di validazione:
 
@@ -188,7 +188,7 @@ Per i candidati inferiti semanticamente, il probing dei dati fornisce un passagg
 
 Un'alta correlazione aumenta la confidenza; una bassa correlazione sopprime o retrocede il candidato. Il probing è evidenza corroborante, non prova — gli intervalli interi possono sovrapporsi per coincidenza e l'integrità referenziale parziale è comune nei sistemi analitici. Rimane un margine di errore significativo. Il giudizio semantico dello steward è l'unico controllo finale affidabile.
 
-### Scoperta assistita da LLM
+### Scoperta assistita da LLM {: #llm-assisted-discovery }
 
 L'LLM opera su tutti e cinque i livelli simultaneamente, suggerendo relazioni, rivendicazioni candidate e percorsi di attraversamento classificati per confidenza.
 
@@ -242,9 +242,9 @@ Lo strumento di Modeling può mostrare tutte le tabelle registrate per l'esplora
 
 ---
 
-## 3. Utilizzo
+## 3. Utilizzo {: #3-usage }
 
-### Traccia di audit delle query
+### Traccia di audit delle query {: #query-audit-trail }
 
 Ogni query che tocca un asset di dominio viene registrata in un `query_audit_log` di sola aggiunta. Ogni voce cattura:
 

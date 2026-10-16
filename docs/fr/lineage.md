@@ -1,24 +1,24 @@
-# Traçabilité au niveau des colonnes
+# Traçabilité au niveau des colonnes {: #column-level-lineage }
 
 Provisa suit la traçabilité des données au niveau des colonnes de manière statique — calculée à
 partir des définitions SQL et des contrats de commandes, sans aucune exécution. Deux vues sont
 disponibles : un DAG par instruction et un graphe de provenance à l'échelle de la fédération,
 couvrant toutes les vues et vues matérialisées (MV) enregistrées.
 
-## L'explorateur de traçabilité
+## L'explorateur de traçabilité {: #the-lineage-explorer }
 
 Rendez-vous sur **Traçabilité** dans l'interface (`/lineage`). Collez une instruction SQL et
 cliquez sur **Construire le graphe de l'instruction** pour voir son DAG au niveau des colonnes.
 Cliquez sur **Graphe de fédération** pour charger le graphe de provenance couvrant toutes les MV du
 registre. [tool-verified: LineagePage.tsx:28-119]
 
-## DAG au niveau de l'instruction (REQ-1160)
+## DAG au niveau de l'instruction (REQ-1160) {: #statement-level-dag-req-1160 }
 
 Chaque colonne de sortie nommée de votre SQL devient un nœud. Le constructeur la retrace à travers
 chaque CTE, sous-requête, jointure et appel de commande en ligne jusqu'à ses colonnes sources, en
 bâtissant un graphe orienté des entrées sources vers les sorties finales.
 
-### Exemple détaillé
+### Exemple détaillé {: #worked-example }
 
 ```sql
 SELECT o.id, e.embedding, upper(e.geo) AS geo_u
@@ -46,7 +46,7 @@ traçabilité épisse la clôture de contamination sans rupture, des colonnes d�
 source jusqu'à chaque sortie.
 [tool-verified: `_splice_commands` and `_input_relation` in graph.py:245-271]
 
-### Genres de nœuds et repères visuels
+### Genres de nœuds et repères visuels {: #node-kinds-and-visual-cues }
 
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants ; LineagePage.tsx:21-26 LEGEND]
 
@@ -65,7 +65,7 @@ Anneaux supplémentaires sur un nœud :
 
 [tool-verified: LineageDag.tsx:88-103 Cytoscape style selectors]
 
-### Transformations nommées sur les arêtes
+### Transformations nommées sur les arêtes {: #named-transforms-on-edges }
 
 Chaque arête porte l'expression SQL brute qui produit la colonne cible, ainsi qu'une liste
 d'opérations nommées : fonctions SQL (`sql_function`), opérateurs arithmétiques et logiques
@@ -77,7 +77,7 @@ Une arête issue d'un appel de commande est rendue dans l'interface par une lign
 pointillés.
 [tool-verified: LineageDag.tsx:122-124]
 
-## Graphe à l'échelle de la fédération (REQ-1161)
+## Graphe à l'échelle de la fédération (REQ-1161) {: #federation-wide-graph-req-1161 }
 
 Le graphe de fédération fusionne la traçabilité par instruction de chaque MV enregistrée en un seul
 graphe de provenance. L'identité d'un nœud est `relation.column` — la colonne de sortie d'une vue
@@ -188,7 +188,7 @@ La réponse a la même forme que le graphe d'instruction, avec un champ `cycles`
 }
 ```
 
-## Ce que renommer ou supprimer une colonne casserait (REQ-1484)
+## Ce que renommer ou supprimer une colonne casserait (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Une colonne porte deux noms, et chacun est stocké par un ensemble d'artefacts différent.
 
@@ -234,7 +234,7 @@ connaissance du registre. Pour la même raison, les balayages de texte SQL libre
 comme jeton identifiant plutôt que de résoudre la portée, ce qui peut nommer un artefact qui, en
 fin de compte, n'utilise pas la colonne. Sur-rapporter est la direction sûre pour un avertissement.
 
-## Se servir de la traçabilité pour gouverner les contrats de commandes
+## Se servir de la traçabilité pour gouverner les contrats de commandes {: #using-lineage-to-govern-command-contracts }
 
 Parce que la clôture de contamination relie chaque colonne d'entrée déclarée à chaque colonne de
 sortie déclarée, l'ampleur de cette clôture dépend entièrement de ce que vous déclarez.

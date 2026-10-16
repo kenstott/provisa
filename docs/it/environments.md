@@ -1,4 +1,4 @@
-# Ambienti
+# Ambienti {: #environments }
 
 Un ambiente è una copia nominata del modello governato di un'organizzazione. La copia è fisicamente
 uno schema PostgreSQL separato — non una colonna discriminante, non un prefisso, uno schema vero e
@@ -14,7 +14,9 @@ at env_routing.py lines 93-129]
 
 Gli ambienti sono disponibili per le organizzazioni con un piano a pagamento. [inferred: REQ-1507]
 
-## Nomi degli ambienti
+Per riempire un ambiente non di produzione con dati sicuri da usare, vedere [Creare ambienti di test](test-data.md).
+
+## Nomi degli ambienti {: #environment-names }
 
 Un nome deve corrispondere a `[a-z][a-z0-9_]{1,31}` — da due a trentadue caratteri tra lettere
 minuscole, cifre e trattini bassi, con lettera iniziale. `prod` e i nomi che iniziano con `pg_`
@@ -23,7 +25,7 @@ PostgreSQL tronca silenziosamente un identificatore che superi i 63 byte, e il n
 lungo che un ambiente deriva è ciò da cui il limite protegge. [tool-verified: `ENV_NAME_PATTERN` at environments.py line 59; `validate_env_name()` at
 environments.py lines 119-142; `max_env_name_length()` at environments.py lines 108-116]
 
-## Che cosa porta con sé una copia
+## Che cosa porta con sé una copia {: #what-a-copy-carries }
 
 Ogni tabella nello schema dell'org rientra in esattamente una classe (REQ-1489). La classificazione
 è un elenco di ammissione, non di esclusione: una tabella aggiunta in seguito non viaggia finché
@@ -50,7 +52,7 @@ branch ristretto potrebbe avere bisogno, trasformando il percorso di revisione n
 dell'escalation. Perciò ruoli e assegnazioni viaggiano una sola volta, alla creazione, e da lì in
 poi sono la risposta propria di ciascun ambiente. [tool-verified: env_classes.py lines 65-71; env_copy.py lines 41-44]
 
-## Binding
+## Binding {: #bindings }
 
 I binding sono le colonne che dicono dove punta davvero un'origine — `host`, `port`, `database`,
 `username` e le altre. Non viaggiano mai in nessuna copia. Un ambiente che non è stato associato
@@ -58,31 +60,21 @@ viene contrassegnato come `unbound` anziché lasciato vuoto: un host vuoto non �
 il costruttore della connessione lo leggerebbe come `localhost:5432`. [tool-verified: `BOUND_COLUMN = "bound"` at
 env_classes.py line 143; `BINDING_COLUMNS` dict at env_classes.py lines 155-172]
 
-Le origini di un ambiente si risolvono in uno di due modi.
+Un ambiente creato in qualsiasi modo tranne Unbound copia la connessione di ogni sorgente dal suo padre,
+esattamente come il padre l'ha scritta: un riferimento `${secret:...}` o `${env:...}` viene copiato come quel
+riferimento, mai risolto. Dopo la creazione la copia è la riga propria dell'ambiente, modificabile nella pagina
+Sorgenti, e nulla viene risolto attraverso il padre quando si costruisce il runtime dell'ambiente.
+Il campo `binding` di ogni sorgente dice da dove viene la sua connessione: `copied`, `own` (data in questo
+ambiente) o `unbound`. Modificare una connessione copiata la rende `own`. **Ricopia dal padre**
+(`POST /admin/orgs/{org}/environments/{name}/sources/recopy`) copia di nuovo le connessioni del padre.
+Un merge o un deploy non porta connessioni, quindi una sorgente che introduce arriva `unbound`.
+[tool-verified: `_copy_table` at env_copy.py; `recopy` and `unbind` at env_data.py;
+`owned_if_reconnected` at repositories/source.py]
 
-**Base** — l'ambiente porta con sé le proprie credenziali. Un org_admin crea una base e poi associa
-esplicitamente ciascuna origine. [tool-verified: `CreateEnvBody.inherit_connections = False` (default) at
-environments_router.py line 227; "binding a base is an org_admin's act" comment at line 358]
+## La proiezione git {: #the-git-projection }
 
-**Branch** — l'ambiente eredita per riferimento le credenziali della base. Non viene copiato nulla.
-Quando una query ha bisogno di una connessione, la risoluzione risale la catena `branched_from` e si
-ferma al primo ambiente la cui riga è associata. La rotazione di una credenziale sulla base si
-propaga a ogni branch che ne discende senza alcun intervento. Revocarla la revoca per tutti in una
-sola volta. Nessun segreto viene mai materializzato in un punto da cui un branch, un'esportazione o
-un repository potrebbero portarselo via.
-[tool-verified: `resolve()` at env_bindings.py lines 114-151; `lineage()` at env_bindings.py
-lines 74-102; env_bindings.py module docstring lines 11-33]
-
-Per creare un branch, attivare **Inherit connections** nel pannello Ambienti. Per impostazione
-predefinita è disattivato. [tool-verified: `environmentsTab.json` key `inheritConnections`; `inheritHelp2` string]
-
-## La proiezione git
-
-Ogni scrittura sul modello ne registra il risultato in un commit sul branch git dell'ambiente. Il
-repository è una proiezione del modello, mai la sua autorità: Provisa legge e scrive il control
-plane; il repository è il registro, non la fonte. Il deployment di un albero richiede una chiamata
-esplicita — una pull request già unita sull'host git non si distribuisce da sola (REQ-1524,
-REQ-1526). [tool-verified:
+Ogni scrittura nel modello esegue il commit del risultato nel branch git dell'ambiente. Il deploy di un albero
+richiede una chiamata esplicita — una pull request unita sull'host git non si distribuisce da sola (REQ-1524, REQ-1526). [tool-verified:
 deploy endpoint docstring at environments_router.py lines 777-791]
 
 Ogni entità ottiene un file. Il percorso è l'URI di REQ-1385 privato dello schema e dell'org:
@@ -129,7 +121,7 @@ Un merge lascia i binding, i ruoli e i segreti della destinazione esattamente co
 di sviluppo non perde le proprie connessioni al database perché ha preso un modello più recente da
 prod. Prod non acquisisce le concessioni di dev. [tool-verified: env_copy.py lines 269-287; REQ-1490 scenario]
 
-### Che cosa nomina il report
+### Che cosa nomina il report {: #what-the-report-names }
 
 Il report del merge elenca, per percorso, che cosa è stato aggiunto, modificato, rimosso e lasciato
 invariato. Nomina anche gli eventuali **conflitti** — oggetti che entrambe le parti hanno modificato
@@ -174,7 +166,7 @@ chi ora deve decidere quale lavoro sopravvive sa quali oggetti guardare. [tool-v
 environments_router.py lines 1491-1503; `_collisions()` at environments_router.py
 lines 1581-1602]
 
-## Cronologia
+## Cronologia {: #history }
 
 Ogni deployment sposta in avanti il cursore dell'ambiente sulla sua linea di commit. Un annullamento
 torna indietro di un commit; una ripetizione avanza di nuovo verso la posizione da cui
@@ -194,7 +186,7 @@ ricevuto un determinato commit elenca comunque i propri ambienti; cambiano solo 
 cronologia (REQ-1561). [tool-verified: `_with_history()`
 at environments_router.py lines 316-344; REQ-1561 description]
 
-## Autorizzazione
+## Autorizzazione {: #authorization }
 
 Gli ambienti sono governati da due diritti. Nessuno dei due appartiene a un analista per
 impostazione predefinita (REQ-1573).
@@ -222,7 +214,7 @@ selettore degli ambienti. Un collaboratore esterno a cui è stato concesso il ru
 vede alcuna superficie degli ambienti e non può creare né passare ad alcun ambiente diverso dalla
 produzione. [tool-verified: REQ-1573 use_case and scenario]
 
-### L'autorità del proprietario di un ambiente
+### L'autorità del proprietario di un ambiente {: #environment-owner-authority }
 
 Creare un ambiente è l'unico percorso attraverso cui un membro in sola lettura acquisisce diritti di
 modifica del modello (REQ-1528). Dentro l'ambiente che ha creato, chi lo ha creato detiene le
@@ -239,7 +231,7 @@ L'appartenenza ai domini continua a limitare ciò che il proprietario può modif
 branch cambia ciò che un membro può fare; non cambia mai su quali domini può farlo (REQ-1530).
 [tool-verified: `domains_within()` at env_authority.py lines 121-145]
 
-## Ambienti protetti (REQ-1504)
+## Ambienti protetti (REQ-1504) {: #protected-environments-req-1504 }
 
 Un ambiente può essere protetto. Un merge o un deployment verso un ambiente protetto non viene
 applicato al momento della richiesta; viene proposto, e qualcuno diverso da chi lo ha richiesto deve
@@ -313,7 +305,9 @@ provisa env deploy --org acme --env prod --ref "origin/main" \
 
 ---
 
-## Vedi anche
+## Vedi anche {: #see-also }
 
 - [Deployment](deployment.md) — come predisporre il control plane a cui gli ambienti si collegano
 - [Comandi](commands.md) — funzioni tracciate e webhook che compaiono nell'albero di ogni ambiente
+- [Creare ambienti di test](test-data.md) — profilare la produzione, dichiarare dati fittizi, generare dati sintetici per un ambiente non di produzione
+- [Metodi dei dati fittizi](fake-methods.md) — ogni tipo di dato fittizio e ogni metodo che una colonna può dichiarare

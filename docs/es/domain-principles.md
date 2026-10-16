@@ -1,10 +1,10 @@
-# Principios del Modelo de Dominio
+# Principios del Modelo de Dominio {: #domain-model-principles }
 
 ---
 
-## 1. Gobierno
+## 1. Gobierno {: #1-governance }
 
-### Principios fundamentales
+### Principios fundamentales {: #core-principles }
 
 1. **Todo recurso debe pertenecer a un dominio.** Las tablas, vistas y relaciones son todos activos de dominio. No existen recursos flotantes sin gobernar. El dominio es la unidad de responsabilidad.
 2. **Todo dominio debe tener un steward.** Un dominio puede existir en estado pendiente hasta que se asigne un steward, pero no puede servir datos gobernados sin uno.
@@ -14,7 +14,7 @@
 6. **Los analistas pueden crear consultas entre dominios a partir de relaciones aprobadas.** Las consultas son vistas interdominio expresadas en cualquier lenguaje de consulta admitido. No crean nueva semántica: recorren rutas de relación aprobadas. No se requiere aprobación adicional: el gobierno se gestiona previamente en las capas de Relación y visibilidad de columnas. El catálogo es el mecanismo de aplicación: el compilador rechaza los recorridos que no están en el catálogo de relaciones aprobadas.
 7. **Cualquiera puede solicitar acceso a un recurso de dominio.** El acceso se otorga a nivel de recurso, no a nivel de consulta. Si tiene acceso a un recurso, puede consultarlo. El gobierno se aplica en tiempo de ejecución mediante el pipeline.
 
-### Recursos: tablas y vistas como pares
+### Recursos: tablas y vistas como pares {: #resources-tables-and-views-as-peers }
 
 La distinción entre una tabla y una vista es solo de origen: una tabla se reclama de un origen, una vista la define un steward. Una vez que cualquiera de las dos existe como activo de dominio, el modelo de gobierno las trata de forma idéntica:
 
@@ -25,7 +25,7 @@ La distinción entre una tabla y una vista es solo de origen: una tabla se recla
 
 Un steward puede reclamar tablas de forma privada y exponer únicamente vistas curadas como productos de datos de cara al público.
 
-### Composición de vistas
+### Composición de vistas {: #view-composition }
 
 Una vista siempre pertenece a un único dominio; solo existe un tipo de vista, siempre intradominio. Una vista existe para uno de dos propósitos:
 
@@ -46,7 +46,7 @@ Toda vista lleva un propósito de negocio declarado, indicado en el momento de l
 - Se hace referencia a él en las solicitudes de acceso bajo el Principio 7, para que el steward pueda evaluar la idoneidad
 - Se transmite desde la creación de la vista a lo largo de todo el flujo de trabajo de gobierno
 
-### Consultas
+### Consultas {: #queries }
 
 Una consulta (Query) recorre rutas de relación aprobadas sobre activos de dominio. A diferencia de las vistas, las consultas no crean nuevo significado semántico: recorren la estructura aprobada del modelo. Las consultas pueden expresarse en cualquier lenguaje de consulta admitido (SQL, GraphQL, Cypher).
 
@@ -71,22 +71,22 @@ Cada lenguaje admitido expresa el dominio como un espacio de nombres estructural
 
 El compilador resuelve la pertenencia al dominio a partir de estas posiciones estructurales; no se requiere ninguna anotación ni indicación.
 
-### Relaciones
+### Relaciones {: #relationships }
 
 Una relación es una ruta de recorrido aprobada entre dos activos. Los límites de dominio son irrelevantes para lo que es una relación; solo determinan quién la aprueba.
 
 **Aprobación:**
 
-- Se requiere la aprobación de cada steward distinto que posea un activo involucrado en la relación
-- Si un steward posee ambos activos, se requiere una aprobación. Si están involucrados dos stewards, se requieren dos aprobaciones
-- No existe una clasificación intradominio/entre dominios: la propiedad determina de forma natural la carga de aprobación
+- Una solicitud de relación la deciden los dominios que toca: el dominio de su tabla de origen y el dominio de su tabla de destino (REQ-1948)
+- Una aprobación solo cuenta si viene de un usuario cuyo derecho a crear relaciones alcanza uno de esos dominios; cualquier usuario así puede rechazarla
+- La solicitud se ejecuta cuando dos usuarios distintos, ninguno de ellos el solicitante, la han aprobado y cada dominio implicado tiene un aprobador: una relación entre dos dominios necesita un sí de cada lado, y una relación dentro de un dominio necesita dos aprobadores de ese dominio
 - Aprobar una relación construye el grafo de dependencias de cada steward, lo que permite notificaciones proactivas de evolución del esquema
 
 Las relaciones se crean por demanda, no de forma especulativa. El primer equipo con la necesidad de negocio realiza el trabajo; los equipos posteriores heredan la infraestructura.
 
 **Consecuencia de optimización:** una declaración de relación no es solo un artefacto de gobierno, también es una descripción estructural de la forma de una unión (join). Las dos tablas, las dos columnas y el tipo de unión que definen una relación son exactamente lo que necesita el optimizador de consultas para pre-materializar esa unión. Las relaciones entre orígenes generan automáticamente tablas de unión pre-materializadas; las relaciones del mismo origen pueden optar por ello mediante `materialize: true`. Los stewards que analizan y aprueban relaciones válidas obtienen aceleración de consultas como subproducto directo: el trabajo de gobierno y el de optimización son el mismo acto.
 
-### Concesiones de acceso a campos
+### Concesiones de acceso a campos {: #field-access-grants }
 
 Una concesión de acceso a campos es un permiso de dominio a dominio: el Dominio A puede usar campos específicos del Dominio B en sus vistas.
 
@@ -106,7 +106,7 @@ Una concesión de acceso a campos es un permiso de dominio a dominio: el Dominio
 
 La contrapartida: el dominio de origen aprueba el acceso a campos sin conocer cada uso futuro. La aprobación por vista es correcta en teoría e inviable en la práctica.
 
-### Flujo de trabajo de creación de consultas
+### Flujo de trabajo de creación de consultas {: #query-creation-workflow }
 
 Tres etapas, en orden.
 
@@ -130,7 +130,7 @@ Tres etapas, en orden.
 - Solo son recorribles las relaciones aprobadas del catálogo; el compilador lo aplica de forma estructural
 - No se requiere aprobación: la visibilidad de columnas y la aprobación de relaciones son los únicos controles
 
-### HITL como control principal
+### HITL como control principal {: #hitl-as-the-primary-control }
 
 Las reglas técnicas gestionan lo que es objetivo: el seguimiento de procedencia de campos, la aplicación de límites de dominio, la validación del compilador. El criterio contextual queda en manos del steward. Restricciones como la profundidad de composición de vistas, los requisitos de propósito por consulta y las decisiones de aprobación de relaciones son asuntos de HITL, no reglas aplicadas por el compilador.
 
@@ -141,9 +141,9 @@ Las reglas técnicas gestionan lo que es objetivo: el seguimiento de procedencia
 
 ---
 
-## 2. Descubribilidad
+## 2. Descubribilidad {: #2-discoverability }
 
-### Niveles de descubrimiento
+### Niveles de descubrimiento {: #discovery-tiers }
 
 El descubrimiento está estructurado en cinco niveles de gobierno creciente. Cada nivel es un prerrequisito para el siguiente.
 
@@ -157,7 +157,7 @@ El descubrimiento está estructurado en cinco niveles de gobierno creciente. Cad
 
 Una tabla no reclamada es una señal de vacío: si los datos necesarios existen solo en el Nivel 2, un steward debe reclamarla antes de que el gobierno pueda proceder. La ausencia de cualquier candidato en todos los niveles requiere escalamiento al administrador.
 
-### Restricciones de clave foránea
+### Restricciones de clave foránea {: #fk-constraints }
 
 Las restricciones de clave foránea son una construcción a nivel de origen: no pueden abarcar múltiples orígenes de datos. Las rutas de unión entre orígenes se derivan enteramente de relaciones de catálogo aprobadas (Nivel 4), que son más sólidas, al haber sido validadas por ambos stewards.
 
@@ -167,7 +167,7 @@ Dentro de un origen:
 - Representan una intención de modelado explícita, no aplicada en la mayoría de los sistemas SQL analíticos, pero declarada deliberadamente
 - Aun así, se requiere validación del steward antes de que un candidato se convierta en una relación aprobada
 
-### Jerarquía de confianza de relaciones
+### Jerarquía de confianza de relaciones {: #relationship-confidence-hierarchy }
 
 | Evidencia | Confianza |
 | --- | --- |
@@ -178,7 +178,7 @@ Dentro de un origen:
 
 Las sugerencias corroboradas por múltiples tipos de evidencia acumulan confianza.
 
-### Sondeo y correlación de datos
+### Sondeo y correlación de datos {: #data-probing-and-correlation }
 
 Para los candidatos inferidos semánticamente, el sondeo de datos ofrece un paso de validación:
 
@@ -188,7 +188,7 @@ Para los candidatos inferidos semánticamente, el sondeo de datos ofrece un paso
 
 Una correlación alta aumenta la confianza; una correlación baja suprime o degrada el candidato. El sondeo es evidencia corroborante, no prueba: los rangos de enteros pueden superponerse por coincidencia y la integridad referencial parcial es común en los sistemas analíticos. Queda un margen de error considerable. El criterio semántico del steward es la única verificación final confiable.
 
-### Descubrimiento asistido por LLM
+### Descubrimiento asistido por LLM {: #llm-assisted-discovery }
 
 El LLM opera en los cinco niveles simultáneamente, sugiriendo relaciones, reclamos candidatos y rutas de recorrido clasificadas por confianza.
 
@@ -242,9 +242,9 @@ La herramienta de Modelado puede mostrar todas las tablas registradas para explo
 
 ---
 
-## 3. Uso
+## 3. Uso {: #3-usage }
 
-### Registro de auditoría de consultas
+### Registro de auditoría de consultas {: #query-audit-trail }
 
 Toda consulta que toca un activo de dominio se registra en un `query_audit_log` de solo adición. Cada entrada captura:
 

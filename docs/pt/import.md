@@ -1,8 +1,8 @@
-# Importando do Hasura
+# Importando do Hasura {: #importing-from-hasura }
 
 O Provisa consegue converter metadados existentes do Hasura em um `config.yaml` do Provisa, preservando tabelas rastreadas, relacionamentos, permissões, e esquemas remotos.
 
-## Importação interativa (Admin → Import Hasura Config)
+## Importação interativa (Admin → Import Hasura Config) {: #interactive-import-admin-import-hasura-config }
 
 A superfície de admin roda os mesmos conversores, então uma importação não exige acesso a shell nem
 ida e volta de arquivo de config. Exige a capacidade `org_settings`; a importação é aplicada na
@@ -26,7 +26,7 @@ Endpoints: `POST /admin/import/hasura/preview` e `POST /admin/import/hasura/appl
 
 ## Hasura v2
 
-### Exportar Metadados
+### Exportar Metadados {: #export-metadata }
 
 Do seu console ou CLI Hasura:
 
@@ -43,7 +43,7 @@ curl -X POST http://localhost:8080/v1/metadata \
   > metadata.json
 ```
 
-### Converter
+### Converter {: #convert }
 
 O conversor v2 lê um **diretório** de metadados Hasura (o layout produzido por `hasura metadata export`, ou o layout plano `tables.yaml` / `actions.yaml`) e escreve uma config Provisa:
 
@@ -63,7 +63,7 @@ Flags:
 | `--auth-env-file` | Arquivo `.env` com config de autenticação; converte JWT/JWK, segredo de admin, e mapa de claims |
 | `--dry-run` | Analisa e valida sem escrever saída |
 
-### O Que É Convertido
+### O Que É Convertido {: #what-gets-converted }
 
 | Conceito Hasura | Equivalente Provisa |
 | --------------- | ------------------- |
@@ -76,15 +76,15 @@ Flags:
 | Esquema remoto | Registro de fonte `graphql_remote` mais uma tabela pousada por campo raiz de Query que os SDLs de função expõem; uma coluna fica visível a toda função cujo SDL a expõe, um argumento raiz não anulável se torna uma coluna de filtro nativo `_nf_`, campos aninhados são nomeados em um aviso. (REQ-1681) |
 | Campo computado | Entrada `functions[]` com `kind: query` |
 
-### Conexões e domínios na aba de importação
+### Conexões e domínios na aba de importação {: #connections-and-domains-on-the-import-tab }
 
-A exportação nomeia seus bancos de dados por variável de ambiente, então, após a primeira conversão, a aba lista cada fonte SQL com a conexão que a conversão adivinhou. Preencha o host, a porta, o banco de dados, o usuário e a senha, e converta novamente; somente os campos que você alterou viajam, como sobreposições de fonte. As linhas de domínio cobrem todo esquema, subgrafo e esquema remoto que o upload carrega; cada uma é um seletor sobre os domínios existentes da organização que também aceita um nome digitado, marcado como *new domain* quando não corresponde a nenhum. Aplicar faz merge com o que a organização já tem, a menos que a caixa de seleção replace esteja marcada. (REQ-1687)
+A exportação nomeia seus bancos de dados por variável de ambiente, então, após a primeira conversão, a aba lista cada fonte SQL com a conexão que a conversão adivinhou. Preencha o host, a porta, o banco de dados, o usuário e a senha, e converta novamente; somente os campos que você alterou viajam, como sobreposições de fonte. As linhas de domínio cobrem todo esquema, subgrafo e esquema remoto que o upload carrega; cada uma é um seletor sobre os domínios existentes da organização que também aceita um nome digitado, marcado como *new domain* quando não corresponde a nenhum.Aplicar mescla com o que a organização já tem. (REQ-1687)
 
-### Os tipos vêm da fonte na pré-visualização
+### Os tipos vêm da fonte na pré-visualização {: #types-come-from-the-source-at-preview }
 
 Uma exportação do Hasura nomeia colunas sem tipos, e uma tabela rastreada sem permissão não nomeia colunas. A pré-visualização roda com as conexões de fonte que você fornece, então ela lê o `information_schema.columns` de cada fonte SQL alcançável: toda coluna sem tipo recebe o tipo da fonte mapeado para o vocabulário IR, e uma tabela sem colunas recebe toda coluna que a fonte tem, visível somente a `org_admin`, já que o Hasura não a expôs a nenhuma outra função. Uma fonte que a pré-visualização não consegue alcançar é reportada como um aviso `[sources]` e suas colunas permanecem sem tipo para você concluir antes de aplicar. (REQ-1691, REQ-1684)
 
-### Limitações
+### Limitações {: #limitations }
 
 - **Actions** convertem automaticamente: actions com handler HTTP se tornam mutações `webhooks[]`; actions com handler não-HTTP (banco de dados) se tornam um placeholder `functions[]` e emitem um aviso para revisar o handler
 - **Event triggers** convertem para config `event_triggers` por tabela (operações, URL do webhook, política de retry) e emitem um aviso observando fidelidade limitada
@@ -96,11 +96,11 @@ Uma exportação do Hasura nomeia colunas sem tipos, e uma tabela rastreada sem 
 
 ## Hasura DDN (v3)
 
-### Localizar o projeto HML
+### Localizar o projeto HML {: #locate-the-hml-project }
 
 O conversor DDN lê o **diretório** do projeto DDN de arquivos `.hml` diretamente — nenhum passo de build de supergrafo é exigido. O primeiro componente de diretório sob a raiz do projeto é tomado como o nome do subgrafo; arquivos sob `globals/` são atribuídos ao subgrafo `globals`.
 
-### Converter
+### Converter {: #convert_1 }
 
 ```bash
 python -m provisa.ddn ./my-ddn-project -o config.yaml
@@ -120,7 +120,7 @@ Flags:
 
 Metadados de `AggregateExpression` são preservados em um arquivo sidecar `*-aggregates.yaml`.
 
-### O Que É Convertido
+### O Que É Convertido {: #what-gets-converted_1 }
 
 | Conceito DDN | Equivalente Provisa |
 | ------------ | ------------------- |
@@ -130,7 +130,7 @@ Metadados de `AggregateExpression` são preservados em um arquivo sidecar `*-agg
 | Command | Mutação de webhook ou view |
 | Conector | Entrada de fonte com detalhes de conexão |
 
-### Limitações
+### Limitações {: #limitations_1 }
 
 - **Conectores Lambda** (funções TypeScript/Python) exigem configuração manual de webhook
 - **Plugins de ciclo de vida** não têm equivalente direto
@@ -138,7 +138,7 @@ Metadados de `AggregateExpression` são preservados em um arquivo sidecar `*-agg
 
 ---
 
-## Após a Importação
+## Após a Importação {: #after-import }
 
 1. Revise o `config.yaml` gerado — preste atenção aos `warnings` do conversor
 2. Verifique as credenciais de conexão (o conversor usa valores placeholder)

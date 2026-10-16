@@ -1,12 +1,12 @@
-# API 參考
+# API 參考 {: #api-reference }
 
-## 概觀
+## 概觀 {: #overview }
 
 Provisa 在兩個前綴下公開 REST 端點：`/data` 負責查詢執行與結構描述自省，`/admin` 負責組態管理。(REQ-043) 大部分數據端點需要角色識別碼。管理員組態操作使用位於 `/admin/graphql` 的 Strawberry GraphQL API。(REQ-164)
 
 ---
 
-## 驗證
+## 驗證 {: #authentication }
 
 當 `provisa.yaml` 中設定了 `auth.provider` 時，除 `/health` 與 `/setup/status` 以外的所有端點都需要 `Authorization: Bearer <token>` 標頭。(REQ-120) [tool-verified: `provisa/api/app.py`, `provisa/auth/wiring.py`]
 
@@ -30,7 +30,7 @@ GET /auth/provider-type
 
 ---
 
-## 數據端點
+## 數據端點 {: #data-endpoints }
 
 ### `POST /data/graphql`
 
@@ -42,12 +42,12 @@ GET /auth/provider-type
 {
   "query": "{ orders(where: {region: {eq: \"us\"}}) { id amount } }",
   "variables": {},
-  "role": "admin",
+  "role": "org_admin",
   "extensions": {}
 }
 ```
 
-`role` 欄位僅在開發模式（無驗證）下使用。驗證啟用時，會採用已驗證使用者的角色，主體中的 `role` 會被忽略。
+請求以其執行角色運作：已驗證使用者的角色，或在開發模式（沒有身分驗證）下取 `X-Provisa-Role` 標頭，沒有時為 `org_admin`。主體中的 `role` 欄位並不選擇角色。若存在，它必須與執行角色一致；不同的值會傳回 `400`，代碼為 `data.role_mismatch`，並指名兩個角色。同一規則適用於 `POST /data/sql`、`POST /data/query` 及 `POST /query/nl`。(REQ-273) [tool-verified: `provisa/api/acting_role.py`]
 
 `extensions` 欄位支援自動持續化查詢（APQ）通訊協定：(REQ-288)
 
@@ -59,18 +59,18 @@ GET /auth/provider-type
 
 **標頭：**
 
-- `X-Provisa-Role` — 覆寫角色（開發模式）
+- `X-Provisa-Role` — 要代為執行的角色（開發模式）；啟用身分驗證時為角色要求，只有在該角色已指派給使用者時才會生效
 - `Accept` — 回應格式（見內容協商）
 - `Authorization` — 啟用驗證時為 `Bearer <token>`
 - `X-Provisa-Redirect-Format` — S3 重新導向輸出的 MIME 類型 (REQ-137)
 - `X-Provisa-Redirect-Threshold` — 觸發重新導向的資料列數門檻 (REQ-137)
 - `X-Provisa-Redirect` — 設為 `true` 可無條件強制重新導向 (REQ-029)
 
-**回應快取：** 透過操作層級指令 `@cached` 按請求選擇啟用（`query @cached(ttl: 60) { ... }`，`ttl` 可選）；同一指令亦適用於經 Arrow Flight 發送的 GraphQL。Cypher 以 `// @provisa cache=true` 或 `// @provisa cache_ttl=N` 行選擇啟用，gRPC 以呼叫元數據 `x-provisa-cache: true` 或 `x-provisa-cache-ttl: N` 選擇啟用。沒有該指令時，請求既不讀取也不寫入回應快取。回應標頭 `X-Provisa-Cache` 報告 `HIT` 或 `MISS`。請參閱[快取](configuration.md)。(REQ-544)
+**回應快取：** 透過操作層級指令 `@cached` 按請求選擇啟用（`query @cached(ttl: 60) { ... }`，`ttl` 可選）；同一指令亦適用於經 Arrow Flight 發送的 GraphQL。Cypher 以 `// @provisa cache=true` 或 `// @provisa cache_ttl=N` 行選擇啟用，gRPC 以呼叫元數據 `x-provisa-cache: true` 或 `x-provisa-cache-ttl: N` 選擇啟用。沒有該指令時，請求既不讀取也不寫入回應快取。回應標頭 `X-Provisa-Cache` 報告 `HIT` 或 `MISS`。請參閱[快取](configuration.md#per-request-opt-in)。(REQ-544)
 
 <a id="response-cache-request-headers"></a>
 
-#### 回應快取請求標頭
+#### 回應快取請求標頭 {: #response-cache-request-headers }
 
 `/data/graphql`、`/data/cypher`、Neo4j Query API（`/db/{database}/query/v2`）、`/data/rest` 和 `/data/jsonapi` 也接受以請求標頭形式選擇啟用。下列每種形式的行為都與 `@cached(ttl: N)` 相同：(REQ-544)
 
@@ -147,7 +147,7 @@ curl -H 'Cache-Control: max-age=120' -H 'X-Provisa-Role: analyst' \
 
 ---
 
-### 內容協商
+### 內容協商 {: #content-negotiation }
 
 | Accept 標頭 | 格式 |
 | --- | --- |
@@ -161,7 +161,7 @@ curl -H 'Cache-Control: max-age=120' -H 'X-Provisa-Role: analyst' \
 
 ---
 
-### 重新導向
+### 重新導向 {: #redirect }
 
 超出已設定資料列門檻的結果（或當 `X-Provisa-Redirect: true` 時）會寫入 S3，並傳回預先簽署的 URL。(REQ-029, REQ-044)
 
@@ -192,9 +192,20 @@ X-Provisa-Redirect-Threshold: 1000
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
-  "role": "admin"
+  "role": "org_admin"
 }
 ```
+
+`params`（可選）按次序攜帶陳述式 `$1…$n` 預留位置的值，與其文字分開：
+
+```json
+{
+  "sql": "SELECT id, amount FROM orders WHERE region = $1 AND amount > $2",
+  "params": ["us", 100]
+}
+```
+
+這些值在陳述式執行時由引擎或數據來源的驅動程式綁定，從不寫入陳述式，因此值無法改變陳述式本身。它們只屬於一條陳述式，其預留位置精確地為它們編號：陳述式批次、沒有值的預留位置，或沒有預留位置接收的值，都會在陳述式被治理或執行之前以 `400` 及代碼 `data.sql_parameters_do_not_fit` 被拒絕。沒有預留位置的陳述式不帶 `params` 傳送，與以往一樣。(REQ-1937)
 
 **必要能力：** `QUERY_DEVELOPMENT`。
 
@@ -217,7 +228,7 @@ Cypher 查詢也可以提交到僅限 Cypher 的 `POST /query/cypher` 端點。(
   "query": "{ orders { id } }",
   "params": {},
   "variables": {},
-  "role": "admin"
+  "role": "org_admin"
 }
 ```
 
@@ -236,7 +247,7 @@ GraphQL 傳回 `{"data": ...}`，SQL 與 Cypher 傳回 `{"columns": [...], "rows
 ```json
 {
   "sql": "SELECT id, amount FROM orders",
-  "role": "admin",
+  "role": "org_admin",
   "analyze": false
 }
 ```
@@ -294,7 +305,7 @@ UI 會輪詢此端點，以在引擎冷啟動期間顯示啟動橫幅。它從�
 
 - `limit` — 最大資料列數（≥ 1）
 - `offset` — 略過的資料列數（≥ 0）
-- `fields` — 以逗號分隔的欄位名稱（預設為所有純量欄位）
+- `fields` — 以逗號分隔的欄位名稱，採用 GraphQL 結構描述的拼寫，在預設命名慣例下為 camelCase，例如 `?fields=orderId,amount`（預設：所有純量欄位）。`filter` 及 `orderBy` 中的欄位名稱遵循相同拼寫。JSON:API 則接受實體欄位名稱（`fields[orders]=order_id`）。[tool-verified: `provisa/api/rest/generator.py:547`]
 - `filter` — `{"field", "comparator", "value"}` 篩選物件的 JSON 陣列。值按其欄的類型讀取，因此數值欄上的 `"100"` 按 100 比較；欄類型無法容納的值返回 `400`。
 - `orderBy` — `{"field", "direction"}` 排序物件的 JSON 陣列
 - `params` — 表的參數，作為一個按參數名索引的 JSON 物件，例如 `?params={"region":"EU"}`。基於 API 登記的表或查詢表，其來源接受的每個輸入都有一個參數。缺少必填參數的讀取返回 `400` 並指出其名稱，表中沒有的參數名同樣如此。每個值都按其參數的類型檢查。(REQ-1986) [tool-verified: `provisa/api/_query_helpers.py`]
@@ -305,7 +316,7 @@ UI 會輪詢此端點，以在引擎冷啟動期間顯示啟動橫幅。它從�
 
 **回應快取：** 透過請求標頭選擇啟用，`Cache-Control: max-age=N` 或 `x-provisa-cache: true`（參見[回應快取請求標頭](#response-cache-request-headers)）。每個回應都帶有 `X-Provisa-Cache: HIT|MISS`，命中時還帶有 `X-Provisa-Cache-Age`。(REQ-544, REQ-536) [tool-verified: `provisa/api/rest/generator.py`]
 
-#### OpenAPI / Swagger UI 探索工具
+#### OpenAPI / Swagger UI 探索工具 {: #openapi-swagger-ui-explorer }
 
 OpenAPI 探索工具頁面（`/app/openapi`）在沙箱化的 iframe 中內嵌 Swagger UI。規格以角色為範圍 — 只會出現目前角色可見的資料表與欄位 — 並可透過網域選擇器選擇性地依網域篩選。UI 會自動在淺色與深色佈景主題之間切換。[tool-verified: `provisa-ui/src/pages/OpenApiPage.tsx:20-34`]
 
@@ -323,11 +334,12 @@ OpenAPI 探索工具頁面（`/app/openapi`）在沙箱化的 iframe 中內嵌 S
 
 **查詢參數：**
 
-- `fields[<type>]` — 稀疏欄位集，例如 `?fields[orders]=amount`
+- `fields[<type>]` — 稀疏欄位集，例如 `?fields[orders]=amount`。名稱是實體欄位名稱，例如 `fields[orders]=order_id`，與 `filter[...]`、`sort` 以及傳回屬性的鍵相同 (REQ-1417)。REST 則接受 GraphQL 拼寫（`fields=orderId`）。[tool-verified: `provisa/api/jsonapi/generator.py:674`]
 - `filter[<col>]` / `filter[<col>][<op>]` — 例如 `?filter[region]=US`、`?filter[amount][gt]=100`。值按其欄的類型讀取；類型無法容納的值返回 `400`。
 - `params` — 表的參數，作為一個按參數名索引的 JSON 物件，例如 `?params={"region":"EU"}`，與 REST 端點相同。缺少必填參數返回 `400` 並指出其名稱；未知名稱或類型錯誤的值返回 `400`，`source.parameter` 為 `params`。分頁連結保留該參數。(REQ-1986) [tool-verified: `provisa/api/jsonapi/generator.py`]
 - `sort` — 以逗號分隔，前綴 `-` 表示遞減，例如 `?sort=-created_at,amount`
 - `page[number]` / `page[size]` — 分頁
+- `page[total]` — `true` 計算與過濾條件相符的資料列數目，並傳回 `meta.total` 及 `links.last`。不帶它時，回應只攜帶 `links.self`、`links.first`、`links.prev` 及 `links.next`，資料庫不會執行計數。`true` 或 `false` 以外的任何值會傳回 `400`。回應中的連結會保留該參數。(REQ-1197) [tool-verified: `provisa/api/jsonapi/pagination.py:58`]
 - `aggregate` — 以逗號分隔的彙總函式，取代資料列擷取執行：`count`、`sum`、`avg`、`stddev`、`variance`、`min`、`max`。使用 `?aggregate=count,sum` 可要求其中一部分。彙總回應傳回 `data: null`，結果放在 `meta.aggregate` 中。(REQ-1359) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:238`]
 - `groupBy` — 以逗號分隔的欄位名稱；與 `?aggregate=` 搭配使用以分組結果。只有資料表 `DistinctOnColumn` 列舉中的欄位有效；角色看不到的欄位，伺服器一律傳回 `400`。(REQ-1361) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:447`]
 - `includeNodes` — 設為 `true` 可在每個群組資料列的 `nodes` 陣列中包含基礎資料表的純量欄位（以及 `include=` 中指名的聯結維度純量）。當自然語言分組查詢同時要求維度明細時為必要。(REQ-1405)
@@ -336,7 +348,7 @@ OpenAPI 探索工具頁面（`/app/openapi`）在沙箱化的 iframe 中內嵌 S
 
 **回應快取：** 透過請求標頭選擇啟用，`Cache-Control: max-age=N` 或 `x-provisa-cache: true`（參見[回應快取請求標頭](#response-cache-request-headers)）。每個回應都帶有 `X-Provisa-Cache: HIT|MISS`，命中時還帶有 `X-Provisa-Cache-Age`。兩種形式不一致時，以 JSON:API 錯誤物件傳回 `400`。(REQ-544, REQ-536) [tool-verified: `provisa/api/jsonapi/generator.py`]
 
-#### JSON:API 探索工具
+#### JSON:API 探索工具 {: #jsonapi-explorer }
 
 JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器 UI。從依網域分組的清單中選取一個資料表，然後設定：
 
@@ -360,7 +372,7 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 **請求主體：**
 
 ```json
-{"q": "How many orders were placed last month?", "role": "admin"}
+{"q": "How many orders were placed last month?", "role": "org_admin"}
 ```
 
 傳回 `{"job_id": "<id>"}`。超出每個角色的自然語言速率限制時傳回 `429`，並附帶 `Retry-After` 標頭。(REQ-370)
@@ -386,7 +398,7 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 耗盡疊代上限的分支會傳回 `query: null`、`result: null` 與一個 `error` 字串。每個產生的查詢都在消費者的權限下執行，並套用第 2 階段治理 — 服務從不繞過治理。(REQ-359)
 
-#### 帶維度明細的自然語言分組查詢 (REQ-1405)
+#### 帶維度明細的自然語言分組查詢 (REQ-1405) {: #nl-group-by-with-dimension-details-req-1405 }
 
 當自然語言分組查詢同時投影聯結維度資料表的欄位時 — 例如「按使用者統計查詢數，並附使用者名稱與電郵」— 執行器會從 SELECT 投影的維度欄位推導出每個欄位的點路徑（`dim_paths`）。這些路徑會填入 JSON:API 與 OpenAPI 面板所產生 URL 的 `includeNodes=` 參數，讓這些面板要求與 SQL 及 GraphQL 分支所解析的相同聯結維度欄位。若無此機制，`includeNodes=true` 只會傳回基礎彙總資料表自身的純量欄位。(REQ-1405) [tool-verified: `docs/arch/requirements.md:REQ-1405`]
 
@@ -398,7 +410,7 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 傳回某個角色結構描述的 GraphQL SDL。(REQ-008) [tool-verified: `provisa/api/data/sdl.py:137`]
 
-**標頭：** `X-Role: <role_id>`（必要）
+**標頭：** `X-Provisa-Role: <role_id>`（必要）
 
 **查詢參數：**
 
@@ -434,7 +446,7 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 傳回提出請求的角色可存取的網域 ID。[tool-verified: `provisa/api/data/sdl.py:116`]
 
-**標頭：** `X-Role: <role_id>`（必要）
+**標頭：** `X-Provisa-Role: <role_id>`（必要）
 
 **回應：** `["sales", "support", ...]`
 
@@ -448,6 +460,16 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 ---
 
+### `GET /data/catalog`
+
+傳回請求所執行角色的目錄：提供給該角色的資料表，與 Arrow Flight 清單所提供的形式相同。(REQ-128) [tool-verified: `provisa/api/data/endpoint_dev.py`]
+
+**回應：** `{"tables": [{"path": ["<domain>", "<table>"], "schema": "<base64>"}]}`。`schema` 是該資料表以 Arrow IPC 編碼的 Arrow 結構描述：每個欄位以 SQL 讀取它所用的名稱出現，欄位中繼資料中帶有其註冊類型、描述及鍵中繼資料（`primary_key`、`references`）。命令及指標不會列出。
+
+角色是身分驗證層所確定的角色（`X-Provisa-Role` 可以要求一個已持有的角色或逗號分隔的集合）。沒有身分驗證提供者的部署會列出整個目錄，與 Flight 清單相同。當 Flight 連接埠無法連上時，JDBC 驅動程式會讀取此路由。
+
+---
+
 ### `GET /data/proto/{role_id}`
 
 傳回為某角色自動產生的 `.proto` 檔。[tool-verified: `provisa/api/data/endpoint_dev.py:49`]
@@ -456,13 +478,11 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 `{role_id}` 是呼叫方持有的一個角色，或以逗號分隔的一組已持有角色（`analyst,org_admin`），該組以其元角色的身分提供服務：即其成員所獲授權的聯集。呼叫方未持有的角色以 `403 auth.role_not_assigned` 拒絕，直接指明的元角色 id 以 `403 auth.meta_role_named` 拒絕。`?domains=a,b` 將 proto 限定於這些網域；角色無法存取的網域以 `403 data.domain_not_accessible` 拒絕。沒有資料介面的角色傳回 `404 data.no_proto_for_role`，未知角色傳回 `404 data.no_role`，模型尚未建立時傳回 `503 data.schema_cache_not_ready`。(REQ-1620, REQ-273) [tool-verified: `provisa/api/data/endpoint_dev.py`, `provisa/api/acting_role.py`]
 
-每個已註冊的資料表會產生一個 proto `message`。關聯會產生巢狀 message 欄位。類型對映：`integer → int32`、`bigint → int64`、`varchar → string`、`decimal → double`、`boolean → bool`、`timestamp → google.protobuf.Timestamp`。(REQ-538)
-
-服務只為角色結構描述根部的資料表列出 RPC，即其 GraphQL `Query` 類型所列的那些資料表；關聯資料表有自己的訊息，並透過其關聯存取。 [tool-verified: `provisa/grpc/proto_gen.py`]
+角色結構描述中的每張資料表都會產生一個 proto `message`。關係會產生巢狀的 message 欄位。 服務只為角色結構描述根部的資料表列出 RPC，即其 GraphQL `Query` 類型所列的那些資料表；關聯資料表有自己的訊息，並透過其關聯存取。 [tool-verified: `provisa/grpc/proto_gen.py`]
 
 加入 `?domains=a,b` 可將檔案限制在這些網域內。此時服務為所選網域自身的資料表列出 RPC；與之關聯的資料表以訊息形式出現。 [tool-verified: `provisa/api/data/endpoint_dev.py`]
 
-該檔案跟隨模型。每當模型或角色有變，它會隨角色的結構描述一併重新產生，元角色亦然。
+該檔案跟隨模型。每當模型或角色有變，它會隨角色的結構描述一併重新產生，元角色亦然。類型對映：`integer → int32`、`bigint → int64`、`varchar → string`、`decimal → double`、`boolean → bool`、`timestamp → google.protobuf.Timestamp`。(REQ-538)
 
 ---
 
@@ -474,11 +494,23 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 **標頭 — `X-Provisa-Sink`：** 設為 Kafka 目標（例如 `kafka://broker:9092/topic`）可將變更事件重新導向到 Kafka 接收端，而非 SSE 回應。伺服器會啟動接收端消費者並傳回 `202 Accepted`，而非開啟串流。(REQ-812) [tool-verified: `provisa/api/data/subscription_sse.py:137`]
 
+### `POST /data/sources/{source_id}/signal`
+
+在不帶資料列的情況下告訴 Provisa 某個數據來源已經變化：`signal` 變更訊號的接收端。數據來源中變更訊號為 `signal` 的每張資料表（其本身的，或在沒有本身訊號時為數據來源的）都會被視為已寫入，與經由 Provisa 寫入相同：其快取的回應會被捨棄，以它為基礎的具體化檢視會變為過期，並要求建構其副本。受負載保護的資料表的建構會等待其非繁忙時段。`?table=schema.table` 只通知一張資料表。(REQ-1149) [tool-verified: `provisa/api/data/signal.py`, `provisa/api/data/table_written.py`]
+
+呼叫者的角色需要寫入權，並且必須涵蓋它所通知的每張資料表的網域。回應為 `202 Accepted`，附帶被通知的資料表：
+
+```json
+{"signalled": ["public.orders"]}
+```
+
+不存在的數據來源，或它沒有的 `table`，會回應 `404`；`signal` 變更訊號上沒有資料表的數據來源會回應 `409`，因為沒有可重新整理的內容。[tool-verified: `tests/unit/test_signal_webhook.py`]
+
 ---
 
-## 管理員 REST 端點
+## 管理員 REST 端點 {: #admin-rest-endpoints }
 
-### 組態
+### 組態 {: #config }
 
 #### `GET /admin/config`
 
@@ -486,23 +518,25 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 #### `PUT /admin/config`
 
-上載修訂後的組態 YAML。伺服器會寫入 `.bak` 備份、儲存新檔，並重新載入所有結構描述、數據來源與具體化檢視。(REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:32`]
+上載修訂後的設定 YAML。伺服器寫入 `.bak` 備份，儲存新檔案，從中重新載入部署設定，並把它作為明確的一次性填入套用至模型儲存：檔案宣告的內容會經由模型儲存新增或更新，不會移除任何內容。之後的重新啟動會讀取檔案的設定，但從不再次套用其模型；首次啟動之後，只有模型儲存擁有模型。(REQ-164, REQ-1919) [tool-verified: `provisa/api/admin/settings_router.py` `upload_config`]
 
 **請求主體：** 原始 YAML 內容。
 
 **回應：**
 
 ```json
-{"success": true, "message": "Config uploaded and reloaded"}
+{"success": true, "message": "Config uploaded and applied"}
 ```
 
 重新載入失敗時：`{"success": false, "message": "<error>"}`。
 
 #### `GET /admin/config/live`
 
-下載**目前的即時組態** — 即 Provisa 今天會寫出的組態，反映自啟動以來累積的每一項管理員建立的資料表、關聯、網域、角色與 RLS 規則。(REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:67`]
+以設定檔的形式下載目前的模型：部署檔案的設定，以及從模型儲存讀取的每個模型部分——儲存、區域、數據來源、網域、角色、數據產品、詞彙表詞彙、資料表及其欄位、關係、指標、標籤及其指派、資料列過濾、命令、webhook、排程觸發器及命名規則。套用至空白的模型儲存時，該檔案會建構出相同的模型。部署為每個儲存加入的內容（內建數據來源及其資料表、系統網域、`org_admin` 及 `platform_admin`）不包括在內。(REQ-164, REQ-1919) [tool-verified: `provisa/api/admin/config_export.py` `build_live_config`, `provisa/core/store_config.py`]
 
-如果變更是透過管理員 API 進行而未後續上載，磁碟上的檔案可能落後於即時狀態。此端點補上這個落差：其輸出正是 `PUT /admin/config` 需要收到、才能讓磁碟檔案與即時狀態一致的內容。
+**查詢參數：** `sections`（可選）——以逗號分隔的模型部分清單，例如 `sources,tables`。只會寫出這些部分；未知的名稱會回應 400 `settings.export_unknown_section`。
+
+該端點在任何部署中都對擁有部署設定權利的呼叫者開放；管理頁面的設定檔區域以**匯出模型**提供它。
 
 傳回 `application/x-yaml`，並附帶 `Content-Disposition: attachment; filename=provisa.live.yaml`。
 
@@ -524,7 +558,7 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 ---
 
-### 設定
+### 設定 {: #settings }
 
 #### `GET /admin/settings`
 
@@ -598,7 +632,7 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 ---
 
-### AI 模型
+### AI 模型 {: #ai-models }
 
 #### `GET /admin/ai-models`
 
@@ -634,7 +668,7 @@ API 密鑰從不回傳 — `api_keys_set` 只回報每個供應商是否已設�
 
 ---
 
-### 聯邦引擎
+### 聯邦引擎 {: #federation-engine }
 
 #### `GET /admin/federation-engine`
 
@@ -670,13 +704,13 @@ API 密鑰從不回傳 — `api_keys_set` 只回報每個供應商是否已設�
 
 ---
 
-### 網域原則
+### 網域原則 {: #domain-policy }
 
 #### `POST /admin/domain-policy`
 
 變更作用中組織的網域原則（`use_domains` / `default_domain`）。(REQ-165, REQ-1266, REQ-1349) [tool-verified: `provisa/api/admin/settings_router.py:632`]
 
-這是限定於作用中組織的破壞性操作。每一個已註冊的數據來源、資料表、網域與關聯都會被清除，並依新原則重建。當要把組織從網域命名空間切換為扁平結構（或反之）時使用。
+切換不會刪除任何內容。只要目前的組織擁有目錄——部署沒有自行加入的已註冊資料表、數據來源或網域——它便會以 `409` 及代碼 `settings.domain_policy_catalog_exists` 被拒絕。拒絕的 `params` 會計算每一類（`tables`、`sources`、`domains`）。先以各自的操作移除這些物件，然後才切換。當設定檔宣告了該目錄的一部分時，代碼為 `settings.domain_policy_catalog_in_config`：下一次載入會把它還原，因此該政策在設定檔中設定。(REQ-1919)
 
 **請求主體：**
 
@@ -691,7 +725,7 @@ API 密鑰從不回傳 — `api_keys_set` 只回報每個供應商是否已設�
 
 ---
 
-### 可觀測性
+### 可觀測性 {: #observability }
 
 #### `GET /admin/traces/recent`
 
@@ -721,7 +755,7 @@ API 密鑰從不回傳 — `api_keys_set` 只回報每個供應商是否已設�
 
 ---
 
-### 探索
+### 探索 {: #discovery }
 
 #### `POST /admin/discover/relationships`
 
@@ -766,7 +800,7 @@ API 密鑰從不回傳 — `api_keys_set` 只回報每個供應商是否已設�
 
 ---
 
-### 數據來源爬取
+### 數據來源爬取 {: #source-crawl }
 
 #### `POST /admin/sources/crawl`
 
@@ -774,7 +808,7 @@ API 密鑰從不回傳 — `api_keys_set` 只回報每個供應商是否已設�
 
 ---
 
-### 數據來源資料表搜尋
+### 數據來源資料表搜尋 {: #source-table-search }
 
 #### `GET /admin/sources/{source_id}/tables/search`
 
@@ -782,7 +816,7 @@ API 密鑰從不回傳 — `api_keys_set` 只回報每個供應商是否已設�
 
 ---
 
-### 資料表剖析
+### 資料表剖析 {: #table-profiling }
 
 #### `POST /admin/tables/{table_id}/profile`
 
@@ -790,7 +824,7 @@ API 密鑰從不回傳 — `api_keys_set` 只回報每個供應商是否已設�
 
 ---
 
-### 數據來源描述
+### 數據來源描述 {: #source-descriptions }
 
 #### `POST /admin/source-meta/db-description`
 
@@ -798,7 +832,7 @@ API 密鑰從不回傳 — `api_keys_set` 只回報每個供應商是否已設�
 
 ---
 
-### 物件儲存 (REQ-1046, REQ-1048, REQ-1049)
+### 物件儲存 (REQ-1046, REQ-1048, REQ-1049) {: #object-storage-req-1046-req-1048-req-1049 }
 
 #### `GET /admin/org-storage`
 
@@ -822,7 +856,7 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 
 ---
 
-### 組織加密 (REQ-1574)
+### 組織加密 (REQ-1574) {: #org-encryption-req-1574 }
 
 #### `GET /admin/org-encryption`
 
@@ -848,7 +882,7 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 
 ---
 
-### Hasura / DDN 匯入 (REQ-1483)
+### Hasura / DDN 匯入 (REQ-1483) {: #hasura-ddn-import-req-1483 }
 
 #### `POST /admin/import/hasura/preview`
 
@@ -893,11 +927,13 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 {"config_yaml": "<yaml string>"}
 ```
 
-使用與 `PUT /admin/config` 相同的熱重新載入路徑。組織的目錄、結構描述與連線池會在回應傳回前重建。
+匯入是對目前組織模型儲存的明確一次性填入，與 `PUT /admin/config` 的套用方式相同：它經由模型儲存（帶防護及版本）新增及更新匯入設定所宣告的內容，不會刪除其中沒有提及的任何內容。沒有 `replace` 欄位。所宣告數據來源的引擎目錄、組織的連線集區及其結構描述會在回應傳回之前重建。(REQ-1919) [tool-verified: `provisa/api/app_loaders.py` `apply_configuration`]
+
+**回應:** `{"summary": {...}}` — 匯入設定所宣告內容的計數。
 
 ---
 
-### Apache Ossie 互通 (REQ-1316, REQ-1321)
+### Apache Ossie 互通 (REQ-1316, REQ-1321) {: #apache-ossie-interchange-req-1316-req-1321 }
 
 #### `GET /admin/ossie`
 
@@ -905,7 +941,15 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 
 該文件在每次請求時由即時狀態衍生 — 從不快取 — 因此不可能過時。資料表成為 `dataset` 物件，欄位成為 `field` 物件，關聯對映為 Ossie 的 `relationship` 物件。
 
-傳回 `text/yaml`，並附帶 `Content-Disposition: attachment; filename=provisa-ossie.yaml`。
+傳回 `text/yaml`，並附帶 `Content-Disposition: attachment; filename=provisa.ossie.yaml`。
+
+#### `GET /admin/dbt/sources`
+
+以 dbt `sources.yml` 的形式下載受治理目錄，按提供給某一個角色的樣子。(REQ-1967) [tool-verified: `provisa/api/admin/ossie_router.py`]
+
+**查詢參數:** `role` — 呼叫者持有的角色，或對 `access_config` 持有者而言的任何角色。
+
+傳回 `text/yaml`，帶有 `Content-Disposition: attachment; filename=provisa.sources.yml`。未知的角色為 `404`，代碼為 `dbt_sources.unknown_role`。該檔案包含甚麼，請參閱[整合](integrations.md#dbt-sources-file-req-1967)。
 
 #### `POST /admin/ossie/import`
 
@@ -928,7 +972,7 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 
 ---
 
-### 動作（函式與 Webhook）
+### 動作（函式與 Webhook） {: #actions-functions-and-webhooks }
 
 所有端點都在 `/admin/actions` 前綴之下。(REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
 
@@ -1030,7 +1074,7 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 
 ---
 
-### 角色
+### 角色 {: #roles }
 
 所有端點都在 `/admin/roles` 前綴之下。[tool-verified: `provisa/api/admin/roles_router.py:18`]
 
@@ -1045,7 +1089,7 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 
 ---
 
-### 使用者
+### 使用者 {: #users }
 
 所有端點都在 `/admin/users` 前綴之下。[tool-verified: `provisa/api/admin/local_users_router.py:21`]
 
@@ -1063,7 +1107,7 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 
 ---
 
-### 組織
+### 組織 {: #organizations }
 
 所有端點都在 `/admin/orgs` 之下。[tool-verified: `provisa/api/admin/orgs_router.py:18`]
 
@@ -1079,7 +1123,7 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 
 ---
 
-### 邀請
+### 邀請 {: #invites }
 
 所有端點都在 `/admin/invites` 之下。[tool-verified: `provisa/api/admin/invites_router.py:18`]
 
@@ -1091,11 +1135,13 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 
 ---
 
-### 管理員 GraphQL
+### 管理員 GraphQL {: #admin-graphql }
 
 #### `POST /admin/graphql`
 
 所有管理員操作的 Strawberry GraphQL 端點：數據來源與資料表 CRUD、關聯管理、網域組態、RLS 規則、快取控制、命名慣例、排程工作管理，以及查詢編譯。(REQ-164) [tool-verified: `provisa/api/app.py:2171`]
+
+完整的結構描述參考——每個 Query 欄位、Mutation 欄位及輸入/輸出類型——請參閱[管理 GraphQL API 參考](admin-graphql.md)。
 
 **主要變更操作：**
 
@@ -1124,7 +1170,7 @@ mutation {
 
 ---
 
-### 設定精靈
+### 設定精靈 {: #setup }
 
 #### `GET /setup/status`
 
@@ -1136,15 +1182,15 @@ mutation {
 
 ---
 
-## 健康檢查
+## 健康檢查 {: #health-check }
 
-#### `GET /health` 或 `HEAD /health`
+#### `GET /health` 或 `HEAD /health` {: #get-health-or-head-health }
 
 傳回 `{"status": "ok"}`。一律免驗證。(REQ-539) [tool-verified: `provisa/api/app.py:2258`]
 
 ---
 
-## 錯誤回應
+## 錯誤回應 {: #error-responses }
 
 | 狀態 | 意義 |
 | --- | --- |
@@ -1152,7 +1198,7 @@ mutation {
 | 401 | 缺少或無效的驗證權杖 |
 | 403 | 能力不足；治理違規 |
 | 404 | 找不到角色、資源或組態檔 |
-| 422 | 缺少必要標頭（例如 `X-Role`） |
+| 422 | 缺少必要標頭（例如 `X-Provisa-Role`） |
 | 503 | 資料庫或數據來源未連線；相依項無法使用 |
 | 504 | 請求逾時 |
 
@@ -1172,11 +1218,13 @@ mutation {
 
 ---
 
-## Arrow Flight 端點
+## Arrow Flight 端點 {: #arrow-flight-endpoint }
 
 連接埠 `8815`。透過 gRPC 的原生 Arrow 資料行式傳輸。(REQ-143, REQ-045) [tool-verified: `provisa/api/flight/server.py`]
 
 查詢與目錄探索都可在同一條連線上使用。完整的治理管線（RLS、遮罩、抽樣）會套用到每一個查詢。(REQ-130, REQ-143)
+
+目錄探索（`list_flights`、`get_flight_info`、`get_schema` 以及不帶 `query` 的 ticket）會列出授予呼叫者角色的內容。啟用身分驗證時，這三個不帶 ticket 的呼叫從呼叫標頭 `authorization: Bearer` 取得憑證、從 `x-provisa-role` 取得角色，沒有憑證時會被拒絕；請參閱[整合](integrations.md)。(REQ-1263, REQ-127) [tool-verified: `provisa/api/flight/server.py`]
 
 **Ticket 格式**（JSON）：
 
@@ -1200,9 +1248,11 @@ table = client.do_get(ticket).read_all()
 
 當 Zaychik Flight SQL 代理可用時（連接埠 8480），記錄批次會端對端串流，無需完整具體化。(REQ-144) 若 Zaychik 無法使用，則退回透過聯邦查詢層具體化。(REQ-146)
 
+**警告。** 回應關於自身所報告的內容，會在串流中作為不帶資料列的批次的 `app_metadata` 傳遞：`{"provisa_warnings": [{"code", "params", "message"}]}`。讀取資料列之前已知的警告，會在資料列之前的不帶資料列批次中到達。只有在讀取資料列之後才知道的警告，會在第二個不帶資料列的批次中到達，它是串流中的最後一批：`statement.rows_cut` 表示回應在資料列上限處被截斷，並且還有更多資料列相符 (REQ-1949)。請讀取每一批的 `app_metadata`，包括最後一批。[tool-verified: `provisa/api/flight/compression.py`]
+
 ---
 
-## Protobuf gRPC 端點
+## Protobuf gRPC 端點 {: #protobuf-grpc-endpoint }
 
 連接埠 `50051`（以 `GRPC_PORT` 環境變數或 `server.grpc_port` 組態覆寫）。(REQ-529) [tool-verified: `provisa/grpc/server.py`, `provisa/api/app.py`]
 
@@ -1235,7 +1285,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' \
 
 當啟動時載入的模型定義了 gRPC 服務時，gRPC 伺服器才會啟動。(REQ-529) 此後每次呼叫都按模型的現況提供服務：伺服器執行期間註冊或變更的資料表，會在下一次呼叫時即被提供和描述，無需重新啟動。 [tool-verified: `provisa/api/app_startup.py`, `provisa/grpc/descriptor.py`]
 
-#### 彙總與分組 RPC (REQ-1359, REQ-1361, REQ-1405)
+#### 彙總與分組 RPC (REQ-1359, REQ-1361, REQ-1405) {: #aggregate-and-group-by-rpcs-req-1359-req-1361-req-1405 }
 
 當資料表設定了 `enable_aggregates` 時，產生的 proto 會在 `Query{TypeName}` 之外額外包含兩個 RPC：
 
@@ -1250,9 +1300,9 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' \
 
 ---
 
-## JDBC 驅動程式
+## JDBC 驅動程式 {: #jdbc-driver }
 
-Provisa JDBC 驅動程式（`provisa-jdbc-0.1.0.jar`）將語意目錄公開給 BI 工具（Tableau、PowerBI、DBeaver）。(REQ-126)
+Provisa JDBC 驅動程式（`provisa-jdbc-<release>.jar`）將語意目錄公開給 BI 工具（Tableau、PowerBI、DBeaver）。(REQ-126)
 
 **連線 URL：** `jdbc:provisa://host:port` (REQ-131)
 
@@ -1264,7 +1314,7 @@ Provisa JDBC 驅動程式（`provisa-jdbc-0.1.0.jar`）將語意目錄公開給 
 
 ---
 
-## `orderBy` 引數格式
+## `orderBy` 引數格式 {: #orderby-argument-format }
 
 `order_by` 引數使用 `{column: direction}` 物件，方向列舉有 6 個值：(REQ-200)
 
@@ -1279,17 +1329,17 @@ Provisa JDBC 驅動程式（`provisa-jdbc-0.1.0.jar`）將語意目錄公開給 
 
 ---
 
-## 訂閱
+## 訂閱 {: #subscriptions }
 
 SSE 訂閱位於 `GET /data/subscribe/{table}`。(REQ-219, REQ-258) 通知傳遞採用依數據來源類型選擇的可插拔提供者：PostgreSQL 來源使用 `LISTEN/NOTIFY`，MongoDB 來源使用 Change Streams，Kafka 來源使用消費者群組。無論採用哪個提供者，RLS 篩選與結構描述驗證都會套用。WebSocket 與 RSS 來源也透過同一端點支援。(REQ-338, REQ-342) [tool-verified: `provisa/api/data/subscribe.py:239`, `provisa/subscriptions/registry.py`, `provisa/api/app.py` `_rebuild_schemas`]
 
 ---
 
-## 業務詞彙表 (REQ-1387)
+## 業務詞彙表 (REQ-1387) {: #business-glossary-req-1387 }
 
 業務詞彙表把實體欄位名稱 — 即它們在來源資料庫中的樣子 — 對映到共用的人類詞彙。模型中註冊的每個欄位都會自動取得一個術語。填充詞彙表無需手動輸入；策展人只在系統推導出的內容之上補充定義、關聯與專家。
 
-### 術語如何推導
+### 術語如何推導 {: #how-terms-are-derived }
 
 當 Provisa 註冊或更新資料表的欄位時，`normalize_term`（`provisa/core/glossary.py`）會在每個欄位名稱上執行並產生一個標準片語。[tool-verified: `provisa/core/repositories/glossary.py:sync_table_refs`]
 
@@ -1314,7 +1364,7 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。(REQ-219, REQ-258) 通知傳遞
 
 前三者收斂為一個術語。`transaction amount` 保留兩個權杖，因為 `amount` 不是代理。裸 `id` 欄位 — 前面沒有其他權杖 — 無法被移除；它正規化為 `identifier`，因此術語不會為空。[tool-verified: `provisa/core/glossary.py:normalize_term`]
 
-### 生命週期
+### 生命週期 {: #lifecycle }
 
 術語是**從模型成員資格推導而來**，而非由使用者按需建立。資料表儲存庫是唯一的寫入路徑：`sync_table_refs` 在每一次欄位集 upsert 內執行，`sweep_refless_terms` 則在任何刪除路徑之後執行。[tool-verified: `provisa/core/repositories/glossary.py`]
 
@@ -1326,7 +1376,7 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。(REQ-219, REQ-258) 通知傳遞
 
 **復原：** 若已淘汰術語的正規化名稱再次出現（欄位重新註冊），該術語會取消標記，其參照亦重新累積。
 
-### 策展端點
+### 策展端點 {: #curation-endpoints }
 
 所有端點都在 `/admin/glossary` 之下。它們需要 `org_admin` 存取權與已設定的組織。每一次變更操作都會觸發中繼資料發佈。[tool-verified: `provisa/api/admin/glossary_router.py`]
 
@@ -1386,7 +1436,7 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。(REQ-219, REQ-258) 通知傳遞
 
 將 `export_excluded` 設為 `true`，可讓該術語不出現在任何中繼資料匯出快照中，無論其實體參照或抽象狀態為何。設回 `false` 則在下次發佈時把術語恢復到快照中。策展數據（定義、邊、專家）不受影響。[tool-verified: `provisa/core/repositories/glossary.py:set_export_excluded`, `provisa/api/admin/glossary_router.py:update_term`]
 
-### AI 輔助策展
+### AI 輔助策展 {: #ai-assisted-curation }
 
 組織所設定的 AI 模型可以在一次操作中，為整個詞彙表草擬定義並建議關聯邊。這兩項批次動作都需要 `org_admin` 存取權與已設定的組織。
 
@@ -1414,7 +1464,7 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。(REQ-219, REQ-258) 通知傳遞
 
 `added` 是已寫入的邊數量。已存在的邊仍會計入 — upsert 成功，只是邊的數據沒有改變。
 
-### MCP `search_terms` 工具
+### MCP `search_terms` 工具 {: #mcp-search_terms-tool }
 
 ```
 search_terms(query, role=None, limit=25)
@@ -1424,7 +1474,7 @@ search_terms(query, role=None, limit=25)
 
 在撰寫 SQL 之前使用 `search_terms`，可依名稱找出代表某個概念的每一個實體欄位。例如搜尋 `"order date"` 會傳回該術語，以及每個已註冊資料表中所有的 `order_dt`、`orderDate`、`ORDER_DATE` 欄位。
 
-### 中繼資料匯出
+### 中繼資料匯出 {: #metadata-export }
 
 詞彙表術語圖包含在 `build_snapshot` 建置的每個 `MetadataSnapshot` 中。[tool-verified: `provisa/api/metadata_export/builder.py:_glossary_assets`]
 
@@ -1450,11 +1500,11 @@ search_terms(query, role=None, limit=25)
 
 ---
 
-## 數據產品 (REQ-1634)
+## 數據產品 (REQ-1634) {: #data-products-req-1634 }
 
 數據產品將一起發佈供消費的資料表分組，並由單一網域擁有。在 Provisa 已是真實來源的地方，欄位沿用 ODPS（Open Data Product Standard）詞彙。管理員 UI 在 **Admin → Data Products** 下公開數據產品。[tool-verified: `provisa/core/models.py:318-342`, `provisa/api/admin/schema_mutation.py:949-1017`, `provisa/api/admin/schema_query.py:352-362`]
 
-### 能力
+### 能力 {: #capabilities }
 
 | 能力 | 授予 |
 | --- | --- |
@@ -1463,7 +1513,7 @@ search_terms(query, role=None, limit=25)
 
 [tool-verified: `provisa/api/admin/schema_mutation.py:959,1001`, `provisa/api/admin/schema_query.py:357`]
 
-### 管理員 GraphQL
+### 管理員 GraphQL {: #admin-graphql_1 }
 
 所有數據產品操作皆透過 `POST /admin/graphql` 進行。
 
@@ -1526,7 +1576,7 @@ mutation {
 
 刪除一個產品會清除每個成員資料表的 `product_id`，移除其成員資格。需要 `data_product_rw`。[tool-verified: `provisa/api/admin/schema_mutation.py:995-1017`]
 
-### 欄位結構描述
+### 欄位結構描述 {: #field-schema }
 
 | 欄位 | 類型 | 必要 | 備註 |
 | --- | --- | --- | --- |
@@ -1553,19 +1603,19 @@ mutation {
 
 [tool-verified: `provisa/core/models.py:338-341`, `provisa/api/admin/types.py:104-118,538-551`]
 
-### 資料表成員資格
+### 資料表成員資格 {: #table-membership }
 
 資料表透過在資料表編輯表單設定其 `product_id` 欄位加入數據產品。挑選器的範圍限定於 `domain_id` 與該資料表自身網域相符的產品 — `marketing` 網域中的資料表永遠不會被提供 `sales` 網域的產品。[tool-verified: `provisa/api/admin/actions_router.py:244-260`, `docs/arch/requirements.yaml:54585-54586`]
 
 同一網域中的命令亦可指派為成員。[tool-verified: `provisa-ui/src/i18n/locales/en/dataProductsTab.json:commandsLabel`]
 
-### 中繼資料匯出篩選
+### 中繼資料匯出篩選 {: #metadata-export-filter }
 
 `build_snapshot` 在每次目錄發佈時套用 `data_products_only=True`。沒有 `product_id` 的資料表會連同其關係邊、血緣邊與治理標籤一併從快照中保留。數據來源與網域一律發佈。詞彙表術語只在其至少一個實體參照所屬的資料表屬於已匯出（產品成員）資料表時才會發佈。[tool-verified: `provisa/api/metadata_export/builder.py:594,609,641`]
 
 沒有已匯出成員的產品不會建立快照項目 —— 沒有成員的清單會向目錄誤呈該產品。[tool-verified: `provisa/api/metadata_export/model.py:106-113`]
 
-### 依目錄目標劃分的數據產品支援
+### 依目錄目標劃分的數據產品支援 {: #data-product-support-by-catalog-target }
 
 `MetadataSnapshot.data_products` 會抵達每個配接器，但只有其平台具備原生數據產品概念的配接器，才會將其發佈為一級實體；其餘配接器只發佈成員資料表（已依上述篩選），不含產品分組。
 

@@ -1,4 +1,4 @@
-# Cliente Python (`provisa-client`)
+# Cliente Python (`provisa-client`) {: #python-client-provisa-client }
 
 Cliente Python para o Provisa. Fornece quatro interfaces:
 
@@ -9,7 +9,7 @@ Cliente Python para o Provisa. Fornece quatro interfaces:
 | Dialeto SQLAlchemy | Ferramentas de BI, ORM, `read_sql` do Pandas (REQ-270) |
 | ADBC | Streaming colunar Arrow-nativo via Flight (REQ-271) |
 
-## Instalação
+## Instalação {: #install }
 
 ```bash
 pip install provisa-client                      # core (ProvisaClient + DB-API)
@@ -22,7 +22,7 @@ pip install "provisa-client[adbc]"              # adds ADBC over Arrow Flight
 
 ## ProvisaClient
 
-### Início Rápido
+### Início Rápido {: #quick-start }
 
 ```python
 from provisa_client import ProvisaClient
@@ -50,7 +50,7 @@ client = ProvisaClient("http://localhost:8001", token=body["access_token"])
 
 Os pontos de entrada de DB-API e ADBC fazem essa troca por você — veja abaixo.
 
-### Consultas GraphQL
+### Consultas GraphQL {: #graphql-queries }
 
 ```python
 # Raw response dict
@@ -66,13 +66,13 @@ result = client.query(
 df = client.query_df("{ orders { id amount region } }")
 ```
 
-### Assíncrono
+### Assíncrono {: #async }
 
 ```python
 result = await client.aquery("{ orders { id amount } }")
 ```
 
-### Arrow Flight (colunar de alta vazão)
+### Arrow Flight (colunar de alta vazão) {: #arrow-flight-high-throughput-columnar }
 
 Use Flight para grandes conjuntos de resultados — os dados fazem streaming como batches de registro Arrow sem materializar no servidor. (REQ-143, REQ-145)
 
@@ -89,22 +89,22 @@ O Flight se conecta à porta 8815 por padrão. (REQ-143) Sobreponha com `flight_
 client = ProvisaClient("http://prod.example.com", flight_port=8815)
 ```
 
-### Exploração de Catálogo
+### Exploração de Catálogo {: #catalog-exploration }
 
 ```python
 tables_df = client.list_tables()
 ```
 
-### Referência de Conexão
+### Referência de Conexão {: #connection-reference }
 
 | Parâmetro | Padrão | Descrição |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | URL base do servidor Provisa |
 | `token` | `None` | Credencial bearer — um token do provedor ou um token de acesso pessoal; omita para autenticação por senha (REQ-606, REQ-1263) |
-| `role` | `"admin"` | Função enviada com cada requisição (REQ-273) |
+| `role` | `None` | Função com a qual agir, enviada como `X-Provisa-Role` e atendida apenas se atribuída ao usuário; se omitida, a requisição é executada com a função própria da identidade (REQ-273) |
 | `flight_port` | `8815` | Porta gRPC do Arrow Flight (REQ-143) |
 
-### Tratamento de Erros
+### Tratamento de Erros {: #error-handling }
 
 `query()` lança `httpx.HTTPStatusError` em erros HTTP. (REQ-607)
 `query_df()` lança `RuntimeError` se a resposta contiver erros GraphQL. (REQ-607)
@@ -128,7 +128,7 @@ conn = connect(
 
 `connect` envia o nome de usuário e a senha por POST para `/auth/login` e guarda o `access_token` que recebe, de modo que a conexão carrega uma credencial de verdade em vez de um nome. `role` *solicita* uma função e o servidor a atende apenas se a identidade a tiver atribuída (REQ-273); se omitida, a conexão roda com a função que o login resolveu.
 
-### Executando consultas
+### Executando consultas {: #executing-queries }
 
 O cursor aceita GraphQL ou SQL — detectado automaticamente. (REQ-268, REQ-274)
 
@@ -146,7 +146,7 @@ cur.execute("SELECT id, amount FROM orders WHERE region = 'west'")
 rows = cur.fetchall()
 ```
 
-### Metadados de coluna
+### Metadados de coluna {: #column-metadata }
 
 ```python
 cur.execute("{ orders { id amount } }")
@@ -155,7 +155,7 @@ print(cur.description)
 print(cur.rowcount)
 ```
 
-### Parâmetros nomeados
+### Parâmetros nomeados {: #named-parameters }
 
 ```python
 cur.execute(
@@ -164,7 +164,7 @@ cur.execute(
 )
 ```
 
-### Gerenciadores de contexto
+### Gerenciadores de contexto {: #context-managers }
 
 ```python
 with connect("http://localhost:8001", username="alice", password="secret") as conn:
@@ -175,7 +175,7 @@ with connect("http://localhost:8001", username="alice", password="secret") as co
 
 ---
 
-## Dialeto SQLAlchemy
+## Dialeto SQLAlchemy {: #sqlalchemy-dialect }
 
 ```bash
 pip install "provisa-client[sqlalchemy]"
@@ -194,7 +194,7 @@ with engine.connect() as conn:
         print(row)
 ```
 
-### Com pandas
+### Com pandas {: #with-pandas }
 
 ```python
 import pandas as pd
@@ -202,7 +202,7 @@ import pandas as pd
 df = pd.read_sql("{ orders { id amount } }", engine)
 ```
 
-### Parâmetros de URL
+### Parâmetros de URL {: #url-parameters }
 
 | Parâmetro | Descrição | Padrão |
 | ----------- | ------------- | --------- |
@@ -214,7 +214,7 @@ engine = create_engine(
 )
 ```
 
-### Introspecção de esquema
+### Introspecção de esquema {: #schema-introspection }
 
 O dialeto implementa `get_table_names()`, `get_columns()`, e `has_table()` — ferramentas de catálogo (DBeaver, SQLAlchemy automap) conseguem inspecionar o esquema. (REQ-363, REQ-270)
 
@@ -242,7 +242,7 @@ conn = adbc_connect(
 
 `adbc_connect` faz login por HTTP primeiro e coloca o token resultante em cada ticket do Flight, de modo que o servidor Flight autentica a conexão do mesmo jeito que a superfície REST. (REQ-1263) O argumento `role` é uma solicitação, validada no servidor contra as atribuições da identidade — ele nunca se torna a identidade. (REQ-273)
 
-### Buscar como Arrow Table
+### Buscar como Arrow Table {: #fetch-as-arrow-table }
 
 ```python
 with conn.cursor() as cur:
@@ -251,7 +251,7 @@ with conn.cursor() as cur:
     df = table.to_pandas()
 ```
 
-### Buscar como tuplas
+### Buscar como tuplas {: #fetch-as-tuples }
 
 ```python
 with conn.cursor() as cur:
@@ -260,7 +260,7 @@ with conn.cursor() as cur:
     one  = cur.fetchone()    # single tuple or None
 ```
 
-### Metadados de coluna
+### Metadados de coluna {: #column-metadata_1 }
 
 ```python
 cur.execute("{ orders { id amount } }")
@@ -268,7 +268,7 @@ print(cur.description)
 # [('id', None, ...), ('amount', None, ...)]
 ```
 
-### Gerenciador de contexto
+### Gerenciador de contexto {: #context-manager }
 
 ```python
 with adbc_connect("http://localhost:8001", user="alice", password="secret") as conn:

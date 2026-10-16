@@ -1,4 +1,4 @@
-# 环境
+# 环境 {: #environments }
 
 环境是一个组织受治理模型的具名副本。这份副本在物理上是一个独立的 PostgreSQL 架构——不是一个判别列，不是前缀，而是一个真正的架构——因此每一条既有的仓库查询在环境内部都无需改写便是正确的，而且一个环境的行不会因为漏写谓词而进入另一个环境的读取结果（REQ-1487、REQ-1488）。
 [tool-verified: `environments.py` module docstring; `org_schema()` at environments.py lines 86-96]
@@ -8,12 +8,14 @@ at env_routing.py lines 93-129]
 
 环境功能面向付费套餐的组织提供。[inferred: REQ-1507]
 
-## 环境名称
+要为非生产环境填充可安全使用的数据，请参阅[构建测试环境](test-data.md)。
+
+## 环境名称 {: #environment-names }
 
 名称必须匹配 `[a-z][a-z0-9_]{1,31}`——两到三十二个字符的小写字母、数字和下划线，以字母开头。`prod` 以及以 `pg_` 开头的名称会被拒绝。任一组织可用的最大长度取决于该组织自身的 id：PostgreSQL 会静默截断超过 63 字节的标识符，而这个上限保护的正是环境所派生的最长架构名。[tool-verified: `ENV_NAME_PATTERN` at environments.py line 59; `validate_env_name()` at
 environments.py lines 119-142; `max_env_name_length()` at environments.py lines 108-116]
 
-## 副本带走什么
+## 副本带走什么 {: #what-a-copy-carries }
 
 组织架构中的每一张表都恰好落在一个类别中（REQ-1489）。该分类是一份允许列表，而不是排除列表：后来新增的表在有人把它的类别写到这里之前不会随行，因此漏登记一张表的失败表现是一个变红的测试。[tool-verified: `CLASSIFIED`
 constant and module docstring, env_classes.py lines 19-22]
@@ -32,26 +34,25 @@ constant and module docstring, env_classes.py lines 19-22]
 
 `SEEDED_AT_CREATION` 的存在是为了解决一个具体问题。新环境需要角色和分配，否则它一开张就没人能做任何事。但如果后来的合并把 `prod` 的 `developer` 行也带过来，就会覆盖某个受限分支可能需要的受限版本，从而把评审路径变成提权通道。因此角色和分配只在创建时随行一次，此后就是各环境自己的答案。[tool-verified: env_classes.py lines 65-71; env_copy.py lines 41-44]
 
-## 绑定
+## 绑定 {: #bindings }
 
 绑定是说明数据源实际指向何处的那些列——`host`、`port`、`database`、`username` 等等。它们在任何复制中都不随行。尚未绑定的环境会被标记为 `unbound`，而不是留白：空主机不等于没有主机，连接构建器会把它读作 `localhost:5432`。[tool-verified: `BOUND_COLUMN = "bound"` at
 env_classes.py line 143; `BINDING_COLUMNS` dict at env_classes.py lines 155-172]
 
-一个环境的数据源有两种解析方式。
+以 Unbound 之外的任何方式创建的环境，会按其父环境写入的原样复制每个数据源的连接：
+`${secret:...}` 或 `${env:...}` 引用被复制为同一个引用，从不解析。创建之后，副本就是该环境
+自己的行，可在数据源页面编辑；构建环境的运行时时，不会经由父环境解析任何内容。
+每个数据源的 `binding` 字段说明其连接来自何处：`copied`、`own`（在此环境中提供）
+或 `unbound`。编辑复制来的连接会使其变为 `own`。**从父环境重新复制**
+（`POST /admin/orgs/{org}/environments/{name}/sources/recopy`）会再次复制父环境的连接。
+合并或部署不携带连接，因此它们带入的数据源以 `unbound` 状态到达。
+[tool-verified: `_copy_table` at env_copy.py; `recopy` and `unbind` at env_data.py;
+`owned_if_reconnected` at repositories/source.py]
 
-**基座**——环境自带凭据。org_admin 创建一个基座，然后逐一显式绑定每个数据源。[tool-verified: `CreateEnvBody.inherit_connections = False` (default) at
-environments_router.py line 227; "binding a base is an org_admin's act" comment at line 358]
+## git 投影 {: #the-git-projection }
 
-**分支**——环境按引用继承基座的凭据。什么都不复制。当查询需要连接时，解析会沿 `branched_from` 链向上走，在第一个其行已绑定的环境处停下。在基座上轮换凭据会传播到它的每一个分支，无需任何操作。吊销它则一次性对所有分支生效。任何密钥都不会在分支、导出或仓库可能带走它的地方被物化出来。
-[tool-verified: `resolve()` at env_bindings.py lines 114-151; `lineage()` at env_bindings.py
-lines 74-102; env_bindings.py module docstring lines 11-33]
-
-要创建分支，请在环境面板中勾选**继承连接**。默认为关闭。
-[tool-verified: `environmentsTab.json` key `inheritConnections`; `inheritHelp2` string]
-
-## git 投影
-
-对模型的每一次写入都会把结果提交到该环境的 git 分支。仓库是模型的投影，绝不是它的权威：Provisa 读写控制平面；仓库是记录，而不是来源。部署一棵树需要一次显式调用——在 git 托管方合并一个拉取请求并不会自行部署（REQ-1524、REQ-1526）。[tool-verified:
+每次写入模型都会将结果提交到环境的 git 分支。部署一棵树
+需要显式调用——在 git 主机上合并的拉取请求不会自行部署（REQ-1524、REQ-1526）。[tool-verified:
 deploy endpoint docstring at environments_router.py lines 777-791]
 
 每个实体对应一个文件。路径是去掉协议和组织后的 REQ-1385 URI：`provisa://acme/sales/tables/Order` 变成 `sales/tables/Order.yaml`。数据源落到 `sources/`，命令落到 `commands/`，指标落到 `metrics/`。由父级级联而来的子行——列、关系、RLS 规则——写在父级的文件内部，而不是各自成文件。
@@ -69,7 +70,7 @@ env_project.py docstring lines 26-27]
 
 序列化是确定性的。键按字母序输出，子集合按各自的地址排序，YAML 样式固定。持有同一模型的两个环境会产出逐字节相同的树。[tool-verified: `dump()` at env_files.py lines 131-143]
 
-## 合并
+## 合并 {: #merge }
 
 把一个环境的模型合并到另一个环境，是按身份更新：源方拥有的每个对象都会在目标方被创建或更新。源方不再拥有的对象，只有在调用方显式请求删除时才会被移除。中途失败的合并会让目标保持原样——一个事务。[tool-verified: `copy_model()` at env_copy.py lines 216-234; REQ-1490 description]
 
@@ -78,7 +79,7 @@ env_project.py docstring lines 26-27]
 
 合并会让目标的绑定、角色和密钥保持原封不动。开发环境不会因为从 prod 取来一份更新的模型而丢掉自己的数据库连接。prod 也不会获得 dev 的授权。[tool-verified: env_copy.py lines 269-287; REQ-1490 scenario]
 
-### 报告点名了什么
+### 报告点名了什么 {: #what-the-report-names }
 
 合并报告按路径列出新增、变更、移除以及保持不变的内容。它还会点名任何**冲突**——自双方上次共享提交以来两边都改动过的对象。冲突只报告不解决：源方胜出，这正是"合并进目标"的含义。Provisa 不提供冲突解决、不提供合并标记、不提供逐对象抉择。冲突清单的价值在于信号——两个人在互不知情的情况下编辑了同一个对象（REQ-1555）。[tool-verified: `CopyReport.conflicts` at env_copy.py lines 151-165; `detect_conflicts()` called
 at env_copy.py lines 261-263; REQ-1555 description]
@@ -90,7 +91,7 @@ property at env_copy.py lines 164-166; env_copy.py lines 255-264]
 [tool-verified: `_squash()` docstring at environments_router.py lines 663-680;
 `MergeBody.message` comment at environments_router.py lines 258-260]
 
-## 拉取
+## 拉取 {: #pull }
 
 拉取会取来远端为某个环境所持有的内容，并使其成为模型。它不会直接快进本地分支；它把取来的树经由普通的部署路径应用，因此管辖手动部署的那套校验和审计也同样管辖拉取。
 [tool-verified: `pull_environment()` docstring at environments_router.py lines 1450-1462]
@@ -102,7 +103,7 @@ lines 1485-1519]
 environments_router.py lines 1491-1503; `_collisions()` at environments_router.py
 lines 1581-1602]
 
-## 历史
+## 历史 {: #history }
 
 每次部署都会让环境的游标在它自己的提交线上向前移动。撤销回退一个提交；重做则朝着撤销出发时的位置再向前一步。两种操作都不会移除提交——回退是新增一个位置，而不是改写历史。
 [tool-verified: `_move()` docstring at environments_router.py lines 854-868]
@@ -114,7 +115,7 @@ environments_router.py lines 907-916]
 `can_undo` 和 `can_redo` 标志随环境列表响应一同返回。当投影中没有控制平面所指名的那个提交时，两者都报告 `false`——这是设计所承认的一种状态，称为**已漂移**。仓库存储从未收到过某个特定提交的节点，仍会列出它的环境；只是历史相关的答案会变（REQ-1561）。[tool-verified: `_with_history()`
 at environments_router.py lines 316-344; REQ-1561 description]
 
-## 授权
+## 授权 {: #authorization }
 
 环境由两项权限管辖。默认情况下，分析师两项都不持有（REQ-1573）。
 [tool-verified: REQ-1573 description; `MANAGE_CAPABILITY = "environment_management"` and
@@ -134,7 +135,7 @@ module docstring lines 28-34]
 
 不持有任何环境权限的分析师可以查询 `prod`，且看不到环境切换器。被授予分析师角色的外包人员看不到环境相关界面，也无法创建或切换到生产以外的任何环境。[tool-verified: REQ-1573 use_case and scenario]
 
-### 环境所有者的权限
+### 环境所有者的权限 {: #environment-owner-authority }
 
 创建环境是只读成员获得模型编辑权的唯一途径（REQ-1528）。在自己创建的环境内部，创建者持有 `developer` 角色的各项能力——减去数据权限（`write`、`full_results`、`usage`）。是建模权，不是数据权。[tool-verified: `ENVIRONMENT_OWNER_CAPABILITIES` at env_authority.py lines 75-77;
 `_DATA_RIGHTS` at env_authority.py lines 74-77; env_authority.py module docstring lines 14-38]
@@ -146,7 +147,7 @@ env_authority.py lines 84-98]
 域成员资格仍然限制所有者可以改动什么。开分支改变的是成员可以做什么；它绝不改变他们可以对哪些域去做（REQ-1530）。
 [tool-verified: `domains_within()` at env_authority.py lines 121-145]
 
-## 受保护的环境（REQ-1504）
+## 受保护的环境（REQ-1504） {: #protected-environments-req-1504 }
 
 环境可以被设为受保护。向受保护环境的合并或部署不会在请求时被应用；它会被提出为一项提案，且必须由请求者之外的人批准。
 
@@ -199,7 +200,9 @@ provisa env deploy --org acme --env prod --ref "origin/main" \
 
 ---
 
-## 另请参阅
+## 另请参阅 {: #see-also }
 
 - [部署](deployment.md) —— 如何搭起环境所连接的控制平面
 - [命令](commands.md) —— 出现在每个环境树中的受跟踪函数与 webhook
+- [构建测试环境](test-data.md) — 对生产环境做画像、声明伪造数据、为非生产环境生成合成数据
+- [伪造数据方法](fake-methods.md) — 每一种伪造数据以及列可以声明的每一种方法

@@ -1,12 +1,12 @@
-# 远程模式
+# 远程模式 {: #remote-schemas }
 
 远程模式来源将外部 API——GraphQL（含 GitHub）、gRPC 或 REST（OpenAPI）——连接至 Provisa 模型。添加来源不会注册任何数据表。来源会提供数据表，由数据管家通过“Register Table”选择器注册所需的每一张表；该注册即为策展（curation）步骤。（REQ-308、REQ-316、REQ-322）已注册的数据表是一级的 Provisa 数据表。（REQ-308、REQ-316、REQ-325）所有治理规则、查询接口及安全层均会自动应用。（REQ-310、REQ-319、REQ-328）远程服务永远不会看到 Provisa 的治理规则。（REQ-310、REQ-319、REQ-328）
 
 ---
 
-## 三种来源类型
+## 三种来源类型 {: #three-source-types }
 
-### GraphQL 远程模式（REQ-307–313）
+### GraphQL 远程模式（REQ-307–313） {: #graphql-remote-schema-req-307313 }
 
 **如何添加来源。** 向 `/admin/sources/graphql-remote` 发送 POST 请求，附上端点 URL、命名空间及可选的认证信息。Provisa 会对远程端点发起标准的 `__schema` 内省查询，以确认端点及凭据。（REQ-307）[tool-verified: `provisa/graphql_remote/introspect.py:47–59`]
 
@@ -115,7 +115,7 @@ graphql_remote:
 
 ---
 
-### GitHub（REQ-1923）
+### GitHub（REQ-1923） {: #github-req-1923 }
 
 GitHub 是一种普通的来源类型。其 API 为 GraphQL，因此其数据表的行为如上所述，包括 `gh__repository_issues` 这类连接数据表。[tool-verified: `provisa/graphql_remote/brands.py` `BRANDS["github"]`]
 
@@ -146,7 +146,7 @@ GitHub 是一种普通的来源类型。其 API 为 GraphQL，因此其数据表
 
 ---
 
-### GitLab（REQ-1923）
+### GitLab（REQ-1923） {: #gitlab-req-1923 }
 
 GitLab 是一种普通的来源类型，其添加与注册方式与 GitHub 相同：添加类型为 **GitLab** 的来源并提供访问令牌，然后从模式 `graphql` 中注册所需的数据表。数据表名称的默认前缀为 `gl`。该来源连接 `gitlab.com`。[tool-verified: `provisa/graphql_remote/brands.py` `BRANDS["gitlab"]`]
 
@@ -160,7 +160,7 @@ GitLab 是一种普通的来源类型，其添加与注册方式与 GitHub 相�
 
 ---
 
-### gRPC 远程模式（REQ-322–329）
+### gRPC 远程模式（REQ-322–329） {: #grpc-remote-schema-req-322329 }
 
 **如何添加来源。** 向 `/admin/grpc-remote/register` 发送 POST 请求，附上服务器地址、`.proto` 文件的路径或 URL，以及可选的 TLS 配置。添加来源不会注册任何数据表。
 
@@ -233,7 +233,7 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 
 ---
 
-### OpenAPI / REST（REQ-314–321）
+### OpenAPI / REST（REQ-314–321） {: #openapi-rest-req-314321 }
 
 **如何添加来源。** 向 `/admin/openapi/register` 发送 POST 请求，附上来源 ID 及规范（从本地文件或 URL 加载）。规范会被解析并随来源保存；不会注册任何数据表或 command。响应返回 `tables: 0` 与 `mutations: 0`，可提供的数量则在 `available_tables` 与 `available_mutations` 中。（REQ-314）[tool-verified: `provisa/openapi/loader.py:30–55`, `provisa/api/admin/openapi_router.py` `_load_and_register` docstring: "Tables and functions are NOT auto-registered here. Users register them individually via the Register Table / Register Action UI."]
 
@@ -288,7 +288,7 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 
 ---
 
-## 注册远程数据表的影响
+## 注册远程数据表的影响 {: #impact-of-registering-a-remote-table }
 
 从任何远程模式来源注册的数据表，均为一级的 Provisa 数据表。在运行时，它与本地连接的关系型数据表在待遇上并无任何区别。（REQ-308、REQ-313）
 
@@ -304,7 +304,7 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 
 针对远程数据表的即席查询仅依用户本身的权限予以允许——访问方式统一以权限为基础（数据表/字段权限加上已批准的关系），并无按数据表而异的治理模式。（REQ-001、REQ-003）
 
-**关系治理（V002）。** 针对远程数据表的 JOIN 条件——当通过 SQL 或 Cypher 查询时——必须符合一项已注册并已批准的关系。（REQ-604）由于 SDL 定义的关系依设计已预先批准，GraphQL 查询会跳过 V002 检查。详见 [docs/security.md](security.md#v002)。
+**关系治理（V002）。** 针对远程数据表的 JOIN 条件——当通过 SQL 或 Cypher 查询时——必须符合一项已注册并已批准的关系。（REQ-604）由于 SDL 定义的关系依设计已预先批准，GraphQL 查询会跳过 V002 检查。详见 [docs/security.md](security.md#relationship-governance-v002)。
 
 **OBJECT 类型字段。** 当字段映射至未受治理的内嵌 GQL OBJECT 或 OpenAPI 对象类型时，其 Provisa 类型为 `jsonb`。该字段会存储完整的嵌套 JSON blob。当声明了子字段（`gql_object_fields` 或 `object_fields`）时，`gql_object_columns` 映射表会于模式构建时填充。当查询选取这些子字段时，SQL 生成器会使用此映射表发出 `->>` 提取表达式。[tool-verified: `provisa/api/app.py:1305–1315`, `provisa/compiler/schema_gen.py:80–82`]
 
@@ -312,7 +312,7 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 
 ---
 
-## 建立覆盖性关系的影响
+## 建立覆盖性关系的影响 {: #impact-of-creating-a-covering-relationship }
 
 当数据管家于两个远程数据表之间（或于一个远程数据表与一个本地数据表之间）注册一项关系时，该关系即成为查询时所使用的联接路径。
 
@@ -330,7 +330,7 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 
 ---
 
-## 仅供类型定义的行为
+## 仅供类型定义的行为 {: #type-def-only-behavior }
 
 并非远程模式中的每种类型都必须成为可查询的数据表。
 

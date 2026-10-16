@@ -4,7 +4,7 @@
 
 Provisa 在跨你各個數據來源的聯結結果之上，提供每一個 API 介面（REST、GraphQL、SQL、gRPC、MCP 等）。它做得到，是因為**聯邦查詢、指標、本體與治理出自單一模型，沒有任何東西需要保持同步**。這個模型是對你整片數據領地的單一份定義——涵蓋各數據來源上的每一個網域、關係與政策，只不納入源頭系統本身——而這份定義既營運這片領地，也治理它。這份定義不是引擎可以參考的文件；它**就是**引擎。已註冊的網域與關係是唯一合法的聯結路徑，而存取政策被編譯進每一份查詢計劃。一個模型，四項屬性：
 
-- **聯邦** —— 62 個連接器觸及 75 種以上的數據來源，包括 Salesforce、ServiceNow 和 Stripe，皆就地讀取：企業賴以運作的 SaaS 系統與資料庫並列成為資料表，毋須先建管線把資料送進資料倉儲。可用 SQL、GraphQL 或 Cypher，透過九種協定查詢。
+- **聯邦** —— 72 個連接器觸及 85 種以上的數據來源，包括 Salesforce、ServiceNow 和 Stripe，皆就地讀取：企業賴以運作的 SaaS 系統與資料庫並列成為資料表，毋須先建管線把資料送進資料倉儲。可用 SQL、GraphQL 或 Cypher，透過九種協定查詢。
 - **指標** —— 指標是有名稱、受管治的彙總。它只定義一次，每個提出請求的工具和語言得到的都是同一個定義。
 - **本體** —— 業務詞彙表是由概念、概念的定義以及概念之間的關係組成的圖。Provisa 把它對應到存放數值的資料庫結構，因此能夠回答關於你資料的問題。一個概念在觸及資料之前（直接觸及或經由其他概念）只是草稿。詞彙表與指標互相獨立：詞彙說明概念是什麼，指標說明數字如何計算。
 - **管治** —— 六個層被編譯進每一個查詢計劃，涵蓋每種語言和每種協定，每個請求都以同樣方式被記錄：誰查詢了什麼、以什麼角色、依據哪條政策。追蹤、指標和日誌本身也註冊為可查詢的表，與你的業務資料並列。
@@ -20,20 +20,20 @@ Provisa 在跨你各個數據來源的聯結結果之上，提供每一個 API �
 - **作為現代化的鷹架**——把你的領地建模，讓 Provisa 為每個數據來源產生原生 SQL，然後擷取那些 SQL 並直接在目標系統中採用。Provisa 是過渡層，不是永久相依項。
 - **作為長駐的政策強制執行基礎設施**——讓它留在原處，作為每一次查詢都走的受治理路徑，使定義、強制執行與審計，在這片領地存在多久就統一多久。
 
-## 試用示範
+## 試用示範 {: #try-a-demo }
 
 最快的方式是在瀏覽器中打開線上示範，無需安裝任何東西：[provisa.dev/demos](https://provisa.dev/demos)。每個示範都會打開一個附導覽的私人沙盒。
 
 在本存放庫的檢出副本中，你可以在自己的機器上執行任何示範：
 
 ```bash
-./start-ui-install.sh --list-demos     # 可以執行的示範，以及哪些已發佈
-./start-ui-install.sh --demo weblogs   # 啟動一個示範及其導覽
+./start-ui-install.sh --list-demos     # the demos you can run, and which are published
+./start-ui-install.sh --demo weblogs   # start one, with its tour
 ```
 
 已發佈的示範以現成的套件拉取；其他示範從 `demo/named/<name>/` 執行。所有選項見 [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md)。
 
-## 聯邦模型
+## 聯邦模型 {: #the-federation-model }
 
 整個模型歸結為兩份契約與兩項政策：數據來源歸約為單一型別系統之上的 2-D 表，查詢歸約為一份類 SQL 的 IR，可達性決定什麼被即時查詢、什麼被具體化，而一套鮮度策略治理每一份具體化副本與推導數據集。數據形狀進來，查詢形狀進來，治理落在聯結處，原生查詢出去。本節其餘部分逐件說明。
 
@@ -60,7 +60,7 @@ Data Vault 以同樣方式合身，只是早一層。它的樞紐是去重後的
 
 因為這個降階是純粹的——一份 `entity`／`fact` 規格恰好變成一位建模者原本要手寫的那些 MV、雙時態與關係定義——所以倉庫從頭到尾都是 IR，跨引擎重新鎖定目標而毋須重新建模。在管理 UI 中（一個供實體與事實使用的 **Model** 表單）或經管理 API（`registerEntity` / `registerFact`）宣告一個倉庫；模型**產生** Kimball 星型或 Data Vault，它不強加其一。
 
-### 時間旅行
+### 時間旅行 {: #time-travel }
 
 時間旅行是個簡單的想法——保留一列資料的每一個版本而非覆寫它，好讓你能問這份數據在過去任一時刻**曾經是**什麼。有別的是各引擎能多有效率地做到這件事，而這正是 Provisa 把它做成具體化檢視**定義**的一項屬性、而非儲存引擎的一項屬性的原因（REQ-1162）。宣告一次；它在任何具體化後端上都行得通。
 
@@ -75,16 +75,16 @@ Data Vault 以同樣方式合身，只是早一層。它的樞紐是去重後的
 
 可達性加鮮度是一個通用的數據聯邦模型：一份定義，說明什麼是即時的、什麼被具體化，以及每份副本保持多新——獨立於任何單一引擎的觸及範圍。結果是擺脫專有鎖定。模型是可移植的；這片領地不會被今天恰好觸及最多數據來源的那家供應商俘虜。
 
-## 功能
+## 功能 {: #features }
 
-### 查詢介面
+### 查詢介面 {: #query-interfaces }
 
 這些是你撰寫查詢所用的語言與結構化 API。各有自己的語法與語意；治理（RLS、遮罩、資料行可見性、關係強制執行）在它們之上一致套用，與由哪一種 wire 協定送達無關。
 
 - **GraphQL**——逐角色的結構描述，帶欄位層級可見性、篩選、游標式分頁與彙總查詢（`count`、`sum`、`avg`、`min`、`max`）。受結構描述約束於已註冊關係——靠構造即結構有效，是通往一個正確簡單查詢的最快路徑。內含 Apollo APQ：查詢被雜湊並在伺服器端註冊；後續呼叫經 HTTP GET 只送出雜湊值，使回應可被 CDN 快取而毋須任何用戶端變更。低於可設定資料列門檻的查詢對照表，會以列舉類型呈現。
 - **SQL**——在聯邦數據之上的完整 SQL；不受約束，比 GraphQL 更具表達力。寫標準 SQL——相關子查詢等等一應俱全——它就原封不動地跨數據來源執行。單一來源查詢完全繞過聯邦層（低於 100 毫秒）。
 - **Cypher**——建於同一份聯邦結構描述之上的圖形查詢語言。把關係當作圖形邊來走訪；聯集數據來源；變長路徑。治理與 GraphQL 和 SQL 完全相同地套用。
-- **gRPC 模型 API**——自已註冊結構描述自動產生 `.proto`；逐表的具型別查詢與插入 RPC，串流回應。與 GraphQL 同義地由結構描述驅動——註冊模型就是契約，protobuf 是 wire 編碼。與 Arrow Flight（那是一種資料行式串流傳輸）不同，這是一個完整的逐表查詢介面。
+- **gRPC 模型 API**——自已註冊結構描述自動產生 `.proto`；在角色結構描述的根部提供逐表的具型別查詢與插入 RPC，串流回應。與 GraphQL 同義地由結構描述驅動——註冊模型就是契約，protobuf 是 wire 編碼。與 Arrow Flight（那是一種資料行式串流傳輸）不同，這是一個完整的逐表查詢介面。
 - **JSON:API**——位於 `/data/jsonapi/{table}` 的結構化查詢 API，設計上僅限 HTTP。支援 JSON:API 1.1：稀疏欄位集（`fields[table]=col1,col2`）、篩選運算式（`filter[field][op]=value`）、複合文件（`include=relation`）與排序。它不是一種通用查詢語言——一次查詢一張表，用標準化的篩選語法而非臨時查詢字串。
 - **查詢語言探索器**——寫一份 GraphQL 查詢，就在側邊面板看見即時的**語意 SQL** 與 **Cypher** 翻譯；複製其一，或直接跳進 SQL 或圖形編輯器。一種實用的工作流程是先用 GraphQL 勾勒查詢片段，再把產生的 SQL 縫進複雜的檢視或報表。
 
@@ -96,7 +96,7 @@ Data Vault 以同樣方式合身，只是早一層。它的樞紐是去重後的
 
 ![圖形視覺化](docs/images/graph-view.png)
 
-### 查詢組合工具
+### 查詢組合工具 {: #query-composition-tools }
 
 這些工具幫助你以上述語言撰寫查詢——它們本身不是查詢語言。
 
@@ -104,7 +104,7 @@ Data Vault 以同樣方式合身，只是早一層。它的樞紐是去重後的
 
 ![自然語言查詢](docs/images/natural-language.png)
 
-### Wire 協定
+### Wire 協定 {: #wire-protocols }
 
 這些是連線協定。SQL、GraphQL 與 Cypher 都乘載其上——wire 協定的選擇不改變查詢介面或治理行為。
 
@@ -114,9 +114,9 @@ Data Vault 以同樣方式合身，只是早一層。它的樞紐是去重後的
 - **JDBC**——整合 BI 工具（Tableau、Power BI、DBeaver）。
 - **WebSocket / SSE**——訂閱：近即時變更事件；後端：PG 原生、MongoDB 原生、CDC、輪詢。同樣經 Kafka 呈現。
 
-### 數據來源
+### 數據來源 {: #data-sources }
 
-- **62 個連接器，75 種以上數據來源**——較大的數字分別計入託管的 PostgreSQL 服務（RDS、Aurora、Cloud SQL、AlloyDB、Azure、Supabase、Neon）和 File Crawler 的檔案格式。 PostgreSQL、MySQL、MongoDB、Cassandra、Elasticsearch、Neo4j、SPARQL 三元組儲存、Kafka、Google Sheets 等等，都經單一個 API；圖形與 RDF 數據來源是一級公民，不是轉接器
+- **72 個連接器，85 種以上數據來源**——較大的數字分別計入託管的 PostgreSQL 服務（RDS、Aurora、Cloud SQL、AlloyDB、Azure、Supabase、Neon）和 File Crawler 的檔案格式。 PostgreSQL、MySQL、MongoDB、Cassandra、Elasticsearch、Neo4j、SPARQL 三元組儲存、Kafka、Google Sheets 等等，都經單一個 API；圖形與 RDF 數據來源是一級公民，不是轉接器
 - **智慧路由**——單一來源查詢繞過聯邦（低於 100 毫秒）；多來源查詢經聯邦層路由——自備叢集，或使用內嵌工作處理程序
 - **API 數據來源**——把 REST、GraphQL、gRPC、WebSocket 或 RSS 端點註冊為可查詢的表；內含 SPARQL 輔助工具；跨 API 數據來源與關聯式數據來源的聯邦聯結透明運作
 - **遠端結構描述自省**——指向任何 GraphQL、OpenAPI 或 gRPC 端點；已載明的操作自動呈現為可查詢的表、圖形節點與邊，並在其上套用完整治理
@@ -131,7 +131,7 @@ Data Vault 以同樣方式合身，只是早一層。它的樞紐是去重後的
 
 ![表註冊](docs/images/table-registration.png)
 
-### 安全與治理
+### 安全與治理 {: #security-governance }
 
 - **資料列層級安全**——逐表、逐角色的 WHERE 子句注入
 - **資料行遮罩**——逐資料行遮罩（regex、常數、截斷），可依角色略過
@@ -144,14 +144,14 @@ Data Vault 以同樣方式合身，只是早一層。它的樞紐是去重後的
 
 ![安全角色](docs/images/security-roles.png)
 
-### 交付與效能
+### 交付與效能 {: #delivery-performance }
 
 - **作為已記錄轉換的具體化檢視**——一個 MV 擷取產生它的那次轉換：它的聯結形狀或 SQL、它據以建置的逐數據來源輸入訊號（Iceberg 快照、RDB 水位），以及註冊時的一次決定性檢查。因為轉換被記錄下來，查詢（或子運算式）可被透明地改寫到一個新鮮的 MV 之上——結構式聯結樣式比對並支援部分比對，因此一個只涵蓋部分聯結的 MV 仍然適用，其餘聯結會被保留
 - **熱表內嵌**——小型且頻繁聯結的查詢對照表，直接在查詢計劃中以 VALUES CTE 內嵌，消除維度數據的跨來源來回
 - **查詢快取**——依角色＋RLS 分割的 Redis 結果快取；內含 APQ 雜湊快取
 - **可觀測性即數據**——分散式追蹤、指標與記錄檔經 OpenTelemetry 收集，壓實成 S3 上的 Iceberg，並自動註冊為聯邦結構描述中可查詢的表（`traces`、`metrics`、`logs`、`queries`）；用 SQL、GraphQL 或 Cypher 與你的業務數據並排查詢它們——把一張 `customers` 表聯結到 `queries` 表，就能看出誰跑了什麼、跑了多久
 
-### 管理與整合
+### 管理與整合 {: #administration-integration }
 
 - **管理 API**——位於 `/admin/graphql` 的 GraphQL；設定上傳／下載、關係編輯、查詢核准
 - **報表檢視器**——`/admin/reports` 列出內建的 ops 網域管理檢視，以及任何已註冊的自訂報表；需要 `observability` 能力
@@ -171,37 +171,37 @@ Data Vault 以同樣方式合身，只是早一層。它的樞紐是去重後的
 
 ![關係](docs/images/relationships.png)
 
-## 安全模型
+## 安全模型 {: #security-model }
 
 這裡正是「就在每次查詢已經要走的那條路徑上」不再只是一句口號之處。Provisa 跨每一種查詢語言（GraphQL、SQL、Cypher）與每一種傳輸（REST、gRPC、Arrow Flight、JDBC、pgwire、Bolt、WebSocket）強制執行一套多層安全模型。治理一致地套用——不存在繞過它的查詢路徑。涵蓋是靠構造而完備，不是靠勤勉：加入一個數據來源、資料行或關係，每一層都自動套用到它，沒有什麼需要記得去註冊。
 
 各層依序套用。一次請求必須通過每一層，下一層才會被評估。
 
-### 第 0 層——自省篩選
+### 第 0 層——自省篩選 {: #layer-0-introspection-filtering }
 
 呈現給某個角色的結構描述與目錄，只包含其 `domain_access` 清單中的表，以及通過逐資料行 `visible_to` 規則的資料行。在角色存取範圍之外的物件，在探索時就不可見——它們無法被查詢、被自動完成，也無法被推斷存在。這適用於 GraphQL 結構描述、SQL 目錄，以及查詢編輯器的結構描述瀏覽器。
 
-### 第 1 層——公開存取
+### 第 1 層——公開存取 {: #layer-1-public-access }
 
 位於沒有 `domain_access` 限制之網域中的表，對所有已驗證身分可見，毋須額外設定。對真正公開的數據零阻力。
 
-### 第 2 層——網域存取
+### 第 2 層——網域存取 {: #layer-2-domain-access }
 
 每個角色帶著一份網域 ID 的 `domain_access` 清單。觸及那些網域以外之表的查詢，會在執行前被拒絕。這是粗粒度的所有權邊界——一個 HR 角色無論 SQL 怎麼寫，都觸及不到財務表。
 
-### 第 3 層——資料列層級安全
+### 第 3 層——資料列層級安全 {: #layer-3-row-level-security }
 
 在網域存取獲確認之後，逐表、逐角色的 `WHERE` 述詞會在執行時注入每一份 `SELECT`。這些述詞針對原始數據求值。一位區域經理查詢一張共用的訂單表，即使下 `SELECT *`，也只看見自己區域的資料列。
 
-### 第 4 層——資料行可見性與遮罩
+### 第 4 層——資料行可見性與遮罩 {: #layer-4-column-visibility-and-masking }
 
 `visible_to` 清單不含請求角色的資料行，會自查詢輸出中剝除。帶遮罩規則的資料行，其值在結果離開伺服器之前被替換——regex 遮蔽、常數替換或截斷。遮罩在所有查詢語言與輸出格式中都套用。
 
-### 第 5 層——述詞防護
+### 第 5 層——述詞防護 {: #layer-5-predicate-guard }
 
 被遮罩的資料行不得出現在 `WHERE` 與 `HAVING` 子句中。若無此層，即使輸出被遮罩，呼叫端也能在篩選中二分搜尋而推斷出未遮罩的值。拒絕在查詢剖析時就強制執行，早於執行。
 
-### 關係治理
+### 關係治理 {: #relationship-governance }
 
 SQL 中的 JOIN 條件，必須符合表與表之間一項已註冊、已核准的關係。未經核准的聯結會被拒絕。每項關係都帶一段供人閱讀的理由與說明——向使用者與自主代理說明某條走訪路徑為何存在的指引。這是治理政策，不是一道硬性安全邊界：無論聯結結構如何，第 2–5 層都成立，因此蓄意規避不會揭露該角色透過兩次分開的查詢也觸及不到的數據。規避嘗試會被記錄且可審計。
 
@@ -245,7 +245,7 @@ provisa start && provisa open
 provisa start
 ```
 
-### 第一個查詢
+### 第一個查詢 {: #first-query }
 
 在本機開發中（`PROVISA_MODE=test`），毋須憑證。在生產環境中，以 Bearer 權杖驗證——角色會自動自其中抽出。
 
@@ -267,7 +267,7 @@ curl -X POST https://provisa.example.com/data/graphql \
   -d '{"query": "{ orders { id amount region } }"}'
 ```
 
-### JDBC（Tableau、DBeaver、Power BI）
+### JDBC（Tableau、DBeaver、Power BI） {: #jdbc-tableau-dbeaver-power-bi }
 
 下載 [provisa-jdbc.jar](https://provisa.dev/dl/jdbc)（一律為最新版本），並把它加入你的 BI 工具驅動程式路徑。
 
@@ -279,7 +279,7 @@ jdbc:provisa://localhost:8815
 
 Tableau 與 Power BI 的設定步驟見 [docs/integrations.md](docs/integrations.md)。
 
-### PostgreSQL Wire 協定（pgwire）
+### PostgreSQL Wire 協定（pgwire） {: #postgresql-wire-protocol-pgwire }
 
 Provisa 在連接埠 5439 上說 PostgreSQL wire 協定。任何能連上 Postgres 的用戶端都能連上 Provisa——毋須驅動程式、毋須轉接器、毋須改動既有工具。
 
@@ -311,7 +311,7 @@ DataGrip 經 pgwire 瀏覽受治理結構描述及其外部索引鍵圖——毋
 
 設定 `PROVISA_PGWIRE_CERT` 與 `PROVISA_PGWIRE_KEY` 即啟用 TLS。連接埠可經 `PROVISA_PGWIRE_PORT` 設定（預設 `5439`）。
 
-### Bolt（Neo4j Wire 協定）
+### Bolt（Neo4j Wire 協定） {: #bolt-neo4j-wire-protocol }
 
 Provisa 同樣說 Neo4j 的 **Bolt** 協定，因此圖形原生工具可直接連線，並針對聯邦圖形執行 Cypher——毋須匯出，毋須另一套圖形資料庫。把 **Neo4j Browser** 或 **Bloom** 指向 Provisa，即可在套用同樣治理（網域存取、RLS、遮罩）的前提下跨數據來源走訪關係。
 
@@ -321,7 +321,7 @@ Neo4j Browser 針對 Provisa 執行 Cypher——節點標籤、關係類型與�
 
 設定 `PROVISA_BOLT_PORT` 即啟用它（Neo4j 的預設值是 `7687`）。TLS 以 `PROVISA_BOLT_CERT` 與 `PROVISA_BOLT_KEY` 啟用。已驗證使用者持有的每個 Provisa 角色，都呈現為一個可選取的 `provisa_<role>` 資料庫（上圖中的 `provisa_admin` 選擇器）——選定其一會把工作階段收窄到該角色的網域權限；使用者永遠不可能超出他們持有的角色。
 
-### Python 用戶端
+### Python 用戶端 {: #python-client }
 
 ```bash
 pip install provisa-client                       # core
@@ -384,7 +384,7 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
 
 完整參照見 [docs/python-client.md](docs/python-client.md)。
 
-## 文件
+## 文件 {: #documentation }
 
 | 主題 | 文件 |
 | --- | --- |
@@ -396,6 +396,9 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
 | 密鑰儲存與 `${secret:NAME}` 參照 | [docs/secrets.md](docs/secrets.md) |
 | 業務詞彙表與詞條策展 | [docs/glossary.md](docs/glossary.md) |
 | 環境（dev / staging / prod） | [docs/environments.md](docs/environments.md) |
+| 建構測試環境（剖析、偽造數據、合成數據） | [docs/test-data.md](docs/test-data.md) |
+| 偽造數據方法參考 | [docs/fake-methods.md](docs/fake-methods.md) |
+| 在筆記型電腦上執行及建構示範（售前工程師） | [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) |
 | 支援的數據來源類型 | [docs/sources.md](docs/sources.md) |
 | SSE 訂閱 | [docs/subscriptions.md](docs/subscriptions.md) |
 | JDBC、BI 工具、Arrow Flight 用戶端、Apollo Federation | [docs/integrations.md](docs/integrations.md) |
@@ -405,7 +408,7 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
 | Hasura v2 / DDN 匯入 | [docs/import.md](docs/import.md) |
 | 發佈流程（alpha/beta/stable 標籤） | [docs/releasing.md](docs/releasing.md) |
 
-## 規模設定
+## 規模設定 {: #sizing }
 
 Provisa 內含一具供多來源查詢使用的內建聯邦引擎。首次啟動時你選定一個 RAM 預算；Provisa 會自動推導本機聯邦工作處理程序的數量。
 
@@ -418,7 +421,7 @@ Provisa 內含一具供多來源查詢使用的內建聯邦引擎。首次啟動
 
 工作處理程序數量可隨時變更：編輯 `~/.provisa/config.yaml`（`federation_workers: N`）並執行 `provisa restart`。設為 `0` 即以僅協調模式執行（單節點）。
 
-### 擴展到單機以外
+### 擴展到單機以外 {: #scaling-beyond-a-single-box }
 
 **水平擴展**——在一個負載平衡器後方執行多個 Provisa 執行個體。每個執行個體都是一套功能完整的系統。所有執行個體必須指向同一個設定 DB（在次要機器上設定 `CONFIG_DB_HOST`），並可選擇指向一個共用的 Redis 執行個體（`REDIS_URL`）以取得統一快取。多數查詢會透明地分散；非常大的跨來源聯結可能超出單一執行個體的資源，需要更大的機器或一個外部聯邦叢集。
 
@@ -426,7 +429,7 @@ Provisa 內含一具供多來源查詢使用的內建聯邦引擎。首次啟動
 
 **自備聯邦叢集**——把 Provisa 指向一個既有的外部聯邦叢集，取代內嵌工作處理程序。建議用於大規模或雲端部署；設定方式見 [docs/deployment.md](docs/deployment.md)。
 
-## 授權
+## 授權 {: #license }
 
 Business Source License 1.1（未經修改，依 MariaDB 的 Licensor 承諾）。每個
 已發佈版本在其公開發佈的第 4 週年轉為 Change License（GPL v2.0 或

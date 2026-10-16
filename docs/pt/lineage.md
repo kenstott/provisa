@@ -1,23 +1,23 @@
-# Lineage em Nível de Coluna
+# Lineage em Nível de Coluna {: #column-level-lineage }
 
 O Provisa rastreia lineage de dados em nível de coluna de forma estática — computado a partir de definições
 SQL e contratos de command, sem execução necessária. Duas exibições estão disponíveis: um DAG por
 declaração e um grafo de proveniência abrangendo toda a federação, cobrindo todas as exibições e exibições
 materializadas (MVs) registradas.
 
-## O explorador de lineage
+## O explorador de lineage {: #the-lineage-explorer }
 
 Navegue até **Lineage** na UI (`/lineage`). Cole uma declaração SQL e clique em **Build statement
 graph** para ver seu DAG em nível de coluna. Clique em **Federation graph** para carregar o grafo de
 proveniência sobre todas as MVs no registro. [tool-verified: LineagePage.tsx:28-119]
 
-## DAG em nível de declaração (REQ-1160)
+## DAG em nível de declaração (REQ-1160) {: #statement-level-dag-req-1160 }
 
 Cada coluna de saída nomeada no seu SQL se torna um nó. O builder a rastreia de volta através de
 todo CTE, subconsulta, join e chamada de command inline até suas colunas de fonte, construindo um
 grafo direcionado das entradas de fonte até as saídas finais.
 
-### Exemplo trabalhado
+### Exemplo trabalhado {: #worked-example }
 
 ```sql
 SELECT o.id, e.embedding, upper(e.geo) AS geo_u
@@ -44,7 +44,7 @@ A fronteira do command **não é opaca**. Como `enrich_grpc_set` declara suas co
 fechamento de contaminação continuamente das colunas declaradas da relação de fonte até cada saída.
 [tool-verified: `_splice_commands` and `_input_relation` in graph.py:245-271]
 
-### Tipos de nó e pistas visuais
+### Tipos de nó e pistas visuais {: #node-kinds-and-visual-cues }
 
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
@@ -63,7 +63,7 @@ Anéis adicionais em um nó:
 
 [tool-verified: LineageDag.tsx:88-103 Cytoscape style selectors]
 
-### Transformações nomeadas nas arestas
+### Transformações nomeadas nas arestas {: #named-transforms-on-edges }
 
 Toda aresta carrega a expressão SQL bruta que produz a coluna de destino, mais uma lista de
 operações nomeadas: funções SQL (`sql_function`), operadores aritméticos/lógicos (`operator`),
@@ -73,7 +73,7 @@ commands registrados (`command`), referências simples de coluna (`identity`) e 
 Uma aresta vinda de uma chamada de command é renderizada como uma linha roxa tracejada na UI.
 [tool-verified: LineageDag.tsx:122-124]
 
-## Grafo abrangendo toda a federação (REQ-1161)
+## Grafo abrangendo toda a federação (REQ-1161) {: #federation-wide-graph-req-1161 }
 
 O grafo de federação funde o lineage por declaração de cada MV registrada em um único grafo de proveniência.
 A identidade do nó é `relation.column` — a coluna de saída de uma exibição e a referência de entrada de outra
@@ -84,7 +84,7 @@ and `qualify_outputs` in graph.py:275-299]
 Use `focus`, `direction` e `depth` para delimitar a exibição em escala de federação sem recomputar
 o grafo. [tool-verified: `slice_graph` in merge.py:160-189]
 
-## Ciclos (REQ-1161)
+## Ciclos (REQ-1161) {: #cycles-req-1161 }
 
 Ciclos são descritos, não rejeitados. O motor de lineage detecta todo ciclo direcionado e o
 **classifica**. [tool-verified: `Cycle.classification` property in merge.py:43-46]
@@ -181,7 +181,7 @@ A resposta tem o mesmo formato do grafo de declaração, com um campo `cycles` a
 }
 ```
 
-## O que uma renomeação ou remoção de coluna quebraria (REQ-1484)
+## O que uma renomeação ou remoção de coluna quebraria (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Uma coluna carrega dois nomes, e cada um é armazenado por um conjunto diferente de artefatos.
 
@@ -224,7 +224,7 @@ consulta a coluna pelo nome está além do conhecimento do registro. Pela mesma 
 texto SQL livre casam a coluna como um token identificador em vez de resolver escopo, o que pode nomear um
 artefato que acaba não usando a coluna. Reportar demais é a direção segura para um aviso.
 
-## Usando lineage para governar contratos de command
+## Usando lineage para governar contratos de command {: #using-lineage-to-govern-command-contracts }
 
 Como o fechamento de contaminação conecta cada coluna de entrada declarada a cada coluna de saída declarada,
 a amplitude desse fechamento depende inteiramente do que você declara.

@@ -1,10 +1,10 @@
-# Supporto query Cypher
+# Supporto query Cypher {: #cypher-query-support }
 
 Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/cypher/`. (REQ-345, REQ-347) Le query vengono analizzate da un parser custom recursive-descent (nessuna libreria Cypher esterna) (REQ-571), risolte contro il modello (REQ-351), ed emesse come SQL, poi instradate al motore di esecuzione target. (REQ-066, REQ-067, REQ-347)
 
-## Funzionalità implementate
+## Funzionalità implementate {: #implemented-features }
 
-### Clausole
+### Clausole {: #clauses }
 
 | Clausola | Stato | Note |
 | -------- | -------- | ------- |
@@ -24,7 +24,7 @@ Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/
 | `CALL db.propertyKeys()` | ✓ | Restituisce tutti i nomi delle chiavi di proprietà su tutti i tipi nodo (REQ-572) |
 | `UNWIND` | ✓ | Espansione array-a-righe; il primo elemento diventa FROM, i successivi diventano CROSS JOIN UNNEST |
 
-### Pattern Match
+### Pattern Match {: #match-patterns }
 
 | Pattern | Stato | Note |
 | --------- | -------- | ------- |
@@ -42,7 +42,7 @@ Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/
 | `shortestPath(…)` | ✓ | JOIN piatto per endpoint eterogenei; CTE WITH RECURSIVE per stesso-tipo/self-referenziale |
 | `allShortestPaths(…)` | ✓ | Come shortestPath senza LIMIT 1 |
 
-### Espressioni e predicati
+### Espressioni e predicati {: #expressions-and-predicates }
 
 | Funzionalità | Stato | Mapping SQL |
 | --------- | -------- | ------------ |
@@ -69,7 +69,7 @@ Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/
 | `CASE WHEN … THEN … ELSE … END` | ✓ | Diretto (forme searched e simple) |
 | GROUP BY implicito | ✓ | Gli elementi RETURN non aggregati diventano chiavi GROUP BY quando un elemento qualsiasi ha un aggregato |
 
-### Proiezioni map
+### Proiezioni map {: #map-projections }
 
 | Sintassi | Mapping SQL |
 | -------- | ------------ |
@@ -80,7 +80,7 @@ Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/
 
 **Proprietà oggetto.** Una colonna che contiene un oggetto dichiarato (l'oggetto incorporato di un tipo GraphQL remoto, o qualsiasi colonna registrata con campi oggetto) è una proprietà mappa: `RETURN n.address` la restituisce come mappa, in qualunque forma la restituisca il motore, e il nodo `n` la porta tra le sue proprietà. Un campo GraphQL remoto che punta a un tipo registrato, un oggetto o una lista, non è una proprietà; si raggiunge attraverso la sua relazione. (REQ-1991) [tool-verified: `provisa/cypher/label_map.py`, `provisa/cypher/assembler.py`]
 
-### Funzioni di aggregazione
+### Funzioni di aggregazione {: #aggregation-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -93,7 +93,7 @@ Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/
 | `percentileCont(x, p)` | `approx_percentile(x, p)` |
 | `percentileDisc(x, p)` | `approx_percentile(x, p)` |
 
-### Funzioni stringa
+### Funzioni stringa {: #string-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -109,7 +109,7 @@ Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/
 | `size(string)` | `char_length(string)` |
 | `size(list)` | `cardinality(list)` |
 
-### Funzioni di conversione tipo
+### Funzioni di conversione tipo {: #type-conversion-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -119,7 +119,7 @@ Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/
 | `toBoolean(x)` | `TRY_CAST(x AS BOOLEAN)` |
 | `toStringOrNull`, `toIntegerOrNull`, `toFloatOrNull`, `toBooleanOrNull` | varianti `TRY_CAST` |
 
-### Funzioni matematiche
+### Funzioni matematiche {: #math-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -128,7 +128,7 @@ Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/
 | `range(start, end)` | `sequence(start, end)` |
 | `abs`, `sqrt`, `ceil`, `floor`, `round`, `sign` | passate direttamente |
 
-### Funzioni lista
+### Funzioni lista {: #list-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -137,7 +137,7 @@ Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/
 | `tail(list)` | `slice(list, 2, cardinality(list))` |
 | `isEmpty(list)` | `cardinality(list) = 0` |
 
-### List Comprehension
+### List Comprehension {: #list-comprehensions }
 
 | Sintassi | Mapping SQL |
 | -------- | ------------ |
@@ -150,14 +150,14 @@ Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/
 | `single(x IN list WHERE p(x))` | `cardinality(filter(list, x -> p(x))) = 1` |
 | `reduce(acc = init, x IN list \| expr)` | `reduce(list, init, (acc, x) -> expr, acc -> acc)` |
 
-### Pattern Comprehension
+### Pattern Comprehension {: #pattern-comprehensions }
 
 | Sintassi | Mapping SQL |
 | -------- | ------------ |
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
 | `[(a)-[]->(b:Label) \| b.prop]` | tipo inferito dal modello; stessa forma subquery ARRAY |
 
-### Subquery CALL correlate
+### Subquery CALL correlate {: #correlated-call-subqueries }
 
 `CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` si traduce in `CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`. (REQ-573) Regole:
 
@@ -168,7 +168,7 @@ Provisa traduce un sottoinsieme di openCypher in SQL tramite il modulo `provisa/
 
 ---
 
-## Scritture
+## Scritture {: #writes }
 
 Cypher supporta tre pattern di scrittura tramite l'endpoint `/data/cypher`, eseguiti da `provisa/cypher/write_translator.py`. (REQ-818) [tool-verified: `provisa/api/rest/cypher_router.py:415-545`]
 
@@ -191,7 +191,7 @@ Regole:
 
 ---
 
-## Accesso al protocollo
+## Accesso al protocollo {: #protocol-access }
 
 Cypher raggiunge la stessa pipeline governata su due trasporti:
 
@@ -204,9 +204,9 @@ Cypher raggiunge la stessa pipeline governata su due trasporti:
 
 ---
 
-## Limitazioni
+## Limitazioni {: #limitations }
 
-### Vincoli di design
+### Vincoli di design {: #design-constraints }
 
 1. **Le scritture sono limitate a `CREATE`, `SET`, e `DELETE`.** Queste vengono eseguite come scritture dirette su tabella attraverso la stessa pipeline delle mutation GraphQL e SQL. (REQ-818, REQ-666, REQ-667, REQ-668) Vedi §Scritture sopra. `MERGE`, `DETACH DELETE`, e `REMOVE` vengono rifiutati a tempo di parsing. (REQ-671, REQ-818) Anche le procedure APOC vengono rifiutate.
 
@@ -216,7 +216,7 @@ Cypher raggiunge la stessa pipeline governata su due trasporti:
 
 4. **I path ricorsivi richiedono un limite.** I pattern a lunghezza variabile (`[*]`) devono includere un limite superiore (es. `[*..10]`). (REQ-348) L'attraversamento illimitato viene rifiutato a tempo di parsing per prevenire CTE ricorsive fuori controllo.
 
-### Note sul comportamento
+### Note sul comportamento {: #behaviour-notes }
 
 5. **`shortestPath` su path non self-referenziali usa JOIN piatto, non ordinamento per hop.** Quando i tipi di inizio e fine differiscono e non esiste alcuna relazione self-referenziale nello schema, il traduttore emette una catena di JOIN piatta (il path schema più breve). (REQ-576) Non emette `ORDER BY hops` perché gli hop non sono tracciati in quel percorso di codice. Il risultato è il path schema strutturalmente più breve, non il path data-più-breve su più righe.
 
@@ -226,7 +226,7 @@ Cypher raggiunge la stessa pipeline governata su due trasporti:
 
 8. **Le CTE della clausola `WITH` sono nominate `_w0`, `_w1`, …** (REQ-578) I nomi vengono assegnati posizionalmente all'interno di una singola chiamata di traduzione. Comporre più query tradotte (es. in un batch) può produrre nomi CTE in collisione se vengono concatenate in modo ingenuo.
 
-### Copertura di espressioni e pattern (REQ-913)
+### Copertura di espressioni e pattern (REQ-913) {: #expression-and-pattern-coverage-req-913 }
 
 Le espressioni Cypher vengono analizzate in un AST e abbassate nodo-a-nodo a SQL (`provisa/cypher/expr_parser.py`, `provisa/cypher/expr_visitor.py`). La grammatica segue la torre di precedenza `oC_Expression` di openCypher. Supportati: literal, parametri, accesso proprietà, `n.prop`, indice e slice, aritmetica (`+ - * / % ^`), confronto, `IN`, `STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`, `IS [NOT] NULL`, booleani `AND` / `OR` / `XOR` / `NOT`, `CASE`, literal lista e map, list e pattern comprehension (incluso il binding di path `p = (…)`), proiezione map, `reduce`, i quantificatori `all` / `any` / `none` / `single`, subquery esistenziali, e chiamate a funzione.
 

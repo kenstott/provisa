@@ -247,9 +247,10 @@ tables:
           topic: provisa.active-orders
           bootstrap_servers: kafka:9092
           key_column: id
+          role: analyst           # required: the rows are published governed as this role
 ```
 
-See [Kafka Sinks](sources.md) for full sink configuration reference.
+A Kafka output publishes the table's rows governed as the role it names: its row rules, column visibility and masks apply as to a read by that role. An output without `role` is refused when the configuration loads. (REQ-565) [tool-verified: `provisa/core/models.py` `LiveOutputConfig`]
 
 ## Security
 

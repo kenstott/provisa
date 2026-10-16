@@ -1,8 +1,8 @@
-# רפליקות
+# רפליקות {: #replicas }
 
 רפליקה היא עותק של טבלת מקור ש-Provisa מחזיקה במאגר המימוש של המנוע וקוראת במקום המקור. עמוד זה מכסה על מה רפליקה מאונדקסת, היכן לשמור רפליקות וכמה הן עדכניות. אם טבלה משוכפלת בכלל נקבע על ידי [`replicate`](configuration.md#the-replicate-setting) ועל ידי מה שהמנוע יכול להגיע אליו; ראו [What an engine changes](engines.md#what-an-engine-changes). (REQ-826)
 
-## רפליקות מאונדקסות
+## רפליקות מאונדקסות {: #replicas-are-indexed }
 
 Provisa מאנדקסת רפליקה כפי שהמודל משתמש בטבלה שלה. (REQ-2015) [tool-verified: `provisa/federation/replica_indexes.py` `plan`, `join_columns`]
 
@@ -28,7 +28,7 @@ relationships:
 
 הצהירו על המפתח עם `is_primary_key: true` על העמודה. רפליקה ללא מפתח מוצהר מקבלת רק את אינדקסי הצירוף שלה. [tool-verified: `provisa/federation/replica_builds.py` `plan_indexes`]
 
-### קריאה קודם, אינדקס אחר כך
+### קריאה קודם, אינדקס אחר כך {: #readable-first-indexed-after }
 
 טעינה לעולם אינה ממתינה לאינדקסים. הרפליקה נקראת מהרגע שהיא מוחלפת פנימה; לאחר מכן רץ הרפליקות (replica runner) בונה את האינדקסים שלה בזה אחר זה, במעבר נפרד, תחת מנעול אינדקס לכל רפליקה. [tool-verified: `provisa/federation/replica_runner.py` `_planned`, `_start_index_builds`] צפו שהשאילתות הראשונות אחרי טעינה ירוצו בלעדיהם.
 
@@ -41,7 +41,7 @@ relationships:
 
 ממשק הניהול אינו מציג את רשומת האינדקסים. קראו את יומן השרת, או את העמודה `index_state` בשורת הרפליקה. [tool-verified: no reader of `index_state` outside `provisa/federation/replica_state.py` and `replica_indexes.py`]
 
-### מה כל מאגר בונה
+### מה כל מאגר בונה {: #what-each-store-builds }
 
 | מאגר | מה נבנה | כיצד |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ relationships:
 
 מאגר MotherDuck מחובר (attach) ונקרא במקומו. [tool-verified: `provisa/federation/duckdb_runtime.py` `_store_is_file`]
 
-## השתמשו במסד נתונים רלציוני כמאגר הרפליקות כשהמנוע מריץ בו SQL
+## השתמשו במסד נתונים רלציוני כמאגר הרפליקות כשהמנוע מריץ בו SQL {: #use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it }
 
 כשהמנוע מריץ את הצירופים שלו בתוך מסד נתונים רלציוני, שמרו שם את הרפליקות. הצירופים קוראים אז את האינדקסים שלמעלה. שלוש תצורות עושות זאת:
 
@@ -81,7 +81,7 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
 - **העומס של מסד הנתונים עצמו.** קריאות רפליקה, טעינות ובניית אינדקסים רצות כולן על אותו מסד נתונים. קבעו את גודלו בהתאם. [inferred]
 - **סריקות גדולות.** אינדקס אינו עושה דבר לשאילתה שקוראת את רוב הטבלה הגדולה. מאגר עמודתי סורק אותה מהר יותר ממאגר שורות. [inferred]
 
-## בחירת מקום מגורי הרפליקות
+## בחירת מקום מגורי הרפליקות {: #choosing-where-replicas-live }
 
 המאגר הוא מנוף אחד מכמה, והם חופפים. הכריעו קודם את האחרים; המאגר מכריע רק במה שהם משאירים.
 
@@ -98,7 +98,7 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
 
 התוצאות משתנות לפי עומס העבודה. מדדו לפני שינוי ואחריו עם [כלי קביעת הגודל](sizing.md); [ריצות החי-או-רפליקה](sizing.md#live-or-replica-reads-and-the-ttl) שלו נותנות את עלות קריאת רפליקה מול קריאה חיה בפריסה שלכם.
 
-## עדכניות
+## עדכניות {: #freshness }
 
 הפכו את העדכניות לחלק מההחלטה, לצד המהירות. כמה ישנה יכולה להיות תשובה, ומה עולה לשמור אותה עדכנית למקור, קובעים אם טבלה נקראת חי או מרפליקה, ובכך מה המאגר צריך להחזיק.
 
@@ -120,7 +120,7 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
 
 בדיקה שאין לה מה להשוות (אין watermark, sentinel או שאילתת בדיקה) מתנוונת ל-TTL. [tool-verified: `provisa/federation/replica_builds.py` `_probe_decides`]
 
-### כמעט זמן אמת מהזנת שינויים
+### כמעט זמן אמת מהזנת שינויים {: #near-real-time-from-a-change-feed }
 
 כשמקור אינו יכול לקבל עומס שאילתות חי אך כבר מפרסם את שינוייו, הזנת שינויים נותנת נתונים כמעט בזמן אמת בלי לגעת במקור בזמן השאילתה. שאילתות קוראות את הרפליקה המקומית, שמהירה ואינה מעמיסה על המקור, בעוד לולאת האירועים מיישמת שינויים עם הגעתם. הנתונים מפגרים רק בהשהיית ההזנה, בדרך כלל שניות. [inferred: the lag figure]
 

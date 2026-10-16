@@ -1,8 +1,8 @@
-# 副本
+# 副本 {: #replicas }
 
 副本是数据源表的一份拷贝，Provisa 将它保存在引擎的物化存储中，并读取它来代替数据源。本页介绍副本按什么建立索引、副本应存放在何处，以及副本有多新鲜。一张表是否被复制，由 [`replicate`](configuration.md#the-replicate-setting) 以及引擎能够访问到的内容决定；参见 [What an engine changes](engines.md#what-an-engine-changes)。(REQ-826)
 
-## 副本带有索引
+## 副本带有索引 {: #replicas-are-indexed }
 
 Provisa 按模型使用其表的方式为副本建立索引。(REQ-2015) [tool-verified: `provisa/federation/replica_indexes.py` `plan`, `join_columns`]
 
@@ -28,7 +28,7 @@ relationships:
 
 在列上用 `is_primary_key: true` 声明键。没有声明键的副本只得到其联接索引。[tool-verified: `provisa/federation/replica_builds.py` `plan_indexes`]
 
-### 先可读，后索引
+### 先可读，后索引 {: #readable-first-indexed-after }
 
 落地从不等待索引。副本从换入的那一刻起就可读取；随后副本运行器在单独的一轮中，在每个副本的索引锁之下，逐个构建它的索引。[tool-verified: `provisa/federation/replica_runner.py` `_planned`, `_start_index_builds`] 落地之后最初的几次查询会在没有这些索引的情况下运行。
 
@@ -41,7 +41,7 @@ relationships:
 
 管理界面不显示索引记录。请查看服务器日志，或副本所在行的 `index_state` 列。[tool-verified: no reader of `index_state` outside `provisa/federation/replica_state.py` and `replica_indexes.py`]
 
-### 各存储构建什么
+### 各存储构建什么 {: #what-each-store-builds }
 
 | 存储 | 构建的内容 | 方式 |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ relationships:
 
 MotherDuck 存储是挂载并就地读取的。[tool-verified: `provisa/federation/duckdb_runtime.py` `_store_is_file`]
 
-## 当引擎在关系型数据库中运行 SQL 时，用该数据库作为副本存储
+## 当引擎在关系型数据库中运行 SQL 时，用该数据库作为副本存储 {: #use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it }
 
 当引擎在关系型数据库内部运行联接时，请把副本保存在那里。这样联接就会读取上述索引。有三种配置可以做到：
 
@@ -81,7 +81,7 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
 - **数据库自身的负载。** 副本读取、落地和索引构建都在该数据库上运行。请按它们来确定其规模。[inferred]
 - **大规模扫描。** 对读取大表大部分内容的查询，索引没有任何作用。列式存储扫描它比行式存储更快。[inferred]
 
-## 选择副本存放的位置
+## 选择副本存放的位置 {: #choosing-where-replicas-live }
 
 存储只是若干手段之一，而且它们相互重叠。先确定其他手段；存储只决定它们留下的部分。
 
@@ -98,7 +98,7 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
 
 结果因工作负载而异。修改前后请用[容量规划工具](sizing.md)测量；它的[实时或副本运行](sizing.md#live-or-replica-reads-and-the-ttl)会给出在你的部署上副本读取与实时读取的成本对比。
 
-## 新鲜度
+## 新鲜度 {: #freshness }
 
 把新鲜度与速度一并纳入决策。答案可以有多旧，以及保持其最新对数据源意味着多大成本，决定了一张表是实时读取还是从副本读取，从而决定存储需要容纳什么。
 
@@ -120,7 +120,7 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
 
 没有可比较内容的探测（没有水位线、哨兵值或探测查询）会退化为 TTL。[tool-verified: `provisa/federation/replica_builds.py` `_probe_decides`]
 
-### 来自变更流的近实时
+### 来自变更流的近实时 {: #near-real-time-from-a-change-feed }
 
 当数据源无法承受实时查询负载，却已经发布其变更时，变更流可以在查询时不触碰数据源的情况下提供近实时数据。查询读取本地副本，既快又不给数据源带来负载，而事件循环在变更到达时应用它们。数据只滞后于变更流，通常为几秒。[inferred: the lag figure]
 

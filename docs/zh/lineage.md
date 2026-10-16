@@ -1,16 +1,16 @@
-# 列级血缘
+# 列级血缘 {: #column-level-lineage }
 
 Provisa 静态地跟踪列级数据血缘——由 SQL 定义和命令契约计算得出，无需执行。有两种视图可用：按语句的 DAG，以及横跨所有已注册视图和物化视图（MV）的联邦级溯源图。
 
-## 血缘浏览器
+## 血缘浏览器 {: #the-lineage-explorer }
 
 在 UI 中导航到**血缘**（`/lineage`）。粘贴一条 SQL 语句并点击**构建语句图**，即可查看它的列级 DAG。点击**联邦图**可加载覆盖注册表中每个 MV 的溯源图。[tool-verified: LineagePage.tsx:28-119]
 
-## 语句级 DAG（REQ-1160）
+## 语句级 DAG（REQ-1160） {: #statement-level-dag-req-1160 }
 
 你的 SQL 中每个具名的输出列都会成为一个节点。构建器会穿过每一个 CTE、子查询、联接和内联命令调用，把它一路回溯到源列，构建出一张从源输入到最终输出的有向图。
 
-### 实例演练
+### 实例演练 {: #worked-example }
 
 ```sql
 SELECT o.id, e.embedding, upper(e.geo) AS geo_u
@@ -33,7 +33,7 @@ orders.region ─╯
 命令边界**并不是不透明的**。由于 `enrich_grpc_set` 声明了它的输入列（`id`、`region`）和输出列（`id`、`embedding`、`geo`），血缘引擎会把污点闭包从源关系已声明的列一直连续拼接到每一个输出。
 [tool-verified: `_splice_commands` and `_input_relation` in graph.py:245-271]
 
-### 节点种类与视觉提示
+### 节点种类与视觉提示 {: #node-kinds-and-visual-cues }
 
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
@@ -52,7 +52,7 @@ orders.region ─╯
 
 [tool-verified: LineageDag.tsx:88-103 Cytoscape style selectors]
 
-### 边上的具名变换
+### 边上的具名变换 {: #named-transforms-on-edges }
 
 每条边都携带产出目标列的原始 SQL 表达式，外加一份具名操作清单：SQL 函数（`sql_function`）、算术/逻辑运算符（`operator`）、已注册的命令（`command`）、裸列引用（`identity`）以及字面量（`constant`）。
 [tool-verified: TransformOp and name_transform in graph.py:36-145]
@@ -60,14 +60,14 @@ orders.region ─╯
 来自命令调用的边在 UI 中渲染为紫色虚线。
 [tool-verified: LineageDag.tsx:122-124]
 
-## 联邦级图（REQ-1161）
+## 联邦级图（REQ-1161） {: #federation-wide-graph-req-1161 }
 
 联邦图把每个已注册 MV 的按语句血缘合并成一张溯源图。节点身份是 `relation.column`——某个视图的输出列与另一个视图对同一个列的输入引用会坍缩成同一个节点。结果是一张从基础源列通往平台中每一个派生数据集的单一 DAG。[tool-verified: `build_federation_graph` in merge.py:205-229
 and `qualify_outputs` in graph.py:275-299]
 
 使用 `focus`、`direction` 和 `depth` 可以在联邦规模下限定视图范围，而无需重新计算整张图。[tool-verified: `slice_graph` in merge.py:160-189]
 
-## 环路（REQ-1161）
+## 环路（REQ-1161） {: #cycles-req-1161 }
 
 环路会被描述，而不是被拒绝。血缘引擎检测出每一个有向环，并对它**分类**。[tool-verified: `Cycle.classification` property in merge.py:43-46]
 
@@ -160,7 +160,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 }
 ```
 
-## 重命名或删除一个列会打断什么（REQ-1484）
+## 重命名或删除一个列会打断什么（REQ-1484） {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 一个列带着两个名字，每一个都由不同的一组制品保存。
 
@@ -188,7 +188,7 @@ query {
 当一次待保存的编辑改变了别名或缩小了列集合时，表页面会自动运行该查询，并列出它的发现 [tool-verified: `diffEditedColumns` in
 `provisa-ui/src/pages/tables/columnDiff.ts`, dialog in `TablesPage.tsx`]。该警告只是提示性的：它点名受影响的制品，由管理员作决定。它不会阻止保存，因为并非所有资产消费方都能被触达——一个从外部按名称查询该列的仪表板或客户端应用，超出了注册表的认知范围。出于同样的原因，对自由 SQL 文本的扫描是把该列当作标识符令牌来匹配，而不是解析作用域，因而可能点名一个其实并未使用该列的制品。对于警告而言，多报是安全的方向。
 
-## 用血缘来治理命令契约
+## 用血缘来治理命令契约 {: #using-lineage-to-govern-command-contracts }
 
 由于污点闭包把每一个已声明的输入列连到每一个已声明的输出列，闭包的宽度完全取决于你声明了什么。
 

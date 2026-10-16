@@ -1,8 +1,8 @@
-# Repliche
+# Repliche {: #replicas }
 
 Una replica è una copia di una tabella di origine che Provisa conserva nello store di materializzazione del motore e legge al posto dell'origine. Questa pagina tratta su cosa è indicizzata una replica, dove conservare le repliche e quanto sono aggiornate. Se una tabella sia replicata o meno è stabilito da [`replicate`](configuration.md#the-replicate-setting) e da ciò che il motore può raggiungere; vedere [What an engine changes](engines.md#what-an-engine-changes). (REQ-826)
 
-## Le repliche sono indicizzate
+## Le repliche sono indicizzate {: #replicas-are-indexed }
 
 Provisa indicizza una replica nel modo in cui il modello usa la sua tabella. (REQ-2015) [tool-verified: `provisa/federation/replica_indexes.py` `plan`, `join_columns`]
 
@@ -28,7 +28,7 @@ La replica di `orders` riceve la sua chiave e un indice su `customer_id`. La rep
 
 Dichiara la chiave con `is_primary_key: true` sulla colonna. Una replica senza chiave dichiarata riceve solo i suoi indici di join. [tool-verified: `provisa/federation/replica_builds.py` `plan_indexes`]
 
-### Leggibile prima, indicizzata dopo
+### Leggibile prima, indicizzata dopo {: #readable-first-indexed-after }
 
 Un caricamento non attende mai gli indici. La replica è leggibile dal momento in cui viene sostituita; il replica runner costruisce poi i suoi indici uno alla volta, in un passaggio separato, sotto un lock di indici per replica. [tool-verified: `provisa/federation/replica_runner.py` `_planned`, `_start_index_builds`] Aspettati che le prime query dopo un caricamento girino senza di essi.
 
@@ -41,7 +41,7 @@ Ogni caricamento registra gli indici richiesti, quelli costruiti e quelli fallit
 
 L'interfaccia di amministrazione non mostra il record degli indici. Leggi il log del server, oppure la colonna `index_state` della riga della replica. [tool-verified: no reader of `index_state` outside `provisa/federation/replica_state.py` and `replica_indexes.py`]
 
-### Che cosa costruisce ogni store
+### Che cosa costruisce ogni store {: #what-each-store-builds }
 
 | Store | Che cosa viene costruito | Come |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ Un indice aiuta solo un join che gira dove si trova l'indice. Due motori leggono
 
 Uno store MotherDuck è collegato e letto sul posto. [tool-verified: `provisa/federation/duckdb_runtime.py` `_store_is_file`]
 
-## Usare un database relazionale come store delle repliche dove il motore esegue SQL al suo interno
+## Usare un database relazionale come store delle repliche dove il motore esegue SQL al suo interno {: #use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it }
 
 Quando il motore esegue i suoi join dentro un database relazionale, conserva lì le repliche. I join leggono allora gli indici descritti sopra. Tre configurazioni lo fanno:
 
@@ -81,7 +81,7 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
 - **Il carico del database stesso.** Letture delle repliche, caricamenti e costruzioni di indici girano tutti su quel database. Dimensionalo per essi. [inferred]
 - **Scansioni grandi.** Un indice non fa nulla per una query che legge la maggior parte di una tabella grande. Uno store colonnare la scansiona più velocemente di uno a righe. [inferred]
 
-## Scegliere dove vivono le repliche
+## Scegliere dove vivono le repliche {: #choosing-where-replicas-live }
 
 Lo store è una leva tra tante, e si sovrappongono. Sistema prima le altre; lo store decide solo ciò che lasciano.
 
@@ -98,7 +98,7 @@ Ciò che dipende ancora dallo store: scansioni e join ad hoc su tabelle grandi c
 
 I risultati variano con il carico di lavoro. Misura prima e dopo una modifica con lo [strumento di dimensionamento](sizing.md); le sue [esecuzioni live-o-replica](sizing.md#live-or-replica-reads-and-the-ttl) danno il costo di una lettura da replica rispetto a una dal vivo sulla tua distribuzione.
 
-## Freschezza
+## Freschezza {: #freshness }
 
 Fai della freschezza parte della decisione, accanto alla velocità. Quanto vecchia può essere una risposta e quanto costa all'origine tenerla aggiornata decidono se una tabella è letta dal vivo o da una replica, e quindi che cosa lo store deve contenere.
 
@@ -120,7 +120,7 @@ Le origini aziendali raramente supportano il tempo reale. I dati arrivano con ca
 
 Una sonda che non ha nulla da confrontare (nessun watermark, sentinel o query di sonda) degrada al TTL. [tool-verified: `provisa/federation/replica_builds.py` `_probe_decides`]
 
-### Quasi tempo reale da un feed di modifiche
+### Quasi tempo reale da un feed di modifiche {: #near-real-time-from-a-change-feed }
 
 Quando un'origine non può sostenere carico di query dal vivo ma pubblica già le proprie modifiche, un feed di modifiche dà dati quasi in tempo reale senza toccare l'origine al momento della query. Le query leggono la replica locale, che è veloce e non carica l'origine, mentre il ciclo di eventi applica le modifiche man mano che arrivano. I dati ritardano solo del feed, in genere secondi. [inferred: the lag figure]
 

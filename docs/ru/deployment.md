@@ -1,6 +1,6 @@
-# Развёртывание
+# Развёртывание {: #deployment }
 
-## Выбор способа развёртывания
+## Выбор способа развёртывания {: #choosing-a-deployment-path }
 
 Provisa поддерживает шесть способов развёртывания. Выбирайте, исходя из аудитории и эксплуатационного контекста:
 
@@ -13,13 +13,13 @@ Provisa поддерживает шесть способов развёртыв�
 | **Облачные ВМ (AWS)** | `terraform/deploy.sh` | Многоузловое облачное развёртывание с балансировщиками нагрузки |
 | **Kubernetes** | `helm/provisa/` | Команды, уже эксплуатирующие K8s |
 
-### Виртуальные машины или Kubernetes
+### Виртуальные машины или Kubernetes {: #vm-vs-kubernetes }
 
 Оба варианта корпоративного уровня. Путь с ВМ и AppImage проще: не нужно готовить кластер, не нужно настраивать политики CNI или RBAC, а AppImage полностью самодостаточен (REQ-223). Он естественно вписывается в существующие средства управления серверами (Ansible, Puppet, агенты Datadog, форвардеры Splunk и т. д.).
 
 Выбирайте Kubernetes, только если ваша команда уже эксплуатирует кластер K8s и хочет, чтобы Provisa участвовала в этой эксплуатационной модели (плавающие развёртывания, HPA, единая наблюдаемость) (REQ-056). Возможности эквивалентны — Kubernetes добавляет эксплуатационные накладные расходы, а не функциональность.
 
-### Получение образов и сканирование безопасности
+### Получение образов и сканирование безопасности {: #image-acquisition-and-security-scanning }
 
 Все производственные пути требуют получить артефакты Provisa до того, как начнётся развёртывание. «Изоляция от сети» относится к тому, что происходит во время установки на целевой машине, — артефакты нужно получить заранее.
 
@@ -33,9 +33,9 @@ Provisa поддерживает шесть способов развёртыв�
 
 ---
 
-## Разработка (из исходников)
+## Разработка (из исходников) {: #development-from-source }
 
-### Рекомендуется: `start-ui.sh`
+### Рекомендуется: `start-ui.sh` {: #recommended-start-uish }
 
 Самый простой способ запустить Provisa из исходников. Одной командой поднимает всю инфраструктуру, серверный API и сервер разработки для интерфейса (REQ-055). Ctrl+C корректно всё останавливает.
 
@@ -65,7 +65,7 @@ UI:      http://localhost:3000
 
 `--observability` — добавляет полную инструментацию трассировки и метрик. Скачивает Java-агент OpenTelemetry и правит `jvm.config` Trino, чтобы тот его загрузил, инструментирует серверную часть Provisa экспортом OTLP и запускает коллектор OTel, Prometheus, Tempo и Grafana (`http://localhost:3100`) (REQ-330). Правка `jvm.config` автоматически откатывается по Ctrl+C.
 
-### Ручные шаги (только серверная часть, без интерфейса)
+### Ручные шаги (только серверная часть, без интерфейса) {: #manual-steps-backend-only-no-ui }
 
 Если вам нужен только API:
 
@@ -84,7 +84,7 @@ UI:      http://localhost:3000
 
 4. Проверьте: `curl http://localhost:8001/health`
 
-### Полный стек (Provisa в контейнере)
+### Полный стек (Provisa в контейнере) {: #full-stack-provisa-in-container }
 
 Чтобы запустить API как контейнер, а не на хосте:
 
@@ -92,7 +92,7 @@ UI:      http://localhost:3000
 docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 ```
 
-### Службы
+### Службы {: #services }
 
 **Основные (`docker-compose.core.yml`) — требуются всегда:**
 
@@ -120,7 +120,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | Tempo | — | Хранение трассировок (с `--observability`) (REQ-330) |
 | Grafana | 3100 | Дашборды (с `--observability`) (REQ-330) |
 
-### Бэкенд телеметрии (`otlp2sql`)
+### Бэкенд телеметрии (`otlp2sql`) {: #telemetry-backend-otlp2sql }
 
 Стек `--observability`, описанный выше (Collector → Tempo/Prometheus/Grafana), — это один
 путь телеметрии. Другой — `otlp2sql` (`provisa.observability.otlp2sql`):
@@ -158,13 +158,13 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ---
 
-## Установщик для macOS
+## Установщик для macOS {: #macos-installer }
 
 Для рабочих станций разработчиков и оценки. Полностью автономен — после скачивания интернет не требуется (REQ-227).
 
 Базовый установщик выполняет **нативную установку**: федеративный движок DuckDB + плоскость управления на SQLite + кеш в памяти (fakeredis), без Docker, виртуальных машин, Trino, Redis и MinIO (REQ-972, REQ-979). Федеративный движок выбирается в мастере — DuckDB (нативный, по умолчанию), Trino в Docker или внешний движок (REQ-973). Наблюдаемость — это всегда включённая самотелеметрия, доступная в административном разделе; стек с коллектором, Prometheus и Grafana в Docker — необязательная внешняя демонстрация, а не переключатель (REQ-975). Набор демонстрационных данных необязателен и по умолчанию выключен (REQ-978). Trino, стек наблюдаемости в Docker и демонстрация — тяжёлые дополнения, которые разрешаются сначала локально (каталог рядом с установщиком, смонтированные тома, `~/Downloads`, затем релиз на GitHub), чтобы предприятия могли заранее подготовить архивы для изолированных установок (REQ-977).
 
-### Шаги
+### Шаги {: #steps }
 
 1. Скачайте `Provisa-<version>-macOS.dmg` со [страницы релизов GitHub](https://github.com/provisa/provisa/releases)
 2. Откройте DMG и перетащите **Provisa.app** в `/Applications`
@@ -179,19 +179,19 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
    (REQ-224)
 
-### Сохранность данных
+### Сохранность данных {: #data-persistence }
 
 Все данные хранятся в `~/.provisa/` (REQ-224). Чтобы удалить всё: `provisa uninstall`.
 
 ---
 
-## Установщик для Windows
+## Установщик для Windows {: #windows-installer }
 
 Для рабочих станций разработчиков и оценки. Полностью автономен — после скачивания интернет не требуется (REQ-227).
 
 Как и в macOS, базовый установщик для Windows — это **нативный уровень**: автономная среда выполнения Python + wheel provisa + DuckDB/pg_duckdb + плоскость управления на SQLite, без Docker, без виртуальных машин и без образов контейнеров (REQ-979). Федеративный движок (Trino), стек наблюдаемости и набор демонстрационных данных добавляются позже отдельными послойными установщиками, по порядку: установщик Container (`Provisa-Container-<version>.exe`, добавляющий WSL2 + containerd + Trino), затем установщик Obs (требует уровня контейнеров) и затем установщик Demo (требует Core + Obs). Подсказки при первом запуске объясняют, как инициализировать федеративный движок, запустив установщик Container (REQ-1005).
 
-### Шаги
+### Шаги {: #steps_1 }
 
 1. Скачайте `Provisa-<version>-windows-x64.exe` со [страницы релизов GitHub](https://github.com/provisa/provisa/releases)
 2. Запустите установщик — права администратора не нужны; установка выполняется в `%LOCALAPPDATA%\Programs\Provisa\`
@@ -205,15 +205,15 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
    (REQ-224)
 
-### Сохранность данных
+### Сохранность данных {: #data-persistence_1 }
 
 Все данные хранятся в `%USERPROFILE%\.provisa\`.
 
 ---
 
-## Linux AppImage — одноузловая или многоузловая ВМ
+## Linux AppImage — одноузловая или многоузловая ВМ {: #linux-appimage-single-or-multi-node-vm }
 
-### Что это
+### Что это {: #what-it-is }
 
 `Provisa.AppImage` — один самодостаточный исполняемый файл, включающий (REQ-223, REQ-228):
 
@@ -223,7 +223,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 Образ Provisa собирается заранее, во время упаковки, — исходный код Python в него никогда не входит.
 
-### Когда использовать
+### Когда использовать {: #when-to-use }
 
 - Локальное «железо» или ВМ (один или несколько узлов)
 - Облачные ВМ без кластера K8s
@@ -232,7 +232,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ---
 
-### Шаги — один узел
+### Шаги — один узел {: #steps-single-node }
 
 1. Скачайте `Provisa.AppImage` со [страницы релизов GitHub](https://github.com/provisa/provisa/releases) и перенесите на целевую машину
 2. Сделайте файл исполняемым:
@@ -262,7 +262,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ---
 
-### Шаги — несколько узлов (главный)
+### Шаги — несколько узлов (главный) {: #steps-multi-node-primary }
 
 Сначала выполните эти шаги на главном узле. Вторичные узлы настраиваются после того, как главный уже работает.
 
@@ -298,7 +298,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ---
 
-### Шаги — несколько узлов (каждый вторичный)
+### Шаги — несколько узлов (каждый вторичный) {: #steps-multi-node-each-secondary }
 
 Повторите эти шаги на каждом дополнительном узле после того, как главный узел работает и доступен.
 
@@ -332,7 +332,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ---
 
-### Топология «главный — вторичные»
+### Топология «главный — вторичные» {: #primary-secondary-topology }
 
 **Главный узел** выполняет все службы в единственном экземпляре:
 
@@ -352,7 +352,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ---
 
-### Неинтерактивный (автоматизированный) первый запуск
+### Неинтерактивный (автоматизированный) первый запуск {: #non-interactive-automated-first-launch }
 
 Для Terraform, cloud-init или Ansible — передайте флаги вместо ответов на вопросы:
 
@@ -375,11 +375,11 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ---
 
-## Развёртывание на облачных ВМ — Terraform (AWS)
+## Развёртывание на облачных ВМ — Terraform (AWS) {: #cloud-vm-deployment-terraform-aws }
 
 Разворачивает полноценный многоузловой кластер Provisa в AWS — VPC, группы безопасности, экземпляры EC2, ALB, NLB — одной интерактивной командой. (REQ-564)
 
-### Файлы
+### Файлы {: #files }
 
 | Файл | Назначение |
 | ------ | --------- |
@@ -388,7 +388,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | `terraform/aws/main.tf` | VPC, подсети, группы безопасности, IAM, EC2, ALB, NLB |
 | `terraform/aws/outputs.tf` | Адреса конечных точек и IP-адреса узлов |
 
-### Шаги
+### Шаги {: #steps_2 }
 
 1. Скачайте `Provisa.AppImage` со [страницы релизов GitHub](https://github.com/provisa/provisa/releases)
 
@@ -434,7 +434,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
     curl http://<api_endpoint>/health
     ```
 
-### Вопросы мастера
+### Вопросы мастера {: #wizard-questions }
 
 | Вопрос | По умолчанию | Примечания |
 | ---------- | --------- | ------- |
@@ -450,7 +450,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | Доступ по SSH | Нет | Требует имени существующей пары ключей и административного CIDR |
 | CIDR для VPC | `10.0.0.0/16` | |
 
-### Руководство по подбору размера экземпляра
+### Руководство по подбору размера экземпляра {: #instance-sizing-guide }
 
 | Тип | vCPU | ОЗУ | Рабочих узлов Trino на узел | Сценарий использования |
 | ------ | ------ | ----- | -------------------- | ---------- |
@@ -461,7 +461,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 Все узлы отдают рабочие процессы одному координатору на главном узле (REQ-028). Кластер из трёх узлов `m7i.4xlarge` даёт в сумме 6 рабочих узлов Trino.
 
-### Что разворачивается
+### Что разворачивается {: #what-gets-provisioned }
 
 - VPC с двумя публичными подсетями в двух зонах доступности (REQ-564)
 - Группы безопасности: группа балансировщиков (публичный входящий трафик на 8000/8815), группа узлов (балансировщик → узлы, внутрикластерный трафик, необязательный SSH)
@@ -472,7 +472,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 - NLB на порту 8815 — Arrow Flight и gRPC (REQ-143)
 - Оба балансировщика подключаются ко всем узлам
 
-### Контрольный список предварительных требований
+### Контрольный список предварительных требований {: #prerequisites-checklist }
 
 - [ ] Права IAM: полный доступ к EC2, ELB и VPC, создание ролей IAM, S3 GetObject на бакет с AppImage
 - [ ] `Provisa.AppImage` загружен в S3
@@ -482,7 +482,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 - [ ] Записи DNS для ALB и NLB спланированы (необязательно, но рекомендуется)
 - [ ] Сертификат ACM готов, если требуется HTTPS (в базовый Terraform не входит)
 
-### Секреты
+### Секреты {: #secrets }
 
 В Terraform не встроено никаких секретов. AppImage генерирует учётные данные при первом запуске и записывает их в `~/.provisa/config.yaml` на каждом узле (REQ-563). Для продуктива получите административный токен с главного узла после развёртывания:
 
@@ -494,13 +494,13 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 ## Kubernetes и Helm
 
-### Когда использовать
+### Когда использовать {: #when-to-use_1 }
 
 Ваша команда уже эксплуатирует кластер Kubernetes и хочет, чтобы Provisa участвовала в этой эксплуатационной модели (REQ-056). Если вы оцениваете Provisa или разворачиваете её локально без готового кластера, путь AppImage проще.
 
 Обратите внимание: AppImage Provisa не может работать внутри пода Kubernetes — ему нужны FUSE и демон Docker без root-прав, недоступные в стандартных профилях безопасности подов.
 
-### Шаги
+### Шаги {: #steps_3 }
 
 1. Проверьте доступ к кластеру:
 
@@ -529,17 +529,48 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    - **Redis** — внутри кластера или внешний (`redis.host`)? Смените пароль по умолчанию (`redis.password`)
    - **MinIO или S3** — MinIO внутри кластера или нативный S3? Для AWS используйте S3 с ролью IAM
    - **Секреты** — для оценки передавайте через `--set`; для продуктива используйте External Secrets или Vault Agent
+   - **Кеш координатора Trino** — том 1Gi, запрашиваемый по умолчанию и смонтированный в `/data/trino/cache` (`trino.coordinator.cache.persistence`: `enabled`, `size`, `storageClass`). Там хранятся результаты describe источника Salesforce, чтобы перезапущенный координатор не тратил снова квоту API организации на его описание. Отключайте его, только если ни одному источнику он не нужен (REQ-1946)
 
-4. Установите чарт:
+4. Передайте развёртыванию его мастер-ключ. Ключ шифрует хранилище секретов; каждый под API должен
+   иметь один и тот же ключ, и он должен переживать любой под. Без него чарт не рендерится.
+
+   ```bash
+   kubectl create namespace provisa
+   kubectl create secret generic provisa-master-key --namespace provisa \
+     --from-literal=master-key="$(openssl rand -base64 32)"
+   ```
+
+   Храните копию ключа вне кластера. Хранилище, записанное ключом, который потом утерян,
+   открыть нельзя. Альтернатива Secret — постоянный том данных
+   (`encryption.dataVolume.enabled=true`), где продукт хранит созданный им ключ; см.
+   `encryption` в `values.yaml`.
+
+5. Установите чарт:
 
    ```bash
    helm install provisa helm/provisa/ \
+     --set encryption.existingSecret=provisa-master-key \
+     --set auth.provider=oidc \
+     --set auth.oidc.issuerUrl=https://login.example.com/realms/main \
+     --set auth.oidc.clientId=provisa \
      --set config.pgPassword=<password> \
      --set config.adminToken=<token> \
      --set s3.endpoint=https://s3.amazonaws.com \
      --set s3.bucket=my-provisa-results \
      --namespace provisa --create-namespace
    ```
+
+   Чарт не рендерится, пока не выбран `auth.provider`: `oidc` (корпоративный издатель OpenID Connect),
+   `saml` (`auth.saml.idpMetadataUrl` и `auth.saml.publicUrl`), `ldap` (`auth.ldap.*`),
+   `local` (только аварийная учётная запись, `auth.breakGlass.*`) или `none` (без аутентификации,
+   только для разработки). Все учётные данные берутся из Secret Kubernetes; `ldap`, `saml` и `local`
+   также требуют `auth.sessionSecret.existingSecret` — ключ, которым подписываются сеансы браузера. См. `auth`
+   в `values.yaml`.
+
+   Координатор Trino выполняет инструкции каждой организации в её собственной группе ресурсов,
+   `global.tenant-<org>`, из файла групп ресурсов, поставляемого с чартом. Инструкции, проходящие через
+   прокси Arrow Flight, используют одну группу, `global.flight`: прокси открывает собственное подключение к Trino
+   и не может передать организацию.
 
    Если используется внутренний реестр, добавьте переопределения образов:
 
@@ -550,22 +581,22 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    --set trino.image.tag=480
    ```
 
-5. Убедитесь, что поды запущены:
+6. Убедитесь, что поды запущены:
 
    ```bash
    kubectl get pods -n provisa
    ```
 
-6. Проверьте API:
+7. Проверьте API:
 
    ```bash
    kubectl port-forward svc/provisa 8000:8000 -n provisa
    curl http://localhost:8000/health
    ```
 
-7. (Необязательно) Включите ingress для внешнего доступа — задайте `ingress.enabled: true` и настройте свой контроллер ingress
+8. (Необязательно) Включите ingress для внешнего доступа — задайте `ingress.enabled: true` и настройте свой контроллер ingress
 
-### Контрольный список предварительных требований
+### Контрольный список предварительных требований {: #prerequisites-checklist_1 }
 
 - [ ] Kubernetes 1.26+, Helm 3.12+
 - [ ] Класс хранилища, поддерживающий PVC с `ReadWriteOnce` (для служб с состоянием внутри кластера)
@@ -576,7 +607,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 - [ ] Выбран административный токен
 - [ ] Настроен контроллер ingress (если нужен внешний доступ)
 
-### Основные значения
+### Основные значения {: #key-values }
 
 | Значение | По умолчанию | Описание |
 | ------- | --------- | ------------- |
@@ -598,7 +629,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 | `s3.bucket` | `provisa-results` | Бакет для перенаправления больших результатов (REQ-029, REQ-137) |
 | `ingress.enabled` | `false` | Включить ingress |
 
-### Масштабирование
+### Масштабирование {: #scaling }
 
 ```bash
 kubectl scale deployment/provisa --replicas=5 --namespace provisa
@@ -606,7 +637,7 @@ kubectl scale deployment/provisa --replicas=5 --namespace provisa
 
 Рабочие узлы федеративного движка масштабируются независимо — больше рабочих узлов повышают пропускную способность и число одновременных запросов (REQ-056). (REQ-057)
 
-### Обновление конфигурации
+### Обновление конфигурации {: #updating-config }
 
 ```bash
 kubectl create configmap provisa-config \
@@ -617,7 +648,7 @@ kubectl rollout restart deployment/provisa --namespace provisa
 
 ---
 
-## Высокая доступность и восстановление
+## Высокая доступность и восстановление {: #high-availability-recovery }
 
 Provisa применяет двухуровневую модель восстановления во всех режимах развёртывания (REQ-703):
 
@@ -626,13 +657,13 @@ Provisa применяет двухуровневую модель восста�
 
 Отказы на уровне машины и кластера остаются зоной ответственности оператора — выделите избыточные узлы и балансировщик нагрузки (пути Terraform и Helm выше) для устойчивости к потере узла.
 
-## Зависимости федеративных движков
+## Зависимости федеративных движков {: #federation-engine-dependencies }
 
 Федеративные движки хранилищ данных требуют пакетов Python и системных компонентов сверх установки Provisa по умолчанию. Все перечисленные здесь пакеты Python объявлены в `pyproject.toml` и устанавливаются в рамках обычного `pip install provisa` или `pip install -e .` [tool-verified: `pyproject.toml` lines 44–52].
 
 Пакеты Python поставляются с установкой Provisa по умолчанию — никаких дополнительных extras ни для одного движка хранилища не требуется. Системные компоненты (драйвер ODBC, облачные CLI, ключи сервисных учётных записей) нужно устанавливать отдельно.
 
-### Пакеты Python (уже в основных зависимостях)
+### Пакеты Python (уже в основных зависимостях) {: #python-packages-already-in-core-dependencies }
 
 [tool-verified: `pyproject.toml` lines 41–52]
 
@@ -649,7 +680,7 @@ Provisa применяет двухуровневую модель восста�
 | `protobuf>=6.33.5,<7` | BigQuery, gRPC | Закрепление совместимости — `google-cloud-*` и OTel используют общую среду выполнения protobuf; `<7` удерживает их согласованными |
 | `grpcio-status<1.82` | gRPC | Согласовано с закреплением `protobuf<7` |
 
-### Системные требования
+### Системные требования {: #system-level-requirements }
 
 Это не пакеты Python — их нужно установить на хосте или в контейнере, где работает Provisa.
 
@@ -722,7 +753,7 @@ export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 
 Коннектор Databricks наследует это от `requests` — отдельной переменной окружения для Databricks не требуется.
 
-### Контрольный список по каждому движку
+### Контрольный список по каждому движку {: #per-engine-checklist }
 
 **Databricks** (REQ-987)
 
@@ -766,7 +797,7 @@ export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 
 ---
 
-## Переменные окружения
+## Переменные окружения {: #environment-variables }
 
 | Переменная | По умолчанию | Назначение |
 | ---------- | --------- | --------- |
@@ -801,7 +832,7 @@ export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 
 ---
 
-## Команды CLI
+## Команды CLI {: #cli-commands }
 
 ```bash
 provisa start              # Start all services
@@ -817,7 +848,7 @@ provisa import FILE        # Replace running config with YAML from FILE
 
 (REQ-224, REQ-164)
 
-### Процесс продвижения конфигурации (dev → test → prod)
+### Процесс продвижения конфигурации (dev → test → prod) {: #config-promotion-workflow-dev-test-prod }
 
 Все настройки, зависящие от окружения (строки подключения, секреты, порты), должны храниться в переменных окружения или менеджерах секретов, а не в экспортированной конфигурации. Экспортированный YAML фиксирует вашу семантическую модель: источники, домены, роли, представления. (REQ-164)
 

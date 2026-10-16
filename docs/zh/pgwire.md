@@ -1,4 +1,4 @@
-# Provisa pgwire 服务器
+# Provisa pgwire 服务器 {: #provisa-pgwire-server }
 
 Provisa 提供一个 PostgreSQL 线协议（pgwire）端点。任何支持 PostgreSQL 客户端协议的工具——psycopg2、asyncpg、DBeaver、Tableau、JDBC——都可以连接并通过与 HTTP API 相同的治理管道查询 Provisa 数据。（REQ-266）
 
@@ -6,7 +6,7 @@ Provisa 提供一个 PostgreSQL 线协议（pgwire）端点。任何支持 Postg
 
 ---
 
-## 连接详情
+## 连接详情 {: #connection-details }
 
 当 `PROVISA_PGWIRE_PORT` 设置为非零整数时，服务器即启动。默认处于禁用状态。（REQ-527）[tool-verified: `app.py:1739`]
 
@@ -21,7 +21,7 @@ Port: $PROVISA_PGWIRE_PORT
 
 ---
 
-## 身份验证
+## 身份验证 {: #authentication }
 
 启动包携带一个用户名和一个密文字段，但没有任何方案说明该密文是什么。Provisa 根据密文本身来判断，因此客户端除 `user` 和 `password` 之外无需任何额外配置：
 
@@ -37,15 +37,15 @@ trust 模式（`provider: none`，或身份验证中间件未启用）是例外�
 
 **SCRAM-SHA-256。** 在 `provider: basic` 且 `auth.scram: true` 时，服务器会公布带 `SCRAM-SHA-256` 的 SASL（身份验证代码 10），密码通过证明而非发送来验证。（REQ-1394）不提供 `SCRAM-SHA-256-PLUS`。对于尚未写入验证器的用户——验证器无法从 bcrypt 哈希推导——服务器会以模拟交换作答，使链路上无法看出谁已迁移；该用户会通过 TLS 上的明文密码进行身份验证，直到下次输入密码时写入验证器为止。关闭 `auth.scram` 时，服务器使用 PG 身份验证类型 3（明文密码）。两种情况下都不支持 MD5。
 
-**客户端证书。** 设置 `PROVISA_MTLS_CLIENT_CA` 后，服务器会在握手期间、检查任何凭据之前验证客户端证书。（REQ-1228）启用 `PROVISA_MTLS_BIND_PRINCIPAL` 时，证书的 common name 必须与该连接随后用于身份验证的 `user` 相同。参见[配置](configuration.md#tls)。
+**客户端证书。** 设置 `PROVISA_MTLS_CLIENT_CA` 后，服务器会在握手期间、检查任何凭据之前验证客户端证书。（REQ-1228）启用 `PROVISA_MTLS_BIND_PRINCIPAL` 时，证书的 common name 必须与该连接随后用于身份验证的 `user` 相同。参见[配置](configuration.md#mutual-tls)。
 
 **失败尝试会被计数。** 五分钟内五次失败会将账户锁定十五分钟，且该计数器与 HTTP 和 Bolt 共享——在任一接口上招致的锁定，在所有接口上都生效。（REQ-1393）
 
-**选择组织。** 在多组织部署中，连接到 `<org>.<您的域名>`，pgwire 会从 TLS ClientHello 的主机名中读取组织，方式与 HTTP 从 `Host` 头中读取相同。（REQ-1234）主机名是在请求某个组织，而不是授予它；在该组织中没有成员资格的主体会被拒绝。通过 IP 地址连接则不请求任何组织。
+**选择组织。** 在多组织部署中，连接到 `<org>.<your-domain>`，pgwire 会从 TLS ClientHello 的主机名中读取组织，方式与 HTTP 从 `Host` 头中读取相同。（REQ-1234）主机名是在请求某个组织，而不是授予它；在该组织中没有成员资格的主体会被拒绝。通过 IP 地址连接则不请求任何组织。
 
 ---
 
-## 支持的功能
+## 支持的功能 {: #what-works }
 
 ### SELECT
 
@@ -62,35 +62,106 @@ trust 模式（`provider: none`，或身份验证中间件未启用）是例外�
 
 `SELECT * FROM fn(args)` 和 `SELECT fn(args)`——其中 `fn` 指定一个已注册且受跟踪的函数——会在治理管道之前被拦截，并通过唯一受治理的执行器（`invoke_tracked_function`）路由。结果是一个类型化的行集，与该命令在其他任何界面所返回的结果一致。`writable_by` 及治理规则会在执行器内部强制执行。（REQ-1156）[tool-verified: `provisa/pgwire/function_call.py:74-88`]
 
-### DDL
+### 游标（DECLARE / FETCH / MOVE / CLOSE） {: #cursors-declare-fetch-move-close }
 
-DDL 语句由 `server.py` 中的正则表达式检测，并派发至 `DdlHandler`。角色必须具备 `"ddl"` 权限。（REQ-042）若无此权限，该语句会以 SQLSTATE 42501 被拒绝。[tool-verified: `ddl_handler.py:82-83`]
+Provisa 在简单查询协议上处理 SQL 游标的文本语法。（REQ-1862） 将 `DECLARE`/`FETCH`/`MOVE`/`CLOSE` 作为普通 SQL 语句发送的客户端，会得到真正的服务端流式传输，而不是协议错误或在客户端内存中缓冲整个结果。
 
-可识别的 DDL 形式为：
+**这与基于 portal 的流式传输不同。** 扩展查询协议——带行数上限字段的 Bind/Execute——是另一种线协议机制。asyncpg 和大多数现代 PostgreSQL 驱动会自动使用它，不需要游标 SQL。如果你的驱动已经使用 portal，你就不需要这种语法。`DECLARE CURSOR` 面向按字面发送游标 SQL 的客户端：psycopg2 的命名/服务端游标（`conn.cursor(name="...")`）、部分 BI 工具以及一些较旧的 JDBC 驱动。
+
+**DECLARE**
 
 ```sql
-CREATE TABLE / VIEW / INDEX / UNIQUE INDEX / SEQUENCE / SCHEMA
-ALTER TABLE / INDEX / SEQUENCE / VIEW
-DROP TABLE / VIEW / INDEX / SEQUENCE / SCHEMA
+DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
+DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
+DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
+内部的 SELECT 会经过 Provisa 常规的受治理管道——与任何独立 SELECT 相同的行级安全执行、相同的脱敏和相同的域访问检查。[tool-verified: `server.py:1367` — `ctx.execute_sql(inner_sql)`, the same call path as a plain SELECT] 声明游标不会绕过治理。
 
-[tool-verified: `server.py:56-61`]
+`SCROLL` 关键字同时控制允许的导航和游标的内存占用：
 
-根据 `ddl_catalog` 存在两条执行路径：（REQ-582）
+| 声明 | 向后导航 | 内存开销 |
+|---|---|---|
+| `DECLARE c CURSOR FOR ...`（默认） | 不允许 | 限于一批 FETCH |
+| `DECLARE c NO SCROLL CURSOR FOR ...` | 不允许 | 限于一批 FETCH |
+| `DECLARE c SCROLL CURSOR FOR ...` | 允许 | 整个结果缓冲在 Python 内存中 |
 
-**Trino 路径**——当 `ddl_catalog` 为 Iceberg、Hive 或其他未注册的 Trino 目录（例如 `iceberg`、`hive`、`otel`、`results`）时使用。此路径仅支持 `CREATE TABLE` 和 `CREATE VIEW`。尝试执行 `ALTER`、`DROP` 或 `CREATE INDEX` 会引发错误。表名会完全限定为 `catalog.schema.table`。[tool-verified: `ddl_handler.py:92-100`]
+既未指定 `SCROLL` 也未指定 `NO SCROLL` 时，默认为 `NO SCROLL`——与 PostgreSQL 本身一致。[tool-verified: `server.py:1361-1362`] `NO SCROLL` 游标在每次向前推进后都会从其内部缓冲区丢弃已消费的行，因此对大结果的 `FETCH FORWARD` 遍历在任一时刻都只在 Python 内存中保留大约一批数据。[tool-verified: `server.py:443-447`] `SCROLL` 游标会保留它拉取过的每一行——这是支持 `FETCH BACKWARD`、`ABSOLUTE`、`FIRST` 和 `LAST` 的代价。在对大结果声明 `SCROLL` 游标之前，请为整个结果的大小预留 Python 堆空间。[tool-verified: `server.py:383-389`]
 
-**直接路径**——当 `ddl_catalog` 对应一个已注册的数据源 ID 时使用。支持完整 DDL：CREATE、ALTER、DROP、索引、序列。`CREATE TABLE` 和 `CREATE VIEW` 会以架构限定为 `schema.table`。其余 DDL（ALTER、DROP、CREATE INDEX）在设置架构上下文后会原样传递。对于 PostgreSQL 和 SQLite 数据源，上下文以 `SET search_path TO schema` 设置。对于 MySQL 和 MariaDB，则以 `USE schema` 设置。[tool-verified: `ddl_handler.py:139-170`, `ddl_handler.py:207-213`]
+重新声明已打开的游标名称会先关闭之前的游标。[tool-verified: `server.py:1369-1371`] `WITH HOLD` 和 `WITHOUT HOLD` 被语法接受；参见下文的游标生命周期。
 
-在任一路径执行 DDL 后，新表会注册到该角色的编译上下文中，以便立即可供查询。（REQ-583）[tool-verified: `ddl_handler.py:216-250`]
+**FETCH 和 MOVE**
 
-**写入目标的解析。** DDL 目录及架构来自该域的 `ddl_catalog` 和 `ddl_schema` 字段。若未设置 `ddl_catalog`，系统默认使用 Iceberg 目录。若未设置 `ddl_schema`，则默认使用域 ID。域会通过角色的 `domain_access` 列表解析。（REQ-584）[tool-verified: `app.py:804-811`, `ddl_handler.py:104-115`]
+```sql
+FETCH 100 FROM c1            -- next 100 rows
+FETCH FORWARD 100 FROM c1    -- same
+FETCH ALL FROM c1            -- all remaining rows
+FETCH BACKWARD 10 FROM c1    -- previous 10 rows (SCROLL cursors only)
+FETCH ABSOLUTE 50 FROM c1    -- the row at absolute position 50 (SCROLL cursors only)
+FETCH RELATIVE -5 FROM c1    -- 5 positions back (SCROLL cursors only)
+FETCH FIRST FROM c1          -- row 1 (SCROLL cursors only)
+FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
+MOVE 100 FROM c1             -- advance position without returning rows
+```
+`FETCH` 返回行并发送命令标签 `FETCH <n>`，其中 `n` 是实际返回的数量，当游标到达末尾时可能少于请求的数量。`MOVE` 移动位置而不返回行，并发送 `MOVE <n>`。[tool-verified: `server.py:1417`, `server.py:1419`]
+
+`FROM` 和 `IN` 在游标名之前可以互换。未加引号的游标名会转为小写；加引号的名称（`"CaseSensitive"`）保留大小写。[tool-verified: `test_cursor.py:74-79`]
+
+对 `NO SCROLL` 游标进行向后导航（`BACKWARD`、`ABSOLUTE`、`FIRST`、`LAST`、负的 `RELATIVE`）会返回 SQLSTATE 55000（`object_not_in_prerequisite_state`），与 PostgreSQL 自身的拒绝一致。[tool-verified: `server.py:1402-1406`] 对从未声明过的游标名执行 FETCH 或 MOVE 会返回 SQLSTATE 34000（`invalid_cursor_name`）。[tool-verified: `server.py:1398-1400`]
+
+**CLOSE**
+
+```sql
+CLOSE c1;    -- release one cursor and free its result stream
+CLOSE ALL;   -- release every open cursor on this connection
+```
+`CLOSE` 释放底层的结果流，并从会话中移除游标。[tool-verified: `server.py:1421-1436`] 不执行 `CLOSE` 就断开连接是安全的：`ProvisaSession.close()` 会在断开时自动释放所有仍处于打开状态的游标。[tool-verified: `test_cursor.py:335-346`]
+
+**游标生命周期。** Provisa 的 pgwire 服务器没有事务状态机（`ProvisaSession.in_transaction()` 固定返回 `False`）。因此每个游标的行为都如同声明了 `WITH HOLD`：它在整个连接期间存续，而不是到 `COMMIT` 为止。[tool-verified: `server.py:200` — `in_transaction()` always returns `False`] 关键字 `WITH HOLD` 和 `WITHOUT HOLD` 会被接受并静默忽略——没有需要执行的按事务划分的游标生命周期。
+
+### 定义（CREATE、ALTER、DROP、TRUNCATE） {: #definitions-create-alter-drop-truncate }
+
+不通过 pgwire 定义任何内容。创建、修改或删除对象的语句（`CREATE TABLE`、`CREATE TABLE … AS SELECT`、`CREATE VIEW`、`ALTER`、`DROP`、索引、序列或 schema）无论角色持有什么，都会以 SQLSTATE 0A000 被拒绝；例外是会话自己的临时表（参见[临时表](#temporary-tables)）。表或视图是模型对象：在模型中创建它们（管理页面、管理 API 或配置），或在数据源中创建后纳入模型。`TRUNCATE` 以同样方式被拒绝；`DELETE` 是删除行的受治理方式。[tool-verified: `provisa/compiler/definitions.py`]
+
+拒绝只发生一次，位于每个 SQL 界面都会经过的管道中，因此 HTTP 上的 SQL、Flight 和 MCP 会以相同的消息拒绝相同的语句。
+
+### 临时表 {: #temporary-tables }
+
+会话可以创建、写入、读取和删除自己的临时表：
+
+```sql
+CREATE TEMP TABLE busy AS SELECT customer_id, COUNT(*) AS n FROM sales.orders GROUP BY customer_id;
+INSERT INTO busy VALUES (0, 0);
+UPDATE busy SET n = n + 1 WHERE customer_id = 0;
+DELETE FROM busy WHERE n < 5;
+SELECT c.name, b.n FROM sales.customers c JOIN busy b ON b.customer_id = c.id;
+DROP TABLE busy;
+```
+- **创建** —— `CREATE TEMP TABLE name (column type, ...)` 或 `CREATE TEMP TABLE name AS SELECT ...`。名称不接受 schema。它所基于的 `SELECT` 与其他任何读取一样：角色的行规则、脱敏、伪造数据和行数上限都适用于它取得的行。
+- **列类型**：`smallint`、`integer`、`bigint`、`real`、`double precision`、`boolean`、`date`、`timestamp`、`text`、`varchar` 以及 `DECIMAL(precision, scale)`。小数保留其精度和标度。其他任何类型都会被拒绝，并指明列和类型：值绝不会以非其本身的类型存储。由 `SELECT` 创建的列采用其值的类型；没有可推断类型的值的列会被拒绝，因此请在 `SELECT` 中使用 `CAST`。
+- **行数上限。** `CREATE ... AS SELECT` 或 `INSERT ... SELECT` 取得的行，按角色读取任何内容的方式读取，因此角色的行数上限适用。由被上限截断的读取填充的临时表，会带有与任何被截断读取相同的语句警告（`statement.rows_cut`），并指明上限。
+- **写入** —— `INSERT ... VALUES`、`INSERT ... SELECT`、`UPDATE` 和 `DELETE`，不带 `RETURNING`，也不带 `FROM`。写入临时表不是变更：它既不触达数据源，也不触达环境的数据，因此在环境的任何变更处理方式下都可用，也不需要写入权。
+- **读取** —— 按其名称，单独读取或与模型表联接。读取由引擎计算。
+- **生命周期。** 临时表不是模型对象，其他会话看不到它，它随会话结束。在 pgwire 中，会话就是连接。在没有自己连接的界面上（HTTP 上的 SQL、Flight、MCP），会话就是请求，因此临时表只在该请求中一起发送的语句之间存续。
+- **存储。** 行保存在引擎存储中会话自己的 schema 里，并在会话结束时移除。`INSERT`、`UPDATE` 或 `DELETE` 会通过引擎重写整张表，因此临时表适合工作数据，而不适合逐行写入的大表。未结束其会话就停止的进程会在存储中留下这些会话的 schema；它们会在环境停用时被移除。
+
+同样的语句在每个 SQL 界面上都可用：它们在所有界面共享的管道中处理。[inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; the pgwire connection-long session is not yet covered by a test]
+
+### 数据写入（INSERT、UPDATE、DELETE、MERGE、COPY FROM STDIN） {: #data-writes-insert-update-delete-merge-copy-from-stdin }
+
+已有注册表的行通过 pgwire 写入，方式与其他任何 SQL 界面相同，经由同一个写入准入（`provisa/compiler/write_admission.py`）：
+
+1. **权利。** 角色持有 `write`。（REQ-868）
+2. **列。** 语句写入的每一列都在其 `writable_by` 中指定了该角色；未声明任何内容的列任何人都不能写入。（REQ-663）
+3. **可以触及的行。** 角色的行过滤（与其读取所携带的谓词相同）被添加到 `UPDATE` 或 `DELETE` 的 `WHERE` 中。
+4. **保留下来的行。** 受过滤的角色只能写入之后它能读取的行：`INSERT` 的行，以及设置了过滤所读取的列的 `UPDATE` 的新值，会在向数据源发送任何内容之前对照过滤进行检查。
+
+无法判定的内容会被点名拒绝，而不是在存疑时放行（`INSERT … SELECT`、既非字面量也非绑定参数的值、读取语句未提供的列的过滤）。[tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
 ### COPY
 
-`COPY ... TO STDOUT` 和 `COPY ... FROM STDIN` 均受支持。（REQ-585）[tool-verified: `copy_handler.py:231-257`]
+`COPY ... TO STDOUT` 和 `COPY ... FROM STDIN` 都受支持。（REQ-585）
 
-**COPY TO STDOUT**——以 PG COPY 线格式导出查询结果。有两种形式可用：
+**COPY TO STDOUT** —— 以 PG COPY 线格式导出查询结果。两种形式都可用：
 
 ```sql
 -- Table reference
@@ -99,24 +170,17 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
+支持的格式：`text`（制表符分隔，默认）和 `csv`。COPY 输出不支持二进制格式。[tool-verified: `copy_handler.py:36-52`]
 
-支持的格式：`text`（以制表符分隔，默认）和 `csv`。COPY 输出不支持二进制格式。[tool-verified: `copy_handler.py:36-52`]
+**COPY FROM STDIN** 是向已有注册表写入数据：它由与相同行的 `INSERT` 相同的写入准入放行（参见[数据写入](#data-writes-insert-update-delete-merge-copy-from-stdin)）。
 
-**COPY FROM STDIN**——将行插入目标表。仅限类型为 `postgresql`、`mysql`、`sqlite` 或 `mariadb` 的数据源使用。（REQ-586）尝试对仅限 Trino 的数据源（例如 Iceberg）执行 COPY FROM 会引发权限错误。[tool-verified: `copy_handler.py:65`, `copy_handler.py:351-356`]
-
-```sql
-COPY my_table (col1, col2) FROM STDIN WITH (FORMAT text)
-```
-
-若未提供列列表，列会从已注册的架构推断得出。[tool-verified: `copy_handler.py:357`]
-
-### 事务与会话命令
+### 事务与会话命令 {: #transactions-and-session-commands }
 
 SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 和 DEALLOCATE 会被拦截并返回空的成功响应。（REQ-587）服务器就事务而言是无状态的——不存在事务隔离或回滚支持。（REQ-587）[tool-verified: `catalog.py:27-31`, `catalog.py:1129-1132`]
 
 ---
 
-## 目录拦截
+## 目录拦截 {: #catalog-intercept }
 
 对 `information_schema` 和 `pg_catalog` 的查询会在本地解答，无需往返 Trino。（REQ-532）拦截层会按每个请求构建一个内存中的 DuckDB 数据库，并以该角色的编译上下文填充数据。（REQ-532）[tool-verified: `catalog.py:210-213`]
 
@@ -148,7 +212,7 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 和 DEAL
 
 ---
 
-## 二进制参数编码
+## 二进制参数编码 {: #binary-parameter-encoding }
 
 扩展查询协议（Bind/Execute）支持以二进制编码的参数。（REQ-589）以下类型 OID 会从二进制解码：[tool-verified: `postgres.py:69-97`]
 
@@ -175,7 +239,7 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 和 DEAL
 
 ---
 
-## 驱动程序建议
+## 驱动程序建议 {: #driver-recommendations }
 
 **原生 Python 驱动程序（psycopg2、asyncpg）。** 这些驱动程序默认会协商扩展查询协议，并对大多数类型使用二进制编码。类型保真度在此最高——`NUMERIC` 列以 `Decimal` 形式到达，`TIMESTAMP` 则以 `datetime` 形式到达，依此类推。适用于基于 Python 的 ETL、脚本或直接集成。
 
@@ -191,22 +255,20 @@ jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<
 
 ---
 
-## 注意事项与限制
+## 注意事项与限制 {: #caveats-and-constraints }
 
-**仅限 SQL；不支持 DML 变更操作。** pgwire 监听器仅解析并执行 SQL——不接受 GraphQL 和 Cypher 字符串。（REQ-614）纯粹的 `INSERT`、`UPDATE` 和 `DELETE` 不会路由至写入路径。（REQ-615）请通过 `COPY FROM STDIN`（可写入的数据源）或 `CREATE TABLE AS` 写入数据；行级变更应改为通过 GraphQL、Cypher 或 Trino 的写入路径处理。
+**仅限 SQL。** pgwire 监听器仅解析并执行 SQL——不接受 GraphQL 和 Cypher 字符串。（REQ-614） 对已有表的数据写入由角色的权利、其列授权和其行过滤放行；参见[数据写入](#data-writes-insert-update-delete-merge-copy-from-stdin)。
 
-**COPY 和 DDL 需要 `ddl` 权限。** `COPY`（无论方向）和 DDL 均受角色的 `ddl` 权限限制；不具备此权限的角色会收到 SQLSTATE 42501。（REQ-616）
+**不支持定义。** 无论角色持有什么，`CREATE`、`ALTER`、`DROP` 和 `TRUNCATE` 都会以 SQLSTATE 0A000 被拒绝，会话自己的临时表除外；参见[临时表](#temporary-tables)。（REQ-615、REQ-616）
 
 **不支持真正的事务功能。** BEGIN/COMMIT/ROLLBACK 会被接受并静默忽略。每条语句均独立执行。（REQ-587）[tool-verified: `server.py:146-158`——`in_transaction()` 始终返回 `False`]
 
-**DDL 超时 60 秒，查询超时 120 秒。** 这些值在处理线程中硬编码。（REQ-590）针对远程数据源的长时间运行 DDL（大表上的架构变更）可能会超时。[tool-verified: `ddl_handler.py:136`, `server.py:186`]
-
-**COPY FROM 仅适用于可写入的数据源。** Iceberg、Hive、仅限 Trino 的数据源，以及只读的数据源类型均不接受 COPY FROM。错误代码为 SQLSTATE 42501。（REQ-586）[tool-verified: `copy_handler.py:65`]
+**查询超时。** 语句可以使用 pgwire 自己的请求超时 `limits.request_timeouts.pgwire`，未设置时使用共享的 `limits.request_timeout`；两者都是运维设置。（REQ-590、REQ-1905） [tool-verified: `provisa/core/limits.py`, `server.py`]
 
 **COPY 输出格式为 text 或 csv。** 尚未实现 PG 二进制 COPY 格式（`FORMAT binary`）。[inferred：`_rows_to_copy_text` / `_rows_to_copy_csv` 中仅存在 `text` 和 `csv` 分支]
 
-**Trino 路径上的 DDL 仅限 CREATE。** 不支持针对 Iceberg 或 Hive 目录执行 ALTER、DROP 和 CREATE INDEX。如需完整 DDL，请以已注册的 SQL 数据源作为 `ddl_catalog`。（REQ-582）[tool-verified: `ddl_handler.py:92-100`]
-
 **参数替换为字面量形式。** `$1`、`$2`……等参数会在执行前以 SQL 字面量替换，而非以绑定参数形式发送至底层引擎。这意味着底层引擎永远不会看到已准备的语句。对 Trino 而言这没有实际影响；对于直接连接池的数据源，则会绕过预准备语句的缓存机制。（REQ-581）[tool-verified: `server.py:78-85`]
+
+**DECLARE SCROLL 会缓冲整个结果。** `SCROLL` 游标会把它从引擎拉取的每一行累积到 Python 堆中，以便按需提供 `FETCH BACKWARD`、`ABSOLUTE`、`FIRST` 和 `LAST`。面对大结果，这意味着只要游标处于打开状态，整个结果就驻留在内存中。仅向前的流式传输请使用默认的 `NO SCROLL`。（REQ-1862） [tool-verified: `server.py:383-389`]
 
 **`pg_stat_activity`、`pg_stat_user_tables`、`pg_extension`、`pg_enum`、`pg_attrdef`、`pg_proc`。** 这些表存在于目录层中，但属于空的桩 (stub)。查询它们的监控工具将收到零行结果，而非错误。（REQ-532）[tool-verified: `catalog.py:519-535`, `catalog.py:639-934`]（`pg_index` 已有数据填充——参见"目录拦截"一节。）

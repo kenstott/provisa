@@ -1,4 +1,4 @@
-# Guía rápida para desarrolladores
+# Guía rápida para desarrolladores {: #developer-quick-start }
 
 Para evaluar Provisa sin compilar desde el código fuente, consulte [Guía rápida](index.md) — descargue el instalador para macOS, Windows o Linux y ejecute `provisa start`. (REQ-223, REQ-224, REQ-227)
 
@@ -6,7 +6,7 @@ Esta guía es para ejecutar Provisa **desde el repositorio** — desarrollo acti
 
 ---
 
-## Requisitos previos
+## Requisitos previos {: #prerequisites }
 
 - **Docker Desktop** (en ejecución)
 - **Python 3.12+**
@@ -15,7 +15,7 @@ Esta guía es para ejecutar Provisa **desde el repositorio** — desarrollo acti
 
 ---
 
-## 1. Clonar y configurar
+## 1. Clonar y configurar {: #1-clone-and-set-up }
 
 ```bash
 git clone https://github.com/kenstott/provisa.git
@@ -27,7 +27,7 @@ cd provisa
 
 ---
 
-## 2. Iniciar todo
+## 2. Iniciar todo {: #2-start-everything }
 
 ```bash
 ./start-ui.sh
@@ -53,7 +53,7 @@ Provisa running:
 
 **Ctrl+R** reinicia solo el backend (útil después de un cambio de configuración que la recarga en caliente no detecta). (REQ-619)
 
-### Opciones
+### Opciones {: #options }
 
 `--no-observability` — Deshabilita el trazado distribuido. De forma predeterminada, `start-ui.sh` descarga el agente Java de OpenTelemetry si aún no está presente, aplica un parche al `jvm.config` de Trino para cargarlo, e inicia el OTel collector, Prometheus, Tempo y Grafana. Pase `--no-observability` para omitir todo eso. El parche de `jvm.config` se revierte al presionar Ctrl+C. [tool-verified: start-ui.sh lines 15, 67–82] (REQ-330)
 
@@ -89,7 +89,7 @@ Orígenes incluidos:
 
 ---
 
-## 3. Conectar un origen de datos
+## 3. Conectar un origen de datos {: #3-connect-a-data-source }
 
 Provisa lee la configuración desde `config/`. Agregue un archivo de origen — por ejemplo `config/sources/my-db.yaml`:
 
@@ -122,7 +122,7 @@ Consulte [docs/configuration.md](configuration.md) para la referencia YAML compl
 
 ---
 
-## 4. Ejecutar su primera consulta
+## 4. Ejecutar su primera consulta {: #4-run-your-first-query }
 
 ```bash
 # GraphQL
@@ -140,7 +140,7 @@ No se requiere autenticación cuando no hay una sección `auth` presente en `con
 
 ---
 
-## 5. Abrir la UI
+## 5. Abrir la UI {: #5-open-the-ui }
 
 Abra `http://localhost:3000` en un navegador.
 
@@ -155,7 +155,7 @@ La API GraphQL de administración está en `http://localhost:8001/admin/graphql`
 
 ---
 
-## Solución de problemas
+## Solución de problemas {: #troubleshooting }
 
 **El backend no inicia** — revise `.logs/server.log`. La causa más común es una variable de entorno faltante o un conflicto de puertos en el 8001. [tool-verified: start-ui.sh line 202] (REQ-618)
 
@@ -167,7 +167,7 @@ La API GraphQL de administración está en `http://localhost:8001/admin/graphql`
 
 ---
 
-## Próximos pasos
+## Próximos pasos {: #next-steps }
 
 | Objetivo | Documento |
 | ------ | ----- |

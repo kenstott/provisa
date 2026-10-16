@@ -1,6 +1,6 @@
-# מעבר מ-Hasura v2 ל-Provisa
+# מעבר מ-Hasura v2 ל-Provisa {: #migrating-from-hasura-v2-to-provisa }
 
-## דרישות מוקדמות
+## דרישות מוקדמות {: #prerequisites }
 
 1. מופע Hasura v2 פועל (v2.x) עם מטא-דאטה מיוצא.
 2. יצוא מטא-דאטה באמצעות ה-CLI של Hasura:
@@ -13,19 +13,19 @@
    `cron_triggers.yaml`, `inherited_roles.yaml`, `remote_schemas.yaml`, וכו'.
 3. Python 3.11+ עם חבילת `provisa` מותקנת.
 
-## שימוש ב-CLI
+## שימוש ב-CLI {: #cli-usage }
 
 ```bash
 python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 ```
 
-### ארגומנטים
+### ארגומנטים {: #arguments }
 
 | ארגומנט | נדרש | תיאור |
 | ---------- | ---------- | ------------- |
 | `metadata_dir` | כן | נתיב לספריית המטא-דאטה המיוצאת של Hasura v2 |
 
-### אפשרויות
+### אפשרויות {: #options }
 
 | אפשרות | ברירת מחדל | תיאור |
 | -------- | --------- | ------------- |
@@ -35,7 +35,7 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 | `--auth-env-file FILE` | None | נתיב לקובץ `.env` עם תצורת אימות JWT/admin-secret |
 | `--dry-run` | כבוי | פענוח ואימות ללא כתיבת פלט |
 
-### קובץ דריסות מקור
+### קובץ דריסות מקור {: #source-overrides-file }
 
 קובץ YAML עם מפתחות לפי שם מקור עם תכונות חיבור לדריסה:
 
@@ -48,7 +48,7 @@ default:
   password: "${env:PROD_DB_PASSWORD}"
 ```
 
-### קובץ סביבת אימות
+### קובץ סביבת אימות {: #auth-env-file }
 
 קובץ בסגנון `.env` המחזיק את תצורת אימות ה-Hasura להמרה. הממיר
 ממפה:
@@ -58,7 +58,7 @@ default:
 - Admin secret -> Provisa `superuser`.
 - אימות webhook -> אזהרה נפלטת (אין שווה-ערך ב-Provisa).
 
-## מטריצת שוויון תכונות
+## מטריצת שוויון תכונות {: #feature-parity-matrix }
 
 | תכונת Hasura v2 | שווה-ערך Provisa | הערות |
 | --- | --- | --- |
@@ -82,7 +82,7 @@ default:
 | **טבלאות enum** | טבלה נוצרת | דגל `is_enum` אינו מועבר (אין שווה-ערך ב-Provisa). |
 | **רשימות allow** | מדולג | לא קיים במודל המטא-דאטה. |
 
-## שלבים לאחר-המרה
+## שלבים לאחר-המרה {: #post-conversion-steps }
 
 1. **סקרו את ה-YAML הפלט.** בדקו שמקורות, טבלאות, ותפקידים נראים נכונים.
 2. **הגדירו חיבורי מקור.** הממיר מפענח כתובות URL של חיבור אך ברירת-מחדל
@@ -97,37 +97,37 @@ default:
    אימות והריצו מחדש עם `--auth-env-file`.
 7. **בדקו.** הפעילו את שרת Provisa ואמתו שאילתות מול מקורות הנתונים שלכם.
 
-## בעיות נפוצות ופתרון תקלות
+## בעיות נפוצות ופתרון תקלות {: #common-issues-and-troubleshooting }
 
-### כתובת URL של חיבור לא מפוענחת
+### כתובת URL של חיבור לא מפוענחת {: #connection-url-not-parsed }
 
 אם `database_url` של המקור הוא הפניה למשתנה סביבה (`{"from_env": "PG_URL"}`),
 הממיר אינו יכול לפתור אותה בזמן ההמרה. למקור יהיו ערכי placeholder
 (`host: localhost`, `database: default`). תקנו עם `--source-overrides`.
 
-### עמודות תו-כללי
+### עמודות תו-כללי {: #wildcard-columns }
 
 כאשר הרשאה מעניקה `columns: "*"`, הממיר יוצר רשומת עמודת תו-כללי
 אחת. לאחר ההמרה, ייתכן שתרצו להחליף אותה ברשימות עמודה מפורשות
 על ידי בדיקת סכמת מסד הנתונים בפועל.
 
-### נאמנות טריגר אירוע
+### נאמנות טריגר אירוע {: #event-trigger-fidelity }
 
 טריגרי אירועים מומרים עם `operations` ו-`webhook_url` אך ערבויות
 משלוח ספציפיות ל-Hasura (exactly-once, משלוח-מחדש) אין להן שווה-ערך ישיר ב-Provisa.
 סקרו את סעיף `event_triggers` והגדירו את תשתית ה-webhook שלכם בהתאם.
 
-### תפקידים חסרים
+### תפקידים חסרים {: #missing-roles }
 
 תפקידים נאספים רק מרשומות הרשאה. אם תפקיד קיים ב-Hasura אך אין לו
 הרשאות על אף טבלה או action, הוא לא יופיע בפלט.
 
-### שדות שורש מותאמים
+### שדות שורש מותאמים {: #custom-root-fields }
 
 רק שדות שורש `select` ו-`select_by_pk` משמשים לשיוך הטבלה. שדות שורש
 מותאמים אחרים (`select_aggregate`, `insert`, `update`, `delete`) אינם ממופים.
 
-## דוגמה
+## דוגמה {: #example }
 
 המרת פרויקט Hasura v2 טיפוסי עם שתי סכמות ממופות לדומיינים:
 

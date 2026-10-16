@@ -1,6 +1,6 @@
-# 部署
+# 部署 {: #deployment }
 
-## 選擇部署路徑
+## 選擇部署路徑 {: #choosing-a-deployment-path }
 
 Provisa 支援六條部署路徑。請依你的受眾與營運脈絡選擇：
 
@@ -13,13 +13,13 @@ Provisa 支援六條部署路徑。請依你的受眾與營運脈絡選擇：
 | **雲端 VM（AWS）** | `terraform/deploy.sh` | 帶負載平衡器的多節點雲端部署 |
 | **Kubernetes** | `helm/provisa/` | 已在營運 K8s 的團隊 |
 
-### VM 對比 Kubernetes
+### VM 對比 Kubernetes {: #vm-vs-kubernetes }
 
 兩者都是企業級的。VM／AppImage 路徑較簡單：毋須佈建叢集、毋須設定 CNI 或 RBAC 政策，且 AppImage 完全自足（REQ-223）。它自然地融入既有的伺服器管理工具（Ansible、Puppet、Datadog agent、Splunk forwarder 等）。
 
 只有在你的團隊已在營運 K8s 叢集，並希望 Provisa 參與該營運模式（滾動部署、HPA、統一可觀測性）時，才選 Kubernetes（REQ-056）。兩者能力相當——Kubernetes 增加的是營運開銷，不是能力。
 
-### 映像取得與安全掃描
+### 映像取得與安全掃描 {: #image-acquisition-and-security-scanning }
 
 所有正式環境路徑，在任何部署可以執行之前，都必須先取得 Provisa 構件。「氣隙」指的是安裝時在目標機器上發生的事——構件必須先取得。
 
@@ -33,9 +33,9 @@ Provisa 支援六條部署路徑。請依你的受眾與營運脈絡選擇：
 
 ---
 
-## 開發（從原始碼）
+## 開發（從原始碼） {: #development-from-source }
 
-### 建議：`start-ui.sh`
+### 建議：`start-ui.sh` {: #recommended-start-uish }
 
 從原始碼執行 Provisa 最簡單的方式。一道命令啟動所有基礎設施、後端 API 與 UI 開發伺服器（REQ-055）。Ctrl+C 會乾淨地關閉一切。
 
@@ -65,7 +65,7 @@ UI:      http://localhost:3000
 
 `--observability` — 加入完整的追蹤與量度檢測。它下載 OpenTelemetry Java agent 並修補 Trino 的 `jvm.config` 以載入它，以 OTLP 匯出檢測 Provisa 後端，並啟動 OTel collector、Prometheus、Tempo 與 Grafana（`http://localhost:3100`）（REQ-330）。該 `jvm.config` 修補會在 Ctrl+C 時自動還原。
 
-### 手動步驟（僅後端，無 UI）
+### 手動步驟（僅後端，無 UI） {: #manual-steps-backend-only-no-ui }
 
 如果你只需要 API：
 
@@ -84,7 +84,7 @@ UI:      http://localhost:3000
 
 4. 驗證：`curl http://localhost:8001/health`
 
-### 完整堆疊（Provisa 在容器中）
+### 完整堆疊（Provisa 在容器中） {: #full-stack-provisa-in-container }
 
 若要以容器而非在主機上執行 API：
 
@@ -92,7 +92,7 @@ UI:      http://localhost:3000
 docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 ```
 
-### 各項服務
+### 各項服務 {: #services }
 
 **核心（`docker-compose.core.yml`）——一律必要：**
 
@@ -120,7 +120,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | Tempo | — | 追蹤儲存（搭配 `--observability`）（REQ-330） |
 | Grafana | 3100 | 儀表板（搭配 `--observability`）（REQ-330） |
 
-### 遙測後端（`otlp2sql`）
+### 遙測後端（`otlp2sql`） {: #telemetry-backend-otlp2sql }
 
 上述的 `--observability` 堆疊（Collector → Tempo／Prometheus／Grafana）是其中一條
 遙測路徑。另一條是 `otlp2sql`（`provisa.observability.otlp2sql`）：一個
@@ -158,13 +158,13 @@ Trino 壓實把原始檔案捲進上線中的 Iceberg 表。若要單一
 
 ---
 
-## macOS 安裝程式
+## macOS 安裝程式 {: #macos-installer }
 
 供開發者工作站與評估使用。完全氣隙——下載後毋須網際網路（REQ-227）。
 
 基礎安裝程式是**原生安裝**：DuckDB 聯邦引擎 + SQLite 控制平面 + 記憶體內（fakeredis）快取，沒有 Docker、VM、Trino、Redis 或 MinIO（REQ-972、REQ-979）。聯邦引擎是精靈中的一項選擇——DuckDB（原生，預設）、Trino-on-Docker，或外部引擎（REQ-973）。可觀測性是一律開啟的自我遙測，可在管理介面中檢視；Docker 的 collector／Prometheus／Grafana 堆疊是選用的外部示範，不是一個開關（REQ-975）。示範數據包是選用的，且預設關閉（REQ-978）。Trino、Docker 可觀測性堆疊與示範，都是採本地優先解析的重量級附加元件（安裝程式鄰近目錄、掛載的磁碟區、`~/Downloads`，然後才是 GitHub 發行），因此企業可為氣隙安裝預先備妥 tarball（REQ-977）。
 
-### 步驟
+### 步驟 {: #steps }
 
 1. 自 [GitHub 發行頁面](https://github.com/provisa/provisa/releases) 下載 `Provisa-<version>-macOS.dmg`
 2. 開啟該 DMG，把 **Provisa.app** 拖到 `/Applications`
@@ -179,19 +179,19 @@ Trino 壓實把原始檔案捲進上線中的 Iceberg 表。若要單一
 
    （REQ-224）
 
-### 數據持續性
+### 數據持續性 {: #data-persistence }
 
 所有數據儲存在 `~/.provisa/`（REQ-224）。若要移除一切：`provisa uninstall`。
 
 ---
 
-## Windows 安裝程式
+## Windows 安裝程式 {: #windows-installer }
 
 供開發者工作站與評估使用。完全氣隙——下載後毋須網際網路（REQ-227）。
 
 與 macOS 一樣，基礎的 Windows 安裝程式是**原生層**：一份獨立的 Python 執行階段 + provisa wheel + DuckDB/pg_duckdb + SQLite 控制平面，不隨附 Docker、不隨附 VM，也不隨附容器映像（REQ-979）。聯邦引擎（Trino）、可觀測性堆疊與示範數據包，稍後經個別的分層安裝程式依序加入：先是 Container 安裝程式（`Provisa-Container-<version>.exe`，它加入 WSL2 + containerd + Trino），然後是 Obs 安裝程式（需要容器層），最後是 Demo 安裝程式（需要 Core + Obs）。首次啟動的指引會說明如何執行 Container 安裝程式來初始化聯邦引擎（REQ-1005）。
 
-### 步驟
+### 步驟 {: #steps_1 }
 
 1. 自 [GitHub 發行頁面](https://github.com/provisa/provisa/releases) 下載 `Provisa-<version>-windows-x64.exe`
 2. 執行該安裝程式——毋須管理員權限；安裝到 `%LOCALAPPDATA%\Programs\Provisa\`
@@ -205,15 +205,15 @@ Trino 壓實把原始檔案捲進上線中的 Iceberg 表。若要單一
 
    （REQ-224）
 
-### 數據持續性
+### 數據持續性 {: #data-persistence_1 }
 
 所有數據儲存在 `%USERPROFILE%\.provisa\`。
 
 ---
 
-## Linux AppImage——單節點或多節點 VM
+## Linux AppImage——單節點或多節點 VM {: #linux-appimage-single-or-multi-node-vm }
 
-### 它是什麼
+### 它是什麼 {: #what-it-is }
 
 `Provisa.AppImage` 是單一自足的可執行檔，打包了（REQ-223、REQ-228）：
 
@@ -223,7 +223,7 @@ Trino 壓實把原始檔案捲進上線中的 Iceberg 表。若要單一
 
 Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
 
-### 何時使用
+### 何時使用 {: #when-to-use }
 
 - 內部部署的裸機或 VM（單節點或多節點）
 - 沒有 K8s 叢集的雲端 VM
@@ -232,7 +232,7 @@ Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
 
 ---
 
-### 步驟——單節點
+### 步驟——單節點 {: #steps-single-node }
 
 1. 自 [GitHub 發行頁面](https://github.com/provisa/provisa/releases) 下載 `Provisa.AppImage` 並傳輸到目標機器
 2. 賦予執行權限：
@@ -262,7 +262,7 @@ Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
 
 ---
 
-### 步驟——多節點（primary）
+### 步驟——多節點（primary） {: #steps-multi-node-primary }
 
 先在 primary 節點上執行這些步驟。secondary 必須在 primary 執行起來之後才設定。
 
@@ -298,7 +298,7 @@ Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
 
 ---
 
-### 步驟——多節點（每個 secondary）
+### 步驟——多節點（每個 secondary） {: #steps-multi-node-each-secondary }
 
 在 primary 執行起來且可觸及之後，於每個額外節點上重複這些步驟。
 
@@ -332,7 +332,7 @@ Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
 
 ---
 
-### primary／secondary 拓撲
+### primary／secondary 拓撲 {: #primary-secondary-topology }
 
 **primary 節點**執行所有單例服務：
 
@@ -352,7 +352,7 @@ Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
 
 ---
 
-### 非互動式（自動化）首次啟動
+### 非互動式（自動化）首次啟動 {: #non-interactive-automated-first-launch }
 
 供 Terraform、cloud-init 或 Ansible 使用——以旗標取代回答提示：
 
@@ -375,11 +375,11 @@ Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
 
 ---
 
-## 雲端 VM 部署——Terraform（AWS）
+## 雲端 VM 部署——Terraform（AWS） {: #cloud-vm-deployment-terraform-aws }
 
 以一道互動式命令，在 AWS 上佈建一整套多節點 Provisa 叢集——VPC、安全群組、EC2 執行個體、ALB、NLB。（REQ-564）
 
-### 檔案
+### 檔案 {: #files }
 
 | 檔案 | 用途 |
 | ------ | --------- |
@@ -388,7 +388,7 @@ Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
 | `terraform/aws/main.tf` | VPC、子網路、安全群組、IAM、EC2、ALB、NLB |
 | `terraform/aws/outputs.tf` | 端點 URL 與節點 IP |
 
-### 步驟
+### 步驟 {: #steps_2 }
 
 1. 自 [GitHub 發行頁面](https://github.com/provisa/provisa/releases) 下載 `Provisa.AppImage`
 
@@ -434,7 +434,7 @@ Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
     curl http://<api_endpoint>/health
     ```
 
-### 精靈問題
+### 精靈問題 {: #wizard-questions }
 
 | 問題 | 預設 | 備註 |
 | ---------- | --------- | ------- |
@@ -450,7 +450,7 @@ Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
 | SSH 存取 | 否 | 需要既有的金鑰配對名稱 + 管理 CIDR |
 | VPC CIDR | `10.0.0.0/16` | |
 
-### 執行個體規格指南
+### 執行個體規格指南 {: #instance-sizing-guide }
 
 | 類型 | vCPU | RAM | 每節點 Trino 工作處理程序 | 使用情境 |
 | ------ | ------ | ----- | -------------------- | ---------- |
@@ -461,7 +461,7 @@ Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
 
 所有節點都把工作處理程序貢獻給 primary 上的同一個協調器（REQ-028）。一個 3 節點的 `m7i.4xlarge` 叢集共產生 6 個 Trino 工作處理程序。
 
-### 會佈建什麼
+### 會佈建什麼 {: #what-gets-provisioned }
 
 - 跨兩個可用區、含兩個公用子網路的 VPC（REQ-564）
 - 安全群組：LB 群組（8000/8815 上的公用輸入）、節點群組（LB → 節點、叢集內部、選用 SSH）
@@ -472,7 +472,7 @@ Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
 - 連接埠 8815 上的 NLB——Arrow Flight／gRPC（REQ-143）
 - 兩個 LB 都附掛到所有節點
 
-### 先決條件檢查清單
+### 先決條件檢查清單 {: #prerequisites-checklist }
 
 - [ ] IAM 權限：EC2 完整、ELB 完整、VPC 完整、IAM 角色建立、AppImage 貯體上的 S3 GetObject
 - [ ] `Provisa.AppImage` 已上載到 S3
@@ -482,7 +482,7 @@ Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
 - [ ] 已規劃 ALB／NLB 的 DNS 記錄（選用但建議）
 - [ ] 若需要 HTTPS，已備妥 ACM 憑證（基礎 Terraform 未包含）
 
-### 密鑰
+### 密鑰 {: #secrets }
 
 Terraform 中沒有內嵌任何密鑰。AppImage 在首次啟動期間生成憑證，並寫入每個節點的 `~/.provisa/config.yaml`（REQ-563）。正式環境請於部署後自 primary 節點取回管理權杖：
 
@@ -492,15 +492,15 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 ---
 
-## Kubernetes／Helm
+## Kubernetes／Helm {: #kubernetes-helm }
 
-### 何時使用
+### 何時使用 {: #when-to-use_1 }
 
 你的團隊已在營運 Kubernetes 叢集，並希望 Provisa 參與該營運模式（REQ-056）。如果你正在評估 Provisa，或在沒有既有叢集的情況下作內部部署，AppImage 路徑較簡單。
 
 注意：Provisa AppImage 無法在 Kubernetes pod 內執行——它需要 FUSE 與一個無 root 的 Docker 常駐程式，而標準 pod 安全設定檔並不提供這兩者。
 
-### 步驟
+### 步驟 {: #steps_3 }
 
 1. 確認可存取叢集：
 
@@ -529,17 +529,48 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    - **Redis** — 叢集內或外部（`redis.host`）？請更改預設密碼（`redis.password`）
    - **MinIO／S3** — 叢集內 MinIO 或原生 S3？在 AWS 上請以 IAM 角色使用 S3
    - **密鑰** — 評估時經 `--set` 傳入；正式環境請用 External Secrets 或 Vault Agent
+   - **Trino 協調器快取**——預設申請的 1Gi 磁碟區，掛載於 `/data/trino/cache`（`trino.coordinator.cache.persistence`：`enabled`、`size`、`storageClass`）。Salesforce 數據來源的 describe 結果存放於此，令重新啟動的協調器不會再次耗用該組織的 API 配額去描述它。只有在沒有數據來源需要它時才關閉（REQ-1946）
 
-4. 安裝 chart：
+4. 為部署提供其主金鑰。該金鑰加密密鑰庫；每個 API pod 都必須
+   持有相同的金鑰，而且它必須比任何 pod 存活得更久。沒有它，chart 不會渲染。
+
+   ```bash
+   kubectl create namespace provisa
+   kubectl create secret generic provisa-master-key --namespace provisa \
+     --from-literal=master-key="$(openssl rand -base64 32)"
+   ```
+
+   在叢集外保留該金鑰的副本。以其後遺失的金鑰寫入的密鑰庫
+   無法開啟。Secret 的替代方案是持久數據磁碟區
+   （`encryption.dataVolume.enabled=true`），產品會把它產生的金鑰存放於其中；請參閱
+   `values.yaml` 中的 `encryption`。
+
+5. 安裝 chart：
 
    ```bash
    helm install provisa helm/provisa/ \
+     --set encryption.existingSecret=provisa-master-key \
+     --set auth.provider=oidc \
+     --set auth.oidc.issuerUrl=https://login.example.com/realms/main \
+     --set auth.oidc.clientId=provisa \
      --set config.pgPassword=<password> \
      --set config.adminToken=<token> \
      --set s3.endpoint=https://s3.amazonaws.com \
      --set s3.bucket=my-provisa-results \
      --namespace provisa --create-namespace
    ```
+
+   在選定 `auth.provider` 之前 chart 不會渲染：`oidc`（企業 OpenID Connect
+   簽發者）、`saml`（`auth.saml.idpMetadataUrl` 及 `auth.saml.publicUrl`）、`ldap`（`auth.ldap.*`）、
+   `local`（僅應急帳戶，`auth.breakGlass.*`）或 `none`（無身份驗證，
+   僅供開發）。每個憑證都來自 Kubernetes Secret；`ldap`、`saml` 及 `local`
+   亦需要 `auth.sessionSecret.existingSecret`，即簽署瀏覽器工作階段的金鑰。請參閱 `values.yaml` 中的
+   `auth`。
+
+   Trino 協調器在每個組織自己的資源群組 `global.tenant-<org>` 中執行該組織的陳述式，
+   資源群組來自 chart 提供的資源群組檔案。經由
+   Arrow Flight 代理的陳述式共用一個群組 `global.flight`：代理會開啟自己的 Trino 連線，
+   無法攜帶組織。
 
    若使用內部登錄檔，請加上映像覆寫：
 
@@ -550,22 +581,22 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    --set trino.image.tag=480
    ```
 
-5. 驗證 pod 正在執行：
+6. 驗證 pod 正在執行：
 
    ```bash
    kubectl get pods -n provisa
    ```
 
-6. 檢查 API：
+7. 檢查 API：
 
    ```bash
    kubectl port-forward svc/provisa 8000:8000 -n provisa
    curl http://localhost:8000/health
    ```
 
-7. （選用）啟用 ingress 以供外部存取——設定 `ingress.enabled: true` 並設定你的 ingress 控制器
+8. （選用）啟用 ingress 以供外部存取——設定 `ingress.enabled: true` 並設定你的 ingress 控制器
 
-### 先決條件檢查清單
+### 先決條件檢查清單 {: #prerequisites-checklist_1 }
 
 - [ ] Kubernetes 1.26+、Helm 3.12+
 - [ ] 支援 `ReadWriteOnce` PVC 的儲存類別（供叢集內具狀態服務使用）
@@ -576,7 +607,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 - [ ] 已選定管理權杖
 - [ ] 已設定 ingress 控制器（若需要外部存取）
 
-### 主要值
+### 主要值 {: #key-values }
 
 | 值 | 預設 | 說明 |
 | ------- | --------- | ------------- |
@@ -598,7 +629,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 | `s3.bucket` | `provisa-results` | 大型結果重新導向所用的貯體（REQ-029、REQ-137） |
 | `ingress.enabled` | `false` | 啟用 ingress |
 
-### 擴展
+### 擴展 {: #scaling }
 
 ```bash
 kubectl scale deployment/provisa --replicas=5 --namespace provisa
@@ -606,7 +637,7 @@ kubectl scale deployment/provisa --replicas=5 --namespace provisa
 
 聯邦引擎工作處理程序獨立擴展——工作處理程序愈多，輸送量與並行查詢容量愈高（REQ-056）。（REQ-057）
 
-### 更新設定
+### 更新設定 {: #updating-config }
 
 ```bash
 kubectl create configmap provisa-config \
@@ -617,7 +648,7 @@ kubectl rollout restart deployment/provisa --namespace provisa
 
 ---
 
-## 高可用性與復原
+## 高可用性與復原 {: #high-availability-recovery }
 
 Provisa 在所有部署模式上套用一套雙層復原模型（REQ-703）：
 
@@ -626,13 +657,13 @@ Provisa 在所有部署模式上套用一套雙層復原模型（REQ-703）：
 
 機器層級與叢集層級的故障仍由營運者負責——請佈建冗餘節點與負載平衡器（上文的 Terraform 與 Helm 路徑）以容忍節點遺失。
 
-## 聯邦引擎相依項
+## 聯邦引擎相依項 {: #federation-engine-dependencies }
 
 倉庫聯邦引擎需要 Provisa 預設安裝之外的 Python 套件與系統層級元件。此處列出的所有 Python 套件都宣告於 `pyproject.toml`，並作為標準 `pip install provisa` 或 `pip install -e .` 的一部分安裝 [tool-verified: `pyproject.toml` lines 44–52]。
 
 這些 Python 套件隨 Provisa 預設安裝一併出貨——任何倉庫引擎都毋須選用附加項。系統層級的項目（ODBC 驅動程式、雲端 CLI、服務帳戶金鑰）必須另行安裝。
 
-### Python 套件（已在核心相依項中）
+### Python 套件（已在核心相依項中） {: #python-packages-already-in-core-dependencies }
 
 [tool-verified: `pyproject.toml` lines 41–52]
 
@@ -649,7 +680,7 @@ Provisa 在所有部署模式上套用一套雙層復原模型（REQ-703）：
 | `protobuf>=6.33.5,<7` | BigQuery、gRPC | 相容性釘選——`google-cloud-*` 與 OTel 共用一份 protobuf 執行階段；`<7` 讓它們保持一致 |
 | `grpcio-status<1.82` | gRPC | 與 `protobuf<7` 的釘選對齊 |
 
-### 系統層級需求
+### 系統層級需求 {: #system-level-requirements }
 
 這些不是 Python 套件——它們必須安裝在執行 Provisa 的主機或容器上。
 
@@ -722,7 +753,7 @@ export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 
 Databricks 連接器從 `requests` 繼承此設定——毋須 Databricks 專屬的環境變數。
 
-### 逐引擎檢查清單
+### 逐引擎檢查清單 {: #per-engine-checklist }
 
 **Databricks**（REQ-987）
 
@@ -766,7 +797,7 @@ Databricks 連接器從 `requests` 繼承此設定——毋須 Databricks 專屬
 
 ---
 
-## 環境變數
+## 環境變數 {: #environment-variables }
 
 | 變數 | 預設 | 用途 |
 | ---------- | --------- | --------- |
@@ -801,7 +832,7 @@ Databricks 連接器從 `requests` 繼承此設定——毋須 Databricks 專屬
 
 ---
 
-## CLI 命令
+## CLI 命令 {: #cli-commands }
 
 ```bash
 provisa start              # Start all services
@@ -817,7 +848,7 @@ provisa import FILE        # Replace running config with YAML from FILE
 
 （REQ-224、REQ-164）
 
-### 設定晉升工作流程（dev → test → prod）
+### 設定晉升工作流程（dev → test → prod） {: #config-promotion-workflow-dev-test-prod }
 
 所有環境專屬的設定（連線字串、密鑰、連接埠）都屬於環境變數或密鑰管理員——不屬於匯出的設定。匯出的 YAML 擷取的是你的語意模型：數據來源、網域、角色、檢視。（REQ-164）
 

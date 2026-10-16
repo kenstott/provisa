@@ -1,10 +1,10 @@
-# Principes du modèle de domaine
+# Principes du modèle de domaine {: #domain-model-principles }
 
 ---
 
-## 1. Gouvernance
+## 1. Gouvernance {: #1-governance }
 
-### Principes fondamentaux
+### Principes fondamentaux {: #core-principles }
 
 1. **Chaque ressource doit appartenir à un domaine.** Les tables, vues et relations sont toutes des actifs de domaine. Il n'existe aucune ressource flottante non gouvernée. Le domaine est l'unité de responsabilité.
 2. **Chaque domaine doit avoir un steward.** Un domaine peut exister à l'état en attente jusqu'à ce qu'un steward lui soit assigné, mais il ne peut servir de données gouvernées sans en avoir un.
@@ -14,7 +14,7 @@
 6. **Les analystes peuvent créer des requêtes inter-domaines à partir de relations approuvées.** Les requêtes sont des vues interdomaines exprimées dans n'importe quel langage de requête pris en charge. Elles ne créent pas de nouvelle sémantique — elles parcourent des chemins de relation approuvés. Aucune approbation supplémentaire n'est requise : la gouvernance est gérée en amont, aux couches Relation et visibilité des colonnes. Le catalogue est le mécanisme d'application : le compilateur rejette les parcours qui ne figurent pas dans le catalogue de relations approuvées.
 7. **Toute personne peut demander l'accès à une ressource de domaine.** L'accès est accordé au niveau de la ressource, pas au niveau de la requête. Si vous avez accès à une ressource, vous pouvez l'interroger. La gouvernance est appliquée à l'exécution via le pipeline.
 
-### Ressources : tables et vues comme pairs
+### Ressources : tables et vues comme pairs {: #resources-tables-and-views-as-peers }
 
 La distinction entre une table et une vue tient uniquement à l'origine — une table est revendiquée à partir d'une source, une vue est définie par un steward. Une fois que l'une ou l'autre existe en tant qu'actif de domaine, le modèle de gouvernance les traite de façon identique :
 
@@ -25,7 +25,7 @@ La distinction entre une table et une vue tient uniquement à l'origine — une 
 
 Un steward peut revendiquer des tables de façon privée et n'exposer que des vues sélectionnées comme produits de données destinés au public.
 
-### Composition des vues
+### Composition des vues {: #view-composition }
 
 Une vue appartient toujours à un seul domaine — il n'existe qu'un seul type de vue, toujours intra-domaine. Une vue existe pour l'une des deux finalités suivantes :
 
@@ -46,7 +46,7 @@ Chaque vue porte une finalité métier déclarée, énoncée à sa création :
 - Référencée par les demandes d'accès selon le principe 7 afin que le steward puisse en évaluer la pertinence
 - Accompagne la vue depuis sa création tout au long du flux de gouvernance
 
-### Requêtes
+### Requêtes {: #queries }
 
 Une requête parcourt des chemins de relation approuvés sur des actifs de domaine. Contrairement aux vues, les requêtes ne créent pas de nouvelle signification sémantique — elles parcourent la structure approuvée du modèle. Les requêtes peuvent être exprimées dans n'importe quel langage de requête pris en charge (SQL, GraphQL, Cypher).
 
@@ -71,22 +71,22 @@ Chaque langage pris en charge fait apparaître le domaine comme un espace de nom
 
 Le compilateur résout l'appartenance au domaine à partir de ces positions structurelles — aucune annotation ni indication n'est requise.
 
-### Relations
+### Relations {: #relationships }
 
 Une relation est un chemin de parcours approuvé entre deux actifs. Les frontières de domaine n'ont aucune incidence sur ce qu'est une relation — elles déterminent seulement qui l'approuve.
 
 **Approbation :**
 
-- L'approbation est requise de la part de chaque steward distinct possédant un actif impliqué dans la relation
-- Si un seul steward possède les deux actifs, une seule approbation est requise. Si deux stewards sont impliqués, deux approbations sont requises
-- Il n'existe aucune classification intra-domaine / inter-domaines — la propriété détermine naturellement la charge d'approbation
+- Une demande de relation est tranchée par les domaines qu'elle touche : le domaine de sa table source et le domaine de sa table cible (REQ-1948)
+- Une approbation ne compte que si elle vient d'un utilisateur dont le droit de créer des relations atteint l'un de ces domaines ; tout utilisateur de ce type peut la rejeter
+- La demande est exécutée dès que deux utilisateurs différents, dont aucun n'est le demandeur, l'ont approuvée et que chaque domaine concerné a un approbateur : une relation entre deux domaines a besoin d'un oui de chaque côté, et une relation à l'intérieur d'un domaine a besoin de deux approbateurs de ce domaine
 - Approuver une relation construit le graphe de dépendances de chaque steward, permettant des notifications proactives d'évolution de schéma
 
 Les relations sont créées à la demande, non de façon spéculative. La première équipe ayant le besoin métier effectue le travail ; les équipes suivantes héritent de l'infrastructure.
 
 **Conséquence sur l'optimisation :** une déclaration de relation n'est pas seulement un artefact de gouvernance — c'est aussi une description structurelle d'une forme de jointure. Les deux tables, les deux colonnes et le type de jointure qui définissent une relation sont exactement ce dont l'optimiseur de requêtes a besoin pour pré-matérialiser cette jointure. Les relations inter-sources génèrent automatiquement des tables de jointure pré-matérialisées ; les relations de même source peuvent y adhérer via `materialize: true`. Les stewards qui réfléchissent à des relations valides et les approuvent obtiennent une accélération des requêtes comme sous-produit direct — le travail de gouvernance et le travail d'optimisation sont un seul et même acte.
 
-### Octrois d'accès aux champs
+### Octrois d'accès aux champs {: #field-access-grants }
 
 Un octroi d'accès aux champs est une permission de domaine à domaine — le domaine A peut utiliser des champs spécifiques du domaine B dans ses vues.
 
@@ -106,7 +106,7 @@ Un octroi d'accès aux champs est une permission de domaine à domaine — le do
 
 Le compromis : le domaine source approuve l'accès aux champs sans connaître chaque usage futur. Une approbation par vue est correcte en théorie et inapplicable en pratique.
 
-### Flux de création de requête
+### Flux de création de requête {: #query-creation-workflow }
 
 Trois étapes, dans l'ordre.
 
@@ -130,7 +130,7 @@ Trois étapes, dans l'ordre.
 - Seules les relations approuvées du catalogue sont franchissables — le compilateur l'impose de façon structurelle
 - Aucune approbation requise — la visibilité des colonnes et l'approbation des relations sont les seuls contrôles
 
-### HITL comme contrôle principal
+### HITL comme contrôle principal {: #hitl-as-the-primary-control }
 
 Les règles techniques traitent ce qui est objectif — le suivi de la provenance des champs, l'application des frontières de domaine, la validation par le compilateur. Le jugement contextuel reste du ressort du steward. Des contraintes telles que la profondeur de composition des vues, les exigences de finalité par requête, et les décisions d'approbation de relation relèvent de HITL, et non de règles imposées par le compilateur.
 
@@ -141,9 +141,9 @@ Les règles techniques traitent ce qui est objectif — le suivi de la provenanc
 
 ---
 
-## 2. Découvrabilité
+## 2. Découvrabilité {: #2-discoverability }
 
-### Paliers de découverte
+### Paliers de découverte {: #discovery-tiers }
 
 La découverte est structurée en cinq paliers de gouvernance croissante. Chaque palier est un prérequis pour le suivant.
 
@@ -157,7 +157,7 @@ La découverte est structurée en cinq paliers de gouvernance croissante. Chaque
 
 Une table non revendiquée est un signal de lacune — si les données nécessaires n'existent qu'au palier 2, un steward doit la revendiquer avant que la gouvernance puisse progresser. L'absence de tout candidat à travers tous les paliers requiert une escalade vers l'admin.
 
-### Contraintes de clé étrangère
+### Contraintes de clé étrangère {: #fk-constraints }
 
 Les contraintes de clé étrangère sont une construction au niveau de la source — elles ne peuvent pas s'étendre sur plusieurs sources de données. Les chemins de jointure inter-sources sont dérivés entièrement des relations approuvées du catalogue (palier 4), qui sont plus robustes, ayant été validées par les deux stewards.
 
@@ -167,7 +167,7 @@ Au sein d'une source :
 - Elles représentent une intention de modélisation explicite — non appliquée dans la plupart des systèmes SQL analytiques mais délibérément déclarée
 - La validation par le steward reste requise avant qu'un candidat ne devienne une relation approuvée
 
-### Hiérarchie de confiance des relations
+### Hiérarchie de confiance des relations {: #relationship-confidence-hierarchy }
 
 | Preuve | Confiance |
 | --- | --- |
@@ -178,7 +178,7 @@ Au sein d'une source :
 
 Les suggestions corroborées par plusieurs types de preuves accumulent de la confiance.
 
-### Sondage et corrélation des données
+### Sondage et corrélation des données {: #data-probing-and-correlation }
 
 Pour les candidats inférés sémantiquement, le sondage des données fournit une étape de validation :
 
@@ -188,7 +188,7 @@ Pour les candidats inférés sémantiquement, le sondage des données fournit un
 
 Une corrélation élevée renforce la confiance ; une corrélation faible supprime ou rétrograde le candidat. Le sondage est une preuve corroborante, pas une démonstration — des plages d'entiers peuvent se chevaucher par coïncidence et l'intégrité référentielle partielle est courante dans les systèmes analytiques. Une marge d'erreur significative subsiste. Le jugement sémantique du steward est le seul contrôle final fiable.
 
-### Découverte assistée par LLM
+### Découverte assistée par LLM {: #llm-assisted-discovery }
 
 Le LLM opère simultanément sur les cinq paliers, suggérant des relations, des revendications candidates et des chemins de parcours classés par confiance.
 
@@ -244,7 +244,7 @@ L'outil de modelage peut afficher toutes les tables enregistrées à des fins d'
 
 ## 3. Usage
 
-### Piste d'audit des requêtes
+### Piste d'audit des requêtes {: #query-audit-trail }
 
 Chaque requête qui touche un actif de domaine est enregistrée dans un `query_audit_log` en ajout seul. Chaque entrée capture :
 

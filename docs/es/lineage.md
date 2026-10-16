@@ -1,23 +1,23 @@
-# Linaje a nivel de columna
+# Linaje a nivel de columna {: #column-level-lineage }
 
 Provisa rastrea el linaje de datos a nivel de columna de forma estática — calculado a partir de las
 definiciones SQL y los contratos de comandos, sin necesidad de ejecución. Hay dos vistas
 disponibles: un DAG por sentencia y un grafo de procedencia a escala de la federación que abarca
 todas las vistas y vistas materializadas (MV) registradas.
 
-## El explorador de linaje
+## El explorador de linaje {: #the-lineage-explorer }
 
 Navegue a **Lineage** en la interfaz (`/lineage`). Pegue una sentencia SQL y haga clic en **Build
 statement graph** para ver su DAG a nivel de columna. Haga clic en **Federation graph** para cargar
 el grafo de procedencia sobre cada MV del registro. [tool-verified: LineagePage.tsx:28-119]
 
-## DAG a nivel de sentencia (REQ-1160)
+## DAG a nivel de sentencia (REQ-1160) {: #statement-level-dag-req-1160 }
 
 Cada columna de salida nombrada en su SQL se convierte en un nodo. El constructor la rastrea hacia
 atrás a través de cada CTE, subconsulta, join y llamada de comando en línea hasta sus columnas de
 origen, construyendo un grafo dirigido desde las entradas de origen hasta las salidas finales.
 
-### Ejemplo resuelto
+### Ejemplo resuelto {: #worked-example }
 
 ```sql
 SELECT o.id, e.embedding, upper(e.geo) AS geo_u
@@ -45,7 +45,7 @@ El límite del comando **no es opaco**. Dado que `enrich_grpc_set` declara sus c
 cierre de contaminación de forma continua desde las columnas declaradas de la relación de origen
 hasta cada salida. [tool-verified: `_splice_commands` y `_input_relation` en graph.py:245-271]
 
-### Tipos de nodo y señales visuales
+### Tipos de nodo y señales visuales {: #node-kinds-and-visual-cues }
 
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
@@ -64,7 +64,7 @@ Anillos adicionales en un nodo:
 
 [tool-verified: LineageDag.tsx:88-103 Cytoscape style selectors]
 
-### Transformaciones nombradas en las aristas
+### Transformaciones nombradas en las aristas {: #named-transforms-on-edges }
 
 Cada arista lleva la expresión SQL cruda que produce la columna de destino, además de una lista de
 operaciones nombradas: funciones SQL (`sql_function`), operadores aritméticos/lógicos
@@ -74,7 +74,7 @@ literales (`constant`). [tool-verified: TransformOp and name_transform en graph.
 Una arista proveniente de una llamada de comando se representa como una línea púrpura discontinua
 en la interfaz. [tool-verified: LineageDag.tsx:122-124]
 
-## Grafo a escala de la federación (REQ-1161)
+## Grafo a escala de la federación (REQ-1161) {: #federation-wide-graph-req-1161 }
 
 El grafo de federación combina el linaje por sentencia de cada MV registrada en un único grafo de
 procedencia. La identidad del nodo es `relation.column` — la columna de salida de una vista y la
@@ -86,7 +86,7 @@ graph.py:275-299]
 Use `focus`, `direction` y `depth` para acotar la vista a escala de federación sin recalcular el
 grafo. [tool-verified: `slice_graph` en merge.py:160-189]
 
-## Ciclos (REQ-1161)
+## Ciclos (REQ-1161) {: #cycles-req-1161 }
 
 Los ciclos se describen, no se rechazan. El motor de linaje detecta cada ciclo dirigido y lo
 **clasifica**. [tool-verified: `Cycle.classification` property en merge.py:43-46]
@@ -184,7 +184,7 @@ La respuesta tiene la misma forma que el grafo de sentencia, con un campo `cycle
 }
 ```
 
-## Qué rompería un renombrado o una eliminación de columna (REQ-1484)
+## Qué rompería un renombrado o una eliminación de columna (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Una columna lleva dos nombres, y cada uno lo almacena un conjunto distinto de artefactos.
 
@@ -233,7 +233,7 @@ razón, los escaneos sobre texto SQL libre hacen coincidir la columna como un to
 lugar de resolver el ámbito, lo que puede nombrar un artefacto que resulte no usar la columna.
 Sobreinformar es la dirección segura para una advertencia.
 
-## Usar el linaje para gobernar contratos de comandos
+## Usar el linaje para gobernar contratos de comandos {: #using-lineage-to-govern-command-contracts }
 
 Dado que el cierre de contaminación conecta cada columna de entrada declarada con cada columna de
 salida declarada, la amplitud de ese cierre depende enteramente de lo que usted declare.

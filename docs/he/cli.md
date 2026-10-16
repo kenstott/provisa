@@ -1,4 +1,4 @@
-# מדריך CLI
+# מדריך CLI {: #cli-reference }
 
 הפקודה `provisa` היא נקודת הכניסה היחידה לשכבה המוטבעת (embedded) המותקנת דרך pip (REQ-1128).
 היא מפעילה את הריצה, מנהלת רישיונות, מפעילה פרסום מטא-דאטה, פורסת מודלים, ושולטת
@@ -42,7 +42,8 @@ export PROVISA_API_URL=https://acme.provisa.org
 export PROVISA_API_TOKEN=<token>
 ```
 
-תת-פקודות המקבלות דגלים אלה: `metadata export`, `env deploy`, `env fetch`,
+תת-פקודות המקבלות דגלים אלה: `metadata export`, כל תת-פקודה של `env` (`list`, `show`,
+`create`, `delete`, `diff`, `merge`, `deploy`, `revert`, `redo`, `fetch`, `push`, `pull`),
 `maintenance on`, `maintenance off`, `maintenance status`.
 
 ---
@@ -58,7 +59,7 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
             [--no-browser] [--reset] [--data-dir DIR]
 ```
 
-### דגלים
+### דגלים {: #flags }
 
 | דגל | ברירת מחדל | הערות |
 | --- | --- | --- |
@@ -72,7 +73,7 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
 
 [tool-verified: run subparser at cli.py:609-634]
 
-### משתני סביבה
+### משתני סביבה {: #environment-variables }
 
 `provisa run` קוראת מספר משתנים נוספים לפני שהשרתים של HTTP מתחילים.
 הגדר אותם כדי לדרוס את ברירות המחדל ש-`load_profile("native", ...)` היה מחיל אחרת.
@@ -85,12 +86,11 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
 | `PROVISA_CONFIG` | קובץ הגדרות לטעינה; `--demo` קובע אותו להגדרות הדמו המצורפות (REQ-1127) |
 | `PROVISA_DEMO` | נקבע ל-`1` על ידי `--demo`; מסמן את הסשן כהרצת דמו |
 | `PROVISA_DEMO_DIR` | נתיב לתיקיית נתוני הדוגמה של הדמו; נקבע על ידי `--demo` |
-| `PROVISA_CONFIG_REPLACE` | נקבע ל-`true` על ידי `--demo` כדי לאפשר להגדרות הדמו לדרוס הגדרות קיימות |
 | `PROVISA_DUCKDB_EXT_DIR` | תיקיית תוסף DuckDB מוכנה מראש; נקבעת אוטומטית מהחבילה `provisa-duckdb-ext` אם קיימת; היעדרה משמעו ש-DuckDB מוריד מהרשת בשימוש הראשון |
 
 [tool-verified: `_apply_demo_config()` at cli.py:67-80; `_apply_embedded_env()` at cli.py:83-116]
 
-### רצף ההפעלה
+### רצף ההפעלה {: #startup-sequence }
 
 1. בדיקת פלטפורמה — מפסיקה עם הודעה ברורה על Python לא נתמך או pgserver חסר.
 2. `--reset` (אם התבקש) — מוחק את אשכול ה-PostgreSQL המוטבע; הוא נבנה מחדש בשלב הבא.
@@ -103,14 +103,14 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
    נקודת הקצה `/ready` מאשרת שהחנות מחוברת ושהמנוע חם) ופותח את הדפדפן
    כשהיא מחזירה 200. [tool-verified: `_announce_ready()` at cli.py:182-224]
 
-### קודי יציאה
+### קודי יציאה {: #exit-codes }
 
 | קוד | משמעות |
 | --- | --- |
 | 0 | כיבוי נקי (Ctrl-C) |
 | 1 | שגיאת הפעלה (בדיקת פלטפורמה נכשלה, הגדרות דמו חסרות, זוהתה סחיפת סכמה) |
 
-### דוגמה
+### דוגמה {: #example }
 
 ```bash
 # Start with the demo data
@@ -212,40 +212,154 @@ provisa metadata export \
 
 ---
 
-## provisa env deploy
+## provisa env
 
-פרוס את המודל בהפניית git (ref) לתוך סביבה, והפוך את העץ הזה למודל הנוכחי של הסביבה
-(REQ-1496). זו הפקודה שצינור פריסה מריץ; הכלל הוא שפריסה היא
-תמיד קריאה הנושאת זהות כנגד מישור בקרה בעל שם. [tool-verified:
-`_cmd_env_deploy()` at cli.py:395-417]
+מריץ את מחזור החיים של סביבות מול Provisa פועלת (REQ-1498). כל תת-פקודה היא אותה קריאה
+ל-API הניהול שהממשק מבצע; ה-CLI אינו מחליט דבר. הרשימה של מה שעותק נושא, כללי המיזוג
+וההסרה, הקישור, ההגנה והזכויות של הקורא שייכים לשרת, ולכן הם חלים
+בלי קשר לאופן שבו הופעלה הפעולה. [tool-verified: cli_envs.py:11-28]
 
 ```
-provisa env deploy --org ORG --env ENV --ref REF
-                   [--dry-run] [--seed] [--message MSG]
-                   [--api URL] [--token TOKEN] [--timeout SECONDS]
+provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pull} --org ORG ...
 ```
+### דגלים שכל תת-פקודה מקבלת {: #flags-every-subcommand-takes }
 
 | דגל | חובה | הערות |
 | --- | --- | --- |
-| `--org` | כן | הארגון המחזיק את הסביבה |
-| `--env` | כן | הסביבה שתחזיק את המודל הפרוס |
-| `--ref` | כן | ענף או SHA של קומיט במאגר הארגון |
-| `--dry-run` | לא | דווח מה ישתנה; אל תיישם דבר |
-| `--seed` | לא | החל גם מחלקות יצירה-בלבד (תפקידים); נכון רק כאשר פריסה זו יוצרת את הסביבה בפעם הראשונה |
-| `--message` | לא | הערה הנישאת על בקשת אישור כאשר סביבת היעד מוגנת |
-| `--api` | לא | ראה [אפשרויות משותפות](#shared-options) |
-| `--token` | לא | ראה [אפשרויות משותפות](#shared-options) |
-| `--timeout` | לא | ברירת מחדל 300 שניות |
+| `--org` | כן | הארגון שהסביבה שייכת לו |
+| `--json` | לא | מדפיס את תגובת ה-API כ-JSON, לסקריפט |
+| `--api` | לא | ראו [אפשרויות משותפות](#shared-options) |
+| `--token` | לא | טוקן Bearer של זהות המורשית לפעולה |
+| `--timeout` | לא | שניות; ברירת מחדל 300 |
 
-[tool-verified: cli.py:677-711]
+תת-פקודות הפועלות על סביבה אחת מקבלות גם `--env ENV` (חובה). `list`, `diff`,
+`merge` ו-`fetch` אינן; `diff` ו-`merge` נוקבות בסביבות שלהן עם `--from` ו-`--into`.
+[tool-verified: cli_envs.py:349-374, `_command()`]
 
-| קוד יציאה | משמעות |
+### קודי יציאה {: #exit-codes_1 }
+
+| קוד | משמעות |
 | --- | --- |
-| 0 | הפריסה יושמה, או ש-`--dry-run` הושלם |
-| 2 | הסביבה מוגנת; הפריסה רק הוצעה, לא יושמה |
+| 0 | בוצע, או הרצת ניסיון שלא החילה דבר |
+| 1 | נדחה. הקוד של הכלל שדחה מודפס ל-stderr כ-`refused (<code>): <detail>`; עם `--json` הוא `{"refused": {...}}` ב-stdout |
+| 2 | הוצע, לא הוחל: סביבת היעד מוגנת והשינוי ממתין לאישור |
 
-קוד יציאה 2 הוא מכוון. צינור שהיה מתייחס לאישור ממתין כפריסה משוחררת היה
-שגוי. [tool-verified: cli.py:416-417]
+קוד היציאה 2 מכוון. צינור שהיה מתייחס לאישור ממתין כאל פריסה שיצאה לדרך
+היה טועה. [tool-verified: cli_envs.py:21-28, 40-41, 64-78, 120-135]
+
+### provisa env list
+
+מפרט את הסביבות של הארגון ואת ה-build שבו נמצאת כל אחת. אין דגלים מעבר לדגלים המשותפים.
+[tool-verified: cli_envs.py:141-149]
+
+```
+provisa env list --org ORG [--json]
+```
+### provisa env show
+
+מציג סביבה אחת ואת ה-build הנוכחי שלה. יוצא עם 1 ו-`environments.unknown` אם
+הסביבה אינה קיימת. [tool-verified: cli_envs.py:163-183]
+
+```
+provisa env show --org ORG --env ENV [--json]
+```
+### provisa env create
+
+יוצר סביבה המחזיקה את המודל של סביבה אחרת, עם הנתונים שנבחרו ביצירה (REQ-1942). ה-API
+מחליט אילו בחירות הקורא רשאי לבצע. [tool-verified: cli_envs.py:197-216]
+
+```
+provisa env create --org ORG --env NAME --data-mode MODE
+                   [--from SOURCE] [--mutation-handling HANDLING] [--expires-at ISO8601]
+```
+| דגל | חובה | הערות |
+| --- | --- | --- |
+| `--env` | כן | שם הסביבה החדשה |
+| `--from` | לא | הסביבה שממנה מתחילים; ברירת מחדל `prod` |
+| `--data-mode` | כן | `inherit`, `unbound`, `test_fake` או `test_synthetic`: חיבורי המקור בהפניה, אף אחד עד שהיא קושרת את שלה, או נתוני בדיקה |
+| `--mutation-handling` | לא | `refused`, `reversible` או `direct`; ברירת מחדל `refused` |
+| `--expires-at` | לא | רגע ISO-8601 שלאחריו הסביבה מוסרת |
+
+[tool-verified: cli_envs.py:391-416]
+
+```bash
+provisa env create --org acme --env feature-x --from prod --data-mode test_fake
+```
+### provisa env delete
+
+מוציא סביבה משימוש. הענפים שלה נמחקים רק כשנוקבים בהם. [tool-verified: cli_envs.py:219-232]
+
+```
+provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch]
+```
+| דגל | הערות |
+| --- | --- |
+| `--delete-branch` | מוחק גם את הענף שלה |
+| `--delete-remote-branch` | מוחק גם את הענף שלה במאגר המרוחק |
+
+[tool-verified: cli_envs.py:418-424]
+
+### provisa env diff
+
+מדווח מה מיזוג של סביבה אחת לתוך אחרת היה עושה. זהו ה-GET של `merge-preview`, ולכן
+הוא אינו יכול לכתוב; תנו אותו ל-runner שאסור לו לשנות דבר. [tool-verified:
+cli_envs.py:186-191]
+
+```
+provisa env diff --org ORG --from SOURCE --into TARGET [--removals] [--select PATH ...]
+```
+| דגל | חובה | הערות |
+| --- | --- | --- |
+| `--from` | כן | הסביבה שממנה ממזגים |
+| `--into` | כן | הסביבה שלתוכה ממזגים |
+| `--removals` | לא | מסיר גם מהיעד את מה שהמקור כבר אינו מחזיק |
+| `--select PATH` | לא | מגביל את המיזוג לאובייקט הזה לפי הנתיב שלו במודל (`metrics/revenue.yaml`); חזרו עליו לאחרים. מה שהוא צריך וחסר ביעד נלקח איתו ומפורט (REQ-1506) |
+
+[tool-verified: cli_envs.py:426-439]
+
+### provisa env merge
+
+ממזג סביבה אחת לתוך אחרת, לפי זהות (REQ-1490). [tool-verified: cli_envs.py:235-250]
+
+```
+provisa env merge --org ORG --from SOURCE --into TARGET
+                  [--removals] [--select PATH ...] [--dry-run] [--message MSG]
+                  [--retire-source] [--retire-remote]
+```
+| דגל | חובה | הערות |
+| --- | --- | --- |
+| `--from` | כן | הסביבה שממנה ממזגים |
+| `--into` | כן | הסביבה שלתוכה ממזגים |
+| `--removals` | לא | מסיר גם מהיעד את מה שהמקור כבר אינו מחזיק |
+| `--select PATH` | לא | מגביל את המיזוג לאובייקט הזה לפי הנתיב שלו במודל (`metrics/revenue.yaml`); חזרו עליו לאחרים. מה שהוא צריך וחסר ביעד נלקח איתו ומפורט (REQ-1506) |
+| `--dry-run` | לא | מדפיס את דוח המיזוג ואינו מחיל דבר |
+| `--message` | לא | מה המיזוג עושה; נדרש כדי להחיל |
+| `--retire-source` | לא | מסיר את המקור כשהעבודה שלו נחתה ביעד |
+| `--retire-remote` | לא | עם `--retire-source`, מוחק גם את הענף של המקור במאגר המרוחק |
+
+[tool-verified: cli_envs.py:429-451]
+
+### provisa env deploy
+
+פורס את המודל בהפניית git לתוך סביבה, והופך את העץ הזה למודל הנוכחי של הסביבה
+(REQ-1496). זו הפקודה שצינור פריסה מריץ; פריסה היא תמיד
+קריאה עם זהות מול מישור בקרה בשם. [tool-verified:
+cli_envs.py:253-267]
+
+```
+provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
+```
+| דגל | חובה | הערות |
+| --- | --- | --- |
+| `--env` | כן | הסביבה שתחזיק את המודל הנפרס |
+| `--ref` | כן | ענף או commit במאגר של הארגון |
+| `--dry-run` | לא | מדווח מה הפריסה הייתה עושה; אינו מחיל דבר |
+| `--message` | לא | הערה שנישאת לבקשת האישור כשהיעד מוגן |
+
+[tool-verified: cli_envs.py:453-468]
+
+טעינה לתוך סביבה קיימת לעולם אינה מחילה תפקידים. `--seed` כבר אינו קיים: ה-API דוחה seed
+עם `environments.seed_only_at_creation`.
 
 ```bash
 # Fetch remote branches, then deploy
@@ -256,39 +370,66 @@ provisa env deploy \
   --message "release: $GIT_COMMIT_MSG" \
   --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 ```
+### provisa env revert
 
-להסבר המלא על מחלקות סביבה, כללי הגנה, דוחות מיזוג, ומחזור חיי
-האישור, ראה [סביבות](environments.md#the-env-cli-commands).
-
----
-
-## provisa env fetch
-
-משוך את הענפים המרוחקים של הארגון לתוך מאגר ה-Provisa שלו (REQ-1541). הרץ פקודה זו לפני
-פריסה כשברצונך לנקוב `origin/<branch>`. [tool-verified: `_cmd_env_fetch()` at
-cli.py:420-432]
+מחזיר סביבה ל-build קודם (REQ-1543). בלי `--to` הוא נסוג commit אחד
+בהיסטוריה של הסביבה עצמה. עם `--to` זו פריסה רגילה של אותו build.
+[tool-verified: cli_envs.py:270-284]
 
 ```
-provisa env fetch --org ORG [--api URL] [--token TOKEN] [--timeout SECONDS]
+provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 ```
-
 | דגל | חובה | הערות |
 | --- | --- | --- |
-| `--org` | כן | הארגון שהמרוחק שלו נמשך |
-| `--api` | לא | ראה [אפשרויות משותפות](#shared-options) |
-| `--token` | לא | אסימון Bearer למנהל ארגון |
-| `--timeout` | לא | ברירת מחדל 300 שניות |
+| `--env` | כן | הסביבה להחזרה |
+| `--to` | לא | ה-build לפריסה; ברירת מחדל הקודם לנוכחי |
+| `--message` | לא | הערה שנישאת לבקשת האישור |
 
-[tool-verified: cli.py:716-733]
+[tool-verified: cli_envs.py:470-480]
 
-מדפיס שורה אחת לכל ענף שנמשך — `origin/<name>  <sha12>`. יוצא עם 0 בהצלחה; מעלה
-`SystemExit` עם הודעת שגיאה בכשל HTTP או חיבור.
+### provisa env redo
+
+מתקדם שוב אל ה-build שממנו נסוגה ההחזרה. [tool-verified:
+cli_envs.py:287-301]
+
+```
+provisa env redo --org ORG --env ENV
+```
+### provisa env fetch
+
+מושך את הענפים המרוחקים של הארגון לתוך מאגר ה-Provisa שלו (REQ-1541). הריצו אותו לפני פריסה
+כשרוצים לנקוב ב-`origin/<branch>`. Provisa לעולם אינה מריצה אותו לפי טיימר. [tool-verified:
+cli_envs.py:307-320]
+
+```
+provisa env fetch --org ORG
+```
+מדפיס שורה לכל ענף שנמשך, `origin/<name>  <sha12>`.
 
 ```bash
 provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 # origin/main  a1b2c3d4e5f6
 # origin/dev   9f8e7d6c5b4a
 ```
+### provisa env push
+
+שולח את הענף של סביבה למאגר המרוחק של הארגון (REQ-1546). מדפיס `nothing to send` כשאין
+מה לשלוח. [tool-verified: cli_envs.py:323-331]
+
+```
+provisa env push --org ORG --env ENV
+```
+### provisa env pull
+
+מחיל את מה שהמאגר המרוחק מחזיק עבור סביבה (REQ-1547). מדפיס
+`<env> already holds what the remote does` כשאין מה להחיל. קוד היציאה 2 חל כמו
+ב-deploy. [tool-verified: cli_envs.py:334-343]
+
+```
+provisa env pull --org ORG --env ENV
+```
+להסבר המלא של מחלקות הסביבה, כללי ההגנה, דוחות המיזוג ו
+מחזור החיים של האישורים, ראו [סביבות](environments.md#the-env-cli-commands).
 
 ---
 
@@ -363,7 +504,7 @@ Maintenance notice: ON
 
 ---
 
-## הפניה מהירה
+## הפניה מהירה {: #quick-reference }
 
 | פקודה | REQ | מה היא עושה |
 | --- | --- | --- |
@@ -373,13 +514,23 @@ Maintenance notice: ON
 | `provisa license apply <file>` | REQ-1139 | התקן קובץ רישיון במצב אופליין |
 | `provisa license status` | REQ-1139 | הצג מזהה מכונה ומצב ניסיון / רישיון |
 | `provisa metadata export` | REQ-1072 | פרסם את תמונת המטא-דאטה על-פי דרישה |
-| `provisa env fetch --org ORG` | REQ-1541 | משוך ענפים מרוחקים לתוך מאגר ה-Provisa |
-| `provisa env deploy --org ORG --env ENV --ref REF` | REQ-1496 | פרוס הפניה לתוך סביבה |
+| `provisa env list --org ORG` | REQ-1498 | מפרט את הסביבות של הארגון ואת ה-builds שלהן |
+| `provisa env show --org ORG --env ENV` | REQ-1498 | מציג סביבה אחת |
+| `provisa env create --org ORG --env ENV --data-mode MODE` | REQ-1942 | יוצר סביבה מסביבה אחרת |
+| `provisa env delete --org ORG --env ENV` | REQ-1498 | מוציא סביבה משימוש |
+| `provisa env diff --org ORG --from A --into B` | REQ-1490 | תצוגה מקדימה של מיזוג (קריאה בלבד) |
+| `provisa env merge --org ORG --from A --into B` | REQ-1490 | ממזג סביבה אחת לתוך אחרת |
+| `provisa env deploy --org ORG --env ENV --ref REF` | REQ-1496 | פורס הפניה לתוך סביבה |
+| `provisa env revert --org ORG --env ENV [--to BUILD]` | REQ-1543 | נסוג commit אחד, או פורס build |
+| `provisa env redo --org ORG --env ENV` | REQ-1543 | מתקדם שוב |
+| `provisa env fetch --org ORG` | REQ-1541 | מושך ענפים מרוחקים לתוך מאגר ה-Provisa |
+| `provisa env push --org ORG --env ENV` | REQ-1546 | שולח את הענף של סביבה למאגר המרוחק |
+| `provisa env pull --org ORG --env ENV` | REQ-1547 | מחיל את מה שהמאגר המרוחק מחזיק |
 | `provisa maintenance on` | REQ-1466 | הרם את באנר התחזוקה |
 | `provisa maintenance off` | REQ-1466 | נקה את באנר התחזוקה |
 | `provisa maintenance status` | REQ-1466 | הצג את מצב הבאנר הנוכחי |
 
-## ראה גם
+## ראה גם {: #see-also }
 
 - [סביבות](environments.md) — מודל הסביבה, סביבות מוגנות, מחזור חיי אישור פריסה
 - [ייצוא מטא-דאטה](metadata-export.md) — ספקי קטלוג, הגדרות, ומה מכילה תמונת המצב

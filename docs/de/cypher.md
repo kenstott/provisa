@@ -1,10 +1,10 @@
-# Cypher-Abfrageunterstützung
+# Cypher-Abfrageunterstützung {: #cypher-query-support }
 
 Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provisa/cypher/`. (REQ-345, REQ-347) Abfragen werden von einem eigenen rekursiven Abstiegs-Parser geparst (keine externe Cypher-Bibliothek) (REQ-571), gegen das Modell schema-aufgelöst (REQ-351) und als SQL emittiert, dann zur Ziel-Ausführungs-Engine geroutet. (REQ-066, REQ-067, REQ-347)
 
-## Implementierte Funktionen
+## Implementierte Funktionen {: #implemented-features }
 
-### Klauseln
+### Klauseln {: #clauses }
 
 | Klausel | Status | Hinweise |
 | -------- | -------- | ------- |
@@ -24,7 +24,7 @@ Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provi
 | `CALL db.propertyKeys()` | ✓ | Gibt alle Eigenschaftsschlüssel-Namen über alle Knotentypen hinweg zurück (REQ-572) |
 | `UNWIND` | ✓ | Array-zu-Zeilen-Expansion; erstes Element wird zu FROM, weitere zu CROSS JOIN UNNEST |
 
-### Match-Muster
+### Match-Muster {: #match-patterns }
 
 | Muster | Status | Hinweise |
 | --------- | -------- | ------- |
@@ -42,7 +42,7 @@ Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provi
 | `shortestPath(…)` | ✓ | Flacher JOIN bei heterogenen Endpunkten; WITH-RECURSIVE-CTE bei gleichem Typ/Selbstreferenz |
 | `allShortestPaths(…)` | ✓ | Wie shortestPath, aber ohne LIMIT 1 |
 
-### Ausdrücke und Prädikate
+### Ausdrücke und Prädikate {: #expressions-and-predicates }
 
 | Funktion | Status | SQL-Abbildung |
 | --------- | -------- | ------------ |
@@ -69,7 +69,7 @@ Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provi
 | `CASE WHEN … THEN … ELSE … END` | ✓ | Direkt (gesuchte und einfache Formen) |
 | Implizites GROUP BY | ✓ | Nicht aggregierte RETURN-Elemente werden zu GROUP-BY-Schlüsseln, wenn ein Element ein Aggregat enthält |
 
-### Map-Projektionen
+### Map-Projektionen {: #map-projections }
 
 | Syntax | SQL-Abbildung |
 | -------- | ------------ |
@@ -80,7 +80,7 @@ Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provi
 
 **Objekteigenschaften.** Eine Spalte mit einem deklarierten Objekt (dem eingebetteten Objekt eines Remote-GraphQL-Typs oder jeder mit Objektfeldern registrierten Spalte) ist eine Map-Eigenschaft: `RETURN n.address` liefert sie als Map, in welcher Form die Engine sie auch zurückgibt, und der Knoten `n` trägt sie unter seinen Eigenschaften. Ein Remote-GraphQL-Feld, das auf einen registrierten Typ zeigt, ein Objekt oder eine Liste, ist keine Eigenschaft; es wird über seine Beziehung erreicht. (REQ-1991) [tool-verified: `provisa/cypher/label_map.py`, `provisa/cypher/assembler.py`]
 
-### Aggregationsfunktionen
+### Aggregationsfunktionen {: #aggregation-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -93,7 +93,7 @@ Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provi
 | `percentileCont(x, p)` | `approx_percentile(x, p)` |
 | `percentileDisc(x, p)` | `approx_percentile(x, p)` |
 
-### String-Funktionen
+### String-Funktionen {: #string-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -109,7 +109,7 @@ Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provi
 | `size(string)` | `char_length(string)` |
 | `size(list)` | `cardinality(list)` |
 
-### Typkonvertierungsfunktionen
+### Typkonvertierungsfunktionen {: #type-conversion-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -119,7 +119,7 @@ Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provi
 | `toBoolean(x)` | `TRY_CAST(x AS BOOLEAN)` |
 | `toStringOrNull`, `toIntegerOrNull`, `toFloatOrNull`, `toBooleanOrNull` | `TRY_CAST`-Varianten |
 
-### Mathematikfunktionen
+### Mathematikfunktionen {: #math-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -128,7 +128,7 @@ Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provi
 | `range(start, end)` | `sequence(start, end)` |
 | `abs`, `sqrt`, `ceil`, `floor`, `round`, `sign` | unverändert durchgereicht |
 
-### Listenfunktionen
+### Listenfunktionen {: #list-functions }
 
 | Cypher | SQL |
 | -------- | ----- |
@@ -137,7 +137,7 @@ Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provi
 | `tail(list)` | `slice(list, 2, cardinality(list))` |
 | `isEmpty(list)` | `cardinality(list) = 0` |
 
-### Listen-Comprehensions
+### Listen-Comprehensions {: #list-comprehensions }
 
 | Syntax | SQL-Abbildung |
 | -------- | ------------ |
@@ -150,14 +150,14 @@ Provisa übersetzt eine Teilmenge von openCypher nach SQL über das Modul `provi
 | `single(x IN list WHERE p(x))` | `cardinality(filter(list, x -> p(x))) = 1` |
 | `reduce(acc = init, x IN list \| expr)` | `reduce(list, init, (acc, x) -> expr, acc -> acc)` |
 
-### Muster-Comprehensions
+### Muster-Comprehensions {: #pattern-comprehensions }
 
 | Syntax | SQL-Abbildung |
 | -------- | ------------ |
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
 | `[(a)-[]->(b:Label) \| b.prop]` | Typ aus dem Modell abgeleitet; gleiche ARRAY-Subquery-Form |
 
-### Korrelierte CALL-Subqueries
+### Korrelierte CALL-Subqueries {: #correlated-call-subqueries }
 
 `CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` übersetzt sich zu `CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`. (REQ-573) Regeln:
 
@@ -191,7 +191,7 @@ Regeln:
 
 ---
 
-## Protokollzugriff
+## Protokollzugriff {: #protocol-access }
 
 Cypher erreicht dieselbe geregelte Pipeline über zwei Transporte:
 
@@ -204,9 +204,9 @@ Cypher erreicht dieselbe geregelte Pipeline über zwei Transporte:
 
 ---
 
-## Einschränkungen
+## Einschränkungen {: #limitations }
 
-### Designbeschränkungen
+### Designbeschränkungen {: #design-constraints }
 
 1. **Writes sind auf `CREATE`, `SET` und `DELETE` beschränkt.** Diese werden als direkte Tabellen-Writes über dieselbe Pipeline wie GraphQL- und SQL-Mutationen ausgeführt. (REQ-818, REQ-666, REQ-667, REQ-668) Siehe §Writes oben. `MERGE`, `DETACH DELETE` und `REMOVE` werden zur Parse-Zeit abgelehnt. (REQ-671, REQ-818) APOC-Prozeduren werden ebenfalls abgelehnt.
 
@@ -216,7 +216,7 @@ Cypher erreicht dieselbe geregelte Pipeline über zwei Transporte:
 
 4. **Rekursive Pfade erfordern eine Obergrenze.** Muster variabler Länge (`[*]`) müssen eine Obergrenze enthalten (z. B. `[*..10]`). (REQ-348) Unbegrenzte Traversierung wird zur Parse-Zeit abgelehnt, um ausufernde rekursive CTEs zu verhindern.
 
-### Verhaltenshinweise
+### Verhaltenshinweise {: #behaviour-notes }
 
 5. **`shortestPath` bei nicht selbstreferentiellen Pfaden verwendet flachen JOIN, keine Hops-Sortierung.** Wenn sich Start- und Endtyp unterscheiden und keine selbstreferentielle Beziehung im Schema existiert, emittiert der Übersetzer eine flache JOIN-Kette (den kürzesten Schemapfad). (REQ-576) Er emittiert kein `ORDER BY hops`, da Hops in diesem Codepfad nicht verfolgt werden. Das Ergebnis ist der strukturell kürzeste Schemapfad, nicht der datenkürzeste Pfad über mehrere Zeilen.
 
@@ -226,7 +226,7 @@ Cypher erreicht dieselbe geregelte Pipeline über zwei Transporte:
 
 8. **`WITH`-Klausel-CTEs werden `_w0`, `_w1`, … benannt.** (REQ-578) Namen werden positional innerhalb eines einzelnen Übersetzungsaufrufs vergeben. Das Zusammensetzen mehrerer übersetzter Abfragen (z. B. in einem Batch) kann bei naiver Verkettung zu kollidierenden CTE-Namen führen.
 
-### Ausdrucks- und Musterabdeckung (REQ-913)
+### Ausdrucks- und Musterabdeckung (REQ-913) {: #expression-and-pattern-coverage-req-913 }
 
 Cypher-Ausdrücke werden in einen AST geparst und Knoten für Knoten zu SQL abgesenkt (`provisa/cypher/expr_parser.py`, `provisa/cypher/expr_visitor.py`). Die Grammatik folgt dem Präzedenzturm `oC_Expression` von openCypher. Unterstützt: Literale, Parameter, Eigenschaftszugriff, `n.prop`, Index und Slice, Arithmetik (`+ - * / % ^`), Vergleich, `IN`, `STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`, `IS [NOT] NULL`, boolesches `AND` / `OR` / `XOR` / `NOT`, `CASE`, Listen- und Map-Literale, Listen- und Muster-Comprehensions (einschließlich der `p = (…)`-Pfadbindung), Map-Projektion, `reduce`, die Quantoren `all` / `any` / `none` / `single`, existenzielle Subqueries und Funktionsaufrufe.
 

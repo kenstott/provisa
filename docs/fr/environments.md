@@ -1,4 +1,4 @@
-# Environnements
+# Environnements {: #environments }
 
 Un environnement est une copie nommée du modèle gouverné d'une organisation. La copie est
 physiquement un schéma PostgreSQL distinct — pas une colonne discriminante, pas un préfixe, un
@@ -14,7 +14,9 @@ at env_routing.py lines 93-129]
 
 Les environnements sont disponibles pour les organisations sur un forfait payant. [inferred: REQ-1507]
 
-## Noms d'environnement
+Pour remplir un environnement hors production avec des données sûres à utiliser, voir [Construire des environnements de test](test-data.md).
+
+## Noms d'environnement {: #environment-names }
 
 Un nom doit correspondre à `[a-z][a-z0-9_]{1,31}` — de deux à trente-deux caractères parmi les
 lettres minuscules, les chiffres et les tirets bas, commençant par une lettre. `prod` et les noms
@@ -24,7 +26,7 @@ plus long nom de schéma qu'un environnement dérive est ce contre quoi le plafo
 [tool-verified: `ENV_NAME_PATTERN` at environments.py line 59 ; `validate_env_name()` at
 environments.py lines 119-142 ; `max_env_name_length()` at environments.py lines 108-116]
 
-## Ce qu'emporte une copie
+## Ce qu'emporte une copie {: #what-a-copy-carries }
 
 Chaque table du schéma de l'organisation appartient à exactement une classe (REQ-1489). La
 classification est une liste d'autorisation, pas une liste d'exclusion : une table ajoutée
@@ -51,7 +53,7 @@ branche restreinte pourrait avoir besoin, faisant du chemin de revue la voie d'e
 et les affectations voyagent donc une seule fois, à la création, et deviennent ensuite la réponse
 propre à chaque environnement. [tool-verified: env_classes.py lines 65-71 ; env_copy.py lines 41-44]
 
-## Liaisons
+## Liaisons {: #bindings }
 
 Les liaisons sont les colonnes qui disent où une source pointe réellement — `host`, `port`,
 `database`, `username` et les autres. Elles ne voyagent jamais dans aucune copie. Un environnement
@@ -59,31 +61,21 @@ qui n'a pas été lié est marqué `unbound` plutôt que laissé vide : un hôt
 absent, et le constructeur de connexion le lirait comme `localhost:5432`. [tool-verified: `BOUND_COLUMN = "bound"` at
 env_classes.py line 143 ; `BINDING_COLUMNS` dict at env_classes.py lines 155-172]
 
-Les sources d'un environnement se résolvent de l'une des deux façons suivantes.
+Un environnement créé autrement qu'en Unbound copie la connexion de chaque source depuis son parent,
+exactement telle que le parent l'a écrite : une référence `${secret:...}` ou `${env:...}` est copiée comme cette
+référence, jamais résolue. Après la création, la copie est la ligne propre de l'environnement, modifiable sur la
+page Sources, et rien n'est résolu via le parent lorsque le runtime de l'environnement est construit.
+Le champ `binding` de chaque source indique d'où vient sa connexion : `copied`, `own` (donnée dans cet
+environnement) ou `unbound`. Modifier une connexion copiée la rend `own`. **Recopier depuis le parent**
+(`POST /admin/orgs/{org}/environments/{name}/sources/recopy`) recopie les connexions du parent.
+Une fusion ou un déploiement ne transporte aucune connexion, donc une source qu'il introduit arrive `unbound`.
+[tool-verified: `_copy_table` at env_copy.py; `recopy` and `unbind` at env_data.py;
+`owned_if_reconnected` at repositories/source.py]
 
-**Base** — l'environnement porte ses propres identifiants. Un org_admin crée une base puis lie
-chaque source explicitement. [tool-verified: `CreateEnvBody.inherit_connections = False` (default) at
-environments_router.py line 227 ; "binding a base is an org_admin's act" comment at line 358]
+## La projection git {: #the-git-projection }
 
-**Branche** — l'environnement hérite des identifiants de la base par référence. Rien n'est copié.
-Lorsqu'une requête a besoin d'une connexion, la résolution remonte la chaîne `branched_from` et
-s'arrête au premier environnement dont la ligne est liée. Faire tourner un identifiant sur la base
-se propage à chacune de ses branches sans aucune action à mener. Le révoquer le révoque pour toutes
-d'un coup. Aucun secret n'est jamais matérialisé là où une branche, un export ou un dépôt pourrait
-l'emporter.
-[tool-verified: `resolve()` at env_bindings.py lines 114-151 ; `lineage()` at env_bindings.py
-lines 74-102 ; env_bindings.py module docstring lines 11-33]
-
-Pour créer une branche, cochez **Hériter des connexions** dans le panneau Environnements. Par
-défaut, l'option est désactivée.
-[tool-verified: `environmentsTab.json` key `inheritConnections`; `inheritHelp2` string]
-
-## La projection git
-
-Chaque écriture dans le modèle valide le résultat sur la branche git de l'environnement. Le dépôt
-est une projection du modèle, jamais son autorité : Provisa lit et écrit le plan de contrôle ; le
-dépôt en est le registre, pas la source. Déployer un arbre exige un appel explicite — une pull
-request fusionnée sur l'hôte git ne se déploie pas d'elle-même (REQ-1524, REQ-1526). [tool-verified:
+Chaque écriture dans le modèle commite le résultat dans la branche git de l'environnement. Déployer un arbre
+exige un appel explicite — une pull request fusionnée sur l'hôte git ne se déploie pas d'elle-même (REQ-1524, REQ-1526). [tool-verified:
 deploy endpoint docstring at environments_router.py lines 777-791]
 
 Chaque entité obtient un fichier. Le chemin est l'URI REQ-1385 privé de son schéma d'URI et de son
@@ -113,7 +105,7 @@ La sérialisation est déterministe. Les clés sont émises par ordre alphabéti
 filles triées par leur adresse, et le style YAML est figé. Deux environnements portant le même
 modèle produisent des arbres identiques octet pour octet. [tool-verified: `dump()` at env_files.py lines 131-143]
 
-## Fusion
+## Fusion {: #merge }
 
 Fusionner le modèle d'un environnement dans un autre met à jour par identité : chaque objet que la
 source possède est créé ou mis à jour dans la cible. Les objets que la source ne possède plus ne
@@ -131,7 +123,7 @@ Une fusion laisse les liaisons, les rôles et les secrets de la cible exactement
 en prenant un modèle plus récent de prod. Prod n'acquiert pas les habilitations de dev.
 [tool-verified: env_copy.py lines 269-287 ; REQ-1490 scenario]
 
-### Ce que nomme le rapport
+### Ce que nomme le rapport {: #what-the-report-names }
 
 Le rapport de fusion liste, par chemin, ce qui a été ajouté, modifié, retiré et laissé inchangé. Il
 nomme également les éventuels **conflits** — les objets que les deux côtés ont modifiés depuis leur
@@ -175,7 +167,7 @@ personne qui doit maintenant décider quel travail survit sache quels objets reg
 environments_router.py lines 1491-1503 ; `_collisions()` at environments_router.py
 lines 1581-1602]
 
-## Historique
+## Historique {: #history }
 
 Chaque déploiement avance le curseur de l'environnement dans sa propre ligne de commits. Une
 annulation recule d'un commit ; un rétablissement avance de nouveau vers la position que
@@ -196,7 +188,7 @@ reçu un commit donné liste tout de même ses environnements ; seules les rép
 changent (REQ-1561). [tool-verified: `_with_history()`
 at environments_router.py lines 316-344 ; REQ-1561 description]
 
-## Autorisation
+## Autorisation {: #authorization }
 
 Les environnements sont régis par deux droits. Aucun des deux n'appartient à un analyste par défaut
 (REQ-1573).
@@ -224,7 +216,7 @@ sélecteur d'environnement. Un prestataire à qui l'on accorde le rôle d'analys
 surface d'environnements et ne peut ni créer ni rejoindre un environnement autre que la production.
 [tool-verified: REQ-1573 use_case and scenario]
 
-### Autorité du propriétaire d'un environnement
+### Autorité du propriétaire d'un environnement {: #environment-owner-authority }
 
 Créer un environnement est le seul chemin par lequel un membre en lecture seule acquiert des droits
 d'édition du modèle (REQ-1528). À l'intérieur de l'environnement qu'il a créé, le créateur détient
@@ -242,7 +234,7 @@ change ce qu'un membre peut faire ; cela ne change jamais à quels domaines il 
 (REQ-1530).
 [tool-verified: `domains_within()` at env_authority.py lines 121-145]
 
-## Environnements protégés (REQ-1504)
+## Environnements protégés (REQ-1504) {: #protected-environments-req-1504 }
 
 Un environnement peut être protégé. Une fusion ou un déploiement vers un environnement protégé
 n'est pas appliqué au moment de la demande ; il est proposé, et quelqu'un d'autre que le demandeur
@@ -316,7 +308,9 @@ provisa env deploy --org acme --env prod --ref "origin/main" \
 
 ---
 
-## Voir aussi
+## Voir aussi {: #see-also }
 
 - [Déploiement](deployment.md) — comment monter le plan de contrôle auquel les environnements se connectent
 - [Commandes](commands.md) — fonctions et webhooks suivis qui apparaissent dans l'arbre de chaque environnement
+- [Construire des environnements de test](test-data.md) — profiler la production, déclarer des données factices, générer des données synthétiques pour un environnement hors production
+- [Méthodes de données factices](fake-methods.md) — chaque type de donnée factice et chaque méthode qu'une colonne peut déclarer

@@ -1,8 +1,8 @@
-# 組態參考
+# 組態參考 {: #configuration-reference }
 
 Provisa 透過 YAML 檔案組態（預設：`config/provisa.yaml`）。(REQ-528)
 
-## 包含檔案（REQ-1669）
+## 包含檔案（REQ-1669） {: #includes-req-1669 }
 
 使用 `includes:` 將一份組態拆分到多個檔案中。包含檔案在此鍵下列出片段路徑；Provisa 會在驗證前合併它們，產生與將所有內容寫在單一檔案中相同的結果。
 
@@ -26,7 +26,7 @@ includes:
 - `includes` 在載入時被消耗，永遠不會出現在驗證後的組態中。
 
 
-## 數據來源
+## 數據來源 {: #sources }
 
 ```yaml
 sources:
@@ -64,7 +64,7 @@ sources:
 | `allowed_domains` | `[]` | 將此數據來源限制於特定網域 ID；空值 = 不限制 |
 | `description` | `""` | |
 
-### 支援的數據來源類型 [tool-verified: `provisa/core/models.py:36-101`]
+### 支援的數據來源類型 [tool-verified: `provisa/core/models.py:36-101`] {: #supported-source-types-tool-verified-provisacoremodelspy36-101 }
 
 | 類型 | 連線方式 | 備註 |
 | ------ | ----------------- | ------- |
@@ -133,7 +133,7 @@ sources:
 | `soda` | 指向 Provisa pgwire 的 host/port | 需要 `soda` extra；Elastic License 2.0，僅限自行託管 (REQ-1443) |
 | `great_expectations` | 指向 Provisa pgwire 的 host/port | 需要 `gx` extra；Apache 2.0 (REQ-1443) |
 
-### 數據來源類型參考
+### 數據來源類型參考 {: #source-type-reference }
 
 組態不夠直觀的類型各有一段簡短說明。RDBMS 類型（postgresql、mysql 等）只用到上述通用欄位 — 不需額外章節。
 
@@ -434,7 +434,7 @@ sources:
       spreadsheet_id: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms
 ```
 
-#### 檔案數據來源（csv / parquet / sqlite / files）
+#### 檔案數據來源（csv / parquet / sqlite / files） {: #file-sources-csv-parquet-sqlite-files }
 
 必須有 `path`。`files` 會爬取目錄中的 CSV、Parquet、XLSX 與 JSON 檔案，將每個檔案呈現為一個表。所有檔案型數據來源都是 VIRTUAL（經由引擎路由；無直接集區）。[tool-verified: `provisa/transpiler/router.py:44-48`]
 
@@ -451,7 +451,7 @@ sources:
 
 **Kaggle 數據集**無法透過此檔案新增——它們需要即時權杖，以及僅在「數據來源」表單中提供的數據集選擇器（數據來源 → 訂閱 → Kaggle）。匯出為 YAML 的 Kaggle 數據來源會顯示為 `type: files`，並在 `federation_hints` 中帶有 `kaggle_owner` 和 `kaggle_ref`。從 Kaggle 重新下載需要 `refreshKaggleSource` 變更（mutation）或 UI 刷新流程，而不是編輯 YAML。請參閱數據來源類型參考中的 [Kaggle 數據集](sources.md#kaggle-datasets)。
 
-#### API／遠端數據來源
+#### API／遠端數據來源 {: #api-remote-sources }
 
 **openapi** — 將 `base_url` 設為 OpenAPI 基底 URL。結構描述探索會在啟動時讀取 OpenAPI 規格。
 
@@ -542,7 +542,7 @@ sources:
       disable_ssl_validation: false
 ```
 
-#### 數據品質檢查器（soda / great_expectations）
+#### 數據品質檢查器（soda / great_expectations） {: #data-quality-checkers-soda-great_expectations }
 
 [tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
 
@@ -583,7 +583,7 @@ dq_checker: none        # none | soda | gx
 
 任何其他值都會讓啟動器停止，而不是在缺少操作者指定的檢查器的情況下啟動。`soda` extra 會拉入 `soda-postgres`；`gx` 拉入 `great-expectations[postgresql]`。Soda Core 採用 Elastic License 2.0 — `config/capabilities.yaml` 將該選項標記為 `cloud_eligible: false`，託管平面會拒絕它。
 
-## 網域
+## 網域 {: #domains }
 
 ```yaml
 domains:
@@ -591,7 +591,7 @@ domains:
     description: Sales operational data
 ```
 
-## 命名
+## 命名 {: #naming }
 
 ```yaml
 naming:
@@ -602,7 +602,7 @@ naming:
       replace: ""
 ```
 
-### 命名慣例
+### 命名慣例 {: #naming-convention }
 
 命名權威是面向用戶端名稱的單一事實來源；實體後端欄位名稱永不對用戶端公開。(REQ-194) 每種查詢語言皆從欄位的 `column.alias`（若已設定）取得名稱，否則依其組態的慣例從實體欄位名稱衍生。(REQ-194)
 
@@ -637,7 +637,7 @@ tables:
     naming_convention: snake  # overrides source for this table
 ```
 
-### 網域前置詞
+### 網域前置詞 {: #domain-prefix }
 
 當 `domain_prefix: true` 時，所有 GraphQL 欄位與類型名稱都會以網域 ID 加上雙底線分隔符作為前置詞：(REQ-154)
 
@@ -648,11 +648,11 @@ tables:
 
 這可避免不同網域中同名的表發生名稱衝突，也讓查詢本身具備說明性。
 
-### 命名規則
+### 命名規則 {: #naming-rules }
 
 產生 GraphQL 欄位名稱時套用於表名稱的正規表示式規則。在唯一性解析之前依序套用。(REQ-542)
 
-## 表
+## 表 {: #tables }
 
 ```yaml
 tables:
@@ -669,24 +669,26 @@ tables:
       - name: email
         visible_to: [admin, analyst]
         writable_by: [admin]      # only admin can mutate
-        unmasked_to: [admin]      # admin sees raw, analyst sees masked
-        mask_type: regex
-        mask_pattern: "^(.{2}).*(@.*)$"
-        mask_replace: "$1***$2"
+        masks:                    # first entry the reader holds applies
+          - to: [admin]           # admin sees raw
+          - to: ["*"]             # everyone else sees it masked
+            mask: {type: regex, pattern: "^(.{2}).*(@.*)$", replace: "$1***$2"}
         alias: email_address      # optional: override GraphQL field name
         description: "Primary email address"  # optional: appears in SDL
       - name: amount
         visible_to: [admin]
         writable_by: [admin]
-        unmasked_to: [admin]
-        mask_type: constant
-        mask_value: "0"
+        masks:
+          - to: [admin]
+          - to: ["*"]
+            mask: {type: constant, value: 0}
       - name: created_at
         visible_to: [admin, analyst]
         writable_by: []           # nobody can write
-        unmasked_to: [admin]
-        mask_type: truncate
-        mask_precision: month
+        masks:
+          - to: [admin]
+          - to: ["*"]
+            mask: {type: truncate, precision: month}
     column_presets:               # auto-set values on insert/update
       - column: created_by
         source: header            # from request header
@@ -695,7 +697,7 @@ tables:
         source: now               # current timestamp
 ```
 
-### 別名
+### 別名 {: #aliases }
 
 表與欄位別名會覆寫預設的 GraphQL 名稱。(REQ-155) 適用於：
 
@@ -703,11 +705,11 @@ tables:
 - 避免在 API 層出現縮寫
 - 建立乾淨、貼近網域的詞彙
 
-### 描述
+### 描述 {: #descriptions }
 
 表與欄位的描述會納入產生的 GraphQL SDL。(REQ-156) 它們會出現在 GraphiQL 的文件探索工具與自省查詢中。可在組態 YAML 或透過管理員 UI 設定。
 
-### Path（計算式 JSON 擷取）
+### Path（計算式 JSON 擷取） {: #path-computed-json-extraction }
 
 欄位可使用點記法 `path` 從 JSON/JSONB 來源欄位擷取值。(REQ-151) 這對 Kafka 訊息、MongoDB 文件或 PostgreSQL JSONB 欄位中的半結構化數據很有用。
 
@@ -730,7 +732,7 @@ path 格式為 `source_column.key1.key2...`。編譯器會在 SQL 中產生 `jso
 
 **路由影響：** path 欄位使用 PostgreSQL JSON 運算子（`->>`），直接 PG 路由原生支援。(REQ-152) 對於非 PostgreSQL 數據來源（MySQL、SQL Server 等），含 path 欄位的查詢會自動經由聯邦引擎路由。(REQ-152) 變更操作不受影響，因為 path 欄位是唯讀的計算欄位。(REQ-153)
 
-### 遮罩類型
+### 遮罩類型 {: #masking-types }
 
 | 類型 | 欄位 | 描述 |
 | ------ | -------- | ------------- |
@@ -738,7 +740,7 @@ path 格式為 `source_column.key1.key2...`。編譯器會在 SQL 中產生 `jso
 | `constant` | `value` | 字面值取代（NULL、0、MAX、MIN、自訂） |
 | `truncate` | `precision` | DATE_TRUNC（僅限日期／時間戳記欄位） |
 
-## 關係
+## 關係 {: #relationships }
 
 ```yaml
 relationships:
@@ -759,7 +761,7 @@ relationships:
     refresh_interval: 600          # refresh every 10 minutes
 ```
 
-### 自動具體化
+### 自動具體化 {: #auto-materialization }
 
 在關係上設定 `materialize: true`，即可為跨數據來源的 JOIN 自動產生具體化檢視。(REQ-158) 這藉由預先計算 JOIN 結果來避免昂貴的聯邦查詢。
 
@@ -769,7 +771,7 @@ relationships:
 - 對任一方來源表的變更操作會將 MV 標記為過時以便重新整理 (REQ-543)
 - `refresh_interval` 預設為 300 秒（5 分鐘）(REQ-543)
 
-## 角色
+## 角色 {: #roles }
 
 ```yaml
 roles:
@@ -792,9 +794,9 @@ roles:
     parent_role_id: analyst      # inherits query_development + sales-analytics
 ```
 
-具有 `parent_role_id` 的角色會從父角色繼承能力與網域存取權。(REQ-215) 階層在啟動時被攤平。(REQ-215)
+具有 `parent_role_id` 的角色會從父角色繼承能力、網域存取權、欄位與物件授權，以及 RLS 規則，其中子角色本身對某資料表的 RLS 規則優先。(REQ-215, REQ-1677) 繼承鏈在啟動時被攤平。(REQ-215)
 
-### 能力
+### 能力 {: #capabilities }
 
 | 能力 | 描述 |
 | ----------- | ------------- |
@@ -806,7 +808,7 @@ roles:
 | `full_results` | 略過抽樣限制 |
 | `admin` | 所有能力 |
 
-## RLS 規則
+## RLS 規則 {: #rls-rules }
 
 ```yaml
 rls_rules:
@@ -815,7 +817,7 @@ rls_rules:
     filter: "region = current_setting('provisa.user_region')"
 ```
 
-## 具體化檢視
+## 具體化檢視 {: #materialized-views }
 
 ```yaml
 materialized_views:
@@ -836,7 +838,7 @@ materialized_views:
     enabled: true
 ```
 
-## 檢視（受治理的計算式數據集）
+## 檢視（受治理的計算式數據集） {: #views-governed-computed-datasets }
 
 檢視是以 SQL 定義的計算式數據集，具備完整的欄位級治理。(REQ-133) 它們是在模型加入彙總、轉換與衍生指標的受治理機制。(REQ-136)
 
@@ -876,18 +878,69 @@ views:
 | `alias` | 否 | 覆寫 GraphQL 名稱 |
 | `columns` | 是 | 含可見性、遮罩與描述的欄位定義 |
 
-### 具體化與即時
+### 具體化與即時 {: #materialized-vs-live }
 
 - **`materialize: true`**：Provisa 透過 CTAS 建立一個表，並依排程重新整理。(REQ-135) 查詢較快，但數據最多可能過時 `refresh_interval` 秒。
 - **`materialize: false`**：Provisa 建立一個聯邦檢視。(REQ-135) 查詢一律回傳即時數據，但複雜彙總可能較慢。
 
 檢視與表走同一條治理管線 — RLS、遮罩、抽樣與角色型可見性。(REQ-134) 這確保平台上不會在缺乏數據管家監督的情況下加入新語意。(REQ-136)
 
-### 僅供查詢的檢視
+### 帶歷史的檢視（時間旅行） {: #views-with-history-time-travel }
+
+具體化檢視可以保存其資料列的每一個版本，並按過去某個時刻讀取。(REQ-1162, REQ-1163) 它宣告如何保存這些版本，以及版本屬於哪個鍵：
+
+```yaml
+views:
+  - id: customer-history
+    sql: SELECT customer_id, tier, updated_at FROM crm.customers
+    domain_id: sales
+    materialize: true
+    bitemporal_mode: delta            # snapshot | delta
+    bitemporal_key: [customer_id]     # required
+    bitemporal_source_time: updated_at  # optional: the source's change time
+    columns:
+      - {name: customer_id, visible_to: [analyst]}
+      - {name: tier, visible_to: [analyst]}
+      - {name: updated_at, visible_to: [analyst]}
+```
+| 欄位 | 必填 | 說明 |
+| ------- | ---------- | ------------- |
+| `bitemporal_mode` | 是 | `snapshot` 在每次重新整理時附加整個結果；`delta` 只附加有變化的部分 |
+| `bitemporal_key` | 是 | 版本所屬的欄位 |
+| `bitemporal_source_time` | 否 | 保存每個資料列在數據來源中發生變化的時刻的欄位：時間旅行據以讀取的時鐘 |
+
+**選擇時鐘。** 有 `bitemporal_source_time` 時，版本按數據來源本身的時間排序及讀取：「上星期二」就是數據來源中的上星期二。沒有它時，版本按 Provisa 載入每次變化的時刻排序及讀取，因此跟隨重新整理的節奏，而不是資料列在數據來源中發生變化的時刻。兩者都是一種選擇。載入時間適合頻密的重新整理節奏、數據來源時刻並不重要的數據，以及關心載入時間的讀取，例如審計 Provisa 在何時保存了甚麼。(REQ-1163)
+
+一個版本由其本身的時刻起生效，直至下一個版本的時刻。刪除沒有數據來源的變更時間，在 Provisa 記錄它時生效。(REQ-2064)
+
+**讀取。** 一般讀取傳回每個鍵目前生效的版本。標頭 `X-Provisa-As-Of` 按某一時刻或某一範圍讀取，範圍以 ISO 8601 區間 `start/end` 表示：
+
+```
+X-Provisa-As-Of: 2026-03-01T00:00:00
+X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
+```
+時刻傳回每個鍵在當時生效的版本。範圍傳回在其中任何時點生效的每個版本，每個版本一列。(REQ-2064) 同一個值亦是 `resolve`（GraphQL、gRPC、MCP）的 `as_of` 引數、REST 查詢參數 `as_of`，以及 Arrow Flight ticket 的 `as_of` 選項。傳給 `resolve` 的範圍會傳回該資料列的 `versions`，而不是其 `row`。權限、遮罩及資料列規則與任何讀取一樣適用。格式錯誤的值，或結束不晚於開始的範圍，會以 HTTP 400（`data.invalid_as_of`）被拒絕。
+
+每個帶歷史的檢視還會傳回三個欄位，其授權方式與其數據來源時間欄位相同（沒有時則與第一個鍵欄位相同）：
+
+| 欄位 | 含義 |
+| ------- | ------- |
+| `source_from` | 此版本何時生效：其數據來源時間，沒有時為載入時間 |
+| `source_to` | 下一個版本何時生效；此版本仍然生效時為空 |
+| `recorded_at` | Provisa 何時記錄此版本 |
+
+**來自變更數據擷取的數據來源時間。** 由變更數據擷取載入的資料表以 `source_committed_at` 攜帶其提交時間，讓帶歷史的檢視可以把它指定為數據來源時間：
+
+- Debezium：每個變更事件攜帶的資料庫提交時間（`source.ts_ms`）。由副本的完整建構複製過來的資料列沒有變更事件，因此其 `source_committed_at` 為空，直至該資料列再次變化，除非數據來源是啟用了提交時間戳記的 PostgreSQL（下一項）。
+- 變更訊號為 `native` 的 PostgreSQL：PostgreSQL 為每個資料列保存的提交時間（`pg_xact_commit_timestamp(xmin)`），由數據來源本身的驅動程式在建構副本時讀取。PostgreSQL 只在 `track_commit_timestamp = on` 時保存它。啟用它便可在原生訊號下取得數據來源時間；沒有它時 `source_committed_at` 為空。開啟或關閉該設定會重建副本。
+
+沒有 Debezium 封裝的 Kafka 主題不攜帶提交時間。
+
+### 僅供查詢的檢視 {: #query-only-views }
 
 `materialize: true` 與 `materialize: false` 的檢視都以僅供查詢的方式公開其 GraphQL 類型。以 `view_sql` 為底的關聯不會產生 insert、upsert、update 或 delete 變更操作。(REQ-1157) [tool-verified: `provisa/compiler/schema_gen.py:184`, `provisa/compiler/schema_types.py:79`]
 
-## 快取
+## 快取 {: #cache }
 
 ```yaml
 cache:
@@ -896,7 +949,7 @@ cache:
   default_ttl: 300
 ```
 
-### 快取階層
+### 快取階層 {: #cache-hierarchy }
 
 TTL 解析順序（最明確者勝出）：**表** > **數據來源** > **全域預設**。(REQ-544) 採用第一個非 null 的值。
 
@@ -922,7 +975,7 @@ tables:
 
 在數據來源上設定 `cache_enabled: false` 會停用該數據來源所有表的快取，不論表層級的 TTL 為何。(REQ-544) 快取鍵一律包含 `role_id` 加 RLS 內容值，以達成安全分區。(REQ-544)
 
-### 按請求選擇啟用
+### 按請求選擇啟用 {: #per-request-opt-in }
 
 對於沒有要求回應快取的請求，回應快取處於關閉狀態。(REQ-544) 請求以下列方式選擇啟用：
 
@@ -944,7 +997,7 @@ tables:
 
 寫入會令寫入方機構為其寫入的表所持有的所有快取條目失效；其他機構對同一表的條目不受影響。如失效操作失敗，請求會失敗，而不會留下過期條目。(REQ-544, REQ-595)
 
-## 新鮮度與負載：由誰決定
+## 新鮮度與負載：由誰決定 {: #freshness-and-load-who-decides }
 
 有三方共同決定結果有多新，以及一次查詢為其後端系統帶來多大負載。(REQ-030)
 
@@ -967,7 +1020,7 @@ tables:
 
 `load_protected` 或 `replicate: 0` 的表，在任何傳輸上都不會被查詢即時讀取。查詢讀取的是它的複本。只有複製及其刷新會讀取資料來源：當 `cache_ttl` 或新鮮度檢查要求時才刷新；兩者皆無時，複本只建構一次，之後僅透過變更串流或排程器刷新。(REQ-1907)(REQ-1141, REQ-826) [tool-verified: `tests/integration/test_operator_floor_e2e.py`] 對於帶有 `off_peak_window`（在表或其資料來源上，按 `off_peak_tz` 解讀）的此類表，刷新只在視窗開啟時執行：在視窗之外到期或被請求的刷新會等到視窗下一次開啟，沒有 `cache_ttl` 的視窗每次開啟刷新一次。首次建置從不被延後，因為對該表的讀取在等待它。 [tool-verified: `provisa/federation/replica_builds.py` `_deferred_until`, `_next_refresh_at`; `tests/integration/test_off_peak_window_refresh_e2e.py`]
 
-### `replicate` 設定
+### `replicate` 設定 {: #the-replicate-setting }
 
 `replicate` 是表上的一個整數。未設定值的表沿用其資料來源的值；兩者皆未設定時，適用全域門檻。複本是資料來源表的一份拷貝，保存在引擎的儲存區中，並按表的時效性設定刷新；它不是持續的變更串流。(REQ-826) [tool-verified: `provisa/core/replicate.py`]
 
@@ -984,7 +1037,7 @@ tables:
 
 複本按其宣告的主索引鍵，以及其宣告的關係所連接的欄位建立索引，索引在複本落地後建構。這些索引在哪些情況下加速聯結、複本應存放何處以及如何選擇其新鮮度，請參閱 [Replicas](replicas.md)。(REQ-2015) [tool-verified: `provisa/federation/replica_indexes.py`]
 
-### Hot 複製
+### Hot 複製 {: #hot-replication }
 
 `replicate` 未設定或為大於 0 的 `N` 的表，在繁忙之前一直即時讀取。
 
@@ -1015,7 +1068,7 @@ replication:
 
 計數保存在 Redis 中。使用共用 Redis（`cache.redis_url`）時，計數涵蓋部署的所有行程。使用內嵌 Redis 時，計數按行程各自統計，因此只有在單一工作行程處理請求時才會提升；有多個工作行程而沒有共用 Redis 時不會提升任何表，摘要中會說明這一點。[tool-verified: `provisa/federation/replica_hot.py`]
 
-## 驗證
+## 驗證 {: #authentication }
 
 ```yaml
 auth:
@@ -1037,7 +1090,7 @@ auth:
     default_role: analyst
 ```
 
-### 驗證提供者類型
+### 驗證提供者類型 {: #auth-provider-types }
 
 | 提供者 | 使用情境 | 權杖驗證 |
 | ---------- | ---------- | ----------------- |
@@ -1049,7 +1102,7 @@ auth:
 
 超級使用者認證（`superuser` 區塊）可搭配任何提供者使用，並一律解析為具備所有能力的 admin 角色。(REQ-125) 用於在外部驗證組態完成前的初始設定。
 
-### SCRAM-SHA-256（`auth.scram`）
+### SCRAM-SHA-256（`auth.scram`） {: #scram-sha-256-authscram }
 
 ```yaml
 auth:
@@ -1061,7 +1114,7 @@ auth:
 
 驗證子無法從既有的 bcrypt 雜湊衍生。每當密碼以純文字經過時就會寫入一個，因此每位使用者的第一次 SCRAM 連線發生在其下一次註冊、登入、變更密碼或管理員重設之後。在那之前，該使用者的連線會回退為經 TLS 的明文交換；線路上不會顯示誰已遷移。
 
-### 登入節流（`auth.login_throttle`）
+### 登入節流（`auth.login_throttle`） {: #login-throttling-authlogin_throttle }
 
 ```yaml
 auth:
@@ -1073,11 +1126,11 @@ auth:
 
 預設以所示值啟用；此區塊只用來調整。(REQ-1393) 計數器位於認證驗證層，因此經由 HTTP、pgwire 與 Bolt 的失敗會累加到同一個主體上，而鎖定在每個介面上都成立。它是每個處理程序各自計算：多個 API 工作處理程序各自允許至多 `max_attempts` 次。
 
-### 個人存取權杖
+### 個人存取權杖 {: #personal-access-tokens }
 
 PAT 不需組態區塊 — 它們一律被接受，且其儲存區隨控制平面結構描述一併建立。(REQ-1263) 可組態的是使用者在簽發時可要求的到期時間：1 至 366 天，或不設到期的永久權杖。見[安全模型](security.md#personal-access-tokens)。
 
-### 雙向 TLS
+### 雙向 TLS {: #mutual-tls }
 
 用戶端憑證驗證是以環境變數組態，而非在 `provisa.yaml` 中，與它所延伸的 TLS 憑證設定並列。(REQ-1228)
 
@@ -1089,11 +1142,11 @@ PAT 不需組態區塊 — 它們一律被接受，且其儲存區隨控制平�
 
 每一項都可依協定覆寫，命名方式與 TLS 設定相同。設定了模式卻沒有 CA，或模式不是這兩個值之一，都會拒絕啟動，而不是提供操作者以為已驗證的連線。
 
-### 透過 TLS 指向某個組織
+### 透過 TLS 指向某個組織 {: #addressing-an-org-over-tls }
 
 無需組態。在多組織部署上，pgwire 與 Bolt 從用戶端撥接的主機名稱讀取組織，該名稱由 TLS ClientHello 攜帶，正如 HTTP 從 `Host` 標頭讀取一樣。(REQ-1234) 連線到 `acme.provisa.dev` 的用戶端即請求組織 `acme`；除非通過驗證的主體是其成員，否則請求會被拒絕。以 IP 位址連線則不請求任何組織，這正是單組織部署上的每一條連線。
 
-### 完整驗證組態範例（已註解）
+### 完整驗證組態範例（已註解） {: #full-auth-config-example-commented-out }
 
 ```yaml
 # auth:
@@ -1130,7 +1183,7 @@ PAT 不需組態區塊 — 它們一律被接受，且其儲存區隨控制平�
 #     default_role: analyst
 ```
 
-## Upsert 變更操作
+## Upsert 變更操作 {: #upsert-mutations }
 
 對於具有主索引鍵的表，Provisa 會自動產生 `upsert_<table>` 變更操作欄位。(REQ-212) 它們會編譯成目標方言的 upsert — PostgreSQL 上的 `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...`，MySQL 上的 `ON DUPLICATE KEY UPDATE`。(REQ-212)
 
@@ -1160,7 +1213,7 @@ mutation {
 
 在 PostgreSQL 中編譯成 `SELECT DISTINCT ON (region) ...`。(REQ-213) 對非 PG 方言則使用視窗函式的替代做法。(REQ-213)
 
-## 欄位預設值
+## 欄位預設值 {: #column-presets }
 
 在插入／更新時自動注入值到欄位。(REQ-214) 於組態中按表定義。
 
@@ -1187,9 +1240,9 @@ tables:
 
 預設欄位在變更操作編譯期間、SQL 產生之前注入。(REQ-214) 它們不會出現在變更操作的輸入類型中。(REQ-214)
 
-## 繼承角色
+## 繼承角色 {: #inherited-roles }
 
-角色可透過 `parent_role_id` 從父角色繼承能力與網域存取權。(REQ-215) 階層在啟動時被攤平。(REQ-215)
+角色可透過 `parent_role_id` 從一個父角色繼承。(REQ-215) 繼承鏈在啟動時被攤平。(REQ-215) 子角色持有其祖先的能力與網域存取權的聯集；授予祖先的欄位、指標、函數或 webhook 亦授予子角色；祖先的 RLS 規則按資料表套用於子角色，最近的角色優先，子角色本身對某資料表的規則會取代父角色的規則。(REQ-1677)
 
 ```yaml
 roles:
@@ -1209,9 +1262,9 @@ roles:
     parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)
 ```
 
-支援多層繼承。(REQ-215) 子角色明確設定的 capabilities 與 domain_access 會與父角色的合併。(REQ-215)
+支援多層繼承。(REQ-215) 子角色明確設定的 capabilities 與 domain_access 會與父角色的合併。(REQ-215) 父角色必須是已存在的角色，不能是角色本身，也不能構成循環；每一種情況都會在儲存時被拒絕。(REQ-1677)
 
-## 排程觸發器
+## 排程觸發器 {: #scheduled-triggers }
 
 依排程呼叫 webhook URL 的 cron 型觸發器。(REQ-216) 使用 APScheduler。(REQ-216)
 
@@ -1243,7 +1296,7 @@ scheduled_triggers:
     role: loader
 ```
 
-## OrderBy 格式
+## OrderBy 格式 {: #orderby-format }
 
 OrderBy 使用 `{column: direction}` 格式，方向為六值列舉：(REQ-200, REQ-201)
 
@@ -1277,7 +1330,7 @@ OrderBy 使用 `{column: direction}` 格式，方向為六值列舉：(REQ-200, 
 }
 ```
 
-## 可觀測性
+## 可觀測性 {: #observability }
 
 ```yaml
 observability:
@@ -1295,7 +1348,7 @@ observability:
     redact_attributes: []             # additional keys dropped before sending to support
 ```
 
-### 遙測篩選器 [tool-verified]
+### 遙測篩選器 [tool-verified] {: #telemetry-filters-tool-verified }
 
 Provisa 執行兩條獨立的 OTLP 匯出路徑：你的內部收集器，以及選用的 Provisa 支援端點。(REQ-545) 每條路徑各有自己的篩選器。篩選器在跨距離開處理程序之前，於包覆的 `_FilteringExporter` 內執行 — 原始跨距物件永不被變更。(REQ-546) [tool-verified: `provisa/api/otel_setup.py` lines 156–207]
 
@@ -1325,21 +1378,21 @@ db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
-### 支援端點 [tool-verified]
+### 支援端點 [tool-verified] {: #support-endpoint-tool-verified }
 
 `support_endpoint`（或環境變數 `PROVISA_SUPPORT_OTLP_ENDPOINT`）會將遙測轉送給 Provisa 支援以供診斷。(REQ-548) 未設定時，沒有數據會經由這條路徑離開你的基礎架構。(REQ-548) 支援篩選器獨立於內部篩選器運作 — 你可以在兩邊匯出中都編修 SQL 字面值，同時仍與支援分享跨距時間與錯誤數據。(REQ-545) [tool-verified: `provisa/api/otel_setup.py` lines 238–288]
 
-### 端點協定偵測 [tool-verified]
+### 端點協定偵測 [tool-verified] {: #endpoint-protocol-detection-tool-verified }
 
 Provisa 從端點 URL 的配置選擇 OTLP/HTTP 或 OTLP/gRPC。(REQ-549) 以 `http://` 或 `https://` 開頭的 URL 使用 OTLP/HTTP，並自動附加 `/v1/traces`、`/v1/metrics` 與 `/v1/logs`。(REQ-549) 其他任何配置皆使用 OTLP/gRPC 並帶 `insecure=True`。(REQ-549) [tool-verified: `provisa/api/otel_setup.py` lines 60–70]
 
-## 聯邦引擎
+## 聯邦引擎 {: #federation-engine }
 
 組態聯邦引擎是選用的。預設為 `duckdb` — 零組態、行程內、不需外部服務 (REQ-989)。當你需要 MPP 規模，或想沿用既有的數據倉庫時，才選擇其他引擎。
 
 優先順序：`PROVISA_ENGINE` 環境變數 → 持久化的管理員 UI `federation_engine` 組態欄位 → `duckdb`。變更於服務重新啟動時生效。[tool-verified: `engine.py` `build_engine`]
 
-### 引擎總覽 [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`]
+### 引擎總覽 [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`] {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
 
 | 引擎鍵 | 標籤 | 方言 | MPP | 外部連結機制 | 驗證 |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |
@@ -1376,7 +1429,7 @@ Provisa 從端點 URL 的配置選擇 OTLP/HTTP 或 OTLP/gRPC。(REQ-549) 以 `h
 | `firebird` | Firebird | 依方言 | 否 | 無（僅落地） | 依方言的認證 |
 | `sqlalchemy` | 其他關聯式資料庫（以連線 URL 指定） | 依方言 | 否 | 無（僅落地） | 依方言的認證 |
 
-### 引擎參考
+### 引擎參考 {: #engine-reference }
 
 #### trino / trino-byo
 
@@ -1472,7 +1525,7 @@ PROVISA_ENGINE=synapse
 
 具體化儲存區預設為 `TENANT_DATABASE_URL`。
 
-#### 關聯式資料庫引擎（mysql、mariadb、oracle、mssql、db2、redshift、greenplum、cockroachdb、yugabytedb、opengauss、tidb、singlestore、vertica、exasol、teradata、saphana、sapase、sqlanywhere、monetdb、firebird）與 `sqlalchemy`
+#### 關聯式資料庫引擎（mysql、mariadb、oracle、mssql、db2、redshift、greenplum、cockroachdb、yugabytedb、opengauss、tidb、singlestore、vertica、exasol、teradata、saphana、sapase、sqlanywhere、monetdb、firebird）與 `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
 
 每個可透過網路定址的關聯式資料庫各有一個鍵，全都跑在同一套僅落地的執行環境上（不聯邦到外部數據來源）：每個數據來源都落地到儲存區，並在那裡被查詢。鍵用來選擇資料庫；`PROVISA_ENGINE_URL` 攜帶其方言所接受的 DSN。`sqlalchemy` 是沒有專屬鍵的資料庫的萬用選項。不提供檔案內嵌式儲存區（SQLite、Access）— 伺服器必須可透過網路連達。
 
@@ -1483,7 +1536,7 @@ PROVISA_ENGINE_URL="mysql+pymysql://user:pass@host:3306/db"
 
 具體化儲存區預設為 `TENANT_DATABASE_URL`。
 
-### 具體化儲存區
+### 具體化儲存區 {: #materialization-store }
 
 當某個數據來源無法即時附加（所選引擎沒有對應的 ATTACH 連接器）時，它會落地到該引擎的具體化儲存區。解析順序：明確的 `PROVISA_MATERIALIZE_URL` → 引擎宣告的預設值 → 直接報錯（不會悄悄退回）。[tool-verified: `engine.py` `materialize_store`]
 
@@ -1491,7 +1544,7 @@ DuckDB 宣告其內嵌檔案（`~/.provisa/materialize.duckdb`）為預設值。
 
 儲存區決定複本的索引對聯結起什麼作用：PostgreSQL 儲存區會為複本建立索引，在其中執行 SQL 的引擎會讀取這些索引；而 DuckDB 則在每條語句的複本拷貝之上聯結其內嵌檔案中的複本。請參閱 [Replicas](replicas.md#use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it)。(REQ-2015)
 
-### 各數據來源的聯邦提示
+### 各數據來源的聯邦提示 {: #per-source-federation-hints }
 
 標準 host/port/user/password 欄位無法攜帶的延伸連線參數，放在數據來源的 `federation_hints` 中。各類型的提示鍵見上方的數據來源類型參考。一個整合的範例：
 
@@ -1532,7 +1585,7 @@ sources:
 
 若使用 Google Cloud 數據來源，請將 `GOOGLE_APPLICATION_CREDENTIALS` 設為服務帳戶金鑰檔案的路徑。若使用 Fabric 與 Synapse，請以 `az login`（開發者）或受控識別（生產環境）驗證 — 引擎透過 `azure-identity` 的 `DefaultAzureCredential` 讀取認證。
 
-## 環境變數
+## 環境變數 {: #environment-variables }
 
 | 變數 | 預設 | 描述 |
 | ---------- | --------- | ------------- |

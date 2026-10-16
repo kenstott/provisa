@@ -1,8 +1,8 @@
-# Rilascio delle versioni
+# Rilascio delle versioni {: #releasing }
 
 I rilasci vengono attivati eseguendo il push di un tag git. Il nome del tag determina il canale.
 
-## Convenzioni sui tag
+## Convenzioni sui tag {: #tag-conventions }
 
 | Formato tag | Canale | Tipo di GitHub Release |
 | ----------- | --------- | ------------------- |
@@ -11,7 +11,7 @@ I rilasci vengono attivati eseguendo il push di un tag git. Il nome del tag dete
 | `v1.2.3-rc.1` | rc | Pre-release |
 | `v1.2.3` | stable | Latest release |
 
-## Creare un rilascio
+## Creare un rilascio {: #creating-a-release }
 
 ```bash
 # Alpha
@@ -40,7 +40,7 @@ Il workflow di CI (`build-dmg.yml`, denominato "Build Provisa Packages") si atti
 9. **Build and test Python client**, poi **Publish to PyPI**
 10. **Publish GitHub Release** — carica tutti gli asset, imposta il flag pre-release per alpha/beta/rc
 
-## Asset del rilascio
+## Asset del rilascio {: #release-assets }
 
 Ogni rilascio pubblica i seguenti asset, tutti allegati al GitHub Release (il wheel viene pubblicato anche su PyPI):
 
@@ -64,14 +64,14 @@ Ogni rilascio pubblica i seguenti asset, tutti allegati al GitHub Release (il wh
 La versione del client Python viene convertita automaticamente nel formato PEP 440:
 `v0.1.0-alpha.1` → `0.1.0a1`, `v0.1.0-beta.1` → `0.1.0b1`, `v0.1.0-rc.1` → `0.1.0rc1`.
 
-## Configurazione della pubblicazione su PyPI (una tantum)
+## Configurazione della pubblicazione su PyPI (una tantum) {: #pypi-publishing-setup-one-time }
 
 1. Copiare il proprio token API da `~/.pypirc` (il valore `pypi-...` per `pypi.org`)
 2. Aggiungerlo come secret del repository denominato `PYPI_API_TOKEN` in **Settings → Secrets → Actions**
 
 Il job `publish-pypi` pubblicherà quindi automaticamente a ogni tag.
 
-## Secret del repository richiesti
+## Secret del repository richiesti {: #required-repository-secrets }
 
 Configurare quanto segue in **Settings → Secrets → Actions**:
 
@@ -87,7 +87,7 @@ Configurare quanto segue in **Settings → Secrets → Actions**:
 
 Le build senza questi secret vengono completate correttamente ma producono un DMG non firmato/non notarizzato (gli utenti vedranno un avviso di Gatekeeper).
 
-## Esportazione del certificato .p12
+## Esportazione del certificato .p12 {: #exporting-the-p12-certificate }
 
 1. Aprire **Keychain Access** → portachiavi di accesso → **My Certificates**
 2. Cercare **Developer ID Application: Your Name (TEAMID)** — espandere per confermare che la chiave privata sia annidata sotto di esso
@@ -100,7 +100,7 @@ Le build senza questi secret vengono completate correttamente ma producono un DM
 
 5. Incollarlo come valore di `APPLE_CERT_P12_BASE64`; impostare `APPLE_CERT_P12_PASSWORD` con la password del passaggio 3
 
-## Trovare il nome del proprio certificato
+## Trovare il nome del proprio certificato {: #finding-your-certificate-name }
 
 ```bash
 security find-identity -v -p codesigning | grep "Developer ID Application"
@@ -108,7 +108,7 @@ security find-identity -v -p codesigning | grep "Developer ID Application"
 
 Copiare la stringa completa tra virgolette — quello è il valore per `APPLE_DEVELOPER_ID`.
 
-## Eliminazione di un tag errato
+## Eliminazione di un tag errato {: #deleting-a-bad-tag }
 
 ```bash
 git tag -d v1.2.3-alpha.1

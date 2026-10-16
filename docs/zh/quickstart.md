@@ -1,4 +1,4 @@
-# 开发者快速入门
+# 开发者快速入门 {: #developer-quick-start }
 
 如需在不从源代码构建的情况下评估 Provisa，请参见[快速入门](index.md)——下载 macOS、Windows 或 Linux 安装程序并运行 `provisa start`。(REQ-223, REQ-224, REQ-227)
 
@@ -6,7 +6,7 @@
 
 ---
 
-## 前置条件
+## 前置条件 {: #prerequisites }
 
 - **Docker Desktop**（正在运行）
 - **Python 3.12+**
@@ -15,7 +15,7 @@
 
 ---
 
-## 1. 克隆并设置
+## 1. 克隆并设置 {: #1-clone-and-set-up }
 
 ```bash
 git clone https://github.com/kenstott/provisa.git
@@ -27,7 +27,7 @@ cd provisa
 
 ---
 
-## 2. 启动一切
+## 2. 启动一切 {: #2-start-everything }
 
 ```bash
 ./start-ui.sh
@@ -53,7 +53,7 @@ Provisa running:
 
 **Ctrl+R** 只重启后端（在热重载未能捕获的配置更改之后很有用）。（REQ-619）
 
-### 选项
+### 选项 {: #options }
 
 `--no-observability` —— 禁用分布式追踪。默认情况下，`start-ui.sh` 会在尚未存在时下载 OpenTelemetry Java agent，修补 Trino 的 `jvm.config` 以加载它，并启动 OTel collector、Prometheus、Tempo 和 Grafana。传入 `--no-observability` 可跳过所有这些操作。`jvm.config` 补丁会在 Ctrl+C 时被还原。[tool-verified: start-ui.sh lines 15, 67–82] (REQ-330)
 
@@ -89,7 +89,7 @@ UI 端到端测试套件用来搭建这些数据源的正是同一个 `provision
 
 ---
 
-## 3. 连接一个数据源
+## 3. 连接一个数据源 {: #3-connect-a-data-source }
 
 Provisa 从 `config/` 读取配置。添加一个数据源文件——例如 `config/sources/my-db.yaml`：
 
@@ -122,7 +122,7 @@ export MY_DB_PASSWORD=secret
 
 ---
 
-## 4. 运行您的第一条查询
+## 4. 运行您的第一条查询 {: #4-run-your-first-query }
 
 ```bash
 # GraphQL
@@ -140,7 +140,7 @@ curl -s -X POST http://localhost:8001/data/sql \
 
 ---
 
-## 5. 打开 UI
+## 5. 打开 UI {: #5-open-the-ui }
 
 在浏览器中打开 `http://localhost:3000`。
 
@@ -155,7 +155,7 @@ curl -s -X POST http://localhost:8001/data/sql \
 
 ---
 
-## 故障排查
+## 故障排查 {: #troubleshooting }
 
 **后端无法启动** —— 检查 `.logs/server.log`。最常见的原因是缺少环境变量或 8001 端口冲突。[tool-verified: start-ui.sh line 202] (REQ-618)
 
@@ -167,7 +167,7 @@ curl -s -X POST http://localhost:8001/data/sql \
 
 ---
 
-## 后续步骤
+## 后续步骤 {: #next-steps }
 
 | 目标 | 文档 |
 | ------ | ----- |

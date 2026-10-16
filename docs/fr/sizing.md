@@ -1,10 +1,10 @@
-# Dimensionnement et réglage
+# Dimensionnement et réglage {: #sizing-and-tuning }
 
 L'outil de dimensionnement mesure votre propre déploiement Provisa sous votre propre charge. À partir de ces mesures, il rédige un guide de dimensionnement et de réglage : combien de cœurs physiques et de processus worker la charge exige, et ce que rapporte chaque réglage. Chaque chiffre du guide provient d'une mesure ; après un changement du déploiement ou de la charge, vous relancez donc l'outil et régénérez le guide.
 
 L'outil se trouve dans le dépôt Provisa, sous `demo/named/perf/bench/`. Lancez chaque commande ci-dessous depuis ce répertoire, avec l'environnement Python du dépôt (`../../../../.venv/bin/python3`).
 
-## Ce qu'il rapporte
+## Ce qu'il rapporte {: #what-it-reports }
 
 Une exécution de dimensionnement est composée de plusieurs exécutions de benchmark contre votre déploiement. Chacune fait varier un seul élément :
 
@@ -23,7 +23,7 @@ Le coût désigne ici le temps CPU de Provisa par requête, en millisecondes. Le
 
 À partir des exécutions, `bench_report.py` ajuste un modèle de coût par moteur, transport et source : un coût de base plus un coût par champ, filtre, ligne et jointure, une jointure entre sources étant chiffrée selon la façon dont ses deux extrémités sont lues. Quand le moteur s'exécute comme son propre serveur et que le CPU de son conteneur est mesuré, le moteur reçoit lui aussi un modèle de coût. [tool-verified: `demo/named/perf/bench/cost_model.py:fit`] `sizing_guide.py` transforme le rapport en guide. À partir d'un contrat qui décrit votre charge, il dimensionne aussi cette charge.
 
-## Écrire un contrat de configuration
+## Écrire un contrat de configuration {: #write-a-setup-contract }
 
 Le contrat de configuration est un fichier YAML unique. Il nomme les endpoints de votre déploiement, les tables que le benchmark peut lire, la forme des requêtes et la charge. Le benchmark vérifie le contrat contre le déploiement avant de s'exécuter. Il refuse une table, une colonne ou une jointure que le déploiement n'expose pas. [tool-verified: `demo/named/perf/bench/setup_contract.py:setup_from_dict`]
 
@@ -133,9 +133,9 @@ Le format du contrat est défini par `setup_contract.py` et `contract_parse.py` 
 
 Décrivez les requêtes telles qu'elles sont réellement. Le guide dimensionne exactement les requêtes que ce contrat génère : le dimensionnement les tire du même générateur à graine que celui d'une exécution. [tool-verified: `demo/named/perf/bench/sizing.py:_transport` uses `request_mix.RequestGenerator`]
 
-## L'exécuter
+## L'exécuter {: #run-it }
 
-### 1. Résoudre les noms une fois
+### 1. Résoudre les noms une fois {: #1-resolve-the-names-once }
 
 Lancez une fois le contrat de référence. L'exécution demande au déploiement comment chaque transport nomme vos tables et écrit `resolved-names.json` à côté de ses résultats. [tool-verified: `demo/named/perf/bench/optimistic_load.py:resolve_names`]
 
@@ -146,7 +146,7 @@ Lancez une fois le contrat de référence. L'exécution demande au déploiement 
 
 `--engine` nomme le moteur de fédération qu'exécute votre déploiement (`duckdb`, `pg` ou `trino`). `--server-pid` est l'identifiant de processus du serveur ; l'exécution lit le temps CPU de ce processus et de ses processus enfants (les workers). Elle lit le processus directement, ce qui ne fonctionne que lorsque le générateur de charge s'exécute sur l'hôte du serveur. [tool-verified: `demo/named/perf/bench/optimistic_load.py:_server_cpu_seconds`]
 
-### Mesurer le CPU du serveur depuis un autre hôte
+### Mesurer le CPU du serveur depuis un autre hôte {: #measuring-the-servers-cpu-from-another-host }
 
 Exécutez si possible le générateur de charge sur sa propre machine : il ne prend alors aucun cœur au serveur. Pour mesurer de là le CPU du serveur, démarrez `server_cpu_agent.py` sur l'hôte du serveur et donnez à l'exécution son URL à la place de `--server-pid` :
 
@@ -163,7 +163,7 @@ L'agent répond un seul chiffre, le même que lit `--server-pid` : `GET /` renvo
 
 `--listen` est obligatoire : l'agent n'a pas d'adresse par défaut. Liez-le à une adresse privée que seul le générateur de charge peut atteindre, jamais à une interface publique, et arrêtez-le (Ctrl+C) quand les exécutions sont terminées.
 
-### 2. Planifier les exécutions
+### 2. Planifier les exécutions {: #2-plan-the-runs }
 
 ```bash
 ../../../../.venv/bin/python3 sweeps.py plan --setup acme.yaml --out results/sizing \
@@ -185,7 +185,7 @@ Le plan écrit un contrat par exécution et un `manifest.json`. Une exécution q
 
 Les exécutions de réplique mesurent le coût de rafraîchissement de la réplique pendant une fenêtre sans charge. Définissez `load.idle_window_s` dans votre contrat (par exemple `120`) avant de les planifier. Sans lui, le rapport refuse le point d'équilibre avec `no idle.json`. [tool-verified: `demo/named/perf/bench/bench_report.py:_break_even`]
 
-### 3. Lancer chaque contrat planifié
+### 3. Lancer chaque contrat planifié {: #3-run-every-planned-contract }
 
 Chaque entrée du manifeste nomme son fichier de contrat. Lancez chacune dans `results/sizing/results/<run name>` :
 
@@ -202,7 +202,7 @@ Ajoutez `--apply-replication` à chaque exécution dont l'entrée du manifeste p
 
 Chaque exécution porte un `server_env` dans le manifeste : le serveur doit tourner avec lui. Pour une exécution de curseurs, c'est son moteur, `{"PROVISA_ENGINE": "duckdb"}` ; lancez toutes les exécutions d'un moteur, puis redémarrez le serveur avec le suivant. Pour une exécution de workers, il s'y ajoute ses workers et sa borne de requêtes en cours, par exemple `{"PROVISA_WORKERS": "16", "PROVISA_REQUEST_THREADS": "2", "PROVISA_ENGINE": "pg"}` : `PROVISA_WORKERS` est le nombre de processus worker et `PROVISA_REQUEST_THREADS` fixe `concurrency.request_threads`, les requêtes en cours que chaque worker exécute à la fois. [tool-verified: `provisa/core/settings_catalog.py` `concurrency.request_threads`, `env="PROVISA_REQUEST_THREADS"`] Attendez que tous les workers servent (`/health` indique `workers.ready` sur `workers.expected`) avant de démarrer l'exécution.
 
-### 4. Construire le rapport
+### 4. Construire le rapport {: #4-build-the-report }
 
 ```bash
 ../../../../.venv/bin/python3 bench_report.py --root results/sizing --out results/sizing/report.json
@@ -210,7 +210,7 @@ Chaque exécution porte un `server_env` dans le manifeste : le serveur doit tou
 
 `--tolerance` (par défaut `0.05`) fixe à quelle distance du meilleur débit mesuré un réglage de workers doit se trouver pour être jugé suffisant. [tool-verified: `demo/named/perf/bench/bench_report.py:DEFAULT_TOLERANCE`]
 
-### 5. Générer le guide
+### 5. Générer le guide {: #5-generate-the-guide }
 
 ```bash
 ../../../../.venv/bin/python3 sizing_guide.py --report results/sizing/report.json --out guide.md \
@@ -219,9 +219,9 @@ Chaque exécution porte un `server_env` dans le manifeste : le serveur doit tou
 
 Sans `--setup`, le guide ne contient que les sections de réglage. Avec lui, le guide dimensionne la `workload` du contrat avec le moteur que nomme `--engine` (`pg` par défaut) ; un moteur que les exécutions n'ont pas mesuré est refusé.
 
-## Lire le guide
+## Lire le guide {: #read-the-guide }
 
-### Dimensionner cette charge
+### Dimensionner cette charge {: #sizing-this-workload }
 
 Le guide termine cette section par une ligne, par exemple : **12 physical cores, 24 worker processes, 2 in-flight requests per worker.** Au-dessus, un tableau présente chaque transport et chaque source : la part des requêtes, la moyenne des champs, filtres, lignes et jointures, la part de succès de cache et le CPU que coûte une requête.
 
@@ -237,17 +237,17 @@ L'outil ne dimensionne rien qu'il n'ait mesuré. Une partie de la charge pour la
 - un réglage de réplication ou un TTL différent de celui qui a été mesuré
 - des succès de cache quand les exécutions n'ont pas de chiffres de cache
 
-### Processus worker et requêtes en cours
+### Processus worker et requêtes en cours {: #worker-processes-and-in-flight-requests }
 
 Pour chaque transport, le guide indique le plus petit nombre de workers dont le débit maximal reste dans la tolérance du meilleur. À ce nombre de workers, il choisit ensuite le plus petit nombre de requêtes en cours par worker qui fait de même. Il présente ce réglage sous deux formes : workers par cœur physique et requêtes en cours par worker. Davantage de l'un ou l'autre n'apporte pas de débit. Moins laisse des cœurs inactifs. Le tableau donne aussi le pic de requêtes par seconde et sa latence p99. Chaque point mesuré est listé en dessous.
 
 Le facteur de capacité est le nombre de requêtes par seconde que fournit un cœur physique, multiplié par le CPU que coûte une requête isolée, divisé par 1000. Au-dessus de 1, le cœur fait plus que les requêtes d'un seul thread, comme lorsque ses threads matériels servent tous les deux. [tool-verified: `demo/named/perf/bench/bench_report.py:_server`]
 
-### Ce que coûte une requête
+### Ce que coûte une requête {: #what-a-request-costs }
 
 Pour chaque moteur, transport et source, côte à côte : le coût de base d'une requête sans cache, le coût qu'ajoutent chaque champ, filtre, ligne et jointure, et la qualité d'ajustement du modèle aux mesures (R², 1 étant un ajustement parfait). Une jointure entre sources a trois coûts, selon la façon dont ses deux extrémités sont lues : toutes deux en direct, toutes deux depuis des répliques, ou une de chaque. Un tiret signifie que les exécutions n'ont pas fait varier ce curseur. Quand le moteur s'exécute comme son propre serveur, un second tableau donne de la même façon le CPU du moteur : une requête que sert le moteur, comme une jointure entre sources, y montre son temps moteur. Servez-vous de ces chiffres pour voir ce que coûterait un changement de vos requêtes avant de l'effectuer : deux champs de plus dans chaque requête ajoutent le double du coût par champ.
 
-### L'activation du cache de réponses
+### L'activation du cache de réponses {: #the-response-cache-opt-in }
 
 Pour chaque transport et chaque source : le CPU d'un échec, d'un succès et ce qu'économise un succès. Une requête n'est servie depuis le cache que si elle l'active et répète une requête antérieure ; l'économie s'applique donc aux requêtes répétées. Activez le cache pour les requêtes répétées. [tool-verified: `demo/named/perf/bench/bench_report.py:_cache`]
 

@@ -1,8 +1,8 @@
-# Importer depuis Hasura
+# Importer depuis Hasura {: #importing-from-hasura }
 
 Provisa peut convertir des métadonnées Hasura existantes en un `config.yaml` Provisa, en préservant les tables suivies, les relations, les autorisations et les schémas distants.
 
-## Import interactif (Admin → Import Hasura Config)
+## Import interactif (Admin → Import Hasura Config) {: #interactive-import-admin-import-hasura-config }
 
 La surface d'administration exécute les mêmes convertisseurs : un import ne nécessite ni accès shell ni allers-retours de fichier de configuration. Requiert la capacité `org_settings` ; l'import atterrit dans l'organisation dans laquelle agit la session.
 
@@ -18,7 +18,7 @@ Endpoints : `POST /admin/import/hasura/preview` et `POST /admin/import/hasura/ap
 
 ## Hasura v2
 
-### Exporter les métadonnées
+### Exporter les métadonnées {: #export-metadata }
 
 Depuis votre console ou CLI Hasura :
 
@@ -35,7 +35,7 @@ curl -X POST http://localhost:8080/v1/metadata \
   > metadata.json
 ```
 
-### Convertir
+### Convertir {: #convert }
 
 Le convertisseur v2 lit un **répertoire** de métadonnées Hasura (la structure produite par `hasura metadata export`, ou la structure plate `tables.yaml` / `actions.yaml`) et écrit une configuration Provisa :
 
@@ -55,7 +55,7 @@ Options :
 | `--auth-env-file` | Fichier `.env` avec la configuration d'authentification ; convertit JWT/JWK, le secret admin, et la carte des revendications |
 | `--dry-run` | Analyse et valide sans écrire de sortie |
 
-### Ce qui est converti
+### Ce qui est converti {: #what-gets-converted }
 
 | Concept Hasura | Équivalent Provisa |
 | --------------- | ------------------- |
@@ -68,11 +68,11 @@ Options :
 | Schéma distant | Enregistrement de source `graphql_remote` plus une table atterrie par champ racine Query que les SDL de rôle exposent ; une colonne est visible pour tout rôle dont le SDL l'expose, un argument racine non nul devient une colonne de filtre natif `_nf_`, les champs imbriqués sont nommés dans un avertissement. (REQ-1681) |
 | Champ calculé | Entrée `functions[]` avec `kind: query` |
 
-### Connexions et domaines dans l'onglet d'import
+### Connexions et domaines dans l'onglet d'import {: #connections-and-domains-on-the-import-tab }
 
-L'export nomme ses bases de données par variable d'environnement, donc après la première conversion, l'onglet liste chaque source SQL avec la connexion devinée par la conversion. Renseignez l'hôte, le port, la base de données, le nom d'utilisateur et le mot de passe, puis reconvertissez ; seuls les champs modifiés sont transmis, comme des surcharges de source. Les lignes de domaine couvrent chaque schéma, sous-graphe et schéma distant que porte le téléversement ; chacune est un sélecteur parmi les domaines existants de l'organisation qui accepte aussi un nom saisi, marqué « nouveau domaine » quand il ne correspond à aucun. Appliquer fusionne avec ce que l'organisation possède déjà, sauf si la case à cocher de remplacement est activée. (REQ-1687)
+L'export nomme ses bases de données par variable d'environnement, donc après la première conversion, l'onglet liste chaque source SQL avec la connexion devinée par la conversion. Renseignez l'hôte, le port, la base de données, le nom d'utilisateur et le mot de passe, puis reconvertissez ; seuls les champs modifiés sont transmis, comme des surcharges de source. Les lignes de domaine couvrent chaque schéma, sous-graphe et schéma distant que porte le téléversement ; chacune est un sélecteur parmi les domaines existants de l'organisation qui accepte aussi un nom saisi, marqué « nouveau domaine » quand il ne correspond à aucun.Appliquer fusionne avec ce que l'organisation possède déjà. (REQ-1687)
 
-### Les types proviennent de la source à l'aperçu
+### Les types proviennent de la source à l'aperçu {: #types-come-from-the-source-at-preview }
 
 Un export Hasura nomme les colonnes sans types, et une table suivie sans autorisation ne nomme aucune colonne. L'aperçu s'exécute avec les connexions de source fournies, donc il lit le `information_schema.columns` de chaque source SQL accessible : chaque colonne non typée reçoit le type de la source mappé vers le vocabulaire IR, et une table sans colonnes prend toutes les colonnes que la source possède, visibles pour `org_admin` seul, puisque Hasura ne les exposait à aucun autre rôle. Une source que l'aperçu ne peut pas atteindre est signalée par un avertissement `[sources]` et ses colonnes restent non typées, à finaliser avant l'application. (REQ-1691, REQ-1684)
 
@@ -88,11 +88,11 @@ Un export Hasura nomme les colonnes sans types, et une table suivie sans autoris
 
 ## Hasura DDN (v3)
 
-### Localiser le projet HML
+### Localiser le projet HML {: #locate-the-hml-project }
 
 Le convertisseur DDN lit directement le **répertoire** du projet DDN contenant les fichiers `.hml` — aucune étape de build de supergraphe n'est requise. Le premier composant de répertoire sous la racine du projet est pris comme nom de sous-graphe ; les fichiers sous `globals/` sont assignés au sous-graphe `globals`.
 
-### Convertir
+### Convertir {: #convert_1 }
 
 ```bash
 python -m provisa.ddn ./my-ddn-project -o config.yaml
@@ -112,7 +112,7 @@ Options :
 
 Les métadonnées `AggregateExpression` sont préservées dans un fichier annexe `*-aggregates.yaml`.
 
-### Ce qui est converti
+### Ce qui est converti {: #what-gets-converted_1 }
 
 | Concept DDN | Équivalent Provisa |
 | ------------ | ------------------- |
@@ -130,7 +130,7 @@ Les métadonnées `AggregateExpression` sont préservées dans un fichier annexe
 
 ---
 
-## Après l'import
+## Après l'import {: #after-import }
 
 1. Révisez le `config.yaml` généré — portez attention aux `warnings` du convertisseur
 2. Vérifiez les identifiants de connexion (le convertisseur utilise des valeurs d'espace réservé)

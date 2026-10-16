@@ -2,14 +2,14 @@
 <!-- MD046 off: mkdocs-material `===` content-tab bodies are indented, which the linter
      misreads as indented code blocks; the fenced code blocks below are required for rendering. -->
 
-# 数据建模（Entities 与 Facts）
+# 数据建模（Entities 与 Facts） {: #data-modeling-entities-facts }
 
 Provisa 提供两个声明式基元——`entity` 和 `fact`——涵盖了每个星型模式（star schema）和
 Data Vault 赖以构建的所有构建块。声明规格，Provisa 会将其精确转换为具体化视图、双时态
 （bitemporal）和关系定义，无需你手工编写（REQ-1164）。[tool-verified: modeling.py module
 docstring lines 11-28]
 
-## Entity 与 Fact 是什么
+## Entity 与 Fact 是什么 {: #what-entities-and-facts-are }
 
 **entity** 是源关系的一个带键、去重、可选历史化的投影。你为其命名、指向一个数据源、
 声明 entity key 和要保留的属性，并选择一种历史模式。Provisa 会编写视图的 SQL 并注册该
@@ -27,7 +27,7 @@ key-set (DV link)"]
 Databricks 中物化，或者在 MPP 引擎之上保持虚拟——而无需重新建模。[tool-verified:
 modeling.py docstring lines 25-28]
 
-## 历史模式
+## 历史模式 {: #history-modes }
 
 entity 有三种可用模式 [tool-verified: `_HISTORY` constant at modeling.py line 38,
 `_HISTORY_MODE` dict at modeling.py line 40]：
@@ -44,7 +44,7 @@ entity 有三种可用模式 [tool-verified: `_HISTORY` constant at modeling.py 
 
 fact 没有历史模式——时态覆盖范围由底层 entity 的历史提供。
 
-## 度量与聚合
+## 度量与聚合 {: #measures-and-aggregations }
 
 度量以 `column:agg` 对的形式声明。支持的聚合方式 [tool-verified: `_AGGS` at modeling.py
 line 41]：
@@ -53,14 +53,14 @@ line 41]：
 
 默认聚合方式为 `sum` [tool-verified: `Measure.agg` default at modeling.py line 75]。
 
-## 实例演练：Customer entity + Sales fact
+## 实例演练：Customer entity + Sales fact {: #worked-example-customer-entity-sales-fact }
 
-### 源表
+### 源表 {: #the-source-tables }
 
 - `raw.customers`——id、name、region、tier
 - `raw.orders`——order_id、customer_id、amount、quantity
 
-### 注册 Customer entity
+### 注册 Customer entity {: #register-the-customer-entity }
 
 === "Admin UI"
 
@@ -101,7 +101,7 @@ SELECT "id", "name", "region", "tier" FROM "raw"."customers"
 -- registered as a bitemporal delta MV, entity key: ["id"]
 ```
 
-### 注册 Sales fact
+### 注册 Sales fact {: #register-the-sales-fact }
 
 === "Admin UI"
 
@@ -153,7 +153,7 @@ GROUP BY "order_id", "customer_id"
 [tool-verified: `fact_table_input` in modeling_register.py lines 89-98, cardinality at
 line 95]
 
-## Model 表单（管理界面）
+## Model 表单（管理界面） {: #the-model-form-admin-ui }
 
 **+ Model** 按钮出现在 **Tables** 页面（提示："Model an entity or fact (star schema /
 Data Vault)"）。[tool-verified: tablesPage.json line 13; TablesPage.tsx lines 441-450]
@@ -161,7 +161,7 @@ Data Vault)"）。[tool-verified: tablesPage.json line 13; TablesPage.tsx lines 
 弹窗顶部的分段控件在 **Entity (dimension)** 和 **Fact** 之间切换。
 [tool-verified: ModelingForm.tsx lines 102-110]
 
-### Entity 字段
+### Entity 字段 {: #entity-fields }
 
 [tool-verified: ModelingForm.tsx lines 141-171; modelingForm.json]
 
@@ -174,7 +174,7 @@ Data Vault)"）。[tool-verified: tablesPage.json line 13; TablesPage.tsx lines 
 | Attributes | 否 | 逗号分隔的属性列，例如 `name, region, tier` |
 | History | 否 | `none` / `scd2` / `snapshot`；默认为 `none` |
 
-### Fact 字段
+### Fact 字段 {: #fact-fields }
 
 [tool-verified: ModelingForm.tsx lines 172-196; modelingForm.json]
 
@@ -190,7 +190,7 @@ Data Vault)"）。[tool-verified: tablesPage.json line 13; TablesPage.tsx lines 
 当度量中省略 `agg`（写 `amount` 而非 `amount:sum`）时，默认值为 `sum`。
 [tool-verified: ModelingForm.tsx line 73 `agg: agg || "sum"`]
 
-## GraphQL API
+## GraphQL API {: #the-graphql-api }
 
 两个 mutation 都位于管理 schema 中。[tool-verified: schema_mutation.py lines 449-472]
 
@@ -251,11 +251,11 @@ mutation RegisterFact($input: FactInput!) {
 `Fact 'Sales' registered with 1 dimension link(s)`。
 [tool-verified: schema_mutation.py line 471]
 
-## Kimball 星型模式与 Data Vault
+## Kimball 星型模式与 Data Vault {: #kimball-star-schema-and-data-vault }
 
 这两种模式都不需要独立的工具。同一组基元可以组合成两者。
 
-### Kimball 星型模式
+### Kimball 星型模式 {: #kimball-star-schema }
 
 本演练构建一个三维度的星型模式。新增两张源表：
 
@@ -266,7 +266,7 @@ mutation RegisterFact($input: FactInput!) {
 
 此处 `raw.orders` 也新增了 `product_id` 和 `order_date` 列。[inferred]
 
-#### 选择 SCD 类型
+#### 选择 SCD 类型 {: #choosing-scd-type }
 
 历史模式是 SCD Type 1 与 Type 2 之间唯一的开关：
 
@@ -282,14 +282,14 @@ at lines 115-119]
 当前 tier——使用 `scd2`。对于稳定的查找表，使用 `none`。日期基准表（date spine）永远
 不会变化。若产品目录只需要当前价格，则可以每次刷新时重建。
 
-#### 粒度决策
+#### 粒度决策 {: #grain-decision }
 
 粒度是 fact 所回答的最低细节层次。`order_id` 使每个订单对应一行，保留了统计唯一订单数、
 以及在订单粒度上与任意维度连接的能力。更粗的粒度——例如 `["customer_id", "order_date"]`
 ——会在订单之间预先聚合，并永久丢弃该细节。声明业务所需的最窄粒度；更粗的汇总之后可以
 低成本地派生出来。
 
-#### 注册维度
+#### 注册维度 {: #register-the-dimensions }
 
 **Customer**（SCD Type 2——tier 变更必须保留）：
 
@@ -357,7 +357,7 @@ mutation {
 SELECT "date_key", "year", "quarter", "month" FROM "raw"."date_spine"
 ```
 
-#### 在三个维度上注册 Sales fact
+#### 在三个维度上注册 Sales fact {: #register-the-sales-fact-across-three-dimensions }
 
 粒度：`order_id`。三个维度引用——每个一个 FK 列。两个度量都是可加总的总和。
 
@@ -444,7 +444,7 @@ entity name as `target_table` at modeling.py lines 138-140; fact_table_input wir
 
 本例在 `raw.customers` 和 `raw.orders` 之上构建一个最小化的 vault。
 
-#### Hub
+#### Hub {: #hubs }
 
 Hub 只包含 entity key，不含其他内容。`attributes: []` 配合 `history: "none"` 会产生
 一个去重的当前键集合；属性历史完全保存在 satellite 中。
@@ -517,7 +517,7 @@ SELECT "id", "name", "region", "tier" FROM "raw"."customers"
 `CustomerSat` 和 `CustomerHub` 都以 `id` 为键。Hub 是稳定的连接目标；satellite 通过
 双时态层提供某一时间点的属性访问。
 
-#### Link（无度量的 fact）
+#### Link（无度量的 fact） {: #link-measureless-fact }
 
 Link 记录哪些 hub key 曾经共同出现——仅键，无度量。当 `measures` 为空时，Provisa 会
 省略 `GROUP BY` [tool-verified: modeling.py lines 130-131: `if f.measures: view_sql +=
@@ -539,8 +539,8 @@ mutation {
 }
 ```
 
-`group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id",
-"customer_id"]`。无度量，因此无 `GROUP BY`。生成 [tool-verified: fact_registration
+`group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`。
+无度量，因此无 `GROUP BY`。生成 [tool-verified: fact_registration
 modeling.py lines 125-131]：
 
 ```sql
@@ -551,7 +551,7 @@ SELECT "order_id", "customer_id" FROM "raw"."orders"
 `OrderCustomerLink.order_id → OrderHub`，两者均为 many-to-one
 [tool-verified: modeling_register.py lines 89-98]。
 
-#### Bridge / 聚合 link
+#### Bridge / 聚合 link {: #bridge-aggregate-link }
 
 为 link 添加度量后，Provisa 会发出 `GROUP BY`，生成一个预聚合的 bridge。在 `order_id`
 粒度下、每个订单一个客户的情况下，结果是每个订单一行聚合记录：
@@ -572,8 +572,8 @@ mutation {
 }
 ```
 
-`group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id",
-"customer_id"]`（维度列表中重复的 `order_id` 被 `_dedup` 剔除）。生成
+`group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`
+（维度列表中重复的 `order_id` 被 `_dedup` 剔除）。生成
 [tool-verified: fact_registration modeling.py lines 125-131]：
 
 ```sql
@@ -585,7 +585,7 @@ GROUP BY "order_id", "customer_id"
 模型本身不决定方法论。粒度、一致性、SCD 选择以及 hub/satellite 拆分仍然是建模者的
 决定。Provisa 只负责执行。[tool-verified: modeling.py docstring lines 25-26]
 
-## 指标（Metrics）（REQ-1317、REQ-1318、REQ-1320）
+## 指标（Metrics）（REQ-1317、REQ-1318、REQ-1320） {: #metrics-req-1317-req-1318-req-1320 }
 
 **指标**（metric）是一个具名、受治理的聚合定义，本身没有粒度。粒度——即聚合所按的
 维度——在查询时由调用方绑定，而非在定义时绑定。这正是指标与视图的区别：视图在创建时
@@ -593,7 +593,7 @@ GROUP BY "order_id", "customer_id"
 `provisa/core/models.py` lines 452–455: "A named, governed aggregate definition with no
 grain of its own... grain is bound at query time by the requested dimension set"]
 
-### Metric 对象
+### Metric 对象 {: #the-metric-object }
 
 [tool-verified: `Metric` class, `provisa/core/models.py` lines 451–476]
 
@@ -626,7 +626,7 @@ metrics:
     ai_context: "Net revenue: total order amounts minus approved refunds. Use for P&L."
 ```
 
-### 查询一个指标
+### 查询一个指标 {: #querying-a-metric }
 
 编译器保留了 `metrics` schema。[tool-verified: `METRICS_SCHEMA = "metrics"`,
 `provisa/compiler/metric_expand.py` line 43] 每个指标都可以在该 schema 中以虚拟关系的
@@ -654,7 +654,7 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 [tool-verified: `_JoinPlan.resolve_dimension`, `provisa/compiler/metric_expand.py` lines
 190–228]
 
-### 由 fact 规格生成的指标（REQ-1320）
+### 由 fact 规格生成的指标（REQ-1320） {: #metrics-from-fact-specs-req-1320 }
 
 注册一个 fact 时，每个声明的度量都会自动注册一个对应的 Metric 对象。指标的
 `from_fact` 字段记录来源 fact 表的名称，有效的分组维度是通过该 fact 的 FK 关系可达的
@@ -667,7 +667,7 @@ when this metric was auto-registered from a fact spec's measure"; `from_fact` st
 它们。[tool-verified: `MetricsPage.tsx` lines 405–408: `{m.fromFact && <Badge ...
 data-testid={`metrics-from-fact-${m.name}`}>...</Badge>}`]
 
-### 由指标组成的视图（view_metrics，REQ-1318）
+### 由指标组成的视图（view_metrics，REQ-1318） {: #metric-composed-views-view_metrics-req-1318 }
 
 `view_metrics` 视图在定义时锁定一个指标的粒度。声明指标名称、维度列和可选的过滤条件；
 编译器生成对应的 SELECT。
@@ -719,7 +719,7 @@ upsert 时。[tool-verified: `regenerate_metric_views` docstring, `_metric_views
 84–86: "Free-hand view_sql born from inline metric() calls carries no stored provenance, so
 it is not regenerated here (config-path views regenerate on config reload)"]
 
-### Metrics 管理页面（REQ-1323、REQ-1324）
+### Metrics 管理页面（REQ-1323、REQ-1324） {: #the-metrics-admin-page-req-1323-req-1324 }
 
 打开 **Metrics** 导航项以管理受治理的指标。点击一行以展开一个只读详情面板；在面板中
 点击 **Edit** 即可切换到内联编辑（无弹窗）。**New Metric** 会在表格上方打开一张内联
@@ -729,12 +729,12 @@ management page (list / create / edit / delete). REQ-1323: detail-then-edit"]
 
 创建/编辑表单为来源于 fact 的指标提供了一个三步选择器构建器：选择来源 fact 表（已按
 `modelingRole=fact` 过滤）、一个度量列，以及一个聚合函数（`SUM`、`AVG`、`COUNT`、
-`MIN`、`MAX`）。数据类型自动推导：`COUNT → bigint`、`AVG → numeric`、`SUM/MIN/MAX →
-度量列本身的类型`。表达式文本区仍是任意表达式的逃生出口。
+`MIN`、`MAX`）。数据类型自动推导：`COUNT → bigint`、`AVG → numeric`、`SUM/MIN/MAX → the measure column's type`（度量列本身的类型）。
+表达式文本区仍是任意表达式的逃生出口。
 [tool-verified: `deriveDatatype` function, `MetricsPage.tsx` lines 66–70;
 `applyBuilder`, `MetricsPage.tsx` lines 273–285]
 
-## IR 带来的收益
+## IR 带来的收益 {: #the-ir-payoff }
 
 每次注册调用都经过与手写物化视图相同的路径。entity/fact 规格是一种中间表示——不是
 模板，也不是宏。它所指向的数据仓库是部署的一个属性，而非模型的属性。更换目标引擎，

@@ -1,4 +1,4 @@
-# Início Rápido para Desenvolvedores
+# Início Rápido para Desenvolvedores {: #developer-quick-start }
 
 Para avaliar o Provisa sem compilar a partir do código-fonte, veja o [Início Rápido](index.md) — baixe o instalador para macOS, Windows ou Linux e execute `provisa start`. (REQ-223, REQ-224, REQ-227)
 
@@ -6,7 +6,7 @@ Este guia é para rodar o Provisa **a partir do repositório** — desenvolvimen
 
 ---
 
-## Pré-requisitos
+## Pré-requisitos {: #prerequisites }
 
 - **Docker Desktop** (em execução)
 - **Python 3.12+**
@@ -15,7 +15,7 @@ Este guia é para rodar o Provisa **a partir do repositório** — desenvolvimen
 
 ---
 
-## 1. Clonar e configurar
+## 1. Clonar e configurar {: #1-clone-and-set-up }
 
 ```bash
 git clone https://github.com/kenstott/provisa.git
@@ -27,7 +27,7 @@ cd provisa
 
 ---
 
-## 2. Iniciar tudo
+## 2. Iniciar tudo {: #2-start-everything }
 
 ```bash
 ./start-ui.sh
@@ -53,7 +53,7 @@ Provisa running:
 
 **Ctrl+R** reinicia apenas o backend (útil após uma mudança de configuração que o hot-reload não capta). (REQ-619)
 
-### Opções
+### Opções {: #options }
 
 `--no-observability` — Desabilita o rastreamento distribuído. Por padrão, `start-ui.sh` baixa o agente Java do OpenTelemetry se ainda não estiver presente, aplica patch no `jvm.config` do Trino para carregá-lo, e inicia o coletor OTel, Prometheus, Tempo e Grafana. Passe `--no-observability` para pular tudo isso. O patch do `jvm.config` é revertido no Ctrl+C. [tool-verified: start-ui.sh lines 15, 67–82] (REQ-330)
 
@@ -89,7 +89,7 @@ Fontes incluídas:
 
 ---
 
-## 3. Conectar uma fonte de dados
+## 3. Conectar uma fonte de dados {: #3-connect-a-data-source }
 
 O Provisa lê a configuração de `config/`. Adicione um arquivo de fonte — por exemplo `config/sources/my-db.yaml`:
 
@@ -122,7 +122,7 @@ Veja [docs/configuration.md](configuration.md) para a referência YAML completa 
 
 ---
 
-## 4. Execute sua primeira consulta
+## 4. Execute sua primeira consulta {: #4-run-your-first-query }
 
 ```bash
 # GraphQL
@@ -140,7 +140,7 @@ Nenhuma autenticação é exigida quando não há uma seção `auth` em `config/
 
 ---
 
-## 5. Abra a UI
+## 5. Abra a UI {: #5-open-the-ui }
 
 Abra `http://localhost:3000` em um navegador.
 
@@ -155,7 +155,7 @@ A API GraphQL de administração está em `http://localhost:8001/admin/graphql`.
 
 ---
 
-## Solução de problemas
+## Solução de problemas {: #troubleshooting }
 
 **Backend não inicia** — verifique `.logs/server.log`. A causa mais comum é uma variável de ambiente ausente ou um conflito de porta na 8001. [tool-verified: start-ui.sh line 202] (REQ-618)
 
@@ -167,7 +167,7 @@ A API GraphQL de administração está em `http://localhost:8001/admin/graphql`.
 
 ---
 
-## Próximos passos
+## Próximos passos {: #next-steps }
 
 | Objetivo | Doc |
 | ------ | ----- |

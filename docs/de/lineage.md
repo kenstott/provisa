@@ -5,20 +5,20 @@ Command-Contracts, ohne dass eine Ausführung erforderlich ist. Zwei Ansichten s
 Verfügung: ein DAG pro Statement und ein föderationsweiter Provenance-Graph über alle
 registrierten Views und materialisierten Views (MVs).
 
-## Der Lineage-Explorer
+## Der Lineage-Explorer {: #the-lineage-explorer }
 
 Navigieren Sie in der UI zu **Lineage** (`/lineage`). Fügen Sie ein SQL-Statement ein und klicken
 Sie auf **Build statement graph**, um dessen Column-Level-DAG zu sehen. Klicken Sie auf
 **Federation graph**, um den Provenance-Graphen über alle MVs in der Registry zu laden.
 [tool-verified: LineagePage.tsx:28-119]
 
-## DAG auf Statement-Ebene (REQ-1160)
+## DAG auf Statement-Ebene (REQ-1160) {: #statement-level-dag-req-1160 }
 
 Jede benannte Ausgabespalte in Ihrem SQL wird zu einem Knoten. Der Builder verfolgt sie durch
 jede CTE, Subquery, jeden Join und jeden Inline-Command-Aufruf zurück bis zu ihren Quellspalten
 und baut so einen gerichteten Graphen von Quelleingaben zu den finalen Ausgaben.
 
-### Durchgerechnetes Beispiel
+### Durchgerechnetes Beispiel {: #worked-example }
 
 ```sql
 SELECT o.id, e.embedding, upper(e.geo) AS geo_u
@@ -46,7 +46,7 @@ Die Command-Grenze ist **nicht undurchsichtig**. Weil `enrich_grpc_set` seine Ei
 Lineage-Engine die Taint-Closure durchgehend von den deklarierten Spalten der Quellrelation bis
 zu jeder Ausgabe. [tool-verified: `_splice_commands` und `_input_relation` in graph.py:245-271]
 
-### Knotenarten und visuelle Hinweise
+### Knotenarten und visuelle Hinweise {: #node-kinds-and-visual-cues }
 
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
@@ -65,7 +65,7 @@ Zusätzliche Ringe an einem Knoten:
 
 [tool-verified: LineageDag.tsx:88-103 Cytoscape style selectors]
 
-### Benannte Transforms an Kanten
+### Benannte Transforms an Kanten {: #named-transforms-on-edges }
 
 Jede Kante trägt den rohen SQL-Ausdruck, der die Zielspalte erzeugt, plus eine Liste benannter
 Operationen: SQL-Funktionen (`sql_function`), arithmetische/logische Operatoren (`operator`),
@@ -75,7 +75,7 @@ registrierte Commands (`command`), reine Spaltenreferenzen (`identity`) und Lite
 Eine Kante aus einem Command-Aufruf wird in der UI als gestrichelte violette Linie dargestellt.
 [tool-verified: LineageDag.tsx:122-124]
 
-## Föderationsweiter Graph (REQ-1161)
+## Föderationsweiter Graph (REQ-1161) {: #federation-wide-graph-req-1161 }
 
 Der Föderationsgraph führt die Per-Statement-Lineage jeder registrierten MV zu einem einzigen
 Provenance-Graphen zusammen. Die Knotenidentität ist `relation.column` — die Ausgabespalte einer
@@ -87,7 +87,7 @@ in der Plattform. [tool-verified: `build_federation_graph` in merge.py:205-229 a
 Verwenden Sie `focus`, `direction` und `depth`, um die Ansicht auf Föderationsebene einzugrenzen,
 ohne den Graphen neu zu berechnen. [tool-verified: `slice_graph` in merge.py:160-189]
 
-## Zyklen (REQ-1161)
+## Zyklen (REQ-1161) {: #cycles-req-1161 }
 
 Zyklen werden beschrieben, nicht abgelehnt. Die Lineage-Engine erkennt jeden gerichteten Zyklus
 und **klassifiziert** ihn. [tool-verified: `Cycle.classification` property in merge.py:43-46]
@@ -185,7 +185,7 @@ Die Antwort hat dieselbe Form wie der Statement-Graph, mit einem zusätzlichen F
 }
 ```
 
-## Was eine Spaltenumbenennung oder -löschung beeinträchtigen würde (REQ-1484)
+## Was eine Spaltenumbenennung oder -löschung beeinträchtigen würde (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Eine Spalte trägt zwei Namen, und jeder wird von einer anderen Gruppe von Artefakten gespeichert.
 
@@ -233,7 +233,7 @@ des Wissens der Registry. Aus demselben Grund matchen Scans über freien SQL-Tex
 Bezeichner-Token, statt den Geltungsbereich aufzulösen, was ein Artefakt benennen kann, das die
 Spalte am Ende gar nicht verwendet. Überberichten ist bei einer Warnung die sichere Richtung.
 
-## Lineage zur Steuerung von Command-Contracts nutzen
+## Lineage zur Steuerung von Command-Contracts nutzen {: #using-lineage-to-govern-command-contracts }
 
 Weil die Taint-Closure jede deklarierte Eingabespalte mit jeder deklarierten Ausgabespalte
 verbindet, hängt die Breite dieser Closure vollständig davon ab, was Sie deklarieren.

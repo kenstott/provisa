@@ -2,7 +2,7 @@
 
 Die Admin API ist ein Strawberry-GraphQL-Endpunkt unter `POST /admin/graphql` (REQ-533). Sie erfordert eine Superuser- oder Admin-Rolle (REQ-125, REQ-060) und ist vom Daten-GraphQL-Endpunkt getrennt (REQ-533).
 
-## Authentifizierung
+## Authentifizierung {: #authentication }
 
 Übergeben Sie Ihre Anmeldedaten im `Authorization`-Header über den Standard-Auth-Provider von Provisa (REQ-120):
 
@@ -26,7 +26,7 @@ Wird `role_id` weggelassen, löst das Token auf die Rolle auf, die sein Eigentü
 
 ## Capabilities
 
-### Konfigurationsverwaltung
+### Konfigurationsverwaltung {: #config-management }
 
 Die aktuell laufende Konfiguration herunterladen (REQ-164):
 
@@ -42,7 +42,7 @@ PUT /admin/config
 
 Provisa validiert das YAML, lädt die Kataloge neu und regeneriert die Schemas (REQ-012, REQ-253). Kein Neustart erforderlich.
 
-### Laufzeiteinstellungen
+### Laufzeiteinstellungen {: #runtime-settings }
 
 Laufzeit-Plattformeinstellungen lesen und schreiben, ohne die Konfigurationsdatei zu bearbeiten (REQ-165):
 
@@ -73,7 +73,7 @@ Der Admin-Tab für Verschlüsselung leitet seine Anbieterliste live aus der Vers
 
 `GET`/`HEAD /health` und `GET /setup/status` sind immer unauthentifiziert — sie umgehen die Anforderung `Authorization: Bearer` selbst dann, wenn ein Auth-Provider konfiguriert ist (REQ-539).
 
-### Föderations-Engine
+### Föderations-Engine {: #federation-engine }
 
 Lesen oder ändern Sie, welche Engine das Deployment verwendet (REQ-916):
 
@@ -102,11 +102,11 @@ query {
 }
 ```
 
-Eine Relationship erstellen (REQ-019):
+Eine Relationship erstellen (REQ-019). Eine bereits vorhandene ID wird abgelehnt; eine Relationship wird mit `updateRelationship` geändert, das dieselbe Eingabe nimmt:
 
 ```graphql
 mutation {
-  upsertRelationship(input: {
+  createRelationship(input: {
     id: "orders-to-customers"
     sourceTableId: "orders"
     targetTableId: "customers"
@@ -123,7 +123,7 @@ Eine Junction-gestützte Beziehung deklarieren (REQ-1586):
 
 ```graphql
 mutation {
-  upsertRelationship(input: {
+  createRelationship(input: {
     id: "pets-bonded-pair"
     sourceTableId: "pets"
     targetTableId: "pets"
@@ -146,7 +146,7 @@ Eine Zuordnungstabelle wird als Kante deklariert, nie entdeckt. `viaTable` benen
 
 `viaLabelSource` bestimmt, woher der ausgestellte Name stammt, und alle drei Formen werden für Cypher in UPPER_SNAKE_CASE überführt: `column` nutzt `viaTypeValue` (`BONDED_PAIR`), `table` nutzt den Namen der Junction-Tabelle selbst (`PET_COMPANIONS`), `fixed` nutzt den deklarierten `alias`. Eine so deklarierte Junction-Tabelle ist eine Kante und keine Entität — sie fällt aus den Knoten-Labels heraus und erscheint daher nie als Knoten-Pille in der Graph-UI. [tool-verified: `provisa/api/admin/types.py:606-611`, `provisa/api/admin/db_queries.py:47-82`]
 
-### KI-gestützte Relationship-Erkennung
+### KI-gestützte Relationship-Erkennung {: #ai-relationship-discovery }
 
 Claude-gestützte FK-Analyse über REST auslösen (REQ-167, REQ-018):
 
@@ -164,7 +164,7 @@ curl -X POST http://localhost:8001/admin/discover/candidates/{id}/accept \
   -d '{"name": "orders_to_customers"}'
 ```
 
-### Schema-Introspektion
+### Schema-Introspektion {: #schema-introspection }
 
 Veröffentlichte Tabellen über alle Quellen hinweg durchsuchen (REQ-008):
 
@@ -182,7 +182,7 @@ query {
 }
 ```
 
-### Spaltenabhängigkeitsprüfung (REQ-1484)
+### Spaltenabhängigkeitsprüfung (REQ-1484) {: #column-dependency-check-req-1484 }
 
 Bevor Sie eine Tabellenänderung speichern, die den SQL-Alias einer Spalte umbenennt oder eine
 Spalte löscht, fragen Sie ab, was noch darauf verweist:
@@ -203,7 +203,7 @@ Glossar-Bindungen, Tag-Zuweisungen. `breaksOn` gibt an, welches. Die Tables-Seit
 beim Speichern aus und zeigt das Ergebnis als beratenden Dialog. Siehe [Lineage](lineage.md)
 dazu, was die Abfrage abdeckt und was nicht.
 
-### View-Verwaltung
+### View-Verwaltung {: #view-management }
 
 Eine materialisierte View registrieren (REQ-133, REQ-135):
 
@@ -229,7 +229,7 @@ mutation {
 }
 ```
 
-### Registrierung von Graph-Quellen
+### Registrierung von Graph-Quellen {: #graph-source-registration }
 
 Neo4j- und SPARQL-Quellen werden über REST-Endpunkte registriert (nicht über die GraphQL-Admin-API) (REQ-295, REQ-297):
 
@@ -295,7 +295,7 @@ POST /admin/import/hasura/apply
 
 Preview cachet das konvertierte YAML nie serverseitig; Apply nimmt das YAML, das Sie liefern, sodass genau das angewendet wird, was geprüft wurde. [tool-verified: `provisa/api/admin/import_router.py`]
 
-### Apache-Ossie-Austausch (REQ-1316, REQ-1321)
+### Apache-Ossie-Austausch (REQ-1316, REQ-1321) {: #apache-ossie-interchange-req-1316-req-1321 }
 
 Provisa arbeitet mit Apache Ossie (incubating) als Import-/Export-Grenze zusammen.
 
@@ -304,11 +304,11 @@ GET  /admin/ossie
 POST /admin/ossie/import
 ```
 
-**Export** (`GET /admin/ossie`) leitet das Ossie-YAML-Dokument bei jeder Anfrage aus dem lebenden regierten Modell ab — es wird nie gecacht und kann daher nicht veralten. Die Antwort ist `text/yaml` mit einem `Content-Disposition: attachment`-Header. Tabellen werden zu `dataset`-Objekten, Spalten zu `field`-Objekten, und Relationships bilden auf Ossie-`relationship`-Objekte ab. (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py:download_ossie`]
+**Export** (`GET /admin/ossie`) leitet das Ossie-YAML-Dokument bei jeder Anfrage aus dem lebenden regierten Modell ab — es wird nie gecacht und kann daher nicht veralten. Die Antwort ist `text/yaml` mit einem `Content-Disposition: attachment`-Header. Das Dokument ist ein Modell mit `version`, `name`, `datasets`, `relationships` und `metrics` an seiner Wurzel: Tabellen werden zu `dataset`-Objekten, Spalten zu `field`-Objekten, und Relationships bilden auf Ossie-`relationship`-Objekte ab. Ein Modell ohne Tabelle wird mit `422` abgelehnt. (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py:download_ossie`]
 
-**Import** (`POST /admin/ossie/import`) akzeptiert ein Ossie-Dokument in YAML oder JSON (das Format wird automatisch erkannt). Es parst das Dokument und liefert vorgeschlagene Tabellen- und Relationship-Registrierungen als JSON-Objekt zurück — nichts wird registriert. Der Prüfbildschirm in der Admin-UI lässt Sie Vorschläge annehmen oder kürzen, bevor irgendeine Mutation ausgelöst wird. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py:import_ossie`]
+**Import** (`POST /admin/ossie/import`) akzeptiert ein Ossie-Dokument in YAML oder JSON (das Format wird automatisch erkannt). Es parst das Dokument und liefert vorgeschlagene Tabellen-, Relationship- und Metrik-Registrierungen als JSON-Objekt zurück — nichts wird registriert. Es liest nur die flache Dokumentform; ein Dokument, das sein Modell in `semantic_model` einhüllt, wird namentlich abgelehnt. Der Prüfbildschirm in der Admin-UI lässt Sie Vorschläge annehmen oder kürzen, bevor irgendeine Mutation ausgelöst wird. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py:import_ossie`]
 
-### Objektspeicher (REQ-1046, REQ-1048, REQ-1049)
+### Objektspeicher (REQ-1046, REQ-1048, REQ-1049) {: #object-storage-req-1046-req-1048-req-1049 }
 
 Lesen oder konfigurieren Sie den Materialisierungsspeicher der Org:
 
@@ -319,7 +319,7 @@ PUT  /admin/org-storage
 
 `GET` meldet, wie viel des Plattform-Speicherkontingents die Org nutzt. `PUT` registriert die eigene Speicher-DSN der Org (im Ruhezustand verschlüsselt; nie von GET zurückgegeben). Einmal gesetzt, landen die Materialisierungen der Org in ihrem eigenen Bucket und werden nicht mehr auf das Plattformkontingent angerechnet. `storage_url: null` zu senden löscht sie und bewegt die Org zurück zum Plattformspeicher. [tool-verified: `provisa/api/admin/org_storage_router.py`]
 
-### Org-Verschlüsselung (REQ-1574)
+### Org-Verschlüsselung (REQ-1574) {: #org-encryption-req-1574 }
 
 Setzen oder rotieren Sie den Verschlüsselungsschlüssel der Org für ruhende Daten:
 
@@ -334,7 +334,7 @@ PUT  /admin/org-encryption
 
 Die Admin API wird mit GraphiQL unter `GET /admin/graphql` im Browser ausgeliefert (REQ-622). Nutzen Sie es, um das vollständige Admin-Schema interaktiv zu erkunden.
 
-## Verwaltungsviews der Ops-Domäne (REQ-1386)
+## Verwaltungsviews der Ops-Domäne (REQ-1386) {: #ops-domain-management-views-req-1386 }
 
 Acht SQL-Views werden bei jeder Installation in die integrierte `ops`-Domäne eingebracht. [tool-verified: `provisa/api/startup_seed.py:225-331` `_seed_ops_domain`] Sie exponieren das Query-Audit-Log als governte Tabellen — abfragbar über SQL (pgwire), GraphQL und Cypher unter denselben Domänenzugriffs-, RLS- und Maskierungsregeln wie jede geschäftliche Tabelle.
 
@@ -385,13 +385,13 @@ Das linke Panel listet jede registrierte Tabelle in der `ops`-Domäne, sortiert 
 
 **Löschen.** Das Papierkorb-Symbol erscheint nur bei benutzerdefinierten Reports. Eingebrachte Verwaltungsviews können über diese Oberfläche nicht gelöscht werden. [tool-verified: `ReportsTab.tsx:151` — `const custom = report.sourceId === DERIVED_SOURCE_ID` gates the delete button]
 
-## Tabellenvorschau (REQ-1392)
+## Tabellenvorschau (REQ-1392) {: #table-preview-req-1392 }
 
 Klappen Sie auf der Tables-Seite eine beliebige Tabellenzeile auf. Die Schaltfläche **Preview** öffnet ein Modal mit 90 % Breite und den live governten Daten der Tabelle. [tool-verified: `TablePreviewModal.tsx:24` — `size="90%"`; `GovernedTableViewer.tsx` is the underlying viewer]
 
 Tabellen, die auf APIs mit erforderlichen Pfadparametern basieren, blockieren die Vorschau, bis diese Werte angegeben werden. Ein Inline-Formular sammelt jeden erforderlichen Parameter, bevor die erste Abfrage läuft; optionale Query-Parameter erscheinen im selben Formular. [tool-verified: `GovernedTableViewer.tsx:51-55, 153-155` — `requiredParamColumns` check; "paramsRequired" message shown when `activeParams == null`]
 
-## Governter Datenviewer (REQ-1391)
+## Governter Datenviewer (REQ-1391) {: #governed-data-viewer-req-1391 }
 
 Dieselbe Viewer-Komponente treibt sowohl das Vorschau-Modal als auch den Reports-Viewer an. Ihr Verhalten ist in beiden Kontexten identisch.
 

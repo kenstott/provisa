@@ -1,23 +1,23 @@
-# Derivazione a livello di colonna
+# Derivazione a livello di colonna {: #column-level-lineage }
 
 Provisa traccia la derivazione dei dati a livello di colonna in modo statico — calcolata dalle
 definizioni SQL e dai contratti dei comandi, senza bisogno di alcuna esecuzione. Sono disponibili
 due viste: un DAG per singola istruzione e un grafo di provenienza esteso a tutta la federazione,
 che copre tutte le viste e le viste materializzate (MV) registrate.
 
-## L'esploratore della derivazione
+## L'esploratore della derivazione {: #the-lineage-explorer }
 
 Aprire **Lineage** nella UI (`/lineage`). Incollare un'istruzione SQL e fare clic su **Build
 statement graph** per vederne il DAG a livello di colonna. Fare clic su **Federation graph** per
 caricare il grafo di provenienza su ogni MV del registro. [tool-verified: LineagePage.tsx:28-119]
 
-## DAG a livello di istruzione (REQ-1160)
+## DAG a livello di istruzione (REQ-1160) {: #statement-level-dag-req-1160 }
 
 Ogni colonna di output nominata nel SQL diventa un nodo. Il costruttore la ripercorre a ritroso
 attraverso ogni CTE, sotto-query, join e chiamata inline a comando fino alle sue colonne di origine,
 costruendo un grafo orientato dagli input di origine agli output finali.
 
-### Esempio svolto
+### Esempio svolto {: #worked-example }
 
 ```sql
 SELECT o.id, e.embedding, upper(e.geo) AS geo_u
@@ -44,7 +44,7 @@ input (`id`, `region`) e di output (`id`, `embedding`, `geo`), il motore di deri
 chiusura per contaminazione senza interruzioni, dalle colonne dichiarate della relazione di origine
 fino a ciascun output. [tool-verified: `_splice_commands` and `_input_relation` in graph.py:245-271]
 
-### Tipi di nodo e segnali visivi
+### Tipi di nodo e segnali visivi {: #node-kinds-and-visual-cues }
 
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
@@ -63,7 +63,7 @@ Anelli aggiuntivi su un nodo:
 
 [tool-verified: LineageDag.tsx:88-103 Cytoscape style selectors]
 
-### Trasformazioni nominate sugli archi
+### Trasformazioni nominate sugli archi {: #named-transforms-on-edges }
 
 Ogni arco porta con sé l'espressione SQL grezza che produce la colonna di destinazione, più un
 elenco di operazioni nominate: funzioni SQL (`sql_function`), operatori aritmetici e logici
@@ -73,7 +73,7 @@ elenco di operazioni nominate: funzioni SQL (`sql_function`), operatori aritmeti
 Un arco che nasce da una chiamata a comando viene disegnato nella UI come una linea viola
 tratteggiata. [tool-verified: LineageDag.tsx:122-124]
 
-## Grafo esteso alla federazione (REQ-1161)
+## Grafo esteso alla federazione (REQ-1161) {: #federation-wide-graph-req-1161 }
 
 Il grafo di federazione unisce la derivazione per istruzione di ogni MV registrata in un unico grafo
 di provenienza. L'identità di un nodo è `relation.column` — la colonna di output di una vista e il
@@ -85,7 +85,7 @@ and `qualify_outputs` in graph.py:275-299]
 Usare `focus`, `direction` e `depth` per delimitare la vista su scala di federazione senza
 ricalcolare il grafo. [tool-verified: `slice_graph` in merge.py:160-189]
 
-## Cicli (REQ-1161)
+## Cicli (REQ-1161) {: #cycles-req-1161 }
 
 I cicli vengono descritti, non rifiutati. Il motore di derivazione rileva ogni ciclo orientato e lo
 **classifica**. [tool-verified: `Cycle.classification` property in merge.py:43-46]
@@ -182,7 +182,7 @@ La risposta ha la stessa forma del grafo di istruzione, con l'aggiunta di un cam
 }
 ```
 
-## Che cosa romperebbe la ridenominazione o la rimozione di una colonna (REQ-1484)
+## Che cosa romperebbe la ridenominazione o la rimozione di una colonna (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Una colonna porta due nomi, e ciascuno è memorizzato da un insieme diverso di artefatti.
 
@@ -229,7 +229,7 @@ conoscenza del registro. Per lo stesso motivo, le scansioni sul testo SQL libero
 colonna come token identificatore anziché risolverne l'ambito, e questo può nominare un artefatto
 che poi non usa affatto la colonna. Per un avviso, l'eccesso di segnalazioni è la direzione sicura.
 
-## Usare la derivazione per governare i contratti dei comandi
+## Usare la derivazione per governare i contratti dei comandi {: #using-lineage-to-govern-command-contracts }
 
 Poiché la chiusura per contaminazione collega ogni colonna di input dichiarata a ogni colonna di
 output dichiarata, l'ampiezza di quella chiusura dipende interamente da ciò che si dichiara.

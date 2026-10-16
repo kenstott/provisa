@@ -1,8 +1,8 @@
-# Datenprodukte (REQ-1634)
+# Datenprodukte (REQ-1634) {: #data-products-req-1634 }
 
 Ein Datenprodukt ist ein benanntes, im Besitz befindliches Bündel von Tabellen, das gemeinsam zur Nutzung veröffentlicht wird. Es ist die Einheit, die der Katalog den Konsumenten bereitstellt — nicht einzelne Tabellen, sondern eine kuratierte Oberfläche, die eine Domäne ausdrücklich als bereit erklärt. Die Felder folgen dem ODPS-Vokabular (Open Data Product Standard), wo Provisa bereits die Source of Truth besitzt. [tool-verified: `provisa/core/models.py:318-342`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json`]
 
-## Regel der Domäneneigentümerschaft
+## Regel der Domäneneigentümerschaft {: #domain-ownership-rule }
 
 Jedes Datenprodukt gehört genau einer Domäne (`domain_id` ist ein Pflichtfeld). Eine Tabelle darf einem Datenprodukt nur beitreten, wenn beide dieselbe `domain_id` teilen. Die UI schränkt den Tabellen-Picker auf die Domäne des Produkts ein; das Backend weist eine `product_id`-Zuweisung zurück, deren Domäne beim Speichern nicht mit der des Produkts übereinstimmt. [tool-verified: `provisa/core/models.py:320`, `docs/arch/requirements.yaml:54573-54574`]
 
@@ -12,7 +12,7 @@ Ein Produkt, das Daten aus einer anderen Domäne benötigt, muss diese Daten zun
 
 Die einem Datenprodukt zugewiesenen Tabellen und Commands sind seine **Output Ports** — die abfragbare Oberfläche, die Konsumenten sehen. Die Zuweisung einer Tabelle setzt `Table.product_id`; das Entfernen hebt die Mitgliedschaft auf. Eine Tabelle gehört höchstens einem Produkt. Commands in derselben Domäne können ebenfalls als Mitglieder zugewiesen werden. [tool-verified: `provisa/core/models.py:941`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json:tablesLabel,commandsLabel`]
 
-## Abschnitte des Detailbereichs
+## Abschnitte des Detailbereichs {: #detail-panel-sections }
 
 Das Öffnen eines Datenprodukts in der Admin-UI zeigt diese Panels:
 
@@ -38,7 +38,7 @@ Nur Kataloge mit einem nativen Datenprodukt-Konzept veröffentlichen es als erst
 
 | Katalog | Veröffentlicht als |
 | --- | --- |
-| Snowflake Horizon | SHARE + Organisations-Listing (natives Datenprodukt); `publish=false` belässt es als DRAFT, `publish=true` schaltet es live |
+| Snowflake Horizon | SHARE + Organisations-Listing (natives Datenprodukt); `publish=false` belässt es als DRAFT, `publish=true` schaltet es live. Das Datenwörterbuch des Listings deckt jedes Mitglied und jede Spalte ab; die ersten fünf Mitglieder werden hervorgehoben, und maskierte Spalten sind in der Vorschau verborgen (REQ-1656) |
 | BigQuery Analytics Hub | Analytics-Hub-Listing (nativ) |
 | OpenMetadata | `DataProduct`-Entität (nativ) |
 | DataHub | Native `dataProduct`-URN-Entität mit eigenen Properties-/Ownership-Aspekten |
@@ -49,7 +49,7 @@ Nur Kataloge mit einem nativen Datenprodukt-Konzept veröffentlichen es als erst
 
 [tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:389-418`, `provisa/api/metadata_export/bigquery_dataplex.py:112-136`, `provisa/api/metadata_export/openmetadata.py:326-344`, `provisa/api/metadata_export/datahub.py:133-136,443-483`, `provisa/api/metadata_export/collibra.py:129-133,371-388`, `provisa/api/metadata_export/atlas.py:134-147`, `provisa/api/metadata_export/atlan.py:60`, `provisa/api/metadata_export/openlineage.py:243,348`]
 
-## Felder
+## Felder {: #fields }
 
 | Feld | Erforderlich | Anmerkungen |
 | --- | --- | --- |

@@ -4,19 +4,19 @@ Provisa עוקבת אחר Data Lineage של נתונים ברמת העמודה �
 פקודות, ללא צורך בביצוע. שתי תצוגות זמינות: DAG לכל משפט וגרף מקור
 ברוחב הפדרציה הפרוש על פני כל התצוגות ו-Materialized Views ‏(MV) הרשומות.
 
-## סייר ה-Data Lineage
+## סייר ה-Data Lineage {: #the-lineage-explorer }
 
 נווטו אל **Lineage** בממשק המשתמש (`/lineage`). הדביקו משפט SQL ולחצו על **Build statement
 graph** כדי לראות את ה-DAG שלו ברמת העמודה. לחצו על **Federation graph** כדי לטעון את גרף המקור על פני
 כל MV ברישום. [tool-verified: LineagePage.tsx:28-119]
 
-## DAG ברמת המשפט (REQ-1160)
+## DAG ברמת המשפט (REQ-1160) {: #statement-level-dag-req-1160 }
 
 כל עמודת פלט בעלת שם ב-SQL שלכם הופכת לצומת. הבונה עוקב אחריה לאחור דרך כל
 CTE, תת-שאילתה, join וקריאת פקודה מוטבעת אל עמודות המקור שלה, ובונה גרף מכוון
 מקלטי המקור אל פלטי הסיום.
 
-### דוגמה מעובדת
+### דוגמה מעובדת {: #worked-example }
 
 ```sql
 SELECT o.id, e.embedding, upper(e.geo) AS geo_u
@@ -43,7 +43,7 @@ orders.region ─╯
 סגור הזיהום ברציפות מהעמודות המוצהרות של יחס המקור אל כל פלט.
 [tool-verified: `_splice_commands` and `_input_relation` in graph.py:245-271]
 
-### סוגי צמתים ורמזים חזותיים
+### סוגי צמתים ורמזים חזותיים {: #node-kinds-and-visual-cues }
 
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
@@ -62,7 +62,7 @@ orders.region ─╯
 
 [tool-verified: LineageDag.tsx:88-103 Cytoscape style selectors]
 
-### טרנספורמציות בעלות שם על קשתות
+### טרנספורמציות בעלות שם על קשתות {: #named-transforms-on-edges }
 
 כל קשת נושאת את ביטוי ה-SQL הגולמי המייצר את עמודת היעד, בתוספת רשימת פעולות
 בעלות שם: פונקציות SQL ‏(`sql_function`), אופרטורים אריתמטיים/לוגיים (`operator`), פקודות
@@ -72,7 +72,7 @@ orders.region ─╯
 קשת מקריאת פקודה מוצגת כקו סגול מקווקו בממשק המשתמש.
 [tool-verified: LineageDag.tsx:122-124]
 
-## גרף ברוחב הפדרציה (REQ-1161)
+## גרף ברוחב הפדרציה (REQ-1161) {: #federation-wide-graph-req-1161 }
 
 גרף הפדרציה ממזג את ה-Data Lineage לכל משפט של כל MV רשום לגרף מקור אחד.
 זהות הצומת היא `relation.column` — עמודת פלט של תצוגה אחת והפניית קלט של תצוגה אחרת
@@ -83,7 +83,7 @@ and `qualify_outputs` in graph.py:275-299]
 השתמשו ב-`focus`, `direction` ו-`depth` כדי לתחום את התצוגה בקנה מידה של פדרציה מבלי לחשב מחדש
 את הגרף. [tool-verified: `slice_graph` in merge.py:160-189]
 
-## מעגלים (REQ-1161)
+## מעגלים (REQ-1161) {: #cycles-req-1161 }
 
 מעגלים מתוארים, לא נדחים. מנוע ה-Data Lineage מזהה כל מעגל מכוון
 ו**מסווג** אותו. [tool-verified: `Cycle.classification` property in merge.py:43-46]
@@ -180,7 +180,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 }
 ```
 
-## מה שינוי שם או מחיקה של עמודה היו שוברים (REQ-1484)
+## מה שינוי שם או מחיקה של עמודה היו שוברים (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 עמודה נושאת שני שמות, וכל אחד מהם מאוחסן על ידי קבוצת ארטיפקטים אחרת.
 
@@ -223,7 +223,7 @@ query {
 SQL חופשי מתאימות את העמודה כאסימון מזהה במקום לפענח היקף, מה שעלול לנקוב בשם
 ארטיפקט שמסתבר שאינו משתמש בעמודה. דיווח יתר הוא הכיוון הבטוח עבור אזהרה.
 
-## שימוש ב-Data Lineage לממשל חוזי פקודות
+## שימוש ב-Data Lineage לממשל חוזי פקודות {: #using-lineage-to-govern-command-contracts }
 
 משום שסגור הזיהום מחבר כל עמודת קלט מוצהרת לכל עמודת פלט מוצהרת,
 רוחבו של אותו סגור תלוי לחלוטין במה שאתם מצהירים.

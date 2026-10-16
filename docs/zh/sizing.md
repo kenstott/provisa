@@ -1,10 +1,10 @@
-# 容量规划与调优
+# 容量规划与调优 {: #sizing-and-tuning }
 
 容量规划工具会在你自己的工作负载下，测量你自己的 Provisa 部署。它根据这些测量结果编写一份容量规划与调优指南：工作负载需要多少物理核心和工作进程，以及每项设置能带来什么。指南中的每个数字都来自测量，因此在部署或工作负载发生变化后，需要重新运行该工具并重新生成指南。
 
 该工具位于 Provisa 仓库的 `demo/named/perf/bench/` 下。下面的每条命令都要在该目录中、使用仓库的 Python 环境（`../../../../.venv/bin/python3`）运行。
 
-## 它报告什么
+## 它报告什么 {: #what-it-reports }
 
 一次容量规划运行由针对你的部署的多次基准测试运行组成。每次运行只改变一件事：
 
@@ -23,7 +23,7 @@
 
 根据这些运行，`bench_report.py` 为每个引擎、传输和数据源拟合一个成本模型：基础成本，加上每个字段、过滤、行和联接的成本，其中跨数据源联接按其两端的读取方式计成本。当引擎作为独立服务器运行且其容器的 CPU 被测量时，引擎也会得到一个成本模型。[tool-verified: `demo/named/perf/bench/cost_model.py:fit`] `sizing_guide.py` 把报告转换为指南。如果给它一份描述你工作负载的契约，它还会为该工作负载做容量规划。
 
-## 编写设置契约
+## 编写设置契约 {: #write-a-setup-contract }
 
 设置契约是一个 YAML 文件。它列出你的部署的端点、基准测试可以读取的表、请求的形态以及负载。基准测试在运行前会对照部署检查契约，并拒绝部署未公开的表、列或联接。[tool-verified: `demo/named/perf/bench/setup_contract.py:setup_from_dict`]
 
@@ -133,9 +133,9 @@ workload:
 
 按请求的真实情况来描述它们。指南恰好针对该契约生成的请求做容量规划：规划使用与运行相同的带种子生成器来抽取请求。[tool-verified: `demo/named/perf/bench/sizing.py:_transport` uses `request_mix.RequestGenerator`]
 
-## 运行
+## 运行 {: #run-it }
 
-### 1. 一次性解析名称
+### 1. 一次性解析名称 {: #1-resolve-the-names-once }
 
 先运行一次基线契约。该运行会向部署询问各传输如何称呼你的表，并把 `resolved-names.json` 写在其结果旁边。[tool-verified: `demo/named/perf/bench/optimistic_load.py:resolve_names`]
 
@@ -146,7 +146,7 @@ workload:
 
 `--engine` 指明你的部署所运行的联邦引擎（`duckdb`、`pg` 或 `trino`）。`--server-pid` 是服务器的进程 ID；运行会读取该进程及其子进程（工作进程）的 CPU 时间。它直接读取进程，因此仅当负载生成器运行在服务器所在主机上时才有效。[tool-verified: `demo/named/perf/bench/optimistic_load.py:_server_cpu_seconds`]
 
-### 从另一台主机测量服务器的 CPU
+### 从另一台主机测量服务器的 CPU {: #measuring-the-servers-cpu-from-another-host }
 
 可能时让负载生成器运行在自己的机器上：这样它不会占用服务器的核心。要从那里测量服务器的 CPU，请在服务器所在主机上启动 `server_cpu_agent.py`，并把它的 URL 而不是 `--server-pid` 提供给运行：
 
@@ -163,7 +163,7 @@ workload:
 
 `--listen` 为必填：代理没有默认地址。把它绑定到只有负载生成器能够访问的私有地址，绝不要绑定到公共接口，并在运行结束后停止它（Ctrl+C）。
 
-### 2. 规划运行
+### 2. 规划运行 {: #2-plan-the-runs }
 
 ```bash
 ../../../../.venv/bin/python3 sweeps.py plan --setup acme.yaml --out results/sizing \
@@ -185,7 +185,7 @@ workload:
 
 副本运行会在无负载的窗口内测量副本的刷新成本。在规划它们之前，先在契约中设置 `load.idle_window_s`（例如 `120`）。否则报告会以 `no idle.json` 拒绝给出盈亏平衡点。[tool-verified: `demo/named/perf/bench/bench_report.py:_break_even`]
 
-### 3. 运行每份已规划的契约
+### 3. 运行每份已规划的契约 {: #3-run-every-planned-contract }
 
 每个清单条目都指明其契约文件。把每一份运行到 `results/sizing/results/<run name>`：
 
@@ -202,7 +202,7 @@ workload:
 
 每次运行在清单中都带有一个 `server_env`：服务器必须带着它运行。旋钮运行的是其引擎，`{"PROVISA_ENGINE": "duckdb"}`；先运行同一引擎的所有运行，再用下一个引擎重启服务器。工作进程运行的还要加上其工作进程数和并发处理中上限，例如 `{"PROVISA_WORKERS": "16", "PROVISA_REQUEST_THREADS": "2", "PROVISA_ENGINE": "pg"}`：`PROVISA_WORKERS` 是工作进程数，`PROVISA_REQUEST_THREADS` 设置 `concurrency.request_threads`，即每个工作进程同时处理的请求数。[tool-verified: `provisa/core/settings_catalog.py` `concurrency.request_threads`, `env="PROVISA_REQUEST_THREADS"`] 在开始运行之前，等到每个工作进程都在提供服务（`/health` 报告 `workers.ready` 达到 `workers.expected`）。
 
-### 4. 生成报告
+### 4. 生成报告 {: #4-build-the-report }
 
 ```bash
 ../../../../.venv/bin/python3 bench_report.py --root results/sizing --out results/sizing/report.json
@@ -210,7 +210,7 @@ workload:
 
 `--tolerance`（默认 `0.05`）设定工作进程设置要多接近最佳实测吞吐量才算足够。[tool-verified: `demo/named/perf/bench/bench_report.py:DEFAULT_TOLERANCE`]
 
-### 5. 生成指南
+### 5. 生成指南 {: #5-generate-the-guide }
 
 ```bash
 ../../../../.venv/bin/python3 sizing_guide.py --report results/sizing/report.json --out guide.md \
@@ -219,9 +219,9 @@ workload:
 
 没有 `--setup` 时，指南只含调优部分。有了它，指南会用 `--engine` 指定的引擎（默认 `pg`）为契约的 `workload` 做容量规划；运行未测量的引擎会被拒绝。
 
-## 阅读指南
+## 阅读指南 {: #read-the-guide }
 
-### 为此工作负载做容量规划
+### 为此工作负载做容量规划 {: #sizing-this-workload }
 
 指南用一行结束本节，例如：**12 个物理核心、24 个工作进程、每个工作进程 2 个并发处理中请求。** 在它上方，一张表列出每个传输和数据源：请求占比、字段、过滤、行和联接的平均数、缓存命中的占比，以及一个请求的 CPU 成本。
 
@@ -237,21 +237,21 @@ workload:
 - 与所测量的不同的复制设置或 TTL
 - 运行没有缓存数据时的缓存命中
 
-### 工作进程与并发处理中请求
+### 工作进程与并发处理中请求 {: #worker-processes-and-in-flight-requests }
 
 对每个传输，指南给出峰值吞吐量落在最佳值容差范围内的最少工作进程数。在该工作进程数下，再选出同样达标的每个工作进程最少并发处理中请求数。它用两种形式给出该设置：每个物理核心的工作进程数，以及每个工作进程的并发处理中请求数。两者任何一个再多都不会增加吞吐量；再少则会让核心闲置。表中还给出峰值每秒请求数及其 p99 延迟。其下列出了每个测量点。
 
 容量系数等于一个物理核心每秒提供的请求数，乘以单独一个请求所需的 CPU，再除以 1000。高于 1 表示该核心处理的请求多于一个线程的量，当它的两个硬件线程都在服务时就是如此。[tool-verified: `demo/named/perf/bench/bench_report.py:_server`]
 
-### 一个请求的成本
+### 一个请求的成本 {: #what-a-request-costs }
 
 对每个引擎、传输和数据源并排给出：无缓存请求的基础成本、每个字段、过滤、行和联接增加的成本，以及模型对测量值的拟合程度（R²，1 表示完美拟合）。跨数据源联接有三种成本，取决于其两端的读取方式：两端实时、两端来自副本，或各取其一。短横线表示运行没有改变该旋钮。在引擎作为独立服务器运行的地方，第二张表以同样的方式给出引擎的 CPU：由引擎服务的请求（例如跨数据源联接）会在那里显示其引擎时间。在修改你的请求之前，可以用这些数字了解修改会带来的成本：每个请求多两个字段，就会增加两倍的每字段成本。
 
-### 响应缓存的启用
+### 响应缓存的启用 {: #the-response-cache-opt-in }
 
 对每个传输和数据源：未命中的 CPU、命中的 CPU，以及命中节省的部分。请求只有在启用缓存并重复了较早的请求时才会从缓存应答，所以节省适用于重复的请求。请把重复的请求启用缓存。[tool-verified: `demo/named/perf/bench/bench_report.py:_cache`]
 
-### 实时读取还是副本读取，以及 TTL
+### 实时读取还是副本读取，以及 TTL {: #live-or-replica-reads-and-the-ttl }
 
 对每个有复制运行的引擎、传输和数据源：实时读取的成本、副本读取的成本、一次刷新的 CPU、TTL 以及盈亏平衡速率。高于盈亏平衡速率时，副本消耗的 CPU（Provisa、数据源和引擎合计）比实时读取更少。低于它则实时读取。第二张表按请求中的联接数给出跨数据源联接的同样数据：两端实时读取对比两端来自副本，其中刷新计入切换后改用副本的每个数据源。[tool-verified: `demo/named/perf/bench/cost_model.py:break_even`]
 

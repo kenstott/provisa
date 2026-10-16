@@ -1,6 +1,6 @@
-# ארכיטקטורת Provisa
+# ארכיטקטורת Provisa {: #provisa-architecture }
 
-## סקירה כללית
+## סקירה כללית {: #overview }
 
 Provisa היא פלטפורמת וירטואליזציית נתונים מבוססת קונפיגורציה: איחוד, מדדים, אונטולוגיה וממשל ממודל אחד, לצוותים קטנים ולארגונים גדולים. היא מספקת API אחיד מעל מקורות נתונים הטרוגניים עם ממשל, אבטחה ואופטימיזציית ביצועים. לקוחות שולחים שאילתות דרך SQL, GraphQL, או Cypher; כל שלושת הממשקים הם ממשקים מדרגה ראשונה עם אותו ממשל בדיוק מיושם עליהם. (REQ-002, REQ-038)
 
@@ -29,7 +29,7 @@ Config YAML → PG Metadata → Federation Catalogs
                                                   └─────────────────-┘
 ```
 
-## ממשקי שאילתה
+## ממשקי שאילתה {: #query-interfaces }
 
 כל ממשק הוא הובלה (transport) נפרדת. כל ארבעת הממשקים מיישמים את אותו צינור אבטחה (RLS, מיסוך, דגימה, בדיקות תפקיד). (REQ-002, REQ-038) לקוחות אף פעם לא מתקשרים ישירות עם מנוע הפדרציה. (REQ-266) "שפת שאילתה" (SQL / GraphQL / Cypher) אורתוגונלית להובלה — אפשר שכמה שפות יגיעו דרך אותה הובלה.
 
@@ -42,7 +42,7 @@ Config YAML → PG Metadata → Federation Catalogs
 
 ¹ יש להגדיר `PROVISA_PGWIRE_PORT` (למשל 5433). מושבת כאשר לא מוגדר או `0`.
 
-### HTTP (פורט 8001)
+### HTTP (פורט 8001) {: #http-port-8001 }
 
 מספר נקודות קצה תחת אותו פורט, מובחנות לפי נתיב:
 
@@ -58,7 +58,7 @@ Config YAML → PG Metadata → Federation Catalogs
 
 כל הנתיבים מחזירים JSON כברירת מחדל. `Accept: text/csv`, `application/vnd.apache.parquet`, `application/vnd.apache.arrow.stream`, ו-`application/octet-stream` (בינארי גולמי) נתמכים דרך משא ומתן תוכן (content negotiation). תוצאות החורגות מסף הגודל המוגדר מנותבות באופן אוטומטי לכתובת S3 חתומה. (REQ-029, REQ-137)
 
-### Arrow Flight (פורט 8815)
+### Arrow Flight (פורט 8815) {: #arrow-flight-port-8815 }
 
 הובלה עמודתית (columnar) טבעית של Arrow דרך gRPC. (REQ-045, REQ-143) לקוחות שולחים כרטיס (ticket) בפורמט JSON:
 
@@ -74,11 +74,11 @@ Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik
 
 התוצאה המלאה לעולם אינה ממומשת (materialized) בזיכרון של Provisa — ה-batches מועברים הלאה ככל שהם מגיעים. (REQ-145) זה הופך את Arrow Flight לנתיב בלתי מוגבל, המתאים לתוצאות בגדלים שרירותיים.
 
-### Protobuf gRPC (פורט 50051)
+### Protobuf gRPC (פורט 50051) {: #protobuf-grpc-port-50051 }
 
 `.proto` מיוצר אוטומטית מסכמת הנתונים, מיוצר לפי תפקיד. (REQ-525) שאילתות זרימה (הודעה אחת לכל שורה), מוטציות יחידניות (unary). Server reflection מופעל. (REQ-526) התפקיד מועבר דרך מפתח metadata בשם `x-provisa-role`. הרפלקציה מתארת לכל קורא את השירות של התפקיד שלו.
 
-### פרוטוקול חוט PostgreSQL / pgwire (פורט ניתן להגדרה)
+### פרוטוקול חוט PostgreSQL / pgwire (פורט ניתן להגדרה) {: #postgresql-wire-protocol-pgwire-configurable-port }
 
 מיישם את פרוטוקול החוט frontend/backend של PostgreSQL באמצעות הספרייה `buenavista`. (REQ-527) כל לקוח תואם PostgreSQL — `psql`, DBeaver, SQLAlchemy עם `psycopg2`, JDBC — יכול להתחבר ללא שינוי. מקבל SQL בלבד. צינור הממשל המלא (RLS, מיסוך, הרשאות תחום) חל באופן זהה על חיבורי pgwire. (REQ-266, REQ-002) מופעל על ידי הגדרת `PROVISA_PGWIRE_PORT` לפורט שאינו אפס.
 
@@ -134,11 +134,11 @@ flowchart TD
 | **Direct** | מקור יחיד + יש דרייבר טבעי + יש קונקטור פדרציה |
 | **Federation** | פדרציה מרובת מקורות, או שלמקור יש קונקטור אך אין דרייבר |
 | **Materialize** | למקור אין קונקטור פדרציה — יש להביא (fetch) ולשמור במטמון ל-S3/PG תחילה |
-| **Mutation** | מוטציית GraphQL — תמיד ישירה, לעולם לא פדרטיבית |
+| **Mutation** | כתיבה: הדרייבר של המקור עצמו כשיש לו; אחרת המנוע, דרך מחבר שכותב למקור (REQ-031, REQ-910) |
 
 הניתוב צורך את הפלט של שלב האופטימיזציה שלאחר הממשל, לעולם לא את ה-SQL המנוהל שלפני האופטימיזציה. הממשל עשוי להוסיף מקורות (תת-שאילתות תנאי RLS); שלב האופטימיזציה עשוי להסיר אותם (שילוב VALUES-CTE לטבלה חמה, שכתוב מטמון API, גיזום ענפי union). שאילתה פדרטיבית שמצטמצמת למקור חי יחיד לאחר השילוב מנותבת מחדש כישירה. (REQ-863)
 
-### שאילתות מרובות-שורש (Multi-Root)
+### שאילתות מרובות-שורש (Multi-Root) {: #multi-root-queries }
 
 שאילתות GraphQL עם מספר שדות שורש (למשל `{ orders { id } customers { name } }`) מהודרות לשאילתות SQL נפרדות ומבוצעות באופן עצמאי. (REQ-534) בקשות SQL ו-Cypher הן שורש-יחיד מטבען. התוצאות ממוזגות לתגובה אחת:
 
@@ -146,7 +146,7 @@ flowchart TD
 - שדות מעל הסף מופנים (redirected), עם ערכים לכל שדה תחת `redirects`
 - פורמטים בינאריים (Parquet, Arrow) נתמכים רק עבור שאילתות שורש-יחיד
 
-## נתיבי ביצוע פדרציה
+## נתיבי ביצוע פדרציה {: #federation-execution-paths }
 
 | נתיב | הובלה | דרך | מתי בשימוש |
 | ------ | ----------- | ----- | ----------- |
@@ -154,7 +154,7 @@ flowchart TD
 | Flight SQL | `adbc-driver-flightsql` (gRPC :8480) | proxy של Zaychik ← JDBC | כאשר Zaychik פועל |
 | CTAS | לקוח מנוע פדרציה (HTTP :8080) | כתיבה ישירה, Iceberg ל-S3 | הפניית Parquet/ORC |
 
-### ה-proxy של Zaychik ל-Arrow Flight SQL
+### ה-proxy של Zaychik ל-Arrow Flight SQL {: #zaychik-arrow-flight-sql-proxy }
 
 מנוע הפדרציה אינו תומך באופן טבעי בפרוטוקול Arrow Flight SQL. [Zaychik](https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy) הוא proxy בשפת Java שמיישם את ממשק ה-gRPC של Arrow Flight SQL, מתרגם בקשות לשאילתות JDBC, ומזרים תוצאות בחזרה כ-Arrow record batches. (REQ-144)
 
@@ -164,17 +164,17 @@ ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Federation Engine → 
 
 שרת ה-Flight של Provisa (פורט 8815) מתחבר ל-Zaychik כלקוח ADBC, ומאפשר זרימת Arrow מקצה לקצה ללא מימוש התוצאות. (REQ-145)
 
-### קטלוג תוצאות Iceberg
+### קטלוג תוצאות Iceberg {: #iceberg-results-catalog }
 
 הפניית CTAS משתמשת בקונקטור Iceberg (קטלוג `results`) הנתמך על ידי קטלוג JDBC על גבי מופע PostgreSQL הקיים. (REQ-169) Iceberg כותב קבצי Parquet/ORC ישירות ל-MinIO/S3 דרך מערכת הקבצים הטבעית של S3 (`fs.native-s3.enabled=true`).
 
-## מנועי פדרציה
+## מנועי פדרציה {: #federation-engines }
 
-Provisa בוחרת מנוע פדרציה באתחול דרך משתנה הסביבה `PROVISA_ENGINE`, קונפיגורציית ה-admin-UI השמורה, או ברירת המחדל. כאשר דבר אינו מוגדר, DuckDB היא ברירת המחדל — לחלוטין תוך-תהליכית (in-process), ללא שירות חיצוני (REQ-989). ראו [Configuration](configuration.md#_16) לפרטי בחירה.
+Provisa בוחרת מנוע פדרציה באתחול דרך משתנה הסביבה `PROVISA_ENGINE`, קונפיגורציית ה-admin-UI השמורה, או ברירת המחדל. כאשר דבר אינו מוגדר, DuckDB היא ברירת המחדל — לחלוטין תוך-תהליכית (in-process), ללא שירות חיצוני (REQ-989). ראו [Configuration](configuration.md#federation-engine) לפרטי בחירה.
 
 כל מנוע הוא מופע `FederationEngine` המוגדר ב-`provisa/federation/engine.py`. המופע מחזיק אוסף קונקטורים שקובע אילו סוגי מקורות המנוע יכול לקרוא באופן חי (ATTACH) לעומת אילו חייבים תחילה לנחות (land) במאגר המימוש (materialization store) של המנוע. [tool-verified: `engine.py` `_ENGINE_BUILDERS`, `ENGINE_REGISTRY`]
 
-### מחלקות דרייבר (REQ-840) [tool-verified: `engine.py` `DriverClass`]
+### מחלקות דרייבר (REQ-840) [tool-verified: `engine.py` `DriverClass`] {: #driver-classes-req-840-tool-verified-enginepy-driverclass }
 
 | מחלקה | משמעות | דוגמאות |
 | ------- | --------- | --------- |
@@ -182,7 +182,7 @@ Provisa בוחרת מנוע פדרציה באתחול דרך משתנה הסבי
 | `PARTIAL` | מגיעה לקבוצת משנה (יחסיים, קבצים, אחסון ענן/lake) בנוסף לנחיתה של כל השאר | DuckDB, PostgreSQL, ClickHouse, Databricks, Snowflake, BigQuery, Fabric, Synapse |
 | `SELF_ONLY` | מגיעה רק למאגר שלה עצמה; כל מקור אחר נוחת פנימה | SQLAlchemy |
 
-### מנועים זמינים [tool-verified: `engine.py` `_ENGINE_BUILDERS`]
+### מנועים זמינים [tool-verified: `engine.py` `_ENGINE_BUILDERS`] {: #available-engines-tool-verified-enginepy-engine_builders }
 
 | מפתח מנוע | דיאלקט | MPP | מנגנון קישור חיצוני | אימות |
 | ----------- | --------- | ----- | ------------------------ | ------ |
@@ -197,17 +197,17 @@ Provisa בוחרת מנוע פדרציה באתחול דרך משתנה הסבי
 | `synapse` | T-SQL | כן | ADLS OPENROWSET / טבלאות חיצוניות | Azure AD |
 | `sqlalchemy` | כל דיאלקט SQLAlchemy | לא | אין (נחיתה בלבד) | פרטי גישה לפי דיאלקט |
 
-### ברירת מחדל ללא קונפיגורציה: DuckDB (REQ-989) [tool-verified: `engine.py` `build_duckdb_engine`, `_embedded_duckdb_materialize_default`]
+### ברירת מחדל ללא קונפיגורציה: DuckDB (REQ-989) [tool-verified: `engine.py` `build_duckdb_engine`, `_embedded_duckdb_materialize_default`] {: #zero-config-default-duckdb-req-989-tool-verified-enginepy-build_duckdb_engine-embedded_duckdb_materialize_default }
 
 כאשר `PROVISA_ENGINE` אינו מוגדר, Provisa משתמשת במנוע DuckDB המוטמע (embedded) תוך-תהליכי במלואו. מאגר המימוש של DuckDB הוא קובץ DuckDB מוטמע ב-`$PROVISA_DATA_DIR/materialize.duckdb` (ברירת מחדל `~/.provisa/materialize.duckdb`). אין צורך במסד נתונים או שירות חיצוני.
 
 מכיוון ש-DuckDB אוכפת כותב יחיד לכל קובץ, `store_connection.py` כותב אל המאגר המוטמע דרך החיבור של המנוע עצמו — לעולם לא דרך חיבור עצמאי שני. זהו המקרה היחיד שבו המנוע ומאגר המימוש חולקים handle קובץ אחד במכוון. [tool-verified: `store_connection.py` module docstring]
 
-### הובלת קריאה טבעית ל-Arrow (REQ-986, REQ-987, REQ-988) [tool-verified: `engine.py` `build_*_engine` `capabilities=`]
+### הובלת קריאה טבעית ל-Arrow (REQ-986, REQ-987, REQ-988) [tool-verified: `engine.py` `build_*_engine` `capabilities=`] {: #arrow-native-read-transport-req-986-req-987-req-988-tool-verified-enginepy-build__engine-capabilities }
 
 ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric ו-Synapse כולם מכריזים על `EngineCapability.ARROW` ו-`EngineCapability.ARROW_STREAM`. שאילתות מול מנועים אלו מחזירות Arrow RecordBatches ישירות — נתיב הסדרת השורות (row-serialization) עוקף לחלוטין. שרת ה-Flight מזרים את ה-batches הללו ללקוחות מבלי לממש את התוצאה המלאה בזיכרון התהליך של Provisa. עבור Trino, זרימת Arrow נשענת על ה-proxy של Zaychik; עבור מנועי מחסן הנתונים, ה-API הטבעי של Arrow של המנוע עצמו (Cloud Fetch עבור Databricks, Storage Read API עבור BigQuery, `fetch_arrow_table` עבור DuckDB ו-Snowflake) מזין את זרם ה-Flight.
 
-### קישורי נתונים חיצוניים (ATTACH) [tool-verified: `engine.py` `_warehouse_connectors`]
+### קישורי נתונים חיצוניים (ATTACH) [tool-verified: `engine.py` `_warehouse_connectors`] {: #external-data-links-attach-tool-verified-enginepy-warehouse_connectors }
 
 כל מנוע מחסן נתונים יכול לסרוק נתוני ענן/lake במקום, מבלי לנחות עותק. קבצי Parquet, CSV, Iceberg ו-Delta Lake על S3, GCS או OneLake מתחברים (attach) ישירות למנוע כאילו היו טבלאות טבעיות. האסטרטגיה — ATTACH (סריקה במקום) או LAND (העתקה למאגר) — נקבעת על ידי ה-`Mechanism` המוצהר של הקונקטור; אין הסתעפות ספציפית-למנוע בתכנן (planner). קונקטור מסוג `Mechanism.ATTACH_R` מפעיל סריקת zero-copy; קונקטור מסוג `Mechanism.DIRECT` או קונקטור שאינו קיים מפעיל נחיתה (land). [tool-verified: `connector_base.py` `Mechanism`, `engine.py` `_warehouse_connectors`]
 
@@ -221,17 +221,17 @@ ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric ו-Synapse כולם 
 | Fabric | parquet, csv, iceberg, delta_lake | OneLake shortcut ← OPENROWSET (`ATTACH_R`) | REST יוצר חיבור `AmazonS3Compatible` + lakehouse + shortcut; מחזיר את נתיב ה-`BULK` של OneLake — אומת בפועל בקריאת R2 דרך Fabric |
 | Snowflake | parquet, csv, json, iceberg, delta_lake | external stage + טבלה חיצונית (`ATTACH_R`) | `CREATE STAGE … URL=… CREDENTIALS=…`, ואז `CREATE OR REPLACE EXTERNAL TABLE … LOCATION=@stage FILE_FORMAT=(TYPE=…)` — ממומש; לא נבדק בפועל (אין חשבון זמין) |
 
-פרטי גישה לאחסון ענן עוברים בתוך `federation_hints` של המקור (ראו [Sources](sources.md#_10)). כל סוג מקור שאינו יכול לבצע ATTACH נוחת תחילה במאגר המימוש של המנוע.
+פרטי גישה לאחסון ענן עוברים בתוך `federation_hints` של המקור (ראו [Sources](sources.md#warehouses-as-named-sources)). כל סוג מקור שאינו יכול לבצע ATTACH נוחת תחילה במאגר המימוש של המנוע.
 
-### כתיבות מימוש עמודתי (REQ-990) [tool-verified: `core/database.py:436`, `store_connection.py:99`]
+### כתיבות מימוש עמודתי (REQ-990) [tool-verified: `core/database.py:436`, `store_connection.py:99`] {: #columnar-materialization-writes-req-990-tool-verified-coredatabasepy436-store_connectionpy99 }
 
 `Connection.bulk_copy` ב-`provisa/core/database.py` בוחר את נתיב ההזנה הכמותית (bulk-ingest) המהיר ביותר לפי דיאלקט המאגר: `COPY` בינארי (asyncpg `copy_records_to_table`) עבור מאגרי PostgreSQL, ופקודת `executemany` מוכנה (prepared) יחידה עבור כל שאר המאגרים היחסיים. המאגר המוטמע של DuckDB נוחת דרך `land_duckdb_native` ב-`store_connection.py` — קריאת `executemany` אחת עבור כל האצווה, לעולם לא לולאה לכל שורה.
 
-## הפניית תוצאות גדולות
+## הפניית תוצאות גדולות {: #large-result-redirect }
 
 תוצאות החורגות מסף שורות מופנות לאחסון תואם S3 (MinIO) במקום להיות מוחזרות inline. (REQ-029)
 
-### מצבי הפניה
+### מצבי הפניה {: #redirect-modes }
 
 | מצב | איך זה עובד | הנתונים נוגעים ב-Provisa? |
 | ------ | ------------- | ---------------------- |
@@ -240,7 +240,23 @@ ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric ו-Synapse כולם 
 
 עבור פורמטים טבעיים ל-CTAS, Provisa לעולם אינה מטפלת בנתונים — מנוע הפדרציה כותב קבצים ישירות ל-MinIO/S3. (REQ-138) זהו הנתיב המועדף עבור ייצוא אנליטי בהיקף גדול.
 
-### כותרות הפניה
+### ללא מאגר אובייקטים {: #with-no-object-store }
+
+תוצאה הולכת למאגר האובייקטים כשאחד מוגדר (נקודת קצה, או אישורים ל-AWS S3) והמנוע כותב אליו בעצמו את הפורמט המבוקש. אחרת היא נכתבת לקובץ בתיקיית הארגון, `<data directory>/orgs/<org>/results/`. [tool-verified: `provisa/executor/redirect.py` `uses_object_store`, `run_materialize`] (REQ-1195) מאגר מוגדר שהמנוע כותב אליו אך אינו יכול להגיע אליו מכשיל את הבקשה בשמו. התוצאה אינה נכתבת לתיקייה במקומו.
+
+| מנוע | כותב את הקובץ בעצמו | פורמטים |
+| ------ | ---------------------- | ------- |
+| DuckDB | `COPY (query) TO '<file>'` | parquet, csv, json, ndjson |
+| PostgreSQL | `COPY (query) TO STDOUT`, מוזרם לקובץ במארח של Provisa | csv |
+| כל פורמט או מנוע אחר | Provisa כותבת אותו מהשורות | parquet, orc, csv, arrow, json, ndjson |
+
+[tool-verified: `provisa/federation/result_sink.py` `DUCKDB_FILE_FORMATS`; `provisa/federation/pg_backend.py`; `provisa/executor/local_results.py` `FILE_FORMATS`]
+
+לידית יש אותם מפתחות כמו לזו של מאגר האובייקטים, עם `"sink": "local"` ו-`redirect_url` של `/data/redirect-file/<name>`, נתיב בשרת שענה. (REQ-1191) רק המשתמש שביקש את התוצאה רשאי להביא אותה. כל הבאה משווה את הזהות של הבקשה עצמה לבעלים שנרשם לצד הקובץ, ועונה 403 לכל אחד אחר ו-401 לבקשה ללא זהות. (REQ-1192) [tool-verified: `provisa/api/data/redirect_file.py`; `tests/unit/test_local_result_sink.py`]
+
+קובץ ישן מ-`redirect.ttl` נענה ב-404 ונמחק. טיימר מוחק אותו בתפוגתו, כפי שנמחקות התוצאות של מאגר האובייקטים. כל תוצאה חדשה גם מנקה את תיקיית התוצאות של הארגון, מה שמסיר קבצים שאתחול סיים את הטיימר שלהם. (REQ-1193) [tool-verified: `provisa/executor/local_results.py` `schedule_removal`, `reap_expired`]
+
+### כותרות הפניה {: #redirect-headers }
 
 | כותרת | אפקט |
 | -------- | -------- |
@@ -264,7 +280,7 @@ ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric ו-Synapse כולם 
 }
 ```
 
-### קונפיגורציית שרת
+### קונפיגורציית שרת {: #server-configuration }
 
 | משתנה סביבה | ברירת מחדל | מטרה |
 | --------- | --------- | --------- |
@@ -275,7 +291,7 @@ ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric ו-Synapse כולם 
 | `PROVISA_REDIRECT_ENDPOINT` | | כתובת נקודת קצה תואמת S3 |
 | `PROVISA_REDIRECT_TTL` | `3600` | TTL של כתובת חתומה מראש (בשניות) |
 
-## עץ החלטת ניתוב
+## עץ החלטת ניתוב {: #routing-decision-tree }
 
 ```text
 Multi-source query? → Federation engine
@@ -290,11 +306,11 @@ Redirect to Parquet/ORC? → Federation engine (CTAS, regardless of source count
 
 (REQ-027, REQ-028, REQ-030, REQ-279)
 
-## אופטימיזציית שאילתות פדרציה
+## אופטימיזציית שאילתות פדרציה {: #federation-query-optimization }
 
 Provisa מכינה מראש (primes) את האופטימיזטור מבוסס-העלות (cost-based optimizer) של מנוע הפדרציה באופן אוטומטי כך שתוכניות שאילתה חוצות-מקורות מבוססות על התפלגות נתונים אמיתית, לא על ברירות מחדל קשיחות.
 
-### סטטיסטיקות אוטומטיות (`ANALYZE`)
+### סטטיסטיקות אוטומטיות (`ANALYZE`) {: #automatic-statistics-analyze }
 
 בעת רישום מקור, Provisa מריצה `ANALYZE catalog.schema.table` עבור כל טבלה שפורסמה. (REQ-275) זה אוסף:
 
@@ -309,7 +325,7 @@ Provisa מכינה מראש (primes) את האופטימיזטור מבוסס-ה
 
 **מקורות API**: טבלאות `api_cache_{table_name}` ב-PostgreSQL מנותחות אוטומטית לאחר כל מחזור רענון מטמון, כך שלאופטימיזטור יש הערכות שורות עדכניות בעת חיבור מקורות מבוססי-API עם מקורות יחסיים. (REQ-280)
 
-### ניהול: רענון סטטיסטיקות
+### ניהול: רענון סטטיסטיקות {: #admin-refresh-statistics }
 
 הרצה חוזרת של איסוף סטטיסטיקות לפי דרישה דרך ה-API הניהולי: (REQ-276)
 
@@ -328,7 +344,7 @@ mutation {
 
 Materialized Views מייעלות בשקיפות שאילתות יקרות על ידי חישוב מראש ושמירה במטמון של תוצאות.
 
-### קשרים כרמזים ל-MV
+### קשרים כרמזים ל-MV {: #relationships-as-mv-hints }
 
 הצהרת קשר (relationship) אינה רק ארטיפקט ממשל — היא גם התיאור המבני של צורת join. צורה זו היא בדיוק מה שאופטימיזטור ה-MV צריך: שתי טבלאות, שתי עמודות, סוג join. משמעות הדבר היא שקשר יכול להניע ישירות מימוש (materialization).
 
@@ -338,7 +354,7 @@ Materialized Views מייעלות בשקיפות שאילתות יקרות על 
 
 המשמעות המעשית: stewards שמאשרים קשר, למעשה מחליטים אם ה-join הוא מועמד טוב למימוש. פעולת הממשל ורמז האופטימיזציה הם אותה הצהרה בדיוק.
 
-### מצבים
+### מצבים {: #modes }
 
 | מצב | קונפיגורציה | התנהגות |
 | ------ | -------- | ---------- |
@@ -347,7 +363,7 @@ Materialized Views מייעלות בשקיפות שאילתות יקרות על 
 | **קשר ממומש אוטומטית** | קשר חוצה-מקור (אוטומטי) | מייצר אוטומטית MV מסוג join-pattern; אין צורך בקונפיגורציה |
 | **קשר ממומש על ידי steward** | `materialize: true` על קשר בתוך אותו מקור | הצטרפות מפורשת עבור נתיבי join חמים בתוך אותו מקור |
 
-### מימוש אוטומטי
+### מימוש אוטומטי {: #auto-materialization }
 
 JOINs חוצי-מקור הם השאילתות היקרות ביותר (תמיד פדרטיביות). קשרים חוצי-מקור מייצרים אוטומטית הגדרות MV באתחול: (REQ-158)
 
@@ -365,7 +381,7 @@ relationships:
 
 רק קשרים חוצי-מקור מייצרים MVs (JOINs בתוך אותו מקור כבר מהירים דרך ביצוע ישיר). (REQ-159) ה-MV מתחיל במצב `STALE` ומתרענן על ידי לולאת הרענון ברקע לפני שהוא משמש את אופטימיזטור השאילתות. (REQ-160)
 
-### מחזור חיים של רענון
+### מחזור חיים של רענון {: #refresh-lifecycle }
 
 ```text
 STALE → (refresh loop picks up) → REFRESHING → FRESH
@@ -375,7 +391,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 
 לולאת הרענון פועלת כל 30 שניות, בודקת `get_due_for_refresh()`, ומבצעת `CREATE TABLE AS SELECT` (בהרצה ראשונה) או `DELETE + INSERT` (בהרצות הבאות) מול טבלת היעד של ה-MV דרך מנוע הפדרציה. (REQ-160, REQ-234)
 
-## מפת מודולים
+## מפת מודולים {: #module-map }
 
 | מודול | מטרה |
 | -------- | --------- |
@@ -442,7 +458,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 | `prometheus/` | קונקטור מקור מדדי Prometheus |
 | `source_adapters/` | שכבת מתאם גנרית לחיבורי מקור |
 
-## API ניהול
+## API ניהול {: #admin-api }
 
 ה-API הניהולי מבוסס Strawberry GraphQL מותקן תחת `/admin/graphql` (פורט HTTP 8001). הוא נפרד מנקודת הקצה של GraphQL הנתונים ודורש תפקיד superuser או admin.
 
@@ -456,13 +472,13 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 
 (REQ-164, REQ-165, REQ-166, REQ-167)
 
-## קונפיגורציית מודלי AI
+## קונפיגורציית מודלי AI {: #ai-models-configuration }
 
 `GET /admin/ai-models` ו-`PUT /admin/ai-models` מגדירים את צינור ה-LLM עבור כל ארגון. (REQ-464, REQ-419, REQ-500, REQ-370, REQ-1349)
 
 ההגדרות הן **ברמת ארגון**: הבחירות של כל ארגון שוכבות מעל קונפיגורציית הפריסה (deployment) ונכנסות לתוקף בבקשה הבאה — אין צורך באתחול מחדש. (REQ-1349) [tool-verified: `provisa/api/admin/ai_models_router.py:38-39`]
 
-**הקצאות מודל לפי פעולה.** לחמש פעולות NL יש כל אחת ספק ומחרוזת מודל הניתנים להגדרה:
+**הקצאות מודל לפי פעולה.** לשש פעולות יש כל אחת ספק ומחרוזת מודל הניתנים להגדרה:
 
 | פעולה | מה היא מניעה |
 | --------- | -------------- |
@@ -471,6 +487,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 | `relationship_inference` | גילוי מועמדי FK |
 | `sql_generation` | יצירת SQL מ-NL |
 | `table_selection` | בחירת אילו טבלאות לכלול ב-prompt של NL |
+| `mcp_chat` | לולאת השימוש בכלים של לוח עוזר הצ'אט (REQ-1794) |
 
 שדה הספק מקבל כל ספק תואם `aisuite` (`anthropic`, `openai`, `groq`, `mistral`, `cohere`, ואחרים) או נקודת קצה מקומית (`ollama`, `lmstudio`). מחרוזת מודל ריקה מסירה את הדריסה של הארגון וחוזרת לברירת המחדל של הפריסה. [tool-verified: `provisa/api/admin/ai_models_router.py:29-35`, `provisa-ui/src/components/admin/AiModelsTab.tsx:43-60`]
 
@@ -480,7 +497,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 
 **מפתחות API.** מפתחות API של LLM לכל ספק נשמרים מוצפנים דרך `provisa.core.org_secrets` (ראו למטה). תגובת ה-`GET` מדווחת רק האם מפתח מוגדר עבור כל ספק — הערך עצמו לעולם לא מוחזר. שליחת מחרוזת ריקה עבור ספק מנקה את המפתח הזה, ומחזירה קריאות LLM עבור אותו ספק לפרטי הגישה של משתנה הסביבה של הפריסה. (REQ-1395, REQ-1398) [tool-verified: `provisa/api/admin/ai_models_router.py:76-78`, `provisa/api/admin/ai_models_router.py:149-165`]
 
-## סודות מוצפנים לפי ארגון
+## סודות מוצפנים לפי ארגון {: #per-org-encrypted-secrets }
 
 `provisa/core/org_secrets.py` שומר פרטי גישה שאסור שיופיעו כטקסט גלוי במסד הנתונים. כרגע מוגבל למפתחות API של ספקי LLM (`{vendor}_api_key`). (REQ-1395, REQ-1398) [tool-verified: `provisa/core/org_secrets.py`]
 
@@ -490,7 +507,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 
 העברת `value=None` ל-`write_org_secret` מוחקת את השורה. קוראים שקוראים סוד צורכים אותו מיידית (לדוגמה כדי לבנות לקוח LLM) ואסור להם להדהד אותו בשום תגובת API. [tool-verified: `provisa/core/org_secrets.py:97-117`]
 
-## נקודות קצה REST ו-JSON:API מיוצרות אוטומטית
+## נקודות קצה REST ו-JSON:API מיוצרות אוטומטית {: #auto-generated-rest-jsonapi-endpoints }
 
 טבלאות רשומות נחשפות כנקודות קצה REST ו-JSON:API לצד ממשק ה-GraphQL. (REQ-256, REQ-257)
 
@@ -515,7 +532,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 
 הלקוח מקבל `text/event-stream` עם אירוע JSON אחד לכל שורה שהשתנתה או הפרש (diff).
 
-## מערכת אירועים ו-Webhook
+## מערכת אירועים ו-Webhook {: #event-webhook-system }
 
 מוטציות מסד נתונים (INSERT/UPDATE/DELETE) יכולות להפעיל אירועים יוצאים דרך המודולים `events/` ו-`webhooks/`. (REQ-172, REQ-173, REQ-220)
 
@@ -527,30 +544,30 @@ Mutation executed → EventDispatcher → match event trigger rules
 
 טריגרי אירועים מוגדרים בקונפיגורציה ומותאמים לפי טבלה, סוג פעולה, ופילטר שורה אופציונלי. עומסי (payloads) ה-webhook כוללים את סוג הפעולה, השורה שהשתנתה, והקשר התפקיד.
 
-## שירותי רקע
+## שירותי רקע {: #background-services }
 
 ארבע לולאות רקע מופעלות במהלך מחזור החיים (lifespan) של האפליקציה (`api/app.py`):
 
 | שירות | מרווח | מטרה |
 | --------- | ---------- | --------- |
 | לולאת רענון MV | 30 שניות | סורקת את `get_due_for_refresh()`, מבצעת CTAS או DELETE+INSERT על MVs לא-עדכניים |
-| מנהל טבלאות חמות (Warm) | ניתן להגדרה | מקדם טבלאות שנשאלות בתדירות גבוהה למטמון Iceberg על SSD מקומי |
+| הערכת שכפול חם | `replication.hot_interval` | מקדם טבלה שמספר ההצהרות שלה חצה את הסף שלה ומבקש את העותק שלה; מוריד טבלה שירדה מתחת למחצית. רץ בתהליך היחיד שמחזיק את נעילת המתזמן |
 | טוען טבלאות חמות (Hot) | ניתן להגדרה | טוען טבלאות ייחוס קטנות למטמון בזיכרון עבור גישה תת-מילישניתית |
 | poller למקור API | מרווח לפי מקור | מביא ושומר מחדש במטמון מקורות REST/GraphQL/gRPC מרוחקים |
 
 (REQ-160, REQ-238, REQ-239, REQ-236)
 
-### שכבות מטמון טבלאות Hot/Warm
+### טבלאות חמות וטבלאות שמשוכפלות בעומס {: #hot-tables-and-replicated-when-busy-tables }
 
 | שכבה | אחסון | קריטריון קידום | זמן גישה |
 | ------ | --------- | ------------------- | ---------------- |
 | Hot | זיכרון תוך-תהליכי | ספירת שורות < סף, או שהיא יעד קשר | < 1 מ"ש |
-| Warm | Iceberg על SSD מקומי | סף תדירות שאילתה חצה | כ-5–20 מ"ש |
+| משוכפלת בעומס | עותק במאגר של המנוע | `replicate` הוא Default או Hot-N וההצהרות המנוהלות שקוראות את הטבלה חצו את הסף שלה | הקריאה של המנוע עצמו מהמאגר שלו |
 | Cold | מקור מרוחק | ברירת מחדל | 50–500 מ"ש |
 
-(REQ-230, REQ-236, REQ-238, REQ-241)
+טבלה נמצאת לכל היותר באחד מהשניים: טבלה שהשכבה החמה מנהלת אינה משוכפלת בגלל עומס. (REQ-230, REQ-236, REQ-238, REQ-241, REQ-826)
 
-## ייבוא Metadata (Hasura v2 / DDN)
+## ייבוא Metadata (Hasura v2 / DDN) {: #metadata-import-hasura-v2-ddn }
 
 פריסות Hasura קיימות ניתנות להמרה לקונפיגורציית Provisa ללא שכתוב ידני. (REQ-182, REQ-183)
 
@@ -565,7 +582,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 
 `compiler/federation.py` חושף את Provisa כ-subgraph של Apollo Federation v2. (REQ-259) ה-SDL של ה-subgraph מיוצר אוטומטית מהסכמה שפורסמה עם הנחיות `@key` על עמודות מפתח ראשי והערות `@external`/`@provides` על קשרים חוצי-subgraph. Provisa מגיבה לשאילתות `_entities` ו-`_service` הנדרשות על ידי שער הפדרציה (federation gateway). (REQ-259)
 
-## Pagination מבוסס Cursor
+## Pagination מבוסס Cursor {: #cursor-based-pagination }
 
 כל שאילתות הרשימה תומכות ב-pagination בסגנון Relay מבוסס cursor דרך `compiler/cursor.py`. (REQ-218) לקוחות מעבירים פרמטרים `first`/`after` (קדימה) או `last`/`before` (אחורה). המהדר מקודד את מיקום השורה כ-cursor אטום בבסיס 64 (base64) ומזריק את פסוקיות ה-`WHERE`/`LIMIT` המתאימות. כל שאילתת רשימה מחזירה אובייקט `pageInfo`:
 
@@ -576,19 +593,19 @@ Mutation executed → EventDispatcher → match event trigger rules
 | `startCursor` | String | cursor של הצומת הראשון בעמוד זה |
 | `endCursor` | String | cursor של הצומת האחרון בעמוד זה |
 
-## שאילתות צבירה (Aggregate)
+## שאילתות צבירה (Aggregate) {: #aggregate-queries }
 
-כל טבלה רשומה מקבלת שדה שורש `{table}_aggregate` מיוצר אוטומטית (`compiler/aggregate_gen.py`). (REQ-196) סוג הצבירה חושף `count`, `sum`, `avg`, `min`, `max` לכל עמודה מספרית, ו-`nodes` לגישת שורות מסוננת עם בחירת שדות מלאה (אותו RLS/מיסוך כמו השאילתה הבסיסית). (REQ-196, REQ-198) שאילתות צבירה כשירות לניתוב Aggregate MV — ראו `mv/aggregate_catalog.py`. (REQ-198)
+כל טבלה רשומה מקבלת שדה שורש `{table}_aggregate` מיוצר אוטומטית (`compiler/aggregate_gen.py`). (REQ-196) סוג הצבירה חושף `count`, `sum`, `avg`, `min`, `max` לכל עמודה מספרית, ו-`nodes` לגישת שורות מסוננת עם בחירת שדות מלאה (אותו RLS/מיסוך כמו השאילתה הבסיסית). (REQ-196, REQ-198) צבירה על טבלה אחת, מכל משטח (SQL או מקומפל), נענית מתצוגה ממומשת עדכנית שצוברת אותה מראש, ללא שום הצהרה: תצוגה שה-SQL שלה הוא `GROUP BY` על טבלה אחת של `SUM`, `COUNT`, `MIN` ו-`MAX` בעלי שם משרתת את הצבירות שמקבצות לפי תת-קבוצה של עמודות הקיבוץ שלה ומסננות רק עליהן. כל צבירה נצברת מחדש על אלו השמורות (`COUNT` כסכום הספירות השמורות, `AVG` מסכום וספירה שמורים של אותה עמודה); מה שהתצוגה אינה יכולה לענות במדויק נשאר לטבלה. השכתוב רץ אחרי הממשל, כך שמסנן שורות על אחת מעמודות הקיבוץ של התצוגה מועבר לתצוגה, ומסנן שורות על כל עמודה אחרת, או מסכה על עמודה מסוכמת, משאיר את הקריאה לטבלה. (REQ-198, REQ-882) [tool-verified: `provisa/mv/aggregate_catalog.py`, `provisa/mv/view_reinject.py` `reinject`, `provisa/pgwire/_pipeline.py` `_view_answering`]
 
-## שאילתות מתמידות אוטומטיות (APQ)
+## שאילתות מתמידות אוטומטיות (APQ) {: #automatic-persisted-queries-apq }
 
 `apq/cache.py` מיישם את פרוטוקול החוט APQ של Apollo. (REQ-288) כאשר לקוח שולח רק hash של שאילתה (`extensions.persistedQuery`), Provisa מחפשת אותו ב-Redis. (REQ-289) בהיעדר התאמה, היא מחזירה שגיאת `PersistedQueryNotFound`; הלקוח מנסה שוב עם גוף השאילתה המלא, ש-Provisa שומרת. (REQ-288) זה נפרד ממטמון התוצאות (`cache/`).
 
-## תפקידים בירושה
+## תפקידים בירושה {: #inherited-roles }
 
-תפקידים ב-`core/models.py` יכולים להפנות ל-`parent_role_id`. (REQ-215) `flatten_roles()` פותרת רקורסיבית את שרשרת הירושה וממזגת פסוקיות WHERE של RLS (ב-AND), נראות עמודות (איחוד, המגביל ביותר מנצח), ומדיניות מיסוך (הילד דורס את ההורה לכל עמודה). זה נמנע משכפול קבוצות הרשאות בין תפקידים דומים (למשל, `analyst` היורש מ-`reader`). (REQ-215)
+תפקיד נוקב לכל היותר בהורה אחד דרך `parent_role_id`. (REQ-215) בבניית ה-runtime, `security/inheritance.py` עובר על שרשרת כל תפקיד מהצאצא כלפי מעלה ומקפל אותה לתוך העותקים של הבנייה עצמה של הנתונים שנטענו, כך שכל חיפוש מאוחר יותר נשאר ממופתח לפי מזהה התפקיד הפועל. (REQ-1677) היכולות והגישה לתחומים הם האיחוד של השרשרת. ה-`visible_to` וה-`writable_by` של עמודה, כל רשומה ברשימת המסכות שלה, וה-`visible_to` של מטריקה, פונקציה או webhook חלים על תפקיד כשהם נוקבים בו או באב קדמון שלו. RLS נפתר לכל טבלה כשהצאצא קודם: התפקיד הקרוב ביותר בשרשרת שיש לו כלל לטבלה, כלל הטבלה שלו לפני כלל התחום שלו, מספק את הפרדיקט היחיד שרץ; כלל של אב קדמון לעולם אינו משולב איתו. תפקיד יורש את מגבלת הקצב של הורהו כשאינו מגדיר מגבלה משלו. הורה חייב להתקיים, אינו יכול להיות התפקיד עצמו ואינו יכול לסגור מעגל; תפקיד שתפקידים אחרים יורשים ממנו אינו ניתן למחיקה עד שהם מקבלים הורה אחר. (REQ-1677)
 
-## Hook אישור ABAC
+## Hook אישור ABAC {: #abac-approval-hook }
 
 `auth/approval_hook.py` הוא hook הרשאה הניתן לחיבור, המופעל לפני ביצוע השאילתה, אחרי RLS ומיסוך. (REQ-203) הוא משתלב עם מנועי מדיניות חיצוניים (OPA, שירותי ABAC מותאמים אישית).
 
@@ -600,15 +617,15 @@ Mutation executed → EventDispatcher → match event trigger rules
 
 (REQ-246, REQ-247, REQ-204)
 
-## זיהוי אוטומטי של סוג Enum
+## זיהוי אוטומטי של סוג Enum {: #enum-type-auto-detection }
 
 `compiler/enum_detect.py` בודקת (introspects) סוגי enum טבעיים של PostgreSQL (`pg_enum`) בזמן יצירת הסכמה. (REQ-221) עמודות המשתמשות בסוג enum מוגדר-משתמש של PostgreSQL מקודמות לסוגי enum ב-GraphQL — הערכים שלהן הופכים לחברי enum במקום ל-string scalars.
 
-## טריגרים מתוזמנים
+## טריגרים מתוזמנים {: #scheduled-triggers }
 
 `scheduler/jobs.py` משתמש ב-APScheduler כדי להריץ משימות רקע המוגדרות כטריגרי cron או מרווח. (REQ-216) כל משימה יכולה לשלוח POST לכתובת webhook או לבצע מוטציה מול נקודת הקצה של הנתונים; פלט ה-Kafka החי של טבלה (`live.outputs`) נדגם על אותו מתזמן. הטריגרים מוגדרים דרך ה-API הניהולי (מוטציות `scheduledTrigger`) או המפתח `scheduled_triggers` בקונפיגורציית ה-YAML. (REQ-216)
 
-## רמזי ביצועים לפדרציה
+## רמזי ביצועים לפדרציה {: #federation-performance-hints }
 
 `compiler/hints.py` מפרסר רמזי steward המוטמעים בשאילתות כתגובות (comments), באמצעות תחביר ההערות של Provisa. (REQ-279) פורמט הרמז משתנה לפי שפת השאילתה:
 
@@ -636,17 +653,17 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 (REQ-279, REQ-277, REQ-278)
 
-מטמון התגובות הוא בהצטרפות לפי בקשה: GraphQL משתמש בהנחיה `@cached(ttl: Int)`, SQL ו-Cypher בהערה `cache`/`cache_ttl`, ו-gRPC במטא-נתוני הקריאה `x-provisa-cache` / `x-provisa-cache-ttl`. הרמז חל בכל תעבורה שנושאת את השפה (Cypher על גבי HTTP, Bolt ו-Arrow Flight; GraphQL על גבי HTTP ו-Arrow Flight). בקשה ללא רמז לעולם אינה קוראת מהמטמון או כותבת אליו, ואף צורה אינה קוראת נתונים עדכניים יותר ממה שהגדרות המקור והטבלה של המפעיל מתירות. ראו [מטמון](configuration.md). (REQ-544)
+מטמון התגובות הוא בהצטרפות לפי בקשה: GraphQL משתמש בהנחיה `@cached(ttl: Int)`, SQL ו-Cypher בהערה `cache`/`cache_ttl`, ו-gRPC במטא-נתוני הקריאה `x-provisa-cache` / `x-provisa-cache-ttl`. הרמז חל בכל תעבורה שנושאת את השפה (Cypher על גבי HTTP, Bolt ו-Arrow Flight; GraphQL על גבי HTTP ו-Arrow Flight). בקשה ללא רמז לעולם אינה קוראת מהמטמון או כותבת אליו, ואף צורה אינה קוראת נתונים עדכניים יותר ממה שהגדרות המקור והטבלה של המפעיל מתירות. ראו [מטמון](configuration.md#per-request-opt-in). (REQ-544)
 
-## Presets עמודה במוטציות
+## Presets עמודה במוטציות {: #column-presets-in-mutations }
 
 `compiler/mutation_gen.py` תומך ב-presets בצד השרת לכל עמודה, המוחלים על `INSERT` או `UPDATE`. (REQ-214) ה-presets אינם נכללים בסוג הקלט של מוטציית ה-GraphQL המיוצרת — הם מוזרקים על ידי המהדר באופן שקוף. סוגי preset: `static` (ערך מילולי) או `session` (ערך מ-session/header של הבקשה, למשל `x-hasura-user-id`). (REQ-214)
 
-## סייר סכמה GraphQL Voyager
+## סייר סכמה GraphQL Voyager {: #graphql-voyager-schema-explorer }
 
 ה-UI הניהולי (`provisa-ui/src/pages/SchemaExplorer.tsx`) מטמיע את GraphQL Voyager ככלי הדמיה אינטראקטיבי לסכמה. (REQ-248) הוא מרנדר את הסכמה המוגבלת-לתפקיד כתרשים ישויות-קשרים ניתן לניווט — טבלאות כצמתים, קשרים כקשתות (edges). הסכמה המוצגת תמיד מסוננת לתפקיד הנבחר הנוכחי.
 
-## סדר אכיפת אבטחה
+## סדר אכיפת אבטחה {: #security-enforcement-order }
 
 אין שער יכולת על השאילתה — הממשל מובע לחלוטין דרך בקרות ברמת הנתונים. (REQ-001) בקשת SQL גולמי דוחה (HTTP 403) כל טבלה מחוץ להיקף האובייקטים של התפקיד לפני שהממשל רץ. (REQ-267)
 
@@ -658,7 +675,7 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 כל ארבעת ממשקי השאילתה (HTTP, Flight, gRPC, pgwire) אוכפים את אותו צינור ממשל שלב 2; אף נתיב לקוח אינו יכול לעקוף אותו מבלי לעקוף את השרת. (REQ-002, REQ-038, REQ-266)
 
-## מגבלות קנה מידה
+## מגבלות קנה מידה {: #scalability-limits }
 
 Provisa היא שכבת הידור וניתוב דקה — היא מוסיפה מילישניות בודדות (single-digit) לאיחור השאילתה. עם זאת, נתיבים שבהם Provisa מסדרת (serializes) את נתוני התוצאה מוגבלים על ידי זיכרון התהליך. שני נתיבים הם באמת בלתי מוגבלים:
 
@@ -681,7 +698,7 @@ Provisa היא שכבת הידור וניתוב דקה — היא מוסיפה �
 - **Arrow Flight** (פורט 8815) עבור זרימה לכלי נתונים — batches זורמים דרך Provisa מבלי לממש (REQ-145)
 - **הפניית Parquet/ORC** עבור ייצוא מבוסס קובץ — מנוע הפדרציה כותב ישירות ל-S3, Provisa מחזירה כתובת חתומה מראש (presigned URL) (REQ-138, REQ-044)
 
-## תשתית
+## תשתית {: #infrastructure }
 
 | שירות | תמונה (Image) | פורט | מטרה |
 | --------- | ------- | ------ | --------- |

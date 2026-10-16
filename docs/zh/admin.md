@@ -2,7 +2,7 @@
 
 Admin API 是一个 Strawberry GraphQL 终结点，位于 `POST /admin/graphql`（REQ-533）。它需要超级用户或管理员角色（REQ-125、REQ-060），并且与数据 GraphQL 终结点是分开的（REQ-533）。
 
-## 身份验证
+## 身份验证 {: #authentication }
 
 使用 Provisa 的标准身份验证提供程序（REQ-120），在 `Authorization` 标头中传递您的凭据：
 
@@ -12,7 +12,7 @@ Authorization: Bearer <token>
 
 管理员访问权限由分配给角色的 `admin` 功能所控制（REQ-060、REQ-042）。
 
-### 个人访问令牌
+### 个人访问令牌 {: #personal-access-tokens }
 
 凡是接受 bearer 令牌的地方都接受个人访问令牌，本端点也不例外。签发与吊销均为自助操作——它是持有者的私有凭据，因此位于管理界面的用户资料页而非管理员页面，与退出组织、删除账户并列。管理员不代他人签发令牌。（REQ-1263）
 
@@ -22,11 +22,11 @@ Authorization: Bearer <token>
 | `GET /auth/tokens` | 调用者在本组织中的有效令牌——显示前缀、名称、生命周期时间戳，以及用于吊销的令牌标识哈希。绝不返回可用凭据 |
 | `DELETE /auth/tokens/{token_hash}` | 吊销调用者的某个令牌。若不属于调用者或已被吊销则返回 404 |
 
-省略 `role_id` 时，令牌解析为其所有者持有的角色；指定角色则把令牌收窄到低于其所有者。吊销也会隐式发生：移除用户在某组织中的成员资格会吊销其针对该组织的所有令牌。凭据本身参见[安全模型](security.md#_17)。
+省略 `role_id` 时，令牌解析为其所有者持有的角色；指定角色则把令牌收窄到低于其所有者。吊销也会隐式发生：移除用户在某组织中的成员资格会吊销其针对该组织的所有令牌。凭据本身参见[安全模型](security.md#personal-access-tokens)。
 
-## 功能
+## 功能 {: #capabilities }
 
-### 配置管理
+### 配置管理 {: #config-management }
 
 下载当前正在运行的配置（REQ-164）：
 
@@ -42,7 +42,7 @@ PUT /admin/config
 
 Provisa 会验证 YAML、重新加载目录，并重新生成架构 (Schema)（REQ-012、REQ-253）。无需重启。
 
-### 运行时设置
+### 运行时设置 {: #runtime-settings }
 
 在不编辑配置文件的情况下读取和写入运行时平台设置（REQ-165）：
 
@@ -73,7 +73,7 @@ PUT  /admin/ai-models
 
 `GET`/`HEAD /health` 和 `GET /setup/status` 始终无需身份验证 — 即使已配置身份验证提供程序，它们也会绕过 `Authorization: Bearer` 的要求（REQ-539）。
 
-### 联邦引擎
+### 联邦引擎 {: #federation-engine }
 
 读取或更改本部署所使用的引擎（REQ-916）：
 
@@ -84,7 +84,7 @@ PUT  /admin/federation-engine
 
 `GET` 返回当前生效的引擎键，以及它所需的配置字段。`PUT` 接受包含 `engine`（引擎键）及任意引擎专属字段的请求体；该选择会持久化到平台配置，并在下次服务重启时绑定。[tool-verified: `provisa/api/admin/settings_router.py:730-829`]
 
-### 关联编辑器
+### 关联编辑器 {: #relationship-editor }
 
 列出关联（REQ-166）：
 
@@ -102,11 +102,11 @@ query {
 }
 ```
 
-创建关联（REQ-019）：
+创建关系（REQ-019）。已存在的 id 会被拒绝；关系通过 `updateRelationship` 修改，它接受相同的输入：
 
 ```graphql
 mutation {
-  upsertRelationship(input: {
+  createRelationship(input: {
     id: "orders-to-customers"
     sourceTableId: "orders"
     targetTableId: "customers"
@@ -123,7 +123,7 @@ mutation {
 
 ```graphql
 mutation {
-  upsertRelationship(input: {
+  createRelationship(input: {
     id: "pets-bonded-pair"
     sourceTableId: "pets"
     targetTableId: "pets"
@@ -146,7 +146,7 @@ mutation {
 
 `viaLabelSource` 指定对外暴露的名称来自哪里，三种形式都会为 Cypher 转成大写蛇形（UPPER_SNAKE_CASE）：`column` 取 `viaTypeValue`（`BONDED_PAIR`），`table` 取联结表自身的名称（`PET_COMPANIONS`），`fixed` 取声明的 `alias`。以这种方式声明的联结表是一条边而不是一个实体——它会从节点标签中移除，因此在图 UI 中永远不会出现节点胶囊。[tool-verified: `provisa/api/admin/types.py:606-611`, `provisa/api/admin/db_queries.py:47-82`]
 
-### AI 关联发现
+### AI 关联发现 {: #ai-relationship-discovery }
 
 通过 REST 触发由 Claude 提供支持的外键分析（REQ-167、REQ-018）：
 
@@ -164,7 +164,7 @@ curl -X POST http://localhost:8001/admin/discover/candidates/{id}/accept \
   -d '{"name": "orders_to_customers"}'
 ```
 
-### 架构内省
+### 架构内省 {: #schema-introspection }
 
 浏览所有数据源中已发布的表（REQ-008）：
 
@@ -182,7 +182,7 @@ query {
 }
 ```
 
-### 列依赖检查（REQ-1484）
+### 列依赖检查（REQ-1484） {: #column-dependency-check-req-1484 }
 
 在保存会重命名某列的 SQL 别名或删除某列的表编辑之前，先查询还有哪些内容引用了它：
 
@@ -197,7 +197,7 @@ query {
 
 重命名别名会破坏所有针对暴露名称编写的构件——视图、MV、指标表达式、RLS 谓词、DQ 合约。删除列除了破坏这些之外，还会破坏存储物理 `column_name` 的构件：关系、术语表绑定、标签分配。`breaksOn` 会说明是哪一种。Tables 页面会在保存时运行该查询，并以提示对话框展示结果。查询覆盖的范围及其局限性参见[血缘](lineage.md)。
 
-### 视图管理
+### 视图管理 {: #view-management }
 
 注册物化视图（REQ-133、REQ-135）：
 
@@ -223,7 +223,7 @@ mutation {
 }
 ```
 
-### 图数据源注册
+### 图数据源注册 {: #graph-source-registration }
 
 Neo4j 和 SPARQL 数据源通过 REST 终结点注册（而非 GraphQL 管理员 API）（REQ-295、REQ-297）：
 
@@ -262,7 +262,7 @@ curl -X POST http://localhost:8001/admin/sources/sparql/kg/tables \
 
 注册完成后，表会出现在 GraphQL 架构中，并可像任何其他数据源一样进行查询（REQ-016）。
 
-### Hasura / DDN 导入（REQ-1483）
+### Hasura / DDN 导入（REQ-1483） {: #hasura-ddn-import-req-1483 }
 
 通过管理界面或 API 把现有的 Hasura v2 或 Hasura DDN 项目转换为 Provisa 配置，在你批准之前不会有任何内容落库。
 
@@ -289,7 +289,7 @@ POST /admin/import/hasura/apply
 
 预览绝不在服务端缓存转换后的 YAML；应用取用的是你提交的 YAML，因此所应用的内容与所审阅的完全一致。[tool-verified: `provisa/api/admin/import_router.py`]
 
-### Apache Ossie 互通（REQ-1316、REQ-1321）
+### Apache Ossie 互通（REQ-1316、REQ-1321） {: #apache-ossie-interchange-req-1316-req-1321 }
 
 Provisa 以导入/导出边界的形式与 Apache Ossie（孵化中）互通。
 
@@ -298,11 +298,11 @@ GET  /admin/ossie
 POST /admin/ossie/import
 ```
 
-**导出**（`GET /admin/ossie`）在每次请求时都从实时的受治理模型推导出 Ossie YAML 文档——绝不缓存，因此不可能过期。响应为 `text/yaml`，并带 `Content-Disposition: attachment` 标头。表成为 `dataset` 对象，列成为 `field` 对象，关联映射为 Ossie 的 `relationship` 对象。（REQ-1321）[tool-verified: `provisa/api/admin/ossie_router.py:download_ossie`]
+**导出**（`GET /admin/ossie`）在每次请求时从实时受治理模型派生 Ossie YAML 文档——从不缓存，因此不会过期。响应为 `text/yaml`，带有 `Content-Disposition: attachment` 标头。该文档是一个模型，其根部包含 `version`、`name`、`datasets`、`relationships` 和 `metrics`：表成为 `dataset` 对象，列成为 `field` 对象，关系映射为 Ossie 的 `relationship` 对象。没有任何表的模型以 `422` 被拒绝。（REQ-1321） [tool-verified: `provisa/api/admin/ossie_router.py:download_ossie`]
 
-**导入**（`POST /admin/ossie/import`）接受 Ossie 的 YAML 或 JSON 文档（格式自动检测）。它解析该文档，并以 JSON 对象返回建议注册的表与关联——不会注册任何内容。管理界面中的审阅页面让你在任何变更触发之前接受或删减这些建议。（REQ-1316）[tool-verified: `provisa/api/admin/ossie_router.py:import_ossie`]
+**导入**（`POST /admin/ossie/import`）接受 YAML 或 JSON 格式的 Ossie 文档（自动识别格式）。它解析文档，并以 JSON 对象形式返回建议的表、关系和指标注册——不会注册任何内容。它只读取文档的扁平形式；将模型包裹在 `semantic_model` 中的文档会被点名拒绝。管理界面中的审查屏幕允许在执行任何变更之前接受或裁剪建议。（REQ-1316） [tool-verified: `provisa/api/admin/ossie_router.py:import_ossie`]
 
-### 对象存储（REQ-1046、REQ-1048、REQ-1049）
+### 对象存储（REQ-1046、REQ-1048、REQ-1049） {: #object-storage-req-1046-req-1048-req-1049 }
 
 读取或配置组织的物化存储：
 
@@ -313,7 +313,7 @@ PUT  /admin/org-storage
 
 `GET` 报告该组织用掉了多少平台存储配额。`PUT` 注册该组织自有的存储 DSN（静态加密；GET 绝不返回它）。一经设置，该组织的物化便落入它自己的存储桶，不再计入平台配额。发送 `storage_url: null` 会清除该设置，并把该组织移回平台存储。[tool-verified: `provisa/api/admin/org_storage_router.py`]
 
-### 组织加密（REQ-1574）
+### 组织加密（REQ-1574） {: #org-encryption-req-1574 }
 
 设置或轮换组织的静态加密密钥：
 
@@ -328,7 +328,7 @@ PUT  /admin/org-encryption
 
 Admin API 在浏览器中的 `GET /admin/graphql` 附带 GraphiQL（REQ-622）。可用它以交互方式探索完整的管理员架构。
 
-## ops 域管理视图（REQ-1386）
+## ops 域管理视图（REQ-1386） {: #ops-domain-management-views-req-1386 }
 
 每次安装都会向内置的 `ops` 域中植入八个 SQL 视图。[tool-verified: `provisa/api/startup_seed.py:225-331` `_seed_ops_domain`] 它们把查询审计日志暴露为受治理的表——可经由 SQL（pgwire）、GraphQL 和 Cypher 查询，并适用与任何业务表相同的域访问规则、行级安全和脱敏。
 
@@ -369,7 +369,7 @@ ORDER BY day DESC, query_count DESC;
 
 同样的查询可以作为 GraphQL 或 Cypher 运行在任何受治理的传输之上——pgwire、Arrow Flight 或 Bolt。[inferred from governed-surface design]
 
-## 报表查看器（REQ-1390）
+## 报表查看器（REQ-1390） {: #reports-viewer-req-1390 }
 
 报表查看器位于 `/admin/reports`。没有 `observability` 功能的角色无法访问它。
 
@@ -379,13 +379,13 @@ ORDER BY day DESC, query_count DESC;
 
 **删除。**垃圾桶图标仅对自定义报表显示。植入的管理视图无法从此接口删除。[tool-verified: `ReportsTab.tsx:151` — `const custom = report.sourceId === DERIVED_SOURCE_ID` gates the delete button]
 
-## 表预览（REQ-1392）
+## 表预览（REQ-1392） {: #table-preview-req-1392 }
 
 在「表」页面展开任意一行。**预览**按钮会打开一个宽度为 90% 的模态框，显示该表的实时受治理数据。[tool-verified: `TablePreviewModal.tsx:24` — `size="90%"`; `GovernedTableViewer.tsx` is the underlying viewer]
 
 以 API 为后端且带有必填路径参数的表会阻止预览，直到提供这些值。内嵌表单会在首次查询运行前收集每个必填参数；可选查询参数出现在同一表单中。[tool-verified: `GovernedTableViewer.tsx:51-55, 153-155` — `requiredParamColumns` check; "paramsRequired" message shown when `activeParams == null`]
 
-## 受治理数据查看器（REQ-1391）
+## 受治理数据查看器（REQ-1391） {: #governed-data-viewer-req-1391 }
 
 同一个查看器组件同时驱动预览模态框和报表查看器。两种场景下行为一致。
 
