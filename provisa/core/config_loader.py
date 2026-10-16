@@ -129,6 +129,10 @@ _VIEW_KEYS = {
     # REQ-2009: a view offers the GraphQL Aggregate and GroupBy root fields as a table does.
     "enable_aggregates": "enable_aggregates",
     "enable_group_by": "enable_group_by",
+    # REQ-1162: a materialized view keeps every version of its rows, appended (snapshot | delta),
+    # keyed on its business identity.
+    "bitemporal_mode": "mv_bitemporal_mode",
+    "bitemporal_key": "mv_bitemporal_key",
 }
 
 

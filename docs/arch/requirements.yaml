@@ -36074,7 +36074,15 @@
     end to end via mv_bitemporal_mode / mv_bitemporal_key (TableInput -> core Table -> MVDefinition.bitemporal
     -> refresh_mv) with a UI control in TableEditForm. NOTE: exposing `as_of` as a query-language argument
     that routes bitemporal-MV reads through reconstruction is tracked as REQ-1163 (the consumer query
-    surface, analogous to REQ-372 for sources).'
+    surface, analogous to REQ-372 for sources). (Amended 2026-10-16, DECLARED IN CONFIG AND CARRIED
+    BY A DEMO BUNDLE:) a config.yaml view declares it as bitemporal_mode and bitemporal_key. A view''s
+    history is its append log and no rebuild from its sources gives it back, so a named demo''s
+    bundle carries it: the build writes each bitemporal view''s append log, as its setup left it,
+    beside the seed (seeded/views.duckdb, seeded/views.json); the demo''s template copies it into
+    its own store when its runtime is built, before any refresh of it; and each sandbox is given the
+    template''s. A refresh over sources unchanged since appends nothing, so the history is the
+    view''s own wherever the demo runs. A bitemporal view the setup never built fails the build by
+    name.'
   use_case: Time-travel previously existed only on Iceberg; when Iceberg was unreachable the substrate
     degraded to replace/append/upsert, losing history. Append-only bitemporal materialization makes time-travel
     available on any substrate — the same definition retargets across engines without remodeling.
@@ -36088,6 +36096,8 @@
   - provisa/core/repositories/table.py
   - provisa/api/admin/schema_helpers.py
   - provisa/api/app_rebuild.py
+  - provisa/api/demo_replicas.py
+  - provisa/core/config_loader.py
   tests:
   - tests/unit/test_bitemporal.py
   - tests/unit/test_bitemporal_exec.py
@@ -36095,6 +36105,7 @@
   - tests/unit/test_bitemporal_iceberg.py
   - tests/unit/test_bitemporal_refresh_e2e.py
   - tests/integration/test_bitemporal_http_e2e.py
+  - tests/unit/test_demo_views_seed.py
   since: 2026-07
   scenario: 'Given a materialized view declared bitemporal (snapshot or delta) on an entity key
 

@@ -429,14 +429,19 @@ async def land_from_seed(org_id: str) -> None:
     """In the template org ``org_id``'s runtime build, with its model loaded and the org bound,
     before its replica convergence is wired: land its replicas from the demo's seed when this
     deployment's store does not hold them (demo_replicas.adopt_seed). A bundle build's seeding
-    run lands them from the demo's sources instead, and writes the seed."""
+    run lands them from the demo's sources instead, and writes the seed. Its bitemporal views'
+    history, when its bundle carries it, likewise (demo_replicas.adopt_views; REQ-1162)."""
     import logging
 
-    from provisa.api.demo_replicas import adopt_seed, landed_here
+    from provisa.api.demo_replicas import adopt_seed, adopt_views, landed_here
 
     if seeding_release():
         return
     demo = demo_of_template(org_id)
+    if await asyncio.to_thread(adopt_views, org_id, demo.directory):
+        logging.getLogger(__name__).info(
+            "demo template %s: views' history from its seed", demo.name
+        )
     if await landed_here(org_id) >= len(replicated_tables(template_seed(org_id))):
         return
     if await adopt_seed(org_id, demo.directory):

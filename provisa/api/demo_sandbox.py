@@ -212,12 +212,20 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
     from provisa.core.demo_bundles import SANDBOX_DEMO_DIRECTORY
 
     (org_files.folder(org_id) / SANDBOX_DEMO_DIRECTORY).write_text(str(demo.directory))
-    from provisa.api.demo_replicas import copy_to_sandbox
+    from provisa.api.demo_replicas import (
+        bitemporal_view_tables,
+        copy_to_sandbox,
+        copy_views_to_sandbox,
+    )
     from provisa.api.demo_templates import replicated_tables, template_seed
 
+    seed = template_seed(demo.template_org)
     # Only what the demo serves from replicas is copied (REQ-2049): its own sources are read live.
-    if replicated_tables(template_seed(demo.template_org)):
+    if replicated_tables(seed):
         await copy_to_sandbox(demo.template_org, org_id)
+    # REQ-1162: and its bitemporal views' history, which no refresh of those sources gives back.
+    if views := bitemporal_view_tables(seed):
+        await copy_views_to_sandbox(demo.template_org, org_id, views)
 
     rt = await state.org_registry.rebuild(org_id, lambda oid: build_org_runtime(oid))
     assert rt.model_db is not None
