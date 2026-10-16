@@ -1,0 +1,15 @@
+# The portfolio's premium and indemnity by crop year, summed on the server, the costliest year
+# first: the years it lost money on, to set beside each year's rain and heat.
+query LossesByYear {
+  a__viewLossesAndWeatherGroupBy(by: [year], order_by: [{ aggregate: { sum: { indemnity: desc } } }]) {
+    groupKey
+    aggregate {
+      count
+      sum {
+        premium
+        indemnity
+        hotDays
+      }
+    }
+  }
+}

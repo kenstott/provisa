@@ -887,6 +887,54 @@
       "datavaultRecap": {
         "title": "Ce que vous avez vu",
         "description": "Deux systèmes en direct et un data vault par-dessus, déclaré sous forme de vues : hubs, links et satellites avec chaque version conservée, rafraîchis par le moteur à mesure que les lignes arrivent, gouvernés dans les satellites et interrogés en point in time en SQL, GraphQL et REST, avec une traçabilité jusqu'aux champs sources. Aucune plateforme ETL distincte, aucun serveur de tâches, aucun code de pipeline."
+      },
+      "agricultureScenario": {
+        "title": "Ce qu'est cette démo",
+        "description": "Un assureur agricole veut savoir si la météo explique les pertes de son portefeuille. Ses propres exploitations, polices et sinistres sont dans sa base de données ; la météo de chaque comté américain et les pertes de tout le marché de l'assurance récolte par cause de sinistre sont publiques, dans les données de la NOAA et de l'USDA. La visite montre Provisa joignant les deux par comté et année de récolte, et répondant à la question en SQL, GraphQL et via REST."
+      },
+      "agricultureGovdata": {
+        "title": "Les données publiques",
+        "description": "Les données publiques viennent d'AskAmerica, un compte actif. Ses trois tables sont chargées une seule fois, à la construction de la démo, et seulement la tranche dont le portefeuille a besoin : ses 40 comtés, le maïs et le soja, les années de récolte 2010 à 2017. Elles sont lues définitivement depuis cette copie : elles n'expirent jamais, et cette démo n'appelle jamais le compte."
+      },
+      "agricultureClaims": {
+        "title": "Les sinistres de l'assureur",
+        "description": "Chaque indemnité versée par l'assureur, lue en direct dans sa propre base de données : l'exploitation, l'année de récolte, la cause de sinistre, le mois et le montant."
+      },
+      "agricultureMarket": {
+        "title": "Les pertes de tout le marché",
+        "description": "L'USDA Risk Management Agency publie l'expérience de l'assurance récolte de chaque comté par culture, cause de sinistre et mois : la prime encaissée par le marché et les indemnités versées pour la sécheresse, la chaleur, l'excès d'humidité, la grêle et le reste. Les données publiques la couvrent de 2009 à 2017 et à partir de 2024 ; 2018 à 2023 ne sont pas encore chargées, cette démo couvre donc les campagnes 2010 à 2017."
+      },
+      "agricultureWeather": {
+        "title": "Météo quotidienne par comté",
+        "description": "La température maximale quotidienne et les précipitations de la NOAA pour chaque comté, la moyenne de ses stations de mesure. Seule la saison de culture, de mai à août, est chargée : quand la pluie et la chaleur décident du rendement."
+      },
+      "agricultureJoin": {
+        "title": "Joint par comté",
+        "description": "Le portefeuille et les tables publiques partagent le code FIPS du comté, et ces relations les joignent. La vue de la réponse les rapproche par comté et année de récolte."
+      },
+      "agricultureTerms": {
+        "title": "Dans les termes de l'assureur",
+        "description": "Le glossaire nomme ce que demande un souscripteur en assurance récolte : ratio sinistres/primes, cause de sinistre, historique de production réelle (APH), niveau de couverture, engagement assuré, la saison de culture. Ici le ratio sinistres/primes : indemnités rapportées à la prime, au-dessus de 1 c'est une année déficitaire."
+      },
+      "agricultureAnswer": {
+        "title": "La réponse en SQL",
+        "description": "La vue losses_and_weather place la saison de chaque comté à côté des résultats du portefeuille, et elle est conservée stockée. Par année de récolte : 2012, la saison la plus sèche et la plus chaude, est l'année où le portefeuille a perdu de l'argent, surtout à cause de la sécheresse et de la chaleur, comme tout le marché ; les années humides 2010 et 2013 ont coûté moins."
+      },
+      "agricultureWorstSeasons": {
+        "title": "Les pires saisons",
+        "description": "Les saisons de comté aux ratios sinistres/primes les plus élevés, à côté de leur pluie, de leurs jours au-dessus de 32 °C, de la part des pertes du marché que l'USDA attribue à la sécheresse et à la chaleur, et du rendement du maïs relevé par la NASS."
+      },
+      "agricultureDrySeasons": {
+        "title": "Les saisons les plus sèches, en GraphQL",
+        "description": "La même vue en GraphQL, les saisons les moins pluvieuses d'abord : ce sont celles aux ratios sinistres/primes les plus élevés et aux rendements les plus bas."
+      },
+      "agricultureRest": {
+        "title": "Par année via REST",
+        "description": "La vue est aussi un point de terminaison REST, groupé par année de récolte et totalisé sur le serveur. Tout client qui parle HTTP obtient la réponse sans écrire de SQL."
+      },
+      "agricultureRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Les données propres de l'assureur, lues en direct, et les pertes, la météo et les rendements publics, chargés une fois, rapprochés par comté et année de récolte dans un seul modèle gouverné : une vue répond à la question de savoir si la météo explique les pertes, en SQL, GraphQL et REST."
       }
     },
     "status": {
@@ -951,6 +999,10 @@
       "datavault": {
         "title": "Data vault",
         "summary": "Un data vault déclaré sur un système de commandes et un CRM : des hubs, des links et des satellites que le moteur construit et rafraîchit à mesure que les lignes arrivent, des données personnelles masquées dans les satellites, et une requête point in time pour savoir ce qui était connu d'un client, de quelle source et quand."
+      },
+      "agriculture": {
+        "title": "Météo et pertes de l'assurance récolte",
+        "summary": "La question d'un assureur agricole, la météo explique-t-elle les pertes de son portefeuille : ses propres exploitations, polices et sinistres joints par comté et année de récolte aux pertes par cause de l'USDA, à la météo de la NOAA et aux rendements de la NASS, avec la réponse en SQL, GraphQL et REST."
       }
     }
   }

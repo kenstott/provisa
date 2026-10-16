@@ -83205,7 +83205,16 @@
     REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered
     at template build and served stored, REQ-2012) only where a conversational answer is the natural fit; then a
     recap. Data is landed at build as TTL -1 replicas (REQ-2031); the build fails, naming the table, when a govdata
-    table it needs is empty. A per-vertical glossary uses the industry''s own terms.'
+    table it needs is empty. A per-vertical glossary uses the industry''s own terms.
+
+    (Amended 2026-10-16, CAUSE OF LOSS:) The public losses are ag.rma_cause_of_loss, not rma_crop_insurance:
+    the Summary of Business carries no peril, and the question is whether weather explains the losses, so the
+    demo reads the USDA''s indemnities by cause of loss. Its three govdata tables are rma_cause_of_loss,
+    weather_daily_by_county and nass_crop_production, each landed with a landing filter (REQ-2062) to the
+    portfolio''s 40 counties, corn and soybeans, and the crop years 2010 to 2017 (the weather to May to August):
+    the years govdata holds both causes of loss and daily weather for. The answer''s view matches the sources by
+    county and crop year as one UNION of each source''s figures, folded per county and year, with no join between
+    them.'
   use_case: A agriculture buyer opens the agriculture demo and sees their own kind of question answered across company
     and public data.
   scenario: 'Given the agriculture demo started from its template
@@ -83227,6 +83236,13 @@
     audit firms, tax firms, local governments). SHOULD = the first experiment set (insurance, pharma, agriculture,
     audit, tax, local government), measured by sandbox events before others are built. Lead''s elaboration: the
     questions and table choices.'
+  code:
+  - demo/named/agriculture/config.yaml
+  - demo/named/agriculture/db/init.sql
+  - demo/named/agriculture/tour.yaml
+  tests:
+  - tests/integration/test_agriculture_demo.py
+  - tests/unit/test_named_demo_tour.py
 - id: REQ-2040
   status: proposed
   since: 2026-10

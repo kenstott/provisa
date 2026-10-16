@@ -887,6 +887,54 @@
       "datavaultRecap": {
         "title": "Lo que ha visto",
         "description": "Dos sistemas en vivo y un Data Vault sobre ellos, declarado como vistas: hubs, links y satellites con cada versión conservada, actualizados por el motor a medida que llegan filas, gobernados en los satellites y consultados point in time en SQL, GraphQL y REST, con linaje hasta los campos de origen. Sin plataforma ETL independiente, servidor de trabajos ni código de pipelines."
+      },
+      "agricultureScenario": {
+        "title": "Qué es esta demo",
+        "description": "Una aseguradora agrícola quiere saber si el clima explica las pérdidas de su cartera. Sus propias fincas, pólizas y siniestros están en su base de datos; el clima de cada condado de EE. UU. y las pérdidas de todo el mercado del seguro agrícola por causa de pérdida son públicos, en los datos de NOAA y del USDA. El recorrido muestra a Provisa uniendo ambos por condado y año agrícola, y respondiendo la pregunta en SQL, GraphQL y por REST."
+      },
+      "agricultureGovdata": {
+        "title": "Los datos públicos",
+        "description": "Los datos del gobierno vienen de AskAmerica, una cuenta en vivo. Sus tres tablas se cargan una sola vez, al construir la demo, y solo la porción que necesita la cartera: sus 40 condados, maíz y soja, los años agrícolas 2010 a 2017. Se leen de esa copia de forma permanente: nunca caducan y esta demo nunca llama a la cuenta."
+      },
+      "agricultureClaims": {
+        "title": "Los siniestros de la aseguradora",
+        "description": "Cada indemnización que pagó la aseguradora, leída en vivo de su propia base de datos: la finca, el año agrícola, la causa de pérdida, el mes y el importe."
+      },
+      "agricultureMarket": {
+        "title": "Las pérdidas de todo el mercado",
+        "description": "La Agencia de Gestión de Riesgos (RMA) del USDA publica la experiencia del seguro agrícola de cada condado por cultivo, causa de pérdida y mes: la prima que cobró el mercado y las indemnizaciones que pagó por sequía, calor, exceso de humedad, granizo y el resto. Los datos gubernamentales la contienen de 2009 a 2017 y desde 2024; 2018 a 2023 aún no están cargados, por lo que esta demo abarca las campañas agrícolas de 2010 a 2017."
+      },
+      "agricultureWeather": {
+        "title": "Clima diario por condado",
+        "description": "La temperatura máxima diaria y la precipitación de NOAA para cada condado, la media de sus estaciones de medición. Solo se carga la temporada de cultivo, de mayo a agosto: cuando la lluvia y el calor deciden el rendimiento."
+      },
+      "agricultureJoin": {
+        "title": "Unido por condado",
+        "description": "La cartera y las tablas públicas comparten el código FIPS del condado, y estas relaciones las unen. La vista de la respuesta las hace coincidir por condado y año agrícola."
+      },
+      "agricultureTerms": {
+        "title": "En los términos del asegurador",
+        "description": "El glosario nombra lo que pregunta un suscriptor de seguros agrícolas: ratio de siniestralidad, causa de pérdida, historial real de producción (APH), nivel de cobertura, responsabilidad asegurada, la temporada de cultivo. Aquí la ratio de siniestralidad: indemnizaciones sobre prima, por encima de 1 es un año con pérdidas."
+      },
+      "agricultureAnswer": {
+        "title": "La respuesta en SQL",
+        "description": "La vista losses_and_weather coloca la temporada de cada condado junto a los resultados de la cartera y se mantiene almacenada. Por año agrícola: 2012, la temporada más seca y calurosa, es el año en que la cartera perdió dinero, sobre todo por sequía y calor, igual que todo el mercado; los años húmedos de 2010 y 2013 costaron menos."
+      },
+      "agricultureWorstSeasons": {
+        "title": "Las peores temporadas",
+        "description": "Las temporadas de condado con las ratios de siniestralidad más altas, junto a su lluvia, sus días por encima de 32 °C, la parte de las pérdidas del mercado que el USDA atribuye a sequía y calor, y el rendimiento de maíz que registró NASS."
+      },
+      "agricultureDrySeasons": {
+        "title": "Las temporadas más secas, en GraphQL",
+        "description": "La misma vista en GraphQL, con las temporadas de menos lluvia primero: son las de mayores ratios de siniestralidad y menores rendimientos."
+      },
+      "agricultureRest": {
+        "title": "Por año mediante REST",
+        "description": "La vista también es un endpoint REST, agrupada por año agrícola y sumada en el servidor. Cualquier cliente que hable HTTP obtiene la respuesta sin escribir SQL."
+      },
+      "agricultureRecap": {
+        "title": "Lo que ha visto",
+        "description": "Los datos propios de la aseguradora, leídos en vivo, y las pérdidas, el clima y los rendimientos públicos, cargados una vez, unidos por condado y año agrícola en un único modelo gobernado: una vista responde si el clima explica las pérdidas, en SQL, GraphQL y REST."
       }
     },
     "status": {
@@ -951,6 +999,10 @@
       "datavault": {
         "title": "Data Vault",
         "summary": "Un Data Vault declarado sobre un sistema de pedidos y un CRM: hubs, links y satellites que el motor construye y actualiza a medida que llegan filas, datos personales enmascarados en los satellites y una consulta point in time sobre qué se sabía de un cliente, de qué origen y cuándo."
+      },
+      "agriculture": {
+        "title": "Clima y pérdidas del seguro agrícola",
+        "summary": "La pregunta de una aseguradora agrícola, si el clima explica las pérdidas de su cartera: sus propias fincas, pólizas y siniestros unidos por condado y año agrícola a las pérdidas por causa del USDA, el clima de NOAA y los rendimientos de NASS, respondida en SQL, GraphQL y REST."
       }
     }
   }

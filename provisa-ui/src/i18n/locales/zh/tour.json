@@ -887,6 +887,54 @@
       "datavaultRecap": {
         "title": "你看到了什么",
         "description": "两个在线系统和其上的 Data Vault，以视图声明：保留每个版本的 Hub、Link 和 Satellite，由引擎在行到达时刷新，在 Satellite 中治理，并以时间点方式在 SQL、GraphQL 和 REST 中查询，血缘可追溯到来源字段。无需单独的 ETL 平台、作业服务器或管道代码。"
+      },
+      "agricultureScenario": {
+        "title": "这个演示是什么",
+        "description": "一家农作物保险公司想知道,天气能否解释其投资组合中的损失。它自己的农场、保单和理赔都在它的数据库中;美国每个县的天气,以及整个市场按损失原因划分的农作物保险损失,都是公开的,来自 NOAA 和 USDA 的数据。本导览展示 Provisa 如何按县和作物年度把两者连接起来,并用 SQL、GraphQL 和 REST 回答这个问题。"
+      },
+      "agricultureGovdata": {
+        "title": "公开数据",
+        "description": "政府数据来自 AskAmerica,一个在线账户。它的三张表在构建演示时一次性载入,而且只载入投资组合所需的部分:其 40 个县、玉米和大豆、2010 年至 2017 年的作物年度。此后一直从这份副本读取:它们永不过期,本演示也从不调用该账户。"
+      },
+      "agricultureClaims": {
+        "title": "保险公司的理赔",
+        "description": "保险公司支付的每一笔赔款,实时读取自它自己的数据库:农场、作物年度、损失原因、月份和金额。"
+      },
+      "agricultureMarket": {
+        "title": "整个市场的损失",
+        "description": "USDA 风险管理局(Risk Management Agency)按作物、损失原因和月份公布每个县的农作物保险经验:市场收取的保费,以及因干旱、高温、水分过多、冰雹等原因支付的赔款。 政府数据收录了2009至2017年及2024年以来的数据；2018至2023年尚未载入，因此本演示涵盖2010至2017作物年度。"
+      },
+      "agricultureWeather": {
+        "title": "各县的每日天气",
+        "description": "NOAA 提供的每个县的日最高气温和降水量,取其观测站的平均值。只载入生长季,即 5 月至 8 月:雨水和高温决定产量的时期。"
+      },
+      "agricultureJoin": {
+        "title": "按县连接",
+        "description": "投资组合和公开表共用县的 FIPS 代码,这些关系把它们连接起来。答案的视图按县和作物年度将它们匹配。"
+      },
+      "agricultureTerms": {
+        "title": "用保险公司的术语",
+        "description": "术语表给出了农作物承保人会问到的概念的名称:赔付率、损失原因、实际生产历史(APH)、保障水平、责任额、生长季。这里的赔付率是:赔款除以保费,高于 1 即为亏损年。"
+      },
+      "agricultureAnswer": {
+        "title": "用 SQL 得出答案",
+        "description": "视图 losses_and_weather 把每个县的季节与投资组合的结果并排放置,并以存储方式保留。按作物年度看:2012 年是最干旱、最炎热的季节,也是投资组合亏损的一年,主要由于干旱和高温,整个市场也是如此;雨水充足的 2010 年和 2013 年损失较小。"
+      },
+      "agricultureWorstSeasons": {
+        "title": "最糟的季节",
+        "description": "赔付率最高的县季节,并列其降水量、超过 32 °C 的天数、USDA 归因于干旱和高温的市场损失占比,以及 NASS 记录的玉米产量。"
+      },
+      "agricultureDrySeasons": {
+        "title": "最干旱的季节,用 GraphQL",
+        "description": "同一视图用 GraphQL 呈现,降水最少的季节排在最前:它们正是赔付率最高、产量最低的季节。"
+      },
+      "agricultureRest": {
+        "title": "用 REST 按年度",
+        "description": "该视图同时是一个 REST 端点,按作物年度分组并在服务器上求和。任何使用 HTTP 的客户端都能得到答案,无需编写 SQL。"
+      },
+      "agricultureRecap": {
+        "title": "您看到了什么",
+        "description": "保险公司自己的数据实时读取,公开的损失、天气和产量一次载入,按县和作物年度在一个受治理的模型中匹配:一个视图回答天气是否解释了损失,可用 SQL、GraphQL 和 REST。"
       }
     },
     "status": {
@@ -951,6 +999,10 @@
       "datavault": {
         "title": "Data Vault",
         "summary": "在订单系统和 CRM 之上声明的 Data Vault：由引擎在行到达时构建并刷新的 Hub、Link 和 Satellite，在 Satellite 中脱敏的个人数据，以及一个时间点查询，说明关于某位客户当时知道什么、来自哪个数据源、是什么时候。"
+      },
+      "agriculture": {
+        "title": "天气与农作物保险损失",
+        "summary": "一家农作物保险公司的问题:天气能否解释其投资组合的损失。它自己的农场、保单和理赔按县和作物年度,与 USDA 按原因划分的损失、NOAA 的天气和 NASS 的产量连接起来,用 SQL、GraphQL 和 REST 作答。"
       }
     }
   }

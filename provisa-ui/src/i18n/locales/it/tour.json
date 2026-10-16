@@ -887,6 +887,54 @@
       "datavaultRecap": {
         "title": "Cosa avete visto",
         "description": "Due sistemi in tempo reale e un data vault sopra di essi, dichiarato come viste: hub, link e satellite con ogni versione conservata, aggiornati dal motore man mano che arrivano le righe, governati nei satellite e interrogati point in time in SQL, GraphQL e REST, con derivazione fino ai campi di origine. Nessuna piattaforma ETL separata, nessun job server, nessun codice di pipeline."
+      },
+      "agricultureScenario": {
+        "title": "Che cos'è questa demo",
+        "description": "Un assicuratore agricolo vuole sapere se il meteo spiega le perdite del suo portafoglio. Le sue aziende agricole, polizze e sinistri sono nel suo database; il meteo di ogni contea degli Stati Uniti e le perdite dell'intero mercato dell'assicurazione agricola per causa del danno sono pubblici, nei dati della NOAA e dell'USDA. Il tour mostra Provisa che unisce i due per contea e anno colturale, e risponde alla domanda in SQL, GraphQL e tramite REST."
+      },
+      "agricultureGovdata": {
+        "title": "I dati pubblici",
+        "description": "I dati governativi provengono da AskAmerica, un account attivo. Le sue tre tabelle vengono caricate una sola volta, quando si costruisce la demo, e solo la porzione di cui il portafoglio ha bisogno: le sue 40 contee, mais e soia, gli anni colturali dal 2010 al 2017. Vengono lette da quella copia in via definitiva: non scadono mai e questa demo non chiama mai l'account."
+      },
+      "agricultureClaims": {
+        "title": "I sinistri dell'assicuratore",
+        "description": "Ogni indennizzo pagato dall'assicuratore, letto in tempo reale dal suo database: l'azienda agricola, l'anno colturale, la causa del danno, il mese e l'importo."
+      },
+      "agricultureMarket": {
+        "title": "Le perdite dell'intero mercato",
+        "description": "La USDA Risk Management Agency pubblica l'andamento dell'assicurazione agricola di ogni contea per coltura, causa del danno e mese: il premio incassato dal mercato e gli indennizzi pagati per siccità, caldo, eccesso di umidità, grandine e il resto. I dati governativi la contengono dal 2009 al 2017 e dal 2024; dal 2018 al 2023 non sono ancora caricati, quindi questa demo copre le campagne dal 2010 al 2017."
+      },
+      "agricultureWeather": {
+        "title": "Meteo giornaliero per contea",
+        "description": "La temperatura massima giornaliera e le precipitazioni della NOAA per ogni contea, la media delle sue stazioni di rilevamento. Viene caricata solo la stagione di crescita, da maggio ad agosto: quando pioggia e caldo decidono la resa."
+      },
+      "agricultureJoin": {
+        "title": "Unito per contea",
+        "description": "Il portafoglio e le tabelle pubbliche condividono il codice FIPS della contea, e queste relazioni le uniscono. La vista della risposta le abbina per contea e anno colturale."
+      },
+      "agricultureTerms": {
+        "title": "Nei termini dell'assicuratore",
+        "description": "Il glossario nomina ciò che chiede un sottoscrittore di assicurazioni agricole: rapporto sinistri/premi, causa del danno, storico di produzione effettiva (APH), livello di copertura, esposizione assicurata, la stagione di crescita. Qui il rapporto sinistri/premi: indennizzi sul premio, sopra 1 è un anno in perdita."
+      },
+      "agricultureAnswer": {
+        "title": "La risposta in SQL",
+        "description": "La vista losses_and_weather affianca la stagione di ogni contea ai risultati del portafoglio ed è mantenuta memorizzata. Per anno colturale: il 2012, la stagione più secca e calda, è l'anno in cui il portafoglio ha perso denaro, soprattutto per siccità e caldo, come l'intero mercato; gli anni umidi 2010 e 2013 sono costati meno."
+      },
+      "agricultureWorstSeasons": {
+        "title": "Le stagioni peggiori",
+        "description": "Le stagioni di contea con i rapporti sinistri/premi più alti, accanto alla loro pioggia, ai giorni sopra i 32 °C, alla quota delle perdite del mercato che l'USDA attribuisce a siccità e caldo, e alla resa del mais registrata dalla NASS."
+      },
+      "agricultureDrySeasons": {
+        "title": "Le stagioni più secche, in GraphQL",
+        "description": "La stessa vista in GraphQL, con le stagioni con meno pioggia per prime: sono quelle con i rapporti sinistri/premi più alti e le rese più basse."
+      },
+      "agricultureRest": {
+        "title": "Per anno tramite REST",
+        "description": "La vista è anche un endpoint REST, raggruppata per anno colturale e sommata sul server. Qualsiasi client che parla HTTP ottiene la risposta senza scrivere SQL."
+      },
+      "agricultureRecap": {
+        "title": "Che cosa hai visto",
+        "description": "I dati propri dell'assicuratore, letti in tempo reale, e le perdite, il meteo e le rese pubblici, caricati una volta, abbinati per contea e anno colturale in un unico modello governato: una vista risponde se il meteo spiega le perdite, in SQL, GraphQL e REST."
       }
     },
     "status": {
@@ -951,6 +999,10 @@
       "datavault": {
         "title": "Data vault",
         "summary": "Un data vault dichiarato su un sistema di ordini e un CRM: hub, link e satellite che il motore costruisce e aggiorna man mano che arrivano le righe, dati personali mascherati nei satellite e un'unica query point in time su cosa era noto di un cliente, da quale origine e quando."
+      },
+      "agriculture": {
+        "title": "Meteo e perdite dell'assicurazione agricola",
+        "summary": "La domanda di un assicuratore agricolo, se il meteo spiega le perdite del suo portafoglio: le sue aziende agricole, polizze e sinistri unite per contea e anno colturale alle perdite per causa dell'USDA, al meteo della NOAA e alle rese della NASS, con risposta in SQL, GraphQL e REST."
       }
     }
   }

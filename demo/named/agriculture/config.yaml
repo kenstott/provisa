@@ -1,0 +1,321 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "agriculture" (start-ui-install.sh --demo agriculture; REQ-1858).
+# docker-compose.yml in this directory brings up its database. The question: does weather explain the
+# crop insurance losses in our portfolio?
+#
+#   portfolio  the crop insurer's Postgres, read live as provisa_reader (db/init.sql): its counties,
+#              farms, the policy each farm buys every crop year, and the claims paid on them
+#   govdata    government data from AskAmerica, landed once when the bundle is built (TTL -1
+#              replicas): the USDA's crop insurance losses by cause, NOAA's daily weather by county
+#              and NASS's county yields, each sliced by its landing filter to the portfolio's 40
+#              counties, its crops and the crop years 2010 to 2017
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+domains:
+- id: agriculture
+  description: A crop insurer's portfolio of Corn Belt farms, its policies and claims, beside the
+    USDA's crop insurance losses by cause, NOAA's daily weather and NASS's yields for the same counties
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+- id: analyst
+  capabilities:
+  - query_development
+  domain_access:
+  - agriculture
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- id: portfolio
+  type: postgresql
+  host: ${env:AGRICULTURE_PG_HOST:-localhost}
+  port: ${env:AGRICULTURE_PG_PORT:-28932}
+  database: agriculture
+  username: provisa_reader
+  password: provisa_reader
+  description: The crop insurer's own database -- its counties, farms, policies and claims
+- id: govdata
+  type: govdata
+  username: ${env:ASKAMERICA_API_KEY:-}
+  database: ag,weather
+  cache_ttl: -1
+  replicate: 0
+  description: Government data from AskAmerica -- the USDA's crop insurance losses by cause and county
+    yields, and NOAA's daily weather by county, landed once when the demo is built
+tables:
+- source_id: portfolio
+  domain_id: agriculture
+  schema: public
+  table: counties
+  description: The counties the insurer writes crop policies in
+  columns:
+  - {name: county_fips, data_type: varchar, is_primary_key: true, description: 'The county''s 5-digit FIPS code', visible_to: [org_admin, analyst]}
+  - {name: county_name, data_type: varchar, description: 'The county''s name', visible_to: [org_admin, analyst]}
+  - {name: state_abbr, data_type: varchar, description: 'The county''s state', visible_to: [org_admin, analyst]}
+  - {name: weight, data_type: integer, description: 'How many of the portfolio''s farms the county holds, relative to the others', visible_to: [org_admin, analyst]}
+- source_id: portfolio
+  domain_id: agriculture
+  schema: public
+  table: farms
+  description: The farms the insurer covers, one row a farm and the crop it insures
+  columns:
+  - {name: farm_id, data_type: integer, is_primary_key: true, description: 'The farm''s number', visible_to: [org_admin, analyst]}
+  - {name: county_fips, data_type: varchar, description: 'The county the farm is in', visible_to: [org_admin, analyst]}
+  - {name: crop, data_type: varchar, description: 'The crop it insures: corn or soybeans', visible_to: [org_admin, analyst]}
+  - {name: insured_acres, data_type: integer, description: 'The acres it insures', visible_to: [org_admin, analyst]}
+  - {name: aph_yield, data_type: decimal, description: 'Its actual production history (APH) yield, in bushels an acre', visible_to: [org_admin, analyst]}
+- source_id: portfolio
+  domain_id: agriculture
+  schema: public
+  table: policies
+  description: The policy each farm buys every crop year -- its coverage level, liability and premium
+  columns:
+  - {name: farm_id, data_type: integer, is_primary_key: true, description: 'The farm it covers', visible_to: [org_admin, analyst]}
+  - {name: crop_year, data_type: integer, is_primary_key: true, description: 'The crop year it covers', visible_to: [org_admin, analyst]}
+  - {name: coverage_level, data_type: decimal, description: 'The share of the APH yield insured, from 0.70 to 0.85', visible_to: [org_admin, analyst]}
+  - {name: liability, data_type: decimal, description: 'The most the policy pays in USD', visible_to: [org_admin, analyst]}
+  - {name: premium, data_type: decimal, description: 'Its total premium in USD, before subsidy', visible_to: [org_admin, analyst]}
+- source_id: portfolio
+  domain_id: agriculture
+  schema: public
+  table: claims
+  description: The indemnities the insurer paid, one row a claim
+  columns:
+  - {name: claim_id, data_type: integer, is_primary_key: true, description: 'The claim''s number', visible_to: [org_admin, analyst]}
+  - {name: farm_id, data_type: integer, description: 'The farm it paid', visible_to: [org_admin, analyst]}
+  - {name: crop_year, data_type: integer, description: 'The crop year of the policy it paid on', visible_to: [org_admin, analyst]}
+  - {name: cause_of_loss, data_type: varchar, description: 'The peril: drought, heat, excess_moisture, hail or freeze', visible_to: [org_admin, analyst]}
+  - {name: month_of_loss, data_type: integer, description: 'The month the loss happened', visible_to: [org_admin, analyst]}
+  - {name: indemnity, data_type: decimal, description: 'What was paid in USD', visible_to: [org_admin, analyst]}
+- source_id: govdata
+  domain_id: agriculture
+  schema: ag
+  table: rma_cause_of_loss
+  alias: crop_losses
+  # The portfolio's counties, corn and soybeans, the crop years 2010 to 2017.
+  landing_filter: county_fips IN ('17019', '17039', '17053', '17075', '17105', '17107', '17113', '17115', '17147', '17183', '18007', '18011', '18023', '18157', '18181', '19015', '19049', '19073', '19079', '19083', '19099', '19127', '19153', '19169', '19187', '27013', '27043', '27091', '27127', '27129', '29007', '29147', '29195', '31019', '31079', '31081', '31159', '31185', '39037', '39107') AND year BETWEEN 2010 AND 2017 AND UPPER(TRIM(commodity_name)) IN ('CORN', 'SOYBEANS')
+  enable_aggregates: true
+  enable_group_by: true
+  description: The USDA Risk Management Agency's crop insurance experience by county, crop, cause of
+    loss and month -- the whole market's premium and the indemnities it paid, per peril
+  columns:
+  - {name: year, data_type: integer, description: 'The crop year', visible_to: [org_admin, analyst]}
+  - {name: county_fips, data_type: varchar, description: 'The county''s 5-digit FIPS code', visible_to: [org_admin, analyst]}
+  - {name: county_name, data_type: varchar, description: 'The county''s name', visible_to: [org_admin, analyst]}
+  - {name: state_abbr, data_type: varchar, description: 'The county''s state', visible_to: [org_admin, analyst]}
+  - {name: commodity_name, data_type: varchar, description: 'The insured crop', visible_to: [org_admin, analyst]}
+  - {name: insurance_plan_abbr, data_type: varchar, description: 'The insurance plan: YP, RP, RPHPE and others', visible_to: [org_admin, analyst]}
+  - {name: cause_of_loss_desc, data_type: varchar, description: 'The peril: Drought, Heat, Excess Moisture/Precip/Rain, Hail, Freeze and others', visible_to: [org_admin, analyst]}
+  - {name: month_of_loss, data_type: integer, description: 'The month the loss happened; 0 for the annual roll-up of minor perils', visible_to: [org_admin, analyst]}
+  - {name: policies_indemnified_count, data_type: bigint, description: 'Policies paid for this peril', visible_to: [org_admin, analyst]}
+  - {name: liability_amount, data_type: double, description: 'The insurance in force in USD', visible_to: [org_admin, analyst]}
+  - {name: total_premium_amount, data_type: double, description: 'The premium before subsidy in USD', visible_to: [org_admin, analyst]}
+  - {name: indemnity_amount, data_type: double, description: 'The indemnity paid for this peril in USD', visible_to: [org_admin, analyst]}
+- source_id: govdata
+  domain_id: agriculture
+  schema: weather
+  table: weather_daily_by_county
+  alias: daily_weather
+  # The growing season (May to August) of the crop years 2010 to 2017, in the portfolio's counties.
+  landing_filter: county_fips IN ('17019', '17039', '17053', '17075', '17105', '17107', '17113', '17115', '17147', '17183', '18007', '18011', '18023', '18157', '18181', '19015', '19049', '19073', '19079', '19083', '19099', '19127', '19153', '19169', '19187', '27013', '27043', '27091', '27127', '27129', '29007', '29147', '29195', '31019', '31079', '31081', '31159', '31185', '39037', '39107') AND year BETWEEN 2010 AND 2017 AND SUBSTRING(date, 6, 2) IN ('05', '06', '07', '08')
+  description: NOAA's daily weather for each county -- the mean of every reporting station's maximum
+    temperature and precipitation that day
+  columns:
+  - {name: county_fips, data_type: varchar, is_primary_key: true, description: 'The county''s 5-digit FIPS code', visible_to: [org_admin, analyst]}
+  - {name: date, data_type: varchar, is_primary_key: true, description: 'The day, YYYY-MM-DD', visible_to: [org_admin, analyst]}
+  - {name: year, data_type: integer, description: 'The year', visible_to: [org_admin, analyst]}
+  - {name: tmax_c, data_type: double, description: 'The day''s maximum temperature in degrees Celsius', visible_to: [org_admin, analyst]}
+  - {name: tmin_c, data_type: double, description: 'The day''s minimum temperature in degrees Celsius', visible_to: [org_admin, analyst]}
+  - {name: prcp_mm, data_type: double, description: 'The day''s precipitation in millimetres', visible_to: [org_admin, analyst]}
+  - {name: station_count, data_type: bigint, description: 'How many stations reported', visible_to: [org_admin, analyst]}
+- source_id: govdata
+  domain_id: agriculture
+  schema: ag
+  table: nass_crop_production
+  alias: crop_yields
+  # County yields of corn and soybeans, the crop years 2010 to 2017, in the portfolio's counties.
+  landing_filter: county_fips IN ('17019', '17039', '17053', '17075', '17105', '17107', '17113', '17115', '17147', '17183', '18007', '18011', '18023', '18157', '18181', '19015', '19049', '19073', '19079', '19083', '19099', '19127', '19153', '19169', '19187', '27013', '27043', '27091', '27127', '27129', '29007', '29147', '29195', '31019', '31079', '31081', '31159', '31185', '39037', '39107') AND year BETWEEN 2010 AND 2017 AND commodity_desc IN ('CORN', 'SOYBEANS') AND statisticcat_desc = 'YIELD' AND agg_level_desc = 'COUNTY'
+  description: The USDA National Agricultural Statistics Service's county estimates -- here each
+    county's corn and soybean yield, in bushels an acre
+  columns:
+  - {name: year, data_type: integer, description: 'The crop year', visible_to: [org_admin, analyst]}
+  - {name: county_fips, data_type: varchar, description: 'The county''s 5-digit FIPS code', visible_to: [org_admin, analyst]}
+  - {name: county_name, data_type: varchar, description: 'The county''s name', visible_to: [org_admin, analyst]}
+  - {name: commodity_desc, data_type: varchar, description: 'The crop: CORN or SOYBEANS', visible_to: [org_admin, analyst]}
+  - {name: statisticcat_desc, data_type: varchar, description: 'The statistic: YIELD', visible_to: [org_admin, analyst]}
+  - {name: agg_level_desc, data_type: varchar, description: 'The geography: COUNTY', visible_to: [org_admin, analyst]}
+  - {name: unit_desc, data_type: varchar, description: 'The unit: BU / ACRE', visible_to: [org_admin, analyst]}
+  - {name: util_practice_desc, data_type: varchar, description: 'The use: GRAIN for corn', visible_to: [org_admin, analyst]}
+  - {name: prodn_practice_desc, data_type: varchar, description: 'The practice: ALL PRODUCTION PRACTICES, IRRIGATED or not', visible_to: [org_admin, analyst]}
+  - {name: domain_desc, data_type: varchar, description: 'TOTAL, or a breakdown', visible_to: [org_admin, analyst]}
+  - {name: value, data_type: double, description: 'The yield in bushels an acre; empty where NASS withheld it', visible_to: [org_admin, analyst]}
+views:
+# The answer: each county and crop year, the portfolio's premium, indemnity and loss ratio beside the
+# season's weather, the whole market's losses by cause and the county's yields. One UNION of what
+# each source says about a county and year, folded into one row: the sources are matched by county
+# and year without a join. Stored, and built again when its inputs change.
+- id: losses_and_weather
+  domain_id: agriculture
+  materialize: true
+  enable_aggregates: true
+  enable_group_by: true
+  description: Each county and crop year -- the portfolio's loss ratio and the share of it paid for
+    dry weather, beside the growing season's rain and heat, the whole market's losses and the yields
+  sql: >-
+    SELECT county_fips, year,
+      MAX(county_name) AS county_name, MAX(state_abbr) AS state_abbr,
+      SUM(premium) AS premium, SUM(indemnity) AS indemnity,
+      SUM(indemnity) / NULLIF(SUM(premium), 0) AS loss_ratio,
+      SUM(dry_indemnity) / NULLIF(SUM(indemnity), 0) AS dry_share,
+      SUM(market_indemnity) / NULLIF(SUM(market_premium), 0) AS market_loss_ratio,
+      SUM(market_dry_indemnity) / NULLIF(SUM(market_indemnity), 0) AS market_dry_share,
+      SUM(season_rain_mm) AS season_rain_mm, SUM(season_tmax_c) AS season_tmax_c,
+      SUM(hot_days) AS hot_days, SUM(corn_yield) AS corn_yield, SUM(soybean_yield) AS soybean_yield
+    FROM (
+      SELECT f.county_fips, p.crop_year AS year, MAX(c.county_name) AS county_name,
+        MAX(c.state_abbr) AS state_abbr, CAST(SUM(p.premium) AS DOUBLE PRECISION) AS premium,
+        CAST(NULL AS DOUBLE PRECISION) AS indemnity, CAST(NULL AS DOUBLE PRECISION) AS dry_indemnity,
+        CAST(NULL AS DOUBLE PRECISION) AS market_premium,
+        CAST(NULL AS DOUBLE PRECISION) AS market_indemnity,
+        CAST(NULL AS DOUBLE PRECISION) AS market_dry_indemnity,
+        CAST(NULL AS DOUBLE PRECISION) AS season_rain_mm,
+        CAST(NULL AS DOUBLE PRECISION) AS season_tmax_c, CAST(NULL AS BIGINT) AS hot_days,
+        CAST(NULL AS DOUBLE PRECISION) AS corn_yield, CAST(NULL AS DOUBLE PRECISION) AS soybean_yield
+      FROM "agriculture"."policies" AS p
+      JOIN "agriculture"."farms" AS f ON f.farm_id = p.farm_id
+      JOIN "agriculture"."counties" AS c ON c.county_fips = f.county_fips
+      GROUP BY f.county_fips, p.crop_year
+      UNION ALL
+      SELECT f.county_fips, k.crop_year, NULL, NULL, NULL,
+        CAST(SUM(k.indemnity) AS DOUBLE PRECISION),
+        CAST(SUM(CASE WHEN k.cause_of_loss IN ('drought', 'heat') THEN k.indemnity END)
+          AS DOUBLE PRECISION),
+        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+      FROM "agriculture"."claims" AS k
+      JOIN "agriculture"."farms" AS f ON f.farm_id = k.farm_id
+      GROUP BY f.county_fips, k.crop_year
+      UNION ALL
+      SELECT l.county_fips, l.year, NULL, NULL, NULL, NULL, NULL,
+        SUM(l.total_premium_amount), SUM(l.indemnity_amount),
+        SUM(CASE WHEN UPPER(TRIM(l.cause_of_loss_desc)) IN ('DROUGHT', 'HEAT')
+          THEN l.indemnity_amount END),
+        NULL, NULL, NULL, NULL, NULL
+      FROM "agriculture"."crop_losses" AS l
+      GROUP BY l.county_fips, l.year
+      UNION ALL
+      SELECT w.county_fips, w.year, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+        SUM(w.prcp_mm), AVG(w.tmax_c), SUM(CASE WHEN w.tmax_c > 32 THEN 1 ELSE 0 END), NULL, NULL
+      FROM "agriculture"."daily_weather" AS w
+      WHERE SUBSTRING(w.date, 6, 2) IN ('05', '06', '07', '08')
+      GROUP BY w.county_fips, w.year
+      UNION ALL
+      SELECT y.county_fips, y.year, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+        AVG(CASE WHEN y.commodity_desc = 'CORN' AND y.util_practice_desc = 'GRAIN' THEN y.value END),
+        AVG(CASE WHEN y.commodity_desc = 'SOYBEANS' THEN y.value END)
+      FROM "agriculture"."crop_yields" AS y
+      WHERE y.statisticcat_desc = 'YIELD' AND y.unit_desc = 'BU / ACRE'
+        AND y.domain_desc = 'TOTAL' AND y.prodn_practice_desc = 'ALL PRODUCTION PRACTICES'
+      GROUP BY y.county_fips, y.year
+    ) AS u
+    GROUP BY county_fips, year
+    HAVING SUM(premium) IS NOT NULL
+  columns:
+  - {name: county_fips, data_type: varchar, description: 'The county''s 5-digit FIPS code', visible_to: [org_admin, analyst]}
+  - {name: year, data_type: integer, description: 'The crop year', visible_to: [org_admin, analyst]}
+  - {name: county_name, data_type: varchar, description: 'The county''s name', visible_to: [org_admin, analyst]}
+  - {name: state_abbr, data_type: varchar, description: 'The county''s state', visible_to: [org_admin, analyst]}
+  - {name: premium, data_type: double, description: 'The portfolio''s premium in the county that year in USD', visible_to: [org_admin, analyst]}
+  - {name: indemnity, data_type: double, description: 'The indemnities it paid there in USD', visible_to: [org_admin, analyst]}
+  - {name: loss_ratio, data_type: double, description: 'Indemnity over premium: above 1, the year lost money', visible_to: [org_admin, analyst]}
+  - {name: dry_share, data_type: double, description: 'The share of its indemnity paid for drought and heat', visible_to: [org_admin, analyst]}
+  - {name: market_loss_ratio, data_type: double, description: 'The whole market''s loss ratio on corn and soybeans in the county, from the USDA', visible_to: [org_admin, analyst]}
+  - {name: market_dry_share, data_type: double, description: 'The share of the market''s indemnity the USDA attributes to drought and heat', visible_to: [org_admin, analyst]}
+  - {name: season_rain_mm, data_type: double, description: 'May-to-August rainfall in millimetres, from NOAA', visible_to: [org_admin, analyst]}
+  - {name: season_tmax_c, data_type: double, description: 'The season''s mean daily maximum temperature in degrees Celsius', visible_to: [org_admin, analyst]}
+  - {name: hot_days, data_type: bigint, description: 'Days of the season above 32 degrees Celsius (90 F)', visible_to: [org_admin, analyst]}
+  - {name: corn_yield, data_type: double, description: 'The county''s corn yield in bushels an acre, from NASS', visible_to: [org_admin, analyst]}
+  - {name: soybean_yield, data_type: double, description: 'The county''s soybean yield in bushels an acre, from NASS', visible_to: [org_admin, analyst]}
+relationships:
+- {id: farm-to-county, alias: FARMED_IN, cardinality: many-to-one, source_table_id: farms, source_column: county_fips, target_table_id: counties, target_column: county_fips}
+- {id: policy-to-farm, alias: COVERS, cardinality: many-to-one, source_table_id: policies, source_column: farm_id, target_table_id: farms, target_column: farm_id}
+- {id: claim-to-farm, alias: PAID_TO, cardinality: many-to-one, source_table_id: claims, source_column: farm_id, target_table_id: farms, target_column: farm_id}
+- {id: county-to-market-losses, alias: MARKET_LOSSES_IN, cardinality: one-to-many, source_table_id: counties, source_column: county_fips, target_table_id: crop_losses, target_column: county_fips}
+- {id: county-to-weather, alias: WEATHER_IN, cardinality: one-to-many, source_table_id: counties, source_column: county_fips, target_table_id: daily_weather, target_column: county_fips}
+- {id: county-to-yields, alias: YIELDS_IN, cardinality: one-to-many, source_table_id: counties, source_column: county_fips, target_table_id: crop_yields, target_column: county_fips}
+- {id: county-to-answer, alias: SEASONS_IN, cardinality: one-to-many, source_table_id: counties, source_column: county_fips, target_table_id: losses_and_weather, target_column: county_fips}
+# A crop insurer's vocabulary: abstract terms, grounded through their edges in the terms the
+# portfolio's and the public tables' columns derive (loss ratio, indemnity, premium, liability).
+glossary_terms:
+- name: loss ratio
+  definition: 'Indemnities paid over premium earned. Above 1, the year lost money on the business.'
+  domains:
+  - agriculture
+  edges:
+  - to: indemnity
+    rel_type: RELATED_TO
+  - to: premium
+    rel_type: RELATED_TO
+- name: cause of loss
+  definition: 'The peril an indemnity is paid for -- drought, heat, excess moisture, hail, freeze. The USDA publishes the whole market''s indemnities by cause for every county.'
+  domains:
+  - agriculture
+  edges:
+  - to: cause of loss description
+    rel_type: RELATED_TO
+- name: actual production history
+  definition: 'APH: a farm''s average yield over its recent years, the yield its policy guarantees a share of.'
+  domains:
+  - agriculture
+  edges:
+  - to: aph yield
+    rel_type: RELATED_TO
+- name: coverage level
+  definition: 'The share of the APH yield a policy insures, from 50 to 85 percent; the farmer bears the rest.'
+  domains:
+  - agriculture
+  edges:
+  - to: actual production history
+    rel_type: RELATED_TO
+- name: liability
+  definition: 'The most a policy can pay: insured acres times the guaranteed yield times the projected price.'
+  domains:
+  - agriculture
+  edges:
+  - to: coverage level
+    rel_type: RELATED_TO
+- name: growing season
+  definition: 'May to August in the Corn Belt: planting, pollination and grain fill, when rain and heat decide the yield.'
+  domains:
+  - agriculture
+  edges:
+  - to: season rain mm
+    rel_type: RELATED_TO
+  - to: hot days
+    rel_type: RELATED_TO
+- name: crop year
+  definition: 'The year a crop is planted and insured; a policy, its premium and its claims all belong to one.'
+  domains:
+  - agriculture
+  edges:
+  - to: loss ratio
+    rel_type: RELATED_TO

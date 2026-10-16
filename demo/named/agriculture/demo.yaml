@@ -1,0 +1,22 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The agriculture demo's card on provisa.dev's live demos page (REQ-2006), generated from this file
+# by scripts/gen-site-demos.mjs. published: true once card.png, a screenshot of the demo in
+# Provisa, is beside it.
+title: Weather and crop insurance losses
+description: >-
+  A crop insurer's portfolio of Corn Belt farms, in its own database, joined by county and crop year
+  to the USDA's crop insurance losses by cause, NOAA's daily weather and NASS's county yields from
+  government data: does weather explain the losses in our portfolio?
+screenshot: card.png
+published: false
+# The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
+# by name. The first release carrying the demo.
+requires_provisa: 0.1.0a489
