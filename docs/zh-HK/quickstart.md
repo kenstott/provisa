@@ -1,4 +1,4 @@
-# 開發人員快速入門
+# 開發人員快速入門 {: #developer-quick-start }
 
 如要在不從原始碼建置的情況下評估 Provisa，請參閱[快速入門](index.md)——下載 macOS、Windows 或 Linux 安裝程式，然後執行 `provisa start`。（REQ-223、REQ-224、REQ-227）
 
@@ -6,7 +6,7 @@
 
 ---
 
-## 先決條件
+## 先決條件 {: #prerequisites }
 
 - **Docker Desktop**（執行中）
 - **Python 3.12+**
@@ -15,7 +15,7 @@
 
 ---
 
-## 1. 複製版本庫並設定
+## 1. 複製版本庫並設定 {: #1-clone-and-set-up }
 
 ```bash
 git clone https://github.com/kenstott/provisa.git
@@ -27,7 +27,7 @@ cd provisa
 
 ---
 
-## 2. 啟動所有服務
+## 2. 啟動所有服務 {: #2-start-everything }
 
 ```bash
 ./start-ui.sh
@@ -53,7 +53,7 @@ Provisa running:
 
 **Ctrl+R** 只會重新啟動後端（在熱重載未能偵測到的設定變更後很有用）。（REQ-619）
 
-### 選項
+### 選項 {: #options }
 
 `--no-observability`——停用分散式追蹤。預設情況下，`start-ui.sh` 會下載尚未存在的 OpenTelemetry Java 代理程式，修補 Trino 的 `jvm.config` 以載入該代理程式，並啟動 OTel collector、Prometheus、Tempo 及 Grafana。傳遞 `--no-observability` 即可略過以上所有動作。`jvm.config` 的修補會在按下 Ctrl+C 時還原。[tool-verified: start-ui.sh lines 15, 67–82]（REQ-330）
 
@@ -65,11 +65,31 @@ Provisa running:
 
 `--demo`——啟動額外的示範數據來源（PostgreSQL pet-store 結構描述、OpenAPI petstore 模擬、SQLite，以及一個遠端 GraphQL）。並會自動填入 petstore 使用者及訂單數據。[tool-verified: start-ui.sh lines 17, 55–171]
 
+`--source=<name>`（僅限 `start-ui-install.sh`，可重複）——與 `--demo` 一併佈建一個可選的數據來源。每個名稱對應 `demo/sources/<name>/`。啟動時會呼叫 `demo/sources/provision.py up`，它會把該數據來源的 `compose.yml` 作為其獨立的 Docker Compose 專案（`provisa-demo-<name>`）啟動，等待其健康檢查，並在數據來源有 `prime.py` 時執行它以植入數據。之後啟動會在 `${PROVISA_HOME:-~/.provisa}/demo/provisa-with-sources.yaml` 寫入一份包裝設定，其中包含基本設定加上每個數據來源的 `fragment.yaml`，並由它啟動。[tool-verified: `start-ui-install.sh` (search `SOURCES`), `demo/sources/provision.py`] (REQ-1669)
+
+使用者介面端對端測試套件呼叫的也是同一個 `provision.py`，以便啟動這些數據來源（在自己的連接埠上，使用 `provisa-e2e-<name>` 專案前綴），因此示範所顯示的植入數據，與測試套件所斷言的資料列，只定義一次。[tool-verified: `provisa-ui/e2e/demo-source-containers.ts`] (REQ-1671)
+
+以 Docker 啟動（沒有 `--demo`/`--native`）時，協調器是一個容器，因此每個數據來源都會加入核心堆疊的網絡，並以 `<name>:<container port>` 註冊；以原生方式啟動時，則以 `localhost:<published port>` 註冊。若數據來源的 `demo/sources/<name>/engine` 檔案指名了此次啟動不會執行的引擎，該數據來源會被拒絕。
+
+隨附的數據來源：
+
+| 名稱 | 連接埠 | 說明 |
+|------|---------|-------|
+| `neo4j` | HTTP 27474, Bolt 27687 | 兩張 Cypher 資料表（`adopter`、`adopter_referral`）；圖由 `seed.cypher` 植入；資料表從片段註冊 |
+| `mongodb` | 27117 | 數據來源已註冊；`product_reviews` 集合由 `db/mongo-init.js` 植入；資料表透過 Register Table 手動註冊 |
+| `redis` | 26379 | 數據來源已註冊；`support_agent:*` 及 `agent_status:*` 雜湊由 `prime.py` 植入；每個前綴透過 Register Table 註冊為一張資料表（REQ-1675） |
+| `cassandra` | 29042 | 數據來源已註冊；`shelter_ops.intake_events` 由 `prime.py` 植入（需要 `cassandra` 額外套件）；keyspace 透過 Register Table 註冊為結構描述（REQ-1676） |
+| `sparql` | 23030 | Apache Jena Fuseki；數據來源及一張以查詢為基礎的資料表（`volunteer`）從片段註冊，圖由 `prime.py` 植入；更多資料表透過 Register Table（查詢 + Preview）註冊（REQ-1683） |
+| `prometheus` | 29090 | 數據來源已註冊；伺服器抓取自身，因此 `up` 及 `prometheus_*` 指標透過 Register Table 註冊為資料表（REQ-1689） |
+| `elasticsearch` | 29200 | 數據來源及索引對映已註冊；`support_tickets` 索引由 `prime.py` 植入；由原生引擎經 HTTP 讀取（REQ-1672），在 Trino 上經由連接器讀取 |
+| `splunk` | mgmt 8089, HEC 8088 | 數據來源以權杖驗證及 `disable_ssl_validation` 註冊（容器的憑證為自簽）；一個索引、七個收容所警示事件及 `shelter_alerts` 數據模型由 `prime.py` 植入，它亦會產生片段以 `PROVISA_DEMO_SPLUNK_TOKEN` 讀取的 API 權杖。數據模型透過 Register Table 註冊為資料表——在 Trino 上經由 `splunk` 目錄，在其他所有引擎上經由引擎所附加的隨附 Calcite pgwire 伺服器（REQ-1694） |
+| `chinook` | 25433 | 存放 Hasura 中繼資料範例所追蹤的 snake_case Chinook 子集的 Postgres，由 `prime.py` 從 `tests/fixtures/hasura_v2_t1_seed.sql` 植入；數據來源從片段註冊，也是匯入 `tests/fixtures/hasura_v2_t1_metadata.json` 的 Hasura v2 匯入所落地的數據來源（REQ-1687） |
+
 `--idp=basic|firebase`——啟用用於驗證的身分識別提供者。若無此旗標，後端會在沒有驗證提供者的情況下執行，所有要求都會被視為 `admin`。[tool-verified: start-ui.sh line 18; provisa/auth/wiring.py lines 57–60; provisa/auth/middleware.py lines 57–68]（REQ-120、REQ-124）
 
 ---
 
-## 3. 連接數據來源
+## 3. 連接數據來源 {: #3-connect-a-data-source }
 
 Provisa 會從 `config/` 讀取設定。請新增一個來源檔案——例如 `config/sources/my-db.yaml`：
 
@@ -102,7 +122,7 @@ export MY_DB_PASSWORD=secret
 
 ---
 
-## 4. 執行您的第一個查詢
+## 4. 執行您的第一個查詢 {: #4-run-your-first-query }
 
 ```bash
 # GraphQL
@@ -120,7 +140,7 @@ curl -s -X POST http://localhost:8001/data/sql \
 
 ---
 
-## 5. 開啟 UI
+## 5. 開啟 UI {: #5-open-the-ui }
 
 在瀏覽器中開啟 `http://localhost:3000`。
 
@@ -135,7 +155,7 @@ curl -s -X POST http://localhost:8001/data/sql \
 
 ---
 
-## 疑難排解
+## 疑難排解 {: #troubleshooting }
 
 **後端無法啟動**——請查看 `.logs/server.log`。最常見的原因是缺少環境變數，或連接埠 8001 發生衝突。[tool-verified: start-ui.sh line 202]（REQ-618）
 
@@ -147,7 +167,7 @@ curl -s -X POST http://localhost:8001/data/sql \
 
 ---
 
-## 後續步驟
+## 後續步驟 {: #next-steps }
 
 | 目標 | 文件 |
 | ------ | ----- |

@@ -1,12 +1,12 @@
-# 遠端結構描述
+# 遠端結構描述 {: #remote-schemas }
 
 遠端結構描述來源將外部 API——GraphQL（含 GitHub）、gRPC 或 REST（OpenAPI）——連接至 Provisa 模型。新增來源不會註冊任何資料表。來源會提供資料表，由 data steward 透過「Register Table」選擇器註冊所需的每一張表；該註冊即為策展（curation）步驟。（REQ-308、REQ-316、REQ-322）已註冊的資料表是一級的 Provisa 資料表。（REQ-308、REQ-316、REQ-325）所有治理規則、查詢介面及安全層均會自動套用。（REQ-310、REQ-319、REQ-328）遠端服務永遠不會看到 Provisa 的治理規則。（REQ-310、REQ-319、REQ-328）
 
 ---
 
-## 三種來源類型
+## 三種來源類型 {: #three-source-types }
 
-### GraphQL 遠端結構描述（REQ-307–313）
+### GraphQL 遠端結構描述（REQ-307–313） {: #graphql-remote-schema-req-307313 }
 
 **如何新增來源。** 向 `/admin/sources/graphql-remote` 發送 POST 請求，附上端點 URL、命名空間及可選的驗證資訊。Provisa 會對遠端端點發起標準的 `__schema` 內省查詢，以確認端點及憑證。（REQ-307）[tool-verified: `provisa/graphql_remote/introspect.py:47–59`]
 
@@ -115,7 +115,7 @@ graphql_remote:
 
 ---
 
-### GitHub（REQ-1923）
+### GitHub（REQ-1923） {: #github-req-1923 }
 
 GitHub 是一種普通的來源類型。其 API 為 GraphQL，因此其資料表的行為如上所述，包括 `gh__repository_issues` 這類連線資料表。[tool-verified: `provisa/graphql_remote/brands.py` `BRANDS["github"]`]
 
@@ -146,7 +146,7 @@ GitHub 是一種普通的來源類型。其 API 為 GraphQL，因此其資料表
 
 ---
 
-### GitLab（REQ-1923）
+### GitLab（REQ-1923） {: #gitlab-req-1923 }
 
 GitLab 是一種普通的來源類型，其新增與註冊方式與 GitHub 相同：新增類型為 **GitLab** 的來源並提供存取權杖，然後從結構描述 `graphql` 中註冊所需的資料表。資料表名稱的預設前綴為 `gl`。該來源連線 `gitlab.com`。[tool-verified: `provisa/graphql_remote/brands.py` `BRANDS["gitlab"]`]
 
@@ -160,7 +160,7 @@ GitLab 是一種普通的來源類型，其新增與註冊方式與 GitHub 相�
 
 ---
 
-### gRPC 遠端結構描述（REQ-322–329）
+### gRPC 遠端結構描述（REQ-322–329） {: #grpc-remote-schema-req-322329 }
 
 **如何新增來源。** 向 `/admin/grpc-remote/register` 發送 POST 請求，附上伺服器位址、`.proto` 檔案的路徑或 URL，以及可選的 TLS 設定。新增來源不會註冊任何資料表。
 
@@ -233,7 +233,7 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 
 ---
 
-### OpenAPI / REST（REQ-314–321）
+### OpenAPI / REST（REQ-314–321） {: #openapi-rest-req-314321 }
 
 **如何新增來源。** 向 `/admin/openapi/register` 發送 POST 請求，附上來源 ID 及規格（從本機檔案或 URL 載入）。規格會被解析並隨來源保存；不會註冊任何資料表或 command。回應回傳 `tables: 0` 與 `mutations: 0`，可提供的數量則在 `available_tables` 與 `available_mutations` 中。（REQ-314）[tool-verified: `provisa/openapi/loader.py:30–55`, `provisa/api/admin/openapi_router.py` `_load_and_register` docstring: "Tables and functions are NOT auto-registered here. Users register them individually via the Register Table / Register Action UI."]
 
@@ -288,7 +288,7 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 
 ---
 
-## 註冊遠端資料表的影響
+## 註冊遠端資料表的影響 {: #impact-of-registering-a-remote-table }
 
 從任何遠端結構描述來源註冊的資料表，均為一級的 Provisa 資料表。在執行階段，它與本機連接的關聯式資料表在待遇上並無任何分別。（REQ-308、REQ-313）
 
@@ -312,7 +312,7 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 
 ---
 
-## 建立覆蓋性關聯的影響
+## 建立覆蓋性關聯的影響 {: #impact-of-creating-a-covering-relationship }
 
 當 data steward 於兩個遠端資料表之間（或於一個遠端資料表與一個本機資料表之間）註冊一項關聯時，該關聯即成為查詢時所使用的聯結路徑。
 
@@ -330,7 +330,7 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 
 ---
 
-## 僅供類型定義的行為
+## 僅供類型定義的行為 {: #type-def-only-behavior }
 
 並非遠端結構描述中的每種類型都必須成為可查詢的資料表。
 

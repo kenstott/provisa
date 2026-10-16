@@ -2,14 +2,14 @@
 <!-- MD046 off: mkdocs-material `===` content-tab bodies are indented, which the linter
      misreads as indented code blocks; the fenced code blocks below are required for rendering. -->
 
-# 數據建模（Entities 與 Facts）
+# 數據建模（Entities 與 Facts） {: #data-modeling-entities-facts }
 
 Provisa 提供兩個宣告式基元 —— `entity` 同 `fact` —— 涵蓋咗每個星型結構（star schema）同
 Data Vault 賴以組裝嘅所有構建塊。只需宣告規格；Provisa 會將佢準確轉換成具體化檢視、雙時態
 （bitemporal）同關係定義，唔使你自己手寫（REQ-1164）。[tool-verified: modeling.py module
 docstring lines 11-28]
 
-## Entity 同 Fact 係咩
+## Entity 同 Fact 係咩 {: #what-entities-and-facts-are }
 
 **entity** 係源關係嘅一個帶鍵、去重複、可選歷史化嘅投影。你為佢命名、指向一個數據來源、
 宣告 entity key 同要保留嘅屬性，並選擇一個歷史模式。Provisa 會撰寫檢視嘅 SQL 並登記該具體化
@@ -27,7 +27,7 @@ function, modeling.py lines 123-141; comment at line 130 "a measureless fact is 
 Databricks 具體化，或者喺 MPP 引擎之上保持虛擬 —— 而唔使重新建模。[tool-verified:
 modeling.py docstring lines 25-28]
 
-## 歷史模式
+## 歷史模式 {: #history-modes }
 
 一個 entity 有三種可用模式 [tool-verified: `_HISTORY` constant at modeling.py line 38,
 `_HISTORY_MODE` dict at modeling.py line 40]：
@@ -44,7 +44,7 @@ modeling.py docstring lines 25-28]
 
 fact 冇歷史模式 —— 時態涵蓋範圍由底層 entity 嘅歷史提供。
 
-## 度量同匯總
+## 度量同匯總 {: #measures-and-aggregations }
 
 度量以 `column:agg` 對嘅形式宣告。支援嘅匯總方式 [tool-verified: `_AGGS` at modeling.py
 line 41]：
@@ -53,14 +53,14 @@ line 41]：
 
 預設匯總方式係 `sum` [tool-verified: `Measure.agg` default at modeling.py line 75]。
 
-## 實例演練：Customer entity + Sales fact
+## 實例演練：Customer entity + Sales fact {: #worked-example-customer-entity-sales-fact }
 
-### 源表
+### 源表 {: #the-source-tables }
 
 - `raw.customers` —— id、name、region、tier
 - `raw.orders` —— order_id、customer_id、amount、quantity
 
-### 登記 Customer entity
+### 登記 Customer entity {: #register-the-customer-entity }
 
 === "Admin UI"
 
@@ -101,7 +101,7 @@ SELECT "id", "name", "region", "tier" FROM "raw"."customers"
 -- registered as a bitemporal delta MV, entity key: ["id"]
 ```
 
-### 登記 Sales fact
+### 登記 Sales fact {: #register-the-sales-fact }
 
 === "Admin UI"
 
@@ -153,7 +153,7 @@ GROUP BY "order_id", "customer_id"
 [tool-verified: `fact_table_input` in modeling_register.py lines 89-98, cardinality at
 line 95]
 
-## Model 表格（管理介面）
+## Model 表格（管理介面） {: #the-model-form-admin-ui }
 
 **+ Model** 按鈕出現喺 **Tables** 頁面（提示文字："Model an entity or fact (star schema /
 Data Vault)"）。[tool-verified: tablesPage.json line 13; TablesPage.tsx lines 441-450]
@@ -161,7 +161,7 @@ Data Vault)"）。[tool-verified: tablesPage.json line 13; TablesPage.tsx lines 
 彈出視窗頂部嘅分段控制項可以喺 **Entity (dimension)** 同 **Fact** 之間切換。
 [tool-verified: ModelingForm.tsx lines 102-110]
 
-### Entity 欄位
+### Entity 欄位 {: #entity-fields }
 
 [tool-verified: ModelingForm.tsx lines 141-171; modelingForm.json]
 
@@ -174,7 +174,7 @@ Data Vault)"）。[tool-verified: tablesPage.json line 13; TablesPage.tsx lines 
 | Attributes | 否 | 以逗號分隔嘅屬性欄位，例如 `name, region, tier` |
 | History | 否 | `none` / `scd2` / `snapshot`；預設為 `none` |
 
-### Fact 欄位
+### Fact 欄位 {: #fact-fields }
 
 [tool-verified: ModelingForm.tsx lines 172-196; modelingForm.json]
 
@@ -190,7 +190,7 @@ Data Vault)"）。[tool-verified: tablesPage.json line 13; TablesPage.tsx lines 
 若度量中省略咗 `agg`（例如寫 `amount` 而唔係 `amount:sum`），預設為 `sum`。
 [tool-verified: ModelingForm.tsx line 73 `agg: agg || "sum"`]
 
-## GraphQL API
+## GraphQL API {: #the-graphql-api }
 
 兩個 mutation 都喺管理 schema 入面。[tool-verified: schema_mutation.py lines 449-472]
 
@@ -251,11 +251,11 @@ mutation RegisterFact($input: FactInput!) {
 `Fact 'Sales' registered with 1 dimension link(s)`。
 [tool-verified: schema_mutation.py line 471]
 
-## Kimball 星型結構同 Data Vault
+## Kimball 星型結構同 Data Vault {: #kimball-star-schema-and-data-vault }
 
 呢兩種模式都唔需要獨立嘅工具。同一組基元可以組合成兩者。
 
-### Kimball 星型結構
+### Kimball 星型結構 {: #kimball-star-schema }
 
 呢個示範會建立一個三維度嘅星型結構。有兩張新嘅源表：
 
@@ -266,7 +266,7 @@ mutation RegisterFact($input: FactInput!) {
 
 呢度 `raw.orders` 亦增加咗 `product_id` 同 `order_date` 欄位。[inferred]
 
-#### 選擇 SCD 類型
+#### 選擇 SCD 類型 {: #choosing-scd-type }
 
 歷史模式係 SCD Type 1 同 Type 2 之間唯一嘅開關：
 
@@ -282,14 +282,14 @@ at lines 115-119]
 佢而家嘅 tier —— 就用 `scd2`。對於穩定嘅查閱表，就用 `none`。日期基準表（date spine）永遠
 唔會變。若一個產品目錄只需要當前價格，就可以每次刷新時重建。
 
-#### 粒度決策
+#### 粒度決策 {: #grain-decision }
 
 粒度係 fact 所回答嘅最低層次細節。`order_id` 會令每張訂單有一行，保留咗計算唯一訂單數，
 以及喺訂單粒度上同任何維度連接嘅能力。較粗嘅粒度 —— 例如 `["customer_id", "order_date"]`
 —— 會喺訂單之間預先匯總，並永久捨棄呢啲細節。宣告業務所需嘅最窄粒度；較粗嘅彙總其後可以
 用低成本推導出嚟。
 
-#### 登記維度
+#### 登記維度 {: #register-the-dimensions }
 
 **Customer**（SCD Type 2 —— tier 變更必須保留）：
 
@@ -357,7 +357,7 @@ mutation {
 SELECT "date_key", "year", "quarter", "month" FROM "raw"."date_spine"
 ```
 
-#### 喺三個維度上登記 Sales fact
+#### 喺三個維度上登記 Sales fact {: #register-the-sales-fact-across-three-dimensions }
 
 粒度：`order_id`。三個維度引用 —— 各自一個 FK 欄位。兩個度量都係可加總嘅總和。
 
@@ -444,7 +444,7 @@ entity name as `target_table` at modeling.py lines 138-140; fact_table_input wir
 
 呢個例子喺 `raw.customers` 同 `raw.orders` 之上建立一個最小化嘅 vault。
 
-#### Hub
+#### Hub {: #hubs }
 
 Hub 只包含 entity key，冇其他嘢。`attributes: []` 配合 `history: "none"` 會產生一個去重複
 嘅當前鍵集合；屬性歷史完全存喺 satellite 入面。
@@ -517,7 +517,7 @@ SELECT "id", "name", "region", "tier" FROM "raw"."customers"
 `CustomerSat` 同 `CustomerHub` 都以 `id` 為鍵。Hub 係穩定嘅連接目標；satellite 透過雙時態層
 提供某一時間點嘅屬性存取。
 
-#### Link（無度量嘅 fact）
+#### Link（無度量嘅 fact） {: #link-measureless-fact }
 
 Link 記錄邊啲 hub key 曾經共同出現過 —— 只有鍵，冇度量。當 `measures` 為空時，Provisa
 會省略 `GROUP BY` [tool-verified: modeling.py lines 130-131: `if f.measures: view_sql +=
@@ -539,8 +539,8 @@ mutation {
 }
 ```
 
-`group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id",
-"customer_id"]`。冇度量，所以冇 `GROUP BY`。生成 [tool-verified: fact_registration
+`group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`。
+冇度量，所以冇 `GROUP BY`。生成 [tool-verified: fact_registration
 modeling.py lines 125-131]：
 
 ```sql
@@ -551,7 +551,7 @@ SELECT "order_id", "customer_id" FROM "raw"."orders"
 `OrderCustomerLink.order_id → OrderHub`，兩者都係 many-to-one
 [tool-verified: modeling_register.py lines 89-98]。
 
-#### Bridge / 匯總 link
+#### Bridge / 匯總 link {: #bridge-aggregate-link }
 
 為 link 加上度量，Provisa 就會發出 `GROUP BY`，產生一個預先匯總嘅 bridge。喺 `order_id`
 粒度、每張訂單一個客戶嘅情況下，結果係每張訂單一行匯總記錄：
@@ -572,8 +572,8 @@ mutation {
 }
 ```
 
-`group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id",
-"customer_id"]`（維度列表入面重複嘅 `order_id` 會被 `_dedup` 剔除）。生成
+`group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`
+（維度列表入面重複嘅 `order_id` 會被 `_dedup` 剔除）。生成
 [tool-verified: fact_registration modeling.py lines 125-131]：
 
 ```sql
@@ -585,7 +585,7 @@ GROUP BY "order_id", "customer_id"
 模型本身唔會決定方法論。粒度、一致性、SCD 選擇同 hub/satellite 拆分依然係建模者嘅決定。
 Provisa 只負責執行。[tool-verified: modeling.py docstring lines 25-26]
 
-## 指標（Metrics）（REQ-1317、REQ-1318、REQ-1320）
+## 指標（Metrics）（REQ-1317、REQ-1318、REQ-1320） {: #metrics-req-1317-req-1318-req-1320 }
 
 **指標**（metric）係一個具名、受治理嘅匯總定義，本身冇粒度。粒度 —— 即匯總所按嘅維度 ——
 係喺查詢時由調用方綁定，而唔係喺定義時綁定。呢個正正就係指標同檢視嘅分別：檢視喺建立時
@@ -593,7 +593,7 @@ Provisa 只負責執行。[tool-verified: modeling.py docstring lines 25-26]
 `provisa/core/models.py` lines 452–455: "A named, governed aggregate definition with no
 grain of its own... grain is bound at query time by the requested dimension set"]
 
-### Metric 物件
+### Metric 物件 {: #the-metric-object }
 
 [tool-verified: `Metric` class, `provisa/core/models.py` lines 451–476]
 
@@ -626,7 +626,7 @@ metrics:
     ai_context: "Net revenue: total order amounts minus approved refunds. Use for P&L."
 ```
 
-### 查詢一個指標
+### 查詢一個指標 {: #querying-a-metric }
 
 編譯器保留咗 `metrics` schema。[tool-verified: `METRICS_SCHEMA = "metrics"`,
 `provisa/compiler/metric_expand.py` line 43] 每個指標都可以喺該 schema 入面，以虛擬關係嘅
@@ -654,7 +654,7 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 [tool-verified: `_JoinPlan.resolve_dimension`, `provisa/compiler/metric_expand.py` lines
 190–228]
 
-### 由 fact 規格生成嘅指標（REQ-1320）
+### 由 fact 規格生成嘅指標（REQ-1320） {: #metrics-from-fact-specs-req-1320 }
 
 當你登記一個 fact 時，每個宣告嘅度量都會自動登記一個對應嘅 Metric 物件。指標嘅
 `from_fact` 欄位記錄咗來源 fact 表嘅名稱，而有效嘅分組維度就係透過該 fact 嘅 FK 關係
@@ -667,7 +667,7 @@ when this metric was auto-registered from a fact spec's measure"; `from_fact` st
 編輯佢哋。[tool-verified: `MetricsPage.tsx` lines 405–408: `{m.fromFact && <Badge ...
 data-testid={`metrics-from-fact-${m.name}`}>...</Badge>}`]
 
-### 由指標組成嘅檢視（view_metrics，REQ-1318）
+### 由指標組成嘅檢視（view_metrics，REQ-1318） {: #metric-composed-views-view_metrics-req-1318 }
 
 `view_metrics` 檢視會喺定義時鎖定一個指標嘅粒度。宣告指標名稱、維度欄位同可選嘅篩選條件；
 編譯器就會生成對應嘅 SELECT。
@@ -718,7 +718,7 @@ upsert 時。[tool-verified: `regenerate_metric_views` docstring, `_metric_views
 84–86: "Free-hand view_sql born from inline metric() calls carries no stored provenance, so
 it is not regenerated here (config-path views regenerate on config reload)"]
 
-### Metrics 管理頁面（REQ-1323、REQ-1324）
+### Metrics 管理頁面（REQ-1323、REQ-1324） {: #the-metrics-admin-page-req-1323-req-1324 }
 
 打開 **Metrics** 導覽項目以管理受治理嘅指標。按一行以展開一個唯讀嘅詳情面板；喺面板入面
 按 **Edit** 即可切換到內嵌編輯（冇彈出視窗）。**New Metric** 會喺表格上方打開一張內嵌建立
@@ -728,12 +728,12 @@ management page (list / create / edit / delete). REQ-1323: detail-then-edit"]
 
 建立／編輯表單為源自 fact 嘅指標提供咗一個三步選擇器建構工具：選擇來源 fact 表（已按
 `modelingRole=fact` 篩選）、一個度量欄位，以及一個匯總函數（`SUM`、`AVG`、`COUNT`、`MIN`、
-`MAX`）。datatype 會自動推導：`COUNT → bigint`、`AVG → numeric`、`SUM/MIN/MAX → 度量欄位
-本身嘅類型`。表達式文字區依然係任意表達式嘅逃生出口。
+`MAX`）。datatype 會自動推導：`COUNT → bigint`、`AVG → numeric`、`SUM/MIN/MAX → the measure column's type`（度量欄位本身嘅類型）。
+表達式文字區依然係任意表達式嘅逃生出口。
 [tool-verified: `deriveDatatype` function, `MetricsPage.tsx` lines 66–70;
 `applyBuilder`, `MetricsPage.tsx` lines 273–285]
 
-## IR 帶嚟嘅好處
+## IR 帶嚟嘅好處 {: #the-ir-payoff }
 
 每次登記調用都會經過同一條路徑，跟手寫具體化檢視一模一樣。entity/fact 規格係一種中間表示
 —— 唔係範本，都唔係宏。佢所指向嘅倉庫係部署嘅一個屬性，而唔係模型嘅屬性。改變目標引擎，

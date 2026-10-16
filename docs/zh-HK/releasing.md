@@ -1,8 +1,8 @@
-# 版本發佈
+# 版本發佈 {: #releasing }
 
 發佈由推送（push）git 標籤觸發。標籤名稱決定發佈渠道。
 
-## 標籤命名慣例
+## 標籤命名慣例 {: #tag-conventions }
 
 | 標籤格式 | 渠道 | GitHub Release 類型 |
 | ----------- | --------- | ------------------- |
@@ -11,7 +11,7 @@
 | `v1.2.3-rc.1` | rc | Pre-release |
 | `v1.2.3` | stable | Latest release |
 
-## 建立發佈
+## 建立發佈 {: #creating-a-release }
 
 ```bash
 # Alpha
@@ -40,7 +40,7 @@ CI 工作流程（`build-dmg.yml`，名為「Build Provisa Packages」）會在�
 9. **Build and test Python client**，然後 **Publish to PyPI**
 10. **Publish GitHub Release** — 上載全部資源，為 alpha/beta/rc 設定 pre-release 標記
 
-## 發佈資源
+## 發佈資源 {: #release-assets }
 
 每次發佈都會發佈以下資源，全部附加到 GitHub Release（wheel 亦會同步發佈至 PyPI）：
 
@@ -64,14 +64,14 @@ CI 工作流程（`build-dmg.yml`，名為「Build Provisa Packages」）會在�
 Python 客戶端版本會自動轉換為 PEP 440 格式：
 `v0.1.0-alpha.1` → `0.1.0a1`，`v0.1.0-beta.1` → `0.1.0b1`，`v0.1.0-rc.1` → `0.1.0rc1`。
 
-## PyPI 發佈設定（一次性）
+## PyPI 發佈設定（一次性） {: #pypi-publishing-setup-one-time }
 
 1. 從 `~/.pypirc` 複製你的 API 權杖（`pypi.org` 對應的 `pypi-...` 值）
 2. 在 **Settings → Secrets → Actions** 中將其新增為名為 `PYPI_API_TOKEN` 的存放庫密鑰
 
 之後每次打標籤時，`publish-pypi` 工作都會自動發佈。
 
-## 所需的存放庫密鑰
+## 所需的存放庫密鑰 {: #required-repository-secrets }
 
 請在 **Settings → Secrets → Actions** 中設定以下項目：
 
@@ -87,7 +87,7 @@ Python 客戶端版本會自動轉換為 PEP 440 格式：
 
 沒有這些密鑰的建置仍可成功完成，但會產生未簽署／未公證的 DMG（使用者將會看到 Gatekeeper 警告）。
 
-## 匯出 .p12 憑證
+## 匯出 .p12 憑證 {: #exporting-the-p12-certificate }
 
 1. 開啟 **Keychain Access** → 登入鑰匙圈 → **My Certificates**
 2. 尋找 **Developer ID Application: Your Name (TEAMID)** — 展開以確認私密金鑰嵌套於其下
@@ -100,7 +100,7 @@ Python 客戶端版本會自動轉換為 PEP 440 格式：
 
 5. 將其貼上作為 `APPLE_CERT_P12_BASE64` 的值；將 `APPLE_CERT_P12_PASSWORD` 設定為步驟 3 中的密碼
 
-## 尋找你的憑證名稱
+## 尋找你的憑證名稱 {: #finding-your-certificate-name }
 
 ```bash
 security find-identity -v -p codesigning | grep "Developer ID Application"
@@ -108,7 +108,7 @@ security find-identity -v -p codesigning | grep "Developer ID Application"
 
 複製引號中的完整字串——這就是 `APPLE_DEVELOPER_ID` 的值。
 
-## 刪除錯誤的標籤
+## 刪除錯誤的標籤 {: #deleting-a-bad-tag }
 
 ```bash
 git tag -d v1.2.3-alpha.1

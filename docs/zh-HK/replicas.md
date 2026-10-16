@@ -1,8 +1,8 @@
-# 複本
+# 複本 {: #replicas }
 
 複本是資料來源表的一份拷貝，Provisa 將它保存在引擎的具體化儲存區中，並讀取它來代替資料來源。本頁介紹複本按甚麼建立索引、複本應存放在何處，以及複本有多新鮮。一張表是否被複製，由 [`replicate`](configuration.md#the-replicate-setting) 以及引擎能夠存取到的內容決定；請參閱 [What an engine changes](engines.md#what-an-engine-changes)。(REQ-826)
 
-## 複本帶有索引
+## 複本帶有索引 {: #replicas-are-indexed }
 
 Provisa 按模型使用其表的方式為複本建立索引。(REQ-2015) [tool-verified: `provisa/federation/replica_indexes.py` `plan`, `join_columns`]
 
@@ -28,7 +28,7 @@ relationships:
 
 在欄上用 `is_primary_key: true` 宣告索引鍵。沒有宣告索引鍵的複本只得到其聯結索引。[tool-verified: `provisa/federation/replica_builds.py` `plan_indexes`]
 
-### 先可讀，後建索引
+### 先可讀，後建索引 {: #readable-first-indexed-after }
 
 落地從不等待索引。複本從換入的一刻起就可讀取；隨後複本執行器在獨立的一輪中，在每個複本的索引鎖之下，逐個建構它的索引。[tool-verified: `provisa/federation/replica_runner.py` `_planned`, `_start_index_builds`] 落地之後最初的幾次查詢會在沒有這些索引的情況下執行。
 
@@ -41,7 +41,7 @@ relationships:
 
 管理介面不顯示索引記錄。請查看伺服器記錄，或複本所在列的 `index_state` 欄。[tool-verified: no reader of `index_state` outside `provisa/federation/replica_state.py` and `replica_indexes.py`]
 
-### 各儲存區建構甚麼
+### 各儲存區建構甚麼 {: #what-each-store-builds }
 
 | 儲存區 | 建構的內容 | 方式 |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ relationships:
 
 MotherDuck 儲存區是附加並就地讀取的。[tool-verified: `provisa/federation/duckdb_runtime.py` `_store_is_file`]
 
-## 當引擎在關聯式資料庫中執行 SQL 時，用該資料庫作為複本儲存區
+## 當引擎在關聯式資料庫中執行 SQL 時，用該資料庫作為複本儲存區 {: #use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it }
 
 當引擎在關聯式資料庫內部執行聯結時，請把複本保存在那裡。這樣聯結就會讀取上述索引。有三種配置可以做到：
 
@@ -81,7 +81,7 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
 - **資料庫自身的負載。** 複本讀取、落地和索引建構都在該資料庫上執行。請按它們來決定其規模。[inferred]
 - **大規模掃描。** 對讀取大表大部分內容的查詢，索引沒有任何作用。欄式儲存區掃描它比列式儲存區更快。[inferred]
 
-## 選擇複本存放的位置
+## 選擇複本存放的位置 {: #choosing-where-replicas-live }
 
 儲存區只是若干手段之一，而且它們相互重疊。先確定其他手段；儲存區只決定它們留下的部分。
 
@@ -98,7 +98,7 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
 
 結果因工作負載而異。修改前後請用[容量規劃工具](sizing.md)量度；它的[即時或複本執行](sizing.md#live-or-replica-reads-and-the-ttl)會給出在你的部署上複本讀取與即時讀取的成本對比。
 
-## 新鮮度
+## 新鮮度 {: #freshness }
 
 把新鮮度與速度一併納入決策。答案可以有多舊，以及保持其最新對資料來源意味着多大成本，決定了一張表是即時讀取還是從複本讀取，從而決定儲存區需要容納甚麼。
 
@@ -120,7 +120,7 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
 
 沒有可比較內容的探測（沒有水位線、哨兵值或探測查詢）會退化為 TTL。[tool-verified: `provisa/federation/replica_builds.py` `_probe_decides`]
 
-### 來自變更串流的近即時
+### 來自變更串流的近即時 {: #near-real-time-from-a-change-feed }
 
 當資料來源無法承受即時查詢負載，卻已經發佈其變更時，變更串流可以在查詢時不觸碰資料來源的情況下提供近即時數據。查詢讀取本機複本，既快又不為資料來源帶來負載，而事件迴圈在變更到達時套用它們。數據只延遲於變更串流，通常為幾秒。[inferred: the lag figure]
 

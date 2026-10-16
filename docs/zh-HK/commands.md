@@ -1,10 +1,10 @@
-# 命令
+# 命令 {: #commands }
 
 命令是一個已註冊、受治理的函式，把外部運算納入 Provisa 的治理、審計與血緣體系。聯邦引擎原生處理 SQL，而命令則是它表達不了的那些運算的接縫：一個資料增益微服務、一個 Python 模型、一段 shell 指令碼、一個資料庫原生預存程序。註冊一次，每個用戶端介面——GraphQL、pgwire SQL、REST、Arrow Flight、gRPC、Bolt/Cypher——都能以完全相同的治理去呼叫它（REQ-885、REQ-1156）。[tool-verified: function_dispatch.py module docstring + REQ-885 in requirements.md]
 
 關鍵分野在於：命令是**受治理的 RPC**，不是臨時拼湊的 ETL。它的輸入與輸出都經過宣告、定型、驗證、追蹤，並接進血緣。未受治理的 curl 呼叫或子行程，一樣都不是。
 
-## 實作種類
+## 實作種類 {: #implementation-kinds }
 
 支援六個 `impl_kind` 值 [tool-verified: `_EXECUTORS` dict in `provisa/executor/function_dispatch.py`]：
 
@@ -19,7 +19,7 @@
 
 定址（目錄中的 `name` 與 `function_name`）與 `binding`（傳輸方式與位置）是解耦的。換掉 binding，命令的治理、血緣與呼叫方合約都維持不變。[tool-verified: Function model in models.py:710-750]
 
-## 引數種類
+## 引數種類 {: #argument-kinds }
 
 每個引數都要宣告一個 `arg_kind` [tool-verified: FunctionArgument.arg_kind in models.py:691-700]：
 
@@ -33,7 +33,7 @@
 
 會傳回集合的命令（經 `output_columns` 與 `return_schema` 宣告）是一個表值函式。可用於 `FROM` 子句或 `JOIN`。[inferred from models.py:744-748 and command_localize.py:52-63]
 
-## 數據集合約（REQ-1159）
+## 數據集合約（REQ-1159） {: #the-dataset-contract-req-1159 }
 
 每個 `table_ref` 或 `result_set` 引數都可宣告一份**輸入欄位合約**：`FunctionArgument.columns` 中一份有序、以 IR 定型的欄位清單。命令本身則在 `Function.output_columns` 中宣告一份**輸出欄位合約**。[tool-verified: DatasetColumn model in models.py:675-683, Function.output_columns in models.py:748]
 
@@ -46,7 +46,7 @@
   [tool-verified: `_materialize_relation` at function_dispatch.py:155-177, col_names passed
   to projection at line 171]
 
-### IR 類型詞彙
+### IR 類型詞彙 {: #the-ir-type-vocabulary }
 
 合約欄位的類型使用標準的 IR 類型系統（REQ-846），而非 GraphQL 純量或數據來源原生的寫法。有效的名稱為 [tool-verified: `_IR_TO_SA` keys in ir_types.py:45-63]：
 
@@ -57,9 +57,9 @@
 
 `return_schema` 是 `output_columns` 的 **GraphQL 投影**，而非事實來源。請為驗證與血緣宣告 `output_columns`；再加上 `return_schema` 供 GraphQL 類型生成之用。[tool-verified: models.py:744-748, comment "return_schema is its GraphQL projection"]
 
-## 撰寫一個命令
+## 撰寫一個命令 {: #authoring-a-command }
 
-### 設定檔
+### 設定檔 {: #config-file }
 
 ```yaml
 functions:
@@ -120,11 +120,11 @@ gRPC 變體（`enrich_grpc_set`）沿用同一套寫法，只是指定 `impl_kin
 
 [tool-verified: config/provisa.yaml enrich_grpc_set block]
 
-### 管理 UI
+### 管理 UI {: #admin-ui }
 
 **設定 → 命令** 中的命令表單包含一個逐數據集的輸入欄位編輯器（每個已宣告欄位一行，附 IR 類型選擇器）與一個輸出欄位編輯器。儲存表單即可註冊或更新命令，毋須重新載入設定。[inferred from CommandFormFields.tsx]
 
-## 內嵌組合（REQ-1159）
+## 內嵌組合（REQ-1159） {: #inline-composition-req-1159 }
 
 命令可以出現在較大的 SQL 陳述式**之內**——被聯結、被用作子查詢，或被投影。你並不限於 `SELECT * FROM fn(args)`。例外是遠端來源的寫入操作，它只能單獨呼叫（見 [為何不能被組合](#why-it-cannot-be-composed)）。
 
@@ -243,13 +243,13 @@ curl -X POST https://acme.provisa.org/data/rest/engineering/commands/create_issu
 - 未設定掛鉤：403，`functions.approval_unavailable`。
 - 掛鉤拒絕：403，`functions.approval_denied`，附帶掛鉤給出的原因。
 
-掛鉤會收到呼叫者、角色、命令名稱及其引數。參見 [ABAC 批准掛鉤](security.md#abac)。該旗標儲存為 `Function.requires_approval`，該檢查適用於任何設定了它的命令。 [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
+掛鉤會收到呼叫者、角色、命令名稱及其引數。參見 [ABAC 批准掛鉤](security.md#abac-approval-hook)。該旗標儲存為 `Function.requires_approval`，該檢查適用於任何設定了它的命令。 [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
 
 ### 寫入表 {: #writes-table }
 
 在 **寫入表** 欄位中填寫該操作所寫入的資料表，格式為 `schema.table`。它必須是該命令自身來源下的已註冊資料表，否則儲存會被拒絕，傳回 422，`actions.written_table_not_registered`。該設定為選用。 [tool-verified: `_check_written_table` in `actions_router.py`; `written_table` in `source_operation.py`]
 
-遠端服務每接受一次呼叫，Provisa 就將其視為對該資料表的一次寫入。它會捨棄該表的快取回應，將基於它的具體化檢視標記為過期，發出變更事件，執行該表的 sink，並在該表被保持為熱狀態時重新載入它。 [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
+遠端服務每接受一次呼叫，Provisa 就將其視為對該資料表的一次寫入。它會捨棄該表的快取回應，將基於它的具體化檢視標記為過期，發出變更事件，執行該表變更時所執行的命令，並在該表被保持為熱狀態時重新載入它。 [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
 
 當該表從其整表複本讀取時（營運方的設定將其置於複本上，或引擎無法就地讀取其資料來源），呼叫之後會請求建置該複本，原因為 `write`。讀取方在新複本取代之前繼續使用舊複本。逐行複製的表或帶有參數欄的表沒有可重建的整表複本。 [tool-verified: `provisa/api/data/table_written.py` `_request_replica_build`; `provisa/federation/replica_state.py` `REASON_WRITE`]
 
@@ -265,7 +265,7 @@ command 'create_issue' writes to its source and is called on its own: it cannot 
 
 來源操作也不是血緣節點：血緣讀取自檢視和查詢的 SQL，命令在其中表現為節點，而任何已儲存的定義都無法呼叫來源操作。 [tool-verified: `provisa/lineage/graph.py` (`kind="command"` for a call in the SQL); `refuse_writes_in_definition`]
 
-## 命令與血緣
+## 命令與血緣 {: #commands-and-lineage }
 
 由於每個命令都宣告了自己的輸入與輸出欄位，欄位層級血緣得以**跨越不透明的命令邊界而閉合**。血緣引擎會套用一次污染閉合：每個已宣告的輸出欄位，都推導自每個已宣告的輸入欄位。[tool-verified: `_splice_commands` in graph.py:223-242]
 
@@ -276,16 +276,16 @@ _splice_commands behavior in graph.py and _materialize_relation narrow-projectio
 
 命令節點在 DAG 中如何呈現、又該怎麼閱讀，見 [血緣](lineage.md)。
 
-## 外連允許清單
+## 外連允許清單 {: #egress-allowlist }
 
 `http` 與 `grpc` 命令會呼叫外部端點。每個目標主機都必須出現在該部署的 `udf_egress_allowlist` 上。回送位址（`localhost`、`127.0.0.1`、`::1`）一律放行。允許清單不存在時，所有外部外連皆以 HTTP 403 拒絕——沒有靜默的預設值。[tool-verified: `_check_egress` in function_dispatch.py:292-311]
 
-## 呼叫追蹤（REQ-886）
+## 呼叫追蹤（REQ-886） {: #invocation-tracing-req-886 }
 
 不論結果如何，每次呼叫都會發出一筆追蹤。追蹤內容包含命令名稱、傳輸種類、身分模型（DEFINER 或 INVOKER）、輸入關聯引用、角色 id，以及輸出基數。追蹤由派送器發出——沒有任何 `impl_kind` 繞得過去。
 [tool-verified: `udf_invocation_trace` context in dispatch_function:475-492]
 
-## CLI：provisa metadata export
+## CLI：provisa metadata export {: #cli-provisa-metadata-export }
 
 `provisa metadata export` 是 shell 層級的工作，不是受治理的 RPC。它會向 `/admin/metadata-export/publish` 發出 POST，觸發執行中伺服器的隨選中繼資料發佈（REQ-1072／REQ-1074）——與管理分頁上**立即發佈**按鈕所呼叫的是同一個端點。[tool-verified: `_cmd_metadata_export` in provisa/cli.py:272-310]
 

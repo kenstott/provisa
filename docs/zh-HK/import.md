@@ -1,8 +1,8 @@
-# 從 Hasura 匯入
+# 從 Hasura 匯入 {: #importing-from-hasura }
 
 Provisa 可以將現有的 Hasura 中繼資料轉換為 Provisa 的 `config.yaml`，並保留已追蹤的資料表、關聯、權限和遠端結構描述 (schema)。
 
-## 互動式匯入（管理介面 → Import Hasura Config）
+## 互動式匯入（管理介面 → Import Hasura Config） {: #interactive-import-admin-import-hasura-config }
 
 管理介面運行相同的轉換器，因此匯入不需要 shell 存取權限，也不需要往返設定檔。此操作需要 `org_settings` 權限；匯入結果會套用至目前工作階段所處理的組織。
 
@@ -18,7 +18,7 @@ Provisa 可以將現有的 Hasura 中繼資料轉換為 Provisa 的 `config.yaml
 
 ## Hasura v2
 
-### 匯出中繼資料
+### 匯出中繼資料 {: #export-metadata }
 
 在你的 Hasura 主控台或 CLI 中執行：
 
@@ -35,7 +35,7 @@ curl -X POST http://localhost:8080/v1/metadata \
   > metadata.json
 ```
 
-### 轉換
+### 轉換 {: #convert }
 
 v2 轉換器會讀取一個 Hasura 中繼資料**目錄**（由 `hasura metadata export` 產生的目錄結構，或扁平的 `tables.yaml` / `actions.yaml` 結構），並寫出一份 Provisa 設定檔：
 
@@ -55,36 +55,44 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 | `--auth-env-file` | 包含身分驗證設定的 `.env` 檔案；會轉換 JWT/JWK、管理員密鑰及聲明對應 |
 | `--dry-run` | 僅解析並驗證，不寫出輸出內容 |
 
-### 轉換內容對照
+### 轉換內容對照 {: #what-gets-converted }
 
 | Hasura 概念 | Provisa 對應項目 |
 | --------------- | ------------------- |
 | 已追蹤資料表 | 帶有 `publish: true` 的 `tables[]` |
-| 物件關聯 | 帶有 `cardinality: many-to-one` 的 `relationships[]` |
+| 物件關聯 | 帶有 `cardinality: many-to-one` 的 `relationships[]`。僅以外鍵欄位宣告的關聯（`foreign_key_constraint_on: artist_id`）在匯出中沒有指名目標；轉換器會經由相反方向的陣列關聯解析它，沒有時則以 `[relationships]` 警告將其捨棄。(REQ-1680) |
 | 陣列關聯 | 帶有 `cardinality: one-to-many` 的 `relationships[]` |
-| Select 權限 | 角色可視性 + RLS 篩選條件 |
+| Select 權限 | 角色可視性 + RLS 篩選條件。工作階段變數項（`X-Hasura-User-Id`）會變成 `current_setting('provisa.user_id')`，由請求在查詢時根據身份的使用者 id 及 claim 綁定。(REQ-1682) |
 | 欄權限 | `visible_to` / `writable_by` |
 | Insert/update/delete 權限 | Mutation 的 `writable_by` + RLS |
-| 遠端結構描述 | `graphql_remote` 來源註冊 |
+| 遠端結構描述 | `graphql_remote` 來源註冊，另加角色 SDL 所公開的每個 Query 根欄位各一張落地資料表；欄位對每個其 SDL 公開它的角色可見，非 null 的根引數會成為 `_nf_` 原生篩選欄位，巢狀欄位會在警告中指名。(REQ-1681) |
 | 運算欄位 | 帶有 `kind: query` 的 `functions[]` 項目 |
 
-### 限制
+### 匯入分頁上的連線與網域 {: #connections-and-domains-on-the-import-tab }
+
+匯出以環境變數為其資料庫命名，因此第一次轉換之後，分頁會列出每個 SQL 數據來源，連同轉換所猜測的連線。填入主機、連接埠、資料庫、使用者名稱及密碼，然後再次轉換；只有你更改過的欄位會作為數據來源覆寫項一併傳送。網域列涵蓋上載內容所攜帶的每個結構描述、子圖及遠端結構描述；每一列都是組織現有網域的選擇器，亦接受輸入的名稱，當它與任何網域都不相符時會標示為「新網域」。套用會與組織現有的內容合併。(REQ-1687)
+
+### 類型在預覽時來自數據來源 {: #types-come-from-the-source-at-preview }
+
+Hasura 匯出為欄位命名但不附類型，而沒有權限的已追蹤資料表不會指名任何欄位。預覽會以你提供的數據來源連線執行，因此它會讀取每個可連上的 SQL 數據來源的 `information_schema.columns`：每個沒有類型的欄位都會取得數據來源對映至 IR 詞彙的類型，而沒有欄位的資料表會取得數據來源的每一個欄位，僅對 `org_admin` 可見，因為 Hasura 沒有把它公開給任何其他角色。預覽無法連上的數據來源會以 `[sources]` 警告報告，其欄位維持沒有類型，留待你在套用之前完成。(REQ-1691, REQ-1684)
+
+### 限制 {: #limitations }
 
 - **Actions** 會自動轉換：HTTP 處理常式的 action 會轉為 `webhooks[]` mutation；使用非 HTTP（資料庫）處理常式的 action 會轉為 `functions[]` 佔位項目，並發出警告以提示需要檢閱該處理常式
 - **事件觸發器**會轉換為各資料表的 `event_triggers` 設定（操作、webhook 網址、重試原則），並發出警告，說明轉換的精確度有限
-- **遠端結構描述**會轉換為 `graphql_remote` 來源項目
+- **遠端結構描述**會轉換為 `graphql_remote` 來源項目，並根據角色權限 SDL 落地為資料表；沒有權限的遠端結構描述不會落地任何內容，因為匯出不帶有其形態的任何其他陳述 (REQ-1681)
 - **自訂 SQL 函式**需要人手檢閱——簡單的情況會轉換為 `functions[]` 項目，複雜的情況則需要人手處理
 - **Cron 觸發器**會轉換為 `scheduler` 設定項目，並保留 cron 運算式及啟用旗標
 
 ---
 
-## Hasura DDN（v3）
+## Hasura DDN（v3） {: #hasura-ddn-v3 }
 
-### 找出 HML 專案
+### 找出 HML 專案 {: #locate-the-hml-project }
 
 DDN 轉換器會直接讀取 DDN 專案中 `.hml` 檔案的**目錄**——不需要建置 supergraph 的步驟。專案根目錄下的第一層目錄名稱會被視為子圖名稱；`globals/` 目錄下的檔案會被指派至 `globals` 子圖。
 
-### 轉換
+### 轉換 {: #convert_1 }
 
 ```bash
 python -m provisa.ddn ./my-ddn-project -o config.yaml
@@ -104,7 +112,7 @@ python -m provisa.ddn ./my-ddn-project -o config.yaml
 
 `AggregateExpression` 中繼資料會保留在附屬的 `*-aggregates.yaml` 檔案中。
 
-### 轉換內容對照
+### 轉換內容對照 {: #what-gets-converted_1 }
 
 | DDN 概念 | Provisa 對應項目 |
 | ------------ | ------------------- |
@@ -114,7 +122,7 @@ python -m provisa.ddn ./my-ddn-project -o config.yaml
 | Command | Webhook mutation 或檢視 |
 | Connector | 帶有連線詳細資料的來源項目 |
 
-### 限制
+### 限制 {: #limitations_1 }
 
 - **Lambda connector**（TypeScript/Python 函式）需要人手設定 webhook
 - **生命週期外掛**沒有直接對應項目
@@ -122,7 +130,7 @@ python -m provisa.ddn ./my-ddn-project -o config.yaml
 
 ---
 
-## 匯入後
+## 匯入後 {: #after-import }
 
 1. 檢閱產生的 `config.yaml`——留意轉換器發出的 `warnings`
 2. 驗證連線憑證（轉換器使用的是預留位置值）

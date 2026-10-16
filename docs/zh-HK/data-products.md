@@ -1,18 +1,18 @@
-# 數據產品 (REQ-1634)
+# 數據產品 (REQ-1634) {: #data-products-req-1634 }
 
 數據產品是一組具名、有擁有者、共同發佈以供使用的資料表集合。它是目錄向使用者公開的單位——並非個別資料表，而是某個網域明確宣告已就緒的整理後介面。欄位遵循ODPS（開放數據產品標準）詞彙，適用於Provisa已擁有真實來源之處。[tool-verified: `provisa/core/models.py:318-342`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json`]
 
-## 網域擁有權規則
+## 網域擁有權規則 {: #domain-ownership-rule }
 
 每個數據產品恰好由一個網域擁有（`domain_id` 為必填欄位）。資料表只有在與數據產品共享相同 `domain_id` 時，才可加入該數據產品。UI會將資料表選擇器限定於該產品所屬的網域；後端會在儲存時拒絕網域不相符的 `product_id` 指派。[tool-verified: `provisa/core/models.py:320`, `docs/arch/requirements.yaml:54573-54574`]
 
 若某產品需要另一網域的數據，必須先將該數據以網域檢視形式引入，再將該檢視納入為成員。
 
-## 輸出埠
+## 輸出埠 {: #output-ports }
 
 指派予數據產品的資料表及命令，即為其**輸出埠**——使用者所見的可查詢介面。指派資料表會設定 `Table.product_id`；清除則移除其成員資格。一個資料表最多只能屬於一個產品。同一網域內的命令亦可指派為成員。[tool-verified: `provisa/core/models.py:941`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json:tablesLabel,commandsLabel`]
 
-## 詳情面板分節
+## 詳情面板分節 {: #detail-panel-sections }
 
 在管理員UI中開啟數據產品，會顯示以下面板：
 
@@ -38,7 +38,7 @@
 
 | 目錄 | 發佈形式 |
 | --- | --- |
-| Snowflake Horizon | SHARE + organization listing（原生數據產品）；`publish=false` 使其保持DRAFT狀態，`publish=true` 則使其上線 |
+| Snowflake Horizon | SHARE + organization listing（原生數據產品）；`publish=false` 使其保持DRAFT狀態，`publish=true` 則使其上線。清單的數據字典涵蓋每個成員及其每個欄位；首五個成員會獲精選展示，遮罩欄位在預覽中會被隱藏（REQ-1656） |
 | BigQuery Analytics Hub | Analytics Hub listing（原生） |
 | OpenMetadata | `DataProduct` 實體（原生） |
 | DataHub | 原生 `dataProduct` URN實體，具備自身的屬性／擁有權切面 |
@@ -49,7 +49,7 @@
 
 [tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:389-418`, `provisa/api/metadata_export/bigquery_dataplex.py:112-136`, `provisa/api/metadata_export/openmetadata.py:326-344`, `provisa/api/metadata_export/datahub.py:133-136,443-483`, `provisa/api/metadata_export/collibra.py:129-133,371-388`, `provisa/api/metadata_export/atlas.py:134-147`, `provisa/api/metadata_export/atlan.py:60`, `provisa/api/metadata_export/openlineage.py:243,348`]
 
-## 欄位
+## 欄位 {: #fields }
 
 | 欄位 | 必填 | 備註 |
 | --- | --- | --- |

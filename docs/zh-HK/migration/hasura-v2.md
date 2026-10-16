@@ -1,6 +1,6 @@
-# 從 Hasura v2 遷移至 Provisa
+# 從 Hasura v2 遷移至 Provisa {: #migrating-from-hasura-v2-to-provisa }
 
-## 先決條件
+## 先決條件 {: #prerequisites }
 
 1. 一個正在執行的 Hasura v2 執行個體（v2.x），並已匯出中繼資料。
 2. 使用 Hasura CLI 匯出中繼資料：
@@ -13,19 +13,19 @@
    `cron_triggers.yaml`、`inherited_roles.yaml`、`remote_schemas.yaml` 等。
 3. Python 3.11+，並已安裝 `provisa` 套件。
 
-## CLI 用法
+## CLI 用法 {: #cli-usage }
 
 ```bash
 python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 ```
 
-### 引數
+### 引數 {: #arguments }
 
 | 引數 | 必要 | 說明 |
 | ---------- | ---------- | ------------- |
 | `metadata_dir` | 是 | 已匯出的 Hasura v2 中繼資料目錄路徑 |
 
-### 選項
+### 選項 {: #options }
 
 | 選項 | 預設值 | 說明 |
 | -------- | --------- | ------------- |
@@ -35,7 +35,7 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 | `--auth-env-file FILE` | 無 | 包含 JWT／admin-secret 驗證設定的 `.env` 檔案路徑 |
 | `--dry-run` | 關閉 | 僅解析並驗證，不寫入輸出 |
 
-### 數據來源覆寫檔案
+### 數據來源覆寫檔案 {: #source-overrides-file }
 
 一個以數據來源名稱作為索引鍵的 YAML 檔案，包含要覆寫的連線屬性：
 
@@ -48,7 +48,7 @@ default:
   password: "${env:PROD_DB_PASSWORD}"
 ```
 
-### 驗證環境檔案
+### 驗證環境檔案 {: #auth-env-file }
 
 一個 `.env` 格式的檔案，內含要轉換的 Hasura 驗證設定。轉換工具會進行以下對應：
 
@@ -57,7 +57,7 @@ default:
 - Admin secret -> Provisa `superuser`。
 - Webhook 驗證 -> 系統會發出警告（Provisa 沒有對應項目）。
 
-## 功能對等表
+## 功能對等表 {: #feature-parity-matrix }
 
 | Hasura v2 功能 | Provisa 對等項目 | 備註 |
 | --- | --- | --- |
@@ -81,7 +81,7 @@ default:
 | **列舉資料表** | 建立資料表 | `is_enum` 旗標不會被帶入（Provisa 沒有對應項目）。 |
 | **允許清單** | 略過 | 中繼資料模型中沒有此項目。 |
 
-## 轉換後步驟
+## 轉換後步驟 {: #post-conversion-steps }
 
 1. **檢查輸出的 YAML。** 確認數據來源、資料表及角色是否正確。
 2. **設定數據來源連線。** 轉換工具會解析連線 URL，但在解析失敗時會預設使用 `localhost`。
@@ -96,36 +96,36 @@ default:
    並使用 `--auth-env-file` 重新執行。
 7. **測試。** 啟動 Provisa 伺服器，並針對您的數據來源驗證查詢。
 
-## 常見問題及疑難排解
+## 常見問題及疑難排解 {: #common-issues-and-troubleshooting }
 
-### 連線 URL 未被解析
+### 連線 URL 未被解析 {: #connection-url-not-parsed }
 
 若數據來源的 `database_url` 是環境變數參照（`{"from_env": "PG_URL"}`），轉換工具在
 轉換時無法解析。該數據來源會有預留位置值（`host: localhost`、`database: default`）。
 請使用 `--source-overrides` 修正。
 
-### 萬用字元欄位
+### 萬用字元欄位 {: #wildcard-columns }
 
 當某項權限授予 `columns: "*"` 時，轉換工具會建立單一的萬用字元欄位項目。轉換後，
 您可能想透過檢查實際的資料庫結構描述，將其取代為明確的欄位清單。
 
-### 事件觸發程序的準確度
+### 事件觸發程序的準確度 {: #event-trigger-fidelity }
 
 事件觸發程序會連同 `operations` 及 `webhook_url` 一併轉換，但 Hasura 特有的傳遞保證
 （恰好一次、重新傳遞）在 Provisa 中沒有直接對應項目。請檢視 `event_triggers` 一節，
 並相應地設定您的 webhook 基礎架構。
 
-### 缺少角色
+### 缺少角色 {: #missing-roles }
 
 角色只會從權限項目中收集。若某個角色存在於 Hasura 中，但在任何資料表或 action
 上都沒有權限，則不會出現在輸出結果中。
 
-### 自訂根欄位
+### 自訂根欄位 {: #custom-root-fields }
 
 只有 `select` 及 `select_by_pk` 根欄位會用作資料表的別名。其他自訂根欄位
 （`select_aggregate`、`insert`、`update`、`delete`）不會被對應。
 
-## 範例
+## 範例 {: #example }
 
 轉換一個典型的 Hasura v2 專案，當中有兩個結構描述對應至不同網域：
 
