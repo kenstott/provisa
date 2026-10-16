@@ -14,8 +14,9 @@
 the source map and re-walk every registered table each time (measured on the perf config: 22 of 36
 tables re-attached about a quarter of a millisecond each); it now walks once per registry state. A
 FETCH/DIRECT source (one the engine lands instead of attaching) is decided up front from the
-connector's reach and skipped, never attempted; a driver error (an offline source) is retried on a
-later query, and a declared refusal (``UnreachableSource``) is remembered for the registry state."""
+connector's reach and skipped, never attempted; a driver error (an offline source) is retried once
+the walk's retry interval has passed, and a declared refusal (``UnreachableSource``) is remembered
+for the registry state."""
 
 # Requirements: REQ-825
 
@@ -264,9 +265,14 @@ class _DriverDown(Exception):
     """A driver error: the source is offline, not unreachable by design."""
 
 
-def test_a_driver_error_is_retried_on_the_next_query():
+def test_a_driver_error_is_retried_once_the_retry_interval_has_passed(monkeypatch):
     """Only a DECLARED refusal is remembered for the registry state. A source that was offline
-    must become queryable when it comes back, without waiting for a registry change."""
+    must become queryable when it comes back, without waiting for a registry change -- but the
+    statements in between do not each attempt it again: the walk waits its retry interval."""
+    from provisa.federation import native_backend
+
+    clock = [1000.0]
+    monkeypatch.setattr(native_backend.time, "monotonic", lambda: clock[0])
 
     class _FlakyRuntime(_Runtime):
         down = True
@@ -283,11 +289,49 @@ def test_a_driver_error_is_retried_on_the_next_query():
     backend.runtime = _FlakyRuntime()
     backend._runtime_for(state)
     backend._runtime_for(state)
+    assert backend.runtime.attempts.count("public.orders") == 1, "retried before its interval"
+    clock[0] += native_backend._ATTACH_RETRY_S
+    backend._runtime_for(state)
     assert backend.runtime.attempts.count("public.orders") == 2
     backend.runtime.down = False
+    clock[0] += native_backend._ATTACH_RETRY_S
     backend._runtime_for(state)
+    clock[0] += native_backend._ATTACH_RETRY_S
     backend._runtime_for(state)
     attempts = backend.runtime.attempts
     assert attempts.count("public.orders") == 3, "the recovered source was not attached once"
     assert attempts.count("public.customers") == 1
     assert attempts.count("public.pets") == 0, "a FETCH source is never attached"
+
+
+def test_a_failure_that_recurs_unchanged_is_logged_once(monkeypatch, caplog):
+    """An Iceberg table with no metadata yet fails the same way at every retry: logged when it
+    first fails and again only when its failure changes."""
+    import logging
+
+    from provisa.federation import native_backend
+
+    clock = [1000.0]
+    monkeypatch.setattr(native_backend.time, "monotonic", lambda: clock[0])
+    reason = ["No version was provided and no version-hint could be found"]
+
+    class _NoMetadataRuntime(_Runtime):
+        def attach_source(self, source) -> None:
+            super().attach_source(source)
+            if source.table_name == "orders":
+                raise _DriverDown(reason[0])
+
+    class _DriverBackend(_Backend):
+        _attach_errors = (_DriverDown, *NativeEngineBackend._attach_errors)
+
+    backend, state = _DriverBackend(), _state()
+    backend.runtime = _NoMetadataRuntime()
+    with caplog.at_level(logging.WARNING, logger=native_backend._log.name):
+        for _ in range(5):
+            backend._runtime_for(state)
+            clock[0] += native_backend._ATTACH_RETRY_S
+        reason[0] = "connection refused"
+        backend._runtime_for(state)
+    assert backend.runtime.attempts.count("public.orders") == 6
+    failures = [r for r in caplog.records if "orders" in r.getMessage()]
+    assert len(failures) == 2, [r.getMessage() for r in failures]

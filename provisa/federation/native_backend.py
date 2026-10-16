@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -68,6 +69,11 @@ _NO_REMOTE_SOURCE_IDS = frozenset({"provisa-admin", "__derived__"})
 # so a missing details key is a real bug, not a declared refusal. They cannot change until the
 # registry does.
 _DECLARED_REFUSALS: tuple[type[BaseException], ...] = (UnreachableSource,)
+
+#: Seconds an incomplete walk waits before it is walked again. A table a driver error left
+#: unattached (an offline source; an Iceberg table with no metadata yet) used to be attempted --
+#: and logged -- by every statement: hundreds of times an hour for a table nothing reads.
+_ATTACH_RETRY_S = 60.0
 
 
 def libpq_dsn(url: "URL") -> str:
@@ -189,9 +195,16 @@ class NativeEngineBackend(EngineBackend):
         # publishes a new source map and a new table list; nothing mutates them in place), so an
         # unchanged identity means there is nothing new to attach and the walk is skipped.
         self._walked: tuple[Any, Any, Any, Any] | None = None
+        # When an incomplete walk of ``_walked`` is walked again (``_ATTACH_RETRY_S``); None for a
+        # complete one, which is walked again only when the registry changes.
+        self._retry_at: float | None = None
+        # The last failure of each table a driver error left unattached, so a failure that recurs
+        # unchanged is logged once rather than at every retry.
+        self._failed: dict[tuple[str, str, str, str], str] = {}
         # Tables whose attach was refused for a DECLARED reason in the walked registry state (a
         # source type this engine lands instead of attaching, REQ-841). Not retried until the
-        # registry changes. A driver error is not remembered: an offline source is retried.
+        # registry changes. A driver error is not remembered: an offline source is retried once the
+        # walk's retry interval (_ATTACH_RETRY_S) has passed.
         self._refused: set[tuple[str, str, str, str]] = set()
         self._refused_in: tuple[Any, Any, Any, Any] | None = None
         self._walk_lock = threading.Lock()
@@ -210,7 +223,9 @@ class NativeEngineBackend(EngineBackend):
             self._attached.clear()
             self._detached.clear()
             self._refused.clear()
+            self._failed.clear()
             self._walked = None
+            self._retry_at = None
             self._refused_in = None
         if runtime is not None:
             runtime.close()
@@ -226,6 +241,8 @@ class NativeEngineBackend(EngineBackend):
         with self._walk_lock:
             for held in (self._attached, self._detached, self._refused):
                 held.difference_update({k for k in held if k[1] == source_id})
+            for key in [k for k in self._failed if k[1] == source_id]:
+                del self._failed[key]
 
     # -- runtime (subclass hook) ----------------------------------------------
 
@@ -339,10 +356,16 @@ class NativeEngineBackend(EngineBackend):
                 if _active_org is not None and _owns_engine and _active_org != _default_org
                 else config
             )
-            self._walked = registry if self._walk_registry(state, walked_config) else None
+            complete = self._walk_registry(state, walked_config)
+            self._walked = registry
+            self._retry_at = None if complete else time.monotonic() + _ATTACH_RETRY_S
 
     def _covers(self, registry: tuple[Any, Any, Any, Any]) -> bool:
-        return _same_registry(self._walked, registry)
+        """Whether the last walk still stands for ``registry``: it walked this registry state and
+        was complete, or was not and its retry interval has not passed."""
+        return _same_registry(self._walked, registry) and (
+            self._retry_at is None or time.monotonic() < self._retry_at
+        )
 
     @staticmethod
     def _registry_of(state: Any) -> tuple[Any, Any, Any, Any]:
@@ -556,11 +579,15 @@ class NativeEngineBackend(EngineBackend):
                 self._attached.add(key)
                 self._attached_fields[key] = fields
                 self._detached.discard(key)
+                self._failed.pop(key, None)
             except self._attach_errors as _ae:
                 if isinstance(_ae, _DECLARED_REFUSALS):
                     self._refused.add(key)
                 else:
                     complete = False
+                    if self._failed.get(key) == str(_ae):
+                        return  # logged when it first failed so; still not queryable
+                    self._failed[key] = str(_ae)
                 _log.warning(
                     "%s attach of %s failed; table not queryable: %s", self.engine.name, key, _ae
                 )
