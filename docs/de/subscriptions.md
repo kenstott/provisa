@@ -2,7 +2,7 @@
 
 Provisa unterstützt Echtzeit-Push über Server-Sent Events (SSE). Clients erhalten einen Strom von Änderungsereignissen ohne Polling. (REQ-258)
 
-## Quellen
+## Quellen {: #sources }
 
 Subscriptions zielen auf eine **registrierte Tabelle**:
 
@@ -12,13 +12,13 @@ Subscriptions zielen auf eine **registrierte Tabelle**:
 | Tabelle (Nicht-PG-RDBMS mit einem `cdc`-Block auf Quellenebene) | `debezium`, `kafka`, `poll` |
 | Tabelle (föderierte Sicht / jede andere Quelle) | nur `poll` |
 
-### Automatische Trigger-Installation für PostgreSQL
+### Automatische Trigger-Installation für PostgreSQL {: #postgresql-trigger-auto-installation }
 
 Provisa installiert beim Start automatisch `AFTER INSERT OR UPDATE OR DELETE`-Trigger auf allen **vorab genehmigten** PostgreSQL-Tabellen. (REQ-565) Diese Trigger rufen `pg_notify('provisa_{table}', ...)` auf, sodass rohes DML (nicht nur Provisa-Mutationen) von Subscriptions erfasst wird. (REQ-565)
 
 Schlägt die Trigger-Installation fehl (z. B. wegen unzureichender Berechtigung — die Datenbankrolle muss Eigentümer der Tabelle sein), fällt Provisa für diese Tabelle auf Watermark-Polling zurück, sofern eine `watermark_column` konfiguriert ist. (REQ-566) Es wird eine Warnung protokolliert. (REQ-566)
 
-### Subscriptions auf datenquellenübergreifende Sichten
+### Subscriptions auf datenquellenübergreifende Sichten {: #cross-datasource-view-subscriptions }
 
 Für Sichten, die mehrere Datenquellen über die Föderations-Engine verknüpfen, fügen Sie der Tabellenregistrierung eine `watermark_column` hinzu. (REQ-260, REQ-283) Die Spalte muss im SQL der Sicht vorhanden sein (sie muss nicht im GraphQL-Schema erscheinen):
 
@@ -33,11 +33,11 @@ JOIN mysql.crm.customer_segments s ON o.customer_id = s.customer_id;
 
 Registrieren Sie mit `watermark_column: _watermark`. Provisa führt Polling mit `WHERE _watermark > <last_seen>` durch. (REQ-260)
 
-### Subscriptions auf verschachtelte Beziehungen
+### Subscriptions auf verschachtelte Beziehungen {: #nested-relationship-subscriptions }
 
 Wenn das Subscription-Feld Felder aus verknüpften Tabellen auswählt (über registrierte Beziehungen), überwacht Provisa **alle** beteiligten physischen Tabellen gleichzeitig. (REQ-567) Eine Änderung an jeder verknüpften Tabelle löst die Subscription-Abfrage erneut aus. (REQ-567)
 
-## Endpunkt
+## Endpunkt {: #endpoint }
 
 Eine Tabelle abonnieren:
 
@@ -54,7 +54,7 @@ data: {"event":"insert","table":"orders","row":{"id":43,"amount":55.00,"region":
 data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region":"west"}}
 ```
 
-## Übertragungsmodi
+## Übertragungsmodi {: #delivery-modes }
 
 Die Übertragung wird über `live.strategy` in der Tabellenkonfiguration festgelegt: (REQ-813, REQ-814)
 
@@ -195,7 +195,7 @@ Eine GraphQL-Subscription behält die Form der GraphQL-Antwort, mit Code und Par
 
 Ein Fall beendet eine GraphQL-Subscription nicht: Wenn das erneute Lesen nach einer einzelnen Änderung fehlschlägt, wird dieser Frame in derselben Form gesendet, und der Stream geht zur nächsten Änderung weiter. Ein Fehler beim ersten Lesen, im Änderungsfeed selbst oder beim Starten ist der letzte Frame.
 
-## Kafka-Sink-Umleitung
+## Kafka-Sink-Umleitung {: #kafka-sink-redirect }
 
 Jede GraphQL-Subscription kann statt zum Client gestreamt zu werden an ein Kafka-Topic umgeleitet werden. (REQ-812) Fügen Sie der Subscription-Anfrage den Header `X-Provisa-Sink` hinzu:
 
@@ -230,7 +230,7 @@ curl -X POST http://localhost:8000/data/graphql \
 # → 202 {"status":"streaming","sink":"kafka://kafka:9092/orders-live","table":"orders"}
 ```
 
-### Kafka-Sink als zweiter Output auf Konfigurationsebene
+### Kafka-Sink als zweiter Output auf Konfigurationsebene {: #kafka-sink-as-a-config-level-second-output }
 
 Eine Polling-basierte Tabellen-Subscription kann über `provisa.yaml` gleichzeitig in ein Kafka-Topic veröffentlichen. (REQ-282, REQ-286) SSE-Subscription und Kafka-Sink sind beide Outputs derselben Live Query Engine. (REQ-282) Jeder Output verfolgt seine Watermark unabhängig. (REQ-286)
 
@@ -252,7 +252,7 @@ tables:
 
 Ein Kafka-Output veröffentlicht die Zeilen der Tabelle reguliert als die Rolle, die er benennt: Ihre Zeilenregeln, Spaltensichtbarkeit und Masken gelten wie bei einem Lesevorgang dieser Rolle. Ein Output ohne `role` wird beim Laden der Konfiguration abgelehnt. (REQ-565) [tool-verified: `provisa/core/models.py` `LiveOutputConfig`]
 
-## Sicherheit
+## Sicherheit {: #security }
 
 Alle Subscription-Modi setzen dieselbe Sicherheits-Pipeline wie reguläre Abfragen durch: (REQ-258, REQ-038)
 
@@ -260,7 +260,7 @@ Alle Subscription-Modi setzen dieselbe Sicherheits-Pipeline wie reguläre Abfrag
 - Maskierte Spalten erscheinen in Ereignissen maskiert (REQ-040)
 - Die Rollenautorisierung wird zum Zeitpunkt der Verbindung geprüft (REQ-258)
 
-## Client-Beispiel
+## Client-Beispiel {: #client-example }
 
 ```javascript
 // Table subscription (LISTEN/NOTIFY)

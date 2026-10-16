@@ -1,6 +1,6 @@
-# Integrationen
+# Integrationen {: #integrations }
 
-## Den richtigen Verbindungspfad wählen
+## Den richtigen Verbindungspfad wählen {: #choosing-a-connection-path }
 
 | Client-Typ | Empfohlener Pfad | Warum |
 | ------------- | ----------------- | ----- |
@@ -14,13 +14,13 @@
 
 ---
 
-## pgwire — Nativer PostgreSQL-Treiber
+## pgwire — Nativer PostgreSQL-Treiber {: #pgwire-native-postgresql-driver }
 
 Provisa implementiert das PostgreSQL-Wire-Protokoll (Protokollversion 3.0). Jeder Client, der PostgreSQL spricht, verbindet sich ohne speziellen Treiber.
 
 Aktivieren Sie es, indem Sie `PROVISA_PGWIRE_PORT` (z. B. `5433`) setzen, bevor Sie Provisa starten. Deaktiviert, wenn nicht gesetzt oder `0`.
 
-### Warum pgwire statt JDBC?
+### Warum pgwire statt JDBC? {: #why-pgwire-instead-of-jdbc }
 
 Der JDBC-Treiber nutzt Arrow Flight als Transport und erfordert das Deployment von `provisa-jdbc.jar`. pgwire erfordert nichts — wenn Sie bereits `psql`, DBeaver, SQLAlchemy oder einen PG-JDBC-Treiber haben, sind Sie fertig. Es ist der reibungsärmere Pfad für reine SQL-Workloads.
 
@@ -54,7 +54,7 @@ Oder mit `asyncpg`:
 engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa")
 ```
 
-### Authentifizierung
+### Authentifizierung {: #authentication }
 
 Das `password`-Feld des Startup-Pakets trägt das Credential, und was das Credential *ist*,
 bestimmt die Methode: ein Personal Access Token, ein OIDC-Bearer-Token oder ein Passwort gegen
@@ -65,7 +65,7 @@ das Passwort ignoriert.
 
 Die vollständige Oberfläche-×-Methode-Tabelle steht im [Sicherheitsmodell](security.md#surfaces-and-credentials). MD5 wird nicht unterstützt; aktivieren Sie TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`), wenn Sie über ein nicht vertrauenswürdiges Netzwerk laufen.
 
-### Einschränkungen
+### Einschränkungen {: #limitations }
 
 - Nur SQL. GraphQL und Cypher werden über pgwire nicht akzeptiert.
 - Nicht schreibgeschützt. `COPY ... FROM STDIN` fügt Zeilen in `postgresql`-, `mysql`-, `sqlite`- und `mariadb`-Quellen ein, und DDL wird unterstützt (siehe unten).
@@ -74,7 +74,7 @@ Die vollständige Oberfläche-×-Methode-Tabelle steht im [Sicherheitsmodell](se
 
 ---
 
-## JDBC-Treiber
+## JDBC-Treiber {: #jdbc-driver }
 
 Der Provisa-JDBC-Treiber nutzt Arrow Flight als zugrunde liegenden Transport. Er ist der empfohlene Pfad für BI-Tools mit JDBC-Verbindungsassistenten.
 
@@ -82,7 +82,7 @@ Abfragen laufen über Arrow Flight, sobald der Flight-Port beim Öffnen der Verb
 
 Das Durchsuchen des Schemas (`getTables`, `getColumns`, Primär- und Fremdschlüssel) wird über denselben Flight-Port gelesen, mit dem angemeldeten Credential: Der Treiber listet den Katalog der Rolle, als die er handelt, sodass eine Tabelle oder Spalte, die dieser Rolle nicht freigegeben ist, nicht erscheint. Ein Schlüssel, der auf eine nicht freigegebene Tabelle oder Spalte verweist, wird ebenfalls nicht gelistet. Auf einer Verbindung, deren Flight-Port beim Verbinden nicht erreichbar war, liest der Treiber denselben Katalog über HTTP (`GET /data/catalog`): Der Server baut beide Listen mit einer Funktion, sodass Tabellen, Spaltennamen, Typen und Schlüssel nicht davon abhängen, welcher Port geantwortet hat. (REQ-128)
 
-### Verbindung
+### Verbindung {: #connection }
 
 Laden Sie [provisa-jdbc.jar](https://provisa.dev/dl/jdbc) herunter (immer die neueste Version) und fügen Sie sie dem Treiberpfad Ihres Tools hinzu.
 
@@ -94,7 +94,7 @@ jdbc:provisa://<host>:8815
 
 Die Authentifizierung nutzt die Standard-JDBC-Eigenschaften `user`/`password`. Der Treiber tauscht sie gegen ein Sitzungstoken und sendet es bei jeder Anfrage; eine abgelehnte Anmeldung lässt die Verbindung mit Status und Grund des Servers fehlschlagen. Provisa leitet die Rolle aus der angemeldeten Identität ab. Die optionale Eigenschaft `role` (oder `?role=` in der URL) bittet darum, als eine Rolle zu handeln, die der Benutzer hält, oder als eine kommagetrennte Menge solcher Rollen; eine Rolle, die der Benutzer nicht hält, wird abgelehnt. Auf einem Deployment ohne Auth-Provider gibt es keine Anmeldung, und der Benutzername wird als angeforderte Rolle genommen. (REQ-131, REQ-273)
 
-### BI-Tool-Einrichtung
+### BI-Tool-Einrichtung {: #bi-tool-setup }
 
 **Tableau**
 
@@ -143,7 +143,7 @@ df = client.query_df("{ orders { id amount } }")
 
 Die vollständige Referenz einschließlich DB-API 2.0, SQLAlchemy-Dialekt und ADBC finden Sie unter [docs/python-client.md](python-client.md).
 
-### Python (rohes PyArrow)
+### Python (rohes PyArrow) {: #python-raw-pyarrow }
 
 ```python
 import pyarrow.flight as flight
@@ -241,7 +241,7 @@ Streaming-Abfragen liefern eine Nachricht pro Zeile; Mutationen sind unär.
 
 ---
 
-## Commands über Protokolle hinweg aufrufen
+## Commands über Protokolle hinweg aufrufen {: #invoking-commands-across-protocols }
 
 Ein **Command** ist eine registrierte getrackte Funktion oder ein Webhook — ein in der
 Modell von Provisa registrierter Callable mit einem `kind` (`query` oder
@@ -264,7 +264,7 @@ veranschaulichen sowohl einen gehosteten Callable als auch eine externe gRPC-Br�
 mit Zufallswerten liefert; beide sind in `config/provisa-install.yaml` registriert.
 [tool-verified: `config/provisa-install.yaml:809-856`]
 
-### Protokollmatrix
+### Protokollmatrix {: #protocol-matrix }
 
 | Oberfläche | Syntax | Beispiel |
 | --------- | -------- | --------- |
@@ -283,7 +283,7 @@ gRPC-Oberflächen akzeptieren `query`- und `mutation`-Commands identisch.
 
 Provisa kann als Federation-v2-Subgraph fungieren und sein veröffentlichtes Schema einem Apollo Router oder Apollo Gateway exponieren.
 
-### Einrichtung
+### Einrichtung {: #setup }
 
 Federation in `config.yaml` aktivieren:
 
@@ -295,7 +295,7 @@ federation:
 
 Provisa generiert automatisch `@key`-Direktiven auf Primärschlüsselspalten und `@external`/`@provides` auf spaltenübergreifende Subgraph-Relationships.
 
-### Bei Apollo Router registrieren
+### Bei Apollo Router registrieren {: #register-with-apollo-router }
 
 In Ihrer `supergraph.yaml`:
 
@@ -327,7 +327,7 @@ Siehe [docs/sources.md](sources.md#kafka-quellen) für die Konfiguration von Kaf
 
 ---
 
-## Data-Quality-Checker (REQ-1443)
+## Data-Quality-Checker (REQ-1443) {: #data-quality-checkers-req-1443 }
 
 Soda Core und Great Expectations verbinden sich mit Provisa genauso wie jeder andere
 Postgres-Client — über pgwire. Das ist die gesamte Integration: Der Checker hält einen
@@ -345,7 +345,7 @@ Governance, RLS, das Grid und der Export alle ohne einen zweiten Mechanismus gre
 Contract-Autorisierung, der Ergebnis-Envelope und die abgeleitete Registrierung werden in
 [docs/sources.md](sources.md#data-quality-checkers-req-1443) behandelt.
 
-### Einen Checker installieren
+### Einen Checker installieren {: #installing-a-checker }
 
 Keine der beiden Bibliotheken wird standardmäßig ausgeliefert. Der Installer fragt, welche Sie
 möchten, und die Antwort wird zu `dq_checker: none|soda|gx` in `~/.provisa/config.yaml`. In der
@@ -397,7 +397,7 @@ Die Seite Metriken bietet im Panel Ossie Interchange außerdem eine Schaltfläch
 Endpunkt-URL, beide auf denselben Endpunkt.
 [tool-verified: `OssieInterchangePanel.tsx` lines 64–79: `endpointUrl = window.location.origin + OSSIE_ENDPOINT_PATH`]
 
-#### Was exportiert wird
+#### Was exportiert wird {: #what-is-exported }
 
 Der Adapter bildet Provisa-Objekte wie folgt auf Ossie-Objekte ab:
 
@@ -591,7 +591,7 @@ against data was not run]
 
 ---
 
-## Metriken über Protokolle hinweg (REQ-1319)
+## Metriken über Protokolle hinweg (REQ-1319) {: #metrics-across-protocols-req-1319 }
 
 Die Definition einer governten Metrik — ihr Ausdruck, ihre Beschreibung und ihr `ai_context` —
 reist mit dem Wert in jede Abfrageoberfläche durch eine einzige Compiler-Expansion. Es gibt
@@ -638,7 +638,7 @@ Der Definitionstext (`description`, `ai_context`) erscheint in der GraphQL-Intro
 sodass schema-bewusste Tools und Codegen ihn automatisch aufgreifen.
 [inferred: per REQ-1319: "definition in introspection docs"]
 
-### MCP (KI-Agenten)
+### MCP (KI-Agenten) {: #mcp-ai-agents }
 
 Zwei Tools exponieren Metriken für MCP-Clients:
 
@@ -679,7 +679,7 @@ Fact- und Dimension-Tabellen tragen im föderierten Graphen die Knotenlabels `:F
 [inferred: per REQ-1319 and REQ-1320: "federated graph labels nodes :Fact/:Dimension so Bloom
 renders the star"; provisa/cypher/label_map.py not read in this session]
 
-### Natürlichsprachliche Abfragen
+### Natürlichsprachliche Abfragen {: #natural-language-queries }
 
 Der NL-Schema-Matcher löst Metrik-Vokabular in natürlichsprachlichen Fragen direkt zu einer
 Metrik plus Dimensionen auf und generiert dann semantisches SQL. [tool-verified: `resolve_metric`,

@@ -1,10 +1,10 @@
-# Domänenmodell-Prinzipien
+# Domänenmodell-Prinzipien {: #domain-model-principles }
 
 ---
 
 ## 1. Governance
 
-### Kernprinzipien
+### Kernprinzipien {: #core-principles }
 
 1. **Jede Ressource muss einer Domäne gehören.** Tabellen, Sichten und Beziehungen sind alle Domänen-Assets. Es gibt keine ungovernten frei schwebenden Ressourcen. Die Domäne ist die Einheit der Rechenschaftspflicht.
 2. **Jede Domäne muss einen Steward haben.** Eine Domäne kann sich in einem ausstehenden Zustand befinden, bis ein Steward zugewiesen wird, aber sie kann ohne einen solchen keine governten Daten bereitstellen.
@@ -14,7 +14,7 @@
 6. **Analysten können domänenübergreifende Abfragen aus genehmigten Beziehungen erstellen.** Abfragen sind interdomäne Sichten, ausgedrückt in jeder unterstützten Abfragesprache. Sie erzeugen keine neue Semantik — sie durchlaufen genehmigte Beziehungspfade. Es ist keine zusätzliche Genehmigung erforderlich: Governance wird vorgelagert auf der Ebene der Beziehung und der Spaltensichtbarkeit gehandhabt. Der Katalog ist der Durchsetzungsmechanismus: Der Compiler weist Traversierungen zurück, die nicht im genehmigten Beziehungskatalog stehen.
 7. **Jeder kann Zugriff auf eine Domänen-Ressource anfordern.** Der Zugriff wird auf Ressourcenebene gewährt, nicht auf Abfrageebene. Wenn Sie Zugriff auf eine Ressource haben, können Sie sie abfragen. Governance wird zur Ausführungszeit über die Pipeline durchgesetzt.
 
-### Ressourcen: Tabellen und Sichten als Gleichrangige
+### Ressourcen: Tabellen und Sichten als Gleichrangige {: #resources-tables-and-views-as-peers }
 
 Der Unterschied zwischen einer Tabelle und einer Sicht ist nur die Herkunft — eine Tabelle wird aus einer Quelle beansprucht, eine Sicht wird von einem Steward definiert. Sobald eines von beiden als Domänen-Asset existiert, behandelt das Governance-Modell sie identisch:
 
@@ -25,7 +25,7 @@ Der Unterschied zwischen einer Tabelle und einer Sicht ist nur die Herkunft — 
 
 Ein Steward kann Tabellen privat beanspruchen und nur kuratierte Sichten als öffentlich zugängliche Datenprodukte bereitstellen.
 
-### Sicht-Komposition
+### Sicht-Komposition {: #view-composition }
 
 Eine Sicht gehört immer zu einer einzigen Domäne — es gibt nur einen Sichttyp, immer intradomän. Eine Sicht existiert für einen von zwei Zwecken:
 
@@ -46,7 +46,7 @@ Jede Sicht trägt einen deklarierten Geschäftszweck, der zum Erstellungszeitpun
 - Wird bei Zugriffsanfragen unter Prinzip 7 referenziert, damit der Steward die Eignung beurteilen kann
 - Begleitet die Sicht von ihrer Erstellung durch den gesamten Governance-Workflow
 
-### Abfragen
+### Abfragen {: #queries }
 
 Eine Abfrage durchläuft genehmigte Beziehungspfade über Domänen-Assets. Anders als Sichten erzeugen Abfragen keine neue semantische Bedeutung — sie durchlaufen die genehmigte Struktur des Modells. Abfragen können in jeder unterstützten Abfragesprache ausgedrückt werden (SQL, GraphQL, Cypher).
 
@@ -71,7 +71,7 @@ Jede unterstützte Sprache stellt die Domäne als strukturellen Namensraum dar, 
 
 Der Compiler löst die Domänenzugehörigkeit aus diesen strukturellen Positionen auf — keine Annotation oder Hinweis ist erforderlich.
 
-### Beziehungen
+### Beziehungen {: #relationships }
 
 Eine Beziehung ist ein genehmigter Traversierungspfad zwischen zwei Assets. Domänengrenzen sind irrelevant dafür, was eine Beziehung ist — sie bestimmen nur, wer sie genehmigt.
 
@@ -86,7 +86,7 @@ Beziehungen werden bedarfsgesteuert erstellt, nicht spekulativ. Das erste Team m
 
 **Optimierungsfolge:** Eine Beziehungsdeklaration ist nicht nur ein Governance-Artefakt — sie ist auch eine strukturelle Beschreibung einer Join-Form. Die beiden Tabellen, die beiden Spalten und der Join-Typ, die eine Beziehung definieren, sind genau das, was der Abfrageoptimierer benötigt, um diesen Join vorab zu materialisieren. Quellenübergreifende Beziehungen erzeugen automatisch vormaterialisierte Join-Tabellen; Beziehungen innerhalb derselben Quelle können sich über `materialize: true` dafür entscheiden. Stewards, die gültige Beziehungen durchdenken und genehmigen, erhalten Abfragebeschleunigung als direktes Nebenprodukt — Governance-Arbeit und Optimierungsarbeit sind derselbe Akt.
 
-### Feldzugriffsberechtigungen
+### Feldzugriffsberechtigungen {: #field-access-grants }
 
 Eine Feldzugriffsberechtigung ist eine Domäne-zu-Domäne-Berechtigung — Domäne A darf bestimmte Felder von Domäne B in ihren Sichten verwenden.
 
@@ -106,7 +106,7 @@ Eine Feldzugriffsberechtigung ist eine Domäne-zu-Domäne-Berechtigung — Domä
 
 Der Kompromiss: Die Quelldomäne genehmigt den Feldzugriff, ohne jede zukünftige Nutzung zu kennen. Eine Genehmigung pro Sicht ist theoretisch korrekt und praktisch nicht umsetzbar.
 
-### Workflow zur Abfrageerstellung
+### Workflow zur Abfrageerstellung {: #query-creation-workflow }
 
 Drei Phasen, in dieser Reihenfolge.
 
@@ -130,7 +130,7 @@ Drei Phasen, in dieser Reihenfolge.
 - Nur genehmigte Katalogbeziehungen sind durchlaufbar — der Compiler setzt dies strukturell durch
 - Keine Genehmigung erforderlich — Spaltensichtbarkeit und Beziehungsgenehmigung sind die einzigen Gates
 
-### HITL als primäre Kontrolle
+### HITL als primäre Kontrolle {: #hitl-as-the-primary-control }
 
 Technische Regeln behandeln das Objektive — Feldherkunftsverfolgung, Durchsetzung von Domänengrenzen, Compiler-Validierung. Die kontextuelle Beurteilung bleibt beim Steward. Einschränkungen wie die Kompositionstiefe von Sichten, Anforderungen an den Zweck pro Abfrage und Entscheidungen zur Beziehungsgenehmigung sind HITL-Angelegenheiten, keine vom Compiler durchgesetzten Regeln.
 
@@ -141,9 +141,9 @@ Technische Regeln behandeln das Objektive — Feldherkunftsverfolgung, Durchsetz
 
 ---
 
-## 2. Auffindbarkeit
+## 2. Auffindbarkeit {: #2-discoverability }
 
-### Discovery-Ebenen
+### Discovery-Ebenen {: #discovery-tiers }
 
 Discovery ist in fünf Ebenen mit zunehmender Governance strukturiert. Jede Ebene ist Voraussetzung für die nächste.
 
@@ -167,7 +167,7 @@ Innerhalb einer Quelle:
 - Sie repräsentieren explizite Modellierungsabsicht — in den meisten analytischen SQL-Systemen nicht erzwungen, aber bewusst deklariert
 - Eine Steward-Validierung ist weiterhin erforderlich, bevor ein Kandidat zu einer genehmigten Beziehung wird
 
-### Vertrauenshierarchie für Beziehungen
+### Vertrauenshierarchie für Beziehungen {: #relationship-confidence-hierarchy }
 
 | Beleg | Vertrauen |
 | --- | --- |
@@ -178,7 +178,7 @@ Innerhalb einer Quelle:
 
 Vorschläge, die durch mehrere Belegtypen bestätigt werden, akkumulieren Vertrauen.
 
-### Daten-Probing und Korrelation
+### Daten-Probing und Korrelation {: #data-probing-and-correlation }
 
 Für semantisch abgeleitete Kandidaten bietet Daten-Probing einen Validierungsschritt:
 
@@ -188,7 +188,7 @@ Für semantisch abgeleitete Kandidaten bietet Daten-Probing einen Validierungssc
 
 Hohe Korrelation erhöht das Vertrauen; niedrige Korrelation unterdrückt oder degradiert den Kandidaten. Probing ist bestätigendes Indiz, kein Beweis — Ganzzahlbereiche können zufällig überlappen, und partielle referenzielle Integrität ist in analytischen Systemen üblich. Ein erheblicher Fehlerspielraum bleibt bestehen. Die semantische Beurteilung des Stewards ist die einzige verlässliche Endkontrolle.
 
-### LLM-unterstützte Discovery
+### LLM-unterstützte Discovery {: #llm-assisted-discovery }
 
 Das LLM operiert gleichzeitig über alle fünf Ebenen und schlägt Beziehungen, Kandidaten-Beanspruchungen und Traversierungspfade vor, geordnet nach Vertrauen.
 
@@ -242,9 +242,9 @@ Das Modeling-Werkzeug kann alle registrierten Tabellen zur strukturellen Explora
 
 ---
 
-## 3. Nutzung
+## 3. Nutzung {: #3-usage }
 
-### Abfrage-Audit-Trail
+### Abfrage-Audit-Trail {: #query-audit-trail }
 
 Jede Abfrage, die ein Domänen-Asset berührt, wird in einem nur anfügbaren `query_audit_log` erfasst. Jeder Eintrag erfasst:
 

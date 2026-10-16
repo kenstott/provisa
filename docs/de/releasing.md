@@ -1,8 +1,8 @@
-# Releases veröffentlichen
+# Releases veröffentlichen {: #releasing }
 
 Releases werden durch das Pushen eines Git-Tags ausgelöst. Der Tag-Name bestimmt den Kanal.
 
-## Tag-Konventionen
+## Tag-Konventionen {: #tag-conventions }
 
 | Tag-Format | Kanal | GitHub-Release-Typ |
 | ----------- | --------- | ------------------- |
@@ -11,7 +11,7 @@ Releases werden durch das Pushen eines Git-Tags ausgelöst. Der Tag-Name bestimm
 | `v1.2.3-rc.1` | rc | Pre-release |
 | `v1.2.3` | stable | Latest release |
 
-## Ein Release erstellen
+## Ein Release erstellen {: #creating-a-release }
 
 ```bash
 # Alpha
@@ -64,14 +64,14 @@ Jedes Release veröffentlicht die folgenden Assets, alle am GitHub Release angeh
 Die Version des Python-Clients wird automatisch in das PEP-440-Format umgewandelt:
 `v0.1.0-alpha.1` → `0.1.0a1`, `v0.1.0-beta.1` → `0.1.0b1`, `v0.1.0-rc.1` → `0.1.0rc1`.
 
-## PyPI-Veröffentlichung einrichten (einmalig)
+## PyPI-Veröffentlichung einrichten (einmalig) {: #pypi-publishing-setup-one-time }
 
 1. Kopieren Sie Ihr API-Token aus `~/.pypirc` (den Wert `pypi-...` für `pypi.org`)
 2. Fügen Sie es als Repository-Secret mit dem Namen `PYPI_API_TOKEN` unter **Settings → Secrets → Actions** hinzu
 
 Der Job `publish-pypi` veröffentlicht dann automatisch bei jedem Tag.
 
-## Erforderliche Repository-Secrets
+## Erforderliche Repository-Secrets {: #required-repository-secrets }
 
 Konfigurieren Sie Folgendes unter **Settings → Secrets → Actions**:
 
@@ -87,7 +87,7 @@ Konfigurieren Sie Folgendes unter **Settings → Secrets → Actions**:
 
 Builds ohne diese Secrets werden erfolgreich abgeschlossen, erzeugen jedoch ein unsigniertes/nicht notarisiertes DMG (Benutzer sehen eine Gatekeeper-Warnung).
 
-## Das .p12-Zertifikat exportieren
+## Das .p12-Zertifikat exportieren {: #exporting-the-p12-certificate }
 
 1. Öffnen Sie **Keychain Access** → Anmeldeschlüsselbund → **My Certificates**
 2. Suchen Sie **Developer ID Application: Your Name (TEAMID)** — erweitern Sie den Eintrag, um zu bestätigen, dass der private Schlüssel darunter eingebettet ist
@@ -100,7 +100,7 @@ Builds ohne diese Secrets werden erfolgreich abgeschlossen, erzeugen jedoch ein 
 
 5. Fügen Sie den Wert als `APPLE_CERT_P12_BASE64` ein; setzen Sie `APPLE_CERT_P12_PASSWORD` auf das Passwort aus Schritt 3
 
-## Den Namen Ihres Zertifikats finden
+## Den Namen Ihres Zertifikats finden {: #finding-your-certificate-name }
 
 ```bash
 security find-identity -v -p codesigning | grep "Developer ID Application"
@@ -108,7 +108,7 @@ security find-identity -v -p codesigning | grep "Developer ID Application"
 
 Kopieren Sie die vollständige Zeichenfolge in Anführungszeichen — das ist der Wert für `APPLE_DEVELOPER_ID`.
 
-## Ein fehlerhaftes Tag löschen
+## Ein fehlerhaftes Tag löschen {: #deleting-a-bad-tag }
 
 ```bash
 git tag -d v1.2.3-alpha.1

@@ -1,4 +1,4 @@
-# CLI-Referenz
+# CLI-Referenz {: #cli-reference }
 
 Der Befehl `provisa` ist der einzige Einstiegspunkt für die per pip installierte Embedded-Stufe (REQ-1128).
 Er startet die Laufzeitumgebung, verwaltet Lizenzen, löst die Veröffentlichung von Metadaten aus, deployt Modelle und
@@ -73,7 +73,7 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
 
 [tool-verified: run subparser at cli.py:609-634]
 
-### Umgebungsvariablen
+### Umgebungsvariablen {: #environment-variables }
 
 `provisa run` liest vor dem Start der HTTP-Server mehrere zusätzliche Variablen.
 Setzen Sie sie, um die Standardwerte zu überschreiben, die `load_profile("native", ...)` sonst anwenden würde.
@@ -90,7 +90,7 @@ Setzen Sie sie, um die Standardwerte zu überschreiben, die `load_profile("nativ
 
 [tool-verified: `_apply_demo_config()` at cli.py:67-80; `_apply_embedded_env()` at cli.py:83-116]
 
-### Startsequenz
+### Startsequenz {: #startup-sequence }
 
 1. Plattformprüfung — bricht mit klarer Meldung bei nicht unterstütztem Python oder fehlendem pgserver ab.
 2. `--reset` (falls angefordert) — verwirft den eingebetteten PostgreSQL-Cluster; er wird im nächsten Schritt neu aufgebaut.
@@ -111,7 +111,7 @@ Setzen Sie sie, um die Standardwerte zu überschreiben, die `load_profile("nativ
 | 0 | Sauberes Herunterfahren (Strg-C) |
 | 1 | Startfehler (Plattformprüfung fehlgeschlagen, Demo-Konfiguration fehlt, Schema-Drift erkannt) |
 
-### Beispiel
+### Beispiel {: #example }
 
 ```bash
 # Start with the demo data
@@ -237,7 +237,7 @@ Subcommands, die auf eine Umgebung wirken, nehmen außerdem `--env ENV` (erforde
 `merge` und `fetch` nicht; `diff` und `merge` benennen ihre Umgebungen mit `--from` und `--into`.
 [tool-verified: cli_envs.py:349-374, `_command()`]
 
-### Exit-Codes {: #exit-codes-1 }
+### Exit-Codes {: #exit-codes_1 }
 
 | Code | Bedeutung |
 | --- | --- |
@@ -505,7 +505,7 @@ Maintenance notice: ON
 
 ---
 
-## Kurzreferenz
+## Kurzreferenz {: #quick-reference }
 
 | Befehl | REQ | Was er tut |
 | --- | --- | --- |
@@ -531,7 +531,7 @@ Maintenance notice: ON
 | `provisa maintenance off` | REQ-1466 | Löscht das Wartungsbanner |
 | `provisa maintenance status` | REQ-1466 | Zeigt den aktuellen Bannerstatus |
 
-## Siehe auch
+## Siehe auch {: #see-also }
 
 - [Environments](environments.md) — Umgebungsmodell, geschützte Umgebungen, Deploy-Genehmigungslebenszyklus
 - [Metadata Export](metadata-export.md) — Katalog-Provider, Konfiguration und Inhalt des Snapshots

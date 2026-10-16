@@ -1,10 +1,10 @@
-# Externe Schemas
+# Externe Schemas {: #remote-schemas }
 
 Eine Quelle für ein externes Schema (Remote Schema) verbindet eine externe API — GraphQL (einschließlich GitHub), gRPC oder REST (OpenAPI) — mit dem Provisa-Modell. Das Hinzufügen einer Quelle registriert keine Tabelle. Die Quelle bietet Tabellen an, und ein Data Steward registriert jede gewünschte Tabelle über die Auswahl „Tabelle registrieren“ (Register Table); diese Registrierung ist der Kurationsschritt. (REQ-308, REQ-316, REQ-322) Eine registrierte Tabelle ist eine vollwertige Provisa-Tabelle. (REQ-308, REQ-316, REQ-325) Jede Governance-Regel, jede Abfrageschnittstelle und jede Sicherheitsschicht gilt automatisch. (REQ-310, REQ-319, REQ-328) Der externe Dienst sieht die Governance-Regeln von Provisa niemals. (REQ-310, REQ-319, REQ-328)
 
 ---
 
-## Drei Quellentypen
+## Drei Quellentypen {: #three-source-types }
 
 ### GraphQL Remote Schema (REQ-307–313)
 
@@ -288,7 +288,7 @@ Priorität der Klassifizierung: `operation_overrides` (Payload) hat Vorrang vor 
 
 ---
 
-## Auswirkung der Registrierung einer externen Tabelle
+## Auswirkung der Registrierung einer externen Tabelle {: #impact-of-registering-a-remote-table }
 
 Eine aus einer beliebigen Remote-Schema-Quelle registrierte Tabelle ist eine vollwertige Provisa-Tabelle. Zur Laufzeit wird sie in keiner Weise anders behandelt als eine lokal verbundene relationale Tabelle. (REQ-308, REQ-313)
 
@@ -312,7 +312,7 @@ Ad-hoc-Abfragen gegen externe Tabellen sind allein auf Grundlage der Rechte des 
 
 ---
 
-## Auswirkung der Erstellung einer abdeckenden Beziehung
+## Auswirkung der Erstellung einer abdeckenden Beziehung {: #impact-of-creating-a-covering-relationship }
 
 Wenn ein Data Steward eine Beziehung zwischen zwei externen Tabellen (oder zwischen einer externen und einer lokalen Tabelle) registriert, wird diese Beziehung zum Join-Pfad, der zur Abfragezeit verwendet wird.
 
@@ -330,7 +330,7 @@ In der GraphQL-SDL wird ein nicht governance-pflichtiges Inline-OBJECT-Feld als 
 
 ---
 
-## Verhalten reiner Typdefinitionen
+## Verhalten reiner Typdefinitionen {: #type-def-only-behavior }
 
 Nicht jeder Typ in einem externen Schema muss eine abfragbare Tabelle sein.
 

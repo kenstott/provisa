@@ -1,4 +1,4 @@
-# Schnellstart für Entwickler
+# Schnellstart für Entwickler {: #developer-quick-start }
 
 Um Provisa zu evaluieren, ohne aus dem Quellcode zu kompilieren, siehe [Schnellstart](index.md) — laden Sie den Installer für macOS, Windows oder Linux herunter und führen Sie `provisa start` aus. (REQ-223, REQ-224, REQ-227)
 
@@ -6,7 +6,7 @@ Dieser Leitfaden richtet sich an das Ausführen von Provisa **aus dem Repository
 
 ---
 
-## Voraussetzungen
+## Voraussetzungen {: #prerequisites }
 
 - **Docker Desktop** (läuft)
 - **Python 3.12+**
@@ -15,7 +15,7 @@ Dieser Leitfaden richtet sich an das Ausführen von Provisa **aus dem Repository
 
 ---
 
-## 1. Klonen und einrichten
+## 1. Klonen und einrichten {: #1-clone-and-set-up }
 
 ```bash
 git clone https://github.com/kenstott/provisa.git
@@ -27,7 +27,7 @@ cd provisa
 
 ---
 
-## 2. Alles starten
+## 2. Alles starten {: #2-start-everything }
 
 ```bash
 ./start-ui.sh
@@ -53,7 +53,7 @@ Provisa running:
 
 **Strg+R** startet nur das Backend neu (nützlich nach einer Konfigurationsänderung, die vom Hot-Reload nicht erfasst wird). (REQ-619)
 
-### Optionen
+### Optionen {: #options }
 
 `--no-observability` — Deaktiviert das verteilte Tracing. Standardmäßig lädt `start-ui.sh` den OpenTelemetry-Java-Agent herunter, falls noch nicht vorhanden, patcht Trinos `jvm.config`, um ihn zu laden, und startet den OTel Collector, Prometheus, Tempo und Grafana. Übergeben Sie `--no-observability`, um all dies zu überspringen. Der `jvm.config`-Patch wird bei Strg+C rückgängig gemacht. [tool-verified: start-ui.sh lines 15, 67–82] (REQ-330)
 
@@ -89,7 +89,7 @@ Mitgelieferte Quellen:
 
 ---
 
-## 3. Eine Datenquelle verbinden
+## 3. Eine Datenquelle verbinden {: #3-connect-a-data-source }
 
 Provisa liest die Konfiguration aus `config/`. Fügen Sie eine Quelldatei hinzu — zum Beispiel `config/sources/my-db.yaml`:
 
@@ -122,7 +122,7 @@ Die vollständige YAML-Referenz und alle unterstützten Quelltypen finden Sie un
 
 ---
 
-## 4. Ihre erste Abfrage ausführen
+## 4. Ihre erste Abfrage ausführen {: #4-run-your-first-query }
 
 ```bash
 # GraphQL
@@ -140,7 +140,7 @@ Es ist keine Authentifizierung erforderlich, wenn in `config/provisa.yaml` kein 
 
 ---
 
-## 5. Die UI öffnen
+## 5. Die UI öffnen {: #5-open-the-ui }
 
 Öffnen Sie `http://localhost:3000` in einem Browser.
 
@@ -155,7 +155,7 @@ Die Admin-GraphQL-API befindet sich unter `http://localhost:8001/admin/graphql`.
 
 ---
 
-## Fehlerbehebung
+## Fehlerbehebung {: #troubleshooting }
 
 **Backend startet nicht** — prüfen Sie `.logs/server.log`. Häufigste Ursache ist eine fehlende Umgebungsvariable oder ein Portkonflikt auf 8001. [tool-verified: start-ui.sh line 202] (REQ-618)
 
@@ -167,7 +167,7 @@ Die Admin-GraphQL-API befindet sich unter `http://localhost:8001/admin/graphql`.
 
 ---
 
-## Nächste Schritte
+## Nächste Schritte {: #next-steps }
 
 | Ziel | Dokument |
 | ------ | ----- |

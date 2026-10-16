@@ -1,4 +1,4 @@
-# Sicherheitsmodell
+# Sicherheitsmodell {: #security-model }
 
 Provisa setzt ein mehrschichtiges Sicherheitsmodell über jede Abfragesprache (GraphQL, SQL, Cypher) und jeden Transport (REST, gRPC, Arrow Flight, JDBC, WebSocket) hinweg durch. (REQ-001, REQ-266) Governance wird einheitlich angewendet — es gibt keinen Abfragepfad, der sie umgeht. (REQ-002, REQ-266)
 

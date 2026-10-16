@@ -1,4 +1,4 @@
-# Admin-GraphQL-API-Referenz
+# Admin-GraphQL-API-Referenz {: #admin-graphql-api-reference }
 
 Die Admin-GraphQL-API ist Provisas Konfigurationsebene. Sie ist die API, die die Admin-Web-App für jede Verwaltungsoperation aufruft — Quellen anlegen, Tabellen registrieren, Beziehungen definieren, RLS-Regeln konfigurieren und alles andere, was das Modell formt.
 
@@ -8,7 +8,7 @@ Dies ist nicht dieselbe API wie die Datenebene unter `/data/graphql`. Die Datene
 
 ---
 
-## Wie die UI mit dieser API spricht
+## Wie die UI mit dieser API spricht {: #how-the-ui-talks-to-this-api }
 
 Die Admin-Web-App nutzt Apollo Client, gerichtet auf `${API_BASE}/admin/graphql`. [tool-verified: `provisa-ui/src/apolloClient.ts:19`]
 
@@ -18,7 +18,7 @@ Das Schema wird aus zwei `@strawberry.type`-Klassen zusammengesetzt — `Query` 
 
 ---
 
-## Autorisierung
+## Autorisierung {: #authorization }
 
 **Dev-Modus:** Wenn keine Auth konfiguriert ist und jede Anfrage als anonymer Principal ankommt, werden alle Capability-Prüfungen übersprungen. Dies hält eine lokale Installation ohne Auth-Setup funktionsfähig. [tool-verified: `provisa/api/admin/capabilities.py:98-99`]
 
@@ -30,7 +30,7 @@ Das Schema wird aus zwei `@strawberry.type`-Klassen zusammengesetzt — `Query` 
 
 ---
 
-## Gemeinsamer Rückgabetyp
+## Gemeinsamer Rückgabetyp {: #common-return-type }
 
 Die meisten Mutationen geben `MutationResult` zurück. [tool-verified: `provisa/api/admin/types.py:1181-1188`]
 
@@ -49,7 +49,7 @@ Wenn eine Mutation fehlschlägt, ist `success` `false` und `message` trägt den 
 
 ## Queries
 
-### Quellen
+### Quellen {: #sources }
 
 #### `sources → [SourceType!]!`
 
@@ -109,7 +109,7 @@ Gibt den Alias zurück, der bei der Registrierung von `tableName` in `domainId` 
 
 ---
 
-### Tabellen
+### Tabellen {: #tables }
 
 #### `tables → [RegisteredTableType!]!`
 
@@ -134,7 +134,7 @@ Artefakte, die eine anstehende Alias-Umbenennung oder ein Spalten-Drop brechen w
 
 ---
 
-### Beziehungen
+### Beziehungen {: #relationships }
 
 #### `relationships → [RelationshipType!]!`
 
@@ -151,7 +151,7 @@ Jeder `RelationshipType` exponiert:
 
 ---
 
-### Domänen, Rollen & Benutzer
+### Domänen, Rollen & Benutzer {: #domains-roles-users }
 
 #### `domains → [DomainType!]!`
 
@@ -167,7 +167,7 @@ Löst Rollen-IDs oder Benutzer-IDs zu einzelnen Benutzern auf. Wird genutzt, um 
 
 ---
 
-### RLS-Regeln
+### RLS-Regeln {: #rls-rules }
 
 #### `rlsRules → [RLSRuleType!]!`
 
@@ -175,7 +175,7 @@ Alle Row-Level-Security-Regeln. Das zugrundeliegende Repository entschlüsselt `
 
 ---
 
-### Datenprodukte
+### Datenprodukte {: #data-products }
 
 #### `dataProducts → [DataProductType!]!`
 
@@ -195,7 +195,7 @@ Alle Tag-Zuweisungen über Quellen, Tabellen, Spalten und Beziehungen hinweg. (R
 
 ---
 
-### Materialisierte Sichten
+### Materialisierte Sichten {: #materialized-views }
 
 #### `mvList → [MVType!]!`
 
@@ -223,7 +223,7 @@ Identität des dauerhaften Materialisierungs-Stores: Engine-Name, Store-DSN-Refe
 
 ---
 
-### Systemzustand
+### Systemzustand {: #system-health }
 
 #### `systemHealth → SystemHealthType`
 
@@ -242,7 +242,7 @@ query {
 
 ---
 
-### Geplante Tasks
+### Geplante Tasks {: #scheduled-tasks }
 
 #### `scheduledTasks → [ScheduledTaskType!]!`
 
@@ -270,7 +270,7 @@ Serialisiert bearbeitete Check-Zeilen zurück in Vertragstext. Das Inverse von `
 
 ---
 
-### Quellenvorschauen
+### Quellenvorschauen {: #source-previews }
 
 #### `neo4jPreview(sourceId: String!, cypher: String!) → QueryPreviewType`
 
@@ -294,7 +294,7 @@ Durchsucht Kaggles vollständigen öffentlichen Dataset-Katalog. Token-gated. (R
 
 ---
 
-### Kalender
+### Kalender {: #calendars }
 
 #### `calendars → [CalendarType!]!`
 
@@ -302,7 +302,7 @@ Alle registrierten Snapshot-Grenz-Kalenderversionen. Speist den Konfigurationspi
 
 ---
 
-### Metriken
+### Metriken {: #metrics }
 
 #### `metrics → [MetricType!]!`
 
@@ -318,7 +318,7 @@ SHA-256-Hash des aktuellen Schemazustands (Domänen, Tabellen-IDs, Beziehungs-ID
 
 ---
 
-### KI-Hilfsfunktionen
+### KI-Hilfsfunktionen {: #ai-helpers }
 
 #### `generateTableDescription(tableId: String!) → String!`
 
@@ -330,7 +330,7 @@ Nutzt das konfigurierte LLM, um eine einsätzige Beschreibung für eine einzelne
 
 ---
 
-### Erstellungsanfragen
+### Erstellungsanfragen {: #creation-requests }
 
 #### `creationRequests → [CreationRequestType!]!`
 
@@ -338,9 +338,9 @@ Ausstehende Erstellungsanfragen, sichtbar für Aufrufer mit der relevanten Erste
 
 ---
 
-## Mutationen
+## Mutationen {: #mutations }
 
-### Quellen
+### Quellen {: #sources_1 }
 
 #### `createSource(input: SourceInput!) → MutationResult`
 
@@ -392,7 +392,7 @@ Führt `ANALYZE` auf allen registrierten Tabellen einer Quelle aus. Verbessert J
 
 ---
 
-### Tabellen
+### Tabellen {: #tables_1 }
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
@@ -444,7 +444,7 @@ Zucker für die Registrierung eines Star-Schema-Fakts. Reduziert sich zu einer a
 
 ---
 
-### Beziehungen
+### Beziehungen {: #relationships_1 }
 
 #### `createRelationship(input: RelationshipInput!) → MutationResult`
 
@@ -460,7 +460,7 @@ Löscht eine Beziehung nach ID und baut Schemas neu auf. [tool-verified: `provis
 
 ---
 
-### Domänen
+### Domänen {: #domains }
 
 #### `createDomain(input: DomainInput!) → MutationResult`
 
@@ -476,7 +476,7 @@ Setzt die globale GraphQL-Namenskonvention und baut Schemas für alle Rollen neu
 
 ---
 
-### Rollen
+### Rollen {: #roles }
 
 #### `createRole(input: RoleInput!) → MutationResult`
 
@@ -492,7 +492,7 @@ Löscht eine Rolle. Schlägt fehl, wenn andere Rollen von ihr erben — diese m�
 
 ---
 
-### RLS-Regeln
+### RLS-Regeln {: #rls-rules_1 }
 
 #### `upsertRlsRule(input: RLSRuleInput!) → MutationResult`
 
@@ -506,7 +506,7 @@ Löscht eine RLS-Regel. Erfordert `masking_config`. (REQ-1531) [tool-verified: `
 
 ---
 
-### Datenprodukte
+### Datenprodukte {: #data-products_1 }
 
 #### `createDataProduct(input: DataProductInput!) → MutationResult`
 
@@ -554,7 +554,7 @@ Entfernt einen zulässigen Wert. Wird abgelehnt, solange eine Zuweisung ihn noch
 
 ---
 
-### Metriken
+### Metriken {: #metrics_1 }
 
 #### `createMetric(input: MetricInput!) → MutationResult`
 
@@ -570,7 +570,7 @@ Löscht eine regierte Metrik. Baut Schemas neu auf. Erfordert `table_registratio
 
 ---
 
-### Kalender
+### Kalender {: #calendars_1 }
 
 #### `createCalendar(input: CalendarInput!) → MutationResult`
 
@@ -582,7 +582,7 @@ Löscht einen Kalender (alle Versionen). Wird abgelehnt, wenn eine materialisier
 
 ---
 
-### Materialisierte Sichten
+### Materialisierte Sichten {: #materialized-views_1 }
 
 #### `refreshMv(mvId: String!) → MutationResult`
 
@@ -606,7 +606,7 @@ Löscht gecachte Ergebnisse für eine Tabelle. [tool-verified: `provisa/api/admi
 
 ---
 
-### Geplante Tasks
+### Geplante Tasks {: #scheduled-tasks_1 }
 
 #### `createScheduledTask(id, name, cron, kind, webhookName, argsJson, sql) → MutationResult`
 
@@ -634,7 +634,7 @@ Löst sofort den Poll-Job einer Checker-Tabelle aus. Landet Zeilen auf normalem 
 
 ---
 
-### Schema-Wartung
+### Schema-Wartung {: #schema-maintenance }
 
 #### `rebuildSchemas → MutationResult`
 
@@ -642,7 +642,7 @@ Baut das In-Memory-Schema aus dem Datenbankzustand neu auf. Nützlich nach exter
 
 ---
 
-### Erstellungsanfragen
+### Erstellungsanfragen {: #creation-requests_1 }
 
 #### `approveCreationRequest(requestId: Int!) → MutationResult`
 
@@ -658,7 +658,7 @@ Lehnt eine eingereihte Anfrage mit einem umsetzbaren Grund ab. `reason` ist erfo
 
 ---
 
-### Abfragekompilierung
+### Abfragekompilierung {: #query-compilation }
 
 #### `compileQuery(input: CompileQueryInput!) → [CompileQueryResult!]!`
 
@@ -697,7 +697,7 @@ Felder von `CompileQueryInput`:
 
 ---
 
-## Wichtige Eingabetypen
+## Wichtige Eingabetypen {: #key-input-types }
 
 ### `SourceInput`
 
@@ -761,7 +761,7 @@ Die zentrale Eingabe zur Tabellenregistrierung. Wichtige Felder über die Grundl
 
 ---
 
-## Beispiel: eine Tabelle registrieren
+## Beispiel: eine Tabelle registrieren {: #example-registering-a-table }
 
 ```graphql
 mutation {
@@ -784,7 +784,7 @@ mutation {
 }
 ```
 
-## Beispiel: eine RLS-Regel erstellen
+## Beispiel: eine RLS-Regel erstellen {: #example-creating-an-rls-rule }
 
 ```graphql
 mutation {

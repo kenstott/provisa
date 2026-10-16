@@ -6,7 +6,7 @@ Abfragen durchlaufen den vollständigen Governance-Stack: Durchsetzung der Siche
 
 ---
 
-## Verbindungsdetails
+## Verbindungsdetails {: #connection-details }
 
 Der Server startet, wenn `PROVISA_PGWIRE_PORT` auf eine Ganzzahl ungleich null gesetzt ist. Standardmäßig ist er deaktiviert. (REQ-527) [tool-verified: `app.py:1739`]
 
@@ -21,7 +21,7 @@ Port: $PROVISA_PGWIRE_PORT
 
 ---
 
-## Authentifizierung
+## Authentifizierung {: #authentication }
 
 Das Startup-Paket führt einen Benutzernamen und ein einzelnes Geheimnisfeld mit, aber kein Schema, das angibt, was dieses Geheimnis ist. Provisa entscheidet anhand des Geheimnisses selbst, sodass ein Client außer `user` und `password` keine weitere Konfiguration benötigt:
 
@@ -45,7 +45,7 @@ Der Trust-Modus (`provider: none` oder inaktive Auth-Middleware) ist die Ausnahm
 
 ---
 
-## Was funktioniert
+## Was funktioniert {: #what-works }
 
 ### SELECT
 
@@ -174,13 +174,13 @@ Unterstützte Formate: `text` (tabulatorgetrennt, Standard) und `csv`. Das Binä
 
 **COPY FROM STDIN** ist ein Datenschreibvorgang in eine bestehende registrierte Tabelle: Er wird von derselben Schreibzulassung zugelassen wie ein `INSERT` derselben Zeilen (siehe [Datenschreibvorgänge](#data-writes-insert-update-delete-merge-copy-from-stdin)).
 
-### Transaktionen und Sitzungsbefehle
+### Transaktionen und Sitzungsbefehle {: #transactions-and-session-commands }
 
 SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET und DEALLOCATE werden abgefangen und liefern eine leere Erfolgsantwort. (REQ-587) Der Server ist hinsichtlich Transaktionen zustandslos — es gibt weder Transaktionsisolation noch Rollback-Unterstützung. (REQ-587) [tool-verified: `catalog.py:27-31`, `catalog.py:1129-1132`]
 
 ---
 
-## Katalog-Interception
+## Katalog-Interception {: #catalog-intercept }
 
 Abfragen gegen `information_schema` und `pg_catalog` werden lokal beantwortet, ohne einen Trino-Roundtrip. (REQ-532) Die Interception-Schicht baut pro Anfrage eine In-Memory-DuckDB-Datenbank auf, die aus dem Kompilierungskontext der Rolle befüllt wird. (REQ-532) [tool-verified: `catalog.py:210-213`]
 
@@ -212,7 +212,7 @@ Zusätzlich werden folgende skalare Ausdrücke abgefangen: (REQ-588)
 
 ---
 
-## Binäre Parameterkodierung
+## Binäre Parameterkodierung {: #binary-parameter-encoding }
 
 Das Extended-Query-Protokoll (Bind/Execute) unterstützt binär kodierte Parameter. (REQ-589) Die folgenden Typ-OIDs werden aus dem Binärformat dekodiert: [tool-verified: `postgres.py:69-97`]
 
@@ -239,7 +239,7 @@ Ergebnisspalten werden ebenfalls binär gesendet, wenn der Client dies anfordert
 
 ---
 
-## Treiberempfehlungen
+## Treiberempfehlungen {: #driver-recommendations }
 
 **Native Python-Treiber (psycopg2, asyncpg).** Diese handeln standardmäßig das Extended-Query-Protokoll aus und verwenden für die meisten Typen binäre Kodierung. Die Typtreue ist hier am höchsten — `NUMERIC`-Spalten kommen als `Decimal`, `TIMESTAMP` als `datetime` an, und so weiter. Verwenden Sie diese für Python-basierte ETL, Skripte oder direkte Integration.
 
@@ -255,7 +255,7 @@ Manche JDBC-basierten BI-Tools senden beim Verbindungsaufbau eine Reihe von Abfr
 
 ---
 
-## Einschränkungen und Randbedingungen
+## Einschränkungen und Randbedingungen {: #caveats-and-constraints }
 
 **Nur SQL.** Der pgwire-Listener analysiert und führt ausschließlich SQL aus — GraphQL- und Cypher-Zeichenketten werden nicht akzeptiert. (REQ-614) Datenschreibvorgänge in bestehende Tabellen werden nach den Rechten der Rolle, ihren Spaltenfreigaben und ihrem Zeilenfilter zugelassen; siehe [Datenschreibvorgänge](#data-writes-insert-update-delete-merge-copy-from-stdin).
 

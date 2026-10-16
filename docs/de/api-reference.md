@@ -1,12 +1,12 @@
-# API-Referenz
+# API-Referenz {: #api-reference }
 
-## Übersicht
+## Übersicht {: #overview }
 
 Provisa stellt REST-Endpunkte unter zwei Präfixen bereit: `/data` für Abfrageausführung und Schema-Introspektion sowie `/admin` für Konfigurationsverwaltung. (REQ-043) Die meisten Daten-Endpunkte erfordern einen Rollenbezeichner. Admin-Konfigurationsoperationen verwenden eine Strawberry-GraphQL-API unter `/admin/graphql`. (REQ-164)
 
 ---
 
-## Authentifizierung
+## Authentifizierung {: #authentication }
 
 Wenn `auth.provider` in `provisa.yaml` konfiguriert ist, erfordern alle Endpunkte außer `/health` und `/setup/status` einen `Authorization: Bearer <token>`-Header. (REQ-120) [tool-verified: `provisa/api/app.py`, `provisa/auth/wiring.py`]
 
@@ -30,7 +30,7 @@ Gibt `{"provider": "<name>"}` oder `{"provider": null}` zurück, wenn keine Auth
 
 ---
 
-## Daten-Endpunkte
+## Daten-Endpunkte {: #data-endpoints }
 
 ### `POST /data/graphql`
 
@@ -398,7 +398,7 @@ Drei Generierungsschleifen (Cypher, GraphQL, SQL) laufen parallel, jede über de
 
 Ein Branch, der sein Iterationslimit erschöpft, gibt `query: null`, `result: null` und eine `error`-Zeichenkette zurück. Jede generierte Abfrage wird unter den Rechten des Konsumenten mit angewandter Stage-2-Governance ausgeführt — der Dienst umgeht Governance nie. (REQ-359)
 
-#### NL Group-By mit Dimensionsdetails (REQ-1405)
+#### NL Group-By mit Dimensionsdetails (REQ-1405) {: #nl-group-by-with-dimension-details-req-1405 }
 
 Wenn eine NL-Group-by-Abfrage auch Spalten aus einer verbundenen Dimensionstabelle projiziert — zum Beispiel "Anzahl der Anfragen nach Benutzer mit Benutzername und E-Mail" — leitet der Runner Pro-Feld-Punktpfade (`dim_paths`) aus den in der SELECT projizierten Dimensionsspalten ab. Diese Pfade befüllen den Parameter `includeNodes=` in den generierten URLs der JSON:API- und OpenAPI-Panels, sodass diese Panels dieselben verbundenen Dimensionsfelder anfordern, die die SQL- und GraphQL-Branches aufgelöst haben. Ohne dies würde `includeNodes=true` nur die eigenen skalaren Felder der Basis-Aggregattabelle zurückgeben. (REQ-1405) [tool-verified: `docs/arch/requirements.md:REQ-1405`]
 
@@ -508,7 +508,7 @@ Eine nicht existierende Quelle oder eine `table`, die sie nicht hat, antwortet m
 
 ---
 
-## Admin-REST-Endpunkte
+## Admin-REST-Endpunkte {: #admin-rest-endpoints }
 
 ### Config
 
@@ -632,7 +632,7 @@ Aktualisierbare Felder je Abschnitt:
 
 ---
 
-### KI-Modelle
+### KI-Modelle {: #ai-models }
 
 #### `GET /admin/ai-models`
 
@@ -668,7 +668,7 @@ Gibt `400` zurück, wenn der Anbieter keine List-Models-API veröffentlicht (in 
 
 ---
 
-### Föderations-Engine
+### Föderations-Engine {: #federation-engine }
 
 #### `GET /admin/federation-engine`
 
@@ -704,7 +704,7 @@ Die Auswahl wird in die Plattformkonfiguration geschrieben. Sie wird nach dem n�
 
 ---
 
-### Domänenrichtlinie
+### Domänenrichtlinie {: #domain-policy }
 
 #### `POST /admin/domain-policy`
 
@@ -800,7 +800,7 @@ Löscht alle zurückgewiesenen Kandidaten. [tool-verified: `provisa/api/admin/di
 
 ---
 
-### Quellen-Crawl
+### Quellen-Crawl {: #source-crawl }
 
 #### `POST /admin/sources/crawl`
 
@@ -808,7 +808,7 @@ Crawlt eine Datenquelle, um ihr Schema zu introspizieren und Tabellen zu registr
 
 ---
 
-### Quellen-Tabellensuche
+### Quellen-Tabellensuche {: #source-table-search }
 
 #### `GET /admin/sources/{source_id}/tables/search`
 
@@ -816,7 +816,7 @@ Sucht nach Namen in verfügbaren (noch nicht registrierten) Tabellen einer Quell
 
 ---
 
-### Tabellenprofiling
+### Tabellenprofiling {: #table-profiling }
 
 #### `POST /admin/tables/{table_id}/profile`
 
@@ -824,7 +824,7 @@ Führt ein Spaltenprofil für eine registrierte Tabelle aus — Kardinalität, M
 
 ---
 
-### Quellbeschreibungen
+### Quellbeschreibungen {: #source-descriptions }
 
 #### `POST /admin/source-meta/db-description`
 
@@ -832,7 +832,7 @@ Erzeugt LLM-unterstützte Beschreibungen für die Tabellen und Spalten einer Que
 
 ---
 
-### Objektspeicher (REQ-1046, REQ-1048, REQ-1049)
+### Objektspeicher (REQ-1046, REQ-1048, REQ-1049) {: #object-storage-req-1046-req-1048-req-1049 }
 
 #### `GET /admin/org-storage`
 
@@ -856,7 +856,7 @@ Senden Sie `storage_url: null`, um den eigenen Store der Org zu löschen und ihr
 
 ---
 
-### Org-Verschlüsselung (REQ-1574)
+### Org-Verschlüsselung (REQ-1574) {: #org-encryption-req-1574 }
 
 #### `GET /admin/org-encryption`
 
@@ -972,7 +972,7 @@ Es wird nichts registriert. Verwenden Sie den Prüfbildschirm der Admin-UI, um V
 
 ---
 
-### Actions (Funktionen und Webhooks)
+### Actions (Funktionen und Webhooks) {: #actions-functions-and-webhooks }
 
 Alle Endpunkte liegen unter dem Präfix `/admin/actions`. (REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
 
@@ -1074,7 +1074,7 @@ Testet eine Action (Funktion oder Webhook) nach Namen. (REQ-245) [tool-verified:
 
 ---
 
-### Rollen
+### Rollen {: #roles }
 
 Alle Endpunkte liegen unter dem Präfix `/admin/roles`. [tool-verified: `provisa/api/admin/roles_router.py:18`]
 
@@ -1089,7 +1089,7 @@ Alle Endpunkte liegen unter dem Präfix `/admin/roles`. [tool-verified: `provisa
 
 ---
 
-### Benutzer
+### Benutzer {: #users }
 
 Alle Endpunkte liegen unter dem Präfix `/admin/users`. [tool-verified: `provisa/api/admin/local_users_router.py:21`]
 
@@ -1107,7 +1107,7 @@ Alle Endpunkte liegen unter dem Präfix `/admin/users`. [tool-verified: `provisa
 
 ---
 
-### Organisationen
+### Organisationen {: #organizations }
 
 Alle Endpunkte liegen unter `/admin/orgs`. [tool-verified: `provisa/api/admin/orgs_router.py:18`]
 
@@ -1123,7 +1123,7 @@ Alle Endpunkte liegen unter `/admin/orgs`. [tool-verified: `provisa/api/admin/or
 
 ---
 
-### Einladungen
+### Einladungen {: #invites }
 
 Alle Endpunkte liegen unter `/admin/invites`. [tool-verified: `provisa/api/admin/invites_router.py:18`]
 
@@ -1184,13 +1184,13 @@ Schließt das Erststart-Setup ab. [tool-verified: `provisa/api/setup_router.py:1
 
 ## Health Check
 
-#### `GET /health` oder `HEAD /health`
+#### `GET /health` oder `HEAD /health` {: #get-health-or-head-health }
 
 Gibt `{"status": "ok"}` zurück. Immer nicht authentifiziert. (REQ-539) [tool-verified: `provisa/api/app.py:2258`]
 
 ---
 
-## Fehlerantworten
+## Fehlerantworten {: #error-responses }
 
 | Status | Bedeutung |
 | --- | --- |
@@ -1218,7 +1218,7 @@ Alle anderen Fehler verwenden: `{"detail": "<message>"}`.
 
 ---
 
-## Arrow-Flight-Endpunkt
+## Arrow-Flight-Endpunkt {: #arrow-flight-endpoint }
 
 Port `8815`. Nativer Arrow-Columnar-Transport über gRPC. (REQ-143, REQ-045) [tool-verified: `provisa/api/flight/server.py`]
 
@@ -1252,7 +1252,7 @@ Wenn der Zaychik-Flight-SQL-Proxy verfügbar ist (Port 8480), streamen Record-Ba
 
 ---
 
-## Protobuf-gRPC-Endpunkt
+## Protobuf-gRPC-Endpunkt {: #protobuf-grpc-endpoint }
 
 Port `50051` (mit der Umgebungsvariable `GRPC_PORT` oder der Config `server.grpc_port` überschreibbar). (REQ-529) [tool-verified: `provisa/grpc/server.py`, `provisa/api/app.py`]
 
@@ -1285,7 +1285,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' \
 
 Der gRPC-Server startet, wenn das beim Start geladene Modell einen gRPC-Service definiert. (REQ-529) Danach wird jeder Aufruf aus dem Modell in seinem aktuellen Stand bedient: Eine Tabelle, die bei laufendem Server registriert oder geändert wird, wird vom nächsten Aufruf bedient und beschrieben, ohne Neustart. [tool-verified: `provisa/api/app_startup.py`, `provisa/grpc/descriptor.py`]
 
-#### Aggregat- und Group-By-RPCs (REQ-1359, REQ-1361, REQ-1405)
+#### Aggregat- und Group-By-RPCs (REQ-1359, REQ-1361, REQ-1405) {: #aggregate-and-group-by-rpcs-req-1359-req-1361-req-1405 }
 
 Wenn für eine Tabelle `enable_aggregates` gesetzt ist, enthält das generierte Proto zwei zusätzliche RPCs neben `Query{TypeName}`:
 
@@ -1300,7 +1300,7 @@ Beide laufen durch dieselbe Compiler-Aggregat-Pipeline wie die GraphQL-Root-Feld
 
 ---
 
-## JDBC-Treiber
+## JDBC-Treiber {: #jdbc-driver }
 
 Der Provisa-JDBC-Treiber (`provisa-jdbc-<release>.jar`) stellt den semantischen Katalog für BI-Tools (Tableau, PowerBI, DBeaver) bereit. (REQ-126)
 
@@ -1314,7 +1314,7 @@ Der Treiber fordert standardmäßig einen Arrow-IPC-Redirect an. Ergebnisse werd
 
 ---
 
-## Argumentformat `orderBy`
+## Argumentformat `orderBy` {: #orderby-argument-format }
 
 Das Argument `order_by` verwendet `{column: direction}`-Objekte mit einem 6-wertigen Richtungs-Enum: (REQ-200)
 
@@ -1335,11 +1335,11 @@ SSE-Subscriptions sind unter `GET /data/subscribe/{table}` verfügbar. (REQ-219,
 
 ---
 
-## Business-Glossar (REQ-1387)
+## Business-Glossar (REQ-1387) {: #business-glossary-req-1387 }
 
 Das Business-Glossar bildet physische Feldnamen — wie sie in Quelldatenbanken existieren — auf ein gemeinsames menschliches Vokabular ab. Jede im Modell registrierte Spalte erhält automatisch einen Begriff. Es ist keine manuelle Eingabe erforderlich, um das Glossar zu befüllen; Kuratoren fügen Definitionen, Beziehungen und Experten auf dem hinzu, was das System ableitet.
 
-### Wie Begriffe abgeleitet werden
+### Wie Begriffe abgeleitet werden {: #how-terms-are-derived }
 
 Wenn Provisa die Spalten einer Tabelle registriert oder aktualisiert, läuft `normalize_term` (`provisa/core/glossary.py`) für jeden Spaltennamen und erzeugt eine kanonische Formulierung. [tool-verified: `provisa/core/repositories/glossary.py:sync_table_refs`]
 
@@ -1364,7 +1364,7 @@ Da `id`, `key`, `pk` und `sk` alle vor der Proxy-Prüfung zu `identifier` expand
 
 Die ersten drei fallen zu einem Begriff zusammen. `transaction amount` behält beide Tokens, da `amount` kein Proxy ist. Eine bloße `id`-Spalte — ohne vorangehende Tokens — kann nicht entfernt werden; sie normalisiert zu `identifier`, damit der Begriff nicht leer ist. [tool-verified: `provisa/core/glossary.py:normalize_term`]
 
-### Lebenszyklus
+### Lebenszyklus {: #lifecycle }
 
 Begriffe werden **aus der Mitgliedschaft im Modell abgeleitet**, nicht auf Anforderung von Benutzern erstellt. Das Tabellen-Repository ist der einzige Schreibpfad: `sync_table_refs` läuft bei jedem Spaltensatz-Upsert, und `sweep_refless_terms` läuft nach jedem Löschpfad. [tool-verified: `provisa/core/repositories/glossary.py`]
 
@@ -1376,7 +1376,7 @@ Abstrakte Begriffe werden nie automatisch entfernt; sie existieren außerhalb de
 
 **Wiederbelebung:** Erscheint der normalisierte Name eines als veraltet markierten Begriffs erneut (eine Spalte wird neu registriert), wird die Markierung entfernt, und seine Referenzen sammeln sich wieder an.
 
-### Kuratierungs-Endpunkte
+### Kuratierungs-Endpunkte {: #curation-endpoints }
 
 Alle Endpunkte liegen unter `/admin/glossary`. Sie erfordern `org_admin`-Zugriff und eine konfigurierte Org. Jede Mutation löst eine Metadaten-Veröffentlichung aus. [tool-verified: `provisa/api/admin/glossary_router.py`]
 
@@ -1436,7 +1436,7 @@ Das Löschen eines verwurzelten Begriffs (mit physischen Referenzen) gibt `400 g
 
 Das Setzen von `export_excluded` auf `true` hält den Begriff von allen Metadaten-Export-Snapshots zurück, unabhängig von seinen physischen Referenzen oder seinem abstrakten Status. Das Zurücksetzen auf `false` stellt den Begriff bei der nächsten Veröffentlichung wieder im Snapshot her. Kuratierungsdaten (Definition, Kanten, Experten) sind davon unberührt. [tool-verified: `provisa/core/repositories/glossary.py:set_export_excluded`, `provisa/api/admin/glossary_router.py:update_term`]
 
-### KI-unterstützte Kuratierung
+### KI-unterstützte Kuratierung {: #ai-assisted-curation }
 
 Das konfigurierte KI-Modell der Org kann Definitionen entwerfen und in einer einzigen Operation Beziehungskanten über das gesamte Glossar hinweg vorschlagen. Beide Batch-Aktionen erfordern `org_admin`-Zugriff und eine konfigurierte Org.
 
@@ -1464,7 +1464,7 @@ Antwort:
 
 `added` ist die Anzahl der geschriebenen Kanten. Eine bereits existierende Kante zählt weiterhin mit — der Upsert gelingt, aber die Kantendaten ändern sich nicht.
 
-### MCP-Tool `search_terms`
+### MCP-Tool `search_terms` {: #mcp-searchterms-tool }
 
 ```
 search_terms(query, role=None, limit=25)
@@ -1474,7 +1474,7 @@ Durchsucht Begriffsnamen und Definitionen mit einer Groß-/Kleinschreibung ignor
 
 Verwenden Sie `search_terms` vor dem Schreiben von SQL, um jedes physische Feld zu finden, das ein Konzept namentlich repräsentiert. Zum Beispiel gibt die Suche nach `"order date"` den Begriff und alle Spalten `order_dt`, `orderDate`, `ORDER_DATE` über jede registrierte Tabelle hinweg zurück.
 
-### Metadaten-Export
+### Metadaten-Export {: #metadata-export }
 
 Der Begriffsgraph des Glossars ist in jedem von `build_snapshot` erstellten `MetadataSnapshot` enthalten. [tool-verified: `provisa/api/metadata_export/builder.py:_glossary_assets`]
 
@@ -1500,7 +1500,7 @@ Die Eigentümerschaft ist die Bindung, nicht der Name: Die Vendor-ID jedes verö
 
 ---
 
-## Datenprodukte (REQ-1634)
+## Datenprodukte (REQ-1634) {: #data-products-req-1634 }
 
 Ein Datenprodukt gruppiert Tabellen, die gemeinsam zur Nutzung veröffentlicht werden, im Besitz genau einer Domäne. Die Felder folgen dem ODPS-Vokabular (Open Data Product Standard), wo Provisa bereits die Source of Truth besitzt. Die Admin-UI stellt Datenprodukte unter **Admin → Data Products** bereit. [tool-verified: `provisa/core/models.py:318-342`, `provisa/api/admin/schema_mutation.py:949-1017`, `provisa/api/admin/schema_query.py:352-362`]
 
@@ -1576,7 +1576,7 @@ mutation {
 
 Das Löschen eines Produkts entfernt `product_id` von jeder Mitgliedstabelle und hebt damit ihre Mitgliedschaft auf. Erfordert `data_product_rw`. [tool-verified: `provisa/api/admin/schema_mutation.py:995-1017`]
 
-### Feldschema
+### Feldschema {: #field-schema }
 
 | Feld | Typ | Erforderlich | Anmerkungen |
 | --- | --- | --- | --- |
@@ -1603,19 +1603,19 @@ Zwei zusätzliche Felder existieren im Modell, sind aber nicht im Strawberry-`Da
 
 [tool-verified: `provisa/core/models.py:338-341`, `provisa/api/admin/types.py:104-118,538-551`]
 
-### Tabellenmitgliedschaft
+### Tabellenmitgliedschaft {: #table-membership }
 
 Eine Tabelle tritt einem Datenprodukt bei, indem im Tabellen-Bearbeitungsformular ihr Feld `product_id` gesetzt wird. Der Picker ist auf Produkte beschränkt, deren `domain_id` mit der eigenen Domäne der Tabelle übereinstimmt — eine Tabelle in der Domäne `marketing` wird nie ein Produkt in der Domäne `sales` angeboten. [tool-verified: `provisa/api/admin/actions_router.py:244-260`, `docs/arch/requirements.yaml:54585-54586`]
 
 Commands in derselben Domäne können ebenfalls als Mitglieder zugewiesen werden. [tool-verified: `provisa-ui/src/i18n/locales/en/dataProductsTab.json:commandsLabel`]
 
-### Metadaten-Export-Filter
+### Metadaten-Export-Filter {: #metadata-export-filter }
 
 `build_snapshot` wendet für jede Katalog-Veröffentlichung `data_products_only=True` an. Tabellen ohne `product_id` werden aus dem Snapshot zurückgehalten, ebenso ihre Beziehungskanten, Lineage-Kanten und Governance-Tags. Quellen und Domänen werden immer veröffentlicht. Glossarbegriffe werden nur veröffentlicht, wenn mindestens eine ihrer physischen Referenzen zu einer exportierten (Produktmitglieds-)Tabelle gehört. [tool-verified: `provisa/api/metadata_export/builder.py:594,609,641`]
 
 Ein Produkt ohne exportierte Mitglieder erzeugt keinen Snapshot-Eintrag — ein Listing ohne Mitglieder würde das Produkt gegenüber dem Katalog falsch darstellen. [tool-verified: `provisa/api/metadata_export/model.py:106-113`]
 
-### Datenprodukt-Unterstützung nach Katalogziel
+### Datenprodukt-Unterstützung nach Katalogziel {: #data-product-support-by-catalog-target }
 
 `MetadataSnapshot.data_products` erreicht jeden Adapter, aber nur Adapter, deren Plattform ein natives Datenprodukt-Konzept hat, veröffentlichen es als erstklassige Entität; die übrigen veröffentlichen die (bereits oben gefilterten) Mitgliedstabellen ohne Produktgruppierung.
 
