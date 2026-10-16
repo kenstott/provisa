@@ -1,0 +1,16 @@
+# The portfolio's county seasons with the least May-to-August rain, and what they cost it: whether
+# the driest seasons are the ones with the highest loss ratios, and the USDA's share of the whole
+# market's losses it attributes to drought and heat there.
+query DriestSeasons {
+  a__viewLossesAndWeather(order_by: [{ seasonRainMm: asc }], limit: 15) {
+    countyName
+    stateAbbr
+    year
+    seasonRainMm
+    hotDays
+    lossRatio
+    dryShare
+    marketDryShare
+    cornYield
+  }
+}

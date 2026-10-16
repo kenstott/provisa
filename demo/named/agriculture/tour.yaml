@@ -1,0 +1,77 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The agriculture demo's own tour (REQ-2010): the story of the demo, told with its own data. The step
+# kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name here is checked
+# against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
+# tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: the scenario and the features it shows; how the pieces fit, each step on its real
+# object; the solution, as predesigned queries over the transports that fit it (a Polly step is
+# optional, its answer stored); a recap; and "Where next?", the landing page below.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+# The scenario and the features the demo shows.
+- key: agricultureScenario
+  route: /sources
+  capability: source_registration
+  source: portfolio
+- key: agricultureGovdata
+  source: govdata
+# How the pieces fit: the portfolio's claims, the public losses and weather, joined by county.
+- key: agricultureClaims
+  route: /tables
+  capability: table_registration
+  table: portfolio.claims
+- key: agricultureMarket
+  table: govdata.rma_cause_of_loss
+- key: agricultureWeather
+  table: govdata.weather_daily_by_county
+- key: agricultureJoin
+  route: /relationships
+  capability: create_relationship
+  relationship: WEATHER_IN
+- key: agricultureTerms
+  route: /admin/glossary
+  capability: glossary_read
+  term: loss ratio
+# The solution: the answer's view by crop year, then its worst seasons, in GraphQL and over REST.
+- key: agricultureAnswer
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT s.year, SUM(s.premium) AS premium, SUM(s.indemnity) AS indemnity,
+           SUM(s.indemnity) / SUM(s.premium) AS loss_ratio,
+           SUM(s.indemnity * s.dry_share) / SUM(s.indemnity) AS dry_share,
+           AVG(s.season_rain_mm) AS season_rain_mm, AVG(s.hot_days) AS hot_days,
+           AVG(s.market_loss_ratio) AS market_loss_ratio, AVG(s.corn_yield) AS corn_yield
+    FROM "agriculture"."view_losses_and_weather" AS s
+    GROUP BY s.year
+    ORDER BY s.year
+- key: agricultureWorstSeasons
+  sql: >-
+    SELECT s.county_name, s.state_abbr, s.year, s.loss_ratio, s.dry_share, s.season_rain_mm,
+           s.hot_days, s.market_dry_share, s.corn_yield
+    FROM "agriculture"."view_losses_and_weather" AS s
+    ORDER BY s.loss_ratio DESC
+    LIMIT 15
+- key: agricultureDrySeasons
+  route: /query
+  capability: query_development
+  example: 1-driest-seasons
+- key: agricultureRest
+  route: /openapi
+  capability: query_development
+  api: GET /data/rest/agriculture/view_losses_and_weather?groupBy=year&aggregate=sum
+- key: agricultureRecap
+  route: /sources
+  capability: source_registration
+  source: govdata

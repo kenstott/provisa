@@ -887,6 +887,54 @@
       "datavaultRecap": {
         "title": "Was Sie gesehen haben",
         "description": "Zwei Live-Systeme und ein Data Vault darüber, als Sichten deklariert: Hubs, Links und Satellites mit jeder Version, von der Engine beim Eintreffen von Zeilen aktualisiert, in den Satellites gesteuert und per Point-in-Time in SQL, GraphQL und REST abgefragt, mit Lineage zurück zu den Quellfeldern. Keine separate ETL-Plattform, kein Job-Server, kein Pipeline-Code."
+      },
+      "agricultureScenario": {
+        "title": "Worum es in dieser Demo geht",
+        "description": "Ein Ernteversicherer will wissen, ob das Wetter die Schäden in seinem Portfolio erklärt. Seine eigenen Betriebe, Policen und Schadenfälle liegen in seiner Datenbank; das Wetter jedes US-Countys und die Schäden des gesamten Marktes in der Ernteversicherung nach Schadenursache sind öffentlich, in den Daten von NOAA und USDA. Die Tour zeigt, wie Provisa beides nach County und Anbaujahr verknüpft und die Frage in SQL, GraphQL und über REST beantwortet."
+      },
+      "agricultureGovdata": {
+        "title": "Die öffentlichen Daten",
+        "description": "Die Behördendaten stammen von AskAmerica, einem Live-Konto. Seine drei Tabellen werden beim Erstellen der Demo einmal geladen, und zwar nur der Ausschnitt, den das Portfolio braucht: seine 40 Counties, Mais und Sojabohnen, die Anbaujahre 2010 bis 2017. Sie werden dauerhaft aus dieser Kopie gelesen: Sie laufen nie ab, und die Demo ruft das Konto nie auf."
+      },
+      "agricultureClaims": {
+        "title": "Die Schadenfälle des Versicherers",
+        "description": "Jede vom Versicherer gezahlte Entschädigung, live aus der eigenen Datenbank gelesen: der Betrieb, das Anbaujahr, die Schadenursache, der Monat und der Betrag."
+      },
+      "agricultureMarket": {
+        "title": "Die Schäden des gesamten Marktes",
+        "description": "Die USDA Risk Management Agency veröffentlicht die Ernteversicherungsdaten jedes Countys nach Kultur, Schadenursache und Monat: die vom Markt eingenommene Prämie und die gezahlten Entschädigungen für Dürre, Hitze, Übernässe, Hagel und den Rest. Die Regierungsdaten enthalten sie für 2009 bis 2017 und ab 2024; 2018 bis 2023 sind noch nicht geladen, daher umfasst diese Demo die Erntejahre 2010 bis 2017."
+      },
+      "agricultureWeather": {
+        "title": "Tageswetter je County",
+        "description": "Die tägliche Höchsttemperatur und der Niederschlag von NOAA für jedes County, der Mittelwert seiner Messstationen. Geladen wird nur die Vegetationsperiode, Mai bis August: wenn Regen und Hitze den Ertrag entscheiden."
+      },
+      "agricultureJoin": {
+        "title": "Nach County verknüpft",
+        "description": "Das Portfolio und die öffentlichen Tabellen teilen sich den FIPS-Code des Countys, und diese Beziehungen verknüpfen sie. Die Sicht der Antwort ordnet sie nach County und Anbaujahr zu."
+      },
+      "agricultureTerms": {
+        "title": "In den Begriffen des Versicherers",
+        "description": "Das Glossar benennt, wonach ein Underwriter für Ernteversicherungen fragt: Schadenquote, Schadenursache, tatsächliche Ertragshistorie (APH), Deckungsstufe, Haftungssumme, die Vegetationsperiode. Hier die Schadenquote: Entschädigungen im Verhältnis zur Prämie, über 1 ein Verlustjahr."
+      },
+      "agricultureAnswer": {
+        "title": "Die Antwort in SQL",
+        "description": "Die Sicht losses_and_weather stellt die Saison jedes Countys neben die Ergebnisse des Portfolios und wird gespeichert vorgehalten. Nach Anbaujahr: 2012, die trockenste und heißeste Saison, ist das Jahr, in dem das Portfolio Verlust machte, überwiegend durch Dürre und Hitze, wie der gesamte Markt; die nassen Jahre 2010 und 2013 kosteten weniger."
+      },
+      "agricultureWorstSeasons": {
+        "title": "Die schlimmsten Saisons",
+        "description": "Die County-Saisons mit den höchsten Schadenquoten, neben ihrem Regen, ihren Tagen über 32 °C, dem Anteil an den Marktschäden, den das USDA auf Dürre und Hitze zurückführt, und dem Maisertrag, den NASS erfasst hat."
+      },
+      "agricultureDrySeasons": {
+        "title": "Die trockensten Saisons in GraphQL",
+        "description": "Dieselbe Sicht in GraphQL, die Saisons mit dem wenigsten Regen zuerst: Es sind die mit den höchsten Schadenquoten und den niedrigsten Erträgen."
+      },
+      "agricultureRest": {
+        "title": "Nach Jahr über REST",
+        "description": "Die Sicht ist auch ein REST-Endpunkt, nach Anbaujahr gruppiert und auf dem Server summiert. Jeder Client, der HTTP spricht, erhält die Antwort, ohne SQL zu schreiben."
+      },
+      "agricultureRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Die eigenen Daten des Versicherers, live gelesen, und öffentliche Schäden, Wetterdaten und Erträge, einmal geladen, nach County und Anbaujahr in einem gesteuerten Modell zugeordnet: Eine Sicht beantwortet, ob das Wetter die Schäden erklärt, in SQL, GraphQL und REST."
       }
     },
     "status": {
@@ -951,6 +999,10 @@
       "datavault": {
         "title": "Data Vault",
         "summary": "Ein Data Vault, deklariert über einem Bestellsystem und einem CRM: Hubs, Links und Satellites, die die Engine beim Eintreffen von Zeilen baut und aktualisiert, personenbezogene Daten in den Satellites maskiert, und eine Point-in-Time-Abfrage dazu, was über einen Kunden bekannt war, aus welcher Quelle und wann."
+      },
+      "agriculture": {
+        "title": "Wetter und Schäden in der Ernteversicherung",
+        "summary": "Die Frage eines Ernteversicherers, ob das Wetter die Schäden in seinem Portfolio erklärt: seine eigenen Betriebe, Policen und Schadenfälle, nach County und Anbaujahr verknüpft mit den Schäden des USDA nach Ursache, dem Wetter von NOAA und den Erträgen von NASS, beantwortet in SQL, GraphQL und REST."
       }
     }
   }

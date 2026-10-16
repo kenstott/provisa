@@ -887,6 +887,54 @@
       "datavaultRecap": {
         "title": "What you saw",
         "description": "Two live systems and a data vault over them, declared as views: hubs, links and satellites with every version kept, refreshed by the engine as rows arrive, governed in the satellites, and queried point-in-time in SQL, GraphQL and REST, with lineage back to the source fields. No separate ETL platform, job server or pipeline code."
+      },
+      "agricultureScenario": {
+        "title": "What this demo is",
+        "description": "A crop insurer wants to know whether weather explains the losses in its portfolio. Its own farms, policies and claims are in its database; the weather of every US county, and the whole market's crop insurance losses by cause, are public, in NOAA's and the USDA's data. The tour shows Provisa joining the two by county and crop year, and answering the question in SQL, GraphQL and over REST."
+      },
+      "agricultureGovdata": {
+        "title": "The public data",
+        "description": "The government data comes from AskAmerica, a live account. Its three tables are landed once, when the demo is built, and only the slice the portfolio needs: its 40 counties, corn and soybeans, the crop years 2010 to 2017. They are read from that copy for good: they never expire, and this demo never calls the account."
+      },
+      "agricultureClaims": {
+        "title": "The insurer's claims",
+        "description": "Each indemnity the insurer paid, read live from its own database: the farm, the crop year, the cause of loss, the month and the amount."
+      },
+      "agricultureMarket": {
+        "title": "The whole market's losses",
+        "description": "The USDA Risk Management Agency publishes every county's crop insurance experience by crop, cause of loss and month: the premium the market earned and the indemnities it paid for drought, heat, excess moisture, hail and the rest. The government data holds it for 2009 to 2017 and from 2024; 2018 to 2023 are not loaded yet, so this demo covers the crop years 2010 to 2017."
+      },
+      "agricultureWeather": {
+        "title": "Daily weather by county",
+        "description": "NOAA's daily maximum temperature and precipitation for each county, the mean of its reporting stations. Only the growing season, May to August, is landed: when rain and heat decide the yield."
+      },
+      "agricultureJoin": {
+        "title": "Joined by county",
+        "description": "The portfolio and the public tables share the county's FIPS code, and these relationships join them. The answer's view matches them by county and crop year."
+      },
+      "agricultureTerms": {
+        "title": "In the insurer's terms",
+        "description": "The glossary names what a crop underwriter asks about: loss ratio, cause of loss, actual production history, coverage level, liability, the growing season. Here loss ratio: indemnities over premium, above 1 a losing year."
+      },
+      "agricultureAnswer": {
+        "title": "The answer in SQL",
+        "description": "The view losses_and_weather sets each county's season beside the portfolio's results, and is kept stored. By crop year: 2012, the driest and hottest season, is the year the portfolio lost money, mostly to drought and heat, as the whole market did; the wet years of 2010 and 2013 cost less."
+      },
+      "agricultureWorstSeasons": {
+        "title": "The worst seasons",
+        "description": "The county seasons with the highest loss ratios, beside their rain, their days above 32 °C, the share of the market's losses the USDA puts down to drought and heat, and the corn yield NASS recorded."
+      },
+      "agricultureDrySeasons": {
+        "title": "The driest seasons, in GraphQL",
+        "description": "The same view in GraphQL, the seasons with the least rain first: they are the ones with the highest loss ratios and the lowest yields."
+      },
+      "agricultureRest": {
+        "title": "By year over REST",
+        "description": "The view is a REST endpoint too, grouped by crop year and summed on the server. Any client that speaks HTTP gets the answer without writing SQL."
+      },
+      "agricultureRecap": {
+        "title": "What you saw",
+        "description": "The insurer's own data, read live, and public losses, weather and yields, landed once, matched by county and crop year in one governed model: one view answers whether the weather explains the losses, in SQL, GraphQL and REST."
       }
     },
     "status": {
@@ -951,6 +999,10 @@
       "datavault": {
         "title": "Data vault",
         "summary": "A data vault declared over an order system and a CRM: hubs, links and satellites the engine builds and refreshes as rows arrive, personal data masked in the satellites, and one point-in-time query for what was known about a customer, from which source, and when."
+      },
+      "agriculture": {
+        "title": "Weather and crop insurance losses",
+        "summary": "A crop insurer's question, whether weather explains the losses in its portfolio: its own farms, policies and claims joined by county and crop year to the USDA's losses by cause, NOAA's weather and NASS's yields, answered in SQL, GraphQL and REST."
       }
     }
   }

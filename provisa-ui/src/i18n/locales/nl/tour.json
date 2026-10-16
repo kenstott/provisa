@@ -887,6 +887,54 @@
       "datavaultRecap": {
         "title": "Wat u zag",
         "description": "Twee live systemen en een data vault erover, gedeclareerd als views: hubs, links en satellieten met elke versie bewaard, door de engine ververst zodra er rijen binnenkomen, beheerd in de satellieten en point-in-time bevraagd in SQL, GraphQL en REST, met lineage terug naar de bronvelden. Geen apart ETL-platform, geen jobserver en geen pipelinecode."
+      },
+      "agricultureScenario": {
+        "title": "Wat deze demo is",
+        "description": "Een gewasverzekeraar wil weten of het weer de verliezen in zijn portefeuille verklaart. Zijn eigen boerderijen, polissen en schadeclaims staan in zijn database; het weer van elk Amerikaans county en de verliezen van de hele gewasverzekeringsmarkt per schadeoorzaak zijn openbaar, in de gegevens van NOAA en het USDA. De tour laat zien hoe Provisa beide koppelt op county en gewasjaar en de vraag beantwoordt in SQL, GraphQL en via REST."
+      },
+      "agricultureGovdata": {
+        "title": "De openbare gegevens",
+        "description": "De overheidsgegevens komen van AskAmerica, een live account. De drie tabellen worden één keer geladen, bij het bouwen van de demo, en alleen het deel dat de portefeuille nodig heeft: de 40 county's, maïs en sojabonen, de gewasjaren 2010 tot en met 2017. Ze worden voorgoed uit die kopie gelezen: ze verlopen nooit en deze demo roept het account nooit aan."
+      },
+      "agricultureClaims": {
+        "title": "De claims van de verzekeraar",
+        "description": "Elke uitkering die de verzekeraar heeft betaald, live gelezen uit de eigen database: de boerderij, het gewasjaar, de schadeoorzaak, de maand en het bedrag."
+      },
+      "agricultureMarket": {
+        "title": "De verliezen van de hele markt",
+        "description": "De USDA Risk Management Agency publiceert de gewasverzekeringsresultaten van elk county per gewas, schadeoorzaak en maand: de premie die de markt ontving en de uitkeringen voor droogte, hitte, overtollig vocht, hagel en de rest. De overheidsdata bevat dit voor 2009 tot en met 2017 en vanaf 2024; 2018 tot en met 2023 zijn nog niet geladen, dus deze demo beslaat de oogstjaren 2010 tot en met 2017."
+      },
+      "agricultureWeather": {
+        "title": "Dagelijks weer per county",
+        "description": "De dagelijkse maximumtemperatuur en neerslag van NOAA voor elk county, het gemiddelde van de meetstations. Alleen het groeiseizoen, mei tot en met augustus, wordt geladen: wanneer regen en hitte de opbrengst bepalen."
+      },
+      "agricultureJoin": {
+        "title": "Gekoppeld op county",
+        "description": "De portefeuille en de openbare tabellen delen de FIPS-code van het county, en deze relaties koppelen ze. De weergave van het antwoord laat ze aansluiten op county en gewasjaar."
+      },
+      "agricultureTerms": {
+        "title": "In de termen van de verzekeraar",
+        "description": "De woordenlijst benoemt wat een gewasverzekeringsacceptant vraagt: schadequote, schadeoorzaak, werkelijke productiegeschiedenis (APH), dekkingsniveau, verzekerd bedrag, het groeiseizoen. Hier de schadequote: uitkeringen gedeeld door premie, boven 1 is een verliesjaar."
+      },
+      "agricultureAnswer": {
+        "title": "Het antwoord in SQL",
+        "description": "De weergave losses_and_weather zet het seizoen van elk county naast de resultaten van de portefeuille en wordt opgeslagen bijgehouden. Per gewasjaar: 2012, het droogste en heetste seizoen, is het jaar waarin de portefeuille verlies leed, vooral door droogte en hitte, net als de hele markt; de natte jaren 2010 en 2013 kostten minder."
+      },
+      "agricultureWorstSeasons": {
+        "title": "De slechtste seizoenen",
+        "description": "De county-seizoenen met de hoogste schadequotes, naast hun regen, hun dagen boven 32 °C, het aandeel van de marktverliezen dat het USDA aan droogte en hitte toeschrijft, en de maïsopbrengst die NASS registreerde."
+      },
+      "agricultureDrySeasons": {
+        "title": "De droogste seizoenen, in GraphQL",
+        "description": "Dezelfde weergave in GraphQL, de seizoenen met de minste regen eerst: het zijn de seizoenen met de hoogste schadequotes en de laagste opbrengsten."
+      },
+      "agricultureRest": {
+        "title": "Per jaar via REST",
+        "description": "De weergave is ook een REST-eindpunt, gegroepeerd per gewasjaar en op de server opgeteld. Elke client die HTTP spreekt krijgt het antwoord zonder SQL te schrijven."
+      },
+      "agricultureRecap": {
+        "title": "Wat u zag",
+        "description": "De eigen gegevens van de verzekeraar, live gelezen, en openbare verliezen, weergegevens en opbrengsten, eenmalig geladen, gekoppeld op county en gewasjaar in één beheerd model: één weergave beantwoordt of het weer de verliezen verklaart, in SQL, GraphQL en REST."
       }
     },
     "status": {
@@ -951,6 +999,10 @@
       "datavault": {
         "title": "Data vault",
         "summary": "Een data vault gedeclareerd over een ordersysteem en een CRM: hubs, links en satellieten die de engine bouwt en ververst zodra er rijen binnenkomen, persoonsgegevens gemaskeerd in de satellieten, en één point-in-time-query naar wat er over een klant bekend was, uit welke bron en wanneer."
+      },
+      "agriculture": {
+        "title": "Weer en verliezen in de gewasverzekering",
+        "summary": "De vraag van een gewasverzekeraar, of het weer de verliezen in zijn portefeuille verklaart: zijn eigen boerderijen, polissen en claims, op county en gewasjaar gekoppeld aan de verliezen per oorzaak van het USDA, het weer van NOAA en de opbrengsten van NASS, beantwoord in SQL, GraphQL en REST."
       }
     }
   }
