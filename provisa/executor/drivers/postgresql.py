@@ -43,6 +43,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
 
 import psycopg
+from psycopg import sql as pg_sql
 from psycopg.abc import QueryNoTemplate
 from psycopg.adapt import Buffer, Loader
 from psycopg.pq import Format
@@ -435,8 +436,13 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
         with self._typnames_lock:
             missing = [o for o in set(oids) if o not in self._typnames]
         if missing:
+            # The OIDs are written as integer literals, not bound as one array: a pgwire server
+            # (a Salesforce source's, REQ-1946) receives an array parameter as the text '{25}'
+            # and cannot read it as the integer list ANY needs.
+            listed = pg_sql.SQL(", ").join(pg_sql.Literal(int(o)) for o in sorted(missing))
+            query = pg_sql.SQL("SELECT oid::int, typname FROM pg_type WHERE oid IN ({})")
             with conn.cursor() as cur:
-                cur.execute("SELECT oid::int, typname FROM pg_type WHERE oid = ANY(%s)", (missing,))
+                cur.execute(query.format(listed))
                 found = {int(oid): name for oid, name in cur.fetchall()}
             unknown = set(missing) - set(found)
             if unknown:
