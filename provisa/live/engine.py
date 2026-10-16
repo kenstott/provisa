@@ -159,8 +159,12 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
                         "[LIVE ENGINE] Kafka output %d of %s is not published", index, qid
                     )
                     continue
+                from provisa.core.secrets import resolve_secrets
+
                 sink = KafkaSinkOutput(
-                    bootstrap_servers=kafka["bootstrap_servers"],
+                    # The broker's address as configured may name an environment variable or a
+                    # secret (${env:...}): resolved where the output connects, as a pool's is.
+                    bootstrap_servers=resolve_secrets(kafka["bootstrap_servers"]),
                     topic=kafka["topic"],
                     key_column=kafka.get("key_column"),
                 )

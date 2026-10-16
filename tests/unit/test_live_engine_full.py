@@ -291,6 +291,18 @@ class TestLiveEngineLifecycle:
         assert group.output is mock_kafka
         assert group.key.role_id == "publisher"  # it publishes as the role it names
 
+    async def test_a_kafka_output_resolves_a_broker_its_config_names_by_variable(self, monkeypatch):
+        """A demo names its broker ${env:...}: the output dialled that text as a host name."""
+        monkeypatch.setenv("TEST_LIVE_KAFKA_HOST", "broker.internal")
+        engine = make_engine()
+        output = {**_kafka_output(), "bootstrap_servers": "${env:TEST_LIVE_KAFKA_HOST:-x}:9092"}
+        with (
+            patch("provisa.live.engine.KafkaSinkOutput", return_value=AsyncMock()) as made,
+            governed(),
+        ):
+            engine.reconcile([spec(kafka_outputs=[output])])
+        assert made.call_args.kwargs["bootstrap_servers"] == "broker.internal:9092"
+
     async def test_register_default_kafka_outputs_is_empty_list(self):
         engine = make_engine()
         engine.reconcile([spec()])
