@@ -79,7 +79,7 @@ Flags:
 
 ### Connections and domains on the import tab
 
-The export names its databases by environment variable, so after the first conversion the tab lists each SQL source with the connection the conversion guessed. Fill in the host, port, database, username and password, and convert again; only the fields you changed travel, as source overrides. The domain rows cover every schema, subgraph and remote schema the upload carries; each is a picker over the organization's existing domains that also accepts a typed name, marked "new domain" when it matches none. Apply merges into what the organization already has unless the replace checkbox is on. (REQ-1687)
+The export names its databases by environment variable, so after the first conversion the tab lists each SQL source with the connection the conversion guessed. Fill in the host, port, database, username and password, and convert again; only the fields you changed travel, as source overrides. The domain rows cover every schema, subgraph and remote schema the upload carries; each is a picker over the organization's existing domains that also accepts a typed name, marked "new domain" when it matches none. Apply merges into what the organization already has. (REQ-1687)
 
 ### Types come from the source at preview
 
