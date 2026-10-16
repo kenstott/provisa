@@ -97,7 +97,7 @@ def _print(title: str, rows: list[dict]) -> None:
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_the_formulary_can_be_drawn_from_real_products(endpoint):
+async def test_the_formulary_can_be_drawn_from_real_products(endpoint, capsys):
     from provisa.federation import pgwire_replica as pr
 
     schema = pr.remote_schema(_source(), _SCHEMA)
@@ -188,19 +188,21 @@ async def test_the_formulary_can_be_drawn_from_real_products(endpoint):
     )
     plain_rows = rows(plain_ndcs, lambda n, p: {})
 
-    print(
-        f"\ncurrent shortages={len(shortages)} ongoing class I/II recalls={len(recalls)} "
-        f"rx products={len(products)} recall-matched products={len(recall_ndcs)}"
-    )
-    _print("shortage products with Medicaid utilization", shortage_rows)
-    _print("recall-firm products with Medicaid utilization", recall_rows)
-    _print("unflagged products with Medicaid utilization", plain_rows)
-    print("\n=== ongoing class I/II recalls (first 40) ===")
-    for r in recalls[:_PRINT]:
+    # The lanes run pytest with capture on: the lists must reach the log of a passing run.
+    with capsys.disabled():
         print(
-            f"{r['recall_number']} | {r['classification']} | {r['recalling_firm']} | "
-            f"{r['recall_initiation_date']} | {(r['reason_for_recall'] or '')[:120]}"
+            f"\ncurrent shortages={len(shortages)} ongoing class I/II recalls={len(recalls)} "
+            f"rx products={len(products)} recall-matched products={len(recall_ndcs)}"
         )
+        _print("shortage products with Medicaid utilization", shortage_rows)
+        _print("recall-firm products with Medicaid utilization", recall_rows)
+        _print("unflagged products with Medicaid utilization", plain_rows)
+        print("\n=== ongoing class I/II recalls (first 40) ===")
+        for r in recalls[:_PRINT]:
+            print(
+                f"{r['recall_number']} | {r['classification']} | {r['recalling_firm']} | "
+                f"{r['recall_initiation_date']} | {(r['reason_for_recall'] or '')[:120]}"
+            )
 
     assert len(shortage_rows) >= _ENOUGH, len(shortage_rows)
     assert len(recall_rows) >= _ENOUGH, len(recall_rows)
