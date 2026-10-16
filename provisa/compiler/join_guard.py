@@ -413,6 +413,19 @@ def _conjuncts(condition: exp.Expr | None) -> list[exp.Expr]:
     return [node]
 
 
+def _joined(instances: list[int], edges: set[frozenset[int]]) -> bool:
+    """Whether ``edges`` connect every one of ``instances``."""
+    reached, frontier = {instances[0]}, [instances[0]]
+    while frontier:
+        at = frontier.pop()
+        for edge in edges:
+            if at in edge:
+                for other in edge - reached:
+                    reached.add(other)
+                    frontier.append(other)
+    return set(instances) <= reached
+
+
 def _unrelated_in(
     root: Scope,
     resolve_table_id: Any,
@@ -487,6 +500,9 @@ def _unrelated_in(
         """Instances matched by something other than a column equality."""
         held = sorted(i for i in instances if not exempt(i))
         tables = sorted({table_of[i] for i in held})
+        if len(held) >= 2 and _joined(held, resolver.view_edges):
+            # A view's instance and what its SQL reads: one row of the view, nothing related.
+            return
         if len(tables) == 1 and all(filters_only(a, b) for a in held for b in held if a < b):
             # One table filtered by its own rows, on whatever condition.
             edges.update(frozenset({a, b}) for a in held for b in held if a < b)
