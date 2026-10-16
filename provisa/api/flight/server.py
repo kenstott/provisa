@@ -245,6 +245,24 @@ def _flight_error(msg: str, cause: Exception | None = None) -> flight.FlightServ
     return err
 
 
+def _ticket_as_of(request: dict[str, object]) -> str | None:  # REQ-1163
+    """The time a ticket reads bitemporal materialized views as of: its ``as_of`` option, an ISO
+    8601 time (the ``X-Provisa-As-Of`` header of the HTTP transports), validated to a safe SQL
+    timestamp literal; None for a ticket that names none. One that cannot be read is refused by
+    name."""
+    from provisa.mv.bitemporal import parse_as_of
+
+    as_of = request.get("as_of")
+    if as_of is None:
+        return None
+    if not isinstance(as_of, str):
+        raise _flight_error(f"ticket option as_of must be an ISO 8601 time, not {as_of!r}")
+    try:
+        return parse_as_of(as_of)
+    except ValueError as exc:
+        raise _flight_error(f"invalid ticket option as_of: {exc}", exc) from exc
+
+
 def _ticket_delivery(request: dict[str, object], role_id: str):  # REQ-1194
     """The forced redirect a ticket asks for with its ``redirect`` / ``redirect_format`` options,
     or None. Flight is a streaming transport: it is never delivered automatically (REQ-1224
@@ -1131,6 +1149,7 @@ class ProvisaFlightServer(
                     serve_cached=True,
                     sdl_joins=False,
                     deliver=_ticket_delivery(request, role_id),
+                    as_of=_ticket_as_of(request),  # REQ-1163
                 )
             )
         except PermissionError as exc:
@@ -1377,7 +1396,12 @@ class ProvisaFlightServer(
             # looked up in the response cache before it is routed.
             result = self._run_on_loop(
                 govern_batch_final_plan_with_fn(
-                    sql, role_id, self._state, serve_cached=True, deliver=delivery
+                    sql,
+                    role_id,
+                    self._state,
+                    serve_cached=True,
+                    deliver=delivery,
+                    as_of=_ticket_as_of(request),  # REQ-1163
                 )
             )
         except PermissionError as exc:
@@ -1622,6 +1646,7 @@ class ProvisaFlightServer(
                     cache_hint=cache_hint_for("graphql", str(request.get("query", ""))),
                     sdl_joins=True,
                     deliver=_ticket_delivery(request, role_id),
+                    as_of=_ticket_as_of(request),  # REQ-1163
                 )
             )
         except PermissionError as exc:

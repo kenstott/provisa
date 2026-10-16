@@ -154,6 +154,15 @@ def test_flight_ticket_omits_variables_when_none(client):
     assert "variables" not in data
 
 
+def test_flight_ticket_names_the_time_it_reads_as_of(client):
+    # REQ-1163: a ticket reads bitemporal views as of the time it names; one naming none has no option.
+    ticket = client._flight_ticket("{ orders { id } }", None, "2026-10-16T02:00:00+00:00")
+    assert json.loads(ticket.ticket.decode())["as_of"] == "2026-10-16T02:00:00+00:00"
+    assert "as_of" not in json.loads(
+        client._flight_ticket("{ orders { id } }", None).ticket.decode()
+    )
+
+
 def test_flight_ticket_carries_the_credential(client):
     # REQ-1263: the Flight server authenticates every ticket. A client whose HTTP calls are
     # authenticated but whose tickets are not would be rejected on the Flight path alone.

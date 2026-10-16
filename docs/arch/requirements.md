@@ -11482,9 +11482,9 @@ A bitemporal materialized view ([REQ-1162](#REQ-1162)) is READABLE through the q
 
 **Use case:** Without routing reads through reconstruction a bitemporal MV read would surface all historical versions instead of current state. Current-by-default makes bitemporal MVs usable; the X-Provisa-As-Of header adds opt-in, whole-query time travel.
 
-**Code:** `provisa/api/app_rebuild.py`, `provisa/api/app.py`, `provisa/api/data/endpoint.py`, `provisa/api/data/endpoint_dev.py`, `provisa/mv/bitemporal.py`
+**Code:** `provisa/api/app_rebuild.py`, `provisa/api/app.py`, `provisa/api/data/endpoint.py`, `provisa/api/data/endpoint_dev.py`, `provisa/mv/bitemporal.py`, `provisa/api/flight/server.py`
 
-**Tests:** `tests/unit/test_bitemporal_exec.py`, `tests/unit/test_bitemporal_read_integration.py`, `tests/integration/test_bitemporal_http_e2e.py`
+**Tests:** `tests/unit/test_bitemporal_exec.py`, `tests/unit/test_bitemporal_read_integration.py`, `tests/integration/test_bitemporal_http_e2e.py`, `tests/unit/test_flight_as_of.py`
 
 ### REQ-1164 · Materialization Store {#REQ-1164}
 
