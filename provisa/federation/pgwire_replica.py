@@ -28,6 +28,7 @@ Every failure is LOUD: an unknown/creds-missing source, a port collision, or a m
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import signal
@@ -1132,13 +1133,15 @@ class ConnectorReplica:  # REQ-954/955/956
         version: str | None = None,
         port_is_free: Callable[[int], bool] | None = None,
         prepare_catalog: Callable[[PortPair], None] | None = None,
+        key: tuple[str, str] | None = None,
     ) -> None:
         self._source = source
         # REQ-1992: the source by its org and id, bound when the replica is made: its ports, its
         # state directory and its registry entry are this org's source's and no other's.
         from provisa.core.org_scope import source_key
 
-        self._key = source_key(source.id)
+        # ``key``: a server shared by several orgs is known by its own (``server_key``).
+        self._key = key if key is not None else source_key(source.id)
         self._resolver = resolver if resolver is not None else BundleResolver()
         self._allocator = allocator if allocator is not None else PortAllocator()
         self._spawn = spawn
@@ -1369,19 +1372,63 @@ class ConnectorReplica:  # REQ-954/955/956
 # One replica (one server) per source id, shared by every engine connection that attaches it; the
 # shared allocator keeps concurrent sources on distinct ports. Stopped by ``stop_all_servers``.
 _ENDPOINT_ALLOCATOR = PortAllocator()
-#: By the source's org and id (REQ-1992): a source id is unique only within its org.
+#: By the source's org and id (REQ-1992): a source id is unique only within its org -- or, for a
+#: server the sandbox tier's orgs share, by ``server_key``.
 _ENDPOINTS: dict[tuple[str, str], ConnectorReplica] = {}
+#: The orgs reading each shared server; it is stopped when the last of them goes.
+_ENDPOINT_USERS: dict[tuple[str, str], set[str]] = {}
 # One server per source id: an engine attach, a discovery call and a write can each be the first
 # to ask for a source's endpoint, from different threads.
 _ENDPOINTS_LOCK = threading.Lock()
+
+
+def _demo_template_of(org_id: str) -> str | None:
+    """The template org of the demo a sandbox-tier org is (itself, for a template); None for any
+    other org, and for a sandbox no longer open."""
+    from provisa.core.demo_bundles import bundled_demos, own_demo_directory
+    from provisa.core.org_ids import TEMPLATE_PREFIX, is_sandbox_tier_org, is_template_org
+
+    if not is_sandbox_tier_org(org_id):
+        return None
+    if is_template_org(org_id):
+        return org_id
+    directory = own_demo_directory(org_id)
+    if directory is None:
+        return None
+    # A bundle's directory is its version; the demo is the directory above it.
+    return TEMPLATE_PREFIX + (directory.parent.name if bundled_demos() else directory.name)
+
+
+def server_key(source: Any) -> tuple[str, str]:
+    """What ``source``'s server is known by. A source of a demo's template or sandbox is served by
+    one server for every org of that demo whose source reads the same files the same way (its
+    path, which names the demo's version, and its glob tables): a demo's data is read-only and the
+    same for every visitor, and a server per sandbox cost each one a JVM of ~570 MB. A sandbox
+    whose tables were changed reads differently and gets a server of its own. Any other source is
+    served by its own org's server (REQ-1992)."""
+    from provisa.core.org_scope import source_key
+
+    key = source_key(source.id)
+    template = _demo_template_of(key[0])
+    if template is None:
+        return key
+    reads = json.dumps(
+        [getattr(source, "path", None), getattr(source, "file_glob_tables", None) or []],
+        sort_keys=True,
+        default=str,
+    )
+    return template, f"{source.id}@{hashlib.sha256(reads.encode()).hexdigest()[:12]}"
 
 
 def _endpoint_replica(source: Any) -> ConnectorReplica:
     """The one replica for ``source``."""
     from provisa.core.org_scope import source_key
 
-    key = source_key(source.id)
+    key = server_key(source)
+    org_id = source_key(source.id)[0]
     with _ENDPOINTS_LOCK:
+        if key[0] != org_id:
+            _ENDPOINT_USERS.setdefault(key, set()).add(org_id)
         replica = _ENDPOINTS.get(key)
         if replica is None:
             stype = _source_type(source)
@@ -1390,7 +1437,7 @@ def _endpoint_replica(source: Any) -> ConnectorReplica:
                 for (_org, held_by), other in _ENDPOINTS.items():
                     if other.source_type == stype:
                         raise InstalledBundleInUse(source.id, stype, held_by)
-            replica = ConnectorReplica(source, allocator=_ENDPOINT_ALLOCATOR)
+            replica = ConnectorReplica(source, allocator=_ENDPOINT_ALLOCATOR, key=key)
             _ENDPOINTS[key] = replica
         _reap_on_exit()
     return replica
@@ -1587,6 +1634,7 @@ def stop_all_servers() -> None:
     for replica in _ENDPOINTS.values():
         replica.close()
     _ENDPOINTS.clear()
+    _ENDPOINT_USERS.clear()
 
 
 def stop_org_servers(org_id: str) -> None:
@@ -1594,6 +1642,13 @@ def stop_org_servers(org_id: str) -> None:
     before the org's folder's files are encrypted or decrypted)."""
     with _ENDPOINTS_LOCK:
         mine = [key for key in _ENDPOINTS if key[0] == org_id]
+        # A server several orgs share goes when the last of them stops reading it.
+        for key, users in list(_ENDPOINT_USERS.items()):
+            users.discard(org_id)
+            if not users and key not in mine and key in _ENDPOINTS:
+                mine.append(key)
+            if not users:
+                del _ENDPOINT_USERS[key]
         replicas = [_ENDPOINTS.pop(key) for key in mine]
     for replica in replicas:
         replica.close()
