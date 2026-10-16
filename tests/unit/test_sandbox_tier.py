@@ -271,3 +271,19 @@ def test_the_sandbox_tier_finds_the_deployments_demo_data():
     overlay = overlay[overlay.index("  provisa-sandbox:\n") :]
     assert 'PROVISA_DEMO_DIR: "/app/config/demo/files"' in overlay[: overlay.index("\nYAML\n")]
     assert (root / "demo" / "files" / "pet_store.sqlite").is_file()  # what the Dockerfile bakes
+
+
+def test_every_cloud_deploy_refreshes_the_demo_stores_sync():
+    """The node's demo-stores sync and its units are installed with the node; deploy-cloud.sh
+    copies them on every deploy that pushes the app, or a fix to the sync never reaches a node."""
+    import re
+    from pathlib import Path
+
+    deploy = (Path(__file__).resolve().parents[2] / "scripts" / "deploy-cloud.sh").read_text()
+    body = deploy[deploy.index("push_demo_stores() {") :]
+    assert '"$REPO/scripts/demo_stores_sync.sh"' in body
+    assert "packaging/linux/demo-stores/provisa-demo-stores.*" in body
+    arms = re.findall(r"^  (api|cfg|all|patch)\)\n(?:\s*#.*\n)*\s*(.*);;$", deploy, re.M)
+    assert {arm for arm, _ in arms} == {"api", "cfg", "all", "patch"}
+    for arm, steps in arms:
+        assert "push_demo_stores" in steps.split("; "), arm

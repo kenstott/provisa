@@ -504,6 +504,36 @@ push_obs_config() {
   ssh_node "sudo docker restart compose-otel-collector-1"
 }
 
+# The sandbox tier's demo-stores sync (scripts/demo_stores_sync.sh) and its systemd units
+# (packaging/linux/demo-stores/). Installed with the node and refreshed by nothing else, so a fix
+# to the sync (recreating a store whose first load was cut off) reached no node. Copied when it
+# differs; the units are reloaded, and the sync runs again under its own service.
+DEMO_STORES_BIN="/root/.provisa/bin/demo_stores_sync.sh"
+DEMO_STORES_UNITS="/etc/systemd/system"
+
+push_demo_stores() {
+  local changed=0 f name dest want have
+  for f in "$REPO/scripts/demo_stores_sync.sh" "$REPO"/packaging/linux/demo-stores/provisa-demo-stores.*; do
+    name="$(basename "$f")"
+    case "$name" in
+      demo_stores_sync.sh) dest="$DEMO_STORES_BIN" ;;
+      *) dest="$DEMO_STORES_UNITS/$name" ;;
+    esac
+    want="$(shasum -a 256 "$f" | cut -d' ' -f1)"
+    have="$(ssh_node "sudo shasum -a 256 $dest 2>/dev/null" | tr -d '\r' | cut -d' ' -f1)" || have=""
+    [ "$want" = "$have" ] && continue
+    scp_node "$f" "/tmp/$name"
+    ssh_node "sudo mkdir -p $(dirname "$dest") && sudo install -m $([ "$name" = demo_stores_sync.sh ] && echo 755 || echo 644) /tmp/$name $dest"
+    echo "== demo stores: updated $name"
+    changed=1
+  done
+  if [ "$changed" = "0" ]; then
+    echo "== demo stores: up to date"
+    return
+  fi
+  ssh_node "sudo systemctl daemon-reload && sudo systemctl start --no-block provisa-demo-stores.service"
+}
+
 # The app overlay itself. ${PROVISA_HOME}/compose/docker-compose.app.yml is whatever the release
 # installer wrote, and nothing in this script ever refreshed it — so an env passthrough added to the
 # repo's overlay (the PROVISA_OTEL_S3_* block the OTLP compactor needs, say) reaches the image but
@@ -763,18 +793,18 @@ case "$TARGET" in
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    preflight_engine; push_commerce_env; preflight_commerce; build_api; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_api; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    preflight_engine; push_commerce_env; preflight_commerce; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
   all)
-    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
     preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
 esac
 echo "== deployed $TARGET"
