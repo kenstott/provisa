@@ -63,8 +63,8 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 ### 限制 {: #limitations }
 
 - 仅支持 SQL。通过 pgwire 不接受 GraphQL 及 Cypher。
-- 并非只读。`COPY ... FROM STDIN` 会将数据行插入 `postgresql`、`mysql`、`sqlite` 及 `mariadb` 数据源，并支持 DDL（见下文）。
-- 支持 DDL（`CREATE`、`ALTER`、`DROP`），并会分派至 Trino 或直接路径；新表会注册到编译上下文中，并可立即查询。`COPY ... TO STDOUT`（导出）及 `COPY ... FROM STDIN`（导入）均支持 `text` 及 `csv` 格式。
+- 并非只读。已注册表的行通过 `INSERT`、`UPDATE`、`DELETE`、`MERGE`、`TRUNCATE` 和 `COPY ... FROM STDIN` 写入，每一种都由角色的 `write` 权利、其列授权和其行过滤放行；参见[数据写入](pgwire.md#data-writes-insert-update-delete-merge-copy-from-stdin)。
+- 不支持定义：`CREATE`、`ALTER` 和 `DROP` 会以 SQLSTATE 0A000 被拒绝，会话自己的临时表除外；参见[定义](pgwire.md#definitions-create-alter-drop)。`COPY ... TO STDOUT` 以 `text`、`csv` 和 `binary` 导出；`COPY ... FROM STDIN` 读取 `text` 和 `csv`。
 - 针对 `information_schema` 及 `pg_catalog` 的查询会被拦截，并由 DuckDB 目录垫片响应 —— 架构发现工具可正常工作。
 
 ---

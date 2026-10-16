@@ -63,8 +63,8 @@ The full surface × method table is in [Security Model](security.md#surfaces-and
 ### Limitations
 
 - SQL only. GraphQL and Cypher are not accepted over pgwire.
-- Not read-only. `COPY ... FROM STDIN` inserts rows into `postgresql`, `mysql`, `sqlite`, and `mariadb` sources, and DDL is supported (see below).
-- DDL (`CREATE`, `ALTER`, `DROP`) is supported and dispatched to the Trino or direct path; the new table is registered into the compilation context and is immediately queryable. `COPY ... TO STDOUT` (export) and `COPY ... FROM STDIN` (import) are supported in `text` and `csv` formats.
+- Not read-only. Rows of registered tables are written with `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE` and `COPY ... FROM STDIN`, each admitted by the role's `write` right, its column grants and its row filter; see [Data writes](pgwire.md#data-writes-insert-update-delete-merge-copy-from-stdin).
+- No definitions: `CREATE`, `ALTER` and `DROP` are refused with SQLSTATE 0A000, except a session's own temporary table; see [Definitions](pgwire.md#definitions-create-alter-drop). `COPY ... TO STDOUT` exports in `text`, `csv` and `binary`; `COPY ... FROM STDIN` reads `text` and `csv`.
 - `information_schema` and `pg_catalog` queries are intercepted and answered from a DuckDB catalog shim — schema discovery tools work correctly.
 
 ---

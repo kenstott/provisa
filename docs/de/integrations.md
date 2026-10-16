@@ -68,8 +68,8 @@ Die vollständige Oberfläche-×-Methode-Tabelle steht im [Sicherheitsmodell](se
 ### Einschränkungen {: #limitations }
 
 - Nur SQL. GraphQL und Cypher werden über pgwire nicht akzeptiert.
-- Nicht schreibgeschützt. `COPY ... FROM STDIN` fügt Zeilen in `postgresql`-, `mysql`-, `sqlite`- und `mariadb`-Quellen ein, und DDL wird unterstützt (siehe unten).
-- DDL (`CREATE`, `ALTER`, `DROP`) wird unterstützt und an den Trino- oder Direktpfad weitergeleitet; die neue Tabelle wird in den Kompilierungskontext registriert und ist sofort abfragbar. `COPY ... TO STDOUT` (Export) und `COPY ... FROM STDIN` (Import) werden in den Formaten `text` und `csv` unterstützt.
+- Nicht schreibgeschützt. Zeilen registrierter Tabellen werden mit `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE` und `COPY ... FROM STDIN` geschrieben, jeweils zugelassen durch das Recht `write` der Rolle, ihre Spaltenfreigaben und ihren Zeilenfilter; siehe [Datenschreibvorgänge](pgwire.md#data-writes-insert-update-delete-merge-copy-from-stdin).
+- Keine Definitionen: `CREATE`, `ALTER` und `DROP` werden mit SQLSTATE 0A000 abgelehnt, außer der eigenen temporären Tabelle einer Sitzung; siehe [Definitionen](pgwire.md#definitions-create-alter-drop). `COPY ... TO STDOUT` exportiert in `text`, `csv` und `binary`; `COPY ... FROM STDIN` liest `text` und `csv`.
 - `information_schema`- und `pg_catalog`-Abfragen werden abgefangen und aus einem DuckDB-Katalog-Shim beantwortet — Schema-Erkennungstools funktionieren korrekt.
 
 ---

@@ -118,9 +118,9 @@ CLOSE ALL;   -- release every open cursor on this connection
 
 **Время жизни курсора.** У сервера pgwire Provisa нет конечного автомата транзакций (`ProvisaSession.in_transaction()` жёстко возвращает `False`). Поэтому каждый курсор ведёт себя так, будто объявлен `WITH HOLD`: живёт всё время соединения, а не до `COMMIT`. [tool-verified: `server.py:200` — `in_transaction()` always returns `False`] Ключевые слова `WITH HOLD` и `WITHOUT HOLD` принимаются и молча игнорируются — жизненного цикла курсоров по транзакциям, который нужно было бы применять, нет.
 
-### Определения (CREATE, ALTER, DROP, TRUNCATE) {: #definitions-create-alter-drop-truncate }
+### Определения (CREATE, ALTER, DROP) {: #definitions-create-alter-drop }
 
-Через pgwire ничего не определяется. Инструкция, которая создаёт, изменяет или удаляет объект (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, индекс, последовательность или схему), отклоняется с SQLSTATE 0A000, что бы ни было у роли; исключение — собственная временная таблица сеанса (см. [Временные таблицы](#temporary-tables)). Таблица или представление — это объект модели: создавайте их в модели (страницы администратора, API администратора или конфигурация) либо создайте в источнике данных и допустите в модель. `TRUNCATE` отклоняется так же; `DELETE` — регулируемый способ удалять строки. [tool-verified: `provisa/compiler/definitions.py`]
+Через pgwire ничего не определяется. Инструкция, которая создаёт, изменяет или удаляет объект (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, индекс, последовательность или схема), отклоняется с SQLSTATE 0A000, что бы ни было у роли; исключение — собственная временная таблица сеанса (см. [Временные таблицы](#temporary-tables)). Таблица или представление — это объект модели: создавайте их в модели (страницы администратора, API администратора или конфигурация) либо создайте в источнике данных и допустите в модель. `TRUNCATE` ничего не определяет: это запись данных (см. [Запись данных](#data-writes-insert-update-delete-merge-copy-from-stdin)). [tool-verified: `provisa/compiler/definitions.py`]
 
 Отказ выполняется один раз, в конвейере, через который проходит каждая SQL-поверхность, поэтому SQL по HTTP, Flight и MCP отклоняют те же инструкции с тем же сообщением.
 
@@ -155,6 +155,8 @@ DROP TABLE busy;
 3. **Строки, которые можно затронуть.** Фильтр строк роли, тот же предикат, что несут её чтения, добавляется к `WHERE` в `UPDATE` или `DELETE`.
 4. **Строки, которые остаются.** Отфильтрованная роль может писать только строки, которые потом смогла бы прочитать: строки `INSERT` и новые значения `UPDATE`, задающего колонку, которую читает фильтр, проверяются по фильтру до того, как что-либо отправляется в источник.
 
+`TRUNCATE` — тоже запись данных; он выполняется как есть и никогда не переписывается в `DELETE`. Ему нужны право `write`, возможность роли писать в каждую колонку таблицы и источник, принимающий удаления. Он очищает одну таблицу за раз, а роли с фильтром строк на таблице отказывается, потому что `TRUNCATE` не может применить фильтр: используйте `DELETE`, который это делает. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
+
 То, что нельзя решить, отклоняется по имени, а не допускается при сомнении (`INSERT … SELECT`, значение, которое не является ни литералом, ни связанным параметром, фильтр, читающий колонку, которую инструкция не предоставляет). [tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
 ### COPY
@@ -170,9 +172,9 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
-Поддерживаемые форматы: `text` (с разделителями-табуляциями, по умолчанию) и `csv`. Двоичный формат в выводе COPY не поддерживается. [tool-verified: `copy_handler.py:36-52`]
+Поддерживаемые форматы: `text` (с разделителями-табуляциями, по умолчанию), `csv` и `binary` — двоичный формат COPY PostgreSQL, которым читает расширение postgres в DuckDB. (REQ-883) [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
 
-**COPY FROM STDIN** — это запись данных в существующую зарегистрированную таблицу: её допускает тот же допуск записи, что и `INSERT` тех же строк (см. [Запись данных](#data-writes-insert-update-delete-merge-copy-from-stdin)).
+**COPY FROM STDIN** — это запись данных в существующую зарегистрированную таблицу: её допускает тот же допуск записи, что и `INSERT` тех же строк (см. [Запись данных](#data-writes-insert-update-delete-merge-copy-from-stdin)). Он читает `text` (по умолчанию) и `csv`. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 ### Транзакции и команды сессии {: #transactions-and-session-commands }
 
@@ -259,13 +261,13 @@ jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<
 
 **Только SQL.** Слушатель pgwire разбирает и выполняет только SQL — строки GraphQL и Cypher не принимаются. (REQ-614) Запись данных в существующие таблицы допускается по правам роли, её разрешениям на колонки и её фильтру строк; см. [Запись данных](#data-writes-insert-update-delete-merge-copy-from-stdin).
 
-**Никаких определений.** `CREATE`, `ALTER`, `DROP` и `TRUNCATE` отклоняются с SQLSTATE 0A000, что бы ни было у роли, кроме собственной временной таблицы сеанса; см. [Временные таблицы](#temporary-tables). (REQ-615, REQ-616)
+**Без определений.** `CREATE`, `ALTER` и `DROP` отклоняются с SQLSTATE 0A000, что бы ни было у роли, кроме собственной временной таблицы сеанса; см. [Временные таблицы](#temporary-tables). `TRUNCATE` — это запись данных. (REQ-615, REQ-616)
 
 **Нет реальной поддержки транзакций.** BEGIN/COMMIT/ROLLBACK принимаются и молча игнорируются. Каждый оператор выполняется независимо. (REQ-587) [tool-verified: `server.py:146-158` — `in_transaction()` always returns `False`]
 
 **Тайм-аут запроса.** Инструкция может использовать собственный тайм-аут запроса pgwire, `limits.request_timeouts.pgwire`, или общий `limits.request_timeout`, если первый не задан; оба являются настройками оператора. (REQ-590, REQ-1905) [tool-verified: `provisa/core/limits.py`, `server.py`]
 
-**Формат вывода COPY — text или csv.** Бинарный формат PG COPY (`FORMAT binary`) не реализован. [inferred: only `text` and `csv` branches exist in `_rows_to_copy_text` / `_rows_to_copy_csv`]
+**Ввод COPY — text или csv.** `COPY ... TO STDOUT` пишет `text`, `csv` и `binary`; `COPY ... FROM STDIN` читает `text` и `csv`. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 **Подстановка параметров литеральная.** Параметры `$1`, `$2`, ... подставляются как литералы SQL перед выполнением, а не отправляются как связанные параметры вышестоящему движку. Это означает, что вышестоящий движок никогда не видит подготовленный оператор. Для Trino это не имеет практического значения; для источников с прямым пулом это обходит кеширование подготовленных операторов. (REQ-581) [tool-verified: `server.py:78-85`]
 

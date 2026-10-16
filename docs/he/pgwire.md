@@ -118,9 +118,9 @@ CLOSE ALL;   -- release every open cursor on this connection
 
 **משך החיים של סמן.** לשרת ה-pgwire של Provisa אין מכונת מצבים של טרנזקציות (`ProvisaSession.in_transaction()` מחזיר קבוע `False`). לכן כל סמן מתנהג כאילו הוצהר `WITH HOLD`: הוא חי לאורך כל החיבור, לא עד `COMMIT`. [tool-verified: `server.py:200` — `in_transaction()` always returns `False`] מילות המפתח `WITH HOLD` ו-`WITHOUT HOLD` מתקבלות ומתעלמים מהן בשקט — אין מחזור חיים של סמנים לפי טרנזקציה לאכוף.
 
-### הגדרות (CREATE, ALTER, DROP, TRUNCATE) {: #definitions-create-alter-drop-truncate }
+### הגדרות (CREATE, ALTER, DROP) {: #definitions-create-alter-drop }
 
-דבר אינו מוגדר דרך pgwire. הצהרה שיוצרת, משנה או מסירה אובייקט (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, אינדקס, רצף או סכמה) נדחית עם SQLSTATE 0A000, לא משנה מה התפקיד מחזיק; היוצא מן הכלל הוא טבלה זמנית של הסשן עצמו (ראו [טבלאות זמניות](#temporary-tables)). טבלה או view הם אובייקט מודל: צרו אותם במודל (עמודי הניהול, API הניהול או הקונפיגורציה), או צרו אותם במקור הנתונים וקבלו אותם למודל. `TRUNCATE` נדחה באותו אופן; `DELETE` היא הדרך המנוהלת להסיר שורות. [tool-verified: `provisa/compiler/definitions.py`]
+דבר אינו מוגדר דרך pgwire. הצהרה שיוצרת, משנה או מסירה אובייקט (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, אינדקס, רצף או סכמה) נדחית עם SQLSTATE 0A000, לא משנה מה התפקיד מחזיק; היוצא מן הכלל הוא טבלה זמנית של הסשן עצמו (ראו [טבלאות זמניות](#temporary-tables)). טבלה או view הם אובייקט מודל: צרו אותם במודל (עמודי הניהול, API הניהול או הקונפיגורציה), או צרו אותם במקור הנתונים וקבלו אותם למודל. `TRUNCATE` אינו מגדיר דבר: הוא כתיבת נתונים (ראו [כתיבת נתונים](#data-writes-insert-update-delete-merge-copy-from-stdin)). [tool-verified: `provisa/compiler/definitions.py`]
 
 הדחייה מתבצעת פעם אחת, בצינור שכל משטח SQL עובר בו, כך ש-SQL על HTTP, Flight ו-MCP דוחים את אותן הצהרות עם אותה הודעה.
 
@@ -155,6 +155,8 @@ DROP TABLE busy;
 3. **השורות שאפשר לגעת בהן.** מסנן השורות של התפקיד, אותו פרדיקט שהקריאות שלו נושאות, מתווסף ל-`WHERE` של `UPDATE` או `DELETE`.
 4. **השורות שנשארות.** תפקיד מסונן יכול לכתוב רק שורות שהוא יוכל לקרוא אחר כך: שורות `INSERT` והערכים החדשים של `UPDATE` שקובע עמודה שהמסנן קורא נבדקים מול המסנן לפני שדבר נשלח למקור.
 
+גם `TRUNCATE` הוא כתיבת נתונים, שרצה כמות שהיא ולעולם אינה נכתבת מחדש כ-`DELETE`. היא צריכה את הזכות `write`, כל עמודה בטבלה ניתנת לכתיבה על ידי התפקיד, ומקור שמקבל מחיקות. היא מרוקנת טבלה אחת בכל פעם, ותפקיד עם מסנן שורות על הטבלה מקבל דחייה, כי `TRUNCATE` אינו יכול להחיל את המסנן: השתמשו ב-`DELETE`, שמחיל אותו. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
+
 מה שאי אפשר להכריע נדחה בשמו ולא מתקבל מספק (`INSERT … SELECT`, ערך שאינו ליטרל ולא פרמטר קשור, מסנן שקורא עמודה שההצהרה אינה מספקת). [tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
 ### COPY
@@ -170,9 +172,9 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
-פורמטים נתמכים: `text` (מופרד בטאבים, ברירת מחדל) ו-`csv`. פורמט בינארי אינו נתמך בפלט COPY. [tool-verified: `copy_handler.py:36-52`]
+פורמטים נתמכים: `text` (מופרד בטאבים, ברירת מחדל), `csv` ו-`binary`, פורמט ה-COPY הבינארי של PostgreSQL, שבו קוראת הרחבת postgres של DuckDB. (REQ-883) [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
 
-**COPY FROM STDIN** הוא כתיבת נתונים לטבלה רשומה קיימת: הוא מתקבל באותה קבלת כתיבה כמו `INSERT` של אותן שורות (ראו [כתיבת נתונים](#data-writes-insert-update-delete-merge-copy-from-stdin)).
+**COPY FROM STDIN** הוא כתיבת נתונים לטבלה רשומה קיימת: הוא מתקבל באותה קבלת כתיבה כמו `INSERT` של אותן שורות (ראו [כתיבת נתונים](#data-writes-insert-update-delete-merge-copy-from-stdin)). הוא קורא `text` (ברירת מחדל) ו-`csv`. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 ### עסקאות ופקודות Session {: #transactions-and-session-commands }
 
@@ -259,13 +261,13 @@ jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<
 
 **SQL בלבד.** מאזין ה-pgwire מפענח ומבצע SQL בלבד — מחרוזות GraphQL ו-Cypher אינן מתקבלות. (REQ-614) כתיבת נתונים לטבלאות קיימות מתקבלת לפי הזכויות של התפקיד, הענקות העמודות שלו ומסנן השורות שלו; ראו [כתיבת נתונים](#data-writes-insert-update-delete-merge-copy-from-stdin).
 
-**ללא הגדרות.** `CREATE`, `ALTER`, `DROP` ו-`TRUNCATE` נדחים עם SQLSTATE 0A000 לא משנה מה התפקיד מחזיק, למעט טבלה זמנית של הסשן עצמו; ראו [טבלאות זמניות](#temporary-tables). (REQ-615, REQ-616)
+**ללא הגדרות.** `CREATE`, `ALTER` ו-`DROP` נדחים עם SQLSTATE 0A000 לא משנה מה התפקיד מחזיק, למעט טבלה זמנית של הסשן עצמו; ראו [טבלאות זמניות](#temporary-tables). `TRUNCATE` הוא כתיבת נתונים. (REQ-615, REQ-616)
 
 **אין תמיכת עסקאות אמיתית.** BEGIN/COMMIT/ROLLBACK מתקבלים ומתעלמים בשקט. כל משפט פועל באופן עצמאי. (REQ-587) [tool-verified: `server.py:146-158` — `in_transaction()` מחזיר תמיד `False`]
 
 **Timeout לשאילתה.** הצהרה רשאית לקחת את ה-timeout לבקשה של pgwire עצמו, `limits.request_timeouts.pgwire`, או את `limits.request_timeout` המשותף כשהוא אינו מוגדר; שניהם הגדרות של המפעיל. (REQ-590, REQ-1905) [tool-verified: `provisa/core/limits.py`, `server.py`]
 
-**פורמט פלט COPY הוא text או csv.** פורמט COPY בינארי של PG (`FORMAT binary`) אינו ממומש. [inferred: only `text` and `csv` branches exist in `_rows_to_copy_text` / `_rows_to_copy_csv`]
+**קלט COPY הוא text או csv.** `COPY ... TO STDOUT` כותב `text`, `csv` ו-`binary`; `COPY ... FROM STDIN` קורא `text` ו-`csv`. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 **החלפת פרמטרים היא ליטרלית.** פרמטרים `$1`, `$2`, ... מוחלפים כליטרלי SQL לפני הביצוע, לא נשלחים כפרמטרי bind למנוע ה-upstream. משמעות הדבר שמנוע ה-upstream לעולם לא רואה משפט מוכן (prepared statement). עבור Trino אין לכך השפעה מעשית; עבור מקורות pool-ישיר זה עוקף מטמון prepared-statement. (REQ-581) [tool-verified: `server.py:78-85`]
 

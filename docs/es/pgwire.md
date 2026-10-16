@@ -118,9 +118,9 @@ CLOSE ALL;   -- release every open cursor on this connection
 
 **Duración del cursor.** El servidor pgwire de Provisa no tiene máquina de estados de transacción (`ProvisaSession.in_transaction()` está fijado a `False`). Por eso cada cursor se comporta como si se hubiera declarado `WITH HOLD`: vive mientras dura la conexión, no hasta `COMMIT`. [tool-verified: `server.py:200` — `in_transaction()` always returns `False`] Las palabras clave `WITH HOLD` y `WITHOUT HOLD` se aceptan y se ignoran sin aviso: no hay ciclo de vida de cursores por transacción que aplicar.
 
-### Definiciones (CREATE, ALTER, DROP, TRUNCATE) {: #definitions-create-alter-drop-truncate }
+### Definiciones (CREATE, ALTER, DROP) {: #definitions-create-alter-drop }
 
-Nada se define a través de pgwire. Una sentencia que crea, altera o elimina un objeto (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, un índice, una secuencia o un esquema) se rechaza con SQLSTATE 0A000, tenga lo que tenga el rol; la excepción es una tabla temporal propia de la sesión (consulte [Tablas temporales](#temporary-tables)). Una tabla o vista es un objeto del modelo: créela en el modelo (páginas de administración, API de administración o configuración), o créela en el origen de datos e incorpórela al modelo. `TRUNCATE` se rechaza de la misma forma; `DELETE` es la forma gobernada de quitar filas. [tool-verified: `provisa/compiler/definitions.py`]
+Nada se define a través de pgwire. Una sentencia que crea, altera o elimina un objeto (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, un índice, una secuencia o un esquema) se rechaza con SQLSTATE 0A000, tenga el rol lo que tenga; la excepción es la tabla temporal propia de una sesión (consulte [Tablas temporales](#temporary-tables)). Una tabla o vista es un objeto del modelo: créela en el modelo (páginas de administración, API de administración o configuración), o créela en el origen de datos y admítala en el modelo. `TRUNCATE` no define nada: es una escritura de datos (consulte [Escrituras de datos](#data-writes-insert-update-delete-merge-copy-from-stdin)). [tool-verified: `provisa/compiler/definitions.py`]
 
 El rechazo se hace una vez, en el pipeline por el que pasa toda superficie SQL, así que SQL sobre HTTP, Flight y MCP rechazan las mismas sentencias con el mismo mensaje.
 
@@ -155,6 +155,8 @@ Las filas de una tabla registrada existente se escriben a través de pgwire como
 3. **Las filas que puede tocar.** El filtro de filas del rol, el mismo predicado que llevan sus lecturas, se añade al `WHERE` de un `UPDATE` o `DELETE`.
 4. **Las filas que deja.** Un rol filtrado solo puede escribir filas que luego podría leer: las filas de un `INSERT`, y los nuevos valores de un `UPDATE` que fija una columna que lee el filtro, se comprueban contra el filtro antes de enviar nada al origen.
 
+`TRUNCATE` también es una escritura de datos, ejecutada como tal y nunca reescrita como un `DELETE`. Necesita el derecho `write`, todas las columnas de la tabla escribibles por el rol y un origen que acepte eliminaciones. Vacía una tabla cada vez, y se rechaza a un rol con un filtro de filas en la tabla, ya que un `TRUNCATE` no puede aplicar el filtro: use `DELETE`, que sí lo hace. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
+
 Lo que no se puede decidir se rechaza por su nombre en lugar de admitirse con dudas (un `INSERT … SELECT`, un valor que no es ni un literal ni un parámetro enlazado, un filtro que lee una columna que la sentencia no proporciona). [tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
 ### COPY
@@ -170,9 +172,9 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
-Formatos admitidos: `text` (delimitado por tabuladores, predeterminado) y `csv`. El formato binario no se admite en la salida de COPY. [tool-verified: `copy_handler.py:36-52`]
+Formatos admitidos: `text` (delimitado por tabulaciones, predeterminado), `csv` y `binary`, el formato COPY binario de PostgreSQL, con el que lee la extensión postgres de DuckDB. (REQ-883) [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
 
-**COPY FROM STDIN** es una escritura de datos en una tabla registrada existente: la admite la misma admisión de escrituras que un `INSERT` de las mismas filas (consulte [Escrituras de datos](#data-writes-insert-update-delete-merge-copy-from-stdin)).
+**COPY FROM STDIN** es una escritura de datos en una tabla registrada existente: la admite la misma admisión de escritura que un `INSERT` de las mismas filas (consulte [Escrituras de datos](#data-writes-insert-update-delete-merge-copy-from-stdin)). Lee `text` (predeterminado) y `csv`. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 ### Transacciones y comandos de sesión {: #transactions-and-session-commands }
 
@@ -259,13 +261,13 @@ Algunas herramientas de BI basadas en JDBC envían una ráfaga de consultas a `i
 
 **Solo SQL.** El listener pgwire analiza y ejecuta solo SQL; no se aceptan cadenas GraphQL ni Cypher. (REQ-614) Las escrituras de datos en tablas existentes se admiten según los derechos del rol, sus concesiones de columna y su filtro de filas; consulte [Escrituras de datos](#data-writes-insert-update-delete-merge-copy-from-stdin).
 
-**Sin definiciones.** `CREATE`, `ALTER`, `DROP` y `TRUNCATE` se rechazan con SQLSTATE 0A000 tenga lo que tenga el rol, salvo una tabla temporal propia de la sesión; consulte [Tablas temporales](#temporary-tables). (REQ-615, REQ-616)
+**Sin definiciones.** `CREATE`, `ALTER` y `DROP` se rechazan con SQLSTATE 0A000 tenga el rol lo que tenga, salvo la tabla temporal propia de una sesión; consulte [Tablas temporales](#temporary-tables). `TRUNCATE` es una escritura de datos. (REQ-615, REQ-616)
 
 **Sin soporte real de transacciones.** BEGIN/COMMIT/ROLLBACK se aceptan y se ignoran silenciosamente. Cada sentencia se ejecuta de forma independiente. (REQ-587) [tool-verified: `server.py:146-158` — `in_transaction()` siempre devuelve `False`]
 
 **Tiempo límite de consulta.** Una sentencia puede usar el tiempo límite de solicitud propio de pgwire, `limits.request_timeouts.pgwire`, o el compartido `limits.request_timeout` cuando aquel no está definido; ambos son ajustes del operador. (REQ-590, REQ-1905) [tool-verified: `provisa/core/limits.py`, `server.py`]
 
-**El formato de salida de COPY es text o csv.** El formato binario COPY de PG (`FORMAT binary`) no está implementado. [inferred: solo existen las ramas `text` y `csv` en `_rows_to_copy_text` / `_rows_to_copy_csv`]
+**La entrada de COPY es text o csv.** `COPY ... TO STDOUT` escribe `text`, `csv` y `binary`; `COPY ... FROM STDIN` lee `text` y `csv`. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 **La sustitución de parámetros es literal.** Los parámetros `$1`, `$2`, ... se sustituyen como literales SQL antes de la ejecución, no se envían como parámetros de enlace al motor subyacente. Esto significa que el motor subyacente nunca ve una sentencia preparada. Para Trino esto no tiene impacto práctico; para orígenes de pool directo, evita el almacenamiento en caché de sentencias preparadas. (REQ-581) [tool-verified: `server.py:78-85`]
 

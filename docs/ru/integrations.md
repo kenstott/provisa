@@ -67,8 +67,8 @@ SCRAM-SHA-256, а не отправляется напрямую. Клиентс
 ### Ограничения {: #limitations }
 
 - Только SQL. GraphQL и Cypher через pgwire не принимаются.
-- Не только для чтения. `COPY ... FROM STDIN` вставляет строки в источники `postgresql`, `mysql`, `sqlite` и `mariadb`, поддерживается и DDL (см. ниже).
-- DDL (`CREATE`, `ALTER`, `DROP`) поддерживается и направляется по пути Trino или прямому пути; новая таблица регистрируется в контексте компиляции и сразу доступна для запросов. `COPY ... TO STDOUT` (экспорт) и `COPY ... FROM STDIN` (импорт) поддерживаются в форматах `text` и `csv`.
+- Не только чтение. Строки зарегистрированных таблиц записываются с помощью `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE` и `COPY ... FROM STDIN`, каждую из которых допускают право `write` роли, её предоставления колонок и её фильтр строк; см. [Запись данных](pgwire.md#data-writes-insert-update-delete-merge-copy-from-stdin).
+- Без определений: `CREATE`, `ALTER` и `DROP` отклоняются с SQLSTATE 0A000, кроме собственной временной таблицы сеанса; см. [Определения](pgwire.md#definitions-create-alter-drop). `COPY ... TO STDOUT` экспортирует в `text`, `csv` и `binary`; `COPY ... FROM STDIN` читает `text` и `csv`.
 - Запросы к `information_schema` и `pg_catalog` перехватываются и обслуживаются прослойкой каталога DuckDB — инструменты обнаружения схемы работают корректно.
 
 ---

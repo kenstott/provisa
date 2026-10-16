@@ -118,9 +118,9 @@ CLOSE ALL;   -- release every open cursor on this connection
 
 **游標生命週期。** Provisa 的 pgwire 伺服器沒有交易狀態機（`ProvisaSession.in_transaction()` 固定傳回 `False`）。因此每個游標的行為都如同宣告了 `WITH HOLD`：它在整個連線期間存續，而不是直至 `COMMIT` 為止。[tool-verified: `server.py:200` — `in_transaction()` always returns `False`] 關鍵字 `WITH HOLD` 及 `WITHOUT HOLD` 會被接受並靜默忽略——沒有需要執行的按交易劃分的游標生命週期。
 
-### 定義（CREATE、ALTER、DROP、TRUNCATE） {: #definitions-create-alter-drop-truncate }
+### 定義（CREATE、ALTER、DROP） {: #definitions-create-alter-drop }
 
-不會透過 pgwire 定義任何內容。建立、修改或移除物件的陳述式（`CREATE TABLE`、`CREATE TABLE … AS SELECT`、`CREATE VIEW`、`ALTER`、`DROP`、索引、序列或結構描述）不論角色持有甚麼，都會以 SQLSTATE 0A000 被拒絕；例外是工作階段自己的暫存資料表（請參閱[暫存資料表](#temporary-tables)）。資料表或檢視是模型物件：在模型中建立它們（管理頁面、管理 API 或設定），或在數據來源中建立後納入模型。`TRUNCATE` 以同樣方式被拒絕；`DELETE` 是移除資料列的受治理方式。[tool-verified: `provisa/compiler/definitions.py`]
+不會透過 pgwire 定義任何內容。建立、修改或移除物件的陳述式（`CREATE TABLE`、`CREATE TABLE … AS SELECT`、`CREATE VIEW`、`ALTER`、`DROP`、索引、序列或結構描述）不論角色持有甚麼，都會以 SQLSTATE 0A000 被拒絕；例外是工作階段自己的暫存資料表（請參閱[暫存資料表](#temporary-tables)）。資料表或檢視是模型物件：在模型中建立它們（管理頁面、管理 API 或設定），或在數據來源中建立後納入模型。`TRUNCATE` 不定義任何內容：它是數據寫入（請參閱[數據寫入](#data-writes-insert-update-delete-merge-copy-from-stdin)）。[tool-verified: `provisa/compiler/definitions.py`]
 
 拒絕只發生一次，位於每個 SQL 介面都會經過的管線中，因此 HTTP 上的 SQL、Flight 及 MCP 會以相同的訊息拒絕相同的陳述式。
 
@@ -155,6 +155,8 @@ DROP TABLE busy;
 3. **可以觸及的資料列。** 角色的資料列過濾（與其讀取所攜帶的謂詞相同）會加入 `UPDATE` 或 `DELETE` 的 `WHERE`。
 4. **保留下來的資料列。** 受過濾的角色只能寫入之後它能讀取的資料列：`INSERT` 的資料列，以及設定了過濾所讀取欄位的 `UPDATE` 的新值，會在向數據來源傳送任何內容之前對照過濾檢查。
 
+`TRUNCATE` 亦是數據寫入，按其本身執行，從不改寫為 `DELETE`。它需要 `write` 權利、該角色可寫入資料表的每個欄位，以及接受刪除的數據來源。它一次清空一張資料表；對資料表有資料列過濾的角色會被拒絕，因為 `TRUNCATE` 無法套用該過濾：請使用能套用過濾的 `DELETE`。（REQ-1942） [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
+
 無法判定的內容會被點名拒絕，而不是在有疑問時放行（`INSERT … SELECT`、既非字面值也非綁定參數的值、讀取陳述式沒有提供的欄位的過濾）。[tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
 ### COPY
@@ -170,9 +172,9 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
-支援的格式：`text`（以定位字元分隔，預設）及 `csv`。COPY 輸出不支援二進位格式。[tool-verified: `copy_handler.py:36-52`]
+支援的格式：`text`（以定位字元分隔，預設）、`csv` 及 `binary`，即 PostgreSQL 的二進位 COPY 格式，DuckDB 的 postgres 擴充以它讀取。（REQ-883） [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
 
-**COPY FROM STDIN** 是向現有已註冊資料表寫入數據：它由與相同資料列的 `INSERT` 相同的寫入准入放行（請參閱[數據寫入](#data-writes-insert-update-delete-merge-copy-from-stdin)）。
+**COPY FROM STDIN** 是向現有已註冊資料表寫入數據：它由與相同資料列的 `INSERT` 相同的寫入准入放行（請參閱[數據寫入](#data-writes-insert-update-delete-merge-copy-from-stdin)）。它讀取 `text`（預設）及 `csv`。[tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 ### 交易與工作階段命令 {: #transactions-and-session-commands }
 
@@ -259,13 +261,13 @@ jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<
 
 **僅限 SQL。** pgwire 監聽器僅解析並執行 SQL——不接受 GraphQL 及 Cypher 字串。（REQ-614） 對現有資料表的數據寫入，由角色的權利、其欄位授權及其資料列過濾放行；請參閱[數據寫入](#data-writes-insert-update-delete-merge-copy-from-stdin)。
 
-**不支援定義。** 不論角色持有甚麼，`CREATE`、`ALTER`、`DROP` 及 `TRUNCATE` 都會以 SQLSTATE 0A000 被拒絕，工作階段自己的暫存資料表除外；請參閱[暫存資料表](#temporary-tables)。（REQ-615、REQ-616）
+**不支援定義。** 不論角色持有甚麼，`CREATE`、`ALTER` 及 `DROP` 都會以 SQLSTATE 0A000 被拒絕，工作階段自己的暫存資料表除外；請參閱[暫存資料表](#temporary-tables)。`TRUNCATE` 是數據寫入。（REQ-615、REQ-616）
 
 **不支援真正的交易功能。** BEGIN/COMMIT/ROLLBACK 會被接受並靜默忽略。每個陳述式均獨立執行。（REQ-587）[tool-verified: `server.py:146-158`——`in_transaction()` 一律返回 `False`]
 
 **查詢逾時。** 陳述式可以使用 pgwire 本身的請求逾時 `limits.request_timeouts.pgwire`，未設定時使用共用的 `limits.request_timeout`；兩者都是營運設定。（REQ-590、REQ-1905） [tool-verified: `provisa/core/limits.py`, `server.py`]
 
-**COPY 輸出格式為 text 或 csv。** 尚未實作 PG 二進制 COPY 格式（`FORMAT binary`）。[inferred：`_rows_to_copy_text` / `_rows_to_copy_csv` 中僅存在 `text` 及 `csv` 分支]
+**COPY 輸入為 text 或 csv。** `COPY ... TO STDOUT` 寫出 `text`、`csv` 及 `binary`；`COPY ... FROM STDIN` 讀取 `text` 及 `csv`。[tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 **參數替換屬字面值形式。** `$1`、`$2`……等參數會在執行前以 SQL 字面值替換，而非以綁定參數形式傳送至底層引擎。這意味著底層引擎永遠不會看到已準備的陳述式。對 Trino 而言此舉沒有實際影響；對於直接連接池的來源，則會繞過已準備陳述式的快取機制。（REQ-581）[tool-verified: `server.py:78-85`]
 

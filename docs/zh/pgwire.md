@@ -118,9 +118,9 @@ CLOSE ALL;   -- release every open cursor on this connection
 
 **游标生命周期。** Provisa 的 pgwire 服务器没有事务状态机（`ProvisaSession.in_transaction()` 固定返回 `False`）。因此每个游标的行为都如同声明了 `WITH HOLD`：它在整个连接期间存续，而不是到 `COMMIT` 为止。[tool-verified: `server.py:200` — `in_transaction()` always returns `False`] 关键字 `WITH HOLD` 和 `WITHOUT HOLD` 会被接受并静默忽略——没有需要执行的按事务划分的游标生命周期。
 
-### 定义（CREATE、ALTER、DROP、TRUNCATE） {: #definitions-create-alter-drop-truncate }
+### 定义（CREATE、ALTER、DROP） {: #definitions-create-alter-drop }
 
-不通过 pgwire 定义任何内容。创建、修改或删除对象的语句（`CREATE TABLE`、`CREATE TABLE … AS SELECT`、`CREATE VIEW`、`ALTER`、`DROP`、索引、序列或 schema）无论角色持有什么，都会以 SQLSTATE 0A000 被拒绝；例外是会话自己的临时表（参见[临时表](#temporary-tables)）。表或视图是模型对象：在模型中创建它们（管理页面、管理 API 或配置），或在数据源中创建后纳入模型。`TRUNCATE` 以同样方式被拒绝；`DELETE` 是删除行的受治理方式。[tool-verified: `provisa/compiler/definitions.py`]
+不通过 pgwire 定义任何内容。创建、修改或删除对象的语句（`CREATE TABLE`、`CREATE TABLE … AS SELECT`、`CREATE VIEW`、`ALTER`、`DROP`、索引、序列或 schema）无论角色持有什么，都会以 SQLSTATE 0A000 被拒绝；例外是会话自己的临时表（参见[临时表](#temporary-tables)）。表或视图是模型对象：在模型中创建它们（管理页面、管理 API 或配置），或在数据源中创建后纳入模型。`TRUNCATE` 不定义任何内容：它是数据写入（参见[数据写入](#data-writes-insert-update-delete-merge-copy-from-stdin)）。[tool-verified: `provisa/compiler/definitions.py`]
 
 拒绝只发生一次，位于每个 SQL 界面都会经过的管道中，因此 HTTP 上的 SQL、Flight 和 MCP 会以相同的消息拒绝相同的语句。
 
@@ -155,6 +155,8 @@ DROP TABLE busy;
 3. **可以触及的行。** 角色的行过滤（与其读取所携带的谓词相同）被添加到 `UPDATE` 或 `DELETE` 的 `WHERE` 中。
 4. **保留下来的行。** 受过滤的角色只能写入之后它能读取的行：`INSERT` 的行，以及设置了过滤所读取的列的 `UPDATE` 的新值，会在向数据源发送任何内容之前对照过滤进行检查。
 
+`TRUNCATE` 也是数据写入，按其本身执行，从不改写为 `DELETE`。它需要 `write` 权利、该角色可写入表的每一列，以及接受删除的数据源。它一次清空一张表；对表有行过滤的角色会被拒绝，因为 `TRUNCATE` 无法应用该过滤：请使用能应用过滤的 `DELETE`。（REQ-1942） [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
+
 无法判定的内容会被点名拒绝，而不是在存疑时放行（`INSERT … SELECT`、既非字面量也非绑定参数的值、读取语句未提供的列的过滤）。[tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
 ### COPY
@@ -170,9 +172,9 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
-支持的格式：`text`（制表符分隔，默认）和 `csv`。COPY 输出不支持二进制格式。[tool-verified: `copy_handler.py:36-52`]
+支持的格式：`text`（制表符分隔，默认）、`csv` 和 `binary`，即 PostgreSQL 的二进制 COPY 格式，DuckDB 的 postgres 扩展用它读取。（REQ-883） [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
 
-**COPY FROM STDIN** 是向已有注册表写入数据：它由与相同行的 `INSERT` 相同的写入准入放行（参见[数据写入](#data-writes-insert-update-delete-merge-copy-from-stdin)）。
+**COPY FROM STDIN** 是向已有注册表写入数据：它由与相同行的 `INSERT` 相同的写入准入放行（参见[数据写入](#data-writes-insert-update-delete-merge-copy-from-stdin)）。它读取 `text`（默认）和 `csv`。[tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 ### 事务与会话命令 {: #transactions-and-session-commands }
 
@@ -259,13 +261,13 @@ jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<
 
 **仅限 SQL。** pgwire 监听器仅解析并执行 SQL——不接受 GraphQL 和 Cypher 字符串。（REQ-614） 对已有表的数据写入由角色的权利、其列授权和其行过滤放行；参见[数据写入](#data-writes-insert-update-delete-merge-copy-from-stdin)。
 
-**不支持定义。** 无论角色持有什么，`CREATE`、`ALTER`、`DROP` 和 `TRUNCATE` 都会以 SQLSTATE 0A000 被拒绝，会话自己的临时表除外；参见[临时表](#temporary-tables)。（REQ-615、REQ-616）
+**不支持定义。** 无论角色持有什么，`CREATE`、`ALTER` 和 `DROP` 都会以 SQLSTATE 0A000 被拒绝，会话自己的临时表除外；参见[临时表](#temporary-tables)。`TRUNCATE` 是数据写入。（REQ-615、REQ-616）
 
 **不支持真正的事务功能。** BEGIN/COMMIT/ROLLBACK 会被接受并静默忽略。每条语句均独立执行。（REQ-587）[tool-verified: `server.py:146-158`——`in_transaction()` 始终返回 `False`]
 
 **查询超时。** 语句可以使用 pgwire 自己的请求超时 `limits.request_timeouts.pgwire`，未设置时使用共享的 `limits.request_timeout`；两者都是运维设置。（REQ-590、REQ-1905） [tool-verified: `provisa/core/limits.py`, `server.py`]
 
-**COPY 输出格式为 text 或 csv。** 尚未实现 PG 二进制 COPY 格式（`FORMAT binary`）。[inferred：`_rows_to_copy_text` / `_rows_to_copy_csv` 中仅存在 `text` 和 `csv` 分支]
+**COPY 输入为 text 或 csv。** `COPY ... TO STDOUT` 写出 `text`、`csv` 和 `binary`；`COPY ... FROM STDIN` 读取 `text` 和 `csv`。[tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 **参数替换为字面量形式。** `$1`、`$2`……等参数会在执行前以 SQL 字面量替换，而非以绑定参数形式发送至底层引擎。这意味着底层引擎永远不会看到已准备的语句。对 Trino 而言这没有实际影响；对于直接连接池的数据源，则会绕过预准备语句的缓存机制。（REQ-581）[tool-verified: `server.py:78-85`]
 

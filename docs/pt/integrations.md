@@ -63,8 +63,8 @@ A tabela completa de interface × método está no [Modelo de segurança](securi
 ### Limitações {: #limitations }
 
 - Somente SQL. GraphQL e Cypher não são aceitos via pgwire.
-- Não é somente leitura. `COPY ... FROM STDIN` insere linhas em fontes `postgresql`, `mysql`, `sqlite`, e `mariadb`, e DDL é suportado (veja abaixo).
-- DDL (`CREATE`, `ALTER`, `DROP`) é suportado e despachado para o caminho Trino ou direto; a nova tabela é registrada no contexto de compilação e é imediatamente consultável. `COPY ... TO STDOUT` (exportação) e `COPY ... FROM STDIN` (importação) são suportados nos formatos `text` e `csv`.
+- Não é somente leitura. As linhas das tabelas registradas são gravadas com `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE` e `COPY ... FROM STDIN`, cada uma admitida pelo direito `write` da função, suas concessões de colunas e seu filtro de linhas; veja [Gravações de dados](pgwire.md#data-writes-insert-update-delete-merge-copy-from-stdin).
+- Sem definições: `CREATE`, `ALTER` e `DROP` são recusados com SQLSTATE 0A000, exceto a tabela temporária própria de uma sessão; veja [Definições](pgwire.md#definitions-create-alter-drop). `COPY ... TO STDOUT` exporta em `text`, `csv` e `binary`; `COPY ... FROM STDIN` lê `text` e `csv`.
 - Consultas a `information_schema` e `pg_catalog` são interceptadas e respondidas a partir de um shim de catálogo DuckDB — ferramentas de descoberta de esquema funcionam corretamente.
 
 ---

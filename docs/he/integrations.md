@@ -63,8 +63,8 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 ### מגבלות {: #limitations }
 
 - SQL בלבד. GraphQL ו-Cypher אינם מתקבלים דרך pgwire.
-- לא לקריאה בלבד (read-only). `COPY ... FROM STDIN` מכניס שורות ל-`postgresql`, `mysql`, `sqlite`, ו-`mariadb`, ו-DDL נתמך (ראו למטה).
-- DDL (`CREATE`, `ALTER`, `DROP`) נתמך ומועבר לנתיב Trino או הישיר; הטבלה החדשה נרשמת להקשר הקומפילציה וניתנת לשאילתה מיידית. `COPY ... TO STDOUT` (ייצוא) ו-`COPY ... FROM STDIN` (ייבוא) נתמכים בפורמטים `text` ו-`csv`.
+- לא לקריאה בלבד. שורות של טבלאות רשומות נכתבות עם `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE` ו-`COPY ... FROM STDIN`, כל אחת מתקבלת לפי זכות ה-`write` של התפקיד, הענקות העמודות שלו ומסנן השורות שלו; ראו [כתיבת נתונים](pgwire.md#data-writes-insert-update-delete-merge-copy-from-stdin).
+- ללא הגדרות: `CREATE`, `ALTER` ו-`DROP` נדחים עם SQLSTATE 0A000, למעט טבלה זמנית של הסשן עצמו; ראו [הגדרות](pgwire.md#definitions-create-alter-drop). `COPY ... TO STDOUT` מייצא ב-`text`, `csv` ו-`binary`; `COPY ... FROM STDIN` קורא `text` ו-`csv`.
 - שאילתות `information_schema` ו-`pg_catalog` מיורטות ונענות מ-shim קטלוג DuckDB — כלי גילוי סכמה עובדים כראוי.
 
 ---
