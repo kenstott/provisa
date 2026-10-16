@@ -51,6 +51,42 @@ async def open_demo(name: str, request: Request) -> dict:
     return {"org_id": opened.org_id, "demo": opened.demo, "token": opened.token}
 
 
+@named_router.post("/closing", status_code=204)
+async def closing(request: Request) -> None:
+    """The visitor's tab of this sandbox is closing (REQ-2065), said by the tab as it unloads. A
+    visitor's sandbox is deleted unless a request reaches it within the grace period; a named
+    sandbox, a signed-in person's, is never deleted for it -- marked nothing, answered the same."""
+    from provisa.api.demo_sandbox import VISITOR, mark_closing, visitor_user_id
+    from provisa.api.sandbox_tier import is_sandbox_tier_org, is_template_org
+    from provisa.core.request_context import require_current_org
+
+    _require_tier()
+    org_id = require_current_org()
+    if not is_sandbox_tier_org(org_id) or is_template_org(org_id):
+        raise ApiError(404, "sandbox.not_a_sandbox", "This organization is not a demo sandbox")
+    identity = getattr(request.state, "identity", None)
+    if identity is not None and identity.user_id == visitor_user_id(org_id):
+        await mark_closing(org_id)
+        return
+    if await _kind_of(org_id) == VISITOR:
+        raise ApiError(403, "sandbox.not_its_visitor", "Only the sandbox's visitor closes it")
+
+
+async def _kind_of(org_id: str) -> str | None:
+    from sqlalchemy import select
+
+    from provisa.api.admin.orgs_router import _admin_pool
+    from provisa.core.schema_admin import demo_sandboxes
+
+    async with _admin_pool().acquire() as conn:
+        row = (
+            await conn.execute_core(
+                select(demo_sandboxes.c.kind).where(demo_sandboxes.c.org_id == org_id)
+            )
+        ).fetchone()
+    return None if row is None else row[0]
+
+
 @named_router.post("/{name}")
 async def open_named(name: str, request: Request) -> dict:
     """The signed-in person's own sandbox of the published demo ``name``: the one they already
