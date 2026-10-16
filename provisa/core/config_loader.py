@@ -112,7 +112,7 @@ def read_config_with_includes(
         fragment = read_config_with_includes(inc_path, _seen | {file_path})
         _merge_fragment(raw, fragment, inc_path)
     if not _seen:
-        views_as_tables(raw)
+        commit_time_columns(views_as_tables(raw))
     return raw
 
 
@@ -252,6 +252,22 @@ def views_as_tables(raw: dict) -> dict:
     return raw
 
 
+def commit_time_columns(raw: dict) -> dict:
+    """``raw`` with each table kept by change data capture given ``source_committed_at``, the
+    commit time its landing carries (REQ-1163, federation/commit_time.py). Returns ``raw``."""
+    from provisa.federation.commit_time import carries, with_column
+
+    sources = {s.get("id"): s for s in raw.get("sources") or [] if isinstance(s, dict)}
+    for table in raw.get("tables") or []:
+        source = sources.get(table.get("source_id"))
+        if source is None or not table.get("columns"):
+            continue
+        signal = table.get("change_signal") or source.get("change_signal")
+        if carries(source.get("type"), signal):
+            table["columns"] = with_column(table["columns"])
+    return raw
+
+
 def parse_config(path: str | Path) -> ProvisaConfig:  # REQ-250, REQ-1669
     """Parse and validate a YAML config file (with its ``includes:``). Does NOT resolve secrets."""
     return ProvisaConfig.model_validate(read_config_with_includes(path))
@@ -288,12 +304,14 @@ def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # 
     from provisa.core.secrets import resolve_secrets_in_dict
 
     config = ProvisaConfig.model_validate(
-        kafka_topics_as_tables(views_as_tables(resolve_secrets_in_dict(data))),
+        kafka_topics_as_tables(commit_time_columns(views_as_tables(resolve_secrets_in_dict(data)))),
         context={STORED_MODEL: stored},
     )
     # What is STORED is the config as written: a credential stays the reference the file gave,
     # and its value is resolved where it is used.
-    config._written = _as_written(config, kafka_topics_as_tables(views_as_tables(data)))
+    config._written = _as_written(
+        config, kafka_topics_as_tables(commit_time_columns(views_as_tables(data)))
+    )
     return config
 
 

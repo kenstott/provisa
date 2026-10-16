@@ -129,7 +129,9 @@ async def test_a_table_read_by_its_adapter_refuses_a_landing_filter():
         return []
 
     loader = SourceRowLoader(engine=None, adapter_loaders={"openapi": adapter})
-    table = SimpleNamespace(table_name="alerts", schema_name="openapi", landing_filter="id > 1")
+    table = SimpleNamespace(
+        table_name="alerts", schema_name="openapi", landing_filter="id > 1", columns=[]
+    )
     with pytest.raises(UnsupportedSourceFetch, match="applied by a SQL read of its source"):
         loader.replica_source(
             SimpleNamespace(source_pools=None), SimpleNamespace(id="gh", type="openapi"), table, []

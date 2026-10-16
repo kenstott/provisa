@@ -48,6 +48,8 @@ async def _build(meta: list[AvailableColumnType], *columns: ColumnInput):
         ),
         # what a natively nested column is at its source (REQ-1965) is not this test's subject
         patch.object(_table_ops, "_settle_nested_columns", new=AsyncMock(return_value=None)),
+        # nor is the commit time a change-data-capture table carries (REQ-1163)
+        patch.object(_table_ops, "_commit_time_column", new=AsyncMock(return_value=[])),
     ):
         return await _table_ops._build_columns_for_input(None, _input(*columns))
 

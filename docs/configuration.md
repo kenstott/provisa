@@ -933,8 +933,8 @@ Every view with history answers three more columns, granted as its source-time c
 
 **Source time from change data capture.** A table landed by change data capture carries its commit time as `source_committed_at`, for a view with history to name as its source time:
 
-- Debezium: the database commit time each change event carries (`source.ts_ms`).
-- PostgreSQL on the `native` change signal: the commit time PostgreSQL keeps for each row, when the source has `track_commit_timestamp = on`. Enable it to get source time on the native signal; without it the table carries no `source_committed_at`.
+- Debezium: the database commit time each change event carries (`source.ts_ms`). A row copied by a full build of the replica has no change event, so its `source_committed_at` is empty until the row next changes, unless the source is PostgreSQL with commit timestamps on (next item).
+- PostgreSQL on the `native` change signal: the commit time PostgreSQL keeps for each row (`pg_xact_commit_timestamp(xmin)`), read by the source's own driver when the replica is built. PostgreSQL keeps it only with `track_commit_timestamp = on`. Enable it to get source time on the native signal; without it `source_committed_at` is empty. Turning the setting on or off rebuilds the replica.
 
 Kafka topics without a Debezium envelope carry no commit time.
 
