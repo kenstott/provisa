@@ -142,6 +142,7 @@ nav:
       - Fake Methods: fake-methods.md
   - Security & Governance:
       - Security Model: security.md
+      - Regions: regions.md
       - Secrets: secrets.md
       - Business Glossary: glossary.md
       - Metadata Export: metadata-export.md
