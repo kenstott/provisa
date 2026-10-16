@@ -53,7 +53,7 @@ dependencies = [
     # mcp.server.mcpserver. Unpinned, the image resolved to 2.0.0 and the MCP
     # endpoint failed to start with ModuleNotFoundError. Hold the 1.x line until
     # the server is ported.
-    "mcp>=1.2.0,<2",
+    "mcp>=1.30.0,<2",
     "aisuite>=0.1",
     # REQ-1808: aisuite's own "openai" provider (used for vendor="openai" and for ANY REQ-1790
     # custom AI endpoint, since that's how a custom endpoint's base_url/api_key are actually
