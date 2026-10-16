@@ -935,6 +935,90 @@
       "agricultureRecap": {
         "title": "你看到了甚麼",
         "description": "保險公司自己的資料即時讀取,公開的損失、天氣和產量一次載入,按縣和作物年度在一個受管治的模型中配對:一個檢視回答天氣是否解釋了損失,可用 SQL、GraphQL 和 REST。"
+      },
+      "retailScenario": {
+        "title": "一個集團，兩個區域",
+        "description": "一間零售集團把 EU 和 US 兩間附屬公司作為一盤生意經營。它能否做到而不違反 GDPR？每間附屬公司都有自己的數據庫：這是 EU 的數據庫，包含其會員客戶、他們的推廣同意、訂單、員工，以及員工發往集團以外的電郵。"
+      },
+      "retailRegions": {
+        "title": "每個區域只定義一次",
+        "description": "US 附屬公司的數據庫，位於 US。模型宣告兩個區域，並只說一次：每張表位於哪裏，哪些視圖在哪裏建立。第二個 Provisa 節點在 EU 運行：它把 EU 的表複製到 EU 自己的儲存，並在那裏建立 EU 的視圖。你在 US 節點上，它只從那個 EU 儲存讀取 EU 數據，所以每條跨境規則都在同一處執行。"
+      },
+      "retailEuCustomers": {
+        "title": "一張位於 EU 的 EU 表",
+        "description": "EU 的客戶。這張表把 EU 指定為它的區域：它的行只會複製到 EU 的儲存，也只在那裏計算。其他地方的讀者只能透過 EU 的視圖取得，否則完全無法取得。"
+      },
+      "retailRequests": {
+        "title": "資料當事人請求",
+        "description": "集團的請求登記冊：誰要求查閱自己的資料，誰要求刪除資料，以及時間。它本身不包含任何客戶數據。"
+      },
+      "retailJoin": {
+        "title": "請求如何找到當事人",
+        "description": "請求透過電郵地址與每間附屬公司的客戶關聯。一個請求就是這樣在兩間附屬公司中找到同一個人。"
+      },
+      "retailAsAnalyst": {
+        "title": "以集團分析員身份",
+        "description": "接下來，SQL 瀏覽器以 group_analyst 的身份運行，他在 US 負責集團報告。"
+      },
+      "retailGroupView": {
+        "title": "集團報告，EU 客戶已假名化",
+        "description": "集團的每一位會員客戶。US 客戶按原樣顯示；EU 客戶以 EU 計算出的假名顯示，沒有姓名或地址。EU 部分是從 EU 的儲存讀取的，這次查詢的紀錄寫明作答的區域是 EU。"
+      },
+      "retailGroupGraphql": {
+        "title": "同樣的內容，用 GraphQL",
+        "description": "透過 GraphQL 存取同一個集團視圖：一個模型，所有傳輸方式，相同的規則。"
+      },
+      "retailAsMarketing": {
+        "title": "以 EU 市場推廣身份",
+        "description": "接下來，SQL 瀏覽器以 marketing_eu 的身份運行。"
+      },
+      "retailAudience": {
+        "title": "只有同意的客戶",
+        "description": "EU 市場推廣讀取同意接收推廣的 EU 客戶，而且只限這些客戶。該視圖在 EU 以 EU 的行建立。"
+      },
+      "retailAsDpo": {
+        "title": "以保障資料主任身份",
+        "description": "接下來，SQL 瀏覽器以 dpo 的身份運行，他負責回覆資料當事人請求。"
+      },
+      "retailAccess": {
+        "title": "一項查閱請求，已回覆",
+        "description": "集團就每項查閱請求背後的那個人所持有的一切，來自兩間附屬公司，一次查詢完成。Amélie Fournier 在 EU 和 US 都是會員。"
+      },
+      "retailErasure": {
+        "title": "一次刪除，已規劃",
+        "description": "就每項刪除請求，集團要刪除的每一行：所屬附屬公司、所在表及其鍵。每間附屬公司在自己的區域刪除自己的行。"
+      },
+      "retailAsReviewer": {
+        "title": "以內幕資料審查員身份",
+        "description": "接下來，SQL 瀏覽器以 reviewer 的身份運行，即集團的內幕資料審查。"
+      },
+      "retailQueue": {
+        "title": "審查隊列",
+        "description": "EU 員工的外發電郵，在 EU 評分：個人地址、附帶的客戶紀錄、大量匯出。隊列包含分數、訊號和發件人的假名。任何電郵內文都不會離開 EU，發件人亦被隱去。"
+      },
+      "retailAsEuReviewer": {
+        "title": "以 EU 的審查員身份",
+        "description": "接下來，SQL 瀏覽器以帶有 region__eu 的 reviewer 身份運行：一位區域為 EU 的審查員。"
+      },
+      "retailReveal": {
+        "title": "發件人，在 EU 顯示",
+        "description": "同一個隊列。發件人欄的遮罩清單只向同時持有 region__eu 的審查員顯示發件人；其他所有人讀到的都是隱去的值。這只是一項授權，reviewer 加 region__eu，無需為這個組合建立角色。"
+      },
+      "retailAsAdmin": {
+        "title": "回到所有角色",
+        "description": "接下來，SQL 瀏覽器再次以所有角色的身份運行。"
+      },
+      "retailAudit": {
+        "title": "一份紀錄，兩個區域",
+        "description": "導覽運行過的每條語句：誰運行、針對甚麼、由哪個區域作答。一條覆蓋兩個區域的審計追蹤。"
+      },
+      "retailLimits": {
+        "title": "這是甚麼，不是甚麼",
+        "description": "這些功能可以幫助符合 GDPR 關於數據存放位置和誰可讀取的規則，但它們不能令集團合規。這需要熟悉適用的資料保障和跨境轉移規則的人主動設計。合法依據、影響評估、保留以及任何職工委員會協議，仍是集團自己的法律程序。"
+      },
+      "retailRecap": {
+        "title": "你看到了甚麼",
+        "description": "一個模型定義了兩個區域：每張表位於哪裏，哪些視圖在哪裏建立，以及誰讀取甚麼。集團報告讀取的是假名化的 EU 客戶，EU 市場推廣只讀取同意的客戶，查閱請求和刪除各自只是一次查詢。內幕資料審查只在 EU 顯示發件人，每一次讀取都在同一份紀錄中。"
       }
     },
     "status": {
@@ -1003,6 +1087,10 @@
       "agriculture": {
         "title": "天氣與農作物保險損失",
         "summary": "一家農作物保險公司的問題:天氣能否解釋其投資組合的損失。它自己的農場、保單和索償按縣和作物年度,與 USDA 按原因劃分的損失、NOAA 的天氣和 NASS 的產量連接起來,以 SQL、GraphQL 和 REST 作答。"
+      },
+      "retail": {
+        "title": "一個集團，兩個區域",
+        "summary": "一間擁有 EU 和 US 附屬公司的零售集團，在 GDPR 下作為一盤生意經營：EU 數據留在 EU，集團報告以假名化方式讀取，查閱、刪除、內幕資料審查和審計各自只是一次查詢。"
       }
     }
   }

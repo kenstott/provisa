@@ -111,6 +111,14 @@ describe("a demo's steps, as the runner walks them", () => {
     });
   });
 
+  it("hands a set of roles, a pseudo-role among them, to the SQL explorer", () => {
+    // REQ-2057: reviewer,region__eu is no single option of the picker; the explorer offers it.
+    const [set] = demoTourSteps([{ key: "s", role: "reviewer,region__eu" }], EXAMPLES);
+    expect(set.openQuery).toEqual({ stateKey: "role", text: "reviewer,region__eu" });
+    expect(set.element).toBe('[data-testid="sql-role"]');
+    expect(set.chooseOnNext).toBeUndefined();
+  });
+
   it("shows the environment switcher and picks the environment on Next", () => {
     // REQ-2053: the steps after it read that environment.
     const [env] = demoTourSteps([{ key: "e", env: "dev" }], EXAMPLES);

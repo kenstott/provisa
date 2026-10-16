@@ -935,6 +935,90 @@
       "agricultureRecap": {
         "title": "您看到了什么",
         "description": "保险公司自己的数据实时读取,公开的损失、天气和产量一次载入,按县和作物年度在一个受治理的模型中匹配:一个视图回答天气是否解释了损失,可用 SQL、GraphQL 和 REST。"
+      },
+      "retailScenario": {
+        "title": "一个集团，两个区域",
+        "description": "一家零售集团把 EU 和 US 两家子公司作为一个业务来经营。它能做到这一点而不违反 GDPR 吗？每家子公司都有自己的数据库：这是 EU 的数据库，包含其会员客户、他们的营销同意、订单、员工，以及员工发往集团外部的邮件。"
+      },
+      "retailRegions": {
+        "title": "每个区域只定义一次",
+        "description": "US 子公司的数据库，位于 US。模型声明了两个区域，并且只说一次：每张表位于哪里，哪些视图在哪里构建。第二个 Provisa 节点运行在 EU：它把 EU 的表复制到 EU 自己的存储中，并在那里构建 EU 的视图。你在 US 节点上，它只从那个 EU 存储读取 EU 数据，所以每条跨境规则都在同一个地方执行。"
+      },
+      "retailEuCustomers": {
+        "title": "一张位于 EU 的 EU 表",
+        "description": "EU 的客户。这张表把 EU 指定为它的区域：它的行只会复制到 EU 的存储中，也只在那里计算。其他地方的读者只能通过 EU 的视图获取它们，否则完全无法获取。"
+      },
+      "retailRequests": {
+        "title": "数据主体请求",
+        "description": "集团的请求登记册：谁要求查看自己的数据，谁要求删除数据，以及时间。它本身不包含任何客户数据。"
+      },
+      "retailJoin": {
+        "title": "请求如何找到本人",
+        "description": "请求通过电子邮件地址与每家子公司的客户关联。一个请求就是这样在两家子公司中找到同一个人的。"
+      },
+      "retailAsAnalyst": {
+        "title": "以集团分析师身份",
+        "description": "接下来，SQL 浏览器以 group_analyst 的身份运行，他在 US 负责集团报表。"
+      },
+      "retailGroupView": {
+        "title": "集团报表，EU 客户已假名化",
+        "description": "集团的每一位会员客户。US 客户按原样显示；EU 客户以 EU 计算出的假名显示，没有姓名或地址。EU 部分是从 EU 的存储中读取的，这次查询的记录写明作答的区域是 EU。"
+      },
+      "retailGroupGraphql": {
+        "title": "同样的内容，用 GraphQL",
+        "description": "通过 GraphQL 访问同一个集团视图：一个模型，所有传输方式，相同的规则。"
+      },
+      "retailAsMarketing": {
+        "title": "以 EU 营销身份",
+        "description": "接下来，SQL 浏览器以 marketing_eu 的身份运行。"
+      },
+      "retailAudience": {
+        "title": "只有同意的客户",
+        "description": "EU 营销读取同意接收营销的 EU 客户，且仅限这些客户。该视图在 EU 中由 EU 的行构建。"
+      },
+      "retailAsDpo": {
+        "title": "以数据保护官身份",
+        "description": "接下来，SQL 浏览器以 dpo 的身份运行，他负责答复数据主体请求。"
+      },
+      "retailAccess": {
+        "title": "一项访问请求，已答复",
+        "description": "集团就每项访问请求背后的那个人所持有的一切，来自两家子公司，一次查询完成。Amélie Fournier 在 EU 和 US 都是会员。"
+      },
+      "retailErasure": {
+        "title": "一次删除，已规划",
+        "description": "针对每项删除请求，集团要删除的每一行：所属子公司、所在表及其键。每家子公司在自己的区域中删除自己的行。"
+      },
+      "retailAsReviewer": {
+        "title": "以内幕信息审查员身份",
+        "description": "接下来，SQL 浏览器以 reviewer 的身份运行，即集团的内幕信息审查。"
+      },
+      "retailQueue": {
+        "title": "审查队列",
+        "description": "EU 员工的外发邮件，在 EU 中评分：个人地址、附带的客户记录、批量导出。队列包含分数、信号和发件人的假名。任何邮件正文都不会离开 EU，发件人也被隐去。"
+      },
+      "retailAsEuReviewer": {
+        "title": "以 EU 的审查员身份",
+        "description": "接下来，SQL 浏览器以带有 region__eu 的 reviewer 身份运行：一位区域为 EU 的审查员。"
+      },
+      "retailReveal": {
+        "title": "发件人，在 EU 中显示",
+        "description": "同一个队列。发件人列的脱敏列表只向同时持有 region__eu 的审查员显示发件人；其他所有人读到的都是隐去的值。这只是一项授权，reviewer 加 region__eu，无需为这一组合创建角色。"
+      },
+      "retailAsAdmin": {
+        "title": "回到所有角色",
+        "description": "接下来，SQL 浏览器再次以所有角色的身份运行。"
+      },
+      "retailAudit": {
+        "title": "一份记录，两个区域",
+        "description": "导览运行过的每条语句：谁运行的、针对什么、由哪个区域作答。一条覆盖两个区域的审计跟踪。"
+      },
+      "retailLimits": {
+        "title": "这是什么，不是什么",
+        "description": "这些功能可以帮助满足 GDPR 关于数据存放位置和谁可以读取的规则，但它们不能让集团合规。这需要了解适用的数据保护和跨境传输规则的人进行主动设计。合法依据、影响评估、保留以及任何职工委员会协议，仍是集团自己的法律流程。"
+      },
+      "retailRecap": {
+        "title": "你看到了什么",
+        "description": "一个模型定义了两个区域：每张表位于哪里，哪些视图在哪里构建，以及谁读取什么。集团报表读取的是假名化的 EU 客户，EU 营销只读取同意的客户，访问请求和删除各自只是一次查询。内幕信息审查只在 EU 中显示发件人，每一次读取都在同一份记录中。"
       }
     },
     "status": {
@@ -1003,6 +1087,10 @@
       "agriculture": {
         "title": "天气与农作物保险损失",
         "summary": "一家农作物保险公司的问题:天气能否解释其投资组合的损失。它自己的农场、保单和理赔按县和作物年度,与 USDA 按原因划分的损失、NOAA 的天气和 NASS 的产量连接起来,用 SQL、GraphQL 和 REST 作答。"
+      },
+      "retail": {
+        "title": "一个集团，两个区域",
+        "summary": "一家拥有 EU 和 US 子公司的零售集团，在 GDPR 下作为一个业务经营：EU 数据留在 EU，集团报表以假名化方式读取，访问、删除、内幕信息审查和审计各自只是一次查询。"
       }
     }
   }

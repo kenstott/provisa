@@ -199,6 +199,15 @@ export function demoTourSteps(
         element: '[data-testid="glossary-detail"]',
       };
     }
+    if (def.role !== undefined && def.role.includes(",")) {
+      // A set of roles, a pseudo-role among them (reviewer,region__eu, REQ-2057): handed to the
+      // SQL explorer, which offers it as its own run-as entry and picks it.
+      return {
+        ...page,
+        openQuery: { stateKey: "role", text: def.role },
+        element: RUN_AS,
+      };
+    }
     if (def.role !== undefined) {
       return {
         ...page,

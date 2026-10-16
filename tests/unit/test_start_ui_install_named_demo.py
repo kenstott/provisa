@@ -308,3 +308,30 @@ def test_both_ways_a_demo_starts_stop_the_others_first() -> None:
     function = function[: function.index("\n}\n")]
     assert 'docker compose -p "$project" down\n' in function + "\n"
     assert "-v" not in function.split("docker compose -p")[1].split("\n")[0]
+
+
+def test_a_named_demo_in_regions_runs_a_headless_node_per_other_region() -> None:
+    """REQ-2035: demo.yaml `regions` -- the visitor's node is its region's node, and each headless
+    region gets an API-only node of its own on the same control plane, its protocol servers off or
+    moved, stopped with the rest."""
+    assert '_BACKEND_ENV+=( PROVISA_REGION="$DEMO_VISITOR_REGION" )' in TEXT
+    headless = TEXT[TEXT.index("start_headless_nodes() {") :]
+    headless = headless[: headless.index("\n}\n")]
+    assert 'PROVISA_REGION="$_r"' in headless
+    for off in ("PROVISA_PGWIRE_PORT=0", "PROVISA_MCP_PORT=0", "PROVISA_BOLT_PORT=0"):
+        assert off in headless
+    assert '--port "$((PROVISA_API_PORT + _i))"' in headless
+    assert 'export PROVISA_DEMO_REGIONS_PG_URL="$TENANT_DATABASE_URL"' in TEXT
+    cleanup = TEXT[TEXT.index("cleanup() {") :]
+    assert '"${HEADLESS_PIDS[@]}"' in cleanup[: cleanup.index("\n}\n")]
+
+
+def test_the_regions_of_a_demo_are_read_from_its_demo_yaml(tmp_path: Path) -> None:
+    (tmp_path / "demo.yaml").write_text("regions:\n  visitor: us\n  headless: [eu]\n")
+    block = TEXT[TEXT.index("  _DEMO_REGIONS=") :]
+    block = block[: block.index('\n  if [ -n "$_DEMO_REGIONS" ]')]
+    program = (
+        f'SCRIPT_DIR="{SCRIPT.parent}"\n_DEMO_DIR="{tmp_path}"\n{block}\necho "$_DEMO_REGIONS"\n'
+    )
+    done = subprocess.run(["bash", "-c", program], capture_output=True, text=True)
+    assert done.stdout.strip() == "us eu", done.stderr

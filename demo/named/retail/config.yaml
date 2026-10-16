@@ -1,0 +1,399 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "retail" (start-ui-install.sh --demo retail; REQ-2035):
+# a retail group with an EU and a US subsidiary, run as one business in two regions under one
+# model. Its question: "Can we run the group as one business without breaking GDPR?"
+#
+#   eu-shop    the EU subsidiary's database: loyalty customers with their marketing consent, orders,
+#              staff and the mail staff send outside the group. Homed in eu: its rows are copied
+#              into eu's own store by the eu node, and read anywhere else only from there.
+#   us-shop    the US subsidiary's own, homed in us.
+#   group-ref  products, stores and the register of data subject requests: no customer data, no
+#              region.
+#
+# Two regions, one definition: the platform declares eu and us, and every rule of where data may
+# be kept and read -- each table's region, the views named for eu, the masks -- is stated once,
+# here, for both. start-ui-install.sh starts the eu node headless (it lands eu's tables and builds
+# eu's views in eu's store) and the us node the visitor uses; both share one model store. The
+# per-launch values (the nodes' addresses, the stores) are the script's environment.
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+platform:
+  regions:
+  - {id: eu, address: '${env:PROVISA_DEMO_EU_ADDRESS}'}
+  - {id: us, address: '${env:PROVISA_DEMO_US_ADDRESS}'}
+# Each region keeps its replicas, views, build state and record in its own store (one Postgres
+# serves both here, in schemas of each region's own); each runs its own DuckDB engine.
+stores:
+- {id: eu_engine, url: 'duckdb:///${env:PROVISA_NAMED_DEMO_DIR}/data/eu-engine.duckdb', kind: duckdb}
+- {id: us_engine, url: 'duckdb:///${env:PROVISA_NAMED_DEMO_DIR}/data/us-engine.duckdb', kind: duckdb}
+- {id: eu_data, url: '${env:PROVISA_DEMO_REGIONS_PG_URL}'}
+- {id: us_data, url: '${env:PROVISA_DEMO_REGIONS_PG_URL}'}
+- {id: cache, url: '${env:REDIS_URL}'}
+regions:
+- {id: eu, engine: eu_engine, replicas: eu_data, views: eu_data, cache: cache, state: eu_data, record: eu_data}
+- {id: us, engine: us_engine, replicas: us_data, views: us_data, cache: cache, state: us_data, record: us_data}
+# REQ-2057: a member's region attribute makes them hold region and region__<value>; a mask entry
+# names region__eu to reveal what only an EU reviewer may see.
+claim_roles: [region]
+domains:
+- id: retail
+  description: One retail group -- an EU and a US subsidiary, their loyalty customers, orders,
+    staff and outbound mail, and the group's shared products, stores and data subject requests
+roles:
+# The group's analysts, in the US: they read group reporting, where EU customers are pseudonymised.
+- id: group_analyst
+  capabilities: [query_development]
+  domain_access: [retail]
+# EU marketing: reads only the EU customers who agreed to marketing.
+- id: marketing_eu
+  capabilities: [query_development]
+  domain_access: [retail]
+# The data protection officer: answers data subject requests across both subsidiaries.
+- id: dpo
+  capabilities: [query_development]
+  domain_access: [retail]
+# The group's insider reviewers: the review queue, the sender revealed only to an EU reviewer.
+- id: reviewer
+  capabilities: [query_development]
+  domain_access: [retail]
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- id: eu-shop
+  type: postgresql
+  host: ${env:RETAIL_PG_HOST:-localhost}
+  port: ${env:RETAIL_PG_PORT:-28932}
+  database: eu_shop
+  username: provisa_reader
+  password: provisa_reader
+  region: eu
+  # Always read from its replica in eu (REQ-826): an EU row is read only from eu's store.
+  replicate: 0
+  description: The EU subsidiary's own database, homed in the EU
+- id: us-shop
+  type: postgresql
+  host: ${env:RETAIL_PG_HOST:-localhost}
+  port: ${env:RETAIL_PG_PORT:-28932}
+  database: us_shop
+  username: provisa_reader
+  password: provisa_reader
+  region: us
+  description: The US subsidiary's own database, homed in the US
+- id: group-ref
+  type: postgresql
+  host: ${env:RETAIL_PG_HOST:-localhost}
+  port: ${env:RETAIL_PG_PORT:-28932}
+  database: group_ref
+  username: provisa_reader
+  password: provisa_reader
+  description: The group's shared reference data -- products, stores, data subject requests
+tables:
+# --- the EU subsidiary, homed in eu ------------------------------------------------------------
+- source_id: eu-shop
+  domain_id: retail
+  schema: public
+  table: customers
+  alias: eu_customers
+  region: eu
+  description: The EU subsidiary's loyalty-programme customers, with their marketing consent
+  columns:
+  - {name: customer_id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [org_admin, marketing_eu, dpo]}
+  - {name: email, data_type: varchar, description: The customer's email address, visible_to: [org_admin, marketing_eu, dpo]}
+  - {name: full_name, data_type: varchar, description: The customer's name, visible_to: [org_admin, marketing_eu, dpo]}
+  - {name: country, data_type: varchar, description: The customer's country, visible_to: [org_admin, marketing_eu, dpo]}
+  - {name: joined_on, data_type: date, description: When the customer joined the programme, visible_to: [org_admin, marketing_eu, dpo]}
+  - {name: marketing_consent, data_type: boolean, description: Whether the customer agreed to marketing, visible_to: [org_admin, marketing_eu, dpo]}
+  - {name: consent_recorded_at, data_type: timestamp, description: When the consent was recorded; empty when never asked, visible_to: [org_admin, marketing_eu, dpo]}
+- source_id: eu-shop
+  domain_id: retail
+  schema: public
+  table: orders
+  alias: eu_orders
+  region: eu
+  description: The EU subsidiary's orders
+  columns:
+  - {name: order_id, data_type: integer, is_primary_key: true, description: The order's id, visible_to: [org_admin, dpo]}
+  - {name: customer_id, data_type: integer, description: The customer who placed it, visible_to: [org_admin, dpo]}
+  - {name: store_id, data_type: integer, description: The store it was placed in, visible_to: [org_admin, dpo]}
+  - {name: product_id, data_type: integer, description: The product bought, visible_to: [org_admin, dpo]}
+  - {name: placed_at, data_type: timestamp, description: When it was placed, visible_to: [org_admin, dpo]}
+  - {name: amount, data_type: decimal, description: Its total in EUR, visible_to: [org_admin, dpo]}
+- source_id: eu-shop
+  domain_id: retail
+  schema: public
+  table: staff
+  alias: eu_staff
+  region: eu
+  description: The EU subsidiary's staff, and whether each may read customer records
+  columns:
+  - {name: staff_id, data_type: integer, is_primary_key: true, description: The employee's id, visible_to: [org_admin]}
+  - {name: full_name, data_type: varchar, description: The employee's name, visible_to: [org_admin]}
+  - {name: email, data_type: varchar, description: The employee's work address, visible_to: [org_admin]}
+  - {name: store_id, data_type: integer, description: The store they work in, visible_to: [org_admin]}
+  - {name: job, data_type: varchar, description: Their job, visible_to: [org_admin]}
+  - {name: has_customer_access, data_type: boolean, description: Whether they may read customer records, visible_to: [org_admin]}
+- source_id: eu-shop
+  domain_id: retail
+  schema: public
+  table: outbound_mail
+  alias: eu_outbound_mail
+  region: eu
+  description: Mail the EU subsidiary's staff sent outside the group -- scored in the EU, never read
+    elsewhere
+  columns:
+  - {name: message_id, data_type: integer, is_primary_key: true, description: The message's id, visible_to: [org_admin]}
+  - {name: staff_id, data_type: integer, description: The employee who sent it, visible_to: [org_admin]}
+  - {name: recipient, data_type: varchar, description: Who it was sent to, visible_to: [org_admin]}
+  - {name: sent_at, data_type: timestamp, description: When it was sent, visible_to: [org_admin]}
+  - {name: subject, data_type: varchar, description: Its subject, visible_to: [org_admin]}
+  - {name: body, data_type: varchar, description: Its text, visible_to: [org_admin]}
+  - {name: attached_customer_rows, data_type: integer, description: Customer records in its attachment; 0 when none, visible_to: [org_admin]}
+# --- the US subsidiary, homed in us ------------------------------------------------------------
+- source_id: us-shop
+  domain_id: retail
+  schema: public
+  table: customers
+  alias: us_customers
+  region: us
+  description: The US subsidiary's loyalty-programme customers, with their marketing consent
+  columns:
+  - {name: customer_id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [org_admin, group_analyst, dpo]}
+  - {name: email, data_type: varchar, description: The customer's email address, visible_to: [org_admin, group_analyst, dpo]}
+  - {name: full_name, data_type: varchar, description: The customer's name, visible_to: [org_admin, group_analyst, dpo]}
+  - {name: country, data_type: varchar, description: The customer's country, visible_to: [org_admin, group_analyst, dpo]}
+  - {name: joined_on, data_type: date, description: When the customer joined the programme, visible_to: [org_admin, group_analyst, dpo]}
+  - {name: marketing_consent, data_type: boolean, description: Whether the customer agreed to marketing, visible_to: [org_admin, group_analyst, dpo]}
+  - {name: consent_recorded_at, data_type: timestamp, description: When the consent was recorded; empty when never asked, visible_to: [org_admin, group_analyst, dpo]}
+- source_id: us-shop
+  domain_id: retail
+  schema: public
+  table: orders
+  alias: us_orders
+  region: us
+  description: The US subsidiary's orders
+  columns:
+  - {name: order_id, data_type: integer, is_primary_key: true, description: The order's id, visible_to: [org_admin, group_analyst, dpo]}
+  - {name: customer_id, data_type: integer, description: The customer who placed it, visible_to: [org_admin, group_analyst, dpo]}
+  - {name: store_id, data_type: integer, description: The store it was placed in, visible_to: [org_admin, group_analyst, dpo]}
+  - {name: product_id, data_type: integer, description: The product bought, visible_to: [org_admin, group_analyst, dpo]}
+  - {name: placed_at, data_type: timestamp, description: When it was placed, visible_to: [org_admin, group_analyst, dpo]}
+  - {name: amount, data_type: decimal, description: Its total in USD, visible_to: [org_admin, group_analyst, dpo]}
+# --- the group's reference data, no region -----------------------------------------------------
+- source_id: group-ref
+  domain_id: retail
+  schema: public
+  table: products
+  description: What the group sells
+  columns:
+  - {name: product_id, data_type: integer, is_primary_key: true, description: The product's id, visible_to: [org_admin, group_analyst, marketing_eu, dpo]}
+  - {name: name, data_type: varchar, description: The product's name, visible_to: [org_admin, group_analyst, marketing_eu, dpo]}
+  - {name: category, data_type: varchar, description: Its category, visible_to: [org_admin, group_analyst, marketing_eu, dpo]}
+  - {name: list_price, data_type: decimal, description: Its list price, visible_to: [org_admin, group_analyst, marketing_eu, dpo]}
+- source_id: group-ref
+  domain_id: retail
+  schema: public
+  table: stores
+  description: The group's stores, and the region each one's subsidiary keeps its data in
+  columns:
+  - {name: store_id, data_type: integer, is_primary_key: true, description: The store's id, visible_to: [org_admin, group_analyst, marketing_eu, dpo]}
+  - {name: name, data_type: varchar, description: The store's name, visible_to: [org_admin, group_analyst, marketing_eu, dpo]}
+  - {name: city, data_type: varchar, description: Its city, visible_to: [org_admin, group_analyst, marketing_eu, dpo]}
+  - {name: country, data_type: varchar, description: Its country, visible_to: [org_admin, group_analyst, marketing_eu, dpo]}
+  - {name: region, data_type: varchar, description: The region its subsidiary keeps its data in, visible_to: [org_admin, group_analyst, marketing_eu, dpo]}
+- source_id: group-ref
+  domain_id: retail
+  schema: public
+  table: subject_requests
+  description: The group's register of data subject requests -- who asked, for access or erasure,
+    and when
+  columns:
+  - {name: request_id, data_type: integer, is_primary_key: true, description: The request's number, visible_to: [org_admin, dpo]}
+  - {name: email, data_type: varchar, description: The address the person asked from, visible_to: [org_admin, dpo]}
+  - {name: kind, data_type: varchar, description: access or erasure, visible_to: [org_admin, dpo]}
+  - {name: received_at, data_type: timestamp, description: When it was received, visible_to: [org_admin, dpo]}
+views:
+# --- built in the EU, from EU rows, in eu's own store ------------------------------------------
+# EU marketing reads only the customers who agreed to marketing.
+- id: eu_marketing_audience
+  domain_id: retail
+  region: eu
+  materialize: true
+  description: The EU customers who agreed to marketing -- the only ones EU marketing reads
+  sql: >-
+    SELECT c.customer_id, c.full_name, c.email, c.country, c.consent_recorded_at
+    FROM "retail"."eu_customers" AS c
+    WHERE c.marketing_consent
+  columns:
+  - {name: customer_id, data_type: integer, description: The customer's id, visible_to: [org_admin, marketing_eu]}
+  - {name: full_name, data_type: varchar, description: The customer's name, visible_to: [org_admin, marketing_eu]}
+  - {name: email, data_type: varchar, description: The customer's email address, visible_to: [org_admin, marketing_eu]}
+  - {name: country, data_type: varchar, description: The customer's country, visible_to: [org_admin, marketing_eu]}
+  - {name: consent_recorded_at, data_type: timestamp, description: When they agreed, visible_to: [org_admin, marketing_eu]}
+# Group reporting's view of EU customers: a stable pseudonym computed in the EU, never a name or an
+# address.
+- id: eu_customers_pseudonymised
+  domain_id: retail
+  region: eu
+  materialize: true
+  description: Each EU customer as group reporting sees them -- a pseudonym computed in the EU, the
+    country, the join date and what they spent; no name, no address
+  sql: >-
+    SELECT md5('eu-customer:' || CAST(c.customer_id AS VARCHAR)) AS customer_pseudonym,
+           c.country, c.joined_on, COUNT(o.order_id) AS orders, SUM(o.amount) AS spent
+    FROM "retail"."eu_customers" AS c
+    LEFT JOIN "retail"."eu_orders" AS o ON o.customer_id = c.customer_id
+    GROUP BY c.customer_id, c.country, c.joined_on
+  columns:
+  - {name: customer_pseudonym, data_type: varchar, description: A stable pseudonym for the customer computed in the EU, visible_to: [org_admin, group_analyst]}
+  - {name: country, data_type: varchar, description: The customer's country, visible_to: [org_admin, group_analyst]}
+  - {name: joined_on, data_type: date, description: When the customer joined the programme, visible_to: [org_admin, group_analyst]}
+  - {name: orders, data_type: bigint, description: Orders the customer placed, visible_to: [org_admin, group_analyst]}
+  - {name: spent, data_type: decimal, description: What they came to in EUR, visible_to: [org_admin, group_analyst]}
+# The insider review of EU staff's outbound mail, scored in the EU: the score, the signals and a
+# pseudonym of the sender -- never a body or a subject. The sender is revealed only to a reviewer
+# acting with region__eu; to everyone else it is withheld (the column's ordered mask list).
+- id: eu_mail_review
+  domain_id: retail
+  region: eu
+  materialize: true
+  description: Mail EU staff sent outside the group, scored in the EU -- the score, its signals and a
+    pseudonymised sender; no message text leaves the EU
+  sql: >-
+    SELECT m.message_id, m.sent_at,
+           md5('eu-staff:' || CAST(s.staff_id AS VARCHAR)) AS sender_pseudonym,
+           s.email AS sender_email,
+           split_part(m.recipient, '@', 2) AS recipient_domain,
+           (CASE WHEN split_part(m.recipient, '@', 2) IN ('gmail.com', 'outlook.com') THEN 40 ELSE 0 END)
+           + (CASE WHEN m.attached_customer_rows > 0 THEN 30 ELSE 0 END)
+           + (CASE WHEN m.attached_customer_rows >= 1000 THEN 20 ELSE 0 END)
+           + (CASE WHEN s.has_customer_access THEN 10 ELSE 0 END) AS score,
+           concat_ws(', ',
+             CASE WHEN split_part(m.recipient, '@', 2) IN ('gmail.com', 'outlook.com') THEN 'personal address' END,
+             CASE WHEN m.attached_customer_rows > 0 THEN 'customer records attached' END,
+             CASE WHEN m.attached_customer_rows >= 1000 THEN 'bulk export' END,
+             CASE WHEN s.has_customer_access THEN 'sender reads customer data' END) AS signals
+    FROM "retail"."eu_outbound_mail" AS m
+    JOIN "retail"."eu_staff" AS s ON s.staff_id = m.staff_id
+  columns:
+  - {name: message_id, data_type: integer, description: The message's id, visible_to: [org_admin, reviewer]}
+  - {name: sent_at, data_type: timestamp, description: When it was sent, visible_to: [org_admin, reviewer]}
+  - {name: sender_pseudonym, data_type: varchar, description: A stable pseudonym for the sender computed in the EU, visible_to: [org_admin, reviewer]}
+  - name: sender_email
+    data_type: varchar
+    description: Who sent it -- revealed only to a reviewer acting in the EU
+    visible_to: [org_admin, reviewer]
+    masks:
+    - to: [reviewer+region__eu]
+    - to: ['*']
+      mask: {type: constant, value: withheld}
+  - {name: recipient_domain, data_type: varchar, description: The recipient's mail domain, visible_to: [org_admin, reviewer]}
+  - {name: score, data_type: integer, description: How likely the message moves customer data out (0 to 100), visible_to: [org_admin, reviewer]}
+  - {name: signals, data_type: varchar, description: What raised the score, visible_to: [org_admin, reviewer]}
+# --- read anywhere, from each region's own copy ------------------------------------------------
+# Group reporting: US customers as they are, EU customers by their pseudonym.
+- id: group_customers
+  domain_id: retail
+  description: Every loyalty customer of the group -- the US ones as they are, the EU ones by the
+    pseudonym the EU computed
+  sql: >-
+    SELECT 'us' AS subsidiary, CAST(u.customer_id AS VARCHAR) AS customer, u.country, u.joined_on
+    FROM "retail"."us_customers" AS u
+    UNION ALL
+    SELECT 'eu' AS subsidiary, e.customer_pseudonym AS customer, e.country, e.joined_on
+    FROM "retail"."view_eu_customers_pseudonymised" AS e
+  columns:
+  - {name: subsidiary, data_type: varchar, description: The subsidiary the customer belongs to, visible_to: [org_admin, group_analyst]}
+  - {name: customer, data_type: varchar, description: The customer -- an id in the US and a pseudonym in the EU, visible_to: [org_admin, group_analyst]}
+  - {name: country, data_type: varchar, description: The customer's country, visible_to: [org_admin, group_analyst]}
+  - {name: joined_on, data_type: date, description: When the customer joined the programme, visible_to: [org_admin, group_analyst]}
+# Right of access: everything the group holds about the person behind each access request, from
+# both subsidiaries.
+- id: subject_access
+  domain_id: retail
+  description: For each access request, every loyalty record the group holds about that person, in
+    either subsidiary
+  sql: >-
+    SELECT r.request_id, r.email, 'eu' AS subsidiary, c.customer_id, c.full_name, c.country,
+           c.joined_on, c.marketing_consent
+    FROM "retail"."subject_requests" AS r
+    JOIN "retail"."eu_customers" AS c ON c.email = r.email
+    WHERE r.kind = 'access'
+    UNION ALL
+    SELECT r.request_id, r.email, 'us' AS subsidiary, c.customer_id, c.full_name, c.country,
+           c.joined_on, c.marketing_consent
+    FROM "retail"."subject_requests" AS r
+    JOIN "retail"."us_customers" AS c ON c.email = r.email
+    WHERE r.kind = 'access'
+  columns:
+  - {name: request_id, data_type: integer, description: The access request, visible_to: [org_admin, dpo]}
+  - {name: email, data_type: varchar, description: The address the person asked from, visible_to: [org_admin, dpo]}
+  - {name: subsidiary, data_type: varchar, description: The subsidiary holding the record, visible_to: [org_admin, dpo]}
+  - {name: customer_id, data_type: integer, description: The record's customer id there, visible_to: [org_admin, dpo]}
+  - {name: full_name, data_type: varchar, description: The name on the record, visible_to: [org_admin, dpo]}
+  - {name: country, data_type: varchar, description: The country on the record, visible_to: [org_admin, dpo]}
+  - {name: joined_on, data_type: date, description: When they joined the programme, visible_to: [org_admin, dpo]}
+  - {name: marketing_consent, data_type: boolean, description: Whether they agreed to marketing, visible_to: [org_admin, dpo]}
+# Right to erasure: the rows each subsidiary deletes for each erasure request.
+- id: erasure_plan
+  domain_id: retail
+  description: For each erasure request, every row the group deletes -- its subsidiary, its table
+    and its key
+  sql: >-
+    SELECT r.request_id, 'eu' AS subsidiary, 'customers' AS table_name, c.customer_id AS row_key
+    FROM "retail"."subject_requests" AS r
+    JOIN "retail"."eu_customers" AS c ON c.email = r.email
+    WHERE r.kind = 'erasure'
+    UNION ALL
+    SELECT r.request_id, 'eu' AS subsidiary, 'orders' AS table_name, o.order_id AS row_key
+    FROM "retail"."subject_requests" AS r
+    JOIN "retail"."eu_customers" AS c ON c.email = r.email
+    JOIN "retail"."eu_orders" AS o ON o.customer_id = c.customer_id
+    WHERE r.kind = 'erasure'
+    UNION ALL
+    SELECT r.request_id, 'us' AS subsidiary, 'customers' AS table_name, c.customer_id AS row_key
+    FROM "retail"."subject_requests" AS r
+    JOIN "retail"."us_customers" AS c ON c.email = r.email
+    WHERE r.kind = 'erasure'
+    UNION ALL
+    SELECT r.request_id, 'us' AS subsidiary, 'orders' AS table_name, o.order_id AS row_key
+    FROM "retail"."subject_requests" AS r
+    JOIN "retail"."us_customers" AS c ON c.email = r.email
+    JOIN "retail"."us_orders" AS o ON o.customer_id = c.customer_id
+    WHERE r.kind = 'erasure'
+  columns:
+  - {name: request_id, data_type: integer, description: The erasure request, visible_to: [org_admin, dpo]}
+  - {name: subsidiary, data_type: varchar, description: The subsidiary that deletes the row, visible_to: [org_admin, dpo]}
+  - {name: table_name, data_type: varchar, description: The table it is in, visible_to: [org_admin, dpo]}
+  - {name: row_key, data_type: integer, description: The row's key there, visible_to: [org_admin, dpo]}
+relationships:
+- {id: eu-order-customer, alias: PLACED_BY, graphql_alias: customer, cardinality: many-to-one, source_table_id: eu_orders, source_column: customer_id, target_table_id: eu_customers, target_column: customer_id}
+- {id: us-order-customer, alias: PLACED_BY, graphql_alias: customer, cardinality: many-to-one, source_table_id: us_orders, source_column: customer_id, target_table_id: us_customers, target_column: customer_id}
+- {id: eu-mail-sender, alias: SENT_BY, graphql_alias: sender, cardinality: many-to-one, source_table_id: eu_outbound_mail, source_column: staff_id, target_table_id: eu_staff, target_column: staff_id}
+- {id: request-eu-customer, alias: ASKS_ABOUT, graphql_alias: eu_customers, cardinality: one-to-many, source_table_id: subject_requests, source_column: email, target_table_id: eu_customers, target_column: email}
+- {id: request-us-customer, alias: ASKS_ABOUT, graphql_alias: us_customers, cardinality: one-to-many, source_table_id: subject_requests, source_column: email, target_table_id: us_customers, target_column: email}
+- {id: eu-order-store, alias: PLACED_IN, graphql_alias: store, cardinality: many-to-one, source_table_id: eu_orders, source_column: store_id, target_table_id: stores, target_column: store_id}
+- {id: us-order-store, alias: PLACED_IN, graphql_alias: store, cardinality: many-to-one, source_table_id: us_orders, source_column: store_id, target_table_id: stores, target_column: store_id}
+- {id: eu-order-product, alias: OF, graphql_alias: product, cardinality: many-to-one, source_table_id: eu_orders, source_column: product_id, target_table_id: products, target_column: product_id}
+- {id: us-order-product, alias: OF, graphql_alias: product, cardinality: many-to-one, source_table_id: us_orders, source_column: product_id, target_table_id: products, target_column: product_id}

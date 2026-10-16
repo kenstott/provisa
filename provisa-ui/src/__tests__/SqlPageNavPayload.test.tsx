@@ -77,3 +77,31 @@ describe("SqlPage — a hand-off while the page is open", () => {
     await waitFor(() => expect(tabSql()).toContain("SELECT 42 AS answer"));
   });
 });
+
+function Tour() {
+  const navigate = useNavigate();
+  return (
+    <button onClick={() => navigate("/sql", { state: { role: "reviewer,region__eu" } })}>
+      tour
+    </button>
+  );
+}
+
+describe("SqlPage — a set of roles a demo's tour hands over (REQ-2057)", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("offers it as its own run-as entry and picks it", async () => {
+    renderWithProviders(
+      <>
+        <Tour />
+        <SqlPage />
+      </>,
+      { initialEntries: ["/sql"] },
+    );
+    await screen.findAllByText(/Query 1/);
+    act(() => screen.getByText("tour").click());
+    await waitFor(() =>
+      expect(screen.getByTestId("sql-role")).toHaveValue("reviewer + region__eu"),
+    );
+  });
+});

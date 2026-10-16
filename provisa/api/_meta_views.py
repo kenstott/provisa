@@ -387,6 +387,7 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         CREATE OR REPLACE VIEW queries AS
         SELECT q.id AS id, q.trace_id, q.logged_at, q.duration_ms, q.status_code,
                q.user_id, q.role_id, q.source, q.route, q.row_count, q.query_hash,
+               q.region,
                t.table_id, rt.table_name, rt.domain_id, t.table_count
         FROM query_audit_log q
         LEFT JOIN (SELECT u.id AS audit_id, MIN(u.table_id) AS table_id,

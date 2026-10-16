@@ -935,6 +935,90 @@
       "agricultureRecap": {
         "title": "Wat u zag",
         "description": "De eigen gegevens van de verzekeraar, live gelezen, en openbare verliezen, weergegevens en opbrengsten, eenmalig geladen, gekoppeld op county en gewasjaar in één beheerd model: één weergave beantwoordt of het weer de verliezen verklaart, in SQL, GraphQL en REST."
+      },
+      "retailScenario": {
+        "title": "Eén concern, twee regio's",
+        "description": "Een retailconcern runt een EU- en een US-dochteronderneming als één bedrijf. Kan dat zonder de GDPR te schenden? Elke dochteronderneming houdt een eigen database: dit is die van de EU, met haar klanten van het loyaliteitsprogramma, hun toestemming voor marketing, bestellingen, personeel en de mail die het personeel buiten het concern stuurt."
+      },
+      "retailRegions": {
+        "title": "Eén definitie van elke regio",
+        "description": "De database van de US-dochteronderneming, gevestigd in de US. Het model declareert beide regio's en legt één keer vast waar elke tabel staat en welke views waar worden gebouwd. Een tweede Provisa-node draait in de EU: die kopieert de EU-tabellen naar de eigen opslag van de EU en bouwt daar de EU-views. U zit op de US-node, die EU-gegevens alleen uit die EU-opslag leest, zodat elke grensoverschrijdende regel op één plek wordt toegepast."
+      },
+      "retailEuCustomers": {
+        "title": "Een EU-tabel, gevestigd in de EU",
+        "description": "De EU-klanten. De tabel noemt de EU als haar regio: haar rijen worden alleen naar de opslag van de EU gekopieerd en alleen daar berekend. Lezers elders krijgen ze via de views van de EU, of helemaal niet."
+      },
+      "retailRequests": {
+        "title": "Verzoeken van betrokkenen",
+        "description": "Het verzoekenregister van het concern: wie zijn gegevens wilde inzien, wie ze wilde laten wissen, en wanneer. Het bevat zelf geen klantgegevens."
+      },
+      "retailJoin": {
+        "title": "Hoe een verzoek een persoon vindt",
+        "description": "Een verzoek wordt op e-mailadres gekoppeld aan de klanten van elke dochteronderneming. Zo vindt één verzoek dezelfde persoon in beide."
+      },
+      "retailAsAnalyst": {
+        "title": "Als concernanalist",
+        "description": "Hierna draait de SQL-verkenner als group_analyst, die in de US aan de concernrapportage werkt."
+      },
+      "retailGroupView": {
+        "title": "Concernrapportage, EU-klanten gepseudonimiseerd",
+        "description": "Elke klant van het loyaliteitsprogramma van het concern. US-klanten verschijnen zoals ze zijn; EU-klanten verschijnen onder een pseudoniem dat de EU heeft berekend, zonder naam of adres. Het EU-deel is uit de opslag van de EU gelezen, en de registratie van deze query noemt de EU als de regio die antwoordde."
+      },
+      "retailGroupGraphql": {
+        "title": "Hetzelfde, in GraphQL",
+        "description": "Dezelfde concernview via GraphQL: één model, elk transport, dezelfde regels."
+      },
+      "retailAsMarketing": {
+        "title": "Als EU-marketing",
+        "description": "Hierna draait de SQL-verkenner als marketing_eu."
+      },
+      "retailAudience": {
+        "title": "Alleen klanten die toestemming gaven",
+        "description": "EU-marketing leest de EU-klanten die toestemming voor marketing gaven, en alleen hen. De view wordt in de EU gebouwd uit EU-rijen."
+      },
+      "retailAsDpo": {
+        "title": "Als functionaris gegevensbescherming",
+        "description": "Hierna draait de SQL-verkenner als dpo, die verzoeken van betrokkenen beantwoordt."
+      },
+      "retailAccess": {
+        "title": "Een inzageverzoek, beantwoord",
+        "description": "Alles wat het concern bewaart over de persoon achter elk inzageverzoek, uit beide dochterondernemingen, in één query. Amélie Fournier is lid in de EU en in de US."
+      },
+      "retailErasure": {
+        "title": "Een wissing, gepland",
+        "description": "Voor elk verzoek tot wissing elke rij die het concern verwijdert: de dochteronderneming, de tabel en de sleutel. Elke dochteronderneming verwijdert haar eigen rijen, in haar eigen regio."
+      },
+      "retailAsReviewer": {
+        "title": "Als insiderbeoordelaar",
+        "description": "Hierna draait de SQL-verkenner als reviewer, de insidercontrole van het concern."
+      },
+      "retailQueue": {
+        "title": "De beoordelingswachtrij",
+        "description": "De uitgaande mail van EU-personeel, gescoord in de EU: een privéadres, bijgevoegde klantrecords, een bulkexport. De wachtrij bevat de score, de signalen en een pseudoniem van de afzender. Geen berichttekst verlaat de EU, en de afzender wordt achtergehouden."
+      },
+      "retailAsEuReviewer": {
+        "title": "Als beoordelaar in de EU",
+        "description": "Hierna draait de SQL-verkenner als reviewer met region__eu: een beoordelaar wiens regio de EU is."
+      },
+      "retailReveal": {
+        "title": "De afzender, onthuld in de EU",
+        "description": "Dezelfde wachtrij. De maskeringslijst van de afzenderkolom onthult de afzender alleen aan een beoordelaar die ook region__eu heeft; alle anderen lezen hem achtergehouden. Het is één toekenning, reviewer en region__eu, zonder een rol die voor de combinatie is gemaakt."
+      },
+      "retailAsAdmin": {
+        "title": "Terug naar elke rol",
+        "description": "Hierna draait de SQL-verkenner weer als elke rol."
+      },
+      "retailAudit": {
+        "title": "Eén registratie, beide regio's",
+        "description": "Elke instructie die de rondleiding uitvoerde: wie hem uitvoerde, waarop, en welke regio hem beantwoordde. Eén audittrail over beide regio's."
+      },
+      "retailLimits": {
+        "title": "Wat dit is, en wat niet",
+        "description": "Deze functies kunnen helpen te voldoen aan de regels van de GDPR over waar gegevens staan en wie ze leest, maar ze maken een concern niet compliant. Daarvoor is actief ontwerp nodig door mensen die de geldende regels voor gegevensbescherming en grensoverschrijdende doorgifte kennen. De rechtsgrond, de effectbeoordeling, de bewaring en een eventuele afspraak met de ondernemingsraad blijven het eigen juridische proces van het concern."
+      },
+      "retailRecap": {
+        "title": "Wat u zag",
+        "description": "Eén model definieerde beide regio's: waar elke tabel staat, welke views waar worden gebouwd, en wie wat leest. De concernrapportage las EU-klanten gepseudonimiseerd, EU-marketing las alleen klanten die toestemming gaven, en een inzageverzoek en een wissing waren elk één query. De insidercontrole onthulde een afzender alleen in de EU, en elke lezing staat in één registratie."
       }
     },
     "status": {
@@ -1003,6 +1087,10 @@
       "agriculture": {
         "title": "Weer en verliezen in de gewasverzekering",
         "summary": "De vraag van een gewasverzekeraar, of het weer de verliezen in zijn portefeuille verklaart: zijn eigen boerderijen, polissen en claims, op county en gewasjaar gekoppeld aan de verliezen per oorzaak van het USDA, het weer van NOAA en de opbrengsten van NASS, beantwoord in SQL, GraphQL en REST."
+      },
+      "retail": {
+        "title": "Eén concern, twee regio's",
+        "summary": "Een retailconcern met een EU- en een US-dochteronderneming, gerund als één bedrijf onder de GDPR: EU-gegevens blijven in de EU, de concernrapportage leest ze gepseudonimiseerd, en inzage, wissing, insidercontrole en audit zijn elk één query."
       }
     }
   }

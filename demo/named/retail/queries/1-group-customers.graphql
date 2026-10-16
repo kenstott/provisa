@@ -1,0 +1,10 @@
+# Group reporting, as the group's analysts read it: US customers as they are, EU customers by the
+# pseudonym the EU computed. Run as group_analyst.
+query GroupCustomers {
+  r__viewGroupCustomers(order_by: [{ joinedOn: desc }], limit: 20) {
+    subsidiary
+    customer
+    country
+    joinedOn
+  }
+}
