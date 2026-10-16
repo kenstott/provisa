@@ -350,7 +350,7 @@ Because every change is an event and every derived dataset is a view over those 
 ??? note "Requirements"
 
     - [Provisa traces any column back to its sources.](#lineage-and-provenance-column-lineage): [REQ-862](arch/requirements.md#REQ-862), [REQ-1160](arch/requirements.md#REQ-1160), [REQ-1161](arch/requirements.md#REQ-1161), [REQ-1625](arch/requirements.md#REQ-1625), [REQ-1626](arch/requirements.md#REQ-1626), [REQ-1627](arch/requirements.md#REQ-1627), [REQ-1628](arch/requirements.md#REQ-1628), [REQ-1665](arch/requirements.md#REQ-1665)
-    - [A table can record row-level changes into an append-only delta ledger.](#lineage-and-provenance-point-in-time): [REQ-877](arch/requirements.md#REQ-877), [REQ-878](arch/requirements.md#REQ-878), [REQ-1162](arch/requirements.md#REQ-1162), [REQ-1163](arch/requirements.md#REQ-1163), [REQ-1366](arch/requirements.md#REQ-1366)
+    - [A table can record row-level changes into an append-only delta ledger.](#lineage-and-provenance-point-in-time): [REQ-877](arch/requirements.md#REQ-877), [REQ-878](arch/requirements.md#REQ-878), [REQ-1162](arch/requirements.md#REQ-1162), [REQ-1163](arch/requirements.md#REQ-1163), [REQ-1366](arch/requirements.md#REQ-1366), [REQ-2064](arch/requirements.md#REQ-2064)
     - [Because every change is an event and every derived dataset is a view over those events,...](#lineage-and-provenance-self-describing): [REQ-967](arch/requirements.md#REQ-967)
 
 ### Audit

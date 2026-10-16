@@ -84254,3 +84254,28 @@ And every tour step shows its real object and every predesigned query returns ro
   - REQ-2006
   - REQ-2051
   notes: 'Maintainer 2026-10-15: a feature demo showing how to set up a data vault; that the jobs run on the engine is stated as a benefit, not a caution.'
+- id: REQ-2064
+  status: proposed
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Materialization Store
+  feature: lineage-and-provenance-point-in-time
+  priority: SHOULD
+  type: behavioral
+  description: 'The as-of header (X-Provisa-As-Of, REQ-1163) also accepts a range, an ISO 8601 interval start/end. A read with a range answers every version of each row that was in force at any time within the range, one row per version, each with the time it was recorded from and to, so a client sees what changed and when in one read instead of one as-of read per moment. A single time keeps today''s meaning. The range applies to the same tables and views as a single time, with the same rights, masks and row rules.'
+  use_case: 'An analyst reads a customer with an as-of range covering last quarter and sees each version of the record with when it was recorded, in one answer.'
+  scenario: 'Given a bitemporal table whose row changed twice last quarter
+
+
+When it is read with X-Provisa-As-Of naming last quarter as a range
+
+
+Then the answer holds each version in force during the range with its recorded-from and recorded-to times
+
+
+And the same read with a single time answers the one version in force then'
+  related_reqs:
+  - REQ-1162
+  - REQ-1163
+  - REQ-2063
+  notes: 'Maintainer 2026-10-16: we should allow the as-of date header to request a range.'

@@ -23833,3 +23833,17 @@ A feature demo, data vault: how to set up a data vault in Provisa. Built on a we
 **Code:** —
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2064 · Materialization Store {#REQ-2064}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The as-of header (X-Provisa-As-Of, [REQ-1163](#REQ-1163)) also accepts a range, an ISO 8601 interval start/end. A read with a range answers every version of each row that was in force at any time within the range, one row per version, each with the time it was recorded from and to, so a client sees what changed and when in one read instead of one as-of read per moment. A single time keeps today's meaning. The range applies to the same tables and views as a single time, with the same rights, masks and row rules.
+
+**Use case:** An analyst reads a customer with an as-of range covering last quarter and sees each version of the record with when it was recorded, in one answer.
+
+**Code:** —
+
+**Tests:** —
