@@ -1,29 +1,49 @@
 {
-  "version": "v0.1.0-alpha.489",
-  "previous": "v0.1.0-alpha.488",
-  "date": "2026-10-15",
+  "version": "v0.1.0-alpha.490",
+  "previous": "v0.1.0-alpha.489",
+  "date": "2026-10-16",
   "features": [
     {
-      "category": "Change Signals",
+      "category": "Caching",
       "entries": [
         {
-          "text": "A table read where it lies (not replicated) that declares a probing change signal -- probe or ttl_probe, its own else its source's -- is a signal-only node of the event loop: its probe (MAX of its watermark column, a count, or its probe_query) runs on its cache TTL, and a change is posted to the materialized views that read it, which recompute and ripple on to theirs.",
+          "text": "The load management window also applies to a materialized view, meaning: outside the window the view may not be read by a user''s workload.",
           "changes": [
-            "A live table that declares a probe is a signal-only node for its views",
-            "The quality demo, data you can trust, driven by landing alone"
+            "A materialized view's load management window says when a user's read may read it"
           ]
         }
       ]
     },
     {
-      "category": "Triggers",
+      "category": "Demo Provisioning",
       "entries": [
         {
-          "text": "A trigger says when something runs, and what runs is an ordinary command (python or statement), a SQL statement or a webhook.",
+          "text": "A visitor's demo sandbox is released soon after its tab closes.",
           "changes": [
-            "A trigger fires on a table's change or event, and runs a command",
-            "A table floored by its own replicate builds its replica (#269); a write to a native-feed table fires its triggers from the feed alone",
-            "The admin Triggers page -- every automatic run in one place, read and edited in its panel"
+            "A visitor's sandbox is released soon after its tab closes"
+          ]
+        }
+      ]
+    },
+    {
+      "category": "Tag Registry",
+      "entries": [
+        {
+          "text": "Tag IDs are emitted into the bracketed comment suffix alongside the modeling role, so a catalog surface shows `[dimension, entity, natural_language]` where it shows `[fact, scd2]` today (append_modeling_tag, provisa/core/modeling_tags.py,) — reaching pg_description, GraphQL introspection and the Flight/MCP catalog description through the one shared formatter.",
+          "changes": [
+            "Tag ids ride in the catalog description suffix"
+          ]
+        }
+      ]
+    },
+    {
+      "category": "URI Dereferencing API",
+      "entries": [
+        {
+          "text": "Governed dereference API for semantic data-location URIs: REST and MCP tool `resolve(uri, as_of?)` that takes a Provisa semantic-address URI and returns the governed value(s) it addresses, optionally at a point in time.",
+          "changes": [
+            "Dereference a semantic address on GraphQL, REST and MCP",
+            "Every role's service resolves a semantic address"
           ]
         }
       ]
@@ -31,118 +51,267 @@
   ],
   "changes": [
     {
-      "scope": "api-source",
+      "scope": "api",
       "entries": [
-        "An API-backed table's date and timestamp columns are typed (#267)"
+        "A vector model error on GraphQL answers 400 naming the model, as SQL does"
+      ]
+    },
+    {
+      "scope": "audit",
+      "entries": [
+        "A GraphQL request's row records the status its client was answered"
       ]
     },
     {
       "scope": "auth",
       "entries": [
-        "Rights follow the roles a request acts as, never every role held",
-        "Selecting an environment is judged by every role held, as it is decided before the acting roles exist"
+        "A member's attributes -- the org's record over the provider's claims",
+        "pseudo-roles -- a role held for what a member's attributes say about a declared claim type",
+        "A regional node's own work carries its region pseudo-role"
       ]
     },
     {
-      "scope": "demo",
+      "scope": "billing",
       "entries": [
-        "Cap the reviews run-time stores' memory for the cloud node"
+        "The current bill and the next charge are amounts",
+        "A billing date shows its calendar day in every time zone"
+      ]
+    },
+    {
+      "scope": "data",
+      "entries": [
+        "A still-starting source answers 503 on /data/sql and REST; demo tests wait for govdata"
       ]
     },
     {
       "scope": "demos",
       "entries": [
-        "A bundle build lands a live account's tables with its key, and refuses an empty one",
-        "The insurance vertical demo -- property exposure against hazard risk",
-        "A tour's Polly questions are answered at the bundle build and stored",
-        "A scaffolded demo's example step opens on the GraphQL page",
-        "A scaffolded demo's example step opens the GraphQL page"
+        "A demo with no seeder bundles",
+        "The insider review demo",
+        "Reviews and vulnerabilities name their fields as their sandbox does",
+        "A demo's profiler runs at its template build and its sandboxes carry the runs",
+        "A sandbox's tour is warmed in the background as it opens",
+        "A demo's setup makes an environment, and its tour picks one",
+        "The testdata demo -- realistic test data without touching production",
+        "The sonnets Qdrant store recovers its snapshot at every start",
+        "The sonnets vectors source reads with the store's read-only key",
+        "The local government vertical -- opioid settlement spending against overdose deaths",
+        "A demo store is healthy only once its first-start load has ended",
+        "A bitemporal view's history travels with its demo's bundle",
+        "The data vault demo, Northwind in two sources, its vault declared as views",
+        "The data vault declares its masks as a column's masks list"
       ]
     },
     {
       "scope": "deploy",
       "entries": [
-        "The embedding-model hub cache on the host; a sonnets sandbox searches by meaning (CI)"
+        "Every cloud deploy refreshes the demo-stores sync and its units",
+        "A cloud deploy reaches the sandbox VM too"
       ]
     },
     {
-      "scope": "duckdb",
+      "scope": "deps",
       "entries": [
-        "A MongoDB column named apart from its field is found (#266)"
+        "Mcp 1.30.0, past CVE-2026-59951"
       ]
     },
     {
-      "scope": "explorers",
+      "scope": "domains",
       "entries": [
-        "A demo visitor's OpenAPI page loads, and GraphQL reopens on its last tab"
+        "A domain tree -- a business unit and the organizations within it",
+        "The domains query reads its rows' steward and parent; no requirement id in a view",
+        "The parent picker's explanation is its field's hint"
       ]
     },
     {
-      "scope": "gcp-saas",
+      "scope": "environments",
       "entries": [
-        "The control-plane Postgres runs on the control-plane VM; Cloud SQL removed"
+        "A whole-model merge request stores its selection as SQL NULL"
+      ]
+    },
+    {
+      "scope": "explorer",
+      "entries": [
+        "Show SQL shows the statement the compiled pipeline runs",
+        "Show SQL is governed by the compiled pipeline's own stage"
+      ]
+    },
+    {
+      "scope": "fakes",
+      "entries": [
+        "A hash of an integer column narrower than BIGINT fits its type (#272)"
+      ]
+    },
+    {
+      "scope": "federation",
+      "entries": [
+        "The attach walk leaves alone a table Provisa reads itself",
+        "A statement on a source whose server is still starting waits, then answers 503 by name",
+        "An incomplete attach walk waits its retry interval, and logs a failure once"
+      ]
+    },
+    {
+      "scope": "files",
+      "entries": [
+        "Connector bundles download off the request path; an unanswered catalog query is retried"
       ]
     },
     {
       "scope": "governance",
       "entries": [
-        "A star reads only the columns the role is served; RETURNING is governed"
+        "A condition on a union's output relates no branch to another (#271)"
       ]
     },
     {
-      "scope": "jdbc",
+      "scope": "graphql",
       "entries": [
-        "Drop the connection mode setting, which had one value and changed nothing"
+        "A PostgreSQL double precision column maps to Float"
       ]
     },
     {
-      "scope": "mv",
+      "scope": "grpc",
       "entries": [
-        "A view the event loop refreshes is marked fresh in the MV registry (#268)"
+        "A PostgreSQL double precision column is a proto double"
+      ]
+    },
+    {
+      "scope": "install",
+      "entries": [
+        "The control-plane compose splits into the control plane and the sandbox tier by profile"
+      ]
+    },
+    {
+      "scope": "join guard",
+      "entries": [
+        "A join on a column a view computes relates along the view's relationship (#270)"
+      ]
+    },
+    {
+      "scope": "join-guard",
+      "entries": [
+        "A filter on a value computed over a union view relates nothing"
+      ]
+    },
+    {
+      "scope": "kafka",
+      "entries": [
+        "A Kafka live table lands every message it can read, in every org that declares it",
+        "Every org reads a CDC topic whole, and keeps its own SingleStore pipelines"
+      ]
+    },
+    {
+      "scope": "landing",
+      "entries": [
+        "A pgwire connector table (govdata among them) lands through its landing filter"
+      ]
+    },
+    {
+      "scope": "masking",
+      "entries": [
+        "A regex mask replaces every match on every engine"
+      ]
+    },
+    {
+      "scope": "openapi",
+      "entries": [
+        "A config-declared OpenAPI source states its auth"
+      ]
+    },
+    {
+      "scope": "orgs",
+      "entries": [
+        "Destroying an org stops its connector servers"
+      ]
+    },
+    {
+      "scope": "pgwire",
+      "entries": [
+        "A server bound off loopback is reached where it listens; endpoint fixtures ready the org folder",
+        "A caller that waits has an unanswered first catalog query sent again within its wait"
+      ]
+    },
+    {
+      "scope": "profiler",
+      "entries": [
+        "A configuration names a profile result table by its member and kind"
       ]
     },
     {
       "scope": "replicas",
       "entries": [
-        "Replica builds as ops tables, with a build log and failures per source and day"
-      ]
-    },
-    {
-      "scope": "roles",
-      "entries": [
-        "A role's max_rows is set by the nearest role that declares it, as rate_limit is"
-      ]
-    },
-    {
-      "scope": "row-level",
-      "entries": [
-        "A row-level table is read through ANY filter, fetched by that filter; DIRECT reads live"
+        "A build waits for a source server that takes minutes to start",
+        "Each environment has its own build runner; one built after prod no longer replaces prod's (#273)"
       ]
     },
     {
       "scope": "sandbox",
       "entries": [
-        "cloud.provisa.dev offers weblogs, files, sonnets and reviews",
-        "A demo's own embedding models reach its sandboxes",
-        "A demo sandbox is deleted after an hour without use (was a day)"
+        "A demo sandbox carries its template's environments, and its visitor switches between them"
+      ]
+    },
+    {
+      "scope": "sandbox-tier",
+      "entries": [
+        "The tier finds the deployment's demo SQLite data"
+      ]
+    },
+    {
+      "scope": "sandboxes",
+      "entries": [
+        "One connector server per demo version, shared by its sandboxes",
+        "A sandbox tier on a VM of its own stops that VM when no sandbox is used"
+      ]
+    },
+    {
+      "scope": "security",
+      "entries": [
+        "Composite grants -- an entry a+b is held by a reader holding all of it",
+        "A column's masking is one ordered mask list, first entry held applies"
+      ]
+    },
+    {
+      "scope": "sla",
+      "entries": [
+        "service-level limits are settings, breaches are stored and listed in ops"
+      ]
+    },
+    {
+      "scope": "subscriptions",
+      "entries": [
+        "A subscription on a push-landed table re-runs when a batch lands"
+      ]
+    },
+    {
+      "scope": "tables",
+      "entries": [
+        "A table may fix the arguments its source takes by name",
+        "A table's landing filter is applied when its replica lands"
       ]
     },
     {
       "scope": "temp-tables",
       "entries": [
-        "A session's temporary tables are bounded, and a gone session's are reaped"
+        "session_temp_schemas is kept in the region's state store"
+      ]
+    },
+    {
+      "scope": "terraform",
+      "entries": [
+        "The sandbox tier on a VM of its own"
       ]
     },
     {
       "scope": "ui",
       "entries": [
-        "js-yaml is a dependency of its own, so the live demos page check runs"
+        "A scoped merge's object ticks sit in the form's FormChecks",
+        "The table form sets a table's landing filter and fixed arguments",
+        "The grant picker's combine button takes its hint from Tip"
       ]
     },
     {
-      "scope": "writes",
+      "scope": "ui-server",
       "entries": [
-        "A source with no direct driver is written through the engine"
+        "A request for the sandbox tier starts its VM when it finds it down"
       ]
     }
   ]
