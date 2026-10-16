@@ -436,6 +436,10 @@
         "title": "What their buyers bought",
         "description": "The second question, in Cypher: the products rated under three stars, and what their buyers also bought. The graph runs across the MongoDB ratings and the Neo4j purchases, and power banks keep turning up."
       },
+      "reviewsBoughtWithByDegree": {
+        "title": "We can graph it. But what does it mean?",
+        "description": "Grouped by degree, for the question it was drawn for: the groups surface the products most often bought together with the low-rated ones. The bigger the number, the more pairings run through it. Degree is counted within this result alone: the products rated under three stars and what five or more of their customers also bought with them. The red nodes are the products; the ratings and the pair nodes are grouped too."
+      },
       "reviewsRest": {
         "title": "The search over REST",
         "description": "The same search as a REST call, its phrase passed as a parameter. Every surface Provisa serves reads the same governed tables, so REST answers as SQL and GraphQL do, under the same rights."

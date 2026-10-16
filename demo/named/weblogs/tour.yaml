@@ -20,6 +20,7 @@
 #   jsonapi       a JSON:API request, "/data/jsonapi/<domain>/<table>[?<query>]": run on /jsonapi
 #   grpc          a gRPC call, "<Method>(by=[...], funcs=[...])": sent on /grpc
 #   cypher        a Cypher query over the demo's node labels and relationships: run on /graph
+#   group_by      a property (degTotal): the frame the Cypher step just before ran, grouped by it
 #   lineage       a statement over the demo's tables and views: its lineage built on /lineage,
 #                 each column traced back through the views it reads to the source fields
 #   term          a glossary term of config.yaml, by name: opened on the Glossary page

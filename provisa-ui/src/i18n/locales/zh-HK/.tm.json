@@ -6743,5 +6743,7 @@
   "zh-HK/whatsNew.json::whatsNew.features": "Features",
   "zh-HK/whatsNew.json::whatsNew.general": "General",
   "zh-HK/whatsNew.json::whatsNew.released": "Released {{date}}",
-  "zh-HK/whatsNew.json::whatsNew.title": "What's new in {{version}}"
+  "zh-HK/whatsNew.json::whatsNew.title": "What's new in {{version}}",
+  "zh-HK/tour.json::tour.steps.reviewsBoughtWithByDegree.title": "We can graph it. But what does it mean?",
+  "zh-HK/tour.json::tour.steps.reviewsBoughtWithByDegree.description": "Grouped by degree, for the question it was drawn for: the groups surface the products most often bought together with the low-rated ones. The bigger the number, the more pairings run through it. Degree is counted within this result alone: the products rated under three stars and what five or more of their customers also bought with them. The red nodes are the products; the ratings and the pair nodes are grouped too."
 }

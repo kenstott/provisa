@@ -78,6 +78,12 @@ export interface TourStep {
     text: string;
   };
   /**
+   * REQ-2010: a view of the Graph page's frame on screen, handed over with no query on every entry
+   * to the step: the page applies it to its newest frame, which keeps its query (`groupBy`: the
+   * frame grouped by that property).
+   */
+  openView?: { groupBy: string };
+  /**
    * REQ-2010: on Next only, open the picker `open` and choose its option `option`, then advance —
    * a choice the step shows (the picker is highlighted) and makes when the visitor moves on. Back
    * and close leave the picker as it was.

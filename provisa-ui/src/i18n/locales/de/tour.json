@@ -436,6 +436,10 @@
         "title": "Was deren Käufer gekauft haben",
         "description": "Die zweite Frage, in Cypher: die Produkte mit weniger als drei Sternen und das, was deren Käufer außerdem gekauft haben. Der Graph läuft über die MongoDB-Bewertungen und die Neo4j-Käufe, und Powerbanks tauchen immer wieder auf."
       },
+      "reviewsBoughtWithByDegree": {
+        "title": "Wir können es als Graph darstellen. Aber was bedeutet es?",
+        "description": "Gruppiert nach Grad, für die Frage, für die der Graph gezeichnet wurde: Die Gruppen zeigen die Produkte, die am häufigsten zusammen mit den schlecht bewerteten gekauft werden. Je größer die Zahl, desto mehr Paarungen laufen darüber. Der Grad wird allein innerhalb dieses Ergebnisses gezählt: die Produkte mit weniger als drei Sternen und das, was fünf oder mehr ihrer Kunden zusammen mit ihnen gekauft haben. Die roten Knoten sind die Produkte; auch die Bewertungen und die Paarknoten sind gruppiert."
+      },
       "reviewsRest": {
         "title": "Die Suche über REST",
         "description": "Dieselbe Suche als REST-Aufruf, ihre Phrase als Parameter übergeben. Jede Schnittstelle, die Provisa bedient, liest dieselben geregelten Tabellen, also antwortet REST wie SQL und GraphQL, mit denselben Rechten."

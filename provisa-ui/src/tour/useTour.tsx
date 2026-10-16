@@ -676,6 +676,16 @@ export function TourProvider({ children }: { children: ReactNode }) {
           }
           await nextPaint();
           if (cancelled) return;
+        } else if (route && step.openView) {
+          // REQ-2010: the frame on screen, viewed again: once per visit, as a statement is.
+          currentPathRef.current = route;
+          const entry = `${visitRef.current}:${attempt}`;
+          if (handedRef.current !== entry) {
+            handedRef.current = entry;
+            navigate(route, { state: { view: step.openView } });
+          }
+          await nextPaint();
+          if (cancelled) return;
         } else if (route && route !== currentPathRef.current) {
           currentPathRef.current = route;
           if (step.openBranch) {

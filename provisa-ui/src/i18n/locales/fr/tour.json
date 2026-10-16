@@ -436,6 +436,10 @@
         "title": "Ce qu'ont acheté leurs acheteurs",
         "description": "La deuxième question, en Cypher : les produits notés en dessous de trois étoiles, et ce que leurs acheteurs ont aussi acheté. Le graphe traverse les notes MongoDB et les achats Neo4j, et les batteries externes reviennent sans cesse."
       },
+      "reviewsBoughtWithByDegree": {
+        "title": "On peut en faire un graphe. Mais que signifie-t-il ?",
+        "description": "Regroupé par degré, pour la question qui a motivé le dessin : les groupes font ressortir les produits le plus souvent achetés avec les produits mal notés. Plus le nombre est grand, plus il y passe d'appariements. Le degré est compté dans ce seul résultat : les produits notés en dessous de trois étoiles et ce que cinq de leurs clients ou plus ont aussi acheté avec eux. Les nœuds rouges sont les produits ; les notes et les nœuds de paire sont eux aussi regroupés."
+      },
       "reviewsRest": {
         "title": "La recherche en REST",
         "description": "La même recherche en appel REST, sa phrase passée en paramètre. Chaque surface que sert Provisa lit les mêmes tables gouvernées, donc REST répond comme SQL et GraphQL, avec les mêmes droits."

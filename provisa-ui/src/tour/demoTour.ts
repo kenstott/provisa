@@ -78,6 +78,9 @@ export interface DemoTourStepDef {
   grpc?: string;
   /** A Cypher query: run in a new frame of the Graph page. */
   cypher?: string;
+  /** A property the Graph page's frame on screen is grouped by (`degTotal`): the frame the step
+   *  before ran, kept, and grouped. */
+  group_by?: string;
   /** A statement: its lineage built on the Lineage page, each column it reads traced back through
    *  the views it reads to the source fields. */
   lineage?: string;
@@ -181,6 +184,13 @@ export function demoTourSteps(
         readySelector: '.graph-stream[data-handoff-status="done"]',
         element: ".graph-stream .gf-frame",
         waitMs: RESULT_WAIT_MS,
+      };
+    }
+    if (def.group_by !== undefined) {
+      return {
+        ...page,
+        openView: { groupBy: def.group_by },
+        element: ".graph-stream .gf-frame",
       };
     }
     if (def.lineage !== undefined) {
