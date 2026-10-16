@@ -6569,5 +6569,6 @@
   "zh/whatsNew.json::whatsNew.features": "Features",
   "zh/whatsNew.json::whatsNew.general": "General",
   "zh/whatsNew.json::whatsNew.released": "Released {{date}}",
-  "zh/whatsNew.json::whatsNew.title": "What's new in {{version}}"
+  "zh/whatsNew.json::whatsNew.title": "What's new in {{version}}",
+  "zh/serverErrors.json::serverErrors.sandbox.starting": "The demo server is starting. Try again in a minute or two."
 }

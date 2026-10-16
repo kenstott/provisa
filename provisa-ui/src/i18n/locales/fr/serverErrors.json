@@ -584,6 +584,7 @@
       "unknown_demo": "Aucune démo publiée ne s'appelle {{demo}}.",
       "demo_not_ready": "Cette démo est encore en préparation. Réessayez sous peu.",
       "at_capacity": "Tous les bacs à sable de démo sont utilisés. Réessayez sous peu.",
+      "starting": "Le serveur de démonstration démarre. Réessayez dans une ou deux minutes.",
       "disk_full": "Ce bac à sable a atteint sa limite de disque de {{limit}} octets ; plus rien ne peut y être écrit.",
       "sign_in_required": "Connectez-vous pour ouvrir votre propre bac à sable."
     },

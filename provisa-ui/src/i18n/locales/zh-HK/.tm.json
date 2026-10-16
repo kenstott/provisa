@@ -6570,5 +6570,6 @@
   "zh-HK/whatsNew.json::whatsNew.features": "Features",
   "zh-HK/whatsNew.json::whatsNew.general": "General",
   "zh-HK/whatsNew.json::whatsNew.released": "Released {{date}}",
-  "zh-HK/whatsNew.json::whatsNew.title": "What's new in {{version}}"
+  "zh-HK/whatsNew.json::whatsNew.title": "What's new in {{version}}",
+  "zh-HK/serverErrors.json::serverErrors.sandbox.starting": "The demo server is starting. Try again in a minute or two."
 }

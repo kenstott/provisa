@@ -32,8 +32,10 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+
+from provisa import sandbox_wake
 
 # REQ-1127: the pip wheel embeds the precompiled React UI at provisa/_ui/ so the delivery is
 # self-contained (no npm/Node at runtime). Prefer that packaged directory; fall back to the
@@ -67,6 +69,27 @@ SANDBOX_API_URL = os.environ.get("PROVISA_SANDBOX_API_URL")
 #: The API paths a demo sandbox is opened by (provisa/api/demo_sandbox_router.py): a visitor's,
 #: with no sign-in, and a signed-in person's own.
 DEMO_OPEN_PREFIXES = ("public/demos/", "sandboxes/")
+
+
+async def _sandbox_starting(instance: str) -> Response:
+    """The sandbox tier's VM refused the connection: it is powered off (it stops itself when no
+    sandbox has been used for a while) or still starting. It is started, and the visitor told to
+    come back; a VM that cannot be started is a 502 naming why, in the log."""
+    try:
+        found = await sandbox_wake.wake(instance)
+    except (httpx.HTTPError, RuntimeError):
+        _log.exception("the sandbox tier's VM could not be started")
+        return HTMLResponse("API unavailable", status_code=502)
+    _log.warning("sandbox tier unreachable; its VM was %s", found)
+    return JSONResponse(
+        {
+            "detail": "The demo server is starting. Try again in a minute or two.",
+            "code": "sandbox.starting",
+            "params": {},
+        },
+        status_code=503,
+        headers={"Retry-After": "60"},
+    )
 
 
 def api_base_for(full_path: str, headers: Mapping[str, str]) -> str:
@@ -329,6 +352,8 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
                 content=body,
             )
         except httpx.ConnectError:
+            if base == SANDBOX_API_URL and sandbox_wake.SANDBOX_INSTANCE is not None:
+                return await _sandbox_starting(sandbox_wake.SANDBOX_INSTANCE)
             return HTMLResponse("API unavailable", status_code=502)
         except httpx.TimeoutException as exc:
             # The upstream accepted the connection but did not finish in the budget. Left

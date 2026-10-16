@@ -584,6 +584,7 @@
       "unknown_demo": "There is no published demo named {{demo}}.",
       "demo_not_ready": "This demo is still being prepared. Try again shortly.",
       "at_capacity": "Every demo sandbox is in use. Try again shortly.",
+      "starting": "The demo server is starting. Try again in a minute or two.",
       "disk_full": "This sandbox has used its disk limit of {{limit}} bytes; nothing more can be written to it.",
       "sign_in_required": "Sign in to open your own sandbox."
     },
