@@ -23889,3 +23889,17 @@ A capability demo, provisioning: a warehouse takes several feeds (orders, invent
 **Code:** —
 
 **Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2068 · Demo Provisioning {#REQ-2068}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A hosted demo sandbox can carry two regions, so a regions demo ([REQ-2035](#REQ-2035)) runs live and not only locally. The bundle build lands each region's replicas and builds each region's views (and their build state) into that region's own store, and carries every region's store in the bundle; each sandbox cloned from the template gets its regions declared and each region's store, so the visitor's node reads another region's replicas and views in place, the per-request record naming the serving region. A region's store in a sandbox is a captive PostgreSQL per region (or a DuckDB store, if the refusal of a DuckDB store for another region is lifted), never one store shared by both regions.
+
+**Use case:** A visitor opens the retail GDPR demo live and sees EU data served from the EU region while using the US node.
+
+**Code:** —
+
+**Tests:** —

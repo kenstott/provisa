@@ -84388,3 +84388,25 @@ And a pull outside the window is refused by name'
   - REQ-2064
   - REQ-2066
   notes: 'Maintainer 2026-10-16: a provisioning demo (Arrow for large pulls, subscription or Kafka sink to listen for change, then pull); pull windows via load management; staggering is a customization with triggers, not a feature.'
+- id: REQ-2068
+  status: proposed
+  since: 2026-10
+  group: 11. Platform, Infrastructure & Delivery
+  category: Demo Provisioning
+  feature: product-tour-and-demos-sandbox
+  priority: SHOULD
+  type: behavioral
+  description: 'A hosted demo sandbox can carry two regions, so a regions demo (REQ-2035) runs live and not only locally. The bundle build lands each region''s replicas and builds each region''s views (and their build state) into that region''s own store, and carries every region''s store in the bundle; each sandbox cloned from the template gets its regions declared and each region''s store, so the visitor''s node reads another region''s replicas and views in place, the per-request record naming the serving region. A region''s store in a sandbox is a captive PostgreSQL per region (or a DuckDB store, if the refusal of a DuckDB store for another region is lifted), never one store shared by both regions.'
+  use_case: 'A visitor opens the retail GDPR demo live and sees EU data served from the EU region while using the US node.'
+  scenario: 'Given the retail GDPR demo published with two regions
+
+
+When a visitor opens its sandbox and reads EU customers from the US node
+
+
+Then the read is served from the EU regions store in place and the record names eu'
+  related_reqs:
+  - REQ-2006
+  - REQ-2035
+  - REQ-2049
+  notes: 'Maintainer 2026-10-16: the retail GDPR demo ships local first; hosted two-region sandboxes follow as this platform requirement.'
