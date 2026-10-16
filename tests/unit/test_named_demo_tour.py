@@ -34,6 +34,7 @@ _TARGETS = (
     "jsonapi",
     "grpc",
     "cypher",
+    "group_by",
     "lineage",
     "term",
     "role",
@@ -178,8 +179,10 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     assert len(keys) == len(set(keys)), keys
     assert "route" in steps[0], "the first step names the page the tour opens on"
     page = None
+    before = None
     for step in steps:
         page = step.get("route", page)
+        previous, before = before, step
         named = [k for k in _TARGETS if k in step]
         assert len(named) == 1, f"{step['key']}: names {named}, not one target"
         assert set(step) <= {"key", "route", "capability", *_TARGETS}, step
@@ -235,6 +238,13 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
                 ), step
             # Picked in the SQL explorer's run-as picker, which is on that page alone.
             assert page == "/sql", f"{step['key']}: a role is picked on /sql, not {page}"
+        if "group_by" in step:
+            # The Graph page's frame on screen grouped: the one the Cypher step before it ran.
+            assert page == "/graph", f"{step['key']}: a frame is grouped on /graph, not {page}"
+            assert previous is not None and "cypher" in previous, (
+                f"{step['key']}: groups the frame a Cypher step just before it ran"
+            )
+            assert re.fullmatch(r"[A-Za-z_]\w*", step["group_by"]), step
         if "env" in step:
             # Picked in the header's environment switcher, on any page.
             assert step["env"] in envs, f"{step['key']}: no environment {step['env']!r}"
@@ -364,6 +374,46 @@ _ON = {"route": "/openapi", "capability": "query_development"}
 def test_a_call_the_demo_does_not_serve_is_refused(step):
     with pytest.raises(AssertionError):
         _check_steps(_WEBLOGS, [step])
+
+
+_GRAPHED = {
+    "key": "c",
+    "route": "/graph",
+    "capability": "query_development",
+    "cypher": "MATCH (p:S__ViewSlowestPages)-[:RAN]->(r:S__ViewRequestSql) RETURN p, r",
+}
+
+
+def test_a_frame_is_grouped_on_the_graph_page_just_after_the_cypher_step_that_ran_it():
+    _check_steps(_WEBLOGS, [_GRAPHED, {"key": "g", "group_by": "degTotal"}])
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        # No Cypher step just before it: there is no frame of the tour's to group.
+        [
+            {**_ON, "key": "a", "api": "GET /data/rest/shop/view_slowest_pages"},
+            {"key": "g", "group_by": "degTotal"},
+        ],
+        # On another page than the Graph page.
+        [
+            _GRAPHED,
+            {
+                "key": "g",
+                "route": "/sql",
+                "capability": "query_development",
+                "group_by": "degTotal",
+            },
+        ],
+        # Not a property's name.
+        [_GRAPHED, {"key": "g", "group_by": "deg Total"}],
+    ],
+    ids=["no-frame", "page", "property"],
+)
+def test_a_grouping_with_no_frame_to_group_is_refused(steps):
+    with pytest.raises(AssertionError):
+        _check_steps(_WEBLOGS, steps)
 
 
 def test_each_surface_s_call_on_the_demo_is_accepted():

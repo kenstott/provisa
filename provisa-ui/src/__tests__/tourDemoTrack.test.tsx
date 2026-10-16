@@ -165,6 +165,20 @@ describe("a demo's steps, as the runner walks them", () => {
     expect(step.waitMs).toBe(60000);
   });
 
+  it("groups the Graph page's frame on screen by a property, running no query", () => {
+    const [run, grouped] = demoTourSteps(
+      [
+        { key: "c", route: "/graph", cypher: "MATCH (p:P) RETURN p" },
+        { key: "g", group_by: "degTotal" },
+      ],
+      EXAMPLES,
+    );
+    expect(run.openQuery).toEqual({ stateKey: "query", text: "MATCH (p:P) RETURN p" });
+    expect(grouped.openView).toEqual({ groupBy: "degTotal" });
+    expect(grouped.openQuery).toBeUndefined();
+    expect(grouped.element).toBe(".graph-stream .gf-frame");
+  });
+
   it("points a table at its row on the Tables page", () => {
     const [table] = demoTourSteps([{ key: "t", table: "shop_access.shop_access" }], EXAMPLES);
     expect(table.element).toBe('[data-table-row="shop_access.shop_access"]');

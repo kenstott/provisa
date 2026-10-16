@@ -59,6 +59,9 @@ steps:
   cypher: >-
     MATCH (r:S__RatingsByProduct)-[g:RATINGS_OF]->(p:S__Products)<-[w:BOUGHT_WITH]-(t:S__BoughtTogether)-[a:ALSO_BOUGHT]->(o:S__Products)
     WHERE r.avgStars < 3 AND t.customers >= 5 RETURN r, g, p, w, t, a, o
+# The same graph, grouped by each node's degree: what it means for the question it was drawn for.
+- key: reviewsBoughtWithByDegree
+  group_by: degTotal
 - key: reviewsRest
   route: /openapi
   capability: query_development

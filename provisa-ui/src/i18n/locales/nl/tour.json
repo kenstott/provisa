@@ -436,6 +436,10 @@
         "title": "Wat hun kopers kochten",
         "description": "De tweede vraag, in Cypher: de producten met minder dan drie sterren en wat hun kopers daarnaast kochten. De graaf loopt over de MongoDB-beoordelingen en de Neo4j-aankopen, en powerbanks duiken steeds op."
       },
+      "reviewsBoughtWithByDegree": {
+        "title": "We kunnen het in een graaf zetten. Maar wat betekent het?",
+        "description": "Gegroepeerd op graad, voor de vraag waarvoor de graaf is getekend: de groepen brengen de producten naar boven die het vaakst samen met de laagbeoordeelde worden gekocht. Hoe groter het getal, hoe meer koppelingen er doorheen lopen. De graad wordt alleen binnen dit resultaat geteld: de producten met minder dan drie sterren en wat vijf of meer van hun klanten er samen mee kochten. De rode nodes zijn de producten; de beoordelingen en de paarnodes zijn ook gegroepeerd."
+      },
       "reviewsRest": {
         "title": "De zoekopdracht via REST",
         "description": "Dezelfde zoekopdracht als REST-aanroep, met de zinsnede als parameter. Elk oppervlak dat Provisa bedient leest dezelfde beheerde tabellen, dus REST antwoordt zoals SQL en GraphQL, met dezelfde rechten."

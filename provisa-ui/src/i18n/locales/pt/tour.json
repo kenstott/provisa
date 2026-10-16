@@ -436,6 +436,10 @@
         "title": "O que seus compradores compraram",
         "description": "A segunda pergunta, em Cypher: os produtos avaliados com menos de três estrelas e o que seus compradores também compraram. O grafo percorre as avaliações do MongoDB e as compras do Neo4j, e os carregadores portáteis não param de aparecer."
       },
+      "reviewsBoughtWithByDegree": {
+        "title": "Podemos representá-lo em um grafo. Mas o que isso significa?",
+        "description": "Agrupado por grau, para a pergunta com a qual foi desenhado: os grupos destacam os produtos comprados com mais frequência junto com os de baixa avaliação. Quanto maior o número, mais pareamentos passam por ele. O grau é contado apenas dentro deste resultado: os produtos avaliados com menos de três estrelas e o que cinco ou mais de seus clientes também compraram com eles. Os nós vermelhos são os produtos; as avaliações e os nós de par também estão agrupados."
+      },
       "reviewsRest": {
         "title": "A busca por REST",
         "description": "A mesma busca como chamada REST, com a frase passada como parâmetro. Toda superfície que o Provisa serve lê as mesmas tabelas governadas, então o REST responde como SQL e GraphQL, com os mesmos direitos."

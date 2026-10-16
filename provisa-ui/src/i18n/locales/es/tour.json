@@ -436,6 +436,10 @@
         "title": "Qué compraron sus compradores",
         "description": "La segunda pregunta, en Cypher: los productos valorados con menos de tres estrellas y lo que sus compradores compraron además. El grafo recorre las valoraciones de MongoDB y las compras de Neo4j, y las baterías externas aparecen una y otra vez."
       },
+      "reviewsBoughtWithByDegree": {
+        "title": "Podemos representarlo en un grafo. Pero ¿qué significa?",
+        "description": "Agrupado por grado, para la pregunta con la que se dibujó: los grupos hacen aflorar los productos que más a menudo se compran junto con los de baja valoración. Cuanto mayor es el número, más emparejamientos pasan por él. El grado se cuenta solo dentro de este resultado: los productos valorados con menos de tres estrellas y lo que cinco o más de sus clientes compraron además con ellos. Los nodos rojos son los productos; las valoraciones y los nodos de pareja también están agrupados."
+      },
       "reviewsRest": {
         "title": "La búsqueda por REST",
         "description": "La misma búsqueda como llamada REST, con su frase pasada como parámetro. Cada superficie que sirve Provisa lee las mismas tablas gobernadas, así que REST responde igual que SQL y GraphQL, con los mismos derechos."
