@@ -17,6 +17,7 @@ from __future__ import annotations
 import threading
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from provisa.vector.registry import VectorModel
 
@@ -143,6 +144,13 @@ class HuggingFaceLocalProvider(EmbeddingProvider):  # REQ-420
             st = SentenceTransformer(model.id)
             self._cache[model.id] = st
         return st
+
+    def load(self, model: Any) -> None:
+        """Load ``model`` (anything with the model's ``id``) for this process now, so that no
+        request waits for it: importing sentence-transformers and loading a model took a hosted
+        sandbox tier's first search past its 60s request timeout."""
+        with self._in_use:
+            self._loaded(model)
 
     async def embed(self, texts: list[str], model: VectorModel) -> list[list[float]]:
         with self._in_use:
