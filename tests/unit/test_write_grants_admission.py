@@ -332,17 +332,17 @@ def _mutate(grant: dict, mutation: str, session=_ME) -> str:
 
 def test_a_graphql_insert_carries_the_grants_session_and_literal_presets():
     governed = _mutate(
-        _INSERT, 'mutation { insertOrders(input: { ship_to: "1 Elm" }) { affected_rows } }'
+        _INSERT, 'mutation { insertOrders(input: { shipTo: "1 Elm" }) { affected_rows } }'
     )
     assert "customer_id" in governed and "CAST('7' AS INT)" in governed
     assert "'placed'" in governed
 
 
 def test_a_graphql_input_offers_no_field_for_a_preset_column():
-    with pytest.raises(AssertionError, match="customer_id"):
+    with pytest.raises(AssertionError, match="customerId"):
         _mutate(
             _INSERT,
-            'mutation { insertOrders(input: { ship_to: "x", customer_id: 3 }) { affected_rows } }',
+            'mutation { insertOrders(input: { shipTo: "x", customerId: 3 }) { affected_rows } }',
         )
 
 
@@ -350,7 +350,7 @@ def test_a_graphql_insert_without_the_session_variable_is_refused():
     with pytest.raises(WriteNotAdmitted, match="session variable 'user_id'"):
         _mutate(
             _INSERT,
-            'mutation { insertOrders(input: { ship_to: "1 Elm" }) { affected_rows } }',
+            'mutation { insertOrders(input: { shipTo: "1 Elm" }) { affected_rows } }',
             session={},
         )
 

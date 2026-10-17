@@ -403,6 +403,9 @@ def admit_rows(
             f"{sorted(p['column'] for p in grant['presets'])} itself (presets), which a COPY "
             "cannot add. Use INSERT."
         )
+    from provisa.compiler.stage2 import registered_name
+
+    columns = [registered_name(gov, table_id, c) for c in columns]
     _require_columns(gov, grant, name, columns)
     check = _predicate(gov, table_id, grant.get("check"))
     if rows is None or _every_row(check):
@@ -549,6 +552,13 @@ def admit_write(
     table, listed = _target(tree)
     table_id = _resolve(table, gov)
     name = table.name
+    if isinstance(tree, (exp.Insert, exp.Update, exp.Delete)) and gov.published.get(table_id):
+        # A column the write names by its published name is its physical column, which the
+        # grant states (REQ-2074): named so from here on, as lowering names it.
+        from provisa.compiler.sql_rewrite import rename_write_columns
+
+        rename_write_columns(tree, gov.published[table_id])
+        table, listed = _target(tree)
     require_write_op(gov, table_id, name, kind)
     form = write_form(tree)
     if form is not None and form in gov.write_refused_forms[table_id]:
