@@ -55,9 +55,51 @@ def test_every_kind_of_sandbox_org_is_confined(org):
     assert egress.confined(org)
 
 
-def test_an_ordinary_org_is_not_confined():
+@pytest.fixture
+def organisations(monkeypatch):
+    """Set whether the deployment holds many organizations, as the API layer says it."""
+    from provisa.core import secrets_providers
+
+    def _say(many: bool) -> None:
+        monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: many)
+
+    return _say
+
+
+def test_an_ordinary_org_on_a_deployment_of_one_reaches_a_private_address(organisations):
+    organisations(False)
     assert not egress.confined("acme")
+    assert not egress.held("acme")
     egress.require_allowed("10.0.0.1", 5432, "acme")
+
+
+@pytest.mark.parametrize("address", ["10.10.0.4", "10.10.0.5", "127.0.0.1", "169.254.169.254"])
+def test_an_ordinary_org_on_a_shared_deployment_is_refused_the_platforms_private_addresses(
+    organisations, address
+):
+    organisations(True)
+    assert egress.held("acme")
+    with pytest.raises(egress.PrivateDestinationRefused) as refused:
+        egress.require_connectable({"host": address, "port": 6379}, "redis", "acme")
+    assert refused.value.code == "sources.private_destination"
+
+
+def test_an_ordinary_orgs_unpinnable_public_source_on_a_shared_deployment_is_saved(
+    organisations, monkeypatch
+):
+    organisations(True)
+    monkeypatch.setattr(egress, "resolve", lambda host, port=None: ["93.184.216.34"])
+    fields = {"host": "", "port": None, "base_url": "https://api.example.com/v1"}
+    assert egress.require_connectable(fields, "openapi", "acme") is None
+
+
+def test_an_ordinary_orgs_pinnable_source_on_a_shared_deployment_is_pinned(
+    organisations, monkeypatch
+):
+    organisations(True)
+    monkeypatch.setattr(egress, "resolve", lambda host, port=None: ["93.184.216.34"])
+    fields = {"host": "db.example.com", "port": 5432}
+    assert egress.require_connectable(fields, "postgresql", "acme") == "93.184.216.34"
 
 
 @pytest.mark.parametrize("address", _PRIVATE)
@@ -184,7 +226,8 @@ def test_each_pinnable_duckdb_connector_attaches_the_checked_address(
     assert pinned in attach and "db.example.com" not in attach
 
 
-def test_an_ordinary_orgs_source_is_attached_by_its_name(public_names):
+def test_an_ordinary_orgs_source_is_attached_by_its_name(public_names, organisations):
+    organisations(False)
     from provisa.federation.engine import build_engine
 
     attach = build_engine("duckdb").resolve(_source("postgresql", 5432)).details["attach"]
