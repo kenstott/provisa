@@ -51,7 +51,9 @@ def _log(mode: str):
         f"CREATE TABLE log(id INT, v VARCHAR, updated_at TIMESTAMP, sys_recorded_at TIMESTAMP{op})"
     )
     con.execute(_DELTA if mode == MODE_DELTA else _SNAPSHOT)
-    return con, BitemporalSpec(key=("id",), mode=mode, source_column="updated_at")
+    return con, BitemporalSpec(
+        key=("id",), mode=mode, source_column="updated_at", columns=("id", "v", "updated_at")
+    )
 
 
 def _read(con, spec, as_of=None) -> list[tuple]:

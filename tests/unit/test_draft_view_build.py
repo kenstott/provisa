@@ -225,7 +225,7 @@ async def test_a_bitemporal_draft_view_answers_as_building_until_its_log_exists(
     from provisa.federation.replica_state import ReplicaBuilding
     from provisa.mv.bitemporal import BitemporalSpec, view_read_sql
 
-    spec = BitemporalSpec(key=("id",))
+    spec = BitemporalSpec(key=("id",), columns=("id",))
     mv = _registered(bitemporal=spec)
     state = _state(mv)
     with pytest.raises(ReplicaBuilding) as building:
