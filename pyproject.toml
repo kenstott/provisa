@@ -174,6 +174,11 @@ dependencies = [
     # `provisa run` on linux/aarch64 aborts with the explanation instead (cli._require_embedded_pg).
     "pgserver; sys_platform != 'linux' or platform_machine != 'aarch64'",
     "anyio>=4.14.2",
+    # REQ-2071: the Data Science area's in-browser Python (Pyodide, its packages, the
+    # provisa-client wheel), served by ui_server at /pyodide. A package of its own only because
+    # PyPI caps a file at 100 MB; it is part of every install, at this release's own version
+    # (the release stamps the pin with the version).
+    "provisa-notebook==0.1.0",
 ]
 
 [project.scripts]
@@ -287,6 +292,11 @@ dev = [
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
+
+# REQ-2071: in this repository provisa-notebook is the sibling directory, built in place
+# (`python -m provisa_notebook.build`); a release publishes it to PyPI with provisa.
+[tool.uv.sources]
+provisa-notebook = { path = "provisa-notebook", editable = true }
 
 [tool.setuptools.packages.find]
 # The provisa tree plus the vendored buenavista fork, discovered from two roots so both

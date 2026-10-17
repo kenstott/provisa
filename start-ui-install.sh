@@ -1005,6 +1005,12 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 if command -v nvm >/dev/null 2>&1; then
   nvm use 2>/dev/null || nvm use 22 2>/dev/null || true
 fi
+# REQ-2071: provisa-notebook (the Data Science area's Python) installed and its assets built,
+# before vite serves them. A failure leaves the rest of the app running; the Data Science area
+# then says the notebook assets are missing.
+"$SCRIPT_DIR/scripts/ensure-notebook.sh" "$SCRIPT_DIR" \
+  || echo "Warning: provisa-notebook could not be prepared; the Data Science area will say so"
+
 start_ui() {
   cd "$SCRIPT_DIR/provisa-ui"
   : > "$LOG_DIR/ui.log"

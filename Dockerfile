@@ -21,15 +21,23 @@ COPY vendor/ ./vendor/
 # index at the locked version; its CUDA-only dependencies (triton, nvidia-*, cuda-*) are left out.
 ARG PROVISA_EXTRAS=firebase,vector
 COPY uv.lock .
+# REQ-2071: provisa-notebook (the Data Science area's Pyodide) is a dependency that lives beside
+# provisa in this repository. Its assets are fetched and built here, with the provisa-client wheel
+# they carry, and it is installed as a package (the lock names it as an editable path, which the
+# runtime stage would not have).
+COPY provisa-notebook/ ./provisa-notebook/
+COPY provisa-client/ ./provisa-client/
 COPY --from=ghcr.io/astral-sh/uv:0.11.19 /uv /usr/local/bin/uv
 RUN uv export --frozen --no-dev --no-emit-project --no-hashes --no-annotate --no-header \
       $(echo "${PROVISA_EXTRAS}" | tr ',' '\n' | sed 's/^/--extra /') -o /tmp/locked.txt \
- && grep -vE '^(torch|triton|nvidia-|cuda-)' /tmp/locked.txt > /tmp/requirements.txt \
+ && grep -vE '^(torch|triton|nvidia-|cuda-|-e )' /tmp/locked.txt > /tmp/requirements.txt \
  && pip install --no-cache-dir "$(grep '^torch==' /tmp/locked.txt | cut -d' ' -f1)" \
       --index-url https://download.pytorch.org/whl/cpu \
  && pip install --no-cache-dir --no-deps -r /tmp/requirements.txt \
+ && PYTHONPATH=provisa-notebook python -m provisa_notebook.build > /dev/null \
+ && pip install --no-cache-dir --no-deps ./provisa-notebook \
  && pip install --no-cache-dir --no-deps . \
- && rm /usr/local/bin/uv /tmp/locked.txt /tmp/requirements.txt
+ && rm -rf /usr/local/bin/uv /tmp/locked.txt /tmp/requirements.txt provisa-notebook provisa-client
 
 # Stage 2: render_graph's renderer (REQ-1990) — the UI's own Cytoscape stylesheet and layouts,
 # bundled with the packages provisa-ui/graph-render's lockfile pins, drawn by Node into a PNG.

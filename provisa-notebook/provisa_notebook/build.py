@@ -75,7 +75,17 @@ def build(out: Path = ASSETS) -> dict:
     (target / "pyodide-lock.json").write_text(json.dumps(lock))
     wheels = target / "wheels"
     subprocess.run(
-        ["uv", "build", "--wheel", "--out-dir", str(wheels), str(REPO / "provisa-client")],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            "--quiet",
+            "--no-deps",
+            "--wheel-dir",
+            str(wheels),
+            str(REPO / "provisa-client"),
+        ],
         check=True,
     )
     [client] = sorted(wheels.glob("provisa_client-*.whl"))

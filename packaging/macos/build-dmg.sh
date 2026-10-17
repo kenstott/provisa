@@ -240,7 +240,11 @@ bundle_native_payload() {
   # soda-core is Elastic License 2.0 and is never vendored, so first-launch installs the
   # operator's chosen checker on top of this tree.
   # mcp-proxy (REQ-1104): Node-free stdio<->Streamable-HTTP bridge for the Claude Desktop connector.
-  "$py" -m pip install --quiet "${built_wheel}[embedded]" uvicorn mcp-proxy
+  # REQ-2071: provisa's pinned provisa-notebook, built here (PyPI has it only once released).
+  local notebook_dir="${REPO_ROOT}/dist/notebook"
+  rm -rf "$notebook_dir"
+  "${REPO_ROOT}/scripts/build-notebook-wheel.sh" "$py" "$notebook_dir"
+  "$py" -m pip install --quiet --find-links "$notebook_dir" "${built_wheel}[embedded]" uvicorn mcp-proxy
   # Fail the build loudly if a critical native-tier dep did not land (mirrors build-sfx.ps1).
   "$py" -c "import provisa, sqlite3, mcp_proxy" || {
     err "native runtime is missing provisa/sqlite3/mcp_proxy after install."

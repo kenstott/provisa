@@ -48,7 +48,9 @@ _LEGS = {
 }
 # PyPI's own jobs are the orchestrator's: PyPI trusted publishing does not accept a token issued
 # to a reusable workflow (pypa/gh-action-pypi-publish#166), which every leg is.
-_PYPI = ("publish-pypi", "publish-provisa-pypi")
+_PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-provisa-pypi")
+#: REQ-2071: provisa pins provisa-notebook at its own version, so provisa waits for it on PyPI.
+_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi"}}
 
 
 def _load(name: str) -> dict:
@@ -75,7 +77,9 @@ def test_build_dmg_publish_job_depends_on_all_builds():
     orchestrator = _load("build-dmg.yml")["jobs"]
     assert set(orchestrator["publish"]["needs"]) == (set(_LEGS) - {"publish"}) | set(_PYPI)
     for job in _PYPI:
-        assert set(orchestrator[job]["needs"]) == set(_LEGS) - {"publish"}, job
+        assert set(orchestrator[job]["needs"]) == (set(_LEGS) - {"publish"}) | _PYPI_AFTER.get(
+            job, set()
+        ), job
     built = {job for leg in set(_LEGS) - {"publish"} for job in _load(_LEGS[leg])["jobs"]}
     required = {
         "build-macos-core",
@@ -236,6 +240,7 @@ def test_no_publication_is_reachable_without_every_build():
                     where[job] = leg
     assert where == {
         "publish-pypi": "orchestrator",
+        "publish-notebook-pypi": "orchestrator",
         "publish-provisa-pypi": "orchestrator",
         "publish-release": "publish",
         "publish-engine-image": "publish",
@@ -245,10 +250,10 @@ def test_no_publication_is_reachable_without_every_build():
     orchestrator = _load("build-dmg.yml")["jobs"]
     legs_built = set(builds.values())
     assert legs_built == set(_LEGS) - {"publish"}
-    # Both PyPI publications need every build; the publish leg needs them too, so the release is
-    # undrafted only after both wheels are on PyPI.
+    # Every PyPI publication needs every build (provisa's also its pinned notebook package); the
+    # publish leg needs them too, so the release is undrafted only after every wheel is on PyPI.
     for job in _PYPI:
-        assert set(orchestrator[job]["needs"]) == legs_built, job
+        assert set(orchestrator[job]["needs"]) == legs_built | _PYPI_AFTER.get(job, set()), job
     assert set(orchestrator["publish"]["needs"]) == legs_built | set(_PYPI)
     # A dry run skips the two publications; the publish leg (the asset check) still runs, and
     # never after one that failed.

@@ -3477,6 +3477,7 @@ dependencies = [
     { name = "orjson" },
     { name = "pgserver", marker = "platform_machine != 'aarch64' or sys_platform != 'linux'" },
     { name = "protobuf" },
+    { name = "provisa-notebook" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
     { name = "psycopg2-binary" },
@@ -3714,6 +3715,7 @@ requires-dist = [
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "protobuf", specifier = ">=6.33.5,<7" },
     { name = "provisa-duckdb-ext", marker = "extra == 'embedded'", specifier = ">=0.1.1" },
+    { name = "provisa-notebook", editable = "provisa-notebook" },
     { name = "provisa-pg-ext", marker = "extra == 'dev'", specifier = "==0.1.4" },
     { name = "psycopg", extras = ["binary"] },
     { name = "psycopg-pool" },
@@ -3775,6 +3777,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/21/7b/f9a7aadcdf4188e55
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f8/1a/e877f39ce6fbc7e86111b70163261d9e9c25c92d37a7f5dd3095b42d30e4/provisa_duckdb_ext-0.1.1-py3-none-any.whl", hash = "sha256:4e8d58861b22b186eb506d39132a9f7788cb86bd9082370b7a58bff75d4144f9", size = 88615695, upload-time = "2026-09-30T19:27:29.102Z" },
 ]
+
+[[package]]
+name = "provisa-notebook"
+version = "0.1.0"
+source = { editable = "provisa-notebook" }
 
 [[package]]
 name = "provisa-pg-ext"

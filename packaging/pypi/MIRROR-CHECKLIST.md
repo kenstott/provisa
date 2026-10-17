@@ -22,6 +22,16 @@ therefore have **platform-specific** wheels (not pure-Python `-any`).
       --generate-hashes -o packaging/pypi/requirements-embedded.lock
   ```
 
+- **provisa-notebook:** provisa depends on `provisa-notebook` at its own version (the
+  Data Science area's in-browser Python, REQ-2071). It is published to PyPI with each
+  release and is a single pure-Python wheel (`-py3-none-any`, about 57 MB); seed the
+  one matching the provisa version you mirror. The lock above resolves it from this
+  repository, so `pip download` of the lock does not fetch it:
+
+  ```bash
+  pip download --no-deps "provisa-notebook==<provisa version>" -d ./mirror-seed
+  ```
+
 ## One-pass mirror seed
 
 Download every wheel named in the lock, for each target platform, then upload

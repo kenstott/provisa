@@ -200,6 +200,12 @@ if [ "$SEED_DATA" = true ] && [ -f "$SCRIPT_DIR/scripts/seed-kafka.py" ] && \
   "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/seed-kafka.py" 2>/dev/null || true
 fi
 
+# REQ-2071: provisa-notebook (the Data Science area's Python) installed and its assets built,
+# before the dependency sync below (pip alone would look for it on PyPI). A failure leaves the
+# rest of the app running; the Data Science area then says the notebook assets are missing.
+"$SCRIPT_DIR/scripts/ensure-notebook.sh" "$SCRIPT_DIR" \
+  || echo "Warning: provisa-notebook could not be prepared; the Data Science area will say so"
+
 # Ensure Python dependencies are installed (skip if lockfile unchanged; 30s timeout guards against hangs)
 if [ -f "$SCRIPT_DIR/pyproject.toml" ] && [ -d "$SCRIPT_DIR/.venv" ]; then
   LOCK_HASH=$(md5 -q "$SCRIPT_DIR/pyproject.toml" "$SCRIPT_DIR/uv.lock" 2>/dev/null || echo "")

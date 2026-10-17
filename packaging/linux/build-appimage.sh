@@ -293,7 +293,13 @@ bundle_native_payload() {
   rm -rf "$wheels"; mkdir -p "$wheels"
   info "Downloading Linux x86_64 wheelhouse (provisa[embedded] + uvicorn + mcp-proxy + deps)..."
   # mcp-proxy (REQ-1104): Node-free stdio<->Streamable-HTTP bridge for the Claude Desktop connector.
-  "${base}/bin/python3" -m pip download --dest "$wheels" "${built_wheel}[embedded]" uvicorn mcp-proxy
+  # REQ-2071: provisa's pinned provisa-notebook, built here (PyPI has it only once released); it
+  # lands in the wheelhouse with the rest, so an airgapped first launch installs it.
+  local notebook_dir="${REPO_ROOT}/dist/notebook"
+  rm -rf "$notebook_dir"
+  "${REPO_ROOT}/scripts/build-notebook-wheel.sh" "${base}/bin/python3" "$notebook_dir"
+  "${base}/bin/python3" -m pip download --dest "$wheels" --find-links "$notebook_dir" \
+    "${built_wheel}[embedded]" uvicorn mcp-proxy
   ok "Wheelhouse staged ($(ls "$wheels" | wc -l | tr -d ' ') wheels)."
 
   # ── 3. Built UI (build provisa-ui/dist if not already present) ──
