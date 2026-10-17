@@ -47,6 +47,9 @@ services:
       # The engine's tree (its config, its catalogs, the launch-settings file), shared with the
       # engine through the host: what the app renders here is what the engine starts on next.
       - ${PROVISA_TRINO_ETC_HOST:?the engine tree the launcher shares with the app}:/app/trino-host
+      # Kafka client properties, which can hold a SASL password: a tmpfs this container and the
+      # engine share (trino_kafka_client below), so they never reach a disk.
+      - trino_kafka_client:/app/trino-host/kafka-client
       # The data directory, on a named volume: it holds the master key the product mints at the
       # first stored secret (and its other on-disk state). Kept only in the container's own
       # filesystem, the key is lost when the container is replaced (a rebuild, an image
@@ -125,6 +128,22 @@ services:
       trino:
         condition: service_healthy
 
+  # The Kafka client properties an earlier release left in the engine tree's kafka-client directory
+  # on disk, removed as the stack starts (docker-compose.core.yml).
+  trino-exchange-init:
+    environment:
+      PROVISA_DEAD_ENGINE_FILES: "/engine-tree/kafka-client/*.properties"
+
+  # The engine reads the Kafka client properties from the tmpfs the app writes them into, in place
+  # of core's host directory (compose replaces a volume whose target matches).
+  trino:
+    volumes:
+      - trino_kafka_client:/etc/trino/kafka-client:ro
+
+  trino-worker:
+    volumes:
+      - trino_kafka_client:/etc/trino/kafka-client:ro
+
   provisa-ui:
     restart: unless-stopped
     build:
@@ -144,6 +163,15 @@ services:
       - provisa
 
 volumes:
+  # Memory-backed, owned by Trino's user and closed to every other: the Kafka client properties
+  # the app writes (provisa/core/trino_catalog_files.py, write_kafka_client_file) and the engine
+  # reads. Written again whenever the app registers a Kafka catalog.
+  trino_kafka_client:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=1000,gid=1000,mode=0700"
   # The API's data directory (PROVISA_DATA_DIR). `docker compose down -v` removes it, and with
   # it a minted master key — the secrets vault in the control-plane database then cannot be
   # opened. Keep it, or set PROVISA_ENCRYPTION_KEY.

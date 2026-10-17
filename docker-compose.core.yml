@@ -100,8 +100,17 @@ services:
     # volume's root owned by root when the image has no directory at its mount path, and the
     # Salesforce catalog keeps its describe results under /data/trino/cache (mkdir there was
     # "Permission denied" for uid 1000 on a fresh volume).
-    command: sh -c "mkdir -p /data/provisa/exchange && chown -R 1000:1000 /data/provisa/exchange && chown 1000:1000 /data/trino/cache /data/trino/worker-cache"
+    #
+    # It also removes what the engine tree no longer holds on disk, as root, since Trino's user
+    # wrote it: the catalog directory an earlier release's file catalog store filled with each
+    # catalog's properties, passwords included (the catalogs are in Trino's memory now), and the
+    # files PROVISA_DEAD_ENGINE_FILES names (docker-compose.app.yml: the Kafka client properties
+    # left on disk before they moved to a tmpfs).
+    command: sh -c "mkdir -p /data/provisa/exchange && chown -R 1000:1000 /data/provisa/exchange && chown 1000:1000 /data/trino/cache /data/trino/worker-cache && rm -rf /engine-tree/catalog $${PROVISA_DEAD_ENGINE_FILES}"
+    environment:
+      PROVISA_DEAD_ENGINE_FILES: ""
     volumes:
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}:/engine-tree
       - provisa_exchange:/data/provisa/exchange
       - trino_cache:/data/trino/cache
       - trino_worker_cache:/data/trino/worker-cache

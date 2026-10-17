@@ -613,6 +613,17 @@ set_node_env() {
 # environment is taken from what the node runs: the address its MinIO is published on, its running
 # MinIO's own root account; Grafana's password is generated once. No value is printed.
 MINIO_CONTAINER="compose-minio-1"
+# What the engine tree no longer holds on disk: the catalog directory an earlier release's file
+# catalog store wrote each catalog's properties into, passwords included (the catalogs are in
+# Trino's memory now), and the Kafka client properties written before the writer made them 0600
+# for Trino alone. The node runs no compose init container that would remove them (its engines are
+# pods), so the deploy does.
+clear_dead_engine_files() {
+  echo "== removing the engine tree's on-disk catalogs"
+  # Expanded by root's shell: the ssh user cannot list /root, so its own shell would match nothing.
+  ssh_node "sudo sh -c 'rm -rf /root/.provisa/trino/catalog && rm -f /root/.provisa/trino/kafka-client/*.properties'"
+}
+
 push_store_env() {
   local have value changed=""
   have="$(ssh_node "sudo cut -d= -f1 $ENV_FILE" | tr -d '\r')"
@@ -891,15 +902,15 @@ case "$TARGET" in
     preflight_engine; push_commerce_env; preflight_commerce; build_api; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    preflight_engine; push_commerce_env; preflight_commerce; build_cfg; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
   all)
-    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
     preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
 esac
 echo "== deployed $TARGET"

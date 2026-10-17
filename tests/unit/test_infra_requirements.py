@@ -1217,11 +1217,12 @@ class TestREQ1407EngineVarPassthrough:
     """REQ-1407"""
 
     def test_app_compose_passes_provisa_engine_to_all_services(self):
-        # REQ-1407 — every service in docker-compose.app.yml must forward
-        # PROVISA_ENGINE, or the federation engine silently falls back to duckdb.
+        # REQ-1407 — every Provisa service docker-compose.app.yml defines (the ones it builds) must
+        # forward PROVISA_ENGINE, or the federation engine silently falls back to duckdb. The
+        # overlay's entries for core's engine services (their Kafka client mount) are not Provisa.
         doc = yaml.safe_load((REPO_ROOT / "docker-compose.app.yml").read_text())
-        services = doc.get("services", {})
-        assert services, "docker-compose.app.yml must define services"
+        services = {name: svc for name, svc in doc.get("services", {}).items() if "build" in svc}
+        assert set(services) == {"provisa", "provisa-ui"}, services
         for name, svc in services.items():
             env = svc.get("environment", {})
             assert "PROVISA_ENGINE" in env, (
