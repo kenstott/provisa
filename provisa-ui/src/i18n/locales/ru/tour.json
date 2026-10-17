@@ -1127,6 +1127,30 @@
       "pharmaRecap": {
         "title": "Что вы увидели",
         "description": "Собственные данные аптеки, читаемые напрямую, и открытые данные о лекарствах, загруженные один раз, соединены по NDC и по фирме в одной управляемой модели: одно представление отвечает, какие препараты под угрозой, в SQL, GraphQL и REST, с доступом каждой роли."
+      },
+      "storefrontScenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "storefrontTables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "storefrontJoin": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "storefrontAnswer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "storefrontExample": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "storefrontRecap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -1207,6 +1231,10 @@
       "pharma": {
         "title": "Риск дефицита и отзыва лекарств",
         "summary": "Вопрос больничной аптеки — какие из её препаратов под угрозой дефицита или отзыва: её формуляр и запасы, соединённые с дефицитами и отзывами FDA и назначениями Medicaid, с ответом в SQL, GraphQL и REST."
+      },
+      "storefront": {
+        "title": "One model, app and BI",
+        "summary": "TODO: One model, app and BI, in one sentence."
       }
     }
   }

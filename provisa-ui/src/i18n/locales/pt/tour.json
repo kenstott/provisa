@@ -1127,6 +1127,30 @@
       "pharmaRecap": {
         "title": "O que você viu",
         "description": "Os dados da própria farmácia, lidos ao vivo, e dados públicos de medicamentos, carregados uma vez, unidos por NDC e por empresa em um modelo governado: uma view responde quais produtos estão em risco, em SQL, GraphQL e REST, com o acesso de cada papel."
+      },
+      "storefrontScenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "storefrontTables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "storefrontJoin": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "storefrontAnswer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "storefrontExample": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "storefrontRecap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -1207,6 +1231,10 @@
       "pharma": {
         "title": "Risco de desabastecimento e recolhimento de medicamentos",
         "summary": "A pergunta da farmácia de um hospital, quais dos seus produtos correm risco de desabastecimento ou de recolhimento: o seu formulário e estoque unidos aos desabastecimentos e recolhimentos da FDA e às prescrições do Medicaid, respondida em SQL, GraphQL e REST."
+      },
+      "storefront": {
+        "title": "One model, app and BI",
+        "summary": "TODO: One model, app and BI, in one sentence."
       }
     }
   }

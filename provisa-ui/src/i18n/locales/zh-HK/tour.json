@@ -1127,6 +1127,30 @@
       "pharmaRecap": {
         "title": "你看到了甚麼",
         "description": "藥房自己的數據即時讀取，公開的藥品數據載入一次，在一個受管治的模型中按 NDC 和企業關聯：一個檢視回答哪些藥品有風險，以 SQL、GraphQL 和 REST 提供，並遵循每個角色的存取權限。"
+      },
+      "storefrontScenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "storefrontTables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "storefrontJoin": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "storefrontAnswer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "storefrontExample": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "storefrontRecap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -1207,6 +1231,10 @@
       "pharma": {
         "title": "藥品短缺與回收風險",
         "summary": "醫院藥房的問題：其哪些藥品面臨短缺或回收風險。處方集和庫存與 FDA 的短缺和回收資料及 Medicaid 處方數據關聯，以 SQL、GraphQL 和 REST 作答。"
+      },
+      "storefront": {
+        "title": "One model, app and BI",
+        "summary": "TODO: One model, app and BI, in one sentence."
       }
     }
   }

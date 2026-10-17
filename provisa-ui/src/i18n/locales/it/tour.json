@@ -1127,6 +1127,30 @@
       "pharmaRecap": {
         "title": "Che cosa hai visto",
         "description": "I dati della farmacia, letti in tempo reale, e i dati pubblici sui farmaci, caricati una volta, uniti per NDC e per azienda in un unico modello governato: una vista risponde quali prodotti sono a rischio, in SQL, GraphQL e REST, secondo l'accesso di ogni ruolo."
+      },
+      "storefrontScenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "storefrontTables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "storefrontJoin": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "storefrontAnswer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "storefrontExample": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "storefrontRecap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -1207,6 +1231,10 @@
       "pharma": {
         "title": "Rischio di carenza e di richiamo dei farmaci",
         "summary": "La domanda della farmacia di un ospedale, quali dei suoi prodotti rischiano una carenza o un richiamo: prontuario e scorte uniti alle carenze e ai richiami della FDA e alle prescrizioni Medicaid, con la risposta in SQL, GraphQL e REST."
+      },
+      "storefront": {
+        "title": "One model, app and BI",
+        "summary": "TODO: One model, app and BI, in one sentence."
       }
     }
   }

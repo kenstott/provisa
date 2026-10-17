@@ -1,0 +1,58 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The named demo "storefront" (start-ui-install.sh --demo storefront; REQ-1858). This file is its one
+# start point: `docker compose up -d` brings up its database and seeds it.
+#
+#   postgres  the demo's database (db/init.sql), with the role Provisa reads it as.
+#   seeder    TODO: writes what the demo's data needs beyond db/init.sql (seed.py), then exits.
+#
+# Port: 29632 the database; it can be moved by its variable.
+x-demo-labels: &demo-labels
+  com.provisa.demo: storefront
+name: provisa-demo-storefront
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: storefront
+    ports:
+      - "127.0.0.1:${STOREFRONT_PG_PORT:-29632}:5432"
+    volumes:
+      - storefront_pg:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+      - ./db/reader.sql:/docker-entrypoint-initdb.d/20-reader.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d storefront"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+  seeder:
+    image: provisa-demo-storefront-seeder:1
+    build:
+      context: .
+      dockerfile: Dockerfile.seeder
+    restart: "no"
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: seeder
+    volumes:
+      - ${PROVISA_NAMED_DEMO_DIR:-.}/data:/data-marker
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  storefront_pg:

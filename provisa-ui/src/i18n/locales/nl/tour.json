@@ -1127,6 +1127,30 @@
       "pharmaRecap": {
         "title": "Wat u hebt gezien",
         "description": "De eigen data van de apotheek, live gelezen, en openbare geneesmiddelendata, eenmaal geladen, gekoppeld op NDC en op firma in één beheerd model: één view beantwoordt welke producten risico lopen, in SQL, GraphQL en REST, met de toegang van elke rol."
+      },
+      "storefrontScenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "storefrontTables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "storefrontJoin": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "storefrontAnswer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "storefrontExample": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "storefrontRecap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -1207,6 +1231,10 @@
       "pharma": {
         "title": "Risico op geneesmiddelentekort en terugroeping",
         "summary": "De vraag van een ziekenhuisapotheek, welke van haar producten een tekort of terugroeping dreigen: haar formularium en voorraad gekoppeld aan de tekorten en terugroepingen van de FDA en de Medicaid-voorschriften, beantwoord in SQL, GraphQL en REST."
+      },
+      "storefront": {
+        "title": "One model, app and BI",
+        "summary": "TODO: One model, app and BI, in one sentence."
       }
     }
   }

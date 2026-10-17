@@ -1,0 +1,86 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "storefront" (start-ui-install.sh --demo storefront; REQ-1858).
+# docker-compose.yml in this directory brings up its database. TODO: the demo's question, and
+# what each source holds.
+#
+#   storefront-db   the demo's Postgres, read live as provisa_reader (db/init.sql).
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+domains:
+- id: storefront
+  description: TODO -- what the demo's data is about
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+- id: analyst
+  capabilities:
+  - query_development
+  domain_access:
+  - storefront
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- id: storefront-db
+  type: postgresql
+  host: ${env:STOREFRONT_PG_HOST:-localhost}
+  port: ${env:STOREFRONT_PG_PORT:-29632}
+  database: storefront
+  username: provisa_reader
+  password: provisa_reader
+  description: TODO -- the demo's database
+tables:
+- source_id: storefront-db
+  domain_id: storefront
+  schema: public
+  table: customers
+  description: TODO -- the demo's first table
+  columns:
+  - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [org_admin, analyst]}
+  - {name: name, data_type: varchar, description: The customer's name, visible_to: [org_admin, analyst]}
+- source_id: storefront-db
+  domain_id: storefront
+  schema: public
+  table: orders
+  description: TODO -- the demo's second table
+  columns:
+  - {name: id, data_type: integer, is_primary_key: true, description: The order's id, visible_to: [org_admin, analyst]}
+  - {name: customer_id, data_type: integer, description: The customer who placed it, visible_to: [org_admin, analyst]}
+  - {name: amount, data_type: decimal, description: The order's total in USD, visible_to: [org_admin, analyst]}
+views:
+# The answer to the demo's question: what the tour's solution steps read.
+- id: answer
+  domain_id: storefront
+  enable_aggregates: true
+  enable_group_by: true
+  description: TODO -- the answer to the demo's question
+  sql: >-
+    SELECT c.name, COUNT(*) AS orders, SUM(o.amount) AS total
+    FROM "storefront"."customers" AS c
+    JOIN "storefront"."orders" AS o ON o.customer_id = c.id
+    GROUP BY c.name
+  columns:
+  - {name: name, data_type: varchar, description: The customer's name, visible_to: [org_admin, analyst]}
+  - {name: orders, data_type: bigint, description: Orders the customer placed, visible_to: [org_admin, analyst]}
+  - {name: total, data_type: decimal, description: What they came to in USD, visible_to: [org_admin, analyst]}
+relationships:
+- {id: order-to-customer, alias: PLACED_BY, cardinality: many-to-one, source_table_id: orders, source_column: customer_id, target_table_id: customers, target_column: id}

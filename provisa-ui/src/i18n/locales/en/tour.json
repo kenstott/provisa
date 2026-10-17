@@ -1127,6 +1127,30 @@
       "pharmaRecap": {
         "title": "What you saw",
         "description": "The pharmacy's own data, read live, and public drug data, landed once, joined by NDC and by firm in one governed model: one view answers which products are at risk, in SQL, GraphQL and REST, under each role's access."
+      },
+      "storefrontScenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "storefrontTables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "storefrontJoin": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "storefrontAnswer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "storefrontExample": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "storefrontRecap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -1207,6 +1231,10 @@
       "pharma": {
         "title": "Drug shortage and recall risk",
         "summary": "A hospital pharmacy's question, which of its products face shortage or recall risk: its formulary and stock joined to FDA's shortages and recalls and Medicaid's prescriptions, answered in SQL, GraphQL and REST."
+      },
+      "storefront": {
+        "title": "One model, app and BI",
+        "summary": "TODO: One model, app and BI, in one sentence."
       }
     }
   }
