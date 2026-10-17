@@ -230,7 +230,7 @@ describe("DataSciencePage", () => {
     const { make } = workerDouble();
     page(make, undefined, "/notebook");
     const frame = await screen.findByTestId("data-science-notebook");
-    expect(frame).toHaveAttribute("src", "/lite/notebooks/index.html?path=Provisa.ipynb");
+    expect(frame).toHaveAttribute("src", "/lite/lab/index.html?path=Provisa.ipynb");
     expect(screen.queryByTestId("python-panel")).not.toBeInTheDocument();
   });
 
