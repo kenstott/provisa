@@ -1234,9 +1234,9 @@ def _org_engine_shard() -> str | None:
     return active_shard(state)
 
 
-from provisa.core.repositories import kafka_source as _kafka_source_repo  # noqa: E402
+from provisa.core import engine_shard as _engine_shard  # noqa: E402
 
-_kafka_source_repo.set_engine_shard_resolver(_org_engine_shard)
+_engine_shard.set_resolver(_org_engine_shard)
 
 
 def _org_redirect_overrides() -> dict:
@@ -3790,11 +3790,11 @@ def create_app() -> FastAPI:
         PrivateDestinationRefused as _PrivateDestinationRefused,
     )
 
-    from provisa.core.repositories.kafka_source import KafkaSourceRefused as _KafkaSourceRefused
+    from provisa.core.engine_shard import EngineShardRefused as _EngineShardRefused
 
-    @app.exception_handler(_KafkaSourceRefused)
-    async def _kafka_source_refused_handler(_req: _Request, exc: _KafkaSourceRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
-        # REQ-2073: a saved or applied Kafka source the org's engine shard cannot read; not saved.
+    @app.exception_handler(_EngineShardRefused)
+    async def _engine_shard_refused_handler(_req: _Request, exc: _EngineShardRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-2073: a saved or applied source the org's engine shard cannot read; not saved.
         return _JSONResponse(
             status_code=422,
             content={"detail": str(exc), "code": exc.code, "params": exc.params},

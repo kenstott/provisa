@@ -181,10 +181,13 @@ def test_a_stored_source_without_a_schema_registry_gets_no_catalog_and_does_not_
 
 @pytest.fixture
 def engine_shard(monkeypatch):
-    from provisa.core.repositories import kafka_source as repo
+    # The app installs the real resolver at import; imported first, so the one patched in here is
+    # the one restored after.
+    import provisa.api.app  # noqa: F401
+    from provisa.core import engine_shard as shard_module
 
     holder = SimpleNamespace(shard="shared_1")
-    monkeypatch.setattr(repo, "_engine_shard_resolver", lambda: holder.shard)
+    monkeypatch.setattr(shard_module, "_resolver", lambda: holder.shard)
     return holder
 
 
@@ -213,10 +216,10 @@ def test_off_a_shard_a_source_without_a_schema_registry_is_saved(engine_shard):
 
 def test_the_app_installs_the_resolver_from_the_orgs_engine_lane(monkeypatch):
     from provisa.api import app
-    from provisa.core.repositories import kafka_source as repo
+    from provisa.core import engine_shard as shard_module
     from provisa.federation import engine_wake
 
-    assert repo._engine_shard_resolver is app._org_engine_shard
+    assert shard_module._resolver is app._org_engine_shard
     monkeypatch.setattr(prov, "provisioning_available", lambda: False)
     assert app._org_engine_shard() is None
     monkeypatch.setattr(prov, "provisioning_available", lambda: True)
@@ -345,7 +348,9 @@ async def test_an_apply_that_saves_one_answers_422_naming_it(engine_shard):
 
     with pytest.raises(repo.KafkaSourceRefused) as refused:
         await repo.upsert(None, {"id": "events", "bootstrap_servers": "broker:9092"})
-    handler = create_app().exception_handlers[repo.KafkaSourceRefused]
+    from provisa.core.engine_shard import EngineShardRefused
+
+    handler = create_app().exception_handlers[EngineShardRefused]
     response = await handler(None, refused.value)  # type: ignore[arg-type]
     assert response.status_code == 422
     body = json.loads(response.body)

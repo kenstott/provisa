@@ -164,12 +164,28 @@ def create_catalog(
         return
 
     # REQ-250/251: write table-description files the connector reads before the
-    # catalog is created (redis/elasticsearch/prometheus).
+    # catalog is created (redis).
     from provisa.core.trino_catalog_files import (
         is_mapping_dsl_source,
         with_catalog_dirs,
         write_table_definitions,
     )
+
+    if stype == "redis":
+        from provisa.core.engine_shard import bound_org_shard
+
+        shard = bound_org_shard()
+        if shard is not None:
+            # REQ-2073: refused when saved (repositories.source.refuse_on_engine_shard), so only a
+            # source stored before that rule reaches here. It gets no catalog and is named at ERROR
+            # rather than raised: this runs in the boot, which one source must not stop.
+            log.error(
+                "Redis source %r cannot be read by engine shard %s, which cannot be given its "
+                "table-description directory: no catalog is created for it",
+                source.id,
+                shard,
+            )
+            return
 
     if is_mapping_dsl_source(source):
         write_table_definitions(source, resolved_password, catalog_name)

@@ -205,6 +205,8 @@ These source types are federation-only — no direct driver, no dialect. [tool-v
 | `cassandra` | cassandra (Trino); CQL read over cassandra-driver on every other engine | No | Keyspaces are schemas; Register Table lists a keyspace's tables and types columns from the cluster's schema metadata (partition keys as primary keys); the `cassandra` extra installs the driver [tool-verified: `provisa/cassandra/fetch.py`] (REQ-1676) |
 | `redis` | redis (Trino); HTTP-free redis-py read on every other engine | No | A key prefix `<table>:*` is a table and a hash is a row; Register Table lists the prefixes present and types a prefix's columns from its hashes (a `mapping.tables` entry overrides pattern, key column, value type and columns) [tool-verified: `provisa/redis/fetch.py`] (REQ-1675) |
 
+**Redis on the hosted engines.** Redis is not available where the organization's engine is one of the hosted platform's provisioned engines. Trino reads a Redis catalog's tables from description files in a directory of the catalog's own, and a hosted engine cannot be given one while it runs. Saving or applying a Redis source there is refused by name (HTTP 422, `sources.redis_needs_engine_files`); a self-hosted deployment reads Redis as described above. [tool-verified: `provisa/core/repositories/source.py` `refuse_on_engine_shard`] (REQ-2073)
+
 ### Qdrant
 
 `qdrant` (REQ-1983, REQ-2000) is read and written by Qdrant's own client, `qdrant-client`. Qdrant is **live-only**: a property of the source type, not a setting. Its vector index and Query API are what it answers with, and no replica can answer the same, so its tables are never replicated. There is no Replicate choice for a Qdrant source or its tables; a `replicate` value or `row_materialize` on one is refused. [tool-verified: `provisa/core/source_registry.py` `LIVE_ONLY_TYPES`; `provisa/api/admin/_landing_ttl.py` `_live_only_refusal`]
@@ -257,6 +259,8 @@ A search is read per statement under its arguments, its rows kept under those ar
 | `kafka` | Federated Kafka connector; schema via Confluent Schema Registry (Avro, Protobuf, JSON Schema), manual definition, or sample inference (REQ-147, REQ-150) | No; a table's live output publishes to Kafka (REQ-565) |
 | `websocket` | External WebSocket feed — connect, subscribe, receive events; results materialized (REQ-338) | No |
 | `rss` | RSS 2.0 / Atom feed — poll, watermark by pubDate/updated; results materialized (REQ-342, REQ-343) | No |
+
+**Kafka on the hosted engines.** On the hosted platform's provisioned engines a Kafka source must name a schema registry (`schema_registry_url`). One whose topics' columns only the model declares is refused by name when saved or applied (HTTP 422, `sources.kafka_needs_schema_registry`), since its table descriptions would need a directory the running engine cannot be given. SASL credentials reach those engines in memory (see [Security](security.md#the-federation-engine-trino)). [tool-verified: `provisa/core/repositories/kafka_source.py` `refuse_on_engine_shard`] (REQ-2073)
 
 ### Push Receiver
 

@@ -79,8 +79,13 @@ class TestElasticsearch:
         assert "connector.name" not in props
         assert props["elasticsearch.host"] == "es-host"
         assert props["elasticsearch.tls.enabled"] == "true"
-        written = tcf.write_table_definitions(src, "", "es1", tmp_path)
-        doc = json.loads(written[0].read_text())
+        # REQ-2073: Trino's Elasticsearch connector reads columns from the index mapping and takes
+        # no description directory, so none is written for it.
+        assert tcf.write_table_definitions(src, "", "es1", tmp_path) == []
+        assert not any(tmp_path.rglob("*"))
+        from provisa.elasticsearch.source import generate_table_definitions
+
+        (doc,) = generate_table_definitions(tcf._es_config(src, ""))
         assert doc["index"] == "nginx-*"
         assert doc["columns"][0]["sourcePath"] == "request.method"
 

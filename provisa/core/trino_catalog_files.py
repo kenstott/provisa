@@ -165,18 +165,15 @@ def catalog_properties_for(
 def _table_definitions(source: Source, resolved_password: str) -> tuple[str, list[dict]] | None:
     """Return (connector_subdir, table-definition dicts) for a mapping-DSL source.
 
-    Only redis/elasticsearch use on-disk table-description files; prometheus
-    auto-discovers metrics as tables and needs none.
+    Only redis reads table-description files (``redis.table-description-dir``,
+    :func:`with_catalog_dirs`). Trino's Elasticsearch connector has no such property: it reads each
+    index's columns from the index mapping, so none is written for it. Prometheus auto-discovers
+    metrics as tables and needs none either.
     """
-    stype = source.type.value
-    if stype == "redis":
+    if source.type.value == "redis":
         from provisa.redis.source import generate_table_definitions
 
         return "redis", generate_table_definitions(_redis_config(source, resolved_password))
-    if stype == "elasticsearch":
-        from provisa.elasticsearch.source import generate_table_definitions
-
-        return "elasticsearch", generate_table_definitions(_es_config(source, resolved_password))
     return None
 
 
