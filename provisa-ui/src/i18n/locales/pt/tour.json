@@ -528,6 +528,10 @@
         "title": "Ouro: os totais",
         "description": "O ouro é um GROUP BY sobre a prata: vendas, itens, receita e faixa de preço por dia e produto, só de dados verificados."
       },
+      "qualityProduct": {
+        "title": "Um produto de dados para entregar",
+        "description": "Ouro, prata e as verificações são um produto de dados: os totais que os consumidores leem, as vendas por trás deles e a prova de que cada lote passou. O bronze fica de fora."
+      },
       "qualityDone": {
         "title": "Confiança que se pode consultar",
         "description": "Depositar um lote atualizou as verificações, a prata e o ouro, sem executar mais nada. O lote limpo chegou ao ouro; o ruim parou no bronze, e o porquê é uma consulta."
@@ -1123,6 +1127,58 @@
       "pharmaRecap": {
         "title": "O que você viu",
         "description": "Os dados da própria farmácia, lidos ao vivo, e dados públicos de medicamentos, carregados uma vez, unidos por NDC e por empresa em um modelo governado: uma view responde quais produtos estão em risco, em SQL, GraphQL e REST, com o acesso de cada papel."
+      },
+      "storefrontScenario": {
+        "title": "Um modelo, um app e BI",
+        "description": "Um varejista de café atende dois consumidores a partir de um modelo. A tela de histórico de pedidos do app mostra a um cliente conectado os seus pedidos, e a ferramenta de BI mostra aos analistas a receita e as entregas atrasadas. Os pedidos estão no <strong>PostgreSQL</strong>, lidos ao vivo: clientes, pedidos e os itens de cada pedido."
+      },
+      "storefrontCatalog": {
+        "title": "O catálogo, no MongoDB",
+        "description": "Cada produto é um documento do <strong>MongoDB</strong>, com nome, categoria, preço e imagem. O Provisa o lê ao vivo, como uma tabela."
+      },
+      "storefrontShipping": {
+        "title": "Envios, via REST",
+        "description": "O envio de cada pedido vem do serviço interno de envios via <strong>REST</strong>, lido pelo seu documento OpenAPI: a transportadora, o código de rastreio e quando foi prometido e entregue."
+      },
+      "storefrontRelations": {
+        "title": "Relacionamentos, declarados uma vez",
+        "description": "<strong>OF_PRODUCT</strong> liga um item de pedido no PostgreSQL ao seu produto no MongoDB. Com PLACED_BY, HAS_ITEM e SHIPPED_AS, esses quatro relacionamentos são declarados uma vez, e tanto o app quanto a ferramenta de BI leem por meio deles."
+      },
+      "storefrontAsCustomer": {
+        "title": "Conectado como cliente",
+        "description": "O app envia suas consultas com a função <strong>customer</strong>, cujos filtros de linha restringem cada resposta aos pedidos do cliente conectado. Avançar escolhe <strong>customer</strong> no seletor de funções, para que a consulta a seguir rode como o app a executa."
+      },
+      "storefrontScreen": {
+        "title": "A única consulta do app",
+        "description": "A tela de histórico de pedidos envia esta única consulta GraphQL aninhada: cada pedido com seus itens, o produto de cada item vindo do catálogo e o envio do pedido vindo do serviço de envios. Executada como <strong>customer</strong>, ela responde sete pedidos, todos do cliente conectado."
+      },
+      "storefrontApp": {
+        "title": "A tela que ela alimenta",
+        "description": "Esta é a tela de histórico de pedidos do app de exemplo, exibindo essa resposta para o cliente conectado da demo: sete pedidos, seus itens com imagens de produtos do MongoDB e o status de entrega do serviço de envios. O app não tem joins nem regras de acesso; o modelo tem os dois."
+      },
+      "storefrontJsonApi": {
+        "title": "Os mesmos pedidos via JSON:API",
+        "description": "Um cliente que prefere JSON:API pede os mesmos pedidos, ainda como o cliente, com seus itens e envios incluídos. Cada pedido referencia os itens e o envio que inclui, e o id de um item é sua chave composta."
+      },
+      "storefrontAnalyst": {
+        "title": "Agora como analista",
+        "description": "O lado de BI lê como <strong>analyst</strong>: todos os pedidos e nenhum e-mail de cliente. Avançar escolhe <strong>analyst</strong> no seletor de execução."
+      },
+      "storefrontAnalystSql": {
+        "title": "O SQL do analista",
+        "description": "Entregas atrasadas por região e transportadora, sobre as mesmas tabelas e relacionamentos. <strong>a_customer</strong> mostra um e-mail como o analista o lê: mascarado."
+      },
+      "storefrontBi": {
+        "title": "O painel de BI",
+        "description": "O Apache Superset se conecta pelo protocolo de rede do PostgreSQL, com o dialeto PostgreSQL: host e porta do servidor pgwire do Provisa (5439 por padrão), banco de dados <strong>provisa</strong>, usuário <strong>analyst</strong>. Ele navega pelas tabelas e exibições da loja e mostra a receita por região e as entregas atrasadas por transportadora a partir do mesmo modelo."
+      },
+      "storefrontEveryRole": {
+        "title": "De volta a todas as funções",
+        "description": "Avançar escolhe de novo <strong>Todas</strong> no seletor de funções. O lado de BI lê com sua própria função, escolhida onde seu SQL roda."
+      },
+      "storefrontPoint": {
+        "title": "Um modelo, dois consumidores",
+        "description": "<strong>SHIPPED_AS</strong> liga um pedido ao seu envio. O app e a ferramenta de BI leem por ele e por todos os outros relacionamentos, sob as mesmas regras: o cliente vê os próprios pedidos, o analista não vê e-mails. Altere aqui um relacionamento ou uma regra e os dois consumidores passam a tê-lo. Não há nada a manter sincronizado."
       }
     },
     "status": {
@@ -1203,6 +1259,10 @@
       "pharma": {
         "title": "Risco de desabastecimento e recolhimento de medicamentos",
         "summary": "A pergunta da farmácia de um hospital, quais dos seus produtos correm risco de desabastecimento ou de recolhimento: o seu formulário e estoque unidos aos desabastecimentos e recolhimentos da FDA e às prescrições do Medicaid, respondida em SQL, GraphQL e REST."
+      },
+      "storefront": {
+        "title": "Um modelo, app e BI",
+        "summary": "A tela de histórico de pedidos de um app e um painel de BI leem um modelo de PostgreSQL, MongoDB e um serviço REST, sob os mesmos relacionamentos e regras."
       }
     }
   }

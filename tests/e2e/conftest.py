@@ -15,6 +15,7 @@ import time
 
 import pytest
 
+from tests import store_credentials
 from tests._noauth_config import pin_no_auth_config
 from tests.itest_stack import E2E_PROJECT, acquire_stack_slot, reap_orphaned_projects
 from tests.port_lease import lease_ports
@@ -113,7 +114,7 @@ def _allocate_stack_ports() -> None:
     for name, port in zip(_PORT_ENV, ports):
         os.environ[name] = str(port)
     # Host-side clients that address a service by URL rather than a bare port:
-    os.environ["REDIS_URL"] = f"redis://localhost:{os.environ['REDIS_PORT']}/0"
+    os.environ["REDIS_URL"] = store_credentials.redis_url(os.environ["REDIS_PORT"])
     # In-process app writes/reads Parquet results + the otel Iceberg catalog via
     # boto3 to the e2e MinIO (Trino reaches the same bucket by service name).
     os.environ["PROVISA_OTEL_S3_ENDPOINT"] = f"http://localhost:{os.environ['MINIO_PORT']}"

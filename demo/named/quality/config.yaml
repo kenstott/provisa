@@ -33,6 +33,20 @@ auth:
 cache:
   default_ttl: 300
   enabled: true
+data_products:
+# What the chain's consumers are given: gold to read, silver for the row-level detail behind it, and
+# dq_results as the evidence each batch passed its checks. Bronze, the raw landing, stays out.
+- id: daily_sales
+  domain_id: sales
+  name: Daily Sales
+  owner_role: org_admin
+  purpose: The chain's sales by day and product, from feed batches that passed every check
+  usage: Read gold for totals by day and product; read silver for the sales behind a total, and
+    dq_results for the checks that admitted each batch
+  limitations: A batch that fails any check is held out whole, so a day it covers shows no sales until
+    a corrected batch lands
+  sla: Refreshed each time a batch lands; a batch reaches silver only once its checks pass
+  support_contact: kennethstott@gmail.com
 domains:
 - id: sales
   description: A chain of five shops' daily sales feed, landed into bronze and refined through
@@ -94,6 +108,7 @@ views:
 # check has none.
 - id: dq_results
   domain_id: sales
+  product_id: daily_sales
   materialize: true
   enable_aggregates: true
   enable_group_by: true
@@ -132,6 +147,7 @@ views:
 # Silver: bronze cleaned, from the batches whose checks all passed.
 - id: silver
   domain_id: sales
+  product_id: daily_sales
   materialize: true
   enable_aggregates: true
   enable_group_by: true
@@ -171,6 +187,7 @@ views:
 # Gold: totals by day and product, one GROUP BY over silver.
 - id: gold
   domain_id: sales
+  product_id: daily_sales
   materialize: true
   enable_aggregates: true
   enable_group_by: true

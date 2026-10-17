@@ -335,7 +335,12 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
       - name: Build the zaychik image the chart deploys
-        run: docker compose -f docker-compose.core.yml build zaychik && docker tag zaychik:latest provisa-zaychik:latest
+        # core.yml interpolates the store credentials even to build: the test instance's.
+        run: |
+          set -a
+          eval "$(bash scripts/ci/test-store-env.sh)"
+          set +a
+          docker compose -f docker-compose.core.yml build zaychik && docker tag zaychik:latest provisa-zaychik:latest
 
       # tests/e2e/test_helm_minikube.py builds provisa:latest, starts a minikube profile of its own
       # under a kubeconfig of its own, installs the chart with auth.provider=local, and deletes the

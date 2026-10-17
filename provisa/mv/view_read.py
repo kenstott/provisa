@@ -215,6 +215,22 @@ def views_read(sql: str, view_sql_map: dict[str, str]) -> dict[str, str]:
     return read
 
 
+def _views_read_here(
+    sql: str, view_sql_map: dict[str, str], home_copies: set[str]
+) -> dict[str, str]:
+    """``views_read`` stopping at a view another region keeps: what its SQL reads is read there."""
+    read: dict[str, str] = {}
+    pending = [sql]
+    while pending:
+        text = pending.pop()
+        for view, view_sql in view_sql_map.items():
+            if view in read or view in home_copies or view not in text:
+                continue
+            read[view] = view_sql
+            pending.append(view_sql)
+    return read
+
+
 def semantic_statement(
     sql: str,
     view_sql_map: dict[str, str],
@@ -228,12 +244,15 @@ def semantic_statement(
     the registered table it is. ``validated`` has those expanded too: the V-rules judge every
     table and every join any view reads, for this reader. A bitemporal view is judged by its
     definition there, the tables and joins it reads: its entry in the view map is a reading of its
-    own log, which is no relation a reader could name."""
+    own log, which is no relation a reader could name. A view another region keeps is not: it is
+    read from its copy there, its inputs are not read here, and its own rules are what a reader
+    is held to (REQ-1921) -- it stays the registered table it is in both."""
     from provisa.compiler.view_expand import expand_view_refs  # noqa: PLC0415
 
     definitions = _definitions(view_sql_map, state)
+    home_copies = {view for view in views_read(sql, definitions) if _home_copy(view, state)}
     bodies: dict[str, str] = {}
-    for view, view_sql in views_read(sql, definitions).items():
+    for view, view_sql in _views_read_here(sql, definitions, home_copies).items():
         require_inputs_in_service(view_sql, state)
         if not _answered_after_governance(view, view_sql_map, state, gov):
             require_inputs_reached(view_sql, gov)
@@ -242,7 +261,8 @@ def semantic_statement(
     # Validated with every view marked where it is expanded, here and below, so the guard reads
     # each as the view it is (provisa.compiler.join_guard).
     marked = expand_view_refs(sql, bodies, mark=True)
-    return governed, expand_view_refs(marked, definitions, mark=True)
+    judged = {view: body for view, body in definitions.items() if view not in home_copies}
+    return governed, expand_view_refs(marked, judged, mark=True)
 
 
 def _definitions(view_sql_map: dict[str, str], state: Any) -> dict[str, str]:

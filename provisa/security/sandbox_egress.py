@@ -21,6 +21,13 @@ One check, :func:`require_public_destination`, is asked at each point a sandbox'
 uses a destination: when it is registered or changed, and when Provisa connects to it -- again,
 because the name may resolve differently by then -- including each redirect an HTTP source
 follows. It resolves the name and refuses, by name, when ANY address it resolves to is not public.
+
+On a deployment that holds many organizations (``multitenancy: true``, the shared hosted platform),
+every org's sources are held to the same check: the deployment's private network carries its
+control-plane database, cache and object store, which no org's source may reach. Only a sandbox
+org is further held to the address it was checked at (pinning, below); any other org's source is
+checked when it is saved and each time Provisa connects. A deployment of one organization (a
+dedicated platform) holds only its sandboxes to it: its own org may have private sources.
 """
 
 # Requirements: REQ-2006, REQ-1598
@@ -35,6 +42,8 @@ from urllib.parse import urlsplit
 from provisa.core.org_ids import is_sandbox_tier_org
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import httpx
 
 #: The REQ-1598 hosted sandbox org.
@@ -42,21 +51,54 @@ _HOSTED_SANDBOX_ORG = "sandbox"
 
 
 class PrivateDestinationRefused(PermissionError):
-    """A sandbox's source names a destination that is not on the public internet."""
+    """A held org's source names a destination that is not on the public internet."""
 
     code = "sources.private_destination"
 
     def __init__(self, host: str, address: str) -> None:
         super().__init__(
-            f"A sandbox's sources may reach only public addresses; {host!r} is {address}, "
+            f"This org's sources may reach only public addresses; {host!r} is {address}, "
             "which is not one"
         )
         self.params = {"host": host, "address": address}
 
 
 def confined(org_id: str | None) -> bool:
-    """Whether ``org_id``'s sources are held to public destinations: a sandbox org."""
+    """Whether ``org_id`` is a sandbox org: its sources are held to public destinations and to the
+    address each was checked at, apart from what its demo declares."""
     return org_id is not None and (is_sandbox_tier_org(org_id) or org_id == _HOSTED_SANDBOX_ORG)
+
+
+#: The deployment's own org (the API layer says which). Its sources are the operator's, named in
+#: the deployment's own configuration -- as a demo's are its template's -- so they are reached
+#: wherever they point.
+_deployment_org: "Callable[[], str] | None" = None
+
+
+def set_deployment_org_resolver(resolver: "Callable[[], str]") -> None:
+    """Install the deployment's answer to "which org is the deployment's own". Called once, at
+    import of the API layer."""
+    global _deployment_org
+    _deployment_org = resolver
+
+
+def held(org_id: str | None) -> bool:
+    """Whether ``org_id``'s sources are held to public destinations: a sandbox org, or any org but
+    the deployment's own on a deployment that holds many organizations."""
+    if org_id is None:
+        return False
+    if confined(org_id):
+        return True
+    from provisa.core.secrets_providers import many_organisations
+
+    if not many_organisations():
+        return False
+    if _deployment_org is None:
+        raise RuntimeError(
+            "Nothing has said which org is the deployment's own. The API layer says it at import "
+            "(provisa.api.app)."
+        )
+    return org_id != _deployment_org()
 
 
 def _public(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -186,10 +228,10 @@ def _org(org_id: str | None) -> str | None:
 
 
 def require_allowed(host: str, port: int | None, org_id: str | None = None) -> None:
-    """Refuse, by name, ``host`` for a sandbox org unless its demo declares it or every address
-    it resolves to is public. Any other org reaches what it names."""
+    """Refuse, by name, ``host`` for a held org (:func:`held`) unless its demo declares it or every
+    address it resolves to is public. Any other org reaches what it names."""
     org = _org(org_id)
-    if not confined(org):
+    if not held(org):
         return
     assert org is not None
     if (host.lower(), port) in _demo_destinations.get(org, frozenset()):
@@ -200,7 +242,7 @@ def require_allowed(host: str, port: int | None, org_id: str | None = None) -> N
 def require_source_allowed(fields: dict, org_id: str | None = None) -> None:
     """:func:`require_allowed` for every destination a source names (:func:`destinations`)."""
     org = _org(org_id)
-    if not confined(org):
+    if not held(org):
         return
     for host, port in destinations(fields):
         require_allowed(host, port, org)
@@ -219,11 +261,11 @@ def source_fields(source: object) -> dict:
 
 
 def http_event_hooks(org_id: str | None = None) -> dict:
-    """httpx event hooks that check each request a sandbox org's source makes -- every redirect
+    """httpx event hooks that check each request a held org's source makes -- every redirect
     is a request of its own -- and send it to the address checked (:func:`_pin_request`). Empty
     for any other org."""
     org = _org(org_id)
-    if not confined(org):
+    if not held(org):
         return {}
 
     assert org is not None
@@ -237,7 +279,7 @@ def http_event_hooks(org_id: str | None = None) -> dict:
 def http_sync_event_hooks(org_id: str | None = None) -> dict:
     """:func:`http_event_hooks` for a synchronous ``httpx.Client``."""
     org = _org(org_id)
-    if not confined(org):
+    if not held(org):
         return {}
 
     assert org is not None
@@ -309,10 +351,10 @@ def _declared(org: str, host: str, port: int | None) -> bool:
 
 
 def pin(host: str, port: int | None, org_id: str | None = None) -> str:
-    """The address to connect to for ``host``: for a sandbox org, a checked address it resolves
-    to (its demo's own destinations are connected to by name); for any other org, ``host``."""
+    """The address to connect to for ``host``: for a held org, a checked address it resolves
+    to (a demo's own destinations are connected to by name); for any other org, ``host``."""
     org = _org(org_id)
-    if not confined(org):
+    if not held(org):
         return host
     assert org is not None
     if _declared(org, host, port):
@@ -340,12 +382,12 @@ def pin_host(host: str, port: int | None, source_type: str, org_id: str | None =
 
 
 def require_connectable(fields: dict, source_type: str, org_id: str | None = None) -> str | None:
-    """Refuse, by name, a sandbox org's source that names a destination its demo does not declare
-    and that is not public, or one that cannot be held to the address it is checked at; the
-    checked address its host is to be connected at, when there is one to pin. None for any other
-    org's source, and for one whose destinations are all its demo's own."""
+    """Refuse, by name, a held org's source (:func:`held`) that names a destination its demo does
+    not declare and that is not public, or a sandbox org's that cannot be held to the address it
+    is checked at; the checked address its host is to be connected at, when there is one to pin.
+    None for any other org's source, and for one whose destinations are all its demo's own."""
     org = _org(org_id)
-    if not confined(org):
+    if not held(org):
         return None
     assert org is not None
     require_source_allowed(fields, org)
@@ -354,6 +396,9 @@ def require_connectable(fields: dict, source_type: str, org_id: str | None = Non
         return None
     host_only = destinations({"host": fields.get("host"), "port": fields.get("port")})
     if source_type not in PINNABLE_TYPES or undeclared != host_only:
+        if not confined(org):
+            # Not a sandbox: checked here and at each connection, not pinned (module docstring).
+            return None
         raise UnpinnableDestinationRefused(source_type, undeclared[0][0])
     host, port = host_only[0]
     return pin(host, port, org)
@@ -363,7 +408,7 @@ def pinned_source(source: object, org_id: str | None = None) -> object:
     """``source`` as a sandbox org connects to it: its host replaced by its checked address
     (:func:`require_connectable`). Any other org's source is itself."""
     org = _org(org_id)
-    if not confined(org):
+    if not held(org):
         return source
     source_type = str(getattr(source.type, "value", source.type))  # type: ignore[attr-defined]
     address = require_connectable(source_fields(source), source_type, org)

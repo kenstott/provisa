@@ -578,7 +578,7 @@
       "not_a_file_source": "A {{type}} source is not given a file by upload."
     },
     "sources": {
-      "private_destination": "A sandbox's sources may reach only public addresses; {{host}} is {{address}}, which is not one."
+      "private_destination": "This org's sources may reach only public addresses; {{host}} is {{address}}, which is not one."
     },
     "sandbox": {
       "wrong_tier": "This sandbox is served elsewhere; open it from its own address.",

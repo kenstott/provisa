@@ -51,6 +51,18 @@ spec:
           env:
             - name: TRINO_NODE_TYPE
               value: worker
+            {{- if not .Values.trino.exchange.s3.endpoint }}
+            - name: PROVISA_EXCHANGE_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "provisa.credentialsSecret" . }}
+                  key: minio-access-key
+            - name: PROVISA_EXCHANGE_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "provisa.credentialsSecret" . }}
+                  key: minio-secret-key
+            {{- end }}
             - name: PROVISA_FAKE_KEY_DIR  # REQ-1494
               value: /etc/provisa/fake-key
           volumeMounts:

@@ -170,6 +170,10 @@ class FederationEngine:  # REQ-840
         # REQ-2006: the most memory an in-process engine built for one org may use, in bytes; None
         # leaves the engine's own default. Set on a demo sandbox's engine before its first use.
         self.memory_limit: int | None = None
+        # The org whose folder holds an in-process engine's temporary files (DuckDB's spill), so
+        # they are kept, and encrypted, with the org's own files (REQ-1992). Set by the runtime
+        # that builds the engine for an org, before its first use.
+        self.temp_org: str | None = None
         # The SQLAlchemy backend names (``make_url(dsn).get_backend_name()``) this engine's own
         # connector can actually write a materialization into — None means unrestricted (not yet
         # verified either way for this engine, so no check is asserted rather than guessed). Trino's

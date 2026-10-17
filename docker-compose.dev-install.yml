@@ -4,15 +4,15 @@
 services:
   postgres:
     ports:
-      - "${PG_PORT:-5432}:5432"
+      - "${PROVISA_STORE_BIND_IP:?the address the stores publish on}:${PG_PORT:-5432}:5432"
 
   pgbouncer:
     ports:
-      - "${PGBOUNCER_PORT:-6432}:6432"
+      - "${PROVISA_STORE_BIND_IP:?the address the stores publish on}:${PGBOUNCER_PORT:-6432}:6432"
 
   redis:
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${PROVISA_STORE_BIND_IP:?the address the stores publish on}:${REDIS_PORT:-6379}:6379"
 
   # REQ-1332: this overlay must not redirect catalog.config-dir at ./trino/catalog-install.
   # Compose replaces a base volume whose target matches, so that mount overrode core's
@@ -24,10 +24,10 @@ services:
   # write_kafka_catalog_files read; it is never a catalog.config-dir.
   trino:
     ports:
-      - "${TRINO_PORT:-8080}:8080"
+      - "${PROVISA_STORE_BIND_IP:?the address the stores publish on}:${TRINO_PORT:-8080}:8080"
 
   zaychik:
     ports:
-      - "${ZAYCHIK_PORT:-8480}:8480"
+      - "${PROVISA_STORE_BIND_IP:?the address the stores publish on}:${ZAYCHIK_PORT:-8480}:8480"
 
 

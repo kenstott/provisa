@@ -17082,7 +17082,7 @@
     results.
   code:
   - docker-compose.core.yml
-  - trino/catalog-install/results.properties
+  - provisa/core/trino_system_catalogs.py
   - docker/trino-engine.Dockerfile
   tests:
   - tests/unit/test_infra_requirements.py

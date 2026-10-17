@@ -61,7 +61,10 @@ def test_every_service_is_the_control_planes_or_the_sandbox_tiers(tmp_path):
 def test_the_sandbox_tier_reaches_the_control_plane_by_address_when_it_runs_alone(tmp_path):
     services = _compose(tmp_path)["services"]
     env = services["provisa-sandbox"]["environment"]
-    assert env["REDIS_URL"] == "redis://${PROVISA_REDIS_HOST:-redis}:6379"
+    assert env["REDIS_URL"] == (
+        "redis://:${PROVISA_REDIS_PASSWORD:?the deployment Redis password}"
+        "@${PROVISA_REDIS_HOST:-redis}:6379"
+    )
     assert env["PROVISA_OTEL_S3_ENDPOINT"] == "http://${PROVISA_MINIO_HOST:-minio}:9000"
     assert env["PG_HOST"].startswith("${CONFIG_DB_HOST:?")
     assert env["PROVISA_SANDBOX_INSTANCE"] == "${PROVISA_SANDBOX_INSTANCE:-}"

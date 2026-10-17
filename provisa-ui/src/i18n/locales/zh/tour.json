@@ -528,6 +528,10 @@
         "title": "黄金层：汇总",
         "description": "黄金层是白银层上的一个 GROUP BY：按日期和产品统计销售笔数、件数、营收和价格区间，只来自已检查的数据。"
       },
+      "qualityProduct": {
+        "title": "可以交付的数据产品",
+        "description": "黄金层、白银层和检查构成一个数据产品：使用者读取的汇总、其背后的销售，以及每个批次通过检查的证据。青铜层不在其中。"
+      },
       "qualityDone": {
         "title": "可以查询的信任",
         "description": "落入一个批次就刷新了检查、白银层和黄金层，没有运行其他任何东西。干净的批次到达黄金层；有问题的批次停在青铜层，原因可以直接查询。"
@@ -1123,6 +1127,58 @@
       "pharmaRecap": {
         "title": "你看到了什么",
         "description": "药房自己的数据实时读取，公开的药品数据加载一次，在一个受治理的模型中按 NDC 和企业关联：一个视图回答哪些药品有风险，以 SQL、GraphQL 和 REST 提供，并遵循每个角色的访问权限。"
+      },
+      "storefrontScenario": {
+        "title": "一个模型，一个应用和 BI",
+        "description": "一家咖啡零售商用一个模型服务两个使用方。其应用的订单历史页面向已登录的顾客显示他自己的订单，其 BI 工具向分析师展示收入和延迟的配送。订单存放在 <strong>PostgreSQL</strong> 中，实时读取：顾客、订单以及每个订单的明细。"
+      },
+      "storefrontCatalog": {
+        "title": "目录，在 MongoDB 中",
+        "description": "每个商品都是一个 <strong>MongoDB</strong> 文档，包含名称、类别、价格和图片。Provisa 将其作为表实时读取。"
+      },
+      "storefrontShipping": {
+        "title": "配送，通过 REST",
+        "description": "每个订单的配送来自内部配送服务，通过 <strong>REST</strong> 获取，并经由其 OpenAPI 文档读取：承运商、运单号，以及承诺送达和实际送达的时间。"
+      },
+      "storefrontRelations": {
+        "title": "关系，只声明一次",
+        "description": "<strong>OF_PRODUCT</strong> 将 PostgreSQL 中的订单明细与 MongoDB 中的商品连接起来。连同 PLACED_BY、HAS_ITEM 和 SHIPPED_AS，这四个关系只声明一次，应用和 BI 工具都通过它们读取。"
+      },
+      "storefrontAsCustomer": {
+        "title": "以顾客身份登录",
+        "description": "应用以 <strong>customer</strong> 角色发送查询，该角色的行过滤器把每个结果都限定为已登录顾客自己的订单。点击下一步会在角色选择器中选中 <strong>customer</strong>，使下面的查询按应用的方式运行。"
+      },
+      "storefrontScreen": {
+        "title": "应用的唯一一个查询",
+        "description": "订单历史页面发送这唯一一个嵌套 GraphQL 查询：每个订单及其明细、每条明细在目录中的商品，以及订单在配送服务中的配送。以 <strong>customer</strong> 身份运行时，它返回七个订单，全部属于已登录的顾客。"
+      },
+      "storefrontApp": {
+        "title": "它所支撑的页面",
+        "description": "这是示例应用的订单历史页面，为演示中已登录的顾客呈现该结果：七个订单，带有来自 MongoDB 商品图片的明细，以及来自配送服务的送达状态。应用中没有任何连接，也没有任何访问规则；这两者都由模型掌握。"
+      },
+      "storefrontJsonApi": {
+        "title": "通过 JSON:API 读取同样的订单",
+        "description": "偏好 JSON:API 的客户端仍以顾客身份请求同样的订单，并包含其明细和配送。每个订单都链接到它所包含的明细和配送，而明细的 id 是它的复合键。"
+      },
+      "storefrontAnalyst": {
+        "title": "现在以分析师身份",
+        "description": "BI 一侧以 <strong>analyst</strong> 身份读取：所有订单，且看不到任何顾客的邮箱。点击下一步会在运行角色选择器中选中 <strong>analyst</strong>。"
+      },
+      "storefrontAnalystSql": {
+        "title": "分析师的 SQL",
+        "description": "按地区和承运商统计的延迟配送，基于同样的表和关系。<strong>a_customer</strong> 显示分析师读取到的邮箱：已脱敏。"
+      },
+      "storefrontBi": {
+        "title": "BI 仪表板",
+        "description": "Apache Superset 通过 PostgreSQL 线协议、使用 PostgreSQL 方言连接：Provisa 的 pgwire 服务器的主机和端口（默认 5439），数据库 <strong>provisa</strong>，用户 <strong>analyst</strong>。它浏览商店的表和视图，并从同一个模型绘制按地区的收入和按承运商的延迟配送。"
+      },
+      "storefrontEveryRole": {
+        "title": "回到所有角色",
+        "description": "点击下一步会在角色选择器中重新选中 <strong>全部</strong>。BI 一侧以自己的角色读取，该角色在运行其 SQL 的地方选择。"
+      },
+      "storefrontPoint": {
+        "title": "一个模型，两个使用方",
+        "description": "<strong>SHIPPED_AS</strong> 将订单与其配送连接起来。应用和 BI 工具都通过它以及其他所有关系、在同样的规则下读取：顾客只看到自己的订单，分析师看不到邮箱。在这里修改一个关系或一条规则，两个使用方都会得到它。没有什么需要保持同步。"
       }
     },
     "status": {
@@ -1203,6 +1259,10 @@
       "pharma": {
         "title": "药品短缺与召回风险",
         "summary": "医院药房的问题：其哪些药品面临短缺或召回风险。处方集和库存与 FDA 的短缺和召回信息及 Medicaid 处方数据关联，以 SQL、GraphQL 和 REST 作答。"
+      },
+      "storefront": {
+        "title": "一个模型，应用和 BI",
+        "summary": "一个应用的订单历史页面和一个 BI 仪表板，在同样的关系和规则下读取由 PostgreSQL、MongoDB 和一个 REST 服务组成的同一个模型。"
       }
     }
   }

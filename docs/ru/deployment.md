@@ -162,7 +162,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 Для рабочих станций разработчиков и оценки. Полностью автономен — после скачивания интернет не требуется (REQ-227).
 
-Базовый установщик выполняет **нативную установку**: федеративный движок DuckDB + плоскость управления на SQLite + кеш в памяти (fakeredis), без Docker, виртуальных машин, Trino, Redis и MinIO (REQ-972, REQ-979). Федеративный движок выбирается в мастере — DuckDB (нативный, по умолчанию), Trino в Docker или внешний движок (REQ-973). Наблюдаемость — это всегда включённая самотелеметрия, доступная в административном разделе; стек с коллектором, Prometheus и Grafana в Docker — необязательная внешняя демонстрация, а не переключатель (REQ-975). Набор демонстрационных данных необязателен и по умолчанию выключен (REQ-978). Trino, стек наблюдаемости в Docker и демонстрация — тяжёлые дополнения, которые разрешаются сначала локально (каталог рядом с установщиком, смонтированные тома, `~/Downloads`, затем релиз на GitHub), чтобы предприятия могли заранее подготовить архивы для изолированных установок (REQ-977).
+Базовый установщик выполняет **нативную установку**: федеративный движок DuckDB + встроенная плоскость управления PostgreSQL (pgserver) + кеш в памяти (fakeredis), без Docker, виртуальных машин, Trino, Redis и MinIO (REQ-972, REQ-979). Федеративный движок выбирается в мастере — DuckDB (нативный, по умолчанию), Trino в Docker или внешний движок (REQ-973). Наблюдаемость — это всегда включённая самотелеметрия, доступная в административном разделе; стек с коллектором, Prometheus и Grafana в Docker — необязательная внешняя демонстрация, а не переключатель (REQ-975). Набор демонстрационных данных необязателен и по умолчанию выключен (REQ-978). Trino, стек наблюдаемости в Docker и демонстрация — тяжёлые дополнения, которые разрешаются сначала локально (каталог рядом с установщиком, смонтированные тома, `~/Downloads`, затем релиз на GitHub), чтобы предприятия могли заранее подготовить архивы для изолированных установок (REQ-977).
 
 ### Шаги {: #steps }
 
@@ -189,7 +189,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 Для рабочих станций разработчиков и оценки. Полностью автономен — после скачивания интернет не требуется (REQ-227).
 
-Как и в macOS, базовый установщик для Windows — это **нативный уровень**: автономная среда выполнения Python + wheel provisa + DuckDB/pg_duckdb + плоскость управления на SQLite, без Docker, без виртуальных машин и без образов контейнеров (REQ-979). Федеративный движок (Trino), стек наблюдаемости и набор демонстрационных данных добавляются позже отдельными послойными установщиками, по порядку: установщик Container (`Provisa-Container-<version>.exe`, добавляющий WSL2 + containerd + Trino), затем установщик Obs (требует уровня контейнеров) и затем установщик Demo (требует Core + Obs). Подсказки при первом запуске объясняют, как инициализировать федеративный движок, запустив установщик Container (REQ-1005).
+Как и в macOS, базовый установщик для Windows — это **нативный уровень**: автономная среда выполнения Python + wheel provisa + DuckDB/pg_duckdb + встроенная плоскость управления PostgreSQL (pgserver), без Docker, без виртуальных машин и без образов контейнеров (REQ-979). Федеративный движок (Trino), стек наблюдаемости и набор демонстрационных данных добавляются позже отдельными послойными установщиками, по порядку: установщик Container (`Provisa-Container-<version>.exe`, добавляющий WSL2 + containerd + Trino), затем установщик Obs (требует уровня контейнеров) и затем установщик Demo (требует Core + Obs). Подсказки при первом запуске объясняют, как инициализировать федеративный движок, запустив установщик Container (REQ-1005).
 
 ### Шаги {: #steps_1 }
 
@@ -257,7 +257,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
    ```bash
    provisa status
-   curl http://localhost:8000/health
+   curl -k https://localhost:8000/health   # -k: the node generates a self-signed certificate unless PROVISA_TLS_CERT/KEY supply one
    ```
 
 ---
@@ -267,7 +267,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 Сначала выполните эти шаги на главном узле. Вторичные узлы настраиваются после того, как главный уже работает.
 
 1. Скачайте `Provisa.AppImage` и перенесите на главную машину
-2. Откройте нужные порты в межсетевом экране (вторичные узлы будут подключаться к ним входящими соединениями):
+2. Откройте нужные порты в межсетевом экране только для вторичных узлов (они будут подключаться к ним входящими соединениями):
 
    | Порт | Служба |
    | ------ | --------- |
@@ -277,23 +277,23 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
    | 8080 | Координатор федеративного движка |
    | 8000 | API Provisa |
 
-3. Сделайте файл исполняемым и запустите:
+3. Сделайте файл исполняемым и запустите с хранилищами, опубликованными на частном адресе узла, по которому к ним обращаются вторичные узлы. Узел без вторичных узлов публикует их только на `127.0.0.1`:
 
    ```bash
    chmod +x Provisa.AppImage
-   ./Provisa.AppImage
+   PROVISA_STORE_BIND_IP=<this node's private IP> ./Provisa.AppImage
    ```
 
 4. Мастер настройки спрашивает:
    - **Роль** → выберите `primary`
    - **Бюджет ОЗУ**, **имя узла**, **порт API** → отвечайте так же, как для одного узла
-5. После завершения настройки запишите **частный IP-адрес** этой машины — он нужен вторичным узлам
+5. После завершения настройки запишите **частный IP-адрес** этой машины. Он нужен вторичным узлам, как и учётные данные хранилищ, сгенерированные главным узлом: `~/.provisa/store-credentials.env` (`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`). Скопируйте этот файл на каждый вторичный узел по защищённому каналу
 6. Мастер печатает блок upstream для nginx — сохраните его для конфигурации балансировщика нагрузки
 7. Проверьте:
 
    ```bash
    provisa status
-   curl http://localhost:8000/health
+   curl -k https://localhost:8000/health   # -k: the node generates a self-signed certificate unless PROVISA_TLS_CERT/KEY supply one
    ```
 
 ---
@@ -306,13 +306,14 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 2. Убедитесь, что вторичный узел достаёт до главного:
 
    ```bash
-   curl http://<primary-ip>:8000/health
+   curl -k https://<primary-ip>:8000/health
    ```
 
-3. Сделайте файл исполняемым и запустите:
+3. Сделайте файл исполняемым и запустите с учётными данными хранилищ главного узла в окружении (файл, скопированный с главного узла). Вторичный узел без них не запускается:
 
    ```bash
    chmod +x Provisa.AppImage
+   set -a; . ./store-credentials.env; set +a
    ./Provisa.AppImage
    ```
 
@@ -325,7 +326,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
    ```bash
    provisa status
-   curl http://localhost:8000/health
+   curl -k https://localhost:8000/health
    ```
 
 7. Добавьте этот узел в upstream балансировщика нагрузки
@@ -418,8 +419,8 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 8. Terraform разворачивает всю инфраструктуру (~5–10 минут). После apply скрипт печатает:
 
    ```text
-   api_endpoint      = "http://<alb-dns>:8000"
-   flight_endpoint   = "<nlb-dns>:8815"
+   api_endpoint      = "https://<alb-dns>:8000"
+   protocol_endpoints = { flight = "<alb-dns>:8815", ... }
    primary_ip        = "10.0.x.x"
    secondary_ips     = ["10.0.x.x", ...]
    ```
@@ -484,7 +485,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ### Секреты {: #secrets }
 
-В Terraform не встроено никаких секретов. AppImage генерирует учётные данные при первом запуске и записывает их в `~/.provisa/config.yaml` на каждом узле (REQ-563). Для продуктива получите административный токен с главного узла после развёртывания:
+Пароли встроенных хранилищ (PostgreSQL, Redis, MinIO, администратор Grafana) генерирует Terraform (`random_password`) и передаёт каждому узлу, который хранит их в своём файле окружения systemd с режимом 600. Они хранятся в состоянии Terraform, поэтому защищайте состояние так же, как сами пароли. Без Terraform запуск на каждом узле генерирует их в `~/.provisa/store-credentials.env`. Остальные учётные данные AppImage генерирует при первом запуске и записывает в `~/.provisa/config.yaml` на каждом узле (REQ-563). Для продуктива получите административный токен с главного узла после развёртывания:
 
 ```bash
 ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
@@ -526,7 +527,9 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 3. Решите до установки:
    - **PostgreSQL** — внутри кластера (`postgresql.enabled: true`) или внешняя управляемая (`postgresql.host`)? Для продуктива рекомендуется внешняя
-   - **Redis** — внутри кластера или внешний (`redis.host`)? Смените пароль по умолчанию (`redis.password`)
+   - **Redis** — внутри кластера или внешний (`redis.host`)?
+   - **Учётные данные хранилищ** — создайте Secret, имя которого задано в `credentials.existingSecret`, с ключами `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key` и `grafana-admin-password`. Чарт не задаёт собственного пароля и без него не рендерится
+   - **TLS** — включён по умолчанию (`tls.enabled: true`): создайте Secret типа `kubernetes.io/tls`, имя которого задано в `tls.secretName`, или задайте `tls.enabled: false`
    - **MinIO или S3** — MinIO внутри кластера или нативный S3? Для AWS используйте S3 с ролью IAM
    - **Секреты** — для оценки передавайте через `--set`; для продуктива используйте External Secrets или Vault Agent
    - **Кеш координатора Trino** — том 1Gi, запрашиваемый по умолчанию и смонтированный в `/data/trino/cache` (`trino.coordinator.cache.persistence`: `enabled`, `size`, `storageClass`). Там хранятся результаты describe источника Salesforce, чтобы перезапущенный координатор не тратил снова квоту API организации на его описание. Отключайте его, только если ни одному источнику он не нужен (REQ-1946)
@@ -618,7 +621,8 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 | `redis.enabled` | `true` | Развернуть StatefulSet Redis внутри кластера (REQ-371) |
 | `redis.host` | `""` | Задайте, чтобы использовать внешний Redis |
 | `redis.port` | `6379` | |
-| `redis.password` | `"provisa"` | Смените это значение |
+| `credentials.existingSecret` | | Secret с паролями хранилищ (обязателен) |
+| `tls.enabled` | `true` | Обслуживать каждую конечную точку по TLS из `tls.secretName` |
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | Развернуть федеративный движок (REQ-028) |
 | `trino.workers` | `2` | Реплики рабочих узлов федеративного движка (REQ-056) |

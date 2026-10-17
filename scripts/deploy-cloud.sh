@@ -333,9 +333,21 @@ SQL
   run_sql "$STAGE/reset.sql" reset
 }
 
+# Whether this coordinator's sandbox tier runs on a VM of its own. A describe that finds no VM is
+# the answer "no", not a failure.
+sandbox_on_own_vm() {
+  [ "$NODE" != "$SANDBOX_NODE" ] && gcloud compute instances describe "$SANDBOX_NODE" \
+    --zone "$ZONE" --project "$PROJECT" --format='value(name)' >/dev/null 2>&1
+}
+
 restart() {
+  local containers="$CONTAINERS"
+  # The sandbox tier's container is on its VM when it has one (deploy_sandbox_vm restarts it there).
+  if sandbox_on_own_vm; then
+    containers="$(tr ' ' '\n' <<<"$containers" | grep -vx compose-provisa-sandbox-1 | tr '\n' ' ')"
+  fi
   echo "== restarting"
-  ssh_node "sudo docker restart $CONTAINERS"
+  ssh_node "sudo docker restart $containers"
 }
 
 # The telemetry tier the ops reports read. `traces`, `queries`, `metrics` and `logs` are views over
@@ -407,9 +419,9 @@ services:
     ports:
       - "${SANDBOX_PUBLISH}:8000"
     environment:
-      # The demos cloud.provisa.dev offers (first-launch.sh's default; a node set up
-      # by an earlier release offers its own list until it is set up again).
-      PROVISA_DEMO_BUNDLES: "weblogs,files,sonnets,reviews,quality"
+      # The demos cloud.provisa.dev offers (packaging/linux/demo-stores/sandbox-tier-bundles,
+      # the list first-launch.sh and terraform's sandbox VM read).
+      PROVISA_DEMO_BUNDLES: "$(tr -d '[:space:]' < "$REPO/packaging/linux/demo-stores/sandbox-tier-bundles")"
       # The SQLite sample data of the deployment's demo config, which this tier also builds at
       # startup (first-launch.sh writes the same on a node set up since).
       PROVISA_DEMO_DIR: "/app/config/demo/files"
@@ -519,9 +531,8 @@ DEMO_STORES_UNITS="/etc/systemd/system"
 push_demo_stores() {
   local changed=0 f name dest want have
   # A coordinator whose sandbox tier runs on its own VM runs no demo stores: deploy_sandbox_vm
-  # installs them there. A describe that finds no VM is the answer "none", not a failure.
-  if [ "$NODE" != "$SANDBOX_NODE" ] && gcloud compute instances describe "$SANDBOX_NODE" \
-      --zone "$ZONE" --project "$PROJECT" --format='value(name)' >/dev/null 2>&1; then
+  # installs them there.
+  if sandbox_on_own_vm; then
     echo "== demo stores: on $SANDBOX_NODE, not $NODE"
     return
   fi
@@ -593,6 +604,38 @@ set_node_env() {
   # line, so a secret does not land in the node's process table or the ssh log.
   printf '%s=%s\n' "$1" "$2" \
     | ssh_node "sudo sed -i '/^$1=/d' $ENV_FILE && sudo tee -a $ENV_FILE >/dev/null"
+}
+
+# The compose files this script pushes come from the build, while the launcher that interpolates
+# them (scripts/provisa) is still the one the node's release installed. A file that requires a
+# variable that launcher does not set -- the store address, the OTel object store's account,
+# Grafana's admin password -- stops the stack at its next start. Each one missing from the node's
+# environment is taken from what the node runs: the address its MinIO is published on, its running
+# MinIO's own root account; Grafana's password is generated once. No value is printed.
+MINIO_CONTAINER="compose-minio-1"
+push_store_env() {
+  local have value changed=""
+  have="$(ssh_node "sudo cut -d= -f1 $ENV_FILE" | tr -d '\r')"
+  if ! grep -qx PROVISA_STORE_BIND_IP <<<"$have"; then
+    value="$(ssh_node "sudo sed -n 's/^PROVISA_MINIO_BIND_IP=//p' $ENV_FILE" | tr -d '\r')"
+    [ -n "$value" ] || { echo "$ENV_FILE names no PROVISA_MINIO_BIND_IP to publish the stores on" >&2; exit 1; }
+    set_node_env PROVISA_STORE_BIND_IP "$value"
+    changed=1
+  fi
+  for pair in "PROVISA_OTEL_S3_ACCESS_KEY MINIO_ROOT_USER" "PROVISA_OTEL_S3_SECRET_KEY MINIO_ROOT_PASSWORD"; do
+    set -- $pair
+    grep -qx "$1" <<<"$have" && continue
+    value="$(ssh_node "sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' $MINIO_CONTAINER" \
+      | sed -n "s/^$2=//p" | tr -d '\r')"
+    [ -n "$value" ] || { echo "$MINIO_CONTAINER on the node carries no $2" >&2; exit 1; }
+    set_node_env "$1" "$value"
+    changed=1
+  done
+  if ! grep -qx PROVISA_GRAFANA_ADMIN_PASSWORD <<<"$have"; then
+    set_node_env PROVISA_GRAFANA_ADMIN_PASSWORD "$(openssl rand -hex 24)"
+    changed=1
+  fi
+  if [ -n "$changed" ]; then echo "== store env: reconciled"; else echo "== store env: up to date"; fi
 }
 
 push_mail_env() {
@@ -845,18 +888,18 @@ case "$TARGET" in
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    preflight_engine; push_commerce_env; preflight_commerce; build_api; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_api; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    preflight_engine; push_commerce_env; preflight_commerce; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_cfg; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
   all)
-    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
     preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
 esac
 echo "== deployed $TARGET"

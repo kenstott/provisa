@@ -32,7 +32,9 @@ import {
 import { storageKey } from "../lib/browserStorage";
 import type { OrgHas } from "../tour/tourPrerequisites";
 
-const t = (key: string) => key;
+// The counter's numbers ride along, so a test can read them off the Next button.
+const t = (key: string, o?: { current?: number; total?: number }) =>
+  o?.total !== undefined ? `${key} ${o.current}/${o.total}` : key;
 // REQ-2013: the org has every object the product tour's steps show.
 // REQ-2013: the org of each test: the weblogs demo's, unless a test names another.
 const org = vi.hoisted(() => ({ current: null as unknown }));
@@ -65,17 +67,18 @@ vi.mock("../context/pollyState", async (importOriginal) => ({
     shownExchange: null,
   }),
 }));
+// The viewer's rights; a test drops one mid-tour, as a role step does.
+const ALL_RIGHTS = ["source_registration", "create_relationship", "query_development"];
+const rights = vi.hoisted(() => ({ current: null as unknown as string[] }));
 vi.mock("../context/AuthContext", () => ({
-  useAuth: () => ({
-    loading: false,
-    capabilities: ["source_registration", "create_relationship", "query_development"],
-  }),
+  useAuth: () => ({ loading: false, capabilities: rights.current }),
 }));
 
 const { TourProvider, useTour, resetTourStateForDemoSession } = await import("../tour/useTour");
 
 beforeEach(() => {
   org.current = WEBLOGS_ORG;
+  rights.current = ALL_RIGHTS;
 });
 const { TourMenu } = await import("../tour/TourMenu");
 
@@ -109,6 +112,52 @@ describe("a demo's steps, as the runner walks them", () => {
       open: '[data-testid="sql-role"]',
       option: '[data-sql-role-option="analyst"]',
     });
+  });
+
+  it("shows a picture beside what the step before it showed, in its popover", () => {
+    const [sql, picture] = demoTourSteps(
+      [
+        { key: "q", route: "/sql", capability: "query_development", sql: "SELECT 1" },
+        { key: "shot", image: "app.png", image_src: "data:image/png;base64,AAAA" },
+      ],
+      EXAMPLES,
+    );
+    expect(picture.element).toBe(sql.element);
+    expect(picture.image).toBe("data:image/png;base64,AAAA");
+    expect(picture.route).toBeUndefined();
+  });
+
+  it("refuses a picture with no step before it, or none sent", () => {
+    expect(() =>
+      demoTourSteps([{ key: "shot", image: "app.png", image_src: "data:," }], EXAMPLES),
+    ).toThrow(/shot/);
+    expect(() =>
+      demoTourSteps(
+        [
+          { key: "q", route: "/sql", capability: "query_development", sql: "SELECT 1" },
+          { key: "shot", image: "app.png" },
+        ],
+        EXAMPLES,
+      ),
+    ).toThrow(/shot/);
+  });
+
+  it("picks a role in the header's picker on any page but the SQL explorer", () => {
+    const [onQuery, sql, onSql] = demoTourSteps(
+      [
+        { key: "c", route: "/query", capability: "query_development", role: "customer" },
+        { key: "q", route: "/sql", capability: "query_development", sql: "SELECT 1" },
+        { key: "a", role: "analyst" },
+      ],
+      EXAMPLES,
+    );
+    expect(onQuery.element).toBe('[data-testid="role-selector-trigger"]');
+    expect(onQuery.chooseOnNext).toEqual({
+      open: '[data-testid="role-selector-trigger"]',
+      option: '[data-role-option="customer"]',
+    });
+    expect(sql.element).toBe(".sql-results-table");
+    expect(onSql.chooseOnNext?.option).toBe('[data-sql-role-option="analyst"]');
   });
 
   it("hands a set of roles, a pseudo-role among them, to the SQL explorer", () => {
@@ -155,6 +204,15 @@ describe("a demo's steps, as the runner walks them", () => {
     expect(cypher.openQuery).toEqual({ stateKey: "query", text: "MATCH (p:S__Pages) RETURN p" });
     expect(cypher.readySelector).toBe('.graph-stream[data-handoff-status="done"]');
     for (const step of [api, jsonapi, grpc, cypher]) expect(step.waitMs).toBe(60000);
+  });
+
+  it("opens a data product on the Data Products page, its detail shown", () => {
+    const [step] = demoTourSteps(
+      [{ key: "p", route: "/data-products", product: "daily_sales" }],
+      EXAMPLES,
+    );
+    expect(step.route).toBe("/data-products?product=daily_sales");
+    expect(step.element).toBe('[data-testid="data-product-detail"]');
   });
 
   it("opens a statement's lineage on the Lineage page and waits for its graph", () => {
@@ -259,7 +317,11 @@ function Where() {
 }
 
 function renderTour(demo: NamedDemo) {
-  return render(
+  return render(tourTree(demo));
+}
+
+function tourTree(demo: NamedDemo) {
+  return (
     <MantineProvider>
       <MemoryRouter>
         <NamedDemoContext.Provider value={demo}>
@@ -276,7 +338,7 @@ function renderTour(demo: NamedDemo) {
           </TourProvider>
         </NamedDemoContext.Provider>
       </MemoryRouter>
-    </MantineProvider>,
+    </MantineProvider>
   );
 }
 
@@ -303,6 +365,38 @@ describe("the tour button in a named demo", () => {
     expect(localStorage.getItem(storageKey("provisa_tour_demo_track_done"))).toBe(
       demoTrackStamp("weblogs", WEBLOGS.tour),
     );
+  });
+
+  it("counts its steps as it started, though a role step drops one mid-tour", async () => {
+    const tour = [
+      WEBLOGS.tour[0],
+      {
+        key: "weblogsRels",
+        route: "/relationships",
+        capability: "create_relationship" as const,
+        relationship: "HITS",
+      },
+      {
+        key: "weblogsDbLogAgain",
+        route: "/sources",
+        capability: "source_registration" as const,
+        source: "shop_db_log",
+      },
+      { key: "weblogsLast", source: "shop_access" },
+    ];
+    const demo = { ...WEBLOGS, tour };
+    const view = renderTour(demo);
+    fireEvent.click(screen.getByText("launch"));
+    await act(async () => chunksResolve());
+    expect(await screen.findByText("tour.steps.weblogsSources.title")).toBeInTheDocument();
+    const next = () => document.querySelector<HTMLElement>(".driver-popover-next-btn")!;
+    expect(next().textContent).toBe("tour.nav.next 1/4");
+    // The role picked leaves no right to the relationships page: its step is skipped, not recounted.
+    rights.current = ["source_registration", "query_development"];
+    view.rerender(tourTree(demo));
+    fireEvent.click(next());
+    expect(await screen.findByText("tour.steps.weblogsDbLogAgain.title")).toBeInTheDocument();
+    expect(next().textContent).toBe("tour.nav.next 3/4");
   });
 
   it("offers a revised track again, though the one before it was walked", async () => {

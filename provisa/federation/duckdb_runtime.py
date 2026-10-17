@@ -100,6 +100,13 @@ def _quoted(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
+def _attach_url(url: Any) -> str:
+    """A server store's URL as DuckDB's ATTACH takes it: a store is declared with its SQLAlchemy
+    driver (``postgresql+psycopg://``, config/capabilities.yaml), which libpq does not read as a
+    URI, so the driver is dropped and the rest is kept as written."""
+    return url.set(drivername=url.get_backend_name()).render_as_string(hide_password=False)
+
+
 class _CatalogGate(ReadersWriterGate):
     """Readers-writer gate over the shared DuckDB connection's catalog.
 
@@ -197,6 +204,14 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         _limit = getattr(store_engine, "memory_limit", None)
         if _limit is not None:
             _cfg["memory_limit"] = f"{_limit // (1024 * 1024)}MiB"
+        # Spilled data stays in the org's folder (engine.temp_org). A runtime built for no org --
+        # one introspecting a source's catalog, which reads metadata and spills nothing -- has no
+        # folder to name, and keeps DuckDB's own.
+        _temp_org = getattr(store_engine, "temp_org", None)
+        if _temp_org is not None:
+            from provisa.core import org_files
+
+            _cfg["temp_directory"] = str(org_files.org_tmp(_temp_org))
         self._con = duckdb.connect(config=_cfg)
         from provisa.fakes.duckdb_functions import register as register_fake_functions
 
@@ -258,6 +273,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             set()
         )  # community/extension connectors LOADed on this connection
         self._control_plane_attached = False  # provisa_admin catalog (native path only)
+        # A region's own stores, attached read-only for the ops views over them, by alias.
+        self._region_stores_attached: set[str] = set()
         # A held file's pause is invisible to concurrent queries only if they are excluded from it
         # -- see _CatalogGate. Held for read by every execution path, for write by the pause.
         self._catalog_gate = _CatalogGate()
@@ -840,6 +857,26 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             self._phys_catalogs.add(catalog)
         self._control_plane_attached = True
 
+    def attach_region_ops(
+        self, catalog: str, schema: str, stores: dict[str, str], views: dict[str, str]
+    ) -> None:
+        """Define ``views`` -- each ops view's SELECT, by name -- in ``catalog``.``schema``, over
+        ``stores`` (alias -> libpq DSN): the stores a region keeps its record and state in, each
+        attached read-only once, as ``attach_control_plane`` attaches the model's
+        (``api.region_ops_views``, REQ-1922). The views are defined again on each call, so a
+        definition the model's reload changed is the one read."""
+        self._ensure_postgres_loaded()
+        for alias, dsn in stores.items():
+            if alias not in self._region_stores_attached:
+                self._con.execute(f"ATTACH '{dsn}' AS \"{alias}\" (TYPE postgres, READ_ONLY)")
+                self._region_stores_attached.add(alias)
+        if catalog not in self._phys_catalogs:
+            self._con.execute(f"ATTACH ':memory:' AS \"{catalog}\"")
+            self._phys_catalogs.add(catalog)
+        self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{catalog}"."{schema}"')
+        for name, select in views.items():
+            self._con.execute(f'CREATE OR REPLACE VIEW "{catalog}"."{schema}"."{name}" AS {select}')
+
     # The materialization store, attached under this backend-neutral alias. A store MUST exist (the
     # engine's invariant); its backend/dialect is taken from the store URL scheme, never assumed.
     _MAT_STORE = "mat_store"
@@ -931,7 +968,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             # ``duckdb:///C:\...`` DSN parses to ``/C:\...`` under urlparse (leading slash), which
             # DuckDB then reads as a ``//C:`` UNC network path and fails ("network path not found").
             # SQLAlchemy's URL parser strips the leading slash for a drive-letter path on every OS.
-            target = url.database if store_type in self._FILE_ATTACH_TYPES else dsn
+            target = url.database if store_type in self._FILE_ATTACH_TYPES else _attach_url(url)
             if store_type == "duckdb":
                 if not target:
                     raise RuntimeError(f"materialize store DSN {dsn!r} has no file path")
@@ -993,7 +1030,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         alias = name
         if alias in self._region_stores:
             return alias
-        store_type = self._ATTACH_TYPE_BY_SCHEME.get(make_url(dsn).get_backend_name())
+        url = make_url(dsn)
+        store_type = self._ATTACH_TYPE_BY_SCHEME.get(url.get_backend_name())
         if store_type is None or store_type in self._FILE_ATTACH_TYPES:
             raise RuntimeError(
                 f"{name!r}: that region's replicas store is not a server store this engine can "
@@ -1002,7 +1040,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if store_type not in self._NO_EXTENSION_TYPES:
             # A Postgres store loads the extension with its settings too (#241).
             install_and_load(self._con, store_type, from_community=False)
-        self._con.execute(f"ATTACH '{dsn}' AS \"{alias}\" (TYPE {store_type}, READ_ONLY)")
+        self._con.execute(
+            f"ATTACH '{_attach_url(url)}' AS \"{alias}\" (TYPE {store_type}, READ_ONLY)"
+        )
         self._region_stores.add(alias)
         return alias
 

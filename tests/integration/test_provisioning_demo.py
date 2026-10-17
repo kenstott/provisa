@@ -116,8 +116,8 @@ class ProvisioningStack:
                 f"the provisioning stack did not come up: {exc.stderr}\n{logs[-4000:]}"
             ) from exc
 
-    def logs(self) -> str:
-        return self._compose("logs", "--no-color", "--tail", "200", check=False).stdout
+    def logs(self, *services: str) -> str:
+        return self._compose("logs", "--no-color", "--tail", "200", *services, check=False).stdout
 
     def down(self) -> None:
         self._compose("down", "-v", "--remove-orphans", check=False)
@@ -193,7 +193,8 @@ def landed(stack, server):
             return server
         assert time.monotonic() < deadline, (
             f"the feeds did not land or the dataset did not follow: {orders} orders, dataset "
-            f"{status} {rows}\n{stack.logs()[-4000:]}"
+            f"{status} {rows}\n{stack.logs('producer')[-3000:]}\n"
+            f"{server.dump_stderr_debug()[-6000:]}"
         )
         time.sleep(5)
 

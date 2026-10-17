@@ -123,11 +123,12 @@ echo $! >>"$PIDS_FILE"
 REDIS_URL="redis://127.0.0.1:$REDIS_PORT/0"
 
 # --- one shared embedded Postgres: the model store AND both regions' pg stores ---
-# `control_plane_pg start` prints PG_HOST=/PG_PORT= (a unix-socket host dir + port).
+# `control_plane_pg start` prints PG_HOST=/PG_PORT= (a unix-socket host dir + port) and PG_PASSWORD.
 _pgout="$("$PY" -m provisa.core.control_plane_pg start "$PG_DIR/control-pg")"
 PGHOST="$(printf '%s\n' "$_pgout" | sed -n 's/^PG_HOST=//p')"
 PGPORT="$(printf '%s\n' "$_pgout" | sed -n 's/^PG_PORT=//p')"
-PG_URL="postgresql+psycopg://provisa:provisa@/provisa?host=$PGHOST&port=$PGPORT"
+PGPW="$(printf '%s\n' "$_pgout" | sed -n 's/^PG_PASSWORD=//p')"
+PG_URL="postgresql+psycopg://provisa:$PGPW@/provisa?host=$PGHOST&port=$PGPORT"
 
 # --- render the config template for this launch ---
 # Rendered in Python, not sed: the pg URL carries & ? = / which sed's replacement treats specially

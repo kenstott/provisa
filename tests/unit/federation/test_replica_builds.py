@@ -571,6 +571,35 @@ async def test_a_build_of_a_table_with_no_event_loop_node_posts_nothing(queue, m
     assert queue.events == [] and queue.refreshes == [("s1/public.events", True)]
 
 
+async def test_a_table_that_lands_once_tells_the_views_that_read_it(queue, monkeypatch):
+    """A table whose cache_ttl is -1 lands once and has no event-loop node of its own (REQ-2031),
+    so a view over it has no node to hear the landing from. Its changed build is posted to those
+    views directly: before, they were never built, and another region read their copy as not
+    built (query.home_region_unavailable)."""
+    from provisa.federation.data_replicator import BuildOutcome
+
+    node = "eu-shop/public.customers"
+    views = ["view_eu_customers_pseudonymised", "view_eu_marketing_audience"]
+    state = SimpleNamespace(
+        tenant_db=_Db(),
+        replica_nodes={},  # no node: it never expires
+        replica_dependents_of=lambda n: views if n == node else [],
+    )
+    _built(monkeypatch, BuildOutcome(rows_copied=2002, method="stream_batches", changed=True))
+    await replica_builds.run_build(state, ("eu-shop", "public", "customers"), _noop)
+    assert queue.events == [(node, "replace", {"built": True, "rows": 2002})]
+    assert queue.fanned == [(1, views)]
+
+
+async def test_a_table_with_no_node_and_no_view_over_it_posts_nothing(queue, monkeypatch):
+    from provisa.federation.data_replicator import BuildOutcome
+
+    state = SimpleNamespace(tenant_db=_Db(), replica_nodes={}, replica_dependents_of=lambda n: [])
+    _built(monkeypatch, BuildOutcome(rows_copied=9, method="stream_batches", changed=True))
+    await replica_builds.run_build(state, ("s1", "public", "events"), _noop)
+    assert queue.events == [] and queue.fanned == []
+
+
 async def test_a_failed_build_is_stamped_not_fresh_and_ripples_nothing(queue, monkeypatch):
     key = ("s1", "public", "events")
     state = SimpleNamespace(tenant_db=_Db(), replica_nodes={key: "s1/public.events"})

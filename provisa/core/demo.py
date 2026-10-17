@@ -67,6 +67,17 @@ def tour_answers_path(named: str) -> Path:  # REQ-2012
     return Path(named) / "tour_answers.json"
 
 
+def tour_image(directory: Path, name: str) -> str:
+    """The picture ``name`` (a PNG beside the demo's tour.yaml) as a data URL. Refused by name when
+    it is not a PNG file there."""
+    import base64
+
+    path = directory / name
+    if path.parent != directory or path.suffix != ".png" or not path.is_file():
+        raise ValueError(f"{directory.name}: tour image {name!r} is not a PNG beside tour.yaml")
+    return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()
+
+
 def demo_landing(directory: Path | None) -> dict[str, str] | None:  # REQ-2010
     """Where "Look around on my own" leaves a visitor at the end of the demo's tour: the page its
     tour.yaml names as ``landing`` (``route`` and the ``capability`` its gate needs). None when no
@@ -88,7 +99,10 @@ def demo_tour(directory: Path | None) -> list[dict[str, str]]:  # REQ-2010
 
     REQ-2012: a step asking Polly a question (``polly``) carries the answer stored for it when the
     demo's bundle was built, as ``answer``, if one was stored for that same question; the UI
-    leaves out a step with none. Nothing is asked when a visitor walks the tour."""
+    leaves out a step with none. Nothing is asked when a visitor walks the tour.
+
+    A step showing a picture (``image``: a PNG beside tour.yaml) carries it as ``image_src``, a
+    data URL: the tour that names it is all the visitor's browser needs, on any tier."""
     import json
 
     import yaml
@@ -100,6 +114,9 @@ def demo_tour(directory: Path | None) -> list[dict[str, str]]:  # REQ-2010
     if not path.is_file():
         return []  # a named demo without a tour of its own
     steps = yaml.safe_load(path.read_text(encoding="utf-8"))["steps"]
+    for step in steps:
+        if "image" in step:
+            step["image_src"] = tour_image(directory, step["image"])
     answers_path = tour_answers_path(named)
     if not answers_path.is_file():
         return steps  # a demo not built as a bundle: no stored answers

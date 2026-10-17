@@ -1,0 +1,106 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The storefront demo where it runs from its bundle (start-ui-install.sh --demo storefront; REQ-2049):
+# the database, loaded from the dump the bundle build wrote (dump/postgres.sql), read only. The
+# seeder ran once, in the build.
+
+x-demo-labels: &demo-labels
+  com.provisa.demo: storefront
+
+name: provisa-demo-storefront-run
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+      # Where config.yaml's storefront-db reads it, for the sandbox tier's node (REQ-2049,
+      # scripts/demo_stores_sync.sh): it writes these two into the bundle's stores.env.
+      com.provisa.demo.host_env: STOREFRONT_PG_HOST
+      com.provisa.demo.port_env: STOREFRONT_PG_PORT
+      com.provisa.demo.port: "5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: storefront
+    ports:
+      # Unset: 29632. Set empty (the node, which runs several versions at once): a port docker
+      # picks. On the loopback only.
+      - "127.0.0.1:${STOREFRONT_PG_PORT-29632}:5432"
+    volumes:
+      - storefront_run_pg:/var/lib/postgresql/data
+      - ./dump/postgres.sql:/docker-entrypoint-initdb.d/10-storefront.sql:ro
+      - ./db/reader.sql:/docker-entrypoint-initdb.d/20-reader.sql:ro
+      - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /var/lib/postgresql/data/.provisa-init-complete && pg_isready -U postgres -d storefront"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+      # The first start loads the dump before the marker is written; failures meanwhile do
+      # not count.
+      start_period: 600s
+
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: document
+      com.provisa.demo.host_env: STOREFRONT_MONGO_HOST
+      com.provisa.demo.port_env: STOREFRONT_MONGO_PORT
+      com.provisa.demo.port: "27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: storefront-admin
+    # Sized for the cloud node (every published demo's stores at once): WiredTiger's cache is capped
+    # at a quarter gigabyte.
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    ports:
+      - "127.0.0.1:${STOREFRONT_MONGO_PORT-29617}:27017"
+    volumes:
+      - storefront_run_mongo:/data/db
+      - ./dump/mongodb.archive.gz:/dump/mongodb.archive.gz:ro
+      - ./db/mongo-restore.sh:/docker-entrypoint-initdb.d/10-restore.sh:ro
+      - ./db/mongo-reader.js:/docker-entrypoint-initdb.d/20-reader.js:ro
+      - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
+    healthcheck:
+      # mongod answers a ping while its first start still restores: the marker says it is done.
+      test:
+        ["CMD-SHELL", "test -f /data/db/.provisa-init-complete && mongosh --quiet --eval 'db.adminCommand(\"ping\")'"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+      start_period: 600s
+  # The shipping service holds no data of its own: each shipment is a function of its order's id.
+  shipping:
+    image: provisa-demo-storefront-shipping:1
+    build:
+      context: ./shipping
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: api
+      com.provisa.demo.host_env: STOREFRONT_SHIPPING_HOST
+      com.provisa.demo.port_env: STOREFRONT_SHIPPING_PORT
+      com.provisa.demo.port: "8080"
+    ports:
+      - "127.0.0.1:${STOREFRONT_SHIPPING_PORT-29680}:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+volumes:
+  storefront_run_pg:
+  storefront_run_mongo:

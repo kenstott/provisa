@@ -110,9 +110,30 @@ HELM_NAMESPACE=provisa
 kubectl get namespace "$HELM_NAMESPACE" &>/dev/null || \
   kubectl create namespace "$HELM_NAMESPACE"
 
+# The stores' credentials (credentials.existingSecret): generated once for this cluster, kept in
+# the cluster as the Secret the chart reads. The chart sets no password of its own.
+if ! kubectl get secret provisa-credentials --namespace "$HELM_NAMESPACE" &>/dev/null; then
+  kubectl create secret generic provisa-credentials --namespace "$HELM_NAMESPACE" \
+    --from-literal=pg-password="$(openssl rand -hex 24)" \
+    --from-literal=redis-password="$(openssl rand -hex 24)" \
+    --from-literal=minio-access-key=provisa \
+    --from-literal=minio-secret-key="$(openssl rand -hex 24)" \
+    --from-literal=grafana-admin-password="$(openssl rand -hex 24)"
+fi
+# TLS is on by default (tls.secretName=provisa-tls): a self-signed pair for this cluster.
+if ! kubectl get secret provisa-tls --namespace "$HELM_NAMESPACE" &>/dev/null; then
+  _tls_dir="$(mktemp -d)"
+  openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN=provisa" \
+    -keyout "$_tls_dir/tls.key" -out "$_tls_dir/tls.crt" 2>/dev/null
+  kubectl create secret tls provisa-tls --namespace "$HELM_NAMESPACE" \
+    --cert="$_tls_dir/tls.crt" --key="$_tls_dir/tls.key"
+  rm -r "$_tls_dir"
+fi
+
 # Dev overrides: reduced resources, single replicas, no autoscaling, no ingress
 HELM_ARGS=(
   --namespace "$HELM_NAMESPACE"
+  --set credentials.existingSecret=provisa-credentials
   --set provisa.replicaCount=1
   --set auth.provider=none
   --set provisa.image.pullPolicy=Never

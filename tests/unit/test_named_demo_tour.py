@@ -37,9 +37,11 @@ _TARGETS = (
     "group_by",
     "lineage",
     "term",
+    "product",
     "role",
     "env",
     "polly",
+    "image",
 )
 # The query parameters a table's REST endpoint declares (provisa/api/rest/openapi_spec.py).
 _REST_PARAMS = {
@@ -171,6 +173,7 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     made = (yaml.safe_load(setup.read_text()) or {}).get("steps") or [] if setup.exists() else []
     envs = {"prod"} | {s["environment"]["name"] for s in made if "environment" in s}
     terms = {t["name"] for t in config.get("glossary_terms", [])}
+    products = {p["id"] for p in config.get("data_products", [])}
     tables = {f"{t['source_id']}.{config_table_name(t)}" for t in config["tables"]}
     relations = _relations(config)
     gates = _route_capabilities()
@@ -218,6 +221,13 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             # A demo with no bake-off questions of its own has none a step may ask.
             asked = {q.text for q in QUESTIONS.get(home.name, ())}
             assert step["polly"] in asked, f"{step['key']}: not one of the demo's own questions"
+        if "image" in step:
+            # A picture beside tour.yaml, shown over the page of the step before it.
+            assert previous is not None, f"{step['key']}: an image shows beside a step before it"
+            assert "route" not in step, f"{step['key']}: an image shows on the page it is on"
+            picture = home / step["image"]
+            assert picture.parent == home and picture.suffix == ".png", step
+            assert picture.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", f"{picture} is not a PNG"
         if "relationship" in step:
             assert step["relationship"] in aliases, step
         if "example" in step:
@@ -227,6 +237,10 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             assert page == "/query", f"{step['key']}: an example runs on /query, not {page}"
         if "term" in step:
             assert step["term"] in terms, step
+        if "product" in step:
+            assert step["product"] in products, step
+            # The Data Products page opens the product its deep link names.
+            assert page == "/data-products", f"{step['key']}: a product opens on /data-products"
         if "role" in step:
             # One role, "all", or a set of the demo's roles and its declared pseudo-roles
             # (reviewer,region__eu, REQ-2057), which the tour hands to the explorer.
@@ -236,8 +250,12 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
                 assert (
                     part in roles or part in claim_types or (sep and value and claim in claim_types)
                 ), step
-            # Picked in the SQL explorer's run-as picker, which is on that page alone.
-            assert page == "/sql", f"{step['key']}: a role is picked on /sql, not {page}"
+            # Picked in the SQL explorer's run-as picker on /sql; anywhere else, in the header's role
+            # picker, which every other page's requests run as. A set of roles is the explorer's.
+            if "," in step["role"]:
+                assert page == "/sql", (
+                    f"{step['key']}: a set of roles is picked on /sql, not {page}"
+                )
         if "group_by" in step:
             # The Graph page's frame on screen grouped: the one the Cypher step before it ran.
             assert page == "/graph", f"{step['key']}: a frame is grouped on /graph, not {page}"
@@ -320,6 +338,31 @@ def test_an_answer_stored_for_another_question_is_not_served(tmp_path, monkeypat
     answers = {"ask": {"question": "An older question?", "answer": "Old."}}
     monkeypatch.setenv(demo.NAMED_DEMO_DIR_ENV, _named_demo(tmp_path, [_SOURCES, _ASK], answers))
     assert demo.demo_tour(demo.started_demo_directory()) == [_SOURCES, _ASK]
+
+
+_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
+_SHOT = {"key": "shot", "image": "app.png"}
+
+
+def test_an_image_step_carries_its_picture_as_a_data_url(tmp_path, monkeypatch):
+    """The tour is all the visitor's browser needs: on the sandbox tier a separate request for the
+    picture would not name the demo it is of."""
+    import base64
+
+    (tmp_path / "app.png").write_bytes(_PNG)
+    monkeypatch.setenv(demo.NAMED_DEMO_DIR_ENV, _named_demo(tmp_path, [_SOURCES, _SHOT]))
+    src = "data:image/png;base64," + base64.b64encode(_PNG).decode()
+    assert demo.demo_tour(demo.started_demo_directory()) == [_SOURCES, {**_SHOT, "image_src": src}]
+
+
+@pytest.mark.parametrize("name", ["missing.png", "../app.png", "app.jpg"])
+def test_an_image_not_a_png_beside_the_tour_is_refused_by_name(tmp_path, monkeypatch, name):
+    (tmp_path / "app.jpg").write_bytes(_PNG)
+    monkeypatch.setenv(
+        demo.NAMED_DEMO_DIR_ENV, _named_demo(tmp_path, [_SOURCES, {**_SHOT, "image": name}])
+    )
+    with pytest.raises(ValueError, match=re.escape(repr(name))):
+        demo.demo_tour(demo.started_demo_directory())
 
 
 def test_a_demo_not_built_from_a_template_serves_no_answer(tmp_path, monkeypatch):

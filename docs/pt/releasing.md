@@ -66,10 +66,31 @@ A versão do cliente Python é automaticamente convertida para o formato PEP 440
 
 ## Configuração de Publicação PyPI (única vez) {: #pypi-publishing-setup-one-time }
 
-1. Copie seu token de API de `~/.pypirc` (o valor `pypi-...` para `pypi.org`)
-2. Adicione-o como um segredo de repositório nomeado `PYPI_API_TOKEN` em **Settings → Secrets → Actions**
+Os jobs `publish-pypi` (`provisa-client`) e `publish-provisa-pypi` (`provisa`) em `.github/workflows/build-dmg.yml` publicam com o trusted publishing do PyPI: o token OIDC do GitHub do job (`id-token: write`) o autentica, e nenhum token de API é lido. Registre este repositório e `build-dmg.yml` como trusted publisher de cada projeto em pypi.org (**Your projects → Manage → Publishing**). As publicações então ocorrem automaticamente em cada tag.
 
-O job `publish-pypi` então publicará automaticamente em cada tag.
+## Assinatura e Cadeia de Suprimentos {: #signing-and-supply-chain }
+
+O que cada artefato de release carrega, conforme os workflows de release o constroem:
+
+| Artefato | Assinatura |
+| -------- | --------- |
+| `provisa` e `provisa-client` no PyPI | Atestação PEP 740 assinada com Sigstore por arquivo (`attestations: true`), verificável em pypi.org |
+| `provisa-pg-ext`, `provisa-duckdb-ext` no PyPI | Atestação PEP 740 assinada com Sigstore por arquivo |
+| `.jar` do driver JDBC | Atestação de build provenance do Sigstore (`actions/attest-build-provenance`) |
+| Instaladores macOS `.dmg` | Assinatura de código Developer ID e notarização da Apple |
+| Instaladores Windows `.exe` | Não assinados |
+| Linux `.AppImage` | Não assinado |
+
+A instalação assinada em qualquer SO é `pip install provisa`: o pacote PyPI atestado com Sigstore. Um revisor que precisa de um artefato assinado no Linux ou no Windows instala com pip. O build do Windows assina com Authenticode quando um certificado de assinatura de código está configurado (`WINDOWS_CERT_PFX_BASE64`, `WINDOWS_CERT_PFX_PASSWORD`, `WINDOWS_CERT_TIMESTAMP_URL`, lidos por `packaging/windows/build-sfx.ps1`); nenhum está configurado, então ele é distribuído sem assinatura.
+
+Dependências e gates de CVE:
+
+- As dependências Python são travadas com hashes em `uv.lock`; a CI as instala com `uv sync --frozen`.
+- O workflow `CVE Audit` (`.github/workflows/cve-audit.yml`) executa `pip-audit` sobre o conjunto travado a cada push em `main`, a cada pull request e semanalmente.
+- No release, os builds de `provisa` e `provisa-client` produzem cada um um SBOM CycloneDX e executam `pip-audit` sobre o que é distribuído. O driver JDBC é verificado com `grype --fail-on medium`. Um achado faz o job falhar, e o release não publica nada: tanto os uploads para o PyPI quanto o release do GitHub aguardam esses jobs. Os SBOMs e os relatórios de CVE são anexados a cada release.
+- Os instaladores desktop constroem o wheel `provisa` a partir do código-fonte no runner de release e resolvem suas dependências com `pip` no momento do build, não a partir de `uv.lock`; o gate de CVE do release verifica o conjunto travado, não as dependências embutidas nos instaladores.
+- Uma exceção documentada é ignorada: PYSEC-2026-4114 / CVE-2026-49265 (PKCE do oauthlib no lado do servidor; o Provisa usa oauthlib apenas no lado do cliente).
+- `packaging/pypi/requirements-embedded.lock` é uma resolução de `provisa[embedded]` com hashes fixados para mirrors airgap (veja `packaging/pypi/MIRROR-CHECKLIST.md`). Ele é regenerado manualmente, não a cada release.
 
 ## Segredos de Repositório Necessários {: #required-repository-secrets }
 
@@ -77,7 +98,6 @@ Configure estes em **Settings → Secrets → Actions**:
 
 | Segredo | Necessário para | Descrição |
 | -------- | ------------- | ------------- |
-| `PYPI_API_TOKEN` | Publicação no PyPI | Token de API de `~/.pypirc` (começa com `pypi-`) |
 | `APPLE_CERT_P12_BASE64` | Builds assinados | Arquivo de certificado `.p12` codificado em Base64 (veja abaixo) |
 | `APPLE_CERT_P12_PASSWORD` | Builds assinados | Senha definida ao exportar o `.p12` do Keychain Access |
 | `APPLE_DEVELOPER_ID` | Builds assinados | Nome completo do certificado: `Developer ID Application: Your Name (TEAMID)` |

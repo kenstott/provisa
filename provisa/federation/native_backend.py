@@ -478,6 +478,9 @@ class NativeEngineBackend(EngineBackend):
                     # whether a region keeps a replica of its tables.
                     replicate=_rs_dict["replicate"],
                     load_protected=_rs_dict["load_protected"],
+                    # REQ-2031: a cache_ttl that never expires keeps the source's tables on their
+                    # replica (replica_routing.table_floor), as replicate does.
+                    cache_ttl=_rs_dict["cache_ttl"],
                     federation_hints={},
                     # REQ-1742: forwarded so _attach_tbl's merged SimpleNamespace below (which reads
                     # it via getattr(src, "mapping", {})) can actually see it — same gap base_url
@@ -666,6 +669,13 @@ class NativeEngineBackend(EngineBackend):
         tdb = getattr(state, "model_db", None)
         if tdb is not None and hasattr(self._runtime, "attach_control_plane"):
             self._runtime.attach_control_plane(libpq_dsn(tdb.engine.url))
+            # REQ-1922: in a region, the ops views over its record and state, read where those
+            # are kept (api.region_ops_views); a node of no region reads them from the model's.
+            from provisa.api.region_ops_views import CATALOG, engine_attachment
+
+            attachment = engine_attachment(state)
+            if attachment is not None:
+                self._runtime.attach_region_ops(CATALOG, *attachment)
         return complete
 
     # -- residency prep (REQ-825 stage-4b / REQ-932) ---------------------------

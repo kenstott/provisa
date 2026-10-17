@@ -176,6 +176,14 @@ resource "random_password" "db" {
   special = false
 }
 
+# The control plane's Redis and MinIO, and Grafana's admin: generated for this deployment. The
+# sandbox VM dials the coordinator's Redis and MinIO, so both VMs are given the same ones.
+resource "random_password" "store" {
+  for_each = toset(["redis", "minio", "grafana"])
+  length   = 32
+  special  = false
+}
+
 # ── Locals ──────────────────────────────────────────────────────────────────────
 
 locals {
@@ -299,6 +307,13 @@ locals {
   # control-plane compose base interpolates PG_* / PLATFORM_DATABASE_URL /
   # TENANT_DATABASE_URL from CONFIG_DB_*, and first-launch persists these into the systemd
   # EnvironmentFile on every boot (allowlist in packaging/linux/first-launch.sh).
+  # first-launch persists them into the systemd EnvironmentFile, where `provisa start` reads them.
+  store_credential_exports = <<-SHELL
+    export PROVISA_REDIS_PASSWORD="${random_password.store["redis"].result}"
+    export PROVISA_MINIO_ROOT_PASSWORD="${random_password.store["minio"].result}"
+    export PROVISA_GRAFANA_ADMIN_PASSWORD="${random_password.store["grafana"].result}"
+  SHELL
+
   external_db_exports = <<-SHELL
     export PROVISA_EXTERNAL_CONTROL_DB=1
     export CONFIG_DB_HOST=control-db
@@ -584,6 +599,7 @@ resource "google_compute_instance" "coordinator" {
     startup-script = <<-SHELL
       ${local.base_startup}
       ${local.external_db_exports}
+      ${local.store_credential_exports}
       ${local.engine_cluster_exports}
       ${local.object_store_mount}
       ${local.control_db_setup}

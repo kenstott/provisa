@@ -21,6 +21,8 @@ Each check is the one the repo already has, run for this demo alone:
               tests/unit/test_named_demo_example_queries.py builds their schema
   card        demo.yaml as scripts/gen-site-demos.mjs reads it (published, title, description, a
               screenshot beside it), and the site page in step with it
+  images      each image step's picture a PNG beside tour.yaml, as the tour serves it
+              (provisa.core.demo.tour_image)
   bundle      requires_provisa a Provisa version (scripts/demo_bundle.py's rule), and the
               directory one this Provisa reads (provisa.core.demo_bundles.check_directory)
   run-compose docker-compose.run.yml, for a demo with stores: each service labelled with the
@@ -123,6 +125,26 @@ def check_card(home: Path) -> list[str]:
     return problems
 
 
+def check_images(home: Path) -> list[str]:
+    from provisa.core.demo import tour_image
+
+    tour = home / "tour.yaml"
+    if not tour.is_file():
+        return []
+    problems = []
+    for step in (yaml.safe_load(tour.read_text()) or {}).get("steps") or []:
+        if "image" not in step:
+            continue
+        try:
+            tour_image(home, step["image"])
+        except ValueError as refused:
+            problems.append(f"tour.yaml: step {step['key']}: {refused}")
+            continue
+        if (home / step["image"]).read_bytes()[:8] != b"\x89PNG\r\n\x1a\n":
+            problems.append(f"tour.yaml: step {step['key']}: {step['image']} is not a PNG")
+    return problems
+
+
 def check_bundle(home: Path) -> list[str]:
     from provisa.core import demo_bundles as bundles
 
@@ -190,6 +212,7 @@ def checks(name: str, home: Path) -> dict[str, Callable[[], list[str]]]:
         "tests": lambda: check_tests(name),
         "examples": lambda: check_examples(home),
         "card": lambda: check_card(home),
+        "images": lambda: check_images(home),
         "bundle": lambda: check_bundle(home),
         "run-compose": lambda: check_run_compose(home, name),
         "locales": lambda: check_locales(name, home),

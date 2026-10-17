@@ -24,6 +24,8 @@
 #   lineage       a statement over the demo's tables and views: its lineage built on /lineage,
 #                 each column traced back through the views it reads to the source fields
 #   term          a glossary term of config.yaml, by name: opened on the Glossary page
+#   product       a data product of config.yaml, by id: opened on the Data Products page, its
+#                 members and lineage shown
 #   role          a role of config.yaml (or "all"): picked in the SQL explorer's run-as picker on
 #                 Next, so a step with it is on the SQL explorer
 #   env           prod or an environment the demo's setup.yaml makes: picked in the header's

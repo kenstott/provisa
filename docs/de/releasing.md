@@ -66,10 +66,31 @@ Die Version des Python-Clients wird automatisch in das PEP-440-Format umgewandel
 
 ## PyPI-Veröffentlichung einrichten (einmalig) {: #pypi-publishing-setup-one-time }
 
-1. Kopieren Sie Ihr API-Token aus `~/.pypirc` (den Wert `pypi-...` für `pypi.org`)
-2. Fügen Sie es als Repository-Secret mit dem Namen `PYPI_API_TOKEN` unter **Settings → Secrets → Actions** hinzu
+Die Jobs `publish-pypi` (`provisa-client`) und `publish-provisa-pypi` (`provisa`) in `.github/workflows/build-dmg.yml` veröffentlichen mit PyPI Trusted Publishing: Das GitHub-OIDC-Token des Jobs (`id-token: write`) authentifiziert ihn, und es wird kein API-Token gelesen. Registrieren Sie dieses Repository und `build-dmg.yml` für jedes Projekt auf pypi.org als Trusted Publisher (**Your projects → Manage → Publishing**). Die Veröffentlichungen laufen dann bei jedem Tag automatisch.
 
-Der Job `publish-pypi` veröffentlicht dann automatisch bei jedem Tag.
+## Signierung und Lieferkette {: #signing-and-supply-chain }
+
+Was jedes Release-Artefakt trägt, so wie die Release-Workflows es bauen:
+
+| Artefakt | Signatur |
+| -------- | --------- |
+| `provisa` und `provisa-client` auf PyPI | Sigstore-signierte PEP-740-Attestation pro Datei (`attestations: true`), auf pypi.org prüfbar |
+| `provisa-pg-ext`, `provisa-duckdb-ext` auf PyPI | Sigstore-signierte PEP-740-Attestation pro Datei |
+| JDBC-Treiber-`.jar` | Sigstore-Build-Provenance-Attestation (`actions/attest-build-provenance`) |
+| macOS-`.dmg`-Installer | Developer-ID-Codesignatur und Apple-Notarisierung |
+| Windows-`.exe`-Installer | Nicht signiert |
+| Linux-`.AppImage` | Nicht signiert |
+
+Die signierte Installation auf jedem Betriebssystem ist `pip install provisa`: das Sigstore-attestierte PyPI-Paket. Ein Prüfer, der ein signiertes Artefakt unter Linux oder Windows braucht, installiert mit pip. Der Windows-Build signiert mit Authenticode, wenn ein Code-Signing-Zertifikat konfiguriert ist (`WINDOWS_CERT_PFX_BASE64`, `WINDOWS_CERT_PFX_PASSWORD`, `WINDOWS_CERT_TIMESTAMP_URL`, gelesen von `packaging/windows/build-sfx.ps1`); keines ist konfiguriert, daher wird er unsigniert ausgeliefert.
+
+Abhängigkeiten und CVE-Gates:
+
+- Python-Abhängigkeiten sind mit Hashes in `uv.lock` gesperrt; CI installiert sie mit `uv sync --frozen`.
+- Der Workflow `CVE Audit` (`.github/workflows/cve-audit.yml`) führt `pip-audit` über die gesperrte Menge bei jedem Push auf `main`, bei jedem Pull Request und wöchentlich aus.
+- Beim Release erzeugen die Builds von `provisa` und `provisa-client` jeweils ein CycloneDX-SBOM und führen `pip-audit` über das Ausgelieferte aus. Der JDBC-Treiber wird mit `grype --fail-on medium` gescannt. Ein Fund lässt den Job fehlschlagen, und das Release veröffentlicht nichts: Die PyPI-Uploads und das GitHub-Release warten beide auf diese Jobs. Die SBOMs und CVE-Berichte werden an jedes Release angehängt.
+- Die Desktop-Installer bauen das `provisa`-Wheel auf dem Release-Runner aus dem Quellcode und lösen seine Abhängigkeiten zur Build-Zeit mit `pip` auf, nicht aus `uv.lock`; das CVE-Gate des Releases scannt die gesperrte Menge, nicht die gebündelten Abhängigkeiten der Installer.
+- Eine dokumentierte Ausnahme wird ignoriert: PYSEC-2026-4114 / CVE-2026-49265 (serverseitiges oauthlib-PKCE; Provisa verwendet oauthlib nur clientseitig).
+- `packaging/pypi/requirements-embedded.lock` ist eine Hash-gepinnte Auflösung von `provisa[embedded]` für Airgap-Mirrors (siehe `packaging/pypi/MIRROR-CHECKLIST.md`). Sie wird von Hand neu erzeugt, nicht pro Release.
 
 ## Erforderliche Repository-Secrets {: #required-repository-secrets }
 
@@ -77,7 +98,6 @@ Konfigurieren Sie Folgendes unter **Settings → Secrets → Actions**:
 
 | Secret | Erforderlich für | Beschreibung |
 | -------- | ------------- | ------------- |
-| `PYPI_API_TOKEN` | PyPI-Veröffentlichung | API-Token aus `~/.pypirc` (beginnt mit `pypi-`) |
 | `APPLE_CERT_P12_BASE64` | Signierte Builds | Base64-codierte `.p12`-Zertifikatsdatei (siehe unten) |
 | `APPLE_CERT_P12_PASSWORD` | Signierte Builds | Beim Export des `.p12` aus Keychain Access festgelegtes Passwort |
 | `APPLE_DEVELOPER_ID` | Signierte Builds | Vollständiger Zertifikatsname: `Developer ID Application: Your Name (TEAMID)` |

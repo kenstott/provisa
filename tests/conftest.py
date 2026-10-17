@@ -22,6 +22,7 @@ import pytest_asyncio
 import trino
 
 from provisa.compiler import naming as _naming
+from tests import store_credentials
 from tests.env_creds import load_provider_creds
 from tests.itest_stack import (
     COMPOSE_ARGS,
@@ -33,6 +34,9 @@ from tests.itest_stack import (
 )
 from tests.otlp_receiver import start_discarding_receiver
 from tests.port_lease import lease_port, lease_ports
+
+# The test instance's store credentials, before any compose command runs (tests/store_credentials.py).
+store_credentials.apply()
 
 # Instance isolation (test vs local-dev): the encryption master key is read from the OS keyring,
 # then $PROVISA_DATA_DIR/encryption (default ~/.provisa), before PROVISA_ENCRYPTION_KEY (REQ-684,
@@ -416,7 +420,7 @@ def _allocate_itest_ports() -> None:
     # source host of `postgres` while the app's own URL says `localhost`.
     os.environ.setdefault("PROVISA_ENGINE_CONTROL_PLANE_HOST", "postgres")
     os.environ.setdefault("PROVISA_ENGINE_CONTROL_PLANE_PORT", "5432")
-    os.environ["REDIS_URL"] = f"redis://localhost:{os.environ['REDIS_PORT']}/0"
+    os.environ["REDIS_URL"] = store_credentials.redis_url(os.environ["REDIS_PORT"])
     _minio = f"localhost:{os.environ['MINIO_PORT']}"
     os.environ["PROVISA_OTEL_S3_ENDPOINT"] = f"http://{_minio}"
     os.environ["MINIO_ENDPOINT"] = _minio  # host-side minio clients (e.g. infra bdd)

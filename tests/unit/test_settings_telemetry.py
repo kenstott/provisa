@@ -266,6 +266,8 @@ def test_the_compaction_settings_a_boot_runs_on_are_the_stored_ones(settings_pla
 def test_the_telemetry_object_store_follows_the_stored_endpoint(settings_plane, monkeypatch):
     from provisa.core.trino_system_catalogs import otel_object_store
 
+    monkeypatch.setenv("PROVISA_OTEL_S3_ACCESS_KEY", "k")
+    monkeypatch.setenv("PROVISA_OTEL_S3_SECRET_KEY", "s")
     assert otel_object_store()["endpoint"] == "http://minio:9000"
     monkeypatch.setenv("PROVISA_OTEL_S3_ENDPOINT", "http://env.example:9000")
     assert otel_object_store()["endpoint"] == "http://env.example:9000"

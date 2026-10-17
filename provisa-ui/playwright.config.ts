@@ -35,6 +35,21 @@ if (fs.existsSync(rootEnv)) {
   }
 }
 
+// The test instance's store credentials (tests/store_credentials.py, their one home): every compose
+// command a spec or this config runs reads docker-compose.core.yml, which sets none of its own, and
+// the backends sign in to its stores with them. A value the run was given wins.
+for (const line of execFileSync(
+  "bash",
+  [path.resolve(__dirname, "../scripts/ci/test-store-env.sh")],
+  {
+    encoding: "utf8",
+  },
+).split("\n")) {
+  const at = line.indexOf("=");
+  if (at > 0 && !process.env[line.slice(0, at)])
+    process.env[line.slice(0, at)] = line.slice(at + 1);
+}
+
 // Firebird's DuckDB community extension needs the native libfbclient at ATTACH time (no bundled
 // copy), and Playwright can only hand a webServer env that's already set before it boots — a spec
 // registering firebird mid-run can't inject it after the fact. scripts/resolve_firebird_client_lib.py
@@ -405,16 +420,18 @@ function embeddedControlPlaneEnv(dataDir: string): Record<string, string> {
   const started = controlPlanePg("start", cpDir, "--init-sql", "db/init.sql");
   const host = /^PG_HOST=(.*)$/m.exec(started)?.[1];
   const port = /^PG_PORT=(\d+)$/m.exec(started)?.[1];
-  if (!host || !port) {
-    throw new Error(`embedded control plane in ${cpDir} did not report its socket: ${started}`);
+  const password = /^PG_PASSWORD=(.*)$/m.exec(started)?.[1];
+  if (!host || !port || !password) {
+    throw new Error(`embedded control plane in ${cpDir} did not report its address: ${started}`);
   }
-  const url = `postgresql+psycopg://provisa:provisa@/provisa?host=${host}&port=${port}`;
+  const url = `postgresql+psycopg://provisa:${password}@/provisa?host=${host}&port=${port}`;
   return { TENANT_DATABASE_URL: url, PLATFORM_DATABASE_URL: url };
 }
 
 function postgresControlPlaneEnv(dataDir: string, port: string): Record<string, string> {
   wipeStaleMaterializeStore(dataDir);
-  const pgPassword = process.env.PG_PASSWORD ?? "provisa";
+  const pgPassword = process.env.PROVISA_PG_PASSWORD;
+  if (!pgPassword) throw new Error("PROVISA_PG_PASSWORD is not set (scripts/ci/test-store-env.sh)");
   const url = `postgresql+psycopg://provisa:${pgPassword}@localhost:${port}/provisa`;
   return { TENANT_DATABASE_URL: url, PLATFORM_DATABASE_URL: url };
 }

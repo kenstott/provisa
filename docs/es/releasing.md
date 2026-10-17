@@ -66,10 +66,31 @@ La versión del cliente de Python se convierte automáticamente al formato PEP 4
 
 ## Configuración de publicación en PyPI (una sola vez) {: #pypi-publishing-setup-one-time }
 
-1. Copie su token de API desde `~/.pypirc` (el valor `pypi-...` para `pypi.org`)
-2. Agréguelo como un secreto del repositorio llamado `PYPI_API_TOKEN` en **Settings → Secrets → Actions**
+Los jobs `publish-pypi` (`provisa-client`) y `publish-provisa-pypi` (`provisa`) de `.github/workflows/build-dmg.yml` publican con la publicación de confianza de PyPI: el token OIDC de GitHub del job (`id-token: write`) lo autentica, y no se lee ningún token de API. Registre este repositorio y `build-dmg.yml` como publicador de confianza de cada proyecto en pypi.org (**Your projects → Manage → Publishing**). Las publicaciones se ejecutan entonces automáticamente en cada etiqueta.
 
-El job `publish-pypi` publicará entonces automáticamente en cada etiqueta.
+## Firma y cadena de suministro {: #signing-and-supply-chain }
+
+Lo que lleva cada artefacto de release, tal como lo construyen los workflows de release:
+
+| Artefacto | Firma |
+| -------- | --------- |
+| `provisa` y `provisa-client` en PyPI | Atestación PEP 740 firmada con Sigstore por archivo (`attestations: true`), verificable en pypi.org |
+| `provisa-pg-ext`, `provisa-duckdb-ext` en PyPI | Atestación PEP 740 firmada con Sigstore por archivo |
+| `.jar` del controlador JDBC | Atestación de procedencia de compilación de Sigstore (`actions/attest-build-provenance`) |
+| Instaladores `.dmg` de macOS | Firma de código con Developer ID y notarización de Apple |
+| Instaladores `.exe` de Windows | Sin firmar |
+| `.AppImage` de Linux | Sin firmar |
+
+La instalación firmada en cualquier SO es `pip install provisa`: el paquete de PyPI con atestación de Sigstore. Un revisor que necesite un artefacto firmado en Linux o Windows instala con pip. La compilación de Windows firma con Authenticode cuando hay un certificado de firma de código configurado (`WINDOWS_CERT_PFX_BASE64`, `WINDOWS_CERT_PFX_PASSWORD`, `WINDOWS_CERT_TIMESTAMP_URL`, leídos por `packaging/windows/build-sfx.ps1`); no hay ninguno configurado, por lo que se distribuye sin firmar.
+
+Dependencias y puertas de CVE:
+
+- Las dependencias de Python están bloqueadas con hashes en `uv.lock`; CI las instala con `uv sync --frozen`.
+- El workflow `CVE Audit` (`.github/workflows/cve-audit.yml`) ejecuta `pip-audit` sobre el conjunto bloqueado en cada push a `main`, en cada pull request y semanalmente.
+- En el release, las compilaciones de `provisa` y `provisa-client` producen cada una un SBOM CycloneDX y ejecutan `pip-audit` sobre lo que se distribuye. El controlador JDBC se analiza con `grype --fail-on medium`. Un hallazgo hace fallar el job y el release no publica nada: las subidas a PyPI y el release de GitHub esperan ambos a estos jobs. Los SBOM y los informes de CVE se adjuntan a cada release.
+- Los instaladores de escritorio compilan el wheel de `provisa` desde el código fuente en el runner del release y resuelven sus dependencias con `pip` en tiempo de compilación, no desde `uv.lock`; la puerta de CVE del release analiza el conjunto bloqueado, no las dependencias incluidas en los instaladores.
+- Se ignora una excepción documentada: PYSEC-2026-4114 / CVE-2026-49265 (PKCE de oauthlib del lado del servidor; Provisa usa oauthlib solo del lado del cliente).
+- `packaging/pypi/requirements-embedded.lock` es una resolución de `provisa[embedded]` fijada por hash para réplicas air-gapped (véase `packaging/pypi/MIRROR-CHECKLIST.md`). Se regenera a mano, no en cada release.
 
 ## Secretos requeridos del repositorio {: #required-repository-secrets }
 
@@ -77,7 +98,6 @@ Configure los siguientes en **Settings → Secrets → Actions**:
 
 | Secreto | Requerido para | Descripción |
 | -------- | ------------- | ------------- |
-| `PYPI_API_TOKEN` | Publicación en PyPI | Token de API desde `~/.pypirc` (comienza con `pypi-`) |
 | `APPLE_CERT_P12_BASE64` | Builds firmados | Archivo de certificado `.p12` codificado en Base64 (ver más abajo) |
 | `APPLE_CERT_P12_PASSWORD` | Builds firmados | Contraseña definida al exportar el `.p12` desde Keychain Access |
 | `APPLE_DEVELOPER_ID` | Builds firmados | Nombre completo del certificado: `Developer ID Application: Your Name (TEAMID)` |

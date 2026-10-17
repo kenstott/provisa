@@ -550,6 +550,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
     });
   }, [whatTheOrgHas]);
   const itineraryRef = useRef(itinerary);
+  // What the step counter counts: the itinerary the tour started with. A role step mid-tour
+  // changes the viewer's rights and so the itinerary; counted against that, "5 of 13" would turn
+  // into "2 of 8". A step the new rights add is counted in its place among them.
+  const countedRef = useRef<number[]>([]);
   const scopeRef = useRef<RunScope | null>(null);
   useEffect(() => {
     itineraryRef.current = itinerary;
@@ -756,6 +760,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // chapter gets "4 of 22", and the step before the dropped one is the one Next skips over.
         const steps = itineraryRef.current;
         const pos = steps.indexOf(i);
+        const counted = [...new Set([...countedRef.current, ...steps])].sort((a, b) => a - b);
         const isFirst = pos === 0;
         const isLast = pos === steps.length - 1;
         // REQ-2010: a named demo's track ends on a choice -- the Deep Dives menu, or the demo's own
@@ -766,7 +771,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
           element,
           popover: {
             title: t(`tour.steps.${step.key}.title`),
-            description: t(`tour.steps.${step.key}.description`),
+            description: step.image
+              ? `${t(`tour.steps.${step.key}.description`)}<img class="tour-step-image" src="${step.image}" alt="">`
+              : t(`tour.steps.${step.key}.description`),
+            ...(step.image ? { popoverClass: "tour-popover-image" } : {}),
             showButtons: ends
               ? isFirst
                 ? ["close"]
@@ -776,7 +784,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
                 : ["previous", "next", "close"],
             nextBtnText: isLast
               ? t("tour.nav.done")
-              : t("tour.nav.next", { current: pos + 1, total: steps.length }),
+              : t("tour.nav.next", { current: counted.indexOf(i) + 1, total: counted.length }),
             prevBtnText: t("tour.nav.back"),
             onNextClick: () => {
               clickIfPresent(step.clickAfterNext);
@@ -1012,6 +1020,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
             // lands, or replaces it with waiting/stuck. A resumed index outside the itinerary is
             // snapped forward by the runner effect.
             setActiveScope(picked.scope);
+            countedRef.current = steps;
             setActiveStep(
               picked.scope === "core" && !picked.fresh ? (tourResumeStep() ?? steps[0]) : steps[0],
             );

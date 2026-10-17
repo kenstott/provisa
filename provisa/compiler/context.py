@@ -96,7 +96,7 @@ def _register_table_in_ctx(
         field_name=t.field_name,
         type_name=t.type_name,
         source_id=t.source_id,
-        catalog_name=(si.source_catalogs or {}).get(t.source_id) or source_to_catalog(t.source_id),
+        catalog_name=_catalog_of(si, t.source_id, physical_name),
         schema_name=t.schema_name,
         table_name=physical_name,
         domain_id=t.domain_id,
@@ -250,8 +250,7 @@ def _build_junction_meta(  # REQ-1586
         field_name=via_info.field_name,
         type_name=via_info.type_name,
         source_id=via_info.source_id,
-        catalog_name=(si.source_catalogs or {}).get(via_info.source_id)
-        or source_to_catalog(via_info.source_id),
+        catalog_name=_catalog_of(si, via_info.source_id, via_physical),
         schema_name=via_info.schema_name,
         table_name=via_physical,
         domain_id=via_info.domain_id,
@@ -333,8 +332,7 @@ def _register_relationship_joins(
             field_name=tgt_info.field_name,
             type_name=tgt_info.type_name,
             source_id=tgt_info.source_id,
-            catalog_name=(si.source_catalogs or {}).get(tgt_info.source_id)
-            or source_to_catalog(tgt_info.source_id),
+            catalog_name=_catalog_of(si, tgt_info.source_id, _tgt_physical_name),
             schema_name=tgt_info.schema_name,
             table_name=_tgt_physical_name,
             domain_id=tgt_info.domain_id,
@@ -406,8 +404,9 @@ def _register_meta_synthetic_joins(
         field_name=meta_rt.field_name,
         type_name=meta_rt.type_name,
         source_id=meta_rt.source_id,
-        catalog_name=(si.source_catalogs or {}).get(meta_rt.source_id)
-        or source_to_catalog(meta_rt.source_id),
+        catalog_name=_catalog_of(
+            si, meta_rt.source_id, physical_map.get(meta_rt.table_name, meta_rt.table_name)
+        ),
         schema_name=meta_rt.schema_name,
         table_name=physical_map.get(meta_rt.table_name, meta_rt.table_name),
         domain_id=meta_rt.domain_id,
@@ -439,6 +438,18 @@ def _register_meta_synthetic_joins(
             child_src_val=pair,
         )
     return meta_rt
+
+
+def _catalog_of(si: object, source_id: str, physical_name: str) -> str:  # object-ok: SchemaInput
+    """The catalog a table is read under: its own when the schema input names one for it (a
+    region's ops views, REQ-1922), else its source's."""
+    from provisa.compiler.schema_gen import SchemaInput
+
+    assert isinstance(si, SchemaInput)
+    own = (si.table_catalogs or {}).get((source_id, physical_name))
+    if own is not None:
+        return own
+    return (si.source_catalogs or {}).get(source_id) or source_to_catalog(source_id)
 
 
 _QUERY_NAME = META_QUERY_NAME
@@ -474,8 +485,9 @@ def _register_ops_synthetic_joins(
             field_name=ops_t.field_name,
             type_name=ops_t.type_name,
             source_id=ops_t.source_id,
-            catalog_name=(si.source_catalogs or {}).get(ops_t.source_id)
-            or source_to_catalog(ops_t.source_id),
+            catalog_name=_catalog_of(
+                si, ops_t.source_id, physical_map.get(ops_t.table_name, ops_t.table_name)
+            ),
             schema_name=ops_t.schema_name,
             table_name=physical_map.get(ops_t.table_name, ops_t.table_name),
             domain_id=ops_t.domain_id,

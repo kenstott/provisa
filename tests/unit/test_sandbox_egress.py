@@ -55,9 +55,63 @@ def test_every_kind_of_sandbox_org_is_confined(org):
     assert egress.confined(org)
 
 
-def test_an_ordinary_org_is_not_confined():
+@pytest.fixture
+def organisations(monkeypatch):
+    """Set whether the deployment holds many organizations, as the API layer says it."""
+    from provisa.core import secrets_providers
+
+    def _say(many: bool) -> None:
+        monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: many)
+        monkeypatch.setattr(egress, "_deployment_org", lambda: "default")
+
+    return _say
+
+
+def test_an_ordinary_org_on_a_deployment_of_one_reaches_a_private_address(organisations):
+    organisations(False)
     assert not egress.confined("acme")
+    assert not egress.held("acme")
     egress.require_allowed("10.0.0.1", 5432, "acme")
+
+
+@pytest.mark.parametrize("address", ["10.10.0.4", "10.10.0.5", "127.0.0.1", "169.254.169.254"])
+def test_an_ordinary_org_on_a_shared_deployment_is_refused_the_platforms_private_addresses(
+    organisations, address
+):
+    organisations(True)
+    assert egress.held("acme")
+    with pytest.raises(egress.PrivateDestinationRefused) as refused:
+        egress.require_connectable({"host": address, "port": 6379}, "redis", "acme")
+    assert refused.value.code == "sources.private_destination"
+
+
+def test_the_deployments_own_org_reaches_what_its_configuration_names(organisations):
+    """The operator's own sources (the deployment config's demo servers on the compose network)
+    are not held: the deployment's org is the operator's, as a demo's template is."""
+    organisations(True)
+    assert not egress.held("default")
+    assert (
+        egress.require_connectable({"host": "172.18.0.8", "port": 4000}, "graphql", "default")
+        is None
+    )
+
+
+def test_an_ordinary_orgs_unpinnable_public_source_on_a_shared_deployment_is_saved(
+    organisations, monkeypatch
+):
+    organisations(True)
+    monkeypatch.setattr(egress, "resolve", lambda host, port=None: ["93.184.216.34"])
+    fields = {"host": "", "port": None, "base_url": "https://api.example.com/v1"}
+    assert egress.require_connectable(fields, "openapi", "acme") is None
+
+
+def test_an_ordinary_orgs_pinnable_source_on_a_shared_deployment_is_pinned(
+    organisations, monkeypatch
+):
+    organisations(True)
+    monkeypatch.setattr(egress, "resolve", lambda host, port=None: ["93.184.216.34"])
+    fields = {"host": "db.example.com", "port": 5432}
+    assert egress.require_connectable(fields, "postgresql", "acme") == "93.184.216.34"
 
 
 @pytest.mark.parametrize("address", _PRIVATE)
@@ -184,7 +238,8 @@ def test_each_pinnable_duckdb_connector_attaches_the_checked_address(
     assert pinned in attach and "db.example.com" not in attach
 
 
-def test_an_ordinary_orgs_source_is_attached_by_its_name(public_names):
+def test_an_ordinary_orgs_source_is_attached_by_its_name(public_names, organisations):
+    organisations(False)
     from provisa.federation.engine import build_engine
 
     attach = build_engine("duckdb").resolve(_source("postgresql", 5432)).details["attach"]
@@ -336,3 +391,132 @@ def test_a_url_host_the_demo_does_not_declare_is_refused_by_name(
 def test_a_url_host_on_a_private_address_is_refused(in_sandbox, monkeypatch):
     with pytest.raises(egress.PrivateDestinationRefused):
         _qdrant_pool(monkeypatch, "http://127.0.0.1:6333")
+
+
+# --- every way a source reaches a shared deployment is held, not only the UI -------------------
+
+_PLATFORM = "10.10.0.4"  # a node's VPC address: its control-plane database, cache and object store
+
+
+@pytest.fixture
+def acme_on_a_shared_deployment(organisations):
+    organisations(True)
+    token = set_current_org("acme")
+    yield
+    reset_current_org(token)
+
+
+class _UntouchedConn:
+    """A connection the refusal must come before: any use of it fails the test."""
+
+    def __getattr__(self, name):
+        raise AssertionError(f"the store was reached ({name}) before the source was refused")
+
+
+def test_a_config_apply_of_a_platform_private_source_is_refused(acme_on_a_shared_deployment):
+    from provisa.core.config_loader import _upsert_sources, parse_config_dict
+
+    config = parse_config_dict(
+        {
+            "sources": [
+                {
+                    "id": "cp",
+                    "type": "postgresql",
+                    "host": _PLATFORM,
+                    "port": 5432,
+                    "database": "provisa",
+                    "username": "provisa",
+                    "password": "x",
+                }
+            ],
+            "domains": [],
+            "tables": [],
+            "roles": [],
+        }
+    )
+    with pytest.raises(egress.PrivateDestinationRefused):
+        asyncio.run(_upsert_sources(_UntouchedConn(), config))
+
+
+def test_an_admin_api_source_at_a_platform_private_address_is_refused(acme_on_a_shared_deployment):
+    from provisa.api.admin.schema_common import sandbox_destination_refusal
+    from provisa.api.admin.types import SourceInput
+
+    refusal = sandbox_destination_refusal(
+        SourceInput(id="cache", type="postgresql", host=_PLATFORM, port=6379)
+    )
+    assert refusal is not None and not refusal.success
+    assert refusal.code == "sources.private_destination"
+
+
+def test_a_stored_platform_private_source_is_refused_at_every_connection(
+    acme_on_a_shared_deployment,
+):
+    from provisa.core.models import Source
+    from provisa.executor.pool import SourcePool
+    from provisa.federation.engine import build_engine
+
+    stored = Source(
+        id="cp",
+        type="postgresql",
+        host=_PLATFORM,
+        port=5432,
+        database="d",
+        username="u",
+        password="x",
+    )
+    with pytest.raises(egress.PrivateDestinationRefused):
+        build_engine("duckdb").resolve(stored)
+    with pytest.raises(egress.PrivateDestinationRefused):
+        asyncio.run(SourcePool().add("cp", "postgresql", _PLATFORM, 5432, "d", "u", "x"))
+
+
+class _RecordingConn:
+    """A store that records what is written to it."""
+
+    def __init__(self) -> None:
+        self.written: list[dict] = []
+
+    async def upsert(self, _table, values, **_kw) -> None:
+        self.written.append(values)
+
+
+def test_the_deployments_own_config_applies_its_private_sources_on_a_shared_deployment(
+    organisations, monkeypatch
+):
+    """The boot that failed: a multitenant deployment applying its own config, whose sources are
+    the operator's servers on the compose network, is not refused."""
+    from provisa.core.config_loader import _upsert_sources, parse_config_dict
+    from provisa.core.repositories import source as source_repo
+
+    organisations(True)
+    monkeypatch.setattr(source_repo, "owned_if_reconnected", _identity)
+    token = set_current_org("default")
+    try:
+        conn = _RecordingConn()
+        config = parse_config_dict(
+            {
+                "sources": [
+                    {
+                        "id": "graphql-demo",
+                        "type": "postgresql",
+                        "host": "172.18.0.8",
+                        "port": 4000,
+                        "database": "d",
+                        "username": "u",
+                        "password": "x",
+                    }
+                ],
+                "domains": [],
+                "tables": [],
+                "roles": [],
+            }
+        )
+        asyncio.run(_upsert_sources(conn, config))
+    finally:
+        reset_current_org(token)
+    assert [row["id"] for row in conn.written] == ["graphql-demo"]
+
+
+async def _identity(_conn, values):
+    return values

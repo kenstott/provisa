@@ -71,7 +71,7 @@ spec:
             - name: GF_SECURITY_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-secrets
+                  name: {{ include "provisa.credentialsSecret" . }}
                   key: grafana-admin-password
             - name: GF_AUTH_ANONYMOUS_ENABLED
               value: "false"

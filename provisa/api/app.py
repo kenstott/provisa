@@ -1216,6 +1216,10 @@ secrets_store.set_request_org_resolver(_request_org_for_secrets)
 from provisa.core import secrets_providers as _secrets_providers  # noqa: E402
 
 _secrets_providers.set_many_organisations_resolver(lambda: state.multitenancy)
+# The deployment's own org, whose configured sources the egress hold leaves alone (sandbox_egress).
+from provisa.security import sandbox_egress as _sandbox_egress  # noqa: E402
+
+_sandbox_egress.set_deployment_org_resolver(lambda: state.org_id)
 
 
 def _org_redirect_overrides() -> dict:
@@ -1298,6 +1302,9 @@ async def _load_and_build(
     from provisa.core import org_files
 
     await org_files.prepare(state.org_id, state.admin_db, _stop_org_servers)
+    _deployment_rt = state.org_registry.get(state.org_id)
+    assert _deployment_rt is not None and _deployment_rt.federation_engine is not None
+    _deployment_rt.federation_engine.engine.temp_org = state.org_id
 
     _mark("pg-pool")
     _mark("schema-init")
@@ -2018,6 +2025,13 @@ async def _bind_region_stores(org_id: str, env: str, *, initialise: bool) -> Non
         schema_sql=(Path(__file__).parent.parent / "core" / "schema.sql").read_text(),
         initialise=initialise,
     )
+    from provisa.api.region_ops_views import RECORD, STATE, lay_out, table_catalogs
+
+    if initialise and table_catalogs():
+        # The ops views that read only the region's record, or only its state, where those are.
+        assert state.record_db is not None and state.tenant_db is not None
+        await lay_out(state.record_db, RECORD)
+        await lay_out(state.tenant_db, STATE)
 
 
 _region_caches: dict[str, tuple[Any, Any]] = {}
@@ -2294,6 +2308,7 @@ async def _build_org_runtime(
             rt.federation_engine.engine.memory_limit = int(
                 settings_registry.value("sandbox.memory_limit")
             )
+            rt.federation_engine.engine.temp_org = org_id
             rt.federation_engine.bind_terminal()
         elif external_engine is not None or engine_url is not None:
             # REQ-1412: the org runs its OWN coordinator. Same dedicated-EngineRuntime shape as an
@@ -2330,6 +2345,7 @@ async def _build_org_runtime(
             rt.isolated_engine = True
             rt.federation_engine = EngineRuntime(build_engine(), state)
             rt.federation_engine.engine.pin_materialize_store(embedded_store_dsn(org_id))
+            rt.federation_engine.engine.temp_org = org_id
             rt.federation_engine.bind_terminal()
         elif isolated_engine:
             # REQ-1043/REQ-1067/REQ-1244: this org runs on its OWN federation engine. Bind a
@@ -2348,6 +2364,7 @@ async def _build_org_runtime(
             if storage_url is not None:
                 # REQ-1048: the org's own store, whoever the engine's first user is.
                 rt.federation_engine.engine.pin_materialize_store(storage_url)
+            rt.federation_engine.engine.temp_org = org_id
             rt.federation_engine.bind_terminal()
         # Tenant plane for THIS org: its own Database scoped to org_<id>. The platform/admin plane
         # (state.admin_db) is global and already up — never rebuilt here.

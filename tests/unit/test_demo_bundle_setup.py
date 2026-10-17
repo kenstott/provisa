@@ -132,6 +132,37 @@ def test_a_demo_s_setup_runs_after_its_stores_come_up_and_before_its_seed(
     assert done == expected
 
 
+def test_a_demo_in_regions_is_seeded_without_parsing_its_config_outside_a_region(
+    tmp_path, monkeypatch
+):
+    """REQ-2068: its config names each region's address and store, given only to _seed's nodes."""
+    named = tmp_path / "named"
+    demo = named / "retail"
+    demo.mkdir(parents=True)
+    (demo / "demo.yaml").write_text(
+        "requires_provisa: 0.1.0a483\nregions: {headless: [eu], visitor: us}\n"
+    )
+    done: list[str] = []
+    monkeypatch.setattr(builder.Stores, "up", lambda self: done.append("up"))
+    monkeypatch.setattr(builder.Stores, "dump", lambda self: done.append("dump") or [])
+    monkeypatch.setattr(builder.Stores, "down", lambda self: done.append("down"))
+    monkeypatch.setattr(builder, "_seed", lambda *_a: done.append("seed"))
+    monkeypatch.setattr(
+        builder, "_refuse_empty_replicas", lambda *_a: done.append("no empty replica")
+    )
+
+    def _parsed(*_a):
+        raise AssertionError("the config was parsed outside a region's node")
+
+    monkeypatch.setattr(builder, "_replicates", _parsed)
+    monkeypatch.setattr(builder.bundles, "pack", lambda _demo, _manifest: b"bundle")
+    args = argparse.Namespace(
+        name="retail", named_dir=named, out=tmp_path / "out", commit="a" * 40, timeout=60.0
+    )
+    assert builder.build(args) == 0
+    assert done == ["up", "seed", "no empty replica", "dump", "down"]
+
+
 def test_the_bundle_action_installs_a_demo_s_extras_before_it_builds():
     action = yaml.safe_load(
         (_REPO / ".github" / "actions" / "demo-bundle" / "action.yml").read_text()

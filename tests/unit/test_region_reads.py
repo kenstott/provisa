@@ -98,6 +98,33 @@ def test_duckdb_attaches_only_a_server_store_of_another_region():
         runtime.attach_region_store("eu", "duckdb:///eu.duckdb")
 
 
+@pytest.mark.parametrize(
+    ("dsn", "attached"),
+    [
+        (
+            "postgresql+psycopg://r:pw@127.0.0.1:5433/eu_store",
+            "postgresql://r:pw@127.0.0.1:5433/eu_store",
+        ),
+        (
+            "postgresql+psycopg://r:pw@/eu_store?host=/sock&port=5433",
+            "postgresql://r:pw@/eu_store?host=%2Fsock&port=5433",
+        ),
+    ],
+)
+def test_duckdb_attaches_a_postgres_store_by_the_url_libpq_reads(monkeypatch, dsn, attached):
+    """A store is declared with its SQLAlchemy driver; libpq reads only the URL without it."""
+    from provisa.federation import duckdb_runtime
+    from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
+
+    executed: list[str] = []
+    monkeypatch.setattr(duckdb_runtime, "install_and_load", lambda *_a, **_k: None)
+    runtime = DuckDBFederationRuntime.__new__(DuckDBFederationRuntime)
+    runtime._region_stores = set()
+    runtime._con = SimpleNamespace(execute=executed.append)  # type: ignore[assignment]
+    runtime.attach_region_store("eu", dsn)
+    assert executed == [f"ATTACH '{attached}' AS \"eu\" (TYPE postgres, READ_ONLY)"]
+
+
 def test_an_engine_without_an_attach_for_another_region_refuses_naming_itself():
     from provisa.federation.backend import EngineBackend, EngineReadsNoOtherRegion
 
@@ -423,6 +450,47 @@ async def test_a_read_of_a_built_home_replica_attaches_it_and_an_unreachable_one
     backend.fail = True
     with pytest.raises(HomeRegionUnavailable, match="cannot be reached"):
         await read_home_replica(_state(eu_state), backend, _TABLE, "eu")
+
+
+async def test_a_view_the_event_loop_built_in_its_region_is_read_there_as_built(
+    eu_state, control_plane, monkeypatch
+):
+    """The event loop is the view's one builder in eu; its build is recorded on eu's build row,
+    which us reads before reading eu's copy (REQ-1922)."""
+    from provisa.core import process_region
+    from provisa.core.request_context import current_org
+    from provisa.events.app_wiring import registry_marking
+    from provisa.federation.query_residency import read_home_view
+    from provisa.mv.registry import MVRegistry
+
+    attached: list[tuple] = []
+
+    class _Backend:
+        def attach_region_read(self, state, region, schema, table, build):
+            attached.append((region.id, schema, table))
+
+    from provisa.mv.models import MVDefinition
+
+    mv = MVDefinition(
+        id="view-view_gold",
+        source_tables=[],
+        target_catalog="store",
+        target_schema="mv_cache",
+        target_table="mv_view_gold",
+        sql="SELECT 1 AS x",
+        region="eu",
+    )
+    token = current_org.set("acme")
+    try:
+        with pytest.raises(HomeRegionUnavailable, match="is not built"):
+            await read_home_view(_state(eu_state), _Backend(), mv, "view_gold")
+        monkeypatch.setattr(process_region, "_region", "eu")  # the eu node's event loop builds it
+        built = registry_marking(MVRegistry(), control_plane.org(), eu_state)(mv)
+        await built(("replace", {"rows": 3, "landed": "x"}))
+        await read_home_view(_state(eu_state), _Backend(), mv, "view_gold")
+    finally:
+        current_org.reset(token)
+    assert attached == [("eu", "org_acme_rg_eu_mv_cache", "mv_view_gold")]
 
 
 @pytest.mark.parametrize(

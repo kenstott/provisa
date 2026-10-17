@@ -145,7 +145,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 适用于开发者工作站和评估。完全气隙——下载后无需联网（REQ-227）。
 
-基础安装程序是**原生安装**：DuckDB 联邦查询引擎 + SQLite 控制平面 + 内存态（fakeredis）缓存，不含 Docker、虚拟机、Trino、Redis 或 MinIO（REQ-972, REQ-979）。联邦查询引擎是一个向导选项——DuckDB（原生，默认）、Docker 上的 Trino，或外部引擎（REQ-973）。可观测性始终开启，为可在 Admin 中查看的自遥测；Docker collector/Prometheus/Grafana 堆栈是一个可选的外部演示，而非开关（REQ-975）。演示数据包是可选的，默认关闭（REQ-978）。Trino、Docker 可观测性堆栈和演示数据都是重量级附加组件，按本地优先顺序解析（安装程序旁的目录、挂载卷、`~/Downloads`，最后是 GitHub release），因此企业可以为气隙安装预先准备 tarball（REQ-977）。
+基础安装程序是**原生安装**：DuckDB 联邦查询引擎 + 嵌入式 PostgreSQL 控制平面（pgserver） + 内存态（fakeredis）缓存，不含 Docker、虚拟机、Trino、Redis 或 MinIO（REQ-972, REQ-979）。联邦查询引擎是一个向导选项——DuckDB（原生，默认）、Docker 上的 Trino，或外部引擎（REQ-973）。可观测性始终开启，为可在 Admin 中查看的自遥测；Docker collector/Prometheus/Grafana 堆栈是一个可选的外部演示，而非开关（REQ-975）。演示数据包是可选的，默认关闭（REQ-978）。Trino、Docker 可观测性堆栈和演示数据都是重量级附加组件，按本地优先顺序解析（安装程序旁的目录、挂载卷、`~/Downloads`，最后是 GitHub release），因此企业可以为气隙安装预先准备 tarball（REQ-977）。
 
 ### 步骤 {: #steps }
 
@@ -172,7 +172,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 适用于开发者工作站和评估。完全气隙——下载后无需联网（REQ-227）。
 
-与 macOS 类似，基础 Windows 安装程序是**原生层**：独立的 Python 运行时 + provisa wheel 包 + DuckDB/pg_duckdb + SQLite 控制平面，不携带 Docker、虚拟机或容器镜像（REQ-979）。联邦查询引擎（Trino）、可观测性堆栈和演示数据包通过后续独立的分层安装程序添加，顺序为：容器安装程序（`Provisa-Container-<version>.exe`，添加 WSL2 + containerd + Trino），然后是 Obs 安装程序（需要容器层），然后是 Demo 安装程序（需要 Core + Obs）。首次启动指引会说明如何通过运行容器安装程序来初始化联邦查询引擎（REQ-1005）。
+与 macOS 类似，基础 Windows 安装程序是**原生层**：独立的 Python 运行时 + provisa wheel 包 + DuckDB/pg_duckdb + 嵌入式 PostgreSQL 控制平面（pgserver），不携带 Docker、虚拟机或容器镜像（REQ-979）。联邦查询引擎（Trino）、可观测性堆栈和演示数据包通过后续独立的分层安装程序添加，顺序为：容器安装程序（`Provisa-Container-<version>.exe`，添加 WSL2 + containerd + Trino），然后是 Obs 安装程序（需要容器层），然后是 Demo 安装程序（需要 Core + Obs）。首次启动指引会说明如何通过运行容器安装程序来初始化联邦查询引擎（REQ-1005）。
 
 ### 步骤 {: #steps_1 }
 
@@ -240,7 +240,7 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 
    ```bash
    provisa status
-   curl http://localhost:8000/health
+   curl -k https://localhost:8000/health   # -k: the node generates a self-signed certificate unless PROVISA_TLS_CERT/KEY supply one
    ```
 
 ---
@@ -250,7 +250,7 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 先在主节点上执行以下步骤。必须在主节点运行起来之后再设置从节点。
 
 1. 下载并将 `Provisa.AppImage` 传输到主机器
-2. 开放所需的防火墙端口（从节点将通过这些端口向内连接）：
+2. 仅向从节点开放所需的防火墙端口（它们将通过这些端口向内连接）：
 
    | 端口 | 服务 |
    | ------ | --------- |
@@ -260,23 +260,23 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
    | 8080 | 联邦查询引擎协调节点 |
    | 8000 | Provisa API |
 
-3. 赋予可执行权限并运行：
+3. 赋予可执行权限，并让存储发布在节点的私有地址上后运行，从节点会在该地址连接它们。没有从节点的节点只在 `127.0.0.1` 上发布它们：
 
    ```bash
    chmod +x Provisa.AppImage
-   ./Provisa.AppImage
+   PROVISA_STORE_BIND_IP=<this node's private IP> ./Provisa.AppImage
    ```
 
 4. 设置向导会询问：
    - **角色** → 选择 `primary`
    - **RAM 预算**、**主机名**、**API 端口** → 与单节点相同的方式回答
-5. 设置完成后，记下该机器的**私有 IP**——从节点需要用到它
+5. 设置完成后，记下这台机器的**私有 IP**。从节点需要它，也需要主节点生成的存储凭据：`~/.provisa/store-credentials.env`（`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`）。通过安全渠道将该文件复制到每个从节点
 6. 向导会打印一个 nginx upstream 配置块——请保存它，用于负载均衡器配置
 7. 验证：
 
    ```bash
    provisa status
-   curl http://localhost:8000/health
+   curl -k https://localhost:8000/health   # -k: the node generates a self-signed certificate unless PROVISA_TLS_CERT/KEY supply one
    ```
 
 ---
@@ -289,13 +289,14 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 2. 确认从节点可以访问主节点：
 
    ```bash
-   curl http://<primary-ip>:8000/health
+   curl -k https://<primary-ip>:8000/health
    ```
 
-3. 赋予可执行权限并运行：
+3. 赋予可执行权限，并在环境中带上主节点的存储凭据（从主节点复制的文件）后运行。未获得凭据的从节点不会启动：
 
    ```bash
    chmod +x Provisa.AppImage
+   set -a; . ./store-credentials.env; set +a
    ./Provisa.AppImage
    ```
 
@@ -308,7 +309,7 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 
    ```bash
    provisa status
-   curl http://localhost:8000/health
+   curl -k https://localhost:8000/health
    ```
 
 7. 将该节点加入负载均衡器的 upstream
@@ -401,8 +402,8 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 8. Terraform 预配所有基础设施（约 5–10 分钟）。apply 完成后，脚本会打印：
 
    ```text
-   api_endpoint      = "http://<alb-dns>:8000"
-   flight_endpoint   = "<nlb-dns>:8815"
+   api_endpoint      = "https://<alb-dns>:8000"
+   protocol_endpoints = { flight = "<alb-dns>:8815", ... }
    primary_ip        = "10.0.x.x"
    secondary_ips     = ["10.0.x.x", ...]
    ```
@@ -467,7 +468,7 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 
 ### 密钥 {: #secrets }
 
-Terraform 中不嵌入任何密钥。AppImage 在首次启动时生成凭据，并将其写入每个节点上的 `~/.provisa/config.yaml`（REQ-563）。生产环境中，部署完成后从主节点获取管理员令牌：
+捆绑存储（PostgreSQL、Redis、MinIO、Grafana 管理员）的密码由 Terraform（`random_password`）生成并交给每个节点，节点将其保存在 systemd 环境文件中，权限为 600。它们保存在 Terraform 状态中，因此应像保护密码本身一样保护该状态。不使用 Terraform 时，每个节点的启动器会将它们生成到 `~/.provisa/store-credentials.env`。其余凭据由 AppImage 在首次启动时生成，并写入每个节点上的 `~/.provisa/config.yaml`（REQ-563）。生产环境中，部署完成后从主节点获取管理员令牌：
 
 ```bash
 ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
@@ -509,7 +510,9 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 3. 安装前需决定：
    - **PostgreSQL** —— 集群内（`postgresql.enabled: true`）还是外部托管（`postgresql.host`）？生产环境建议使用外部
-   - **Redis** —— 集群内还是外部（`redis.host`）？请修改默认密码（`redis.password`）
+   - **Redis** —— 集群内还是外部（`redis.host`）？
+   - **存储凭据** —— 创建 `credentials.existingSecret` 所指定的 Secret，包含键 `pg-password`、`redis-password`、`minio-access-key`、`minio-secret-key` 和 `grafana-admin-password`。chart 自身不设置任何密码，缺少该 Secret 则无法渲染
+   - **TLS** —— 默认开启（`tls.enabled: true`）：创建 `tls.secretName` 所指定的 `kubernetes.io/tls` Secret，或设置 `tls.enabled: false`
    - **MinIO / S3** —— 集群内 MinIO 还是原生 S3？在 AWS 上，建议使用带 IAM 角色的 S3
    - **密钥** —— 评估阶段可通过 `--set` 传入；生产环境请使用 External Secrets 或 Vault Agent
    - **Trino 协调器缓存** —— 默认申请的 1Gi 卷，挂载于 `/data/trino/cache`（`trino.coordinator.cache.persistence`：`enabled`、`size`、`storageClass`）。Salesforce 数据源的 describe 结果保存在此，使重启后的协调器不会再次耗费该组织的 API 配额去描述它。仅当没有数据源需要它时才关闭（REQ-1946）
@@ -601,7 +604,8 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 | `redis.enabled` | `true` | 部署集群内 Redis StatefulSet（REQ-371） |
 | `redis.host` | `""` | 设置以使用外部 Redis |
 | `redis.port` | `6379` | |
-| `redis.password` | `"provisa"` | 请修改此项 |
+| `credentials.existingSecret` | | 保存存储密码的 Secret（必需） |
+| `tls.enabled` | `true` | 通过 `tls.secretName` 中的证书以 TLS 提供每个端点 |
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | 部署联邦查询引擎（REQ-028） |
 | `trino.workers` | `2` | 联邦查询引擎 worker 副本数（REQ-056） |

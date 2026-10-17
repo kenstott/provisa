@@ -197,6 +197,7 @@ def test_a_source_registered_after_boot_is_reachable_on_the_next_query():
             "password_ref": "p",
             "replicate": None,
             "load_protected": False,
+            "cache_ttl": None,  # REQ-2031: a sources row always carries it
             "path": None,
             "base_url": None,
             "mapping": {},

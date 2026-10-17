@@ -310,11 +310,13 @@ Alle Rollen sehen Stichprobenergebnisse (Standard: 100 Zeilen), sofern sie nicht
 
 ## Audit-Protokollierung {: #audit-logging }
 
-Jede Abfrage, die ein Domänen-Asset berührt, wird im nur anhängbaren `query_audit_log` erfasst. (REQ-596, REQ-613) Jede Zeile hält `tenant_id`, `user_id`, `role_id`, einen SHA-256-Hash des Abfragetexts, `table_ids`, `source`, `status_code`, `duration_ms` und `logged_at`. (REQ-596) Der Abfragetext wird nie wörtlich gespeichert — nur sein Hash. (REQ-596)
+Jede Abfrage, die ein Domänen-Asset berührt, wird in `query_audit_log` erfasst. (REQ-596, REQ-613) Das Audit-Log gehört der Org, nicht der Plattform: Das eigene Register der Plattform für Orgs, Benutzer und Einladungen enthält keine Audit-Einträge. (REQ-1922) Das `query_audit_log` jeder Org ist eine Tabelle im eigenen Schema dieser Org, in dem Speicher, den die Org für ihre Aufzeichnung in jeder von ihr gewählten Region benennt. Eine Org, die keine Regionen deklariert, behält dieses Schema in der Control-Plane-Datenbank des Deployments, neben ihrem Modell.
 
-Das Log ist auf Datenbankebene nur anhängbar: PostgreSQL-Regeln sperren `DELETE` und `UPDATE`. (REQ-596, REQ-613) Zwei Indizes — `(tenant_id, logged_at)` und `(user_id, logged_at)` — unterstützen mandantenbezogene und benutzerbezogene Compliance-Abfragen über Zeiträume. (REQ-596, REQ-613)
+Jede Zeile hält `tenant_id` (die Org), `user_id`, `role_id`, einen SHA-256-Hash des Abfragetexts, den Abfragetext selbst verschlüsselt (REQ-689), `table_ids` und `table_names`, `source`, `status_code`, `duration_ms`, die Route und die Zeilenanzahl, was auf die Anweisung durchgesetzt wurde, und `logged_at`. Der Abfragetext wird mit dem Schlüssel der Org verschlüsselt, wenn die Org einen gesetzt hat, sonst mit dem Schlüssel des Deployments (REQ-1574). Ein Deployment, das keinen Verschlüsselungs-Provider konfiguriert, speichert ihn unverschlüsselt. Der Text wird in den abfragbaren Ops-Tabellen nie offengelegt und nur bei autorisierten Admin-Lesevorgängen entschlüsselt.
 
-Ist die Verschlüsselung aktiviert, wird die Hash-Spalte des Abfragetexts verschlüsselt gespeichert und nur bei autorisierten Admin-Lesevorgängen entschlüsselt. (REQ-689)
+Das Log ist auf Datenbankebene nur anhängbar: PostgreSQL-Regeln machen `DELETE` und `UPDATE` auf `query_audit_log` zu No-ops. (REQ-596, REQ-613) Zwei Indizes, `(tenant_id, logged_at)` und `(user_id, logged_at)`, unterstützen org-bezogene und benutzerbezogene Compliance-Abfragen über Zeiträume. (REQ-596, REQ-613)
+
+Aufbewahrung: Zeilen werden unbegrenzt behalten. Provisa hat keine Einstellung für die Aufbewahrung und löscht das Audit-Log nie; da `DELETE` ein No-op ist, bedeutet das Entfernen alter Zeilen, dass ein Operator die Daten der Tabelle außerhalb von Provisa löscht oder archiviert.
 
 ## Ratenbegrenzung {: #rate-limiting }
 
@@ -344,14 +346,20 @@ Der Wert wird gemessen, nachdem eine Anfrage geparst und bevor sie reguliert ode
 
 Austauschbare Auth-Provider: (REQ-120)
 
-| Provider | Token-Typ | Einsatzfall |
+| Provider | Credential | Einsatzfall |
 | ---------- | ----------- | ---------- |
-| `none` | Header X-Provisa-Role | Entwicklung |
-| `basic` | bcrypt-lokale Konten + JWT | Eigenständige Deployments |
+| `none` | Header X-Provisa-Role | Nur Entwicklung |
+| `basic` | Lokale Konten (bcrypt) + Sitzungs-JWT | Eigenständige Deployments |
 | `firebase` | Firebase-ID-Token | Produktion |
 | `keycloak` | Keycloak-JWT | Unternehmen |
-| `oauth` | OIDC-JWT | PingFed, Okta, Azure AD, Auth0 |
+| `oauth` / `oidc` | OIDC-JWT | PingFed, Okta, Azure AD, Auth0 |
+| `ldap` | Verzeichnis-Benutzername und -Passwort (LDAP oder Active Directory) | Unternehmensverzeichnisse (REQ-1265) |
+| `saml` | Signierte SAML-2.0-Assertion, dann ein Sitzungs-JWT | Unternehmensweites Single Sign-on (REQ-1265) |
 | `simple` | bcrypt + JWT | Tests |
+
+`ldap` meldet einen Benutzer per Search-then-Bind an: Provisa bindet als Service-Konto, findet den einen Eintrag, den der Benutzername benennt, und bindet dann als dieser Eintrag mit dem vorgelegten Passwort, sodass das Verzeichnis es prüft. Die Gruppen des Benutzers werden zu seinen Rollen. Das Konto und seine Gruppen werden bei jeder Rückkehr eines Sitzungs-Tokens neu gelesen, sodass ein aus dem Verzeichnis oder aus einer Gruppe entfernter Benutzer diesen Zugriff verliert, bevor das Token abläuft. `ldaps://` und StartTLS werden beide unterstützt.
+
+`saml` ist SP-initiiertes Web Browser SSO. Die XML-Signatur der Response wird gegen die Metadaten des Identity Providers geprüft, und Claims werden nur aus dem signierten Element gelesen. Issuer, Audience, die ACS-URL, Ablauf und `InResponseTo` werden alle geprüft. Unaufgeforderte (IdP-initiierte) Responses, verschlüsselte Assertions, Dokumente mit DOCTYPE, mehrere Assertions und SHA-1-Signaturen werden abgelehnt. Eine SAML-Sitzung wird nicht erneut beim Identity Provider geprüft: Ein dort entfernter Benutzer behält den Zugriff, bis das Sitzungs-Token abläuft.
 
 Rollenzuordnung: Identitäts-Claims → Provisa-Rolle über konfigurierbare Regeln. (REQ-120) Das Feld `assignments_source` steuert, woher Rollenzuweisungen kommen: `claims` liest sie aus den Claims des JWT (Standard), `provisa` liest sie aus dem internen Zuweisungsspeicher von Provisa. (REQ-551) Ein mandantenfähiges Deployment (`multitenancy: true`) vergibt Rollen selbst, pro Org, und muss daher `assignments_source: provisa` nutzen: Mit `claims` startet es nicht, und eine Einstellungsänderung, die diese Kombination ergäbe, wird abgelehnt. Ein Deployment mit einem Mandanten darf beides nutzen.
 
@@ -407,6 +415,10 @@ Die Prüfung des Client-Zertifikats verlegt die erste Prüfung in den TLS-Handsh
 | `PROVISA_MTLS_BIND_PRINCIPAL` | Wenn true, muss der Common Name des Zertifikats dem Benutzernamen entsprechen, als der sich die Verbindung dann authentifiziert |
 
 Protokollspezifische Überschreibungen folgen derselben Benennung wie die TLS-Einstellungen. Nichts wird abgeleitet: Ein ohne CA gesetzter Modus verweigert den Start, und ein unbekannter Modus verweigert den Start, statt als sicherster Nachbar gelesen zu werden — ein Deployment, das glaubt, Client-Zertifikate zu verlangen, es aber nicht tut, ist schlechter dran als eines, das nicht startet.
+
+### TLS-Versionen {: #tls-versions }
+
+Jeder Listener, den Provisa terminiert (die HTTP-API und die UI, pgwire, Bolt, MCP, gRPC und Arrow Flight), akzeptiert TLS 1.2 und TLS 1.3 und lehnt TLS 1.0 und 1.1 ab. Provisa legt weder eine Protokollversion noch eine Cipher-Liste selbst fest. Die HTTP-, pgwire- und Bolt-Listener verwenden die `ssl`-Server-Standards von Python (Minimum TLS 1.2). gRPC und Arrow Flight verwenden die Standards von gRPC (Minimum TLS 1.2). Die Versionen sind nicht konfigurierbar.
 
 ### Anmelde-Drosselung {: #login-throttling }
 

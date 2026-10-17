@@ -334,6 +334,17 @@ def test_derive_output_schema_from_select_computed_columns():
 def test_infer_pk_from_group_by():
     assert infer_pk("SELECT id, count(*) AS n FROM orders GROUP BY id") == ["id"]
     assert infer_pk("SELECT count(*) AS n FROM orders") == []  # no group-by → no inferable PK
+    # A key named as the SELECT outputs it; a grouping key not output leaves no identity.
+    assert infer_pk("SELECT o.id AS order_id, count(*) AS n FROM orders o GROUP BY o.id") == [
+        "order_id"
+    ]
+    assert (
+        infer_pk(
+            "SELECT md5(CAST(c.id AS VARCHAR)) AS who, c.country, count(*) AS n "
+            "FROM customers c GROUP BY c.id, c.country"
+        )
+        == []
+    )
 
 
 def test_derive_output_schema_undeterminable_fails_loud():

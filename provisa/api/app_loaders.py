@@ -1634,6 +1634,8 @@ def schema_input_for(
     state: Any, role: dict, tables: list[dict], metrics: list[dict]
 ) -> SchemaInput:
     """The schema input for ``role`` from this generation's build inputs (state.role_build_inputs)."""
+    from provisa.api.region_ops_views import table_catalogs as region_table_catalogs
+
     inputs = state.role_build_inputs
     return SchemaInput(
         tables=tables,
@@ -1644,6 +1646,7 @@ def schema_input_for(
         domains=inputs["domains"],
         source_types=state.source_types,
         source_catalogs=state.source_catalogs,
+        table_catalogs=region_table_catalogs(),  # REQ-1922
         domain_prefix=inputs["domain_prefix"],
         physical_table_map=inputs["physical_table_map"],
         functions=inputs["functions"],

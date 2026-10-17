@@ -313,6 +313,13 @@ class EngineBackend:
         del state, schema, table, build
         raise EngineReadsNoOtherRegion(self.engine.name, region.id)
 
+    def prepare_region_ops(self, state: Any) -> None:
+        """Make the ops views over the bound org's region's own record and state readable under
+        ``api.region_ops_views.CATALOG`` (REQ-1922), before a statement reads one. A native engine
+        defines them in its attach walk (``DuckDBFederationRuntime.attach_region_ops``); an engine
+        that defines them on demand overrides this."""
+        del state
+
     def pending_lands(
         self,
         sources: list,
@@ -1015,6 +1022,52 @@ class TrinoBackend(EngineBackend):
             )
         except (trino.exceptions.Error, OSError) as exc:
             raise RegionStoreUnreachable(str(exc)) from exc
+
+    def prepare_region_ops(self, state: Any) -> None:
+        """REQ-1922: in a region, the ops views over its own record and state. Trino reads each of
+        the region's stores through a catalog of its own (``_store_catalog_named``) and defines the
+        views in a memory catalog of their own, over those and ``provisa_admin``, once per org and
+        definition in this process -- as it registers a store's catalog once. The memory catalog is
+        created only if absent: every process of the deployment defines its orgs' views in it."""
+        from provisa.api.region_ops_views import (
+            CATALOG,
+            RECORD,
+            STATE,
+            region_stores,
+            store_catalog,
+            view_selects,
+        )
+
+        bound = region_stores(state)
+        if bound is None:
+            return
+        model_schema, record, held = bound
+        for side, db in ((RECORD, record), (STATE, held)):
+            self._store_catalog_named(
+                state, store_catalog(side, db), db.engine.url.render_as_string(hide_password=False)
+            )
+        views = view_selects(model_schema, record, held, dialect="trino")
+        defined: set[tuple[str, frozenset]] = self.__dict__.setdefault("_region_ops_defined", set())
+        key = (model_schema, frozenset(views.items()))
+        if key in defined:
+            return
+        with self._provisioning_conn(state) as conn:
+            if conn is None:
+                raise RuntimeError(
+                    f"no Trino terminal to define {CATALOG!r} on; the engine is not bound"
+                )
+            cur = conn.cursor()
+            for statement in (
+                f"CREATE CATALOG IF NOT EXISTS {CATALOG} USING memory",
+                f'CREATE SCHEMA IF NOT EXISTS "{CATALOG}"."{model_schema}"',
+                *(
+                    f'CREATE OR REPLACE VIEW "{CATALOG}"."{model_schema}"."{name}" AS {select}'
+                    for name, select in views.items()
+                ),
+            ):
+                cur.execute(statement)
+                cur.fetchall()
+        defined.add(key)
 
     @staticmethod
     def _region_catalog(state: Any, region: Any) -> str:

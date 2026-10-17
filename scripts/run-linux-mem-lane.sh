@@ -32,6 +32,10 @@ export PROVISA_E2E_FILE_LAKE_HOST="${PROVISA_E2E_FILE_LAKE_HOST:-$REPO/.e2e-file
 export PROVISA_E2E_HIVE_WAREHOUSE_HOST="${PROVISA_E2E_HIVE_WAREHOUSE_HOST:-$REPO/.e2e-hive-warehouse}"
 export PROVISA_E2E_SHAREPOINT_CERT_HOST="${PROVISA_E2E_SHAREPOINT_CERT_HOST:-$REPO/sharepoint.pfx}"
 mkdir -p "$PROVISA_E2E_FILE_LAKE_HOST" "$PROVISA_E2E_HIVE_WAREHOUSE_HOST"
+# The test instance's store credentials (tests/store_credentials.py): core.yml sets none.
+set -a
+eval "$(bash "$REPO/scripts/ci/test-store-env.sh")"
+set +a
 COMPOSE=(docker compose -p "$PROJECT" -f docker-compose.core.yml -f docker-compose.e2e-mounts.yml -f docker-compose.test.yml)
 
 case "$(uname -m)" in

@@ -223,14 +223,16 @@
           <p class="job-tag">Data science, connected</p>
           <h3>Every dataset the team needs, in Arrow.</h3>
           <p>
-            Register the sources once and the whole team queries them from pandas,
-            Polars, or DuckDB. Arrow Flight streams record batches columnar all the way
+            Register the sources once and the whole team queries them from a Jupyter
+            notebook (<code>%%sql</code>, <code>%%graphql</code> or <code>%%cypher</code>
+            cells straight into a DataFrame), pandas, Polars, or DuckDB. Arrow Flight streams record batches columnar all the way
             out — no row-by-row serialization, nothing materialized server-side while
             you read — and single-source queries route straight to the driver. To train
             without PII, point at our auto-generated synthetic data.
           </p>
           <a class="job-more" href="/why/interfaces">Flight, Airport, and pgwire &rarr;</a>
           <a class="job-more" href="/docs/test-data/#generate-a-synthetic-dataset">Synthetic Data &rarr;</a>
+          <a class="job-more" href="/docs/python-client/#using-provisa-in-jupyter">Jupyter &rarr;</a>
         </div>
         <a class="job" href="/why/governance">
           <p class="job-tag">Provision data to other teams</p>
@@ -579,9 +581,9 @@
             registry to mirror, no JVM, no root.
           </p>
           <ul class="ticks">
-            <li>SQLite control plane + embedded DuckDB engine — no Docker, no daemon</li>
+            <li>Embedded PostgreSQL control plane + embedded DuckDB engine — no Docker, no daemon</li>
             <li>Bring your own engine: Trino, Databricks, Snowflake, Postgres, ClickHouse, Oracle — one env var</li>
-            <li>Reproducible and hash-pinned; passes the same CVE gate as every wheel</li>
+            <li>Sigstore-attested on PyPI; no release publishes until a CVE scan of its locked dependency set passes</li>
           </ul>
         </div>
         <div class="dist-terminal" role="img" aria-label="Install Provisa from PyPI and run it">
@@ -627,7 +629,7 @@
           <p class="eyebrow">Get Provisa</p>
           <h2>Download and run in 5 minutes.</h2>
           <p class="section-sub">
-            Signed desktop installers for every OS, or <code>pip install</code> the
+            Desktop installers for every OS (the macOS app signed and notarized), or <code>pip install</code> the Sigstore-attested
             embedded runtime. The whole working system runs on your desktop in about five
             minutes — no Docker, no JVM, no cluster. Launch it and pick the guided demo:
             a sample federation is already bundled, so you can run SQL, GraphQL, and
@@ -713,7 +715,7 @@
         <div class="grid grid-4">
           <div class="card">
             <h4>Desktop installers</h4>
-            <p>Signed macOS, Windows, and Linux installers (the Linux installer covers Linux and NixOS) — each with a one-click demo build that boots a sample stack.</p>
+            <p>macOS, Windows, and Linux installers (the Linux installer covers Linux and NixOS), each with a one-click demo build that boots a sample stack. The macOS app is signed and notarized; for a signed install on Linux or Windows, <code>pip install provisa</code> installs the Sigstore-attested PyPI package.</p>
           </div>
           <div class="card">
             <h4>Python wheel</h4>
@@ -805,7 +807,7 @@
               The embedded profile ships the entire runnable system, precompiled UI
               included, as a single Python wheel. Regulated orgs already trust
               Artifactory-as-PyPI, so there's no Docker registry to mirror, no JVM, and no
-              root required. Builds are reproducible and hash-pinned.
+              root required. Its dependencies are locked with hashes in the repository.
             </p>
           </details>
 

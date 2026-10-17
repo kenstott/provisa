@@ -61,7 +61,10 @@ query.max-memory-per-node={query_max_memory_per_node}
 
 # Fault-tolerant execution replaces legacy spill-to-disk. Rendered into both node
 # configs when enabled; requires a spool (exchange manager) — see below.
+# Spooled exchange data is encrypted with a key made for each query and discarded when it ends
+# (Trino's default, written out so no change of default turns it off).
 _FTE_TEMPLATE = """retry-policy=TASK
+fault-tolerant-execution.exchange-encryption-enabled=true
 task.low-memory-killer.policy=total-reservation-on-blocked-nodes
 fault-tolerant-execution-task-memory={task_memory}
 """

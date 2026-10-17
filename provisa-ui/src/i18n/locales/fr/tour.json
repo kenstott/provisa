@@ -528,6 +528,10 @@
         "title": "Or : les totaux",
         "description": "L'or est un GROUP BY sur l'argent : ventes, articles, chiffre d'affaires et fourchette de prix par jour et par produit, à partir de données contrôlées seulement."
       },
+      "qualityProduct": {
+        "title": "Un produit de données à transmettre",
+        "description": "L'or, l'argent et les contrôles forment un produit de données : les totaux que lisent les consommateurs, les ventes qui les composent et la preuve que chaque lot a réussi. Le bronze reste à l'écart."
+      },
       "qualityDone": {
         "title": "Une confiance que l'on peut interroger",
         "description": "Déposer un lot a actualisé les contrôles, l'argent et l'or, sans rien exécuter d'autre. Le lot propre a atteint l'or ; le mauvais s'est arrêté au bronze, et pourquoi, c'est une requête."
@@ -1123,6 +1127,58 @@
       "pharmaRecap": {
         "title": "Ce que vous avez vu",
         "description": "Les données propres de la pharmacie, lues en direct, et des données publiques sur les médicaments, chargées une fois, jointes par NDC et par firme dans un modèle gouverné : une vue répond quels produits sont à risque, en SQL, GraphQL et REST, selon l'accès de chaque rôle."
+      },
+      "storefrontScenario": {
+        "title": "Un modèle, une app et la BI",
+        "description": "Un détaillant de café sert deux consommateurs à partir d'un seul modèle. L'écran d'historique des commandes de son app montre à un client connecté ses commandes, et son outil de BI présente aux analystes le chiffre d'affaires et les livraisons en retard. Les commandes sont dans <strong>PostgreSQL</strong>, lues en direct : clients, commandes et lignes de chaque commande."
+      },
+      "storefrontCatalog": {
+        "title": "Le catalogue, dans MongoDB",
+        "description": "Chaque produit est un document <strong>MongoDB</strong>, avec son nom, sa catégorie, son prix et son image. Provisa le lit en direct, comme une table."
+      },
+      "storefrontShipping": {
+        "title": "L'expédition, en REST",
+        "description": "L'expédition de chaque commande vient du service d'expédition interne en <strong>REST</strong>, lue via son document OpenAPI : le transporteur, le numéro de suivi, et quand elle a été promise et livrée."
+      },
+      "storefrontRelations": {
+        "title": "Des relations, déclarées une fois",
+        "description": "<strong>OF_PRODUCT</strong> relie une ligne de commande dans PostgreSQL à son produit dans MongoDB. Avec PLACED_BY, HAS_ITEM et SHIPPED_AS, ces quatre relations sont déclarées une fois, et l'app comme l'outil de BI lisent à travers elles."
+      },
+      "storefrontAsCustomer": {
+        "title": "Connecté en tant que client",
+        "description": "L'app envoie ses requêtes avec le rôle <strong>customer</strong>, dont les filtres de lignes limitent chaque réponse aux commandes du client connecté. Suivant choisit <strong>customer</strong> dans le sélecteur de rôle, pour que la requête suivante s'exécute comme l'app l'exécute."
+      },
+      "storefrontScreen": {
+        "title": "L'unique requête de l'app",
+        "description": "L'écran d'historique des commandes envoie cette unique requête GraphQL imbriquée : chaque commande avec ses lignes, le produit de chaque ligne depuis le catalogue et l'expédition de la commande depuis le service d'expédition. Exécutée en <strong>customer</strong>, elle répond sept commandes, toutes celles du client connecté."
+      },
+      "storefrontApp": {
+        "title": "L'écran qu'elle alimente",
+        "description": "Voici l'écran d'historique des commandes de l'app d'exemple, qui affiche cette réponse pour le client connecté de la démo : sept commandes, leurs lignes avec les images des produits venues de MongoDB, et l'état de livraison venu du service d'expédition. L'app ne contient ni jointure ni règle d'accès ; le modèle contient les deux."
+      },
+      "storefrontJsonApi": {
+        "title": "Les mêmes commandes en JSON:API",
+        "description": "Un client qui préfère JSON:API demande les mêmes commandes, toujours en tant que client, avec leurs lignes et leurs expéditions incluses. Chaque commande référence les lignes et l'expédition qu'elle inclut, et l'id d'une ligne est sa clé composite."
+      },
+      "storefrontAnalyst": {
+        "title": "Maintenant en analyste",
+        "description": "Le côté BI lit en tant que <strong>analyst</strong> : toutes les commandes, et aucun e-mail de client. Suivant choisit <strong>analyst</strong> dans le sélecteur d'exécution."
+      },
+      "storefrontAnalystSql": {
+        "title": "Le SQL de l'analyste",
+        "description": "Les livraisons en retard par région et par transporteur, sur les mêmes tables et relations. <strong>a_customer</strong> montre un e-mail tel que l'analyste le lit : masqué."
+      },
+      "storefrontBi": {
+        "title": "Le tableau de bord de BI",
+        "description": "Apache Superset se connecte par le protocole réseau de PostgreSQL, avec le dialecte PostgreSQL : hôte et port du serveur pgwire de Provisa (5439 par défaut), base <strong>provisa</strong>, utilisateur <strong>analyst</strong>. Il parcourt les tables et vues de la boutique et présente le chiffre d'affaires par région et les livraisons en retard par transporteur à partir du même modèle."
+      },
+      "storefrontEveryRole": {
+        "title": "Retour à tous les rôles",
+        "description": "Suivant choisit de nouveau <strong>Tous</strong> dans le sélecteur de rôle. Le côté BI lit avec son propre rôle, choisi là où son SQL s'exécute."
+      },
+      "storefrontPoint": {
+        "title": "Un modèle, deux consommateurs",
+        "description": "<strong>SHIPPED_AS</strong> relie une commande à son expédition. L'app et l'outil de BI lisent à travers elle et toutes les autres relations, sous les mêmes règles : le client voit ses propres commandes, l'analyste ne voit aucun e-mail. Modifiez ici une relation ou une règle, et les deux consommateurs l'ont. Il n'y a rien à synchroniser."
       }
     },
     "status": {
@@ -1203,6 +1259,10 @@
       "pharma": {
         "title": "Risque de pénurie et de rappel de médicaments",
         "summary": "La question de la pharmacie d'un hôpital, lesquels de ses produits sont menacés de pénurie ou de rappel : son livret et son stock joints aux pénuries et rappels de la FDA et aux prescriptions Medicaid, avec la réponse en SQL, GraphQL et REST."
+      },
+      "storefront": {
+        "title": "Un modèle, app et BI",
+        "summary": "L'écran d'historique des commandes d'une app et un tableau de bord de BI lisent un modèle de PostgreSQL, MongoDB et d'un service REST, sous les mêmes relations et règles."
       }
     }
   }

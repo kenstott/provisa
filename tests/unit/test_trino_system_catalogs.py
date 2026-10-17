@@ -53,6 +53,13 @@ class _Conn:
 
 
 @pytest.fixture(autouse=True)
+def _object_store_keys(monkeypatch):
+    """The deployment's object-store account, which the launcher always sets."""
+    monkeypatch.setenv("PROVISA_OTEL_S3_ACCESS_KEY", "ak")
+    monkeypatch.setenv("PROVISA_OTEL_S3_SECRET_KEY", "sk")
+
+
+@pytest.fixture(autouse=True)
 def _control_plane_address_from_the_url_only(monkeypatch):
     # tests/conftest.py exports PROVISA_ENGINE_CONTROL_PLANE_HOST/_PORT and
     # PROVISA_ENGINE_OTEL_S3_ENDPOINT so the containerized Trino in the integration lanes dials

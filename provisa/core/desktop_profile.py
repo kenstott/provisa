@@ -160,8 +160,8 @@ def _apply_embedded_pg(
         atexit.register(_discard_control_plane, dd / "control-pg")
     else:
         dd = Path(data_dir) if data_dir else _default_data_dir(preset)
-    host, port = start_control_plane_pg(str(dd / "control-pg"))
-    url = f"postgresql+psycopg://provisa:provisa@/provisa?host={host}&port={port}"
+    host, port, password = start_control_plane_pg(str(dd / "control-pg"))
+    url = f"postgresql+psycopg://provisa:{password}@/provisa?host={host}&port={port}"
     env["PLATFORM_DATABASE_URL"] = url
     env["TENANT_DATABASE_URL"] = url
     notes.append(f"control plane: embedded PostgreSQL (pgserver, at {host}:{port})")
