@@ -48,7 +48,8 @@ locals {
     DEMO_STORES_NETWORK=compose_default
     ENV
     systemctl daemon-reload
-    systemctl enable provisa-demo-stores.timer provisa-demo-stores.path
+    # --now: a unit enabled while the VM boots does not start until the next boot.
+    systemctl enable --now provisa-demo-stores.timer provisa-demo-stores.path
   SHELL
 }
 
