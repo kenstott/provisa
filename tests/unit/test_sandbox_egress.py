@@ -469,3 +469,54 @@ def test_a_stored_platform_private_source_is_refused_at_every_connection(
         build_engine("duckdb").resolve(stored)
     with pytest.raises(egress.PrivateDestinationRefused):
         asyncio.run(SourcePool().add("cp", "postgresql", _PLATFORM, 5432, "d", "u", "x"))
+
+
+class _RecordingConn:
+    """A store that records what is written to it."""
+
+    def __init__(self) -> None:
+        self.written: list[dict] = []
+
+    async def upsert(self, _table, values, **_kw) -> None:
+        self.written.append(values)
+
+
+def test_the_deployments_own_config_applies_its_private_sources_on_a_shared_deployment(
+    organisations, monkeypatch
+):
+    """The boot that failed: a multitenant deployment applying its own config, whose sources are
+    the operator's servers on the compose network, is not refused."""
+    from provisa.core.config_loader import _upsert_sources, parse_config_dict
+    from provisa.core.repositories import source as source_repo
+
+    organisations(True)
+    monkeypatch.setattr(source_repo, "owned_if_reconnected", _identity)
+    token = set_current_org("default")
+    try:
+        conn = _RecordingConn()
+        config = parse_config_dict(
+            {
+                "sources": [
+                    {
+                        "id": "graphql-demo",
+                        "type": "postgresql",
+                        "host": "172.18.0.8",
+                        "port": 4000,
+                        "database": "d",
+                        "username": "u",
+                        "password": "x",
+                    }
+                ],
+                "domains": [],
+                "tables": [],
+                "roles": [],
+            }
+        )
+        asyncio.run(_upsert_sources(conn, config))
+    finally:
+        reset_current_org(token)
+    assert [row["id"] for row in conn.written] == ["graphql-demo"]
+
+
+async def _identity(_conn, values):
+    return values
