@@ -46,12 +46,22 @@ function serveOfflineDocsSite(): Plugin {
 // REQ-2071: in development /pyodide is the provisa-notebook package's built assets in this
 // repository, as ui_server.py serves them from the installed package. Unbuilt, nothing is served
 // and the Data Science area says Python is not installed.
-const PYODIDE_ASSETS = path.resolve(__dirname, "../provisa-notebook/provisa_notebook/assets/pyodide");
+const NOTEBOOK_ASSETS = path.resolve(__dirname, "../provisa-notebook/provisa_notebook/assets");
 const PYODIDE_TYPES: Record<string, string> = {
   ".wasm": "application/wasm",
   ".js": "text/javascript",
   ".mjs": "text/javascript",
   ".json": "application/json",
+  ".ipynb": "application/json",
+  ".webmanifest": "application/manifest+json",
+  ".html": "text/html",
+  ".css": "text/css",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
   ".zip": "application/zip",
   ".whl": "application/zip",
   ".tar": "application/x-tar",
@@ -61,10 +71,15 @@ function servePyodideAssets(): Plugin {
     name: "serve-pyodide-assets",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (!req.url?.startsWith("/pyodide/")) return next();
-        const rel = decodeURIComponent(req.url.split("?")[0].slice("/pyodide/".length));
-        const file = path.resolve(PYODIDE_ASSETS, rel);
-        if (!file.startsWith(PYODIDE_ASSETS + path.sep) || !fs.existsSync(file)) {
+        // /pyodide is Pyodide and its packages; /lite the JupyterLite site (REQ-2071).
+        const prefix = ["/pyodide/", "/lite/"].find((p) => req.url?.startsWith(p));
+        if (prefix === undefined || req.url === undefined) return next();
+        const root = path.join(NOTEBOOK_ASSETS, prefix.slice(1, -1));
+        const rel = decodeURIComponent(req.url.split("?")[0].slice(prefix.length));
+        let file = path.resolve(root, rel);
+        if (fs.existsSync(file) && fs.statSync(file).isDirectory())
+          file = path.join(file, "index.html");
+        if (!file.startsWith(root + path.sep) || !fs.existsSync(file)) {
           res.statusCode = 404;
           res.end();
           return;
@@ -93,9 +108,7 @@ const BACKEND_TARGET = `http://127.0.0.1:${process.env.PROVISA_API_PORT ?? 8001}
 // extraHTTPHeaders; this reads it back.
 //
 // Empty outside the harness, which leaves every proxy entry on BACKEND_TARGET exactly as before.
-const E2E_BACKEND_PORTS = (process.env.PROVISA_E2E_BACKEND_PORTS ?? "")
-  .split(",")
-  .filter(Boolean);
+const E2E_BACKEND_PORTS = (process.env.PROVISA_E2E_BACKEND_PORTS ?? "").split(",").filter(Boolean);
 
 // Same prefixes `server.proxy` below forwards to the backend. Kept as one list so the two cannot
 // drift into disagreeing about what is an API call.

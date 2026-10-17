@@ -20,7 +20,7 @@ from provisa_notebook.build import closure
 
 LOCK = {
     "packages": {
-        "pandas": {"depends": ["numpy", "python-dateutil"]},
+        "pandas": {"depends": ["numpy", "python_dateutil"]},
         "numpy": {"depends": []},
         "python-dateutil": {"depends": ["six"]},
         "six": {"depends": []},

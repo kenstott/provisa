@@ -10,6 +10,8 @@
     "missingBody": "L'espace Science des données exécute Python dans votre navigateur à partir de fichiers que sert toute installation de Provisa, et l'installation de ce serveur ne les a pas. Réinstallez Provisa sur le serveur, puis rechargez cette page.",
     "rowsShown": "{{shown}} lignes affichées sur {{total}}",
     "figure": "Figure {{n}}",
-    "resizeLabel": "Redimensionner l'éditeur et la sortie"
+    "resizeLabel": "Redimensionner l'éditeur et la sortie",
+    "tabNotebook": "Notebook Jupyter",
+    "notebookFrame": "Notebook Jupyter"
   }
 }

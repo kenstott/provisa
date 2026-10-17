@@ -6810,5 +6810,7 @@
   "zh-HK/whatsNew.json::whatsNew.general": "General",
   "zh-HK/whatsNew.json::whatsNew.released": "Released {{date}}",
   "zh-HK/whatsNew.json::whatsNew.title": "What's new in {{version}}",
-  "zh-HK/dataScience.json::dataScience.resizeLabel": "Resize editor and output"
+  "zh-HK/dataScience.json::dataScience.resizeLabel": "Resize editor and output",
+  "zh-HK/dataScience.json::dataScience.tabNotebook": "Jupyter Notebook",
+  "zh-HK/dataScience.json::dataScience.notebookFrame": "Jupyter notebook"
 }

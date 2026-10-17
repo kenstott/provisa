@@ -17,10 +17,33 @@ from pathlib import Path
 
 #: The one Pyodide every in-browser Python in Provisa runs on.
 PYODIDE_VERSION = "0.27.7"
-#: The packages shipped beside it (their dependencies come with them).
-PACKAGES = ("numpy", "pandas", "pyarrow", "scikit-learn", "matplotlib", "micropip")
+#: The packages shipped beside it (their dependencies come with them). The notebook's kernel
+#: (jupyterlite-pyodide-kernel) loads ssl, sqlite3 and ipython itself when it starts.
+PACKAGES = (
+    "numpy",
+    "pandas",
+    "pyarrow",
+    "scikit-learn",
+    "matplotlib",
+    "micropip",
+    "ssl",
+    "sqlite3",
+    "ipython",
+    "jedi",
+)
 
 ASSETS = Path(__file__).resolve().parent / "assets"
+
+
+def lite_dir() -> Path:
+    """The directory served at ``/lite``: the JupyterLite site the Jupyter Notebook tab embeds.
+    Raises when the package was built without its assets."""
+    path = ASSETS / "lite"
+    if not (path / "jupyter-lite.json").is_file():
+        raise FileNotFoundError(
+            f"{path} has no JupyterLite: build the package with `python -m provisa_notebook.build`"
+        )
+    return path
 
 
 def pyodide_dir() -> Path:

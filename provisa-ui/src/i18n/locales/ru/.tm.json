@@ -6809,5 +6809,7 @@
   "ru/whatsNew.json::whatsNew.general": "General",
   "ru/whatsNew.json::whatsNew.released": "Released {{date}}",
   "ru/whatsNew.json::whatsNew.title": "What's new in {{version}}",
-  "ru/dataScience.json::dataScience.resizeLabel": "Resize editor and output"
+  "ru/dataScience.json::dataScience.resizeLabel": "Resize editor and output",
+  "ru/dataScience.json::dataScience.tabNotebook": "Jupyter Notebook",
+  "ru/dataScience.json::dataScience.notebookFrame": "Jupyter notebook"
 }

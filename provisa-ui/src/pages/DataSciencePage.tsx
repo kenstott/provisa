@@ -32,6 +32,7 @@ import {
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { bridgeAuth } from "../dataScience/bridge";
+import { seedNewNotebooks, startLiteBridge, type LiteApp } from "../dataScience/liteBridge";
 import { reportRun, summarise } from "../dataScience/runReports";
 import { useNavPayload } from "../hooks/useNavPayload";
 import type { FromWorker, PyodideManifest, RunValue, ToWorker } from "../dataScience/protocol";
@@ -61,8 +62,19 @@ async function readManifest(): Promise<PyodideManifest | null> {
   return (await res.json()) as PyodideManifest;
 }
 
+/** The tabs of the area; a tab is mounted once first opened and kept, so switching keeps Python's
+ * state and the notebook's kernel. */
+type DataScienceTab = "python" | "notebook";
+
 export function DataSciencePage({ makeWorker = defaultWorker }: { makeWorker?: MakeWorker }) {
   const { t } = useTranslation();
+  const [tab, setTab] = useState<DataScienceTab>("python");
+  const [opened, setOpened] = useState<Set<DataScienceTab>>(() => new Set(["python"]));
+  const open = (next: string | null) => {
+    if (next !== "python" && next !== "notebook") return;
+    setTab(next);
+    setOpened((was) => (was.has(next) ? was : new Set([...was, next])));
+  };
   return (
     // The area fills what the shell gives it, as the other explorers do; the tab names it.
     <Box
@@ -76,23 +88,109 @@ export function DataSciencePage({ makeWorker = defaultWorker }: { makeWorker?: M
       }}
     >
       <Tabs
-        defaultValue="python"
-        keepMounted={false}
+        value={tab}
+        onChange={open}
+        keepMounted
         style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
       >
         <Tabs.List px="md" pt="xs">
           <Tabs.Tab value="python" data-testid="data-science-tab-python">
             {t("dataScience.tabPython")}
           </Tabs.Tab>
+          <Tabs.Tab value="notebook" data-testid="data-science-tab-notebook">
+            {t("dataScience.tabNotebook")}
+          </Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel
           value="python"
-          style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: tab === "python" ? "flex" : "none",
+            flexDirection: "column",
+          }}
         >
-          <PythonTab makeWorker={makeWorker} />
+          {opened.has("python") && <PythonTab makeWorker={makeWorker} />}
+        </Tabs.Panel>
+        <Tabs.Panel
+          value="notebook"
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: tab === "notebook" ? "flex" : "none",
+            flexDirection: "column",
+          }}
+        >
+          {opened.has("notebook") && <NotebookTab />}
         </Tabs.Panel>
       </Tabs>
     </Box>
+  );
+}
+
+/** The JupyterLite site the notebook tab embeds, opened on the starter notebook. */
+export const NOTEBOOK_URL = "/lite/notebooks/index.html?path=Provisa.ipynb";
+/** How long the tab waits for the embedded app before it gives up handing it the user. */
+const LITE_APP_WAIT_MS = 120_000;
+
+function NotebookTab() {
+  const { t } = useTranslation();
+  const [served, setServed] = useState<boolean | null>(null);
+  const frame = useRef<HTMLIFrameElement | null>(null);
+  const stops = useRef<Array<() => void>>([]);
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const res = await fetch("/lite/jupyter-lite.json");
+      const json = res.ok && (res.headers.get("content-type") ?? "").includes("json");
+      if (live) setServed(json);
+    })();
+    return () => {
+      live = false;
+      stops.current.forEach((stop) => stop());
+      stops.current = [];
+    };
+  }, []);
+
+  // Once the embedded app is up, its kernels are handed the page's user and new notebooks open
+  // on the starter cell.
+  const connect = useCallback(() => {
+    const started = Date.now();
+    const appOf = () =>
+      (frame.current?.contentWindow as (Window & { jupyterapp?: LiteApp }) | null)?.jupyterapp;
+    const wait = setInterval(() => {
+      const app = appOf();
+      if (app === undefined && Date.now() - started < LITE_APP_WAIT_MS) return;
+      clearInterval(wait);
+      if (app === undefined) return;
+      stops.current.push(startLiteBridge(appOf, bridgeAuth), seedNewNotebooks(app));
+    }, 250);
+    stops.current.push(() => clearInterval(wait));
+  }, []);
+
+  if (served === null) return <Loader size="sm" m="md" />;
+  if (!served) {
+    return (
+      <Alert
+        m="md"
+        color="yellow"
+        title={t("dataScience.missingTitle")}
+        data-testid="data-science-notebook-missing"
+      >
+        <Text size="sm">{t("dataScience.missingBody")}</Text>
+      </Alert>
+    );
+  }
+  return (
+    <iframe
+      ref={frame}
+      src={NOTEBOOK_URL}
+      title={t("dataScience.notebookFrame")}
+      onLoad={connect}
+      data-testid="data-science-notebook"
+      style={{ flex: 1, minHeight: 0, width: "100%", border: 0 }}
+    />
   );
 }
 
@@ -160,7 +258,7 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
           if (runId !== undefined) reportRun(runId, summarise(message));
         }
       };
-      const init: ToWorker = { type: "init", manifest, auth: await bridgeAuth() };
+      const init: ToWorker = { type: "init", auth: await bridgeAuth() };
       w.postMessage(init);
     })();
     return () => {

@@ -10,6 +10,8 @@
     "missingBody": "A área de ciência de dados executa Python no seu navegador a partir de ficheiros que todas as instalações do Provisa servem, e a instalação deste servidor não os tem. Reinstale o Provisa no servidor e recarregue esta página.",
     "rowsShown": "A mostrar {{shown}} de {{total}} linhas",
     "figure": "Figura {{n}}",
-    "resizeLabel": "Redimensionar o editor e a saída"
+    "resizeLabel": "Redimensionar o editor e a saída",
+    "tabNotebook": "Notebook Jupyter",
+    "notebookFrame": "Notebook Jupyter"
   }
 }

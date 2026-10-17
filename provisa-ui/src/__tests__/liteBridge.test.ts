@@ -1,0 +1,129 @@
+// Copyright (c) 2026 Kenneth Stott
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+
+// REQ-2071: each notebook kernel is handed the page's user before the first code it runs, again
+// when the user's identity changes and after a restart; a new, empty notebook opens on the
+// starter cell. The JupyterLite app is a double.
+
+import { describe, it, expect, vi, afterEach } from "vitest";
+import {
+  NOTEBOOK_STARTER,
+  bridgeCode,
+  seedNewNotebooks,
+  startLiteBridge,
+  type KernelConnection,
+  type LiteApp,
+} from "../dataScience/liteBridge";
+import type { ProvisaAuth } from "../dataScience/protocol";
+
+const AUTH: ProvisaAuth = { baseUrl: "", role: "analyst_eu", bearer: "tok", org: null, env: null };
+
+function kernel() {
+  const sent: Array<{ code: string; silent?: boolean }> = [];
+  let onStatus: (sender: unknown, status: string) => void = () => {};
+  const k: KernelConnection = {
+    requestExecute: (content) => {
+      sent.push(content);
+      return undefined;
+    },
+    statusChanged: { connect: (slot) => (onStatus = slot) },
+  };
+  return { k, sent, status: (s: string) => onStatus(undefined, s) };
+}
+
+function app(kernels: KernelConnection[], current: unknown = null) {
+  const slots: Array<() => void> = [];
+  const lite: LiteApp = {
+    shell: {
+      widgets: () => kernels.map((k) => ({ sessionContext: { session: { kernel: k } } })),
+      currentWidget: current,
+      currentChanged: {
+        connect: (slot) => slots.push(slot),
+        disconnect: vi.fn(),
+      },
+    },
+  };
+  return { lite, fire: () => slots.forEach((s) => s()) };
+}
+
+afterEach(() => vi.useRealTimers());
+
+describe("startLiteBridge", () => {
+  it("hands a kernel the user once, before the first code it runs", async () => {
+    vi.useFakeTimers();
+    const { k, sent } = kernel();
+    const { lite } = app([k]);
+    const stop = startLiteBridge(
+      () => lite,
+      async () => AUTH,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent).toEqual([{ code: bridgeCode(AUTH), silent: true, store_history: false }]);
+    k.requestExecute({ code: "provisa_client.sign_in()" });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(sent.map((m) => m.code)).toEqual([bridgeCode(AUTH), "provisa_client.sign_in()"]);
+    stop();
+  });
+
+  it("hands a restarted kernel the user again before its next code", async () => {
+    vi.useFakeTimers();
+    const { k, sent, status } = kernel();
+    const { lite } = app([k]);
+    const stop = startLiteBridge(
+      () => lite,
+      async () => AUTH,
+      60_000,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    status("restarting");
+    k.requestExecute({ code: "1 + 1" });
+    expect(sent.map((m) => m.code)).toEqual([bridgeCode(AUTH), bridgeCode(AUTH), "1 + 1"]);
+    stop();
+  });
+
+  it("hands the kernel the new identity when the page's user changes", async () => {
+    vi.useFakeTimers();
+    const { k, sent } = kernel();
+    const { lite } = app([k]);
+    let auth = AUTH;
+    const stop = startLiteBridge(
+      () => lite,
+      async () => auth,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    auth = { ...AUTH, role: "org_admin", env: "staging" };
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(sent.map((m) => m.code)).toEqual([bridgeCode(AUTH), bridgeCode(auth)]);
+    stop();
+  });
+
+  it("sets provisaAuth from the identity as JSON Python can parse", () => {
+    const code = bridgeCode({ ...AUTH, bearer: 'quote"and\\back' });
+    expect(code).toContain("_provisa_js.self.provisaAuth = _provisa_js.JSON.parse(");
+    const literal = code.split("JSON.parse(")[1].split(")\n")[0];
+    expect(JSON.parse(JSON.parse(literal))).toEqual({ ...AUTH, bearer: 'quote"and\\back' });
+  });
+});
+
+describe("seedNewNotebooks", () => {
+  function notebook(sources: string[]) {
+    const cells = sources.map((source) => {
+      let text = source;
+      return { getSource: () => text, setSource: (s: string) => (text = s) };
+    });
+    return { widget: { content: { model: { sharedModel: { cells } } } }, cells };
+  }
+
+  it("opens a new, empty notebook on the starter cell and leaves others as they are", () => {
+    const fresh = notebook([""]);
+    const { lite, fire } = app([], fresh.widget);
+    seedNewNotebooks(lite);
+    expect(fresh.cells[0].getSource()).toBe(NOTEBOOK_STARTER);
+    const written = notebook(["print(1)"]);
+    lite.shell.currentWidget = written.widget;
+    fire();
+    expect(written.cells[0].getSource()).toBe("print(1)");
+  });
+});

@@ -23,7 +23,7 @@ export interface PyodideManifest {
 }
 
 export type ToWorker =
-  | { type: "init"; manifest: PyodideManifest; auth: ProvisaAuth }
+  | { type: "init"; auth: ProvisaAuth }
   | { type: "auth"; auth: ProvisaAuth }
   | { type: "run"; id: number; code: string };
 

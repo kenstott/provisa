@@ -6811,5 +6811,7 @@
   "registerTableForm.json::registerTableForm.dqScanIntervalHint": "Each scan adds its results to the table; earlier scans are kept.",
   "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
   "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
-  "hi/dataScience.json::dataScience.resizeLabel": "Resize editor and output"
+  "hi/dataScience.json::dataScience.resizeLabel": "Resize editor and output",
+  "hi/dataScience.json::dataScience.tabNotebook": "Jupyter Notebook",
+  "hi/dataScience.json::dataScience.notebookFrame": "Jupyter notebook"
 }
