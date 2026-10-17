@@ -84,11 +84,12 @@
     "alsoReaches": "その下のドメインにも届きます: {{domains}}",
     "claimRolesButton": "要求ロール",
     "claimRolesTitle": "要求ロール",
-    "claimRolesIntro": "ここに挙げた要求の種類はそれぞれロールになり、メンバーの属性が与える値はそれぞれサブロールになります: region からは region と region__eu ができます。要求ロールには権限がありません。ほかのロールと同じように列を付与したりマスクを解除したりできます。リクエストはその名前を指定したときだけそのロールとして動作します。",
+    "claimRolesIntro": "ロールにする要求の種類 (region など) を挙げます。Provisa は region というロールと、見つかった値ごとのサブロール (region__eu など) を作ります。これらのロールは、何かを付与するまで何も許可しません。たとえば region__eu に対して顧客のメール アドレスのマスクを解除すると、EU のスタッフだけがそれを見られます。リクエストがこれらのロールとして動作するのは、そのロールの名前を指定したときだけです。",
     "claimTypes": "要求の種類",
-    "claimTypesPlaceholder": "要求の種類を入力して Enter キーを押します",
+    "claimTypesPlaceholder": "要求の種類を入力 (region など)",
     "claimRolesFromOrg": "この組織独自のリスト。",
     "claimRolesFromDeployment": "この組織が独自のリストを保存するまでは、デプロイ構成のリストです。",
-    "claimRolesHelp": "メンバーの値は、組織が [チーム] ページで記録した値、なければ ID プロバイダーの同名の要求から取られます。"
+    "claimRolesHelp": "要求の種類に対するメンバーの値は、[チーム] ページのそのメンバーの記録から取られます。記録がなければ、ID プロバイダーが送る同名の要求から取られます。",
+    "claimRolesSaved": "保存しました。"
   }
 }

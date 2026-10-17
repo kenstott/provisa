@@ -84,11 +84,12 @@
     "alsoReaches": "Raggiunge anche i domini sottostanti: {{domains}}",
     "claimRolesButton": "Ruoli di attestazione",
     "claimRolesTitle": "Ruoli di attestazione",
-    "claimRolesIntro": "Ogni tipo di attestazione indicato qui diventa un ruolo, e ogni valore che gli danno gli attributi di un membro un sottoruolo: region diventa region e region__eu. I ruoli di attestazione non hanno diritti. Concedi una colonna o rimuovi una maschera per uno di essi come per qualsiasi ruolo; una richiesta agisce come tale solo quando lo nomina.",
+    "claimRolesIntro": "Elencate i tipi di attestazione che devono diventare ruoli, ad esempio region. Provisa crea un ruolo chiamato region e un sottoruolo per ogni valore che trova, ad esempio region__eu. Questi ruoli non consentono nulla finché non concedete loro qualcosa: ad esempio, togliete la maschera sulle email dei clienti per region__eu, così solo il personale UE le vede. Una richiesta agisce come uno di questi ruoli solo quando lo nomina.",
     "claimTypes": "Tipi di attestazione",
-    "claimTypesPlaceholder": "Digita un tipo di attestazione e premi Invio",
+    "claimTypesPlaceholder": "Digitate un tipo di attestazione, ad esempio region",
     "claimRolesFromOrg": "L'elenco proprio di questa organizzazione.",
     "claimRolesFromDeployment": "Dalla configurazione della distribuzione finché questa organizzazione non salva il proprio.",
-    "claimRolesHelp": "Il valore di un membro deriva da ciò che l'organizzazione registra per lui nella pagina Team, altrimenti dall'attestazione con lo stesso nome del suo provider di identità."
+    "claimRolesHelp": "Il valore di un membro per un tipo di attestazione deriva dalla sua scheda nella pagina Team. Se lì non c'è, deriva dall'attestazione con lo stesso nome inviata dal suo provider di identità.",
+    "claimRolesSaved": "Salvato."
   }
 }

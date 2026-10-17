@@ -24,6 +24,9 @@ export function ClaimRolesForm({ onClose }: { onClose: () => void }) {
   const [types, setTypes] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // Text typed but not yet a tag. It counts: blur makes it a tag, and Save takes it as one.
+  const [typing, setTyping] = useState("");
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     fetchClaimRoles()
@@ -37,10 +40,15 @@ export function ClaimRolesForm({ onClose }: { onClose: () => void }) {
   const save = async () => {
     setSaving(true);
     setProblem(null);
+    setSaved(false);
+    const pending = typing.trim();
+    const next = pending && !types.includes(pending) ? [...types, pending] : types;
     try {
-      const saved = await saveClaimRoles(types);
-      setLoaded(saved);
-      setTypes(saved.claim_types);
+      const stored = await saveClaimRoles(next);
+      setLoaded(stored);
+      setTypes(stored.claim_types);
+      setTyping("");
+      setSaved(true);
     } catch (e) {
       setProblem(e instanceof Error ? e.message : String(e));
     } finally {
@@ -66,11 +74,25 @@ export function ClaimRolesForm({ onClose }: { onClose: () => void }) {
           label={t("securityPage.claimTypes")}
           placeholder={t("securityPage.claimTypesPlaceholder")}
           value={types}
-          onChange={setTypes}
+          onChange={(v) => {
+            setTypes(v);
+            setSaved(false);
+          }}
+          searchValue={typing}
+          onSearchChange={(v) => {
+            setTyping(v);
+            setSaved(false);
+          }}
+          acceptValueOnBlur
           disabled={loaded === null}
           data-testid="claim-roles-input"
         />
       </FormField>
+      {saved && (
+        <Text size="sm" c="green" role="status" data-testid="claim-roles-saved">
+          {t("securityPage.claimRolesSaved")}
+        </Text>
+      )}
       <FormFooter
         panel
         problem={problem ?? undefined}

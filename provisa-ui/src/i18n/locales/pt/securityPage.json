@@ -84,11 +84,12 @@
     "alsoReaches": "Também alcança os domínios abaixo deles: {{domains}}",
     "claimRolesButton": "Funções de declaração",
     "claimRolesTitle": "Funções de declaração",
-    "claimRolesIntro": "Cada tipo de declaração aqui se torna uma função, e cada valor que os atributos de um membro lhe dão, uma subfunção: region se torna region e region__eu. Funções de declaração não têm direitos. Conceda uma coluna ou remova uma máscara para uma delas como para qualquer função; uma solicitação só atua como ela quando a nomeia.",
+    "claimRolesIntro": "Liste os tipos de declaração que devem se tornar funções, como region. O Provisa cria uma função chamada region e uma subfunção para cada valor que encontra, como region__eu. Essas funções não permitem nada até que você lhes conceda algo: por exemplo, remova a máscara dos e-mails de clientes para region__eu, para que só a equipe da UE os veja. Uma solicitação age como uma dessas funções somente quando a nomeia.",
     "claimTypes": "Tipos de declaração",
-    "claimTypesPlaceholder": "Digite um tipo de declaração e pressione Enter",
+    "claimTypesPlaceholder": "Digite um tipo de declaração, como region",
     "claimRolesFromOrg": "A lista própria desta organização.",
     "claimRolesFromDeployment": "Da configuração da implantação até que esta organização salve a sua.",
-    "claimRolesHelp": "O valor de um membro vem do que a organização registra para ele na página Equipe ou, caso contrário, da declaração de mesmo nome do provedor de identidade."
+    "claimRolesHelp": "O valor de um membro para um tipo de declaração vem do registro dele na página Equipe. Se não houver, vem da declaração de mesmo nome enviada pelo provedor de identidade dele.",
+    "claimRolesSaved": "Salvo."
   }
 }
