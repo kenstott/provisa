@@ -1159,14 +1159,16 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         columns: list[tuple[str, str]],
         pk_columns: list[str],
         events: list,
-    ) -> dict[str, int]:
+    ) -> dict[str, Any]:
         """Apply CDC change events to a landed table (REQ-1733). Duckdb-native dispatch mirroring
         ``land_table``: through the engine's own connection for an embedded DuckDB store (REQ-989 —
         a second connection cannot open a file the engine already ATTACHed), else the server-store
         write face."""
         self.ensure_materialize_attached()
         if self._store_is_duckdb():
-            return self._store_broker.apply_cdc(schema, table, columns, pk_columns, events)
+            return self._store_broker.apply_cdc(
+                schema, table, columns, pk_columns, events, report_unchanged=True
+            )
         from sqlalchemy.schema import CreateSchema
 
         from provisa.federation.materialize_exec import apply_cdc, build_table
@@ -1176,7 +1178,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         async with store_connection(self._store_dsn()) as conn:
             if schema and conn.capabilities.schemas:
                 await conn.execute_core(CreateSchema(schema, if_not_exists=True))
-            return await apply_cdc(conn, tbl, pk_columns, events)
+            return await apply_cdc(conn, tbl, pk_columns, events, report_unchanged=True)
 
     async def reconcile_mv_table(
         self,

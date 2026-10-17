@@ -1068,6 +1068,11 @@ async def _run_listener(
                 row_materialize=row_materialize,
                 node=node,
             )
+        # REQ-1733: an upsert of the row the table already held changed nothing -- a change the
+        # build already copied, applied again -- so it is no change to tell anyone of. A
+        # row-level table's apply refreshes keys from the source and reports no such upsert.
+        unchanged = set() if row_materialize else set(counts.pop("unchanged"))
+        changed = [e for position, e in enumerate(events) if position not in unchanged]
         # A landed batch is this table's change: the views that read it are told and its
         # freshness moves, as for any other landing (REQ-961). A row-level table has no node of its
         # own; its keys are refreshed by the row cache's own work item (REQ-1865).
@@ -1086,7 +1091,7 @@ async def _run_listener(
             table_changed(
                 state,
                 key,
-                changes=[{"operation": e.operation, "row": e.row} for e in events],
+                changes=[{"operation": e.operation, "row": e.row} for e in changed],
             )
         return counts
 

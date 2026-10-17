@@ -234,13 +234,19 @@ async def apply_cdc(
     table: Table,
     pk_columns: list[str],
     events: list,
-) -> dict[str, int]:
+    *,
+    report_unchanged: bool = False,
+) -> dict[str, Any]:
     """CDC land: apply change events to a landed table by primary key (REQ-932).
 
     insert/update → upsert (UPDATE-by-PK, else INSERT — dialect-agnostic via ``Connection.upsert``);
     delete → tombstone (``DELETE … WHERE pk``). ``events`` are ChangeEvent-like objects with
     ``.operation`` (insert|update|delete) and ``.row``. A primary key is REQUIRED — without it
-    there is no identity to upsert or delete by."""
+    there is no identity to upsert or delete by.
+
+    ``report_unchanged`` (REQ-1733): an upsert whose row the store already held, value for value
+    -- read back before and after, as the store types it -- changed nothing; it is not counted,
+    and its position in ``events`` is listed under ``unchanged``."""
     if not pk_columns:
         raise ValueError(
             f"CDC land into {_qualified(table)} requires primary key columns for upsert/delete"
@@ -248,18 +254,31 @@ async def apply_cdc(
     await conn.execute_core(CreateTable(table, if_not_exists=True))
 
     json_cols = _json_columns(table)
-    counts = {"upsert": 0, "delete": 0}
-    for ev in events:
+    counts: dict[str, Any] = {"upsert": 0, "delete": 0, "unchanged": []}
+    for position, ev in enumerate(events):
         if ev.operation.lower() == "delete":
             where = _pk_where(table, pk_columns, ev.row)
             await conn.execute_core(table.delete().where(where))
             counts["delete"] += 1
         else:  # insert / update → upsert
-            await conn.upsert(
-                table, _coerce_json_row(dict(ev.row), json_cols), index_elements=pk_columns
-            )
-            counts["upsert"] += 1
+            row = _coerce_json_row(dict(ev.row), json_cols)
+            held = await _held_row(conn, table, pk_columns, row) if report_unchanged else None
+            await conn.upsert(table, row, index_elements=pk_columns)
+            if held is not None and held == await _held_row(conn, table, pk_columns, row):
+                counts["unchanged"].append(position)
+            else:
+                counts["upsert"] += 1
     return counts
+
+
+async def _held_row(conn: StoreConn, table: Table, pk_columns: list[str], row: dict) -> Any:
+    """The row the store holds under ``row``'s key, as the store types it; None when none."""
+    from sqlalchemy import select
+
+    found = (
+        await conn.execute_core(select(table).where(_pk_where(table, pk_columns, row)))
+    ).first()
+    return tuple(found) if found is not None else None
 
 
 class _UpsertEvent:

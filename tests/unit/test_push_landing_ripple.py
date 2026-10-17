@@ -37,7 +37,8 @@ class _Engine:
 
     async def apply_cdc_events(self, **kwargs) -> dict[str, int]:
         self.applied.append(kwargs["events"])
-        return self.counts
+        # REQ-1733: an apply lists the upserts that changed nothing; none here.
+        return {**self.counts, "unchanged": []}
 
 
 async def _listen_once(state, engine, batch, *, row_materialize: bool = False) -> None:

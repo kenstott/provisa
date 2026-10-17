@@ -395,7 +395,7 @@ class EngineBackend:
         columns: list[tuple[str, str]],
         pk_columns: list[str],
         events: list,
-    ) -> dict[str, int]:
+    ) -> dict[str, Any]:
         """Apply CDC change events (insert/update -> upsert by PK, delete -> tombstone) to a landed
         table (REQ-1733). Base default writes through ``store_writer``'s per-call connection against
         the engine's own store DSN — the universal path every backend supports. A native engine
@@ -411,7 +411,7 @@ class EngineBackend:
         async with store_connection(self.engine.materialize_store()) as conn:
             if schema and conn.capabilities.schemas:
                 await conn.execute_core(CreateSchema(schema, if_not_exists=True))
-            return await apply_cdc(conn, tbl, pk_columns, events)
+            return await apply_cdc(conn, tbl, pk_columns, events, report_unchanged=True)
 
     async def apply_change_group(self, state: Any, group: list[Any]) -> None:
         """Apply the changes of several landed tables that belong together
