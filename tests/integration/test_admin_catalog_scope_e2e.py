@@ -151,8 +151,8 @@ def _login(boot, user: str) -> str:
 
 
 _CATALOG = """{
-  tables { tableName domainId viewSql
-           columns { columnName visibleTo writableBy masks { to } } }
+  tables { tableName domainId viewSql writeGrants { role }
+           columns { columnName visibleTo masks { to } } }
   relationships { id }
   domains { id }
   sources { id host }
@@ -209,8 +209,9 @@ def test_no_grant_list_or_mask_setting_is_answered_without_view_governance(serve
     assert data["tables"], data
     for table in data["tables"]:
         assert table["viewSql"] is None, table["tableName"]
+        assert table["writeGrants"] is None, table["tableName"]  # REQ-2074
         for column in table["columns"]:
-            assert column["visibleTo"] is None and column["writableBy"] is None, column
+            assert column["visibleTo"] is None, column
             assert column["masks"] is None, column
     assert all(m["visibleTo"] is None for m in data["metrics"])
 

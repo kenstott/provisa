@@ -1,0 +1,19 @@
+- name: carrier
+  definition:
+    url_from_env: CARRIER_GRAPHQL_URL
+    timeout_seconds: 30
+    forward_client_headers: false
+  comment: Parcel carrier tracking API
+  permissions:
+    - role: support
+      definition:
+        schema: |
+          type Shipment {
+            tracking_number: String!
+            order_id: Int!
+            status: String!
+            eta: String
+          }
+          type Query {
+            shipments: [Shipment!]!
+          }

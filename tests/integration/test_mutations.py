@@ -21,10 +21,7 @@ import pytest_asyncio
 from graphql import parse, validate
 
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.mutation_gen import (
-    apply_column_presets,
-    compile_mutation,
-)
+from provisa.compiler.mutation_gen import compile_mutation
 from provisa.compiler import naming as _naming
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.context import build_context
@@ -293,41 +290,34 @@ class TestInsertMutation:
             await _cleanup(tenant_db)
 
     async def test_mutation_respects_column_preset(self, mut_pool, tenant_db):
-        """Column preset is applied automatically (test via checking inserted row)."""
-        schema, ctx = _build_schema_and_ctx()
+        """A write grant's literal preset (REQ-2074) is added to the INSERT where it is admitted,
+        and the row lands with it."""
+        from provisa.compiler.stage2 import apply_governance
+        from tests.write_governance import write_governance
 
         async with tenant_db.acquire() as conn:
             cid = await conn.fetchval("SELECT id FROM customers LIMIT 1")
             pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
 
-        # Build input and apply a literal preset for the region column
-        input_data = {"customer_id": cid, "product_id": pid, "amount": 55.55}
-        presets = [{"column": "region", "source": "literal", "value": _TEST_REGION}]
-        enriched = apply_column_presets(input_data, presets)
-
-        # Verify the preset was applied before the mutation is even compiled
-        assert enriched["region"] == _TEST_REGION
-        assert enriched["customer_id"] == cid
-        assert float(enriched["amount"]) == pytest.approx(55.55)
-
+        columns = ["customer_id", "product_id", "amount"]
+        gov = write_governance({"public.orders": (1, [*columns, "region"])})
+        gov.write_grants[1]["insert"] = {
+            "role": gov.role_id,
+            "operation": "insert",
+            "columns": columns,
+            "rows": None,
+            "check": None,
+            "presets": [{"column": "region", "source": "literal", "value": _TEST_REGION}],
+        }
+        sql = (
+            'INSERT INTO "public"."orders" ("customer_id", "product_id", "amount") '
+            'VALUES ($1, $2, $3) RETURNING "region"'
+        )
+        governed = apply_governance(sql, gov, {}, [cid, pid, 55.55])
         try:
-            # Now manually build and execute the INSERT SQL so we can verify the preset row
-            from provisa.compiler.sql_gen import _q
-            from provisa.compiler.params import ParamCollector
-
-            collector = ParamCollector()
-            cols = list(enriched.keys())
-            placeholders = [collector.add(enriched[c]) for c in cols]
-            cols_sql = ", ".join(_q(c) for c in cols)
-            vals_sql = ", ".join(placeholders)
-            sql = (
-                f'INSERT INTO "public"."orders" ({cols_sql}) VALUES ({vals_sql})'
-                f" RETURNING {cols_sql}"
-            )
-            result = await execute_direct(mut_pool, "sales-pg", sql, collector.params)
+            result = await execute_direct(mut_pool, "sales-pg", governed, [cid, pid, 55.55])
             assert len(result.rows) == 1
-            region_idx = result.column_names.index("region")
-            assert result.rows[0][region_idx] == _TEST_REGION
+            assert result.rows[0][result.column_names.index("region")] == _TEST_REGION
         finally:
             await _cleanup(tenant_db)
 

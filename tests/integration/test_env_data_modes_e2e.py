@@ -26,6 +26,7 @@ from typing import Any
 import pytest
 
 from tests.integration.worker_boot_harness import WorkerBoot
+from tests.helpers import config_write_grants
 
 pytestmark = [pytest.mark.integration]
 
@@ -54,15 +55,14 @@ def boot():
                         "data_type": "integer",
                         "is_primary_key": True,
                         "visible_to": ["org_admin", "analyst"],
-                        "writable_by": ["org_admin"],
                     },
                     {
                         "name": "region",
                         "data_type": "varchar",
                         "visible_to": ["org_admin", "analyst"],
-                        "writable_by": ["org_admin"],
                     },
                 ],
+                "write_grants": config_write_grants(["org_admin"], ["id", "region"]),  # REQ-2074
             }
         ],
         "tag_assignments": [

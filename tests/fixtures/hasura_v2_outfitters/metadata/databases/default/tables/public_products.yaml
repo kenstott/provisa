@@ -1,0 +1,48 @@
+table:
+  name: products
+  schema: public
+configuration:
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields:
+    select: catalog
+    select_by_pk: catalog_item
+    select_aggregate: catalog_aggregate
+array_relationships:
+  - name: order_items
+    using:
+      foreign_key_constraint_on:
+        column: product_id
+        table:
+          name: order_items
+          schema: public
+select_permissions:
+  - role: customer
+    permission:
+      columns:
+        - id
+        - name
+        - price_cents
+        - sku
+      filter:
+        active:
+          _eq: true
+  - role: support
+    permission:
+      columns:
+        - active
+        - id
+        - name
+        - price_cents
+        - sku
+      filter: {}
+  - role: analyst
+    permission:
+      columns:
+        - active
+        - id
+        - name
+        - price_cents
+        - sku
+      filter: {}
+      allow_aggregations: true

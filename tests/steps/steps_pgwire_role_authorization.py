@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -30,7 +30,6 @@ class _TableMeta:
     source_type: str = ""
     original_table_name: str = ""
     display_name: str = ""
-    column_presets: dict = field(default_factory=dict)
 
 
 def _state_for_role(visible_tables: dict) -> Any:

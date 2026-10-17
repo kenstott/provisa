@@ -33,6 +33,7 @@ import pytest
 import sqlalchemy as sa
 
 from tests.integration.worker_boot_harness import WorkerBoot, _config
+from tests.helpers import config_write_grants
 
 pytestmark = [pytest.mark.integration]
 
@@ -63,9 +64,10 @@ def server():
     base = _config(_PG_HOST, _PG_PORT, "unused")
     orders = base["tables"][0]
     for column in orders["columns"]:
-        column["writable_by"] = [_ROLE]
         if column["name"] == "id":
             column["is_primary_key"] = True
+    # REQ-2074: the role writes every column.
+    orders["write_grants"] = config_write_grants([_ROLE], [c["name"] for c in orders["columns"]])
     boot = WorkerBoot(
         1,
         pg_host=_PG_HOST,

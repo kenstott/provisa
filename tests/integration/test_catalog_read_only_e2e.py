@@ -27,6 +27,7 @@ import pytest
 import sqlalchemy as sa
 
 from tests.integration.worker_boot_harness import WorkerBoot, _config
+from tests.helpers import write_grants_mutation
 
 pytestmark = [pytest.mark.integration]
 
@@ -126,36 +127,25 @@ def _admin(boot, query: str) -> dict:
 
 
 def test_a_column_grant_on_the_catalog_does_not_open_it_to_writes(server):
-    """An admin naming a role in a catalog column's writable_by (the admin API allows the edit)
-    still leaves the catalog read-only: the grant is not a write route into the model."""
+    """An admin granting a role writes on a catalog table (the admin API allows the edit) still
+    leaves the catalog read-only: the grant is not a write route into the model (REQ-2074)."""
     status, body = _post(
         server,
         "/data/sql",
         {
-            "sql": "SELECT schema_name FROM meta.registered_tables "
+            "sql": "SELECT id FROM meta.registered_tables "
             "WHERE domain_id = 'meta' AND table_name = 'roles'"
         },
     )
     assert status == 200, body
-    schema = body["data"]["sql"][0]["schema_name"]
+    table_id = body["data"]["sql"][0]["id"]
     granted = _admin(
         server,
-        f"""
-        mutation {{
-            updateTable(input: {{
-                sourceId: "provisa-admin", domainId: "meta", schemaName: "{schema}",
-                tableName: "roles",
-                columns: [
-                    {{ name: "id", dataType: "varchar", visibleTo: ["org_admin"], writableBy: ["org_admin"] }},
-                    {{ name: "parent_role_id", dataType: "varchar", visibleTo: ["org_admin"], writableBy: ["org_admin"] }},
-                    {{ name: "org_id", dataType: "varchar", visibleTo: ["org_admin"], writableBy: ["org_admin"] }},
-                    {{ name: "capabilities", dataType: "json", visibleTo: ["org_admin"], writableBy: ["org_admin"] }},
-                    {{ name: "tenant_id", dataType: "varchar", visibleTo: ["org_admin"], writableBy: ["org_admin"] }},
-                    {{ name: "domain_id", dataType: "varchar", visibleTo: ["org_admin"], writableBy: ["org_admin"] }}
-                ]
-            }}) {{ success message }}
-        }}
-        """,
+        write_grants_mutation(
+            table_id,
+            ["org_admin"],
+            ["id", "parent_role_id", "org_id", "capabilities", "tenant_id", "domain_id"],
+        ),
     )
     status, body = _post(
         server,

@@ -18677,7 +18677,8 @@
   feature: hasura-migration-permissions
   priority: SHOULD
   type: behavioral
-  description: v2 converter maps `insert/update_permissions[].columns` per role -> Provisa column `writable_by`.
+  description: 'v2 converter maps each role''s `insert/update/delete_permissions` -> the table''s write grants
+    (REQ-2074) -- columns, filter as rows, check, set as presets. (Amended 2026-10-17: was column `writable_by`.)'
   use_case: Hasura v2 parity — column write permissions from v2 are preserved automatically on import.
   code:
   - provisa/hasura_v2/
@@ -18693,7 +18694,7 @@
 
     When the v2 converter runs
 
-    Then each column''s writable_by is populated from the role''s insert/update column list
+    Then each role''s insert and update grants hold the role''s insert/update column list
 
     '
   integration_test: not_required
@@ -19519,8 +19520,9 @@
   feature: hasura-migration-permissions
   priority: SHOULD
   type: behavioral
-  description: v2 converter upgrades a role to `write` capability when that role has any `delete_permissions`
-    entry on any table. No per-table delete mapping is produced — the capability upgrade is the only artefact.
+  description: 'v2 converter upgrades a role to `write` capability when that role has any `delete_permissions`
+    entry on any table; the permission is also the role''s delete grant on that table (REQ-2074, amended
+    2026-10-17, was the only artefact).'
   use_case: Hasura v2 parity — delete permission grants are reflected as write capability in Provisa role
     definitions.
   code:
@@ -19535,7 +19537,7 @@
 
     When the v2 converter runs
 
-    Then the role is upgraded to write capability with no per-table delete mapping produced
+    Then the role is upgraded to write capability and holds a delete grant on that table
 
     '
   integration_test: not_required
@@ -21137,7 +21139,7 @@
   since: 2026-06
   scenario: 'Given the Calcite sharepoint connector does not expose information_schema.columns
 
-    When a user registers a table via GraphQL registerTable mutation with columns=[{name, visibleTo, writableBy}]
+    When a user registers a table via GraphQL registerTable mutation with columns=[{name, visibleTo}]
 
     Then the table is created with the supplied column definitions
 

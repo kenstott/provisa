@@ -32,6 +32,7 @@ import pytest
 import yaml
 
 from tests.embedded_pg import DATABASE, PASSWORD, ROLE, start_local_postgres
+from tests.helpers import config_write_grants
 
 pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
 
@@ -41,9 +42,8 @@ _ADMIN = "org_admin"
 
 def _columns() -> list[dict]:
     return [
-        {"name": "id", "data_type": "integer", "visible_to": [_ADMIN], "writable_by": [_ADMIN]},
-        {"name": "amount", "data_type": "integer", "visible_to": [_ADMIN],
-         "writable_by": [_ADMIN]},
+        {"name": "id", "data_type": "integer", "visible_to": [_ADMIN]},
+        {"name": "amount", "data_type": "integer", "visible_to": [_ADMIN]},
     ]  # fmt: skip
 
 
@@ -54,6 +54,7 @@ def _table(name: str, source_id: str) -> dict:
         "schema": "public",
         "table": name,
         "columns": _columns(),
+        "write_grants": config_write_grants([_ADMIN], ["id", "amount"]),  # REQ-2074
     }
 
 

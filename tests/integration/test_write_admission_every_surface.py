@@ -11,17 +11,19 @@
 """One admission for every data write, on every surface that takes writes.
 
 One real server over a PostgreSQL source, one table ``orders(id, region)``. A write is admitted
-by the role's ``write`` right (REQ-868), the ``writable_by`` of every column it writes (REQ-663),
-and the role's row filter — on the rows it touches and on the rows it leaves behind. Every
+by the role's ``write`` right (REQ-868) and its write grant for the operation (REQ-2074), whose
+rows and check here are the role's row filter — on the rows it touches and on the rows it leaves
+behind. Every
 assertion is on the rows AT THE SOURCE after the call, read directly from PostgreSQL, never on
 what the surface answered alone.
 
 Roles:
 
-* ``org_admin``   — holds ``write``; named in both columns' ``writable_by``; no row filter.
+* ``org_admin``   — holds ``write``; insert, update and delete grants over both columns; no row
+  filter.
 * ``east_writer`` — the same rights, with a row filter ``region = 'east'``.
-* ``region_only`` — holds ``write``; named in ``region``'s ``writable_by`` only.
-* ``east_reader`` — reads everything in ``east``; no ``write`` right; in no ``writable_by``.
+* ``region_only`` — holds ``write``; insert and update grants over ``region`` only, no delete.
+* ``east_reader`` — reads everything in ``east``; no ``write`` right; no grant.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ import pytest
 import sqlalchemy as sa
 
 from tests.integration.worker_boot_harness import WorkerBoot, _config
+from tests.helpers import config_write_grants
 
 pytestmark = [pytest.mark.integration]
 
@@ -51,13 +54,13 @@ def server():
     orders = base["tables"][0]
     for column in orders["columns"]:
         column["visible_to"] = _ROLES
-        column["writable_by"] = (
-            ["org_admin", "east_writer", "region_only"]
-            if column["name"] == "region"
-            else ["org_admin", "east_writer"]
-        )
         if column["name"] == "id":
             column["is_primary_key"] = True
+    orders["write_grants"] = [
+        *config_write_grants(["org_admin", "east_writer"], ["id", "region"]),
+        {"role": "region_only", "operation": "insert", "columns": ["region"]},
+        {"role": "region_only", "operation": "update", "columns": ["region"]},
+    ]
     reads = ["query_development", "full_results"]
     boot = WorkerBoot(
         1,
@@ -337,15 +340,15 @@ def test_a_role_holding_the_rights_writes(server, source, surface):
 @pytest.mark.parametrize("surface", _ALL)
 def test_a_column_that_does_not_name_the_role_is_not_written(server, source, surface):
     s = _SURFACES[surface]
-    # ``region_only`` holds the write right and is named on ``region`` alone.
+    # ``region_only`` holds the write right and grants over ``region`` alone (REQ-2074).
     accepted, answer = s.set_region(server, "region_only", 2, "moved")
     assert accepted, answer
     assert (2, "moved") in source()
 
     for write in (
-        lambda: s.set_id(server, "region_only", 2, 20),  # sets a column it is not named on
+        lambda: s.set_id(server, "region_only", 2, 20),  # sets a column its grant does not name
         lambda: s.insert(server, "region_only", 21, "west"),  # an INSERT writes id too
-        lambda: s.delete(server, "region_only", 2),  # a DELETE removes whole rows
+        lambda: s.delete(server, "region_only", 2),  # it holds no delete grant
     ):
         before = source()
         accepted, answer = write()
@@ -458,7 +461,7 @@ def _copy_in(boot, role: str, lines: list[str]) -> None:
 
 def test_a_bulk_load_over_pgwire_is_admitted_like_an_insert(server, source):
     """``COPY … FROM STDIN`` into a registered table, admitted as an INSERT of its columns: the
-    write right and writable_by before any data is asked for, the row filter over every row
+    write right and the insert grant before any data is asked for, the row filter over every row
     before any row is written; rows read at the source."""
     import psycopg
 

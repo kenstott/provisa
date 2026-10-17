@@ -25,6 +25,7 @@ import pytest
 import sqlalchemy as sa
 
 from tests.integration.worker_boot_harness import WorkerBoot, _config
+from tests.helpers import config_write_grants
 
 pytestmark = [pytest.mark.integration]
 
@@ -42,20 +43,19 @@ def server():
             "name": "id",
             "data_type": "integer",
             "visible_to": _ROLES,
-            "writable_by": ["org_admin"],
             "is_primary_key": True,
         },
         {
             "name": "region",
             "data_type": "varchar",
             "visible_to": _ROLES,
-            "writable_by": ["org_admin"],
             "masks": [
                 {"to": ["org_admin"], "mask": None},
                 {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
             ],
         },
     ]
+    orders["write_grants"] = config_write_grants(["org_admin"], ["id", "region"])  # REQ-2074
     boot = WorkerBoot(
         1,
         pg_host=_PG_HOST,

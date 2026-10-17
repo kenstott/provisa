@@ -28,6 +28,7 @@ from datetime import datetime
 import pytest
 
 from tests.integration.worker_boot_harness import WorkerBoot
+from tests.helpers import config_write_grants
 
 pytestmark = [
     pytest.mark.integration,
@@ -35,7 +36,7 @@ pytestmark = [
     pytest.mark.asyncio(loop_scope="session"),
 ]
 
-_WRITABLE = {"visible_to": ["org_admin", "analyst"], "writable_by": ["org_admin"]}
+_WRITABLE = {"visible_to": ["org_admin", "analyst"]}
 
 
 @pytest.fixture(scope="module")
@@ -67,6 +68,7 @@ def boot(topic):
                     {"name": "id", "data_type": "integer", "is_primary_key": True, **_WRITABLE},
                     {"name": "region", "data_type": "varchar", **_WRITABLE},
                 ],
+                "write_grants": config_write_grants(["org_admin"], ["id", "region"]),  # REQ-2074
             }
         ]
     }

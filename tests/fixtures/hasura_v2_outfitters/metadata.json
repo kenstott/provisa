@@ -1,0 +1,537 @@
+{
+  "resource_version": 42,
+  "metadata": {
+    "version": 3,
+    "sources": [
+      {
+        "name": "default",
+        "kind": "postgres",
+        "configuration": {
+          "connection_info": {
+            "database_url": {
+              "from_env": "HASURA_GRAPHQL_DATABASE_URL"
+            },
+            "isolation_level": "read-committed",
+            "pool_settings": {
+              "connection_lifetime": 600,
+              "idle_timeout": 180,
+              "max_connections": 50,
+              "retries": 1
+            },
+            "use_prepared_statements": true
+          }
+        },
+        "tables": [
+          {
+            "table": {
+              "name": "customers",
+              "schema": "public"
+            },
+            "configuration": {
+              "column_config": {
+                "first_name": {
+                  "custom_name": "givenName"
+                },
+                "last_name": {
+                  "custom_name": "familyName"
+                }
+              },
+              "custom_column_names": {
+                "first_name": "givenName",
+                "last_name": "familyName"
+              },
+              "custom_root_fields": {}
+            },
+            "array_relationships": [
+              {
+                "name": "orders",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "customer_id",
+                    "table": {
+                      "name": "orders",
+                      "schema": "public"
+                    }
+                  }
+                }
+              }
+            ],
+            "computed_fields": [
+              {
+                "name": "full_name",
+                "definition": {
+                  "function": {
+                    "name": "customer_full_name",
+                    "schema": "public"
+                  }
+                },
+                "comment": "First and last name"
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "customer",
+                "permission": {
+                  "columns": [
+                    "email",
+                    "first_name",
+                    "id",
+                    "last_name"
+                  ],
+                  "computed_fields": [
+                    "full_name"
+                  ],
+                  "filter": {
+                    "id": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  }
+                }
+              },
+              {
+                "role": "support",
+                "permission": {
+                  "columns": [
+                    "created_at",
+                    "email",
+                    "first_name",
+                    "id",
+                    "last_name",
+                    "sf_account_id"
+                  ],
+                  "computed_fields": [
+                    "full_name"
+                  ],
+                  "filter": {},
+                  "allow_aggregations": true
+                }
+              },
+              {
+                "role": "analyst",
+                "permission": {
+                  "columns": [
+                    "created_at",
+                    "id",
+                    "sf_account_id"
+                  ],
+                  "filter": {},
+                  "allow_aggregations": true
+                }
+              }
+            ],
+            "update_permissions": [
+              {
+                "role": "customer",
+                "permission": {
+                  "columns": [
+                    "first_name",
+                    "last_name"
+                  ],
+                  "filter": {
+                    "id": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  },
+                  "check": null
+                }
+              }
+            ]
+          },
+          {
+            "table": {
+              "name": "order_items",
+              "schema": "public"
+            },
+            "object_relationships": [
+              {
+                "name": "order",
+                "using": {
+                  "foreign_key_constraint_on": "order_id"
+                }
+              },
+              {
+                "name": "product",
+                "using": {
+                  "foreign_key_constraint_on": "product_id"
+                }
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "customer",
+                "permission": {
+                  "columns": [
+                    "id",
+                    "order_id",
+                    "product_id",
+                    "quantity",
+                    "unit_price_cents"
+                  ],
+                  "filter": {
+                    "order": {
+                      "customer_id": {
+                        "_eq": "X-Hasura-User-Id"
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "role": "support",
+                "permission": {
+                  "columns": [
+                    "id",
+                    "order_id",
+                    "product_id",
+                    "quantity",
+                    "unit_price_cents"
+                  ],
+                  "filter": {}
+                }
+              },
+              {
+                "role": "analyst",
+                "permission": {
+                  "columns": [
+                    "id",
+                    "order_id",
+                    "product_id",
+                    "quantity",
+                    "unit_price_cents"
+                  ],
+                  "filter": {},
+                  "allow_aggregations": true
+                }
+              }
+            ]
+          },
+          {
+            "table": {
+              "name": "orders",
+              "schema": "public"
+            },
+            "object_relationships": [
+              {
+                "name": "customer",
+                "using": {
+                  "foreign_key_constraint_on": "customer_id"
+                }
+              }
+            ],
+            "array_relationships": [
+              {
+                "name": "items",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "order_id",
+                    "table": {
+                      "name": "order_items",
+                      "schema": "public"
+                    }
+                  }
+                }
+              }
+            ],
+            "insert_permissions": [
+              {
+                "role": "customer",
+                "permission": {
+                  "check": {
+                    "customer_id": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  },
+                  "set": {
+                    "customer_id": "x-hasura-User-Id",
+                    "status": "placed"
+                  },
+                  "columns": [
+                    "ship_to"
+                  ]
+                }
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "customer",
+                "permission": {
+                  "columns": [
+                    "id",
+                    "placed_at",
+                    "ship_to",
+                    "status",
+                    "total_cents"
+                  ],
+                  "filter": {
+                    "customer_id": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  }
+                }
+              },
+              {
+                "role": "support",
+                "permission": {
+                  "columns": [
+                    "customer_id",
+                    "id",
+                    "placed_at",
+                    "ship_to",
+                    "status",
+                    "total_cents"
+                  ],
+                  "filter": {},
+                  "allow_aggregations": true
+                }
+              },
+              {
+                "role": "analyst",
+                "permission": {
+                  "columns": [
+                    "customer_id",
+                    "id",
+                    "placed_at",
+                    "status",
+                    "total_cents"
+                  ],
+                  "filter": {
+                    "status": {
+                      "_neq": "cancelled"
+                    }
+                  },
+                  "allow_aggregations": true
+                }
+              }
+            ],
+            "update_permissions": [
+              {
+                "role": "support",
+                "permission": {
+                  "columns": [
+                    "ship_to",
+                    "status"
+                  ],
+                  "filter": {
+                    "status": {
+                      "_in": [
+                        "placed",
+                        "packed"
+                      ]
+                    }
+                  },
+                  "check": {
+                    "status": {
+                      "_in": [
+                        "placed",
+                        "packed",
+                        "cancelled"
+                      ]
+                    }
+                  }
+                }
+              }
+            ],
+            "event_triggers": [
+              {
+                "name": "order_placed",
+                "definition": {
+                  "enable_manual": false,
+                  "insert": {
+                    "columns": "*"
+                  }
+                },
+                "retry_conf": {
+                  "interval_sec": 10,
+                  "num_retries": 3,
+                  "timeout_sec": 60
+                },
+                "webhook_from_env": "FULFILMENT_WEBHOOK_URL"
+              }
+            ]
+          },
+          {
+            "table": {
+              "name": "products",
+              "schema": "public"
+            },
+            "configuration": {
+              "column_config": {},
+              "custom_column_names": {},
+              "custom_root_fields": {
+                "select": "catalog",
+                "select_by_pk": "catalog_item",
+                "select_aggregate": "catalog_aggregate"
+              }
+            },
+            "array_relationships": [
+              {
+                "name": "order_items",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "product_id",
+                    "table": {
+                      "name": "order_items",
+                      "schema": "public"
+                    }
+                  }
+                }
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "customer",
+                "permission": {
+                  "columns": [
+                    "id",
+                    "name",
+                    "price_cents",
+                    "sku"
+                  ],
+                  "filter": {
+                    "active": {
+                      "_eq": true
+                    }
+                  }
+                }
+              },
+              {
+                "role": "support",
+                "permission": {
+                  "columns": [
+                    "active",
+                    "id",
+                    "name",
+                    "price_cents",
+                    "sku"
+                  ],
+                  "filter": {}
+                }
+              },
+              {
+                "role": "analyst",
+                "permission": {
+                  "columns": [
+                    "active",
+                    "id",
+                    "name",
+                    "price_cents",
+                    "sku"
+                  ],
+                  "filter": {},
+                  "allow_aggregations": true
+                }
+              }
+            ]
+          }
+        ],
+        "functions": [
+          {
+            "function": {
+              "name": "search_products",
+              "schema": "public"
+            },
+            "configuration": {
+              "exposed_as": "query"
+            },
+            "permissions": [
+              {
+                "role": "customer"
+              },
+              {
+                "role": "support"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "name": "refund_order",
+        "definition": {
+          "kind": "synchronous",
+          "handler": "{{PAYMENTS_BASE_URL}}/refund",
+          "forward_client_headers": true,
+          "type": "mutation",
+          "arguments": [
+            {
+              "name": "order_id",
+              "type": "Int!"
+            },
+            {
+              "name": "reason",
+              "type": "String!"
+            }
+          ],
+          "output_type": "RefundResult"
+        },
+        "permissions": [
+          {
+            "role": "support"
+          }
+        ],
+        "comment": "Refund an order through the payment provider"
+      }
+    ],
+    "custom_types": {
+      "objects": [
+        {
+          "name": "RefundResult",
+          "fields": [
+            {
+              "name": "refund_id",
+              "type": "String!"
+            },
+            {
+              "name": "status",
+              "type": "String!"
+            }
+          ]
+        }
+      ]
+    },
+    "cron_triggers": [
+      {
+        "name": "nightly_sales_digest",
+        "webhook": "{{REPORTS_BASE_URL}}/digest",
+        "schedule": "0 6 * * *",
+        "include_in_metadata": true,
+        "payload": {},
+        "retry_conf": {
+          "num_retries": 1,
+          "retry_interval_seconds": 60,
+          "timeout_seconds": 60,
+          "tolerance_seconds": 21600
+        }
+      }
+    ],
+    "inherited_roles": [
+      {
+        "role_name": "support_lead",
+        "role_set": [
+          "support",
+          "analyst"
+        ]
+      }
+    ],
+    "remote_schemas": [
+      {
+        "name": "carrier",
+        "definition": {
+          "url_from_env": "CARRIER_GRAPHQL_URL",
+          "timeout_seconds": 30,
+          "forward_client_headers": false
+        },
+        "comment": "Parcel carrier tracking API",
+        "permissions": [
+          {
+            "role": "support",
+            "definition": {
+              "schema": "type Shipment {\n  tracking_number: String!\n  order_id: Int!\n  status: String!\n  eta: String\n}\ntype Query {\n  shipments: [Shipment!]!\n}\n"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

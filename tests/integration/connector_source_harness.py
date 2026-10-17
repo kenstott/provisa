@@ -67,7 +67,7 @@ from typing import Any
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from tests.helpers import registered_id, release_mutation
+from tests.helpers import registered_id, release_mutation, write_grants_mutation
 
 # The role every test in this bucket registers for and queries as. It must be a role the app
 # actually seeds (config/provisa.yaml:7 makes org_admin the default identity) — a role name that
@@ -265,15 +265,9 @@ async def register_table(
     connector source: there it would hide the introspection failure this harness exists to catch.
     """
     types = column_types or {}
-    # ``writable_by`` names the roles that may write every column — a write test registers the
-    # table writable; a read test leaves it unwritable, as a registration does by default.
-    writable = (
-        ", writableBy: [" + ", ".join(f'"{r}"' for r in writable_by) + "]" if writable_by else ""
-    )
     cols = ", ".join(
         f'{{ name: "{c}", visibleTo: {_VISIBLE_TO_LITERAL}'
         + (f', dataType: "{types[c]}"' if c in types else "")
-        + writable
         + " }"
         for c in columns
     )
@@ -293,8 +287,16 @@ async def register_table(
         """,
         "registerTable",
     )
+    table_id = registered_id(registered["message"])
+    # ``writable_by`` names the roles that may write every column (REQ-2074: their write grants)
+    # -- a write test makes the table writable; a read test leaves it unwritable, as a
+    # registration does by default.
+    if writable_by:
+        await _gql(
+            client, write_grants_mutation(table_id, writable_by, columns), "setTableWriteGrants"
+        )
     # REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await _gql(client, release_mutation(registered_id(registered["message"])), "setTableDraft")
+    await _gql(client, release_mutation(table_id), "setTableDraft")
 
 
 async def rebuild_schemas(client: AsyncClient) -> None:

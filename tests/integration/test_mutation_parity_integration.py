@@ -49,7 +49,6 @@ def _make_table_meta(
     source_id: str = "sales-pg",
     schema_name: str = "public",
     table_name: str = "orders",
-    column_presets: list | None = None,
 ) -> object:
     from provisa.compiler.sql_gen import TableMeta
 
@@ -61,7 +60,6 @@ def _make_table_meta(
         catalog_name="sales_pg",
         schema_name=schema_name,
         table_name=table_name,
-        column_presets=column_presets or [],
     )
 
 
@@ -263,72 +261,84 @@ class TestDistinctOn:
 
 
 # ---------------------------------------------------------------------------
-# REQ-214: Column presets
+# REQ-2074 (superseding REQ-214): presets are a write grant's, added where a write is admitted
 # ---------------------------------------------------------------------------
 
 
+def _preset_gov(*presets: dict):
+    from tests.write_governance import write_governance
+
+    gov = write_governance({"public.orders": (1, ["id", "amount", "updated_at", "created_by"])})
+    gov.write_grants[1]["insert"] = {
+        "role": gov.role_id,
+        "operation": "insert",
+        "columns": ["id", "amount"],
+        "rows": None,
+        "check": None,
+        "presets": list(presets),
+    }
+    return gov
+
+
 class TestColumnPresets:
-    """REQ-214: preset columns are stripped from user input and injected into SQL."""
+    """A write grant's presets are set by the grant, on every surface: added to the statement
+    where it is admitted, never supplied by the statement."""
 
-    def test_apply_column_presets_now_source(self):
-        # REQ-214: now source injects an ISO timestamp
-        from provisa.compiler.mutation_gen import apply_column_presets
+    def test_a_now_preset_sets_the_time_of_the_write(self):
+        from provisa.compiler.stage2 import apply_governance
 
-        presets = [{"column": "updated_at", "source": "now"}]
-        result = apply_column_presets({"id": 1, "amount": 10}, presets)
-
-        assert "updated_at" in result
-        # The injected value is an ISO string
-        assert isinstance(result["updated_at"], str)
-        assert "T" in result["updated_at"]  # ISO-8601 separator
-
-    def test_apply_column_presets_header_source(self):
-        # REQ-214: header source reads value from the provided headers dict
-        from provisa.compiler.mutation_gen import apply_column_presets
-
-        presets = [{"column": "created_by", "source": "header", "name": "x-user-id"}]
-        result = apply_column_presets(
-            {"id": 1},
-            presets,
-            headers={"x-user-id": "alice"},
+        governed = apply_governance(
+            "INSERT INTO public.orders (id, amount) VALUES (1, 10)",
+            _preset_gov({"column": "updated_at", "source": "now"}),
         )
+        assert "updated_at" in governed and "CURRENT_TIMESTAMP" in governed
 
-        assert result["created_by"] == "alice"
+    def test_a_session_preset_reads_the_requests_session_variable(self):
+        from provisa.compiler.stage2 import apply_governance
 
-    def test_apply_column_presets_literal_source_int(self):
-        # REQ-214: literal source with integer data_type coerces correctly
-        from provisa.compiler.mutation_gen import apply_column_presets
-
-        presets = [{"column": "tenant_id", "source": "literal", "value": "42", "data_type": "int"}]
-        result = apply_column_presets({"id": 1}, presets)
-
-        assert result["tenant_id"] == 42
-
-    def test_preset_overrides_user_supplied_value(self):
-        # REQ-214: preset always overrides user-supplied values (security enforcement)
-        from provisa.compiler.mutation_gen import apply_column_presets
-
-        presets = [{"column": "created_by", "source": "header", "name": "x-user-id"}]
-        result = apply_column_presets(
-            {"id": 1, "created_by": "mallory"},
-            presets,
-            headers={"x-user-id": "alice"},
+        governed = apply_governance(
+            "INSERT INTO public.orders (id, amount) VALUES (1, 10)",
+            _preset_gov({"column": "created_by", "source": "session", "name": "user_id"}),
+            {"user_id": "alice"},
         )
+        assert "'alice'" in governed
 
-        assert result["created_by"] == "alice"
+    def test_a_literal_preset_is_typed_as_its_column(self):
+        from provisa.compiler.stage2 import apply_governance
 
-    def test_compile_insert_injects_presets_into_sql(self):
-        # REQ-214: compile_insert uses apply_column_presets before SQL generation
+        governed = apply_governance(
+            "INSERT INTO public.orders (id, amount) VALUES (1, 10)",
+            _preset_gov({"column": "created_by", "source": "literal", "value": "42"}),
+        )
+        assert "CAST('42' AS VARCHAR)" in governed
+
+    def test_a_statement_may_not_supply_a_preset_column(self):
+        import pytest as _pytest
+
+        from provisa.compiler.stage2 import apply_governance
+        from provisa.compiler.write_admission import WriteNotAdmitted
+
+        with _pytest.raises(WriteNotAdmitted, match="'created_by' is set by"):
+            apply_governance(
+                "INSERT INTO public.orders (id, amount, created_by) VALUES (1, 10, 'mallory')",
+                _preset_gov({"column": "created_by", "source": "session", "name": "user_id"}),
+                {"user_id": "alice"},
+            )
+
+    def test_a_compiled_insert_carries_the_preset_once_admitted(self):
         from provisa.compiler.mutation_gen import compile_insert
+        from provisa.compiler.stage2 import apply_governance
 
-        presets = [{"column": "tenant_id", "source": "literal", "value": "7", "data_type": "int"}]
-        table = _make_table_meta(column_presets=presets)
         field_node = _make_field_node("insertOrders", {"input": {"id": 1, "amount": 50}})
-
-        result = compile_insert(field_node, table, variables=None, headers=None)  # type: ignore[arg-type]
-
-        assert "tenant_id" in result.sql
-        assert result.mutation_type == "insert"
+        compiled = compile_insert(field_node, _make_table_meta(), variables=None)  # type: ignore[arg-type]
+        governed = apply_governance(
+            compiled.sql,
+            _preset_gov({"column": "created_by", "source": "literal", "value": "7"}),
+            {},
+            compiled.params,
+        )
+        assert "created_by" in governed
+        assert compiled.mutation_type == "insert"
 
 
 # ---------------------------------------------------------------------------

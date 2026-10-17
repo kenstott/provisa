@@ -15,7 +15,7 @@ REQ-182 — Hasura v2 metadata converter emits valid Provisa YAML config.
 REQ-183 — Hasura DDN (v3) HML converter emits valid Provisa YAML config.
 REQ-184 — Shared boolean expression-to-SQL converter for Hasura filters.
 REQ-185 — v2 select_permissions[].columns -> Provisa column visible_to.
-REQ-186 — v2 insert/update_permissions[].columns -> Provisa column writable_by.
+REQ-186 — v2 insert/update_permissions[].columns -> the role's write grants (REQ-2074).
 REQ-187 — v2 select_permissions[].filter -> Provisa rls_rules[].
 REQ-188 — object_relationships -> many-to-one; array_relationships -> one-to-many.
 REQ-189 — DDN resolves GraphQL field names to physical columns via fieldMapping.
@@ -624,7 +624,7 @@ def _then_visible_to(shared_data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# REQ-186 — insert/update columns -> writable_by
+# REQ-186 — insert/update columns -> write grants (REQ-2074)
 # ---------------------------------------------------------------------------
 
 
@@ -644,21 +644,17 @@ def _given_v2_write_perms(shared_data: dict) -> None:
     )
 
 
-@then("each column's writable_by is populated from the role's insert/update column list")
-def _then_writable_by(shared_data: dict) -> None:
+@then("each role's insert and update grants hold the role's insert/update column list")
+def _then_write_grants(shared_data: dict) -> None:
     table = _find_table(shared_data["config"], "orders")
     assert table is not None
-    amount = _col(table, "amount")
-    region = _col(table, "region")
-    assert amount is not None and "clerk" in amount.writable_by
-    assert region is not None
-    assert "clerk" in region.writable_by
-    assert "editor" in region.writable_by
-    # A select-only column is writable by no role the metadata names — only by org_admin, which
-    # holds every permission as Hasura's implicit admin does (mapper.py, REQ-1684).
-    id_col = _col(table, "id")
-    assert id_col is not None and id_col.writable_by == ["org_admin"]
-    assert "clerk" not in id_col.writable_by and "editor" not in id_col.writable_by
+    grants = {(g.role, g.operation): g for g in table.write_grants}
+    assert grants[("clerk", "insert")].columns == ["amount", "region"]
+    assert grants[("editor", "update")].columns == ["region"]
+    # Each role holds only the operations its metadata gave it.
+    assert ("clerk", "update") not in grants and ("editor", "insert") not in grants
+    # org_admin holds every operation, as Hasura's implicit admin does (mapper.py, REQ-1684).
+    assert {op for (r, op) in grants if r == "org_admin"} == {"insert", "update", "delete"}
 
 
 # ---------------------------------------------------------------------------
@@ -1365,17 +1361,19 @@ def _given_v2_role_delete_perms(shared_data: dict) -> None:
     shared_data["collector"] = WarningCollector()
 
 
-@then("the role is upgraded to write capability with no per-table delete mapping produced")
+@then("the role is upgraded to write capability and holds a delete grant on that table")
 def _then_v2_role_upgraded_write(shared_data: dict) -> None:
     config = shared_data["config"]
     manager = next(r for r in config.roles if r.id == "manager")
     assert "write" in manager.capabilities, manager.capabilities
-    # No per-table delete mapping: a delete-only role grants no column visibility
-    # or writability (Provisa governs at the column level, not per-table deletes).
+    # REQ-2074: the delete permission is the role's delete grant on its table, and nothing more:
+    # a delete-only role is granted no column visibility and no insert or update.
+    orders = next(t for t in config.tables if t.table_name == "orders")
+    held = {(g.role, g.operation) for g in orders.write_grants if g.role == "manager"}
+    assert held == {("manager", "delete")}, held
     for table in config.tables:
         for col in table.columns:
             assert "manager" not in col.visible_to, (table.table_name, col.name)
-            assert "manager" not in col.writable_by, (table.table_name, col.name)
 
 
 # ---------------------------------------------------------------------------

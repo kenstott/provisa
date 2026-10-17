@@ -1,0 +1,15 @@
+actions:
+  - name: refund_order
+    definition:
+      kind: synchronous
+      handler: '{{PAYMENTS_BASE_URL}}/refund'
+      forward_client_headers: true
+    permissions:
+      - role: support
+    comment: Refund an order through the payment provider
+custom_types:
+  input_objects: []
+  objects:
+    - name: RefundResult
+  scalars: []
+  enums: []

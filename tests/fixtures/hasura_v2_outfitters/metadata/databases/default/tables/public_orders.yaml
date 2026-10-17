@@ -1,0 +1,89 @@
+table:
+  name: orders
+  schema: public
+object_relationships:
+  - name: customer
+    using:
+      foreign_key_constraint_on: customer_id
+array_relationships:
+  - name: items
+    using:
+      foreign_key_constraint_on:
+        column: order_id
+        table:
+          name: order_items
+          schema: public
+insert_permissions:
+  - role: customer
+    permission:
+      check:
+        customer_id:
+          _eq: X-Hasura-User-Id
+      set:
+        customer_id: x-hasura-User-Id
+        status: placed
+      columns:
+        - ship_to
+select_permissions:
+  - role: customer
+    permission:
+      columns:
+        - id
+        - placed_at
+        - ship_to
+        - status
+        - total_cents
+      filter:
+        customer_id:
+          _eq: X-Hasura-User-Id
+  - role: support
+    permission:
+      columns:
+        - customer_id
+        - id
+        - placed_at
+        - ship_to
+        - status
+        - total_cents
+      filter: {}
+      allow_aggregations: true
+  - role: analyst
+    permission:
+      columns:
+        - customer_id
+        - id
+        - placed_at
+        - status
+        - total_cents
+      filter:
+        status:
+          _neq: cancelled
+      allow_aggregations: true
+update_permissions:
+  - role: support
+    permission:
+      columns:
+        - ship_to
+        - status
+      filter:
+        status:
+          _in:
+            - placed
+            - packed
+      check:
+        status:
+          _in:
+            - placed
+            - packed
+            - cancelled
+event_triggers:
+  - name: order_placed
+    definition:
+      enable_manual: false
+      insert:
+        columns: '*'
+    retry_conf:
+      interval_sec: 10
+      num_retries: 3
+      timeout_sec: 60
+    webhook_from_env: FULFILMENT_WEBHOOK_URL

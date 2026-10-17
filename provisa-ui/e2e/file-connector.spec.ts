@@ -21,17 +21,17 @@ const GLOB = "demo/files/northwind/**";
 // LINQ4J maps camelCase CSV headers to snake_case column names
 // visibleTo must be non-empty — empty list means "visible to no role" in Provisa's governance model
 const CUSTOMERS_COLUMNS = [
-  { name: "customer_id", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "company_name", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "contact_name", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "contact_title", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "address", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "city", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "region", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "postal_code", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "country", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "phone", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "fax", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "customer_id", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "company_name", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "contact_name", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "contact_title", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "address", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "city", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "region", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "postal_code", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "country", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "phone", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "fax", visibleTo: ["developer", "org_admin", "analyst"] },
 ];
 
 async function gql(query: string, variables: Record<string, unknown> = {}) {

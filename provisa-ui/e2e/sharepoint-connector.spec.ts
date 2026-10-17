@@ -26,12 +26,12 @@ const CALENDAR_COLUMNS = [
   // sharepoint.calendar — the connector maps the SharePoint list fields to snake_case (EventDate
   // -> start_time, EndDate -> end_time). register_table resolves each column's type by exact name
   // (REQ-846) and refuses the registration for any name the source does not have.
-  { name: "id", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "title", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "start_time", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "end_time", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "description", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "location", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "id", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "title", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "start_time", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "end_time", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "description", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "location", visibleTo: ["developer", "org_admin", "analyst"] },
 ];
 
 async function gql(query: string, variables: Record<string, unknown> = {}) {

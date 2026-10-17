@@ -42,10 +42,10 @@ const DOCKER_NETWORK = process.env.PROVISA_E2E_DOCKER_NETWORK ?? "provisa_defaul
 
 // visibleTo must be non-empty — empty list means "visible to no role" in Provisa's governance model
 const INTERNAL_SERVER_COLUMNS = [
-  { name: "time", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "host", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "source", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
-  { name: "sourcetype", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "time", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "host", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "source", visibleTo: ["developer", "org_admin", "analyst"] },
+  { name: "sourcetype", visibleTo: ["developer", "org_admin", "analyst"] },
 ];
 
 async function gql(query: string, variables: Record<string, unknown> = {}) {

@@ -1,0 +1,8 @@
+type Mutation {
+  refund_order(order_id: Int!, reason: String!): RefundResult
+}
+
+type RefundResult {
+  refund_id: String!
+  status: String!
+}

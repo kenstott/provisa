@@ -481,6 +481,34 @@ def release_mutation(table_id: int) -> str:
     return f"mutation {{ {release_field(table_id)} {{ success message }} }}"
 
 
+def config_write_grants(roles: list[str], columns: list[str]) -> list[dict]:
+    """A configuration table's ``write_grants``: each of ``roles`` may insert and update
+    ``columns`` and delete rows, its read row filter bounding each (REQ-2074)."""
+    return [
+        {"role": r, "operation": op, **({"columns": list(columns)} if op != "delete" else {})}
+        for r in roles
+        for op in ("insert", "update", "delete")
+    ]
+
+
+def write_grants_field(table_id: int, roles: list[str], columns: list[str]) -> str:
+    """The admin GraphQL field that lets each of ``roles`` insert and update ``columns`` of a
+    table and delete its rows, its read row filter bounding each (REQ-2074): what an
+    administrator does to make a registered table writable."""
+    cols = ", ".join(f'"{c}"' for c in columns)
+    grants = ", ".join(
+        f'{{ role: "{r}", operation: "{op}", columns: [{cols if op != "delete" else ""}] }}'
+        for r in roles
+        for op in ("insert", "update", "delete")
+    )
+    return f"setTableWriteGrants(tableId: {table_id}, grants: [{grants}])"
+
+
+def write_grants_mutation(table_id: int, roles: list[str], columns: list[str]) -> str:
+    """:func:`write_grants_field` as a whole mutation document."""
+    return f"mutation {{ {write_grants_field(table_id, roles, columns)} {{ success message }} }}"
+
+
 def ready_org_folder(org_id: str | None = None):
     """The org's folder on this node made ready, as its runtime's build makes it (REQ-1992): the
     bound org's when ``org_id`` is None. For a test that moved the data directory, or bound an

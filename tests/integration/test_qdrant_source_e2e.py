@@ -38,6 +38,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import httpx
 import pytest
 import yaml
+from tests.helpers import config_write_grants
 
 pytestmark = [pytest.mark.integration]
 
@@ -163,7 +164,7 @@ def _col(name: str, data_type: str, **kw) -> dict:
 
 
 def _writable(name: str, data_type: str, **kw) -> dict:
-    return _col(name, data_type, writable_by=[_ROLE], **kw)
+    return _col(name, data_type, **kw)  # the table's write grants name it (REQ-2074)
 
 
 def _arg(name: str, data_type: str, *, required: bool = False) -> dict:
@@ -244,6 +245,7 @@ def server(qdrant, embeddings, tmp_path_factory):
                         embedding_model="stub",
                     ),
                 ],
+                "write_grants": config_write_grants([_ROLE], ["id", "title", "lang", "text_vec"]),
             },
             {
                 "source_id": "vec",
