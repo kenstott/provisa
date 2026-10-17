@@ -117,7 +117,12 @@ class KafkaNotificationProvider(NotificationProvider):  # REQ-258, REQ-261
             topic,
             bootstrap_servers=self._bootstrap_servers,
             group_id=self._group_id,
-            auto_offset_reset="latest",
+            # A group that has committed resumes where it did. One that has not (a table's first
+            # listener) reads from the earliest offset: the table was landed from there
+            # (kafka.fetch), and a message published after that landing and before this start
+            # was never landed when it read from the newest. What the landing covered is applied
+            # again by primary key, which changes nothing.
+            auto_offset_reset="earliest",
             enable_auto_commit=False,  # REQ-1734: ack() commits, not a timer
             # reason: arbitrary pass-through Kafka config; each strict aiokafka param
             # cannot be matched against the heterogeneous kwargs union.
