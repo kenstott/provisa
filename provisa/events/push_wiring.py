@@ -120,8 +120,12 @@ def _cdc_provider(state: Any, src: Any, tbl: dict) -> tuple[Any, str]:
     from provisa.subscriptions.debezium_provider import DebeziumNotificationProvider
     from provisa.subscriptions.registry import get_provider
 
+    from provisa.kafka.landed_offsets import landed_group
+
     cdc = src.cdc
     group = _consumer_group(cdc.consumer_group_id or state.config.cdc_consumer_group_id)
+    # REQ-1733: its first start reads from where the table's landing stopped on the topic.
+    landed = landed_group(src.id)
     if _effective_signal(src, tbl) == "kafka":
         topic = ((tbl.get("live") or {}).get("kafka") or {})["topic"]
         provider = get_provider(
@@ -132,6 +136,7 @@ def _cdc_provider(state: Any, src: Any, tbl: dict) -> tuple[Any, str]:
                 "registry": RegistrySettings.of(cdc),
                 "field_mapping": ((tbl.get("live") or {}).get("kafka") or {}).get("field_mapping")
                 or {},
+                "landed": landed,
             },
         )
         return provider, topic
@@ -143,8 +148,40 @@ def _cdc_provider(state: Any, src: Any, tbl: dict) -> tuple[Any, str]:
         registry=RegistrySettings.of(cdc),
         source_type=_source_type_of(src),
         pg_schema=tbl["schema_name"],
+        landed=landed,
     )
     return provider, tbl["table_name"]
+
+
+def _field(holder: Any, name: str) -> Any:
+    """``name`` of a registered-table row (a dict) or of a model object; None when absent."""
+    if holder is None:
+        return None
+    return holder.get(name) if isinstance(holder, dict) else getattr(holder, name, None)
+
+
+def cdc_capture(src: Any, tbl: Any) -> tuple[str, str] | None:
+    """The brokers and topic a captured table's changes arrive on (:func:`_captured_by_cdc`), for
+    a table row or a model table; None for a table that is not captured. Its build records where
+    it stopped on that topic (REQ-1733)."""
+    from provisa.subscriptions.debezium_provider import debezium_topic
+
+    signal = _field(tbl, "change_signal")
+    signal = signal if signal is not None else src.change_signal
+    if _source_type_of(src) in PUSH_SOURCE_TYPES or signal not in _CDC_TRANSPORT_SIGNALS:
+        return None
+    cdc = src.cdc
+    if signal == "kafka":
+        topic = _field(_field(_field(tbl, "live"), "kafka"), "topic")
+    else:
+        topic = debezium_topic(
+            cdc.topic_prefix,
+            src.database,
+            _source_type_of(src),
+            _field(tbl, "schema_name"),
+            _field(tbl, "table_name"),
+        )
+    return cdc.bootstrap_servers, topic
 
 
 def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None:
@@ -153,6 +190,7 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
     kafka, the registered table name for websocket (one socket, one stream, no per-topic routing)."""
     from provisa.core.secrets import resolve_secrets
     from provisa.kafka.avro_registry import RegistrySettings
+    from provisa.kafka.landed_offsets import landed_group
     from provisa.subscriptions.registry import get_provider
 
     source_type = src.type.value if hasattr(src.type, "value") else str(src.type)
@@ -199,6 +237,8 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
                 if src.database
                 else None,
                 "field_mapping": kafka_cfg.get("field_mapping") or {},
+                # REQ-1733: its first start reads from where the table's landing stopped.
+                "landed": landed_group(src.id),
             },
         )
         return provider, topic
@@ -620,7 +660,11 @@ async def _wire_pipeline(
     state.kafka_pipeline_tables[key] = (address.schema, address.table)
     if state.kafka_pipelines.get(key) == expected:
         return
+    from provisa.kafka.landed_offsets import landed_group, recorded
+
     try:
+        # REQ-1733: a new pipeline starts where the table's landing stopped on the topic.
+        landed = await recorded(bootstrap, landed_group(src.id), origin.location)
         name = await asyncio.to_thread(
             singlestore_kafka.ensure,
             _pipeline_store(state, engine),
@@ -632,6 +676,7 @@ async def _wire_pipeline(
             bootstrap=bootstrap,
             field_mapping=field_mapping,
             schema_registry=registry,
+            landed=landed,
         )
     except Exception:
         log.exception(

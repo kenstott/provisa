@@ -130,7 +130,18 @@ async def _collect_events(
     count: int,
     timeout: float = 60.0,
 ) -> list:
-    """Collect up to *count* ChangeEvents from *provider* within *timeout* seconds."""
+    """Collect up to *count* ChangeEvents from *provider* within *timeout* seconds: the changes
+    made from now on. The provider's group is committed at the topic's end first, as a listener
+    that has landed everything so far stands; with nothing committed it reads the topic from its
+    earliest offset (REQ-1733), and the table's snapshot would fill *count*."""
+    from provisa.kafka import landed_offsets
+
+    topic = provider._build_topic(table)  # noqa: SLF001
+    await landed_offsets.record(
+        KAFKA_BOOTSTRAP,
+        provider._consumer_group_id,  # noqa: SLF001
+        await landed_offsets.end_offsets(KAFKA_BOOTSTRAP, topic),
+    )
     events = []
     try:
         async with asyncio.timeout(timeout):

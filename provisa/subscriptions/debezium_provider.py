@@ -74,6 +74,19 @@ _OP_MAP = {
 }
 
 
+def debezium_topic(
+    topic_prefix: str, database: str, source_type: str, pg_schema: str, table: str
+) -> str:
+    """The topic a Debezium connector writes ``table``'s changes to.
+
+    PostgreSQL: {prefix}.{schema}.{table}  (Debezium uses schema, not dbname)
+    Other DBs:  {prefix}.{database}.{table}
+    """
+    if source_type == "postgresql":
+        return f"{topic_prefix}.{pg_schema}.{table}"
+    return f"{topic_prefix}.{database}.{table}"
+
+
 class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
     """Consumes Debezium CDC events from Kafka and emits ChangeEvents.
 
@@ -98,8 +111,12 @@ class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
         registry: RegistrySettings | None = None,
         source_type: str = "postgresql",
         pg_schema: str = "public",
+        landed: str | None = None,
     ) -> None:
         self._bootstrap_servers = bootstrap_servers
+        # REQ-1733: the group the table's landing records where it stopped on this topic under
+        # (kafka.landed_offsets.landed_group).
+        self._landed = landed
         self._topic_prefix = topic_prefix
         self._database = database
         self._consumer_group_id = consumer_group_id
@@ -115,9 +132,9 @@ class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
         PostgreSQL: {prefix}.{schema}.{table}  (Debezium uses schema, not dbname)
         Other DBs:  {prefix}.{database}.{table}
         """
-        if self._source_type == "postgresql":
-            return f"{self._topic_prefix}.{self._pg_schema}.{table}"
-        return f"{self._topic_prefix}.{self._database}.{table}"
+        return debezium_topic(
+            self._topic_prefix, self._database, self._source_type, self._pg_schema, table
+        )
 
     def _parse_json_message(self, raw: bytes) -> dict | None:
         """Parse a JSON-encoded Debezium envelope."""
@@ -211,11 +228,23 @@ class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
                 await self._close_registry()
                 raise
 
+        if self._landed is not None:
+            # REQ-1733: a partition this group has committed nothing on starts where the table's
+            # landing stopped: nothing changed since is missed, nothing landed is read again.
+            from provisa.kafka.landed_offsets import start_where_landed
+
+            await start_where_landed(
+                self._bootstrap_servers, self._consumer_group_id, topic, self._landed
+            )
         self._consumer = AIOKafkaConsumer(
             topic,
             bootstrap_servers=self._bootstrap_servers,
             group_id=self._consumer_group_id,
-            auto_offset_reset="latest",
+            # A partition the group has committed on resumes there, and one a landing recorded
+            # was committed above. One with neither -- no landing has recorded where it stopped
+            # -- is read from the earliest offset: from the newest, a change made before this
+            # start would never be landed.
+            auto_offset_reset="earliest",
             enable_auto_commit=False,  # REQ-1734: ack() commits what was landed, not a timer
         )
         await self._consumer.start()

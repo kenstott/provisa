@@ -76,9 +76,12 @@ def ensure(
     bootstrap: str,
     field_mapping: dict[str, str] | None = None,
     schema_registry: str | None = None,
+    landed: dict[int, int],
 ) -> str:
     """Make ``schema.table`` land from ``origin`` through its continuous pipeline, and return the
-    pipeline's name. ``columns`` are (name, IR type) pairs, keyed by ``pk_columns``."""
+    pipeline's name. ``columns`` are (name, IR type) pairs, keyed by ``pk_columns``. ``landed``:
+    where the table's landing stopped on the topic, by partition, where a new pipeline starts
+    (``singlestore_pipeline.offsets_from``)."""
     from provisa.federation.materialize_exec import build_table
     from provisa.federation.sqlalchemy_runtime import _ensure_schema, _ensure_table
 
@@ -112,7 +115,7 @@ def ensure(
                 schema_registry=schema_registry,
             )
             try:
-                _execute(conn, [*statements, sp.offsets_latest(schema, name)])
+                _execute(conn, [*statements, sp.offsets_from(schema, name, landed)])
             except Exception:
                 # Another worker wiring the same table may have created it first.
                 if name not in _running(conn, schema):

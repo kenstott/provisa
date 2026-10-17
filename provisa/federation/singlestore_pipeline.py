@@ -512,10 +512,16 @@ def kafka_procedure_for(pipeline: str) -> str:
     return _KAFKA_PROCEDURE_PREFIX + pipeline[len(KAFKA_PIPELINE_PREFIX) :]
 
 
-def offsets_latest(schema: str, pipeline: str) -> str:
-    """A new Kafka pipeline starts at the topic's latest offsets, as the relay consumer does
-    (``auto_offset_reset="latest"``): it lands what is produced from now on."""
-    return f"ALTER PIPELINE {_qualified(schema, pipeline)} SET OFFSETS LATEST"
+def offsets_from(schema: str, pipeline: str, landed: dict[int, int]) -> str:
+    """A new Kafka pipeline starts where the table's landing stopped on each partition
+    (``landed``, by partition: ``kafka.landed_offsets.recorded``), as the relay's listener does
+    (REQ-1733): nothing published since is missed, nothing landed is loaded again. With no
+    landing recorded it starts at the earliest offsets: from the latest, a message published
+    before it was created would never be landed."""
+    if not landed:
+        return f"ALTER PIPELINE {_qualified(schema, pipeline)} SET OFFSETS EARLIEST"
+    offsets = {str(partition): offset for partition, offset in sorted(landed.items())}
+    return f"ALTER PIPELINE {_qualified(schema, pipeline)} SET OFFSETS {_json_literal(offsets)}"
 
 
 def kafka_pipelines_query(schema: str) -> str:

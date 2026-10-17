@@ -295,10 +295,23 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
             await replica_state.record_started(
                 conn, key, method=job.method.value, load_kind=target.caps.load.value
             )
+        # REQ-1733: a table its source's CDC topic follows is kept, after this build, by a
+        # listener on that topic, which starts where the build stopped reading it. Taken before
+        # the source is read, so no change is missed; one made while it is read is applied again
+        # by key.
+        from provisa.events.push_wiring import cdc_capture
+        from provisa.kafka import landed_offsets
+
+        captured = cdc_capture(source, table)
+        stopped = await landed_offsets.end_offsets(*captured) if captured else None
         # REQ-1661: never two writers on one replica in a process. The event loop's delta lands
         # take this same lock, keyed on the replica's address.
         async with land_lock(f"{address.schema}.{address.table}"):
             outcome = await job.run(progress)
+        if captured and stopped is not None:
+            await landed_offsets.record(
+                captured[0], landed_offsets.landed_group(source.id), stopped
+            )
         # REQ-874: a delta table that fell through to a whole rebuild records why (delta_skipped) and
         # advances the cursor to the source's current max watermark, so the next build resumes as a
         # delta from there instead of re-pulling everything.

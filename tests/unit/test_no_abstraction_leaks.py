@@ -169,6 +169,9 @@ OWNERS: dict[str, set[str]] = {
         # The product's producer (change events, sinks, live outputs): delivery through the one
         # Kafka client the product ships, not federated querying.
         "provisa/kafka/producer.py",
+        # REQ-1733: where a table's landing stopped on its topic, committed and read back as a
+        # consumer group's offsets, so its listener or pipeline starts there.
+        "provisa/kafka/landed_offsets.py",
     },
     "kafka": set(),
     "aiomysql": {

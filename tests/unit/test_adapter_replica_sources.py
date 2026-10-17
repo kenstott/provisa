@@ -16,6 +16,7 @@ import httpx
 import pyarrow as pa
 import respx
 
+import provisa.api.app  # noqa: F401 -- the API layer says whether the deployment holds many orgs, which reading a source's secrets asks
 from provisa.events import source_loader as sl
 from provisa.federation.data_replicator import SourceRead
 from provisa.federation.replica_source import (
@@ -180,7 +181,19 @@ async def test_kafka_yields_one_poll_at_a_time(monkeypatch):
                 return {}
             return {("tp", 0): [SimpleNamespace(value=v) for v in self._polls.pop(0)]}
 
+        def assignment(self):
+            return {("topic", 0)}
+
+        async def position(self, tp):
+            return 3
+
+    recorded: list[tuple] = []
+
+    async def _record(bootstrap, landed, offsets):
+        recorded.append((landed, offsets))
+
     monkeypatch.setattr(aiokafka, "AIOKafkaConsumer", _Consumer)
+    monkeypatch.setattr("provisa.kafka.landed_offsets.record", _record)
     source = SimpleNamespace(id="k", host="h", port=9092)
     reader = sl.make_kafka_loader().replica_source(
         source, _table(name="topic"), [("id", "bigint"), ("name", "text")]
@@ -192,6 +205,9 @@ async def test_kafka_yields_one_poll_at_a_time(monkeypatch):
         [{"id": 3, "name": None}],
     ]
     assert _Consumer.last.stopped
+    # REQ-1733: the build records where its drain stopped, for the table's listener.
+    assert recorded == [(recorded[0][0], {("topic", 0): 3})]
+    assert recorded[0][0].endswith("-k")
 
 
 @respx.mock

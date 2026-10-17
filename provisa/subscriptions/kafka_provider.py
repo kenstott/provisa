@@ -80,9 +80,13 @@ class KafkaNotificationProvider(NotificationProvider):  # REQ-258, REQ-261
         *,
         registry: RegistrySettings | None = None,
         field_mapping: dict[str, str] | None = None,
+        landed: str | None = None,
         **consumer_kwargs: str | int | bool | None,
     ) -> None:
         self._bootstrap_servers = bootstrap_servers
+        # REQ-1733: the group the table's landing records where it stopped under
+        # (kafka.landed_offsets.landed_group); None for a reader of a topic nothing lands.
+        self._landed = landed
         self._group_id = group_id
         self._registry_settings = registry
         self._registry: SchemaRegistry | None = None
@@ -113,11 +117,21 @@ class KafkaNotificationProvider(NotificationProvider):  # REQ-258, REQ-261
             except BaseException:
                 await self._close_registry()
                 raise
+        if self._landed is not None:
+            # REQ-1733: a partition this group has committed nothing on starts where the table's
+            # landing stopped: nothing published since is missed, nothing landed is read again.
+            from provisa.kafka.landed_offsets import start_where_landed
+
+            await start_where_landed(self._bootstrap_servers, self._group_id, topic, self._landed)
         consumer: _KafkaConsumer = AIOKafkaConsumer(
             topic,
             bootstrap_servers=self._bootstrap_servers,
             group_id=self._group_id,
-            auto_offset_reset="latest",
+            # A partition the group has committed on resumes there, and one a landing recorded
+            # was committed above. One with neither -- no landing has recorded where it stopped
+            # -- is read from the earliest offset: from the newest, a message published before
+            # this start would never be landed.
+            auto_offset_reset="earliest",
             enable_auto_commit=False,  # REQ-1734: ack() commits, not a timer
             # reason: arbitrary pass-through Kafka config; each strict aiokafka param
             # cannot be matched against the heterogeneous kwargs union.
