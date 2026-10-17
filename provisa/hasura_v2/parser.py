@@ -84,7 +84,12 @@ def _parse_table(raw: dict[str, Any]) -> HasuraTable:  # REQ-041, REQ-019, REQ-1
 
     config = raw.get("configuration", {})
     custom_name = config.get("custom_name") or raw.get("custom_name")
-    custom_cols = config.get("custom_column_names", {})
+    # column_config (Hasura v2.x) carries each column's custom_name; the older
+    # custom_column_names map says the same, and either may be all an export has.
+    custom_cols = dict(config.get("custom_column_names") or {})
+    for column, conf in (config.get("column_config") or {}).items():
+        if isinstance(conf, dict) and conf.get("custom_name"):
+            custom_cols[column] = conf["custom_name"]
     custom_root = config.get("custom_root_fields", raw.get("custom_root_fields", {}))
 
     table = HasuraTable(
@@ -200,6 +205,7 @@ def _parse_relationship(raw: dict[str, Any], rel_type: str) -> HasuraRelationshi
             remote_table=r_name,
             remote_schema=r_schema,
             column_mapping=col_map,
+            manual=True,
         )
 
     return HasuraRelationship(name=name, rel_type=rel_type, remote_table="", remote_schema="public")
@@ -239,6 +245,7 @@ def _parse_event_trigger(
         webhook=raw.get("webhook") or raw.get("webhook_from_env", ""),
         operations=ops,
         retry_conf=raw.get("retry_conf", {}),
+        webhook_from_env=not raw.get("webhook") and bool(raw.get("webhook_from_env")),
     )
 
 
@@ -249,9 +256,12 @@ def _parse_function(raw: dict[str, Any]) -> HasuraFunction:  # REQ-205
     else:
         name = fn_ref.get("name", "")
         schema = fn_ref.get("schema", "public")
-    config = raw.get("configuration", {})
+    config = raw.get("configuration") or {}
     exposed = config.get("exposed_as", "mutation")
-    return HasuraFunction(name=name, schema_name=schema, exposed_as=exposed)
+    roles = [
+        p["role"] for p in raw.get("permissions") or [] if isinstance(p, dict) and p.get("role")
+    ]
+    return HasuraFunction(name=name, schema_name=schema, exposed_as=exposed, roles=roles)
 
 
 def _parse_action(raw: dict[str, Any]) -> HasuraAction:  # REQ-205, REQ-209
@@ -275,6 +285,8 @@ def _parse_cron_trigger(raw: dict[str, Any]) -> HasuraCronTrigger:
         schedule=raw.get("schedule", ""),
         include_in_metadata=raw.get("include_in_metadata", True),
         enabled=raw.get("comment", "") != "disabled",
+        payload=raw.get("payload") or {},
+        retry_conf=raw.get("retry_conf") or {},
     )
 
 
@@ -301,7 +313,12 @@ def parse_metadata_dir(
 
     # Try v3-style databases/ layout first
     databases_dir = md / "databases"
-    if databases_dir.exists():
+    if (databases_dir / "databases.yaml").exists():
+        # What the CLI writes: databases.yaml lists each source with its kind and connection,
+        # and its tables and functions behind !include indexes.
+        for raw_src in _load_yaml(databases_dir / "databases.yaml") or []:
+            metadata.sources.append(_parse_listed_source(raw_src, databases_dir))
+    elif databases_dir.exists():
         for db_dir in sorted(databases_dir.iterdir()):
             if not db_dir.is_dir():
                 continue
@@ -328,6 +345,13 @@ def parse_metadata_dir(
     elif isinstance(actions_data, list):
         for raw_action in actions_data:
             metadata.actions.append(_parse_action(raw_action))
+
+    # The actions' SDL: each action's arguments and output, and the output types' fields.
+    if (md / "actions.graphql").exists():
+        _read_actions_sdl((md / "actions.graphql").read_text(), metadata)
+    if isinstance(actions_data, dict):
+        for obj in (actions_data.get("custom_types") or {}).get("objects") or []:
+            metadata.custom_types.setdefault(obj["name"], [])
 
     # Cron triggers
     cron_data = _load_yaml(md / "cron_triggers.yaml")
@@ -400,6 +424,10 @@ def parse_metadata_document(
 
     for raw_action in doc.get("actions", []) or []:
         metadata.actions.append(_parse_action(raw_action))
+    for obj in (doc.get("custom_types") or {}).get("objects") or []:
+        metadata.custom_types[obj["name"]] = [
+            (f["name"], str(f["type"])) for f in obj.get("fields") or []
+        ]
     for raw_cron in doc.get("cron_triggers", []) or []:
         metadata.cron_triggers.append(_parse_cron_trigger(raw_cron))
     for raw_ir in doc.get("inherited_roles", []) or []:
@@ -423,6 +451,68 @@ def parse_metadata_document(
         if doc.get(key):
             collector.warn(key, f"{key} is present in the export and is not converted")
     return metadata
+
+
+def _included(entry: Any, base: Path) -> tuple[list, Path]:
+    """A list an index gives inline, or behind ``!include <file>`` (relative to ``base``), with
+    the directory its own includes are relative to."""
+    if isinstance(entry, str) and entry.startswith("!include "):
+        path = base / entry[len("!include ") :].strip()
+        return list(_load_yaml(path) or []), path.parent
+    return list(entry or []), base
+
+
+def _parse_listed_source(raw: dict[str, Any], databases_dir: Path) -> HasuraSource:  # REQ-417
+    """One source as databases.yaml lists it."""
+    source = HasuraSource(
+        name=raw.get("name", "default"),
+        kind=raw.get("kind", "postgres"),
+        connection_info=(raw.get("configuration") or {}).get("connection_info") or {},
+    )
+    tables, base = _included(raw.get("tables"), databases_dir)
+    for entry in tables:
+        resolved = _resolve_include(entry, base)
+        if isinstance(resolved, dict):
+            source.tables.append(_parse_table(resolved))
+    functions, base = _included(raw.get("functions"), databases_dir)
+    for entry in functions:
+        resolved = _resolve_include(entry, base)
+        if isinstance(resolved, dict):
+            source.functions.append(_parse_function(resolved))
+    return source
+
+
+def _gql_type(node: Any) -> str:
+    from graphql import print_ast
+
+    return print_ast(node)
+
+
+def _read_actions_sdl(sdl: str, metadata: HasuraMetadata) -> None:
+    """Fill each action's arguments and output type, and the output types' fields, from
+    actions.graphql -- where the CLI writes them; the document carries them inline."""
+    from graphql import parse
+    from graphql.language import ObjectTypeDefinitionNode, ObjectTypeExtensionNode
+
+    by_name = {a.name: a for a in metadata.actions}
+    for node in parse(sdl).definitions:
+        if not isinstance(node, (ObjectTypeDefinitionNode, ObjectTypeExtensionNode)):
+            continue
+        type_name = node.name.value
+        for f in node.fields or ():
+            if type_name in ("Mutation", "Query"):
+                action = by_name.get(f.name.value)
+                if action is None:
+                    continue
+                action.definition.action_type = type_name.lower()
+                action.definition.arguments = [
+                    {"name": a.name.value, "type": _gql_type(a.type)} for a in f.arguments or ()
+                ]
+                action.definition.output_type = _gql_type(f.type)
+            else:
+                metadata.custom_types.setdefault(type_name, []).append(
+                    (f.name.value, _gql_type(f.type))
+                )
 
 
 def _parse_database_dir(db_dir: Path, collector: WarningCollector) -> HasuraSource:  # REQ-417
@@ -463,13 +553,18 @@ def _parse_database_dir(db_dir: Path, collector: WarningCollector) -> HasuraSour
     # Functions
     functions_dir = db_dir / "functions"
     if functions_dir.exists():
-        for fn_file in sorted(functions_dir.glob("*.yaml")):
+        index = functions_dir / "functions.yaml"
+        files = [index] if index.exists() else sorted(functions_dir.glob("*.yaml"))
+        for fn_file in files:
             data = _load_yaml(fn_file)
             if isinstance(data, dict):
                 source.functions.append(_parse_function(data))
             elif isinstance(data, list):
                 for raw_fn in data:
-                    source.functions.append(_parse_function(raw_fn))
+                    # An index lists per-function files as `!include public_x.yaml`.
+                    resolved = _resolve_include(raw_fn, functions_dir)
+                    if isinstance(resolved, dict):
+                        source.functions.append(_parse_function(resolved))
 
     functions_yaml = db_dir / "functions.yaml"
     if functions_yaml.exists() and not functions_dir.exists():

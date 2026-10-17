@@ -13,7 +13,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Callable
+from typing import Any, Mapping, NamedTuple
 
 # Requirements: REQ-041, REQ-040
 
@@ -76,19 +77,41 @@ def _convert_session_var(val: Any) -> str:
     return ""
 
 
-def bool_expr_to_sql(expr: Mapping[str, Any], table_alias: str = "") -> str:  # REQ-041, REQ-040
+class Hop(NamedTuple):
+    """A relationship a filter follows: the table it reaches, as the model names it, and the
+    column pairs (this table's column, that table's column) it joins on."""
+
+    target: str
+    pairs: list[tuple[str, str]]
+
+
+#: Resolves (table, relationship name) to the hop it makes, or None when the name is a column.
+Relations = Callable[[str, str], "Hop | None"]
+
+
+def bool_expr_to_sql(
+    expr: Mapping[str, Any],
+    table_alias: str = "",
+    *,
+    table: str = "",
+    relations: Relations | None = None,
+) -> str:  # REQ-041, REQ-040
     """Convert a Hasura boolean expression to a SQL WHERE clause.
 
-    Args:
-        expr: Hasura boolean expression dict.
-        table_alias: Optional table alias prefix for column references.
+    A key naming one of ``table``'s relationships (``relations``) filters through it: the rows
+    whose related row matches, as an EXISTS over the related table aliased ``_r1``, ``_r2`` ...
+    by depth. Inside one, a session variable is compared with a column as text: the related
+    column's type is not this table's to cast it to (REQ-1686 casts this table's own).
 
-    Returns:
-        SQL WHERE clause string (without the WHERE keyword).
+    Returns the SQL WHERE clause (without the WHERE keyword).
     """
     if not expr:
         return "TRUE"
-    return _convert_node(expr, table_alias)
+    return _convert_node(expr, table_alias, table=table, relations=relations, depth=0)
+
+
+def _is_operator_map(value: Any) -> bool:
+    return isinstance(value, dict) and bool(value) and all(k.startswith("_") for k in value)
 
 
 def _col_ref(col: str, table_alias: str) -> str:
@@ -97,25 +120,41 @@ def _col_ref(col: str, table_alias: str) -> str:
     return col
 
 
-def _convert_node(node: Mapping[str, Any], table_alias: str) -> str:
+def _convert_node(
+    node: Mapping[str, Any],
+    table_alias: str,
+    *,
+    table: str = "",
+    relations: Relations | None = None,
+    depth: int = 0,
+) -> str:
     parts: list[str] = []
+    inner = {"table": table, "relations": relations, "depth": depth}
 
     for key, value in node.items():
         if key == "_and":
             if not isinstance(value, list):
                 continue
-            sub = [_convert_node(item, table_alias) for item in value if isinstance(item, dict)]
+            sub = [
+                _convert_node(item, table_alias, **inner)
+                for item in value
+                if isinstance(item, dict)
+            ]
             parts.append("(" + " AND ".join(sub) + ")")
         elif key == "_or":
             if not isinstance(value, list):
                 continue
-            sub = [_convert_node(item, table_alias) for item in value if isinstance(item, dict)]
+            sub = [
+                _convert_node(item, table_alias, **inner)
+                for item in value
+                if isinstance(item, dict)
+            ]
             parts.append("(" + " OR ".join(sub) + ")")
         elif key == "_not":
             if not isinstance(value, dict):
                 continue
-            inner = _convert_node(value, table_alias)
-            parts.append(f"NOT ({inner})")
+            negated = _convert_node(value, table_alias, **inner)
+            parts.append(f"NOT ({negated})")
         elif key == "_exists":
             if not isinstance(value, dict):
                 continue
@@ -130,9 +169,26 @@ def _convert_node(node: Mapping[str, Any], table_alias: str) -> str:
         elif key.startswith("_"):
             # Unknown operator at top level — skip
             continue
+        elif (
+            relations is not None
+            and isinstance(value, dict)
+            and not _is_operator_map(value)
+            and (hop := relations(table, key)) is not None
+        ):
+            alias = f"_r{depth + 1}"
+            joined = " AND ".join(
+                f"{alias}.{theirs} = {_col_ref(ours, table_alias)}" for ours, theirs in hop.pairs
+            )
+            where = _convert_node(
+                value, alias, table=hop.target, relations=relations, depth=depth + 1
+            )
+            condition = joined if where == "TRUE" else f"{joined} AND {where}"
+            parts.append(f"EXISTS (SELECT 1 FROM {hop.target} AS {alias} WHERE {condition})")
         else:
             # Column name -> operator dict
             col = _col_ref(key, table_alias)
+            # Inside a relationship's EXISTS, a session variable is compared as text.
+            related = depth > 0
             if isinstance(value, dict):
                 for op, operand in value.items():
                     session_ref = _convert_session_var(operand)
@@ -144,9 +200,16 @@ def _convert_node(node: Mapping[str, Any], table_alias: str) -> str:
                     elif op in _OPERATORS:
                         sql_op = _OPERATORS[op]
                         if session_ref:
-                            parts.append(f"{col} {sql_op} {session_ref}")
+                            left = f"CAST({col} AS TEXT)" if related else col
+                            parts.append(f"{left} {sql_op} {session_ref}")
                         else:
-                            parts.append(f"{col} {sql_op} {_format_value(operand)}")
+                            value_sql = _format_value(operand)
+                            left = (
+                                f"CAST({col} AS TEXT)"
+                                if related and "current_setting(" in value_sql
+                                else col
+                            )
+                            parts.append(f"{left} {sql_op} {value_sql}")
                     else:
                         parts.append(f"{col} /* unsupported op: {op} */")
 

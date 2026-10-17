@@ -1696,7 +1696,7 @@
   "zh-HK/importTab.json::importTab.host": "Host",
   "zh-HK/importTab.json::importTab.intro": "Convert a Hasura v2 metadata export or a Hasura DDN project. Upload a zipped project directory, a consolidated metadata export (YAML or JSON), or a single .hml file. Nothing is written until you review the result and apply it.",
   "zh-HK/importTab.json::importTab.noFile": "No file selected.",
-  "zh-HK/importTab.json::importTab.noWarnings": "Everything in the upload converted.",
+  "zh-HK/importTab.json::importTab.noWarnings": "Nothing in the upload is left to redo by hand.",
   "zh-HK/importTab.json::importTab.password": "Password",
   "zh-HK/importTab.json::importTab.port": "Port",
   "zh-HK/importTab.json::importTab.preview": "Convert and preview",
@@ -1710,8 +1710,8 @@
   "zh-HK/importTab.json::importTab.username": "Username",
   "zh-HK/importTab.json::importTab.warningCategory": "Feature",
   "zh-HK/importTab.json::importTab.warningLocation": "Location",
-  "zh-HK/importTab.json::importTab.warningMessage": "What happened",
-  "zh-HK/importTab.json::importTab.warningsHeading": "Conversion warnings ({{count}})",
+  "zh-HK/importTab.json::importTab.warningMessage": "What to do",
+  "zh-HK/importTab.json::importTab.warningsHeading": "Redo by hand ({{count}})",
   "zh-HK/joinNotice.json::joinNotice.ack": "Got it",
   "zh-HK/joinNotice.json::joinNotice.admin": "An administrator added you to {{org}}.",
   "zh-HK/joinNotice.json::joinNotice.auto_join": "Your email address matches this organization's sign-in rule, so you were added to {{org}} automatically when you signed in.",
@@ -6863,5 +6863,12 @@
   "zh-HK/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh-HK/importTab.json::importTab.carriedHeading": "Carried as it is ({{count}})",
+  "zh-HK/importTab.json::importTab.noneCarried": "Nothing in the upload converted as it is.",
+  "zh-HK/importTab.json::importTab.carriedAs": "Carried as",
+  "zh-HK/importTab.json::importTab.mappedHeading": "Mapped to a better Provisa feature ({{count}})",
+  "zh-HK/importTab.json::importTab.noneMapped": "Nothing in the upload was mapped to another feature.",
+  "zh-HK/importTab.json::importTab.mappedTo": "Mapped to, and why",
+  "zh-HK/importTab.json::importTab.reportItem": "Item"
 }

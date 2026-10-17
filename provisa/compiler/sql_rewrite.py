@@ -312,12 +312,13 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     return tree.sql(dialect="postgres")
 
 
-def _column_renames(ctx: CompilationContext) -> dict[tuple[str, str], dict[str, str]]:
-    """Per physical ``(schema, table)`` (lowercased), each published column name that is not the
-    column's physical name, lowercased, to that physical name -- an ``alias``, or a SQL naming
-    convention's rename (``CompilationContext.physical_to_sql``). A published name that is another
-    physical column of the table is left out: lowering never renames a physical name, so it is
-    idempotent and safe on SQL that is already physical."""
+def published_columns(ctx: CompilationContext) -> dict[int, dict[str, str]]:
+    """Per table id, each published column name that is not the column's physical name,
+    lowercased, to that physical name -- an ``alias``, or a SQL naming convention's rename
+    (``CompilationContext.physical_to_sql``). A published name that is another physical column of
+    the same physical table is left out: it names that column. The one record of what a published
+    name reads: lowering renames by it (``_column_renames``) and governance decides by it
+    (``stage2.GovernanceContext.published``)."""
     by_id: dict[int, tuple[str, str]] = {
         m.table_id: (m.schema_name.lower(), m.table_name.lower()) for m in _all_table_metas(ctx)
     }
@@ -325,7 +326,7 @@ def _column_renames(ctx: CompilationContext) -> dict[tuple[str, str], dict[str, 
     for (table_id, phys), _ in ctx.physical_to_sql.items():
         if table_id in by_id:
             physical.setdefault(by_id[table_id], set()).add(phys.lower())
-    out: dict[tuple[str, str], dict[str, str]] = {}
+    out: dict[int, dict[str, str]] = {}
     for (table_id, phys), exposed in ctx.physical_to_sql.items():
         key = by_id.get(table_id)
         # A published name that differs from its own physical name only in case IS renamed: a
@@ -336,7 +337,20 @@ def _column_renames(ctx: CompilationContext) -> dict[tuple[str, str], dict[str, 
             or (exposed.lower() in physical[key] and exposed.lower() != phys.lower())
         ):
             continue
-        out.setdefault(key, {})[exposed.lower()] = phys
+        out.setdefault(table_id, {})[exposed.lower()] = phys
+    return out
+
+
+def _column_renames(ctx: CompilationContext) -> dict[tuple[str, str], dict[str, str]]:
+    """Per physical ``(schema, table)`` (lowercased), each published column name to its physical
+    name (``published_columns``). Lowering never renames a physical name, so it is idempotent and
+    safe on SQL that is already physical."""
+    by_id: dict[int, tuple[str, str]] = {
+        m.table_id: (m.schema_name.lower(), m.table_name.lower()) for m in _all_table_metas(ctx)
+    }
+    out: dict[tuple[str, str], dict[str, str]] = {}
+    for table_id, names in published_columns(ctx).items():
+        out.setdefault(by_id[table_id], {}).update(names)
     return out
 
 

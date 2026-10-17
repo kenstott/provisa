@@ -358,8 +358,9 @@ def _type_description(t: _TableInfo) -> str | None:
 
 
 def _can_see_relationship(rel: dict, table_lookup: dict[int, _TableInfo]) -> bool:
-    """Check if both sides of a relationship are visible to the role,
-    including the join columns themselves."""
+    """Whether both sides of a relationship are visible to the role. A computed relationship's
+    source column is the function's argument and must be visible; a table relationship's join
+    columns need not be."""
     src_id = rel["source_table_id"]
     if src_id not in table_lookup:
         return False
@@ -377,14 +378,10 @@ def _can_see_relationship(rel: dict, table_lookup: dict[int, _TableInfo]) -> boo
     # place to put the second hop; the junction table stays queryable as its own root field.
     if rel.get("via_table_id"):
         return False
-    # Remote-managed relationships (e.g. GraphQL remote) have no FK columns — allow when
-    # both tables are visible.
-    if not rel.get("source_column"):
-        return True
-    if rel["source_column"] not in src_visible:
-        return False
-    tgt_visible = {c["column_name"] for c in table_lookup[tgt_id].visible_columns}
-    return rel.get("target_column") in tgt_visible
+    # Both tables are visible: the relationship is offered. Its join columns are read by the
+    # engine to join, never returned, so the role need not be able to select them (governance
+    # keeps an approved join's key: stage2._approved_join_key).
+    return True
 
 
 _CDC_SOURCES: frozenset[str] = frozenset({"postgresql", "mongodb", "kafka", "debezium"})

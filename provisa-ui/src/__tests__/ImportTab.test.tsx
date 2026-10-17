@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "../test-utils/render";
+import { render, screen, within, waitFor, fireEvent } from "../test-utils/render";
 import { ImportTab } from "../components/admin/ImportTab";
 import type { ImportPreview } from "../api/importer";
 
@@ -84,7 +84,35 @@ describe("ImportTab", () => {
     await waitFor(() => expect(screen.getByText("Tables")).toBeInTheDocument());
     expect(screen.getByText("7")).toBeInTheDocument();
     expect(screen.getByText("query_collections")).toBeInTheDocument();
-    expect(screen.getByText(/Conversion warnings \(1\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Redo by hand \(1\)/)).toBeInTheDocument();
+  });
+
+  // REQ-417: the report says what each object became -- carried as it is, mapped to a better
+  // Provisa feature (and why), or left to redo by hand (and what to do).
+  it("shows what was carried, what was mapped and why, and what to redo", async () => {
+    mockPreview.mockResolvedValue(
+      preview({
+        carried: [
+          { category: "relationships", item: "orders.items", detail: "approved relationship" },
+        ],
+        mapped: [
+          { category: "actions", item: "refund_order", detail: "a mutation command calling it" },
+        ],
+      }),
+    );
+    render(<ImportTab />);
+    pickFile();
+    fireEvent.click(screen.getByRole("button", { name: "Convert and preview" }));
+
+    const carried = await screen.findByTestId("import-carried");
+    expect(within(carried).getByText(/Carried as it is \(1\)/)).toBeInTheDocument();
+    expect(within(carried).getByText("orders.items")).toBeInTheDocument();
+    const mapped = screen.getByTestId("import-mapped");
+    expect(within(mapped).getByText("a mutation command calling it")).toBeInTheDocument();
+    const redo = screen.getByTestId("import-warnings");
+    expect(within(redo).getByText("not converted")).toBeInTheDocument();
+    // No warning names where it arose: no column of blanks.
+    expect(within(redo).queryByText("Location")).toBeNull();
   });
 
   // The apply step is the approval: nothing reaches the org from the preview call itself.

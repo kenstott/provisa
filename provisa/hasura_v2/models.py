@@ -37,6 +37,8 @@ class HasuraRelationship:  # REQ-019
     remote_table: str
     remote_schema: str
     column_mapping: dict[str, str] = field(default_factory=dict)
+    # Declared by manual_configuration: no foreign key backs it.
+    manual: bool = False
 
 
 @dataclass
@@ -55,6 +57,8 @@ class HasuraEventTrigger:  # REQ-621
     webhook: str
     operations: list[str] = field(default_factory=list)
     retry_conf: dict[str, Any] = field(default_factory=dict)
+    # The webhook is the value of this environment variable (Hasura's webhook_from_env).
+    webhook_from_env: bool = False
 
 
 @dataclass
@@ -82,6 +86,8 @@ class HasuraFunction:  # REQ-205
     schema_name: str = "public"
     volatility: str = "VOLATILE"
     exposed_as: str = "mutation"
+    # The roles Hasura lets call it (the function's permissions).
+    roles: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -107,6 +113,8 @@ class HasuraCronTrigger:  # REQ-621
     schedule: str  # cron expression
     include_in_metadata: bool = True
     enabled: bool = True
+    payload: dict[str, Any] = field(default_factory=dict)
+    retry_conf: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -141,6 +149,8 @@ class HasuraMetadata:  # REQ-417
     cron_triggers: list[HasuraCronTrigger] = field(default_factory=list)
     inherited_roles: list[HasuraInheritedRole] = field(default_factory=list)
     remote_schemas: list[HasuraRemoteSchema] = field(default_factory=list)
+    # The action output types: object type name -> [(field, GraphQL type)].
+    custom_types: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
     graphql_engine: dict = field(default_factory=dict)  # e.g. {"enable_relay": true}
     # REQ-1174: api_limits.yaml (rate_limit / depth_limit / node_limit / time_limit, each with
     # `global` + `per_role`) — mapped to per-role rate + query-complexity limits by the mapper.

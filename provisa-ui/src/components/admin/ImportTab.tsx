@@ -362,33 +362,28 @@ export function ImportTab() {
             </Group>
           )}
 
-          <Title order={4}>
-            {t("importTab.warningsHeading", { count: preview.warnings.length })}
-          </Title>
-          {preview.warnings.length === 0 ? (
-            <Text size="sm" c="dimmed">
-              {t("importTab.noWarnings")}
-            </Text>
-          ) : (
-            <Table>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>{t("importTab.warningCategory")}</Table.Th>
-                  <Table.Th>{t("importTab.warningMessage")}</Table.Th>
-                  <Table.Th>{t("importTab.warningLocation")}</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {preview.warnings.map((w, i) => (
-                  <Table.Tr key={i}>
-                    <Table.Td>{w.category}</Table.Td>
-                    <Table.Td>{w.message}</Table.Td>
-                    <Table.Td>{w.source_path}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          )}
+          <ReportSection
+            testId="import-carried"
+            heading={t("importTab.carriedHeading", { count: preview.carried?.length ?? 0 })}
+            empty={t("importTab.noneCarried")}
+            detailLabel={t("importTab.carriedAs")}
+            rows={(preview.carried ?? []).map((c) => [c.category, c.item, c.detail])}
+          />
+          <ReportSection
+            testId="import-mapped"
+            heading={t("importTab.mappedHeading", { count: preview.mapped?.length ?? 0 })}
+            empty={t("importTab.noneMapped")}
+            detailLabel={t("importTab.mappedTo")}
+            rows={(preview.mapped ?? []).map((m) => [m.category, m.item, m.detail])}
+          />
+          <ReportSection
+            testId="import-warnings"
+            heading={t("importTab.warningsHeading", { count: preview.warnings.length })}
+            empty={t("importTab.noWarnings")}
+            detailLabel={t("importTab.warningMessage")}
+            rows={preview.warnings.map((w) => [w.category, w.source_path, w.message])}
+            itemLabel={t("importTab.warningLocation")}
+          />
 
           <Title order={4}>{t("importTab.configHeading")}</Title>
           <Text size="xs" c="dimmed">
@@ -414,6 +409,56 @@ export function ImportTab() {
             </Button>
           </Group>
         </Stack>
+      )}
+    </Stack>
+  );
+}
+
+/** One part of the import report: what each object of the upload became. */
+function ReportSection({
+  testId,
+  heading,
+  empty,
+  detailLabel,
+  itemLabel,
+  rows,
+}: {
+  testId: string;
+  heading: string;
+  empty: string;
+  detailLabel: string;
+  itemLabel?: string;
+  rows: [string, string, string][];
+}) {
+  const { t } = useTranslation();
+  // A warning names where in the upload it arose only sometimes; no column of blanks.
+  const showItem = rows.some(([, item]) => item);
+  return (
+    <Stack gap="xs" data-testid={testId}>
+      <Title order={4}>{heading}</Title>
+      {rows.length === 0 ? (
+        <Text size="sm" c="dimmed">
+          {empty}
+        </Text>
+      ) : (
+        <Table>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("importTab.warningCategory")}</Table.Th>
+              {showItem && <Table.Th>{itemLabel ?? t("importTab.reportItem")}</Table.Th>}
+              <Table.Th>{detailLabel}</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {rows.map(([category, item, detail], i) => (
+              <Table.Tr key={i}>
+                <Table.Td>{category}</Table.Td>
+                {showItem && <Table.Td>{item}</Table.Td>}
+                <Table.Td>{detail}</Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
       )}
     </Stack>
   );

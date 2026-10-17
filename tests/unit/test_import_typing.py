@@ -170,3 +170,69 @@ async def test_non_sql_sources_and_typed_tables_open_no_pool():
     opened = []
     await type_imported_columns(cfg, WarningCollector(), pool_factory=lambda: opened.append(1))
     assert opened == []
+
+
+class _FunctionPool(_Pool):
+    """A database whose catalog holds ``public.search_albums(search text)`` returning albums."""
+
+    async def execute(self, source_id, sql, params):
+        if "FROM pg_proc" in sql:
+            if "'search_albums'" in sql:
+                return SimpleNamespace(rows=[("public", "albums", ["search"], ["text"])])
+            return SimpleNamespace(rows=[])
+        return await super().execute(source_id, sql, params)
+
+
+def _albums():
+    return Table(
+        source_id="default",
+        domain_id="music",
+        schema_name="public",
+        table_name="albums",
+        columns=[Column(name="id", data_type="integer", visible_to=["customer"])],
+    )
+
+
+def _pending(name):
+    return {
+        "name": name,
+        "source_id": "default",
+        "schema_name": "public",
+        "kind": "query",
+        "visible_to": ["customer"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_tracked_function_takes_its_signature_from_the_database():
+    """REQ-205: the export names a tracked function and its roles; the preview reads its
+    arguments and the table it returns from the database it reaches."""
+    cfg = _config([_albums()])
+    collector = WarningCollector()
+    collector.pending_functions.append(_pending("search_albums"))
+    await type_imported_columns(cfg, collector, pool_factory=_FunctionPool)
+    (fn,) = cfg.functions
+    assert (fn.name, fn.kind, fn.returns) == ("search_albums", "query", "default.public.albums")
+    assert [(a.name, a.type) for a in fn.arguments] == [("search", "text")]
+    assert fn.visible_to == ["customer"] and fn.domain_id == "music"
+    assert not collector.warnings and not collector.pending_functions
+
+
+@pytest.mark.asyncio
+async def test_a_tracked_function_the_database_lacks_is_left_to_redo():
+    cfg = _config([_albums()])
+    collector = WarningCollector()
+    collector.pending_functions.append(_pending("gone"))
+    await type_imported_columns(cfg, collector, pool_factory=_FunctionPool)
+    assert not cfg.functions
+    assert [w.category for w in collector.warnings] == ["functions"]
+
+
+@pytest.mark.asyncio
+async def test_a_tracked_function_on_an_unreached_source_is_left_to_redo():
+    cfg = _config([_albums()])
+    collector = WarningCollector()
+    collector.pending_functions.append(_pending("search_albums"))
+    await type_imported_columns(cfg, collector, pool_factory=lambda: _FunctionPool(False))
+    assert not cfg.functions
+    assert {w.category for w in collector.warnings} == {"sources", "functions"}

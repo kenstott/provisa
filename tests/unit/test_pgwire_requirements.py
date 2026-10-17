@@ -995,7 +995,12 @@ class TestReq586CopyFromAdmitted:
             masking_rules={},
             contexts={
                 "dev": SimpleNamespace(
-                    tables={}, refusal=None, kept={}, columns_outside_relation=set()
+                    tables={},
+                    joins={},
+                    physical_to_sql={},
+                    refusal=None,
+                    kept={},
+                    columns_outside_relation=set(),
                 )
             },
             tables=[

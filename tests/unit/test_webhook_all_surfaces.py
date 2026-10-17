@@ -163,6 +163,40 @@ async def test_invoke_tracked_function_routes_webhook_over_http(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_webhook_url_naming_an_environment_variable_is_resolved_at_the_call(monkeypatch):
+    """A command's URL is kept as written -- ``${env:VAR}/path``, as an import writes a Hasura
+    action's ``{{VAR}}/path`` handler -- and resolved where it is called."""
+    captured: dict = {}
+
+    class _Resp:
+        def json(self):
+            return {"id": 7, "name": "Rex"}
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def request(self, method, url, json):
+            captured["url"] = url
+            return _Resp()
+
+    monkeypatch.setattr(action_exec.httpx, "AsyncClient", _Client)
+    monkeypatch.setenv("PETSTORE_BASE_URL", "http://petstore.internal")
+    state = _state()
+    state.tracked_webhooks["add_pet"]["url"] = "${env:PETSTORE_BASE_URL}/api/v3/pet"
+
+    await invoke_tracked_function("add_pet", {"a0": "Rex", "a1": "available"}, state, "admin")
+
+    assert captured["url"] == "http://petstore.internal/api/v3/pet"
+
+
+@pytest.mark.asyncio
 async def test_invoke_tracked_function_unknown_name_still_raises():
     from fastapi import HTTPException
 

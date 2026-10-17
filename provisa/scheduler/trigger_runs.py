@@ -48,8 +48,11 @@ def _refused(exc: BaseException) -> bool:
 async def post_webhook(url: str, trigger_id: str, args: dict) -> None:  # REQ-216, REQ-209
     """Post a trigger's webhook: the trigger's id and its arguments, as JSON. A response that is
     not a success raises."""
+    from provisa.core.secrets import resolve_secrets
+
+    # The URL is kept as written; an environment or secret reference in it is resolved here.
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(url, json={"trigger_id": trigger_id, **args})
+        resp = await client.post(resolve_secrets(url), json={"trigger_id": trigger_id, **args})
         resp.raise_for_status()
     log.info("Trigger %s: webhook %s returned %s", trigger_id, url, resp.status_code)
 

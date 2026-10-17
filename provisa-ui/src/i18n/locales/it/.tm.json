@@ -1692,7 +1692,7 @@
   "it/importTab.json::importTab.host": "Host",
   "it/importTab.json::importTab.intro": "Convert a Hasura v2 metadata export or a Hasura DDN project. Upload a zipped project directory, a consolidated metadata export (YAML or JSON), or a single .hml file. Nothing is written until you review the result and apply it.",
   "it/importTab.json::importTab.noFile": "No file selected.",
-  "it/importTab.json::importTab.noWarnings": "Everything in the upload converted.",
+  "it/importTab.json::importTab.noWarnings": "Nothing in the upload is left to redo by hand.",
   "it/importTab.json::importTab.password": "Password",
   "it/importTab.json::importTab.port": "Port",
   "it/importTab.json::importTab.preview": "Convert and preview",
@@ -1706,8 +1706,8 @@
   "it/importTab.json::importTab.username": "Username",
   "it/importTab.json::importTab.warningCategory": "Feature",
   "it/importTab.json::importTab.warningLocation": "Location",
-  "it/importTab.json::importTab.warningMessage": "What happened",
-  "it/importTab.json::importTab.warningsHeading": "Conversion warnings ({{count}})",
+  "it/importTab.json::importTab.warningMessage": "What to do",
+  "it/importTab.json::importTab.warningsHeading": "Redo by hand ({{count}})",
   "it/joinNotice.json::joinNotice.ack": "Got it",
   "it/joinNotice.json::joinNotice.admin": "An administrator added you to {{org}}.",
   "it/joinNotice.json::joinNotice.auto_join": "Your email address matches this organization's sign-in rule, so you were added to {{org}} automatically when you signed in.",
@@ -6863,5 +6863,12 @@
   "registerTableForm.json::registerTableForm.dqResultsTableHint": "(derived from the scanned table; one row per check per scan, every scan kept)",
   "registerTableForm.json::registerTableForm.dqScanIntervalHint": "Each scan adds its results to the table; earlier scans are kept.",
   "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
-  "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds."
+  "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
+  "it/importTab.json::importTab.carriedHeading": "Carried as it is ({{count}})",
+  "it/importTab.json::importTab.noneCarried": "Nothing in the upload converted as it is.",
+  "it/importTab.json::importTab.carriedAs": "Carried as",
+  "it/importTab.json::importTab.mappedHeading": "Mapped to a better Provisa feature ({{count}})",
+  "it/importTab.json::importTab.noneMapped": "Nothing in the upload was mapped to another feature.",
+  "it/importTab.json::importTab.mappedTo": "Mapped to, and why",
+  "it/importTab.json::importTab.reportItem": "Item"
 }

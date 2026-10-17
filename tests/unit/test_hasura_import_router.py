@@ -373,3 +373,31 @@ async def test_an_apply_changing_a_sensitive_columns_hiding_needs_the_right(monk
     assert exc.value.status_code == 403
     assert "sensitive_data" in exc.value.detail and "customers.email (fake)" in exc.value.detail
     assert "apply_config" not in seen["order"]
+
+
+class _UnreachedPool:
+    async def add(self, *_a, **_k):
+        raise ConnectionError("not reached")
+
+    async def close_all(self):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_preview_reports_what_was_carried_mapped_and_left_to_redo(monkeypatch):
+    """REQ-417: the preview says what each object became -- carried as, mapped to a better
+    Provisa feature (why), or redo by hand (what)."""
+    import provisa.executor.pool as pool_mod
+
+    _grant(monkeypatch, {"org_settings"})
+    monkeypatch.setattr(pool_mod, "SourcePool", _UnreachedPool)
+    doc = Path(__file__).resolve().parents[1] / "fixtures/hasura_v2_outfitters/metadata.json"
+    req = ir.ImportPreviewRequest(
+        filename="metadata.json", content_b64=base64.b64encode(doc.read_bytes()).decode()
+    )
+    resp = await ir.preview_import(req, _request())
+    assert "orders.items" in {i.item for i in resp.carried if i.category == "relationships"}
+    assert {"refund_order", "order_placed", "support_lead"} <= {i.item for i in resp.mapped}
+    assert all(i.detail for i in resp.mapped)
+    redo = {w.category for w in resp.warnings}
+    assert {"sources", "computed_fields", "functions"} <= redo

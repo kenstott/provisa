@@ -1237,9 +1237,10 @@ class TestMultipleRootFields:
 
 
 class TestRelationshipVisibility:
-    def test_relationship_hidden_when_join_column_not_visible(self):
-        """If the join column (customer_id) is not visible to a role,
-        the relationship should not appear in the schema."""
+    def test_relationship_offered_when_join_column_not_visible(self):
+        """A relationship is offered to a role that sees both tables, whether or not it can
+        select the join column (customer_id): the engine reads the key to join, it is not
+        returned. A role that does not see the target table is not offered it."""
         tables = [
             {
                 "id": 1,
@@ -1303,7 +1304,7 @@ class TestRelationshipVisibility:
         errors = validate(schema_admin, doc)
         assert not errors  # admin can traverse the relationship (many-to-one → singular 'customer')
 
-        # Limited cannot see customer_id → relationship hidden
+        # Limited cannot see customer_id → relationship still offered, the column is not
         si_limited = SchemaInput(
             tables=tables,
             relationships=rels,
@@ -1314,8 +1315,27 @@ class TestRelationshipVisibility:
         )
         schema_limited = generate_schema(si_limited)
         doc2 = parse("{ orders { id customer { name } } }")
-        errors2 = validate(schema_limited, doc2)
-        assert errors2  # 'customer' field should not exist on Orders for limited role
+        assert not validate(schema_limited, doc2)
+        assert validate(schema_limited, parse("{ orders { customerId } }"))
+        assert not validate(schema_admin, parse("{ orders { customerId } }"))
+
+        # A role that sees no column of customers sees no table to reach → relationship hidden
+        hidden_target = [
+            tables[0],
+            {
+                **tables[1],
+                "columns": [{**c, "visible_to": ["admin"]} for c in tables[1]["columns"]],
+            },
+        ]
+        si_no_target = SchemaInput(
+            tables=hidden_target,
+            relationships=rels,
+            column_types=col_types,
+            naming_rules=[],
+            role={"id": "limited", "capabilities": [], "domain_access": ["*"]},
+            domains=[{"id": "d", "description": "D"}],
+        )
+        assert validate(generate_schema(si_no_target), parse("{ orders { id customer { name } } }"))
 
 
 class TestColumnAlias:

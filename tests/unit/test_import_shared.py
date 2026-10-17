@@ -605,7 +605,7 @@ class TestHasuraV2ConverterIntegration:
 
         assert collector.has_warnings()
         categories = {w.category for w in collector.warnings}
-        assert "event_triggers" in categories
+        assert "triggers" in categories
 
 
 # ===========================================================================
