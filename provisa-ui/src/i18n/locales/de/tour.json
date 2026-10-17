@@ -1144,9 +1144,13 @@
         "title": "Beziehungen, einmal deklariert",
         "description": "<strong>OF_PRODUCT</strong> verbindet eine Bestellposition in PostgreSQL mit ihrem Produkt in MongoDB. Zusammen mit PLACED_BY, HAS_ITEM und SHIPPED_AS sind diese vier Beziehungen einmal deklariert, und App und BI-Werkzeug lesen beide über sie."
       },
+      "storefrontAsCustomer": {
+        "title": "Angemeldet als Kunde",
+        "description": "Die App sendet ihre Abfragen in der Rolle <strong>customer</strong>, deren Zeilenfilter jede Antwort auf die eigenen Bestellungen des angemeldeten Kunden beschränken. Weiter wählt <strong>customer</strong> in der Rollenauswahl, damit die folgende Abfrage so läuft, wie die App sie ausführt."
+      },
       "storefrontScreen": {
         "title": "Die eine Abfrage der App",
-        "description": "Der Bestellverlauf sendet diese eine verschachtelte GraphQL-Abfrage: jede Bestellung mit ihren Positionen, das Produkt jeder Position aus dem Katalog und die Sendung der Bestellung vom Versanddienst. Die App sendet sie in der Rolle <strong>customer</strong>, deren Zeilenfilter die Antwort auf die eigenen Bestellungen dieses Kunden beschränken. Hier lesen Sie sie als Administrator und sehen daher jede Bestellung."
+        "description": "Der Bestellverlauf sendet diese eine verschachtelte GraphQL-Abfrage: jede Bestellung mit ihren Positionen, das Produkt jeder Position aus dem Katalog und die Sendung der Bestellung vom Versanddienst. In der Rolle <strong>customer</strong> ausgeführt, liefert sie sieben Bestellungen, alle vom angemeldeten Kunden."
       },
       "storefrontApp": {
         "title": "Der Bildschirm, den sie speist",
@@ -1154,7 +1158,7 @@
       },
       "storefrontJsonApi": {
         "title": "Dieselben Bestellungen über JSON:API",
-        "description": "Ein Client, der JSON:API bevorzugt, fragt dieselben Bestellungen mit ihren Positionen und Sendungen ab. Jede Bestellung verweist auf die Positionen und die Sendung, die sie einschließt, und die ID einer Position ist ihr zusammengesetzter Schlüssel."
+        "description": "Ein Client, der JSON:API bevorzugt, fragt dieselben Bestellungen ab, weiterhin als Kunde, mit ihren Positionen und Sendungen. Jede Bestellung verweist auf die Positionen und die Sendung, die sie einschließt, und die ID einer Position ist ihr zusammengesetzter Schlüssel."
       },
       "storefrontAnalyst": {
         "title": "Jetzt als Analyst",
@@ -1167,6 +1171,10 @@
       "storefrontBi": {
         "title": "Das BI-Dashboard",
         "description": "Apache Superset verbindet sich über das PostgreSQL-Wire-Protokoll mit dem PostgreSQL-Dialekt: Host und Port des pgwire-Servers von Provisa (standardmäßig 5439), Datenbank <strong>provisa</strong>, Benutzer <strong>analyst</strong>. Es durchsucht die Tabellen und Sichten des Shops und zeigt Umsatz nach Region und verspätete Lieferungen nach Versanddienstleister aus demselben Modell."
+      },
+      "storefrontEveryRole": {
+        "title": "Zurück zu allen Rollen",
+        "description": "Weiter wählt wieder <strong>Alle</strong> in der Rollenauswahl. Die BI-Seite liest in ihrer eigenen Rolle, gewählt dort, wo ihr SQL läuft."
       },
       "storefrontPoint": {
         "title": "Ein Modell, zwei Abnehmer",

@@ -1144,9 +1144,13 @@
         "title": "Relazioni, dichiarate una volta",
         "description": "<strong>OF_PRODUCT</strong> collega una riga d'ordine in PostgreSQL al suo prodotto in MongoDB. Con PLACED_BY, HAS_ITEM e SHIPPED_AS, queste quattro relazioni sono dichiarate una volta, e l'app e lo strumento di BI leggono entrambi attraverso di esse."
       },
+      "storefrontAsCustomer": {
+        "title": "Autenticati come cliente",
+        "description": "L'app invia le sue query con il ruolo <strong>customer</strong>, i cui filtri di riga limitano ogni risposta agli ordini del cliente autenticato. Avanti sceglie <strong>customer</strong> nel selettore dei ruoli, così la query seguente viene eseguita come la esegue l'app."
+      },
       "storefrontScreen": {
         "title": "L'unica query dell'app",
-        "description": "La schermata dello storico ordini invia quest'unica query GraphQL annidata: ogni ordine con le sue righe, il prodotto di ogni riga dal catalogo e la spedizione dell'ordine dal servizio di spedizione. L'app la invia con il ruolo <strong>customer</strong>, i cui filtri di riga limitano la risposta agli ordini di quel cliente. Qui la leggi come amministratore, quindi vedi tutti gli ordini."
+        "description": "La schermata dello storico ordini invia quest'unica query GraphQL annidata: ogni ordine con le sue righe, il prodotto di ogni riga dal catalogo e la spedizione dell'ordine dal servizio di spedizione. Eseguita come <strong>customer</strong>, risponde con sette ordini, tutti del cliente autenticato."
       },
       "storefrontApp": {
         "title": "La schermata che alimenta",
@@ -1154,7 +1158,7 @@
       },
       "storefrontJsonApi": {
         "title": "Gli stessi ordini via JSON:API",
-        "description": "Un client che preferisce JSON:API chiede gli stessi ordini con righe e spedizioni incluse. Ogni ordine collega le righe e la spedizione che include, e l'id di una riga è la sua chiave composta."
+        "description": "Un client che preferisce JSON:API chiede gli stessi ordini, sempre come cliente, con righe e spedizioni incluse. Ogni ordine collega le righe e la spedizione che include, e l'id di una riga è la sua chiave composta."
       },
       "storefrontAnalyst": {
         "title": "Ora come analista",
@@ -1167,6 +1171,10 @@
       "storefrontBi": {
         "title": "La dashboard di BI",
         "description": "Apache Superset si connette tramite il protocollo di rete di PostgreSQL, con il dialetto PostgreSQL: host e porta del server pgwire di Provisa (5439 per impostazione predefinita), database <strong>provisa</strong>, utente <strong>analyst</strong>. Esplora le tabelle e le viste del negozio e mostra i ricavi per regione e le spedizioni in ritardo per corriere dallo stesso modello."
+      },
+      "storefrontEveryRole": {
+        "title": "Di nuovo tutti i ruoli",
+        "description": "Avanti sceglie di nuovo <strong>Tutti</strong> nel selettore dei ruoli. Il lato BI legge con il proprio ruolo, scelto dove viene eseguito il suo SQL."
       },
       "storefrontPoint": {
         "title": "Un modello, due consumatori",

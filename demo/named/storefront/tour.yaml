@@ -34,9 +34,11 @@ steps:
   capability: create_relationship
   relationship: OF_PRODUCT
 # The app: its order-history screen, one nested query as the signed-in customer, and the screen.
-- key: storefrontScreen
+- key: storefrontAsCustomer
   route: /query
   capability: query_development
+  role: customer
+- key: storefrontScreen
   example: 1-order-history
 - key: storefrontApp
   image: sample-app.png
@@ -45,7 +47,10 @@ steps:
   route: /jsonapi
   capability: query_development
   jsonapi: /data/jsonapi/shop/orders?include=order_items,shipment
-# BI: the analyst's SQL over the same tables, and the dashboard Superset builds over pgwire.
+# Back to every role in the header (the customer's role reads no relationships page), then BI:
+# the analyst's SQL over the same tables, and the dashboard Superset builds over pgwire.
+- key: storefrontEveryRole
+  role: all
 - key: storefrontAnalyst
   route: /sql
   capability: query_development

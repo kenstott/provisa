@@ -1144,9 +1144,13 @@
         "title": "Relacionamentos, declarados uma vez",
         "description": "<strong>OF_PRODUCT</strong> liga um item de pedido no PostgreSQL ao seu produto no MongoDB. Com PLACED_BY, HAS_ITEM e SHIPPED_AS, esses quatro relacionamentos são declarados uma vez, e tanto o app quanto a ferramenta de BI leem por meio deles."
       },
+      "storefrontAsCustomer": {
+        "title": "Conectado como cliente",
+        "description": "O app envia suas consultas com a função <strong>customer</strong>, cujos filtros de linha restringem cada resposta aos pedidos do cliente conectado. Avançar escolhe <strong>customer</strong> no seletor de funções, para que a consulta a seguir rode como o app a executa."
+      },
       "storefrontScreen": {
         "title": "A única consulta do app",
-        "description": "A tela de histórico de pedidos envia esta única consulta GraphQL aninhada: cada pedido com seus itens, o produto de cada item vindo do catálogo e o envio do pedido vindo do serviço de envios. O app a envia com a função <strong>customer</strong>, cujos filtros de linha restringem a resposta aos pedidos desse cliente. Aqui você a lê como administrador, por isso vê todos os pedidos."
+        "description": "A tela de histórico de pedidos envia esta única consulta GraphQL aninhada: cada pedido com seus itens, o produto de cada item vindo do catálogo e o envio do pedido vindo do serviço de envios. Executada como <strong>customer</strong>, ela responde sete pedidos, todos do cliente conectado."
       },
       "storefrontApp": {
         "title": "A tela que ela alimenta",
@@ -1154,7 +1158,7 @@
       },
       "storefrontJsonApi": {
         "title": "Os mesmos pedidos via JSON:API",
-        "description": "Um cliente que prefere JSON:API pede os mesmos pedidos com seus itens e envios incluídos. Cada pedido referencia os itens e o envio que inclui, e o id de um item é sua chave composta."
+        "description": "Um cliente que prefere JSON:API pede os mesmos pedidos, ainda como o cliente, com seus itens e envios incluídos. Cada pedido referencia os itens e o envio que inclui, e o id de um item é sua chave composta."
       },
       "storefrontAnalyst": {
         "title": "Agora como analista",
@@ -1167,6 +1171,10 @@
       "storefrontBi": {
         "title": "O painel de BI",
         "description": "O Apache Superset se conecta pelo protocolo de rede do PostgreSQL, com o dialeto PostgreSQL: host e porta do servidor pgwire do Provisa (5439 por padrão), banco de dados <strong>provisa</strong>, usuário <strong>analyst</strong>. Ele navega pelas tabelas e exibições da loja e mostra a receita por região e as entregas atrasadas por transportadora a partir do mesmo modelo."
+      },
+      "storefrontEveryRole": {
+        "title": "De volta a todas as funções",
+        "description": "Avançar escolhe de novo <strong>Todas</strong> no seletor de funções. O lado de BI lê com sua própria função, escolhida onde seu SQL roda."
       },
       "storefrontPoint": {
         "title": "Um modelo, dois consumidores",

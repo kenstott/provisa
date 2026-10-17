@@ -1144,9 +1144,13 @@
         "title": "Des relations, déclarées une fois",
         "description": "<strong>OF_PRODUCT</strong> relie une ligne de commande dans PostgreSQL à son produit dans MongoDB. Avec PLACED_BY, HAS_ITEM et SHIPPED_AS, ces quatre relations sont déclarées une fois, et l'app comme l'outil de BI lisent à travers elles."
       },
+      "storefrontAsCustomer": {
+        "title": "Connecté en tant que client",
+        "description": "L'app envoie ses requêtes avec le rôle <strong>customer</strong>, dont les filtres de lignes limitent chaque réponse aux commandes du client connecté. Suivant choisit <strong>customer</strong> dans le sélecteur de rôle, pour que la requête suivante s'exécute comme l'app l'exécute."
+      },
       "storefrontScreen": {
         "title": "L'unique requête de l'app",
-        "description": "L'écran d'historique des commandes envoie cette unique requête GraphQL imbriquée : chaque commande avec ses lignes, le produit de chaque ligne depuis le catalogue et l'expédition de la commande depuis le service d'expédition. L'app l'envoie avec le rôle <strong>customer</strong>, dont les filtres de lignes limitent la réponse aux commandes de ce client. Vous la lisez ici en administrateur, vous voyez donc toutes les commandes."
+        "description": "L'écran d'historique des commandes envoie cette unique requête GraphQL imbriquée : chaque commande avec ses lignes, le produit de chaque ligne depuis le catalogue et l'expédition de la commande depuis le service d'expédition. Exécutée en <strong>customer</strong>, elle répond sept commandes, toutes celles du client connecté."
       },
       "storefrontApp": {
         "title": "L'écran qu'elle alimente",
@@ -1154,7 +1158,7 @@
       },
       "storefrontJsonApi": {
         "title": "Les mêmes commandes en JSON:API",
-        "description": "Un client qui préfère JSON:API demande les mêmes commandes avec leurs lignes et leurs expéditions incluses. Chaque commande référence les lignes et l'expédition qu'elle inclut, et l'id d'une ligne est sa clé composite."
+        "description": "Un client qui préfère JSON:API demande les mêmes commandes, toujours en tant que client, avec leurs lignes et leurs expéditions incluses. Chaque commande référence les lignes et l'expédition qu'elle inclut, et l'id d'une ligne est sa clé composite."
       },
       "storefrontAnalyst": {
         "title": "Maintenant en analyste",
@@ -1167,6 +1171,10 @@
       "storefrontBi": {
         "title": "Le tableau de bord de BI",
         "description": "Apache Superset se connecte par le protocole réseau de PostgreSQL, avec le dialecte PostgreSQL : hôte et port du serveur pgwire de Provisa (5439 par défaut), base <strong>provisa</strong>, utilisateur <strong>analyst</strong>. Il parcourt les tables et vues de la boutique et présente le chiffre d'affaires par région et les livraisons en retard par transporteur à partir du même modèle."
+      },
+      "storefrontEveryRole": {
+        "title": "Retour à tous les rôles",
+        "description": "Suivant choisit de nouveau <strong>Tous</strong> dans le sélecteur de rôle. Le côté BI lit avec son propre rôle, choisi là où son SQL s'exécute."
       },
       "storefrontPoint": {
         "title": "Un modèle, deux consommateurs",

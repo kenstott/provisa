@@ -1144,9 +1144,13 @@
         "title": "一度だけ宣言されたリレーションシップ",
         "description": "<strong>OF_PRODUCT</strong>は、PostgreSQLの注文明細をMongoDBの商品に結び付けます。PLACED_BY、HAS_ITEM、SHIPPED_ASとともに、これら4つのリレーションシップは一度だけ宣言され、アプリもBIツールもこれらを通じて読み取ります。"
       },
+      "storefrontAsCustomer": {
+        "title": "顧客としてサインイン",
+        "description": "アプリはクエリを<strong>customer</strong>ロールで送ります。その行フィルターが、すべての回答をサインイン中の顧客自身の注文に限定します。「次へ」でロールの選択に<strong>customer</strong>が選ばれ、次のクエリはアプリと同じように実行されます。"
+      },
       "storefrontScreen": {
         "title": "アプリの1つのクエリ",
-        "description": "注文履歴画面は、この1つのネストされたGraphQLクエリを送ります。各注文とその明細、カタログからの各明細の商品、配送サービスからの注文の配送です。アプリはこれを<strong>customer</strong>ロールで送り、その行フィルターが回答をその顧客自身の注文に限定します。ここでは管理者として読んでいるため、すべての注文が表示されます。"
+        "description": "注文履歴画面は、この1つのネストされたGraphQLクエリを送ります。各注文とその明細、カタログからの各明細の商品、配送サービスからの注文の配送です。<strong>customer</strong>として実行すると、サインイン中の顧客自身の7件の注文が返ります。"
       },
       "storefrontApp": {
         "title": "それが表示する画面",
@@ -1154,7 +1158,7 @@
       },
       "storefrontJsonApi": {
         "title": "同じ注文をJSON:APIで",
-        "description": "JSON:APIを好むクライアントは、明細と配送を含めた同じ注文を要求します。各注文は含まれる明細と配送にリンクし、明細のidはその複合キーです。"
+        "description": "JSON:APIを好むクライアントは、引き続き顧客として、明細と配送を含めた同じ注文を要求します。各注文は含まれる明細と配送にリンクし、明細のidはその複合キーです。"
       },
       "storefrontAnalyst": {
         "title": "今度はアナリストとして",
@@ -1167,6 +1171,10 @@
       "storefrontBi": {
         "title": "BIダッシュボード",
         "description": "Apache SupersetはPostgreSQLワイヤプロトコルで、PostgreSQLダイアレクトを使って接続します。Provisaのpgwireサーバーのホストとポート（既定は5439）、データベース<strong>provisa</strong>、ユーザー<strong>analyst</strong>です。ストアのテーブルとビューを参照し、同じモデルから地域別の売上と運送会社別の配送遅延をグラフにします。"
+      },
+      "storefrontEveryRole": {
+        "title": "すべてのロールに戻る",
+        "description": "「次へ」でロールの選択に再び<strong>すべて</strong>が選ばれます。BI側は、SQLを実行する場所で選んだ独自のロールで読み取ります。"
       },
       "storefrontPoint": {
         "title": "1つのモデル、2つの利用者",

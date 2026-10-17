@@ -1144,9 +1144,13 @@
         "title": "关系，只声明一次",
         "description": "<strong>OF_PRODUCT</strong> 将 PostgreSQL 中的订单明细与 MongoDB 中的商品连接起来。连同 PLACED_BY、HAS_ITEM 和 SHIPPED_AS，这四个关系只声明一次，应用和 BI 工具都通过它们读取。"
       },
+      "storefrontAsCustomer": {
+        "title": "以顾客身份登录",
+        "description": "应用以 <strong>customer</strong> 角色发送查询，该角色的行过滤器把每个结果都限定为已登录顾客自己的订单。点击下一步会在角色选择器中选中 <strong>customer</strong>，使下面的查询按应用的方式运行。"
+      },
       "storefrontScreen": {
         "title": "应用的唯一一个查询",
-        "description": "订单历史页面发送这唯一一个嵌套 GraphQL 查询：每个订单及其明细、每条明细在目录中的商品，以及订单在配送服务中的配送。应用以 <strong>customer</strong> 角色发送它，该角色的行过滤器把结果限定为这位顾客自己的订单。您在这里以管理员身份读取，所以能看到所有订单。"
+        "description": "订单历史页面发送这唯一一个嵌套 GraphQL 查询：每个订单及其明细、每条明细在目录中的商品，以及订单在配送服务中的配送。以 <strong>customer</strong> 身份运行时，它返回七个订单，全部属于已登录的顾客。"
       },
       "storefrontApp": {
         "title": "它所支撑的页面",
@@ -1154,7 +1158,7 @@
       },
       "storefrontJsonApi": {
         "title": "通过 JSON:API 读取同样的订单",
-        "description": "偏好 JSON:API 的客户端请求同样的订单，并包含其明细和配送。每个订单都链接到它所包含的明细和配送，而明细的 id 是它的复合键。"
+        "description": "偏好 JSON:API 的客户端仍以顾客身份请求同样的订单，并包含其明细和配送。每个订单都链接到它所包含的明细和配送，而明细的 id 是它的复合键。"
       },
       "storefrontAnalyst": {
         "title": "现在以分析师身份",
@@ -1167,6 +1171,10 @@
       "storefrontBi": {
         "title": "BI 仪表板",
         "description": "Apache Superset 通过 PostgreSQL 线协议、使用 PostgreSQL 方言连接：Provisa 的 pgwire 服务器的主机和端口（默认 5439），数据库 <strong>provisa</strong>，用户 <strong>analyst</strong>。它浏览商店的表和视图，并从同一个模型绘制按地区的收入和按承运商的延迟配送。"
+      },
+      "storefrontEveryRole": {
+        "title": "回到所有角色",
+        "description": "点击下一步会在角色选择器中重新选中 <strong>全部</strong>。BI 一侧以自己的角色读取，该角色在运行其 SQL 的地方选择。"
       },
       "storefrontPoint": {
         "title": "一个模型，两个使用方",

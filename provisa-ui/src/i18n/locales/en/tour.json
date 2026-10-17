@@ -1144,9 +1144,13 @@
         "title": "Relationships, declared once",
         "description": "<strong>OF_PRODUCT</strong> joins an order line in PostgreSQL to its product in MongoDB. With PLACED_BY, HAS_ITEM and SHIPPED_AS, these four relationships are declared once, and both the app and the BI tool read through them."
       },
+      "storefrontAsCustomer": {
+        "title": "Signed in as the customer",
+        "description": "The app sends its queries as the <strong>customer</strong> role, whose row filters keep every answer to the signed-in customer's own orders. Next picks <strong>customer</strong> in the role picker, so the query below runs as the app runs it."
+      },
       "storefrontScreen": {
         "title": "The app's one query",
-        "description": "The order-history screen sends this one nested GraphQL query: each order with its lines, each line's product from the catalog, and the order's shipment from the shipping service. The app sends it as the <strong>customer</strong> role, whose row filters keep the answer to that customer's own orders. You are reading it here as an administrator, so you see every order."
+        "description": "The order-history screen sends this one nested GraphQL query: each order with its lines, each line's product from the catalog, and the order's shipment from the shipping service. Run as <strong>customer</strong>, it answers seven orders, all the signed-in customer's own."
       },
       "storefrontApp": {
         "title": "The screen it feeds",
@@ -1154,7 +1158,7 @@
       },
       "storefrontJsonApi": {
         "title": "The same orders over JSON:API",
-        "description": "A client that prefers JSON:API asks for the same orders with their lines and shipments included. Each order links the lines and the shipment it includes, and a line's id is its composite key."
+        "description": "A client that prefers JSON:API asks for the same orders, still as the customer, with their lines and shipments included. Each order links the lines and the shipment it includes, and a line's id is its composite key."
       },
       "storefrontAnalyst": {
         "title": "Now as the analyst",
@@ -1167,6 +1171,10 @@
       "storefrontBi": {
         "title": "The BI dashboard",
         "description": "Apache Superset connects over the PostgreSQL wire protocol, with the PostgreSQL dialect: host and port of Provisa's pgwire server (5439 by default), database <strong>provisa</strong>, user <strong>analyst</strong>. It browses the shop's tables and views and charts revenue by region and late shipments by carrier from the same model."
+      },
+      "storefrontEveryRole": {
+        "title": "Back to every role",
+        "description": "Next picks <strong>All</strong> in the role picker again. The BI side reads as its own role, chosen where its SQL runs."
       },
       "storefrontPoint": {
         "title": "One model, two consumers",

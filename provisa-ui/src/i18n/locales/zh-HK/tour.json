@@ -1144,9 +1144,13 @@
         "title": "關係，只宣告一次",
         "description": "<strong>OF_PRODUCT</strong> 將 PostgreSQL 中的訂單明細與 MongoDB 中的貨品連接起來。連同 PLACED_BY、HAS_ITEM 和 SHIPPED_AS，這四個關係只宣告一次，應用程式和 BI 工具都透過它們讀取。"
       },
+      "storefrontAsCustomer": {
+        "title": "以顧客身份登入",
+        "description": "應用程式以 <strong>customer</strong> 角色發送查詢，該角色的行篩選器把每個結果都限定為已登入顧客自己的訂單。按下一步會在角色選擇器中選取 <strong>customer</strong>，令下面的查詢按應用程式的方式執行。"
+      },
       "storefrontScreen": {
         "title": "應用程式唯一的查詢",
-        "description": "訂單紀錄頁面發送這唯一一個巢狀 GraphQL 查詢：每張訂單及其明細、每項明細在目錄中的貨品，以及訂單在送貨服務中的送貨資料。應用程式以 <strong>customer</strong> 角色發送它，該角色的行篩選器把結果限定為這位顧客自己的訂單。您在這裏以管理員身份讀取，所以能看到所有訂單。"
+        "description": "訂單紀錄頁面發送這唯一一個巢狀 GraphQL 查詢：每張訂單及其明細、每項明細在目錄中的貨品，以及訂單在送貨服務中的送貨資料。以 <strong>customer</strong> 身份執行時，它傳回七張訂單，全部屬於已登入的顧客。"
       },
       "storefrontApp": {
         "title": "它所支撐的頁面",
@@ -1154,7 +1158,7 @@
       },
       "storefrontJsonApi": {
         "title": "經由 JSON:API 讀取同樣的訂單",
-        "description": "偏好 JSON:API 的用戶端要求同樣的訂單，並包含其明細和送貨資料。每張訂單都連結到它所包含的明細和送貨資料，而明細的 id 是它的複合鍵。"
+        "description": "偏好 JSON:API 的用戶端仍以顧客身份要求同樣的訂單，並包含其明細和送貨資料。每張訂單都連結到它所包含的明細和送貨資料，而明細的 id 是它的複合鍵。"
       },
       "storefrontAnalyst": {
         "title": "現在以分析師身份",
@@ -1167,6 +1171,10 @@
       "storefrontBi": {
         "title": "BI 儀表板",
         "description": "Apache Superset 經由 PostgreSQL 線路協定、使用 PostgreSQL 方言連接：Provisa 的 pgwire 伺服器的主機和連接埠（預設 5439），資料庫 <strong>provisa</strong>，使用者 <strong>analyst</strong>。它瀏覽商店的表和檢視，並從同一個模型繪製按地區的收入和按速遞公司的延遲送貨。"
+      },
+      "storefrontEveryRole": {
+        "title": "回到所有角色",
+        "description": "按下一步會在角色選擇器中重新選取 <strong>全部</strong>。BI 一方以自己的角色讀取，該角色在執行其 SQL 的地方選取。"
       },
       "storefrontPoint": {
         "title": "一個模型，兩個使用方",

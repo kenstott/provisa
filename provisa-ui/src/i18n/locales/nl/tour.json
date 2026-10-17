@@ -1144,9 +1144,13 @@
         "title": "Relaties, één keer gedeclareerd",
         "description": "<strong>OF_PRODUCT</strong> verbindt een bestelregel in PostgreSQL met het product in MongoDB. Samen met PLACED_BY, HAS_ITEM en SHIPPED_AS zijn deze vier relaties één keer gedeclareerd, en de app en de BI-tool lezen er allebei doorheen."
       },
+      "storefrontAsCustomer": {
+        "title": "Aangemeld als klant",
+        "description": "De app stuurt haar queries met de rol <strong>customer</strong>, waarvan de rijfilters elk antwoord beperken tot de eigen bestellingen van de aangemelde klant. Volgende kiest <strong>customer</strong> in de rolkiezer, zodat de volgende query draait zoals de app haar draait."
+      },
       "storefrontScreen": {
         "title": "De ene query van de app",
-        "description": "Het bestelgeschiedenisscherm stuurt deze ene geneste GraphQL-query: elke bestelling met haar regels, het product van elke regel uit de catalogus en de zending van de bestelling uit de verzendservice. De app stuurt haar met de rol <strong>customer</strong>, waarvan de rijfilters het antwoord beperken tot de eigen bestellingen van die klant. Hier leest u haar als beheerder, dus ziet u elke bestelling."
+        "description": "Het bestelgeschiedenisscherm stuurt deze ene geneste GraphQL-query: elke bestelling met haar regels, het product van elke regel uit de catalogus en de zending van de bestelling uit de verzendservice. Uitgevoerd als <strong>customer</strong> geeft ze zeven bestellingen, allemaal van de aangemelde klant."
       },
       "storefrontApp": {
         "title": "Het scherm dat ze vult",
@@ -1154,7 +1158,7 @@
       },
       "storefrontJsonApi": {
         "title": "Dezelfde bestellingen via JSON:API",
-        "description": "Een client die JSON:API verkiest, vraagt dezelfde bestellingen op met hun regels en zendingen erbij. Elke bestelling verwijst naar de regels en de zending die ze bevat, en het id van een regel is de samengestelde sleutel."
+        "description": "Een client die JSON:API verkiest, vraagt dezelfde bestellingen op, nog steeds als de klant, met hun regels en zendingen erbij. Elke bestelling verwijst naar de regels en de zending die ze bevat, en het id van een regel is de samengestelde sleutel."
       },
       "storefrontAnalyst": {
         "title": "Nu als analist",
@@ -1167,6 +1171,10 @@
       "storefrontBi": {
         "title": "Het BI-dashboard",
         "description": "Apache Superset verbindt via het PostgreSQL-wireprotocol, met het PostgreSQL-dialect: host en poort van de pgwire-server van Provisa (standaard 5439), database <strong>provisa</strong>, gebruiker <strong>analyst</strong>. Het bladert door de tabellen en views van de winkel en toont omzet per regio en te late zendingen per vervoerder uit hetzelfde model."
+      },
+      "storefrontEveryRole": {
+        "title": "Terug naar alle rollen",
+        "description": "Volgende kiest weer <strong>Alle</strong> in de rolkiezer. De BI-kant leest met een eigen rol, gekozen waar haar SQL draait."
       },
       "storefrontPoint": {
         "title": "Eén model, twee afnemers",
