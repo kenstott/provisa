@@ -288,6 +288,15 @@ async def _run_metric_expand(parsed_input: Any, state: object) -> tuple[Any, str
     return expanded, normalized_sql
 
 
+def _parse(raw_sql: str) -> Any:
+    """``raw_sql``'s tree, its clauses refused when out of the order PostgreSQL takes them in,
+    which sqlglot's parser would otherwise put back in order unseen (REQ-264)."""
+    from provisa.compiler.clause_order import refuse_out_of_order
+
+    refuse_out_of_order(raw_sql)
+    return sqlglot.parse_one(raw_sql, read="postgres")
+
+
 async def prepare_front_end(
     raw_sql: str,
     role_id: str,
@@ -323,9 +332,7 @@ async def prepare_front_end(
     # default thread pool so the loop stays free to dispatch other work while this parse runs.
     # This is the one mandatory parse every call pays (see module docstring); it also supplies the
     # tree the shape digest below is hashed from, so no second parse is needed to key the cache.
-    parsed_input = await loop.run_in_executor(
-        None, lambda: sqlglot.parse_one(raw_sql, read="postgres")
-    )
+    parsed_input = await loop.run_in_executor(None, lambda: _parse(raw_sql))
     # Nothing is defined through a query protocol (provisa/compiler/definitions.py): a statement
     # that creates, alters or drops a relation is refused here, as soon as its kind is known and
     # before any of the pipeline's work on it.
