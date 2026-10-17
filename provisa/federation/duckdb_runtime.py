@@ -197,6 +197,14 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         _limit = getattr(store_engine, "memory_limit", None)
         if _limit is not None:
             _cfg["memory_limit"] = f"{_limit // (1024 * 1024)}MiB"
+        # Spilled data stays in the org's folder (engine.temp_org). A runtime built for no org --
+        # one introspecting a source's catalog, which reads metadata and spills nothing -- has no
+        # folder to name, and keeps DuckDB's own.
+        _temp_org = getattr(store_engine, "temp_org", None)
+        if _temp_org is not None:
+            from provisa.core import org_files
+
+            _cfg["temp_directory"] = str(org_files.org_tmp(_temp_org))
         self._con = duckdb.connect(config=_cfg)
         from provisa.fakes.duckdb_functions import register as register_fake_functions
 

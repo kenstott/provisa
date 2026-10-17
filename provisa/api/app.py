@@ -1298,6 +1298,9 @@ async def _load_and_build(
     from provisa.core import org_files
 
     await org_files.prepare(state.org_id, state.admin_db, _stop_org_servers)
+    _deployment_rt = state.org_registry.get(state.org_id)
+    assert _deployment_rt is not None and _deployment_rt.federation_engine is not None
+    _deployment_rt.federation_engine.engine.temp_org = state.org_id
 
     _mark("pg-pool")
     _mark("schema-init")
@@ -2294,6 +2297,7 @@ async def _build_org_runtime(
             rt.federation_engine.engine.memory_limit = int(
                 settings_registry.value("sandbox.memory_limit")
             )
+            rt.federation_engine.engine.temp_org = org_id
             rt.federation_engine.bind_terminal()
         elif external_engine is not None or engine_url is not None:
             # REQ-1412: the org runs its OWN coordinator. Same dedicated-EngineRuntime shape as an
@@ -2330,6 +2334,7 @@ async def _build_org_runtime(
             rt.isolated_engine = True
             rt.federation_engine = EngineRuntime(build_engine(), state)
             rt.federation_engine.engine.pin_materialize_store(embedded_store_dsn(org_id))
+            rt.federation_engine.engine.temp_org = org_id
             rt.federation_engine.bind_terminal()
         elif isolated_engine:
             # REQ-1043/REQ-1067/REQ-1244: this org runs on its OWN federation engine. Bind a
@@ -2348,6 +2353,7 @@ async def _build_org_runtime(
             if storage_url is not None:
                 # REQ-1048: the org's own store, whoever the engine's first user is.
                 rt.federation_engine.engine.pin_materialize_store(storage_url)
+            rt.federation_engine.engine.temp_org = org_id
             rt.federation_engine.bind_terminal()
         # Tenant plane for THIS org: its own Database scoped to org_<id>. The platform/admin plane
         # (state.admin_db) is global and already up — never rebuilt here.
