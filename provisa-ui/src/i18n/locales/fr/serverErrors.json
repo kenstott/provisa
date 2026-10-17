@@ -578,7 +578,7 @@
       "not_a_file_source": "Une source {{type}} ne reçoit pas de fichier par téléversement."
     },
     "sources": {
-      "private_destination": "Les sources d'un bac à sable ne peuvent atteindre que des adresses publiques ; {{host}} est {{address}}, qui n'en est pas une."
+      "private_destination": "Les sources de cette organisation ne peuvent atteindre que des adresses publiques ; {{host}} est {{address}}, qui n'en est pas une."
     },
     "sandbox": {
       "wrong_tier": "Ce bac à sable est servi ailleurs ; ouvrez-le depuis sa propre adresse.",

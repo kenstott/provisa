@@ -66,10 +66,31 @@ Python 客户端版本会自动转换为 PEP 440 格式：
 
 ## PyPI 发布设置（一次性） {: #pypi-publishing-setup-one-time }
 
-1. 从 `~/.pypirc` 复制你的 API 令牌（`pypi.org` 对应的 `pypi-...` 值）
-2. 在 **Settings → Secrets → Actions** 中将其添加为名为 `PYPI_API_TOKEN` 的仓库密钥
+`.github/workflows/build-dmg.yml` 中的 `publish-pypi`（`provisa-client`）和 `publish-provisa-pypi`（`provisa`）任务通过 PyPI 可信发布（trusted publishing）进行发布：由任务的 GitHub OIDC 令牌（`id-token: write`）完成身份验证，不读取任何 API 令牌。请在 pypi.org 上将本仓库和 `build-dmg.yml` 注册为每个项目的可信发布者（**Your projects → Manage → Publishing**）。此后每次打标签都会自动发布。
 
-之后每次打标签，`publish-pypi` 任务都会自动发布。
+## 签名与供应链 {: #signing-and-supply-chain }
+
+发布工作流构建时，每个发布工件所带有的内容：
+
+| 工件 | 签名 |
+| -------- | --------- |
+| PyPI 上的 `provisa` 和 `provisa-client` | 每个文件一份经 Sigstore 签名的 PEP 740 证明（`attestations: true`），可在 pypi.org 上验证 |
+| PyPI 上的 `provisa-pg-ext`、`provisa-duckdb-ext` | 每个文件一份经 Sigstore 签名的 PEP 740 证明 |
+| JDBC 驱动 `.jar` | Sigstore 构建来源证明（`actions/attest-build-provenance`） |
+| macOS `.dmg` 安装程序 | Developer ID 代码签名和 Apple 公证 |
+| Windows `.exe` 安装程序 | 未签名 |
+| Linux `.AppImage` | 未签名 |
+
+任何操作系统上的签名安装方式都是 `pip install provisa`：带有 Sigstore 证明的 PyPI 软件包。需要在 Linux 或 Windows 上获得签名工件的审阅者，请使用 pip 安装。配置了代码签名证书时，Windows 构建会使用 Authenticode 签名（`WINDOWS_CERT_PFX_BASE64`、`WINDOWS_CERT_PFX_PASSWORD`、`WINDOWS_CERT_TIMESTAMP_URL`，由 `packaging/windows/build-sfx.ps1` 读取）；目前未配置，因此以未签名形式发布。
+
+依赖项和 CVE 关卡：
+
+- Python 依赖项在 `uv.lock` 中带哈希锁定；CI 使用 `uv sync --frozen` 安装它们。
+- `CVE Audit` 工作流（`.github/workflows/cve-audit.yml`）在每次推送到 `main`、每个拉取请求以及每周，对锁定的集合运行 `pip-audit`。
+- 发布时，`provisa` 和 `provisa-client` 的构建各自生成一份 CycloneDX SBOM，并对所发布的内容运行 `pip-audit`。JDBC 驱动使用 `grype --fail-on medium` 扫描。任何发现都会使任务失败，且发布不会发布任何内容：PyPI 上传和 GitHub 发布都会等待这些任务。SBOM 和 CVE 报告会附加到每个发布上。
+- 桌面安装程序在发布运行器上从源代码构建 `provisa` wheel，并在构建时用 `pip` 解析其依赖项，而不是从 `uv.lock` 解析；发布 CVE 关卡扫描的是锁定的集合，而不是安装程序捆绑的依赖项。
+- 有一项有文档记录的例外被忽略：PYSEC-2026-4114 / CVE-2026-49265（服务器端 oauthlib PKCE；Provisa 仅在客户端使用 oauthlib）。
+- `packaging/pypi/requirements-embedded.lock` 是 `provisa[embedded]` 的哈希固定解析结果，供离线（airgap）镜像使用（参见 `packaging/pypi/MIRROR-CHECKLIST.md`）。它是手动重新生成的，而不是每次发布都生成。
 
 ## 所需的仓库密钥 {: #required-repository-secrets }
 
@@ -77,7 +98,6 @@ Python 客户端版本会自动转换为 PEP 440 格式：
 
 | 密钥 | 所需用途 | 说明 |
 | -------- | ------------- | ------------- |
-| `PYPI_API_TOKEN` | PyPI 发布 | 来自 `~/.pypirc` 的 API 令牌（以 `pypi-` 开头） |
 | `APPLE_CERT_P12_BASE64` | 签名构建 | Base64 编码的 `.p12` 证书文件（见下文） |
 | `APPLE_CERT_P12_PASSWORD` | 签名构建 | 从 Keychain Access 导出 `.p12` 时设置的密码 |
 | `APPLE_DEVELOPER_ID` | 签名构建 | 完整证书名称：`Developer ID Application: Your Name (TEAMID)` |

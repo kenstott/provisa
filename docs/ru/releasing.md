@@ -66,10 +66,31 @@ git tag v1.2.3 && git push origin v1.2.3
 
 ## Настройка публикации в PyPI (однократно) {: #pypi-publishing-setup-one-time }
 
-1. Скопируйте свой API-токен из `~/.pypirc` (значение `pypi-...` для `pypi.org`)
-2. Добавьте его как секрет репозитория с именем `PYPI_API_TOKEN` в **Settings → Secrets → Actions**
+Задачи `publish-pypi` (`provisa-client`) и `publish-provisa-pypi` (`provisa`) в `.github/workflows/build-dmg.yml` публикуют через доверенную публикацию PyPI (trusted publishing): задачу аутентифицирует её токен GitHub OIDC (`id-token: write`), и API-токен не читается. Зарегистрируйте этот репозиторий и `build-dmg.yml` как доверенного издателя для каждого проекта на pypi.org (**Your projects → Manage → Publishing**). После этого публикации выполняются автоматически на каждый тег.
 
-Задача `publish-pypi` затем будет публиковать автоматически на каждый тег.
+## Подпись и цепочка поставок {: #signing-and-supply-chain }
+
+Что несёт каждый артефакт релиза в том виде, в каком его собирают рабочие процессы релиза:
+
+| Артефакт | Подпись |
+| -------- | --------- |
+| `provisa` и `provisa-client` на PyPI | Подписанная через Sigstore аттестация PEP 740 для каждого файла (`attestations: true`), проверяемая на pypi.org |
+| `provisa-pg-ext`, `provisa-duckdb-ext` на PyPI | Подписанная через Sigstore аттестация PEP 740 для каждого файла |
+| Драйвер JDBC `.jar` | Аттестация происхождения сборки Sigstore (`actions/attest-build-provenance`) |
+| Установщики macOS `.dmg` | Подпись кода Developer ID и нотаризация Apple |
+| Установщики Windows `.exe` | Не подписаны |
+| Linux `.AppImage` | Не подписан |
+
+Подписанная установка на любой ОС — `pip install provisa`: пакет PyPI с аттестацией Sigstore. Рецензент, которому нужен подписанный артефакт на Linux или Windows, устанавливает через pip. Сборка Windows подписывается через Authenticode, когда настроен сертификат подписи кода (`WINDOWS_CERT_PFX_BASE64`, `WINDOWS_CERT_PFX_PASSWORD`, `WINDOWS_CERT_TIMESTAMP_URL`, читаются `packaging/windows/build-sfx.ps1`); сейчас он не настроен, поэтому сборка поставляется без подписи.
+
+Зависимости и шлюзы CVE:
+
+- Зависимости Python зафиксированы с хешами в `uv.lock`; CI устанавливает их командой `uv sync --frozen`.
+- Рабочий процесс `CVE Audit` (`.github/workflows/cve-audit.yml`) запускает `pip-audit` по зафиксированному набору при каждом push в `main`, при каждом pull request и еженедельно.
+- При релизе сборки `provisa` и `provisa-client` каждая создают SBOM CycloneDX и запускают `pip-audit` по тому, что поставляется. Драйвер JDBC сканируется командой `grype --fail-on medium`. Найденная проблема приводит к сбою задачи, и релиз ничего не публикует: загрузки в PyPI и релиз GitHub ожидают эти задачи. SBOM и отчёты о CVE прикладываются к каждому релизу.
+- Установщики для настольных систем собирают wheel `provisa` из исходников на раннере релиза и разрешают его зависимости через `pip` во время сборки, а не из `uv.lock`; шлюз CVE релиза сканирует зафиксированный набор, а не зависимости, включённые в установщики.
+- Одно документированное исключение игнорируется: PYSEC-2026-4114 / CVE-2026-49265 (PKCE oauthlib на стороне сервера; Provisa использует oauthlib только на стороне клиента).
+- `packaging/pypi/requirements-embedded.lock` — это разрешение `provisa[embedded]` с фиксацией по хешам для зеркал в изолированных сетях (см. `packaging/pypi/MIRROR-CHECKLIST.md`). Он перегенерируется вручную, а не на каждый релиз.
 
 ## Обязательные секреты репозитория {: #required-repository-secrets }
 
@@ -77,7 +98,6 @@ git tag v1.2.3 && git push origin v1.2.3
 
 | Секрет | Требуется для | Описание |
 | -------- | ------------- | ------------- |
-| `PYPI_API_TOKEN` | Публикация в PyPI | API-токен из `~/.pypirc` (начинается с `pypi-`) |
 | `APPLE_CERT_P12_BASE64` | Подписанные сборки | Файл сертификата `.p12` в кодировке Base64 (см. ниже) |
 | `APPLE_CERT_P12_PASSWORD` | Подписанные сборки | Пароль, установленный при экспорте `.p12` из Keychain Access |
 | `APPLE_DEVELOPER_ID` | Подписанные сборки | Полное имя сертификата: `Developer ID Application: Your Name (TEAMID)` |

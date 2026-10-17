@@ -578,7 +578,7 @@
       "not_a_file_source": "Een {{type}}-bron krijgt geen bestand via upload."
     },
     "sources": {
-      "private_destination": "De bronnen van een sandbox mogen alleen openbare adressen bereiken; {{host}} is {{address}}, en dat is er geen."
+      "private_destination": "De bronnen van deze organisatie mogen alleen openbare adressen bereiken; {{host}} is {{address}}, en dat is er geen."
     },
     "sandbox": {
       "wrong_tier": "Deze sandbox wordt elders geserveerd; open hem via zijn eigen adres.",

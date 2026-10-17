@@ -578,7 +578,7 @@
       "not_a_file_source": "{{type}} 数据源不通过上传获得文件。"
     },
     "sources": {
-      "private_destination": "沙盒的数据源只能访问公共地址；{{host}} 是 {{address}}，不是公共地址。"
+      "private_destination": "此组织的数据源只能访问公共地址；{{host}} 是 {{address}}，不是公共地址。"
     },
     "sandbox": {
       "wrong_tier": "此沙盒由其他位置提供；请从它自己的地址打开。",

@@ -310,11 +310,13 @@ Todas as funções veem resultados amostrados (padrão: 100 linhas) a menos que 
 
 ## Registro de auditoria {: #audit-logging }
 
-Toda consulta que toca um ativo de domínio é registrada no `query_audit_log` somente de acréscimo. (REQ-596, REQ-613) Cada linha guarda `tenant_id`, `user_id`, `role_id`, um hash SHA-256 do texto da consulta, `table_ids`, `source`, `status_code`, `duration_ms` e `logged_at`. (REQ-596) O texto da consulta nunca é armazenado literalmente — só o seu hash. (REQ-596)
+Toda consulta que toca um ativo de domínio é registrada em `query_audit_log`. (REQ-596, REQ-613) O log de auditoria pertence à organização, não à plataforma: o registro próprio da plataforma de organizações, usuários e convites não contém registros de auditoria. (REQ-1922) O `query_audit_log` de cada organização é uma tabela no schema próprio da organização, no store que a organização nomeia para o seu registro em cada região que seleciona. Uma organização que não declara regiões mantém esse schema no banco de dados do control plane da implantação, junto ao seu modelo.
 
-O log é somente de acréscimo no nível do banco de dados: regras do PostgreSQL bloqueiam `DELETE` e `UPDATE`. (REQ-596, REQ-613) Dois índices — `(tenant_id, logged_at)` e `(user_id, logged_at)` — dão suporte a consultas de conformidade por tenant e por usuário em intervalos de tempo. (REQ-596, REQ-613)
+Cada linha guarda `tenant_id` (a organização), `user_id`, `role_id`, um hash SHA-256 do texto da consulta, o próprio texto da consulta cifrado (REQ-689), `table_ids` e `table_names`, `source`, `status_code`, `duration_ms`, a rota e a contagem de linhas, o que foi imposto à instrução, e `logged_at`. O texto da consulta é cifrado com a chave da organização quando a organização definiu uma, caso contrário com a chave da implantação (REQ-1574). Uma implantação que não configura nenhum provedor de cifragem o armazena sem cifrar. O texto nunca é exposto nas tabelas ops consultáveis e é decifrado apenas em leituras de administração autorizadas.
 
-Com a cifragem ativada, a coluna do hash do texto da consulta é armazenada cifrada e decifrada apenas em leituras de administração autorizadas. (REQ-689)
+O log é somente de acréscimo no nível do banco de dados: regras do PostgreSQL transformam `DELETE` e `UPDATE` em `query_audit_log` em operações nulas. (REQ-596, REQ-613) Dois índices, `(tenant_id, logged_at)` e `(user_id, logged_at)`, dão suporte a consultas de conformidade por organização e por usuário em intervalos de tempo. (REQ-596, REQ-613)
+
+Retenção: as linhas são mantidas indefinidamente. O Provisa não tem configuração de retenção e nunca apaga o log de auditoria; como `DELETE` é uma operação nula, remover linhas antigas significa que um operador descarta ou arquiva os dados da tabela fora do Provisa.
 
 ## Limitação de taxa {: #rate-limiting }
 
@@ -344,14 +346,20 @@ A pontuação é medida depois que uma requisição é analisada e antes de ser 
 
 Provedores de autenticação plugáveis: (REQ-120)
 
-| Provedor | Tipo de token | Caso de uso |
+| Provedor | Credencial | Caso de uso |
 | ---------- | ----------- | ---------- |
-| `none` | Cabeçalho X-Provisa-Role | Desenvolvimento |
-| `basic` | Contas locais bcrypt + JWT | Implantações autônomas |
+| `none` | Cabeçalho X-Provisa-Role | Somente desenvolvimento |
+| `basic` | Contas locais (bcrypt) + JWT de sessão | Implantações autônomas |
 | `firebase` | Token de ID do Firebase | Produção |
 | `keycloak` | JWT do Keycloak | Empresa |
-| `oauth` | JWT OIDC | PingFed, Okta, Azure AD, Auth0 |
+| `oauth` / `oidc` | JWT OIDC | PingFed, Okta, Azure AD, Auth0 |
+| `ldap` | Nome de usuário e senha do diretório (LDAP ou Active Directory) | Diretórios corporativos (REQ-1265) |
+| `saml` | Asserção assinada SAML 2.0, depois um JWT de sessão | Single sign-on corporativo (REQ-1265) |
 | `simple` | bcrypt + JWT | Testes |
+
+O `ldap` autentica um usuário por search-then-bind: o Provisa se conecta como uma conta de serviço, encontra a única entrada que o nome de usuário indica, depois se conecta como essa entrada com a senha apresentada, de modo que o diretório a verifica. Os grupos do usuário se tornam suas funções. A conta e seus grupos são lidos de novo toda vez que um token de sessão retorna, então um usuário removido do diretório, ou de um grupo, perde esse acesso antes de o token expirar. `ldaps://` e StartTLS são ambos suportados.
+
+O `saml` é o Web Browser SSO iniciado pelo SP. A assinatura XML da resposta é verificada contra os metadados do provedor de identidade, e os claims são lidos apenas do elemento assinado. Issuer, Audience, a URL do ACS, a expiração e `InResponseTo` são todos verificados. Respostas não solicitadas (iniciadas pelo IdP), asserções cifradas, documentos com DOCTYPE, múltiplas asserções e assinaturas SHA-1 são recusados. Uma sessão SAML não é verificada de novo com o provedor de identidade: um usuário removido ali mantém o acesso até o token de sessão expirar.
 
 Mapeamento de funções: claims de identidade → função do Provisa via regras configuráveis. (REQ-120) O campo `assignments_source` controla de onde vêm as atribuições de funções: `claims` as lê dos claims do token JWT (padrão), `provisa` as lê do armazenamento interno de atribuições do Provisa. (REQ-551) Uma implantação multi-tenant (`multitenancy: true`) concede as funções ela mesma, por organização, então precisa usar `assignments_source: provisa`: com `claims` ela não inicia, e uma mudança de configuração que produziria essa combinação é recusada. Uma implantação single-tenant pode usar qualquer uma.
 
@@ -407,6 +415,10 @@ A verificação do certificado do cliente move a primeira checagem para o handsh
 | `PROVISA_MTLS_BIND_PRINCIPAL` | Se verdadeiro, o common name do certificado deve ser igual ao nome de usuário com que a conexão então se autentica |
 
 As substituições por protocolo seguem a mesma nomenclatura das configurações de TLS. Nada é deduzido: um modo definido sem CA se recusa a iniciar, e um modo não reconhecido se recusa a iniciar em vez de ser lido como o vizinho mais seguro — uma implantação que acredita exigir certificados de cliente e não exige está em situação pior que uma que não inicia.
+
+### Versões do TLS {: #tls-versions }
+
+Todo listener que o Provisa termina (a API HTTP e a UI, pgwire, Bolt, MCP, gRPC e Arrow Flight) aceita TLS 1.2 e TLS 1.3 e recusa TLS 1.0 e 1.1. O Provisa não define versão de protocolo nem lista de cifras próprias. Os listeners HTTP, pgwire e Bolt usam os padrões de servidor do módulo `ssl` do Python (mínimo TLS 1.2). gRPC e Arrow Flight usam os padrões do gRPC (mínimo TLS 1.2). As versões não são configuráveis.
 
 ### Limitação de logins {: #login-throttling }
 

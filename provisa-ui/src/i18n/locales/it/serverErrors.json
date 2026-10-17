@@ -578,7 +578,7 @@
       "not_a_file_source": "A una sorgente {{type}} non si dà un file per caricamento."
     },
     "sources": {
-      "private_destination": "Le origini di una sandbox possono raggiungere solo indirizzi pubblici; {{host}} è {{address}}, che non lo è."
+      "private_destination": "Le origini di questa organizzazione possono raggiungere solo indirizzi pubblici; {{host}} è {{address}}, che non lo è."
     },
     "sandbox": {
       "wrong_tier": "Questa sandbox è servita altrove; aprila dal suo indirizzo.",

@@ -578,7 +578,7 @@
       "not_a_file_source": "{{type}} 資料來源不經上載取得檔案。"
     },
     "sources": {
-      "private_destination": "沙盒的資料來源只能存取公共地址；{{host}} 是 {{address}}，不是公共地址。"
+      "private_destination": "此組織的資料來源只能存取公共地址；{{host}} 是 {{address}}，不是公共地址。"
     },
     "sandbox": {
       "wrong_tier": "此沙盒由其他位置提供；請從它自己的地址開啟。",
