@@ -362,7 +362,9 @@ _LEAVES_THE_RUN = re.compile(
 
 #: The orchestrator's own jobs, not legs: PyPI trusted publishing does not accept a token issued
 #: to a reusable workflow (pypa/gh-action-pypi-publish#166).
-_RELEASE_PYPI = ("publish-pypi", "publish-provisa-pypi")
+_RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-provisa-pypi")
+#: REQ-2071: provisa pins provisa-notebook at its own version, so provisa waits for it on PyPI.
+_RELEASE_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi"}}
 _RELEASE_PUBLISH = (
     "${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' "
     "&& github.ref_name == inputs.version) }}"
@@ -397,12 +399,12 @@ def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
     assert trigger["workflow_dispatch"]["inputs"]["publish"]["default"] is False
     for body in jobs.values():
         assert "steps" not in body and body.get("secrets") != "inherit"
-    # PyPI's two jobs: a download of the run's wheel and the upload, gated as the legs'
+    # PyPI's jobs: a download of the run's wheel and the upload, gated as the legs'
     # publications are, holding only the OIDC token, after every build leg.
     builds = set(jobs) - {"publish"}
     for job, body in pypi.items():
         assert body["if"] == _RELEASE_PUBLISH, job
-        assert set(body["needs"]) == builds, job
+        assert set(body["needs"]) == builds | _RELEASE_PYPI_AFTER.get(job, set()), job
         assert body["permissions"] == {"id-token": "write"}, job
         uses = [str(step.get("uses", "")) for step in body["steps"]]
         assert uses == ["actions/download-artifact@v4", "pypa/gh-action-pypi-publish@release/v1"]

@@ -96,8 +96,23 @@ if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
 # mcp-proxy (REQ-1104): the Node-free stdio<->Streamable-HTTP bridge Claude Desktop launches to
 # reach the local MCP server. Bundled INTO the runtime so the connector is fully airgapped (no npx,
 # no user pip). The Explore/MCP panel emits a config whose command is this runtime's own python.
-& $RuntimePy -m pip install --quiet $RepoRoot uvicorn mcp-proxy
+# REQ-2071: provisa's pinned provisa-notebook (the Data Science area's Pyodide), built here from the
+# repository: PyPI has this version only once the release publishes it.
+$NotebookDir = Join-Path $RepoRoot 'dist\notebook'
+if (Test-Path $NotebookDir) { Remove-Item -Recurse -Force $NotebookDir }
+& $RuntimePy -m pip install --quiet build
+if ($LASTEXITCODE -ne 0) { throw "pip install build failed" }
+Push-Location (Join-Path $RepoRoot 'provisa-notebook')
+& $RuntimePy -m provisa_notebook.build | Out-Null
+$NotebookBuilt = $LASTEXITCODE
+Pop-Location
+if ($NotebookBuilt -ne 0) { throw "provisa-notebook assets build failed" }
+& $RuntimePy -m build --wheel (Join-Path $RepoRoot 'provisa-notebook') --outdir $NotebookDir
+if ($LASTEXITCODE -ne 0) { throw "provisa-notebook wheel build failed" }
+& $RuntimePy -m pip install --quiet --find-links $NotebookDir $RepoRoot uvicorn mcp-proxy
 if ($LASTEXITCODE -ne 0) { throw "pip install provisa failed" }
+& $RuntimePy -c "import provisa_notebook; provisa_notebook.pyodide_dir()" 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "provisa-notebook assets missing from the bundled native runtime" }
 & $RuntimePy -c "import mcp_proxy" 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "mcp-proxy missing from the bundled native runtime after install" }
 # Fail the build loudly if the control plane (pgserver) or its driver (psycopg) is missing.

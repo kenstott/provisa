@@ -7,8 +7,8 @@
     "runHint": "以您当前的角色在浏览器中运行。Ctrl+Enter（⌘+Enter）运行。",
     "loading": "正在加载 Python…",
     "failed": "Python 无法启动。",
-    "missingTitle": "此服务器未安装 Python",
-    "missingBody": "数据科学区域使用此服务器提供的文件在您的浏览器中运行 Python。请在服务器上安装这些文件，然后重新加载此页面：",
+    "missingTitle": "此服务器缺少笔记本文件",
+    "missingBody": "数据科学区域使用每个 Provisa 安装都会提供的文件在您的浏览器中运行 Python，而此服务器的安装中没有这些文件。请在服务器上重新安装 Provisa，然后重新加载此页面。",
     "rowsShown": "显示 {{total}} 行中的 {{shown}} 行",
     "figure": "图 {{n}}"
   }

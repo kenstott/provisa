@@ -7,8 +7,8 @@
     "runHint": "Draait in uw browser met uw huidige rol. Ctrl+Enter (⌘+Enter) voert uit.",
     "loading": "Python wordt geladen…",
     "failed": "Python kon niet starten.",
-    "missingTitle": "Python is niet geïnstalleerd op deze server",
-    "missingBody": "Het onderdeel Data science voert Python uit in uw browser met bestanden die deze server levert. Installeer ze op de server en laad deze pagina opnieuw:",
+    "missingTitle": "De notebookbestanden van deze server ontbreken",
+    "missingBody": "Het onderdeel Data science voert Python uit in uw browser met bestanden die elke Provisa-installatie levert, en de installatie van deze server heeft ze niet. Installeer Provisa opnieuw op de server en laad deze pagina opnieuw.",
     "rowsShown": "{{shown}} van {{total}} rijen getoond",
     "figure": "Afbeelding {{n}}"
   }

@@ -7,8 +7,8 @@
     "runHint": "S'exécute dans votre navigateur avec votre rôle actuel. Ctrl+Entrée (⌘+Entrée) exécute.",
     "loading": "Chargement de Python…",
     "failed": "Python n'a pas pu démarrer.",
-    "missingTitle": "Python n'est pas installé sur ce serveur",
-    "missingBody": "L'espace Science des données exécute Python dans votre navigateur à partir de fichiers servis par ce serveur. Installez-les sur le serveur, puis rechargez cette page :",
+    "missingTitle": "Les fichiers de notebook de ce serveur sont absents",
+    "missingBody": "L'espace Science des données exécute Python dans votre navigateur à partir de fichiers que sert toute installation de Provisa, et l'installation de ce serveur ne les a pas. Réinstallez Provisa sur le serveur, puis rechargez cette page.",
     "rowsShown": "{{shown}} lignes affichées sur {{total}}",
     "figure": "Figure {{n}}"
   }

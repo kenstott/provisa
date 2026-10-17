@@ -6774,8 +6774,8 @@
   "de/dataScience.json::dataScience.runHint": "Runs in your browser as your current role. Ctrl+Enter (⌘+Enter) runs.",
   "de/dataScience.json::dataScience.loading": "Loading Python…",
   "de/dataScience.json::dataScience.failed": "Python could not start.",
-  "de/dataScience.json::dataScience.missingTitle": "Python is not installed on this server",
-  "de/dataScience.json::dataScience.missingBody": "The Data Science area runs Python in your browser from files this server serves. Install them on the server, then reload this page:",
+  "de/dataScience.json::dataScience.missingTitle": "This server's notebook assets are missing",
+  "de/dataScience.json::dataScience.missingBody": "The Data Science area runs Python in your browser from files every Provisa install serves, and this server's install does not have them. Reinstall Provisa on the server, then reload this page.",
   "de/dataScience.json::dataScience.rowsShown": "Showing {{shown}} of {{total}} rows",
   "de/dataScience.json::dataScience.figure": "Figure {{n}}",
   "de/navBar.json::navBar.itemDataScience": "Data Science"

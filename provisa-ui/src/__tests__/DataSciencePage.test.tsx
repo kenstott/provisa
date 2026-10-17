@@ -55,12 +55,13 @@ beforeEach(() => {
 });
 
 describe("DataSciencePage", () => {
-  it("says Python is not installed, and how to install it, when /pyodide is not served", async () => {
+  it("says the server's notebook assets are missing when /pyodide is not served", async () => {
     serve(new Response('{"detail":"Not Found"}', { status: 404 }));
     const { make, double } = workerDouble();
     page(make);
     expect(await screen.findByTestId("data-science-missing")).toBeInTheDocument();
-    expect(screen.getByText(/pip install "provisa\[notebook\]"/)).toBeInTheDocument();
+    expect(screen.getByText("This server's notebook assets are missing")).toBeInTheDocument();
+    expect(screen.getByText(/Reinstall Provisa on the server/)).toBeInTheDocument();
     expect(double.postMessage).not.toHaveBeenCalled();
   });
 

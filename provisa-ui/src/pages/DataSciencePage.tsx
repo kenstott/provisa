@@ -135,9 +135,6 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
     return (
       <Alert color="yellow" title={t("dataScience.missingTitle")} data-testid="data-science-missing">
         <Text size="sm">{t("dataScience.missingBody")}</Text>
-        <Code block mt="xs">
-          pip install &quot;provisa[notebook]&quot;
-        </Code>
       </Alert>
     );
   }

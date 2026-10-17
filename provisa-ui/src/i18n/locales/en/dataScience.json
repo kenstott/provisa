@@ -7,8 +7,8 @@
     "runHint": "Runs in your browser as your current role. Ctrl+Enter (⌘+Enter) runs.",
     "loading": "Loading Python…",
     "failed": "Python could not start.",
-    "missingTitle": "Python is not installed on this server",
-    "missingBody": "The Data Science area runs Python in your browser from files this server serves. Install them on the server, then reload this page:",
+    "missingTitle": "This server's notebook assets are missing",
+    "missingBody": "The Data Science area runs Python in your browser from files every Provisa install serves, and this server's install does not have them. Reinstall Provisa on the server, then reload this page.",
     "rowsShown": "Showing {{shown}} of {{total}} rows",
     "figure": "Figure {{n}}"
   }

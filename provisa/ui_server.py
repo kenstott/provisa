@@ -253,13 +253,26 @@ monaco_dir = STATIC_DIR / "monacoeditorwork"
 if monaco_dir.is_dir():
     app.mount("/monacoeditorwork", StaticFiles(directory=monaco_dir), name="monacoeditorwork")
 
+
 # REQ-2071: the Data Science area's in-browser Python (Pyodide, its packages, the provisa-client
-# wheel) comes from the provisa-notebook package, which `provisa[notebook]` installs. A deployment
-# without it serves no /pyodide, and the area says the notebook assets are not installed.
-if importlib.util.find_spec("provisa_notebook") is not None:
+# wheel) comes from the provisa-notebook package, a dependency of every install. An install that
+# lacks its assets is broken: it is logged with the remedy, no /pyodide is served, and the Data
+# Science area says the server's notebook assets are missing. Nothing else stops working.
+def _mount_pyodide() -> None:
+    if importlib.util.find_spec("provisa_notebook") is None:
+        _log.error("provisa-notebook is not installed: reinstall provisa (REQ-2071)")
+        return
     from provisa_notebook import pyodide_dir
 
-    app.mount("/pyodide", StaticFiles(directory=pyodide_dir()), name="pyodide")
+    try:
+        directory = pyodide_dir()
+    except FileNotFoundError as exc:
+        _log.error("the notebook assets are missing: %s (REQ-2071)", exc)
+        return
+    app.mount("/pyodide", StaticFiles(directory=directory), name="pyodide")
+
+
+_mount_pyodide()
 
 
 def is_spa_navigation(method: str, headers: Mapping[str, str]) -> bool:  # REQ-1006

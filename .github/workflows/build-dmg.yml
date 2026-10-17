@@ -6,7 +6,7 @@
 #
 #   prebuilt ─┬─ macos ───┐
 #             ├─ windows ─┤
-#             └─ linux ───┼─ publish-pypi, publish-provisa-pypi ── publish
+#             └─ linux ───┼─ publish-pypi, publish-notebook-pypi ── publish-provisa-pypi ── publish
 #   packages ─────────────┘
 #
 # On a tag (v*) the release is built and published as it always was. Run by hand (Actions ->
@@ -124,11 +124,36 @@ jobs:
           skip-existing: true
           attestations: true
 
+  # REQ-2071: provisa pins provisa-notebook at its own version, so the notebook package is on PyPI
+  # before provisa is: a `pip install provisa` never resolves to a provisa whose dependency is not
+  # there yet. Built with everything else; published only after every leg has succeeded.
+  publish-notebook-pypi:
+    name: Publish provisa-notebook to PyPI
+    # Publishes and does nothing else: not run on a dry run.
+    if: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+    needs: [prebuilt, packages, macos, windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: provisa-notebook-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true
+          attestations: true
+
   publish-provisa-pypi:
     name: Publish provisa server to PyPI
     # Publishes and does nothing else: not run on a dry run.
     if: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
-    needs: [prebuilt, packages, macos, windows, linux]
+    needs: [prebuilt, packages, macos, windows, linux, publish-notebook-pypi]
     runs-on: ubuntu-latest
     # id-token: write is what lets gh-action-pypi-publish request a Sigstore-signed PEP 740
     # attestation for each uploaded file — PyPI removed GPG signature uploads in 2023, so this
@@ -149,13 +174,13 @@ jobs:
           skip-existing: true
           attestations: true
 
-  # After both PyPI publications: the release's attachments and undraft, the image pushes. A
+  # After every PyPI publication: the release's attachments and undraft, the image pushes. A
   # failed or partial run publishes nothing. On a dry run the PyPI jobs are skipped, and a job is
   # skipped with the jobs it needs unless it says otherwise: this one still runs (its dry run
   # proves the asset set is whole), and never after a publication that failed or was cancelled.
   publish:
     name: Attach and publish
-    needs: [prebuilt, packages, macos, windows, linux, publish-pypi, publish-provisa-pypi]
+    needs: [prebuilt, packages, macos, windows, linux, publish-pypi, publish-notebook-pypi, publish-provisa-pypi]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     # The union of what the leg's jobs ask for: attach to and undraft the release (contents),
     # Sigstore attestations (id-token), the image pushes (packages).

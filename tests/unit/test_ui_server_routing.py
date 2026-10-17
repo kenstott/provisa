@@ -179,9 +179,10 @@ def test_the_access_log_records_every_other_address_whole():
 
 
 def test_the_in_browser_python_is_served_from_provisa_notebook_when_installed(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, caplog
 ):
-    """REQ-2071: /pyodide is the provisa-notebook package's Pyodide, and absent without it."""
+    """REQ-2071: /pyodide is the provisa-notebook package's Pyodide. An install without its
+    assets, or without the package, serves none and says so; the server itself still starts."""
     import importlib
     import sys
     import types
@@ -204,6 +205,15 @@ def test_the_in_browser_python_is_served_from_provisa_notebook_when_installed(
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "application/wasm"
         assert any(getattr(r, "path", None) == "/pyodide" for r in served.app.routes)
+
+        def no_assets():
+            raise FileNotFoundError("no Pyodide: build the package")
+
+        package.pyodide_dir = no_assets  # type: ignore[attr-defined]
+        with caplog.at_level("ERROR", logger="provisa.ui_server"):
+            broken = importlib.reload(ui_server)
+        assert not any(getattr(r, "path", None) == "/pyodide" for r in broken.app.routes)
+        assert "the notebook assets are missing" in caplog.text
         monkeypatch.delitem(sys.modules, "provisa_notebook")
         monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: None)
         bare = importlib.reload(ui_server)
