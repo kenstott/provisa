@@ -265,9 +265,6 @@ glossary_terms:
   definition: 'The moment a dataset is read as of: every row as it stood then, so a refresh landing during a pull cannot mix two versions.'
   domains:
   - provisioning
-  edges:
-  - to: version time
-    rel_type: RELATED_TO
 - name: load window
   definition: 'The hours a dataset may be read by users and clients; outside them a read is refused, saying when the window next opens. The warehouse''s own refreshes run at any time.'
   domains:
@@ -279,6 +276,3 @@ glossary_terms:
   definition: 'Revenue less what the goods cost: what finance reads in full and data science sees masked.'
   domains:
   - provisioning
-  edges:
-  - to: margin
-    rel_type: RELATED_TO
