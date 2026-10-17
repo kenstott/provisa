@@ -304,6 +304,8 @@ def test_the_build_hands_its_servers_the_variables_the_config_reads_and_no_other
 def _seeded(tmp_path, rows: dict[str, int | None]):
     seeded = tmp_path / "insurance" / "seeded"
     seeded.mkdir(parents=True)
+    # Every demo has one (build refuses a directory without); this one runs in no regions.
+    (tmp_path / "insurance" / "demo.yaml").write_text("name: insurance\n")
     (seeded / "replicas.json").write_text(
         json.dumps(
             {
@@ -589,3 +591,30 @@ esac
     assert ran == ["up -d --wait", "down -v --remove-orphans", "up -d --wait"], ran
     assert "recreating their volumes" in run.stderr
     assert (bundles / "weblogs" / "ready").read_text().strip() == version
+
+
+def test_a_demo_in_regions_refuses_an_empty_replica_of_any_region(tmp_path):
+    """REQ-2068: each region's seed is checked, by name."""
+    demo = tmp_path / "retail"
+    demo.mkdir()
+    (demo / "demo.yaml").write_text("regions: {visitor: us, headless: [eu]}\n")
+    for region, rows in (("eu", 0), ("us", 5)):
+        out = demo / "seeded" / "regions" / region
+        out.mkdir(parents=True)
+        (out / "record.json").write_text(
+            json.dumps(
+                {
+                    "replicas": [
+                        {
+                            "source_id": f"{region}-shop",
+                            "schema_name": "public",
+                            "table_name": "customers",
+                            "completed_rows": rows,
+                        }
+                    ]
+                }
+            )
+        )
+    with pytest.raises(SystemExit) as refused:
+        builder._refuse_empty_replicas(demo)
+    assert str(refused.value) == "retail: these replicas landed no rows: eu-shop.public.customers"

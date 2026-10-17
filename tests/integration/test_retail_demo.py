@@ -102,7 +102,9 @@ def nodes(tmp_path_factory):
                     "PROVISA_NAMED_DEMO_DIR": str(demo),
                     "PROVISA_DEMO_EU_ADDRESS": "http://127.0.0.1:1",
                     "PROVISA_DEMO_US_ADDRESS": "http://127.0.0.1:2",
-                    "PROVISA_DEMO_REGIONS_PG_URL": control_plane,
+                    # REQ-2068: each region's own PostgreSQL store, never one shared by both.
+                    "PROVISA_DEMO_EU_PG_URL": stack.url(stack.engine_port, "eu_store", "+psycopg"),
+                    "PROVISA_DEMO_US_PG_URL": stack.url(stack.engine_port, "us_store", "+psycopg"),
                     "REDIS_URL": f"redis://127.0.0.1:{stack.redis_port}/0",
                     "RETAIL_PG_PORT": str(databases.port),
                 },
@@ -179,10 +181,10 @@ def test_the_record_names_eu_as_the_region_that_answered(nodes):
 def test_no_eu_customer_row_is_kept_in_us(nodes):
     _rows(nodes["us"], 'SELECT customer FROM "retail"."view_group_customers"', "group_analyst")
     stack = nodes["stack"]
-    with psycopg.connect(stack.url(stack.engine_port, "provisa")) as conn:
+    with psycopg.connect(stack.url(stack.engine_port, "us_store")) as conn:
         tables = conn.execute(
             "SELECT c.table_schema, c.table_name FROM information_schema.columns c "
-            "WHERE c.column_name = 'customer_id' AND c.table_schema LIKE '%%\\_rg\\_us%%'"
+            "WHERE c.column_name = 'customer_id'"
         ).fetchall()
         for schema, table in tables:
             (eu_rows,) = conn.execute(

@@ -104,11 +104,20 @@ def _config_env(demo: Path) -> dict[str, str]:
 
 def _refuse_empty_replicas(demo: Path) -> None:
     """REQ-2037: a table the demo serves from a replica that landed no rows fails the build, by
-    name: the bundle would serve an empty table for good (a TTL -1 replica is never landed again)."""
-    record = json.loads((demo / "seeded" / "replicas.json").read_text())
+    name: the bundle would serve an empty table for good (a TTL -1 replica is never landed again).
+    A demo in regions, each region's seed (REQ-2068)."""
+    from provisa.api.demo_region_seed import seed_dir
+
+    regions = _demo_regions(demo)
+    records = (
+        [seed_dir(demo, region) / "record.json" for region in regions]
+        if regions
+        else [demo / "seeded" / "replicas.json"]
+    )
     empty = sorted(
         f"{r['source_id']}.{r['schema_name']}.{r['table_name']}"
-        for r in record["replicas"]
+        for path in records
+        for r in json.loads(path.read_text())["replicas"]
         if not r.get("completed_rows")
     )
     if empty:
@@ -385,11 +394,27 @@ def _control_plane(work: Path, name: str = "cp") -> tuple[str, str]:
     return found["PG_HOST"], found["PG_PORT"]
 
 
-def _config(work: Path) -> Path:
+#: REQ-2068: the regions sandbox tier's deployment config: its platform regions and its boot
+#: org's stores and regions, which a regions demo's seeding node runs with too.
+_REGIONS_TIER_CONFIG = _REPO / "config" / "provisa-sandbox-regions.yaml"
+
+
+def _demo_regions(demo: Path) -> list[str]:
+    """The regions a demo runs in (demo.yaml ``regions``), its visitor's last; none for a demo of
+    one region."""
+    regions = (yaml.safe_load((demo / "demo.yaml").read_text()) or {}).get("regions")
+    if not regions:
+        return []
+    return [*regions["headless"], regions["visitor"]]
+
+
+def _config(work: Path, *, regions: bool = False) -> Path:
     path = work / "config.yaml"
+    tier = yaml.safe_load(_REGIONS_TIER_CONFIG.read_text()) if regions else {}
     path.write_text(
         yaml.safe_dump(
             {
+                **{key: tier[key] for key in ("platform", "stores", "regions") if key in tier},
                 "federation_engine": "duckdb",
                 "multitenancy": True,
                 "auth": {
@@ -558,15 +583,89 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
 
 
 def _seed(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
-    """Land the demo's template from its running stores and write its seed into ``demo``."""
-    host, port = _control_plane(work)
+    """Land the demo's template from its running stores and write its seed into ``demo`` -- for a
+    demo in regions, a seeding node per region, each writing what its region keeps (REQ-2068)."""
+    regions = _demo_regions(demo)
+    if not regions:
+        _seed_node(work, demo, stores, timeout, record=demo / "seeded" / "replicas.json", env={})
+        return
+    from provisa.api.demo_region_seed import seed_dir
+
+    region_env: dict[str, str] = {}
+    for region in regions:
+        host, port = _control_plane(work, f"region-pg-{region}")
+        region_env[f"PROVISA_DEMO_{region.upper()}_PG_URL"] = (
+            f"postgresql+psycopg://provisa:provisa@/provisa?host={host}&port={port}"
+        )
+        region_env[f"PROVISA_DEMO_{region.upper()}_ADDRESS"] = f"http://127.0.0.1:{_free_port()}"
+    redis = _SharedRedis()
+    try:
+        for region in regions:
+            _seed_node(
+                work,
+                demo,
+                stores,
+                timeout,
+                record=seed_dir(demo, region) / "record.json",
+                control_plane=f"cp-{region}",
+                env={
+                    **region_env,
+                    "PROVISA_REGION": region,
+                    "REDIS_URL": redis.url,
+                    "PROVISA_DATA_DIR": str(work / f"data-{region}"),
+                },
+            )
+    finally:
+        redis.stop()
+        for region in regions:
+            subprocess.run(
+                [sys.executable, "-m", "provisa.core.control_plane_pg", "stop"]
+                + [str(work / f"region-pg-{region}")],
+                check=True,
+            )
+
+
+class _SharedRedis:
+    """A fakeredis server the seeding nodes of a demo's regions name as their cache store."""
+
+    def __init__(self) -> None:
+        port = _free_port()
+        self.url = f"redis://127.0.0.1:{port}/0"
+        self._process = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import sys, fakeredis; fakeredis.TcpFakeServer(('127.0.0.1', int(sys.argv[1])), "
+                "server_type='redis').serve_forever()",
+                str(port),
+            ]
+        )
+
+    def stop(self) -> None:
+        self._process.terminate()
+        self._process.wait(timeout=30)
+
+
+def _seed_node(
+    work: Path,
+    demo: Path,
+    stores: Stores,
+    timeout: float,
+    *,
+    record: Path,
+    env: dict[str, str],
+    control_plane: str = "cp",
+) -> None:
+    """Run one seeding node, on the control plane ``control_plane``, until it has written
+    ``record``."""
+    host, port = _control_plane(work, control_plane)
     url = f"postgresql+psycopg://provisa:provisa@/provisa?host={host}&port={port}"
     http_port = _free_port()
     server_env = {
         **_config_env(demo),
         **stores.env,
         "ORG_ID": "demobundle",
-        "PROVISA_CONFIG": str(_config(work)),
+        "PROVISA_CONFIG": str(_config(work, regions="PROVISA_REGION" in env)),
         "PROVISA_ENGINE": "duckdb",
         "PROVISA_SANDBOX_TIER": "true",
         "PROVISA_DEMO_SEED_EXPORT": "true",
@@ -579,6 +678,7 @@ def _seed(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
         "PG_HOST": host,
         "PG_PORT": port,
         "OTEL_SDK_DISABLED": "true",
+        **env,
     }
     server = subprocess.Popen(
         [
@@ -594,7 +694,6 @@ def _seed(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
         cwd=_REPO,
         env=server_env,
     )
-    record = demo / "seeded" / "replicas.json"
     try:
         deadline = time.monotonic() + timeout
         while not record.exists():
@@ -608,7 +707,8 @@ def _seed(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
         server.terminate()
         server.wait(timeout=60)
         subprocess.run(
-            [sys.executable, "-m", "provisa.core.control_plane_pg", "stop", str(work / "cp")],
+            [sys.executable, "-m", "provisa.core.control_plane_pg", "stop"]
+            + [str(work / control_plane)],
             check=True,
         )
 
@@ -683,7 +783,8 @@ def build(args: argparse.Namespace) -> int:
             if (demo / "setup.yaml").exists() or polly_steps(demo):
                 _set_up(work, demo, stores, args.timeout)
                 _export_views(work, demo, stores)
-            if _replicates(demo, stores):
+            # REQ-2068: a demo in regions seeds each region's views as well as its replicas.
+            if _replicates(demo, stores) or _demo_regions(demo):
                 _seed(work, demo, stores, args.timeout)
                 _refuse_empty_replicas(demo)
             dumped = stores.dump()

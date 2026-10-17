@@ -321,7 +321,11 @@ def test_a_named_demo_in_regions_runs_a_headless_node_per_other_region() -> None
     for off in ("PROVISA_PGWIRE_PORT=0", "PROVISA_MCP_PORT=0", "PROVISA_BOLT_PORT=0"):
         assert off in headless
     assert '--port "$((PROVISA_API_PORT + _i))"' in headless
-    assert 'export PROVISA_DEMO_REGIONS_PG_URL="$TENANT_DATABASE_URL"' in TEXT
+    # REQ-2068: a captive PostgreSQL per region, never one store shared by both.
+    assert "provisa.core.control_plane_pg start" in TEXT
+    assert 'data/region-pg/$_r"' in TEXT
+    assert 'export "PROVISA_DEMO_${_rid_upper}_PG_URL=postgresql+psycopg://' in TEXT
+    assert "PROVISA_DEMO_REGIONS_PG_URL" not in TEXT
     cleanup = TEXT[TEXT.index("cleanup() {") :]
     assert '"${HEADLESS_PIDS[@]}"' in cleanup[: cleanup.index("\n}\n")]
 
