@@ -528,6 +528,10 @@
         "title": "Ouro: os totais",
         "description": "O ouro é um GROUP BY sobre a prata: vendas, itens, receita e faixa de preço por dia e produto, só de dados verificados."
       },
+      "qualityProduct": {
+        "title": "Um produto de dados para entregar",
+        "description": "Ouro, prata e as verificações são um produto de dados: os totais que os consumidores leem, as vendas por trás deles e a prova de que cada lote passou. O bronze fica de fora."
+      },
       "qualityDone": {
         "title": "Confiança que se pode consultar",
         "description": "Depositar um lote atualizou as verificações, a prata e o ouro, sem executar mais nada. O lote limpo chegou ao ouro; o ruim parou no bronze, e o porquê é uma consulta."

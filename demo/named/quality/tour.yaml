@@ -10,8 +10,8 @@
 # The quality demo's own tour (REQ-2010, REQ-2051): what the demo is and its question; how it fits --
 # the source, bronze with its raw fields, the checks computed on every landed batch, the relationship
 # from a silver row to the checks that admitted it -- each step on a real row; then the answers:
-# which checks admitted silver, what the bad batch failed on, what silver cleaned, and gold; then a
-# recap. Step kinds and checks are as tour.yaml of the weblogs demo describes them.
+# which checks admitted silver, what the bad batch failed on, what silver cleaned, and gold; the data
+# product consumers are given (gold, silver and the checks); then a recap. Step kinds and checks are as tour.yaml of the weblogs demo describes them.
 # Where the tour's "Look around on my own" leaves the visitor: the SQL page.
 landing:
   route: /sql
@@ -65,6 +65,10 @@ steps:
   sql: >-
     SELECT sale_day, product, sales, items, revenue, min_price, max_price FROM "sales"."view_gold"
     ORDER BY revenue DESC
+- key: qualityProduct
+  route: /data-products
+  capability: data_product_read
+  product: daily_sales
 - key: qualityDone
   route: /sources
   capability: source_registration

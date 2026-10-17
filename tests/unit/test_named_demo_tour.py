@@ -37,6 +37,7 @@ _TARGETS = (
     "group_by",
     "lineage",
     "term",
+    "product",
     "role",
     "env",
     "polly",
@@ -171,6 +172,7 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     made = (yaml.safe_load(setup.read_text()) or {}).get("steps") or [] if setup.exists() else []
     envs = {"prod"} | {s["environment"]["name"] for s in made if "environment" in s}
     terms = {t["name"] for t in config.get("glossary_terms", [])}
+    products = {p["id"] for p in config.get("data_products", [])}
     tables = {f"{t['source_id']}.{config_table_name(t)}" for t in config["tables"]}
     relations = _relations(config)
     gates = _route_capabilities()
@@ -227,6 +229,10 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             assert page == "/query", f"{step['key']}: an example runs on /query, not {page}"
         if "term" in step:
             assert step["term"] in terms, step
+        if "product" in step:
+            assert step["product"] in products, step
+            # The Data Products page opens the product its deep link names.
+            assert page == "/data-products", f"{step['key']}: a product opens on /data-products"
         if "role" in step:
             # One role, "all", or a set of the demo's roles and its declared pseudo-roles
             # (reviewer,region__eu, REQ-2057), which the tour hands to the explorer.

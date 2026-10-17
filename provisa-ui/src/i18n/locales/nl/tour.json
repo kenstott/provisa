@@ -528,6 +528,10 @@
         "title": "Goud: de totalen",
         "description": "Goud is één GROUP BY over zilver: verkopen, artikelen, omzet en prijsbereik per dag en product, alleen uit gecontroleerde data."
       },
+      "qualityProduct": {
+        "title": "Een dataproduct om over te dragen",
+        "description": "Goud, zilver en de controles vormen één dataproduct: de totalen die afnemers lezen, de verkopen erachter en het bewijs dat elke batch slaagde. Brons blijft erbuiten."
+      },
       "qualityDone": {
         "title": "Vertrouwen dat u kunt opvragen",
         "description": "Een batch landen verversten de controles, zilver en goud, zonder dat er iets anders draaide. De schone batch bereikte goud; de slechte bleef in brons, en waarom is een query."

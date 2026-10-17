@@ -19,7 +19,7 @@ dq_results is recomputed, then silver, then gold, each read as fresh. The clean 
 gold; the bad one shows failed in dq_results and never reaches silver or gold.
 """
 
-# Requirements: REQ-2051, REQ-2055
+# Requirements: REQ-2051, REQ-2055, REQ-1634
 
 from __future__ import annotations
 
@@ -226,3 +226,16 @@ _TOUR = yaml.safe_load((_DEMO / "tour.yaml").read_text())["steps"]
 def test_each_tour_statement_answers_rows(landed, step):
     server, *_ = landed
     assert query(server, step["sql"]), step["key"]
+
+
+def test_the_data_product_holds_gold_silver_and_the_checks(server):
+    resp = _post(
+        server,
+        "/admin/graphql",
+        {"query": "{ dataProducts { id domainId } tables { tableName productId } }"},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert [p["id"] for p in data["dataProducts"] if p["domainId"] == "sales"] == ["daily_sales"]
+    members = sorted(t["tableName"] for t in data["tables"] if t["productId"] == "daily_sales")
+    assert members == ["view_dq_results", "view_gold", "view_silver"]

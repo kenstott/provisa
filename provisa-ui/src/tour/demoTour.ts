@@ -86,6 +86,8 @@ export interface DemoTourStepDef {
   lineage?: string;
   /** A glossary term, by name: opened on the Glossary page, its definition and links shown. */
   term?: string;
+  /** A data product, by id: opened on the Data Products page, its members and lineage shown. */
+  product?: string;
   /** A role (or "all"): shown in the SQL explorer's run-as picker, picked on Next. */
   role?: string;
   /** An environment of the model (REQ-2053): shown in the header's environment switcher, picked
@@ -207,6 +209,14 @@ export function demoTourSteps(
         ...page,
         clickBefore: `[data-glossary-term="${def.term}"]`,
         element: '[data-testid="glossary-detail"]',
+      };
+    }
+    if (def.product !== undefined) {
+      // The page opens the product its deep link names (`?product=<id>`), read when it opens.
+      return {
+        ...page,
+        route: `${def.route ?? ""}?product=${encodeURIComponent(def.product)}`,
+        element: '[data-testid="data-product-detail"]',
       };
     }
     if (def.role !== undefined && def.role.includes(",")) {

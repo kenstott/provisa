@@ -528,6 +528,10 @@
         "title": "Gold: die Summen",
         "description": "Gold ist ein GROUP BY über Silber: Verkäufe, Artikel, Umsatz und Preisspanne nach Tag und Produkt, nur aus geprüften Daten."
       },
+      "qualityProduct": {
+        "title": "Ein Datenprodukt zum Weitergeben",
+        "description": "Gold, Silber und die Prüfungen sind ein Datenprodukt: die Summen, die Verbraucher lesen, die Verkäufe dahinter und der Nachweis, dass jeder Stapel bestanden hat. Bronze bleibt draußen."
+      },
       "qualityDone": {
         "title": "Vertrauen, das sich abfragen lässt",
         "description": "Das Ablegen eines Stapels aktualisierte die Prüfungen, Silber und Gold, ohne dass sonst etwas lief. Der saubere Stapel erreichte Gold; der fehlerhafte blieb in Bronze, und warum, ist eine Abfrage."

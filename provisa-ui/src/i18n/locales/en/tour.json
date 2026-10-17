@@ -528,6 +528,10 @@
         "title": "Gold: the totals",
         "description": "Gold is one GROUP BY over silver: sales, items, revenue and the price range by day and product, from checked data only."
       },
+      "qualityProduct": {
+        "title": "A data product to hand on",
+        "description": "Gold, silver and the checks are one data product: the totals consumers read, the sales behind them, and the evidence each batch passed. Bronze stays out."
+      },
       "qualityDone": {
         "title": "Trust you can query",
         "description": "Landing a batch refreshed the checks, silver and gold, with nothing else run. The clean batch reached gold; the bad one stopped at bronze, and why is a query."
