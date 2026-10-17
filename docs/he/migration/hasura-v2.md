@@ -2,15 +2,32 @@
 
 ## דרישות מוקדמות {: #prerequisites }
 
-1. מופע Hasura v2 פועל (v2.x) עם מטא-דאטה מיוצא.
-2. יצוא מטא-דאטה באמצעות ה-CLI של Hasura:
+1. מופע Hasura v2 (v2.x) פעיל עם מטא-דאטה מיוצא.
+2. ייצאו את המטא-דאטה באחד משני המבנים:
+
+   **ספריית המטא-דאטה של ה-CLI:**
 
    ```bash
    hasura metadata export --endpoint http://localhost:8080
    ```
 
-   זה יוצר ספריית `metadata/` המכילה `sources.yaml`, `actions.yaml`,
-   `cron_triggers.yaml`, `inherited_roles.yaml`, `remote_schemas.yaml`, וכו'.
+   פעולה זו יוצרת ספריית `metadata/`. `databases/databases.yaml` מפרט כל מקור עם סוגו
+   וחיבורו ומפנה לטבלאותיו ולפונקציותיו דרך אינדקסי `!include`;
+   `actions.yaml`, `cron_triggers.yaml`, `inherited_roles.yaml`, `remote_schemas.yaml` ושאר
+   הקבצים נמצאים לצדו. גם המבנה השטוח הישן (`tables.yaml` בשורש)
+   מומר.
+
+   **מסמך ה-API היחיד של המטא-דאטה:**
+
+   ```bash
+   curl -X POST http://localhost:8080/v1/metadata \
+     -H "X-Hasura-Admin-Secret: <secret>" \
+     -d '{"type":"export_metadata","args":{}}' > metadata.json
+   ```
+
+   גם האובייקט החשוף וגם המעטפת `{resource_version, metadata}` פועלים. ייבוא הניהול
+   (Admin, Import Hasura Config) מקבל את הצורה הזו; ממיר שורת הפקודה שלהלן
+   קורא ספריות.
 3. Python 3.11+ עם חבילת `provisa` מותקנת.
 
 ## שימוש ב-CLI {: #cli-usage }
@@ -58,52 +75,82 @@ default:
 - Admin secret -> Provisa `superuser`.
 - אימות webhook -> אזהרה נפלטת (אין שווה-ערך ב-Provisa).
 
-## מטריצת שוויון תכונות {: #feature-parity-matrix }
+## הדוח {: #the-report }
 
-| תכונת Hasura v2 | שווה-ערך Provisa | הערות |
-| --- | --- | --- |
-| **מקורות** (postgres, mysql, mssql, bigquery, citus) | `sources[]` | סוג ממופה: pg/postgres -> postgresql, mssql -> sqlserver. כתובת URL של החיבור מפוענחת ל-host/port/database/username/password. הגדרות pool נשמרות. |
-| **טבלאות** (טבלאות עוקבות) | `tables[]` | שם סכמה + טבלה נשמר. `source_id` מקשר למקור. |
-| **שמות טבלה מותאמים** (`custom_name`, `custom_root_fields.select`) | `tables[].alias` | הראשון שאינו null מבין `select`, `select_by_pk`, `custom_name`. |
-| **שמות עמודה מותאמים** | `columns[].alias` | ממפה מילון `custom_column_names` לשיוכי עמודה. |
-| **הרשאות בחירה** (עמודות, פילטר) | `columns[].visible_to[]`, `rls_rules[]` | רשימות עמודות הופכות ל-`visible_to`. עמודות תו-כללי (`*`) נתמכות. פילטרים מומרים ל-SQL דרך `bool_expr_to_sql`. |
-| **הרשאות הוספה/עדכון** (עמודות) | `columns[].writable_by[]` | רשימות עמודות הופכות ל-`writable_by`. תפקידים משודרגים ליכולת `write`. |
-| **הרשאות מחיקה** | שדרוג יכולת תפקיד | התפקיד מקבל יכולת `write`. אין מיפוי מחיקה לכל-טבלה. |
-| **קשרי אובייקט** | `relationships[]` עם `cardinality: many-to-one` | שיוך עמודה נשמר. |
-| **קשרי מערך** | `relationships[]` עם `cardinality: one-to-many` | שיוך עמודה נשמר. |
-| **שדות מחושבים** | `functions[]` | ממופים ל-Function עם `returns` המצביע לטבלת האב. |
-| **פונקציות עוקבות** | `functions[]` | `exposed_as` ברירת מחדל ל-mutation. סכמה נשמרת. |
-| **Actions** (handler של פרוצדורה מאוחסנת) | `functions[]` | מומר ל-Function config כשמגובה על ידי פרוצדורה מאוחסנת. |
-| **Actions** (handler של webhook) | לא מומר | אזהרה נפלטת, כולל כתובת ה-handler. |
-| **Cron triggers** | לא מומר | אזהרה נפלטת. (טריגרים מתוזמנים בזמן-ריצה קיימים, אך הממיר אינו ממפה אותם.) |
-| **Event triggers** | לא מומר | אזהרה נפלטת. (טריגרי אירועים בזמן-ריצה קיימים, אך הממיר אינו ממפה אותם.) |
-| **תפקידים בירושה** | `roles[].parent_role_id` | התפקיד הראשון ב-`role_set` הופך להורה. כל התפקידים הצאצאים נוצרים. |
-| **סכמות מרוחקות** | `sources[]` (`graphql_remote`) | נרשם כמקור `graphql_remote`. שם, URL, כותרות, ותצורת אימות נשמרים. |
-| **טבלאות enum** | טבלה נוצרת | דגל `is_enum` אינו מועבר (אין שווה-ערך ב-Provisa). |
-| **רשימות allow** | מדולג | לא קיים במודל המטא-דאטה. |
+ההמרה מסתיימת בדוח בשלושה חלקים:
 
-## שלבים לאחר-המרה {: #post-conversion-steps }
+1. **הועבר כמות שהוא.** לאובייקט יש מקבילה ב-Provisa והוא מומר בלי שינוי משמעות.
+2. **מופה ליכולת טובה יותר של Provisa.** כל פריט אומר מדוע היכולת של Provisa עושה את העבודה טוב יותר.
+3. **לעשות מחדש ידנית.** כל פריט אומר מה לעשות. אלה האזהרות.
 
-1. **סקרו את ה-YAML הפלט.** בדקו שמקורות, טבלאות, ותפקידים נראים נכונים.
-2. **הגדירו חיבורי מקור.** הממיר מפענח כתובות URL של חיבור אך ברירת-מחדל
-   ל-`localhost` בכשל פענוח. השתמשו ב-`--source-overrides` או ערכו את הפלט ישירות.
-3. **אמתו שיוכי דומיין.** ללא `--domain-map`, כל הטבלאות נופלות ל-`default`.
-   שייכו סכמות לדומיינים עם `--domain-map public=core analytics=reporting`.
-4. **בדקו כללי RLS.** פילטרים מומרים לקירובי SQL. ביטויים
-   בוליאניים מורכבים (`_and`/`_or`/`_exists` מקוננים) צריכים להיסקר ידנית.
-5. **סקרו אזהרות.** הממיר מדפיס תקציר אזהרות ל-stderr עבור תכונות
-   שהממיר אינו ממפה (event triggers, cron triggers, actions מגובות webhook).
-6. **הגדירו אימות.** אם מופע ה-Hasura שלכם משתמש באימות JWT/webhook, צרו קובץ סביבת
-   אימות והריצו מחדש עם `--auth-env-file`.
+ממיר שורת הפקודה מדפיס את הדוח ל-stderr בשם `Carried as`, `Mapped to` ו-`Redo by hand`, כל אחד עם ספירה, כשנשאר משהו לעשות מחדש. ייבוא הניהול מחזיר את שלוש הרשימות עם התצוגה המקדימה.
+
+## מטריצת שוויון יכולות {: #feature-parity-matrix }
+
+| יכולת ב-Hasura v2 | חלק | מקבילה ב-Provisa | הערות |
+| --- | --- | --- | --- |
+| **מקורות** (postgres, mysql, mssql, bigquery, citus) | הועבר | `sources[]` | הסוג ממופה: pg/postgres -> postgresql, mssql -> sqlserver. URL חיבור שכתוב במפורש מפוענח ל-host/port/database/username/password. גודל ה-pool נשמר. URL שנקרא ממשתנה סביבה אינו מנוחש (ראו להלן). |
+| **טבלאות** (טבלאות עוקבות) | הועבר | `tables[]` | הסכמה ושם הטבלה נשמרים. `source_id` מקשר למקור. |
+| **שמות טבלה מותאמים** (`custom_name`, `custom_root_fields.select`) | הועבר | `tables[].alias` | הערך הראשון שאינו null מבין `select`, `select_by_pk`, `custom_name`. |
+| **שמות עמודה מותאמים** (`column_config`, `custom_column_names` הישן) | הועבר | `columns[].alias` | השם המותאם של כל עמודה הופך לכינוי שלה. |
+| **שמות שדות שורש נוספים** (`select_by_pk`, `select_aggregate`, `insert`, ...) | מופה | השדה האחד של הטבלה | מדווחים בשמם. קריאה לפי מפתח היא מסנן על הטבלה, אגרגט הוא השדה `_aggregate` שלה, כתיבה היא המוטציה שלה. |
+| **הרשאות select** (עמודות, מסנן) | הועבר | `columns[].visible_to[]`, `rls_rules[]` | רשימות עמודות הופכות ל-`visible_to`; `*` נתמך. מסננים הופכים ל-SQL; משתני הפעלה הופכים ל-`current_setting('provisa.<name>')`. |
+| **מסננים דרך relationships** | הועבר | תת-שאילתות `EXISTS` ב-`rls_rules[]` | הכלל עוקב אחר ה-relationship עד הטבלה שלה. |
+| **הרשאות insert, update ו-delete** | הועבר | `tables[].write_grants[]` | הרשאה אחת לכל תפקיד ופעולה: עמודות מ-`columns`, `rows` מ-`filter`, `check` מ-`check`, presets מ-`set`. תפקידים מקבלים את הזכות `write`. |
+| **תפקיד admin** | הועבר | `org_admin` | מחזיק בכל הרשאה על כל עמודה ושורה, ושמו מופיע בכל עמודה מיובאת. |
+| **Object relationships** | הועבר | `relationships[]` עם `cardinality: many-to-one` | מאושרות. שדה ה-GraphQL הוא שם ה-relationship של Hasura. |
+| **Array relationships** | הועבר | `relationships[]` עם `cardinality: one-to-many` | מאושרות. שדה ה-GraphQL הוא שם ה-relationship של Hasura. |
+| **תפקידים בירושה** (תפקיד אחד) | הועבר | `roles[].parent_role_id` | התפקיד הופך להורה. |
+| **תפקידים בירושה** (כמה תפקידים) | מופה | תפקיד שמחזיק את איחוד הרשאותיהם | לתפקידים ב-Provisa הורה אחד, ולכן האיחוד נכתב במפורש על התפקיד. |
+| **Computed fields** | לעשות מחדש | עמודת view | הייצוא נוקב בפונקציה, לא בגוף שלה. הדוח נותן את ה-`SELECT` להוספה. |
+| **פונקציות עוקבות** | הועבר, אחרת לעשות מחדש | commands של `functions[]` | התצוגה המקדימה קוראת את החתימה ממסד הנתונים. בלעדיה, הוסיפו את הפונקציה בדף Commands. |
+| **Actions** | מופה | commands שקוראים ל-handler | `{{VAR}}` ב-URL של ה-handler נכתב `${env:VAR}` ונפתר כשה-command נקרא. |
+| **Cron triggers** | הועבר | `scheduled_triggers[]` | ביטוי cron, URL, payload והדגל enabled. ניסיונות חוזרים אינם מועברים (אזהרה). |
+| **Event triggers** | מופה | `scheduled_triggers[]` על שינוי הטבלה | נורה לכל אצוות שינויים בכל שינוי. ניסיונות חוזרים אינם מועברים (אזהרה). |
+| **Remote schemas** | מופה | `sources[]` (`graphql_remote`) שנוחת כטבלאות | שם, URL, כותרות ואימות נשמרים; שדות שורש הופכים לטבלאות מנוהלות. |
+| **טבלאות enum** | הועבר | טבלה נוצרה | הדגל `is_enum` אינו מועבר (אין מקבילה ב-Provisa). |
+| **Allow lists, query collections, נקודות קצה REST** | לעשות מחדש | אין | מדווחים כשהם קיימים בייצוא מאוחד; אינם מומרים. |
+
+### Relationships {: #relationships }
+
+- שדה ה-GraphQL של כל relationship הוא שם Hasura. כשכבר יש לטבלה שדה בשם הזה, ה-relationship לוקחת את השם ש-Provisa נותנת לה והדוח מזהיר.
+- שתי relationships שמצהירות על אותו join ממוזגות לאחת. הדוח אומר איזו מוזגה לאיזו.
+- relationship שמצטרפת על כמה זוגות עמודות מקבלת אזהרה ואינה נוצרת, כי קשר ב-Provisa מצטרף על זוג אחד. כללי שורות דרכה מומרים בכל זאת.
+- object relationship שהוצהרה רק על ידי עמודת מפתח זר נפתרת דרך ה-array relationship ההפוכה; בלעדיה היא מקבלת אזהרה.
+
+### הרשאות כתיבה {: #write-grants }
+
+הרשאה מציינת מה תפקיד רשאי לכתוב לטבלה בפעולה אחת. `filter` או `check` ריק פירושו כל שורה (`TRUE`). ערך `set` של `X-Hasura-User-Id` הופך ל-preset מסוג `session` של `user_id`; כל ערך אחר הופך ל-preset מסוג `literal`. עמודת preset אינה מופיעה גם בעמודות ההרשאה.
+
+### Actions, פונקציות עוקבות ו-triggers {: #actions-tracked-functions-and-triggers }
+
+- **Action** הופך ל-command שקורא ל-handler שלו, גלוי לתפקידים שהרשאותיו נוקבות בהם (ל-`org_admin` בלבד כשאינן נוקבות באף אחד). action אסינכרוני מקבל אזהרה: ה-command ממתין לתשובת ה-handler.
+- **פונקציה עוקבת** הופכת ל-command כשהתצוגה המקדימה יכולה לקרוא את הארגומנטים שלה ואת טבלת ההחזרה שלה ממקור PostgreSQL. במצב לא מקוון, ולכל פונקציה שחסרה, עמוסה או מחזירה טבלה שהייבוא אינו רושם, היא עוברת ל"לעשות מחדש".
+- **Event trigger** נורה בכל שינוי בטבלה שלו, פעם אחת לכל אצווה, ושולח את הטבלה ואת השורות ששונו במקום אירוע לכל שורה עם ערכים ישנים וחדשים. trigger שהאזין לפחות משלוש הפעולות מקבל אזהרה.
+
+## שלבים לאחר ההמרה {: #post-conversion-steps }
+
+1. **עברו על הדוח.** התחילו ב-`Redo by hand`.
+2. **הגדירו את חיבורי המקורות.** חיבור שהייצוא כותב במפורש מומר כפי שהוא. חיבור שנקרא ממשתנה סביבה מגיע ריק. השתמשו ב-`--source-overrides` או ערכו את הפלט ישירות.
+3. **אמתו את שיוכי התחומים.** ללא `--domain-map`, כל הטבלאות נוחתות ב-`default`.
+   שייכו סכמות לתחומים עם `--domain-map public=core analytics=reporting`.
+4. **בדקו את כללי השורות.** מסננים מומרים ל-SQL. עברו על ביטויים בוליאניים
+   מורכבים (`_and`/`_or`/`_exists` מקוננים) ועל מסננים דרך relationships.
+5. **עשו מחדש את מה שמפורט.** Computed fields, פונקציות עוקבות שהתצוגה המקדימה לא יכלה לקרוא,
+   ניסיונות חוזרים ב-triggers ואימות webhook אין להם המרה אוטומטית.
+6. **הגדירו אימות.** אם מופע ה-Hasura שלכם משתמש באימות JWT/webhook, צרו קובץ
+   סביבת אימות והריצו שוב עם `--auth-env-file`.
 7. **בדקו.** הפעילו את שרת Provisa ואמתו שאילתות מול מקורות הנתונים שלכם.
 
 ## בעיות נפוצות ופתרון תקלות {: #common-issues-and-troubleshooting }
 
-### כתובת URL של חיבור לא מפוענחת {: #connection-url-not-parsed }
+### החיבור מגיע ממשתנה סביבה {: #connection-comes-from-an-environment-variable }
 
-אם `database_url` של המקור הוא הפניה למשתנה סביבה (`{"from_env": "PG_URL"}`),
-הממיר אינו יכול לפתור אותה בזמן ההמרה. למקור יהיו ערכי placeholder
-(`host: localhost`, `database: default`). תקנו עם `--source-overrides`.
+אם ה-`database_url` של המקור הוא הפניה למשתנה סביבה (`{"from_env": "PG_URL"}`),
+ערכו אינו בייצוא. הממיר אינו מנחש אחד: למקור יש host, מסד נתונים,
+משתמש וסיסמה ריקים, והדוח מפרט אותו תחת `Redo by hand`.
+הזינו את החיבור בהגדרות המקורות של הייבוא (או עם `--source-overrides`) והמירו
+שוב.
 
 ### עמודות תו-כללי {: #wildcard-columns }
 
@@ -111,21 +158,24 @@ default:
 אחת. לאחר ההמרה, ייתכן שתרצו להחליף אותה ברשימות עמודה מפורשות
 על ידי בדיקת סכמת מסד הנתונים בפועל.
 
-### נאמנות טריגר אירוע {: #event-trigger-fidelity }
+### נאמנות של event triggers {: #event-trigger-fidelity }
 
-טריגרי אירועים מומרים עם `operations` ו-`webhook_url` אך ערבויות
-משלוח ספציפיות ל-Hasura (exactly-once, משלוח-מחדש) אין להן שווה-ערך ישיר ב-Provisa.
-סקרו את סעיף `event_triggers` והגדירו את תשתית ה-webhook שלכם בהתאם.
+Event trigger הופך ל-trigger על שינויי הטבלה שלו, שקורא לאותו webhook. הוא נורה
+לכל אצוות שינויים בכל שינוי, בין שהשינוי הגיע דרך Provisa ובין שהגיע ישירות למסד הנתונים, ושולח את הטבלה ואת
+השורות ששונו. הערכים הישנים והחדשים לכל שורה, הסינון לפי פעולה והניסיונות החוזרים של Hasura אינם מועברים;
+הדוח מזהיר על כל אחד מהם שרלוונטי.
+דאגו שה-handler יפעל על השורות שאליהן נועד, ונסו שוב בתוכו אם קריאה שהוחמצה חשובה.
 
 ### תפקידים חסרים {: #missing-roles }
 
-תפקידים נאספים רק מרשומות הרשאה. אם תפקיד קיים ב-Hasura אך אין לו
-הרשאות על אף טבלה או action, הוא לא יופיע בפלט.
+תפקידים נאספים מהרשאות טבלה, מהרשאות action ומתפקידים בירושה. אם תפקיד קיים ב-Hasura
+אך אינו מופיע באף אחד מהם, הוא לא יופיע בפלט.
 
 ### שדות שורש מותאמים {: #custom-root-fields }
 
-רק שדות שורש `select` ו-`select_by_pk` משמשים לשיוך הטבלה. שדות שורש
-מותאמים אחרים (`select_aggregate`, `insert`, `update`, `delete`) אינם ממופים.
+שמות שדות השורש `select` ו-`select_by_pk` נותנים את כינוי הטבלה. שאר שדות השורש המותאמים
+(`select_aggregate`, `insert`, `update`, `delete`) מדווחים בשמם: Provisa מגישה
+טבלה כשדה אחד, עם אגרגטים וכתיבות כשדה `_aggregate` שלה וכמוטציות שלה.
 
 ## דוגמה {: #example }
 
@@ -146,7 +196,7 @@ python -m provisa.hasura_v2 metadata/ \
 python -m provisa.hasura_v2 metadata/ --dry-run
 ```
 
-מבנה פלט:
+מבנה הפלט (מקוצר):
 
 ```yaml
 sources:
@@ -155,7 +205,6 @@ sources:
     host: prod-db.example.com
     port: 5432
     database: myapp
-    ...
 domains:
   - id: core
   - id: people
@@ -166,27 +215,41 @@ tables:
     table_name: users
     columns:
       - name: id
-        visible_to: [user, admin]
+        visible_to: [org_admin, user]
       - name: email
-        visible_to: [admin]
-        writable_by: [admin]
-    alias: Users
+        visible_to: [org_admin, user]
+    write_grants:
+      - role: user
+        operation: update
+        columns: [email]
+        rows: "id = current_setting('provisa.user_id')"
+        check: "TRUE"
+      - role: org_admin
+        operation: insert
+        columns: [id, email]
+        check: "TRUE"
+      - role: org_admin
+        operation: update
+        columns: [id, email]
+        rows: "TRUE"
+        check: "TRUE"
+      - role: org_admin
+        operation: delete
+        rows: "TRUE"
 roles:
-  - id: admin
-    capabilities: [read, write]
-    domain_access: ["*"]
   - id: user
-    capabilities: [read]
+    capabilities: [query_development, write]
     domain_access: ["*"]
 rls_rules:
-  - table_id: default.public.users
+  - table_id: users
     role_id: user
-    filter: "id = x-hasura-user-id"
+    filter: "id = current_setting('provisa.user_id')"
 relationships:
-  - id: default.public.orders.user
-    source_table_id: default.public.orders
-    target_table_id: default.public.users
+  - id: orders.user
+    source_table_id: orders
+    target_table_id: users
     source_column: user_id
     target_column: id
     cardinality: many-to-one
+    graphql_alias: user
 ```

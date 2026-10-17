@@ -13,8 +13,8 @@ relationship is offered to a role that sees both of its tables.
 
 A column with an alias is written in semantic SQL under that alias (the compiler's
 ``physical_to_sql``); governance runs on that SQL before the alias is lowered to the physical
-name. Its grants and masks are recorded by physical name, so it refused a visible aliased column
-(V003) and read a masked aliased column unmasked. A relationship's join column is read by the
+name. Its grants and masks are recorded by physical name, and are found under either name. A
+relationship's join column is read by the
 engine, not returned: the relationship is offered when the role sees both tables, and the
 compiled join keeps its key though the role cannot select it.
 """
@@ -163,8 +163,8 @@ def test_a_hidden_aliased_column_is_refused_by_either_name():
 
 
 def test_a_masked_aliased_column_is_masked_when_every_column_is_visible():
-    """The leak: with every column visible the table has no visibility filter, so only the mask
-    stood between the role and the value -- and it was looked up by the published name."""
+    """With every column visible the table has no visibility filter; the mask is found by the
+    column's physical name whichever name the statement reads it by."""
     model = _model(email_to=[])
     assert model[2].visible_columns[1] is None
     sql = _graphql(model, "{ customers { id taxId } }")

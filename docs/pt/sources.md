@@ -1381,8 +1381,7 @@ functions:
 | `function_name` | Sim | — | Nome real da função no banco de dados |
 | `returns` | Sim | — | ID da tabela registrada que a função retorna (REQ-207) |
 | `arguments` | Não | `[]` | Lista de definições de argumento `{name, type}` (REQ-211) |
-| `visible_to` | Não | `[]` | Funções que podem chamar esta função |
-| `writable_by` | Não | `[]` | Funções que podem chamar isto como uma mutação |
+| `visible_to` | Não | `[]` | Funções às quais a função está atribuída (vazio: todas as funções). Uma `mutation` exige também o direito `write` |
 | `domain_id` | Não | `""` | Domínio ao qual esta função pertence |
 | `description` | Não | `null` | Descrição do campo GraphQL |
 | `kind` | Não | `mutation` | `"query"` ou `"mutation"` (REQ-205) |

@@ -603,7 +603,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 
 ## 继承角色 {: #inherited-roles }
 
-一个角色通过 `parent_role_id` 至多命名一个父角色。(REQ-215) 在运行时构建阶段，`security/inheritance.py` 会从子角色出发沿链向上遍历，并将其折叠进构建过程自身对已加载数据的副本中，因此后续所有查找都始终以执行角色 id 为键。(REQ-1677) 能力与域访问权限是整条链的并集。一列的 `visible_to` 与 `writable_by`、其脱敏列表中的每一项，以及一个指标、函数或 webhook 的 `visible_to`，只要其中命名了该角色本身或其祖先角色，就对该角色生效。行级安全按表解析，子角色优先：链中最近一个对该表有规则的角色——其自身的表规则优先于其域规则——提供唯一生效的那条谓词；祖先角色的规则绝不会与之合并。若某角色未设置速率限制，则继承其父角色的速率限制。父角色必须存在，不能是角色自身，也不能构成环；被其他角色继承的角色，在被重新指定父角色之前不能删除。(REQ-1677)
+一个角色通过 `parent_role_id` 至多命名一个父角色。(REQ-215) 在运行时构建阶段，`security/inheritance.py` 会从子角色出发沿链向上遍历，并将其折叠进构建过程自身对已加载数据的副本中，因此后续所有查找都始终以执行角色 id 为键。(REQ-1677) 能力与域访问权限是整条链的并集。一列的 `visible_to`、其脱敏列表中的每一项，以及一个指标、函数或 webhook 的 `visible_to`，只要其中命名了该角色本身或其祖先角色，就对该角色生效。表的写入授权按操作以同样方式解析：对某操作没有授权的角色，采用最近祖先角色的授权，自己的授权优先。行级安全按表解析，子角色优先：链中最近一个对该表有规则的角色——其自身的表规则优先于其域规则——提供唯一生效的那条谓词；祖先角色的规则绝不会与之合并。若某角色未设置速率限制，则继承其父角色的速率限制。父角色必须存在，不能是角色自身，也不能构成环；被其他角色继承的角色，在被重新指定父角色之前不能删除。(REQ-1677)
 
 ## ABAC 审批钩子 {: #abac-approval-hook }
 
@@ -655,9 +655,9 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 响应缓存按请求选择启用：GraphQL 使用 `@cached(ttl: Int)` 指令，SQL 和 Cypher 使用 `cache`/`cache_ttl` 注释，gRPC 使用调用元数据 `x-provisa-cache` / `x-provisa-cache-ttl`。该提示在承载该语言的每种传输上都生效（Cypher 经 HTTP、Bolt 和 Arrow Flight；GraphQL 经 HTTP 和 Arrow Flight）。没有提示的请求从不读取或写入缓存，且任何形式都不会读取比运营方的数据源和表设置所允许的更新的数据。请参阅[缓存](configuration.md#per-request-opt-in)。（REQ-544）
 
-## 变更中的列预设 {: #column-presets-in-mutations }
+## 变更中的写入授权与预设 {: #write-grants-and-presets-in-mutations }
 
-`compiler/mutation_gen.py` 支持在 `INSERT` 或 `UPDATE` 时应用的按列服务端预设。(REQ-214) 预设不会包含在生成的 GraphQL 变更输入类型中——它们由编译器透明地注入。预设类型：`static`（字面值）或 `session`（取自请求会话/header 的值，例如 `x-hasura-user-id`）。(REQ-214)
+表的 `write_grants` 按角色和操作声明：写入可以指定哪些列、可以触及哪些行，以及授权自己设置哪些值。（REQ-2074）`compiler/write_admission.py` 在治理阶段准入每次写入，因此 GraphQL、SQL、Cypher 及其他界面得到相同的答案：`write` 权利、角色对该操作的授权、列、添加到语句中的预设、以 AND 并入 `WHERE` 的 `rows` 谓词，以及在任何内容到达数据源之前对新行评估的 `check`。（REQ-214）预设来自会话变量、字面量或写入时间。语句不得提供预设列，因此预设不会出现在生成的 GraphQL 变更输入类型中。（REQ-214）[tool-verified: `provisa/compiler/write_admission.py`, `provisa/core/models.py` `WriteGrant`, `ColumnPreset`]
 
 ## GraphQL Voyager 架构浏览器 {: #graphql-voyager-schema-explorer }
 

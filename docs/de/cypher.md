@@ -183,7 +183,7 @@ Eigenschaftsnamen werden über Domänenpräfix-Entfernung und Alias-Auflösung a
 Regeln:
 
 - Das Label muss auf genau eine registrierte Tabelle aufgelöst werden. Mehrdeutige oder unbekannte Labels sind harte Fehler; kein Fuzzy-Matching. (REQ-661) Neue Labels oder Typen können nicht über Cypher erstellt werden. (REQ-662)
-- Jeder Write ist an die `writable_by`-ACL der Zieltabelle gebunden; eine Rolle ohne Schreibrechte wird zur Kompilierzeit abgelehnt. (REQ-663)
+- Jeder Write ist an die Schreibberechtigungen der Zieltabelle gebunden: Die Rolle braucht das Recht `write` und eine Berechtigung für die Operation, und die geschriebenen Spalten müssen in der Berechtigung stehen. Eine Rolle ohne diese wird zur Kompilierzeit abgelehnt. (REQ-663)
 - Der zugrunde liegende Quellconnector muss DML unterstützen. Nur-Lese-Quellen (Trino-föderiert, Iceberg ohne Delta-Connector) lehnen Writes zur Übersetzungszeit ab. (REQ-664)
 - Beziehungen können nicht geschrieben werden — sie werden aus den deklarierten Joins des Modells abgeleitet, nicht als gespeicherte Kanten. Eine Beziehung als Ziel zu adressieren ist ein harter Fehler. (REQ-665) Eine Junction-gestützte Kante ist keine Ausnahme: Die dahinterliegende Zuordnungstabelle ist selbst eine registrierte Tabelle, und Zeilen werden in diese Tabelle geschrieben, nicht in die Kante. (REQ-1586)
 - Writes durchlaufen die vollständige Write-Pipeline: RLS-Injektion und Post-Mutation-Hooks (Response-Cache-Invalidierung, Markierung materialisierter Sichten als veraltet, Kafka-Change-Events, Hot-Table-Reload). (REQ-798)

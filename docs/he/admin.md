@@ -176,7 +176,14 @@ query {
     columns {
       columnName
       unmaskedTo
-      writableBy
+    }
+    writeGrants {
+      role
+      operation
+      columns
+      rows
+      check
+      presets { column source name value }
     }
   }
 }

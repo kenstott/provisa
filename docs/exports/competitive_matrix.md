@@ -125,7 +125,7 @@ Legend: **A** = Provisa ahead, **P** = parity, **G** = gap (Provisa behind or in
 
 **Airgapped single-executable installer.** The macOS DMG, Linux AppImage, and Windows EXE bundle Lima/containerd and all service images as `.tar` archives. No outbound network calls at install or first launch. No Docker, OrbStack, or Colima prerequisite. Hasura requires Docker; Dremio requires a multi-component installation. [tool-verified: REQ-223, REQ-227, REQ-228, REQ-294]
 
-**Hasura v2 and DDN migration converters.** CLI tools convert Hasura v2 metadata exports and Hasura DDN supergraph projects to valid Pydantic-validated Provisa YAML config, preserving tables, relationships, column visibility, writable_by grants, RLS filters, and auth config. No competitor provides tooling to import Hasura configuration. [tool-verified: REQ-182, REQ-183, REQ-185–193]
+**Hasura v2 and DDN migration converters.** CLI tools convert Hasura v2 metadata exports and Hasura DDN supergraph projects to valid Pydantic-validated Provisa YAML config, preserving tables, relationships, column visibility, write grants, RLS filters, and auth config. No competitor provides tooling to import Hasura configuration. [tool-verified: REQ-182, REQ-183, REQ-185–193]
 
 **Dual OTLP export with default SQL redaction.** Operators send telemetry to their own collector and optionally to Provisa support. The support path defaults to redacting SQL literals — query data does not leave the operator's infrastructure unless explicitly enabled. [tool-verified: REQ-545, REQ-547]
 
@@ -151,7 +151,7 @@ Cypher read queries against Neo4j sources work. Write mutations do not. The foll
 
 - **REQ-661** — Write label resolution
 - **REQ-662** — Writes restricted to pre-registered tables only
-- **REQ-663** — `writable_by` ACL enforcement on Cypher writes
+- **REQ-663** — write-grant enforcement on Cypher writes
 - **REQ-664** — DML-capability checking before Cypher writes
 - **REQ-665** — Relationship immutability enforcement
 - **REQ-666** — Cypher `CREATE` → SQL `INSERT` translation

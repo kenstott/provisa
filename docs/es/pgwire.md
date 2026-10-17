@@ -60,7 +60,7 @@ Se admiten consultas simples de múltiples sentencias. Las sentencias separadas 
 
 Las consultas parametrizadas (`$1`, `$2`, ...) se admiten tanto en el modo de consulta simple como en el modo de consulta extendida (Bind/Execute). Los parámetros se sustituyen como literales antes de la ejecución. (REQ-581) [tool-verified: `server.py:78-85`]
 
-`SELECT * FROM fn(args)` y `SELECT fn(args)` — donde `fn` nombra una función registrada y rastreada — se interceptan antes del pipeline de gobierno y se enrutan a través del único ejecutor gobernado (`invoke_tracked_function`). El resultado es un conjunto de filas tipado idéntico al que devuelve cualquier otra superficie para ese comando. `writable_by` y las reglas de gobierno se aplican dentro del ejecutor. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
+`SELECT * FROM fn(args)` y `SELECT fn(args)` — donde `fn` nombra una función registrada y rastreada — se interceptan antes del pipeline de gobierno y se enrutan a través del único ejecutor gobernado (`invoke_tracked_function`). El resultado es un conjunto de filas tipado idéntico al que devuelve cualquier otra superficie para ese comando. La asignación del comando (`visible_to`), el derecho `write` para una mutación y las reglas de gobierno se aplican dentro del ejecutor. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
 
 ### Cursores (DECLARE / FETCH / MOVE / CLOSE) {: #cursors-declare-fetch-move-close }
 
@@ -151,11 +151,12 @@ Las mismas sentencias funcionan en toda superficie SQL: se manejan en el pipelin
 Las filas de una tabla registrada existente se escriben a través de pgwire como en cualquier otra superficie SQL, mediante la única admisión de escrituras (`provisa/compiler/write_admission.py`):
 
 1. **El derecho.** El rol tiene `write`. (REQ-868)
-2. **Las columnas.** Cada columna que escribe la sentencia nombra al rol en su `writable_by`; una columna que no declara ninguno no la puede escribir nadie. (REQ-663)
-3. **Las filas que puede tocar.** El filtro de filas del rol, el mismo predicado que llevan sus lecturas, se añade al `WHERE` de un `UPDATE` o `DELETE`.
-4. **Las filas que deja.** Un rol filtrado solo puede escribir filas que luego podría leer: las filas de un `INSERT`, y los nuevos valores de un `UPDATE` que fija una columna que lee el filtro, se comprueban contra el filtro antes de enviar nada al origen.
+2. **El permiso.** El rol tiene un permiso de escritura sobre la tabla para la operación: un `INSERT` necesita un permiso `insert`, un `UPDATE` uno `update`, un `DELETE` uno `delete`. Un `MERGE` necesita un permiso `insert` y uno `update` sobre todas las filas, y un `INSERT ... ON CONFLICT DO UPDATE` uno `update` sobre todas las filas. (REQ-2074)
+3. **Las columnas.** Cada columna que escribe la sentencia es una que el permiso nombra. Una columna que el permiso predefine es del permiso: la sentencia no puede suministrarla, y se añade el valor del permiso (una variable de sesión, un literal o el momento de la escritura). (REQ-663, REQ-2074)
+4. **Las filas que puede tocar.** El predicado `rows` del permiso se añade al `WHERE` de un `UPDATE` o `DELETE`. Un permiso que no indica ninguno toma el filtro de filas del rol, el mismo predicado que llevan sus lecturas.
+5. **Las filas que deja.** Las filas de un `INSERT`, y los nuevos valores de un `UPDATE` que establece una columna que lee el `check` del permiso, se comprueban contra el `check` antes de enviar nada al origen. Un permiso que no indica `check` toma el filtro de filas del rol.
 
-`TRUNCATE` también es una escritura de datos, ejecutada como tal y nunca reescrita como un `DELETE`. Necesita el derecho `write`, todas las columnas de la tabla escribibles por el rol y un origen que acepte eliminaciones. Vacía una tabla cada vez, y se rechaza a un rol con un filtro de filas en la tabla, ya que un `TRUNCATE` no puede aplicar el filtro: use `DELETE`, que sí lo hace. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
+`TRUNCATE` también es una escritura de datos, se ejecuta como tal y nunca se reescribe como `DELETE`. Necesita el derecho `write`, un permiso `delete` sobre todas las filas de la tabla y un origen que admita borrados. Vacía una tabla cada vez, y se rechaza a un rol cuyo permiso limita las filas (un predicado `rows`, o el filtro de filas del rol cuando el permiso no indica ninguno), ya que un `TRUNCATE` no puede aplicar el predicado: use `DELETE`, que sí lo aplica. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
 
 Lo que no se puede decidir se rechaza por su nombre en lugar de admitirse con dudas (un `INSERT … SELECT`, un valor que no es ni un literal ni un parámetro enlazado, un filtro que lee una columna que la sentencia no proporciona). [tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
@@ -174,7 +175,7 @@ COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
 Formatos admitidos: `text` (delimitado por tabulaciones, predeterminado), `csv` y `binary`, el formato COPY binario de PostgreSQL, con el que lee la extensión postgres de DuckDB. (REQ-883) [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
 
-**COPY FROM STDIN** es una escritura de datos en una tabla registrada existente: la admite la misma admisión de escritura que un `INSERT` de las mismas filas (consulte [Escrituras de datos](#data-writes-insert-update-delete-merge-copy-from-stdin)). Lee `text` (predeterminado) y `csv`. Cualquier otro formato se rechaza con SQLSTATE 0A000, nombrándolo, antes de que se envíe ningún dato. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
+**COPY FROM STDIN** es una escritura de datos en una tabla registrada existente: la admite la misma admisión de escritura que un `INSERT` de las mismas filas, con la condición añadida de que el permiso `insert` no tenga presets (véase [Escrituras de datos](#data-writes-insert-update-delete-merge-copy-from-stdin)). Lee `text` (por defecto) y `csv`. Cualquier otro formato se rechaza con SQLSTATE 0A000, nombrándolo, antes de enviar ningún dato. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 ### Transacciones y comandos de sesión {: #transactions-and-session-commands }
 

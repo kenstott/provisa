@@ -192,46 +192,76 @@ roles:
 
 הכלל זהה בכל משטח, כי כל אחד קורא את הסכמה המהודרת של התפקיד: GraphQL, SQL (HTTP, pgwire, Flight, JDBC), Cypher ו-Bolt, gRPC, REST ו-JSON:API, קטלוגי Flight ו-MCP ורשימות הניהול. היקף שאינו אחד משלושת הערכים נדחה בשמירת העמודה.
 
-### הרשאות כתיבה {: #write-permissions }
+### הרשאות כתיבה {: #write-grants }
 
-| שדה | ריק פירושו | מטרה |
-| ------- | ------------ | --------- |
-| `visible_to` | כל התפקידים יכולים לקרוא | שולט במי שרואה את העמודה (ממוסכת או לא) |
-| `writable_by` | אף תפקיד אינו יכול לכתוב | שולט במי שיכול לשנות (INSERT/UPDATE) |
+קריאת עמודה נשלטת על ידי `visible_to` (ריק פירושו שכל התפקידים יכולים לקרוא). כתיבה נשלטת לכל טבלה על ידי `write_grants`, ולא לכל עמודה. כברירת מחדל אין לטבלה שום הרשאה, ולכן אף תפקיד אינו יכול לכתוב אליה. (REQ-2074)
 
-הרשאת הכתיבה נאכפת בצינור המוטציות. תפקיד שאינו ב-`writable_by` מקבל שגיאה 403 כשהוא מנסה לכתוב לעמודה מוגבלת. (REQ-033, REQ-034)
+הרשאת כתיבה מציינת מה תפקיד רשאי לכתוב לטבלה בפעולה אחת (`insert`, `update` או `delete`):
+
+| שדה | מטרה |
+| ------- | --------- |
+| `columns` | העמודות ש-`INSERT` רשאי לרשום או ש-`UPDATE` רשאי לקבוע |
+| `rows` | השורות ש-`UPDATE` או `DELETE` רשאי לגעת בהן (פרדיקט SQL) |
+| `check` | מה שכל שורה ש-`INSERT` כותב, או ש-`UPDATE` משאיר, חייבת לקיים (פרדיקט SQL) |
+| `presets` | עמודות שההרשאה קובעת בעצמה, ממשתנה הפעלה, מערך מילולי או מרגע הכתיבה. ההצהרה אינה רשאית לספק אותן. |
+
+אם משמיטים את `rows` או את `check`, ההרשאה לוקחת את מסנן השורות של התפקיד לקריאה בטבלה, כך שתפקיד כותב את השורות שהוא קורא. `"TRUE"` פירושו כל שורה.
+
+אישור יחיד מכריע בכל כתיבה בכל משטח, בסדר הזה: לתפקיד יש את הזכות `write`; יש לו הרשאה לפעולה על הטבלה; כל עמודה שההצהרה כותבת מופיעה בהרשאה; ה-presets מתווספים; `rows` מצורף ב-AND ל-`WHERE`; וה-`check` מוערך על השורות החדשות לפני שנשלח משהו למקור. דחייה נוקבת בטבלה, בתפקיד ובפעולה. (REQ-2074)
+
+הצהרות רחבות יותר דורשות הרשאות רחבות יותר. `TRUNCATE` דורש הרשאת `delete` על כל שורה. `MERGE` דורש הרשאת `insert` והרשאת `update` על כל שורה. `INSERT ... ON CONFLICT DO UPDATE` דורש הרשאת `update` על כל שורה ללא presets. `COPY` דורש הרשאת `insert` ללא presets.
+
+GraphQL מציע לכל תפקיד שדה מוטציה בדיוק עבור הפעולות שיש לו הרשאות עבורן, עם עמודות ההרשאה. תפקיד צאצא יורש את הרשאות ההורה, כשהשלו קודמות. תפקיד-על מחזיק את הקיפול של הרשאות חבריו: איחוד העמודות, ה-OR של `rows` ו-`check`, ורק ה-presets שכל החברים חולקים. בממשק הניהול, הסעיף **כתיבות** של טבלה מפרט ועורך את ההרשאות שלה.
 
 ### דוגמה {: #example }
 
 ```yaml
-columns:
-  - name: email
-    visible_to: [admin, analyst, viewer]
-    writable_by: [admin]
-    masks:
-      - to: [admin]                   # admin sees raw value (no mask)
-      - to: ["*"]                     # everyone else sees it masked
-        mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
-  - name: salary
-    visible_to: [admin, hr]
-    writable_by: [hr]
-    masks:
-      - to: [admin, hr]               # admin and hr see real value
-      - to: ["*"]                     # all other visible roles see 0
-        mask: {type: constant, value: 0}
-  - name: created_at
-    visible_to: []                    # all can read
-    writable_by: []                   # nobody can write (auto-set)
+tables:
+  - source_id: hr-pg
+    domain_id: people
+    schema: public
+    table: employees
+    columns:
+      - name: id
+        visible_to: []                # all can read
+      - name: email
+        visible_to: [admin, analyst, viewer]
+        masks:
+          - to: [admin]               # admin sees raw value (no mask)
+          - to: ["*"]                 # everyone else sees it masked
+            mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
+      - name: salary
+        visible_to: [admin, hr]
+        masks:
+          - to: [admin, hr]           # admin and hr see real value
+          - to: ["*"]                 # all other visible roles see 0
+            mask: {type: constant, value: 0}
+      - name: created_at
+        visible_to: []                # all can read
+    write_grants:
+      - role: admin
+        operation: update
+        columns: [email]
+        rows: "TRUE"
+      - role: hr
+        operation: update
+        columns: [salary]
+      - role: hr
+        operation: insert
+        columns: [email, salary]
+        presets:
+          - {column: created_at, source: now}
 ```
+
 בדוגמה זו:
 
-- `email`: admin רואה `alice@example.com` ויכול לערוך; analyst ו-viewer רואים `a***@example.com`
-- `salary`: admin ו-hr רואים את הערך האמיתי; hr יכול לערוך; כל תפקיד גלוי אחר רואה `0`
-- `created_at`: כולם יכולים לקרוא, אף אחד אינו יכול לכתוב, אין מיסוך
+- `email`: admin רואה `alice@example.com` ויכול לעדכן אותו בכל שורה; analyst ו-viewer רואים `a***@example.com` ואינם יכולים לכתוב
+- `salary`: admin ו-hr רואים את הערך האמיתי; hr יכול לעדכן אותו בשורות ש-hr יכול לקרוא, כי ההרשאה אינה קובעת `rows`; כל תפקיד גלוי אחר רואה `0`
+- `created_at`: כולם יכולים לקרוא אותו, אף תפקיד אינו מספק אותו, וה-insert של hr קובע אותו לרגע הכתיבה
 
 ## הרשאת מוטציה {: #mutation-authorization }
 
-מוטציות רשומות (GraphQL מרוחק, OpenAPI, gRPC, Hasura) מוגנות בשתי בדיקות בלתי תלויות. (REQ-867, REQ-868) תפקיד יכול להפעיל מוטציה רק אם יש לו את היכולת הגלובלית `write` וגם הוא מופיע ברשימת `writable_by` של המוטציה. (REQ-868) `writable_by` ריק אוסר כברירת מחדל — אף תפקיד אינו יכול להפעיל אותה. (REQ-867)
+מוטציות רשומות (GraphQL מרוחק, OpenAPI, gRPC, Hasura) מוגנות בשתי בדיקות בלתי תלויות. (REQ-868) תפקיד רשאי להפעיל מוטציה רק אם יש לו את היכולת הגלובלית `write` וגם ה-command משויך אליו דרך `visible_to` (רשימה ריקה משייכת אותו לכל תפקיד). (REQ-868) ל-command אין רשימת `writable_by`; ההגדרות דוחות רשימה כזו בשמה. [tool-verified: `provisa/security/mutation_authz.py` `command_assigned`, `admit_command`; `provisa/core/models.py` `_one_role_list`]
 
 מוטציות מסווגות ככתיבות לפי החוזה, לא לפי הצהרת הקורא. (REQ-869) `SELECT` שמפנה לפונקציה מסוג מוטציה מועלה לכתיבה וכפוף לאותה בדיקה דו-שערית, כך שקורא אינו יכול להפעיל מוטציה כשהוא מציג אותה כקריאה. (REQ-869) סיווג מחדש של מוטציה כבטוחה לקריאה דורש את היכולת `access_config` ונרשם כהחלטת ממשל; אין חריגה לבקשה בודדת. (REQ-870)
 

@@ -976,7 +976,7 @@ DSN проверяется движком федерации перед прин
 
 Все эндпоинты находятся под префиксом `/admin/actions`. (REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
 
-Каждый вызов — из GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql` и Provisa gRPC — проходит через единый управляемый исполнитель, который единообразно применяет `writable_by` и управление. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] См. [docs/integrations.md](integrations.md#invoking-commands-across-protocols) для синтаксиса вызова по каждому протоколу.
+Каждый вызов — из GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql` и Provisa gRPC — проходит через единый управляемый исполнитель, который единообразно применяет назначение команды (`visible_to`), право `write` для мутации и управление. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] См. [docs/integrations.md](integrations.md#invoking-commands-across-protocols) для синтаксиса вызова по каждому протоколу.
 
 #### `GET /admin/actions`
 
@@ -998,7 +998,6 @@ DSN проверяется движком федерации перед прин
       },
       "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
       "visibleTo": ["admin"],
-      "writableBy": [],
       "domainId": "pet-store",
       "description": "Demo Python command returning random rows",
       "kind": "query"
@@ -1032,8 +1031,7 @@ DSN проверяется движком федерации перед прин
 | `binding` | Нет | Детали подключения, специфичные для `implKind` (объект JSON) |
 | `returnSchema` | Нет | JSON Schema `{type:"array", items:{type:"object", properties:{...}}}` — делает команду возвращающей набор строк на каждой поверхности |
 | `arguments` | Нет | Определения аргументов `[{name, type}]`; порядок позиций важен для вызывающих через SQL и Bolt |
-| `visibleTo` | Нет | Id ролей, которые могут вызывать команду |
-| `writableBy` | Нет | Id ролей, которым разрешено вызывать её как мутацию |
+| `visibleTo` | Нет | ID ролей, которым назначена команда (пусто: каждая роль). `mutation` дополнительно требует права `write` |
 | `domainId` | Нет | Домен для размещения в GraphQL и контроля доступа |
 
 **Значения `implKind`:**

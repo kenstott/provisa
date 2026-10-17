@@ -242,7 +242,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 **Команда (command)** — это зарегистрированная отслеживаемая функция или webhook: вызываемый
 объект, зарегистрированный в модели Provisa, с полем `kind` (`query` или `mutation`) и
 `impl_kind`, описывающим, как он выполняется. Каждая поверхность направляет вызовы через единый
-управляемый исполнитель (`invoke_tracked_function`), который единообразно применяет `writable_by`
+управляемый исполнитель (`invoke_tracked_function`), который единообразно применяет назначение команды (`visible_to`), право `write` для мутации
 и governance (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`,
 `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`,
 `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]

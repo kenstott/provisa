@@ -665,10 +665,8 @@ tables:
     columns:
       - name: id
         visible_to: [admin, analyst]
-        writable_by: []           # read-only (empty = no writes)
       - name: email
         visible_to: [admin, analyst]
-        writable_by: [admin]      # only admin can mutate
         masks:                    # first entry the reader holds applies
           - to: [admin]           # admin sees raw
           - to: ["*"]             # everyone else sees it masked
@@ -677,25 +675,51 @@ tables:
         description: "Primary email address"  # optional: appears in SDL
       - name: amount
         visible_to: [admin]
-        writable_by: [admin]
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: constant, value: 0}
+      - name: created_by
+        visible_to: [admin, analyst]
       - name: created_at
         visible_to: [admin, analyst]
-        writable_by: []           # nobody can write
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: truncate, precision: month}
-    column_presets:               # auto-set values on insert/update
-      - column: created_by
-        source: header            # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now               # current timestamp
+    write_grants:                 # who may write this table, per role and operation
+      - role: admin
+        operation: insert
+        columns: [email, amount]
+        check: "TRUE"             # any row may be inserted
+        presets:                  # set by the grant; the statement may not supply them
+          - {column: created_by, source: session, name: user_id}
+          - {column: created_at, source: now}
+      - role: admin
+        operation: update
+        columns: [email, amount]
+        rows: "TRUE"              # any row may be updated
+        check: "TRUE"
 ```
+
+Una tabla no tiene ningún permiso de escritura por defecto, así que ningún rol puede escribir en ella. Un permiso otorga a un rol una operación (`insert`, `update` o `delete`) sobre la tabla. Una tabla contiene como máximo un permiso por rol y operación. (REQ-2074)
+
+| Campo del permiso | Significado |
+| ----------- | ------- |
+| `columns` | Las columnas que un `INSERT` puede listar o un `UPDATE` puede establecer. Un permiso `delete` no nombra ninguna. |
+| `rows` | Las filas que un `UPDATE` o `DELETE` puede tocar: un predicado SQL sobre las columnas de la tabla. Un permiso `insert` no tiene. |
+| `check` | Lo que debe cumplir cada fila que escribe un `INSERT`, o que deja un `UPDATE`: un predicado SQL. Un permiso `delete` no tiene. |
+| `presets` | Columnas que el permiso establece por sí mismo. La sentencia no puede suministrarlas, así que una columna con preset no está también en `columns`. |
+
+Si omite `rows` o `check`, el permiso toma el filtro de filas de lectura del rol sobre la tabla: un rol escribe las filas que lee, salvo que el permiso diga otra cosa. `"TRUE"` significa todas las filas. Las claves antiguas `writable_by` de columna y `column_presets` de tabla se rechazan por su nombre; la configuración no carga hasta que se sustituyan por `write_grants`.
+
+Toda escritura en toda superficie se admite en este orden: el rol tiene el derecho `write`; el rol tiene un permiso para la operación sobre la tabla; cada columna que escribe la sentencia está en el permiso; los presets del permiso se añaden a la sentencia; el predicado `rows` se combina con AND en el `WHERE` de un `UPDATE` o `DELETE`; y `check` se evalúa sobre las filas nuevas antes de enviar nada al origen. Se rechaza una sentencia que `check` no puede decidir. Las columnas del permiso también deciden qué campos de mutación ofrece GraphQL a un rol: un campo por cada operación para la que tiene un permiso, con exactamente esas columnas.
+
+Algunas sentencias necesitan un permiso más amplio. `TRUNCATE` necesita un permiso `delete` sobre todas las filas. `MERGE` necesita un permiso `insert` y uno `update`, ambos sobre todas las filas. `INSERT ... ON CONFLICT DO UPDATE` necesita un permiso `update` sobre todas las filas sin presets. `COPY ... FROM STDIN` necesita un permiso `insert` sin presets.
+
+Los permisos se heredan. Un rol hijo toma, por tabla y operación, el permiso del rol más cercano de su cadena que tenga uno, con el propio primero. Un metarrol mantiene el pliegue de los permisos de sus miembros: la unión de sus columnas, el OR de sus predicados `rows` y `check`, y solo los presets que todos los miembros establecen igual.
+
+En la interfaz de administración, la sección **Escrituras** de una tabla lista los permisos y los edita en conjunto.
 
 ### Alias {: #aliases }
 
@@ -1213,32 +1237,38 @@ El argumento `distinct_on` selecciona la primera fila para cada valor distinto d
 
 Se compila a `SELECT DISTINCT ON (region) ...` en PostgreSQL. (REQ-213) Para dialectos que no son PG, se usa una reserva mediante función de ventana. (REQ-213)
 
-## Preajustes de columna {: #column-presets }
+## Presets de los permisos de escritura {: #write-grant-presets }
 
-Inyecta automáticamente valores en columnas al insertar/actualizar. (REQ-214) Se definen por tabla en la configuración.
+Un permiso de escritura establece columnas por sí mismo en insert y update. (REQ-214, REQ-2074) Los presets se declaran en la lista `presets` del permiso, por rol y operación.
 
 ```yaml
 tables:
   - source_id: sales-pg
+    domain_id: sales-analytics
+    schema: public
     table: orders
-    column_presets:
-      - column: created_by
-        source: header           # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now              # current timestamp
-      - column: source_system
-        source: literal          # constant value
-        value: "provisa"
+    columns:
+      - {name: amount, visible_to: [analyst]}
+      - {name: created_by, visible_to: [analyst]}
+      - {name: created_at, visible_to: [analyst]}
+      - {name: source_system, visible_to: [analyst]}
+    write_grants:
+      - role: analyst
+        operation: insert
+        columns: [amount]
+        presets:
+          - {column: created_by, source: session, name: user_id}   # from the request's session
+          - {column: created_at, source: now}                      # time of the write
+          - {column: source_system, source: literal, value: provisa}
 ```
 
 | Origen | Comportamiento |
 | -------- | ---------- |
-| `header` | Inyecta el valor del encabezado de solicitud HTTP nombrado |
-| `now` | Inyecta `NOW()` (timestamp actual) |
-| `literal` | Inyecta un valor constante |
+| `session` | Inyecta el valor de la variable de sesión indicada (`name`) de la solicitud |
+| `now` | Inyecta el momento de la escritura |
+| `literal` | Inyecta una constante (`value`) |
 
-Las columnas de preajuste se inyectan durante la compilación de la mutación, antes de la generación de SQL. (REQ-214) No son visibles en el tipo de entrada de la mutación. (REQ-214)
+Los presets se añaden a la sentencia durante la compilación, antes de generar el SQL. (REQ-214) La sentencia no puede suministrar una columna con preset, y una columna con preset no está en el tipo de entrada de la mutación. (REQ-214)
 
 ## Roles heredados {: #inherited-roles }
 

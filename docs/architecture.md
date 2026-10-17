@@ -603,7 +603,7 @@ Every registered table gets an auto-generated `{table}_aggregate` root field (`c
 
 ## Inherited Roles
 
-A role names at most one parent through `parent_role_id`. (REQ-215) At runtime build, `security/inheritance.py` walks each role's chain from the child up and folds it into the build's own copies of the loaded data, so every later lookup stays keyed by the acting role id. (REQ-1677) Capabilities and domain access are the union of the chain. A column's `visible_to` and `writable_by`, each entry of its mask list, and a metric's, function's or webhook's `visible_to`, hold for a role when they name it or an ancestor. RLS resolves per table with the child taking precedence: the nearest role in the chain that has a rule for the table, its own table rule before its domain rule, supplies the one predicate that runs; an ancestor's rule is never combined with it. A role inherits its parent's rate limit when it sets none. A parent must exist, may not be the role itself and may not close a cycle; a role other roles inherit from cannot be deleted until they are reparented. (REQ-1677)
+A role names at most one parent through `parent_role_id`. (REQ-215) At runtime build, `security/inheritance.py` walks each role's chain from the child up and folds it into the build's own copies of the loaded data, so every later lookup stays keyed by the acting role id. (REQ-1677) Capabilities and domain access are the union of the chain. A column's `visible_to`, each entry of its mask list, and a metric's, function's or webhook's `visible_to`, hold for a role when they name it or an ancestor. A table's write grants resolve per operation the same way: a role without a grant for an operation takes the nearest ancestor's, its own first. RLS resolves per table with the child taking precedence: the nearest role in the chain that has a rule for the table, its own table rule before its domain rule, supplies the one predicate that runs; an ancestor's rule is never combined with it. A role inherits its parent's rate limit when it sets none. A parent must exist, may not be the role itself and may not close a cycle; a role other roles inherit from cannot be deleted until they are reparented. (REQ-1677)
 
 ## ABAC Approval Hook
 
@@ -655,9 +655,9 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 The response cache is opt-in per request: GraphQL uses the `@cached(ttl: Int)` directive, SQL and Cypher use the `cache`/`cache_ttl` comment, gRPC uses the `x-provisa-cache` / `x-provisa-cache-ttl` call metadata. The hint applies on every transport that carries the language (Cypher over HTTP, Bolt and Arrow Flight; GraphQL over HTTP and Arrow Flight). A request without one never reads or writes the cache, and neither form reads fresher data than the operator's source and table settings allow. See [Cache](configuration.md#per-request-opt-in). (REQ-544)
 
-## Column Presets in Mutations
+## Write Grants and Presets in Mutations
 
-`compiler/mutation_gen.py` supports per-column server-side presets applied on `INSERT` or `UPDATE`. (REQ-214) Presets are not included in the generated GraphQL mutation input type — they are injected by the compiler transparently. Preset types: `static` (literal value) or `session` (value from request session/header, e.g. `x-hasura-user-id`). (REQ-214)
+A table's `write_grants` state, per role and operation, which columns a write may name, which rows it may touch, and which values the grant sets itself. (REQ-2074) `compiler/write_admission.py` admits every write in the governance stage, so GraphQL, SQL, Cypher and the other surfaces get the same answer: the `write` right, the role's grant for the operation, the columns, the presets added to the statement, the `rows` predicate ANDed into the `WHERE`, and the `check` evaluated on the new rows before anything reaches a source. (REQ-214) Presets come from a session variable, a literal or the time of the write. The statement may not supply a preset column, so presets are not in the generated GraphQL mutation input type. (REQ-214) [tool-verified: `provisa/compiler/write_admission.py`, `provisa/core/models.py` `WriteGrant`, `ColumnPreset`]
 
 ## GraphQL Voyager Schema Explorer
 

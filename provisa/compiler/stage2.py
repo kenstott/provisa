@@ -472,6 +472,13 @@ def _govern_select(
             # fakes -- a written row is never faked again.
             _project_kept(node, tbl, faked, tid, gov_ctx)
             projected.add(id(tbl))
+    if projected:
+        _read_projected_names(
+            node,
+            {_alias_for(t): tid for t, tid in table_refs if tid is not None and id(t) in projected},
+            table_refs,
+            gov_ctx,
+        )
 
     # --- REQ-423/426: a similarity search names an embedding column the role is served, and is
     # completed with its model and dimensions -- before a hidden column becomes NULL below, so a
@@ -563,6 +570,44 @@ def _govern_select(
 #: Marks an expression governance put in a column's place (a mask, or NULL for a hidden column),
 #: so a later pass over the same statement does not govern what is inside it again.
 _GOVERNED = "provisa_governed"
+
+
+def _read_projected_names(
+    node: exp.Select,
+    projected: dict[str, int],
+    table_refs: list[tuple[exp.Table, int | None]],
+    gov_ctx: GovernanceContext,
+) -> None:  # REQ-1494, REQ-1942
+    """Name, IN PLACE, each reference in ``node`` to a column of a projected table (``projected``:
+    alias -> table id) as the projection names it (``apply_sql_name`` of the physical name). A
+    statement names a column by its published name, and lowering resolves a published name only
+    on a table, not on the projection that now stands in its place. A bare select-list column
+    renamed keeps its published name as its output name. An unqualified name is renamed only
+    where this SELECT reads that one table, as lowering resolves it only where one source of its
+    scope publishes it."""
+    from provisa.compiler.naming import apply_sql_name
+
+    sole = len(table_refs) == 1 and len(projected) == 1
+    top_level = {id(e) for e in node.expressions}
+    for col in list(node.find_all(exp.Column)):
+        if isinstance(col.this, exp.Star) or _already_governed(col):
+            continue
+        if col.table:
+            tid = projected.get(col.table)
+        else:
+            tid = next(iter(projected.values())) if sole else None
+            if tid is not None and col.find_ancestor(exp.Select) is not node:
+                tid = None  # a nested SELECT's own unqualified column
+        if tid is None:
+            continue
+        physical = registered_name(gov_ctx, tid, col.name)
+        named = apply_sql_name(physical)
+        if physical == col.name or named == col.name:
+            continue
+        published = col.name
+        col.set("this", exp.Identifier(this=named, quoted=True))
+        if id(col) in top_level:
+            col.replace(exp.alias_(col.copy(), published, quoted=True))
 
 
 def _project_faked(
@@ -678,13 +723,15 @@ def _govern_references(
         if col.find_ancestor(exp.Select) is not node and col.table not in alias_to_tid:
             continue  # a nested SELECT's own column: governed when that SELECT is
         if not _is_column_visible(col, alias_to_tid, gov_ctx):
-            if approved_join_key(col, gov_ctx):
-                continue  # read by the engine to join, never returned
             replacement: exp.Expr = exp.Null()  # pyright: ignore[reportPrivateImportUsage]
         else:
             replacement = _maybe_mask_column(col, alias_to_tid, gov_ctx)
             if replacement is col:
                 continue
+        if approved_join_key(col, gov_ctx):
+            # A registered relationship's key, hidden or masked: the engine joins on the real
+            # value, which is not returned (REQ-603).
+            continue
         replacement.meta[_GOVERNED] = True
         _replace_reference(col, replacement)
 

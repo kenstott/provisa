@@ -60,7 +60,7 @@ trust 模式（`provider: none`，或身份验证中间件未启用）是例外�
 
 在简单查询模式和扩展查询（Bind/Execute）模式下均支持参数化查询（`$1`、`$2`……）。参数会在执行前以字面量替换。（REQ-581）[tool-verified: `server.py:78-85`]
 
-`SELECT * FROM fn(args)` 和 `SELECT fn(args)`——其中 `fn` 指定一个已注册且受跟踪的函数——会在治理管道之前被拦截，并通过唯一受治理的执行器（`invoke_tracked_function`）路由。结果是一个类型化的行集，与该命令在其他任何界面所返回的结果一致。`writable_by` 及治理规则会在执行器内部强制执行。（REQ-1156）[tool-verified: `provisa/pgwire/function_call.py:74-88`]
+`SELECT * FROM fn(args)` 和 `SELECT fn(args)`——其中 `fn` 指定一个已注册且受跟踪的函数——会在治理管道之前被拦截，并通过唯一受治理的执行器（`invoke_tracked_function`）路由。结果是一个类型化的行集，与该命令在其他任何界面所返回的结果一致。命令的分配（`visible_to`）、变更所需的 `write` 权利 及治理规则会在执行器内部强制执行。（REQ-1156）[tool-verified: `provisa/pgwire/function_call.py:74-88`]
 
 ### 游标（DECLARE / FETCH / MOVE / CLOSE） {: #cursors-declare-fetch-move-close }
 
@@ -151,11 +151,12 @@ DROP TABLE busy;
 已有注册表的行通过 pgwire 写入，方式与其他任何 SQL 界面相同，经由同一个写入准入（`provisa/compiler/write_admission.py`）：
 
 1. **权利。** 角色持有 `write`。（REQ-868）
-2. **列。** 语句写入的每一列都在其 `writable_by` 中指定了该角色；未声明任何内容的列任何人都不能写入。（REQ-663）
-3. **可以触及的行。** 角色的行过滤（与其读取所携带的谓词相同）被添加到 `UPDATE` 或 `DELETE` 的 `WHERE` 中。
-4. **保留下来的行。** 受过滤的角色只能写入之后它能读取的行：`INSERT` 的行，以及设置了过滤所读取的列的 `UPDATE` 的新值，会在向数据源发送任何内容之前对照过滤进行检查。
+2. **授权。** 角色持有表上该操作的写入授权：`INSERT` 需要 `insert` 授权，`UPDATE` 需要 `update` 授权，`DELETE` 需要 `delete` 授权。`MERGE` 需要覆盖所有行的 `insert` 和 `update` 授权，`INSERT ... ON CONFLICT DO UPDATE` 需要覆盖所有行的 `update` 授权。（REQ-2074）
+3. **列。** 语句写入的每一列都是授权指定的列。授权预设的列归授权所有：语句不得提供它，授权的值（会话变量、字面量或写入时间）会被添加。（REQ-663、REQ-2074）
+4. **可触及的行。** 授权的 `rows` 谓词会被添加到 `UPDATE` 或 `DELETE` 的 `WHERE` 中。未声明 `rows` 的授权采用角色的行过滤器，即其读取所携带的同一谓词。
+5. **留下的行。** `INSERT` 写入的行，以及设置了授权 `check` 所读取的列的 `UPDATE` 的新值，会在向数据源发送任何内容之前对照 `check` 进行检查。未声明 `check` 的授权采用角色的行过滤器。
 
-`TRUNCATE` 也是数据写入，按其本身执行，从不改写为 `DELETE`。它需要 `write` 权利、该角色可写入表的每一列，以及接受删除的数据源。它一次清空一张表；对表有行过滤的角色会被拒绝，因为 `TRUNCATE` 无法应用该过滤：请使用能应用过滤的 `DELETE`。（REQ-1942） [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
+`TRUNCATE` 同样是数据写入，按其自身运行，绝不会被改写为 `DELETE`。它需要 `write` 权利、覆盖该表所有行的 `delete` 授权，以及支持删除的数据源。它一次清空一张表，授权限制了行的角色（`rows` 谓词，或授权未声明时采用的角色行过滤器）会被拒绝，因为 `TRUNCATE` 无法应用该谓词：请改用能应用它的 `DELETE`。（REQ-1942）[tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
 
 无法判定的内容会被点名拒绝，而不是在存疑时放行（`INSERT … SELECT`、既非字面量也非绑定参数的值、读取语句未提供的列的过滤）。[tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
@@ -174,7 +175,7 @@ COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
 支持的格式：`text`（制表符分隔，默认）、`csv` 和 `binary`，即 PostgreSQL 的二进制 COPY 格式，DuckDB 的 postgres 扩展用它读取。（REQ-883） [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
 
-**COPY FROM STDIN** 是向已有注册表写入数据：它由与相同行的 `INSERT` 相同的写入准入放行（参见[数据写入](#data-writes-insert-update-delete-merge-copy-from-stdin)）。它读取 `text`（默认）和 `csv`。任何其他格式都会在发送任何数据之前以 SQLSTATE 0A000 被拒绝，并指明该格式。 [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
+**COPY FROM STDIN** 是对现有已注册表的数据写入：它与相同行的 `INSERT` 经由同一个写入准入，另加一个条件：`insert` 授权不得带有预设（参见[数据写入](#data-writes-insert-update-delete-merge-copy-from-stdin)）。它读取 `text`（默认）和 `csv`。任何其他格式都会在发送任何数据之前以 SQLSTATE 0A000 被拒绝，并指明该格式。[tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 ### 事务与会话命令 {: #transactions-and-session-commands }
 

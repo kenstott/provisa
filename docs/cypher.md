@@ -183,7 +183,7 @@ Property names map to columns via domain-prefix stripping and alias resolution; 
 Rules:
 
 - The label must resolve to exactly one registered table. Ambiguous or unknown labels are hard errors; no fuzzy matching. (REQ-661) New labels or types cannot be created through Cypher. (REQ-662)
-- Every write is gated on the target table's `writable_by` ACL; a role without write rights is rejected at compile time. (REQ-663)
+- Every write is gated on the target table's write grants: the role needs the `write` right and a grant for the operation, and the columns written must be in the grant. A role without them is rejected at compile time. (REQ-663)
 - The backing source connector must support DML. Read-only sources (Trino-federated, Iceberg without a Delta connector) reject writes at translation time. (REQ-664)
 - Relationships cannot be written — they are derived from the model's declared joins, not stored edges. Targeting a relationship is a hard error. (REQ-665) A junction-backed edge is no exception: the associative table behind it is itself a registered table, and rows are written to that table, not to the edge. (REQ-1586)
 - Writes run through the full write pipeline: RLS injection and post-mutation hooks (response-cache invalidation, materialized-view stale marking, Kafka change events, hot-table reload). (REQ-798)

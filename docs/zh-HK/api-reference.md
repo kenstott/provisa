@@ -976,7 +976,7 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 
 所有端點都在 `/admin/actions` 前綴之下。(REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
 
-每一次呼叫 — 來自 GraphQL、SQL、Cypher、Bolt、Arrow Flight、MCP `run_sql` 以及 Provisa gRPC — 都會經由單一受治理的執行器路由，統一強制執行 `writable_by` 與治理。(REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] 各通訊協定的呼叫語法請見 [docs/integrations.md](integrations.md#invoking-commands-across-protocols)。
+每一次呼叫 — 來自 GraphQL、SQL、Cypher、Bolt、Arrow Flight、MCP `run_sql` 以及 Provisa gRPC — 都會經由單一受治理的執行器路由，統一強制執行 指令的分配（`visible_to`）、變更所需的 `write` 權利 與治理。(REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] 各通訊協定的呼叫語法請見 [docs/integrations.md](integrations.md#invoking-commands-across-protocols)。
 
 #### `GET /admin/actions`
 
@@ -998,7 +998,6 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
       },
       "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
       "visibleTo": ["admin"],
-      "writableBy": [],
       "domainId": "pet-store",
       "description": "Demo Python command returning random rows",
       "kind": "query"
@@ -1032,8 +1031,7 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 | `binding` | 否 | `implKind` 專屬的連線細節（JSON 物件） |
 | `returnSchema` | 否 | JSON Schema `{type:"array", items:{type:"object", properties:{...}}}` — 使命令在每個介面上都傳回集合 |
 | `arguments` | 否 | `[{name, type}]` 引數定義；位置順序對 SQL 與 Bolt 呼叫者有意義 |
-| `visibleTo` | 否 | 可呼叫該命令的角色 ID |
-| `writableBy` | 否 | 獲准以變更操作方式呼叫它的角色 ID |
+| `visibleTo` | 否 | 該指令分配給的角色 ID（為空：所有角色）。`mutation` 另外需要 `write` 權利 |
 | `domainId` | 否 | 用於 GraphQL 放置與存取控制的網域 |
 
 **`implKind` 值：**

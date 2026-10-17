@@ -976,7 +976,7 @@ No se registra nada. Use la pantalla de revisión de la interfaz de administraci
 
 Todos los endpoints están bajo el prefijo `/admin/actions`. (REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
 
-Cada invocación — desde GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql` y Provisa gRPC — se enruta a través de un único ejecutor gobernado que aplica `writable_by` y el gobierno de manera uniforme. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] Vea [docs/integrations.md](integrations.md#invoking-commands-across-protocols) para la sintaxis de llamada por protocolo.
+Cada invocación — desde GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql` y Provisa gRPC — se enruta a través de un único ejecutor gobernado que aplica la asignación del comando (`visible_to`), el derecho `write` para una mutación y el gobierno de manera uniforme. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] Vea [docs/integrations.md](integrations.md#invoking-commands-across-protocols) para la sintaxis de llamada por protocolo.
 
 #### `GET /admin/actions`
 
@@ -998,7 +998,6 @@ Devuelve todas las funciones de BD y webhooks rastreados. (REQ-242) [tool-verifi
       },
       "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
       "visibleTo": ["admin"],
-      "writableBy": [],
       "domainId": "pet-store",
       "description": "Demo Python command returning random rows",
       "kind": "query"
@@ -1032,8 +1031,7 @@ Registra una función rastreada (comando). (REQ-205) [tool-verified: `provisa/ap
 | `binding` | No | Detalles de conexión específicos de `implKind` (objeto JSON) |
 | `returnSchema` | No | JSON Schema `{type:"array", items:{type:"object", properties:{...}}}` — hace que el comando devuelva un conjunto en cada superficie |
 | `arguments` | No | Definiciones de argumento `[{name, type}]`; el orden posicional importa para llamadores SQL y Bolt |
-| `visibleTo` | No | IDs de rol que pueden llamar al comando |
-| `writableBy` | No | IDs de rol autorizados a invocarlo como mutación |
+| `visibleTo` | No | IDs de rol a los que está asignado el comando (vacío: todos los roles). Una `mutation` además necesita el derecho `write` |
 | `domainId` | No | Dominio para la ubicación en GraphQL y el control de acceso |
 
 **Valores de `implKind`:**

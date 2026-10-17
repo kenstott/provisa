@@ -1393,8 +1393,7 @@ functions:
 | `function_name` | Yes | — | 实际的数据库函数名 |
 | `returns` | Yes | — | 该函数返回的已注册表 ID（REQ-207） |
 | `arguments` | No | `[]` | `{name, type}` 参数定义列表（REQ-211） |
-| `visible_to` | No | `[]` | 可以调用该函数的角色 |
-| `writable_by` | No | `[]` | 可以将该函数作为 mutation 调用的角色 |
+| `visible_to` | 否 | `[]` | 该函数分配给的角色（为空：所有角色）。`mutation` 另外需要 `write` 权利 |
 | `domain_id` | No | `""` | 该函数所属的域 |
 | `description` | No | `null` | GraphQL 字段描述 |
 | `kind` | No | `mutation` | `"query"` 或 `"mutation"`（REQ-205） |

@@ -192,46 +192,76 @@ Publicar una columna quita la condición de dominio para esa columna y nada más
 
 La regla es la misma en toda superficie, porque cada una lee el esquema compilado del rol: GraphQL, SQL (HTTP, pgwire, Flight, JDBC), Cypher y Bolt, gRPC, REST y JSON:API, los catálogos de Flight y MCP y los listados de administración. Un alcance que no es uno de los tres valores se rechaza al guardar una columna.
 
-### Permisos de escritura {: #write-permissions }
+### Permisos de escritura {: #write-grants }
 
-| Campo | Vacío significa | Propósito |
-| ------- | ------------ | --------- |
-| `visible_to` | Todos los roles pueden leer | Controla quién ve la columna (enmascarada o sin enmascarar) |
-| `writable_by` | Ningún rol puede escribir | Controla quién puede mutar (INSERT/UPDATE) |
+`visible_to` controla la lectura de una columna (vacío significa que todos los roles pueden leer). La escritura se controla por tabla con `write_grants`, no por columna. Una tabla no tiene ningún permiso por defecto, así que ningún rol puede escribir en ella. (REQ-2074)
 
-El permiso de escritura se aplica en el pipeline de mutaciones. Un rol que no está en `writable_by` recibe un error 403 al intentar escribir en una columna restringida. (REQ-033, REQ-034)
+Un permiso de escritura indica qué puede escribir un rol en una tabla mediante una operación (`insert`, `update` o `delete`):
+
+| Campo | Propósito |
+| ------- | --------- |
+| `columns` | Las columnas que un `INSERT` puede listar o un `UPDATE` puede establecer |
+| `rows` | Las filas que un `UPDATE` o `DELETE` puede tocar (un predicado SQL) |
+| `check` | Lo que debe cumplir cada fila que escribe un `INSERT`, o que deja un `UPDATE` (un predicado SQL) |
+| `presets` | Columnas que el permiso establece por sí mismo, desde una variable de sesión, un literal o el momento de la escritura. La sentencia no puede suministrarlas. |
+
+Si omite `rows` o `check`, el permiso toma el filtro de filas de lectura del rol sobre la tabla, de modo que un rol escribe las filas que lee. `"TRUE"` significa todas las filas.
+
+Una sola admisión decide cada escritura en cada superficie, en este orden: el rol tiene el derecho `write`; tiene un permiso para la operación sobre la tabla; cada columna que escribe la sentencia está en el permiso; se añaden los presets; `rows` se combina con AND en el `WHERE`; y `check` se evalúa sobre las filas nuevas antes de enviar nada al origen. Un rechazo nombra la tabla, el rol y la operación. (REQ-2074)
+
+Las sentencias más amplias necesitan permisos más amplios. `TRUNCATE` necesita un permiso `delete` sobre todas las filas. `MERGE` necesita un permiso `insert` y uno `update` sobre todas las filas. `INSERT ... ON CONFLICT DO UPDATE` necesita un permiso `update` sobre todas las filas sin presets. `COPY` necesita un permiso `insert` sin presets.
+
+GraphQL ofrece a cada rol un campo de mutación solo para las operaciones en las que tiene permisos, con las columnas del permiso. Un rol hijo hereda los permisos de su padre, los propios primero. Un metarrol mantiene el pliegue de los permisos de sus miembros: la unión de las columnas, el OR de `rows` y `check`, y solo los presets que comparten todos los miembros. En la interfaz de administración, la sección **Escrituras** de una tabla lista y edita sus permisos.
 
 ### Ejemplo {: #example }
 
 ```yaml
-columns:
-  - name: email
-    visible_to: [admin, analyst, viewer]
-    writable_by: [admin]
-    masks:
-      - to: [admin]                   # admin sees raw value (no mask)
-      - to: ["*"]                     # everyone else sees it masked
-        mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
-  - name: salary
-    visible_to: [admin, hr]
-    writable_by: [hr]
-    masks:
-      - to: [admin, hr]               # admin and hr see real value
-      - to: ["*"]                     # all other visible roles see 0
-        mask: {type: constant, value: 0}
-  - name: created_at
-    visible_to: []                    # all can read
-    writable_by: []                   # nobody can write (auto-set)
+tables:
+  - source_id: hr-pg
+    domain_id: people
+    schema: public
+    table: employees
+    columns:
+      - name: id
+        visible_to: []                # all can read
+      - name: email
+        visible_to: [admin, analyst, viewer]
+        masks:
+          - to: [admin]               # admin sees raw value (no mask)
+          - to: ["*"]                 # everyone else sees it masked
+            mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
+      - name: salary
+        visible_to: [admin, hr]
+        masks:
+          - to: [admin, hr]           # admin and hr see real value
+          - to: ["*"]                 # all other visible roles see 0
+            mask: {type: constant, value: 0}
+      - name: created_at
+        visible_to: []                # all can read
+    write_grants:
+      - role: admin
+        operation: update
+        columns: [email]
+        rows: "TRUE"
+      - role: hr
+        operation: update
+        columns: [salary]
+      - role: hr
+        operation: insert
+        columns: [email, salary]
+        presets:
+          - {column: created_at, source: now}
 ```
+
 En este ejemplo:
 
-- `email`: admin ve `alice@example.com` y puede editar; analyst y viewer ven `a***@example.com`
-- `salary`: admin y hr ven el valor real; hr puede editar; cualquier otro rol visible ve `0`
-- `created_at`: todos pueden leer, nadie puede escribir, sin enmascaramiento
+- `email`: admin ve `alice@example.com` y puede actualizarlo en cualquier fila; analyst y viewer ven `a***@example.com` y no pueden escribir
+- `salary`: admin y hr ven el valor real; hr puede actualizarlo en las filas que hr puede leer, porque el permiso no indica `rows`; cualquier otro rol visible ve `0`
+- `created_at`: todos pueden leerlo, ningún rol lo suministra, y un insert de hr lo establece al momento de la escritura
 
 ## Autorización de mutaciones {: #mutation-authorization }
 
-Las mutaciones registradas (GraphQL remoto, OpenAPI, gRPC, Hasura) están protegidas por dos comprobaciones independientes. (REQ-867, REQ-868) Un rol puede invocar una mutación solo si tiene la capacidad global `write` Y aparece en la lista `writable_by` de esa mutación. (REQ-868) Un `writable_by` vacío deniega por defecto: ningún rol puede invocarla. (REQ-867)
+Las mutaciones registradas (GraphQL remoto, OpenAPI, gRPC, Hasura) están protegidas por dos comprobaciones independientes. (REQ-868) Un rol solo puede invocar una mutación si tiene la capacidad global `write` Y el comando le está asignado mediante `visible_to` (una lista vacía lo asigna a todos los roles). (REQ-868) Un comando no tiene lista `writable_by`; la configuración rechaza una por su nombre. [tool-verified: `provisa/security/mutation_authz.py` `command_assigned`, `admit_command`; `provisa/core/models.py` `_one_role_list`]
 
 Las mutaciones se clasifican como escrituras por contrato, no por lo que declare quien llama. (REQ-869) Un `SELECT` que hace referencia a una función de tipo mutación se promueve a escritura y queda sujeto a la misma comprobación de dos puertas, así que quien llama no puede invocar una mutación disfrazándola de lectura. (REQ-869) Reclasificar una mutación como segura para lectura requiere la capacidad `access_config` y se registra como una decisión de gobierno; no hay exclusión por solicitud. (REQ-870)
 
