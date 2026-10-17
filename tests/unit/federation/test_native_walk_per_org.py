@@ -82,6 +82,7 @@ def _org_state(org: str, store: str) -> SimpleNamespace:
 
 @pytest.fixture
 def engine(tmp_path, monkeypatch):
+    import provisa.api.app  # noqa: F401 - the API layer says whether the deployment holds many orgs
     from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 
     monkeypatch.setattr("provisa.core.operator_floor.floor_setting", lambda _src: None)
