@@ -785,8 +785,10 @@ def build(args: argparse.Namespace) -> int:
             if (demo / "setup.yaml").exists() or polly_steps(demo):
                 _set_up(work, demo, stores, args.timeout)
                 _export_views(work, demo, stores)
-            # REQ-2068: a demo in regions seeds each region's views as well as its replicas.
-            if _replicates(demo, stores) or _demo_regions(demo):
+            # REQ-2068: a demo in regions seeds each region's views as well as its replicas. Its
+            # config names each region's address and store, which only _seed's nodes are given,
+            # so it is not parsed here.
+            if _demo_regions(demo) or _replicates(demo, stores):
                 _seed(work, demo, stores, args.timeout)
                 _refuse_empty_replicas(demo)
             dumped = stores.dump()

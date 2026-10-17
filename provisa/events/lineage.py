@@ -105,15 +105,34 @@ def infer_pk(sql: str, dialect: str = "postgres") -> list[str]:
     identify each output row. Returns the grouped output column names, or ``[]`` when there is no
     group-by (no inferable identity — an operator-declared PK is then required for upsert/delta).
     Only bare column references are treated as inferable keys (a grouped expression has no stable
-    output name to key on)."""
+    output name to key on). A grouping key the SELECT does not output leaves the rest no identity
+    (``GROUP BY id, country`` outputting only ``country``), so then there is none either; each key
+    is named as the SELECT outputs it."""
     select = sqlglot.parse_one(sql, read=dialect).find(exp.Select)
     if select is None:
         return []
     group = select.args.get("group")
     if group is None:
         return []
-    keys = [g.name for g in group.expressions if isinstance(g, exp.Column)]
-    return keys if len(keys) == len(group.expressions) else []
+    projected = [
+        (e.unalias().table, e.unalias().name, e.alias_or_name)
+        for e in select.expressions
+        if isinstance(e.unalias(), exp.Column)
+    ]
+    keys = []
+    for g in group.expressions:
+        if not isinstance(g, exp.Column):
+            return []
+        # A qualifier is compared only where both spell one (``GROUP BY id`` keys ``o.id``).
+        named = [
+            out
+            for table, name, out in projected
+            if name == g.name and (not table or not g.table or table == g.table)
+        ]
+        if not named:
+            return []
+        keys.append(named[0])
+    return keys
 
 
 # REQ-964 proof-obligation #1 (transform determinism): a pure MV SQL must not read wall-clock or
