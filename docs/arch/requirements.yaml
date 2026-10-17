@@ -13164,6 +13164,10 @@
     per source type. PostgreSQL uses LISTEN/NOTIFY via asyncpg, MongoDB uses Change Streams via motor
     collection.watch(), Kafka uses consumer groups. Each provider implements a common async watch() interface
     returning change events. RLS filtering and schema validation apply regardless of provider.
+    (Amended 2026-10-16, SUBSCRIPTION ARGUMENTS) A GraphQL subscription field takes the same arguments
+    as its table's query field (where, order_by, limit, offset, distinct_on, native filters, similar);
+    every frame is the equivalent query's answer, so the arguments shape each frame alike, for example
+    the latest ten orders.
   use_case: Pluggable SSE subscription providers let each source type (PG, Mongo, Kafka) use its native
     change mechanism.
   code:
