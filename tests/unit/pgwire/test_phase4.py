@@ -325,20 +325,21 @@ def test_pg_has_role_executes_true():
     assert all(row[0] is True for row in result.rows)
 
 
-# ── pg_get_constraintdef() executes NULL against real constraint rows ────────
+# ── pg_get_constraintdef() answers each constraint's definition ──────────────
 
 
-def test_pg_get_constraintdef_executes_null():
+def test_pg_get_constraintdef_answers_the_definition():
+    """As PostgreSQL writes it: SQLAlchemy's reflection parses it (test_constraint_definition)."""
     ctx = _make_ctx_with_tables()  # dogs table has a PK constraint
     state = _make_state(ctx)
     result = answer(
-        "SELECT pg_get_constraintdef(c.oid, true) FROM pg_catalog.pg_constraint c",
+        "SELECT c.contype, pg_get_constraintdef(c.oid, true) FROM pg_catalog.pg_constraint c",
         "alice",
         state,
     )
-    # At least the PK on dogs → one constraint row, value must be NULL
     assert len(result.rows) >= 1
-    assert all(r[0] is None for r in result.rows)
+    keys = [r[1] for r in result.rows if r[0] == "p"]
+    assert keys and all(k.startswith("PRIMARY KEY (") and k.endswith(")") for k in keys)
 
 
 # ── pg_get_indexdef() executes NULL (pg_index populated from key constraints) ─

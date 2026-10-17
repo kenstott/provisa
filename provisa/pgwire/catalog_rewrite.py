@@ -274,6 +274,17 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 return exp.Subquery(this=base)
             if "pg_get_userbyid" in fn or "pg_get_role_name" in fn:
                 return exp.Literal.string("provisa")
+            if "pg_get_constraintdef" in fn:
+                # The definition catalog_constraints recorded for the constraint, as PostgreSQL
+                # writes it; the pretty flag changes nothing for a key or a foreign key.
+                args = node.args.get("expressions", [])
+                oid_expr = args[0].transform(_transform) if args else exp.null()
+                subq = (
+                    exp.select(exp.column("definition"))
+                    .from_("_pg_constraintdef")
+                    .where(exp.EQ(this=exp.column("oid"), expression=oid_expr))
+                )
+                return exp.Subquery(this=subq)
             if fn.startswith("pg_get_") or "pg_tablespace_location" in fn:
                 return exp.null()
             if "pg_encoding_to_char" in fn:
@@ -327,8 +338,6 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
             if any(
                 p in fn
                 for p in (
-                    "pg_get_constraintdef",
-                    "pg_get_expr",
                     "pg_get_indexdef",
                     "pg_get_partkeydef",
                     "pg_get_partition",
