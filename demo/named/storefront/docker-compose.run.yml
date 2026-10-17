@@ -50,5 +50,57 @@ services:
       # not count.
       start_period: 600s
 
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: document
+      com.provisa.demo.host_env: STOREFRONT_MONGO_HOST
+      com.provisa.demo.port_env: STOREFRONT_MONGO_PORT
+      com.provisa.demo.port: "27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: storefront-admin
+    # Sized for the cloud node (every published demo's stores at once): WiredTiger's cache is capped
+    # at a quarter gigabyte.
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    ports:
+      - "127.0.0.1:${STOREFRONT_MONGO_PORT-29617}:27017"
+    volumes:
+      - storefront_run_mongo:/data/db
+      - ./dump/mongodb.archive.gz:/dump/mongodb.archive.gz:ro
+      - ./db/mongo-restore.sh:/docker-entrypoint-initdb.d/10-restore.sh:ro
+      - ./db/mongo-reader.js:/docker-entrypoint-initdb.d/20-reader.js:ro
+      - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
+    healthcheck:
+      # mongod answers a ping while its first start still restores: the marker says it is done.
+      test:
+        ["CMD-SHELL", "test -f /data/db/.provisa-init-complete && mongosh --quiet --eval 'db.adminCommand(\"ping\")'"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+      start_period: 600s
+  # The shipping service holds no data of its own: each shipment is a function of its order's id.
+  shipping:
+    image: provisa-demo-storefront-shipping:1
+    build:
+      context: ./shipping
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: api
+      com.provisa.demo.host_env: STOREFRONT_SHIPPING_HOST
+      com.provisa.demo.port_env: STOREFRONT_SHIPPING_PORT
+      com.provisa.demo.port: "8080"
+    ports:
+      - "127.0.0.1:${STOREFRONT_SHIPPING_PORT-29680}:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
 volumes:
   storefront_run_pg:
+  storefront_run_mongo:

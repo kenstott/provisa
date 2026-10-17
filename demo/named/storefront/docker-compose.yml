@@ -7,13 +7,18 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 #
-# The named demo "storefront" (start-ui-install.sh --demo storefront; REQ-1858). This file is its one
-# start point: `docker compose up -d` brings up its database and seeds it.
+# The named demo "storefront" (start-ui-install.sh --demo storefront). This file is its one start
+# point: `docker compose up -d` brings up its three stores, each holding its data from its first
+# start.
 #
-#   postgres  the demo's database (db/init.sql), with the role Provisa reads it as.
-#   seeder    TODO: writes what the demo's data needs beyond db/init.sql (seed.py), then exits.
+#   postgres  the order database (db/init.sql): customers, orders and their lines, with the role
+#             Provisa reads it as.
+#   mongodb   the product catalog (db/catalog.js), one document a product, with its reader.
+#   shipping  the internal shipping service (shipping/shipping.py): each order's shipment over
+#             REST, described by its OpenAPI document.
 #
-# Port: 29632 the database; it can be moved by its variable.
+# Ports: 29632 the database, 29617 the catalog, 29680 the shipping service; each can be moved by
+# its variable.
 x-demo-labels: &demo-labels
   com.provisa.demo: storefront
 name: provisa-demo-storefront
@@ -39,20 +44,42 @@ services:
       interval: 2s
       timeout: 5s
       retries: 60
-  seeder:
-    image: provisa-demo-storefront-seeder:1
-    build:
-      context: .
-      dockerfile: Dockerfile.seeder
-    restart: "no"
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
     labels:
       <<: *demo-labels
-      com.provisa.demo.role: seeder
+      com.provisa.demo.role: document
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: storefront-admin
+    ports:
+      - "127.0.0.1:${STOREFRONT_MONGO_PORT:-29617}:27017"
     volumes:
-      - ${PROVISA_NAMED_DEMO_DIR:-.}/data:/data-marker
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - storefront_mongo:/data/db
+      - ./db/catalog.js:/docker-entrypoint-initdb.d/10-catalog.js:ro
+      - ./db/mongo-reader.js:/docker-entrypoint-initdb.d/20-reader.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+  shipping:
+    image: provisa-demo-storefront-shipping:1
+    build:
+      context: ./shipping
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: api
+    ports:
+      - "127.0.0.1:${STOREFRONT_SHIPPING_PORT:-29680}:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
 
 volumes:
   storefront_pg:
+  storefront_mongo:

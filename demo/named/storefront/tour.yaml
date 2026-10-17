@@ -16,38 +16,54 @@
 # object; the solution, as predesigned queries over the transports that fit it (a Polly step is
 # optional, its answer stored); a recap; and "Where next?", the landing page below.
 landing:
-  route: /sql
+  route: /query
   capability: query_development
 steps:
-# The scenario and the features the demo shows.
+# The scenario: an app's backend and its BI tool, served by one model of three stores.
 - key: storefrontScenario
   route: /sources
   capability: source_registration
-  source: storefront-db
-# How the pieces fit: the tables the source becomes, and the relationship that joins them.
-- key: storefrontTables
-  route: /tables
-  capability: table_registration
-  table: storefront-db.orders
-- key: storefrontJoin
+  source: orders-db
+- key: storefrontCatalog
+  source: catalog
+- key: storefrontShipping
+  source: shipping
+# How the pieces fit: the relationships, declared once, that both consumers read through.
+- key: storefrontRelations
   route: /relationships
   capability: create_relationship
-  relationship: PLACED_BY
-# The solution: a predesigned query over the view that answers the question.
-- key: storefrontAnswer
-  route: /sql
-  capability: query_development
-  sql: >-
-    SELECT a.name, a.orders, a.total
-    FROM "storefront"."view_answer" AS a
-    ORDER BY a.total DESC
-    LIMIT 20
-- key: storefrontExample
+  relationship: OF_PRODUCT
+# The app: its order-history screen, one nested query as the signed-in customer, and the screen.
+- key: storefrontScreen
   route: /query
   capability: query_development
-  example: 1-answer
-# The recap.
-- key: storefrontRecap
+  example: 1-order-history
+- key: storefrontApp
+  image: sample-app.png
+# The same orders over JSON:API.
+- key: storefrontJsonApi
+  route: /jsonapi
+  capability: query_development
+  jsonapi: /data/jsonapi/shop/orders?include=order_items,shipment
+# BI: the analyst's SQL over the same tables, and the dashboard Superset builds over pgwire.
+- key: storefrontAnalyst
+  route: /sql
+  capability: query_development
+  role: analyst
+- key: storefrontAnalystSql
+  sql: >-
+    SELECT c.region, s.carrier, COUNT(*) AS shipments,
+           SUM(CASE WHEN s.delivered_at > s.promised_at THEN 1 ELSE 0 END) AS late,
+           MIN(c.email) AS a_customer
+    FROM "shop"."orders" AS o
+    JOIN "shop"."customers" AS c ON c.id = o.customer_id
+    JOIN "shop"."shipments" AS s ON s.order_id = o.id
+    GROUP BY c.region, s.carrier
+    ORDER BY late DESC
+- key: storefrontBi
+  image: superset.png
+# The point: one model, two consumers, the same rules, nothing to keep in sync.
+- key: storefrontPoint
   route: /relationships
   capability: create_relationship
-  relationship: PLACED_BY
+  relationship: SHIPPED_AS

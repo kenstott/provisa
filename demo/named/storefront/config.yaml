@@ -7,11 +7,19 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 #
-# The WHOLE config of the named demo "storefront" (start-ui-install.sh --demo storefront; REQ-1858).
-# docker-compose.yml in this directory brings up its database. TODO: the demo's question, and
-# what each source holds.
+# The WHOLE config of the named demo "storefront" (start-ui-install.sh --demo storefront).
+# docker-compose.yml in this directory brings up its three stores.
 #
-#   storefront-db   the demo's Postgres, read live as provisa_reader (db/init.sql).
+# One model serves two consumers. A retailer's order-history screen (the app's backend) asks for a
+# customer's orders, each with its lines, the product of each line and the order's shipment, in one
+# nested GraphQL query as the customer -- who reads only their own orders. Its BI tool (Superset,
+# over the PostgreSQL wire protocol) charts revenue by region and late shipments by carrier as the
+# analyst -- who reads every order and no customer's email. The relationships are declared once,
+# and both read through the same rules.
+#
+#   orders-db  the order database in PostgreSQL, read live as provisa_reader (db/init.sql)
+#   catalog    the product catalog in MongoDB, read live as storefront_reader (db/catalog.js)
+#   shipping   the internal shipping service, read live over REST (shipping/shipping.py)
 auth:
   assignments_source: provisa
   default_assignments:
@@ -22,65 +30,156 @@ cache:
   default_ttl: 300
   enabled: true
 domains:
-- id: storefront
-  description: TODO -- what the demo's data is about
+- id: shop
+  description: The storefront's orders, the products they are for and their shipments
 federation_engine: duckdb
 naming:
   domain_prefix: true
   rules: []
 roles:
+# The signed-in customer of the order-history screen: their own orders and nothing else (the row
+# filters below name customer 42, the demo's signed-in customer).
+- id: customer
+  capabilities:
+  - query_development
+  domain_access:
+  - shop
+# The BI analyst: every order, and no customer's email.
 - id: analyst
   capabilities:
   - query_development
   domain_access:
-  - storefront
+  - shop
 server:
   limits:
     default_row_limit: 100
     request_timeout: 60
     trino_query_timeout: 120
 sources:
-- id: storefront-db
+- id: orders-db
   type: postgresql
   host: ${env:STOREFRONT_PG_HOST:-localhost}
   port: ${env:STOREFRONT_PG_PORT:-29632}
   database: storefront
   username: provisa_reader
   password: provisa_reader
-  description: TODO -- the demo's database
+  description: The storefront's order database -- customers, their orders and each order's lines
+- id: catalog
+  type: mongodb
+  host: ${env:STOREFRONT_MONGO_HOST:-localhost}
+  port: ${env:STOREFRONT_MONGO_PORT:-29617}
+  database: catalog
+  username: storefront_reader
+  password: storefront_reader
+  cache_ttl: 300
+  description: The product catalog in MongoDB -- one document a product
+- id: shipping
+  type: openapi
+  path: http://${env:STOREFRONT_SHIPPING_HOST:-localhost}:${env:STOREFRONT_SHIPPING_PORT:-29680}/openapi.json
+  base_url: http://${env:STOREFRONT_SHIPPING_HOST:-localhost}:${env:STOREFRONT_SHIPPING_PORT:-29680}
+  cache_ttl: 60
+  description: The internal shipping service -- each order's shipment, over REST
 tables:
-- source_id: storefront-db
-  domain_id: storefront
+- source_id: orders-db
+  domain_id: shop
   schema: public
   table: customers
-  description: TODO -- the demo's first table
+  description: The storefront's customers
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [org_admin, analyst]}
-  - {name: name, data_type: varchar, description: The customer's name, visible_to: [org_admin, analyst]}
-- source_id: storefront-db
-  domain_id: storefront
+  - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [org_admin, customer, analyst]}
+  - {name: name, data_type: varchar, description: The customer's name, visible_to: [org_admin, customer, analyst]}
+  - {name: email, data_type: varchar, description: The customer's email address, visible_to: [org_admin, customer, analyst], masks: [{to: [analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: region, data_type: varchar, description: 'The customer''s sales region: North, South, East, West or Central', visible_to: [org_admin, customer, analyst]}
+- source_id: orders-db
+  domain_id: shop
   schema: public
   table: orders
-  description: TODO -- the demo's second table
+  description: Each order a customer placed
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: The order's id, visible_to: [org_admin, analyst]}
-  - {name: customer_id, data_type: integer, description: The customer who placed it, visible_to: [org_admin, analyst]}
-  - {name: amount, data_type: decimal, description: The order's total in USD, visible_to: [org_admin, analyst]}
+  - {name: id, data_type: integer, is_primary_key: true, description: The order's id, visible_to: [org_admin, customer, analyst]}
+  - {name: customer_id, data_type: integer, description: The customer who placed it, visible_to: [org_admin, customer, analyst]}
+  - {name: placed_at, data_type: timestamp, description: When it was placed, visible_to: [org_admin, customer, analyst]}
+  - {name: status, data_type: varchar, description: 'processing, shipped or cancelled', visible_to: [org_admin, customer, analyst]}
+- source_id: orders-db
+  domain_id: shop
+  schema: public
+  table: order_items
+  description: Each line of an order -- a product and how many
+  columns:
+  - {name: order_id, data_type: integer, is_primary_key: true, description: The order the line is on, visible_to: [org_admin, customer, analyst]}
+  - {name: line, data_type: integer, is_primary_key: true, description: The line's number on its order, visible_to: [org_admin, customer, analyst]}
+  - {name: product_id, data_type: integer, description: The product ordered, visible_to: [org_admin, customer, analyst]}
+  - {name: quantity, data_type: integer, description: How many were ordered, visible_to: [org_admin, customer, analyst]}
+  - {name: unit_price, data_type: decimal, description: The price of one in USD, visible_to: [org_admin, customer, analyst]}
+- source_id: catalog
+  domain_id: shop
+  schema: catalog
+  table: products
+  description: What the storefront sells, one MongoDB document a product
+  columns:
+  - {name: product_id, data_type: integer, path: _id, is_primary_key: true, description: The product's id, visible_to: [org_admin, customer, analyst]}
+  - {name: name, data_type: varchar, description: The product's name, visible_to: [org_admin, customer, analyst]}
+  - {name: category, data_type: varchar, description: 'Its category: brewing, coffee, drinkware, equipment, gifts or merchandise', visible_to: [org_admin, customer, analyst]}
+  - {name: price, data_type: double, description: Its price in USD, visible_to: [org_admin, customer, analyst]}
+  - {name: image_url, data_type: varchar, description: Where its picture is, visible_to: [org_admin, customer, analyst]}
+- source_id: shipping
+  domain_id: shop
+  schema: default
+  table: list_shipments
+  alias: shipments
+  description: Each order's shipment, from the shipping service
+  columns:
+  - {name: order_id, data_type: integer, is_primary_key: true, description: The order shipped, visible_to: [org_admin, customer, analyst]}
+  - {name: carrier, data_type: varchar, description: The carrier that delivers it, visible_to: [org_admin, customer, analyst]}
+  - {name: tracking, data_type: varchar, description: The carrier's tracking number, visible_to: [org_admin, customer, analyst]}
+  - {name: status, data_type: varchar, description: Where the shipment is, visible_to: [org_admin, customer, analyst]}
+  - {name: shipped_at, data_type: timestamp, description: When it left the warehouse, visible_to: [org_admin, customer, analyst]}
+  - {name: promised_at, data_type: timestamp, description: When the customer was promised it, visible_to: [org_admin, customer, analyst]}
+  - {name: delivered_at, data_type: timestamp, description: When it was delivered, visible_to: [org_admin, customer, analyst]}
 views:
-# The answer to the demo's question: what the tour's solution steps read.
-- id: answer
-  domain_id: storefront
+# BI: what each region's orders came to, by month.
+- id: revenue_by_region
+  domain_id: shop
   enable_aggregates: true
   enable_group_by: true
-  description: TODO -- the answer to the demo's question
+  description: What each region's orders came to, by month
   sql: >-
-    SELECT c.name, COUNT(*) AS orders, SUM(o.amount) AS total
-    FROM "storefront"."customers" AS c
-    JOIN "storefront"."orders" AS o ON o.customer_id = c.id
-    GROUP BY c.name
+    SELECT c.region, DATE_TRUNC('month', o.placed_at) AS month, COUNT(DISTINCT o.id) AS orders,
+           SUM(i.quantity * i.unit_price) AS revenue
+    FROM "shop"."orders" AS o
+    JOIN "shop"."customers" AS c ON c.id = o.customer_id
+    JOIN "shop"."order_items" AS i ON i.order_id = o.id
+    WHERE o.status <> 'cancelled'
+    GROUP BY c.region, DATE_TRUNC('month', o.placed_at)
   columns:
-  - {name: name, data_type: varchar, description: The customer's name, visible_to: [org_admin, analyst]}
-  - {name: orders, data_type: bigint, description: Orders the customer placed, visible_to: [org_admin, analyst]}
-  - {name: total, data_type: decimal, description: What they came to in USD, visible_to: [org_admin, analyst]}
+  - {name: region, data_type: varchar, description: The customers' region, visible_to: [org_admin, analyst]}
+  - {name: month, data_type: timestamp, description: The month the orders were placed in, visible_to: [org_admin, analyst]}
+  - {name: orders, data_type: bigint, description: The orders placed, visible_to: [org_admin, analyst]}
+  - {name: revenue, data_type: decimal, description: What they came to in USD, visible_to: [org_admin, analyst]}
+# BI: each carrier's shipments, and how many it delivered after the date it promised.
+- id: late_shipments_by_carrier
+  domain_id: shop
+  enable_aggregates: true
+  enable_group_by: true
+  description: Each carrier's shipments, and how many arrived after the date promised
+  sql: >-
+    SELECT s.carrier, COUNT(*) AS shipments,
+           SUM(CASE WHEN s.delivered_at > s.promised_at THEN 1 ELSE 0 END) AS late
+    FROM "shop"."shipments" AS s
+    GROUP BY s.carrier
+  columns:
+  - {name: carrier, data_type: varchar, description: The carrier, visible_to: [org_admin, analyst]}
+  - {name: shipments, data_type: bigint, description: Its shipments, visible_to: [org_admin, analyst]}
+  - {name: late, data_type: bigint, description: Those delivered after the date promised, visible_to: [org_admin, analyst]}
 relationships:
 - {id: order-to-customer, alias: PLACED_BY, cardinality: many-to-one, source_table_id: orders, source_column: customer_id, target_table_id: customers, target_column: id}
+- {id: order-to-items, alias: HAS_ITEM, cardinality: one-to-many, source_table_id: orders, source_column: id, target_table_id: order_items, target_column: order_id}
+- {id: item-to-product, alias: OF_PRODUCT, cardinality: many-to-one, source_table_id: order_items, source_column: product_id, target_table_id: products, target_column: product_id}
+- {id: order-to-shipment, alias: SHIPPED_AS, cardinality: one-to-one, source_table_id: orders, source_column: id, target_table_id: shipments, target_column: order_id}
+rls_rules:
+# The signed-in customer reads their own orders, the lines and shipments of those, and their own
+# customer record -- the screen's rules, kept by the model rather than the app.
+- {table_id: customers, role_id: customer, filter: "id = 42"}
+- {table_id: orders, role_id: customer, filter: "customer_id = 42"}
+- {table_id: order_items, role_id: customer, filter: "order_id IN (SELECT own_o.id FROM \"shop\".\"orders\" AS own_o WHERE own_o.customer_id = 42)"}
+- {table_id: shipments, role_id: customer, filter: "order_id IN (SELECT own_o.id FROM \"shop\".\"orders\" AS own_o WHERE own_o.customer_id = 42)"}

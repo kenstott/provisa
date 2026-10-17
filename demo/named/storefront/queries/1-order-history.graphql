@@ -1,0 +1,29 @@
+# The order-history screen's one query (app/index.html sends it as the signed-in customer): each
+# order with its lines, the product of each line from the catalog, and its shipment from the
+# shipping service -- three stores, one request. The customer reads only their own orders.
+query OrderHistory {
+  s__orders(order_by: [{ placedAt: desc }]) {
+    id
+    placedAt
+    status
+    customer {
+      name
+    }
+    orderItems {
+      line
+      quantity
+      unitPrice
+      product {
+        name
+        category
+        imageUrl
+      }
+    }
+    shipment {
+      carrier
+      tracking
+      promisedAt
+      deliveredAt
+    }
+  }
+}

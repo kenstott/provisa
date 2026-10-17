@@ -41,6 +41,7 @@ _TARGETS = (
     "role",
     "env",
     "polly",
+    "image",
 )
 # The query parameters a table's REST endpoint declares (provisa/api/rest/openapi_spec.py).
 _REST_PARAMS = {
@@ -220,6 +221,13 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             # A demo with no bake-off questions of its own has none a step may ask.
             asked = {q.text for q in QUESTIONS.get(home.name, ())}
             assert step["polly"] in asked, f"{step['key']}: not one of the demo's own questions"
+        if "image" in step:
+            # A picture beside tour.yaml, shown over the page of the step before it.
+            assert previous is not None, f"{step['key']}: an image shows beside a step before it"
+            assert "route" not in step, f"{step['key']}: an image shows on the page it is on"
+            picture = home / step["image"]
+            assert picture.parent == home and picture.suffix == ".png", step
+            assert picture.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", f"{picture} is not a PNG"
         if "relationship" in step:
             assert step["relationship"] in aliases, step
         if "example" in step:
@@ -326,6 +334,31 @@ def test_an_answer_stored_for_another_question_is_not_served(tmp_path, monkeypat
     answers = {"ask": {"question": "An older question?", "answer": "Old."}}
     monkeypatch.setenv(demo.NAMED_DEMO_DIR_ENV, _named_demo(tmp_path, [_SOURCES, _ASK], answers))
     assert demo.demo_tour(demo.started_demo_directory()) == [_SOURCES, _ASK]
+
+
+_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
+_SHOT = {"key": "shot", "image": "app.png"}
+
+
+def test_an_image_step_carries_its_picture_as_a_data_url(tmp_path, monkeypatch):
+    """The tour is all the visitor's browser needs: on the sandbox tier a separate request for the
+    picture would not name the demo it is of."""
+    import base64
+
+    (tmp_path / "app.png").write_bytes(_PNG)
+    monkeypatch.setenv(demo.NAMED_DEMO_DIR_ENV, _named_demo(tmp_path, [_SOURCES, _SHOT]))
+    src = "data:image/png;base64," + base64.b64encode(_PNG).decode()
+    assert demo.demo_tour(demo.started_demo_directory()) == [_SOURCES, {**_SHOT, "image_src": src}]
+
+
+@pytest.mark.parametrize("name", ["missing.png", "../app.png", "app.jpg"])
+def test_an_image_not_a_png_beside_the_tour_is_refused_by_name(tmp_path, monkeypatch, name):
+    (tmp_path / "app.jpg").write_bytes(_PNG)
+    monkeypatch.setenv(
+        demo.NAMED_DEMO_DIR_ENV, _named_demo(tmp_path, [_SOURCES, {**_SHOT, "image": name}])
+    )
+    with pytest.raises(ValueError, match=re.escape(repr(name))):
+        demo.demo_tour(demo.started_demo_directory())
 
 
 def test_a_demo_not_built_from_a_template_serves_no_answer(tmp_path, monkeypatch):

@@ -1129,8 +1129,48 @@
         "description": "Die eigenen Daten der Apotheke, live gelesen, und öffentliche Arzneimitteldaten, einmal geladen, über NDC und Firma in einem governten Modell verknüpft: Eine Sicht beantwortet, welche Produkte gefährdet sind, in SQL, GraphQL und REST, mit den Zugriffsrechten jeder Rolle."
       },
       "storefrontScenario": {
-        "title": "What this demo is",
-        "description": "TODO: the scenario, its question and the features it shows."
+        "title": "Ein Modell, eine App und BI",
+        "description": "Ein Kaffeehändler bedient zwei Abnehmer aus einem Modell. Der Bestellverlauf seiner App zeigt einem angemeldeten Kunden dessen Bestellungen, und sein BI-Werkzeug zeigt den Analysten Umsatz und verspätete Lieferungen. Die Bestellungen liegen in <strong>PostgreSQL</strong> und werden live gelesen: Kunden, Bestellungen und die Positionen jeder Bestellung."
+      },
+      "storefrontCatalog": {
+        "title": "Der Katalog in MongoDB",
+        "description": "Jedes Produkt ist ein <strong>MongoDB</strong>-Dokument mit Name, Kategorie, Preis und Bild. Provisa liest es live, als Tabelle."
+      },
+      "storefrontShipping": {
+        "title": "Versand über REST",
+        "description": "Die Sendung jeder Bestellung kommt vom internen Versanddienst über <strong>REST</strong>, gelesen über sein OpenAPI-Dokument: der Versanddienstleister, die Sendungsnummer und wann sie zugesagt und zugestellt wurde."
+      },
+      "storefrontRelations": {
+        "title": "Beziehungen, einmal deklariert",
+        "description": "<strong>OF_PRODUCT</strong> verbindet eine Bestellposition in PostgreSQL mit ihrem Produkt in MongoDB. Zusammen mit PLACED_BY, HAS_ITEM und SHIPPED_AS sind diese vier Beziehungen einmal deklariert, und App und BI-Werkzeug lesen beide über sie."
+      },
+      "storefrontScreen": {
+        "title": "Die eine Abfrage der App",
+        "description": "Der Bestellverlauf sendet diese eine verschachtelte GraphQL-Abfrage: jede Bestellung mit ihren Positionen, das Produkt jeder Position aus dem Katalog und die Sendung der Bestellung vom Versanddienst. Die App sendet sie in der Rolle <strong>customer</strong>, deren Zeilenfilter die Antwort auf die eigenen Bestellungen dieses Kunden beschränken. Hier lesen Sie sie als Administrator und sehen daher jede Bestellung."
+      },
+      "storefrontApp": {
+        "title": "Der Bildschirm, den sie speist",
+        "description": "Das ist der Bestellverlauf der Beispiel-App, der diese Antwort für den angemeldeten Kunden der Demo darstellt: sieben Bestellungen, ihre Positionen mit Produktbildern aus MongoDB und der Lieferstatus vom Versanddienst. Die App enthält keine Joins und keine Zugriffsregeln; das Modell enthält beides."
+      },
+      "storefrontJsonApi": {
+        "title": "Dieselben Bestellungen über JSON:API",
+        "description": "Ein Client, der JSON:API bevorzugt, fragt dieselben Bestellungen mit ihren Positionen und Sendungen ab. Jede Bestellung verweist auf die Positionen und die Sendung, die sie einschließt, und die ID einer Position ist ihr zusammengesetzter Schlüssel."
+      },
+      "storefrontAnalyst": {
+        "title": "Jetzt als Analyst",
+        "description": "Die BI-Seite liest als <strong>analyst</strong>: jede Bestellung und keine E-Mail-Adresse eines Kunden. Weiter wählt <strong>analyst</strong> in der Auswahl „Ausführen als“."
+      },
+      "storefrontAnalystSql": {
+        "title": "Das SQL des Analysten",
+        "description": "Verspätete Lieferungen nach Region und Versanddienstleister, über dieselben Tabellen und Beziehungen. <strong>a_customer</strong> zeigt eine E-Mail-Adresse so, wie der Analyst sie liest: maskiert."
+      },
+      "storefrontBi": {
+        "title": "Das BI-Dashboard",
+        "description": "Apache Superset verbindet sich über das PostgreSQL-Wire-Protokoll mit dem PostgreSQL-Dialekt: Host und Port des pgwire-Servers von Provisa (standardmäßig 5439), Datenbank <strong>provisa</strong>, Benutzer <strong>analyst</strong>. Es durchsucht die Tabellen und Sichten des Shops und zeigt Umsatz nach Region und verspätete Lieferungen nach Versanddienstleister aus demselben Modell."
+      },
+      "storefrontPoint": {
+        "title": "Ein Modell, zwei Abnehmer",
+        "description": "<strong>SHIPPED_AS</strong> verbindet eine Bestellung mit ihrer Sendung. App und BI-Werkzeug lesen beide über diese und jede andere Beziehung, unter denselben Regeln: Der Kunde sieht seine eigenen Bestellungen, der Analyst keine E-Mail-Adressen. Ändern Sie hier eine Beziehung oder eine Regel, und beide Abnehmer haben sie. Es gibt nichts zu synchronisieren."
       },
       "storefrontTables": {
         "title": "The tables",
@@ -1233,8 +1273,8 @@
         "summary": "Die Frage einer Krankenhausapotheke, welche ihrer Produkte von Lieferengpässen oder Rückrufen bedroht sind: ihre Arzneimittelliste und ihr Bestand, verknüpft mit den Lieferengpässen und Rückrufen der FDA und den Medicaid-Verordnungen, beantwortet in SQL, GraphQL und REST."
       },
       "storefront": {
-        "title": "One model, app and BI",
-        "summary": "TODO: One model, app and BI, in one sentence."
+        "title": "Ein Modell, App und BI",
+        "summary": "Der Bestellverlauf einer App und ein BI-Dashboard lesen ein Modell aus PostgreSQL, MongoDB und einem REST-Dienst, unter denselben Beziehungen und Regeln."
       }
     }
   }

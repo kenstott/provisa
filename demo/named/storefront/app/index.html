@@ -1,0 +1,100 @@
+<!doctype html>
+<!--
+  Copyright (c) 2026 Kenneth Stott
+
+  This source code is licensed under the Business Source License 1.1
+  found in the LICENSE file in the root directory of this source tree.
+
+  The storefront's order-history screen: a sample app, not part of Provisa. It is served beside
+  Provisa (its /data/graphql) and asks it one nested GraphQL query as the signed-in customer --
+  queries/1-order-history.graphql -- whose rows Provisa keeps to that customer's own.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Your orders</title>
+    <style>
+      :root { --ink: #1f2933; --muted: #616e7c; --line: #e4e7eb; --late: #c62828; --ok: #2e7d32; }
+      body { margin: 0; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); background: #f5f7fa; }
+      header { background: #3e2723; color: #fff; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; }
+      header h1 { margin: 0; font-size: 20px; letter-spacing: 0.02em; }
+      main { max-width: 1080px; margin: 24px auto; padding: 0 16px; }
+      h2 { font-size: 22px; margin: 0 0 16px; }
+      .order { background: #fff; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 16px; }
+      .order-head { display: flex; gap: 32px; padding: 14px 20px; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+      .order-head b { display: block; color: var(--ink); font-size: 15px; }
+      .order-body { display: flex; justify-content: space-between; gap: 24px; padding: 16px 20px; }
+      .items { flex: 1; }
+      .item { display: flex; align-items: center; gap: 14px; padding: 6px 0; }
+      .item img { width: 48px; height: 48px; border-radius: 8px; }
+      .item .name { font-weight: 600; }
+      .item .meta { color: var(--muted); font-size: 13px; }
+      .ship { width: 260px; font-size: 14px; }
+      .ship .state { font-weight: 600; }
+      .ship .late { color: var(--late); }
+      .ship .ontime { color: var(--ok); }
+      .error { color: var(--late); }
+    </style>
+  </head>
+  <body>
+    <header><h1>Bean &amp; Kettle</h1><span id="who"></span></header>
+    <main>
+      <h2>Your orders</h2>
+      <div id="orders">Loading...</div>
+    </main>
+    <script>
+      // queries/1-order-history.graphql, as the demo ships it.
+      const ORDER_HISTORY = `query OrderHistory {
+        s__orders(order_by: [{ placedAt: desc }]) {
+          id placedAt status
+          customer { name }
+          orderItems { line quantity unitPrice product { name category imageUrl } }
+          shipment { carrier tracking promisedAt deliveredAt }
+        }
+      }`;
+      const money = (n) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+      const day = (s) => new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+      function shipment(o) {
+        const s = o.shipment;
+        if (!s) return `<div class="state">${o.status === "cancelled" ? "Cancelled" : "Preparing your order"}</div>`;
+        const late = s.deliveredAt > s.promisedAt;
+        return `<div class="state ${late ? "late" : "ontime"}">Delivered ${day(s.deliveredAt)}${late ? " (late)" : ""}</div>
+          <div>${s.carrier} &middot; ${s.tracking}</div>
+          <div class="meta">Promised by ${day(s.promisedAt)}</div>`;
+      }
+
+      function order(o) {
+        const total = o.orderItems.reduce((t, i) => t + i.quantity * i.unitPrice, 0);
+        const items = o.orderItems
+          .map((i) => `<div class="item"><img src="${i.product.imageUrl}" alt="" />
+            <div><div class="name">${i.product.name}</div>
+            <div class="meta">${i.quantity} &times; ${money(i.unitPrice)} &middot; ${i.product.category}</div></div></div>`)
+          .join("");
+        return `<div class="order">
+          <div class="order-head"><div>Order placed<b>${day(o.placedAt)}</b></div>
+            <div>Total<b>${money(total)}</b></div><div>Order<b>#${o.id}</b></div></div>
+          <div class="order-body"><div class="items">${items}</div><div class="ship">${shipment(o)}</div></div>
+        </div>`;
+      }
+
+      fetch("/data/graphql", {
+        method: "POST",
+        // The signed-in customer's role: Provisa answers their own orders only.
+        headers: { "Content-Type": "application/json", "X-Provisa-Role": "customer" },
+        body: JSON.stringify({ query: ORDER_HISTORY }),
+      })
+        .then((r) => r.json())
+        .then((answer) => {
+          if (answer.errors) throw new Error(answer.errors.map((e) => e.message).join("; "));
+          const orders = answer.data.s__orders;
+          document.getElementById("who").textContent = orders.length ? `Signed in as ${orders[0].customer.name}` : "";
+          document.getElementById("orders").innerHTML = orders.map(order).join("");
+        })
+        .catch((e) => {
+          document.getElementById("orders").innerHTML = `<p class="error">${e.message}</p>`;
+        });
+    </script>
+  </body>
+</html>

@@ -1129,8 +1129,48 @@
         "description": "直接読み込まれる薬剤部のデータと、一度だけ読み込まれる公開医薬品データが、NDC と企業によって 1 つのガバナンスされたモデルで結合されます。1 つのビューが、リスクのある製品を SQL、GraphQL、REST で、各ロールのアクセス権に従って答えます。"
       },
       "storefrontScenario": {
-        "title": "What this demo is",
-        "description": "TODO: the scenario, its question and the features it shows."
+        "title": "1つのモデル、アプリとBI",
+        "description": "あるコーヒー小売業者は、1つのモデルから2つの利用者にサービスを提供しています。アプリの注文履歴画面はサインインした顧客に自分の注文を表示し、BIツールはアナリストに売上と配送遅延を示します。注文は<strong>PostgreSQL</strong>にあり、ライブで読み取られます。顧客、注文、各注文の明細です。"
+      },
+      "storefrontCatalog": {
+        "title": "カタログ（MongoDB）",
+        "description": "各商品は<strong>MongoDB</strong>のドキュメントで、名前、カテゴリ、価格、画像を持ちます。Provisaはこれをテーブルとしてライブで読み取ります。"
+      },
+      "storefrontShipping": {
+        "title": "配送（REST）",
+        "description": "各注文の配送は社内の配送サービスから<strong>REST</strong>で届き、そのOpenAPIドキュメントを通じて読み取られます。運送会社、追跡番号、約束日と配達日です。"
+      },
+      "storefrontRelations": {
+        "title": "一度だけ宣言されたリレーションシップ",
+        "description": "<strong>OF_PRODUCT</strong>は、PostgreSQLの注文明細をMongoDBの商品に結び付けます。PLACED_BY、HAS_ITEM、SHIPPED_ASとともに、これら4つのリレーションシップは一度だけ宣言され、アプリもBIツールもこれらを通じて読み取ります。"
+      },
+      "storefrontScreen": {
+        "title": "アプリの1つのクエリ",
+        "description": "注文履歴画面は、この1つのネストされたGraphQLクエリを送ります。各注文とその明細、カタログからの各明細の商品、配送サービスからの注文の配送です。アプリはこれを<strong>customer</strong>ロールで送り、その行フィルターが回答をその顧客自身の注文に限定します。ここでは管理者として読んでいるため、すべての注文が表示されます。"
+      },
+      "storefrontApp": {
+        "title": "それが表示する画面",
+        "description": "これはサンプルアプリの注文履歴画面で、デモのサインイン中の顧客に向けてその回答を表示しています。7件の注文、MongoDBの商品画像付きの明細、配送サービスからの配達状況です。アプリには結合もアクセスルールもありません。モデルが両方を持っています。"
+      },
+      "storefrontJsonApi": {
+        "title": "同じ注文をJSON:APIで",
+        "description": "JSON:APIを好むクライアントは、明細と配送を含めた同じ注文を要求します。各注文は含まれる明細と配送にリンクし、明細のidはその複合キーです。"
+      },
+      "storefrontAnalyst": {
+        "title": "今度はアナリストとして",
+        "description": "BI側は<strong>analyst</strong>として読み取ります。すべての注文が見え、顧客のメールアドレスは見えません。「次へ」で実行ロールの選択に<strong>analyst</strong>が選ばれます。"
+      },
+      "storefrontAnalystSql": {
+        "title": "アナリストのSQL",
+        "description": "地域と運送会社ごとの配送遅延を、同じテーブルとリレーションシップで集計します。<strong>a_customer</strong>は、アナリストが読む形のメールアドレスを示します。マスクされています。"
+      },
+      "storefrontBi": {
+        "title": "BIダッシュボード",
+        "description": "Apache SupersetはPostgreSQLワイヤプロトコルで、PostgreSQLダイアレクトを使って接続します。Provisaのpgwireサーバーのホストとポート（既定は5439）、データベース<strong>provisa</strong>、ユーザー<strong>analyst</strong>です。ストアのテーブルとビューを参照し、同じモデルから地域別の売上と運送会社別の配送遅延をグラフにします。"
+      },
+      "storefrontPoint": {
+        "title": "1つのモデル、2つの利用者",
+        "description": "<strong>SHIPPED_AS</strong>は注文をその配送に結び付けます。アプリもBIツールも、これと他のすべてのリレーションシップを通じて、同じルールのもとで読み取ります。顧客は自分の注文を見て、アナリストはメールアドレスを見ません。ここでリレーションシップやルールを変えれば、両方の利用者に反映されます。同期すべきものはありません。"
       },
       "storefrontTables": {
         "title": "The tables",
@@ -1233,8 +1273,8 @@
         "summary": "病院の薬剤部の問い、どの製品に供給不足や回収のリスクがあるか。フォーミュラリーと在庫を FDA の供給不足・回収情報と Medicaid の処方データに結合し、SQL、GraphQL、REST で答えます。"
       },
       "storefront": {
-        "title": "One model, app and BI",
-        "summary": "TODO: One model, app and BI, in one sentence."
+        "title": "1つのモデル、アプリとBI",
+        "summary": "アプリの注文履歴画面とBIダッシュボードが、PostgreSQL、MongoDB、RESTサービスからなる1つのモデルを、同じリレーションシップとルールのもとで読み取ります。"
       }
     }
   }

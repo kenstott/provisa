@@ -1129,8 +1129,48 @@
         "description": "De eigen data van de apotheek, live gelezen, en openbare geneesmiddelendata, eenmaal geladen, gekoppeld op NDC en op firma in één beheerd model: één view beantwoordt welke producten risico lopen, in SQL, GraphQL en REST, met de toegang van elke rol."
       },
       "storefrontScenario": {
-        "title": "What this demo is",
-        "description": "TODO: the scenario, its question and the features it shows."
+        "title": "Eén model, een app en BI",
+        "description": "Een koffiewinkel bedient twee afnemers vanuit één model. Het bestelgeschiedenisscherm van zijn app toont een aangemelde klant diens bestellingen, en zijn BI-tool toont analisten de omzet en te late zendingen. De bestellingen staan in <strong>PostgreSQL</strong> en worden live gelezen: klanten, bestellingen en de regels van elke bestelling."
+      },
+      "storefrontCatalog": {
+        "title": "De catalogus, in MongoDB",
+        "description": "Elk product is een <strong>MongoDB</strong>-document, met naam, categorie, prijs en afbeelding. Provisa leest het live, als tabel."
+      },
+      "storefrontShipping": {
+        "title": "Verzending, via REST",
+        "description": "De zending van elke bestelling komt van de interne verzendservice via <strong>REST</strong>, gelezen via het OpenAPI-document: de vervoerder, het trackingnummer, en wanneer ze beloofd en bezorgd is."
+      },
+      "storefrontRelations": {
+        "title": "Relaties, één keer gedeclareerd",
+        "description": "<strong>OF_PRODUCT</strong> verbindt een bestelregel in PostgreSQL met het product in MongoDB. Samen met PLACED_BY, HAS_ITEM en SHIPPED_AS zijn deze vier relaties één keer gedeclareerd, en de app en de BI-tool lezen er allebei doorheen."
+      },
+      "storefrontScreen": {
+        "title": "De ene query van de app",
+        "description": "Het bestelgeschiedenisscherm stuurt deze ene geneste GraphQL-query: elke bestelling met haar regels, het product van elke regel uit de catalogus en de zending van de bestelling uit de verzendservice. De app stuurt haar met de rol <strong>customer</strong>, waarvan de rijfilters het antwoord beperken tot de eigen bestellingen van die klant. Hier leest u haar als beheerder, dus ziet u elke bestelling."
+      },
+      "storefrontApp": {
+        "title": "Het scherm dat ze vult",
+        "description": "Dit is het bestelgeschiedenisscherm van de voorbeeldapp, dat dat antwoord toont voor de aangemelde klant van de demo: zeven bestellingen, hun regels met productafbeeldingen uit MongoDB en de bezorgstatus uit de verzendservice. De app bevat geen joins en geen toegangsregels; het model bevat beide."
+      },
+      "storefrontJsonApi": {
+        "title": "Dezelfde bestellingen via JSON:API",
+        "description": "Een client die JSON:API verkiest, vraagt dezelfde bestellingen op met hun regels en zendingen erbij. Elke bestelling verwijst naar de regels en de zending die ze bevat, en het id van een regel is de samengestelde sleutel."
+      },
+      "storefrontAnalyst": {
+        "title": "Nu als analist",
+        "description": "De BI-kant leest als <strong>analyst</strong>: elke bestelling, en geen e-mailadres van een klant. Volgende kiest <strong>analyst</strong> in de uitvoeren-als-kiezer."
+      },
+      "storefrontAnalystSql": {
+        "title": "De SQL van de analist",
+        "description": "Te late zendingen per regio en vervoerder, over dezelfde tabellen en relaties. <strong>a_customer</strong> toont een e-mailadres zoals de analist het leest: gemaskeerd."
+      },
+      "storefrontBi": {
+        "title": "Het BI-dashboard",
+        "description": "Apache Superset verbindt via het PostgreSQL-wireprotocol, met het PostgreSQL-dialect: host en poort van de pgwire-server van Provisa (standaard 5439), database <strong>provisa</strong>, gebruiker <strong>analyst</strong>. Het bladert door de tabellen en views van de winkel en toont omzet per regio en te late zendingen per vervoerder uit hetzelfde model."
+      },
+      "storefrontPoint": {
+        "title": "Eén model, twee afnemers",
+        "description": "<strong>SHIPPED_AS</strong> verbindt een bestelling met haar zending. De app en de BI-tool lezen allebei via deze en elke andere relatie, onder dezelfde regels: de klant ziet zijn eigen bestellingen, de analist ziet geen e-mailadressen. Wijzig hier een relatie of regel, en beide afnemers hebben die. Er valt niets synchroon te houden."
       },
       "storefrontTables": {
         "title": "The tables",
@@ -1233,8 +1273,8 @@
         "summary": "De vraag van een ziekenhuisapotheek, welke van haar producten een tekort of terugroeping dreigen: haar formularium en voorraad gekoppeld aan de tekorten en terugroepingen van de FDA en de Medicaid-voorschriften, beantwoord in SQL, GraphQL en REST."
       },
       "storefront": {
-        "title": "One model, app and BI",
-        "summary": "TODO: One model, app and BI, in one sentence."
+        "title": "Eén model, app en BI",
+        "summary": "Het bestelgeschiedenisscherm van een app en een BI-dashboard lezen één model van PostgreSQL, MongoDB en een REST-service, onder dezelfde relaties en regels."
       }
     }
   }
