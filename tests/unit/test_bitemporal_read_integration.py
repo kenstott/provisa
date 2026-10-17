@@ -89,7 +89,7 @@ async def _materialize(monkeypatch, mode: str):
         target_catalog="memory",
         target_schema="mvs",
         sql="SELECT id, region, amount FROM base",
-        bitemporal=BitemporalSpec(key=("id",), mode=mode),
+        bitemporal=BitemporalSpec(key=("id",), mode=mode, columns=("id", "region", "amount")),
     )
     registry.register(mv)
 

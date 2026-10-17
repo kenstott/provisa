@@ -82,7 +82,7 @@ STEP4 = [(1, "west", 15), (2, "east", 99), (3, "north", 30)]
 
 
 def _run_story(mode: str) -> Driver:
-    d = Driver(BitemporalSpec(key=("id",), mode=mode))
+    d = Driver(BitemporalSpec(key=("id",), mode=mode, columns=("id", "region", "amount")))
     d.refresh(STEP1, T1)
     d.refresh(STEP2, T2)
     d.refresh(STEP3, T3)

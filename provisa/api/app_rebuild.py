@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 
 from provisa.core.schema_org import registered_tables as _registered_tables_t
+from provisa.core.schema_org import table_columns as _table_columns_t
 from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.core.models import DERIVED_SOURCE_ID
 
@@ -103,6 +104,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
             for _r in (
                 await conn.execute_core(
                     select(
+                        _registered_tables_t.c.id,
                         _registered_tables_t.c.table_name,
                         _registered_tables_t.c.view_sql,
                         _registered_tables_t.c.materialize,
@@ -133,6 +135,16 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
         from provisa.core import settings_registry  # REQ-1913: an operator setting
 
         _mv_default_ttl = settings_registry.value("materialized_views.default_ttl")
+        # Each view's declared columns: a snapshot bitemporal view's read compares them.
+        _view_columns: dict[int, list[str]] = {}
+        for _c in (
+            await conn.execute_core(
+                select(_table_columns_t.c.table_id, _table_columns_t.c.column_name).where(
+                    _table_columns_t.c.table_id.in_([_v["id"] for _v in _view_rows])
+                )
+            )
+        ).fetchall():
+            _view_columns.setdefault(_c.table_id, []).append(_c.column_name)
         for _vr in _view_rows:
             # Store the *semantic* view SQL; _compile_view_sqls rewrites it to a physical plan.
             # EVERY user view (materialized or not) goes into view_sql_map so the query path can
@@ -151,6 +163,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                     key=tuple(_vr.get("mv_bitemporal_key") or []),
                     mode=_vr["mv_bitemporal_mode"],
                     source_column=_vr["mv_bitemporal_source_time"],
+                    columns=tuple(_view_columns[_vr["id"]]),
                 )
             if _bt_spec is not None and _vr.get("materialize"):
                 # REQ-1163: a bitemporal MV is served from its materialized append log — the read

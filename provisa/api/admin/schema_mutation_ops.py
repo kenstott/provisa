@@ -646,6 +646,7 @@ async def register_table(
             bitemporal_mode=input.mv_bitemporal_mode,  # REQ-1162
             bitemporal_key=list(input.mv_bitemporal_key),  # REQ-1162
             bitemporal_source_time=input.mv_bitemporal_source_time,  # REQ-1163
+            bitemporal_columns=[c.name for c in model.columns],
             persist=input.mv_persist,  # REQ-965
             primary_key=list(input.mv_primary_key),  # REQ-970
             incremental=input.mv_incremental,  # REQ-969

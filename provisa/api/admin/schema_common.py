@@ -824,6 +824,7 @@ async def _sync_view_mv(
     business_day_grain: bool = False,  # REQ-962: gate windows to business days
     draft: bool,  # REQ-1921: checked as saved, registered for building only once released
     region: str | None,  # REQ-1921: the region the view names (None: none), where it is built
+    bitemporal_columns: list[str],  # the view's declared columns: a snapshot view's read compares
 ) -> None:
     """Register or update an MVDefinition for a materialized user-defined view. A draft view is
     held to every rule a saved view is, and is not registered: nothing builds it."""
@@ -847,6 +848,7 @@ async def _sync_view_mv(
             key=tuple(bitemporal_key or []),
             mode=bitemporal_mode,
             source_column=bitemporal_source_time,
+            columns=tuple(bitemporal_columns),
         )
         if bitemporal_mode
         else None

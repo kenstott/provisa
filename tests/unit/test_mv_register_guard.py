@@ -71,6 +71,7 @@ def test_deterministic_mv_registers(fake_state):
             300,
             draft=False,
             region=None,
+            bitemporal_columns=[],
         )
     )
     assert len(fake_state.registered) == 1
@@ -87,7 +88,11 @@ def test_deterministic_mv_registers(fake_state):
 )
 def test_non_deterministic_mv_rejected(fake_state, sql):
     with pytest.raises(ValueError, match="non-deterministic MV"):
-        asyncio.run(schema_common._sync_view_mv("bad", sql, 300, draft=False, region=None))
+        asyncio.run(
+            schema_common._sync_view_mv(
+                "bad", sql, 300, draft=False, region=None, bitemporal_columns=[]
+            )
+        )
     assert fake_state.registered == []
 
 
@@ -99,14 +104,24 @@ _DET_SQL = "SELECT region, sum(amt) AS t FROM o GROUP BY region"
 def test_consistency_tier_sets_mvdefinition(fake_state, tier):
     asyncio.run(
         schema_common._sync_view_mv(
-            "sales", _DET_SQL, 300, consistency=tier, draft=False, region=None
+            "sales",
+            _DET_SQL,
+            300,
+            consistency=tier,
+            draft=False,
+            region=None,
+            bitemporal_columns=[],
         )
     )
     assert fake_state.registered[0].consistency == tier
 
 
 def test_consistency_defaults_to_shared(fake_state):
-    asyncio.run(schema_common._sync_view_mv("sales", _DET_SQL, 300, draft=False, region=None))
+    asyncio.run(
+        schema_common._sync_view_mv(
+            "sales", _DET_SQL, 300, draft=False, region=None, bitemporal_columns=[]
+        )
+    )
     assert fake_state.registered[0].consistency == "shared"
 
 
@@ -114,7 +129,13 @@ def test_invalid_consistency_rejected(fake_state):
     with pytest.raises(ValueError, match="invalid MV consistency"):
         asyncio.run(
             schema_common._sync_view_mv(
-                "sales", _DET_SQL, 300, consistency="bogus", draft=False, region=None
+                "sales",
+                _DET_SQL,
+                300,
+                consistency="bogus",
+                draft=False,
+                region=None,
+                bitemporal_columns=[],
             )
         )
     assert fake_state.registered == []
@@ -192,6 +213,7 @@ def test_a_view_over_a_row_level_table_is_refused_and_not_registered(fake_state,
                 300,
                 draft=False,
                 region=None,
+                bitemporal_columns=[],
             )
         )
     message = str(raised.value)
@@ -204,11 +226,20 @@ def test_a_view_over_a_row_level_table_is_refused_and_not_registered(fake_state,
 def test_a_draft_view_is_held_to_every_rule_and_registered_for_nothing(fake_state):
     """REQ-1921: saved as draft, a view is checked as any saved view is — and nothing builds it
     until it is released."""
-    asyncio.run(schema_common._sync_view_mv("sales", _DET_SQL, 300, draft=True, region=None))
+    asyncio.run(
+        schema_common._sync_view_mv(
+            "sales", _DET_SQL, 300, draft=True, region=None, bitemporal_columns=[]
+        )
+    )
     assert fake_state.registered == []
     with pytest.raises(ValueError, match="non-deterministic"):
         asyncio.run(
             schema_common._sync_view_mv(
-                "bad", "SELECT now() AS t, random() AS r FROM o", 300, draft=True, region=None
+                "bad",
+                "SELECT now() AS t, random() AS r FROM o",
+                300,
+                draft=True,
+                region=None,
+                bitemporal_columns=[],
             )
         )

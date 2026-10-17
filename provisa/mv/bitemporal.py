@@ -75,6 +75,9 @@ class BitemporalSpec:
     op_column: str = "sys_op"
     valid_from: str | None = None
     valid_to: str | None = None
+    # The view's declared columns: what a snapshot view's read compares to tell a row recorded
+    # again unchanged from a correction (the read columns and system columns are left out).
+    columns: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
@@ -315,17 +318,39 @@ def _versions_sql(mv_ref: str, spec: BitemporalSpec) -> str:
             f"(PARTITION BY {part} ORDER BY {eff}, {sys}) AS _bt_to FROM {mv_ref}"
         )
         return f"SELECT * FROM ({spans}) _bv WHERE _bv.{op} <> '{_OP_DELETE}'"
-    # Snapshot: each refresh appends the whole dataset, so a version is the first recording of a
-    # (key, source time); a key absent from a later batch is gone from that batch's recorded time.
-    firsts = (
-        f"SELECT *, ROW_NUMBER() OVER (PARTITION BY {part}, {src} ORDER BY {sys}) AS _bt_first, "
+    # Snapshot: each refresh appends the whole dataset, so a row recorded again unchanged is no
+    # new version. A recording whose content differs from the one before it at the same (key,
+    # source time) is a correction; of those, the latest recorded is in force -- as a delta view's
+    # is -- and its record is when that content was first recorded. A key absent from a later
+    # batch is gone from that batch's recorded time.
+    content = [
+        c
+        for c in spec.columns
+        if c not in READ_COLUMNS and c not in (spec.system_column, spec.op_column)
+    ]
+    if not content:
+        raise ValueError(
+            "a snapshot bitemporal view's read names no columns: its declared columns tell a "
+            "row recorded again unchanged from a correction"
+        )
+    same_version = f"PARTITION BY {part}, {src} ORDER BY {sys}"
+    changed = " OR ".join(
+        [f"LAG({sys}) OVER ({same_version}) IS NULL"]
+        + [f"{_q(c)} IS DISTINCT FROM LAG({_q(c)}) OVER ({same_version})" for c in content]
+    )
+    marked = (
+        f"SELECT *, CASE WHEN {changed} THEN 1 ELSE 0 END AS _bt_changed, "
         f"MAX({sys}) OVER (PARTITION BY {part}) AS _bt_last_seen FROM {mv_ref}"
+    )
+    latest = (
+        f"SELECT *, ROW_NUMBER() OVER (PARTITION BY {part}, {src} ORDER BY {sys} DESC) "
+        f"AS _bt_latest FROM ({marked}) _bm WHERE _bm._bt_changed = 1"
     )
     gone = f"(SELECT MIN(_bb.{sys}) FROM {mv_ref} _bb WHERE _bb.{sys} > _bd._bt_last_seen)"
     return (
         f"SELECT *, {src} AS _bt_from, COALESCE(LEAD({src}) OVER "
         f"(PARTITION BY {part} ORDER BY {src}, {sys}), {gone}) AS _bt_to "
-        f"FROM ({firsts}) _bd WHERE _bd._bt_first = 1"
+        f"FROM ({latest}) _bd WHERE _bd._bt_latest = 1"
     )
 
 
