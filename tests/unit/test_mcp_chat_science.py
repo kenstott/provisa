@@ -27,16 +27,29 @@ def _navigate() -> dict:
     return tool
 
 
-def test_the_navigate_tool_names_the_python_area_and_says_its_result_comes_back():
+def test_the_navigate_tool_names_both_tabs_and_says_their_results_come_back():
     tool = _navigate()
     described = _flat(tool["description"])
-    assert "/science" in described
+    assert "Explore's Python tab (/python) and Notebook tab (/notebook)" in described
     assert "provisa_client.query" in described
+    assert "the Python tab (state.code: one script" in described
+    assert "the Notebook tab (state.cells: a list of cells" in described
+    assert (
+        "Use the tab the user names; only when they name neither, use the Python tab." in described
+    )
+    assert "Never call the Python tab a notebook." in described
+    assert "starts with `import provisa_client` and `provisa_client.sign_in()`" in described
+    assert (
+        "a cell using %%sql, %%graphql or %%cypher needs `%load_ext provisa_client` run first"
+        in described
+    )
     assert "read the result before you answer" in described
     state = _flat(tool["input_schema"]["properties"]["state"]["description"])
-    assert '/science -> {"code": "<Python>"}' in state
+    assert '/python -> {"code": "<Python script>"} (the Python tab)' in state
+    assert '/notebook -> {"cells": ["<cell>", ...]} (the Notebook tab)' in state
 
 
-def test_the_system_prompt_lists_the_python_area_with_its_state_key():
+def test_the_system_prompt_names_both_tabs_and_how_to_choose():
     s = _flat(chat_mod._SYSTEM)
-    assert "Python /science (state.code; its run's output, value and error come back" in s
+    assert "the Python tab /python (state.code) and the Notebook tab /notebook (state.cells)" in s
+    assert "never call the Python tab a notebook" in s

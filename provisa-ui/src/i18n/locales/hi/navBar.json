@@ -72,6 +72,7 @@
     "sandboxExitUpgrade": "अपना संगठन बनाने और Starter प्लान से शुरू करने के लिए तैयार हैं? आपको 14 दिन मुफ़्त मिलेंगे।",
     "sandboxExitCreateOrg": "संगठन बनाएँ",
     "sandboxExitLogOut": "केवल लॉग आउट करें",
-    "itemDataScience": "डेटा साइंस"
+    "itemPython": "Python",
+    "itemNotebook": "नोटबुक"
   }
 }

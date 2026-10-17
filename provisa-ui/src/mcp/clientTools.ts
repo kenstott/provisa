@@ -11,8 +11,11 @@
 import type { NavigateFunction } from "react-router-dom";
 import { awaitRun } from "../dataScience/runReports";
 
-/** REQ-2071: the Data Science area, whose runs report back to the model. */
-const DATA_SCIENCE_ROUTE = "/science";
+/** REQ-2071: Explore's Python and Notebook tabs, whose runs report back to the model. */
+const RUN_ROUTES: Record<string, string> = {
+  "/python": "Ran the code in the Python tab.",
+  "/notebook": "Ran the cells in the Notebook tab.",
+};
 /** How long a Python run Polly asked for may take before the tool answers without it. */
 const PYTHON_RUN_TIMEOUT_MS = 180_000;
 let pollyRuns = 0;
@@ -79,13 +82,14 @@ export async function executeClientTool(
         : undefined;
     // REQ-2071: Python the model hands the Data Science area to run comes back as the run's
     // output, so the model can read what its code printed, returned or raised.
-    if (route === DATA_SCIENCE_ROUTE && state?.autoRun === true && typeof state.code === "string") {
+    const handed = typeof state?.code === "string" || Array.isArray(state?.cells);
+    if (route in RUN_ROUTES && state?.autoRun === true && handed) {
       const runId = `polly-${++pollyRuns}`;
       const report = awaitRun(runId, PYTHON_RUN_TIMEOUT_MS);
       ctx.navigate(route, { state: { ...state, runId } });
       const { stdout, value, error } = await report;
       const parts = [
-        `Ran the code in ${route}.`,
+        RUN_ROUTES[route],
         stdout && `Printed:\n${stdout}`,
         value && `Value:\n${value}`,
         error && `Error:\n${error}`,

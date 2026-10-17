@@ -13,6 +13,7 @@ import {
   LITE_THEMES,
   NOTEBOOK_STARTER,
   followScheme,
+  runCells,
   bridgeCode,
   seedNewNotebooks,
   startLiteBridge,
@@ -59,7 +60,7 @@ describe("startLiteBridge", () => {
     vi.useFakeTimers();
     const { k, sent } = kernel();
     const { lite } = app([k]);
-    const stop = startLiteBridge(
+    const { stop } = startLiteBridge(
       () => lite,
       async () => AUTH,
     );
@@ -75,7 +76,7 @@ describe("startLiteBridge", () => {
     vi.useFakeTimers();
     const { k, sent, status } = kernel();
     const { lite } = app([k]);
-    const stop = startLiteBridge(
+    const { stop } = startLiteBridge(
       () => lite,
       async () => AUTH,
       60_000,
@@ -92,7 +93,7 @@ describe("startLiteBridge", () => {
     const { k, sent } = kernel();
     const { lite } = app([k]);
     let auth = AUTH;
-    const stop = startLiteBridge(
+    const { stop } = startLiteBridge(
       () => lite,
       async () => auth,
     );
@@ -141,5 +142,99 @@ describe("followScheme", () => {
       ["apputils:change-theme", { theme: LITE_THEMES.dark }],
       ["apputils:change-theme", { theme: LITE_THEMES.light }],
     ]);
+  });
+});
+
+describe("runCells", () => {
+  function notebookApp(outputsFor: (source: string) => unknown[]) {
+    const sources: string[] = [];
+    const widgets: Array<{ model: { outputs: { toJSON(): unknown[] } } }> = [];
+    const panel = {
+      content: {
+        activeCellIndex: 0,
+        model: {
+          sharedModel: {
+            cells: sources,
+            insertCell: (index: number, cell: { source: string }) => {
+              sources.splice(index, 0, cell.source);
+              widgets.splice(index, 0, {
+                model: { outputs: { toJSON: () => outputsFor(cell.source) } },
+              });
+            },
+          },
+        },
+        widgets,
+      },
+    };
+    const execute = vi.fn(async () => true);
+    const lite = {
+      commands: { execute },
+      shell: {
+        widgets: () => [panel],
+        currentWidget: panel,
+        currentChanged: { connect: vi.fn(), disconnect: vi.fn() },
+      },
+    } as unknown as LiteApp;
+    return { lite, sources, execute, panel };
+  }
+
+  it("appends the cells, runs each in turn and reports what they printed and showed", async () => {
+    const { lite, sources, execute } = notebookApp((source) =>
+      source === "print(1)"
+        ? [{ output_type: "stream", text: ["1\n"] }]
+        : [
+            { output_type: "execute_result", data: { "text/plain": "   n\n0  1" } },
+            { output_type: "display_data", data: { "image/png": "x", "text/plain": "<Figure>" } },
+          ],
+    );
+    const report = await runCells(lite, ["print(1)", "df"], true);
+    expect(sources).toEqual(["print(1)", "df"]);
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenCalledWith("notebook:run-cell");
+    expect(report).toEqual({ stdout: "1\n", value: "<Figure>\n(1 figure(s) drawn)", error: null });
+  });
+
+  it("stops at the first error and reports it", async () => {
+    const { lite, execute } = notebookApp((source) =>
+      source === "boom"
+        ? [{ output_type: "error", ename: "NameError", evalue: "name 'boom' is not defined" }]
+        : [],
+    );
+    const report = await runCells(lite, ["boom", "never"], true);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(report.error).toBe("NameError: name 'boom' is not defined");
+  });
+
+  it("says no notebook is open once its wait is over", async () => {
+    const lite = {
+      commands: { execute: vi.fn() },
+      shell: {
+        widgets: () => [],
+        currentWidget: null,
+        currentChanged: { connect: vi.fn(), disconnect: vi.fn() },
+      },
+    } as unknown as LiteApp;
+    const report = await runCells(lite, ["1"], true, async () => {}, 0);
+    expect(report.error).toBe("No notebook is open.");
+  });
+
+  it("hands the kernel the user before the first cell runs", async () => {
+    const order: string[] = [];
+    const { lite, execute } = notebookApp(() => []);
+    execute.mockImplementation(async () => {
+      order.push("run");
+      return true;
+    });
+    await runCells(lite, ["1"], true, async () => {
+      order.push("hand-off");
+    });
+    expect(order).toEqual(["hand-off", "run"]);
+  });
+
+  it("only adds the cells when it is not asked to run them", async () => {
+    const { lite, sources, execute } = notebookApp(() => []);
+    await runCells(lite, ["a = 1"], false);
+    expect(sources).toEqual(["a = 1"]);
+    expect(execute).not.toHaveBeenCalled();
   });
 });

@@ -72,6 +72,7 @@
     "sandboxExitUpgrade": "准备好创建自己的组织并从 Starter 套餐开始了吗？您将获得 14 天免费试用。",
     "sandboxExitCreateOrg": "创建组织",
     "sandboxExitLogOut": "仅退出登录",
-    "itemDataScience": "数据科学"
+    "itemPython": "Python",
+    "itemNotebook": "笔记本"
   }
 }

@@ -1,17 +1,20 @@
 {
   "dataScience": {
-    "tabPython": "Python",
     "editorLabel": "Python-Code",
     "run": "Ausführen",
     "runHint": "Läuft in Ihrem Browser mit Ihrer aktuellen Rolle. Strg+Eingabe (⌘+Eingabe) führt aus.",
     "loading": "Python wird geladen…",
     "failed": "Python konnte nicht gestartet werden.",
     "missingTitle": "Die Notebook-Dateien dieses Servers fehlen",
-    "missingBody": "Der Bereich Data Science führt Python in Ihrem Browser mit Dateien aus, die jede Provisa-Installation bereitstellt, und der Installation dieses Servers fehlen sie. Installieren Sie Provisa auf dem Server neu und laden Sie diese Seite neu.",
+    "missingBody": "Die Tabs Python und Notebook in Explore führen Python in Ihrem Browser mit Dateien aus, die jede Provisa-Installation bereitstellt, und der Installation dieses Servers fehlen sie. Installieren Sie Provisa auf dem Server neu und laden Sie diese Seite neu.",
     "rowsShown": "{{shown}} von {{total}} Zeilen angezeigt",
     "figure": "Abbildung {{n}}",
     "resizeLabel": "Editor und Ausgabe in der Größe ändern",
-    "tabNotebook": "Jupyter Notebook",
-    "notebookFrame": "Jupyter-Notebook"
+    "notebookFrame": "Jupyter-Notebook",
+    "copyCode": "Code kopieren",
+    "clearCode": "Editor leeren",
+    "copyOutput": "Ausgabe kopieren",
+    "maximize": "Maximieren",
+    "restore": "Wiederherstellen"
   }
 }

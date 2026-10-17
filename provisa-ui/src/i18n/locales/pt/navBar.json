@@ -72,6 +72,7 @@
     "sandboxExitUpgrade": "Pronto para criar sua própria organização e começar com um plano Starter? Você terá 14 dias grátis.",
     "sandboxExitCreateOrg": "Criar organização",
     "sandboxExitLogOut": "Apenas sair",
-    "itemDataScience": "Ciência de dados"
+    "itemPython": "Python",
+    "itemNotebook": "Notebook"
   }
 }

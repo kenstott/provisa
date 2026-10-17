@@ -72,6 +72,7 @@
     "sandboxExitUpgrade": "Готовы создать собственную организацию и начать с тарифа Starter? Вы получите 14 дней бесплатно.",
     "sandboxExitCreateOrg": "Создать организацию",
     "sandboxExitLogOut": "Просто выйти",
-    "itemDataScience": "Data Science"
+    "itemPython": "Python",
+    "itemNotebook": "Блокнот"
   }
 }

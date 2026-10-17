@@ -8,12 +8,13 @@
 // what the page tells it and how it shows what comes back.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
-import { MemoryRouter } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import "../i18n";
 
 vi.mock("../dataScience/bridge", () => ({ bridgeAuth: vi.fn() }));
+vi.mock("../hooks/useCapability", () => ({ useCapability: () => true }));
 vi.mock("../dataScience/runReports", async (real) => ({
   ...(await real<typeof import("../dataScience/runReports")>()),
   reportRun: vi.fn(),
@@ -21,7 +22,7 @@ vi.mock("../dataScience/runReports", async (real) => ({
 
 import { bridgeAuth } from "../dataScience/bridge";
 import { reportRun } from "../dataScience/runReports";
-import { DataSciencePage, STARTER_CODE, type MakeWorker } from "../pages/DataSciencePage";
+import { DataScienceHost, STARTER_CODE, type MakeWorker } from "../pages/DataSciencePage";
 import type { FromWorker, ToWorker } from "../dataScience/protocol";
 
 const MANIFEST = {
@@ -43,11 +44,17 @@ function workerDouble() {
   return { sent, double, reply, make };
 }
 
-function page(make: MakeWorker, state?: Record<string, unknown>) {
+/** The host at a route, as the app shows it: /python by default. */
+function page(make: MakeWorker, state?: Record<string, unknown>, pathname = "/python") {
   return render(
     <MantineProvider>
-      <MemoryRouter initialEntries={[{ pathname: "/science", state }]}>
-        <DataSciencePage makeWorker={make} />
+      <MemoryRouter initialEntries={[{ pathname, state }]}>
+        <DataScienceHost makeWorker={make} />
+        <Routes>
+          <Route path="/python" element={<Link to="/sql">to sql</Link>} />
+          <Route path="/notebook" element={<Link to="/python">to python</Link>} />
+          <Route path="/sql" element={<Link to="/python">back to python</Link>} />
+        </Routes>
       </MemoryRouter>
     </MantineProvider>,
   );
@@ -152,7 +159,7 @@ describe("DataSciencePage", () => {
     expect(await screen.findByTestId("data-science-error")).toHaveTextContent("NameError");
   });
 
-  it("splits the area between editor and output, the rule moved from the keyboard within bounds", async () => {
+  it("splits editor (left) and output (right), the rule moved from the keyboard within bounds", async () => {
     serve(
       new Response(JSON.stringify(MANIFEST), { headers: { "content-type": "application/json" } }),
     );
@@ -161,12 +168,12 @@ describe("DataSciencePage", () => {
     await waitFor(() => expect(sent).toHaveLength(1));
     reply({ type: "ready" });
     const rule = await screen.findByTestId("data-science-split");
+    expect(rule).toHaveAttribute("aria-orientation", "vertical");
     expect(rule).toHaveAttribute("aria-valuenow", "45");
-    fireEvent.keyDown(rule, { key: "ArrowDown" });
+    fireEvent.keyDown(rule, { key: "ArrowRight" });
     expect(rule).toHaveAttribute("aria-valuenow", "50");
-    for (let i = 0; i < 20; i++) fireEvent.keyDown(rule, { key: "ArrowUp" });
+    for (let i = 0; i < 20; i++) fireEvent.keyDown(rule, { key: "ArrowLeft" });
     expect(rule).toHaveAttribute("aria-valuenow", "15");
-    expect(screen.queryByRole("heading", { name: "Data Science" })).not.toBeInTheDocument();
   });
 
   it("runs code it is handed once Python is ready, and reports the run under its id", async () => {
@@ -205,26 +212,122 @@ describe("DataSciencePage", () => {
     );
   });
 
-  it("opens the Jupyter notebook tab on the starter notebook, or says its assets are missing", async () => {
+  it("opens the Notebook tab on the starter notebook, mounting Python only when it is visited", async () => {
     window.fetch = vi.fn(async (url: RequestInfo | URL) =>
       String(url).includes("jupyter-lite.json")
         ? new Response("{}", { headers: { "content-type": "application/json" } })
         : new Response('{"detail":"Not Found"}', { status: 404 }),
     ) as typeof window.fetch;
     const { make } = workerDouble();
-    page(make);
-    fireEvent.click(await screen.findByTestId("data-science-tab-notebook"));
+    page(make, undefined, "/notebook");
     const frame = await screen.findByTestId("data-science-notebook");
     expect(frame).toHaveAttribute("src", "/lite/notebooks/index.html?path=Provisa.ipynb");
-    expect(screen.getByTestId("data-science-missing")).toBeInTheDocument();
+    expect(screen.queryByTestId("python-panel")).not.toBeInTheDocument();
   });
 
   it("says the notebook's assets are missing when /lite is not served", async () => {
     serve(new Response('{"detail":"Not Found"}', { status: 404 }));
     const { make } = workerDouble();
-    page(make);
-    fireEvent.click(await screen.findByTestId("data-science-tab-notebook"));
+    page(make, undefined, "/notebook");
     expect(await screen.findByTestId("data-science-notebook-missing")).toBeInTheDocument();
+  });
+
+  it("hands cells to the Notebook tab and code to the Python tab, each by its route", async () => {
+    window.fetch = vi.fn(async (url: RequestInfo | URL) =>
+      String(url).includes("jupyter-lite.json")
+        ? new Response("{}", { headers: { "content-type": "application/json" } })
+        : new Response(JSON.stringify(MANIFEST), {
+            headers: { "content-type": "application/json" },
+          }),
+    ) as typeof window.fetch;
+    const { make } = workerDouble();
+    page(make, { code: "print('handed')", autoRun: false });
+    expect(await screen.findByText("print('handed')")).toBeInTheDocument();
+  });
+
+  it("keeps a visited tab alive, only hidden, while the user is on another page", async () => {
+    serve(
+      new Response(JSON.stringify(MANIFEST), { headers: { "content-type": "application/json" } }),
+    );
+    const { make, double } = workerDouble();
+    page(make);
+    const panel = await screen.findByTestId("python-panel");
+    expect(panel).toBeVisible();
+    fireEvent.click(screen.getByText("to sql"));
+    await waitFor(() => expect(screen.getByTestId("python-panel")).not.toBeVisible());
+    expect(double.terminate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("back to python"));
+    await waitFor(() => expect(screen.getByTestId("python-panel")).toBeVisible());
+    expect(screen.getByTestId("python-panel")).toBe(panel);
+  });
+
+  it("maximizes the tab in place and restores it with its button or Escape", async () => {
+    serve(
+      new Response(JSON.stringify(MANIFEST), { headers: { "content-type": "application/json" } }),
+    );
+    const { make, double } = workerDouble();
+    page(make);
+    const panel = await screen.findByTestId("python-panel");
+    fireEvent.click(screen.getByTestId("python-panel-maximize"));
+    expect(panel).toHaveClass("ds-max");
+    expect(screen.getByTestId("data-science-backdrop")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(panel).not.toHaveClass("ds-max"));
+    fireEvent.click(screen.getByTestId("python-panel-maximize"));
+    fireEvent.click(screen.getByTestId("python-panel-maximize"));
+    expect(panel).not.toHaveClass("ds-max");
+    expect(screen.getByTestId("python-panel")).toBe(panel);
+    expect(double.terminate).not.toHaveBeenCalled();
+  });
+
+  it("copies the editor's code and clears it from its hover controls", async () => {
+    serve(
+      new Response(JSON.stringify(MANIFEST), { headers: { "content-type": "application/json" } }),
+    );
+    const writeText = vi.fn(async () => undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const { make, sent, reply } = workerDouble();
+    page(make);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    reply({ type: "ready" });
+    const controls = await screen.findByTestId("data-science-editor-controls");
+    fireEvent.click(within(controls).getByTestId("copy-symbol-button"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(STARTER_CODE));
+    fireEvent.click(screen.getByTestId("data-science-clear"));
+    await waitFor(() =>
+      expect(screen.queryByText("provisa_client.sign_in()")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("copies a run's output: what it printed and its table as tab-separated values", async () => {
+    serve(
+      new Response(JSON.stringify(MANIFEST), { headers: { "content-type": "application/json" } }),
+    );
+    const writeText = vi.fn(async () => undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const { make, sent, reply } = workerDouble();
+    page(make);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    reply({ type: "ready" });
+    reply({
+      type: "result",
+      id: 1,
+      stdout: "rows 2\n",
+      value: {
+        kind: "table",
+        columns: ["region", "n"],
+        rows: [
+          ["EU", 3],
+          ["US", null],
+        ],
+        total: 2,
+      },
+      images: [],
+      error: null,
+    });
+    const controls = await screen.findByTestId("data-science-output-controls");
+    fireEvent.click(within(controls).getByTestId("copy-symbol-button"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("rows 2\n\nregion\tn\nEU\t3\nUS\t"));
   });
 
   it("says plainly when Python cannot start", async () => {

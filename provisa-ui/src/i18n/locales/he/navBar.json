@@ -72,6 +72,7 @@
     "sandboxExitUpgrade": "מוכנים ליצור ארגון משלכם ולהתחיל עם תוכנית Starter? תקבלו 14 ימים בחינם.",
     "sandboxExitCreateOrg": "יצירת ארגון",
     "sandboxExitLogOut": "רק להתנתק",
-    "itemDataScience": "מדע נתונים"
+    "itemPython": "Python",
+    "itemNotebook": "מחברת"
   }
 }

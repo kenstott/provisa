@@ -15,6 +15,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  ActionIcon,
   Alert,
   Box,
   Button,
@@ -25,21 +26,28 @@ import {
   ScrollArea,
   Stack,
   Table,
-  Tabs,
   Text,
   useComputedColorScheme,
 } from "@mantine/core";
 import CodeMirror from "@uiw/react-codemirror";
+import { Maximize2, Minimize2, Trash2 } from "lucide-react";
+import { CopySymbolButton } from "../components/CopyButton";
+import { Tip } from "../components/Tip";
+import "./DataSciencePage.css";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { bridgeAuth } from "../dataScience/bridge";
 import {
   followScheme,
+  runCells,
   seedNewNotebooks,
   startLiteBridge,
   type LiteApp,
+  type LiteBridge,
 } from "../dataScience/liteBridge";
-import { reportRun, summarise } from "../dataScience/runReports";
+import { reportRun, summarise, type RunReport } from "../dataScience/runReports";
 import { useNavPayload } from "../hooks/useNavPayload";
+import { useCapability } from "../hooks/useCapability";
+import { useLocation } from "react-router-dom";
 import type { FromWorker, PyodideManifest, RunValue, ToWorker } from "../dataScience/protocol";
 
 /** The first cell: load the client and say who it reads as. The same lines run on a desktop. */
@@ -67,69 +75,137 @@ async function readManifest(): Promise<PyodideManifest | null> {
   return (await res.json()) as PyodideManifest;
 }
 
-/** The tabs of the area; a tab is mounted once first opened and kept, so switching keeps Python's
- * state and the notebook's kernel. */
-type DataScienceTab = "python" | "notebook";
+/** Explore's two Python surfaces, each its own route. */
+type Panel = "python" | "notebook";
+const PANEL_OF: Record<string, Panel> = { "/python": "python", "/notebook": "notebook" };
 
-export function DataSciencePage({ makeWorker = defaultWorker }: { makeWorker?: MakeWorker }) {
+/** REQ-2071: what Polly hands a panel (navigate state): code for the Python tab, cells for the
+ * Notebook tab, run at once with autoRun and reported back under the run id. */
+interface PythonRequest {
+  seq: number;
+  code: string;
+  autoRun: boolean;
+  runId: string | null;
+}
+interface NotebookRequest {
+  seq: number;
+  cells: string[];
+  autoRun: boolean;
+  runId: string | null;
+}
+
+type NavState = { code?: unknown; cells?: unknown; autoRun?: unknown; runId?: unknown };
+
+/** Reads the payload navigate hands /python or /notebook. Rendered only while one of them is the
+ * page, so the payload of any other page is left to that page. */
+function PayloadReader({ onPayload }: { onPayload: (payload: NavState) => void }) {
+  useNavPayload<NavState>(onPayload);
+  return null;
+}
+
+/**
+ * REQ-2071: Explore's Python tab (/python) and Notebook tab (/notebook). They live outside the
+ * route that shows them: each is mounted the first time it is opened and only hidden after, so
+ * the Python worker's state and the notebook's kernel survive a visit to any other page. Their
+ * routes render nothing of their own; this host, in the app's main area, shows the one the route
+ * names.
+ */
+export function DataScienceHost({ makeWorker = defaultWorker }: { makeWorker?: MakeWorker }) {
+  const { pathname } = useLocation();
+  const allowed = useCapability("query_development");
+  const active: Panel | null = allowed ? (PANEL_OF[pathname] ?? null) : null;
+  const [opened, setOpened] = useState<ReadonlySet<Panel>>(() => new Set());
+  if (active !== null && !opened.has(active)) setOpened(new Set([...opened, active]));
+  const [pythonRequest, setPythonRequest] = useState<PythonRequest | null>(null);
+  const [notebookRequest, setNotebookRequest] = useState<NotebookRequest | null>(null);
+  const requests = useRef(0);
   const { t } = useTranslation();
-  const [tab, setTab] = useState<DataScienceTab>("python");
-  const [opened, setOpened] = useState<Set<DataScienceTab>>(() => new Set(["python"]));
-  const open = (next: string | null) => {
-    if (next !== "python" && next !== "notebook") return;
-    setTab(next);
-    setOpened((was) => (was.has(next) ? was : new Set([...was, next])));
-  };
-  return (
-    // The area fills what the shell gives it, as the other explorers do; the tab names it.
+  // Maximized: the panel fills 95% of the window over the app; Escape restores it.
+  const [maximized, setMaximized] = useState<Panel | null>(null);
+  useEffect(() => {
+    if (maximized === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMaximized(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [maximized]);
+
+  const take = useCallback(
+    (payload: NavState) => {
+      const autoRun = payload.autoRun === true;
+      const runId = typeof payload.runId === "string" ? payload.runId : null;
+      const cells = Array.isArray(payload.cells) ? payload.cells.map(String) : null;
+      const code = typeof payload.code === "string" ? payload.code : null;
+      if (cells === null && code === null) return;
+      // The route says which panel: the notebook takes cells (or the code as one cell), Python
+      // takes code (or the cells as one script).
+      if (PANEL_OF[pathname] === "notebook") {
+        const given = cells ?? [code as string];
+        setNotebookRequest({ seq: ++requests.current, cells: given, autoRun, runId });
+      } else {
+        const given = code ?? (cells as string[]).join("\n\n");
+        setPythonRequest({ seq: ++requests.current, code: given, autoRun, runId });
+      }
+    },
+    [pathname],
+  );
+
+  if (opened.size === 0) return null;
+  const isMax = (panel: Panel) => maximized === panel && active === panel;
+  const panelBox = (panel: Panel, testId: string, body: React.ReactNode) => (
     <Box
-      data-testid="data-science-page"
+      data-testid={testId}
+      data-maximized={isMax(panel) || undefined}
+      className={`ds-panel ds-pane${isMax(panel) ? " ds-max" : ""}`}
       style={{
         flex: 1,
         minHeight: 0,
-        display: "flex",
+        display: active === panel ? "flex" : "none",
         flexDirection: "column",
         overflow: "hidden",
       }}
     >
-      <Tabs
-        value={tab}
-        onChange={open}
-        keepMounted
-        style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
-      >
-        <Tabs.List px="md" pt="xs">
-          <Tabs.Tab value="python" data-testid="data-science-tab-python">
-            {t("dataScience.tabPython")}
-          </Tabs.Tab>
-          <Tabs.Tab value="notebook" data-testid="data-science-tab-notebook">
-            {t("dataScience.tabNotebook")}
-          </Tabs.Tab>
-        </Tabs.List>
-        <Tabs.Panel
-          value="python"
-          style={{
-            flex: 1,
-            minHeight: 0,
-            display: tab === "python" ? "flex" : "none",
-            flexDirection: "column",
-          }}
-        >
-          {opened.has("python") && <PythonTab makeWorker={makeWorker} />}
-        </Tabs.Panel>
-        <Tabs.Panel
-          value="notebook"
-          style={{
-            flex: 1,
-            minHeight: 0,
-            display: tab === "notebook" ? "flex" : "none",
-            flexDirection: "column",
-          }}
-        >
-          {opened.has("notebook") && <NotebookTab />}
-        </Tabs.Panel>
-      </Tabs>
+      {body}
+      <Group className="ds-controls ds-panel-controls" data-testid={`${testId}-controls`}>
+        <Tip text={t(isMax(panel) ? "dataScience.restore" : "dataScience.maximize")} named>
+          <ActionIcon
+            type="button"
+            variant="transparent"
+            className="ds-control"
+            aria-label={t(isMax(panel) ? "dataScience.restore" : "dataScience.maximize")}
+            data-testid={`${testId}-maximize`}
+            onClick={() => setMaximized(isMax(panel) ? null : panel)}
+          >
+            {isMax(panel) ? (
+              <Minimize2 size={12} aria-hidden />
+            ) : (
+              <Maximize2 size={12} aria-hidden />
+            )}
+          </ActionIcon>
+        </Tip>
+      </Group>
     </Box>
+  );
+  return (
+    <>
+      {active !== null && <PayloadReader onPayload={take} />}
+      {active !== null && maximized === active && (
+        <div
+          className="ds-backdrop"
+          data-testid="data-science-backdrop"
+          onClick={() => setMaximized(null)}
+        />
+      )}
+      {opened.has("python") &&
+        panelBox(
+          "python",
+          "python-panel",
+          <PythonTab makeWorker={makeWorker} request={pythonRequest} />,
+        )}
+      {opened.has("notebook") &&
+        panelBox("notebook", "notebook-panel", <NotebookTab request={notebookRequest} />)}
+    </>
   );
 }
 
@@ -138,13 +214,31 @@ export const NOTEBOOK_URL = "/lite/notebooks/index.html?path=Provisa.ipynb";
 /** How long the tab waits for the embedded app before it gives up handing it the user. */
 const LITE_APP_WAIT_MS = 120_000;
 
-function NotebookTab() {
+function NotebookTab({ request }: { request: NotebookRequest | null }) {
   const { t } = useTranslation();
   const scheme = useComputedColorScheme("light");
   const [served, setServed] = useState<boolean | null>(null);
   const [app, setApp] = useState<LiteApp | null>(null);
   const frame = useRef<HTMLIFrameElement | null>(null);
   const stops = useRef<Array<() => void>>([]);
+  const bridge = useRef<LiteBridge | null>(null);
+  const done = useRef(0);
+
+  // Cells handed over are added to the open notebook, run when asked, and reported back; where
+  // the notebook cannot run, it says why at once.
+  useEffect(() => {
+    if (request === null || request.seq === done.current) return;
+    const report = (r: RunReport) => request.runId !== null && reportRun(request.runId, r);
+    if (served === false) {
+      done.current = request.seq;
+      report({ stdout: "", value: "", error: t("dataScience.missingTitle") });
+      return;
+    }
+    if (app === null) return;
+    done.current = request.seq;
+    const handOff = () => bridge.current?.handOff() ?? Promise.resolve();
+    void runCells(app, request.cells, request.autoRun, handOff).then(report);
+  }, [request, served, app, t]);
 
   // The notebook wears the app's colour scheme, and changes with it.
   useEffect(() => {
@@ -176,7 +270,9 @@ function NotebookTab() {
       if (app === undefined && Date.now() - started < LITE_APP_WAIT_MS) return;
       clearInterval(wait);
       if (app === undefined) return;
-      stops.current.push(startLiteBridge(appOf, bridgeAuth), seedNewNotebooks(app));
+      const handing = startLiteBridge(appOf, bridgeAuth);
+      bridge.current = handing;
+      stops.current.push(handing.stop, seedNewNotebooks(app));
       setApp(app);
     }, 250);
     stops.current.push(() => clearInterval(wait));
@@ -207,7 +303,13 @@ function NotebookTab() {
   );
 }
 
-function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
+function PythonTab({
+  makeWorker,
+  request,
+}: {
+  makeWorker: MakeWorker;
+  request: PythonRequest | null;
+}) {
   const { t } = useTranslation();
   const theme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
   const [status, setStatus] = useState<Status>("checking");
@@ -223,7 +325,7 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
     if (!area) return;
     down.preventDefault();
     const move = (e: PointerEvent) =>
-      setEditorShare(clampShare((e.clientY - area.top) / area.height));
+      setEditorShare(clampShare((e.clientX - area.left) / area.width));
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
@@ -232,18 +334,16 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
     window.addEventListener("pointerup", up);
   }, []);
   const nextRun = useRef(0);
-  // REQ-2071: a run Polly asked for (navigate with state.code and autoRun) is reported back
-  // under its run id once it finishes, or at once when it cannot run.
-  const pending = useRef<{ code: string; runId: string | null } | null>(null);
-  const [pendingTick, setPendingTick] = useState(0);
+  // REQ-2071: code Polly hands over (navigate with state.code) lands in the editor; with autoRun it
+  // runs once Python is ready, and is reported back under its run id when it finishes, or at once
+  // when it cannot run.
   const runIds = useRef(new Map<number, string>());
-  useNavPayload<{ code?: string; autoRun?: boolean; runId?: string }>((payload) => {
-    if (typeof payload.code !== "string") return;
-    setCode(payload.code);
-    if (payload.autoRun !== true) return;
-    pending.current = { code: payload.code, runId: payload.runId ?? null };
-    setPendingTick((n) => n + 1);
-  });
+  const [shownRequest, setShownRequest] = useState(0);
+  if (request !== null && request.seq !== shownRequest) {
+    setShownRequest(request.seq);
+    setCode(request.code);
+  }
+  const ranRequest = useRef(0);
 
   useEffect(() => {
     let live = true;
@@ -300,13 +400,12 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
 
   // A requested run waits for Python to be ready; where Python cannot run, it says why at once.
   useEffect(() => {
-    const request = pending.current;
-    if (request === null) return;
+    if (request === null || !request.autoRun || request.seq === ranRequest.current) return;
     if (status === "ready") {
-      pending.current = null;
+      ranRequest.current = request.seq;
       void run(request.code, request.runId);
     } else if (status === "missing" || status === "failed") {
-      pending.current = null;
+      ranRequest.current = request.seq;
       if (request.runId !== null) {
         reportRun(request.runId, {
           stdout: "",
@@ -315,7 +414,7 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
         });
       }
     }
-  }, [status, pendingTick, run, t]);
+  }, [status, request, run, t]);
 
   if (status === "checking") return <Loader size="sm" m="md" />;
   if (status === "missing") {
@@ -331,54 +430,84 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
     );
   }
   return (
-    <Box ref={splitRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+    <Box ref={splitRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row" }}>
+      {/* The editor and its Run bar on the left, the output on the right. */}
       <Box
-        style={{ height: `${editorShare * 100}%`, minHeight: 0, overflow: "hidden" }}
-        onKeyDownCapture={(e) => {
-          // Ctrl+Enter (Cmd+Enter) runs, before the editor takes the Enter as a new line.
-          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            e.stopPropagation();
-            void run();
-          }
+        style={{
+          width: `${editorShare * 100}%`,
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        <CodeMirror
-          value={code}
-          onChange={setCode}
-          theme={theme}
-          height="100%"
-          style={{ height: "100%" }}
-          aria-label={t("dataScience.editorLabel")}
-          data-testid="data-science-editor"
-        />
-      </Box>
-      <Group
-        gap="sm"
-        px="md"
-        py={6}
-        style={{ flexShrink: 0, borderTop: "1px solid var(--mantine-color-default-border)" }}
-      >
-        <Button
-          size="xs"
-          onClick={() => void run()}
-          disabled={status !== "ready"}
-          loading={status === "running"}
-          data-testid="data-science-run"
+        <Group
+          gap="sm"
+          px="md"
+          py={6}
+          style={{ flexShrink: 0, borderBottom: "1px solid var(--mantine-color-default-border)" }}
         >
-          {t("dataScience.run")}
-        </Button>
-        <Text size="xs" c="dimmed" data-testid="data-science-status">
-          {status === "loading"
-            ? t("dataScience.loading")
-            : status === "failed"
-              ? t("dataScience.failed")
-              : t("dataScience.runHint")}
-        </Text>
-      </Group>
+          <Button
+            size="xs"
+            onClick={() => void run()}
+            disabled={status !== "ready"}
+            loading={status === "running"}
+            data-testid="data-science-run"
+          >
+            {t("dataScience.run")}
+          </Button>
+          <Text size="xs" c="dimmed" data-testid="data-science-status">
+            {status === "loading"
+              ? t("dataScience.loading")
+              : status === "failed"
+                ? t("dataScience.failed")
+                : t("dataScience.runHint")}
+          </Text>
+        </Group>
+        <Box
+          className="ds-pane"
+          style={{ flex: 1, minHeight: 0, overflow: "hidden" }}
+          onKeyDownCapture={(e) => {
+            // Ctrl+Enter (Cmd+Enter) runs, before the editor takes the Enter as a new line.
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              e.stopPropagation();
+              void run();
+            }
+          }}
+        >
+          <CodeMirror
+            value={code}
+            onChange={setCode}
+            theme={theme}
+            height="100%"
+            style={{ height: "100%" }}
+            aria-label={t("dataScience.editorLabel")}
+            data-testid="data-science-editor"
+          />
+          <Group className="ds-controls" data-testid="data-science-editor-controls">
+            <CopySymbolButton
+              text={code}
+              className="ds-control"
+              title={t("dataScience.copyCode")}
+            />
+            <Tip text={t("dataScience.clearCode")} named>
+              <ActionIcon
+                type="button"
+                variant="transparent"
+                className="ds-control"
+                aria-label={t("dataScience.clearCode")}
+                data-testid="data-science-clear"
+                onClick={() => setCode("")}
+              >
+                <Trash2 size={12} aria-hidden />
+              </ActionIcon>
+            </Tip>
+          </Group>
+        </Box>
+      </Box>
       <Box
         role="separator"
-        aria-orientation="horizontal"
+        aria-orientation="vertical"
         aria-label={t("dataScience.resizeLabel")}
         aria-valuenow={Math.round(editorShare * 100)}
         aria-valuemin={Math.round(SHARE_MIN * 100)}
@@ -387,26 +516,56 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
         data-testid="data-science-split"
         onPointerDown={startDrag}
         onKeyDown={(e) => {
-          if (e.key === "ArrowUp") setEditorShare((v) => clampShare(v - 0.05));
-          if (e.key === "ArrowDown") setEditorShare((v) => clampShare(v + 0.05));
+          if (e.key === "ArrowLeft") setEditorShare((v) => clampShare(v - 0.05));
+          if (e.key === "ArrowRight") setEditorShare((v) => clampShare(v + 0.05));
         }}
         style={{
           flex: "0 0 5px",
-          cursor: "row-resize",
+          cursor: "col-resize",
           background: "var(--mantine-color-default-border)",
           touchAction: "none",
         }}
       />
-      <ScrollArea style={{ flex: 1, minHeight: 0 }} p="md" data-testid="data-science-output-pane">
-        {failure !== null && (
-          <Alert color="red" data-testid="data-science-failure">
-            <Code block>{failure}</Code>
-          </Alert>
+      <Box className="ds-pane" style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
+        <ScrollArea style={{ flex: 1, minHeight: 0 }} p="md" data-testid="data-science-output-pane">
+          {failure !== null && (
+            <Alert color="red" data-testid="data-science-failure">
+              <Code block>{failure}</Code>
+            </Alert>
+          )}
+          {output !== null && <RunOutput output={output} />}
+        </ScrollArea>
+        {output !== null && (
+          <Group
+            className="ds-controls ds-output-controls"
+            data-testid="data-science-output-controls"
+          >
+            <CopySymbolButton
+              text={outputText(output)}
+              className="ds-control"
+              title={t("dataScience.copyOutput")}
+            />
+          </Group>
         )}
-        {output !== null && <RunOutput output={output} />}
-      </ScrollArea>
+      </Box>
     </Box>
   );
+}
+
+/** A run's output as text: what it printed, then its value (a table as tab-separated values,
+ * as the results grid copies one). */
+function outputText(output: Output): string {
+  const parts = [output.stdout.trimEnd()];
+  const { value } = output;
+  if (value.kind === "text") parts.push(value.text);
+  if (value.kind === "table") {
+    const cell = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+    parts.push(
+      [value.columns.join("\t"), ...value.rows.map((row) => row.map(cell).join("\t"))].join("\n"),
+    );
+  }
+  if (output.error !== null) parts.push(output.error);
+  return parts.filter((part) => part !== "").join("\n\n");
 }
 
 /** How much of the area the editor takes; the output has the rest. */

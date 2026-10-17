@@ -10,6 +10,7 @@
 // signed-in user as silent code setting `provisaAuth`, again whenever that user's identity
 // changes, and a new, empty notebook opens on the starter cell.
 import type { ProvisaAuth } from "./protocol";
+import { clipped, type RunReport } from "./runReports";
 
 /** The first cell of every new notebook: load the client and say who it reads as. The same cell
  * runs unchanged in a desktop Jupyter once the notebook is downloaded. */
@@ -54,11 +55,18 @@ const RESTARTED = new Set(["starting", "restarting", "autorestarting"]);
 /** Hand every open notebook's and console's kernel the current identity: before the first code
  * it runs (the hand-off rides the same connection, so it runs first), again whenever the
  * identity changes (read every `everyMs`), and again after a restart. Returns the stop. */
+/** A running bridge: `handOff` guards and hands every open kernel the identity now (cells about
+ * to run call it first); `stop` ends it. */
+export interface LiteBridge {
+  handOff(): Promise<void>;
+  stop(): void;
+}
+
 export function startLiteBridge(
   app: () => LiteApp | undefined,
   identity: () => Promise<ProvisaAuth>,
   everyMs = 2000,
-): () => void {
+): LiteBridge {
   let code: string | null = null;
   const handed = new WeakMap<KernelConnection, string>();
   const direct = new WeakMap<KernelConnection, KernelConnection["requestExecute"]>();
@@ -96,9 +104,12 @@ export function startLiteBridge(
   };
   void tick();
   const timer = setInterval(() => void tick(), everyMs);
-  return () => {
-    stopped = true;
-    clearInterval(timer);
+  return {
+    handOff: tick,
+    stop: () => {
+      stopped = true;
+      clearInterval(timer);
+    },
   };
 }
 
@@ -128,4 +139,89 @@ export function seedNewNotebooks(app: LiteApp): () => void {
   app.shell.currentChanged.connect(seed);
   seed();
   return () => app.shell.currentChanged.disconnect(seed);
+}
+
+/** An nbformat output, as a cell's output model gives it. */
+interface CellOutput {
+  output_type: string;
+  text?: string | string[];
+  data?: Record<string, string | string[]>;
+  ename?: string;
+  evalue?: string;
+}
+
+interface NotebookPanel {
+  sessionContext?: { ready: Promise<void> };
+  content: {
+    model: {
+      sharedModel: {
+        cells: unknown[];
+        insertCell(index: number, cell: { cell_type: "code"; source: string }): void;
+      };
+    };
+    activeCellIndex: number;
+    widgets: ReadonlyArray<{ model: { outputs: { toJSON(): CellOutput[] } } }>;
+  };
+}
+
+const joined = (text: string | string[] | undefined) =>
+  Array.isArray(text) ? text.join("") : (text ?? "");
+
+/** How long cells handed over wait for the embedded app to open a notebook. */
+const NOTEBOOK_WAIT_MS = 60_000;
+
+/** The notebook the user is looking at, or else the first one open. */
+function openNotebook(app: LiteApp): NotebookPanel | null {
+  const isNotebook = (w: unknown): w is NotebookPanel =>
+    Array.isArray((w as NotebookPanel)?.content?.model?.sharedModel?.cells);
+  if (isNotebook(app.shell.currentWidget)) return app.shell.currentWidget;
+  for (const widget of app.shell.widgets("main")) if (isNotebook(widget)) return widget;
+  return null;
+}
+
+/** Append `cells` to the open notebook and, with `run`, run them in turn as the user would (so
+ * the kernel is handed the user first), stopping at the first error; the report is what they
+ * printed, the last value they showed and the error. */
+export async function runCells(
+  app: LiteApp,
+  cells: string[],
+  run: boolean,
+  handOff: () => Promise<void> = async () => {},
+  waitMs = NOTEBOOK_WAIT_MS,
+): Promise<RunReport> {
+  // Cells may arrive as the app starts, before its notebook has opened.
+  const started = Date.now();
+  let notebook = openNotebook(app);
+  while (notebook === null && Date.now() - started < waitMs) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    notebook = openNotebook(app);
+  }
+  if (notebook === null) return { stdout: "", value: "", error: "No notebook is open." };
+  await notebook.sessionContext?.ready;
+  // The notebook's kernel now exists: it is handed the user before the first cell runs.
+  if (run) await handOff();
+  const shared = notebook.content.model.sharedModel;
+  let stdout = "";
+  let value = "";
+  let figures = 0;
+  for (const source of cells) {
+    const index = shared.cells.length;
+    shared.insertCell(index, { cell_type: "code", source });
+    if (!run) continue;
+    notebook.content.activeCellIndex = index;
+    await app.commands.execute("notebook:run-cell");
+    for (const output of notebook.content.widgets[index].model.outputs.toJSON()) {
+      if (output.output_type === "stream") stdout += joined(output.text);
+      if (output.output_type === "error") {
+        return clipped({ stdout, value, error: `${output.ename}: ${output.evalue}` });
+      }
+      if (output.data !== undefined) {
+        if (output.data["image/png"] !== undefined) figures += 1;
+        const text = joined(output.data["text/plain"]);
+        if (text !== "") value = text;
+      }
+    }
+  }
+  if (figures > 0) value += `${value ? "\n" : ""}(${figures} figure(s) drawn)`;
+  return clipped({ stdout, value, error: null });
 }
