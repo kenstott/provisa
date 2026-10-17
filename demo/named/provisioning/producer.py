@@ -34,6 +34,8 @@ HISTORY = int(os.environ.get("ORDERS_HISTORY", "200000"))
 PER_SECOND = float(os.environ.get("ORDERS_PER_SECOND", "5"))
 PRICE_EVERY = float(os.environ.get("PRICE_EVERY", "20"))
 INVENTORY_EVERY = float(os.environ.get("INVENTORY_EVERY", "3"))
+# How long the broker is given to describe the orders topic's partitions once it lists the topic.
+METADATA_WAIT_S = 60.0
 
 # Each product (db/init.sql), its list price to start from, and how often it sells.
 _PRODUCTS = {
@@ -89,7 +91,21 @@ async def _orders_published() -> bool:
     consumer = AIOKafkaConsumer(bootstrap_servers=BOOTSTRAP)
     await consumer.start()
     try:
-        partitions = await consumer.partitions_for_topic("orders") or set()
+        # The cluster's topics, fetched now: a broker that never received an order has no topic.
+        if "orders" not in await consumer.topics():
+            return False
+        # A started consumer holds metadata for no topic it was not given, and
+        # partitions_for_topic answers None until it does (aiokafka 0.14): subscribing (no group)
+        # asks the broker for the topic's, which arrive in the background.
+        consumer.subscribe(["orders"])
+        deadline = asyncio.get_running_loop().time() + METADATA_WAIT_S
+        while (partitions := consumer.partitions_for_topic("orders")) is None:
+            if asyncio.get_running_loop().time() >= deadline:
+                raise RuntimeError(
+                    f"the broker at {BOOTSTRAP} lists the orders topic but described none of its "
+                    f"partitions within {METADATA_WAIT_S:g}s"
+                )
+            await asyncio.sleep(0.1)
         ends = await consumer.end_offsets([TopicPartition("orders", p) for p in partitions])
         return any(ends.values())
     finally:
