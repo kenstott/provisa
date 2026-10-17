@@ -295,3 +295,57 @@ async def test_two_orgs_each_land_the_topic_into_their_own_table(monkeypatch):
     assert not any(handle.done() for handle in state.push_listener_handles.values())
     assert groups == ["provisa-acme-kafka_src", "provisa-globex-kafka_src"]
     await shutdown_push_listeners(state)
+
+
+@pytest.mark.unbound
+async def test_a_wire_bound_to_prod_finds_the_listener_a_wire_with_no_environment_started():
+    """An unbound environment and ``prod`` are one environment (REQ-1487): a re-wire under either
+    finds the other's listener running and starts no second one on a second consumer group."""
+    from provisa.core.models import Source, SourceType
+    from provisa.core.request_context import (
+        reset_current_env,
+        reset_current_org,
+        set_current_env,
+        set_current_org,
+    )
+    from provisa.events.push_wiring import shutdown_push_listeners, wire_push_listeners
+    from tests.unit.test_push_wiring_orchestration import _FakeState, _kafka_table
+
+    state = _FakeState()
+    src = Source(id="kafka_src", type=SourceType.kafka, host="broker", port=9092)
+    groups: list[str] = []
+
+    def _provider(kind, config):
+        groups.append(config["group_id"])
+        return MagicMock()
+
+    async def _runs_until_stopped(**kwargs):
+        await asyncio.sleep(3600)
+
+    async def _wire(env: str | None) -> list:
+        token = set_current_org("acme")
+        env_token = set_current_env(env)
+        try:
+            return await wire_push_listeners(state=state, log=logging.getLogger("test"))
+        finally:
+            reset_current_env(env_token)
+            reset_current_org(token)
+
+    with (
+        patch(
+            "provisa.api.admin.db_queries.fetch_tables", AsyncMock(return_value=[_kafka_table()])
+        ),
+        patch(
+            "provisa.federation.registry_view.registered_sources",
+            AsyncMock(return_value=[src]),
+        ),
+        patch("provisa.subscriptions.registry.get_provider", _provider),
+        patch("provisa.events.push_wiring._run_listener", _runs_until_stopped),
+    ):
+        first = await _wire(None)
+        again = await _wire("prod")
+
+    assert len(first) == 1 and again == []
+    assert len(state.push_listener_disconnects) == 1
+    assert groups == ["provisa-acme-kafka_src"]
+    await shutdown_push_listeners(state)

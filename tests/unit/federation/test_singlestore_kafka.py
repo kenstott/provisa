@@ -375,3 +375,28 @@ def test_the_scheduled_batch_poll_binds_the_org_it_was_wired_for(monkeypatch):
 
     push_wiring._schedule_batch_poll(state, object(), _SCHEMA, {}, org_id="acme")
     assert jobs == {}  # no pipeline left: the poll is removed
+
+
+@pytest.mark.unbound
+def test_prod_and_no_environment_schedule_one_batch_poll():
+    """An unbound environment and ``prod`` are one environment (REQ-1487): wired under either,
+    the org's pipelines are polled by one job, and a wire with no pipeline left removes it."""
+    from provisa.core.request_context import reset_current_env, set_current_env
+    from provisa.events import push_wiring
+
+    jobs: dict = {}
+    scheduler = SimpleNamespace(
+        add_job=lambda fn, trigger, id, replace_existing: jobs.update({id: (fn, trigger)}),
+        get_job=lambda id: jobs.get(id),
+        remove_job=lambda id: jobs.pop(id),
+    )
+    state = SimpleNamespace(_scheduler=scheduler)
+    push_wiring._schedule_batch_poll(state, object(), _SCHEMA, {"n": 2.0}, org_id="acme")
+    token = set_current_env("prod")
+    try:
+        push_wiring._schedule_batch_poll(state, object(), _SCHEMA, {"n": 2.0}, org_id="acme")
+        assert len(jobs) == 1
+        push_wiring._schedule_batch_poll(state, object(), _SCHEMA, {}, org_id="acme")
+    finally:
+        reset_current_env(token)
+    assert jobs == {}
