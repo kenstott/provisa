@@ -63,6 +63,27 @@ def test_a_stopped_vm_is_started_once_and_a_running_one_left_alone(compute):
     assert not [c for c in calls if c.startswith("POST")]
 
 
+def test_a_vm_found_stopping_is_started_once_it_is_down(compute, monkeypatch):
+    state, calls = compute
+    monkeypatch.setattr(sandbox_wake, "_STOPPING_POLL_S", 0.0)
+    state["status"] = "STOPPING"
+
+    async def visit():
+        found = await sandbox_wake.wake(INSTANCE)
+        # The visitor is answered at once; a second request meanwhile adds no second follower.
+        await sandbox_wake.wake(INSTANCE)
+        (follower,) = sandbox_wake._followers
+        await asyncio.sleep(0.05)
+        assert not [c for c in calls if c.startswith("POST")], "started while still stopping"
+        state["status"] = "TERMINATED"
+        await asyncio.wait_for(follower, 5)
+        return found
+
+    assert asyncio.run(visit()) == "STOPPING"
+    assert [c for c in calls if c.startswith("POST")] == [f"POST /compute/v1/{INSTANCE}/start"]
+    assert not sandbox_wake._followers
+
+
 def test_a_suspended_vm_is_resumed(compute):
     state, calls = compute
     state["status"] = "SUSPENDED"

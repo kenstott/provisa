@@ -17,6 +17,8 @@ service account (the metadata server's token). The visitor is answered "starting
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 import threading
 import time
@@ -36,9 +38,16 @@ _COMPUTE = "https://compute.googleapis.com/compute/v1/"
 _STOPPED = frozenset({"TERMINATED", "STOPPED"})
 #: One start call at a time, and none again within this many seconds of the last.
 _DEBOUNCE_S = 30.0
+#: A VM found STOPPING (its idle stop under way) cannot be started yet: it is looked at again
+#: every this many seconds and started once it is down, for at most _STOPPING_LIMIT_S.
+_STOPPING_POLL_S = 5.0
+_STOPPING_LIMIT_S = 300.0
 
+_log = logging.getLogger(__name__)
 _claim = threading.Lock()
 _last_call = float("-inf")
+#: The one task following a stopping VM to its start; held so the loop does not drop it.
+_followers: set[asyncio.Task] = set()
 
 
 async def wake(instance: str) -> str:
@@ -54,6 +63,9 @@ async def wake(instance: str) -> str:
         auth = {"Authorization": f"Bearer {token}"}
         found = await _ok(client.get(_COMPUTE + instance, headers=auth), instance)
         status = found.json()["status"]
+        if status == "STOPPING":
+            _follow_stop(instance)
+            return status
         verb = "start" if status in _STOPPED else "resume" if status == "SUSPENDED" else None
         if verb is None or not _claimed():
             return status
@@ -74,6 +86,39 @@ async def stop(instance: str) -> None:
         await _ok(
             client.post(f"{_COMPUTE}{instance}/stop", headers={"Authorization": f"Bearer {token}"}),
             f"stop {instance}",
+        )
+
+
+def _follow_stop(instance: str) -> None:
+    """A request found the VM stopping: start it once it is down, after this request has been
+    answered "starting" -- nothing else would, unless another request came. One follower at a
+    time; a failure is logged, as the request that asked has long been answered."""
+    with _claim:
+        if _followers:
+            return
+        task = asyncio.get_running_loop().create_task(_start_once_stopped(instance))
+        _followers.add(task)
+    task.add_done_callback(_followed)
+
+
+async def _start_once_stopped(instance: str) -> None:
+    deadline = time.monotonic() + _STOPPING_LIMIT_S
+    while True:
+        await asyncio.sleep(_STOPPING_POLL_S)
+        # wake() starts it once it is down; while it is still stopping it finds this task
+        # already following and returns.
+        if await wake(instance) != "STOPPING":
+            return
+        if time.monotonic() > deadline:
+            raise RuntimeError(f"{instance} still STOPPING after {_STOPPING_LIMIT_S:.0f}s")
+
+
+def _followed(task: asyncio.Task) -> None:
+    with _claim:
+        _followers.discard(task)
+    if not task.cancelled() and task.exception() is not None:
+        _log.error(
+            "the sandbox tier's VM was not started after it stopped", exc_info=task.exception()
         )
 
 
