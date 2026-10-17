@@ -57,12 +57,12 @@ spec:
             - name: MINIO_ROOT_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-secrets
+                  name: {{ include "provisa.credentialsSecret" . }}
                   key: minio-access-key
             - name: MINIO_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-secrets
+                  name: {{ include "provisa.credentialsSecret" . }}
                   key: minio-secret-key
           volumeMounts:
             - name: minio-data

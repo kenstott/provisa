@@ -23,7 +23,14 @@ import yaml
 from provisa.fakes.digest import fingerprint
 
 CHART = Path(__file__).resolve().parents[2] / "helm" / "provisa"
-_BASE = ["--set", "encryption.existingSecret=k", "--set", "auth.provider=none"]
+_BASE = [
+    "--set",
+    "encryption.existingSecret=k",
+    "--set",
+    "credentials.existingSecret=c",
+    "--set",
+    "auth.provider=none",
+]
 
 
 def _render() -> list[dict]:

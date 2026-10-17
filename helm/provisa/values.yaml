@@ -22,15 +22,28 @@ deployment:
   # Optional external materialization-store DSN.
   materializeUrl: ""
 
+# The stores' credentials (PostgreSQL, Redis, MinIO, Grafana's admin): a Secret you create, with
+# keys pg-password, redis-password, minio-access-key, minio-secret-key and grafana-admin-password.
+# Required; the chart sets no password of its own.
+#   kubectl create secret generic provisa-credentials \
+#     --from-literal=pg-password="$(openssl rand -hex 24)" \
+#     --from-literal=redis-password="$(openssl rand -hex 24)" \
+#     --from-literal=minio-access-key=provisa \
+#     --from-literal=minio-secret-key="$(openssl rand -hex 24)" \
+#     --from-literal=grafana-admin-password="$(openssl rand -hex 24)"
+credentials:
+  existingSecret: ""
+
 # Operator TLS on every in-cluster endpoint (REQ-1226 / REQ-1257 parity with the
 # cloud-VM deploy). Supply the cert as a standard kubernetes.io/tls Secret holding
 # tls.crt and tls.key — issue it with cert-manager or your PKI. When enabled the
 # API and UI containers serve uvicorn over HTTPS and the app's wire-protocol
 # listeners (pgwire/bolt/mcp/grpc) start TLS. This is the pod-level listener cert;
 # the ingress may terminate its own edge TLS separately (ingress.tls). Unlike the
-# VM installer there is NO self-signed generation here — bring a Secret.
+# VM installer there is NO self-signed generation here — bring a Secret. On by default: every
+# endpoint serves TLS unless you set tls.enabled=false.
 tls:
-  enabled: false
+  enabled: true
   # Existing Secret of type kubernetes.io/tls with keys tls.crt and tls.key.
   secretName: provisa-tls
 
@@ -320,7 +333,6 @@ postgresql:
   port: 5432
   database: provisa
   username: provisa
-  password: provisa  # override via --set or a secrets manager
   storageClass: ""   # "" = use cluster default; set for enterprise (e.g. "standard-ssd")
   storage: 5Gi
   pdb:
@@ -362,8 +374,6 @@ mongodb:
 minio:
   enabled: true
   tag: "latest"
-  accessKey: minioadmin
-  secretKey: minioadmin
   storageClass: ""
   storage: 10Gi
   pdb:
@@ -373,7 +383,6 @@ redis:
   enabled: true
   host: ""        # set to external host (ElastiCache, Azure Cache, Memorystore) to skip in-cluster deployment
   port: 6379
-  password: "provisa"  # always set; in-cluster Redis starts with --requirepass
   tls: false
   tag: "7.2"
   storageClass: ""
@@ -483,7 +492,6 @@ observability:
     image: grafana/grafana
     tag: "10.4.2"
     port: 3000
-    adminPassword: provisa
     service:
       type: ClusterIP
     resources:

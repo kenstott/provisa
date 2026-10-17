@@ -526,7 +526,9 @@ Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FU
 
 3. Decide before installing:
    - **PostgreSQL** — in-cluster (`postgresql.enabled: true`) or external managed (`postgresql.host`)? External recommended for production
-   - **Redis** — in-cluster or external (`redis.host`)? Change the default password (`redis.password`)
+   - **Redis** — in-cluster or external (`redis.host`)?
+   - **Store credentials** — create the Secret `credentials.existingSecret` names, with keys `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key` and `grafana-admin-password`. The chart sets no password of its own and does not render without it
+   - **TLS** — on by default (`tls.enabled: true`): create the `kubernetes.io/tls` Secret `tls.secretName` names, or set `tls.enabled: false`
    - **MinIO / S3** — in-cluster MinIO or native S3? For AWS, use S3 with an IAM role
    - **Secrets** — pass via `--set` for evaluation; use External Secrets or Vault Agent for production
    - **Trino coordinator cache** — a 1Gi volume claimed by default and mounted at `/data/trino/cache` (`trino.coordinator.cache.persistence`: `enabled`, `size`, `storageClass`). A Salesforce source's describe results are kept there, so a restarted coordinator does not spend the org's API allowance describing it again. Turn it off only when no source needs it (REQ-1946)
@@ -618,7 +620,8 @@ Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FU
 | `redis.enabled` | `true` | Deploy in-cluster Redis StatefulSet (REQ-371) |
 | `redis.host` | `""` | Set to use external Redis |
 | `redis.port` | `6379` | |
-| `redis.password` | `"provisa"` | Change this |
+| `credentials.existingSecret` | | Secret holding the stores' passwords (required) |
+| `tls.enabled` | `true` | Serve every endpoint over TLS from `tls.secretName` |
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | Deploy federation engine (REQ-028) |
 | `trino.workers` | `2` | Federation engine worker replicas (REQ-056) |

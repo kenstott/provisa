@@ -26,7 +26,14 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 CHART = REPO / "helm" / "provisa"
-_BASE = ["--set", "encryption.existingSecret=k", "--set", "auth.provider=none"]
+_BASE = [
+    "--set",
+    "encryption.existingSecret=k",
+    "--set",
+    "credentials.existingSecret=c",
+    "--set",
+    "auth.provider=none",
+]
 
 
 def _render(*sets: str) -> list[dict]:

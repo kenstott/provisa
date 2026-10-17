@@ -123,6 +123,8 @@ _AUTH_SETS = [
 _CHART_SETS = [
     "--set",
     "encryption.existingSecret=provisa-master-key",
+    "--set",
+    "credentials.existingSecret=provisa-credentials",
     *_AUTH_SETS,
     "--set",
     "provisa.replicaCount=1",
@@ -444,6 +446,60 @@ def helm_install(request):
             f"--from-literal=master-key={base64.b64encode(os.urandom(32)).decode()}",
         ]
     )
+    # The stores' credentials: the chart sets no password of its own (credentials.existingSecret).
+    _run(
+        [
+            "kubectl",
+            "create",
+            "secret",
+            "generic",
+            "provisa-credentials",
+            f"--namespace={NAMESPACE}",
+            *(
+                f"--from-literal={key}={os.urandom(24).hex()}"
+                for key in (
+                    "pg-password",
+                    "redis-password",
+                    "minio-secret-key",
+                    "grafana-admin-password",
+                )
+            ),
+            "--from-literal=minio-access-key=provisa",
+        ]
+    )
+    # TLS is on by default (tls.secretName=provisa-tls): a self-signed pair of this test's own.
+    with tempfile.TemporaryDirectory() as certs:
+        crt, key_file = Path(certs, "tls.crt"), Path(certs, "tls.key")
+        _run(
+            [
+                "openssl",
+                "req",
+                "-x509",
+                "-newkey",
+                "rsa:2048",
+                "-nodes",
+                "-days",
+                "1",
+                "-subj",
+                "/CN=provisa",
+                "-keyout",
+                str(key_file),
+                "-out",
+                str(crt),
+            ]
+        )
+        _run(
+            [
+                "kubectl",
+                "create",
+                "secret",
+                "tls",
+                "provisa-tls",
+                f"--namespace={NAMESPACE}",
+                f"--cert={crt}",
+                f"--key={key_file}",
+            ]
+        )
     # REQ-1265: the chart is installed with auth.provider=local, the break-glass account alone;
     # its session key and password come from Secrets, as an operator supplies them.
     for name, key in (("provisa-session", "session-secret"), ("provisa-break-glass", "password")):

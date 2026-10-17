@@ -31,6 +31,7 @@ import yaml
 
 CHART = Path(__file__).resolve().parents[2] / "helm" / "provisa"
 _KEY = "encryption.existingSecret=provisa-master-key"
+_CREDENTIALS = "credentials.existingSecret=provisa-credentials"
 
 _LDAP = [
     "auth.provider=ldap",
@@ -64,7 +65,7 @@ _LOCAL = [
 def _render(*sets: str) -> subprocess.CompletedProcess:
     helm = shutil.which("helm")
     assert helm is not None, "the helm CLI is required to verify the chart"
-    cmd = [helm, "template", "rel", str(CHART), "--set", _KEY]
+    cmd = [helm, "template", "rel", str(CHART), "--set", _KEY, "--set", _CREDENTIALS]
     for s in sets:
         cmd += ["--set", s]
     return subprocess.run(cmd, capture_output=True, text=True)
@@ -293,7 +294,18 @@ class TestCommonSettings:
         helm = shutil.which("helm")
         assert helm is not None
         r = subprocess.run(
-            [helm, "template", "rel", str(CHART), "--set", _KEY, "-f", str(values)],
+            [
+                helm,
+                "template",
+                "rel",
+                str(CHART),
+                "--set",
+                _KEY,
+                "--set",
+                _CREDENTIALS,
+                "-f",
+                str(values),
+            ],
             capture_output=True,
             text=True,
         )

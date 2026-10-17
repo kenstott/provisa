@@ -44,11 +44,11 @@ spec:
             - name: ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-secrets
+                  name: {{ include "provisa.credentialsSecret" . }}
                   key: minio-access-key
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-secrets
+                  name: {{ include "provisa.credentialsSecret" . }}
                   key: minio-secret-key
 {{- end }}
