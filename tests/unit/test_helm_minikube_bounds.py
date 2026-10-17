@@ -59,7 +59,7 @@ def test_the_per_test_bound_is_the_sum_of_every_deadline_one_test_can_be_charged
         + m._HELM_SLACK_S
         + report
     )
-    longest_test = 2 * (helm + report) + m.KUBECTL_S
+    longest_test = 2 * (helm + report) + 3 * m.KUBECTL_S
     teardown = 2 * m.KUBECTL_S + m.MINIKUBE_SSH_S + m.MINIKUBE_DELETE_S
     assert m.CLUSTER_TEST_BOUND_S == setup + longest_test + teardown
 

@@ -83,9 +83,10 @@ _SETUP_S = (
     + _HELM_SLACK_S
     + _REPORT_S
 )
-# The longest test body: test_helm_upgrade_scales_worker_replicas, two upgrades, each of which may
-# end in a pod report, plus the pod listing between them.
-_LONGEST_TEST_S = 2 * (HELM_WAIT_S + _HELM_SLACK_S + _REPORT_S) + KUBECTL_S
+# The longest test body: test_workers_join_over_internal_tls, two upgrades, each of which may end
+# in a pod report, and three kubectl calls (the coordinator Service removed before each upgrade, its
+# ClusterIP being immutable, and the query of the nodes in between).
+_LONGEST_TEST_S = 2 * (HELM_WAIT_S + _HELM_SLACK_S + _REPORT_S) + 3 * KUBECTL_S
 _TEARDOWN_S = (
     KUBECTL_S  # helm uninstall
     + KUBECTL_S  # delete namespace
@@ -257,9 +258,11 @@ def _run(cmd: list[str], timeout_s: int = KUBECTL_S) -> subprocess.CompletedProc
     return subprocess.run(_pin(cmd), capture_output=True, text=True, timeout=timeout_s)
 
 
-def _helm_deploy(*, worker_replicas: int, install: bool = False) -> subprocess.CompletedProcess:
-    """Install or upgrade the release with _CHART_SETS and this many Trino workers, waiting for it
-    to turn Ready."""
+def _helm_deploy(
+    *, worker_replicas: int, install: bool = False, extra: tuple[str, ...] = ()
+) -> subprocess.CompletedProcess:
+    """Install or upgrade the release with _CHART_SETS (and ``extra``) and this many Trino workers,
+    waiting for it to turn Ready."""
     wait_s = HELM_INSTALL_WAIT_S if install else HELM_WAIT_S
     return _run(
         [
@@ -272,6 +275,7 @@ def _helm_deploy(*, worker_replicas: int, install: bool = False) -> subprocess.C
             *_CHART_SETS,
             "--set",
             f"trino.worker.replicaCount={worker_replicas}",
+            *extra,
             "--wait",
             f"--timeout={wait_s}s",
         ],
@@ -666,6 +670,57 @@ class TestWorkerScaling:
         assert result.returncode == 0, (
             f"helm upgrade (scale back) failed:\n{result.stderr}\n{_why_not_ready()}"
         )
+
+
+class TestTrinoInternalTls:
+    """REQ-2072: with trino.internalTls the workers find the coordinator at its pinned Service
+    address over HTTPS, and the cluster serves queries with every node active."""
+
+    # An address in minikube's Service range (10.96.0.0/12) that nothing else is given.
+    _CLUSTER_IP = "10.111.222.233"
+    _SERVICE = f"{RELEASE}-trino-coordinator"
+
+    def _active_nodes(self) -> str:
+        coordinator = next(
+            p["metadata"]["name"]
+            for p in _get_pods()
+            if "trino-coordinator" in p["metadata"]["name"]
+        )
+        result = _kubectl(
+            "exec",
+            coordinator,
+            "-c",
+            "trino",
+            "--",
+            "trino",
+            "--execute",
+            "SELECT count(*) FROM system.runtime.nodes WHERE state = 'active'",
+        )
+        assert result.returncode == 0, f"{result.stdout}{result.stderr}"
+        return result.stdout.strip().strip('"')
+
+    def test_workers_join_over_internal_tls(self):
+        # A Service's ClusterIP cannot change in place: removed, the upgrade makes it again.
+        _kubectl("delete", "service", self._SERVICE)
+        result = _helm_deploy(
+            worker_replicas=1,
+            extra=(
+                "--set",
+                "trino.internalTls=true",
+                "--set",
+                f"trino.coordinatorClusterIP={self._CLUSTER_IP}",
+            ),
+        )
+        assert result.returncode == 0, f"helm upgrade failed:\n{result.stderr}\n{_why_not_ready()}"
+        try:
+            # The coordinator and its one worker, the worker having joined over HTTPS.
+            assert self._active_nodes() == "2"
+        finally:
+            _kubectl("delete", "service", self._SERVICE)
+            restored = _helm_deploy(worker_replicas=1)
+            assert restored.returncode == 0, (
+                f"helm upgrade (internal TLS off) failed:\n{restored.stderr}\n{_why_not_ready()}"
+            )
 
 
 class TestAuthReachesTheApi:
