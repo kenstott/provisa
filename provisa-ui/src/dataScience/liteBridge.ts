@@ -128,17 +128,22 @@ function notebookCells(widget: unknown): SharedCell[] | null {
   return model?.cells ?? null;
 }
 
-/** A new notebook (one empty cell) opens on the starter cell; returns the stop. */
+/** A new notebook (one empty cell) opens on the starter cell; returns the stop. JupyterLab makes
+ * a new notebook current before its document has loaded, so its cells are read once its
+ * document context is ready. */
 export function seedNewNotebooks(app: LiteApp): () => void {
-  const seed = () => {
-    const cells = notebookCells(app.shell.currentWidget);
+  const seed = async () => {
+    const widget = app.shell.currentWidget;
+    await (widget as { context?: { ready?: Promise<void> } } | null)?.context?.ready;
+    const cells = notebookCells(widget);
     if (cells !== null && cells.length === 1 && cells[0].getSource() === "") {
       cells[0].setSource(NOTEBOOK_STARTER);
     }
   };
-  app.shell.currentChanged.connect(seed);
-  seed();
-  return () => app.shell.currentChanged.disconnect(seed);
+  const onChange = () => void seed();
+  app.shell.currentChanged.connect(onChange);
+  onChange();
+  return () => app.shell.currentChanged.disconnect(onChange);
 }
 
 /** An nbformat output, as a cell's output model gives it. */

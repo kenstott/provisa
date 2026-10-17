@@ -121,15 +121,29 @@ describe("seedNewNotebooks", () => {
     return { widget: { content: { model: { sharedModel: { cells } } } }, cells };
   }
 
-  it("opens a new, empty notebook on the starter cell and leaves others as they are", () => {
+  it("opens a new, empty notebook on the starter cell and leaves others as they are", async () => {
     const fresh = notebook([""]);
     const { lite, fire } = app([], fresh.widget);
     seedNewNotebooks(lite);
-    expect(fresh.cells[0].getSource()).toBe(NOTEBOOK_STARTER);
+    await vi.waitFor(() => expect(fresh.cells[0].getSource()).toBe(NOTEBOOK_STARTER));
     const written = notebook(["print(1)"]);
     lite.shell.currentWidget = written.widget;
     fire();
+    await Promise.resolve();
     expect(written.cells[0].getSource()).toBe("print(1)");
+  });
+
+  it("seeds a notebook made current before its document has loaded, once it has", async () => {
+    let load = () => {};
+    const ready = new Promise<void>((resolve) => (load = resolve));
+    const cells: Array<{ getSource(): string; setSource(s: string): void }> = [];
+    const widget = { context: { ready }, content: { model: { sharedModel: { cells } } } };
+    const { lite } = app([], widget);
+    seedNewNotebooks(lite);
+    let text = "";
+    cells.push({ getSource: () => text, setSource: (s: string) => (text = s) });
+    load();
+    await vi.waitFor(() => expect(text).toBe(NOTEBOOK_STARTER));
   });
 });
 
