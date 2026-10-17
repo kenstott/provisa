@@ -23,14 +23,16 @@ deployment:
   materializeUrl: ""
 
 # The stores' credentials (PostgreSQL, Redis, MinIO, Grafana's admin): a Secret you create, with
-# keys pg-password, redis-password, minio-access-key, minio-secret-key and grafana-admin-password.
+# keys pg-password, redis-password, minio-access-key, minio-secret-key, grafana-admin-password and
+# trino-shared-secret (the secret Trino's coordinator and workers authenticate each other with).
 # Required; the chart sets no password of its own.
 #   kubectl create secret generic provisa-credentials \
 #     --from-literal=pg-password="$(openssl rand -hex 24)" \
 #     --from-literal=redis-password="$(openssl rand -hex 24)" \
 #     --from-literal=minio-access-key=provisa \
 #     --from-literal=minio-secret-key="$(openssl rand -hex 24)" \
-#     --from-literal=grafana-admin-password="$(openssl rand -hex 24)"
+#     --from-literal=grafana-admin-password="$(openssl rand -hex 24)" \
+#     --from-literal=trino-shared-secret="$(openssl rand -hex 32)"
 credentials:
   existingSecret: ""
 

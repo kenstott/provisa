@@ -97,6 +97,7 @@ _VARS = (
     "PROVISA_REDIS_PASSWORD",
     "PROVISA_MINIO_ROOT_PASSWORD",
     "PROVISA_GRAFANA_ADMIN_PASSWORD",
+    "PROVISA_TRINO_SHARED_SECRET",
 )
 
 
@@ -191,3 +192,20 @@ def test_first_launch_keeps_the_given_credentials_for_provisa_start():
     for var in (*_VARS, "PROVISA_STORE_BIND_IP"):
         assert var in allow
     assert "minioadmin" not in text and "provisa:provisa@${PRIMARY_IP}" not in text
+
+
+def test_trinos_nodes_authenticate_each_other_with_the_generated_secret():
+    core = _services("docker-compose.core.yml")
+    for service in ("trino", "trino-worker"):
+        assert core[service]["environment"]["PROVISA_TRINO_SHARED_SECRET"].startswith(
+            "${PROVISA_TRINO_SHARED_SECRET:?"
+        )
+    for path in ("trino/etc/config.properties", "trino/etc/worker/config.properties"):
+        lines = (_REPO / path).read_text().splitlines()
+        assert "internal-communication.shared-secret=${ENV:PROVISA_TRINO_SHARED_SECRET}" in lines
+
+
+@pytest.mark.parametrize("module", ["gcp", "aws", "azure"])
+def test_every_enterprise_node_is_given_the_trino_secret(module):
+    tf = (_REPO / "terraform" / module / "main.tf").read_text()
+    assert '"trino"' in tf and 'random_password.store["trino"].result' in tf

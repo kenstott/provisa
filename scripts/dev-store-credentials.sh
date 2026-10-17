@@ -16,7 +16,7 @@ _dev_creds="${PROVISA_HOME:-$HOME/.provisa}/dev-store-credentials.env"
 mkdir -p "$(dirname "$_dev_creds")"
 [ -f "$_dev_creds" ] || (umask 077 && : > "$_dev_creds")
 for _var in PROVISA_PG_PASSWORD PROVISA_REDIS_PASSWORD PROVISA_MINIO_ROOT_PASSWORD \
-            PROVISA_GRAFANA_ADMIN_PASSWORD; do
+            PROVISA_GRAFANA_ADMIN_PASSWORD PROVISA_TRINO_SHARED_SECRET; do
   _val="$(sed -n "s/^${_var}=//p" "$_dev_creds" | head -1)"
   if [ -z "$_val" ]; then
     _val="$(openssl rand -hex 24)"

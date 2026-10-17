@@ -78,7 +78,7 @@ function Ensure-StoreCredentials {
     }
   }
   foreach ($name in 'PROVISA_PG_PASSWORD', 'PROVISA_REDIS_PASSWORD', 'PROVISA_MINIO_ROOT_PASSWORD',
-                    'PROVISA_GRAFANA_ADMIN_PASSWORD') {
+                    'PROVISA_GRAFANA_ADMIN_PASSWORD', 'PROVISA_TRINO_SHARED_SECRET') {
     if (-not $values.Contains($name) -or -not $values[$name]) { $values[$name] = New-Secret }
   }
   $values['PROVISA_STORE_BIND_IP'] = '127.0.0.1'
