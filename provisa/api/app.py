@@ -3957,9 +3957,18 @@ def create_app() -> FastAPI:
             content.update(code=code, params={} if reason is None else {"reason": reason})
         return _JSONResponse(status_code=403, content=content)
 
+    from provisa.compiler.context import ModelNotServable as _ModelNotServable
+
     @app.exception_handler(Exception)
     async def _global_exception_handler(_req: _Request, exc: Exception):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
         log.exception("Unhandled exception on %s %s", _req.method, _req.url.path)
+        if isinstance(exc, _ModelNotServable):
+            # The model the schema build refuses (raised from the authentication middleware,
+            # outside the handlers above): every request answers why, and what to correct.
+            return _JSONResponse(
+                status_code=500,
+                content={"detail": str(exc), "code": exc.code, "params": exc.params},
+            )
         return _JSONResponse(
             status_code=500,
             content={"detail": "Internal server error", "type": type(exc).__name__},
