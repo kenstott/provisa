@@ -33,6 +33,9 @@ class SchemaInput:
     domains: list[dict]  # from domain_repo.list_all()
     source_types: dict[str, str] | None = None  # source_id → type (for mutation eligibility)
     source_catalogs: dict[str, str] | None = None  # source_id → the engine catalog name
+    # (source_id, physical table name) → the catalog that table is read under instead of its
+    # source's: a region's ops views over its own stores (api.region_ops_views, REQ-1922).
+    table_catalogs: dict[tuple[str, str], str] | None = None
     domain_prefix: bool = False  # prepend domain_id__ to all names
     physical_table_map: dict[str, str] | None = None  # virtual → physical table name
     relay_pagination: bool = False  # global opt-in for _connection fields

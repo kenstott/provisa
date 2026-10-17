@@ -2018,6 +2018,13 @@ async def _bind_region_stores(org_id: str, env: str, *, initialise: bool) -> Non
         schema_sql=(Path(__file__).parent.parent / "core" / "schema.sql").read_text(),
         initialise=initialise,
     )
+    from provisa.api.region_ops_views import RECORD, STATE, lay_out, table_catalogs
+
+    if initialise and table_catalogs():
+        # The ops views that read only the region's record, or only its state, where those are.
+        assert state.record_db is not None and state.tenant_db is not None
+        await lay_out(state.record_db, RECORD)
+        await lay_out(state.tenant_db, STATE)
 
 
 _region_caches: dict[str, tuple[Any, Any]] = {}

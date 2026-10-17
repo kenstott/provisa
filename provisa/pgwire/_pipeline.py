@@ -486,6 +486,24 @@ async def _optimize_and_route(
             dialect=None,
             reason=f"source {decision.source_id!r} has no direct connection on this node",
         )
+    from provisa.api.region_ops_views import reads_region_views
+
+    if (
+        decision.route == Route.DIRECT
+        and decision.source_id == "provisa-admin"
+        and reads_region_views(ctx, table_ids)
+    ):
+        # REQ-1922: in a region, an ops view over the region's own record or state is the
+        # engine's, which reads those stores where they are kept; the provisa-admin terminal
+        # reads only the model's database.
+        from provisa.transpiler.router import RouteDecision
+
+        decision = RouteDecision(
+            route=Route.ENGINE,
+            source_id=None,
+            dialect=None,
+            reason="an ops view over this region's own record or state",
+        )
     if (
         decision.route == Route.DIRECT
         and not is_mutation
@@ -2219,6 +2237,7 @@ async def route_governed(
     async def _engine_physical(_qualified: str) -> str:
         """The routed catalog-physical statement in the engine's own SQL (see
         :func:`_kept_engine_form`, which keeps it with the governed statement)."""
+        from provisa.api.region_ops_views import table_catalogs as region_table_catalogs
         from provisa.federation.query_residency import other_region_read_catalogs
 
         _known_cats_pgwire = (
@@ -2231,6 +2250,8 @@ async def route_governed(
             }
             # REQ-1921/1922: another region's stores, where a view naming it is read in place
             | other_region_read_catalogs(state)
+            # REQ-1922: this region's ops views over its own record and state
+            | set(region_table_catalogs().values())
         )
         from provisa.api.data.materialization import _lookup_gql_remote_table as _lookup_gql
         import sqlglot as _sg
