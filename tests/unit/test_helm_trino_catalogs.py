@@ -14,7 +14,11 @@ The API's boot creates its own catalogs (provisa_admin, otel, results) with CREA
 refreshes one by dropping it first. The chart's Trino used the static catalog store, which refuses
 both ("DROP CATALOG is not supported by the static catalog store"), so in the cluster lane boot
 stopped at 'register system catalogs'. The compose stack (trino/etc/config.properties) already ran
-the dynamic store; the chart now does too, with a catalog directory Trino can write.
+the dynamic store; the chart now does too.
+
+The catalogs carry connection passwords, so Trino keeps them in memory (catalog.store=memory) and
+nothing mounts a catalog directory: no catalog is written to the node's disk. The API reissues them
+when a coordinator restarts (provisa/federation/engine_wake.py).
 """
 
 # Requirements: REQ-1332
@@ -24,7 +28,7 @@ from __future__ import annotations
 from tests.unit.test_helm_auth import _LOCAL, _documents, _render
 
 
-def test_trino_runs_the_dynamic_catalog_store_with_a_writable_directory():
+def test_trino_runs_the_dynamic_catalog_store_in_memory_with_no_catalog_directory():
     rendered = _render(*_LOCAL)
     assert rendered.returncode == 0, rendered.stderr
     docs = list(_documents(rendered.stdout))
@@ -35,21 +39,19 @@ def test_trino_runs_the_dynamic_catalog_store_with_a_writable_directory():
     )
     for role in ("coordinator-config.properties", "worker-config.properties"):
         assert "catalog.management=dynamic" in config["data"][role], role
+        assert "catalog.store=memory" in config["data"][role], role
+    trino_pods = 0
     for d in docs:
         if (
             d.get("kind") not in ("Deployment", "StatefulSet")
             or "trino" not in d["metadata"]["name"]
         ):
             continue
+        trino_pods += 1
         spec = d["spec"]["template"]["spec"]
         (trino,) = [c for c in spec["containers"] if c["name"] == "trino"]
-        store = [m for m in trino["volumeMounts"] if m["mountPath"] == "/etc/trino/catalog"]
-        assert store and "subPath" not in store[0], d["metadata"]["name"]
-        volume = next(v for v in spec["volumes"] if v["name"] == store[0]["name"])
-        assert "emptyDir" in volume, d["metadata"]["name"]
-        # Nothing is mounted into the store: the API registers every catalog, and the dynamic
-        # store cannot replace a mounted file ("Device or resource busy").
-        inside = [
-            m for m in trino["volumeMounts"] if m["mountPath"].startswith("/etc/trino/catalog/")
+        catalog_mounts = [
+            m for m in trino["volumeMounts"] if m["mountPath"].startswith("/etc/trino/catalog")
         ]
-        assert inside == [], (d["metadata"]["name"], inside)
+        assert catalog_mounts == [], (d["metadata"]["name"], catalog_mounts)
+    assert trino_pods == 2

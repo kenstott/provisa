@@ -541,6 +541,12 @@ class EngineBackend:
     async def watchdog(self, state: Any) -> None:
         """No external process to watch."""
 
+    def coordinator_start(self, state: Any, *, fresh: bool = False) -> str:
+        """Which start of the engine answers the terminal now; a change means the catalogs the
+        terminal issued are gone. A native engine holds no catalogs apart from this process, so
+        it has one start: ``""``."""
+        return ""
+
     async def reload_catalog(self, state: Any, catalog: str, ops_views: list) -> dict:
         return {
             "success": False,
@@ -1210,6 +1216,14 @@ class TrinoBackend(EngineBackend):
         from provisa.federation import trino_lifecycle
 
         await trino_lifecycle.watchdog(state)
+
+    def coordinator_start(self, state: Any, *, fresh: bool = False) -> str:
+        from provisa.core import settings_registry
+        from provisa.federation import trino_lifecycle
+
+        return trino_lifecycle.coordinator_start(
+            state.engine_conn_kwargs, settings_registry.value("engine.ready_timeout"), fresh=fresh
+        )
 
     async def reload_catalog(self, state: Any, catalog: str, ops_views: list) -> dict:
         from provisa.federation import trino_lifecycle

@@ -751,6 +751,11 @@ class EngineRuntime:  # REQ-825, REQ-840
         """Liveness watchdog for the engine terminal (no-op when there is no external process)."""
         await self._backend.watchdog(self._state)
 
+    def coordinator_start(self, *, fresh: bool = False) -> str:
+        """Which start of the engine answers the terminal now (``""`` for a native engine); a
+        change means the catalogs the terminal issued are gone."""
+        return self._backend.coordinator_start(self._state, fresh=fresh)
+
     async def reload_catalog(self, catalog: str, ops_views: list) -> dict:
         """Reload an engine catalog without a restart (native engines have no dynamic catalog)."""
         return await self._backend.reload_catalog(self._state, catalog, ops_views)

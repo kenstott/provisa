@@ -9,8 +9,10 @@ data:
     {{- if .Values.trino.internalTls }}
     node.internal-address={{ include "provisa.trinoCoordinatorIP" . }}
     {{- end }}
-    # CREATE/DROP CATALOG at runtime: the API registers its own catalogs at boot (REQ-1332).
+    # CREATE/DROP CATALOG at runtime: the API registers its own catalogs at boot (REQ-1332), kept
+    # in memory alone, never on disk; the API reissues them after a restart.
     catalog.management=dynamic
+    catalog.store=memory
     # The nodes authenticate each other with one secret (the pods' env, from the credentials Secret).
     internal-communication.shared-secret=${ENV:PROVISA_TRINO_SHARED_SECRET}
     node-scheduler.include-coordinator=false
@@ -39,8 +41,10 @@ data:
 {{ .Files.Get "files/resource-groups.json" | indent 4 }}
   worker-config.properties: |
     coordinator=false
-    # CREATE/DROP CATALOG at runtime: the API registers its own catalogs at boot (REQ-1332).
+    # CREATE/DROP CATALOG at runtime: the API registers its own catalogs at boot (REQ-1332), kept
+    # in memory alone, never on disk; the API reissues them after a restart.
     catalog.management=dynamic
+    catalog.store=memory
     # The nodes authenticate each other with one secret (the pods' env, from the credentials Secret).
     internal-communication.shared-secret=${ENV:PROVISA_TRINO_SHARED_SECRET}
     http-server.http.port={{ .Values.trino.port }}

@@ -81,21 +81,15 @@ services:
   # so every query fails with GENERIC_INTERNAL_ERROR. Chown the volume before
   # Trino starts so the mount is writable regardless of volume recreation.
   #
-  # ./trino/catalog needs the same treatment for a different reason: with
-  # catalog.management=dynamic, CREATE CATALOG writes <name>.properties.tmp into
-  # catalog.config-dir through FileCatalogStore. On a Linux host that directory
-  # arrives root-owned, so uid 1000 gets "Permission denied" and every catalog
-  # registration fails with CATALOG_STORE_ERROR — which took the whole API down
-  # at startup, since register_system_catalogs runs inside the lifespan.
+  # Trino keeps the catalogs Provisa creates in memory (catalog.store=memory): no catalog, and so
+  # none of the connection passwords in one, is written to disk, and nothing mounts
+  # /etc/trino/catalog. A restarted Trino comes back with none of them and Provisa reissues them
+  # (provisa/federation/engine_wake.py, reissue_after_coordinator_restart).
   #
-  # PROVISA_TRINO_ETC_HOST (catalog/, kafka/, redis/) is the host side of the three
-  # directories the APP writes into at runtime — dynamic catalog .properties, and the Kafka and
-  # Redis table-description JSON. Sharing the repo's ./trino across pytest sessions made a
-  # previous session's catalog outlive it: Trino loaded kafka_pipeline.properties at container
-  # start, BEFORE the app rewrote the description file, so the FILE supplier cached a table with
-  # no columns and the connector fell back to topic == table name. The isolated stack points this
-  # at a per-session directory (tests/itest_stack.py) so each session starts from an empty
-  # catalog store and the description files are always written before CREATE CATALOG.
+  # PROVISA_TRINO_ETC_HOST (kafka/, kafka-client/, redis/) is the host side of the directories the
+  # APP writes into at runtime: the Kafka and Redis table-description JSON and the Kafka client
+  # properties. The isolated stack points it at a per-session directory (tests/itest_stack.py) so a
+  # previous session's description files never outlive it.
   trino-exchange-init:
     image: busybox
     # One line: a YAML folded scalar keeps the newline before a MORE-indented continuation, so the
@@ -106,12 +100,11 @@ services:
     # volume's root owned by root when the image has no directory at its mount path, and the
     # Salesforce catalog keeps its describe results under /data/trino/cache (mkdir there was
     # "Permission denied" for uid 1000 on a fresh volume).
-    command: sh -c "mkdir -p /data/provisa/exchange && chown -R 1000:1000 /data/provisa/exchange && mkdir -p /etc/trino/catalog && chown -R 1000:1000 /etc/trino/catalog && chown 1000:1000 /data/trino/cache /data/trino/worker-cache"
+    command: sh -c "mkdir -p /data/provisa/exchange && chown -R 1000:1000 /data/provisa/exchange && chown 1000:1000 /data/trino/cache /data/trino/worker-cache"
     volumes:
       - provisa_exchange:/data/provisa/exchange
       - trino_cache:/data/trino/cache
       - trino_worker_cache:/data/trino/worker-cache
-      - ${PROVISA_TRINO_ETC_HOST:-./trino}/catalog:/etc/trino/catalog
     restart: "no"
 
   trino:
@@ -127,7 +120,6 @@ services:
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/node.properties:/etc/trino/node.properties:ro
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/resource-groups.json:/etc/trino/resource-groups.json:ro
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/resource-groups.properties:/etc/trino/resource-groups.properties:ro
-      - ${PROVISA_TRINO_ETC_HOST:-./trino}/catalog:/etc/trino/catalog
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/kafka:/etc/trino/kafka:ro
       # REQ-1992: each Kafka catalog's client properties, named by its org-qualified catalog.
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/kafka-client:/etc/trino/kafka-client:ro
@@ -183,7 +175,6 @@ services:
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/exchange-manager.properties:/etc/trino/exchange-manager.properties:ro
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/jvm.config:/etc/trino/jvm.config:ro
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/worker/entrypoint.sh:/etc/trino/worker/entrypoint.sh:ro
-      - ${PROVISA_TRINO_ETC_HOST:-./trino}/catalog:/etc/trino/catalog
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/kafka:/etc/trino/kafka:ro
       # REQ-1992: each Kafka catalog's client properties, named by its org-qualified catalog.
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/kafka-client:/etc/trino/kafka-client:ro

@@ -147,7 +147,7 @@ store_credentials() {
     fi
 }
 # ── The engine's tree ───────────────────────────────────────────────────────
-# Trino's config, its catalogs and the launch-settings file, shared by the app (which renders them
+# Trino's config, its table descriptions and the launch-settings file, shared by the app (which renders them
 # from the operator settings) and the engine (which starts on them) through the host. Seeded from
 # the release's own on the first start; from then on the app's rendering is what is mounted.
 engine_tree() {
@@ -156,8 +156,8 @@ engine_tree() {
         mkdir -p "$PROVISA_TRINO_ETC_HOST"
         cp -R "${PROJECT_DIR}/trino/etc" "${PROVISA_TRINO_ETC_HOST}/"
     fi
-    mkdir -p "${PROVISA_TRINO_ETC_HOST}/catalog" "${PROVISA_TRINO_ETC_HOST}/kafka" \
-        "${PROVISA_TRINO_ETC_HOST}/kafka-client" "${PROVISA_TRINO_ETC_HOST}/redis"
+    mkdir -p "${PROVISA_TRINO_ETC_HOST}/kafka" "${PROVISA_TRINO_ETC_HOST}/kafka-client" \
+        "${PROVISA_TRINO_ETC_HOST}/redis"
     # REQ-2072: what the engine starts on next that compose itself decides (the coordinator's pinned
     # address). Only these names are taken from the file.
     local launch="${PROVISA_TRINO_ETC_HOST}/launch-settings.env" key value
