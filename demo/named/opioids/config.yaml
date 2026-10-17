@@ -263,9 +263,6 @@ glossary_terms:
   definition: 'The state''s budget year, July to June, named for the June it ends in. The federal fiscal year runs October to September.'
   domains:
   - opioids
-  edges:
-  - to: fiscal year
-    rel_type: RELATED_TO
 - name: rate per 100,000
   definition: 'Deaths for every 100,000 residents, so a small county and a large one can be compared.'
   domains:
