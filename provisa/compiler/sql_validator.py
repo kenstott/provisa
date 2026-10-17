@@ -726,6 +726,10 @@ def _check_masked_in_predicate(  # REQ-040, REQ-263
             for col in clause.find_all(exp.Column):
                 col_name = col.name
                 tbl_ref = col.table
+                if approved_join_key(col, gov_ctx):
+                    # A registered relationship's join condition: it relates the rows on the real
+                    # key and filters nothing of the role's own (REQ-603).
+                    continue
                 if tbl_ref:
                     tid = am.get(tbl_ref)
                     if tid is None:
