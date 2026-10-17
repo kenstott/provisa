@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, insert, select, update
 
+from provisa.core.engine_shard import EngineShardRefused, bound_org_shard
 from provisa.core.models import BUILT_IN_SOURCE_IDS, Source
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import registered_tables, sources
@@ -100,6 +101,33 @@ def source_from_row(row: dict) -> Source:  # REQ-1695
     return Source.model_validate(fields)
 
 
+class RedisSourceRefused(EngineShardRefused):
+    """A Redis source for an org whose engine is a provisioned shard, refused when it is saved."""
+
+    code = "sources.redis_needs_engine_files"
+
+    def __init__(self, source_id: str, shard: str) -> None:
+        super().__init__(
+            f"Redis source {source_id!r} cannot be read by this organization's engine (shard "
+            f"{shard}): Trino reads a Redis source's tables from description files in a directory "
+            "of its catalog's own, which a hosted engine cannot be given",
+            source_id,
+            shard,
+        )
+
+
+def refuse_on_engine_shard(source: Source) -> None:  # REQ-2073
+    """Refuse a Redis source where the org's engine is a provisioned shard. Its catalog reads its
+    tables from description files in a directory of its own (trino_catalog_files.with_catalog_dirs),
+    which a running shard cannot be given; refused here, when the source is saved, so it never
+    reaches the catalog registration at boot (core.catalog.create_catalog)."""
+    if source.type.value != "redis":
+        return
+    shard = bound_org_shard()
+    if shard is not None:
+        raise RedisSourceRefused(source.id, shard)
+
+
 async def upsert(  # REQ-012, REQ-250, REQ-1919
     conn: "Connection", source: Source
 ) -> None:
@@ -108,6 +136,7 @@ async def upsert(  # REQ-012, REQ-250, REQ-1919
     from provisa.core.repositories.region import require_selected
     from provisa.security.sandbox_egress import pinned_source
 
+    refuse_on_engine_shard(source)  # REQ-2073
     # REQ-2006: a sandbox org's source reaches only its demo's own destinations and public ones.
     pinned_source(source)
 
@@ -130,6 +159,7 @@ async def create(conn: "Connection", source: Source) -> None:  # REQ-012, REQ-20
     from provisa.core.repositories.region import require_selected
     from provisa.security.sandbox_egress import pinned_source
 
+    refuse_on_engine_shard(source)  # REQ-2073
     pinned_source(source)  # REQ-2006, as upsert
     await require_selected(conn, f"source {source.id}", source.region)  # REQ-1921
     try:

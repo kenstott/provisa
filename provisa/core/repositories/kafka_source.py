@@ -20,30 +20,20 @@ with its topics as ``kafka_topics`` rows.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
 from provisa.core import model_change
+from provisa.core.engine_shard import EngineShardRefused, bound_org_shard
 from provisa.core.schema_org import kafka_sources, kafka_topics
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
-# The engine shard the bound org's engine catalogs are created on, or None where its engine is not
-# a shard the deployment provisions. Installed by the API layer (provisa.api.app).
-_engine_shard_resolver: Callable[[], str | None] | None = None
-
-
-def set_engine_shard_resolver(resolver: Callable[[], str | None]) -> None:
-    global _engine_shard_resolver
-    _engine_shard_resolver = resolver
-
-
-class KafkaSourceRefused(ValueError):
-    """A Kafka source the bound org's engine cannot serve, refused when it is saved."""
+class KafkaSourceRefused(EngineShardRefused):
+    """A Kafka source the bound org's engine shard cannot serve, refused when it is saved."""
 
     code = "sources.kafka_needs_schema_registry"
 
@@ -51,9 +41,10 @@ class KafkaSourceRefused(ValueError):
         super().__init__(
             f"Kafka source {source_id!r} declares its topics' columns without a schema registry, "
             f"which this organization's engine (shard {shard}) cannot read: give the source a "
-            "schema_registry_url"
+            "schema_registry_url",
+            source_id,
+            shard,
         )
-        self.params = {"source": source_id, "shard": shard}
 
 
 def refuse_on_engine_shard(spec: dict[str, Any]) -> None:  # REQ-2073
@@ -65,13 +56,7 @@ def refuse_on_engine_shard(spec: dict[str, Any]) -> None:  # REQ-2073
     source is saved, so it never reaches the catalog registration at boot."""
     if spec.get("schema_registry_url"):
         return
-    if _engine_shard_resolver is None:
-        raise RuntimeError(
-            "No engine-shard resolver is installed, so a Kafka source without a schema registry "
-            "cannot be checked against the org's engine. The API layer installs it at import "
-            "(provisa.api.app)."
-        )
-    shard = _engine_shard_resolver()
+    shard = bound_org_shard()
     if shard is not None:
         raise KafkaSourceRefused(spec["id"], shard)
 
