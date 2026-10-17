@@ -194,7 +194,7 @@ class SourceStillStartingError(ServerNotServing):  # REQ-1824
         doing = (
             "is listening, and its tables can be registered now; a query on them waits until "
             "the engine can attach it, while the connector answers the engine's first catalog "
-            "query by counting the rows of every table it serves"
+            "query by reading the columns of every table it serves"
             if preparing_catalog
             else "is still starting up"
         )
@@ -935,8 +935,8 @@ async def land_via_select(
 #
 # What a source's server holds is read here and nowhere else: its information_schema, which the
 # server answers through Calcite as soon as it listens. Never its pg_catalog: the first
-# pg_catalog query makes the server build its catalog database, counting the rows of every
-# table it serves — minutes. An engine's attach reads pg_catalog (the engine's own scanner), so
+# pg_catalog query makes the server build its catalog database from the columns of every
+# table it serves. An engine's attach reads pg_catalog (the engine's own scanner), so
 # a statement the engine computes waits for that (``ConnectorReplica.await_catalog``); the
 # Register Table lists, the catalog index and the search's column fill do not.
 

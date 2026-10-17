@@ -499,13 +499,13 @@ jobs:
           echo "CLOUDOPS_GCP_CREDENTIALS_PATH=$RUNNER_TEMP/cloudops-gcp-key.json" >> "$GITHUB_ENV"
 
       # GovData's JDBC driver is the calcite engine's govdata jar, from the engine release
-      # provisa/runtime_deps/pgwire_bundles.py pins (RELEASE_TAG); the test loads lib/calcite-govdata-*.jar.
-      - name: GovData engine jar (engine-v0.106.3)
+      # provisa/runtime_deps/pgwire_bundles.py pins (CONNECTOR_RELEASE["govdata"]); the test loads lib/calcite-govdata-*.jar.
+      - name: GovData engine jar (engine-v0.117.0)
         run: |
           mkdir -p lib
           curl -fsSL -o lib/calcite-govdata-all.jar \
-            https://github.com/kenstott/calcite/releases/download/engine-v0.106.3/sih-govdata.jar
-          echo "5fffec5511ec2a9e3e4a6bc48386ca6c23c377448910d510090783031245d0a3  lib/calcite-govdata-all.jar" \
+            https://github.com/kenstott/calcite/releases/download/engine-v0.117.0/sih-govdata.jar
+          echo "9a46588140b7fb9882b5da02df6fb5dea1d95b08dc6ee2b7eb041da3fb7b1a75  lib/calcite-govdata-all.jar" \
             | sha256sum -c -
 
       - name: Azure CLI login (Synapse provisioning)

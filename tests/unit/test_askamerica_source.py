@@ -744,7 +744,7 @@ def test_the_wait_a_statement_meets_says_what_it_is():
     because the engine's attach reads pg_catalog. The message names that wait."""
     said = str(pr.SourceStillStartingError("test-askamerica", preparing_catalog=True))
     assert said.startswith("STARTING:")
-    assert "can be registered now" in said and "counting the rows" in said
+    assert "can be registered now" in said and "reading the columns" in said
 
 
 def test_registration_refuses_a_schema_outside_the_list_before_anything_is_written():
@@ -1558,11 +1558,11 @@ def test_the_two_waits_are_told_apart_and_both_are_starting():
     port = str(pr.SourceStillStartingError("test-askamerica"))
     catalog = str(pr.SourceStillStartingError("test-askamerica", preparing_catalog=True))
     assert port.startswith("STARTING:") and "still starting up" in port
-    assert catalog.startswith("STARTING:") and "counting the rows" in catalog
+    assert catalog.startswith("STARTING:") and "reading the columns" in catalog
     replica = _replica_with_server(
         healthy=True, exit_code=None, catalog_ready=False, prepare=lambda ports: time.sleep(5)
     )
-    with pytest.raises(pr.SourceStillStartingError, match="counting the rows"):
+    with pytest.raises(pr.SourceStillStartingError, match="reading the columns"):
         replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 0)
     with pytest.raises(pr.SourceStillStartingError, match="still starting up"):
         _replica_with_server(healthy=False, exit_code=None).require_serving()

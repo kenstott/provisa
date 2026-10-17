@@ -2500,7 +2500,7 @@ GOVDATA_SUBJECT_SCHEMAS: dict[str, list[str]] = {
     "HEALTH": ["health"],
     "CYBER": ["cyber_threat", "cyber_vuln"],
     "PUBLIC_SAFETY": ["crime", "disasters"],
-    "ENVIRONMENT": ["lands", "environment"],
+    "ENVIRONMENT": ["lands", "environment", "fisheries"],
     "WEATHER": ["weather"],
     "ENERGY": ["energy"],
     "GOVERNMENT": ["fedregister", "fec", "officials", "law"],

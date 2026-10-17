@@ -46,10 +46,14 @@ RELEASE_TAG = "engine-v0.106.3"
 #   file: engine-v0.109.0 is the first release whose file adapter runs a declared HTML crawl
 #     (REQ-1960).
 #   servicenow: engine-v0.110.0 is the first release with a pgwire-servicenow bundle (REQ-1954).
+#   govdata: engine-v0.117.0 is the first release whose catalog does not count the rows of every
+#     table on the first pg_catalog query (pg_class.reltuples is 0); counting every govdata table
+#     outlasted the engine's attach wait.
 CONNECTOR_RELEASE: dict[str, str] = {
     "salesforce": "engine-v0.108.0",
     "file": "engine-v0.109.0",
     "servicenow": "engine-v0.110.0",
+    "govdata": "engine-v0.117.0",
 }
 GITHUB_REPO = "kenstott/calcite"
 
