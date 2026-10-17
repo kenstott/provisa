@@ -111,6 +111,90 @@ tables_df = client.list_tables()
 
 ---
 
+## Using Provisa in Jupyter
+
+Install into the running kernel before importing. The `pandas` extra covers DataFrame output; add `sqlalchemy` if you also need `pandas.read_sql` through the dialect.
+
+```python
+%pip install "provisa-client[pandas]"
+```
+
+### Credentials
+
+Notebooks persist cell output to the `.ipynb` file. Type a token into a cell and it will be saved to disk alongside your code. Don't do that.
+
+Store credentials in environment variables and pass them in explicitly — the client reads no environment on its own. [tool-verified]
+
+```python
+import os
+from provisa_client import ProvisaClient
+
+client = ProvisaClient(
+    os.environ["PROVISA_URL"],           # choose your own variable name
+    token=os.environ["PROVISA_TOKEN"],   # personal access token
+    role=os.environ.get("PROVISA_ROLE"), # optional; omit to run as your own role
+)
+```
+
+Set those variables in your shell before starting Jupyter, or load a `.env` file with `python-dotenv`. Either way, keep them out of the notebook.
+
+### DataFrames from GraphQL, SQL, and Cypher
+
+`query_df()` accepts all three query languages and returns a pandas DataFrame. [tool-verified]
+
+```python
+# GraphQL — first root field is extracted automatically
+df = client.query_df("{ orders { id amount region } }")
+
+# SQL
+df = client.query_df("SELECT id, amount, region FROM orders WHERE region = 'west'")
+
+# Cypher
+df = client.query_df("MATCH (o:Order) RETURN o.id, o.amount, o.region")
+```
+
+GraphQL responses carry the data under a root field name; `query_df()` extracts it. SQL and Cypher responses carry explicit column names from the server and are mapped directly. [tool-verified]
+
+### Arrow Flight for large pulls
+
+`flight_df()` streams data as Arrow record batches instead of deserializing JSON. For wide tables or result sets over a few hundred thousand rows, it is faster and uses less memory. [tool-verified]
+
+```python
+df = client.flight_df("SELECT * FROM events")
+```
+
+Arrow preserves column types — integers stay integers, timestamps stay timestamps. JSON does not. That alone is reason to prefer Flight when the schema matters.
+
+Flight connects on port 8815 by default. Pass `flight_port=` to the `ProvisaClient` constructor if your server uses a different port.
+
+### `pandas.read_sql` through the SQLAlchemy dialect
+
+Install the `sqlalchemy` extra into the kernel:
+
+```python
+%pip install "provisa-client[sqlalchemy]"
+```
+
+Then build an engine with a `provisa+http://` URL. Put credentials in environment variables, not in the URL string. [tool-verified]
+
+```python
+import os
+import pandas as pd
+from sqlalchemy import create_engine
+
+host = os.environ["PROVISA_HOST"]       # e.g. "localhost:8001"
+user = os.environ["PROVISA_USER"]
+pwd  = os.environ["PROVISA_PASSWORD"]
+
+engine = create_engine(f"provisa+http://{user}:{pwd}@{host}")
+
+df = pd.read_sql("SELECT id, amount FROM orders", engine)
+```
+
+The dialect posts the username and password to `/auth/login` and holds the resulting token for the life of the engine — the credentials are not retransmitted on each query. [tool-verified]
+
+---
+
 ## DB-API 2.0
 
 Standard [PEP 249](https://peps.python.org/pep-0249/) interface. (REQ-268) Works with any tool that accepts a DB-API connection.
