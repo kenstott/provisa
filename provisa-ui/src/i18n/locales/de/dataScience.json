@@ -1,6 +1,5 @@
 {
   "dataScience": {
-    "title": "Data Science",
     "tabPython": "Python",
     "editorLabel": "Python-Code",
     "run": "Ausführen",
@@ -10,6 +9,7 @@
     "missingTitle": "Die Notebook-Dateien dieses Servers fehlen",
     "missingBody": "Der Bereich Data Science führt Python in Ihrem Browser mit Dateien aus, die jede Provisa-Installation bereitstellt, und der Installation dieses Servers fehlen sie. Installieren Sie Provisa auf dem Server neu und laden Sie diese Seite neu.",
     "rowsShown": "{{shown}} von {{total}} Zeilen angezeigt",
-    "figure": "Abbildung {{n}}"
+    "figure": "Abbildung {{n}}",
+    "resizeLabel": "Editor und Ausgabe in der Größe ändern"
   }
 }

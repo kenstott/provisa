@@ -136,6 +136,23 @@ describe("DataSciencePage", () => {
     expect(await screen.findByTestId("data-science-error")).toHaveTextContent("NameError");
   });
 
+  it("splits the area between editor and output, the rule moved from the keyboard within bounds", async () => {
+    serve(
+      new Response(JSON.stringify(MANIFEST), { headers: { "content-type": "application/json" } }),
+    );
+    const { make, sent, reply } = workerDouble();
+    page(make);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    reply({ type: "ready" });
+    const rule = await screen.findByTestId("data-science-split");
+    expect(rule).toHaveAttribute("aria-valuenow", "45");
+    fireEvent.keyDown(rule, { key: "ArrowDown" });
+    expect(rule).toHaveAttribute("aria-valuenow", "50");
+    for (let i = 0; i < 20; i++) fireEvent.keyDown(rule, { key: "ArrowUp" });
+    expect(rule).toHaveAttribute("aria-valuenow", "15");
+    expect(screen.queryByRole("heading", { name: "Data Science" })).not.toBeInTheDocument();
+  });
+
   it("says plainly when Python cannot start", async () => {
     serve(
       new Response(JSON.stringify(MANIFEST), { headers: { "content-type": "application/json" } }),

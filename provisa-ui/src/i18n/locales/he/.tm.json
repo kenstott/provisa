@@ -6767,7 +6767,6 @@
   "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
   "he/tour.json::tour.steps.reviewsBoughtWithByDegree.title": "We can graph it. But what does it mean?",
   "he/tour.json::tour.steps.reviewsBoughtWithByDegree.description": "Grouped by degree, for the question it was drawn for: the groups surface the products most often bought together with the low-rated ones. The bigger the number, the more pairings run through it. Degree is counted within this result alone: the products rated under three stars and what five or more of their customers also bought with them. The red nodes are the products; the ratings and the pair nodes are grouped too.",
-  "he/dataScience.json::dataScience.title": "Data Science",
   "he/dataScience.json::dataScience.tabPython": "Python",
   "he/dataScience.json::dataScience.editorLabel": "Python code",
   "he/dataScience.json::dataScience.run": "Run",
@@ -6778,5 +6777,6 @@
   "he/dataScience.json::dataScience.missingBody": "The Data Science area runs Python in your browser from files every Provisa install serves, and this server's install does not have them. Reinstall Provisa on the server, then reload this page.",
   "he/dataScience.json::dataScience.rowsShown": "Showing {{shown}} of {{total}} rows",
   "he/dataScience.json::dataScience.figure": "Figure {{n}}",
-  "he/navBar.json::navBar.itemDataScience": "Data Science"
+  "he/navBar.json::navBar.itemDataScience": "Data Science",
+  "he/dataScience.json::dataScience.resizeLabel": "Resize editor and output"
 }

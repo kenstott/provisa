@@ -1,6 +1,5 @@
 {
   "dataScience": {
-    "title": "データサイエンス",
     "tabPython": "Python",
     "editorLabel": "Python コード",
     "run": "実行",
@@ -10,6 +9,7 @@
     "missingTitle": "このサーバーのノートブック用ファイルがありません",
     "missingBody": "データサイエンス領域は、すべての Provisa のインストールが配信するファイルを使ってブラウザ内で Python を実行しますが、このサーバーのインストールにはそれがありません。サーバーに Provisa を再インストールしてから、このページを再読み込みしてください。",
     "rowsShown": "{{total}} 行中 {{shown}} 行を表示",
-    "figure": "図 {{n}}"
+    "figure": "図 {{n}}",
+    "resizeLabel": "エディターと出力のサイズを変更"
   }
 }

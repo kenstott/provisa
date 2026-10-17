@@ -1,6 +1,5 @@
 {
   "dataScience": {
-    "title": "Ciencia de datos",
     "tabPython": "Python",
     "editorLabel": "Código Python",
     "run": "Ejecutar",
@@ -10,6 +9,7 @@
     "missingTitle": "Faltan los archivos de cuaderno de este servidor",
     "missingBody": "El área de ciencia de datos ejecuta Python en su navegador a partir de archivos que sirve toda instalación de Provisa, y la instalación de este servidor no los tiene. Reinstale Provisa en el servidor y vuelva a cargar esta página.",
     "rowsShown": "Mostrando {{shown}} de {{total}} filas",
-    "figure": "Figura {{n}}"
+    "figure": "Figura {{n}}",
+    "resizeLabel": "Cambiar el tamaño del editor y la salida"
   }
 }

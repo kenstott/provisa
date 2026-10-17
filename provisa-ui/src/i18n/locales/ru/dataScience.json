@@ -1,6 +1,5 @@
 {
   "dataScience": {
-    "title": "Data Science",
     "tabPython": "Python",
     "editorLabel": "Код на Python",
     "run": "Выполнить",
@@ -10,6 +9,7 @@
     "missingTitle": "На этом сервере нет файлов блокнотов",
     "missingBody": "Раздел Data Science выполняет Python в вашем браузере из файлов, которые отдаёт любая установка Provisa, а в установке этого сервера их нет. Переустановите Provisa на сервере и перезагрузите страницу.",
     "rowsShown": "Показано {{shown}} из {{total}} строк",
-    "figure": "Рисунок {{n}}"
+    "figure": "Рисунок {{n}}",
+    "resizeLabel": "Изменить размер редактора и вывода"
   }
 }

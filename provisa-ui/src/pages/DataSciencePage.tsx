@@ -6,7 +6,13 @@
 
 // REQ-2071: Explore's Data Science area. The Python tab runs code in a Web Worker on the Pyodide the
 // provisa-notebook package serves at /pyodide, reading Provisa as the page's user (bridge.ts).
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
@@ -21,7 +27,6 @@ import {
   Table,
   Tabs,
   Text,
-  Title,
   useComputedColorScheme,
 } from "@mantine/core";
 import CodeMirror from "@uiw/react-codemirror";
@@ -57,17 +62,31 @@ async function readManifest(): Promise<PyodideManifest | null> {
 export function DataSciencePage({ makeWorker = defaultWorker }: { makeWorker?: MakeWorker }) {
   const { t } = useTranslation();
   return (
-    <Box p="md" data-testid="data-science-page">
-      <Title order={3} mb="sm">
-        {t("dataScience.title")}
-      </Title>
-      <Tabs defaultValue="python" keepMounted={false}>
-        <Tabs.List>
+    // The area fills what the shell gives it, as the other explorers do; the tab names it.
+    <Box
+      data-testid="data-science-page"
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
+      <Tabs
+        defaultValue="python"
+        keepMounted={false}
+        style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+      >
+        <Tabs.List px="md" pt="xs">
           <Tabs.Tab value="python" data-testid="data-science-tab-python">
             {t("dataScience.tabPython")}
           </Tabs.Tab>
         </Tabs.List>
-        <Tabs.Panel value="python" pt="md">
+        <Tabs.Panel
+          value="python"
+          style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+        >
           <PythonTab makeWorker={makeWorker} />
         </Tabs.Panel>
       </Tabs>
@@ -83,6 +102,22 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
   const [code, setCode] = useState(STARTER_CODE);
   const [output, setOutput] = useState<Output | null>(null);
   const worker = useRef<ReturnType<MakeWorker> | null>(null);
+  const splitRef = useRef<HTMLDivElement | null>(null);
+  const [editorShare, setEditorShare] = useState(0.45);
+  // Dragging the rule between editor and output moves it with the pointer.
+  const startDrag = useCallback((down: ReactPointerEvent<HTMLDivElement>) => {
+    const area = splitRef.current?.getBoundingClientRect();
+    if (!area) return;
+    down.preventDefault();
+    const move = (e: PointerEvent) =>
+      setEditorShare(clampShare((e.clientY - area.top) / area.height));
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }, []);
   const nextRun = useRef(0);
 
   useEffect(() => {
@@ -130,18 +165,23 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
     w.postMessage(message);
   }, [code, status]);
 
-  if (status === "checking") return <Loader size="sm" />;
+  if (status === "checking") return <Loader size="sm" m="md" />;
   if (status === "missing") {
     return (
-      <Alert color="yellow" title={t("dataScience.missingTitle")} data-testid="data-science-missing">
+      <Alert
+        m="md"
+        color="yellow"
+        title={t("dataScience.missingTitle")}
+        data-testid="data-science-missing"
+      >
         <Text size="sm">{t("dataScience.missingBody")}</Text>
       </Alert>
     );
   }
   return (
-    <Stack gap="sm">
+    <Box ref={splitRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <Box
-        style={{ border: "1px solid var(--mantine-color-default-border)" }}
+        style={{ height: `${editorShare * 100}%`, minHeight: 0, overflow: "hidden" }}
         onKeyDownCapture={(e) => {
           // Ctrl+Enter (Cmd+Enter) runs, before the editor takes the Enter as a new line.
           if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -155,13 +195,18 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
           value={code}
           onChange={setCode}
           theme={theme}
-          minHeight="160px"
-          maxHeight="360px"
+          height="100%"
+          style={{ height: "100%" }}
           aria-label={t("dataScience.editorLabel")}
           data-testid="data-science-editor"
         />
       </Box>
-      <Group gap="sm">
+      <Group
+        gap="sm"
+        px="md"
+        py={6}
+        style={{ flexShrink: 0, borderTop: "1px solid var(--mantine-color-default-border)" }}
+      >
         <Button
           size="xs"
           onClick={() => void run()}
@@ -179,15 +224,43 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
               : t("dataScience.runHint")}
         </Text>
       </Group>
-      {failure !== null && (
-        <Alert color="red" data-testid="data-science-failure">
-          <Code block>{failure}</Code>
-        </Alert>
-      )}
-      {output !== null && <RunOutput output={output} />}
-    </Stack>
+      <Box
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label={t("dataScience.resizeLabel")}
+        aria-valuenow={Math.round(editorShare * 100)}
+        aria-valuemin={Math.round(SHARE_MIN * 100)}
+        aria-valuemax={Math.round(SHARE_MAX * 100)}
+        tabIndex={0}
+        data-testid="data-science-split"
+        onPointerDown={startDrag}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowUp") setEditorShare((v) => clampShare(v - 0.05));
+          if (e.key === "ArrowDown") setEditorShare((v) => clampShare(v + 0.05));
+        }}
+        style={{
+          flex: "0 0 5px",
+          cursor: "row-resize",
+          background: "var(--mantine-color-default-border)",
+          touchAction: "none",
+        }}
+      />
+      <ScrollArea style={{ flex: 1, minHeight: 0 }} p="md" data-testid="data-science-output-pane">
+        {failure !== null && (
+          <Alert color="red" data-testid="data-science-failure">
+            <Code block>{failure}</Code>
+          </Alert>
+        )}
+        {output !== null && <RunOutput output={output} />}
+      </ScrollArea>
+    </Box>
   );
 }
+
+/** How much of the area the editor takes; the output has the rest. */
+const SHARE_MIN = 0.15;
+const SHARE_MAX = 0.85;
+const clampShare = (share: number) => Math.min(SHARE_MAX, Math.max(SHARE_MIN, share));
 
 function RunOutput({ output }: { output: Output }) {
   const { t } = useTranslation();

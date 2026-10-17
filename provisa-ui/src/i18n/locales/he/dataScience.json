@@ -1,6 +1,5 @@
 {
   "dataScience": {
-    "title": "מדע נתונים",
     "tabPython": "Python",
     "editorLabel": "קוד Python",
     "run": "הרץ",
@@ -10,6 +9,7 @@
     "missingTitle": "קובצי המחברת של השרת הזה חסרים",
     "missingBody": "אזור מדע הנתונים מריץ Python בדפדפן שלך מקבצים שכל התקנה של Provisa מגישה, וההתקנה של השרת הזה חסרה אותם. התקן מחדש את Provisa בשרת ואז טען מחדש את הדף.",
     "rowsShown": "מוצגות {{shown}} מתוך {{total}} שורות",
-    "figure": "איור {{n}}"
+    "figure": "איור {{n}}",
+    "resizeLabel": "שינוי גודל העורך והפלט"
   }
 }

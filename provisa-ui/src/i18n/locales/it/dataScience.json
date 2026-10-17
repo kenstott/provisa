@@ -1,6 +1,5 @@
 {
   "dataScience": {
-    "title": "Data science",
     "tabPython": "Python",
     "editorLabel": "Codice Python",
     "run": "Esegui",
@@ -10,6 +9,7 @@
     "missingTitle": "Mancano i file dei notebook di questo server",
     "missingBody": "L'area Data science esegue Python nel browser a partire da file che ogni installazione di Provisa serve, e l'installazione di questo server non li ha. Reinstalla Provisa sul server, quindi ricarica questa pagina.",
     "rowsShown": "Visualizzate {{shown}} di {{total}} righe",
-    "figure": "Figura {{n}}"
+    "figure": "Figura {{n}}",
+    "resizeLabel": "Ridimensiona editor e output"
   }
 }

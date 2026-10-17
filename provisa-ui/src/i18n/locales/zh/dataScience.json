@@ -1,6 +1,5 @@
 {
   "dataScience": {
-    "title": "数据科学",
     "tabPython": "Python",
     "editorLabel": "Python 代码",
     "run": "运行",
@@ -10,6 +9,7 @@
     "missingTitle": "此服务器缺少笔记本文件",
     "missingBody": "数据科学区域使用每个 Provisa 安装都会提供的文件在您的浏览器中运行 Python，而此服务器的安装中没有这些文件。请在服务器上重新安装 Provisa，然后重新加载此页面。",
     "rowsShown": "显示 {{total}} 行中的 {{shown}} 行",
-    "figure": "图 {{n}}"
+    "figure": "图 {{n}}",
+    "resizeLabel": "调整编辑器和输出的大小"
   }
 }
