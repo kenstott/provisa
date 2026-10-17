@@ -84,11 +84,12 @@
     "alsoReaches": "También llega a los dominios que tienen debajo: {{domains}}",
     "claimRolesButton": "Roles de notificación",
     "claimRolesTitle": "Roles de notificación",
-    "claimRolesIntro": "Cada tipo de notificación de aquí se convierte en un rol, y cada valor que le dan los atributos de un miembro, en un subrol: region se convierte en region y region__eu. Los roles de notificación no tienen derechos. Conceda una columna o levante una máscara para uno como para cualquier rol; una solicitud actúa como él solo cuando lo nombra.",
+    "claimRolesIntro": "Indique los tipos de notificación que deben convertirse en roles, como region. Provisa crea un rol llamado region y un subrol para cada valor que encuentra, como region__eu. Estos roles no permiten nada hasta que se les concede algo: por ejemplo, quite la máscara de los correos de clientes para region__eu, de modo que solo el personal de la UE los vea. Una solicitud actúa como uno de estos roles solo cuando lo nombra.",
     "claimTypes": "Tipos de notificación",
-    "claimTypesPlaceholder": "Escriba un tipo de notificación y pulse Intro",
+    "claimTypesPlaceholder": "Escriba un tipo de notificación, como region",
     "claimRolesFromOrg": "La lista propia de esta organización.",
     "claimRolesFromDeployment": "De la configuración de la implementación hasta que esta organización guarde la suya.",
-    "claimRolesHelp": "El valor de un miembro procede de lo que la organización registra para él en la página Equipo o, si no, de la notificación del mismo nombre de su proveedor de identidades."
+    "claimRolesHelp": "El valor de un miembro para un tipo de notificación procede de su registro en la página Equipo. Si allí no hay ninguno, procede de la notificación del mismo nombre que envía su proveedor de identidades.",
+    "claimRolesSaved": "Guardado."
   }
 }

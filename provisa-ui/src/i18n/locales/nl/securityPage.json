@@ -84,11 +84,12 @@
     "alsoReaches": "Bereikt ook de domeinen eronder: {{domains}}",
     "claimRolesButton": "Claimrollen",
     "claimRolesTitle": "Claimrollen",
-    "claimRolesIntro": "Elk claimtype hier wordt een rol, en elke waarde die de kenmerken van een lid eraan geven een subrol: region wordt region en region__eu. Claimrollen hebben geen rechten. Ken een kolom toe of hef een maskering op voor een claimrol zoals voor elke rol; een verzoek handelt alleen als die rol wanneer het die noemt.",
+    "claimRolesIntro": "Geef de claimtypen op die rollen moeten worden, zoals region. Provisa maakt een rol met de naam region en een subrol voor elke waarde die het vindt, zoals region__eu. Deze rollen staan niets toe totdat u ze iets toekent: hef bijvoorbeeld het masker op klant-e-mails op voor region__eu, zodat alleen medewerkers in de EU ze zien. Een aanvraag treedt alleen als een van deze rollen op wanneer die de rol noemt.",
     "claimTypes": "Claimtypen",
-    "claimTypesPlaceholder": "Typ een claimtype en druk op Enter",
+    "claimTypesPlaceholder": "Typ een claimtype, zoals region",
     "claimRolesFromOrg": "De eigen lijst van deze organisatie.",
     "claimRolesFromDeployment": "Uit de implementatieconfiguratie totdat deze organisatie een eigen lijst opslaat.",
-    "claimRolesHelp": "De waarde van een lid komt uit wat de organisatie voor het lid vastlegt op de pagina Team, en anders uit de claim met dezelfde naam van de identiteitsprovider."
+    "claimRolesHelp": "De waarde van een lid voor een claimtype komt uit het record van het lid op de pagina Team. Staat die daar niet, dan komt ze uit de claim met dezelfde naam die de identiteitsprovider meestuurt.",
+    "claimRolesSaved": "Opgeslagen."
   }
 }

@@ -84,11 +84,12 @@
     "alsoReaches": "也能访问其下的域：{{domains}}",
     "claimRolesButton": "声明角色",
     "claimRolesTitle": "声明角色",
-    "claimRolesIntro": "此处的每种声明类型都会成为一个角色，成员属性赋予它的每个值都会成为一个子角色：region 会成为 region 和 region__eu。声明角色没有任何权限。可像对待其他角色一样为其授予列或解除掩码；请求只有在指定它时才以它的身份执行。",
+    "claimRolesIntro": "列出要成为角色的声明类型，例如 region。Provisa 会创建名为 region 的角色，并为找到的每个值创建一个子角色，例如 region__eu。在你授予这些角色某项权限之前，它们不允许任何操作：例如，为 region__eu 取消客户电子邮件的掩码，这样只有欧盟员工才能看到。请求只有在指明某个角色时才以该角色身份执行。",
     "claimTypes": "声明类型",
-    "claimTypesPlaceholder": "键入声明类型并按 Enter",
+    "claimTypesPlaceholder": "输入声明类型，例如 region",
     "claimRolesFromOrg": "此组织自己的列表。",
     "claimRolesFromDeployment": "来自部署配置，直到此组织保存自己的列表。",
-    "claimRolesHelp": "成员的值来自组织在“团队”页面为其记录的值，否则来自其标识提供程序中同名的声明。"
+    "claimRolesHelp": "成员在某个声明类型上的值来自其在“团队”页面上的记录。如果记录中没有，则来自其标识提供程序发送的同名声明。",
+    "claimRolesSaved": "已保存。"
   }
 }

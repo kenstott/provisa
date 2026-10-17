@@ -3738,11 +3738,11 @@
   "nl/securityPage.json::securityPage.claimRolesButton": "Claim roles",
   "nl/securityPage.json::securityPage.claimRolesFromDeployment": "From the deployment configuration until this organization saves its own.",
   "nl/securityPage.json::securityPage.claimRolesFromOrg": "This organization's own list.",
-  "nl/securityPage.json::securityPage.claimRolesHelp": "A member's value comes from what the organization records for them on the Team page, or else from their identity provider's claim of the same name.",
-  "nl/securityPage.json::securityPage.claimRolesIntro": "Each claim type here becomes a role, and each value a member's attributes give it a sub-role: region becomes region and region__eu. Claim roles carry no rights. Grant a column or lift a mask for one like any role; a request acts as it only when it names it.",
+  "nl/securityPage.json::securityPage.claimRolesHelp": "A member's value for a claim type comes from their record on the Team page. If that has none, it comes from the claim of the same name sent by their identity provider.",
+  "nl/securityPage.json::securityPage.claimRolesIntro": "List the claim types that should become roles, such as region. Provisa makes a role named region and a sub-role for each value it finds, such as region__eu. These roles grant nothing until you grant them something: for example, lift the mask on customer emails for region__eu so that only EU staff see them. A request acts as one of these roles only when it names it.",
   "nl/securityPage.json::securityPage.claimRolesTitle": "Claim roles",
   "nl/securityPage.json::securityPage.claimTypes": "Claim types",
-  "nl/securityPage.json::securityPage.claimTypesPlaceholder": "Type a claim type and press Enter",
+  "nl/securityPage.json::securityPage.claimTypesPlaceholder": "Type a claim type, such as region",
   "nl/securityPage.json::securityPage.closeForm": "Close form",
   "nl/securityPage.json::securityPage.colCapabilities": "Capabilities",
   "nl/securityPage.json::securityPage.colDomainAccess": "Domain Access",
@@ -6916,5 +6916,6 @@
   "nl/tour.json::tour.steps.hasuramigrationRecap.title": "What you saw",
   "nl/tour.json::tour.steps.hasuramigrationRecap.description": "A Hasura app imported in one step and working at once: tables, names, relationships, roles, row rules, write permissions, the action and the triggers. The queries changed shape once; the rules did not change at all. And one relationship later, the app reads its Salesforce accounts beside its orders, with nothing to keep in sync.",
   "nl/tour.json::tour.demos.hasuramigration.title": "Moving a Hasura app",
-  "nl/tour.json::tour.demos.hasuramigration.summary": "A Hasura v2 storefront imported in one step, its queries reshaped once, then joined to the sales team's Salesforce accounts under the same rules."
+  "nl/tour.json::tour.demos.hasuramigration.summary": "A Hasura v2 storefront imported in one step, its queries reshaped once, then joined to the sales team's Salesforce accounts under the same rules.",
+  "nl/securityPage.json::securityPage.claimRolesSaved": "Saved."
 }

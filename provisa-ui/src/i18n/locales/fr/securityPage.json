@@ -84,11 +84,12 @@
     "alsoReaches": "Atteint aussi les domaines en dessous : {{domains}}",
     "claimRolesButton": "Rôles de revendication",
     "claimRolesTitle": "Rôles de revendication",
-    "claimRolesIntro": "Chaque type de revendication indiqué ici devient un rôle, et chaque valeur que lui donnent les attributs d'un membre, un sous-rôle : region devient region et region__eu. Les rôles de revendication n'ont aucun droit. Accordez une colonne ou levez un masque pour l'un d'eux comme pour tout rôle ; une requête n'agit en son nom que si elle le nomme.",
+    "claimRolesIntro": "Indiquez les types de revendication qui doivent devenir des rôles, par exemple region. Provisa crée un rôle nommé region et un sous-rôle pour chaque valeur trouvée, par exemple region__eu. Ces rôles n'autorisent rien tant que vous ne leur accordez rien : par exemple, levez le masque sur les e-mails des clients pour region__eu afin que seul le personnel de l'UE les voie. Une requête n'agit en tant que l'un de ces rôles que lorsqu'elle le nomme.",
     "claimTypes": "Types de revendication",
-    "claimTypesPlaceholder": "Saisissez un type de revendication et appuyez sur Entrée",
+    "claimTypesPlaceholder": "Saisissez un type de revendication, par exemple region",
     "claimRolesFromOrg": "La liste propre à cette organisation.",
     "claimRolesFromDeployment": "Issue de la configuration du déploiement jusqu'à ce que cette organisation enregistre la sienne.",
-    "claimRolesHelp": "La valeur d'un membre provient de ce que l'organisation enregistre pour lui sur la page Équipe, sinon de la revendication du même nom de son fournisseur d'identité."
+    "claimRolesHelp": "La valeur d'un membre pour un type de revendication provient de sa fiche sur la page Équipe. Si elle n'en contient pas, elle provient de la revendication du même nom envoyée par son fournisseur d'identité.",
+    "claimRolesSaved": "Enregistré."
   }
 }

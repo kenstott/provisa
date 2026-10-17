@@ -45,6 +45,24 @@ describe("claim roles", () => {
     await userEvent.click(screen.getByTestId("claim-roles-save"));
     await waitFor(() => expect(mockSave).toHaveBeenCalledWith(["region", "department"]));
     expect(await screen.findByText("This organization's own list.")).toBeInTheDocument();
+    expect(screen.getByTestId("claim-roles-saved")).toHaveTextContent("Saved.");
+  });
+
+  it("saves a claim type typed but not entered", async () => {
+    render(<ClaimRolesForm onClose={vi.fn()} />);
+    await screen.findByText("region");
+    await userEvent.type(screen.getByTestId("claim-roles-input"), "department");
+    await userEvent.click(screen.getByTestId("claim-roles-save"));
+    await waitFor(() => expect(mockSave).toHaveBeenCalledWith(["region", "department"]));
+    expect(await screen.findByTestId("claim-roles-saved")).toHaveTextContent("Saved.");
+  });
+
+  it("saves typed text even when Save is reached without leaving the field", async () => {
+    render(<ClaimRolesForm onClose={vi.fn()} />);
+    await screen.findByText("region");
+    await userEvent.type(screen.getByTestId("claim-roles-input"), "department");
+    screen.getByTestId("claim-roles-save").click();
+    await waitFor(() => expect(mockSave).toHaveBeenCalledWith(["region", "department"]));
   });
 
   it("names a refused save", async () => {
@@ -53,5 +71,6 @@ describe("claim roles", () => {
     await screen.findByText("region");
     await userEvent.click(screen.getByTestId("claim-roles-save"));
     expect(await screen.findByText("Claim type '9x' must be letters")).toBeInTheDocument();
+    expect(screen.queryByTestId("claim-roles-saved")).not.toBeInTheDocument();
   });
 });
