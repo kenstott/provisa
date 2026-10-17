@@ -120,6 +120,8 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | Tempo | — | Stockage des traces (avec `--observability`) (REQ-330) |
 | Grafana | 3100 | Tableaux de bord (avec `--observability`) (REQ-330) |
 
+Les magasins, le moteur de fédération et ces services de télémétrie publient sur `PROVISA_STORE_BIND_IP` (`127.0.0.1` sauf indication contraire), avec des mots de passe générés pour le déploiement. Voir [Durcissement du déploiement](security.md#deployment-hardening).
+
 ### Backend de télémétrie (`otlp2sql`) {: #telemetry-backend-otlp2sql }
 
 La pile `--observability` ci-dessus (collecteur → Tempo/Prometheus/Grafana) est un
@@ -287,7 +289,7 @@ Exécutez ces étapes sur le nœud primaire d'abord. Les nœuds secondaires doiv
 4. L'assistant de configuration demande :
    - **Rôle** → sélectionnez `primary`
    - **Budget de RAM**, **nom d'hôte**, **port de l'API** → répondez comme pour un nœud unique
-5. Une fois la configuration terminée, notez l'**IP privée** de cette machine. Les secondaires en ont besoin, ainsi que des identifiants des magasins que le primaire a générés : `~/.provisa/store-credentials.env` (`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`). Copiez ce fichier vers chaque secondaire par un canal sécurisé
+5. Une fois la configuration terminée, notez l'**IP privée** de cette machine. Les secondaires en ont besoin, ainsi que des identifiants des magasins que le primaire a générés : `~/.provisa/store-credentials.env` (`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`, `PROVISA_TRINO_SHARED_SECRET`). Copiez ce fichier vers chaque secondaire par un canal sécurisé
 6. L'assistant affiche un bloc upstream nginx — conservez-le pour la configuration de votre répartiteur de charge
 7. Vérifiez :
 
@@ -485,7 +487,7 @@ Tous les nœuds fournissent des workers à un unique coordinateur sur le primair
 
 ### Secrets
 
-Les mots de passe des magasins fournis (PostgreSQL, Redis, MinIO, l'administrateur de Grafana) sont générés par Terraform (`random_password`) et donnés à chaque nœud, qui les conserve dans son fichier d'environnement systemd, en mode 600. Ils sont conservés dans l'état Terraform : protégez l'état comme vous protégeriez les mots de passe. Sans Terraform, le lanceur de chaque nœud les génère dans `~/.provisa/store-credentials.env`. L'AppImage génère les autres identifiants lors du premier lancement et les écrit dans `~/.provisa/config.yaml` sur chaque nœud (REQ-563). En production, récupérez le jeton d'administration depuis le nœud primaire après le déploiement :
+Les mots de passe des magasins fournis (PostgreSQL, Redis, MinIO, l'administrateur de Grafana) et le secret partagé du cluster Trino sont générés par Terraform (`random_password`) et donnés à chaque nœud, qui les conserve dans son fichier d'environnement systemd, en mode 600. Ils sont conservés dans l'état Terraform : protégez l'état comme vous protégeriez les mots de passe. Sans Terraform, le lanceur de chaque nœud les génère dans `~/.provisa/store-credentials.env`. L'AppImage génère les autres identifiants lors du premier lancement et les écrit dans `~/.provisa/config.yaml` sur chaque nœud (REQ-563). En production, récupérez le jeton d'administration depuis le nœud primaire après le déploiement :
 
 ```bash
 ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
@@ -528,7 +530,7 @@ Remarque : l'AppImage Provisa ne peut pas s'exécuter dans un pod Kubernetes �
 3. Décidez avant d'installer :
    - **PostgreSQL** — dans le cluster (`postgresql.enabled: true`) ou managé à l'extérieur (`postgresql.host`) ? L'externe est recommandé en production
    - **Redis** — dans le cluster ou externe (`redis.host`) ?
-   - **Identifiants des magasins** — créez le Secret que désigne `credentials.existingSecret`, avec les clés `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key` et `grafana-admin-password`. Le chart ne définit aucun mot de passe propre et ne se rend pas sans lui
+   - **Identifiants des magasins** — créez le Secret que désigne `credentials.existingSecret`, avec les clés `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key`, `grafana-admin-password` et `trino-shared-secret`. Le chart ne définit aucun mot de passe propre et ne se rend pas sans lui
    - **TLS** — activé par défaut (`tls.enabled: true`) : créez le Secret `kubernetes.io/tls` que désigne `tls.secretName`, ou définissez `tls.enabled: false`
    - **MinIO / S3** — MinIO dans le cluster ou S3 natif ? Sur AWS, utilisez S3 avec un rôle IAM
    - **Secrets** — passez-les via `--set` pour l'évaluation ; utilisez External Secrets ou Vault Agent en production
@@ -626,6 +628,8 @@ Remarque : l'AppImage Provisa ne peut pas s'exécuter dans un pod Kubernetes �
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | Déployer le moteur de fédération (REQ-028) |
 | `trino.workers` | `2` | Réplicas de workers du moteur de fédération (REQ-056) |
+| `trino.internalTls` | `false` | Chiffrer le trafic coordinateur-workers ; ralentit les requêtes à fort shuffle de 10 % à plus de 100 % (REQ-2072) |
+| `trino.coordinatorClusterIP` | `""` | L'adresse épinglée du Service du coordinateur, requise avec `trino.internalTls` (REQ-2072) |
 | `postgresql.enabled` | `true` | Déployer PostgreSQL dans le cluster (REQ-169) |
 | `postgresql.host` | `""` | À définir pour utiliser un PostgreSQL externe |
 | `minio.enabled` | `true` | Déployer MinIO dans le cluster (REQ-029) |

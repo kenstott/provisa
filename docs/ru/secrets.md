@@ -117,6 +117,8 @@ secrets:
 | `description` | Text | Для чего этот секрет — никогда не выводится из значения |
 | `updated_by` | Text | Кто задал его последним |
 
+Организация, создавшая собственный ключ шифрования, имеет секреты, обёрнутые этим ключом; иначе они обёрнуты ключом развёртывания. См. [Шифрование в покое](security.md#encryption-at-rest-and-the-organizations-own-keys).
+
 Колонка `value` не выбирается ни в одном запросе на перечисление. [tool-verified: `provisa/core/secrets_store.py:214-235`]
 
 ---
@@ -170,6 +172,12 @@ vendor key field → ${secret:OPENAI_KEY}
 ```
 
 Ссылка хранится зашифрованной в `org_secrets`. Во время запроса Provisa разрешает `${secret:OPENAI_KEY}` по хранилищу организации и передаёт литеральный ключ в SDK вендора. Ротация записи в хранилище вступает в силу немедленно — изменять конфигурацию на стороне настроек организации не нужно. [tool-verified: `provisa/core/org_secrets.py:64-79`]
+
+---
+
+## Собственные учётные данные хранилищ развёртывания {: #the-deployments-own-store-credentials }
+
+Пароли хранилищ, которые запускает Provisa (PostgreSQL, Redis, MinIO, административная учётная запись Grafana и общий секрет кластера Trino), не являются секретами ни в одном из хранилищ секретов. Они генерируются для каждого развёртывания и хранятся самим развёртыванием: в `~/.provisa/store-credentials.env` (режим 600), в состоянии Terraform или в Kubernetes Secret, имя которого задано в `credentials.existingSecret` Helm-чарта. См. [Укрепление развёртывания](security.md#deployment-hardening).
 
 ---
 

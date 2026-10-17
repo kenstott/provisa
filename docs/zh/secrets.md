@@ -117,6 +117,8 @@ secrets:
 | `description` | Text | 该密钥的用途——绝不从值推导得出 |
 | `updated_by` | Text | 最后设置它的人 |
 
+已创建自有加密密钥的组织，其密钥由该密钥包裹；否则由部署的密钥包裹。参见[静态加密](security.md#encryption-at-rest-and-the-organizations-own-keys)。
+
 任何列表查询都不会选取 `value` 列。[tool-verified: `provisa/core/secrets_store.py:214-235`]
 
 ---
@@ -170,6 +172,12 @@ vendor key field → ${secret:OPENAI_KEY}
 ```
 
 该引用以加密形式存放在 `org_secrets` 中。查询时 Provisa 会对照组织保管库解析 `${secret:OPENAI_KEY}`，并把字面密钥交给供应商 SDK。轮换保管库中的条目会立即生效——组织设置那一侧无需改动配置。[tool-verified: `provisa/core/org_secrets.py:64-79`]
+
+---
+
+## 部署自身的存储凭据 {: #the-deployments-own-store-credentials }
+
+Provisa 运行的各存储的密码（PostgreSQL、Redis、MinIO、Grafana 管理员账户和 Trino 集群的共享密钥）在两个保管库中都不算密钥。它们按部署生成并由部署保管：保存在 `~/.provisa/store-credentials.env`（权限 600）、Terraform 状态，或 Helm chart 的 `credentials.existingSecret` 指定的 Kubernetes Secret 中。参见[部署加固](security.md#deployment-hardening)。
 
 ---
 

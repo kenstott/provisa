@@ -117,6 +117,8 @@ Le chiffrement n'est jamais facultatif. Lorsqu'aucune clé de chiffrement à l'�
 | `description` | Text | À quoi sert le secret — jamais déduit de la valeur |
 | `updated_by` | Text | Qui l'a défini en dernier |
 
+Une organisation qui a créé sa propre clé de chiffrement a ses secrets enveloppés sous cette clé ; sinon, ils le sont sous celle du déploiement. Voir [Chiffrement au repos](security.md#encryption-at-rest-and-the-organizations-own-keys).
+
 La colonne `value` n'est sélectionnée par aucune requête de listage. [tool-verified: `provisa/core/secrets_store.py:214-235`]
 
 ---
@@ -170,6 +172,12 @@ vendor key field → ${secret:OPENAI_KEY}
 ```
 
 La référence est stockée chiffrée dans `org_secrets`. Au moment de la requête, Provisa résout `${secret:OPENAI_KEY}` contre le coffre-fort de l'organisation et remet la clé littérale au SDK du fournisseur. Faire tourner l'entrée du coffre-fort prend effet immédiatement — aucun changement de configuration du côté des paramètres de l'organisation. [tool-verified: `provisa/core/org_secrets.py:64-79`]
+
+---
+
+## Les identifiants propres des magasins du déploiement {: #the-deployments-own-store-credentials }
+
+Les mots de passe des magasins que Provisa exécute (PostgreSQL, Redis, MinIO, le compte administrateur de Grafana et le secret partagé du cluster Trino) ne sont des secrets dans aucun des deux coffres. Ils sont générés par déploiement et conservés par le déploiement : dans `~/.provisa/store-credentials.env` (mode 600), dans l'état Terraform ou dans le Secret Kubernetes que désigne `credentials.existingSecret` du chart Helm. Voir [Durcissement du déploiement](security.md#deployment-hardening).
 
 ---
 

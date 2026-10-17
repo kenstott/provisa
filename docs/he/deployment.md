@@ -120,6 +120,8 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | Tempo | — | אחסון trace (עם `--observability`) (REQ-330) |
 | Grafana | 3100 | dashboards (עם `--observability`) (REQ-330) |
 
+המאגרים, מנוע הפדרציה ושירותי הטלמטריה האלה מפרסמים על `PROVISA_STORE_BIND_IP` (‏`127.0.0.1` אלא אם נקבע אחרת), עם סיסמאות שנוצרו עבור הפריסה. ראו [הקשחת פריסה](security.md#deployment-hardening).
+
 ### Backend טלמטריה (`otlp2sql`) {: #telemetry-backend-otlp2sql }
 
 מחסנית ה-`--observability` שלמעלה (Collector ← Tempo/Prometheus/Grafana) היא נתיב
@@ -287,7 +289,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 4. אשף ההגדרה שואל:
    - **תפקיד** ← בחרו `primary`
    - **תקציב RAM**, **hostname**, **פורט API** ← ענו כמו עבור node יחיד
-5. לאחר השלמת ההגדרה, רשמו את ה-**IP הפרטי** של מכונה זו. ה-secondaries צריכים אותו, ואת אישורי ה-stores שה-primary יצר: `~/.provisa/store-credentials.env` (‏`PROVISA_PG_PASSWORD`, ‏`PROVISA_REDIS_PASSWORD`, ‏`PROVISA_MINIO_ROOT_PASSWORD`, ‏`PROVISA_GRAFANA_ADMIN_PASSWORD`). העתיקו קובץ זה לכל secondary בערוץ מאובטח
+5. לאחר השלמת ההגדרה, רשמו את ה-**IP הפרטי** של מכונה זו. ה-secondaries צריכים אותו, ואת אישורי ה-stores שה-primary יצר: `~/.provisa/store-credentials.env` (‏`PROVISA_PG_PASSWORD`, ‏`PROVISA_REDIS_PASSWORD`, ‏`PROVISA_MINIO_ROOT_PASSWORD`, ‏`PROVISA_GRAFANA_ADMIN_PASSWORD`, ‏`PROVISA_TRINO_SHARED_SECRET`). העתיקו קובץ זה לכל secondary בערוץ מאובטח
 6. האשף מדפיס בלוק upstream‏ nginx — שמרו אותו עבור תצורת ה-load balancer שלכם
 7. אמתו:
 
@@ -485,7 +487,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ### סודות {: #secrets }
 
-סיסמאות ה-stores המובנים (PostgreSQL, Redis, MinIO, וה-admin של Grafana) נוצרות על ידי Terraform (`random_password`) ומועברות לכל node, ששומר אותן בקובץ הסביבה של systemd שלו, במצב 600. הן נשמרות ב-state של Terraform, ולכן הגנו על ה-state כפי שהייתם מגינים על הסיסמאות. ללא Terraform, ה-launcher של כל node מייצר אותן ב-`~/.provisa/store-credentials.env`. ה-AppImage מייצר את שאר האישורים בעת הפעלה-ראשונה וכותב אותם ל-`~/.provisa/config.yaml` על כל node (REQ-563). עבור ייצור, שלפו את טוקן ה-admin מה-node ה-primary לאחר הפריסה:
+סיסמאות ה-stores המובנים (PostgreSQL, Redis, MinIO, וה-admin של Grafana) והסוד המשותף של אשכול Trino נוצרים על ידי Terraform (`random_password`) ומועברות לכל node, ששומר אותן בקובץ הסביבה של systemd שלו, במצב 600. הן נשמרות ב-state של Terraform, ולכן הגנו על ה-state כפי שהייתם מגינים על הסיסמאות. ללא Terraform, ה-launcher של כל node מייצר אותן ב-`~/.provisa/store-credentials.env`. ה-AppImage מייצר את שאר האישורים בעת הפעלה-ראשונה וכותב אותם ל-`~/.provisa/config.yaml` על כל node (REQ-563). עבור ייצור, שלפו את טוקן ה-admin מה-node ה-primary לאחר הפריסה:
 
 ```bash
 ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
@@ -528,7 +530,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 3. החליטו לפני ההתקנה:
    - **PostgreSQL** — בתוך-אשכולי (‏`postgresql.enabled: true`) או מנוהל חיצוני (`postgresql.host`)? חיצוני מומלץ לייצור
    - **Redis** — בתוך-אשכולי או חיצוני (‏`redis.host`)?
-   - **אישורי ה-stores** — צרו את ה-Secret ש-`credentials.existingSecret` מציין, עם המפתחות `pg-password`, ‏`redis-password`, ‏`minio-access-key`, ‏`minio-secret-key` ו-`grafana-admin-password`. ה-chart אינו קובע סיסמה משלו ואינו נוצר בלעדיו
+   - **אישורי ה-stores** — צרו את ה-Secret ש-`credentials.existingSecret` מציין, עם המפתחות `pg-password`, ‏`redis-password`, ‏`minio-access-key`, ‏`minio-secret-key`, ‏`grafana-admin-password` ו-`trino-shared-secret`. ה-chart אינו קובע סיסמה משלו ואינו נוצר בלעדיו
    - **TLS** — פעיל כברירת מחדל (`tls.enabled: true`): צרו את ה-Secret מסוג `kubernetes.io/tls` ש-`tls.secretName` מציין, או הגדירו `tls.enabled: false`
    - **MinIO / S3** — MinIO בתוך-אשכולי או S3 ילידי? עבור AWS, השתמשו ב-S3 עם תפקיד IAM
    - **סודות** — העבירו דרך `--set` להערכה; השתמשו ב-External Secrets או Vault Agent לייצור
@@ -626,6 +628,8 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | פרוס מנוע פדרציה (REQ-028) |
 | `trino.workers` | `2` | replicas עובד מנוע פדרציה (REQ-056) |
+| `trino.internalTls` | `false` | הצפנת התעבורה בין coordinator ל-workers; מאטה שאילתות עתירות shuffle ב-10% ועד למעלה מ-100% (REQ-2072) |
+| `trino.coordinatorClusterIP` | `""` | הכתובת הנעוצה של ה-Service של ה-coordinator, נדרשת עם `trino.internalTls` (REQ-2072) |
 | `postgresql.enabled` | `true` | פרוס PostgreSQL בתוך-אשכולי (REQ-169) |
 | `postgresql.host` | `""` | הגדירו כדי להשתמש ב-PostgreSQL חיצוני |
 | `minio.enabled` | `true` | פרוס MinIO בתוך-אשכולי (REQ-029) |

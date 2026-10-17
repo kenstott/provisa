@@ -117,6 +117,8 @@ A criptografia nunca é opcional. Quando nenhuma chave de criptografia de proces
 | `description` | Text | Para que serve o segredo — nunca derivado do valor |
 | `updated_by` | Text | Quem o definiu por último |
 
+Uma organização que criou a própria chave de criptografia tem seus segredos envolvidos por essa chave; caso contrário, são envolvidos pela chave da implantação. Veja [Criptografia em repouso](security.md#encryption-at-rest-and-the-organizations-own-keys).
+
 A coluna `value` não é selecionada em nenhuma consulta de listagem. [tool-verified: `provisa/core/secrets_store.py:214-235`]
 
 ---
@@ -170,6 +172,12 @@ vendor key field → ${secret:OPENAI_KEY}
 ```
 
 A referência é guardada criptografada em `org_secrets`. No momento da consulta o Provisa resolve `${secret:OPENAI_KEY}` contra o cofre da organização e entrega a chave literal ao SDK do fornecedor. Girar a entrada do cofre tem efeito imediato — nenhuma mudança de configuração do lado das configurações da organização. [tool-verified: `provisa/core/org_secrets.py:64-79`]
+
+---
+
+## As credenciais dos stores da própria implantação {: #the-deployments-own-store-credentials }
+
+As senhas dos stores que o Provisa executa (PostgreSQL, Redis, MinIO, a conta de administrador do Grafana e o segredo compartilhado do cluster Trino) não são segredos em nenhum dos dois cofres. Elas são geradas por implantação e mantidas pela implantação: em `~/.provisa/store-credentials.env` (modo 600), no estado do Terraform, ou no Secret do Kubernetes que `credentials.existingSecret` do chart Helm nomeia. Veja [Fortalecimento da implantação](security.md#deployment-hardening).
 
 ---
 

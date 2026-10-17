@@ -117,6 +117,8 @@ La cifratura non è mai facoltativa. Quando non è configurata alcuna chiave di 
 | `description` | Text | A che cosa serve il segreto — mai derivato dal valore |
 | `updated_by` | Text | Chi lo ha impostato per ultimo |
 
+Un'organizzazione che ha creato la propria chiave di cifratura ha i propri segreti avvolti sotto quella chiave; altrimenti sono avvolti sotto quella del deployment. Vedi [Cifratura a riposo](security.md#encryption-at-rest-and-the-organizations-own-keys).
+
 La colonna `value` non viene selezionata in nessuna query di elenco. [tool-verified: `provisa/core/secrets_store.py:214-235`]
 
 ---
@@ -170,6 +172,12 @@ vendor key field → ${secret:OPENAI_KEY}
 ```
 
 Il riferimento viene memorizzato cifrato in `org_secrets`. Al momento della query Provisa risolve `${secret:OPENAI_KEY}` sul vault dell'org e consegna la chiave letterale all'SDK del fornitore. La rotazione della voce nel vault ha effetto immediato — nessuna modifica di configurazione sul lato impostazioni dell'org. [tool-verified: `provisa/core/org_secrets.py:64-79`]
+
+---
+
+## Le credenziali degli store del deployment {: #the-deployments-own-store-credentials }
+
+Le password degli store che Provisa esegue (PostgreSQL, Redis, MinIO, l'account admin di Grafana e il segreto condiviso del cluster Trino) non sono segreti in nessuna delle due vault. Sono generate per deployment e conservate dal deployment: in `~/.provisa/store-credentials.env` (modalità 600), nello stato di Terraform, o nel Secret Kubernetes nominato da `credentials.existingSecret` del chart Helm. Vedi [Hardening del deployment](security.md#deployment-hardening).
 
 ---
 

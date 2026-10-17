@@ -117,6 +117,8 @@ El cifrado nunca es opcional. Cuando no hay configurada una clave de cifrado par
 | `description` | Text | Para qué sirve el secreto; nunca se deriva del valor |
 | `updated_by` | Text | Quién lo estableció por última vez |
 
+Una organización que ha creado su propia clave de cifrado tiene sus secretos envueltos con esa clave; de lo contrario, se envuelven con la del despliegue. Véase [Cifrado en reposo](security.md#encryption-at-rest-and-the-organizations-own-keys).
+
 La columna `value` no se selecciona en ninguna consulta de listado. [tool-verified: `provisa/core/secrets_store.py:214-235`]
 
 ---
@@ -170,6 +172,12 @@ vendor key field → ${secret:OPENAI_KEY}
 ```
 
 La referencia se guarda cifrada en `org_secrets`. En el momento de la consulta, Provisa resuelve `${secret:OPENAI_KEY}` contra la bóveda de la organización y entrega la clave literal al SDK del proveedor. Rotar la entrada de la bóveda surte efecto de inmediato: no hay que cambiar nada en la configuración de la organización. [tool-verified: `provisa/core/org_secrets.py:64-79`]
+
+---
+
+## Las credenciales propias de los almacenes del despliegue {: #the-deployments-own-store-credentials }
+
+Las contraseñas de los almacenes que ejecuta Provisa (PostgreSQL, Redis, MinIO, la cuenta de administración de Grafana y el secreto compartido del clúster Trino) no son secretos de ninguna de las dos bóvedas. Se generan por despliegue y las conserva el propio despliegue: en `~/.provisa/store-credentials.env` (modo 600), en el estado de Terraform o en el Secret de Kubernetes que nombra `credentials.existingSecret` del chart de Helm. Véase [Refuerzo del despliegue](security.md#deployment-hardening).
 
 ---
 

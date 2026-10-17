@@ -457,6 +457,59 @@ Un deployment single-tenant non ha un'organizzazione da nominare. Nessuna superf
 
 I segreti di un'organizzazione vengono letti solo da quell'organizzazione. Nell'archivio proprio di Provisa ogni segreto è conservato sotto la sua organizzazione. In un servizio centrale (Vault, AWS Secrets Manager, GCP Secret Manager, Azure Key Vault) di un deployment con molte organizzazioni, ogni lettura avviene all'interno del prefisso dell'organizzazione che legge, e un riferimento che ne uscirebbe viene rifiutato. (REQ-1557) I prefissi e i passaggi per spostarvi i segreti esistenti sono in [Segreti](secrets.md#one-organizations-secrets-in-a-central-service).
 
+## Hardening del deployment {: #deployment-hardening }
+
+### Credenziali degli store e indirizzo su cui ascoltano {: #store-credentials-and-where-the-stores-listen }
+
+Gli store inclusi non hanno credenziali predefinite. Il control plane PostgreSQL, Redis, MinIO, l'account admin di Grafana e il segreto condiviso del cluster Trino ricevono ciascuno un valore generato per il deployment:
+
+- I launcher (`provisa start`, gli installer desktop e server) li generano una volta e li conservano in `~/.provisa/store-credentials.env` (modalità 600). Un valore già presente nell'ambiente viene usato così com'è, e un nodo secondario, che usa gli store del primary, rifiuta di avviarsi senza quelli del primary.
+- I moduli Terraform li generano con `random_password` e danno gli stessi valori a ogni nodo. Sono contenuti nello stato di Terraform, quindi proteggi lo stato come proteggeresti le password.
+- Il chart Helm non ne imposta alcuno. Richiede un Secret che crei tu, nominato da `credentials.existingSecret`, contenente `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key`, `grafana-admin-password` e `trino-shared-secret`.
+
+Redis richiede la propria password, e la password del ruolo PostgreSQL viene reimpostata a ogni avvio, così un volume creato in precedenza segue quella attuale del deployment. Gli store, il motore di federazione e i servizi di telemetria pubblicano le loro porte su un solo indirizzo, `PROVISA_STORE_BIND_IP`: `127.0.0.1` su un nodo a sé stante, o l'indirizzo privato del primary quando i secondary vi si connettono. L'account admin di Grafana usa la password generata; lo stack compose consente ai visitatori anonimi di vedere le dashboard, mentre il chart Helm non ammette alcun visitatore anonimo.
+
+### Cifratura del trasporto {: #transport-encryption }
+
+Ogni listener che Provisa termina serve TLS (vedi [Versioni TLS](#tls-versions)). Un nodo server usa il certificato in `PROVISA_TLS_CERT`/`PROVISA_TLS_KEY`, oppure ne genera uno autofirmato. Il chart Helm serve TLS per impostazione predefinita (`tls.enabled: true`) dal Secret `kubernetes.io/tls` nominato da `tls.secretName`.
+
+### Il PostgreSQL embedded {: #the-embedded-postgresql }
+
+I livelli desktop e nativo eseguono PostgreSQL embedded. Su macOS e Linux ascolta su un unix socket dentro la sua directory dei dati (modalità 700), raggiungibile solo dall'account proprietario della directory. Su TCP (Windows, dove ascolta su 127.0.0.1), ogni connessione deve fornire una password generata per la directory dei dati e conservata al suo interno (`provisa.password`, modalità 600). Non viene mai avviato come root.
+
+### Il motore di federazione (Trino) {: #the-federation-engine-trino }
+
+- **Tra i nodi.** Un coordinator e i suoi worker si autenticano a vicenda con il segreto condiviso generato del deployment (`internal-communication.shared-secret`). Cifrare il loro traffico è un'opzione dell'operatore, disattivata per impostazione predefinita: disattivata, il traffico resta dentro la rete privata o il cluster del deployment. Attivala dove un requisito di conformità o zero-trust chiede la cifratura all'interno del deployment. Trino documenta che rallenta le query ad alto shuffle (join distribuiti, aggregazioni, funzioni finestra) dal 10% a oltre il 100%. Su un deployment compose è l'impostazione `engine.trino_internal_tls` (Impostazioni del deployment → Engine), con accanto la rete del motore e l'indirizzo fissato del coordinator, e si applica al successivo avvio. Con il chart Helm è il valore `trino.internalTls`, con `trino.coordinatorClusterIP`. I motori della piattaforma ospitata sono coordinator a nodo singolo, senza traffico tra nodi, e la rifiutano. (REQ-2072)
+- **Dati spooled.** L'esecuzione fault-tolerant cifra i dati di exchange che scrive in spool con una chiave generata per ogni query e scartata al suo termine (`fault-tolerant-execution.exchange-encryption-enabled=true`, impostato esplicitamente). Lo spill legacy su disco non è usato.
+- **Organizzazioni su un solo motore.** I catalog di ogni organizzazione sono suoi, denominati con l'organizzazione, e le istruzioni di ogni organizzazione vengono eseguite nel suo resource group.
+
+### Sorgenti su un deployment condiviso {: #sources-on-a-shared-deployment }
+
+Su un deployment che ospita molte organizzazioni, le sorgenti di un'organizzazione possono raggiungere solo indirizzi pubblici: mai la rete privata della piattaforma, dove si trovano il suo control plane, la cache e l'archivio a oggetti. Il controllo si applica quando una sorgente viene salvata, dalla UI, dall'API di amministrazione o da un'applicazione di configurazione, e di nuovo a ogni connessione e a ogni redirect HTTP. Le sorgenti di una sandbox demo sono inoltre vincolate all'indirizzo a cui sono state verificate. L'organizzazione del deployment stesso, le cui sorgenti sono configurate dall'operatore, non è vincolata.
+
+## Cifratura a riposo e chiavi proprie dell'organizzazione {: #encryption-at-rest-and-the-organizations-own-keys }
+
+La cifratura con una chiave propria dell'organizzazione è disponibile ed è disattivata finché l'organizzazione non la attiva. Nulla è cifrato con una chiave dell'organizzazione a meno che un amministratore dell'organizzazione ne crei una.
+
+**La chiave di cifratura dell'organizzazione** (REQ-1574) avvolge i segreti dell'organizzazione, le sue colonne cifrate e il testo delle query di audit. Un amministratore dell'organizzazione la crea in **Admin → Org Secrets → Org Key**, oppure con `PUT /admin/org-encryption`: senza corpo Provisa genera la chiave, che non viene mai mostrata, e un corpo `key_b64` fornisce 32 byte propri. `GET /admin/org-encryption` riporta solo la sua impronta. Senza una chiave dell'organizzazione, i dati dell'organizzazione sono avvolti con la chiave del deployment (`encryption.provider` in `provisa.yaml`). Un deployment che non configura alcun provider di cifratura conserva in chiaro le colonne cifrate e il testo delle query di audit; i segreti non sono mai conservati in chiaro (vedi [Segreti](secrets.md#provisas-built-in-store)).
+
+**La cartella dell'organizzazione** (REQ-1992) contiene i suoi file caricati e atterrati, i file di spill del suo motore e i suoi file temporanei. Un amministratore dell'organizzazione ne attiva la cifratura in **Admin → Org Secrets → File folder encryption**, oppure con `PUT /admin/org-files` (`{"encrypted": true, "key_reference": "${secret:NAME}"}`). `POST /admin/org-files/generate-key` risponde una sola volta con una nuova chiave a 256 bit, da conservare nella vault. La chiave resta nella vault propria dell'organizzazione (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault o HashiCorp Vault): Provisa conserva solo il riferimento, e gocryptfs mantiene cifrati su disco i file della cartella con quella chiave. Serve FUSE, quindi un host Linux o un container con `/dev/fuse`; su macOS l'impostazione viene rifiutata.
+
+Su un deployment self-hosted, che tipicamente esegue una sola organizzazione sui propri motori, attivare entrambe cifra i segreti, i file, i file di spill e i file temporanei di quell'organizzazione con le sue chiavi:
+
+- Il motore DuckDB che un'organizzazione esegue scrive lo spill nella cartella dell'organizzazione.
+- Le righe che un row filter recupera e il codice caricato vengono messi in staging nella cartella dell'organizzazione.
+- L'esecuzione fault-tolerant di Trino cifra i dati di exchange in spool con una chiave generata per ogni query e scartata al suo termine (`fault-tolerant-execution.exchange-encryption-enabled=true`). Provisa non attiva lo spill legacy di Trino su disco.
+- Un motore di federazione PostgreSQL scrive i propri file temporanei dove quel server PostgreSQL li conserva, sotto la cifratura dello storage del server stesso, non nella cartella dell'organizzazione.
+
+### Piattaforme ospitate condivise e dedicate {: #shared-and-dedicated-hosted-platforms }
+
+La piattaforma ospitata condivisa isola le organizzazioni in modo logico. Un solo deployment le serve tutte, e i dati di ogni organizzazione restano suoi grazie alla governance, ai suoi schemi, catalog e resource group sul motore, alle sue chiavi, alle chiavi per query per i dati di motore in spool e al rifiuto delle sue sorgenti sugli indirizzi privati della piattaforma. È consigliata per la sperimentazione e per le piccole imprese. Una piattaforma ospitata dedicata è separata fisicamente: macchine, rete e store propri, al servizio di un solo cliente.
+
+### Python nel browser {: #python-in-the-browser }
+
+L'area Data Science esegue Python nel browser del visitatore. Ogni lettura che compie va al server come l'utente connesso, con il suo ruolo operativo, la sua organizzazione e il suo ambiente, ed è governata esattamente come la stessa istruzione da qualunque altro client.
+
 ## Modalità ad alta sicurezza {: #high-security-mode }
 
 `security.mode: high` in `provisa.yaml` afferma una garanzia: il backend di Provisa non gestisce mai dati in chiaro. (REQ-693) Ogni colonna che conta è cifrata alla sorgente, e solo un client che detiene la chiave di decifratura può leggerla. Questa garanzia ha conseguenze che un deployment deve pianificare.

@@ -117,6 +117,8 @@ secrets:
 | `description` | Text | למה הסוד משמש — לעולם אינו נגזר מהערך |
 | `updated_by` | Text | מי קבע אותו לאחרונה |
 
+ארגון שיצר מפתח הצפנה משלו מקבל את סודותיו עטופים תחת אותו מפתח; אחרת הם עטופים תחת מפתח הפריסה. ראו [הצפנה במנוחה](security.md#encryption-at-rest-and-the-organizations-own-keys).
+
 העמודה `value` אינה נבחרת בשום שאילתת רשימה. [tool-verified: `provisa/core/secrets_store.py:214-235`]
 
 ---
@@ -170,6 +172,12 @@ vendor key field → ${secret:OPENAI_KEY}
 ```
 
 ההפניה נשמרת מוצפנת ב-`org_secrets`. בזמן השאילתה Provisa מפענחת את `${secret:OPENAI_KEY}` מול כספת הארגון ומוסרת את המפתח המילולי ל-SDK של הספק. סבב של רשומת הכספת נכנס לתוקף מיד — ללא שינוי תצורה בצד הגדרות הארגון. [tool-verified: `provisa/core/org_secrets.py:64-79`]
+
+---
+
+## אישורי הגישה של המאגרים של הפריסה עצמה {: #the-deployments-own-store-credentials }
+
+סיסמאות המאגרים ש-Provisa מפעילה (PostgreSQL, Redis, MinIO, חשבון המנהל של Grafana והסוד המשותף של אשכול Trino) אינן סודות באף אחת מהכספות. הן נוצרות לכל פריסה ונשמרות בידי הפריסה: ב-`~/.provisa/store-credentials.env` (מצב 600), ב-state של Terraform, או ב-Secret של Kubernetes ש-`credentials.existingSecret` של ה-Helm chart מציין. ראו [הקשחת פריסה](security.md#deployment-hardening).
 
 ---
 

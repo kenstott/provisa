@@ -120,6 +120,8 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | Tempo | — | Хранение трассировок (с `--observability`) (REQ-330) |
 | Grafana | 3100 | Дашборды (с `--observability`) (REQ-330) |
 
+Хранилища, федеративный движок и эти службы телеметрии публикуются на `PROVISA_STORE_BIND_IP` (`127.0.0.1`, если не задано), с паролями, сгенерированными для развёртывания. См. [Укрепление развёртывания](security.md#deployment-hardening).
+
 ### Бэкенд телеметрии (`otlp2sql`) {: #telemetry-backend-otlp2sql }
 
 Стек `--observability`, описанный выше (Collector → Tempo/Prometheus/Grafana), — это один
@@ -287,7 +289,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 4. Мастер настройки спрашивает:
    - **Роль** → выберите `primary`
    - **Бюджет ОЗУ**, **имя узла**, **порт API** → отвечайте так же, как для одного узла
-5. После завершения настройки запишите **частный IP-адрес** этой машины. Он нужен вторичным узлам, как и учётные данные хранилищ, сгенерированные главным узлом: `~/.provisa/store-credentials.env` (`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`). Скопируйте этот файл на каждый вторичный узел по защищённому каналу
+5. После завершения настройки запишите **частный IP-адрес** этой машины. Он нужен вторичным узлам, как и учётные данные хранилищ, сгенерированные главным узлом: `~/.provisa/store-credentials.env` (`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`, `PROVISA_TRINO_SHARED_SECRET`). Скопируйте этот файл на каждый вторичный узел по защищённому каналу
 6. Мастер печатает блок upstream для nginx — сохраните его для конфигурации балансировщика нагрузки
 7. Проверьте:
 
@@ -485,7 +487,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ### Секреты {: #secrets }
 
-Пароли встроенных хранилищ (PostgreSQL, Redis, MinIO, администратор Grafana) генерирует Terraform (`random_password`) и передаёт каждому узлу, который хранит их в своём файле окружения systemd с режимом 600. Они хранятся в состоянии Terraform, поэтому защищайте состояние так же, как сами пароли. Без Terraform запуск на каждом узле генерирует их в `~/.provisa/store-credentials.env`. Остальные учётные данные AppImage генерирует при первом запуске и записывает в `~/.provisa/config.yaml` на каждом узле (REQ-563). Для продуктива получите административный токен с главного узла после развёртывания:
+Пароли встроенных хранилищ (PostgreSQL, Redis, MinIO, администратор Grafana) и общий секрет кластера Trino генерирует Terraform (`random_password`) и передаёт каждому узлу, который хранит их в своём файле окружения systemd с режимом 600. Они хранятся в состоянии Terraform, поэтому защищайте состояние так же, как сами пароли. Без Terraform запуск на каждом узле генерирует их в `~/.provisa/store-credentials.env`. Остальные учётные данные AppImage генерирует при первом запуске и записывает в `~/.provisa/config.yaml` на каждом узле (REQ-563). Для продуктива получите административный токен с главного узла после развёртывания:
 
 ```bash
 ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
@@ -528,7 +530,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 3. Решите до установки:
    - **PostgreSQL** — внутри кластера (`postgresql.enabled: true`) или внешняя управляемая (`postgresql.host`)? Для продуктива рекомендуется внешняя
    - **Redis** — внутри кластера или внешний (`redis.host`)?
-   - **Учётные данные хранилищ** — создайте Secret, имя которого задано в `credentials.existingSecret`, с ключами `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key` и `grafana-admin-password`. Чарт не задаёт собственного пароля и без него не рендерится
+   - **Учётные данные хранилищ** — создайте Secret, имя которого задано в `credentials.existingSecret`, с ключами `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key`, `grafana-admin-password` и `trino-shared-secret`. Чарт не задаёт собственного пароля и без него не рендерится
    - **TLS** — включён по умолчанию (`tls.enabled: true`): создайте Secret типа `kubernetes.io/tls`, имя которого задано в `tls.secretName`, или задайте `tls.enabled: false`
    - **MinIO или S3** — MinIO внутри кластера или нативный S3? Для AWS используйте S3 с ролью IAM
    - **Секреты** — для оценки передавайте через `--set`; для продуктива используйте External Secrets или Vault Agent
@@ -626,6 +628,8 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | Развернуть федеративный движок (REQ-028) |
 | `trino.workers` | `2` | Реплики рабочих узлов федеративного движка (REQ-056) |
+| `trino.internalTls` | `false` | Шифрует трафик координатор–рабочие узлы; замедляет запросы с интенсивным обменом данными от 10% до более чем 100% (REQ-2072) |
+| `trino.coordinatorClusterIP` | `""` | Закреплённый адрес Service координатора, обязателен вместе с `trino.internalTls` (REQ-2072) |
 | `postgresql.enabled` | `true` | Развернуть PostgreSQL внутри кластера (REQ-169) |
 | `postgresql.host` | `""` | Задайте, чтобы использовать внешнюю PostgreSQL |
 | `minio.enabled` | `true` | Развернуть MinIO внутри кластера (REQ-029) |

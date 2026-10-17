@@ -457,6 +457,59 @@ Uma implantação single-tenant não tem organização a nomear. Nenhuma superf�
 
 Os segredos de uma organização são lidos só por essa organização. No armazenamento próprio do Provisa cada segredo fica sob a sua organização. Em um serviço central (Vault, AWS Secrets Manager, GCP Secret Manager, Azure Key Vault) de uma implantação de muitas organizações, toda leitura é feita dentro do prefixo da organização que lê, e uma referência que sairia dele é recusada. (REQ-1557) Os prefixos e os passos para mover os segredos existentes para debaixo deles estão em [Segredos](secrets.md#one-organizations-secrets-in-a-central-service).
 
+## Fortalecimento da implantação {: #deployment-hardening }
+
+### Credenciais dos stores e onde eles escutam {: #store-credentials-and-where-the-stores-listen }
+
+Os stores incluídos não têm credenciais padrão. O control plane PostgreSQL, o Redis, o MinIO, a conta de administrador do Grafana e o segredo compartilhado do cluster Trino recebem cada um um valor gerado para a implantação:
+
+- Os launchers (`provisa start`, os instaladores de desktop e de servidor) os geram uma vez e os mantêm em `~/.provisa/store-credentials.env` (modo 600). Um valor já presente no ambiente é usado como está, e um nó secundário, que usa os stores do primário, se recusa a iniciar sem os do primário.
+- Os módulos Terraform os geram com `random_password` e dão os mesmos valores a cada nó. Eles ficam no estado do Terraform, então proteja o estado como protegeria as senhas.
+- O chart Helm não define nenhum. Ele exige um Secret que você cria, nomeado por `credentials.existingSecret`, contendo `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key`, `grafana-admin-password` e `trino-shared-secret`.
+
+O Redis exige a sua senha, e a senha do papel PostgreSQL é definida de novo a cada início, de modo que um volume criado antes acompanhe a senha atual da implantação. Os stores, o motor de federação e os serviços de telemetria publicam suas portas em um só endereço, `PROVISA_STORE_BIND_IP`: `127.0.0.1` em um nó isolado, ou o endereço privado do primário quando secundários se conectam a ele. A conta de administrador do Grafana usa a senha gerada; a stack compose deixa visitantes anônimos verem os painéis, e o chart Helm não admite visitante anônimo.
+
+### Criptografia de transporte {: #transport-encryption }
+
+Todo listener que o Provisa termina serve TLS (veja [Versões do TLS](#tls-versions)). Um nó servidor usa o certificado em `PROVISA_TLS_CERT`/`PROVISA_TLS_KEY`, ou gera um autoassinado. O chart Helm serve TLS por padrão (`tls.enabled: true`) a partir do Secret `kubernetes.io/tls` que `tls.secretName` nomeia.
+
+### O PostgreSQL embarcado {: #the-embedded-postgresql }
+
+As camadas desktop e nativa executam o PostgreSQL embarcado. No macOS e no Linux ele escuta em um unix socket dentro do seu diretório de dados (modo 700), que só a conta dona do diretório alcança. Por TCP (Windows, onde escuta em 127.0.0.1), toda conexão deve fornecer uma senha gerada para o diretório de dados e mantida nele (`provisa.password`, modo 600). Ele nunca é iniciado como root.
+
+### O motor de federação (Trino) {: #the-federation-engine-trino }
+
+- **Entre nós.** Um coordenador e seus workers se autenticam mutuamente com o segredo compartilhado gerado da implantação (`internal-communication.shared-secret`). Criptografar o tráfego entre eles é uma opção do operador, desativada por padrão: desativada, o tráfego fica dentro da rede privada ou do cluster da implantação. Ative-a onde um requisito de conformidade ou de zero-trust peça criptografia dentro da implantação. O Trino documenta que ela torna mais lentas as consultas com muito shuffle (joins distribuídos, agregações, funções de janela) de 10% a mais de 100%. Em uma implantação compose é a configuração `engine.trino_internal_tls` (Configurações da implantação → Engine), com a rede do motor e o endereço fixado do coordenador ao lado, e vale a partir do próximo início. Com o chart Helm é o valor `trino.internalTls`, com `trino.coordinatorClusterIP`. Os motores da plataforma hospedada são coordenadores de nó único, sem tráfego entre nós, e a recusam. (REQ-2072)
+- **Dados em spool.** A execução tolerante a falhas criptografa os dados de exchange que grava em spool com uma chave gerada para cada consulta e descartada quando ela termina (`fault-tolerant-execution.exchange-encryption-enabled=true`, definido explicitamente). O spill legado em disco não é usado.
+- **Organizações em um só motor.** Os catálogos de cada organização são dela, nomeados com a organização, e as instruções de cada organização são executadas em seu próprio resource group.
+
+### Fontes em uma implantação compartilhada {: #sources-on-a-shared-deployment }
+
+Em uma implantação que abriga muitas organizações, as fontes de uma organização só podem alcançar endereços públicos: nunca a rede privada da plataforma, onde estão seu control plane, cache e armazenamento de objetos. A verificação se aplica quando uma fonte é salva, pela UI, pela API de administração ou por uma aplicação de configuração, e de novo a cada conexão e a cada redirecionamento HTTP. As fontes de um sandbox de demonstração são ainda presas ao endereço em que foram verificadas. A organização da própria implantação, cujas fontes o operador configura, não é restringida.
+
+## Criptografia em repouso e as chaves da própria organização {: #encryption-at-rest-and-the-organizations-own-keys }
+
+A criptografia sob uma chave da própria organização está disponível e fica desativada até que a organização a ative. Nada é criptografado sob uma chave da organização a menos que um administrador da organização crie uma.
+
+**A chave de criptografia da organização** (REQ-1574) envolve os segredos da organização, suas colunas criptografadas e o texto de suas consultas de auditoria. Um administrador da organização a cria em **Admin → Org Secrets → Org Key**, ou com `PUT /admin/org-encryption`: sem corpo o Provisa gera a chave, que nunca é exibida, e um corpo `key_b64` fornece 32 bytes seus. `GET /admin/org-encryption` informa só a sua impressão digital. Sem uma chave da organização, os dados da organização são envolvidos pela chave da implantação (`encryption.provider` em `provisa.yaml`). Uma implantação que não configura nenhum provedor de criptografia guarda colunas criptografadas e texto de consultas de auditoria sem criptografia; segredos nunca são guardados em texto claro (veja [Segredos](secrets.md#provisas-built-in-store)).
+
+**A pasta da organização** (REQ-1992) guarda seus arquivos enviados e aterrissados, os arquivos de spill do seu motor e seus arquivos temporários. Um administrador da organização ativa a criptografia dela em **Admin → Org Secrets → File folder encryption**, ou com `PUT /admin/org-files` (`{"encrypted": true, "key_reference": "${secret:NAME}"}`). `POST /admin/org-files/generate-key` responde uma só vez com uma nova chave de 256 bits, para ser guardada no cofre. A chave fica no cofre da própria organização (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault ou HashiCorp Vault): o Provisa guarda só a referência, e o gocryptfs mantém os arquivos da pasta criptografados em disco sob a chave. Isso exige FUSE, portanto um host Linux ou contêiner com `/dev/fuse`; no macOS a configuração é recusada.
+
+Em uma implantação auto-hospedada, que normalmente executa uma organização em motores próprios, ativar as duas criptografa os segredos, arquivos, arquivos de spill e arquivos temporários dessa organização sob as suas chaves:
+
+- O motor DuckDB que uma organização executa faz spill na pasta da organização.
+- As linhas que um row filter busca e o código enviado são preparados (staged) na pasta da organização.
+- A execução tolerante a falhas do Trino criptografa os dados de exchange em spool com uma chave gerada para cada consulta e descartada quando ela termina (`fault-tolerant-execution.exchange-encryption-enabled=true`). O Provisa não ativa o spill legado do Trino em disco.
+- Um motor de federação PostgreSQL grava seus arquivos temporários onde aquele servidor PostgreSQL os guarda, sob a criptografia de armazenamento do próprio servidor, não na pasta da organização.
+
+### Plataformas hospedadas compartilhadas e dedicadas {: #shared-and-dedicated-hosted-platforms }
+
+A plataforma hospedada compartilhada isola as organizações logicamente. Uma implantação atende a todas, e os dados de cada organização continuam seus por meio da governança, de seus próprios schemas, catálogos e resource groups no motor, de suas chaves, de chaves por consulta para dados de motor em spool e da recusa de suas fontes nos endereços privados da plataforma. É recomendada para experimentação e pequenas empresas. Uma plataforma hospedada dedicada é fisicamente separada: máquinas, rede e stores próprios, atendendo a um só cliente.
+
+### Python no navegador {: #python-in-the-browser }
+
+A área Data Science executa Python no navegador do visitante. Toda leitura que ela faz vai ao servidor como o usuário conectado, com o seu papel de atuação, organização e ambiente, e é governada exatamente como a mesma instrução de qualquer outro cliente.
+
 ## Modo de alta segurança {: #high-security-mode }
 
 `security.mode: high` em `provisa.yaml` afirma uma garantia: o backend do Provisa nunca manipula dados em texto puro. (REQ-693) Toda coluna que importa é cifrada na fonte, e só um cliente que tem a chave de decifração pode lê-la. Essa garantia tem consequências que uma implantação precisa planejar.

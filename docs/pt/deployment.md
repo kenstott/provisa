@@ -120,6 +120,8 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | Tempo | — | Armazenamento de rastreamento (com `--observability`) (REQ-330) |
 | Grafana | 3100 | Painéis (com `--observability`) (REQ-330) |
 
+Os stores, o motor de federação e esses serviços de telemetria publicam em `PROVISA_STORE_BIND_IP` (`127.0.0.1` se não definido), com senhas geradas para a implantação. Veja [Fortalecimento da implantação](security.md#deployment-hardening).
+
 ### Backend de telemetria (`otlp2sql`) {: #telemetry-backend-otlp2sql }
 
 A stack `--observability` acima (Collector → Tempo/Prometheus/Grafana) é um
@@ -287,7 +289,7 @@ Execute estes passos no nó primário primeiro. Secundários devem ser configura
 4. O assistente de configuração pergunta:
    - **Função** → selecione `primary`
    - **Orçamento de RAM**, **hostname**, **porta da API** → responda como para nó único
-5. Após a configuração terminar, anote o **IP privado** desta máquina. Os secundários precisam dele e das credenciais dos stores que o primário gerou: `~/.provisa/store-credentials.env` (`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`). Copie esse arquivo para cada secundário por um canal seguro
+5. Após a configuração terminar, anote o **IP privado** desta máquina. Os secundários precisam dele e das credenciais dos stores que o primário gerou: `~/.provisa/store-credentials.env` (`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`, `PROVISA_TRINO_SHARED_SECRET`). Copie esse arquivo para cada secundário por um canal seguro
 6. O assistente imprime um bloco upstream nginx — salve-o para sua configuração de balanceador de carga
 7. Verifique:
 
@@ -485,7 +487,7 @@ Todos os nós contribuem workers para um coordenador no primário (REQ-028). Um 
 
 ### Segredos {: #secrets }
 
-As senhas dos stores incluídos (PostgreSQL, Redis, MinIO, o admin do Grafana) são geradas pelo Terraform (`random_password`) e entregues a cada nó, que as mantém em seu arquivo de ambiente do systemd, modo 600. Elas ficam no estado do Terraform, então proteja o estado como protegeria as senhas. Sem o Terraform, o launcher de cada nó as gera em `~/.provisa/store-credentials.env`. O AppImage gera as demais credenciais durante o primeiro lançamento e as escreve em `~/.provisa/config.yaml` em cada nó (REQ-563). Para produção, recupere o token de administrador do nó primário após a implantação:
+As senhas dos stores incluídos (PostgreSQL, Redis, MinIO, o admin do Grafana) e o segredo compartilhado do cluster Trino são gerados pelo Terraform (`random_password`) e entregues a cada nó, que as mantém em seu arquivo de ambiente do systemd, modo 600. Elas ficam no estado do Terraform, então proteja o estado como protegeria as senhas. Sem o Terraform, o launcher de cada nó as gera em `~/.provisa/store-credentials.env`. O AppImage gera as demais credenciais durante o primeiro lançamento e as escreve em `~/.provisa/config.yaml` em cada nó (REQ-563). Para produção, recupere o token de administrador do nó primário após a implantação:
 
 ```bash
 ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
@@ -528,7 +530,7 @@ Nota: o AppImage do Provisa não consegue rodar dentro de um pod Kubernetes — 
 3. Decida antes de instalar:
    - **PostgreSQL** — no cluster (`postgresql.enabled: true`) ou gerenciado externo (`postgresql.host`)? Externo recomendado para produção
    - **Redis** — no cluster ou externo (`redis.host`)?
-   - **Credenciais dos stores** — crie o Secret que `credentials.existingSecret` nomeia, com as chaves `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key` e `grafana-admin-password`. O chart não define nenhuma senha própria e não renderiza sem ele
+   - **Credenciais dos stores** — crie o Secret que `credentials.existingSecret` nomeia, com as chaves `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key`, `grafana-admin-password` e `trino-shared-secret`. O chart não define nenhuma senha própria e não renderiza sem ele
    - **TLS** — ativo por padrão (`tls.enabled: true`): crie o Secret `kubernetes.io/tls` que `tls.secretName` nomeia, ou defina `tls.enabled: false`
    - **MinIO / S3** — MinIO no cluster ou S3 nativo? Para AWS, use S3 com uma função IAM
    - **Segredos** — passe via `--set` para avaliação; use External Secrets ou Vault Agent para produção
@@ -626,6 +628,8 @@ Nota: o AppImage do Provisa não consegue rodar dentro de um pod Kubernetes — 
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | Implantar motor de federação (REQ-028) |
 | `trino.workers` | `2` | Réplicas de worker do motor de federação (REQ-056) |
+| `trino.internalTls` | `false` | Criptografa o tráfego coordenador-worker; torna consultas com muito shuffle de 10% a mais de 100% mais lentas (REQ-2072) |
+| `trino.coordinatorClusterIP` | `""` | O endereço fixado do Service do coordenador, exigido com `trino.internalTls` (REQ-2072) |
 | `postgresql.enabled` | `true` | Implantar PostgreSQL no cluster (REQ-169) |
 | `postgresql.host` | `""` | Definir para usar PostgreSQL externo |
 | `minio.enabled` | `true` | Implantar MinIO no cluster (REQ-029) |

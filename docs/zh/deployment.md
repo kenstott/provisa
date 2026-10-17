@@ -120,6 +120,8 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | Tempo | — | 追踪存储（需 `--observability`）（REQ-330） |
 | Grafana | 3100 | 仪表板（需 `--observability`）（REQ-330） |
 
+存储、联邦查询引擎和这些遥测服务在 `PROVISA_STORE_BIND_IP`（未设置时为 `127.0.0.1`）上发布，密码为该部署生成。参见[部署加固](security.md#deployment-hardening)。
+
 ### 遥测后端（`otlp2sql`） {: #telemetry-backend-otlp2sql }
 
 上述 `--observability` 堆栈（Collector → Tempo/Prometheus/Grafana）是一条遥测路径。另一条是 `otlp2sql`（`provisa.observability.otlp2sql`）：一个 OTLP/HTTP 接收器，将追踪、指标和日志写入由 SQLAlchemy URL 指定的 SQL 数据库，并在摄取时提取 `provisa.*` span 属性，因此不需要单独的压缩任务运行。写入是分批进行的（`OTLP2SQL_BATCH_MAX_ROWS`，默认 1000；`OTLP2SQL_BATCH_MAX_SECS`，默认 2 秒）。
@@ -270,7 +272,7 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 4. 设置向导会询问：
    - **角色** → 选择 `primary`
    - **RAM 预算**、**主机名**、**API 端口** → 与单节点相同的方式回答
-5. 设置完成后，记下这台机器的**私有 IP**。从节点需要它，也需要主节点生成的存储凭据：`~/.provisa/store-credentials.env`（`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`）。通过安全渠道将该文件复制到每个从节点
+5. 设置完成后，记下这台机器的**私有 IP**。从节点需要它，也需要主节点生成的存储凭据：`~/.provisa/store-credentials.env`（`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`, `PROVISA_TRINO_SHARED_SECRET`）。通过安全渠道将该文件复制到每个从节点
 6. 向导会打印一个 nginx upstream 配置块——请保存它，用于负载均衡器配置
 7. 验证：
 
@@ -468,7 +470,7 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 
 ### 密钥 {: #secrets }
 
-捆绑存储（PostgreSQL、Redis、MinIO、Grafana 管理员）的密码由 Terraform（`random_password`）生成并交给每个节点，节点将其保存在 systemd 环境文件中，权限为 600。它们保存在 Terraform 状态中，因此应像保护密码本身一样保护该状态。不使用 Terraform 时，每个节点的启动器会将它们生成到 `~/.provisa/store-credentials.env`。其余凭据由 AppImage 在首次启动时生成，并写入每个节点上的 `~/.provisa/config.yaml`（REQ-563）。生产环境中，部署完成后从主节点获取管理员令牌：
+捆绑存储（PostgreSQL、Redis、MinIO、Grafana 管理员）的密码以及 Trino 集群的共享密钥由 Terraform（`random_password`）生成并交给每个节点，节点将其保存在 systemd 环境文件中，权限为 600。它们保存在 Terraform 状态中，因此应像保护密码本身一样保护该状态。不使用 Terraform 时，每个节点的启动器会将它们生成到 `~/.provisa/store-credentials.env`。其余凭据由 AppImage 在首次启动时生成，并写入每个节点上的 `~/.provisa/config.yaml`（REQ-563）。生产环境中，部署完成后从主节点获取管理员令牌：
 
 ```bash
 ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
@@ -511,7 +513,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 3. 安装前需决定：
    - **PostgreSQL** —— 集群内（`postgresql.enabled: true`）还是外部托管（`postgresql.host`）？生产环境建议使用外部
    - **Redis** —— 集群内还是外部（`redis.host`）？
-   - **存储凭据** —— 创建 `credentials.existingSecret` 所指定的 Secret，包含键 `pg-password`、`redis-password`、`minio-access-key`、`minio-secret-key` 和 `grafana-admin-password`。chart 自身不设置任何密码，缺少该 Secret 则无法渲染
+   - **存储凭据** —— 创建 `credentials.existingSecret` 所指定的 Secret，包含键 `pg-password`、`redis-password`、`minio-access-key`、`minio-secret-key`、`grafana-admin-password` 和 `trino-shared-secret`。chart 自身不设置任何密码，缺少该 Secret 则无法渲染
    - **TLS** —— 默认开启（`tls.enabled: true`）：创建 `tls.secretName` 所指定的 `kubernetes.io/tls` Secret，或设置 `tls.enabled: false`
    - **MinIO / S3** —— 集群内 MinIO 还是原生 S3？在 AWS 上，建议使用带 IAM 角色的 S3
    - **密钥** —— 评估阶段可通过 `--set` 传入；生产环境请使用 External Secrets 或 Vault Agent
@@ -609,6 +611,8 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | 部署联邦查询引擎（REQ-028） |
 | `trino.workers` | `2` | 联邦查询引擎 worker 副本数（REQ-056） |
+| `trino.internalTls` | `false` | 加密协调器与 worker 之间的流量；使 shuffle 密集型查询变慢 10% 到 100% 以上（REQ-2072） |
+| `trino.coordinatorClusterIP` | `""` | 协调器 Service 的固定地址，与 `trino.internalTls` 一起使用时必填（REQ-2072） |
 | `postgresql.enabled` | `true` | 部署集群内 PostgreSQL（REQ-169） |
 | `postgresql.host` | `""` | 设置以使用外部 PostgreSQL |
 | `minio.enabled` | `true` | 部署集群内 MinIO（REQ-029） |

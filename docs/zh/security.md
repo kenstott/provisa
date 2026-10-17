@@ -457,6 +457,59 @@ Provisa 终结 TLS 的每个监听器（HTTP API 和 UI、pgwire、Bolt、MCP、
 
 组织的密钥只由该组织读取。在 Provisa 自己的存储中，每个密钥都保存在其组织之下。在承载多个组织的部署的中央服务中（Vault、AWS Secrets Manager、GCP Secret Manager、Azure Key Vault），每次读取都在读取方组织的前缀内进行，会离开该前缀的引用会被拒绝。（REQ-1557） 前缀以及将已有密钥迁移到前缀下的步骤，参见[密钥](secrets.md#one-organizations-secrets-in-a-central-service)。
 
+## 部署加固 {: #deployment-hardening }
+
+### 存储凭据与存储的监听位置 {: #store-credentials-and-where-the-stores-listen }
+
+内置存储没有默认凭据。PostgreSQL 控制平面、Redis、MinIO、Grafana 管理员账户以及 Trino 集群的共享密钥，各自使用为该部署生成的值：
+
+- 启动器（`provisa start`、桌面版与服务器安装程序）生成一次并保存在 `~/.provisa/store-credentials.env`（权限 600）。环境中已有的值按原样使用；使用主节点存储的从节点，在没有主节点的值时拒绝启动。
+- Terraform 模块用 `random_password` 生成它们，并把相同的值交给每个节点。它们保存在 Terraform 状态中，因此应像保护密码本身一样保护该状态。
+- Helm chart 不设置任何值。它需要你创建一个 Secret，由 `credentials.existingSecret` 指定，包含 `pg-password`、`redis-password`、`minio-access-key`、`minio-secret-key`、`grafana-admin-password` 和 `trino-shared-secret`。
+
+Redis 要求提供密码，PostgreSQL 角色的密码在每次启动时重新设置，使此前创建的卷跟随部署当前的密码。存储、联邦查询引擎和遥测服务在同一个地址 `PROVISA_STORE_BIND_IP` 上发布端口：单独节点上为 `127.0.0.1`，从节点连接主节点时为主节点的私有地址。Grafana 管理员账户使用生成的密码；compose 堆栈允许匿名访问者查看仪表板，而 Helm chart 不接纳匿名访问者。
+
+### 传输加密 {: #transport-encryption }
+
+Provisa 终结的每个监听器都提供 TLS（参见 [TLS 版本](#tls-versions)）。服务器节点使用 `PROVISA_TLS_CERT`/`PROVISA_TLS_KEY` 中的证书，或生成自签名证书。Helm chart 默认提供 TLS（`tls.enabled: true`），证书来自 `tls.secretName` 指定的 `kubernetes.io/tls` Secret。
+
+### 嵌入式 PostgreSQL {: #the-embedded-postgresql }
+
+桌面和原生层以嵌入方式运行 PostgreSQL。在 macOS 和 Linux 上，它监听其数据目录内的 unix 套接字（权限 700），只有拥有该目录的账户才能访问。通过 TCP（Windows 上，监听 127.0.0.1）时，每个连接都必须提供为该数据目录生成并保存在其中的密码（`provisa.password`，权限 600）。它从不以 root 身份启动。
+
+### 联邦查询引擎（Trino） {: #the-federation-engine-trino }
+
+- **节点之间。** 协调器与其 worker 使用为部署生成的共享密钥（`internal-communication.shared-secret`）相互认证。加密它们之间的流量是运营者的可选项，默认关闭：关闭时，流量保持在部署的私有网络或集群之内。当合规或零信任要求部署内部也须加密时再开启。Trino 文档称它会使 shuffle 密集型查询（分布式连接、聚合、窗口函数）变慢 10% 到 100% 以上。在 compose 部署上，它是设置 `engine.trino_internal_tls`（Deployment settings → Engine），旁边是引擎网络和协调器的固定地址，并在下次启动时生效。在 Helm chart 下，它是值 `trino.internalTls`，另有 `trino.coordinatorClusterIP`。托管平台的引擎是单节点协调器，没有节点间流量，并拒绝该选项。（REQ-2072）
+- **假脱机数据。** 容错执行用为每个查询生成、查询结束即丢弃的密钥，加密它假脱机的交换数据（`fault-tolerant-execution.exchange-encryption-enabled=true`，显式设置）。不使用旧式的溢写到磁盘。
+- **同一引擎上的多个组织。** 每个组织的 catalog 属于它自己，以该组织命名，每个组织的语句在它自己的资源组中运行。
+
+### 共享部署上的数据源 {: #sources-on-a-shared-deployment }
+
+在承载多个组织的部署上，组织的数据源只能访问公网地址：绝不能访问平台的私有网络，那里有它的控制平面、缓存和对象存储。该检查在保存数据源时进行（无论通过 UI、管理 API 还是配置应用），并在每次连接和每次 HTTP 重定向时再次进行。演示沙箱的数据源还被限定在检查时的地址。部署自己的组织（其数据源由运营者配置）不受限制。
+
+## 静态加密与组织自有密钥 {: #encryption-at-rest-and-the-organizations-own-keys }
+
+使用组织自有密钥的加密是可用的，在组织开启之前处于关闭状态。除非组织管理员创建了密钥，否则不会有任何内容在组织的密钥下加密。
+
+**组织加密密钥**（REQ-1574）包裹组织的密钥、其加密列及其审计查询文本。组织管理员在 **Admin → Org Secrets → Org Key** 下创建它，或使用 `PUT /admin/org-encryption`：不带请求体时 Provisa 生成该密钥且从不显示，带 `key_b64` 请求体则提供你自己的 32 字节。`GET /admin/org-encryption` 只报告其指纹。没有组织密钥时，组织的数据用部署的密钥（`provisa.yaml` 中的 `encryption.provider`）包裹。未配置加密提供方的部署，会以未加密形式保存加密列和审计查询文本；密钥绝不以明文保存（参见[密钥](secrets.md#provisas-built-in-store)）。
+
+**组织的文件夹**（REQ-1992）存放其上传和落地的文件、其引擎的溢写文件及其临时文件。组织管理员在 **Admin → Org Secrets → File folder encryption** 下开启其加密，或使用 `PUT /admin/org-files`（`{"encrypted": true, "key_reference": "${secret:NAME}"}`）。`POST /admin/org-files/generate-key` 一次性返回新的 256 位密钥，供存入保管库。密钥保留在组织自己的保管库中（AWS Secrets Manager、GCP Secret Manager、Azure Key Vault 或 HashiCorp Vault）：Provisa 只保存引用，gocryptfs 用该密钥使文件夹中的文件在磁盘上保持加密。这需要 FUSE，即带有 `/dev/fuse` 的 Linux 主机或容器；在 macOS 上该设置会被拒绝。
+
+在通常以自有引擎运行一个组织的自托管部署上，同时开启两者即用该组织的密钥加密其密钥、文件、溢写文件和临时文件：
+
+- 组织运行的 DuckDB 引擎溢写到组织的文件夹。
+- 行过滤器获取的行和上传的代码暂存在组织的文件夹中。
+- Trino 的容错执行用为每个查询生成、查询结束即丢弃的密钥，加密假脱机的交换数据（`fault-tolerant-execution.exchange-encryption-enabled=true`）。Provisa 不开启 Trino 旧式的溢写到磁盘。
+- PostgreSQL 联邦引擎把临时文件写在该 PostgreSQL 服务器保存它们的位置，处于服务器自身的存储加密之下，而不是组织的文件夹中。
+
+### 共享与专用托管平台 {: #shared-and-dedicated-hosted-platforms }
+
+共享托管平台在逻辑上隔离各组织。一个部署服务所有组织，每个组织的数据通过治理、引擎上自己的 schema、catalog 和资源组、自己的密钥、假脱机引擎数据的每查询密钥，以及拒绝其数据源访问平台私有地址，而始终归其自己所有。建议用于试验和小型企业。专用托管平台在物理上隔离：拥有自己的机器、网络和存储，服务一个客户。
+
+### 浏览器中的 Python {: #python-in-the-browser }
+
+Data Science 区域在访问者的浏览器中运行 Python。它发出的每次读取都以已登录用户的身份，带着其当前角色、组织和环境发送到服务器，并与任何其他客户端的同一语句完全一样受到治理。
+
 ## 高安全模式 {: #high-security-mode }
 
 `provisa.yaml` 中的 `security.mode: high` 声明一项保证：Provisa 后端从不处理明文数据。（REQ-693） 每个有意义的列都在数据源处加密，只有持有解密密钥的客户端才能读取它。这项保证有一些部署必须为之规划的后果。

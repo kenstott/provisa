@@ -117,6 +117,8 @@ Verschlüsselung ist nie optional. Ist kein prozessweiter Verschlüsselungsschl�
 | `description` | Text | Wofür das Secret da ist — nie aus dem Wert abgeleitet |
 | `updated_by` | Text | Wer es zuletzt gesetzt hat |
 
+Eine Organisation, die einen eigenen Verschlüsselungsschlüssel angelegt hat, hat ihre Secrets unter diesem Schlüssel umhüllt; andernfalls sind sie unter dem Schlüssel des Deployments umhüllt. Siehe [Verschlüsselung ruhender Daten](security.md#encryption-at-rest-and-the-organizations-own-keys).
+
 Die Spalte `value` wird in keiner Listenabfrage selektiert. [tool-verified: `provisa/core/secrets_store.py:214-235`]
 
 ---
@@ -170,6 +172,12 @@ vendor key field → ${secret:OPENAI_KEY}
 ```
 
 Die Referenz wird verschlüsselt in `org_secrets` abgelegt. Zur Abfragezeit löst Provisa `${secret:OPENAI_KEY}` gegen den Org-Vault auf und übergibt den literalen Schlüssel an das Anbieter-SDK. Ein Rotieren des Vault-Eintrags wirkt sofort — ohne Konfigurationsänderung auf der Seite der Org-Einstellungen. [tool-verified: `provisa/core/org_secrets.py:64-79`]
+
+---
+
+## Die eigenen Store-Anmeldedaten des Deployments {: #the-deployments-own-store-credentials }
+
+Die Passwörter der Stores, die Provisa betreibt (PostgreSQL, Redis, MinIO, das Admin-Konto von Grafana und das gemeinsame Secret des Trino-Clusters), sind in keinem der beiden Vaults Secrets. Sie werden pro Deployment generiert und vom Deployment verwahrt: in `~/.provisa/store-credentials.env` (Modus 600), im Terraform-State oder im Kubernetes-Secret, das `credentials.existingSecret` des Helm-Charts benennt. Siehe [Deployment-Härtung](security.md#deployment-hardening).
 
 ---
 
