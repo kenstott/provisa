@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, Any
 
 from provisa.federation.backend import EngineBackend
 from provisa.federation.engine import UnreachableSource
-from provisa.federation.pgwire_replica import server_start_errors
+from provisa.federation.pgwire_replica import SourceStillStartingError, server_start_errors
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 
@@ -201,6 +201,10 @@ class NativeEngineBackend(EngineBackend):
         # The last failure of each table a driver error left unattached, so a failure that recurs
         # unchanged is logged once rather than at every retry.
         self._failed: dict[tuple[str, str, str, str], str] = {}
+        # Tables a driver error left unattached because their source's server was still starting
+        # (``SourceStillStartingError``): walked again as soon as a statement has waited for that
+        # server to serve (``attach_started``), not at the retry interval.
+        self._starting: set[tuple[str, str, str, str]] = set()
         # Tables whose attach was refused for a DECLARED reason in the walked registry state (a
         # source type this engine lands instead of attaching, REQ-841). Not retried until the
         # registry changes. A driver error is not remembered: an offline source is retried once the
@@ -224,6 +228,7 @@ class NativeEngineBackend(EngineBackend):
             self._detached.clear()
             self._refused.clear()
             self._failed.clear()
+            self._starting.clear()
             self._walked = None
             self._retry_at = None
             self._refused_in = None
@@ -239,7 +244,7 @@ class NativeEngineBackend(EngineBackend):
         if hasattr(runtime, "drop_source"):
             runtime.drop_source(source_id)
         with self._walk_lock:
-            for held in (self._attached, self._detached, self._refused):
+            for held in (self._attached, self._detached, self._refused, self._starting):
                 held.difference_update({k for k in held if k[1] == source_id})
             for key in [k for k in self._failed if k[1] == source_id]:
                 del self._failed[key]
@@ -396,6 +401,17 @@ class NativeEngineBackend(EngineBackend):
         async with org_vault(state, await registered_sources(state)):
             # to_thread, not run_in_executor: the walk's thread must see the binding.
             return await asyncio.to_thread(self._runtime_for, state)
+
+    async def attach_started(self, state: Any, source_ids: set[str]) -> None:
+        """The servers of ``source_ids`` now serve (a statement has waited for them,
+        ``_pipeline._await_source_servers``): a table the last walk left unattached because one
+        was still starting is attached now, before that statement runs. Left to the retry
+        interval, every statement until then named a relation nobody attached."""
+        with self._walk_lock:
+            if not any(key[1] in source_ids for key in self._starting):
+                return
+            self._walked = None
+        await self._attached_runtime(state)
 
     def _walk_registry(self, state: Any, config: Any) -> bool:
         """Attach every registered table not yet attached. True when the walk is complete for this
@@ -580,11 +596,14 @@ class NativeEngineBackend(EngineBackend):
                 self._attached_fields[key] = fields
                 self._detached.discard(key)
                 self._failed.pop(key, None)
+                self._starting.discard(key)
             except self._attach_errors as _ae:
                 if isinstance(_ae, _DECLARED_REFUSALS):
                     self._refused.add(key)
                 else:
                     complete = False
+                    if isinstance(_ae, SourceStillStartingError):
+                        self._starting.add(key)
                     if self._failed.get(key) == str(_ae):
                         return  # logged when it first failed so; still not queryable
                     self._failed[key] = str(_ae)

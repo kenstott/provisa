@@ -335,3 +335,62 @@ def test_a_failure_that_recurs_unchanged_is_logged_once(monkeypatch, caplog):
     assert backend.runtime.attempts.count("public.orders") == 6
     failures = [r for r in caplog.records if "orders" in r.getMessage()]
     assert len(failures) == 2, [r.getMessage() for r in failures]
+
+
+async def test_a_table_left_unattached_while_its_server_started_is_attached_once_it_serves(
+    monkeypatch,
+):
+    """A cold server answers the walk "still starting"; the statement then waits until it serves
+    (``_pipeline._await_source_servers``). The table is attached for that statement, not one
+    retry interval later: every query in between was handed to the engine naming a relation
+    nobody attached ("Catalog Error: Table with name complaints does not exist")."""
+    from provisa.federation import native_backend
+    from provisa.federation.pgwire_replica import SourceStillStartingError
+
+    clock = [1000.0]
+    monkeypatch.setattr(native_backend.time, "monotonic", lambda: clock[0])
+
+    class _ColdRuntime(_Runtime):
+        starting = True
+
+        def attach_source(self, source) -> None:
+            super().attach_source(source)
+            if self.starting:
+                raise SourceStillStartingError(source.id, preparing_catalog=True)
+
+    backend, state = _Backend(), _state()
+    backend.runtime = _ColdRuntime()
+    await backend._attached_runtime(state)
+    assert backend.runtime.attempts.count("public.orders") == 1
+    backend.runtime.starting = False  # the server now serves
+    await backend.attach_started(state, {"pg"})
+    assert backend.runtime.attempts.count("public.orders") == 2
+    await backend._attached_runtime(state)
+    await backend.attach_started(state, {"pg"})
+    assert backend.runtime.attempts.count("public.orders") == 2, (
+        "an attached table is not walked again"
+    )
+
+
+async def test_a_source_that_was_not_starting_waits_its_retry_interval(monkeypatch):
+    """Only a table left unattached because its server was still starting is walked again when
+    that server serves; an offline source's driver error keeps its retry interval."""
+    from provisa.federation import native_backend
+
+    clock = [1000.0]
+    monkeypatch.setattr(native_backend.time, "monotonic", lambda: clock[0])
+
+    class _DownRuntime(_Runtime):
+        def attach_source(self, source) -> None:
+            super().attach_source(source)
+            if source.table_name == "orders":
+                raise _DriverDown("connection refused")
+
+    class _DriverBackend(_Backend):
+        _attach_errors = (_DriverDown, *NativeEngineBackend._attach_errors)
+
+    backend, state = _DriverBackend(), _state()
+    backend.runtime = _DownRuntime()
+    await backend._attached_runtime(state)
+    await backend.attach_started(state, {"pg"})
+    assert backend.runtime.attempts.count("public.orders") == 1
