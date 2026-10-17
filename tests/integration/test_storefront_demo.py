@@ -121,7 +121,7 @@ def server(stack, tmp_path_factory):
     srv.start(timeout=600)
     try:
         await_tables_serving(
-            srv.base_url,
+            srv,
             _ADMIN,
             [
                 f'"shop"."{t}"'

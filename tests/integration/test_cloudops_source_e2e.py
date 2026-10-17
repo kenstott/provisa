@@ -130,7 +130,9 @@ async def _providers(endpoint, schema: str, table: str) -> dict[str, int]:
     """Rows of ``table`` per cloud, as the server answers them."""
     from provisa.federation import pgwire_replica as pr
 
-    conn = await pr._pg_connect(endpoint.pgwire_host, endpoint.pgwire_port)
+    conn = await pr._pg_connect(
+        endpoint.pgwire_host, endpoint.pgwire_port, pr.sign_in_password(_source())
+    )
     try:
         rows = await conn.fetch(f'SELECT "cloud_provider" FROM {schema}."{table}"')
     finally:
@@ -152,7 +154,9 @@ def endpoint(tmp_path_factory):
 async def test_the_inventory_tables_are_offered(endpoint):
     from provisa.federation import pgwire_replica as pr
 
-    conn = await pr._pg_connect(endpoint.pgwire_host, endpoint.pgwire_port)
+    conn = await pr._pg_connect(
+        endpoint.pgwire_host, endpoint.pgwire_port, pr.sign_in_password(_source())
+    )
     try:
         rows = await conn.fetch(
             f"SELECT table_name FROM information_schema.tables WHERE table_schema = '{_SCHEMA}'"  # noqa: S608 — a constant; see the module docstring

@@ -106,7 +106,9 @@ async def test_the_formulary_can_be_drawn_from_real_products(endpoint, capsys):
     from provisa.federation import pgwire_replica as pr
 
     schema = pr.remote_schema(_source(), _SCHEMA)
-    conn = await pr._pg_connect(endpoint.pgwire_host, endpoint.pgwire_port)
+    conn = await pr._pg_connect(
+        endpoint.pgwire_host, endpoint.pgwire_port, pr.sign_in_password(_source())
+    )
     try:
         shortages = await _fetch(
             conn,

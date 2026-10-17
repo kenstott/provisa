@@ -20,6 +20,7 @@ import httpx
 import pytest
 import respx
 
+import provisa.api.app  # noqa: F401 -- the API layer says whether the deployment holds many orgs, which reading a source's secrets asks
 from provisa.api_source import fill_cache
 from provisa.api_source.caller import ApiCallError
 from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint
@@ -262,7 +263,7 @@ def test_freshness_is_the_shared_freshness_modules_decision(store, monkeypatch):
     real = freshness.evaluate
 
     def spy(subject, policy, now):
-        seen.append((round(subject.refreshed_at), policy.ttl_seconds))
+        seen.append((subject.refreshed_at, policy.ttl_seconds))
         return real(subject, policy, now)
 
     monkeypatch.setattr(freshness, "evaluate", spy)
@@ -272,11 +273,17 @@ def test_freshness_is_the_shared_freshness_modules_decision(store, monkeypatch):
             "recent",
             "never",
         ]
+        before = time.time()
         fill_cache.store(conn, table, {"recent": [{"id": 1, "name": "a"}]}, ttl=300)
+        after = time.time()
     fill_cache._mem_fresh.clear()
     with state.federation_engine.isolated_sync() as conn:
         assert fill_cache.stale_hashes(conn, table, ["recent"], ttl=300) == []
-    assert seen and seen[-1] == (round(time.time()), 300)
+    # The decision is made over the time the group was fetched, which the store recorded.
+    assert seen
+    refreshed_at, ttl = seen[-1]
+    assert ttl == 300
+    assert before - 1 <= refreshed_at <= after + 1, (before, refreshed_at, after)
 
 
 @respx.mock

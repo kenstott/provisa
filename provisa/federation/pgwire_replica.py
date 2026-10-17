@@ -1689,6 +1689,16 @@ def stop_endpoint(source_id: str) -> None:
         replica.close()
 
 
+async def load_through_server(source: Any, table: Any) -> list[dict]:
+    """The rows of ``table`` read through ``source``'s own server: the one its attach and its
+    discovery use (:func:`_endpoint_replica`), so reading it starts no second server."""
+    return await _endpoint_replica(source).load(table)
+
+
+# REQ-2062: its SELECT applies a table's landing filter (ConnectorReplica.load).
+load_through_server.applies_landing_filter = True  # type: ignore[attr-defined]
+
+
 def make_pgwire_loader(
     *,
     resolver: BundleResolver | None = None,

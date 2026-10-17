@@ -155,7 +155,9 @@ async def write_pool(endpoint):
 async def test_an_sobject_is_read_through_the_pgwire_server(endpoint):
     from provisa.federation import pgwire_replica as pr
 
-    conn = await pr._pg_connect(endpoint.pgwire_host, endpoint.pgwire_port)
+    conn = await pr._pg_connect(
+        endpoint.pgwire_host, endpoint.pgwire_port, pr.sign_in_password(_source())
+    )
     try:
         rows = await conn.fetch(f'SELECT "Id", "Name" FROM {_schema()}."Account" LIMIT 5')
     finally:

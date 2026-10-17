@@ -19,6 +19,8 @@ from types import SimpleNamespace
 import duckdb
 import pytest
 
+import provisa.api.app  # noqa: F401 -- the API layer says whether the deployment holds many orgs, which reading a source's secrets asks
+
 from provisa.core.operator_floor import floor_setting
 from provisa.events import source_loader as sl
 from provisa.federation.replica_source import BlockingCursorSource, EngineTableSource

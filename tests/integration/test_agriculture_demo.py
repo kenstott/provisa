@@ -143,7 +143,7 @@ def server(stack, tmp_path_factory):
     try:
         # Each govdata table answers before the first read: each replica lands on its first read,
         # longer than one request lasts.
-        await_tables_serving(srv.base_url, _ROLE, _GOVDATA, timeout=1800)
+        await_tables_serving(srv, _ROLE, _GOVDATA, timeout=1800)
         yield srv
     finally:
         srv.stop_process()
