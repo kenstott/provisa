@@ -24,6 +24,7 @@ from provisa.compiler.naming import (
     apply_cql_label as _apply_cql_label,
     apply_cql_property as _apply_cql_property,
 )
+from provisa.compiler.sql_rewrite import semantic_table_name
 from provisa.compiler.sql_types import key_list
 from provisa.core import domain_policy
 from provisa.compiler.complexity import api_source_types
@@ -71,6 +72,9 @@ class NodeMapping:
     modeling_role: str | None = None  # REQ-1320: "fact" | "dimension" | None (star-schema role)
     # REQ-1991: the cypher prop names whose columns are declared objects: map properties
     map_properties: frozenset[str] = frozenset()
+    # The table's name as a statement queries it -- its _name_ (compiler.context); "" for a
+    # traversal-only node built without its table's compilation.
+    query_name: str = ""
 
     @property
     def sql_table_name(self) -> str:
@@ -507,6 +511,7 @@ def _build_node_mappings(
             catalog_name=table_meta.catalog_name,
             schema_name=table_meta.schema_name,
             table_name=logical_table,
+            query_name=semantic_table_name(table_meta),
             properties=props,
             physical_properties=phys_props,
             native_filter_columns=nf_cols,

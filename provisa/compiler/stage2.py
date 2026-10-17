@@ -21,6 +21,7 @@ import sqlglot.expressions as exp
 from provisa.compiler.cte_utils import physical_tables
 from provisa.compiler.rls import _qualify_filter
 from provisa.compiler.sql_gen import CompilationContext
+from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.security.masking import build_mask_expression
 
 
@@ -692,6 +693,8 @@ def _is_column_visible(
     """Return True if column passes visibility check."""
     tbl_ref = col.table
     col_name = col.name
+    if col_name in SERVED_WITH_EVERY_TABLE:
+        return True  # a virtual column, served with every table its reader reads
     if not tbl_ref:
         # Unqualified — check all tables
         for tid in alias_to_tid.values():
@@ -725,9 +728,8 @@ def _maybe_mask_column(
             col_sql = col.sql(dialect="postgres")
             mask_expr_str = build_mask_expression(rule, col_sql, dtype)
             return sqlglot.parse_one(mask_expr_str, read="postgres")
-        # Visibility check
-        vis = gov_ctx.visible_columns.get(tid)
-        if vis is not None and col_name not in vis:
+        # Visibility check: the one rule (_is_column_visible)
+        if not _is_column_visible(col, alias_to_tid, gov_ctx):
             return exp.Null()
         return col
     else:

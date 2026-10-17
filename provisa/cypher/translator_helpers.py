@@ -90,10 +90,10 @@ def _src_col_expr_for_rm(
             dialect="postgres",
         )
     if rm.join_source_column == "_name_" and src_nm is not None:
-        from provisa.compiler.naming import domain_to_sql_name as _d2s
-
-        _name_val = f"{_d2s(src_nm.domain_id or src_nm.schema_name or '')}.{src_nm.table_name}"
-        return exp.Literal.string(_name_val)
+        # The table's _name_: its name as queried (compiler.context), as SQL and GraphQL read it.
+        if not src_nm.query_name:
+            raise ValueError(f"node {src_nm.label!r} carries no name to join its _name_ on")
+        return exp.Literal.string(src_nm.query_name)
     return exp.Column(
         this=exp.Identifier(this=rm.join_source_column, quoted=True),
         table=exp.Identifier(this=src_table_ref),
