@@ -213,8 +213,10 @@ def test_the_launcher_seeds_the_tree_from_the_release_on_its_first_start(tmp_pat
     assert (tree / "etc" / "config.properties").read_text() == (
         _REPO / "trino" / "etc" / "config.properties"
     ).read_text()
-    for sub in ("catalog", "kafka", "kafka-client", "redis"):
+    for sub in ("kafka", "kafka-client", "redis"):
         assert (tree / sub).is_dir()
+    # The engine keeps its catalogs in memory: there is no catalog directory to seed.
+    assert not (tree / "catalog").exists()
     assert "trino-internal-tls" not in result.stdout
 
 

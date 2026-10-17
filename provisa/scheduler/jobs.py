@@ -876,6 +876,15 @@ async def watch_engine() -> None:
 
     await state.shared_federation_engine.watchdog()
 
+    # Outside provisioning, a coordinator that restarted under the app -- the watchdog's restart above
+    # or any other -- has no catalogs (catalog.store=memory). They are reissued here, within a minute,
+    # rather than by whichever query reaches it first.
+    from provisa.federation import k8s_provisioner
+    from provisa.federation.engine_wake import reissue_after_coordinator_restart
+
+    if not k8s_provisioner.provisioning_available():
+        await reissue_after_coordinator_restart(state)
+
 
 def unschedule_org(scheduler: "AsyncIOScheduler | None", org_id: str) -> int:  # REQ-2006
     """Remove every scheduled job of a deleted org -- each is named ``...:org_<id>``, an

@@ -1405,6 +1405,14 @@ async def _load_and_build(
     # dbapi connection and seeds the ops catalogs), so it depends on that same wake (REQ-1448).
     # REQ-1619: with no shard there is no address to dial, so the server settings are applied and
     # the terminal is left unconnected — restore_shared_terminal opens it on the first query.
+    if not provisioning_available():
+        # The start of the coordinator the shared terminal's catalogs are about to be issued to,
+        # sampled before they are (catalog.store=memory loses them when it restarts); the query
+        # path compares it, as it compares a shard's generation (REQ-1448).
+        from provisa.federation.engine_wake import coordinator_generation
+
+        state.federation_engine.bind_terminal()
+        state._default_runtime().engine_generation = await coordinator_generation(state)
     _apply_server_and_engine_config(
         raw_config, connect_engine=not engine_deferred, provision_engine=apply
     )
@@ -2266,7 +2274,7 @@ async def _build_org_runtime(
                 and default_rt is not None
                 and default_rt.engine_generation != _engine_generation(boot)
             ):
-                await restore_shared_terminal(state, boot)
+                await restore_shared_terminal(state, boot, _engine_generation(boot))
 
     rt.shard = effective_shard
     rt.engine_generation = _engine_generation(effective_shard)
@@ -2366,6 +2374,15 @@ async def _build_org_runtime(
                 rt.federation_engine.engine.pin_materialize_store(storage_url)
             rt.federation_engine.engine.temp_org = org_id
             rt.federation_engine.bind_terminal()
+        from provisa.federation.k8s_provisioner import provisioning_available as _provisions
+
+        if not _provisions():
+            # Outside provisioning the generation is the start of the coordinator this org's
+            # catalogs go out over (catalog.store=memory loses them when it restarts), sampled here,
+            # in the org's context and with its terminal bound, before any is issued.
+            from provisa.federation.engine_wake import coordinator_generation
+
+            rt.engine_generation = await coordinator_generation(state)
         # Tenant plane for THIS org: its own Database scoped to org_<id>. The platform/admin plane
         # (state.admin_db) is global and already up — never rebuilt here.
         config_path = config_path_str()

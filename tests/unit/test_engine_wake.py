@@ -290,14 +290,23 @@ def _state_with(runtime, rebuilt: list, default=None):
 
 
 async def test_non_provisioning_deployment_does_nothing(monkeypatch):
-    """A desktop install must not pay a status check per query for an engine that is always on."""
+    """A desktop install must not pay a status check per query for an engine that is always on:
+    nothing is woken, and a coordinator that has not restarted is left alone
+    (tests/unit/test_coordinator_restart_reissue.py covers one that has)."""
     monkeypatch.setattr(engine_wake.k8s, "provisioning_available", lambda: False)
 
     async def _boom(*a, **k):
         raise AssertionError("the provisioner must not be reached")
 
     monkeypatch.setattr(engine_wake.k8s, "shard_status", _boom)
-    await engine_wake.ensure_engine_awake(SimpleNamespace())
+    from provisa.api.org_runtime import OrgRuntime
+
+    default = OrgRuntime(org_id="default", engine_generation=0)
+    state = _state_with(default, rebuilt := [], default=default)
+    state.federation_engine.coordinator_start = lambda fresh=False: ""
+    with _as_deployment_org():
+        await engine_wake.ensure_engine_awake(state)
+    assert rebuilt == [] and state.federation_engine.provisions == 0
 
 
 async def test_external_engine_org_is_not_woken(fake_k8s):

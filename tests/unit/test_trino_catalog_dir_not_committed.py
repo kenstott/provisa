@@ -8,7 +8,12 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1339: /trino/catalog holds only Trino-written artifacts — never a committed catalog.
+"""REQ-1339: no catalog is committed, and none is written to disk.
+
+The engine keeps the catalogs Provisa creates in memory (catalog.store=memory), so Trino writes no
+``<name>.properties`` anywhere and nothing mounts a catalog directory. The checks on what is
+tracked under /trino/catalog stay, for a checkout that still holds files the earlier file store
+wrote.
 
 Every file in that directory is produced by Trino's FileCatalogStore when Provisa issues
 CREATE CATALOG under catalog.management=dynamic. Their connection-url is derived from the
@@ -56,10 +61,45 @@ def test_no_catalog_properties_file_is_tracked():
     )
 
 
-def test_the_catalog_directory_itself_still_ships():
-    # The bind mount target must exist before Trino starts, or the coordinator writes its dynamic
-    # catalogs into a directory that is not the mounted one.
-    assert _tracked(f"{_CATALOG_DIR}/.gitkeep") == [f"{_CATALOG_DIR}/.gitkeep"]
+# Every Trino config Provisa starts an engine on: the compose stack's, the rendered one, the
+# isolated and Kubernetes coordinators', the perf demo's, and the chart's (its own test).
+_ENGINE_CONFIGS = (
+    "trino/etc/config.properties",
+    "trino/etc/worker/config.properties",
+    "demo/named/perf/trino/config.properties",
+)
+
+
+def _engine_configs() -> dict[str, str]:
+    from provisa.api import trino_setup
+    from provisa.federation import isolated_provisioner, k8s_provisioner
+
+    configs = {path: (_REPO / path).read_text() for path in _ENGINE_CONFIGS}
+    configs["trino_setup coordinator"] = trino_setup._COORDINATOR_TEMPLATE
+    configs["trino_setup worker"] = trino_setup._WORKER_TEMPLATE
+    configs["isolated coordinator"] = isolated_provisioner._CONFIG_PROPERTIES
+    configs["k8s coordinator"] = k8s_provisioner._CONFIG_PROPERTIES
+    return configs
+
+
+def test_every_engine_keeps_its_catalogs_in_memory():
+    # A catalog carries its source's password; Trino's default store writes it to
+    # catalog.config-dir. In memory, none reaches the disk (Provisa reissues them on a restart).
+    for name, config in _engine_configs().items():
+        assert "catalog.management=dynamic" in config, name
+        assert "catalog.store=memory" in config, name
+
+
+def test_nothing_mounts_a_catalog_directory():
+    import re
+
+    import yaml
+
+    catalog_dir = re.compile(r"/etc/trino/catalog(/|:|$)")
+    for compose in sorted(_REPO.glob("docker-compose*.yml")):
+        for service, spec in (yaml.safe_load(compose.read_text()).get("services") or {}).items():
+            for volume in spec.get("volumes") or []:
+                assert not catalog_dir.search(str(volume)), (compose.name, service, volume)
 
 
 def test_gitignore_covers_the_whole_directory():

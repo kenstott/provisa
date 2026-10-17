@@ -189,6 +189,47 @@ def connect_terminal(state: Any) -> None:  # REQ-1900
     schema_service.init(state.federation_engine)
 
 
+# What each coordinator endpoint was last seen to be, and when: (monotonic time, identity).
+_coordinator_seen: dict[str, tuple[float, str]] = {}
+# How long a coordinator's identity is trusted before it is asked again. A restarted coordinator
+# takes far longer than this to come back, so a query never reaches one whose restart is unseen.
+COORDINATOR_RECHECK_SECONDS = 5.0
+
+
+def coordinator_start(conn_kwargs: dict, timeout: float, *, fresh: bool = False) -> str:
+    """Which start of the coordinator at ``conn_kwargs`` answers now: ``host:port/<coordinatorId>``.
+
+    The engine keeps its catalogs in memory (``catalog.store=memory``), so a coordinator that
+    restarts comes back with none of the catalogs Provisa created on it. Trino gives every start of
+    a coordinator a random id (``coordinatorId`` in the public ``/v1/info``, the suffix of its query
+    ids); a change of it is how a process learns that the catalogs it issued are gone. Asked at most
+    every :data:`COORDINATOR_RECHECK_SECONDS` per endpoint unless ``fresh``. A coordinator that is
+    restarting refuses the connection; that is waited out up to ``timeout``, as
+    :func:`provisa.core.catalog.wait_until_ready` waits it out, and raised past it."""
+    import time
+
+    import httpx
+
+    endpoint = f"{conn_kwargs['host']}:{conn_kwargs['port']}"
+    seen = _coordinator_seen.get(endpoint)
+    if not fresh and seen is not None and time.monotonic() - seen[0] < COORDINATOR_RECHECK_SECONDS:
+        return seen[1]
+    url = f"{conn_kwargs['http_scheme']}://{endpoint}/v1/info"
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            response = httpx.get(url, timeout=10)
+            break
+        except httpx.TransportError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(2)
+    response.raise_for_status()
+    identity = f"{endpoint}/{response.json()['coordinatorId']}"
+    _coordinator_seen[endpoint] = (time.monotonic(), identity)
+    return identity
+
+
 class BootStepFailed(RuntimeError):
     """A boot step did not complete: names the step, what it was waiting on, and the limit."""
 

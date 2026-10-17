@@ -98,18 +98,14 @@ COMPOSE_ARGS = [
 def _session_trino_etc() -> str:
     """The per-session host directory Trino's mutable config is mounted from.
 
-    ``trino/catalog``, ``trino/kafka`` and ``trino/redis`` are WRITTEN by the running app —
-    dynamic catalog ``.properties`` (FileCatalogStore) and the Kafka/Redis table-description
-    JSON. Sharing the repo copy across sessions let a previous session's catalog store outlive
-    it: with ``catalog.management=dynamic`` Trino loads ``<name>.properties`` at container start,
-    so the Kafka catalog existed BEFORE this session's app wrote its description file. The FILE
-    supplier had already cached a table with no columns, the connector fell back to topic ==
-    table name, and the resulting auto-created topic then blocked the real dotted topic
-    (``collides with existing topic``). One empty directory per session removes the carry-over;
-    ``PROVISA_TRINO_ETC_DIR`` points the app's writers at the same place the containers mount.
+    ``trino/kafka`` and ``trino/redis`` are WRITTEN by the running app: the Kafka/Redis
+    table-description JSON. One empty directory per session keeps a previous session's
+    description files from outliving it; ``PROVISA_TRINO_ETC_DIR`` points the app's writers at the
+    same place the containers mount. The catalogs themselves Trino keeps in memory
+    (``catalog.store=memory``), never in a file.
     """
     path = os.path.join(_REPO_ROOT, ".itest-trino", ITEST_PROJECT)
-    for sub in ("catalog", "kafka", "redis"):
+    for sub in ("kafka", "redis"):
         os.makedirs(os.path.join(path, sub), exist_ok=True)
     # The engine's own config, which Trino mounts from this tree and the in-process app renders
     # into it (trino_setup.write_trino_config): seeded from the repo's.

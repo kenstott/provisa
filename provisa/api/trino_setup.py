@@ -41,6 +41,7 @@ node-scheduler.include-coordinator=true
 http-server.http.port=8080
 discovery.uri={discovery_uri}
 catalog.management=dynamic
+catalog.store=memory
 internal-communication.shared-secret=${{ENV:PROVISA_TRINO_SHARED_SECRET}}
 query.max-memory={query_max_memory}
 query.max-memory-per-node={query_max_memory_per_node}
@@ -59,6 +60,7 @@ _WORKER_TEMPLATE = """coordinator=false
 http-server.http.port=8080
 discovery.uri={discovery_uri}
 catalog.management=dynamic
+catalog.store=memory
 internal-communication.shared-secret=${{ENV:PROVISA_TRINO_SHARED_SECRET}}
 query.max-memory-per-node={query_max_memory_per_node}
 {internal_tls_block}{fte_block}"""

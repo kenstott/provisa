@@ -33,9 +33,14 @@ any call site:
   follows it, minutes long, and a query can arrive in the middle of it. The wake CANCELS an in-flight stop rather than
   waiting it out, and then treats the shard as cold — the pod may already be gone.
 
-Everything here no-ops unless the deployment can actually provision (``provisioning_available``),
-which is true only on the hosted control plane. A desktop or self-hosted install runs an engine that
-is simply always on, and must not pay a status check per query to discover that.
+The wake and the reaper no-op unless the deployment can actually provision
+(``provisioning_available``), which is true only on the hosted control plane. A desktop or
+self-hosted install runs an engine that is simply always on, and must not pay a status check per
+query to discover that. Its coordinator can still restart under a running app, though, and every
+engine keeps its catalogs in memory (``catalog.store=memory``), so a restarted one has none: there a
+runtime's generation is the coordinator START it issued its catalogs to (Trino's ``coordinatorId``,
+asked at most every few seconds), and the query path reissues them the same way when it changes
+(:func:`reissue_after_coordinator_restart`).
 """
 
 from __future__ import annotations
@@ -132,6 +137,25 @@ def generation(shard: str) -> int:
     return k8s.coordinator_epoch(shard)
 
 
+# Outside provisioning: each distinct coordinator start this process has seen, numbered in the order
+# it was first seen. ``""`` is a native engine's single start.
+_start_generations: dict[str, int] = {"": 0}
+# The one lock under which a restarted coordinator's catalogs are reissued, so N concurrent queries
+# that see the restart reissue them once.
+_RESTART_LOCK = "coordinator-restart"
+
+
+async def coordinator_generation(state: Any, *, fresh: bool = False) -> int:
+    """Outside provisioning: the generation of the coordinator the CURRENT context's terminal
+    answers on -- the same number for as long as the same start of it answers.
+
+    Sampled before a runtime issues its catalogs, and compared on the query path: a different
+    number means the coordinator restarted and the catalogs are gone (``catalog.store=memory``)."""
+    engine = state.federation_engine
+    identity = await asyncio.to_thread(engine.coordinator_start, fresh=fresh)
+    return _start_generations.setdefault(identity, len(_start_generations))
+
+
 def note_activity(shard: str) -> None:
     """Record that the shard just served traffic, which is what the reaper measures idleness from."""
     _last_activity[shard] = time.monotonic()
@@ -221,7 +245,7 @@ async def attach_if_serving(state: Any) -> bool:
             "cannot be resolved"
         )
     if default.engine_generation != generation(shard):
-        await restore_shared_terminal(state, shard)
+        await restore_shared_terminal(state, shard, generation(shard))
     return True
 
 
@@ -309,7 +333,7 @@ async def converge_shard(shard: str, *, lane: str = "shared", size: Any = None) 
         note_activity(shard)
 
 
-async def restore_shared_terminal(state: Any, shard: str) -> None:
+async def restore_shared_terminal(state: Any, shard: str, stamp: int) -> None:
     """Re-establish on ``shard``'s new coordinator everything the old one held for the shared lane.
 
     Boot builds the shared terminal in three steps and a cold start voids all three: the dbapi
@@ -369,7 +393,7 @@ async def restore_shared_terminal(state: Any, shard: str) -> None:
     if landed:
         log.info("reconciled %d landed table(s) after shard %s restarted", len(landed), shard)
 
-    default.engine_generation = generation(shard)
+    default.engine_generation = stamp
 
 
 def prewarm_engine(state: Any, org_id: str) -> concurrent.futures.Future[None] | None:
@@ -594,7 +618,7 @@ async def readdress_lost_coordinator(exc: BaseException, state: Any) -> bool:
     return True
 
 
-async def _rebuild_env_runtime(state: Any, org_id: str, env: str, shard: str) -> None:
+async def _rebuild_env_runtime(state: Any, org_id: str, env: str, shard: str, current: int) -> None:
     """REQ-1448/REQ-1488: reissue an ENVIRONMENT's catalogs after its coordinator was replaced.
 
     An environment is a separate schema holding a separate copy of the model, so it registers
@@ -619,7 +643,7 @@ async def _rebuild_env_runtime(state: Any, org_id: str, env: str, shard: str) ->
             f"org {org_id!r} environment {env!r} is bound for this query but has no built "
             "runtime — the catalogs it queries cannot be reissued"
         )
-    if runtime.engine_generation == generation(shard):
+    if runtime.engine_generation == current:
         return
 
     from provisa.api.app import ensure_org_runtime
@@ -640,6 +664,7 @@ async def ensure_engine_awake(state: Any) -> None:
     dispatches at a coordinator that may not be there.
     """
     if not k8s.provisioning_available():
+        await reissue_after_coordinator_restart(state)
         return
 
     from provisa.api.org_runtime import runtime_key
@@ -664,8 +689,8 @@ async def ensure_engine_awake(state: Any) -> None:
                 "cannot be resolved"
             )
         if default.engine_generation != generation(shard):
-            await restore_shared_terminal(state, shard)
-        await _rebuild_env_runtime(state, state.org_id, env, shard)
+            await restore_shared_terminal(state, shard, generation(shard))
+        await _rebuild_env_runtime(state, state.org_id, env, shard, generation(shard))
         return
 
     runtime = state.org_registry.get(runtime_key(org_id, env))
@@ -704,13 +729,81 @@ async def ensure_engine_awake(state: Any) -> None:
     # which is the shard a pooled org is placed on, so that is the generation to compare.
     boot = boot_shard()
     if state.org_registry.get(state.org_id).engine_generation != generation(boot):
-        await restore_shared_terminal(state, boot)
+        await restore_shared_terminal(state, boot, generation(boot))
 
     state.org_registry.invalidate(runtime_key(org_id, env))
     log.info(
         "rebuilding org %s environment %s runtime: engine shard %s restarted", org_id, env, shard
     )
     await ensure_org_runtime(org_id, env)
+
+
+async def reissue_after_coordinator_restart(state: Any) -> None:
+    """Outside provisioning: the catalogs the active org's query needs are on the coordinator.
+
+    A coordinator that restarted while this process kept running comes back with no catalogs
+    (``catalog.store=memory``). Each process notices on its own next query, by the coordinator's
+    start (:func:`coordinator_generation`), and reissues what IT built: the shared terminal's
+    system and source catalogs (:func:`restore_shared_terminal`, when the query is served by it) and
+    the querying org's runtime, rebuilt as the provisioned path rebuilds it. Every reissue is
+    idempotent on the coordinator (``CREATE CATALOG IF NOT EXISTS``, the system catalogs under the
+    registration lock), so processes that notice the same restart do not undo each other.
+    """
+    # A process that has issued catalogs to no coordinator (a native engine's, or one that never
+    # connected one) has nothing a restart could take away.
+    if len(_start_generations) == 1:
+        return
+
+    from provisa.api.org_runtime import runtime_key
+    from provisa.core.request_context import active_env, require_current_org
+
+    org_id = require_current_org()
+    env = active_env()
+    runtime = state.org_registry.get(runtime_key(org_id, env))
+    if runtime is None:
+        raise RuntimeError(
+            f"org {org_id!r} environment {env!r} is bound for this query but has no built "
+            "runtime — the coordinator it queries cannot be checked"
+        )
+    default = state.org_registry.get(state.org_id)
+    if default is None:
+        raise RuntimeError(
+            "the default org has no built runtime, so the engine this query dispatches to "
+            "cannot be resolved"
+        )
+    # REQ-1244: an org with an engine of its own dispatches through its own terminal; every other
+    # runtime, the deployment org's environments included, through the shared one.
+    shared = runtime is default or runtime.federation_engine is None
+    current = await coordinator_generation(state)
+    if runtime.engine_generation == current and (
+        not shared or default.engine_generation == current
+    ):
+        return
+
+    async with _lock_for(_RESTART_LOCK):
+        # Asked again, under the lock: another query may have reissued everything meanwhile, and
+        # the stamp must be the start the catalogs below actually go to.
+        current = await coordinator_generation(state, fresh=True)
+        where = "{host}:{port}".format(**state.engine_conn_kwargs)
+        if shared and default.engine_generation != current:
+            await restore_shared_terminal(state, where, current)
+        # Re-read: a query that held the lock before this one may have rebuilt it.
+        runtime = state.org_registry.get(runtime_key(org_id, env))
+        if runtime is default or runtime.engine_generation == current:
+            return
+        if org_id == state.org_id:
+            await _rebuild_env_runtime(state, org_id, env, where, current)
+            return
+        from provisa.api.app import ensure_org_runtime
+
+        state.org_registry.invalidate(runtime_key(org_id, env))
+        log.info(
+            "rebuilding org %s environment %s runtime: engine coordinator %s restarted",
+            org_id,
+            env,
+            where,
+        )
+        await ensure_org_runtime(org_id, env)
 
 
 # ── Reaper ──────────────────────────────────────────────────────────────────────

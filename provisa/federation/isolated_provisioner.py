@@ -48,6 +48,7 @@ node-scheduler.include-coordinator=true
 http-server.http.port={port}
 discovery.uri=http://localhost:{port}
 catalog.management=dynamic
+catalog.store=memory
 query.max-memory={query_max_memory}
 query.max-memory-per-node={query_max_memory_per_node}
 """
