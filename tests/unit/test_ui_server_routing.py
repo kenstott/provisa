@@ -176,3 +176,38 @@ def test_the_access_log_does_not_record_the_code_a_sign_in_returns_with():
 def test_the_access_log_records_every_other_address_whole():
     line = _access_line("/admin/sources?code=kept&x=/source-sign-in.html")
     assert "/admin/sources?code=kept&x=/source-sign-in.html" in line
+
+
+def test_the_in_browser_python_is_served_from_provisa_notebook_when_installed(
+    tmp_path, monkeypatch
+):
+    """REQ-2071: /pyodide is the provisa-notebook package's Pyodide, and absent without it."""
+    import importlib
+    import sys
+    import types
+
+    from fastapi.testclient import TestClient
+
+    import provisa.ui_server as ui_server
+
+    assets = tmp_path / "pyodide"
+    assets.mkdir()
+    (assets / "pyodide-lock.json").write_text("{}")
+    (assets / "pyodide.asm.wasm").write_bytes(b"\0asm")
+    package = types.ModuleType("provisa_notebook")
+    package.pyodide_dir = lambda: assets  # type: ignore[attr-defined]
+    package.__spec__ = importlib.machinery.ModuleSpec("provisa_notebook", None)
+    monkeypatch.setitem(sys.modules, "provisa_notebook", package)
+    try:
+        served = importlib.reload(ui_server)
+        resp = TestClient(served.app).get("/pyodide/pyodide.asm.wasm")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/wasm"
+        assert any(getattr(r, "path", None) == "/pyodide" for r in served.app.routes)
+        monkeypatch.delitem(sys.modules, "provisa_notebook")
+        monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: None)
+        bare = importlib.reload(ui_server)
+        assert not any(getattr(r, "path", None) == "/pyodide" for r in bare.app.routes)
+    finally:
+        monkeypatch.undo()
+        importlib.reload(ui_server)

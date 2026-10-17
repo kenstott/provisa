@@ -6768,5 +6768,17 @@
   "fr/tour.json::tour.steps.reviewsBoughtWithByDegree.title": "We can graph it. But what does it mean?",
   "fr/tour.json::tour.steps.reviewsBoughtWithByDegree.description": "Grouped by degree, for the question it was drawn for: the groups surface the products most often bought together with the low-rated ones. The bigger the number, the more pairings run through it. Degree is counted within this result alone: the products rated under three stars and what five or more of their customers also bought with them. The red nodes are the products; the ratings and the pair nodes are grouped too.",
   "fr/tour.json::tour.steps.qualityProduct.title": "A data product to hand on",
-  "fr/tour.json::tour.steps.qualityProduct.description": "Gold, silver and the checks are one data product: the totals consumers read, the sales behind them, and the evidence each batch passed. Bronze stays out."
+  "fr/tour.json::tour.steps.qualityProduct.description": "Gold, silver and the checks are one data product: the totals consumers read, the sales behind them, and the evidence each batch passed. Bronze stays out.",
+  "fr/dataScience.json::dataScience.title": "Data Science",
+  "fr/dataScience.json::dataScience.tabPython": "Python",
+  "fr/dataScience.json::dataScience.editorLabel": "Python code",
+  "fr/dataScience.json::dataScience.run": "Run",
+  "fr/dataScience.json::dataScience.runHint": "Runs in your browser as your current role. Ctrl+Enter (⌘+Enter) runs.",
+  "fr/dataScience.json::dataScience.loading": "Loading Python…",
+  "fr/dataScience.json::dataScience.failed": "Python could not start.",
+  "fr/dataScience.json::dataScience.missingTitle": "Python is not installed on this server",
+  "fr/dataScience.json::dataScience.missingBody": "The Data Science area runs Python in your browser from files this server serves. Install them on the server, then reload this page:",
+  "fr/dataScience.json::dataScience.rowsShown": "Showing {{shown}} of {{total}} rows",
+  "fr/dataScience.json::dataScience.figure": "Figure {{n}}",
+  "fr/navBar.json::navBar.itemDataScience": "Data Science"
 }

@@ -71,6 +71,7 @@
     "sandboxExitDeleted": "חשבון ארגז החול שלכם יימחק בעת ההתנתקות. תמיד אפשר ליצור חשבון ארגז חול חדש באמצעות קישור ההזמנה.",
     "sandboxExitUpgrade": "מוכנים ליצור ארגון משלכם ולהתחיל עם תוכנית Starter? תקבלו 14 ימים בחינם.",
     "sandboxExitCreateOrg": "יצירת ארגון",
-    "sandboxExitLogOut": "רק להתנתק"
+    "sandboxExitLogOut": "רק להתנתק",
+    "itemDataScience": "מדע נתונים"
   }
 }

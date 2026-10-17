@@ -14,8 +14,10 @@ the connection's role unless the read names another; the package imports without
 import subprocess
 import sys
 
+import httpx
 import pandas as pd
 import pytest
+import respx
 
 import provisa_client
 from provisa_client import client as client_mod
@@ -55,7 +57,11 @@ def test_a_read_resolves_the_connection_and_goes_over_flight(desktop):
     assert kwargs == {"token": None, "role": "analyst", "org": None, "flight_port": 8815}
 
 
+@respx.mock
 def test_a_read_names_its_own_role_and_http_is_the_transport_when_asked(desktop):
+    respx.get("https://p.example/auth/me").mock(
+        return_value=httpx.Response(200, json={"user_id": "u1"})
+    )
     provisa_client.sign_in(transport="http", token="provisa_pat_x")
     df = provisa_client.query("{ orders { id } }", role="auditor")
     assert df["via"].tolist() == ["http"]
@@ -68,10 +74,41 @@ async def test_an_awaited_read_answers_the_same(desktop):
     assert df["text"].tolist() == ["SELECT 2"]
 
 
-def test_signing_in_is_refused_in_the_browser(monkeypatch):
-    monkeypatch.setattr(sys, "platform", "emscripten")
-    with pytest.raises(RuntimeError, match="page's signed-in user"):
-        provisa_client.sign_in(url="https://p.example")
+@respx.mock
+def test_sign_in_with_no_arguments_reads_the_environment_and_says_as_whom(desktop):
+    me = respx.get("https://p.example/auth/me").mock(
+        return_value=httpx.Response(
+            200,
+            json={"user_id": "u1", "display_name": "u1", "email": None, "active_org_id": "acme"},
+        )
+    )
+    who = provisa_client.sign_in()
+    assert me.calls.last.request.headers["x-provisa-role"] == "analyst"
+    assert repr(who) == (
+        "Signed in to https://p.example as u1, role analyst, org acme, environment prod"
+    )
+    provisa_client.query("SELECT 1")
+    assert reader._session is not None and _Client.made[0][0] == "https://p.example"
+
+
+@respx.mock
+def test_a_sign_in_the_server_refuses_raises(desktop):
+    respx.get("https://p.example/auth/me").mock(return_value=httpx.Response(401, text="no"))
+    with pytest.raises(PermissionError, match="HTTP 401"):
+        provisa_client.sign_in(token="provisa_pat_bad")
+
+
+def test_the_connection_is_resolved_once_for_every_read(desktop, monkeypatch):
+    calls = []
+    real = reader.__dict__.get("_session")
+    assert real is None
+    import provisa_client.credentials as credentials
+
+    original = credentials.resolve
+    monkeypatch.setattr(credentials, "resolve", lambda **kw: calls.append(kw) or original(**kw))
+    provisa_client.query("SELECT 1")
+    provisa_client.query("SELECT 2")
+    assert len(calls) == 1
 
 
 def test_the_package_imports_and_reads_without_arrow_flight():

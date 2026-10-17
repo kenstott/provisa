@@ -6769,5 +6769,17 @@
   "zh-HK/tour.json::tour.steps.reviewsBoughtWithByDegree.title": "We can graph it. But what does it mean?",
   "zh-HK/tour.json::tour.steps.reviewsBoughtWithByDegree.description": "Grouped by degree, for the question it was drawn for: the groups surface the products most often bought together with the low-rated ones. The bigger the number, the more pairings run through it. Degree is counted within this result alone: the products rated under three stars and what five or more of their customers also bought with them. The red nodes are the products; the ratings and the pair nodes are grouped too.",
   "zh-HK/tour.json::tour.steps.qualityProduct.title": "A data product to hand on",
-  "zh-HK/tour.json::tour.steps.qualityProduct.description": "Gold, silver and the checks are one data product: the totals consumers read, the sales behind them, and the evidence each batch passed. Bronze stays out."
+  "zh-HK/tour.json::tour.steps.qualityProduct.description": "Gold, silver and the checks are one data product: the totals consumers read, the sales behind them, and the evidence each batch passed. Bronze stays out.",
+  "zh-HK/dataScience.json::dataScience.title": "Data Science",
+  "zh-HK/dataScience.json::dataScience.tabPython": "Python",
+  "zh-HK/dataScience.json::dataScience.editorLabel": "Python code",
+  "zh-HK/dataScience.json::dataScience.run": "Run",
+  "zh-HK/dataScience.json::dataScience.runHint": "Runs in your browser as your current role. Ctrl+Enter (⌘+Enter) runs.",
+  "zh-HK/dataScience.json::dataScience.loading": "Loading Python…",
+  "zh-HK/dataScience.json::dataScience.failed": "Python could not start.",
+  "zh-HK/dataScience.json::dataScience.missingTitle": "Python is not installed on this server",
+  "zh-HK/dataScience.json::dataScience.missingBody": "The Data Science area runs Python in your browser from files this server serves. Install them on the server, then reload this page:",
+  "zh-HK/dataScience.json::dataScience.rowsShown": "Showing {{shown}} of {{total}} rows",
+  "zh-HK/dataScience.json::dataScience.figure": "Figure {{n}}",
+  "zh-HK/navBar.json::navBar.itemDataScience": "Data Science"
 }

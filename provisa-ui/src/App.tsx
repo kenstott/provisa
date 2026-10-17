@@ -106,6 +106,9 @@ const JsonApiPage = lazy(() =>
 const OpenApiPage = lazy(() =>
   import("./pages/OpenApiPage").then((m) => ({ default: m.OpenApiPage })),
 );
+const DataSciencePage = lazy(() =>
+  import("./pages/DataSciencePage").then((m) => ({ default: m.DataSciencePage })),
+);
 const McpExplorePage = lazy(() =>
   import("./pages/McpExplorePage").then((m) => ({ default: m.McpExplorePage })),
 );
@@ -460,6 +463,17 @@ function App() {
                                             fallback={<NotAuthorized />}
                                           >
                                             <OpenApiPage />
+                                          </CapabilityGate>
+                                        }
+                                      />
+                                      <Route
+                                        path="/science"
+                                        element={
+                                          <CapabilityGate
+                                            capability="query_development"
+                                            fallback={<NotAuthorized />}
+                                          >
+                                            <DataSciencePage />
                                           </CapabilityGate>
                                         }
                                       />

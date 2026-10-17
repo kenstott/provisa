@@ -13,6 +13,7 @@ import type { Plugin } from "vite";
 import { Agent as HttpAgent, request as httpRequest } from "http";
 import react from "@vitejs/plugin-react";
 import istanbul from "vite-plugin-istanbul";
+import fs from "fs";
 import path from "path";
 import { graphqlLoader } from "./src/plugins/graphql-loader";
 import _monacoEditorPluginModule from "vite-plugin-monaco-editor";
@@ -37,6 +38,42 @@ function serveOfflineDocsSite(): Plugin {
           if (p.endsWith("/")) req.url = `${p}index.html${q ? `?${q}` : ""}`;
         }
         next();
+      });
+    },
+  };
+}
+
+// REQ-2071: in development /pyodide is the provisa-notebook package's built assets in this
+// repository, as ui_server.py serves them from the installed package. Unbuilt, nothing is served
+// and the Data Science area says Python is not installed.
+const PYODIDE_ASSETS = path.resolve(__dirname, "../provisa-notebook/provisa_notebook/assets/pyodide");
+const PYODIDE_TYPES: Record<string, string> = {
+  ".wasm": "application/wasm",
+  ".js": "text/javascript",
+  ".mjs": "text/javascript",
+  ".json": "application/json",
+  ".zip": "application/zip",
+  ".whl": "application/zip",
+  ".tar": "application/x-tar",
+};
+function servePyodideAssets(): Plugin {
+  return {
+    name: "serve-pyodide-assets",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (!req.url?.startsWith("/pyodide/")) return next();
+        const rel = decodeURIComponent(req.url.split("?")[0].slice("/pyodide/".length));
+        const file = path.resolve(PYODIDE_ASSETS, rel);
+        if (!file.startsWith(PYODIDE_ASSETS + path.sep) || !fs.existsSync(file)) {
+          res.statusCode = 404;
+          res.end();
+          return;
+        }
+        res.setHeader(
+          "Content-Type",
+          PYODIDE_TYPES[path.extname(file)] ?? "application/octet-stream",
+        );
+        fs.createReadStream(file).pipe(res);
       });
     },
   };
@@ -138,6 +175,7 @@ export default defineConfig((config) => ({
     e2eWorkerBackendRouter(),
     react(),
     serveOfflineDocsSite(),
+    servePyodideAssets(),
     graphqlLoader(),
     monacoEditorPlugin({
       languageWorkers: ["editorWorkerService", "json"],

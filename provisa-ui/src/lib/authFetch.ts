@@ -72,6 +72,32 @@ export async function currentBearer(): Promise<string | null> {
   return storedToken();
 }
 
+/** Who the next same-origin request acts as: what the interceptor below attaches. */
+export interface RequestIdentity {
+  /** The bearer (currentBearer), or null when the browser holds none. */
+  bearer: string | null;
+  /** The active org, sent only with a bearer (REQ-1317). */
+  org: string | null;
+  /** The selected environment, or null for prod (REQ-1487). */
+  env: string | null;
+  /** The acting roles as X-Provisa-Role takes them, the "Role: All" set included. */
+  roles: string | null;
+}
+
+/** The identity the interceptor attaches to a same-origin request, read from its own sources. The
+ * Data Science area's Python reads with exactly this (REQ-2071), so it is the one place it is
+ * worked out. */
+export async function requestIdentity(): Promise<RequestIdentity> {
+  const bearer = await currentBearer();
+  const orgId = getStored("provisa_org", { global: true });
+  return {
+    bearer,
+    org: bearer && orgId ? orgId : null,
+    env: selectedEnv(),
+    roles: currentActingRoles(),
+  };
+}
+
 /** The error code the server answers a request naming an environment it does not have (REQ-1487). */
 const UNKNOWN_ENV_CODE = "env.unknown";
 
@@ -169,10 +195,7 @@ export function installAuthFetch(): void {
     const url = urlOf(input);
     const sameOrigin = isSameOrigin(url);
 
-    const token = await currentBearer();
-    const orgId = getStored("provisa_org", { global: true });
-    const env = selectedEnv();
-    const roles = currentActingRoles();
+    const { bearer: token, org: orgId, env, roles } = await requestIdentity();
     if (!sameOrigin || (!token && env === null && roles === null))
       return sampled(input, init, sameOrigin, url);
 
@@ -182,7 +205,7 @@ export function installAuthFetch(): void {
     );
     // Do not clobber an explicit header (e.g. Apollo's authLink already set one).
     if (token && !headers.has("authorization")) headers.set("Authorization", `Bearer ${token}`);
-    if (token && orgId && !headers.has(ORG_HEADER)) headers.set(ORG_HEADER, orgId);
+    if (orgId && !headers.has(ORG_HEADER)) headers.set(ORG_HEADER, orgId);
     if (env !== null && !headers.has(ENV_HEADER)) headers.set(ENV_HEADER, env);
     // The roles the request acts as: a page that names its own (an explorer) keeps them.
     if (roles !== null && !headers.has(ROLE_HEADER)) headers.set(ROLE_HEADER, roles);

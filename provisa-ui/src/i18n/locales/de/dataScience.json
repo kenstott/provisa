@@ -1,0 +1,15 @@
+{
+  "dataScience": {
+    "title": "Data Science",
+    "tabPython": "Python",
+    "editorLabel": "Python-Code",
+    "run": "Ausführen",
+    "runHint": "Läuft in Ihrem Browser mit Ihrer aktuellen Rolle. Strg+Eingabe (⌘+Eingabe) führt aus.",
+    "loading": "Python wird geladen…",
+    "failed": "Python konnte nicht gestartet werden.",
+    "missingTitle": "Python ist auf diesem Server nicht installiert",
+    "missingBody": "Der Bereich Data Science führt Python in Ihrem Browser mit Dateien aus, die dieser Server bereitstellt. Installieren Sie sie auf dem Server und laden Sie diese Seite neu:",
+    "rowsShown": "{{shown}} von {{total}} Zeilen angezeigt",
+    "figure": "Abbildung {{n}}"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "dataScience": {
+    "title": "Ciencia de datos",
+    "tabPython": "Python",
+    "editorLabel": "Código Python",
+    "run": "Ejecutar",
+    "runHint": "Se ejecuta en su navegador con su rol actual. Ctrl+Intro (⌘+Intro) ejecuta.",
+    "loading": "Cargando Python…",
+    "failed": "Python no pudo iniciarse.",
+    "missingTitle": "Python no está instalado en este servidor",
+    "missingBody": "El área de ciencia de datos ejecuta Python en su navegador a partir de archivos que sirve este servidor. Instálelos en el servidor y vuelva a cargar esta página:",
+    "rowsShown": "Mostrando {{shown}} de {{total}} filas",
+    "figure": "Figura {{n}}"
+  }
+}

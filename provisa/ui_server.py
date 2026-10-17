@@ -23,6 +23,7 @@ SPA deep-link refreshes (e.g. /admin/overview) resolve correctly.
 
 # Requirements: REQ-057, REQ-058, REQ-559
 
+import importlib.util
 import json
 import logging
 import os
@@ -251,6 +252,14 @@ if assets_dir.is_dir():
 monaco_dir = STATIC_DIR / "monacoeditorwork"
 if monaco_dir.is_dir():
     app.mount("/monacoeditorwork", StaticFiles(directory=monaco_dir), name="monacoeditorwork")
+
+# REQ-2071: the Data Science area's in-browser Python (Pyodide, its packages, the provisa-client
+# wheel) comes from the provisa-notebook package, which `provisa[notebook]` installs. A deployment
+# without it serves no /pyodide, and the area says the notebook assets are not installed.
+if importlib.util.find_spec("provisa_notebook") is not None:
+    from provisa_notebook import pyodide_dir
+
+    app.mount("/pyodide", StaticFiles(directory=pyodide_dir()), name="pyodide")
 
 
 def is_spa_navigation(method: str, headers: Mapping[str, str]) -> bool:  # REQ-1006
