@@ -74,10 +74,12 @@ async def fetch_rows(
 
 
 async def iter_row_batches(
-    conn: KafkaConnection, topic: str, columns: list[str]
+    conn: KafkaConnection, topic: str, columns: list[str], *, landed: str | None = None
 ) -> AsyncIterator[list[dict]]:  # REQ-1915
     """The messages currently on ``topic`` a consumer poll at a time, until the broker answers
-    an empty batch: only one poll's messages are held."""
+    an empty batch: only one poll's messages are held. ``landed``: the landing group
+    (``landed_offsets.landed_group``) a drain that lands the table records where it stopped
+    under, read whole -- what reads the topic onward starts there."""
     from aiokafka import AIOKafkaConsumer
 
     consumer = AIOKafkaConsumer(
@@ -101,5 +103,11 @@ async def iter_row_batches(
                         rows.append({c: row.get(c) for c in columns})
             if rows:
                 yield rows
+        if landed is not None:
+            from provisa.kafka import landed_offsets
+
+            await landed_offsets.record(
+                conn.bootstrap_servers, landed, await landed_offsets.drained_to(consumer)
+            )
     finally:
         await consumer.stop()

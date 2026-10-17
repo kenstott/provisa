@@ -96,6 +96,7 @@ def _ensure(raw: _Raw, **overrides) -> str:
         pk_columns=["id"],
         origin=_ORIGIN,
         bootstrap="broker:9092",
+        landed={},
     )
     args.update(overrides)
     return sk.ensure(_Store(raw), **args)
@@ -114,15 +115,28 @@ def _expected_name(**overrides) -> str:
     return sp.kafka_pipeline_name(_SCHEMA, _TABLE, sp.kafka_definition(**parts))
 
 
-def test_a_new_table_gets_a_pipeline_that_starts_at_the_latest_offsets():
+def test_a_new_table_gets_a_pipeline_that_starts_where_its_landing_stopped():
+    """REQ-1733: from the offsets the table's landing recorded, so nothing published since is
+    missed and nothing landed is loaded again."""
     raw = _Raw({})
-    name = _ensure(raw)
+    name = _ensure(raw, landed={1: 40, 0: 12})
 
     assert name == _expected_name() and name.startswith(sp.KAFKA_PIPELINE_PREFIX)
     ddl = [s for s in raw.statements if not s.startswith("SELECT")]
     assert ddl[0].startswith(f"CREATE OR REPLACE PROCEDURE `{_SCHEMA}`.`provisa_kq_")
     assert ddl[1].startswith(f"CREATE PIPELINE `{_SCHEMA}`.`{name}` AS LOAD DATA KAFKA")
-    assert ddl[2:] == [sp.offsets_latest(_SCHEMA, name), sp.start(_SCHEMA, name)]
+    assert ddl[2:] == [
+        f'ALTER PIPELINE `{_SCHEMA}`.`{name}` SET OFFSETS \'{{"0":12,"1":40}}\'',
+        sp.start(_SCHEMA, name),
+    ]
+
+
+def test_with_no_landing_recorded_a_new_pipeline_starts_at_the_earliest_offsets():
+    """Nothing says where a landing stopped: nothing on the topic is passed over."""
+    raw = _Raw({})
+    name = _ensure(raw)
+    ddl = [s for s in raw.statements if not s.startswith("SELECT")]
+    assert ddl[2] == f"ALTER PIPELINE `{_SCHEMA}`.`{name}` SET OFFSETS EARLIEST"
 
 
 def test_an_unchanged_table_keeps_its_running_pipeline_and_its_offsets():
@@ -255,6 +269,13 @@ def test_a_kafka_table_on_a_singlestore_store_is_wired_to_a_pipeline_not_a_liste
         return sp.kafka_pipeline_name(k["schema"], k["table"], definition)
 
     monkeypatch.setattr(sk, "ensure", _ensure_fake)
+    landings: list[tuple] = []
+
+    async def _recorded(bootstrap, landed, topic):
+        landings.append((bootstrap, landed, topic))
+        return {0: 7}
+
+    monkeypatch.setattr("provisa.kafka.landed_offsets.recorded", _recorded)
     state = SimpleNamespace(kafka_pipeline_store=object())
     log = SimpleNamespace(info=lambda *a, **k: None, exception=lambda *a, **k: None)
     for _ in range(2):
@@ -272,6 +293,10 @@ def test_a_kafka_table_on_a_singlestore_store_is_wired_to_a_pipeline_not_a_liste
         )
     assert len(ensured) == 1, "an unchanged, recorded pipeline is not re-ensured"
     assert ensured[0]["bootstrap"] == "broker:9092" and ensured[0]["origin"].format == "json"
+    # REQ-1733: the new pipeline starts where the table's landing stopped on its topic.
+    assert ensured[0]["landed"] == {0: 7}
+    assert landings == [("broker:9092", landings[0][1], "o")]
+    assert landings[0][1].startswith("provisa-landed-") and landings[0][1].endswith("-kafka_src")
 
 
 def test_settling_forgets_unwired_tables_and_sweeps_this_org_schema(monkeypatch):

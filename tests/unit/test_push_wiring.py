@@ -66,6 +66,8 @@ def test_kafka_builds_provider_with_topic_as_watch_target():
             "group_id": "provisa-default-src",
             "registry": None,  # the source names no schema registry
             "field_mapping": {},
+            # REQ-1733: its first start reads from where the table's landing stopped.
+            "landed": "provisa-landed-default-src",
         },
     )
 

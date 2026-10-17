@@ -1521,6 +1521,7 @@ def make_kafka_loader() -> AdapterLoader:
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
         from provisa.federation.replica_source import CursorSource
+        from provisa.kafka import landed_offsets
         from provisa.kafka.fetch import iter_row_batches
 
         conn = KafkaConnection.build(
@@ -1528,8 +1529,12 @@ def make_kafka_loader() -> AdapterLoader:
             getattr(source, "port", None),
         )
         names = [name for name, _ in columns]
+        # REQ-1733: a build lands the table; it records where it stopped, and the table's
+        # listener (or pipeline) starts there. A read that lands nothing records nothing.
+        landed = landed_offsets.landed_group(source.id)
         return CursorSource(
-            lambda _batch_rows: iter_row_batches(conn, table.table_name, names), columns
+            lambda _batch_rows: iter_row_batches(conn, table.table_name, names, landed=landed),
+            columns,
         )
 
     _load.replica_source = _replica_source  # type: ignore[attr-defined]

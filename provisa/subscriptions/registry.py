@@ -106,6 +106,7 @@ def get_provider(
             # None: the topic is JSON; an Avro message is then refused by name (REQ-1951).
             registry=config.get("registry"),
             field_mapping=config.get("field_mapping"),
+            landed=config.get("landed"),
         )
 
     if source_type in _INGEST_TYPES:
