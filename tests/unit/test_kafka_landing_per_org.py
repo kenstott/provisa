@@ -191,7 +191,7 @@ async def test_a_change_without_the_table_s_key_is_not_landed(caplog):
     class _Engine:
         async def apply_cdc_events(self, *, events, **kwargs):
             landed.extend(e.row for e in events)
-            return {"upsert": len(events), "delete": 0}
+            return {"upsert": len(events), "delete": 0, "unchanged": []}
 
     def _event(operation, row, offset):
         return ChangeEvent(

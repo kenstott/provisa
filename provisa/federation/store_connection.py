@@ -232,7 +232,8 @@ def apply_cdc_duckdb_native(
     columns: list[tuple[str, str]],
     pk_columns: list[str],
     events: list,
-) -> dict[str, int]:
+    report_unchanged: bool = False,
+) -> dict[str, Any]:
     """Apply CDC change events (insert/update -> upsert by PK, delete -> tombstone) to the DuckDB
     store's landing table through the engine's own connection (REQ-989/REQ-1733) — the duckdb-native
     mirror of ``materialize_exec.apply_cdc`` for a store the engine itself holds the file handle for.
@@ -242,7 +243,12 @@ def apply_cdc_duckdb_native(
     outcome (a later upsert's row, or absent after a later delete), so the batch is applied as that
     net effect in two set statements: DELETE every touched key, then bulk-INSERT each key whose last
     event is an upsert. Confirmed live: per-event statements took over ten minutes to land
-    large_federated_join's ~3M keyed rows while holding the store lock."""
+    large_federated_join's ~3M keyed rows while holding the store lock.
+
+    ``report_unchanged`` (REQ-1733): a key whose last event is an upsert of the row the store
+    already holds, value for value as the store types it, changed nothing: it is not counted, and
+    the positions of its upserts in ``events`` are listed under ``unchanged``. The rows are
+    compared in the store, set-wise, through a staging table of the target's own types."""
     if not pk_columns:
         raise ValueError(
             f"CDC land into {_qualified(catalog, schema, table)} requires primary key columns "
@@ -254,16 +260,32 @@ def apply_cdc_duckdb_native(
     con.execute(_create_ddl(catalog, schema, table, columns))  # create-if-absent (first land)
     qualified = _qualified(catalog, schema, table)
     colnames = [name for name, _ in columns]
-    counts = {"upsert": 0, "delete": 0}
+    counts: dict[str, Any] = {"upsert": 0, "delete": 0, "unchanged": []}
     last: dict[tuple[Any, ...], Any] = {}
-    for ev in events:
-        last[tuple(ev.row.get(c) for c in pk_columns)] = ev
+    positions: dict[tuple[Any, ...], list[int]] = {}
+    for position, ev in enumerate(events):
+        key = tuple(ev.row.get(c) for c in pk_columns)
+        last[key] = ev
+        positions.setdefault(key, []).append(position)
         counts["delete" if ev.operation.lower() == "delete" else "upsert"] += 1
     if not last:
         return counts
     import uuid
 
     import pandas as pd
+
+    if report_unchanged:
+        held = _unchanged_keys(
+            con,
+            qualified,
+            colnames,
+            pk_columns,
+            [ev.row for ev in last.values() if ev.operation.lower() != "delete"],
+        )
+        for key in held:
+            if all(events[p].operation.lower() != "delete" for p in positions[key]):
+                counts["unchanged"].extend(positions[key])
+                counts["upsert"] -= len(positions[key])
 
     keys_view = f"_cdc_keys_{uuid.uuid4().hex}"
     con.register(keys_view, pd.DataFrame(list(last), columns=pd.Index(pk_columns)))
@@ -277,6 +299,31 @@ def apply_cdc_duckdb_native(
     upserts = [ev.row for ev in last.values() if ev.operation.lower() != "delete"]
     _bulk_insert_rows(con, qualified, colnames, upserts)
     return counts
+
+
+def _unchanged_keys(
+    con: Any, qualified: str, colnames: list[str], pk_columns: list[str], rows: list[dict]
+) -> set[tuple[Any, ...]]:
+    """The keys of ``rows`` whose row ``qualified`` already holds, value for value: ``rows`` are
+    staged in a table of ``qualified``'s own column types (cast as the land casts them), then
+    compared with what it holds, NULL equal to NULL."""
+    import uuid
+
+    if not rows:
+        return set()
+    staged = f'"_cdc_staged_{uuid.uuid4().hex}"'
+    con.execute(f"CREATE TEMP TABLE {staged} AS SELECT * FROM {qualified} LIMIT 0")
+    try:
+        _bulk_insert_rows(con, staged, colnames, rows)
+        same = " AND ".join(f's."{c}" IS NOT DISTINCT FROM h."{c}"' for c in colnames)
+        joined = " AND ".join(f's."{c}" = h."{c}"' for c in pk_columns)
+        keys = ", ".join(f's."{c}"' for c in pk_columns)
+        found = con.execute(
+            f"SELECT {keys} FROM {staged} s JOIN {qualified} h ON {joined} WHERE {same}"
+        ).fetchall()
+    finally:
+        con.execute(f"DROP TABLE IF EXISTS {staged}")
+    return {tuple(r) for r in found}
 
 
 def delete_where_duckdb_native(

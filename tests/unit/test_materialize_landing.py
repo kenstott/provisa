@@ -143,7 +143,7 @@ async def test_cdc_upsert_and_delete_by_pk():
         _Event("delete", {"id": 1, "status": None}),
     ]
     counts = await apply_cdc(conn, table, ["id"], events)
-    assert counts == {"upsert": 2, "delete": 1}
+    assert counts == {"upsert": 2, "delete": 1, "unchanged": []}
     # insert/update → dialect-agnostic upsert on the PK
     assert len(conn.upserts) == 2
     assert conn.upserts[0][2] == ["id"]

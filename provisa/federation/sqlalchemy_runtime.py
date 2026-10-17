@@ -393,7 +393,7 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
         columns: list[tuple[str, str]],
         pk_columns: list[str],
         events: list,
-    ) -> dict[str, int]:
+    ) -> dict[str, Any]:
         """Apply CDC change events (insert/update -> upsert by PK, delete -> tombstone) to a table
         already landed in this engine's own store (REQ-1733) — the sync equivalent of
         materialize_exec.py's ``apply_cdc``, for the same reason ``land_table`` above reimplements
@@ -410,9 +410,11 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
         )
         temporal_cols = temporal_columns(columns)
 
-        def _run() -> dict[str, int]:
+        def _run() -> dict[str, Any]:
             with self._sa.begin() as conn:
-                return _apply_events(conn, schema, tbl, pk_columns, events, temporal_cols)
+                return _apply_events(
+                    conn, schema, tbl, pk_columns, events, temporal_cols, report_unchanged=True
+                )
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _run)
@@ -472,34 +474,45 @@ def _apply_events(
     events: list,
     temporal_cols: Any,
     delete_where: list[dict[str, Any]] | None = None,
-) -> dict[str, int]:
+    *,
+    report_unchanged: bool = False,
+) -> dict[str, Any]:
     """Apply change events to one table on ``conn``, inside the caller's transaction:
-    insert/update -> upsert by key, delete -> the row removed."""
+    insert/update -> upsert by key, delete -> the row removed. ``report_unchanged``
+    (REQ-1733): an upsert of the row the table already held, value for value as it types it, is
+    not counted; its position is listed under ``unchanged``."""
     from provisa.federation.materialize_exec import (
         _coerce_json_row,
         _json_columns,
         coerce_temporal_row,
     )
 
-    counts = {"upsert": 0, "delete": 0}
+    from sqlalchemy import select
+
+    counts: dict[str, Any] = {"upsert": 0, "delete": 0, "unchanged": []}
     json_cols = _json_columns(tbl)
+
+    def _held(row: dict) -> Any:
+        found = conn.execute(select(tbl).where(_and_eq(tbl, pk_columns, row))).first()
+        return tuple(found) if found is not None else None
+
     if schema:
         _ensure_schema(conn, schema)
     _ensure_table(conn, tbl)
     for match in delete_where or ():  # rows named by part of their key, before the events
         conn.execute(tbl.delete().where(_and_eq(tbl, list(match), match)))
-    for ev in events:
+    for position, ev in enumerate(events):
         if ev.operation.lower() == "delete":
             conn.execute(tbl.delete().where(_and_eq(tbl, pk_columns, ev.row)))
             counts["delete"] += 1
         else:
-            _sync_upsert(
-                conn,
-                tbl,
-                coerce_temporal_row(_coerce_json_row(ev.row, json_cols), temporal_cols),
-                index_elements=pk_columns,
-            )
-            counts["upsert"] += 1
+            row = coerce_temporal_row(_coerce_json_row(ev.row, json_cols), temporal_cols)
+            held = _held(row) if report_unchanged else None
+            _sync_upsert(conn, tbl, row, index_elements=pk_columns)
+            if held is not None and held == _held(row):
+                counts["unchanged"].append(position)
+            else:
+                counts["upsert"] += 1
     return counts
 
 

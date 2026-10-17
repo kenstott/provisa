@@ -769,7 +769,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         columns: list[tuple[str, str]],
         pk_columns: list[str],
         events: list,
-    ) -> dict[str, int]:
+    ) -> dict[str, Any]:
         """Apply CDC change events (insert/update -> upsert by PK, delete -> tombstone) to a table
         already landed in this engine's own store (REQ-1733) — the raw-psycopg2 mirror of
         ``SqlAlchemyFederationRuntime.apply_cdc_events``.
@@ -778,10 +778,12 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         if not pk_columns:
             raise ValueError(f"CDC land into {schema}.{table} requires primary key columns")
 
-        def _run() -> dict[str, int]:
+        def _run() -> dict[str, Any]:
             cur = self._con.cursor()
             try:
-                return self._apply_events(cur, schema, table, columns, pk_columns, events)
+                return self._apply_events(
+                    cur, schema, table, columns, pk_columns, events, report_unchanged=True
+                )
             finally:
                 cur.close()
 
@@ -796,27 +798,43 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         pk_columns: list[str],
         events: list,
         delete_where: list[dict[str, Any]] | None = None,
-    ) -> dict[str, int]:
+        *,
+        report_unchanged: bool = False,
+    ) -> dict[str, Any]:
         """Apply change events to one table on ``cur``: insert/update -> upsert by key,
         delete -> the row removed. ``delete_where`` first removes the rows named by part of
-        their key."""
+        their key. ``report_unchanged`` (REQ-1733): an upsert of the row the table already held,
+        value for value as it types it, is not counted; its position is listed under
+        ``unchanged``."""
         names = [name for name, _ in columns]
         self._ensure_table(cur, schema, table, columns, pk_columns)
-        counts = {"upsert": 0, "delete": 0}
+        counts: dict[str, Any] = {"upsert": 0, "delete": 0, "unchanged": []}
+        key_where = " AND ".join(f'"{c}" = %s' for c in pk_columns)
+
+        def _held(row: dict) -> Any:
+            cur.execute(
+                f'SELECT * FROM "{schema}"."{table}" WHERE {key_where}',
+                tuple(row.get(c) for c in pk_columns),
+            )
+            return cur.fetchone()
+
         for match in delete_where or ():
             where = " AND ".join(f'"{c}" = %s' for c in match)
             cur.execute(f'DELETE FROM "{schema}"."{table}" WHERE {where}', tuple(match.values()))
-        for ev in events:
+        for position, ev in enumerate(events):
             if ev.operation.lower() == "delete":
-                where = " AND ".join(f'"{c}" = %s' for c in pk_columns)
                 cur.execute(
-                    f'DELETE FROM "{schema}"."{table}" WHERE {where}',
+                    f'DELETE FROM "{schema}"."{table}" WHERE {key_where}',
                     tuple(ev.row.get(c) for c in pk_columns),
                 )
                 counts["delete"] += 1
             else:
+                held = _held(ev.row) if report_unchanged else None
                 self._upsert_rows(cur, schema, table, names, pk_columns, [ev.row])
-                counts["upsert"] += 1
+                if held is not None and held == _held(ev.row):
+                    counts["unchanged"].append(position)
+                else:
+                    counts["upsert"] += 1
         return counts
 
     async def apply_change_group(self, group: list[Any]) -> None:

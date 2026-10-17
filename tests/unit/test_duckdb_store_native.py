@@ -174,7 +174,7 @@ def test_apply_cdc_leaves_each_key_at_its_last_event_in_stream_order(store_con):
         ],
     )
     assert _rows(store_con) == [(1, "a2"), (2, "b2")]
-    assert counts == {"upsert": 4, "delete": 3}
+    assert counts == {"upsert": 4, "delete": 3, "unchanged": []}
 
 
 def test_apply_cdc_lands_a_large_batch_set_based(store_con):

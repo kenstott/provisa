@@ -321,7 +321,9 @@ class _SyncedStore:
         columns: list[tuple[str, str]],
         pk_columns: list[str],
         events: list,
-    ) -> dict[str, int]:
+        *,
+        report_unchanged: bool = False,
+    ) -> dict[str, Any]:
         from provisa.federation.store_connection import apply_cdc_duckdb_native
 
         return self._run(
@@ -333,6 +335,7 @@ class _SyncedStore:
                 columns=columns,
                 pk_columns=pk_columns,
                 events=events,
+                report_unchanged=report_unchanged,
             ),
         )
 

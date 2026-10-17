@@ -657,7 +657,7 @@ class EngineRuntime:  # REQ-825, REQ-840
         events: list,
         row_materialize: bool = False,
         node: str | None = None,
-    ) -> dict[str, int]:
+    ) -> dict[str, Any]:
         """Apply CDC change events (insert/update -> upsert by PK, delete -> tombstone) to a landed
         table (REQ-1733) — delegated to the backend so an embedded single-connection store (DuckDB,
         REQ-989) writes through the engine's own connection instead of a second connection onto the
