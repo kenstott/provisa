@@ -462,6 +462,12 @@ A single-tenant deployment has no org to name. No surface reads a hostname, a da
 
 An organization's secrets are read only by that organization. In Provisa's own store each secret is held under its organization. In a central service (Vault, AWS Secrets Manager, GCP Secret Manager, Azure Key Vault) on a deployment of many organizations, every read is made inside the reading organization's prefix, and a reference that would leave it is refused. (REQ-1557) The prefixes and the steps to move existing secrets under them are in [Secrets](secrets.md#one-organizations-secrets-in-a-central-service).
 
+## Telemetry across organizations
+
+On a deployment shared by many organizations, the ops signals (`"ops"."traces"`, and on the Trino engine the metrics and logs beside it) are one store every organization's work lands in. Each span records the organization it was started for, kept as `tenant_id`, and every read of the signals answers only the reading organization's rows, whatever the role. A span started outside any organization's work (the server's start, for one) belongs to none and is read by none. The platform administrator holds no data access in any organization and reads none of them through Provisa. (REQ-1349, REQ-1327)
+
+The signals are kept in the clear in their store. A workload that needs more than a per-organization boundary inside one deployment runs on a dedicated deployment of its own.
+
 ## Deployment Hardening
 
 ### Store credentials and where the stores listen

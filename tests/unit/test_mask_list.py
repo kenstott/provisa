@@ -105,7 +105,9 @@ def test_a_meta_role_is_judged_by_its_own_set(monkeypatch):
         meta_roles={},
         meta_qualifiers={},
     )
-    monkeypatch.setattr(meta_role, "_rls", lambda *_a: None)
+    from provisa.compiler.rls import RLSContext
+
+    monkeypatch.setattr(meta_role, "_rls", lambda *_a: RLSContext.empty())
     monkeypatch.setattr(meta_role, "_role", lambda members, mid: {"id": mid})
     monkeypatch.setattr("provisa.api.app_loaders.register_role_surface", lambda *_a: None)
     # analyst named with region__eu: the composite entry before analyst's own.

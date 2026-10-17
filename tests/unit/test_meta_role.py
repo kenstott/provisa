@@ -42,7 +42,7 @@ def _state(*, rls: dict[str, RLSContext], reads: dict[str, list[int]], roles: di
         {"column_name": "region", "visible_to": ["east", "west"]},
         {"column_name": "email", "visible_to": ["east", "west", "boss"]},
     ]
-    tables = [{"id": 1, "domain_id": "sales", "columns": columns}]
+    tables = [{"id": 1, "source_id": "pg", "domain_id": "sales", "columns": columns}]
     built: dict = {}
     state = RoleState(
         roles=dict(roles),

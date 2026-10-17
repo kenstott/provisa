@@ -43,6 +43,30 @@ class RLSContext:
         return bool(self.rules) or bool(self.domain_rules) or bool(self.action_rules)
 
 
+#: The source of the ops signals (traces, metrics, logs): one store every org's rows land in, each
+#: row's org kept as ``tenant_id``.
+SIGNALS_SOURCE = "provisa-otel"
+#: A reader of the signals reads its own org's rows; a row of no org (a span outside any request)
+#: is no org's, and ``tenant_id = NULL`` matches it for no reader.
+ORG_SCOPED_SIGNALS_RULE = "tenant_id = current_setting('provisa.org')"
+
+
+def org_scoped_signals(rls: RLSContext, tables: list[dict]) -> RLSContext:  # REQ-1349
+    """``rls`` with every signals table held to the reading org, beside any rule of the role's
+    own on it (both hold). Applied to every role: no role reads another org's signals."""
+    rules = dict(rls.rules)
+    for table in tables:
+        if table["source_id"] != SIGNALS_SOURCE:
+            continue
+        own = rules.get(table["id"])
+        rules[table["id"]] = (
+            ORG_SCOPED_SIGNALS_RULE if own is None else f"({ORG_SCOPED_SIGNALS_RULE}) AND ({own})"
+        )
+    return RLSContext(
+        rules=rules, domain_rules=dict(rls.domain_rules), action_rules=dict(rls.action_rules)
+    )
+
+
 def build_rls_context(rls_rules: list[dict], role_id: str) -> RLSContext:  # REQ-041, REQ-402
     """Build an RLSContext from DB rows for a specific role.
 

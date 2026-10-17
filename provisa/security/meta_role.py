@@ -236,7 +236,10 @@ def _build(
     # chain holds -- as any role does; an entry granted to one member reaches it, and an entry
     # before it, held by another member, applies first (deny by order).
     masks = reader_masks(state.masked_columns, meta_id, chains[meta_id])
-    rls = _rls(state, member_roles, inputs["tables"])
+    from provisa.compiler.rls import org_scoped_signals
+
+    # Held to the reading org on the ops signals as every role is (compiler.rls).
+    rls = org_scoped_signals(_rls(state, member_roles, inputs["tables"]), inputs["tables"])
     role = _role(member_roles, meta_id)
     state.masking_rules = {**state.masking_rules, **masks}
     state.roles[meta_id] = role
