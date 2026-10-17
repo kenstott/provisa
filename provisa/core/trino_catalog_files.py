@@ -298,7 +298,7 @@ def kafka_catalog_props(kafka_source: dict, catalog: str) -> dict[str, str]:  # 
 TRINO_UID = 1000
 
 
-def write_kafka_client_file(path: Path, text: str) -> None:  # REQ-147
+def write_kafka_client_file(path: Path, text: str) -> None:  # REQ-147, REQ-2073
     """Write a Kafka catalog's client properties, which can hold a SASL password, for Trino alone.
 
     Trino's Kafka connector reads its client settings only from a file (``kafka.config.resources``),

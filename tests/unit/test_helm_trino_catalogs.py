@@ -21,7 +21,7 @@ nothing mounts a catalog directory: no catalog is written to the node's disk. Th
 when a coordinator restarts (provisa/federation/engine_wake.py).
 """
 
-# Requirements: REQ-1332
+# Requirements: REQ-1332, REQ-2073
 
 from __future__ import annotations
 

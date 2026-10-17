@@ -19,6 +19,8 @@ anywhere, and a coordinator that restarts comes back without the catalog under a
 The coordinator here is the test's own container, started on the shipped config's catalog lines.
 """
 
+# Requirements: REQ-2073
+
 from __future__ import annotations
 
 import os

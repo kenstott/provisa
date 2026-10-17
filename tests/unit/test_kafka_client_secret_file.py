@@ -17,7 +17,7 @@ store's directory, the Kafka client files) is removed when the stack starts or c
 deployed.
 """
 
-# Requirements: REQ-147
+# Requirements: REQ-147, REQ-2073
 
 from __future__ import annotations
 

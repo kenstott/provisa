@@ -145,7 +145,7 @@ _start_generations: dict[str, int] = {"": 0}
 _RESTART_LOCK = "coordinator-restart"
 
 
-async def coordinator_generation(state: Any, *, fresh: bool = False) -> int:
+async def coordinator_generation(state: Any, *, fresh: bool = False) -> int:  # REQ-2073
     """Outside provisioning: the generation of the coordinator the CURRENT context's terminal
     answers on -- the same number for as long as the same start of it answers.
 
@@ -738,7 +738,7 @@ async def ensure_engine_awake(state: Any) -> None:
     await ensure_org_runtime(org_id, env)
 
 
-async def reissue_after_coordinator_restart(state: Any) -> None:
+async def reissue_after_coordinator_restart(state: Any) -> None:  # REQ-2073
     """Outside provisioning: the catalogs the active org's query needs are on the coordinator.
 
     A coordinator that restarted while this process kept running comes back with no catalogs

@@ -33,6 +33,8 @@ Guards the repo, not a runtime path — the artifacts were swept in by blanket "
 changes" chores twice before, so only a check on what is TRACKED keeps them out.
 """
 
+# Requirements: REQ-1339, REQ-2073
+
 from __future__ import annotations
 
 import subprocess

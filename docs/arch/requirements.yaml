@@ -84574,7 +84574,7 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   tests:
   - tests/unit/test_trino_internal_tls.py
 - id: REQ-2073
-  status: in-progress
+  status: complete
   since: 2026-10
   group: 11. Platform, Infrastructure & Delivery
   category: Infrastructure
@@ -84584,3 +84584,28 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   description: "Engine catalogs and their credentials live only in the engine's memory. Every Trino engine Provisa starts runs catalog.management=dynamic with catalog.store=memory: the compose coordinator and workers, the rendered config, the Helm chart, the isolated and Kubernetes coordinators, and the perf demo. No catalog, and so none of the connection properties and passwords in one, is written to the engine's disk, and no catalog directory is mounted. A coordinator that restarts comes back with no catalogs. Where engines are not provisioned on Kubernetes, each org runtime records which coordinator start its catalogs were issued to (Trino's coordinatorId from /v1/info, sampled before any catalog is issued and re-read at most every 5 seconds per process). Whenever a query finds a different start, the query's own process recreates its catalogs before the query is dispatched, under one lock so concurrent queries recreate them once: the shared terminal's system and source catalogs and the querying org's runtime. The deployment's per-minute engine watcher does the same for the shared terminal without waiting for a query. Each process recreates only what it built; recreation is idempotent, so processes that see the same restart do not undo each other. A Kafka source's SASL client settings, which Trino reads only from a file, are written 0600 in a 0700 directory owned by Trino's user; in the container stack that directory is a tmpfs the API and the engine share. Starting the stack, and every cloud deploy, removes the catalog directory and Kafka client files earlier releases left on disk."
   use_case: "A security reviewer checks a Provisa engine host's disk and finds no source passwords or API keys in any Trino catalog file; an operator restarts Trino alone and the next query recreates its catalogs."
   notes: "Maintainer 2026-10-17: source passwords and the govdata AskAmerica key must not rest on disk in Trino's catalog store."
+  code:
+  - provisa/federation/engine_wake.py
+  - provisa/federation/trino_lifecycle.py
+  - provisa/federation/backend.py
+  - provisa/federation/runtime.py
+  - provisa/api/app.py
+  - provisa/scheduler/jobs.py
+  - provisa/api/trino_setup.py
+  - provisa/federation/isolated_provisioner.py
+  - provisa/federation/k8s_provisioner.py
+  - provisa/core/trino_catalog_files.py
+  - trino/etc/config.properties
+  - trino/etc/worker/config.properties
+  - helm/provisa/templates/trino-configmap.yaml
+  - helm/provisa/templates/trino-coordinator.yaml
+  - helm/provisa/templates/trino-worker.yaml
+  - docker-compose.core.yml
+  - docker-compose.app.yml
+  - scripts/deploy-cloud.sh
+  tests:
+  - tests/unit/test_coordinator_restart_reissue.py
+  - tests/unit/test_trino_catalog_dir_not_committed.py
+  - tests/unit/test_helm_trino_catalogs.py
+  - tests/unit/test_kafka_client_secret_file.py
+  - tests/integration/test_trino_memory_catalog_store.py

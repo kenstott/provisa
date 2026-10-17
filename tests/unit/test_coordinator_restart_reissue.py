@@ -17,6 +17,8 @@ terminal's catalogs and the querying org's runtime. Two processes serving two or
 their own next query; the coordinator here is one fake both reach.
 """
 
+# Requirements: REQ-2073
+
 from __future__ import annotations
 
 import contextlib

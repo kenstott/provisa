@@ -196,7 +196,9 @@ _coordinator_seen: dict[str, tuple[float, str]] = {}
 COORDINATOR_RECHECK_SECONDS = 5.0
 
 
-def coordinator_start(conn_kwargs: dict, timeout: float, *, fresh: bool = False) -> str:
+def coordinator_start(  # REQ-2073
+    conn_kwargs: dict, timeout: float, *, fresh: bool = False
+) -> str:
     """Which start of the coordinator at ``conn_kwargs`` answers now: ``host:port/<coordinatorId>``.
 
     The engine keeps its catalogs in memory (``catalog.store=memory``), so a coordinator that
