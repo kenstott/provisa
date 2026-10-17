@@ -47,6 +47,29 @@ curl_retry() {
 # timestamp is required for notarization, so the answer is not to drop it but to cap how long a
 # single attempt may wait and try again. macOS ships no coreutils `timeout`, hence the watchdog.
 CODESIGN_TIMEOUT="${CODESIGN_TIMEOUT:-180}"
+# `hdiutil create` on GitHub's macOS runners fails intermittently with "Resource busy": the
+# runner's XProtectBehaviorService (macOS 13+) holds the image hdiutil is writing. The runner-images
+# maintainers' documented workaround is to retry (actions/runner-images#7522); only that failure is
+# retried, a bounded number of times, and any other is raised at once.
+hdiutil_create_retry() {
+  local attempt out
+  for attempt in 1 2 3 4 5; do
+    if out=$(hdiutil create "$@" 2>&1); then
+      printf '%s\n' "$out"
+      return 0
+    fi
+    printf '%s\n' "$out" >&2
+    if ! printf '%s' "$out" | grep -q "Resource busy"; then
+      err "hdiutil create failed: $*"
+      exit 1
+    fi
+    info "hdiutil create attempt ${attempt}: resource busy (runner XProtect), retrying in 15s..."
+    sleep 15
+  done
+  err "hdiutil create still resource busy after 5 attempts: $*"
+  exit 1
+}
+
 codesign_retry() {
   local attempt pid waited
   for attempt in 1 2 3 4 5; do
@@ -243,7 +266,7 @@ create_dmg() {
   chflags hidden "${tmp_dmg}/images"
 
   rm -f "${DMG_PATH}"
-  hdiutil create -volname "Provisa Observability" \
+  hdiutil_create_retry -volname "Provisa Observability" \
     -srcfolder "$tmp_dmg" \
     -ov -format UDZO \
     "$DMG_PATH"
