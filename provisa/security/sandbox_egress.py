@@ -142,6 +142,11 @@ def require_public_destination(host: str | None, port: int | None = None) -> lis
 
 _demo_destinations: dict[str, frozenset[tuple[str, int | None]]] = {}
 
+# An ordinary org created with the deployment's demo (include_demo) holds the demo's sources, which
+# the operator wrote as a template's are: those sources reach what the demo declares. The org's own
+# sources are held to public destinations whatever host the demo names (REQ-2006).
+_seeded_demo_sources: dict[str, frozenset[str]] = {}
+
 #: A network-host source with no host given is reached at this host (schema_common._add_source_pool).
 _DEFAULT_HOST = "localhost"
 _URL_FIELDS = ("path", "base_url")
@@ -215,8 +220,22 @@ def set_demo_destinations(org_id: str, sources: list[dict]) -> None:
     _demo_destinations[org_id] = frozenset(d for s in sources for d in destinations(s))
 
 
+def set_seeded_demo(org_id: str, sources: list) -> None:
+    """Record, for the ordinary org ``org_id`` created with the deployment's demo, the demo's
+    sources and the destinations they declare (:data:`_seeded_demo_sources`)."""
+    set_demo_destinations(org_id, [source_fields(s) for s in sources])
+    _seeded_demo_sources[org_id] = frozenset(s.id for s in sources)
+
+
 def forget(org_id: str) -> None:
     _demo_destinations.pop(org_id, None)
+    _seeded_demo_sources.pop(org_id, None)
+
+
+def _own_beside_a_seeded_demo(org: str, source_id: str | None) -> bool:
+    """Whether ``source_id`` is an ordinary org's own source beside the demo it was seeded with."""
+    seeded = _seeded_demo_sources.get(org)
+    return seeded is not None and not confined(org) and source_id not in seeded
 
 
 def _org(org_id: str | None) -> str | None:
@@ -381,7 +400,9 @@ def pin_host(host: str, port: int | None, source_type: str, org_id: str | None =
     return host
 
 
-def require_connectable(fields: dict, source_type: str, org_id: str | None = None) -> str | None:
+def require_connectable(
+    fields: dict, source_type: str, org_id: str | None = None, *, source_id: str | None = None
+) -> str | None:
     """Refuse, by name, a held org's source (:func:`held`) that names a destination its demo does
     not declare and that is not public, or a sandbox org's that cannot be held to the address it
     is checked at; the checked address its host is to be connected at, when there is one to pin.
@@ -390,6 +411,11 @@ def require_connectable(fields: dict, source_type: str, org_id: str | None = Non
     if not held(org):
         return None
     assert org is not None
+    if _own_beside_a_seeded_demo(org, source_id):
+        # Not one of the demo's: every destination it names must be public, the demo's included.
+        for host, port in destinations(fields):
+            require_public_destination(host, port)
+        return None
     require_source_allowed(fields, org)
     undeclared = [d for d in destinations(fields) if not _declared(org, *d)]
     if not undeclared:
@@ -411,7 +437,12 @@ def pinned_source(source: object, org_id: str | None = None) -> object:
     if not held(org):
         return source
     source_type = str(getattr(source.type, "value", source.type))  # type: ignore[attr-defined]
-    address = require_connectable(source_fields(source), source_type, org)
+    address = require_connectable(
+        source_fields(source),
+        source_type,
+        org,
+        source_id=source.id,  # type: ignore[attr-defined]
+    )
     if address is None:
         return source
     return source.model_copy(update={"host": address})  # type: ignore[attr-defined]

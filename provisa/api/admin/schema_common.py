@@ -555,7 +555,7 @@ def sandbox_destination_refusal(input: SourceInput) -> "MutationResult | None":
         ),
     }
     try:
-        require_connectable(fields, input.type)
+        require_connectable(fields, input.type, source_id=input.id)
     except (PrivateDestinationRefused, UnpinnableDestinationRefused) as refused:
         return MutationResult(
             success=False,

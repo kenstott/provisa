@@ -2220,6 +2220,15 @@ async def _build_org_runtime(
         from provisa.api.demo_templates import record_demo_destinations
 
         await record_demo_destinations(org_id)
+    else:
+        # An ordinary org created with the deployment's demo: the demo's sources are the
+        # operator's and reach what they name; the org's own are held as any (REQ-2006).
+        from provisa.security.sandbox_egress import forget, set_seeded_demo
+
+        if include_demo:
+            set_seeded_demo(org_id, state.seed_config.sources)
+        else:
+            forget(org_id)
     from provisa.core.db import apply_tenancy_role_grants, init_schema
     from provisa.audit.query_log import init_audit_schema
 

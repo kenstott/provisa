@@ -214,9 +214,13 @@ async def _pool():
 
 
 def _caller(*roles: str, acting: str | None = None, anonymous: bool = False):
-    """The GraphQL ``info`` of a signed-in caller holding ``roles``, acting as ``acting``."""
+    """The GraphQL ``info`` of a signed-in caller holding ``roles``, acting as ``acting``. An
+    ``anonymous`` one is a request to a deployment with no auth provider, acting as the roles it
+    names (X-Provisa-Role), as the middleware binds it."""
     if anonymous:
-        identity = types.SimpleNamespace(user_id="anonymous", roles=[], acting_roles=[])
+        identity = types.SimpleNamespace(
+            user_id="anonymous", roles=list(roles), acting_roles=list(roles)
+        )
     else:
         identity = types.SimpleNamespace(user_id="u1", roles=list(roles), acting_roles=list(roles))
     state = types.SimpleNamespace(identity=identity, role=acting or (roles[0] if roles else None))
@@ -264,8 +268,14 @@ async def test_a_control_plane_role_is_answered_no_data_catalog():
     assert await _tables(_caller("platform")) == {}
 
 
-async def test_with_no_auth_provider_nothing_is_narrowed():
-    info = _caller(anonymous=True)
+async def test_with_no_auth_provider_the_catalog_is_the_named_roles():
+    """With no auth provider no right is enforced, but the catalog is still the one the role the
+    request names is answered (the role picker's selection), never the whole of it."""
+    assert await _tables(_caller("analyst", anonymous=True)) == {
+        "orders": ["id", "region", "customer_id"],
+        "customers": ["id", "name"],
+    }
+    info = _caller("registrar_all", anonymous=True)
     assert await _tables(info) == {
         "orders": _COLUMNS[1],
         "customers": _COLUMNS[2],
@@ -273,6 +283,17 @@ async def test_with_no_auth_provider_nothing_is_narrowed():
     }
     (orders, *_rest) = await Query().tables(info)
     assert orders.columns[0].visible_to == ["analyst"] and orders.view_sql == "SELECT 1"
+
+
+async def test_a_request_no_middleware_resolved_is_not_narrowed():
+    """No identity at all: nothing authenticated anybody, so there is nobody to narrow for."""
+    state = types.SimpleNamespace(identity=None, role=None)
+    info = types.SimpleNamespace(context={"request": types.SimpleNamespace(state=state)})
+    assert await _tables(info) == {
+        "orders": _COLUMNS[1],
+        "customers": _COLUMNS[2],
+        "staff": _COLUMNS[3],
+    }
 
 
 # --- grant lists and mask settings (REQ-1134) -----------------------------------------------------
@@ -345,7 +366,8 @@ async def test_domains_are_the_ones_the_callers_roles_reach():
     assert await _ids(_caller("analyst")) == ["sales"]
     assert await _ids(_caller("masker")) == ["hr"]
     assert await _ids(_caller("registrar_all")) == ["hr", "marketing", "sales"]
-    assert await _ids(_caller(anonymous=True)) == ["hr", "marketing", "sales"]
+    assert await _ids(_caller("registrar_all", anonymous=True)) == ["hr", "marketing", "sales"]
+    assert await _ids(_caller("analyst", anonymous=True)) == ["sales"]
 
 
 async def test_a_source_is_named_to_a_caller_answered_a_table_from_it():

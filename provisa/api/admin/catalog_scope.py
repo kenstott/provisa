@@ -24,7 +24,8 @@ by the caller's rights and reach instead:
 
 All of it is decided by rights and domain reach, never by a role's id (REQ-1337). A role with no
 data surface (a control-plane role, REQ-1327) is served nothing. A deployment with no auth
-provider narrows nothing, as its other gates do.
+provider enforces no right, as its other gates do, but answers the catalog of the roles the
+request names (X-Provisa-Role).
 """
 
 # Requirements: REQ-1958, REQ-1134, REQ-1944, REQ-1337, REQ-1327
@@ -98,9 +99,11 @@ def catalog_scope(info: Any) -> CatalogScope:
     )
     from provisa.api.app import state
     from provisa.api.flight.catalog import role_visibility
+    from provisa.security.rights import acting_claims, capabilities_for_claims
 
     identity = _identity_from_info(info)
-    if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+    if identity is None:
+        # No middleware resolved anybody: there is nobody to narrow for.
         return CatalogScope(
             whole=True,
             admin=True,
@@ -111,18 +114,37 @@ def catalog_scope(info: Any) -> CatalogScope:
             role=None,
         )
     request = info.context["request"] if isinstance(info.context, dict) else info.context.request
-    caps = _resolved_capabilities(identity, state)
     role = getattr(request.state, "role", None)
+    if getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+        # No auth provider: no right is enforced, but the catalog is the one the roles the request
+        # names (X-Provisa-Role, the role picker's selection) carry and reach.
+        caps = capabilities_for_claims(acting_claims(identity), getattr(state, "roles", {}))
+        reach = _acting_reach(identity, state)
+    else:
+        caps = _resolved_capabilities(identity, state)
+        reach = allowed_domains_request(request)
     admin = bool(caps & CATALOG_ADMIN_RIGHTS)
     return CatalogScope(
         whole=False,
         admin=admin,
         admin_reach=_admin_reach(identity, state) if admin else frozenset(),
-        reach=allowed_domains_request(request),
+        reach=reach,
         served=role_visibility(state, role) if role else {},
         governance=VIEW_GOVERNANCE in caps,
         role=role,
     )
+
+
+def _acting_reach(identity: Any, state: Any) -> frozenset[str] | None:
+    """The domains the roles ``identity`` acts as reach; None when domains gate nothing for it."""
+    from provisa.core import domain_policy
+    from provisa.core.env_authority import domains_within
+    from provisa.security.rights import acting_claims, domain_access_for_claims
+
+    if domain_policy.single_domain():
+        return None
+    reached = domain_access_for_claims(acting_claims(identity), getattr(state, "roles", {}))
+    return domains_within(sorted(reached))
 
 
 def _admin_reach(identity: Any, state: Any) -> frozenset[str] | None:

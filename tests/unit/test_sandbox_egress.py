@@ -520,3 +520,50 @@ def test_the_deployments_own_config_applies_its_private_sources_on_a_shared_depl
 
 async def _identity(_conn, values):
     return values
+
+
+# --- an ordinary org created with the deployment's demo (include_demo) ------------------------
+
+
+@pytest.fixture
+def seeded_acme(acme_on_a_shared_deployment):
+    """acme, on a shared deployment, created with the deployment's demo: one demo source on the
+    platform's private network."""
+    from provisa.core.models import Source
+
+    demo = Source(
+        id="demo-pg",
+        type="postgresql",
+        host="postgres",
+        port=5432,
+        database="demo",
+        username="u",
+        password="",
+    )
+    egress.set_seeded_demo("acme", [demo])
+    yield demo
+    egress.forget("acme")
+
+
+def test_a_seeded_demos_own_source_reaches_its_private_host(seeded_acme):
+    # Reached by its name, as a template's demo source is: nothing is resolved or pinned.
+    assert egress.pinned_source(seeded_acme) is seeded_acme
+
+
+def test_the_orgs_own_source_at_the_demos_host_is_refused(seeded_acme):
+    from provisa.api.admin.schema_common import sandbox_destination_refusal
+    from provisa.api.admin.types import SourceInput
+
+    mine = seeded_acme.model_copy(update={"id": "mine"})
+    with pytest.raises(egress.PrivateDestinationRefused):
+        egress.pinned_source(mine)
+    refusal = sandbox_destination_refusal(
+        SourceInput(id="mine", type="postgresql", host="postgres", port=5432)
+    )
+    assert refusal is not None and refusal.code == "sources.private_destination"
+
+
+def test_an_org_built_without_the_demo_holds_every_source(seeded_acme):
+    egress.forget("acme")
+    with pytest.raises(egress.PrivateDestinationRefused):
+        egress.pinned_source(seeded_acme)
