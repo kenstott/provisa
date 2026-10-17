@@ -23917,3 +23917,31 @@ The Python client reads a governed SQL, GraphQL or Cypher statement into a panda
 **Code:** `provisa-client/provisa_client/reader.py`, `provisa-client/provisa_client/browser.py`, `provisa-client/provisa_client/magics.py`, `provisa-client/provisa_client/credentials.py`, `provisa-client/provisa_client/sqlalchemy_dialect.py`, `provisa-client/provisa_client/__init__.py`
 
 **Tests:** `provisa-client/tests/test_reader.py`, `provisa-client/tests/test_browser.py`, `provisa-client/tests/test_magics.py`, `provisa-client/tests/test_credentials.py`, `provisa-client/tests/test_sqlalchemy.py`, `provisa-client/tests/test_sqlalchemy_edge_cases.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-2071 · UI {#REQ-2071}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+Explore has a Data Science area with two tabs, Python and Jupyter Notebook, that run Python in the user's browser over the governed data their role is served. Both run on one Pyodide version and its packages (numpy, pandas, pyarrow, scikit-learn, matplotlib, with their dependencies) and the provisa-client wheel, served by Provisa itself at /pyodide from the provisa-notebook package, [SUPERSEDED by REQ-2071, 2026-10-17 -- the notebook assets are part of every install, not an extra. Kept here for history; do not implement against it.] which the provisa[notebook] extra installs, the Docker image carries and the desktop installers bundle; [END SUPERSEDED BLOCK] nothing is fetched from a CDN or a package index, so an air-gapped deployment runs it. [SUPERSEDED by REQ-2071, 2026-10-17 -- a missing notebook install is a broken install, not an optional one. Kept here for history; do not implement against it.] A deployment without the package serves no /pyodide, and the area says plainly that Python is not installed and how to install it. [END SUPERSEDED BLOCK] The Python tab runs code in a Web Worker so the page stays responsive, and reads through provisa_client as the page's user: the page hands the worker the identity the request interceptor attaches (baseUrl, acting roles including the Role: All set, bearer, org, environment), read anew at every run so a rotated token or a newly picked role, org or environment is what the code reads as. Its editor opens on a first cell that imports provisa_client and calls provisa_client.sign_in(), which reports the user, role, org and environment it reads as; the same lines run unchanged on a desktop Python. A run shows its printed output, its last value (a DataFrame as a table of its first rows with the total, anything else as text), every matplotlib figure it drew and its error. The Jupyter Notebook tab embeds JupyterLite on the same Pyodide, with the same identity bridge kept current, provisa_client preinstalled, a starter notebook and standard .ipynb in and out. (Amended 2026-10-17, PART OF EVERY INSTALL:) provisa-notebook is a dependency of provisa itself, pinned at provisa's own version, so installing provisa installs it; it is a package of its own only because PyPI caps a file at 100 MB. A release builds it with every other artifact and publishes it to PyPI before provisa, once every artifact exists; the Docker images and the desktop installers build it from the repository. A checkout's launchers install it into the environment and build its assets when they are missing, so no one runs a step by hand. An install that lacks its assets is broken: the server says so in its log and serves no /pyodide, the rest of Provisa runs, and the Data Science area says the server's notebook assets are missing and that Provisa should be reinstalled.
+
+**Use case:** An analyst opens Explore > Data Science, runs the first cell to see they are signed in as their role, then reads their governed orders into pandas, trains a model and plots it, all in the browser, on a server with no internet access.
+
+**Code:** `provisa-ui/src/pages/DataSciencePage.tsx`, `provisa-ui/src/dataScience/pythonWorker.ts`, `provisa-ui/src/dataScience/bridge.ts`, `provisa-ui/src/dataScience/protocol.ts`, `provisa-ui/src/lib/authFetch.ts`, `provisa-ui/vite.config.ts`, `provisa/ui_server.py`, `pyproject.toml`, `scripts/ensure-notebook.sh`, `scripts/build-notebook-wheel.sh`, `.github/workflows/release-packages.yml`, `.github/workflows/build-dmg.yml`, `provisa-notebook/provisa_notebook/__init__.py`, `provisa-notebook/provisa_notebook/build.py`, `provisa-client/provisa_client/reader.py`, `provisa-client/provisa_client/browser.py`
+
+**Tests:** `provisa-ui/src/__tests__/DataSciencePage.test.tsx`, `provisa-ui/src/__tests__/dataScienceBridge.test.ts`, `tests/unit/test_ui_server_routing.py`, `tests/unit/test_notebook_dependency.py`, `provisa-notebook/tests/test_build.py`, `provisa-client/tests/test_browser.py`, `provisa-client/tests/test_reader.py`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2072 · Infrastructure {#REQ-2072}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** infrastructure
+
+Trino internal TLS is an operator option, off by default. When on, the coordinator and workers require HTTPS between them (internal-communication.https.required), with the coordinator at a pinned address on the engine network, since Trino's internal certificates name IP addresses only. The settings engine.trino_internal_tls, engine.trino_internal_subnet and engine.trino_coordinator_ip apply at the next start: the app writes the engine-scoped settings to a launch-settings file beside the engine's configuration, and the launchers read it when they start the stack, which also carries the engine sizing settings to a compose deployment. The Helm chart takes it as the value trino.internalTls, and the admin UI shows it there read-only, naming that value. A single-node coordinator has no internal traffic and refuses the setting by name. Off, coordinator-to-worker traffic stays on the private engine network and is authenticated by the deployment's generated shared secret.
+
+**Use case:** A regulated customer whose auditor requires encryption on every hop turns on Trino internal TLS in the admin UI and restarts the stack; the coordinator and workers then speak HTTPS to each other.
+
+**Code:** —
+
+**Tests:** —

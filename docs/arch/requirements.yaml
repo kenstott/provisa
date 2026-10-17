@@ -84538,3 +84538,14 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   - provisa-client/tests/test_browser.py
   - provisa-client/tests/test_reader.py
   notes: "Maintainer 2026-10-17: Explore gets a Data Science area (Python | Jupyter Notebook), one self-hosted Pyodide shared by both, the same provisa_client query() in both; assets in a separate provisa-notebook package installed by provisa[notebook]. First increment: the Python tab and the shared plumbing; the notebook tab and the packaging wiring (extra, image, installers, release) follow."
+- id: REQ-2072
+  status: in-progress
+  since: 2026-10
+  group: 11. Platform, Infrastructure & Delivery
+  category: Infrastructure
+  feature: deployment-compose-helm
+  priority: SHOULD
+  type: infrastructure
+  description: "Trino internal TLS is an operator option, off by default. When on, the coordinator and workers require HTTPS between them (internal-communication.https.required), with the coordinator at a pinned address on the engine network, since Trino's internal certificates name IP addresses only. The settings engine.trino_internal_tls, engine.trino_internal_subnet and engine.trino_coordinator_ip apply at the next start: the app writes the engine-scoped settings to a launch-settings file beside the engine's configuration, and the launchers read it when they start the stack, which also carries the engine sizing settings to a compose deployment. The Helm chart takes it as the value trino.internalTls, and the admin UI shows it there read-only, naming that value. A single-node coordinator has no internal traffic and refuses the setting by name. Off, coordinator-to-worker traffic stays on the private engine network and is authenticated by the deployment's generated shared secret."
+  use_case: "A regulated customer whose auditor requires encryption on every hop turns on Trino internal TLS in the admin UI and restarts the stack; the coordinator and workers then speak HTTPS to each other."
+  notes: "Maintainer 2026-10-17: internal TLS buys little against an attacker on a node and costs 10-100%+ on shuffle-heavy queries, so it is off by default and offered for compliance or zero-trust requirements."
