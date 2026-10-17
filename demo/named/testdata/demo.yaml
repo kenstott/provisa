@@ -17,7 +17,7 @@ description: >-
   realistic data without touching production? The same queries, views and joins answer in all
   three; only prod sees the real rows.
 screenshot: card.png
-published: false
+published: true
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo, its setup's environment step and the tour's env step.
 requires_provisa: 0.1.0a490

@@ -41,7 +41,7 @@ locals {
       echo "$b64" | base64 -d > /etc/systemd/system/provisa-demo-stores.$unit
     done
     cat > /root/.provisa/demo-stores.env <<'ENV'
-    PROVISA_DEMO_BUNDLES=weblogs,files,sonnets,reviews,quality,retail
+    PROVISA_DEMO_BUNDLES=weblogs,files,sonnets,reviews,quality,insider,testdata,retail
     DEMO_BUNDLES_DIR=/root/.provisa/sandbox-data/demo-bundles
     DEMO_PULL=docker exec compose-provisa-sandbox-1 python -m provisa.core.demo_bundles
     DEMO_PULL_INTO=/var/lib/provisa/demo-bundles

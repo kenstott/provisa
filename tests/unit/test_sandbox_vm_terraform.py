@@ -73,7 +73,10 @@ def test_the_vm_may_be_started_and_stopped_by_the_node_account_and_on_it_alone()
 def test_the_vm_runs_the_retail_demos_stores():
     """REQ-2068: the regions tier's demo is synced with the others, its stores run there."""
     sandbox = (_TF / "sandbox.tf").read_text()
-    assert "PROVISA_DEMO_BUNDLES=weblogs,files,sonnets,reviews,quality,retail" in sandbox
+    assert (
+        "PROVISA_DEMO_BUNDLES=weblogs,files,sonnets,reviews,quality,insider,testdata,retail"
+        in sandbox
+    )
     # Published on the VM's VPC address, where the coordinator reaches it.
     assert 'export PROVISA_SANDBOX_REGIONS_PUBLISH="${var.sandbox_internal_ip}:8100"' in sandbox
 
