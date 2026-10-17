@@ -23936,12 +23936,12 @@ Explore has a Data Science area with two tabs, Python and Jupyter Notebook, that
 
 ### REQ-2072 · Infrastructure {#REQ-2072}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** infrastructure
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
 
 Trino internal TLS is an operator option, off by default. When on, the coordinator and workers require HTTPS between them (internal-communication.https.required), with the coordinator at a pinned address on the engine network, since Trino's internal certificates name IP addresses only. The settings engine.trino_internal_tls, engine.trino_internal_subnet and engine.trino_coordinator_ip apply at the next start: the app writes the engine-scoped settings to a launch-settings file beside the engine's configuration, and the launchers read it when they start the stack, which also carries the engine sizing settings to a compose deployment. The Helm chart takes it as the value trino.internalTls, and the admin UI shows it there read-only, naming that value. A single-node coordinator has no internal traffic and refuses the setting by name. Off, coordinator-to-worker traffic stays on the private engine network and is authenticated by the deployment's generated shared secret.
 
 **Use case:** A regulated customer whose auditor requires encryption on every hop turns on Trino internal TLS in the admin UI and restarts the stack; the coordinator and workers then speak HTTPS to each other.
 
-**Code:** —
+**Code:** `provisa/core/settings_catalog_engine.py`, `provisa/api/trino_setup.py`, `provisa/api/admin/settings_guards.py`, `provisa/api/admin/settings_catalog_router.py`, `provisa/core/settings_registry.py`, `docker-compose.trino-internal-tls.yml`, `docker-compose.core.yml`, `docker-compose.app.yml`, `scripts/provisa`, `packaging/windows/provisa-container.ps1`, `helm/provisa/templates/trino-configmap.yaml`, `helm/provisa/templates/trino-coordinator.yaml`, `helm/provisa/templates/_trino.tpl`
 
-**Tests:** —
+**Tests:** `tests/unit/test_trino_internal_tls.py`
