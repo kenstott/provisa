@@ -271,15 +271,20 @@ def _stop_orphans() -> None:
     recorded starter is not running, and one with no recorded starter older than
     ``OWNERLESS_AFTER_SECONDS``. One whose starter runs is left alone."""
     for root in Path(tempfile.gettempdir()).glob(f"{_PREFIX}*"):
-        if not _orphaned(root):
+        try:
+            if not _orphaned(root):
+                continue
+            if (root / "data" / "postmaster.pid").exists():
+                subprocess.run(
+                    [_bin("pg_ctl"), "-D", str(root / "data"), "-w", "stop", "-m", "immediate"],
+                    check=True,
+                    capture_output=True,
+                )
+            shutil.rmtree(root)
+        except FileNotFoundError:
+            # Every pytest worker reaps at its own start: a directory another worker reaped
+            # between this one's glob and its look at it is already gone, which is the outcome.
             continue
-        if (root / "data" / "postmaster.pid").exists():
-            subprocess.run(
-                [_bin("pg_ctl"), "-D", str(root / "data"), "-w", "stop", "-m", "immediate"],
-                check=True,
-                capture_output=True,
-            )
-        shutil.rmtree(root)
 
 
 def start_local_postgres(
