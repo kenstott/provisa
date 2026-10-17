@@ -195,8 +195,13 @@ def test_the_in_browser_python_is_served_from_provisa_notebook_when_installed(
     assets.mkdir()
     (assets / "pyodide-lock.json").write_text("{}")
     (assets / "pyodide.asm.wasm").write_bytes(b"\0asm")
+    lite = tmp_path / "lite"
+    (lite / "notebooks").mkdir(parents=True)
+    (lite / "jupyter-lite.json").write_text("{}")
+    (lite / "notebooks" / "index.html").write_text("<html>notebook</html>")
     package = types.ModuleType("provisa_notebook")
     package.pyodide_dir = lambda: assets  # type: ignore[attr-defined]
+    package.lite_dir = lambda: lite  # type: ignore[attr-defined]
     package.__spec__ = importlib.machinery.ModuleSpec("provisa_notebook", None)
     monkeypatch.setitem(sys.modules, "provisa_notebook", package)
     try:
@@ -204,6 +209,9 @@ def test_the_in_browser_python_is_served_from_provisa_notebook_when_installed(
         resp = TestClient(served.app).get("/pyodide/pyodide.asm.wasm")
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "application/wasm"
+        # The JupyterLite site, its directory URLs answered with their index.html.
+        page = TestClient(served.app).get("/lite/notebooks/")
+        assert page.status_code == 200 and "notebook" in page.text
         assert any(getattr(r, "path", None) == "/pyodide" for r in served.app.routes)
 
         def no_assets():

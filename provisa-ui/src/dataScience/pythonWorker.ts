@@ -7,7 +7,7 @@
 // REQ-2071: the Data Science area's Python, off the page's main thread. Pyodide and its packages
 // come from /pyodide (the provisa-notebook package); provisa_client reads as the page's user from
 // self.provisaAuth, which the page keeps current.
-import type { FromWorker, ProvisaAuth, PyodideManifest, ToWorker } from "./protocol";
+import type { FromWorker, ProvisaAuth, ToWorker } from "./protocol";
 
 // Pyodide reports each package it loads; that is not the code's output, so it is not shown.
 interface LoadOptions {
@@ -67,7 +67,7 @@ const PYODIDE_MODULE = "/pyodide/pyodide.mjs";
 let pyodide: Pyodide | null = null;
 let stdout = "";
 
-async function init(manifest: PyodideManifest, auth: ProvisaAuth): Promise<void> {
+async function init(auth: ProvisaAuth): Promise<void> {
   scope.provisaAuth = auth;
   // The Pyodide served beside this page: never a CDN.
   const { loadPyodide } = (await import(/* @vite-ignore */ PYODIDE_MODULE)) as {
@@ -76,7 +76,8 @@ async function init(manifest: PyodideManifest, auth: ProvisaAuth): Promise<void>
   const py = await loadPyodide({ indexURL: "/pyodide/" });
   py.setStdout({ batched: (text) => (stdout += text + "\n") });
   py.setStderr({ batched: (text) => (stdout += text + "\n") });
-  await py.loadPackage(["pandas", "pyarrow", `/pyodide/${manifest.client_wheel}`], QUIET);
+  // provisa-client is a package of the served lock; pandas and pyarrow come with it.
+  await py.loadPackage(["provisa-client"], QUIET);
   await py.runPythonAsync(PRELUDE);
   pyodide = py;
 }
@@ -112,7 +113,7 @@ scope.onmessage = (event) => {
   if (message.type === "auth") {
     scope.provisaAuth = message.auth;
   } else if (message.type === "init") {
-    init(message.manifest, message.auth).then(
+    init(message.auth).then(
       () => scope.postMessage({ type: "ready" }),
       (err: unknown) => scope.postMessage({ type: "failed", error: String(err) }),
     );

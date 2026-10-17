@@ -84516,6 +84516,11 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   - provisa-ui/src/pages/DataSciencePage.tsx
   - provisa-ui/src/dataScience/pythonWorker.ts
   - provisa-ui/src/dataScience/bridge.ts
+  - provisa-ui/src/dataScience/liteBridge.ts
+  - provisa-ui/src/dataScience/runReports.ts
+  - provisa-ui/src/mcp/clientTools.ts
+  - provisa/api/mcp/chat.py
+  - provisa-notebook/provisa_notebook/notebooks/Provisa.ipynb
   - provisa-ui/src/dataScience/protocol.ts
   - provisa-ui/src/lib/authFetch.ts
   - provisa-ui/vite.config.ts
@@ -84532,6 +84537,9 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   tests:
   - provisa-ui/src/__tests__/DataSciencePage.test.tsx
   - provisa-ui/src/__tests__/dataScienceBridge.test.ts
+  - provisa-ui/src/__tests__/liteBridge.test.ts
+  - provisa-ui/src/__tests__/clientTools.science.test.ts
+  - tests/unit/test_mcp_chat_science.py
   - tests/unit/test_ui_server_routing.py
   - tests/unit/test_notebook_dependency.py
   - provisa-notebook/tests/test_build.py

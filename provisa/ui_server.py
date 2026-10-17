@@ -262,14 +262,16 @@ def _mount_pyodide() -> None:
     if importlib.util.find_spec("provisa_notebook") is None:
         _log.error("provisa-notebook is not installed: reinstall provisa (REQ-2071)")
         return
-    from provisa_notebook import pyodide_dir
+    from provisa_notebook import lite_dir, pyodide_dir
 
     try:
-        directory = pyodide_dir()
+        pyodide, lite = pyodide_dir(), lite_dir()
     except FileNotFoundError as exc:
         _log.error("the notebook assets are missing: %s (REQ-2071)", exc)
         return
-    app.mount("/pyodide", StaticFiles(directory=directory), name="pyodide")
+    app.mount("/pyodide", StaticFiles(directory=pyodide), name="pyodide")
+    # The JupyterLite site; html=True answers its directory URLs with their index.html.
+    app.mount("/lite", StaticFiles(directory=lite, html=True), name="lite")
 
 
 _mount_pyodide()

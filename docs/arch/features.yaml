@@ -979,7 +979,9 @@
   - id: explorers-data-science
     text: The Data Science area runs Python in your browser over the data your role is served. Its Python
       tab reads a statement into a pandas DataFrame as you, with your current role, org and environment,
-      and shows what the code prints, its tables and its matplotlib figures. Python and its packages
+      and shows what the code prints, its tables and its matplotlib figures. Its Jupyter Notebook tab is
+      a notebook (cells, and %%sql, %%graphql and %%cypher magics) that reads as you the same way. Polly
+      can write and run code in the Python tab and read what it returned. Python and its packages
       (pandas, pyarrow, scikit-learn, matplotlib) are served by Provisa itself, so it works with no
       internet access. They come with every install; an install missing them says so.
 - id: chat-assistant

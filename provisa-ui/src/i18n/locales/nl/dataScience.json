@@ -10,6 +10,8 @@
     "missingBody": "Het onderdeel Data science voert Python uit in uw browser met bestanden die elke Provisa-installatie levert, en de installatie van deze server heeft ze niet. Installeer Provisa opnieuw op de server en laad deze pagina opnieuw.",
     "rowsShown": "{{shown}} van {{total}} rijen getoond",
     "figure": "Afbeelding {{n}}",
-    "resizeLabel": "Formaat van editor en uitvoer wijzigen"
+    "resizeLabel": "Formaat van editor en uitvoer wijzigen",
+    "tabNotebook": "Jupyter Notebook",
+    "notebookFrame": "Jupyter-notebook"
   }
 }

@@ -269,6 +269,7 @@ jobs:
           manifest = json.loads(z.read(base + "manifest.json"))
           need = [base + n for n in ("pyodide.mjs", "pyodide.asm.wasm", "python_stdlib.zip",
                                      "pyodide-lock.json", manifest["client_wheel"])]
+          need.append("provisa_notebook/assets/lite/jupyter-lite.json")
           missing = [n for n in need if n not in names]
           size = os.path.getsize(wheel)
           print(f"{wheel}: {size / 1e6:.1f} MB, {len(names)} members, {manifest['packages']}")

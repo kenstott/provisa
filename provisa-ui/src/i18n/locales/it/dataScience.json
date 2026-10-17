@@ -10,6 +10,8 @@
     "missingBody": "L'area Data science esegue Python nel browser a partire da file che ogni installazione di Provisa serve, e l'installazione di questo server non li ha. Reinstalla Provisa sul server, quindi ricarica questa pagina.",
     "rowsShown": "Visualizzate {{shown}} di {{total}} righe",
     "figure": "Figura {{n}}",
-    "resizeLabel": "Ridimensiona editor e output"
+    "resizeLabel": "Ridimensiona editor e output",
+    "tabNotebook": "Notebook Jupyter",
+    "notebookFrame": "Notebook Jupyter"
   }
 }

@@ -10,6 +10,8 @@
     "missingBody": "Der Bereich Data Science führt Python in Ihrem Browser mit Dateien aus, die jede Provisa-Installation bereitstellt, und der Installation dieses Servers fehlen sie. Installieren Sie Provisa auf dem Server neu und laden Sie diese Seite neu.",
     "rowsShown": "{{shown}} von {{total}} Zeilen angezeigt",
     "figure": "Abbildung {{n}}",
-    "resizeLabel": "Editor und Ausgabe in der Größe ändern"
+    "resizeLabel": "Editor und Ausgabe in der Größe ändern",
+    "tabNotebook": "Jupyter Notebook",
+    "notebookFrame": "Jupyter-Notebook"
   }
 }

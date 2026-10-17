@@ -6825,5 +6825,7 @@
   "hi/adminPage.json::adminPage.setting.reason.not_a_subnet": "Enter a network in CIDR form, such as 172.30.250.0/24 ({{value}}).",
   "hi/adminPage.json::adminPage.setting.reason.not_an_address": "Enter an IP address ({{value}}).",
   "hi/adminPage.json::adminPage.setting.reason.outside_subnet": "The coordinator's address must be on the engine network ({{subnet}}).",
-  "hi/adminPage.json::adminPage.setting.reason.not_reserved_for_coordinator": "The coordinator's address must be in the lower half of the engine network, past its gateway ({{subnet}})."
+  "hi/adminPage.json::adminPage.setting.reason.not_reserved_for_coordinator": "The coordinator's address must be in the lower half of the engine network, past its gateway ({{subnet}}).",
+  "hi/dataScience.json::dataScience.tabNotebook": "Jupyter Notebook",
+  "hi/dataScience.json::dataScience.notebookFrame": "Jupyter notebook"
 }

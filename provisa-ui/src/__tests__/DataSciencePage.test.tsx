@@ -79,7 +79,7 @@ describe("DataSciencePage", () => {
     );
     const { make, sent, reply } = workerDouble();
     page(make);
-    await waitFor(() => expect(sent[0]).toEqual({ type: "init", manifest: MANIFEST, auth: AUTH }));
+    await waitFor(() => expect(sent[0]).toEqual({ type: "init", auth: AUTH }));
     const runButton = screen.getByTestId("data-science-run");
     expect(runButton).toBeDisabled();
     reply({ type: "ready" });
@@ -203,6 +203,28 @@ describe("DataSciencePage", () => {
         error: "This server's notebook assets are missing",
       }),
     );
+  });
+
+  it("opens the Jupyter notebook tab on the starter notebook, or says its assets are missing", async () => {
+    window.fetch = vi.fn(async (url: RequestInfo | URL) =>
+      String(url).includes("jupyter-lite.json")
+        ? new Response("{}", { headers: { "content-type": "application/json" } })
+        : new Response('{"detail":"Not Found"}', { status: 404 }),
+    ) as typeof window.fetch;
+    const { make } = workerDouble();
+    page(make);
+    fireEvent.click(await screen.findByTestId("data-science-tab-notebook"));
+    const frame = await screen.findByTestId("data-science-notebook");
+    expect(frame).toHaveAttribute("src", "/lite/notebooks/index.html?path=Provisa.ipynb");
+    expect(screen.getByTestId("data-science-missing")).toBeInTheDocument();
+  });
+
+  it("says the notebook's assets are missing when /lite is not served", async () => {
+    serve(new Response('{"detail":"Not Found"}', { status: 404 }));
+    const { make } = workerDouble();
+    page(make);
+    fireEvent.click(await screen.findByTestId("data-science-tab-notebook"));
+    expect(await screen.findByTestId("data-science-notebook-missing")).toBeInTheDocument();
   });
 
   it("says plainly when Python cannot start", async () => {
