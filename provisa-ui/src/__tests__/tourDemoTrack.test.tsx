@@ -111,6 +111,34 @@ describe("a demo's steps, as the runner walks them", () => {
     });
   });
 
+  it("shows a picture beside what the step before it showed, in its popover", () => {
+    const [sql, picture] = demoTourSteps(
+      [
+        { key: "q", route: "/sql", capability: "query_development", sql: "SELECT 1" },
+        { key: "shot", image: "app.png", image_src: "data:image/png;base64,AAAA" },
+      ],
+      EXAMPLES,
+    );
+    expect(picture.element).toBe(sql.element);
+    expect(picture.image).toBe("data:image/png;base64,AAAA");
+    expect(picture.route).toBeUndefined();
+  });
+
+  it("refuses a picture with no step before it, or none sent", () => {
+    expect(() =>
+      demoTourSteps([{ key: "shot", image: "app.png", image_src: "data:," }], EXAMPLES),
+    ).toThrow(/shot/);
+    expect(() =>
+      demoTourSteps(
+        [
+          { key: "q", route: "/sql", capability: "query_development", sql: "SELECT 1" },
+          { key: "shot", image: "app.png" },
+        ],
+        EXAMPLES,
+      ),
+    ).toThrow(/shot/);
+  });
+
   it("hands a set of roles, a pseudo-role among them, to the SQL explorer", () => {
     // REQ-2057: reviewer,region__eu is no single option of the picker; the explorer offers it.
     const [set] = demoTourSteps([{ key: "s", role: "reviewer,region__eu" }], EXAMPLES);

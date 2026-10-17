@@ -766,7 +766,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
           element,
           popover: {
             title: t(`tour.steps.${step.key}.title`),
-            description: t(`tour.steps.${step.key}.description`),
+            description: step.image
+              ? `${t(`tour.steps.${step.key}.description`)}<img class="tour-step-image" src="${step.image}" alt="">`
+              : t(`tour.steps.${step.key}.description`),
+            ...(step.image ? { popoverClass: "tour-popover-image" } : {}),
             showButtons: ends
               ? isFirst
                 ? ["close"]
