@@ -124,3 +124,23 @@ async def test_a_kafka_table_s_subscription_re_runs_when_a_batch_lands():
         reset_current_org(token)
     assert json.loads(first.removeprefix("data: ")) == {"data": {"orders": [1]}}
     assert json.loads(second_frame.removeprefix("data: ")) == {"data": {"orders": [1, 2]}}
+
+
+async def test_a_landing_with_no_environment_bound_reaches_a_subscription_bound_to_prod():
+    from provisa.core.request_context import reset_current_env, set_current_env
+
+    token = set_current_org("acme")
+    env_token = set_current_env("prod")  # a request names prod
+    try:
+        provider = hub.LandedNotificationProvider("orders", "default")
+        changes = provider.watch("orders")
+        first = asyncio.ensure_future(changes.__anext__())
+        await asyncio.sleep(0)  # the subscription is waiting
+        _from_thread("acme", "orders", "default", "orders")  # the listener binds none
+        event = await asyncio.wait_for(first, timeout=2)
+        assert event.operation == "landed"
+        await provider.close()
+        await changes.aclose()
+    finally:
+        reset_current_env(env_token)
+        reset_current_org(token)
