@@ -379,3 +379,81 @@ def test_a_url_host_the_demo_does_not_declare_is_refused_by_name(
 def test_a_url_host_on_a_private_address_is_refused(in_sandbox, monkeypatch):
     with pytest.raises(egress.PrivateDestinationRefused):
         _qdrant_pool(monkeypatch, "http://127.0.0.1:6333")
+
+
+# --- every way a source reaches a shared deployment is held, not only the UI -------------------
+
+_PLATFORM = "10.10.0.4"  # a node's VPC address: its control-plane database, cache and object store
+
+
+@pytest.fixture
+def acme_on_a_shared_deployment(organisations):
+    organisations(True)
+    token = set_current_org("acme")
+    yield
+    reset_current_org(token)
+
+
+class _UntouchedConn:
+    """A connection the refusal must come before: any use of it fails the test."""
+
+    def __getattr__(self, name):
+        raise AssertionError(f"the store was reached ({name}) before the source was refused")
+
+
+def test_a_config_apply_of_a_platform_private_source_is_refused(acme_on_a_shared_deployment):
+    from provisa.core.config_loader import _upsert_sources, parse_config_dict
+
+    config = parse_config_dict(
+        {
+            "sources": [
+                {
+                    "id": "cp",
+                    "type": "postgresql",
+                    "host": _PLATFORM,
+                    "port": 5432,
+                    "database": "provisa",
+                    "username": "provisa",
+                    "password": "x",
+                }
+            ],
+            "domains": [],
+            "tables": [],
+            "roles": [],
+        }
+    )
+    with pytest.raises(egress.PrivateDestinationRefused):
+        asyncio.run(_upsert_sources(_UntouchedConn(), config))
+
+
+def test_an_admin_api_source_at_a_platform_private_address_is_refused(acme_on_a_shared_deployment):
+    from provisa.api.admin.schema_common import sandbox_destination_refusal
+    from provisa.api.admin.types import SourceInput
+
+    refusal = sandbox_destination_refusal(
+        SourceInput(id="cache", type="postgresql", host=_PLATFORM, port=6379)
+    )
+    assert refusal is not None and not refusal.success
+    assert refusal.code == "sources.private_destination"
+
+
+def test_a_stored_platform_private_source_is_refused_at_every_connection(
+    acme_on_a_shared_deployment,
+):
+    from provisa.core.models import Source
+    from provisa.executor.pool import SourcePool
+    from provisa.federation.engine import build_engine
+
+    stored = Source(
+        id="cp",
+        type="postgresql",
+        host=_PLATFORM,
+        port=5432,
+        database="d",
+        username="u",
+        password="x",
+    )
+    with pytest.raises(egress.PrivateDestinationRefused):
+        build_engine("duckdb").resolve(stored)
+    with pytest.raises(egress.PrivateDestinationRefused):
+        asyncio.run(SourcePool().add("cp", "postgresql", _PLATFORM, 5432, "d", "u", "x"))
