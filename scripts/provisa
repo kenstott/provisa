@@ -416,14 +416,15 @@ native_control_plane() {
         err "set PLATFORM_DATABASE_URL and TENANT_DATABASE_URL to a PostgreSQL server."
         exit 1
     fi
-    local out host port
+    local out host port password
     if ! out="$("$(native_python)" -m provisa.core.control_plane_pg start "${PROVISA_HOME}/native/control-pg" 2>>"${LOG_DIR}/control-plane-pg.log")"; then
         err "The embedded control plane did not start; see ${LOG_DIR}/control-plane-pg.log."
         exit 1
     fi
     host="$(printf '%s\n' "$out" | sed -n 's/^PG_HOST=//p')"
     port="$(printf '%s\n' "$out" | sed -n 's/^PG_PORT=//p')"
-    CONTROL_PLANE_URL="postgresql+psycopg://provisa:provisa@/provisa?host=${host}&port=${port}"
+    password="$(printf '%s\n' "$out" | sed -n 's/^PG_PASSWORD=//p')"
+    CONTROL_PLANE_URL="postgresql+psycopg://provisa:${password}@/provisa?host=${host}&port=${port}"
 }
 
 # Deployment env for the native process (mirrors provisa.core.desktop_profile).

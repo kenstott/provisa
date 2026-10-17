@@ -82,7 +82,10 @@ function Start-ControlPlane {
   }
   $pgHost = ($out | Where-Object { $_ -like 'PG_HOST=*' }) -replace '^PG_HOST=',''
   $pgPort = ($out | Where-Object { $_ -like 'PG_PORT=*' }) -replace '^PG_PORT=',''
-  return "postgresql+psycopg://provisa:provisa@/provisa?host=$pgHost&port=$pgPort"
+  # The data directory's own password: on Windows the server listens on TCP 127.0.0.1, where
+  # every local account would otherwise reach it (provisa.core.control_plane_pg).
+  $pgPassword = ($out | Where-Object { $_ -like 'PG_PASSWORD=*' }) -replace '^PG_PASSWORD=',''
+  return "postgresql+psycopg://provisa:$pgPassword@/provisa?host=$pgHost&port=$pgPort"
 }
 
 # Deployment env for the native process (mirrors scripts/provisa native_env_pairs

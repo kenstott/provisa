@@ -42,10 +42,8 @@ from provisa.transpiler.transpile import transpile
 _CAPS = Path(__file__).resolve().parents[2] / "config" / "capabilities.yaml"
 
 #: The socket a started embedded control plane reports back (REQ-1535), and the URL built from it.
-_FAKE_SOCKET = ("/tmp/fake-pgsock", 55432)
-_PG_URL = (
-    f"postgresql+psycopg://provisa:provisa@/provisa?host={_FAKE_SOCKET[0]}&port={_FAKE_SOCKET[1]}"
-)
+_FAKE_SOCKET = ("/tmp/fake-pgsock", 55432, "datadir-password")
+_PG_URL = f"postgresql+psycopg://provisa:{_FAKE_SOCKET[2]}@/provisa?host={_FAKE_SOCKET[0]}&port={_FAKE_SOCKET[1]}"
 
 
 @pytest.fixture(autouse=True)

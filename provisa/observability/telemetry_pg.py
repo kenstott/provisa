@@ -31,15 +31,29 @@ def _server(datadir: str):
 
 def start(datadir: str) -> str:
     """Ensure a persistent telemetry postgres with a ``provisa`` role and a
-    ``telemetry`` database; return its psycopg2 SQLAlchemy URL (unix socket)."""
-    srv = _server(datadir)
-    if "1" not in srv.psql("SELECT 1 FROM pg_roles WHERE rolname='provisa'"):
-        srv.psql("CREATE ROLE provisa LOGIN PASSWORD 'provisa' SUPERUSER")
-    if "1" not in srv.psql("SELECT 1 FROM pg_database WHERE datname='telemetry'"):
-        srv.psql("CREATE DATABASE telemetry OWNER provisa")
-    # get_uri() -> postgresql://postgres:@/postgres?host=<socketdir>
-    sockdir = srv.get_uri().split("host=", 1)[-1]
-    return f"postgresql+psycopg2://provisa:provisa@/telemetry?host={sockdir}"
+    ``telemetry`` database; return its psycopg2 SQLAlchemy URL (unix socket).
+
+    Who may connect is decided as for the control plane's (provisa.core.control_plane_pg): the
+    socket stays with the directory's owner, TCP lines ask for the data directory's password."""
+    import secrets
+
+    from provisa.core.control_plane_pg import (
+        _password,
+        _refuse_root,
+        _require_passwords,
+        _signed_in,
+    )
+
+    _refuse_root()
+    password = _password(datadir) or secrets.token_hex(24)
+    with _signed_in(password):
+        srv = _server(datadir)
+        _require_passwords(srv, datadir, password)
+        if "1" not in srv.psql("SELECT 1 FROM pg_database WHERE datname='telemetry'"):
+            srv.psql("CREATE DATABASE telemetry OWNER provisa")
+        # get_uri() -> postgresql://postgres:@/postgres?host=<socketdir>
+        sockdir = srv.get_uri().split("host=", 1)[-1]
+    return f"postgresql+psycopg2://provisa:{password}@/telemetry?host={sockdir}"
 
 
 def stop(datadir: str) -> None:
