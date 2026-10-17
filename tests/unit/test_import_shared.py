@@ -179,12 +179,12 @@ class TestFormatValue:
 
     def test_hasura_session_var_lowercase(self):
         result = _format_value("x-hasura-user-id")
-        assert "current_setting(" in result
+        assert result == "current_setting('provisa.hasura_user_id')"
         assert "x-hasura-user-id" not in result
 
     def test_hasura_session_var_uppercase_prefix(self):
         result = _format_value("X-Hasura-Role")
-        assert "current_setting(" in result
+        assert result == "current_setting('provisa.hasura_role')"
         assert "X-Hasura-Role" not in result
 
     def test_zero(self):
@@ -435,7 +435,8 @@ class TestBoolExprToSQLSessionVariables:
     def test_hasura_uppercase_session_var(self):
         expr = {"user_id": {"_eq": "X-Hasura-User-Id"}}
         result = bool_expr_to_sql(expr)
-        assert "current_setting(" in result
+        # The app's user key, a variable of its own: provisa.user_id is the signed-in identity.
+        assert result == "user_id = current_setting('provisa.hasura_user_id')"
         assert "X-Hasura-User-Id" not in result
 
     def test_session_var_as_dict_operand(self):

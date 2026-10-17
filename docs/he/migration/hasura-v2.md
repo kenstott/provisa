@@ -120,7 +120,7 @@ default:
 
 ### הרשאות כתיבה {: #write-grants }
 
-הרשאה מציינת מה תפקיד רשאי לכתוב לטבלה בפעולה אחת. `filter` או `check` ריק פירושו כל שורה (`TRUE`). ערך `set` של `X-Hasura-User-Id` הופך ל-preset מסוג `session` של `user_id`; כל ערך אחר הופך ל-preset מסוג `literal`. עמודת preset אינה מופיעה גם בעמודות ההרשאה.
+הרשאה מציינת מה תפקיד רשאי לכתוב לטבלה בפעולה אחת. `filter` או `check` ריק פירושו כל שורה (`TRUE`). ערך `set` של `X-Hasura-User-Id` הופך ל-preset מסוג `session` של `hasura_user_id`; כל ערך אחר הופך ל-preset מסוג `literal`. עמודת preset אינה מופיעה גם בעמודות ההרשאה.
 
 ### Actions, פונקציות עוקבות ו-triggers {: #actions-tracked-functions-and-triggers }
 
@@ -140,7 +140,8 @@ default:
    ניסיונות חוזרים ב-triggers ואימות webhook אין להם המרה אוטומטית.
 6. **הגדירו אימות.** אם מופע ה-Hasura שלכם משתמש באימות JWT/webhook, צרו קובץ
    סביבת אימות והריצו שוב עם `--auth-env-file`.
-7. **בדקו.** הפעילו את שרת Provisa ואמתו שאילתות מול מקורות הנתונים שלכם.
+7. **שלחו את משתני ההפעלה.** הגדירו את ספק הזהות כך שהטוקן יישא כל משתנה הפעלה שהדוח מפרט תחת "הועבר אל" (למשל `x-hasura-user-id`, ברמה העליונה או בתוך אובייקט ה-claims של Hasura), או תעדו אותו לכל חבר כתכונה.
+8. **בדקו.** הפעילו את שרת Provisa ואמתו שאילתות מול מקורות הנתונים שלכם.
 
 ## בעיות נפוצות ופתרון תקלות {: #common-issues-and-troubleshooting }
 
@@ -222,7 +223,7 @@ tables:
       - role: user
         operation: update
         columns: [email]
-        rows: "id = current_setting('provisa.user_id')"
+        rows: "id = current_setting('provisa.hasura_user_id')"
         check: "TRUE"
       - role: org_admin
         operation: insert
@@ -243,7 +244,7 @@ roles:
 rls_rules:
   - table_id: users
     role_id: user
-    filter: "id = current_setting('provisa.user_id')"
+    filter: "id = current_setting('provisa.hasura_user_id')"
 relationships:
   - id: orders.user
     source_table_id: orders

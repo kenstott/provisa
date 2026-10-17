@@ -40,21 +40,23 @@ _OPERATORS: dict[str, str] = {
 }
 
 
-def _hasura_var_to_setting(header: str) -> str:
-    """Convert X-Hasura-Foo-Bar to provisa.foo_bar."""
+def hasura_session_name(header: str) -> str:
+    """X-Hasura-Foo-Bar as the session variable it is read from: ``hasura_foo_bar``, supplied by
+    the token's ``x-hasura-foo-bar`` claim as Hasura read it (auth/attributes.normalize_name).
+    Never ``user_id`` or ``role``: those are the verified identity and the acting role."""
     name = header.lower()
     for prefix in ("x-hasura-", "x_hasura_"):
         if name.startswith(prefix):
             name = name[len(prefix) :]
             break
-    return name.replace("-", "_")
+    return "hasura_" + name.replace("-", "_")
 
 
 def _format_value(val: Any) -> str:
     """Format a value for SQL embedding."""
     if isinstance(val, str):
         if val.startswith("x-hasura-") or val.startswith("X-Hasura-"):
-            return f"current_setting('provisa.{_hasura_var_to_setting(val)}')"
+            return f"current_setting('provisa.{hasura_session_name(val)}')"
         return f"'{val}'"
     if isinstance(val, bool):
         return "TRUE" if val else "FALSE"
@@ -73,7 +75,7 @@ def _convert_session_var(val: Any) -> str:
         if not isinstance(key, str):
             return ""
         if key.startswith("x-hasura-") or key.startswith("X-Hasura-"):
-            return f"current_setting('provisa.{_hasura_var_to_setting(key)}')"
+            return f"current_setting('provisa.{hasura_session_name(key)}')"
     return ""
 
 

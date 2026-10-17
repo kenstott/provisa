@@ -48,7 +48,12 @@ from provisa.hasura_v2.models import (
     HasuraSource,
     HasuraTable,
 )
-from provisa.import_shared.filters import Hop, Relations, bool_expr_to_sql
+from provisa.import_shared.filters import (
+    Hop,
+    Relations,
+    hasura_session_name,
+    bool_expr_to_sql,
+)
 from provisa.import_shared.warnings import WarningCollector
 
 # Requirements: REQ-041, REQ-019, REQ-040, REQ-155, REQ-195, REQ-205, REQ-209, REQ-417
@@ -321,8 +326,9 @@ def _presets(set_: dict[str, Any]) -> list[ColumnPreset]:
     for column, value in set_.items():
         text = str(value)
         if text.lower().startswith("x-hasura-"):
-            name = text[len("x-hasura-") :].lower().replace("-", "_")
-            presets.append(ColumnPreset(column=column, source="session", name=name))
+            presets.append(
+                ColumnPreset(column=column, source="session", name=hasura_session_name(text))
+            )
         else:
             presets.append(ColumnPreset(column=column, source="literal", value=text))
     return presets
@@ -767,6 +773,48 @@ def _settled_relationships(
     return list(kept.values())
 
 
+def _session_variables(node: Any, found: set[str]) -> None:
+    """Every X-Hasura-* name a permission's filter, check or set mentions."""
+    if isinstance(node, str):
+        if node.lower().startswith("x-hasura-"):
+            found.add(node)
+    elif isinstance(node, dict):
+        for key, val in node.items():
+            _session_variables(key, found)
+            _session_variables(val, found)
+    elif isinstance(node, list):
+        for val in node:
+            _session_variables(val, found)
+
+
+def _report_session_variables(
+    metadata: HasuraMetadata, collector: WarningCollector
+) -> None:  # REQ-1682
+    """Each session variable the permissions read, and what supplies it now: the token claim
+    Hasura read it from, as an attribute of its own (provisa.user_id stays the identity)."""
+    found: set[str] = set()
+    for source in metadata.sources:
+        for ht in source.tables:
+            for perm in [
+                *ht.select_permissions,
+                *ht.insert_permissions,
+                *ht.update_permissions,
+                *ht.delete_permissions,
+            ]:
+                _session_variables([perm.filter, perm.check, perm.set], found)
+    for name in sorted({hasura_session_name(var) for var in found}):
+        words = name[len("hasura_") :].split("_")
+        var = "X-Hasura-" + "-".join(w.capitalize() for w in words)
+        claim = var.lower()
+        collector.map(
+            "session_variables",
+            var,
+            f"provisa.{name}, supplied by the token's {claim} claim (at the top level or in the "
+            f"Hasura claims object, as Hasura read it), or recorded for the member as the "
+            f"attribute {name}: provisa.user_id stays the signed-in identity",
+        )
+
+
 def _or(terms: list[str | None]) -> str:
     """The OR of predicates; every row where any is every row."""
     if any(t in (None, "TRUE") for t in terms):
@@ -882,6 +930,8 @@ def convert_metadata(
             )
 
     all_rels = _settled_relationships(all_rels, tables, collector)
+
+    _report_session_variables(metadata, collector)
 
     # Hasura inherited roles of several roles: the union of their grants (_inherit_several).
     for ir in metadata.inherited_roles:

@@ -120,7 +120,7 @@ default:
 
 ### Разрешения на запись {: #write-grants }
 
-Разрешение указывает, что роль может записать в таблицу одной операцией. Пустой `filter` или `check` означает любую строку (`TRUE`). Значение `set` `X-Hasura-User-Id` становится пресетом `session` переменной `user_id`; любое другое значение становится пресетом `literal`. Колонка с пресетом не входит также в колонки разрешения.
+Разрешение указывает, что роль может записать в таблицу одной операцией. Пустой `filter` или `check` означает любую строку (`TRUE`). Значение `set` `X-Hasura-User-Id` становится пресетом `session` переменной `hasura_user_id`; любое другое значение становится пресетом `literal`. Колонка с пресетом не входит также в колонки разрешения.
 
 ### Actions, отслеживаемые функции и триггеры {: #actions-tracked-functions-and-triggers }
 
@@ -140,7 +140,8 @@ default:
    повторные попытки триггеров и аутентификация через webhook не имеют автоматического преобразования.
 6. **Настройте аутентификацию.** Если ваш экземпляр Hasura использует аутентификацию JWT/webhook, создайте файл
    окружения аутентификации и запустите снова с `--auth-env-file`.
-7. **Проверьте.** Запустите сервер Provisa и проверьте запросы к вашим источникам данных.
+7. **Передайте переменные сеанса.** Настройте поставщика идентичности так, чтобы токен нёс каждую переменную сеанса, которую отчёт перечисляет в «сопоставлено с» (например `x-hasura-user-id`, на верхнем уровне или внутри объекта claims Hasura), либо запишите её для каждого участника как атрибут.
+8. **Проверьте.** Запустите сервер Provisa и проверьте запросы к вашим источникам данных.
 
 ## Распространённые проблемы и устранение неполадок {: #common-issues-and-troubleshooting }
 
@@ -222,7 +223,7 @@ tables:
       - role: user
         operation: update
         columns: [email]
-        rows: "id = current_setting('provisa.user_id')"
+        rows: "id = current_setting('provisa.hasura_user_id')"
         check: "TRUE"
       - role: org_admin
         operation: insert
@@ -243,7 +244,7 @@ roles:
 rls_rules:
   - table_id: users
     role_id: user
-    filter: "id = current_setting('provisa.user_id')"
+    filter: "id = current_setting('provisa.hasura_user_id')"
 relationships:
   - id: orders.user
     source_table_id: orders

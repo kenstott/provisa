@@ -92,7 +92,7 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 | 自定义列名（`column_config`，或较旧的 `custom_column_names`） | 原样带过来 | 列的 `alias`。 |
 | `select` 之外的根字段名（`select_by_pk`、`select_aggregate`、`insert` 等） | 映射 | 按名称报告。Provisa 把一张表作为一个字段提供：按键读取是对它的过滤，聚合是它的 `_aggregate` 字段，写入是它的变更。请确认应用的查询采用这种形态。 |
 | Object 和 array relationship | 原样带过来 | 一个已批准的关系（object 对应 `many-to-one`，array 对应 `one-to-many`），其 GraphQL 字段是 Hasura relationship 的名称。不同的情形见下文。（REQ-1680） |
-| select 权限 | 原样带过来 | 列权限（`visible_to`）和一条行规则。带会话变量的项（`X-Hasura-User-Id`）变为 `current_setting('provisa.user_id')`，请求在查询时根据身份的用户 id 和 claims 绑定它。（REQ-1682） |
+| select 权限 | 原样带过来 | 列权限（`visible_to`）和一条行规则。带会话变量的项（`X-Hasura-User-Id`）变为 `current_setting('provisa.hasura_user_id')`，请求在查询时根据身份的 claims 或成员的属性绑定它。Hasura 会话变量保留自己的名称；`provisa.user_id` 仍是已登录的身份。（REQ-1682） |
 | 穿过 relationship 的行规则 | 原样带过来 | 对关联表的 `EXISTS` 子查询。 |
 | insert、update 和 delete 权限 | 原样带过来 | 表上的写入授权：每个角色和操作一条。`columns` 成为授权的列，`filter` 成为其 `rows`，`check` 成为其 `check`，`set` 成为其预设。 |
 | 继承自一个角色的角色 | 原样带过来 | 该角色作为 `parent_role_id`。 |
@@ -114,7 +114,7 @@ relationship 的情形：
 写入授权详情：
 
 - 空的 `filter` 或 `check` 表示所有行，写作 `TRUE`。
-- 属于会话变量的 `set` 值（`X-Hasura-User-Id`）成为对应会话变量的 `session` 预设（`X-Hasura-User-Id` 成为 `user_id`）。其他任何值成为 `literal` 预设。预设列不会同时出现在授权的列中。
+- 属于会话变量的 `set` 值（`X-Hasura-User-Id`）成为对应会话变量的 `session` 预设（`X-Hasura-User-Id` 成为 `hasura_user_id`）。其他任何值成为 `literal` 预设。预设列不会同时出现在授权的列中。
 - Hasura 隐含的 admin 持有每一项权限。它成为角色 `org_admin`，持有覆盖所有列和所有行的 insert、update 和 delete 授权，并在每个导入的列上被指名。（REQ-1684）
 - 每个具有 insert、update 或 delete 权限的角色还会获得 `write` 权利。
 

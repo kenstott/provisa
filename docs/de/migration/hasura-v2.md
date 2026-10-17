@@ -120,7 +120,7 @@ Der Kommandozeilen-Konverter gibt den Bericht auf stderr als `Carried as`, `Mapp
 
 ### Schreibberechtigungen {: #write-grants }
 
-Eine Berechtigung legt fest, was eine Rolle mit einer Operation in eine Tabelle schreiben darf. Ein leeres `filter` oder `check` steht für jede Zeile (`TRUE`). Ein `set`-Wert `X-Hasura-User-Id` wird zu einem `session`-Preset von `user_id`; jeder andere Wert wird zu einem `literal`-Preset. Eine Preset-Spalte steht nicht zusätzlich in den Spalten der Berechtigung.
+Eine Berechtigung legt fest, was eine Rolle mit einer Operation in eine Tabelle schreiben darf. Ein leeres `filter` oder `check` steht für jede Zeile (`TRUE`). Ein `set`-Wert `X-Hasura-User-Id` wird zu einem `session`-Preset von `hasura_user_id`; jeder andere Wert wird zu einem `literal`-Preset. Eine Preset-Spalte steht nicht zusätzlich in den Spalten der Berechtigung.
 
 ### Actions, getrackte Funktionen und Trigger {: #actions-tracked-functions-and-triggers }
 
@@ -140,7 +140,8 @@ Eine Berechtigung legt fest, was eine Rolle mit einer Operation in eine Tabelle 
    Wiederholungen bei Triggern und Webhook-Authentifizierung werden nicht automatisch konvertiert.
 6. **Authentifizierung einrichten.** Wenn Ihre Hasura-Instanz JWT-/Webhook-Authentifizierung verwendet, erstellen Sie eine
    Auth-Env-Datei und führen Sie den Lauf mit `--auth-env-file` erneut aus.
-7. **Testen.** Starten Sie den Provisa-Server und prüfen Sie Abfragen gegen Ihre Datenquellen.
+7. **Sitzungsvariablen senden.** Konfigurieren Sie den Identitätsanbieter so, dass das Token jede Sitzungsvariable trägt, die der Bericht unter „zugeordnet zu“ aufführt (zum Beispiel `x-hasura-user-id`, auf oberster Ebene oder im Hasura-Claims-Objekt), oder erfassen Sie sie je Mitglied als Attribut.
+8. **Testen.** Starten Sie den Provisa-Server und prüfen Sie Abfragen gegen Ihre Datenquellen.
 
 ## Häufige Probleme und Fehlerbehebung {: #common-issues-and-troubleshooting }
 
@@ -222,7 +223,7 @@ tables:
       - role: user
         operation: update
         columns: [email]
-        rows: "id = current_setting('provisa.user_id')"
+        rows: "id = current_setting('provisa.hasura_user_id')"
         check: "TRUE"
       - role: org_admin
         operation: insert
@@ -243,7 +244,7 @@ roles:
 rls_rules:
   - table_id: users
     role_id: user
-    filter: "id = current_setting('provisa.user_id')"
+    filter: "id = current_setting('provisa.hasura_user_id')"
 relationships:
   - id: orders.user
     source_table_id: orders

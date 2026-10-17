@@ -119,7 +119,7 @@ default:
 
 ### 写入授权 {: #write-grants }
 
-一条授权声明某个角色通过一种操作可以向某张表写入什么。空的 `filter` 或 `check` 表示所有行（`TRUE`）。`set` 值 `X-Hasura-User-Id` 成为 `user_id` 的 `session` 预设；其他任何值成为 `literal` 预设。预设列不会同时出现在授权的列中。
+一条授权声明某个角色通过一种操作可以向某张表写入什么。空的 `filter` 或 `check` 表示所有行（`TRUE`）。`set` 值 `X-Hasura-User-Id` 成为 `hasura_user_id` 的 `session` 预设；其他任何值成为 `literal` 预设。预设列不会同时出现在授权的列中。
 
 ### Action、已跟踪的函数和触发器 {: #actions-tracked-functions-and-triggers }
 
@@ -139,7 +139,8 @@ default:
    触发器重试和 webhook 身份验证没有自动转换。
 6. **设置身份验证。** 如果你的 Hasura 实例使用 JWT/webhook 身份验证，请创建一个
    身份验证环境文件，并用 `--auth-env-file` 重新运行。
-7. **测试。** 启动 Provisa 服务器，并针对你的数据源验证查询。
+7. **传入会话变量。** 配置身份提供方，使令牌携带报告在“映射到”下列出的每个会话变量（例如 `x-hasura-user-id`，在顶层或 Hasura claims 对象内），或按成员将其记录为属性。
+8. **测试。** 启动 Provisa 服务器，并针对你的数据源验证查询。
 
 ## 常见问题与故障排查 {: #common-issues-and-troubleshooting }
 
@@ -220,7 +221,7 @@ tables:
       - role: user
         operation: update
         columns: [email]
-        rows: "id = current_setting('provisa.user_id')"
+        rows: "id = current_setting('provisa.hasura_user_id')"
         check: "TRUE"
       - role: org_admin
         operation: insert
@@ -241,7 +242,7 @@ roles:
 rls_rules:
   - table_id: users
     role_id: user
-    filter: "id = current_setting('provisa.user_id')"
+    filter: "id = current_setting('provisa.hasura_user_id')"
 relationships:
   - id: orders.user
     source_table_id: orders

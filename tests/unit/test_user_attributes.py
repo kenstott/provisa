@@ -56,14 +56,31 @@ class TestResolution:
 
     def test_a_providers_attributes_are_its_scalar_claims_under_one_spelling(self):
         claims = {"X-Hasura-Org-Id": "acme", "Cost-Center": 42, "admin": True, "groups": ["a"]}
-        assert idp_attributes(claims) == {"org_id": "acme", "cost_center": "42", "admin": "true"}
+        assert idp_attributes(claims) == {
+            "hasura_org_id": "acme",
+            "cost_center": "42",
+            "admin": "true",
+        }
+
+    def test_hasura_session_variables_are_read_from_the_hasura_claims_object(self):
+        """Hasura reads x-hasura-* from the claims object its JWT names; each is its own
+        hasura_* attribute, never user_id or role."""
+        claims = {
+            "sub": "auth0|abc",
+            "https://hasura.io/jwt/claims": {"x-hasura-user-id": 7, "x-hasura-org-id": "acme"},
+        }
+        assert idp_attributes(claims) == {
+            "sub": "auth0|abc",
+            "hasura_user_id": "7",
+            "hasura_org_id": "acme",
+        }
 
     def test_what_is_recorded_of_a_provider_leaves_the_token_out(self):
         assert recorded_idp_attributes({"region": "eu", "iat": 1, "exp": 2, "sid": "s"}) == {
             "region": "eu"
         }
 
-    @pytest.mark.parametrize("name", ["user_id", "Role", "X-Hasura-User-Id"])
+    @pytest.mark.parametrize("name", ["user_id", "Role", "User-Id"])
     def test_the_identity_the_request_binds_cannot_be_recorded(self, name):
         problem = attribute_name_problem(name)
         assert problem is not None and problem[0] == "name_reserved"
@@ -76,6 +93,12 @@ class TestResolution:
     def test_a_good_name_has_no_problem(self):
         assert attribute_name_problem("Cost-Center") is None
         assert normalize_name("Cost-Center") == "cost_center"
+
+    def test_a_hasura_session_variable_is_an_attribute_of_its_own(self):
+        """The app's user key an imported rule reads (X-Hasura-User-Id) may be recorded for a
+        member: it is hasura_user_id, not the identity's user_id."""
+        assert normalize_name("X-Hasura-User-Id") == "hasura_user_id"
+        assert attribute_name_problem("X-Hasura-User-Id") is None
 
 
 class TestSessionVariables:
@@ -219,9 +242,7 @@ class TestAdminRoutes:
 
     async def test_a_reserved_name_is_refused_naming_it_as_it_is_bound(self, plane):
         with pytest.raises(ApiError) as refused:
-            await router.set_attribute(
-                "u1", "X-Hasura-User-Id", router.AttributeBody(value="x"), ADMIN
-            )
+            await router.set_attribute("u1", "User-Id", router.AttributeBody(value="x"), ADMIN)
         assert refused.value.status_code == 422
         assert refused.value.code == "users.attribute_name_reserved"
         assert refused.value.params == {"name": "user_id"}

@@ -120,7 +120,7 @@ The command-line converter prints the report to stderr as `Carried as`, `Mapped 
 
 ### Write grants
 
-A grant states what one role may write to one table by one operation. An empty `filter` or `check` is every row (`TRUE`). A `set` value of `X-Hasura-User-Id` becomes a `session` preset of `user_id`; any other value becomes a `literal` preset. A preset column is not also in the grant's columns.
+A grant states what one role may write to one table by one operation. An empty `filter` or `check` is every row (`TRUE`). A `set` value of `X-Hasura-User-Id` becomes a `session` preset of `hasura_user_id`; any other value becomes a `literal` preset. A preset column is not also in the grant's columns.
 
 ### Actions, tracked functions and triggers
 
@@ -140,7 +140,8 @@ A grant states what one role may write to one table by one operation. An empty `
    retries on triggers and webhook auth have no automatic conversion.
 6. **Set up auth.** If your Hasura instance uses JWT/webhook auth, create an auth env
    file and re-run with `--auth-env-file`.
-7. **Test.** Start the Provisa server and verify queries against your data sources.
+7. **Send the session variables.** Configure the identity provider so the token carries each session variable the report lists under "mapped to" (for example `x-hasura-user-id`, at the top level or inside the Hasura claims object), or record it per member as an attribute.
+8. **Test.** Start the Provisa server and verify queries against your data sources.
 
 ## Common Issues and Troubleshooting
 
@@ -222,7 +223,7 @@ tables:
       - role: user
         operation: update
         columns: [email]
-        rows: "id = current_setting('provisa.user_id')"
+        rows: "id = current_setting('provisa.hasura_user_id')"
         check: "TRUE"
       - role: org_admin
         operation: insert
@@ -243,7 +244,7 @@ roles:
 rls_rules:
   - table_id: users
     role_id: user
-    filter: "id = current_setting('provisa.user_id')"
+    filter: "id = current_setting('provisa.hasura_user_id')"
 relationships:
   - id: orders.user
     source_table_id: orders

@@ -285,7 +285,7 @@ rls_rules:
 ```
 過濾條件以 AND 附加至查詢的 WHERE 子句。適用於查詢及變更（UPDATE/DELETE）。（REQ-035、REQ-041）
 
-`current_setting('provisa.<name>')` 項會從請求所綁定的工作階段變數解析：來自已驗證身份的 `user_id`、來自執行角色的 `role`，以及權杖中每個純量 claim，以其去除 `x-hasura-` 前綴後的小寫名稱綁定，因此匯入的、以 `X-Hasura-User-Id` 為基礎的 Hasura 過濾會讀取 `provisa.user_id`。角色所設定的 `session_vars` 是基礎常數；請求的綁定疊加於其上。在不安全模式下，標頭 `x-provisa-session-<name>` 綁定 `<name>`。任何地方都沒有綁定的變數解析為 NULL，不會符合任何資料列。（REQ-1682）
+`current_setting('provisa.<name>')` 項會從請求所綁定的工作階段變數解析：來自已驗證身份的 `user_id`、來自執行角色的 `role`，以及權杖中每個純量 claim，以其小寫名稱綁定，連字號換為底線。Hasura 工作階段變數保留自己的名稱：`X-Hasura-User-Id` 是 `hasura_user_id`，讀自權杖的 `x-hasura-user-id` claim（在頂層，或在 Hasura claims 物件內，如 `https://hasura.io/jwt/claims`），或作為屬性 `hasura_user_id` 記錄在成員名下。因此匯入的、以 `X-Hasura-User-Id` 為基礎的 Hasura 過濾會讀取 `provisa.hasura_user_id`。`provisa.user_id` 一律是已登入的身份，任何 claim 都不會取代它。角色所設定的 `session_vars` 是基礎常數；請求的綁定疊加於其上。在不安全模式下，標頭 `x-provisa-session-<name>` 綁定 `<name>`。任何地方都沒有綁定的變數解析為 NULL，不會符合任何資料列。（REQ-1682）
 
 ## 欄位層級遮罩 {: #column-level-masking }
 

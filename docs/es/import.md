@@ -92,7 +92,7 @@ La vista previa devuelve las tres partes como listas. El conversor de línea de 
 | Nombres de columna personalizados (`column_config`, o el antiguo `custom_column_names`) | trasladado | `alias` de la columna. |
 | Nombres de campo raíz más allá de `select` (`select_by_pk`, `select_aggregate`, `insert`, ...) | asignado | Se informa por nombre. Provisa sirve una tabla como un solo campo: una lectura por clave es un filtro sobre él, un agregado su campo `_aggregate`, una escritura su mutación. Compruebe que las consultas de la app tengan esa forma. |
 | Relationship de objeto y de array | trasladado | Una relación aprobada (`many-to-one` para objeto, `one-to-many` para array) cuyo campo GraphQL es el nombre de la relationship de Hasura. Los casos que difieren se detallan abajo. (REQ-1680) |
-| Permiso de select | trasladado | Permisos de columna (`visible_to`) y una regla de filas. Un término con variable de sesión (`X-Hasura-User-Id`) pasa a ser `current_setting('provisa.user_id')`, que la solicitud enlaza en el momento de la consulta con el id de usuario y los claims de la identidad. (REQ-1682) |
+| Permiso de select | trasladado | Permisos de columna (`visible_to`) y una regla de filas. Un término con variable de sesión (`X-Hasura-User-Id`) pasa a ser `current_setting('provisa.hasura_user_id')`, que la solicitud enlaza en el momento de la consulta con los claims de la identidad o los atributos del miembro. Una variable de sesión de Hasura conserva su propio nombre; `provisa.user_id` sigue siendo la identidad con sesión iniciada. (REQ-1682) |
 | Regla de filas a través de una relationship | trasladado | Una subconsulta `EXISTS` sobre la tabla relacionada. |
 | Permiso de insert, update y delete | trasladado | Permisos de escritura sobre la tabla: uno por rol y operación. `columns` pasan a ser las columnas del permiso, `filter` su `rows`, `check` su `check` y `set` sus presets. |
 | Rol heredado de un rol | trasladado | Ese rol como `parent_role_id`. |
@@ -114,7 +114,7 @@ Casos de relationships:
 Detalles de los permisos de escritura:
 
 - Un `filter` o `check` vacío es todas las filas, escrito `TRUE`.
-- Un valor de `set` que es una variable de sesión (`X-Hasura-User-Id`) pasa a ser un preset `session` de la variable de sesión correspondiente (`X-Hasura-User-Id` pasa a ser `user_id`). Cualquier otro valor pasa a ser un preset `literal`. Una columna con preset no está también en las columnas del permiso.
+- Un valor de `set` que es una variable de sesión (`X-Hasura-User-Id`) pasa a ser un preset `session` de la variable de sesión correspondiente (`X-Hasura-User-Id` pasa a ser `hasura_user_id`). Cualquier otro valor pasa a ser un preset `literal`. Una columna con preset no está también en las columnas del permiso.
 - El admin implícito de Hasura tiene todos los permisos. Pasa a ser el rol `org_admin`, que mantiene un permiso de insert, update y delete sobre todas las columnas y todas las filas, y se nombra en cada columna importada. (REQ-1684)
 - Cada rol con un permiso de insert, update o delete recibe además el derecho `write`.
 

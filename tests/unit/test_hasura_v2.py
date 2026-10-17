@@ -143,12 +143,12 @@ class TestBoolExprToSQL:
     def test_session_var_emits_current_setting(self):
         expr = {"user_id": {"_eq": {"X-Hasura-User-Id": "x-hasura-default-role"}}}
         result = bool_expr_to_sql(expr)
-        assert "current_setting('provisa.user_id')" in result
+        assert "current_setting('provisa.hasura_user_id')" in result
 
     def test_session_var_lowercase_prefix(self):
         expr = {"org_id": {"_eq": {"x-hasura-org-id": "x-hasura-default-role"}}}
         result = bool_expr_to_sql(expr)
-        assert "current_setting('provisa.org_id')" in result
+        assert "current_setting('provisa.hasura_org_id')" in result
 
 
 # ---------------------------------------------------------------------------

@@ -98,7 +98,7 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 | שמות עמודות מותאמים (`column_config`, או `custom_column_names` הישן) | הועבר | `alias` של העמודה. |
 | שמות שדות שורש מעבר ל-`select` (`select_by_pk`, `select_aggregate`, `insert`, ...) | מופה | מדווחים בשמם. Provisa מגישה טבלה כשדה אחד: קריאה לפי מפתח היא מסנן עליו, אגרגט הוא השדה `_aggregate` שלו, כתיבה היא המוטציה שלו. בדקו שהשאילתות של האפליקציה בצורה הזו. |
 | Object ו-array relationship | הועבר | קשר מאושר (`many-to-one` ל-object, `one-to-many` ל-array) ששדה ה-GraphQL שלו הוא שם ה-relationship של Hasura. המקרים החריגים מפורטים להלן. (REQ-1680) |
-| הרשאת select | הועבר | הרשאות עמודה (`visible_to`) וכלל שורות. איבר עם משתנה הפעלה (`X-Hasura-User-Id`) הופך ל-`current_setting('provisa.user_id')`, שהבקשה קושרת בזמן השאילתה ממזהה המשתמש וה-claims של הזהות. (REQ-1682) |
+| הרשאת select | הועבר | הרשאות עמודה (`visible_to`) וכלל שורות. איבר עם משתנה הפעלה (`X-Hasura-User-Id`) הופך ל-`current_setting('provisa.hasura_user_id')`, שהבקשה קושרת בזמן השאילתה מה-claims של הזהות או מתכונות החבר. משתנה הפעלה של Hasura שומר על שמו; `provisa.user_id` נשאר הזהות המחוברת. (REQ-1682) |
 | כלל שורות דרך relationship | הועבר | תת-שאילתת `EXISTS` על הטבלה הקשורה. |
 | הרשאת insert, update ו-delete | הועבר | הרשאות כתיבה על הטבלה: אחת לכל תפקיד ופעולה. `columns` הופכות לעמודות ההרשאה, `filter` ל-`rows` שלה, `check` ל-`check` שלה ו-`set` ל-presets שלה. |
 | תפקיד שירש מתפקיד אחד | הועבר | אותו תפקיד כ-`parent_role_id`. |
@@ -120,7 +120,7 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 פרטי הרשאות הכתיבה:
 
 - `filter` או `check` ריק פירושו כל שורה, ונכתב `TRUE`.
-- ערך `set` שהוא משתנה הפעלה (`X-Hasura-User-Id`) הופך ל-preset מסוג `session` של משתנה ההפעלה התואם (`X-Hasura-User-Id` הופך ל-`user_id`). כל ערך אחר הופך ל-preset מסוג `literal`. עמודת preset אינה מופיעה גם בעמודות ההרשאה.
+- ערך `set` שהוא משתנה הפעלה (`X-Hasura-User-Id`) הופך ל-preset מסוג `session` של משתנה ההפעלה התואם (`X-Hasura-User-Id` הופך ל-`hasura_user_id`). כל ערך אחר הופך ל-preset מסוג `literal`. עמודת preset אינה מופיעה גם בעמודות ההרשאה.
 - ה-admin המובלע של Hasura מחזיק בכל הרשאה. הוא הופך לתפקיד `org_admin`, שמחזיק בהרשאת insert, update ו-delete על כל עמודה וכל שורה, ושמו מופיע בכל עמודה מיובאת. (REQ-1684)
 - כל תפקיד עם הרשאת insert, update או delete מקבל גם את הזכות `write`.
 

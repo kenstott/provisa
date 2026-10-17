@@ -39,13 +39,44 @@ class TestRequestSessionVars:
             {},
             honor_session_headers=False,
         )
-        assert out == {"user_id": "u-7", "role": "analyst", "org_id": "acme"}
+        assert out == {
+            "user_id": "u-7",
+            "role": "analyst",
+            "hasura_user_id": "3",
+            "hasura_org_id": "acme",
+        }
 
-    def test_claim_user_id_is_overridden_by_identity(self):
+    def test_a_hasura_user_id_claim_never_replaces_the_identity(self):
+        """The app's own user key, which Hasura read from x-hasura-user-id, is its own variable:
+        provisa.user_id stays the verified identity."""
         out = request_session_vars(
-            _identity(claims={"X-Hasura-User-Id": 3}), None, {}, honor_session_headers=False
+            _identity(user_id="auth0|abc", claims={"X-Hasura-User-Id": 3}),
+            None,
+            {},
+            honor_session_headers=False,
         )
-        assert out["user_id"] == "u-7"
+        assert out["user_id"] == "auth0|abc" and out["hasura_user_id"] == "3"
+
+    def test_hasura_claims_inside_the_hasura_claims_object_are_read(self):
+        """Hasura reads its session variables from the claims object it names (by default
+        https://hasura.io/jwt/claims); each is read from there, as Hasura read it."""
+        claims = {
+            "sub": "auth0|abc",
+            "https://hasura.io/jwt/claims": {
+                "x-hasura-user-id": "7",
+                "x-hasura-default-role": "customer",
+                "x-hasura-allowed-roles": ["customer"],
+            },
+        }
+        out = request_session_vars(
+            _identity(user_id="auth0|abc", claims=claims),
+            "customer",
+            {},
+            honor_session_headers=False,
+        )
+        assert out["hasura_user_id"] == "7" and out["hasura_default_role"] == "customer"
+        assert out["user_id"] == "auth0|abc"
+        assert "hasura_allowed_roles" not in out  # a list is no value a predicate compares
 
     def test_anonymous_binds_no_user_id_but_headers_do(self):
         # No auth provider: the deployment has no claims, so the session headers are its context.
@@ -72,7 +103,7 @@ class TestRequestSessionVars:
         assert (
             request_session_vars(
                 _identity(claims={"x-hasura-is-admin": True}), None, {}, honor_session_headers=False
-            )["is_admin"]
+            )["hasura_is_admin"]
             == "true"
         )
 
@@ -102,6 +133,36 @@ class TestSessionVarsFor:
         finally:
             reset_session_vars(token)
         assert sql == "id = 'o''neil'"
+
+    def test_an_imported_rule_reads_the_app_keys_rows_and_the_identity_is_unchanged(self):
+        """A token whose subject is not the app's user key: the imported Hasura rule reads the
+        rows of the key the token's x-hasura-user-id claim names, and provisa.user_id is the
+        subject."""
+        import duckdb
+
+        from provisa.hasura_v2.mapper import _predicate
+
+        rule = _predicate({"id": {"_eq": "X-Hasura-User-Id"}})
+        claims = {"sub": "auth0|ana", "https://hasura.io/jwt/claims": {"x-hasura-user-id": "1"}}
+        bound = request_session_vars(
+            _identity(user_id="auth0|ana", claims=claims),
+            "customer",
+            {},
+            honor_session_headers=False,
+        )
+        token = set_session_vars(bound)
+        try:
+            vars_ = session_vars_for(None)
+            sql = _resolve_session_settings(rule, vars_, "postgres")
+            who = _resolve_session_settings("current_setting('provisa.user_id')", vars_, "postgres")
+        finally:
+            reset_session_vars(token)
+        con = duckdb.connect()
+        con.execute("CREATE TABLE customers (id INTEGER, name TEXT)")
+        con.execute("INSERT INTO customers VALUES (1, 'Ana'), (2, 'Ben')")
+        rows = con.execute(f"SELECT name FROM customers WHERE {sql}").fetchall()
+        assert rows == [("Ana",)]
+        assert who == "'auth0|ana'"
 
 
 # -- the node's region (REQ-1922) ------------------------------------------------------------------

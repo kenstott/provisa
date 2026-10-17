@@ -119,7 +119,7 @@ default:
 
 ### 寫入授權 {: #write-grants }
 
-一條授權聲明某個角色透過一種操作可以向某張資料表寫入什麼。空的 `filter` 或 `check` 表示所有行（`TRUE`）。`set` 值 `X-Hasura-User-Id` 成為 `user_id` 的 `session` 預設；其他任何值成為 `literal` 預設。預設欄位不會同時出現在授權的欄位中。
+一條授權聲明某個角色透過一種操作可以向某張資料表寫入什麼。空的 `filter` 或 `check` 表示所有行（`TRUE`）。`set` 值 `X-Hasura-User-Id` 成為 `hasura_user_id` 的 `session` 預設；其他任何值成為 `literal` 預設。預設欄位不會同時出現在授權的欄位中。
 
 ### Action、已追蹤的函式和觸發器 {: #actions-tracked-functions-and-triggers }
 
@@ -139,7 +139,8 @@ default:
    觸發器重試和 webhook 身分驗證沒有自動轉換。
 6. **設定身分驗證。** 如果你的 Hasura 實例使用 JWT/webhook 身分驗證，請建立一個
    身分驗證環境檔案，並用 `--auth-env-file` 重新運行。
-7. **測試。** 啟動 Provisa 伺服器，並針對你的數據來源驗證查詢。
+7. **傳入工作階段變數。** 設定身分提供者，使權杖攜帶報告在「對應到」下列出的每個工作階段變數（例如 `x-hasura-user-id`，在頂層或 Hasura claims 物件內），或按成員將其記錄為屬性。
+8. **測試。** 啟動 Provisa 伺服器，並針對你的數據來源驗證查詢。
 
 ## 常見問題及疑難排解 {: #common-issues-and-troubleshooting }
 
@@ -220,7 +221,7 @@ tables:
       - role: user
         operation: update
         columns: [email]
-        rows: "id = current_setting('provisa.user_id')"
+        rows: "id = current_setting('provisa.hasura_user_id')"
         check: "TRUE"
       - role: org_admin
         operation: insert
@@ -241,7 +242,7 @@ roles:
 rls_rules:
   - table_id: users
     role_id: user
-    filter: "id = current_setting('provisa.user_id')"
+    filter: "id = current_setting('provisa.hasura_user_id')"
 relationships:
   - id: orders.user
     source_table_id: orders

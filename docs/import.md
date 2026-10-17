@@ -101,7 +101,7 @@ The preview returns the three parts as lists. The command-line converter prints 
 | Custom column names (`column_config`, or the older `custom_column_names`) | carried | Column `alias`. |
 | Root field names beyond `select` (`select_by_pk`, `select_aggregate`, `insert`, ...) | mapped | Reported by name. Provisa serves a table as one field: a by-key read is a filter on it, an aggregate its `_aggregate` field, a write its mutation. Check that the app's queries take that shape. |
 | Object and array relationship | carried | An approved relationship (`many-to-one` for object, `one-to-many` for array) whose GraphQL field is the Hasura relationship name. See below for the cases that differ. (REQ-1680) |
-| Select permission | carried | Column grants (`visible_to`) and a row rule. A session-variable term (`X-Hasura-User-Id`) becomes `current_setting('provisa.user_id')`, which the request binds from the identity's user id and claims at query time. (REQ-1682) |
+| Select permission | carried | Column grants (`visible_to`) and a row rule. A session-variable term (`X-Hasura-User-Id`) becomes `current_setting('provisa.hasura_user_id')`, which the request binds at query time from the identity's claims or the member's attributes. A Hasura session variable keeps its own name; `provisa.user_id` stays the signed-in identity. (REQ-1682) |
 | Row rule through a relationship | carried | An `EXISTS` subquery over the related table. |
 | Insert, update and delete permission | carried | Write grants on the table: one per role and operation. `columns` become the grant's columns, `filter` its `rows`, `check` its `check`, and `set` its presets. |
 | Inherited role of one role | carried | That role as `parent_role_id`. |
@@ -123,7 +123,7 @@ Relationship cases:
 Write grant details:
 
 - An empty `filter` or `check` is every row, written `TRUE`.
-- A `set` value that is a session variable (`X-Hasura-User-Id`) becomes a `session` preset of the matching session variable (`X-Hasura-User-Id` becomes `user_id`). Any other value becomes a `literal` preset. A preset column is not also in the grant's columns.
+- A `set` value that is a session variable (`X-Hasura-User-Id`) becomes a `session` preset of the matching session variable (`X-Hasura-User-Id` becomes `hasura_user_id`). Any other value becomes a `literal` preset. A preset column is not also in the grant's columns.
 - Hasura's implicit admin holds every permission. It becomes the role `org_admin`, which holds an insert, update and delete grant over every column and every row, and is named on every imported column. (REQ-1684)
 - Each role with an insert, update or delete permission also receives the `write` right.
 

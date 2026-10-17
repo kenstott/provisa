@@ -285,7 +285,7 @@ rls_rules:
 ```
 过滤条件以 AND 追加到查询的 WHERE 子句。适用于查询和变更（UPDATE/DELETE）。（REQ-035、REQ-041）
 
-`current_setting('provisa.<name>')` 项从请求所绑定的会话变量解析：来自已验证身份的 `user_id`、来自执行角色的 `role`，以及令牌中每个标量 claim，以其去掉 `x-hasura-` 前缀后的小写名称绑定，因此导入的基于 `X-Hasura-User-Id` 的 Hasura 过滤会读取 `provisa.user_id`。角色配置的 `session_vars` 是基础常量；请求的绑定叠加在其上。在不安全模式下，标头 `x-provisa-session-<name>` 绑定 `<name>`。任何地方都未绑定的变量解析为 NULL，不匹配任何行。（REQ-1682）
+`current_setting('provisa.<name>')` 项从请求所绑定的会话变量解析：来自已验证身份的 `user_id`、来自执行角色的 `role`，以及令牌中每个标量 claim，以其小写名称绑定，连字符换为下划线。Hasura 会话变量保留自己的名称：`X-Hasura-User-Id` 是 `hasura_user_id`，读自令牌的 `x-hasura-user-id` claim（在顶层，或在 Hasura claims 对象内，如 `https://hasura.io/jwt/claims`），或作为属性 `hasura_user_id` 记录在成员名下。因此导入的基于 `X-Hasura-User-Id` 的 Hasura 过滤会读取 `provisa.hasura_user_id`。`provisa.user_id` 始终是已登录的身份，任何 claim 都不会替换它。角色配置的 `session_vars` 是基础常量；请求的绑定叠加在其上。在不安全模式下，标头 `x-provisa-session-<name>` 绑定 `<name>`。任何地方都未绑定的变量解析为 NULL，不匹配任何行。（REQ-1682）
 
 ## 列级脱敏 {: #column-level-masking }
 

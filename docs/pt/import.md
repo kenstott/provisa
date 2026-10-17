@@ -100,7 +100,7 @@ A pré-visualização retorna as três partes como listas. O conversor de linha 
 | Nomes de coluna personalizados (`column_config`, ou o antigo `custom_column_names`) | levado | `alias` da coluna. |
 | Nomes de campo raiz além de `select` (`select_by_pk`, `select_aggregate`, `insert`, ...) | mapeado | Informados pelo nome. O Provisa serve uma tabela como um único campo: uma leitura por chave é um filtro sobre ele, um agregado o seu campo `_aggregate`, uma escrita a sua mutação. Verifique se as consultas do app têm essa forma. |
 | Relationship de objeto e de array | levado | Um relacionamento aprovado (`many-to-one` para objeto, `one-to-many` para array) cujo campo GraphQL é o nome da relationship do Hasura. Os casos que diferem estão abaixo. (REQ-1680) |
-| Permissão de select | levado | Permissões de coluna (`visible_to`) e uma regra de linhas. Um termo com variável de sessão (`X-Hasura-User-Id`) vira `current_setting('provisa.user_id')`, que a requisição vincula em tempo de consulta ao id do usuário e aos claims da identidade. (REQ-1682) |
+| Permissão de select | levado | Permissões de coluna (`visible_to`) e uma regra de linhas. Um termo com variável de sessão (`X-Hasura-User-Id`) vira `current_setting('provisa.hasura_user_id')`, que a requisição vincula em tempo de consulta aos claims da identidade ou aos atributos do membro. Uma variável de sessão do Hasura mantém o próprio nome; `provisa.user_id` continua sendo a identidade autenticada. (REQ-1682) |
 | Regra de linhas através de uma relationship | levado | Uma subconsulta `EXISTS` sobre a tabela relacionada. |
 | Permissão de insert, update e delete | levado | Permissões de escrita sobre a tabela: uma por função e operação. `columns` viram as colunas da permissão, `filter` o seu `rows`, `check` o seu `check` e `set` os seus presets. |
 | Função herdada de uma função | levado | Essa função como `parent_role_id`. |
@@ -122,7 +122,7 @@ Casos de relationships:
 Detalhes das permissões de escrita:
 
 - Um `filter` ou `check` vazio significa todas as linhas, escrito `TRUE`.
-- Um valor de `set` que é uma variável de sessão (`X-Hasura-User-Id`) vira um preset `session` da variável de sessão correspondente (`X-Hasura-User-Id` vira `user_id`). Qualquer outro valor vira um preset `literal`. Uma coluna com preset não está também nas colunas da permissão.
+- Um valor de `set` que é uma variável de sessão (`X-Hasura-User-Id`) vira um preset `session` da variável de sessão correspondente (`X-Hasura-User-Id` vira `hasura_user_id`). Qualquer outro valor vira um preset `literal`. Uma coluna com preset não está também nas colunas da permissão.
 - O admin implícito do Hasura tem todas as permissões. Ele vira a função `org_admin`, que mantém uma permissão de insert, update e delete sobre todas as colunas e todas as linhas, e é nomeada em cada coluna importada. (REQ-1684)
 - Cada função com uma permissão de insert, update ou delete recebe também o direito `write`.
 

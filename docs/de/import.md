@@ -92,7 +92,7 @@ Die Vorschau liefert die drei Teile als Listen. Der Kommandozeilen-Konverter gib
 | Benutzerdefinierte Spaltennamen (`column_config` oder das ältere `custom_column_names`) | übernommen | Spalten-`alias`. |
 | Wurzelfeldnamen über `select` hinaus (`select_by_pk`, `select_aggregate`, `insert`, ...) | abgebildet | Namentlich gemeldet. Provisa stellt eine Tabelle als ein Feld bereit: Ein Lesezugriff über den Schlüssel ist ein Filter darauf, ein Aggregat ihr Feld `_aggregate`, ein Schreibvorgang ihre Mutation. Prüfen Sie, ob die Abfragen der App diese Form haben. |
 | Object- und Array-Relationship | übernommen | Eine genehmigte Beziehung (`many-to-one` für Object, `one-to-many` für Array), deren GraphQL-Feld der Name der Hasura-Relationship ist. Die abweichenden Fälle stehen unten. (REQ-1680) |
-| Select-Berechtigung | übernommen | Spaltenberechtigungen (`visible_to`) und eine Zeilenregel. Ein Term mit Sitzungsvariable (`X-Hasura-User-Id`) wird zu `current_setting('provisa.user_id')`, das die Anfrage zur Abfragezeit aus der Benutzer-ID und den Claims der Identität bindet. (REQ-1682) |
+| Select-Berechtigung | übernommen | Spaltenberechtigungen (`visible_to`) und eine Zeilenregel. Ein Term mit Sitzungsvariable (`X-Hasura-User-Id`) wird zu `current_setting('provisa.hasura_user_id')`, das die Anfrage zur Abfragezeit aus den Claims der Identität oder den Attributen des Mitglieds bindet. Eine Hasura-Sitzungsvariable behält ihren eigenen Namen; `provisa.user_id` bleibt die angemeldete Identität. (REQ-1682) |
 | Zeilenregel über eine Relationship | übernommen | Eine `EXISTS`-Unterabfrage über die verbundene Tabelle. |
 | Insert-, Update- und Delete-Berechtigung | übernommen | Schreibberechtigungen auf der Tabelle: eine je Rolle und Operation. `columns` werden zu den Spalten der Berechtigung, `filter` zu ihrem `rows`, `check` zu ihrem `check` und `set` zu ihren Presets. |
 | Geerbte Rolle von einer Rolle | übernommen | Diese Rolle als `parent_role_id`. |
@@ -114,7 +114,7 @@ Fälle bei Relationships:
 Details zu Schreibberechtigungen:
 
 - Ein leeres `filter` oder `check` steht für jede Zeile, geschrieben als `TRUE`.
-- Ein `set`-Wert, der eine Sitzungsvariable ist (`X-Hasura-User-Id`), wird zu einem `session`-Preset der passenden Sitzungsvariable (`X-Hasura-User-Id` wird zu `user_id`). Jeder andere Wert wird zu einem `literal`-Preset. Eine Preset-Spalte steht nicht zusätzlich in den Spalten der Berechtigung.
+- Ein `set`-Wert, der eine Sitzungsvariable ist (`X-Hasura-User-Id`), wird zu einem `session`-Preset der passenden Sitzungsvariable (`X-Hasura-User-Id` wird zu `hasura_user_id`). Jeder andere Wert wird zu einem `literal`-Preset. Eine Preset-Spalte steht nicht zusätzlich in den Spalten der Berechtigung.
 - Das implizite Hasura-admin besitzt jede Berechtigung. Es wird zur Rolle `org_admin`, die eine Insert-, Update- und Delete-Berechtigung über jede Spalte und jede Zeile hält und in jeder importierten Spalte genannt wird. (REQ-1684)
 - Jede Rolle mit einer Insert-, Update- oder Delete-Berechtigung erhält außerdem das Recht `write`.
 

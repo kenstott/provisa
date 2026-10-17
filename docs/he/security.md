@@ -285,7 +285,7 @@ rls_rules:
 ```
 המסנן מצורף ב-AND לפסוקית ה-WHERE של השאילתה. עובד גם לשאילתות וגם למוטציות (UPDATE/DELETE). (REQ-035, REQ-041)
 
-איבר `current_setting('provisa.<name>')` מתפענח ממשתני הסשן שהבקשה קושרת: `user_id` מהזהות המאומתת, `role` מהתפקיד הפועל, וכל claim סקלרי בטוקן תחת שמו באותיות קטנות בלי הקידומת `x-hasura-`, כך שמסנן Hasura מיובא על `X-Hasura-User-Id` קורא `provisa.user_id`. ה-`session_vars` המוגדרים של תפקיד הם קבועי בסיס; קישורי הבקשה מונחים מעליהם. במצב לא מאובטח הכותרת `x-provisa-session-<name>` קושרת את `<name>`. משתנה שאינו קשור בשום מקום מתפענח ל-NULL ואינו תואם אף שורה. (REQ-1682)
+איבר `current_setting('provisa.<name>')` מתפענח ממשתני הסשן שהבקשה קושרת: `user_id` מהזהות המאומתת, `role` מהתפקיד הפועל, וכל claim סקלרי בטוקן תחת שמו באותיות קטנות, מקפים כקווים תחתונים. משתנה הפעלה של Hasura שומר על שמו: `X-Hasura-User-Id` הוא `hasura_user_id`, הנקרא מה-claim‏ `x-hasura-user-id` של הטוקן (ברמה העליונה או בתוך אובייקט ה-claims של Hasura, כגון `https://hasura.io/jwt/claims`) או מתועד עבור החבר כתכונה `hasura_user_id`. לכן מסנן Hasura מיובא על `X-Hasura-User-Id` קורא `provisa.hasura_user_id`. `provisa.user_id` הוא תמיד הזהות המחוברת; שום claim אינו מחליף אותו. ה-`session_vars` המוגדרים של תפקיד הם קבועי בסיס; קישורי הבקשה מונחים מעליהם. במצב לא מאובטח הכותרת `x-provisa-session-<name>` קושרת את `<name>`. משתנה שאינו קשור בשום מקום מתפענח ל-NULL ואינו תואם אף שורה. (REQ-1682)
 
 ## מיסוך ברמת עמודה {: #column-level-masking }
 

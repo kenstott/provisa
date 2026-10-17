@@ -44,7 +44,7 @@ from provisa.ddn.models import (
     DDNRelationship,
     DDNTypePermission,
 )
-from provisa.import_shared.filters import _hasura_var_to_setting
+from provisa.import_shared.filters import hasura_session_name
 from provisa.import_shared.warnings import WarningCollector
 
 # DDN permission filters are recursive JSON: field->predicate or logical combinator.
@@ -365,7 +365,7 @@ def _ddn_op_to_sql(col: str, op: str, operand: DdnOperand) -> str:
     if isinstance(operand, dict) and len(operand) == 1:
         key = next(iter(operand))
         if key.startswith("x-hasura-") or key.startswith("X-Hasura-"):
-            return f"{col} {sql_op} current_setting('provisa.{_hasura_var_to_setting(key)}')"
+            return f"{col} {sql_op} current_setting('provisa.{hasura_session_name(key)}')"
     if isinstance(operand, str):
         return f"{col} {sql_op} '{operand}'"
     if isinstance(operand, list):

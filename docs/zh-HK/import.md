@@ -92,7 +92,7 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 | 自訂欄位名（`column_config`，或較舊的 `custom_column_names`） | 原樣帶過來 | 欄位的 `alias`。 |
 | `select` 之外的根欄位名（`select_by_pk`、`select_aggregate`、`insert` 等） | 對應 | 按名稱報告。Provisa 把一張資料表作為一個欄位提供：按鍵讀取是對它的篩選，聚合是它的 `_aggregate` 欄位，寫入是它的變更。請確認應用程式的查詢採用這種形態。 |
 | Object 和 array relationship | 原樣帶過來 | 一個已批准的關係（object 對應 `many-to-one`，array 對應 `one-to-many`），其 GraphQL 欄位是 Hasura relationship 的名稱。不同的情形見下文。（REQ-1680） |
-| select 權限 | 原樣帶過來 | 欄位權限（`visible_to`）和一條行規則。帶工作階段變數的項（`X-Hasura-User-Id`）變為 `current_setting('provisa.user_id')`，請求在查詢時根據身分的使用者 id 和 claims 綁定它。（REQ-1682） |
+| select 權限 | 原樣帶過來 | 欄位權限（`visible_to`）和一條行規則。帶工作階段變數的項（`X-Hasura-User-Id`）變為 `current_setting('provisa.hasura_user_id')`，請求在查詢時根據身分的 claims 或成員的屬性綁定它。Hasura 工作階段變數保留自己的名稱；`provisa.user_id` 仍是已登入的身分。（REQ-1682） |
 | 穿過 relationship 的行規則 | 原樣帶過來 | 對關聯資料表的 `EXISTS` 子查詢。 |
 | insert、update 和 delete 權限 | 原樣帶過來 | 資料表上的寫入授權：每個角色和操作一條。`columns` 成為授權的欄位，`filter` 成為其 `rows`，`check` 成為其 `check`，`set` 成為其預設。 |
 | 繼承自一個角色的角色 | 原樣帶過來 | 該角色作為 `parent_role_id`。 |
@@ -114,7 +114,7 @@ relationship 的情形：
 寫入授權詳情：
 
 - 空的 `filter` 或 `check` 表示所有行，寫作 `TRUE`。
-- 屬於工作階段變數的 `set` 值（`X-Hasura-User-Id`）成為對應工作階段變數的 `session` 預設（`X-Hasura-User-Id` 成為 `user_id`）。其他任何值成為 `literal` 預設。預設欄位不會同時出現在授權的欄位中。
+- 屬於工作階段變數的 `set` 值（`X-Hasura-User-Id`）成為對應工作階段變數的 `session` 預設（`X-Hasura-User-Id` 成為 `hasura_user_id`）。其他任何值成為 `literal` 預設。預設欄位不會同時出現在授權的欄位中。
 - Hasura 隱含的 admin 持有每一項權限。它成為角色 `org_admin`，持有涵蓋所有欄位和所有行的 insert、update 和 delete 授權，並在每個匯入的欄位上被指名。（REQ-1684）
 - 每個具有 insert、update 或 delete 權限的角色還會獲得 `write` 權利。
 

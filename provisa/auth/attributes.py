@@ -49,23 +49,36 @@ _NAME = re.compile(r"[a-z_][a-z0-9_]*")
 
 
 def normalize_name(key: str) -> str:
-    """The one spelling of an attribute name: lower-cased, a leading ``x-hasura-`` stripped (an
-    imported Hasura filter on ``X-Hasura-User-Id`` reads ``provisa.user_id``), ``-`` as ``_``."""
+    """The one spelling of an attribute name: lower-cased, ``-`` as ``_``. A Hasura session
+    variable keeps its own name: ``X-Hasura-User-Id`` is ``hasura_user_id``, the app's user key an
+    imported rule reads -- never ``user_id``, which is the verified identity."""
     name = key.strip().lower()
     if name.startswith(_HASURA_PREFIX):
-        name = name[len(_HASURA_PREFIX) :]
+        name = "hasura_" + name[len(_HASURA_PREFIX) :]
     return name.replace("-", "_")
 
 
 def idp_attributes(raw_claims: Mapping | None) -> dict[str, str]:
     """The attributes an identity provider supplies: every SCALAR claim, under its normalized
-    name, as text. A list or an object is not a value a predicate can compare with."""
+    name, as text. A list or an object is not a value a predicate can compare with -- except the
+    object a Hasura token carries its session variables in (``https://hasura.io/jwt/claims`` by
+    default, any name the token gives it): its ``x-hasura-*`` claims are read from there, as
+    Hasura read them."""
     out: dict[str, str] = {}
-    for key, val in (raw_claims or {}).items():
+
+    def _scalar(key: str, val: object) -> None:
         if isinstance(val, bool):
-            out[normalize_name(str(key))] = "true" if val else "false"
+            out[normalize_name(key)] = "true" if val else "false"
         elif isinstance(val, (str, int, float)):
-            out[normalize_name(str(key))] = str(val)
+            out[normalize_name(key)] = str(val)
+
+    for key, val in (raw_claims or {}).items():
+        if isinstance(val, Mapping):
+            for inner, inner_val in val.items():
+                if str(inner).lower().startswith(_HASURA_PREFIX):
+                    _scalar(str(inner), inner_val)
+        else:
+            _scalar(str(key), val)
     return out
 
 

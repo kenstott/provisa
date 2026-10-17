@@ -119,7 +119,7 @@ def test_a_row_rule_through_a_relationship_becomes_an_exists_on_its_table(conver
         r for r in config.rls_rules if r.table_id == "order_items" and r.role_id == "customer"
     ]
     assert rule.filter.startswith("EXISTS (SELECT 1 FROM orders AS _r1 WHERE _r1.id = order_id")
-    assert "current_setting('provisa.user_id')" in rule.filter
+    assert "current_setting('provisa.hasura_user_id')" in rule.filter
     assert "unsupported" not in rule.filter
     assert not _redo(collector, "rls")
 
@@ -214,6 +214,19 @@ def test_an_event_trigger_is_a_change_trigger_on_its_table(converted):
     assert trigger.on_table == "default.public.orders"
     assert trigger.url == "${env:FULFILMENT_WEBHOOK_URL}"
     assert any(m.item == "order_placed" for m in collector.mapped)
+
+
+def test_each_session_variable_is_mapped_naming_the_claim_that_supplies_it(converted):
+    """X-Hasura-User-Id is the app's own user key, read from the token's x-hasura-user-id claim
+    as Hasura read it: it is provisa.hasura_user_id, and provisa.user_id stays the identity."""
+    config, collector = converted
+    presets = [
+        p for t in config.tables for g in t.write_grants for p in g.presets if p.source == "session"
+    ]
+    assert presets and {p.name for p in presets} == {"hasura_user_id"}
+    (item,) = [m for m in collector.mapped if m.category == "session_variables"]
+    assert item.item == "X-Hasura-User-Id"
+    assert "hasura_user_id" in item.detail and "x-hasura-user-id" in item.detail
 
 
 # --- the report -------------------------------------------------------------------------------

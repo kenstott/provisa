@@ -288,8 +288,8 @@ def request_session_vars(  # REQ-1682
     identity, role_id: str | None, headers, *, honor_session_headers: bool
 ) -> dict[str, str]:
     """The session variables a request binds: ``user_id`` and ``role`` from the acting identity,
-    every scalar raw claim under its lower-cased name with a leading ``x-hasura-`` stripped (an
-    imported Hasura filter on ``X-Hasura-User-Id`` reads ``provisa.user_id``), and — only on a
+    every scalar raw claim under its normalized name (``x-hasura-user-id`` is ``hasura_user_id``,
+    the app's user key an imported Hasura rule reads; ``user_id`` is always the identity), and — only on a
     deployment with no auth provider, which has no claims — any ``x-provisa-session-<name>``
     header as ``<name>``. With an auth provider the headers are ignored: a client-chosen value
     must never stand where a row filter reads the verified identity."""

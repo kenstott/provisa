@@ -92,7 +92,7 @@ L'anteprima restituisce le tre parti come elenchi. Il convertitore da riga di co
 | Nomi di colonna personalizzati (`column_config`, o il precedente `custom_column_names`) | riportato | `alias` della colonna. |
 | Nomi di campo radice oltre `select` (`select_by_pk`, `select_aggregate`, `insert`, ...) | mappato | Segnalati per nome. Provisa serve una tabella come un solo campo: una lettura per chiave è un filtro su di esso, un aggregato il suo campo `_aggregate`, una scrittura la sua mutazione. Verificate che le query dell'app abbiano quella forma. |
 | Relationship di oggetto e di array | riportato | Una relazione approvata (`many-to-one` per oggetto, `one-to-many` per array) il cui campo GraphQL è il nome della relationship Hasura. I casi che differiscono sono sotto. (REQ-1680) |
-| Autorizzazione di select | riportato | Autorizzazioni di colonna (`visible_to`) e una regola di righe. Un termine con variabile di sessione (`X-Hasura-User-Id`) diventa `current_setting('provisa.user_id')`, che la richiesta lega al momento della query all'id utente e ai claim dell'identità. (REQ-1682) |
+| Autorizzazione di select | riportato | Autorizzazioni di colonna (`visible_to`) e una regola di righe. Un termine con variabile di sessione (`X-Hasura-User-Id`) diventa `current_setting('provisa.hasura_user_id')`, che la richiesta lega al momento della query ai claim dell'identità o agli attributi del membro. Una variabile di sessione Hasura mantiene il proprio nome; `provisa.user_id` resta l'identità autenticata. (REQ-1682) |
 | Regola di righe attraverso una relationship | riportato | Una sottoquery `EXISTS` sulla tabella correlata. |
 | Autorizzazione di insert, update e delete | riportato | Autorizzazioni di scrittura sulla tabella: una per ruolo e operazione. `columns` diventano le colonne dell'autorizzazione, `filter` il suo `rows`, `check` il suo `check` e `set` i suoi preset. |
 | Ruolo ereditato da un ruolo | riportato | Quel ruolo come `parent_role_id`. |
@@ -114,7 +114,7 @@ Casi delle relationship:
 Dettagli delle autorizzazioni di scrittura:
 
 - Un `filter` o `check` vuoto significa ogni riga, scritto `TRUE`.
-- Un valore di `set` che è una variabile di sessione (`X-Hasura-User-Id`) diventa un preset `session` della variabile di sessione corrispondente (`X-Hasura-User-Id` diventa `user_id`). Qualsiasi altro valore diventa un preset `literal`. Una colonna con preset non compare anche nelle colonne dell'autorizzazione.
+- Un valore di `set` che è una variabile di sessione (`X-Hasura-User-Id`) diventa un preset `session` della variabile di sessione corrispondente (`X-Hasura-User-Id` diventa `hasura_user_id`). Qualsiasi altro valore diventa un preset `literal`. Una colonna con preset non compare anche nelle colonne dell'autorizzazione.
 - L'admin implicito di Hasura detiene ogni autorizzazione. Diventa il ruolo `org_admin`, che detiene un'autorizzazione di insert, update e delete su ogni colonna e ogni riga, ed è nominato su ogni colonna importata. (REQ-1684)
 - Ogni ruolo con un'autorizzazione di insert, update o delete riceve inoltre il diritto `write`.
 
