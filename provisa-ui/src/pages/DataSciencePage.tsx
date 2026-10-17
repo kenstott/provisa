@@ -33,6 +33,19 @@ import CodeMirror from "@uiw/react-codemirror";
 import { Maximize2, Minimize2, Trash2 } from "lucide-react";
 import { CopySymbolButton } from "../components/CopyButton";
 import { Tip } from "../components/Tip";
+import { EditorTabStrip } from "../components/EditorTabStrip";
+import {
+  forgetScript,
+  loadOutput,
+  loadScripts,
+  moved,
+  newScriptId,
+  nextScriptTitle,
+  saveOutput,
+  saveScripts,
+  type ScriptOutput,
+  type Scripts,
+} from "../dataScience/pythonTabs";
 import "./DataSciencePage.css";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { bridgeAuth } from "../dataScience/bridge";
@@ -86,6 +99,9 @@ interface PythonRequest {
   code: string;
   autoRun: boolean;
   runId: string | null;
+  /** Into a new script tab (titled ``title`` when given) rather than the active one. */
+  newTab: boolean;
+  title: string | null;
 }
 interface NotebookRequest {
   seq: number;
@@ -94,7 +110,14 @@ interface NotebookRequest {
   runId: string | null;
 }
 
-type NavState = { code?: unknown; cells?: unknown; autoRun?: unknown; runId?: unknown };
+type NavState = {
+  code?: unknown;
+  cells?: unknown;
+  autoRun?: unknown;
+  runId?: unknown;
+  newTab?: unknown;
+  title?: unknown;
+};
 
 /** Reads the payload navigate hands /python or /notebook. Rendered only while one of them is the
  * page, so the payload of any other page is left to that page. */
@@ -145,7 +168,14 @@ export function DataScienceHost({ makeWorker = defaultWorker }: { makeWorker?: M
         setNotebookRequest({ seq: ++requests.current, cells: given, autoRun, runId });
       } else {
         const given = code ?? (cells as string[]).join("\n\n");
-        setPythonRequest({ seq: ++requests.current, code: given, autoRun, runId });
+        setPythonRequest({
+          seq: ++requests.current,
+          code: given,
+          autoRun,
+          runId,
+          newTab: payload.newTab === true,
+          title: typeof payload.title === "string" && payload.title.trim() ? payload.title : null,
+        });
       }
     },
     [pathname],
@@ -314,8 +344,77 @@ function PythonTab({
   const theme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
   const [status, setStatus] = useState<Status>("checking");
   const [failure, setFailure] = useState<string | null>(null);
-  const [code, setCode] = useState(STARTER_CODE);
-  const [output, setOutput] = useState<Output | null>(null);
+  // The scripts, each a tab with its own code and last output, kept across reloads
+  // (dataScience/pythonTabs). A run is the active script's, run fresh.
+  const titleFor = useCallback((n: number) => t("dataScience.scriptTitle", { n }), [t]);
+  const [scripts, setScripts] = useState<Scripts>(() =>
+    loadScripts(() => {
+      const id = newScriptId();
+      return { tabs: [{ id, title: titleFor(1), code: STARTER_CODE }], activeId: id };
+    }),
+  );
+  const [outputs, setOutputs] = useState<Record<string, ScriptOutput>>({});
+  const activeScript = scripts.tabs.find((s) => s.id === scripts.activeId) ?? scripts.tabs[0];
+  const code = activeScript.code;
+  const output = outputs[activeScript.id] ?? null;
+  const setCode = useCallback((next: string) => {
+    setScripts((prev) => ({
+      ...prev,
+      tabs: prev.tabs.map((s) => (s.id === prev.activeId ? { ...s, code: next } : s)),
+    }));
+  }, []);
+  useEffect(() => saveScripts(scripts), [scripts]);
+  // Each script's last output, as the browser kept it.
+  const [hydrated] = useState(() => scripts.tabs.map((s) => s.id));
+  useEffect(() => {
+    let live = true;
+    void Promise.all(hydrated.map(async (id) => [id, await loadOutput(id)] as const)).then(
+      (kept) => {
+        if (!live) return;
+        const found = Object.fromEntries(kept.filter(([, o]) => o !== null)) as Record<
+          string,
+          ScriptOutput
+        >;
+        setOutputs((prev) => ({ ...found, ...prev }));
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [hydrated]);
+  const addScript = useCallback(
+    (initial = "", title: string | null = null): string => {
+      const id = newScriptId();
+      setScripts((prev) => ({
+        tabs: [
+          ...prev.tabs,
+          { id, title: title ?? nextScriptTitle(prev.tabs, titleFor), code: initial },
+        ],
+        activeId: id,
+      }));
+      return id;
+    },
+    [titleFor],
+  );
+  const closeScript = useCallback(
+    (id: string) => {
+      forgetScript(id);
+      setOutputs(({ [id]: _gone, ...rest }) => rest);
+      setScripts((prev) => {
+        const at = prev.tabs.findIndex((s) => s.id === id);
+        const rest = prev.tabs.filter((s) => s.id !== id);
+        if (rest.length === 0) {
+          // The last one closed: a fresh script takes its place.
+          const fresh = newScriptId();
+          return { tabs: [{ id: fresh, title: titleFor(1), code: STARTER_CODE }], activeId: fresh };
+        }
+        const activeId =
+          prev.activeId === id ? rest[Math.min(at, rest.length - 1)].id : prev.activeId;
+        return { tabs: rest, activeId };
+      });
+    },
+    [titleFor],
+  );
   const worker = useRef<ReturnType<MakeWorker> | null>(null);
   const splitRef = useRef<HTMLDivElement | null>(null);
   const [editorShare, setEditorShare] = useState(0.45);
@@ -338,10 +437,30 @@ function PythonTab({
   // runs once Python is ready, and is reported back under its run id when it finishes, or at once
   // when it cannot run.
   const runIds = useRef(new Map<number, string>());
+  // Run id -> the script it ran: its output is that script's, whichever is shown when it ends.
+  const runTabs = useRef(new Map<number, string>());
   const [shownRequest, setShownRequest] = useState(0);
+  // The script a requested run is the run of: the active one, or the new one it was written to.
+  const [requestTab, setRequestTab] = useState<string | null>(null);
   if (request !== null && request.seq !== shownRequest) {
     setShownRequest(request.seq);
-    setCode(request.code);
+    if (request.newTab) {
+      const id = newScriptId();
+      setScripts((prev) => ({
+        tabs: [
+          ...prev.tabs,
+          { id, title: request.title ?? nextScriptTitle(prev.tabs, titleFor), code: request.code },
+        ],
+        activeId: id,
+      }));
+      setRequestTab(id);
+    } else {
+      setScripts((prev) => ({
+        ...prev,
+        tabs: prev.tabs.map((s) => (s.id === prev.activeId ? { ...s, code: request.code } : s)),
+      }));
+      setRequestTab(scripts.activeId);
+    }
   }
   const ranRequest = useRef(0);
 
@@ -364,7 +483,12 @@ function PythonTab({
           setFailure(message.error);
           setStatus("failed");
         } else {
-          setOutput(message);
+          const tab = runTabs.current.get(message.id);
+          runTabs.current.delete(message.id);
+          if (tab !== undefined) {
+            setOutputs((prev) => ({ ...prev, [tab]: message }));
+            saveOutput(tab, message);
+          }
           setStatus("ready");
           const runId = runIds.current.get(message.id);
           runIds.current.delete(message.id);
@@ -382,7 +506,7 @@ function PythonTab({
   }, [makeWorker]);
 
   const run = useCallback(
-    async (source: string = code, runId: string | null = null) => {
+    async (source: string = code, runId: string | null = null, tab: string = activeScript.id) => {
       const w = worker.current;
       if (w === null || status !== "ready") return;
       setStatus("running");
@@ -392,10 +516,11 @@ function PythonTab({
       w.postMessage(auth);
       const id = ++nextRun.current;
       if (runId !== null) runIds.current.set(id, runId);
+      runTabs.current.set(id, tab);
       const message: ToWorker = { type: "run", id, code: source };
       w.postMessage(message);
     },
-    [code, status],
+    [code, status, activeScript.id],
   );
 
   // A requested run waits for Python to be ready; where Python cannot run, it says why at once.
@@ -403,7 +528,7 @@ function PythonTab({
     if (request === null || !request.autoRun || request.seq === ranRequest.current) return;
     if (status === "ready") {
       ranRequest.current = request.seq;
-      void run(request.code, request.runId);
+      void run(request.code, request.runId, requestTab ?? activeScript.id);
     } else if (status === "missing" || status === "failed") {
       ranRequest.current = request.seq;
       if (request.runId !== null) {
@@ -414,7 +539,7 @@ function PythonTab({
         });
       }
     }
-  }, [status, request, run, t]);
+  }, [status, request, run, t, requestTab, activeScript.id]);
 
   if (status === "checking") return <Loader size="sm" m="md" />;
   if (status === "missing") {
@@ -430,123 +555,153 @@ function PythonTab({
     );
   }
   return (
-    <Box ref={splitRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row" }}>
-      {/* The editor and its Run bar on the left, the output on the right. */}
-      <Box
-        style={{
-          width: `${editorShare * 100}%`,
-          minWidth: 0,
-          display: "flex",
-          flexDirection: "column",
+    <Box style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <EditorTabStrip
+        tabs={scripts.tabs}
+        activeId={activeScript.id}
+        labels={{
+          renameHint: t("dataScience.scriptTabHint"),
+          newTab: t("dataScience.newScript"),
+          closeTab: (title) => t("dataScience.closeScript", { title }),
         }}
-      >
-        <Group
-          gap="sm"
-          px="md"
-          py={6}
-          style={{ flexShrink: 0, borderBottom: "1px solid var(--mantine-color-default-border)" }}
-        >
-          <Button
-            size="xs"
-            onClick={() => void run()}
-            disabled={status !== "ready"}
-            loading={status === "running"}
-            data-testid="data-science-run"
-          >
-            {t("dataScience.run")}
-          </Button>
-          <Text size="xs" c="dimmed" data-testid="data-science-status">
-            {status === "loading"
-              ? t("dataScience.loading")
-              : status === "failed"
-                ? t("dataScience.failed")
-                : t("dataScience.runHint")}
-          </Text>
-        </Group>
+        testIdPrefix="python"
+        onSwitch={(id) => setScripts((prev) => ({ ...prev, activeId: id }))}
+        onAdd={() => addScript(STARTER_CODE)}
+        onClose={closeScript}
+        onRename={(id, title) =>
+          setScripts((prev) => ({
+            ...prev,
+            tabs: prev.tabs.map((s) => (s.id === id ? { ...s, title } : s)),
+          }))
+        }
+        onMove={(id, index) =>
+          setScripts((prev) => ({ ...prev, tabs: moved(prev.tabs, id, index) }))
+        }
+      />
+      <Box ref={splitRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row" }}>
+        {/* The editor and its Run bar on the left, the output on the right. */}
         <Box
-          className="ds-pane"
-          style={{ flex: 1, minHeight: 0, overflow: "hidden" }}
-          onKeyDownCapture={(e) => {
-            // Ctrl+Enter (Cmd+Enter) runs, before the editor takes the Enter as a new line.
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              e.stopPropagation();
-              void run();
-            }
+          style={{
+            width: `${editorShare * 100}%`,
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          <CodeMirror
-            value={code}
-            onChange={setCode}
-            theme={theme}
-            height="100%"
-            style={{ height: "100%" }}
-            aria-label={t("dataScience.editorLabel")}
-            data-testid="data-science-editor"
-          />
-          <Group className="ds-controls" data-testid="data-science-editor-controls">
-            <CopySymbolButton
-              text={code}
-              className="ds-control"
-              title={t("dataScience.copyCode")}
-            />
-            <Tip text={t("dataScience.clearCode")} named>
-              <ActionIcon
-                type="button"
-                variant="transparent"
-                className="ds-control"
-                aria-label={t("dataScience.clearCode")}
-                data-testid="data-science-clear"
-                onClick={() => setCode("")}
-              >
-                <Trash2 size={12} aria-hidden />
-              </ActionIcon>
-            </Tip>
-          </Group>
-        </Box>
-      </Box>
-      <Box
-        role="separator"
-        aria-orientation="vertical"
-        aria-label={t("dataScience.resizeLabel")}
-        aria-valuenow={Math.round(editorShare * 100)}
-        aria-valuemin={Math.round(SHARE_MIN * 100)}
-        aria-valuemax={Math.round(SHARE_MAX * 100)}
-        tabIndex={0}
-        data-testid="data-science-split"
-        onPointerDown={startDrag}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowLeft") setEditorShare((v) => clampShare(v - 0.05));
-          if (e.key === "ArrowRight") setEditorShare((v) => clampShare(v + 0.05));
-        }}
-        style={{
-          flex: "0 0 5px",
-          cursor: "col-resize",
-          background: "var(--mantine-color-default-border)",
-          touchAction: "none",
-        }}
-      />
-      <Box className="ds-pane" style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
-        <ScrollArea style={{ flex: 1, minHeight: 0 }} p="md" data-testid="data-science-output-pane">
-          {failure !== null && (
-            <Alert color="red" data-testid="data-science-failure">
-              <Code block>{failure}</Code>
-            </Alert>
-          )}
-          {output !== null && <RunOutput output={output} />}
-        </ScrollArea>
-        {output !== null && (
           <Group
-            className="ds-controls ds-output-controls"
-            data-testid="data-science-output-controls"
+            gap="sm"
+            px="md"
+            py={6}
+            style={{ flexShrink: 0, borderBottom: "1px solid var(--mantine-color-default-border)" }}
           >
-            <CopySymbolButton
-              text={outputText(output)}
-              className="ds-control"
-              title={t("dataScience.copyOutput")}
-            />
+            <Button
+              size="xs"
+              onClick={() => void run()}
+              disabled={status !== "ready"}
+              loading={status === "running"}
+              data-testid="data-science-run"
+            >
+              {t("dataScience.run")}
+            </Button>
+            <Text size="xs" c="dimmed" data-testid="data-science-status">
+              {status === "loading"
+                ? t("dataScience.loading")
+                : status === "failed"
+                  ? t("dataScience.failed")
+                  : t("dataScience.runHint")}
+            </Text>
           </Group>
-        )}
+          <Box
+            className="ds-pane"
+            style={{ flex: 1, minHeight: 0, overflow: "hidden" }}
+            onKeyDownCapture={(e) => {
+              // Ctrl+Enter (Cmd+Enter) runs, before the editor takes the Enter as a new line.
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                e.stopPropagation();
+                void run();
+              }
+            }}
+          >
+            <CodeMirror
+              // One editor per script: its own document and undo history, shown as switched to.
+              key={activeScript.id}
+              value={code}
+              onChange={setCode}
+              theme={theme}
+              height="100%"
+              style={{ height: "100%" }}
+              aria-label={t("dataScience.editorLabel")}
+              data-testid="data-science-editor"
+            />
+            <Group className="ds-controls" data-testid="data-science-editor-controls">
+              <CopySymbolButton
+                text={code}
+                className="ds-control"
+                title={t("dataScience.copyCode")}
+              />
+              <Tip text={t("dataScience.clearCode")} named>
+                <ActionIcon
+                  type="button"
+                  variant="transparent"
+                  className="ds-control"
+                  aria-label={t("dataScience.clearCode")}
+                  data-testid="data-science-clear"
+                  onClick={() => setCode("")}
+                >
+                  <Trash2 size={12} aria-hidden />
+                </ActionIcon>
+              </Tip>
+            </Group>
+          </Box>
+        </Box>
+        <Box
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("dataScience.resizeLabel")}
+          aria-valuenow={Math.round(editorShare * 100)}
+          aria-valuemin={Math.round(SHARE_MIN * 100)}
+          aria-valuemax={Math.round(SHARE_MAX * 100)}
+          tabIndex={0}
+          data-testid="data-science-split"
+          onPointerDown={startDrag}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") setEditorShare((v) => clampShare(v - 0.05));
+            if (e.key === "ArrowRight") setEditorShare((v) => clampShare(v + 0.05));
+          }}
+          style={{
+            flex: "0 0 5px",
+            cursor: "col-resize",
+            background: "var(--mantine-color-default-border)",
+            touchAction: "none",
+          }}
+        />
+        <Box className="ds-pane" style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
+          <ScrollArea
+            style={{ flex: 1, minHeight: 0 }}
+            p="md"
+            data-testid="data-science-output-pane"
+          >
+            {failure !== null && (
+              <Alert color="red" data-testid="data-science-failure">
+                <Code block>{failure}</Code>
+              </Alert>
+            )}
+            {output !== null && <RunOutput output={output} />}
+          </ScrollArea>
+          {output !== null && (
+            <Group
+              className="ds-controls ds-output-controls"
+              data-testid="data-science-output-controls"
+            >
+              <CopySymbolButton
+                text={outputText(output)}
+                className="ds-control"
+                title={t("dataScience.copyOutput")}
+              />
+            </Group>
+          )}
+        </Box>
       </Box>
     </Box>
   );

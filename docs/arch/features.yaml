@@ -980,7 +980,8 @@
     text: Explore's Python and Notebook tabs run Python in your browser over the data your role is
       served. The Python tab runs a script, each run starting fresh, that reads a statement into a pandas
       DataFrame as you, with your current role, org and environment, and shows what it prints, its tables
-      and its matplotlib figures. The Notebook tab is a Jupyter notebook (cells, and %%sql, %%graphql and
+      and its matplotlib figures. It holds several scripts as tabs, each with its own code and last
+      output, kept in your browser across reloads. The Notebook tab is a Jupyter notebook (cells, and %%sql, %%graphql and
       %%cypher magics) that reads as you the same way. Both stay as you left them while you visit other
       pages, open to 95% of the window, and Polly can write code into either, run it and read what it
       returned. Python and its packages

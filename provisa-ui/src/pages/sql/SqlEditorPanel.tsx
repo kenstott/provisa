@@ -34,16 +34,13 @@ import { nlToSql } from "../../api/admin";
 import type { SqlTab } from "./types";
 import type { RegisteredTable } from "../../types/admin";
 import { Tip } from "../../components/Tip";
+import { EditorTabStrip } from "../../components/EditorTabStrip";
 import { statementHasOwnLimit } from "./sqlHelpers";
 
 interface SqlEditorPanelProps {
   // Tab strip
   tabs: SqlTab[];
   activeTabId: string;
-  editingTabId: string | null;
-  editingTitle: string;
-  setEditingTabId: React.Dispatch<React.SetStateAction<string | null>>;
-  setEditingTitle: React.Dispatch<React.SetStateAction<string>>;
   switchTab: (id: string) => void;
   addTab: () => void;
   closeTab: (id: string) => void;
@@ -91,10 +88,6 @@ interface SqlEditorPanelProps {
 export function SqlEditorPanel({
   tabs,
   activeTabId,
-  editingTabId,
-  editingTitle,
-  setEditingTabId,
-  setEditingTitle,
   switchTab,
   addTab,
   closeTab,
@@ -160,118 +153,33 @@ export function SqlEditorPanel({
   return (
     <>
       {/* Query tab strip */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "stretch",
-          gap: "2px",
-          padding: "0.25rem 0.5rem 0",
-          borderBottom: "1px solid var(--border)",
-          background: "var(--surface)",
-          flexShrink: 0,
-          overflowX: "auto",
+      <EditorTabStrip
+        tabs={tabs.map((t2) => ({
+          id: t2.id,
+          title: t2.title,
+          badge: t2.detached ? (
+            <Badge
+              size="xs"
+              color="orange"
+              variant="light"
+              data-testid={`sql-tab-detached-${t2.id}`}
+            >
+              {t("sqlEditorPanel.detachedBadge")}
+            </Badge>
+          ) : undefined,
+        }))}
+        activeId={activeTabId}
+        labels={{
+          renameHint: t("sqlEditorPanel.renameHint"),
+          newTab: t("sqlEditorPanel.newTab"),
+          closeTab: (title) => t("sqlEditorPanel.closeTab", { title }),
         }}
-      >
-        {tabs.map((t2) => {
-          const isActive = t2.id === activeTabId;
-          return (
-            <Tip key={t2.id} text={t("sqlEditorPanel.renameHint")}>
-              <div
-                onClick={() => switchTab(t2.id)}
-                onDoubleClick={() => {
-                  setEditingTabId(t2.id);
-                  setEditingTitle(t2.title);
-                }}
-                data-testid={`sql-tab-${t2.id}`}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.35rem",
-                  padding: "0.25rem 0.5rem",
-                  fontSize: "0.75rem",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  borderTopLeftRadius: "5px",
-                  borderTopRightRadius: "5px",
-                  border: "1px solid var(--border)",
-                  borderBottom: isActive ? "1px solid var(--bg)" : "1px solid var(--border)",
-                  marginBottom: "-1px",
-                  background: isActive ? "var(--bg)" : "transparent",
-                  color: isActive ? "var(--text)" : "var(--text-muted)",
-                  fontWeight: isActive ? 600 : 400,
-                }}
-              >
-                {editingTabId === t2.id ? (
-                  <TextInput
-                    autoFocus
-                    size="xs"
-                    aria-label={t("sqlEditorPanel.renameHint")}
-                    value={editingTitle}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => setEditingTitle(e.currentTarget.value)}
-                    onBlur={() => {
-                      const v = editingTitle.trim();
-                      if (v) renameTab(t2.id, v);
-                      setEditingTabId(null);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        const v = editingTitle.trim();
-                        if (v) renameTab(t2.id, v);
-                        setEditingTabId(null);
-                      } else if (e.key === "Escape") {
-                        setEditingTabId(null);
-                      }
-                    }}
-                    styles={{
-                      input: {
-                        width: "80px",
-                        fontSize: "0.75rem",
-                        height: "22px",
-                        minHeight: "22px",
-                      },
-                    }}
-                  />
-                ) : (
-                  <span>{t2.title}</span>
-                )}
-                {t2.detached && (
-                  <Badge
-                    size="xs"
-                    color="orange"
-                    variant="light"
-                    data-testid={`sql-tab-detached-${t2.id}`}
-                  >
-                    {t("sqlEditorPanel.detachedBadge")}
-                  </Badge>
-                )}
-                <ActionIcon
-                  variant="transparent"
-                  size="xs"
-                  aria-label={t("sqlEditorPanel.closeTab", { title: t2.title })}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    closeTab(t2.id);
-                  }}
-                  style={{ opacity: 0.6 }}
-                >
-                  <X size={11} />
-                </ActionIcon>
-              </div>
-            </Tip>
-          );
-        })}
-        <Tip text={t("sqlEditorPanel.newTab")} named>
-          <ActionIcon
-            variant="transparent"
-            onClick={addTab}
-            aria-label={t("sqlEditorPanel.newTab")}
-            data-testid="sql-new-tab"
-          >
-            +
-          </ActionIcon>
-        </Tip>
-      </div>
+        testIdPrefix="sql"
+        onSwitch={switchTab}
+        onAdd={addTab}
+        onClose={closeTab}
+        onRename={renameTab}
+      />
 
       {/* NL-to-SQL strip */}
       <Group

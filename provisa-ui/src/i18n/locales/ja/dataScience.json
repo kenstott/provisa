@@ -15,6 +15,10 @@
     "clearCode": "エディターを消去",
     "copyOutput": "出力をコピー",
     "maximize": "最大化",
-    "restore": "元に戻す"
+    "restore": "元に戻す",
+    "scriptTitle": "スクリプト {{n}}",
+    "newScript": "新しいスクリプト",
+    "closeScript": "{{title}} を閉じる",
+    "scriptTabHint": "ダブルクリックで名前を変更、ドラッグまたは Alt+← / Alt+→ で移動"
   }
 }

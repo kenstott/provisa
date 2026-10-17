@@ -45,6 +45,7 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "components/graph/canvas/CanvasControls.tsx": "a slider on the graph canvas",
   "components/graph/GraphFrame.tsx": "the graph toolbar",
   "components/graph/GraphSidebar.tsx": "renaming a favourite in place in the sidebar list",
+  "components/EditorTabStrip.tsx": "renaming an editor tab in place in the tab strip",
   "components/erd/ErdPanel.tsx": "the diagram toolbar",
   "components/sql-modeling/JoinCanvas.tsx": "a join picker on the modeling canvas",
   "components/SqlModelingModal.tsx": "the toolbar of the modeling workbench",

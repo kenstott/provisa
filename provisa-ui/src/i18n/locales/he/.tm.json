@@ -6874,5 +6874,9 @@
   "he/importTab.json::importTab.mappedHeading": "Mapped to a better Provisa feature ({{count}})",
   "he/importTab.json::importTab.noneMapped": "Nothing in the upload was mapped to another feature.",
   "he/importTab.json::importTab.mappedTo": "Mapped to, and why",
-  "he/importTab.json::importTab.reportItem": "Item"
+  "he/importTab.json::importTab.reportItem": "Item",
+  "he/dataScience.json::dataScience.scriptTitle": "Script {{n}}",
+  "he/dataScience.json::dataScience.newScript": "New script",
+  "he/dataScience.json::dataScience.closeScript": "Close {{title}}",
+  "he/dataScience.json::dataScience.scriptTabHint": "Double-click to rename; drag, or Alt+Left / Alt+Right, to move"
 }

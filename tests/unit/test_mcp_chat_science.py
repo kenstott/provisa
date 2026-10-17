@@ -45,11 +45,11 @@ def test_the_navigate_tool_names_both_tabs_and_says_their_results_come_back():
     )
     assert "read the result before you answer" in described
     state = _flat(tool["input_schema"]["properties"]["state"]["description"])
-    assert '/python -> {"code": "<Python script>"} (the Python tab)' in state
+    assert '/python -> {"code": "<Python script>"} (the Python tab; add "newTab": true' in state
     assert '/notebook -> {"cells": ["<cell>", ...]} (the Notebook tab)' in state
 
 
 def test_the_system_prompt_names_both_tabs_and_how_to_choose():
     s = _flat(chat_mod._SYSTEM)
-    assert "the Python tab /python (state.code) and the Notebook tab /notebook (state.cells)" in s
+    assert "the Python tab /python (state.code into the active script tab; state.newTab=true" in s
     assert "never call the Python tab a notebook" in s

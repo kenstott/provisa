@@ -15,6 +15,10 @@
     "clearCode": "Editor leegmaken",
     "copyOutput": "Uitvoer kopiëren",
     "maximize": "Maximaliseren",
-    "restore": "Herstellen"
+    "restore": "Herstellen",
+    "scriptTitle": "Script {{n}}",
+    "newScript": "Nieuw script",
+    "closeScript": "{{title}} sluiten",
+    "scriptTabHint": "Dubbelklik om te hernoemen; sleep, of Alt+Links / Alt+Rechts, om te verplaatsen"
   }
 }

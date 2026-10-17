@@ -66,6 +66,8 @@ function serve(manifest: Response) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The scripts are kept in the browser: each test starts with none kept.
+  window.localStorage.clear();
   vi.mocked(bridgeAuth).mockResolvedValue(AUTH);
 });
 
@@ -123,6 +125,10 @@ describe("DataSciencePage", () => {
     page(make);
     await waitFor(() => expect(sent).toHaveLength(1));
     reply({ type: "ready" });
+    // A result is the reply to a run: of the script that ran.
+    await waitFor(() => expect(screen.getByTestId("data-science-run")).toBeEnabled());
+    fireEvent.click(screen.getByTestId("data-science-run"));
+    await waitFor(() => expect(sent.at(-1)).toMatchObject({ type: "run", id: 1 }));
     reply({
       type: "result",
       id: 1,
@@ -148,6 +154,9 @@ describe("DataSciencePage", () => {
       "src",
       "data:image/png;base64,iVBORw0KGgo=",
     );
+    await waitFor(() => expect(screen.getByTestId("data-science-run")).toBeEnabled());
+    fireEvent.click(screen.getByTestId("data-science-run"));
+    await waitFor(() => expect(sent.at(-1)).toMatchObject({ type: "run", id: 2 }));
     reply({
       type: "result",
       id: 2,
@@ -309,6 +318,10 @@ describe("DataSciencePage", () => {
     page(make);
     await waitFor(() => expect(sent).toHaveLength(1));
     reply({ type: "ready" });
+    // A result is the reply to a run: of the script that ran.
+    await waitFor(() => expect(screen.getByTestId("data-science-run")).toBeEnabled());
+    fireEvent.click(screen.getByTestId("data-science-run"));
+    await waitFor(() => expect(sent.at(-1)).toMatchObject({ type: "run", id: 1 }));
     reply({
       type: "result",
       id: 1,
@@ -340,5 +353,133 @@ describe("DataSciencePage", () => {
     reply({ type: "failed", error: "pyodide.asm.wasm: 404" });
     expect(await screen.findByTestId("data-science-failure")).toHaveTextContent("404");
     expect(screen.getByTestId("data-science-run")).toBeDisabled();
+  });
+});
+
+describe("Python script tabs", () => {
+  const ready = async (sent: ToWorker[], reply: (m: FromWorker) => void) => {
+    await waitFor(() => expect(sent).toHaveLength(1));
+    reply({ type: "ready" });
+    await waitFor(() => expect(screen.getByTestId("data-science-run")).toBeEnabled());
+  };
+  const tabs = () => screen.getAllByTestId(/^python-tab-/);
+  const titles = () => tabs().map((t) => t.textContent);
+  const result = (id: number, stdout: string): FromWorker => ({
+    type: "result",
+    id,
+    stdout,
+    value: { kind: "none" },
+    images: [],
+    error: null,
+  });
+  const manifest = () =>
+    serve(
+      new Response(JSON.stringify(MANIFEST), { headers: { "content-type": "application/json" } }),
+    );
+
+  it("keeps each script's own code and last output; a run is the active script's", async () => {
+    manifest();
+    const { make, sent, reply } = workerDouble();
+    page(make);
+    await ready(sent, reply);
+    expect(titles()).toEqual(["Script 1"]);
+    fireEvent.click(screen.getByTestId("python-new-tab"));
+    expect(titles()).toEqual(["Script 1", "Script 2"]);
+    fireEvent.click(screen.getByTestId("data-science-run"));
+    await waitFor(() => expect(sent.at(-1)).toEqual({ type: "run", id: 1, code: STARTER_CODE }));
+    // The output lands on the script that ran, though another is shown when it arrives.
+    fireEvent.click(tabs()[0]);
+    reply(result(1, "from script 2"));
+    await waitFor(() => expect(screen.getByTestId("data-science-run")).toBeEnabled());
+    expect(screen.queryByTestId("data-science-stdout")).not.toBeInTheDocument();
+    fireEvent.click(tabs()[1]);
+    expect(await screen.findByTestId("data-science-stdout")).toHaveTextContent("from script 2");
+  });
+
+  it("renames, moves and closes scripts, and finds them as they were after a reload", async () => {
+    manifest();
+    const first = workerDouble();
+    const view = page(first.make);
+    await ready(first.sent, first.reply);
+    fireEvent.click(screen.getByTestId("python-new-tab"));
+    fireEvent.click(screen.getByTestId("python-new-tab"));
+    expect(titles()).toEqual(["Script 1", "Script 2", "Script 3"]);
+    fireEvent.doubleClick(tabs()[1]);
+    const input = within(tabs()[1]).getByRole("textbox");
+    fireEvent.change(input, { target: { value: "cleanup" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(titles()).toEqual(["Script 1", "cleanup", "Script 3"]);
+    // Alt+ArrowLeft moves the focused tab one place left.
+    fireEvent.keyDown(tabs()[2], { key: "ArrowLeft", altKey: true });
+    expect(titles()).toEqual(["Script 1", "Script 3", "cleanup"]);
+    fireEvent.click(within(tabs()[0]).getByRole("button", { name: "Close Script 1" }));
+    expect(titles()).toEqual(["Script 3", "cleanup"]);
+    fireEvent.click(tabs()[1]);
+    view.unmount();
+
+    manifest();
+    const second = workerDouble();
+    page(second.make);
+    await ready(second.sent, second.reply);
+    expect(titles()).toEqual(["Script 3", "cleanup"]);
+    expect(tabs()[1]).toHaveStyle({ fontWeight: "600" }); // still the active one
+  });
+
+  it("shows each script's own code when switched to", async () => {
+    manifest();
+    const { make, sent, reply } = workerDouble();
+    page(make, { code: "print('first')", autoRun: false });
+    await ready(sent, reply);
+    expect(screen.getByText("print('first')")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("python-new-tab"));
+    await waitFor(() => expect(screen.queryByText("print('first')")).not.toBeInTheDocument());
+    expect(screen.getByText("provisa_client.sign_in()")).toBeInTheDocument();
+    fireEvent.click(tabs()[0]);
+    expect(await screen.findByText("print('first')")).toBeInTheDocument();
+  });
+
+  it("closing the last script leaves a fresh one", async () => {
+    manifest();
+    const { make, sent, reply } = workerDouble();
+    page(make);
+    await ready(sent, reply);
+    fireEvent.click(within(tabs()[0]).getByRole("button", { name: "Close Script 1" }));
+    expect(titles()).toEqual(["Script 1"]);
+    expect(screen.getByText("provisa_client.sign_in()")).toBeInTheDocument();
+  });
+
+  it("writes Polly's code into a new script tab when asked, and runs it there", async () => {
+    manifest();
+    const { make, sent, reply } = workerDouble();
+    page(make, { code: "print('in its own tab')", newTab: true, title: "churn", autoRun: true });
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(titles()).toEqual(["Script 1", "churn"]);
+    reply({ type: "ready" });
+    await waitFor(() =>
+      expect(sent.at(-1)).toEqual({ type: "run", id: 1, code: "print('in its own tab')" }),
+    );
+    reply(result(1, "ran in churn"));
+    expect(await screen.findByTestId("data-science-stdout")).toHaveTextContent("ran in churn");
+    fireEvent.click(tabs()[0]);
+    expect(screen.queryByTestId("data-science-stdout")).not.toBeInTheDocument();
+  });
+
+  it("works for the session when the browser refuses its storage", async () => {
+    manifest();
+    const refuse = () => {
+      throw new DOMException("blocked", "SecurityError");
+    };
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(refuse);
+    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(refuse);
+    try {
+      const { make, sent, reply } = workerDouble();
+      page(make);
+      await ready(sent, reply);
+      fireEvent.click(screen.getByTestId("python-new-tab"));
+      expect(titles()).toEqual(["Script 1", "Script 2"]);
+    } finally {
+      get.mockRestore();
+      set.mockRestore();
+    }
   });
 });

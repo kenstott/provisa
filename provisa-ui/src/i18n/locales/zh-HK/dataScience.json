@@ -15,6 +15,10 @@
     "clearCode": "清空編輯器",
     "copyOutput": "複製輸出",
     "maximize": "最大化",
-    "restore": "還原"
+    "restore": "還原",
+    "scriptTitle": "腳本 {{n}}",
+    "newScript": "新增腳本",
+    "closeScript": "關閉 {{title}}",
+    "scriptTabHint": "按兩下重新命名；拖曳或按 Alt+← / Alt+→ 移動"
   }
 }

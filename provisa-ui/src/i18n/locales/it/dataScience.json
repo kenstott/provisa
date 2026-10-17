@@ -15,6 +15,10 @@
     "clearCode": "Svuota l'editor",
     "copyOutput": "Copia output",
     "maximize": "Ingrandisci",
-    "restore": "Ripristina"
+    "restore": "Ripristina",
+    "scriptTitle": "Script {{n}}",
+    "newScript": "Nuovo script",
+    "closeScript": "Chiudi {{title}}",
+    "scriptTabHint": "Doppio clic per rinominare; trascina, o Alt+Sinistra / Alt+Destra, per spostare"
   }
 }

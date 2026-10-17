@@ -15,6 +15,10 @@
     "clearCode": "ניקוי העורך",
     "copyOutput": "העתקת הפלט",
     "maximize": "הגדלה",
-    "restore": "שחזור"
+    "restore": "שחזור",
+    "scriptTitle": "סקריפט {{n}}",
+    "newScript": "סקריפט חדש",
+    "closeScript": "סגירת {{title}}",
+    "scriptTabHint": "לחיצה כפולה לשינוי שם; גרירה, או Alt+שמאלה / Alt+ימינה, להזזה"
   }
 }

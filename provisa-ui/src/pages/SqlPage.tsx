@@ -103,8 +103,6 @@ export function SqlPage() {
   const active0 = initialTabs.tabs.find((t) => t.id === initialTabs.activeId)!;
   const [tabs, setTabs] = useState<SqlTab[]>(initialTabs.tabs);
   const [activeTabId, setActiveTabId] = useState<string>(initialTabs.activeId);
-  const [editingTabId, setEditingTabId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState("");
 
   const [sqlText, setSqlText] = useState(active0.sqlText);
   const [role, setRole] = useState("org_admin");
@@ -934,10 +932,6 @@ export function SqlPage() {
             <SqlEditorPanel
               tabs={tabs}
               activeTabId={activeTabId}
-              editingTabId={editingTabId}
-              editingTitle={editingTitle}
-              setEditingTabId={setEditingTabId}
-              setEditingTitle={setEditingTitle}
               switchTab={switchTab}
               addTab={addTab}
               closeTab={closeTab}

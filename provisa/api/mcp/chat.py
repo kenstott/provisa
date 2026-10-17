@@ -588,8 +588,10 @@ _CLIENT_TOOLS: list[Any] = [
             "Python in the user's browser as the user, reading Provisa through provisa_client "
             "(provisa_client.query(sql_or_graphql_or_cypher) returns a pandas DataFrame; pandas, "
             "numpy, scikit-learn and matplotlib are available). They are two different tabs, "
-            "never one for the other: the Python tab (state.code: one script; every run starts "
-            "from nothing, so the script must stand alone) and the Notebook tab (state.cells: a "
+            "never one for the other: the Python tab (state.code: one script, written into the "
+            "active script tab -- or into a new tab with state.newTab true, titled state.title "
+            "when given, when the user asks for a new one; every run starts from nothing, so the "
+            "script must stand alone) and the Notebook tab (state.cells: a "
             "list of cells added to the open Jupyter notebook and run in turn; notebook state "
             "carries over between cells). Use the tab the user names; only when they name "
             "neither, use the Python tab. Never call the Python tab a notebook. Code you write "
@@ -623,7 +625,8 @@ _CLIENT_TOOLS: list[Any] = [
                         "is the sql-safe name, not the raw domain id these routes key on), "
                         '/openapi -> {"openApiUrl": "..."} — same, use the openapi_path returned '
                         "by graphql_field_names verbatim. "
-                        '/python -> {"code": "<Python script>"} (the Python tab), '
+                        '/python -> {"code": "<Python script>"} (the Python tab; add "newTab": true and '
+                        'optionally "title" to write it into a new script tab), '
                         '/notebook -> {"cells": ["<cell>", ...]} (the Notebook tab); the run\'s '
                         "output comes back in the tool result. Always also set "
                         '"autoRun": true alongside whichever key applies.'
@@ -845,7 +848,8 @@ _SYSTEM = (
     "(state.query), Cypher /graph (state.query), SQL /sql (state.sql), gRPC /grpc "
     "(state.grpcMethod), JSON:API /jsonapi (state.jsonapiUrl), OpenAPI /openapi (state.openApiUrl), "
     "NL /nl (no state deep-link — type the question directly if asked to use the NL surface "
-    "itself), the Python tab /python (state.code) and the Notebook tab /notebook (state.cells) "
+    "itself), the Python tab /python (state.code into the active script tab; state.newTab=true "
+    "and state.title for a new one when the user asks) and the Notebook tab /notebook (state.cells) "
     "-- use the one the user names, the Python tab only when they name neither, never call the "
     "Python tab a notebook, and start the code with `import provisa_client` and "
     "`provisa_client.sign_in()`; the run's output, value and error come back in the navigate "

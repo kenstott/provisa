@@ -15,6 +15,10 @@
     "clearCode": "Editor leeren",
     "copyOutput": "Ausgabe kopieren",
     "maximize": "Maximieren",
-    "restore": "Wiederherstellen"
+    "restore": "Wiederherstellen",
+    "scriptTitle": "Skript {{n}}",
+    "newScript": "Neues Skript",
+    "closeScript": "{{title}} schließen",
+    "scriptTabHint": "Doppelklicken zum Umbenennen; ziehen oder Alt+Links / Alt+Rechts zum Verschieben"
   }
 }
