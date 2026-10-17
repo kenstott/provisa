@@ -384,6 +384,7 @@ async def restore_shared_terminal(state: Any, shard: str, stamp: int) -> None:
                 f"shard {shard} restarted and {len(failed)} source catalog(s) could not be "
                 f"reissued on the new coordinator: {', '.join(sorted(failed))}"
             )
+        await _reissue_kafka_catalogs(state, raw)
     # Materialized sources read through landing tables in the materialization store, and their
     # schemas and read views are dynamic catalog state too — a resumed coordinator answers
     # "Schema 'org_default' does not exist" for every materialized table until this reconvenes them
@@ -394,6 +395,30 @@ async def restore_shared_terminal(state: Any, shard: str, stamp: int) -> None:
         log.info("reconciled %d landed table(s) after shard %s restarted", len(landed), shard)
 
     default.engine_generation = stamp
+
+
+async def _reissue_kafka_catalogs(state: Any, raw: dict) -> None:  # REQ-2073
+    """The deployment org's Kafka catalogs, on a coordinator that came back without them.
+
+    Boot issues them from the Kafka sources its model store holds (``_process_kafka_sources``),
+    and nothing else does: before the engine kept its catalogs in memory they outlived a restart in
+    its file store. Issued in the deployment org's context whichever org's query found the restart,
+    since the catalogs, their names and the secrets their properties resolve are that org's.
+    """
+    from provisa.api.app_loaders import catalog_name_for_source
+    from provisa.core.config_loader import store_raw
+    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.core.secrets_store import bound_to_request_org
+
+    token = set_current_org(state.org_id)
+    try:
+        async with state.model_db.acquire() as conn, bound_to_request_org():
+            kafka_sources = (await store_raw(raw, conn)).get("kafka_sources", [])
+            for ks in kafka_sources:
+                catalog = catalog_name_for_source(state, "kafka", ks["id"])
+                await asyncio.to_thread(state.federation_engine.register_kafka_catalog, ks, catalog)
+    finally:
+        reset_current_org(token)
 
 
 def prewarm_engine(state: Any, org_id: str) -> concurrent.futures.Future[None] | None:

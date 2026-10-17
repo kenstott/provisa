@@ -604,6 +604,63 @@ def _fake_key_manifest() -> dict:
     }
 
 
+#: REQ-2073: where a shard's coordinator reads its Kafka catalogs' client properties (a SASL
+#: password among them; ``kafka.config.resources``), from the shard's own Secret
+#: (:func:`kafka_client_secret`). A Secret volume is held in the node's memory, never on its disk,
+#: and the files are readable by Trino's group alone (mode 0440, the pod's fsGroup).
+KAFKA_CLIENT_DIR = "/etc/trino/kafka-client"
+#: The user and group the Trino image runs as (trinodb/trino, which the engine image extends).
+TRINO_UID = 1000
+
+
+def kafka_client_secret(shard: str) -> str:
+    """The Secret holding ``shard``'s Kafka client properties, one ``<catalog>.properties`` key per
+    Kafka catalog -- the shard's alone, since a coordinator serves only the orgs placed on it."""
+    return f"{shard_workload_name(shard)}-kafka-client"
+
+
+async def _ensure_kafka_client_secret(shard: str) -> None:
+    """Create ``shard``'s Kafka client Secret if it does not exist, empty. Never an apply: the keys
+    are written one catalog at a time (:func:`put_kafka_client_properties`), and an apply of the
+    empty Secret would remove them."""
+    settings = provisioner_settings()
+    name = kafka_client_secret(shard)
+    resp = await _k8s(
+        "POST",
+        f"/api/v1/namespaces/{settings['namespace']}/secrets",
+        {
+            "apiVersion": "v1",
+            "kind": "Secret",
+            "metadata": {
+                "name": name,
+                "namespace": settings["namespace"],
+                "labels": {"provisa.dev/shard": shard},
+            },
+            "type": "Opaque",
+        },
+    )
+    # 409: it exists, which is what was asked for.
+    if resp.status_code >= 400 and resp.status_code != 409:
+        raise K8sProvisioningError(f"creating Secret {name} failed: {gcp_error_detail(resp)}")
+
+
+async def put_kafka_client_properties(shard: str, catalog: str, text: str) -> None:  # REQ-2073
+    """Write one Kafka catalog's client properties into ``shard``'s Secret, where the coordinator
+    reads them at ``KAFKA_CLIENT_DIR/<catalog>.properties`` once the kubelet syncs the volume."""
+    settings = provisioner_settings()
+    name = kafka_client_secret(shard)
+    resp = await _k8s(
+        "PATCH",
+        f"/api/v1/namespaces/{settings['namespace']}/secrets/{name}",
+        {"data": {f"{catalog}.properties": base64.b64encode(text.encode()).decode()}},
+        content_type="application/merge-patch+json",
+    )
+    if resp.status_code >= 400:
+        raise K8sProvisioningError(
+            f"writing {catalog} into Secret {name} failed: {gcp_error_detail(resp)}"
+        )
+
+
 def _config_mounts(resource_groups: str | None) -> list[dict]:
     """One subPath mount per config file. ConfigMap keys are not a directory the image can take
     whole: mounting the volume at /etc/trino would hide catalog/, log.properties and everything else
@@ -614,6 +671,7 @@ def _config_mounts(resource_groups: str | None) -> list[dict]:
     return [{"name": "config", "mountPath": f"/etc/trino/{f}", "subPath": f} for f in files] + [
         {"name": "data", "mountPath": "/data/trino"},
         {"name": "fake-key", "mountPath": FAKE_KEY_DIR, "readOnly": True},  # REQ-1494
+        {"name": "kafka-client", "mountPath": KAFKA_CLIENT_DIR, "readOnly": True},  # REQ-2073
     ]
 
 
@@ -666,6 +724,12 @@ def _deployment_manifest(
                     # grace period must therefore outlast the longest query the engine will accept;
                     # at the default 30s a scale-in cuts queries mid-flight.
                     "terminationGracePeriodSeconds": _int_env("PROVISA_ENGINE_DRAIN_SECONDS", 600),
+                    # REQ-2073: Trino's group owns the Secret volumes' files (the Kafka client
+                    # properties are 0440: Trino reads them, nothing else in the pod does).
+                    "securityContext": {
+                        "fsGroup": TRINO_UID,
+                        "fsGroupChangePolicy": "OnRootMismatch",
+                    },
                     "containers": [
                         {
                             "name": "trino",
@@ -754,6 +818,13 @@ def _deployment_manifest(
                         {
                             "name": "fake-key",
                             "secret": {"secretName": FAKE_KEY_SECRET, "defaultMode": 0o444},
+                        },
+                        {
+                            "name": "kafka-client",
+                            "secret": {
+                                "secretName": kafka_client_secret(shard),
+                                "defaultMode": 0o440,
+                            },
                         },
                     ],
                 },
@@ -872,6 +943,7 @@ async def ensure_shard_running(
     settings = provisioner_settings()
     ns = f"/api/v1/namespaces/{settings['namespace']}"
     await _k8s_apply(f"{ns}/secrets/{FAKE_KEY_SECRET}", _fake_key_manifest())  # REQ-1494
+    await _ensure_kafka_client_secret(shard)  # REQ-2073
     await _k8s_apply(
         f"{ns}/configmaps/{shard_workload_name(shard)}-config",
         _config_manifest(shard, resource_groups, size),

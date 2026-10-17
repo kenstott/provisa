@@ -23,6 +23,7 @@ introspect.py) import the ``Trino*`` re-exports below instead of ``trino`` direc
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
@@ -101,10 +102,54 @@ def configure_session(state: Any, server_cfg: dict) -> None:
 
 def register_kafka_catalog(state: Any, kafka_source: dict, catalog: str) -> None:
     """Write the Trino Kafka catalog files and register the catalog dynamically, under the
-    source's org-qualified ``catalog``."""
+    source's org-qualified ``catalog``. On an engine shard, see :func:`_register_kafka_on_shard`."""
     from provisa.core.trino_catalog_files import write_kafka_catalog_files
+    from provisa.federation import k8s_provisioner
 
+    if k8s_provisioner.provisioning_available():
+        from provisa.federation.engine_wake import active_shard
+
+        shard = active_shard(state)
+        if shard is not None:
+            _register_kafka_on_shard(state, kafka_source, catalog, shard)
+            return
     write_kafka_catalog_files(kafka_source, catalog, trino_conn=state.engine_conn)
+
+
+def _register_kafka_on_shard(state: Any, kafka_source: dict, catalog: str, shard: str) -> None:
+    """REQ-2073: a Kafka catalog on a coordinator the control plane provisions, which shares no
+    directory with it.
+
+    The client properties (a SASL password among them) go into the shard's Secret, which the pod
+    holds in memory, and the catalog is created once the kubelet has synced them in. A source whose
+    topics' columns the model declares (no schema registry) is refused by name: Trino reads such
+    columns from table-description files in a directory of the catalog's own, and a shard has no
+    way to be given a directory per catalog while it runs.
+    """
+    from provisa.core import settings_registry
+    from provisa.core.catalog import create_kafka_catalog
+    from provisa.core.trino_catalog_files import _kafka_source_config
+    from provisa.federation import k8s_provisioner
+    from provisa.kafka.source import generate_kafka_client_properties
+
+    cfg = _kafka_source_config(kafka_source)
+    if not cfg.schema_registry_url:
+        raise ValueError(
+            f"Kafka source {kafka_source['id']!r} declares its topics' columns without a schema "
+            f"registry, which engine shard {shard} cannot read: give the source a schema registry"
+        )
+    client_props = generate_kafka_client_properties(cfg)
+    wait = 0.0
+    if client_props is not None:
+        # Synchronous callers (the boot's Kafka pass) run on the event loop's thread, so the
+        # Kubernetes call runs on a loop of its own.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            pool.submit(
+                asyncio.run,
+                k8s_provisioner.put_kafka_client_properties(shard, catalog, client_props),
+            ).result()
+        wait = float(settings_registry.value("engine.ready_timeout"))
+    create_kafka_catalog(state.engine_conn, kafka_source, catalog, client_file_wait=wait)
 
 
 def polling_provider(state: Any, catalog: str, schema: str, table: str, watermark_column: str):

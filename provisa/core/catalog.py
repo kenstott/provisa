@@ -195,8 +195,8 @@ def create_catalog(
 
 
 def create_kafka_catalog(
-    conn: TrinoConnection, kafka_source: dict, catalog: str
-) -> None:  # REQ-147, REQ-1992
+    conn: TrinoConnection, kafka_source: dict, catalog: str, client_file_wait: float = 0
+) -> None:  # REQ-147, REQ-1992, REQ-2073
     """Register a ``kafka_sources[]`` entry as a Trino dynamic catalog.
 
     Kafka is the one source type whose connector props are not built from a
@@ -218,9 +218,21 @@ def create_kafka_catalog(
         return
     props_sql = ", ".join(f"\"{k}\" = '{_escape_sql_string(v)}'" for k, v in props.items())
     sql = f"CREATE CATALOG IF NOT EXISTS {catalog_name} USING kafka WITH ({props_sql})"
-    cur = conn.cursor()
-    cur.execute(sql)
-    cur.fetchall()
+    # REQ-2073: on an engine shard the client properties arrive through a Secret volume, which the
+    # kubelet syncs into the running pod some seconds after it is written; until then Trino refuses
+    # the catalog for naming a file that does not exist. That one refusal is waited out for
+    # ``client_file_wait`` seconds, and raised past it.
+    deadline = time.monotonic() + client_file_wait
+    while True:
+        try:
+            cur = conn.cursor()
+            cur.execute(sql)
+            cur.fetchall()
+            return
+        except TrinoQueryError as exc:
+            if "kafka.config.resources" not in str(exc) or time.monotonic() >= deadline:
+                raise
+            time.sleep(2)
 
 
 def analyze_capable_catalogs(conn: TrinoConnection) -> set[str]:  # REQ-636
