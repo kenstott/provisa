@@ -188,8 +188,15 @@ def landed(stack, server):
     deadline = time.monotonic() + 600
     while True:
         orders = query(server, 'SELECT COUNT(*) AS n FROM "provisioning"."orders"')[0]["n"]
-        status, rows = _views(server)["order_margins"]
-        if orders >= _HISTORY and status == "fresh" and rows:
+        status, _rows = _views(server)["order_margins"]
+        # A delta refresh does not know the dataset's whole row count (mvList says None), so its
+        # rows are counted by reading it -- inside its window, or the refresh's status alone.
+        rows = (
+            query(server, f"SELECT COUNT(*) AS n FROM {_DATASET}")[0]["n"]
+            if status == "fresh" and _dataset_open(_utc())
+            else None
+        )
+        if orders >= _HISTORY and status == "fresh" and (rows or not _dataset_open(_utc())):
             return server
         assert time.monotonic() < deadline, (
             f"the feeds did not land or the dataset did not follow: {orders} orders, dataset "

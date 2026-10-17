@@ -116,6 +116,12 @@ services:
       # Each sandbox lands the feeds into its own tables: a shorter history than a local start's.
       ORDERS_HISTORY: "50000"
       ORDERS_PER_SECOND: "5"
+    healthcheck:
+      # Healthy once the month of orders is on the broker (producer.py's mark).
+      test: ["CMD", "python", "-c", "import os, sys; sys.exit(not os.path.exists('/tmp/feeds-ready'))"]
+      interval: 2s
+      timeout: 5s
+      retries: 300
     depends_on:
       kafka:
         condition: service_healthy

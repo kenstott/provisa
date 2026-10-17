@@ -26,6 +26,7 @@ import os
 import random
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, TopicPartition
 
@@ -36,6 +37,8 @@ PRICE_EVERY = float(os.environ.get("PRICE_EVERY", "20"))
 INVENTORY_EVERY = float(os.environ.get("INVENTORY_EVERY", "3"))
 # How long the broker is given to describe the orders topic's partitions once it lists the topic.
 METADATA_WAIT_S = 60.0
+#: Written once the broker holds the month of orders (the compose healthcheck reads it).
+READY_MARK = "/tmp/feeds-ready"
 
 # Each product (db/init.sql), its list price to start from, and how often it sells.
 _PRODUCTS = {
@@ -155,6 +158,9 @@ async def main() -> None:
             await _send(producer, "inventory", _stock_message(sku))
         if not await _orders_published():
             await _history(producer)
+        # Its healthcheck: healthy once the broker holds the month of orders, so a Provisa started
+        # after it (`docker compose up --wait`) lands them whole.
+        Path(READY_MARK).touch()
         print(f"producing about {PER_SECOND:g} orders a second on {BOOTSTRAP}", flush=True)
         await asyncio.gather(_orders(producer), _prices(producer), _inventory(producer))
     finally:

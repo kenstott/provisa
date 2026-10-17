@@ -206,7 +206,9 @@ views:
   - {name: margin, data_type: decimal, description: Revenue less cost in USD, visible_to: [org_admin, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}]}
   - {name: ordered_at, data_type: timestamp, description: When it was placed (UTC), visible_to: [org_admin, finance, data_science]}
 # Finance's close: each category's revenue and margin with the value of its stock, built over the
-# dataset and the price and stock feeds as they land. Readable only 02:00-02:15 UTC.
+# dataset and the price and stock feeds as they land -- each product's stock (STOCK_OF), price
+# (PRICE_OF) and orders (ORDERED, summed by product first so stock is counted once) joined on the
+# product, then summed by its category. Readable only 02:00-02:15 UTC.
 - id: close_by_category
   domain_id: provisioning
   materialize: true
@@ -215,17 +217,18 @@ views:
   description: Each category's revenue and margin, with the value of the stock on hand at list
     price -- finance's close, read only in its window
   sql: >-
-    SELECT m.category, SUM(m.revenue) AS revenue, SUM(m.margin) AS margin,
-      MAX(s.stock_value) AS stock_value
-    FROM "provisioning"."view_order_margins" AS m
+    SELECT p.category, SUM(m.revenue) AS revenue, SUM(m.margin) AS margin,
+      SUM(i.on_hand * pr.list_price) AS stock_value
+    FROM "provisioning"."products" AS p
+    LEFT JOIN "provisioning"."inventory" AS i ON i.sku = p.sku
+    LEFT JOIN "provisioning"."prices" AS pr ON pr.sku = p.sku
     LEFT JOIN (
-      SELECT p.category, SUM(i.on_hand * pr.list_price) AS stock_value
-      FROM "provisioning"."inventory" AS i
-      JOIN "provisioning"."prices" AS pr ON pr.sku = i.sku
-      JOIN "provisioning"."products" AS p ON p.sku = i.sku
-      GROUP BY p.category
-    ) AS s ON s.category = m.category
-    GROUP BY m.category
+      SELECT sku, SUM(revenue) AS revenue, SUM(margin) AS margin
+      FROM "provisioning"."view_order_margins"
+      GROUP BY sku
+    ) AS m ON m.sku = p.sku
+    GROUP BY p.category
+    HAVING SUM(m.revenue) IS NOT NULL
   columns:
   - {name: category, data_type: varchar, description: The category, visible_to: [org_admin, finance]}
   - {name: revenue, data_type: decimal, description: Its revenue in USD, visible_to: [org_admin, finance]}
