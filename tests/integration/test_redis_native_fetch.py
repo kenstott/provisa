@@ -32,9 +32,14 @@ def _port() -> int:
     return int(os.environ["REDIS_PORT"])
 
 
+def _password() -> str:
+    """The stack's Redis requires its password (docker-compose.core.yml, tests/store_credentials)."""
+    return os.environ["PROVISA_REDIS_PASSWORD"]
+
+
 @pytest.fixture(autouse=True)
 def _seed():
-    c = redis.Redis(host="localhost", port=_port(), decode_responses=True)
+    c = redis.Redis(host="localhost", port=_port(), password=_password(), decode_responses=True)
     for k in c.scan_iter(match=f"{_PREFIX}:*"):
         c.delete(k)
     for agent_id, name, team in _AGENTS:
@@ -45,7 +50,7 @@ def _seed():
 
 
 async def test_prefix_lists_as_a_table_with_its_fields_typed():
-    conn = rf.RedisConnection(host="localhost", port=_port())
+    conn = rf.RedisConnection(host="localhost", port=_port(), password=_password())
     assert _PREFIX in rf.list_prefixes(conn)
     assert rf.prefix_columns(conn, {}, _PREFIX) == [
         ("key", "varchar"),
@@ -56,7 +61,9 @@ async def test_prefix_lists_as_a_table_with_its_fields_typed():
 
 
 async def test_loader_lands_every_key_of_the_prefix():
-    source = SimpleNamespace(id="r", host="localhost", port=_port(), password="", mapping={})
+    source = SimpleNamespace(
+        id="r", host="localhost", port=_port(), password=_password(), mapping={}
+    )
     table = SimpleNamespace(
         table_name=_PREFIX,
         columns=[

@@ -1187,51 +1187,36 @@ def call_read_sql_or_inspector_get_table_names(shared_data: dict) -> None:
     dbapi_mod = shared_data["dbapi_mod_270"]
     dialect_cls = shared_data["dialect_270"]
 
-    introspect_response = {
-        "data": {
-            "__schema": {
-                "queryType": {
-                    "fields": [
-                        {
-                            "name": "orders",
-                            "type": {"name": "Order", "kind": "OBJECT", "ofType": None},
-                        },
-                        {
-                            "name": "products",
-                            "type": {"name": "Product", "kind": "OBJECT", "ofType": None},
-                        },
-                    ]
-                },
-                "types": [
-                    {
-                        "name": "Order",
-                        "kind": "OBJECT",
-                        "fields": [{"name": "id"}, {"name": "region"}, {"name": "status"}],
-                    },
-                    {
-                        "name": "Product",
-                        "kind": "OBJECT",
-                        "fields": [{"name": "id"}, {"name": "name"}],
-                    },
-                ],
-            }
-        }
+    # The SQL catalog the role is served (GET /data/catalog, REQ-2069): each table by its domain and
+    # SQL name, with its Arrow schema.
+    import base64
+
+    import pyarrow as pa
+
+    def _arrow(*names: str) -> str:
+        schema = pa.schema([pa.field(n, pa.utf8()) for n in names])
+        return base64.b64encode(schema.serialize().to_pybytes()).decode("ascii")
+
+    catalog_response = {
+        "tables": [
+            {"path": ["sales", "orders"], "schema": _arrow("id", "region", "status")},
+            {"path": ["sales", "products"], "schema": _arrow("id", "name")},
+        ]
     }
 
     sql_response = {"data": [{"id": 1, "region": "NA", "status": "open"}]}
 
-    # Test inspector.get_table_names() via the dialect directly (avoids live connection).
+    # Test inspector.get_table_names() via the dialect directly, over a Provisa DB-API connection
+    # as an engine hands one out (no live server).
     dialect = dialect_cls()
-    dialect._schema_cache = {}
+    raw = dbapi_mod.Connection(base_url=BASE, token="tok-270", role="analyst")
+    sa_conn = _mock.MagicMock()
+    sa_conn.connection.dbapi_connection = raw
 
     with respx.mock(base_url=BASE) as mock:
-        mock.post("/data/graphql").mock(return_value=httpx.Response(200, json=introspect_response))
-        mock_sa_conn = _mock.MagicMock()
-        mock_raw_conn = _mock.MagicMock()
-        mock_raw_conn._base_url = BASE
-        mock_raw_conn._role = "analyst"
-        mock_sa_conn.connection = mock_raw_conn
-        table_names = dialect.get_table_names(mock_sa_conn)
+        mock.get("/data/catalog").mock(return_value=httpx.Response(200, json=catalog_response))
+        # A table lives in its domain's schema: there is no default one.
+        table_names = dialect.get_table_names(sa_conn, schema="sales")
 
     assert isinstance(table_names, list), (
         f"get_table_names() must return a list; got {type(table_names)!r}"

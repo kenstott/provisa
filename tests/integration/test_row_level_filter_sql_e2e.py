@@ -174,7 +174,8 @@ def test_a_row_level_sql_table_is_read_through_any_filter(tmp_path):
     _seed_sqlite(regions_db)
     path = tmp_path / "config.yaml"
     path.write_text(yaml.safe_dump(_config(regions_db)))
-    server = IsolatedServer(_ORG, engine="duckdb", config=str(path), control_plane="sqlite")
+    # The control plane is PostgreSQL, a database of the server's own (REQ-2014).
+    server = IsolatedServer(_ORG, engine="duckdb", config=str(path), control_plane="own")
     server.start(timeout=240)
 
     def read(sql: str) -> tuple[httpx.Response, int]:

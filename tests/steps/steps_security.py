@@ -609,7 +609,8 @@ def _ctx_740() -> CompilationContext:
     return ctx
 
 
-_MASK_740 = "REGEXP_REPLACE(\"customers\".\"email\", '^(.{2}).*(@.*)$', '\\1***\\2')"
+# REQ-263: every match is replaced ('g'), on every engine.
+_MASK_740 = "REGEXP_REPLACE(\"customers\".\"email\", '^(.{2}).*(@.*)$', '\\1***\\2', 'g')"
 
 
 @given("a column masked for a role and referenced in the select list and in a JOIN ON")
@@ -736,7 +737,8 @@ def output_is_ansi_regardless_of_dialect(shared_data: dict) -> None:
         out.replace(shared_data["source_column_refs"][src], "<col>")
         for src, out in truncate_outputs.items()
     }
-    assert normalized_regex == {"REGEXP_REPLACE(<col>, '^(.).*(@.*)$', '\\1***\\2')"}
+    # REQ-263: every match is replaced ('g'), on every engine.
+    assert normalized_regex == {"REGEXP_REPLACE(<col>, '^(.).*(@.*)$', '\\1***\\2', 'g')"}
     assert normalized_truncate == {"DATE_TRUNC('month', <col>)"}
 
 

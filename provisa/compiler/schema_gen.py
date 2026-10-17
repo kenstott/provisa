@@ -994,6 +994,17 @@ def generate_schema(
     }
     distinct_enums = {t.table_id: _build_distinct_on_enum(t) for t in tables}
 
+    # A table's root-field arguments, built once: its query and its subscription field take the same
+    # ones, and an input type among them (similar's) may be named only once in a schema (REQ-430).
+    field_args: dict[int, dict[str, GraphQLArgument]] = {}
+
+    def args_of(t: _TableInfo) -> dict[str, GraphQLArgument]:
+        if t.table_id not in field_args:
+            field_args[t.table_id] = _table_field_args(
+                t, where_types, order_by_types, distinct_enums
+            )
+        return field_args[t.table_id]
+
     for t in tables:
         tid = t.table_id
 
@@ -1036,7 +1047,7 @@ def generate_schema(
         gql_type = gql_types[t.table_id]
         query_fields[t.field_name] = GraphQLField(
             GraphQLList(GraphQLNonNull(gql_type)),
-            args=_table_field_args(t, where_types, order_by_types, distinct_enums),
+            args=args_of(t),
             # REQ-1375: table-level deprecation surfaces on the root query field — the
             # GraphQL construct @deprecated is valid on (objects themselves cannot carry it).
             deprecation_reason=t.deprecation_reason,
@@ -1138,7 +1149,7 @@ def generate_schema(
         si,
         tables,
         gql_types,
-        lambda t: _table_field_args(t, where_types, order_by_types, distinct_enums),
+        args_of,
     )
     subscription_type: GraphQLObjectType | None = (
         cast(GraphQLObjectType, GraphQLObjectType("Subscription", lambda: subscription_fields))

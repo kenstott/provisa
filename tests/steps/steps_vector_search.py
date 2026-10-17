@@ -400,6 +400,9 @@ def replica_served_table_on_duckdb(shared_data):
     runtime._ext_loaded = set()
     runtime._store_copy_canary = {}
     runtime._store_relation_lock = threading.Lock()
+    # The embedded store file, read through a per-statement copy (REQ-1999), as
+    # tests/unit/test_vector_replica_index.py's runtime says.
+    runtime._attached_store_dsn = "duckdb:///store.duckdb"
     runtime._store_broker = _ReplicaBroker(200)
     shared_data["runtime"] = runtime
 

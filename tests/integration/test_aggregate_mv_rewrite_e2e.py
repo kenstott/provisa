@@ -37,6 +37,8 @@ from tests.embedded_pg import DATABASE, PASSWORD, ROLE, start_local_postgres
 pytestmark = [pytest.mark.integration]
 
 _NAME = "aggregate_mv"
+# The view's id among the materialized views: its table, view_<id>, as the build registers it.
+_VIEW = "view-view_orders_rollup"
 _ADMIN = "org_admin"
 _ROWS = [("us", "open", 10), ("us", "open", 30), ("us", "shipped", 5), ("eu", "shipped", 7)]
 
@@ -80,14 +82,23 @@ def _config(pg) -> dict:
                 ],
             }
         ],
-        "materialized_views": [
+        # A materialized view is declared as a view that says so (config_loader.views_as_tables).
+        "views": [
             {
                 "id": "orders_rollup",
+                "domain_id": "shop",
+                "materialize": True,
                 "refresh_interval": 3600,
                 "sql": (
                     "SELECT region, status, SUM(amount) AS total, COUNT(*) AS n "
                     "FROM orders GROUP BY region, status"
                 ),
+                "columns": [
+                    {"name": "region", "data_type": "varchar", "visible_to": [_ADMIN]},
+                    {"name": "status", "data_type": "varchar", "visible_to": [_ADMIN]},
+                    {"name": "total", "data_type": "bigint", "visible_to": [_ADMIN]},
+                    {"name": "n", "data_type": "bigint", "visible_to": [_ADMIN]},
+                ],
             }
         ],
     }  # fmt: skip
@@ -145,7 +156,7 @@ def _post(srv, path: str, body: dict) -> dict:
 
 def _built(srv) -> bool:
     views = _post(srv, "/admin/graphql", {"query": "{ mvList { id status lastError } }"})
-    (view,) = [v for v in views["data"]["mvList"] if v["id"] == "orders_rollup"]
+    (view,) = [v for v in views["data"]["mvList"] if v["id"] == _VIEW]
     assert view["lastError"] is None, view
     return view["status"] == "fresh"
 

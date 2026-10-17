@@ -157,7 +157,7 @@ class TestESTypeMappings:
             ("half_float", "REAL"),
             ("scaled_float", "DOUBLE"),
             ("boolean", "BOOLEAN"),
-            ("date", "TIMESTAMP"),
+            ("date", "timestamptz"),  # REQ-2050: an instant, carried as UTC with its zone
             ("ip", "VARCHAR"),
             ("binary", "bytea"),  # IR is postgres-dialect (no VARBINARY)
             ("geo_point", "VARCHAR"),

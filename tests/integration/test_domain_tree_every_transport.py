@@ -50,7 +50,9 @@ _EAST = {1, 3}
 def server():
     base = _config(_PG_HOST, _PG_PORT, "unused")
     orders = base["tables"][0]
-    roles = [r["id"] for r in base["roles"]] + list(_NEW_ROLES)
+    # org_admin is every org's reserved role, never declared in the file (REQ-1349), so it is named
+    # here beside the declared ones: a column is served only to the roles it lists.
+    roles = ["org_admin", *(r["id"] for r in base["roles"]), *_NEW_ROLES]
     for column in orders["columns"]:
         column["visible_to"] = roles
     depots = {

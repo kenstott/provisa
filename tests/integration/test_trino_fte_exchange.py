@@ -76,9 +76,12 @@ class TestDockerFTEConfig:
 _MASTER_KEY = (
     "--set",
     "encryption.existingSecret=provisa-master-key",
-    # REQ-1265: the chart also renders only once an auth provider is chosen.
+    # REQ-1265: the chart also renders only once an auth provider is chosen,
     "--set",
     "auth.provider=none",
+    # and once the stores' credentials Secret is named (tests/unit/test_helm_credentials.py).
+    "--set",
+    "credentials.existingSecret=provisa-credentials",
 )
 
 needs_helm = pytest.mark.skipif(shutil.which("helm") is None, reason="helm CLI not installed")

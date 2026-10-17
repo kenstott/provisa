@@ -208,9 +208,8 @@ def sqlite_server():
 
 
 def test_the_provenance_columns_land_on_a_sqlite_control_plane(sqlite_server):
-    import sqlite3
-    from pathlib import Path
-
+    # A DuckDB engine reading a SQLite source; the server's control plane is a PostgreSQL database
+    # of its own (control_plane="own", REQ-2014), where the org's audit log is read back.
     req = urllib.request.Request(
         f"{sqlite_server.base_url}/data/sql",
         data=json.dumps({"sql": "SELECT pet_id FROM shelter.inquiries"}).encode(),
@@ -220,26 +219,27 @@ def test_the_provenance_columns_land_on_a_sqlite_control_plane(sqlite_server):
     with urllib.request.urlopen(req, timeout=120) as resp:
         assert resp.status == 200
 
+    assert sqlite_server.plane is not None
+    engine = sqlite_server.plane.engine()
+    read = sa.text(
+        "SELECT model_stamp, enforced, route_reason, sources, data_age "
+        f'FROM "org_{sqlite_server.org_id}".query_audit_log '
+        "WHERE role_id = 'org_admin' ORDER BY id DESC LIMIT 1"
+    )
     deadline = time.monotonic() + 60
     row = None
-    while row is None and time.monotonic() < deadline:
-        for db in Path(sqlite_server._tmpdir.name).rglob("*.db"):
-            with sqlite3.connect(db) as conn:
-                has = conn.execute(
-                    "SELECT 1 FROM sqlite_master WHERE name = 'query_audit_log'"
-                ).fetchone()
-                if has:
-                    row = conn.execute(
-                        "SELECT model_stamp, enforced, route_reason, sources, data_age "
-                        "FROM query_audit_log WHERE role_id = 'org_admin' ORDER BY id DESC LIMIT 1"
-                    ).fetchone()
-                    if row:
-                        break
-        time.sleep(0.5)
+    try:
+        while row is None and time.monotonic() < deadline:
+            with engine.connect() as conn:
+                row = conn.execute(read).fetchone()
+            if row is None:
+                time.sleep(0.5)
+    finally:
+        engine.dispose()
     assert row is not None, "no audit row landed"
     model_stamp, enforced, route_reason, sources, data_age = row
     assert isinstance(model_stamp, int)
-    assert set(json.loads(enforced)) >= {"row_filters", "masks"}
+    assert set(enforced) >= {"row_filters", "masks"}
     assert route_reason
-    assert json.loads(sources) == ["inquiries-sqlite"]
+    assert sources == ["inquiries-sqlite"]
     assert data_age is None

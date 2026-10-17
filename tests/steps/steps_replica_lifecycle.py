@@ -139,6 +139,8 @@ def provisa_instance_configured(shared_data: dict) -> None:
         all_specs,
         db=db,
         dependents_of=lambda n: ["analytics.daily_sales"] if "orders" in n else [],
+        # A node's change event triggers nothing in this scenario (no event triggers declared).
+        on_event=lambda _table, _op, _row: None,
     )
 
     shared_data["source_specs"] = source_specs

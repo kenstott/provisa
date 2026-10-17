@@ -71,7 +71,6 @@ def _make_warm_table_mv(source_table: str = "orders") -> MVDefinition:
         target_table=f"warm_{source_table}",
         refresh_interval=300,
         enabled=True,
-        serves_aggregates=False,
         status=MVStatus.FRESH,
         last_refresh_at=time.time(),
         row_count=500_000,

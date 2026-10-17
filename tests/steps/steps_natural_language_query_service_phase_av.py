@@ -55,6 +55,10 @@ class _FakeAppState:
         self.rls_contexts = {}
         self.masking_rules = {}
         self.engine_conn = None
+        # A request takes its role's whole surface from ``surfaces``, as the runtime serves it.
+        from tests.role_state import with_surfaces
+
+        with_surfaces(self)
 
 
 @pytest.fixture

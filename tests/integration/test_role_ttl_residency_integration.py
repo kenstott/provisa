@@ -32,6 +32,7 @@ import pytest_asyncio
 from sqlalchemy import text
 
 from provisa.core.database import Database, create_engine_from_url
+from provisa.core.schema_org import replica_build_log
 from provisa.core.schema_org import replica_state as replica_state_table
 from provisa.federation import replica_state
 from provisa.federation.data_replicator import BuildOutcome
@@ -58,7 +59,8 @@ async def db(pg_dsn):
     with engine.begin() as c:
         c.execute(text(f'CREATE SCHEMA "{schema}"'))
         c.execute(text(f'SET search_path TO "{schema}"'))
-        replica_state_table.metadata.create_all(c, tables=[replica_state_table])
+        # A build that ends is logged beside its state (REQ-1915).
+        replica_state_table.metadata.create_all(c, tables=[replica_state_table, replica_build_log])
     try:
         yield Database(engine, name="rttl", search_path=schema)
     finally:

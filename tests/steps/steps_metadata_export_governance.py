@@ -96,10 +96,11 @@ def _tags_published(shared_data):
         GovernanceSignal.VISIBILITY_RESTRICTED,
     }
     assert by_signal[GovernanceSignal.MASKED].asset.fqn() == "wh.public.customers.ssn"
-    # REQ-1385: rule_id addresses the governed element by its URN, not physical coordinates.
+    # REQ-1385: rule_id addresses the governed element by its URN, not physical coordinates;
+    # REQ-2059: then the mask entry (its place in the column's list) and its kind.
     assert (
         by_signal[GovernanceSignal.MASKED].rule_id
-        == "mask:provisa://acme/sales/tables/customers#field:ssn:regex"
+        == "mask:provisa://acme/sales/tables/customers#field:ssn:1:regex"
     )
     assert by_signal[GovernanceSignal.RLS_RESTRICTED].asset.fqn() == "wh.public.customers"
     assert (

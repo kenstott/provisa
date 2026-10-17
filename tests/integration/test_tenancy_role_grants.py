@@ -283,10 +283,11 @@ async def test_a_derived_role_is_re_read_after_every_re_assertion(tenant_db):
     assert caps["org_admin"] == caps["sandbox"]
     for withheld in (
         "environment_management",
-        "environment_switch",
         "org_glossary_rw",
     ):
         assert withheld not in caps["org_admin"], withheld
+    # REQ-2053: switching between the environments that exist is held.
+    assert "environment_switch" in caps["org_admin"]
 
 
 async def test_an_underived_role_keeps_the_tenancy_answer(tenant_db):
@@ -322,9 +323,10 @@ async def test_a_pre_existing_sandbox_row_is_rederived_from_org_admin(tenant_db,
     assert caps["org_admin"] == caps["sandbox"]
     for withheld in (
         "environment_management",
-        "environment_switch",
         "user_management",
         "org_glossary_rw",
         "platform_settings",
     ):
         assert withheld not in caps["sandbox"], withheld
+    # REQ-2053: switching between the environments that exist is held.
+    assert "environment_switch" in caps["sandbox"]

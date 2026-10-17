@@ -33,8 +33,18 @@ needs_helm = pytest.mark.skipif(shutil.which("helm") is None, reason="helm CLI n
 
 def _render(*sets: str) -> subprocess.CompletedProcess:
     # The chart also refuses to render until an auth provider is chosen (REQ-1265,
-    # tests/unit/test_helm_auth.py); these tests are about the master key.
-    cmd = ["helm", "template", "rel", str(CHART), "--set", "auth.provider=none"]
+    # tests/unit/test_helm_auth.py) and the stores' credentials Secret is named
+    # (tests/unit/test_helm_credentials.py); these tests are about the master key.
+    cmd = [
+        "helm",
+        "template",
+        "rel",
+        str(CHART),
+        "--set",
+        "auth.provider=none",
+        "--set",
+        "credentials.existingSecret=provisa-credentials",
+    ]
     for s in sets:
         cmd += ["--set", s]
     return subprocess.run(cmd, capture_output=True, text=True)

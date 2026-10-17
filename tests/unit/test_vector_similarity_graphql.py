@@ -30,7 +30,7 @@ from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.stage2 import GovernanceContext, apply_governance
 
 
-def _schema(*, analyst_sees_vec: bool = True):
+def _schema(*, analyst_sees_vec: bool = True, source_type: str = ""):
     vec_roles = ["admin", "analyst"] if analyst_sees_vec else ["admin"]
     tables = [
         {
@@ -82,6 +82,7 @@ def _schema(*, analyst_sees_vec: bool = True):
             naming_rules=[],
             role={"id": role_id, "capabilities": ["query_development"], "domain_access": ["*"]},
             domains=[{"id": "shop", "description": "Shop"}],
+            source_types={"pg": source_type} if source_type else {},
         )
         return generate_schema(si), build_context(si)
 
@@ -103,6 +104,15 @@ def test_a_table_with_an_embedding_column_takes_similar_and_reads_its_score():
     assert "_similarity" in docs.type.of_type.of_type.fields  # pyright: ignore[reportAttributeAccessIssue]
     tags = schema.query_type.fields["tags"]
     assert "similar" not in tags.args
+
+
+def test_a_table_a_subscription_also_serves_takes_one_similar_type():  # REQ-258
+    # A PostgreSQL table is served as a subscription too, with the same arguments as its query;
+    # both take the one input type, which a schema may name only once.
+    schema, _ = _schema(source_type="postgresql")("admin")
+    assert schema.query_type is not None and schema.subscription_type is not None
+    queried = schema.query_type.fields["docs"].args["similar"].type
+    assert schema.subscription_type.fields["docs"].args["similar"].type is queried
 
 
 def test_a_role_not_served_the_column_is_offered_no_search():  # REQ-426

@@ -22,7 +22,7 @@ import pytest
 import sqlalchemy as sa
 
 from provisa.core.database import Database, create_engine_from_url
-from provisa.core.schema_org import metadata, replica_state
+from provisa.core.schema_org import metadata, replica_build_log, replica_state
 from provisa.federation import replica_state as build_state
 from provisa.federation.replica_locks import BuildLocks
 from provisa.federation.replica_errors import WAITING_ENGINE
@@ -55,7 +55,8 @@ def _key(n: int):
 
 @pytest.fixture
 def plane():
-    """A fresh control-plane database holding ``replica_state``, and a connection factory."""
+    """A fresh control-plane database holding ``replica_state`` and ``replica_build_log``, and a
+    connection factory."""
     name = f"replica_locks_{uuid.uuid4().hex[:10]}"
     admin = sa.create_engine(_ADMIN_URL, isolation_level="AUTOCOMMIT")
     with admin.connect() as conn:
@@ -70,7 +71,8 @@ def plane():
 
     first = create_engine_from_url(url)
     with first.begin() as conn:
-        metadata.create_all(conn, tables=[replica_state])
+        # A build that ends is logged beside its state (REQ-1915).
+        metadata.create_all(conn, tables=[replica_state, replica_build_log])
     first.dispose()
     try:
         yield url, connect

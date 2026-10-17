@@ -54,7 +54,7 @@ def world(tmp_path, monkeypatch):
 
 def _reads_replica(world, table: str, serving: frozenset) -> bool:
     """Whether a read of ``table`` goes to its replica, as routing decides it."""
-    row = {"source_id": "pg", "replicate": None, "load_protected": None}
+    row = {"source_id": "pg", "replicate": None, "load_protected": None, "cache_ttl": None}
     engine = world.state.federation_engine.engine
     return reads_replica(world.source, row, engine, promoted=world.key(table) in serving)
 
@@ -133,7 +133,7 @@ def table_materialized_with_file_cache(world, shared_data):
 
 @when("a query targets that table")
 def query_targets_warm_table(world, shared_data):
-    table = {"source_id": "pg", "replicate": None, "load_protected": None}
+    table = {"source_id": "pg", "replicate": None, "load_protected": None, "cache_ttl": None}
     serving = world.key("customers") in shared_data["serving"]
     engine = world.state.federation_engine.engine
     shared_data["reads_replica"] = reads_replica(world.source, table, engine, promoted=serving)

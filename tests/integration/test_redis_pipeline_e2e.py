@@ -62,8 +62,12 @@ def _seed_redis() -> None:
     from provisa.redis.source import required_key_pattern
 
     prefix = required_key_pattern(_TABLE, _SCHEMA).removesuffix("*")
+    # The stack's Redis requires its password (docker-compose.core.yml, tests/store_credentials).
     client = redis.Redis(
-        host="localhost", port=int(os.environ["REDIS_PORT"]), decode_responses=True
+        host="localhost",
+        port=int(os.environ["REDIS_PORT"]),
+        password=os.environ["PROVISA_REDIS_PASSWORD"],
+        decode_responses=True,
     )
     try:
         for stale in client.scan_iter(match=f"{prefix}*"):
@@ -84,6 +88,7 @@ async def test_redis_registers_and_serves_semantic_query(connector_client):  # n
         source_type="redis",
         host="redis",
         port=6379,
+        password=os.environ["PROVISA_REDIS_PASSWORD"],
         domain_id=_DOMAIN,
         schema_name=_SCHEMA,
         table_name=_TABLE,

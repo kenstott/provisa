@@ -200,21 +200,19 @@ class TestLiveSQLAlchemyDialect:
         assert isinstance(rows, list)
 
     def test_column_names_from_metadata(self, connection):
-        """get_columns returns a list (empty if no semantic model tables registered)."""
+        """Every table the role is served reflects its columns by name and type; a table it is not
+        served is no table (REQ-2069). A table lives in its domain's schema."""
         from sqlalchemy import inspect
+        from sqlalchemy.exc import NoSuchTableError
 
         inspector = inspect(connection)
-        tables = inspector.get_table_names()
-        # When no semantic-model tables are registered, tables is empty and cols is empty.
-        if tables:
-            cols = inspector.get_columns(tables[0])
-            assert isinstance(cols, list)
-            if cols:
-                assert "name" in cols[0]
-                assert "type" in cols[0]
-        else:
-            cols = inspector.get_columns("nonexistent")
-            assert isinstance(cols, list)
+        for schema in inspector.get_schema_names():
+            for table in inspector.get_table_names(schema=schema):
+                cols = inspector.get_columns(table, schema=schema)
+                assert cols, f"{schema}.{table}"
+                assert {"name", "type"} <= set(cols[0])
+        with pytest.raises(NoSuchTableError):
+            inspector.get_columns("nonexistent", schema="nonexistent")
 
     def test_where_filter_passed_to_executor(self, connection):
         """A WHERE clause in a table-free SQL is forwarded to the Provisa pipeline."""
