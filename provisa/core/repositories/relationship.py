@@ -55,6 +55,9 @@ async def upsert(
             raise ValueError(f"Junction table not registered: {rel.via_table}")
         via_tbl_id = via_tbl["id"]
 
+    if await _provided_elsewhere(conn, rel, source_tbl["id"], target_tbl_id):
+        return
+
     vals = {
         "id": rel.id,
         "source_table_id": source_tbl["id"],
@@ -186,6 +189,52 @@ async def upsert(
                 )
                 .values(is_primary_key=True)
             )
+
+
+#: The id every relationship a remote GraphQL source's schema offers is kept under
+#: (``graphql_remote.mapper._detect_relationships``): ``gql_remote__<source>__<table>__<field>``.
+REMOTE_OFFERED_PREFIX = "gql_remote__"
+
+
+def _offered(rel_id: str) -> bool:
+    return rel_id.startswith(REMOTE_OFFERED_PREFIX)
+
+
+async def _provided_elsewhere(
+    conn: "Connection", rel: Relationship, source_id: int, target_id: int | None
+) -> bool:
+    """One relationship is kept once (REQ-313, REQ-194). A relationship a remote source's schema
+    offers that joins the same tables on the same columns as one declared (in the config, or by
+    an administrator) is that relationship: it is not kept beside it -- and one kept before is
+    removed -- since two of one type under one field are refused by the schema build. Saving the
+    declared one removes an offered one it is. True when ``rel`` is not to be saved."""
+    same = (
+        await conn.execute_core(
+            select(relationships.c.id).where(
+                relationships.c.source_table_id == source_id,
+                relationships.c.target_table_id == target_id,
+                relationships.c.source_column == rel.source_column,
+                relationships.c.target_column == (rel.target_column or None),
+                relationships.c.id != rel.id,
+            )
+        )
+    ).fetchall()
+    others = [row[0] for row in same]
+    if _offered(rel.id):
+        if not any(not _offered(other) for other in others):
+            return False
+        if await get(conn, rel.id) is not None:  # one kept before the declared one was saved
+            await _remove(conn, [rel.id])
+        return True
+    await _remove(conn, [other for other in others if _offered(other)])
+    return False
+
+
+async def _remove(conn: "Connection", rel_ids: list[str]) -> None:
+    """Remove offered relationships a declared one is, with their parts (their tag assignments)."""
+    for rel_id in rel_ids:
+        await remove_parts(conn, ObjectRef("relationship", rel_id))
+        await remove_where(conn, relationships.c.id == rel_id)
 
 
 async def get(conn: "Connection", rel_id: str) -> dict | None:  # REQ-018, REQ-019

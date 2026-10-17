@@ -284,15 +284,27 @@ def _build_junction_meta(  # REQ-1586
     )
 
 
-class RelationshipFieldTaken(ValueError):
+class ModelNotServable(ValueError):
+    """A model the schema build refuses to serve, naming why (``code`` and ``params``). The
+    build runs as a request is authenticated, so the refusal is the answer every request is
+    given until the model is corrected -- named, never the catch-all's "Internal server error"."""
+
+    code: str
+    params: dict[str, str]
+
+
+class RelationshipFieldTaken(ModelNotServable):
     """Two relationships of one GraphQL type named for one field (REQ-194): refused, naming both,
     rather than one replacing the other in the schema."""
+
+    code = "model.relationship_field_taken"
 
     def __init__(self, type_name: str, field: str, held_by: str, refused: str) -> None:
         self.type_name = type_name
         self.field = field
         self.held_by = held_by
         self.refused = refused
+        self.params = {"type": type_name, "field": field, "held_by": held_by, "refused": refused}
         super().__init__(
             f"relationship {refused!r} would be field {field!r} of {type_name}, which "
             f"relationship {held_by!r} already is: give one of them its own GraphQL alias"

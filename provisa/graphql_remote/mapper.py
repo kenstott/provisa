@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 from provisa.compiler.naming import apply_sql_name
+from provisa.core.repositories.relationship import REMOTE_OFFERED_PREFIX
 
 _SCALAR_TO_PROVISA = {
     "String": "text",
@@ -391,7 +392,7 @@ def _detect_relationships(  # REQ-313
             if not target_table or target_table == table["name"]:
                 continue
             cardinality = "one-to-many" if col.get("gql_is_list") else "many-to-one"
-            rel_id = f"gql_remote__{table['source_id']}__{table['name']}__{col['name']}"
+            rel_id = f"{REMOTE_OFFERED_PREFIX}{table['source_id']}__{table['name']}__{col['name']}"
             if cardinality == "many-to-one":
                 src_col, tgt_col = _infer_fk_columns(col["name"], gql_type, src_scalars, types)
                 # The columns are named as they are registered too (apply_sql_name): FK/PK marking
