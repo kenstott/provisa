@@ -14,7 +14,7 @@ import type { ProvisaAuth } from "./protocol";
 /** The first cell of every new notebook: load the client and say who it reads as. The same cell
  * runs unchanged in a desktop Jupyter once the notebook is downloaded. */
 export const NOTEBOOK_STARTER =
-  "%pip install provisa-client\n%load_ext provisa_client\nimport provisa_client\nprovisa_client.sign_in()";
+  "%pip install provisa-client\n%load_ext provisa_client\nimport provisa_client\n\nprovisa_client.sign_in()";
 
 interface ExecuteContent {
   code: string;
@@ -35,6 +35,7 @@ interface SharedCell {
 
 /** The parts of the JupyterLite app the page uses. */
 export interface LiteApp {
+  commands: { execute(id: string, args?: Record<string, unknown>): Promise<unknown> };
   shell: {
     widgets(area: "main"): Iterable<unknown>;
     currentWidget: unknown;
@@ -99,6 +100,14 @@ export function startLiteBridge(
     stopped = true;
     clearInterval(timer);
   };
+}
+
+/** JupyterLab's themes for the app's colour schemes. */
+export const LITE_THEMES = { light: "JupyterLab Light", dark: "JupyterLab Dark" } as const;
+
+/** The embedded app in the app's colour scheme (JupyterLab's own theme command). */
+export function followScheme(app: LiteApp, scheme: keyof typeof LITE_THEMES): Promise<unknown> {
+  return app.commands.execute("apputils:change-theme", { theme: LITE_THEMES[scheme] });
 }
 
 /** The cells of the notebook a widget shows, when it shows one. */

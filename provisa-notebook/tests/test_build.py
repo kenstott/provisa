@@ -54,3 +54,33 @@ def test_a_package_built_without_its_assets_says_so(tmp_path, monkeypatch):
     (tmp_path / "pyodide").mkdir()
     (tmp_path / "pyodide" / "pyodide-lock.json").write_text("{}")
     assert provisa_notebook.pyodide_dir() == tmp_path / "pyodide"
+
+
+def test_the_fingerprint_follows_what_the_assets_are_built_from(tmp_path, monkeypatch):
+    from provisa_notebook import build
+
+    notebooks = tmp_path / "notebooks"
+    notebooks.mkdir()
+    (notebooks / "Provisa.ipynb").write_text("{}")
+    monkeypatch.setattr(build, "NOTEBOOKS", notebooks)
+    first = build.fingerprint()
+    assert build.fingerprint() == first
+    (notebooks / "Provisa.ipynb").write_text('{"changed": true}')
+    assert build.fingerprint() != first
+
+
+def test_built_assets_are_current_only_when_their_manifest_records_this_fingerprint(tmp_path):
+    import json
+
+    from provisa_notebook import build
+
+    assert not build.is_current(tmp_path)
+    (tmp_path / "pyodide").mkdir()
+    (tmp_path / "lite").mkdir()
+    manifest = tmp_path / "pyodide" / "manifest.json"
+    manifest.write_text(json.dumps({"build": build.fingerprint()}))
+    assert not build.is_current(tmp_path)  # no notebook site: built before it existed
+    (tmp_path / "lite" / "jupyter-lite.json").write_text("{}")
+    assert build.is_current(tmp_path)
+    manifest.write_text(json.dumps({"build": "an older build"}))
+    assert not build.is_current(tmp_path)

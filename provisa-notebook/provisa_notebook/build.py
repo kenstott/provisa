@@ -82,9 +82,25 @@ def closure(lock: dict, names: tuple[str, ...]) -> list[str]:
     return sorted(seen)
 
 
+#: Each download's timeout, and how many times it is tried: the CDN times out now and then.
+_TIMEOUT_S = 120
+_ATTEMPTS = 3
+
+
+def _download(url: str) -> bytes:
+    """``url``'s bytes; tried up to _ATTEMPTS times, the last failure raised."""
+    for attempt in range(1, _ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=_TIMEOUT_S) as r:  # noqa: S310 -- pinned CDN
+                return r.read()
+        except OSError:
+            if attempt == _ATTEMPTS:
+                raise
+    raise AssertionError("unreachable")
+
+
 def _fetch(name: str, dest: Path, sha256: str | None = None) -> None:
-    with urllib.request.urlopen(CDN + name) as r:  # noqa: S310 -- the pinned release CDN
-        data = r.read()
+    data = _download(CDN + name)
     if sha256 is not None and hashlib.sha256(data).hexdigest() != sha256:
         raise ValueError(f"{name}: sha256 does not match Pyodide {PYODIDE_VERSION}'s lock")
     dest.write_bytes(data)
@@ -95,8 +111,7 @@ def build(out: Path = ASSETS) -> dict:
     if target.exists():
         shutil.rmtree(target)
     target.mkdir(parents=True)
-    with urllib.request.urlopen(CDN + "pyodide-lock.json") as r:  # noqa: S310
-        lock = json.load(r)
+    lock = json.loads(_download(CDN + "pyodide-lock.json"))
     for name in CORE:
         _fetch(name, target / name)
     shipped = closure(lock, PACKAGES)
@@ -137,6 +152,7 @@ def build(out: Path = ASSETS) -> dict:
     (target / "pyodide-lock.json").write_text(json.dumps(lock))
     build_lite(out / "lite")
     manifest = {
+        "build": fingerprint(),
         "pyodide": PYODIDE_VERSION,
         "packages": shipped,
         "client_wheel": f"wheels/{client.name}",
@@ -154,7 +170,10 @@ def build_lite(target: Path) -> None:
         subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
         bindir = venv / ("Scripts" if os.name == "nt" else "bin")
         python = bindir / ("python.exe" if os.name == "nt" else "python")
-        subprocess.run([str(python), "-m", "pip", "install", "--quiet", *LITE], check=True)
+        subprocess.run(
+            [str(python), "-m", "pip", "install", "--quiet", "--disable-pip-version-check", *LITE],
+            check=True,
+        )
         wheels = Path(tmp) / "wheels"
         subprocess.run(
             [
@@ -163,6 +182,7 @@ def build_lite(target: Path) -> None:
                 "pip",
                 "download",
                 "--quiet",
+                "--disable-pip-version-check",
                 "--no-deps",
                 "--only-binary=:all:",
                 "--dest",
@@ -174,7 +194,7 @@ def build_lite(target: Path) -> None:
         src = Path(tmp) / "src"
         shutil.copytree(NOTEBOOKS, src / "files")
         (src / "jupyter-lite.json").write_text(json.dumps(LITE_CONFIG, indent=2))
-        subprocess.run(
+        built = subprocess.run(
             [
                 str(python),
                 "-m",
@@ -187,10 +207,47 @@ def build_lite(target: Path) -> None:
                 str(target),
             ],
             cwd=src,
-            check=True,
-            stdout=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
         )
+        # JupyterLite's own warnings (an optional translation package) are its business; a
+        # failed build shows everything it said.
+        if built.returncode != 0:
+            raise RuntimeError(f"jupyter lite build failed:\n{built.stdout}\n{built.stderr}")
+
+
+def fingerprint() -> str:
+    """What the assets are built from: this package's code and settings (the Pyodide version and
+    packages, the JupyterLite pins and config), its starter notebooks and provisa-client's source.
+    A change to any of them makes built assets stale."""
+    package = Path(__file__).resolve().parent
+    client = REPO / "provisa-client"
+    # (root, files): each file is named by its path under its root, so the fingerprint is the
+    # same wherever the repository is checked out.
+    groups = [
+        (package, package.glob("*.py")),
+        (NOTEBOOKS, NOTEBOOKS.rglob("*")),
+        (client, [client / "pyproject.toml", *(client / "provisa_client").rglob("*.py")]),
+    ]
+    digest = hashlib.sha256()
+    for root, files in groups:
+        for path in sorted(files):
+            if path.is_file():
+                digest.update(path.relative_to(root).as_posix().encode())
+                digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def is_current(out: Path = ASSETS) -> bool:
+    """Whether the built assets in ``out`` are what a build would produce now."""
+    manifest = out / "pyodide" / "manifest.json"
+    if not manifest.is_file() or not (out / "lite" / "jupyter-lite.json").is_file():
+        return False
+    return json.loads(manifest.read_text()).get("build") == fingerprint()
 
 
 if __name__ == "__main__":
+    # --if-stale: build only when the assets are missing or no longer match their sources.
+    if "--if-stale" in sys.argv[1:] and is_current():
+        sys.exit(0)
     json.dump(build(), sys.stdout, indent=2)

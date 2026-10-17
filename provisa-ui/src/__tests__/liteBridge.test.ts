@@ -10,7 +10,9 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
+  LITE_THEMES,
   NOTEBOOK_STARTER,
+  followScheme,
   bridgeCode,
   seedNewNotebooks,
   startLiteBridge,
@@ -37,6 +39,7 @@ function kernel() {
 function app(kernels: KernelConnection[], current: unknown = null) {
   const slots: Array<() => void> = [];
   const lite: LiteApp = {
+    commands: { execute: vi.fn(async () => true) },
     shell: {
       widgets: () => kernels.map((k) => ({ sessionContext: { session: { kernel: k } } })),
       currentWidget: current,
@@ -126,5 +129,17 @@ describe("seedNewNotebooks", () => {
     lite.shell.currentWidget = written.widget;
     fire();
     expect(written.cells[0].getSource()).toBe("print(1)");
+  });
+});
+
+describe("followScheme", () => {
+  it("puts the embedded app in the app's colour scheme with JupyterLab's theme command", async () => {
+    const { lite } = app([]);
+    await followScheme(lite, "dark");
+    await followScheme(lite, "light");
+    expect(vi.mocked(lite.commands.execute).mock.calls).toEqual([
+      ["apputils:change-theme", { theme: LITE_THEMES.dark }],
+      ["apputils:change-theme", { theme: LITE_THEMES.light }],
+    ]);
   });
 });

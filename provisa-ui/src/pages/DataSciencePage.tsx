@@ -32,7 +32,12 @@ import {
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { bridgeAuth } from "../dataScience/bridge";
-import { seedNewNotebooks, startLiteBridge, type LiteApp } from "../dataScience/liteBridge";
+import {
+  followScheme,
+  seedNewNotebooks,
+  startLiteBridge,
+  type LiteApp,
+} from "../dataScience/liteBridge";
 import { reportRun, summarise } from "../dataScience/runReports";
 import { useNavPayload } from "../hooks/useNavPayload";
 import type { FromWorker, PyodideManifest, RunValue, ToWorker } from "../dataScience/protocol";
@@ -135,9 +140,16 @@ const LITE_APP_WAIT_MS = 120_000;
 
 function NotebookTab() {
   const { t } = useTranslation();
+  const scheme = useComputedColorScheme("light");
   const [served, setServed] = useState<boolean | null>(null);
+  const [app, setApp] = useState<LiteApp | null>(null);
   const frame = useRef<HTMLIFrameElement | null>(null);
   const stops = useRef<Array<() => void>>([]);
+
+  // The notebook wears the app's colour scheme, and changes with it.
+  useEffect(() => {
+    if (app !== null) void followScheme(app, scheme);
+  }, [app, scheme]);
 
   useEffect(() => {
     let live = true;
@@ -165,6 +177,7 @@ function NotebookTab() {
       clearInterval(wait);
       if (app === undefined) return;
       stops.current.push(startLiteBridge(appOf, bridgeAuth), seedNewNotebooks(app));
+      setApp(app);
     }, 250);
     stops.current.push(() => clearInterval(wait));
   }, []);
