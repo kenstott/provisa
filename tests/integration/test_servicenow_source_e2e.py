@@ -107,7 +107,9 @@ async def test_a_selected_tables_columns_are_read_for_it_alone(endpoint):
 async def test_a_registered_table_is_read_through_a_filter_and_a_limit(endpoint):
     from provisa.federation import pgwire_replica as pr
 
-    conn = await pr._pg_connect(endpoint.pgwire_host, endpoint.pgwire_port)
+    conn = await pr._pg_connect(
+        endpoint.pgwire_host, endpoint.pgwire_port, pr.sign_in_password(_source())
+    )
     try:
         rows = await conn.fetch(
             f'SELECT "sys_id", "number", "active" FROM "{_SCHEMA}"."incident" '

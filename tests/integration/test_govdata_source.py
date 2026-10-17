@@ -119,21 +119,24 @@ def attached(endpoint):
     from types import SimpleNamespace
 
     source = _source()
-    details = (
-        build_duckdb_engine()
-        .connectors["govdata"]
-        .details(
-            SimpleNamespace(  # pyright: ignore[reportArgumentType] - the runtime's attach view
-                id=source.id,
-                type=source.type,
-                username=source.username,
-                database=source.database,
-                catalog=_SOURCE_ID.replace("-", "_"),
-                schema_name=_SCHEMA,
-                table_name="candidates",
+    # A module fixture runs before the per-test org binding: the endpoint is the deployment
+    # org's, as in _serving.
+    with as_deployment_org():
+        details = (
+            build_duckdb_engine()
+            .connectors["govdata"]
+            .details(
+                SimpleNamespace(  # pyright: ignore[reportArgumentType] - the runtime's attach view
+                    id=source.id,
+                    type=source.type,
+                    username=source.username,
+                    database=source.database,
+                    catalog=_SOURCE_ID.replace("-", "_"),
+                    schema_name=_SCHEMA,
+                    table_name="candidates",
+                )
             )
         )
-    )
     con = duckdb.connect()
     con.execute("INSTALL postgres")
     con.execute("LOAD postgres")
@@ -211,7 +214,9 @@ async def test_a_replica_is_landed_from_the_tables_own_schema(endpoint):
     through the server, selected from the schema the table names."""
     from provisa.federation import pgwire_replica as pr
 
-    conn = await pr._pg_connect(endpoint.pgwire_host, endpoint.pgwire_port)
+    conn = await pr._pg_connect(
+        endpoint.pgwire_host, endpoint.pgwire_port, pr.sign_in_password(_source())
+    )
     try:
         schema = pr.remote_schema(_source(), _SCHEMA)
         rows = await conn.fetch(f'SELECT * FROM "{schema}"."candidates" LIMIT 5')

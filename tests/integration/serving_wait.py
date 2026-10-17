@@ -20,6 +20,7 @@ reads each table until it answers, and fails at once on any other answer.
 from __future__ import annotations
 
 import time
+from typing import Any
 
 import httpx
 
@@ -32,9 +33,16 @@ _NOT_YET = {
 }
 
 
-def await_tables_serving(base_url: str, role: str, tables: list[str], timeout: float) -> None:
-    """Return once ``SELECT COUNT(*)`` on each of ``tables`` (as the test reads them) answers 200,
-    waiting at most ``timeout`` seconds in all."""
+#: How much of the server's own log an unexpected answer carries: the end, where the error that
+#: answer reports was logged.
+_LOG_TAIL_CHARS = 6000
+
+
+def await_tables_serving(server: Any, role: str, tables: list[str], timeout: float) -> None:
+    """Return once ``SELECT COUNT(*)`` on each of ``tables`` (as the test reads them) answers 200
+    from the ``IsolatedServer`` ``server``, waiting at most ``timeout`` seconds in all. Any other
+    answer fails at once with the end of the server's log, where its cause was logged."""
+    base_url = server.base_url
     deadline = time.monotonic() + timeout
     for table in tables:
         sql = f"SELECT COUNT(*) AS n FROM {table}"
@@ -49,7 +57,8 @@ def await_tables_serving(base_url: str, role: str, tables: list[str], timeout: f
                 break
             code = resp.json().get("code")
             assert (resp.status_code, code) in _NOT_YET, (
-                f"{sql}: HTTP {resp.status_code}: {resp.text}"
+                f"{sql}: HTTP {resp.status_code}: {resp.text}\nthe server's log, its end:\n"
+                f"{server.dump_stderr_debug()[-_LOG_TAIL_CHARS:]}"
             )
             assert time.monotonic() < deadline, (
                 f"{sql}: still not serving after {timeout:.0f}s: HTTP {resp.status_code}: {resp.text}"

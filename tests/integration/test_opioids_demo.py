@@ -146,7 +146,7 @@ def server(stack, tmp_path_factory):
         # schemas past what one statement waits, and each replica lands on its first read,
         # longer than one request lasts.
         await_tables_serving(
-            srv.base_url,
+            srv,
             _ROLE,
             [f'"opioids"."{table}"' for table in _GOVDATA],
             timeout=1800,

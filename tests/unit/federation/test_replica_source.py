@@ -7,10 +7,13 @@
 """REQ-1915: every source read for replication is a stream of bounded Arrow record batches, and
 each kind of read declares what it is."""
 
+import asyncio
 from types import SimpleNamespace
 
 import pyarrow as pa
 import pytest
+
+import provisa.api.app  # noqa: F401 -- the API layer says whether the deployment holds many orgs, which reading a source's secrets asks
 
 from provisa.events.source_loader import SourceRowLoader, UnsupportedSourceFetch
 from provisa.federation.data_replicator import (
@@ -164,6 +167,35 @@ def test_each_source_type_is_given_its_own_kind_of_read(monkeypatch):
     monkeypatch.setattr(operator_floor, "floor_setting", lambda _source: "always")
     floored = loader.replica_source(_state(streams=True), _source("postgresql"), TABLE, COLUMNS)
     assert isinstance(floored, DirectTableSource)
+
+
+def test_a_floored_source_of_its_own_server_is_read_through_that_server(monkeypatch):
+    """An engine that attaches the type in place attaches no floored source, so a build that
+    read it through the engine named a catalog nobody attached ("Catalog ... does not exist")."""
+    from provisa.core import operator_floor
+    from provisa.federation import pgwire_replica as pr
+    from provisa.federation import strategy
+
+    monkeypatch.setattr(strategy, "engine_attaches", lambda _engine, stype: stype == "govdata")
+    read: list[tuple] = []
+
+    class _Replica:
+        async def load(self, table):
+            read.append(("load", table.table_name))
+            return [{"id": 1}]
+
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: _Replica())
+    loader = SourceRowLoader(_Engine())
+
+    monkeypatch.setattr(operator_floor, "floor_setting", lambda _source: None)
+    live = loader.replica_source(_state(), _source("govdata"), TABLE, COLUMNS)
+    assert isinstance(live, EngineTableSource)  # not floored: the engine's attach copies it
+
+    monkeypatch.setattr(operator_floor, "floor_setting", lambda _source: "always")
+    floored = loader.replica_source(_state(), _source("govdata"), TABLE, COLUMNS)
+    assert isinstance(floored, DocumentSource)
+    assert [b.num_rows for b in asyncio.run(_drain(floored, 10))] == [1]
+    assert read == [("load", "orders")]
 
 
 def test_a_postgresql_store_has_one_write_face_and_other_stores_are_refused_by_name():

@@ -278,7 +278,11 @@ class SourceRowLoader:
         # A registered adapter loader always wins: it is the type's OWN row-fetch (openapi call,
         # connector pgwire replica SELECT, REQ-954), used in preference to the engine terminal even
         # for a type the engine could otherwise scan — the wiring registers one only when needed.
-        loader = self._adapter_loaders.get(stype) or _floored_file_loader(source, stype)
+        loader = (
+            self._adapter_loaders.get(stype)
+            or _floored_file_loader(source, stype)
+            or _floored_server_loader(source, stype)
+        )
         if loader is not None:
             return await loader(source, table)
         if stype in _ADAPTER_FETCH_ONLY:
@@ -299,7 +303,8 @@ class SourceRowLoader:
         - A type with a registered adapter loader is read by it: through the adapter's own
           cursor or Arrow stream where its client has one, else whole, as a single document.
         - A floored csv or parquet source, which no engine attaches, is read from its file
-          (:func:`_floored_file_loader`).
+          (:func:`_floored_file_loader`); a floored source served by its own pgwire server, through
+          that server (:func:`_floored_server_loader`).
         - Any other type is read by the engine, which streams Arrow batches; where the engine
           attaches the source in place it is also declared engine-reachable.
 
@@ -358,7 +363,11 @@ class SourceRowLoader:
                 projection += f", CAST(NULL AS TIMESTAMP) AS {_COMMITTED}"
             sql = f"SELECT {projection} FROM {relation}{landing_where(table, lambda: dialect)}"
             return DirectTableSource(lambda: open_direct_stream(pools, source.id, sql, []), columns)
-        loader = self._adapter_loaders.get(stype) or _floored_file_loader(source, stype)
+        loader = (
+            self._adapter_loaders.get(stype)
+            or _floored_file_loader(source, stype)
+            or _floored_server_loader(source, stype)
+        )
         if (
             loader is not None
             and table.landing_filter is not None
@@ -738,6 +747,22 @@ def _floored_file_loader(source: Any, stype: str) -> AdapterLoader | None:
     if stype not in _FILE_READERS or floor_setting(source) is None:
         return None
     return make_file_loader(stype)
+
+
+def _floored_server_loader(source: Any, stype: str) -> AdapterLoader | None:
+    """The reader of a source served by its own pgwire server (AskAmerica, files, SharePoint, ...)
+    that the operator floors, None for any other.
+
+    A floored source has no live attach on any engine (REQ-1912), so an engine that would attach
+    the type in place has no catalog of it to read; its rows are read through its server
+    (``pgwire_replica.load_through_server``), as an engine with no connector for the type reads
+    them (REQ-954). A source that is not floored keeps the engine's read of its attach."""
+    from provisa.core.operator_floor import floor_setting
+    from provisa.federation.pgwire_replica import PGWIRE_REPLICA_TYPES, load_through_server
+
+    if stype not in PGWIRE_REPLICA_TYPES or floor_setting(source) is None:
+        return None
+    return load_through_server
 
 
 def make_file_loader(source_type: str) -> AdapterLoader:
