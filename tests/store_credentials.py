@@ -27,6 +27,7 @@ STORE_ENV = {
     "PROVISA_MINIO_ROOT_USER": "minioadmin",
     "PROVISA_MINIO_ROOT_PASSWORD": "minioadmin",
     "PROVISA_GRAFANA_ADMIN_PASSWORD": "provisa",
+    "PROVISA_TRINO_SHARED_SECRET": "provisa-test-instance-trino-shared-secret",
     "PROVISA_STORE_BIND_IP": "127.0.0.1",
     # What the app signs in to the bundled stores with.
     "CONFIG_DB_PASSWORD": "provisa",

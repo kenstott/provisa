@@ -69,6 +69,7 @@ def test_every_store_reads_its_password_from_the_operators_secret():
         "minio-access-key",
         "minio-secret-key",
         "grafana-admin-password",
+        "trino-shared-secret",
     ):
         assert (_SECRET, key) in refs
     assert not any(name.endswith("-secrets") for name, _ in refs)

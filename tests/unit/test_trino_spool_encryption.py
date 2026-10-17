@@ -70,3 +70,20 @@ def test_no_config_spills_to_disk_unencrypted():
     for name, text in texts.items():
         if "spill-enabled=true" in text.replace(" ", ""):
             assert "spill-encryption-enabled=true" in text.replace(" ", ""), name
+
+
+@pytest.mark.parametrize("name", sorted(_configs()))
+def test_every_node_config_authenticates_its_peers(name):
+    """Every coordinator and worker config Provisa renders or ships names the shared secret, read
+    from the environment the launcher or the chart gives the node."""
+    if name == "trino_setup._FTE_TEMPLATE":
+        return
+    lines = _lines(_configs()[name])
+    assert "internal-communication.shared-secret=${ENV:PROVISA_TRINO_SHARED_SECRET}" in lines
+
+
+def test_the_templates_render_the_shared_secret():
+    worker = trino_setup._WORKER_TEMPLATE.format(query_max_memory_per_node="1GB", fte_block="")
+    assert "internal-communication.shared-secret=${ENV:PROVISA_TRINO_SHARED_SECRET}" in _lines(
+        worker
+    )

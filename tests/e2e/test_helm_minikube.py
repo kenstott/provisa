@@ -462,6 +462,7 @@ def helm_install(request):
                     "redis-password",
                     "minio-secret-key",
                     "grafana-admin-password",
+                    "trino-shared-secret",
                 )
             ),
             "--from-literal=minio-access-key=provisa",

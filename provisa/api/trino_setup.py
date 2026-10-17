@@ -34,11 +34,14 @@ _JVM_TEMPLATE = """-server
 -Dotel.exporter.otlp.protocol=grpc
 """
 
+# Every node of the cluster authenticates the others with one secret, read from the environment the
+# launcher gives the containers (Trino substitutes ${ENV:...} in its properties files).
 _COORDINATOR_TEMPLATE = """coordinator=true
 node-scheduler.include-coordinator=true
 http-server.http.port=8080
 discovery.uri=http://localhost:8080
 catalog.management=dynamic
+internal-communication.shared-secret=${{ENV:PROVISA_TRINO_SHARED_SECRET}}
 query.max-memory={query_max_memory}
 query.max-memory-per-node={query_max_memory_per_node}
 query.max-total-memory={query_max_total_memory}
@@ -56,6 +59,7 @@ _WORKER_TEMPLATE = """coordinator=false
 http-server.http.port=8080
 discovery.uri=http://trino:8080
 catalog.management=dynamic
+internal-communication.shared-secret=${{ENV:PROVISA_TRINO_SHARED_SECRET}}
 query.max-memory-per-node={query_max_memory_per_node}
 {fte_block}"""
 

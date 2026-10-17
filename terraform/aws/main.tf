@@ -12,10 +12,11 @@ terraform {
   }
 }
 
-# The bundled stores' credentials (PostgreSQL, Redis, MinIO, Grafana's admin): generated for this
-# deployment, the same on every node, since the secondaries dial the primary's stores with them.
+# The bundled stores' credentials (PostgreSQL, Redis, MinIO, Grafana's admin) and the Trino nodes'
+# shared secret: generated for this deployment, the same on every node, since the secondaries dial
+# the primary's stores and join its coordinator with them.
 resource "random_password" "store" {
-  for_each = toset(["pg", "redis", "minio", "grafana"])
+  for_each = toset(["pg", "redis", "minio", "grafana", "trino"])
   length   = 32
   special  = false
 }
@@ -247,6 +248,7 @@ locals {
     export PROVISA_REDIS_PASSWORD="${random_password.store["redis"].result}"
     export PROVISA_MINIO_ROOT_PASSWORD="${random_password.store["minio"].result}"
     export PROVISA_GRAFANA_ADMIN_PASSWORD="${random_password.store["grafana"].result}"
+    export PROVISA_TRINO_SHARED_SECRET="${random_password.store["trino"].result}"
     export FIREBASE_PROJECT_ID="${var.firebase_project_id}"
     export FIREBASE_SERVICE_ACCOUNT_KEY='${var.firebase_service_account_key}'
     # REQ-1266: the SPA's Firebase web config (public client keys). first-launch

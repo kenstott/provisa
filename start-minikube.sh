@@ -118,7 +118,8 @@ if ! kubectl get secret provisa-credentials --namespace "$HELM_NAMESPACE" &>/dev
     --from-literal=redis-password="$(openssl rand -hex 24)" \
     --from-literal=minio-access-key=provisa \
     --from-literal=minio-secret-key="$(openssl rand -hex 24)" \
-    --from-literal=grafana-admin-password="$(openssl rand -hex 24)"
+    --from-literal=grafana-admin-password="$(openssl rand -hex 24)" \
+    --from-literal=trino-shared-secret="$(openssl rand -hex 32)"
 fi
 # TLS is on by default (tls.secretName=provisa-tls): a self-signed pair for this cluster.
 if ! kubectl get secret provisa-tls --namespace "$HELM_NAMESPACE" &>/dev/null; then

@@ -51,6 +51,11 @@ spec:
           env:
             - name: TRINO_NODE_TYPE
               value: worker
+            - name: PROVISA_TRINO_SHARED_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "provisa.credentialsSecret" . }}
+                  key: trino-shared-secret
             {{- if not .Values.trino.exchange.s3.endpoint }}
             - name: PROVISA_EXCHANGE_S3_ACCESS_KEY
               valueFrom:
