@@ -32,15 +32,17 @@ from datetime import datetime, timezone
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 
 #: (org, env, source id, schema, table) -> the waiting subscriptions: (their loop, their queue)
-_Key = tuple[str, str | None, str, str, str]
+_Key = tuple[str, str, str, str, str]
 _waiting: dict[_Key, set[tuple[asyncio.AbstractEventLoop, asyncio.Queue]]] = {}
 _lock = threading.Lock()
 
 
 def _key(source_id: str, schema: str, table: str) -> _Key:
-    from provisa.core.request_context import current_env, require_current_org
+    from provisa.core.request_context import active_env, require_current_org
 
-    return require_current_org(), current_env.get(), source_id, schema, table
+    # An unbound environment and ``prod`` are one environment (REQ-1487): the runtime a listener
+    # lands from may be built with none bound and a request may bind ``prod``.
+    return require_current_org(), active_env(), source_id, schema, table
 
 
 def landed(source_id: str, schema: str, table: str) -> None:

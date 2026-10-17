@@ -14,9 +14,10 @@ No third-party GraphQL framework (REQ-007). Uses graphql-core directly.
 Domain-scoped, per-role column filtering (REQ-008, REQ-021).
 """
 
-# Requirements: REQ-007, REQ-008, REQ-010, REQ-021, REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-039, REQ-133, REQ-134, REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-196, REQ-197, REQ-200, REQ-201, REQ-202, REQ-205, REQ-206, REQ-207, REQ-209, REQ-210, REQ-212, REQ-213, REQ-218, REQ-219, REQ-221, REQ-253, REQ-259, REQ-260, REQ-363, REQ-1614
+# Requirements: REQ-007, REQ-008, REQ-010, REQ-021, REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-039, REQ-133, REQ-134, REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-196, REQ-197, REQ-200, REQ-201, REQ-202, REQ-205, REQ-206, REQ-207, REQ-209, REQ-210, REQ-212, REQ-213, REQ-218, REQ-219, REQ-221, REQ-253, REQ-258, REQ-259, REQ-260, REQ-363, REQ-1614
 
 import re
+from collections.abc import Callable
 from typing import cast
 
 from graphql import (
@@ -387,12 +388,16 @@ def _build_subscription_fields(  # REQ-219, REQ-258, REQ-260
     si: SchemaInput,
     tables: list[_TableInfo],
     gql_types: dict[int, GraphQLObjectType],
+    args_of: Callable[[_TableInfo], dict[str, GraphQLArgument]],
 ) -> dict[str, GraphQLField]:
     """Build Subscription root fields.
 
     Includes registered tables that have a watermark column set (polling-based)
     or whose source supports native CDC (postgresql, mongodb, kafka, debezium).
     Tables in `tables` are already filtered by role visibility.
+
+    A field takes its table's query arguments (``args_of``): each frame is the equivalent query's
+    answer, so ``where``, ``order_by`` and ``limit`` shape every frame alike.
 
     Also includes approved persisted queries the role has been granted access to
     via the visible_to field (REQ-022–REQ-026).
@@ -407,10 +412,29 @@ def _build_subscription_fields(  # REQ-219, REQ-258, REQ-260
             continue
         fields[t.field_name] = GraphQLField(
             GraphQLList(GraphQLNonNull(gql_types[t.table_id])),
+            args=args_of(t),
             description=t.description,
         )
 
     return fields
+
+
+def _table_field_args(
+    t: _TableInfo,
+    where_types: dict[int, GraphQLInputObjectType | None],
+    order_by_types: dict[int, GraphQLInputObjectType],
+    distinct_enums: dict[int, GraphQLEnumType | None],
+) -> dict[str, GraphQLArgument]:
+    """The arguments of ``t``'s root field: its filter, order, paging and distinct, its native
+    filters and its similarity search. A subscription field takes the same (REQ-258)."""
+    args = _build_db_field_args(
+        where_types.get(t.table_id),
+        order_by_types.get(t.table_id),
+        distinct_enums.get(t.table_id),
+    )
+    _build_native_filter_args(t, args)
+    _build_similar_arg(t, args)
+    return args
 
 
 def _dedup_tables(tables: list[_TableInfo]) -> list[_TableInfo]:
@@ -1007,16 +1031,9 @@ def generate_schema(
         ):
             continue
         gql_type = gql_types[t.table_id]
-        args = _build_db_field_args(
-            where_types.get(t.table_id),
-            order_by_types.get(t.table_id),
-            distinct_enums.get(t.table_id),
-        )
-        _build_native_filter_args(t, args)
-        _build_similar_arg(t, args)
         query_fields[t.field_name] = GraphQLField(
             GraphQLList(GraphQLNonNull(gql_type)),
-            args=args,
+            args=_table_field_args(t, where_types, order_by_types, distinct_enums),
             # REQ-1375: table-level deprecation surfaces on the root query field — the
             # GraphQL construct @deprecated is valid on (objects themselves cannot carry it).
             deprecation_reason=t.deprecation_reason,
@@ -1114,7 +1131,12 @@ def generate_schema(
             GraphQLObjectType, GraphQLObjectType("Mutation", lambda: mutation_fields)
         )
 
-    subscription_fields = _build_subscription_fields(si, tables, gql_types)
+    subscription_fields = _build_subscription_fields(
+        si,
+        tables,
+        gql_types,
+        lambda t: _table_field_args(t, where_types, order_by_types, distinct_enums),
+    )
     subscription_type: GraphQLObjectType | None = (
         cast(GraphQLObjectType, GraphQLObjectType("Subscription", lambda: subscription_fields))
         if subscription_fields

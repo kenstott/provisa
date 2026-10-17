@@ -86,9 +86,19 @@ def _listener_key(node: str) -> tuple[str, str | None, str]:
     serves many orgs (a demo's sandboxes) and each org's environments; a node name alone is the
     same in every one of them, so a second org's table would be taken as already running, and
     one org's wiring would stop another's listeners as unwired."""
-    from provisa.core.request_context import current_env, require_current_org
+    from provisa.core.request_context import require_current_org
 
-    return require_current_org(), current_env.get(), node
+    return require_current_org(), _bound_env(), node
+
+
+def _bound_env() -> str | None:
+    """The bound environment, ``None`` for prod: an unbound environment and ``prod`` are one
+    environment (REQ-1487), so a wire under either finds the other's listeners and poll."""
+    from provisa.core.environments import PROD
+    from provisa.core.request_context import active_env
+
+    env = active_env()
+    return None if env == PROD else env
 
 
 def _captured_by_cdc(src: Any, tbl: dict) -> bool:
@@ -688,9 +698,7 @@ def _schedule_batch_poll(state: Any, store: Any, schema: str, delays: dict, *, o
     scheduler = getattr(state, "_scheduler", None)
     if scheduler is None:
         return
-    from provisa.core.request_context import current_env
-
-    env = current_env.get()
+    env = _bound_env()
     # One poll per org and environment: each has its own pipelines (``_listener_key``).
     job_id = f"poll:singlestore-kafka-pipelines:org_{org_id}" + ("" if env is None else f":{env}")
     if not delays:
