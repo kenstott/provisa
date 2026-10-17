@@ -98,6 +98,33 @@ def test_duckdb_attaches_only_a_server_store_of_another_region():
         runtime.attach_region_store("eu", "duckdb:///eu.duckdb")
 
 
+@pytest.mark.parametrize(
+    ("dsn", "attached"),
+    [
+        (
+            "postgresql+psycopg://r:pw@127.0.0.1:5433/eu_store",
+            "postgresql://r:pw@127.0.0.1:5433/eu_store",
+        ),
+        (
+            "postgresql+psycopg://r:pw@/eu_store?host=/sock&port=5433",
+            "postgresql://r:pw@/eu_store?host=%2Fsock&port=5433",
+        ),
+    ],
+)
+def test_duckdb_attaches_a_postgres_store_by_the_url_libpq_reads(monkeypatch, dsn, attached):
+    """A store is declared with its SQLAlchemy driver; libpq reads only the URL without it."""
+    from provisa.federation import duckdb_runtime
+    from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
+
+    executed: list[str] = []
+    monkeypatch.setattr(duckdb_runtime, "install_and_load", lambda *_a, **_k: None)
+    runtime = DuckDBFederationRuntime.__new__(DuckDBFederationRuntime)
+    runtime._region_stores = set()
+    runtime._con = SimpleNamespace(execute=executed.append)  # type: ignore[assignment]
+    runtime.attach_region_store("eu", dsn)
+    assert executed == [f"ATTACH '{attached}' AS \"eu\" (TYPE postgres, READ_ONLY)"]
+
+
 def test_an_engine_without_an_attach_for_another_region_refuses_naming_itself():
     from provisa.federation.backend import EngineBackend, EngineReadsNoOtherRegion
 
