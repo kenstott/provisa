@@ -140,6 +140,8 @@ _VIEW_KEYS = {
     "off_peak_tz": "off_peak_tz",
     # REQ-1921: a view naming a region is built and refreshed there alone.
     "region": "region",
+    # REQ-1634: a view is a member of a data product as a table is.
+    "product_id": "product_id",
 }
 
 
