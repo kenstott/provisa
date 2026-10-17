@@ -185,7 +185,7 @@ def test_the_guard_sits_at_both_parse_points_of_the_one_pipeline_before_governan
     from provisa.pgwire import _pipeline
 
     front = inspect.getsource(prepared.prepare_front_end)
-    assert front.index("sqlglot.parse_one(raw_sql") < front.index("refuse_definition(parsed_input)")
+    assert front.index("_parse(raw_sql)") < front.index("refuse_definition(parsed_input)")
     assert front.index("refuse_definition(parsed_input)") < front.index("_shape_digest_from_tree")
 
     compiled = inspect.getsource(_pipeline._govern_compiled)
