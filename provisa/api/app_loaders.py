@@ -30,7 +30,7 @@ from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.security.meta_role import is_meta_role_id, rebuild_meta_roles, with_meta_masks
 from provisa.security.rights import Capability, reaches_all_domains
 from provisa.compiler.context import build_context
-from provisa.compiler.rls import build_rls_context
+from provisa.compiler.rls import build_rls_context, org_scoped_signals
 from sqlalchemy import select
 from provisa.core.schema_org import (
     registered_tables as _registered_tables_t,
@@ -1801,7 +1801,9 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         if not role["domain_access"] and not reaches_all_domains(role["domain_access"]):
             _drop_data_surface(state, role["id"])
             continue
-        register_role_surface(state, role, build_rls_context(rls_rules, role["id"]))
+        # The ops signals are one store every org's rows land in: every role reads its own org's.
+        rls = org_scoped_signals(build_rls_context(rls_rules, role["id"]), tables)
+        register_role_surface(state, role, rls)
 
     rebuild_meta_roles(state, current)  # #216: a meta-role in use outlives the rebuild
 

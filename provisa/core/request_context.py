@@ -134,11 +134,21 @@ def session_vars_for(role: dict | None) -> dict[str, str]:
 
     if process_region.region() != DEFAULT_REGION:
         out[REGION_VAR] = process_region.region()
+    # The org the request is served for, likewise the node's fact and never the caller's: a rule
+    # over a store every org's rows land in (the ops signals) keeps each org to its own. Unbound
+    # on a path serving no org, where such a rule resolves to NULL and matches nothing.
+    org_id = current_org.get()
+    if org_id is not None:
+        out[ORG_VAR] = org_id
+    else:
+        out.pop(ORG_VAR, None)
     return out
 
 
 #: The session variable that names the answering node's region (REQ-1922).
 REGION_VAR = "region"
+#: The session variable that names the org a request is served for.
+ORG_VAR = "org"
 
 
 # The role the request acts as (request.state.role), bound by the surfaces that authenticate a

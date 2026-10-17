@@ -70,7 +70,7 @@ def test_a_meta_role_holds_its_members_ancestors_and_its_pseudo_roles(monkeypatc
         roles={"analyst": {"id": "analyst", "capabilities": [], "domain_access": ["*"]}},
         role_build_inputs={
             "role_chains": {"analyst": ["analyst", "developer"]},
-            "tables": [{"id": 1, "columns": [col]}],
+            "tables": [{"id": 1, "source_id": "pg", "columns": [col]}],
             "metrics": [],
             "functions": [],
             "webhooks": [],
@@ -91,7 +91,9 @@ def test_a_meta_role_holds_its_members_ancestors_and_its_pseudo_roles(monkeypatc
         meta_roles={},
         meta_qualifiers={},
     )
-    monkeypatch.setattr(meta_role, "_rls", lambda *_a: None)
+    from provisa.compiler.rls import RLSContext
+
+    monkeypatch.setattr(meta_role, "_rls", lambda *_a: RLSContext.empty())
     monkeypatch.setattr(meta_role, "_role", lambda members, mid: {"id": mid})
     monkeypatch.setattr("provisa.api.app_loaders.register_role_surface", lambda *_a: None)
     meta_id = "meta:analyst+region+region__eu"

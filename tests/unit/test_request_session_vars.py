@@ -16,6 +16,8 @@ import pytest
 
 from provisa.auth.middleware import request_session_vars
 from provisa.core.request_context import (
+    ORG_VAR,
+    current_org,
     reset_session_vars,
     session_vars_for,
     set_session_vars,
@@ -82,7 +84,8 @@ class TestSessionVarsFor:
             out = session_vars_for({"session_vars": {"region": "east", "user_id": "role-level"}})
         finally:
             reset_session_vars(token)
-        assert out == {"region": "east", "user_id": "2"}
+        # The org the test runs in rides along (conftest binds it); a caller cannot set it.
+        assert out == {"region": "east", "user_id": "2", ORG_VAR: current_org.get()}
 
     def test_unbound_means_null_in_the_predicate(self):
         sql = _resolve_session_settings(
@@ -131,7 +134,11 @@ def test_a_predicate_reads_the_answering_nodes_region(_region):
     _region.bind_launch(_PLATFORM, requested="eu")
     token = set_session_vars({"region": "us", "team": "a"})  # a caller cannot name another
     try:
-        assert session_vars_for({"session_vars": {"region": "us"}}) == {"region": "eu", "team": "a"}
+        assert session_vars_for({"session_vars": {"region": "us"}}) == {
+            "region": "eu",
+            "team": "a",
+            ORG_VAR: current_org.get(),
+        }
     finally:
         reset_session_vars(token)
 
@@ -141,4 +148,7 @@ def test_with_no_platform_regions_the_name_stays_the_deployments(_region):
 
     _region.bind_launch({}, requested=None)
     assert "region" not in session_vars_for(None)
-    assert session_vars_for({"session_vars": {"region": "east"}}) == {"region": "east"}
+    assert session_vars_for({"session_vars": {"region": "east"}}) == {
+        "region": "east",
+        ORG_VAR: current_org.get(),
+    }

@@ -1,0 +1,135 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4c977ebd-647f-4304-a444-0e9dd8dc5873
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""The ops signals (traces, metrics, logs) are one store every org's work lands in. Each span
+records the org it was started for, the store keeps it as ``tenant_id``, and a read of the signals
+answers only the reading org's rows: a span of no org is no org's to read."""
+
+# Requirements: REQ-302, REQ-1349
+
+from __future__ import annotations
+
+import json
+from contextlib import contextmanager
+
+import pytest
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+from provisa.api.otel_setup import OrgSpanProcessor
+from provisa.compiler.rls import ORG_SCOPED_SIGNALS_RULE, RLSContext, org_scoped_signals
+from provisa.core.request_context import (
+    ORG_VAR,
+    current_org,
+    reset_current_org,
+    reset_session_vars,
+    session_vars_for,
+    set_current_org,
+    set_session_vars,
+)
+from provisa.pgwire._pipeline import _resolve_session_settings
+from provisa.scheduler.jobs import _TRACE_EXTRA_COLS, _build_row
+
+pytestmark = pytest.mark.unit
+
+
+@contextmanager
+def _serving(org: str | None):
+    """``org`` bound as the request's org, or none at all (a background path)."""
+    token = current_org.set(org)
+    try:
+        yield
+    finally:
+        current_org.reset(token)
+
+
+def _spans(org: str | None) -> tuple:
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(OrgSpanProcessor())
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    with _serving(org), provider.get_tracer("t").start_as_current_span("work"):
+        pass
+    return exporter.get_finished_spans()
+
+
+def test_a_span_records_the_org_it_was_started_for():
+    [span] = _spans("acme")
+    assert span.attributes["provisa.tenant"] == "acme"
+
+
+def test_a_span_started_for_no_org_records_none():
+    [span] = _spans(None)
+    assert "provisa.tenant" not in (span.attributes or {})
+
+
+def test_the_store_keeps_a_spans_org_as_its_tenant():
+    attrs = {"provisa.tenant": "acme", "provisa.table": "orders"}
+    row = {"trace_id": "t1", "span_attributes": json.dumps(attrs)}
+    engine_cols = {c: "varchar" for c in ("trace_id", *_TRACE_EXTRA_COLS)}
+    built = _build_row(row, ["trace_id"], "2026-10-17", True, False, _TRACE_EXTRA_COLS, engine_cols)
+    by_col = dict(zip(["trace_id", "_date", *_TRACE_EXTRA_COLS], built))
+    assert by_col["tenant_id"] == "acme"
+    assert by_col["table_name"] == "orders"
+
+
+def test_the_reading_org_is_a_session_value_no_caller_can_set():
+    token = set_current_org("acme")
+    request = set_session_vars({ORG_VAR: "other"})
+    try:
+        role = {"session_vars": {ORG_VAR: "another"}}
+        assert session_vars_for(role)[ORG_VAR] == "acme"
+    finally:
+        reset_session_vars(request)
+        reset_current_org(token)
+
+
+def test_with_no_org_bound_there_is_no_reading_org():
+    request = set_session_vars({ORG_VAR: "other"})
+    try:
+        with _serving(None):
+            assert ORG_VAR not in session_vars_for({"session_vars": {ORG_VAR: "another"}})
+    finally:
+        reset_session_vars(request)
+
+
+_TABLES = [
+    {"id": 7, "source_id": "provisa-otel", "table_name": "traces"},
+    {"id": 8, "source_id": "provisa-otel", "table_name": "metrics"},
+    {"id": 9, "source_id": "provisa-otel", "table_name": "logs"},
+    {"id": 1, "source_id": "provisa-admin", "table_name": "registered_tables"},
+    {"id": 2, "source_id": "orders-db", "table_name": "orders"},
+]
+
+
+def test_every_signals_table_answers_only_the_reading_orgs_rows():
+    scoped = org_scoped_signals(RLSContext.empty(), _TABLES)
+    assert scoped.rules == {tid: ORG_SCOPED_SIGNALS_RULE for tid in (7, 8, 9)}
+
+
+def test_a_rule_of_the_role_on_a_signals_table_still_holds_beside_the_orgs():
+    rls = RLSContext(rules={7: "role_id = 'analyst'", 2: "region = 'EU'"})
+    scoped = org_scoped_signals(rls, _TABLES)
+    assert scoped.rules[7] == f"({ORG_SCOPED_SIGNALS_RULE}) AND (role_id = 'analyst')"
+    assert scoped.rules[2] == "region = 'EU'"  # not a signals table: untouched
+    assert rls.rules == {7: "role_id = 'analyst'", 2: "region = 'EU'"}  # input not mutated
+
+
+def test_the_rule_reads_the_bound_org_and_no_org_reads_nothing():
+    with _serving("acme"):
+        bound = _resolve_session_settings(ORG_SCOPED_SIGNALS_RULE, session_vars_for(None), "trino")
+    assert bound == "tenant_id = 'acme'"
+    # Unbound (a background path): NULL, which no row's tenant equals -- not even a NULL one.
+    with _serving(None):
+        unbound = _resolve_session_settings(
+            ORG_SCOPED_SIGNALS_RULE, session_vars_for(None), "trino"
+        )
+    assert unbound == "tenant_id = NULL"

@@ -18,6 +18,8 @@ from threading import Lock
 from typing import Any
 
 
+from opentelemetry.sdk.trace import SpanProcessor
+
 from provisa.core.config_location import config_path_str
 from provisa.otel_compat import (
     bind_request_span,
@@ -294,6 +296,28 @@ class _MetricExports:
             exporter.shutdown()
 
 
+class OrgSpanProcessor(SpanProcessor):
+    """Records on each span the org it was started for (``provisa.tenant``), which the ops signals
+    keep as ``tenant_id`` and scope every read by. A span started for no org (boot, a job outside
+    any org) records none and is no org's to read."""
+
+    def on_start(self, span: Any, parent_context: Any = None) -> None:  # noqa: ARG002
+        from provisa.core.request_context import current_org
+
+        org_id = current_org.get()
+        if org_id is not None:
+            span.set_attribute("provisa.tenant", org_id)
+
+    def on_end(self, span: Any) -> None:
+        pass
+
+    def shutdown(self) -> None:
+        pass
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:  # noqa: ARG002
+        return True
+
+
 def _process_tracer_provider(sampler: Any, resource: Any) -> Any:
     """The process's trace provider, built and installed by the first call. It always buffers
     spans in memory for the live trace panel, and exports through ``_span_exports``."""
@@ -319,6 +343,7 @@ def _process_tracer_provider(sampler: Any, resource: Any) -> Any:
         def force_flush(self, timeout_millis: int = 30000) -> bool:
             return True
 
+    provider.add_span_processor(OrgSpanProcessor())
     provider.add_span_processor(_BufferProcessor())
     _span_exports = _SpanExports()
     provider.add_span_processor(_span_switch(_span_exports))

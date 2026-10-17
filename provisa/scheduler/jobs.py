@@ -559,12 +559,14 @@ _PHYSICAL_CAST: dict[str, str] = {
     "varchar": "VARCHAR",
 }
 
-_TRACE_EXTRA_COLS: list[str] = ["table_name", "domain_id", "role_id", "query_text"]
+_TRACE_EXTRA_COLS: list[str] = ["table_name", "domain_id", "role_id", "query_text", "tenant_id"]
 _ATTR_KEYS: dict[str, str] = {
     "table_name": "provisa.table",
     "domain_id": "provisa.domain",
     "role_id": "provisa.role",
     "query_text": "provisa.query_text",
+    # The org the span was started for (otel_setup.OrgSpanProcessor): what a read is scoped by.
+    "tenant_id": "provisa.tenant",
 }
 _SPAN_ATTRS_MAX: int = 4096
 
