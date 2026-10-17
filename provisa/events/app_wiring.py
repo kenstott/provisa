@@ -430,26 +430,32 @@ def replica_write_lock_factory(state: Any) -> Callable[[tuple[str, str, str]], A
     return lock
 
 
-def registry_marking(registry: Any) -> Any:
+def registry_marking(registry: Any, build_state: Any) -> Any:
     """``mv -> mark(change)``: a view's refresh by the event loop, recorded in the MV registry a
-    read asks whether the view is fresh. ``change`` is the committed event -- a change marks it
-    fresh, with its rows when a full replace knows them (a delta or a bitemporal seal does not);
-    ``("error", payload)`` marks the refresh failed -- or None when its content was unchanged,
-    which keeps it fresh. Without it a view the loop keeps current is still read as stale, from
-    its definition."""
+    read asks whether the view is fresh, and on this region's build row in ``build_state`` (its
+    state store), which another region reads to know the view's copy here is built (REQ-1922).
+    ``change`` is the committed event -- a change marks it fresh, with its rows when a full
+    replace knows them (a delta or a bitemporal seal does not); ``("error", payload)`` marks the
+    refresh failed -- or None when its content was unchanged, which keeps it fresh. Without it a
+    view the loop keeps current is still read as stale, from its definition."""
+    from provisa.mv.coordination import record_build
 
     def mv_refreshed(mv: Any) -> Any:
-        def mark(change: tuple[str, dict] | None) -> None:
+        async def mark(change: tuple[str, dict] | None) -> None:
             if change is None:
                 registry.mark_unchanged(mv.id)
+                await record_build(build_state, mv.id)
                 return
             event_type, payload = change
             if event_type == "error":
                 registry.mark_refresh_failed(mv.id, payload["error"])
+                await record_build(build_state, mv.id, error=payload["error"])
             elif event_type == "replace" and "rows" in payload:
                 registry.mark_refreshed(mv.id, payload["rows"])
+                await record_build(build_state, mv.id, row_count=payload["rows"])
             else:
                 registry.mark_refreshed(mv.id, None)
+                await record_build(build_state, mv.id)
 
         return mark
 
@@ -665,7 +671,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
 
             return _append
 
-        mv_refreshed = registry_marking(state.mv_registry)
+        mv_refreshed = registry_marking(state.mv_registry, state.tenant_db)
 
         # Drive the loop off the design-time REGISTERED tables (semantic sql names + resolved types),
         # not the raw YAML — the landed replica name must match what the schema-currency reconcile

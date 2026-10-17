@@ -36,6 +36,9 @@ async def _db(control_plane):
 
 
 def _view(db, generate, told):
+    async def tell(change):
+        told.append(change)
+
     return MVTableProcessor(
         "mv.gold",
         change_signal="ttl",
@@ -44,7 +47,7 @@ def _view(db, generate, told):
         db=db,
         name="box-1",
         generate=generate,
-        on_refreshed=told.append,
+        on_refreshed=tell,
     )
 
 
@@ -109,14 +112,22 @@ class _Registry:
     ],
     ids=["replace", "delta", "bitemporal-seal", "unchanged", "error"],
 )
-def test_the_registry_is_told_what_the_refresh_did(change, call):
+@pytest.mark.asyncio
+async def test_the_registry_is_told_what_the_refresh_did(change, call, control_plane, monkeypatch):
     """Only a full replace knows the view's whole row count; a delta's rows are the delta's."""
+    from provisa.core import process_region
+
+    monkeypatch.setattr(process_region, "_region", "eu")
     registry = _Registry()
-    registry_marking(registry)(SimpleNamespace(id="view-gold"))(change)
+    await registry_marking(registry, control_plane.org(holds="state"))(
+        SimpleNamespace(id="view-gold")
+    )(change)
     assert registry.calls == [call]
 
 
-def test_a_view_marked_refreshed_is_read_as_fresh():
+@pytest.mark.asyncio
+async def test_a_view_marked_refreshed_is_read_as_fresh(control_plane, monkeypatch):
+    from provisa.core import process_region
     from provisa.mv.models import MVDefinition, MVStatus
     from provisa.mv.registry import MVRegistry
 
@@ -131,6 +142,9 @@ def test_a_view_marked_refreshed_is_read_as_fresh():
     )
     registry.register(mv)
     assert mv.status != MVStatus.FRESH
-    registry_marking(registry)(mv)(("replace", {"rows": 5, "landed": "x"}))
+    monkeypatch.setattr(process_region, "_region", "eu")
+    await registry_marking(registry, control_plane.org(holds="state"))(mv)(
+        ("replace", {"rows": 5, "landed": "x"})
+    )
     assert mv.status == MVStatus.FRESH and mv.row_count == 5
     assert registry.get_fresh() == [mv]
