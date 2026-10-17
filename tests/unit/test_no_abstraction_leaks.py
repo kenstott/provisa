@@ -54,6 +54,9 @@ OWNERS: dict[str, set[str]] = {
         # REQ-1994: a scratch in-memory DuckDB holding the one row a mail-source write names, to
         # evaluate the governed WHERE over it exactly as SQL does -- no engine, no store.
         "provisa/federation/mail_write.py",
+        # REQ-2068: a scratch in-memory DuckDB ATTACHes a regions demo's seed file and a region's
+        # PostgreSQL store and copies tables between them -- no engine, no org, no query path.
+        "provisa/api/demo_region_seed.py",
     },
     "trino": {
         "provisa/federation/trino_types.py",  # REQ-1678: the connection/exception alias leaf

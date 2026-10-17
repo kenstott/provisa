@@ -194,7 +194,6 @@ class AppState:
     # REQ-1008: server-lifetime MCP catalog search index (DuckDB VSS HNSW), built lazily on first
     # search_catalog and invalidated (set None) on catalog reload. Any so the mcp package owns the type.
     mcp_catalog_index: Any = None
-    mv_registry: MVRegistry = MVRegistry()
     _mv_refresh_task: LongLived | None = None
     _grpc_server: Any | None = None
     _flight_server: Any | None = None  # ProvisaFlightServer
@@ -208,11 +207,8 @@ class AppState:
     kafka_windows: dict[str, str] = {}  # source_id → default_window (e.g. "1h")
     kafka_bootstrap: dict[str, str] = {}  # source_id → its brokers, secrets resolved (REQ-812)
     kafka_table_configs: dict[str, KafkaTableConfig] = {}  # table_name → KafkaTableConfig
-    view_sql_map: dict[str, str] = {}  # view_table_name → SQL (for inline expansion)
-    # REQ-1163: bitemporal materialized views → (physical mv target ref, spec), so a request-level
-    # as-of (X-Provisa-As-Of) can overlay an as-of reconstruction over each one's append log.
-    bitemporal_view_reads: dict = {}  # view_table_name → (mv_ref, BitemporalSpec)
-    table_cache: dict[int, int | None] = {}  # table_id → cache_ttl
+    # mv_registry, view_sql_map, bitemporal_view_reads and table_cache are org-routed; see the
+    # properties below.
     auth_config: dict | None = None  # auth section from provisa.yaml
     # Bumped every time _load_and_build resolves auth_config. The lazily-resolving AuthMiddleware
     # (config_resolver path) caches its provider on first request; comparing this generation lets it
@@ -613,6 +609,43 @@ class AppState:
     @source_dsns.setter
     def source_dsns(self, value: dict[str, str]) -> None:
         self._active_runtime().source_dsns = value
+
+    @property
+    def mv_registry(self) -> MVRegistry:
+        return self._active_runtime().mv_registry
+
+    @mv_registry.setter
+    def mv_registry(self, value: MVRegistry) -> None:
+        self._active_runtime().mv_registry = value
+
+    @property
+    def view_sql_map(self) -> dict[str, str]:
+        """View table name → SQL, for inline expansion (REQ-135)."""
+        return self._active_runtime().view_sql_map
+
+    @view_sql_map.setter
+    def view_sql_map(self, value: dict[str, str]) -> None:
+        self._active_runtime().view_sql_map = value
+
+    @property
+    def bitemporal_view_reads(self) -> dict:
+        """REQ-1163: bitemporal materialized views → (physical mv target ref, spec), so a
+        request-level as-of (X-Provisa-As-Of) can overlay an as-of reconstruction over each one's
+        append log."""
+        return self._active_runtime().bitemporal_view_reads
+
+    @bitemporal_view_reads.setter
+    def bitemporal_view_reads(self, value: dict) -> None:
+        self._active_runtime().bitemporal_view_reads = value
+
+    @property
+    def table_cache(self) -> dict[int, int | None]:
+        """Table id → its response-cache TTL."""
+        return self._active_runtime().table_cache
+
+    @table_cache.setter
+    def table_cache(self, value: dict[int, int | None]) -> None:
+        self._active_runtime().table_cache = value
 
     @property
     def source_catalogs(self) -> dict[str, str]:

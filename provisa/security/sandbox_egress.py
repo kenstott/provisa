@@ -115,6 +115,13 @@ def _plain(value: object) -> str | None:
     return str(resolve_secrets(value))
 
 
+def _host_destination(host: str, port: int | None) -> tuple[str, int | None]:
+    """Where a source's ``host`` points: the name and port a URL names (a Qdrant source's host
+    is its instance's URL), else the host itself at ``port``."""
+    url = _url_destination(host) if "://" in host else None
+    return url if url is not None else (host.lower(), port)
+
+
 def _url_destination(url: str | None) -> tuple[str, int | None] | None:
     if not url:
         return None
@@ -136,7 +143,7 @@ def destinations(fields: dict) -> list[tuple[str, int | None]]:
     host = _plain(fields.get("host"))
     port = fields.get("port") or None
     if host:
-        found.append((host.lower(), port))
+        found.append(_host_destination(host, port))
     elif port:
         found.append((_DEFAULT_HOST, port))
     for name in _URL_FIELDS:
@@ -311,6 +318,25 @@ def pin(host: str, port: int | None, org_id: str | None = None) -> str:
     if _declared(org, host, port):
         return host
     return require_public_destination(host, port)[0]
+
+
+def pin_host(host: str, port: int | None, source_type: str, org_id: str | None = None) -> str:
+    """The host a source's connection is made to (:func:`pin`), checked first
+    (:func:`require_allowed`). A host given as a URL is checked by the name and port it names,
+    and connected to by that URL, which cannot be held to the address checked: for a sandbox org
+    it may reach only a destination its demo declares."""
+    if "://" not in host:
+        require_allowed(host, port, org_id)
+        return pin(host, port, org_id)
+    name, url_port = _host_destination(host, port)
+    require_allowed(name, url_port, org_id)
+    org = _org(org_id)
+    if not confined(org):
+        return host
+    assert org is not None
+    if not _declared(org, name, url_port):
+        raise UnpinnableDestinationRefused(source_type, name)
+    return host
 
 
 def require_connectable(fields: dict, source_type: str, org_id: str | None = None) -> str | None:
