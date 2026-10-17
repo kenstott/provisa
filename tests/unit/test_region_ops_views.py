@@ -221,3 +221,73 @@ def test_a_statement_reading_one_of_these_views_in_a_region_is_the_engines():
     ctx.tables["roles"] = _meta(8, "roles", "provisa_admin")
     assert ops.reads_region_views(ctx, (7, 8))
     assert not ops.reads_region_views(ctx, (8,))
+
+
+def test_trino_defines_these_views_once_over_a_catalog_per_region_store(monkeypatch):
+    """Trino reads each of the region's stores through a catalog of its own and defines the
+    views in a memory catalog, created only if absent (every process of the deployment defines
+    its orgs' views there), once per org and definition."""
+    from contextlib import contextmanager
+
+    from provisa.federation.backend import TrinoBackend
+
+    process_region.bind_launch(_PLATFORM, requested="eu")
+    statements: list[str] = []
+
+    class _Cursor:
+        def execute(self, sql: str) -> None:
+            statements.append(sql)
+
+        def fetchall(self) -> list:
+            return []
+
+    class _Conn:
+        def cursor(self):
+            return _Cursor()
+
+    def _db(schema: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            search_path=schema,
+            engine=SimpleNamespace(
+                url=SimpleNamespace(
+                    render_as_string=lambda hide_password: f"postgresql://h/{schema}"
+                )
+            ),
+        )
+
+    backend = TrinoBackend.__new__(TrinoBackend)
+    registered: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        TrinoBackend,
+        "_store_catalog_named",
+        lambda self, state, name, dsn: registered.append((name, dsn)) or name,
+    )
+
+    @contextmanager
+    def _conn(self, state):
+        yield _Conn()
+
+    monkeypatch.setattr(TrinoBackend, "_provisioning_conn", _conn)
+    state = SimpleNamespace(
+        model_db=_db("org_acme"), record_db=_db("org_acme_rg_eu"), tenant_db=_db("org_acme_rg_eu")
+    )
+    backend.prepare_region_ops(state)
+    backend.prepare_region_ops(state)
+    assert registered[:2] == [
+        ("provisa_record__org_acme_rg_eu", "postgresql://h/org_acme_rg_eu"),
+        ("provisa_state__org_acme_rg_eu", "postgresql://h/org_acme_rg_eu"),
+    ]
+    assert statements[0] == f"CREATE CATALOG IF NOT EXISTS {ops.CATALOG} USING memory"
+    assert statements[1] == f'CREATE SCHEMA IF NOT EXISTS "{ops.CATALOG}"."org_acme"'
+    views = [s for s in statements if s.startswith("CREATE OR REPLACE VIEW")]
+    assert len(views) == len(ops.region_views())  # once: the second call defines nothing
+    queries = next(v for v in views if '"queries" AS' in v)
+    assert '"provisa_record__org_acme_rg_eu"."org_acme_rg_eu".query_audit_log' in queries
+    assert '"provisa_admin"."org_acme".registered_tables' in queries
+
+
+def test_a_node_of_no_region_defines_nothing_on_trino():
+    from provisa.federation.backend import TrinoBackend
+
+    process_region.bind_launch({}, requested=None)
+    TrinoBackend.__new__(TrinoBackend).prepare_region_ops(SimpleNamespace())

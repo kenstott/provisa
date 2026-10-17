@@ -147,8 +147,10 @@ async def lay_out(db: "Database", side: str) -> None:
             await _seed_view(conn, definitions[name])
 
 
-def engine_view_sql(name: str, *, catalogs: dict[str, tuple[str, str]]) -> str:
-    """``name``'s SELECT for the engine (DuckDB), each table it reads named in full: ``catalogs``
+def engine_view_sql(
+    name: str, *, catalogs: dict[str, tuple[str, str]], dialect: str = "duckdb"
+) -> str:
+    """``name``'s SELECT for the engine, in its ``dialect``, each table it reads named in full: ``catalogs``
     gives the ``(catalog, schema)`` the engine reads each side under -- the model's, the record
     store's, the state store's -- and :data:`CATALOG` under the model's schema for these views."""
     from provisa.core.store_sides import side_of
@@ -174,34 +176,63 @@ def engine_view_sql(name: str, *, catalogs: dict[str, tuple[str, str]]) -> str:
             catalog, schema = catalogs[side]
         table.set("catalog", exp.to_identifier(catalog, quoted=True))
         table.set("db", exp.to_identifier(schema, quoted=True))
-    return select.sql(dialect="duckdb")
+    return select.sql(dialect=dialect)
 
 
-def engine_attachment(state: object) -> tuple[str, dict[str, str], dict[str, str]] | None:
-    """What the engine attaches and defines to read these views for the bound org, on a node of
-    a region: the model's schema they are read under, the region's record and state stores by the
-    alias each is attached under (alias -> libpq DSN), and every view's SELECT by name. None on a
-    node of no region, whose ops views are the model database's own."""
-    from provisa.federation.native_backend import libpq_dsn
-
+def region_stores(state: object) -> tuple[str, "Database", "Database"] | None:
+    """The bound org's model schema and the handles of the record and state stores its region
+    keeps, on a node of a region; None on a node of no region, whose ops views are the model
+    database's own."""
     if not table_catalogs():
         return None
     model_db, record_db, state_db = state.model_db, state.record_db, state.tenant_db  # type: ignore[attr-defined]
     assert record_db is not None and state_db is not None  # bound with the region's stores
-    record = (f"provisa_record__{record_db.search_path}", record_db.search_path)
-    held = (f"provisa_state__{state_db.search_path}", state_db.search_path)
-    catalogs = {MODEL: ("provisa_admin", model_db.search_path), RECORD: record, STATE: held}
+    return model_db.search_path, record_db, state_db
+
+
+def store_catalog(side: str, db: "Database") -> str:
+    """The catalog the engine reads the region's ``side`` store under, for the org whose schema
+    there ``db`` holds: one per store and org."""
+    return f"provisa_{side}__{db.search_path}"
+
+
+def view_selects(
+    model_schema: str, record: "Database", held: "Database", *, dialect: str
+) -> dict[str, str]:
+    """Every one of these views' SELECT, by name, in the engine's ``dialect``: a view laid out in
+    a region's store read from there, one that also names the model's tables over the model's
+    catalog and the stores' (:func:`store_catalog`)."""
+    stores = {
+        RECORD: (store_catalog(RECORD, record), record.search_path),
+        STATE: (store_catalog(STATE, held), held.search_path),
+    }
     views = {
         name: f'SELECT * FROM "{catalog}"."{schema}"."{name}"'
-        for side, (catalog, schema) in ((RECORD, record), (STATE, held))
+        for side, (catalog, schema) in stores.items()
         for name in store_views(side)
     }
-    views.update({name: engine_view_sql(name, catalogs=catalogs) for name in engine_views()})
+    catalogs = {MODEL: ("provisa_admin", model_schema), **stores}
+    views.update(
+        {name: engine_view_sql(name, catalogs=catalogs, dialect=dialect) for name in engine_views()}
+    )
+    return views
+
+
+def engine_attachment(state: object) -> tuple[str, dict[str, str], dict[str, str]] | None:
+    """What DuckDB attaches and defines to read these views for the bound org, on a node of a
+    region: the model's schema they are read under, the region's record and state stores by the
+    catalog each is attached under (catalog -> libpq DSN), and every view's SELECT by name."""
+    from provisa.federation.native_backend import libpq_dsn
+
+    bound = region_stores(state)
+    if bound is None:
+        return None
+    model_schema, record, held = bound
     stores = {
-        record[0]: libpq_dsn(record_db.engine.url),
-        held[0]: libpq_dsn(state_db.engine.url),
+        store_catalog(RECORD, record): libpq_dsn(record.engine.url),
+        store_catalog(STATE, held): libpq_dsn(held.engine.url),
     }
-    return model_db.search_path, stores, views
+    return model_schema, stores, view_selects(model_schema, record, held, dialect="duckdb")
 
 
 def reads_region_views(ctx: "CompilationContext", table_ids: "Iterable[int]") -> bool:

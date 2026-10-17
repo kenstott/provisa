@@ -504,6 +504,11 @@ async def _optimize_and_route(
             dialect=None,
             reason="an ops view over this region's own record or state",
         )
+        import asyncio
+
+        # The engine's definitions of those views, made before it reads one (an engine that
+        # defines them in its attach walk does nothing here).
+        await asyncio.to_thread(state.federation_engine.engine.backend.prepare_region_ops, state)
     if (
         decision.route == Route.DIRECT
         and not is_mutation
