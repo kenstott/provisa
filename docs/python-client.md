@@ -359,7 +359,7 @@ engine = create_engine(
 
 ### Schema introspection
 
-The dialect reflects the catalog your role is served, read from `GET /data/catalog` as the connection's user, role and org. Each domain is a schema, and every table lives in one: `get_schema_names()` lists the domains, `get_table_names(schema="shop")` lists that domain's tables by their SQL names, and `get_columns("orders", schema="shop")` gives each column's type, nullability and description. With no schema named, `get_table_names()` lists none. An unknown table raises `NoSuchTableError`; a catalog the server refuses raises. (REQ-363, REQ-270, REQ-2069) [tool-verified]
+The dialect reflects the catalog your role is served, read from `GET /data/catalog` as the connection's user, role and org. Each domain is a schema, and every table lives in one: `get_schema_names()` lists the domains, `get_table_names(schema="shop")` lists that domain's tables by their SQL names, and `get_columns("orders", schema="shop")` gives each column's type, nullability and description. With no schema named, `get_table_names()` lists none. An unknown table raises `NoSuchTableError`; a catalog the server refuses raises. (REQ-363, REQ-270, REQ-2070) [tool-verified]
 
 ---
 

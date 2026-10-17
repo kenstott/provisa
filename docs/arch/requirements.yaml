@@ -84448,7 +84448,7 @@ Then the read is served from the EU regions store in place and the record names 
   - REQ-2035
   - REQ-2049
   notes: 'Maintainer 2026-10-16: the retail GDPR demo ships local first; hosted two-region sandboxes follow as this platform requirement.'
-- id: REQ-2069
+- id: REQ-2070
   status: complete
   since: 2026-10
   group: 8. Client Access & Protocols

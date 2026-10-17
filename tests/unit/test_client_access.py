@@ -220,7 +220,7 @@ def test_sqlalchemy_dialect_create_connect_args_builds_url():
 
 
 def test_sqlalchemy_dialect_get_table_names_returns_list():
-    # REQ-270, REQ-2069
+    # REQ-270, REQ-2070
     # inspector.get_table_names(schema=) returns the role's registered tables of that domain,
     # from the SQL catalog (/data/catalog).
     import base64
