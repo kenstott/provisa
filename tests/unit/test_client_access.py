@@ -220,24 +220,31 @@ def test_sqlalchemy_dialect_create_connect_args_builds_url():
 
 
 def test_sqlalchemy_dialect_get_table_names_returns_list():
-    # REQ-270
-    # inspector.get_table_names() returns registered table/view names via introspection.
-    dialect = ProvisaDialect()
-    dialect._schema_cache = {
-        ("http://localhost:8001", "admin"): {
-            "queryType": {"fields": [{"name": "orders"}, {"name": "customers"}]},
-            "types": [],
-        }
+    # REQ-270, REQ-2070
+    # inspector.get_table_names(schema=) returns the role's registered tables of that domain,
+    # from the SQL catalog (/data/catalog).
+    import base64
+    from unittest.mock import MagicMock, patch
+
+    import httpx
+    import pyarrow as pa
+    from provisa_client.dbapi import Connection
+
+    arrow = base64.b64encode(pa.schema([pa.field("id", pa.int64())]).serialize().to_pybytes())
+    body = {
+        "tables": [
+            {"path": ["shop", name], "schema": arrow.decode("ascii")}
+            for name in ("orders", "customers")
+        ]
     }
-
-    class _FakeConn:
-        class connection:
-            _base_url = "http://localhost:8001"
-            _role = "admin"
-
-    names = dialect.get_table_names(_FakeConn())
-    assert "orders" in names
-    assert "customers" in names
+    conn = MagicMock()
+    conn.connection.dbapi_connection = Connection(
+        base_url="http://localhost:8001", token=None, role="admin"
+    )
+    resp = httpx.Response(200, json=body, request=httpx.Request("GET", "http://x"))
+    with patch("provisa_client.sqlalchemy_dialect.httpx.get", return_value=resp):
+        names = ProvisaDialect().get_table_names(conn, schema="shop")
+    assert names == ["customers", "orders"]
 
 
 # ── REQ-271: ADBC interface backed by Arrow Flight ───────────────────────────

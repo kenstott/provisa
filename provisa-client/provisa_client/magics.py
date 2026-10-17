@@ -17,6 +17,10 @@
 :func:`provisa_client.query` as a pandas DataFrame, which is the cell's result; ``name`` also
 binds it in the notebook's namespace. The server detects the statement's language, so the magic's
 name says what the cell holds and changes nothing about how it is read.
+
+JupySQL (``%load_ext sql``) defines a ``%%sql`` too. With both loaded, ``%%sql`` is the one
+whose extension was loaded last. This one adds ``--role`` and, on a desktop Python, reads over
+Arrow Flight.
 """
 
 from __future__ import annotations

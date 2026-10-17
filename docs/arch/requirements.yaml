@@ -84448,3 +84448,43 @@ Then the read is served from the EU regions store in place and the record names 
   - REQ-2035
   - REQ-2049
   notes: 'Maintainer 2026-10-16: the retail GDPR demo ships local first; hosted two-region sandboxes follow as this platform requirement.'
+- id: REQ-2070
+  status: complete
+  since: 2026-10
+  group: 8. Client Access & Protocols
+  category: SQL & Multi-Protocol Client Access
+  feature: postgres-wire-protocol-client-drivers
+  priority: SHOULD
+  type: behavioral
+  description: "The Python client reads a governed SQL, GraphQL or Cypher statement into a pandas DataFrame with one call, query(text, role=None), the same on a desktop Python and in the browser (Pyodide), with aquery as its awaitable form. The server detects the statement's language. On a desktop Python the read goes through the client's existing transport, Arrow Flight or HTTP as the connection says. In the browser the read goes to /data/query on the server that served the page, as the page's signed-in user: the host page keeps that user on the kernel's global scope as provisaAuth = {baseUrl, role, bearer, org} (baseUrl empty for the page's own origin; role, bearer and org null when there is none), and the client reads it on every request so a rotated token or a changed role takes effect. The answer is asked for as an Arrow stream, and as JSON only when pyarrow is absent; a Cypher statement is answered as JSON. A blocking read in the browser runs only off the page's main thread (a notebook's kernel is a Web Worker); on the main thread it is refused in favour of aquery. A role named on the read acts in place of the connection's, as X-Provisa-Role, and the server honours it only for a role the user holds. The IPython cell magics %%sql, %%graphql and %%cypher (provisa_client.magics) answer the cell as that DataFrame, take an optional variable name to bind it to and --role, and return it as the cell's result. On a desktop Python the connection is read from the keyword given, then the environment (PROVISA_URL, PROVISA_TOKEN, PROVISA_USERNAME, PROVISA_PASSWORD, PROVISA_ROLE, PROVISA_ORG, PROVISA_FLIGHT_PORT, PROVISA_TRANSPORT, PROVISA_PROFILE), then a section of ~/.provisa/credentials; a username and password are exchanged for a session token at POST /auth/login, so no token is pasted into a notebook. A refused sign-in, a missing server URL, a named profile that is not there, and a refused read each raise with the reason. The client's SQLAlchemy dialect reflects the SQL catalog the connection's role is served (GET /data/catalog, as the connection's user, role and org): its schemas are the domains, its tables are their SQL names, and its columns carry their types, nullability and descriptions."
+  use_case: "An analyst in a notebook beside the Provisa UI reads the rows their role may see into pandas with %%sql or query(), trains a model on them and plots it, without pasting a token; the same notebook runs unchanged on their laptop."
+  scenario: "Given an analyst whose role reads only EU orders, with customer emails masked
+
+
+When they run %%sql eu followed by a SELECT over shop.orders in the notebook
+
+
+Then eu is a DataFrame of EU orders only, each email masked
+
+
+And the same cell on a desktop Python, signed in from ~/.provisa/credentials, answers the same rows"
+  related_reqs:
+  - REQ-273
+  - REQ-1235
+  - REQ-1263
+  - REQ-691
+  code:
+  - provisa-client/provisa_client/reader.py
+  - provisa-client/provisa_client/browser.py
+  - provisa-client/provisa_client/magics.py
+  - provisa-client/provisa_client/credentials.py
+  - provisa-client/provisa_client/sqlalchemy_dialect.py
+  - provisa-client/provisa_client/__init__.py
+  tests:
+  - provisa-client/tests/test_reader.py
+  - provisa-client/tests/test_browser.py
+  - provisa-client/tests/test_magics.py
+  - provisa-client/tests/test_credentials.py
+  - provisa-client/tests/test_sqlalchemy.py
+  - provisa-client/tests/test_sqlalchemy_edge_cases.py
+  notes: "Maintainer 2026-10-17: Explore gets an embedded JupyterLite notebook; the client is its read path. The server offers no flow for a client to sign in through a browser, so none is attempted. JupySQL's %%sql shares the name; whichever extension loads last answers it."

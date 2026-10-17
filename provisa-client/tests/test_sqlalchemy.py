@@ -14,12 +14,15 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import respx
 import httpx
+import pytest
+import respx
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
+from sqlalchemy.exc import NoSuchTableError
 
 from provisa_client.sqlalchemy_dialect import ProvisaDialect
+from .catalog_double import SHOP_AND_SUPPORT, sa_connection
 
 BASE = "http://localhost:8001"
 
@@ -100,116 +103,61 @@ def test_create_connect_args_query_params():
     assert kwargs["role"] == "viewer"
 
 
-# Shared introspection response used by multiple tests
-_INTROSPECT_RESPONSE = {
-    "data": {
-        "__schema": {
-            "queryType": {
-                "fields": [
-                    {
-                        "name": "orders",
-                        "type": {
-                            "name": None,
-                            "kind": "LIST",
-                            "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None},
-                        },
-                    },
-                    {
-                        "name": "users",
-                        "type": {
-                            "name": None,
-                            "kind": "LIST",
-                            "ofType": {"name": "Users", "kind": "OBJECT", "ofType": None},
-                        },
-                    },
-                ]
-            },
-            "types": [
-                {
-                    "name": "Orders",
-                    "kind": "OBJECT",
-                    "fields": [{"name": "id"}, {"name": "amount"}],
-                },
-                {"name": "Users", "kind": "OBJECT", "fields": [{"name": "id"}, {"name": "name"}]},
-                {"name": "String", "kind": "SCALAR", "fields": None},
-            ],
-        }
-    }
-}
-
-
-# ── get_table_names() ─────────────────────────────────────────────────────────
+# ── Reflection from /data/catalog (the SQL catalog the role is served) ─────────
 
 
 @respx.mock
-def test_get_table_names_returns_role_scoped_tables():
-    respx.post(f"{BASE}/data/graphql").mock(
-        return_value=httpx.Response(200, json=_INTROSPECT_RESPONSE)
+def test_get_schema_names_are_the_catalogs_domains():
+    respx.get(f"{BASE}/data/catalog").mock(return_value=httpx.Response(200, json=SHOP_AND_SUPPORT))
+    assert ProvisaDialect().get_schema_names(sa_connection()) == ["shop", "support"]
+
+
+@respx.mock
+def test_get_table_names_are_the_sql_names_of_one_schema():
+    respx.get(f"{BASE}/data/catalog").mock(return_value=httpx.Response(200, json=SHOP_AND_SUPPORT))
+    dialect = ProvisaDialect()
+    assert dialect.get_table_names(sa_connection(), schema="shop") == ["orders", "users"]
+    assert dialect.get_table_names(sa_connection(), schema="support") == ["tickets"]
+
+
+@respx.mock
+def test_get_table_names_without_a_schema_is_none_every_table_lives_in_one():
+    respx.get(f"{BASE}/data/catalog").mock(return_value=httpx.Response(200, json=SHOP_AND_SUPPORT))
+    assert ProvisaDialect().get_table_names(sa_connection()) == []
+
+
+@respx.mock
+def test_a_catalog_the_server_refuses_raises_rather_than_listing_nothing():
+    respx.get(f"{BASE}/data/catalog").mock(return_value=httpx.Response(500, text="boom"))
+    with pytest.raises(httpx.HTTPStatusError):
+        ProvisaDialect().get_table_names(sa_connection(), schema="shop")
+
+
+@respx.mock
+def test_get_columns_reads_the_tables_arrow_schema():
+    respx.get(f"{BASE}/data/catalog").mock(return_value=httpx.Response(200, json=SHOP_AND_SUPPORT))
+    cols = ProvisaDialect().get_columns(sa_connection(), "orders", schema="shop")
+    assert [c["name"] for c in cols] == ["id", "amount", "region", "placed_at"]
+
+
+@respx.mock
+def test_get_columns_of_a_table_not_in_the_schema_raises():
+    respx.get(f"{BASE}/data/catalog").mock(return_value=httpx.Response(200, json=SHOP_AND_SUPPORT))
+    with pytest.raises(NoSuchTableError):
+        ProvisaDialect().get_columns(sa_connection(), "orders", schema="support")
+
+
+@respx.mock
+def test_the_catalog_is_read_as_the_connections_user_role_and_org():
+    """The catalog is the role's: it goes to /data/catalog with the connection's credential."""
+    route = respx.get(f"{BASE}/data/catalog").mock(
+        return_value=httpx.Response(200, json=SHOP_AND_SUPPORT)
     )
-    dialect = ProvisaDialect()
-    mock_conn = MagicMock()
-
-    with patch.object(dialect, "_get_base_url_and_role", return_value=(BASE, "admin")):
-        names = dialect.get_table_names(mock_conn)
-
-    assert "orders" in names
-    assert "users" in names
-
-
-@respx.mock
-def test_get_table_names_returns_empty_on_error():
-    respx.post(f"{BASE}/data/graphql").mock(return_value=httpx.Response(500))
-    dialect = ProvisaDialect()
-    mock_conn = MagicMock()
-
-    with patch.object(dialect, "_get_base_url_and_role", return_value=(BASE, "admin")):
-        names = dialect.get_table_names(mock_conn)
-
-    assert names == []
-
-
-@respx.mock
-def test_get_columns_returns_role_scoped_columns():
-    respx.post(f"{BASE}/data/graphql").mock(
-        return_value=httpx.Response(200, json=_INTROSPECT_RESPONSE)
-    )
-    dialect = ProvisaDialect()
-    mock_conn = MagicMock()
-
-    with patch.object(dialect, "_get_base_url_and_role", return_value=(BASE, "admin")):
-        cols = dialect.get_columns(mock_conn, "orders")
-
-    assert [c["name"] for c in cols] == ["id", "amount"]
-
-
-@respx.mock
-def test_get_columns_unknown_table_returns_empty():
-    respx.post(f"{BASE}/data/graphql").mock(
-        return_value=httpx.Response(200, json=_INTROSPECT_RESPONSE)
-    )
-    dialect = ProvisaDialect()
-    mock_conn = MagicMock()
-
-    with patch.object(dialect, "_get_base_url_and_role", return_value=(BASE, "admin")):
-        cols = dialect.get_columns(mock_conn, "nonexistent")
-
-    assert cols == []
-
-
-@respx.mock
-def test_get_table_names_uses_data_endpoint_not_admin():
-    """Introspection must go to /data/graphql (role-governed), not /admin/graphql."""
-    route = respx.post(f"{BASE}/data/graphql").mock(
-        return_value=httpx.Response(200, json=_INTROSPECT_RESPONSE)
-    )
-    dialect = ProvisaDialect()
-    mock_conn = MagicMock()
-
-    with patch.object(dialect, "_get_base_url_and_role", return_value=(BASE, "analyst")):
-        dialect.get_table_names(mock_conn)
-
-    assert route.called
-    assert route.calls[0].request.headers["x-provisa-role"] == "analyst"
+    ProvisaDialect().get_table_names(sa_connection(org="acme"), schema="shop")
+    headers = route.calls[0].request.headers
+    assert headers["x-provisa-role"] == "analyst"
+    assert headers["authorization"] == "Bearer tok"
+    assert headers["x-org-provisa"] == "acme"
 
 
 # ── has_table() ───────────────────────────────────────────────────────────────

@@ -827,237 +827,132 @@ class TestProvisaDialectCreateConnectArgs:
         assert opts["url"].startswith("http://")
 
 
-class TestProvisaDialectGetTableNames:
-    def _make_connection(self, base_url="http://localhost:8001", role="admin"):
-        mock_conn = MagicMock()
-        inner = MagicMock()
-        inner._base_url = base_url
-        inner._role = role
-        mock_conn.connection = inner
-        return mock_conn
+def _catalog_body(*tables: tuple[str, str, pa.Schema]) -> dict:
+    """A /data/catalog answer for ``(domain, table, Arrow schema)`` triples."""
+    import base64
 
-    def test_returns_field_names_from_introspection(self):
+    return {
+        "tables": [
+            {
+                "path": [domain, name],
+                "schema": base64.b64encode(schema.serialize().to_pybytes()).decode("ascii"),
+            }
+            for domain, name, schema in tables
+        ]
+    }
+
+
+def _sa_connection(role: str | None = "admin") -> MagicMock:
+    """A SQLAlchemy connection whose DB-API connection is Provisa's."""
+    from provisa_client.dbapi import Connection
+
+    conn = MagicMock()
+    conn.connection.dbapi_connection = Connection(
+        base_url="http://localhost:8001", token="tok", role=role
+    )
+    return conn
+
+
+_ORDERS = pa.schema([pa.field("id", pa.int64(), nullable=False), pa.field("total", pa.float64())])
+_CATALOG = _catalog_body(
+    ("shop", "orders", _ORDERS), ("shop", "users", pa.schema([pa.field("id", pa.int32())]))
+)
+
+
+class TestProvisaDialectGetTableNames:
+    def test_returns_the_sql_table_names_of_a_schema_from_the_catalog(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
 
-        dialect = ProvisaDialect()
-        conn = self._make_connection()
-        body = {
-            "data": {
-                "__schema": {
-                    "queryType": {
-                        "fields": [
-                            {"name": "orders"},
-                            {"name": "users"},
-                        ]
-                    },
-                    "types": [],
-                }
-            }
-        }
-        resp = _make_httpx_response(200, body)
-        with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
-            names = dialect.get_table_names(conn)
+        resp = _make_httpx_response(200, _CATALOG)
+        with patch("provisa_client.sqlalchemy_dialect.httpx.get", return_value=resp) as get:
+            names = ProvisaDialect().get_table_names(_sa_connection(), schema="shop")
         assert names == ["orders", "users"]
+        assert get.call_args.args[0] == "http://localhost:8001/data/catalog"
+        assert get.call_args.kwargs["headers"]["X-Provisa-Role"] == "admin"
 
-    def test_http_error_returns_empty_list(self):
+    def test_http_error_raises(self):
         import httpx
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
 
-        dialect = ProvisaDialect()
-        conn = self._make_connection()
         with patch(
-            "provisa_client.sqlalchemy_dialect.httpx.post",
+            "provisa_client.sqlalchemy_dialect.httpx.get",
             side_effect=httpx.HTTPError("connection refused"),
         ):
-            names = dialect.get_table_names(conn)
-        assert names == []
+            with pytest.raises(httpx.HTTPError):
+                ProvisaDialect().get_table_names(_sa_connection(), schema="shop")
 
-    def test_filters_fields_without_name(self):
+    def test_no_schema_lists_no_tables(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
 
-        dialect = ProvisaDialect()
-        conn = self._make_connection()
-        body = {
-            "data": {
-                "__schema": {
-                    "queryType": {
-                        "fields": [
-                            {"name": "orders"},
-                            {},  # no name
-                        ]
-                    },
-                    "types": [],
-                }
-            }
-        }
-        resp = _make_httpx_response(200, body)
-        with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
-            names = dialect.get_table_names(conn)
-        assert names == ["orders"]
+        resp = _make_httpx_response(200, _CATALOG)
+        with patch("provisa_client.sqlalchemy_dialect.httpx.get", return_value=resp):
+            assert ProvisaDialect().get_table_names(_sa_connection()) == []
 
 
 class TestProvisaDialectGetColumns:
-    def _make_connection(self):
-        mock_conn = MagicMock()
-        inner = MagicMock()
-        inner._base_url = "http://localhost:8001"
-        inner._role = "admin"
-        mock_conn.connection = inner
-        return mock_conn
-
     def test_returns_columns_for_matching_table(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
 
-        dialect = ProvisaDialect()
-        conn = self._make_connection()
-        body = {
-            "data": {
-                "__schema": {
-                    "queryType": {
-                        "fields": [
-                            {
-                                "name": "orders",
-                                "type": {
-                                    "name": None,
-                                    "kind": "LIST",
-                                    "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None},
-                                },
-                            },
-                        ]
-                    },
-                    "types": [
-                        {
-                            "name": "Orders",
-                            "kind": "OBJECT",
-                            "fields": [{"name": "id"}, {"name": "total"}],
-                        },
-                    ],
-                }
-            }
-        }
-        resp = _make_httpx_response(200, body)
-        with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
-            cols = dialect.get_columns(conn, "orders")
-        assert len(cols) == 2
-        col_names = [c["name"] for c in cols]
-        assert "id" in col_names
-        assert "total" in col_names
+        resp = _make_httpx_response(200, _CATALOG)
+        with patch("provisa_client.sqlalchemy_dialect.httpx.get", return_value=resp):
+            cols = ProvisaDialect().get_columns(_sa_connection(), "orders", schema="shop")
+        assert [c["name"] for c in cols] == ["id", "total"]
 
-    def test_returns_empty_list_when_table_not_found(self):
+    def test_raises_when_table_not_found(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+        from sqlalchemy.exc import NoSuchTableError
 
-        dialect = ProvisaDialect()
-        conn = self._make_connection()
-        body = {
-            "data": {
-                "__schema": {
-                    "queryType": {
-                        "fields": [
-                            {
-                                "name": "orders",
-                                "type": {
-                                    "name": None,
-                                    "kind": "LIST",
-                                    "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None},
-                                },
-                            },
-                        ]
-                    },
-                    "types": [
-                        {"name": "Orders", "kind": "OBJECT", "fields": [{"name": "id"}]},
-                    ],
-                }
-            }
-        }
-        resp = _make_httpx_response(200, body)
-        with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
-            cols = dialect.get_columns(conn, "missing_table")
-        assert cols == []
+        resp = _make_httpx_response(200, _CATALOG)
+        with patch("provisa_client.sqlalchemy_dialect.httpx.get", return_value=resp):
+            with pytest.raises(NoSuchTableError):
+                ProvisaDialect().get_columns(_sa_connection(), "missing_table", schema="shop")
 
-    def test_http_error_returns_empty_list(self):
+    def test_http_error_raises(self):
         import httpx
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
 
-        dialect = ProvisaDialect()
-        conn = self._make_connection()
         with patch(
-            "provisa_client.sqlalchemy_dialect.httpx.post",
-            side_effect=httpx.HTTPError("timeout"),
+            "provisa_client.sqlalchemy_dialect.httpx.get", side_effect=httpx.HTTPError("timeout")
         ):
-            cols = dialect.get_columns(conn, "orders")
-        assert cols == []
+            with pytest.raises(httpx.HTTPError):
+                ProvisaDialect().get_columns(_sa_connection(), "orders", schema="shop")
 
-    def test_columns_are_nullable(self):
+    def test_nullability_is_the_catalogs(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
 
-        dialect = ProvisaDialect()
-        conn = self._make_connection()
-        body = {
-            "data": {
-                "__schema": {
-                    "queryType": {
-                        "fields": [
-                            {
-                                "name": "t",
-                                "type": {
-                                    "name": None,
-                                    "kind": "LIST",
-                                    "ofType": {"name": "T", "kind": "OBJECT", "ofType": None},
-                                },
-                            },
-                        ]
-                    },
-                    "types": [
-                        {"name": "T", "kind": "OBJECT", "fields": [{"name": "col"}]},
-                    ],
-                }
-            }
-        }
-        resp = _make_httpx_response(200, body)
-        with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
-            cols = dialect.get_columns(conn, "t")
-        assert cols[0]["nullable"] is True
+        resp = _make_httpx_response(200, _CATALOG)
+        with patch("provisa_client.sqlalchemy_dialect.httpx.get", return_value=resp):
+            cols = ProvisaDialect().get_columns(_sa_connection(), "orders", schema="shop")
+        assert [c["nullable"] for c in cols] == [False, True]
 
 
 class TestProvisaDialectHasTable:
-    def _make_connection(self):
-        mock_conn = MagicMock()
-        inner = MagicMock()
-        inner._base_url = "http://localhost:8001"
-        inner._role = "admin"
-        mock_conn.connection = inner
-        return mock_conn
-
     def test_returns_true_when_table_present(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
 
-        dialect = ProvisaDialect()
-        conn = self._make_connection()
-        body = {"data": {"__schema": {"queryType": {"fields": [{"name": "my-query"}]}}}}
-        resp = _make_httpx_response(200, body)
-        with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
-            assert dialect.has_table(conn, "my-query") is True
+        resp = _make_httpx_response(200, _CATALOG)
+        with patch("provisa_client.sqlalchemy_dialect.httpx.get", return_value=resp):
+            assert ProvisaDialect().has_table(_sa_connection(), "orders", schema="shop") is True
 
     def test_returns_false_when_table_absent(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
 
-        dialect = ProvisaDialect()
-        conn = self._make_connection()
-        body = {"data": {"__schema": {"queryType": {"fields": [{"name": "other-query"}]}}}}
-        resp = _make_httpx_response(200, body)
-        with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
-            assert dialect.has_table(conn, "missing") is False
+        resp = _make_httpx_response(200, _CATALOG)
+        with patch("provisa_client.sqlalchemy_dialect.httpx.get", return_value=resp):
+            assert ProvisaDialect().has_table(_sa_connection(), "missing", schema="shop") is False
 
 
 class TestProvisaDialectMiscMethods:
     def _make_connection(self):
         return MagicMock()
 
-    def test_get_schema_names_returns_default(self):
+    def test_get_schema_names_are_the_catalogs_domains(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
 
-        dialect = ProvisaDialect()
-        assert dialect.get_schema_names(self._make_connection()) == ["default"]
+        body = _catalog_body(("support", "tickets", _ORDERS), ("shop", "orders", _ORDERS))
+        resp = _make_httpx_response(200, body)
+        with patch("provisa_client.sqlalchemy_dialect.httpx.get", return_value=resp):
+            assert ProvisaDialect().get_schema_names(_sa_connection()) == ["shop", "support"]
 
     def test_get_foreign_keys_returns_empty(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
