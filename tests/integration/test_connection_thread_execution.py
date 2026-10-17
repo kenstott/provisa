@@ -116,11 +116,12 @@ def test_flight_governance_runs_on_the_handler_thread_in_parallel(flight_server)
         handler_idents.add(threading.get_ident())
         return real_on_loop(self, request, ticket)
 
-    # The real govern_batch_final_plan_with_fn's signature (deliver: the forced redirect, REQ-1194).
+    # The real govern_batch_final_plan_with_fn's signature (deliver: the forced redirect, REQ-1194;
+    # as_of: the time a bitemporal view is read as of, REQ-1163).
     async def _blocking_govern(
-        sql, role_id, state, *, session_vars=None, serve_cached=False, deliver
+        sql, role_id, state, *, session_vars=None, serve_cached=False, deliver, as_of=None
     ):
-        del sql, state, session_vars, serve_cached, deliver
+        del sql, state, session_vars, serve_cached, deliver, as_of
         govern_idents.append(threading.get_ident())
         both_governing.wait(timeout=10)  # blocks this RPC's thread AND its loop
         return QueryResult(rows=[(role_id,)], column_names=["role"])
@@ -214,8 +215,10 @@ def test_flight_direct_stream_is_pumped_on_the_handler_thread_and_returns_its_lo
         stamp=_mint_stamp(),
     )
 
-    async def _govern(sql, role_id, state, *, session_vars=None, serve_cached=False, deliver):
-        del sql, role_id, state, session_vars, serve_cached, deliver
+    async def _govern(
+        sql, role_id, state, *, session_vars=None, serve_cached=False, deliver, as_of=None
+    ):
+        del sql, role_id, state, session_vars, serve_cached, deliver, as_of
         return plan
 
     async def _finalize(plan_, status_code, state=None, *, cache_hit=False, defer_to_drain=False):

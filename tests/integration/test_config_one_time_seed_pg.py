@@ -54,3 +54,22 @@ async def db() -> Database:  # noqa: F811 — replaces the SQLite plane the scen
             await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
             await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA}_mv_cache CASCADE")
         await plane.close()
+
+
+@pytest.fixture
+def new_plane(control_plane_template):  # noqa: F811 — the unit one clones the unit session's server
+    """A factory of further control planes, each a fresh deployment's, cloned on the session's
+    PostgreSQL as this tier's ``control_plane`` is (tests/conftest.py)."""
+    from tests.pg_control_plane import SessionPostgres, clone
+
+    made = []
+
+    async def make() -> Database:
+        made.append(clone(SessionPostgres.from_env(), control_plane_template))
+        plane = made[-1].org()
+        await seed_the_view_source(plane)  # noqa: F405 — from the scenarios module
+        return plane
+
+    yield make
+    for plane in made:
+        plane.close()
