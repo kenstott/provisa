@@ -80,7 +80,6 @@ _COLUMN_PROJECTION = [
     table_columns.c.alias,
     table_columns.c.description,
     table_columns.c.visible_to,
-    table_columns.c.writable_by,
     table_columns.c.masks,
     table_columns.c.native_filter_type,
     table_columns.c.native_filter_required,
@@ -344,7 +343,6 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "alias": getattr(table, "alias", None),
         "description": getattr(table, "description", None),
         "watermark_column": getattr(table, "watermark_column", None),
-        "column_presets": [p.model_dump() for p in getattr(table, "column_presets", [])],
         "unique_constraints": [
             u.model_dump() for u in getattr(table, "unique_constraints", [])
         ],  # REQ-1093
@@ -420,7 +418,6 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "alias",
         "description",
         "watermark_column",
-        "column_presets",
         "unique_constraints",  # REQ-1093
         "view_sql",
         "dq_contract",  # REQ-1443
@@ -589,7 +586,6 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 domain_id=domain_id,
                 column_name=col.name,
                 visible_to=_ungrant_control_plane(col.visible_to, _control_plane),
-                writable_by=_ungrant_control_plane(getattr(col, "writable_by", []), _control_plane),
                 masks=[
                     {**e.model_dump(), "to": _ungrant_control_plane(e.to, _control_plane)}
                     for e in col.masks
@@ -628,6 +624,12 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 encrypted=getattr(col, "encrypted", False),  # REQ-1919
             )
         )
+    # REQ-2074: the table's write grants are written with it, as its columns are.
+    from provisa.core.repositories import write_grant as write_grant_repo
+
+    await write_grant_repo.replace_for_table(
+        conn, table_id, list(table.write_grants), unheld=_control_plane
+    )
     # REQ-1387: this is the single write path for table_columns, so the glossary term
     # lifecycle (create/link on add, remove-or-deprecate on departure) rides it here —
     # every registration source gets it and none can forget it. Native-filter pseudo-columns
@@ -692,6 +694,14 @@ async def keep_unedited(conn: "Connection", table: Table) -> Table:
     ]
     kept: dict[str, Any] = {name: stored[name] for name in KEPT_ON_FORM_EDIT}
     kept["promotions"] = list(kept["promotions"])
+    # REQ-2074: the form edits a table's columns and settings; its write grants are edited on
+    # their own (setTableWriteGrants), so a form edit keeps the stored ones.
+    from provisa.core.models import WriteGrant
+    from provisa.core.repositories import write_grant as write_grant_repo
+
+    kept["write_grants"] = [
+        WriteGrant.model_validate(g) for g in await write_grant_repo.for_table(conn, stored["id"])
+    ]
     return table.model_copy(update={**kept, "columns": columns})
 
 
@@ -759,12 +769,16 @@ async def find_by_table_name(
 
 
 async def list_all(conn: "Connection") -> list[dict]:  # REQ-013, REQ-016
+    from provisa.core.repositories import write_grant as write_grant_repo
+
     result = await conn.execute_core(select(registered_tables).order_by(registered_tables.c.id))
     rows = result.fetchall()
+    grants = await write_grant_repo.by_table(conn)
     out = []
     for row in rows:
         r = dict(row._mapping)
         r["columns"] = await _load_columns(conn, r["id"])
+        r["write_grants"] = grants.get(r["id"], [])  # REQ-2074
         out.append(r)
     return out
 

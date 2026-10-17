@@ -82,7 +82,6 @@ def _register_table_in_ctx(
     ctx: CompilationContext,
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     physical_map: dict[str, str],
-    table_preset_map: dict[int, list],
 ) -> None:
     """Register one visible table and its column metadata into ctx."""
     from provisa.compiler.naming import apply_gql_name, apply_sql_name
@@ -100,7 +99,6 @@ def _register_table_in_ctx(
         schema_name=t.schema_name,
         table_name=physical_name,
         domain_id=t.domain_id,
-        column_presets=table_preset_map.get(t.table_id, []),
         source_type=src_type,
         original_table_name=t.table_name if physical_name != t.table_name else "",
         display_name=t.alias or "",
@@ -611,10 +609,9 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
 
     table_lookup = {t.table_id: t for t in tables}
     physical_map = getattr(si, "physical_table_map", None) or {}
-    table_preset_map = {td["id"]: list(td.get("column_presets") or []) for td in si.tables}
 
     for t in tables:
-        _register_table_in_ctx(t, ctx, si, physical_map, table_preset_map)
+        _register_table_in_ctx(t, ctx, si, physical_map)
 
     ctx.epoch_columns = _epoch_columns(si, physical_map)
     ctx.nested_columns = _nested_columns(si, physical_map)

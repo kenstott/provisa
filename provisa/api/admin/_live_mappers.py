@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 
-def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
+def table_model_from_input(inp, columns, alias):  # REQ-929, REQ-982
     """Convert a TableInput into a core Table model — shared by register/update (identical but for
     ``alias``, which the caller resolves). Keeps the change-detection axes (change_signal, probe_query,
     probe_type, watermark_column) mapped in one place."""
@@ -57,7 +57,6 @@ def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
         load_protected=inp.load_protected,  # REQ-1141
         off_peak_window=inp.off_peak_window,  # REQ-1141
         off_peak_tz=inp.off_peak_tz,  # REQ-1141
-        column_presets=presets,
         view_sql=inp.view_sql or None,
         dq_contract=inp.dq_contract or None,  # REQ-1443
         profiler_source_id=inp.profiler_source_id or None,  # REQ-1934

@@ -19,6 +19,7 @@ import sqlglot
 from provisa.compiler.stage2 import GovernanceContext
 from provisa.compiler.write_admission import WriteNotSupported, admit_rows, admit_write
 from provisa.executor.write_capability import table_write_ops
+from tests.write_governance import grants_over
 
 
 @pytest.mark.parametrize(
@@ -65,7 +66,7 @@ def _gov(write_ops: set[str]) -> GovernanceContext:
     gov.can_write = True
     gov.table_map = {"orders": 1, "sales.orders": 1}
     gov.all_columns = {1: [("id", "integer"), ("region", "varchar")]}
-    gov.writable_columns = {1: frozenset({"id", "region"})}
+    gov.write_grants = {1: grants_over("writer", ["id", "region"])}
     gov.write_ops = {1: frozenset(write_ops)}
     gov.write_returns_rows = {1: bool(write_ops)}
     gov.write_refused_forms = {1: frozenset()}

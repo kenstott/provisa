@@ -504,9 +504,15 @@ def generate_proto(
 
     # --- Mutation input messages ---
     for t in sorted(tables, key=lambda t: t.type_name):
-        if "insert" not in t.write_ops:  # executor/write_capability.py
+        # executor/write_capability.py; REQ-2074: and the role's insert grant, whose columns the
+        # input carries.
+        if "insert" not in t.write_ops or "insert" not in t.write_grants:
             continue
-        sorted_cols = sorted(t.visible_columns, key=lambda c: c["column_name"])
+        granted = set(t.write_grants["insert"].get("columns") or [])
+        sorted_cols = sorted(
+            (c for c in t.visible_columns if c["column_name"] in granted),
+            key=lambda c: c["column_name"],
+        )
         input_col_names = [
             c["column_name"] for c in sorted_cols if t.column_metadata.get(c["column_name"])
         ]
@@ -611,7 +617,8 @@ def generate_proto(
                 f"returns (stream {t.type_name}GroupByRow);"
             )
     for t in root_tables:
-        if "insert" not in t.write_ops:  # executor/write_capability.py
+        # executor/write_capability.py; REQ-2074: and the role's insert grant.
+        if "insert" not in t.write_ops or "insert" not in t.write_grants:
             continue
         lines.append(f"  rpc Insert{t.type_name}({t.type_name}Input) returns (MutationResponse);")
     lines.append("}")

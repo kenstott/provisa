@@ -2921,10 +2921,11 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             ).fetchall()
         ]
         # REQ-1677: fold each role's inheritance chain into the build's own copies here, once, so
-        # every role-keyed lookup below (rights, visibility, writable_by, RLS) sees
+        # every role-keyed lookup below (rights, visibility, write grants, RLS) sees
         # the inherited grants under the acting role's own id.
         from provisa.security.inheritance import (
             expand_column_grants,
+            expand_write_grants,
             flatten_role_dicts,
             role_chains,
         )
@@ -2935,6 +2936,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # domain_access (the data surfaces and the admin's domain gate) sees the subtree.
         roles = _domain_tree.flatten_role_domains(flatten_role_dicts(roles), _domain_parents)
         expand_column_grants(tables, role_chains_by_id)
+        expand_write_grants(tables, role_chains_by_id)  # REQ-2074
         state.role_chains = role_chains_by_id
 
         # Merge PG-stored allowed_domains into state; inject source naming into table dicts.

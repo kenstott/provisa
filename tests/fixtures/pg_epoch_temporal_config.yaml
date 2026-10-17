@@ -34,19 +34,19 @@ tables:
         data_type: integer
         is_primary_key: true
         visible_to: [org_admin]
-        writable_by: [org_admin]
       - name: happened
         data_type: timestamptz
         epoch_unit: ms
         visible_to: [org_admin]
-        writable_by: [org_admin]
       - name: logged
         data_type: timestamp
         epoch_unit: s
         visible_to: [org_admin]
-        writable_by: [org_admin]
       - name: seen
         data_type: timestamptz
         visible_to: [org_admin]
-        writable_by: [org_admin]
+    write_grants:
+      - {role: org_admin, operation: insert, columns: [id, happened, logged, seen]}
+      - {role: org_admin, operation: update, columns: [id, happened, logged, seen]}
+      - {role: org_admin, operation: delete}
 roles: []

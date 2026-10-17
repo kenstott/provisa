@@ -133,7 +133,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
     (admin/table_read.py) and for the replica such a preview lands."""
     rows = await conn.fetch(
         "SELECT id, source_id, domain_id, schema_name, table_name, "
-        "alias, description, column_presets, unique_constraints, l1_cluster, l2_cluster, l3_cluster, "
+        "alias, description, unique_constraints, l1_cluster, l2_cluster, l3_cluster, "
         "enable_aggregates, enable_group_by, view_sql, dq_contract, profiler_source_id, "  # REQ-1443/1934
         "live, push_debounce_quiet, push_debounce_max_delay, cache_ttl, "  # REQ-1733, REQ-1730
         "row_materialize, role_ttl, replicate, load_protected, region, draft, "  # REQ-1865/1907/826/1141/1921
@@ -146,11 +146,14 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         "FROM registered_tables WHERE draft = $1 ORDER BY id",
         draft,
     )
+    from provisa.core.repositories import write_grant as write_grant_repo
+
+    grants = write_grant_repo.grouped(await conn.fetch(write_grant_repo.BY_TABLE_SQL))
     tables = []
     for row in rows:
         table = dict(row)
         col_rows = await conn.fetch(
-            "SELECT column_name, data_type, visible_to, writable_by, masks, "
+            "SELECT column_name, data_type, visible_to, masks, "
             "alias, description, path, is_primary_key, object_fields, native_filter_type, "
             "native_filter_required, required_by_steward, "  # REQ-1986
             "epoch_unit, fake, fake_stable, fake_stable_version, synthetic_rule, "  # REQ-1908, REQ-1494
@@ -160,7 +163,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
             "FROM table_columns WHERE table_id = $1 ORDER BY id",
             row["id"],
         )
-        table["column_presets"] = _as_list(row.get("column_presets"))
+        table["write_grants"] = grants.get(row["id"], [])  # REQ-2074
         table["unique_constraints"] = _as_list(row.get("unique_constraints"))  # REQ-1093
         table["live"] = _as_dict(row.get("live"))  # REQ-1733
         table["delta"] = row.get("delta")  # REQ-874: dict or None, reconstructed on the registry
@@ -173,7 +176,6 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
                 "column_name": r["column_name"],
                 "data_type": r.get("data_type"),
                 "visible_to": _as_list(r["visible_to"]),
-                "writable_by": _as_list(r.get("writable_by")),
                 "masks": _as_list(r["masks"]),  # REQ-2059
                 "alias": r["alias"],
                 "description": r["description"],

@@ -35,6 +35,8 @@ class _Conn:
 
     async def fetch(self, sql: str, *args):
         del args
+        if "FROM table_write_grants" in sql:  # REQ-2074: no write grants
+            return []
         if "FROM registered_tables" in sql:
             row: defaultdict[str, object] = defaultdict(lambda: None)
             row.update(id=1, source_id="pg", domain_id="d", schema_name="public", table_name="docs")

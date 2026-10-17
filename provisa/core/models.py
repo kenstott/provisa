@@ -907,7 +907,6 @@ class Column(
         None  # source column type (e.g. "varchar", "integer"); lets startup skip the engine introspection
     )
     visible_to: list[str]
-    writable_by: list[str] = []  # roles allowed to mutate this column
     masks: list[MaskEntry] = []  # REQ-2059: the ordered mask list, first entry held applies
     alias: str | None = None  # GraphQL field name override
     gql_selection: str | None = (
@@ -942,6 +941,16 @@ class Column(
     gql_object_type: str | None = None
     gql_is_list: bool = False
     scope: str = "domain"  # "domain" | "public" | "restricted" (core/column_scope.py, REQ-1959)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _writes_are_granted_by_table(cls, data: Any) -> Any:  # REQ-2074
+        if isinstance(data, dict) and "writable_by" in data:
+            raise ValueError(
+                f"column {data.get('name')!r}: 'writable_by' is replaced by the table's "
+                "'write_grants' (role, operation, columns, rows, check, presets)"
+            )
+        return data
 
     @model_validator(mode="after")
     def _embedding_is_not_masked(self) -> "Column":  # REQ-652
@@ -1054,14 +1063,65 @@ class Column(
         return self
 
 
-class ColumnPreset(BaseModel):
-    """Auto-set a column value on insert/update from session or built-in source."""
+class ColumnPreset(BaseModel):  # REQ-2074
+    """A value a write grant sets on a column itself: the request's session variable ``name``
+    (``source: session``), a literal ``value`` (``source: literal``), or the time of the write
+    (``source: now``). The statement may not supply a preset column."""
+
+    model_config = ConfigDict(extra="forbid")
 
     column: str
-    source: str  # "header", "now", "literal"
-    name: str | None = None  # header name (for source=header)
-    value: str | None = None  # literal value (for source=literal)
-    data_type: str | None = None  # the engine data type of the column (for coercion)
+    source: Literal["session", "literal", "now"]
+    name: str | None = None  # the session variable (source=session)
+    value: str | None = None  # the literal (source=literal)
+
+    @model_validator(mode="after")
+    def _names_its_value(self) -> "ColumnPreset":
+        if self.source == "session" and not self.name:
+            raise ValueError(f"preset of {self.column!r}: a session preset names its variable")
+        if self.source == "literal" and self.value is None:
+            raise ValueError(f"preset of {self.column!r}: a literal preset carries its value")
+        return self
+
+
+WRITE_OPERATIONS = ("insert", "update", "delete")
+
+
+class WriteGrant(BaseModel):  # REQ-2074
+    """What one role may write to one table by one operation.
+
+    ``columns``: the columns an INSERT may list or an UPDATE may set (none for a DELETE).
+    ``rows``: the rows an UPDATE or DELETE may touch. ``check``: what every row an INSERT writes,
+    or an UPDATE leaves, must satisfy. Both are SQL predicates over the table's columns; ``None``
+    is the role's read row filter on the table -- a role writes the rows it reads unless the grant
+    says otherwise (REQ-2074) -- and ``TRUE`` is every row. ``presets`` set columns the statement
+    may not supply."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: str
+    operation: Literal["insert", "update", "delete"]
+    columns: list[str] = Field(default_factory=list)
+    rows: str | None = None
+    check: str | None = None
+    presets: list[ColumnPreset] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _fits_its_operation(self) -> "WriteGrant":
+        where = f"{self.operation} grant for {self.role!r}"
+        if self.operation == "delete" and (self.columns or self.check or self.presets):
+            raise ValueError(
+                f"{where}: a delete writes whole rows; it names no columns, check or presets"
+            )
+        if self.operation == "insert" and self.rows is not None:
+            raise ValueError(
+                f"{where}: an insert touches no existing rows; it has a check, not rows"
+            )
+        preset = {p.column for p in self.presets}
+        both = sorted(preset & set(self.columns))
+        if both:
+            raise ValueError(f"{where}: {both} are preset, so the statement may not supply them")
+        return self
 
 
 class UniqueConstraint(BaseModel):  # REQ-1093
@@ -1227,7 +1287,9 @@ class Table(
         serialization_alias="table",
     )
     columns: list[Column]
-    column_presets: list[ColumnPreset] = Field(default_factory=list)
+    # REQ-2074: what each role may write, per operation. A role with no grant for an operation
+    # may not perform it on this table.
+    write_grants: list[WriteGrant] = Field(default_factory=list)
     # REQ-1093: table-level UNIQUE constraints (single-column or composite), seeded from
     # source introspection and editable in the admin "Uniques" panel. Distinct from
     # is_alternate_key (FK-derived, per-column); this is the declared-constraint source of truth.
@@ -1407,6 +1469,39 @@ class Table(
     enable_aggregates: bool = False  # REQ-653: opt-in for _aggregate root field
     enable_group_by: bool = False  # REQ-653: opt-in for _group_by root field
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this table
+
+    @model_validator(mode="before")
+    @classmethod
+    def _presets_belong_to_grants(cls, data: Any) -> Any:  # REQ-2074
+        if isinstance(data, dict) and "column_presets" in data:
+            raise ValueError(
+                f"table {data.get('table_name') or data.get('table')!r}: 'column_presets' is "
+                "replaced by the 'presets' of a write grant"
+            )
+        return data
+
+    @model_validator(mode="after")
+    def _one_grant_per_role_and_operation(self) -> "Table":  # REQ-2074
+        seen: set[tuple[str, str]] = set()
+        columns = {c.name for c in self.columns}
+        for grant in self.write_grants:
+            key = (grant.role, grant.operation)
+            if key in seen:
+                raise ValueError(
+                    f"table {self.table_name!r}: two {grant.operation} grants for role {grant.role!r}"
+                )
+            seen.add(key)
+            unknown = (
+                sorted(({*grant.columns} | {p.column for p in grant.presets}) - columns)
+                if columns and "*" not in columns
+                else []
+            )
+            if unknown:
+                raise ValueError(
+                    f"table {self.table_name!r}: the {grant.operation} grant for {grant.role!r} "
+                    f"names columns the table does not have: {unknown}"
+                )
+        return self
 
     @model_validator(mode="after")
     def _bitemporal_reads_on_source_time(self) -> "Table":

@@ -546,7 +546,6 @@ def _column(name: str, data_type: str, **kw: Any) -> admin_types.TableColumnType
         "id": 1,
         "column_name": name,
         "visible_to": ["steward"],
-        "writable_by": [],
         "masks": [],
         "alias": None,
         "computed_sql_alias": name,

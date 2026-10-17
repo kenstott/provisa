@@ -39,6 +39,8 @@ class _Conn:
 
     async def fetch(self, sql: str, *args):
         self.statements.append(sql)
+        if "FROM table_write_grants" in sql:  # REQ-2074: no write grants
+            return []
         if "FROM registered_tables" in sql:
             row = defaultdict(lambda: None)
             row.update(

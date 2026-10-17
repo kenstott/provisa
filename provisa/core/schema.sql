@@ -225,7 +225,6 @@ CREATE TABLE IF NOT EXISTS table_columns (
     description TEXT,
     path        TEXT,
     data_type   TEXT,
-    writable_by  JSONB NOT NULL DEFAULT '[]',
     masks        JSONB NOT NULL DEFAULT '[]',  -- REQ-2059: the ordered mask list
     is_primary_key BOOLEAN NOT NULL DEFAULT FALSE,
     epoch_unit   TEXT,  -- REQ-1908: epoch-number storage unit of a temporal column
@@ -245,14 +244,13 @@ CREATE TABLE IF NOT EXISTS table_columns (
     UNIQUE (table_id, column_name)
 );
 
--- Migration: add alias/description/writable_by columns if missing
+-- Migration: add alias/description columns if missing
 DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS alias TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS description TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS alias TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS description TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS path TEXT;
-    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS writable_by JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS native_filter_type TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS native_filter_required BOOLEAN;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS required_by_steward BOOLEAN NOT NULL DEFAULT FALSE;  -- REQ-1986
@@ -286,7 +284,6 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS probe_query TEXT;  -- REQ-929
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS probe_type TEXT;  -- REQ-982
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS unique_constraints JSONB NOT NULL DEFAULT '[]';  -- REQ-1093
-    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS column_presets JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS view_sql TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS dq_contract TEXT;  -- REQ-1443
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS profiler_source_id TEXT;  -- REQ-1934
@@ -490,6 +487,22 @@ CREATE TABLE IF NOT EXISTS rls_rules (
     UNIQUE (table_id, role_id),
     UNIQUE (action_name, role_id),
     CONSTRAINT rls_rules_tag_role_key UNIQUE (tag_id, role_id)
+);
+
+-- REQ-2074: what each role may write to each table, per operation. rows_expr / check_expr are row
+-- predicates like rls_rules.filter_expr and are encrypted at rest the same way (REQ-686); NULL is
+-- the role's read row filter on the table.
+CREATE TABLE IF NOT EXISTS table_write_grants (
+    id          SERIAL PRIMARY KEY,
+    table_id    INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    operation   TEXT NOT NULL CHECK (operation IN ('insert', 'update', 'delete')),
+    columns     JSONB NOT NULL DEFAULT '[]',
+    rows_expr   BYTEA,
+    check_expr  BYTEA,
+    presets     JSONB NOT NULL DEFAULT '[]',
+    tenant_id   UUID,
+    UNIQUE (table_id, role_id, operation)
 );
 
 ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS tag_id TEXT;  -- REQ-1384

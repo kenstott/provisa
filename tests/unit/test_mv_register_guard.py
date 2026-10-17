@@ -170,7 +170,7 @@ def test_table_input_maps_consistency():
         modeling_history=None,  # REQ-1320
         live=None,
     )
-    model = table_model_from_input(inp, [], [], None)
+    model = table_model_from_input(inp, [], None)
     assert model.mv_consistency == "distributed"
 
 

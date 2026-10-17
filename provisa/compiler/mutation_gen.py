@@ -22,7 +22,6 @@ from dataclasses import dataclass, replace
 
 from graphql import DocumentNode, FieldNode, OperationDefinitionNode
 
-from datetime import datetime, timezone
 
 from provisa.compiler.params import ParamCollector
 from provisa.compiler.sql_gen import CompilationContext, TableMeta, _q
@@ -31,51 +30,6 @@ from provisa.compiler.sql_where import _extract_value
 
 
 # NoSQL source types — mutations not supported
-
-
-_INT_TYPES = frozenset({"integer", "int", "int4", "int2", "int8", "bigint", "smallint", "tinyint"})
-_FLOAT_TYPES = frozenset({"float", "double", "real", "decimal", "numeric", "double precision"})
-_BOOL_TYPES = frozenset({"boolean", "bool"})
-
-
-def _coerce_preset_value(raw: str, data_type: str | None) -> object:
-    """Coerce a string preset value to the appropriate Python type."""
-    if data_type is None:
-        return raw
-    base = data_type.lower().split("(")[0].strip()
-    if base in _INT_TYPES:
-        return int(raw)
-    if base in _FLOAT_TYPES:
-        return float(raw)
-    if base in _BOOL_TYPES:
-        return raw.lower() in ("true", "1", "yes")
-    return raw
-
-
-def apply_column_presets(  # REQ-214
-    input_data: dict,
-    presets: list[dict],
-    headers: dict[str, str] | None = None,
-) -> dict:
-    """Inject column preset values into mutation input data.
-
-    Preset columns override any user-supplied values (security enforcement).
-    """
-    result = dict(input_data)
-    for preset in presets:
-        col = preset["column"]
-        source = preset["source"]
-        data_type = preset.get("data_type")
-        if source == "now":
-            result[col] = datetime.now(timezone.utc).isoformat()
-        elif source == "header":
-            header_name = preset.get("name", "")
-            if headers and header_name in headers:
-                result[col] = _coerce_preset_value(headers[header_name], data_type)
-        elif source == "literal":
-            raw = preset.get("value", "")
-            result[col] = _coerce_preset_value(raw, data_type)
-    return result
 
 
 @dataclass
@@ -126,7 +80,6 @@ def compile_upsert(  # REQ-212, REQ-036
     field_node: FieldNode,
     table: TableMeta,
     variables: dict | None,
-    headers: dict[str, str] | None = None,
 ) -> MutationResult:
     """Compile an upsert mutation to INSERT ... ON CONFLICT ... DO UPDATE SQL."""
     collector = ParamCollector()
@@ -136,8 +89,6 @@ def compile_upsert(  # REQ-212, REQ-036
             args[arg.name.value] = _extract_value(arg.value, variables)
 
     input_data = args.get("input", {})
-    if table.column_presets:
-        input_data = apply_column_presets(input_data, table.column_presets, headers)
     if not input_data:
         raise ValueError("upsert mutation requires 'input' argument")
 
@@ -186,7 +137,6 @@ def compile_insert(  # REQ-032, REQ-033, REQ-034, REQ-036
     field_node: FieldNode,
     table: TableMeta,
     variables: dict | None,
-    headers: dict[str, str] | None = None,
 ) -> MutationResult:
     """Compile an insert mutation to INSERT SQL."""
     collector = ParamCollector()
@@ -196,8 +146,6 @@ def compile_insert(  # REQ-032, REQ-033, REQ-034, REQ-036
             args[arg.name.value] = _extract_value(arg.value, variables)
 
     input_data = args.get("input", {})
-    if table.column_presets:
-        input_data = apply_column_presets(input_data, table.column_presets, headers)
     if not input_data:
         raise ValueError("insert mutation requires 'input' argument")
 
@@ -323,7 +271,6 @@ def compile_mutation(  # REQ-031, REQ-032, REQ-033, REQ-036, REQ-037
     ctx: CompilationContext,
     source_types: dict[str, str],
     variables: dict | None = None,
-    headers: dict[str, str] | None = None,
 ) -> list[MutationResult]:
     """Compile a GraphQL mutation document to SQL mutations.
 
@@ -344,9 +291,9 @@ def compile_mutation(  # REQ-031, REQ-032, REQ-033, REQ-036, REQ-037
             op, _, table = _get_mutation_meta(sel.name.value, ctx)
 
             if op == "upsert":
-                results.append(compile_upsert(sel, table, variables, headers))
+                results.append(compile_upsert(sel, table, variables))
             elif op == "insert":
-                results.append(compile_insert(sel, table, variables, headers))
+                results.append(compile_insert(sel, table, variables))
             elif op == "update":
                 results.append(compile_update(sel, table, variables))
             elif op == "delete":

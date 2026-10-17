@@ -191,9 +191,6 @@ def kafka_topics_as_tables(raw: dict) -> dict:  # REQ-147, REQ-1919
                             "visible_to": col.get("visible_to", ["org_admin", "analyst"])
                             if isinstance(col, dict)
                             else ["org_admin", "analyst"],
-                            "writable_by": col.get("writable_by", [])
-                            if isinstance(col, dict)
-                            else [],
                             "description": col.get("description", "")
                             if isinstance(col, dict)
                             else "",

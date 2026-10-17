@@ -18,8 +18,9 @@ stored, listed or exported. The whole pipeline then runs with it as an ordinary 
 Everything a role is granted reaches the child exactly as role inheritance gives it
 (security/inheritance.py), so the set acts with the union of its members' rights, grant-if-any:
 
-- grant lists — column ``visible_to`` and ``writable_by``; metric and command (function and
-  webhook) ``visible_to`` — gain the child wherever they name a member;
+- grant lists — column ``visible_to``; metric and command (function and webhook)
+  ``visible_to`` — gain the child wherever they name a member;
+- a table's write grants (REQ-2074): per operation, the first member holding one gives it;
 - a column's ordered mask list (REQ-2059) is read for the child as for any role: the first entry
   its own chain (every member's, with their ancestors and qualifiers) holds applies;
 - capabilities and domain_access are unioned; the row cap and rate limit are the least
@@ -220,7 +221,7 @@ def _build(
     and one reading no table would end every OR of row filters -- so they enter only the grants:
     a grant list naming one reaches the child, as a member's does."""
     from provisa.api.app_loaders import register_role_surface
-    from provisa.security.inheritance import expand_grants
+    from provisa.security.inheritance import expand_grants, expand_write_grants
     from provisa.security.masking import reader_masks
 
     member_roles = [state.roles[m] for m in member_ids]
@@ -229,6 +230,9 @@ def _build(
     # Inheritance with several parents: every grant to a member reaches the child.
     for t in inputs["tables"]:
         expand_grants(t.get("columns") or [], chains)
+    # REQ-2074: per table and operation, the first member (in the chain's order) holding a write
+    # grant gives the child that grant.
+    expand_write_grants(inputs["tables"], chains)
     expand_grants(inputs["metrics"], chains)
     expand_grants(inputs["functions"], chains)
     expand_grants(inputs["webhooks"], chains)

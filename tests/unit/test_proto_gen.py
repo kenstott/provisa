@@ -15,6 +15,7 @@ import pytest
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput
 from provisa.grpc.proto_gen import generate_proto, _physical_to_proto
+from tests.write_governance import grants_over
 
 
 def _make_si(
@@ -43,6 +44,9 @@ def _make_si(
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
                 "write_refused_forms": [],
+                "write_grants": list(
+                    grants_over("admin", ["id", "amount", "created_at"]).values()
+                ),  # REQ-2074
             }
         ]
     if column_types is None:
@@ -216,6 +220,7 @@ class TestGenerateProto:
                     "write_ops": ["delete", "insert", "update"],
                     "write_returns_rows": True,
                     "write_refused_forms": [],
+                    "write_grants": list(grants_over("admin", ["id", "name"]).values()),  # REQ-2074
                 }
             ],
             column_types={
@@ -284,6 +289,9 @@ class TestRoleFiltering:
                     "write_ops": ["delete", "insert", "update"],
                     "write_returns_rows": True,
                     "write_refused_forms": [],
+                    "write_grants": list(
+                        grants_over("admin", ["id", "amount", "secret"]).values()
+                    ),  # REQ-2074
                 }
             ],
             column_types={
@@ -324,6 +332,9 @@ class TestRelationships:
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
                 "write_refused_forms": [],
+                "write_grants": list(
+                    grants_over("admin", ["id", "customer_id"]).values()
+                ),  # REQ-2074
             },
             {
                 "id": 2,
@@ -338,6 +349,7 @@ class TestRelationships:
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
                 "write_refused_forms": [],
+                "write_grants": list(grants_over("admin", ["id", "name"]).values()),  # REQ-2074
             },
         ]
         column_types = {

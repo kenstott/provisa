@@ -10269,7 +10269,8 @@
       Until complete this is a gap in a planned feature, though competitors also lack this (Cypher writes
       over federated relational data).'
 - id: REQ-663
-  status: complete
+  status: superseded
+  superseded_by: REQ-2074
   since: 2026-07
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
@@ -19063,7 +19064,8 @@
     rationale: DISTINCT ON as a query argument is available in Hasura and standard PostgreSQL GraphQL
       layers.
 - id: REQ-214
-  status: complete
+  status: superseded
+  superseded_by: REQ-2074
   group: 12. Migration & Compatibility (Hasura)
   category: 'Hasura v2 Parity: Low-Complexity Features'
   feature: writes-governed-mutations
@@ -75298,7 +75300,9 @@
   integration_test: required
   integration_test_reason: Admission is proved by reading the rows at the source after a write on every
     surface of a running server.
-  notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  notes: 'Roadmap audit 2026-10-13: delivered; verified against the code. Amended 2026-10-17: the columns
+    rule (a column''s writable_by) and the row-filter rules are replaced by the role''s write grant for the
+    operation (REQ-2074); the one admission, the after-write step and the write capability stand.'
 - id: REQ-1926
   status: complete
   group: 1. Access Governance & Security
@@ -84611,3 +84615,61 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   - tests/unit/test_kafka_client_secret_file.py
   - tests/unit/test_kafka_on_engine_shard.py
   - tests/integration/test_trino_memory_catalog_store.py
+- id: REQ-2074
+  status: complete
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Write Admission
+  feature: writes-write-routing
+  priority: MUST
+  type: constraint
+  description: 'Per-table write grants. What a role may write to a table is stated per operation, as a write
+    grant: role, operation (insert, update or delete), the columns an INSERT may list or an UPDATE may set,
+    the rows an UPDATE or DELETE may touch (a SQL predicate), the check every row an INSERT writes or an
+    UPDATE leaves must satisfy (a SQL predicate), and presets: columns the grant sets itself from a session
+    variable, a literal or the time of the write, which the statement may not supply. A table holds at most
+    one grant per role and operation. A grant that states no rows or no check takes the role''s read row
+    filter on the table, by design: a role writes the rows it reads unless its grant says otherwise; TRUE is
+    every row. The one write admission (REQ-1925) admits a write on every surface by the write right
+    (REQ-868) and the grant: an operation without its grant is refused naming the table, role and
+    operation; a column outside the grant, or a preset column the statement supplies, is refused; the
+    presets are added to the statement; the rows predicate is ANDed into an UPDATE or DELETE; the check is
+    evaluated on the new rows before anything is written, and what cannot be decided is refused. A
+    TRUNCATE needs a delete grant over every row; a MERGE an insert and an update grant over every row; an
+    INSERT ... ON CONFLICT DO UPDATE an update grant over every row with no presets; a COPY an insert grant
+    with no presets. Mutation fields, gRPC insert routes and their inputs are offered per role for exactly
+    the operations it holds grants for, with the grants'' columns. A child role takes, per table and
+    operation, the grant of the nearest role in its chain holding one; a meta role the first member''s.
+    Grants are stored with their table (rows and check encrypted at rest as row filters are), carried by
+    environments, exported with the model, block deleting the role they name and are taken off by revoking
+    the role from the table. A column''s writable_by and a table''s column_presets are refused by name. A
+    Hasura v2 import carries each insert, update and delete permission as the role''s grant (columns,
+    filter, check, set), and Hasura''s admin as org_admin''s grants over every column.'
+  use_case: An administrator lets a customer place orders for themselves only (insert of ship_to, with
+    customer_id set from their session and status set to placed) and lets support change the status of
+    placed or packed orders only, without either role gaining any other write.
+  notes: 'Maintainer 2026-10-17 chose per-table write grants (option A) over per-operation row rules; an
+    import must never grant more write access than the source metadata did.'
+  code:
+  - provisa/core/models.py
+  - provisa/compiler/write_admission.py
+  - provisa/compiler/stage2.py
+  - provisa/compiler/schema_gen.py
+  - provisa/grpc/proto_gen.py
+  - provisa/core/repositories/write_grant.py
+  - provisa/core/repositories/table.py
+  - provisa/core/schema_org.py
+  - provisa/core/schema.sql
+  - provisa/security/inheritance.py
+  - provisa/security/meta_role.py
+  - provisa/hasura_v2/mapper.py
+  tests:
+  - tests/unit/test_write_grants_admission.py
+  - tests/unit/test_write_grants_model.py
+  - tests/unit/test_role_inheritance.py
+  integration_test: required
+  integration_test_reason: A grant's rows, check and presets are proved by writing through a running server
+    and reading the rows at the source.
+  stakeholders:
+  - compliance
+  - data-engineer

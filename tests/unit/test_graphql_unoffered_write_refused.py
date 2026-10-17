@@ -28,6 +28,7 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.parser import GraphQLValidationError, parse_query
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.write_admission import WriteNotSupported
+from tests.write_governance import grants_over
 
 
 def _col(name: str, data_type: str) -> ColumnMetadata:
@@ -42,9 +43,10 @@ def _table(table_id: int, name: str, write_ops: list[str]) -> dict:
         "schema_name": "public",
         "table_name": name,
         "columns": [
-            {"column_name": "id", "visible_to": ["admin"], "writable_by": ["admin"]},
-            {"column_name": "region", "visible_to": ["admin"], "writable_by": ["admin"]},
+            {"column_name": "id", "visible_to": ["admin"]},
+            {"column_name": "region", "visible_to": ["admin"]},
         ],
+        "write_grants": list(grants_over("admin", ["id", "region"]).values()),  # REQ-2074
         "write_ops": write_ops,
         "write_returns_rows": bool(write_ops),
         "write_refused_forms": [],

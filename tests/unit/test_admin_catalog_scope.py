@@ -162,7 +162,6 @@ def _model(monkeypatch):
                 types.SimpleNamespace(
                     column_name=c,
                     visible_to=["analyst"],
-                    writable_by=[],
                     masks=[
                         {"to": ["registrar"], "mask": None},
                         {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
@@ -283,8 +282,9 @@ async def test_grant_lists_and_masks_are_withheld_without_view_governance(role):
     for table in await Query().tables(_caller(role)):
         assert table.view_sql is None
         for column in table.columns:
-            assert column.visible_to is None and column.writable_by is None
+            assert column.visible_to is None
             assert column.masks is None
+        assert table.write_grants is None  # REQ-2074: who may write is governance too
 
 
 @pytest.mark.parametrize("role", ["auditor", "registrar_all"])

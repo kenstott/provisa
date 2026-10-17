@@ -30,7 +30,6 @@ META_DOMAIN_ID = "meta"
 GOVERNANCE_META_COLUMNS: frozenset[str] = frozenset(
     {
         "visible_to",
-        "writable_by",
         "masks",
         "view_sql",
         "native_filter_type",

@@ -17,6 +17,7 @@ from provisa.security.visibility import (
     visible_column_names,
     visible_tables,
 )
+from tests.write_governance import grants_over
 
 
 def _table(name="orders", domain="sales", columns=None):
@@ -35,6 +36,7 @@ def _table(name="orders", domain="sales", columns=None):
         "write_ops": ["delete", "insert", "update"],
         "write_returns_rows": True,
         "write_refused_forms": [],
+        "write_grants": list(grants_over("admin", ["id", "amount", "secret"]).values()),  # REQ-2074
     }
 
 
@@ -111,6 +113,7 @@ def _mutable_table(tid, name, domain, source="pg1"):
         "write_ops": ["delete", "insert", "update"],
         "write_returns_rows": True,
         "write_refused_forms": [],
+        "write_grants": list(grants_over("admin", ["id"]).values()),  # REQ-2074
     }
 
 

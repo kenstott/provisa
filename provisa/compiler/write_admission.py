@@ -10,26 +10,32 @@
 
 """One admission for every data write.
 
-An ``INSERT``, ``UPDATE``, ``DELETE`` or ``MERGE`` is admitted in the governance stage of the one
-pipeline — the stage a read's row filter and masks are applied in — so every surface that lowers
-to SQL gets the same answer. Four rules, in this order:
+An ``INSERT``, ``UPDATE``, ``DELETE``, ``MERGE`` or ``TRUNCATE`` is admitted in the governance
+stage of the one pipeline — the stage a read's row filter and masks are applied in — so every
+surface that lowers to SQL gets the same answer. It is admitted by the role's write grant on the
+table for the operation (REQ-2074), in this order:
 
 1. **The right.** The role holds ``write`` (REQ-868).
-2. **The columns.** Every column the statement writes names the role in its ``writable_by``
-   (REQ-663). A column that declares no ``writable_by`` is writable by nobody. ``writable_by`` is
-   the whole rule for a column: whether the role can read it (visibility, masks) is not consulted,
-   so a column a role cannot read is writable by it only when ``writable_by`` says so. INSERT
-   writes the columns it lists (all of the table's when it lists none); UPDATE the columns it
-   sets; DELETE and MERGE act on whole rows and need every column.
-3. **The rows it may touch.** The role's row filter — the same predicate, built by the same
-   function, that its reads carry — is ANDed into the WHERE of an UPDATE or DELETE.
-4. **The rows it leaves behind.** A filtered role may only write rows it could then see. An
-   INSERT's rows, and the new values of an UPDATE that sets a column the filter reads, are
-   checked against the filter before anything is sent to a source: the supplied values are put
-   in the filter's place for those columns and the resulting constant predicate is evaluated in
-   this process, with no round trip and no write. The answer given here decides admission; the
-   source is not consulted, so where the source would compare differently (a case-insensitive
-   collation, an implicit cast) the write is admitted or refused by this answer.
+2. **The grant.** The role holds a grant for the operation on the table: an INSERT an insert
+   grant, an UPDATE an update grant, a DELETE a delete grant, a TRUNCATE a delete grant over
+   every row, a MERGE both an insert and an update grant over every row, an INSERT ... ON
+   CONFLICT DO UPDATE an update grant over every row too.
+3. **The columns.** Every column an INSERT lists (all of the table's when it lists none) or an
+   UPDATE sets is one the grant names; whether the role can read it is not consulted. A column
+   the grant presets is the grant's to set: the statement may not supply it, and the grant's
+   value (a session variable, a literal, or the time of the write) is added to the statement.
+4. **The rows it may touch.** The grant's rows predicate is ANDed into the WHERE of an UPDATE
+   or DELETE.
+5. **The rows it leaves behind.** An INSERT's rows, and the new values of an UPDATE that sets a
+   column the grant's check reads, are checked against the check before anything is sent to a
+   source: the supplied values are put in the check's place for those columns and the resulting
+   constant predicate is evaluated in this process, with no round trip and no write. The answer
+   given here decides admission; the source is not consulted, so where the source would compare
+   differently (a case-insensitive collation, an implicit cast) the write is admitted or refused
+   by this answer.
+
+A grant that states no rows or check takes the role's read row filter on the table: a role
+writes the rows it reads unless its grant says otherwise. ``TRUE`` is every row.
 
    Never admitted on doubt. Whatever cannot be decided here is refused by name: an
    ``INSERT … SELECT``, a MERGE, a value that is neither a literal nor a bound parameter, a
@@ -184,11 +190,279 @@ def _resolve(table: exp.Table, gov: "GovernanceContext") -> int:
     return table_id
 
 
-def _require_columns(gov: "GovernanceContext", table_id: int, columns: list[str]) -> None:
-    writable = gov.writable_columns.get(table_id, frozenset())
+def _grant(gov: "GovernanceContext", table_id: int, name: str, operation: str) -> dict:
+    """The role's write grant on the table for ``operation`` (REQ-2074); refused by name when it
+    holds none."""
+    grant = gov.write_grants.get(table_id, {}).get(operation)
+    if grant is None:
+        raise WriteNotAdmitted(
+            f"{operation.upper()} on {name!r}: role {gov.role_id!r} holds no {operation} grant "
+            "on this table"
+        )
+    return grant
+
+
+def _require_columns(gov: "GovernanceContext", grant: dict, name: str, columns: list[str]) -> None:
+    """Every column written is one the grant names; a column the grant presets is the grant's
+    to set, never the statement's."""
+    preset = {p["column"] for p in grant.get("presets") or []}
+    allowed = set(grant.get("columns") or [])
     for column in columns:
-        if column not in writable:
+        if column in preset:
+            raise WriteNotAdmitted(
+                f"{grant['operation'].upper()} on {name!r}: {column!r} is set by role "
+                f"{gov.role_id!r}'s {grant['operation']} grant; the statement may not supply it"
+            )
+        if column not in allowed:
             raise ColumnNotWritable(gov.role_id, column)
+
+
+def _predicate(gov: "GovernanceContext", table_id: int, stated: str | None) -> str | None:
+    """The predicate a grant states for its rows or its check. REQ-2074: a grant that states none
+    takes the role's read row filter on the table -- a role writes the rows it reads unless its
+    grant says otherwise -- and a table the role reads unfiltered gives none (every row)."""
+    if stated is not None:
+        return stated
+    return gov.rls_rules.get(table_id)
+
+
+def _label(grant: dict, stated: str) -> str:
+    """What a predicate is called in a refusal: the grant's own, or the read row filter it took."""
+    return (
+        f"{grant['operation']} grant's {stated}" if grant.get(stated) is not None else "row filter"
+    )
+
+
+def _every_row(predicate: str | None) -> bool:
+    """Whether ``predicate`` admits every row: none at all, or the literal TRUE."""
+    if predicate is None:
+        return True
+    tree = sqlglot.parse_one(predicate, read="postgres")
+    return isinstance(tree, exp.Boolean) and tree.this is True
+
+
+def _preset_values(
+    gov: "GovernanceContext",
+    table_id: int,
+    name: str,
+    grant: dict,
+    session_vars: dict[str, str],
+) -> dict[str, exp.Expression]:
+    """The value each of the grant's presets sets, typed as its column is."""
+    types = dict(gov.all_columns.get(table_id, []))
+    values: dict[str, exp.Expression] = {}
+    for preset in grant.get("presets") or []:
+        column, source = preset["column"], preset["source"]
+        if source == "now":
+            values[column] = exp.CurrentTimestamp()
+            continue
+        if source == "session":
+            raw = session_vars.get(preset["name"])
+            if raw is None:
+                raise WriteNotAdmitted(
+                    f"{grant['operation'].upper()} on {name!r}: role {gov.role_id!r}'s "
+                    f"{grant['operation']} grant sets {column!r} from session variable "
+                    f"{preset['name']!r}, which this request does not carry"
+                )
+        else:
+            raw = preset["value"]
+        literal: exp.Expression = exp.Literal.string(str(raw))
+        column_type = types.get(column)
+        values[column] = (
+            exp.Cast(this=literal, to=exp.DataType.build(column_type)) if column_type else literal
+        )
+    return values
+
+
+def _filter_over(
+    predicate: str,
+    gov: "GovernanceContext",
+    table_id: int,
+    session_vars: dict[str, str],
+    values: dict[str, exp.Expression],
+) -> exp.Expression:
+    """``predicate`` with every column in ``values`` replaced by the expression the statement
+    supplies for it."""
+    column_types = dict(gov.all_columns.get(table_id, []))
+    qualified = _qualified_predicate(predicate, None)
+    cast_session_terms(qualified, column_types)
+    resolved: exp.Expression = sqlglot.parse_one(  # pyright: ignore[reportAssignmentType]  # sqlglot stub types parse_one as Expr
+        _with_session_values(qualified.sql(dialect="postgres"), session_vars), read="postgres"
+    )
+    for column in list(resolved.find_all(exp.Column)):
+        if column.name in values:
+            column.replace(exp.paren(values[column.name].copy()))
+    return resolved
+
+
+def _admit_row(
+    gov: "GovernanceContext",
+    table_id: int,
+    name: str,
+    check: str,
+    supplied: dict[str, exp.Expression],
+    session_vars: dict[str, str],
+    *,
+    kind: str = "INSERT into",
+    label: str = "row filter",
+) -> None:
+    """Refuse a row the check would not admit, or whose admission cannot be decided here."""
+    outcome = _holds(_filter_over(check, gov, table_id, session_vars, supplied))
+    if outcome is None:
+        raise WriteNotAdmitted(
+            f"{kind} {name!r}: role {gov.role_id!r}'s {label} on this table cannot be decided "
+            "before writing -- it reads a column the statement does not supply, or uses a "
+            "function or comparison that cannot be evaluated before the row is written. Supply "
+            "every column the check reads as a literal value."
+        )
+    if not outcome:
+        raise WriteNotAdmitted(
+            f"{kind} {name!r}: the row is outside role {gov.role_id!r}'s {label} on this table "
+            f"({check}). A role may only write the rows its grant admits."
+        )
+
+
+def _apply_insert_presets(
+    tree: exp.Insert, listed: list[str] | None, presets: dict[str, exp.Expression], name: str
+) -> list[str] | None:
+    """Add each preset column and its value to the INSERT's rows; the columns it lists after."""
+    if not presets:
+        return listed
+    source = tree.args.get("expression")
+    schema = tree.this
+    if listed is None or not isinstance(schema, exp.Schema) or not isinstance(source, exp.Values):
+        raise WriteNotAdmitted(
+            f"INSERT into {name!r}: the grant sets {sorted(presets)} itself, which it can add "
+            "only to an INSERT that lists its columns and gives its rows as VALUES"
+        )
+    for column, value in presets.items():
+        schema.append("expressions", exp.to_identifier(column))
+        for row in source.expressions:
+            row.append("expressions", value.copy())
+    return [*listed, *presets]
+
+
+def _admit_inserted_rows(
+    tree: exp.Insert,
+    gov: "GovernanceContext",
+    table_id: int,
+    name: str,
+    listed: list[str] | None,
+    check: str,
+    session_vars: dict[str, str],
+    params: list | None,
+    label: str,
+) -> None:
+    source = tree.args.get("expression")
+    if not isinstance(source, exp.Values):
+        raise WriteNotAdmitted(
+            f"INSERT into {name!r}: role {gov.role_id!r}'s {label} on this table cannot be "
+            "applied to the rows of an INSERT … SELECT before they are written. Insert the rows "
+            "as VALUES."
+        )
+    columns = listed if listed is not None else [c for c, _ in gov.all_columns.get(table_id, [])]
+    for row in source.expressions:
+        supplied: dict[str, exp.Expression] = {}
+        for column, value in zip(columns, row.expressions, strict=False):
+            literal = (
+                value
+                if isinstance(value, (exp.Cast, exp.CurrentTimestamp))
+                else _supplied(value, params)
+            )
+            if literal is None:
+                raise WriteNotAdmitted(
+                    f"INSERT into {name!r}: role {gov.role_id!r} has a {label} on this table, and "
+                    "a value that is neither a literal nor a bound parameter cannot be checked "
+                    "against it before the row is written. Supply the values as literals."
+                )
+            supplied[column] = literal
+        _admit_row(gov, table_id, name, check, supplied, session_vars, label=label)
+
+
+def admit_rows(
+    gov: "GovernanceContext",
+    table_id: int,
+    name: str,
+    columns: list[str],
+    rows: list[list] | None = None,
+    session_vars: dict[str, str] | None = None,
+) -> None:
+    """Admit a bulk load -- rows given as values, not as a statement (pgwire ``COPY ... FROM
+    STDIN``) -- by the rules an INSERT of the same columns is admitted by. Called once with
+    ``rows`` None before any data is read (the right, the grant and its columns), and again with
+    the rows before any of them is written (the grant's check)."""
+    require_write_op(gov, table_id, name, "INSERT")
+    if not gov.can_write:
+        raise WriteNotAdmitted(
+            f"COPY into {name!r}: role {gov.role_id!r} does not hold the 'write' right"
+        )
+    grant = _grant(gov, table_id, name, "insert")
+    if grant.get("presets"):
+        raise WriteNotAdmitted(
+            f"COPY into {name!r}: role {gov.role_id!r}'s insert grant sets "
+            f"{sorted(p['column'] for p in grant['presets'])} itself (presets), which a COPY "
+            "cannot add. Use INSERT."
+        )
+    _require_columns(gov, grant, name, columns)
+    check = _predicate(gov, table_id, grant.get("check"))
+    if rows is None or _every_row(check):
+        return
+    assert check is not None
+    for row in rows:
+        supplied: dict[str, exp.Expression] = {
+            column: exp.convert(value)  # pyright: ignore[reportAssignmentType]  # sqlglot stub types convert as Expr
+            for column, value in zip(columns, row, strict=False)
+        }
+        _admit_row(
+            gov,
+            table_id,
+            name,
+            check,
+            supplied,
+            session_vars or {},
+            kind="COPY into",
+            label=_label(grant, "check"),
+        )
+
+
+def _admit_new_values(
+    tree: exp.Update,
+    gov: "GovernanceContext",
+    table_id: int,
+    name: str,
+    check: str,
+    session_vars: dict[str, str],
+    params: list | None,
+    label: str,
+) -> None:
+    """Refuse an UPDATE whose new values would leave a row outside the check, or whose outcome
+    cannot be decided before writing. An UPDATE that sets no column the check reads needs
+    nothing here when the check is its rows predicate too: the WHERE carries it."""
+    read_by_check = {c.name for c in _qualified_predicate(check, None).find_all(exp.Column)}
+    assignments: dict[str, exp.Expression] = {}
+    for assignment in tree.expressions:
+        if not isinstance(assignment, exp.EQ):
+            continue
+        column = assignment.this.name
+        if column not in read_by_check:
+            continue
+        value = assignment.expression
+        literal = (
+            value
+            if isinstance(value, (exp.Cast, exp.CurrentTimestamp))
+            else _supplied(value, params)
+        )
+        if literal is None:
+            raise WriteNotAdmitted(
+                f"UPDATE of {name!r}: role {gov.role_id!r}'s {label} on this table reads column "
+                f"{column!r}, and its new value is neither a literal nor a bound parameter, so "
+                "whether each row passes cannot be decided before writing. Set the column to a "
+                "literal value."
+            )
+        assignments[column] = literal
+    if not assignments:
+        return
+    _admit_row(gov, table_id, name, check, assignments, session_vars, kind="UPDATE of", label=label)
 
 
 def _with_session_values(predicate: str, session_vars: dict[str, str]) -> str:
@@ -240,159 +514,6 @@ def _supplied(value: exp.Expression, params: list | None) -> exp.Expression | No
     return None
 
 
-def _filter_over(
-    gov: "GovernanceContext",
-    table_id: int,
-    session_vars: dict[str, str],
-    values: dict[str, exp.Expression],
-) -> exp.Expression:
-    """The role's row filter on ``table_id`` with every column in ``values`` replaced by the
-    expression the statement supplies for it."""
-    column_types = dict(gov.all_columns.get(table_id, []))
-    predicate = _qualified_predicate(gov.rls_rules[table_id], None)
-    cast_session_terms(predicate, column_types)
-    resolved: exp.Expression = sqlglot.parse_one(  # pyright: ignore[reportAssignmentType]  # sqlglot stub types parse_one as Expr
-        _with_session_values(predicate.sql(dialect="postgres"), session_vars), read="postgres"
-    )
-    for column in list(resolved.find_all(exp.Column)):
-        if column.name in values:
-            column.replace(exp.paren(values[column.name].copy()))
-    return resolved
-
-
-def _admit_inserted_rows(
-    tree: exp.Insert,
-    gov: "GovernanceContext",
-    table_id: int,
-    table: exp.Table,
-    listed: list[str] | None,
-    session_vars: dict[str, str],
-    params: list | None,
-) -> None:
-    name = table.name
-    source = tree.args.get("expression")
-    if not isinstance(source, exp.Values):
-        raise WriteNotAdmitted(
-            f"INSERT into {name!r}: role {gov.role_id!r} has a row filter on this table, and the "
-            "rows of an INSERT … SELECT cannot be checked against it before they are written. "
-            "Insert the rows as VALUES."
-        )
-    columns = listed if listed is not None else [c for c, _ in gov.all_columns.get(table_id, [])]
-    for row in source.expressions:
-        supplied: dict[str, exp.Expression] = {}
-        for column, value in zip(columns, row.expressions, strict=False):
-            literal = _supplied(value, params)
-            if literal is None:
-                raise WriteNotAdmitted(
-                    f"INSERT into {name!r}: role {gov.role_id!r} has a row filter on this table, "
-                    "and a value that is neither a literal nor a bound parameter cannot be "
-                    "checked against it before the row is written. Supply the values as "
-                    "literals."
-                )
-            supplied[column] = literal
-        _admit_row(gov, table_id, name, supplied, session_vars)
-
-
-def _admit_row(
-    gov: "GovernanceContext",
-    table_id: int,
-    name: str,
-    supplied: dict[str, exp.Expression],
-    session_vars: dict[str, str],
-) -> None:
-    """Refuse a new row that the role's row filter on the table would not let it read."""
-    outcome = _holds(_filter_over(gov, table_id, session_vars, supplied))
-    if outcome is None:
-        raise WriteNotAdmitted(
-            f"INSERT into {name!r}: role {gov.role_id!r} has a row filter on this table that "
-            "cannot be decided before writing — the filter reads a column the INSERT does not "
-            "supply, or uses a function or comparison that cannot be evaluated before the row "
-            "exists. Supply every column the filter reads; a filter that cannot be evaluated "
-            "ahead of a write admits no INSERT by this role."
-        )
-    if not outcome:
-        raise WriteNotAdmitted(
-            f"INSERT into {name!r}: the row is outside role {gov.role_id!r}'s row filter on "
-            "this table. A role may only write rows it could then read."
-        )
-
-
-def admit_rows(
-    gov: "GovernanceContext",
-    table_id: int,
-    name: str,
-    columns: list[str],
-    rows: list[list] | None = None,
-    session_vars: dict[str, str] | None = None,
-) -> None:
-    """Admit a bulk load — rows given as values, not as a statement (pgwire ``COPY … FROM
-    STDIN``) — by the rules an INSERT of the same columns is admitted by. Called once with
-    ``rows`` None before any data is read (the right and the columns), and again with the rows
-    before any of them is written (the row filter)."""
-    require_write_op(gov, table_id, name, "INSERT")
-    if not gov.can_write:
-        raise WriteNotAdmitted(
-            f"COPY into {name!r}: role {gov.role_id!r} does not hold the 'write' right"
-        )
-    _require_columns(gov, table_id, columns)
-    if rows is None or table_id not in gov.rls_rules:
-        return
-    for row in rows:
-        supplied: dict[str, exp.Expression] = {
-            column: exp.convert(value)  # pyright: ignore[reportAssignmentType]  # sqlglot stub types convert as Expr
-            for column, value in zip(columns, row, strict=False)
-        }
-        _admit_row(gov, table_id, name, supplied, session_vars or {})
-
-
-def _admit_new_values(
-    tree: exp.Update,
-    gov: "GovernanceContext",
-    table_id: int,
-    table: exp.Table,
-    session_vars: dict[str, str],
-    params: list | None,
-) -> None:
-    """Refuse an UPDATE whose new values would put a row outside the role's row filter, or
-    whose outcome cannot be decided before writing. An UPDATE that sets no column the filter
-    reads needs nothing here: the filter in its WHERE is the whole check."""
-    read_by_filter = {
-        c.name for c in _qualified_predicate(gov.rls_rules[table_id], None).find_all(exp.Column)
-    }
-    name = table.name
-    assignments: dict[str, exp.Expression] = {}
-    for assignment in tree.expressions:
-        if not isinstance(assignment, exp.EQ):
-            continue
-        column = assignment.this.name
-        if column not in read_by_filter:
-            continue
-        literal = _supplied(assignment.expression, params)
-        if literal is None:
-            raise WriteNotAdmitted(
-                f"UPDATE of {name!r}: role {gov.role_id!r} has a row filter on this table that "
-                f"reads column {column!r}, and the new value of {column!r} is neither a literal "
-                "nor a bound parameter, so whether each row stays inside the filter cannot be "
-                "decided before writing. Set the column to a literal value."
-            )
-        assignments[column] = literal
-    if not assignments:
-        return
-    outcome = _holds(_filter_over(gov, table_id, session_vars, assignments))
-    if outcome is None:
-        raise WriteNotAdmitted(
-            f"UPDATE of {name!r}: role {gov.role_id!r} has a row filter on this table that "
-            "cannot be decided before writing — it reads a column this UPDATE does not set, or "
-            "uses a function or comparison that cannot be evaluated before the row is written. "
-            "Set every column the filter reads to a literal value."
-        )
-    if not outcome:
-        raise WriteNotAdmitted(
-            f"UPDATE of {name!r}: the new values put the row outside role {gov.role_id!r}'s row "
-            "filter on this table. A role may only write rows it could then read."
-        )
-
-
 def written_columns(tree: exp.Expression, gov: "GovernanceContext", table_id: int) -> list[str]:
     """The columns a write writes: an INSERT the columns it lists (all of the table's when it
     lists none), an UPDATE the columns it sets, a DELETE or MERGE every column (whole rows)."""
@@ -417,55 +538,117 @@ def admit_write(
     session_vars: dict[str, str] | None = None,
     params: list | None = None,
 ) -> exp.Expression:
-    """Admit ``tree`` — an INSERT, UPDATE, DELETE or MERGE — for the role ``gov`` was built for,
-    and return it with the role's row filter in place. ``params`` are the request's bound
-    values (``$1`` …), which the new-row check reads where the statement supplies a value as a
-    parameter. Raises :class:`WriteNotAdmitted` or
-    :class:`ColumnNotWritable` (both ``PermissionError``) when the write is not admitted."""
+    """Admit ``tree`` -- an INSERT, UPDATE, DELETE, MERGE or TRUNCATE -- for the role ``gov`` was
+    built for, by its write grant for the operation (REQ-2074), and return it with the grant's
+    presets and rows in place. ``params`` are the request's bound values (``$1`` ...), which the
+    check reads where the statement supplies a value as a parameter. Raises
+    :class:`WriteNotAdmitted` or :class:`ColumnNotWritable` (both ``PermissionError``) when the
+    write is not admitted."""
     session_vars = session_vars or {}
     kind = _kind(tree)
     table, listed = _target(tree)
     table_id = _resolve(table, gov)
-    require_write_op(gov, table_id, table.name, kind)
+    name = table.name
+    require_write_op(gov, table_id, name, kind)
     form = write_form(tree)
     if form is not None and form in gov.write_refused_forms[table_id]:
-        raise WriteFormNotSupported(table.name, form)
+        raise WriteFormNotSupported(name, form)
     if tree.args.get("returning") is not None and not gov.write_returns_rows[table_id]:
-        raise ReturningNotSupported(table.name)
+        raise ReturningNotSupported(name)
     if not gov.can_write:
         raise WriteNotAdmitted(
-            f"{kind} on {table.name!r}: role {gov.role_id!r} does not hold the 'write' right"
+            f"{kind} on {name!r}: role {gov.role_id!r} does not hold the 'write' right"
         )
 
-    _require_columns(gov, table_id, written_columns(tree, gov, table_id))
-
-    if isinstance(tree, exp.TruncateTable) and table_id in gov.rls_rules:
-        # REQ-1942: a TRUNCATE empties the table whatever the role may see; it cannot carry the
-        # row filter, so a role with one is refused it.
-        raise WriteNotAdmitted(
-            f"TRUNCATE of {table.name!r}: role {gov.role_id!r} has a row filter on this table "
-            f"({gov.rls_rules[table_id]}), which a TRUNCATE cannot apply. Use DELETE, which does."
-        )
-    if table_id not in gov.rls_rules:
+    if isinstance(tree, exp.TruncateTable):
+        grant = _grant(gov, table_id, name, "delete")
+        rows = _predicate(gov, table_id, grant.get("rows"))
+        if not _every_row(rows):
+            # REQ-1942: a TRUNCATE empties the table; it cannot carry a predicate.
+            raise WriteNotAdmitted(
+                f"TRUNCATE of {name!r}: role {gov.role_id!r} has a {_label(grant, 'rows')} on "
+                f"this table ({rows}), which a TRUNCATE cannot apply. Use DELETE, which does."
+            )
         return tree
 
     if isinstance(tree, exp.Merge):
-        raise WriteNotAdmitted(
-            f"MERGE into {table.name!r}: role {gov.role_id!r} has a row filter on this table, and "
-            "the rows a MERGE would write cannot be checked against it. Use INSERT and UPDATE."
-        )
-    if isinstance(tree, exp.Insert):
-        _admit_inserted_rows(tree, gov, table_id, table, listed, session_vars, params)
+        every = [c for c, _ in gov.all_columns.get(table_id, [])]
+        for operation in ("insert", "update"):
+            grant = _grant(gov, table_id, name, operation)
+            _require_columns(gov, grant, name, every)
+            stated = [grant.get("check")] + ([grant.get("rows")] if operation == "update" else [])
+            if not all(_every_row(_predicate(gov, table_id, p)) for p in stated):
+                raise WriteNotAdmitted(
+                    f"MERGE into {name!r}: role {gov.role_id!r}'s {operation} grant limits the "
+                    "rows it may write, and the rows a MERGE would write cannot be checked "
+                    "against it. Use INSERT and UPDATE."
+                )
         return tree
 
-    # UPDATE / DELETE: the rows it may touch are the rows the role can read — the read filter,
-    # qualified and typed by the function reads use.
-    from provisa.compiler.stage2 import _alias_for  # noqa: PLC0415
-    from provisa.compiler.rls import _qualify_filter  # noqa: PLC0415
+    if isinstance(tree, exp.Insert):
+        grant = _grant(gov, table_id, name, "insert")
+        columns = (
+            listed if listed is not None else [c for c, _ in gov.all_columns.get(table_id, [])]
+        )
+        _require_columns(gov, grant, name, columns)
+        conflict = tree.args.get("conflict")
+        if (
+            conflict is not None
+            and conflict.args.get("action") is not None
+            and ("UPDATE" in conflict.sql(dialect="postgres").upper())
+        ):
+            update = _grant(gov, table_id, name, "update")
+            set_columns = [
+                e.this.name for e in conflict.find_all(exp.EQ) if isinstance(e.this, exp.Column)
+            ]
+            _require_columns(gov, update, name, set_columns)
+            if update.get("presets") or not (
+                _every_row(_predicate(gov, table_id, update.get("rows")))
+                and _every_row(_predicate(gov, table_id, update.get("check")))
+            ):
+                raise WriteNotAdmitted(
+                    f"INSERT ... ON CONFLICT DO UPDATE on {name!r}: role {gov.role_id!r}'s "
+                    "update grant limits or presets the rows it may update, which the conflict "
+                    "update cannot apply. Use INSERT and UPDATE."
+                )
+        presets = _preset_values(gov, table_id, name, grant, session_vars)
+        listed = _apply_insert_presets(tree, listed, presets, name)
+        check = _predicate(gov, table_id, grant.get("check"))
+        if not _every_row(check):
+            assert check is not None
+            _admit_inserted_rows(
+                tree,
+                gov,
+                table_id,
+                name,
+                listed,
+                check,
+                session_vars,
+                params,
+                _label(grant, "check"),
+            )
+        return tree
 
-    column_types = dict(gov.all_columns.get(table_id, []))
-    readable = _qualify_filter(gov.rls_rules[table_id], _alias_for(table), column_types)
-    if isinstance(tree, exp.Update):
-        _admit_new_values(tree, gov, table_id, table, session_vars, params)
+    from provisa.compiler.rls import _qualify_filter  # noqa: PLC0415
+    from provisa.compiler.stage2 import _alias_for  # noqa: PLC0415
+
     assert isinstance(tree, (exp.Update, exp.Delete))
-    return tree.where(f"({readable})", dialect="postgres", append=True)
+    operation = "update" if isinstance(tree, exp.Update) else "delete"
+    grant = _grant(gov, table_id, name, operation)
+    if isinstance(tree, exp.Update):
+        _require_columns(gov, grant, name, written_columns(tree, gov, table_id))
+        for column, value in _preset_values(gov, table_id, name, grant, session_vars).items():
+            tree.append("expressions", exp.EQ(this=exp.column(column), expression=value))
+        check = _predicate(gov, table_id, grant.get("check"))
+        if not _every_row(check):
+            assert check is not None
+            _admit_new_values(
+                tree, gov, table_id, name, check, session_vars, params, _label(grant, "check")
+            )
+    rows = _predicate(gov, table_id, grant.get("rows"))
+    if _every_row(rows):
+        return tree
+    assert rows is not None
+    column_types = dict(gov.all_columns.get(table_id, []))
+    touched = _qualify_filter(rows, _alias_for(table), column_types)
+    return tree.where(f"({touched})", dialect="postgres", append=True)

@@ -249,7 +249,6 @@ registered_tables = Table(
     Column("change_signal", Text),  # REQ-929: override source change signal; NULL = inherit
     Column("probe_query", Text),  # REQ-929: source-native freshness probe
     Column("probe_type", Text),  # REQ-982: input-probe method; NULL = resolve per source class
-    Column("column_presets", JSON, nullable=False, default=list, server_default="[]"),
     # REQ-1093: table-level UNIQUE constraints — [{name, columns:[...]}], seeded from source introspection.
     Column("unique_constraints", JSON, nullable=False, default=list, server_default="[]"),
     Column("view_sql", Text),
@@ -349,7 +348,6 @@ table_columns = Table(
     Column("description", Text),
     Column("path", Text),
     Column("data_type", Text),
-    Column("writable_by", JSON, nullable=False, default=list, server_default="[]"),
     Column("masks", JSON, nullable=False, default=list, server_default="[]"),  # REQ-2059
     Column("is_primary_key", Boolean, nullable=False, server_default=false()),
     Column("native_filter_type", Text),
@@ -470,6 +468,32 @@ roles = Table(
     Column("relationship_guard", Boolean, nullable=False, server_default=true()),  # REQ-1919
     Column("org_id", Text),  # cross-model ref -> admin.orgs
     Column("tenant_id", Uuid),
+)
+
+# REQ-2074: what each role may write to each table, per operation. rows_expr / check_expr are row
+# predicates, encrypted at rest as rls_rules.filter_expr is (REQ-686); NULL is the role's read row
+# filter on the table.
+table_write_grants = Table(
+    "table_write_grants",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "table_id",
+        Integer,
+        ForeignKey("registered_tables.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("role_id", Text, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False),
+    Column("operation", Text, nullable=False),
+    Column("columns", JSON, nullable=False, default=list, server_default="[]"),
+    Column("rows_expr", LargeBinary),
+    Column("check_expr", LargeBinary),
+    Column("presets", JSON, nullable=False, default=list, server_default="[]"),
+    Column("tenant_id", Uuid),
+    CheckConstraint(
+        "operation IN ('insert', 'update', 'delete')", name="table_write_grants_operation"
+    ),
+    UniqueConstraint("table_id", "role_id", "operation"),
 )
 
 rls_rules = Table(

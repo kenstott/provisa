@@ -43,7 +43,6 @@ def _build_column_models(columns: list) -> list:
         ColumnModel(
             name=c.name,
             visible_to=c.visible_to,
-            writable_by=c.writable_by,
             masks=[MaskEntry.model_validate(e) for e in mask_entries_of(c.masks)],
             alias=c.alias,
             description=c.description,

@@ -263,9 +263,9 @@ def _trim_table(scope: CatalogScope, table: RegisteredTableType) -> RegisteredTa
         table.columns = [c for c in table.columns if c.column_name in columns]
     if not scope.governance:
         table.view_sql = None
+        table.write_grants = None  # REQ-2074: who may write is governance, as who may read is
         for column in table.columns:
             column.visible_to = None
-            column.writable_by = None
             column.masks = None
     return table
 

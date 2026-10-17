@@ -21,6 +21,7 @@ from provisa.core.models import (
     AuthConfig,
     Cardinality,
     Column,
+    ColumnPreset,
     EventTrigger,
     Function,
     FunctionArgument,
@@ -35,9 +36,11 @@ from provisa.core.models import (
     SourceType,
     Table,
     Webhook,
+    WriteGrant,
 )
 from provisa.hasura_v2.models import (
     HasuraAction,
+    HasuraPermission,
     HasuraMetadata,
     HasuraRemoteSchema,
     HasuraSource,
@@ -308,6 +311,70 @@ def _fk_targets(hs: HasuraSource) -> dict[tuple[str, str, str], tuple[str, str]]
     return out
 
 
+def _predicate(expr: dict[str, Any] | None) -> str:
+    """A Hasura boolean expression as the SQL predicate a write grant states; an empty one (no
+    restriction) is every row."""
+    return bool_expr_to_sql(expr or {})
+
+
+def _presets(set_: dict[str, Any]) -> list[ColumnPreset]:
+    """Hasura's ``set``: a column set to a session variable (``X-Hasura-User-Id``) or a literal."""
+    presets: list[ColumnPreset] = []
+    for column, value in set_.items():
+        text = str(value)
+        if text.lower().startswith("x-hasura-"):
+            name = text[len("x-hasura-") :].lower().replace("-", "_")
+            presets.append(ColumnPreset(column=column, source="session", name=name))
+        else:
+            presets.append(ColumnPreset(column=column, source="literal", value=text))
+    return presets
+
+
+def _write_grants(ht: HasuraTable, table_columns: list[str]) -> list[WriteGrant]:  # REQ-2074
+    """Each insert, update and delete permission as the role's write grant for that operation --
+    its columns, filter (rows), check and set (presets) -- and Hasura's admin, who holds every
+    permission, as org_admin's grant for every operation over every column."""
+    every = [c for c in table_columns if c != "*"]
+
+    def _cols(perm: HasuraPermission) -> list[str]:
+        cols = perm.columns
+        listed = every if cols == "*" or (isinstance(cols, list) and "*" in cols) else cols
+        return [c for c in listed if c not in perm.set]
+
+    grants: list[WriteGrant] = []
+    for perm in ht.insert_permissions:
+        grants.append(
+            WriteGrant(
+                role=perm.role,
+                operation="insert",
+                columns=_cols(perm),
+                check=_predicate(perm.check),
+                presets=_presets(perm.set),
+            )
+        )
+    for perm in ht.update_permissions:
+        grants.append(
+            WriteGrant(
+                role=perm.role,
+                operation="update",
+                columns=_cols(perm),
+                rows=_predicate(perm.filter),
+                check=_predicate(perm.check),
+                presets=_presets(perm.set),
+            )
+        )
+    for perm in ht.delete_permissions:
+        grants.append(WriteGrant(role=perm.role, operation="delete", rows=_predicate(perm.filter)))
+    grants += [
+        WriteGrant(role=ORG_ADMIN_ROLE, operation="insert", columns=every, check="TRUE"),
+        WriteGrant(
+            role=ORG_ADMIN_ROLE, operation="update", columns=every, rows="TRUE", check="TRUE"
+        ),
+        WriteGrant(role=ORG_ADMIN_ROLE, operation="delete", rows="TRUE"),
+    ]
+    return grants
+
+
 def _map_table(
     ht: HasuraTable,
     source_name: str,
@@ -331,45 +398,21 @@ def _map_table(
         if cols == "*" or (isinstance(cols, list) and "*" in cols):
             # Wildcard — we'll use a placeholder
             if "*" not in all_columns:
-                all_columns["*"] = Column(
-                    name="*",
-                    visible_to=[],
-                    writable_by=[],
-                )
+                all_columns["*"] = Column(name="*", visible_to=[])
             all_columns["*"].visible_to.append(perm.role)
         elif isinstance(cols, list):
             for col_name in cols:
                 if col_name not in all_columns:
-                    all_columns[col_name] = Column(
-                        name=col_name,
-                        visible_to=[],
-                        writable_by=[],
-                    )
+                    all_columns[col_name] = Column(name=col_name, visible_to=[])
                 all_columns[col_name].visible_to.append(perm.role)
 
-    # Writable columns from insert/update permissions
-    for perm in ht.insert_permissions:
-        cols = perm.columns
-        if isinstance(cols, list):
-            for col_name in cols:
-                if col_name not in all_columns:
-                    all_columns[col_name] = Column(
-                        name=col_name,
-                        visible_to=[],
-                        writable_by=[],
-                    )
-                all_columns[col_name].writable_by.append(perm.role)
-    for perm in ht.update_permissions:
-        cols = perm.columns
-        if isinstance(cols, list):
-            for col_name in cols:
-                if col_name not in all_columns:
-                    all_columns[col_name] = Column(
-                        name=col_name,
-                        visible_to=[],
-                        writable_by=[],
-                    )
-                all_columns[col_name].writable_by.append(perm.role)
+    # Columns an insert or update permission writes or presets that no select permission names:
+    # the table has them, visible to the admin alone (REQ-2074: who writes them is the grants').
+    for perm in [*ht.insert_permissions, *ht.update_permissions]:
+        named = perm.columns if isinstance(perm.columns, list) else []
+        for col_name in [*named, *perm.set]:
+            if col_name != "*" and col_name not in all_columns:
+                all_columns[col_name] = Column(name=col_name, visible_to=[])
 
     # Apply custom column names as aliases
     for orig_name, alias in ht.custom_column_names.items():
@@ -377,10 +420,9 @@ def _map_table(
             all_columns[orig_name].alias = alias
 
     # REQ-1684: Hasura's admin holds every permission implicitly; Provisa's org_admin is that
-    # role, and a column's grant lists are literal, so it is named on every imported column.
+    # role, and a column's grant list is literal, so it is named on every imported column.
     for col in all_columns.values():
         col.visible_to = sorted(set(col.visible_to) | {ORG_ADMIN_ROLE})
-        col.writable_by = sorted(set(col.writable_by) | {ORG_ADMIN_ROLE})
 
     columns = list(all_columns.values())
 
@@ -398,6 +440,7 @@ def _map_table(
         table_name=ht.name,
         columns=columns,
         alias=table_alias,
+        write_grants=_write_grants(ht, [c.name for c in columns]),
     )
 
     # RLS rules from select permission filters

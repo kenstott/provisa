@@ -14,7 +14,7 @@ One parent per role. A role's chain is the role itself followed by its ancestors
 Everything downstream stays keyed by the acting role id, because the chain is folded into the
 data here rather than consulted at every lookup:
 
-- grant lists (``visible_to``, ``writable_by``) gain the child wherever they name an ancestor —
+- grant lists (``visible_to``) gain the child wherever they name an ancestor —
   a grant is a union up the chain (a column's mask list is read against the chain itself,
   security/masking.resolve, REQ-2059);
 - RLS resolves per table with the child taking precedence: the nearest role in the chain that
@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-GRANT_LISTS = ("visible_to", "writable_by")
+GRANT_LISTS = ("visible_to",)
 
 #: Joins the roles of a composite grant entry (REQ-2058): ``analyst+region__eu`` is held by a
 #: reader holding ALL of them. Across a grant list's entries the reader needs ANY one.
@@ -174,6 +174,29 @@ def expand_grants(items: Iterable[dict], chains: dict[str, list[str]]) -> None:
 def expand_column_grants(tables: Iterable[dict], chains: dict[str, list[str]]) -> None:
     for t in tables:
         expand_grants(t.get("columns") or [], chains)
+
+
+def expand_write_grants(tables: Iterable[dict], chains: dict[str, list[str]]) -> None:  # REQ-2074
+    """Give each role, on every table and operation it holds no write grant for, the grant of
+    the nearest role in its chain that holds one -- the child first, as a row filter is resolved
+    (:func:`materialize_rls`)."""
+    for t in tables:
+        grants = t.get("write_grants") or []
+        if not grants:
+            continue
+        held = {(g["role"], g["operation"]): g for g in grants}
+        for rid, chain in chains.items():
+            for operation in ("insert", "update", "delete"):
+                if (rid, operation) in held:
+                    continue
+                nearest = next(
+                    (held[(anc, operation)] for anc in chain[1:] if (anc, operation) in held),
+                    None,
+                )
+                if nearest is not None:
+                    inherited = {**nearest, "role": rid}
+                    grants.append(inherited)
+                    held[(rid, operation)] = inherited
 
 
 def holds_grant(role_id: str, granted: Iterable[str], chains: dict[str, list[str]]) -> bool:

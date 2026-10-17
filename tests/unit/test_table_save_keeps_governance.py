@@ -39,7 +39,6 @@ from tests.unit.gate_identity import grant
 def _column(name: str, **governance):
     fields = {
         "visible_to": [],
-        "writable_by": [],
         "masks": [],
     }
     fields.update(governance)
@@ -52,7 +51,6 @@ def _stored_columns():
         _column(
             "email",
             visible_to=["analyst", "auditor"],
-            writable_by=["steward"],
             masks=[
                 {"to": ["auditor"], "mask": None},
                 {"to": ["*"], "mask": {"type": "regex", "pattern": ".+@", "replace": "***@"}},
@@ -119,7 +117,6 @@ async def test_a_save_without_view_governance_leaves_every_stored_grant_and_mask
     [
         ("visible_to", ["analyst"]),
         ("visible_to", ["analyst", "auditor"]),  # the stored value itself: no oracle
-        ("writable_by", ["analyst"]),
         ("masks", [{"to": ["analyst"], "mask": None}]),
         ("masks", [{"to": ["*"], "mask": {"type": "constant", "value": "***"}}]),
     ],
@@ -216,7 +213,6 @@ async def test_a_tool_that_writes_the_stored_table_back_is_what_the_guard_refuse
     written_back = _save(*table_edit.table_input("stored").columns)
     assert governance_sets(info, written_back) == [
         "email.visible_to",
-        "email.writable_by",
         "email.masks",
     ]
 

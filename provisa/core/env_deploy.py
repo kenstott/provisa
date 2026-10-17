@@ -507,7 +507,14 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
 
         elif table == "registered_tables":
             own, nested = _split(
-                body, "columns", "relationships", "row_policies", "glossary", "meta_links", "tags"
+                body,
+                "columns",
+                "relationships",
+                "row_policies",
+                "write_grants",
+                "glossary",
+                "meta_links",
+                "tags",
             )
             tid = table_id[path]
             domain = _domain_of(path)
@@ -541,6 +548,13 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                     }
                 )
             policies(nested["row_policies"], path, table_id=tid)
+            for grant in nested["write_grants"]:  # REQ-2074
+                if grant.get("role_id") not in roles:
+                    problems.append(
+                        f"{path!r} carries a write grant for the role {grant.get('role_id')!r}, "
+                        "which this environment does not define"
+                    )
+                rows["table_write_grants"].append({**grant, "table_id": tid})
             for ref in nested["glossary"]:
                 rows["glossary_term_refs"].append(
                     {

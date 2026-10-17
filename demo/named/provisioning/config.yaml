@@ -107,9 +107,12 @@ tables:
       role: org_admin
   columns:
   - {name: notice_id, data_type: integer, is_primary_key: true, description: The notice's number, visible_to: [org_admin, finance, data_science]}
-  - {name: dataset, data_type: varchar, description: The dataset that is ready, visible_to: [org_admin, finance, data_science], writable_by: [org_admin]}
-  - {name: consumer, data_type: varchar, description: The team it is for, visible_to: [org_admin, finance, data_science], writable_by: [org_admin]}
+  - {name: dataset, data_type: varchar, description: The dataset that is ready, visible_to: [org_admin, finance, data_science]}
+  - {name: consumer, data_type: varchar, description: The team it is for, visible_to: [org_admin, finance, data_science]}
   - {name: version_time, data_type: timestamptz, description: 'When it was sent: the version of the dataset a pull reads, as of this time', visible_to: [org_admin, finance, data_science]}
+  write_grants:
+  - {role: org_admin, operation: insert, columns: [dataset, consumer]}
+  - {role: org_admin, operation: update, columns: [dataset, consumer]}
 - source_id: warehouse
   domain_id: provisioning
   schema: public

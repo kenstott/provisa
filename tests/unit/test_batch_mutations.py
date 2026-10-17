@@ -22,6 +22,7 @@ from provisa.compiler.mutation_gen import compile_mutation
 from tests.write_governance import admitted, write_governance
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.context import build_context
+from tests.write_governance import grants_over
 
 
 def _col(name, data_type="varchar(100)", nullable=False):
@@ -45,6 +46,9 @@ def _build(extra_tables=None):
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
             "write_refused_forms": [],
+            "write_grants": list(
+                grants_over("admin", ["id", "amount", "region", "status"]).values()
+            ),  # REQ-2074
         },
         {
             "id": 2,
@@ -60,6 +64,9 @@ def _build(extra_tables=None):
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
             "write_refused_forms": [],
+            "write_grants": list(
+                grants_over("admin", ["id", "name", "email"]).values()
+            ),  # REQ-2074
         },
     ]
     if extra_tables:

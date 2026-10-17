@@ -57,11 +57,11 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     row_limit: Any = None
     sample_size: int | None = None
     # The role this context was built for, and what it may write (compiler/write_admission.py):
-    # whether it holds the ``write`` right (REQ-868), and per table the columns whose
-    # ``writable_by`` names it (REQ-663). A column that declares none is writable by nobody.
+    # whether it holds the ``write`` right (REQ-868), and per table its write grant for each
+    # operation (REQ-2074). A role with no grant for an operation may not perform it.
     role_id: str = ""
     can_write: bool = False
-    writable_columns: dict[int, frozenset[str]] = field(default_factory=dict)
+    write_grants: dict[int, dict[str, dict]] = field(default_factory=dict)
     # The data writes each table's source can take (executor/write_capability.py), from the
     # table's record. A table with no entry offers none.
     write_ops: dict[int, frozenset[str]] = field(default_factory=dict)
@@ -219,9 +219,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         }
         if embeddings:
             gov.embedding_columns[table_id] = embeddings
-        gov.writable_columns[table_id] = frozenset(
-            c["column_name"] for c in cols if role_id in (c.get("writable_by") or [])
-        )
+        gov.write_grants[table_id] = {
+            g["operation"]: g for g in tbl.get("write_grants") or [] if g["role"] == role_id
+        }
         if "write_ops" in tbl:
             gov.write_ops[table_id] = frozenset(tbl["write_ops"])
             gov.write_returns_rows[table_id] = tbl["write_returns_rows"]
@@ -955,8 +955,8 @@ def apply_governance(
     params: list | None = None,
 ) -> str:  # REQ-002, REQ-038, REQ-263, REQ-264, REQ-266, REQ-267
     """Apply governance (RLS, masking, visibility, LIMIT) to raw SQL — and, to a data write, its
-    admission (compiler/write_admission.py: the write right, the columns' ``writable_by``, the
-    role's row filter on the rows it touches and on the rows it leaves behind).
+    admission (compiler/write_admission.py: the write right and the role's write grant for the
+    operation -- its columns, presets, rows and check, REQ-2074).
 
     ``session_vars`` are the request's session variables and ``params`` its bound values; a
     write's row-filter check reads both. A read's are resolved by the pipeline after this stage.

@@ -12,7 +12,7 @@
 
 Pure logic only — no I/O, no network, no DB, no docker.
 Tests WriteTranslator (CREATE/DELETE/UPDATE), the one write admission the translated statement
-passes (tests/write_governance.py: its columns' writable_by and the role's row filter, applied
+passes (tests/write_governance.py: the role's write grant and its row filter, applied
 by the governance stage every surface's write goes through), MutationResult wrapping, and
 dialect-agnostic SQL output.
 """
@@ -256,7 +256,7 @@ def test_parse_arrow_in_string_not_treated_as_relationship(query):
 
 
 # ---------------------------------------------------------------------------
-# writable_by column ACL on Cypher writes (REQ-663)
+# write grants on Cypher writes (REQ-2074)
 # ---------------------------------------------------------------------------
 
 
@@ -280,22 +280,24 @@ def _translated(cypher: str) -> str:
     return WriteTranslator(_person_map()).translate(parse_cypher_write(cypher))
 
 
-def test_writable_by_denies_role_without_write_access():
+def test_a_column_outside_the_grant_is_refused():
     with pytest.raises(ColumnNotWritable, match="column 'name'"):
         admitted(_translated("CREATE (n:Person {name: 'Alice'})"), _person_gov(writable=["id"]))
 
 
-def test_writable_by_allows_permitted_role():
+def test_a_column_the_grant_names_is_admitted():
     sql = _translated("MATCH (n:Person) WHERE n.id = 1 SET n.name = 'Bob'")
     assert admitted(sql, _person_gov(writable=["name"])) == sql
 
 
-def test_a_delete_removes_whole_rows_and_needs_every_column():
-    """A DELETE removes every column of the rows it matches, so the role must be named on every
-    column (REQ-663, as ruled 2026-10-02) — on Cypher as on every surface."""
+def test_a_delete_needs_a_delete_grant():
+    """A DELETE is admitted by the role's delete grant (REQ-2074) — on Cypher as on every
+    surface."""
     sql = _translated("MATCH (n:Person) WHERE n.id = 1 DELETE n")
-    with pytest.raises(ColumnNotWritable):
-        admitted(sql, _person_gov(writable=["name"]))
+    without = _person_gov()
+    del without.write_grants[TABLE_ID_PERSON]["delete"]
+    with pytest.raises(WriteNotAdmitted, match="holds no delete grant"):
+        admitted(sql, without)
     assert admitted(sql, _person_gov()) == sql
 
 

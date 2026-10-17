@@ -26,6 +26,7 @@ import pytest
 
 from provisa.compiler.stage2 import GovernanceContext, apply_governance, govern_fragment
 from provisa.security.masking import MaskingRule, MaskType
+from tests.write_governance import grants_over
 
 _D = "DOUBLE PRECISION"
 
@@ -115,7 +116,7 @@ def test_a_fragment_of_a_larger_statement_is_not_cast():
 def test_a_write_is_not_cast():
     gov = _gov()
     gov.can_write = True
-    gov.writable_columns = {2: frozenset({"id", "ratio"})}
+    gov.write_grants = {2: grants_over(gov.role_id, ["id", "ratio"])}
     gov.write_ops = {2: frozenset({"insert"})}
     governed = apply_governance(
         "INSERT INTO sales.refunds (id, ratio) SELECT id, ratio FROM sales.orders", gov

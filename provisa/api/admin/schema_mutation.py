@@ -3191,18 +3191,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _field_refusal = await column_field_refusal(pool, input, columns)
         if _field_refusal is not None:
             return _field_refusal
-        from provisa.core.models import ColumnPreset as ColumnPresetModel
-
-        presets = [
-            ColumnPresetModel(
-                column=cp.column,
-                source=cp.source,
-                name=cp.name,
-                value=cp.value,
-                data_type=cp.data_type,
-            )
-            for cp in input.column_presets
-        ]
         # REQ-957/964: reject a non-deterministic / unsafe preprocess hook at registration.
         from provisa.mv.preprocess import validate_preprocess
 
@@ -3217,7 +3205,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         window_err = _parsed_off_peak(input.off_peak_window or None, input.off_peak_tz or "UTC")
         if window_err is not None:
             return window_err
-        model = _table_model_from_input(input, columns, presets, input.alias)
+        model = _table_model_from_input(input, columns, input.alias)
         async with pool.acquire() as conn:
             _conn = cast("Connection", conn)
             from provisa.api.admin.domain_guard import require_current_domain

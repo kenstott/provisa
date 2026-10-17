@@ -132,7 +132,8 @@ def _parse_permission(raw: dict[str, Any]) -> HasuraPermission:  # REQ-041, REQ-
         columns=perm.get("columns", []),
         filter=perm.get("filter", {}),
         allow_aggregations=perm.get("allow_aggregations", False),
-        check=perm.get("check", {}),
+        check=perm.get("check") or {},
+        set=perm.get("set") or {},
     )
 
 

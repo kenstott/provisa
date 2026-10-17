@@ -70,7 +70,7 @@ def test_snapshot_schedule_fields_survive_model_mapping():
         mv_expected_events=["orders", "returns"],
         mv_business_day_grain=True,
     )
-    model = table_model_from_input(inp, columns=[], presets=[], alias="t")
+    model = table_model_from_input(inp, columns=[], alias="t")
     assert model.mv_calendar == "fiscal-2026"
     assert model.mv_grain == "RRULE:FREQ=MONTHLY;BYDAY=3WE"
     assert model.mv_allowed_lateness == 3600.0
@@ -79,7 +79,7 @@ def test_snapshot_schedule_fields_survive_model_mapping():
 
 
 def test_snapshot_schedule_defaults_when_unbound():
-    model = table_model_from_input(_table_input(), columns=[], presets=[], alias="t")
+    model = table_model_from_input(_table_input(), columns=[], alias="t")
     assert model.mv_calendar is None
     assert model.mv_grain is None
     assert model.mv_allowed_lateness == 0.0

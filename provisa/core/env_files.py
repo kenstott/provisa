@@ -41,7 +41,7 @@ when it was written, not what the model says.
 DETERMINISM IS THE POINT. Two environments holding the same model must produce byte-identical trees,
 or every diff is noise. Keys are emitted in one fixed (alphabetical) order, child collections are
 sorted by their own address, and the YAML style is fixed. Values are NOT re-ordered: a list inside a
-model field -- ``column_presets``, ``unique_constraints`` -- is ordered by the model itself, and
+model field -- ``unique_constraints`` -- is ordered by the model itself, and
 sorting it would change what it means.
 """
 

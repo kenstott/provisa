@@ -25,6 +25,7 @@ import sqlglot
 from provisa.compiler.sql_validator import _check_column_visibility
 from provisa.compiler.stage2 import GovernanceContext, apply_governance
 from provisa.security.masking import MaskingRule, MaskType
+from tests.write_governance import grants_over
 
 _COLUMNS = [("id", "integer"), ("name", "varchar"), ("ssn", "varchar"), ("account_no", "varchar")]
 
@@ -114,7 +115,7 @@ def _writable(gov: GovernanceContext) -> GovernanceContext:
     gov.write_ops = {1: frozenset({"insert", "update", "delete"})}
     gov.write_returns_rows = {1: True}
     gov.write_refused_forms = {1: frozenset()}
-    gov.writable_columns = {1: frozenset(c for c, _ in _COLUMNS)}
+    gov.write_grants = {1: grants_over(gov.role_id, [c for c, _ in _COLUMNS])}
     return gov
 
 

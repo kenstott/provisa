@@ -292,18 +292,6 @@ async def register_table(
         )
         alias = None if _sql_name == input.table_name else _sql_name
 
-    from provisa.core.models import ColumnPreset as ColumnPresetModel
-
-    presets = [
-        ColumnPresetModel(
-            column=cp.column,
-            source=cp.source,
-            name=cp.name,
-            value=cp.value,
-            data_type=cp.data_type,
-        )
-        for cp in input.column_presets
-    ]
     # REQ-957/964: reject a non-deterministic / unsafe preprocess hook at registration.
     from provisa.mv.preprocess import validate_preprocess
 
@@ -321,7 +309,7 @@ async def register_table(
     if window_err is not None:
         return window_err
     try:
-        model = _table_model_from_input(input, columns, presets, alias)
+        model = _table_model_from_input(input, columns, alias)
     except ValueError as _map_err:  # REQ-1318: view_sql+view_metrics conflict / invalid spec
         return MutationResult(success=False, message=str(_map_err))
     # REQ-1907: a table that lands needs its clock to be registered at all, so the registration

@@ -66,6 +66,14 @@ NOT_SEARCHED: dict[tuple[str, str], str] = {
         "a row filter's SQL predicate, encrypted at rest; a predicate is never resolved as a "
         "secret reference, so none can take effect there"
     ),
+    ("table_write_grants", "rows_expr"): (
+        "a write grant's rows predicate, encrypted at rest; a predicate is never resolved as a "
+        "secret reference, so none can take effect there"
+    ),
+    ("table_write_grants", "check_expr"): (
+        "a write grant's check predicate, encrypted at rest; a predicate is never resolved as a "
+        "secret reference, so none can take effect there"
+    ),
     ("query_audit_log", "query_text_enc"): (
         "the text of a statement someone ran, encrypted at rest; a record of the past, never "
         "resolved"

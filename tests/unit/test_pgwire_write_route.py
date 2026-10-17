@@ -36,6 +36,7 @@ from provisa.federation.engine import (
     build_trino_engine,
 )
 from provisa.transpiler.router import Route, decide_route
+from tests.write_governance import grants_over
 
 _aio = pytest.mark.asyncio(loop_scope="session")
 
@@ -399,7 +400,7 @@ def _write_gov(returns_rows: bool, refused_forms=()):
     gov.can_write = True
     gov.table_map = {"account": 1, "sf.account": 1}
     gov.all_columns = {1: [("id", "varchar"), ("name", "varchar")]}
-    gov.writable_columns = {1: frozenset({"id", "name"})}
+    gov.write_grants = {1: grants_over("writer", ["id", "name"])}
     gov.write_ops = {1: frozenset({"insert", "update", "delete"})}
     gov.write_returns_rows = {1: returns_rows}
     gov.write_refused_forms = {1: frozenset(refused_forms)}
@@ -452,6 +453,7 @@ def _schema(returns_rows: bool, refused_forms=()):
         "write_ops": ["delete", "insert", "update"],
         "write_returns_rows": returns_rows,
         "write_refused_forms": list(refused_forms),
+        "write_grants": list(grants_over("admin", ["id", "name"]).values()),  # REQ-2074
     }
     cols = [
         ColumnMetadata(column_name="id", data_type="varchar(18)", is_nullable=False),

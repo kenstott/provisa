@@ -1931,6 +1931,7 @@ _RLS_TENANT_TABLES = [
     "domains",
     "relationships",
     "rls_rules",
+    "table_write_grants",  # REQ-2074
     "roles",
     "tags",  # carries tenant_id (schema.sql tenant block)
     "tag_assignments",
