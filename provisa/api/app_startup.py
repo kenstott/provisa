@@ -172,8 +172,18 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
 
         # REQ-1882: long-lived loops that touch the engine/control plane run on their own
         # threads (spawn_long_lived), never on the process loop that relays request I/O.
+        shared_engine = state.federation_engine
+
+        def _registries() -> list:
+            # REQ-1266: each org environment's own views, swept through its own engine when it
+            # runs a dedicated one, else through the shared engine.
+            return [
+                (rt.federation_engine or shared_engine, rt.mv_registry)
+                for rt in state.org_registry.runtimes()
+            ]
+
         state._mv_refresh_task = spawn_long_lived(
-            reclamation_loop(state.federation_engine, state.mv_registry, should_run=_holder.holds),
+            reclamation_loop(_registries, should_run=_holder.holds),
             name="mv-reclamation",
         )
 

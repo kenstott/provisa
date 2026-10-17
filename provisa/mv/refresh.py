@@ -25,6 +25,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from typing import Any
 from datetime import datetime, timezone
 
 from provisa.federation.execution_auth import SystemAuth, mint_system_token
@@ -975,8 +976,7 @@ async def drop_expired_orphans(  # REQ-234
 
 
 async def reclamation_loop(  # REQ-234
-    engine,
-    registry: MVRegistry,
+    registries: Callable[[], list[tuple[Any, MVRegistry]]],
     check_interval: int = 30,
     config_mv_ids: set[str] | None = None,
     should_run: Callable[[], bool] | None = None,
@@ -989,8 +989,9 @@ async def reclamation_loop(  # REQ-234
     is not expressible as an MV, so it stays a dedicated loop.
 
     Args:
-        engine: EngineRuntime terminal for executing reclamation DDL.
-        registry: MV registry (source of enabled MVs + target schemas).
+        registries: Asked at each sweep: every org environment's MV registry (REQ-1266: each
+            org's views are its own), each with the EngineRuntime terminal its store is reached
+            through for the reclamation DDL.
         check_interval: Seconds between reclamation sweeps.
         config_mv_ids: Set of MV IDs from current config (for removed-MV reclamation).
         should_run: Asked before each sweep (REQ-1900). The sweep drops tables in the SHARED
@@ -1004,30 +1005,31 @@ async def reclamation_loop(  # REQ-234
             if should_run is not None and not should_run():
                 await asyncio.sleep(check_interval)
                 continue
-            # Reclaim removed MVs if config IDs provided
-            if config_mv_ids is not None:
-                await reclaim_removed_mvs(engine, registry, config_mv_ids)
+            for engine, registry in registries():
+                # Reclaim removed MVs if config IDs provided
+                if config_mv_ids is not None:
+                    await reclaim_removed_mvs(engine, registry, config_mv_ids)
 
-            # Orphan detection across all enabled MVs
-            schemas_seen: set[tuple[str, str]] = set()
-            for mv in registry.all():
-                schemas_seen.add((mv.target_catalog, mv.target_schema))
-            for catalog, schema in schemas_seen:
-                orphans = await detect_orphans(engine, registry, schema, catalog)
-                # Use shortest grace period from any registered MV
-                all_mvs = registry.all()
-                grace = min(
-                    (m.orphan_grace_period for m in all_mvs),
-                    default=86400,
-                )
-                await drop_expired_orphans(
-                    engine,
-                    orphan_tracker,
-                    orphans,
-                    grace,
-                    schema,
-                    catalog,
-                )
+                # Orphan detection across all enabled MVs
+                schemas_seen: set[tuple[str, str]] = set()
+                for mv in registry.all():
+                    schemas_seen.add((mv.target_catalog, mv.target_schema))
+                for catalog, schema in schemas_seen:
+                    orphans = await detect_orphans(engine, registry, schema, catalog)
+                    # Use shortest grace period from any registered MV
+                    all_mvs = registry.all()
+                    grace = min(
+                        (m.orphan_grace_period for m in all_mvs),
+                        default=86400,
+                    )
+                    await drop_expired_orphans(
+                        engine,
+                        orphan_tracker,
+                        orphans,
+                        grace,
+                        schema,
+                        catalog,
+                    )
         except Exception:
             log.exception("Error in MV reclamation loop")
         await asyncio.sleep(check_interval)

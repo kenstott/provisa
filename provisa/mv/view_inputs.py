@@ -100,7 +100,7 @@ class ModelIndex:
     materialized views in the registry."""
 
     def __init__(self, state: Any) -> None:
-        from provisa.compiler.naming import apply_sql_name, domain_to_sql_name
+        from provisa.compiler.naming import apply_sql_name, domain_to_sql_name, source_to_catalog
         from provisa.compiler.sql_rewrite import semantic_table_name
 
         self._names: dict[str, set[tuple[str, Any]]] = {}
@@ -123,6 +123,12 @@ class ModelIndex:
                 catalog = catalogs.get(row["source_id"])
                 if catalog is not None:
                     self._add((catalog, row["schema_name"], name), target)
+                # The model's own spelling of the source's catalog, the same in every org and
+                # environment: a view written once names it so (the demo config's dim_pet reads
+                # "pet_store_sqlite"."pet_store"."pets"), while the physical catalog above is
+                # prefixed outside the default org's prod. The compiler binds a schema-qualified
+                # name whatever catalog it carries (sql_rewrite); this resolves it the same.
+                self._add((source_to_catalog(row["source_id"]), row["schema_name"], name), target)
             if row.get("alias"):
                 self._add((apply_sql_name(row["alias"]),), target)
         for ctx in state.contexts.values():

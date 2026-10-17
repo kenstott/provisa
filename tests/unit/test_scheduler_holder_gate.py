@@ -166,7 +166,9 @@ def _run_one_sweep(should_run) -> list[str]:
         patch.object(refresh.asyncio, "sleep", _stop),
         pytest.raises(asyncio.CancelledError),
     ):
-        asyncio.run(refresh.reclamation_loop(object(), _Registry(), should_run=should_run))
+        asyncio.run(
+            refresh.reclamation_loop(lambda: [(object(), _Registry())], should_run=should_run)
+        )
     return ran
 
 

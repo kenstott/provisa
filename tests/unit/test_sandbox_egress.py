@@ -281,3 +281,58 @@ def test_the_direct_pool_connects_to_the_checked_address(in_sandbox, public_name
         pool_mod.SourcePool().add("probe", "postgresql", "db.example.com", 5432, "d", "u", "p")
     )
     assert dialled == [_PUBLIC]
+
+
+# --- a host given as a URL: a Qdrant source's is its instance's URL ----------------------------
+
+_QDRANT_URL = "http://provisa-demo-sonnets-202610161328-7d7b35b3a-qdrant-1:6333"
+
+
+def _qdrant_pool(monkeypatch, host: str) -> list[str]:
+    from provisa.executor import pool as pool_mod
+
+    dialled: list[str] = []
+
+    class _Driver:
+        def bind_source(self, _sid):
+            pass
+
+        def configure(self, _extra):
+            pass
+
+        async def connect(self, host, *_args):
+            dialled.append(host)
+
+    monkeypatch.setattr(pool_mod, "create_driver", lambda *_a, **_k: _Driver())
+
+    async def _no_vector(*_a):
+        return None
+
+    monkeypatch.setattr("provisa.vector.capability.detect_vector_capability", _no_vector)
+    asyncio.run(pool_mod.SourcePool().add("vectors", "qdrant", host, 0, None, None, "k"))
+    return dialled
+
+
+def test_the_demos_own_qdrant_is_connected_by_its_url(monkeypatch):
+    """The sonnets demo's Qdrant source names its store by URL, on the node's private network:
+    the demo declares it, so each sandbox's direct pool connects to it by that URL."""
+    egress.set_demo_destinations(_SANDBOX, [{"host": _QDRANT_URL, "port": 0}])
+    token = set_current_org(_SANDBOX)
+    try:
+        assert _qdrant_pool(monkeypatch, _QDRANT_URL) == [_QDRANT_URL]
+    finally:
+        reset_current_org(token)
+        egress.forget(_SANDBOX)
+
+
+def test_a_url_host_the_demo_does_not_declare_is_refused_by_name(
+    in_sandbox, public_names, monkeypatch
+):
+    """A URL is connected to by its name, which cannot be held to the address checked."""
+    with pytest.raises(egress.UnpinnableDestinationRefused, match="qdrant.example.com"):
+        _qdrant_pool(monkeypatch, "https://qdrant.example.com:6333")
+
+
+def test_a_url_host_on_a_private_address_is_refused(in_sandbox, monkeypatch):
+    with pytest.raises(egress.PrivateDestinationRefused):
+        _qdrant_pool(monkeypatch, "http://127.0.0.1:6333")

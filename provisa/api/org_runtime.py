@@ -43,6 +43,7 @@ from provisa.core.connection_loop import CrossLoopLock
 from provisa.core.environments import PROD
 from provisa.executor.pool import SourcePool
 from provisa.federation.replica_address import ReplicaRoutes
+from provisa.mv.registry import MVRegistry
 
 if TYPE_CHECKING:
     from provisa.compiler.sql_gen import CompilationContext
@@ -75,8 +76,8 @@ class OrgRuntime:
 
     One instance per org, built lazily by the registry. Everything here is keyed
     within a single org's namespace (source_id / role_id / table_name); the
-    genuinely-global handles (admin_db, federation_engine, response cache, mv
-    registry, servers) stay on ``AppState``.
+    genuinely-global handles (admin_db, federation_engine, response cache, servers) stay on
+    ``AppState``.
     """
 
     org_id: str
@@ -173,6 +174,14 @@ class OrgRuntime:
     # org-prefixed name (org_{id}__{catalog}); system/fixed-warehouse catalogs
     # are stored un-prefixed (one physical catalog shared across orgs).
     source_catalogs: dict[str, str] = field(default_factory=dict)
+    # REQ-1266: the org's own views -- its materialized views (MVRegistry), the SQL its views
+    # expand to, its bitemporal views' reads -- and its tables' response-cache TTLs, keyed by the
+    # org's own view names and table ids. Two orgs may each have a view of one name, and each
+    # numbers its own tables: held for the whole process, the org built last answered the others.
+    mv_registry: MVRegistry = field(default_factory=MVRegistry)
+    view_sql_map: dict[str, str] = field(default_factory=dict)
+    bitemporal_view_reads: dict = field(default_factory=dict)
+    table_cache: dict[int, int | None] = field(default_factory=dict)
     source_cache: dict[str, dict] = field(default_factory=dict)
     source_allowed_domains: dict[str, list[str]] = field(default_factory=dict)
     source_federation_hints: dict[str, dict[str, str]] = field(default_factory=dict)
