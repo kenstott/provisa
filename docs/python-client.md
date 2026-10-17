@@ -123,7 +123,7 @@ Install into the running kernel before importing. The `pandas` extra covers Data
 
 Notebooks persist cell output to the `.ipynb` file. Type a token into a cell and it will be saved to disk alongside your code. Don't do that.
 
-Store credentials in environment variables and pass them in explicitly — the client reads no environment on its own. [tool-verified]
+`ProvisaClient` reads no environment: pass its credentials in explicitly, from environment variables. (`provisa_client.query()`, below, reads them for you.) [tool-verified]
 
 ```python
 import os
@@ -138,6 +138,64 @@ client = ProvisaClient(
 ```
 
 Set those variables in your shell before starting Jupyter, or load a `.env` file with `python-dotenv`. Either way, keep them out of the notebook.
+
+### One call: `query()`
+
+`provisa_client.query()` takes a SQL, GraphQL or Cypher statement and returns a pandas DataFrame. The server works out which language it is. Nothing is constructed first: the connection comes from the environment or a profile file. [tool-verified]
+
+```python
+import provisa_client
+
+df = provisa_client.query("SELECT region, amount FROM shop.orders")
+admin_view = provisa_client.query("SELECT region, amount FROM shop.orders", role="org_admin")
+```
+
+`role=` acts as that role for one read, sent as `X-Provisa-Role`. The server honours it only for a role you hold. The read goes over Arrow Flight; set `transport` to `http` to send it to `/data/query` instead. `await provisa_client.aquery(...)` is the awaitable form. [tool-verified]
+
+The connection is read from the first place that names each setting: [tool-verified]
+
+1. keywords to `provisa_client.sign_in(...)`, which resolves the connection once for every later read;
+2. environment variables: `PROVISA_URL`, `PROVISA_TOKEN`, `PROVISA_USERNAME`, `PROVISA_PASSWORD`, `PROVISA_ROLE`, `PROVISA_ORG`, `PROVISA_FLIGHT_PORT`, `PROVISA_TRANSPORT`;
+3. a section of `~/.provisa/credentials`: `[default]`, or the one `PROVISA_PROFILE` (or `sign_in(profile=...)`) names.
+
+```ini
+[default]
+url = https://provisa.example.com
+token = provisa_pat_...
+role = analyst
+
+[staging]
+url = https://staging.provisa.example.com
+username = ana
+```
+
+A `token` is a personal access token or a session token. Give a `username` and `password` instead and the client exchanges them for a session token at `POST /auth/login`. That works on a deployment whose sign-in provider takes a password (basic, simple, LDAP). Keep the password in `PROVISA_PASSWORD` rather than the file. A refused sign-in, a missing URL, or a named profile that isn't in the file raises with the reason. Provisa has no sign-in flow a notebook can drive through a browser, so for single sign-on deployments use a personal access token. [tool-verified]
+
+### Cell magics
+
+```python
+%pip install "provisa-client[notebook]"
+%load_ext provisa_client.magics
+```
+
+```text
+%%sql eu --role analyst_eu
+SELECT region, customer_email FROM shop.orders
+```
+
+`%%sql`, `%%graphql` and `%%cypher` answer the cell with `query()`. The DataFrame is the cell's result. A name after the magic also binds it in the notebook (`eu` above); `--role` acts as that role for the cell. [tool-verified]
+
+JupySQL (`%load_ext sql`) defines a `%%sql` as well. Load both and `%%sql` belongs to whichever extension loaded last. Provisa's takes `--role` and reads over Arrow Flight. JupySQL works too, through the SQLAlchemy dialect: `%sql provisa+http://user:password@host:port` connects, `%sql`/`%%sql` run governed statements, and `%sqlcmd tables -s <domain>` and `%sqlcmd columns -t <table> -s <domain>` list the catalog. [tool-verified]
+
+### In the browser (Pyodide)
+
+Under Pyodide, `query()` reads from the server that served the page, as the page's signed-in user. The host page keeps that user on the kernel's global scope:
+
+```javascript
+self.provisaAuth = { baseUrl: "", role: "analyst_eu", bearer: "<token>", org: null };
+```
+
+`baseUrl` is empty for the page's own origin. The client reads `provisaAuth` on every request, so a rotated token takes effect without a restart. Results arrive as Arrow when `pyarrow` is loaded; without it they come as JSON. A Cypher statement always comes back as JSON. `query()` blocks, which a Web Worker (where a notebook kernel runs) can do; on the page's main thread it raises and `await provisa_client.aquery(...)` is the call to use. [tool-verified]
 
 ### DataFrames from GraphQL, SQL, and Cypher
 
@@ -301,7 +359,7 @@ engine = create_engine(
 
 ### Schema introspection
 
-The dialect implements `get_table_names()`, `get_columns()`, and `has_table()` — catalog tools (DBeaver, SQLAlchemy automap) can inspect the schema. (REQ-363, REQ-270)
+The dialect reflects the catalog your role is served, read from `GET /data/catalog` as the connection's user, role and org. Each domain is a schema, and every table lives in one: `get_schema_names()` lists the domains, `get_table_names(schema="shop")` lists that domain's tables by their SQL names, and `get_columns("orders", schema="shop")` gives each column's type, nullability and description. With no schema named, `get_table_names()` lists none. An unknown table raises `NoSuchTableError`; a catalog the server refuses raises. (REQ-363, REQ-270, REQ-2069) [tool-verified]
 
 ---
 

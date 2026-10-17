@@ -18,11 +18,16 @@ Example:
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 import httpx
+import pyarrow as pa
 import sqlalchemy.types as sqltypes
+from sqlalchemy import util
+from sqlalchemy.engine import reflection
 from sqlalchemy.engine.default import DefaultDialect
+from sqlalchemy.exc import NoSuchTableError
 
 
 class ProvisaDialect(DefaultDialect):
@@ -76,99 +81,65 @@ class ProvisaDialect(DefaultDialect):
             opts["dek_cache_ttl"] = float(query["dek_cache_ttl"])
         return [], opts
 
-    def _get_base_url_and_role(self, connection: Any) -> tuple[str, str | None]:
-        """Extract base_url and role from a live DBAPI connection."""
-        if not hasattr(connection, "connection"):
-            return "http://localhost:8001", None
-        raw = connection.connection
-        # raw may be a Connection or wrapped by SQLAlchemy
-        if hasattr(raw, "_role"):
-            return raw._base_url, raw._role
-        if hasattr(raw, "connection") and hasattr(raw.connection, "_role"):
-            return raw.connection._base_url, raw.connection._role
-        return "http://localhost:8001", None
-
     _TIMEOUT = 10.0  # seconds
 
-    # Introspection query: root query fields (table names) + all object types (columns).
-    # Sent to /data/graphql so full role governance is applied before responding.
-    _INTROSPECT_GQL = """{
-      __schema {
-        queryType {
-          fields {
-            name
-            type { name kind ofType { name kind ofType { name } } }
-          }
-        }
-        types { name kind fields { name } }
-      }
-    }"""
-
     @staticmethod
-    def _unwrap_type_name(type_info: dict | None) -> str | None:
-        """Unwrap LIST/NON_NULL wrappers to the named object type."""
-        while type_info:
-            if type_info.get("name"):
-                return type_info["name"]
-            type_info = type_info.get("ofType")
-        return None
+    def _dbapi_connection(connection: Any) -> Any:
+        """The Provisa DB-API connection under a SQLAlchemy connection: reflection reads the
+        catalog as its user, role and org."""
+        from provisa_client.dbapi import Connection
 
-    def _fetch_schema(self, base_url: str, role: str | None) -> dict:
-        """Fetch and cache the role-scoped schema via /data/graphql introspection."""
-        if not hasattr(self, "_schema_cache"):
-            self._schema_cache: dict = {}
-        key = (base_url, role)
-        if key not in self._schema_cache:
-            try:
-                headers = {"Content-Type": "application/json"}
-                # REQ-273: the role header the server validates; sent only when one was chosen.
-                if role:
-                    headers["X-Provisa-Role"] = role
-                r = httpx.post(
-                    f"{base_url}/data/graphql",
-                    json={"query": self._INTROSPECT_GQL},
-                    headers=headers,
-                    timeout=self._TIMEOUT,
-                )
-                r.raise_for_status()
-                self._schema_cache[key] = r.json().get("data", {}).get("__schema", {})
-            except (httpx.HTTPError, httpx.TimeoutException, KeyError):
-                self._schema_cache[key] = {}
-        return self._schema_cache[key]
+        raw = connection.connection.dbapi_connection
+        if not isinstance(raw, Connection):
+            raise TypeError(f"{type(raw).__name__} is not a Provisa DB-API connection")
+        return raw
 
-    def get_table_names(self, connection: Any, schema: str | None = None, **_kw: Any) -> list[str]:
-        base_url, role = self._get_base_url_and_role(connection)
-        fields = self._fetch_schema(base_url, role).get("queryType", {}).get("fields", [])
-        return [f["name"] for f in fields if f.get("name")]
+    @reflection.cache
+    def _catalog(self, connection: Any, **_kw: Any) -> dict[str, dict[str, pa.Schema]]:
+        """The catalog the connection's role is served (``GET /data/catalog``), as
+        {schema: {table: Arrow schema}}. A table's schema is its domain, as SQL addresses it
+        (``<domain>.<table>``). Cached for one inspection (SQLAlchemy's ``info_cache``)."""
+        raw = self._dbapi_connection(connection)
+        r = httpx.get(
+            f"{raw._base_url}/data/catalog", headers=raw._headers(), timeout=self._TIMEOUT
+        )
+        r.raise_for_status()
+        out: dict[str, dict[str, pa.Schema]] = {}
+        for table in r.json()["tables"]:
+            domain, name = table["path"]
+            schema = pa.ipc.read_schema(pa.py_buffer(base64.b64decode(table["schema"])))
+            out.setdefault(domain, {})[name] = schema
+        return out
+
+    def get_schema_names(self, connection: Any, **kw: Any) -> list[str]:
+        return sorted(self._catalog(connection, **kw))
+
+    def get_table_names(self, connection: Any, schema: str | None = None, **kw: Any) -> list[str]:
+        """The tables of ``schema``. Every Provisa table lives in a domain's schema and there is
+        no default one, so naming none lists none."""
+        if schema is None:
+            return []
+        return sorted(self._catalog(connection, **kw).get(schema, {}))
 
     def get_columns(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         connection: Any,
         table_name: str,
-        _schema: str | None = None,
-        **_kw: Any,
+        schema: str | None = None,
+        **kw: Any,
     ) -> list[dict]:
-        base_url, role = self._get_base_url_and_role(connection)
-        schema_data = self._fetch_schema(base_url, role)
-
-        # Resolve the GraphQL object type for this root field
-        type_name = None
-        for f in schema_data.get("queryType", {}).get("fields", []):
-            if f.get("name") == table_name:
-                type_name = self._unwrap_type_name(f.get("type"))
-                break
-        if not type_name:
-            return []
-
-        # Return fields of that type (role-filtered by the introspection response)
-        for t in schema_data.get("types", []):
-            if t.get("name") == type_name and t.get("kind") == "OBJECT":
-                return [
-                    {"name": col["name"], "type": sqltypes.String(), "nullable": True}
-                    for col in (t.get("fields") or [])
-                    if col.get("name")
-                ]
-        return []
+        arrow = self._catalog(connection, **kw).get(schema or "", {}).get(table_name)
+        if arrow is None:
+            raise NoSuchTableError(f"{schema}.{table_name}")
+        return [
+            {
+                "name": field.name,
+                "type": _sql_type(field),
+                "nullable": field.nullable,
+                "comment": (field.metadata or {}).get(b"description", b"").decode() or None,
+            }
+            for field in arrow
+        ]
 
     def has_table(
         self,
@@ -193,9 +164,6 @@ class ProvisaDialect(DefaultDialect):
 
     def _check_unicode_description(self, _connection: Any) -> bool:
         return True
-
-    def get_schema_names(self, connection: Any, **_kw: Any) -> list[str]:  # pyright: ignore[reportUnusedParameter]
-        return ["default"]
 
     def get_foreign_keys(
         self,
@@ -232,3 +200,35 @@ class ProvisaDialect(DefaultDialect):
         **kw: Any,
     ) -> list:
         return []
+
+
+def _sql_type(field: pa.Field) -> Any:
+    """The SQLAlchemy type of a catalog column's Arrow type."""
+    t = field.type
+    if pa.types.is_boolean(t):
+        return sqltypes.Boolean()
+    if pa.types.is_int8(t) or pa.types.is_int16(t):
+        return sqltypes.SmallInteger()
+    if pa.types.is_int32(t):
+        return sqltypes.Integer()
+    if pa.types.is_int64(t):
+        return sqltypes.BigInteger()
+    if pa.types.is_floating(t):
+        return sqltypes.Float()
+    if pa.types.is_decimal(t):
+        return sqltypes.Numeric(precision=t.precision, scale=t.scale)
+    if pa.types.is_string(t) or pa.types.is_large_string(t):
+        return sqltypes.String()
+    if pa.types.is_binary(t) or pa.types.is_large_binary(t):
+        return sqltypes.LargeBinary()
+    if pa.types.is_date(t):
+        return sqltypes.Date()
+    if pa.types.is_timestamp(t):
+        return sqltypes.DateTime(timezone=t.tz is not None)
+    if pa.types.is_time(t):
+        return sqltypes.Time()
+    if pa.types.is_duration(t):
+        return sqltypes.Interval()
+    # SQLAlchemy's own type for a reflected column it has no type for; said, as its dialects do.
+    util.warn(f"column {field.name!r}: no SQLAlchemy type for Arrow type {t}")
+    return sqltypes.NullType()

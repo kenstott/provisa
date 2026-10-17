@@ -62,3 +62,7 @@ SELECT region, amount FROM shop.orders
 
 `%%graphql` and `%%cypher` take the same arguments: an optional name the DataFrame is bound to,
 and `--role`.
+
+JupySQL (`%load_ext sql`) also defines `%%sql`. With both extensions loaded, `%%sql` is the one
+whose extension was loaded last. Provisa's adds `--role` and, on a desktop Python, reads over
+Arrow Flight. JupySQL reaches Provisa through the `provisa+http` SQLAlchemy dialect.

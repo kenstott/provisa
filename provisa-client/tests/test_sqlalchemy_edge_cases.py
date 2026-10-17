@@ -13,7 +13,8 @@
 Already tested in test_sqlalchemy.py / test_dbapi.py (NOT duplicated here):
   - ProvisaDialect.name / driver / dbapi()
   - create_connect_args() for http / https / defaults / query params
-  - get_table_names() success and HTTP error paths
+  - get_schema_names() / get_table_names() / get_columns() from /data/catalog, and a refused
+    catalog raising
   - has_table() true / false
   - create_engine() construction
   - cursor.fetchmany(size=N) with explicit size
@@ -25,10 +26,10 @@ Already tested in test_sqlalchemy.py / test_dbapi.py (NOT duplicated here):
   - _is_graphql detection
 
 Gap areas covered here:
-  1. get_columns() — returns column list for matching table.
-  2. get_columns() — returns empty list when table not found.
-  3. get_columns() — returns empty list on HTTP error.
-  4. get_schema_names() — always returns ["default"].
+  1. get_columns() — each column's SQLAlchemy type, nullability and comment from its Arrow field.
+  2. get_columns() — an unknown table raises NoSuchTableError.
+  3. get_columns() — a refused catalog raises.
+  4. get_columns() — an Arrow type with no SQLAlchemy counterpart is NullType, with a warning.
   5. get_foreign_keys() — always returns [].
   6. get_indexes() — always returns [].
   7. get_pk_constraint() — returns empty constraint dict.
@@ -40,17 +41,20 @@ Gap areas covered here:
   13. _apply_parameters() — no-op when parameters is None.
   14. cursor.rowcount is -1 before any execute() call (PEP 249).
   15. cursor.description is None before any execute() call (PEP 249).
-  16. _get_base_url_and_role() — falls back to defaults when attributes absent.
+  16. A SQLAlchemy connection whose DB-API connection is not Provisa's is refused.
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import httpx
+import pyarrow as pa
+import pytest
 import respx
 import sqlalchemy.types as sqltypes
 from sqlalchemy.engine import URL
+from sqlalchemy.exc import NoSuchTableError, SAWarning
 
 from provisa_client.dbapi import (
     Connection,
@@ -58,58 +62,9 @@ from provisa_client.dbapi import (
 )
 from provisa_client.sqlalchemy_dialect import ProvisaDialect
 
+from .catalog_double import SHOP_AND_SUPPORT, catalog, sa_connection
+
 BASE = "http://localhost:8001"
-
-
-# Shared introspection response (mirrors /data/graphql GraphQL introspection format)
-_INTROSPECT_RESPONSE = {
-    "data": {
-        "__schema": {
-            "queryType": {
-                "fields": [
-                    {
-                        "name": "orders",
-                        "type": {
-                            "name": None,
-                            "kind": "LIST",
-                            "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None},
-                        },
-                    },
-                ]
-            },
-            "types": [
-                {
-                    "name": "Orders",
-                    "kind": "OBJECT",
-                    "fields": [{"name": "id"}, {"name": "amount"}],
-                },
-                {"name": "String", "kind": "SCALAR", "fields": None},
-            ],
-        }
-    }
-}
-
-_SINGLE_COL_RESPONSE = {
-    "data": {
-        "__schema": {
-            "queryType": {
-                "fields": [
-                    {
-                        "name": "orders",
-                        "type": {
-                            "name": None,
-                            "kind": "LIST",
-                            "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None},
-                        },
-                    },
-                ]
-            },
-            "types": [
-                {"name": "Orders", "kind": "OBJECT", "fields": [{"name": "id"}]},
-            ],
-        }
-    }
-}
 
 
 # ---------------------------------------------------------------------------
@@ -119,61 +74,49 @@ _SINGLE_COL_RESPONSE = {
 
 class TestGetColumns:
     @respx.mock
-    def test_returns_columns_for_matching_table(self):
-        """get_columns() returns a list of column dicts for the named table."""
-        respx.post(f"{BASE}/data/graphql").mock(
-            return_value=httpx.Response(200, json=_INTROSPECT_RESPONSE)
+    def test_each_columns_type_nullability_and_comment_come_from_its_arrow_field(self):
+        respx.get(f"{BASE}/data/catalog").mock(
+            return_value=httpx.Response(200, json=SHOP_AND_SUPPORT)
         )
-        dialect = ProvisaDialect()
-        mock_conn = MagicMock()
-        with patch.object(dialect, "_get_base_url_and_role", return_value=(BASE, "admin")):
-            cols = dialect.get_columns(mock_conn, "orders")
-
-        assert len(cols) == 2
-        col_names = [c["name"] for c in cols]
-        assert "id" in col_names
-        assert "amount" in col_names
+        cols = ProvisaDialect().get_columns(sa_connection(), "orders", schema="shop")
+        by_name = {c["name"]: c for c in cols}
+        assert isinstance(by_name["id"]["type"], sqltypes.BigInteger)
+        assert by_name["id"]["nullable"] is False
+        amount = by_name["amount"]["type"]
+        assert isinstance(amount, sqltypes.Numeric)
+        assert (amount.precision, amount.scale) == (12, 2)
+        assert by_name["amount"]["comment"] == "Order total"
+        assert isinstance(by_name["region"]["type"], sqltypes.String)
+        placed = by_name["placed_at"]["type"]
+        assert isinstance(placed, sqltypes.DateTime) and placed.timezone is True
+        users = ProvisaDialect().get_columns(sa_connection(), "users", schema="shop")
+        assert [type(c["type"]) for c in users] == [sqltypes.Integer, sqltypes.Boolean]
+        tickets = ProvisaDialect().get_columns(sa_connection(), "tickets", schema="support")
+        assert isinstance(tickets[1]["type"], sqltypes.Date)
 
     @respx.mock
-    def test_column_dicts_have_required_keys(self):
-        """Each column dict returned by get_columns() must have name, type, nullable."""
-        respx.post(f"{BASE}/data/graphql").mock(
-            return_value=httpx.Response(200, json=_SINGLE_COL_RESPONSE)
+    def test_an_unknown_table_raises(self):
+        respx.get(f"{BASE}/data/catalog").mock(
+            return_value=httpx.Response(200, json=SHOP_AND_SUPPORT)
         )
-        dialect = ProvisaDialect()
-        mock_conn = MagicMock()
-        with patch.object(dialect, "_get_base_url_and_role", return_value=(BASE, "admin")):
-            cols = dialect.get_columns(mock_conn, "orders")
-
-        assert len(cols) == 1
-        col = cols[0]
-        assert col["name"] == "id"
-        assert isinstance(col["type"], sqltypes.String)
-        assert col["nullable"] is True
+        with pytest.raises(NoSuchTableError):
+            ProvisaDialect().get_columns(sa_connection(), "nonexistent_table", schema="shop")
 
     @respx.mock
-    def test_returns_empty_list_when_table_not_found(self):
-        """get_columns() returns [] when the table_name is not in the schema."""
-        respx.post(f"{BASE}/data/graphql").mock(
-            return_value=httpx.Response(200, json=_INTROSPECT_RESPONSE)
-        )
-        dialect = ProvisaDialect()
-        mock_conn = MagicMock()
-        with patch.object(dialect, "_get_base_url_and_role", return_value=(BASE, "admin")):
-            cols = dialect.get_columns(mock_conn, "nonexistent_table")
-
-        assert cols == []
+    def test_a_refused_catalog_raises(self):
+        respx.get(f"{BASE}/data/catalog").mock(return_value=httpx.Response(403, text="no"))
+        with pytest.raises(httpx.HTTPStatusError):
+            ProvisaDialect().get_columns(sa_connection(), "orders", schema="shop")
 
     @respx.mock
-    def test_returns_empty_list_on_http_error(self):
-        """get_columns() returns [] gracefully when the server returns an error."""
-        respx.post(f"{BASE}/data/graphql").mock(return_value=httpx.Response(500))
-        dialect = ProvisaDialect()
-        mock_conn = MagicMock()
-        with patch.object(dialect, "_get_base_url_and_role", return_value=(BASE, "admin")):
-            cols = dialect.get_columns(mock_conn, "orders")
-
-        assert cols == []
+    def test_an_arrow_type_with_no_sqlalchemy_counterpart_is_nulltype_with_a_warning(self):
+        listed = pa.schema([pa.field("tags", pa.list_(pa.utf8()))])
+        respx.get(f"{BASE}/data/catalog").mock(
+            return_value=httpx.Response(200, json=catalog(("shop", "tagged", listed)))
+        )
+        with pytest.warns(SAWarning, match="tags"):
+            [col] = ProvisaDialect().get_columns(sa_connection(), "tagged", schema="shop")
+        assert isinstance(col["type"], sqltypes.NullType)
 
 
 # ---------------------------------------------------------------------------
@@ -184,10 +127,12 @@ class TestGetColumns:
 class TestDialectSchemaStubs:
     """Verify the stub methods return the expected constant values."""
 
-    def test_get_schema_names_returns_default(self):
-        dialect = ProvisaDialect()
-        mock_conn = MagicMock()
-        assert dialect.get_schema_names(mock_conn) == ["default"]
+    @respx.mock
+    def test_get_schema_names_are_the_domains(self):
+        respx.get(f"{BASE}/data/catalog").mock(
+            return_value=httpx.Response(200, json=SHOP_AND_SUPPORT)
+        )
+        assert ProvisaDialect().get_schema_names(sa_connection()) == ["shop", "support"]
 
     def test_get_foreign_keys_returns_empty_list(self):
         dialect = ProvisaDialect()
@@ -382,30 +327,15 @@ class TestCursorInitialState:
 
 
 # ---------------------------------------------------------------------------
-# _get_base_url_and_role() fallback
+# The DB-API connection reflection reads the catalog as
 # ---------------------------------------------------------------------------
 
 
-class TestGetBaseUrlAndRole:
-    def test_falls_back_to_defaults_when_no_attributes(self):
-        """Returns the default URL and names no role when the raw connection lacks attrs."""
-        dialect = ProvisaDialect()
-        mock_conn = MagicMock(spec=[])  # no attributes at all
-        base_url, role = dialect._get_base_url_and_role(mock_conn)
-        assert base_url == "http://localhost:8001"
-        assert role is None
-
-    def test_reads_from_connection_direct_attributes(self):
-        """Reads _base_url and _role from connection.connection directly."""
-        dialect = ProvisaDialect()
-
-        mock_raw = MagicMock()
-        mock_raw._base_url = "http://myserver:9001"
-        mock_raw._role = "analyst"
-
-        mock_conn = MagicMock()
-        mock_conn.connection = mock_raw
-
-        base_url, role = dialect._get_base_url_and_role(mock_conn)
-        assert base_url == "http://myserver:9001"
-        assert role == "analyst"
+class TestDbapiConnection:
+    def test_a_connection_that_is_not_provisas_is_refused(self):
+        """Reflection reads the catalog as the Provisa connection's user; another driver's
+        connection has none to read it as."""
+        conn = MagicMock()
+        conn.connection.dbapi_connection = object()
+        with pytest.raises(TypeError, match="not a Provisa DB-API connection"):
+            ProvisaDialect().get_schema_names(conn)
