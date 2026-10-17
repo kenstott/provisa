@@ -31,6 +31,8 @@ def test_the_sandbox_vm_runs_the_tier_alone_against_the_coordinator():
         'export PROVISA_SANDBOX_INSTANCE="${local.sandbox_instance_path}"',
         'export PROVISA_SANDBOX_IDLE_STOP_SECONDS="${var.sandbox_idle_stop_minutes * 60}"',
         "--role control-plane",
+        # Started now, not at the next boot: the VM's first boot is already past timers.target.
+        "systemctl enable --now provisa-demo-stores.timer provisa-demo-stores.path",
     ):
         assert line in sandbox, line
     # The VM's own control plane is not set up there: no database, no object-store disk.
