@@ -314,11 +314,13 @@ All roles see sampled results (default: 100 rows) unless they have `full_results
 
 ## Audit Logging
 
-Every query that touches a domain asset is recorded in the append-only `query_audit_log`. (REQ-596, REQ-613) Each row captures `tenant_id`, `user_id`, `role_id`, a SHA-256 hash of the query text, `table_ids`, `source`, `status_code`, `duration_ms`, and `logged_at`. (REQ-596) The query text is never stored verbatim — only its hash. (REQ-596)
+Every query that touches a domain asset is recorded in `query_audit_log`. (REQ-596, REQ-613) The audit log belongs to the org, not to the platform: the platform's own registry of orgs, users and invitations holds no audit records. (REQ-1922) Each org's `query_audit_log` is a table in that org's own schema, in the store the org names for its record in each region it selects. An org that declares no regions keeps that schema in the deployment's control-plane database, alongside its model.
 
-The log is append-only at the database level: PostgreSQL rules block `DELETE` and `UPDATE`. (REQ-596, REQ-613) Two indexes — `(tenant_id, logged_at)` and `(user_id, logged_at)` — support tenant-scoped and per-user time-range compliance queries. (REQ-596, REQ-613)
+Each row captures `tenant_id` (the org), `user_id`, `role_id`, a SHA-256 hash of the query text, the query text itself encrypted (REQ-689), `table_ids` and `table_names`, `source`, `status_code`, `duration_ms`, the route and row count, what was enforced on the statement, and `logged_at`. The query text is encrypted with the org's key when the org has set one, otherwise with the deployment's key (REQ-1574). A deployment that configures no encryption provider stores it unencrypted. The text is never exposed in the queryable ops tables, and is decrypted only on authorized admin reads.
 
-When encryption is enabled, the query text hash column is stored encrypted and decrypted only on authorized admin reads. (REQ-689)
+The log is append-only at the database level: PostgreSQL rules turn `DELETE` and `UPDATE` on `query_audit_log` into no-ops. (REQ-596, REQ-613) Two indexes, `(tenant_id, logged_at)` and `(user_id, logged_at)`, support org-scoped and per-user time-range compliance queries. (REQ-596, REQ-613)
+
+Retention: rows are kept indefinitely. Provisa has no retention setting and never purges the audit log; because `DELETE` is a no-op, removing old rows means an operator dropping or archiving the table's data outside Provisa.
 
 ## Rate Limiting
 
@@ -349,14 +351,20 @@ The score is measured after a request is parsed and before it is governed or run
 
 Pluggable auth providers: (REQ-120)
 
-| Provider | Token Type | Use Case |
+| Provider | Credential | Use Case |
 | ---------- | ----------- | ---------- |
-| `none` | X-Provisa-Role header | Development |
-| `basic` | bcrypt local accounts + JWT | Self-contained deployments |
+| `none` | X-Provisa-Role header | Development only |
+| `basic` | Local accounts (bcrypt) + session JWT | Self-contained deployments |
 | `firebase` | Firebase ID token | Production |
 | `keycloak` | Keycloak JWT | Enterprise |
-| `oauth` | OIDC JWT | PingFed, Okta, Azure AD, Auth0 |
+| `oauth` / `oidc` | OIDC JWT | PingFed, Okta, Azure AD, Auth0 |
+| `ldap` | Directory username and password (LDAP or Active Directory) | Enterprise directories (REQ-1265) |
+| `saml` | SAML 2.0 signed assertion, then a session JWT | Enterprise single sign-on (REQ-1265) |
 | `simple` | bcrypt + JWT | Testing |
+
+`ldap` signs a user in by search-then-bind: Provisa binds as a service account, finds the one entry the username names, then binds as that entry with the presented password, so the directory checks it. The user's groups become their roles. The account and its groups are read again each time a session token comes back, so a user removed from the directory, or from a group, loses that access before the token expires. `ldaps://` and StartTLS are both supported.
+
+`saml` is SP-initiated Web Browser SSO. The response's XML signature is verified against the identity provider's metadata, and claims are read only from the signed element. Issuer, Audience, the ACS URL, expiry and `InResponseTo` are all checked. Unsolicited (IdP-initiated) responses, encrypted assertions, documents with a DOCTYPE, multiple assertions and SHA-1 signatures are refused. A SAML session is not checked again with the identity provider: a user removed there keeps access until the session token expires.
 
 Role mapping: identity claims → Provisa role via configurable rules. (REQ-120) The `assignments_source` field controls where role assignments come from: `claims` reads them from JWT token claims (default), `provisa` reads them from Provisa's internal assignment store. (REQ-551) A multi-tenant deployment (`multitenancy: true`) grants roles itself, per org, so it must use `assignments_source: provisa`: with `claims` it does not start, and a settings change that would produce that combination is refused. A single-tenant deployment may use either.
 
@@ -412,6 +420,10 @@ Client-certificate verification moves the first check to the TLS handshake: a ca
 | `PROVISA_MTLS_BIND_PRINCIPAL` | When true, the certificate's common name must equal the username the connection then authenticates as |
 
 Per-protocol overrides follow the same naming as the TLS settings. Nothing is inferred: a mode set without a CA refuses to start, and an unrecognized mode refuses to start rather than being read as the safest neighbour — a deployment that believes it requires client certificates and does not is worse off than one that fails to start.
+
+### TLS versions
+
+Every listener Provisa terminates (the HTTP API and UI, pgwire, Bolt, MCP, gRPC and Arrow Flight) accepts TLS 1.2 and TLS 1.3, and refuses TLS 1.0 and 1.1. Provisa sets no protocol version or cipher list of its own. The HTTP, pgwire and Bolt listeners use Python's `ssl` server defaults (minimum TLS 1.2). gRPC and Arrow Flight use gRPC's defaults (minimum TLS 1.2). The versions are not configurable.
 
 ### Login throttling
 

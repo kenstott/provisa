@@ -579,9 +579,9 @@
             registry to mirror, no JVM, no root.
           </p>
           <ul class="ticks">
-            <li>SQLite control plane + embedded DuckDB engine — no Docker, no daemon</li>
+            <li>Embedded PostgreSQL control plane + embedded DuckDB engine — no Docker, no daemon</li>
             <li>Bring your own engine: Trino, Databricks, Snowflake, Postgres, ClickHouse, Oracle — one env var</li>
-            <li>Reproducible and hash-pinned; passes the same CVE gate as every wheel</li>
+            <li>Sigstore-attested on PyPI; no release publishes until a CVE scan of its locked dependency set passes</li>
           </ul>
         </div>
         <div class="dist-terminal" role="img" aria-label="Install Provisa from PyPI and run it">
@@ -627,7 +627,7 @@
           <p class="eyebrow">Get Provisa</p>
           <h2>Download and run in 5 minutes.</h2>
           <p class="section-sub">
-            Signed desktop installers for every OS, or <code>pip install</code> the
+            Desktop installers for every OS (the macOS app signed and notarized), or <code>pip install</code> the Sigstore-attested
             embedded runtime. The whole working system runs on your desktop in about five
             minutes — no Docker, no JVM, no cluster. Launch it and pick the guided demo:
             a sample federation is already bundled, so you can run SQL, GraphQL, and
@@ -713,7 +713,7 @@
         <div class="grid grid-4">
           <div class="card">
             <h4>Desktop installers</h4>
-            <p>Signed macOS, Windows, and Linux installers (the Linux installer covers Linux and NixOS) — each with a one-click demo build that boots a sample stack.</p>
+            <p>macOS, Windows, and Linux installers (the Linux installer covers Linux and NixOS), each with a one-click demo build that boots a sample stack. The macOS app is signed and notarized; for a signed install on Linux or Windows, <code>pip install provisa</code> installs the Sigstore-attested PyPI package.</p>
           </div>
           <div class="card">
             <h4>Python wheel</h4>
@@ -805,7 +805,7 @@
               The embedded profile ships the entire runnable system, precompiled UI
               included, as a single Python wheel. Regulated orgs already trust
               Artifactory-as-PyPI, so there's no Docker registry to mirror, no JVM, and no
-              root required. Builds are reproducible and hash-pinned.
+              root required. Its dependencies are locked with hashes in the repository.
             </p>
           </details>
 

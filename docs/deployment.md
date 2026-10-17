@@ -162,7 +162,7 @@ Point the app and Trino OTLP exporters (`OTEL_EXPORTER_OTLP_ENDPOINT`) at the
 
 For developer workstations and evaluation. Fully air-gapped — no internet required after download (REQ-227).
 
-The base installer is a **native install**: DuckDB federation engine + SQLite control plane + in-memory (fakeredis) cache, with no Docker, VM, Trino, Redis, or MinIO (REQ-972, REQ-979). The federation engine is a wizard choice — DuckDB (native, default), Trino-on-Docker, or an external engine (REQ-973). Observability is always-on self-telemetry viewable in Admin; the Docker collector/Prometheus/Grafana stack is an optional external demonstration, not an on/off switch (REQ-975). The demo data pack is optional and off by default (REQ-978). Trino, the Docker observability stack, and the demo are heavy add-ons resolved local-first (installer-adjacent dir, mounted volumes, `~/Downloads`, then GitHub release), so enterprises can pre-stage tarballs for air-gapped installs (REQ-977).
+The base installer is a **native install**: DuckDB federation engine + embedded PostgreSQL control plane (pgserver) + in-memory (fakeredis) cache, with no Docker, VM, Trino, Redis, or MinIO (REQ-972, REQ-979). The federation engine is a wizard choice — DuckDB (native, default), Trino-on-Docker, or an external engine (REQ-973). Observability is always-on self-telemetry viewable in Admin; the Docker collector/Prometheus/Grafana stack is an optional external demonstration, not an on/off switch (REQ-975). The demo data pack is optional and off by default (REQ-978). Trino, the Docker observability stack, and the demo are heavy add-ons resolved local-first (installer-adjacent dir, mounted volumes, `~/Downloads`, then GitHub release), so enterprises can pre-stage tarballs for air-gapped installs (REQ-977).
 
 ### Steps
 
@@ -189,7 +189,7 @@ All data is stored in `~/.provisa/` (REQ-224). To remove everything: `provisa un
 
 For developer workstations and evaluation. Fully air-gapped — no internet required after download (REQ-227).
 
-Like macOS, the base Windows installer is a **native tier**: a standalone Python runtime + provisa wheel + DuckDB/pg_duckdb + SQLite control plane, shipping no Docker, no VM, and no container images (REQ-979). The federation engine (Trino), the observability stack, and the demo data pack are added later via separate layered installers, in order: the Container installer (`Provisa-Container-<version>.exe`, which adds WSL2 + containerd + Trino), then the Obs installer (requires the container tier), then the Demo installer (requires Core + Obs). First-launch guidance explains how to initialize the federation engine by running the Container installer (REQ-1005).
+Like macOS, the base Windows installer is a **native tier**: a standalone Python runtime + provisa wheel + DuckDB/pg_duckdb + embedded PostgreSQL control plane (pgserver), shipping no Docker, no VM, and no container images (REQ-979). The federation engine (Trino), the observability stack, and the demo data pack are added later via separate layered installers, in order: the Container installer (`Provisa-Container-<version>.exe`, which adds WSL2 + containerd + Trino), then the Obs installer (requires the container tier), then the Demo installer (requires Core + Obs). First-launch guidance explains how to initialize the federation engine by running the Container installer (REQ-1005).
 
 ### Steps
 
@@ -257,7 +257,7 @@ The Provisa image is pre-built at packaging time — Python source is never incl
 
    ```bash
    provisa status
-   curl http://localhost:8000/health
+   curl -k https://localhost:8000/health   # -k: the node generates a self-signed certificate unless PROVISA_TLS_CERT/KEY supply one
    ```
 
 ---
@@ -293,7 +293,7 @@ Run these steps on the primary node first. Secondaries must be set up after the 
 
    ```bash
    provisa status
-   curl http://localhost:8000/health
+   curl -k https://localhost:8000/health   # -k: the node generates a self-signed certificate unless PROVISA_TLS_CERT/KEY supply one
    ```
 
 ---
@@ -306,7 +306,7 @@ Repeat these steps on each additional node after the primary is running and reac
 2. Confirm the secondary can reach the primary:
 
    ```bash
-   curl http://<primary-ip>:8000/health
+   curl -k https://<primary-ip>:8000/health
    ```
 
 3. Make executable and run:
@@ -418,8 +418,8 @@ Provisions a full multi-node Provisa cluster on AWS — VPC, security groups, EC
 8. Terraform provisions all infrastructure (~5–10 minutes). After apply, the script prints:
 
    ```text
-   api_endpoint      = "http://<alb-dns>:8000"
-   flight_endpoint   = "<nlb-dns>:8815"
+   api_endpoint      = "https://<alb-dns>:8000"
+   protocol_endpoints = { flight = "<alb-dns>:8815", ... }
    primary_ip        = "10.0.x.x"
    secondary_ips     = ["10.0.x.x", ...]
    ```
