@@ -117,6 +117,8 @@ Encryption is never optional. When no process-wide encryption key is configured,
 | `description` | Text | What the secret is for — never derived from the value |
 | `updated_by` | Text | Who last set it |
 
+An organization that has created its own encryption key has its secrets wrapped under that key; otherwise they are wrapped under the deployment's. See [Encryption at Rest](security.md#encryption-at-rest-and-the-organizations-own-keys).
+
 The `value` column is not selected in any listing query. [tool-verified: `provisa/core/secrets_store.py:214-235`]
 
 ---
@@ -170,6 +172,12 @@ vendor key field → ${secret:OPENAI_KEY}
 ```
 
 The reference is stored encrypted in `org_secrets`. At query time Provisa resolves `${secret:OPENAI_KEY}` against the org vault and hands the literal key to the vendor SDK. Rotating the vault entry takes effect immediately — no configuration change on the org settings side. [tool-verified: `provisa/core/org_secrets.py:64-79`]
+
+---
+
+## The deployment's own store credentials
+
+The passwords of the stores Provisa runs (PostgreSQL, Redis, MinIO, Grafana's admin account and the Trino cluster's shared secret) are not secrets in either vault. They are generated per deployment and kept by the deployment: in `~/.provisa/store-credentials.env` (mode 600), in the Terraform state, or in the Kubernetes Secret the Helm chart's `credentials.existingSecret` names. See [Deployment Hardening](security.md#deployment-hardening).
 
 ---
 
