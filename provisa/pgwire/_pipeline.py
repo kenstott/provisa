@@ -754,6 +754,11 @@ async def _await_source_servers(decision: Any, sources: Any, state: Any) -> None
     for source_id, source_type in served:
         remaining = max(0.0, deadline - asyncio.get_running_loop().time())
         await asyncio.to_thread(await_serving, source_id, source_type, remaining)
+    # What the attach above left unattached because a server was still starting is attached now
+    # that each serves, before the statement names it.
+    attach_started = getattr(backend, "attach_started", None)
+    if attach_started is not None:
+        await attach_started(state, {source_id for source_id, _ in served})
 
 
 async def _optimize_and_route_cached(

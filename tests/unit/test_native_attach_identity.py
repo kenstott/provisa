@@ -44,6 +44,7 @@ class _Backend(NativeEngineBackend):
         self._detached = set()
         self._refused = set()
         self._failed = {}
+        self._starting = set()
 
 
 def _src(source_id: str):

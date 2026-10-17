@@ -1297,6 +1297,28 @@ async def test_the_pipeline_waits_only_for_a_served_source_of_a_statement_the_en
     assert asked == [("lake", "files"), ("test-askamerica", "govdata")]
 
 
+async def test_the_engine_attaches_again_once_the_statement_has_waited_for_its_servers(
+    monkeypatch,
+):
+    # A server still starting when the engine walked left its tables unattached; once the
+    # statement has waited for it, the engine attaches them before the statement runs.
+    from provisa.pgwire import _pipeline
+    from provisa.transpiler.router import Route
+
+    events: list[object] = []
+    monkeypatch.setattr(pr, "await_serving", lambda sid, _st, _t: events.append(("served", sid)))
+    state = _pipeline_state(events)
+
+    async def _attach_started(_state, source_ids):
+        events.append(("attach_started", sorted(source_ids)))
+
+    state.federation_engine.engine.backend.attach_started = _attach_started
+    await _pipeline._await_source_servers(
+        SimpleNamespace(route=Route.ENGINE), {"lake", "pg"}, state
+    )
+    assert events == ["walked", ("served", "lake"), ("attach_started", ["lake"])]
+
+
 @pytest.mark.parametrize("stype", ["govdata", "files"])
 async def test_a_statement_on_a_source_still_starting_past_the_wait_is_refused_naming_it(
     monkeypatch, stype
