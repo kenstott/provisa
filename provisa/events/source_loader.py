@@ -159,6 +159,17 @@ async def engine_table_rows(engine: Any, source: Any, table: Any) -> list[dict]:
     return [dict(zip(result.column_names, row)) for row in result.rows]
 
 
+def direct_relation(table: Any, dialect: str | None) -> str:
+    """``table`` as its source's own driver names it. A SQLite file has one schema: the schema a
+    table is registered under is the model's grouping, so it is named by the table alone, quoted
+    (a registered name may be a reserved word), as :func:`make_sqlite_loader` reads it."""
+    import sqlglot.expressions as exp
+
+    if dialect == "sqlite":
+        return exp.to_identifier(table.table_name, quoted=True).sql(dialect=dialect)
+    return exp.table_(table.table_name, db=table.schema_name).sql(dialect=dialect)
+
+
 def make_floored_direct_loader(state: Any, engine: Any) -> AdapterLoader:  # REQ-030, REQ-1141
     """The row fetch for a direct-driver source type: through the engine when the engine reads
     the source in place and the operator does not floor it, else through the source's own direct
@@ -169,7 +180,6 @@ def make_floored_direct_loader(state: Any, engine: Any) -> AdapterLoader:  # REQ
     replica onto itself. A source the engine cannot attach (Trino as a source on DuckDB) has no
     relation on the engine at all. The land is the one sanctioned pull from the source, so it reads
     the source directly, on the refresh policy the operator set; queries never do."""
-    import sqlglot.expressions as exp
 
     from provisa.core.operator_floor import floor_setting
     from provisa.federation.strategy import engine_attaches
@@ -178,7 +188,7 @@ def make_floored_direct_loader(state: Any, engine: Any) -> AdapterLoader:  # REQ
         if floor_setting(source) is None and engine_attaches(engine, _source_type(source)):
             return await engine_table_rows(engine, source, table)
         dialect = state.source_dialects[source.id] or None
-        relation = exp.table_(table.table_name, db=table.schema_name).sql(dialect=dialect)
+        relation = direct_relation(table, dialect)
         # REQ-1965: a natively array/struct/map column is landed as JSON the source produces.
         projection = _projection(table, lambda: dialect)
         sql = f"SELECT {projection} FROM {relation}"
@@ -298,7 +308,6 @@ class SourceRowLoader:
         # REQ-2006: a sandbox org's source is read at the address its check resolved, by every
         # reader below (an adapter's own client, a scratch attach, the engine).
         source = pinned_source(source)
-        import sqlglot.expressions as exp
 
         from provisa.compiler.naming import source_to_catalog
         from provisa.core.landing_filter import where as landing_where
@@ -326,7 +335,7 @@ class SourceRowLoader:
                 # REQ-1163: PostgreSQL's commit time of each row is read by the source's own driver,
                 # whatever the engine: an engine's attach of the table cannot see its xmin.
                 dialect = state.source_dialects[source.id] or None
-                relation = exp.table_(table.table_name, db=table.schema_name).sql(dialect=dialect)
+                relation = direct_relation(table, dialect)
                 projection = f"{_projection(table, lambda: dialect)}, {source_expression(source)}"
                 sql = f"SELECT {projection} FROM {relation}{landing_where(table, lambda: dialect)}"
                 return DirectTableSource(
@@ -341,7 +350,7 @@ class SourceRowLoader:
             and pools.supports_stream(source.id)
         ):
             dialect = state.source_dialects[source.id] or None
-            relation = exp.table_(table.table_name, db=table.schema_name).sql(dialect=dialect)
+            relation = direct_relation(table, dialect)
             # REQ-1965: a natively array/struct/map column is copied as JSON the source produces.
             projection = _projection(table, lambda: dialect)
             if carries:

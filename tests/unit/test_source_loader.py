@@ -21,6 +21,15 @@ from provisa.events.source_loader import (
 from provisa.executor.result import QueryResult
 
 
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A deployment of one organization: its sources are read where they point (REQ-2006). The
+    API layer says it at import; these tests import no API layer."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 class _Engine:
     def __init__(self, result, *, catalog_qualified: bool = True):
         self._result = result
@@ -309,3 +318,42 @@ async def test_a_connection_table_is_read_up_to_its_own_bound_when_it_sets_one(m
     await load(_src("gql", "graphql_remote"), own)
     await load(_src("gql", "graphql_remote"), _tbl("default", "issues"))
     assert bounds == [20, 500]
+
+
+# --- a source read through its own driver (REQ-030, REQ-1141) --------------------------------
+
+
+def test_a_sqlite_files_table_is_named_alone_and_quoted():
+    """A SQLite file has one schema; the schema a table is registered under is the model's, so
+    the read names the table alone -- quoted, since a registered name may be a reserved word."""
+    from provisa.events.source_loader import direct_relation
+
+    table = SimpleNamespace(schema_name="default", table_name="events")
+    assert direct_relation(table, "sqlite") == '"events"'
+
+
+def test_another_sources_table_keeps_its_schema():
+    from provisa.events.source_loader import direct_relation
+
+    table = SimpleNamespace(schema_name="public", table_name="orders")
+    assert direct_relation(table, "postgres") == "public.orders"
+
+
+async def test_a_floored_sqlite_source_is_read_by_its_table_alone(monkeypatch):
+    from provisa.events.source_loader import make_floored_direct_loader
+
+    monkeypatch.setattr("provisa.core.operator_floor.floor_setting", lambda source: "replicate")
+    ran: list[str] = []
+
+    async def execute_native(pools, source_id, sql, params):
+        ran.append(sql)
+        return SimpleNamespace(column_names=["id"], rows=[(1,)])
+
+    state = SimpleNamespace(source_dialects={"tx": "sqlite"}, source_pools=object())
+    engine = SimpleNamespace(execute_native=execute_native)
+    source = SimpleNamespace(id="tx", type="sqlite")
+    table = SimpleNamespace(
+        schema_name="default", table_name="events", columns=[SimpleNamespace(name="id")]
+    )
+    assert await make_floored_direct_loader(state, engine)(source, table) == [{"id": 1}]
+    assert ran == ['SELECT * FROM "events"']
