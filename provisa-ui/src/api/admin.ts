@@ -952,6 +952,23 @@ export interface FederationEngineState {
   restart_required_note: string;
 }
 
+/** What the Sources type list is gated and annotated by (REQ-947): the engine serving the org,
+ *  and what each engine reads live or from a replica. Readable by whoever registers sources --
+ *  none of the engine settings, which are the platform's. */
+export interface SourceReach {
+  engine: string;
+  engines: Pick<
+    EngineRegistryEntry,
+    "key" | "label" | "live_source_types" | "reachable_source_types"
+  >[];
+}
+
+export async function fetchSourceReach(): Promise<SourceReach> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/source-kinds`);
+  if (!resp.ok) throw httpError("Source reach fetch", resp.status);
+  return resp.json();
+}
+
 export async function fetchFederationEngine(): Promise<FederationEngineState> {
   const resp = await fetch(`${API_BASE_RAW}/admin/federation-engine`);
   if (!resp.ok) throw httpError("Federation engine fetch", resp.status);

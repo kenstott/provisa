@@ -39,8 +39,8 @@ import { FilterInput } from "../components/admin/FilterInput";
 import { HelpBubble } from "../components/HelpBubble";
 import { TipSurface } from "../components/Tip";
 import { RefreshCw } from "lucide-react";
-import { fetchSettings, fetchFederationEngine } from "../api/admin";
-import type { PlatformSettings, FederationEngineState } from "../api/admin";
+import { fetchSettings, fetchSourceReach } from "../api/admin";
+import type { PlatformSettings, SourceReach } from "../api/admin";
 import {
   useSources,
   useCreateSource,
@@ -274,7 +274,7 @@ export function SourcesPage() {
   const [authType, setAuthType] = useState("none");
   const [authFields, setAuthFields] = useState<Record<string, string>>({});
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
-  const [engineState, setEngineState] = useState<FederationEngineState | null>(null);
+  const [sourceReach, setSourceReach] = useState<SourceReach | null>(null);
   const domainsEnabled = settings?.naming.use_domains !== false;
   const [discoverSourceId, setDiscoverSourceId] = useState<string | null>(null);
   const [discoverSourceType, setDiscoverSourceType] = useState<string | null>(null);
@@ -397,10 +397,12 @@ export function SourcesPage() {
       .finally(() => setSettingsLoading(false));
   }, []);
 
-  // Reach faces of the configured federation engine — gates + annotates the type dropdown (REQ-947).
+  // Reach faces of the engine serving this org — gates + annotates the type dropdown (REQ-947).
+  // Read through the source kinds, which whoever registers sources may read; the engine settings
+  // are the platform's.
   useEffect(() => {
-    fetchFederationEngine()
-      .then(setEngineState)
+    fetchSourceReach()
+      .then(setSourceReach)
       .catch((e) => setError(String(e)));
   }, []);
 
@@ -423,7 +425,7 @@ export function SourcesPage() {
       items: SOURCE_TYPES.filter((s) => s.category === cat)
         .filter((s) => s.value !== "soda" || !hostedPlane)
         .map((s) => {
-          const info = reachInfoFor(s.value, engineState);
+          const info = reachInfoFor(s.value, sourceReach);
           return {
             value: s.value,
             label: `${pickerTypeLabel(s)}${reachSuffix(info)}`,

@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { FederationEngineState } from "../../api/admin";
+import type { SourceReach } from "../../api/admin";
 import { BRAND_CARRIER, SOURCE_TYPES, TYPE_ALIAS } from "./constants";
 
 export function getCategory(type: string) {
@@ -59,9 +59,9 @@ export interface ReachInfo {
 // reads), or unreachable here but LIVE on another engine (REQ-947). Educates on the engine choice.
 export function reachInfoFor(
   uiValue: string,
-  engineState: FederationEngineState | null,
+  reach: SourceReach | null,
 ): ReachInfo {
-  if (!engineState) return { tag: "live", selectable: true, liveEngines: [] };
+  if (!reach) return { tag: "live", selectable: true, liveEngines: [] };
   const t = backendType(uiValue);
   // kaggle (REQ-1780) is a client-side staging/download step, not a federated source type — it
   // has no connector and never appears in any engine's live/reachable_source_types, so this
@@ -69,8 +69,8 @@ export function reachInfoFor(
   // option outright, on every engine including DuckDB (confirmed live). It creates ordinary
   // csv/parquet Sources once staged, which get their own correct reach classification then.
   if (t === "kaggle") return { tag: "live", selectable: true, liveEngines: [] };
-  const current = engineState.engines.find((e) => e.key === engineState.current);
-  const liveEngines = engineState.engines
+  const current = reach.engines.find((e) => e.key === reach.engine);
+  const liveEngines = reach.engines
     .filter((e) => (e.live_source_types ?? []).includes(t))
     .map((e) => e.label);
   if (current) {

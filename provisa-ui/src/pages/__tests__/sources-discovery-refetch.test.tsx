@@ -42,7 +42,7 @@ const fetchSettings = vi
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
   fetchSettings: () => fetchSettings(),
-  fetchFederationEngine: vi.fn().mockResolvedValue(null),
+  fetchSourceReach: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("../../context/AuthContext", async (importOriginal) => ({

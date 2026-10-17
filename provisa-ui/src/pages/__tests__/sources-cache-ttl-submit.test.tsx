@@ -33,7 +33,7 @@ vi.mock("../../api/admin", async (importOriginal) => ({
     cache: { default_ttl: 300 },
     naming: { domain_prefix: false, convention: "none" },
   }),
-  fetchFederationEngine: vi.fn().mockResolvedValue(null),
+  fetchSourceReach: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("../../context/AuthContext", async (importOriginal) => ({

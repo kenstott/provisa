@@ -21,7 +21,7 @@ import {
   sourceTypeLabel,
   uiType,
 } from "../pages/sources/sourceHelpers";
-import type { FederationEngineState } from "../api/admin";
+import type { SourceReach } from "../api/admin";
 
 describe("branded source types", () => {
   it("offers GitHub and GitLab in the source picker", () => {
@@ -65,8 +65,8 @@ describe("branded source types", () => {
   });
 
   it("is selectable wherever the remote GraphQL source is", () => {
-    const engineState = {
-      current: "duckdb",
+    const engineState: SourceReach = {
+      engine: "duckdb",
       engines: [
         {
           key: "duckdb",
@@ -75,7 +75,7 @@ describe("branded source types", () => {
           reachable_source_types: ["graphql_remote"],
         },
       ],
-    } as unknown as FederationEngineState;
+    };
     expect(reachInfoFor("github", engineState)).toEqual(reachInfoFor("graphql", engineState));
     expect(reachInfoFor("github", engineState).selectable).toBe(true);
   });
