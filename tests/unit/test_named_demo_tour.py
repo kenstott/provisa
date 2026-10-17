@@ -250,8 +250,12 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
                 assert (
                     part in roles or part in claim_types or (sep and value and claim in claim_types)
                 ), step
-            # Picked in the SQL explorer's run-as picker, which is on that page alone.
-            assert page == "/sql", f"{step['key']}: a role is picked on /sql, not {page}"
+            # Picked in the SQL explorer's run-as picker on /sql; anywhere else, in the header's role
+            # picker, which every other page's requests run as. A set of roles is the explorer's.
+            if "," in step["role"]:
+                assert page == "/sql", (
+                    f"{step['key']}: a set of roles is picked on /sql, not {page}"
+                )
         if "group_by" in step:
             # The Graph page's frame on screen grouped: the one the Cypher step before it ran.
             assert page == "/graph", f"{step['key']}: a frame is grouped on /graph, not {page}"

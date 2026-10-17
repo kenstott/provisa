@@ -67,6 +67,8 @@ export function RoleSelector() {
           aria-current={allSelected ? "true" : undefined}
           leftSection={allSelected ? <Check size={14} aria-hidden /> : undefined}
           onClick={() => handleSelect("all")}
+          // A demo's tour picks a role here by its id (demoTour.ts); the "All" set is "all".
+          data-role-option="all"
         >
           {t("roleSelector.all")}
         </Menu.Item>
@@ -79,6 +81,7 @@ export function RoleSelector() {
               aria-current={selected ? "true" : undefined}
               leftSection={selected ? <Check size={14} aria-hidden /> : undefined}
               onClick={() => handleSelect(r)}
+              data-role-option={r.id}
             >
               {r.id}
             </Menu.Item>

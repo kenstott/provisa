@@ -108,6 +108,8 @@ const RESULT_WAIT_MS = 60000;
 // The SQL explorer's own run-as picker (REQ-1013), not the app-wide role: it is what the explorer's
 // statements run as.
 const RUN_AS = '[data-testid="sql-role"]';
+// The header's role picker: what every other page's requests run as (the GraphQL page among them).
+const APP_ROLE = '[data-testid="role-selector-trigger"]';
 // The header's environment switcher: what every request after it is served from.
 const ENV_SWITCHER = '[data-testid="env-switcher-trigger"]';
 const SQL_RESULT_ROW = '.sql-results-table tbody tr:not([data-testid="results-grid-empty"])';
@@ -117,7 +119,11 @@ export function demoTourSteps(
   examples: readonly ExampleQuery[],
 ): TourStep[] {
   const steps: TourStep[] = [];
-  for (const def of defs) steps.push(demoTourStep(def, examples, steps[steps.length - 1]));
+  let onPage: string | undefined;
+  for (const def of defs) {
+    onPage = def.route ?? onPage;
+    steps.push(demoTourStep(def, examples, steps[steps.length - 1], onPage));
+  }
   return steps;
 }
 
@@ -125,6 +131,7 @@ function demoTourStep(
   def: DemoTourStepDef,
   examples: readonly ExampleQuery[],
   before: TourStep | undefined,
+  onPage: string | undefined,
 ): TourStep {
   const page = {
     key: def.key,
@@ -239,6 +246,14 @@ function demoTourStep(
       ...page,
       openQuery: { stateKey: "role", text: def.role },
       element: RUN_AS,
+    };
+  }
+  if (def.role !== undefined && onPage !== "/sql") {
+    // Anywhere but the SQL explorer, the role every request of the app runs as: the header's.
+    return {
+      ...page,
+      element: APP_ROLE,
+      chooseOnNext: { open: APP_ROLE, option: `[data-role-option="${def.role}"]` },
     };
   }
   if (def.role !== undefined) {

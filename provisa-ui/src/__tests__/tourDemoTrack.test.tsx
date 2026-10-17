@@ -139,6 +139,24 @@ describe("a demo's steps, as the runner walks them", () => {
     ).toThrow(/shot/);
   });
 
+  it("picks a role in the header's picker on any page but the SQL explorer", () => {
+    const [onQuery, sql, onSql] = demoTourSteps(
+      [
+        { key: "c", route: "/query", capability: "query_development", role: "customer" },
+        { key: "q", route: "/sql", capability: "query_development", sql: "SELECT 1" },
+        { key: "a", role: "analyst" },
+      ],
+      EXAMPLES,
+    );
+    expect(onQuery.element).toBe('[data-testid="role-selector-trigger"]');
+    expect(onQuery.chooseOnNext).toEqual({
+      open: '[data-testid="role-selector-trigger"]',
+      option: '[data-role-option="customer"]',
+    });
+    expect(sql.element).toBe(".sql-results-table");
+    expect(onSql.chooseOnNext?.option).toBe('[data-sql-role-option="analyst"]');
+  });
+
   it("hands a set of roles, a pseudo-role among them, to the SQL explorer", () => {
     // REQ-2057: reviewer,region__eu is no single option of the picker; the explorer offers it.
     const [set] = demoTourSteps([{ key: "s", role: "reviewer,region__eu" }], EXAMPLES);
