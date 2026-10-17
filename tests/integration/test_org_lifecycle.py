@@ -58,10 +58,12 @@ from provisa.core.schema_org import (
     sources,
     table_columns,
     user_directory,
+    user_idp_attributes,
 )
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import roles, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
+from tests.served_config import served_config
 
 pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("root")]
 
@@ -79,9 +81,17 @@ _ORG_SCHEMAS = {
     "sandbox": "test_orglife_sandbox",
 }
 
-# user_directory: every authenticated request mirrors the caller's identity into the bound org's
-# tenant plane (REQ-1439) before it is handled (AuthMiddleware._upsert_profile).
-_TENANT_TABLES = [roles, user_role_assignments, admin_audit_log, query_audit_log, user_directory]
+# user_directory and user_idp_attributes: every authenticated request mirrors the caller's identity,
+# and what its identity provider said, into the bound org's tenant plane (REQ-1439, REQ-1383) before
+# it is handled (AuthMiddleware._upsert_profile).
+_TENANT_TABLES = [
+    roles,
+    user_role_assignments,
+    admin_audit_log,
+    query_audit_log,
+    user_directory,
+    user_idp_attributes,
+]
 
 # REQ-1301: the root org additionally carries the dataset catalog, because creating or deleting an
 # org rebuilds root's org-registry view and re-registers it as a meta-domain table. data_products
@@ -204,6 +214,8 @@ def planes(monkeypatch):
     from provisa.api.org_runtime import OrgRegistry, OrgRuntime
 
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
+    # A served app always holds its config; every request reads the claim types it declares.
+    monkeypatch.setattr(app_state, "config", served_config(), raising=False)
     # REQ-2008: /auth/me reports the control plane's id, which the platform start creates; this
     # app is assembled from its routers and skips that start.
     monkeypatch.setattr("provisa.core.control_plane_id.current", lambda: "cp-test")

@@ -199,7 +199,10 @@ def planes(monkeypatch, smtp):
         base_url="https://provisa.example.test",
     )
     monkeypatch.setattr(
-        app_state, "config", SimpleNamespace(mail=mail, multitenancy=True), raising=False
+        app_state,
+        "config",
+        SimpleNamespace(mail=mail, multitenancy=True, claim_roles=[]),
+        raising=False,
     )
 
     yield SimpleNamespace(admin_db=admin_db, org_dbs=org_dbs, sync=sync_engine, mail=mail)

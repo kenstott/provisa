@@ -1092,7 +1092,10 @@ def any_request_arrives(shared_data: dict) -> None:
             "email": identity.email,
         }
 
-    middleware = AuthMiddleware(app=app, provider=None)
+    # The deployment's own org, as the wiring passes it (auth/wiring.py _resolve_default_org_id).
+    from provisa.api.app import state as app_state
+
+    middleware = AuthMiddleware(app=app, provider=None, default_org_id=app_state.org_id)
     client = TestClient(middleware)
 
     response = client.get("/probe")

@@ -46,7 +46,13 @@ from provisa.compiler.compiled_query_cache import CompiledQueryCache
 import pytest_asyncio
 from tests.integration.conftest import no_replica_routes
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+# The middleware here is built without the wiring, so it serves its own default org, root; the app
+# serves root as its own org to match (REQ-1266) -- every request reads that org's runtime.
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.asyncio(loop_scope="session"),
+    pytest.mark.deployment_org("root"),
+]
 
 _LIVE_SERVER_URL = os.environ.get("PROVISA_URL", "http://localhost:8000")
 

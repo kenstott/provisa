@@ -86,7 +86,9 @@ def _api() -> FastAPI:
     @app.middleware("http")
     async def _sign_in(request: Request, call_next):  # pyright: ignore[reportUnusedFunction]
         user = request.headers["x-user"]
-        request.state.identity = types.SimpleNamespace(user_id=user, roles=[_USERS[user]])
+        request.state.identity = types.SimpleNamespace(
+            user_id=user, roles=[_USERS[user]], acting_roles=[_USERS[user]]
+        )
         return await call_next(request)
 
     @app.exception_handler(ApiError)
@@ -185,7 +187,9 @@ async def plane(monkeypatch):
 
 
 def _info(user: str) -> Any:
-    identity = types.SimpleNamespace(user_id=user, roles=[_USERS[user]])
+    identity = types.SimpleNamespace(
+        user_id=user, roles=[_USERS[user]], acting_roles=[_USERS[user]]
+    )
     request = types.SimpleNamespace(
         state=types.SimpleNamespace(identity=identity, active_org_id=_ORG_ID)
     )

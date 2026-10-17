@@ -42,7 +42,9 @@ from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import roles, user_directory, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
-pytestmark = [pytest.mark.integration]
+# The middleware here is built without the wiring, so it serves its own default org, root; the app
+# serves root as its own org to match (REQ-1266) -- every request reads that org's runtime.
+pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("root")]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")

@@ -150,13 +150,10 @@ def compiled_proto_paths():
 def _serving(state):
     """``state`` as an organisation whose schema build wrote MINIMAL_PROTO as its service: the
     server compiles what it serves from the bound organisation's proto (grpc/descriptor.py). Its
-    roles are served through ``surfaces``, so a role with no proto of its own is offered every
-    method, as in the runtime."""
-    from tests.helpers import serve_surfaces
-
+    roles are served through ``surfaces``, which ``with_surfaces`` reads live from the part maps the
+    test set, so a role with no proto of its own is offered every method, as in the runtime."""
     state.wire_proto = MINIMAL_PROTO
     state.grpc_descriptor = None
-    serve_surfaces(state)
     return state
 
 

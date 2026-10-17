@@ -48,6 +48,7 @@ from provisa.auth.superuser import check_superuser, resolve_superuser_config
 from provisa.auth.providers.simple import SimpleAuthProvider
 from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 from tests.platform_plane import simple_user_ids
+from tests.served_config import served_config
 
 # The app serves "root" as its own org -- the middleware's deployment org here -- re-pointed and
 # bound by the harness (REQ-1266).
@@ -62,6 +63,15 @@ _JWT_SECRET = "test-secret-for-integration-tests-padded"
 ROLE_ANALYST = "analyst"
 ROLE_ADMIN = "admin"
 ROLE_VIEWER = "viewer"
+
+
+@pytest.fixture(autouse=True)
+def _served_config(monkeypatch):
+    """The middleware reads the claim types the served app's config declares on every request;
+    a booted app always holds that config, these bare apps get one that declares none."""
+    from provisa.api.app import state as app_state
+
+    monkeypatch.setattr(app_state, "config", served_config(), raising=False)
 
 
 # ---------------------------------------------------------------------------

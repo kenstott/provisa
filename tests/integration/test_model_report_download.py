@@ -170,7 +170,7 @@ def _config() -> dict:
 
 def _request(role_id: str) -> Request:
     """A caller holding exactly one role, carrying the two attributes the endpoint reads."""
-    identity = SimpleNamespace(user_id="u1", roles=[role_id])
+    identity = SimpleNamespace(user_id="u1", roles=[role_id], acting_roles=[role_id])
     return cast(
         Request,
         SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=ORG_ID)),

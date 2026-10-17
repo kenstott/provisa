@@ -178,7 +178,10 @@ def planes(monkeypatch):
     # register (/auth/register) reads config.auth.provider; unused here (accounts are seeded) but the
     # app singleton must expose it consistently.
     monkeypatch.setattr(
-        app_state, "config", types.SimpleNamespace(auth={"provider": "basic"}), raising=False
+        app_state,
+        "config",
+        types.SimpleNamespace(auth={"provider": "basic"}, claim_roles=[]),
+        raising=False,
     )
     # REQ-1290: /auth/claim-bootstrap resolves the bootstrap flag from state.auth_config — the same
     # dict wiring.py hands the middleware — so the endpoint and the middleware can never disagree.

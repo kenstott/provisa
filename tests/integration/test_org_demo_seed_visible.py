@@ -91,7 +91,9 @@ async def demo_org():
 
 def _org_admin_context():
     """A request context for an org_admin of _ORG_ID — deliberately no admin/superadmin bypass."""
-    identity = SimpleNamespace(user_id="creator", roles=["org_admin:*"])
+    identity = SimpleNamespace(
+        user_id="creator", roles=["org_admin:*"], acting_roles=["org_admin:*"]
+    )
     request = SimpleNamespace(state=SimpleNamespace(active_org_id=_ORG_ID, identity=identity))
     return {"request": request}
 

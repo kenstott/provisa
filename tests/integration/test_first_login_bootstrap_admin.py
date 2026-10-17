@@ -29,6 +29,8 @@ from __future__ import annotations
 import os
 
 import pytest
+
+from tests.served_config import served_config
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
@@ -101,6 +103,10 @@ def planes(monkeypatch):
     from provisa.api.app import state as app_state
 
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
+
+    # A served app always holds its config; every request reads the claim types it declares.
+
+    monkeypatch.setattr(app_state, "config", served_config(), raising=False)
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
     monkeypatch.setattr(app_state, "record_db", app_state.tenant_db, raising=False)
     monkeypatch.setattr(app_state, "model_db", app_state.tenant_db, raising=False)

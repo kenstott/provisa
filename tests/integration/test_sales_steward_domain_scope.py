@@ -128,7 +128,7 @@ async def plane(monkeypatch):
 
 
 def _info(role_id: str) -> Any:
-    identity = types.SimpleNamespace(user_id="u1", roles=[role_id])
+    identity = types.SimpleNamespace(user_id="u1", roles=[role_id], acting_roles=[role_id])
     request = types.SimpleNamespace(
         state=types.SimpleNamespace(identity=identity, active_org_id=_ORG_ID)
     )

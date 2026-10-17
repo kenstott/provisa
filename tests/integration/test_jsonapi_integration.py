@@ -24,7 +24,9 @@ from unittest.mock import MagicMock
 from tests.integration.conftest import no_replica_routes
 from tests.helpers import serve_surfaces
 
-pytestmark = [pytest.mark.integration]
+# The middleware here is built without the wiring, so it serves its own default org, root; the app
+# serves root as its own org to match (REQ-1266) -- every request reads that org's runtime.
+pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("root")]
 
 
 # ---------------------------------------------------------------------------

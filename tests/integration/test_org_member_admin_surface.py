@@ -132,7 +132,7 @@ async def org_plane(monkeypatch):
 
 def _context(*, active_org_id: str | None, roles: list[str], user_id: str = "member-2"):
     """A GraphQL context whose identity holds exactly `roles` — no platform bypass unless named."""
-    identity = SimpleNamespace(user_id=user_id, roles=roles)
+    identity = SimpleNamespace(user_id=user_id, roles=roles, acting_roles=roles)
     request = SimpleNamespace(state=SimpleNamespace(active_org_id=active_org_id, identity=identity))
     return {"request": request}
 

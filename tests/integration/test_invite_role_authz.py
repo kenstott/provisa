@@ -28,6 +28,8 @@ from __future__ import annotations
 import os
 
 import pytest
+
+from tests.served_config import served_config
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, delete, insert, select, text
@@ -148,6 +150,8 @@ def planes(monkeypatch):
     )
     monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
+    # A served app always holds its config; every request reads the claim types it declares.
+    monkeypatch.setattr(app_state, "config", served_config(), raising=False)
     # resolve_invite_role compares the invitation's org against the deployment's root org, which
     # the harness re-points (pytestmark deployment_org).
 

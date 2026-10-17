@@ -154,7 +154,7 @@ def _request(role_id: str, monkeypatch, *, user_id: str = "u1") -> Request:
         },
         raising=False,
     )
-    identity = SimpleNamespace(user_id=user_id, roles=[role_id])
+    identity = SimpleNamespace(user_id=user_id, roles=[role_id], acting_roles=[role_id])
     # The helpers read one attribute off the request — ``state.identity`` — so a stub carrying it
     # is the whole input; building a real ASGI scope would add nothing the gate looks at.
     return cast(Request, SimpleNamespace(state=SimpleNamespace(identity=identity)))
@@ -405,7 +405,11 @@ async def test_a_declaration_reads_the_domains_of_the_curation_right_alone(loade
         },
         raising=False,
     )
-    identity = SimpleNamespace(user_id="u4", roles=["rw_sales", "read_store"])
+    identity = SimpleNamespace(
+        user_id="u4",
+        roles=["rw_sales", "read_store"],
+        acting_roles=["rw_sales", "read_store"],
+    )
     req = cast(Request, SimpleNamespace(state=SimpleNamespace(identity=identity)))
 
     assert glossary_router._declared_domains(req, ["sales"], current=set()) == {"sales"}
