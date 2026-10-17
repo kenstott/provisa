@@ -5,7 +5,6 @@
     "colSqlAlias": "SQL-псевдоним",
     "colDescription": "Описание",
     "colVisibleTo": "Видно для (чтение)",
-    "colWritableBy": "Запись для (R/W)",
     "colMasking": "Маскирование",
     "colScope": "Область",
     "pathBadge": "путь",

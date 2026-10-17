@@ -428,7 +428,9 @@
       "relationship_id_taken": "संबंध '{{relationship}}' पहले से मौजूद है",
       "relationship_graphql_alias_taken": "GraphQL उपनाम '{{alias}}' पहले से '{{table}}' से संबंध '{{relationship}}' का उपनाम है",
       "trigger_refused": "{{reason}}",
-      "scheduled_task_updated": "शेड्यूल किया गया कार्य '{{task}}' अपडेट किया गया"
+      "scheduled_task_updated": "शेड्यूल किया गया कार्य '{{task}}' अपडेट किया गया",
+      "write_grant_invalid": "यह अनुदान तालिका से मेल नहीं खाता: {{reason}}",
+      "write_grants_saved": "तालिका {{id}} के लेखन अनुदान सहेजे गए"
     },
     "secrets": {
       "name_refused": "{{name}} {{service}} में इस संगठन के सीक्रेट्स के भीतर का नाम नहीं है: नाम संगठन के सापेक्ष होता है और उससे बाहर नहीं जा सकता",

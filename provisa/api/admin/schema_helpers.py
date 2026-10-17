@@ -36,12 +36,13 @@ if TYPE_CHECKING:
 from provisa.api_source.openapi_endpoint import normalize_op_id
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.api.admin.types import (
-    ColumnPresetType,
     ImplicitMeasureType,
     RegisteredTableType,
     RoleTtlType,
     UniqueConstraintType,
     TableColumnType,
+    WriteGrantType,
+    WritePresetType,
     mask_entry_types,
 )
 from provisa.compiler.aggregate_gen import (
@@ -307,7 +308,6 @@ async def _fetch_table_with_columns(
             id=r["id"],
             column_name=r["column_name"],
             visible_to=list(r["visible_to"]),
-            writable_by=list(r.get("writable_by") or []),
             masks=mask_entry_types(r["masks"]),
             alias=r.get("alias"),
             computed_sql_alias=r.get("alias") or apply_sql_name(r["column_name"]),
@@ -339,16 +339,24 @@ async def _fetch_table_with_columns(
         )
         for r in col_rows
     ]
-    presets = [
-        ColumnPresetType(
-            column=p["column"],
-            source=p["source"],
-            name=p.get("name"),
-            value=p.get("value"),
-            data_type=p.get("data_type"),
+    from provisa.core.repositories import write_grant as write_grant_repo
+
+    write_grants = [
+        WriteGrantType(
+            role=g["role"],
+            operation=g["operation"],
+            columns=list(g["columns"]),
+            rows=g["rows"],
+            check=g["check"],
+            presets=[
+                WritePresetType(
+                    column=p["column"], source=p["source"], name=p.get("name"), value=p.get("value")
+                )
+                for p in g["presets"]
+            ],
         )
-        for p in (row.get("column_presets") or [])
-    ]
+        for g in await write_grant_repo.for_table(conn, row["id"])
+    ]  # REQ-2074
     unique_constraints = [
         UniqueConstraintType(name=u["name"], columns=list(u["columns"]))
         for u in (row.get("unique_constraints") or [])
@@ -424,7 +432,7 @@ async def _fetch_table_with_columns(
         gql_naming_convention=row.get("gql_naming_convention"),
         watermark_column=row.get("watermark_column"),
         columns=columns,
-        column_presets=presets,
+        write_grants=write_grants,
         unique_constraints=unique_constraints,  # REQ-1093
         api_endpoint=api_endpoint,
         role_ttl=[

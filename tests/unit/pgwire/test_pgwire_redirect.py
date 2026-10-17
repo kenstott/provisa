@@ -31,6 +31,7 @@ from provisa.pgwire.server import (
     _redirect_row,
     startup_redirect_settings,
 )
+from tests.write_governance import grants_over
 
 
 @pytest.fixture(autouse=True)
@@ -118,7 +119,10 @@ async def test_a_write_asked_to_be_delivered_is_refused_by_name(monkeypatch):
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": True,
             "write_refused_forms": [],
-            "columns": [{**c, "writable_by": ["analyst"]} for c in t["columns"]],
+            # REQ-2074: the analyst's write grants over every column.
+            "write_grants": list(
+                grants_over("analyst", [c["column_name"] for c in t["columns"]]).values()
+            ),
         }
         for t in state.tables
     ]

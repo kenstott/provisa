@@ -192,7 +192,6 @@
     "sqlAliasHeader": "SQL उपनाम",
     "descriptionHeader": "विवरण",
     "visibleToHeader": "किसे दृश्य (पठन)",
-    "writableByHeader": "कौन लिख सकता है (R/W)",
     "maskingHeader": "मास्किंग",
     "scopeHeader": "स्कोप",
     "jsonPathHeader": "JSON पाथ",

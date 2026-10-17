@@ -190,5 +190,5 @@ def test_register_table_input_carries_query_template_into_the_model():
     )
     from provisa.api.admin._table_ops import _build_column_models
 
-    model = table_model_from_input(inp, _build_column_models(inp.columns), [], None)
+    model = table_model_from_input(inp, _build_column_models(inp.columns), None)
     assert model.query_template == "MATCH (a) RETURN a.id AS id"

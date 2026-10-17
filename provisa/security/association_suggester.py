@@ -26,7 +26,7 @@ All adapters share two fallbacks for operations whose response carries no querya
 type: operation-name affixes (create*/update*/delete*/upsert*) and the input-type
 stem. Every function returns a ranked list of ``TableCandidate`` — these are HINTS
 ONLY. Nothing here binds a mutation to a table; an admin confirms a suggestion, and a
-confirmed association registers with an empty ``writable_by`` (default-deny, REQ-867).
+confirmed association registers with no write grant (default-deny, REQ-867, REQ-2074).
 False negatives are expected: an empty list means "no confident suggestion", not an
 error, and the mutation remains registerable (global function or manual binding).
 """

@@ -60,6 +60,7 @@ from provisa.api.admin.types import (
     MutationResult,
     RelationshipInput,
     RLSRuleInput,
+    WriteGrantInput,
     RoleInput,
     PagingInput,
     RoleTtlInput,
@@ -3191,18 +3192,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _field_refusal = await column_field_refusal(pool, input, columns)
         if _field_refusal is not None:
             return _field_refusal
-        from provisa.core.models import ColumnPreset as ColumnPresetModel
-
-        presets = [
-            ColumnPresetModel(
-                column=cp.column,
-                source=cp.source,
-                name=cp.name,
-                value=cp.value,
-                data_type=cp.data_type,
-            )
-            for cp in input.column_presets
-        ]
         # REQ-957/964: reject a non-deterministic / unsafe preprocess hook at registration.
         from provisa.mv.preprocess import validate_preprocess
 
@@ -3217,7 +3206,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         window_err = _parsed_off_peak(input.off_peak_window or None, input.off_peak_tz or "UTC")
         if window_err is not None:
             return window_err
-        model = _table_model_from_input(input, columns, presets, input.alias)
+        model = _table_model_from_input(input, columns, input.alias)
         async with pool.acquire() as conn:
             _conn = cast("Connection", conn)
             from provisa.api.admin.domain_guard import require_current_domain
@@ -3699,6 +3688,108 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Role {role_id!r} removed from {object_kind} {name!r}",
             code="schema.role_revoked_from_object",
             params={"role": role_id, "kind": object_kind, "name": name},
+        )
+
+    @strawberry.mutation
+    async def set_table_write_grants(
+        self, info: StrawberryInfo, table_id: int, grants: list[WriteGrantInput]
+    ) -> MutationResult:  # REQ-2074, REQ-1676
+        """Make ``grants`` the table's whole set of write grants. Who may write which rows is
+        governance as a row filter is, so it is gated the same way (masking_config in the
+        table's domain), and each grant is checked against the table before anything is stored:
+        its roles exist, its columns are the table's, one grant per role and operation, and its
+        rows and check resolve against the table as a row filter must (REQ-1676)."""
+        from pydantic import ValidationError
+
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.compiler.rls_validate import validate_rls_predicate
+        from provisa.core import model_change
+        from provisa.core.models import Column as ColumnModel
+        from provisa.core.models import Table as TableModel
+        from provisa.core.models import WriteGrant
+        from provisa.core.repositories import role as role_repo
+        from provisa.core.repositories import table as table_repo
+        from provisa.core.repositories import write_grant as write_grant_repo
+
+        require_capability(info, "masking_config")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            c = cast("Connection", conn)
+            row = await table_repo.get(c, table_id)
+            if row is None:
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id} not found",
+                    code="schema.table_id_not_found",
+                    params={"id": table_id},
+                )
+            require_right_in_domains(info, "masking_config", {row["domain_id"]})
+            for role_id in sorted({g.role for g in grants}):
+                if await role_repo.get(c, role_id) is None:
+                    return MutationResult(
+                        success=False,
+                        message=f"Role {role_id!r} not found",
+                        code="schema.role_not_found",
+                        params={"role": role_id},
+                    )
+            columns = await table_repo.load_columns(c, table_id)
+            registry = await table_repo.list_all(c)
+            unheld = await table_repo._control_plane_role_ids(c)
+
+        def _invalid(reason: str) -> MutationResult:
+            return MutationResult(
+                success=False,
+                message=reason,
+                code="schema.write_grant_invalid",
+                params={"reason": reason},
+            )
+
+        try:
+            models = [
+                WriteGrant.model_validate(
+                    {
+                        "role": g.role,
+                        "operation": g.operation,
+                        "columns": list(g.columns),
+                        "rows": g.rows,
+                        "check": g.check,
+                        "presets": [
+                            {k: v for k, v in vars(p).items() if v is not None} for p in g.presets
+                        ],
+                    }
+                )
+                for g in grants
+            ]
+            # The table's own rules for its grants: one per role and operation, its columns.
+            TableModel(
+                source_id=row["source_id"],
+                domain_id=row["domain_id"],
+                schema_name=row["schema_name"],
+                table_name=row["table_name"],
+                columns=[ColumnModel(name=col["column_name"], visible_to=[]) for col in columns],
+                write_grants=models,
+            )
+        except ValidationError as refused:
+            return _invalid("; ".join(e["msg"] for e in refused.errors()))
+        target = [t for t in registry if t["id"] == table_id]
+        for grant in models:
+            for stated in (grant.rows, grant.check):
+                if stated is None:
+                    continue
+                problem = validate_rls_predicate(stated, target, registry)
+                if problem is not None:
+                    return _invalid(f"{grant.operation} grant for {grant.role!r}: {problem}")
+        model_change.name("set", "write grants", f"on table {table_id}")
+        async with pool.acquire() as conn:
+            await write_grant_repo.replace_for_table(
+                cast("Connection", conn), table_id, models, unheld=unheld
+            )
+        await _rebuild_schemas()
+        return MutationResult(
+            success=True,
+            message=f"Write grants of table {table_id} saved",
+            code="schema.write_grants_saved",
+            params={"id": table_id, "count": len(models)},
         )
 
     @strawberry.mutation

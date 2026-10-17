@@ -216,6 +216,7 @@ REFERENCES: tuple[Reference, ...] = (
     _part("relationship_candidates", "target_table_id", "table"),
     _part("materialized_views", "id", "table", by="view_mv_id", of="materialized_view", owner="id"),
     _part("rls_rules", "table_id", "table"),
+    _part("table_write_grants", "table_id", "table"),  # REQ-2074
     # A relationship stands on its own: it blocks every table it takes part in, at either end
     # or as the table it goes through, and nothing refers to it, so it can always go first.
     _dep("relationships", "source_table_id", "table", "relationship", "id", ends=_ENDS),
@@ -255,7 +256,8 @@ REFERENCES: tuple[Reference, ...] = (
     _dep("user_role_assignments", "role_id", "role", "role_assignment", "id"),
     _part("rls_rules", "role_id", "role"),
     _dep("table_columns", "visible_to", "role", "column", "id", match=Match.MEMBER),
-    _dep("table_columns", "writable_by", "role", "column", "id", match=Match.MEMBER),
+    # REQ-2074: a table's write grant to the role.
+    _dep("table_write_grants", "role_id", "role", "table", "table_id"),
     _dep("table_columns", "masks", "role", "column", "id", match=Match.MASK_TO),
     _dep("metrics", "visible_to", "role", "metric", "name", match=Match.MEMBER),
     _dep("tracked_functions", "visible_to", "role", "command", "name", match=Match.MEMBER),

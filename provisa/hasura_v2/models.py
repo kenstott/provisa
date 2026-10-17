@@ -26,6 +26,8 @@ class HasuraPermission:  # REQ-041, REQ-040
     filter: dict[str, Any] = field(default_factory=dict)
     allow_aggregations: bool = False
     check: dict[str, Any] = field(default_factory=dict)
+    # An insert or update permission's presets: column -> a literal or a session variable.
+    set: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

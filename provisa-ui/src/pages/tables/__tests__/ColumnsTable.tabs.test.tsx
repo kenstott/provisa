@@ -26,7 +26,6 @@ const column = (name: string, over: Partial<ColumnForm> = {}): ColumnForm => ({
   dataType: "integer",
   isPrimaryKey: false,
   visibleTo: ["analyst"],
-  writableBy: [],
   masks: [],
   alias: "",
   description: "",
@@ -86,7 +85,8 @@ describe("the column editor's tabs", () => {
     tab("access");
     expect(header("Column")).toBeInTheDocument();
     expect(header("Visible To (Read)")).toBeInTheDocument();
-    expect(header("Writable By (R/W)")).toBeInTheDocument();
+    // REQ-2074: who may write is the table's Writes section, not a column's.
+    expect(header("Writable By (R/W)")).toBeNull();
     expect(header("Masking")).toBeInTheDocument();
     expect(header("Data Type")).toBeNull();
     // The column's own tick is on every tab.

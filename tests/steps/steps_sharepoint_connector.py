@@ -342,7 +342,7 @@ def a_user_navigates_to_add_a_table_and_selects_this_source(shared_data):
 
 @when(
     parsers.parse(
-        "a user registers a table via GraphQL registerTable mutation with columns=[{name, visibleTo, writableBy}]"
+        "a user registers a table via GraphQL registerTable mutation with columns=[{name, visibleTo}]"
     )
 )
 def a_user_registers_a_table_via_graphql_registertable_mutation_with_columns(shared_data):
@@ -372,10 +372,7 @@ def a_user_registers_a_table_via_graphql_registertable_mutation_with_columns(sha
     # and is supplying manually in the registerTable mutation input, because the
     # Calcite SharePoint connector does not expose information_schema.columns.
     column_names = ["ID", "Title", "EventDate", "EndDate", "Description", "Location"]
-    column_inputs = [
-        ColumnInput(name=name, visible_to=["analyst"], writable_by=["admin"])
-        for name in column_names
-    ]
+    column_inputs = [ColumnInput(name=name, visible_to=["analyst"]) for name in column_names]
 
     assert len(column_inputs) > 0, (
         "User must supply at least one column definition when registering a table "
@@ -738,15 +735,11 @@ def the_table_is_created_with_the_supplied_column_definitions(shared_data):
     assert [c.name for c in table.columns] == supplied_names, (
         f"Expected columns {supplied_names}, got {[c.name for c in table.columns]}."
     )
-    # The supplied governance (visibleTo/writableBy) is preserved per column.
+    # The supplied governance (visibleTo) is preserved per column.
     for col in table.columns:
         assert col.visible_to == ["analyst"], (
             f"Column '{col.name}' must preserve supplied visible_to=['analyst']; "
             f"got {col.visible_to}."
-        )
-        assert col.writable_by == ["admin"], (
-            f"Column '{col.name}' must preserve supplied writable_by=['admin']; "
-            f"got {col.writable_by}."
         )
     # The table is created against the SharePoint list schema the user targeted.
     assert table.schema_name == "calendar", table.schema_name

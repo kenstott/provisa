@@ -234,12 +234,24 @@ class ColumnDependentsType:  # REQ-1484
 
 
 @strawberry.type
-class ColumnPresetType:
+class WritePresetType:  # REQ-2074
     column: str
-    source: str
-    name: str | None
-    value: str | None
-    data_type: str | None = None
+    source: str  # session | literal | now
+    name: str | None = None
+    value: str | None = None
+
+
+@strawberry.type
+class WriteGrantType:  # REQ-2074
+    """What one role may write to the table by one operation. ``rows`` / ``check`` null: the
+    role's read row filter on the table."""
+
+    role: str
+    operation: str
+    columns: list[str]
+    rows: str | None
+    check: str | None
+    presets: list[WritePresetType]
 
 
 @strawberry.type
@@ -373,7 +385,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     gql_naming_convention: str | None
     watermark_column: str | None
     columns: list[TableColumnType]
-    column_presets: list[ColumnPresetType] = strawberry.field(default_factory=list)
+    # REQ-2074: null for a caller without view_governance, as a column's grant lists are.
+    write_grants: list[WriteGrantType] | None = None
     unique_constraints: list[UniqueConstraintType] = strawberry.field(
         default_factory=list
     )  # REQ-1093
@@ -603,7 +616,6 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     # Grant lists and mask settings are null for a caller without view_governance (REQ-1134,
     # REQ-1958): null is "not shown to you", an empty list is "granted to nobody / everybody".
     visible_to: list[str] | None
-    writable_by: list[str] | None
     masks: list[MaskEntryType] | None  # REQ-2059: the ordered mask list
     alias: str | None
     computed_sql_alias: str
@@ -1002,7 +1014,6 @@ class TagAssignmentInput:  # REQ-1377
 class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
     name: str
     visible_to: list[str]
-    writable_by: list[str] = strawberry.field(default_factory=list)
     masks: list[MaskEntryInput] = strawberry.field(default_factory=list)  # REQ-2059
     alias: str | None = None
     description: str | None = None
@@ -1036,15 +1047,6 @@ class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
     fake_stable: bool = False
     # REQ-1494, REQ-1939: the column's synthetic rule, laid over its fake for generation only.
     synthetic_rule: str | None = None
-
-
-@strawberry.input
-class ColumnPresetInput:  # REQ-533
-    column: str
-    source: str
-    name: str | None = None
-    value: str | None = None
-    data_type: str | None = None
 
 
 @strawberry.input
@@ -1104,7 +1106,6 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     alias: str | None = None
     description: str | None = None
     watermark_column: str | None = None
-    column_presets: list[ColumnPresetInput] = strawberry.field(default_factory=list)
     unique_constraints: list[UniqueConstraintInput] = strawberry.field(
         default_factory=list
     )  # REQ-1093
@@ -1458,6 +1459,27 @@ class RoleInput:  # REQ-042
     parent_role_id: str | None = None  # REQ-1677
     # REQ-1921: with data_residency, the region values its grant covers (regions, "no_region").
     residency_values: list[str] = strawberry.field(default_factory=list)
+
+
+@strawberry.input
+class WritePresetInput:  # REQ-2074
+    column: str
+    source: str  # session | literal | now
+    name: str | None = None
+    value: str | None = None
+
+
+@strawberry.input
+class WriteGrantInput:  # REQ-2074
+    """One role's write grant on a table for one operation. ``rows`` / ``check`` null: the
+    role's read row filter; ``TRUE``: every row."""
+
+    role: str
+    operation: str
+    columns: list[str] = strawberry.field(default_factory=list)
+    rows: str | None = None
+    check: str | None = None
+    presets: list[WritePresetInput] = strawberry.field(default_factory=list)
 
 
 @strawberry.input

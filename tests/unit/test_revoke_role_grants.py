@@ -44,6 +44,7 @@ from provisa.core.schema_org import (
     registered_tables,
     sources,
     table_columns,
+    table_write_grants,
     tracked_functions,
     tracked_webhooks,
 )
@@ -90,8 +91,13 @@ async def seed(db: Database) -> None:
                         table_id=table_id,
                         column_name=column,
                         visible_to=both,
-                        writable_by=both,
                         masks=[{"to": both, "mask": None}],
+                    )
+                )
+            for role_id in both:  # REQ-2074: each role's write grant on the table
+                await conn.execute_core(
+                    insert(table_write_grants).values(
+                        table_id=table_id, role_id=role_id, operation="update", columns=["amount"]
                     )
                 )
         await conn.execute_core(
@@ -167,16 +173,25 @@ async def _grants(plane: Database) -> dict[str, list]:
                 select(
                     table_columns.c.table_id,
                     table_columns.c.visible_to,
-                    table_columns.c.writable_by,
                     table_columns.c.masks,
                 )
             )
         ).fetchall()
+        writers: dict[int, list[str]] = {}
+        for r in (
+            await conn.execute_core(
+                select(table_write_grants.c.table_id, table_write_grants.c.role_id).order_by(
+                    table_write_grants.c.role_id
+                )
+            )
+        ).fetchall():
+            writers.setdefault(r.table_id, []).append(r.role_id)
         out: dict[str, list] = {
-            # REQ-2059: the roles a column's mask entries name, in their order.
+            # REQ-2059: the roles a column's mask entries name, in their order; REQ-2074: the
+            # roles holding a write grant on the column's table.
             f"table{r.table_id}": [
                 r.visible_to,
-                r.writable_by,
+                writers.get(r.table_id, []),
                 [role for e in r.masks for role in e["to"]],
             ]
             for r in cols

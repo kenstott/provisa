@@ -38,7 +38,6 @@
     "dataTypePlaceholder": "型を割り当て...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "参照可能（読み取り）",
-    "colHeaderWritableBy": "書き込み可能（読み書き）",
     "colHeaderMasking": "マスキング",
     "colHeaderAlias": "SQL エイリアス",
     "colHeaderDescription": "説明",

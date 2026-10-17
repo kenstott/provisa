@@ -99,14 +99,12 @@ def _rebuild_relationship_input(payload: dict):
 def _rebuild_table_input(payload: dict):
     from provisa.api.admin.types import (
         ColumnInput,
-        ColumnPresetInput,
         TableInput,
         UniqueConstraintInput,
     )
 
     data = _proposed_input(payload)
     data["columns"] = [ColumnInput(**c) for c in payload.get("columns", [])]
-    data["column_presets"] = [ColumnPresetInput(**c) for c in payload.get("column_presets", [])]
     data["unique_constraints"] = [
         UniqueConstraintInput(**u) for u in payload.get("unique_constraints", [])
     ]  # REQ-1792: an MCP-proposed table can declare these; a GraphQL-queued view/table already did

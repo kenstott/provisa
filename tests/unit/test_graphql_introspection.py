@@ -32,6 +32,7 @@ from graphql.utilities import ast_from_value
 from provisa.compiler import naming as _naming
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
+from tests.write_governance import grants_over
 
 
 def _unprintable_defaults(schema: GraphQLSchema) -> list[str]:
@@ -92,6 +93,8 @@ def _data_schema() -> GraphQLSchema:
             "table_name": name,
             "columns": [{"column_name": c.column_name, "visible_to": ["admin"]} for c in columns],
             "write_refused_forms": [],
+            # REQ-2074: the admin's write grants over every column.
+            "write_grants": list(grants_over("admin", [c.column_name for c in columns]).values()),
             **writable,
         }
         for table_id, name, columns in ((1, "orders", types[1]), (2, "customers", types[2]))

@@ -28,6 +28,22 @@ def _ref(table: exp.Table) -> str:
     return f"{table.db}.{table.name}" if table.db else table.name
 
 
+def grants_over(role_id: str, columns: list[str] | tuple[str, ...]) -> dict[str, dict]:
+    """``role_id``'s write grants on a table, one per operation, over ``columns`` (a delete too):
+    rows and check unstated, so the role's read row filter is both (REQ-2074)."""
+    return {
+        op: {
+            "role": role_id,
+            "operation": op,
+            "columns": [] if op == "delete" else list(columns),
+            "rows": None,
+            "check": None,
+            "presets": [],
+        }
+        for op in ("insert", "update", "delete")
+    }
+
+
 def write_governance(
     tables: dict[str, tuple[int, list[str]]],
     *,
@@ -38,15 +54,15 @@ def write_governance(
     write_ops: dict[int, set[str]] | None = None,
 ) -> GovernanceContext:
     """Governance for ``role_id`` over ``tables`` — ``{"schema.table": (table_id, columns)}`` —
-    holding the write right (unless ``can_write`` is False), named on every column unless
-    ``writable`` says which, with ``rls`` as its row filters."""
+    holding the write right (unless ``can_write`` is False), with write grants over every column
+    unless ``writable`` says which (REQ-2074), with ``rls`` as its row filters."""
     gov = GovernanceContext()
     gov.role_id = role_id
     gov.can_write = can_write
     gov.table_map = {ref: tid for ref, (tid, _) in tables.items()}
     gov.all_columns = {tid: [(c, "varchar") for c in cols] for tid, cols in tables.values()}
     named = writable if writable is not None else {tid: cols for tid, cols in tables.values()}
-    gov.writable_columns = {tid: frozenset(cols) for tid, cols in named.items()}
+    gov.write_grants = {tid: grants_over(role_id, cols) for tid, cols in named.items()}
     gov.rls_rules = dict(rls or {})
     # Each table's source takes every write unless ``write_ops`` says which
     # (executor/write_capability.py).

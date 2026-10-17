@@ -56,7 +56,6 @@ class TableMeta:
     schema_name: str
     table_name: str  # post-alias physical name (e.g. "registered_tables_meta")
     domain_id: str = ""  # semantic domain name (as JDBC clients see it)
-    column_presets: list = field(default_factory=list)
     source_type: str = ""  # source type string (e.g. "iceberg", "postgresql") for time-travel
     original_table_name: str = ""  # pre-alias name (e.g. "registered_tables"); empty if no alias
     display_name: str = ""  # user-visible name (DB alias); empty → derived from field_name

@@ -192,7 +192,6 @@
     "sqlAliasHeader": "SQLエイリアス",
     "descriptionHeader": "説明",
     "visibleToHeader": "閲覧可能（読み取り）",
-    "writableByHeader": "書き込み可能（R/W）",
     "maskingHeader": "マスキング",
     "scopeHeader": "スコープ",
     "jsonPathHeader": "JSON パス",

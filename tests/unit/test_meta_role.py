@@ -225,3 +225,85 @@ def test_a_held_role_with_no_data_surface_is_no_member():
     assert ensure_meta_role(state, ["east", "platform_admin"]) == "east"
     with pytest.raises(PermissionError, match="No schema available"):
         ensure_meta_role(state, ["platform_admin", "nobody"])
+
+
+# --- write grants (REQ-2074): folded as reads are --------------------------------------------
+
+
+def _grant(role, operation, columns=(), rows=None, check=None, presets=()):
+    return {
+        "role": role,
+        "operation": operation,
+        "columns": list(columns),
+        "rows": rows,
+        "check": check,
+        "presets": list(presets),
+    }
+
+
+def _meta_grants(grants: list[dict], members: list[str]) -> dict[str, dict]:
+    state, _ = _state(
+        rls={
+            "east": RLSContext(rules={1: "region = 'east'"}),
+            "west": RLSContext(rules={1: "region = 'west'"}),
+        },
+        reads={"east": [1], "west": [1]},
+        roles={"east": _role("east", caps=["write"]), "west": _role("west", caps=["write"])},
+    )
+    state.role_build_inputs["tables"][0]["write_grants"] = grants
+    meta = ensure_meta_role(state, members)
+    return {
+        g["operation"]: g
+        for g in state.role_build_inputs["tables"][0]["write_grants"]
+        if g["role"] == meta
+    }
+
+
+_PLACED = {"column": "status", "source": "literal", "value": "placed"}
+_NOW = {"column": "status", "source": "now"}
+
+
+def test_a_meta_roles_write_grant_is_the_fold_of_its_members():
+    grants = [
+        _grant("east", "update", ["region"]),  # rows and check: east's read filter
+        _grant("west", "update", ["email"], rows="email IS NOT NULL", check="TRUE"),
+        _grant("west", "delete", rows="region = 'west'"),
+    ]
+    folded = _meta_grants(grants, ["west", "east"])
+    assert set(folded) == {"update", "delete"}  # the ops any member holds; no insert
+    update = folded["update"]
+    assert update["columns"] == ["region", "email"]
+    assert update["rows"] == "(region = 'east') OR (email IS NOT NULL)"
+    assert update["check"] == "TRUE"  # a holder admits every row
+    assert folded["delete"]["rows"] == "(region = 'west')"
+
+
+def test_the_fold_does_not_depend_on_the_order_of_the_members():
+    grants = [
+        _grant("east", "insert", ["region"], check="region = 'east'"),
+        _grant("west", "insert", ["email"], check="region = 'west'"),
+    ]
+    one = _meta_grants(grants, ["east", "west"])["insert"]
+    other = _meta_grants([dict(g) for g in grants], ["west", "east"])["insert"]
+    assert set(one["columns"]) == set(other["columns"]) == {"region", "email"}
+    assert one["check"] == other["check"]  # members are taken in the meta-role's own order
+
+
+def test_presets_every_holder_sets_alike_are_kept_and_others_dropped():
+    agree = _meta_grants(
+        [
+            _grant("east", "insert", ["region"], presets=[_PLACED]),
+            _grant("west", "insert", ["email"], presets=[_PLACED]),
+        ],
+        ["east", "west"],
+    )["insert"]
+    assert agree["presets"] == [_PLACED]
+    differ = _meta_grants(
+        [
+            _grant("east", "insert", ["region"], presets=[_PLACED]),
+            _grant("west", "insert", ["email", "status"], presets=[]),
+        ],
+        ["east", "west"],
+    )["insert"]
+    assert differ["presets"] == []
+    assert "status" in differ["columns"]  # a holder lets the statement supply it

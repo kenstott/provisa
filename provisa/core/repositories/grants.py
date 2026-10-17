@@ -11,7 +11,7 @@
 """Taking a role off an object's grants (REQ-1918).
 
 A role cannot be deleted while a grant names it. The grants are lists of role ids on the object:
-a table's columns (``visible_to``, ``writable_by``, each mask entry's ``to``), a metric's ``visible_to``,
+a table's columns (``visible_to``, each mask entry's ``to``) and its write grants (REQ-2074), a metric's ``visible_to``,
 a command's and a webhook's assigned roles (``visible_to``). Removing the role from them is an
 edit of that object, written here through the model store, one object at a time.
 """
@@ -22,10 +22,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from provisa.core import model_change
-from provisa.core.schema_org import metrics, table_columns, tracked_functions, tracked_webhooks
+from provisa.core.schema_org import (
+    metrics,
+    table_columns,
+    table_write_grants,
+    tracked_functions,
+    tracked_webhooks,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy import Table as SaTable
@@ -64,16 +70,25 @@ def _without(entry: dict, role_id: str) -> dict:
 
 
 async def revoke_from_table(conn: "Connection", table_id: int, role_id: str) -> bool | None:
-    """Take ``role_id`` off every column grant of the table: read, write and its mask entries."""
+    """Take ``role_id`` off every grant of the table: its columns' read grants and mask entries,
+    and its write grants (REQ-2074)."""
     model_change.name("revoke", "table grants", f"{role_id} on table {table_id}")
-    return await _revoke(
+    columns = await _revoke(
         conn,
         table_columns,
         "id",
         table_columns.c.table_id == table_id,
-        ("visible_to", "writable_by", "masks"),
+        ("visible_to", "masks"),
         role_id,
     )
+    removed = await conn.execute_core(
+        delete(table_write_grants).where(
+            table_write_grants.c.table_id == table_id, table_write_grants.c.role_id == role_id
+        )
+    )
+    if columns is None:
+        return None
+    return columns or bool(removed.rowcount)
 
 
 _OBJECT_TABLES: dict[str, "SaTable"] = {

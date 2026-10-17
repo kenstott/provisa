@@ -5,7 +5,6 @@
     "colSqlAlias": "SQL उपनाम",
     "colDescription": "विवरण",
     "colVisibleTo": "इन्हें दृश्य (पढ़ना)",
-    "colWritableBy": "इनके द्वारा लेखन योग्य (R/W)",
     "colMasking": "मास्किंग",
     "colScope": "स्कोप",
     "pathBadge": "पथ",

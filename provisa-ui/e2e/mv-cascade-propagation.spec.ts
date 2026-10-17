@@ -22,8 +22,8 @@ const PYTHON = path.join(ROOT, ".venv", "bin", "python");
 const PET_STORE_DB = path.join(process.env.PROVISA_DEMO_DIR ?? path.join(ROOT, "demo/files"), "pet_store.sqlite");
 
 // The source changes underneath Provisa, as a source does: written in the source's own file, not
-// through Provisa. Through Provisa the UPDATE is refused — pets.price is writable by no role
-// (REQ-663: no writable_by in the demo config).
+// through Provisa. Through Provisa the UPDATE is refused — no role holds a write grant on pets
+// (REQ-2074: the demo config grants none).
 function setPetPrice(price: number) {
   execFileSync(PYTHON, [
     "-c",

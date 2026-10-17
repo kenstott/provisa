@@ -1,0 +1,8 @@
+function:
+  name: search_products
+  schema: public
+configuration:
+  exposed_as: query
+permissions:
+  - role: customer
+  - role: support

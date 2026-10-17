@@ -228,7 +228,7 @@ async def test_view_sql_and_view_metrics_together_is_hard_error():
         view_metrics=ViewMetricsInput(metrics=["net_revenue"], dimensions=[]),
     )
     with pytest.raises(ValueError, match="mutually exclusive"):
-        table_model_from_input(inp, [], [], "conflicted")
+        table_model_from_input(inp, [], "conflicted")
 
 
 async def test_metric_upsert_regenerates_dependent_view_sql(control_plane):

@@ -38,7 +38,6 @@
     "dataTypePlaceholder": "Typ zuweisen...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "Sichtbar für (Lesen)",
-    "colHeaderWritableBy": "Schreibbar durch (R/W)",
     "colHeaderMasking": "Maskierung",
     "colHeaderAlias": "SQL-Alias",
     "colHeaderDescription": "Beschreibung",

@@ -29,7 +29,7 @@ from typing import Any
 
 from provisa.api.admin.introspect import native_column_typings
 from provisa.core.ir_types import ColumnTyping, column_typing, to_ir
-from provisa.core.models import Column, ProvisaConfig, Source
+from provisa.core.models import Column, ProvisaConfig, Source, WriteGrant
 from provisa.core.secrets import resolve_secrets
 from provisa.import_shared.warnings import WarningCollector
 from provisa.security.rights import ORG_ADMIN_ROLE
@@ -141,9 +141,14 @@ async def type_imported_columns(
                         native_type=ty.native_type,
                         native_platform=ty.native_platform,
                         visible_to=[ORG_ADMIN_ROLE],
-                        writable_by=[ORG_ADMIN_ROLE],
                     )
                     for n, ty in found.items()
+                ]
+                # Hasura's admin writes every table by every operation (REQ-2074).
+                t.write_grants = [
+                    WriteGrant(role=ORG_ADMIN_ROLE, operation="insert", columns=list(found)),
+                    WriteGrant(role=ORG_ADMIN_ROLE, operation="update", columns=list(found)),
+                    WriteGrant(role=ORG_ADMIN_ROLE, operation="delete"),
                 ]
                 continue
             for c in t.columns:

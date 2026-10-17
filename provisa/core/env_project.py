@@ -203,6 +203,12 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
     columns = await _rows(conn, org.table_columns, schema)
     relationships = await _rows(conn, org.relationships, schema)
     rls = await _rows(conn, org.rls_rules, schema)
+    # REQ-2074: ordered by role then operation, so two environments holding the same grants
+    # write them in the same order (the child sort is by role alone, and stable).
+    write_grants = sorted(
+        await _rows(conn, org.table_write_grants, schema),
+        key=lambda g: (g["role_id"], g["operation"]),
+    )
     term_refs = await _rows(conn, org.glossary_term_refs, schema)
     meta_links = await _rows(conn, org.table_meta_links, schema)
     assignments = await _rows(conn, org.tag_assignments, schema)
@@ -275,6 +281,12 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                 "table_id",
                 [r for r in rls if r["table_id"] == table_id],
                 table="rls_rules",
+            ),
+            write_grants=Child(
+                "role_id",
+                "table_id",
+                [g for g in write_grants if g["table_id"] == table_id],
+                table="table_write_grants",
             ),
             glossary=Child("column_name", "table_id", own_refs, table="glossary_term_refs"),
             meta_links=Child("target", "source_table_id", own_links, table="table_meta_links"),

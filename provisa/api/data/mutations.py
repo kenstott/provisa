@@ -308,15 +308,8 @@ async def _handle_mutation(
             400, "data.mixed_action_table_mutation", "Cannot mix action fields with table mutations"
         )
 
-    headers = dict(request.headers) if request else None
     try:
-        mutations = compile_mutation(
-            document,
-            ctx,
-            state.source_types,
-            variables,
-            headers,
-        )
+        mutations = compile_mutation(document, ctx, state.source_types, variables)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -324,8 +317,8 @@ async def _handle_mutation(
         raise ApiError(400, "data.no_mutation_fields", "No mutation fields found")
 
     # ONE write path: each mutation's statement goes through the pipeline every surface's write
-    # goes through — the admission (the role's write right, the written columns' writable_by,
-    # its row filter on the rows touched and the rows left behind), the lowering to the source,
+    # goes through — the admission (the role's write right and its write grant: columns,
+    # presets, rows touched and rows left behind, REQ-2074), the lowering to the source,
     # the execution, and the steps after a write (pgwire._pipeline._after_write).
     from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled

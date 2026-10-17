@@ -86,7 +86,7 @@ def test_table_model_from_input_maps_unique_constraints():
 
     uc = SimpleNamespace(name="uq", columns=["a", "b"])
     inp = _input(unique_constraints=[uc])
-    model = table_model_from_input(inp, columns=[], presets=[], alias="t")
+    model = table_model_from_input(inp, columns=[], alias="t")
     assert len(model.unique_constraints) == 1
     assert model.unique_constraints[0].name == "uq"
     assert model.unique_constraints[0].columns == ["a", "b"]
@@ -95,8 +95,8 @@ def test_table_model_from_input_maps_unique_constraints():
 def test_table_model_from_input_maps_the_landing_scope():  # REQ-2061, REQ-2062
     from provisa.api.admin._live_mappers import table_model_from_input
 
-    unset = table_model_from_input(_input(), columns=[], presets=[], alias="t")
+    unset = table_model_from_input(_input(), columns=[], alias="t")
     assert (unset.arguments, unset.landing_filter) == ({}, None)
     inp = _input(arguments={"org": "acme"}, landing_filter="")
-    model = table_model_from_input(inp, columns=[], presets=[], alias="t")
+    model = table_model_from_input(inp, columns=[], alias="t")
     assert (model.arguments, model.landing_filter) == ({"org": "acme"}, None)

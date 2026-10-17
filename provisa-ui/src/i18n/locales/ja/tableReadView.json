@@ -5,7 +5,6 @@
     "colSqlAlias": "SQLエイリアス",
     "colDescription": "説明",
     "colVisibleTo": "閲覧可能（読み取り）",
-    "colWritableBy": "書き込み可能（読み書き）",
     "colMasking": "マスキング",
     "colScope": "スコープ",
     "pathBadge": "パス",

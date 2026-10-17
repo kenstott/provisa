@@ -52,6 +52,7 @@ CARRIED: frozenset[str] = frozenset(
         # row rule on an attribute admits nobody in an environment where nobody has one.
         "user_attributes",
         "rls_rules",
+        "table_write_grants",  # REQ-2074: a table's write grants travel with its row filters
         "tags",
         "tag_param_values",
         "tag_assignments",

@@ -125,15 +125,19 @@ tables:
     the deal, the signals, whether its sender is on the deal''s team, whether it went to one of the
     deal''s counterparties and whether it was sent before the announcement; written by match_deals'
   columns:
-  - {name: message_id, data_type: varchar, description: 'The message', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], is_primary_key: true, writable_by: [org_admin]}
-  - {name: deal_id, data_type: varchar, description: 'The deal', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], is_primary_key: true, writable_by: [org_admin]}
-  - {name: flagged_entity, data_type: varchar, description: 'The flagged entity: the company the deal is about', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], writable_by: [org_admin]}
-  - {name: name_match, data_type: double, description: 'The strongest match of the company''s names, its ticker or the code name, from 0 to 1', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], writable_by: [org_admin]}
-  - {name: meaning_match, data_type: double, description: 'How close the message reads to the deal''s description, from 0 to 1', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], writable_by: [org_admin]}
-  - {name: signals, data_type: varchar, description: 'The signals that fired: legal_name, alias, ticker, code_name, meaning', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], writable_by: [org_admin]}
-  - {name: sender_on_team, data_type: integer, description: '1 when its sender was brought over the wall for the deal', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], writable_by: [org_admin]}
-  - {name: to_counterparty, data_type: integer, description: '1 when it went to one of the deal''s own counterparties', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], writable_by: [org_admin]}
-  - {name: before_announcement, data_type: integer, description: '1 when it was sent before the deal was announced', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], writable_by: [org_admin]}
+  - {name: message_id, data_type: varchar, description: 'The message', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], is_primary_key: true}
+  - {name: deal_id, data_type: varchar, description: 'The deal', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], is_primary_key: true}
+  - {name: flagged_entity, data_type: varchar, description: 'The flagged entity: the company the deal is about', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: name_match, data_type: double, description: 'The strongest match of the company''s names, its ticker or the code name, from 0 to 1', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: meaning_match, data_type: double, description: 'How close the message reads to the deal''s description, from 0 to 1', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: signals, data_type: varchar, description: 'The signals that fired: legal_name, alias, ticker, code_name, meaning', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: sender_on_team, data_type: integer, description: '1 when its sender was brought over the wall for the deal', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: to_counterparty, data_type: integer, description: '1 when it went to one of the deal''s own counterparties', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: before_announcement, data_type: integer, description: '1 when it was sent before the deal was announced', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  write_grants:
+  - {role: org_admin, operation: insert, columns: [message_id, deal_id, flagged_entity, name_match, meaning_match, signals, sender_on_team, to_counterparty, before_announcement]}
+  - {role: org_admin, operation: update, columns: [message_id, deal_id, flagged_entity, name_match, meaning_match, signals, sender_on_team, to_counterparty, before_announcement]}
+  - {role: org_admin, operation: delete}
 - source_id: bank
   domain_id: bank
   schema: bank

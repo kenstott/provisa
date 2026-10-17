@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
 import { TABLE_SECTIONS, type TableSection } from "./tableSections";
 
 /**
- * The table's six sections, one tab each. `errors` counts, per section, what Save will refuse
+ * The table's seven sections, one tab each. `errors` counts, per section, what Save will refuse
  * that the form itself can tell: a section that is not in view shows its count on its label.
  */
 export function TableSectionTabs({

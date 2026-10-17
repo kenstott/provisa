@@ -38,7 +38,6 @@
     "dataTypePlaceholder": "הקצאת סוג...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "גלוי עבור (קריאה)",
-    "colHeaderWritableBy": "ניתן לכתיבה על ידי (R/W)",
     "colHeaderMasking": "מיסוך",
     "colHeaderAlias": "כינוי SQL",
     "colHeaderDescription": "תיאור",

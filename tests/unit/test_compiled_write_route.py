@@ -26,6 +26,7 @@ import pytest
 from provisa.compiler.directives import NO_CACHE_HINT
 from tests.unit.test_buffered_auto_threshold import _decision
 from tests.unit.test_view_route import _state
+from tests.write_governance import grants_over
 
 pytestmark = pytest.mark.asyncio
 
@@ -51,7 +52,10 @@ async def _routed_as(monkeypatch, sql: str) -> Mapping[str, Any]:
             "write_ops": ["delete", "insert", "update"],
             "write_returns_rows": False,
             "write_refused_forms": [],
-            "columns": [{**c, "writable_by": ["analyst"]} for c in t["columns"]],
+            # REQ-2074: the analyst's write grants over every column.
+            "write_grants": list(
+                grants_over("analyst", [c["column_name"] for c in t["columns"]]).values()
+            ),
         }
         if t["table_name"] == "orders"
         else t

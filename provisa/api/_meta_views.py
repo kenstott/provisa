@@ -196,7 +196,6 @@ _META_TABLE_VIEWS: dict[str, str] = {
         CREATE OR REPLACE VIEW registered_tables_meta AS
         SELECT id, source_id, domain_id, schema_name, table_name,
                alias, description, cache_ttl, gql_naming_convention, watermark_column,
-               column_presets,
                view_sql, product_id, materialize, mv_refresh_interval,
                l1_cluster, l2_cluster, l3_cluster, clusters_computed_at,
                tenant_id
@@ -216,7 +215,6 @@ _META_TABLE_VIEWS: dict[str, str] = {
                native_filter_type, is_foreign_key, is_alternate_key,
                object_fields,
                visible_to,
-               writable_by,
                tenant_id
         FROM table_columns
         -- nor are a draft table's columns.

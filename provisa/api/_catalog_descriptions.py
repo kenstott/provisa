@@ -135,7 +135,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "cache_ttl": "Seconds a result for this table may be served from cache",
         "gql_naming_convention": "Casing convention applied to this table's GraphQL names",
         "watermark_column": "Column whose high value marks how far incremental refresh has read",
-        "column_presets": "Named column subsets consumers can select instead of listing columns",
         "view_sql": "Defining SQL, for a Provisa-managed virtual view rather than a source table",
         "product_id": "The DataProduct this table is published as a member of, if any",
         "materialize": "Whether Provisa maintains a materialization of this table",
@@ -171,7 +170,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "object_fields": "Field definitions for a structured (object) column",
         "visible_to": "Roles that may select this column; empty means unrestricted outside "
         "lockdown domains",
-        "writable_by": "Roles that may write this column",
         "tenant_id": _TENANT,
     },
     "domains": {

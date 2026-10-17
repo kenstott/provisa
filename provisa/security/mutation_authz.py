@@ -46,7 +46,7 @@ class MutationNotPermitted(PermissionError):
 
 
 class ColumnNotWritable(PermissionError):
-    """REQ-663: the role is not in a column's ``writable_by``. Carried with the role and column so
+    """REQ-2074: the column is not one the role's write grant names. Carried with the role and column so
     each surface renders it its own way (the API as a 403 ApiError, Cypher as a status tuple)."""
 
     def __init__(self, role_id: str, column: str) -> None:

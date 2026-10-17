@@ -428,7 +428,9 @@
       "relationship_id_taken": "Связь '{{relationship}}' уже существует",
       "relationship_graphql_alias_taken": "Псевдоним GraphQL '{{alias}}' уже является псевдонимом связи '{{relationship}}' из '{{table}}'",
       "trigger_refused": "{{reason}}",
-      "scheduled_task_updated": "Запланированная задача '{{task}}' обновлена"
+      "scheduled_task_updated": "Запланированная задача '{{task}}' обновлена",
+      "write_grant_invalid": "Это право не подходит к таблице: {{reason}}",
+      "write_grants_saved": "Права на запись таблицы {{id}} сохранены"
     },
     "secrets": {
       "name_refused": "{{name}} не является именем в пределах секретов этой организации в {{service}}: имя задаётся относительно организации и не может выходить за её пределы",

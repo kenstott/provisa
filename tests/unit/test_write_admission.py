@@ -11,8 +11,9 @@
 """One admission for every data write (provisa/compiler/write_admission.py).
 
 A data write passes the governance stage every statement passes, and is admitted there by the
-role's ``write`` right, the ``writable_by`` of each column it writes, and the role's row filter —
-on the rows it touches and on the rows it leaves behind. The real-server proof, with rows read
+role's ``write`` right and its write grant for the operation (REQ-2074); a grant that states no
+rows or check takes the role's row filter — on the rows it touches and on the rows it leaves
+behind. The real-server proof, with rows read
 at the source on every surface, is tests/integration/test_write_admission_every_surface.py."""
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import pytest
 from provisa.compiler.stage2 import GovernanceContext, apply_governance
 from provisa.compiler.write_admission import WriteNotAdmitted
 from provisa.security.mutation_authz import ColumnNotWritable
+from tests.write_governance import grants_over
 
 _EAST = {1: "region = 'east'"}
 
@@ -37,7 +39,7 @@ def _gov(
     gov.can_write = can_write
     gov.table_map = {"sales.orders": 1, "public.orders": 1, "orders": 1}
     gov.all_columns = {1: [("id", "integer"), ("region", "varchar")]}
-    gov.writable_columns = {1: frozenset(writable)}
+    gov.write_grants = {1: grants_over("writer", writable)}
     gov.rls_rules = rls or {}
     gov.write_ops = {1: frozenset({"insert", "update", "delete"})}  # a writable source
     gov.write_returns_rows = {1: True}  # ... that returns the rows it writes
@@ -93,9 +95,11 @@ def test_an_insert_needs_the_columns_it_lists_or_all_when_it_lists_none():
         apply_governance("INSERT INTO sales.orders VALUES (1, 'x')", only_region)
 
 
-def test_a_delete_removes_whole_rows_and_needs_every_column():
-    with pytest.raises(ColumnNotWritable, match="column 'id'"):
-        apply_governance("DELETE FROM sales.orders WHERE id = 1", _gov(writable=("region",)))
+def test_a_delete_needs_a_delete_grant():  # REQ-2074: not a grant on every column
+    gov = _gov(writable=("region",))
+    del gov.write_grants[1]["delete"]
+    with pytest.raises(WriteNotAdmitted, match="holds no delete grant"):
+        apply_governance("DELETE FROM sales.orders WHERE id = 1", gov)
 
 
 def test_a_column_that_declares_no_writable_by_is_writable_by_nobody():
@@ -177,7 +181,7 @@ def test_a_session_variable_in_the_filter_is_the_requests():
 
 def test_an_update_may_not_move_a_row_out_of_the_filter():
     gov = _gov(rls=_EAST)
-    with pytest.raises(WriteNotAdmitted, match="new values put the row outside"):
+    with pytest.raises(WriteNotAdmitted, match="the row is outside role 'writer'"):
         apply_governance("UPDATE sales.orders SET region = 'west' WHERE id = 1", gov)
     # staying inside, or changing a column the filter does not read, is admitted
     assert apply_governance("UPDATE sales.orders SET region = 'east' WHERE id = 1", gov)

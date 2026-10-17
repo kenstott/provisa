@@ -244,6 +244,12 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
                 write_ops=frozenset(table["write_ops"]),
                 write_returns_rows=table["write_returns_rows"],
                 write_refused_forms=frozenset(table["write_refused_forms"]),
+                # REQ-2074: the role's write grants on the table, by operation.
+                write_grants={
+                    g["operation"]: g
+                    for g in table.get("write_grants") or []
+                    if g["role"] == role["id"]
+                },
                 modeling_role=table.get("modeling_role"),  # REQ-1320
                 modeling_history=table.get("modeling_history"),  # REQ-1320
                 metrics=metrics_by_table.get(table["table_name"], []),  # REQ-1319
@@ -842,20 +848,29 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
     t: _TableInfo,
     enum_types: dict,
 ) -> dict[str, GraphQLField]:
-    """Build insert/upsert/update/delete mutation fields for one table. Returns {} if skipped."""
-    insert_fields: dict[str, GraphQLInputField] = {}
-    for col in t.visible_columns:
-        col_name = col["column_name"]
-        meta = t.column_metadata.get(col_name.lower())
-        if meta is None:
-            continue
-        col_gql_type = column_type_to_graphql(meta.data_type)
-        if isinstance(col_gql_type, GraphQLList):
-            col_gql_type = GraphQLString  # fallback for arrays in input
-        insert_fields[col_name] = GraphQLInputField(col_gql_type)
-
-    if not insert_fields:
+    """Build insert/upsert/update/delete mutation fields for one table, for exactly the
+    operations the table's source takes and the role holds a write grant for (REQ-2074), each
+    input holding its grant's columns. Returns {} if none."""
+    granted = t.write_ops & t.write_grants.keys()
+    if not granted:
         return {}
+
+    def _inputs(operation: str) -> dict[str, GraphQLInputField]:
+        allowed = set((t.write_grants.get(operation) or {}).get("columns") or [])
+        fields: dict[str, GraphQLInputField] = {}
+        for col in t.visible_columns:
+            col_name = col["column_name"]
+            meta = t.column_metadata.get(col_name.lower())
+            if meta is None or col_name not in allowed:
+                continue
+            col_gql_type = column_type_to_graphql(meta.data_type)
+            if isinstance(col_gql_type, GraphQLList):
+                col_gql_type = GraphQLString  # fallback for arrays in input
+            fields[col_name] = GraphQLInputField(col_gql_type)
+        return fields
+
+    insert_fields = _inputs("insert")
+    update_fields = _inputs("update")
 
     insert_input = cast(
         GraphQLInputObjectType,
@@ -863,7 +878,7 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
     )
     set_input = cast(
         GraphQLInputObjectType,
-        GraphQLInputObjectType(f"{t.type_name}SetInput", lambda fields=insert_fields: fields),
+        GraphQLInputObjectType(f"{t.type_name}SetInput", lambda fields=update_fields: fields),
     )
     where_input = _build_where_input(t, f"{t.type_name}Mutation", enum_types=enum_types)
     response_type = cast(
@@ -885,12 +900,16 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
     result: dict[str, GraphQLField] = {}
     # Exactly the writes the table's source can take (executor/write_capability.py); an upsert
     # is an insert that may update, so it needs both.
-    if "insert" in t.write_ops:
+    if "insert" in granted and insert_fields:
         result[_mutation_name("insert", t.field_name, conv)] = GraphQLField(
             GraphQLNonNull(response_type),
             args={"input": GraphQLArgument(GraphQLNonNull(insert_input))},
         )
-    if {"insert", "update"} <= t.write_ops and "on_conflict" not in t.write_refused_forms:
+    if (
+        {"insert", "update"} <= granted
+        and insert_fields
+        and "on_conflict" not in t.write_refused_forms
+    ):
         result[_mutation_name("upsert", t.field_name, conv)] = GraphQLField(
             GraphQLNonNull(response_type),
             args={
@@ -900,7 +919,7 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
                 ),
             },
         )
-    if where_input and "update" in t.write_ops:
+    if where_input and "update" in granted and update_fields:
         result[_mutation_name("update", t.field_name, conv)] = GraphQLField(
             GraphQLNonNull(response_type),
             args={
@@ -908,7 +927,7 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
                 "where": GraphQLArgument(GraphQLNonNull(where_input)),
             },
         )
-    if where_input and "delete" in t.write_ops:
+    if where_input and "delete" in granted:
         result[_mutation_name("delete", t.field_name, conv)] = GraphQLField(
             GraphQLNonNull(response_type),
             args={"where": GraphQLArgument(GraphQLNonNull(where_input))},

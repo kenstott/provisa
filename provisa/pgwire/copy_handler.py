@@ -13,8 +13,8 @@
 COPY TO: runs governance pipeline, executes via Flight SQL (the engine) or direct,
          serialises result to PG COPY text/csv wire format.
 COPY FROM: a bulk INSERT into an existing registered table, admitted like one (the write
-           right and the columns' writable_by before any data is asked for, the role's row
-           filter over every row before any row is written), then written at the source.
+           right and the role's insert grant and its columns before any data is asked for, the
+           grant's check over every row before any row is written), then written at the source.
 """
 
 # Requirements: REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
@@ -450,9 +450,9 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
             raise ValueError(f"No columns discoverable for table {table!r}")
 
         # A bulk load is a data write, admitted by the rules an INSERT of these columns is
-        # (compiler/write_admission.py): the write right and the columns' writable_by here,
-        # before any data is asked for; the role's row filter over each row below, before any
-        # row is written.
+        # (compiler/write_admission.py): the write right and the role's insert grant and its
+        # columns here, before any data is asked for; the grant's check over each row below,
+        # before any row is written.
         from provisa.compiler.stage2 import build_governance_context
         from provisa.compiler.write_admission import admit_rows
         from provisa.core.request_context import session_vars_for

@@ -102,18 +102,26 @@ tables:
   description: Each line's three nearest lines in other sonnets, by meaning, with their similarity;
     written by link_echoes
   columns:
-  - {name: line_id, data_type: integer, is_primary_key: true, description: The line, visible_to: [org_admin], writable_by: [org_admin]}
-  - {name: echo_line_id, data_type: integer, is_primary_key: true, description: A line of another sonnet near it in meaning, visible_to: [org_admin], writable_by: [org_admin]}
-  - {name: score, data_type: double, description: 'How near in meaning, by cosine similarity: 1 the same', visible_to: [org_admin], writable_by: [org_admin]}
+  - {name: line_id, data_type: integer, is_primary_key: true, description: The line, visible_to: [org_admin]}
+  - {name: echo_line_id, data_type: integer, is_primary_key: true, description: A line of another sonnet near it in meaning, visible_to: [org_admin]}
+  - {name: score, data_type: double, description: 'How near in meaning, by cosine similarity: 1 the same', visible_to: [org_admin]}
+  write_grants:
+  - {role: org_admin, operation: insert, columns: [line_id, echo_line_id, score]}
+  - {role: org_admin, operation: update, columns: [line_id, echo_line_id, score]}
+  - {role: org_admin, operation: delete}
 - source_id: vectors
   domain_id: sonnets
   schema: default
   table: sonnet_lines
   description: One point a line, its vector the embedding of the line's words; written by embed_lines
   columns:
-  - {name: id, data_type: bigint, path: '@id', is_primary_key: true, description: The line's id, visible_to: [org_admin], writable_by: [org_admin]}
-  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [org_admin], writable_by: [org_admin]}
-  - {name: text_vec, data_type: json, path: '@vector.text', embedding: true, embedding_model: sentence-transformers/all-MiniLM-L6-v2, description: The embedding of the line's words, visible_to: [org_admin], writable_by: [org_admin]}
+  - {name: id, data_type: bigint, path: '@id', is_primary_key: true, description: The line's id, visible_to: [org_admin]}
+  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [org_admin]}
+  - {name: text_vec, data_type: json, path: '@vector.text', embedding: true, embedding_model: sentence-transformers/all-MiniLM-L6-v2, description: The embedding of the line's words, visible_to: [org_admin]}
+  write_grants:
+  - {role: org_admin, operation: insert, columns: [id, sonnet_number, text_vec]}
+  - {role: org_admin, operation: update, columns: [id, sonnet_number, text_vec]}
+  - {role: org_admin, operation: delete}
 - source_id: vectors
   domain_id: sonnets
   schema: default

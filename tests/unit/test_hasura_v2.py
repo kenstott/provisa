@@ -551,13 +551,15 @@ class TestMapper:
         assert "user" in id_col.visible_to
         assert "admin" in id_col.visible_to
 
-    def test_column_writable_by(self):
+    def test_write_permissions_become_write_grants(self):  # REQ-2074
         metadata = self._build_metadata()
         config = convert_metadata(metadata)
         users = next(t for t in config.tables if t.table_name == "users")
-        email_col = next(c for c in users.columns if c.name == "email")
-        assert "admin" in email_col.writable_by  # insert permission
-        assert "user" in email_col.writable_by  # update permission
+        grants = {(g.role, g.operation): g for g in users.write_grants}
+        assert grants[("admin", "insert")].columns == ["first_name", "email", "role"]
+        assert grants[("user", "update")].columns == ["first_name", "email"]
+        # the user may update, not insert or delete
+        assert ("user", "insert") not in grants and ("user", "delete") not in grants
 
     def test_custom_column_alias(self):
         metadata = self._build_metadata()

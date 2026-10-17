@@ -88,17 +88,21 @@ tables:
   cache_ttl: 10
   description: 'The order system''s customers, insert-only: every version received, by its load date'
   columns:
-  - {name: customer_id, data_type: varchar, is_primary_key: true, description: 'The customer''s code, such as ALFKI', visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: company_name, data_type: varchar, description: The customer's name, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: contact_name, data_type: varchar, description: The person to contact, visible_to: [org_admin, analyst_eu], writable_by: [org_admin], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
-  - {name: contact_title, data_type: varchar, description: Their title, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: address, data_type: varchar, description: The street address, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: city, data_type: varchar, description: The city, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: region, data_type: varchar, description: 'The region, where the country has them', visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: country, data_type: varchar, description: The country, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: phone, data_type: varchar, description: The phone number, visible_to: [org_admin, analyst_eu], writable_by: [org_admin], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
-  - {name: load_date, data_type: timestamp, is_primary_key: true, description: When this row of the customer was received, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
+  - {name: customer_id, data_type: varchar, is_primary_key: true, description: 'The customer''s code, such as ALFKI', visible_to: [org_admin, analyst_eu]}
+  - {name: company_name, data_type: varchar, description: The customer's name, visible_to: [org_admin, analyst_eu]}
+  - {name: contact_name, data_type: varchar, description: The person to contact, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
+  - {name: contact_title, data_type: varchar, description: Their title, visible_to: [org_admin, analyst_eu]}
+  - {name: address, data_type: varchar, description: The street address, visible_to: [org_admin, analyst_eu]}
+  - {name: city, data_type: varchar, description: The city, visible_to: [org_admin, analyst_eu]}
+  - {name: region, data_type: varchar, description: 'The region, where the country has them', visible_to: [org_admin, analyst_eu]}
+  - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [org_admin, analyst_eu]}
+  - {name: country, data_type: varchar, description: The country, visible_to: [org_admin, analyst_eu]}
+  - {name: phone, data_type: varchar, description: The phone number, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
+  - {name: load_date, data_type: timestamp, is_primary_key: true, description: When this row of the customer was received, visible_to: [org_admin, analyst_eu]}
+  write_grants:
+  - {role: org_admin, operation: insert, columns: [customer_id, company_name, contact_name, contact_title, address, city, region, postal_code, country, phone, load_date]}
+  - {role: org_admin, operation: update, columns: [customer_id, company_name, contact_name, contact_title, address, city, region, postal_code, country, phone, load_date]}
+  - {role: org_admin, operation: delete}
 - source_id: orders
   domain_id: orders
   schema: orders
@@ -108,14 +112,18 @@ tables:
   cache_ttl: 10
   description: 'The products the order system sells, insert-only: every version received, by its load date'
   columns:
-  - {name: product_id, data_type: integer, is_primary_key: true, description: The product's id, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: product_name, data_type: varchar, description: The product's name, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: supplier_id, data_type: integer, description: Who supplies it, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: category_id, data_type: integer, description: Its category, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: quantity_per_unit, data_type: varchar, description: 'What one unit holds, such as 10 boxes x 20 bags', visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: unit_price, data_type: 'decimal(10,2)', description: The list price of one unit, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: discontinued, data_type: boolean, description: Whether it is no longer sold, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: load_date, data_type: timestamp, is_primary_key: true, description: When this row of the product was received, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
+  - {name: product_id, data_type: integer, is_primary_key: true, description: The product's id, visible_to: [org_admin, analyst_eu]}
+  - {name: product_name, data_type: varchar, description: The product's name, visible_to: [org_admin, analyst_eu]}
+  - {name: supplier_id, data_type: integer, description: Who supplies it, visible_to: [org_admin, analyst_eu]}
+  - {name: category_id, data_type: integer, description: Its category, visible_to: [org_admin, analyst_eu]}
+  - {name: quantity_per_unit, data_type: varchar, description: 'What one unit holds, such as 10 boxes x 20 bags', visible_to: [org_admin, analyst_eu]}
+  - {name: unit_price, data_type: 'decimal(10,2)', description: The list price of one unit, visible_to: [org_admin, analyst_eu]}
+  - {name: discontinued, data_type: boolean, description: Whether it is no longer sold, visible_to: [org_admin, analyst_eu]}
+  - {name: load_date, data_type: timestamp, is_primary_key: true, description: When this row of the product was received, visible_to: [org_admin, analyst_eu]}
+  write_grants:
+  - {role: org_admin, operation: insert, columns: [product_id, product_name, supplier_id, category_id, quantity_per_unit, unit_price, discontinued, load_date]}
+  - {role: org_admin, operation: update, columns: [product_id, product_name, supplier_id, category_id, quantity_per_unit, unit_price, discontinued, load_date]}
+  - {role: org_admin, operation: delete}
 - source_id: orders
   domain_id: orders
   schema: orders
@@ -155,17 +163,21 @@ tables:
   description: 'The CRM''s accounts: its own copy of the customers, with their contacts; insert-only,
     every version received, by its load date'
   columns:
-  - {name: account_code, data_type: varchar, is_primary_key: true, description: 'The customer''s code, as the order system has it', visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: account_name, data_type: varchar, description: The customer's name, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: contact_name, data_type: varchar, description: The person to contact, visible_to: [org_admin, analyst_eu], writable_by: [org_admin], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
-  - {name: contact_title, data_type: varchar, description: Their title, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: contact_email, data_type: varchar, description: Their email address, visible_to: [org_admin, analyst_eu], writable_by: [org_admin], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
-  - {name: phone, data_type: varchar, description: The phone number, visible_to: [org_admin, analyst_eu], writable_by: [org_admin], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
-  - {name: address, data_type: varchar, description: The street address, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: city, data_type: varchar, description: The city, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: country, data_type: varchar, description: The country, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
-  - {name: load_date, data_type: timestamp, is_primary_key: true, description: When this row of the account was received, visible_to: [org_admin, analyst_eu], writable_by: [org_admin]}
+  - {name: account_code, data_type: varchar, is_primary_key: true, description: 'The customer''s code, as the order system has it', visible_to: [org_admin, analyst_eu]}
+  - {name: account_name, data_type: varchar, description: The customer's name, visible_to: [org_admin, analyst_eu]}
+  - {name: contact_name, data_type: varchar, description: The person to contact, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
+  - {name: contact_title, data_type: varchar, description: Their title, visible_to: [org_admin, analyst_eu]}
+  - {name: contact_email, data_type: varchar, description: Their email address, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: phone, data_type: varchar, description: The phone number, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
+  - {name: address, data_type: varchar, description: The street address, visible_to: [org_admin, analyst_eu]}
+  - {name: city, data_type: varchar, description: The city, visible_to: [org_admin, analyst_eu]}
+  - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [org_admin, analyst_eu]}
+  - {name: country, data_type: varchar, description: The country, visible_to: [org_admin, analyst_eu]}
+  - {name: load_date, data_type: timestamp, is_primary_key: true, description: When this row of the account was received, visible_to: [org_admin, analyst_eu]}
+  write_grants:
+  - {role: org_admin, operation: insert, columns: [account_code, account_name, contact_name, contact_title, contact_email, phone, address, city, postal_code, country, load_date]}
+  - {role: org_admin, operation: update, columns: [account_code, account_name, contact_name, contact_title, contact_email, phone, address, city, postal_code, country, load_date]}
+  - {role: org_admin, operation: delete}
 views:
 # Hubs: each business key once, its hash key, and the source it was first seen in, and when.
 - id: hub_customer

@@ -192,7 +192,6 @@
     "sqlAliasHeader": "SQL-alias",
     "descriptionHeader": "Beschrijving",
     "visibleToHeader": "Zichtbaar voor (lezen)",
-    "writableByHeader": "Schrijfbaar door (R/W)",
     "maskingHeader": "Maskering",
     "scopeHeader": "Bereik",
     "jsonPathHeader": "JSON-pad",

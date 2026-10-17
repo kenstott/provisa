@@ -437,8 +437,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             return JSONResponse(status_code=400, content={"error": str(exc)})
 
         # ONE write path: the translated statement goes through the pipeline every other surface's
-        # write goes through (Bolt's Cypher writes included) — its admission (the write right, the
-        # columns' writable_by, the role's row filter), its lowering to the source's own
+        # write goes through (Bolt's Cypher writes included) — its admission (the write right and
+        # the role's write grant, REQ-2074), its lowering to the source's own
         # addressing and dialect, and its execution. This route used to check, address and run
         # the statement itself.
         try:

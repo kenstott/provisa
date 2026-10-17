@@ -192,7 +192,6 @@
     "sqlAliasHeader": "Alias SQL",
     "descriptionHeader": "Descrição",
     "visibleToHeader": "Visível para (leitura)",
-    "writableByHeader": "Gravável por (leitura/gravação)",
     "maskingHeader": "Mascaramento",
     "scopeHeader": "Escopo",
     "jsonPathHeader": "Caminho JSON",

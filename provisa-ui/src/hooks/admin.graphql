@@ -13,7 +13,6 @@ fragment ColumnFields on TableColumnType {
   id
   columnName
   visibleTo
-  writableBy
   masks {
     to
     mask {
@@ -48,12 +47,18 @@ fragment ColumnFields on TableColumnType {
   isPii
 }
 
-fragment ColumnPresetFields on ColumnPresetType {
-  column
-  source
-  name
-  value
-  dataType
+fragment WriteGrantFields on WriteGrantType {
+  role
+  operation
+  columns
+  rows
+  check
+  presets {
+    column
+    source
+    name
+    value
+  }
 }
 
 # Queries
@@ -321,8 +326,8 @@ query TablesQuery {
     columns {
       ...ColumnFields
     }
-    columnPresets {
-      ...ColumnPresetFields
+    writeGrants {
+      ...WriteGrantFields
     }
     uniqueConstraints {
       name
@@ -1246,6 +1251,13 @@ mutation UpdateRole($input: RoleInput!) {
 
 mutation DeleteRole($id: String!) {
   deleteRole(id: $id) {
+    ...MutationResult
+  }
+}
+
+# REQ-2074: the table's whole set of write grants, saved together.
+mutation SetTableWriteGrants($tableId: Int!, $grants: [WriteGrantInput!]!) {
+  setTableWriteGrants(tableId: $tableId, grants: $grants) {
     ...MutationResult
   }
 }

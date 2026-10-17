@@ -96,7 +96,6 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
           rebuildEvery: t.delta.rebuildEvery ?? undefined,
         }
       : null,
-    columnPresets: t.columnPresets,
     // REQ-1093: persist edited UNIQUE constraints; drop empty/incomplete rows.
     uniqueConstraints: (t.uniqueConstraints ?? [])
       .filter((u) => u.name.trim() && u.columns.length > 0)
@@ -189,10 +188,7 @@ export function governanceWithheld(table: { columns: { visibleTo: string[] | nul
   return table.columns.some((c) => c.visibleTo === null);
 }
 
-type GovernanceColumn = Pick<
-  RegisteredTable["columns"][number],
-  "visibleTo" | "writableBy" | "masks"
->;
+type GovernanceColumn = Pick<RegisteredTable["columns"][number], "visibleTo" | "masks">;
 
 /**
  * A column's grant lists and mask as a save sends them (REQ-1958). A caller who is not shown
@@ -206,7 +202,6 @@ export function governanceInput(c: GovernanceColumn, withheld: boolean) {
   }
   return {
     visibleTo: shownGrants(c.visibleTo),
-    writableBy: shownGrants(c.writableBy),
     masks: shownMasks(c.masks),
   };
 }

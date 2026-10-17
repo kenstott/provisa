@@ -98,6 +98,9 @@ class _TableInfo:
     # The statement forms a write to the table does not carry (its write route's,
     # executor/write_capability.py). An upsert is an INSERT ... ON CONFLICT.
     write_refused_forms: frozenset[str] = frozenset()
+    # REQ-2074: the role's write grant on the table for each operation. A mutation field is
+    # offered for an operation only when the role holds its grant, with the grant's columns.
+    write_grants: dict[str, dict] = field(default_factory=dict)
     modeling_role: str | None = None  # REQ-1320: "fact" | "dimension" | None
     modeling_history: str | None = None  # REQ-1320: SCD mode ("scd2" | "snapshot" | None)
     metrics: list[dict] = field(

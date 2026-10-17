@@ -77,7 +77,6 @@ export function ColumnsTable({
     },
     { label: t("registerTableForm.colHeaderScope"), value: col.scope },
     { label: t("registerTableForm.colHeaderVisibleTo"), value: col.visibleTo.join(", ") },
-    { label: t("registerTableForm.colHeaderWritableBy"), value: col.writableBy.join(", ") },
     { label: t("registerTableForm.colHeaderMasking"), value: masksSummary(col.masks, t) },
   ];
   return (
@@ -108,7 +107,6 @@ export function ColumnsTable({
               {tab === "access" && (
                 <>
                   <Table.Th>{t("registerTableForm.colHeaderVisibleTo")}</Table.Th>
-                  <Table.Th>{t("registerTableForm.colHeaderWritableBy")}</Table.Th>
                   <Table.Th>{t("registerTableForm.colHeaderMasking")}</Table.Th>
                 </>
               )}
@@ -241,14 +239,6 @@ export function ColumnsTable({
                           value={col.visibleTo}
                           onChange={(selected) => updateCol(i, "visibleTo", selected)}
                           ariaLabel={t("registerTableForm.colHeaderVisibleTo")}
-                        />
-                      </Table.Td>
-                      <Table.Td>
-                        <MultiSelect
-                          options={roles.map((r) => ({ id: r.id, label: r.id }))}
-                          value={col.writableBy}
-                          onChange={(selected) => updateCol(i, "writableBy", selected)}
-                          ariaLabel={t("registerTableForm.colHeaderWritableBy")}
                         />
                       </Table.Td>
                       <Table.Td>

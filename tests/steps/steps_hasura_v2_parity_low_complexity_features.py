@@ -32,7 +32,6 @@ REQ-217 — batch mutations: multiple mutations in a single GraphQL request exec
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -49,7 +48,6 @@ from tests.helpers import registry_write_ops, registry_write_returns_rows
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.mutation_gen import (
     MutationResult,
-    apply_column_presets,
     compile_mutation,
     compile_upsert,
 )
@@ -333,10 +331,6 @@ def _given_upsert_mutation_request(shared_data: dict) -> None:
 @when("the compiler processes it")
 def _when_compiler_processes_upsert(shared_data: dict) -> None:
     """Pass the field node and table metadata through ``compile_upsert``."""
-    if "preset_field_node" in shared_data:
-        _when_insert_or_update_mutation_executed(shared_data)
-        return
-
     if "pg_field_node" in shared_data:
         pg_result = _run_compile_query(
             shared_data["pg_field_node"],
@@ -507,159 +501,6 @@ def _then_distinct_on_or_window_fallback(shared_data: dict) -> None:
             "Trino SQL must not use DISTINCT ON syntax — it must use a window "
             f"function or plain DISTINCT fallback. Got:\n{trino_sql}"
         )
-
-
-# ---------------------------------------------------------------------------
-# REQ-214 scenario binding
-# ---------------------------------------------------------------------------
-
-
-@scenario(
-    "../features/REQ-214.feature",
-    "REQ-214 default behaviour",
-)
-def test_req_214_default_behaviour() -> None:
-    """Bind the REQ-214 column presets scenario."""
-
-
-@given("a table config with column_presets for created_by and updated_at")
-def _given_table_config_with_column_presets(shared_data: dict) -> None:
-    """Set up a TableMeta with column_presets for created_by (header) and updated_at (now)."""
-    column_presets = [
-        {
-            "column": "created_by",
-            "source": "header",
-            "name": "x_user_id",
-            "value": None,
-        },
-        {
-            "column": "updated_at",
-            "source": "now",
-            "name": None,
-            "value": None,
-        },
-    ]
-
-    user_input = {
-        "created_by": "attacker-supplied-value",
-        "updated_at": "1970-01-01T00:00:00",
-        "title": "My Record",
-        "amount": 42,
-    }
-
-    request_headers = {
-        "x_user_id": "user-abc-123",
-        "Authorization": "Bearer sometoken",
-    }
-
-    table = TableMeta(
-        table_id=1,
-        field_name="orders",
-        type_name="Orders",
-        source_id="sales-pg",
-        catalog_name="sales_pg",
-        schema_name="public",
-        table_name="orders",
-        column_presets=column_presets,
-    )
-
-    preset_field_node = _make_field_node(
-        "insertOrders",
-        {
-            "input": {
-                "created_by": "attacker-supplied-value",
-                "updated_at": "1970-01-01T00:00:00",
-                "title": "My Record",
-                "amount": 42,
-            }
-        },
-    )
-
-    shared_data["column_presets"] = column_presets
-    shared_data["user_input"] = user_input
-    shared_data["request_headers"] = request_headers
-    shared_data["table"] = table
-    shared_data["preset_field_node"] = preset_field_node
-
-
-@when("an insert or update mutation is executed")
-def _when_insert_or_update_mutation_executed(shared_data: dict) -> None:
-    """Invoke apply_column_presets to process the user input through the column presets."""
-    user_input: dict = dict(shared_data["user_input"])
-    column_presets: list[dict] = shared_data["column_presets"]
-    request_headers: dict = shared_data["request_headers"]
-
-    shared_data["before_apply"] = datetime.now(timezone.utc)
-
-    result = apply_column_presets(user_input, column_presets, headers=request_headers)
-
-    shared_data["after_apply"] = datetime.now(timezone.utc)
-    shared_data["preset_result"] = result
-    shared_data["original_user_input"] = shared_data["user_input"]
-
-
-@then(
-    "preset columns are removed from user input and injected with session variable or built-in function values before SQL generation"
-)
-def _then_preset_columns_injected(shared_data: dict) -> None:
-    """Assert that apply_column_presets correctly processes all configured presets."""
-    result: dict = shared_data["preset_result"]
-    original_input: dict = shared_data["original_user_input"]
-    before_apply: datetime = shared_data["before_apply"]
-    after_apply: datetime = shared_data["after_apply"]
-
-    assert isinstance(result, dict), f"apply_column_presets must return a dict; got {type(result)}"
-
-    assert "created_by" in result, (
-        "created_by column must be present in the result after preset injection"
-    )
-    assert result["created_by"] != "attacker-supplied-value", (
-        "created_by must NOT contain the client-supplied attacker value; "
-        f"got {result['created_by']!r}"
-    )
-    assert result["created_by"] == "user-abc-123", (
-        f"created_by must be set to the x_user_id header value 'user-abc-123'; "
-        f"got {result['created_by']!r}"
-    )
-
-    assert "updated_at" in result, (
-        "updated_at column must be present in the result after preset injection"
-    )
-    assert result["updated_at"] != "1970-01-01T00:00:00", (
-        f"updated_at must NOT contain the client-supplied epoch value; got {result['updated_at']!r}"
-    )
-
-    try:
-        parsed_updated_at = datetime.fromisoformat(result["updated_at"])
-    except (ValueError, TypeError) as exc:
-        raise AssertionError(
-            f"updated_at must be a valid ISO-format datetime string; "
-            f"got {result['updated_at']!r}: {exc}"
-        ) from exc
-
-    if parsed_updated_at.tzinfo is None:
-        parsed_updated_at = parsed_updated_at.replace(tzinfo=timezone.utc)
-
-    before_utc = (
-        before_apply.replace(tzinfo=timezone.utc) if before_apply.tzinfo is None else before_apply
-    )
-    after_utc = (
-        after_apply.replace(tzinfo=timezone.utc) if after_apply.tzinfo is None else after_apply
-    )
-
-    assert before_utc <= parsed_updated_at <= after_utc, (
-        f"updated_at must be within the window [{before_utc.isoformat()}, "
-        f"{after_utc.isoformat()}]; got {parsed_updated_at.isoformat()}"
-    )
-
-    assert result.get("title") == original_input["title"], (
-        f"Non-preset column 'title' must pass through unchanged; "
-        f"expected {original_input['title']!r}, got {result.get('title')!r}"
-    )
-    assert result.get("amount") == original_input["amount"], (
-        f"Non-preset column 'amount' must pass through unchanged; "
-        f"expected {original_input['amount']!r}, got {result.get('amount')!r}"
-    )
 
 
 # ---------------------------------------------------------------------------

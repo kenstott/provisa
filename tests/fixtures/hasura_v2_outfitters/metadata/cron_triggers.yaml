@@ -1,0 +1,10 @@
+- name: nightly_sales_digest
+  webhook: '{{REPORTS_BASE_URL}}/digest'
+  schedule: 0 6 * * *
+  include_in_metadata: true
+  payload: {}
+  retry_conf:
+    num_retries: 1
+    retry_interval_seconds: 60
+    timeout_seconds: 60
+    tolerance_seconds: 21600

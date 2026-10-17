@@ -23,7 +23,6 @@ function column(columnName: string, patch: Partial<TableColumn> = {}): TableColu
     id: 0,
     columnName,
     visibleTo: [],
-    writableBy: [],
     masks: [],
     alias: null,
     computedSqlAlias: columnName,

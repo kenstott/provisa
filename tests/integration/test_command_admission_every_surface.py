@@ -37,6 +37,7 @@ import pytest
 import sqlalchemy as sa
 
 from tests.integration.worker_boot_harness import WorkerBoot, _config
+from tests.helpers import config_write_grants
 
 pytestmark = [pytest.mark.integration]
 
@@ -77,9 +78,12 @@ def server():
     orders = base["tables"][0]
     for column in orders["columns"]:
         column["visible_to"] = _ROLES
-        column["writable_by"] = ["org_admin"]
         if column["name"] == "id":
             column["is_primary_key"] = True
+    # REQ-2074: org_admin writes every column.
+    orders["write_grants"] = config_write_grants(
+        ["org_admin"], [c["name"] for c in orders["columns"]]
+    )
     reads = ["query_development", "full_results"]
     boot = WorkerBoot(
         1,

@@ -15,7 +15,6 @@ import { Fragment, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Box, Button, Checkbox, Select, Table, Text, TextInput } from "@mantine/core";
 import { GrantPicker } from "../../components/GrantPicker";
-import { ColumnPresetsEditor } from "../../components/admin/ColumnPresetsEditor";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
 import type {
   RegisteredTable,
@@ -66,6 +65,8 @@ import { COLUMN_TABS, useColumnTab, type ColumnTab } from "./columnTopics";
 import { usePanelDirty } from "../../components/list/panelLeave";
 import type { ColumnDefinitionLine } from "./ColumnGlossaryHover";
 import { TableSectionTabs } from "./TableSectionTabs";
+import { WriteGrantsPanel } from "./WriteGrantsPanel";
+import { useSetTableWriteGrants } from "../../hooks/useWriteGrants";
 import { useTableSection, type TableSection } from "./tableSections";
 import { TableAssociations } from "./TableAssociations";
 import { VectorModelCell } from "./VectorModelCell";
@@ -154,6 +155,7 @@ export function TableEditForm({
   const { t } = useTranslation();
   const [section, setSection] = useTableSection(sectionIn, onSectionChange);
   const roleOptions = roles.map((r) => ({ id: r.id, label: r.id }));
+  const { setTableWriteGrants } = useSetTableWriteGrants();
   // The columns whose mask list is open below their row.
   const [masksOpen, setMasksOpen] = useState<Set<string>>(new Set());
   const toggleMasks = (column: string) =>
@@ -216,10 +218,6 @@ export function TableEditForm({
       ? []
       : [
           { label: t("tableEditForm.visibleToHeader"), value: shownGrantsLabel(c.visibleTo, t) },
-          {
-            label: t("tableEditForm.writableByHeader"),
-            value: shownGrantsLabel(c.writableBy, t),
-          },
           { label: t("tableEditForm.maskingHeader"), value: masksSummary(c.masks, t) },
         ]),
   ];
@@ -266,7 +264,7 @@ export function TableEditForm({
           {t("tableEditForm.hidingOnlyNote")}
         </Alert>
       )}
-      {/* The same six sections as the read view. To a caller who may change only how columns are
+      {/* The same seven sections as the read view. To a caller who may change only how columns are
           hidden the first five show read-only; Columns is theirs to edit. */}
       <TableSectionTabs value={section} onChange={setSection} errors={{ load: loadErrors }} />
       {section === "identity" &&
@@ -722,26 +720,6 @@ export function TableEditForm({
                 </FormField>
               </FormChecks>
             </FormLayout>
-            {(() => {
-              const NOSQL = new Set(["mongodb", "cassandra"]);
-              const src = sources.find((s) => s.id === editingTable.sourceId);
-              // Views and materialized views are read-only — no INSERT/UPDATE path, so presets never apply.
-              const isReadOnlyView = editingTable.viewSql != null;
-              const isMutable =
-                src && !NOSQL.has((src.type ?? "").toLowerCase()) && !isReadOnlyView;
-              return isMutable ? (
-                <div>
-                  <ColumnPresetsEditor
-                    presets={editingTable.columnPresets}
-                    columns={editingTable.columns.map((c) => c.columnName)}
-                    columnTypes={editingColumnTypes}
-                    onChange={(presets) =>
-                      setEditingTable({ ...editingTable, columnPresets: presets })
-                    }
-                  />
-                </div>
-              ) : null;
-            })()}
             {/* REQ-1986: the table's parameters, and the steward's required switch. */}
             <ParametersPanel
               columns={editingTable.columns}
@@ -819,7 +797,6 @@ export function TableEditForm({
                     {tab === "access" && (
                       <>
                         <Table.Th>{t("tableEditForm.visibleToHeader")}</Table.Th>
-                        <Table.Th>{t("tableEditForm.writableByHeader")}</Table.Th>
                         <Table.Th>{t("tableEditForm.maskingHeader")}</Table.Th>
                       </>
                     )}
@@ -965,15 +942,6 @@ export function TableEditForm({
                               />
                             </Table.Td>
                             <Table.Td>
-                              <GrantPicker
-                                options={roleOptions}
-                                value={shownGrants(c.writableBy)}
-                                onChange={(selected) => updateEditCol(i, "writableBy", selected)}
-                                ariaLabel={t("tableEditForm.writableByHeader")}
-                                disabled={hidingOnly}
-                              />
-                            </Table.Td>
-                            <Table.Td>
                               <Button
                                 variant="subtle"
                                 size="xs"
@@ -1006,6 +974,15 @@ export function TableEditForm({
             </Table.ScrollContainer>
           )}
         </div>
+      )}
+      {section === "writes" && (
+        // REQ-2074: the grants are saved on their own, apart from the table's other settings.
+        <WriteGrantsPanel
+          grants={editingTable.writeGrants}
+          columns={editingTable.columns.map((c) => c.columnName)}
+          roles={roleOptions}
+          onSave={hidingOnly ? undefined : (grants) => setTableWriteGrants(editingTable.id, grants)}
+        />
       )}
       {/* In the detail panel these are its head's actions while the table is edited, in place of
           the table's own; under a list row they are the form's last row. */}

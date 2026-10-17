@@ -38,7 +38,6 @@
     "dataTypePlaceholder": "指派類型...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "可見對象（讀取）",
-    "colHeaderWritableBy": "可寫入者（讀寫）",
     "colHeaderMasking": "遮罩",
     "colHeaderAlias": "SQL 別名",
     "colHeaderDescription": "描述",

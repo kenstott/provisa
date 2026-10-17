@@ -5,7 +5,6 @@
     "colSqlAlias": "כינוי SQL",
     "colDescription": "תיאור",
     "colVisibleTo": "גלוי עבור (קריאה)",
-    "colWritableBy": "ניתן לכתיבה על ידי (R/W)",
     "colMasking": "מיסוך",
     "colScope": "טווח",
     "pathBadge": "path",

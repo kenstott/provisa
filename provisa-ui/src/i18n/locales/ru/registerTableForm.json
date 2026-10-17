@@ -38,7 +38,6 @@
     "dataTypePlaceholder": "Назначить тип...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "Видимость (чтение)",
-    "colHeaderWritableBy": "Запись (R/W)",
     "colHeaderMasking": "Маскирование",
     "colHeaderAlias": "SQL-псевдоним",
     "colHeaderDescription": "Описание",

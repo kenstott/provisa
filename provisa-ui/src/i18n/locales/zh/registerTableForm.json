@@ -38,7 +38,6 @@
     "dataTypePlaceholder": "指定类型...",
     "colHeaderPk": "主键",
     "colHeaderVisibleTo": "可见对象（读）",
-    "colHeaderWritableBy": "可写对象（读/写）",
     "colHeaderMasking": "脱敏",
     "colHeaderAlias": "SQL 别名",
     "colHeaderDescription": "描述",

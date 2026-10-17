@@ -14,10 +14,7 @@ import pytest
 from graphql import parse, validate
 
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.mutation_gen import (
-    apply_column_presets,
-    compile_mutation,
-)
+from provisa.compiler.mutation_gen import compile_mutation
 from provisa.compiler.write_admission import WriteNotAdmitted
 from tests.write_governance import admitted, write_governance
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
@@ -241,36 +238,3 @@ class TestUpsertMutation:
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
         m = results[0]
         assert m.params == [5, 99.9, "eu"]
-
-
-class TestColumnPresets:
-    def test_now_preset(self):
-        presets = [{"column": "created_at", "source": "now"}]
-        result = apply_column_presets({"name": "test"}, presets)
-        assert "created_at" in result
-        assert "name" in result
-        # Value should be an ISO timestamp string
-        assert "T" in result["created_at"]
-
-    def test_header_preset(self):
-        presets = [{"column": "created_by", "source": "header", "name": "x-user-id"}]
-        headers = {"x-user-id": "user-42"}
-        result = apply_column_presets({"name": "test"}, presets, headers=headers)
-        assert result["created_by"] == "user-42"
-
-    def test_literal_preset(self):
-        presets = [{"column": "status", "source": "literal", "value": "active"}]
-        result = apply_column_presets({"name": "test"}, presets)
-        assert result["status"] == "active"
-
-    def test_preset_overrides_user_input(self):
-        """Preset columns override user-supplied values (security enforcement)."""
-        presets = [{"column": "created_by", "source": "literal", "value": "system"}]
-        result = apply_column_presets({"name": "test", "created_by": "hacker"}, presets)
-        assert result["created_by"] == "system"
-
-    def test_header_preset_missing_header(self):
-        """Missing header skips the preset (no injection)."""
-        presets = [{"column": "created_by", "source": "header", "name": "x-user-id"}]
-        result = apply_column_presets({"name": "test"}, presets, headers={})
-        assert "created_by" not in result

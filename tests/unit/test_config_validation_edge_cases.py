@@ -336,12 +336,8 @@ class TestRLSFilterField:
 
 
 class TestColumnPresetFields:
-    """ColumnPreset.source is a plain str (no enum validator).
-
-    Source values "now", "header", "literal" are documented conventions but not
-    enforced by Pydantic — we document that valid values parse cleanly and that
-    the optional name/value fields behave as expected.
-    """
+    """A write grant's preset (REQ-2074) names its source -- session, literal or now -- and the
+    value that source needs; anything else is refused at parse."""
 
     def test_source_now_parses(self):
         preset = ColumnPreset(column="created_at", source="now")
@@ -349,43 +345,50 @@ class TestColumnPresetFields:
         assert preset.name is None
         assert preset.value is None
 
-    def test_source_header_with_name_parses(self):
-        preset = ColumnPreset(column="tenant_id", source="header", name="X-Tenant-ID")
-        assert preset.source == "header"
-        assert preset.name == "X-Tenant-ID"
+    def test_source_session_with_name_parses(self):
+        preset = ColumnPreset(column="tenant_id", source="session", name="tenant_id")
+        assert preset.source == "session"
+        assert preset.name == "tenant_id"
 
-    def test_source_header_without_name_parses_with_none(self):
-        """No Pydantic validator enforces that header requires name; name defaults to None."""
-        preset = ColumnPreset(column="user_id", source="header")
-        assert preset.name is None
+    def test_source_session_without_name_is_refused(self):
+        with pytest.raises(ValidationError, match="names its variable"):
+            ColumnPreset(column="user_id", source="session")
 
     def test_source_literal_with_value_parses(self):
         preset = ColumnPreset(column="status", source="literal", value="active")
         assert preset.source == "literal"
         assert preset.value == "active"
 
-    def test_source_literal_without_value_parses_with_none(self):
-        """No Pydantic validator enforces that literal requires value; value defaults to None."""
-        preset = ColumnPreset(column="status", source="literal")
-        assert preset.value is None
+    def test_source_literal_without_value_is_refused(self):
+        with pytest.raises(ValidationError, match="carries its value"):
+            ColumnPreset(column="status", source="literal")
 
-    def test_unrecognised_source_string_is_accepted_by_pydantic(self):
-        """The source field is a plain str — Pydantic does not reject unknown values."""
-        preset = ColumnPreset(column="col", source="unknown_source_type")
-        assert preset.source == "unknown_source_type"
+    def test_unrecognised_source_is_refused(self):
+        with pytest.raises(ValidationError):
+            ColumnPreset(column="col", source="header")
 
-    def test_column_preset_via_parse_config_dict(self):
+    def test_presets_parse_on_a_write_grant(self):
         table = _minimal_table()
-        table["column_presets"] = [
-            {"column": "created_at", "source": "now"},
-            {"column": "tenant_id", "source": "header", "name": "X-Tenant-ID"},
+        table["write_grants"] = [
+            {
+                "role": "admin",
+                "operation": "insert",
+                "columns": [],
+                "presets": [
+                    {"column": table["columns"][0]["name"], "source": "now"},
+                ],
+            }
         ]
         data = _minimal_config(tables=[table])
         config = parse_config_dict(data)
-        presets = config.tables[0].column_presets
-        assert len(presets) == 2
-        assert presets[0].source == "now"
-        assert presets[1].name == "X-Tenant-ID"
+        (grant,) = config.tables[0].write_grants
+        assert grant.presets[0].source == "now"
+
+    def test_column_presets_on_a_table_are_refused_by_name(self):
+        table = _minimal_table()
+        table["column_presets"] = [{"column": "created_at", "source": "now"}]
+        with pytest.raises((ValidationError, ValueError), match="column_presets"):
+            parse_config_dict(_minimal_config(tables=[table]))
 
 
 # ---------------------------------------------------------------------------

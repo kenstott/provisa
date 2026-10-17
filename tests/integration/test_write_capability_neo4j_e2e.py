@@ -23,6 +23,7 @@ import os
 import httpx
 import pytest
 import yaml
+from tests.helpers import config_write_grants
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_neo4j]
 
@@ -66,15 +67,14 @@ def _config() -> dict:
                         "data_type": "integer",
                         "is_primary_key": True,
                         "visible_to": [_ROLE],
-                        "writable_by": [_ROLE],
                     },
                     {
                         "name": "name",
                         "data_type": "varchar",
                         "visible_to": [_ROLE],
-                        "writable_by": [_ROLE],
                     },
                 ],
+                "write_grants": config_write_grants([_ROLE], ["person_id", "name"]),  # REQ-2074
             }
         ],
     }

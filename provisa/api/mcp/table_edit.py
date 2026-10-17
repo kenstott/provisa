@@ -104,7 +104,6 @@ def _column_input(c: Any) -> Any:
     return ColumnInput(
         name=c.column_name,
         visible_to=list(c.visible_to),
-        writable_by=list(c.writable_by),
         masks=[
             MaskEntryInput(
                 to=list(e.to),
@@ -134,7 +133,7 @@ def _column_input(c: Any) -> Any:
 
 def table_input(t: Any) -> Any:
     """The full ``TableInput`` that saves ``t`` back unchanged (helpers.ts buildTableUpdateInput)."""
-    from provisa.api.admin.types import ColumnPresetInput, TableInput, UniqueConstraintInput
+    from provisa.api.admin.types import TableInput, UniqueConstraintInput
 
     return TableInput(
         source_id=t.source_id,
@@ -186,16 +185,6 @@ def table_input(t: Any) -> Any:
         enable_aggregates=t.enable_aggregates,
         enable_group_by=t.enable_group_by,
         live=_live_input(t.live),
-        column_presets=[
-            ColumnPresetInput(
-                column=p.column,
-                source=p.source,
-                name=p.name,
-                value=p.value,
-                data_type=p.data_type,
-            )
-            for p in t.column_presets
-        ],
         unique_constraints=[
             UniqueConstraintInput(name=u.name, columns=list(u.columns))
             for u in t.unique_constraints

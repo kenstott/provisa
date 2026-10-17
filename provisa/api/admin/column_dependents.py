@@ -288,8 +288,20 @@ async def _physical_name_dependents(
 
     if row.get("watermark_column") == column_name:
         out.append(Dependent("watermark", row["table_name"], "watermark column", "remove"))
-    if any(p.get("column") == column_name for p in (row.get("column_presets") or [])):
-        out.append(Dependent("column_preset", row["table_name"], "preset target", "remove"))
+    # REQ-2074: a write grant that names the column, among its columns or its presets.
+    from provisa.core.repositories import write_grant as write_grant_repo
+
+    for grant in await write_grant_repo.for_table(conn, tid):
+        presets = {p["column"] for p in grant["presets"]}
+        if column_name in grant["columns"] or column_name in presets:
+            out.append(
+                Dependent(
+                    "write_grant",
+                    f"{grant['role']} {grant['operation']} on {row['table_name']}",
+                    "write grant column",
+                    "remove",
+                )
+            )
     return out
 
 

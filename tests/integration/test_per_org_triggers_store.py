@@ -28,6 +28,7 @@ from typing import Any, cast
 import pytest
 
 from provisa.core.request_context import current_org, reset_current_org, set_current_org
+from tests.helpers import config_write_grants
 
 _CONFIG = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "fixtures", "per_org_triggers_config.yaml")
@@ -51,15 +52,14 @@ def _table(schema: str) -> dict:
                 "data_type": "integer",
                 "is_primary_key": True,
                 "visible_to": ["trig_writer"],
-                "writable_by": ["trig_writer"],
             },
             {
                 "name": "note",
                 "data_type": "varchar",
                 "visible_to": ["trig_writer"],
-                "writable_by": ["trig_writer"],
             },
         ],
+        "write_grants": config_write_grants(["trig_writer"], ["id", "note"]),  # REQ-2074
     }
 
 

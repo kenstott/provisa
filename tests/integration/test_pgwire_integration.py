@@ -1041,9 +1041,20 @@ class TestPgwireCopyFrom:
                         "column_name": name,
                         "data_type": dtype,
                         "visible_to": ["admin"],
-                        "writable_by": ["admin"],
                     }
                     for name, dtype in (("id", "integer"), ("region", "varchar"))
+                ],
+                # REQ-2074: the admin's write grants over both columns.
+                "write_grants": [
+                    {
+                        "role": "admin",
+                        "operation": op,
+                        "columns": [] if op == "delete" else ["id", "region"],
+                        "rows": None,
+                        "check": None,
+                        "presets": [],
+                    }
+                    for op in ("insert", "update", "delete")
                 ],
             }
         ]

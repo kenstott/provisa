@@ -138,6 +138,7 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "pages/tables/loadReadFields.tsx",
       "pages/tables/queryReadFields.tsx",
       "pages/tables/qualityReadFields.tsx",
+      "pages/tables/WriteGrantsPanel.tsx",
     ],
     form: [
       "pages/tables/TableEditForm.tsx",
@@ -156,7 +157,8 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "pages/tables/ProfilerPanel.tsx",
       "pages/tables/DataQualityPanel.tsx",
       "components/admin/UniquesPanel.tsx",
-      "components/admin/ColumnPresetsEditor.tsx",
+      // REQ-2074: the Writes section reads and edits its grants in one component.
+      "pages/tables/WriteGrantsPanel.tsx",
       "components/admin/OffPeakWindowFields.tsx",
       "components/admin/ReplicateSelect.tsx",
       "components/admin/RegionSelect.tsx",
@@ -220,8 +222,6 @@ const PANELS: Readonly<Record<string, Panel>> = {
         "a step of the builder that composes a check: shown in the contract's checks",
       "dataQualityPanel.unitLabel":
         "a step of the builder that composes a check: shown in the contract's checks",
-      "columnPresetsEditor.headerNamePlaceholder":
-        "a header preset's name: shown under Header / Value",
       "tableEditForm.calBaseSystemLabel":
         "creates a calendar, which the table names: shown as Calendar",
       "tableEditForm.calFiscalAnchorDayLabel":

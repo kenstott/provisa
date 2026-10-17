@@ -18,6 +18,7 @@ from provisa.security.inheritance import (
     children_of,
     expand_column_grants,
     expand_grants,
+    expand_write_grants,
     flatten_role_dicts,
     holds_grant,
     materialize_rls,
@@ -120,7 +121,7 @@ class TestGrants:
             {
                 "id": 1,
                 "columns": [
-                    {"column_name": "amount", "visible_to": ["reader"], "writable_by": ["analyst"]},
+                    {"column_name": "amount", "visible_to": ["reader"]},
                     {"column_name": "ssn", "visible_to": ["auditor"], "unmasked_to": ["auditor"]},
                 ],
             }
@@ -128,9 +129,35 @@ class TestGrants:
         expand_column_grants(tables, CHAINS)
         amount, ssn = tables[0]["columns"]
         assert amount["visible_to"] == ["reader", "analyst", "junior"]
-        assert amount["writable_by"] == ["analyst", "junior"]
         assert ssn["visible_to"] == ["auditor"]
         assert ssn["unmasked_to"] == ["auditor"]
+
+    def test_write_grants_reach_descendants_child_first(self):  # REQ-2074
+        def grant(role, op, columns):
+            return {
+                "role": role,
+                "operation": op,
+                "columns": columns,
+                "rows": None,
+                "check": None,
+                "presets": [],
+            }
+
+        tables = [
+            {
+                "id": 1,
+                "write_grants": [
+                    grant("reader", "update", ["a", "b"]),
+                    grant("analyst", "update", ["a"]),
+                    grant("reader", "delete", []),
+                ],
+            }
+        ]
+        expand_write_grants(tables, CHAINS)
+        held = {(g["role"], g["operation"]): g["columns"] for g in tables[0]["write_grants"]}
+        assert held[("junior", "update")] == ["a"]  # the nearest: analyst's, not reader's
+        assert ("junior", "delete") in held and ("analyst", "delete") in held
+        assert ("auditor", "update") not in held  # no ancestor holds one
 
     def test_empty_grant_stays_empty(self):
         items = [{"visible_to": []}]

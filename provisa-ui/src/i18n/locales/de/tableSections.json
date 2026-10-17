@@ -8,6 +8,7 @@
     "query": "Abfrage",
     "quality": "Qualität",
     "columns": "Spalten",
+    "writes": "Schreibrechte",
     "source": "Quelle",
     "schema": "Schema",
     "table": "Tabelle",

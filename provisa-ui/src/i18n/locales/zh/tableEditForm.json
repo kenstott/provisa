@@ -192,7 +192,6 @@
     "sqlAliasHeader": "SQL 别名",
     "descriptionHeader": "描述",
     "visibleToHeader": "可见对象（读）",
-    "writableByHeader": "可写对象（读/写）",
     "maskingHeader": "脱敏",
     "scopeHeader": "范围",
     "jsonPathHeader": "JSON 路径",

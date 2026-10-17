@@ -38,7 +38,6 @@
     "dataTypePlaceholder": "प्रकार असाइन करें...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "किसे दिखेगा (पढ़ना)",
-    "colHeaderWritableBy": "कौन लिख सकता है (R/W)",
     "colHeaderMasking": "मास्किंग",
     "colHeaderAlias": "SQL उपनाम",
     "colHeaderDescription": "विवरण",

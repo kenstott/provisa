@@ -4,5 +4,5 @@ Feature: REQ-732 — SharePoint Connector
 
   Scenario: REQ-732 default behaviour
     Given the Calcite sharepoint connector does not expose information_schema.columns
-    When a user registers a table via GraphQL registerTable mutation with columns=[{name, visibleTo, writableBy}]
+    When a user registers a table via GraphQL registerTable mutation with columns=[{name, visibleTo}]
     Then the table is created with the supplied column definitions

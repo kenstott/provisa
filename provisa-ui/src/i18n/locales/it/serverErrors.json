@@ -428,7 +428,9 @@
       "relationship_id_taken": "La relazione '{{relationship}}' esiste già",
       "relationship_graphql_alias_taken": "L'alias GraphQL '{{alias}}' è già l'alias della relazione '{{relationship}}' da '{{table}}'",
       "trigger_refused": "{{reason}}",
-      "scheduled_task_updated": "Attività pianificata '{{task}}' aggiornata"
+      "scheduled_task_updated": "Attività pianificata '{{task}}' aggiornata",
+      "write_grant_invalid": "Questa autorizzazione non corrisponde alla tabella: {{reason}}",
+      "write_grants_saved": "Autorizzazioni di scrittura della tabella {{id}} salvate"
     },
     "secrets": {
       "name_refused": "{{name}} non è un nome all'interno dei segreti di questa organizzazione in {{service}}: un nome è relativo all'organizzazione e non può uscirne",

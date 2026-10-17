@@ -247,7 +247,6 @@ async def steward_input(input_: Any) -> tuple[Any, list[str]]:
 # a column's grant lists and its mask.
 GOVERNANCE_FIELDS = (
     "visible_to",
-    "writable_by",
     "masks",
 )
 
