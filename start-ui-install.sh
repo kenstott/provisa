@@ -1097,7 +1097,9 @@ cleanup() {
   [ -n "${BACKEND_TAIL_PID:-}" ] && pkill -P "$BACKEND_TAIL_PID" 2>/dev/null || true
   kill $UI_PID "${UI_TAIL_PID:-}" "${BACKEND_TAIL_PID:-}" "${KEY_READER_PID:-}" "${VERSION_WATCHER_PID:-}" "$BACKEND_PID" 2>/dev/null || true
   # REQ-2035: a regional named demo's headless nodes and its shared cache.
-  for _pid in "${HEADLESS_PIDS[@]}" ${DEMO_REDIS_PID:+"$DEMO_REDIS_PID"}; do
+  # macOS bash 3.2 treats an empty array's "${a[@]}" as unbound under set -u; the +-form expands
+  # to nothing when no headless node was started.
+  for _pid in ${HEADLESS_PIDS[@]+"${HEADLESS_PIDS[@]}"} ${DEMO_REDIS_PID:+"$DEMO_REDIS_PID"}; do
     kill "$_pid" 2>/dev/null || true
   done
   wait $UI_PID "$BACKEND_PID" 2>/dev/null || true
