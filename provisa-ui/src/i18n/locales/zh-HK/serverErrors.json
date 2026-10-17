@@ -431,7 +431,11 @@
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "排程任務「{{task}}」已更新",
       "write_grant_invalid": "此授權與該表不符：{{reason}}",
-      "write_grants_saved": "表 {{id}} 的寫入授權已儲存"
+      "write_grants_saved": "表 {{id}} 的寫入授權已儲存",
+      "role_session_var_name_missing": "工作階段值需要名稱",
+      "role_session_var_name_reserved": "'{{name}}' 由請求或節點綁定，不能作為角色的工作階段值",
+      "role_session_var_name_invalid": "工作階段值名稱 '{{name}}' 只能包含字母、數字及底線，且不能以數字開頭",
+      "role_session_var_name_repeated": "工作階段值 '{{name}}' 被指定了兩次"
     },
     "secrets": {
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",

@@ -109,6 +109,31 @@ def attribute_name_problem(name: str) -> tuple[str, str] | None:
     return None
 
 
+def session_constant_problem(name: str) -> tuple[str, str] | None:  # REQ-1682
+    """Why ``name`` cannot be a role's configured session value, as (code, message), or None when
+    it can. A request binds ``user_id`` and ``role``, and the node sets the region and the org over
+    whatever else is bound (``request_context.session_vars_for``): a constant of any of those names
+    would never be read, so it is refused rather than kept."""
+    from provisa.core.request_context import ORG_VAR, REGION_VAR
+
+    normalized = normalize_name(name)
+    if not normalized:
+        return "name_missing", "A session value needs a name"
+    if normalized in RESERVED_NAMES | {REGION_VAR, ORG_VAR}:
+        return (
+            "name_reserved",
+            f"'{normalized}' is bound by the request or the node and cannot be a role's "
+            "session value",
+        )
+    if not _NAME.fullmatch(normalized):
+        return (
+            "name_invalid",
+            f"Session value name '{name}' must be letters, digits and underscores, and must "
+            "not start with a digit",
+        )
+    return None
+
+
 @dataclass(frozen=True)
 class ResolvedAttribute:
     """One attribute of a user as it resolved: its value, where it comes from, and -- for a

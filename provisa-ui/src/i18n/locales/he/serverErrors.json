@@ -431,7 +431,11 @@
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "המשימה המתוזמנת '{{task}}' עודכנה",
       "write_grant_invalid": "הרשאה זו אינה מתאימה לטבלה: {{reason}}",
-      "write_grants_saved": "הרשאות הכתיבה של טבלה {{id}} נשמרו"
+      "write_grants_saved": "הרשאות הכתיבה של טבלה {{id}} נשמרו",
+      "role_session_var_name_missing": "לערך סשן נדרש שם",
+      "role_session_var_name_reserved": "'{{name}}' מקושר על ידי הבקשה או הצומת ואינו יכול להיות ערך סשן של תפקיד",
+      "role_session_var_name_invalid": "שם ערך הסשן '{{name}}' חייב להכיל אותיות, ספרות וקווים תחתונים, ואסור שיתחיל בספרה",
+      "role_session_var_name_repeated": "ערך הסשן '{{name}}' מופיע פעמיים"
     },
     "secrets": {
       "name_refused": "{{name}} אינו שם בתוך הסודות של הארגון הזה ב-{{service}}: שם הוא יחסי לארגון ואינו יכול לצאת ממנו",

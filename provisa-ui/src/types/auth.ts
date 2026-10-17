@@ -71,6 +71,12 @@ export interface RoleRateLimit {
   maxQueryTimeMs: number | null;
 }
 
+/** REQ-1682: one of a role's constant session values. */
+export interface SessionVar {
+  name: string;
+  value: string;
+}
+
 export interface Role {
   id: string;
   capabilities: Capability[];
@@ -86,6 +92,9 @@ export interface Role {
   parentRoleId?: string | null; // REQ-1677: the role this one inherits from
   /** REQ-1921: with data_residency, the region values its grant covers (regions, "no_region"). */
   residencyValues?: string[];
+  /** REQ-1682: the role's own constant session values, what its row rules read when the request
+   *  binds nothing of that name. */
+  sessionVars?: SessionVar[];
   /** The server withheld this role's definition from the caller; the lists above are empty placeholders. */
   detailsHidden?: boolean;
 }

@@ -23,6 +23,7 @@ export function RoleRead({ role: r }: { role: Role }) {
   const list = (values: readonly string[] | undefined) =>
     values && values.length > 0 ? values.join(", ") : null;
   const domain = (d: string) => (d === "*" ? t("securityPage.allDomains") : d);
+  const sessionVars = r.sessionVars ?? [];
   return (
     <div className="detail-groups" data-testid={`role-read-${r.id}`}>
       <DetailFields
@@ -43,6 +44,19 @@ export function RoleRead({ role: r }: { role: Role }) {
             label: t("securityPage.parentRole"),
             value: r.parentRoleId,
             testId: `role-parent-${r.id}`,
+          },
+          {
+            // REQ-1682: the role's own constant session values, one to a line.
+            label: t("roleSessionValues.label"),
+            value:
+              sessionVars.length > 0
+                ? sessionVars.map((v) => (
+                    <span key={v.name} className="role-session-value">
+                      <code>{v.name}</code> = {v.value}
+                    </span>
+                  ))
+                : null,
+            testId: `role-session-values-${r.id}`,
           },
         ]}
       />

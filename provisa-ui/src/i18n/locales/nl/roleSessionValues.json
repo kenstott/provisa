@@ -1,0 +1,10 @@
+{
+  "roleSessionValues": {
+    "label": "Sessiewaarden",
+    "help": "Constante waarden die de rijregels van deze rol lezen als current_setting('provisa.<name>'). Een waarde die het verzoek onder dezelfde naam bindt, gaat voor. Een rol die van deze rol erft, krijgt deze waarden, behalve de namen die hij zelf instelt.",
+    "name": "Naam",
+    "value": "Waarde",
+    "add": "Waarde toevoegen",
+    "remove": "{{name}} verwijderen"
+  }
+}

@@ -836,6 +836,12 @@ class RoleRateLimitType:  # REQ-1174
 
 
 @strawberry.type
+class SessionVarType:  # REQ-1682: one of a role's constant session values
+    name: str
+    value: str
+
+
+@strawberry.type
 class RoleType:  # REQ-042
     id: str
     # Null for a caller who neither holds user_management nor holds the role itself: a role's
@@ -847,6 +853,8 @@ class RoleType:  # REQ-042
     parent_role_id: str | None = None  # REQ-1677
     # REQ-1921: with data_residency, the region values its grant covers; null as capabilities is.
     residency_values: list[str] | None = strawberry.field(default_factory=list)
+    # REQ-1682: the role's own constant session values, by name; null as capabilities is.
+    session_vars: list[SessionVarType] | None = strawberry.field(default_factory=list)
 
 
 @strawberry.type
@@ -1451,6 +1459,12 @@ class RoleRateLimitInput:  # REQ-1174
 
 
 @strawberry.input
+class SessionVarInput:  # REQ-1682
+    name: str
+    value: str
+
+
+@strawberry.input
 class RoleInput:  # REQ-042
     id: str
     capabilities: list[str]
@@ -1459,6 +1473,8 @@ class RoleInput:  # REQ-042
     parent_role_id: str | None = None  # REQ-1677
     # REQ-1921: with data_residency, the region values its grant covers (regions, "no_region").
     residency_values: list[str] = strawberry.field(default_factory=list)
+    # REQ-1682: the role's own constant session values; the whole set, as the form holds it.
+    session_vars: list[SessionVarInput] = strawberry.field(default_factory=list)
 
 
 @strawberry.input

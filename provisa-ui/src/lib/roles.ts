@@ -23,6 +23,7 @@ export interface RawRole {
   rateLimit?: Role["rateLimit"];
   parentRoleId?: string | null;
   residencyValues?: string[] | null; // REQ-1921
+  sessionVars?: Role["sessionVars"] | null; // REQ-1682
 }
 
 /**
@@ -51,5 +52,6 @@ export function normalizeRole(raw: RawRole): Role {
     rateLimit: raw.rateLimit,
     parentRoleId: raw.parentRoleId,
     residencyValues: raw.residencyValues ?? [],
+    sessionVars: raw.sessionVars ?? [],
   };
 }

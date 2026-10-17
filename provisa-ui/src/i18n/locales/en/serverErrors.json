@@ -431,7 +431,11 @@
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Scheduled task '{{task}}' updated",
       "write_grant_invalid": "This grant does not fit the table: {{reason}}",
-      "write_grants_saved": "Write grants of table {{id}} saved"
+      "write_grants_saved": "Write grants of table {{id}} saved",
+      "role_session_var_name_missing": "A session value needs a name",
+      "role_session_var_name_reserved": "'{{name}}' is bound by the request or the node and cannot be a role's session value",
+      "role_session_var_name_invalid": "Session value name '{{name}}' must be letters, digits and underscores, and must not start with a digit",
+      "role_session_var_name_repeated": "Session value '{{name}}' is named twice"
     },
     "secrets": {
       "name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",

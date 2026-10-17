@@ -1,0 +1,10 @@
+{
+  "roleSessionValues": {
+    "label": "Valores de sessão",
+    "help": "Valores constantes que as regras de linhas desta função leem como current_setting('provisa.<name>'). Um valor que a solicitação vincula com o mesmo nome tem precedência. Uma função que herda desta recebe esses valores, exceto os nomes que ela mesma define.",
+    "name": "Nome",
+    "value": "Valor",
+    "add": "Adicionar um valor",
+    "remove": "Remover {{name}}"
+  }
+}

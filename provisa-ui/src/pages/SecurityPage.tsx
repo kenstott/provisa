@@ -34,12 +34,13 @@ import { useRoles, useDomains } from "../hooks/useAdminQueries";
 import { useUpsertRole, useDeleteRole, useRevokeRoleGrants } from "../hooks/useSecurityQueries";
 import { RoleGrantAction } from "../components/RoleGrantAction";
 import { removeUserAssignment } from "../api/admin";
-import type { Role, Capability } from "../types/auth";
+import type { Role, Capability, SessionVar } from "../types/auth";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ResidencyGrant } from "../components/admin/ResidencyGrant";
 import { RoleRead } from "./security/RoleRead";
+import { SessionValuesField } from "./security/SessionValuesField";
 import { CapabilityGrid, DomainsNote, SubtreeNote } from "./security/RoleFormParts";
 import { useRegionChoices } from "../hooks/useRegionQueries";
 import { ListTable, ListHead, ListRow, ListItems } from "../components/list/ListTable";
@@ -59,6 +60,7 @@ const EMPTY_ROLE = {
   domainAccess: [] as string[],
   parentRoleId: "" as string, // REQ-1677: "" = no parent
   residencyValues: [] as string[], // REQ-1921: with data_residency, the values it covers
+  sessionVars: [] as SessionVar[], // REQ-1682: the role's constant session values
   // REQ-1174: per-role rate + query-complexity limits ("" = unlimited on that dimension).
   reqPerSec: "" as number | "",
   maxComplexity: "" as number | "",
@@ -141,6 +143,7 @@ export function SecurityRolesPage() {
           residencyValues: roleForm.capabilities.includes("data_residency")
             ? roleForm.residencyValues
             : [],
+          sessionVars: roleForm.sessionVars, // REQ-1682
         },
         // The new-role form creates; a role's own detail updates it.
         showRoleForm,
@@ -193,6 +196,8 @@ export function SecurityRolesPage() {
       domainAccess: [...role.domain_access],
       parentRoleId: role.parentRoleId ?? "", // REQ-1677
       residencyValues: [...(role.residencyValues ?? [])], // REQ-1921
+      // REQ-1682: name and value only -- the input type takes no __typename.
+      sessionVars: (role.sessionVars ?? []).map(({ name, value }) => ({ name, value })),
       reqPerSec: role.rateLimit?.requestsPerSecond ?? "",
       maxComplexity: role.rateLimit?.maxQueryComplexity ?? "",
       maxTimeMs: role.rateLimit?.maxQueryTimeMs ?? "",
@@ -397,6 +402,12 @@ export function SecurityRolesPage() {
                 clearable
                 searchable
                 data-testid={`role-parent-select-${r.id}`}
+              />
+            </FormField>
+            <FormField size="full">
+              <SessionValuesField
+                rows={roleForm.sessionVars}
+                onChange={(sessionVars) => setRoleForm({ ...roleForm, sessionVars })}
               />
             </FormField>
             {/* REQ-1174: per-role rate + query-complexity limits. Blank = unlimited on that dimension. */}

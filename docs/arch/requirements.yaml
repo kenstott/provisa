@@ -60822,6 +60822,7 @@
   - provisa/api/data/action_governance.py
   tests:
   - tests/unit/test_request_session_vars.py
+  - tests/unit/test_role_session_constants.py
   - tests/integration/test_hasura_v2_live_import.py
   use_case: Nothing populated `session_vars`, so every session-variable RLS predicate resolved to NULL
     on the federation engine and matched no rows for any user. Every Hasura permission filter is written

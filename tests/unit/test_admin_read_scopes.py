@@ -128,6 +128,7 @@ _ROLE_ROWS = [
         "demonstrated": [],
         "domain_access": ["sales"],
         "residency_values": [],
+        "session_vars": {},  # REQ-1682: a stored role always carries its session values
         "org_id": None,
         "parent_role_id": None,
     },
@@ -137,6 +138,7 @@ _ROLE_ROWS = [
         "demonstrated": [],
         "domain_access": ["*"],
         "residency_values": [],
+        "session_vars": {},  # REQ-1682: a stored role always carries its session values
         "org_id": None,
         "parent_role_id": None,
     },

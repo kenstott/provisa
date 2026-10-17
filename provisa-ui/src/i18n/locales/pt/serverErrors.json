@@ -431,7 +431,11 @@
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Tarefa agendada '{{task}}' atualizada",
       "write_grant_invalid": "Esta concessão não se ajusta à tabela: {{reason}}",
-      "write_grants_saved": "Concessões de gravação da tabela {{id}} salvas"
+      "write_grants_saved": "Concessões de gravação da tabela {{id}} salvas",
+      "role_session_var_name_missing": "Um valor de sessão precisa de um nome",
+      "role_session_var_name_reserved": "'{{name}}' é vinculado pela solicitação ou pelo nó e não pode ser um valor de sessão de uma função",
+      "role_session_var_name_invalid": "O nome do valor de sessão '{{name}}' deve conter letras, dígitos e sublinhados, e não pode começar com um dígito",
+      "role_session_var_name_repeated": "O valor de sessão '{{name}}' foi informado duas vezes"
     },
     "secrets": {
       "name_refused": "{{name}} não é um nome dentro dos segredos desta organização em {{service}}: um nome é relativo à organização e não pode sair dela",

@@ -23,6 +23,10 @@ const steward: Role = {
   domain_access: ["*"],
   parentRoleId: "analyst",
   residencyValues: ["eu", "no_region"],
+  sessionVars: [
+    { name: "tier", value: "gold" },
+    { name: "desk", value: "7" },
+  ],
   rateLimit: { requestsPerSecond: 20, maxQueryComplexity: 50, maxQueryTimeMs: 30000 },
 };
 
@@ -42,7 +46,16 @@ describe("a role's read view", () => {
       ["Region values covered", "eu, no_region"],
       ["Domain Access", "All Domains"],
       ["Inherits from", "analyst"],
+      ["Session values", "tier = golddesk = 7"],
     ]);
+    // REQ-1682: one name = value to a line.
+    expect(
+      Array.from(
+        screen
+          .getByTestId("role-session-values-data_steward")
+          .querySelectorAll(".role-session-value"),
+      ).map((line) => line.textContent),
+    ).toEqual(["tier = gold", "desk = 7"]);
     expect(fields("role-read-limits")).toEqual([
       ["Requests / sec", "20"],
       ["Max query complexity", "50"],
@@ -73,6 +86,7 @@ describe("a role's read view", () => {
       ["Region values covered", "—"],
       ["Domain Access", "no domains — reaches no data"],
       ["Inherits from", "—"],
+      ["Session values", "—"],
     ]);
     for (const [, value] of fields("role-read-limits")) expect(value).toBe("—");
   });

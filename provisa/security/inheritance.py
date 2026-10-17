@@ -100,8 +100,8 @@ def children_of(role_id: str, roles: Iterable[dict]) -> list[str]:
 def flatten_role_dicts(roles: list[dict]) -> list[dict]:
     """Each role with ancestor capabilities and domain_access unioned in -- rights only add -- and
     each property (rate_limit, max_rows) set by the nearest role in the chain that declares it,
-    the role itself first, so a child may raise or lower its parent's (REQ-2057). Input dicts are
-    not modified."""
+    the role itself first, so a child may raise or lower its parent's (REQ-2057). Session values
+    (REQ-1682) merge by name, the nearest role's value for each. Input dicts are not modified."""
     by_id = {r["id"]: r for r in roles}
     chains = role_chains(roles)
     out: list[dict] = []
@@ -110,6 +110,7 @@ def flatten_role_dicts(roles: list[dict]) -> list[dict]:
         domains: set[str] = set()
         rate_limit = r.get("rate_limit")
         max_rows = r.get("max_rows")
+        session_vars: dict[str, str] = {}
         for rid in chains[r["id"]]:
             anc = by_id[rid]
             caps.update(anc.get("capabilities") or [])
@@ -118,6 +119,9 @@ def flatten_role_dicts(roles: list[dict]) -> list[dict]:
                 rate_limit = anc.get("rate_limit")
             if max_rows is None:
                 max_rows = anc.get("max_rows")
+            # REQ-1682: walked nearest first, so a name already set is the nearer role's.
+            for name, value in (anc.get("session_vars") or {}).items():
+                session_vars.setdefault(name, value)
         flattened = {
             **r,
             "capabilities": sorted(caps),
@@ -126,6 +130,8 @@ def flatten_role_dicts(roles: list[dict]) -> list[dict]:
         }
         if "max_rows" in r:
             flattened["max_rows"] = max_rows
+        if "session_vars" in r:
+            flattened["session_vars"] = session_vars
         out.append(flattened)
     return out
 

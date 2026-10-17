@@ -1791,6 +1791,26 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     # REQ-1921: with the data_residency right, the region values its grant covers — the org's
     # region ids and "no_region" (security/residency.NO_REGION).
     residency_values: list[str] = Field(default_factory=list)
+    # REQ-1682: the role's constant session values, by name -- what
+    # current_setting('provisa.<name>') reads when the request binds nothing of that name. A child
+    # takes its ancestors' under its own (nearest wins).
+    session_vars: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("session_vars")
+    @classmethod
+    def _session_vars_named(cls, value: dict[str, str]) -> dict[str, str]:  # REQ-1682
+        from provisa.auth.attributes import normalize_name, session_constant_problem
+
+        out: dict[str, str] = {}
+        for name, val in value.items():
+            problem = session_constant_problem(name)
+            if problem is not None:
+                raise ValueError(problem[1])
+            normalized = normalize_name(name)
+            if normalized in out:
+                raise ValueError(f"Session value '{normalized}' is named twice")
+            out[normalized] = val
+        return out
 
 
 def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042
@@ -1799,7 +1819,7 @@ def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042
     Returns new Role objects with inherited permissions merged in.
     """
     by_id = {r.id: r for r in roles}
-    cache: dict[str, tuple[set[str], set[str], int | None]] = {}
+    cache: dict[str, tuple[set[str], set[str], int | None, dict[str, str]]] = {}
     # REQ-1677: a cycle would recurse forever; refuse it by name.
     from provisa.security.inheritance import role_chain
 
@@ -1807,15 +1827,16 @@ def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042
     for r in roles:
         role_chain(r.id, parents)
 
-    def _resolve(role_id: str) -> tuple[set[str], set[str], int | None]:
+    def _resolve(role_id: str) -> tuple[set[str], set[str], int | None, dict[str, str]]:
         if role_id in cache:
             return cache[role_id]
         role = by_id[role_id]
         caps = set(role.capabilities)
         domains = set(role.domain_access)
         max_rows = role.max_rows
+        session_vars = dict(role.session_vars)
         if role.parent_role_id and role.parent_role_id in by_id:
-            p_caps, p_domains, p_max_rows = _resolve(role.parent_role_id)
+            p_caps, p_domains, p_max_rows, p_session_vars = _resolve(role.parent_role_id)
             caps.update(p_caps)
             domains.update(p_domains)
             # Ceiling: child inherits parent's when unset; most restrictive wins when both set.
@@ -1823,12 +1844,14 @@ def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042
                 max_rows = p_max_rows
             elif p_max_rows is not None:
                 max_rows = min(max_rows, p_max_rows)
-        cache[role_id] = (caps, domains, max_rows)
-        return caps, domains, max_rows
+            # REQ-1682: the ancestors' constants underneath, the role's own over them.
+            session_vars = {**p_session_vars, **session_vars}
+        cache[role_id] = (caps, domains, max_rows, session_vars)
+        return caps, domains, max_rows, session_vars
 
     result: list[Role] = []
     for r in roles:
-        caps, domains, max_rows = _resolve(r.id)
+        caps, domains, max_rows, session_vars = _resolve(r.id)
         result.append(
             Role(
                 id=r.id,
@@ -1838,6 +1861,7 @@ def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042
                 relationship_guard=r.relationship_guard,
                 max_rows=max_rows,
                 rate_limit=r.rate_limit,
+                session_vars=session_vars,  # REQ-1682
             )
         )
     return result

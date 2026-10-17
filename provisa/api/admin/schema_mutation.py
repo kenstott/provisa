@@ -411,6 +411,26 @@ async def _save_role(
     from provisa.core.models import RoleRateLimit
     from provisa.core.repositories import role as role_repo
 
+    # REQ-1682: each constant session value is refused by name for what is wrong with it.
+    from provisa.auth.attributes import normalize_name, session_constant_problem
+
+    session_vars: dict[str, str] = {}
+    for pair in input.session_vars:
+        problem = session_constant_problem(pair.name)
+        normalized = normalize_name(pair.name)
+        named = pair.name
+        if problem is None and normalized in session_vars:
+            problem = ("name_repeated", f"Session value '{normalized}' is named twice")
+            named = normalized
+        if problem is not None:
+            return MutationResult(
+                success=False,
+                message=problem[1],
+                code=f"schema.role_session_var_{problem[0]}",
+                params={"role": input.id, "name": named},
+            )
+        session_vars[normalized] = pair.value
+
     pool = await _get_pool()
     # REQ-1174: carry the per-role rate + query-complexity limits through to the model/DB.
     rl = input.rate_limit
@@ -501,6 +521,7 @@ async def _save_role(
         rate_limit=rate_limit,
         parent_role_id=parent_id,
         residency_values=input.residency_values,  # REQ-1921
+        session_vars=session_vars,  # REQ-1682
         # REQ-1919: what the form does not carry is kept as the store holds it.
         **({} if held is None else {name: held[name] for name in role_repo.KEPT_ON_FORM_EDIT}),
     )

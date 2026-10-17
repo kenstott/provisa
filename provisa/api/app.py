@@ -2940,6 +2940,9 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                         # role holding data_residency resolves to a dict with no residency_values
                         # and every region change raises KeyError.
                         _roles_t.c.residency_values,
+                        # REQ-1682: the role's constant session values; flatten_role_dicts folds
+                        # the ancestors' in under the role's own.
+                        _roles_t.c.session_vars,
                         # REQ-005, REQ-1919: the role's own ceiling and join guard, as stored.
                         _roles_t.c.max_rows,
                         _roles_t.c.relationship_guard,

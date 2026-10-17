@@ -1,0 +1,10 @@
+{
+  "roleSessionValues": {
+    "label": "Session values",
+    "help": "Constant values this role's row rules read as current_setting('provisa.<name>'). A value the request binds under the same name takes precedence. A role that inherits from this one gets these values, except the names it sets itself.",
+    "name": "Name",
+    "value": "Value",
+    "add": "Add a value",
+    "remove": "Remove {{name}}"
+  }
+}

@@ -118,6 +118,7 @@ export function useUpsertRole() {
         } | null;
         parentRoleId?: string | null; // REQ-1677
         residencyValues?: string[]; // REQ-1921
+        sessionVars?: { name: string; value: string }[]; // REQ-1682
       },
       isNew: boolean,
     ) => {

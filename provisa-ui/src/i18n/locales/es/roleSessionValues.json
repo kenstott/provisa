@@ -1,0 +1,10 @@
+{
+  "roleSessionValues": {
+    "label": "Valores de sesión",
+    "help": "Valores constantes que las reglas de filas de este rol leen como current_setting('provisa.<name>'). Un valor que la solicitud vincula con el mismo nombre tiene prioridad. Un rol que hereda de este recibe estos valores, salvo los nombres que establece él mismo.",
+    "name": "Nombre",
+    "value": "Valor",
+    "add": "Agregar un valor",
+    "remove": "Quitar {{name}}"
+  }
+}

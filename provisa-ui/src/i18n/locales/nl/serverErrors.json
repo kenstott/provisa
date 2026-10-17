@@ -431,7 +431,11 @@
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Geplande taak '{{task}}' bijgewerkt",
       "write_grant_invalid": "Dit recht past niet bij de tabel: {{reason}}",
-      "write_grants_saved": "Schrijfrechten van tabel {{id}} opgeslagen"
+      "write_grants_saved": "Schrijfrechten van tabel {{id}} opgeslagen",
+      "role_session_var_name_missing": "Een sessiewaarde heeft een naam nodig",
+      "role_session_var_name_reserved": "'{{name}}' wordt door het verzoek of het knooppunt gebonden en kan geen sessiewaarde van een rol zijn",
+      "role_session_var_name_invalid": "De naam van sessiewaarde '{{name}}' mag alleen letters, cijfers en underscores bevatten en mag niet met een cijfer beginnen",
+      "role_session_var_name_repeated": "Sessiewaarde '{{name}}' is twee keer genoemd"
     },
     "secrets": {
       "name_refused": "{{name}} is geen naam binnen de secrets van deze organisatie in {{service}}: een naam is relatief ten opzichte van de organisatie en kan deze niet verlaten",

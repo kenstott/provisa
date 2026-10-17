@@ -2706,6 +2706,18 @@ main {
   font-size: 0.75rem;
   text-transform: uppercase;
 }
+/* A role's session value in its form: name and value at their widths, the remove action level
+ * with them (the boxes carry no label above them). */
+.form-field-group.session-value-row {
+  align-items: center;
+}
+.form-field-group.session-value-row > .mantine-ActionIcon-root {
+  margin-top: 0;
+}
+/* A role's session values in its read view: one name = value to a line. */
+.detail-fields > dd .role-session-value {
+  display: block;
+}
 /* A table as a value breaks between words only, so its columns size to what they hold. */
 .detail-fields > dd .detail-table {
   overflow-wrap: normal;

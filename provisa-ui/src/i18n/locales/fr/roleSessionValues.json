@@ -1,0 +1,10 @@
+{
+  "roleSessionValues": {
+    "label": "Valeurs de session",
+    "help": "Valeurs constantes que les règles de lignes de ce rôle lisent en tant que current_setting('provisa.<name>'). Une valeur que la requête lie sous le même nom l'emporte. Un rôle qui hérite de celui-ci reçoit ces valeurs, sauf les noms qu'il définit lui-même.",
+    "name": "Nom",
+    "value": "Valeur",
+    "add": "Ajouter une valeur",
+    "remove": "Supprimer {{name}}"
+  }
+}

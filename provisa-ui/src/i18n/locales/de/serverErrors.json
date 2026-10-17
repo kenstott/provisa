@@ -431,7 +431,11 @@
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Geplante Aufgabe „{{task}}“ aktualisiert",
       "write_grant_invalid": "Dieses Recht passt nicht zur Tabelle: {{reason}}",
-      "write_grants_saved": "Schreibrechte der Tabelle {{id}} gespeichert"
+      "write_grants_saved": "Schreibrechte der Tabelle {{id}} gespeichert",
+      "role_session_var_name_missing": "Ein Sitzungswert braucht einen Namen",
+      "role_session_var_name_reserved": "'{{name}}' wird von der Anfrage oder vom Knoten gebunden und kann kein Sitzungswert einer Rolle sein",
+      "role_session_var_name_invalid": "Der Name des Sitzungswerts '{{name}}' darf nur Buchstaben, Ziffern und Unterstriche enthalten und nicht mit einer Ziffer beginnen",
+      "role_session_var_name_repeated": "Der Sitzungswert '{{name}}' ist doppelt benannt"
     },
     "secrets": {
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",

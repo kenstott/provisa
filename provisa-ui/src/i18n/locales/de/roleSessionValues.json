@@ -1,0 +1,10 @@
+{
+  "roleSessionValues": {
+    "label": "Sitzungswerte",
+    "help": "Konstante Werte, die die Zeilenregeln dieser Rolle als current_setting('provisa.<name>') lesen. Ein Wert, den die Anfrage unter demselben Namen bindet, hat Vorrang. Eine Rolle, die von dieser erbt, erhält diese Werte, außer den Namen, die sie selbst festlegt.",
+    "name": "Name",
+    "value": "Wert",
+    "add": "Wert hinzufügen",
+    "remove": "{{name}} entfernen"
+  }
+}

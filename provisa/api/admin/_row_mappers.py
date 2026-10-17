@@ -20,6 +20,7 @@ from provisa.api.admin.types import (
     RLSRuleType,
     RoleRateLimitType,
     RoleType,
+    SessionVarType,
     SourceCdcConfigType,
     SourceInput,
     SourceType,
@@ -169,6 +170,7 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
             domain_access=None,
             demonstrated=None,
             residency_values=None,
+            session_vars=None,
         )
     # REQ-1174: surface the per-role rate + query-complexity limits (JSON column) to the admin API.
     rl = row.get("rate_limit")
@@ -188,6 +190,10 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
         rate_limit=rate_limit,
         parent_role_id=row.get("parent_role_id"),  # REQ-1677
         residency_values=list(row["residency_values"]),  # REQ-1921
+        session_vars=[  # REQ-1682
+            SessionVarType(name=name, value=value)
+            for name, value in sorted(row["session_vars"].items())
+        ],
     )
 
 

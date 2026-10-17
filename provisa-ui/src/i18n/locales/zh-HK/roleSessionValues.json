@@ -1,0 +1,10 @@
+{
+  "roleSessionValues": {
+    "label": "工作階段值",
+    "help": "此角色的行規則以 current_setting('provisa.<name>') 讀取的常數值。請求以相同名稱綁定的值優先。繼承此角色的角色會取得這些值，但其自行設定的名稱除外。",
+    "name": "名稱",
+    "value": "值",
+    "add": "新增值",
+    "remove": "移除 {{name}}"
+  }
+}

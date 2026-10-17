@@ -431,7 +431,11 @@
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "शेड्यूल किया गया कार्य '{{task}}' अपडेट किया गया",
       "write_grant_invalid": "यह अनुदान तालिका से मेल नहीं खाता: {{reason}}",
-      "write_grants_saved": "तालिका {{id}} के लेखन अनुदान सहेजे गए"
+      "write_grants_saved": "तालिका {{id}} के लेखन अनुदान सहेजे गए",
+      "role_session_var_name_missing": "सत्र मान के लिए नाम आवश्यक है",
+      "role_session_var_name_reserved": "'{{name}}' अनुरोध या नोड द्वारा बाँधा जाता है और किसी भूमिका का सत्र मान नहीं हो सकता",
+      "role_session_var_name_invalid": "सत्र मान का नाम '{{name}}' केवल अक्षर, अंक और अंडरस्कोर हो सकता है, और अंक से शुरू नहीं होना चाहिए",
+      "role_session_var_name_repeated": "सत्र मान '{{name}}' दो बार दिया गया है"
     },
     "secrets": {
       "name_refused": "{{name}} {{service}} में इस संगठन के सीक्रेट्स के भीतर का नाम नहीं है: नाम संगठन के सापेक्ष होता है और उससे बाहर नहीं जा सकता",

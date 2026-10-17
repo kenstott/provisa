@@ -1,0 +1,10 @@
+{
+  "roleSessionValues": {
+    "label": "会话值",
+    "help": "此角色的行规则以 current_setting('provisa.<name>') 读取的常量值。请求以相同名称绑定的值优先。继承此角色的角色会获得这些值，但其自身设置的名称除外。",
+    "name": "名称",
+    "value": "值",
+    "add": "添加值",
+    "remove": "移除 {{name}}"
+  }
+}

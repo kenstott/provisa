@@ -431,7 +431,11 @@
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Attività pianificata '{{task}}' aggiornata",
       "write_grant_invalid": "Questa autorizzazione non corrisponde alla tabella: {{reason}}",
-      "write_grants_saved": "Autorizzazioni di scrittura della tabella {{id}} salvate"
+      "write_grants_saved": "Autorizzazioni di scrittura della tabella {{id}} salvate",
+      "role_session_var_name_missing": "Un valore di sessione richiede un nome",
+      "role_session_var_name_reserved": "'{{name}}' è associato dalla richiesta o dal nodo e non può essere un valore di sessione di un ruolo",
+      "role_session_var_name_invalid": "Il nome del valore di sessione '{{name}}' deve contenere lettere, cifre e trattini bassi, e non deve iniziare con una cifra",
+      "role_session_var_name_repeated": "Il valore di sessione '{{name}}' è indicato due volte"
     },
     "secrets": {
       "name_refused": "{{name}} non è un nome all'interno dei segreti di questa organizzazione in {{service}}: un nome è relativo all'organizzazione e non può uscirne",

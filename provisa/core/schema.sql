@@ -455,6 +455,9 @@ CREATE TABLE IF NOT EXISTS roles (
     domain_access   JSONB NOT NULL DEFAULT '[]',
     -- REQ-1921: with data_residency, the region values the grant covers (regions, "no_region").
     residency_values JSONB NOT NULL DEFAULT '[]',
+    -- REQ-1682: the role's constant session values {name: value}, what
+    -- current_setting('provisa.<name>') reads when the request binds nothing of that name.
+    session_vars    JSONB NOT NULL DEFAULT '{}',
     rate_limit      JSONB,  -- REQ-1174: per-role rate + burst; mirrors schema_org.roles.rate_limit
     parent_role_id  TEXT REFERENCES roles(id),
     -- REQ-1597/REQ-1624: this row's capabilities are DERIVED from the named role's, in this schema

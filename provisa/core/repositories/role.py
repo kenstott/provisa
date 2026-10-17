@@ -103,6 +103,7 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
             "capabilities": role.capabilities,  # JSON column — list passes through
             "domain_access": role.domain_access,
             "residency_values": role.residency_values,  # REQ-1921
+            "session_vars": role.session_vars,  # REQ-1682
             # REQ-1174: per-role rate + query-complexity limits; None = unlimited (column NULL).
             "rate_limit": role.rate_limit.model_dump() if role.rate_limit is not None else None,
             "parent_role_id": role.parent_role_id,  # REQ-1677
@@ -115,6 +116,7 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
             "capabilities",
             "domain_access",
             "residency_values",
+            "session_vars",
             "rate_limit",
             "parent_role_id",
             "max_rows",

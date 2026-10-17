@@ -71,6 +71,10 @@ query RolesQuery {
     domainAccess
     parentRoleId
     residencyValues
+    sessionVars {
+      name
+      value
+    }
     rateLimit {
       requestsPerSecond
       maxQueryComplexity

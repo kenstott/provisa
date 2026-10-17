@@ -1,0 +1,10 @@
+{
+  "roleSessionValues": {
+    "label": "Valori di sessione",
+    "help": "Valori costanti che le regole di riga di questo ruolo leggono come current_setting('provisa.<name>'). Un valore che la richiesta associa allo stesso nome ha la precedenza. Un ruolo che eredita da questo riceve questi valori, tranne i nomi che imposta da sé.",
+    "name": "Nome",
+    "value": "Valore",
+    "add": "Aggiungi un valore",
+    "remove": "Rimuovi {{name}}"
+  }
+}

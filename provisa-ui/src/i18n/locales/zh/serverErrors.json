@@ -431,7 +431,11 @@
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "计划任务“{{task}}”已更新",
       "write_grant_invalid": "此授权与该表不符：{{reason}}",
-      "write_grants_saved": "表 {{id}} 的写入授权已保存"
+      "write_grants_saved": "表 {{id}} 的写入授权已保存",
+      "role_session_var_name_missing": "会话值需要名称",
+      "role_session_var_name_reserved": "'{{name}}' 由请求或节点绑定，不能作为角色的会话值",
+      "role_session_var_name_invalid": "会话值名称 '{{name}}' 只能包含字母、数字和下划线，且不能以数字开头",
+      "role_session_var_name_repeated": "会话值 '{{name}}' 被指定了两次"
     },
     "secrets": {
       "name_refused": "{{name}} 不是 {{service}} 中本组织密钥范围内的名称：名称相对于组织，不能超出组织范围",
