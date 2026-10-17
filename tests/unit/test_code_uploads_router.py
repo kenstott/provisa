@@ -41,8 +41,12 @@ def _zip(entries: dict[str, bytes]) -> bytes:
 
 
 @pytest.fixture
-def plane(control_plane):
+def plane(control_plane, tmp_path, monkeypatch):
     from provisa.core.schema_admin import orgs
+
+    # The org's folder on this node, where an upload is unpacked (REQ-1992).
+    monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path / "data"))
+    (tmp_path / "data" / "orgs" / "acme").mkdir(parents=True)
 
     db = control_plane.platform
     with db.engine.begin() as conn:

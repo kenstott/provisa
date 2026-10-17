@@ -154,7 +154,12 @@ async def spool_filtered_rows(
     )
     reader = DirectTableSource(lambda: open_direct_stream(pools, source.id, sql, []), columns)
 
-    descriptor, path = tempfile.mkstemp(prefix="provisa-row-filter-", suffix=".arrow")
+    from provisa.core import org_files
+
+    # The org's rows, so in the org's folder (REQ-1992), never the node's temporary directory.
+    descriptor, path = tempfile.mkstemp(
+        prefix="provisa-row-filter-", suffix=".arrow", dir=org_files.org_tmp()
+    )
     os.close(descriptor)
     writer = None
     rows = 0

@@ -15,6 +15,7 @@ data:
     query.max-memory-per-node={{ .Values.trino.memory.maxMemoryPerNode }}
     query.max-total-memory={{ .Values.trino.memory.maxTotalMemory }}
     retry-policy=TASK
+    fault-tolerant-execution.exchange-encryption-enabled=true
     task.low-memory-killer.policy=total-reservation-on-blocked-nodes
     fault-tolerant-execution-task-memory={{ .Values.trino.fte.taskMemory }}
   # REQ-056: Trino's resource groups, read by the coordinator alone. A copy of
@@ -32,6 +33,7 @@ data:
     discovery.uri=http://{{ .Release.Name }}-trino-coordinator:{{ .Values.trino.port }}
     query.max-memory-per-node={{ .Values.trino.memory.maxMemoryPerNode }}
     retry-policy=TASK
+    fault-tolerant-execution.exchange-encryption-enabled=true
     task.low-memory-killer.policy=total-reservation-on-blocked-nodes
     fault-tolerant-execution-task-memory={{ .Values.trino.fte.taskMemory }}
 {{- end }}

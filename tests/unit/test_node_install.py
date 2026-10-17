@@ -430,8 +430,12 @@ def test_a_failed_install_caches_nothing_and_leaves_no_configuration(tmp_path):
 
 
 @pytest.fixture
-def plane(control_plane):
+def plane(control_plane, tmp_path, monkeypatch):
     from sqlalchemy import insert
+
+    # The org's folder on this node, where an upload is unpacked (REQ-1992).
+    monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path / "data"))
+    (tmp_path / "data" / "orgs" / "acme").mkdir(parents=True)
 
     from provisa.core.schema_admin import orgs
 

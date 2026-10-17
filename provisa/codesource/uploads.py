@@ -35,7 +35,12 @@ async def put(
     """Keep the archive for ``org_id`` and return its bundle's content hash. The archive is
     unpacked first, with every guard an install applies, so one that cannot be used is refused
     here by name and nothing is kept. The same bundle uploaded again is kept once."""
-    with tempfile.TemporaryDirectory(prefix="provisa-code-upload-") as scratch:
+    from provisa.core import org_files
+
+    # The org's code, unpacked in the org's folder (REQ-1992), never the node's temporary directory.
+    with tempfile.TemporaryDirectory(
+        prefix="provisa-code-upload-", dir=org_files.org_tmp(org_id)
+    ) as scratch:
         found = content_hash(unpack(filename, data, Path(scratch)))
     async with admin_db.acquire() as conn:
         await conn.upsert(
