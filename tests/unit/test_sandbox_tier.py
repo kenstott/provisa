@@ -355,6 +355,10 @@ def test_a_cloud_deploy_reaches_the_sandbox_vm_too():
     assert 'NODE="$SANDBOX_NODE" API_CONTAINER=compose-provisa-sandbox-1' in body
     for step in ("push_demo_stores", "push_overlay", "push_api", "push_cfg", "restart"):
         assert step in body, step
+    # The coordinator of a deployment with a sandbox VM gets no demo stores of its own.
+    stores = deploy[deploy.index("push_demo_stores() {") :]
+    stores = stores[: stores.index("\n}\n")]
+    assert '[ "$NODE" != "$SANDBOX_NODE" ]' in stores and "return" in stores
     # The overlay publishes the tier on the VM's VPC address, read from the instance.
     assert "value(networkInterfaces[0].networkIP)" in body and "SANDBOX_PUBLISH=" in body
     assert '- "${SANDBOX_PUBLISH}:8000"' in deploy

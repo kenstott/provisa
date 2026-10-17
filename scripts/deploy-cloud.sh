@@ -518,6 +518,13 @@ DEMO_STORES_UNITS="/etc/systemd/system"
 
 push_demo_stores() {
   local changed=0 f name dest want have
+  # A coordinator whose sandbox tier runs on its own VM runs no demo stores: deploy_sandbox_vm
+  # installs them there. A describe that finds no VM is the answer "none", not a failure.
+  if [ "$NODE" != "$SANDBOX_NODE" ] && gcloud compute instances describe "$SANDBOX_NODE" \
+      --zone "$ZONE" --project "$PROJECT" --format='value(name)' >/dev/null 2>&1; then
+    echo "== demo stores: on $SANDBOX_NODE, not $NODE"
+    return
+  fi
   for f in "$REPO/scripts/demo_stores_sync.sh" "$REPO"/packaging/linux/demo-stores/provisa-demo-stores.*; do
     name="$(basename "$f")"
     case "$name" in
