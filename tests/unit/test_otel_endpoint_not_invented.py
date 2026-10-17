@@ -83,7 +83,7 @@ def test_provisa_cli_exports_the_endpoint_only_with_an_observability_overlay():
     assert 'if { [ "$OBSERVABILITY" = "true" ] || [ "$RUNTIME" = "bundled" ]; } &&' in script
 
 
-def _render(tmp_path: Path) -> str:
+def _render(tmp_path: Path, monkeypatch) -> str:
     cfg = {
         "jvm_heap_gb": 4,
         "query_max_memory": "2GB",
@@ -95,6 +95,8 @@ def _render(tmp_path: Path) -> str:
     (tmp_path / "config").mkdir()
     # _write logs and moves on when a target directory is absent, so the tree must exist first.
     (tmp_path / "trino" / "etc" / "worker").mkdir(parents=True)
+    # The engine's tree the config is rendered into (the launcher shares it with the engine).
+    monkeypatch.setenv("PROVISA_TRINO_ETC_DIR", str(tmp_path / "trino"))
     cfg_path = tmp_path / "config" / "provisa.yaml"
     cfg_path.write_text(yaml.safe_dump(cfg))
     trino_setup.write_trino_config(str(cfg_path))
@@ -103,14 +105,14 @@ def _render(tmp_path: Path) -> str:
 
 def test_trino_tracing_is_off_without_an_endpoint(tmp_path, monkeypatch):
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
-    props = _render(tmp_path)
+    props = _render(tmp_path, monkeypatch)
     assert "tracing.enabled" not in props
     assert "otel.exporter.endpoint" not in props
 
 
 def test_trino_tracing_uses_the_configured_endpoint(tmp_path, monkeypatch):
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector.internal:4317")
-    props = _render(tmp_path)
+    props = _render(tmp_path, monkeypatch)
     assert "tracing.enabled=true" in props
     assert "otel.exporter.endpoint=http://collector.internal:4317" in props
     assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://collector.internal:4317"

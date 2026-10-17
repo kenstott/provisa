@@ -70,6 +70,18 @@ function New-Secret {
   return -join ($bytes | ForEach-Object { $_.ToString('x2') })
 }
 
+# REQ-2072: what the engine starts on next that compose itself decides (Trino's internal TLS and
+# the coordinator's pinned address), from the launch-settings file the app writes in the engine's
+# tree. Only these names are taken from it; none until the app has written it.
+function Get-LaunchSettings {
+  $launch = "$ComposeGuest/trino/launch-settings.env"
+  $text = & wsl.exe -d $Distro -u root sh -c "[ -f $launch ] && cat $launch"
+  if (-not $text) { return @() }
+  return @($text | Where-Object {
+    $_ -match '^(PROVISA_TRINO_INTERNAL_TLS|PROVISA_TRINO_INTERNAL_SUBNET|PROVISA_TRINO_COORDINATOR_IP|PROVISA_TRINO_DYNAMIC_RANGE)='
+  })
+}
+
 function Ensure-StoreCredentials {
   $values = [ordered]@{}
   if (Test-Path $CredentialsPath) {
@@ -82,6 +94,10 @@ function Ensure-StoreCredentials {
     if (-not $values.Contains($name) -or -not $values[$name]) { $values[$name] = New-Secret }
   }
   $values['PROVISA_STORE_BIND_IP'] = '127.0.0.1'
+  # The engine's tree (config, catalogs, launch settings), shared by the app and the engine; it is
+  # the compose tree's own inside the distro.
+  $values['PROVISA_TRINO_ETC_HOST'] = "$ComposeGuest/trino"
+  foreach ($line in (Get-LaunchSettings)) { if ($line -match '^([A-Z_]+)=(.*)$') { $values[$Matches[1]] = $Matches[2] } }
   $values['PROVISA_MINIO_ROOT_USER'] = 'provisa'
   $values['CONFIG_DB_PASSWORD'] = $values['PROVISA_PG_PASSWORD']
   $values['PROVISA_OTEL_S3_ACCESS_KEY'] = 'provisa'
@@ -100,6 +116,9 @@ function Compose-FileArgs {
     "$ComposeGuest/docker-compose.app.yml"
     "$ComposeGuest/docker-compose.airgap.yml"
   )
+  if ((Get-LaunchSettings) -contains 'PROVISA_TRINO_INTERNAL_TLS=true') {
+    $files += "$ComposeGuest/docker-compose.trino-internal-tls.yml"
+  }
   if ($Obs)  { $files += "$ComposeGuest/docker-compose.observability.yml" }
   if ($Demo) { $files += "$ComposeGuest/docker-compose.demo.yml" }
   # Installed extensions live host-side under %USERPROFILE%\.provisa\extensions

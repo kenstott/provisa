@@ -359,7 +359,9 @@ export function SettingField({
     ? t("adminPage.setting.runningValue", { value: toDraft(s.value, s.type) })
     : "";
   const reasonText =
-    readOnly && s.readonly_reason ? t(`settings.readonlyReasons.${s.readonly_reason}`) : "";
+    readOnly && s.readonly_reason
+      ? t(`settings.readonlyReasons.${s.readonly_reason}`, { value: s.chart_value })
+      : "";
   // The name, with its unit, then the (?) that holds the explanation: nothing sits between a
   // field's label and its control.
   const name = t(`settings.${s.key}.label`);

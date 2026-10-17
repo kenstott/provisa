@@ -150,6 +150,61 @@ def _prices(values: dict[str, Any]) -> None:
         raise Refused("polly.model_prices", "price_entry_invalid", entry=err.entry) from None
 
 
+_INTERNAL_TLS_KEYS = (
+    "engine.trino_internal_tls",
+    "engine.trino_internal_subnet",
+    "engine.trino_coordinator_ip",
+)
+
+
+def _trino_internal_tls(values: dict[str, Any]) -> None:
+    """REQ-2072: Trino's internal TLS needs a deployment whose engine config Provisa renders and
+    whose coordinator has workers, and a coordinator address on the engine network."""
+    import ipaddress
+
+    changed = [key for key in _INTERNAL_TLS_KEYS if key in values]
+    if not changed:
+        return
+    # The Helm chart renders the engine's config itself; there the value is the chart's.
+    if os.environ.get("PROVISA_ENGINE_CONFIG_SOURCE") == "chart":
+        raise Refused(changed[0], "internal_tls_set_by_chart", value="trino.internalTls")
+    if settings_registry.prospective("engine.trino_internal_tls", values):
+        from provisa.federation.engine import configured_engine_kind
+
+        if configured_engine_kind() != "trino":
+            raise Refused("engine.trino_internal_tls", "internal_tls_not_trino")
+        # The hosted control plane's engines are single-node coordinators: nothing passes between
+        # nodes to encrypt.
+        if os.environ.get("PROVISA_ROLE") == "control-plane":
+            raise Refused("engine.trino_internal_tls", "internal_tls_single_node")
+    subnet = settings_registry.prospective("engine.trino_internal_subnet", values)
+    address = settings_registry.prospective("engine.trino_coordinator_ip", values)
+    try:
+        network = ipaddress.ip_network(str(subnet))
+    except ValueError:
+        raise Refused("engine.trino_internal_subnet", "not_a_subnet", value=subnet) from None
+    try:
+        inside = ipaddress.ip_address(str(address)) in network
+    except ValueError:
+        raise Refused("engine.trino_coordinator_ip", "not_an_address", value=address) from None
+    if not inside:
+        raise Refused("engine.trino_coordinator_ip", "outside_subnet", subnet=str(network))
+    # The lower half of the network, past its gateway: Docker hands out the upper half to every
+    # other container (trino_setup.dynamic_range).
+    lower = (
+        list(network.subnets(prefixlen_diff=1))[0]
+        if network.prefixlen < network.max_prefixlen
+        else network
+    )
+    if ipaddress.ip_address(str(address)) not in lower or str(address) in (
+        str(network.network_address),
+        str(network.network_address + 1),
+    ):
+        raise Refused(
+            "engine.trino_coordinator_ip", "not_reserved_for_coordinator", subnet=str(network)
+        )
+
+
 def check(values: dict[str, Any]) -> None:
     """Raise :class:`Refused` for the first saved value that cannot work with the rest."""
     _superuser(values)
@@ -158,3 +213,4 @@ def check(values: dict[str, Any]) -> None:
     _tls(values)
     _redis(values)
     _pairs(values)
+    _trino_internal_tls(values)

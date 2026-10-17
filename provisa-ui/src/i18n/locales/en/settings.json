@@ -103,6 +103,18 @@
       "exchange_spool_dir": {
         "label": "Exchange spool folder",
         "help": "Where the engine keeps intermediate data for fault-tolerant execution. Takes effect when the engine restarts."
+      },
+      "trino_internal_tls": {
+        "label": "Encrypt traffic between engine nodes",
+        "help": "Trino's coordinator and workers require HTTPS between them. Off by default: their traffic stays on the deployment's private network, authenticated by a shared secret. Turn it on where a compliance or zero-trust requirement asks for encryption inside the deployment; shuffle-heavy queries (joins, aggregations, window functions) run 10% to over 100% slower. Applies at the next start."
+      },
+      "trino_internal_subnet": {
+        "label": "Engine network",
+        "help": "The network the engine's containers share while traffic between engine nodes is encrypted. The coordinator's address is in its lower half; every other container gets one from the upper half. Applies at the next start."
+      },
+      "trino_coordinator_ip": {
+        "label": "Coordinator address",
+        "help": "The coordinator's pinned address on the engine network, in its lower half: Trino finds its coordinator by IP alone when traffic between nodes is encrypted. Applies at the next start."
       }
     },
     "ui": {
@@ -669,7 +681,8 @@
       "locates_control_plane": "This setting tells the server where its control plane is, so it cannot be changed from the control plane.",
       "read_before_control_plane": "This setting is read before the control plane is available, so it is set outside the UI.",
       "set_by_launcher": "The launcher that started this deployment sets this value.",
-      "set_by_desktop_launcher": "The desktop launcher sets this value for this installation."
+      "set_by_desktop_launcher": "The desktop launcher sets this value for this installation.",
+      "set_by_chart": "The Helm chart sets this value ({{value}})."
     },
     "connectors": {
       "cloudops": {

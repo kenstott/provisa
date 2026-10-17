@@ -103,6 +103,18 @@
       "exchange_spool_dir": {
         "label": "Pasta de spool de troca",
         "help": "Onde o motor mantém dados intermediários para a execução tolerante a falhas. Entra em vigor quando o motor é reiniciado."
+      },
+      "trino_internal_tls": {
+        "label": "Criptografar o tráfego entre nós do motor",
+        "help": "O coordenador e os workers do Trino exigem HTTPS entre si. Desativado por padrão: o tráfego deles permanece na rede privada da implantação, autenticado por um segredo compartilhado. Ative onde um requisito de conformidade ou de confiança zero peça criptografia dentro da implantação; consultas com muito shuffle (joins, agregações, funções de janela) ficam de 10% a mais de 100% mais lentas. Entra em vigor na próxima inicialização."
+      },
+      "trino_internal_subnet": {
+        "label": "Rede do motor",
+        "help": "A rede que os contêineres do motor compartilham enquanto o tráfego entre os nós do motor está criptografado. O endereço do coordenador fica na metade inferior; cada um dos outros contêineres recebe um da metade superior. Entra em vigor na próxima inicialização."
+      },
+      "trino_coordinator_ip": {
+        "label": "Endereço do coordenador",
+        "help": "O endereço fixo do coordenador na rede do motor, na metade inferior: o Trino encontra seu coordenador apenas pelo IP quando o tráfego entre os nós está criptografado. Entra em vigor na próxima inicialização."
       }
     },
     "ui": {
@@ -669,7 +681,8 @@
       "locates_control_plane": "Esta configuração informa ao servidor onde está seu plano de controle, portanto não pode ser alterada a partir do plano de controle.",
       "read_before_control_plane": "Esta configuração é lida antes de o plano de controle estar disponível, portanto é definida fora da interface.",
       "set_by_launcher": "O launcher que iniciou esta implantação define este valor.",
-      "set_by_desktop_launcher": "O launcher desktop define este valor para esta instalação."
+      "set_by_desktop_launcher": "O launcher desktop define este valor para esta instalação.",
+      "set_by_chart": "O chart do Helm define este valor ({{value}})."
     },
     "connectors": {
       "cloudops": {

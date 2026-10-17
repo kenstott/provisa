@@ -103,6 +103,18 @@
       "exchange_spool_dir": {
         "label": "Spoolmap voor uitwisseling",
         "help": "Waar de engine tussenliggende gegevens bewaart voor fouttolerante uitvoering. Wordt van kracht wanneer de engine opnieuw start."
+      },
+      "trino_internal_tls": {
+        "label": "Verkeer tussen engine-nodes versleutelen",
+        "help": "De coördinator en workers van Trino eisen onderling HTTPS. Standaard uit: hun verkeer blijft op het privénetwerk van de deployment, geauthenticeerd met een gedeeld geheim. Schakel het in waar een compliance- of zero-trust-eis versleuteling binnen de deployment vraagt; queries met veel shuffle (joins, aggregaties, vensterfuncties) draaien 10% tot meer dan 100% trager. Wordt van kracht bij de volgende start."
+      },
+      "trino_internal_subnet": {
+        "label": "Engine-netwerk",
+        "help": "Het netwerk dat de containers van de engine delen zolang het verkeer tussen engine-nodes versleuteld is. Het adres van de coördinator ligt in de onderste helft; elke andere container krijgt er een uit de bovenste helft. Wordt van kracht bij de volgende start."
+      },
+      "trino_coordinator_ip": {
+        "label": "Adres van de coördinator",
+        "help": "Het vaste adres van de coördinator op het engine-netwerk, in de onderste helft: Trino vindt zijn coördinator alleen via het IP-adres wanneer het verkeer tussen nodes versleuteld is. Wordt van kracht bij de volgende start."
       }
     },
     "ui": {
@@ -669,7 +681,8 @@
       "locates_control_plane": "Deze instelling vertelt de server waar zijn control plane zich bevindt en kan daarom niet vanuit het control plane worden gewijzigd.",
       "read_before_control_plane": "Deze instelling wordt gelezen voordat het control plane beschikbaar is en wordt daarom buiten de UI ingesteld.",
       "set_by_launcher": "De launcher die deze deployment heeft gestart, stelt deze waarde in.",
-      "set_by_desktop_launcher": "De desktoplauncher stelt deze waarde in voor deze installatie."
+      "set_by_desktop_launcher": "De desktoplauncher stelt deze waarde in voor deze installatie.",
+      "set_by_chart": "De Helm-chart stelt deze waarde in ({{value}})."
     },
     "connectors": {
       "cloudops": {

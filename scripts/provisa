@@ -146,8 +146,32 @@ store_credentials() {
         export PROVISA_OTEL_S3_SECRET_KEY="$PROVISA_MINIO_ROOT_PASSWORD"
     fi
 }
+# ── The engine's tree ───────────────────────────────────────────────────────
+# Trino's config, its catalogs and the launch-settings file, shared by the app (which renders them
+# from the operator settings) and the engine (which starts on them) through the host. Seeded from
+# the release's own on the first start; from then on the app's rendering is what is mounted.
+engine_tree() {
+    export PROVISA_TRINO_ETC_HOST="${PROVISA_HOME}/trino"
+    if [ ! -f "${PROVISA_TRINO_ETC_HOST}/etc/config.properties" ]; then
+        mkdir -p "$PROVISA_TRINO_ETC_HOST"
+        cp -R "${PROJECT_DIR}/trino/etc" "${PROVISA_TRINO_ETC_HOST}/"
+    fi
+    mkdir -p "${PROVISA_TRINO_ETC_HOST}/catalog" "${PROVISA_TRINO_ETC_HOST}/kafka" \
+        "${PROVISA_TRINO_ETC_HOST}/kafka-client" "${PROVISA_TRINO_ETC_HOST}/redis"
+    # REQ-2072: what the engine starts on next that compose itself decides (the coordinator's pinned
+    # address). Only these names are taken from the file.
+    local launch="${PROVISA_TRINO_ETC_HOST}/launch-settings.env" key value
+    [ -f "$launch" ] || return 0
+    while IFS='=' read -r key value; do
+        case "$key" in
+            PROVISA_TRINO_INTERNAL_TLS|PROVISA_TRINO_INTERNAL_SUBNET|PROVISA_TRINO_COORDINATOR_IP|PROVISA_TRINO_DYNAMIC_RANGE)
+                export "${key}=${value}" ;;
+        esac
+    done < "$launch"
+}
 if [ "$RUNTIME" != "native" ]; then
     store_credentials
+    engine_tree
 fi
 
 # ── Compose command detection (user's own Docker — no VM) ───────────────────
@@ -214,6 +238,11 @@ _build_compose_files() {
         return
     fi
     local files="-f ${PROJECT_DIR}/docker-compose.core.yml -f ${PROJECT_DIR}/docker-compose.app.yml"
+    # REQ-2072: Trino's internal TLS pins the coordinator's address (launch settings, engine_tree);
+    # off until the app has written it on, which is the setting's declared default.
+    if [ "${PROVISA_TRINO_INTERNAL_TLS:-false}" = "true" ]; then
+        files="${files} -f ${PROJECT_DIR}/docker-compose.trino-internal-tls.yml"
+    fi
     if { [ "$IMAGE_SOURCE" = "tarball" ] || [ "$RUNTIME" = "bundled" ]; } && [ -f "${PROJECT_DIR}/docker-compose.airgap.yml" ]; then
         files="${files} -f ${PROJECT_DIR}/docker-compose.airgap.yml"
     fi

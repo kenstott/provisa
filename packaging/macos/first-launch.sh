@@ -218,7 +218,8 @@ stage_compose() {
   for f in \
     docker-compose.core.yml \
     docker-compose.app.yml \
-    docker-compose.airgap.yml; do
+    docker-compose.airgap.yml \
+    docker-compose.trino-internal-tls.yml; do
     if [ -f "${RESOURCES}/${f}" ]; then
       cp "${RESOURCES}/${f}" "${dest}/${f}"
     fi

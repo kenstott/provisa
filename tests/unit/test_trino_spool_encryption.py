@@ -83,7 +83,12 @@ def test_every_node_config_authenticates_its_peers(name):
 
 
 def test_the_templates_render_the_shared_secret():
-    worker = trino_setup._WORKER_TEMPLATE.format(query_max_memory_per_node="1GB", fte_block="")
+    worker = trino_setup._WORKER_TEMPLATE.format(
+        query_max_memory_per_node="1GB",
+        fte_block="",
+        internal_tls_block="",
+        discovery_uri="http://trino:8080",
+    )
     assert "internal-communication.shared-secret=${ENV:PROVISA_TRINO_SHARED_SECRET}" in _lines(
         worker
     )

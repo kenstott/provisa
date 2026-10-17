@@ -183,6 +183,12 @@ spec:
               value: "{{ .Values.deployment.materializeUrl }}"
             {{- end }}
             {{- end }}
+            # REQ-2072: the engine's config is the chart's; its internal TLS is the chart value
+            # trino.internalTls, shown read-only in the settings and refused there by name.
+            - name: PROVISA_ENGINE_CONFIG_SOURCE
+              value: chart
+            - name: PROVISA_TRINO_INTERNAL_TLS
+              value: "{{ .Values.trino.internalTls }}"
             - name: TRINO_HOST
               value: "{{ .Release.Name }}-trino-coordinator"
             - name: TRINO_PORT

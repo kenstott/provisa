@@ -103,6 +103,18 @@
       "exchange_spool_dir": {
         "label": "交换暂存文件夹",
         "help": "引擎为容错执行保存中间数据的位置。引擎重启后生效。"
+      },
+      "trino_internal_tls": {
+        "label": "加密引擎节点之间的流量",
+        "help": "Trino 的协调器与工作节点之间要求使用 HTTPS。默认关闭：它们的流量保留在部署的专用网络内，并由共享密钥认证。当合规或零信任要求在部署内部也加密时再开启；重度依赖 Shuffle 的查询（联接、聚合、窗口函数）会慢 10% 到 100% 以上。下次启动时生效。"
+      },
+      "trino_internal_subnet": {
+        "label": "引擎网络",
+        "help": "引擎节点之间的流量加密期间，引擎容器共用的网络。协调器的地址位于其下半部分；其他每个容器从上半部分获得一个地址。下次启动时生效。"
+      },
+      "trino_coordinator_ip": {
+        "label": "协调器地址",
+        "help": "协调器在引擎网络上的固定地址，位于其下半部分：节点之间的流量加密时，Trino 仅通过 IP 找到其协调器。下次启动时生效。"
       }
     },
     "ui": {
@@ -669,7 +681,8 @@
       "locates_control_plane": "此设置告诉服务器其控制平面的位置，因此无法从控制平面更改。",
       "read_before_control_plane": "此设置在控制平面可用之前就已被读取，因此需在 UI 之外设置。",
       "set_by_launcher": "此值由启动此部署的启动器设置。",
-      "set_by_desktop_launcher": "此值由桌面启动器为此安装设置。"
+      "set_by_desktop_launcher": "此值由桌面启动器为此安装设置。",
+      "set_by_chart": "此值由 Helm chart 设置（{{value}}）。"
     },
     "connectors": {
       "cloudops": {

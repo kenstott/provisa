@@ -120,7 +120,14 @@
         "redis_tls_required": "O Redis deve usar TLS enquanto o TLS for exigido.",
         "price_entry_invalid": "Cada entrada é um id de modelo e quatro preços por milhão de tokens: entrada, saída, leitura de cache, gravação de cache ({{entry}}).",
         "retry_max_below_interval": "A espera máxima não pode ser inferior ao intervalo de nova tentativa ({{other}}).",
-        "cannot_decrypt": "Não foi possível descriptografar um valor armazenado com a chave atual."
+        "cannot_decrypt": "Não foi possível descriptografar um valor armazenado com a chave atual.",
+        "internal_tls_set_by_chart": "O chart do Helm define isto aqui: altere o valor do chart {{value}}.",
+        "internal_tls_not_trino": "O tráfego entre nós do motor só pode ser criptografado em um motor Trino.",
+        "internal_tls_single_node": "Os motores desta implantação são coordenadores de nó único: não há tráfego entre nós do motor.",
+        "not_a_subnet": "Informe uma rede no formato CIDR, como 172.30.250.0/24 ({{value}}).",
+        "not_an_address": "Informe um endereço IP ({{value}}).",
+        "outside_subnet": "O endereço do coordenador deve estar na rede do motor ({{subnet}}).",
+        "not_reserved_for_coordinator": "O endereço do coordenador deve estar na metade inferior da rede do motor, depois do gateway ({{subnet}})."
       },
       "group": {
         "general": "Geral e HTTP",

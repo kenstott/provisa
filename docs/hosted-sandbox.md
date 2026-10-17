@@ -47,6 +47,10 @@ published demo (`published: true` in its `demo/named/<name>/demo.yaml`) has a te
 sandbox tier builds when it starts, landing the demo's data once; a sandbox is opened as a copy of
 it. See [named demos](named-demos.md) for how a demo is written.
 
+On a deployment that holds many organizations, every organization's sources are held to public
+addresses, not only a sandbox's; a sandbox's are also held to the address checked. See
+[Sources on a shared deployment](security.md#sources-on-a-shared-deployment).
+
 ### AI in the sandbox
 
 Polly and the AI features of a sandbox (column and table descriptions, relationship discovery,

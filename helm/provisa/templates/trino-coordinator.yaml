@@ -154,5 +154,14 @@ spec:
   ports:
     - port: {{ .Values.trino.port }}
       targetPort: {{ .Values.trino.port }}
+    {{- if .Values.trino.internalTls }}
+    # REQ-2072: the nodes' HTTPS port, at the coordinator's pinned address.
+    - name: internal-https
+      port: 8443
+      targetPort: 8443
+    {{- end }}
   type: ClusterIP
+  {{- if .Values.trino.internalTls }}
+  clusterIP: {{ include "provisa.trinoCoordinatorIP" . }}
+  {{- end }}
 {{- end }}

@@ -32,6 +32,7 @@ INSTALL_FILES = (
     "docker-compose.airgap.yml",
     "docker-compose.observability.yml",
     "docker-compose.dev.yml",
+    "docker-compose.trino-internal-tls.yml",  # REQ-2072, when the launch settings turn it on
 )
 _VARS = (
     "PROVISA_E2E_FILE_LAKE_HOST",

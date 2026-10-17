@@ -462,11 +462,41 @@ A single-tenant deployment has no org to name. No surface reads a hostname, a da
 
 An organization's secrets are read only by that organization. In Provisa's own store each secret is held under its organization. In a central service (Vault, AWS Secrets Manager, GCP Secret Manager, Azure Key Vault) on a deployment of many organizations, every read is made inside the reading organization's prefix, and a reference that would leave it is refused. (REQ-1557) The prefixes and the steps to move existing secrets under them are in [Secrets](secrets.md#one-organizations-secrets-in-a-central-service).
 
+## Deployment Hardening
+
+### Store credentials and where the stores listen
+
+The bundled stores have no default credentials. The PostgreSQL control plane, Redis, MinIO, Grafana's admin account and the Trino cluster's shared secret each take a value generated for the deployment:
+
+- The launchers (`provisa start`, the desktop and server installers) generate them once and keep them in `~/.provisa/store-credentials.env` (mode 600). A value already in the environment is used as given, and a secondary node, which uses the primary's stores, refuses to start without the primary's.
+- The Terraform modules generate them with `random_password` and give the same values to every node. They are held in the Terraform state, so protect the state as you would the passwords.
+- The Helm chart sets none. It requires a Secret you create, named by `credentials.existingSecret`, holding `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key`, `grafana-admin-password` and `trino-shared-secret`.
+
+Redis requires its password, and the PostgreSQL role's password is set again at each start so a volume made earlier follows the deployment's current one. The stores, the federation engine and the telemetry services publish their ports on one address, `PROVISA_STORE_BIND_IP`: `127.0.0.1` on a node of its own, or the primary's private address when secondaries connect to it. Grafana's admin account takes the generated password; the compose stack lets anonymous visitors view dashboards, and the Helm chart admits no anonymous visitor.
+
+### Transport encryption
+
+Every listener Provisa terminates serves TLS (see [TLS versions](#tls-versions)). A server node uses the certificate in `PROVISA_TLS_CERT`/`PROVISA_TLS_KEY`, or generates a self-signed one. The Helm chart serves TLS by default (`tls.enabled: true`) from the `kubernetes.io/tls` Secret `tls.secretName` names.
+
+### The embedded PostgreSQL
+
+The desktop and native tiers run PostgreSQL embedded. On macOS and Linux it listens on a unix socket inside its data directory (mode 700), which only the account that owns the directory reaches. Over TCP (Windows, where it listens on 127.0.0.1), every connection must give a password generated for the data directory and kept in it (`provisa.password`, mode 600). It is never started as root.
+
+### The federation engine (Trino)
+
+- **Between nodes.** A coordinator and its workers authenticate each other with the deployment's generated shared secret (`internal-communication.shared-secret`). Encrypting their traffic is an operator option, off by default: off, it stays inside the deployment's private network or cluster. Turn it on where a compliance or zero-trust requirement asks for encryption inside the deployment. Trino documents it as slowing shuffle-heavy queries (distributed joins, aggregations, window functions) by 10% to over 100%. On a compose deployment it is the setting `engine.trino_internal_tls` (Deployment settings → Engine), with the engine network and the coordinator's pinned address beside it, and it applies at the next start. Under the Helm chart it is the value `trino.internalTls`, with `trino.coordinatorClusterIP`. The hosted platform's engines are single-node coordinators, with no traffic between nodes, and refuse it. (REQ-2072)
+- **Spooled data.** Fault-tolerant execution encrypts the exchange data it spools with a key generated for each query and discarded when it ends (`fault-tolerant-execution.exchange-encryption-enabled=true`, set explicitly). Legacy spill to disk is not used.
+- **Organizations on one engine.** Each organization's catalogs are its own, named for the organization, and each organization's statements run in its own resource group.
+
+### Sources on a shared deployment
+
+On a deployment that holds many organizations, an organization's sources may reach only public addresses: never the platform's private network, where its control plane, cache and object store are. The check applies when a source is saved, by the UI, the admin API or a configuration apply, and again at every connection and every HTTP redirect. A demo sandbox's sources are further held to the address they were checked at. The deployment's own organization, whose sources the operator configures, is not held.
+
 ## Encryption at Rest and the Organization's Own Keys
 
 Encryption under an organization's own key is available, and it is off until the organization turns it on. Nothing is encrypted under a key of the organization's unless an organization admin creates one.
 
-**The organization's encryption key** (REQ-1574) wraps the organization's secrets, its encrypted columns and its audit query text. An organization admin creates it under **Admin → Org Secrets → Org Key**, or with `PUT /admin/org-encryption`: with no body Provisa generates the key, which is never shown, and a `key_b64` body supplies 32 bytes of your own. `GET /admin/org-encryption` reports only its fingerprint. Without an organization key, the organization's data is wrapped with the deployment's key (`encryption.provider` in `provisa.yaml`). A deployment that configures no encryption provider stores that data unencrypted.
+**The organization's encryption key** (REQ-1574) wraps the organization's secrets, its encrypted columns and its audit query text. An organization admin creates it under **Admin → Org Secrets → Org Key**, or with `PUT /admin/org-encryption`: with no body Provisa generates the key, which is never shown, and a `key_b64` body supplies 32 bytes of your own. `GET /admin/org-encryption` reports only its fingerprint. Without an organization key, the organization's data is wrapped with the deployment's key (`encryption.provider` in `provisa.yaml`). A deployment that configures no encryption provider stores encrypted columns and audit query text unencrypted; secrets are never stored in the clear (see [Secrets](secrets.md#provisas-built-in-store)).
 
 **The organization's folder** (REQ-1992) holds its uploaded and landed files, its engine's spill files and its temporary files. An organization admin turns its encryption on under **Admin → Org Secrets → File folder encryption**, or with `PUT /admin/org-files` (`{"encrypted": true, "key_reference": "${secret:NAME}"}`). `POST /admin/org-files/generate-key` answers a new 256-bit key once, to be stored in the vault. The key stays in the organization's own vault (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault or HashiCorp Vault): Provisa stores only the reference, and gocryptfs keeps the folder's files encrypted on disk under the key. This needs FUSE, so a Linux host or container with `/dev/fuse`; on macOS the setting is refused.
 
@@ -479,7 +509,11 @@ On a self-hosted deployment, which typically runs one organization on its own en
 
 ### Shared and dedicated hosted platforms
 
-The shared hosted platform isolates organizations logically: one deployment serves them all, and governance, per-organization schemas, stores and keys keep each organization's data its own. It is recommended for experimentation and small businesses. A dedicated hosted platform is physically separated: its own machines, network and stores, serving one customer.
+The shared hosted platform isolates organizations logically. One deployment serves them all, and each organization's data stays its own through governance, its own schemas, catalogs and resource groups on the engine, its own keys, per-query keys for spooled engine data, and the refusal of its sources at the platform's private addresses. It is recommended for experimentation and small businesses. A dedicated hosted platform is physically separated: its own machines, network and stores, serving one customer.
+
+### Python in the browser
+
+The Data Science area runs Python in the visitor's browser. Every read it makes goes to the server as the signed-in user, with their acting role, organization and environment, and is governed exactly as the same statement from any other client.
 
 ## High-Security Mode
 

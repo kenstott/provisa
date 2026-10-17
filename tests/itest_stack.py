@@ -111,6 +111,13 @@ def _session_trino_etc() -> str:
     path = os.path.join(_REPO_ROOT, ".itest-trino", ITEST_PROJECT)
     for sub in ("catalog", "kafka", "redis"):
         os.makedirs(os.path.join(path, sub), exist_ok=True)
+    # The engine's own config, which Trino mounts from this tree and the in-process app renders
+    # into it (trino_setup.write_trino_config): seeded from the repo's.
+    import shutil
+
+    shutil.copytree(
+        os.path.join(_REPO_ROOT, "trino", "etc"), os.path.join(path, "etc"), dirs_exist_ok=True
+    )
     os.environ.setdefault("PROVISA_TRINO_ETC_HOST", path)
     os.environ.setdefault("PROVISA_TRINO_ETC_DIR", path)
     # docker-compose.e2e-mounts.yml bind-mounts the Hive warehouse and the file lake from the host

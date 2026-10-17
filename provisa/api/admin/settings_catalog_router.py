@@ -166,6 +166,12 @@ async def put_catalog(request: Request) -> dict[str, Any]:  # REQ-1913
         raise _invalid(err) from None
     except settings_guards.Refused as err:
         raise _refused(err.field, err.reason, **err.params) from None
+    # The engine's own files (and the launch-settings file beside them) are rendered from the
+    # engine-scoped settings, so a save of one renders them at once; the engine starts on them next.
+    if any(settings_registry.setting(key).restart_scope == "engine" for key in values):
+        from provisa.core.config_location import config_path_str
+
+        state.shared_federation_engine.write_config(config_path_str())
     return {"updated": list(values), "pending_restart": settings_registry.pending()}
 
 

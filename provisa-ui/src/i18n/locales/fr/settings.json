@@ -103,6 +103,18 @@
       "exchange_spool_dir": {
         "label": "Dossier de spool d'échange",
         "help": "L'emplacement où le moteur conserve les données intermédiaires pour l'exécution tolérante aux pannes. Prend effet au redémarrage du moteur."
+      },
+      "trino_internal_tls": {
+        "label": "Chiffrer le trafic entre les nœuds du moteur",
+        "help": "Le coordinateur et les workers de Trino exigent HTTPS entre eux. Désactivé par défaut : leur trafic reste sur le réseau privé du déploiement, authentifié par un secret partagé. Activez-le là où une exigence de conformité ou de zéro confiance demande un chiffrement à l'intérieur du déploiement ; les requêtes à fort shuffle (jointures, agrégations, fonctions de fenêtrage) s'exécutent de 10 % à plus de 100 % plus lentement. Prend effet au prochain démarrage."
+      },
+      "trino_internal_subnet": {
+        "label": "Réseau du moteur",
+        "help": "Le réseau que partagent les conteneurs du moteur tant que le trafic entre les nœuds du moteur est chiffré. L'adresse du coordinateur se trouve dans sa moitié inférieure ; chacun des autres conteneurs en reçoit une dans la moitié supérieure. Prend effet au prochain démarrage."
+      },
+      "trino_coordinator_ip": {
+        "label": "Adresse du coordinateur",
+        "help": "L'adresse fixe du coordinateur sur le réseau du moteur, dans sa moitié inférieure : Trino ne trouve son coordinateur que par son IP lorsque le trafic entre les nœuds est chiffré. Prend effet au prochain démarrage."
       }
     },
     "ui": {
@@ -669,7 +681,8 @@
       "locates_control_plane": "Ce paramètre indique au serveur où se trouve son plan de contrôle ; il ne peut donc pas être modifié depuis le plan de contrôle.",
       "read_before_control_plane": "Ce paramètre est lu avant que le plan de contrôle soit disponible ; il est donc défini en dehors de l'interface.",
       "set_by_launcher": "Le lanceur qui a démarré ce déploiement définit cette valeur.",
-      "set_by_desktop_launcher": "Le lanceur de bureau définit cette valeur pour cette installation."
+      "set_by_desktop_launcher": "Le lanceur de bureau définit cette valeur pour cette installation.",
+      "set_by_chart": "Le chart Helm définit cette valeur ({{value}})."
     },
     "connectors": {
       "cloudops": {
