@@ -511,7 +511,7 @@ On a self-hosted deployment, which typically runs one organization on its own en
 
 ### Shared and dedicated hosted platforms
 
-The shared hosted platform isolates organizations logically. One deployment serves them all, and each organization's data stays its own through governance, its own schemas, catalogs and resource groups on the engine, its own keys, per-query keys for spooled engine data, and the refusal of its sources at the platform's private addresses. It is recommended for experimentation and small businesses. A dedicated hosted platform is physically separated: its own machines, network and stores, serving one customer.
+The shared hosted platform isolates organizations logically. One deployment serves them all, and each organization's data stays its own through governance, its own schemas, catalogs and resource groups on the engine, its own keys, per-query keys for spooled engine data, and the refusal of its sources at the platform's private addresses. It is recommended for experimentation and small businesses. A dedicated hosted platform is physically separated: its own machines, network and stores, serving one customer. For highly sensitive or regulated workloads, self-host Provisa inside your own boundary, where your own operators hold every key and every host. The hosted platforms do not yet carry a SOC 2 report.
 
 ### Python in the browser
 
