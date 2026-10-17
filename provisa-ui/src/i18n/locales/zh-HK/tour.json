@@ -1127,6 +1127,58 @@
       "pharmaRecap": {
         "title": "你看到了甚麼",
         "description": "藥房自己的數據即時讀取，公開的藥品數據載入一次，在一個受管治的模型中按 NDC 和企業關聯：一個檢視回答哪些藥品有風險，以 SQL、GraphQL 和 REST 提供，並遵循每個角色的存取權限。"
+      },
+      "storefrontScenario": {
+        "title": "一個模型，一個應用程式和 BI",
+        "description": "一間咖啡零售商用一個模型服務兩個使用方。其應用程式的訂單紀錄頁面向已登入的顧客顯示他自己的訂單，其 BI 工具向分析師展示收入和延遲的送貨。訂單存放在 <strong>PostgreSQL</strong> 中，即時讀取：顧客、訂單以及每張訂單的明細。"
+      },
+      "storefrontCatalog": {
+        "title": "目錄，在 MongoDB 中",
+        "description": "每件貨品都是一份 <strong>MongoDB</strong> 文件，包含名稱、類別、價錢和圖片。Provisa 將其作為表即時讀取。"
+      },
+      "storefrontShipping": {
+        "title": "送貨，經由 REST",
+        "description": "每張訂單的送貨資料來自內部送貨服務，經由 <strong>REST</strong> 取得，並透過其 OpenAPI 文件讀取：速遞公司、追蹤編號，以及承諾送達和實際送達的時間。"
+      },
+      "storefrontRelations": {
+        "title": "關係，只宣告一次",
+        "description": "<strong>OF_PRODUCT</strong> 將 PostgreSQL 中的訂單明細與 MongoDB 中的貨品連接起來。連同 PLACED_BY、HAS_ITEM 和 SHIPPED_AS，這四個關係只宣告一次，應用程式和 BI 工具都透過它們讀取。"
+      },
+      "storefrontAsCustomer": {
+        "title": "以顧客身份登入",
+        "description": "應用程式以 <strong>customer</strong> 角色發送查詢，該角色的行篩選器把每個結果都限定為已登入顧客自己的訂單。按下一步會在角色選擇器中選取 <strong>customer</strong>，令下面的查詢按應用程式的方式執行。"
+      },
+      "storefrontScreen": {
+        "title": "應用程式唯一的查詢",
+        "description": "訂單紀錄頁面發送這唯一一個巢狀 GraphQL 查詢：每張訂單及其明細、每項明細在目錄中的貨品，以及訂單在送貨服務中的送貨資料。以 <strong>customer</strong> 身份執行時，它傳回七張訂單，全部屬於已登入的顧客。"
+      },
+      "storefrontApp": {
+        "title": "它所支撐的頁面",
+        "description": "這是示範應用程式的訂單紀錄頁面，為示範中已登入的顧客呈現該結果：七張訂單，附有來自 MongoDB 貨品圖片的明細，以及來自送貨服務的送達狀態。應用程式中沒有任何連接，也沒有任何存取規則；兩者都由模型掌握。"
+      },
+      "storefrontJsonApi": {
+        "title": "經由 JSON:API 讀取同樣的訂單",
+        "description": "偏好 JSON:API 的用戶端仍以顧客身份要求同樣的訂單，並包含其明細和送貨資料。每張訂單都連結到它所包含的明細和送貨資料，而明細的 id 是它的複合鍵。"
+      },
+      "storefrontAnalyst": {
+        "title": "現在以分析師身份",
+        "description": "BI 一方以 <strong>analyst</strong> 身份讀取：所有訂單，且看不到任何顧客的電郵。按下一步會在執行角色選擇器中選取 <strong>analyst</strong>。"
+      },
+      "storefrontAnalystSql": {
+        "title": "分析師的 SQL",
+        "description": "按地區和速遞公司統計的延遲送貨，基於同樣的表和關係。<strong>a_customer</strong> 顯示分析師讀到的電郵：已遮蔽。"
+      },
+      "storefrontBi": {
+        "title": "BI 儀表板",
+        "description": "Apache Superset 經由 PostgreSQL 線路協定、使用 PostgreSQL 方言連接：Provisa 的 pgwire 伺服器的主機和連接埠（預設 5439），資料庫 <strong>provisa</strong>，使用者 <strong>analyst</strong>。它瀏覽商店的表和檢視，並從同一個模型繪製按地區的收入和按速遞公司的延遲送貨。"
+      },
+      "storefrontEveryRole": {
+        "title": "回到所有角色",
+        "description": "按下一步會在角色選擇器中重新選取 <strong>全部</strong>。BI 一方以自己的角色讀取，該角色在執行其 SQL 的地方選取。"
+      },
+      "storefrontPoint": {
+        "title": "一個模型，兩個使用方",
+        "description": "<strong>SHIPPED_AS</strong> 將訂單與其送貨資料連接起來。應用程式和 BI 工具都透過它以及其他所有關係、在同樣的規則下讀取：顧客只看到自己的訂單，分析師看不到電郵。在這裏修改一個關係或一條規則，兩個使用方都會得到它。沒有甚麼需要保持同步。"
       }
     },
     "status": {
@@ -1207,6 +1259,10 @@
       "pharma": {
         "title": "藥品短缺與回收風險",
         "summary": "醫院藥房的問題：其哪些藥品面臨短缺或回收風險。處方集和庫存與 FDA 的短缺和回收資料及 Medicaid 處方數據關聯，以 SQL、GraphQL 和 REST 作答。"
+      },
+      "storefront": {
+        "title": "一個模型，應用程式和 BI",
+        "summary": "一個應用程式的訂單紀錄頁面和一個 BI 儀表板，在同樣的關係和規則下讀取由 PostgreSQL、MongoDB 和一個 REST 服務組成的同一個模型。"
       }
     }
   }

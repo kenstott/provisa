@@ -239,3 +239,15 @@
   font-size: 12px;
   opacity: 0.75;
 }
+
+/* A named demo's image step: the picture below the step's words, the popover wide enough for it. */
+.driver-popover.tour-popover-image {
+  max-width: min(720px, 92vw);
+}
+.tour-step-image {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: 6px;
+}

@@ -1,0 +1,74 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The storefront demo's own tour (REQ-2010): the story of the demo, told with its own data. The step
+# kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name here is checked
+# against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
+# tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: the scenario and the features it shows; how the pieces fit, each step on its real
+# object; the solution, as predesigned queries over the transports that fit it (a Polly step is
+# optional, its answer stored); a recap; and "Where next?", the landing page below.
+landing:
+  route: /query
+  capability: query_development
+steps:
+# The scenario: an app's backend and its BI tool, served by one model of three stores.
+- key: storefrontScenario
+  route: /sources
+  capability: source_registration
+  source: orders-db
+- key: storefrontCatalog
+  source: catalog
+- key: storefrontShipping
+  source: shipping
+# How the pieces fit: the relationships, declared once, that both consumers read through.
+- key: storefrontRelations
+  route: /relationships
+  capability: create_relationship
+  relationship: OF_PRODUCT
+# The app: its order-history screen, one nested query as the signed-in customer, and the screen.
+- key: storefrontAsCustomer
+  route: /query
+  capability: query_development
+  role: customer
+- key: storefrontScreen
+  example: 1-order-history
+- key: storefrontApp
+  image: sample-app.png
+# The same orders over JSON:API.
+- key: storefrontJsonApi
+  route: /jsonapi
+  capability: query_development
+  jsonapi: /data/jsonapi/shop/orders?include=order_items,shipment
+# Back to every role in the header (the customer's role reads no relationships page), then BI:
+# the analyst's SQL over the same tables, and the dashboard Superset builds over pgwire.
+- key: storefrontEveryRole
+  role: all
+- key: storefrontAnalyst
+  route: /sql
+  capability: query_development
+  role: analyst
+- key: storefrontAnalystSql
+  sql: >-
+    SELECT c.region, s.carrier, COUNT(*) AS shipments,
+           SUM(CASE WHEN s.delivered_at > s.promised_at THEN 1 ELSE 0 END) AS late,
+           MIN(c.email) AS a_customer
+    FROM "shop"."orders" AS o
+    JOIN "shop"."customers" AS c ON c.id = o.customer_id
+    JOIN "shop"."shipments" AS s ON s.order_id = o.id
+    GROUP BY c.region, s.carrier
+    ORDER BY late DESC
+- key: storefrontBi
+  image: superset.png
+# The point: one model, two consumers, the same rules, nothing to keep in sync.
+- key: storefrontPoint
+  route: /relationships
+  capability: create_relationship
+  relationship: SHIPPED_AS

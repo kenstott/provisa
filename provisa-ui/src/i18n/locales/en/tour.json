@@ -1127,6 +1127,58 @@
       "pharmaRecap": {
         "title": "What you saw",
         "description": "The pharmacy's own data, read live, and public drug data, landed once, joined by NDC and by firm in one governed model: one view answers which products are at risk, in SQL, GraphQL and REST, under each role's access."
+      },
+      "storefrontScenario": {
+        "title": "One model, an app and BI",
+        "description": "A coffee retailer serves two consumers from one model. Its app's order-history screen shows a signed-in customer their orders, and its BI tool charts revenue and late shipments for the analysts. The orders are in <strong>PostgreSQL</strong>, read live: customers, orders and each order's lines."
+      },
+      "storefrontCatalog": {
+        "title": "The catalog, in MongoDB",
+        "description": "Each product is a <strong>MongoDB</strong> document, with its name, category, price and picture. Provisa reads it live, as a table."
+      },
+      "storefrontShipping": {
+        "title": "Shipping, over REST",
+        "description": "Each order's shipment comes from the internal shipping service over <strong>REST</strong>, read through its OpenAPI document: the carrier, the tracking number, and when it was promised and delivered."
+      },
+      "storefrontRelations": {
+        "title": "Relationships, declared once",
+        "description": "<strong>OF_PRODUCT</strong> joins an order line in PostgreSQL to its product in MongoDB. With PLACED_BY, HAS_ITEM and SHIPPED_AS, these four relationships are declared once, and both the app and the BI tool read through them."
+      },
+      "storefrontAsCustomer": {
+        "title": "Signed in as the customer",
+        "description": "The app sends its queries as the <strong>customer</strong> role, whose row filters keep every answer to the signed-in customer's own orders. Next picks <strong>customer</strong> in the role picker, so the query below runs as the app runs it."
+      },
+      "storefrontScreen": {
+        "title": "The app's one query",
+        "description": "The order-history screen sends this one nested GraphQL query: each order with its lines, each line's product from the catalog, and the order's shipment from the shipping service. Run as <strong>customer</strong>, it answers seven orders, all the signed-in customer's own."
+      },
+      "storefrontApp": {
+        "title": "The screen it feeds",
+        "description": "This is the sample app's order-history screen, rendering that answer for the demo's signed-in customer: seven orders, their lines with product pictures from MongoDB, and delivery status from the shipping service. The app holds no joins and no access rules; the model holds both."
+      },
+      "storefrontJsonApi": {
+        "title": "The same orders over JSON:API",
+        "description": "A client that prefers JSON:API asks for the same orders, still as the customer, with their lines and shipments included. Each order links the lines and the shipment it includes, and a line's id is its composite key."
+      },
+      "storefrontAnalyst": {
+        "title": "Now as the analyst",
+        "description": "The BI side reads as <strong>analyst</strong>: every order, and no customer's email. Next picks <strong>analyst</strong> in the run-as picker."
+      },
+      "storefrontAnalystSql": {
+        "title": "The analyst's SQL",
+        "description": "Late shipments by region and carrier, over the same tables and relationships. <strong>a_customer</strong> shows an email as the analyst reads it: masked."
+      },
+      "storefrontBi": {
+        "title": "The BI dashboard",
+        "description": "Apache Superset connects over the PostgreSQL wire protocol, with the PostgreSQL dialect: host and port of Provisa's pgwire server (5439 by default), database <strong>provisa</strong>, user <strong>analyst</strong>. It browses the shop's tables and views and charts revenue by region and late shipments by carrier from the same model."
+      },
+      "storefrontEveryRole": {
+        "title": "Back to every role",
+        "description": "Next picks <strong>All</strong> in the role picker again. The BI side reads as its own role, chosen where its SQL runs."
+      },
+      "storefrontPoint": {
+        "title": "One model, two consumers",
+        "description": "<strong>SHIPPED_AS</strong> joins an order to its shipment. The app and the BI tool both read through it and every other relationship, under the same rules: the customer sees their own orders, the analyst sees no emails. Change a relationship or a rule here, and both consumers have it. There is nothing to keep in sync."
       }
     },
     "status": {
@@ -1207,6 +1259,10 @@
       "pharma": {
         "title": "Drug shortage and recall risk",
         "summary": "A hospital pharmacy's question, which of its products face shortage or recall risk: its formulary and stock joined to FDA's shortages and recalls and Medicaid's prescriptions, answered in SQL, GraphQL and REST."
+      },
+      "storefront": {
+        "title": "One model, app and BI",
+        "summary": "An app's order-history screen and a BI dashboard read one model of PostgreSQL, MongoDB and a REST service, under the same relationships and rules."
       }
     }
   }

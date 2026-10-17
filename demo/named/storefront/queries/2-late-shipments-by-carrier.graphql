@@ -1,0 +1,10 @@
+# The analyst's view of shipping: each carrier's shipments and how many arrived after the date the
+# customer was promised -- the same orders the order-history screen shows, read through the same
+# relationships and rules.
+query LateShipmentsByCarrier {
+  s__viewLateShipmentsByCarrier(order_by: [{ late: desc }]) {
+    carrier
+    shipments
+    late
+  }
+}

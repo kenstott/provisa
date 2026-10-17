@@ -129,6 +129,18 @@ def test_the_shipped_demos_pass_the_static_checks(name):
     assert check_demo.check_bundle(home) == []
     assert check_demo.check_run_compose(home, name) == []
     assert check_demo.check_locales(name, home) == []
+    assert check_demo.check_images(home) == []
+
+
+def test_an_image_step_whose_picture_is_missing_or_not_a_png_is_reported(tmp_path):
+    (tmp_path / "shot.png").write_bytes(b"not a png")
+    (tmp_path / "tour.yaml").write_text(
+        "steps:\n- {key: a, image: shot.png}\n- {key: b, image: gone.png}\n"
+    )
+    assert check_demo.check_images(tmp_path) == [
+        "tour.yaml: step a: shot.png is not a PNG",
+        f"tour.yaml: step b: {tmp_path.name}: tour image 'gone.png' is not a PNG beside tour.yaml",
+    ]
 
 
 def test_a_run_compose_off_the_loopback_or_unlabelled_is_reported(tmp_path):

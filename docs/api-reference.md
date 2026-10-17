@@ -342,7 +342,9 @@ Auto-generated [JSON:API](https://jsonapi.org)-compliant endpoint for every regi
 - `groupBy` — comma-separated column names; used with `?aggregate=` to group results. Only columns in the table's `DistinctOnColumn` enum are valid; the server returns `400` for any column the role cannot see. (REQ-1361) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:447`]
 - `includeNodes` — `true` to include base-table scalar columns (and joined dimension scalars named in `include=`) inside each group row's `nodes` array. Required when an NL group-by query also requests dimension details. (REQ-1405)
 
-Responses are resource objects with `type`/`id`/`attributes`. Errors follow the JSON:API error object shape.
+- `include` — comma-separated relationship names, physical spelling, e.g. `?include=order_items,shipment`: each related resource is returned once in `included`, and each primary resource links what it includes under `relationships.<name>.data` (a list of resource identifiers for a to-many relationship, one identifier or `null` for a to-one). (REQ-257) [tool-verified: `provisa/api/jsonapi/generator.py`]
+
+Responses are resource objects with `type`/`id`/`attributes`. A resource's `id` is its table's primary key: the key column's value, or for a composite key its columns' values in key order joined by `:` (order 7's line 2 of a table keyed `(order_id, line)` is `7:2`). A `:` or `\` inside a value is escaped with `\`. A table with no declared primary key uses its `id` column; a table with neither returns `400`, as does an `include` that reaches one. [tool-verified: `provisa/api/jsonapi/serializer.py`] Errors follow the JSON:API error object shape.
 
 **Response cache:** opt in with a request header, `Cache-Control: max-age=N` or `x-provisa-cache: true` (see [Response cache request headers](#response-cache-request-headers)). Every response carries `X-Provisa-Cache: HIT|MISS`, and `X-Provisa-Cache-Age` on a hit. Two forms that disagree return `400` as a JSON:API error object. (REQ-544, REQ-536) [tool-verified: `provisa/api/jsonapi/generator.py`]
 

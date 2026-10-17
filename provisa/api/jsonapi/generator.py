@@ -208,28 +208,54 @@ def _get_relationship_fields(
 
 
 def _extract_included(
-    rows: list[dict[str, Any]], include_names: list[str]
-) -> dict[str, list[dict[str, Any]]]:
+    rows: list[dict[str, Any]], include_names: list[str], id_columns: dict[str, list[str]]
+) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
     """REQ-257: move nested included entities out of the primary rows into a deduplicated set.
 
     The nested object/array under each included relationship is popped from the primary
-    resource (its attributes must not carry it — the FK column links it) and collected,
-    deduplicated by id, keyed by relationship name (the JSON:API included type).
+    resource and collected, keyed by relationship name (the JSON:API included type) and
+    deduplicated by its id -- made of its table's key columns (``id_columns``, by included type;
+    serializer.resource_id), so a composite-keyed resource is one of its own. Returns them with,
+    per primary row, the identifiers of what it includes, by relationship: a list for a to-many
+    relationship, one identifier (or None) for a to-one.
     """
+    from provisa.api.jsonapi.serializer import resource_id
+
     included_rows: dict[str, list[dict[str, Any]]] = {}
+    seen: dict[str, set[str]] = {}
+    links: list[dict[str, Any]] = []
     for row in rows:
+        row_links: dict[str, Any] = {}
         for inc in include_names:
             nested = row.pop(inc, None)
-            if not nested:
-                continue
-            items = nested if isinstance(nested, list) else [nested]
+            items = nested if isinstance(nested, list) else [nested] if nested else []
             bucket = included_rows.setdefault(inc, [])
-            seen_ids = {r.get("id") for r in bucket}
+            ids = seen.setdefault(inc, set())
+            identifiers = []
             for item in items:
-                if isinstance(item, dict) and item.get("id") not in seen_ids:
+                rid = resource_id(item, id_columns[inc])
+                identifiers.append({"type": inc, "id": rid})
+                if rid not in ids:
                     bucket.append(item)
-                    seen_ids.add(item.get("id"))
-    return included_rows
+                    ids.add(rid)
+            if isinstance(nested, list):
+                row_links[inc] = {"data": identifiers}
+            else:
+                row_links[inc] = {"data": identifiers[0] if identifiers else None}
+        links.append(row_links)
+    return {k: v for k, v in included_rows.items() if v}, links
+
+
+def _key_columns(
+    ctx: Any, table_id: int, gql_scalars: list[str], physical_to_gql: dict[str, str]
+) -> list[str]:
+    """The table's key columns, physical, in key order: its declared primary key, else its ``id``
+    column (what JSON:API ids were made of before keys were read). Empty when it has neither: its
+    resources have no id, and the caller refuses the read by name."""
+    keys = ctx.pk_columns.get(table_id) or []
+    if keys and all(k in physical_to_gql for k in keys):
+        return list(keys)
+    return ["id"] if "id" in gql_scalars else []
 
 
 def _relationship_scalars(schema: GraphQLSchema, table: str, rel_field: str) -> list[str]:
@@ -693,9 +719,20 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 f"No selectable fields for resource type {domain_id!r}/{table_name!r}",
             )
 
-        # Ensure id is always selected for resource identity
-        if "id" in all_scalars and "id" not in selected_fields:
-            selected_fields = ["id"] + selected_fields
+        # A resource's id is made of its table's key columns (serializer.resource_id): every one
+        # is selected, whatever the sparse fieldset asks for.
+        base_keys = _key_columns(ctx, table_meta.table_id, all_scalars, physical_to_gql)
+        if not base_keys:
+            return _jsonapi_error_response(
+                400,
+                "Bad Request",
+                f"Resource type {domain_id!r}/{table_name!r} has no primary key, so its "
+                "resources have no id",
+            )
+        selected_fields = [
+            *[physical_to_gql[k] for k in base_keys if physical_to_gql[k] not in selected_fields],
+            *selected_fields,
+        ]
 
         physical_filters = _parse_filters(raw_params)
         physical_sort = _parse_sort(raw_params.get("sort"))
@@ -983,10 +1020,22 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 )
         include_names = [rel_physical_to_gql[inc] for inc in physical_include_names]
         query_fields = list(selected_fields)
+        # Each included type's key columns, physical: its resources' ids (serializer.resource_id).
+        include_keys: dict[str, list[str]] = {}
         for inc in include_names:
             inc_scalars = list(rel_scalars_by_rel[inc])
-            if "id" in inc_scalars:
-                inc_scalars = ["id"] + [s for s in inc_scalars if s != "id"]
+            target = ctx.joins[(table_meta.type_name, inc)].target
+            _, inc_physical_to_gql = scalar_name_maps(ctx, target.table_id, inc_scalars)
+            inc_keys = _key_columns(ctx, target.table_id, inc_scalars, inc_physical_to_gql)
+            if not inc_keys:
+                return _jsonapi_error_response(
+                    400,
+                    "Invalid Include",
+                    f"Relationship {rel_gql_to_physical[inc]!r} reaches a table with no primary "
+                    "key, so its resources have no id",
+                    source_parameter="include",
+                )
+            include_keys[rel_gql_to_physical[inc]] = inc_keys
             query_fields.append(f"{inc} {{ {' '.join(inc_scalars)} }}")
             # the FK column must be selected so the resource's relationship linkage resolves.
             # It is named from the *physical* convention (``pet`` → ``pet_id``) and translated to
@@ -1143,7 +1192,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         physical_rel_fields = {f"{p}_id": p for p in rel_physical_to_gql}
 
         # REQ-257: pull nested included entities out of the rows into a deduplicated set.
-        included_rows = _extract_included(rows, physical_include_names)
+        included_rows, row_links = _extract_included(rows, physical_include_names, include_keys)
 
         # Build JSON:API document (compound when includes were requested)
         doc = rows_to_jsonapi(
@@ -1152,6 +1201,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             id_field="id",
             relationship_fields=physical_rel_fields,
             included_rows=included_rows or None,
+            id_columns=base_keys,
+            included_id_columns=include_keys,
+            row_links=row_links if physical_include_names else None,
         )
         # The serializer's own ``meta.total`` is the length of the rows it was handed — a page, here.
         # It is replaced by the counted total or removed: a page length is never reported as one.

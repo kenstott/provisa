@@ -97,6 +97,10 @@ export interface DemoTourStepDef {
   polly?: string;
   /** REQ-2012: Polly's answer to `polly`, stored when the demo's template was built. */
   answer?: string;
+  /** A picture beside the demo's tour.yaml (a PNG), shown in the step's popover on the page the
+   *  step before it is on; the server sends it as `image_src`, a data URL. */
+  image?: string;
+  image_src?: string;
 }
 
 /** Answers that come from the server are slow on a loaded demo; a run's result waits this long. */
@@ -104,6 +108,8 @@ const RESULT_WAIT_MS = 60000;
 // The SQL explorer's own run-as picker (REQ-1013), not the app-wide role: it is what the explorer's
 // statements run as.
 const RUN_AS = '[data-testid="sql-role"]';
+// The header's role picker: what every other page's requests run as (the GraphQL page among them).
+const APP_ROLE = '[data-testid="role-selector-trigger"]';
 // The header's environment switcher: what every request after it is served from.
 const ENV_SWITCHER = '[data-testid="env-switcher-trigger"]';
 const SQL_RESULT_ROW = '.sql-results-table tbody tr:not([data-testid="results-grid-empty"])';
@@ -112,147 +118,180 @@ export function demoTourSteps(
   defs: readonly DemoTourStepDef[],
   examples: readonly ExampleQuery[],
 ): TourStep[] {
-  return defs.map((def) => {
-    const page = {
-      key: def.key,
-      ...(def.route !== undefined ? { route: def.route, capability: def.capability } : {}),
+  const steps: TourStep[] = [];
+  let onPage: string | undefined;
+  for (const def of defs) {
+    onPage = def.route ?? onPage;
+    steps.push(demoTourStep(def, examples, steps[steps.length - 1], onPage));
+  }
+  return steps;
+}
+
+function demoTourStep(
+  def: DemoTourStepDef,
+  examples: readonly ExampleQuery[],
+  before: TourStep | undefined,
+  onPage: string | undefined,
+): TourStep {
+  const page = {
+    key: def.key,
+    ...(def.route !== undefined ? { route: def.route, capability: def.capability } : {}),
+  };
+  if (def.source !== undefined) {
+    return { ...page, element: `[data-testid="sources-row-${def.source}"]` };
+  }
+  if (def.table !== undefined) {
+    return { ...page, element: `[data-table-row="${def.table}"]` };
+  }
+  if (def.relationship !== undefined) {
+    return { ...page, element: `[data-tour-relationship="${def.relationship}"]` };
+  }
+  if (def.example !== undefined) {
+    const example = examples.find((e) => e.name === def.example);
+    // The server sends the demo's tour and its examples together; a step naming an example the
+    // demo does not ship is a defect of the demo, which tests/unit/test_named_demo_tour.py holds.
+    if (example === undefined) {
+      throw new Error(`Tour: step ${def.key} names example "${def.example}", not shipped`);
+    }
+    return {
+      ...page,
+      openQuery: { stateKey: "query", text: example.query },
+      element: ".graphiql-response",
+      waitMs: RESULT_WAIT_MS,
     };
-    if (def.source !== undefined) {
-      return { ...page, element: `[data-testid="sources-row-${def.source}"]` };
+  }
+  if (def.sql !== undefined) {
+    return {
+      ...page,
+      openQuery: { stateKey: "sql", text: def.sql },
+      // Its rows, not the table: the grid of an unrun tab is a table that says it has none.
+      readySelector: SQL_RESULT_ROW,
+      element: ".sql-results-table",
+      waitMs: RESULT_WAIT_MS,
+    };
+  }
+  // Each runs on its page and is awaited as the SQL statement is: by a mark the page shows only
+  // once this hand-off's answer is in.
+  if (def.api !== undefined) {
+    return {
+      ...page,
+      openQuery: { stateKey: "openApiUrl", text: def.api },
+      readySelector: ".openapi-page[data-answered]",
+      element: ".openapi-frame",
+      waitMs: RESULT_WAIT_MS,
+    };
+  }
+  if (def.jsonapi !== undefined) {
+    return {
+      ...page,
+      openQuery: { stateKey: "jsonapiUrl", text: def.jsonapi },
+      readySelector: '[data-testid="jsonapi-summary-tab"]',
+      element: ".jsonapi-panel",
+      waitMs: RESULT_WAIT_MS,
+    };
+  }
+  if (def.grpc !== undefined) {
+    return {
+      ...page,
+      openQuery: { stateKey: "grpcMethod", text: def.grpc },
+      readySelector: ".grpc-panel-right[data-answered]",
+      element: ".grpc-panel-right",
+      waitMs: RESULT_WAIT_MS,
+    };
+  }
+  if (def.cypher !== undefined) {
+    return {
+      ...page,
+      openQuery: { stateKey: "query", text: def.cypher },
+      readySelector: '.graph-stream[data-handoff-status="done"]',
+      element: ".graph-stream .gf-frame",
+      waitMs: RESULT_WAIT_MS,
+    };
+  }
+  if (def.group_by !== undefined) {
+    return {
+      ...page,
+      openView: { groupBy: def.group_by },
+      element: ".graph-stream .gf-frame",
+    };
+  }
+  if (def.lineage !== undefined) {
+    // The page builds a statement's graph from its deep link, read when the page opens.
+    return {
+      ...page,
+      route: `${def.route ?? ""}?sql=${encodeURIComponent(def.lineage)}`,
+      element: '[data-testid="lineage-graph"]',
+      waitMs: RESULT_WAIT_MS,
+    };
+  }
+  if (def.term !== undefined) {
+    return {
+      ...page,
+      clickBefore: `[data-glossary-term="${def.term}"]`,
+      element: '[data-testid="glossary-detail"]',
+    };
+  }
+  if (def.product !== undefined) {
+    // The page opens the product its deep link names (`?product=<id>`), read when it opens.
+    return {
+      ...page,
+      route: `${def.route ?? ""}?product=${encodeURIComponent(def.product)}`,
+      element: '[data-testid="data-product-detail"]',
+    };
+  }
+  if (def.role !== undefined && def.role.includes(",")) {
+    // A set of roles, a pseudo-role among them (reviewer,region__eu, REQ-2057): handed to the
+    // SQL explorer, which offers it as its own run-as entry and picks it.
+    return {
+      ...page,
+      openQuery: { stateKey: "role", text: def.role },
+      element: RUN_AS,
+    };
+  }
+  if (def.role !== undefined && onPage !== "/sql") {
+    // Anywhere but the SQL explorer, the role every request of the app runs as: the header's.
+    return {
+      ...page,
+      element: APP_ROLE,
+      chooseOnNext: { open: APP_ROLE, option: `[data-role-option="${def.role}"]` },
+    };
+  }
+  if (def.role !== undefined) {
+    return {
+      ...page,
+      element: RUN_AS,
+      chooseOnNext: { open: RUN_AS, option: `[data-sql-role-option="${def.role}"]` },
+    };
+  }
+  if (def.env !== undefined) {
+    return {
+      ...page,
+      element: ENV_SWITCHER,
+      chooseOnNext: { open: ENV_SWITCHER, option: `[data-env-option="${def.env}"]` },
+    };
+  }
+  if (def.polly !== undefined) {
+    if (def.answer === undefined) {
+      throw new Error(`Tour: step ${def.key} asks Polly with no stored answer`);
     }
-    if (def.table !== undefined) {
-      return { ...page, element: `[data-table-row="${def.table}"]` };
+    return {
+      ...page,
+      pollyOpen: true,
+      pollyExchange: { question: def.polly, answer: def.answer },
+      element: '[data-testid="chat-panel"]',
+    };
+  }
+  if (def.image !== undefined) {
+    // On the page of the step before, beside what that step showed: a picture of what the demo
+    // looks like outside Provisa (an app, a BI tool) that reads it.
+    if (before === undefined) {
+      throw new Error(`Tour: step ${def.key} shows image "${def.image}" with no step before it`);
     }
-    if (def.relationship !== undefined) {
-      return { ...page, element: `[data-tour-relationship="${def.relationship}"]` };
+    // The server sends the picture with the step (core/demo.py demo_tour).
+    if (def.image_src === undefined) {
+      throw new Error(`Tour: step ${def.key} shows image "${def.image}" the server did not send`);
     }
-    if (def.example !== undefined) {
-      const example = examples.find((e) => e.name === def.example);
-      // The server sends the demo's tour and its examples together; a step naming an example the
-      // demo does not ship is a defect of the demo, which tests/unit/test_named_demo_tour.py holds.
-      if (example === undefined) {
-        throw new Error(`Tour: step ${def.key} names example "${def.example}", not shipped`);
-      }
-      return {
-        ...page,
-        openQuery: { stateKey: "query", text: example.query },
-        element: ".graphiql-response",
-        waitMs: RESULT_WAIT_MS,
-      };
-    }
-    if (def.sql !== undefined) {
-      return {
-        ...page,
-        openQuery: { stateKey: "sql", text: def.sql },
-        // Its rows, not the table: the grid of an unrun tab is a table that says it has none.
-        readySelector: SQL_RESULT_ROW,
-        element: ".sql-results-table",
-        waitMs: RESULT_WAIT_MS,
-      };
-    }
-    // Each runs on its page and is awaited as the SQL statement is: by a mark the page shows only
-    // once this hand-off's answer is in.
-    if (def.api !== undefined) {
-      return {
-        ...page,
-        openQuery: { stateKey: "openApiUrl", text: def.api },
-        readySelector: ".openapi-page[data-answered]",
-        element: ".openapi-frame",
-        waitMs: RESULT_WAIT_MS,
-      };
-    }
-    if (def.jsonapi !== undefined) {
-      return {
-        ...page,
-        openQuery: { stateKey: "jsonapiUrl", text: def.jsonapi },
-        readySelector: '[data-testid="jsonapi-summary-tab"]',
-        element: ".jsonapi-panel",
-        waitMs: RESULT_WAIT_MS,
-      };
-    }
-    if (def.grpc !== undefined) {
-      return {
-        ...page,
-        openQuery: { stateKey: "grpcMethod", text: def.grpc },
-        readySelector: ".grpc-panel-right[data-answered]",
-        element: ".grpc-panel-right",
-        waitMs: RESULT_WAIT_MS,
-      };
-    }
-    if (def.cypher !== undefined) {
-      return {
-        ...page,
-        openQuery: { stateKey: "query", text: def.cypher },
-        readySelector: '.graph-stream[data-handoff-status="done"]',
-        element: ".graph-stream .gf-frame",
-        waitMs: RESULT_WAIT_MS,
-      };
-    }
-    if (def.group_by !== undefined) {
-      return {
-        ...page,
-        openView: { groupBy: def.group_by },
-        element: ".graph-stream .gf-frame",
-      };
-    }
-    if (def.lineage !== undefined) {
-      // The page builds a statement's graph from its deep link, read when the page opens.
-      return {
-        ...page,
-        route: `${def.route ?? ""}?sql=${encodeURIComponent(def.lineage)}`,
-        element: '[data-testid="lineage-graph"]',
-        waitMs: RESULT_WAIT_MS,
-      };
-    }
-    if (def.term !== undefined) {
-      return {
-        ...page,
-        clickBefore: `[data-glossary-term="${def.term}"]`,
-        element: '[data-testid="glossary-detail"]',
-      };
-    }
-    if (def.product !== undefined) {
-      // The page opens the product its deep link names (`?product=<id>`), read when it opens.
-      return {
-        ...page,
-        route: `${def.route ?? ""}?product=${encodeURIComponent(def.product)}`,
-        element: '[data-testid="data-product-detail"]',
-      };
-    }
-    if (def.role !== undefined && def.role.includes(",")) {
-      // A set of roles, a pseudo-role among them (reviewer,region__eu, REQ-2057): handed to the
-      // SQL explorer, which offers it as its own run-as entry and picks it.
-      return {
-        ...page,
-        openQuery: { stateKey: "role", text: def.role },
-        element: RUN_AS,
-      };
-    }
-    if (def.role !== undefined) {
-      return {
-        ...page,
-        element: RUN_AS,
-        chooseOnNext: { open: RUN_AS, option: `[data-sql-role-option="${def.role}"]` },
-      };
-    }
-    if (def.env !== undefined) {
-      return {
-        ...page,
-        element: ENV_SWITCHER,
-        chooseOnNext: { open: ENV_SWITCHER, option: `[data-env-option="${def.env}"]` },
-      };
-    }
-    if (def.polly !== undefined) {
-      if (def.answer === undefined) {
-        throw new Error(`Tour: step ${def.key} asks Polly with no stored answer`);
-      }
-      return {
-        ...page,
-        pollyOpen: true,
-        pollyExchange: { question: def.polly, answer: def.answer },
-        element: '[data-testid="chat-panel"]',
-      };
-    }
-    throw new Error(`Tour: step ${def.key} names no target`);
-  });
+    return { ...page, element: before.element, image: def.image_src };
+  }
+  throw new Error(`Tour: step ${def.key} names no target`);
 }
