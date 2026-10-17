@@ -205,7 +205,10 @@ def _build_catalog_index(
             idx.col_attnum[(toid, exposed)] = i
             idx.attnum_to_col[(toid, i)] = exposed
 
-        virtual = getattr(ctx, "virtual_columns", {}).get(tm.table_id, {})
+        virtual = [
+            *getattr(ctx, "virtual_columns", {}).get(tm.table_id, {}),
+            *getattr(ctx, "row_virtual_columns", {}).get(tm.table_id, {}),
+        ]
         for j, vcol in enumerate(virtual, len(real_cols) + 1):
             idx.all_cols.append((toid, vcol, "varchar", True, j))
             idx.col_attnum[(toid, vcol)] = j

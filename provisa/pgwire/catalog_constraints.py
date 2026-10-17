@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import re
 
+from provisa.compiler.sql_where import META_QUERY_NAME
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -210,6 +212,7 @@ def _build_fk_constraint_rows(
     # Pass 1: resolve every eligible join to its attnums, grouped by table pair.
     seen_joins: set[tuple] = set()
     groups: dict[tuple[int, int], list[dict]] = {}
+    meta_links: list[tuple] = []
     for (src_type, join_field), jm in ctx.joins.items():
         if not jm.target_column:
             continue
@@ -225,6 +228,13 @@ def _build_fk_constraint_rows(
         src_toid = idx.table_id_to_oid.get(src_tm.table_id)
         tgt_toid = idx.table_id_to_oid.get(jm.target.table_id)
         if src_toid is None or tgt_toid is None:
+            continue
+        if jm.source_column == _META_LINK_SOURCE:
+            # A table's link to its registration: its (_domain_, _name_) pair against
+            # meta.registered_tables' (domain_id, table_query_name) key.
+            link = _meta_link(idx, src_toid, tgt_toid)
+            if link is not None:
+                meta_links.append((src_tm, src_toid, tgt_toid, *link))
             continue
         is_synthetic = (
             jm.source_constant is not None
@@ -306,7 +316,31 @@ def _build_fk_constraint_rows(
                 )
             )
             con_oid += 1
+    for src_tm, src_toid, tgt_toid, conkey, confkey in meta_links:
+        con_name = f"fk_{semantic_table_name(src_tm)}___meta"
+        con_name = con_name if con_name not in used_names else f"{con_name}_{con_oid}"
+        used_names.add(con_name)
+        ns_oid_fk = idx.ns_map.get(idx.toid_to_table[src_toid][1], 2200)
+        rows.append(_fk_row(con_oid, con_name, ns_oid_fk, src_toid, tgt_toid, conkey, confkey))
+        con_oid += 1
     return rows, con_oid
+
+
+#: The source column of a table's synthetic ``_meta`` join (compiler/context.py).
+_META_LINK_SOURCE = "__table_id__"
+_META_LINK = (("_domain_", "domain_id"), ("_name_", META_QUERY_NAME))
+
+
+def _meta_link(
+    idx: CatalogIndex, src_toid: int, tgt_toid: int
+) -> tuple[list[int], list[int]] | None:
+    """The attnums of a table's ``_meta`` link: (_domain_, _name_) and the registration's
+    (domain_id, table_query_name); None where either side does not list them."""
+    conkey = [idx.col_attnum.get((src_toid, s), 0) for s, _ in _META_LINK]
+    confkey = [idx.col_attnum.get((tgt_toid, t), 0) for _, t in _META_LINK]
+    if 0 in conkey or 0 in confkey:
+        return None
+    return conkey, confkey
 
 
 def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:

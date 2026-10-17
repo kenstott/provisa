@@ -46,6 +46,9 @@ def _label_map() -> CypherLabelMap:
         schema_name="public",
         table_name="orders",
         domain_id="sales",
+        # A TableMeta carries the names it is queried by (label_map reads its _name_ from them).
+        field_name="orders",
+        display_name="",
     )
     ctx = SimpleNamespace(
         tables={"sales__orders": table},

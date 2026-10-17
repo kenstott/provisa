@@ -24,7 +24,8 @@ from provisa.compiler.naming import (
     source_to_catalog,
 )
 from provisa.compiler.native_nested import NestedColumn, NestedColumns
-from provisa.compiler.sql_rewrite import semantic_table_name
+from provisa.compiler.sql_rewrite import _sql_str_literal, semantic_table_name
+from provisa.compiler.sql_where import META_QUERY_NAME
 from provisa.compiler.sql_types import (
     CompilationContext,
     JoinMeta,
@@ -84,7 +85,7 @@ def _register_table_in_ctx(
     table_preset_map: dict[int, list],
 ) -> None:
     """Register one visible table and its column metadata into ctx."""
-    from provisa.compiler.naming import apply_gql_name, apply_sql_name, domain_to_sql_name as _d2s
+    from provisa.compiler.naming import apply_gql_name, apply_sql_name
     from provisa.compiler.schema_gen import SchemaInput
 
     assert isinstance(si, SchemaInput)
@@ -106,8 +107,10 @@ def _register_table_in_ctx(
     )
     ctx.tables[t.field_name] = meta
     _display = semantic_table_name(meta)
+    # The link to the table's registration: its domain, and its name as a statement queries it
+    # (meta.registered_tables matches the pair: _register_meta_synthetic_joins).
     ctx.virtual_columns[t.table_id] = {
-        "_name_": f"{_d2s(t.domain_id)}.{_display}",
+        "_name_": _display,
         "_domain_": t.domain_id,
     }
     ctx.tables[f"{t.field_name}_aggregate"] = meta
@@ -409,23 +412,44 @@ def _register_meta_synthetic_joins(
         table_name=physical_map.get(meta_rt.table_name, meta_rt.table_name),
         domain_id=meta_rt.domain_id,
     )
+    # Each registration answers the name its table is queried by (table_query_name), from the
+    # same naming as the table's _name_, by table id: nothing stored, so nothing goes stale. A
+    # name resolves to one table, so (domain_id, table_query_name) is a key, and every table
+    # links to its registration on that pair -- the pgwire catalog publishes it as a foreign key.
+    names = {t.table_id: ctx.virtual_columns[t.table_id]["_name_"] for t in tables}
+    ctx.row_virtual_columns[meta_rt.table_id] = {_QUERY_NAME: ("id", names)}
+    ctx.unique_constraints.setdefault(meta_rt.table_id, []).append(
+        (f"uq_registered_tables_{_QUERY_NAME}", ["domain_id", _QUERY_NAME])
+    )
+    target_expr = f'({{alias}}."domain_id", {query_name_case(names, "{alias}")})'
     for t in tables:
         if t.domain_id == "meta":
             continue
+        pair = f"({_sql_str_literal(t.domain_id)}, {_sql_str_literal(names[t.table_id])})"
         ctx.joins[(t.type_name, "_meta")] = JoinMeta(
             source_column="__table_id__",
-            target_column="id",
+            target_column=_QUERY_NAME,
             source_column_type="text",
             target_column_type="text",
             target=meta_tgt,
             cardinality="many-to-one",
             cypher_alias="HAS_TABLE",
-            source_constant=f"{t.domain_id}.{t.table_name}",
-            source_expr=f"VARCHAR '{t.domain_id}.{t.table_name}'",
-            target_expr='CONCAT({alias}."domain_id", \'.\', {alias}."table_name")',
-            child_src_val=f"VARCHAR '{t.domain_id}.{t.table_name}'",
+            source_expr=pair,
+            target_expr=target_expr,
+            child_src_val=pair,
         )
     return meta_rt
+
+
+_QUERY_NAME = META_QUERY_NAME
+
+
+def query_name_case(names: dict[int, str], alias: str) -> str:
+    """``CASE <alias>."id" WHEN <table id> THEN '<name as queried>' ... END``: a registration's
+    table_query_name, from the names this compilation gives the tables it holds (NULL for a
+    registration of a table it does not hold)."""
+    whens = " ".join(f"WHEN {tid} THEN {_sql_str_literal(n)}" for tid, n in sorted(names.items()))
+    return f'CASE {alias}."id" {whens} END' if whens else "CAST(NULL AS VARCHAR)"
 
 
 def _register_ops_synthetic_joins(

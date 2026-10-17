@@ -493,9 +493,12 @@ def _build_similar_arg(t: _TableInfo, args: dict[str, GraphQLArgument]) -> None:
 
 
 def _add_virtual_system_fields(fields: dict[str, GraphQLField]) -> None:
-    fields["_name_"] = GraphQLField(GraphQLNonNull(GraphQLString), description="Logical table name")
+    fields["_name_"] = GraphQLField(
+        GraphQLNonNull(GraphQLString),
+        description="The table's name as a query names it, without its domain",
+    )
     fields["_domain_"] = GraphQLField(
-        GraphQLNonNull(GraphQLString), description="Domain identifier"
+        GraphQLNonNull(GraphQLString), description="The table's domain"
     )
 
 

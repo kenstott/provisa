@@ -406,29 +406,34 @@ def _lower_column_aliases(tree: exp.Expression, ctx: CompilationContext) -> None
 
 
 def _lower_virtual_columns(tree: exp.Expression, ctx: CompilationContext) -> None:
-    """Answer, IN PLACE, every reference to a registered table's virtual column (``_name_``,
-    ``_domain_``) with the value GraphQL answers it with (``ctx.virtual_columns``): the source
-    holds no such column, though the catalog lists one on every table. A selected one keeps its
-    name. An unqualified one is answered only where exactly one source of its scope is a
-    registered table; otherwise it is left for the engine to refuse, as PostgreSQL does."""
+    """Answer, IN PLACE, every reference to a registered table's virtual column with what GraphQL
+    answers it with: ``_name_``/``_domain_`` with the table's literal (``ctx.virtual_columns``),
+    and a per-row one (``ctx.row_virtual_columns``: meta.registered_tables' table_query_name)
+    with its value by the row's key. The source holds no such column, though the catalog lists
+    them. A selected one keeps its name. An unqualified one is answered only where exactly one
+    source of its scope is a registered table; otherwise it is left for the engine to refuse, as
+    PostgreSQL does."""
     from sqlglot.optimizer.scope import traverse_scope
 
-    from provisa.compiler.sql_where import _VIRTUAL_COLS
+    from provisa.compiler.naming import domain_to_sql_name
 
-    values: dict[tuple[str, str], dict[str, str]] = {}
+    # A source is named here physically, or still semantically when its rename is textual
+    # (rewrite_semantic_to_physical's replacements run after this).
+    by_physical: dict[tuple[str, str], int] = {}
     for m in _all_table_metas(ctx):
-        found = ctx.virtual_columns.get(m.table_id)
-        if found:
-            values[(m.schema_name.lower(), m.table_name.lower())] = found
-    if not values or not isinstance(tree, exp.Query):
+        if m.table_id in ctx.virtual_columns or m.table_id in ctx.row_virtual_columns:
+            by_physical[(m.schema_name.lower(), m.table_name.lower())] = m.table_id
+            semantic = (domain_to_sql_name(m.domain_id).lower(), semantic_table_name(m).lower())
+            by_physical[semantic] = m.table_id
+    if not by_physical or not isinstance(tree, exp.Query):
         return
     for scope in traverse_scope(tree):
-        tables: dict[str, dict[str, str]] = {}
+        tables: dict[str, int] = {}
         others = False
         for name, source in scope.sources.items():
             found = None
             if isinstance(source, exp.Table):
-                found = values.get((source.db.lower(), source.name.lower()))
+                found = by_physical.get((source.db.lower(), source.name.lower()))
             if found is None:
                 others = True
             else:
@@ -437,20 +442,40 @@ def _lower_virtual_columns(tree: exp.Expression, ctx: CompilationContext) -> Non
             continue
         for col in list(scope.columns):
             key = col.name.lower()
-            if key not in _VIRTUAL_COLS:
-                continue
             if col.table:
-                vals = tables.get(col.table)
+                qualifier = col.table
+            elif len(tables) == 1 and not others:
+                qualifier = next(iter(tables))
             else:
-                vals = next(iter(tables.values())) if len(tables) == 1 and not others else None
-            if vals is None or key not in vals:
                 continue
-            literal = exp.Literal.string(vals[key])
+            table_id = tables.get(qualifier)
+            if table_id is None:
+                continue
+            literal = (ctx.virtual_columns.get(table_id) or {}).get(key)
+            row = (ctx.row_virtual_columns.get(table_id) or {}).get(key)
+            if literal is not None:
+                value: exp.Expression = exp.Literal.string(literal)
+            elif row is not None:
+                key_column, values = row
+                value = _row_value(qualifier, key_column, values)
+            else:
+                continue
             parent = col.parent
             if isinstance(parent, exp.Select) and col in parent.expressions:
-                col.replace(exp.alias_(literal, key, quoted=True))
+                col.replace(exp.alias_(value, key, quoted=True))
             else:
-                col.replace(literal)
+                col.replace(value)
+
+
+def _row_value(qualifier: str, key_column: str, values: dict[int, str]) -> exp.Expression:
+    """``CASE <qualifier>.<key> WHEN <key> THEN '<value>' ... END``: a per-row virtual column."""
+    key = exp.column(key_column, table=qualifier, quoted=True)
+    if not values:
+        return exp.cast(exp.null(), "varchar")
+    case = exp.Case(this=key)
+    for k, v in sorted(values.items()):
+        case = case.when(exp.Literal.number(k), exp.Literal.string(v))
+    return case
 
 
 def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # REQ-641

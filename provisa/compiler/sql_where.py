@@ -44,6 +44,12 @@ from provisa.compiler.sql_rewrite import (
 
 
 _VIRTUAL_COLS = frozenset({"_name_", "_domain_"})
+#: meta.registered_tables' virtual column: each registration's table name as queried, the value
+#: its table's _name_ holds (compiler.context._register_meta_synthetic_joins).
+META_QUERY_NAME = "table_query_name"
+#: The virtual columns: served with a table to every role that reads it, as GraphQL serves them,
+#: and answered by the lowering (sql_rewrite._lower_virtual_columns), never by the source.
+SERVED_WITH_EVERY_TABLE = _VIRTUAL_COLS | {META_QUERY_NAME}
 
 
 def _parameter_of(argument: str, columns: Iterable[str]) -> str:  # REQ-1986

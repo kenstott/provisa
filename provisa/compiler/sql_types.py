@@ -167,6 +167,12 @@ class CompilationContext:
     native_filter_columns: dict[int, dict[str, str]] = field(default_factory=dict)
     # table_id → {virtual_col_name → literal_value}
     virtual_columns: dict[int, dict[str, str]] = field(default_factory=dict)
+    # table_id → {virtual_col_name → (key column, {key value → literal})}: a virtual column whose
+    # value differs per row, answered by the row's key -- meta.registered_tables' table_query_name,
+    # each registration's name as queried, by table id.
+    row_virtual_columns: dict[int, dict[str, tuple[str, dict[int, str]]]] = field(
+        default_factory=dict
+    )
     # (table_id, col_name) pairs where the column is a GQL OBJECT stored as JSON
     gql_json_columns: set[tuple[int, str]] = field(default_factory=set)
     # (table_id, col_name) pairs where the GQL OBJECT type is itself a governed (registered) table —

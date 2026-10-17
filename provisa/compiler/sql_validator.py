@@ -46,6 +46,7 @@ from dataclasses import dataclass
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.compiler import temp_tables
 from provisa.compiler.cte_utils import cte_names
 from provisa.compiler.schema_gen import _IMPLICIT_TRAVERSAL_DOMAINS
@@ -497,6 +498,11 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
             for col in cols:
                 tbl_ref = col.table
                 col_name = col.name
+                if col_name in SERVED_WITH_EVERY_TABLE:
+                    # A virtual column (a table's _domain_/_name_, registered_tables'
+                    # table_query_name) is served with the table to every role that reads it,
+                    # as GraphQL serves it; the lowering answers it (sql_rewrite).
+                    continue
                 if not tbl_ref:
                     for tid in am.values():
                         vis = gov_ctx.visible_columns.get(tid)
