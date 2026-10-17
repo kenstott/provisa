@@ -37,6 +37,17 @@ def _on(event: str = "change", **kw) -> ScheduledTrigger:
 # -- what a trigger says ---------------------------------------------------------------------
 
 
+def test_a_trigger_written_on_a_table_in_a_config_file_loads():
+    """A config file says ``on: {table, event}``; YAML reads a bare ``on`` key as true, and the
+    trigger is the same trigger."""
+    import yaml
+
+    raw = yaml.safe_load(f"id: t\non: {{table: {_BRONZE}, event: change}}\ncommand: c\nrole: r\n")
+    assert True in raw  # what YAML made of the key
+    trigger = ScheduledTrigger.model_validate(raw)
+    assert (trigger.on_table, trigger.on_event) == (_BRONZE, "change")
+
+
 def test_a_trigger_is_on_a_table_written_on_or_flat():
     trigger = _on()
     assert (trigger.cron, trigger.on_table, trigger.on_event) == (None, _BRONZE, "change")

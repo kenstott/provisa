@@ -2124,7 +2124,10 @@ class ScheduledTrigger(BaseModel):  # REQ-1003, REQ-2054
     @model_validator(mode="before")
     @classmethod
     def _on_a_table(cls, data: Any) -> Any:
-        """``on: {table, event}`` is the config's way of writing ``on_table`` and ``on_event``."""
+        """``on: {table, event}`` is the config's way of writing ``on_table`` and ``on_event``.
+        YAML reads a bare ``on`` key as true, so a config file's ``on:`` arrives under ``True``."""
+        if isinstance(data, dict) and True in data and "on" not in data:
+            data = {("on" if k is True else k): v for k, v in data.items()}
         if isinstance(data, dict) and isinstance(data.get("on"), dict):
             on = data["on"]
             data = {k: v for k, v in data.items() if k != "on"}
