@@ -133,6 +133,7 @@ client = ProvisaClient(
     os.environ["PROVISA_URL"],           # choose your own variable name
     token=os.environ["PROVISA_TOKEN"],   # personal access token
     role=os.environ.get("PROVISA_ROLE"), # optional; omit to run as your own role
+    org=os.environ.get("PROVISA_ORG"),   # required on a multi-tenant deployment; None otherwise
 )
 ```
 
