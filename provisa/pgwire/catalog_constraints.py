@@ -18,6 +18,8 @@ information_schema table_constraints / key_column_usage projections.
 
 from __future__ import annotations
 
+import re
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -335,7 +337,42 @@ def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:
             f"INSERT INTO _pg_constraint VALUES ({','.join(['?'] * 25)})",
             constraint_rows,
         )
+    # What pg_get_constraintdef(oid) answers (catalog_rewrite): each constraint's definition as
+    # PostgreSQL writes it. SQLAlchemy reflects a table's foreign keys from it.
+    db.execute("CREATE TABLE _pg_constraintdef (oid INTEGER, definition VARCHAR)")
+    if constraint_rows:
+        db.executemany(
+            "INSERT INTO _pg_constraintdef VALUES (?, ?)",
+            [(r[0], _constraint_definition(r, idx)) for r in constraint_rows],
+        )
     return constraint_rows
+
+
+_SEARCH_PATH = ("pg_catalog", "public")
+
+
+def _ident(name: str) -> str:
+    """``name`` as PostgreSQL's quote_ident writes it: bare when it is a lowercase identifier."""
+    if re.fullmatch(r"[a-z_][a-z0-9_$]*", name):
+        return name
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _constraint_definition(row: tuple, idx: CatalogIndex) -> str:
+    """``row``'s definition as pg_get_constraintdef writes it: ``PRIMARY KEY (a, b)``,
+    ``UNIQUE (a)``, or ``FOREIGN KEY (a) REFERENCES schema.table(b)`` -- the referenced table
+    named with its schema unless that schema is on the search path."""
+    names = {(toid, attnum): col for (toid, col), attnum in idx.col_attnum.items()}
+    contype, conrelid, confrelid, conkey, confkey = row[3], row[7], row[11], row[18], row[19]
+    cols = ", ".join(_ident(names[(conrelid, a)]) for a in conkey)
+    if contype == "p":
+        return f"PRIMARY KEY ({cols})"
+    if contype == "u":
+        return f"UNIQUE ({cols})"
+    _catalog, schema, table = idx.toid_to_table[confrelid]
+    target = _ident(table) if schema in _SEARCH_PATH else f"{_ident(schema)}.{_ident(table)}"
+    refs = ", ".join(_ident(names[(confrelid, a)]) for a in confkey)
+    return f"FOREIGN KEY ({cols}) REFERENCES {target}({refs})"
 
 
 # Offset added to a constraint oid to synthesize its backing index's indexrelid,
