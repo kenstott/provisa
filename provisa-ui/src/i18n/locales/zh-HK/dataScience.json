@@ -1,0 +1,15 @@
+{
+  "dataScience": {
+    "title": "數據科學",
+    "tabPython": "Python",
+    "editorLabel": "Python 程式碼",
+    "run": "執行",
+    "runHint": "以您目前的角色在瀏覽器中執行。Ctrl+Enter（⌘+Enter）執行。",
+    "loading": "正在載入 Python…",
+    "failed": "無法啟動 Python。",
+    "missingTitle": "此伺服器未安裝 Python",
+    "missingBody": "數據科學區域使用此伺服器提供的檔案在您的瀏覽器中執行 Python。請在伺服器上安裝這些檔案，然後重新載入此頁面：",
+    "rowsShown": "顯示 {{total}} 行中的 {{shown}} 行",
+    "figure": "圖 {{n}}"
+  }
+}

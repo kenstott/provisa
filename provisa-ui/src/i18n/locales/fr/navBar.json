@@ -71,6 +71,7 @@
     "sandboxExitDeleted": "Votre compte sandbox sera supprimé à la déconnexion. Vous pouvez toujours créer un nouveau compte sandbox en réutilisant le lien d'invitation.",
     "sandboxExitUpgrade": "Prêt à créer votre propre organisation et à démarrer avec une offre Starter ? Vous bénéficiez de 14 jours gratuits.",
     "sandboxExitCreateOrg": "Créer une organisation",
-    "sandboxExitLogOut": "Se déconnecter seulement"
+    "sandboxExitLogOut": "Se déconnecter seulement",
+    "itemDataScience": "Science des données"
   }
 }

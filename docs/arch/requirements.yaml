@@ -84488,3 +84488,47 @@ And the same cell on a desktop Python, signed in from ~/.provisa/credentials, an
   - provisa-client/tests/test_sqlalchemy.py
   - provisa-client/tests/test_sqlalchemy_edge_cases.py
   notes: "Maintainer 2026-10-17: Explore gets an embedded JupyterLite notebook; the client is its read path. The server offers no flow for a client to sign in through a browser, so none is attempted. JupySQL's %%sql shares the name; whichever extension loads last answers it."
+- id: REQ-2071
+  status: in-progress
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: explorers-data-science
+  priority: SHOULD
+  type: behavioral
+  description: "Explore has a Data Science area with two tabs, Python and Jupyter Notebook, that run Python in the user's browser over the governed data their role is served. Both run on one Pyodide version and its packages (numpy, pandas, pyarrow, scikit-learn, matplotlib, with their dependencies) and the provisa-client wheel, served by Provisa itself at /pyodide from the provisa-notebook package, which the provisa[notebook] extra installs, the Docker image carries and the desktop installers bundle; nothing is fetched from a CDN or a package index, so an air-gapped deployment runs it. A deployment without the package serves no /pyodide, and the area says plainly that Python is not installed and how to install it. The Python tab runs code in a Web Worker so the page stays responsive, and reads through provisa_client as the page's user: the page hands the worker the identity the request interceptor attaches (baseUrl, acting roles including the Role: All set, bearer, org, environment), read anew at every run so a rotated token or a newly picked role, org or environment is what the code reads as. Its editor opens on a first cell that imports provisa_client and calls provisa_client.sign_in(), which reports the user, role, org and environment it reads as; the same lines run unchanged on a desktop Python. A run shows its printed output, its last value (a DataFrame as a table of its first rows with the total, anything else as text), every matplotlib figure it drew and its error. The Jupyter Notebook tab embeds JupyterLite on the same Pyodide, with the same identity bridge kept current, provisa_client preinstalled, a starter notebook and standard .ipynb in and out."
+  use_case: "An analyst opens Explore > Data Science, runs the first cell to see they are signed in as their role, then reads their governed orders into pandas, trains a model and plots it, all in the browser, on a server with no internet access."
+  scenario: "Given a server with provisa[notebook] installed and an analyst whose role reads only EU orders with emails masked
+
+
+When they open Explore > Data Science and run the first cell
+
+
+Then it reports their user and role analyst_eu
+
+
+And a cell that reads shop.orders into a DataFrame, fits a model and plots it shows EU rows only with masked emails, and the figure"
+  related_reqs:
+  - REQ-2070
+  - REQ-1487
+  - REQ-1620
+  code:
+  - provisa-ui/src/pages/DataSciencePage.tsx
+  - provisa-ui/src/dataScience/pythonWorker.ts
+  - provisa-ui/src/dataScience/bridge.ts
+  - provisa-ui/src/dataScience/protocol.ts
+  - provisa-ui/src/lib/authFetch.ts
+  - provisa-ui/vite.config.ts
+  - provisa/ui_server.py
+  - provisa-notebook/provisa_notebook/__init__.py
+  - provisa-notebook/provisa_notebook/build.py
+  - provisa-client/provisa_client/reader.py
+  - provisa-client/provisa_client/browser.py
+  tests:
+  - provisa-ui/src/__tests__/DataSciencePage.test.tsx
+  - provisa-ui/src/__tests__/dataScienceBridge.test.ts
+  - tests/unit/test_ui_server_routing.py
+  - provisa-notebook/tests/test_build.py
+  - provisa-client/tests/test_browser.py
+  - provisa-client/tests/test_reader.py
+  notes: "Maintainer 2026-10-17: Explore gets a Data Science area (Python | Jupyter Notebook), one self-hosted Pyodide shared by both, the same provisa_client query() in both; assets in a separate provisa-notebook package installed by provisa[notebook]. First increment: the Python tab and the shared plumbing; the notebook tab and the packaging wiring (extra, image, installers, release) follow."

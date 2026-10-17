@@ -1,0 +1,15 @@
+{
+  "dataScience": {
+    "title": "Data Science",
+    "tabPython": "Python",
+    "editorLabel": "Код на Python",
+    "run": "Выполнить",
+    "runHint": "Выполняется в вашем браузере с вашей текущей ролью. Ctrl+Enter (⌘+Enter) — выполнить.",
+    "loading": "Загрузка Python…",
+    "failed": "Не удалось запустить Python.",
+    "missingTitle": "Python не установлен на этом сервере",
+    "missingBody": "Раздел Data Science выполняет Python в вашем браузере из файлов, которые отдаёт этот сервер. Установите их на сервер и перезагрузите страницу:",
+    "rowsShown": "Показано {{shown}} из {{total}} строк",
+    "figure": "Рисунок {{n}}"
+  }
+}

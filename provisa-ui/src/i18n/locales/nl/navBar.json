@@ -71,6 +71,7 @@
     "sandboxExitDeleted": "Uw sandbox-account wordt verwijderd wanneer u uitlogt. U kunt altijd een nieuw sandbox-account maken door de uitnodigingslink opnieuw te gebruiken.",
     "sandboxExitUpgrade": "Klaar om uw eigen organisatie te maken en te beginnen met een Starter-abonnement? U krijgt 14 dagen gratis.",
     "sandboxExitCreateOrg": "Organisatie maken",
-    "sandboxExitLogOut": "Alleen uitloggen"
+    "sandboxExitLogOut": "Alleen uitloggen",
+    "itemDataScience": "Data science"
   }
 }

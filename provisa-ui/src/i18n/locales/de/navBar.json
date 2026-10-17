@@ -71,6 +71,7 @@
     "sandboxExitDeleted": "Ihr Sandbox-Konto wird beim Abmelden gelöscht. Über den Einladungslink können Sie jederzeit ein neues Sandbox-Konto erstellen.",
     "sandboxExitUpgrade": "Möchten Sie Ihre eigene Organisation erstellen und mit einem Starter-Tarif beginnen? Sie erhalten 14 Tage kostenlos.",
     "sandboxExitCreateOrg": "Organisation erstellen",
-    "sandboxExitLogOut": "Nur abmelden"
+    "sandboxExitLogOut": "Nur abmelden",
+    "itemDataScience": "Data Science"
   }
 }

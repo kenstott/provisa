@@ -73,8 +73,9 @@ class _XMLHttpRequest:
     def setRequestHeader(self, name, value):
         self.headers[name] = value
 
-    def send(self, body):
-        self.body = body.to_bytes()
+    def send(self, body=None):
+        self.body = body.to_bytes() if body is not None else None
+        self.responseText = _Answer.body.decode(errors="replace")
         _XMLHttpRequest.sent.append(self)
         self.status = _Answer.status
         self.response = _Bytes(_Answer.body)
@@ -108,7 +109,7 @@ def page(monkeypatch):
     js.XMLHttpRequest = _XMLHttpRequest  # type: ignore[attr-defined]
     js.Uint8Array = _Uint8Array  # type: ignore[attr-defined]
     js.provisaAuth = _Bridge(  # type: ignore[attr-defined]
-        {"baseUrl": "", "role": "analyst_eu", "bearer": "tok", "org": "acme"}
+        {"baseUrl": "", "role": "analyst_eu", "bearer": "tok", "org": "acme", "env": None}
     )
     fetched: list = []
 
@@ -156,13 +157,21 @@ def test_a_role_given_to_the_read_acts_in_place_of_the_pages(page):
 def test_the_bridge_is_read_on_every_read_so_a_rotated_token_is_sent(page):
     provisa_client.query("SELECT 1")
     page.js.provisaAuth = _Bridge(
-        {"baseUrl": "https://p.example", "role": "analyst_eu", "bearer": "rotated", "org": None}
+        {
+            "baseUrl": "https://p.example",
+            "role": "analyst_eu",
+            "bearer": "rotated",
+            "org": None,
+            "env": "staging",
+        }
     )
     provisa_client.query("SELECT 1")
     second = _XMLHttpRequest.sent[1]
     assert second.url == "https://p.example/data/query"
     assert second.headers["Authorization"] == "Bearer rotated"
     assert "X-Org-Provisa" not in second.headers
+    assert second.headers["X-Provisa-Env"] == "staging"
+    assert "X-Provisa-Env" not in _XMLHttpRequest.sent[0].headers
 
 
 def test_without_pyarrow_json_is_asked_for_and_each_json_shape_is_a_dataframe(page, monkeypatch):
@@ -206,3 +215,37 @@ async def test_an_awaited_read_goes_over_pyfetch(page):
     assert kwargs["method"] == "POST"
     assert kwargs["headers"]["X-Provisa-Role"] == "auditor"
     assert json.loads(kwargs["body"]) == {"query": "SELECT region FROM shop.orders"}
+
+
+def test_sign_in_in_the_browser_reports_the_pages_user_role_org_and_environment(page):
+    _Answer.content_type = "application/json"
+    _Answer.body = json.dumps(
+        {
+            "user_id": "u1",
+            "display_name": "Ana",
+            "email": "ana@example.com",
+            "active_org_id": "acme",
+        }
+    ).encode()
+    who = provisa_client.sign_in()
+    [xhr] = _XMLHttpRequest.sent
+    assert (xhr.method, xhr.url) == ("GET", "/auth/me")
+    assert xhr.headers["Authorization"] == "Bearer tok"
+    assert repr(who) == (
+        "Signed in to this page as Ana <ana@example.com>, role analyst_eu, org acme, "
+        "environment prod"
+    )
+
+
+def test_sign_in_in_the_browser_takes_no_settings_and_reports_a_refusal(page):
+    with pytest.raises(TypeError, match="page's signed-in user"):
+        provisa_client.sign_in(url="https://elsewhere")
+    _Answer.status, _Answer.content_type, _Answer.body = 401, "application/json", b"expired"
+    with pytest.raises(RuntimeError, match="HTTP 401: expired"):
+        provisa_client.sign_in()
+
+
+def test_a_bridge_without_the_environment_is_refused(page):
+    page.js.provisaAuth = _Bridge({"baseUrl": "", "role": None, "bearer": None, "org": None})
+    with pytest.raises(RuntimeError, match="lacks \\['env'\\]"):
+        provisa_client.query("SELECT 1")

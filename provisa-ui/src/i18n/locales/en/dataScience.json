@@ -1,0 +1,15 @@
+{
+  "dataScience": {
+    "title": "Data Science",
+    "tabPython": "Python",
+    "editorLabel": "Python code",
+    "run": "Run",
+    "runHint": "Runs in your browser as your current role. Ctrl+Enter (⌘+Enter) runs.",
+    "loading": "Loading Python…",
+    "failed": "Python could not start.",
+    "missingTitle": "Python is not installed on this server",
+    "missingBody": "The Data Science area runs Python in your browser from files this server serves. Install them on the server, then reload this page:",
+    "rowsShown": "Showing {{shown}} of {{total}} rows",
+    "figure": "Figure {{n}}"
+  }
+}

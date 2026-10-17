@@ -71,6 +71,7 @@
     "sandboxExitDeleted": "Your sandbox account will be deleted when you log out. You can always create a new sandbox account by using the invite link again.",
     "sandboxExitUpgrade": "Ready to create your own organization and start with a Starter plan? You'll get 14 days free.",
     "sandboxExitCreateOrg": "Create Organization",
-    "sandboxExitLogOut": "Just Log Out"
+    "sandboxExitLogOut": "Just Log Out",
+    "itemDataScience": "Data Science"
   }
 }

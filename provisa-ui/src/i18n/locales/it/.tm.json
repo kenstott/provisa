@@ -6767,5 +6767,17 @@
   "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
   "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
   "it/tour.json::tour.steps.reviewsBoughtWithByDegree.title": "We can graph it. But what does it mean?",
-  "it/tour.json::tour.steps.reviewsBoughtWithByDegree.description": "Grouped by degree, for the question it was drawn for: the groups surface the products most often bought together with the low-rated ones. The bigger the number, the more pairings run through it. Degree is counted within this result alone: the products rated under three stars and what five or more of their customers also bought with them. The red nodes are the products; the ratings and the pair nodes are grouped too."
+  "it/tour.json::tour.steps.reviewsBoughtWithByDegree.description": "Grouped by degree, for the question it was drawn for: the groups surface the products most often bought together with the low-rated ones. The bigger the number, the more pairings run through it. Degree is counted within this result alone: the products rated under three stars and what five or more of their customers also bought with them. The red nodes are the products; the ratings and the pair nodes are grouped too.",
+  "it/dataScience.json::dataScience.title": "Data Science",
+  "it/dataScience.json::dataScience.tabPython": "Python",
+  "it/dataScience.json::dataScience.editorLabel": "Python code",
+  "it/dataScience.json::dataScience.run": "Run",
+  "it/dataScience.json::dataScience.runHint": "Runs in your browser as your current role. Ctrl+Enter (⌘+Enter) runs.",
+  "it/dataScience.json::dataScience.loading": "Loading Python…",
+  "it/dataScience.json::dataScience.failed": "Python could not start.",
+  "it/dataScience.json::dataScience.missingTitle": "Python is not installed on this server",
+  "it/dataScience.json::dataScience.missingBody": "The Data Science area runs Python in your browser from files this server serves. Install them on the server, then reload this page:",
+  "it/dataScience.json::dataScience.rowsShown": "Showing {{shown}} of {{total}} rows",
+  "it/dataScience.json::dataScience.figure": "Figure {{n}}",
+  "it/navBar.json::navBar.itemDataScience": "Data Science"
 }

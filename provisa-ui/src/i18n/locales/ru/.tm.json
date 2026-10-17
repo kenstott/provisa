@@ -6766,5 +6766,17 @@
   "ru/whatsNew.json::whatsNew.released": "Released {{date}}",
   "ru/whatsNew.json::whatsNew.title": "What's new in {{version}}",
   "ru/tour.json::tour.steps.reviewsBoughtWithByDegree.title": "We can graph it. But what does it mean?",
-  "ru/tour.json::tour.steps.reviewsBoughtWithByDegree.description": "Grouped by degree, for the question it was drawn for: the groups surface the products most often bought together with the low-rated ones. The bigger the number, the more pairings run through it. Degree is counted within this result alone: the products rated under three stars and what five or more of their customers also bought with them. The red nodes are the products; the ratings and the pair nodes are grouped too."
+  "ru/tour.json::tour.steps.reviewsBoughtWithByDegree.description": "Grouped by degree, for the question it was drawn for: the groups surface the products most often bought together with the low-rated ones. The bigger the number, the more pairings run through it. Degree is counted within this result alone: the products rated under three stars and what five or more of their customers also bought with them. The red nodes are the products; the ratings and the pair nodes are grouped too.",
+  "ru/dataScience.json::dataScience.title": "Data Science",
+  "ru/dataScience.json::dataScience.tabPython": "Python",
+  "ru/dataScience.json::dataScience.editorLabel": "Python code",
+  "ru/dataScience.json::dataScience.run": "Run",
+  "ru/dataScience.json::dataScience.runHint": "Runs in your browser as your current role. Ctrl+Enter (⌘+Enter) runs.",
+  "ru/dataScience.json::dataScience.loading": "Loading Python…",
+  "ru/dataScience.json::dataScience.failed": "Python could not start.",
+  "ru/dataScience.json::dataScience.missingTitle": "Python is not installed on this server",
+  "ru/dataScience.json::dataScience.missingBody": "The Data Science area runs Python in your browser from files this server serves. Install them on the server, then reload this page:",
+  "ru/dataScience.json::dataScience.rowsShown": "Showing {{shown}} of {{total}} rows",
+  "ru/dataScience.json::dataScience.figure": "Figure {{n}}",
+  "ru/navBar.json::navBar.itemDataScience": "Data Science"
 }

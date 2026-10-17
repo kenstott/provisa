@@ -19,6 +19,7 @@ the user's acting role and credential on the kernel's global scope as ``provisaA
       role: string | null,    // the acting role(s), as X-Provisa-Role takes them ("a" or "a,b")
       bearer: string | null,  // the user's bearer token; null on a deployment without sign-in
       org: string | null,     // the org the page is for; null on a single-tenant deployment
+      env: string | null,     // the environment (branch) the page reads; null for prod
     }
 
 The bridge refreshes it as the token rotates or the role changes, so it is read on every request.
@@ -37,7 +38,7 @@ from typing import Any
 
 BRIDGE = "provisaAuth"
 ARROW = "application/vnd.apache.arrow.stream"
-_BRIDGE_KEYS = ("baseUrl", "role", "bearer", "org")
+_BRIDGE_KEYS = ("baseUrl", "role", "bearer", "org", "env")
 
 
 def in_browser() -> bool:
@@ -66,6 +67,21 @@ def read_bridge() -> dict[str, Any]:
     return auth
 
 
+def identity_headers(auth: dict[str, Any], role: str | None = None) -> dict[str, str]:
+    """The headers that make a request the bridge's user's: acting role, bearer, org, env."""
+    headers: dict[str, str] = {}
+    acting = role or auth["role"]
+    if acting:
+        headers["X-Provisa-Role"] = acting
+    if auth["bearer"]:
+        headers["Authorization"] = f"Bearer {auth['bearer']}"
+    if auth["org"]:
+        headers["X-Org-Provisa"] = auth["org"]
+    if auth["env"]:
+        headers["X-Provisa-Env"] = auth["env"]
+    return headers
+
+
 def request(
     text: str, *, role: str | None, variables: dict[str, Any] | None
 ) -> tuple[str, bytes, dict[str, str]]:
@@ -74,14 +90,8 @@ def request(
     headers = {
         "Content-Type": "application/json",
         "Accept": ARROW if arrow_available() else "application/json",
+        **identity_headers(auth, role),
     }
-    acting = role or auth["role"]
-    if acting:
-        headers["X-Provisa-Role"] = acting
-    if auth["bearer"]:
-        headers["Authorization"] = f"Bearer {auth['bearer']}"
-    if auth["org"]:
-        headers["X-Org-Provisa"] = auth["org"]
     payload: dict[str, Any] = {"query": text}
     if variables:
         payload["variables"] = variables
@@ -138,3 +148,20 @@ def decode(status: int, content_type: str, body: bytes):
         return pd.DataFrame(result["rows"], columns=result["columns"])
     [rows] = result["data"].values()
     return pd.DataFrame(rows)
+
+
+def get_json_sync(path: str) -> Any:
+    """``GET {baseUrl}{path}`` as the bridge's user, over a synchronous XMLHttpRequest. A text
+    answer, so it may run on the page's main thread as well as in a worker."""
+    import js as _js  # pyright: ignore[reportMissingImports]
+
+    js: Any = _js
+    auth = read_bridge()
+    xhr = js.XMLHttpRequest.new()
+    xhr.open("GET", f"{auth['baseUrl']}{path}", False)
+    for name, value in identity_headers(auth).items():
+        xhr.setRequestHeader(name, value)
+    xhr.send()
+    if xhr.status != 200:
+        raise RuntimeError(f"HTTP {xhr.status}: {xhr.responseText}")
+    return json.loads(xhr.responseText)

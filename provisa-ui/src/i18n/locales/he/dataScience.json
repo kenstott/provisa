@@ -1,0 +1,15 @@
+{
+  "dataScience": {
+    "title": "מדע נתונים",
+    "tabPython": "Python",
+    "editorLabel": "קוד Python",
+    "run": "הרץ",
+    "runHint": "רץ בדפדפן שלך בתפקיד הנוכחי שלך. Ctrl+Enter (⌘+Enter) מריץ.",
+    "loading": "טוען את Python…",
+    "failed": "לא ניתן היה להפעיל את Python.",
+    "missingTitle": "Python אינו מותקן בשרת זה",
+    "missingBody": "אזור מדע הנתונים מריץ Python בדפדפן שלך מקבצים שהשרת הזה מגיש. התקן אותם בשרת ואז טען מחדש את הדף:",
+    "rowsShown": "מוצגות {{shown}} מתוך {{total}} שורות",
+    "figure": "איור {{n}}"
+  }
+}

@@ -20,6 +20,7 @@ server that served the page, as the page's signed-in user (:mod:`provisa_client.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from typing import Any
 
 from provisa_client import browser
@@ -27,18 +28,68 @@ from provisa_client import browser
 _session: Any = None  # the Credentials sign_in resolved, once it has been called
 
 
-def sign_in(**settings: Any):
-    """Resolve the connection once (:func:`provisa_client.credentials.resolve`) and keep it for
-    every later :func:`query`. Without it, the first query resolves from the environment and the
-    profile file. In the browser the page's user is the connection, so there is nothing to sign
-    in to."""
+@dataclass(frozen=True)
+class SignedIn:
+    """Who :func:`sign_in` connected as: the server, the user the server knows, and the role,
+    org and environment the reads act in. It displays as one line in a notebook."""
+
+    url: str
+    user: str
+    role: str | None
+    org: str | None
+    env: str | None
+
+    def __repr__(self) -> str:
+        return (
+            f"Signed in to {self.url or 'this page'} as {self.user}, "
+            f"role {self.role or '(your own)'}, org {self.org or '(none)'}, "
+            f"environment {self.env or 'prod'}"
+        )
+
+
+def sign_in(**settings: Any) -> SignedIn:
+    """Connect, and say as whom. With no arguments it does the right thing where it runs: in the
+    browser the connection is the page's signed-in user (the auth bridge); on a desktop Python it
+    is resolved once from the environment and ``~/.provisa/credentials``
+    (:func:`provisa_client.credentials.resolve`, whose settings it also takes) and kept for every
+    later :func:`query`. Either way the server is asked who that is (``GET /auth/me``)."""
     global _session
     if browser.in_browser():
-        raise RuntimeError("in the browser, reads act as the page's signed-in user")
+        if settings:
+            raise TypeError(
+                f"in the browser the connection is the page's signed-in user; {sorted(settings)} "
+                "cannot be set here"
+            )
+        auth = browser.read_bridge()
+        me = browser.get_json_sync("/auth/me")
+        return SignedIn(auth["baseUrl"], _who(me), auth["role"], auth["org"], auth["env"])
+    import httpx
+
     from provisa_client.credentials import resolve
 
-    _session = resolve(**settings)
-    return _session
+    creds = resolve(**settings)
+    headers = {}
+    if creds.token:
+        headers["Authorization"] = f"Bearer {creds.token}"
+    if creds.role:
+        headers["X-Provisa-Role"] = creds.role
+    if creds.org:
+        headers["X-Org-Provisa"] = creds.org
+    r = httpx.get(f"{creds.url}/auth/me", headers=headers, timeout=30.0)
+    if r.status_code != 200:
+        raise PermissionError(
+            f"{creds.url} did not accept the sign-in: HTTP {r.status_code}: {r.text}"
+        )
+    me = r.json()
+    _session = creds
+    return SignedIn(creds.url, _who(me), creds.role, creds.org or me.get("active_org_id"), None)
+
+
+def _who(me: dict[str, Any]) -> str:
+    """The user ``/auth/me`` names: their display name, with their email when it differs."""
+    name = me.get("display_name") or me["user_id"]
+    email = me.get("email")
+    return f"{name} <{email}>" if email and email != name else name
 
 
 def query(text: str, *, role: str | None = None, variables: dict[str, Any] | None = None):
@@ -60,7 +111,12 @@ async def aquery(text: str, *, role: str | None = None, variables: dict[str, Any
 def _desktop(text: str, *, role: str | None, variables: dict[str, Any] | None):
     from provisa_client.client import ProvisaClient
 
-    creds = _session if _session is not None else sign_in()
+    global _session
+    if _session is None:
+        from provisa_client.credentials import resolve
+
+        _session = resolve()  # once: a password is exchanged for a token only the first time
+    creds = _session
     client = ProvisaClient(
         creds.url,
         token=creds.token,

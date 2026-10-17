@@ -1,0 +1,15 @@
+{
+  "dataScience": {
+    "title": "Data science",
+    "tabPython": "Python",
+    "editorLabel": "Codice Python",
+    "run": "Esegui",
+    "runHint": "Viene eseguito nel browser con il ruolo attuale. Ctrl+Invio (⌘+Invio) esegue.",
+    "loading": "Caricamento di Python…",
+    "failed": "Impossibile avviare Python.",
+    "missingTitle": "Python non è installato su questo server",
+    "missingBody": "L'area Data science esegue Python nel browser a partire da file serviti da questo server. Installali sul server, quindi ricarica questa pagina:",
+    "rowsShown": "Visualizzate {{shown}} di {{total}} righe",
+    "figure": "Figura {{n}}"
+  }
+}
