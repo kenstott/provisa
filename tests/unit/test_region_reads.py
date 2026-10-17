@@ -453,7 +453,7 @@ async def test_a_read_of_a_built_home_replica_attaches_it_and_an_unreachable_one
 
 
 async def test_a_view_the_event_loop_built_in_its_region_is_read_there_as_built(
-    eu_state, monkeypatch
+    eu_state, control_plane, monkeypatch
 ):
     """The event loop is the view's one builder in eu; its build is recorded on eu's build row,
     which us reads before reading eu's copy (REQ-1922)."""
@@ -469,13 +469,23 @@ async def test_a_view_the_event_loop_built_in_its_region_is_read_there_as_built(
         def attach_region_read(self, state, region, schema, table, build):
             attached.append((region.id, schema, table))
 
-    mv = SimpleNamespace(id="view-view_gold", region="eu", target_table="mv_view_gold")
+    from provisa.mv.models import MVDefinition
+
+    mv = MVDefinition(
+        id="view-view_gold",
+        source_tables=[],
+        target_catalog="store",
+        target_schema="mv_cache",
+        target_table="mv_view_gold",
+        sql="SELECT 1 AS x",
+        region="eu",
+    )
     token = current_org.set("acme")
     try:
         with pytest.raises(HomeRegionUnavailable, match="is not built"):
             await read_home_view(_state(eu_state), _Backend(), mv, "view_gold")
         monkeypatch.setattr(process_region, "_region", "eu")  # the eu node's event loop builds it
-        built = registry_marking(MVRegistry(), eu_state)(mv)
+        built = registry_marking(MVRegistry(), control_plane.org(), eu_state)(mv)
         await built(("replace", {"rows": 3, "landed": "x"}))
         await read_home_view(_state(eu_state), _Backend(), mv, "view_gold")
     finally:

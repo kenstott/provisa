@@ -176,6 +176,27 @@ def test_every_reader_is_served_from_its_regions_copy_never_its_inputs(
     }
 
 
+def test_a_readers_rules_are_not_held_to_the_inputs_of_another_regions_view(
+    eu_state_db, monkeypatch, node_in_us
+):
+    """The relationship guard and the column checks judge the statement a reader sends; a view
+    another region keeps is read from its copy there, so the tables and joins of its SQL are not
+    the reader's. Expanded into the statement those checks judge, a reader who may read the view
+    but not its inputs -- an insider reviewer reading EU mail scored in the EU -- was refused the
+    view's own join and every input column it reads."""
+    from provisa.compiler.stage2 import GovernanceContext
+    from provisa.mv.view_read import semantic_statement
+
+    state = _state(eu_state_db, _Backend(), monkeypatch)
+    view_sql_map = {
+        "eu_sales": "SELECT o.id FROM sales.orders AS o JOIN sales.staff AS s ON s.id = o.staff_id"
+    }
+    governed, validated = semantic_statement(
+        "SELECT * FROM eu_sales", view_sql_map, state, GovernanceContext()
+    )
+    assert governed == validated == "SELECT * FROM eu_sales"
+
+
 @pytest.mark.asyncio
 async def test_a_read_of_only_that_view_names_its_region_as_the_one_that_answered(
     eu_state_db, monkeypatch, node_in_us

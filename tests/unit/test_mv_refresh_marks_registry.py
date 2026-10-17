@@ -21,7 +21,6 @@ replace knows them), an unchanged recompute keeps it fresh, a failure marks it f
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from types import SimpleNamespace
 
 import pytest
 
@@ -119,8 +118,8 @@ async def test_the_registry_is_told_what_the_refresh_did(change, call, control_p
 
     monkeypatch.setattr(process_region, "_region", "eu")
     registry = _Registry()
-    await registry_marking(registry, control_plane.org(holds="state"))(
-        SimpleNamespace(id="view-gold")
+    await registry_marking(registry, control_plane.org(), control_plane.org(holds="state"))(
+        _gold()
     )(change)
     assert registry.calls == [call]
 
@@ -128,11 +127,25 @@ async def test_the_registry_is_told_what_the_refresh_did(change, call, control_p
 @pytest.mark.asyncio
 async def test_a_view_marked_refreshed_is_read_as_fresh(control_plane, monkeypatch):
     from provisa.core import process_region
-    from provisa.mv.models import MVDefinition, MVStatus
+    from provisa.mv.models import MVStatus
     from provisa.mv.registry import MVRegistry
 
     registry = MVRegistry()
-    mv = MVDefinition(
+    mv = _gold()
+    registry.register(mv)
+    assert mv.status != MVStatus.FRESH
+    monkeypatch.setattr(process_region, "_region", "eu")
+    await registry_marking(registry, control_plane.org(), control_plane.org(holds="state"))(mv)(
+        ("replace", {"rows": 5, "landed": "x"})
+    )
+    assert mv.status == MVStatus.FRESH and mv.row_count == 5
+    assert registry.get_fresh() == [mv]
+
+
+def _gold():
+    from provisa.mv.models import MVDefinition
+
+    return MVDefinition(
         id="view-gold",
         source_tables=[],
         target_catalog="store",
@@ -140,11 +153,28 @@ async def test_a_view_marked_refreshed_is_read_as_fresh(control_plane, monkeypat
         sql="SELECT 1 AS x",
         refresh_interval=60,
     )
-    registry.register(mv)
-    assert mv.status != MVStatus.FRESH
+
+
+@pytest.mark.asyncio
+async def test_a_build_the_loop_records_outlasts_the_regions_sweep(control_plane, monkeypatch):
+    """The sweep each model reload runs over a region's state store removes a view's build row
+    when the model holds no definition of that view (integrity.prune_state_parts). The loop
+    recorded its build on the build row alone, so the next reload -- the other region's node
+    starting -- removed it, and that region read the view's copy as not built. A view the loop
+    builds is the model's as the coordinated refresh's is: its definition is held there."""
+    from sqlalchemy import select
+
+    from provisa.core import process_region
+    from provisa.core.repositories.integrity import prune_state_parts
+    from provisa.core.schema_org import mv_build_state
+    from provisa.mv.registry import MVRegistry
+
     monkeypatch.setattr(process_region, "_region", "eu")
-    await registry_marking(registry, control_plane.org(holds="state"))(mv)(
+    model, state = control_plane.org(), control_plane.org(holds="state")
+    await registry_marking(MVRegistry(), model, state)(_gold())(
         ("replace", {"rows": 5, "landed": "x"})
     )
-    assert mv.status == MVStatus.FRESH and mv.row_count == 5
-    assert registry.get_fresh() == [mv]
+    await prune_state_parts(model, state)
+    async with state.acquire() as conn:
+        rows = (await conn.execute_core(select(mv_build_state.c.mv_id))).fetchall()
+    assert [r[0] for r in rows] == ["view-gold"]

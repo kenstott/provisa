@@ -430,32 +430,40 @@ def replica_write_lock_factory(state: Any) -> Callable[[tuple[str, str, str]], A
     return lock
 
 
-def registry_marking(registry: Any, build_state: Any) -> Any:
+def registry_marking(registry: Any, model_db: Any, build_state: Any) -> Any:
     """``mv -> mark(change)``: a view's refresh by the event loop, recorded in the MV registry a
     read asks whether the view is fresh, and on this region's build row in ``build_state`` (its
     state store), which another region reads to know the view's copy here is built (REQ-1922).
     ``change`` is the committed event -- a change marks it fresh, with its rows when a full
     replace knows them (a delta or a bitemporal seal does not); ``("error", payload)`` marks the
     refresh failed -- or None when its content was unchanged, which keeps it fresh. Without it a
-    view the loop keeps current is still read as stale, from its definition."""
-    from provisa.mv.coordination import record_build
+    view the loop keeps current is still read as stale, from its definition.
+
+    The build row is a part of the view's definition in ``model_db`` (integrity: a region's sweep
+    removes a build row whose view the model does not hold), so the definition is seeded with
+    it, as the coordinated refresh seeds it (``coordination.ensure_mv_row``)."""
+    from provisa.mv.coordination import ensure_mv_row, record_build
 
     def mv_refreshed(mv: Any) -> Any:
+        async def record(**outcome: Any) -> None:
+            await ensure_mv_row(model_db, build_state, mv)
+            await record_build(build_state, mv.id, **outcome)
+
         async def mark(change: tuple[str, dict] | None) -> None:
             if change is None:
                 registry.mark_unchanged(mv.id)
-                await record_build(build_state, mv.id)
+                await record()
                 return
             event_type, payload = change
             if event_type == "error":
                 registry.mark_refresh_failed(mv.id, payload["error"])
-                await record_build(build_state, mv.id, error=payload["error"])
+                await record(error=payload["error"])
             elif event_type == "replace" and "rows" in payload:
                 registry.mark_refreshed(mv.id, payload["rows"])
-                await record_build(build_state, mv.id, row_count=payload["rows"])
+                await record(row_count=payload["rows"])
             else:
                 registry.mark_refreshed(mv.id, None)
-                await record_build(build_state, mv.id)
+                await record()
 
         return mark
 
@@ -541,10 +549,6 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             log.info("event loop: no materialization store configured — skipping")
             return 0
 
-        # REQ-1915: this process's replica build pass for this org, registered before anything
-        # below can skip the event loop (an MV lineage cycle must not leave replicas unbuilt).
-        _wire_replica_builds(scheduler, state, log)
-
         mvs = _views_built_here(getattr(state, "mv_registry", None))
 
         # The fan-out set: each view's inputs resolved against the model (REQ-939), never matched
@@ -553,11 +557,23 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # A cycle is rejected — the loop must be acyclic.
         from provisa.events.nodes import expected_event_nodes, source_node
 
-        graph = _lineage(mvs, state, log)
+        dependents_of = None
+        graph: dict[str, set[str]] = {}
         try:
+            graph = _lineage(mvs, state, log)
             dependents_of = supervisor.dependents_of(graph)
         except ValueError:
             log.warning("event loop: MV lineage has a cycle — skipping event-loop wiring")
+        finally:
+            if dependents_of is not None:
+                # REQ-1165, REQ-2031: the views over each table, known to the build pass before
+                # it first runs -- it runs as soon as it is registered, and a table that lands
+                # once tells the views over it from that one build (replica_builds.run_build).
+                state.replica_dependents_of = dependents_of
+            # REQ-1915: this process's replica build pass for this org, registered whatever
+            # happens to the event loop below (a lineage cycle must not leave replicas unbuilt).
+            _wire_replica_builds(scheduler, state, log)
+        if dependents_of is None:
             return 0
 
         _warned: set[str] = set()
@@ -671,7 +687,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
 
             return _append
 
-        mv_refreshed = registry_marking(state.mv_registry, state.tenant_db)
+        mv_refreshed = registry_marking(state.mv_registry, state.model_db, state.tenant_db)
 
         # Drive the loop off the design-time REGISTERED tables (semantic sql names + resolved types),
         # not the raw YAML — the landed replica name must match what the schema-currency reconcile
@@ -772,9 +788,6 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # mechanism's job) — wire_new_poll_jobs skips anything in this set, mirroring
         # wire_push_listeners' own state.push_listener_disconnects idempotency.
         state.replica_nodes = _replica_nodes(specs)
-        # REQ-1165: a checked build's ABORT is fanned to the views that read its table, as land()
-        # fanned it; the build runner reads them here.
-        state.replica_dependents_of = dependents_of
         state.poll_jobs_registered = {
             spec.node
             for spec in specs

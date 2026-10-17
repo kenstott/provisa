@@ -210,6 +210,31 @@ async def test_the_build_runner_is_registered_with_the_event_loop(replica_runner
     assert replica_runner_wired == [(sched, state)]
 
 
+async def test_the_views_over_each_table_are_known_before_its_first_build_runs(monkeypatch):
+    """The build pass runs as soon as it is registered, and a table that lands once (cache_ttl
+    -1) is built by that one pass: the views that read it are published to it first, or its one
+    landing told no view and they were never built."""
+    known_then: list = []
+
+    def _wire(scheduler, *, state, platform_url):
+        known_then.append(state.replica_dependents_of("nothing reads this"))
+
+    monkeypatch.setattr("provisa.federation.replica_builds.wire_replica_runner", _wire)
+    await wire_event_loop(_Sched(), state=_state(), log=_LOG)
+    assert known_then == [[]]
+
+
+async def test_a_lineage_cycle_still_registers_the_build_pass(monkeypatch, replica_runner_wired):
+    """A cycle among the views skips the event loop; the tables are still built."""
+
+    def _cycle(_graph):
+        raise ValueError("MV lineage has a cycle: a -> b -> a")
+
+    monkeypatch.setattr("provisa.events.supervisor.dependents_of", _cycle)
+    assert await wire_event_loop(_Sched(), state=_state(), log=_LOG) == 0
+    assert len(replica_runner_wired) == 1
+
+
 async def test_a_runner_that_cannot_be_registered_leaves_the_event_loop_wired(monkeypatch, caplog):
     def _boom(scheduler, *, state, platform_url):
         raise RuntimeError("no platform control plane")
