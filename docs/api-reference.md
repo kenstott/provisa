@@ -976,7 +976,7 @@ Nothing is registered. Use the admin UI's review screen to accept or trim propos
 
 All endpoints are under the `/admin/actions` prefix. (REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
 
-Every invocation — from GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, and Provisa gRPC — routes through a single governed executor that enforces `writable_by` and governance uniformly. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] See [docs/integrations.md](integrations.md#invoking-commands-across-protocols) for the per-protocol call syntax.
+Every invocation — from GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, and Provisa gRPC — routes through a single governed executor that enforces command assignment (`visible_to`), the `write` right for a mutation, and governance uniformly. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] See [docs/integrations.md](integrations.md#invoking-commands-across-protocols) for the per-protocol call syntax.
 
 #### `GET /admin/actions`
 
@@ -998,7 +998,6 @@ Return all tracked DB functions and webhooks. (REQ-242) [tool-verified: `provisa
       },
       "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
       "visibleTo": ["admin"],
-      "writableBy": [],
       "domainId": "pet-store",
       "description": "Demo Python command returning random rows",
       "kind": "query"
@@ -1032,8 +1031,7 @@ Register a tracked function (command). (REQ-205) [tool-verified: `provisa/api/ad
 | `binding` | No | `implKind`-specific connection details (JSON object) |
 | `returnSchema` | No | JSON Schema `{type:"array", items:{type:"object", properties:{...}}}` — makes the command set-returning on every surface |
 | `arguments` | No | `[{name, type}]` argument definitions; positional order matters for SQL and Bolt callers |
-| `visibleTo` | No | Role IDs that can call the command |
-| `writableBy` | No | Role IDs permitted to invoke it as a mutation |
+| `visibleTo` | No | Role IDs the command is assigned to (empty: every role). A `mutation` also needs the `write` right |
 | `domainId` | No | Domain for GraphQL placement and access control |
 
 **`implKind` values:**

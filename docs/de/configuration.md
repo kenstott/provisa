@@ -664,10 +664,8 @@ tables:
     columns:
       - name: id
         visible_to: [admin, analyst]
-        writable_by: []           # read-only (empty = no writes)
       - name: email
         visible_to: [admin, analyst]
-        writable_by: [admin]      # only admin can mutate
         masks:                    # first entry the reader holds applies
           - to: [admin]           # admin sees raw
           - to: ["*"]             # everyone else sees it masked
@@ -676,25 +674,51 @@ tables:
         description: "Primary email address"  # optional: appears in SDL
       - name: amount
         visible_to: [admin]
-        writable_by: [admin]
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: constant, value: 0}
+      - name: created_by
+        visible_to: [admin, analyst]
       - name: created_at
         visible_to: [admin, analyst]
-        writable_by: []           # nobody can write
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: truncate, precision: month}
-    column_presets:               # auto-set values on insert/update
-      - column: created_by
-        source: header            # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now               # current timestamp
+    write_grants:                 # who may write this table, per role and operation
+      - role: admin
+        operation: insert
+        columns: [email, amount]
+        check: "TRUE"             # any row may be inserted
+        presets:                  # set by the grant; the statement may not supply them
+          - {column: created_by, source: session, name: user_id}
+          - {column: created_at, source: now}
+      - role: admin
+        operation: update
+        columns: [email, amount]
+        rows: "TRUE"              # any row may be updated
+        check: "TRUE"
 ```
+
+Eine Tabelle trägt standardmäßig keine Schreibberechtigung, daher kann keine Rolle in sie schreiben. Eine Schreibberechtigung gibt einer Rolle eine Operation (`insert`, `update` oder `delete`) auf der Tabelle. Eine Tabelle enthält höchstens eine Berechtigung je Rolle und Operation. (REQ-2074)
+
+| Feld der Berechtigung | Bedeutung |
+| ----------- | ------- |
+| `columns` | Die Spalten, die ein `INSERT` auflisten oder ein `UPDATE` setzen darf. Eine `delete`-Berechtigung nennt keine. |
+| `rows` | Die Zeilen, die ein `UPDATE` oder `DELETE` berühren darf: ein SQL-Prädikat über die Spalten der Tabelle. Eine `insert`-Berechtigung hat keines. |
+| `check` | Was jede von einem `INSERT` geschriebene oder von einem `UPDATE` hinterlassene Zeile erfüllen muss: ein SQL-Prädikat. Eine `delete`-Berechtigung hat keines. |
+| `presets` | Spalten, die die Berechtigung selbst setzt. Die Anweisung darf sie nicht liefern, daher steht eine Preset-Spalte nicht zusätzlich in `columns`. |
+
+Lassen Sie `rows` oder `check` weg, übernimmt die Berechtigung den Lese-Zeilenfilter der Rolle auf der Tabelle: Eine Rolle schreibt die Zeilen, die sie liest, sofern die Berechtigung nichts anderes festlegt. `"TRUE"` steht für jede Zeile. Die älteren Schlüssel `writable_by` an der Spalte und `column_presets` an der Tabelle werden namentlich abgelehnt; die Konfiguration lässt sich erst laden, wenn sie durch `write_grants` ersetzt sind.
+
+Jeder Schreibvorgang auf jeder Oberfläche wird in dieser Reihenfolge zugelassen: Die Rolle besitzt das Recht `write`; die Rolle besitzt eine Berechtigung für die Operation auf der Tabelle; jede Spalte, die die Anweisung schreibt, steht in der Berechtigung; die Presets der Berechtigung werden der Anweisung hinzugefügt; das Prädikat `rows` wird per AND in das `WHERE` eines `UPDATE` oder `DELETE` aufgenommen; und `check` wird auf die neuen Zeilen ausgewertet, bevor etwas an die Quelle gesendet wird. Eine Anweisung, die `check` nicht entscheiden kann, wird abgelehnt. Die Spalten der Berechtigung bestimmen auch, welche Mutationsfelder GraphQL einer Rolle anbietet: ein Feld je Operation, für die sie eine Berechtigung besitzt, mit genau diesen Spalten.
+
+Manche Anweisungen brauchen eine weitergehende Berechtigung. `TRUNCATE` braucht eine `delete`-Berechtigung über jede Zeile. `MERGE` braucht eine `insert`- und eine `update`-Berechtigung, beide über jede Zeile. `INSERT ... ON CONFLICT DO UPDATE` braucht eine `update`-Berechtigung über jede Zeile ohne Presets. `COPY ... FROM STDIN` braucht eine `insert`-Berechtigung ohne Presets.
+
+Berechtigungen werden vererbt. Eine untergeordnete Rolle übernimmt je Tabelle und Operation die Berechtigung der nächstgelegenen Rolle in ihrer Kette, die eine besitzt, wobei ihre eigene Vorrang hat. Eine Meta-Rolle hält die Faltung der Berechtigungen ihrer Mitglieder: die Vereinigung ihrer Spalten, das ODER ihrer `rows`- und `check`-Prädikate und nur die Presets, die alle Mitglieder gleich setzen.
+
+In der Admin-Oberfläche listet der Abschnitt **Schreibrechte** einer Tabelle die Berechtigungen auf und bearbeitet sie gemeinsam.
 
 ### Aliase {: #aliases }
 
@@ -1214,32 +1238,38 @@ Das Argument `distinct_on` wählt die erste Zeile für jeden eindeutigen Wert de
 
 Kompiliert zu `SELECT DISTINCT ON (region) ...` in PostgreSQL. (REQ-213) Für Nicht-PG-Dialekte wird ein Fensterfunktions-Fallback verwendet. (REQ-213)
 
-## Spalten-Presets {: #column-presets }
+## Presets der Schreibberechtigung {: #write-grant-presets }
 
-Werte automatisch bei Insert/Update in Spalten injizieren. (REQ-214) Pro Tabelle in der Konfiguration definiert.
+Eine Schreibberechtigung setzt Spalten bei Insert und Update selbst. (REQ-214, REQ-2074) Presets werden in der Liste `presets` der Berechtigung deklariert, je Rolle und Operation.
 
 ```yaml
 tables:
   - source_id: sales-pg
+    domain_id: sales-analytics
+    schema: public
     table: orders
-    column_presets:
-      - column: created_by
-        source: header           # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now              # current timestamp
-      - column: source_system
-        source: literal          # constant value
-        value: "provisa"
+    columns:
+      - {name: amount, visible_to: [analyst]}
+      - {name: created_by, visible_to: [analyst]}
+      - {name: created_at, visible_to: [analyst]}
+      - {name: source_system, visible_to: [analyst]}
+    write_grants:
+      - role: analyst
+        operation: insert
+        columns: [amount]
+        presets:
+          - {column: created_by, source: session, name: user_id}   # from the request's session
+          - {column: created_at, source: now}                      # time of the write
+          - {column: source_system, source: literal, value: provisa}
 ```
 
-| Source | Verhalten |
+| Quelle | Verhalten |
 | -------- | ---------- |
-| `header` | Injiziert den Wert aus dem benannten HTTP-Request-Header |
-| `now` | Injiziert `NOW()` (aktueller Zeitstempel) |
-| `literal` | Injiziert einen konstanten Wert |
+| `session` | Fügt den Wert der benannten Sitzungsvariable (`name`) der Anfrage ein |
+| `now` | Fügt den Zeitpunkt des Schreibvorgangs ein |
+| `literal` | Fügt eine Konstante (`value`) ein |
 
-Preset-Spalten werden während der Mutationskompilierung vor der SQL-Generierung injiziert. (REQ-214) Sie sind im Mutations-Eingabetyp nicht sichtbar. (REQ-214)
+Presets werden bei der Kompilierung vor der SQL-Generierung zur Anweisung hinzugefügt. (REQ-214) Die Anweisung darf eine Preset-Spalte nicht liefern, und eine Preset-Spalte steht nicht im Mutations-Eingabetyp. (REQ-214)
 
 ## Vererbte Rollen {: #inherited-roles }
 

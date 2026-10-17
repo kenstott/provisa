@@ -665,10 +665,8 @@ tables:
     columns:
       - name: id
         visible_to: [admin, analyst]
-        writable_by: []           # read-only (empty = no writes)
       - name: email
         visible_to: [admin, analyst]
-        writable_by: [admin]      # only admin can mutate
         masks:                    # first entry the reader holds applies
           - to: [admin]           # admin sees raw
           - to: ["*"]             # everyone else sees it masked
@@ -677,25 +675,51 @@ tables:
         description: "Primary email address"  # optional: appears in SDL
       - name: amount
         visible_to: [admin]
-        writable_by: [admin]
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: constant, value: 0}
+      - name: created_by
+        visible_to: [admin, analyst]
       - name: created_at
         visible_to: [admin, analyst]
-        writable_by: []           # nobody can write
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: truncate, precision: month}
-    column_presets:               # auto-set values on insert/update
-      - column: created_by
-        source: header            # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now               # current timestamp
+    write_grants:                 # who may write this table, per role and operation
+      - role: admin
+        operation: insert
+        columns: [email, amount]
+        check: "TRUE"             # any row may be inserted
+        presets:                  # set by the grant; the statement may not supply them
+          - {column: created_by, source: session, name: user_id}
+          - {column: created_at, source: now}
+      - role: admin
+        operation: update
+        columns: [email, amount]
+        rows: "TRUE"              # any row may be updated
+        check: "TRUE"
 ```
+
+表默认没有任何写入授权，因此任何角色都不能写入它。一条授权给某个角色表上的一种操作（`insert`、`update` 或 `delete`）。一张表对每个角色和操作最多保存一条授权。（REQ-2074）
+
+| 授权字段 | 含义 |
+| ----------- | ------- |
+| `columns` | `INSERT` 可以列出、`UPDATE` 可以设置的列。`delete` 授权不指定任何列。 |
+| `rows` | `UPDATE` 或 `DELETE` 可以触及的行：基于表中各列的 SQL 谓词。`insert` 授权没有此项。 |
+| `check` | `INSERT` 写入的每一行、或 `UPDATE` 留下的每一行必须满足的条件：SQL 谓词。`delete` 授权没有此项。 |
+| `presets` | 授权自己设置的列。语句不得提供这些列，因此预设列不会同时出现在 `columns` 中。 |
+
+省略 `rows` 或 `check` 时，授权采用该角色在这张表上的读取行过滤器：除非授权另有规定，角色写入的就是它能读到的行。`"TRUE"` 表示所有行。旧的列级 `writable_by` 键和表级 `column_presets` 键会按名称被拒绝；在改为 `write_grants` 之前，配置无法加载。
+
+每个界面上的每次写入都按以下顺序准入：角色持有 `write` 权利；角色持有表上该操作的授权；语句写入的每一列都在授权中；授权的预设被添加到语句中；`rows` 谓词以 AND 并入 `UPDATE` 或 `DELETE` 的 `WHERE`；在向数据源发送任何内容之前，对新行评估 `check`。`check` 无法判定的语句会被拒绝。授权的列同时决定 GraphQL 向角色提供哪些变更字段：角色持有授权的每种操作各提供一个字段，且恰好带有这些列。
+
+有些语句需要更宽的授权。`TRUNCATE` 需要覆盖所有行的 `delete` 授权。`MERGE` 需要 `insert` 和 `update` 授权，二者都覆盖所有行。`INSERT ... ON CONFLICT DO UPDATE` 需要覆盖所有行且无预设的 `update` 授权。`COPY ... FROM STDIN` 需要无预设的 `insert` 授权。
+
+授权可以继承。子角色针对每张表和每种操作，采用其链中最近的持有该授权的角色的授权，自己的授权优先。元角色持有其成员授权的折叠结果：成员各列的并集、各 `rows` 和 `check` 谓词的 OR，以及只保留所有成员设置一致的预设。
+
+在管理界面中，表的**写入**部分会列出这些授权并统一编辑。
 
 ### 别名 {: #aliases }
 
@@ -1213,32 +1237,38 @@ mutation {
 
 在 PostgreSQL 中编译为 `SELECT DISTINCT ON (region) ...`。（REQ-213）对于非 PG 方言，使用基于窗口函数的回退方案。（REQ-213）
 
-## 列预设 {: #column-presets }
+## 写入授权的预设 {: #write-grant-presets }
 
-在插入/更新时自动注入列的值。（REQ-214）按表在配置中定义。
+写入授权在插入和更新时自行设置列。（REQ-214、REQ-2074）预设在授权的 `presets` 列表中声明，按角色和操作区分。
 
 ```yaml
 tables:
   - source_id: sales-pg
+    domain_id: sales-analytics
+    schema: public
     table: orders
-    column_presets:
-      - column: created_by
-        source: header           # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now              # current timestamp
-      - column: source_system
-        source: literal          # constant value
-        value: "provisa"
+    columns:
+      - {name: amount, visible_to: [analyst]}
+      - {name: created_by, visible_to: [analyst]}
+      - {name: created_at, visible_to: [analyst]}
+      - {name: source_system, visible_to: [analyst]}
+    write_grants:
+      - role: analyst
+        operation: insert
+        columns: [amount]
+        presets:
+          - {column: created_by, source: session, name: user_id}   # from the request's session
+          - {column: created_at, source: now}                      # time of the write
+          - {column: source_system, source: literal, value: provisa}
 ```
 
-| Source | 行为 |
+| 来源 | 行为 |
 | -------- | ---------- |
-| `header` | 从指定的 HTTP 请求头注入值 |
-| `now` | 注入 `NOW()`（当前时间戳） |
-| `literal` | 注入一个常量值 |
+| `session` | 注入请求中指定会话变量（`name`）的值 |
+| `now` | 注入写入发生的时间 |
+| `literal` | 注入一个常量（`value`） |
 
-预设列在 SQL 生成之前的变更（Mutation）编译阶段被注入。（REQ-214）它们在变更的输入类型中不可见。（REQ-214）
+预设在编译期间、生成 SQL 之前添加到语句中。（REQ-214）语句不得提供预设列，预设列也不会出现在变更的输入类型中。（REQ-214）
 
 ## 继承角色 {: #inherited-roles }
 

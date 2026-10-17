@@ -60,7 +60,7 @@ Multi-statement simple queries are supported. Semicolon-separated statements are
 
 Parameterized queries (`$1`, `$2`, ...) are supported in both simple-query and extended-query (Bind/Execute) modes. Parameters are substituted as literals before execution. (REQ-581) [tool-verified: `server.py:78-85`]
 
-`SELECT * FROM fn(args)` and `SELECT fn(args)` — where `fn` names a registered tracked function — are intercepted before the governance pipeline and routed through the single governed executor (`invoke_tracked_function`). The result is a typed row set identical to what every other surface returns for that command. `writable_by` and governance rules are enforced inside the executor. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
+`SELECT * FROM fn(args)` and `SELECT fn(args)` — where `fn` names a registered tracked function — are intercepted before the governance pipeline and routed through the single governed executor (`invoke_tracked_function`). The result is a typed row set identical to what every other surface returns for that command. Command assignment (`visible_to`), the `write` right for a mutation and governance rules are enforced inside the executor. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
 
 ### Cursors (DECLARE / FETCH / MOVE / CLOSE)
 
@@ -155,11 +155,12 @@ The same statements work on every SQL surface: they are handled in the pipeline 
 Rows of an existing registered table are written through pgwire as on every other SQL surface, through the one write admission (`provisa/compiler/write_admission.py`):
 
 1. **The right.** The role holds `write`. (REQ-868)
-2. **The columns.** Every column the statement writes names the role in its `writable_by`; a column that declares none is writable by nobody. (REQ-663)
-3. **The rows it may touch.** The role's row filter, the same predicate its reads carry, is added to the `WHERE` of an `UPDATE` or `DELETE`.
-4. **The rows it leaves behind.** A filtered role may only write rows it could then read: an `INSERT`'s rows, and the new values of an `UPDATE` that sets a column the filter reads, are checked against the filter before anything is sent to the source.
+2. **The grant.** The role holds a write grant on the table for the operation: an `INSERT` needs an `insert` grant, an `UPDATE` an `update` grant, a `DELETE` a `delete` grant. A `MERGE` needs an `insert` and an `update` grant over every row, and an `INSERT ... ON CONFLICT DO UPDATE` an `update` grant over every row. (REQ-2074)
+3. **The columns.** Every column the statement writes is one the grant names. A column the grant presets is the grant's to set: the statement may not supply it, and the grant's value (a session variable, a literal or the time of the write) is added. (REQ-663, REQ-2074)
+4. **The rows it may touch.** The grant's `rows` predicate is added to the `WHERE` of an `UPDATE` or `DELETE`. A grant that states none takes the role's row filter, the same predicate its reads carry.
+5. **The rows it leaves behind.** An `INSERT`'s rows, and the new values of an `UPDATE` that sets a column the grant's `check` reads, are checked against the `check` before anything is sent to the source. A grant that states no `check` takes the role's row filter.
 
-`TRUNCATE` is a data write too, run as itself and never rewritten to a `DELETE`. It needs the `write` right, every column of the table writable by the role, and a source that takes deletes. It empties one table at a time, and a role with a row filter on the table is refused it, since a `TRUNCATE` cannot apply the filter: use `DELETE`, which does. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
+`TRUNCATE` is a data write too, run as itself and never rewritten to a `DELETE`. It needs the `write` right, a `delete` grant over every row of the table, and a source that takes deletes. It empties one table at a time, and a role whose grant limits the rows (a `rows` predicate, or the role's row filter where the grant states none) is refused it, since a `TRUNCATE` cannot apply the predicate: use `DELETE`, which does. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
 
 Whatever cannot be decided is refused by name rather than admitted on doubt (an `INSERT … SELECT`, a value that is neither a literal nor a bound parameter, a filter that reads a column the statement does not supply). [tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
@@ -179,7 +180,7 @@ COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 
 Supported formats: `text` (tab-delimited, default), `csv` and `binary`, PostgreSQL's binary COPY format, which DuckDB's postgres extension reads with. (REQ-883) [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
 
-**COPY FROM STDIN** is a data write into an existing registered table: it is admitted by the same write admission as an `INSERT` of the same rows (see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin)). It reads `text` (default) and `csv`. Any other format is refused with SQLSTATE 0A000, naming it, before any data is sent. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
+**COPY FROM STDIN** is a data write into an existing registered table: it is admitted by the same write admission as an `INSERT` of the same rows, with the added condition that the `insert` grant has no presets (see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin)). It reads `text` (default) and `csv`. Any other format is refused with SQLSTATE 0A000, naming it, before any data is sent. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 ### Transactions and Session Commands
 

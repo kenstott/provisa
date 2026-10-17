@@ -603,7 +603,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 
 ## 繼承式角色 {: #inherited-roles }
 
-一個角色透過 `parent_role_id` 最多指名一個父角色。（REQ-215）在建構執行階段時，`security/inheritance.py` 會從子角色開始沿繼承鏈向上走，並把它摺疊進建構過程本身對已載入數據的副本之中，因此之後每一次查找都繼續以執行角色的 id 為鍵。（REQ-1677）能力與網域存取是整條鏈的聯集。欄位的 `visible_to` 與 `writable_by`、其遮罩清單中的每一項，以及指標、函數或 webhook 的 `visible_to`，只要指名了該角色或其祖先，就對該角色生效。行層級安全按資料表解析，子角色優先：鏈中最近一個對該資料表有規則的角色——其資料表規則先於其網域規則——提供唯一生效的那條謂詞；祖先的規則絕不會與之合併。角色未設定速率限制時，會繼承其父角色的速率限制。父角色必須存在，不能是角色本身，也不能構成循環；被其他角色繼承的角色，在它們被重新指定父角色之前不能刪除。（REQ-1677）
+一個角色透過 `parent_role_id` 最多指名一個父角色。（REQ-215）在建構執行階段時，`security/inheritance.py` 會從子角色開始沿繼承鏈向上走，並把它摺疊進建構過程本身對已載入數據的副本之中，因此之後每一次查找都繼續以執行角色的 id 為鍵。（REQ-1677）能力與網域存取是整條鏈的聯集。欄位的 `visible_to`、其遮罩清單中的每一項，以及指標、函數或 webhook 的 `visible_to`，只要指名了該角色或其祖先，就對該角色生效。資料表的寫入授權按操作以同樣方式解析：對某操作沒有授權的角色，採用最近祖先角色的授權，自己的授權優先。行層級安全按資料表解析，子角色優先：鏈中最近一個對該資料表有規則的角色——其資料表規則先於其網域規則——提供唯一生效的那條謂詞；祖先的規則絕不會與之合併。角色未設定速率限制時，會繼承其父角色的速率限制。父角色必須存在，不能是角色本身，也不能構成循環；被其他角色繼承的角色，在它們被重新指定父角色之前不能刪除。（REQ-1677）
 
 ## ABAC 核准掛鉤 {: #abac-approval-hook }
 
@@ -655,9 +655,9 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 回應快取按請求選擇啟用：GraphQL 使用 `@cached(ttl: Int)` 指令，SQL 和 Cypher 使用 `cache`/`cache_ttl` 註解，gRPC 使用呼叫元數據 `x-provisa-cache` / `x-provisa-cache-ttl`。該提示在承載該語言的每種傳輸上都生效（Cypher 經 HTTP、Bolt 及 Arrow Flight；GraphQL 經 HTTP 及 Arrow Flight）。沒有提示的請求從不讀取或寫入快取，而任何形式都不會讀取比營運方的數據來源及表設定所容許的更新的數據。請參閱[快取](configuration.md#per-request-opt-in)。(REQ-544)
 
-## Mutation 中的欄位預設集 {: #column-presets-in-mutations }
+## 變更中的寫入授權與預設 {: #write-grants-and-presets-in-mutations }
 
-`compiler/mutation_gen.py` 支援於 `INSERT` 或 `UPDATE` 時套用的逐欄位伺服器端預設集。（REQ-214）預設集不會包含在所產生的 GraphQL mutation 輸入型別中——它們由編譯器透明地注入。預設集類型：`static`（字面值）或 `session`（取自請求工作階段/標頭的值，例如 `x-hasura-user-id`）。（REQ-214）
+資料表的 `write_grants` 按角色和操作聲明：寫入可以指定哪些欄位、可以觸及哪些行，以及授權自己設定哪些值。（REQ-2074）`compiler/write_admission.py` 在治理階段准入每次寫入，因此 GraphQL、SQL、Cypher 及其他介面得到相同的答案：`write` 權利、角色對該操作的授權、欄位、加入陳述式的預設、以 AND 併入 `WHERE` 的 `rows` 謂詞，以及在任何內容到達數據來源之前對新行評估的 `check`。（REQ-214）預設來自工作階段變數、字面值或寫入時間。陳述式不得提供預設欄位，因此預設不會出現在產生的 GraphQL 變更輸入類型中。（REQ-214）[tool-verified: `provisa/compiler/write_admission.py`, `provisa/core/models.py` `WriteGrant`, `ColumnPreset`]
 
 ## GraphQL Voyager 結構描述瀏覽器 {: #graphql-voyager-schema-explorer }
 

@@ -60,7 +60,7 @@ Les requêtes simples multi-instructions sont prises en charge. Les instructions
 
 Les requêtes paramétrées (`$1`, `$2`, ...) sont prises en charge à la fois en mode requête simple et en mode requête étendue (Bind/Execute). Les paramètres sont substitués sous forme de littéraux avant l'exécution. (REQ-581) [tool-verified: `server.py:78-85`]
 
-`SELECT * FROM fn(args)` et `SELECT fn(args)` — où `fn` désigne une fonction suivie et enregistrée — sont interceptés avant le pipeline de gouvernance et routés via l'unique exécuteur gouverné (`invoke_tracked_function`). Le résultat est un ensemble de lignes typé identique à celui que renvoie toute autre surface pour cette commande. `writable_by` et les règles de gouvernance sont appliqués à l'intérieur de l'exécuteur. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
+`SELECT * FROM fn(args)` et `SELECT fn(args)` — où `fn` désigne une fonction suivie et enregistrée — sont interceptés avant le pipeline de gouvernance et routés via l'unique exécuteur gouverné (`invoke_tracked_function`). Le résultat est un ensemble de lignes typé identique à celui que renvoie toute autre surface pour cette commande. L'affectation de la commande (`visible_to`), le droit `write` pour une mutation et les règles de gouvernance sont appliqués à l'intérieur de l'exécuteur. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
 
 ### Curseurs (DECLARE / FETCH / MOVE / CLOSE) {: #cursors-declare-fetch-move-close }
 
@@ -151,11 +151,12 @@ Les mêmes instructions fonctionnent sur chaque surface SQL : elles sont traité
 Les lignes d'une table enregistrée existante s'écrivent par pgwire comme sur toute autre surface SQL, via l'unique admission des écritures (`provisa/compiler/write_admission.py`) :
 
 1. **Le droit.** Le rôle détient `write`. (REQ-868)
-2. **Les colonnes.** Chaque colonne qu'écrit l'instruction nomme le rôle dans son `writable_by` ; une colonne qui n'en déclare aucun n'est inscriptible par personne. (REQ-663)
-3. **Les lignes qu'il peut toucher.** Le filtre de lignes du rôle, le même prédicat que portent ses lectures, est ajouté au `WHERE` d'un `UPDATE` ou d'un `DELETE`.
-4. **Les lignes qu'il laisse.** Un rôle filtré ne peut écrire que des lignes qu'il pourrait lire ensuite : les lignes d'un `INSERT`, et les nouvelles valeurs d'un `UPDATE` qui fixe une colonne lue par le filtre, sont vérifiées contre le filtre avant que quoi que ce soit ne soit envoyé à la source.
+2. **L'autorisation.** Le rôle détient une autorisation d'écriture sur la table pour l'opération : un `INSERT` demande une autorisation `insert`, un `UPDATE` une autorisation `update`, un `DELETE` une autorisation `delete`. Un `MERGE` demande une autorisation `insert` et une autorisation `update` sur toutes les lignes, et un `INSERT ... ON CONFLICT DO UPDATE` une autorisation `update` sur toutes les lignes. (REQ-2074)
+3. **Les colonnes.** Chaque colonne qu'écrit l'instruction est une colonne que l'autorisation nomme. Une colonne que l'autorisation prédéfinit revient à l'autorisation : l'instruction ne peut pas la fournir, et la valeur de l'autorisation (une variable de session, un littéral ou l'instant de l'écriture) est ajoutée. (REQ-663, REQ-2074)
+4. **Les lignes qu'elle peut toucher.** Le prédicat `rows` de l'autorisation est ajouté au `WHERE` d'un `UPDATE` ou d'un `DELETE`. Une autorisation qui n'en indique pas prend le filtre de lignes du rôle, le même prédicat que portent ses lectures.
+5. **Les lignes qu'elle laisse.** Les lignes d'un `INSERT`, et les nouvelles valeurs d'un `UPDATE` qui définit une colonne que lit le `check` de l'autorisation, sont vérifiées par rapport au `check` avant que quoi que ce soit soit envoyé à la source. Une autorisation qui n'indique pas de `check` prend le filtre de lignes du rôle.
 
-`TRUNCATE` est aussi une écriture de données, exécutée telle quelle et jamais réécrite en `DELETE`. Elle exige le droit `write`, toutes les colonnes de la table accessibles en écriture au rôle et une source qui accepte les suppressions. Elle vide une table à la fois, et elle est refusée à un rôle qui a un filtre de lignes sur la table, car un `TRUNCATE` ne peut pas appliquer le filtre : utilisez `DELETE`, qui le fait. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
+`TRUNCATE` est aussi une écriture de données, exécutée comme telle et jamais réécrite en `DELETE`. Il demande le droit `write`, une autorisation `delete` sur toutes les lignes de la table et une source qui accepte les suppressions. Il vide une table à la fois, et un rôle dont l'autorisation limite les lignes (un prédicat `rows`, ou le filtre de lignes du rôle lorsque l'autorisation n'en indique pas) est refusé, car un `TRUNCATE` ne peut pas appliquer le prédicat : utilisez `DELETE`, qui l'applique. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
 
 Ce qui ne peut pas être décidé est refusé nommément plutôt qu'admis dans le doute (un `INSERT … SELECT`, une valeur qui n'est ni un littéral ni un paramètre lié, un filtre qui lit une colonne que l'instruction ne fournit pas). [tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
@@ -174,7 +175,7 @@ COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
 Formats pris en charge : `text` (séparé par tabulations, par défaut), `csv` et `binary`, le format COPY binaire de PostgreSQL, que l'extension postgres de DuckDB utilise pour lire. (REQ-883) [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
 
-**COPY FROM STDIN** est une écriture de données dans une table enregistrée existante : elle est admise par la même admission d'écriture qu'un `INSERT` des mêmes lignes (voir [Écritures de données](#data-writes-insert-update-delete-merge-copy-from-stdin)). Elle lit `text` (par défaut) et `csv`. Tout autre format est refusé avec SQLSTATE 0A000, en le nommant, avant l'envoi de toute donnée. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
+**COPY FROM STDIN** est une écriture de données dans une table enregistrée existante : elle est admise par la même admission d'écriture qu'un `INSERT` des mêmes lignes, avec la condition supplémentaire que l'autorisation `insert` n'ait pas de presets (voir [Écritures de données](#data-writes-insert-update-delete-merge-copy-from-stdin)). Elle lit `text` (par défaut) et `csv`. Tout autre format est refusé avec le SQLSTATE 0A000, en le nommant, avant l'envoi de toute donnée. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 ### Transactions et commandes de session {: #transactions-and-session-commands }
 

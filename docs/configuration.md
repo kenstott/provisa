@@ -665,10 +665,8 @@ tables:
     columns:
       - name: id
         visible_to: [admin, analyst]
-        writable_by: []           # read-only (empty = no writes)
       - name: email
         visible_to: [admin, analyst]
-        writable_by: [admin]      # only admin can mutate
         masks:                    # first entry the reader holds applies
           - to: [admin]           # admin sees raw
           - to: ["*"]             # everyone else sees it masked
@@ -677,25 +675,51 @@ tables:
         description: "Primary email address"  # optional: appears in SDL
       - name: amount
         visible_to: [admin]
-        writable_by: [admin]
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: constant, value: 0}
+      - name: created_by
+        visible_to: [admin, analyst]
       - name: created_at
         visible_to: [admin, analyst]
-        writable_by: []           # nobody can write
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: truncate, precision: month}
-    column_presets:               # auto-set values on insert/update
-      - column: created_by
-        source: header            # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now               # current timestamp
+    write_grants:                 # who may write this table, per role and operation
+      - role: admin
+        operation: insert
+        columns: [email, amount]
+        check: "TRUE"             # any row may be inserted
+        presets:                  # set by the grant; the statement may not supply them
+          - {column: created_by, source: session, name: user_id}
+          - {column: created_at, source: now}
+      - role: admin
+        operation: update
+        columns: [email, amount]
+        rows: "TRUE"              # any row may be updated
+        check: "TRUE"
 ```
+
+A table holds no write grant by default, so no role can write it. A grant gives one role one operation (`insert`, `update` or `delete`) on the table. A table holds at most one grant per role and operation. (REQ-2074)
+
+| Grant field | Meaning |
+| ----------- | ------- |
+| `columns` | The columns an `INSERT` may list or an `UPDATE` may set. A `delete` grant names none. |
+| `rows` | The rows an `UPDATE` or `DELETE` may touch: a SQL predicate over the table's columns. An `insert` grant has none. |
+| `check` | What every row an `INSERT` writes, or an `UPDATE` leaves behind, must satisfy: a SQL predicate. A `delete` grant has none. |
+| `presets` | Columns the grant sets itself. The statement may not supply them, so a preset column is not also in `columns`. |
+
+Leave `rows` or `check` out and the grant takes the role's read row filter on the table: a role writes the rows it reads unless the grant says otherwise. `"TRUE"` means every row. The older column `writable_by` and table `column_presets` keys are refused by name; the configuration fails to load until they are replaced by `write_grants`.
+
+Every write on every surface is admitted in this order: the role holds the `write` right; the role holds a grant for the operation on the table; every column the statement writes is in the grant; the grant's presets are added to the statement; the grant's `rows` predicate is ANDed into the `WHERE` of an `UPDATE` or `DELETE`; and the `check` is evaluated on the new rows before anything is sent to the source. A statement the check cannot decide is refused. The grant's columns also decide which mutation fields GraphQL offers a role: one field per operation it holds a grant for, taking exactly those columns.
+
+Some statements need a wider grant. `TRUNCATE` needs a `delete` grant over every row. `MERGE` needs an `insert` and an `update` grant, both over every row. `INSERT ... ON CONFLICT DO UPDATE` needs an `update` grant over every row with no presets. `COPY ... FROM STDIN` needs an `insert` grant with no presets.
+
+Grants are inherited. A child role takes, per table and operation, the grant of the nearest role in its chain that holds one, its own first. A meta role holds the fold of its members' grants: the union of their columns, the OR of their `rows` and of their `check` predicates, and only the presets every member sets alike.
+
+In the admin UI, a table's **Writes** section lists the grants and edits them together.
 
 ### Aliases
 
@@ -1215,32 +1239,38 @@ The `distinct_on` argument selects the first row for each distinct value of the 
 
 Compiles to `SELECT DISTINCT ON (region) ...` in PostgreSQL. (REQ-213) For non-PG dialects, a window-function fallback is used. (REQ-213)
 
-## Column Presets
+## Write Grant Presets
 
-Auto-inject values into columns on insert/update. (REQ-214) Defined per table in config.
+A write grant sets columns itself on insert and update. (REQ-214, REQ-2074) Presets are declared in the `presets` list of the grant, per role and operation.
 
 ```yaml
 tables:
   - source_id: sales-pg
+    domain_id: sales-analytics
+    schema: public
     table: orders
-    column_presets:
-      - column: created_by
-        source: header           # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now              # current timestamp
-      - column: source_system
-        source: literal          # constant value
-        value: "provisa"
+    columns:
+      - {name: amount, visible_to: [analyst]}
+      - {name: created_by, visible_to: [analyst]}
+      - {name: created_at, visible_to: [analyst]}
+      - {name: source_system, visible_to: [analyst]}
+    write_grants:
+      - role: analyst
+        operation: insert
+        columns: [amount]
+        presets:
+          - {column: created_by, source: session, name: user_id}   # from the request's session
+          - {column: created_at, source: now}                      # time of the write
+          - {column: source_system, source: literal, value: provisa}
 ```
 
 | Source | Behavior |
 | -------- | ---------- |
-| `header` | Injects value from the named HTTP request header |
-| `now` | Injects `NOW()` (current timestamp) |
-| `literal` | Injects a constant value |
+| `session` | Injects the value of the named session variable (`name`) of the request |
+| `now` | Injects the time of the write |
+| `literal` | Injects a constant (`value`) |
 
-Preset columns are injected during mutation compilation before SQL generation. (REQ-214) They are not visible in the mutation input type. (REQ-214)
+Presets are added to the statement during compilation, before SQL generation. (REQ-214) The statement may not supply a preset column, and a preset column is not in the mutation input type. (REQ-214)
 
 ## Inherited Roles
 

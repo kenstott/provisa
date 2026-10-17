@@ -98,7 +98,7 @@ de consulta estendida (Bind/Execute). Parâmetros são substituídos como litera
 `SELECT * FROM fn(args)` e `SELECT fn(args)` — onde `fn` nomeia uma função rastreada registrada —
 são interceptados antes do pipeline de governança e roteados através do executor governado único
 (`invoke_tracked_function`). O resultado é um conjunto de linhas tipado idêntico ao que toda outra
-superfície retorna para esse command. `writable_by` e regras de governança são aplicadas dentro do
+superfície retorna para esse command. A atribuição do comando (`visible_to`), o direito `write` para uma mutação e regras de governança são aplicadas dentro do
 executor. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
 
 ### Cursores (DECLARE / FETCH / MOVE / CLOSE) {: #cursors-declare-fetch-move-close }
@@ -190,11 +190,12 @@ As mesmas instruções funcionam em toda superfície SQL: elas são tratadas no 
 As linhas de uma tabela registrada existente são gravadas pelo pgwire como em qualquer outra superfície SQL, pela única admissão de gravações (`provisa/compiler/write_admission.py`):
 
 1. **O direito.** A função tem `write`. (REQ-868)
-2. **As colunas.** Cada coluna que a instrução grava nomeia a função no seu `writable_by`; uma coluna que não declara nenhum não pode ser gravada por ninguém. (REQ-663)
-3. **As linhas que ela pode tocar.** O filtro de linha da função, o mesmo predicado que suas leituras levam, é adicionado ao `WHERE` de um `UPDATE` ou `DELETE`.
-4. **As linhas que ela deixa.** Uma função filtrada só pode gravar linhas que depois poderia ler: as linhas de um `INSERT`, e os novos valores de um `UPDATE` que define uma coluna lida pelo filtro, são verificados contra o filtro antes de qualquer coisa ser enviada à fonte.
+2. **A permissão.** A função tem uma permissão de escrita sobre a tabela para a operação: um `INSERT` exige uma permissão `insert`, um `UPDATE` uma `update`, um `DELETE` uma `delete`. Um `MERGE` exige uma permissão `insert` e uma `update` sobre todas as linhas, e um `INSERT ... ON CONFLICT DO UPDATE` uma `update` sobre todas as linhas. (REQ-2074)
+3. **As colunas.** Cada coluna que a instrução grava é uma que a permissão nomeia. Uma coluna que a permissão predefine é da permissão: a instrução não pode fornecê-la, e o valor da permissão (uma variável de sessão, um literal ou o momento da escrita) é adicionado. (REQ-663, REQ-2074)
+4. **As linhas que ela pode tocar.** O predicado `rows` da permissão é adicionado ao `WHERE` de um `UPDATE` ou `DELETE`. Uma permissão que não indica nenhum assume o filtro de linhas da função, o mesmo predicado que suas leituras carregam.
+5. **As linhas que ela deixa.** As linhas de um `INSERT`, e os novos valores de um `UPDATE` que define uma coluna lida pelo `check` da permissão, são verificados contra o `check` antes de qualquer coisa ser enviada à fonte. Uma permissão que não indica `check` assume o filtro de linhas da função.
 
-`TRUNCATE` também é uma gravação de dados, executada como ela mesma e nunca reescrita como um `DELETE`. Exige o direito `write`, todas as colunas da tabela graváveis pela função e uma fonte que aceite exclusões. Esvazia uma tabela por vez, e é recusada a uma função com filtro de linhas na tabela, pois um `TRUNCATE` não consegue aplicar o filtro: use `DELETE`, que aplica. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
+`TRUNCATE` também é uma gravação de dados, executada como tal e nunca reescrita como `DELETE`. Exige o direito `write`, uma permissão `delete` sobre todas as linhas da tabela e uma fonte que aceite exclusões. Esvazia uma tabela por vez, e uma função cuja permissão limita as linhas (um predicado `rows`, ou o filtro de linhas da função quando a permissão não indica nenhum) é recusada, pois um `TRUNCATE` não consegue aplicar o predicado: use `DELETE`, que o aplica. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
 
 O que não pode ser decidido é recusado pelo nome em vez de admitido na dúvida (um `INSERT … SELECT`, um valor que não é nem um literal nem um parâmetro vinculado, um filtro que lê uma coluna que a instrução não fornece). [tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
@@ -213,7 +214,7 @@ COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
 Formatos suportados: `text` (delimitado por tabulação, padrão), `csv` e `binary`, o formato COPY binário do PostgreSQL, com o qual a extensão postgres do DuckDB lê. (REQ-883) [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
 
-**COPY FROM STDIN** é uma gravação de dados em uma tabela registrada existente: é admitida pela mesma admissão de gravação que um `INSERT` das mesmas linhas (veja [Gravações de dados](#data-writes-insert-update-delete-merge-copy-from-stdin)). Lê `text` (padrão) e `csv`. Qualquer outro formato é recusado com SQLSTATE 0A000, nomeando-o, antes de qualquer dado ser enviado. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
+**COPY FROM STDIN** é uma gravação de dados em uma tabela registrada existente: é admitida pela mesma admissão de escrita de um `INSERT` das mesmas linhas, com a condição adicional de que a permissão `insert` não tenha presets (veja [Gravações de dados](#data-writes-insert-update-delete-merge-copy-from-stdin)). Lê `text` (padrão) e `csv`. Qualquer outro formato é recusado com SQLSTATE 0A000, nomeando-o, antes de qualquer dado ser enviado. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 ### Transações e Comandos de Sessão {: #transactions-and-session-commands }
 

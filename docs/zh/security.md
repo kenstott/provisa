@@ -192,46 +192,76 @@ roles:
 
 该规则在每个界面上都相同，因为每个界面都读取角色编译后的 schema：GraphQL、SQL（HTTP、pgwire、Flight、JDBC）、Cypher 和 Bolt、gRPC、REST 和 JSON:API、Flight 和 MCP 目录，以及管理列表。不是这三个值之一的范围会在保存列时被拒绝。
 
-### 写入权限 {: #write-permissions }
+### 写入授权 {: #write-grants }
 
-| 字段 | 为空表示 | 用途 |
-| ------- | ------------ | --------- |
-| `visible_to` | 所有角色都可以读取 | 控制谁能看到该列（脱敏或未脱敏） |
-| `writable_by` | 没有角色可以写入 | 控制谁能修改（INSERT/UPDATE） |
+读取一列由 `visible_to` 控制（为空表示所有角色都可以读取）。写入按表由 `write_grants` 控制，而不是按列。表默认没有任何授权，因此任何角色都不能写入它。（REQ-2074）
 
-写入权限在变更管道中执行。不在 `writable_by` 中的角色尝试写入受限列时会收到 403 错误。（REQ-033、REQ-034）
+写入授权声明某个角色通过一种操作（`insert`、`update` 或 `delete`）可以向某张表写入什么：
+
+| 字段 | 用途 |
+| ------- | --------- |
+| `columns` | `INSERT` 可以列出、`UPDATE` 可以设置的列 |
+| `rows` | `UPDATE` 或 `DELETE` 可以触及的行（SQL 谓词） |
+| `check` | `INSERT` 写入的每一行、或 `UPDATE` 留下的每一行必须满足的条件（SQL 谓词） |
+| `presets` | 授权自己设置的列，来自会话变量、字面量或写入时间。语句不得提供这些列。 |
+
+省略 `rows` 或 `check` 时，授权采用该角色在这张表上的读取行过滤器，因此角色写入的就是它能读到的行。`"TRUE"` 表示所有行。
+
+同一个准入机制决定每个界面上的每次写入，顺序如下：角色持有 `write` 权利；持有表上该操作的授权；语句写入的每一列都在授权中；添加预设；`rows` 以 AND 并入 `WHERE`；在向数据源发送任何内容之前，对新行评估 `check`。拒绝信息会指明表、角色和操作。（REQ-2074）
+
+更宽的语句需要更宽的授权。`TRUNCATE` 需要覆盖所有行的 `delete` 授权。`MERGE` 需要覆盖所有行的 `insert` 和 `update` 授权。`INSERT ... ON CONFLICT DO UPDATE` 需要覆盖所有行且无预设的 `update` 授权。`COPY` 需要无预设的 `insert` 授权。
+
+GraphQL 只为角色持有授权的操作提供变更字段，字段带有授权的列。子角色继承父角色的授权，自己的授权优先。元角色持有其成员授权的折叠结果：列的并集、`rows` 和 `check` 的 OR，以及只保留所有成员共有的预设。在管理界面中，表的**写入**部分会列出并编辑它的授权。
 
 ### 示例 {: #example }
 
 ```yaml
-columns:
-  - name: email
-    visible_to: [admin, analyst, viewer]
-    writable_by: [admin]
-    masks:
-      - to: [admin]                   # admin sees raw value (no mask)
-      - to: ["*"]                     # everyone else sees it masked
-        mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
-  - name: salary
-    visible_to: [admin, hr]
-    writable_by: [hr]
-    masks:
-      - to: [admin, hr]               # admin and hr see real value
-      - to: ["*"]                     # all other visible roles see 0
-        mask: {type: constant, value: 0}
-  - name: created_at
-    visible_to: []                    # all can read
-    writable_by: []                   # nobody can write (auto-set)
+tables:
+  - source_id: hr-pg
+    domain_id: people
+    schema: public
+    table: employees
+    columns:
+      - name: id
+        visible_to: []                # all can read
+      - name: email
+        visible_to: [admin, analyst, viewer]
+        masks:
+          - to: [admin]               # admin sees raw value (no mask)
+          - to: ["*"]                 # everyone else sees it masked
+            mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
+      - name: salary
+        visible_to: [admin, hr]
+        masks:
+          - to: [admin, hr]           # admin and hr see real value
+          - to: ["*"]                 # all other visible roles see 0
+            mask: {type: constant, value: 0}
+      - name: created_at
+        visible_to: []                # all can read
+    write_grants:
+      - role: admin
+        operation: update
+        columns: [email]
+        rows: "TRUE"
+      - role: hr
+        operation: update
+        columns: [salary]
+      - role: hr
+        operation: insert
+        columns: [email, salary]
+        presets:
+          - {column: created_at, source: now}
 ```
+
 在此示例中：
 
-- `email`：admin 看到 `alice@example.com` 并可编辑；analyst 和 viewer 看到 `a***@example.com`
-- `salary`：admin 和 hr 看到真实值；hr 可编辑；其他任何可见角色看到 `0`
-- `created_at`：所有人都可读取，没有人可以写入，不脱敏
+- `email`：admin 看到 `alice@example.com`，并可在任意行更新；analyst 和 viewer 看到 `a***@example.com`，不能写入
+- `salary`：admin 和 hr 看到真实值；hr 可以更新它在 hr 能读到的行上的值，因为授权没有声明 `rows`；其他可见角色看到 `0`
+- `created_at`：所有人都可读取，没有角色提供它，hr 的插入会把它设置为写入时间
 
 ## 变更操作授权 {: #mutation-authorization }
 
-已注册的变更（远程 GraphQL、OpenAPI、gRPC、Hasura）受两项独立检查保护。（REQ-867、REQ-868） 只有当角色同时具有全局 `write` 能力并且列在该变更的 `writable_by` 列表中时，才能调用该变更。（REQ-868） 空的 `writable_by` 默认拒绝——没有角色可以调用它。（REQ-867）
+已注册的变更（远程 GraphQL、OpenAPI、gRPC、Hasura）由两项相互独立的检查把关。(REQ-868) 角色只有同时持有全局 `write` 能力，并且该命令通过 `visible_to` 分配给它（列表为空表示分配给所有角色），才可以调用变更。(REQ-868) 命令没有 `writable_by` 列表；配置会按名称拒绝它。[tool-verified: `provisa/security/mutation_authz.py` `command_assigned`、`admit_command`；`provisa/core/models.py` `_one_role_list`]
 
 变更按契约而非调用者的声明被归类为写入。（REQ-869） 引用变更类函数的 `SELECT` 会被提升为写入，并接受相同的双重门检查，因此调用者无法把变更伪装成读取来调用。（REQ-869） 将变更重新归类为读取安全需要 `access_config` 能力，并作为治理决定记录；没有按请求的例外。（REQ-870）
 

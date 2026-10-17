@@ -183,7 +183,7 @@ Nomes de propriedade mapeiam para colunas via remoção de prefixo de domínio e
 Regras:
 
 - O label deve resolver para exatamente uma tabela registrada. Labels ambíguos ou desconhecidos são erros rígidos; sem correspondência fuzzy. (REQ-661) Novos labels ou tipos não podem ser criados através do Cypher. (REQ-662)
-- Toda escrita é bloqueada pela ACL `writable_by` da tabela alvo; uma função sem direitos de escrita é rejeitada no momento da compilação. (REQ-663)
+- Toda escrita é bloqueada pelas permissões de escrita da tabela alvo: a função precisa do direito `write` e de uma permissão para a operação, e as colunas escritas devem estar na permissão. Uma função sem elas é rejeitada no momento da compilação. (REQ-663)
 - O conector de fonte subjacente deve suportar DML. Fontes somente-leitura (federadas via Trino, Iceberg sem um conector Delta) rejeitam escritas no momento da tradução. (REQ-664)
 - Relacionamentos não podem ser escritos — eles são derivados dos joins declarados no modelo, não arestas armazenadas. Direcionar um relacionamento é um erro rígido. (REQ-665) Uma aresta apoiada em junção não é exceção: a tabela associativa por trás dela é ela própria uma tabela registrada, e as linhas são escritas nessa tabela, não na aresta. (REQ-1586)
 - Escritas rodam através do pipeline de escrita completo: injeção de RLS e hooks pós-mutação (invalidação de cache de resposta, marcação de obsolescência de view materializada, eventos de mudança Kafka, recarga de tabela quente). (REQ-798)

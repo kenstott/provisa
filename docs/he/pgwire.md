@@ -60,7 +60,7 @@ Port: $PROVISA_PGWIRE_PORT
 
 שאילתות פרמטריות (`$1`, `$2`, ...) נתמכות הן במצב שאילתה-פשוטה והן במצב שאילתה-מורחבת (Bind/Execute). פרמטרים מוחלפים כליטרלים לפני הביצוע. (REQ-581) [tool-verified: `server.py:78-85`]
 
-`SELECT * FROM fn(args)` ו-`SELECT fn(args)` — כאשר `fn` נותן שם לפונקציה עוקבת (tracked) רשומה — מיורטים לפני צינור הממשל ומנותבים דרך ה-executor המנוהל היחיד (`invoke_tracked_function`). התוצאה היא סט שורות מוקלד זהה למה שכל surface אחר מחזיר עבור אותו command. `writable_by` וכללי ממשל נאכפים בתוך ה-executor. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
+`SELECT * FROM fn(args)` ו-`SELECT fn(args)` — כאשר `fn` נותן שם לפונקציה עוקבת (tracked) רשומה — מיורטים לפני צינור הממשל ומנותבים דרך ה-executor המנוהל היחיד (`invoke_tracked_function`). התוצאה היא סט שורות מוקלד זהה למה שכל surface אחר מחזיר עבור אותו command. שיוך ה-command (`visible_to`), הזכות `write` למוטציה וכללי ממשל נאכפים בתוך ה-executor. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
 
 ### סמנים (DECLARE / FETCH / MOVE / CLOSE) {: #cursors-declare-fetch-move-close }
 
@@ -151,11 +151,12 @@ DROP TABLE busy;
 שורות של טבלה רשומה קיימת נכתבות דרך pgwire כמו בכל משטח SQL אחר, דרך קבלת כתיבה אחת (`provisa/compiler/write_admission.py`):
 
 1. **הזכות.** לתפקיד יש `write`. (REQ-868)
-2. **העמודות.** כל עמודה שההצהרה כותבת נוקבת בתפקיד ב-`writable_by` שלה; עמודה שאינה מצהירה דבר אינה ניתנת לכתיבה על ידי אף אחד. (REQ-663)
-3. **השורות שאפשר לגעת בהן.** מסנן השורות של התפקיד, אותו פרדיקט שהקריאות שלו נושאות, מתווסף ל-`WHERE` של `UPDATE` או `DELETE`.
-4. **השורות שנשארות.** תפקיד מסונן יכול לכתוב רק שורות שהוא יוכל לקרוא אחר כך: שורות `INSERT` והערכים החדשים של `UPDATE` שקובע עמודה שהמסנן קורא נבדקים מול המסנן לפני שדבר נשלח למקור.
+2. **ההרשאה.** לתפקיד יש הרשאת כתיבה על הטבלה לפעולה: `INSERT` דורש הרשאת `insert`, `UPDATE` הרשאת `update`, `DELETE` הרשאת `delete`. `MERGE` דורש הרשאת `insert` והרשאת `update` על כל שורה, ו-`INSERT ... ON CONFLICT DO UPDATE` הרשאת `update` על כל שורה. (REQ-2074)
+3. **העמודות.** כל עמודה שההצהרה כותבת היא עמודה שההרשאה נוקבת בה. עמודה שההרשאה קובעת כ-preset שייכת להרשאה: ההצהרה אינה רשאית לספק אותה, והערך של ההרשאה (משתנה הפעלה, ערך מילולי או רגע הכתיבה) מתווסף. (REQ-663, REQ-2074)
+4. **השורות שהיא רשאית לגעת בהן.** הפרדיקט `rows` של ההרשאה מתווסף ל-`WHERE` של `UPDATE` או `DELETE`. הרשאה שאינה קובעת כזה לוקחת את מסנן השורות של התפקיד, אותו פרדיקט שהקריאות שלו נושאות.
+5. **השורות שהיא משאירה.** השורות של `INSERT`, והערכים החדשים של `UPDATE` שקובע עמודה ש-`check` של ההרשאה קורא, נבדקים מול ה-`check` לפני שנשלח משהו למקור. הרשאה שאינה קובעת `check` לוקחת את מסנן השורות של התפקיד.
 
-גם `TRUNCATE` הוא כתיבת נתונים, שרצה כמות שהיא ולעולם אינה נכתבת מחדש כ-`DELETE`. היא צריכה את הזכות `write`, כל עמודה בטבלה ניתנת לכתיבה על ידי התפקיד, ומקור שמקבל מחיקות. היא מרוקנת טבלה אחת בכל פעם, ותפקיד עם מסנן שורות על הטבלה מקבל דחייה, כי `TRUNCATE` אינו יכול להחיל את המסנן: השתמשו ב-`DELETE`, שמחיל אותו. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
+`TRUNCATE` הוא גם כתיבת נתונים, הוא רץ כמות שהוא ואינו נכתב מחדש לעולם כ-`DELETE`. הוא דורש את הזכות `write`, הרשאת `delete` על כל שורה בטבלה, ומקור שמקבל מחיקות. הוא מרוקן טבלה אחת בכל פעם, ותפקיד שההרשאה שלו מגבילה שורות (פרדיקט `rows`, או מסנן השורות של התפקיד כשההרשאה אינה קובעת כזה) נדחה, כי `TRUNCATE` אינו יכול ליישם את הפרדיקט: השתמשו ב-`DELETE`, שמיישם אותו. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
 
 מה שאי אפשר להכריע נדחה בשמו ולא מתקבל מספק (`INSERT … SELECT`, ערך שאינו ליטרל ולא פרמטר קשור, מסנן שקורא עמודה שההצהרה אינה מספקת). [tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
@@ -174,7 +175,7 @@ COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
 פורמטים נתמכים: `text` (מופרד בטאבים, ברירת מחדל), `csv` ו-`binary`, פורמט ה-COPY הבינארי של PostgreSQL, שבו קוראת הרחבת postgres של DuckDB. (REQ-883) [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
 
-**COPY FROM STDIN** הוא כתיבת נתונים לטבלה רשומה קיימת: הוא מתקבל באותה קבלת כתיבה כמו `INSERT` של אותן שורות (ראו [כתיבת נתונים](#data-writes-insert-update-delete-merge-copy-from-stdin)). הוא קורא `text` (ברירת מחדל) ו-`csv`. כל פורמט אחר נדחה עם SQLSTATE 0A000, תוך ציון שמו, לפני שנשלחים נתונים כלשהם. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
+**COPY FROM STDIN** הוא כתיבת נתונים לטבלה רשומה קיימת: הוא מאושר באותו אישור כתיבה כמו `INSERT` של אותן שורות, בתוספת התנאי שלהרשאת `insert` אין presets (ראו [כתיבות נתונים](#data-writes-insert-update-delete-merge-copy-from-stdin)). הוא קורא `text` (ברירת מחדל) ו-`csv`. כל פורמט אחר נדחה עם SQLSTATE 0A000, בציון שמו, לפני שנשלחים נתונים. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 ### עסקאות ופקודות Session {: #transactions-and-session-commands }
 

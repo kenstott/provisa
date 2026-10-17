@@ -183,7 +183,7 @@ Les noms de propriété sont mappés aux colonnes par suppression du préfixe de
 Règles :
 
 - L'étiquette doit correspondre à exactement une table enregistrée. Les étiquettes ambiguës ou inconnues provoquent des erreurs bloquantes ; aucune correspondance approximative. (REQ-661) Aucune nouvelle étiquette ni aucun nouveau type ne peut être créé via Cypher. (REQ-662)
-- Chaque écriture est conditionnée par la liste de contrôle d'accès `writable_by` de la table cible ; un rôle sans droit d'écriture est rejeté au moment de la compilation. (REQ-663)
+- Chaque écriture est conditionnée par les autorisations d'écriture de la table cible : le rôle a besoin du droit `write` et d'une autorisation pour l'opération, et les colonnes écrites doivent figurer dans l'autorisation. Un rôle qui ne les a pas est rejeté au moment de la compilation. (REQ-663)
 - Le connecteur de la source sous-jacente doit prendre en charge le DML. Les sources en lecture seule (fédérées via Trino, Iceberg sans connecteur Delta) rejettent les écritures au moment de la traduction. (REQ-664)
 - Les relations ne peuvent pas être écrites — elles sont dérivées des jointures déclarées dans le modèle, et non stockées comme des arêtes. Cibler une relation constitue une erreur bloquante. (REQ-665) Une arête adossée à une jonction ne fait pas exception : la table associative qui la porte est elle-même une table enregistrée, et les lignes sont écrites dans cette table, non dans l'arête. (REQ-1586)
 - Les écritures traversent l'intégralité du pipeline d'écriture : injection RLS et hooks post-mutation (invalidation du cache de réponse, marquage des vues matérialisées comme obsolètes, événements de changement Kafka, rechargement des tables actives). (REQ-798)

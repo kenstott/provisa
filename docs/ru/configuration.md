@@ -665,10 +665,8 @@ tables:
     columns:
       - name: id
         visible_to: [admin, analyst]
-        writable_by: []           # read-only (empty = no writes)
       - name: email
         visible_to: [admin, analyst]
-        writable_by: [admin]      # only admin can mutate
         masks:                    # first entry the reader holds applies
           - to: [admin]           # admin sees raw
           - to: ["*"]             # everyone else sees it masked
@@ -677,25 +675,51 @@ tables:
         description: "Primary email address"  # optional: appears in SDL
       - name: amount
         visible_to: [admin]
-        writable_by: [admin]
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: constant, value: 0}
+      - name: created_by
+        visible_to: [admin, analyst]
       - name: created_at
         visible_to: [admin, analyst]
-        writable_by: []           # nobody can write
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: truncate, precision: month}
-    column_presets:               # auto-set values on insert/update
-      - column: created_by
-        source: header            # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now               # current timestamp
+    write_grants:                 # who may write this table, per role and operation
+      - role: admin
+        operation: insert
+        columns: [email, amount]
+        check: "TRUE"             # any row may be inserted
+        presets:                  # set by the grant; the statement may not supply them
+          - {column: created_by, source: session, name: user_id}
+          - {column: created_at, source: now}
+      - role: admin
+        operation: update
+        columns: [email, amount]
+        rows: "TRUE"              # any row may be updated
+        check: "TRUE"
 ```
+
+По умолчанию у таблицы нет ни одного разрешения на запись, поэтому ни одна роль не может в неё писать. Разрешение даёт роли одну операцию (`insert`, `update` или `delete`) над таблицей. В таблице не больше одного разрешения на роль и операцию. (REQ-2074)
+
+| Поле разрешения | Значение |
+| ----------- | ------- |
+| `columns` | Колонки, которые `INSERT` может перечислить, а `UPDATE` — задать. Разрешение `delete` их не называет. |
+| `rows` | Строки, которых может касаться `UPDATE` или `DELETE`: SQL-предикат над колонками таблицы. У разрешения `insert` его нет. |
+| `check` | Условие, которому должна удовлетворять каждая строка, записанная `INSERT` или оставленная `UPDATE`: SQL-предикат. У разрешения `delete` его нет. |
+| `presets` | Колонки, которые разрешение задаёт само. Инструкция не может их передать, поэтому колонка с пресетом не входит также в `columns`. |
+
+Если опустить `rows` или `check`, разрешение берёт фильтр строк роли на чтение для этой таблицы: роль пишет те строки, которые читает, если разрешение не говорит иного. `"TRUE"` означает любую строку. Прежние ключи `writable_by` у колонки и `column_presets` у таблицы отклоняются по имени; конфигурация не загрузится, пока их не заменят на `write_grants`.
+
+Каждая запись на любой поверхности допускается в таком порядке: у роли есть право `write`; у роли есть разрешение на операцию над таблицей; каждая колонка, которую пишет инструкция, указана в разрешении; пресеты разрешения добавляются к инструкции; предикат `rows` присоединяется через AND к `WHERE` инструкции `UPDATE` или `DELETE`; а `check` вычисляется на новых строках до того, как что-либо отправлено источнику. Инструкция, которую `check` не может решить, отклоняется. Колонки разрешения также определяют, какие поля мутаций GraphQL предлагает роли: по одному полю на каждую операцию, на которую у неё есть разрешение, ровно с этими колонками.
+
+Некоторым инструкциям нужно более широкое разрешение. `TRUNCATE` требует разрешения `delete` на все строки. `MERGE` требует разрешений `insert` и `update`, оба на все строки. `INSERT ... ON CONFLICT DO UPDATE` требует разрешения `update` на все строки без пресетов. `COPY ... FROM STDIN` требует разрешения `insert` без пресетов.
+
+Разрешения наследуются. Дочерняя роль берёт для каждой таблицы и операции разрешение ближайшей роли в своей цепочке, у которой оно есть; собственное идёт первым. Мета-роль держит свёртку разрешений своих участников: объединение их колонок, OR их предикатов `rows` и `check` и только те пресеты, которые все участники задают одинаково.
+
+В административном интерфейсе раздел **Запись** таблицы перечисляет разрешения и редактирует их вместе.
 
 ### Псевдонимы {: #aliases }
 
@@ -1213,32 +1237,38 @@ mutation {
 
 Компилируется в `SELECT DISTINCT ON (region) ...` в PostgreSQL. (REQ-213) Для диалектов, отличных от PG, используется резервный вариант с оконными функциями. (REQ-213)
 
-## Пресеты столбцов (Column Presets)
+## Пресеты разрешений на запись {: #write-grant-presets }
 
-Автоматически подставляют значения в столбцы при insert/update. (REQ-214) Определяются для каждой таблицы в конфигурации.
+Разрешение на запись само задаёт колонки при вставке и обновлении. (REQ-214, REQ-2074) Пресеты объявляются в списке `presets` разрешения, для каждой роли и операции.
 
 ```yaml
 tables:
   - source_id: sales-pg
+    domain_id: sales-analytics
+    schema: public
     table: orders
-    column_presets:
-      - column: created_by
-        source: header           # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now              # current timestamp
-      - column: source_system
-        source: literal          # constant value
-        value: "provisa"
+    columns:
+      - {name: amount, visible_to: [analyst]}
+      - {name: created_by, visible_to: [analyst]}
+      - {name: created_at, visible_to: [analyst]}
+      - {name: source_system, visible_to: [analyst]}
+    write_grants:
+      - role: analyst
+        operation: insert
+        columns: [amount]
+        presets:
+          - {column: created_by, source: session, name: user_id}   # from the request's session
+          - {column: created_at, source: now}                      # time of the write
+          - {column: source_system, source: literal, value: provisa}
 ```
 
 | Источник | Поведение |
 | -------- | ---------- |
-| `header` | Подставляет значение из именованного HTTP-заголовка запроса |
-| `now` | Подставляет `NOW()` (текущую метку времени) |
-| `literal` | Подставляет константное значение |
+| `session` | Подставляет значение указанной переменной сеанса (`name`) запроса |
+| `now` | Подставляет момент записи |
+| `literal` | Подставляет константу (`value`) |
 
-Пресетные столбцы подставляются на этапе компиляции мутации, до генерации SQL. (REQ-214) Они не видны во входном типе мутации. (REQ-214)
+Пресеты добавляются к инструкции при компиляции, до генерации SQL. (REQ-214) Инструкция не может передать колонку с пресетом, и колонки с пресетом нет во входном типе мутации. (REQ-214)
 
 ## Наследуемые роли {: #inherited-roles }
 

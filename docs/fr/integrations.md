@@ -230,7 +230,7 @@ Les requêtes en streaming émettent un message par ligne ; les mutations sont u
 
 ## Invoquer des commandes à travers les protocoles {: #invoking-commands-across-protocols }
 
-Une **commande** est une fonction suivie ou un webhook enregistré — un élément appelable enregistré dans le modèle de Provisa avec un `kind` (`query` ou `mutation`) et un `impl_kind` qui décrit sa façon de s'exécuter. Chaque surface achemine les invocations à travers un seul exécuteur gouverné (`invoke_tracked_function`) qui applique uniformément `writable_by` et la gouvernance (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
+Une **commande** est une fonction suivie ou un webhook enregistré — un élément appelable enregistré dans le modèle de Provisa avec un `kind` (`query` ou `mutation`) et un `impl_kind` qui décrit sa façon de s'exécuter. Chaque surface achemine les invocations à travers un seul exécuteur gouverné (`invoke_tracked_function`) qui applique uniformément l'affectation de la commande (`visible_to`), le droit `write` pour une mutation et la gouvernance (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 
 | `impl_kind` | Ce qui s'exécute | Champs de liaison |
 | ------------ | ----------- | --------------- |

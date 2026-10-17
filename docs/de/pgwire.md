@@ -60,7 +60,7 @@ Einfache Abfragen mit mehreren Anweisungen werden unterstützt. Durch Semikolon 
 
 Parametrisierte Abfragen (`$1`, `$2`, ...) werden sowohl im Simple-Query- als auch im Extended-Query-Modus (Bind/Execute) unterstützt. Parameter werden vor der Ausführung als Literale eingesetzt. (REQ-581) [tool-verified: `server.py:78-85`]
 
-`SELECT * FROM fn(args)` und `SELECT fn(args)` — wobei `fn` eine registrierte, nachverfolgte Funktion benennt — werden vor der Governance-Pipeline abgefangen und über den einen governance-gesteuerten Executor (`invoke_tracked_function`) geroutet. Das Ergebnis ist eine typisierte Zeilenmenge, identisch zu dem, was jede andere Oberfläche für diesen Befehl liefert. `writable_by` und die Governance-Regeln werden innerhalb des Executors durchgesetzt. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
+`SELECT * FROM fn(args)` und `SELECT fn(args)` — wobei `fn` eine registrierte, nachverfolgte Funktion benennt — werden vor der Governance-Pipeline abgefangen und über den einen governance-gesteuerten Executor (`invoke_tracked_function`) geroutet. Das Ergebnis ist eine typisierte Zeilenmenge, identisch zu dem, was jede andere Oberfläche für diesen Befehl liefert. Die Befehlszuweisung (`visible_to`), das Recht `write` für Mutationen und die Governance-Regeln werden innerhalb des Executors durchgesetzt. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
 
 ### Cursor (DECLARE / FETCH / MOVE / CLOSE) {: #cursors-declare-fetch-move-close }
 
@@ -151,11 +151,12 @@ Dieselben Anweisungen funktionieren auf jeder SQL-Oberfläche: Sie werden in der
 Zeilen einer bestehenden registrierten Tabelle werden über pgwire wie auf jeder anderen SQL-Oberfläche geschrieben, über die eine Schreibzulassung (`provisa/compiler/write_admission.py`):
 
 1. **Das Recht.** Die Rolle hält `write`. (REQ-868)
-2. **Die Spalten.** Jede Spalte, die die Anweisung schreibt, nennt die Rolle in ihrem `writable_by`; eine Spalte, die keines deklariert, ist für niemanden beschreibbar. (REQ-663)
-3. **Die Zeilen, die sie berühren darf.** Der Zeilenfilter der Rolle, dasselbe Prädikat, das ihre Lesevorgänge tragen, wird dem `WHERE` eines `UPDATE` oder `DELETE` hinzugefügt.
-4. **Die Zeilen, die sie hinterlässt.** Eine gefilterte Rolle darf nur Zeilen schreiben, die sie danach lesen könnte: Die Zeilen eines `INSERT` und die neuen Werte eines `UPDATE`, das eine vom Filter gelesene Spalte setzt, werden gegen den Filter geprüft, bevor irgendetwas an die Quelle geht.
+2. **Die Berechtigung.** Die Rolle besitzt eine Schreibberechtigung auf der Tabelle für die Operation: Ein `INSERT` braucht eine `insert`-Berechtigung, ein `UPDATE` eine `update`-Berechtigung, ein `DELETE` eine `delete`-Berechtigung. Ein `MERGE` braucht eine `insert`- und eine `update`-Berechtigung über jede Zeile, ein `INSERT ... ON CONFLICT DO UPDATE` eine `update`-Berechtigung über jede Zeile. (REQ-2074)
+3. **Die Spalten.** Jede Spalte, die die Anweisung schreibt, wird von der Berechtigung benannt. Eine Spalte, die die Berechtigung als Preset setzt, ist Sache der Berechtigung: Die Anweisung darf sie nicht liefern, und der Wert der Berechtigung (eine Sitzungsvariable, ein Literal oder der Zeitpunkt des Schreibvorgangs) wird hinzugefügt. (REQ-663, REQ-2074)
+4. **Die Zeilen, die sie berühren darf.** Das Prädikat `rows` der Berechtigung wird dem `WHERE` eines `UPDATE` oder `DELETE` hinzugefügt. Gibt die Berechtigung keines an, übernimmt sie den Zeilenfilter der Rolle, dasselbe Prädikat, das ihre Lesezugriffe tragen.
+5. **Die Zeilen, die sie hinterlässt.** Die Zeilen eines `INSERT` und die neuen Werte eines `UPDATE`, das eine Spalte setzt, die das `check` der Berechtigung liest, werden gegen das `check` geprüft, bevor etwas an die Quelle gesendet wird. Gibt die Berechtigung kein `check` an, übernimmt sie den Zeilenfilter der Rolle.
 
-`TRUNCATE` ist ebenfalls ein Datenschreibvorgang; es läuft als es selbst und wird nie in ein `DELETE` umgeschrieben. Es braucht das Recht `write`, jede Spalte der Tabelle für die Rolle schreibbar und eine Quelle, die Löschungen annimmt. Es leert jeweils eine Tabelle, und einer Rolle mit Zeilenfilter auf der Tabelle wird es verweigert, da ein `TRUNCATE` den Filter nicht anwenden kann: Verwenden Sie `DELETE`, das es kann. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
+`TRUNCATE` ist ebenfalls ein Datenschreibvorgang, wird als solcher ausgeführt und nie in ein `DELETE` umgeschrieben. Es braucht das Recht `write`, eine `delete`-Berechtigung über jede Zeile der Tabelle und eine Quelle, die Deletes unterstützt. Es leert jeweils eine Tabelle, und eine Rolle, deren Berechtigung die Zeilen einschränkt (ein Prädikat `rows` oder der Zeilenfilter der Rolle, wo die Berechtigung keines angibt), wird abgelehnt, da ein `TRUNCATE` das Prädikat nicht anwenden kann: Verwenden Sie `DELETE`, das es anwendet. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
 
 Was nicht entschieden werden kann, wird namentlich abgelehnt statt im Zweifel zugelassen (ein `INSERT … SELECT`, ein Wert, der weder Literal noch gebundener Parameter ist, ein Filter, der eine Spalte liest, die die Anweisung nicht liefert). [tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
 
@@ -174,7 +175,7 @@ COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
 Unterstützte Formate: `text` (tabulatorgetrennt, Standard), `csv` und `binary`, das binäre COPY-Format von PostgreSQL, mit dem die postgres-Erweiterung von DuckDB liest. (REQ-883) [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
 
-**COPY FROM STDIN** ist ein Datenschreibvorgang in eine bestehende registrierte Tabelle: Es wird von derselben Schreibzulassung zugelassen wie ein `INSERT` derselben Zeilen (siehe [Datenschreibvorgänge](#data-writes-insert-update-delete-merge-copy-from-stdin)). Es liest `text` (Standard) und `csv`. Jedes andere Format wird mit SQLSTATE 0A000 unter Nennung des Formats abgelehnt, bevor Daten gesendet werden. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
+**COPY FROM STDIN** ist ein Datenschreibvorgang in eine bestehende registrierte Tabelle: Er wird durch dieselbe Schreibzulassung zugelassen wie ein `INSERT` derselben Zeilen, mit der zusätzlichen Bedingung, dass die `insert`-Berechtigung keine Presets hat (siehe [Datenschreibvorgänge](#data-writes-insert-update-delete-merge-copy-from-stdin)). Er liest `text` (Standard) und `csv`. Jedes andere Format wird mit SQLSTATE 0A000 unter Nennung des Formats abgelehnt, bevor Daten gesendet werden. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
 
 ### Transaktionen und Sitzungsbefehle {: #transactions-and-session-commands }
 

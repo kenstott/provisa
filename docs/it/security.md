@@ -192,46 +192,76 @@ Pubblicare una colonna rimuove la condizione di dominio per quella colonna e nie
 
 La regola è la stessa su ogni superficie, perché ognuna legge lo schema compilato del ruolo: GraphQL, SQL (HTTP, pgwire, Flight, JDBC), Cypher e Bolt, gRPC, REST e JSON:API, i cataloghi Flight e MCP e gli elenchi di amministrazione. Un ambito che non è uno dei tre valori viene rifiutato al salvataggio di una colonna.
 
-### Permessi di scrittura {: #write-permissions }
+### Autorizzazioni di scrittura {: #write-grants }
 
-| Campo | Vuoto significa | Scopo |
-| ------- | ------------ | --------- |
-| `visible_to` | Tutti i ruoli possono leggere | Controlla chi vede la colonna (mascherata o no) |
-| `writable_by` | Nessun ruolo può scrivere | Controlla chi può mutare (INSERT/UPDATE) |
+`visible_to` controlla la lettura di una colonna (vuoto significa che tutti i ruoli possono leggere). La scrittura è controllata per tabella con `write_grants`, non per colonna. Per impostazione predefinita una tabella non ha alcuna autorizzazione, quindi nessun ruolo può scriverci. (REQ-2074)
 
-Il permesso di scrittura viene applicato nella pipeline delle mutazioni. Un ruolo non presente in `writable_by` riceve un errore 403 tentando di scrivere in una colonna limitata. (REQ-033, REQ-034)
+Un'autorizzazione di scrittura indica che cosa un ruolo può scrivere in una tabella con un'operazione (`insert`, `update` o `delete`):
+
+| Campo | Scopo |
+| ------- | --------- |
+| `columns` | Le colonne che un `INSERT` può elencare o un `UPDATE` può impostare |
+| `rows` | Le righe che un `UPDATE` o un `DELETE` può toccare (un predicato SQL) |
+| `check` | Ciò che ogni riga scritta da un `INSERT`, o lasciata da un `UPDATE`, deve soddisfare (un predicato SQL) |
+| `presets` | Colonne che l'autorizzazione imposta da sé, da una variabile di sessione, da un letterale o dal momento della scrittura. L'istruzione non può fornirle. |
+
+Se si omette `rows` o `check`, l'autorizzazione prende il filtro di righe in lettura del ruolo sulla tabella, così un ruolo scrive le righe che legge. `"TRUE"` significa ogni riga.
+
+Un'unica ammissione decide ogni scrittura su ogni superficie, in quest'ordine: il ruolo detiene il diritto `write`; detiene un'autorizzazione per l'operazione sulla tabella; ogni colonna scritta dall'istruzione è nell'autorizzazione; i preset vengono aggiunti; `rows` viene combinato con AND nel `WHERE`; e `check` viene valutato sulle nuove righe prima che venga inviato qualcosa alla sorgente. Un rifiuto nomina la tabella, il ruolo e l'operazione. (REQ-2074)
+
+Le istruzioni più ampie richiedono autorizzazioni più ampie. `TRUNCATE` richiede un'autorizzazione `delete` su ogni riga. `MERGE` richiede un'autorizzazione `insert` e una `update` su ogni riga. `INSERT ... ON CONFLICT DO UPDATE` richiede un'autorizzazione `update` su ogni riga senza preset. `COPY` richiede un'autorizzazione `insert` senza preset.
+
+GraphQL offre a ogni ruolo un campo di mutazione per esattamente le operazioni per cui detiene autorizzazioni, con le colonne dell'autorizzazione. Un ruolo figlio eredita le autorizzazioni del padre, le proprie per prime. Un meta-ruolo detiene il ripiegamento delle autorizzazioni dei suoi membri: l'unione delle colonne, l'OR di `rows` e `check`, e solo i preset condivisi da tutti i membri. Nell'interfaccia di amministrazione, la sezione **Scritture** di una tabella elenca e modifica le sue autorizzazioni.
 
 ### Esempio {: #example }
 
 ```yaml
-columns:
-  - name: email
-    visible_to: [admin, analyst, viewer]
-    writable_by: [admin]
-    masks:
-      - to: [admin]                   # admin sees raw value (no mask)
-      - to: ["*"]                     # everyone else sees it masked
-        mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
-  - name: salary
-    visible_to: [admin, hr]
-    writable_by: [hr]
-    masks:
-      - to: [admin, hr]               # admin and hr see real value
-      - to: ["*"]                     # all other visible roles see 0
-        mask: {type: constant, value: 0}
-  - name: created_at
-    visible_to: []                    # all can read
-    writable_by: []                   # nobody can write (auto-set)
+tables:
+  - source_id: hr-pg
+    domain_id: people
+    schema: public
+    table: employees
+    columns:
+      - name: id
+        visible_to: []                # all can read
+      - name: email
+        visible_to: [admin, analyst, viewer]
+        masks:
+          - to: [admin]               # admin sees raw value (no mask)
+          - to: ["*"]                 # everyone else sees it masked
+            mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
+      - name: salary
+        visible_to: [admin, hr]
+        masks:
+          - to: [admin, hr]           # admin and hr see real value
+          - to: ["*"]                 # all other visible roles see 0
+            mask: {type: constant, value: 0}
+      - name: created_at
+        visible_to: []                # all can read
+    write_grants:
+      - role: admin
+        operation: update
+        columns: [email]
+        rows: "TRUE"
+      - role: hr
+        operation: update
+        columns: [salary]
+      - role: hr
+        operation: insert
+        columns: [email, salary]
+        presets:
+          - {column: created_at, source: now}
 ```
+
 In questo esempio:
 
-- `email`: admin vede `alice@example.com` e può modificare; analyst e viewer vedono `a***@example.com`
-- `salary`: admin e hr vedono il valore reale; hr può modificare; ogni altro ruolo visibile vede `0`
-- `created_at`: tutti possono leggere, nessuno può scrivere, nessun mascheramento
+- `email`: admin vede `alice@example.com` e può aggiornarla su qualsiasi riga; analyst e viewer vedono `a***@example.com` e non possono scrivere
+- `salary`: admin e hr vedono il valore reale; hr può aggiornarlo sulle righe che hr può leggere, perché l'autorizzazione non indica `rows`; ogni altro ruolo visibile vede `0`
+- `created_at`: tutti possono leggerlo, nessun ruolo lo fornisce, e un insert di hr lo imposta al momento della scrittura
 
 ## Autorizzazione delle mutazioni {: #mutation-authorization }
 
-Le mutazioni registrate (GraphQL remoto, OpenAPI, gRPC, Hasura) sono protette da due controlli indipendenti. (REQ-867, REQ-868) Un ruolo può invocare una mutazione solo se detiene la capacità globale `write` E compare nella lista `writable_by` di quella mutazione. (REQ-868) Un `writable_by` vuoto nega per impostazione predefinita — nessun ruolo può invocarla. (REQ-867)
+Le mutazioni registrate (GraphQL remoto, OpenAPI, gRPC, Hasura) sono protette da due controlli indipendenti. (REQ-868) Un ruolo può invocare una mutazione solo se detiene la capability globale `write` E il comando gli è assegnato tramite `visible_to` (un elenco vuoto lo assegna a ogni ruolo). (REQ-868) Un comando non ha un elenco `writable_by`; la configurazione ne rifiuta uno per nome. [tool-verified: `provisa/security/mutation_authz.py` `command_assigned`, `admit_command`; `provisa/core/models.py` `_one_role_list`]
 
 Le mutazioni sono classificate come scritture per contratto, non in base a ciò che dichiara il chiamante. (REQ-869) Una `SELECT` che fa riferimento a una funzione di tipo mutazione viene promossa a scrittura e sottoposta allo stesso controllo a due porte, così un chiamante non può invocare una mutazione travestendola da lettura. (REQ-869) Riclassificare una mutazione come sicura in lettura richiede la capacità `access_config` e viene registrato come decisione di governance; non esiste un'esclusione per richiesta. (REQ-870)
 

@@ -1418,8 +1418,7 @@ functions:
 | `function_name` | Yes | — | Actual database function name |
 | `returns` | Yes | — | Registered table ID the function returns (REQ-207) |
 | `arguments` | No | `[]` | List of `{name, type}` argument definitions (REQ-211) |
-| `visible_to` | No | `[]` | Roles that can call this function |
-| `writable_by` | No | `[]` | Roles that can call this as a mutation |
+| `visible_to` | No | `[]` | Roles the function is assigned to (empty: every role). A `mutation` also needs the `write` right |
 | `domain_id` | No | `""` | Domain this function belongs to |
 | `description` | No | `null` | GraphQL field description |
 | `kind` | No | `mutation` | `"query"` or `"mutation"` (REQ-205) |

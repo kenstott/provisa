@@ -976,7 +976,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 כל נקודות הקצה תחת הקידומת `/admin/actions`. (REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
 
-כל הפעלה — מ-GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, ו-Provisa gRPC — עוברת דרך מבצע (Executor) מְמוּשְל יחיד האוכף `writable_by` וממשל באופן אחיד. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] ראו [docs/integrations.md](integrations.md#invoking-commands-across-protocols) לתחביר הקריאה לכל פרוטוקול.
+כל הפעלה — מ-GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, ו-Provisa gRPC — עוברת דרך מבצע (Executor) מְמוּשְל יחיד האוכף את שיוך ה-command (`visible_to`), את הזכות `write` למוטציה וממשל באופן אחיד. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] ראו [docs/integrations.md](integrations.md#invoking-commands-across-protocols) לתחביר הקריאה לכל פרוטוקול.
 
 #### `GET /admin/actions`
 
@@ -998,7 +998,6 @@ X-Provisa-Redirect-Threshold: 1000
       },
       "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
       "visibleTo": ["admin"],
-      "writableBy": [],
       "domainId": "pet-store",
       "description": "Demo Python command returning random rows",
       "kind": "query"
@@ -1032,8 +1031,7 @@ X-Provisa-Redirect-Threshold: 1000
 | `binding` | לא | פרטי חיבור ספציפיים ל-`implKind` (אובייקט JSON) |
 | `returnSchema` | לא | JSON Schema `{type:"array", items:{type:"object", properties:{...}}}` — הופך את הפקודה למחזירה-קבוצה (Set-Returning) בכל משטח |
 | `arguments` | לא | הגדרות ארגומנט `[{name, type}]`; סדר מיקומי חשוב עבור קוראי SQL ו-Bolt |
-| `visibleTo` | לא | מזהי תפקיד שיכולים לקרוא לפקודה |
-| `writableBy` | לא | מזהי תפקיד המורשים להפעיל אותה כ-Mutation |
+| `visibleTo` | לא | מזהי תפקידים שה-command משויך אליהם (ריק: כל תפקיד). `mutation` דורשת בנוסף את הזכות `write` |
 | `domainId` | לא | תחום עבור מיקום GraphQL ובקרת גישה |
 
 **ערכי `implKind`:**

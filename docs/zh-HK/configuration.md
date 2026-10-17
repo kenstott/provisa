@@ -665,10 +665,8 @@ tables:
     columns:
       - name: id
         visible_to: [admin, analyst]
-        writable_by: []           # read-only (empty = no writes)
       - name: email
         visible_to: [admin, analyst]
-        writable_by: [admin]      # only admin can mutate
         masks:                    # first entry the reader holds applies
           - to: [admin]           # admin sees raw
           - to: ["*"]             # everyone else sees it masked
@@ -677,25 +675,51 @@ tables:
         description: "Primary email address"  # optional: appears in SDL
       - name: amount
         visible_to: [admin]
-        writable_by: [admin]
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: constant, value: 0}
+      - name: created_by
+        visible_to: [admin, analyst]
       - name: created_at
         visible_to: [admin, analyst]
-        writable_by: []           # nobody can write
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: truncate, precision: month}
-    column_presets:               # auto-set values on insert/update
-      - column: created_by
-        source: header            # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now               # current timestamp
+    write_grants:                 # who may write this table, per role and operation
+      - role: admin
+        operation: insert
+        columns: [email, amount]
+        check: "TRUE"             # any row may be inserted
+        presets:                  # set by the grant; the statement may not supply them
+          - {column: created_by, source: session, name: user_id}
+          - {column: created_at, source: now}
+      - role: admin
+        operation: update
+        columns: [email, amount]
+        rows: "TRUE"              # any row may be updated
+        check: "TRUE"
 ```
+
+資料表預設沒有任何寫入授權，因此任何角色都不能寫入它。一條授權賦予某個角色資料表上的一種操作（`insert`、`update` 或 `delete`）。一張資料表對每個角色和操作最多保存一條授權。（REQ-2074）
+
+| 授權欄位 | 含義 |
+| ----------- | ------- |
+| `columns` | `INSERT` 可以列出、`UPDATE` 可以設定的欄位。`delete` 授權不指定任何欄位。 |
+| `rows` | `UPDATE` 或 `DELETE` 可以觸及的行：以資料表各欄位構成的 SQL 謂詞。`insert` 授權沒有此項。 |
+| `check` | `INSERT` 寫入的每一行、或 `UPDATE` 留下的每一行必須滿足的條件：SQL 謂詞。`delete` 授權沒有此項。 |
+| `presets` | 授權自己設定的欄位。陳述式不得提供這些欄位，因此預設欄位不會同時出現在 `columns` 中。 |
+
+省略 `rows` 或 `check` 時，授權採用該角色在這張資料表上的讀取行篩選器：除非授權另有規定，角色寫入的就是它能讀到的行。`"TRUE"` 表示所有行。舊的欄位層級 `writable_by` 鍵和資料表層級 `column_presets` 鍵會按名稱被拒絕；在改為 `write_grants` 之前，設定無法載入。
+
+每個介面上的每次寫入都按以下順序准入：角色持有 `write` 權利；角色持有資料表上該操作的授權；陳述式寫入的每個欄位都在授權中；授權的預設會加入陳述式；`rows` 謂詞以 AND 併入 `UPDATE` 或 `DELETE` 的 `WHERE`；在向數據來源發送任何內容之前，先對新行評估 `check`。`check` 無法判定的陳述式會被拒絕。授權的欄位同時決定 GraphQL 向角色提供哪些變更欄位：角色持有授權的每種操作各提供一個欄位，且恰好帶有這些欄位。
+
+有些陳述式需要更寬的授權。`TRUNCATE` 需要涵蓋所有行的 `delete` 授權。`MERGE` 需要 `insert` 和 `update` 授權，兩者都涵蓋所有行。`INSERT ... ON CONFLICT DO UPDATE` 需要涵蓋所有行且沒有預設的 `update` 授權。`COPY ... FROM STDIN` 需要沒有預設的 `insert` 授權。
+
+授權可以繼承。子角色針對每張資料表和每種操作，採用其鏈中最近的持有該授權的角色的授權，自己的授權優先。元角色持有其成員授權的摺疊結果：成員各欄位的聯集、各 `rows` 和 `check` 謂詞的 OR，以及只保留所有成員設定一致的預設。
+
+在管理介面中，資料表的**寫入**部分會列出這些授權並統一編輯。
 
 ### 別名 {: #aliases }
 
@@ -1213,32 +1237,38 @@ mutation {
 
 在 PostgreSQL 中編譯成 `SELECT DISTINCT ON (region) ...`。(REQ-213) 對非 PG 方言則使用視窗函式的替代做法。(REQ-213)
 
-## 欄位預設值 {: #column-presets }
+## 寫入授權的預設 {: #write-grant-presets }
 
-在插入／更新時自動注入值到欄位。(REQ-214) 於組態中按表定義。
+寫入授權在插入和更新時自行設定欄位。（REQ-214、REQ-2074）預設在授權的 `presets` 清單中宣告，按角色和操作區分。
 
 ```yaml
 tables:
   - source_id: sales-pg
+    domain_id: sales-analytics
+    schema: public
     table: orders
-    column_presets:
-      - column: created_by
-        source: header           # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now              # current timestamp
-      - column: source_system
-        source: literal          # constant value
-        value: "provisa"
+    columns:
+      - {name: amount, visible_to: [analyst]}
+      - {name: created_by, visible_to: [analyst]}
+      - {name: created_at, visible_to: [analyst]}
+      - {name: source_system, visible_to: [analyst]}
+    write_grants:
+      - role: analyst
+        operation: insert
+        columns: [amount]
+        presets:
+          - {column: created_by, source: session, name: user_id}   # from the request's session
+          - {column: created_at, source: now}                      # time of the write
+          - {column: source_system, source: literal, value: provisa}
 ```
 
 | 來源 | 行為 |
 | -------- | ---------- |
-| `header` | 從指名的 HTTP 請求標頭注入值 |
-| `now` | 注入 `NOW()`（目前時間戳記） |
-| `literal` | 注入常數值 |
+| `session` | 注入請求中指定工作階段變數（`name`）的值 |
+| `now` | 注入寫入發生的時間 |
+| `literal` | 注入一個常數（`value`） |
 
-預設欄位在變更操作編譯期間、SQL 產生之前注入。(REQ-214) 它們不會出現在變更操作的輸入類型中。(REQ-214)
+預設在編譯期間、產生 SQL 之前加入陳述式。（REQ-214）陳述式不得提供預設欄位，預設欄位也不會出現在變更的輸入類型中。（REQ-214）
 
 ## 繼承角色 {: #inherited-roles }
 

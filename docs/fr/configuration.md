@@ -665,10 +665,8 @@ tables:
     columns:
       - name: id
         visible_to: [admin, analyst]
-        writable_by: []           # read-only (empty = no writes)
       - name: email
         visible_to: [admin, analyst]
-        writable_by: [admin]      # only admin can mutate
         masks:                    # first entry the reader holds applies
           - to: [admin]           # admin sees raw
           - to: ["*"]             # everyone else sees it masked
@@ -677,25 +675,51 @@ tables:
         description: "Primary email address"  # optional: appears in SDL
       - name: amount
         visible_to: [admin]
-        writable_by: [admin]
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: constant, value: 0}
+      - name: created_by
+        visible_to: [admin, analyst]
       - name: created_at
         visible_to: [admin, analyst]
-        writable_by: []           # nobody can write
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: truncate, precision: month}
-    column_presets:               # auto-set values on insert/update
-      - column: created_by
-        source: header            # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now               # current timestamp
+    write_grants:                 # who may write this table, per role and operation
+      - role: admin
+        operation: insert
+        columns: [email, amount]
+        check: "TRUE"             # any row may be inserted
+        presets:                  # set by the grant; the statement may not supply them
+          - {column: created_by, source: session, name: user_id}
+          - {column: created_at, source: now}
+      - role: admin
+        operation: update
+        columns: [email, amount]
+        rows: "TRUE"              # any row may be updated
+        check: "TRUE"
 ```
+
+Une table n'a aucune autorisation d'écriture par défaut, donc aucun rôle ne peut y écrire. Une autorisation donne à un rôle une opération (`insert`, `update` ou `delete`) sur la table. Une table contient au plus une autorisation par rôle et par opération. (REQ-2074)
+
+| Champ de l'autorisation | Signification |
+| ----------- | ------- |
+| `columns` | Les colonnes qu'un `INSERT` peut lister ou qu'un `UPDATE` peut définir. Une autorisation `delete` n'en nomme aucune. |
+| `rows` | Les lignes qu'un `UPDATE` ou un `DELETE` peut toucher : un prédicat SQL sur les colonnes de la table. Une autorisation `insert` n'en a pas. |
+| `check` | Ce que doit satisfaire chaque ligne qu'écrit un `INSERT` ou que laisse un `UPDATE` : un prédicat SQL. Une autorisation `delete` n'en a pas. |
+| `presets` | Colonnes que l'autorisation définit elle-même. L'instruction ne peut pas les fournir, donc une colonne à preset ne figure pas aussi dans `columns`. |
+
+Si vous omettez `rows` ou `check`, l'autorisation prend le filtre de lignes en lecture du rôle sur la table : un rôle écrit les lignes qu'il lit, sauf indication contraire de l'autorisation. `"TRUE"` signifie toutes les lignes. Les anciennes clés `writable_by` de colonne et `column_presets` de table sont refusées par leur nom ; la configuration ne se charge pas tant qu'elles ne sont pas remplacées par `write_grants`.
+
+Toute écriture sur toute surface est admise dans cet ordre : le rôle détient le droit `write` ; le rôle détient une autorisation pour l'opération sur la table ; chaque colonne qu'écrit l'instruction figure dans l'autorisation ; les presets de l'autorisation sont ajoutés à l'instruction ; le prédicat `rows` est combiné par AND dans le `WHERE` d'un `UPDATE` ou d'un `DELETE` ; et `check` est évalué sur les nouvelles lignes avant que quoi que ce soit soit envoyé à la source. Une instruction que `check` ne peut pas trancher est refusée. Les colonnes de l'autorisation décident aussi des champs de mutation que GraphQL propose à un rôle : un champ par opération pour laquelle il détient une autorisation, avec exactement ces colonnes.
+
+Certaines instructions demandent une autorisation plus large. `TRUNCATE` demande une autorisation `delete` sur toutes les lignes. `MERGE` demande une autorisation `insert` et une autorisation `update`, toutes deux sur toutes les lignes. `INSERT ... ON CONFLICT DO UPDATE` demande une autorisation `update` sur toutes les lignes, sans presets. `COPY ... FROM STDIN` demande une autorisation `insert` sans presets.
+
+Les autorisations sont héritées. Un rôle enfant prend, par table et par opération, l'autorisation du rôle le plus proche de sa chaîne qui en détient une, la sienne d'abord. Un méta-rôle détient le repli des autorisations de ses membres : l'union de leurs colonnes, le OR de leurs prédicats `rows` et `check`, et seulement les presets que tous les membres définissent de la même façon.
+
+Dans l'interface d'administration, la section **Écritures** d'une table liste les autorisations et les modifie ensemble.
 
 ### Alias {: #aliases }
 
@@ -1213,32 +1237,38 @@ L'argument `distinct_on` sélectionne la première ligne pour chaque valeur dist
 
 Se compile en `SELECT DISTINCT ON (region) ...` sur PostgreSQL. (REQ-213) Pour les autres dialectes, un repli par fonction de fenêtrage est utilisé. (REQ-213)
 
-## Valeurs prédéfinies de colonne {: #column-presets }
+## Presets des autorisations d'écriture {: #write-grant-presets }
 
-Injectent automatiquement des valeurs dans les colonnes à l'insertion et à la mise à jour. (REQ-214) Définies par table dans la configuration.
+Une autorisation d'écriture définit elle-même des colonnes à l'insertion et à la mise à jour. (REQ-214, REQ-2074) Les presets sont déclarés dans la liste `presets` de l'autorisation, par rôle et par opération.
 
 ```yaml
 tables:
   - source_id: sales-pg
+    domain_id: sales-analytics
+    schema: public
     table: orders
-    column_presets:
-      - column: created_by
-        source: header           # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now              # current timestamp
-      - column: source_system
-        source: literal          # constant value
-        value: "provisa"
+    columns:
+      - {name: amount, visible_to: [analyst]}
+      - {name: created_by, visible_to: [analyst]}
+      - {name: created_at, visible_to: [analyst]}
+      - {name: source_system, visible_to: [analyst]}
+    write_grants:
+      - role: analyst
+        operation: insert
+        columns: [amount]
+        presets:
+          - {column: created_by, source: session, name: user_id}   # from the request's session
+          - {column: created_at, source: now}                      # time of the write
+          - {column: source_system, source: literal, value: provisa}
 ```
 
 | Source | Comportement |
 | -------- | ---------- |
-| `header` | Injecte la valeur de l'en-tête de requête HTTP nommé |
-| `now` | Injecte `NOW()` (horodatage courant) |
-| `literal` | Injecte une valeur constante |
+| `session` | Injecte la valeur de la variable de session nommée (`name`) de la requête |
+| `now` | Injecte l'instant de l'écriture |
+| `literal` | Injecte une constante (`value`) |
 
-Les colonnes prédéfinies sont injectées pendant la compilation de la mutation, avant la génération du SQL. (REQ-214) Elles ne sont pas visibles dans le type d'entrée de la mutation. (REQ-214)
+Les presets sont ajoutés à l'instruction pendant la compilation, avant la génération du SQL. (REQ-214) L'instruction ne peut pas fournir une colonne à preset, et une colonne à preset ne figure pas dans le type d'entrée de la mutation. (REQ-214)
 
 ## Rôles hérités {: #inherited-roles }
 

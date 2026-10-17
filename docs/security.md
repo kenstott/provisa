@@ -193,47 +193,76 @@ Publishing a column removes the domain condition for that column and nothing els
 
 The rule is the same on every surface, because each one reads the role's compiled schema: GraphQL, SQL (HTTP, pgwire, Flight, JDBC), Cypher and Bolt, gRPC, REST and JSON:API, the Flight and MCP catalogs and the admin listings. A scope that is not one of the three values is refused when a column is saved.
 
-### Write Permissions
+### Write Grants
 
-| Field | Empty means | Purpose |
-| ------- | ------------ | --------- |
-| `visible_to` | All roles can read | Controls who sees the column (masked or unmasked) |
-| `writable_by` | No role can write | Controls who can mutate (INSERT/UPDATE) |
+Reading a column is controlled by `visible_to` (empty means all roles can read). Writing is controlled per table by `write_grants`, not per column. A table holds no grants by default, so no role can write it. (REQ-2074)
 
-Write permission is enforced in the mutation pipeline. A role not in `writable_by` receives a 403 error when attempting to write to a restricted column. (REQ-033, REQ-034)
+A write grant states what one role may write to one table by one operation (`insert`, `update` or `delete`):
+
+| Field | Purpose |
+| ------- | --------- |
+| `columns` | The columns an `INSERT` may list or an `UPDATE` may set |
+| `rows` | The rows an `UPDATE` or `DELETE` may touch (a SQL predicate) |
+| `check` | What every row an `INSERT` writes, or an `UPDATE` leaves behind, must satisfy (a SQL predicate) |
+| `presets` | Columns the grant sets itself, from a session variable, a literal or the time of the write. The statement may not supply them. |
+
+Leave `rows` or `check` out and the grant takes the role's read row filter on the table, so a role writes the rows it reads. `"TRUE"` means every row.
+
+One admission decides every write on every surface, in this order: the role holds the `write` right; it holds a grant for the operation on the table; each column the statement writes is in the grant; the presets are added; `rows` is ANDed into the `WHERE`; and `check` is evaluated on the new rows before anything is sent to the source. A refusal names the table, role and operation. (REQ-2074)
+
+Wider statements need wider grants. `TRUNCATE` needs a `delete` grant over every row. `MERGE` needs an `insert` and an `update` grant over every row. `INSERT ... ON CONFLICT DO UPDATE` needs an `update` grant over every row with no presets. `COPY` needs an `insert` grant with no presets.
+
+GraphQL offers each role a mutation field for exactly the operations it holds grants for, taking the grant's columns. A child role inherits its parent's grants, its own first. A meta role holds the fold of its members' grants: the union of columns, the OR of `rows` and `check`, and only the presets all members share. In the admin UI, a table's **Writes** section lists and edits its grants.
 
 ### Example
 
 ```yaml
-columns:
-  - name: email
-    visible_to: [admin, analyst, viewer]
-    writable_by: [admin]
-    masks:
-      - to: [admin]                   # admin sees raw value (no mask)
-      - to: ["*"]                     # everyone else sees it masked
-        mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
-  - name: salary
-    visible_to: [admin, hr]
-    writable_by: [hr]
-    masks:
-      - to: [admin, hr]               # admin and hr see real value
-      - to: ["*"]                     # all other visible roles see 0
-        mask: {type: constant, value: 0}
-  - name: created_at
-    visible_to: []                    # all can read
-    writable_by: []                   # nobody can write (auto-set)
+tables:
+  - source_id: hr-pg
+    domain_id: people
+    schema: public
+    table: employees
+    columns:
+      - name: id
+        visible_to: []                # all can read
+      - name: email
+        visible_to: [admin, analyst, viewer]
+        masks:
+          - to: [admin]               # admin sees raw value (no mask)
+          - to: ["*"]                 # everyone else sees it masked
+            mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
+      - name: salary
+        visible_to: [admin, hr]
+        masks:
+          - to: [admin, hr]           # admin and hr see real value
+          - to: ["*"]                 # all other visible roles see 0
+            mask: {type: constant, value: 0}
+      - name: created_at
+        visible_to: []                # all can read
+    write_grants:
+      - role: admin
+        operation: update
+        columns: [email]
+        rows: "TRUE"
+      - role: hr
+        operation: update
+        columns: [salary]
+      - role: hr
+        operation: insert
+        columns: [email, salary]
+        presets:
+          - {column: created_at, source: now}
 ```
 
 In this example:
 
-- `email`: admin sees `alice@example.com` and can edit; analyst and viewer see `a***@example.com`
-- `salary`: admin and hr see the real value; hr can edit; every other visible role sees `0`
-- `created_at`: everyone can read, nobody can write, no masking
+- `email`: admin sees `alice@example.com` and can update it on any row; analyst and viewer see `a***@example.com` and cannot write
+- `salary`: admin and hr see the real value; hr can update it on the rows hr can read, because the grant states no `rows`; every other visible role sees `0`
+- `created_at`: everyone can read it, no role supplies it, and an hr insert sets it to the time of the write
 
 ## Mutation Authorization
 
-Registered mutations (remote GraphQL, OpenAPI, gRPC, Hasura) are gated by two independent checks. (REQ-867, REQ-868) A role may invoke a mutation only if it holds the global `write` capability AND appears in that mutation's `writable_by` list. (REQ-868) An empty `writable_by` is default-deny — no role can invoke it. (REQ-867)
+Registered mutations (remote GraphQL, OpenAPI, gRPC, Hasura) are gated by two independent checks. (REQ-868) A role may invoke a mutation only if it holds the global `write` capability AND the command is assigned to it by `visible_to` (an empty list assigns it to every role). (REQ-868) A command has no `writable_by` list; the configuration refuses one by name. [tool-verified: `provisa/security/mutation_authz.py` `command_assigned`, `admit_command`; `provisa/core/models.py` `_one_role_list`]
 
 Mutations are classified as writes by contract, not by caller declaration. (REQ-869) A `SELECT` that references a mutation-kind function is promoted to a write and subject to the same two-gate check, so a caller cannot invoke a mutation by disguising it as a read. (REQ-869) Reclassifying a mutation to read-safe requires the `access_config` capability and is recorded as a governance decision; there is no per-request opt-out. (REQ-870)
 

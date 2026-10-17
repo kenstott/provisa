@@ -183,7 +183,7 @@ I nomi delle proprietà mappano a colonne tramite lo strip del prefisso di domin
 Regole:
 
 - L'etichetta deve risolvere esattamente a una tabella registrata. Etichette ambigue o sconosciute sono errori bloccanti; nessun matching fuzzy. (REQ-661) Non è possibile creare nuove etichette o tipi tramite Cypher. (REQ-662)
-- Ogni scrittura è vincolata alla ACL `writable_by` della tabella target; un ruolo senza diritti di scrittura viene rifiutato a tempo di compilazione. (REQ-663)
+- Ogni scrittura è vincolata alle autorizzazioni di scrittura della tabella target: il ruolo ha bisogno del diritto `write` e di un'autorizzazione per l'operazione, e le colonne scritte devono essere nell'autorizzazione. Un ruolo che non le ha viene rifiutato a tempo di compilazione. (REQ-663)
 - Il connettore dell'origine sottostante deve supportare DML. Le origini di sola lettura (federate via Trino, Iceberg senza connettore Delta) rifiutano le scritture a tempo di traduzione. (REQ-664)
 - Le relazioni non possono essere scritte — sono derivate dai join dichiarati nel modello, non archi memorizzati. Targettare una relazione è un errore bloccante. (REQ-665) Un arco basato su una tabella di giunzione non fa eccezione: la tabella associativa che lo sostiene è essa stessa una tabella registrata, e le righe si scrivono in quella tabella, non nell'arco. (REQ-1586)
 - Le scritture passano attraverso l'intera pipeline di scrittura: iniezione RLS e hook post-mutation (invalidazione della cache di risposta, marcatura stale delle viste materializzate, eventi di modifica Kafka, ricarica hot-table). (REQ-798)

@@ -665,10 +665,8 @@ tables:
     columns:
       - name: id
         visible_to: [admin, analyst]
-        writable_by: []           # read-only (empty = no writes)
       - name: email
         visible_to: [admin, analyst]
-        writable_by: [admin]      # only admin can mutate
         masks:                    # first entry the reader holds applies
           - to: [admin]           # admin sees raw
           - to: ["*"]             # everyone else sees it masked
@@ -677,25 +675,51 @@ tables:
         description: "Primary email address"  # optional: appears in SDL
       - name: amount
         visible_to: [admin]
-        writable_by: [admin]
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: constant, value: 0}
+      - name: created_by
+        visible_to: [admin, analyst]
       - name: created_at
         visible_to: [admin, analyst]
-        writable_by: []           # nobody can write
         masks:
           - to: [admin]
           - to: ["*"]
             mask: {type: truncate, precision: month}
-    column_presets:               # auto-set values on insert/update
-      - column: created_by
-        source: header            # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now               # current timestamp
+    write_grants:                 # who may write this table, per role and operation
+      - role: admin
+        operation: insert
+        columns: [email, amount]
+        check: "TRUE"             # any row may be inserted
+        presets:                  # set by the grant; the statement may not supply them
+          - {column: created_by, source: session, name: user_id}
+          - {column: created_at, source: now}
+      - role: admin
+        operation: update
+        columns: [email, amount]
+        rows: "TRUE"              # any row may be updated
+        check: "TRUE"
 ```
+
+כברירת מחדל אין לטבלה שום הרשאת כתיבה, ולכן אף תפקיד אינו יכול לכתוב אליה. הרשאה נותנת לתפקיד אחד פעולה אחת (`insert`, `update` או `delete`) על הטבלה. טבלה מכילה לכל היותר הרשאה אחת לכל תפקיד ופעולה. (REQ-2074)
+
+| שדה ההרשאה | משמעות |
+| ----------- | ------- |
+| `columns` | העמודות ש-`INSERT` רשאי לרשום או ש-`UPDATE` רשאי לקבוע. הרשאת `delete` אינה נוקבת באף אחת. |
+| `rows` | השורות ש-`UPDATE` או `DELETE` רשאי לגעת בהן: פרדיקט SQL על עמודות הטבלה. להרשאת `insert` אין כזה. |
+| `check` | מה שכל שורה ש-`INSERT` כותב, או ש-`UPDATE` משאיר, חייבת לקיים: פרדיקט SQL. להרשאת `delete` אין כזה. |
+| `presets` | עמודות שההרשאה קובעת בעצמה. ההצהרה אינה רשאית לספק אותן, ולכן עמודת preset אינה מופיעה גם ב-`columns`. |
+
+אם משמיטים את `rows` או את `check`, ההרשאה לוקחת את מסנן השורות של התפקיד לקריאה בטבלה: תפקיד כותב את השורות שהוא קורא, אלא אם ההרשאה קובעת אחרת. `"TRUE"` פירושו כל שורה. המפתחות הישנים `writable_by` של עמודה ו-`column_presets` של טבלה נדחים בשמם; ההגדרות לא ייטענו עד שיוחלפו ב-`write_grants`.
+
+כל כתיבה בכל משטח מאושרת בסדר הזה: לתפקיד יש את הזכות `write`; לתפקיד יש הרשאה לפעולה על הטבלה; כל עמודה שההצהרה כותבת מופיעה בהרשאה; ה-presets של ההרשאה מתווספים להצהרה; הפרדיקט `rows` מצורף ב-AND ל-`WHERE` של `UPDATE` או `DELETE`; וה-`check` מוערך על השורות החדשות לפני שנשלח משהו למקור. הצהרה ש-`check` אינו יכול להכריע בה נדחית. עמודות ההרשאה קובעות גם אילו שדות מוטציה GraphQL מציע לתפקיד: שדה אחד לכל פעולה שיש לו הרשאה עבורה, בדיוק עם העמודות האלה.
+
+חלק מההצהרות דורשות הרשאה רחבה יותר. `TRUNCATE` דורש הרשאת `delete` על כל שורה. `MERGE` דורש הרשאת `insert` והרשאת `update`, שתיהן על כל שורה. `INSERT ... ON CONFLICT DO UPDATE` דורש הרשאת `update` על כל שורה ללא presets. `COPY ... FROM STDIN` דורש הרשאת `insert` ללא presets.
+
+הרשאות עוברות בירושה. תפקיד צאצא לוקח, לכל טבלה ופעולה, את ההרשאה של התפקיד הקרוב ביותר בשרשרת שלו שמחזיק בה, כשהשלו קודמת. תפקיד-על (meta role) מחזיק את הקיפול של הרשאות חבריו: איחוד העמודות שלהם, ה-OR של הפרדיקטים `rows` ו-`check` שלהם, ורק ה-presets שכל החברים קובעים באופן זהה.
+
+בממשק הניהול, הסעיף **כתיבות** של טבלה מפרט את ההרשאות ועורך אותן יחד.
 
 ### כינויים (Aliases)
 
@@ -1213,32 +1237,38 @@ mutation {
 
 מתקמפל ל-`SELECT DISTINCT ON (region) ...` ב-PostgreSQL. (REQ-213) עבור דיאלקטים שאינם PG, נעשה שימוש בנפילה-חוזרת מבוססת window-function. (REQ-213)
 
-## פריסטים לעמודות (Column Presets)
+## Presets של הרשאות כתיבה {: #write-grant-presets }
 
-הזרקת ערכים אוטומטית לעמודות בהוספה/עדכון. (REQ-214) מוגדר לפי טבלה בתצורה.
+הרשאת כתיבה קובעת עמודות בעצמה בהוספה ובעדכון. (REQ-214, REQ-2074) ה-presets מוצהרים ברשימה `presets` של ההרשאה, לכל תפקיד ופעולה.
 
 ```yaml
 tables:
   - source_id: sales-pg
+    domain_id: sales-analytics
+    schema: public
     table: orders
-    column_presets:
-      - column: created_by
-        source: header           # from request header
-        name: X-User-ID
-      - column: updated_at
-        source: now              # current timestamp
-      - column: source_system
-        source: literal          # constant value
-        value: "provisa"
+    columns:
+      - {name: amount, visible_to: [analyst]}
+      - {name: created_by, visible_to: [analyst]}
+      - {name: created_at, visible_to: [analyst]}
+      - {name: source_system, visible_to: [analyst]}
+    write_grants:
+      - role: analyst
+        operation: insert
+        columns: [amount]
+        presets:
+          - {column: created_by, source: session, name: user_id}   # from the request's session
+          - {column: created_at, source: now}                      # time of the write
+          - {column: source_system, source: literal, value: provisa}
 ```
 
 | מקור | התנהגות |
 | -------- | ---------- |
-| `header` | מזריק ערך מכותרת בקשת HTTP בשם הנתון |
-| `now` | מזריק `NOW()` (חותמת זמן נוכחית) |
-| `literal` | מזריק ערך קבוע |
+| `session` | מזריק את הערך של משתנה ההפעלה הנקוב (`name`) של הבקשה |
+| `now` | מזריק את רגע הכתיבה |
+| `literal` | מזריק קבוע (`value`) |
 
-עמודות פריסט מוזרקות במהלך קימפול המוטציה לפני חילול SQL. (REQ-214) הן אינן נראות בטיפוס קלט המוטציה. (REQ-214)
+ה-presets מתווספים להצהרה בזמן הקומפילציה, לפני יצירת ה-SQL. (REQ-214) ההצהרה אינה רשאית לספק עמודת preset, ועמודת preset אינה מופיעה בטיפוס הקלט של המוטציה. (REQ-214)
 
 ## תפקידים בעלי ירושה {: #inherited-roles }
 

@@ -1402,8 +1402,7 @@ functions:
 | `function_name` | Ja | — | Tatsächlicher Datenbankfunktionsname |
 | `returns` | Ja | — | Registrierte Tabellen-ID, die die Funktion zurückgibt (REQ-207) |
 | `arguments` | Nein | `[]` | Liste von `{name, type}`-Argumentdefinitionen (REQ-211) |
-| `visible_to` | Nein | `[]` | Rollen, die diese Funktion aufrufen können |
-| `writable_by` | Nein | `[]` | Rollen, die dies als Mutation aufrufen können |
+| `visible_to` | Nein | `[]` | Rollen, denen die Funktion zugewiesen ist (leer: jede Rolle). Eine `mutation` braucht zusätzlich das Recht `write` |
 | `domain_id` | Nein | `""` | Domäne, zu der diese Funktion gehört |
 | `description` | Nein | `null` | GraphQL-Feldbeschreibung |
 | `kind` | Nein | `mutation` | `"query"` oder `"mutation"` (REQ-205) |

@@ -1338,8 +1338,7 @@ functions:
 | `function_name` | 是 | — | 實際的資料庫函式名稱 |
 | `returns` | 是 | — | 該函式回傳的已註冊表 ID（REQ-207） |
 | `arguments` | 否 | `[]` | `{name, type}` 引數定義清單（REQ-211） |
-| `visible_to` | 否 | `[]` | 能呼叫此函式的角色 |
-| `writable_by` | 否 | `[]` | 能以變更操作呼叫此函式的角色 |
+| `visible_to` | 否 | `[]` | 該函式分配給的角色（為空：所有角色）。`mutation` 另外需要 `write` 權利 |
 | `domain_id` | 否 | `""` | 此函式所屬的網域 |
 | `description` | 否 | `null` | GraphQL 欄位說明 |
 | `kind` | 否 | `mutation` | `"query"` 或 `"mutation"`（REQ-205） |

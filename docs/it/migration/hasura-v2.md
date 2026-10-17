@@ -3,14 +3,31 @@
 ## Prerequisiti {: #prerequisites }
 
 1. Un'istanza Hasura v2 (v2.x) in esecuzione con i metadati esportati.
-2. Esportare i metadati con la CLI di Hasura:
+2. Esportare i metadati in uno dei due layout:
+
+   **La directory di metadati della CLI:**
 
    ```bash
    hasura metadata export --endpoint http://localhost:8080
    ```
 
-   Questo crea una directory `metadata/` contenente `sources.yaml`, `actions.yaml`,
-   `cron_triggers.yaml`, `inherited_roles.yaml`, `remote_schemas.yaml`, ecc.
+   Questo crea una directory `metadata/`. `databases/databases.yaml` elenca ogni sorgente con il suo tipo
+   e la sua connessione e rimanda alle sue tabelle e funzioni tramite indici `!include`;
+   `actions.yaml`, `cron_triggers.yaml`, `inherited_roles.yaml`, `remote_schemas.yaml` e gli
+   altri file stanno accanto. Anche il vecchio layout piatto (`tables.yaml` nella radice)
+   viene convertito.
+
+   **Il documento unico dell'API dei metadati:**
+
+   ```bash
+   curl -X POST http://localhost:8080/v1/metadata \
+     -H "X-Hasura-Admin-Secret: <secret>" \
+     -d '{"type":"export_metadata","args":{}}' > metadata.json
+   ```
+
+   Funzionano sia l'oggetto semplice sia la busta `{resource_version, metadata}`. L'importazione
+   di amministrazione (Admin, Import Hasura Config) accetta questa forma; il convertitore da riga di
+   comando qui sotto legge directory.
 3. Python 3.11+ con il pacchetto `provisa` installato.
 
 ## Utilizzo della CLI {: #cli-usage }
@@ -58,52 +75,82 @@ convertire. Il convertitore effettua le seguenti mappature:
 - Admin secret -> Provisa `superuser`.
 - Autenticazione tramite webhook -> viene emesso un avviso (nessun equivalente in Provisa).
 
+## Il rapporto {: #the-report }
+
+La conversione termina con un rapporto in tre parti:
+
+1. **Riportato così com'è.** L'oggetto ha una controparte in Provisa e si converte senza cambiare significato.
+2. **Mappato su una funzionalità migliore di Provisa.** Ogni voce dice perché la funzionalità di Provisa svolge meglio il compito.
+3. **Da rifare a mano.** Ogni voce dice cosa fare. Sono gli avvisi.
+
+Il convertitore da riga di comando stampa il rapporto su stderr come `Carried as`, `Mapped to` e `Redo by hand`, ciascuna con un conteggio, quando resta qualcosa da rifare. L'importazione di amministrazione restituisce le tre liste con l'anteprima.
+
 ## Matrice di parità delle funzionalità {: #feature-parity-matrix }
 
-| Funzionalità di Hasura v2 | Equivalente in Provisa | Note |
-| --- | --- | --- |
-| **Origini** (postgres, mysql, mssql, bigquery, citus) | `sources[]` | Tipo mappato: pg/postgres -> postgresql, mssql -> sqlserver. L'URL di connessione viene analizzato in host/port/database/username/password. Le impostazioni del pool vengono preservate. |
-| **Tabelle** (tabelle monitorate) | `tables[]` | Schema e nome tabella vengono preservati. `source_id` collega all'origine. |
-| **Nomi tabella personalizzati** (`custom_name`, `custom_root_fields.select`) | `tables[].alias` | Primo valore non nullo tra `select`, `select_by_pk`, `custom_name`. |
-| **Nomi colonna personalizzati** | `columns[].alias` | Mappa il dizionario `custom_column_names` sugli alias delle colonne. |
-| **Autorizzazioni di selezione** (colonne, filtro) | `columns[].visible_to[]`, `rls_rules[]` | Gli elenchi di colonne diventano `visible_to`. Sono supportate colonne con carattere jolly (`*`). I filtri vengono convertiti in SQL tramite `bool_expr_to_sql`. |
-| **Autorizzazioni di inserimento/aggiornamento** (colonne) | `columns[].writable_by[]` | Gli elenchi di colonne diventano `writable_by`. I ruoli vengono aggiornati con la capability `write`. |
-| **Autorizzazioni di eliminazione** | Aggiornamento della capability del ruolo | Il ruolo ottiene la capability `write`. Nessuna mappatura di eliminazione per singola tabella. |
-| **Relazioni di oggetto** | `relationships[]` con `cardinality: many-to-one` | La mappatura delle colonne viene preservata. |
-| **Relazioni di array** | `relationships[]` con `cardinality: one-to-many` | La mappatura delle colonne viene preservata. |
-| **Campi calcolati** | `functions[]` | Mappati su una Function con `returns` che punta all'ID della tabella padre. |
-| **Funzioni monitorate** | `functions[]` | `exposed_as` è impostato su mutation per impostazione predefinita. Lo schema viene preservato. |
-| **Actions** (handler di stored procedure) | `functions[]` | Convertite in una configurazione Function quando supportate da una stored procedure. |
-| **Actions** (handler webhook) | Non convertite | Viene emesso un avviso, inclusa l'URL dell'handler. |
-| **Trigger cron** | Non convertiti | Viene emesso un avviso. (Esistono trigger pianificati a runtime, ma il convertitore non li mappa.) |
-| **Trigger di evento** | Non convertiti | Viene emesso un avviso. (Esistono trigger di evento a runtime, ma il convertitore non li mappa.) |
-| **Ruoli ereditati** | `roles[].parent_role_id` | Il primo ruolo in `role_set` diventa il ruolo padre. Vengono creati tutti i ruoli figli. |
-| **Schemi remoti** | `sources[]` (`graphql_remote`) | Registrati come origine `graphql_remote`. Nome, URL, intestazioni e configurazione di autenticazione vengono preservati. |
-| **Tabelle enum** | Tabella creata | Il flag `is_enum` non viene riportato (nessun equivalente in Provisa). |
-| **Allow list** | Ignorate | Non presenti nel modello dei metadati. |
+| Funzionalità Hasura v2 | Parte | Equivalente Provisa | Note |
+| --- | --- | --- | --- |
+| **Sorgenti** (postgres, mysql, mssql, bigquery, citus) | riportato | `sources[]` | Tipo mappato: pg/postgres -> postgresql, mssql -> sqlserver. Un URL di connessione scritto per esteso viene scomposto in host/porta/database/utente/password. Dimensione del pool conservata. Un URL letto da una variabile d'ambiente non viene indovinato (vedi sotto). |
+| **Tabelle** (tabelle tracciate) | riportato | `tables[]` | Schema e nome della tabella conservati. `source_id` rimanda alla sorgente. |
+| **Nomi di tabella personalizzati** (`custom_name`, `custom_root_fields.select`) | riportato | `tables[].alias` | Il primo valore non nullo tra `select`, `select_by_pk`, `custom_name`. |
+| **Nomi di colonna personalizzati** (`column_config`, precedente `custom_column_names`) | riportato | `columns[].alias` | Il nome personalizzato di ogni colonna diventa il suo alias. |
+| **Altri nomi di campo radice** (`select_by_pk`, `select_aggregate`, `insert`, ...) | mappato | Il campo unico della tabella | Segnalati per nome. Una lettura per chiave è un filtro sulla tabella, un aggregato il suo campo `_aggregate`, una scrittura la sua mutazione. |
+| **Autorizzazioni di select** (colonne, filtro) | riportato | `columns[].visible_to[]`, `rls_rules[]` | Gli elenchi di colonne diventano `visible_to`; `*` è supportato. I filtri diventano SQL; le variabili di sessione diventano `current_setting('provisa.<name>')`. |
+| **Filtri attraverso relationship** | riportato | Sottoquery `EXISTS` in `rls_rules[]` | La regola segue la relationship fino alla sua tabella. |
+| **Autorizzazioni di insert, update e delete** | riportato | `tables[].write_grants[]` | Un'autorizzazione per ruolo e operazione: colonne da `columns`, `rows` da `filter`, `check` da `check`, preset da `set`. I ruoli ottengono il diritto `write`. |
+| **Ruolo admin** | riportato | `org_admin` | Detiene ogni autorizzazione su ogni colonna e riga, ed è nominato su ogni colonna importata. |
+| **Relationship di oggetto** | riportato | `relationships[]` con `cardinality: many-to-one` | Approvate. Il campo GraphQL è il nome della relationship Hasura. |
+| **Relationship di array** | riportato | `relationships[]` con `cardinality: one-to-many` | Approvate. Il campo GraphQL è il nome della relationship Hasura. |
+| **Ruoli ereditati** (un ruolo) | riportato | `roles[].parent_role_id` | Il ruolo diventa il padre. |
+| **Ruoli ereditati** (più ruoli) | mappato | Un ruolo che detiene l'unione delle loro autorizzazioni | I ruoli Provisa hanno un solo padre, quindi l'unione viene scritta esplicitamente sul ruolo. |
+| **Computed field** | da rifare | Una colonna di vista | L'esportazione nomina la funzione, non il suo corpo. Il rapporto indica il `SELECT` da aggiungere. |
+| **Funzioni tracciate** | riportato, altrimenti da rifare | Comandi `functions[]` | L'anteprima legge la firma dal database. Senza, aggiungete la funzione nella pagina Commands. |
+| **Action** | mappato | Comandi che chiamano l'handler | `{{VAR}}` nell'URL dell'handler si scrive `${env:VAR}` e viene risolto quando il comando viene chiamato. |
+| **Cron trigger** | riportato | `scheduled_triggers[]` | Espressione cron, URL, payload e flag enabled. I tentativi ripetuti non sono riportati (avviso). |
+| **Event trigger** | mappato | `scheduled_triggers[]` sulla modifica della tabella | Scatta per lotto di modifiche a ogni modifica. I tentativi ripetuti non sono riportati (avviso). |
+| **Remote schema** | mappato | `sources[]` (`graphql_remote`) approdato come tabelle | Nome, URL, header e autenticazione conservati; i campi radice diventano tabelle governate. |
+| **Tabelle enum** | riportato | Tabella creata | Il flag `is_enum` non viene riportato (nessun equivalente Provisa). |
+| **Allow list, query collection, endpoint REST** | da rifare | Nessuno | Segnalati quando presenti in un'esportazione consolidata; non convertiti. |
 
-## Passaggi post-conversione {: #post-conversion-steps }
+### Relationship {: #relationships }
 
-1. **Rivedere il YAML di output.** Verificare che origini, tabelle e ruoli siano corretti.
-2. **Configurare le connessioni delle origini.** Il convertitore analizza gli URL di connessione, ma
-   ricorre a `localhost` in caso di errore di analisi. Utilizzare `--source-overrides` o modificare direttamente l'output.
-3. **Verificare le assegnazioni di dominio.** Senza `--domain-map`, tutte le tabelle finiscono in `default`.
-   Assegnare gli schemi ai domini con `--domain-map public=core analytics=reporting`.
-4. **Controllare le regole RLS.** I filtri vengono convertiti in approssimazioni SQL. Le espressioni
-   booleane complesse (`_and`/`_or`/`_exists` annidate) devono essere riviste manualmente.
-5. **Esaminare gli avvisi.** Il convertitore stampa su stderr un riepilogo degli avvisi per le
-   funzionalità che non riesce a mappare (trigger di evento, trigger cron, actions basate su webhook).
-6. **Configurare l'autenticazione.** Se la propria istanza Hasura utilizza autenticazione JWT/webhook, creare
-   un file di ambiente di autenticazione e rieseguire con `--auth-env-file`.
-7. **Testare.** Avviare il server Provisa e verificare le query sulle proprie origini dati.
+- Il campo GraphQL di ogni relationship è il nome Hasura. Quando la tabella ha già un campo con quel nome, la relationship prende il nome che le dà Provisa e il rapporto avvisa.
+- Due relationship che dichiarano lo stesso join si fondono in una. Il rapporto indica quale si è fusa in quale.
+- Una relationship che unisce su più coppie di colonne viene segnalata con un avviso e non viene creata, perché una relazione Provisa unisce su una coppia. Le regole di righe che la attraversano vengono comunque convertite.
+- Una relationship di oggetto dichiarata solo dalla colonna di chiave esterna viene risolta tramite la relationship di array inversa; senza una, viene segnalata.
+
+### Autorizzazioni di scrittura {: #write-grants }
+
+Un'autorizzazione indica che cosa un ruolo può scrivere in una tabella con un'operazione. Un `filter` o `check` vuoto significa ogni riga (`TRUE`). Un valore di `set` `X-Hasura-User-Id` diventa un preset `session` di `user_id`; qualsiasi altro valore diventa un preset `literal`. Una colonna con preset non compare anche nelle colonne dell'autorizzazione.
+
+### Action, funzioni tracciate e trigger {: #actions-tracked-functions-and-triggers }
+
+- Una **action** diventa un comando che chiama il suo handler, visibile ai ruoli che le sue autorizzazioni nominano (al solo `org_admin` quando non ne nominano nessuno). Un'action asincrona viene segnalata: il comando attende la risposta dell'handler.
+- Una **funzione tracciata** diventa un comando quando l'anteprima può leggere i suoi argomenti e la sua tabella di ritorno da una sorgente PostgreSQL. Offline, e per qualsiasi funzione mancante, sovraccarica o che restituisce una tabella che l'importazione non registra, passa a da rifare.
+- Un **event trigger** scatta a ogni modifica della sua tabella, una volta per lotto, e invia la tabella e le righe modificate anziché un evento per riga con valori vecchi e nuovi. Un trigger che ascoltava meno di tutte e tre le operazioni viene segnalato.
+
+## Passaggi dopo la conversione {: #post-conversion-steps }
+
+1. **Esamina il rapporto.** Parti da `Redo by hand`.
+2. **Configura le connessioni delle sorgenti.** Una connessione che l'esportazione scrive per esteso viene convertita così com'è. Una letta da una variabile d'ambiente arriva vuota. Usa `--source-overrides` o modifica direttamente l'output.
+3. **Verifica le assegnazioni dei domini.** Senza `--domain-map`, tutte le tabelle finiscono in `default`.
+   Assegna gli schemi ai domini con `--domain-map public=core analytics=reporting`.
+4. **Controlla le regole di righe.** I filtri vengono convertiti in SQL. Esamina le espressioni booleane
+   complesse (`_and`/`_or`/`_exists` annidati) e i filtri attraverso le relationship.
+5. **Rifai ciò che è elencato.** Computed field, funzioni tracciate che l'anteprima non ha potuto leggere,
+   tentativi ripetuti dei trigger e autenticazione tramite webhook non hanno una conversione automatica.
+6. **Configura l'autenticazione.** Se la tua istanza Hasura usa l'autenticazione JWT/webhook, crea un file
+   di ambiente di autenticazione ed esegui di nuovo con `--auth-env-file`.
+7. **Prova.** Avvia il server Provisa e verifica le query sulle tue sorgenti dati.
 
 ## Problemi comuni e risoluzione dei problemi {: #common-issues-and-troubleshooting }
 
-### L'URL di connessione non viene analizzato {: #connection-url-not-parsed }
+### La connessione viene da una variabile d'ambiente {: #connection-comes-from-an-environment-variable }
 
-Se `database_url` dell'origine è un riferimento a una variabile d'ambiente (`{"from_env": "PG_URL"}`),
-il convertitore non può risolverlo al momento della conversione. L'origine avrà valori
-segnaposto (`host: localhost`, `database: default`). Correggere con `--source-overrides`.
+Se il `database_url` della sorgente è un riferimento a una variabile d'ambiente (`{"from_env": "PG_URL"}`),
+il suo valore non è nell'esportazione. Il convertitore non ne indovina nessuno: la sorgente ha host,
+database, utente e password vuoti, e il rapporto la elenca in `Redo by hand`.
+Inserisci la connessione nelle impostazioni delle sorgenti dell'importazione (o con `--source-overrides`) e converti
+di nuovo.
 
 ### Colonne con carattere jolly {: #wildcard-columns }
 
@@ -111,21 +158,24 @@ Quando un'autorizzazione concede `columns: "*"`, il convertitore crea una singol
 colonna con carattere jolly. Dopo la conversione, potrebbe essere opportuno sostituirla con elenchi
 di colonne espliciti ispezionando lo schema effettivo del database.
 
-### Fedeltà dei trigger di evento {: #event-trigger-fidelity }
+### Fedeltà degli event trigger {: #event-trigger-fidelity }
 
-I trigger di evento vengono convertiti con `operations` e `webhook_url`, ma le garanzie di
-consegna specifiche di Hasura (esattamente una volta, riconsegna) non hanno equivalenti diretti
-in Provisa. Rivedere la sezione `event_triggers` e configurare di conseguenza l'infrastruttura webhook.
+Un event trigger diventa un trigger sulle modifiche della sua tabella, che chiama lo stesso webhook. Scatta
+per lotto di modifiche a ogni modifica, sia che la modifica sia passata da Provisa sia direttamente dal database, e invia la tabella e le
+righe modificate. I valori vecchi e nuovi per riga, il filtraggio per operazione e i tentativi ripetuti di Hasura non sono riportati;
+il rapporto avvisa di ciascuno che si applica.
+Fai agire l'handler sulle righe a cui è destinato, e ripeti al suo interno se una chiamata mancata conta.
 
 ### Ruoli mancanti {: #missing-roles }
 
-I ruoli vengono raccolti solo dalle voci di autorizzazione. Se un ruolo esiste in Hasura ma
-non ha autorizzazioni su alcuna tabella o action, non comparirà nell'output.
+I ruoli vengono raccolti dalle autorizzazioni di tabella, dalle autorizzazioni delle action e dai ruoli ereditati. Se un ruolo esiste in Hasura
+ma non compare in nessuno di questi, non comparirà nell'output.
 
-### Campi root personalizzati {: #custom-root-fields }
+### Campi radice personalizzati {: #custom-root-fields }
 
-Solo i campi root `select` e `select_by_pk` vengono utilizzati per l'alias della tabella. Altri
-campi root personalizzati (`select_aggregate`, `insert`, `update`, `delete`) non vengono mappati.
+I nomi di campo radice `select` e `select_by_pk` danno l'alias della tabella. Gli altri campi radice personalizzati
+(`select_aggregate`, `insert`, `update`, `delete`) vengono segnalati per nome: Provisa serve
+una tabella come un solo campo, con aggregati e scritture come suo campo `_aggregate` e sue mutazioni.
 
 ## Esempio {: #example }
 
@@ -146,7 +196,7 @@ python -m provisa.hasura_v2 metadata/ \
 python -m provisa.hasura_v2 metadata/ --dry-run
 ```
 
-Struttura dell'output:
+Struttura dell'output (abbreviata):
 
 ```yaml
 sources:
@@ -155,7 +205,6 @@ sources:
     host: prod-db.example.com
     port: 5432
     database: myapp
-    ...
 domains:
   - id: core
   - id: people
@@ -166,27 +215,41 @@ tables:
     table_name: users
     columns:
       - name: id
-        visible_to: [user, admin]
+        visible_to: [org_admin, user]
       - name: email
-        visible_to: [admin]
-        writable_by: [admin]
-    alias: Users
+        visible_to: [org_admin, user]
+    write_grants:
+      - role: user
+        operation: update
+        columns: [email]
+        rows: "id = current_setting('provisa.user_id')"
+        check: "TRUE"
+      - role: org_admin
+        operation: insert
+        columns: [id, email]
+        check: "TRUE"
+      - role: org_admin
+        operation: update
+        columns: [id, email]
+        rows: "TRUE"
+        check: "TRUE"
+      - role: org_admin
+        operation: delete
+        rows: "TRUE"
 roles:
-  - id: admin
-    capabilities: [read, write]
-    domain_access: ["*"]
   - id: user
-    capabilities: [read]
+    capabilities: [query_development, write]
     domain_access: ["*"]
 rls_rules:
-  - table_id: default.public.users
+  - table_id: users
     role_id: user
-    filter: "id = x-hasura-user-id"
+    filter: "id = current_setting('provisa.user_id')"
 relationships:
-  - id: default.public.orders.user
-    source_table_id: default.public.orders
-    target_table_id: default.public.users
+  - id: orders.user
+    source_table_id: orders
+    target_table_id: users
     source_column: user_id
     target_column: id
     cardinality: many-to-one
+    graphql_alias: user
 ```

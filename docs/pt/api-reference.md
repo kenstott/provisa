@@ -976,7 +976,7 @@ Nada é registrado. Use a tela de revisão da interface de administração para 
 
 Todos os endpoints estão sob o prefixo `/admin/actions`. (REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
 
-Toda invocação — de GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, e gRPC Provisa — passa por um único executor governado que aplica `writable_by` e governança de forma uniforme. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] Veja [docs/integrations.md](integrations.md#invoking-commands-across-protocols) para a sintaxe de chamada por protocolo.
+Toda invocação — de GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, e gRPC Provisa — passa por um único executor governado que aplica a atribuição do comando (`visible_to`), o direito `write` para uma mutação e governança de forma uniforme. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] Veja [docs/integrations.md](integrations.md#invoking-commands-across-protocols) para a sintaxe de chamada por protocolo.
 
 #### `GET /admin/actions`
 
@@ -998,7 +998,6 @@ Retorna todas as funções de BD e webhooks rastreados. (REQ-242) [tool-verified
       },
       "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
       "visibleTo": ["admin"],
-      "writableBy": [],
       "domainId": "pet-store",
       "description": "Demo Python command returning random rows",
       "kind": "query"
@@ -1032,8 +1031,7 @@ Registra uma função rastreada (comando). (REQ-205) [tool-verified: `provisa/ap
 | `binding` | Não | Detalhes de conexão específicos de `implKind` (objeto JSON) |
 | `returnSchema` | Não | JSON Schema `{type:"array", items:{type:"object", properties:{...}}}` — torna o comando set-returning em toda superfície |
 | `arguments` | Não | Definições de argumento `[{name, type}]`; a ordem posicional importa para chamadores SQL e Bolt |
-| `visibleTo` | Não | IDs de função que podem chamar o comando |
-| `writableBy` | Não | IDs de função autorizados a invocá-lo como mutação |
+| `visibleTo` | Não | IDs de função às quais o comando está atribuído (vazio: todas as funções). Uma `mutation` exige também o direito `write` |
 | `domainId` | Não | Domínio para posicionamento GraphQL e controle de acesso |
 
 **Valores de `implKind`:**

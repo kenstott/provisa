@@ -183,7 +183,7 @@ Los nombres de propiedad se asignan a columnas mediante la eliminación del pref
 Reglas:
 
 - La etiqueta debe resolverse a exactamente una tabla registrada. Las etiquetas ambiguas o desconocidas son errores irrecuperables; no hay coincidencia aproximada. (REQ-661) No se pueden crear nuevas etiquetas ni tipos a través de Cypher. (REQ-662)
-- Cada escritura está condicionada a la ACL `writable_by` de la tabla de destino; un rol sin derechos de escritura se rechaza en tiempo de compilación. (REQ-663)
+- Cada escritura está condicionada a los permisos de escritura de la tabla de destino: el rol necesita el derecho `write` y un permiso para la operación, y las columnas escritas deben estar en el permiso. Un rol que no los tiene se rechaza en tiempo de compilación. (REQ-663)
 - El conector del origen de datos subyacente debe admitir DML. Los orígenes de solo lectura (federados con Trino, Iceberg sin conector Delta) rechazan las escrituras en tiempo de traducción. (REQ-664)
 - No se pueden escribir relaciones — se derivan de las uniones declaradas en el modelo, no se almacenan como aristas. Apuntar a una relación es un error irrecuperable. (REQ-665) Una arista respaldada por una tabla de unión (junction) no es una excepción: la tabla asociativa que hay detrás es a su vez una tabla registrada, y las filas se escriben en esa tabla, no en la arista. (REQ-1586)
 - Las escrituras se ejecutan a través del pipeline de escritura completo: inyección de RLS y hooks posteriores a la mutación (invalidación de caché de respuesta, marcado de vista materializada como obsoleta, eventos de cambio de Kafka, recarga de tabla activa). (REQ-798)
