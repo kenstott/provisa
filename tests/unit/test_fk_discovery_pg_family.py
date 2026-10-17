@@ -127,7 +127,7 @@ async def test_a_pgwire_adapter_source_is_read_through_its_servers_endpoint(
         close = keyed.close
 
     async def _source(source_id):
-        return SimpleNamespace(id=source_id)
+        return SimpleNamespace(id=source_id, type=stype, username="aa-key")
 
     monkeypatch.setattr("provisa.api.admin.schema_query._source_for_introspection", _source)
     monkeypatch.setattr(
@@ -137,7 +137,9 @@ async def test_a_pgwire_adapter_source_is_read_through_its_servers_endpoint(
 
     found = await fk.introspect_fk_constraints(_pools(), stype, "src", "s", "child")
 
-    assert dialled == [("127.0.0.1", 5440, "provisa", "provisa", "")]
+    # The govdata server signs the connection in with the source's key; the others check none.
+    password = "aa-key" if stype == "govdata" else ""
+    assert dialled == [("127.0.0.1", 5440, "provisa", "provisa", password)]
     assert {"column_name": "r", "referenced_table": "ref", "referenced_column": "id"} in found
     assert keyed.closed  # a connection of its own, closed when the keys are read
 

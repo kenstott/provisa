@@ -818,14 +818,15 @@ class TrinoPgwireAdapterConnector(_TrinoConnector):
         return Capability(predicate_pushdown=True)
 
     def details(self, source: Source) -> dict:
-        from provisa.federation.pgwire_endpoint import engine_endpoint
+        from provisa.federation.pgwire_endpoint import engine_endpoint, sign_in_password
 
         host, port = engine_endpoint(source)  # starts (once) the source's bundled server
         return {
-            # The server serves one database and checks no credentials (pgwire_write).
+            # The server serves one database; the password is the one it signs a connection in
+            # with (pgwire_replica.sign_in_password).
             "connection-url": f"jdbc:postgresql://{host}:{port}/provisa",
             "connection-user": "provisa",
-            "connection-password": "",
+            "connection-password": sign_in_password(source),
             # The adapter serves no pg_stats / pg_statistic, which the connector reads for
             # table statistics.
             "statistics.enabled": "false",

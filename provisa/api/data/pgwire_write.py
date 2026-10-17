@@ -30,7 +30,7 @@ from typing import Any
 
 from provisa.executor.writable import PGWIRE_SERVER_WRITTEN
 
-# What the bundled server accepts: it checks no credentials and serves one database.
+# What the bundled server accepts: it serves one database (its password: sign_in_password).
 _SERVER_DATABASE = "provisa"
 _SERVER_USER = "provisa"
 
@@ -65,6 +65,7 @@ async def ensure_write_pool(state: Any, source_id: str) -> None:
     if state.source_pools.has(source_id):
         return
     from provisa.api.admin.schema_query import _source_for_introspection
+    from provisa.federation.pgwire_endpoint import sign_in_password
     from provisa.federation.pgwire_replica import ensure_endpoint_for_discovery
 
     source = await _source_for_introspection(source_id)
@@ -74,7 +75,13 @@ async def ensure_write_pool(state: Any, source_id: str) -> None:
 
     ports = await asyncio.to_thread(ensure_endpoint_for_discovery, source)
     driver = PgwireServerDriver()
-    await driver.connect(ports.pgwire_host, ports.pgwire_port, _SERVER_DATABASE, _SERVER_USER, "")
+    await driver.connect(
+        ports.pgwire_host,
+        ports.pgwire_port,
+        _SERVER_DATABASE,
+        _SERVER_USER,
+        sign_in_password(source),
+    )
     await state.source_pools.add_driver(source_id, driver, "postgres")
 
 

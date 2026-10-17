@@ -107,6 +107,7 @@ class _ClickHousePgwireConnector(Connector):  # REQ-1730
             remote_schema,
             serves_table_schemas,
         )
+        from provisa.federation.pgwire_endpoint import sign_in_password
 
         ports = ensure_endpoint(source)  # starts (once) the source's bundled Calcite pgwire server
         local_schema = engine_attach_name("ch_pgwire", attach_catalog(source))
@@ -118,7 +119,8 @@ class _ClickHousePgwireConnector(Connector):  # REQ-1730
         return {
             "attach_ddl": [
                 f'CREATE DATABASE IF NOT EXISTS "{local_schema}" ENGINE = PostgreSQL('
-                f"'{ports.pgwire_host}:{ports.pgwire_port}', 'provisa', 'provisa', '', "
+                f"'{ports.pgwire_host}:{ports.pgwire_port}', 'provisa', 'provisa', "
+                f"'{sign_in_password(source)}', "
                 f"'{schema}')"
             ],
             "local_schema": local_schema,

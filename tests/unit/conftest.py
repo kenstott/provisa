@@ -107,7 +107,7 @@ def _no_unit_test_dials_a_pgwire_server(monkeypatch: pytest.MonkeyPatch):
 
     real = getattr(replica._prepare_catalog, "real", replica._prepare_catalog)
 
-    def _refused(ports):
+    def _refused(ports, password):
         raise AssertionError(
             f"a unit test let a replica dial a real pgwire port ({ports}): give the "
             "ConnectorReplica a prepare_catalog"

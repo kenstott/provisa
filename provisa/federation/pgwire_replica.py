@@ -44,6 +44,7 @@ from typing import Any, Callable
 from provisa.core.secrets import resolve_secrets
 from provisa.federation.cloudops import cloudops_settings
 from provisa.federation.connector_config import MissingConnectorConfig
+from provisa.federation.pgwire_endpoint import sign_in_password
 from provisa.federation.salesforce import salesforce_login_url
 from provisa.federation.servicenow import servicenow_settings
 from provisa.runtime_deps import BundleResolver, BundleSpec, bundle_spec_for
@@ -882,7 +883,7 @@ class PgwireServer:  # REQ-955
 _UNANSWERED: tuple[type[BaseException], ...] = (TimeoutError, OSError)
 
 
-def _prepare_catalog(ports: PortPair) -> None:
+def _prepare_catalog(ports: PortPair, password: str) -> None:
     """Send the server its first catalog query, as the user the engines attach as, and wait for
     the answer (see ``ConnectorReplica.await_catalog``). One round trip on a connection of its
     own (the module's generic PostgreSQL connect), closed when the answer comes or the query
@@ -890,7 +891,7 @@ def _prepare_catalog(ports: PortPair) -> None:
     import asyncio
 
     async def _ask() -> None:
-        conn = await _pg_connect(ports.pgwire_host, ports.pgwire_port)
+        conn = await _pg_connect(ports.pgwire_host, ports.pgwire_port, password)
         try:
             await conn.fetch("SELECT count(*) FROM pg_catalog.pg_class")
         finally:
@@ -902,11 +903,14 @@ def _prepare_catalog(ports: PortPair) -> None:
 # -- land via SELECT (REQ-954) -------------------------------------------------
 
 
-async def _pg_connect(host: str, port: int) -> Any:
-    """Open a generic PostgreSQL connection to the pgwire endpoint (the real connect)."""
+async def _pg_connect(host: str, port: int, password: str) -> Any:
+    """Open a generic PostgreSQL connection to the pgwire endpoint (the real connect), signed in
+    with the source's ``password`` (:func:`sign_in_password`)."""
     import asyncpg
 
-    return await asyncpg.connect(host=host, port=port, user="provisa", database="provisa")
+    return await asyncpg.connect(
+        host=host, port=port, user="provisa", password=password, database="provisa"
+    )
 
 
 async def land_via_select(
@@ -914,14 +918,15 @@ async def land_via_select(
     schema: str,
     table: str,
     *,
-    connect: Callable[[str, int], Any] | None = None,
+    password: str,
+    connect: Callable[[str, int, str], Any] | None = None,
     where: str = "",
 ) -> list[dict]:
     """Connect to the pgwire endpoint as generic PostgreSQL and SELECT the connector table's rows
     (REQ-954). Returns the rows as dicts keyed by column name; the caller lands them into the store.
     ``where`` is the table's landing filter (REQ-2062), `` WHERE ...`` in PostgreSQL, or ``""``."""
     do_connect = connect if connect is not None else _pg_connect
-    conn = await do_connect(ports.pgwire_host, ports.pgwire_port)
+    conn = await do_connect(ports.pgwire_host, ports.pgwire_port, password)
     try:
         rows = await conn.fetch(
             f'SELECT * FROM "{schema}"."{table}"{where}', timeout=_fetch_timeout()
@@ -970,7 +975,7 @@ async def _read_information_schema(source: Any, statement: str) -> list[Any]:
     if "pg_catalog" in statement.lower():
         raise ValueError("discovery reads the server's information_schema, never pg_catalog")
     ports = await asyncio.to_thread(listening_endpoint, source)
-    conn = await _pg_connect(ports.pgwire_host, ports.pgwire_port)
+    conn = await _pg_connect(ports.pgwire_host, ports.pgwire_port, sign_in_password(source))
     try:
         return list(await conn.fetch(statement, timeout=_fetch_timeout()))
     finally:
@@ -1074,7 +1079,8 @@ async def land_via_select_keys(
     pk_columns: list[str],
     keys: list[tuple[Any, ...]],
     *,
-    connect: Callable[[str, int], Any] | None = None,
+    password: str,
+    connect: Callable[[str, int, str], Any] | None = None,
 ) -> list[dict]:
     """Connect to the pgwire endpoint as generic PostgreSQL and SELECT exactly the rows whose
     ``pk_columns`` match one of ``keys`` (REQ-1865 keyed fetch) — the same connection
@@ -1087,7 +1093,7 @@ async def land_via_select_keys(
     if not keys:
         return []
     do_connect = connect if connect is not None else _pg_connect
-    conn = await do_connect(ports.pgwire_host, ports.pgwire_port)
+    conn = await do_connect(ports.pgwire_host, ports.pgwire_port, password)
     try:
         col = pk_columns[0]
         values = [k[0] for k in keys]
@@ -1129,10 +1135,10 @@ class ConnectorReplica:  # REQ-954/955/956
         allocator: PortAllocator | None = None,
         spawn: Callable[..., Any] | None = None,
         health_check: Callable[[str, int], bool] | None = None,
-        connect: Callable[[str, int], Any] | None = None,
+        connect: Callable[[str, int, str], Any] | None = None,
         version: str | None = None,
         port_is_free: Callable[[int], bool] | None = None,
-        prepare_catalog: Callable[[PortPair], None] | None = None,
+        prepare_catalog: Callable[[PortPair, str], None] | None = None,
         key: tuple[str, str] | None = None,
     ) -> None:
         self._source = source
@@ -1260,7 +1266,12 @@ class ConnectorReplica:  # REQ-954/955/956
         # name is no registered table and has none.
         where = "" if isinstance(table, str) else landing_where(table, lambda: "postgres")
         return await land_via_select(
-            ports, self._schema_of(table), table_name, connect=self._connect, where=where
+            ports,
+            self._schema_of(table),
+            table_name,
+            password=sign_in_password(self._source),
+            connect=self._connect,
+            where=where,
         )
 
     def _schema_of(self, table: Any) -> str:
@@ -1275,7 +1286,13 @@ class ConnectorReplica:  # REQ-954/955/956
         ports = self.endpoint()
         table_name = getattr(table, "table_name", table)
         return await land_via_select_keys(
-            ports, self._schema_of(table), table_name, pk_columns, keys, connect=self._connect
+            ports,
+            self._schema_of(table),
+            table_name,
+            pk_columns,
+            keys,
+            password=sign_in_password(self._source),
+            connect=self._connect,
         )
 
     def require_serving(self) -> None:
@@ -1340,7 +1357,7 @@ class ConnectorReplica:  # REQ-954/955/956
     def _prepare_catalog_once(self, ports: PortPair, server: int) -> None:
         error: BaseException | None = None
         try:
-            self._prepare_catalog(ports)
+            self._prepare_catalog(ports, sign_in_password(self._source))
         except Exception as exc:  # noqa: BLE001 - kept and reported by name (ServerCatalogFailed)
             error = exc
         with self._start_lock:
@@ -1678,7 +1695,7 @@ def make_pgwire_loader(
     allocator: PortAllocator | None = None,
     spawn: Callable[..., Any] | None = None,
     health_check: Callable[[str, int], bool] | None = None,
-    connect: Callable[[str, int], Any] | None = None,
+    connect: Callable[[str, int, str], Any] | None = None,
     port_is_free: Callable[[int], bool] | None = None,
     replicas: dict[tuple[str, str], "ConnectorReplica"] | None = None,
 ) -> Callable[[Any, Any], Any]:
@@ -1722,7 +1739,7 @@ def make_pgwire_keyed_loader(
     allocator: PortAllocator | None = None,
     spawn: Callable[..., Any] | None = None,
     health_check: Callable[[str, int], bool] | None = None,
-    connect: Callable[[str, int], Any] | None = None,
+    connect: Callable[[str, int, str], Any] | None = None,
     port_is_free: Callable[[int], bool] | None = None,
     replicas: dict[tuple[str, str], "ConnectorReplica"] | None = None,
 ) -> Callable[[Any, Any, list[str], list[tuple[Any, ...]]], Any]:

@@ -254,7 +254,7 @@ def _replica_on(bundle: Path, spawned: list, monkeypatch) -> pr.ConnectorReplica
         allocator=pr.PortAllocator(is_free=lambda port: True),
         spawn=spawn,
         health_check=lambda host, port: True,
-        prepare_catalog=lambda ports: None,
+        prepare_catalog=lambda ports, password: None,
     )
 
 
@@ -603,7 +603,8 @@ def adapter(monkeypatch):
 
     conn = _Adapter(_answers)
 
-    async def _connect(host, port):
+    async def _connect(host, port, password):
+        assert password == "aa-key"
         return conn
 
     monkeypatch.setattr(pr, "_endpoint_replica", lambda source: _Replica())
@@ -820,7 +821,8 @@ async def test_a_landed_table_is_selected_from_its_own_schema():
         async def close(self):
             return None
 
-    async def connect(host, port):
+    async def connect(host, port, password):
+        assert password == "aa-key"  # the server signs the connection in with the source's key
         return _Conn()
 
     replica = pr.ConnectorReplica(_source(), connect=connect)
@@ -830,6 +832,29 @@ async def test_a_landed_table_is_selected_from_its_own_schema():
     )
     assert rows == [{"cik": "1"}]
     assert statements == ['SELECT * FROM "sec"."financial_facts"']
+
+
+# -- every connection to the server signs in with the source's key -----------------------------
+
+
+def test_a_connection_to_the_server_signs_in_with_the_sources_key():
+    from provisa.federation.pgwire_endpoint import sign_in_password
+
+    assert sign_in_password(_source(key="aa-key")) == "aa-key"
+
+
+def test_a_source_with_no_key_cannot_sign_in_and_is_named():
+    from provisa.federation.pgwire_endpoint import sign_in_password
+
+    with pytest.raises(aa.AskAmericaKeyMissing, match="test-askamerica"):
+        sign_in_password(_source(key=""))
+
+
+@pytest.mark.parametrize("stype", ["files", "sharepoint", "cloudops"])
+def test_a_siblings_server_checks_no_credentials_so_none_is_sent(stype):
+    from provisa.federation.pgwire_endpoint import sign_in_password
+
+    assert sign_in_password(Source(id="my-src", type=SourceType(stype))) == ""
 
 
 # -- each engine attaches the server as it attaches a sibling's ---------------------------------
@@ -846,7 +871,7 @@ def test_the_engine_attaches_the_sources_pgwire_server(engine):
 def test_duckdb_attaches_the_endpoint_and_reads_each_table_from_its_schema(endpoint):
     details = build_duckdb_engine().connectors["govdata"].details(_attachable())
     assert details["attach"] == (
-        "ATTACH 'host=127.0.0.1 port=5440 user=provisa dbname=provisa' "
+        "ATTACH 'host=127.0.0.1 port=5440 user=provisa dbname=provisa password=aa-key' "
         'AS "_src_test-askamerica" (TYPE postgres, READ_ONLY)'
     )
     assert details["raw_alias"] == "_src_test-askamerica"
@@ -868,6 +893,7 @@ def test_postgres_imports_the_table_from_its_schema_into_that_schemas_foreign_sc
     assert details["remote_schema"] == "sec"
     assert details["server"] == "fdw_pgwire_test_askamerica"
     assert "port '5440'" in details["server_ddl_for_copy"][1]
+    assert details["server_ddl_for_copy"][2].endswith("OPTIONS (user 'provisa', password 'aa-key')")
     assert details["server_ddl_for_copy"][-1] == (
         'CREATE SCHEMA IF NOT EXISTS "fdw_pgwire_test_askamerica_sec"'
     )
@@ -881,7 +907,7 @@ def test_clickhouse_mounts_one_database_per_adapter_schema(endpoint):
     assert details["local_schema"] == "ch_pgwire_test_askamerica_sec"
     assert details["attach_ddl"] == [
         'CREATE DATABASE IF NOT EXISTS "ch_pgwire_test_askamerica_sec" ENGINE = PostgreSQL('
-        "'127.0.0.1:5440', 'provisa', 'provisa', '', 'sec')"
+        "'127.0.0.1:5440', 'provisa', 'provisa', 'aa-key', 'sec')"
     ]
 
 
@@ -1133,7 +1159,8 @@ async def test_a_single_schema_sibling_is_landed_from_its_one_schema_as_before(s
         async def close(self):
             return None
 
-    async def connect(host, port):
+    async def connect(host, port, password):
+        assert password == ""  # a sibling's server checks no credentials
         return _Conn()
 
     source = Source(id="my-src", type=SourceType(stype))
@@ -1399,7 +1426,7 @@ def test_a_listening_server_is_still_starting_until_its_catalog_is_prepared():
     release = threading.Event()
     asked: list[pr.PortPair] = []
 
-    def prepare(ports):
+    def prepare(ports, password):
         asked.append(ports)
         assert release.wait(5)
 
@@ -1429,7 +1456,7 @@ def test_the_attach_itself_never_waits_for_the_catalog(monkeypatch):
         healthy=True,
         exit_code=None,
         catalog_ready=False,
-        prepare=lambda ports: release.wait(30),
+        prepare=lambda ports, password: release.wait(30),
     )
     replica.endpoint = lambda timeout=None: pr.PortPair(5440, "127.0.0.1", 5540)  # type: ignore[method-assign]
     monkeypatch.setattr(pr, "_endpoint_replica", lambda source: replica)
@@ -1443,7 +1470,10 @@ def test_the_attach_itself_never_waits_for_the_catalog(monkeypatch):
 def test_a_caller_that_gives_a_wait_gets_the_endpoint_once_the_catalog_is_prepared(monkeypatch):
     prepared: list[pr.PortPair] = []
     replica = _replica_with_server(
-        healthy=True, exit_code=None, catalog_ready=False, prepare=prepared.append
+        healthy=True,
+        exit_code=None,
+        catalog_ready=False,
+        prepare=lambda ports, password: prepared.append(ports),
     )
     replica.endpoint = lambda timeout=None: pr.PortPair(5440, "127.0.0.1", 5540)  # type: ignore[method-assign]
     monkeypatch.setattr(pr, "_endpoint_replica", lambda source: replica)
@@ -1454,7 +1484,7 @@ def test_a_caller_that_gives_a_wait_gets_the_endpoint_once_the_catalog_is_prepar
 def test_a_catalog_that_cannot_be_prepared_is_reported_and_not_asked_for_again():
     calls: list[int] = []
 
-    def prepare(ports):
+    def prepare(ports, password):
         calls.append(1)
         raise RuntimeError("Object 'x' not found")
 
@@ -1480,7 +1510,7 @@ def test_a_preparation_the_server_did_not_answer_is_sent_again(unanswered):
     answers = [unanswered, None]
     sent = threading.Event()
 
-    def prepare(ports):
+    def prepare(ports, password):
         answer = answers.pop(0)
         sent.set()
         if answer is not None:
@@ -1509,7 +1539,7 @@ def test_a_caller_that_waits_has_an_unanswered_preparation_sent_again_within_its
     monkeypatch.setattr(pr, "_CATALOG_RESEND_SECONDS", 0.01)
     answers = [unanswered, unanswered, None]
 
-    def prepare(ports):
+    def prepare(ports, password):
         answer = answers.pop(0)
         if answer is not None:
             raise answer
@@ -1524,7 +1554,7 @@ def test_a_caller_that_waits_has_an_unanswered_preparation_sent_again_within_its
 def test_a_caller_that_waits_is_told_still_starting_once_its_wait_is_out(monkeypatch):
     monkeypatch.setattr(pr, "_CATALOG_RESEND_SECONDS", 0.01)
 
-    def prepare(ports):
+    def prepare(ports, password):
         raise TimeoutError()
 
     replica = _replica_with_server(
@@ -1539,7 +1569,10 @@ def test_a_caller_that_waits_is_told_still_starting_once_its_wait_is_out(monkeyp
 def test_a_restarted_server_has_its_catalog_prepared_afresh():
     prepared: list[pr.PortPair] = []
     replica = _replica_with_server(
-        healthy=True, exit_code=None, catalog_ready=False, prepare=prepared.append
+        healthy=True,
+        exit_code=None,
+        catalog_ready=False,
+        prepare=lambda ports, password: prepared.append(ports),
     )
     ports = pr.PortPair(5440, "127.0.0.1", 5540)
     replica.await_catalog(ports, 5)
@@ -1582,7 +1615,10 @@ def test_the_two_waits_are_told_apart_and_both_are_starting():
     assert port.startswith("STARTING:") and "still starting up" in port
     assert catalog.startswith("STARTING:") and "reading the columns" in catalog
     replica = _replica_with_server(
-        healthy=True, exit_code=None, catalog_ready=False, prepare=lambda ports: time.sleep(5)
+        healthy=True,
+        exit_code=None,
+        catalog_ready=False,
+        prepare=lambda ports, password: time.sleep(5),
     )
     with pytest.raises(pr.SourceStillStartingError, match="reading the columns"):
         replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 0)
@@ -1593,7 +1629,7 @@ def test_the_two_waits_are_told_apart_and_both_are_starting():
 def test_a_preparation_outlived_by_its_server_reports_to_no_one():
     release = threading.Event()
 
-    def prepare(ports):
+    def prepare(ports, password):
         release.wait(5)
         raise RuntimeError("connection closed: the server was stopped")
 
@@ -1614,7 +1650,7 @@ def test_a_preparation_outlived_by_its_server_reports_to_no_one():
 def test_preparing_the_catalog_logs_nothing_and_its_failure_carries_no_secret(caplog):
     import logging
 
-    def prepare(ports):
+    def prepare(ports, password):
         raise RuntimeError("could not connect to server")
 
     replica = _replica_with_server(
@@ -1638,14 +1674,14 @@ def test_the_real_preparation_is_one_catalog_query_on_a_connection_it_closes(mon
         async def close(self):
             events.append("closed")
 
-    async def connect(host, port):
-        events.append(f"connect {host}:{port}")
+    async def connect(host, port, password):
+        events.append(f"connect {host}:{port} as {password}")
         return _Conn()
 
     monkeypatch.setattr(pr, "_pg_connect", connect)
-    pr._prepare_catalog.real(pr.PortPair(5440, "127.0.0.1", 5540))  # type: ignore[attr-defined]
+    pr._prepare_catalog.real(pr.PortPair(5440, "127.0.0.1", 5540), "aa-key")  # type: ignore[attr-defined]
     assert events == [
-        "connect 127.0.0.1:5440",
+        "connect 127.0.0.1:5440 as aa-key",
         "SELECT count(*) FROM pg_catalog.pg_class",
         "closed",
     ]
@@ -1661,12 +1697,12 @@ def test_a_failed_catalog_query_still_closes_its_connection(monkeypatch):
         async def close(self):
             events.append("closed")
 
-    async def connect(host, port):
+    async def connect(host, port, password):
         return _Conn()
 
     monkeypatch.setattr(pr, "_pg_connect", connect)
     with pytest.raises(RuntimeError, match="server closed"):
-        pr._prepare_catalog.real(pr.PortPair(5440, "127.0.0.1", 5540))  # type: ignore[attr-defined]
+        pr._prepare_catalog.real(pr.PortPair(5440, "127.0.0.1", 5540), "aa-key")  # type: ignore[attr-defined]
     assert events == ["closed"]
 
 
@@ -1682,7 +1718,7 @@ def test_the_engines_attach_pass_never_waits_on_a_source_whose_catalog_is_being_
         healthy=True,
         exit_code=None,
         catalog_ready=False,
-        prepare=lambda ports: release.wait(30),
+        prepare=lambda ports, password: release.wait(30),
     )
     replica.endpoint = lambda timeout=None: pr.PortPair(5440, "127.0.0.1", 5540)  # type: ignore[method-assign]
     monkeypatch.setattr(pr, "_endpoint_replica", lambda source: replica)
@@ -1775,18 +1811,22 @@ def test_the_live_trino_catalog_is_the_postgresql_connector_at_the_servers_endpo
     assert TrinoGovdataConnector().details(_source()) == {
         "connection-url": "jdbc:postgresql://host.docker.internal:5440/provisa",
         "connection-user": "provisa",
-        "connection-password": "",
+        "connection-password": "aa-key",
         "statistics.enabled": "false",
         "case-insensitive-name-matching": "true",
     }
 
 
-def test_the_catalog_carries_no_key_or_credential(monkeypatch):
+def test_the_catalog_carries_the_key_it_signs_in_with_and_no_credential(monkeypatch):
+    """The server signs every connection in with the source's key, so the catalog's password is
+    the key; the storage credentials the key resolves to are the server's alone."""
     from provisa.federation import pgwire_endpoint
     from provisa.federation.trino_connectors import TrinoGovdataConnector
 
     monkeypatch.setattr(pgwire_endpoint, "_resolver", lambda source: ("127.0.0.1", 5440))
-    written = json.dumps(TrinoGovdataConnector().details(_source()))
+    details = TrinoGovdataConnector().details(_source())
+    assert details["connection-password"] == "aa-key"
+    written = json.dumps({k: v for k, v in details.items() if k != "connection-password"})
     for secret in _SECRETS:
         assert secret not in written
 

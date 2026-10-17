@@ -612,12 +612,16 @@ class _FakeConn:
 async def test_land_via_select_returns_rows():
     conn = _FakeConn([{"id": 1, "name": "a"}, {"id": 2, "name": "b"}])
 
-    async def _connect(host, port):
+    async def _connect(host, port, password):
         assert (host, port) == ("127.0.0.1", 5433)
         return conn
 
     rows = await pr.land_via_select(
-        pr.PortPair(5433, "127.0.0.1", 5533), "local_files", "reports", connect=_connect
+        pr.PortPair(5433, "127.0.0.1", 5533),
+        "local_files",
+        "reports",
+        password="",
+        connect=_connect,
     )
     assert rows == [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
     assert conn.queries == ['SELECT * FROM "local_files"."reports"']
@@ -629,12 +633,20 @@ async def test_land_via_select_is_always_bounded():
     """A wedged pgwire server must not block the landing forever: every SELECT carries a timeout."""
     conn = _FakeConn([])
 
-    async def _connect(host, port):
+    async def _connect(host, port, password):
         return conn
 
-    await pr.land_via_select(pr.PortPair(5433, "127.0.0.1", 5533), "s", "t", connect=_connect)
+    await pr.land_via_select(
+        pr.PortPair(5433, "127.0.0.1", 5533), "s", "t", password="", connect=_connect
+    )
     await pr.land_via_select_keys(
-        pr.PortPair(5433, "127.0.0.1", 5533), "s", "t", ["id"], [(1,)], connect=_connect
+        pr.PortPair(5433, "127.0.0.1", 5533),
+        "s",
+        "t",
+        ["id"],
+        [(1,)],
+        password="",
+        connect=_connect,
     )
     assert conn.timeouts == [pr.LAND_FETCH_SECONDS, pr.LAND_FETCH_SECONDS]
 
@@ -645,11 +657,13 @@ async def test_land_via_select_timeout_is_tightened_by_the_request_budget():
 
     conn = _FakeConn([])
 
-    async def _connect(host, port):
+    async def _connect(host, port, password):
         return conn
 
     with request_deadline.within(5.0):
-        await pr.land_via_select(pr.PortPair(5433, "127.0.0.1", 5533), "s", "t", connect=_connect)
+        await pr.land_via_select(
+            pr.PortPair(5433, "127.0.0.1", 5533), "s", "t", password="", connect=_connect
+        )
     (timeout,) = conn.timeouts
     assert timeout is not None and 0 < timeout <= 5.0
 
@@ -658,7 +672,7 @@ async def test_land_via_select_timeout_is_tightened_by_the_request_budget():
 async def test_connector_replica_end_to_end(tmp_path):
     conn = _FakeConn([{"col": "v"}])
 
-    async def _connect(host, port):
+    async def _connect(host, port, password):
         assert (host, port) == ("127.0.0.1", pr.PGWIRE_DEFAULT_PORT)
         return conn
 
@@ -695,7 +709,7 @@ async def test_a_connector_table_lands_only_the_rows_its_landing_filter_passes(t
 
     conn = _FakeConn([{"col": "v"}])
 
-    async def _connect(host, port):
+    async def _connect(host, port, password):
         return conn
 
     replica = pr.ConnectorReplica(
@@ -741,7 +755,7 @@ async def test_make_pgwire_loader_dispatches_per_source(tmp_path):
     conns = {"sp-a": _FakeConn([{"x": 1}]), "sp-b": _FakeConn([{"x": 2}])}
     seen_ports: list[int] = []
 
-    async def _connect(host, port):
+    async def _connect(host, port, password):
         assert host == "127.0.0.1"
         seen_ports.append(port)
         # source A lands on the first allocated port, B on the next — pick by port order
@@ -944,7 +958,7 @@ def test_ensure_endpoint_for_discovery_succeeds_when_ready(tmp_path, monkeypatch
             port_is_free=lambda _: True,
             # The stand-in server listens nowhere: its catalog is "prepared" here, never asked
             # of whatever real process holds the default port on this machine.
-            prepare_catalog=lambda ports: None,
+            prepare_catalog=lambda ports, password: None,
         )
 
     monkeypatch.setattr(pr, "ConnectorReplica", _fake_replica)

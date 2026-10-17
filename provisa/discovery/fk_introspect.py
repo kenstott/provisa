@@ -142,6 +142,7 @@ async def _constraint_driver(source_pools, source_type_lower: str, source_id: st
 
     from provisa.api.admin.schema_query import _source_for_introspection
     from provisa.executor.drivers.pgwire_server import PgwireServerDriver
+    from provisa.federation.pgwire_endpoint import sign_in_password
     from provisa.federation.pgwire_replica import ensure_endpoint_for_discovery
 
     source = await _source_for_introspection(source_id)
@@ -149,8 +150,10 @@ async def _constraint_driver(source_pools, source_type_lower: str, source_id: st
         raise LookupError(f"source {source_id!r} is not registered")
     ports = await asyncio.to_thread(ensure_endpoint_for_discovery, source)
     driver = PgwireServerDriver()
-    # What the bundled server accepts: it checks no credentials and serves one database.
-    await driver.connect(ports.pgwire_host, ports.pgwire_port, "provisa", "provisa", "")
+    # What the bundled server accepts: one database, signed in with the source's password.
+    await driver.connect(
+        ports.pgwire_host, ports.pgwire_port, "provisa", "provisa", sign_in_password(source)
+    )
     return driver, driver.close
 
 

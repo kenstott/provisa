@@ -453,9 +453,12 @@ class _DuckDBPgwireConnector(_DuckDBExtensionConnector):  # REQ-1690
             schema_name,
             serves_table_schemas,
         )
+        from provisa.federation.pgwire_endpoint import sign_in_password
 
         ports = ensure_endpoint(source)
-        dsn = f"host={ports.pgwire_host} port={ports.pgwire_port} user=provisa dbname=provisa"
+        password = sign_in_password(source)
+        pw = f" password={password}" if password else ""
+        dsn = f"host={ports.pgwire_host} port={ports.pgwire_port} user=provisa dbname=provisa{pw}"
         alias = f"_src_{source.id}"
         attached = {
             "attach": f"ATTACH '{dsn}' AS \"{alias}\" (TYPE postgres, READ_ONLY)",
@@ -1099,10 +1102,12 @@ class _PgPgwireConnector(Connector):  # REQ-1730
     instead of falling to ``pgwire_replica.ConnectorReplica``'s landed-copy path. Read-only: Calcite
     serves no DML (same restriction ``_DuckDBPgwireConnector`` documents).
 
-    ``CREATE USER MAPPING`` carries no password: postgres_fdw only enforces ``password_required``
-    (default true) for a non-superuser mapping owner, and the pgwire bundle itself does not check
-    credentials (``pgwire_replica._pg_connect`` connects with none) — a non-superuser pg engine role
-    fails loud here with postgres_fdw's own "password is required" error, not a silent gap.
+    ``CREATE USER MAPPING`` carries the password the server signs a connection in with
+    (``pgwire_replica.sign_in_password``): the govdata source's AskAmerica API key, and none for
+    every other type, whose server checks no credentials. postgres_fdw only enforces
+    ``password_required`` (default true) for a non-superuser mapping owner, so a non-superuser pg
+    engine role fails loud on a password-less mapping with postgres_fdw's own "password is
+    required" error, not a silent gap.
     """
 
     served_by_bundle = True
@@ -1141,8 +1146,11 @@ class _PgPgwireConnector(Connector):  # REQ-1730
             schema_name,
             serves_table_schemas,
         )
+        from provisa.federation.pgwire_endpoint import sign_in_password
 
         ports = ensure_endpoint(source)  # starts (once) the source's bundled Calcite pgwire server
+        password = sign_in_password(source)
+        pw = f", password '{password}'" if password else ""
         server = engine_attach_name("fdw_pgwire", attach_catalog(source))
         local_schema = engine_attach_name("fdw_pgwire", attach_catalog(source))
         server_ddl = [
@@ -1151,7 +1159,7 @@ class _PgPgwireConnector(Connector):  # REQ-1730
             f"OPTIONS (host '{ports.pgwire_host}', port '{ports.pgwire_port}', "
             f"dbname 'provisa')",
             f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
-            f"OPTIONS (user 'provisa')",
+            f"OPTIONS (user 'provisa'{pw})",
         ]
         if serves_table_schemas(source):
             # A server of several schemas (AskAmerica): one foreign schema per server schema,

@@ -633,21 +633,21 @@ async def test_the_adapter_is_asked_for_a_schemas_columns_in_one_statement(monke
         async def close(self):
             statements.append("closed")
 
-    async def _connect(host, port):
+    async def _connect(host, port, password):
         return _Conn()
 
     monkeypatch.setattr(
         pr, "listening_endpoint", lambda source: pr.PortPair(5440, "127.0.0.1", 5540)
     )
     monkeypatch.setattr(pr, "_pg_connect", _connect)
-    columns = await pr.schema_columns(SimpleNamespace(id="test"), "sec")
+    columns = await pr.schema_columns(SimpleNamespace(id="test", type="files"), "sec")
 
     assert columns == {"filings": ["cik", "form"], "financial_facts": ["cik"]}
     assert len(statements) == 2 and statements[1] == "closed"
     assert "information_schema.columns" in statements[0] and "table_schema = 'sec'" in statements[0]
     assert "ORDER BY table_name, ordinal_position" in statements[0]
     with pytest.raises(ValueError, match="not a schema name"):
-        await pr.schema_columns(SimpleNamespace(id="test"), "sec'; DROP")
+        await pr.schema_columns(SimpleNamespace(id="test", type="files"), "sec'; DROP")
 
 
 @pytest.mark.asyncio

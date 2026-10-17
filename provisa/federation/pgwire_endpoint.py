@@ -38,3 +38,16 @@ def engine_endpoint(source: Any) -> tuple[str, int]:
             "provisa.federation.pgwire_replica has not been imported in this process"
         )
     return _resolver(source)
+
+
+def sign_in_password(source: Any) -> str:
+    """The password every connection to ``source``'s pgwire server signs in with. The govdata
+    server signs a connection in with the source's AskAmerica API key and meters what runs on it
+    under that key (the connector's ASKAM-010); a connection without it is refused. The server of
+    every other type checks no credentials."""
+    stype = source.type
+    if (stype.value if hasattr(stype, "value") else str(stype)) == "govdata":
+        from provisa.federation.askamerica import api_key
+
+        return api_key(source)
+    return ""
