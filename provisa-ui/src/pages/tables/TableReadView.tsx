@@ -29,6 +29,7 @@ import { ColumnTabs } from "./ColumnTabs";
 import { COLUMN_TABS, useColumnTab } from "./columnTopics";
 import { toIrType } from "../../irTypes";
 import { TableSectionTabs } from "./TableSectionTabs";
+import { WriteGrantsPanel } from "./WriteGrantsPanel";
 import { useTableSection, type TableSection } from "./tableSections";
 import { TableAssociations } from "./TableAssociations";
 import { ParametersPanel } from "./ParametersPanel";
@@ -307,7 +308,7 @@ export function TableReadView({
 
   return (
     <>
-      {/* The same six sections as the edit form, each read-only. */}
+      {/* The same seven sections as the edit form, each read-only. */}
       <TableSectionTabs value={section} onChange={setSection} />
       {section === "identity" && <IdentityRead table={table} source={source} />}
       {section === "associations" && (
@@ -532,7 +533,6 @@ export function TableReadView({
                   {tab === "access" && (
                     <>
                       <Table.Th>{t("tableReadView.colVisibleTo")}</Table.Th>
-                      <Table.Th>{t("tableReadView.colWritableBy")}</Table.Th>
                       <Table.Th>{t("tableReadView.colMasking")}</Table.Th>
                     </>
                   )}
@@ -580,13 +580,6 @@ export function TableReadView({
                                 c.visibleTo === null
                                   ? ""
                                   : c.visibleTo.map((e) => grantLabel(e, t)).join(", "),
-                            },
-                            {
-                              label: t("tableReadView.colWritableBy"),
-                              value:
-                                c.writableBy === null
-                                  ? ""
-                                  : c.writableBy.map((e) => grantLabel(e, t)).join(", "),
                             },
                             {
                               label: t("tableReadView.colMasking"),
@@ -715,13 +708,6 @@ export function TableReadView({
                               </Group>
                             )}
                           </Table.Td>
-                          <Table.Td c={c.writableBy === null ? "dimmed" : undefined}>
-                            {c.writableBy === null
-                              ? t("tableReadView.notShown")
-                              : c.writableBy.length > 0
-                                ? c.writableBy.map((e) => grantLabel(e, t)).join(", ")
-                                : t("tableReadView.none")}
-                          </Table.Td>
                           <Table.Td c={c.visibleTo === null ? "dimmed" : undefined}>
                             {c.visibleTo === null
                               ? t("tableReadView.notShown")
@@ -769,6 +755,14 @@ export function TableReadView({
         >
           {t("tableReadView.draftPreviewNote")}
         </Text>
+      )}
+      {section === "writes" && (
+        // REQ-2074: what each role may write to the table.
+        <WriteGrantsPanel
+          grants={table.writeGrants}
+          columns={table.columns.map((c) => c.columnName)}
+          roles={[]}
+        />
       )}
       {deployMsg[table.id] && (
         <Box

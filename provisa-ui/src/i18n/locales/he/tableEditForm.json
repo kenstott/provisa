@@ -192,7 +192,6 @@
     "sqlAliasHeader": "כינוי SQL",
     "descriptionHeader": "תיאור",
     "visibleToHeader": "גלוי עבור (קריאה)",
-    "writableByHeader": "ניתן לכתיבה על ידי (R/W)",
     "maskingHeader": "מיסוך",
     "scopeHeader": "טווח",
     "jsonPathHeader": "JSON Path",

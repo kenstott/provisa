@@ -31,7 +31,6 @@ function col(name: string, nativeFilterType: string | null, dataType = "text"): 
     id: 1,
     columnName: name,
     visibleTo: [],
-    writableBy: [],
     masks: [],
     alias: null,
     computedSqlAlias: name,

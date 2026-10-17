@@ -92,7 +92,7 @@ function table(
     probeQuery: null,
     probeType: null,
     columns: [],
-    columnPresets: [],
+    writeGrants: [],
     uniqueConstraints: [],
     graphqlFieldName: null,
     dqDataset: null,
@@ -149,7 +149,6 @@ const TABLES = [
         computedSqlAlias: "_nf_id",
         description: null,
         visibleTo: [],
-        writableBy: [],
         masks: [],
         scope: null,
         // A remote GraphQL table's required argument: a query_param the registration records

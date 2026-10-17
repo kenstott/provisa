@@ -33,7 +33,7 @@ import {
   pagingFields,
   snapshotFields,
 } from "./loadReadFields";
-import { presetsField, viewMetricsFields } from "./queryReadFields";
+import { viewMetricsFields } from "./queryReadFields";
 import { checkersField, uniquesField, useContractFields } from "./qualityReadFields";
 
 // A table's sections read-only: the read view shows them, and so does the edit form to a caller
@@ -247,7 +247,6 @@ export function QueryRead({ table }: { table: RegisteredTable }) {
   const fields: DetailField[] = [
     { label: t("tableEditForm.enableAggregatesLabel"), value: yesNo(t, table.enableAggregates) },
     { label: t("tableEditForm.enableGroupByLabel"), value: yesNo(t, table.enableGroupBy) },
-    presetsField(t, table),
     {
       label: t("tableReadView.writable"),
       testId: "table-read-view-writable",

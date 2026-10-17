@@ -428,7 +428,9 @@
       "relationship_id_taken": "Relatie '{{relationship}}' bestaat al",
       "relationship_graphql_alias_taken": "De GraphQL-alias '{{alias}}' is al de alias van relatie '{{relationship}}' vanuit '{{table}}'",
       "trigger_refused": "{{reason}}",
-      "scheduled_task_updated": "Geplande taak '{{task}}' bijgewerkt"
+      "scheduled_task_updated": "Geplande taak '{{task}}' bijgewerkt",
+      "write_grant_invalid": "Dit recht past niet bij de tabel: {{reason}}",
+      "write_grants_saved": "Schrijfrechten van tabel {{id}} opgeslagen"
     },
     "secrets": {
       "name_refused": "{{name}} is geen naam binnen de secrets van deze organisatie in {{service}}: een naam is relatief ten opzichte van de organisatie en kan deze niet verlaten",

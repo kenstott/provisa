@@ -387,7 +387,6 @@ export function RegisterTableForm({
         (picked?.columns ?? []).map((c) => ({
           name: c.name,
           visibleTo: c.visibleTo,
-          writableBy: [],
           masks: c.masks,
           alias: "",
           description: c.description,
@@ -414,7 +413,6 @@ export function RegisterTableForm({
           return {
             name: c.name,
             visibleTo: roles.map((r) => r.id),
-            writableBy: [],
             masks: [],
             alias: snake !== c.name ? snake : "",
             description: c.comment || "",
@@ -518,7 +516,6 @@ export function RegisterTableForm({
         name: c.name,
         dataType: c.dataType,
         visibleTo: c.visibleTo,
-        writableBy: c.writableBy,
         masks: c.masks,
         alias: c.alias || undefined,
         description: c.description || undefined,
@@ -694,7 +691,6 @@ export function RegisterTableForm({
           {
             ...DQ_PLACEHOLDER_COLUMN,
             visibleTo: dqVisibleTo,
-            writableBy: [],
             masks: [],
             scope: "domain",
           },

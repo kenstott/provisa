@@ -1462,6 +1462,27 @@ class RoleInput:  # REQ-042
 
 
 @strawberry.input
+class WritePresetInput:  # REQ-2074
+    column: str
+    source: str  # session | literal | now
+    name: str | None = None
+    value: str | None = None
+
+
+@strawberry.input
+class WriteGrantInput:  # REQ-2074
+    """One role's write grant on a table for one operation. ``rows`` / ``check`` null: the
+    role's read row filter; ``TRUE``: every row."""
+
+    role: str
+    operation: str
+    columns: list[str] = strawberry.field(default_factory=list)
+    rows: str | None = None
+    check: str | None = None
+    presets: list[WritePresetInput] = strawberry.field(default_factory=list)
+
+
+@strawberry.input
 class RLSRuleInput:  # REQ-041, REQ-402
     table_id: str | None = None  # table name (resolved to ID); mutually exclusive with domain_id
     domain_id: str | None = None  # domain ID for domain-level rules

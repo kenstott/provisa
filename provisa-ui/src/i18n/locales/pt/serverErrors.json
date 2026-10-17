@@ -428,7 +428,9 @@
       "relationship_id_taken": "O relacionamento '{{relationship}}' já existe",
       "relationship_graphql_alias_taken": "O alias GraphQL '{{alias}}' já é o alias do relacionamento '{{relationship}}' a partir de '{{table}}'",
       "trigger_refused": "{{reason}}",
-      "scheduled_task_updated": "Tarefa agendada '{{task}}' atualizada"
+      "scheduled_task_updated": "Tarefa agendada '{{task}}' atualizada",
+      "write_grant_invalid": "Esta concessão não se ajusta à tabela: {{reason}}",
+      "write_grants_saved": "Concessões de gravação da tabela {{id}} salvas"
     },
     "secrets": {
       "name_refused": "{{name}} não é um nome dentro dos segredos desta organização em {{service}}: um nome é relativo à organização e não pode sair dela",

@@ -49,7 +49,6 @@ export function previewedColumn(
   return {
     name: c.name,
     visibleTo: roleIds,
-    writableBy: [],
     masks: [],
     alias: snake !== c.name ? snake : "",
     description: "",

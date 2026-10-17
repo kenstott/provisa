@@ -281,7 +281,10 @@ export function ProfileConstraintsModal({
           size="xs"
           mt="xs"
           label={t("profileConstraintsModal.checkerLabel")}
-          data={checkers.map((c) => ({ value: String(c.id), label: `${c.tableName} (${c.checker})` }))}
+          data={checkers.map((c) => ({
+            value: String(c.id),
+            label: `${c.tableName} (${c.checker})`,
+          }))}
           value={checker}
           onChange={setChecker}
           data-testid="constraints-checker"

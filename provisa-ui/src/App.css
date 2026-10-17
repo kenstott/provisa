@@ -2953,3 +2953,8 @@ main {
 .parameters-panel__heading {
   margin-block: 1rem 0.5rem;
 }
+/* REQ-2074: one write grant in a table's Writes section, read or edited: a ruled-off block. */
+.write-grant {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}

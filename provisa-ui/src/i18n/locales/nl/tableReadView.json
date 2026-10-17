@@ -5,7 +5,6 @@
     "colSqlAlias": "SQL-alias",
     "colDescription": "Beschrijving",
     "colVisibleTo": "Zichtbaar voor (lezen)",
-    "colWritableBy": "Schrijfbaar door (R/W)",
     "colMasking": "Maskering",
     "colScope": "Bereik",
     "pathBadge": "pad",

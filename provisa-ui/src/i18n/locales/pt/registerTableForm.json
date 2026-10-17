@@ -38,7 +38,6 @@
     "dataTypePlaceholder": "Atribuir tipo...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "Visível para (leitura)",
-    "colHeaderWritableBy": "Gravável por (leitura/gravação)",
     "colHeaderMasking": "Mascaramento",
     "colHeaderAlias": "Alias SQL",
     "colHeaderDescription": "Descrição",

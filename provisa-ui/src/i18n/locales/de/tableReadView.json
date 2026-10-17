@@ -5,7 +5,6 @@
     "colSqlAlias": "SQL-Alias",
     "colDescription": "Beschreibung",
     "colVisibleTo": "Sichtbar für (Lesen)",
-    "colWritableBy": "Schreibbar durch (R/W)",
     "colMasking": "Maskierung",
     "colScope": "Geltungsbereich",
     "pathBadge": "Pfad",

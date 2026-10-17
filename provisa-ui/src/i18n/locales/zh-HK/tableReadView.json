@@ -5,7 +5,6 @@
     "colSqlAlias": "SQL 別名",
     "colDescription": "描述",
     "colVisibleTo": "可見於（讀取）",
-    "colWritableBy": "可寫入者（讀寫）",
     "colMasking": "遮罩",
     "colScope": "範圍",
     "pathBadge": "路徑",

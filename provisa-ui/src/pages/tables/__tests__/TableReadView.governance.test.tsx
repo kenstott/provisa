@@ -45,7 +45,6 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     probeQuery: null,
     probeType: null,
     columns: [],
-    columnPresets: [],
     implicitMeasures: [],
     implicitDimensions: [],
     apiEndpoint: null,
@@ -75,6 +74,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     canDeployToDb: false,
     writeOps: ["delete", "insert", "update"],
     live: null,
+    writeGrants: [],
     uniqueConstraints: [],
     graphqlFieldName: null,
     dqDataset: null,
@@ -88,7 +88,6 @@ function column(name: string, grants: Partial<TableColumn>): TableColumn {
     id: 1,
     columnName: name,
     visibleTo: [],
-    writableBy: [],
     masks: [],
     alias: null,
     computedSqlAlias: name,
@@ -127,7 +126,7 @@ function renderView(table: RegisteredTable, startEditing = vi.fn()) {
 
 describe("TableReadView with grant lists withheld (REQ-1958)", () => {
   const withheld = makeTable({
-    columns: [column("id", { visibleTo: null, writableBy: null, masks: null })],
+    columns: [column("id", { visibleTo: null, masks: null })],
   });
 
   it("says the grants are not shown, never 'all' or 'none'", () => {
@@ -135,7 +134,7 @@ describe("TableReadView with grant lists withheld (REQ-1958)", () => {
     // Grants and masks are the Access tab of the columns table.
     fireEvent.click(screen.getByTestId("column-tab-access"));
     expect(screen.getByTestId("grants-not-shown")).toHaveTextContent("not shown");
-    expect(screen.getAllByText("not shown")).toHaveLength(3); // visible to, writable by, mask
+    expect(screen.getAllByText("not shown")).toHaveLength(2); // visible to, mask
     expect(screen.queryByText("all")).not.toBeInTheDocument();
     expect(screen.queryByText("none")).not.toBeInTheDocument();
   });
@@ -153,7 +152,7 @@ describe("TableReadView with grant lists withheld (REQ-1958)", () => {
 
 describe("TableReadView with grant lists shown", () => {
   const shown = makeTable({
-    columns: [column("id", { visibleTo: ["analyst"], writableBy: [], masks: [] })],
+    columns: [column("id", { visibleTo: ["analyst"], masks: [] })],
   });
 
   it("shows them and offers the editor", () => {

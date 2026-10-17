@@ -428,7 +428,9 @@
       "relationship_id_taken": "關係「{{relationship}}」已存在",
       "relationship_graphql_alias_taken": "GraphQL 別名「{{alias}}」已是來自「{{table}}」的關係「{{relationship}}」的別名",
       "trigger_refused": "{{reason}}",
-      "scheduled_task_updated": "排程任務「{{task}}」已更新"
+      "scheduled_task_updated": "排程任務「{{task}}」已更新",
+      "write_grant_invalid": "此授權與該表不符：{{reason}}",
+      "write_grants_saved": "表 {{id}} 的寫入授權已儲存"
     },
     "secrets": {
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",

@@ -82,6 +82,7 @@ declare module "*.graphql" {
   export const CreateRole: DocumentNode;
   export const UpdateRole: DocumentNode;
   export const DeleteRole: DocumentNode;
+  export const SetTableWriteGrants: DocumentNode;
   export const RevokeRoleFromTable: DocumentNode;
   export const RevokeRoleFromObject: DocumentNode;
   export const DeployViewToDb: DocumentNode;
@@ -208,6 +209,7 @@ declare module "*.gql" {
   export const CreateRole: DocumentNode;
   export const UpdateRole: DocumentNode;
   export const DeleteRole: DocumentNode;
+  export const SetTableWriteGrants: DocumentNode;
   export const RevokeRoleFromTable: DocumentNode;
   export const RevokeRoleFromObject: DocumentNode;
   export const DeployViewToDb: DocumentNode;

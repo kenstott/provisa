@@ -13,7 +13,6 @@ import type { MaskEntry } from "../../lib/masks";
 export interface ColumnForm {
   name: string;
   visibleTo: string[];
-  writableBy: string[];
   masks: MaskEntry[];
   alias: string;
   description: string;
@@ -42,7 +41,6 @@ export function blankColumn(name: string, dataType: string, visibleTo: string[])
   return {
     name,
     visibleTo,
-    writableBy: [],
     masks: [],
     alias: "",
     description: "",

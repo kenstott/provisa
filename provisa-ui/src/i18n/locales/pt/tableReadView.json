@@ -5,7 +5,6 @@
     "colSqlAlias": "Alias SQL",
     "colDescription": "Descrição",
     "colVisibleTo": "Visível para (leitura)",
-    "colWritableBy": "Gravável por (R/W)",
     "colMasking": "Mascaramento",
     "colScope": "Escopo",
     "pathBadge": "caminho",

@@ -56,7 +56,6 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     probeQuery: null,
     probeType: null,
     columns: [],
-    columnPresets: [],
     implicitMeasures: [],
     implicitDimensions: [],
     apiEndpoint: null,
@@ -86,6 +85,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     canDeployToDb: false,
     writeOps: ["delete", "insert", "update"],
     live: null,
+    writeGrants: [],
     uniqueConstraints: [],
     graphqlFieldName: null,
     dqDataset: null,
@@ -131,7 +131,6 @@ const EMAIL = {
   id: 1,
   columnName: "email",
   visibleTo: [],
-  writableBy: [],
   masks: [],
   alias: null,
   computedSqlAlias: "email",
@@ -148,13 +147,12 @@ const EMAIL = {
 } satisfies TableColumn;
 
 const H = en.tableEditForm;
-const GOVERNANCE_HEADERS = [H.visibleToHeader, H.writableByHeader, H.maskingHeader];
-const GOVERNANCE_KEYS = ["writableBy", "masks"];
+const GOVERNANCE_HEADERS = [H.visibleToHeader, H.maskingHeader];
+const GOVERNANCE_KEYS = ["masks"];
 
 const SHOWN = {
   ...EMAIL,
   visibleTo: ["analyst"],
-  writableBy: ["steward"],
   masks: [
     { to: ["auditor"], mask: null },
     { to: ["*"], mask: { type: "constant", value: "***" } },
@@ -165,7 +163,6 @@ const SHOWN = {
 const WITHHELD = {
   ...EMAIL,
   visibleTo: null,
-  writableBy: null,
   masks: null,
 } as unknown as TableColumn;
 
@@ -185,7 +182,6 @@ describe("the table editor for a caller who is shown governance", () => {
     expect(column).toMatchObject({
       name: "email",
       visibleTo: ["analyst"],
-      writableBy: ["steward"],
       masks: [
         { to: ["auditor"], mask: null },
         { to: ["*"], mask: { type: "constant", value: "***" } },

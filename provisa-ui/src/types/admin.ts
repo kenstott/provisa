@@ -189,7 +189,6 @@ export interface TableColumn {
   // REQ-1958/REQ-1134: grant lists and mask settings are null for a caller without
   // view_governance — "not shown to you", which is not the same as an empty list.
   visibleTo: string[] | null;
-  writableBy: string[] | null;
   // The ordered mask list (null when not shown to the caller): the first entry a reader holds applies.
   masks: MaskEntry[] | null;
   alias: string | null;
@@ -233,12 +232,26 @@ export interface ImplicitMeasure {
   aggFuncs: string[];
 }
 
-export interface ColumnPreset {
+// REQ-2074: a value a write grant sets on a column itself -- the request's session variable
+// `name`, a literal `value`, or the time of the write. The statement may not supply it.
+export interface WritePreset {
   column: string;
-  source: "now" | "header" | "literal";
+  source: "session" | "literal" | "now";
   name: string | null;
   value: string | null;
-  dataType: string | null;
+}
+
+export type WriteOperation = "insert" | "update" | "delete";
+
+// REQ-2074: what one role may write to the table by one operation. rows/check null: the role's
+// read row filter on the table; "TRUE": every row.
+export interface WriteGrant {
+  role: string;
+  operation: WriteOperation;
+  columns: string[];
+  rows: string | null;
+  check: string | null;
+  presets: WritePreset[];
 }
 
 // REQ-1093: a declared UNIQUE constraint (single-column or composite).
@@ -349,7 +362,8 @@ export interface RegisteredTable {
   probeQuery: string | null;
   probeType: string | null;
   columns: TableColumn[];
-  columnPresets: ColumnPreset[];
+  // REQ-2074: null for a caller without view_governance, as a column's grant lists are.
+  writeGrants: WriteGrant[] | null;
   uniqueConstraints: UniqueConstraint[]; // REQ-1093
   apiEndpoint: string | null;
   viewSql: string | null;

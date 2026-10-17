@@ -428,7 +428,9 @@
       "relationship_id_taken": "リレーションシップ「{{relationship}}」はすでに存在します",
       "relationship_graphql_alias_taken": "GraphQL エイリアス「{{alias}}」は、すでに「{{table}}」からのリレーションシップ「{{relationship}}」のエイリアスです",
       "trigger_refused": "{{reason}}",
-      "scheduled_task_updated": "スケジュールタスク '{{task}}' を更新しました"
+      "scheduled_task_updated": "スケジュールタスク '{{task}}' を更新しました",
+      "write_grant_invalid": "この権限はテーブルに合いません: {{reason}}",
+      "write_grants_saved": "テーブル {{id}} の書き込み権限を保存しました"
     },
     "secrets": {
       "name_refused": "{{name}} は {{service}} 内のこの組織のシークレットに含まれる名前ではありません。名前は組織に対する相対指定であり、組織の外に出ることはできません",

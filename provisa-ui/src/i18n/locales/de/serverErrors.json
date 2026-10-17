@@ -428,7 +428,9 @@
       "relationship_id_taken": "Die Beziehung '{{relationship}}' existiert bereits",
       "relationship_graphql_alias_taken": "Der GraphQL-Alias '{{alias}}' ist bereits der Alias der Beziehung '{{relationship}}' von '{{table}}'",
       "trigger_refused": "{{reason}}",
-      "scheduled_task_updated": "Geplante Aufgabe „{{task}}“ aktualisiert"
+      "scheduled_task_updated": "Geplante Aufgabe „{{task}}“ aktualisiert",
+      "write_grant_invalid": "Dieses Recht passt nicht zur Tabelle: {{reason}}",
+      "write_grants_saved": "Schreibrechte der Tabelle {{id}} gespeichert"
     },
     "secrets": {
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",

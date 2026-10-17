@@ -38,7 +38,6 @@
     "dataTypePlaceholder": "Type toewijzen...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "Zichtbaar voor (lezen)",
-    "colHeaderWritableBy": "Schrijfbaar door (R/W)",
     "colHeaderMasking": "Maskering",
     "colHeaderAlias": "SQL-alias",
     "colHeaderDescription": "Beschrijving",

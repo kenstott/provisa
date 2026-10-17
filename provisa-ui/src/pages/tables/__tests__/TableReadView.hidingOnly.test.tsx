@@ -54,7 +54,6 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     probeQuery: null,
     probeType: null,
     columns: [],
-    columnPresets: [],
     implicitMeasures: [],
     implicitDimensions: [],
     apiEndpoint: null,
@@ -84,6 +83,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     canDeployToDb: false,
     writeOps: ["delete", "insert", "update"],
     live: null,
+    writeGrants: [],
     uniqueConstraints: [],
     graphqlFieldName: null,
     dqDataset: null,
@@ -144,7 +144,6 @@ describe("TableReadView for a table with a required parameter", () => {
     id: 1,
     columnName: "_nf_owner",
     visibleTo: [],
-    writableBy: [],
     masks: [],
     scope: "domain",
     nativeFilterType: "query_param",
@@ -222,7 +221,6 @@ describe("TableReadView — a column's test data is the fourth tab", () => {
     id: 1,
     columnName: "email",
     visibleTo: [],
-    writableBy: [],
     masks: [],
     isPrimaryKey: false,
   };
@@ -268,7 +266,7 @@ describe("TableReadView — a column's test data is the fourth tab", () => {
   });
 });
 
-describe("TableReadView — the table's six sections", () => {
+describe("TableReadView — the table's seven sections", () => {
   const rel = (id: number, source: string, target: string, sourceTableId: number) =>
     ({
       id,
@@ -280,7 +278,7 @@ describe("TableReadView — the table's six sections", () => {
       targetColumn: "id",
     }) as unknown as Relationship;
 
-  it("shows the same six sections as the edit form, Identity first", () => {
+  it("shows the same seven sections as the edit form, Identity first", () => {
     renderView(false, makeTable({ id: 7 }));
     const sections = within(screen.getByRole("tablist", { name: "Table sections" }));
     expect(sections.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
@@ -290,6 +288,7 @@ describe("TableReadView — the table's six sections", () => {
       "Query",
       "Quality",
       "Columns",
+      "Writes",
     ]);
     expect(screen.getByTestId("table-identity")).toHaveTextContent("orders");
   });
@@ -435,27 +434,39 @@ describe("TableReadView — Preview, Profile and Policies are icon actions in th
 });
 
 describe("TableReadView — Query shows every stored setting", () => {
-  it("lists the column presets under the editor's headers, and a metric view's parts", () => {
+  it("lists the write grants on the Writes section (REQ-2074)", () => {
+    renderView(
+      false,
+      makeTable({
+        id: 7,
+        writeGrants: [
+          {
+            role: "clerk",
+            operation: "update",
+            columns: ["status"],
+            rows: "status = 'placed'",
+            check: null,
+            presets: [{ column: "updated_at", source: "now", name: null, value: null }],
+          },
+        ],
+      } as Partial<RegisteredTable>),
+    );
+    fireEvent.click(screen.getByTestId("table-section-writes"));
+    const grants = screen.getByTestId("write-grants-read");
+    for (const text of ["clerk", "Update", "status = 'placed'", "updated_at to the time of the write"])
+      expect(grants).toHaveTextContent(text);
+  });
+
+  it("lists a metric view's parts", () => {
     renderView(
       false,
       makeTable({
         id: 7,
         viewSql: "SELECT 1",
-        columnPresets: [
-          { column: "created_at", source: "now", name: null, value: null, dataType: null },
-          { column: "tenant", source: "header", name: "X-Tenant", value: null, dataType: null },
-        ],
         viewMetrics: { metrics: ["revenue"], dimensions: ["region"], filters: ["year = 2026"] },
       } as Partial<RegisteredTable>),
     );
     fireEvent.click(screen.getByTestId("table-section-query"));
-    const presets = screen.getByTestId("table-read-presets");
-    expect(
-      within(presets)
-        .getAllByRole("columnheader")
-        .map((h) => h.textContent),
-    ).toEqual(["Column", "Source", "Header / Value"]);
-    expect(presets).toHaveTextContent("X-Tenant");
     const query = screen.getByTestId("table-query");
     for (const text of ["revenue", "region", "year = 2026"]) expect(query).toHaveTextContent(text);
   });

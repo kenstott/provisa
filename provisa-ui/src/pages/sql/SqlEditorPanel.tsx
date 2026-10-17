@@ -583,7 +583,6 @@ export function SqlEditorPanel({
                     columns: viewTable.columns.map((c) => ({
                       name: c.columnName,
                       visibleTo: c.visibleTo ?? [],
-                      writableBy: c.writableBy,
                       masks: c.masks ?? [],
                       alias: c.alias ?? undefined,
                       description: c.description ?? undefined,

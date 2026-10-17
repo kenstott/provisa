@@ -428,7 +428,9 @@
       "relationship_id_taken": "Relationship '{{relationship}}' already exists",
       "relationship_graphql_alias_taken": "GraphQL alias '{{alias}}' is already the alias of relationship '{{relationship}}' from '{{table}}'",
       "trigger_refused": "{{reason}}",
-      "scheduled_task_updated": "Scheduled task '{{task}}' updated"
+      "scheduled_task_updated": "Scheduled task '{{task}}' updated",
+      "write_grant_invalid": "This grant does not fit the table: {{reason}}",
+      "write_grants_saved": "Write grants of table {{id}} saved"
     },
     "secrets": {
       "name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",

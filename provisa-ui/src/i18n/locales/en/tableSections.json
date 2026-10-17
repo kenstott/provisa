@@ -8,6 +8,7 @@
     "query": "Query",
     "quality": "Quality",
     "columns": "Columns",
+    "writes": "Writes",
     "source": "Source",
     "schema": "Schema",
     "table": "Table",

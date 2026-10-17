@@ -16,15 +16,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Trash2 } from "lucide-react";
-import {
-  Modal,
-  TextInput,
-  Select,
-  MultiSelect,
-  NumberInput,
-  Button,
-  Alert,
-} from "@mantine/core";
+import { Modal, TextInput, Select, MultiSelect, NumberInput, Button, Alert } from "@mantine/core";
 import { DateInput, DatePickerInput } from "@mantine/dates";
 import { useCreateCalendar, useDeleteCalendar } from "../../hooks/useAdminQueries";
 import type { CalendarSummary } from "../../hooks/useAdminQueries";

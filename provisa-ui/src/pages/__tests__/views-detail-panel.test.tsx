@@ -90,7 +90,7 @@ function table(
     probeQuery: null,
     probeType: null,
     columns: [],
-    columnPresets: [],
+    writeGrants: [],
     uniqueConstraints: [],
     graphqlFieldName: null,
     dqDataset: null,

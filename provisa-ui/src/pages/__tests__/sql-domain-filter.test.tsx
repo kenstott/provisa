@@ -80,7 +80,6 @@ function table(overrides: Partial<RegisteredTable>): RegisteredTable {
     probeQuery: null,
     probeType: null,
     columns: [],
-    columnPresets: [],
     implicitMeasures: [],
     implicitDimensions: [],
     apiEndpoint: null,
