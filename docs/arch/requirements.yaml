@@ -60806,8 +60806,10 @@
   description: 'RLS session variables are bound per request from the acting identity, not read off the
     role definition. The HTTP chokepoint binds `current_session_vars` (core.request_context) for the request:
     `user_id` from the identity, `role` from the acting role, and every scalar claim of the identity''s
-    raw claims under its lower-cased name with any `x-hasura-` prefix stripped (so an imported Hasura
-    predicate `X-Hasura-User-Id` reads `provisa.user_id`); in unsecured mode a `x-provisa-session-<name>`
+    raw claims under its lower-cased name, dashes as underscores, a Hasura session variable keeping its
+    own name (`x-hasura-user-id` is `hasura_user_id`, read at the top level or from the Hasura claims
+    object, so an imported Hasura predicate `X-Hasura-User-Id` reads `provisa.hasura_user_id`; no claim
+    ever replaces `user_id`, the verified identity); in unsecured mode a `x-provisa-session-<name>`
     header binds `<name>`. Every place that resolves `current_setting(''provisa.<var>'')` — the SQL pipeline,
     the data endpoint''s approval request, action-response governance — reads `session_vars_for(role)`,
     which is the role''s configured constants overlaid by the request''s bindings. A variable bound nowhere
