@@ -100,6 +100,13 @@ def _quoted(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
+def _attach_url(url: Any) -> str:
+    """A server store's URL as DuckDB's ATTACH takes it: a store is declared with its SQLAlchemy
+    driver (``postgresql+psycopg://``, config/capabilities.yaml), which libpq does not read as a
+    URI, so the driver is dropped and the rest is kept as written."""
+    return url.set(drivername=url.get_backend_name()).render_as_string(hide_password=False)
+
+
 class _CatalogGate(ReadersWriterGate):
     """Readers-writer gate over the shared DuckDB connection's catalog.
 
@@ -931,7 +938,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             # ``duckdb:///C:\...`` DSN parses to ``/C:\...`` under urlparse (leading slash), which
             # DuckDB then reads as a ``//C:`` UNC network path and fails ("network path not found").
             # SQLAlchemy's URL parser strips the leading slash for a drive-letter path on every OS.
-            target = url.database if store_type in self._FILE_ATTACH_TYPES else dsn
+            target = url.database if store_type in self._FILE_ATTACH_TYPES else _attach_url(url)
             if store_type == "duckdb":
                 if not target:
                     raise RuntimeError(f"materialize store DSN {dsn!r} has no file path")
@@ -993,7 +1000,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         alias = name
         if alias in self._region_stores:
             return alias
-        store_type = self._ATTACH_TYPE_BY_SCHEME.get(make_url(dsn).get_backend_name())
+        url = make_url(dsn)
+        store_type = self._ATTACH_TYPE_BY_SCHEME.get(url.get_backend_name())
         if store_type is None or store_type in self._FILE_ATTACH_TYPES:
             raise RuntimeError(
                 f"{name!r}: that region's replicas store is not a server store this engine can "
@@ -1002,7 +1010,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if store_type not in self._NO_EXTENSION_TYPES:
             # A Postgres store loads the extension with its settings too (#241).
             install_and_load(self._con, store_type, from_community=False)
-        self._con.execute(f"ATTACH '{dsn}' AS \"{alias}\" (TYPE {store_type}, READ_ONLY)")
+        self._con.execute(
+            f"ATTACH '{_attach_url(url)}' AS \"{alias}\" (TYPE {store_type}, READ_ONLY)"
+        )
         self._region_stores.add(alias)
         return alias
 
