@@ -1,17 +1,20 @@
 {
   "dataScience": {
-    "tabPython": "Python",
     "editorLabel": "Código Python",
     "run": "Ejecutar",
     "runHint": "Se ejecuta en su navegador con su rol actual. Ctrl+Intro (⌘+Intro) ejecuta.",
     "loading": "Cargando Python…",
     "failed": "Python no pudo iniciarse.",
     "missingTitle": "Faltan los archivos de cuaderno de este servidor",
-    "missingBody": "El área de ciencia de datos ejecuta Python en su navegador a partir de archivos que sirve toda instalación de Provisa, y la instalación de este servidor no los tiene. Reinstale Provisa en el servidor y vuelva a cargar esta página.",
+    "missingBody": "Las pestañas Python y Cuaderno de Explore ejecutan Python en su navegador a partir de archivos que sirve toda instalación de Provisa, y la instalación de este servidor no los tiene. Reinstale Provisa en el servidor y vuelva a cargar esta página.",
     "rowsShown": "Mostrando {{shown}} de {{total}} filas",
     "figure": "Figura {{n}}",
     "resizeLabel": "Cambiar el tamaño del editor y la salida",
-    "tabNotebook": "Cuaderno Jupyter",
-    "notebookFrame": "Cuaderno de Jupyter"
+    "notebookFrame": "Cuaderno de Jupyter",
+    "copyCode": "Copiar código",
+    "clearCode": "Vaciar el editor",
+    "copyOutput": "Copiar la salida",
+    "maximize": "Maximizar",
+    "restore": "Restaurar"
   }
 }

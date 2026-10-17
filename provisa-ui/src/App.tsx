@@ -106,8 +106,8 @@ const JsonApiPage = lazy(() =>
 const OpenApiPage = lazy(() =>
   import("./pages/OpenApiPage").then((m) => ({ default: m.OpenApiPage })),
 );
-const DataSciencePage = lazy(() =>
-  import("./pages/DataSciencePage").then((m) => ({ default: m.DataSciencePage })),
+const DataScienceHost = lazy(() =>
+  import("./pages/DataSciencePage").then((m) => ({ default: m.DataScienceHost })),
 );
 const McpExplorePage = lazy(() =>
   import("./pages/McpExplorePage").then((m) => ({ default: m.McpExplorePage })),
@@ -466,16 +466,26 @@ function App() {
                                           </CapabilityGate>
                                         }
                                       />
+                                      {/* REQ-2071: the Python and Notebook tabs are shown by
+                                          DataScienceHost below, which keeps them alive between
+                                          visits; their routes only gate them. */}
+                                      {["/python", "/notebook"].map((path) => (
+                                        <Route
+                                          key={path}
+                                          path={path}
+                                          element={
+                                            <CapabilityGate
+                                              capability="query_development"
+                                              fallback={<NotAuthorized />}
+                                            >
+                                              {null}
+                                            </CapabilityGate>
+                                          }
+                                        />
+                                      ))}
                                       <Route
                                         path="/science"
-                                        element={
-                                          <CapabilityGate
-                                            capability="query_development"
-                                            fallback={<NotAuthorized />}
-                                          >
-                                            <DataSciencePage />
-                                          </CapabilityGate>
-                                        }
+                                        element={<Navigate to="/python" replace />}
                                       />
                                       <Route
                                         path="/explore"
@@ -655,6 +665,9 @@ function App() {
                                         }
                                       />
                                     </Routes>
+                                  </Suspense>
+                                  <Suspense fallback={null}>
+                                    <DataScienceHost />
                                   </Suspense>
                                 </main>
                                 <ChatPanel />

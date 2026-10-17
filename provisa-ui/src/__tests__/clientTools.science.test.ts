@@ -30,20 +30,21 @@ const handed = (go: ReturnType<typeof vi.fn<Go>>) =>
 
 afterEach(() => vi.useRealTimers());
 
-describe("navigate to /science", () => {
+describe("navigate to the Python tab", () => {
   it("hands the area the code under a run id and answers with the run's outcome", async () => {
     const { c, go } = ctx();
     const pending = executeClientTool(
       "navigate",
-      { route: "/science", state: { code: "print(1)\ndf", autoRun: true } },
+      { route: "/python", state: { code: "print(1)\ndf", autoRun: true } },
       c,
     );
-    expect(go.mock.calls[0][0]).toBe("/science");
+    expect(go.mock.calls[0][0]).toBe("/python");
     const state = handed(go);
     expect(state).toMatchObject({ code: "print(1)\ndf", autoRun: true });
     reportRun(state.runId, { stdout: "1\n", value: 'columns: ["n"]', error: null });
     const out = await pending;
     expect(out.success).toBe(true);
+    expect(out.message).toContain("Ran the code in the Python tab.");
     expect(out.message).toContain("Printed:\n1");
     expect(out.message).toContain('Value:\ncolumns: ["n"]');
   });
@@ -52,7 +53,7 @@ describe("navigate to /science", () => {
     const { c, go } = ctx();
     const pending = executeClientTool(
       "navigate",
-      { route: "/science", state: { code: "x", autoRun: true } },
+      { route: "/python", state: { code: "x", autoRun: true } },
       c,
     );
     const { runId } = handed(go);
@@ -67,7 +68,7 @@ describe("navigate to /science", () => {
     const { c } = ctx();
     const pending = executeClientTool(
       "navigate",
-      { route: "/science", state: { code: "while True: pass", autoRun: true } },
+      { route: "/python", state: { code: "while True: pass", autoRun: true } },
       c,
     );
     await vi.advanceTimersByTimeAsync(180_000);
@@ -78,8 +79,29 @@ describe("navigate to /science", () => {
 
   it("navigates without waiting when there is no code to run", async () => {
     const { c } = ctx();
-    const out = await executeClientTool("navigate", { route: "/science" }, c);
-    expect(out).toEqual({ success: true, message: "Navigated to /science" });
+    const out = await executeClientTool("navigate", { route: "/python" }, c);
+    expect(out).toEqual({ success: true, message: "Navigated to /python" });
+  });
+});
+
+describe("navigate to the Notebook tab", () => {
+  it("hands over cells under a run id and answers with the notebook's outcome", async () => {
+    const { c, go } = ctx();
+    const pending = executeClientTool(
+      "navigate",
+      {
+        route: "/notebook",
+        state: { cells: ["%%sql eu\nSELECT 1"], autoRun: true },
+      },
+      c,
+    );
+    expect(go.mock.calls[0][0]).toBe("/notebook");
+    const state = handed(go) as unknown as { cells: string[]; runId: string };
+    expect(state.cells).toEqual(["%%sql eu\nSELECT 1"]);
+    reportRun(state.runId, { stdout: "", value: "   n\n0  1", error: null });
+    const out = await pending;
+    expect(out.message).toContain("Ran the cells in the Notebook tab.");
+    expect(out.message).toContain("Value:\n   n\n0  1");
   });
 });
 

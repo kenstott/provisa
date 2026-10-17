@@ -584,13 +584,21 @@ _CLIENT_TOOLS: list[Any] = [
             "it immediately when state.autoRun is true, landing it in the editor with no "
             "copy-paste needed. See the system prompt's section on the query surfaces for which "
             "tool to call first to get each surface's real field/name identifiers before "
-            "building the query. /science is the Data Science area's Python: Python "
-            "run in the user's browser as the user, reading Provisa through provisa_client "
+            "building the query. Explore's Python tab (/python) and Notebook tab (/notebook) run "
+            "Python in the user's browser as the user, reading Provisa through provisa_client "
             "(provisa_client.query(sql_or_graphql_or_cypher) returns a pandas DataFrame; pandas, "
-            "numpy, scikit-learn and matplotlib are available). A /science navigate with "
-            "state.code and autoRun waits for the run and its result says what the code "
-            "printed, its last value (a DataFrame as its columns, first rows and row count) and "
-            "any error, so read the result before you answer."
+            "numpy, scikit-learn and matplotlib are available). They are two different tabs, "
+            "never one for the other: the Python tab (state.code: one script; every run starts "
+            "from nothing, so the script must stand alone) and the Notebook tab (state.cells: a "
+            "list of cells added to the open Jupyter notebook and run in turn; notebook state "
+            "carries over between cells). Use the tab the user names; only when they name "
+            "neither, use the Python tab. Never call the Python tab a notebook. Code you write "
+            "for either starts with `import provisa_client` and `provisa_client.sign_in()`; in the "
+            "Notebook tab a cell using %%sql, %%graphql or %%cypher needs `%load_ext "
+            "provisa_client` run first. A "
+            "navigate to either with autoRun waits for the run and its result says what the "
+            "code printed, its last value (a DataFrame as its columns, first rows and row count) "
+            "and any error, so read the result before you answer."
         ),
         "input_schema": {
             "type": "object",
@@ -615,8 +623,9 @@ _CLIENT_TOOLS: list[Any] = [
                         "is the sql-safe name, not the raw domain id these routes key on), "
                         '/openapi -> {"openApiUrl": "..."} — same, use the openapi_path returned '
                         "by graphql_field_names verbatim. "
-                        '/science -> {"code": "<Python>"} (the run\'s output comes back '
-                        "in the tool result). Always also set "
+                        '/python -> {"code": "<Python script>"} (the Python tab), '
+                        '/notebook -> {"cells": ["<cell>", ...]} (the Notebook tab); the run\'s '
+                        "output comes back in the tool result. Always also set "
                         '"autoRun": true alongside whichever key applies.'
                     ),
                 },
@@ -836,8 +845,11 @@ _SYSTEM = (
     "(state.query), Cypher /graph (state.query), SQL /sql (state.sql), gRPC /grpc "
     "(state.grpcMethod), JSON:API /jsonapi (state.jsonapiUrl), OpenAPI /openapi (state.openApiUrl), "
     "NL /nl (no state deep-link — type the question directly if asked to use the NL surface "
-    "itself), Python /science (state.code; its run's output, value and error come back in the "
-    "navigate result). Always pass state.autoRun=true alongside so the query runs immediately instead of "
+    "itself), the Python tab /python (state.code) and the Notebook tab /notebook (state.cells) "
+    "-- use the one the user names, the Python tab only when they name neither, never call the "
+    "Python tab a notebook, and start the code with `import provisa_client` and "
+    "`provisa_client.sign_in()`; the run's output, value and error come back in the navigate "
+    "result. Always pass state.autoRun=true alongside so the query runs immediately instead of "
     "sitting unrun in the editor.\n"
     "For anything beyond browsing one table's plain columns — aggregation, GROUP BY, a "
     "business-term filter, or a question spanning more than one table — call "

@@ -515,7 +515,7 @@ The shared hosted platform isolates organizations logically. One deployment serv
 
 ### Python in the browser
 
-The Data Science area runs Python in the visitor's browser. Every read it makes goes to the server as the signed-in user, with their acting role, organization and environment, and is governed exactly as the same statement from any other client.
+Explore's Python and Notebook tabs run Python in the visitor's browser. Every read it makes goes to the server as the signed-in user, with their acting role, organization and environment, and is governed exactly as the same statement from any other client.
 
 ## High-Security Mode
 

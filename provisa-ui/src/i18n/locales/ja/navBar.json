@@ -72,6 +72,7 @@
     "sandboxExitUpgrade": "自分の組織を作成して Starter プランで始めますか？14 日間無料でご利用いただけます。",
     "sandboxExitCreateOrg": "組織を作成",
     "sandboxExitLogOut": "ログアウトのみ",
-    "itemDataScience": "データサイエンス"
+    "itemPython": "Python",
+    "itemNotebook": "ノートブック"
   }
 }

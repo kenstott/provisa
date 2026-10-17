@@ -1,17 +1,20 @@
 {
   "dataScience": {
-    "tabPython": "Python",
     "editorLabel": "קוד Python",
     "run": "הרץ",
     "runHint": "רץ בדפדפן שלך בתפקיד הנוכחי שלך. Ctrl+Enter (⌘+Enter) מריץ.",
     "loading": "טוען את Python…",
     "failed": "לא ניתן היה להפעיל את Python.",
     "missingTitle": "קובצי המחברת של השרת הזה חסרים",
-    "missingBody": "אזור מדע הנתונים מריץ Python בדפדפן שלך מקבצים שכל התקנה של Provisa מגישה, וההתקנה של השרת הזה חסרה אותם. התקן מחדש את Provisa בשרת ואז טען מחדש את הדף.",
+    "missingBody": "הלשוניות Python ומחברת ב-Explore מריצות Python בדפדפן שלך מקבצים שכל התקנה של Provisa מגישה, וההתקנה של השרת הזה חסרה אותם. התקן מחדש את Provisa בשרת ואז טען מחדש את הדף.",
     "rowsShown": "מוצגות {{shown}} מתוך {{total}} שורות",
     "figure": "איור {{n}}",
     "resizeLabel": "שינוי גודל העורך והפלט",
-    "tabNotebook": "מחברת Jupyter",
-    "notebookFrame": "מחברת Jupyter"
+    "notebookFrame": "מחברת Jupyter",
+    "copyCode": "העתקת הקוד",
+    "clearCode": "ניקוי העורך",
+    "copyOutput": "העתקת הפלט",
+    "maximize": "הגדלה",
+    "restore": "שחזור"
   }
 }

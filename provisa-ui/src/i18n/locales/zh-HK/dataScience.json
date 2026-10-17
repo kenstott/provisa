@@ -1,17 +1,20 @@
 {
   "dataScience": {
-    "tabPython": "Python",
     "editorLabel": "Python 程式碼",
     "run": "執行",
     "runHint": "以您目前的角色在瀏覽器中執行。Ctrl+Enter（⌘+Enter）執行。",
     "loading": "正在載入 Python…",
     "failed": "無法啟動 Python。",
     "missingTitle": "此伺服器缺少筆記本檔案",
-    "missingBody": "數據科學區域使用每個 Provisa 安裝都會提供的檔案在您的瀏覽器中執行 Python，而此伺服器的安裝中沒有這些檔案。請在伺服器上重新安裝 Provisa，然後重新載入此頁面。",
+    "missingBody": "Explore 的 Python 和筆記本分頁使用每個 Provisa 安裝都會提供的檔案在您的瀏覽器中執行 Python，而此伺服器的安裝中沒有這些檔案。請在伺服器上重新安裝 Provisa，然後重新載入此頁面。",
     "rowsShown": "顯示 {{total}} 行中的 {{shown}} 行",
     "figure": "圖 {{n}}",
     "resizeLabel": "調整編輯器和輸出的大小",
-    "tabNotebook": "Jupyter 筆記本",
-    "notebookFrame": "Jupyter 筆記本"
+    "notebookFrame": "Jupyter 筆記本",
+    "copyCode": "複製程式碼",
+    "clearCode": "清空編輯器",
+    "copyOutput": "複製輸出",
+    "maximize": "最大化",
+    "restore": "還原"
   }
 }

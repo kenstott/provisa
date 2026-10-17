@@ -977,11 +977,13 @@
       a clear-filters button. Export to Excel or CSV covers the whole relation under your current filter
       and sort, and the workbook has a second sheet recording how it was produced.
   - id: explorers-data-science
-    text: The Data Science area runs Python in your browser over the data your role is served. Its Python
-      tab reads a statement into a pandas DataFrame as you, with your current role, org and environment,
-      and shows what the code prints, its tables and its matplotlib figures. Its Jupyter Notebook tab is
-      a notebook (cells, and %%sql, %%graphql and %%cypher magics) that reads as you the same way. Polly
-      can write and run code in the Python tab and read what it returned. Python and its packages
+    text: Explore's Python and Notebook tabs run Python in your browser over the data your role is
+      served. The Python tab runs a script, each run starting fresh, that reads a statement into a pandas
+      DataFrame as you, with your current role, org and environment, and shows what it prints, its tables
+      and its matplotlib figures. The Notebook tab is a Jupyter notebook (cells, and %%sql, %%graphql and
+      %%cypher magics) that reads as you the same way. Both stay as you left them while you visit other
+      pages, open to 95% of the window, and Polly can write code into either, run it and read what it
+      returned. Python and its packages
       (pandas, pyarrow, scikit-learn, matplotlib) are served by Provisa itself, so it works with no
       internet access. They come with every install; an install missing them says so.
 - id: chat-assistant

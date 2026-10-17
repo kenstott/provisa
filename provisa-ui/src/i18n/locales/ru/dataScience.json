@@ -1,17 +1,20 @@
 {
   "dataScience": {
-    "tabPython": "Python",
     "editorLabel": "Код на Python",
     "run": "Выполнить",
     "runHint": "Выполняется в вашем браузере с вашей текущей ролью. Ctrl+Enter (⌘+Enter) — выполнить.",
     "loading": "Загрузка Python…",
     "failed": "Не удалось запустить Python.",
     "missingTitle": "На этом сервере нет файлов блокнотов",
-    "missingBody": "Раздел Data Science выполняет Python в вашем браузере из файлов, которые отдаёт любая установка Provisa, а в установке этого сервера их нет. Переустановите Provisa на сервере и перезагрузите страницу.",
+    "missingBody": "Вкладки Python и «Блокнот» в Explore выполняют Python в вашем браузере из файлов, которые отдаёт любая установка Provisa, а в установке этого сервера их нет. Переустановите Provisa на сервере и перезагрузите страницу.",
     "rowsShown": "Показано {{shown}} из {{total}} строк",
     "figure": "Рисунок {{n}}",
     "resizeLabel": "Изменить размер редактора и вывода",
-    "tabNotebook": "Блокнот Jupyter",
-    "notebookFrame": "Блокнот Jupyter"
+    "notebookFrame": "Блокнот Jupyter",
+    "copyCode": "Копировать код",
+    "clearCode": "Очистить редактор",
+    "copyOutput": "Копировать вывод",
+    "maximize": "Развернуть",
+    "restore": "Восстановить"
   }
 }

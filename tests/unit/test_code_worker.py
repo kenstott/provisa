@@ -75,12 +75,14 @@ _HOST = textwrap.dedent(
                 send({"op": "rows", "id": i, "rows": [{"tick": n}]})
                 n += 1
                 time.sleep(0.01)
-            open(log, "a").write(f"cancelled {i}\\n")
+            with open(log, "a") as record:
+                record.write(f"cancelled {i}\\n")
             return
         elif name == "slow":
             while i not in cancelled:
                 time.sleep(0.01)
-            open(log, "a").write(f"cancelled {i}\\n")
+            with open(log, "a") as record:
+                record.write(f"cancelled {i}\\n")
             return
         elif name == "die":
             sys.stderr.write("the code fell over\\n")
@@ -157,8 +159,9 @@ def test_a_deadline_cancels_the_call_in_the_host_and_releases_the_thread(worker,
         with request_deadline.within(0.3):
             list(worker.rows("slow", "table", []))
     assert time.monotonic() - started < 5.0
+    # The host records the cancel once the call stops; wait for the record, not only the file.
     until = time.monotonic() + 5.0
-    while not log.exists() and time.monotonic() < until:
+    while not (log.exists() and log.read_text()) and time.monotonic() < until:
         time.sleep(0.02)
     assert log.read_text().startswith("cancelled ")
     assert worker.ping()

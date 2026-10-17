@@ -72,6 +72,7 @@
     "sandboxExitUpgrade": "Möchten Sie Ihre eigene Organisation erstellen und mit einem Starter-Tarif beginnen? Sie erhalten 14 Tage kostenlos.",
     "sandboxExitCreateOrg": "Organisation erstellen",
     "sandboxExitLogOut": "Nur abmelden",
-    "itemDataScience": "Data Science"
+    "itemPython": "Python",
+    "itemNotebook": "Notebook"
   }
 }

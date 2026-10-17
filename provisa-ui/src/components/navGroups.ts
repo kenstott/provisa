@@ -111,12 +111,9 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/jsonapi", labelKey: "navBar.itemJsonApi", capability: "query_development" },
       { to: "/openapi", labelKey: "navBar.itemOpenApi", capability: "query_development" },
       { to: "/explore", labelKey: "navBar.itemExplore", capability: "query_development" },
-      // REQ-2071: Python (and, to come, a Jupyter notebook) over the role's governed data.
-      {
-        to: "/science",
-        labelKey: "navBar.itemDataScience",
-        capability: "query_development",
-      },
+      // REQ-2071: Python over the role's governed data, as a script and as a Jupyter notebook.
+      { to: "/python", labelKey: "navBar.itemPython", capability: "query_development" },
+      { to: "/notebook", labelKey: "navBar.itemNotebook", capability: "query_development" },
     ],
   },
   {

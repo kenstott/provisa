@@ -1,17 +1,20 @@
 {
   "dataScience": {
-    "tabPython": "Python",
     "editorLabel": "Python code",
     "run": "Run",
     "runHint": "Runs in your browser as your current role. Ctrl+Enter (⌘+Enter) runs.",
     "loading": "Loading Python…",
     "failed": "Python could not start.",
     "missingTitle": "This server's notebook assets are missing",
-    "missingBody": "The Data Science area runs Python in your browser from files every Provisa install serves, and this server's install does not have them. Reinstall Provisa on the server, then reload this page.",
+    "missingBody": "Explore's Python and Notebook tabs run Python in your browser from files every Provisa install serves, and this server's install does not have them. Reinstall Provisa on the server, then reload this page.",
     "rowsShown": "Showing {{shown}} of {{total}} rows",
     "figure": "Figure {{n}}",
     "resizeLabel": "Resize editor and output",
-    "tabNotebook": "Jupyter Notebook",
-    "notebookFrame": "Jupyter notebook"
+    "notebookFrame": "Jupyter notebook",
+    "copyCode": "Copy code",
+    "clearCode": "Clear the editor",
+    "copyOutput": "Copy output",
+    "maximize": "Maximize",
+    "restore": "Restore"
   }
 }

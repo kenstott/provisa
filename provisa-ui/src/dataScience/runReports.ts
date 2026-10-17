@@ -49,6 +49,11 @@ export function summarise(output: RunResult): RunReport {
   return { stdout: clip(output.stdout), value: clip(shown), error: output.error };
 }
 
+/** A report with its printed output and value cut to what the model is shown. */
+export function clipped(report: RunReport): RunReport {
+  return { ...report, stdout: clip(report.stdout), value: clip(report.value) };
+}
+
 const waiting = new Map<string, (report: RunReport) => void>();
 
 /** Called by the area when the run with this id has finished (or could not start). */

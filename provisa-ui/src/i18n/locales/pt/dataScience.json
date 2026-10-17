@@ -1,17 +1,20 @@
 {
   "dataScience": {
-    "tabPython": "Python",
     "editorLabel": "Código Python",
     "run": "Executar",
     "runHint": "Executa no seu navegador com o seu papel atual. Ctrl+Enter (⌘+Enter) executa.",
     "loading": "A carregar o Python…",
     "failed": "Não foi possível iniciar o Python.",
     "missingTitle": "Faltam os ficheiros de notebook deste servidor",
-    "missingBody": "A área de ciência de dados executa Python no seu navegador a partir de ficheiros que todas as instalações do Provisa servem, e a instalação deste servidor não os tem. Reinstale o Provisa no servidor e recarregue esta página.",
+    "missingBody": "Os separadores Python e Notebook do Explore executam Python no seu navegador a partir de ficheiros que todas as instalações do Provisa servem, e a instalação deste servidor não os tem. Reinstale o Provisa no servidor e recarregue esta página.",
     "rowsShown": "A mostrar {{shown}} de {{total}} linhas",
     "figure": "Figura {{n}}",
     "resizeLabel": "Redimensionar o editor e a saída",
-    "tabNotebook": "Notebook Jupyter",
-    "notebookFrame": "Notebook Jupyter"
+    "notebookFrame": "Notebook Jupyter",
+    "copyCode": "Copiar código",
+    "clearCode": "Limpar o editor",
+    "copyOutput": "Copiar a saída",
+    "maximize": "Maximizar",
+    "restore": "Restaurar"
   }
 }

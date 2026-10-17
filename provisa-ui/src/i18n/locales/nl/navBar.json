@@ -72,6 +72,7 @@
     "sandboxExitUpgrade": "Klaar om uw eigen organisatie te maken en te beginnen met een Starter-abonnement? U krijgt 14 dagen gratis.",
     "sandboxExitCreateOrg": "Organisatie maken",
     "sandboxExitLogOut": "Alleen uitloggen",
-    "itemDataScience": "Data science"
+    "itemPython": "Python",
+    "itemNotebook": "Notebook"
   }
 }

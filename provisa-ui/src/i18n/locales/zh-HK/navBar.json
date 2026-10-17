@@ -72,6 +72,7 @@
     "sandboxExitUpgrade": "準備好建立自己的組織並從 Starter 計劃開始了嗎？您將獲得 14 天免費試用。",
     "sandboxExitCreateOrg": "建立組織",
     "sandboxExitLogOut": "只登出",
-    "itemDataScience": "數據科學"
+    "itemPython": "Python",
+    "itemNotebook": "筆記本"
   }
 }

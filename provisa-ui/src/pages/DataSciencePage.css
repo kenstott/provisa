@@ -1,0 +1,77 @@
+/* Copyright (c) 2026 Kenneth Stott
+ *
+ * This source code is licensed under the Business Source License 1.1
+ * found in the LICENSE file in the root directory of this source tree.
+ */
+
+/* REQ-2071: the Data Science area's hover controls (copy, clear, maximize), as the explorers'
+   editors reveal their copy button: shown while the pane is hovered or holds keyboard focus. */
+.ds-pane {
+  position: relative;
+}
+
+.ds-controls {
+  position: absolute;
+  top: 6px;
+  inset-inline-end: 10px;
+  z-index: 3;
+  display: none;
+  gap: 4px;
+}
+
+.ds-pane:hover > .ds-controls,
+.ds-pane:focus-within > .ds-controls {
+  display: flex;
+}
+
+.ds-control {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.ds-control:hover {
+  color: var(--text);
+  border-color: var(--primary);
+}
+
+/* The panel's own control (maximize / restore), top right of the panel; the output pane's copy
+   control sits beside it. */
+.ds-panel-controls {
+  inset-inline-end: 10px;
+}
+
+.ds-pane .ds-output-controls {
+  inset-inline-end: 40px;
+}
+
+/* Maximized: the same element, fixed over the app at 95% of the window, so the Python worker and
+   the notebook's iframe are never moved or remounted. */
+.ds-panel.ds-max {
+  position: fixed;
+  top: 2.5vh;
+  left: 2.5vw;
+  width: 95vw;
+  height: 95vh;
+  z-index: 300;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 35%);
+  overflow: hidden;
+}
+
+.ds-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 299;
+  background: rgb(0 0 0 / 45%);
+}

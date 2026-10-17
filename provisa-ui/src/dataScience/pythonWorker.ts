@@ -8,20 +8,12 @@
 // come from /pyodide (the provisa-notebook package); provisa_client reads as the page's user from
 // self.provisaAuth, which the page keeps current.
 import type { FromWorker, ProvisaAuth, ToWorker } from "./protocol";
+import { QUIET, runScript, type LoadOptions, type PyodideLike } from "./pythonRun";
 
-// Pyodide reports each package it loads; that is not the code's output, so it is not shown.
-interface LoadOptions {
-  messageCallback: (message: string) => void;
-}
-const QUIET: LoadOptions = { messageCallback: () => {} };
-
-interface Pyodide {
+interface Pyodide extends PyodideLike {
   loadPackage(names: string | string[], options?: LoadOptions): Promise<unknown>;
-  loadPackagesFromImports(code: string, options?: LoadOptions): Promise<unknown>;
-  runPythonAsync(code: string): Promise<unknown>;
   setStdout(options: { batched: (text: string) => void }): void;
   setStderr(options: { batched: (text: string) => void }): void;
-  globals: { get(name: string): (...args: unknown[]) => unknown };
 }
 
 const scope = self as unknown as {
@@ -35,6 +27,9 @@ const scope = self as unknown as {
 const PRELUDE = `
 import os, io, base64, json
 os.environ["MPLBACKEND"] = "agg"
+
+def _provisa_fresh_globals():
+    return {"__name__": "__main__", "__builtins__": __builtins__}
 
 def _provisa_show(value):
     import sys
@@ -65,7 +60,8 @@ def _provisa_show(value):
 const PYODIDE_MODULE = "/pyodide/pyodide.mjs";
 
 let pyodide: Pyodide | null = null;
-let stdout = "";
+/** What the running script has printed so far. */
+const printed = { text: "" };
 
 async function init(auth: ProvisaAuth): Promise<void> {
   scope.provisaAuth = auth;
@@ -74,8 +70,8 @@ async function init(auth: ProvisaAuth): Promise<void> {
     loadPyodide(options: { indexURL: string }): Promise<Pyodide>;
   };
   const py = await loadPyodide({ indexURL: "/pyodide/" });
-  py.setStdout({ batched: (text) => (stdout += text + "\n") });
-  py.setStderr({ batched: (text) => (stdout += text + "\n") });
+  py.setStdout({ batched: (text) => (printed.text += text + "\n") });
+  py.setStderr({ batched: (text) => (printed.text += text + "\n") });
   // provisa-client is a package of the served lock; pandas and pyarrow come with it.
   await py.loadPackage(["provisa-client"], QUIET);
   await py.runPythonAsync(PRELUDE);
@@ -85,27 +81,7 @@ async function init(auth: ProvisaAuth): Promise<void> {
 async function run(id: number, code: string): Promise<FromWorker> {
   const py = pyodide;
   if (py === null) throw new Error("Python is not loaded");
-  stdout = "";
-  try {
-    // A package the code imports (scikit-learn, matplotlib) is loaded from /pyodide first.
-    await py.loadPackagesFromImports(code, QUIET);
-    const value = await py.runPythonAsync(code);
-    const shown = JSON.parse(String(py.globals.get("_provisa_show")(value))) as {
-      value: Extract<FromWorker, { type: "result" }>["value"];
-      images: string[];
-    };
-    (value as { destroy?: () => void } | undefined)?.destroy?.();
-    return { type: "result", id, stdout, value: shown.value, images: shown.images, error: null };
-  } catch (err) {
-    return {
-      type: "result",
-      id,
-      stdout,
-      value: { kind: "none" },
-      images: [],
-      error: String((err as Error)?.message ?? err),
-    };
-  }
+  return runScript(py, id, code, printed);
 }
 
 scope.onmessage = (event) => {
