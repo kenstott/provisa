@@ -1222,6 +1222,23 @@ from provisa.security import sandbox_egress as _sandbox_egress  # noqa: E402
 _sandbox_egress.set_deployment_org_resolver(lambda: state.org_id)
 
 
+def _org_engine_shard() -> str | None:
+    """REQ-2073: the shard the bound org's engine catalogs go to, None off a provisioning
+    deployment or for an org on an engine of its own."""
+    from provisa.federation.k8s_provisioner import provisioning_available
+
+    if not provisioning_available():
+        return None
+    from provisa.federation.engine_wake import active_shard
+
+    return active_shard(state)
+
+
+from provisa.core.repositories import kafka_source as _kafka_source_repo  # noqa: E402
+
+_kafka_source_repo.set_engine_shard_resolver(_org_engine_shard)
+
+
 def _org_redirect_overrides() -> dict:
     """The bound org's `redirect` override block, for RedirectConfig.from_env (REQ-1349)."""
     return state.settings_overrides.get("redirect") or {}
@@ -3772,6 +3789,16 @@ def create_app() -> FastAPI:
     from provisa.security.sandbox_egress import (
         PrivateDestinationRefused as _PrivateDestinationRefused,
     )
+
+    from provisa.core.repositories.kafka_source import KafkaSourceRefused as _KafkaSourceRefused
+
+    @app.exception_handler(_KafkaSourceRefused)
+    async def _kafka_source_refused_handler(_req: _Request, exc: _KafkaSourceRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-2073: a saved or applied Kafka source the org's engine shard cannot read; not saved.
+        return _JSONResponse(
+            status_code=422,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
 
     @app.exception_handler(_PrivateDestinationRefused)
     async def _private_destination_handler(_req: _Request, exc: _PrivateDestinationRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]

@@ -16,10 +16,11 @@ source is held as its configuration wrote it (``spec``, a credential staying its
 with its topics as ``kafka_topics`` rows.
 """
 
-# Requirements: REQ-147, REQ-1919
+# Requirements: REQ-147, REQ-1919, REQ-2073
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
@@ -31,6 +32,50 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
+# The engine shard the bound org's engine catalogs are created on, or None where its engine is not
+# a shard the deployment provisions. Installed by the API layer (provisa.api.app).
+_engine_shard_resolver: Callable[[], str | None] | None = None
+
+
+def set_engine_shard_resolver(resolver: Callable[[], str | None]) -> None:
+    global _engine_shard_resolver
+    _engine_shard_resolver = resolver
+
+
+class KafkaSourceRefused(ValueError):
+    """A Kafka source the bound org's engine cannot serve, refused when it is saved."""
+
+    code = "sources.kafka_needs_schema_registry"
+
+    def __init__(self, source_id: str, shard: str) -> None:
+        super().__init__(
+            f"Kafka source {source_id!r} declares its topics' columns without a schema registry, "
+            f"which this organization's engine (shard {shard}) cannot read: give the source a "
+            "schema_registry_url"
+        )
+        self.params = {"source": source_id, "shard": shard}
+
+
+def refuse_on_engine_shard(spec: dict[str, Any]) -> None:  # REQ-2073
+    """Refuse a Kafka source with no schema registry where the org's engine is a provisioned shard.
+
+    Such a source's topics have the columns the model declares, which Trino reads from
+    table-description files in a directory of the catalog's own; a running shard cannot be given
+    one (provisa/federation/trino_lifecycle.py, _register_kafka_on_shard). Refused here, when the
+    source is saved, so it never reaches the catalog registration at boot."""
+    if spec.get("schema_registry_url"):
+        return
+    if _engine_shard_resolver is None:
+        raise RuntimeError(
+            "No engine-shard resolver is installed, so a Kafka source without a schema registry "
+            "cannot be checked against the org's engine. The API layer installs it at import "
+            "(provisa.api.app)."
+        )
+    shard = _engine_shard_resolver()
+    if shard is not None:
+        raise KafkaSourceRefused(spec["id"], shard)
+
+
 def _topic_table_name(topic: dict[str, Any]) -> str:
     """The name the topic's table is registered under (config_loader.kafka_topics_as_tables)."""
     return topic.get("table_name") or topic.get("id", "").replace("-", "_")
@@ -39,6 +84,7 @@ def _topic_table_name(topic: dict[str, Any]) -> str:
 async def upsert(conn: "Connection", spec: dict[str, Any]) -> None:
     """Add the Kafka source and its topics, or replace their definition. A topic the spec does not
     name is left as it is (REQ-1919: nothing is removed)."""
+    refuse_on_engine_shard(spec)
     model_change.name("upsert", "kafka source", spec["id"])  # REQ-1524
     auth = spec.get("auth") or {}
     await conn.upsert(

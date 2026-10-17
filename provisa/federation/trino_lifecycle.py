@@ -122,9 +122,9 @@ def _register_kafka_on_shard(state: Any, kafka_source: dict, catalog: str, shard
 
     The client properties (a SASL password among them) go into the shard's Secret, which the pod
     holds in memory, and the catalog is created once the kubelet has synced them in. A source whose
-    topics' columns the model declares (no schema registry) is refused by name: Trino reads such
+    topics' columns the model declares (no schema registry) gets no catalog: Trino reads such
     columns from table-description files in a directory of the catalog's own, and a shard has no
-    way to be given a directory per catalog while it runs.
+    way to be given a directory per catalog while it runs. It is refused when saved.
     """
     from provisa.core import settings_registry
     from provisa.core.catalog import create_kafka_catalog
@@ -134,10 +134,16 @@ def _register_kafka_on_shard(state: Any, kafka_source: dict, catalog: str, shard
 
     cfg = _kafka_source_config(kafka_source)
     if not cfg.schema_registry_url:
-        raise ValueError(
-            f"Kafka source {kafka_source['id']!r} declares its topics' columns without a schema "
-            f"registry, which engine shard {shard} cannot read: give the source a schema registry"
+        # Refused when saved (repositories.kafka_source.refuse_on_engine_shard), so only one stored
+        # before that rule reaches here. It is left without a catalog and named at ERROR rather
+        # than raised: this runs in the boot, which one source must not stop (REQ-2073).
+        log.error(
+            "Kafka source %r declares its topics' columns without a schema registry, which engine "
+            "shard %s cannot read: no catalog is created for it; give it a schema_registry_url",
+            kafka_source["id"],
+            shard,
         )
+        return
     client_props = generate_kafka_client_properties(cfg)
     wait = 0.0
     if client_props is not None:

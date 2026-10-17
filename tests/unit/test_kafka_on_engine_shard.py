@@ -15,7 +15,8 @@ Kafka connector reads from a file (a SASL password among them) reach it through 
 Secret: a volume the node holds in memory, readable by Trino's group alone. The catalog is created
 once the kubelet has synced the file in. A source whose topics' columns only the model declares (no
 schema registry) needs a table-description directory per catalog, which a running shard cannot be
-given, so it is refused by name. A coordinator that comes back without its catalogs gets the Kafka
+given, so it is refused by name when it is saved, and one stored before that rule gets no catalog
+at boot, named at ERROR, without stopping the boot. A coordinator that comes back without its catalogs gets the Kafka
 ones back with the rest.
 """
 
@@ -166,11 +167,61 @@ def test_a_source_without_credentials_writes_no_secret(on_a_shard):
     assert on_a_shard.created == [("c", 0.0)]
 
 
-def test_a_source_without_a_schema_registry_is_refused_by_name(on_a_shard):
+def test_a_stored_source_without_a_schema_registry_gets_no_catalog_and_does_not_stop_the_boot(
+    on_a_shard, caplog
+):
     source = {key: value for key, value in _SASL_SOURCE.items() if key != "schema_registry_url"}
-    with pytest.raises(ValueError, match="'events'.*shared_1"):
-        trino_lifecycle.register_kafka_catalog(SimpleNamespace(engine_conn=object()), source, "c")
+    trino_lifecycle.register_kafka_catalog(SimpleNamespace(engine_conn=object()), source, "c")
     assert on_a_shard.written == [] and on_a_shard.created == []
+    assert "'events'" in caplog.text and "shared_1" in caplog.text
+
+
+# ── refused when saved ──────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def engine_shard(monkeypatch):
+    from provisa.core.repositories import kafka_source as repo
+
+    holder = SimpleNamespace(shard="shared_1")
+    monkeypatch.setattr(repo, "_engine_shard_resolver", lambda: holder.shard)
+    return holder
+
+
+async def test_saving_a_source_without_a_schema_registry_on_a_shard_is_refused(engine_shard):
+    from provisa.core.repositories import kafka_source as repo
+
+    source = {key: value for key, value in _SASL_SOURCE.items() if key != "schema_registry_url"}
+    with pytest.raises(
+        repo.KafkaSourceRefused, match="'events'.*shard shared_1.*schema_registry_url"
+    ):
+        await repo.upsert(None, source)
+
+
+def test_a_source_with_a_schema_registry_is_saved_on_a_shard(engine_shard):
+    from provisa.core.repositories import kafka_source as repo
+
+    repo.refuse_on_engine_shard(_SASL_SOURCE)
+
+
+def test_off_a_shard_a_source_without_a_schema_registry_is_saved(engine_shard):
+    from provisa.core.repositories import kafka_source as repo
+
+    engine_shard.shard = None
+    repo.refuse_on_engine_shard({"id": "events", "bootstrap_servers": "broker:9092"})
+
+
+def test_the_app_installs_the_resolver_from_the_orgs_engine_lane(monkeypatch):
+    from provisa.api import app
+    from provisa.core.repositories import kafka_source as repo
+    from provisa.federation import engine_wake
+
+    assert repo._engine_shard_resolver is app._org_engine_shard
+    monkeypatch.setattr(prov, "provisioning_available", lambda: False)
+    assert app._org_engine_shard() is None
+    monkeypatch.setattr(prov, "provisioning_available", lambda: True)
+    monkeypatch.setattr(engine_wake, "active_shard", lambda state: "org_acme")
+    assert app._org_engine_shard() == "org_acme"
 
 
 # ── waiting for the kubelet ─────────────────────────────────────────────────────
@@ -286,3 +337,18 @@ def test_the_restore_reissues_the_kafka_catalogs():
 
     source = inspect.getsource(engine_wake.restore_shared_terminal)
     assert "await _reissue_kafka_catalogs(state, raw)" in source
+
+
+async def test_an_apply_that_saves_one_answers_422_naming_it(engine_shard):
+    from provisa.api.app import create_app
+    from provisa.core.repositories import kafka_source as repo
+
+    with pytest.raises(repo.KafkaSourceRefused) as refused:
+        await repo.upsert(None, {"id": "events", "bootstrap_servers": "broker:9092"})
+    handler = create_app().exception_handlers[repo.KafkaSourceRefused]
+    response = await handler(None, refused.value)  # type: ignore[arg-type]
+    assert response.status_code == 422
+    body = json.loads(response.body)
+    assert body["code"] == "sources.kafka_needs_schema_registry"
+    assert body["params"] == {"source": "events", "shard": "shared_1"}
+    assert "'events'" in body["detail"]
