@@ -469,9 +469,9 @@ def _then_bool_expr_sql(shared_data: dict) -> None:
     assert "'us-west'" in sql, f"Expected 'us-west' in SQL; got: {sql}"
 
     # Session variable X-Hasura-User-Id must be mapped to
-    # current_setting('provisa.user_id') — never left as a raw string literal.
-    assert "current_setting('provisa.user_id')" in sql, (
-        f"Session variable must become current_setting('provisa.user_id'); got: {sql}"
+    # current_setting('provisa.hasura_user_id') — never left as a raw string literal.
+    assert "current_setting('provisa.hasura_user_id')" in sql, (
+        f"Session variable must become current_setting('provisa.hasura_user_id'); got: {sql}"
     )
     assert "'X-Hasura-User-Id'" not in sql, (
         f"Raw session variable header string must not appear in SQL; got: {sql}"

@@ -92,7 +92,7 @@ async def _field(client, table: str, headers) -> str:
     return matches[0]
 
 
-USER = {"x-provisa-role": "user", "x-provisa-session-user-id": "2"}
+USER = {"x-provisa-role": "user", "x-provisa-session-hasura-user-id": "2"}
 USER_NO_SESSION = {"x-provisa-role": "user"}
 
 

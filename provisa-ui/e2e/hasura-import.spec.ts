@@ -33,7 +33,8 @@ const DATA_GQL = `${BACKEND_URL}/data/graphql`;
 const USER = {
   "Content-Type": "application/json",
   "x-provisa-role": "user",
-  "x-provisa-session-user-id": "2",
+  // The imported X-Hasura-User-Id rule reads hasura_user_id (REQ-1682).
+  "x-provisa-session-hasura-user-id": "2",
 };
 
 async function fieldFor(
@@ -79,7 +80,7 @@ test("import Hasura's sample through the tab, then query it as the sample's user
   await expect(page.getByText("What this import produces")).toBeVisible({ timeout: 60_000 });
 
   // With the connection reachable, no source or column stays untyped.
-  const warnings = page.locator("table").filter({ hasText: "What happened" });
+  const warnings = page.getByTestId("import-warnings");
   await expect(warnings).toBeVisible();
   await expect(warnings.getByText("not reachable")).toHaveCount(0);
 
