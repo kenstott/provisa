@@ -140,7 +140,12 @@ def _rows(srv, sql: str, role: str, deadline_s: float = 300) -> list[dict]:
         if resp.status_code == 200 and resp.json()["data"]["sql"]:
             return resp.json()["data"]["sql"]
         time.sleep(2)
-    raise AssertionError(f"{sql} as {role}: {last}")
+    raise AssertionError(f"{sql} as {role}: {last}\n--- the node's log ---\n{_log_tail(srv)}")
+
+
+def _log_tail(srv) -> str:
+    """The end of ``srv``'s own log: what it said while it answered, for a failure to show."""
+    return srv.dump_stderr_debug()[-12000:]
 
 
 def test_every_tour_statement_answers_rows_as_its_reader(nodes):
@@ -159,7 +164,7 @@ def test_a_group_analyst_reads_eu_customers_pseudonymised(nodes):
         "group_analyst",
     )
     eu = [r["customer"] for r in rows if r["subsidiary"] == "eu"]
-    assert eu and all(re.fullmatch(r"[0-9a-f]{32}", c) for c in eu)
+    assert eu and all(re.fullmatch(r"[0-9a-f]{32}", c) for c in eu), (rows, _log_tail(nodes["us"]))
     refused = _sql(nodes["us"], 'SELECT email FROM "retail"."eu_customers"', "group_analyst")
     assert refused.status_code in (400, 403), refused.text
 

@@ -37,7 +37,10 @@ import pytest
 
 from tests.integration.test_region_read_in_place_e2e import _MASTER_KEY, _Stack
 
-pytestmark = [pytest.mark.integration]
+# The setup builds the bundle (up to 2400 s, the build itself bounded at 900 s) and boots the tier
+# node (up to 900 s): the test's own limit covers what its setup is allowed, so a build that does
+# not finish fails by its own bound, saying why, rather than being cut off silently.
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(3600)]
 
 _REPO = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "demo_bundle.py"
