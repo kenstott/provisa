@@ -303,6 +303,8 @@ Each entry has a `to` list naming the readers it targets, and an optional `mask`
 
 The mask expression is pushed into the SQL SELECT projection. The database returns the masked value; unmasked data never crosses the wire for masked roles. (REQ-263) Masked columns are also blocked from `WHERE` and `HAVING` clauses (Layer 5 predicate guard) to prevent value inference through filtering. (REQ-263, REQ-531)
 
+**A mask covers every name of the column, not a related column.** A column read by its alias or its physical name is masked alike. A mask does not hide a key that an approved relationship joins to a column the role can see: the join compares the real values, so the related column shows what the masked key holds. Mask the related column too, or don't approve the relationship for that role. (REQ-263, REQ-019)
+
 **No entry held means unmasked.** A reader that holds no entry reads the column unmasked. End a list with a `*` entry when every reader should have some mask applied. The column editor warns when a list lacks a `*` entry (`unlisted_unmasked`).
 
 **Deny by order.** An earlier entry wins even when the reader also holds a later, more permissive one. To ensure contractors always see a masked salary regardless of their other roles, put the contractor entry before the unmasked entry. A granted role never loses what its parent grants through inheritance, but a mask entry placed earlier in the list applies first — that is how restriction works here.

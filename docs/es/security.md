@@ -301,6 +301,8 @@ Cada entrada tiene una lista `to` que nombra a los lectores a los que apunta, y 
 
 La expresión de máscara se lleva a la proyección SQL SELECT. La base de datos devuelve el valor enmascarado; los datos sin enmascarar nunca cruzan la red para los roles enmascarados. (REQ-263) Las columnas enmascaradas también se bloquean en las cláusulas `WHERE` y `HAVING` (protección de predicados de la capa 5) para impedir deducir valores mediante filtros. (REQ-263, REQ-531)
 
+**Una máscara cubre todos los nombres de la columna, no una columna relacionada.** Una columna se enmascara igual cuando se lee por su alias o por su nombre físico. Una máscara no oculta una clave que una relación aprobada une a una columna que el rol puede ver: el join compara los valores reales, así que la columna relacionada muestra lo que contiene la clave enmascarada. Enmascare también la columna relacionada, o no apruebe la relación para ese rol. (REQ-263, REQ-019)
+
 **Sin entrada, sin máscara.** Un lector que no tiene ninguna entrada lee la columna sin enmascarar. Termine una lista con una entrada `*` cuando a cada lector se le deba aplicar alguna máscara. El editor de columnas avisa cuando una lista no tiene entrada `*` (`unlisted_unmasked`).
 
 **Denegar por orden.** Una entrada anterior gana aunque el lector tenga también una posterior más permisiva. Para que los contratistas vean siempre un salario enmascarado, tengan los demás roles que tengan, ponga la entrada de contratistas antes de la entrada sin máscara. Un rol concedido nunca pierde lo que su padre concede por herencia, pero una entrada de máscara situada antes en la lista se aplica primero: así funciona la restricción aquí.

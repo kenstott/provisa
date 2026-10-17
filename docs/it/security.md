@@ -301,6 +301,8 @@ Ogni voce ha una lista `to` che nomina i lettori a cui si rivolge, e una `mask` 
 
 L'espressione di maschera viene spinta nella proiezione SQL SELECT. Il database restituisce il valore mascherato; i dati non mascherati non attraversano mai la rete per i ruoli mascherati. (REQ-263) Le colonne mascherate sono inoltre bloccate nelle clausole `WHERE` e `HAVING` (protezione dei predicati del livello 5) per impedire di dedurre valori tramite filtri. (REQ-263, REQ-531)
 
+**Una maschera copre ogni nome della colonna, non una colonna correlata.** Una colonna letta con il suo alias o con il suo nome fisico è mascherata allo stesso modo. Una maschera non nasconde una chiave che una relazione approvata unisce a una colonna che il ruolo può vedere: il join confronta i valori reali, quindi la colonna correlata mostra ciò che contiene la chiave mascherata. Mascherate anche la colonna correlata, oppure non approvate la relazione per quel ruolo. (REQ-263, REQ-019)
+
 **Nessuna voce detenuta significa non mascherato.** Un lettore che non detiene alcuna voce legge la colonna non mascherata. Terminate una lista con una voce `*` quando a ogni lettore deve essere applicata una maschera. L'editor di colonne avvisa quando a una lista manca una voce `*` (`unlisted_unmasked`).
 
 **Negare con l'ordine.** Una voce precedente vince anche quando il lettore ne detiene anche una successiva più permissiva. Perché i collaboratori esterni vedano sempre uno stipendio mascherato, qualunque altro ruolo abbiano, mettete la voce dei collaboratori prima della voce non mascherata. Un ruolo concesso non perde mai ciò che il padre concede per ereditarietà, ma una voce di maschera posta prima nella lista si applica per prima — così funziona qui la restrizione.

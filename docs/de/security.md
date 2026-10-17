@@ -301,6 +301,8 @@ Jeder Eintrag hat eine `to`-Liste, die die Leser nennt, auf die er zielt, und ei
 
 Der Maskenausdruck wird in die SQL-SELECT-Projektion verschoben. Die Datenbank liefert den maskierten Wert; unmaskierte Daten gehen für maskierte Rollen nie über die Leitung. (REQ-263) Maskierte Spalten werden außerdem in `WHERE`- und `HAVING`-Klauseln gesperrt (Prädikatsschutz der Schicht 5), um das Erschließen von Werten über Filter zu verhindern. (REQ-263, REQ-531)
 
+**Eine Maske gilt für jeden Namen der Spalte, nicht für eine verknüpfte Spalte.** Eine Spalte wird unter ihrem Alias und unter ihrem physischen Namen gleich maskiert. Eine Maske verbirgt keinen Schlüssel, den eine genehmigte Beziehung mit einer Spalte verknüpft, die die Rolle sehen kann: Der Join vergleicht die echten Werte, sodass die verknüpfte Spalte zeigt, was der maskierte Schlüssel enthält. Maskieren Sie die verknüpfte Spalte ebenfalls, oder genehmigen Sie die Beziehung für diese Rolle nicht. (REQ-263, REQ-019)
+
 **Kein gehaltener Eintrag bedeutet unmaskiert.** Ein Leser, der keinen Eintrag hält, liest die Spalte unmaskiert. Beenden Sie eine Liste mit einem `*`-Eintrag, wenn auf jeden Leser irgendeine Maske angewendet werden soll. Der Spalteneditor warnt, wenn einer Liste ein `*`-Eintrag fehlt (`unlisted_unmasked`).
 
 **Verweigern durch Reihenfolge.** Ein früherer Eintrag gewinnt, auch wenn der Leser zusätzlich einen späteren, freizügigeren hält. Damit Auftragnehmer ein Gehalt immer maskiert sehen, gleich welche anderen Rollen sie haben, setzen Sie den Eintrag für Auftragnehmer vor den unmaskierten Eintrag. Eine gewährte Rolle verliert nie, was ihr Elternteil über die Vererbung gewährt, aber ein früher in der Liste stehender Maskeneintrag gilt zuerst — so funktioniert Einschränkung hier.

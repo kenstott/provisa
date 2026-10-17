@@ -301,6 +301,8 @@ Chaque entrée a une liste `to` qui nomme les lecteurs qu'elle vise, et un `mask
 
 L'expression de masque est poussée dans la projection SQL SELECT. La base de données renvoie la valeur masquée ; les données non masquées ne traversent jamais le réseau pour les rôles masqués. (REQ-263) Les colonnes masquées sont aussi bloquées dans les clauses `WHERE` et `HAVING` (garde des prédicats de la couche 5) pour empêcher de déduire des valeurs par filtrage. (REQ-263, REQ-531)
 
+**Un masque couvre tous les noms de la colonne, pas une colonne liée.** Une colonne lue par son alias ou par son nom physique est masquée de la même façon. Un masque ne cache pas une clé qu'une relation approuvée joint à une colonne que le rôle peut voir : la jointure compare les valeurs réelles, donc la colonne liée montre ce que contient la clé masquée. Masquez aussi la colonne liée, ou n'approuvez pas la relation pour ce rôle. (REQ-263, REQ-019)
+
 **Aucune entrée détenue signifie non masqué.** Un lecteur qui ne détient aucune entrée lit la colonne non masquée. Terminez une liste par une entrée `*` lorsque chaque lecteur doit recevoir un masque. L'éditeur de colonnes avertit lorsqu'une liste n'a pas d'entrée `*` (`unlisted_unmasked`).
 
 **Refuser par l'ordre.** Une entrée antérieure l'emporte même lorsque le lecteur en détient aussi une ultérieure plus permissive. Pour que les prestataires voient toujours un salaire masqué quels que soient leurs autres rôles, placez l'entrée des prestataires avant l'entrée non masquée. Un rôle accordé ne perd jamais ce que son parent accorde par héritage, mais une entrée de masque placée plus tôt dans la liste s'applique en premier — c'est ainsi que fonctionne la restriction ici.
