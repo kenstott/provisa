@@ -66,10 +66,31 @@ git tag v1.2.3 && git push origin v1.2.3
 
 ## הגדרת פרסום PyPI (חד-פעמי) {: #pypi-publishing-setup-one-time }
 
-1. העתיקו את טוקן ה-API שלכם מ-`~/.pypirc` (הערך `pypi-...` עבור `pypi.org`)
-2. הוסיפו אותו כ-secret של המאגר בשם `PYPI_API_TOKEN` תחת **Settings → Secrets → Actions**
+ה-jobs‏ `publish-pypi` (‏`provisa-client`) ו-`publish-provisa-pypi` (‏`provisa`) ב-`.github/workflows/build-dmg.yml` מפרסמים באמצעות trusted publishing של PyPI: טוקן ה-OIDC של GitHub של ה-job‏ (`id-token: write`) מאמת אותו, ושום טוקן API אינו נקרא. רשמו את המאגר הזה ואת `build-dmg.yml` כ-trusted publisher לכל פרויקט ב-pypi.org (**Your projects → Manage → Publishing**). הפרסומים רצים אז אוטומטית על כל תגית.
 
-ה-job‏ `publish-pypi` יפרסם אז אוטומטית על כל תגית.
+## חתימה ושרשרת אספקה {: #signing-and-supply-chain }
+
+מה שכל artifact של שחרור נושא, כפי שזרימות העבודה של השחרור בונות אותו:
+
+| Artifact | חתימה |
+| -------- | --------- |
+| `provisa` ו-`provisa-client` ב-PyPI | attestation לפי PEP 740 חתום ב-Sigstore לכל קובץ (`attestations: true`), ניתן לאימות ב-pypi.org |
+| `provisa-pg-ext`, ‏`provisa-duckdb-ext` ב-PyPI | attestation לפי PEP 740 חתום ב-Sigstore לכל קובץ |
+| קובץ `.jar` של דרייבר JDBC | attestation של build provenance ב-Sigstore (‏`actions/attest-build-provenance`) |
+| מתקני macOS‏ `.dmg` | חתימת קוד Developer ID ואישור notarization של Apple |
+| מתקני Windows‏ `.exe` | לא חתומים |
+| Linux‏ `.AppImage` | לא חתום |
+
+ההתקנה החתומה בכל מערכת הפעלה היא `pip install provisa`: חבילת PyPI עם attestation של Sigstore. סוקר שזקוק ל-artifact חתום ב-Linux או ב-Windows מתקין עם pip. בניית Windows חותמת ב-Authenticode כשמוגדרת תעודת חתימת קוד (`WINDOWS_CERT_PFX_BASE64`, ‏`WINDOWS_CERT_PFX_PASSWORD`, ‏`WINDOWS_CERT_TIMESTAMP_URL`, הנקראים על ידי `packaging/windows/build-sfx.ps1`); אף אחת אינה מוגדרת, ולכן היא נשלחת לא חתומה.
+
+תלויות ושערי CVE:
+
+- תלויות Python ננעלות עם גיבובים ב-`uv.lock`; ה-CI מתקין אותן עם `uv sync --frozen`.
+- זרימת העבודה `CVE Audit` (‏`.github/workflows/cve-audit.yml`) מריצה `pip-audit` על הקבוצה הנעולה בכל push ל-`main`, בכל pull request ופעם בשבוע.
+- בשחרור, הבניות של `provisa` ושל `provisa-client` מפיקות כל אחת SBOM בפורמט CycloneDX ומריצות `pip-audit` על מה שנשלח. דרייבר ה-JDBC נסרק עם `grype --fail-on medium`. ממצא מכשיל את ה-job, והשחרור אינו מפרסם דבר: העלאות ה-PyPI וגם ה-release ב-GitHub ממתינים ל-jobs האלה. ה-SBOMs ודוחות ה-CVE מצורפים לכל שחרור.
+- מתקני ה-desktop בונים את ה-wheel של `provisa` מקוד המקור על ה-runner של השחרור ופותרים את תלויותיו עם `pip` בזמן הבנייה, לא מ-`uv.lock`; שער ה-CVE של השחרור סורק את הקבוצה הנעולה, לא את התלויות המצורפות למתקנים.
+- חריג מתועד אחד מתעלמים ממנו: PYSEC-2026-4114 / CVE-2026-49265 (‏PKCE של oauthlib בצד השרת; Provisa משתמש ב-oauthlib בצד הלקוח בלבד).
+- `packaging/pypi/requirements-embedded.lock` הוא פתרון עם גיבובים מקובעים של `provisa[embedded]` עבור mirrors באוויר סגור (airgap) (ראו `packaging/pypi/MIRROR-CHECKLIST.md`). הוא נוצר מחדש ידנית, לא בכל שחרור.
 
 ## Secrets נדרשים במאגר {: #required-repository-secrets }
 
@@ -77,7 +98,6 @@ git tag v1.2.3 && git push origin v1.2.3
 
 | Secret | נדרש עבור | תיאור |
 | -------- | ------------- | ------------- |
-| `PYPI_API_TOKEN` | פרסום PyPI | טוקן API מ-`~/.pypirc` (מתחיל ב-`pypi-`) |
 | `APPLE_CERT_P12_BASE64` | build-ים חתומים | קובץ תעודת `.p12` מקודד Base64 (ראו למטה) |
 | `APPLE_CERT_P12_PASSWORD` | build-ים חתומים | סיסמה שהוגדרה בעת ייצוא ה-`.p12` מ-Keychain Access |
 | `APPLE_DEVELOPER_ID` | build-ים חתומים | שם תעודה מלא: `Developer ID Application: Your Name (TEAMID)` |

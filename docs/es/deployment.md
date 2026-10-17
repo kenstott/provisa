@@ -162,7 +162,7 @@ endpoint de `otlp2sql`, y registre el dominio de operaciones contra la misma
 
 Para estaciones de trabajo de desarrolladores y evaluación. Totalmente air-gapped: no se requiere internet después de la descarga (REQ-227).
 
-El instalador base es una **instalación nativa**: motor de federación DuckDB + plano de control SQLite + caché en memoria (fakeredis), sin Docker, VM, Trino, Redis ni MinIO (REQ-972, REQ-979). El motor de federación es una elección del asistente: DuckDB (nativo, por defecto), Trino-en-Docker, o un motor externo (REQ-973). La observabilidad es autotelemetría siempre activa visible en Admin; el stack de Docker de collector/Prometheus/Grafana es una demostración externa opcional, no un interruptor de encendido/apagado (REQ-975). El paquete de datos de demostración es opcional y está desactivado por defecto (REQ-978). Trino, el stack de observabilidad de Docker y la demo son complementos pesados que se resuelven priorizando lo local (directorio adyacente al instalador, volúmenes montados, `~/Downloads`, y luego el release de GitHub), de modo que las empresas puedan preposicionar los archivos tar para instalaciones air-gapped (REQ-977).
+El instalador base es una **instalación nativa**: motor de federación DuckDB + plano de control PostgreSQL embebido (pgserver) + caché en memoria (fakeredis), sin Docker, VM, Trino, Redis ni MinIO (REQ-972, REQ-979). El motor de federación es una elección del asistente: DuckDB (nativo, por defecto), Trino-en-Docker, o un motor externo (REQ-973). La observabilidad es autotelemetría siempre activa visible en Admin; el stack de Docker de collector/Prometheus/Grafana es una demostración externa opcional, no un interruptor de encendido/apagado (REQ-975). El paquete de datos de demostración es opcional y está desactivado por defecto (REQ-978). Trino, el stack de observabilidad de Docker y la demo son complementos pesados que se resuelven priorizando lo local (directorio adyacente al instalador, volúmenes montados, `~/Downloads`, y luego el release de GitHub), de modo que las empresas puedan preposicionar los archivos tar para instalaciones air-gapped (REQ-977).
 
 ### Pasos {: #steps }
 
@@ -189,7 +189,7 @@ Todos los datos se almacenan en `~/.provisa/` (REQ-224). Para eliminar todo: `pr
 
 Para estaciones de trabajo de desarrolladores y evaluación. Totalmente air-gapped: no se requiere internet después de la descarga (REQ-227).
 
-Al igual que en macOS, el instalador base de Windows es un **nivel nativo**: un runtime de Python independiente + wheel de provisa + DuckDB/pg_duckdb + plano de control SQLite, sin incluir Docker, VM ni imágenes de contenedor (REQ-979). El motor de federación (Trino), el stack de observabilidad y el paquete de datos de demostración se agregan después mediante instaladores en capas separados, en orden: el instalador Container (`Provisa-Container-<version>.exe`, que agrega WSL2 + containerd + Trino), luego el instalador Obs (requiere el nivel container), luego el instalador Demo (requiere Core + Obs). La guía de primer lanzamiento explica cómo inicializar el motor de federación ejecutando el instalador Container (REQ-1005).
+Al igual que en macOS, el instalador base de Windows es un **nivel nativo**: un runtime de Python independiente + wheel de provisa + DuckDB/pg_duckdb + plano de control PostgreSQL embebido (pgserver), sin incluir Docker, VM ni imágenes de contenedor (REQ-979). El motor de federación (Trino), el stack de observabilidad y el paquete de datos de demostración se agregan después mediante instaladores en capas separados, en orden: el instalador Container (`Provisa-Container-<version>.exe`, que agrega WSL2 + containerd + Trino), luego el instalador Obs (requiere el nivel container), luego el instalador Demo (requiere Core + Obs). La guía de primer lanzamiento explica cómo inicializar el motor de federación ejecutando el instalador Container (REQ-1005).
 
 ### Pasos {: #steps_1 }
 
@@ -257,7 +257,7 @@ La imagen de Provisa se compila previamente en el momento del empaquetado; el c�
 
    ```bash
    provisa status
-   curl http://localhost:8000/health
+   curl -k https://localhost:8000/health   # -k: the node generates a self-signed certificate unless PROVISA_TLS_CERT/KEY supply one
    ```
 
 ---
@@ -267,7 +267,7 @@ La imagen de Provisa se compila previamente en el momento del empaquetado; el c�
 Ejecute estos pasos primero en el nodo primario. Los secundarios deben configurarse después de que el primario esté en ejecución.
 
 1. Descargue y transfiera `Provisa.AppImage` a la máquina primaria
-2. Abra los puertos de firewall necesarios (los secundarios se conectarán a estos de forma entrante):
+2. Abra los puertos de firewall necesarios solo a los secundarios (se conectarán a estos de forma entrante):
 
    | Puerto | Servicio |
    | ------ | --------- |
@@ -277,23 +277,23 @@ Ejecute estos pasos primero en el nodo primario. Los secundarios deben configura
    | 8080 | Coordinador del motor de federación |
    | 8000 | API de Provisa |
 
-3. Hágalo ejecutable y ejecútelo:
+3. Hágalo ejecutable y ejecútelo con los almacenes publicados en la dirección privada del nodo, donde los secundarios los contactan. Un nodo sin secundarios los publica solo en `127.0.0.1`:
 
    ```bash
    chmod +x Provisa.AppImage
-   ./Provisa.AppImage
+   PROVISA_STORE_BIND_IP=<this node's private IP> ./Provisa.AppImage
    ```
 
 4. El asistente de configuración pregunta:
    - **Rol** → seleccione `primary`
    - **Presupuesto de RAM**, **nombre de host**, **puerto de la API** → responda como en el nodo único
-5. Después de completar la configuración, anote la **IP privada** de esta máquina; los secundarios la necesitan
+5. Después de completar la configuración, anote la **IP privada** de esta máquina. Los secundarios la necesitan, así como las credenciales de los almacenes que generó el primario: `~/.provisa/store-credentials.env` (`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`). Copie ese archivo a cada secundario por un canal seguro
 6. El asistente imprime un bloque upstream de nginx; guárdelo para la configuración de su balanceador de carga
 7. Verifique:
 
    ```bash
    provisa status
-   curl http://localhost:8000/health
+   curl -k https://localhost:8000/health   # -k: the node generates a self-signed certificate unless PROVISA_TLS_CERT/KEY supply one
    ```
 
 ---
@@ -306,13 +306,14 @@ Repita estos pasos en cada nodo adicional después de que el primario esté en e
 2. Confirme que el secundario puede alcanzar al primario:
 
    ```bash
-   curl http://<primary-ip>:8000/health
+   curl -k https://<primary-ip>:8000/health
    ```
 
-3. Hágalo ejecutable y ejecútelo:
+3. Hágalo ejecutable y ejecútelo con las credenciales de los almacenes del primario en su entorno (el archivo copiado del primario). Un secundario al que no se le da ninguna no arranca:
 
    ```bash
    chmod +x Provisa.AppImage
+   set -a; . ./store-credentials.env; set +a
    ./Provisa.AppImage
    ```
 
@@ -325,7 +326,7 @@ Repita estos pasos en cada nodo adicional después de que el primario esté en e
 
    ```bash
    provisa status
-   curl http://localhost:8000/health
+   curl -k https://localhost:8000/health
    ```
 
 7. Agregue este nodo al upstream de su balanceador de carga
@@ -418,8 +419,8 @@ Aprovisiona un clúster de Provisa multinodo completo en AWS: VPC, grupos de seg
 8. Terraform aprovisiona toda la infraestructura (~5–10 minutos). Después de aplicar, el script imprime:
 
    ```text
-   api_endpoint      = "http://<alb-dns>:8000"
-   flight_endpoint   = "<nlb-dns>:8815"
+   api_endpoint      = "https://<alb-dns>:8000"
+   protocol_endpoints = { flight = "<alb-dns>:8815", ... }
    primary_ip        = "10.0.x.x"
    secondary_ips     = ["10.0.x.x", ...]
    ```
@@ -484,7 +485,7 @@ Todos los nodos aportan workers a un único coordinador en el primario (REQ-028)
 
 ### Secretos {: #secrets }
 
-No hay secretos embebidos en Terraform. El AppImage genera credenciales durante el primer lanzamiento y las escribe en `~/.provisa/config.yaml` en cada nodo (REQ-563). Para producción, recupere el token de administrador desde el nodo primario después del despliegue:
+Las contraseñas de los almacenes incluidos (PostgreSQL, Redis, MinIO, el administrador de Grafana) las genera Terraform (`random_password`) y se entregan a cada nodo, que las guarda en su archivo de entorno de systemd, con modo 600. Se conservan en el estado de Terraform, así que proteja el estado como protegería las contraseñas. Sin Terraform, el lanzador de cada nodo las genera en `~/.provisa/store-credentials.env`. El AppImage genera las credenciales restantes durante el primer lanzamiento y las escribe en `~/.provisa/config.yaml` en cada nodo (REQ-563). Para producción, recupere el token de administrador desde el nodo primario después del despliegue:
 
 ```bash
 ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
@@ -526,7 +527,9 @@ Nota: el AppImage de Provisa no puede ejecutarse dentro de un pod de Kubernetes;
 
 3. Decida antes de instalar:
    - **PostgreSQL** — ¿en el clúster (`postgresql.enabled: true`) o gestionado externamente (`postgresql.host`)? Se recomienda externo para producción
-   - **Redis** — ¿en el clúster o externo (`redis.host`)? Cambie la contraseña por defecto (`redis.password`)
+   - **Redis** — ¿en el clúster o externo (`redis.host`)?
+   - **Credenciales de los almacenes** — cree el Secret que nombra `credentials.existingSecret`, con las claves `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key` y `grafana-admin-password`. El chart no fija ninguna contraseña propia y no se renderiza sin él
+   - **TLS** — activado por defecto (`tls.enabled: true`): cree el Secret `kubernetes.io/tls` que nombra `tls.secretName`, o establezca `tls.enabled: false`
    - **MinIO / S3** — ¿MinIO en el clúster o S3 nativo? Para AWS, use S3 con un rol de IAM
    - **Secretos** — páselos vía `--set` para evaluación; use External Secrets o Vault Agent para producción
    - **Caché del coordinador de Trino** — un volumen de 1Gi reclamado por defecto y montado en `/data/trino/cache` (`trino.coordinator.cache.persistence`: `enabled`, `size`, `storageClass`). Allí se guardan los resultados de describe de un origen Salesforce, para que un coordinador reiniciado no gaste de nuevo la cuota de API de la organización describiéndolo. Desactívelo solo cuando ningún origen lo necesite (REQ-1946)
@@ -618,7 +621,8 @@ Nota: el AppImage de Provisa no puede ejecutarse dentro de un pod de Kubernetes;
 | `redis.enabled` | `true` | Despliega un StatefulSet de Redis en el clúster (REQ-371) |
 | `redis.host` | `""` | Configúrelo para usar Redis externo |
 | `redis.port` | `6379` | |
-| `redis.password` | `"provisa"` | Cambie esto |
+| `credentials.existingSecret` | | Secret con las contraseñas de los almacenes (obligatorio) |
+| `tls.enabled` | `true` | Sirve cada endpoint por TLS desde `tls.secretName` |
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | Despliega el motor de federación (REQ-028) |
 | `trino.workers` | `2` | Réplicas de workers del motor de federación (REQ-056) |

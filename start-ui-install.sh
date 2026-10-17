@@ -718,12 +718,13 @@ if [ "$DEMO" = true ] || [ "$NATIVE" = true ]; then
   if _CP_OUT="$("$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg start "$CP_PG_DIR" --init-sql db/init.sql 2>>"$LOG_DIR/control-plane-pg.log")"; then
     CP_PG_HOST="$(echo "$_CP_OUT" | sed -n 's/^PG_HOST=//p')"
     CP_PG_PORT="$(echo "$_CP_OUT" | sed -n 's/^PG_PORT=//p')"
+    CP_PG_PASSWORD="$(echo "$_CP_OUT" | sed -n 's/^PG_PASSWORD=//p')"
     echo "OK (socket $CP_PG_HOST:$CP_PG_PORT)"
     # Both SQLAlchemy control planes (tenant + platform) connect to the embedded
     # instance over its unix socket — the directory travels in ?host=. The tenant
     # and platform planes share this one embedded database (single-tenant desktop).
-    export TENANT_DATABASE_URL="postgresql+psycopg://provisa:provisa@/provisa?host=${CP_PG_HOST}&port=${CP_PG_PORT}"
-    export PLATFORM_DATABASE_URL="postgresql+psycopg://provisa:provisa@/provisa?host=${CP_PG_HOST}&port=${CP_PG_PORT}"
+    export TENANT_DATABASE_URL="postgresql+psycopg://provisa:${CP_PG_PASSWORD}@/provisa?host=${CP_PG_HOST}&port=${CP_PG_PORT}"
+    export PLATFORM_DATABASE_URL="postgresql+psycopg://provisa:${CP_PG_PASSWORD}@/provisa?host=${CP_PG_HOST}&port=${CP_PG_PORT}"
     CP_STORE_DESC="embedded PostgreSQL (pgserver, socket $CP_PG_HOST:$CP_PG_PORT)"
   else
     echo "FAILED — see $LOG_DIR/control-plane-pg.log"
@@ -778,7 +779,8 @@ fakeredis.TcpFakeServer(("127.0.0.1", int(sys.argv[1])), server_type="redis").se
       }
       _RPG_HOST="$(sed -n 's/^PG_HOST=//p' <<<"$_RPG_OUT")"
       _RPG_PORT="$(sed -n 's/^PG_PORT=//p' <<<"$_RPG_OUT")"
-      export "PROVISA_DEMO_${_rid_upper}_PG_URL=postgresql+psycopg://provisa:provisa@/provisa?host=$_RPG_HOST&port=$_RPG_PORT"
+      _RPG_PW="$(sed -n 's/^PG_PASSWORD=//p' <<<"$_RPG_OUT")"
+      export "PROVISA_DEMO_${_rid_upper}_PG_URL=postgresql+psycopg://provisa:$_RPG_PW@/provisa?host=$_RPG_HOST&port=$_RPG_PORT"
     done
     _rid_upper="$(echo "$DEMO_VISITOR_REGION" | tr '[:lower:]' '[:upper:]')"
     export "PROVISA_DEMO_${_rid_upper}_ADDRESS=http://127.0.0.1:$PROVISA_API_PORT"

@@ -13,7 +13,7 @@ import pytest
 from provisa.core.desktop_profile import load_profile
 
 #: What a started embedded plane looks like, without paying initdb in a unit test.
-_FAKE_SOCKET = ("/tmp/fake-pgsock", 55432)
+_FAKE_SOCKET = ("/tmp/fake-pgsock", 55432, "datadir-password")
 
 
 @pytest.fixture(autouse=True)
@@ -32,8 +32,8 @@ def _embedded_pg(monkeypatch):
 
 
 def _pg_url() -> str:
-    host, port = _FAKE_SOCKET
-    return f"postgresql+psycopg://provisa:provisa@/provisa?host={host}&port={port}"
+    host, port, password = _FAKE_SOCKET
+    return f"postgresql+psycopg://provisa:{password}@/provisa?host={host}&port={port}"
 
 
 def test_demo_preset_is_self_contained_and_duckdb(tmp_path):

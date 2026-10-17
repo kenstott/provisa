@@ -375,7 +375,8 @@ class Stores:
         )
 
 
-def _control_plane(work: Path, name: str = "cp") -> tuple[str, str]:
+def _control_plane(work: Path, name: str = "cp") -> tuple[str, str, str]:
+    """A throwaway embedded control plane, started for ``work``: its host, port and URL."""
     out = subprocess.run(
         [
             sys.executable,
@@ -391,7 +392,11 @@ def _control_plane(work: Path, name: str = "cp") -> tuple[str, str]:
         text=True,
     ).stdout
     found = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
-    return found["PG_HOST"], found["PG_PORT"]
+    url = (
+        f"postgresql+psycopg://provisa:{found['PG_PASSWORD']}@/provisa"
+        f"?host={found['PG_HOST']}&port={found['PG_PORT']}"
+    )
+    return found["PG_HOST"], found["PG_PORT"], url
 
 
 #: REQ-2068: the regions sandbox tier's deployment config: its platform regions and its boot
@@ -514,8 +519,7 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
             f"{demo.name}: its tour asks Polly {len(asked)} question(s), answered at the build "
             "through OpenRouter, and OPENROUTER_API_KEY is not set"
         )
-    host, port = _control_plane(work, "setup-cp")
-    url = f"postgresql+psycopg://provisa:provisa@/provisa?host={host}&port={port}"
+    host, port, url = _control_plane(work, "setup-cp")
     http_port = _free_port()
     # A client step of the setup (run_demo_setup.py) reads the server over Arrow Flight.
     flight_port = _free_port()
@@ -593,10 +597,9 @@ def _seed(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
 
     region_env: dict[str, str] = {}
     for region in regions:
-        host, port = _control_plane(work, f"region-pg-{region}")
-        region_env[f"PROVISA_DEMO_{region.upper()}_PG_URL"] = (
-            f"postgresql+psycopg://provisa:provisa@/provisa?host={host}&port={port}"
-        )
+        region_env[f"PROVISA_DEMO_{region.upper()}_PG_URL"] = _control_plane(
+            work, f"region-pg-{region}"
+        )[2]
         region_env[f"PROVISA_DEMO_{region.upper()}_ADDRESS"] = f"http://127.0.0.1:{_free_port()}"
     redis = _SharedRedis()
     try:
@@ -658,8 +661,7 @@ def _seed_node(
 ) -> None:
     """Run one seeding node, on the control plane ``control_plane``, until it has written
     ``record``."""
-    host, port = _control_plane(work, control_plane)
-    url = f"postgresql+psycopg://provisa:provisa@/provisa?host={host}&port={port}"
+    host, port, url = _control_plane(work, control_plane)
     http_port = _free_port()
     server_env = {
         **_config_env(demo),

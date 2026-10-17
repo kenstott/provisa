@@ -310,11 +310,13 @@ masks:
 
 ## 审计日志 {: #audit-logging }
 
-每个触及域资产的查询都会记录到仅追加的 `query_audit_log`。（REQ-596、REQ-613） 每一行记录 `tenant_id`、`user_id`、`role_id`、查询文本的 SHA-256 哈希、`table_ids`、`source`、`status_code`、`duration_ms` 和 `logged_at`。（REQ-596） 查询文本从不逐字保存——只保存其哈希。（REQ-596）
+每个触及域资产的查询都会记录到 `query_audit_log`。（REQ-596、REQ-613） 审计日志属于组织，而不属于平台：平台自己的组织、用户和邀请注册表不保存审计记录。（REQ-1922） 每个组织的 `query_audit_log` 是该组织自己的 schema 中的一张表，位于该组织为其在所选每个区域中的记录所指定的存储中。未声明任何区域的组织，将该 schema 与其模型一起保存在部署的控制平面数据库中。
 
-该日志在数据库层面是仅追加的：PostgreSQL 规则阻止 `DELETE` 和 `UPDATE`。（REQ-596、REQ-613） 两个索引——`(tenant_id, logged_at)` 和 `(user_id, logged_at)`——支持按租户和按用户在时间范围内的合规查询。（REQ-596、REQ-613）
+每一行记录 `tenant_id`（组织）、`user_id`、`role_id`、查询文本的 SHA-256 哈希、加密后的查询文本本身（REQ-689）、`table_ids` 和 `table_names`、`source`、`status_code`、`duration_ms`、路由和行数、对该语句实施了哪些强制措施，以及 `logged_at`。组织设置了密钥时，查询文本用组织的密钥加密，否则用部署的密钥加密（REQ-1574）。未配置加密提供程序的部署，以未加密形式存储。该文本从不暴露在可查询的运维表中，只在授权的管理读取中解密。
 
-启用加密时，查询文本哈希列以加密形式存储，只在授权的管理读取中解密。（REQ-689）
+该日志在数据库层面是仅追加的：PostgreSQL 规则将针对 `query_audit_log` 的 `DELETE` 和 `UPDATE` 变为空操作。（REQ-596、REQ-613） 两个索引——`(tenant_id, logged_at)` 和 `(user_id, logged_at)`——支持按组织和按用户在时间范围内的合规查询。（REQ-596、REQ-613）
+
+保留期：行会被无限期保留。Provisa 没有保留期设置，也从不清除审计日志；由于 `DELETE` 是空操作，删除旧行意味着由运维人员在 Provisa 之外删除或归档该表的数据。
 
 ## 速率限制 {: #rate-limiting }
 
@@ -344,14 +346,20 @@ roles:
 
 可插拔的身份验证提供程序：（REQ-120）
 
-| 提供程序 | 令牌类型 | 场景 |
+| 提供程序 | 凭据 | 场景 |
 | ---------- | ----------- | ---------- |
-| `none` | X-Provisa-Role 标头 | 开发 |
-| `basic` | 本地 bcrypt 账户 + JWT | 自托管部署 |
+| `none` | X-Provisa-Role 标头 | 仅用于开发 |
+| `basic` | 本地账户（bcrypt）+ 会话 JWT | 自托管部署 |
 | `firebase` | Firebase ID 令牌 | 生产 |
 | `keycloak` | Keycloak JWT | 企业 |
-| `oauth` | OIDC JWT | PingFed、Okta、Azure AD、Auth0 |
+| `oauth` / `oidc` | OIDC JWT | PingFed、Okta、Azure AD、Auth0 |
+| `ldap` | 目录用户名和密码（LDAP 或 Active Directory） | 企业目录（REQ-1265） |
+| `saml` | SAML 2.0 签名断言，然后是会话 JWT | 企业单点登录（REQ-1265） |
 | `simple` | bcrypt + JWT | 测试 |
+
+`ldap` 采用先搜索后绑定的方式让用户登录：Provisa 以服务账户绑定，找到用户名所指向的那一个条目，再以该条目和用户提交的密码进行绑定，由目录来校验密码。用户所属的组成为其角色。每次会话令牌返回时，都会重新读取账户及其组，因此从目录或从某个组中移除的用户，会在令牌过期之前失去相应访问权限。`ldaps://` 和 StartTLS 均受支持。
+
+`saml` 是由 SP 发起的 Web Browser SSO。响应的 XML 签名依据标识提供程序的元数据验证，claim 只从已签名的元素中读取。Issuer、Audience、ACS URL、有效期和 `InResponseTo` 均会检查。未经请求（由 IdP 发起）的响应、加密断言、带 DOCTYPE 的文档、多个断言和 SHA-1 签名均被拒绝。SAML 会话不会再向标识提供程序复核：在那里被移除的用户，在会话令牌过期之前仍保留访问权限。
 
 角色映射：身份 claim → 通过可配置规则映射为 Provisa 角色。（REQ-120） `assignments_source` 字段控制角色分配的来源：`claims` 从 JWT 令牌 claim 中读取（默认），`provisa` 从 Provisa 内部的分配存储中读取。（REQ-551） 多租户部署（`multitenancy: true`）按组织自行分配角色，因此必须使用 `assignments_source: provisa`：使用 `claims` 时它不会启动，会导致这一组合的设置变更也会被拒绝。单租户部署可以使用任一选项。
 
@@ -407,6 +415,10 @@ SCRAM 需要 RFC 5802 验证器，它无法从 bcrypt 哈希推导出来。每�
 | `PROVISA_MTLS_BIND_PRINCIPAL` | 为 true 时，证书的通用名必须与连接随后进行身份验证所用的用户名相匹配 |
 
 按协议的覆盖遵循与 TLS 设置相同的命名。不做任何推断：没有 CA 而设置了模式会拒绝启动，无法识别的模式也会拒绝启动，而不是被读作最安全的相邻值——一个以为自己要求客户端证书但实际并未要求的部署，比一个不启动的部署处境更糟。
+
+### TLS 版本 {: #tls-versions }
+
+Provisa 终结 TLS 的每个监听器（HTTP API 和 UI、pgwire、Bolt、MCP、gRPC 和 Arrow Flight）都接受 TLS 1.2 和 TLS 1.3，并拒绝 TLS 1.0 和 1.1。Provisa 自己不设置协议版本或密码套件列表。HTTP、pgwire 和 Bolt 监听器使用 Python `ssl` 模块的服务器默认值（最低 TLS 1.2）。gRPC 和 Arrow Flight 使用 gRPC 的默认值（最低 TLS 1.2）。这些版本不可配置。
 
 ### 登录限流 {: #login-throttling }
 

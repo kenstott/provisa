@@ -310,11 +310,13 @@ Tous les rôles voient des résultats échantillonnés (par défaut : 100 lignes
 
 ## Journalisation d'audit {: #audit-logging }
 
-Chaque requête qui touche un actif de domaine est consignée dans le `query_audit_log` en ajout seul. (REQ-596, REQ-613) Chaque ligne capture `tenant_id`, `user_id`, `role_id`, un hachage SHA-256 du texte de la requête, `table_ids`, `source`, `status_code`, `duration_ms` et `logged_at`. (REQ-596) Le texte de la requête n'est jamais stocké tel quel — seulement son hachage. (REQ-596)
+Chaque requête qui touche un actif de domaine est consignée dans `query_audit_log`. (REQ-596, REQ-613) Le journal d'audit appartient à l'organisation, pas à la plateforme : le registre propre de la plateforme pour les organisations, les utilisateurs et les invitations ne contient aucun enregistrement d'audit. (REQ-1922) Le `query_audit_log` de chaque organisation est une table dans le schéma propre à cette organisation, dans le magasin que l'organisation désigne pour son enregistrement dans chaque région qu'elle sélectionne. Une organisation qui ne déclare aucune région conserve ce schéma dans la base de données du plan de contrôle du déploiement, à côté de son modèle.
 
-Le journal est en ajout seul au niveau de la base de données : des règles PostgreSQL bloquent `DELETE` et `UPDATE`. (REQ-596, REQ-613) Deux index — `(tenant_id, logged_at)` et `(user_id, logged_at)` — prennent en charge les requêtes de conformité par locataire et par utilisateur sur des plages de temps. (REQ-596, REQ-613)
+Chaque ligne capture `tenant_id` (l'organisation), `user_id`, `role_id`, un hachage SHA-256 du texte de la requête, le texte de la requête lui-même chiffré (REQ-689), `table_ids` et `table_names`, `source`, `status_code`, `duration_ms`, la route et le nombre de lignes, ce qui a été appliqué à l'instruction, et `logged_at`. Le texte de la requête est chiffré avec la clé de l'organisation lorsque celle-ci en a défini une, sinon avec la clé du déploiement (REQ-1574). Un déploiement qui ne configure aucun fournisseur de chiffrement le stocke en clair. Le texte n'est jamais exposé dans les tables d'exploitation interrogeables, et n'est déchiffré que lors de lectures d'administration autorisées.
 
-Lorsque le chiffrement est activé, la colonne du hachage du texte de la requête est stockée chiffrée et déchiffrée uniquement lors de lectures d'administration autorisées. (REQ-689)
+Le journal est en ajout seul au niveau de la base de données : les règles PostgreSQL transforment `DELETE` et `UPDATE` sur `query_audit_log` en opérations nulles. (REQ-596, REQ-613) Deux index, `(tenant_id, logged_at)` et `(user_id, logged_at)`, prennent en charge les requêtes de conformité par organisation et par utilisateur sur des plages de temps. (REQ-596, REQ-613)
+
+Rétention : les lignes sont conservées indéfiniment. Provisa n'a aucun réglage de rétention et ne purge jamais le journal d'audit ; comme `DELETE` est une opération nulle, supprimer d'anciennes lignes suppose qu'un opérateur supprime ou archive les données de la table en dehors de Provisa.
 
 ## Limitation de débit {: #rate-limiting }
 
@@ -344,14 +346,20 @@ Le score est mesuré après l'analyse d'une requête et avant sa gouvernance ou 
 
 Fournisseurs d'authentification enfichables : (REQ-120)
 
-| Fournisseur | Type de jeton | Cas d'usage |
+| Fournisseur | Identifiant | Cas d'usage |
 | ---------- | ----------- | ---------- |
-| `none` | En-tête X-Provisa-Role | Développement |
-| `basic` | Comptes locaux bcrypt + JWT | Déploiements autonomes |
+| `none` | En-tête X-Provisa-Role | Développement uniquement |
+| `basic` | Comptes locaux (bcrypt) + JWT de session | Déploiements autonomes |
 | `firebase` | Jeton d'ID Firebase | Production |
 | `keycloak` | JWT Keycloak | Entreprise |
-| `oauth` | JWT OIDC | PingFed, Okta, Azure AD, Auth0 |
+| `oauth` / `oidc` | JWT OIDC | PingFed, Okta, Azure AD, Auth0 |
+| `ldap` | Nom d'utilisateur et mot de passe de l'annuaire (LDAP ou Active Directory) | Annuaires d'entreprise (REQ-1265) |
+| `saml` | Assertion signée SAML 2.0, puis un JWT de session | Authentification unique d'entreprise (REQ-1265) |
 | `simple` | bcrypt + JWT | Tests |
+
+`ldap` connecte un utilisateur par recherche puis liaison : Provisa se lie en tant que compte de service, trouve l'unique entrée que désigne le nom d'utilisateur, puis se lie en tant que cette entrée avec le mot de passe présenté, de sorte que l'annuaire le vérifie. Les groupes de l'utilisateur deviennent ses rôles. Le compte et ses groupes sont relus à chaque retour d'un jeton de session, de sorte qu'un utilisateur retiré de l'annuaire, ou d'un groupe, perd cet accès avant l'expiration du jeton. `ldaps://` et StartTLS sont tous deux pris en charge.
+
+`saml` est du SSO Web Browser initié par le SP. La signature XML de la réponse est vérifiée par rapport aux métadonnées du fournisseur d'identité, et les claims ne sont lus que dans l'élément signé. L'émetteur (Issuer), l'audience (Audience), l'URL ACS, l'expiration et `InResponseTo` sont tous vérifiés. Les réponses non sollicitées (initiées par l'IdP), les assertions chiffrées, les documents avec DOCTYPE, les assertions multiples et les signatures SHA-1 sont refusés. Une session SAML n'est pas revérifiée auprès du fournisseur d'identité : un utilisateur retiré de ce côté conserve l'accès jusqu'à l'expiration du jeton de session.
 
 Correspondance des rôles : claims d'identité → rôle Provisa via des règles configurables. (REQ-120) Le champ `assignments_source` contrôle d'où viennent les attributions de rôles : `claims` les lit dans les claims du jeton JWT (par défaut), `provisa` les lit dans le magasin d'attributions interne de Provisa. (REQ-551) Un déploiement multi-tenant (`multitenancy: true`) accorde lui-même les rôles, par organisation, et doit donc utiliser `assignments_source: provisa` : avec `claims`, il ne démarre pas, et un changement de réglages qui produirait cette combinaison est refusé. Un déploiement mono-tenant peut utiliser l'un ou l'autre.
 
@@ -407,6 +415,10 @@ La vérification du certificat client déplace le premier contrôle dans la poig
 | `PROVISA_MTLS_BIND_PRINCIPAL` | Si vrai, le nom commun du certificat doit égaler le nom d'utilisateur sous lequel la connexion s'authentifie ensuite |
 
 Les surcharges par protocole suivent le même nommage que les réglages TLS. Rien n'est déduit : un mode défini sans CA refuse de démarrer, et un mode non reconnu refuse de démarrer plutôt que d'être lu comme le voisin le plus sûr — un déploiement qui croit exiger des certificats clients et ne le fait pas est en plus mauvaise posture qu'un déploiement qui ne démarre pas.
+
+### Versions de TLS {: #tls-versions }
+
+Chaque écouteur que Provisa termine (l'API HTTP et l'UI, pgwire, Bolt, MCP, gRPC et Arrow Flight) accepte TLS 1.2 et TLS 1.3, et refuse TLS 1.0 et 1.1. Provisa ne fixe elle-même ni version de protocole ni liste de chiffrements. Les écouteurs HTTP, pgwire et Bolt utilisent les valeurs par défaut serveur de `ssl` de Python (minimum TLS 1.2). gRPC et Arrow Flight utilisent les valeurs par défaut de gRPC (minimum TLS 1.2). Les versions ne sont pas configurables.
 
 ### Limitation des connexions {: #login-throttling }
 

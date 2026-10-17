@@ -2589,9 +2589,8 @@ class ControlPlaneConfig(BaseModel):
       * platform plane — global registry (orgs/users/invites) + billing.
     """
 
-    tenant_url: str = (
-        "${env:TENANT_DATABASE_URL:-postgresql+psycopg://provisa:provisa@localhost:5432/provisa}"
-    )
+    # REQ-837: required like the platform's, with no fallback.
+    tenant_url: str = "${env:TENANT_DATABASE_URL}"
     # REQ-837: PLATFORM_DATABASE_URL is required at startup with no fallback —
     # a missing var raises in resolve_secrets rather than silently defaulting.
     platform_url: str = "${env:PLATFORM_DATABASE_URL}"

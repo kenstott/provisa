@@ -2023,7 +2023,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     "port": _dq_pgwire_port(),
                     "database": "provisa",
                     "user": os.environ.get("PROVISA_DQ_USER", "org_admin"),
-                    "password": os.environ.get("PROVISA_DQ_PASSWORD", "provisa"),
+                    # A reference, resolved at each scan (dq.scan): unset under an auth
+                    # provider, the scan fails naming it. No account's password is assumed.
+                    "password": "${env:PROVISA_DQ_PASSWORD}",
                 }
         model = SourceModel(
             id=input.id,

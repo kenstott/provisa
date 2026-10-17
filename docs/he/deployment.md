@@ -162,7 +162,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 עבור תחנות עבודה למפתחים והערכה. air-gapped לחלוטין — אינטרנט אינו נדרש לאחר ההורדה (REQ-227).
 
-מתקין הבסיס הוא **התקנה ילידית**: מנוע פדרציה DuckDB + control plane‏ SQLite + מטמון בזיכרון (fakeredis), ללא Docker, VM, Trino, Redis, או MinIO (REQ-972, REQ-979). מנוע הפדרציה הוא בחירת-אשף — DuckDB (ילידי, ברירת מחדל), Trino-על-Docker, או מנוע חיצוני (REQ-973). Observability הוא תמיד-פעיל self-telemetry הניתן לצפייה ב-Admin; מחסנית ה-collector/Prometheus/Grafana של Docker היא הדגמה חיצונית אופציונלית, לא מתג הפעלה/כיבוי (REQ-975). חבילת נתוני ההדגמה אופציונלית וכבויה כברירת מחדל (REQ-978). Trino, מחסנית ה-observability של Docker, וההדגמה הם תוספים כבדים הנפתרים local-first (תיקייה סמוכה-למתקין, volumes מותקנים, `~/Downloads`, ואז release ב-GitHub), כך שארגונים יכולים לטעון מראש tarballs עבור התקנות air-gapped (REQ-977).
+מתקין הבסיס הוא **התקנה ילידית**: מנוע פדרציה DuckDB + control plane‏ PostgreSQL מוטמע (pgserver) + מטמון בזיכרון (fakeredis), ללא Docker, VM, Trino, Redis, או MinIO (REQ-972, REQ-979). מנוע הפדרציה הוא בחירת-אשף — DuckDB (ילידי, ברירת מחדל), Trino-על-Docker, או מנוע חיצוני (REQ-973). Observability הוא תמיד-פעיל self-telemetry הניתן לצפייה ב-Admin; מחסנית ה-collector/Prometheus/Grafana של Docker היא הדגמה חיצונית אופציונלית, לא מתג הפעלה/כיבוי (REQ-975). חבילת נתוני ההדגמה אופציונלית וכבויה כברירת מחדל (REQ-978). Trino, מחסנית ה-observability של Docker, וההדגמה הם תוספים כבדים הנפתרים local-first (תיקייה סמוכה-למתקין, volumes מותקנים, `~/Downloads`, ואז release ב-GitHub), כך שארגונים יכולים לטעון מראש tarballs עבור התקנות air-gapped (REQ-977).
 
 ### שלבים {: #steps }
 
@@ -189,7 +189,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 עבור תחנות עבודה למפתחים והערכה. air-gapped לחלוטין — אינטרנט אינו נדרש לאחר ההורדה (REQ-227).
 
-כמו macOS, מתקין ה-Windows הבסיסי הוא **שכבה ילידית**: runtime‏ Python עצמאי + wheel‏ provisa + DuckDB/pg_duckdb + control plane‏ SQLite, ללא משלוח Docker, VM, או image-י קונטיינר (REQ-979). מנוע הפדרציה (Trino), מחסנית ה-observability, וחבילת נתוני ההדגמה נוספים מאוחר יותר דרך מתקינים שכבתיים נפרדים, לפי סדר: מתקין ה-Container (‏`Provisa-Container-<version>.exe`, המוסיף WSL2 + containerd + Trino), אז מתקין ה-Obs (דורש את שכבת ה-container), ואז מתקין ה-Demo (דורש Core + Obs). הנחיית הפעלה-ראשונה מסבירה כיצד לאתחל את מנוע הפדרציה על ידי הרצת מתקין ה-Container (REQ-1005).
+כמו macOS, מתקין ה-Windows הבסיסי הוא **שכבה ילידית**: runtime‏ Python עצמאי + wheel‏ provisa + DuckDB/pg_duckdb + control plane‏ PostgreSQL מוטמע (pgserver), ללא משלוח Docker, VM, או image-י קונטיינר (REQ-979). מנוע הפדרציה (Trino), מחסנית ה-observability, וחבילת נתוני ההדגמה נוספים מאוחר יותר דרך מתקינים שכבתיים נפרדים, לפי סדר: מתקין ה-Container (‏`Provisa-Container-<version>.exe`, המוסיף WSL2 + containerd + Trino), אז מתקין ה-Obs (דורש את שכבת ה-container), ואז מתקין ה-Demo (דורש Core + Obs). הנחיית הפעלה-ראשונה מסבירה כיצד לאתחל את מנוע הפדרציה על ידי הרצת מתקין ה-Container (REQ-1005).
 
 ### שלבים {: #steps_1 }
 
@@ -257,7 +257,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
    ```bash
    provisa status
-   curl http://localhost:8000/health
+   curl -k https://localhost:8000/health   # -k: the node generates a self-signed certificate unless PROVISA_TLS_CERT/KEY supply one
    ```
 
 ---
@@ -267,7 +267,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 הריצו שלבים אלה על ה-node ה-primary תחילה. secondaries חייבים להיות מוגדרים לאחר שה-primary רץ.
 
 1. הורידו והעבירו את `Provisa.AppImage` למכונת ה-primary
-2. פתחו פורטי firewall נדרשים (secondaries יתחברו inbound על אלה):
+2. פתחו פורטי firewall נדרשים לשימוש ה-secondaries בלבד (הם מתחברים inbound על אלה):
 
    | פורט | שירות |
    | ------ | --------- |
@@ -277,23 +277,23 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
    | 8080 | קואורדינטור מנוע פדרציה |
    | 8000 | API של Provisa |
 
-3. הפכו להרצה והריצו:
+3. הפכו להרצה והריצו כשה-stores מפורסמים בכתובת הפרטית של ה-node, שם ה-secondaries פונים אליהם. node ללא secondaries מפרסם אותם על `127.0.0.1` בלבד:
 
    ```bash
    chmod +x Provisa.AppImage
-   ./Provisa.AppImage
+   PROVISA_STORE_BIND_IP=<this node's private IP> ./Provisa.AppImage
    ```
 
 4. אשף ההגדרה שואל:
    - **תפקיד** ← בחרו `primary`
    - **תקציב RAM**, **hostname**, **פורט API** ← ענו כמו עבור node יחיד
-5. לאחר השלמת ההגדרה, רשמו את ה-**IP הפרטי** של מכונה זו — secondaries צריכים אותו
+5. לאחר השלמת ההגדרה, רשמו את ה-**IP הפרטי** של מכונה זו. ה-secondaries צריכים אותו, ואת אישורי ה-stores שה-primary יצר: `~/.provisa/store-credentials.env` (‏`PROVISA_PG_PASSWORD`, ‏`PROVISA_REDIS_PASSWORD`, ‏`PROVISA_MINIO_ROOT_PASSWORD`, ‏`PROVISA_GRAFANA_ADMIN_PASSWORD`). העתיקו קובץ זה לכל secondary בערוץ מאובטח
 6. האשף מדפיס בלוק upstream‏ nginx — שמרו אותו עבור תצורת ה-load balancer שלכם
 7. אמתו:
 
    ```bash
    provisa status
-   curl http://localhost:8000/health
+   curl -k https://localhost:8000/health   # -k: the node generates a self-signed certificate unless PROVISA_TLS_CERT/KEY supply one
    ```
 
 ---
@@ -306,13 +306,14 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 2. אשרו שה-secondary יכול להגיע ל-primary:
 
    ```bash
-   curl http://<primary-ip>:8000/health
+   curl -k https://<primary-ip>:8000/health
    ```
 
-3. הפכו להרצה והריצו:
+3. הפכו להרצה והריצו כשאישורי ה-stores של ה-primary בסביבה שלו (הקובץ שהועתק מה-primary). secondary שלא קיבל אותם אינו עולה:
 
    ```bash
    chmod +x Provisa.AppImage
+   set -a; . ./store-credentials.env; set +a
    ./Provisa.AppImage
    ```
 
@@ -325,7 +326,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
    ```bash
    provisa status
-   curl http://localhost:8000/health
+   curl -k https://localhost:8000/health
    ```
 
 7. הוסיפו node זה ל-upstream‏ ה-load balancer שלכם
@@ -418,8 +419,8 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 8. Terraform מספק את כל התשתית (~5–10 דקות). לאחר apply, הסקריפט מדפיס:
 
    ```text
-   api_endpoint      = "http://<alb-dns>:8000"
-   flight_endpoint   = "<nlb-dns>:8815"
+   api_endpoint      = "https://<alb-dns>:8000"
+   protocol_endpoints = { flight = "<alb-dns>:8815", ... }
    primary_ip        = "10.0.x.x"
    secondary_ips     = ["10.0.x.x", ...]
    ```
@@ -484,7 +485,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ### סודות {: #secrets }
 
-אין סודות משובצים ב-Terraform. ה-AppImage מייצר אישורים בעת הפעלה-ראשונה וכותב אותם ל-`~/.provisa/config.yaml` על כל node (REQ-563). עבור ייצור, שלפו את טוקן ה-admin מה-node ה-primary לאחר הפריסה:
+סיסמאות ה-stores המובנים (PostgreSQL, Redis, MinIO, וה-admin של Grafana) נוצרות על ידי Terraform (`random_password`) ומועברות לכל node, ששומר אותן בקובץ הסביבה של systemd שלו, במצב 600. הן נשמרות ב-state של Terraform, ולכן הגנו על ה-state כפי שהייתם מגינים על הסיסמאות. ללא Terraform, ה-launcher של כל node מייצר אותן ב-`~/.provisa/store-credentials.env`. ה-AppImage מייצר את שאר האישורים בעת הפעלה-ראשונה וכותב אותם ל-`~/.provisa/config.yaml` על כל node (REQ-563). עבור ייצור, שלפו את טוקן ה-admin מה-node ה-primary לאחר הפריסה:
 
 ```bash
 ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
@@ -526,7 +527,9 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 3. החליטו לפני ההתקנה:
    - **PostgreSQL** — בתוך-אשכולי (‏`postgresql.enabled: true`) או מנוהל חיצוני (`postgresql.host`)? חיצוני מומלץ לייצור
-   - **Redis** — בתוך-אשכולי או חיצוני (‏`redis.host`)? שנו את הסיסמה ברירת המחדל (`redis.password`)
+   - **Redis** — בתוך-אשכולי או חיצוני (‏`redis.host`)?
+   - **אישורי ה-stores** — צרו את ה-Secret ש-`credentials.existingSecret` מציין, עם המפתחות `pg-password`, ‏`redis-password`, ‏`minio-access-key`, ‏`minio-secret-key` ו-`grafana-admin-password`. ה-chart אינו קובע סיסמה משלו ואינו נוצר בלעדיו
+   - **TLS** — פעיל כברירת מחדל (`tls.enabled: true`): צרו את ה-Secret מסוג `kubernetes.io/tls` ש-`tls.secretName` מציין, או הגדירו `tls.enabled: false`
    - **MinIO / S3** — MinIO בתוך-אשכולי או S3 ילידי? עבור AWS, השתמשו ב-S3 עם תפקיד IAM
    - **סודות** — העבירו דרך `--set` להערכה; השתמשו ב-External Secrets או Vault Agent לייצור
    - **מטמון ה-coordinator של Trino** — כרך של 1Gi שנדרש כברירת מחדל ומעוגן ב-`/data/trino/cache` (`trino.coordinator.cache.persistence`: `enabled`, `size`, `storageClass`). תוצאות ה-describe של מקור Salesforce נשמרות שם, כדי ש-coordinator שהופעל מחדש לא יבזבז שוב את מכסת ה-API של הארגון על תיאורו. כבו אותו רק כשאף מקור אינו זקוק לו (REQ-1946)
@@ -618,7 +621,8 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 | `redis.enabled` | `true` | פרוס StatefulSet‏ Redis בתוך-אשכולי (REQ-371) |
 | `redis.host` | `""` | הגדירו כדי להשתמש ב-Redis חיצוני |
 | `redis.port` | `6379` | |
-| `redis.password` | `"provisa"` | שנו זאת |
+| `credentials.existingSecret` | | Secret המכיל את סיסמאות ה-stores (חובה) |
+| `tls.enabled` | `true` | מגיש כל endpoint ב-TLS מתוך `tls.secretName` |
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | פרוס מנוע פדרציה (REQ-028) |
 | `trino.workers` | `2` | replicas עובד מנוע פדרציה (REQ-056) |

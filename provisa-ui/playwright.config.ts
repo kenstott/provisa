@@ -420,10 +420,11 @@ function embeddedControlPlaneEnv(dataDir: string): Record<string, string> {
   const started = controlPlanePg("start", cpDir, "--init-sql", "db/init.sql");
   const host = /^PG_HOST=(.*)$/m.exec(started)?.[1];
   const port = /^PG_PORT=(\d+)$/m.exec(started)?.[1];
-  if (!host || !port) {
-    throw new Error(`embedded control plane in ${cpDir} did not report its socket: ${started}`);
+  const password = /^PG_PASSWORD=(.*)$/m.exec(started)?.[1];
+  if (!host || !port || !password) {
+    throw new Error(`embedded control plane in ${cpDir} did not report its address: ${started}`);
   }
-  const url = `postgresql+psycopg://provisa:provisa@/provisa?host=${host}&port=${port}`;
+  const url = `postgresql+psycopg://provisa:${password}@/provisa?host=${host}&port=${port}`;
   return { TENANT_DATABASE_URL: url, PLATFORM_DATABASE_URL: url };
 }
 

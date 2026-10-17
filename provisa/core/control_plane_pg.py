@@ -17,11 +17,21 @@ interpreter (cpython <= 3.12 today).
 is how the demo keeps its org settings while everything else is rebuilt from config.
 
 ``start`` ensures a ``provisa`` role + ``provisa`` database, applies ``db/init.sql``
-once, and prints the connection coordinates the backend needs as two shell-eval
-lines (unix-socket host + port):
+once, and prints the connection coordinates the backend needs as shell-eval lines
+(unix-socket host + port, and the role's password):
 
     PG_HOST=/Users/me/.provisa/control-pg
     PG_PORT=5432
+    PG_PASSWORD=<the data directory's own>
+
+Who may connect. pgserver initialises every data directory with ``trust`` authentication. On
+macOS and Linux it listens on a unix socket alone, inside the data directory (mode 700), so only
+the account that owns the directory reaches it: socket connections stay ``trust``. On Windows it
+listens on TCP 127.0.0.1, which every local account reaches, so ``start`` turns every ``host``
+line of ``pg_hba.conf`` to ``scram-sha-256`` and gives the roles a password generated for the data
+directory, kept in it (``provisa.password``, mode 600). Both are applied at every start, so a data
+directory made before keeps working. Run as root, pgserver hands the socket directory to every
+account (mode 777); ``start`` refuses that.
 
 Usage:
     python -m provisa.core.control_plane_pg start <datadir> [--init-sql db/init.sql]
@@ -35,6 +45,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
+import secrets
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -44,6 +56,71 @@ def _server(datadir: str):
     import pgserver  # lazy — optional dep; ImportError signals "not available"
 
     return pgserver.get_server(Path(datadir), cleanup_mode=None)
+
+
+class EmbeddedPostgresAsRoot(PermissionError):
+    """The embedded postgres would be started by root."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The embedded PostgreSQL is not started as root: run as root, it opens its socket "
+            "directory to every account on the machine. Start Provisa as the user who owns it."
+        )
+
+
+#: The roles' password, generated for the data directory and kept in it.
+PASSWORD_FILE = "provisa.password"
+
+
+def _refuse_root() -> None:
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        raise EmbeddedPostgresAsRoot()
+
+
+def _password(datadir: str) -> str | None:
+    path = Path(datadir) / PASSWORD_FILE
+    return path.read_text().strip() if path.exists() else None
+
+
+@contextmanager
+def _signed_in(password: str | None) -> Iterator[None]:
+    """psql and pg_dump, which pgserver runs as subprocesses, sign in with ``password`` (needed
+    once the TCP lines ask for it); this process's own environment is restored after."""
+    before = os.environ.get("PGPASSWORD")
+    if password is not None:
+        os.environ["PGPASSWORD"] = password
+    try:
+        yield
+    finally:
+        if before is None:
+            os.environ.pop("PGPASSWORD", None)
+        else:
+            os.environ["PGPASSWORD"] = before
+
+
+_HOST_TRUST = re.compile(r"^(\s*host(?:ssl|nossl|gssenc|nogssenc)?\s.*\s)trust(\s*)$", re.MULTILINE)
+
+
+def _require_passwords(srv, datadir: str, password: str) -> None:
+    """Every TCP connection proves the password (``scram-sha-256``); socket connections, reachable
+    by the directory's owner alone, stay ``trust``. The password is set on both roles before the
+    rule changes, so the sign-in that follows already has it. Idempotent."""
+    path = Path(datadir) / PASSWORD_FILE
+    if not path.exists():
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as out:
+            out.write(password)
+    for role in (srv.postgres_user, "provisa"):
+        if "1" in srv.psql(f"SELECT 1 FROM pg_roles WHERE rolname='{role}'"):
+            srv.psql(f"ALTER ROLE \"{role}\" PASSWORD '{password}'")
+        else:
+            srv.psql(f"CREATE ROLE \"{role}\" LOGIN SUPERUSER PASSWORD '{password}'")
+    hba = Path(datadir) / "pg_hba.conf"
+    text = hba.read_text()
+    hardened = _HOST_TRUST.sub(r"\1scram-sha-256\2", text)
+    if hardened != text:
+        hba.write_text(hardened)
+        srv.psql("SELECT pg_reload_conf()")
 
 
 def _stage_bundled_extensions() -> None:
@@ -118,25 +195,28 @@ def _ensure_connection_capacity(srv, datadir: str) -> None:
     pg_ctl(["-w", "restart", "-m", "fast"], pgdata=Path(datadir))
 
 
-def start(datadir: str, init_sql: str | None = None) -> tuple[str, int]:
+def start(datadir: str, init_sql: str | None = None) -> tuple[str, int, str]:
     """Ensure a persistent control-plane postgres with a ``provisa`` role and
-    ``provisa`` database, apply ``init_sql`` once, and return ``(host, port)`` for
-    a unix-socket asyncpg connection."""
+    ``provisa`` database, apply ``init_sql`` once, and return ``(host, port, password)``
+    for an asyncpg connection (a unix socket, or TCP 127.0.0.1 on Windows)."""
+    _refuse_root()
     _stage_bundled_extensions()  # REQ-1158: make the PyPI-delivered FDWs loadable by the pg fed engine
-    with _postmaster_environment():
-        srv = _server(datadir)
-        _ensure_connection_capacity(srv, datadir)
-    if "1" not in srv.psql("SELECT 1 FROM pg_roles WHERE rolname='provisa'"):
-        srv.psql("CREATE ROLE provisa LOGIN PASSWORD 'provisa' SUPERUSER")
-    fresh = "1" not in srv.psql("SELECT 1 FROM pg_database WHERE datname='provisa'")
-    if fresh:
-        srv.psql("CREATE DATABASE provisa OWNER provisa")
-    # Apply the base schema exactly once, on first database creation. The backend's
-    # own init is idempotent, but seeding here means the pool comes up on a ready DB.
-    if fresh and init_sql:
-        sql = Path(init_sql).read_text()
-        srv.psql(f"\\c provisa\n{sql}")
-    return _address(srv.get_postmaster_info())
+    password = _password(datadir) or secrets.token_hex(24)
+    with _signed_in(password):
+        with _postmaster_environment():
+            srv = _server(datadir)
+            _ensure_connection_capacity(srv, datadir)
+        _require_passwords(srv, datadir, password)
+        fresh = "1" not in srv.psql("SELECT 1 FROM pg_database WHERE datname='provisa'")
+        if fresh:
+            srv.psql("CREATE DATABASE provisa OWNER provisa")
+        # Apply the base schema exactly once, on first database creation. The backend's
+        # own init is idempotent, but seeding here means the pool comes up on a ready DB.
+        if fresh and init_sql:
+            sql = Path(init_sql).read_text()
+            srv.psql(f"\\c provisa\n{sql}")
+        host, port = _address(srv.get_postmaster_info())
+    return host, port, password
 
 
 def _address(info) -> tuple[str, int]:
@@ -199,12 +279,14 @@ def reset(datadir: str) -> None:
     analogue of deleting the sqlite control-plane files. Open backends are terminated first: a
     connection left by a previous run would otherwise hold DROP DATABASE off.
     """
-    srv = _server(datadir)
-    srv.psql(
-        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='provisa' "
-        "AND pid <> pg_backend_pid()"
-    )
-    srv.psql("DROP DATABASE IF EXISTS provisa")
+    _refuse_root()
+    with _signed_in(_password(datadir)):
+        srv = _server(datadir)
+        srv.psql(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='provisa' "
+            "AND pid <> pg_backend_pid()"
+        )
+        srv.psql("DROP DATABASE IF EXISTS provisa")
 
 
 def _has_table(srv, table: str) -> bool:
@@ -231,28 +313,32 @@ def dump_table(datadir: str, table: str, out: str) -> bool:
 
     from pgserver._commands import POSTGRES_BIN_PATH  # the bundled binaries, no PATH lookup
 
-    srv = _server(datadir)
-    if not _has_table(srv, table):
-        return False
-    uri = srv.get_uri(database="provisa")
-    sql = subprocess.check_output(
-        [
-            str(POSTGRES_BIN_PATH / "pg_dump"),
-            uri,
-            "--data-only",
-            "--inserts",
-            "--on-conflict-do-nothing",
-            f"--table=*.{table}",
-        ]
-    )
+    _refuse_root()
+    with _signed_in(_password(datadir)):
+        srv = _server(datadir)
+        if not _has_table(srv, table):
+            return False
+        uri = srv.get_uri(database="provisa")
+        sql = subprocess.check_output(
+            [
+                str(POSTGRES_BIN_PATH / "pg_dump"),
+                uri,
+                "--data-only",
+                "--inserts",
+                "--on-conflict-do-nothing",
+                f"--table=*.{table}",
+            ]
+        )
     Path(out).write_text(sql.decode())
     return True
 
 
 def apply_sql(datadir: str, path: str) -> None:
     """Run a SQL file against the ``provisa`` database — the restore half of :func:`dump_table`."""
-    srv = _server(datadir)
-    srv.psql(f"\\c provisa\n{Path(path).read_text()}")
+    _refuse_root()
+    with _signed_in(_password(datadir)):
+        srv = _server(datadir)
+        srv.psql(f"\\c provisa\n{Path(path).read_text()}")
 
 
 def main() -> None:
@@ -267,9 +353,10 @@ def main() -> None:
     parser.add_argument("--file", default=None, help="apply: SQL file to run against the database")
     args = parser.parse_args()
     if args.command == "start":
-        host, port = start(args.datadir, args.init_sql)
+        host, port, password = start(args.datadir, args.init_sql)
         print(f"PG_HOST={host}")
         print(f"PG_PORT={port}")
+        print(f"PG_PASSWORD={password}")
     elif args.command == "stop":
         stop(args.datadir)
     elif args.command == "reset":

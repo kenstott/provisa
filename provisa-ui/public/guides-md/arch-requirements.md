@@ -5196,7 +5196,7 @@ Trino 480 with Iceberg results catalog (JDBC on PG, native S3 filesystem).
 
 **Use case:** Trino 480 with Iceberg results catalog provides modern open-table-format storage for all redirected results.
 
-**Code:** `docker-compose.core.yml`, `trino/catalog-install/results.properties`, `docker/trino-engine.Dockerfile`
+**Code:** `docker-compose.core.yml`, `provisa/core/trino_system_catalogs.py`, `docker/trino-engine.Dockerfile`
 
 **Tests:** `tests/unit/test_infra_requirements.py`, `tests/integration/test_infra.py`, `tests/e2e/test_health_checks.py`
 
