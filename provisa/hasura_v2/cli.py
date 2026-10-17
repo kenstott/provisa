@@ -139,6 +139,10 @@ def main(argv: list[str] | None = None) -> int:  # REQ-417
         auth_env=auth_env,
         source_overrides=source_overrides,
     )
+    # Offline: a tracked function's signature is the database's (the admin preview reads it).
+    for pending in collector.pending_functions:
+        collector.pending_function_to_redo(pending)
+    collector.pending_functions.clear()
 
     # Validate
     from provisa.core.models import ProvisaConfig

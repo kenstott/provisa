@@ -1695,7 +1695,7 @@
   "ru/importTab.json::importTab.host": "Host",
   "ru/importTab.json::importTab.intro": "Convert a Hasura v2 metadata export or a Hasura DDN project. Upload a zipped project directory, a consolidated metadata export (YAML or JSON), or a single .hml file. Nothing is written until you review the result and apply it.",
   "ru/importTab.json::importTab.noFile": "No file selected.",
-  "ru/importTab.json::importTab.noWarnings": "Everything in the upload converted.",
+  "ru/importTab.json::importTab.noWarnings": "Nothing in the upload is left to redo by hand.",
   "ru/importTab.json::importTab.password": "Password",
   "ru/importTab.json::importTab.port": "Port",
   "ru/importTab.json::importTab.preview": "Convert and preview",
@@ -1709,8 +1709,8 @@
   "ru/importTab.json::importTab.username": "Username",
   "ru/importTab.json::importTab.warningCategory": "Feature",
   "ru/importTab.json::importTab.warningLocation": "Location",
-  "ru/importTab.json::importTab.warningMessage": "What happened",
-  "ru/importTab.json::importTab.warningsHeading": "Conversion warnings ({{count}})",
+  "ru/importTab.json::importTab.warningMessage": "What to do",
+  "ru/importTab.json::importTab.warningsHeading": "Redo by hand ({{count}})",
   "ru/joinNotice.json::joinNotice.ack": "Got it",
   "ru/joinNotice.json::joinNotice.admin": "An administrator added you to {{org}}.",
   "ru/joinNotice.json::joinNotice.auto_join": "Your email address matches this organization's sign-in rule, so you were added to {{org}} automatically when you signed in.",
@@ -6867,5 +6867,12 @@
   "ru/sqlEditorPanel.json::sqlEditorPanel.asOfHint": "Read history-keeping views as they stood at this time",
   "ru/sqlEditorPanel.json::sqlEditorPanel.asOfLabel": "As of",
   "ru/sqlEditorPanel.json::sqlEditorPanel.asRecordedHint": "Read history-keeping views as Provisa recorded them then, before later corrections",
-  "ru/sqlEditorPanel.json::sqlEditorPanel.asRecordedLabel": "As recorded at"
+  "ru/sqlEditorPanel.json::sqlEditorPanel.asRecordedLabel": "As recorded at",
+  "ru/importTab.json::importTab.carriedHeading": "Carried as it is ({{count}})",
+  "ru/importTab.json::importTab.noneCarried": "Nothing in the upload converted as it is.",
+  "ru/importTab.json::importTab.carriedAs": "Carried as",
+  "ru/importTab.json::importTab.mappedHeading": "Mapped to a better Provisa feature ({{count}})",
+  "ru/importTab.json::importTab.noneMapped": "Nothing in the upload was mapped to another feature.",
+  "ru/importTab.json::importTab.mappedTo": "Mapped to, and why",
+  "ru/importTab.json::importTab.reportItem": "Item"
 }

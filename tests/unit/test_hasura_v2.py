@@ -531,11 +531,24 @@ class TestMapper:
         assert "admin" in role_ids
         assert "manager" in role_ids
 
-    def test_inherited_role_has_parent(self):
+    def test_role_inheriting_several_holds_their_union(self):
+        """A Provisa role has one parent: manager, inheriting user and admin, is written out
+        with the union of their grants instead."""
         metadata = self._build_metadata()
         config = convert_metadata(metadata)
         manager = next(r for r in config.roles if r.id == "manager")
-        assert manager.parent_role_id is not None
+        assert manager.parent_role_id is None
+        users = next(t for t in config.tables if t.table_name == "users")
+        for column in users.columns:
+            if {"user", "admin"} & set(column.visible_to):
+                assert "manager" in column.visible_to, column.name
+
+    def test_role_inheriting_one_has_it_as_parent(self):
+        metadata = self._build_metadata()
+        metadata.inherited_roles = [HasuraInheritedRole(role_name="manager", role_set=["user"])]
+        config = convert_metadata(metadata)
+        manager = next(r for r in config.roles if r.id == "manager")
+        assert manager.parent_role_id == "user"
 
     def test_write_capabilities_upgraded(self):
         metadata = self._build_metadata()
@@ -598,11 +611,14 @@ class TestMapper:
         assert orders_rel is not None
         assert orders_rel.cardinality.value == "one-to-many"
 
-    def test_tracked_functions_mapped(self):
+    def test_tracked_functions_wait_for_their_signature(self):
+        """A tracked function's arguments and result are the database's: the preview reads them
+        where it reaches the database; the offline conversion lists the function pending."""
         metadata = self._build_metadata()
-        config = convert_metadata(metadata)
-        fn_names = {f.name for f in config.functions}
-        assert "search_users" in fn_names
+        collector = WarningCollector()
+        config = convert_metadata(metadata, collector=collector)
+        assert "search_users" not in {f.name for f in config.functions}
+        assert [p["name"] for p in collector.pending_functions] == ["search_users"]
 
     def test_webhook_action_mapped(self):
         metadata = self._build_metadata()
@@ -615,19 +631,20 @@ class TestMapper:
     def test_cron_triggers_mapped(self):
         metadata = self._build_metadata()
         config = convert_metadata(metadata)
-        assert len(config.scheduled_triggers) == 1
-        assert config.scheduled_triggers[0].id == "hourly_sync"
-        assert config.scheduled_triggers[0].cron == "0 * * * *"
+        (cron,) = [t for t in config.scheduled_triggers if t.cron]
+        assert cron.id == "hourly_sync"
+        assert cron.cron == "0 * * * *"
 
     def test_event_triggers_mapped_with_warning(self):
         metadata = self._build_metadata()
         collector = WarningCollector()
         config = convert_metadata(metadata, collector=collector)
-        assert len(config.event_triggers) == 1
-        et = config.event_triggers[0]
-        assert et.webhook_url == "https://hooks.example.com/order"
-        assert et.retry_max == 3
-        assert any(w.category == "event_triggers" for w in collector.warnings)
+        assert not config.event_triggers
+        (et,) = [t for t in config.scheduled_triggers if t.on_table]
+        assert et.url == "https://hooks.example.com/order"
+        assert (et.on_table, et.on_event) == ("default.public.orders", "change")
+        # Insert alone in Hasura; a Provisa change trigger fires on every change.
+        assert any(w.category == "triggers" for w in collector.warnings)
 
     def test_domain_map_applied(self):
         metadata = self._build_metadata()

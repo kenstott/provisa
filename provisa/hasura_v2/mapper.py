@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from provisa.core import domain_policy
@@ -22,9 +23,9 @@ from provisa.core.models import (
     Cardinality,
     Column,
     ColumnPreset,
-    EventTrigger,
     Function,
     FunctionArgument,
+    InlineType,
     NamingConfig,
     ProvisaConfig,
     Relationship,
@@ -40,13 +41,14 @@ from provisa.core.models import (
 )
 from provisa.hasura_v2.models import (
     HasuraAction,
+    HasuraEventTrigger,
     HasuraPermission,
     HasuraMetadata,
     HasuraRemoteSchema,
     HasuraSource,
     HasuraTable,
 )
-from provisa.import_shared.filters import bool_expr_to_sql
+from provisa.import_shared.filters import Hop, Relations, bool_expr_to_sql
 from provisa.import_shared.warnings import WarningCollector
 
 # Requirements: REQ-041, REQ-019, REQ-040, REQ-155, REQ-195, REQ-205, REQ-209, REQ-417
@@ -67,66 +69,57 @@ def _source_type_from_kind(kind: str) -> SourceType:
     return SourceType(mapped)
 
 
-def _extract_connection_info(
-    conn: dict[str, Any],
-) -> dict[str, Any]:
-    """Extract host/port/database from Hasura connection_info."""
+def _connection_fields(url: str) -> dict[str, Any]:
+    """host, port, database, username and password a literal ``postgres://`` URL names; only
+    what it names."""
+    fields: dict[str, Any] = {}
+    try:
+        rest = url.split("://", 1)[1]
+        if "@" in rest:
+            creds, hostpart = rest.rsplit("@", 1)
+            user, _, password = creds.partition(":")
+            fields["username"] = user
+            if password:
+                fields["password"] = password
+        else:
+            hostpart = rest
+        hp, _, database = hostpart.partition("/")
+        if database:
+            fields["database"] = database.split("?", 1)[0]
+        host, _, port = hp.partition(":")
+        fields["host"] = host
+        if port:
+            fields["port"] = int(port)
+    except (ValueError, IndexError) as exc:
+        raise ValueError(f"malformed database_url: {url!r}") from exc
+    return fields
+
+
+def _map_source(
+    hs: HasuraSource, collector: WarningCollector, *, overridden: bool
+) -> Source:  # REQ-417
+    """The source as its connection_info states it. A URL Hasura reads from an environment
+    variable is not in the export: nothing is made up for it, and unless the import's source
+    settings supply it (``overridden``) the report says to."""
+    conn = hs.connection_info or {}
     db_url = conn.get("database_url", "")
-    if isinstance(db_url, dict):
-        db_url = db_url.get("from_env", "")
-
-    result: dict[str, Any] = {
-        "host": "localhost",
-        "port": 5432,
-        "database": "default",
-        "username": "postgres",
-        "password": "${env:DB_PASSWORD}",
-    }
-
+    fields: dict[str, Any] = {}
     if isinstance(db_url, str) and "://" in db_url:
-        # Parse postgres://user:pass@host:port/dbname
-        try:
-            rest = db_url.split("://", 1)[1]
-            if "@" in rest:
-                creds, hostpart = rest.rsplit("@", 1)
-                if ":" in creds:
-                    result["username"] = creds.split(":", 1)[0]
-                    result["password"] = creds.split(":", 1)[1]
-                else:
-                    result["username"] = creds
-            else:
-                hostpart = rest
-            if "/" in hostpart:
-                hp, result["database"] = hostpart.split("/", 1)
-            else:
-                hp = hostpart
-            if ":" in hp:
-                result["host"], port_str = hp.split(":", 1)
-                result["port"] = int(port_str)
-            else:
-                result["host"] = hp
-        except (ValueError, IndexError) as exc:
-            raise ValueError(f"malformed database_url: {db_url!r}") from exc
-
-    pool = conn.get("pool_settings", {})
-    result["pool_min"] = pool.get("min_connections", 1)
-    result["pool_max"] = pool.get("max_connections", 5)
-    return result
-
-
-def _map_source(hs: HasuraSource) -> Source:  # REQ-417
-    conn = _extract_connection_info(hs.connection_info)
-    return Source(
-        id=hs.name,
-        type=_source_type_from_kind(hs.kind),
-        host=conn["host"],
-        port=conn["port"],
-        database=conn["database"],
-        username=conn["username"],
-        password=conn["password"],
-        pool_min=conn.get("pool_min", 1),
-        pool_max=conn.get("pool_max", 5),
-    )
+        fields = _connection_fields(db_url)
+    elif not overridden:
+        var = db_url.get("from_env") if isinstance(db_url, dict) else None
+        where = f"the environment variable {var}" if var else "a setting the export does not carry"
+        collector.warn(
+            "sources",
+            f"Source {hs.name!r} reads its connection from {where}. Enter its host, port, "
+            "database, user and password in the import's source settings and convert again.",
+        )
+    pool = conn.get("pool_settings") or {}
+    if pool.get("max_connections"):
+        fields["pool_max"] = int(pool["max_connections"])
+    source = Source(id=hs.name, type=_source_type_from_kind(hs.kind), **fields)
+    collector.carry("sources", hs.name, f"{source.type.value} source {hs.name}")
+    return source
 
 
 def _map_remote_schema(rs: HasuraRemoteSchema) -> Source:  # REQ-417
@@ -202,9 +195,12 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
                 capabilities=list(_READ_CAPS),
                 domain_access=["*"],
             )
-        # Set parent to first role in set (simplified mapping)
-        if ir.role_set:
+        # One role inherited is a Provisa parent exactly. Several are written out as the union
+        # of their grants once the tables are mapped (_inherit_several): a Provisa role has one
+        # parent.
+        if len(ir.role_set) == 1:
             roles[ir.role_name].parent_role_id = ir.role_set[0]
+        if ir.role_set:
             # Ensure child roles exist
             for child_role in ir.role_set:
                 if child_role not in roles:
@@ -311,10 +307,12 @@ def _fk_targets(hs: HasuraSource) -> dict[tuple[str, str, str], tuple[str, str]]
     return out
 
 
-def _predicate(expr: dict[str, Any] | None) -> str:
+def _predicate(
+    expr: dict[str, Any] | None, table: str = "", relations: Relations | None = None
+) -> str:
     """A Hasura boolean expression as the SQL predicate a write grant states; an empty one (no
     restriction) is every row."""
-    return bool_expr_to_sql(expr or {})
+    return bool_expr_to_sql(expr or {}, table=table, relations=relations)
 
 
 def _presets(set_: dict[str, Any]) -> list[ColumnPreset]:
@@ -330,7 +328,9 @@ def _presets(set_: dict[str, Any]) -> list[ColumnPreset]:
     return presets
 
 
-def _write_grants(ht: HasuraTable, table_columns: list[str]) -> list[WriteGrant]:  # REQ-2074
+def _write_grants(
+    ht: HasuraTable, table_columns: list[str], tid: str = "", relations: Relations | None = None
+) -> list[WriteGrant]:  # REQ-2074
     """Each insert, update and delete permission as the role's write grant for that operation --
     its columns, filter (rows), check and set (presets) -- and Hasura's admin, who holds every
     permission, as org_admin's grant for every operation over every column."""
@@ -348,7 +348,7 @@ def _write_grants(ht: HasuraTable, table_columns: list[str]) -> list[WriteGrant]
                 role=perm.role,
                 operation="insert",
                 columns=_cols(perm),
-                check=_predicate(perm.check),
+                check=_predicate(perm.check, tid, relations),
                 presets=_presets(perm.set),
             )
         )
@@ -358,13 +358,17 @@ def _write_grants(ht: HasuraTable, table_columns: list[str]) -> list[WriteGrant]
                 role=perm.role,
                 operation="update",
                 columns=_cols(perm),
-                rows=_predicate(perm.filter),
-                check=_predicate(perm.check),
+                rows=_predicate(perm.filter, tid, relations),
+                check=_predicate(perm.check, tid, relations),
                 presets=_presets(perm.set),
             )
         )
     for perm in ht.delete_permissions:
-        grants.append(WriteGrant(role=perm.role, operation="delete", rows=_predicate(perm.filter)))
+        grants.append(
+            WriteGrant(
+                role=perm.role, operation="delete", rows=_predicate(perm.filter, tid, relations)
+            )
+        )
     grants += [
         WriteGrant(role=ORG_ADMIN_ROLE, operation="insert", columns=every, check="TRUE"),
         WriteGrant(
@@ -375,12 +379,86 @@ def _write_grants(ht: HasuraTable, table_columns: list[str]) -> list[WriteGrant]
     return grants
 
 
+def _relationships(
+    hs: HasuraSource,
+    fk_targets: dict[tuple[str, str, str], tuple[str, str]],
+    virtual: dict[tuple[str, str], str],
+    collector: WarningCollector,
+) -> tuple[list[Relationship], dict[tuple[str, str], Hop]]:  # REQ-019, REQ-1680
+    """Every object and array relationship as an approved Provisa relationship, its GraphQL field
+    the Hasura relationship's name; and the hop each makes, by (table, name), for the row rules
+    that filter through it."""
+    relationships: list[Relationship] = []
+    hops: dict[tuple[str, str], Hop] = {}
+    for ht in hs.tables:
+        tid = _table_id(virtual, ht.schema_name, ht.name)
+        for rel, cardinality in (
+            *((r, Cardinality.many_to_one) for r in ht.object_relationships),
+            *((r, Cardinality.one_to_many) for r in ht.array_relationships),
+        ):
+            where = f"{tid}.{rel.name}"
+            if not rel.column_mapping:
+                collector.warn(
+                    "relationships",
+                    f"Relationship {where} names no columns; add it after import on the "
+                    "Relationships page.",
+                )
+                continue
+            remote_schema, remote_table = rel.remote_schema, rel.remote_table
+            if not remote_table:
+                # REQ-1680: declared by FK column only; Hasura infers the target from the
+                # constraint, which the export names through the inverse array relationship.
+                src_col = next(iter(rel.column_mapping))
+                found = fk_targets.get((ht.schema_name, ht.name, src_col))
+                if found is None:
+                    collector.warn(
+                        "relationships",
+                        f"Relationship {where} is declared by the foreign key column "
+                        f"{src_col!r} and the export names no table it points to; add it after "
+                        "import on the Relationships page.",
+                    )
+                    continue
+                remote_schema, remote_table = found
+            target = _table_id(virtual, remote_schema, remote_table)
+            pairs = list(rel.column_mapping.items())
+            hops[(tid, rel.name)] = Hop(target, pairs)
+            if len(pairs) > 1:
+                collector.warn(
+                    "relationships",
+                    f"Relationship {where} joins on {len(pairs)} column pairs; a Provisa "
+                    "relationship joins on one. Row rules through it are carried; add the "
+                    "relationship as a view joining both columns, or on the Relationships page "
+                    "on one of them.",
+                )
+                continue
+            ((src_col, tgt_col),) = pairs
+            relationships.append(
+                Relationship(
+                    id=where,
+                    source_table_id=tid,
+                    target_table_id=target,
+                    source_column=src_col,
+                    target_column=tgt_col,
+                    cardinality=cardinality,
+                    graphql_alias=rel.name,
+                )
+            )
+            collector.carry(
+                "relationships",
+                where,
+                f"approved relationship {tid}.{src_col} -> {target}.{tgt_col}"
+                + (" (declared by hand in Hasura: no foreign key backs it)" if rel.manual else ""),
+            )
+    return relationships, hops
+
+
 def _map_table(
     ht: HasuraTable,
     source_name: str,
     collector: WarningCollector,
     fk_targets: dict[tuple[str, str, str], tuple[str, str]] | None = None,
     virtual: dict[tuple[str, str], str] | None = None,
+    relations: Relations | None = None,
 ) -> tuple[
     Table, list[RLSRule], list[Relationship], list[Function]
 ]:  # REQ-041, REQ-040, REQ-019, REQ-155, REQ-205
@@ -440,14 +518,25 @@ def _map_table(
         table_name=ht.name,
         columns=columns,
         alias=table_alias,
-        write_grants=_write_grants(ht, [c.name for c in columns]),
+        write_grants=_write_grants(ht, [c.name for c in columns], tid, relations),
     )
+
+    # Root fields Hasura names beyond the table's own: Provisa serves a table as one field, its
+    # by-key read, aggregates and writes as arguments and mutations of it.
+    others = {k: v for k, v in ht.custom_root_fields.items() if v and k != "select"}
+    if others:
+        collector.map(
+            "names",
+            ", ".join(sorted(others.values())),
+            f"root fields of {tid}, served through it: a by-key read is a filter on it, an aggregate its "
+            "_aggregate field, a write its mutation -- the app's queries take that shape",
+        )
 
     # RLS rules from select permission filters
     rls_rules: list[RLSRule] = []
     for perm in ht.select_permissions:
         if perm.filter:
-            sql_filter = bool_expr_to_sql(perm.filter)
+            sql_filter = bool_expr_to_sql(perm.filter, table=tid, relations=relations)
             if sql_filter != "TRUE":
                 rls_rules.append(
                     RLSRule(
@@ -456,135 +545,234 @@ def _map_table(
                         filter=sql_filter,
                     )
                 )
-
-    # Relationships
-    relationships: list[Relationship] = []
-    for rel in ht.object_relationships:
-        if not rel.column_mapping:
-            continue
-        src_col = next(iter(rel.column_mapping.keys()))
-        tgt_col = next(iter(rel.column_mapping.values()))
-        remote_schema, remote_table = rel.remote_schema, rel.remote_table
-        if not remote_table:
-            # REQ-1680: declared by FK column only; Hasura infers the target from the constraint.
-            found = (fk_targets or {}).get((ht.schema_name, ht.name, src_col))
-            if found is None:
-                collector.warn(
-                    "relationships",
-                    f"Object relationship {rel.name!r} on {ht.schema_name}.{ht.name} is declared "
-                    f"by FK column {src_col!r} and the export names no target table (no inverse "
-                    "array relationship); dropped — declare it with manual_configuration or add "
-                    "the relationship after import",
-                )
-                continue
-            remote_schema, remote_table = found
-        target_tid = _table_id(virtual, remote_schema, remote_table)
-        relationships.append(
-            Relationship(
-                id=f"{tid}.{rel.name}",
-                source_table_id=tid,
-                target_table_id=target_tid,
-                source_column=src_col,
-                target_column=tgt_col,
-                cardinality=Cardinality.many_to_one,
-            )
+    for perm in ht.select_permissions:
+        collector.carry(
+            "permissions",
+            f"{perm.role} select on {tid}",
+            "column grants" + (" and a row filter" if perm.filter else ""),
         )
-    for rel in ht.array_relationships:
-        if not rel.column_mapping:
-            continue
-        src_col = next(iter(rel.column_mapping.keys()))
-        tgt_col = next(iter(rel.column_mapping.values()))
-        target_tid = _table_id(virtual, rel.remote_schema, rel.remote_table)
-        relationships.append(
-            Relationship(
-                id=f"{tid}.{rel.name}",
-                source_table_id=tid,
-                target_table_id=target_tid,
-                source_column=src_col,
-                target_column=tgt_col,
-                cardinality=Cardinality.one_to_many,
-            )
-        )
+    for kind, perms in (
+        ("insert", ht.insert_permissions),
+        ("update", ht.update_permissions),
+        ("delete", ht.delete_permissions),
+    ):
+        for perm in perms:
+            collector.carry("permissions", f"{perm.role} {kind} on {tid}", f"{kind} write grant")
 
-    # Computed fields -> functions
-    functions: list[Function] = []
+    # Computed fields: a database function over the row, whose body the export does not carry.
     for cf in ht.computed_fields:
-        functions.append(
-            Function(
-                name=cf.name,
-                source_id=source_name,
-                schema_name=cf.function_schema,
-                function_name=cf.function_name,
-                returns=tid,
-                kind="query",
-                domain_id=domain_policy.import_default(),
-            )
-        )
-
-    # Event triggers -> warnings
-    for et in ht.event_triggers:
         collector.warn(
-            "event_triggers",
-            f"Event trigger '{et.name}' on {et.table_schema}.{et.table_name} "
-            f"converted with limited fidelity (webhook: {et.webhook})",
+            "computed_fields",
+            f"Computed field {cf.name!r} on {tid} calls the database function "
+            f"{cf.function_schema}.{cf.function_name}, which the export names but does not "
+            f"define. Add it as a column of a view over {tid} (SELECT t.*, "
+            f"{cf.function_schema}.{cf.function_name}(t) AS {cf.name} FROM {tid} t), or compute "
+            "it in the app.",
         )
-
+    relationships: list[Relationship] = []
+    functions: list[Function] = []
     return table, rls_rules, relationships, functions
 
 
+_ENV_TEMPLATE = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
+
+
+def _env_template(url: str) -> str:
+    """A Hasura URL template, ``{{VAR}}/path``, as the environment reference Provisa resolves
+    where the URL is used: ``${env:VAR}/path``."""
+    return _ENV_TEMPLATE.sub(lambda m: "${env:" + m.group(1) + "}", url)
+
+
+def _retries(what: str, retry_conf: dict[str, Any], collector: WarningCollector) -> None:
+    if retry_conf.get("num_retries"):
+        collector.warn(
+            "triggers",
+            f"{what} retries a failed call {retry_conf['num_retries']} time(s); a Provisa "
+            "trigger calls once. Retry in the handler if a missed call matters.",
+        )
+
+
+def _change_trigger(
+    et: HasuraEventTrigger, source_id: str, collector: WarningCollector
+) -> ScheduledTrigger:  # REQ-2054
+    """A Hasura event trigger as a trigger on its table's change, calling the same webhook."""
+    url = "${env:" + et.webhook + "}" if et.webhook_from_env else _env_template(et.webhook)
+    table = f"{source_id}.{et.table_schema}.{et.table_name}"
+    collector.map(
+        "triggers",
+        et.name,
+        f"a trigger on changes to {table} calling the same webhook: Provisa fires it whether "
+        "the change came through Provisa or straight to the database",
+    )
+    if sorted(et.operations) != ["delete", "insert", "update"]:
+        collector.warn(
+            "triggers",
+            f"Event trigger {et.name!r} fires on {', '.join(et.operations)} alone; its Provisa "
+            f"trigger fires on every change to {table}, once per batch of changes, posting the "
+            "table and the changed rows rather than one event per row with its old and new "
+            "values. Make the handler act on the rows it is meant for.",
+        )
+    _retries(f"Event trigger {et.name!r}", et.retry_conf, collector)
+    return ScheduledTrigger(id=et.name, on_table=table, on_event="change", url=url)
+
+
+def _ir_type(gql: str) -> str:
+    """An action argument's GraphQL type as the IR type a command argument declares."""
+    from provisa.core.ir_types import to_ir
+
+    named = gql.strip().rstrip("!").strip("[]!")
+    # GraphQL serializes an ID as a string.
+    return to_ir("String" if named == "ID" else named, "graphql")
+
+
 def _map_action(
-    action: HasuraAction, collector: WarningCollector
-) -> Function | Webhook | None:  # REQ-205, REQ-209
-    """Map a Hasura action to either a Function or Webhook."""
-    handler = action.definition.handler
+    action: HasuraAction,
+    custom_types: dict[str, list[tuple[str, str]]],
+    collector: WarningCollector,
+) -> Webhook:  # REQ-205, REQ-209
+    """A Hasura action as a command calling the same handler, with its arguments and output."""
     # Hasura answers an action with no permissions to the admin alone; so does the command it
     # becomes (a command's one role list, empty, would assign it to every role).
     visible_to = [p.get("role", "") for p in action.permissions if p.get("role")] or [
         ORG_ADMIN_ROLE
     ]
-
-    action_kind = (
-        action.definition.action_type
-        if action.definition.action_type in ("mutation", "query")
-        else "mutation"
-    )
-
-    if handler.startswith("http://") or handler.startswith("https://"):
-        # Webhook-backed action
-        args = []
-        for arg in action.definition.arguments:
-            args.append(
-                FunctionArgument(
-                    name=arg.get("name", ""),
-                    type=arg.get("type", "String"),
-                )
-            )
-        return Webhook(
-            name=action.name,
-            url=handler,
-            method="POST",
-            timeout_ms=5000,
-            arguments=args,
-            visible_to=visible_to,
-            domain_id=domain_policy.import_default(),
-            kind=action_kind,
+    defn = action.definition
+    kind = defn.action_type if defn.action_type in ("mutation", "query") else "mutation"
+    output = defn.output_type.strip().rstrip("!").strip("[]!")
+    fields = custom_types.get(output) or []
+    if not fields:
+        collector.warn(
+            "actions",
+            f"Action {action.name!r} returns {output or 'nothing named'}, whose fields the export "
+            "does not carry; add them to the command's return type.",
         )
-
-    # DB-backed action — treat as function
-    collector.warn(
+    if defn.kind == "asynchronous":
+        collector.warn(
+            "actions",
+            f"Action {action.name!r} is asynchronous: Hasura answers with an id and the result "
+            "later; its command waits for the handler's answer. Have the handler answer at once.",
+        )
+    collector.map(
         "actions",
-        f"Action '{action.name}' with non-HTTP handler '{handler}' mapped as function placeholder",
+        action.name,
+        f"a {kind} command calling {_env_template(defn.handler)}, governed by role like any "
+        "other command",
     )
-    return Function(
+    return Webhook(
         name=action.name,
-        source_id="default",
-        schema_name="public",
-        function_name=action.name,
-        returns="void",
+        url=_env_template(defn.handler),
+        method="POST",
+        arguments=[
+            FunctionArgument(name=a.get("name", ""), type=_ir_type(str(a.get("type", "String"))))
+            for a in defn.arguments
+        ],
+        inline_return_type=[
+            InlineType(name=name, type=gql.strip().rstrip("!")) for name, gql in fields
+        ],
         visible_to=visible_to,
         domain_id=domain_policy.import_default(),
-        kind=action_kind,
+        kind=kind,
     )
+
+
+def _inherit_several(
+    role_id: str,
+    members: list[str],
+    tables: list[Table],
+    rls: list[RLSRule],
+    roles: dict[str, Role],
+    collector: WarningCollector,
+) -> None:  # REQ-041, REQ-2074
+    """A Hasura role inheriting several roles, written out as the union of their rights: each
+    column any member reads; each table's rows any member reads (no rule where one reads every
+    row); each write operation any member holds, over the union of their columns, the OR of
+    their rows and checks, and the presets they all set alike."""
+    rules = {(r.table_id, r.role_id): r.filter for r in rls}
+    for table in tables:
+        tid = table.alias or table.table_name
+        readers = [m for m in members if any(m in c.visible_to for c in table.columns)]
+        for column in table.columns:
+            if any(m in column.visible_to for m in members) and role_id not in column.visible_to:
+                column.visible_to = sorted({*column.visible_to, role_id})
+        filters = [rules.get((tid, m)) for m in readers]
+        if readers and all(filters):
+            rls.append(RLSRule(table_id=tid, role_id=role_id, filter=_or(filters)))
+        held = [g for g in table.write_grants if g.role in members]
+        for operation in ("insert", "update", "delete"):
+            holders = [g for g in held if g.operation == operation]
+            if not holders:
+                continue
+            columns: list[str] = []
+            for g in holders:
+                columns += [c for c in g.columns if c not in columns]
+            first = holders[0].presets
+            table.write_grants.append(
+                WriteGrant(
+                    role=role_id,
+                    operation=operation,
+                    columns=columns,
+                    rows=None if operation == "insert" else _or([g.rows for g in holders]),
+                    check=None if operation == "delete" else _or([g.check for g in holders]),
+                    presets=[p for p in first if all(p in g.presets for g in holders)],
+                )
+            )
+    roles[role_id].capabilities = sorted(
+        {cap for m in members for cap in roles[m].capabilities} | set(roles[role_id].capabilities)
+    )
+    collector.map(
+        "roles",
+        role_id,
+        f"a role holding the union of the grants of {' and '.join(members)}: a Provisa role "
+        "inherits from one parent, so what it inherits from several is written out on it",
+    )
+
+
+def _settled_relationships(
+    rels: list[Relationship], tables: list[Table], collector: WarningCollector
+) -> list[Relationship]:  # REQ-019
+    """One relationship per join: a second declaring the same join merges into the first. A
+    relationship's field keeps its Hasura name unless the table already has a field of that
+    name; then it takes the name Provisa gives it, and the report says so."""
+    fields = {(t.alias or t.table_name): {c.alias or c.name for c in t.columns} for t in tables}
+    kept: dict[tuple, Relationship] = {}
+    for rel in rels:
+        key = (
+            rel.source_table_id,
+            rel.target_table_id,
+            rel.source_column,
+            rel.target_column,
+            rel.cardinality,
+        )
+        if key in kept:
+            collector.carry(
+                "relationships",
+                rel.id,
+                f"merged into {kept[key].id}, which declares the same join",
+            )
+            continue
+        # _relationships names every relationship's field after its Hasura relationship.
+        assert rel.graphql_alias is not None
+        taken = fields.setdefault(rel.source_table_id, set())
+        if rel.graphql_alias in taken:
+            collector.warn(
+                "relationships",
+                f"Relationship {rel.id}: {rel.source_table_id} already has a field named "
+                f"{rel.graphql_alias!r}, so the relationship takes the name Provisa gives it. "
+                "Rename it on the Relationships page if the app needs another name.",
+            )
+            rel.graphql_alias = None
+        else:
+            taken.add(rel.graphql_alias)
+        kept[key] = rel
+    return list(kept.values())
+
+
+def _or(terms: list[str | None]) -> str:
+    """The OR of predicates; every row where any is every row."""
+    if any(t in (None, "TRUE") for t in terms):
+        return "TRUE"
+    unique = list(dict.fromkeys(t for t in terms if t))
+    return unique[0] if len(unique) == 1 else " OR ".join(f"({t})" for t in unique)
 
 
 def convert_metadata(
@@ -612,7 +800,7 @@ def convert_metadata(
     # Sources
     sources: list[Source] = []
     for hs in metadata.sources:
-        src = _map_source(hs)
+        src = _map_source(hs, collector, overridden=hs.name in source_overrides)
         # Apply overrides
         if hs.name in source_overrides:
             overrides = source_overrides[hs.name]
@@ -627,33 +815,42 @@ def convert_metadata(
     remote_tables: list[Table] = []
     for rs in metadata.remote_schemas:
         sources.append(_map_remote_schema(rs))
-        remote_tables.extend(
-            land_remote_schema(
-                rs, domain_map.get(rs.name) or domain_policy.import_default(), collector
-            )
+        landed = land_remote_schema(
+            rs, domain_map.get(rs.name) or domain_policy.import_default(), collector
+        )
+        remote_tables.extend(landed)
+        collector.map(
+            "remote_schemas",
+            rs.name,
+            f"a GraphQL remote source whose root fields are governed tables "
+            f"({', '.join(t.table_name for t in landed)}): Provisa reads a remote schema as "
+            "tables its roles, row rules and relationships govern",
         )
 
     # Roles
     roles_dict = _collect_roles(metadata)
     roles = sorted(roles_dict.values(), key=lambda r: r.id)
 
-    # Tables, RLS, Relationships, Functions
+    # Tables, RLS, Relationships
     tables: list[Table] = list(remote_tables)
     all_rls: list[RLSRule] = []
     all_rels: list[Relationship] = []
     all_functions: list[Function] = []
-    all_event_triggers: list[EventTrigger] = []
+    scheduled: list[ScheduledTrigger] = []
 
     for hs in metadata.sources:
         fk_targets = _fk_targets(hs)  # REQ-1680
         virtual = _virtual_names(hs)
+        rels, hops = _relationships(hs, fk_targets, virtual, collector)
+        all_rels.extend(rels)
         for ht in hs.tables:
-            table, rls_rules, rels, fns = _map_table(
+            table, rls_rules, _rels, _fns = _map_table(
                 ht,
                 hs.name,
                 collector,
                 fk_targets,
                 virtual,
+                relations=lambda t, k, hops=hops: hops.get((t, k)),
             )
             # Apply domain mapping
             dm_key = f"{ht.schema_name}"
@@ -661,58 +858,54 @@ def convert_metadata(
                 table.domain_id = domain_map[dm_key]
             tables.append(table)
             all_rls.extend(rls_rules)
-            all_rels.extend(rels)
-            all_functions.extend(fns)
-
-            # Event triggers
-            for et in ht.event_triggers:
-                all_event_triggers.append(
-                    EventTrigger(
-                        table_id=_table_id(virtual, ht.schema_name, ht.name),
-                        operations=et.operations,
-                        webhook_url=et.webhook,
-                        retry_max=et.retry_conf.get("num_retries", 3),
-                        retry_delay=et.retry_conf.get("interval_sec", 1.0),
-                    )
-                )
-
-        # Tracked functions
-        for hf in hs.functions:
-            all_functions.append(
-                Function(
-                    name=hf.name,
-                    source_id=hs.name,
-                    schema_name=hf.schema_name,
-                    function_name=hf.name,
-                    returns="void",
-                    # Carried over with no permissions: the admin's alone, as in Hasura.
-                    visible_to=[ORG_ADMIN_ROLE],
-                    domain_id=domain_policy.import_default(),
-                )
+            collector.carry(
+                "tables",
+                f"{ht.schema_name}.{ht.name}",
+                f"registered table {table.alias or ht.name}",
             )
 
-    # Actions -> Functions or Webhooks
+            # Event triggers -> change triggers on the table (REQ-2054)
+            for et in ht.event_triggers:
+                scheduled.append(_change_trigger(et, hs.name, collector))
+
+        # Tracked functions: the export names each and the roles that call it; its arguments and
+        # what it returns are the database's, read at preview (api/admin/import_typing.py).
+        for hf in hs.functions:
+            collector.pending_functions.append(
+                {
+                    "name": hf.name,
+                    "source_id": hs.name,
+                    "schema_name": hf.schema_name,
+                    "kind": "query" if hf.exposed_as == "query" else "mutation",
+                    "visible_to": list(hf.roles) or [ORG_ADMIN_ROLE],
+                }
+            )
+
+    all_rels = _settled_relationships(all_rels, tables, collector)
+
+    # Hasura inherited roles of several roles: the union of their grants (_inherit_several).
+    for ir in metadata.inherited_roles:
+        if len(ir.role_set) > 1:
+            _inherit_several(ir.role_name, ir.role_set, tables, all_rls, roles_dict, collector)
+
+    # Actions -> commands calling their handler
     webhooks: list[Webhook] = []
     for action in metadata.actions:
-        result = _map_action(action, collector)
-        if isinstance(result, Webhook):
-            webhooks.append(result)
-        elif isinstance(result, Function):
-            all_functions.append(result)
+        webhooks.append(_map_action(action, metadata.custom_types, collector))
 
-    # Cron triggers -> Scheduled triggers
-    scheduled: list[ScheduledTrigger] = []
+    # Cron triggers -> scheduled triggers
     for ct in metadata.cron_triggers:
         scheduled.append(
             ScheduledTrigger(
                 id=ct.name,
                 cron=ct.schedule,
-                url=ct.webhook,
+                url=_env_template(ct.webhook),
+                args=dict(ct.payload),
                 enabled=ct.enabled,
             )
         )
-
-    # Remote schemas -> warnings (already emitted in parser)
+        collector.carry("triggers", ct.name, f"scheduled trigger on {ct.schedule}")
+        _retries(f"Cron trigger {ct.name!r}", ct.retry_conf, collector)
 
     # Auth config from env
     auth = AuthConfig()
@@ -774,7 +967,6 @@ def convert_metadata(
         relationships=all_rels,
         roles=roles,
         rls_rules=all_rls,
-        event_triggers=all_event_triggers,
         scheduled_triggers=scheduled,
         functions=all_functions,
         webhooks=webhooks,

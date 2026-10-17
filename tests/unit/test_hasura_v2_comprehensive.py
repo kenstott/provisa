@@ -24,7 +24,7 @@ import yaml
 from provisa.core.models import ProvisaConfig, SourceType
 from provisa.hasura_v2.mapper import (
     _collect_roles,
-    _extract_connection_info,
+    _map_source,
     _source_type_from_kind,
     convert_metadata,
 )
@@ -747,74 +747,64 @@ class TestParseMetadataDir:
 # ---------------------------------------------------------------------------
 
 
-class TestExtractConnectionInfo:
-    """Unit tests for _extract_connection_info from the mapper."""
+class TestMapSource:
+    """A source's connection as the export states it (_map_source): what a literal URL names,
+    and nothing made up for what it does not."""
+
+    @staticmethod
+    def _source(conn, overridden=False):
+        collector = WarningCollector()
+        hs = HasuraSource(name="default", kind="postgres", connection_info=conn)
+        return _map_source(hs, collector, overridden=overridden), collector
 
     def test_full_postgres_url(self):
-        conn = {"database_url": "postgres://admin:s3cr3t@db.example.com:5432/myapp"}
-        result = _extract_connection_info(conn)
-        assert result["host"] == "db.example.com"
-        assert result["port"] == 5432
-        assert result["database"] == "myapp"
-        assert result["username"] == "admin"
-        assert result["password"] == "s3cr3t"
+        src, collector = self._source(
+            {"database_url": "postgres://admin:s3cr3t@db.example.com:5432/myapp"}
+        )
+        assert (src.host, src.port, src.database) == ("db.example.com", 5432, "myapp")
+        assert (src.username, src.password) == ("admin", "s3cr3t")
+        assert not collector.warnings
 
-    def test_url_without_credentials(self):
-        conn = {"database_url": "postgres://db.internal:5432/analytics"}
-        result = _extract_connection_info(conn)
-        assert result["host"] == "db.internal"
-        assert result["port"] == 5432
-        assert result["database"] == "analytics"
-        # Defaults preserved for missing creds
-        assert result["username"] == "postgres"
+    def test_url_without_credentials_names_no_user(self):
+        src, _ = self._source({"database_url": "postgres://db.internal:5432/analytics"})
+        assert (src.host, src.database) == ("db.internal", "analytics")
+        assert (src.username, src.password) == ("", "")
 
-    def test_url_from_env_var_reference(self):
-        conn = {"database_url": {"from_env": "DATABASE_URL"}}
-        result = _extract_connection_info(conn)
-        # Falls back to defaults since env var string is not a parseable URL
-        assert result["host"] == "localhost"
-        assert result["database"] == "default"
+    def test_url_from_env_var_is_not_guessed(self):
+        src, collector = self._source({"database_url": {"from_env": "DATABASE_URL"}})
+        assert (src.host, src.database, src.username, src.password) == ("", "", "", "")
+        (warning,) = collector.warnings
+        assert warning.category == "sources" and "DATABASE_URL" in warning.message
 
-    def test_malformed_url_falls_back_to_defaults(self):
-        conn = {"database_url": "not-a-valid-url-at-all"}
-        result = _extract_connection_info(conn)
-        assert result["host"] == "localhost"
-        assert result["port"] == 5432
-        assert result["database"] == "default"
-        assert result["username"] == "postgres"
+    def test_url_from_env_var_supplied_by_overrides_is_not_reported(self):
+        _, collector = self._source({"database_url": {"from_env": "DATABASE_URL"}}, overridden=True)
+        assert not collector.warnings
 
-    def test_missing_database_url_uses_defaults(self):
-        result = _extract_connection_info({})
-        assert result["host"] == "localhost"
-        assert result["port"] == 5432
-        assert result["database"] == "default"
+    def test_missing_database_url_is_reported(self):
+        src, collector = self._source({})
+        assert src.host == ""
+        assert [w.category for w in collector.warnings] == ["sources"]
 
-    def test_pool_settings_extracted(self):
-        conn = {
-            "database_url": "postgres://user:pw@db:5432/app",
-            "pool_settings": {"min_connections": 2, "max_connections": 20},
-        }
-        result = _extract_connection_info(conn)
-        assert result["pool_min"] == 2
-        assert result["pool_max"] == 20
-
-    def test_pool_settings_defaults(self):
-        conn = {"database_url": "postgres://user:pw@db:5432/app"}
-        result = _extract_connection_info(conn)
-        assert result["pool_min"] == 1
-        assert result["pool_max"] == 5
+    def test_pool_max_extracted(self):
+        src, _ = self._source(
+            {
+                "database_url": "postgres://user:pw@db:5432/app",
+                "pool_settings": {"max_connections": 20},
+            }
+        )
+        assert src.pool_max == 20
 
     def test_url_host_only_no_port(self):
-        conn = {"database_url": "postgres://user:pw@db.example.com/mydb"}
-        result = _extract_connection_info(conn)
-        assert result["host"] == "db.example.com"
-        assert result["database"] == "mydb"
+        src, _ = self._source({"database_url": "postgres://user:pw@db.example.com/mydb"})
+        assert (src.host, src.database) == ("db.example.com", "mydb")
+
+    def test_url_query_string_is_not_the_database(self):
+        src, _ = self._source({"database_url": "postgres://u:p@h:5432/db?sslmode=require"})
+        assert src.database == "db"
 
     def test_password_with_special_chars(self):
-        conn = {"database_url": "postgres://svc:p%40ssw0rd@host:5432/db"}
-        result = _extract_connection_info(conn)
-        # Parser splits on first colon in credentials
-        assert result["username"] == "svc"
+        src, _ = self._source({"database_url": "postgres://svc:p%40ssw0rd@host:5432/db"})
+        assert src.username == "svc"
 
 
 # ---------------------------------------------------------------------------
@@ -1043,7 +1033,8 @@ class TestConvertMetadata:
         md = _build_full_metadata()
         config = convert_metadata(md)
         superadmin = next(r for r in config.roles if r.id == "superadmin")
-        assert superadmin.parent_role_id is not None
+        # Two roles inherited: written out as their union, not a single parent.
+        assert superadmin.parent_role_id is None
 
     def test_admin_has_write_capability(self):
         md = _build_full_metadata()
@@ -1133,23 +1124,25 @@ class TestConvertMetadata:
     def test_cron_trigger_converted(self):
         md = _build_full_metadata()
         config = convert_metadata(md)
-        assert len(config.scheduled_triggers) == 1
+        assert len([t for t in config.scheduled_triggers if t.cron]) == 1
 
     def test_cron_trigger_id(self):
         md = _build_full_metadata()
         config = convert_metadata(md)
-        st = config.scheduled_triggers[0]
+        (st,) = [t for t in config.scheduled_triggers if t.cron]
         assert st.id == "daily_report"
 
     def test_cron_trigger_schedule(self):
         md = _build_full_metadata()
         config = convert_metadata(md)
-        assert config.scheduled_triggers[0].cron == "0 0 * * *"
+        (st,) = [t for t in config.scheduled_triggers if t.cron]
+        assert st.cron == "0 0 * * *"
 
     def test_cron_trigger_url(self):
         md = _build_full_metadata()
         config = convert_metadata(md)
-        assert config.scheduled_triggers[0].url == "https://reports.example.com/generate"
+        (st,) = [t for t in config.scheduled_triggers if t.cron]
+        assert st.url == "https://reports.example.com/generate"
 
     def test_cron_trigger_enabled(self):
         md = _build_full_metadata()
@@ -1159,25 +1152,27 @@ class TestConvertMetadata:
     def test_event_triggers_mapped(self):
         md = _build_full_metadata()
         config = convert_metadata(md)
-        assert len(config.event_triggers) >= 1
+        assert not config.event_triggers
+        assert [t for t in config.scheduled_triggers if t.on_event == "change"]
 
     def test_event_trigger_webhook_url(self):
         md = _build_full_metadata()
         config = convert_metadata(md)
-        et = config.event_triggers[0]
-        assert et.webhook_url == "https://events.example.com/order-created"
+        (et,) = [t for t in config.scheduled_triggers if t.on_table]
+        assert et.url == "https://events.example.com/order-created"
 
-    def test_event_trigger_retry_conf(self):
+    def test_event_trigger_retries_are_reported(self):
+        """A Provisa trigger calls once; Hasura's retries are a redo-by-hand item."""
         md = _build_full_metadata()
-        config = convert_metadata(md)
-        et = config.event_triggers[0]
-        assert et.retry_max == 5
+        collector = WarningCollector()
+        convert_metadata(md, collector=collector)
+        assert any("5 time(s)" in w.message for w in collector.warnings)
 
     def test_event_trigger_emits_warning(self):
         md = _build_full_metadata()
         collector = WarningCollector()
         convert_metadata(md, collector=collector)
-        assert any(w.category == "event_triggers" for w in collector.warnings)
+        assert any(m.category == "triggers" for m in collector.mapped)
 
     def test_domain_map_applied(self):
         md = _build_full_metadata()

@@ -82,6 +82,22 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # model; and the registered models' dimensions, which the pipeline sets for the statement.
     embedding_columns: dict[int, dict[str, str]] = field(default_factory=dict)
     embedding_dims: dict[str, int] = field(default_factory=dict)
+    # Per table, each published column name (lowercased) that is not its physical name, to that
+    # physical name (sql_rewrite.published_columns): a statement is governed before its published
+    # names are lowered, and the grants and masks above are by physical name.
+    published: dict[int, dict[str, str]] = field(default_factory=dict)
+    # (table id, physical name) -> the name the column is published under (physical_to_sql).
+    published_name: dict[tuple[int, str], str] = field(default_factory=dict)
+    # The joins the registered relationships approve, (table, table, column, column) by physical
+    # name (sql_validator.approved_joins): a join key the role cannot select is still read by the
+    # engine in such a join, never returned (REQ-603).
+    join_keys: set[tuple[int, int, str, str]] = field(default_factory=set)
+
+
+def registered_name(gov_ctx: GovernanceContext, table_id: int, name: str) -> str:  # REQ-040
+    """The registered (physical) name of the column of ``table_id`` a statement reads as
+    ``name``: its published name resolved as lowering resolves it; a physical name as it is."""
+    return gov_ctx.published.get(table_id, {}).get(name.lower(), name)
 
 
 # --------------------------------------------------------------------------- #
@@ -171,6 +187,12 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             gov.masking_rules[(table_id, col_name)] = (rule, dtype)
     _bind_fakes(gov)
     gov.kept = dict(ctx.kept)  # REQ-1942
+    from provisa.compiler.sql_rewrite import published_columns
+    from provisa.compiler.sql_validator import approved_joins
+
+    gov.published = published_columns(ctx)
+    gov.published_name = dict(ctx.physical_to_sql)
+    gov.join_keys = approved_joins(ctx)
 
     # Column visibility is each column's visible_to grant and nothing above it: no capability sees
     # every column regardless (REQ-1327). The lockdown domains (ops) need an explicit grant; the
@@ -656,6 +678,8 @@ def _govern_references(
         if col.find_ancestor(exp.Select) is not node and col.table not in alias_to_tid:
             continue  # a nested SELECT's own column: governed when that SELECT is
         if not _is_column_visible(col, alias_to_tid, gov_ctx):
+            if approved_join_key(col, gov_ctx):
+                continue  # read by the engine to join, never returned
             replacement: exp.Expr = exp.Null()  # pyright: ignore[reportPrivateImportUsage]
         else:
             replacement = _maybe_mask_column(col, alias_to_tid, gov_ctx)
@@ -663,6 +687,55 @@ def _govern_references(
                 continue
         replacement.meta[_GOVERNED] = True
         _replace_reference(col, replacement)
+
+
+def _unwrap_cast(node: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    while isinstance(node, exp.Cast):
+        node = node.this
+    return node
+
+
+def _table_in_scope(alias: str, select: exp.Select, gov_ctx: GovernanceContext) -> int | None:
+    """The registered table ``alias`` names where ``select`` reads it: a table of ``select``,
+    else of the nearest enclosing SELECT that has one by that name (a correlated reference)."""
+    scope: exp.Expr | None = select  # pyright: ignore[reportPrivateImportUsage]
+    while scope is not None:
+        if isinstance(scope, exp.Select):
+            for tbl, tid in _get_tables_from_select(scope, gov_ctx):
+                if _alias_for(tbl) == alias:
+                    return tid
+        scope = scope.parent
+    return None
+
+
+def approved_join_key(col: exp.Column, gov_ctx: GovernanceContext) -> bool:  # REQ-603
+    """Whether ``col`` is one side of a registered relationship's join condition: an equality
+    (each side optionally cast) in a WHERE or JOIN ON of the two columns a relationship approves
+    (``GovernanceContext.join_keys``). The role reaches the related rows through it; its value is
+    read by the engine to join and is not returned."""
+    side: exp.Expr = col  # pyright: ignore[reportPrivateImportUsage]
+    while isinstance(side.parent, exp.Cast):
+        side = side.parent
+    eq = side.parent
+    if not isinstance(eq, exp.EQ):
+        return False
+    clause = eq.find_ancestor(exp.Where, exp.Join, exp.Select)
+    if not isinstance(clause, (exp.Where, exp.Join)):
+        return False
+    select = clause.find_ancestor(exp.Select)
+    other = _unwrap_cast(eq.right if eq.left is side else eq.left)
+    if select is None or not isinstance(other, exp.Column) or not col.table or not other.table:
+        return False
+    tid = _table_in_scope(col.table, select, gov_ctx)
+    other_tid = _table_in_scope(other.table, select, gov_ctx)
+    if tid is None or other_tid is None:
+        return False
+    return (
+        tid,
+        other_tid,
+        registered_name(gov_ctx, tid, col.name),
+        registered_name(gov_ctx, other_tid, other.name),
+    ) in gov_ctx.join_keys
 
 
 def _replace_reference(col: exp.Column, replacement: exp.Expr) -> None:  # pyright: ignore[reportPrivateImportUsage]
@@ -699,14 +772,14 @@ def _is_column_visible(
         # Unqualified — check all tables
         for tid in alias_to_tid.values():
             vis = gov_ctx.visible_columns.get(tid)
-            if vis is not None and col_name not in vis:
+            if vis is not None and registered_name(gov_ctx, tid, col_name) not in vis:
                 return False
         return True
     tid = alias_to_tid.get(tbl_ref)
     if tid is None:
         return True
     vis = gov_ctx.visible_columns.get(tid)
-    return vis is None or col_name in vis
+    return vis is None or registered_name(gov_ctx, tid, col_name) in vis
 
 
 def _maybe_mask_column(
@@ -722,7 +795,7 @@ def _maybe_mask_column(
         tid = alias_to_tid.get(tbl_ref)
         if tid is None:
             return col
-        entry = gov_ctx.masking_rules.get((tid, col_name))
+        entry = gov_ctx.masking_rules.get((tid, registered_name(gov_ctx, tid, col_name)))
         if entry and not _is_fake(entry[0]):
             rule, dtype = entry
             col_sql = col.sql(dialect="postgres")
@@ -735,7 +808,7 @@ def _maybe_mask_column(
     else:
         # Unqualified column — check all tables
         for tid in alias_to_tid.values():
-            entry = gov_ctx.masking_rules.get((tid, col_name))
+            entry = gov_ctx.masking_rules.get((tid, registered_name(gov_ctx, tid, col_name)))
             if entry and not _is_fake(entry[0]):
                 rule, dtype = entry
                 col_sql = col.sql(dialect="postgres")
@@ -755,8 +828,9 @@ def _registered_column(
     if not col.table:
         tids = list(alias_to_tid.values())
     for tid in tids:
+        registered = registered_name(gov_ctx, tid, col.name)
         for name, dtype in gov_ctx.all_columns.get(tid, []):
-            if col.name in (name, apply_sql_name(name)):
+            if registered in (name, apply_sql_name(name)):
                 return tid, name, dtype
     return None
 
@@ -786,7 +860,7 @@ def _as_read(
     if registered is None or not is_undeclared_numeric(registered[2]):
         return projected
     if projected is not col:
-        entry = gov_ctx.masking_rules.get((registered[0], col.name))
+        entry = gov_ctx.masking_rules.get((registered[0], registered[1]))
         if entry is None or entry[0].mask_type != MaskType.constant:
             return projected
     return exp.Cast(this=projected, to=exp.DataType.build("double precision", dialect="postgres"))
@@ -823,6 +897,11 @@ def _expand_star(
             # too, or an OpenAPI-sourced camelCase catalog name (photoUrls) never matches the
             # snake_case CTE column it was materialized under (photo_urls).
             sql_col_name = apply_sql_name(col_name)
+            # The answer names the column as the catalog publishes it (physical_to_sql: its alias
+            # or its convention name). A column the compiler records no published name for (a
+            # context not built for this role's tables) is named as it is referenced -- today's
+            # convention name (REQ-301).
+            out_name = gov_ctx.published_name.get((tid, col_name), sql_col_name)
             col_expr = exp.Column(
                 this=exp.Identifier(this=sql_col_name, quoted=True),
                 table=exp.Identifier(this=alias, quoted=True),
@@ -838,17 +917,17 @@ def _expand_star(
                 result.append(
                     exp.Alias(
                         this=masked,
-                        alias=exp.Identifier(this=sql_col_name, quoted=True),
+                        alias=exp.Identifier(this=out_name, quoted=True),
                     )
                 )
             else:
                 read = _as_read(col_expr, col_expr, {alias: tid}, gov_ctx) if final else col_expr
-                if read is col_expr:
+                if read is col_expr and out_name == sql_col_name:
                     result.append(col_expr)
                 else:
                     read.meta[_GOVERNED] = True
                     result.append(
-                        exp.Alias(this=read, alias=exp.Identifier(this=sql_col_name, quoted=True))
+                        exp.Alias(this=read, alias=exp.Identifier(this=out_name, quoted=True))
                     )
     if not result:
         # Nothing of the tables the star covers is served to the role: refused as a named hidden

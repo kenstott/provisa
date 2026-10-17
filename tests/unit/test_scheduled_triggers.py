@@ -79,6 +79,31 @@ class TestScheduledTriggers:
         mock_response.raise_for_status.assert_called_once()
         assert mock_client.post.call_count == 1
 
+    async def test_a_url_naming_an_environment_variable_is_resolved_at_the_run(self, monkeypatch):
+        """A trigger's URL is kept as written -- ``${env:VAR}/path``, as an import writes a
+        Hasura cron trigger's ``{{VAR}}/path`` -- and resolved where the run posts it."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        monkeypatch.setenv("REPORTS_BASE_URL", "https://reports.internal")
+        with (
+            patch("provisa.scheduler.trigger_runs.httpx.AsyncClient", return_value=mock_client),
+            patch("provisa.scheduler.trigger_runs.record", AsyncMock()),
+        ):
+            outcome = await run_trigger(
+                _webhook_row("digest", "${env:REPORTS_BASE_URL}/digest"),
+                "default",
+                given={},
+                fired_by=None,
+            )
+        assert outcome == "succeeded"
+        mock_client.post.assert_called_once_with(
+            "https://reports.internal/digest", json={"trigger_id": "digest"}
+        )
+
     async def test_trigger_interval_creates_job(self):
         """build_scheduler creates an APScheduler job for an enabled trigger."""
         trigger = _make_trigger(cron="*/5 * * * *")

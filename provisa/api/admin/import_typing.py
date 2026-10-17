@@ -29,7 +29,14 @@ from typing import Any
 
 from provisa.api.admin.introspect import native_column_typings
 from provisa.core.ir_types import ColumnTyping, column_typing, to_ir
-from provisa.core.models import Column, ProvisaConfig, Source, WriteGrant
+from provisa.core.models import (
+    Column,
+    Function,
+    FunctionArgument,
+    ProvisaConfig,
+    Source,
+    WriteGrant,
+)
 from provisa.core.secrets import resolve_secrets
 from provisa.import_shared.warnings import WarningCollector
 from provisa.security.rights import ORG_ADMIN_ROLE
@@ -93,12 +100,16 @@ async def type_imported_columns(
         if t.source_id in by_source
         and (not t.columns or any(c.data_type in (None, "") for c in t.columns))
     ]
-    if not wanted:
+    functions = list(collector.pending_functions)
+    collector.pending_functions.clear()
+    if not wanted and not functions:
         return
     pool = pool_factory()
     reachable: set[str] = set()
     try:
-        for sid in {t.source_id for t in wanted}:
+        for sid in {t.source_id for t in wanted} | {
+            f["source_id"] for f in functions if f["source_id"] in by_source
+        }:
             src = by_source[sid]
             try:
                 await pool.add(
@@ -161,5 +172,81 @@ async def type_imported_columns(
                             f"{t.source_id}: {t.schema_name}.{t.table_name}.{c.name} is not a "
                             "column of the source table; it stays untyped",
                         )
+        for pending in functions:
+            if pending["source_id"] not in reachable or (
+                by_source[pending["source_id"]].type.value != "postgresql"
+            ):
+                collector.pending_function_to_redo(pending)
+                continue
+            fn = await _discover_function(pool, pending, config, collector)
+            if fn is not None:
+                config.functions.append(fn)
     finally:
         await pool.close_all()
+
+
+_FUNCTION_SQL = (
+    "SELECT rn.nspname, rc.relname, p.proargnames, "
+    "ARRAY(SELECT format_type(t, NULL) FROM unnest(p.proargtypes) AS t) "
+    "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+    "JOIN pg_type rt ON rt.oid = p.prorettype "
+    "LEFT JOIN pg_class rc ON rc.oid = rt.typrelid "
+    "LEFT JOIN pg_namespace rn ON rn.oid = rc.relnamespace "
+    "WHERE n.nspname = %s AND p.proname = %s"
+)
+
+
+async def _discover_function(
+    pool: Any, pending: dict, config: ProvisaConfig, collector: WarningCollector
+) -> Function | None:  # REQ-205
+    """A tracked function as the command it is, its arguments and the table it returns read from
+    the database's catalog: Hasura tracks a function returning rows of a tracked table."""
+    sid, schema, name = pending["source_id"], pending["schema_name"], pending["name"]
+    result = await pool.execute(
+        sid, _FUNCTION_SQL % (_quote(schema, "postgres"), _quote(name, "postgres")), []
+    )
+    rows = list(result.rows)
+    if len(rows) != 1:
+        collector.warn(
+            "functions",
+            f"Function {schema}.{name} is "
+            + ("not in the database" if not rows else f"overloaded {len(rows)} ways")
+            + "; add it on the Commands page.",
+        )
+        return None
+    ret_schema, ret_table, arg_names, arg_types = rows[0]
+    registered = {(t.source_id, t.schema_name, t.table_name) for t in config.tables}
+    if (sid, ret_schema, ret_table) not in registered:
+        collector.warn(
+            "functions",
+            f"Function {schema}.{name} returns {'rows of ' + ret_table if ret_table else 'no table'}"
+            ", which the import does not register; a command returns rows of a registered "
+            "table. Add it on the Commands page.",
+        )
+        return None
+    names = list(arg_names or [])
+    arguments = [
+        FunctionArgument(
+            name=names[i] if i < len(names) and names[i] else f"arg{i + 1}",
+            type=column_typing(str(native), "postgresql").data_type,
+        )
+        for i, native in enumerate(arg_types or [])
+    ]
+    collector.carry(
+        "functions", f"{schema}.{name}", f"{pending['kind']} command returning {ret_table}"
+    )
+    return Function(
+        name=name,
+        source_id=sid,
+        schema_name=schema,
+        function_name=name,
+        returns=f"{sid}.{ret_schema}.{ret_table}",
+        arguments=arguments,
+        visible_to=pending["visible_to"],
+        domain_id=next(
+            t.domain_id
+            for t in config.tables
+            if (t.source_id, t.schema_name, t.table_name) == (sid, ret_schema, ret_table)
+        ),
+        kind=pending["kind"],
+    )

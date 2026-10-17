@@ -51,7 +51,7 @@ from provisa.compiler import temp_tables
 from provisa.compiler.cte_utils import cte_names
 from provisa.compiler.schema_gen import _IMPLICIT_TRAVERSAL_DOMAINS
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
-from provisa.compiler.stage2 import GovernanceContext
+from provisa.compiler.stage2 import GovernanceContext, approved_join_key, registered_name
 from provisa.security.rights import reaches_all_domains
 
 
@@ -503,10 +503,14 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
                     # table_query_name) is served with the table to every role that reads it,
                     # as GraphQL serves it; the lowering answers it (sql_rewrite).
                     continue
+                if approved_join_key(col, gov_ctx):
+                    # A registered relationship's join key in a nested SELECT's condition (a
+                    # relationship field): read by the engine to join, never returned (REQ-603).
+                    continue
                 if not tbl_ref:
                     for tid in am.values():
                         vis = gov_ctx.visible_columns.get(tid)
-                        if vis is not None and col_name not in vis:
+                        if vis is not None and registered_name(gov_ctx, tid, col_name) not in vis:
                             violations.append(
                                 ValidationViolation(
                                     "V003",
@@ -519,7 +523,7 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
                     if tid is None:
                         continue
                     vis = gov_ctx.visible_columns.get(tid)
-                    if vis is not None and col_name not in vis:
+                    if vis is not None and registered_name(gov_ctx, tid, col_name) not in vis:
                         violations.append(
                             ValidationViolation(
                                 "V003",
@@ -698,7 +702,7 @@ def _filters_plaintext(gov_ctx: GovernanceContext, tid: int, col_name: str) -> b
     """Whether a predicate on the column would read the real value under its mask. A faked
     column's predicates read its fake -- the faked projection of its table -- never the real value
     (REQ-1494), so it may be filtered on."""
-    entry = gov_ctx.masking_rules.get((tid, col_name))
+    entry = gov_ctx.masking_rules.get((tid, registered_name(gov_ctx, tid, col_name)))
     if entry is None:
         return False
     from provisa.security.masking import MaskType

@@ -58,9 +58,19 @@ export interface SourceOverride {
   password: string;
 }
 
+/** What one object of the upload became: carried as, or mapped to a Provisa feature and why. */
+export interface ImportReportItem {
+  category: string;
+  item: string;
+  detail: string;
+}
+
 export interface ImportPreview {
   flavor: string;
   config_yaml: string;
+  carried?: ImportReportItem[];
+  mapped?: ImportReportItem[];
+  /** What has no Provisa equivalent and is redone by hand, each saying what to do. */
   warnings: ImportWarning[];
   summary: ImportSummary;
   /** Schema (v2), subgraph (DDN) or remote schema names carried by the upload, before any mapping. */

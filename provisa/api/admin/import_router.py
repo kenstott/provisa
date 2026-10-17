@@ -37,7 +37,7 @@ from provisa.api.admin._platform_guard import require_org_settings
 from provisa.api.errors import ApiError
 from provisa.core.models import ProvisaConfig
 from provisa.import_shared.upload import DDN, HASURA_V2, UploadError, staged_upload
-from provisa.import_shared.warnings import WarningCollector
+from provisa.import_shared.warnings import WarningCollector, in_report_order
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/import/hasura", tags=["admin", "import"])
@@ -74,6 +74,15 @@ class ImportWarningOut(BaseModel):
     source_path: str = ""
 
 
+class ImportReportItemOut(BaseModel):  # REQ-417
+    """What one object of the upload became: what it is carried as, or the Provisa feature it
+    was mapped to and why."""
+
+    category: str
+    item: str
+    detail: str
+
+
 # REQ-1687: the source kinds whose connection the administrator supplies as an override.
 _CONNECTION_KINDS = {"postgresql", "mysql"}
 
@@ -93,6 +102,10 @@ class DiscoveredSource(BaseModel):  # REQ-1687
 class ImportPreviewResponse(BaseModel):
     flavor: str
     config_yaml: str
+    # The report: what converts as it is, what a Provisa feature does better (each saying why),
+    # and, as warnings, what has no Provisa equivalent and is redone by hand (each saying what).
+    carried: list[ImportReportItemOut] = []
+    mapped: list[ImportReportItemOut] = []
     warnings: list[ImportWarningOut]
     summary: ImportSummary
     # The schema (v2) or subgraph (DDN) names the upload carries — and, for v2, the remote schema
@@ -209,9 +222,17 @@ async def preview_import(req: ImportPreviewRequest, request: Request) -> ImportP
     return ImportPreviewResponse(
         flavor=flavor,
         config_yaml=yaml.dump(data, default_flow_style=False, sort_keys=False),
+        carried=[
+            ImportReportItemOut(category=i.category, item=i.item, detail=i.detail)
+            for i in in_report_order(collector.carried)
+        ],
+        mapped=[
+            ImportReportItemOut(category=i.category, item=i.item, detail=i.detail)
+            for i in in_report_order(collector.mapped)
+        ],
         warnings=[
             ImportWarningOut(category=w.category, message=w.message, source_path=w.source_path)
-            for w in collector.warnings
+            for w in in_report_order(collector.warnings)
         ],
         summary=_summarize(config),
         discovered_domains=discovered,
