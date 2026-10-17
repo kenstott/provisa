@@ -1171,26 +1171,6 @@
       "storefrontPoint": {
         "title": "Eén model, twee afnemers",
         "description": "<strong>SHIPPED_AS</strong> verbindt een bestelling met haar zending. De app en de BI-tool lezen allebei via deze en elke andere relatie, onder dezelfde regels: de klant ziet zijn eigen bestellingen, de analist ziet geen e-mailadressen. Wijzig hier een relatie of regel, en beide afnemers hebben die. Er valt niets synchroon te houden."
-      },
-      "storefrontTables": {
-        "title": "The tables",
-        "description": "TODO: the tables the sources become."
-      },
-      "storefrontJoin": {
-        "title": "How they join",
-        "description": "TODO: the relationship that joins the tables."
-      },
-      "storefrontAnswer": {
-        "title": "The answer in SQL",
-        "description": "TODO: the predesigned query that answers the question."
-      },
-      "storefrontExample": {
-        "title": "The answer in GraphQL",
-        "description": "TODO: the example query, and what it shows."
-      },
-      "storefrontRecap": {
-        "title": "What you saw",
-        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {

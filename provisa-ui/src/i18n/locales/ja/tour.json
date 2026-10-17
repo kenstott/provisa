@@ -1171,26 +1171,6 @@
       "storefrontPoint": {
         "title": "1つのモデル、2つの利用者",
         "description": "<strong>SHIPPED_AS</strong>は注文をその配送に結び付けます。アプリもBIツールも、これと他のすべてのリレーションシップを通じて、同じルールのもとで読み取ります。顧客は自分の注文を見て、アナリストはメールアドレスを見ません。ここでリレーションシップやルールを変えれば、両方の利用者に反映されます。同期すべきものはありません。"
-      },
-      "storefrontTables": {
-        "title": "The tables",
-        "description": "TODO: the tables the sources become."
-      },
-      "storefrontJoin": {
-        "title": "How they join",
-        "description": "TODO: the relationship that joins the tables."
-      },
-      "storefrontAnswer": {
-        "title": "The answer in SQL",
-        "description": "TODO: the predesigned query that answers the question."
-      },
-      "storefrontExample": {
-        "title": "The answer in GraphQL",
-        "description": "TODO: the example query, and what it shows."
-      },
-      "storefrontRecap": {
-        "title": "What you saw",
-        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {

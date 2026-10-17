@@ -1171,26 +1171,6 @@
       "storefrontPoint": {
         "title": "Un modèle, deux consommateurs",
         "description": "<strong>SHIPPED_AS</strong> relie une commande à son expédition. L'app et l'outil de BI lisent à travers elle et toutes les autres relations, sous les mêmes règles : le client voit ses propres commandes, l'analyste ne voit aucun e-mail. Modifiez ici une relation ou une règle, et les deux consommateurs l'ont. Il n'y a rien à synchroniser."
-      },
-      "storefrontTables": {
-        "title": "The tables",
-        "description": "TODO: the tables the sources become."
-      },
-      "storefrontJoin": {
-        "title": "How they join",
-        "description": "TODO: the relationship that joins the tables."
-      },
-      "storefrontAnswer": {
-        "title": "The answer in SQL",
-        "description": "TODO: the predesigned query that answers the question."
-      },
-      "storefrontExample": {
-        "title": "The answer in GraphQL",
-        "description": "TODO: the example query, and what it shows."
-      },
-      "storefrontRecap": {
-        "title": "What you saw",
-        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {

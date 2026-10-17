@@ -1171,26 +1171,6 @@
       "storefrontPoint": {
         "title": "一个模型，两个使用方",
         "description": "<strong>SHIPPED_AS</strong> 将订单与其配送连接起来。应用和 BI 工具都通过它以及其他所有关系、在同样的规则下读取：顾客只看到自己的订单，分析师看不到邮箱。在这里修改一个关系或一条规则，两个使用方都会得到它。没有什么需要保持同步。"
-      },
-      "storefrontTables": {
-        "title": "The tables",
-        "description": "TODO: the tables the sources become."
-      },
-      "storefrontJoin": {
-        "title": "How they join",
-        "description": "TODO: the relationship that joins the tables."
-      },
-      "storefrontAnswer": {
-        "title": "The answer in SQL",
-        "description": "TODO: the predesigned query that answers the question."
-      },
-      "storefrontExample": {
-        "title": "The answer in GraphQL",
-        "description": "TODO: the example query, and what it shows."
-      },
-      "storefrontRecap": {
-        "title": "What you saw",
-        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {

@@ -1171,26 +1171,6 @@
       "storefrontPoint": {
         "title": "एक मॉडल, दो उपभोक्ता",
         "description": "<strong>SHIPPED_AS</strong> एक ऑर्डर को उसकी शिपमेंट से जोड़ता है। ऐप और BI टूल दोनों इसी और हर दूसरे रिश्ते से, एक ही नियमों के तहत पढ़ते हैं: ग्राहक अपने ऑर्डर देखता है, विश्लेषक कोई ईमेल नहीं देखता। यहाँ कोई रिश्ता या नियम बदलें, और दोनों उपभोक्ताओं को वह मिल जाता है। सिंक रखने को कुछ नहीं है।"
-      },
-      "storefrontTables": {
-        "title": "The tables",
-        "description": "TODO: the tables the sources become."
-      },
-      "storefrontJoin": {
-        "title": "How they join",
-        "description": "TODO: the relationship that joins the tables."
-      },
-      "storefrontAnswer": {
-        "title": "The answer in SQL",
-        "description": "TODO: the predesigned query that answers the question."
-      },
-      "storefrontExample": {
-        "title": "The answer in GraphQL",
-        "description": "TODO: the example query, and what it shows."
-      },
-      "storefrontRecap": {
-        "title": "What you saw",
-        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {

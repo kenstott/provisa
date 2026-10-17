@@ -1171,26 +1171,6 @@
       "storefrontPoint": {
         "title": "מודל אחד, שני צרכנים",
         "description": "<strong>SHIPPED_AS</strong> מחבר הזמנה למשלוח שלה. האפליקציה וכלי ה-BI קוראים שניהם דרכו ודרך כל קשר אחר, תחת אותם כללים: הלקוח רואה את הזמנותיו, האנליסט אינו רואה כתובות דוא\"ל. שנו כאן קשר או כלל, ושני הצרכנים יקבלו אותו. אין מה לסנכרן."
-      },
-      "storefrontTables": {
-        "title": "The tables",
-        "description": "TODO: the tables the sources become."
-      },
-      "storefrontJoin": {
-        "title": "How they join",
-        "description": "TODO: the relationship that joins the tables."
-      },
-      "storefrontAnswer": {
-        "title": "The answer in SQL",
-        "description": "TODO: the predesigned query that answers the question."
-      },
-      "storefrontExample": {
-        "title": "The answer in GraphQL",
-        "description": "TODO: the example query, and what it shows."
-      },
-      "storefrontRecap": {
-        "title": "What you saw",
-        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {

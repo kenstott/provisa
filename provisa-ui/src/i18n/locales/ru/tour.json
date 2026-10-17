@@ -1171,26 +1171,6 @@
       "storefrontPoint": {
         "title": "Одна модель, два потребителя",
         "description": "<strong>SHIPPED_AS</strong> соединяет заказ с его отправлением. Приложение и BI-инструмент читают через неё и все остальные связи по одним и тем же правилам: клиент видит свои заказы, аналитик не видит адресов почты. Измените здесь связь или правило — и оба потребителя получат изменение. Синхронизировать нечего."
-      },
-      "storefrontTables": {
-        "title": "The tables",
-        "description": "TODO: the tables the sources become."
-      },
-      "storefrontJoin": {
-        "title": "How they join",
-        "description": "TODO: the relationship that joins the tables."
-      },
-      "storefrontAnswer": {
-        "title": "The answer in SQL",
-        "description": "TODO: the predesigned query that answers the question."
-      },
-      "storefrontExample": {
-        "title": "The answer in GraphQL",
-        "description": "TODO: the example query, and what it shows."
-      },
-      "storefrontRecap": {
-        "title": "What you saw",
-        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
