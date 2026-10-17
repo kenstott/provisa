@@ -5,7 +5,19 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
+}
+
+# The bundled stores' credentials (PostgreSQL, Redis, MinIO, Grafana's admin): generated for this
+# deployment, the same on every node, since the secondaries dial the primary's stores with them.
+resource "random_password" "store" {
+  for_each = toset(["pg", "redis", "minio", "grafana"])
+  length   = 32
+  special  = false
 }
 
 provider "aws" {
@@ -152,6 +164,9 @@ resource "aws_iam_instance_profile" "provisa" {
 # ── Local: compute RAM budget for user-data ───────────────────────────────────
 
 locals {
+  # With secondaries, the primary's stores and engine publish on its private address, where they
+  # dial them; a node of its own keeps them on loopback (scripts/provisa).
+  primary_store_bind = var.node_count > 1 ? "export PROVISA_STORE_BIND_IP=\"$(hostname -I | awk '{print $1}')\"" : ""
   # Map instance type to RAM GB for Trino worker calculation
   instance_ram = {
     "m7i.xlarge"   = 16
@@ -226,6 +241,12 @@ locals {
     # The first user claims the sole admin; there is no per-org onboarding here. The
     # multitenant SaaS control plane lives in the separate terraform/gcp-saas module.
     export PROVISA_MULTITENANCY="false"
+    # The bundled stores' credentials (random_password.store); first-launch persists them into the
+    # systemd EnvironmentFile, where `provisa start` reads them.
+    export PROVISA_PG_PASSWORD="${random_password.store["pg"].result}"
+    export PROVISA_REDIS_PASSWORD="${random_password.store["redis"].result}"
+    export PROVISA_MINIO_ROOT_PASSWORD="${random_password.store["minio"].result}"
+    export PROVISA_GRAFANA_ADMIN_PASSWORD="${random_password.store["grafana"].result}"
     export FIREBASE_PROJECT_ID="${var.firebase_project_id}"
     export FIREBASE_SERVICE_ACCOUNT_KEY='${var.firebase_service_account_key}'
     # REQ-1266: the SPA's Firebase web config (public client keys). first-launch
@@ -301,6 +322,7 @@ resource "aws_instance" "primary" {
 
   user_data = <<-SHELL
     ${local.base_user_data}
+    ${local.primary_store_bind}
     /opt/Provisa.AppImage \
       --non-interactive \
       --role primary \

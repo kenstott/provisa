@@ -58,6 +58,40 @@ function To-WslPath {
   return "/mnt/$drive$rest"
 }
 
+# -- Store credentials ---------------------------------------------------------
+# The compose stack sets no credential of its own (docker-compose.core.yml). This machine's are
+# generated once and kept in the user's profile, as scripts/provisa keeps them on macOS/Linux, and
+# handed to compose as its env file. The stores publish on loopback: nothing else dials them.
+$CredentialsPath = Join-Path $ProvisaHome 'store-credentials.env'
+
+function New-Secret {
+  $bytes = New-Object byte[] 24
+  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+  return -join ($bytes | ForEach-Object { $_.ToString('x2') })
+}
+
+function Ensure-StoreCredentials {
+  $values = [ordered]@{}
+  if (Test-Path $CredentialsPath) {
+    foreach ($line in Get-Content $CredentialsPath) {
+      if ($line -match '^([A-Z_]+)=(.*)$') { $values[$Matches[1]] = $Matches[2] }
+    }
+  }
+  foreach ($name in 'PROVISA_PG_PASSWORD', 'PROVISA_REDIS_PASSWORD', 'PROVISA_MINIO_ROOT_PASSWORD',
+                    'PROVISA_GRAFANA_ADMIN_PASSWORD') {
+    if (-not $values.Contains($name) -or -not $values[$name]) { $values[$name] = New-Secret }
+  }
+  $values['PROVISA_STORE_BIND_IP'] = '127.0.0.1'
+  $values['PROVISA_MINIO_ROOT_USER'] = 'provisa'
+  $values['CONFIG_DB_PASSWORD'] = $values['PROVISA_PG_PASSWORD']
+  $values['PROVISA_OTEL_S3_ACCESS_KEY'] = 'provisa'
+  $values['PROVISA_OTEL_S3_SECRET_KEY'] = $values['PROVISA_MINIO_ROOT_PASSWORD']
+  New-Item -ItemType Directory -Force -Path $ProvisaHome | Out-Null
+  Set-Content -Path $CredentialsPath -Encoding ascii -Value ($values.Keys | ForEach-Object { "$_=$($values[$_])" })
+  # The user's own account alone may read it.
+  & icacls.exe $CredentialsPath /inheritance:r /grant:r "$($env:USERNAME):(R,W)" | Out-Null
+}
+
 # Compose file list, mirroring scripts/provisa _build_compose_files (airgap overlay
 # replaces build: with image:; extensions appended automatically).
 function Compose-FileArgs {
@@ -84,7 +118,8 @@ function Invoke-Compose {
   param([string[]]$ComposeArgs)
   Require-Distro
   Ensure-Containerd
-  $fileArgs = Compose-FileArgs
+  Ensure-StoreCredentials
+  $fileArgs = @('--env-file', (To-WslPath $CredentialsPath)) + (Compose-FileArgs)
   $inner = "cd $ComposeGuest && nerdctl compose " + (($fileArgs + $ComposeArgs) -join ' ')
   & wsl.exe -d $Distro -u root sh -c $inner
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

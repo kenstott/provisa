@@ -37,8 +37,8 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
 fi
 
 # Ensure required env vars are set
-export PG_PASSWORD="${PG_PASSWORD:-provisa}"
-export REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
+# The development stack's credentials (docker-compose.core.yml sets none of its own).
+. "$SCRIPT_DIR/scripts/dev-store-credentials.sh"
 export PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}"
 export GRAPHQL_DEMO_URL="${GRAPHQL_DEMO_URL:-http://localhost:4000/graphql}"
 export GRAPHQL_DEMO_ENABLED="${GRAPHQL_DEMO_ENABLED:-$DEMO}"
@@ -47,8 +47,6 @@ export PROVISA_ENABLE_TEST_ENDPOINTS="${PROVISA_ENABLE_TEST_ENDPOINTS:-$DEMO}"
 export PROVISA_IDP="${IDP}"
 export PROVISA_REDIRECT_ENABLED="${PROVISA_REDIRECT_ENABLED:-true}"
 export PROVISA_REDIRECT_ENDPOINT="${PROVISA_REDIRECT_ENDPOINT:-http://localhost:9000}"
-export PROVISA_REDIRECT_ACCESS_KEY="${PROVISA_REDIRECT_ACCESS_KEY:-minioadmin}"
-export PROVISA_REDIRECT_SECRET_KEY="${PROVISA_REDIRECT_SECRET_KEY:-minioadmin}"
 export PROVISA_REDIRECT_BUCKET="${PROVISA_REDIRECT_BUCKET:-provisa-results}"
 export PROVISA_CHANGE_EVENT_BOOTSTRAP="${PROVISA_CHANGE_EVENT_BOOTSTRAP:-localhost:9092}"
 export KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"

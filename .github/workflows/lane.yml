@@ -240,6 +240,11 @@ jobs:
           client: ${{ inputs.client }}
           cache: ${{ inputs.uv-cache }}
 
+      # Every compose command the lane runs reads docker-compose.core.yml, which sets no store
+      # credential of its own: the test instance's, from tests/store_credentials.py.
+      - name: Test store credentials
+        run: bash scripts/ci/test-store-env.sh >> "$GITHUB_ENV"
+
       - name: Set up the UI toolchain
         if: inputs.ui != 'none'
         uses: ./.github/actions/setup-ui

@@ -103,6 +103,53 @@ if [ "$RUNTIME" != "native" ]; then
     fi
 fi
 
+# ── Store credentials ───────────────────────────────────────────────────────
+# The compose stack sets no credential of its own (docker-compose.core.yml): each deployment's are
+# generated here, once, and kept in PROVISA_HOME (mode 600). A value the environment already holds
+# is the deployment's own (terraform writes them into provisa.env, which systemd loads) and is used
+# as given. A secondary generates nothing: it dials the primary's stores, so it is given theirs.
+STORE_CREDENTIALS="${PROVISA_HOME}/store-credentials.env"
+store_credentials() {
+    local var value
+    if [ ! -f "$STORE_CREDENTIALS" ]; then
+        (umask 077 && : > "$STORE_CREDENTIALS")
+    fi
+    for var in PROVISA_PG_PASSWORD PROVISA_REDIS_PASSWORD PROVISA_MINIO_ROOT_PASSWORD \
+               PROVISA_GRAFANA_ADMIN_PASSWORD; do
+        [ -n "${!var:-}" ] && continue
+        value="$(sed -n "s/^${var}=//p" "$STORE_CREDENTIALS" | head -1)"
+        if [ -z "$value" ]; then
+            if [ "$ROLE_CFG" = "secondary" ]; then
+                err "${var} is not set: a secondary is given the primary's store credentials."
+                exit 1
+            fi
+            value="$(openssl rand -hex 24)"
+            printf '%s=%s\n' "$var" "$value" >> "$STORE_CREDENTIALS"
+        fi
+        export "${var}=${value}"
+    done
+    # Where the stores and the engine publish. A node of its own serves them to itself alone, on
+    # loopback; a primary whose secondaries dial them is given its private address
+    # (PROVISA_STORE_BIND_IP in provisa.env).
+    export PROVISA_STORE_BIND_IP="${PROVISA_STORE_BIND_IP:-127.0.0.1}"
+    # The bundled minio's root account name; not a secret.
+    export PROVISA_MINIO_ROOT_USER=provisa
+    # The control-plane database the app signs in to: an external one's password arrives with it
+    # (PROVISA_EXTERNAL_CONTROL_DB, CONFIG_DB_*); otherwise it is the bundled postgres's.
+    if [ -z "${PROVISA_EXTERNAL_CONTROL_DB:-}" ]; then
+        export CONFIG_DB_PASSWORD="$PROVISA_PG_PASSWORD"
+    fi
+    # The OTel object store: an external one's keys arrive with its endpoint; otherwise it is the
+    # bundled minio's root account.
+    if [ -z "${PROVISA_OTEL_S3_ENDPOINT:-}" ]; then
+        export PROVISA_OTEL_S3_ACCESS_KEY="$PROVISA_MINIO_ROOT_USER"
+        export PROVISA_OTEL_S3_SECRET_KEY="$PROVISA_MINIO_ROOT_PASSWORD"
+    fi
+}
+if [ "$RUNTIME" != "native" ]; then
+    store_credentials
+fi
+
 # ── Compose command detection (user's own Docker — no VM) ───────────────────
 compose_cmd() {
     if docker compose version &>/dev/null 2>&1; then
@@ -530,7 +577,7 @@ cmd_start() {
             printf "\nRun ${BOLD}provisa open${NC} to open the UI.\n"
         fi
         if [ "$OBSERVABILITY" = "true" ] || [ -f "${PROVISA_HOME}/extensions/observability/docker-compose.observability.yml" ]; then
-            printf "Grafana: ${BOLD}http://localhost:3100${NC}\n"
+            printf "Grafana: ${BOLD}http://localhost:3100${NC} (admin password: PROVISA_GRAFANA_ADMIN_PASSWORD in %s)\n" "$STORE_CREDENTIALS"
         fi
     else
         warn "Some services may still be starting."

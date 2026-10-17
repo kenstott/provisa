@@ -100,6 +100,7 @@ resource "google_compute_instance" "sandbox" {
     startup-script = <<-SHELL
       ${local.base_startup}
       ${local.external_db_exports}
+      ${local.store_credential_exports}
       ${local.engine_cluster_exports}
       # The sandbox tier alone, against the coordinator's control plane.
       export COMPOSE_PROFILES=sandbox

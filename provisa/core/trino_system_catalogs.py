@@ -136,8 +136,9 @@ def otel_object_store() -> dict[str, str]:
         # REQ-1913: the operator setting `otel.s3_endpoint` (PROVISA_OTEL_S3_ENDPOINT sets it).
         "endpoint": settings_registry.value("otel.s3_endpoint"),
         "bucket": os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel"),
-        "access_key": os.environ.get("PROVISA_OTEL_S3_ACCESS_KEY", "minioadmin"),
-        "secret_key": os.environ.get("PROVISA_OTEL_S3_SECRET_KEY", "minioadmin"),
+        # Set by the deployment (its launcher, its chart): no account is assumed.
+        "access_key": os.environ["PROVISA_OTEL_S3_ACCESS_KEY"],
+        "secret_key": os.environ["PROVISA_OTEL_S3_SECRET_KEY"],
         "region": os.environ.get("PROVISA_OTEL_S3_REGION", "us-east-1"),
     }
 

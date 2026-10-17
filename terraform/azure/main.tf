@@ -5,7 +5,19 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
+}
+
+# The bundled stores' credentials (PostgreSQL, Redis, MinIO, Grafana's admin): generated for this
+# deployment, the same on every node, since the secondaries dial the primary's stores with them.
+resource "random_password" "store" {
+  for_each = toset(["pg", "redis", "minio", "grafana"])
+  length   = 32
+  special  = false
 }
 
 provider "azurerm" {
@@ -211,6 +223,9 @@ resource "azurerm_private_dns_a_record" "primary" {
 # ── Locals ─────────────────────────────────────────────────────────────────────
 
 locals {
+  # With secondaries, the primary's stores and engine publish on its private address, where they
+  # dial them; a node of its own keeps them on loopback (scripts/provisa).
+  primary_store_bind = var.node_count > 1 ? "PROVISA_STORE_BIND_IP=\"$(hostname -I | awk '{print $1}')\"" : ""
   vm_ram = {
     "Standard_D4s_v3"  = 16
     "Standard_D8s_v3"  = 32
@@ -303,6 +318,11 @@ locals {
     # Enterprise module: single-tenant, single-administrator bootstrap (REQ-1266).
     # Multitenant onboarding lives in the separate terraform/gcp-saas module.
     "PROVISA_MULTITENANCY='false'",
+    # The bundled stores' credentials (random_password.store); first-launch persists them.
+    "PROVISA_PG_PASSWORD='${random_password.store["pg"].result}'",
+    "PROVISA_REDIS_PASSWORD='${random_password.store["redis"].result}'",
+    "PROVISA_MINIO_ROOT_PASSWORD='${random_password.store["minio"].result}'",
+    "PROVISA_GRAFANA_ADMIN_PASSWORD='${random_password.store["grafana"].result}'",
     "FIREBASE_PROJECT_ID='${var.firebase_project_id}'",
     "FIREBASE_SERVICE_ACCOUNT_KEY='${var.firebase_service_account_key}'",
     # SPA Firebase web config (public client keys), served at /firebase-config.js so one built
@@ -383,7 +403,7 @@ resource "azurerm_linux_virtual_machine" "primary" {
 
   custom_data = base64encode(<<-YAML
     ${local.base_cloud_init}
-      - cd /opt && ${local.deploy_env} /opt/Provisa.AppImage --non-interactive --role primary --ram-gb ${local.effective_ram}
+      - cd /opt && ${local.deploy_env} ${local.primary_store_bind} /opt/Provisa.AppImage --non-interactive --role primary --ram-gb ${local.effective_ram}
   YAML
   )
 }

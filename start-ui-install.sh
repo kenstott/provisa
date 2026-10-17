@@ -502,6 +502,9 @@ if [ "$NATIVE" = true ]; then
   echo "Native mode (--native): no Docker — embedded control-plane PG + DuckDB engine + fakeredis."
 fi
 if [ "$NATIVE" = false ]; then
+# The development stack's credentials (docker-compose.core.yml sets none of its own). Sourced on
+# this Docker path alone: a native or demo start runs no compose stack.
+. "$SCRIPT_DIR/scripts/dev-store-credentials.sh"
 echo "Starting Docker Compose services (core only)..."
 cd "$SCRIPT_DIR"
 # shellcheck disable=SC2086
@@ -806,6 +809,13 @@ start_headless_nodes() {
 
 start_backend() {
   cd "$SCRIPT_DIR"
+  # The Docker path's redis requires its password (scripts/dev-store-credentials.sh); a native
+  # start's redis is the one it always dialled.
+  if [ "$NATIVE" = false ]; then
+    _BACKEND_REDIS_URL="$REDIS_URL"
+  else
+    _BACKEND_REDIS_URL="redis://localhost:6379"
+  fi
   _BACKEND_ENV=(
     PG_HOST="$CP_PG_HOST"
     PG_PORT="$CP_PG_PORT"
@@ -816,7 +826,7 @@ start_backend() {
     TRINO_HOST=localhost
     TRINO_PORT=8080
     TRINO_FLIGHT_PORT=8480
-    REDIS_URL="redis://localhost:6379"
+    REDIS_URL="${_BACKEND_REDIS_URL}"
     REDIS_HOST=localhost
     PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}"
     GRAPHQL_DEMO_ENABLED="${GRAPHQL_DEMO_ENABLED:-false}"

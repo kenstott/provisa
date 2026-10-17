@@ -39,8 +39,9 @@ def test_app_overlay_passes_the_object_store_the_compactor_reads():
     compose = yaml.safe_load((_REPO / "docker-compose.app.yml").read_text())
     env = compose["services"]["provisa"]["environment"]
     assert env["PROVISA_OTEL_S3_ENDPOINT"] == "${PROVISA_OTEL_S3_ENDPOINT:-http://minio:9000}"
-    assert env["PROVISA_OTEL_S3_ACCESS_KEY"] == "${PROVISA_OTEL_S3_ACCESS_KEY:-minioadmin}"
-    assert env["PROVISA_OTEL_S3_SECRET_KEY"] == "${PROVISA_OTEL_S3_SECRET_KEY:-minioadmin}"
+    # Required, with no account assumed: the launcher sets both.
+    assert env["PROVISA_OTEL_S3_ACCESS_KEY"].startswith("${PROVISA_OTEL_S3_ACCESS_KEY:?")
+    assert env["PROVISA_OTEL_S3_SECRET_KEY"].startswith("${PROVISA_OTEL_S3_SECRET_KEY:?")
     assert env["PROVISA_OTEL_BUCKET"] == "${PROVISA_OTEL_BUCKET:-provisa-otel}"
     # minio is a core service and minio-init creates the bucket, so the default is always reachable.
     core = yaml.safe_load((_REPO / "docker-compose.core.yml").read_text())["services"]
