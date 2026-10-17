@@ -91,6 +91,8 @@ sources:
   region: eu
   # Always read from its replica in eu (REQ-826): an EU row is read only from eu's store.
   replicate: 0
+  # Landed once, at bundle build, and never re-read (REQ-2031): no node outside eu re-reads it.
+  cache_ttl: -1
   description: The EU subsidiary's own database, homed in the EU
 - id: us-shop
   type: postgresql

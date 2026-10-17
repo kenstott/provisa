@@ -412,7 +412,7 @@ class TableProcessor(ABC):
                     await queue.record_refresh(conn, self.node, at=now, ok=True)
                     await self._emit_warns(conn, ctx, now)
                     await self._complete_all(conn, claimed, now)
-                self._refreshed(None)
+                await self._refreshed(None)
                 return None
             event_type, payload, new_hash = result
             async with conn.transaction():
@@ -423,12 +423,12 @@ class TableProcessor(ABC):
                 my_event = await self._post_and_route(conn, event_type, payload)
                 await self._emit_warns(conn, ctx, now)
                 await self._complete_all(conn, claimed, now)
-            self._refreshed((event_type, payload))
+            await self._refreshed((event_type, payload))
         except OwnershipLost:
             return None
         return my_event
 
-    def _refreshed(self, change: tuple[str, dict] | None) -> None:
+    async def _refreshed(self, change: tuple[str, dict] | None) -> None:
         """What a committed refresh of this node tells, after its commit: ``change`` the node's
         event -- its change, or ``("error", payload)`` when it failed -- or None when its content
         was unchanged. Nothing, for a node no read path serves from by its refresh state."""
@@ -494,7 +494,7 @@ class TableProcessor(ABC):
             return None
         if self._on_event is not None:
             self._on_event(self.node, "error", payload)
-        self._refreshed(("error", payload))
+        await self._refreshed(("error", payload))
         return event_id
 
     async def _emit_quarantine(
@@ -673,7 +673,7 @@ class MVTableProcessor(TableProcessor):
         self,
         *args: Any,
         generate: Callable[..., Any],
-        on_refreshed: Callable[[tuple[str, dict] | None], None] | None = None,
+        on_refreshed: Callable[[tuple[str, dict] | None], Awaitable[None]] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -684,9 +684,9 @@ class MVTableProcessor(TableProcessor):
         # the view is fresh (the MV registry), wired by the app. None where nothing reads that.
         self._on_refreshed = on_refreshed
 
-    def _refreshed(self, change: tuple[str, dict] | None) -> None:
+    async def _refreshed(self, change: tuple[str, dict] | None) -> None:
         if self._on_refreshed is not None:
-            self._on_refreshed(change)
+            await self._on_refreshed(change)
 
     async def inject(self, probe: injector.Probe) -> int | None:
         """A view's own cadence (its poll job): a request to recompute THE VIEW. The tick is fanned

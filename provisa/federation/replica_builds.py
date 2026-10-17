@@ -528,18 +528,31 @@ async def run_build(state: Any, key: ReplicaKey, progress: Progress) -> BuildOut
         raise
     async with state.tenant_db.acquire() as conn:
         await queue.record_refresh(conn, node, at=datetime.now(UTC), ok=True)
-        if outcome.changed and key in (getattr(state, "replica_nodes", None) or {}):
-            # The replica changed: post it to the table's event-loop node, which re-posts
-            # its change to the materialized views that read it. A build whose content is
-            # unchanged posts nothing, so nothing ripples (REQ-981).
-            event_id = await queue.post_event(
-                conn,
-                source_table=node,
-                event_type="replace",
-                payload={"built": True, "rows": outcome.rows_copied},
-            )
-            await queue.fan_out(conn, event_id, [node])
+        if outcome.changed:
+            await _post_built(state, conn, key, node, outcome.rows_copied)
     return outcome
+
+
+async def _post_built(state: Any, conn: Any, key: ReplicaKey, node: str, rows: int) -> None:
+    """A build that changed the replica, told to what reads it. A table with an event-loop node
+    is posted to that node, which re-posts its change to the materialized views that read it. A
+    table with none -- one that lands once and is never re-read (cache_ttl -1, REQ-2031) -- is
+    posted to those views directly: its one build is the only change they will hear of. A build
+    whose content is unchanged posts nothing, so nothing ripples (REQ-981)."""
+    from provisa.events import queue
+
+    if key in (getattr(state, "replica_nodes", None) or {}):
+        listeners = [node]
+    else:
+        # No event loop wired in this process (nothing to tell), or the table has no node.
+        dependents_of = getattr(state, "replica_dependents_of", None)
+        listeners = dependents_of(node) if dependents_of is not None else []
+    if not listeners:
+        return
+    event_id = await queue.post_event(
+        conn, source_table=node, event_type="replace", payload={"built": True, "rows": rows}
+    )
+    await queue.fan_out(conn, event_id, listeners)
 
 
 #: The source types whose adapter reads its tables as a group (``replica_group``): a mail
