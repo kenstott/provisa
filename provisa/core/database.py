@@ -1336,6 +1336,27 @@ class Connection:
         self._execute_script(sql)
 
 
+_PREPARED_SCOPE = "provisa_prepared_scope"
+
+
+def _prepared_for_scope(sc: sa.Connection, search_path: str | None) -> None:
+    """Drop the pooled connection's prepared statements when it last ran for another scope.
+
+    The connection serves every handle on its engine, one org schema (``search_path``) or none at
+    a time, and keeps one prepared statement per SQL text (``prepare_threshold=0``). PostgreSQL
+    re-plans such a statement for the schema now on the path, and refuses it when the re-planned
+    rows differ in shape ("cached plan must not change result type"): ``SELECT w.*`` over two org
+    schemas whose table has its columns in another order (one created by schema.sql and altered,
+    one from schema_org's metadata). A rollback is psycopg's one public step that clears its cache
+    and deallocates the statements on the server together; the ``SELECT 1`` opens the transaction
+    it rolls back. A new connection starts on the role's default path (:func:`_on_pg_connect`)."""
+    info = sc.connection.info
+    if info[_PREPARED_SCOPE] != search_path:
+        sc.execute(text("SELECT 1"))
+        sc.rollback()
+    info[_PREPARED_SCOPE] = search_path
+
+
 # --------------------------------------------------------------------------- #
 # database
 # --------------------------------------------------------------------------- #
@@ -1398,6 +1419,8 @@ class Database:
             try:
                 # Inside the try: once the org's search_path is set on the connection, the
                 # reset below runs whatever ends the block, a request timeout included.
+                if self.dialect == "postgresql":
+                    _prepared_for_scope(sc, self.search_path)
                 if self.search_path and (sql := self.capabilities.enter_org_sql(self.search_path)):
                     sc.execute(text(sql))
                     sc.commit()
@@ -1776,8 +1799,8 @@ def _on_pg_connect(dbapi_conn: Any, connection_record: Any) -> None:
     evicted statements are DEALLOCATEd). psycopg 3's own loaders already return the types the former
     asyncpg pool returned — uuid as ``uuid.UUID``, bytea as ``bytes``, json/jsonb as Python
     objects."""
-    del connection_record
     dbapi_conn.prepared_max = _PREPARED_MAX
+    connection_record.info[_PREPARED_SCOPE] = None  # the role's default search_path
 
 
 class OrgStores(NamedTuple):
