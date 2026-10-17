@@ -6862,5 +6862,10 @@
   "zh/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh/serverErrors.json::serverErrors.data.invalid_as_recorded": "invalid X-Provisa-As-Recorded: {{error}}",
+  "zh/sqlEditorPanel.json::sqlEditorPanel.asOfHint": "Read history-keeping views as they stood at this time",
+  "zh/sqlEditorPanel.json::sqlEditorPanel.asOfLabel": "As of",
+  "zh/sqlEditorPanel.json::sqlEditorPanel.asRecordedHint": "Read history-keeping views as Provisa recorded them then, before later corrections",
+  "zh/sqlEditorPanel.json::sqlEditorPanel.asRecordedLabel": "As recorded at"
 }

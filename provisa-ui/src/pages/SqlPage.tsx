@@ -108,6 +108,11 @@ export function SqlPage() {
 
   const [sqlText, setSqlText] = useState(active0.sqlText);
   const [role, setRole] = useState("org_admin");
+  // REQ-1163: the time travel statements run with over bitemporal views -- as of a time on each
+  // view's clock, as recorded at a time -- each an ISO 8601 time, or none.
+  const [asOf, setAsOf] = useState<string | null>(null);
+  const [asRecorded, setAsRecorded] = useState<string | null>(null);
+  const timeTravel = useMemo(() => ({ asOf, asRecorded }), [asOf, asRecorded]);
   // REQ-1620: under the app-wide "Role: All" the acting set is EVERY active role, sent as one
   // comma-separated X-Provisa-Role so the union of their visibility is queryable. The picker
   // offers that set as its own entry; picking a single role previews that role alone.
@@ -333,7 +338,7 @@ export function SqlPage() {
   const fetchExpansion = useCallback(async (): Promise<{ text: string; isError: boolean }> => {
     const inner = sqlText.trim().replace(/;+$/, "");
     try {
-      const plan = await explainSql(inner, role, false);
+      const plan = await explainSql(inner, role, false, timeTravel);
       if (plan.semantic_sql === null) {
         return { text: t("sqlPage.expansionNoMetric"), isError: true };
       }
@@ -341,7 +346,7 @@ export function SqlPage() {
     } catch (e) {
       return { text: e instanceof Error ? e.message : String(e), isError: true };
     }
-  }, [sqlText, role, t]);
+  }, [sqlText, role, timeTravel, t]);
 
   const handleShowExpansion = useCallback(async () => {
     setExpansionOpen(true);
@@ -499,23 +504,37 @@ export function SqlPage() {
 
   // A hand-off from another page or from Polly: open the SQL in a new tab (and run it when asked),
   // or offer to save a view of a table. Handled whether or not the page was already open.
-  useNavPayload<{ sql?: string; autoRun?: boolean; viewTable?: RegisteredTable; role?: string }>(
-    (payload) => {
-      if (payload.viewTable) setViewTable(payload.viewTable);
-      if (payload.role != null) {
-        setHandedRole(payload.role);
-        setRole(payload.role);
-        return;
-      }
-      if (payload.sql == null) return;
-      const merged = mergeActive();
-      const tab = emptyTab(newTabId(), nextTabTitle(merged), payload.sql);
-      setTabs([...merged, tab]);
-      setActiveTabId(tab.id);
-      loadTabIntoWorkingState(tab);
-      pendingAutoRunRef.current = payload.autoRun === true ? payload.sql : null;
-    },
-  );
+  useNavPayload<{
+    sql?: string;
+    autoRun?: boolean;
+    viewTable?: RegisteredTable;
+    role?: string;
+    asOf?: string;
+    asRecorded?: string;
+  }>((payload) => {
+    if (payload.viewTable) setViewTable(payload.viewTable);
+    // A demo tour's time-travel steps (REQ-1163) set the explorer's pickers.
+    if (payload.asOf != null) {
+      setAsOf(payload.asOf);
+      return;
+    }
+    if (payload.asRecorded != null) {
+      setAsRecorded(payload.asRecorded);
+      return;
+    }
+    if (payload.role != null) {
+      setHandedRole(payload.role);
+      setRole(payload.role);
+      return;
+    }
+    if (payload.sql == null) return;
+    const merged = mergeActive();
+    const tab = emptyTab(newTabId(), nextTabTitle(merged), payload.sql);
+    setTabs([...merged, tab]);
+    setActiveTabId(tab.id);
+    loadTabIntoWorkingState(tab);
+    pendingAutoRunRef.current = payload.autoRun === true ? payload.sql : null;
+  });
 
   // REQ-1322: the server expansion severs the metric link permanently (no re-ingestion path), so it
   // opens as a NEW query rather than overwriting the one it came from: the metric-referencing SQL is
@@ -651,7 +670,7 @@ export function SqlPage() {
     setAnalyzing(true);
     setAnalyzeError("");
     try {
-      const plan = await explainSql(sqlText.trim().replace(/;+$/, ""), role, false);
+      const plan = await explainSql(sqlText.trim().replace(/;+$/, ""), role, false, timeTravel);
       setAnalyzePlan(plan);
     } catch (e) {
       setAnalyzePlan(null);
@@ -660,7 +679,7 @@ export function SqlPage() {
       setAnalyzing(false);
     }
     setResultTab("analyze");
-  }, [sqlText, role]);
+  }, [sqlText, role, timeTravel]);
 
   const handleRun = useCallback(async () => {
     if (!sqlText.trim()) return;
@@ -675,7 +694,7 @@ export function SqlPage() {
     let result: Awaited<ReturnType<typeof runSql>>;
     try {
       // runSql answers a failure as the result's error.
-      result = await runSql(sampledSql, role, statsEnabled);
+      result = await runSql(sampledSql, role, statsEnabled, timeTravel);
     } finally {
       setRunning(false);
     }
@@ -721,7 +740,7 @@ export function SqlPage() {
       saveHistory(next);
       return next;
     });
-  }, [sqlText, role, sampleMode, sampleSize, activeTabId, statsEnabled, resetGrid]);
+  }, [sqlText, role, sampleMode, sampleSize, activeTabId, statsEnabled, resetGrid, timeTravel]);
 
   useEffect(() => {
     // The handed statement, once it is the editor's: on a page the hand-off opened, this runs in
@@ -946,6 +965,10 @@ export function SqlPage() {
               setSampleSize={setSampleSize}
               roles={roleOptions}
               setRole={setRole}
+              asOf={asOf}
+              setAsOf={setAsOf}
+              asRecorded={asRecorded}
+              setAsRecorded={setAsRecorded}
               viewTable={viewTable}
               viewSaving={viewSaving}
               setViewSaving={setViewSaving}

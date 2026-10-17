@@ -243,7 +243,7 @@ def test_every_roles_graphql_schema_offers_resolve():
 
     schema, _ = _fact_schema_and_ctx()
     field = schema.query_type.fields["resolve"]
-    assert set(field.args) == {"uri", "as_of"}
+    assert set(field.args) == {"uri", "as_of", "as_recorded"}
     assert str(field.args["uri"].type) == "String!"
 
 
@@ -264,7 +264,9 @@ def resolved(monkeypatch, bind_org):
     """``resolve`` replaced by a recorder; the request bound to org acme."""
     calls: list[dict] = []
 
-    async def _resolve(state, role_id, uri, *, org_id, as_of=None, as_of_literal=None):
+    async def _resolve(
+        state, role_id, uri, *, org_id, as_of=None, as_recorded=None, as_of_literal=None
+    ):
         calls.append({"role": role_id, "uri": uri, "org": org_id, "as_of": as_of_literal})
         return {"uri": uri, "row": {"amount": 1}}
 

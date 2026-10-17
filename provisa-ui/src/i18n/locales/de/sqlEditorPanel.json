@@ -31,6 +31,10 @@
     "rowCountLabel": "Zeilenanzahl",
     "roleLabel": "Rolle",
     "createView": "+ Sicht",
-    "requestView": "Sicht anfordern"
+    "requestView": "Sicht anfordern",
+    "asOfLabel": "Stand vom",
+    "asOfHint": "Views mit Historie so lesen, wie sie zu diesem Zeitpunkt standen",
+    "asRecordedLabel": "Erfasst bis",
+    "asRecordedHint": "Views mit Historie so lesen, wie Provisa sie damals erfasste, vor späteren Korrekturen"
   }
 }

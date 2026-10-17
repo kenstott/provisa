@@ -69,6 +69,7 @@
       "engine_not_connected": "o mecanismo não está conectado",
       "grpc_source_not_registered": "Fonte remota gRPC '{{source_id}}' não registrada",
       "invalid_as_of": "X-Provisa-As-Of inválido: {{error}}",
+      "invalid_as_recorded": "X-Provisa-As-Recorded inválido: {{error}}",
       "invalid_order_by": "ordenação de agrupamento inválida: {{error}}",
       "invalid_cache_control": "solicitação de cache de resposta inválida: {{error}}",
       "invalid_filter": "filter deve ser um objeto que mapeia nomes de campo para valores",

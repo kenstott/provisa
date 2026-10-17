@@ -69,6 +69,7 @@
       "engine_not_connected": "el motor no está conectado",
       "grpc_source_not_registered": "El origen remoto gRPC '{{source_id}}' no está registrado",
       "invalid_as_of": "X-Provisa-As-Of no válido: {{error}}",
+      "invalid_as_recorded": "X-Provisa-As-Recorded no válido: {{error}}",
       "invalid_order_by": "orden de agrupación no válido: {{error}}",
       "invalid_cache_control": "solicitud de caché de respuesta no válida: {{error}}",
       "invalid_filter": "filter debe ser un objeto que asigne nombres de campo a valores",

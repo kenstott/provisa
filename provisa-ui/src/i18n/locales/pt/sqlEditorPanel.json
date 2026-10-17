@@ -31,6 +31,10 @@
     "rowCountLabel": "Número de linhas",
     "roleLabel": "Função",
     "createView": "+ Exibição",
-    "requestView": "Solicitar exibição"
+    "requestView": "Solicitar exibição",
+    "asOfLabel": "Na data de",
+    "asOfHint": "Ler as views com histórico como estavam nesse momento",
+    "asRecordedLabel": "Registrado em",
+    "asRecordedHint": "Ler as views com histórico como o Provisa as registrou então, antes de correções"
   }
 }

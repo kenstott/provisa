@@ -126,7 +126,11 @@ describe("metric expansion + one-way detach (REQ-1322)", () => {
     await waitFor(() =>
       expect(screen.getByTestId("sql-expansion-text")).toHaveTextContent("SEMANTIC EXPANSION"),
     );
-    expect(explainSql).toHaveBeenCalledWith(METRIC_SQL, "admin", false);
+    // With the explorer's time travel (REQ-1163): none picked.
+    expect(explainSql).toHaveBeenCalledWith(METRIC_SQL, "admin", false, {
+      asOf: null,
+      asRecorded: null,
+    });
     // The physical lowering is the EXPLAIN plan's business, never the preview's.
     expect(screen.getByTestId("sql-expansion-text")).not.toHaveTextContent("PHYSICAL LOWERING");
     // Editor untouched by the preview
@@ -142,7 +146,11 @@ describe("metric expansion + one-way detach (REQ-1322)", () => {
     // Detach requests the expansion and opens it as a second query, now the active one.
     await user.click(screen.getByTestId("sql-detach"));
     await waitFor(() => expect(editor()).toHaveValue("SEMANTIC EXPANSION"));
-    expect(explainSql).toHaveBeenCalledWith(METRIC_SQL, "admin", false);
+    // With the explorer's time travel (REQ-1163): none picked.
+    expect(explainSql).toHaveBeenCalledWith(METRIC_SQL, "admin", false, {
+      asOf: null,
+      asRecorded: null,
+    });
     expect(screen.getByText("Query 2")).toBeInTheDocument();
 
     // Only the new query is detached; the metric-referencing original is untouched, and it is

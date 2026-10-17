@@ -73,8 +73,17 @@ export interface TourStep {
    * opens its own statement.
    */
   openQuery?: {
-    // "role": a set of roles the SQL explorer runs as (REQ-2057).
-    stateKey: "sql" | "query" | "openApiUrl" | "jsonapiUrl" | "grpcMethod" | "role";
+    // "role": a set of roles the SQL explorer runs as (REQ-2057). "asOf"/"asRecorded": the SQL
+    // explorer's time-travel pickers (REQ-1163).
+    stateKey:
+      | "sql"
+      | "query"
+      | "openApiUrl"
+      | "jsonapiUrl"
+      | "grpcMethod"
+      | "role"
+      | "asOf"
+      | "asRecorded";
     text: string;
   };
   /**

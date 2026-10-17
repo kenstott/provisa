@@ -37,6 +37,7 @@ from provisa.compiler.params import ParametersDoNotFit
 from provisa.compiler.definitions import NotAvailableHere
 from provisa.federation.pgwire_replica import SourceStillStartingError
 from provisa.api.admin._dev_shared import detect_target
+from provisa.api.data.endpoint_helpers import request_time_travel
 from provisa.api.errors import ApiError
 from provisa.core import domain_policy
 from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
@@ -235,6 +236,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     accept: str | None = Header(None),
     x_provisa_stats: str | None = Header(None),
     x_provisa_as_of: str | None = Header(None),  # REQ-1163: read bitemporal MVs as of this time
+    x_provisa_as_recorded: str | None = Header(None),  # REQ-1163: as Provisa had recorded them then
 ):
     """Execute raw SQL through Stage 2 governance (REQ-264, REQ-266, REQ-267).
 
@@ -252,17 +254,8 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     output_format = _parse_accept(accept)
     stats_enabled = (x_provisa_stats or "").lower() == "true"
 
-    # REQ-1163: a request-level as-of validated to a safe SQL timestamp literal (400 on malformed).
-    _as_of = None
-    if x_provisa_as_of:
-        from provisa.mv.bitemporal import parse_as_of
-
-        try:
-            _as_of = parse_as_of(x_provisa_as_of).key()
-        except ValueError as exc:
-            raise ApiError(
-                400, "data.invalid_as_of", f"invalid X-Provisa-As-Of: {exc}", error=str(exc)
-            )
+    # REQ-1163: the request's time travel, both axes validated (400 on malformed).
+    _as_of = request_time_travel(x_provisa_as_of, x_provisa_as_recorded)
 
     import time as _time
     from provisa.executor import stats as _qs_mod
@@ -416,6 +409,7 @@ async def sql_explain_endpoint(  # REQ-1519
     request: ExplainRequest,
     x_provisa_role: str | None = Header(None),
     x_provisa_as_of: str | None = Header(None),
+    x_provisa_as_recorded: str | None = Header(None),
 ):
     """Explain a statement's governed plan — the engine's own EXPLAIN, annotated with the Provisa
     rewrites that produced the statement it describes.
@@ -435,16 +429,7 @@ async def sql_explain_endpoint(  # REQ-1519
         )
     _check_sql_capabilities(state.roles.get(role_id))
 
-    _as_of = None
-    if x_provisa_as_of:
-        from provisa.mv.bitemporal import parse_as_of
-
-        try:
-            _as_of = parse_as_of(x_provisa_as_of).key()
-        except ValueError as exc:
-            raise ApiError(
-                400, "data.invalid_as_of", f"invalid X-Provisa-As-Of: {exc}", error=str(exc)
-            )
+    _as_of = request_time_travel(x_provisa_as_of, x_provisa_as_recorded)
 
     # Same request-boundary contract as /data/sql: a governance denial is 403, an unsupported
     # dialect or an arbitrary query the source rejects is a 400 carrying the reason.
@@ -1048,6 +1033,7 @@ async def unified_query_endpoint(  # REQ-001, REQ-267, REQ-345
     accept: str | None = Header(None),
     x_provisa_stats: str | None = Header(None),
     x_provisa_as_of: str | None = Header(None),
+    x_provisa_as_recorded: str | None = Header(None),
     x_provisa_trace: str | None = Header(None),  # REQ-1910: forwarded to the GraphQL endpoint
 ):
     """Execute a GraphQL, SQL, or Cypher query; auto-detected from syntax.
@@ -1087,6 +1073,7 @@ async def unified_query_endpoint(  # REQ-001, REQ-267, REQ-345
             x_provisa_stats=x_provisa_stats,
             x_provisa_normalized=None,
             x_provisa_as_of=x_provisa_as_of,
+            x_provisa_as_recorded=x_provisa_as_recorded,
             x_provisa_trace=x_provisa_trace,
         )
 
@@ -1099,4 +1086,5 @@ async def unified_query_endpoint(  # REQ-001, REQ-267, REQ-345
         accept=accept,
         x_provisa_stats=x_provisa_stats,
         x_provisa_as_of=x_provisa_as_of,
+        x_provisa_as_recorded=x_provisa_as_recorded,
     )

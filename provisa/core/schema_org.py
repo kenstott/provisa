@@ -1397,6 +1397,10 @@ query_audit_log = Table(
     # REQ-1922: the region whose data answered the statement — the answering node's, unless the
     # statement read only what another region keeps, in place there (its replicas, its views).
     Column("region", Text, nullable=False),
+    # REQ-1163: the times the statement read bitemporal views as of (on their clock; a range as
+    # ``start/end``) and as recorded at, ISO 8601; NULL where it read them now.
+    Column("as_of", Text),
+    Column("as_recorded", Text),
     Column("logged_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

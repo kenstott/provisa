@@ -921,7 +921,16 @@ X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
 
-A point answers the version of each key in force then. A range answers every version in force at any time within it, one row per version. (REQ-2064) The same value is the `as_of` argument of `resolve` (GraphQL, gRPC, MCP), the REST `as_of` query parameter, and the `as_of` option of an Arrow Flight ticket. A range given to `resolve` answers the row's `versions` in place of its `row`. Rights, masks and row rules apply as to any read. A malformed value, or a range whose end is not after its start, is refused with HTTP 400 (`data.invalid_as_of`).
+A point answers the version of each key in force then. A range answers every version in force at any time within it, one row per version. (REQ-2064)
+
+**As recorded.** A correction recorded later changes what a view says about the past: the version in force on 30 September is the corrected one once the correction is recorded. To read the view as Provisa had recorded it at a time, before any later correction, add `X-Provisa-As-Recorded`, one ISO 8601 time:
+
+```
+X-Provisa-As-Of: 2026-09-30T12:00:00
+X-Provisa-As-Recorded: 2026-10-01T00:00:00
+```
+
+Every version recorded after that time is left out, and the as-of then picks the version in force at its own time. With `X-Provisa-As-Recorded` alone, the read answers the version of each key in force as recorded then. It is one time, not a range; a range or a malformed value is refused with HTTP 400 (`data.invalid_as_recorded`). The same value is the `as_recorded` argument of `resolve`, the REST `as_recorded` query parameter and the `as_recorded` option of an Arrow Flight ticket. The audit record of each statement keeps both times it read with, `as_of` and `as_recorded`. (REQ-1163) The same value is the `as_of` argument of `resolve` (GraphQL, gRPC, MCP), the REST `as_of` query parameter, and the `as_of` option of an Arrow Flight ticket. A range given to `resolve` answers the row's `versions` in place of its `row`. Rights, masks and row rules apply as to any read. A malformed value, or a range whose end is not after its start, is refused with HTTP 400 (`data.invalid_as_of`).
 
 Every view with history answers three more columns, granted as its source-time column (else its first key column) is:
 

@@ -69,6 +69,7 @@
       "engine_not_connected": "इंजन कनेक्ट नहीं है",
       "grpc_source_not_registered": "gRPC रिमोट स्रोत '{{source_id}}' पंजीकृत नहीं है",
       "invalid_as_of": "अमान्य X-Provisa-As-Of: {{error}}",
+      "invalid_as_recorded": "अमान्य X-Provisa-As-Recorded: {{error}}",
       "invalid_order_by": "अमान्य समूह क्रम: {{error}}",
       "invalid_cache_control": "अमान्य प्रतिक्रिया-कैश अनुरोध: {{error}}",
       "invalid_filter": "filter एक ऐसा ऑब्जेक्ट होना चाहिए जो फ़ील्ड नामों को मानों से मैप करे",

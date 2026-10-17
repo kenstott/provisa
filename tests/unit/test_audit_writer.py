@@ -76,6 +76,7 @@ def _record(
         sources=(),
         data_age=None,
         region="default",
+        time_travel=None,
         tables=[
             {"id": 7, "source_id": "sales-pg", "schema_name": "public", "table_name": "orders"}
         ],
@@ -583,6 +584,7 @@ def _worker(url: str, worker: int, count: int) -> None:
                 sources=(),
                 data_age=None,
                 region="default",
+                time_travel=None,
                 tables=[],
             )
         )

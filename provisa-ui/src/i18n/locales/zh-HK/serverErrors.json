@@ -69,6 +69,7 @@
       "engine_not_connected": "引擎未連線",
       "grpc_source_not_registered": "gRPC 遠端數據來源「{{source_id}}」未註冊",
       "invalid_as_of": "無效的 X-Provisa-As-Of：{{error}}",
+      "invalid_as_recorded": "無效的 X-Provisa-As-Recorded：{{error}}",
       "invalid_order_by": "無效的分組排序：{{error}}",
       "invalid_cache_control": "無效的回應快取請求：{{error}}",
       "invalid_filter": "filter 必須是將欄位名稱對應到值的物件",

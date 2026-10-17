@@ -213,26 +213,29 @@ async def resolve(
     *,
     org_id: str | None,
     as_of: str | None = None,
+    as_recorded: str | None = None,
     as_of_literal: str | None = None,
     session_vars: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Dereference ``uri`` for ``role_id`` through the one query pipeline (REQ-1365).
 
     ``org_id`` is the caller's org; an address in another org is refused. ``as_of`` is an ISO
-    8601 point in time and is validated here; ``as_of_literal`` is one a surface has already
-    validated (the GraphQL endpoint's ``X-Provisa-As-Of``). Returns
+    8601 point in time on the view's clock and ``as_recorded`` one on Provisa's record (REQ-1163),
+    both validated here; ``as_of_literal`` is the canonical value a surface has already validated
+    (the GraphQL endpoint's ``X-Provisa-As-Of`` and ``X-Provisa-As-Recorded``). Returns
     ``{"uri", "as_of", "columns", "row"}`` with ``row`` None when the key matches nothing the
     caller may see; for an as-of range (REQ-2064), ``versions`` -- every version of the row in
     force within it -- in place of ``row``."""
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
-    if as_of is not None:
-        from provisa.mv.bitemporal import parse_as_of
+    from provisa.mv.bitemporal import AsOf, request_as_of
 
+    if as_of is not None or as_recorded is not None:
         try:
-            as_of_literal = parse_as_of(as_of).key()  # a validated SQL timestamp literal (REQ-1163)
+            # Validated SQL timestamp literals, in the canonical form (REQ-1163).
+            as_of_literal = request_as_of(as_of, as_recorded)
         except ValueError as exc:
-            raise AddressError(f"invalid as_of: {exc}") from exc
+            raise AddressError(f"invalid as_of or as_recorded: {exc}") from exc
     address = parse_address(uri, multitenant=bool(state.multitenancy))
     if address.org_id is not None and address.org_id != org_id:
         raise AddressError(f"{uri!r} is an address in another organization")
@@ -259,7 +262,7 @@ async def resolve(
     columns = list(result.column_names)
     rows = [dict(zip(columns, r, strict=True)) for r in result.rows]
     answer = {"uri": uri, "as_of": as_of_literal, "columns": columns}
-    if as_of_literal is not None and "/" in as_of_literal:
+    if as_of_literal is not None and AsOf.from_key(as_of_literal).is_range:
         # REQ-2064: a range answers each version of the row in force within it, in source order.
         return {**answer, "versions": rows}
     return {**answer, "row": rows[0] if rows else None}
@@ -301,7 +304,8 @@ async def execute_resolve_fields(
     as_of: str | None,
 ) -> dict[str, Any]:
     """Answer each ``resolve`` root selection, keyed by its response name. ``as_of`` is the
-    request's already-validated as-of literal; a field's own ``as_of`` argument wins over it."""
+    request's already-validated time travel; a field's own ``as_of``/``as_recorded`` arguments win
+    over it."""
     from provisa.compiler.sql_where import _extract_value
 
     data: dict[str, Any] = {}
@@ -313,13 +317,14 @@ async def execute_resolve_fields(
             {a.name.value: _extract_value(a.value, variables) for a in selection.arguments},
         )
         key = selection.alias.value if selection.alias else selection.name.value
-        own = args.get("as_of")
+        own, own_recorded = args.get("as_of"), args.get("as_recorded")
         data[key] = await resolve(
             state,
             role_id,
             args["uri"],
             org_id=org_id,
             as_of=own,
-            as_of_literal=None if own else as_of,
+            as_recorded=own_recorded,
+            as_of_literal=None if (own or own_recorded) else as_of,
         )
     return data

@@ -69,6 +69,7 @@
       "engine_not_connected": "Engine nicht verbunden",
       "grpc_source_not_registered": "gRPC-Remotequelle '{{source_id}}' nicht registriert",
       "invalid_as_of": "ungültiges X-Provisa-As-Of: {{error}}",
+      "invalid_as_recorded": "ungültiges X-Provisa-As-Recorded: {{error}}",
       "invalid_order_by": "ungültige Sortierung der Gruppierung: {{error}}",
       "invalid_cache_control": "ungültige Response-Cache-Anforderung: {{error}}",
       "invalid_filter": "filter muss ein Objekt sein, das Feldnamen auf Werte abbildet",

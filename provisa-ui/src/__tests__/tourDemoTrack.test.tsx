@@ -168,6 +168,21 @@ describe("a demo's steps, as the runner walks them", () => {
     expect(set.chooseOnNext).toBeUndefined();
   });
 
+  it("sets the SQL explorer's time-travel pickers, each shown on its picker", () => {
+    // REQ-1163: as of a time, and as recorded at one.
+    const [asOf, asRecorded] = demoTourSteps(
+      [
+        { key: "a", route: "/sql", capability: "query_development", as_of: "2026-09-30T12:00:00" },
+        { key: "b", as_recorded: "2026-10-01T00:00:00" },
+      ],
+      EXAMPLES,
+    );
+    expect(asOf.openQuery).toEqual({ stateKey: "asOf", text: "2026-09-30T12:00:00" });
+    expect(asOf.element).toBe('[data-testid="sql-as-of"]');
+    expect(asRecorded.openQuery).toEqual({ stateKey: "asRecorded", text: "2026-10-01T00:00:00" });
+    expect(asRecorded.element).toBe('[data-testid="sql-as-recorded"]');
+  });
+
   it("shows the environment switcher and picks the environment on Next", () => {
     // REQ-2053: the steps after it read that environment.
     const [env] = demoTourSteps([{ key: "e", env: "dev" }], EXAMPLES);

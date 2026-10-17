@@ -69,6 +69,7 @@
       "engine_not_connected": "le moteur n'est pas connecté",
       "grpc_source_not_registered": "Source distante gRPC « {{source_id}} » non enregistrée",
       "invalid_as_of": "X-Provisa-As-Of invalide : {{error}}",
+      "invalid_as_recorded": "X-Provisa-As-Recorded invalide : {{error}}",
       "invalid_order_by": "ordre de regroupement invalide : {{error}}",
       "invalid_cache_control": "demande de cache de réponse invalide : {{error}}",
       "invalid_filter": "filter doit être un objet associant des noms de champ à des valeurs",

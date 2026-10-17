@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS query_audit_log (
     sources JSONB,
     data_age JSONB,
     region TEXT NOT NULL,
+    as_of TEXT,
+    as_recorded TEXT,
     logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

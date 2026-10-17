@@ -69,6 +69,7 @@
       "engine_not_connected": "the engine not connected",
       "grpc_source_not_registered": "gRPC remote source '{{source_id}}' not registered",
       "invalid_as_of": "invalid X-Provisa-As-Of: {{error}}",
+      "invalid_as_recorded": "invalid X-Provisa-As-Recorded: {{error}}",
       "invalid_order_by": "invalid group-by order: {{error}}",
       "invalid_cache_control": "invalid response-cache opt-in: {{error}}",
       "invalid_filter": "filter must be an object mapping field names to values",

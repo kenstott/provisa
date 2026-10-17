@@ -515,9 +515,11 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         request: Request,
         uri: str = Query(...),
         as_of: str | None = Query(None),
+        as_recorded: str | None = Query(None),
     ):
         """Dereference a semantic address: the REST form of the GraphQL ``resolve`` field
-        (REQ-1929). ``as_of`` may also arrive as the ``X-Provisa-As-Of`` header."""
+        (REQ-1929). ``as_of`` and ``as_recorded`` may also arrive as the ``X-Provisa-As-Of`` and
+        ``X-Provisa-As-Recorded`` headers."""
         from provisa.api.data.resolve import AddressError, AddressNotFound, resolve
         from provisa.core.request_context import require_current_org
 
@@ -525,8 +527,16 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         if not role_id:
             raise HTTPException(status_code=401, detail="authenticated role required")
         point = as_of or request.headers.get("x-provisa-as-of")
+        recorded = as_recorded or request.headers.get("x-provisa-as-recorded")
         try:
-            result = await resolve(state, role_id, uri, org_id=require_current_org(), as_of=point)
+            result = await resolve(
+                state,
+                role_id,
+                uri,
+                org_id=require_current_org(),
+                as_of=point,
+                as_recorded=recorded,
+            )
         except AddressNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except AddressError as exc:

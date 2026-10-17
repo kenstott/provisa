@@ -23,6 +23,7 @@ import {
   TextInput,
   useComputedColorScheme,
 } from "@mantine/core";
+import { DateTimePicker } from "@mantine/dates";
 import { Play, Copy, Check, X, Sparkles, GitBranch } from "lucide-react";
 import { format as formatSql } from "sql-formatter";
 import CodeMirror from "@uiw/react-codemirror";
@@ -73,6 +74,11 @@ interface SqlEditorPanelProps {
   setSampleSize: React.Dispatch<React.SetStateAction<number>>;
   roles: (string | { value: string; label: string })[];
   setRole: React.Dispatch<React.SetStateAction<string>>;
+  // REQ-1163: the time travel statements run with over bitemporal views (ISO 8601, or none).
+  asOf: string | null;
+  setAsOf: (value: string | null) => void;
+  asRecorded: string | null;
+  setAsRecorded: (value: string | null) => void;
   viewTable: RegisteredTable | null;
   viewSaving: boolean;
   setViewSaving: React.Dispatch<React.SetStateAction<boolean>>;
@@ -116,6 +122,10 @@ export function SqlEditorPanel({
   setSampleSize,
   roles,
   setRole,
+  asOf,
+  setAsOf,
+  asRecorded,
+  setAsRecorded,
   viewTable,
   viewSaving,
   setViewSaving,
@@ -559,6 +569,35 @@ export function SqlEditorPanel({
           )}
           style={{ width: "140px" }}
         />
+        {/* REQ-1163: read bitemporal views as of a time, and as recorded at one. */}
+        <Tip text={t("sqlEditorPanel.asOfHint")} named>
+          <DateTimePicker
+            aria-label={t("sqlEditorPanel.asOfLabel")}
+            placeholder={t("sqlEditorPanel.asOfLabel")}
+            size="xs"
+            clearable
+            withSeconds
+            valueFormat="YYYY-MM-DD HH:mm:ss"
+            value={asOf}
+            onChange={(v) => setAsOf(v ? v.replace(" ", "T") : null)}
+            data-testid="sql-as-of"
+            style={{ width: "170px" }}
+          />
+        </Tip>
+        <Tip text={t("sqlEditorPanel.asRecordedHint")} named>
+          <DateTimePicker
+            aria-label={t("sqlEditorPanel.asRecordedLabel")}
+            placeholder={t("sqlEditorPanel.asRecordedLabel")}
+            size="xs"
+            clearable
+            withSeconds
+            valueFormat="YYYY-MM-DD HH:mm:ss"
+            value={asRecorded}
+            onChange={(v) => setAsRecorded(v ? v.replace(" ", "T") : null)}
+            data-testid="sql-as-recorded"
+            style={{ width: "170px" }}
+          />
+        </Tip>
         <div style={{ flex: 1 }} />
         {viewTable && (
           <Tip text={t("sqlEditorPanel.saveViewTitle", { tableName: viewTable.tableName })}>

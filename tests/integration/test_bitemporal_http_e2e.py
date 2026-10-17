@@ -212,3 +212,92 @@ async def test_bitemporal_view_http_end_to_end(client):
     # And before the first there is still nothing: the change rewrote no history.
     past = await _sql(client, select, **{"X-Provisa-As-Of": "2000-01-01T00:00:00"})
     assert _rows_and_columns(past)["data"] == {"sql": []}, past.text
+
+
+def _corrected_input(amount: int, schema: str = "views") -> str:
+    """A view whose one row is valid from 30 September (its source time), with its amount: the
+    same row corrected keeps that source time."""
+    visible = 'visibleTo: ["org_admin", "analyst", "developer"]'
+    return f"""input: {{
+        sourceId: "__derived__",
+        domainId: "btc",
+        schemaName: "{schema}",
+        tableName: "bt_corrected",
+        alias: "bt_corrected",
+        viewSql: "SELECT 1 AS id, {amount} AS amount, TIMESTAMP '2026-09-30 00:00:00' AS valid_from",
+        materialize: true,
+        mvBitemporalMode: "delta",
+        mvBitemporalKey: ["id"],
+        mvBitemporalSourceTime: "valid_from",
+        columns: [
+            {{ name: "id", {visible} }}, {{ name: "amount", {visible} }},
+            {{ name: "valid_from", {visible} }}
+        ]
+    }}"""
+
+
+async def test_a_correction_is_read_as_it_was_recorded(client):
+    """REQ-1163 (as recorded): a correction recorded later changes the view's past; a read as
+    recorded before it answers what was said then."""
+    await _admin(
+        client, 'mutation { createDomain(input: { id: "btc", description: "x" }) { success } }'
+    )
+    reg = await _admin(
+        client, f"mutation {{ registerTable({_corrected_input(10)}) {{ success message }} }}"
+    )
+    assert reg["data"]["registerTable"]["success"], reg
+    released = await _admin(
+        client, release_mutation(registered_id(reg["data"]["registerTable"]["message"]))
+    )
+    assert released["data"]["setTableDraft"]["success"], released
+    tables = await _admin(client, "query { tables { tableName schemaName } }")
+    schema = next(t for t in tables["data"]["tables"] if t["tableName"] == "bt_corrected")[
+        "schemaName"
+    ]
+    rb = await _admin(client, "mutation { rebuildSchemas { success } }")
+    assert rb["data"]["rebuildSchemas"]["success"], rb
+    from provisa.api.app import state
+    from provisa.mv.refresh import refresh_failure
+
+    mv = state.mv_registry.get("view-bt_corrected")
+    assert mv is not None and mv.bitemporal is not None
+
+    async def refresh() -> None:
+        done = await _admin(
+            client, 'mutation { refreshMv(mvId: "view-bt_corrected") { success message } }'
+        )
+        assert done["data"]["refreshMv"]["success"], done
+        assert refresh_failure(mv) is None
+
+    await refresh()
+    await asyncio.sleep(0.5)
+    recorded_before = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    await asyncio.sleep(0.5)
+    corrected = await _admin(
+        client,
+        f"mutation {{ updateTable({_corrected_input(20, schema)}) {{ success message }} }}",
+    )
+    assert corrected["data"]["updateTable"]["success"], corrected
+    await refresh()
+
+    select = 'SELECT id, amount FROM "btc"."bt_corrected"'
+    valid = {"X-Provisa-As-Of": "2026-09-30T12:00:00"}
+
+    async def amounts(**headers) -> list[int]:
+        resp = await _sql(client, select, **headers)
+        assert resp.status_code == 200, resp.text
+        return [r["amount"] for r in resp.json()["data"]["sql"]]
+
+    # As recorded before the correction: the original.
+    assert await amounts(**valid, **{"X-Provisa-As-Recorded": recorded_before}) == [10]
+    # As recorded since, and as of alone: the correction.
+    assert await amounts(**valid, **{"X-Provisa-As-Recorded": "2999-01-01T00:00:00"}) == [20]
+    assert await amounts(**valid) == [20]
+    # As recorded alone: the version in force as recorded then.
+    assert await amounts(**{"X-Provisa-As-Recorded": recorded_before}) == [10]
+    # One time, not a range.
+    bad = await _sql(
+        client, select, **{"X-Provisa-As-Recorded": "2026-10-01T00:00:00/2026-10-05T00:00:00"}
+    )
+    assert bad.status_code == 400, bad.text
+    assert "data.invalid_as_recorded" in bad.text, bad.text

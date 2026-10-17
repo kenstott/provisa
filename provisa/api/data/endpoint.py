@@ -71,6 +71,7 @@ from provisa.api.data.endpoint_helpers import (
     _inject_warnings_into_response,
     _parse_accept,
     _record_per_source_stats,
+    request_time_travel,
 )
 from provisa.federation.engine_wake import ensure_engine_awake
 from provisa.compiler.complexity import ComplexityLimitExceeded
@@ -233,6 +234,7 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     x_provisa_stats: str | None = Header(None),
     x_provisa_normalized: str | None = Header(None),
     x_provisa_as_of: str | None = Header(None),  # REQ-1163: read bitemporal MVs as of this time
+    x_provisa_as_recorded: str | None = Header(None),  # REQ-1163: as Provisa had recorded them then
     x_provisa_trace: str | None = Header(None),  # REQ-1910: "debug" asks for a debug trace
 ):
     """Execute a GraphQL query or mutation. Content negotiation via Accept header.
@@ -299,6 +301,9 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     # result. A normalized read needs the document itself, so it is not offered the plan path.
     from provisa.api.data.graphql_plan import PlanRequest
 
+    # REQ-1163: the request's time travel, both axes validated (400 on malformed) -- before the
+    # plan lookup, whose key it is part of.
+    _as_of = request_time_travel(x_provisa_as_of, x_provisa_as_recorded)
     plan_request = PlanRequest(
         state,
         role_id=role_id,
@@ -306,7 +311,7 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         schema=schema,
         query=request.query,
         variables=request.variables,
-        as_of=x_provisa_as_of,
+        as_of=_as_of,
         eligible=(x_provisa_normalized or "").lower() != "true",
     )
     plan = plan_request.cached()
@@ -407,18 +412,6 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     redirect_format, effective_threshold, force_redirect = _build_redirect_params(
         x_provisa_redirect, x_provisa_redirect_threshold, x_provisa_redirect_format, directives
     )
-
-    # REQ-1163: a request-level as-of validated to a safe SQL timestamp literal (400 on malformed).
-    _as_of = None
-    if x_provisa_as_of:
-        from provisa.mv.bitemporal import parse_as_of
-
-        try:
-            _as_of = parse_as_of(x_provisa_as_of).key()
-        except ValueError as exc:
-            raise ApiError(
-                400, "data.invalid_as_of", f"invalid X-Provisa-As-Of: {exc}", error=str(exc)
-            )
 
     stats_enabled = (x_provisa_stats or "").lower() == "true"
     if stats_enabled:

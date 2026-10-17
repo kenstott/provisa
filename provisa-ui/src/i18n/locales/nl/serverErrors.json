@@ -69,6 +69,7 @@
       "engine_not_connected": "de engine is niet verbonden",
       "grpc_source_not_registered": "Externe gRPC-bron '{{source_id}}' niet geregistreerd",
       "invalid_as_of": "ongeldige X-Provisa-As-Of: {{error}}",
+      "invalid_as_recorded": "ongeldige X-Provisa-As-Recorded: {{error}}",
       "invalid_order_by": "ongeldige sortering van de groepering: {{error}}",
       "invalid_cache_control": "ongeldige aanvraag voor de responscache: {{error}}",
       "invalid_filter": "filter moet een object zijn dat veldnamen aan waarden koppelt",

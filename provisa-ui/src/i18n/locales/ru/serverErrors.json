@@ -69,6 +69,7 @@
       "engine_not_connected": "движок не подключен",
       "grpc_source_not_registered": "Удаленный источник gRPC '{{source_id}}' не зарегистрирован",
       "invalid_as_of": "недействительный X-Provisa-As-Of: {{error}}",
+      "invalid_as_recorded": "недействительный X-Provisa-As-Recorded: {{error}}",
       "invalid_order_by": "недопустимый порядок группировки: {{error}}",
       "invalid_cache_control": "недействительный запрос кэша ответов: {{error}}",
       "invalid_filter": "filter должен быть объектом, сопоставляющим имена полей со значениями",

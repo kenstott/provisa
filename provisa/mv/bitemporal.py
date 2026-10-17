@@ -273,12 +273,18 @@ def with_read_columns(columns: list[dict], key: list[str], source_time: str | No
 
 @dataclass(frozen=True)
 class AsOf:
-    """A request's time travel (REQ-1163, REQ-2064), as validated SQL timestamp literals measured
-    on source time: a point (``end_sql`` None) answers the version of each key in force then; a
-    range ``[start_sql, end_sql)`` answers every version in force at any time within it."""
+    """A request's time travel (REQ-1163, REQ-2064), as validated SQL timestamp literals.
 
-    start_sql: str
+    On the view's clock (its source time, else its recorded time): a point (``end_sql`` None)
+    answers the version of each key in force then; a range ``[start_sql, end_sql)`` answers every
+    version in force at any time within it; neither (``start_sql`` None) the version in force now.
+    ``recorded_sql``, when given, is a second axis: the view as Provisa had recorded it at that
+    time, every version recorded later left out -- so a correction recorded since does not change
+    what is answered about the past."""
+
+    start_sql: str | None
     end_sql: str | None = None
+    recorded_sql: str | None = None
 
     @property
     def is_range(self) -> bool:
@@ -286,23 +292,40 @@ class AsOf:
 
     def key(self) -> str:
         """Its canonical form, the one a request's as-of travels the pipeline in -- its cache
-        keys, its kept statements, its record -- turned back by :meth:`from_key` where it is read."""
-        return self.start_sql if self.end_sql is None else f"{self.start_sql}/{self.end_sql}"
+        keys, its kept statements, its record -- turned back by :meth:`from_key` where it is read:
+        ``<start>[/<end>]`` on the view's clock, then ``@<recorded>`` when recorded is given."""
+        travel = "" if self.start_sql is None else self.start_sql
+        if self.end_sql is not None:
+            travel = f"{travel}/{self.end_sql}"
+        return travel if self.recorded_sql is None else f"{travel}@{self.recorded_sql}"
 
     @classmethod
     def from_key(cls, key: str) -> "AsOf":
         """The as-of a canonical form names; anything else is refused (never spliced)."""
-        parts = key.split("/")
-        if len(parts) not in (1, 2) or not all(_LITERAL.fullmatch(p) for p in parts):
+        travel, at, recorded = key.partition("@")
+        parts = travel.split("/") if travel else []
+        literals = [*parts, *([recorded] if at else [])]
+        if (
+            len(parts) > 2
+            or (not parts and not at)
+            or not all(_LITERAL.fullmatch(p) for p in literals)
+        ):
             raise ValueError(f"not a canonical as-of: {key!r}")
-        return cls(parts[0], parts[1] if len(parts) == 2 else None)
+        return cls(
+            parts[0] if parts else None,
+            parts[1] if len(parts) == 2 else None,
+            recorded if at else None,
+        )
 
 
-def _versions_sql(mv_ref: str, spec: BitemporalSpec) -> str:
+def _versions_sql(mv_ref: str, spec: BitemporalSpec, recorded_sql: str | None = None) -> str:
     """Each version of each key with the span it is in force on source time: ``_bt_from`` its
     source time, ``_bt_to`` the next version's (NULL while current). Tombstones end a span and are
-    not versions themselves."""
+    not versions themselves. With ``recorded_sql`` the log is read as it stood then: every row
+    recorded later is left out before any span is drawn (REQ-1163, as recorded)."""
     sys = _q(spec.system_column)
+    if recorded_sql is not None:
+        mv_ref = f"(SELECT * FROM {mv_ref} WHERE {sys} <= {recorded_sql})"
     # REQ-1163 (amended): a view that names no source-time column travels on Provisa's recorded
     # time instead -- its declared clock, which depends on refresh timing, not on when the source
     # changed.
@@ -315,7 +338,7 @@ def _versions_sql(mv_ref: str, spec: BitemporalSpec) -> str:
         eff = f"CASE WHEN {op} = '{_OP_DELETE}' THEN {sys} ELSE {src} END"
         spans = (
             f"SELECT *, {eff} AS _bt_from, LEAD({eff}) OVER "
-            f"(PARTITION BY {part} ORDER BY {eff}, {sys}) AS _bt_to FROM {mv_ref}"
+            f"(PARTITION BY {part} ORDER BY {eff}, {sys}) AS _bt_to FROM {mv_ref} _bl"
         )
         return f"SELECT * FROM ({spans}) _bv WHERE _bv.{op} <> '{_OP_DELETE}'"
     # Snapshot: each refresh appends the whole dataset, so a row recorded again unchanged is no
@@ -340,7 +363,7 @@ def _versions_sql(mv_ref: str, spec: BitemporalSpec) -> str:
     )
     marked = (
         f"SELECT *, CASE WHEN {changed} THEN 1 ELSE 0 END AS _bt_changed, "
-        f"MAX({sys}) OVER (PARTITION BY {part}) AS _bt_last_seen FROM {mv_ref}"
+        f"MAX({sys}) OVER (PARTITION BY {part}) AS _bt_last_seen FROM {mv_ref} _bl"
     )
     latest = (
         f"SELECT *, ROW_NUMBER() OVER (PARTITION BY {part}, {src} ORDER BY {sys} DESC) "
@@ -362,7 +385,7 @@ def view_read_sql(mv_ref: str, spec: BitemporalSpec, as_of: AsOf | None = None) 
 
     It projects ``*`` (business and system columns), because the caller inlines it as
     ``(<this>) alias`` and the outer consumer query selects columns by name."""
-    if as_of is None:
+    if as_of is None or as_of.start_sql is None:
         when = "_bt._bt_to IS NULL"
     elif as_of.end_sql is None:
         t = as_of.start_sql
@@ -375,7 +398,8 @@ def view_read_sql(mv_ref: str, spec: BitemporalSpec, as_of: AsOf | None = None) 
     return (
         f"SELECT *, _bt._bt_from AS {_q(SOURCE_FROM)}, _bt._bt_to AS {_q(SOURCE_TO)}, "
         f"_bt.{_q(spec.system_column)} AS {_q(RECORDED_AT)} "
-        f"FROM ({_versions_sql(mv_ref, spec)}) _bt WHERE {when}"
+        f"FROM ({_versions_sql(mv_ref, spec, as_of.recorded_sql if as_of else None)}) _bt "
+        f"WHERE {when}"
     )
 
 
@@ -409,6 +433,25 @@ def parse_as_of(value: str) -> AsOf:
     if finish <= begin:
         raise ValueError(f"the range's end {end.strip()} is not after its start {start.strip()}")
     return AsOf(system_ts_literal(begin), system_ts_literal(finish))
+
+
+def parse_as_recorded(value: str) -> str:
+    """Validate a request-level as-recorded value -- one ISO 8601 time -- into a SAFE SQL
+    TIMESTAMP literal (REQ-1163). A replay is of the record as it stood at one time, so a range is
+    refused."""
+    if "/" in value:
+        raise ValueError(f"as recorded is a point in time, not a range: {value.strip()}")
+    return system_ts_literal(datetime.fromisoformat(value.strip()))  # raises on bad input
+
+
+def request_as_of(as_of: str | None, as_recorded: str | None) -> str | None:
+    """The canonical as-of a request's two values travel the pipeline in (``AsOf.key``), or None
+    when it gives neither. Each is validated here; a malformed one raises ValueError."""
+    if as_of is None and as_recorded is None:
+        return None
+    travel = parse_as_of(as_of) if as_of is not None else AsOf(None)
+    recorded = parse_as_recorded(as_recorded) if as_recorded is not None else None
+    return AsOf(travel.start_sql, travel.end_sql, recorded).key()
 
 
 def as_of_view_map(

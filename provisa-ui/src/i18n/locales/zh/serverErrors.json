@@ -69,6 +69,7 @@
       "engine_not_connected": "引擎未连接",
       "grpc_source_not_registered": "gRPC 远程数据源 '{{source_id}}' 未注册",
       "invalid_as_of": "无效的 X-Provisa-As-Of：{{error}}",
+      "invalid_as_recorded": "无效的 X-Provisa-As-Recorded：{{error}}",
       "invalid_order_by": "无效的分组排序：{{error}}",
       "invalid_cache_control": "无效的响应缓存请求：{{error}}",
       "invalid_filter": "filter 必须是将字段名映射到值的对象",

@@ -307,6 +307,7 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
             x_provisa_stats=None,
             x_provisa_normalized=None,
             x_provisa_as_of=None,
+            x_provisa_as_recorded=None,
             x_provisa_trace=None,
         )
         defaults.update(headers)

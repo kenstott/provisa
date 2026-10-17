@@ -1452,12 +1452,29 @@ export function toResultRedirect(handle: {
   };
 }
 
+/**
+ * REQ-1163: a statement's time travel over bitemporal views -- as of a time on each view's clock,
+ * and as Provisa had recorded it at a time. Each is an ISO 8601 time; an empty one is not sent.
+ */
+export interface TimeTravel {
+  asOf?: string | null;
+  asRecorded?: string | null;
+}
+
+function timeTravelHeaders(travel: TimeTravel | undefined): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (travel?.asOf) headers["X-Provisa-As-Of"] = travel.asOf;
+  if (travel?.asRecorded) headers["X-Provisa-As-Recorded"] = travel.asRecorded;
+  return headers;
+}
+
 export async function runSql(
   // A statement, or a statement with the values of its $1…$n placeholders. The values are
   // sent beside the text and bound by the server; they are never written into it.
   statement: string | { sql: string; params: (string | number)[] },
   role: string = "org_admin",
   statsEnabled: boolean = false,
+  timeTravel?: TimeTravel,
 ): Promise<{
   columns: string[];
   /** REQ-1937: each column's SQL type, parallel to `columns`; null when the engine reported none. */
@@ -1481,6 +1498,7 @@ export async function runSql(
       // `role` is a fallback for callers with no auth context at all. Without it here, the
       // middleware's default-assigned role silently overrode the SQL Explorer's picker.
       "X-Provisa-Role": role,
+      ...timeTravelHeaders(timeTravel),
     };
     if (statsEnabled) headers["X-Provisa-Stats"] = "true";
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
@@ -1575,6 +1593,7 @@ export async function explainSql(
   sqlText: string,
   role: string = "org_admin",
   analyze: boolean = false,
+  timeTravel?: TimeTravel,
 ): Promise<ExplainResponse> {
   const resp = await fetch(`${API_BASE_RAW}/data/sql/explain`, {
     method: "POST",
@@ -1582,6 +1601,7 @@ export async function explainSql(
       "Content-Type": "application/json",
       Accept: "application/json",
       "X-Provisa-Role": role,
+      ...timeTravelHeaders(timeTravel),
     },
     body: JSON.stringify({ sql: sqlText, analyze }),
   });

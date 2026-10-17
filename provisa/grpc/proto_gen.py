@@ -554,11 +554,12 @@ def generate_proto(
     lines.append("}")
     lines.append("")
 
-    # --- resolve(uri, as_of) (REQ-1365): the GraphQL field's arguments; the answer, whose shape
+    # --- resolve(uri, as_of, as_recorded) (REQ-1365, REQ-1163): the GraphQL field's arguments; the answer, whose shape
     # is the addressed row's, as JSON (as a command's rows are).
     lines.append(f"message {RESOLVE_RPC}AddressRequest {{")
     lines.append("  string uri = 1;")
     lines.append("  string as_of = 2;")
+    lines.append("  string as_recorded = 3;")
     lines.append("}")
     lines.append("")
     lines.append(f"message {RESOLVE_RPC}AddressResponse {{")

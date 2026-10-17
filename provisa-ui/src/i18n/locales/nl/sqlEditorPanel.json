@@ -31,6 +31,10 @@
     "rowCountLabel": "Aantal rijen",
     "roleLabel": "Rol",
     "createView": "+ View",
-    "requestView": "View aanvragen"
+    "requestView": "View aanvragen",
+    "asOfLabel": "Per",
+    "asOfHint": "Views met historie lezen zoals ze op dit moment waren",
+    "asRecordedLabel": "Vastgelegd op",
+    "asRecordedHint": "Views met historie lezen zoals Provisa ze toen had vastgelegd, vóór latere correcties"
   }
 }
