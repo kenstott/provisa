@@ -76,3 +76,52 @@ def test_the_vm_runs_the_retail_demos_stores():
     assert "PROVISA_DEMO_BUNDLES=weblogs,files,sonnets,reviews,quality,retail" in sandbox
     # Published on the VM's VPC address, where the coordinator reaches it.
     assert 'export PROVISA_SANDBOX_REGIONS_PUBLISH="${var.sandbox_internal_ip}:8100"' in sandbox
+
+
+def _guard() -> str:
+    """The boot guard at the head of base_startup (main.tf), as the shell sees it."""
+    main = (_TF / "main.tf").read_text()
+    body = main[main.index("base_startup = <<-SHELL") :]
+    body = body[
+        body.index('    startup_sha="') : body.index("    fi\n", body.index("startup_done=")) + 7
+    ]
+    return "\n".join(line[4:] for line in body.splitlines()).replace("$${", "${")
+
+
+def test_a_wake_with_the_startup_script_it_last_completed_sets_nothing_up(tmp_path):
+    """A boot whose startup script last ran to its end exits before the apt installs, the
+    release download, the image loads and the stack recreate; a changed script runs in full."""
+    import shutil
+    import subprocess
+
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    (bindir / "curl").write_text('#!/bin/sh\ncat "$SCRIPT"\n')
+    (bindir / "curl").chmod(0o755)
+    if shutil.which("sha256sum", path="/usr/bin:/bin") is None:  # macOS has shasum; Ubuntu both
+        (bindir / "sha256sum").write_text('#!/bin/sh\nexec shasum -a 256 "$@"\n')
+        (bindir / "sha256sum").chmod(0o755)
+    done = tmp_path / "startup.sha256"
+    script = tmp_path / "run.sh"
+    script.write_text(
+        "set -euo pipefail\n"
+        + _guard().replace("/var/lib/provisa-startup.sha256", str(done))
+        + '\necho "FULL RUN"\necho "$startup_sha" > "$startup_done"\n'
+    )
+    metadata = tmp_path / "startup-script"
+
+    def boot(content: str) -> str:
+        metadata.write_text(content)
+        env = {"PATH": f"{bindir}:/usr/bin:/bin", "SCRIPT": str(metadata)}
+        return subprocess.run(
+            ["bash", str(script)], env=env, capture_output=True, text=True, check=True
+        ).stdout
+
+    assert "FULL RUN" in boot("release 490")
+    assert "FULL RUN" not in boot("release 490")
+    assert "FULL RUN" in boot("release 491")
+    # Each node records its completed run as its startup script's last line.
+    for tf, launch in (("main.tf", "--ram-gb 0\n"), ("sandbox.tf", "--ram-gb 0\n")):
+        text = (_TF / tf).read_text()
+        after = text[text.rindex(launch) + len(launch) :]
+        assert after.lstrip().startswith('echo "$startup_sha" > "$startup_done"'), tf

@@ -119,6 +119,7 @@ resource "google_compute_instance" "sandbox" {
         --non-interactive \
         --role control-plane \
         --ram-gb 0
+      echo "$startup_sha" > "$startup_done"
     SHELL
   })
 }

@@ -218,6 +218,19 @@ locals {
   base_startup = <<-SHELL
     #!/bin/bash
     set -euo pipefail
+    # A boot whose startup script is the one that last ran to its end (this release, this
+    # configuration) has nothing to set up: Docker's restart policy has already brought the stack
+    # back. Re-running it cost every wake the apt installs, the release download, the image loads
+    # and a recreate of the stack that killed requests already being served. A changed script
+    # (a new release, a changed variable) runs in full, and its last line records it.
+    startup_sha="$(curl -fsS -H 'Metadata-Flavor: Google' \
+      http://metadata.google.internal/computeMetadata/v1/instance/attributes/startup-script \
+      | sha256sum | cut -d' ' -f1)"
+    startup_done=/var/lib/provisa-startup.sha256
+    if [ -f "$startup_done" ] && [ "$(cat "$startup_done")" = "$startup_sha" ]; then
+      echo "startup script unchanged since its last complete run: nothing to set up"
+      exit 0
+    fi
     cat > /etc/apt/apt.conf.d/99provisa-resilient <<'APTCONF'
     Acquire::http::Timeout "30";
     Acquire::https::Timeout "30";
@@ -579,6 +592,7 @@ resource "google_compute_instance" "coordinator" {
         --non-interactive \
         --role control-plane \
         --ram-gb 0
+      echo "$startup_sha" > "$startup_done"
     SHELL
   })
 }
