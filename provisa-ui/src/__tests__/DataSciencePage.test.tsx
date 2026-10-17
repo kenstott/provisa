@@ -10,11 +10,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
+import { MemoryRouter } from "react-router-dom";
 import "../i18n";
 
 vi.mock("../dataScience/bridge", () => ({ bridgeAuth: vi.fn() }));
+vi.mock("../dataScience/runReports", async (real) => ({
+  ...(await real<typeof import("../dataScience/runReports")>()),
+  reportRun: vi.fn(),
+}));
 
 import { bridgeAuth } from "../dataScience/bridge";
+import { reportRun } from "../dataScience/runReports";
 import { DataSciencePage, STARTER_CODE, type MakeWorker } from "../pages/DataSciencePage";
 import type { FromWorker, ToWorker } from "../dataScience/protocol";
 
@@ -37,10 +43,12 @@ function workerDouble() {
   return { sent, double, reply, make };
 }
 
-function page(make: MakeWorker) {
+function page(make: MakeWorker, state?: Record<string, unknown>) {
   return render(
     <MantineProvider>
-      <DataSciencePage makeWorker={make} />
+      <MemoryRouter initialEntries={[{ pathname: "/science", state }]}>
+        <DataSciencePage makeWorker={make} />
+      </MemoryRouter>
     </MantineProvider>,
   );
 }
@@ -112,7 +120,15 @@ describe("DataSciencePage", () => {
       type: "result",
       id: 1,
       stdout: "rows 2\n",
-      value: { kind: "table", columns: ["region", "n"], rows: [["EU", 3], ["US", null]], total: 9 },
+      value: {
+        kind: "table",
+        columns: ["region", "n"],
+        rows: [
+          ["EU", 3],
+          ["US", null],
+        ],
+        total: 9,
+      },
       images: ["iVBORw0KGgo="],
       error: null,
     });
@@ -151,6 +167,42 @@ describe("DataSciencePage", () => {
     for (let i = 0; i < 20; i++) fireEvent.keyDown(rule, { key: "ArrowUp" });
     expect(rule).toHaveAttribute("aria-valuenow", "15");
     expect(screen.queryByRole("heading", { name: "Data Science" })).not.toBeInTheDocument();
+  });
+
+  it("runs code it is handed once Python is ready, and reports the run under its id", async () => {
+    serve(
+      new Response(JSON.stringify(MANIFEST), { headers: { "content-type": "application/json" } }),
+    );
+    const { make, sent, reply } = workerDouble();
+    page(make, { code: "print(2)", autoRun: true, runId: "polly-7" });
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent.find((m) => m.type === "run")).toBeUndefined();
+    reply({ type: "ready" });
+    await waitFor(() => expect(sent.at(-1)).toEqual({ type: "run", id: 1, code: "print(2)" }));
+    reply({
+      type: "result",
+      id: 1,
+      stdout: "2\n",
+      value: { kind: "none" },
+      images: [],
+      error: null,
+    });
+    await waitFor(() =>
+      expect(reportRun).toHaveBeenCalledWith("polly-7", { stdout: "2\n", value: "", error: null }),
+    );
+  });
+
+  it("reports at once that a handed run cannot run when the notebook assets are missing", async () => {
+    serve(new Response('{"detail":"Not Found"}', { status: 404 }));
+    const { make } = workerDouble();
+    page(make, { code: "1", autoRun: true, runId: "polly-8" });
+    await waitFor(() =>
+      expect(reportRun).toHaveBeenCalledWith("polly-8", {
+        stdout: "",
+        value: "",
+        error: "This server's notebook assets are missing",
+      }),
+    );
   });
 
   it("says plainly when Python cannot start", async () => {

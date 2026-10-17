@@ -584,7 +584,13 @@ _CLIENT_TOOLS: list[Any] = [
             "it immediately when state.autoRun is true, landing it in the editor with no "
             "copy-paste needed. See the system prompt's section on the query surfaces for which "
             "tool to call first to get each surface's real field/name identifiers before "
-            "building the query."
+            "building the query. /science is the Data Science area's Python: Python "
+            "run in the user's browser as the user, reading Provisa through provisa_client "
+            "(provisa_client.query(sql_or_graphql_or_cypher) returns a pandas DataFrame; pandas, "
+            "numpy, scikit-learn and matplotlib are available). A /science navigate with "
+            "state.code and autoRun waits for the run and its result says what the code "
+            "printed, its last value (a DataFrame as its columns, first rows and row count) and "
+            "any error, so read the result before you answer."
         ),
         "input_schema": {
             "type": "object",
@@ -608,7 +614,9 @@ _CLIENT_TOOLS: list[Any] = [
                         "graphql_field_names verbatim, never `/{schema}/{table}` yourself (that "
                         "is the sql-safe name, not the raw domain id these routes key on), "
                         '/openapi -> {"openApiUrl": "..."} — same, use the openapi_path returned '
-                        "by graphql_field_names verbatim. Always also set "
+                        "by graphql_field_names verbatim. "
+                        '/science -> {"code": "<Python>"} (the run\'s output comes back '
+                        "in the tool result). Always also set "
                         '"autoRun": true alongside whichever key applies.'
                     ),
                 },
@@ -828,7 +836,8 @@ _SYSTEM = (
     "(state.query), Cypher /graph (state.query), SQL /sql (state.sql), gRPC /grpc "
     "(state.grpcMethod), JSON:API /jsonapi (state.jsonapiUrl), OpenAPI /openapi (state.openApiUrl), "
     "NL /nl (no state deep-link — type the question directly if asked to use the NL surface "
-    "itself). Always pass state.autoRun=true alongside so the query runs immediately instead of "
+    "itself), Python /science (state.code; its run's output, value and error come back in the "
+    "navigate result). Always pass state.autoRun=true alongside so the query runs immediately instead of "
     "sitting unrun in the editor.\n"
     "For anything beyond browsing one table's plain columns — aggregation, GROUP BY, a "
     "business-term filter, or a question spanning more than one table — call "

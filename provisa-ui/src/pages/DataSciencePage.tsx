@@ -32,6 +32,8 @@ import {
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { bridgeAuth } from "../dataScience/bridge";
+import { reportRun, summarise } from "../dataScience/runReports";
+import { useNavPayload } from "../hooks/useNavPayload";
 import type { FromWorker, PyodideManifest, RunValue, ToWorker } from "../dataScience/protocol";
 
 /** The first cell: load the client and say who it reads as. The same lines run on a desktop. */
@@ -119,6 +121,18 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
     window.addEventListener("pointerup", up);
   }, []);
   const nextRun = useRef(0);
+  // REQ-2071: a run Polly asked for (navigate with state.code and autoRun) is reported back
+  // under its run id once it finishes, or at once when it cannot run.
+  const pending = useRef<{ code: string; runId: string | null } | null>(null);
+  const [pendingTick, setPendingTick] = useState(0);
+  const runIds = useRef(new Map<number, string>());
+  useNavPayload<{ code?: string; autoRun?: boolean; runId?: string }>((payload) => {
+    if (typeof payload.code !== "string") return;
+    setCode(payload.code);
+    if (payload.autoRun !== true) return;
+    pending.current = { code: payload.code, runId: payload.runId ?? null };
+    setPendingTick((n) => n + 1);
+  });
 
   useEffect(() => {
     let live = true;
@@ -141,6 +155,9 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
         } else {
           setOutput(message);
           setStatus("ready");
+          const runId = runIds.current.get(message.id);
+          runIds.current.delete(message.id);
+          if (runId !== undefined) reportRun(runId, summarise(message));
         }
       };
       const init: ToWorker = { type: "init", manifest, auth: await bridgeAuth() };
@@ -153,17 +170,41 @@ function PythonTab({ makeWorker }: { makeWorker: MakeWorker }) {
     };
   }, [makeWorker]);
 
-  const run = useCallback(async () => {
-    const w = worker.current;
-    if (w === null || status !== "ready") return;
-    setStatus("running");
-    // The identity is read at the moment of the run: a rotated token or a newly picked role,
-    // org or environment is what the code reads as.
-    const auth: ToWorker = { type: "auth", auth: await bridgeAuth() };
-    w.postMessage(auth);
-    const message: ToWorker = { type: "run", id: ++nextRun.current, code };
-    w.postMessage(message);
-  }, [code, status]);
+  const run = useCallback(
+    async (source: string = code, runId: string | null = null) => {
+      const w = worker.current;
+      if (w === null || status !== "ready") return;
+      setStatus("running");
+      // The identity is read at the moment of the run: a rotated token or a newly picked role,
+      // org or environment is what the code reads as.
+      const auth: ToWorker = { type: "auth", auth: await bridgeAuth() };
+      w.postMessage(auth);
+      const id = ++nextRun.current;
+      if (runId !== null) runIds.current.set(id, runId);
+      const message: ToWorker = { type: "run", id, code: source };
+      w.postMessage(message);
+    },
+    [code, status],
+  );
+
+  // A requested run waits for Python to be ready; where Python cannot run, it says why at once.
+  useEffect(() => {
+    const request = pending.current;
+    if (request === null) return;
+    if (status === "ready") {
+      pending.current = null;
+      void run(request.code, request.runId);
+    } else if (status === "missing" || status === "failed") {
+      pending.current = null;
+      if (request.runId !== null) {
+        reportRun(request.runId, {
+          stdout: "",
+          value: "",
+          error: status === "missing" ? t("dataScience.missingTitle") : t("dataScience.failed"),
+        });
+      }
+    }
+  }, [status, pendingTick, run, t]);
 
   if (status === "checking") return <Loader size="sm" m="md" />;
   if (status === "missing") {

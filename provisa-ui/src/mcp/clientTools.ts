@@ -9,6 +9,13 @@
 // permission from the copyright holder.
 
 import type { NavigateFunction } from "react-router-dom";
+import { awaitRun } from "../dataScience/runReports";
+
+/** REQ-2071: the Data Science area, whose runs report back to the model. */
+const DATA_SCIENCE_ROUTE = "/science";
+/** How long a Python run Polly asked for may take before the tool answers without it. */
+const PYTHON_RUN_TIMEOUT_MS = 180_000;
+let pollyRuns = 0;
 
 /**
  * Client-executed MCP chat tools (REQ-1795) — the browser-only half of the tool set
@@ -66,9 +73,25 @@ export async function executeClientTool(
     // QueryPage.tsx's AutoRunFromNav reads location.state.query/autoRun to populate and run a
     // GraphQL query the instant the page mounts). Generic passthrough, not hardcoded to one
     // page, so any route that already reads its own location.state keys keeps working here too.
-    const state = input.state && typeof input.state === "object"
-      ? (input.state as Record<string, unknown>)
-      : undefined;
+    const state =
+      input.state && typeof input.state === "object"
+        ? (input.state as Record<string, unknown>)
+        : undefined;
+    // REQ-2071: Python the model hands the Data Science area to run comes back as the run's
+    // output, so the model can read what its code printed, returned or raised.
+    if (route === DATA_SCIENCE_ROUTE && state?.autoRun === true && typeof state.code === "string") {
+      const runId = `polly-${++pollyRuns}`;
+      const report = awaitRun(runId, PYTHON_RUN_TIMEOUT_MS);
+      ctx.navigate(route, { state: { ...state, runId } });
+      const { stdout, value, error } = await report;
+      const parts = [
+        `Ran the code in ${route}.`,
+        stdout && `Printed:\n${stdout}`,
+        value && `Value:\n${value}`,
+        error && `Error:\n${error}`,
+      ].filter(Boolean);
+      return { success: error === null, message: parts.join("\n\n") };
+    }
     ctx.navigate(route, state ? { state } : undefined);
     return { success: true, message: `Navigated to ${route}` };
   }
