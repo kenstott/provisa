@@ -759,7 +759,11 @@ async def _seed_demo_templates(_log: logging.Logger) -> None:  # REQ-2006
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
     import threading
 
-    from provisa.api.demo_templates import ensure_demo_templates, prefetch_connector_bundles
+    from provisa.api.demo_templates import (
+        ensure_demo_templates,
+        load_embedding_models,
+        prefetch_connector_bundles,
+    )
 
     if state.admin_db is None:
         raise RuntimeError("The demo templates need the control-plane registry, which is not bound")
@@ -767,6 +771,10 @@ async def _seed_demo_templates(_log: logging.Logger) -> None:  # REQ-2006
     # own: hundreds of megabytes that no request should wait for.
     threading.Thread(
         target=prefetch_connector_bundles, daemon=True, name="demo-connector-bundles"
+    ).start()
+    # Their embedding models likewise: importing and loading one outlasted a search's timeout.
+    threading.Thread(
+        target=load_embedding_models, daemon=True, name="demo-embedding-models"
     ).start()
     for demo, outcome in (await ensure_demo_templates(state.admin_db)).items():
         _log.info("demo template %s: %s", demo, outcome)

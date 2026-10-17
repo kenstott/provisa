@@ -256,6 +256,29 @@ def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch
     assert rd.BundleResolver().is_cached(rd.bundle_spec_for("files"))
 
 
+def test_the_demos_embedding_models_are_loaded_outside_any_request(monkeypatch):
+    """The sandbox tier loads the local embedding model every published demo declares (the
+    sonnets demo's) at startup, so a visitor's first search does not spend its request timeout
+    importing sentence-transformers and loading the model."""
+    from provisa.api import demo_templates
+    from provisa.core import request_deadline
+    from provisa.vector.providers import HuggingFaceLocalProvider
+
+    monkeypatch.delenv("PROVISA_DEMO_BUNDLES", raising=False)
+    monkeypatch.delenv("PROVISA_NAMED_DEMO_DIR", raising=False)
+    loaded: list[tuple[str, float | None]] = []
+
+    def _loaded(self, model):
+        loaded.append((model.id, request_deadline.remaining()))
+
+    monkeypatch.setattr(HuggingFaceLocalProvider, "_loaded", _loaded)
+    assert [m.id for m in demo_templates.embedding_models()] == [
+        "sentence-transformers/all-MiniLM-L6-v2"
+    ]
+    demo_templates.load_embedding_models()
+    assert loaded == [("sentence-transformers/all-MiniLM-L6-v2", None)]
+
+
 def test_the_sandbox_tier_finds_the_deployments_demo_data():
     """The sandbox tier builds the deployment's org at startup too, so the demo config's SQLite
     sources resolve ${env:PROVISA_DEMO_DIR} there: both the compose a node is set up with and the

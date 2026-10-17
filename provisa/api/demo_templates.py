@@ -309,6 +309,37 @@ def prefetch_connector_bundles() -> None:
             )
 
 
+def embedding_models() -> list[Any]:  # list[VectorModelConfig]
+    """The local (huggingface) embedding models the published demos declare and enable, once
+    each: the sonnets demo's, which its search tables embed a phrase with."""
+    seen: dict[str, Any] = {}
+    for demo in published_demos().values():
+        for model in template_seed(demo.template_org).vector_models:
+            if model.provider == "huggingface" and model.enabled:
+                seen.setdefault(model.id, model)
+    return list(seen.values())
+
+
+def load_embedding_models() -> None:
+    """Load the demos' local embedding models into this process now, outside any request, so a
+    visitor's first search finds them loaded. Importing sentence-transformers and loading a model
+    took a hosted tier's first search past its 60s request timeout, every time the node started.
+    A model that cannot be loaded is logged by name; the request that needs it then loads it
+    (``HuggingFaceLocalProvider.embed``)."""
+    import logging
+
+    from provisa.vector.providers import HuggingFaceLocalProvider
+
+    log = logging.getLogger(__name__)
+    provider = HuggingFaceLocalProvider()
+    for model in embedding_models():
+        try:
+            provider.load(model)
+            log.info("embedding model %s: loaded", model.id)
+        except Exception:  # allow-ble: a model the deploy cannot load leaves the tier serving; the request that needs it loads it, and fails, by name
+            log.exception("embedding model %s was not loaded", model.id)
+
+
 _ENV_REF = re.compile(r"\$\{env:([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}")
 
 
