@@ -302,6 +302,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
 
     tree = tree.transform(_rewrite)
     _lower_column_aliases(tree, ctx)
+    _lower_virtual_columns(tree, ctx)
 
     for col in tree.find_all(exp.Column):
         tbl_id = col.args.get("table")
@@ -402,6 +403,54 @@ def _lower_column_aliases(tree: exp.Expression, ctx: CompilationContext) -> None
             if isinstance(projection, exp.Column) and id(projection) in renamed:
                 published = renamed[id(projection)]
                 projection.replace(exp.alias_(projection.copy(), published, quoted=True))
+
+
+def _lower_virtual_columns(tree: exp.Expression, ctx: CompilationContext) -> None:
+    """Answer, IN PLACE, every reference to a registered table's virtual column (``_name_``,
+    ``_domain_``) with the value GraphQL answers it with (``ctx.virtual_columns``): the source
+    holds no such column, though the catalog lists one on every table. A selected one keeps its
+    name. An unqualified one is answered only where exactly one source of its scope is a
+    registered table; otherwise it is left for the engine to refuse, as PostgreSQL does."""
+    from sqlglot.optimizer.scope import traverse_scope
+
+    from provisa.compiler.sql_where import _VIRTUAL_COLS
+
+    values: dict[tuple[str, str], dict[str, str]] = {}
+    for m in _all_table_metas(ctx):
+        found = ctx.virtual_columns.get(m.table_id)
+        if found:
+            values[(m.schema_name.lower(), m.table_name.lower())] = found
+    if not values or not isinstance(tree, exp.Query):
+        return
+    for scope in traverse_scope(tree):
+        tables: dict[str, dict[str, str]] = {}
+        others = False
+        for name, source in scope.sources.items():
+            found = None
+            if isinstance(source, exp.Table):
+                found = values.get((source.db.lower(), source.name.lower()))
+            if found is None:
+                others = True
+            else:
+                tables[name] = found
+        if not tables:
+            continue
+        for col in list(scope.columns):
+            key = col.name.lower()
+            if key not in _VIRTUAL_COLS:
+                continue
+            if col.table:
+                vals = tables.get(col.table)
+            else:
+                vals = next(iter(tables.values())) if len(tables) == 1 and not others else None
+            if vals is None or key not in vals:
+                continue
+            literal = exp.Literal.string(vals[key])
+            parent = col.parent
+            if isinstance(parent, exp.Select) and col in parent.expressions:
+                col.replace(exp.alias_(literal, key, quoted=True))
+            else:
+                col.replace(literal)
 
 
 def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # REQ-641
