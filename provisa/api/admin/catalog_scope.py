@@ -101,9 +101,10 @@ def catalog_scope(info: Any) -> CatalogScope:
     from provisa.api.flight.catalog import role_visibility
     from provisa.security.rights import acting_claims, capabilities_for_claims
 
-    identity = _identity_from_info(info)
-    if identity is None:
-        # No middleware resolved anybody: there is nobody to narrow for.
+    context = info.context
+    request = context.get("request") if isinstance(context, dict) else context.request
+    if request is None:
+        # The process's own call (the boot's warmup queries): no request, nobody to narrow for.
         return CatalogScope(
             whole=True,
             admin=True,
@@ -113,7 +114,18 @@ def catalog_scope(info: Any) -> CatalogScope:
             governance=True,
             role=None,
         )
-    request = info.context["request"] if isinstance(info.context, dict) else info.context.request
+    identity = _identity_from_info(info)
+    if identity is None:
+        # A request the auth middleware resolved nobody for is answered nothing.
+        return CatalogScope(
+            whole=False,
+            admin=False,
+            admin_reach=frozenset(),
+            reach=frozenset(),
+            served={},
+            governance=False,
+            role=None,
+        )
     role = getattr(request.state, "role", None)
     if getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
         # No auth provider: no right is enforced, but the catalog is the one the roles the request

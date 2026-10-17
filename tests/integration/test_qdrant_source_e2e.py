@@ -295,7 +295,16 @@ def server(qdrant, embeddings, tmp_path_factory):
                 "source_column": "id",
                 "target_column": "id",
                 "cardinality": "many-to-one",
-            }
+            },
+            # dogs_joined joins the text search back to docs, through its own relationship.
+            {
+                "id": "text-search-doc",
+                "source_table_id": "docs_by_text",
+                "target_table_id": "docs",
+                "source_column": "id",
+                "target_column": "id",
+                "cardinality": "many-to-one",
+            },
         ],
     }
     work = tmp_path_factory.mktemp("qdrant_e2e")

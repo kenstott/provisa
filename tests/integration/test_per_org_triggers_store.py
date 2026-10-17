@@ -191,7 +191,10 @@ async def test_each_orgs_trigger_writes_only_its_own_orgs_table(two_orgs):
     scheduler = background_scheduler()
     for org in _ORGS:
         assert await jobs.register_org_triggers(scheduler, org, None) == 1
-    assert {j.id for j in scheduler.get_jobs()} == {f"nightly:org_{org}" for org in _ORGS}
+    # Each org's own trigger, and its service-level evaluation (REQ-506), keyed by the org.
+    assert {j.id for j in scheduler.get_jobs()} == {
+        job for org in _ORGS for job in (f"nightly:org_{org}", f"sla:evaluate:org_{org}")
+    }
 
     # Fire org trga's job alone, with nothing bound, as the scheduler fires it.
     job = scheduler.get_job("nightly:org_trga")

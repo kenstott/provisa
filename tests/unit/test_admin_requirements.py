@@ -13,6 +13,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+import re
+
 import pytest
 
 
@@ -524,7 +526,7 @@ class TestREQ620AdminGraphQLMount:
         import provisa.api.app as app_mod
 
         src = inspect.getsource(app_mod)
-        assert "GraphQLRouter(admin_schema" in src
+        assert re.search(r"GraphQLRouter\(\s*admin_schema\b", src)
 
 
 # ---------------------------------------------------------------------------
@@ -542,7 +544,7 @@ class TestREQ622GraphiQLAccessible:
 
         src = inspect.getsource(app_mod)
         # Check that GraphQLRouter is created and graphiql is not set to False
-        assert "GraphQLRouter(admin_schema" in src
+        assert re.search(r"GraphQLRouter\(\s*admin_schema\b", src)
         # Strawberry's GraphQLRouter exposes GraphiQL by default; confirm no explicit disable
         assert "graphiql=False" not in src
 

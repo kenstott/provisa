@@ -285,10 +285,17 @@ async def test_with_no_auth_provider_the_catalog_is_the_named_roles():
     assert orders.columns[0].visible_to == ["analyst"] and orders.view_sql == "SELECT 1"
 
 
-async def test_a_request_no_middleware_resolved_is_not_narrowed():
-    """No identity at all: nothing authenticated anybody, so there is nobody to narrow for."""
+async def test_a_request_with_no_identity_is_answered_nothing():
+    """A request the auth middleware resolved nobody for is answered no catalog at all."""
     state = types.SimpleNamespace(identity=None, role=None)
     info = types.SimpleNamespace(context={"request": types.SimpleNamespace(state=state)})
+    assert await _tables(info) == {}
+    assert [d.id for d in await Query().domains(info)] == []
+
+
+async def test_the_process_own_call_with_no_request_is_not_narrowed():
+    """The boot's warmup queries run with no request: the process asks, nobody to narrow for."""
+    info = types.SimpleNamespace(context={})
     assert await _tables(info) == {
         "orders": _COLUMNS[1],
         "customers": _COLUMNS[2],

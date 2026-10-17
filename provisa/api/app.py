@@ -28,7 +28,8 @@ from collections.abc import MutableMapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Response
+from starlette.requests import HTTPConnection
 
 from provisa.core import model_change
 from provisa.core.config_location import config_path_str
@@ -4324,10 +4325,16 @@ def create_app() -> FastAPI:
         pass
 
     # Admin GraphQL API (Strawberry) at /admin/graphql
-    async def _admin_graphql_context(request: Request):
+    async def _admin_graphql_context(request: HTTPConnection):
+        # HTTPConnection, not Request: FastAPI supplies it to a WebSocket too, which the router
+        # below then closes as offering no protocol, before any resolver.
         return {"request": request}
 
-    admin_router = GraphQLRouter(admin_schema, context_getter=_admin_graphql_context)
+    # HTTP only: the admin schema has no subscriptions, and the auth middleware resolves an identity
+    # for HTTP requests alone, so a WebSocket must never reach a resolver.
+    admin_router = GraphQLRouter(
+        admin_schema, context_getter=_admin_graphql_context, subscription_protocols=()
+    )
     app.include_router(admin_router, prefix="/admin/graphql")
 
     # X-Schema-Version on /admin/graphql, the post-trial license notice header (REQ-1137) and the
