@@ -439,6 +439,9 @@ class NativeEngineBackend(EngineBackend):
                     # whether a region keeps a replica of its tables.
                     replicate=_rs_dict["replicate"],
                     load_protected=_rs_dict["load_protected"],
+                    # REQ-2031: a cache_ttl that never expires keeps the source's tables on their
+                    # replica (replica_routing.table_floor), as replicate does.
+                    cache_ttl=_rs_dict["cache_ttl"],
                     federation_hints={},
                     # REQ-1742: forwarded so _attach_tbl's merged SimpleNamespace below (which reads
                     # it via getattr(src, "mapping", {})) can actually see it — same gap base_url
