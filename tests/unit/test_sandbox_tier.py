@@ -358,7 +358,15 @@ def test_a_cloud_deploy_reaches_the_sandbox_vm_too():
     # The coordinator of a deployment with a sandbox VM gets no demo stores of its own.
     stores = deploy[deploy.index("push_demo_stores() {") :]
     stores = stores[: stores.index("\n}\n")]
-    assert '[ "$NODE" != "$SANDBOX_NODE" ]' in stores and "return" in stores
+    assert "if sandbox_on_own_vm; then" in stores and "return" in stores
+    own_vm = deploy[deploy.index("sandbox_on_own_vm() {") :]
+    assert '[ "$NODE" != "$SANDBOX_NODE" ]' in own_vm[: own_vm.index("\n}\n")]
+    # Nor is the tier's container restarted on it: it is on the VM.
+    restart = deploy[deploy.index("restart() {") :]
+    restart = restart[: restart.index("\n}\n")]
+    assert (
+        "if sandbox_on_own_vm; then" in restart and "grep -vx compose-provisa-sandbox-1" in restart
+    )
     # The overlay publishes the tier on the VM's VPC address, read from the instance.
     assert "value(networkInterfaces[0].networkIP)" in body and "SANDBOX_PUBLISH=" in body
     assert '- "${SANDBOX_PUBLISH}:8000"' in deploy

@@ -28,6 +28,11 @@ locals {
 
   # The demo-stores sync (scripts/demo_stores_sync.sh) and its units, installed from the repo at
   # every boot; deploy-cloud.sh refreshes them between boots.
+  # The demos each sandbox tier offers, from one list (packaging/linux/demo-stores/*-bundles):
+  # the stores this VM runs are both tiers' demos.
+  sandbox_tier_bundles = trimspace(file("${path.module}/../../packaging/linux/demo-stores/sandbox-tier-bundles"))
+  regions_tier_bundles = trimspace(file("${path.module}/../../packaging/linux/demo-stores/regions-tier-bundles"))
+
   sandbox_demo_stores = <<-SHELL
     install -d /root/.provisa/bin
     echo '${base64encode(file("${path.module}/../../scripts/demo_stores_sync.sh"))}' | base64 -d > /root/.provisa/bin/demo_stores_sync.sh
@@ -41,7 +46,7 @@ locals {
       echo "$b64" | base64 -d > /etc/systemd/system/provisa-demo-stores.$unit
     done
     cat > /root/.provisa/demo-stores.env <<'ENV'
-    PROVISA_DEMO_BUNDLES=weblogs,files,sonnets,reviews,quality,insider,testdata,retail
+    PROVISA_DEMO_BUNDLES=${local.sandbox_tier_bundles},${local.regions_tier_bundles}
     DEMO_BUNDLES_DIR=/root/.provisa/sandbox-data/demo-bundles
     DEMO_PULL=docker exec compose-provisa-sandbox-1 python -m provisa.core.demo_bundles
     DEMO_PULL_INTO=/var/lib/provisa/demo-bundles
