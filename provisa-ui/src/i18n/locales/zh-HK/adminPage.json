@@ -120,7 +120,14 @@
         "redis_tls_required": "在要求使用 TLS 時，Redis 必須使用 TLS。",
         "price_entry_invalid": "每個條目是一個模型 ID 和四個每百萬 token 價格：輸入、輸出、快取讀取、快取寫入（{{entry}}）。",
         "retry_max_below_interval": "最長等待時間不可小於重試間隔（{{other}}）。",
-        "cannot_decrypt": "無法用目前的金鑰解密已儲存的值。"
+        "cannot_decrypt": "無法用目前的金鑰解密已儲存的值。",
+        "internal_tls_set_by_chart": "此項由 Helm chart 在此設定：請變更 chart 值 {{value}}。",
+        "internal_tls_not_trino": "只有 Trino 引擎才能加密引擎節點之間的流量。",
+        "internal_tls_single_node": "此部署的引擎是單節點協調器：引擎節點之間沒有流量。",
+        "not_a_subnet": "請輸入 CIDR 格式的網絡，例如 172.30.250.0/24（{{value}}）。",
+        "not_an_address": "請輸入 IP 位址（{{value}}）。",
+        "outside_subnet": "協調器的位址必須位於引擎網絡內（{{subnet}}）。",
+        "not_reserved_for_coordinator": "協調器的位址必須位於引擎網絡的下半部分，且在其網關之後（{{subnet}}）。"
       },
       "group": {
         "general": "一般及 HTTP",

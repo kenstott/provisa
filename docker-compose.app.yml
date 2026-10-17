@@ -44,6 +44,9 @@ services:
       - "${FLIGHT_PORT:-8815}:8815"
     volumes:
       - ./demo:/app/demo:ro
+      # The engine's tree (its config, its catalogs, the launch-settings file), shared with the
+      # engine through the host: what the app renders here is what the engine starts on next.
+      - ${PROVISA_TRINO_ETC_HOST:?the engine tree the launcher shares with the app}:/app/trino-host
       # The data directory, on a named volume: it holds the master key the product mints at the
       # first stored secret (and its other on-disk state). Kept only in the container's own
       # filesystem, the key is lost when the container is replaced (a rebuild, an image
@@ -75,6 +78,7 @@ services:
       # the deployment's intended engine pin.
       PROVISA_ENGINE: "${PROVISA_ENGINE:-duckdb}"
       TRINO_HOST: trino
+      PROVISA_TRINO_ETC_DIR: /app/trino-host
       TRINO_PORT: 8080
       # The Arrow Flight SQL proxy (trino_lifecycle.connect_infra reads ZAYCHIK_HOST/ZAYCHIK_PORT —
       # TRINO_FLIGHT_PORT was never read by anything). Its default `localhost` is the dev layout,

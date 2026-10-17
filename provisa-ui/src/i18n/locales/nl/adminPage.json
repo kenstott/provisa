@@ -120,7 +120,14 @@
         "redis_tls_required": "Redis moet TLS gebruiken zolang TLS vereist is.",
         "price_entry_invalid": "Elke regel is een model-id en vier prijzen per miljoen tokens: invoer, uitvoer, cache-lezen, cache-schrijven ({{entry}}).",
         "retry_max_below_interval": "De langste wachttijd mag niet kleiner zijn dan het herhalingsinterval ({{other}}).",
-        "cannot_decrypt": "Een opgeslagen waarde kon niet worden ontsleuteld met de huidige sleutel."
+        "cannot_decrypt": "Een opgeslagen waarde kon niet worden ontsleuteld met de huidige sleutel.",
+        "internal_tls_set_by_chart": "De Helm-chart stelt dit hier in: wijzig de chartwaarde {{value}}.",
+        "internal_tls_not_trino": "Verkeer tussen engine-nodes kan alleen worden versleuteld op een Trino-engine.",
+        "internal_tls_single_node": "De engines van deze deployment zijn coördinatoren met één node: er gaat geen verkeer tussen engine-nodes.",
+        "not_a_subnet": "Voer een netwerk in CIDR-notatie in, zoals 172.30.250.0/24 ({{value}}).",
+        "not_an_address": "Voer een IP-adres in ({{value}}).",
+        "outside_subnet": "Het adres van de coördinator moet op het engine-netwerk liggen ({{subnet}}).",
+        "not_reserved_for_coordinator": "Het adres van de coördinator moet in de onderste helft van het engine-netwerk liggen, voorbij de gateway ({{subnet}})."
       },
       "group": {
         "general": "Algemeen en HTTP",

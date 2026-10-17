@@ -6809,5 +6809,19 @@
   "registerTableForm.json::registerTableForm.dqScanIntervalHint": "Each scan adds its results to the table; earlier scans are kept.",
   "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
   "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
-  "ja/dataScience.json::dataScience.resizeLabel": "Resize editor and output"
+  "ja/dataScience.json::dataScience.resizeLabel": "Resize editor and output",
+  "ja/settings.json::settings.engine.trino_internal_tls.label": "Encrypt traffic between engine nodes",
+  "ja/settings.json::settings.engine.trino_internal_tls.help": "Trino's coordinator and workers require HTTPS between them. Off by default: their traffic stays on the deployment's private network, authenticated by a shared secret. Turn it on where a compliance or zero-trust requirement asks for encryption inside the deployment; shuffle-heavy queries (joins, aggregations, window functions) run 10% to over 100% slower. Applies at the next start.",
+  "ja/settings.json::settings.engine.trino_internal_subnet.label": "Engine network",
+  "ja/settings.json::settings.engine.trino_internal_subnet.help": "The network the engine's containers share while traffic between engine nodes is encrypted. The coordinator's address is in its lower half; every other container gets one from the upper half. Applies at the next start.",
+  "ja/settings.json::settings.engine.trino_coordinator_ip.label": "Coordinator address",
+  "ja/settings.json::settings.engine.trino_coordinator_ip.help": "The coordinator's pinned address on the engine network, in its lower half: Trino finds its coordinator by IP alone when traffic between nodes is encrypted. Applies at the next start.",
+  "ja/settings.json::settings.readonlyReasons.set_by_chart": "The Helm chart sets this value ({{value}}).",
+  "ja/adminPage.json::adminPage.setting.reason.internal_tls_set_by_chart": "The Helm chart sets this here: change the chart value {{value}}.",
+  "ja/adminPage.json::adminPage.setting.reason.internal_tls_not_trino": "Traffic between engine nodes can be encrypted only on a Trino engine.",
+  "ja/adminPage.json::adminPage.setting.reason.internal_tls_single_node": "This deployment's engines are single-node coordinators: no traffic passes between engine nodes.",
+  "ja/adminPage.json::adminPage.setting.reason.not_a_subnet": "Enter a network in CIDR form, such as 172.30.250.0/24 ({{value}}).",
+  "ja/adminPage.json::adminPage.setting.reason.not_an_address": "Enter an IP address ({{value}}).",
+  "ja/adminPage.json::adminPage.setting.reason.outside_subnet": "The coordinator's address must be on the engine network ({{subnet}}).",
+  "ja/adminPage.json::adminPage.setting.reason.not_reserved_for_coordinator": "The coordinator's address must be in the lower half of the engine network, past its gateway ({{subnet}})."
 }

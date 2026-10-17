@@ -55,4 +55,50 @@ def _sizing(field: str, type_: str) -> Setting:
     )
 
 
-DECLARED: list[Setting] = [_sizing(field, type_) for field, type_ in SIZING.items()]
+#: The requirement the internal-TLS settings answer to (assigned by the requirements owner).
+_INTERNAL_TLS_REQ = "REQ-2072"
+
+# Trino's internal TLS (off by default): the coordinator and its workers require HTTPS between
+# them. Trino 481 addresses the coordinator by IP alone for it, so the coordinator is pinned to an
+# address on an engine network of its own. They apply at the next start of the stack: the app
+# writes them to the launch-settings file beside the engine's config, which the launcher reads.
+INTERNAL_TLS: list[Setting] = [
+    Setting(
+        key="engine.trino_internal_tls",
+        card="engine",
+        type="bool",
+        effect="restart",
+        restart_scope="engine",
+        req=_INTERNAL_TLS_REQ,
+        env="PROVISA_TRINO_INTERNAL_TLS",
+        default=False,
+        chart_value="trino.internalTls",
+    ),
+    Setting(
+        key="engine.trino_internal_subnet",
+        card="engine",
+        type="str",
+        effect="restart",
+        restart_scope="engine",
+        req=_INTERNAL_TLS_REQ,
+        env="PROVISA_TRINO_INTERNAL_SUBNET",
+        default="172.30.250.0/24",
+        chart_value="trino.coordinatorClusterIP",
+    ),
+    Setting(
+        key="engine.trino_coordinator_ip",
+        card="engine",
+        type="str",
+        effect="restart",
+        restart_scope="engine",
+        req=_INTERNAL_TLS_REQ,
+        env="PROVISA_TRINO_COORDINATOR_IP",
+        default="172.30.250.10",
+        chart_value="trino.coordinatorClusterIP",
+    ),
+]
+
+DECLARED: list[Setting] = [
+    *(_sizing(field, type_) for field, type_ in SIZING.items()),
+    *INTERNAL_TLS,
+]

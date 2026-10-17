@@ -103,6 +103,18 @@
       "exchange_spool_dir": {
         "label": "Exchange-Spool-Ordner",
         "help": "Wo die Engine Zwischendaten für die fehlertolerante Ausführung ablegt. Wird wirksam, wenn die Engine neu startet."
+      },
+      "trino_internal_tls": {
+        "label": "Datenverkehr zwischen Engine-Knoten verschlüsseln",
+        "help": "Koordinator und Worker von Trino verlangen HTTPS untereinander. Standardmäßig aus: Ihr Datenverkehr bleibt im privaten Netzwerk des Deployments und wird durch ein gemeinsames Secret authentifiziert. Aktivieren Sie die Option, wenn eine Compliance- oder Zero-Trust-Vorgabe Verschlüsselung innerhalb des Deployments verlangt; Abfragen mit viel Shuffle (Joins, Aggregationen, Fensterfunktionen) laufen dann 10 % bis über 100 % langsamer. Wird beim nächsten Start wirksam."
+      },
+      "trino_internal_subnet": {
+        "label": "Engine-Netzwerk",
+        "help": "Das Netzwerk, das die Container der Engine gemeinsam nutzen, solange der Datenverkehr zwischen Engine-Knoten verschlüsselt ist. Die Adresse des Koordinators liegt in der unteren Hälfte; jeder andere Container erhält eine aus der oberen Hälfte. Wird beim nächsten Start wirksam."
+      },
+      "trino_coordinator_ip": {
+        "label": "Koordinatoradresse",
+        "help": "Die feste Adresse des Koordinators im Engine-Netzwerk, in dessen unterer Hälfte: Trino findet seinen Koordinator nur über die IP, wenn der Datenverkehr zwischen Knoten verschlüsselt ist. Wird beim nächsten Start wirksam."
       }
     },
     "ui": {
@@ -669,7 +681,8 @@
       "locates_control_plane": "Diese Einstellung teilt dem Server mit, wo sich seine Control Plane befindet, und kann daher nicht über die Control Plane geändert werden.",
       "read_before_control_plane": "Diese Einstellung wird gelesen, bevor die Control Plane verfügbar ist, und wird daher außerhalb der UI festgelegt.",
       "set_by_launcher": "Der Launcher, der dieses Deployment gestartet hat, setzt diesen Wert.",
-      "set_by_desktop_launcher": "Der Desktop-Launcher setzt diesen Wert für diese Installation."
+      "set_by_desktop_launcher": "Der Desktop-Launcher setzt diesen Wert für diese Installation.",
+      "set_by_chart": "Das Helm-Chart legt diesen Wert fest ({{value}})."
     },
     "connectors": {
       "cloudops": {

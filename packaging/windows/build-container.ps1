@@ -30,6 +30,7 @@ New-Item -ItemType Directory -Path $BuildCompose -Force | Out-Null
 Copy-Item (Join-Path $RepoRoot 'docker-compose.core.yml')   $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'docker-compose.app.yml')    $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'docker-compose.airgap.yml') $BuildCompose
+Copy-Item (Join-Path $RepoRoot 'docker-compose.trino-internal-tls.yml') $BuildCompose  # REQ-2072
 Copy-Item (Join-Path $RepoRoot 'docker-compose.observability.yml') $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'config') (Join-Path $BuildCompose 'config') -Recurse -Force
 Copy-Item (Join-Path $RepoRoot 'db')     (Join-Path $BuildCompose 'db')     -Recurse -Force

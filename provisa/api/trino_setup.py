@@ -39,13 +39,13 @@ _JVM_TEMPLATE = """-server
 _COORDINATOR_TEMPLATE = """coordinator=true
 node-scheduler.include-coordinator=true
 http-server.http.port=8080
-discovery.uri=http://localhost:8080
+discovery.uri={discovery_uri}
 catalog.management=dynamic
 internal-communication.shared-secret=${{ENV:PROVISA_TRINO_SHARED_SECRET}}
 query.max-memory={query_max_memory}
 query.max-memory-per-node={query_max_memory_per_node}
 query.max-total-memory={query_max_total_memory}
-{fte_block}{tracing_block}"""
+{internal_tls_block}{fte_block}{tracing_block}"""
 
 # Trino's OTel exporter has no "drop if unreachable" mode: with tracing.enabled=true and a
 # collector that does not exist, the coordinator retries every span export for the life of the
@@ -57,11 +57,11 @@ otel.exporter.endpoint={endpoint}
 
 _WORKER_TEMPLATE = """coordinator=false
 http-server.http.port=8080
-discovery.uri=http://trino:8080
+discovery.uri={discovery_uri}
 catalog.management=dynamic
 internal-communication.shared-secret=${{ENV:PROVISA_TRINO_SHARED_SECRET}}
 query.max-memory-per-node={query_max_memory_per_node}
-{fte_block}"""
+{internal_tls_block}{fte_block}"""
 
 # Fault-tolerant execution replaces legacy spill-to-disk. Rendered into both node
 # configs when enabled; requires a spool (exchange manager) — see below.
@@ -95,6 +95,40 @@ resource-groups.config-file=/etc/trino/resource-groups.json
 # docker-compose.core.yml trino service volumes must include:
 #   - ./trino/etc/resource-groups.json:/etc/trino/resource-groups.json:ro
 #   - ./trino/etc/resource-groups.properties:/etc/trino/resource-groups.properties:ro
+
+
+# Trino's internal TLS (engine.trino_internal_tls, off by default): every node requires HTTPS from
+# the others, on its own HTTPS port, and finds the coordinator at its pinned address -- Trino 481
+# addresses it by IP alone for this and makes the nodes' certificates itself.
+_INTERNAL_HTTPS_PORT = 8443
+_INTERNAL_TLS_TEMPLATE = f"""internal-communication.https.required=true
+http-server.https.enabled=true
+http-server.https.port={_INTERNAL_HTTPS_PORT}
+"""
+
+#: Beside the engine's config: what the launcher reads at the next start of the stack (the
+#: coordinator's pinned address and the engine network it is on).
+LAUNCH_SETTINGS = "launch-settings.env"
+
+
+def dynamic_range(subnet: str) -> str:
+    """The part of the engine network Docker hands out addresses from: its upper half, so the
+    coordinator's pinned address, in the lower half, is never given to another container."""
+    import ipaddress
+
+    return str(list(ipaddress.ip_network(subnet).subnets(prefixlen_diff=1))[1])
+
+
+def internal_tls() -> tuple[bool, str, str]:
+    """Whether the nodes require HTTPS between them, the engine network, and the coordinator's
+    address on it -- the values the engine starts on next."""
+    from provisa.core import settings_registry
+
+    return (
+        bool(settings_registry.value("engine.trino_internal_tls")),
+        str(settings_registry.value("engine.trino_internal_subnet")),
+        str(settings_registry.value("engine.trino_coordinator_ip")),
+    )
 
 
 def _cfg(cfg: dict, key: str) -> Any:
@@ -146,8 +180,14 @@ def write_trino_config(config_path: str) -> None:  # REQ-055, REQ-250
         else ""
     )
 
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(config_path)))
-    trino_etc = os.path.join(project_root, "trino", "etc")
+    # The engine's own config, in the Trino tree the engine mounts (PROVISA_TRINO_ETC_DIR, shared
+    # with the host by the launcher), so what is rendered here is what the engine starts on next.
+    from provisa.core.trino_catalog_files import trino_etc_dir
+
+    trino_root = trino_etc_dir()
+    trino_etc = str(trino_root / "etc")
+    tls_on, tls_subnet, coordinator_ip = internal_tls()
+    internal_tls_block = _INTERNAL_TLS_TEMPLATE if tls_on else ""
 
     _write(
         os.path.join(trino_etc, "jvm.config"),
@@ -166,10 +206,20 @@ def write_trino_config(config_path: str) -> None:  # REQ-055, REQ-250
         query_max_total_memory=query_max_total_memory,
         fte_block=fte_block,
         tracing_block=tracing_block,
+        internal_tls_block=internal_tls_block,
+        discovery_uri=(
+            f"https://{coordinator_ip}:{_INTERNAL_HTTPS_PORT}"
+            if tls_on
+            else "http://localhost:8080"
+        ),
     )
     worker_props = _WORKER_TEMPLATE.format(
         query_max_memory_per_node=query_max_memory_per_node,
         fte_block=fte_block,
+        internal_tls_block=internal_tls_block,
+        discovery_uri=(
+            f"https://{coordinator_ip}:{_INTERNAL_HTTPS_PORT}" if tls_on else "http://trino:8080"
+        ),
     )
     # This instance's config.properties reflects its selected role (REQ-916); the worker/ variant is
     # always emitted so a multi-node deployment can mount it on worker instances.
@@ -187,6 +237,13 @@ def write_trino_config(config_path: str) -> None:  # REQ-055, REQ-250
     _write(
         os.path.join(trino_etc, "resource-groups.properties"),
         _RESOURCE_GROUPS_PROPERTIES_TEMPLATE,
+    )
+    _write(
+        str(trino_root / LAUNCH_SETTINGS),
+        f"PROVISA_TRINO_INTERNAL_TLS={'true' if tls_on else 'false'}\n"
+        f"PROVISA_TRINO_INTERNAL_SUBNET={tls_subnet}\n"
+        f"PROVISA_TRINO_COORDINATOR_IP={coordinator_ip}\n"
+        f"PROVISA_TRINO_DYNAMIC_RANGE={dynamic_range(tls_subnet)}\n",
     )
 
 

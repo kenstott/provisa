@@ -150,6 +150,7 @@ embed_compose() {
   cp "${REPO_ROOT}/docker-compose.core.yml" "${res}/docker-compose.core.yml"
   cp "${REPO_ROOT}/docker-compose.app.yml" "${res}/docker-compose.app.yml"
   cp "${REPO_ROOT}/docker-compose.airgap.yml" "${res}/docker-compose.airgap.yml"
+  cp "${REPO_ROOT}/docker-compose.trino-internal-tls.yml" "${res}/docker-compose.trino-internal-tls.yml"  # REQ-2072
   cp -r "${REPO_ROOT}/config" "${res}/config"
   cp -r "${REPO_ROOT}/db" "${res}/db"
   # Copy trino WITHOUT plugins/ — plugins ship as a separate release asset

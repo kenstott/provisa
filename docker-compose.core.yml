@@ -121,12 +121,12 @@ services:
     ports:
       - "${PROVISA_STORE_BIND_IP:?the address the stores publish on: 127.0.0.1 alone, or the node private address its peers dial}:${TRINO_PORT:-8080}:8080"
     volumes:
-      - ./trino/etc/config.properties:/etc/trino/config.properties:ro
-      - ./trino/etc/exchange-manager.properties:/etc/trino/exchange-manager.properties:ro
-      - ./trino/etc/jvm.config:/etc/trino/jvm.config:ro
-      - ./trino/etc/node.properties:/etc/trino/node.properties:ro
-      - ./trino/etc/resource-groups.json:/etc/trino/resource-groups.json:ro
-      - ./trino/etc/resource-groups.properties:/etc/trino/resource-groups.properties:ro
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/config.properties:/etc/trino/config.properties:ro
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/exchange-manager.properties:/etc/trino/exchange-manager.properties:ro
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/jvm.config:/etc/trino/jvm.config:ro
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/node.properties:/etc/trino/node.properties:ro
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/resource-groups.json:/etc/trino/resource-groups.json:ro
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/resource-groups.properties:/etc/trino/resource-groups.properties:ro
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/catalog:/etc/trino/catalog
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/kafka:/etc/trino/kafka:ro
       # REQ-1992: each Kafka catalog's client properties, named by its org-qualified catalog.
@@ -179,10 +179,10 @@ services:
     image: trinodb/trino:481
     entrypoint: ["/etc/trino/worker/entrypoint.sh"]
     volumes:
-      - ./trino/etc/worker/config.properties:/etc/trino/config.properties:ro
-      - ./trino/etc/exchange-manager.properties:/etc/trino/exchange-manager.properties:ro
-      - ./trino/etc/jvm.config:/etc/trino/jvm.config:ro
-      - ./trino/etc/worker/entrypoint.sh:/etc/trino/worker/entrypoint.sh:ro
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/worker/config.properties:/etc/trino/config.properties:ro
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/exchange-manager.properties:/etc/trino/exchange-manager.properties:ro
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/jvm.config:/etc/trino/jvm.config:ro
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/worker/entrypoint.sh:/etc/trino/worker/entrypoint.sh:ro
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/catalog:/etc/trino/catalog
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/kafka:/etc/trino/kafka:ro
       # REQ-1992: each Kafka catalog's client properties, named by its org-qualified catalog.

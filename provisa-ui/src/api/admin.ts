@@ -2400,6 +2400,8 @@ export interface CatalogSetting {
   guard: null | "confirm";
   /** An i18n key naming why the setting is not editable. */
   readonly_reason?: string;
+  /** The Helm chart value that sets it, where the chart renders the engine's config. */
+  chart_value?: string;
   /** A map with a fixed set of entries: rendered as one row per key. */
   map_keys?: string[];
   /** A list whose entries are rows of these columns, space-separated: shown as a table. */

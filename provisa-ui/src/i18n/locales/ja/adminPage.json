@@ -120,7 +120,14 @@
         "redis_tls_required": "TLS が必須の間、Redis は TLS を使用する必要があります。",
         "price_entry_invalid": "各エントリはモデル ID と 100 万トークンあたりの 4 つの価格です：入力、出力、キャッシュ読み取り、キャッシュ書き込み（{{entry}}）。",
         "retry_max_below_interval": "最大待機時間は再試行間隔（{{other}}）より小さくできません。",
-        "cannot_decrypt": "保存された値を現在の鍵で復号できませんでした。"
+        "cannot_decrypt": "保存された値を現在の鍵で復号できませんでした。",
+        "internal_tls_set_by_chart": "Helmチャートがここで設定しています。チャートの値 {{value}} を変更してください。",
+        "internal_tls_not_trino": "エンジンノード間の通信を暗号化できるのはTrinoエンジンのみです。",
+        "internal_tls_single_node": "このデプロイメントのエンジンはシングルノードのコーディネーターです。エンジンノード間では通信が発生しません。",
+        "not_a_subnet": "CIDR形式のネットワークを入力してください（例: 172.30.250.0/24）（{{value}}）。",
+        "not_an_address": "IPアドレスを入力してください（{{value}}）。",
+        "outside_subnet": "コーディネーターのアドレスはエンジンネットワーク内にある必要があります（{{subnet}}）。",
+        "not_reserved_for_coordinator": "コーディネーターのアドレスは、エンジンネットワークの下半分で、ゲートウェイより後ろにある必要があります（{{subnet}}）。"
       },
       "group": {
         "general": "全般と HTTP",

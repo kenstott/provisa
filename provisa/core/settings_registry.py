@@ -114,6 +114,9 @@ class Setting:
     # effect "restart": WHAT restarts when it is not the server itself — "engine" for the
     # federation engine's own sizing, whose files are regenerated at once.
     restart_scope: str | None = None
+    # The Helm chart value that sets this setting where the chart renders the engine's config
+    # (``PROVISA_ENGINE_CONFIG_SOURCE=chart``): there it is shown read-only, naming the value.
+    chart_value: str | None = None
 
 
 class Resolved(NamedTuple):
@@ -758,6 +761,11 @@ def _described_stored(s: Setting) -> Any:
         return None  # reported by _described_state as the setting's error
 
 
+def _set_by_chart(s: Setting) -> bool:
+    """Whether the Helm chart sets ``s`` here (it renders the engine's config itself)."""
+    return s.chart_value is not None and os.environ.get("PROVISA_ENGINE_CONFIG_SOURCE") == "chart"
+
+
 def describe(key: str) -> dict[str, Any]:
     """One setting as the catalog shows it. A secret is described only as set or not set."""
     s = setting(key)
@@ -774,7 +782,7 @@ def describe(key: str) -> dict[str, Any]:
         "pending_restart": state["pending_restart"],
         "secret": s.secret,
         "credential": s.credential,
-        "editable": s.editable,
+        "editable": s.editable and not _set_by_chart(s),
         "guard": s.guard,
     }
     if "error" in state:
@@ -786,6 +794,9 @@ def describe(key: str) -> dict[str, Any]:
         out["applied"] = in_force  # what THIS worker's state was last built from
     if not s.editable:
         out["readonly_reason"] = s.readonly_reason
+    elif _set_by_chart(s):
+        out["readonly_reason"] = "set_by_chart"
+        out["chart_value"] = s.chart_value
     if s.secret:
         out["set"] = resolved is not None
         return out

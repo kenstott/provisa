@@ -1,0 +1,16 @@
+# REQ-2072: Trino's internal TLS, added by the launcher when the launch-settings file the app writes
+# (<engine tree>/launch-settings.env) turns it on. Trino 481 addresses the coordinator by IP alone
+# for it, so the coordinator is pinned to an address in the lower half of the stack's network and
+# Docker hands every other container one from the upper half.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: "${PROVISA_TRINO_INTERNAL_SUBNET:?the engine network, from the launch settings}"
+          ip_range: "${PROVISA_TRINO_DYNAMIC_RANGE:?the network's dynamic range, from the launch settings}"
+
+services:
+  trino:
+    networks:
+      default:
+        ipv4_address: "${PROVISA_TRINO_COORDINATOR_IP:?the coordinator's address, from the launch settings}"

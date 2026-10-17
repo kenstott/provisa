@@ -201,6 +201,7 @@ build_appdir() {
   cp "${REPO_ROOT}/docker-compose.core.yml"        "${APPDIR}/compose/"
   cp "${REPO_ROOT}/docker-compose.app.yml"         "${APPDIR}/compose/"
   cp "${REPO_ROOT}/docker-compose.airgap.yml"      "${APPDIR}/compose/"
+  cp "${REPO_ROOT}/docker-compose.trino-internal-tls.yml" "${APPDIR}/compose/"  # REQ-2072
   cp -r "${REPO_ROOT}/config"                      "${APPDIR}/compose/config"
   cp -r "${REPO_ROOT}/db"                          "${APPDIR}/compose/db"
   # Copy trino WITHOUT plugins/ — plugins ship as a separate release asset
