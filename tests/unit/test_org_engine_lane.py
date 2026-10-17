@@ -254,9 +254,7 @@ def test_an_org_on_its_own_engine_is_walked_by_its_own_registry_not_the_deployme
     backend = object.__new__(native_backend.NativeEngineBackend)
     backend._runtime = object()
     backend._walk_lock = threading.Lock()
-    backend._walked = None
-    backend._refused = set()
-    backend._refused_in = None
+    backend._walks = {}
     walked = []
     monkeypatch.setattr(
         backend, "_walk_registry", lambda state, config: walked.append(config) or True
@@ -280,7 +278,6 @@ def test_an_org_on_its_own_engine_is_walked_by_its_own_registry_not_the_deployme
         current_org.reset(token)
     assert (walked[-1].sources, walked[-1].tables) == ([], [])
 
-    backend._walked = None
     token = current_org.set("default")
     try:
         backend._attach_registered(state(None))

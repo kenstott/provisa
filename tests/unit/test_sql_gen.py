@@ -21,6 +21,7 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.context import build_context
+from provisa.executor.serialize import serialize_rows
 
 
 def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> ColumnMetadata:
@@ -264,6 +265,33 @@ class TestSimpleSelect:
         doc = parse("{ orders { id } }")
         results = compile_query(doc, ctx)
         assert results[0].sql == 'SELECT "id" FROM "public"."orders"'
+
+    def test_a_selection_of_only_its_type_name_reads_no_column(self, schema_and_ctx):
+        # __typename is the object's GraphQL type, never a column of its table: alone in a
+        # selection it was emitted as SELECT "__typename" and the engine refused it.
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders { __typename } }")
+        assert not validate(schema, doc)
+        q = compile_query(doc, ctx)[0]
+        assert q.sql == 'SELECT VARCHAR \'Orders\' AS "__typename" FROM "public"."orders"'
+        assert serialize_rows([("Orders",)], q.columns, "orders") == {
+            "data": {"orders": [{"__typename": "Orders"}]}
+        }
+
+    def test_the_type_name_beside_columns_and_in_a_relationship(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders { id kind: __typename customer { __typename name } } }")
+        assert not validate(schema, doc)
+        sql = compile_query(doc, ctx)[0].sql
+        assert "VARCHAR 'Orders' AS \"kind\"" in sql
+        assert "KEY '__typename' VALUE VARCHAR 'Customers'" in sql
+        assert '"__typename"' not in sql.replace('AS "__typename"', "")
+
+    def test_the_type_name_of_a_connections_node(self, schema_and_ctx):
+        _, ctx = schema_and_ctx
+        doc = parse("{ orders_connection { edges { node { id __typename } } } }")
+        sql = compile_query(doc, ctx)[0].sql
+        assert sql.startswith('SELECT "id", VARCHAR \'Orders\' AS "__typename" FROM')
 
     def test_sources_tracked(self, schema_and_ctx):
         _, ctx = schema_and_ctx

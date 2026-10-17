@@ -30,6 +30,9 @@ from provisa.core.schema_org import user_attributes, user_idp_attributes
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
+# Serializes writes of providers' records (record_idp); taken only when a record changes.
+_IDP_RECORD_LOCK_KEY = 0x50524F5649534136
+
 
 async def upsert(conn: "Connection", user_id: str, name: str, value: str) -> str:
     """Record ``name`` = ``value`` for ``user_id``, replacing the value it had. Returns the
@@ -104,10 +107,17 @@ async def idp_names_by_user(conn: "Connection") -> dict[str, set[str]]:
 
 async def record_idp(conn: "Connection", user_id: str, attributes: dict[str, str]) -> bool:
     """Make the record of what the provider supplies for ``user_id`` equal ``attributes``.
-    False, and nothing written, when it already is."""
+    False, and nothing written, when it already is.
+
+    A user's first requests arrive together (a new sandbox's tour warm-up beside its page): each
+    found nothing recorded and wrote, and the second insert was a unique-key violation. The
+    comparison and the write are one step under a lock, so the second finds the first's record."""
     if await idp_for_user(conn, user_id) == attributes:
         return False
     async with conn.transaction():
+        await conn.advisory_xact_lock(_IDP_RECORD_LOCK_KEY)
+        if await idp_for_user(conn, user_id) == attributes:
+            return False
         await conn.execute_core(
             _delete(user_idp_attributes).where(user_idp_attributes.c.user_id == user_id)
         )

@@ -208,10 +208,15 @@ def _emit_agg_subqueries(
             phys_col = ctx.exposed_to_physical.get((table_meta.table_id, name), name)
             sql_col = ctx.physical_to_sql.get((table_meta.table_id, phys_col), phys_col)
             col_alias = nesting_path.replace(".", "__") + "__" + key
+            # __typename is the object's GraphQL type, not a column: its value, once per row.
+            if name == "__typename":
+                qualified = bare = _sql_str_literal(type_name)
+            else:
+                qualified, bare = f"{_q(current_alias)}.{_q(sql_col)}", _q(sql_col)
             if extra_joins and agg_limit is not None:
                 select_parts.append(
-                    f"(SELECT ARRAY_AGG({_q(current_alias)}.{_q(sql_col)})"
-                    f" FROM (SELECT {_q(current_alias)}.{_q(sql_col)}"
+                    f"(SELECT ARRAY_AGG({qualified})"
+                    f" FROM (SELECT {qualified}"
                     f" FROM {from_clause} {extra_joins}"
                     f" WHERE {where_expr}"
                     f" LIMIT {agg_limit}))"
@@ -219,15 +224,15 @@ def _emit_agg_subqueries(
                 )
             elif extra_joins:
                 select_parts.append(
-                    f"(SELECT ARRAY_AGG({_q(current_alias)}.{_q(sql_col)})"
+                    f"(SELECT ARRAY_AGG({qualified})"
                     f" FROM {from_clause} {extra_joins}"
                     f" WHERE {where_expr})"
                     f" AS {_q(col_alias)}"
                 )
             elif agg_limit is not None:
                 select_parts.append(
-                    f"(SELECT ARRAY_AGG({_q(sql_col)})"
-                    f" FROM (SELECT {_q(sql_col)}"
+                    f"(SELECT ARRAY_AGG({bare})"
+                    f" FROM (SELECT {bare}"
                     f" FROM {from_clause}"
                     f" WHERE {where_expr}"
                     f" LIMIT {agg_limit}))"
@@ -235,7 +240,7 @@ def _emit_agg_subqueries(
                 )
             else:
                 select_parts.append(
-                    f"(SELECT ARRAY_AGG({_q(current_alias)}.{_q(sql_col)})"
+                    f"(SELECT ARRAY_AGG({qualified})"
                     f" FROM {from_clause}"
                     f" WHERE {where_expr})"
                     f" AS {_q(col_alias)}"
@@ -379,6 +384,8 @@ def _build_rel_json_kv(
                 sub_kv = _extract_json_blob_kv(sel.selection_set.selections, blob_base)
                 if sub_kv:
                     kv_pairs.append(f"KEY '{key}' VALUE json_object({', '.join(sub_kv)})")
+            elif name == "__typename":  # the object's GraphQL type, not a column
+                kv_pairs.append(f"KEY '{key}' VALUE {_sql_str_literal(type_name)}")
             else:
                 phys_col = ctx.exposed_to_physical.get((table_meta.table_id, name), name)
                 sql_col = ctx.physical_to_sql.get((table_meta.table_id, phys_col), phys_col)
@@ -670,12 +677,15 @@ def _collect_nested_columns(
                 (parent_table.table_id, nested_name), nested_name
             )
             nested_sql = ctx.physical_to_sql.get((parent_table.table_id, nested_phys), nested_phys)
-            if nested_phys in _VIRTUAL_COLS:
+            if nested_name == "__typename":  # the object's GraphQL type, not a column
+                col_expr = _sql_str_literal(parent_type_name)
+                nested_sql = nested_response_key
+            elif nested_phys in _VIRTUAL_COLS:
                 _nvc = (ctx.virtual_columns.get(parent_table.table_id) or {}).get(nested_phys, "")
                 col_expr = _sql_str_literal(_nvc)
             else:
                 col_expr = f"{_q(parent_alias)}.{_q(nested_sql)}"
-            if nested_sel.alias:
+            if nested_sel.alias or nested_name == "__typename":
                 select_parts.append(f"{col_expr} AS {_q(nested_response_key)}")
             else:
                 select_parts.append(col_expr)

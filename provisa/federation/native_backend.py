@@ -33,6 +33,7 @@ import logging
 import threading
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -107,6 +108,29 @@ def _same_registry(
     walked: tuple[Any, Any, Any, Any] | None, registry: tuple[Any, Any, Any, Any]
 ) -> bool:
     return walked is not None and all(a is b for a, b in zip(walked, registry, strict=True))
+
+
+@dataclass
+class _OrgWalk:
+    """One org's walk of its registry on this engine. Several orgs are served by one engine (the
+    deployment's org beside a demo template or sandbox on an engine of its own, REQ-2006), each
+    from a registry of its own: a walk stands for the org that made it, so serving one org never
+    sends the next statement of another to walk again."""
+
+    # The registry state the last walk covered: the identities of (config, runtime_sources,
+    # tables, model_db). A schema rebuild REPLACES those objects (app.py publishes a new source
+    # map and a new table list; nothing mutates them in place), so an unchanged identity means
+    # there is nothing new to attach and the walk is skipped.
+    registry: tuple[Any, Any, Any, Any] | None = None
+    # When an incomplete walk is walked again (``_ATTACH_RETRY_S``); None for a complete one,
+    # which is walked again only when the registry changes.
+    retry_at: float | None = None
+    # Tables whose attach was refused for a DECLARED reason in the registry state ``refused_in``
+    # (a source type this engine lands instead of attaching, REQ-841). Not retried until the
+    # registry changes. A driver error is not remembered: an offline source is retried once the
+    # walk's retry interval has passed.
+    refused: set[tuple[str, str, str, str]] = field(default_factory=set)
+    refused_in: tuple[Any, Any, Any, Any] | None = None
 
 
 def _file_glob_tables(tables: list[Any]) -> dict[str, list[dict]]:  # REQ-788
@@ -190,14 +214,8 @@ class NativeEngineBackend(EngineBackend):
         # Tables whose live attach this process has removed because their reads moved to the
         # replica (REQ-1912) — removed once, whichever process created it.
         self._detached: set[tuple[str, str, str, str]] = set()
-        # The registry state the last complete walk covered: the identities of (config,
-        # runtime_sources, tables, model_db). A schema rebuild REPLACES those objects (app.py
-        # publishes a new source map and a new table list; nothing mutates them in place), so an
-        # unchanged identity means there is nothing new to attach and the walk is skipped.
-        self._walked: tuple[Any, Any, Any, Any] | None = None
-        # When an incomplete walk of ``_walked`` is walked again (``_ATTACH_RETRY_S``); None for a
-        # complete one, which is walked again only when the registry changes.
-        self._retry_at: float | None = None
+        # Each org's walk of its registry, by the org it was made for (current_org).
+        self._walks: dict[str | None, _OrgWalk] = {}
         # The last failure of each table a driver error left unattached, so a failure that recurs
         # unchanged is logged once rather than at every retry.
         self._failed: dict[tuple[str, str, str, str], str] = {}
@@ -205,12 +223,6 @@ class NativeEngineBackend(EngineBackend):
         # (``SourceStillStartingError``): walked again as soon as a statement has waited for that
         # server to serve (``attach_started``), not at the retry interval.
         self._starting: set[tuple[str, str, str, str]] = set()
-        # Tables whose attach was refused for a DECLARED reason in the walked registry state (a
-        # source type this engine lands instead of attaching, REQ-841). Not retried until the
-        # registry changes. A driver error is not remembered: an offline source is retried once the
-        # walk's retry interval (_ATTACH_RETRY_S) has passed.
-        self._refused: set[tuple[str, str, str, str]] = set()
-        self._refused_in: tuple[Any, Any, Any, Any] | None = None
         self._walk_lock = threading.Lock()
 
     def close(self, state: Any) -> None:
@@ -226,12 +238,9 @@ class NativeEngineBackend(EngineBackend):
             runtime, self._runtime = self._runtime, None
             self._attached.clear()
             self._detached.clear()
-            self._refused.clear()
             self._failed.clear()
             self._starting.clear()
-            self._walked = None
-            self._retry_at = None
-            self._refused_in = None
+            self._walks.clear()
         if runtime is not None:
             runtime.close()
 
@@ -244,7 +253,8 @@ class NativeEngineBackend(EngineBackend):
         if hasattr(runtime, "drop_source"):
             runtime.drop_source(source_id)
         with self._walk_lock:
-            for held in (self._attached, self._detached, self._refused, self._starting):
+            held_sets = [self._attached, self._detached, self._starting]
+            for held in [*held_sets, *(walk.refused for walk in self._walks.values())]:
                 held.difference_update({k for k in held if k[1] == source_id})
             for key in [k for k in self._failed if k[1] == source_id]:
                 del self._failed[key]
@@ -347,9 +357,10 @@ class NativeEngineBackend(EngineBackend):
         with self._walk_lock:
             if self._covers(registry):
                 return  # a concurrent query walked this registry state while this one waited
-            if not _same_registry(self._refused_in, registry):
-                self._refused.clear()  # a new registry state: each refused attach gets one retry
-                self._refused_in = registry
+            walk = self._walk_of(_active_org)
+            if not _same_registry(walk.refused_in, registry):
+                walk.refused.clear()  # a new registry state: each refused attach gets one retry
+                walk.refused_in = registry
             # An org on an engine of its own (a demo template or sandbox, REQ-2006; an isolated
             # lane) is described by its own registry -- runtime_sources and tables, read from its
             # store -- never by the deployment's configuration file, which ``state.config`` holds
@@ -362,14 +373,21 @@ class NativeEngineBackend(EngineBackend):
                 else config
             )
             complete = self._walk_registry(state, walked_config)
-            self._walked = registry
-            self._retry_at = None if complete else time.monotonic() + _ATTACH_RETRY_S
+            walk.registry = registry
+            walk.retry_at = None if complete else time.monotonic() + _ATTACH_RETRY_S
+
+    def _walk_of(self, org: str | None) -> _OrgWalk:
+        """The bound org's walk on this engine; an org not yet walked here has an empty one."""
+        return self._walks.setdefault(org, _OrgWalk())
 
     def _covers(self, registry: tuple[Any, Any, Any, Any]) -> bool:
-        """Whether the last walk still stands for ``registry``: it walked this registry state and
-        was complete, or was not and its retry interval has not passed."""
-        return _same_registry(self._walked, registry) and (
-            self._retry_at is None or time.monotonic() < self._retry_at
+        """Whether the bound org's last walk still stands for ``registry``: it walked this
+        registry state and was complete, or was not and its retry interval has not passed."""
+        from provisa.core.request_context import current_org
+
+        walk = self._walk_of(current_org.get())
+        return _same_registry(walk.registry, registry) and (
+            walk.retry_at is None or time.monotonic() < walk.retry_at
         )
 
     @staticmethod
@@ -410,7 +428,9 @@ class NativeEngineBackend(EngineBackend):
         with self._walk_lock:
             if not any(key[1] in source_ids for key in self._starting):
                 return
-            self._walked = None
+            from provisa.core.request_context import current_org
+
+            self._walks.pop(current_org.get(), None)  # the bound org's walk no longer stands
         await self._attached_runtime(state)
 
     def _walk_registry(self, state: Any, config: Any) -> bool:
@@ -419,9 +439,12 @@ class NativeEngineBackend(EngineBackend):
         False when a driver error left a table to retry on the next query. Caller holds
         ``_walk_lock``."""
         from provisa.core.operator_floor import floor_setting
+        from provisa.core.request_context import current_org
         from provisa.core.secrets import resolve_secrets
 
         complete = True
+        # What this org's registry refused for a declared reason (_OrgWalk.refused).
+        refused = self._walk_of(current_org.get()).refused
         # A table listed by both the config and the registry: one attempt. Keyed by the table's
         # identity — two sources may both hold ``schema.table``, and each is attached.
         tried: set[tuple[str, str, str, str]] = set()
@@ -527,7 +550,7 @@ class NativeEngineBackend(EngineBackend):
             )
             # An attach made before the table's columns were known (a walk at startup, before the
             # registry is loaded) is made again once they rename one (#266).
-            if key in self._refused or (
+            if key in refused or (
                 key in self._attached and self._attached_fields.get(key, []) == fields
             ):
                 return
@@ -599,7 +622,7 @@ class NativeEngineBackend(EngineBackend):
                 self._starting.discard(key)
             except self._attach_errors as _ae:
                 if isinstance(_ae, _DECLARED_REFUSALS):
-                    self._refused.add(key)
+                    refused.add(key)
                 else:
                     complete = False
                     if isinstance(_ae, SourceStillStartingError):

@@ -19,6 +19,7 @@ from types import SimpleNamespace
 import pytest
 
 from provisa.core import secrets_store
+from provisa.core.request_context import current_org
 from provisa.core.secrets import resolve_secrets
 from provisa.federation.source_vault import names_org_secret, org_vault
 
@@ -133,13 +134,12 @@ def _walking_backend(resolved: list[str]):
         def _runtime_for(self, state):
             resolved.append(resolve_secrets(_REF))
             self._runtime = "runtime"
-            self._walked = self._registry_of(state)
+            self._walk_of(current_org.get()).registry = self._registry_of(state)
             return self._runtime
 
     backend = _Backend.__new__(_Backend)
     backend._runtime = None
-    backend._walked = None
-    backend._retry_at = None
+    backend._walks = {}
     return backend
 
 
@@ -182,10 +182,10 @@ async def test_a_statement_with_no_walk_pending_binds_nothing(vault, monkeypatch
 
     backend = _Backend.__new__(_Backend)
     backend._runtime = "runtime"
-    backend._retry_at = None  # the last walk was complete
+    backend._walks = {}
     state = SimpleNamespace(
         config=object(), runtime_sources={}, tables=[], model_db=None, tenant_db=None
     )
-    backend._walked = backend._registry_of(state)
+    backend._walk_of(current_org.get()).registry = backend._registry_of(state)  # complete
     assert await backend._attached_runtime(state) == "runtime"
     assert vault == []

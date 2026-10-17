@@ -100,7 +100,9 @@ def test_the_walk_skips_fetch_sources_and_attaches_live_ones():
     assert complete is True
     # The skipped FETCH tables are not recorded as refused — they are simply not attached here.
     assert not any(  # noqa: SLF001
-        key[1:] == ("petstore-api", "api", "list_pets") for key in backend._refused
+        key[1:] == ("petstore-api", "api", "list_pets")
+        for walk in backend._walks.values()  # noqa: SLF001
+        for key in walk.refused
     )
 
 

@@ -42,7 +42,7 @@ class _Backend(NativeEngineBackend):
         self._attached = set()
         self._attached_fields = {}
         self._detached = set()
-        self._refused = set()
+        self._walks = {}
         self._failed = {}
         self._starting = set()
 

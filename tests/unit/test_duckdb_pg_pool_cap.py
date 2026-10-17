@@ -193,7 +193,7 @@ def _walk_attaches(monkeypatch, row_cap: int | None) -> list[dict]:
             self._attached = set()
             self._attached_fields = {}
             self._detached = set()
-            self._refused = set()
+            self._walks = {}
             self._failed = {}
             self._starting = set()
 

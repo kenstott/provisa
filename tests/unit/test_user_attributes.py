@@ -135,6 +135,54 @@ class TestStore:
         assert await attr_repo.idp_for_user(conn, "u1") == {"region": "us"}
         assert await attr_repo.idp_names_by_user(conn) == {"u1": {"region"}}
 
+    def test_two_first_requests_at_once_record_the_providers_attributes_once(
+        self, control_plane, monkeypatch
+    ):
+        """A new sandbox's visitor sends its first requests together (the tour warm-up and the
+        page's own): each reads that nothing is recorded yet, and each writes it. The second
+        write is not a unique-key violation answered 500; the attributes are recorded once."""
+        import asyncio
+        import threading
+
+        db = control_plane.org()
+        both_read = threading.Barrier(2)
+        read = attr_repo.idp_for_user
+
+        async def _read_together(conn, user_id):
+            found = await read(conn, user_id)
+            try:
+                both_read.wait(timeout=2)
+            except threading.BrokenBarrierError:
+                pass  # the other request is not reading at the same time
+            return found
+
+        monkeypatch.setattr(attr_repo, "idp_for_user", _read_together)
+        errors: list[BaseException] = []
+
+        def _first_request():
+            async def _record():
+                async with db.acquire() as conn:
+                    await attr_repo.record_idp(conn, "visitor", {"pat": "true"})
+
+            try:
+                asyncio.run(_record())
+            except BaseException as exc:  # noqa: BLE001 - reported by the assertion below
+                errors.append(exc)
+
+        requests = [threading.Thread(target=_first_request) for _ in range(2)]
+        for request in requests:
+            request.start()
+        for request in requests:
+            request.join()
+        assert errors == []
+        monkeypatch.setattr(attr_repo, "idp_for_user", read)
+
+        async def _recorded():
+            async with db.acquire() as conn:
+                return await attr_repo.idp_for_user(conn, "visitor")
+
+        assert asyncio.run(_recorded()) == {"pat": "true"}
+
 
 _ROLES = {"people_admin": {"capabilities": ["user_management"], "domain_access": ["*"]}}
 ADMIN = types.SimpleNamespace(

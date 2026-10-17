@@ -129,6 +129,19 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             continue
 
         sel_name = sel.name.value
+        if sel_name == "__typename":
+            # The object's GraphQL type, not a column of its table: emitted as its value.
+            response_key = sel.alias.value if sel.alias else sel_name
+            select_parts.append(f"{_sql_str_literal(table.type_name)} AS {_q(response_key)}")
+            columns.append(
+                ColumnRef(
+                    alias=root_alias if use_aliases else None,
+                    column=response_key,
+                    field_name=response_key,
+                    nested_in=None,
+                )
+            )
+            continue
         join_key = (table.type_name, sel_name)
 
         if join_key in ctx.joins:
@@ -630,6 +643,11 @@ def _compile_connection_field(  # REQ-218
         if not isinstance(sel, FieldNode):
             continue
         sel_name = sel.name.value
+        if sel_name == "__typename":  # the node's GraphQL type, not a column
+            response_key = sel.alias.value if sel.alias else sel_name
+            select_parts.append(f"{_sql_str_literal(table.type_name)} AS {_q(response_key)}")
+            columns.append(ColumnRef(None, response_key, response_key, None))
+            continue
         phys_name = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
         select_parts.append(_q(phys_name))
         columns.append(ColumnRef(None, phys_name, sel_name, None))

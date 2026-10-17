@@ -116,6 +116,9 @@ class _Conn:
     def transaction(self):
         return self
 
+    async def advisory_xact_lock(self, key: int) -> None:
+        """One request at a time reaches this fake: there is no other writer to wait for."""
+
     async def execute_core(self, stmt):
         # REQ-1383: rewriting a member's provider record at sign-in is a write this fake keeps.
         if isinstance(stmt, (Insert, Delete)):
