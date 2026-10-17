@@ -178,6 +178,8 @@ def _grpc_mutation(method: str):
 @pytest.fixture
 def state(monkeypatch) -> SimpleNamespace:
     st = SimpleNamespace(
+        # A deployment of one organization: its sources reach what they name (sandbox_egress).
+        multitenancy=False,
         source_types={
             "shop": "openapi",
             "gh": "graphql_remote",
