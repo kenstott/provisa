@@ -67,7 +67,7 @@ class NodeSpec:
     preprocess: Callable[..., Any] | None = None
     # An MV's committed refresh, told to what a read asks whether the view is fresh
     # (MVTableProcessor.on_refreshed). None for a source node.
-    on_refreshed: Callable[[tuple[str, dict] | None], None] | None = None
+    on_refreshed: Callable[[tuple[str, dict] | None], Awaitable[None]] | None = None
 
 
 def _probe_factory(
@@ -333,7 +333,8 @@ def specs_from_config(
     write_lock: Callable[[tuple[str, str, str]], Any] | None = None,
     expected_events_of: Callable[[Any], list[str]] | None = None,
     mv_admit_deltas: Callable[[Any], Callable[[list[dict]], list[dict]]] | None = None,
-    mv_refreshed: Callable[[Any], Callable[[tuple[str, dict] | None], None]] | None = None,
+    mv_refreshed: Callable[[Any], Callable[[tuple[str, dict] | None], Awaitable[None]]]
+    | None = None,
 ) -> list[NodeSpec]:
     """Bind the config to :class:`NodeSpec`s (REQ-941). A MATERIALIZED source table (``federate`` ==
     MATERIALIZED) becomes a source spec — its landing args resolved from config, its ``fetch`` the

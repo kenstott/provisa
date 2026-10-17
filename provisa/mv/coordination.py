@@ -231,3 +231,24 @@ async def release_refresh(
     async with store.acquire() as conn:
         result = await conn.execute_core(stmt)
     return result.rowcount == 1
+
+
+async def record_build(
+    store: Database, mv_id: str, *, row_count: int | None = None, error: str | None = None
+) -> None:
+    """Record on this region's ``mv_build_state`` row a build of ``mv_id`` the event loop ran
+    (REQ-1922): it is the region's one builder of the view, so no lease is taken. A build is
+    ``fresh`` as of now, with its rows when known (``row_count`` None keeps those recorded); one
+    that failed is ``stale`` with ``error``, keeping when it was last built. Another region reads
+    the row to know whether the view's copy here is built (``query_residency.read_home_view``)."""
+    from provisa.core import process_region
+
+    values: dict[str, Any] = {"mv_id": mv_id, "region": process_region.region()}
+    if error is not None:
+        values.update(status="stale", last_error=error)
+    else:
+        values.update(status="fresh", last_refresh_at=datetime.now(UTC), last_error=None)
+        if row_count is not None:
+            values["row_count"] = row_count
+    async with store.acquire() as conn:
+        await conn.upsert(_mvt, values, index_elements=["mv_id"])
