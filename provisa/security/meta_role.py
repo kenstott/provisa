@@ -20,7 +20,9 @@ Everything a role is granted reaches the child exactly as role inheritance gives
 
 - grant lists — column ``visible_to``; metric and command (function and webhook)
   ``visible_to`` — gain the child wherever they name a member;
-- a table's write grants (REQ-2074): per operation, the first member holding one gives it;
+- a table's write grants (REQ-2074) fold as reads do: per operation any member holds, the
+  union of the members' columns, the OR of their rows and of their checks (each member's own,
+  its read filter where it states none), and the presets every such member sets alike;
 - a column's ordered mask list (REQ-2059) is read for the child as for any role: the first entry
   its own chain (every member's, with their ancestors and qualifiers) holds applies;
 - capabilities and domain_access are unioned; the row cap and rate limit are the least
@@ -111,6 +113,66 @@ def _inlined(filter_expr: str, constants: dict) -> str:
 
 def _or(terms: list[str]) -> str:
     return " OR ".join(f"({t})" for t in terms)
+
+
+def _fold_write_grants(
+    state: Any, meta_id: str, members: list[dict], tables: list[dict]
+) -> None:  # REQ-2074
+    """Give ``meta_id`` the fold of its members' write grants on every table, as its row filter
+    is the fold of theirs (:func:`_rls`): for each operation a member holds a grant for, the
+    union of the holders' columns; the OR of their rows and of their checks -- each member's own
+    predicate, its resolved read filter where its grant states none, its role constants inlined
+    -- and every row where any holder's is every row; and the presets every holder sets alike. A
+    preset the holders disagree on is no preset: the column is then written only where a holder
+    lists it among its columns."""
+    from provisa.compiler.write_admission import _every_row
+
+    by_id = {m["id"]: m for m in members}
+    for t in tables:
+        grants = [g for g in t.get("write_grants") or [] if g["role"] in by_id]
+        if not grants:
+            continue
+        t["write_grants"] = [g for g in t["write_grants"] if g["role"] != meta_id]
+        for operation in ("insert", "update", "delete"):
+            holders = [g for g in grants if g["operation"] == operation]
+            if not holders:
+                continue
+            columns: list[str] = []
+            for g in holders:
+                columns += [c for c in g["columns"] if c not in columns]
+
+            def _folded(stated: str) -> str | None:
+                terms: list[str] = []
+                for g in holders:
+                    member = by_id[g["role"]]
+                    expr = g.get(stated)
+                    if expr is None:
+                        ctx = state.surfaces[member["id"]].rls
+                        expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(
+                            t.get("domain_id") or ""
+                        )
+                    if _every_row(expr):
+                        return "TRUE"
+                    assert expr is not None
+                    terms.append(_inlined(expr, member.get("session_vars") or {}))
+                return _or(terms)
+
+            first = {p["column"]: p for p in holders[0]["presets"]}
+            presets = [
+                p
+                for column, p in first.items()
+                if all({q["column"]: q for q in g["presets"]}.get(column) == p for g in holders)
+            ]
+            t["write_grants"].append(
+                {
+                    "role": meta_id,
+                    "operation": operation,
+                    "columns": [c for c in columns if c not in {p["column"] for p in presets}],
+                    "rows": None if operation == "insert" else _folded("rows"),
+                    "check": None if operation == "delete" else _folded("check"),
+                    "presets": presets,
+                }
+            )
 
 
 def _rls(state: Any, members: list[dict], tables: list[dict]) -> Any:
@@ -221,7 +283,7 @@ def _build(
     and one reading no table would end every OR of row filters -- so they enter only the grants:
     a grant list naming one reaches the child, as a member's does."""
     from provisa.api.app_loaders import register_role_surface
-    from provisa.security.inheritance import expand_grants, expand_write_grants
+    from provisa.security.inheritance import expand_grants
     from provisa.security.masking import reader_masks
 
     member_roles = [state.roles[m] for m in member_ids]
@@ -230,9 +292,6 @@ def _build(
     # Inheritance with several parents: every grant to a member reaches the child.
     for t in inputs["tables"]:
         expand_grants(t.get("columns") or [], chains)
-    # REQ-2074: per table and operation, the first member (in the chain's order) holding a write
-    # grant gives the child that grant.
-    expand_write_grants(inputs["tables"], chains)
     expand_grants(inputs["metrics"], chains)
     expand_grants(inputs["functions"], chains)
     expand_grants(inputs["webhooks"], chains)
@@ -241,6 +300,7 @@ def _build(
     # before it, held by another member, applies first (deny by order).
     masks = reader_masks(state.masked_columns, meta_id, chains[meta_id])
     rls = _rls(state, member_roles, inputs["tables"])
+    _fold_write_grants(state, meta_id, member_roles, inputs["tables"])  # REQ-2074
     role = _role(member_roles, meta_id)
     state.masking_rules = {**state.masking_rules, **masks}
     state.roles[meta_id] = role

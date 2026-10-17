@@ -1118,6 +1118,8 @@ class WriteGrant(BaseModel):  # REQ-2074
                 f"{where}: an insert touches no existing rows; it has a check, not rows"
             )
         preset = {p.column for p in self.presets}
+        if len(preset) != len(self.presets):
+            raise ValueError(f"{where}: a column is preset at most once")
         both = sorted(preset & set(self.columns))
         if both:
             raise ValueError(f"{where}: {both} are preset, so the statement may not supply them")

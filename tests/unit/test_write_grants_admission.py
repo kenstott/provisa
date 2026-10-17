@@ -274,3 +274,131 @@ def test_a_copy_needs_an_insert_grant_and_its_columns():
 def test_a_copy_into_a_grant_with_presets_is_refused():
     with pytest.raises(WriteNotAdmitted, match="preset"):
         admit_rows(_gov(_INSERT), _ORDERS, "orders", ["ship_to"])
+
+
+# --- presets on the GraphQL surface --------------------------------------------------------
+# A mutation compiles to the statement every surface's write is; the grant's presets are added
+# where it is admitted, and its input offers no field for a preset column.
+
+
+def _graphql(grant: dict):
+    from provisa.compiler.context import build_context
+    from provisa.compiler.introspect import ColumnMetadata
+    from provisa.compiler.schema_gen import SchemaInput, generate_schema
+
+    table = {
+        "id": _ORDERS,
+        "source_id": "shop",
+        "domain_id": "sales",
+        "schema_name": "public",
+        "table_name": "orders",
+        "columns": [{"column_name": c, "visible_to": ["customer"]} for c, _ in _COLUMNS],
+        "write_ops": ["delete", "insert", "update"],
+        "write_returns_rows": True,
+        "write_refused_forms": [],
+        "write_grants": [grant],
+    }
+    types = {"integer": "integer", "varchar": "varchar(40)"}
+    si = SchemaInput(
+        tables=[table],
+        relationships=[],
+        column_types={
+            _ORDERS: [
+                ColumnMetadata(column_name=c, data_type=types[t], is_nullable=True)
+                for c, t in _COLUMNS
+            ]
+        },
+        naming_rules=[],
+        role={"id": "customer", "capabilities": ["write"], "domain_access": ["*"]},
+        domains=[{"id": "sales", "description": ""}],
+        source_types={"shop": "postgresql"},
+    )
+    return generate_schema(si), build_context(si)
+
+
+def _mutate(grant: dict, mutation: str, session=_ME) -> str:
+    from graphql import parse, validate
+
+    from provisa.compiler.mutation_gen import compile_mutation
+
+    schema, ctx = _graphql(grant)
+    doc = parse(mutation)
+    errors = validate(schema, doc)
+    if errors:
+        raise AssertionError(errors[0].message)
+    (compiled,) = compile_mutation(doc, ctx, {"shop": "postgresql"})
+    return _govern(compiled.sql, _gov(grant), session=session, params=compiled.params)
+
+
+def test_a_graphql_insert_carries_the_grants_session_and_literal_presets():
+    governed = _mutate(
+        _INSERT, 'mutation { insertOrders(input: { ship_to: "1 Elm" }) { affected_rows } }'
+    )
+    assert "customer_id" in governed and "CAST('7' AS INT)" in governed
+    assert "'placed'" in governed
+
+
+def test_a_graphql_input_offers_no_field_for_a_preset_column():
+    with pytest.raises(AssertionError, match="customer_id"):
+        _mutate(
+            _INSERT,
+            'mutation { insertOrders(input: { ship_to: "x", customer_id: 3 }) { affected_rows } }',
+        )
+
+
+def test_a_graphql_insert_without_the_session_variable_is_refused():
+    with pytest.raises(WriteNotAdmitted, match="session variable 'user_id'"):
+        _mutate(
+            _INSERT,
+            'mutation { insertOrders(input: { ship_to: "1 Elm" }) { affected_rows } }',
+            session={},
+        )
+
+
+def test_a_graphql_update_carries_a_now_preset():
+    stamped = _g(
+        "update",
+        ["status"],
+        rows="TRUE",
+        check="TRUE",
+        presets=[{"column": "ship_to", "source": "now"}],
+    )
+    governed = _mutate(
+        stamped,
+        'mutation { updateOrders(set: { status: "packed" }, where: { id: { eq: 1 } }) '
+        "{ affected_rows } }",
+    )
+    assert "ship_to = CURRENT_TIMESTAMP" in governed
+
+
+def test_an_empty_literal_preset_sets_the_empty_string():
+    blank = _g(
+        "insert",
+        ["ship_to"],
+        check="TRUE",
+        presets=[{"column": "status", "source": "literal", "value": ""}],
+    )
+    governed = _govern("INSERT INTO public.orders (ship_to) VALUES ('x')", _gov(blank))
+    assert "CAST('' AS VARCHAR)" in governed
+
+
+def test_a_grant_without_presets_writes_the_statement_as_given():
+    plain = _g("insert", ["ship_to"], check="TRUE")
+    sql = "INSERT INTO public.orders (ship_to) VALUES ('x')"
+    assert _govern(sql, _gov(plain)) == sql
+
+
+def test_a_column_is_preset_at_most_once():
+    from pydantic import ValidationError
+
+    from provisa.core.models import WriteGrant
+
+    with pytest.raises(ValidationError, match="preset at most once"):
+        WriteGrant(
+            role="r",
+            operation="insert",
+            presets=[
+                {"column": "status", "source": "now"},
+                {"column": "status", "source": "literal", "value": "x"},
+            ],
+        )
