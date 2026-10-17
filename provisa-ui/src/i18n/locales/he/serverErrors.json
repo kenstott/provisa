@@ -69,6 +69,7 @@
       "engine_not_connected": "המנוע אינו מחובר",
       "grpc_source_not_registered": "מקור gRPC מרוחק '{{source_id}}' אינו רשום",
       "invalid_as_of": "X-Provisa-As-Of לא תקין: {{error}}",
+      "invalid_as_recorded": "X-Provisa-As-Recorded לא תקין: {{error}}",
       "invalid_order_by": "סדר קיבוץ לא תקין: {{error}}",
       "invalid_cache_control": "בקשת מטמון תגובה לא תקינה: {{error}}",
       "invalid_filter": "filter חייב להיות אובייקט הממפה שמות שדות לערכים",

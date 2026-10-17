@@ -118,6 +118,8 @@ class AuditRecord:
     data_age: dict[str, Any] | None = field(kw_only=True)
     # REQ-1922: the region whose data answered the statement (query_audit_log.region).
     region: str = field(kw_only=True)
+    # REQ-1163: the time travel the statement read with, canonical (AsOf.key); None: read now.
+    time_travel: str | None = field(kw_only=True)
     # The model's registered tables as they were when the statement ran: what ``table_ids`` are
     # named by (query_audit_log.table_names), so a table renamed or deleted later still reads as
     # what was accessed.
@@ -164,9 +166,33 @@ class AuditRecord:
             "sources": sorted(self.sources),
             "data_age": self.data_age,
             "region": self.region,
+            **_time_travel_columns(self.time_travel),
             "trace_id": self.trace_id,
             "logged_at": self.logged_at,
         }
+
+
+def _time_travel_columns(time_travel: str | None) -> dict[str, str | None]:
+    """``query_audit_log.as_of`` and ``.as_recorded`` (REQ-1163): the times the statement read
+    bitemporal views as of and as recorded at, ISO 8601 (an as-of range as ``start/end``); None
+    where it gave none."""
+    if time_travel is None:
+        return {"as_of": None, "as_recorded": None}
+    from provisa.mv.bitemporal import AsOf
+
+    travel = AsOf.from_key(time_travel)
+
+    def iso(literal: str) -> str:
+        # A literal is TIMESTAMP 'YYYY-MM-DD HH:MM:SS.ffffff' (system_ts_literal); its time, ISO.
+        return literal.removeprefix("TIMESTAMP '").removesuffix("'").replace(" ", "T")
+
+    as_of = None
+    if travel.start_sql is not None:
+        as_of = iso(travel.start_sql)
+        if travel.end_sql is not None:
+            as_of = f"{as_of}/{iso(travel.end_sql)}"
+    recorded = None if travel.recorded_sql is None else iso(travel.recorded_sql)
+    return {"as_of": as_of, "as_recorded": recorded}
 
 
 async def _insert_rows(record_db: Any, rows: list[dict[str, Any]]) -> None:

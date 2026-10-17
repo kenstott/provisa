@@ -31,6 +31,10 @@
     "rowCountLabel": "行数",
     "roleLabel": "角色",
     "createView": "+ 视图",
-    "requestView": "请求视图"
+    "requestView": "请求视图",
+    "asOfLabel": "截至",
+    "asOfHint": "按此时刻的状态读取保留历史的视图",
+    "asRecordedLabel": "记录于",
+    "asRecordedHint": "按 Provisa 当时的记录读取保留历史的视图，不含之后的更正"
   }
 }

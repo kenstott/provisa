@@ -131,6 +131,7 @@ async def write_audit(
     sources: "Iterable[str]" = (),
     data_age: dict[str, Any] | None = None,
     answered_in: str | None = None,
+    time_travel: str | None = None,
 ) -> None:
     """Record ``pending``'s row with its outcome. A None record is a statement with no acting
     principal (see :func:`begin_audit`) and writes nothing.
@@ -146,6 +147,7 @@ async def write_audit(
         sources=sources,
         data_age=data_age,
         answered_in=answered_in,
+        time_travel=time_travel,
     )
 
 
@@ -160,6 +162,7 @@ def enqueue_audit(
     sources: "Iterable[str]" = (),
     data_age: dict[str, Any] | None = None,
     answered_in: str | None = None,
+    time_travel: str | None = None,
 ) -> None:
     """Hand ``pending``'s finished row to the audit writer (:mod:`provisa.audit.writer`) and
     return: the INSERT, and the active-hour meter that rides the same seam (REQ-1454), happen on
@@ -174,6 +177,7 @@ def enqueue_audit(
         sources=sources,
         data_age=data_age,
         answered_in=answered_in,
+        time_travel=time_travel,
     )
     if record is not None:
         from provisa.audit.writer import audit_writer
@@ -228,6 +232,7 @@ def build_audit_record(
     sources: "Iterable[str]" = (),
     data_age: dict[str, Any] | None = None,
     answered_in: str | None = None,
+    time_travel: str | None = None,
 ) -> Any:
     """``pending``'s audit record, or None when there is no acting principal. Everything that
     depends on the request's context — the org, its tenant database, its encryption key, the UDF
@@ -293,6 +298,8 @@ def build_audit_record(
         # REQ-1922: the region whose data answered — this node's, unless the statement read only
         # what another region keeps, in place there (``answered_in``, from its residency).
         region=answered_in if answered_in is not None else process_region.region(),
+        # REQ-1163: the time travel the statement read with (AsOf.key), None when it read now.
+        time_travel=time_travel,
         # The model's tables as this statement ran under them: the names its row records.
         tables=state.tables,
     )

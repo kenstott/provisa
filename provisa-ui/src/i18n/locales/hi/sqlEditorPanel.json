@@ -31,6 +31,10 @@
     "rowCountLabel": "पंक्ति संख्या",
     "roleLabel": "भूमिका",
     "createView": "+ व्यू",
-    "requestView": "व्यू का अनुरोध करें"
+    "requestView": "व्यू का अनुरोध करें",
+    "asOfLabel": "इस समय तक",
+    "asOfHint": "इतिहास रखने वाले व्यू को उस समय की स्थिति में पढ़ें",
+    "asRecordedLabel": "इस समय दर्ज",
+    "asRecordedHint": "इतिहास वाले व्यू वैसे पढ़ें जैसे Provisa ने तब दर्ज किए थे, बाद के सुधारों से पहले"
   }
 }

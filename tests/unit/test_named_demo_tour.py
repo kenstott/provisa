@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -40,6 +41,8 @@ _TARGETS = (
     "product",
     "role",
     "env",
+    "as_of",
+    "as_recorded",
     "polly",
     "image",
 )
@@ -263,6 +266,11 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
                 f"{step['key']}: groups the frame a Cypher step just before it ran"
             )
             assert re.fullmatch(r"[A-Za-z_]\w*", step["group_by"]), step
+        for travel in ("as_of", "as_recorded"):
+            if travel in step:
+                # REQ-1163: set in the SQL explorer's picker, on that page, as one ISO 8601 time.
+                assert page == "/sql", f"{step['key']}: {travel} is set on /sql, not {page}"
+                datetime.fromisoformat(step[travel])
         if "env" in step:
             # Picked in the header's environment switcher, on any page.
             assert step["env"] in envs, f"{step['key']}: no environment {step['env']!r}"

@@ -31,6 +31,10 @@
     "rowCountLabel": "Nombre de lignes",
     "roleLabel": "Rôle",
     "createView": "+ Vue",
-    "requestView": "Demander une vue"
+    "requestView": "Demander une vue",
+    "asOfLabel": "À la date du",
+    "asOfHint": "Lire les vues historisées telles qu'elles étaient à ce moment",
+    "asRecordedLabel": "Enregistré au",
+    "asRecordedHint": "Lire les vues historisées telles que Provisa les avait enregistrées, avant les corrections"
   }
 }

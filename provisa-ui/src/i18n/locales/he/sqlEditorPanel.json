@@ -31,6 +31,10 @@
     "rowCountLabel": "מספר שורות",
     "roleLabel": "תפקיד",
     "createView": "+ View",
-    "requestView": "בקשת View"
+    "requestView": "בקשת View",
+    "asOfLabel": "נכון ל",
+    "asOfHint": "קריאת תצוגות עם היסטוריה כפי שהיו בזמן הזה",
+    "asRecordedLabel": "כפי שנרשם ב",
+    "asRecordedHint": "קריאת תצוגות עם היסטוריה כפי ש-Provisa רשמה אותן אז, לפני תיקונים מאוחרים"
   }
 }

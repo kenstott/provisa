@@ -2952,6 +2952,7 @@ async def finalize_audit(
         "route_reason": plan.route_reason,
         "sources": plan.sources,
         "answered_in": plan.answered_in,
+        "time_travel": plan.cache_as_of,
         "data_age": (
             data_age(plan, cache_entry if cache_hit else None)
             if status_code == 200  # noqa: PLR2004 - HTTP OK

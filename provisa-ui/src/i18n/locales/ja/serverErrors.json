@@ -69,6 +69,7 @@
       "engine_not_connected": "エンジンが接続されていません",
       "grpc_source_not_registered": "gRPC リモートソース「{{source_id}}」が登録されていません",
       "invalid_as_of": "X-Provisa-As-Of が無効です：{{error}}",
+      "invalid_as_recorded": "X-Provisa-As-Recorded が無効です：{{error}}",
       "invalid_order_by": "グループ化の並び順が無効です：{{error}}",
       "invalid_cache_control": "レスポンスキャッシュの指定が無効です：{{error}}",
       "invalid_filter": "filter はフィールド名を値に対応付けるオブジェクトである必要があります",

@@ -579,11 +579,18 @@ def test_every_roles_service_resolves_a_semantic_address(meta_reach):
         assert "Resolve" in _rpcs(meta_reach.proto_files[role])
 
 
+def test_every_roles_resolve_takes_as_of_and_as_recorded(meta_reach):
+    """REQ-1163: the RPC's request carries what the GraphQL field's arguments do."""
+    for role in ("sales_reader", "cataloguer"):
+        proto = meta_reach.proto_files[role]
+        assert "string as_of = 2;" in proto and "string as_recorded = 3;" in proto
+
+
 _RESOLVE = """syntax = "proto3";
 package provisa.v1;
 message Orders { int32 id = 1; }
 message OrdersRequest { int32 limit = 1; }
-message ResolveAddressRequest { string uri = 1; string as_of = 2; }
+message ResolveAddressRequest { string uri = 1; string as_of = 2; string as_recorded = 3; }
 message ResolveAddressResponse { string result_json = 1; }
 service ProvisaService {
   rpc QueryOrders (OrdersRequest) returns (stream Orders);
@@ -594,7 +601,7 @@ service ProvisaService {
 
 def test_a_resolve_call_is_answered_by_the_one_resolve_function(deployment, monkeypatch):
     """The RPC hands the address, the role and the bound organisation to the resolve every other
-    surface calls, and answers what it found as JSON. An as_of the call does not give is none."""
+    surface calls, and answers what it found as JSON. An as_of or as_recorded the call does not give is none."""
     import json
 
     from provisa.api.data import resolve as resolve_mod
@@ -604,8 +611,8 @@ def test_a_resolve_call_is_answered_by_the_one_resolve_function(deployment, monk
     state.roles["acme"]["analyst"] = _RESOLVE
     calls: list[tuple] = []
 
-    async def _resolve(_state, role_id, uri, *, org_id, as_of=None):
-        calls.append((role_id, uri, org_id, as_of))
+    async def _resolve(_state, role_id, uri, *, org_id, as_of=None, as_recorded=None):
+        calls.append((role_id, uri, org_id, as_of, as_recorded))
         return {"uri": uri, "row": {"id": 7}}
 
     monkeypatch.setattr(resolve_mod, "resolve", _resolve)
@@ -618,4 +625,4 @@ def test_a_resolve_call_is_answered_by_the_one_resolve_function(deployment, monk
     uri = "provisa://acme/sales/tables/orders/pk=7"
     answer = call(messages.ResolveAddressRequest(uri=uri), metadata=_as("acme"))
     assert json.loads(answer.result_json) == {"uri": uri, "row": {"id": 7}}
-    assert calls == [("analyst", uri, "acme", None)]
+    assert calls == [("analyst", uri, "acme", None, None)]

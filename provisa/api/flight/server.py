@@ -246,21 +246,25 @@ def _flight_error(msg: str, cause: Exception | None = None) -> flight.FlightServ
 
 
 def _ticket_as_of(request: dict[str, object]) -> str | None:  # REQ-1163
-    """The time a ticket reads bitemporal materialized views as of: its ``as_of`` option, an ISO
-    8601 time (the ``X-Provisa-As-Of`` header of the HTTP transports), validated to a safe SQL
-    timestamp literal; None for a ticket that names none. One that cannot be read is refused by
-    name."""
-    from provisa.mv.bitemporal import parse_as_of
+    """The time travel a ticket reads bitemporal materialized views with: its ``as_of`` option,
+    an ISO 8601 time or range on the view's clock, and its ``as_recorded`` option, an ISO 8601
+    time (the ``X-Provisa-As-Of`` and ``X-Provisa-As-Recorded`` headers of the HTTP transports),
+    validated to safe SQL timestamp literals; None for a ticket that names neither. One that
+    cannot be read is refused by name."""
+    from provisa.mv.bitemporal import parse_as_of, parse_as_recorded, request_as_of
 
-    as_of = request.get("as_of")
-    if as_of is None:
-        return None
-    if not isinstance(as_of, str):
-        raise _flight_error(f"ticket option as_of must be an ISO 8601 time, not {as_of!r}")
-    try:
-        return parse_as_of(as_of).key()
-    except ValueError as exc:
-        raise _flight_error(f"invalid ticket option as_of: {exc}", exc) from exc
+    values: dict[str, str | None] = {}
+    for option, parse in (("as_of", parse_as_of), ("as_recorded", parse_as_recorded)):
+        value = request.get(option)
+        if value is not None and not isinstance(value, str):
+            raise _flight_error(f"ticket option {option} must be an ISO 8601 time, not {value!r}")
+        if value is not None:
+            try:
+                parse(value)
+            except ValueError as exc:
+                raise _flight_error(f"invalid ticket option {option}: {exc}", exc) from exc
+        values[option] = value
+    return request_as_of(values["as_of"], values["as_recorded"])
 
 
 def _ticket_delivery(request: dict[str, object], role_id: str):  # REQ-1194

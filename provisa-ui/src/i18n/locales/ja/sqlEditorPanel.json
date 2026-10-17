@@ -31,6 +31,10 @@
     "rowCountLabel": "行数",
     "roleLabel": "ロール",
     "createView": "+ ビュー",
-    "requestView": "ビューをリクエスト"
+    "requestView": "ビューをリクエスト",
+    "asOfLabel": "時点",
+    "asOfHint": "履歴を保持するビューをこの時点の状態で読み取る",
+    "asRecordedLabel": "記録時点",
+    "asRecordedHint": "履歴を保持するビューを、後の訂正の前に Provisa が記録していた状態で読み取る"
   }
 }

@@ -330,11 +330,12 @@ def _add_resolve_field(query_fields: dict) -> None:
         args={
             "uri": GraphQLArgument(GraphQLNonNull(GraphQLString)),
             "as_of": GraphQLArgument(GraphQLString),
+            "as_recorded": GraphQLArgument(GraphQLString),
         },
         description=(
             "The governed value a semantic address names: "
             "provisa://<org>/<domain>/tables/<table>/pk=<value>[/<column>], optionally as of "
-            "a point in time."
+            "a point in time, and as recorded at one."
         ),
     )
 

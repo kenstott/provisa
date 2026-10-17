@@ -483,6 +483,7 @@ async def test_data_sql_reports_hit_on_a_hit_and_miss_on_a_miss(monkeypatch, acc
             accept=accept,
             x_provisa_stats=None,
             x_provisa_as_of=None,
+            x_provisa_as_recorded=None,
         )
 
     miss = await _call(QueryResult(rows=[(1,)], column_names=["id"]))

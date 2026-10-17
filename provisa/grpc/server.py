@@ -796,8 +796,9 @@ class ProvisaServicer:  # REQ-045, REQ-143
                     role_id,
                     request.uri,
                     org_id=require_current_org(),
-                    # proto3 has no unset string: as_of not given reads "".
+                    # proto3 has no unset string: as_of or as_recorded not given reads "".
                     as_of=request.as_of or None,
+                    as_recorded=request.as_recorded or None,
                 )
             except AddressNotFound as exc:
                 await context.abort(grpc.StatusCode.NOT_FOUND, str(exc))

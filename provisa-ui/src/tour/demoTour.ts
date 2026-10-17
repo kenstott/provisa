@@ -90,6 +90,12 @@ export interface DemoTourStepDef {
   product?: string;
   /** A role (or "all"): shown in the SQL explorer's run-as picker, picked on Next. */
   role?: string;
+  /** REQ-1163: a time, ISO 8601, set in the SQL explorer's "as of" picker: the statements after
+   *  it read bitemporal views as of it. */
+  as_of?: string;
+  /** REQ-1163: a time, ISO 8601, set in the SQL explorer's "as recorded at" picker: the
+   *  statements after it read bitemporal views as Provisa had recorded them then. */
+  as_recorded?: string;
   /** An environment of the model (REQ-2053): shown in the header's environment switcher, picked
    *  on Next, so the steps after it read that environment. */
   env?: string;
@@ -261,6 +267,21 @@ function demoTourStep(
       ...page,
       element: RUN_AS,
       chooseOnNext: { open: RUN_AS, option: `[data-sql-role-option="${def.role}"]` },
+    };
+  }
+  // Each handed to the SQL explorer, which sets its picker; shown on the picker.
+  if (def.as_of !== undefined) {
+    return {
+      ...page,
+      openQuery: { stateKey: "asOf", text: def.as_of },
+      element: '[data-testid="sql-as-of"]',
+    };
+  }
+  if (def.as_recorded !== undefined) {
+    return {
+      ...page,
+      openQuery: { stateKey: "asRecorded", text: def.as_recorded },
+      element: '[data-testid="sql-as-recorded"]',
     };
   }
   if (def.env !== undefined) {
