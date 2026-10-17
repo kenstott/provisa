@@ -145,7 +145,8 @@ spec:
     app: trino
     role: coordinator
   ports:
-    - port: {{ .Values.trino.port }}
+    - name: http
+      port: {{ .Values.trino.port }}
       targetPort: {{ .Values.trino.port }}
     {{- if .Values.trino.internalTls }}
     # REQ-2072: the nodes' HTTPS port, at the coordinator's pinned address.

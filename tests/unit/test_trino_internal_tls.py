@@ -259,6 +259,27 @@ def test_the_chart_pins_the_coordinator_when_it_is_on():
     assert "clusterIP: 10.96.0.50" in rendered.stdout
 
 
+def test_every_service_port_is_named_when_it_is_on():
+    # Kubernetes rejects a multi-port Service with an unnamed port; TLS adds the coordinator's 8443.
+    import yaml
+
+    rendered = _helm("trino.internalTls=true", "trino.coordinatorClusterIP=10.96.0.50")
+    assert rendered.returncode == 0, rendered.stderr
+    services = [
+        doc for doc in yaml.safe_load_all(rendered.stdout) if doc and doc.get("kind") == "Service"
+    ]
+    coordinator = [s for s in services if s["spec"]["selector"].get("role") == "coordinator"]
+    assert [p["port"] for p in coordinator[0]["spec"]["ports"]][1:] == [8443]
+    unnamed = [
+        (s["metadata"]["name"], p["port"])
+        for s in services
+        if len(s["spec"]["ports"]) > 1
+        for p in s["spec"]["ports"]
+        if not p.get("name")
+    ]
+    assert unnamed == []
+
+
 def test_the_chart_refuses_it_without_the_pinned_address():
     rendered = _helm("trino.internalTls=true")
     assert rendered.returncode != 0
