@@ -528,6 +528,10 @@
         "title": "Oro: i totali",
         "description": "L'oro è un GROUP BY sull'argento: vendite, articoli, ricavi e fascia di prezzo per giorno e prodotto, solo da dati controllati."
       },
+      "qualityProduct": {
+        "title": "Un prodotto dati da consegnare",
+        "description": "Oro, argento e i controlli sono un prodotto dati: i totali che leggono i consumatori, le vendite dietro di essi e la prova che ogni lotto è stato superato. Il bronzo resta fuori."
+      },
       "qualityDone": {
         "title": "Fiducia che si può interrogare",
         "description": "Depositare un lotto ha aggiornato i controlli, l'argento e l'oro, senza eseguire altro. Il lotto pulito è arrivato all'oro; quello difettoso si è fermato al bronzo, e il perché è una query."

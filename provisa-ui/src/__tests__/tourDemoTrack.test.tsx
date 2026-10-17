@@ -157,6 +157,15 @@ describe("a demo's steps, as the runner walks them", () => {
     for (const step of [api, jsonapi, grpc, cypher]) expect(step.waitMs).toBe(60000);
   });
 
+  it("opens a data product on the Data Products page, its detail shown", () => {
+    const [step] = demoTourSteps(
+      [{ key: "p", route: "/data-products", product: "daily_sales" }],
+      EXAMPLES,
+    );
+    expect(step.route).toBe("/data-products?product=daily_sales");
+    expect(step.element).toBe('[data-testid="data-product-detail"]');
+  });
+
   it("opens a statement's lineage on the Lineage page and waits for its graph", () => {
     const sql = 'SELECT address FROM "vault"."view_dim_customer"';
     const [step] = demoTourSteps([{ key: "l", route: "/lineage", lineage: sql }], EXAMPLES);

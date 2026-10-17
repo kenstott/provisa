@@ -528,6 +528,10 @@
         "title": "Oro: los totales",
         "description": "Oro es un GROUP BY sobre plata: ventas, artículos, ingresos y rango de precios por día y producto, solo de datos controlados."
       },
+      "qualityProduct": {
+        "title": "Un producto de datos para entregar",
+        "description": "Oro, plata y los controles son un producto de datos: los totales que leen los consumidores, las ventas detrás de ellos y la prueba de que cada lote pasó. El bronce queda fuera."
+      },
       "qualityDone": {
         "title": "Confianza que se puede consultar",
         "description": "Depositar un lote actualizó los controles, plata y oro, sin ejecutar nada más. El lote limpio llegó a oro; el defectuoso se quedó en bronce, y el porqué es una consulta."

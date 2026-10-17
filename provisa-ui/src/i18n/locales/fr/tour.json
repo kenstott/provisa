@@ -528,6 +528,10 @@
         "title": "Or : les totaux",
         "description": "L'or est un GROUP BY sur l'argent : ventes, articles, chiffre d'affaires et fourchette de prix par jour et par produit, à partir de données contrôlées seulement."
       },
+      "qualityProduct": {
+        "title": "Un produit de données à transmettre",
+        "description": "L'or, l'argent et les contrôles forment un produit de données : les totaux que lisent les consommateurs, les ventes qui les composent et la preuve que chaque lot a réussi. Le bronze reste à l'écart."
+      },
       "qualityDone": {
         "title": "Une confiance que l'on peut interroger",
         "description": "Déposer un lot a actualisé les contrôles, l'argent et l'or, sans rien exécuter d'autre. Le lot propre a atteint l'or ; le mauvais s'est arrêté au bronze, et pourquoi, c'est une requête."
