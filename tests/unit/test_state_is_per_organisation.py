@@ -17,9 +17,9 @@ repeat from one organisation to the next — is held on that runtime and read th
 of the state. A collection declared on the state's class instead is one object for the whole
 process.
 
-The rule is held here: every collection the state's class declares is named in one of two
-lists below, with its reason. A new one fails this test until it is a property over the
-runtime, or is put on a list by someone who has decided which it is.
+The rule is held here: every collection the state's class declares is named in the list
+below, with its reason. A new one fails this test until it is a property over the runtime, or
+is put on the list by someone who has decided it is the process's.
 """
 
 from __future__ import annotations
@@ -43,29 +43,6 @@ _THE_PROCESSES = {
     "server_cfg": "the server section of the deployment's configuration file",
     "server_limits": "the deployment's resolved limits",
     "udf_egress_allowlist": "the deployment's allow-list",
-}
-
-# Loaded per organisation and keyed by names that repeat across organisations, and still
-# declared on the class. Each moves onto the runtime as `api_sources` did; this list only
-# shrinks — a name taken off it must be a property over the runtime (the test below).
-_NOT_YET_ON_THE_RUNTIME = {
-    "graphql_remote_sources",
-    "openapi_specs",
-    "grpc_remote_sources",
-    "websocket_sources",
-    "rss_sources",
-    "cdc_sources",
-    "ingest_engines",
-    "ingest_tables",
-    "kafka_windows",
-    "kafka_bootstrap",
-    "kafka_table_configs",
-    "kafka_table_physical",
-    "table_approval_hooks",
-    "source_approval_hooks",
-    "pg_enum_types",
-    "table_watermarks",
-    "pg_notify_tables",
 }
 
 _COLLECTION_CALLS = {"set", "dict", "list", "MVRegistry", "NoopAPQCache"}
@@ -98,13 +75,12 @@ def _class_level_collections() -> set[str]:
 
 def test_every_collection_the_state_class_declares_is_accounted_for():
     declared = _class_level_collections()
-    listed = set(_THE_PROCESSES) | _NOT_YET_ON_THE_RUNTIME
+    listed = set(_THE_PROCESSES)
     assert declared - listed == set(), (
         "new collection(s) on AppState's class: make each a property over the organisation's "
         "runtime, or decide it is the process's and list it with its reason"
     )
     assert listed - declared == set(), "listed here but no longer declared on the class"
-    assert not set(_THE_PROCESSES) & _NOT_YET_ON_THE_RUNTIME
 
 
 def _runtime_properties() -> set[str]:

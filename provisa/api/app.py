@@ -204,11 +204,10 @@ class AppState:
     _airport_server: Any | None = None  # ProvisaAirportServer
     _airport_relay: Any | None = None  # FlightRelay: the advertised airport port (REQ-1900)
     _http_listener: Any | None = None  # WorkerHttpListener: this worker's own HTTP socket
-    kafka_windows: dict[str, str] = {}  # source_id → default_window (e.g. "1h")
-    kafka_bootstrap: dict[str, str] = {}  # source_id → its brokers, secrets resolved (REQ-812)
-    kafka_table_configs: dict[str, KafkaTableConfig] = {}  # table_name → KafkaTableConfig
-    # mv_registry, view_sql_map, bitemporal_view_reads and table_cache are org-routed; see the
-    # properties below.
+    # mv_registry, view_sql_map, bitemporal_view_reads, table_cache and what each org's build records
+    # about its sources and tables (kafka_*, *_approval_hooks, pg_enum_types, the remote sources'
+    # registrations, ingest_*, websocket/rss/cdc sources, pg_notify_tables, table_watermarks) are
+    # org-routed; see the properties below.
     auth_config: dict | None = None  # auth section from provisa.yaml
     # Bumped every time _load_and_build resolves auth_config. The lazily-resolving AuthMiddleware
     # (config_resolver path) caches its provider on first request; comparing this generation lets it
@@ -225,8 +224,6 @@ class AppState:
     flight_global_cap: int | None = None
     approval_hook: Any | None = None  # REQ-247: ApprovalHook instance (None = disabled)
     approval_hook_config: Any | None = None  # REQ-247: ApprovalHookConfig
-    table_approval_hooks: dict[int, bool] = {}  # table_id → approval_hook flag
-    source_approval_hooks: dict[str, bool] = {}  # source_id → approval_hook flag
     hot_manager: HotTableManager | None = None
     _hot_refresh_task: LongLived | None = None
     _replica_hot_task: LongLived | None = None  # REQ-826: the Hot promotion evaluation
@@ -250,22 +247,7 @@ class AppState:
     # REQ-885: deny-by-default egress allow-list for hosted http/grpc UDFs. host or host:port
     # entries; empty ⇒ all external egress denied (loopback/Provisa pgwire is always allowed).
     udf_egress_allowlist: list[str] = []
-    pg_enum_types: dict = {}  # pg_name → GraphQLEnumType (REQ-221)
     _org_id: str = "default"  # REQ-697: org schema scope (ORG_ID env var); see the org_id property
-    graphql_remote_sources: dict[str, dict] = {}  # source_id → GraphQL remote registration
-    openapi_specs: dict[str, dict] = {}  # source_id → OpenAPI spec registration
-    grpc_remote_sources: dict[str, dict] = {}  # source_id → gRPC remote registration
-    # Phase AS — Ingest sources
-    ingest_engines: dict[str, Engine] = {}  # source_id → Engine
-    ingest_tables: dict[str, dict[str, list[dict]]] = {}  # source_id → {table_name → [col defs]}
-    # WebSocket sources
-    websocket_sources: dict[str, Source] = {}  # source_id → Source
-    # RSS/Atom feed sources
-    rss_sources: dict[str, Source] = {}  # source_id → Source
-    # REQ-824: sources with source-level CDC transport (Debezium/Kafka), entered once per source
-    cdc_sources: dict[str, Source] = {}  # source_id → Source (only those with .cdc set)
-    pg_notify_tables: set[str] = set()  # table_names with pg_notify triggers installed
-    table_watermarks: dict[str, str] = {}  # table_name → watermark_column (for polling fallback)
     _scheduler: Any | None = None  # APScheduler instance for scheduled queries
     _scheduler_holder: Any | None = None  # SchedulerHolder: one worker runs the jobs (REQ-1900)
     # SchedulerHolder: one worker of this node's region runs its region's jobs (REQ-1922); the
@@ -282,9 +264,6 @@ class AppState:
     otel_s3_endpoint: str = "http://minio:9000"  # MinIO/S3 endpoint for compaction
     multitenancy: bool = False
     tenant_context_cache: TenantContextCache | None = None
-    kafka_table_physical: dict[
-        str, str
-    ] = {}  # virtual gql table → physical the engine table (Kafka sources)
     # REQ-1919: the configuration the process runs — the file's settings, with every model
     # section read from the default org's model store (config_loader.store_config).
     config: Any = None
@@ -609,6 +588,159 @@ class AppState:
     @source_dsns.setter
     def source_dsns(self, value: dict[str, str]) -> None:
         self._active_runtime().source_dsns = value
+
+    @property
+    def kafka_windows(self) -> dict[str, str]:
+        """Kafka source id → its default window (e.g. "1h")."""
+        return self._active_runtime().kafka_windows
+
+    @kafka_windows.setter
+    def kafka_windows(self, value: dict[str, str]) -> None:
+        self._active_runtime().kafka_windows = value
+
+    @property
+    def kafka_bootstrap(self) -> dict[str, str]:
+        """Kafka source id → its brokers, secrets resolved (REQ-812)."""
+        return self._active_runtime().kafka_bootstrap
+
+    @kafka_bootstrap.setter
+    def kafka_bootstrap(self, value: dict[str, str]) -> None:
+        self._active_runtime().kafka_bootstrap = value
+
+    @property
+    def kafka_table_configs(self) -> dict[str, KafkaTableConfig]:
+        """Table name → its Kafka table config."""
+        return self._active_runtime().kafka_table_configs
+
+    @kafka_table_configs.setter
+    def kafka_table_configs(self, value: dict[str, KafkaTableConfig]) -> None:
+        self._active_runtime().kafka_table_configs = value
+
+    @property
+    def kafka_table_physical(self) -> dict[str, str]:
+        """Virtual GraphQL table → the engine's physical table (Kafka sources)."""
+        return self._active_runtime().kafka_table_physical
+
+    @kafka_table_physical.setter
+    def kafka_table_physical(self, value: dict[str, str]) -> None:
+        self._active_runtime().kafka_table_physical = value
+
+    @property
+    def table_approval_hooks(self) -> dict[int, bool]:
+        """REQ-247: table id → its approval-hook flag."""
+        return self._active_runtime().table_approval_hooks
+
+    @table_approval_hooks.setter
+    def table_approval_hooks(self, value: dict[int, bool]) -> None:
+        self._active_runtime().table_approval_hooks = value
+
+    @property
+    def source_approval_hooks(self) -> dict[str, bool]:
+        """REQ-247: source id → its approval-hook flag."""
+        return self._active_runtime().source_approval_hooks
+
+    @source_approval_hooks.setter
+    def source_approval_hooks(self, value: dict[str, bool]) -> None:
+        self._active_runtime().source_approval_hooks = value
+
+    @property
+    def pg_enum_types(self) -> dict:
+        """REQ-221: PostgreSQL enum name → its GraphQLEnumType."""
+        return self._active_runtime().pg_enum_types
+
+    @pg_enum_types.setter
+    def pg_enum_types(self, value: dict) -> None:
+        self._active_runtime().pg_enum_types = value
+
+    @property
+    def graphql_remote_sources(self) -> dict[str, dict]:
+        """Source id → its GraphQL remote registration."""
+        return self._active_runtime().graphql_remote_sources
+
+    @graphql_remote_sources.setter
+    def graphql_remote_sources(self, value: dict[str, dict]) -> None:
+        self._active_runtime().graphql_remote_sources = value
+
+    @property
+    def openapi_specs(self) -> dict[str, dict]:
+        """Source id → its OpenAPI spec registration."""
+        return self._active_runtime().openapi_specs
+
+    @openapi_specs.setter
+    def openapi_specs(self, value: dict[str, dict]) -> None:
+        self._active_runtime().openapi_specs = value
+
+    @property
+    def grpc_remote_sources(self) -> dict[str, dict]:
+        """Source id → its gRPC remote registration."""
+        return self._active_runtime().grpc_remote_sources
+
+    @grpc_remote_sources.setter
+    def grpc_remote_sources(self, value: dict[str, dict]) -> None:
+        self._active_runtime().grpc_remote_sources = value
+
+    @property
+    def ingest_engines(self) -> dict[str, Engine]:
+        """Ingest source id → its engine."""
+        return self._active_runtime().ingest_engines
+
+    @ingest_engines.setter
+    def ingest_engines(self, value: dict[str, Engine]) -> None:
+        self._active_runtime().ingest_engines = value
+
+    @property
+    def ingest_tables(self) -> dict[str, dict[str, list[dict]]]:
+        """Ingest source id → {table name → column definitions}."""
+        return self._active_runtime().ingest_tables
+
+    @ingest_tables.setter
+    def ingest_tables(self, value: dict[str, dict[str, list[dict]]]) -> None:
+        self._active_runtime().ingest_tables = value
+
+    @property
+    def websocket_sources(self) -> dict[str, Source]:
+        """WebSocket source id → its source."""
+        return self._active_runtime().websocket_sources
+
+    @websocket_sources.setter
+    def websocket_sources(self, value: dict[str, Source]) -> None:
+        self._active_runtime().websocket_sources = value
+
+    @property
+    def rss_sources(self) -> dict[str, Source]:
+        """RSS/Atom source id → its source."""
+        return self._active_runtime().rss_sources
+
+    @rss_sources.setter
+    def rss_sources(self, value: dict[str, Source]) -> None:
+        self._active_runtime().rss_sources = value
+
+    @property
+    def cdc_sources(self) -> dict[str, Source]:
+        """REQ-824: source id → its source, for those with source-level CDC."""
+        return self._active_runtime().cdc_sources
+
+    @cdc_sources.setter
+    def cdc_sources(self, value: dict[str, Source]) -> None:
+        self._active_runtime().cdc_sources = value
+
+    @property
+    def pg_notify_tables(self) -> set[str]:
+        """Table names with pg_notify triggers installed."""
+        return self._active_runtime().pg_notify_tables
+
+    @pg_notify_tables.setter
+    def pg_notify_tables(self, value: set[str]) -> None:
+        self._active_runtime().pg_notify_tables = value
+
+    @property
+    def table_watermarks(self) -> dict[str, str]:
+        """Table name → its watermark column (polling fallback)."""
+        return self._active_runtime().table_watermarks
+
+    @table_watermarks.setter
+    def table_watermarks(self, value: dict[str, str]) -> None:
+        self._active_runtime().table_watermarks = value
 
     @property
     def mv_registry(self) -> MVRegistry:

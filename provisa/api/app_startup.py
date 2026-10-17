@@ -906,8 +906,6 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                 functions=functions,
                 relationships=relationships,
             )
-            if not hasattr(state, "graphql_remote_sources"):
-                state.graphql_remote_sources = {}
             state.graphql_remote_sources["graphql-demo"] = reg.model_dump()
             _demo_pool = state.model_db
             if _demo_pool is not None:

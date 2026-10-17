@@ -46,6 +46,10 @@ from provisa.federation.replica_address import ReplicaRoutes
 from provisa.mv.registry import MVRegistry
 
 if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
+
+    from provisa.core.models import Source
+    from provisa.kafka.window import KafkaTableConfig
     from provisa.compiler.sql_gen import CompilationContext
     from provisa.core.database import Database
 
@@ -182,6 +186,25 @@ class OrgRuntime:
     view_sql_map: dict[str, str] = field(default_factory=dict)
     bitemporal_view_reads: dict = field(default_factory=dict)
     table_cache: dict[int, int | None] = field(default_factory=dict)
+    # REQ-1266: what the org's build records about its sources and tables, keyed by source ids,
+    # table names and table ids that repeat from one org to the next.
+    kafka_windows: dict[str, str] = field(default_factory=dict)
+    kafka_bootstrap: dict[str, str] = field(default_factory=dict)
+    kafka_table_configs: dict[str, KafkaTableConfig] = field(default_factory=dict)
+    kafka_table_physical: dict[str, str] = field(default_factory=dict)
+    table_approval_hooks: dict[int, bool] = field(default_factory=dict)
+    source_approval_hooks: dict[str, bool] = field(default_factory=dict)
+    pg_enum_types: dict = field(default_factory=dict)
+    graphql_remote_sources: dict[str, dict] = field(default_factory=dict)
+    openapi_specs: dict[str, dict] = field(default_factory=dict)
+    grpc_remote_sources: dict[str, dict] = field(default_factory=dict)
+    ingest_engines: dict[str, Engine] = field(default_factory=dict)
+    ingest_tables: dict[str, dict[str, list[dict]]] = field(default_factory=dict)
+    websocket_sources: dict[str, Source] = field(default_factory=dict)
+    rss_sources: dict[str, Source] = field(default_factory=dict)
+    cdc_sources: dict[str, Source] = field(default_factory=dict)
+    pg_notify_tables: set[str] = field(default_factory=set)
+    table_watermarks: dict[str, str] = field(default_factory=dict)
     source_cache: dict[str, dict] = field(default_factory=dict)
     source_allowed_domains: dict[str, list[str]] = field(default_factory=dict)
     source_federation_hints: dict[str, dict[str, str]] = field(default_factory=dict)
