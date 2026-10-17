@@ -89,8 +89,9 @@ def nodes(tmp_path_factory):
     try:
         servers = {}
         for region in ("eu", "us"):  # eu first: it lands and builds what us reads
+            # One org in two regions: each node serves the same org, as its own region.
             srv = IsolatedServer(
-                f"retail_demo_{region}",
+                "retail_demo",
                 engine="duckdb",
                 config=str(demo / "config.yaml"),
                 control_plane="postgres",
