@@ -77,8 +77,19 @@ function servePyodideAssets(): Plugin {
         const root = path.join(NOTEBOOK_ASSETS, prefix.slice(1, -1));
         const rel = decodeURIComponent(req.url.split("?")[0].slice(prefix.length));
         let file = path.resolve(root, rel);
-        if (fs.existsSync(file) && fs.statSync(file).isDirectory())
+        if (fs.existsSync(file) && fs.statSync(file).isDirectory()) {
+          // A directory is answered at its URL with the trailing slash, as the server's
+          // StaticFiles(html=True) answers it: its index.html names its assets relative to it
+          // (../build/...), which from /lite/notebooks would resolve above /lite.
+          const [pathname, query] = req.url.split("?", 2);
+          if (!pathname.endsWith("/")) {
+            res.statusCode = 307;
+            res.setHeader("Location", `${pathname}/${query === undefined ? "" : `?${query}`}`);
+            res.end();
+            return;
+          }
           file = path.join(file, "index.html");
+        }
         if (!file.startsWith(root + path.sep) || !fs.existsSync(file)) {
           res.statusCode = 404;
           res.end();

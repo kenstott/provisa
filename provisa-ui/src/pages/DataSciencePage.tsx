@@ -239,8 +239,10 @@ export function DataScienceHost({ makeWorker = defaultWorker }: { makeWorker?: M
   );
 }
 
-/** The JupyterLite site the notebook tab embeds, opened on the starter notebook. */
-export const NOTEBOOK_URL = "/lite/notebooks/index.html?path=Provisa.ipynb";
+/** The JupyterLite site the notebook tab embeds, opened on the starter notebook. Its JupyterLab
+ * app, not its Notebook app: the Notebook app opens every document it opens or creates in a new
+ * browser tab, out of the page; JupyterLab opens them as tabs of its own, inside the frame. */
+export const NOTEBOOK_URL = "/lite/lab/index.html?path=Provisa.ipynb";
 /** How long the tab waits for the embedded app before it gives up handing it the user. */
 const LITE_APP_WAIT_MS = 120_000;
 
