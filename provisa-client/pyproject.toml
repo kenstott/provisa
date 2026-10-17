@@ -14,7 +14,10 @@ dependencies = [
 pandas = ["pandas>=2"]
 sqlalchemy = ["sqlalchemy>=2"]
 adbc = ["adbc-driver-manager>=0.10"]
+# provisa_client.magics (%%sql, %%graphql, %%cypher) and DataFrame reads in a notebook.
+notebook = ["ipython>=8", "pandas>=2"]
 dev = [
+    "ipython>=8",
     "pytest",
     "pytest-asyncio",
     "respx",
