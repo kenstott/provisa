@@ -42,6 +42,8 @@ from urllib.parse import urlsplit
 from provisa.core.org_ids import is_sandbox_tier_org
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import httpx
 
 #: The REQ-1598 hosted sandbox org.
@@ -67,16 +69,36 @@ def confined(org_id: str | None) -> bool:
     return org_id is not None and (is_sandbox_tier_org(org_id) or org_id == _HOSTED_SANDBOX_ORG)
 
 
+#: The deployment's own org (the API layer says which). Its sources are the operator's, named in
+#: the deployment's own configuration -- as a demo's are its template's -- so they are reached
+#: wherever they point.
+_deployment_org: "Callable[[], str] | None" = None
+
+
+def set_deployment_org_resolver(resolver: "Callable[[], str]") -> None:
+    """Install the deployment's answer to "which org is the deployment's own". Called once, at
+    import of the API layer."""
+    global _deployment_org
+    _deployment_org = resolver
+
+
 def held(org_id: str | None) -> bool:
-    """Whether ``org_id``'s sources are held to public destinations: a sandbox org, or any org on a
-    deployment that holds many organizations."""
+    """Whether ``org_id``'s sources are held to public destinations: a sandbox org, or any org but
+    the deployment's own on a deployment that holds many organizations."""
     if org_id is None:
         return False
     if confined(org_id):
         return True
     from provisa.core.secrets_providers import many_organisations
 
-    return many_organisations()
+    if not many_organisations():
+        return False
+    if _deployment_org is None:
+        raise RuntimeError(
+            "Nothing has said which org is the deployment's own. The API layer says it at import "
+            "(provisa.api.app)."
+        )
+    return org_id != _deployment_org()
 
 
 def _public(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:

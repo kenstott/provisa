@@ -1216,6 +1216,10 @@ secrets_store.set_request_org_resolver(_request_org_for_secrets)
 from provisa.core import secrets_providers as _secrets_providers  # noqa: E402
 
 _secrets_providers.set_many_organisations_resolver(lambda: state.multitenancy)
+# The deployment's own org, whose configured sources the egress hold leaves alone (sandbox_egress).
+from provisa.security import sandbox_egress as _sandbox_egress  # noqa: E402
+
+_sandbox_egress.set_deployment_org_resolver(lambda: state.org_id)
 
 
 def _org_redirect_overrides() -> dict:

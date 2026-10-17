@@ -62,6 +62,7 @@ def organisations(monkeypatch):
 
     def _say(many: bool) -> None:
         monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: many)
+        monkeypatch.setattr(egress, "_deployment_org", lambda: "default")
 
     return _say
 
@@ -82,6 +83,17 @@ def test_an_ordinary_org_on_a_shared_deployment_is_refused_the_platforms_private
     with pytest.raises(egress.PrivateDestinationRefused) as refused:
         egress.require_connectable({"host": address, "port": 6379}, "redis", "acme")
     assert refused.value.code == "sources.private_destination"
+
+
+def test_the_deployments_own_org_reaches_what_its_configuration_names(organisations):
+    """The operator's own sources (the deployment config's demo servers on the compose network)
+    are not held: the deployment's org is the operator's, as a demo's template is."""
+    organisations(True)
+    assert not egress.held("default")
+    assert (
+        egress.require_connectable({"host": "172.18.0.8", "port": 4000}, "graphql", "default")
+        is None
+    )
 
 
 def test_an_ordinary_orgs_unpinnable_public_source_on_a_shared_deployment_is_saved(
