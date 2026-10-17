@@ -815,6 +815,30 @@ def _report_session_variables(
         )
 
 
+_ENV_REF = re.compile(r"\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def _report_environment(
+    webhooks: list[Webhook], triggers: list[ScheduledTrigger], collector: WarningCollector
+) -> None:  # REQ-417
+    """Each environment variable a converted handler URL reads, named once with what reads it:
+    Hasura read it from its own environment, and a configuration naming a variable the Provisa
+    server does not have does not load."""
+    readers: dict[str, list[str]] = {}
+    for name, url in [
+        *((w.name, w.url) for w in webhooks),
+        *((t.id, t.url or "") for t in triggers),
+    ]:
+        for var in _ENV_REF.findall(url):
+            readers.setdefault(var, []).append(name)
+    for var, names in sorted(readers.items()):
+        collector.warn(
+            "environment",
+            f"Set {var} in the Provisa server's environment, as it was in Hasura's: "
+            f"{', '.join(names)} read it. The configuration does not load until it is set.",
+        )
+
+
 def _or(terms: list[str | None]) -> str:
     """The OR of predicates; every row where any is every row."""
     if any(t in (None, "TRUE") for t in terms):
@@ -956,6 +980,8 @@ def convert_metadata(
         )
         collector.carry("triggers", ct.name, f"scheduled trigger on {ct.schedule}")
         _retries(f"Cron trigger {ct.name!r}", ct.retry_conf, collector)
+
+    _report_environment(webhooks, scheduled, collector)
 
     # Auth config from env
     auth = AuthConfig()

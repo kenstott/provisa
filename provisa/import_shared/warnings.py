@@ -40,6 +40,7 @@ _REPORT_ORDER = (
     "functions",
     "actions",
     "triggers",
+    "environment",
 )
 
 

@@ -238,7 +238,18 @@ def test_the_report_says_what_was_carried_mapped_and_left_to_redo(converted):
     for item in collector.mapped:
         assert item.detail, item  # each mapping says why
     redo_categories = {w.category for w in collector.warnings}
-    assert redo_categories <= {"sources", "computed_fields", "triggers"}, collector.warnings
+    assert redo_categories <= {"sources", "computed_fields", "triggers", "environment"}, (
+        collector.warnings
+    )
+
+
+def test_each_environment_variable_a_handler_url_reads_is_named(converted):
+    """Hasura read its handler URLs from its own environment; Provisa reads them from its own,
+    and a configuration naming one that is not set does not load: each is named, once."""
+    _, collector = converted
+    named = _redo(collector, "environment")
+    for var in ("PAYMENTS_BASE_URL", "REPORTS_BASE_URL", "FULFILMENT_WEBHOOK_URL"):
+        assert sum(var in m for m in named) == 1, named
 
 
 def _with(layout_mutator):
