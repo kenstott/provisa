@@ -265,6 +265,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             set()
         )  # community/extension connectors LOADed on this connection
         self._control_plane_attached = False  # provisa_admin catalog (native path only)
+        # A region's own stores, attached read-only for the ops views over them, by alias.
+        self._region_stores_attached: set[str] = set()
         # A held file's pause is invisible to concurrent queries only if they are excluded from it
         # -- see _CatalogGate. Held for read by every execution path, for write by the pause.
         self._catalog_gate = _CatalogGate()
@@ -846,6 +848,26 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             self._con.execute(f"ATTACH '{dsn}' AS \"{catalog}\" (TYPE postgres, READ_ONLY)")
             self._phys_catalogs.add(catalog)
         self._control_plane_attached = True
+
+    def attach_region_ops(
+        self, catalog: str, schema: str, stores: dict[str, str], views: dict[str, str]
+    ) -> None:
+        """Define ``views`` -- each ops view's SELECT, by name -- in ``catalog``.``schema``, over
+        ``stores`` (alias -> libpq DSN): the stores a region keeps its record and state in, each
+        attached read-only once, as ``attach_control_plane`` attaches the model's
+        (``api.region_ops_views``, REQ-1922). The views are defined again on each call, so a
+        definition the model's reload changed is the one read."""
+        self._ensure_postgres_loaded()
+        for alias, dsn in stores.items():
+            if alias not in self._region_stores_attached:
+                self._con.execute(f"ATTACH '{dsn}' AS \"{alias}\" (TYPE postgres, READ_ONLY)")
+                self._region_stores_attached.add(alias)
+        if catalog not in self._phys_catalogs:
+            self._con.execute(f"ATTACH ':memory:' AS \"{catalog}\"")
+            self._phys_catalogs.add(catalog)
+        self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{catalog}"."{schema}"')
+        for name, select in views.items():
+            self._con.execute(f'CREATE OR REPLACE VIEW "{catalog}"."{schema}"."{name}" AS {select}')
 
     # The materialization store, attached under this backend-neutral alias. A store MUST exist (the
     # engine's invariant); its backend/dialect is taken from the store URL scheme, never assumed.

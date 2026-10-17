@@ -669,6 +669,13 @@ class NativeEngineBackend(EngineBackend):
         tdb = getattr(state, "model_db", None)
         if tdb is not None and hasattr(self._runtime, "attach_control_plane"):
             self._runtime.attach_control_plane(libpq_dsn(tdb.engine.url))
+            # REQ-1922: in a region, the ops views over its record and state, read where those
+            # are kept (api.region_ops_views); a node of no region reads them from the model's.
+            from provisa.api.region_ops_views import CATALOG, engine_attachment
+
+            attachment = engine_attachment(state)
+            if attachment is not None:
+                self._runtime.attach_region_ops(CATALOG, *attachment)
         return complete
 
     # -- residency prep (REQ-825 stage-4b / REQ-932) ---------------------------
