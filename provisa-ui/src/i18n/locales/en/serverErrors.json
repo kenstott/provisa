@@ -441,7 +441,8 @@
       "role_session_var_name_invalid": "Session value name '{{name}}' must be letters, digits and underscores, and must not start with a digit",
       "role_session_var_name_repeated": "Session value '{{name}}' is named twice",
       "role_description_missing": "Role '{{role}}' needs a description of what it is for",
-      "rls_rule_description_missing": "A row rule needs a description of what it is for"
+      "rls_rule_description_missing": "A row rule needs a description of what it is for",
+      "role_session_var_secret_reference": "Session value '{{name}}': a role constant takes part in the query and can be logged; use ${env:…} or a plain value"
     },
     "secrets": {
       "name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",

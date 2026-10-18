@@ -370,3 +370,35 @@ def test_the_role_type_carries_its_constants_as_name_value_pairs():
         _role_from_row({"id": "seller", "description": "Test role."}, detail=False).session_vars
         is None
     )
+
+
+async def test_the_mutation_refuses_a_secret_reference_by_name_and_writes_nothing(plane):
+    # REQ-2086: a constant takes part in the query and can be logged.
+    result = await _save([("tenant", "${secret:tenant_id}")])
+    assert (result.success, result.code, result.params) == (
+        False,
+        "schema.role_session_var_secret_reference",
+        {"role": "seller", "name": "tenant"},
+    )
+    assert "use ${env:…} or a plain value" in result.message
+    assert await _stored(plane) is None
+
+
+async def test_the_mutation_saves_an_env_reference_as_written(plane):
+    result = await _save([("zone", "${env:PROVISA_ZONE_CODE}")])
+    assert result.success is True
+    assert (await _stored(plane))["session_vars"] == {"zone": "${env:PROVISA_ZONE_CODE}"}
+
+
+def test_a_configuration_file_may_carry_a_secret_reference_in_a_constant():
+    # REQ-2086: a file loaded as written is its author's responsibility; it is not checked.
+    from provisa.core.models import Role
+
+    role = Role(
+        id="seller",
+        description="Test role.",
+        capabilities=[],
+        domain_access=["sales"],
+        session_vars={"tenant": "${secret:tenant_id}"},
+    )
+    assert role.session_vars == {"tenant": "${secret:tenant_id}"}

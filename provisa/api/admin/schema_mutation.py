@@ -422,6 +422,16 @@ async def _save_role(
         if problem is None and normalized in session_vars:
             problem = ("name_repeated", f"Session value '{normalized}' is named twice")
             named = normalized
+        if problem is None and "${secret:" in pair.value:
+            # REQ-2086: a constant resolves into the statement it governs, which is logged by
+            # Provisa and may be by the source. A configuration file loaded as written is the
+            # author's own responsibility and is not checked; this save is.
+            problem = (
+                "secret_reference",
+                f"Session value '{normalized}': a role constant takes part in the query and can "
+                "be logged; use ${env:…} or a plain value",
+            )
+            named = normalized
         if problem is not None:
             return MutationResult(
                 success=False,

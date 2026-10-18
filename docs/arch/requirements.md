@@ -23762,7 +23762,7 @@ Rights follow the request. A request's data access AND its capabilities come onl
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Derived roles: roles derived from identity claims, which turn an attribute-conditioned (ABAC) column rule into an ordinary role grant (RBAC). For each claim type in the org's declared list (an org setting with a UI surface), there is an implicit parent role named by the claim type (e.g. region) and, for each value, a child sub-role named <claim type>__<value> (e.g. region__eu), the double underscore as in GraphQL paths. A user holds a sub-role exactly when their claim has that value; the value comes from the org's own user record, and the identity provider's claim fills in only where the record has none. Derived roles carry no capabilities, no domain access, no row-filter term and no mask vote; they are never assigned by hand and never self-granted; they act only as grant qualifiers, so existing grant points use them unchanged (visible_to, writable_by, masks, meta-roles). Like every role they count only when the request names them ([REQ-2060](#REQ-2060)): a request acts as analyst,region__eu to get EU reveals; the role picker offers the derived roles a user holds. The node's own region is never taken as the user's. A service call a regional node makes on its own behalf (scheduled jobs, triggers, materialized-view and replica refreshes, reads of another region's store, calls to the control plane) carries that node's region derived role (region__<node region>) in the set it acts as, so grants naming the region apply to the region's own work. Row rules naming derived roles are not part of this. Role inheritance stays additive: a child holds its parent's rights plus its own, and nothing subtracts an inherited right; restriction comes from composition ([REQ-2058](#REQ-2058)), not from denials. A role's properties are different from its rights: each property (rate_limit, max_rows) is set by the nearest role in the chain that declares it, the role itself first, so a child may raise or lower its parent's. docs/security.md explains meta-roles and derived roles and why each is useful, led by the rationale that derived roles simplify a traditional ABAC column problem into a simpler RBAC solution, with guidance on hierarchy versus composition (inheritance within one axis, composition across independent axes, a small role catalogue).
+Derived roles: roles derived from identity claims, which turn an attribute-conditioned (ABAC) column rule into an ordinary role grant (RBAC). For each attribute in the org's declared list (an org setting with a UI surface), there is an implicit parent role named by the attribute (e.g. region) and, for each value, a child sub-role named <attribute>__<value> (e.g. region__eu), the double underscore as in GraphQL paths. A user holds a sub-role exactly when their claim has that value; the value comes from the org's own user record, and the identity provider's claim fills in only where the record has none. Derived roles carry no capabilities, no domain access, no row-filter term and no mask vote; they are never assigned by hand and never self-granted; they act only as grant qualifiers, so existing grant points use them unchanged (visible_to, writable_by, masks, meta-roles). Like every role they count only when the request names them ([REQ-2060](#REQ-2060)): a request acts as analyst,region__eu to get EU reveals; the role picker offers the derived roles a user holds. The node's own region is never taken as the user's. A service call a regional node makes on its own behalf (scheduled jobs, triggers, materialized-view and replica refreshes, reads of another region's store, calls to the control plane) carries that node's region derived role (region__<node region>) in the set it acts as, so grants naming the region apply to the region's own work. Row rules naming derived roles are not part of this. Role inheritance stays additive: a child holds its parent's rights plus its own, and nothing subtracts an inherited right; restriction comes from composition ([REQ-2058](#REQ-2058)), not from denials. A role's properties are different from its rights: each property (rate_limit, max_rows) is set by the nearest role in the chain that declares it, the role itself first, so a child may raise or lower its parent's. docs/security.md explains meta-roles and derived roles and why each is useful, led by the rationale that derived roles simplify a traditional ABAC column problem into a simpler RBAC solution, with guidance on hierarchy versus composition (inheritance within one axis, composition across independent axes, a small role catalogue).
 
 **Use case:** An EU reviewer acting as reviewer,region__eu sees a sender column that is masked for every other reader, without any attribute evaluated at query time.
 
@@ -24011,3 +24011,131 @@ Naming a role the caller does not hold is a high-severity security event, detect
 **Code:** `provisa/security/role_probe.py`, `provisa/security/meta_role.py`, `provisa/auth/middleware.py`, `provisa/auth/bearer.py`, `provisa/auth/models.py`, `provisa/auth/pat.py`, `provisa/api/acting_role.py`, `provisa/api/app.py`, `provisa/api/mcp/server.py`, `provisa/api/flight/server.py`, `provisa/api/airport/server.py`, `provisa/api/admin/orgs_router.py`, `provisa/grpc/auth.py`, `provisa/pgwire/server.py`, `provisa/bolt/session.py`, `provisa/core/org_membership.py`, `provisa/core/schema_admin.py`, `provisa/core/settings_catalog.py`, `provisa-ui/src/components/admin/SuspendedAccess.tsx`, `provisa-ui/src/pages/TeamPage.tsx`
 
 **Tests:** `tests/unit/test_role_probe.py`, `tests/unit/test_client_role.py`, `tests/unit/test_mcp_server.py`, `tests/unit/test_pgwire_requirements.py`, `provisa-ui/src/__tests__/SuspendedAccess.test.tsx`
+
+## 1. Access Governance & Security
+
+### REQ-2077 · Role Assignments {#REQ-2077}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A role grant Provisa holds (a user_role_assignments row) may be time-limited, and a role may remove its grants once they go unused. A grant may carry an expiry (expires_at): from that instant it is absent from the user's held roles on every request, however the request arrives, and an expired org_admin or platform_admin grant counts as no administrator. A role may state inactivity_days: a grant of it that no request has depended on for longer than that, counted from the later of the grant's last use and its creation, is removed. A request depended on a role when that role served it as the single acting role, or, acting as several roles (a named set or All), when the role is granted a table the governed statement read; acting as All does not count every held role as used. The grant's last use (last_used_at) is recorded at most once a day per grant, after the statement's audit row lands. A sweep on the scheduler, every 15 minutes per org, deletes the expired grants and the unused ones and records each in the org's administrative trail as role.expired or role.removed_inactive. Wherever mail is configured (mail.provider), a self-hosted single-org deployment included, the holder and the org's administrators are emailed auth.role_grant_notice_days days (an operator setting, default 7) before a grant expires or is removed for going unused, once per coming end (again after a grant is used and falls idle again, or is given a new expiry), and the administrators are emailed when a grant is removed; where no mail is configured the trail entry is the record. Security notices are sent whatever a user's email opt-in says. A grant given again states its expiry anew. Roles from an identity provider's claims or role mappings are the provider's to time-limit, and derived roles and meta-roles never expire. The grant form takes an optional until date (the grant ends at the close of that day), the role form takes remove after N days unused, and the grant list shows each grant's end and last use.
+
+**Use case:** An org administrator gives a contractor the analyst role until the end of the engagement and sets the contractor role to lapse after 30 days unused; on the last day the grant stops working without anyone remembering to remove it, and a role nobody uses is removed from its holders automatically, with everyone told beforehand.
+
+**Code:** `provisa/auth/role_grants.py`, `provisa/auth/middleware.py`, `provisa/audit/pipeline.py`, `provisa/audit/writer.py`, `provisa/core/org_membership.py`, `provisa/api/admin/local_users_router.py`, `provisa/core/settings_catalog.py`, `provisa/scheduler/jobs.py`, `provisa-ui/src/components/admin/LocalUsersTab.tsx`
+
+**Tests:** `tests/unit/test_role_grants.py`, `tests/unit/test_audit_writer.py`, `provisa-ui/src/__tests__/LocalUsersTab.test.tsx`
+
+### REQ-2078 · Security {#REQ-2078}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Derived roles join the Roles list. Each attribute the org declares as a derived role ([REQ-2057](#REQ-2057)) is a parent role in the main Roles list, marked derived, with its value roles (<attribute>__<value>, e.g. region__eu) listed under it as their values are seen. Adding one is Add role -> Derived from attribute; there is no separate derived-roles screen. A derived role is declared one at a time with a required description ([REQ-2080](#REQ-2080)); the org's list replaces the deployment config's, its first change copying the deployment's list. Saving or removing one re-reads the caller's identity, so the role picker offers the roles they now hold without a reload.
+
+**Use case:** An administrator adds region as a derived role from the Roles page and sees region, region__eu and region__us in the same list as the granted roles.
+
+**Code:** `provisa/api/admin/derived_roles_router.py`, `provisa/auth/derived_roles.py`, `provisa/core/models.py`, `provisa-ui/src/pages/SecurityPage.tsx`, `provisa-ui/src/pages/security/DerivedRoles.tsx`
+
+**Tests:** `tests/unit/test_role_descriptions.py`, `tests/unit/test_derived_roles.py`, `provisa-ui/src/pages/__tests__/SecurityPage.derivedRoles.test.tsx`
+
+### REQ-2079 · Security {#REQ-2079}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A derived role's detail panel, in the shared form layout with the standard save and notice: the source attribute, its description (editable), the values seen so far (from the org's member records and the identity providers' recorded claims) and where it is used: every row rule, column grant, mask entry and metric, command or webhook grant list that names the parent or one of its value roles, alone or in a composite entry. No grant controls: a derived role holds no rights. A value role shows a generated line, "Held when the user's region is eu", translated.
+
+**Use case:** Before removing region, an administrator sees that the customers.email mask names region__eu.
+
+**Code:** `provisa/core/repositories/derived_role.py`, `provisa/api/admin/derived_roles_router.py`, `provisa-ui/src/pages/security/DerivedRoles.tsx`
+
+**Tests:** `tests/unit/test_role_descriptions.py`, `provisa-ui/src/pages/__tests__/SecurityPage.derivedRoles.test.tsx`
+
+### REQ-2080 · Security {#REQ-2080}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Every role carries a required description of what it is for: ordinary roles, derived parent roles and the seeded roles (whose descriptions the deployment writes). An empty description is refused with a clear message by the configuration load, the REST and GraphQL role mutations and the UI. It is shown in the Roles lists and detail panels, edited in the detail panel, and returned even where a role's definition is withheld. A meta-role is never stored, so its description is generated from its members' descriptions. Derived value roles show a generated line. There are no per-domain role descriptions: a general role that does not describe its responsibilities within a domain means that domain needs a new role, usually a child of the general role; the description field's help and the roles docs say so. Descriptions are a policy and possibly regulatory requirement: access reviews read them.
+
+**Use case:** An access reviewer reads, beside each role, what it is for.
+
+**Code:** `provisa/core/models.py`, `provisa/core/db.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`, `provisa/core/repositories/role.py`, `provisa/api/admin/roles_router.py`, `provisa/api/admin/schema_mutation.py`, `provisa/security/meta_role.py`, `provisa-ui/src/pages/SecurityPage.tsx`
+
+**Tests:** `tests/unit/test_role_descriptions.py`, `provisa-ui/src/pages/__tests__/SecurityPage.derivedRoles.test.tsx`
+
+### REQ-2081 · Security {#REQ-2081}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Every row (RLS) rule carries a required description of what it is for, refused when empty by the configuration load, the GraphQL mutation and the UI, and shown in the rule's detail panel and in the Row rules list. Rules an importer writes (Hasura, DDN) and the profiler's prefilled rules carry a generated description the administrator can replace.
+
+**Use case:** An access reviewer reads, beside each row rule, why the rule exists.
+
+**Code:** `provisa/core/models.py`, `provisa/core/repositories/rls.py`, `provisa/api/admin/schema_mutation.py`, `provisa/profiler/governance.py`, `provisa-ui/src/pages/security/SecurityRlsPage.tsx`
+
+**Tests:** `tests/unit/test_role_descriptions.py`, `provisa-ui/src/pages/__tests__/SecurityPage.actionRule.test.tsx`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2082 · MCP Authentication {#REQ-2082}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+MCP tool describe_role returns only the caller's resolved role (for a meta-role, also its members, derived roles among them) with each one's description ([REQ-2080](#REQ-2080)), and the roles the caller may switch to: the set named_role checks a named role against (remote: the token's held roles, the role it maps to and its principal's derived roles; stdio: the pinned mcp.role set), each with its description. It never returns row rules, masks, grants, conditions or rule descriptions. Agents are not told why results are narrowed, since that would invite probing, and results carry no filtered flag: a role's data is its whole view.
+
+**Use case:** An agent asked which data it can see learns it acts as analyst, what analyst is for, and that it may switch to steward.
+
+**Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/server.py`
+
+**Tests:** `tests/unit/test_mcp_describe_role.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-2083 · UI {#REQ-2083}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A named demo's tour step can take its "as recorded at" time from data instead of a literal: as_recorded_from {step, row, column} names an earlier sql step of the tour, a 0-based row and a column its statement returns. When the step runs, the tour runner runs that statement again as it ran (the run-as role and the time travel the steps before it set) and sets the SQL explorer's as-recorded picker to that value; a refused statement or a missing value fails the step by name. The tour test checks the step names an earlier sql step, a valid row and a returned column, on the SQL explorer. It is a tour feature only: how Provisa stamps recording time does not change, and no recording time can be chosen, so a demo of transaction time cannot forge it.
+
+**Use case:** The reproduce demo reads its report as recorded when it was filed, at a time Provisa stamped during the demo's own setup.
+
+**Code:** `provisa-ui/src/tour/demoTour.ts`, `provisa-ui/src/tour/useTour.tsx`, `provisa-ui/src/tour/tourSteps.ts`, `demo/named/reproduce/tour.yaml`
+
+**Tests:** `tests/unit/test_named_demo_tour.py`, `provisa-ui/src/__tests__/tourRecordedFrom.test.ts`, `tests/integration/test_reproduce_demo.py`
+
+### REQ-2084 · UI {#REQ-2084}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A named demo may ship a notebook (notebook.ipynb beside its tour.yaml). The setup status carries its code cells, in order, as demo_notebook. The Notebook tab offers it: "Add the demo's notebook" adds its cells to the open notebook, to run as the user's current role. A tour step notebook: true (on /notebook) hands the cells to the Notebook tab and runs them in the visitor's browser, and is shown once they have answered. The step hands them over as navigation state, the same mechanism the Graph page's grouped frame uses. The tour test refuses a notebook step when the demo ships none, a first cell that does not import provisa_client and call sign_in(), and a statement the notebook reads that names anything but the demo's own tables and views.
+
+**Use case:** A data-science demo's visitor runs the demo's own notebook in the browser from the tour, or adds it themselves from the Notebook tab after skipping the tour.
+
+**Code:** `provisa/core/demo.py`, `provisa/api/setup_router.py`, `provisa-ui/src/tour/demoTour.ts`, `provisa-ui/src/tour/useTour.tsx`, `provisa-ui/src/tour/tourSteps.ts`, `provisa-ui/src/pages/DataSciencePage.tsx`, `provisa-ui/src/context/NamedDemoContext.tsx`
+
+**Tests:** `tests/unit/test_named_demo_tour.py`, `provisa-ui/src/__tests__/tourDemoTrack.test.tsx`, `provisa-ui/src/__tests__/DataSciencePage.demoNotebook.test.tsx`
+
+### REQ-2085 · UI {#REQ-2085}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The named demo churn answers which customers of a subscription business are about to cancel. Its customers and twelve months of their usage are read live from its Postgres. A materialized view of one row a customer (plan, region, tenure, sign-ins a month, tickets in the year, whether they cancelled) is built through the governed pipeline by its setup. Email addresses are masked for its analyst role. Its tour reads the features as the analyst in SQL and over GraphQL, then runs the demo's notebook in the Notebook tab: the features read into pandas as the analyst, a scikit-learn model trained on them and the customers most at risk listed, all in the browser on Pyodide. The tour says a desktop Jupyter reads large pulls over Arrow Flight with the same code.
+
+**Use case:** A data scientist sees governed, masked data reach a notebook and train a model without the data leaving the browser.
+
+**Code:** `demo/named/churn/config.yaml`, `demo/named/churn/setup.yaml`, `demo/named/churn/tour.yaml`, `demo/named/churn/notebook.ipynb`, `demo/named/churn/db/init.sql`
+
+**Tests:** `tests/integration/test_churn_demo.py`, `tests/unit/test_named_demo_tour.py`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2086 · Security {#REQ-2086}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A role constant (session_vars) may be a ${env:NAME} or ${secret:NAME} reference, resolved through the same resolver as every other reference (provisa.core.secrets.resolve_secrets), at use: when a request's session variables are formed, when the regional administrator's are, and when a meta-role inlines a member's constant. The model keeps the reference, never what it resolved to. A reference that resolves to nothing fails, naming the constant and the reference; there is no default. A resolved constant takes part in the query, so Provisa's statement records and a federated source's own logs can show it; ${env:...} is the recommended form. Saving a role through the admin API or the role editor refuses a ${secret:...} constant by name (schema.role_session_var_secret_reference: a role constant takes part in the query and can be logged; use ${env:...} or a plain value). A configuration file loaded as written is not checked; its author takes that responsibility. docs/security.md and the role editor's help state the rule and the reason.
+
+**Use case:** An operator keeps each region's tenant code out of the exported model by writing it as ${env:TENANT_CODE} in the role's constants; the editor refuses a ${secret:...} value there, since the value appears in the query.
+
+**Code:** `provisa/core/secrets.py`, `provisa/core/request_context.py`, `provisa/core/region_admin.py`, `provisa/security/meta_role.py`, `provisa/api/admin/schema_mutation.py`, `provisa-ui/src/i18n/locales/en/roleSessionValues.json`
+
+**Tests:** `tests/unit/test_role_constant_references.py`, `tests/unit/test_role_session_constants.py`

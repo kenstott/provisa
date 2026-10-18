@@ -1,7 +1,7 @@
 {
   "roleSessionValues": {
     "label": "Valores de sesión",
-    "help": "Valores constantes que las reglas de filas de este rol leen como current_setting('provisa.<name>'). Un valor que la solicitud vincula con el mismo nombre tiene prioridad. Un rol que hereda de este recibe estos valores, salvo los nombres que establece él mismo.",
+    "help": "Valores constantes que las reglas de filas de este rol leen como current_setting('provisa.<name>'). Un valor que la solicitud vincula con el mismo nombre tiene prioridad. Un rol que hereda de este obtiene estos valores, salvo los nombres que define él mismo. Un valor puede ser una referencia ${env:NAME}, que se resuelve cuando una consulta la usa. Una constante forma parte de la consulta, por lo que los registros de sentencias de Provisa y los registros propios de una fuente pueden mostrarla: no use un valor que no deba verse. ${secret:…} se rechaza aquí por ese motivo.",
     "name": "Nombre",
     "value": "Valor",
     "add": "Agregar un valor",

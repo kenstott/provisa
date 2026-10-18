@@ -320,6 +320,8 @@ rls_rules:
 
 `current_setting('provisa.<name>')` 項會從請求所綁定的工作階段變數解析：來自已驗證身份的 `user_id`、來自執行角色的 `role`，以及權杖中每個純量 claim，以其小寫名稱綁定，連字號換為底線。Hasura 工作階段變數保留自己的名稱：`X-Hasura-User-Id` 是 `hasura_user_id`，讀自權杖的 `x-hasura-user-id` claim（在頂層，或在 Hasura claims 物件內，如 `https://hasura.io/jwt/claims`），或作為屬性 `hasura_user_id` 記錄在成員名下。因此匯入的、以 `X-Hasura-User-Id` 為基礎的 Hasura 過濾會讀取 `provisa.hasura_user_id`。`provisa.user_id` 一律是已登入的身份，任何 claim 都不會取代它。角色所設定的 `session_vars` 是基礎常數；請求的綁定疊加於其上。從另一個角色繼承的角色，會把祖先的常數放在自己的常數之下，每個名稱取最近角色的值。`user_id`、`role`、`region` 和 `org` 由請求或節點繫結，不能設定為常數。在不安全模式下，標頭 `x-provisa-session-<name>` 綁定 `<name>`。任何地方都沒有綁定的變數解析為 NULL，不會符合任何資料列。（REQ-1682）
 
+角色常數可以是 `${env:NAME}` 或 `${secret:NAME}` 參照，在查詢使用它時透過與其他所有參照相同的解析器解析；模型保留參照本身，從不保留解析後的值，無法解析為任何內容的參照會使查詢失敗，並指明該常數。解析後的常數會參與查詢：Provisa 的語句記錄（查詢審計日誌、追蹤、EXPLAIN）以及聯邦資料來源自身的日誌都可能顯示它，因此不要使用不能在那裏被看到的值。建議使用 `${env:...}` 形式。基於這個原因，透過管理 API 或角色編輯器儲存角色時，會按名稱拒絕 `${secret:...}` 常數。按原樣載入的設定檔不會被檢查：在那裏把機密參照寫入角色常數的人自行承擔這一責任。（REQ-2086）
+
 ## 欄位層級遮罩 {: #column-level-masking }
 
 遮罩以每個欄位一份有序清單的形式設定。讀取者所持有的第一條項目決定其看到的內容。（REQ-2059、REQ-263）

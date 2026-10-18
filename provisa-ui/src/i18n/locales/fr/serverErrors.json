@@ -441,7 +441,8 @@
       "role_session_var_name_invalid": "Le nom de valeur de session '{{name}}' doit comporter des lettres, des chiffres et des traits de soulignement, et ne doit pas commencer par un chiffre",
       "role_session_var_name_repeated": "La valeur de session '{{name}}' est nommée deux fois",
       "role_description_missing": "Le rôle '{{role}}' a besoin d'une description de ce à quoi il sert",
-      "rls_rule_description_missing": "Une règle de ligne a besoin d'une description de ce à quoi elle sert"
+      "rls_rule_description_missing": "Une règle de ligne a besoin d'une description de ce à quoi elle sert",
+      "role_session_var_secret_reference": "Valeur de session '{{name}}' : une constante de rôle fait partie de la requête et peut être journalisée ; utilisez ${env:…} ou une valeur simple"
     },
     "secrets": {
       "name_refused": "{{name}} n'est pas un nom situé dans les secrets de cette organisation dans {{service}} : un nom est relatif à l'organisation et ne peut pas en sortir",
