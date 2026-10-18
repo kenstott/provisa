@@ -60,6 +60,29 @@ def example_queries(directory: Path | None) -> list[dict[str, str]]:  # REQ-2009
     ]
 
 
+#: The notebook a named demo may ship beside its tour.yaml.
+DEMO_NOTEBOOK = "notebook.ipynb"
+
+
+def demo_notebook(directory: Path | None) -> list[str]:  # REQ-2084
+    """The code cells of the notebook the named demo in ``directory`` ships (``notebook.ipynb``),
+    in order, each its source as one text. The Notebook tab offers them, and a tour step
+    ``notebook`` adds and runs them there. None when there is no named demo or it ships none."""
+    import json
+
+    if directory is None:
+        return []  # no named demo: nothing ships a notebook
+    path = directory / DEMO_NOTEBOOK
+    if not path.is_file():
+        return []  # a named demo without a notebook of its own
+    cells = json.loads(path.read_text(encoding="utf-8"))["cells"]
+    return [
+        "".join(c["source"]) if isinstance(c["source"], list) else c["source"]
+        for c in cells
+        if c["cell_type"] == "code"
+    ]
+
+
 def tour_answers_path(named: str) -> Path:  # REQ-2012
     """Where the demo's bundle build stores Polly's answers to its tour's questions
     (scripts/demo_bundle.py):

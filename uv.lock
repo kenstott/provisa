@@ -3556,6 +3556,7 @@ dev = [
     { name = "python-pptx" },
     { name = "respx" },
     { name = "ruff" },
+    { name = "scikit-learn" },
     { name = "syrupy" },
 ]
 docs = [
@@ -3744,6 +3745,7 @@ requires-dist = [
     { name = "redis", extras = ["hiredis"] },
     { name = "respx", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'dev'" },
+    { name = "scikit-learn", marker = "extra == 'dev'", specifier = ">=1.9" },
     { name = "scipy" },
     { name = "sentence-transformers", marker = "extra == 'vector'" },
     { name = "signxml", specifier = ">=4,<5" },

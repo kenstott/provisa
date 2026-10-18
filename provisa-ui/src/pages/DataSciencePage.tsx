@@ -58,6 +58,7 @@ import {
   type LiteBridge,
 } from "../dataScience/liteBridge";
 import { reportRun, summarise, type RunReport } from "../dataScience/runReports";
+import { useNamedDemo } from "../context/NamedDemoContext";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { useCapability } from "../hooks/useCapability";
 import { useLocation } from "react-router-dom";
@@ -142,6 +143,17 @@ export function DataScienceHost({ makeWorker = defaultWorker }: { makeWorker?: M
   const [pythonRequest, setPythonRequest] = useState<PythonRequest | null>(null);
   const [notebookRequest, setNotebookRequest] = useState<NotebookRequest | null>(null);
   const requests = useRef(0);
+  // REQ-2084: the notebook the named demo ships, offered on the Notebook tab: its cells added to
+  // the open notebook for the visitor to run.
+  const { notebook: demoNotebook } = useNamedDemo();
+  const offerDemoNotebook = useCallback(() => {
+    setNotebookRequest({
+      seq: ++requests.current,
+      cells: demoNotebook,
+      autoRun: false,
+      runId: null,
+    });
+  }, [demoNotebook]);
   const { t } = useTranslation();
   // Maximized: the panel fills 95% of the window over the app; Escape restores it.
   const [maximized, setMaximized] = useState<Panel | null>(null);
@@ -234,7 +246,14 @@ export function DataScienceHost({ makeWorker = defaultWorker }: { makeWorker?: M
           <PythonTab makeWorker={makeWorker} request={pythonRequest} />,
         )}
       {opened.has("notebook") &&
-        panelBox("notebook", "notebook-panel", <NotebookTab request={notebookRequest} />)}
+        panelBox(
+          "notebook",
+          "notebook-panel",
+          <NotebookTab
+            request={notebookRequest}
+            onOpenDemo={demoNotebook.length > 0 ? offerDemoNotebook : null}
+          />,
+        )}
     </>
   );
 }
@@ -246,7 +265,14 @@ export const NOTEBOOK_URL = "/lite/lab/index.html?path=Provisa.ipynb";
 /** How long the tab waits for the embedded app before it gives up handing it the user. */
 const LITE_APP_WAIT_MS = 120_000;
 
-function NotebookTab({ request }: { request: NotebookRequest | null }) {
+function NotebookTab({
+  request,
+  onOpenDemo,
+}: {
+  request: NotebookRequest | null;
+  /** Adds the named demo's notebook to the open one; null when the demo ships none. */
+  onOpenDemo: (() => void) | null;
+}) {
   const { t } = useTranslation();
   const scheme = useComputedColorScheme("light");
   const [served, setServed] = useState<boolean | null>(null);
@@ -255,6 +281,9 @@ function NotebookTab({ request }: { request: NotebookRequest | null }) {
   const stops = useRef<Array<() => void>>([]);
   const bridge = useRef<LiteBridge | null>(null);
   const done = useRef(0);
+  // The last request whose cells have all been handed over (and run, when asked): a tour step
+  // waits on it being the request now in hand.
+  const [answered, setAnswered] = useState<number | null>(null);
 
   // Cells handed over are added to the open notebook, run when asked, and reported back; where
   // the notebook cannot run, it says why at once.
@@ -269,7 +298,10 @@ function NotebookTab({ request }: { request: NotebookRequest | null }) {
     if (app === null) return;
     done.current = request.seq;
     const handOff = () => bridge.current?.handOff() ?? Promise.resolve();
-    void runCells(app, request.cells, request.autoRun, handOff).then(report);
+    void runCells(app, request.cells, request.autoRun, handOff).then((r) => {
+      report(r);
+      setAnswered(request.seq);
+    });
   }, [request, served, app, t]);
 
   // The notebook wears the app's colour scheme, and changes with it.
@@ -324,14 +356,35 @@ function NotebookTab({ request }: { request: NotebookRequest | null }) {
     );
   }
   return (
-    <iframe
-      ref={frame}
-      src={NOTEBOOK_URL}
-      title={t("dataScience.notebookFrame")}
-      onLoad={connect}
-      data-testid="data-science-notebook"
-      style={{ flex: 1, minHeight: 0, width: "100%", border: 0 }}
-    />
+    <>
+      {onOpenDemo !== null && (
+        <Group className="ds-demo-notebook" gap="sm" px="md" py={6}>
+          <Text size="sm">{t("dataScience.demoNotebookShipped")}</Text>
+          <Tip text={t("dataScience.demoNotebookHint")} named>
+            <Button
+              size="compact-sm"
+              variant="light"
+              disabled={app === null}
+              onClick={onOpenDemo}
+              data-testid="notebook-open-demo"
+            >
+              {t("dataScience.demoNotebookOpen")}
+            </Button>
+          </Tip>
+        </Group>
+      )}
+      <iframe
+        ref={frame}
+        src={NOTEBOOK_URL}
+        title={t("dataScience.notebookFrame")}
+        onLoad={connect}
+        data-testid="data-science-notebook"
+        style={{ flex: 1, minHeight: 0, width: "100%", border: 0 }}
+      />
+      {request !== null && answered === request.seq && (
+        <span hidden data-testid="notebook-answered" data-seq={answered} />
+      )}
+    </>
   );
 }
 

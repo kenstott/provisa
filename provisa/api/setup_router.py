@@ -186,7 +186,14 @@ def _auth_enabled(auth_cfg) -> bool:
 async def setup_status(request: Request):  # REQ-539
     # REQ-2009: the named demo's example GraphQL queries ride on the status the app loads first.
     # REQ-2010: and its own tour, the demo's track.
-    from provisa.core.demo import demo_landing, demo_tour, example_queries, named_demo
+    # REQ-2084: and the notebook it ships, offered on the Notebook tab.
+    from provisa.core.demo import (
+        demo_landing,
+        demo_notebook,
+        demo_tour,
+        example_queries,
+        named_demo,
+    )
 
     directory = await _demo_directory(request)
     return {
@@ -196,6 +203,7 @@ async def setup_status(request: Request):  # REQ-539
         "demo_tour": demo_tour(directory),
         # Where its tour's "Look around on my own" leaves the visitor.
         "demo_landing": demo_landing(directory),
+        "demo_notebook": demo_notebook(directory),
     }
 
 

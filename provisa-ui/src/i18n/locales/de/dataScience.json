@@ -19,6 +19,9 @@
     "scriptTitle": "Skript {{n}}",
     "newScript": "Neues Skript",
     "closeScript": "{{title}} schließen",
-    "scriptTabHint": "Doppelklicken zum Umbenennen; ziehen oder Alt+Links / Alt+Rechts zum Verschieben"
+    "scriptTabHint": "Doppelklicken zum Umbenennen; ziehen oder Alt+Links / Alt+Rechts zum Verschieben",
+    "demoNotebookShipped": "Diese Demo bringt ein Notebook mit.",
+    "demoNotebookOpen": "Notebook der Demo hinzufügen",
+    "demoNotebookHint": "Fügt seine Zellen dem geöffneten Notebook hinzu, zur Ausführung in Ihrer aktuellen Rolle."
   }
 }

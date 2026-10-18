@@ -1279,6 +1279,38 @@
       "reproduceRecap": {
         "title": "Ce que vous avez vu",
         "description": "Un rapport, expliqué et reproduit : son chiffre remonté jusqu'à ses colonnes sources et au rafraîchissement qui l'a construit, l'impact d'un changement nommé avant qu'il soit fait, le rapport tel que déposé à côté du rapport actuel, et chaque lecture dans le journal d'audit."
+      },
+      "churnScenario": {
+        "title": "De quoi parle cette démo",
+        "description": "Une entreprise d'abonnements veut savoir quels clients sont sur le point de résilier. Ses clients et une année de leur utilisation mensuelle sont lus en direct dans sa propre base de données, et un data scientist entraîne un modèle dessus dans le navigateur."
+      },
+      "churnCustomers": {
+        "title": "Les clients",
+        "description": "L'offre, la région et l'ancienneté de chaque client, et le jour où il a résilié, le cas échéant. Son adresse e-mail est masquée pour le rôle analyst : elle arrive sous la forme *** suivie de son domaine."
+      },
+      "churnUsage": {
+        "title": "Leur utilisation",
+        "description": "Douze mois de connexions et de tickets de support de chaque client, joints au client auquel ils appartiennent."
+      },
+      "churnAnalyst": {
+        "title": "Lu en tant qu'analyst",
+        "description": "Les requêtes qui suivent s'exécutent en tant qu'analyst, le rôle avec lequel lit le data scientist."
+      },
+      "churnFeatures": {
+        "title": "Les variables dont le modèle apprend",
+        "description": "Une ligne par client : offre, ancienneté, connexions par mois, tickets sur l'année et s'il a résilié. Une vue matérialisée, construite par le pipeline gouverné. Les adresses e-mail sont masquées, telles qu'analyst les reçoit."
+      },
+      "churnGraphql": {
+        "title": "Les mêmes variables en GraphQL",
+        "description": "La requête d'exemple de la démo lit la même vue en tant qu'analyst, avec le même masquage : chaque interface sert une seule réponse gouvernée."
+      },
+      "churnNotebook": {
+        "title": "Un modèle, entraîné dans votre navigateur",
+        "description": "Le notebook de la démo, exécuté dans l'onglet Notebook : les variables lues dans pandas en tant qu'analyst, un modèle scikit-learn entraîné dessus et les clients les plus à risque listés. Python s'exécute dans votre navigateur, et les adresses e-mail restent masquées."
+      },
+      "churnRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Des données gouvernées directement dans le notebook d'un data scientist : le masquage d'analyst appliqué à la lecture, et un modèle entraîné sans que les données quittent le navigateur. Dans un Jupyter de bureau, le même code lit les gros volumes via Arrow Flight."
       }
     },
     "status": {
@@ -1371,6 +1403,10 @@
       "reproduce": {
         "title": "Reproduire un rapport",
         "summary": "Les deux questions d'un régulateur sur le rapport d'exposition d'une banque : d'où vient un chiffre, et ce que disait le rapport lors de son dépôt, intact malgré une correction ultérieure. La traçabilité, la relecture à une date et le journal d'audit répondent aux deux."
+      },
+      "churn": {
+        "title": "Prédire la résiliation des clients",
+        "summary": "Quels clients sont sur le point de résilier ? Leurs variables gouvernées et masquées, lues dans pandas dans le navigateur, et un modèle scikit-learn entraîné dessus depuis le notebook fourni avec la démo."
       }
     }
   }

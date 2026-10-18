@@ -19,6 +19,9 @@
     "scriptTitle": "脚本 {{n}}",
     "newScript": "新建脚本",
     "closeScript": "关闭 {{title}}",
-    "scriptTabHint": "双击重命名；拖动或按 Alt+← / Alt+→ 移动"
+    "scriptTabHint": "双击重命名；拖动或按 Alt+← / Alt+→ 移动",
+    "demoNotebookShipped": "这个演示附带一个笔记本。",
+    "demoNotebookOpen": "添加演示的笔记本",
+    "demoNotebookHint": "将其单元格添加到当前打开的笔记本，以你当前的角色运行。"
   }
 }

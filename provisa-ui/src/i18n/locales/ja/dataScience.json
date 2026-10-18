@@ -19,6 +19,9 @@
     "scriptTitle": "スクリプト {{n}}",
     "newScript": "新しいスクリプト",
     "closeScript": "{{title}} を閉じる",
-    "scriptTabHint": "ダブルクリックで名前を変更、ドラッグまたは Alt+← / Alt+→ で移動"
+    "scriptTabHint": "ダブルクリックで名前を変更、ドラッグまたは Alt+← / Alt+→ で移動",
+    "demoNotebookShipped": "このデモにはノートブックが付属しています。",
+    "demoNotebookOpen": "デモのノートブックを追加",
+    "demoNotebookHint": "そのセルを開いているノートブックに追加し、現在のロールで実行できるようにします。"
   }
 }

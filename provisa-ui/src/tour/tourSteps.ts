@@ -97,11 +97,11 @@ export interface TourStep {
     };
   };
   /**
-   * REQ-2010: a view of the Graph page's frame on screen, handed over with no query on every entry
-   * to the step: the page applies it to its newest frame, which keeps its query (`groupBy`: the
-   * frame grouped by that property).
+   * The state handed to `route`'s page once per visit to the step, with no statement: the Graph
+   * page's `view` (REQ-2010: `groupBy`, its newest frame grouped by that property, its query kept)
+   * or the Notebook tab's `cells` (REQ-2084: added to the open notebook, and run with `autoRun`).
    */
-  openView?: { groupBy: string };
+  navState?: { view: { groupBy: string } } | { cells: string[]; autoRun: boolean };
   /**
    * REQ-2010: on Next only, open the picker `open` and choose its option `option`, then advance —
    * a choice the step shows (the picker is highlighted) and makes when the visitor moves on. Back

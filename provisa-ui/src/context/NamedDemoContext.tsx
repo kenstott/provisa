@@ -20,15 +20,26 @@ export interface NamedDemo {
   tour: DemoTourStepDef[];
   /** Where the tour's last "Look around on my own" leaves the visitor; null with no tour. */
   landing: DemoLanding | null;
+  /** REQ-2084: the code cells of the notebook the demo ships; none when it ships none. */
+  notebook: string[];
 }
 
 /** A page rendered outside the app (a component test) has read no status: no named demo. */
-export const NO_NAMED_DEMO: NamedDemo = { name: null, exampleQueries: [], tour: [], landing: null };
+export const NO_NAMED_DEMO: NamedDemo = {
+  name: null,
+  exampleQueries: [],
+  tour: [],
+  landing: null,
+  notebook: [],
+};
 
 /** The named demo a status reports. A deployment started as no named demo (a fresh org's) has
  * none: no demo track and no examples, whatever else the status carries. */
 export function namedDemoOf(
-  status: Pick<SetupStatus, "named_demo" | "example_queries" | "demo_tour" | "demo_landing">,
+  status: Pick<
+    SetupStatus,
+    "named_demo" | "example_queries" | "demo_tour" | "demo_landing" | "demo_notebook"
+  >,
 ): NamedDemo {
   if (status.named_demo === null) return NO_NAMED_DEMO;
   return {
@@ -36,6 +47,7 @@ export function namedDemoOf(
     exampleQueries: status.example_queries,
     tour: status.demo_tour,
     landing: status.demo_landing,
+    notebook: status.demo_notebook,
   };
 }
 

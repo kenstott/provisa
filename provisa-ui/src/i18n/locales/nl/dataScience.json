@@ -19,6 +19,9 @@
     "scriptTitle": "Script {{n}}",
     "newScript": "Nieuw script",
     "closeScript": "{{title}} sluiten",
-    "scriptTabHint": "Dubbelklik om te hernoemen; sleep, of Alt+Links / Alt+Rechts, om te verplaatsen"
+    "scriptTabHint": "Dubbelklik om te hernoemen; sleep, of Alt+Links / Alt+Rechts, om te verplaatsen",
+    "demoNotebookShipped": "Deze demo bevat een notebook.",
+    "demoNotebookOpen": "Notebook van de demo toevoegen",
+    "demoNotebookHint": "Voegt de cellen toe aan het geopende notebook, om uit te voeren met je huidige rol."
   }
 }

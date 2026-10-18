@@ -30,6 +30,8 @@
 #                 Next, so a step with it is on the SQL explorer
 #   env           prod or an environment the demo's setup.yaml makes: picked in the header's
 #                 environment switcher on Next, so the steps after it read that environment
+#   notebook      true: the demo's notebook.ipynb, its cells added to the Notebook tab's open notebook
+#                 and run in the visitor's browser (REQ-2084), on /notebook
 #   polly         a question for Polly (REQ-2012): answered once when the demo's bundle is
 #                 built, and shown with that stored answer in the Polly panel; nothing is asked
 #                 live. A demo with no stored answer leaves the step out. The question is one of

@@ -1279,6 +1279,38 @@
       "reproduceRecap": {
         "title": "What you saw",
         "description": "One report, explained and reproduced: its figure traced to its source columns and the refresh that built it, the impact of a change named before it is made, the report as filed beside the report now, and every read of it in the audit log."
+      },
+      "churnScenario": {
+        "title": "What this demo is",
+        "description": "A subscription business wants to know which customers are about to cancel. Its customers and a year of their monthly usage are read live from its own database, and a data scientist trains a model on them in the browser."
+      },
+      "churnCustomers": {
+        "title": "The customers",
+        "description": "Each customer's plan, region, tenure and the day they cancelled, if they have. Their email address is masked for the analyst role: it arrives as *** and its domain."
+      },
+      "churnUsage": {
+        "title": "Their usage",
+        "description": "Twelve months of each customer's sign-ins and support tickets, joined to the customer they belong to."
+      },
+      "churnAnalyst": {
+        "title": "Read as the analyst",
+        "description": "The statements after this run as the analyst, the role the data scientist reads with."
+      },
+      "churnFeatures": {
+        "title": "The features the model learns from",
+        "description": "One row a customer: plan, tenure, sign-ins a month, tickets in the year, and whether they cancelled. A materialized view, built through the governed pipeline. The email addresses are masked, as the analyst is served them."
+      },
+      "churnGraphql": {
+        "title": "The same features over GraphQL",
+        "description": "The demo's example query reads the same view as the analyst, with the same mask: every surface serves one governed answer."
+      },
+      "churnNotebook": {
+        "title": "A model, trained in your browser",
+        "description": "The demo's notebook, run in the Notebook tab: the features read into pandas as the analyst, a scikit-learn model trained on them, and the customers most at risk listed. Python runs in your browser, and the email addresses are still masked."
+      },
+      "churnRecap": {
+        "title": "What you saw",
+        "description": "Governed data straight into a data scientist's notebook: the analyst's mask applied on the way in, and a model trained without the data leaving the browser. In a desktop Jupyter the same code reads large pulls over Arrow Flight."
       }
     },
     "status": {
@@ -1371,6 +1403,10 @@
       "reproduce": {
         "title": "Reproduce a report",
         "summary": "A regulator's two questions about a bank's exposure report: where a figure came from, and what the report said when it was filed, untouched by a correction since. Lineage, as-of replay and the audit log answer both."
+      },
+      "churn": {
+        "title": "Predict customer churn",
+        "summary": "Which customers are about to cancel? Their governed, masked features read into pandas in the browser, and a scikit-learn model trained on them from the notebook the demo ships."
       }
     }
   }

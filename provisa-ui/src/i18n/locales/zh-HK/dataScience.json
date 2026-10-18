@@ -19,6 +19,9 @@
     "scriptTitle": "腳本 {{n}}",
     "newScript": "新增腳本",
     "closeScript": "關閉 {{title}}",
-    "scriptTabHint": "按兩下重新命名；拖曳或按 Alt+← / Alt+→ 移動"
+    "scriptTabHint": "按兩下重新命名；拖曳或按 Alt+← / Alt+→ 移動",
+    "demoNotebookShipped": "這個示範附帶一個筆記簿。",
+    "demoNotebookOpen": "加入示範的筆記簿",
+    "demoNotebookHint": "將其儲存格加入目前開啟的筆記簿，以你目前的角色執行。"
   }
 }
