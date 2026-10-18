@@ -26,6 +26,54 @@ from provisa.federation.trino_types import TrinoConnection, TrinoError
 from provisa.transpiler.transpile import transpile_to_trino
 
 
+#: Trino's answer for an Iceberg table whose catalog row names metadata the object store lacks.
+_MISSING_METADATA = "ICEBERG_MISSING_METADATA"
+
+
+def _names_missing_metadata(exc: BaseException) -> bool:
+    """Whether ``exc``, or what it was raised from, is Trino's ICEBERG_MISSING_METADATA."""
+    seen: BaseException | None = exc
+    while seen is not None:
+        if getattr(seen, "error_name", None) == _MISSING_METADATA:
+            return True
+        seen = seen.__cause__ or seen.__context__
+    return False
+
+
+def metadata_missing(execute, table: str) -> bool:  # REQ-016, REQ-302
+    """Whether ``otel.signals.<table>`` is registered with its metadata gone from the object store;
+    when it is, an ERROR names the table and the location Trino could not read. ``execute`` runs
+    one statement on the engine. Nothing is changed: the caller leaves the table alone.
+
+    The ``otel`` catalog keeps each table's registration in the control DB and its metadata and
+    data in the telemetry bucket. A table whose metadata cannot be read is most often one whose
+    bucket is served from the wrong place for a while -- a disk not mounted yet -- and its metadata
+    is intact once it is. Making the table again would turn that into the loss of its history (and
+    let orphan-file removal delete the old files), so it is recovered by hand: the deployment guide's
+    "Telemetry table whose metadata is missing"."""
+    try:
+        # A count reads the table's snapshot through its manifest list: what a cached table
+        # handle (iceberg.metadata-cache) does not answer for it, and a write reads too.
+        execute(f"SELECT count(*) FROM otel.signals.{table}")
+        return False
+    except (
+        Exception
+    ) as exc:  # allow-ble: a probe of one condition; the caller's statements report anything else
+        if not _names_missing_metadata(exc):
+            # A table not created yet, or an engine that cannot answer: the statements the caller
+            # runs next create it, or fail with the cause.
+            return False
+        missing = exc
+    logging.getLogger(__name__).error(
+        "otel.signals.%s is registered but its metadata cannot be read from the telemetry bucket "
+        "(%s): its signals are not compacted or changed until it is recovered by hand -- see the "
+        "deployment guide, 'Telemetry table whose metadata is missing'",
+        table,
+        missing,  # Trino's message names the metadata location it could not find
+    )
+    return True
+
+
 def _ops_physical(pg_type: str) -> str:
     if pg_type not in OPS_PG_TO_PHYSICAL:
         raise ValueError(f"unmapped ops pg type: {pg_type}")
@@ -47,9 +95,13 @@ def seed_ops_trino(  # REQ-016
 
     # Schema + physical tables — one exception aborts table creation (catalog not ready).
     _tables_ready = True
+    unreadable: set[str] = set()
     try:
         _exec("CREATE SCHEMA IF NOT EXISTS otel.signals")
         for tbl_name, cols in OPS_TABLES.items():
+            if metadata_missing(_exec, tbl_name):
+                unreadable.add(tbl_name)  # left registered, and untouched below
+                continue
             col_defs = [f'"{col_name}" {_ops_physical(pg_type)}' for col_name, pg_type, _ in cols]
             col_names_lower = {col_name.lower() for col_name, _, _ in cols}
             partition_cols = (
@@ -73,6 +125,8 @@ def seed_ops_trino(  # REQ-016
     if _tables_ready:
         # Column additions are non-fatal and isolated per table.
         for tbl_name, cols in OPS_TABLES.items():
+            if tbl_name in unreadable:
+                continue
             try:
                 cur = trino_conn.cursor()
                 cur.execute(f"SHOW COLUMNS FROM otel.signals.{tbl_name}")
@@ -101,6 +155,8 @@ def seed_ops_trino(  # REQ-016
         # (non-destructive). Trino spells partition evolution as SET PROPERTIES, not Spark's
         # ADD PARTITION FIELD, which every run raised SYNTAX_ERROR on.
         for tbl_name, cols in OPS_TABLES.items():
+            if tbl_name in unreadable:
+                continue
             col_names_lower = {col_name.lower() for col_name, _, _ in cols}
             partition_cols = (
                 ["'table_name'", "'_date'"] if "table_name" in col_names_lower else ["'_date'"]
@@ -116,6 +172,8 @@ def seed_ops_trino(  # REQ-016
         # Warm up Iceberg metadata: first query on a cold Iceberg table can take >60s;
         # running a zero-row scan here ensures metadata is loaded before user requests arrive.
         for tbl_name in OPS_TABLES:
+            if tbl_name in unreadable:
+                continue
             try:
                 _exec(f"SELECT 1 FROM otel.signals.{tbl_name} LIMIT 0")
             except Exception:

@@ -658,13 +658,26 @@ class TestOtelStorageReclamation:
 
     async def test_the_configured_retention_overrides_trinos_seven_day_floor(self, monkeypatch):
         calls = await self._run(monkeypatch, 1)
-        for sql, hints in calls:
+        procedures = [(sql, hints) for sql, hints in calls if "EXECUTE" in sql]
+        assert len(procedures) == 6
+        for sql, hints in procedures:
             assert "retention_threshold => '1h'" in sql
             proc = "expire_snapshots" if "expire_snapshots" in sql else "remove_orphan_files"
             assert hints == {f"otel.{proc}_min_retention": "1h"}
 
     async def test_no_configured_retention_reclaims_nothing(self, monkeypatch):
         assert await self._run(monkeypatch, None) == []
+
+    async def test_a_table_whose_metadata_cannot_be_read_is_not_reclaimed(self, monkeypatch):
+        """Its files may be the history its recovery restores: orphan removal would delete them
+        (observability.ops_trino.metadata_missing)."""
+        monkeypatch.setattr(
+            "provisa.observability.ops_trino.metadata_missing",
+            lambda _execute, table: table == "traces",
+        )
+        calls = await self._run(monkeypatch, 1)
+        assert not any("otel.signals.traces" in sql for sql, _ in calls)
+        assert sum("EXECUTE" in sql for sql, _ in calls) == 4  # logs and metrics, both procedures
 
 
 # ---------------------------------------------------------------------------

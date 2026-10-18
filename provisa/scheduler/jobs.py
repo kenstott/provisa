@@ -458,6 +458,17 @@ def _compact_signal(
         logger.debug("compact_otel: no %s files to compact", signal)
         return
 
+    # A table registered with its metadata unreadable is said (an ERROR naming it) and left as it
+    # is: this signal is not compacted this run, and its files stay where they are for a run after
+    # the table is recovered. The other signals carry on (ops_trino.metadata_missing).
+    from provisa.observability.ops_trino import metadata_missing
+
+    if metadata_missing(
+        lambda sql: engine.execute_engine_sync(sql, authorization=system_auth("scheduled job")),
+        signal,
+    ):
+        return
+
     try:
         import pyarrow as pa
         import pyarrow.parquet as pq
@@ -798,7 +809,15 @@ async def reclaim_otel_storage() -> None:  # REQ-302, REQ-303
         return
 
     threshold = f"{retention_hours}h"
+    from provisa.observability.ops_trino import metadata_missing
+
     for signal in ("logs", "metrics", "traces"):
+        # A table whose metadata cannot be read is left as it is (said by metadata_missing): its
+        # files may be the history its recovery restores, and orphan removal would delete them.
+        if await asyncio.to_thread(
+            metadata_missing, lambda sql: engine.execute_engine_sync(sql), signal
+        ):
+            continue
         for proc, hint in (
             ("expire_snapshots", "expire_snapshots_min_retention"),
             ("remove_orphan_files", "remove_orphan_files_min_retention"),

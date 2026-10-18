@@ -72,7 +72,12 @@ async def test_reclaim_runs_the_iceberg_procedures_on_trino(monkeypatch):
     runtime = _Runtime("trino")
     _state(monkeypatch, runtime)
     await jobs.reclaim_otel_storage()
-    assert len(runtime.sent) == 6 and all("EXECUTE" in sql for sql in runtime.sent)
+    # Each table is probed before its procedures run (ops_trino.metadata_missing).
+    procedures = [sql for sql in runtime.sent if "EXECUTE" in sql]
+    assert len(procedures) == 6
+    assert [sql for sql in runtime.sent if "EXECUTE" not in sql] == [
+        f"SELECT count(*) FROM otel.signals.{signal}" for signal in ("logs", "metrics", "traces")
+    ]
 
 
 @pytest.mark.asyncio

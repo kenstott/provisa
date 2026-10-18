@@ -664,6 +664,26 @@ Provisa applies a two-tier recovery model across all deployment modes (REQ-703):
 
 Machine-level and cluster-level failures remain the operator's responsibility — provision redundant nodes and a load balancer (Terraform and Helm paths above) for node-loss tolerance.
 
+### Telemetry table whose metadata is missing {: #telemetry-table-whose-metadata-is-missing }
+
+On the Trino engine, the telemetry tables (`otel.signals.traces`, `metrics`, `logs`) are Iceberg tables. Each one's registration is a row in the control-plane database, and its metadata and data are files in the telemetry bucket. When the bucket is served without those files, while the database still holds the registrations, every statement on the table fails with `ICEBERG_MISSING_METADATA`. This happens when the bucket's disk was not mounted yet when the object store started, or when the bucket was emptied or replaced.
+
+Provisa changes nothing in that case. Each compaction run logs an `ERROR` naming the table and the metadata location Trino could not read (`otel.signals.traces is registered but its metadata cannot be read …`), skips that signal, and keeps its raw files in the bucket for a later run. The other signals are compacted as usual. Boot leaves the table out of its schema checks the same way.
+
+Recover by hand, in this order:
+
+1. **Find out whether the metadata still exists.** The `ERROR` names the location. On a Terraform (GCP) coordinator, check that the object-store disk is mounted (`findmnt /var/lib/provisa-object-store`) and that the MinIO container started after the mount. A MinIO started first serves the empty directory beneath the mountpoint; restart it once the disk is mounted, and the table reads again with its history intact.
+2. **If the metadata file exists but the registration points elsewhere**, register the table at its location again:
+
+   ```sql
+   CALL otel.system.register_table(schema_name => 'signals', table_name => 'traces', table_location => 's3://<bucket>/warehouse/signals/<table directory>')
+   ```
+
+   Unregister the stale row first if the name is taken (`CALL otel.system.unregister_table(schema_name => 'signals', table_name => 'traces')`).
+3. **If the bucket's files are truly gone**, unregister the table. The next compaction run creates it again, empty. The signals it held cannot be read again.
+
+Do not run `remove_orphan_files` on a table that is being recovered. It deletes files the current metadata does not reference, and those may be the history you are restoring.
+
 ## Federation Engine Dependencies
 
 The warehouse federation engines require Python packages and system-level components beyond Provisa's default install. All Python packages listed here are declared in `pyproject.toml` and installed as part of the standard `pip install provisa` or `pip install -e .` [tool-verified: `pyproject.toml` lines 44–52].
