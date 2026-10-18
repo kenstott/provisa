@@ -201,7 +201,10 @@ push_ui() {
 
 build_api() {
   echo "== packaging python package"
-  tar czf "$STAGE/api.tgz" -C "$REPO" --exclude='__pycache__' --exclude='*.pyc' provisa
+  # provisa/_graph_render is a checkout's symlink to provisa-ui/graph-render (gitignored); the image
+  # carries the built renderer there as a directory, which a pushed symlink cannot replace.
+  tar czf "$STAGE/api.tgz" -C "$REPO" --exclude='__pycache__' --exclude='*.pyc' \
+    --exclude='provisa/_graph_render' provisa
 }
 
 push_api() {
