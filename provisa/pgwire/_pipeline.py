@@ -1600,6 +1600,11 @@ async def govern_statement(
             *([("provisa.as_of", as_of)] if as_of else []),
         ],
     )
+    # REQ-2066: a stored view a user's read names, outside its read window -- judged per call on the
+    # statement as written: a kept plan outlives the window, and governance expands the view.
+    from provisa.mv.load_window import refuse_named_outside_window
+
+    refuse_named_outside_window(state, sql)
     _kept = _slot.cached()
     if _kept is not None:
         # A fresh provenance stamp per use: the stamp ring is bounded and a kept statement outlives it.
@@ -4281,6 +4286,11 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     _slot = PlanSlot(
         state, "compiled", role_id, sql, sorted(_session_vars.items()), sdl_joins, as_of or ""
     )
+    # REQ-2066: a stored view a user's read names, outside its read window -- judged per call on the
+    # statement as written: a kept plan outlives the window, and governance expands the view.
+    from provisa.mv.load_window import refuse_named_outside_window
+
+    refuse_named_outside_window(state, sql)
     _governed = _slot.cached()
     if _governed is None:
         _governed = await _govern_compiled(

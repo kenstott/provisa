@@ -87,6 +87,20 @@ def refuse_outside_window(state: Any, table_ids: tuple[int, ...] | list[int]) ->
             raise ViewOutsideLoadWindow(row["table_name"], next_window_open(window, now))
 
 
+def refuse_named_outside_window(state: Any, sql: str) -> None:
+    """Refuse a user's read of ``sql`` when a materialized view it names is outside its window.
+
+    Judged on the statement as written, on every call: governance replaces each view by its SQL
+    (``mv.view_read.semantic_statement``), so the governed statement's tables are the view's
+    inputs, and a governed plan is kept and reused while the window opens and closes."""
+    if not users_read():
+        return
+    named = {view for view in getattr(state, "view_sql_map", None) or {} if view in sql}
+    if named:
+        rows = getattr(state, "tables", None) or []
+        refuse_outside_window(state, [r["id"] for r in rows if r.get("table_name") in named])
+
+
 def readable_now(mvs: list, state: Any) -> list:
     """Of ``mvs`` (fresh views that could answer a statement in its place), those a user's read
     may be answered from now: a view outside its window is not read, and the statement is answered

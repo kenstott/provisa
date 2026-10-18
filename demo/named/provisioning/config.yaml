@@ -88,7 +88,9 @@ tables:
   - {name: sku, data_type: varchar, is_primary_key: true, description: The product's code, visible_to: [org_admin, finance, data_science]}
   - {name: name, data_type: varchar, description: The product's name, visible_to: [org_admin, finance, data_science]}
   - {name: category, data_type: varchar, description: 'beans, equipment, merchandise or services', visible_to: [org_admin, finance, data_science]}
-  - {name: unit_cost, data_type: decimal, description: What one costs the roaster in USD, visible_to: [org_admin, finance]}
+  # Data science reads order_margins, whose SQL reads unit_cost: a view is governed for its reader
+  # with its SQL in place, so the cost is visible to data science, masked to 0.
+  - {name: unit_cost, data_type: decimal, description: What one costs the roaster in USD, visible_to: [org_admin, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}]}
 - source_id: warehouse
   domain_id: provisioning
   schema: public

@@ -327,8 +327,19 @@ def test_the_warehouses_own_refresh_builds_the_close_at_any_time(landed):
     """A refresh is Provisa's own work: it runs outside the close's window."""
     deadline = time.monotonic() + 300
     while _views(landed)["close_by_category"][0] != "fresh":
-        assert time.monotonic() < deadline, _views(landed)["close_by_category"]
+        assert time.monotonic() < deadline, (
+            f"{_close_build(landed)}\n{landed.dump_stderr_debug()[-12000:]}"
+        )
         time.sleep(5)
+
+
+def _close_build(server) -> dict:
+    """The close's build as mvList reports it: its status, last refresh and last error."""
+    query = "{ mvList { id status lastRefreshAt lastError } }"
+    resp = _post(server, "/admin/graphql", {"query": query})
+    assert resp.status_code == 200, resp.text
+    [close] = [m for m in resp.json()["data"]["mvList"] if m["id"] == "view-view_close_by_category"]
+    return close
 
 
 @pytest.mark.parametrize(
