@@ -119,6 +119,8 @@ Quando una richiesta nomina più di un ruolo, Provisa costruisce un meta-ruolo e
 
 I diritti sono l'unione di quelli di ogni membro. I filtri di riga sono l'OR del filtro risolto di ogni membro; se un membro che legge una tabella non ha filtro, non ne ha nemmeno il meta-ruolo — nessun filtro significa tutte le righe. Un meta-ruolo non viene mai memorizzato, elencato né esportato. Viene ricostruito dai suoi membri quando il modello cambia. (REQ-1620)
 
+Le colonne di ogni riga sono mascherate e mostrate secondo i ruoli il cui filtro di righe ha ammesso quella riga: tra questi ruoli si applica la lettura meno restrittiva della colonna, e un ruolo che non ha ammesso la riga non contribuisce in nulla a come viene letta. Le maschere si applicano dove la tabella viene letta, prima di ogni join o aggregazione, così un'aggregazione legge i valori mascherati. Le scritture sono verificate allo stesso modo: una colonna viene scritta su una riga solo dove un ruolo che concede quella colonna ammette la riga. (REQ-1620)
+
 Il record di audit nomina ogni ruolo agente, non l'id del meta-ruolo.
 
 ### Come una richiesta nomina i ruoli {: #how-a-request-names-roles }
@@ -128,6 +130,8 @@ Un client invia un ruolo, o un insieme separato da virgole, in `X-Provisa-Role`.
 Diritti e dati seguono solo i ruoli con cui agisce la richiesta: detenere un ruolo non significa agire come esso. Un ruolo è quel ruolo; due o più agiscono come il loro meta-ruolo. Un ruolo agente che portasse con sé i diritti di ogni ruolo detenuto non significherebbe nulla, quindi una richiesta ottiene il privilegio minimo e il record di audit nomina esattamente ciò che ha agito.
 
 Gli pseudo-ruoli nominati entrano come qualificatori. Un qualificatore non ha diritti, accesso ai domini, maschere o filtri di riga propri, quindi non è membro dei diritti del meta-ruolo: come membro senza maschere smaschererebbe ogni colonna, e come membro che non legge alcuna tabella porrebbe fine a ogni OR di filtri di riga. Entra solo nelle concessioni: una concessione o una voce di maschera che nomina `region__eu` raggiunge una richiesta che nomina quel qualificatore insieme a un ruolo concesso. (REQ-2057)
+
+Un agente MCP non agisce mai oltre i ruoli che gli sono stati dati. Un agente remoto nomina solo ruoli che il principal del suo token detiene. Un agente stdio locale nomina solo ruoli all'interno dell'insieme fissato in `mcp.role` (`PROVISA_MCP_ROLE`), e agisce come quell'insieme quando non ne nomina nessuno; qualsiasi altro ruolo viene rifiutato per nome. (REQ-2075)
 
 ### Cosa significa `+` {: #what-means }
 

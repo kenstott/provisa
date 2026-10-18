@@ -119,6 +119,8 @@ Quando uma requisição nomeia mais de uma função, o Provisa monta uma meta-fu
 
 Os direitos são a união dos de cada membro. Os filtros de linha são o OR do filtro resolvido de cada membro; se algum membro que lê uma tabela não tem filtro, a meta-função também não tem — sem filtro significa todas as linhas. Uma meta-função nunca é armazenada, listada nem exportada. Ela é remontada a partir dos seus membros quando o modelo muda. (REQ-1620)
 
+As colunas de cada linha são mascaradas e exibidas conforme os papéis cujo filtro de linhas admitiu essa linha: desses papéis, aplica-se a leitura menos restritiva da coluna, e um papel que não admitiu a linha não contribui em nada para como ela é lida. As máscaras se aplicam onde a tabela é lida, antes de qualquer join ou agregação, de modo que uma agregação lê os valores mascarados. As escritas são verificadas da mesma forma: uma coluna é escrita em uma linha apenas onde um papel que concede essa coluna admite a linha. (REQ-1620)
+
 O registro de auditoria nomeia cada função atuante, não o id da meta-função.
 
 ### Como uma requisição nomeia funções {: #how-a-request-names-roles }
@@ -128,6 +130,8 @@ Um cliente envia uma função, ou um conjunto separado por vírgulas, em `X-Prov
 Direitos e dados seguem apenas as funções com que a requisição age: ter uma função não é agir como ela. Uma função é essa função; duas ou mais agem como sua meta-função. Uma função atuante que trouxesse junto os direitos de cada função tida não significaria nada, então uma requisição recebe o menor privilégio e o registro de auditoria nomeia exatamente o que agiu.
 
 Pseudo-funções nomeadas entram como qualificadores. Um qualificador não tem direitos, acesso a domínios, máscaras ou filtros de linha próprios, então não é membro dos direitos da meta-função: como membro sem máscaras, desmascararia toda coluna, e como membro que não lê nenhuma tabela, encerraria todo OR de filtros de linha. Ele entra só nas concessões: uma concessão ou entrada de máscara que nomeia `region__eu` alcança uma requisição que nomeia esse qualificador junto com uma função concedida. (REQ-2057)
+
+Um agente MCP nunca age além dos papéis que lhe foram dados. Um agente remoto só nomeia papéis que o principal do seu token detém. Um agente stdio local só nomeia papéis dentro do conjunto fixado em `mcp.role` (`PROVISA_MCP_ROLE`), e age como esse conjunto quando não nomeia nenhum; qualquer outro papel é recusado pelo nome. (REQ-2075)
 
 ### O que `+` significa {: #what-means }
 

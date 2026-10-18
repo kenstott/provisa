@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import pytest
 
 from provisa.compiler.rls import RLSContext
+from provisa.security.masking import MaskingRule, MaskType
 from provisa.security import meta_role
 from provisa.security.meta_role import (
     MetaRoleNamed,
@@ -50,7 +51,11 @@ def _state(*, rls: dict[str, RLSContext], reads: dict[str, list[int]], roles: di
         contexts={
             r: SimpleNamespace(tables={str(t): _tm(t) for t in ids}) for r, ids in reads.items()
         },
-        masking_rules={(1, r): {"email": ("mask", "varchar")} for r in roles if r != "boss"},
+        masking_rules={
+            (1, r): {"email": (MaskingRule(MaskType.constant), "varchar")}
+            for r in roles
+            if r != "boss"
+        },
         # REQ-2059: email is unmasked to boss, and masked to NULL for everyone else.
         masked_columns=[(1, "email", _EMAIL_MASKS, "varchar")],
         tracked_functions={},

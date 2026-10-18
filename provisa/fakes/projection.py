@@ -84,18 +84,22 @@ def faked_projection(
     fakes: dict[str, Column],
     fingerprint: str,
     row_filter: str | None,
+    carried: dict[str, str] | None = None,
 ) -> str:
     """The projection, in the governed dialect. ``base`` is the base relation as written,
     ``columns`` every column as (name, data type, family), ``fakes`` the faked ones by name, and
-    ``row_filter`` the role's filter qualified by ``alias``."""
+    ``row_filter`` the role's filter qualified by ``alias``. ``carried``: further outputs (name ->
+    expression over the real row, qualified by ``alias``), computed before any fake and given as
+    they are -- a meta-role's member flags and the real values its members read (REQ-1620)."""
     a = _q(alias)
     inner = [f"{a}.{_q(name)}" for name, _, _ in columns]
     for name in fakes:
         d = digest_sql(fingerprint, f"{a}.{_q(name)}")
         inner.append(f"{d} AS {_q(_DIGEST + name)}")
+    inner += [f"{expr} AS {_q(name)}" for name, expr in (carried or {}).items()]
     where = f" WHERE {row_filter}" if row_filter else ""
     level = f"SELECT {', '.join(inner)} FROM {base} AS {a}{where}"
-    return f"({layered(level, alias, columns, fakes)})"
+    return f"({layered(level, alias, columns, fakes, keep=tuple(carried or ()))})"
 
 
 def layered(

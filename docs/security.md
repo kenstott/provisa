@@ -120,6 +120,8 @@ When a request names more than one role, Provisa builds an ephemeral meta-role i
 
 Rights are the union of every member's. Row filters are the OR of each member's resolved filter; if any member that reads a table has no filter, the meta-role has none either — no filter means all rows. A meta-role is never stored, listed, or exported. It is rebuilt from its members when the model changes. (REQ-1620)
 
+Each row's columns are masked and shown according to the roles whose row filter admitted that row: of those roles, the least restrictive reading of the column applies, and a role that did not admit the row contributes nothing to how it is read. Masks apply where the table is read, before any join or aggregate, so an aggregate reads the masked values. Writes are checked the same way: a column is written on a row only where a role granting that column admits the row. (REQ-1620)
+
 The audit record names every acting role, not the meta-role id.
 
 ### How a request names roles
@@ -129,6 +131,8 @@ A client sends one role, or a comma-separated set, in `X-Provisa-Role`. Each nam
 Rights and data follow only the roles the request acts as: holding a role is not acting as it. One role is that role; two or more act as their meta-role. An acting role that brought every held role's rights with it would mean nothing, so a request gets least privilege and the audit record names exactly what acted.
 
 Named pseudo-roles enter as qualifiers. A qualifier has no rights, domain access, masks or row filters of its own, so it is no member of the meta-role's rights: as a member with no masks it would unmask every column, and as one reading no table it would end every OR of row filters. It enters only the grants: a grant or mask entry naming `region__eu` reaches a request that names that qualifier alongside a granted role. (REQ-2057)
+
+An MCP agent never acts beyond the roles it was given. A remote agent names only roles its token's principal holds. A local stdio agent names only roles within the set pinned in `mcp.role` (`PROVISA_MCP_ROLE`), and acts as that set when it names none; any other role is refused by name. (REQ-2075)
 
 ### What `+` means
 
