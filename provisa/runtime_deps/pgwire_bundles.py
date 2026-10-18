@@ -35,26 +35,13 @@ from typing import IO, Callable, cast
 
 # The pinned upstream release the whole bundle set is fetched from (REQ-956). One version knob — a
 # bundle path is always namespaced by this tag, so a version bump caches side by side, never in place.
-RELEASE_TAG = "engine-v0.106.3"
+RELEASE_TAG = "engine-v0.118.0"
 # Connectors whose bundle comes from a release other than RELEASE_TAG. The one table of such
 # overrides; a connector absent here is at RELEASE_TAG. Each entry is removed when RELEASE_TAG
-# moves to (or past) its release.
-#   salesforce: engine-v0.108.0 is the first release with a pgwire-salesforce bundle (REQ-1946).
-#     RELEASE_TAG stays behind it because that release's pgwire server ends the connection on a
-#     null string value and plans an untyped text parameter as a number (seen on its cloudops
-#     bundle), which the connectors served from RELEASE_TAG today do not do.
-#   file: engine-v0.109.0 is the first release whose file adapter runs a declared HTML crawl
-#     (REQ-1960).
-#   servicenow: engine-v0.110.0 is the first release with a pgwire-servicenow bundle (REQ-1954).
-#   govdata: engine-v0.117.0 is the first release whose catalog does not count the rows of every
-#     table on the first pg_catalog query (pg_class.reltuples is 0); counting every govdata table
-#     outlasted the engine's attach wait.
-CONNECTOR_RELEASE: dict[str, str] = {
-    "salesforce": "engine-v0.108.0",
-    "file": "engine-v0.109.0",
-    "servicenow": "engine-v0.110.0",
-    "govdata": "engine-v0.117.0",
-}
+# moves to (or past) its release. Empty: from engine-v0.117.0 no connector's catalog counts the
+# rows of every table on the first pg_catalog query (pg_class.reltuples is 0), which held a first
+# Salesforce connection for minutes over its 1,110 sObjects, so every bundle is at RELEASE_TAG.
+CONNECTOR_RELEASE: dict[str, str] = {}
 GITHUB_REPO = "kenstott/calcite"
 
 # The release ships one tarball per OS/arch (REQ-1690): ``pgwire-<connector>-<ver>-<variant>.tar.gz``
