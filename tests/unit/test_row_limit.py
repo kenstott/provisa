@@ -391,6 +391,41 @@ def test_a_stream_that_fills_the_limit_is_asked_for_its_next_row_when_it_ends(
         assert "LIMIT 1" in engine.asked[0] and "OFFSET 3" in engine.asked[0]
 
 
+def test_a_stream_drained_after_its_request_returned_is_checked_in_the_requests_org(monkeypatch):
+    """Flight's do_get binds the org and returns; pyarrow pulls the batches afterwards on a thread
+    where no org is bound. The row after the limit is asked in the org the stream was read in."""
+    import threading
+
+    import provisa.api.app as app
+    from provisa.core.request_context import (
+        require_current_org,
+        reset_current_org,
+        set_current_org,
+    )
+
+    class _OrgEngine(_SyncEngine):
+        def execute_engine_sync(self, sql, params=None, *, session_hints=None, authorization=None):
+            self.orgs.append(require_current_org())
+            return super().execute_engine_sync(sql, params)
+
+    engine = _OrgEngine([(4,)])
+    engine.orgs = []
+    monkeypatch.setattr(app, "state", SimpleNamespace(federation_engine=engine))
+    plan = _plan()
+    token = set_current_org("acme")
+    try:
+        drain = _pipeline.audit_on_drain(plan, iter([[(1,), (2,), (3,)]]))
+    finally:
+        reset_current_org(token)
+    out: list = []
+    pull = threading.Thread(target=lambda: out.extend(drain))  # a fresh context: no org bound
+    pull.start()
+    pull.join()
+    assert out == [[(1,), (2,), (3,)]]
+    assert engine.orgs == ["acme"]
+    assert [w.code for w in plan.warnings] == ["statement.rows_cut"]
+
+
 def test_a_stream_whose_check_fails_says_so_and_still_ends(monkeypatch):
     plan = _plan()
     out = _drain(monkeypatch, plan, [[(1,), (2,), (3,)]], _SyncEngine(ConnectionError("gone")))
