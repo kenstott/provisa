@@ -393,8 +393,8 @@ relationships:
 - {id: eu-order-customer, alias: PLACED_BY, graphql_alias: customer, cardinality: many-to-one, source_table_id: eu_orders, source_column: customer_id, target_table_id: eu_customers, target_column: customer_id}
 - {id: us-order-customer, alias: PLACED_BY, graphql_alias: customer, cardinality: many-to-one, source_table_id: us_orders, source_column: customer_id, target_table_id: us_customers, target_column: customer_id}
 - {id: eu-mail-sender, alias: SENT_BY, graphql_alias: sender, cardinality: many-to-one, source_table_id: eu_outbound_mail, source_column: staff_id, target_table_id: eu_staff, target_column: staff_id}
-- {id: request-eu-customer, alias: ASKS_ABOUT, graphql_alias: eu_customers, cardinality: one-to-many, source_table_id: subject_requests, source_column: email, target_table_id: eu_customers, target_column: email}
-- {id: request-us-customer, alias: ASKS_ABOUT, graphql_alias: us_customers, cardinality: one-to-many, source_table_id: subject_requests, source_column: email, target_table_id: us_customers, target_column: email}
+- {id: request-eu-customer, alias: ASKS_ABOUT_EU, graphql_alias: eu_customers, cardinality: one-to-many, source_table_id: subject_requests, source_column: email, target_table_id: eu_customers, target_column: email}
+- {id: request-us-customer, alias: ASKS_ABOUT_US, graphql_alias: us_customers, cardinality: one-to-many, source_table_id: subject_requests, source_column: email, target_table_id: us_customers, target_column: email}
 - {id: eu-order-store, alias: PLACED_IN, graphql_alias: store, cardinality: many-to-one, source_table_id: eu_orders, source_column: store_id, target_table_id: stores, target_column: store_id}
 - {id: us-order-store, alias: PLACED_IN, graphql_alias: store, cardinality: many-to-one, source_table_id: us_orders, source_column: store_id, target_table_id: stores, target_column: store_id}
 - {id: eu-order-product, alias: OF, graphql_alias: product, cardinality: many-to-one, source_table_id: eu_orders, source_column: product_id, target_table_id: products, target_column: product_id}

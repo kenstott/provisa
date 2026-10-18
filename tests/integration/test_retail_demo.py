@@ -67,7 +67,8 @@ class _Databases:
         )
 
     def up(self) -> None:
-        self._compose("up", "-d", "--wait", "postgres")
+        started = self._compose("up", "-d", "--wait", "postgres", check=False)
+        assert started.returncode == 0, f"{started.stdout}\n{started.stderr}"
 
     def down(self) -> None:
         self._compose("down", "-v", "--remove-orphans", check=False)
@@ -78,15 +79,16 @@ def nodes(tmp_path_factory):
     from tests.integration.isolated_server import IsolatedServer
 
     databases, stack = _Databases(), _Stack()
-    databases.up()
-    stack.start()
-    home = tmp_path_factory.mktemp("retail_demo")
-    demo = home / "retail"
-    shutil.copytree(_DEMO, demo)
-    (demo / "data").mkdir(exist_ok=True)
-    control_plane = stack.url(stack.engine_port, "provisa", "+psycopg")
     started = []
     try:
+        # Inside the try: a stack that fails to come up is still taken down.
+        databases.up()
+        stack.start()
+        home = tmp_path_factory.mktemp("retail_demo")
+        demo = home / "retail"
+        shutil.copytree(_DEMO, demo)
+        (demo / "data").mkdir(exist_ok=True)
+        control_plane = stack.url(stack.engine_port, "provisa", "+psycopg")
         servers = {}
         for region in ("eu", "us"):  # eu first: it lands and builds what us reads
             # One org in two regions: each node serves the same org, as its own region.
