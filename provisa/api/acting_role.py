@@ -111,9 +111,9 @@ def named_role(request: Request, named: str) -> str:  # REQ-273, REQ-1620
     # A router mounted without the auth middleware has no bound derived roles, as held_role's
     # anonymous case: it names none.
     identity = getattr(request.state, "identity", None)
-    pseudo = getattr(identity, "derived_roles", None) or {}
-    named_pseudo = [n for n in names if n in pseudo]
-    names = [n for n in names if n not in pseudo]
+    derived = getattr(identity, "derived_roles", None) or {}
+    named_derived = [n for n in names if n in derived]
+    names = [n for n in names if n not in derived]
     for name in names:
         if not name.startswith(META_PREFIX):
             held_role(request, name)
@@ -125,7 +125,7 @@ def named_role(request: Request, named: str) -> str:  # REQ-273, REQ-1620
         names = data_plane or names[:1]
     try:
         return resolve_requested_role(
-            state, set(names), ",".join([*names, *named_pseudo]), lambda: pseudo
+            state, set(names), ",".join([*names, *named_derived]), lambda: derived
         )
     except MetaRoleNamed as exc:
         raise ApiError(403, "auth.meta_role_named", str(exc), role_id=named) from exc

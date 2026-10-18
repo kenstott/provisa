@@ -173,7 +173,7 @@ def client(monkeypatch, serve_deployment_org):
         identity = request.state.identity
         return {
             "role": request.state.role,
-            "pseudo": identity.derived_roles,
+            "derived": identity.derived_roles,
             "acting": identity.acting_roles,
         }
 
@@ -185,7 +185,7 @@ class TestTheRequest:
         self, client
     ):
         data = client.get("/test", headers={"Authorization": "Bearer t"}).json()
-        assert data["pseudo"] == {"region": "", "region__eu": "region"}
+        assert data["derived"] == {"region": "", "region__eu": "region"}
         assert data["role"] == "analyst"
 
     def test_named_it_qualifies_the_acting_role_and_adds_no_right(self, client):
@@ -220,7 +220,7 @@ def unsecured(monkeypatch, serve_deployment_org):
         identity = request.state.identity
         return {
             "role": request.state.role,
-            "pseudo": identity.derived_roles,
+            "derived": identity.derived_roles,
             "acting": identity.acting_roles,
             "attributes": identity.org_attributes,
         }
@@ -236,12 +236,12 @@ class TestUnsecured:
         data = unsecured.get("/test", headers={"X-Provisa-Role": "reviewer,region__eu"}).json()
         assert data["role"] == "meta:region+region__eu+reviewer"
         assert data["acting"] == ["reviewer"]
-        assert data["pseudo"] == {"region__eu": "region", "region": ""}
+        assert data["derived"] == {"region__eu": "region", "region": ""}
         assert data["attributes"] == {"region": "eu"}
 
     def test_a_name_that_is_no_declared_claim_type_is_a_role(self, unsecured):
         data = unsecured.get("/test", headers={"X-Provisa-Role": "dept__ops"}).json()
-        assert data["role"] == "dept__ops" and data["pseudo"] == {}
+        assert data["role"] == "dept__ops" and data["derived"] == {}
 
     def test_named_alone_it_reaches_no_data(self, unsecured, monkeypatch):
         def refuse(_s, members, quals=()):
@@ -312,4 +312,4 @@ class TestTheNodesOwnWork:
         monkeypatch.setattr(process_region, "region", lambda: "us")
         data = client.get("/test", headers={"Authorization": "Bearer t"}).json()
         # The org's record says eu; the node being us adds nothing.
-        assert data["pseudo"] == {"region": "", "region__eu": "region"}
+        assert data["derived"] == {"region": "", "region__eu": "region"}

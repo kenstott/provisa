@@ -590,13 +590,13 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 return JSONResponse(status_code=403, content={"detail": str(exc)})
             # REQ-2057: a named declared derived role is held, as a named role is here; it qualifies
             # the roles it is named with and binds its attribute (region__eu: region=eu).
-            unsecured_roles, held_pseudo, unsecured_attributes = named_unsecured(
+            unsecured_roles, held_derived, unsecured_attributes = named_unsecured(
                 unsecured_roles, _loaded_derived_roles()
             )
-            named_pseudo = tuple(held_pseudo)
-            if named_pseudo:
+            named_derived = tuple(held_derived)
+            if named_derived:
                 try:
-                    unsecured_role = self._meta_role(unsecured_roles, None, named_pseudo)
+                    unsecured_role = self._meta_role(unsecured_roles, None, named_derived)
                 except PermissionError as refused:
                     return _deny(request, 403, str(refused))
             # Several roles: the request acts as their meta-role (security/meta_role.py).
@@ -614,7 +614,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 # No member to have a record of: the session headers are this deployment's
                 # context, and a named derived role's attribute (REQ-2057).
                 org_attributes=unsecured_attributes,
-                derived_roles=held_pseudo,
+                derived_roles=held_derived,
             )
             request.state.role = unsecured_role
             request.state.assignments = [
@@ -1126,7 +1126,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # REQ-2057: the derived roles the request names, with the parent of each sub-role (a grant
         # to the parent reaches it). They qualify what the named roles are granted.
         qualifiers: list[str] = []
-        held_pseudo = identity.derived_roles or {}
+        held_derived = identity.derived_roles or {}
         if requested_roles:
             assigned_role_ids = {a.role_id for a in assignments}
             for requested_role in requested_roles:
@@ -1141,8 +1141,8 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 elif requested_role in assigned_role_ids:
                     if requested_role not in acting_set:
                         acting_set.append(requested_role)
-                elif requested_role in held_pseudo:
-                    for q in (requested_role, held_pseudo[requested_role]):
+                elif requested_role in held_derived:
+                    for q in (requested_role, held_derived[requested_role]):
                         if q and q not in qualifiers:
                             qualifiers.append(q)
                 else:

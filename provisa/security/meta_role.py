@@ -39,7 +39,7 @@ request's own variables still resolve at execution.
 A row is read as the member(s) whose own filter admitted it: each column is masked or hidden as
 those members read it, the least restrictive of them first (compiler.rls.MemberReads, applied at
 the table by compiler.stage2), never through a mask or grant of a member that did not admit the
-row. Pseudo-roles the set was named with contribute grants only.
+row. Derived roles the set was named with contribute grants only.
 
 The record of a statement made as a meta-role names every member (``enforced["acting_roles"]``).
 """
@@ -219,7 +219,7 @@ def _member_reads(
     """Per table a member reads, how each member reads it (compiler.rls.MemberReads): a row is
     read as the member(s) whose own filter admitted it, each column masked or hidden as that
     member reads it -- never through another member's mask or grant. A member's treatment of a
-    column is decided by its own chain (its ancestors) and the pseudo-roles the set was named
+    column is decided by its own chain (its ancestors) and the derived roles the set was named
     with, which contribute grants only."""
     from provisa.compiler.rls import HIDDEN, PLAIN, MemberReads
     from provisa.security.masking import entry_for, rule_of
@@ -490,26 +490,26 @@ def resolve_requested_role(
     state: Any,
     permitted: set[str],
     requested: str,
-    pseudo: Callable[[], dict[str, str]] | None = None,
+    derived: Callable[[], dict[str, str]] | None = None,
 ) -> str:
     """The role a request acts as, from what it names (a role, or a comma-separated set) and the
     roles its identity holds (``permitted``). Each named role must be held, and one that is not is
     refused by name; one role is that role, several act as their meta-role.
 
-    REQ-2057: ``pseudo`` reads the derived roles the identity holds (id -> parent), asked only when
+    REQ-2057: ``derived`` reads the derived roles the identity holds (id -> parent), asked only when
     a request names a role the identity is not assigned. One named enters the set as a qualifier,
     with its parent, and the set acts as its meta-role."""
     names = [r.strip() for r in requested.split(",") if r.strip()]
     refuse_named_meta_role(names)
     unassigned = [n for n in names if n not in permitted]
-    held_pseudo = pseudo() if (unassigned and pseudo is not None) else {}
+    held_derived = derived() if (unassigned and derived is not None) else {}
     data: list[str] = []
     qualifiers: set[str] = set()
     for name in names:
         if name in permitted:
             data.append(name)
-        elif name in held_pseudo:
-            qualifiers.update(q for q in (name, held_pseudo[name]) if q)
+        elif name in held_derived:
+            qualifiers.update(q for q in (name, held_derived[name]) if q)
         else:
             raise PermissionError(f"role {name!r} is not assigned to this identity")
     distinct = sorted(set(data))

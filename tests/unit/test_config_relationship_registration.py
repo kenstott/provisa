@@ -42,7 +42,7 @@ def _config(*relationships: dict) -> dict:
              "columns": [{"name": "email", "visible_to": ["admin"]}]}
             for name in ("requests", "eu_customers", "us_customers")
         ],
-        "roles": [{"id": "admin", "capabilities": [], "domain_access": ["*"]}],
+        "roles": [{"id": "admin", "description": "Test role.", "capabilities": [], "domain_access": ["*"]}],
         "relationships": list(relationships),
     }  # fmt: skip
 

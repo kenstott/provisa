@@ -47,7 +47,13 @@ describe("GrantPicker", () => {
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: "Combine roles into one grant" }));
-    const parts = await screen.findByRole("textbox", { name: "Roles a reader must all hold" });
+    // The popover's floating layer hides its dropdown (display: none) once its detached check has
+    // run: jsdom gives the button a zero-size box, so it reads as off screen. That check runs on a
+    // timer, so a loaded host reaches it before this query; the dropdown is open either way.
+    const parts = await screen.findByRole("textbox", {
+      name: "Roles a reader must all hold",
+      hidden: true,
+    });
     await userEvent.type(parts, "analyst,region__eu,");
     // jsdom reports the popover's content hidden once the parts' suggestion list has opened (the
     // browser shows it, beside the open list); the button is still the one the reader clicks.
@@ -56,9 +62,20 @@ describe("GrantPicker", () => {
     await waitFor(() => expect(onChange).toHaveBeenCalledWith(["marketing", "analyst+region__eu"]));
   });
 
+  it("finds the parts field when the pointer steps are slow, as on a loaded host", async () => {
+    // The race above made deterministic: a pause between pointer steps lets the detached check run.
+    const user = userEvent.setup({ delay: 200 });
+    render(<GrantPicker options={ROLES} value={[]} onChange={vi.fn()} ariaLabel="Visible to" />);
+    await user.click(screen.getByRole("button", { name: "Combine roles into one grant" }));
+    expect(
+      await screen.findByRole("textbox", { name: "Roles a reader must all hold", hidden: true }),
+    ).toBeTruthy();
+  });
+
   it("offers nothing to add until a role is listed", async () => {
     render(<GrantPicker options={ROLES} value={[]} onChange={vi.fn()} ariaLabel="Visible to" />);
     await userEvent.click(screen.getByRole("button", { name: "Combine roles into one grant" }));
-    expect(await screen.findByRole("button", { name: "Add" })).toBeDisabled();
+    // Hidden for the same reason as above: the dropdown is open, its detached check in jsdom aside.
+    expect(await screen.findByRole("button", { name: "Add", hidden: true })).toBeDisabled();
   });
 });
