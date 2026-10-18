@@ -631,3 +631,74 @@ async def test_a_build_another_server_completes_after_this_one_read_its_records_
     done = await converge_replicas(model.state)
     assert done.requested == []
     assert (await model.record(key)).build_state == "idle"
+
+
+# --- a table's region, while a draft and when it is released (REQ-1921, REQ-1922) ----------------
+
+
+def test_a_draft_naming_a_region_is_previewed_only_on_that_regions_nodes(node_region):
+    """A draft has no replica: its preview reads it, and lands it, where it is read. One that
+    names eu is refused on a us node before any statement is built, and read on an eu node."""
+    from provisa.core.region_stores import HomeRegionUnavailable
+    from provisa.federation.query_residency import require_draft_read_in_its_region
+
+    node_region("us")
+    with pytest.raises(HomeRegionUnavailable):
+        require_draft_read_in_its_region("refunds", "eu")
+    node_region("eu")
+    require_draft_read_in_its_region("refunds", "eu")
+
+
+async def test_a_draft_given_a_region_then_released_is_built_only_in_that_region(
+    model, node_region
+):
+    """Draft, then assigned eu, then released: eu's nodes build it into eu's store; us's never
+    do, before the release or after."""
+    key = model.declare("refunds")
+    model.drafts.add(key)
+    model.regions[key] = "eu"
+    for region in ("us", "eu"):  # a draft: built by no node on the model's word
+        node_region(region)
+        assert (await converge_replicas(model.state)).requested == []
+    model.drafts.discard(key)  # released
+    node_region("us")
+    assert (await converge_replicas(model.state)).requested == []
+    assert await model.record(key) is None
+    node_region("eu")
+    assert (await converge_replicas(model.state)).requested == [key]
+
+
+async def test_a_draft_copy_held_outside_the_region_it_is_given_is_retired(
+    model, monkeypatch, node_region
+):
+    """A draft previewed on a us node while it named no region holds a copy there; once it names
+    eu, that copy is data us may not keep, draft or not: it goes."""
+    node_region("us")
+    key = model.declare("refunds")
+    model.drafts.add(key)
+    async with model.db.acquire() as conn:  # its steward's preview on us, before a region
+        await replica_state.request_build(
+            conn, key, replica_state.REASON_MODEL, model_stamp=10, now=datetime.now(UTC)
+        )
+    await model.build(key)
+    model.regions[key] = "eu"
+    await _retired_then_dropped(model, monkeypatch, key)
+
+
+async def test_a_table_moved_to_another_region_is_built_there(model, monkeypatch, node_region):
+    """Its copy in the region it left goes (above); the region it moves to builds its own, in its
+    own store."""
+    from provisa.core import process_region
+
+    monkeypatch.setattr(
+        "provisa.federation.replica_builds.store_identity",
+        lambda _state: f"{process_region.region()}-store",  # each region's store is its own
+    )
+    node_region("eu")
+    key = model.declare("orders")
+    model.regions[key] = "eu"
+    await converge_replicas(model.state)
+    await model.build(key)
+    model.regions[key] = "us"
+    node_region("us")
+    assert (await converge_replicas(model.state)).requested == [key]
