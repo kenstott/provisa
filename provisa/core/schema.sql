@@ -484,6 +484,7 @@ END $$;
 -- REQ-2080: the seed below writes each seeded role's description before add_missing_columns runs,
 -- so a roles table made before the column existed needs it here first.
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS inactivity_days INTEGER;
 
 CREATE TABLE IF NOT EXISTS rls_rules (
     id          SERIAL PRIMARY KEY,
@@ -1292,6 +1293,14 @@ CREATE TABLE IF NOT EXISTS user_role_assignments (
     inactive_notified_at TIMESTAMPTZ,
     UNIQUE (user_id, role_id, domain_id)
 );
+
+-- REQ-2077: the org registry view (core/org_registry_view.py) reads expires_at at startup, before
+-- add_missing_columns reaches an org schema made before these columns existed, so they are added
+-- here first.
+ALTER TABLE user_role_assignments ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+ALTER TABLE user_role_assignments ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;
+ALTER TABLE user_role_assignments ADD COLUMN IF NOT EXISTS expiry_notified_at TIMESTAMPTZ;
+ALTER TABLE user_role_assignments ADD COLUMN IF NOT EXISTS inactive_notified_at TIMESTAMPTZ;
 
 -- REQ-1439: tenant-local mirror of the platform user directory. Every ops report keys rows by
 -- user_id, which is an IdP subject and unreadable to a person. The directory that maps it to a
