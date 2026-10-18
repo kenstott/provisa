@@ -332,7 +332,10 @@ def test_the_live_salesforce_test_is_in_no_lane_but_its_own():
 
 def test_the_salesforce_lane_runs_only_when_a_dispatch_asks_for_it():
     job = _lanes_workflow()["jobs"]["salesforce"]
-    assert job["if"] == "github.event_name == 'workflow_dispatch' && inputs.include_salesforce"
+    assert job["if"] == (
+        "(github.event_name == 'workflow_dispatch' && inputs.include_salesforce) "
+        "&& needs.plan.outputs.salesforce == 'true'"
+    )
     import yaml
 
     caller = yaml.safe_load((REPO / ".github" / "workflows" / "integration-suite.yml").read_text())
@@ -349,7 +352,10 @@ def test_the_athena_lane_runs_only_when_a_dispatch_asks_for_it_with_its_secrets(
     run_lane = _runner()
     assert run_lane.LANES["athena"].marker == "requires_athena"
     job = _lanes_workflow()["jobs"]["athena"]
-    assert job["if"] == "github.event_name == 'workflow_dispatch' && inputs.include_athena"
+    assert job["if"] == (
+        "(github.event_name == 'workflow_dispatch' && inputs.include_athena) "
+        "&& needs.plan.outputs.athena == 'true'"
+    )
     names = (
         "ATHENA_AWS_ACCESS_KEY_ID",
         "ATHENA_AWS_SECRET_ACCESS_KEY",
@@ -377,7 +383,10 @@ def test_the_servicenow_lane_runs_only_when_a_dispatch_asks_for_it_with_its_secr
     run_lane = _runner()
     assert run_lane.LANES["servicenow"].marker == "requires_servicenow"
     job = _lanes_workflow()["jobs"]["servicenow"]
-    assert job["if"] == "github.event_name == 'workflow_dispatch' && inputs.include_servicenow"
+    assert job["if"] == (
+        "(github.event_name == 'workflow_dispatch' && inputs.include_servicenow) "
+        "&& needs.plan.outputs.servicenow == 'true'"
+    )
     names = ("SERVICENOW_INSTANCE_URL", "SERVICENOW_USERNAME", "SERVICENOW_PASSWORD")
     assert {k: job["env"][k] for k in names} == {k: f"${{{{ secrets.{k} }}}}" for k in names}
     assert all(k in _credentials_step("servicenow")["run"] for k in names)
@@ -602,3 +611,36 @@ def test_a_lane_that_deselects_every_named_test_passes_but_a_real_failure_does_n
     monkeypatch.delenv("PROVISA_LANE_TESTS")
     monkeypatch.setattr(runner.subprocess, "call", lambda *a, **k: 5)
     assert runner.main(["neo4j"]) == 5
+
+
+@pytest.mark.parametrize("lane", ["warehouse", "salesforce", "athena", "servicenow"])
+def test_a_live_lane_runs_only_the_named_tests_of_a_targeted_run(lane):
+    # A targeted dispatch with include_warehouse ran the whole warehouse lane (~108 tests, 35+
+    # minutes): the live jobs were not handed the run's named tests.
+    job = _lanes_workflow()["jobs"][lane]
+    assert job["env"]["PROVISA_LANE_TESTS"] == "${{ inputs.tests }}"
+    assert job["needs"] == "plan"
+    assert job["if"].endswith(f"&& needs.plan.outputs.{lane} == 'true'")
+    plan = _lanes_workflow()["jobs"]["plan"]
+    assert plan["outputs"][lane] == f"${{{{ steps.plan.outputs.{lane} }}}}"
+    step = next(s for s in plan["steps"] if s.get("id") == "plan")
+    assert "run_lane.py --has-targets" in step["run"]
+
+
+def test_a_live_lane_is_planned_for_a_whole_run_and_for_a_targeted_one_naming_a_test_of_its(
+    monkeypatch, capsys
+):
+    runner = _runner()
+
+    def planned(lane: str) -> str:
+        runner.main(["--has-targets", lane])
+        return capsys.readouterr().out.strip()
+
+    monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
+    assert planned("warehouse") == "true"  # the whole lane
+    inside = runner.test_files(runner.LANES["warehouse"].paths)[0]
+    monkeypatch.setenv("PROVISA_LANE_TESTS", f"{inside}::test_x")
+    assert planned("warehouse") == "true"
+    outside = runner.test_files(("tests/e2e",))[0]
+    monkeypatch.setenv("PROVISA_LANE_TESTS", outside)
+    assert planned("warehouse") == "false"  # it would collect nothing and fail its upload

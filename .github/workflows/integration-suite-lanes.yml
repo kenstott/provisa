@@ -238,6 +238,12 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       suite: ${{ steps.plan.outputs.suite }}
       cluster: ${{ steps.plan.outputs.cluster }}
+      # Whether each live lane's own job runs: always for a whole-lane run, and for a targeted run
+      # (inputs.tests) only when it names a test under the lane's paths.
+      warehouse: ${{ steps.plan.outputs.warehouse }}
+      salesforce: ${{ steps.plan.outputs.salesforce }}
+      athena: ${{ steps.plan.outputs.athena }}
+      servicenow: ${{ steps.plan.outputs.servicenow }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -254,6 +260,9 @@ jobs:
           echo "suite=$suite" >> "$GITHUB_OUTPUT"
           case ",${LANES// /}," in *,all,*|*,cluster,*) c=true;; *) c=false;; esac
           echo "cluster=$c" >> "$GITHUB_OUTPUT"
+          for lane in warehouse salesforce athena servicenow; do
+            echo "$lane=$(python3 scripts/ci/run_lane.py --has-targets "$lane")" >> "$GITHUB_OUTPUT"
+          done
 
   # Every lane of the matrix is the one lane workflow (lane.yml), called with what a container-suite
   # lane needs.
@@ -366,10 +375,13 @@ jobs:
 
   warehouse:
     name: warehouse (live cloud warehouses)
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.include_warehouse)
+    needs: plan
+    if: (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.include_warehouse)) && needs.plan.outputs.warehouse == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
+      # A targeted run (inputs.tests) runs only its named tests; none runs the whole lane.
+      PROVISA_LANE_TESTS: ${{ inputs.tests }}
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
@@ -543,10 +555,13 @@ jobs:
   # on the org, so a rerun within the cache's day costs the test's statements and no describe.
   salesforce:
     name: salesforce (live org)
-    if: github.event_name == 'workflow_dispatch' && inputs.include_salesforce
+    needs: plan
+    if: (github.event_name == 'workflow_dispatch' && inputs.include_salesforce) && needs.plan.outputs.salesforce == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
+      # A targeted run (inputs.tests) runs only its named tests; none runs the whole lane.
+      PROVISA_LANE_TESTS: ${{ inputs.tests }}
       SF_LOGIN_URL: ${{ secrets.SF_LOGIN_URL }}
       SF_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
       SF_CONSUMER_SECRET: ${{ secrets.SF_CONSUMER_SECRET }}
@@ -636,10 +651,13 @@ jobs:
   # makes its own Glue database and S3 prefix and removes them.
   athena:
     name: athena (live account)
-    if: github.event_name == 'workflow_dispatch' && inputs.include_athena
+    needs: plan
+    if: (github.event_name == 'workflow_dispatch' && inputs.include_athena) && needs.plan.outputs.athena == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
+      # A targeted run (inputs.tests) runs only its named tests; none runs the whole lane.
+      PROVISA_LANE_TESTS: ${{ inputs.tests }}
       ATHENA_AWS_ACCESS_KEY_ID: ${{ secrets.ATHENA_AWS_ACCESS_KEY_ID }}
       ATHENA_AWS_SECRET_ACCESS_KEY: ${{ secrets.ATHENA_AWS_SECRET_ACCESS_KEY }}
       ATHENA_REGION: ${{ secrets.ATHENA_REGION }}
@@ -698,10 +716,13 @@ jobs:
   # The live ServiceNow instance (REQ-1954): a dispatch asks for it, as for the Salesforce org.
   servicenow:
     name: servicenow (live instance)
-    if: github.event_name == 'workflow_dispatch' && inputs.include_servicenow
+    needs: plan
+    if: (github.event_name == 'workflow_dispatch' && inputs.include_servicenow) && needs.plan.outputs.servicenow == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
+      # A targeted run (inputs.tests) runs only its named tests; none runs the whole lane.
+      PROVISA_LANE_TESTS: ${{ inputs.tests }}
       SERVICENOW_INSTANCE_URL: ${{ secrets.SERVICENOW_INSTANCE_URL }}
       SERVICENOW_USERNAME: ${{ secrets.SERVICENOW_USERNAME }}
       SERVICENOW_PASSWORD: ${{ secrets.SERVICENOW_PASSWORD }}

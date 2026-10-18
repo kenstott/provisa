@@ -232,6 +232,12 @@ def main(argv: list[str]) -> int:
 
         print(json.dumps(matrix(argv[1] if len(argv) > 1 else "all")))
         return 0
+    if argv[:1] == ["--has-targets"]:
+        # A job of its own (warehouse, salesforce, athena, servicenow) runs when the run names no
+        # tests (the whole lane) or names one under the lane's paths; otherwise it would collect
+        # nothing, write no results and fail its required results upload.
+        print("true" if not named_tests() or targets(argv[1], None) else "false")
+        return 0
     parser = argparse.ArgumentParser()
     parser.add_argument("lane", choices=sorted(LANES))
     parser.add_argument("--shard", help="K/N: the Kth of N file shards of the lane")
