@@ -4,7 +4,7 @@
 
 Provisa 在你所有数据源的联接结果之上服务每一个 API 表面（REST、GraphQL、SQL、gRPC、MCP 等等）。它之所以能做到这一点，是因为**联邦查询、指标、本体与治理出自单一模型，没有任何东西需要保持同步**。这个模型是一份关于你数据资产的单一定义 —— 涵盖所有数据源上的每个域、每个关系和每条策略，唯独不包括源系统本身 —— 既运营这份资产，也治理这份资产。这份定义不是引擎可以参考的文档；它*就是*引擎。已注册的域和关系是唯一合法的联接路径，访问策略被编译进每个查询计划。一个模型，四项属性：
 
-- **联邦** —— 72 个连接器触达 85 种以上的数据源，包括 Salesforce、ServiceNow 和 Stripe，均就地读取：企业赖以运转的 SaaS 系统与数据库并列成为数据表，无需先建管道把数据送进数据仓库。可用 SQL、GraphQL 或 Cypher，通过九种协议查询。
+- **联邦** —— 73 个连接器触达 85 种以上的数据源，包括 Salesforce、ServiceNow 和 Stripe，均就地读取：企业赖以运转的 SaaS 系统与数据库并列成为数据表，无需先建管道把数据送进数据仓库。可用 SQL、GraphQL 或 Cypher，通过九种协议查询。
 - **指标** —— 指标是有名称、受治理的聚合。它只定义一次，每个提出请求的工具和语言得到的都是同一个定义。
 - **本体** —— 业务术语表是由概念、概念的定义以及概念之间的关系组成的图。Provisa 把它映射到存放数值的数据库结构上，因此能够回答关于你数据的问题。一个概念在触达数据之前（直接触达或经由其他概念）只是草稿。术语表与指标相互独立：术语说明概念是什么，指标说明数字如何计算。
 - **治理** —— 六个层被编译进每一个查询计划，覆盖每种语言和每种协议，每个请求都以同样方式被记录：谁查询了什么、以什么角色、依据哪条策略。追踪、指标和日志本身也注册为可查询的表，与你的业务数据并列。
@@ -116,7 +116,7 @@ Data Vault 也以同样的方式契合，只是提前了一层。它的 hub 是�
 
 ### 数据源 {: #data-sources }
 
-- **72 个连接器，85 种以上数据源** —— 较大的数字分别计入托管的 PostgreSQL 服务（RDS、Aurora、Cloud SQL、AlloyDB、Azure、Supabase、Neon）和 File Crawler 的文件格式。 PostgreSQL、MySQL、MongoDB、Cassandra、Elasticsearch、Neo4j、SPARQL 三元组存储、Kafka、Google Sheets、Kaggle 等等，全部通过单一 API 访问；图和 RDF 数据源是一等公民，而非适配器
+- **73 个连接器，85 种以上数据源** —— 较大的数字分别计入托管的 PostgreSQL 服务（RDS、Aurora、Cloud SQL、AlloyDB、Azure、Supabase、Neon）和 File Crawler 的文件格式。 PostgreSQL、MySQL、MongoDB、Cassandra、Elasticsearch、Neo4j、SPARQL 三元组存储、Kafka、Google Sheets、Kaggle 等等，全部通过单一 API 访问；图和 RDF 数据源是一等公民，而非适配器
 - **智能路由** —— 单源查询绕过联邦（亚 100ms）；多源查询通过联邦层路由 —— 可自带集群，也可使用内置的 worker
 - **API 数据源** —— 将 REST、GraphQL、gRPC、WebSocket 或 RSS 端点注册为可查询的表；内置 SPARQL 辅助工具；跨 API 数据源和关系型数据源的联邦联接透明工作
 - **远程 schema 内省** —— 指向任意 GraphQL、OpenAPI 或 gRPC 端点；已记录的操作会自动暴露为可查询的表、图节点和边，并在其上完整应用治理

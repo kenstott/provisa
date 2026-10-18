@@ -1,6 +1,6 @@
 {
   "security.md": "4232908a9500864c4bb841cddda9b9b7cf0af93fa05f042443f9492ad490dd5f",
-  "index.md": "52c6c654156ff0b595872b0f42d7fd7bbc752adf10b3bb54edba7962d0e767b7",
+  "index.md": "4e0478051a707c558954cf06d6662bfd075a2828ddf8c3c33b0b3c85e6518e8a",
   "quickstart.md": "03d442441ed339c6b0d9a5ef40916f7a4f3ee41ef719ae305f20c8a97593e266",
   "api-reference.md": "b36e1dcae81be7cbf88319451e2d39f3deed50f8d48faf73652f94bc72235500",
   "admin-graphql.md": "ecc93cf0baa0e6d2f0c515e867b2733d43bc1140bee7392397eaca0aee61ef0e",
@@ -17,7 +17,7 @@
   "domain-principles.md": "44304b8e02c8aacc2ebae9c7258e5db363fd459fcde1f28e7672dd4435f42eff",
   "migration/hasura-v2.md": "41481ef03ad22d1d2af20ee6d7437bdfcb5a2ac0360258af0d4d5f0e26179227",
   "configuration.md": "30b1421046671f6f1f9fe007f1735c72bf21a4f1502dea162db5096af8edda1e",
-  "sources.md": "c8915131322e33004be8875e36f57412577ea0d5aee03dbdebdf1ee01598bf8f",
+  "sources.md": "61cc03b4f87d8b760b833a05fcf1b9e9ea2b9888e4c67ba666e7a51a6a597210",
   "python-client.md": "4781626775e1c98b8c375fcfe98ceb3369d9ac9692b126b6b740bd27150580f7",
   "deployment.md": "da7e3e31f788480612a479e19677d8042ad384233d3f023cceec7d4251840a90",
   "import.md": "4a67d750ff43ec0dd454b49b69cc03caad60bfa9a00a555e0f92f2157c1e6743",

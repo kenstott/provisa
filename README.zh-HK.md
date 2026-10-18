@@ -4,7 +4,7 @@
 
 Provisa 在跨你各個數據來源的聯結結果之上，提供每一個 API 介面（REST、GraphQL、SQL、gRPC、MCP 等）。它做得到，是因為**聯邦查詢、指標、本體與治理出自單一模型，沒有任何東西需要保持同步**。這個模型是對你整片數據領地的單一份定義——涵蓋各數據來源上的每一個網域、關係與政策，只不納入源頭系統本身——而這份定義既營運這片領地，也治理它。這份定義不是引擎可以參考的文件；它**就是**引擎。已註冊的網域與關係是唯一合法的聯結路徑，而存取政策被編譯進每一份查詢計劃。一個模型，四項屬性：
 
-- **聯邦** —— 72 個連接器觸及 85 種以上的數據來源，包括 Salesforce、ServiceNow 和 Stripe，皆就地讀取：企業賴以運作的 SaaS 系統與資料庫並列成為資料表，毋須先建管線把資料送進資料倉儲。可用 SQL、GraphQL 或 Cypher，透過九種協定查詢。
+- **聯邦** —— 73 個連接器觸及 85 種以上的數據來源，包括 Salesforce、ServiceNow 和 Stripe，皆就地讀取：企業賴以運作的 SaaS 系統與資料庫並列成為資料表，毋須先建管線把資料送進資料倉儲。可用 SQL、GraphQL 或 Cypher，透過九種協定查詢。
 - **指標** —— 指標是有名稱、受管治的彙總。它只定義一次，每個提出請求的工具和語言得到的都是同一個定義。
 - **本體** —— 業務詞彙表是由概念、概念的定義以及概念之間的關係組成的圖。Provisa 把它對應到存放數值的資料庫結構，因此能夠回答關於你資料的問題。一個概念在觸及資料之前（直接觸及或經由其他概念）只是草稿。詞彙表與指標互相獨立：詞彙說明概念是什麼，指標說明數字如何計算。
 - **管治** —— 六個層被編譯進每一個查詢計劃，涵蓋每種語言和每種協定，每個請求都以同樣方式被記錄：誰查詢了什麼、以什麼角色、依據哪條政策。追蹤、指標和日誌本身也註冊為可查詢的表，與你的業務資料並列。
@@ -116,7 +116,7 @@ Data Vault 以同樣方式合身，只是早一層。它的樞紐是去重後的
 
 ### 數據來源 {: #data-sources }
 
-- **72 個連接器，85 種以上數據來源**——較大的數字分別計入託管的 PostgreSQL 服務（RDS、Aurora、Cloud SQL、AlloyDB、Azure、Supabase、Neon）和 File Crawler 的檔案格式。 PostgreSQL、MySQL、MongoDB、Cassandra、Elasticsearch、Neo4j、SPARQL 三元組儲存、Kafka、Google Sheets 等等，都經單一個 API；圖形與 RDF 數據來源是一級公民，不是轉接器
+- **73 個連接器，85 種以上數據來源**——較大的數字分別計入託管的 PostgreSQL 服務（RDS、Aurora、Cloud SQL、AlloyDB、Azure、Supabase、Neon）和 File Crawler 的檔案格式。 PostgreSQL、MySQL、MongoDB、Cassandra、Elasticsearch、Neo4j、SPARQL 三元組儲存、Kafka、Google Sheets 等等，都經單一個 API；圖形與 RDF 數據來源是一級公民，不是轉接器
 - **智慧路由**——單一來源查詢繞過聯邦（低於 100 毫秒）；多來源查詢經聯邦層路由——自備叢集，或使用內嵌工作處理程序
 - **API 數據來源**——把 REST、GraphQL、gRPC、WebSocket 或 RSS 端點註冊為可查詢的表；內含 SPARQL 輔助工具；跨 API 數據來源與關聯式數據來源的聯邦聯結透明運作
 - **遠端結構描述自省**——指向任何 GraphQL、OpenAPI 或 gRPC 端點；已載明的操作自動呈現為可查詢的表、圖形節點與邊，並在其上套用完整治理
