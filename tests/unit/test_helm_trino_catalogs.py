@@ -39,7 +39,10 @@ def test_trino_runs_the_dynamic_catalog_store_in_memory_with_no_catalog_director
     )
     for role in ("coordinator-config.properties", "worker-config.properties"):
         assert "catalog.management=dynamic" in config["data"][role], role
-        assert "catalog.store=memory" in config["data"][role], role
+    assert "catalog.store=memory" in config["data"]["coordinator-config.properties"]
+    # The coordinator alone stores catalogs: a worker given catalog.store refuses to start ("was not
+    # used"), and with no worker the coordinator runs no query.
+    assert "catalog.store" not in config["data"]["worker-config.properties"]
     trino_pods = 0
     for d in docs:
         if (
