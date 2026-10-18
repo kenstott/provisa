@@ -2163,6 +2163,31 @@ async def _bind_region_cache(org_id: str) -> None:
     rt.response_cache_store, rt.hot_counts = _region_caches[lane.cache_url]
 
 
+async def _bind_region_stores_before_reset(org_id: str, env: str) -> None:
+    """REQ-1922: a demo's model is removed before its configuration is applied, and what a removed
+    table leaves in the org's state store goes with it. On a node of a region that store is the
+    region's, so it is bound before the reset -- a second build of a demo org (its provisioning's
+    on its lane, or after a restart) resets a model that names it. A first build has no model to
+    remove; its stores are bound once the model names them."""
+    if await _model_selects_this_region():
+        await _bind_region_stores(org_id, env, initialise=True)
+
+
+async def _model_selects_this_region() -> bool:
+    """Whether the bound org's model, as it stands, selects the region this node serves (False
+    with no platform regions, and for a model that names none yet)."""
+    from provisa.core import process_region
+    from provisa.core.regions import DEFAULT_REGION
+    from provisa.core.repositories.region import list_regions
+
+    region = process_region.region()
+    if region == DEFAULT_REGION:
+        return False
+    assert state.model_db is not None
+    async with state.model_db.acquire() as conn:
+        return any(r.id == region for r in await list_regions(conn))
+
+
 async def _require_org_serves_here(org_id: str) -> None:
     """REQ-1922: a node serves its region of every org that selects it; an org whose model does
     not select this node's region is refused here, by name, before its schemas are built."""
@@ -2555,6 +2580,8 @@ async def _build_org_runtime(
 
                 seed = template_seed(org_id)
             domain_policy.configure(seed.naming.use_domains, seed.naming.default_domain)
+            if include_demo:
+                await _bind_region_stores_before_reset(org_id, env)
             async with state.model_db.acquire() as conn:
                 if include_demo:
                     # The org's catalog names the registrations resolve under (REQ-1266).
