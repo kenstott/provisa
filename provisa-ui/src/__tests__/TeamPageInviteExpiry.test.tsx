@@ -21,6 +21,10 @@ import { TeamPage } from "../pages/TeamPage";
 const createInviteSpy = vi.fn();
 
 vi.mock("../api/admin", () => ({
+  // REQ-2076: the team page's Suspended access section reads the org's suspensions.
+  fetchOrgSuspensions: () => Promise.resolve({ tokens: [], principals: [], events: [] }),
+  liftOrgSuspension: () => Promise.resolve(),
+  fetchAuditedStatement: () => Promise.resolve(""),
   ENV_POLICY_NONE: "none",
   ENV_POLICY_PER_VISITOR: "per_visitor",
   ENV_POLICY_SHARED: "shared",
