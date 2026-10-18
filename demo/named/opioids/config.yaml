@@ -146,27 +146,27 @@ tables:
   schema: census
   table: acs_population
   alias: population
-  landing_filter: year = 2023 AND geography = 'county' AND county_fips LIKE '39%'
+  landing_filter: year = '2023' AND geography = 'county' AND county_fips LIKE '39%'
   description: The Census Bureau's population of each Ohio county in 2023 (American Community Survey)
   columns:
   - {name: county_fips, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [org_admin, staff, public]}
   - {name: geo_name, data_type: varchar, description: The county's name and state, visible_to: [org_admin, staff, public]}
   - {name: total_population, data_type: bigint, description: Its residents, visible_to: [org_admin, staff, public]}
-  - {name: year, data_type: integer, description: "The survey year", visible_to: [org_admin, staff, public]}
+  - {name: year, data_type: varchar, description: "The survey year", visible_to: [org_admin, staff, public]}
   - {name: geography, data_type: varchar, description: "The kind of area the row is (county)", visible_to: [org_admin, staff, public]}
 - source_id: govdata
   domain_id: opioids
   schema: fiscal
   table: usaspending_by_county
   alias: federal_spending
-  landing_filter: year = 2023 AND county_fips LIKE '39%'
+  landing_filter: year = '2023' AND county_fips LIKE '39%'
   description: Federal money obligated in each Ohio county in federal fiscal year 2023, from
     USAspending -- every agency and kind of award, loans aside
   columns:
   - {name: county_fips, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [org_admin, staff, public]}
   - {name: county_name, data_type: varchar, description: The county's name, visible_to: [org_admin, staff, public]}
   - {name: obligated_amount_excl_loans, data_type: double, description: 'Federal money obligated there in USD, loans aside', visible_to: [org_admin, staff, public]}
-  - {name: year, data_type: integer, description: "The federal fiscal year", visible_to: [org_admin, staff, public]}
+  - {name: year, data_type: varchar, description: "The federal fiscal year", visible_to: [org_admin, staff, public]}
 views:
 # The answer, and the council's dashboard: each county's 2023 overdose deaths beside the treatment
 # and recovery the fund paid for there that year. Stored, and built again when its inputs change.
