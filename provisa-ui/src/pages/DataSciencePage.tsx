@@ -306,7 +306,8 @@ function NotebookTab({
 
   // The notebook wears the app's colour scheme, and changes with it.
   useEffect(() => {
-    if (app !== null) void followScheme(app, scheme);
+    const doc = frame.current?.contentDocument;
+    if (app !== null && doc) void followScheme(app, scheme, doc);
   }, [app, scheme]);
 
   useEffect(() => {

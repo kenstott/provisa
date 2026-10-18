@@ -36,6 +36,9 @@ interface SharedCell {
 
 /** The parts of the JupyterLite app the page uses. */
 export interface LiteApp {
+  /** Resolves once every plugin is active and the layout restored: before it, a plugin's command
+   * (the theme manager's apputils:change-theme) may not be registered yet. */
+  restored: Promise<void>;
   commands: { execute(id: string, args?: Record<string, unknown>): Promise<unknown> };
   shell: {
     widgets(area: "main"): Iterable<unknown>;
@@ -116,8 +119,34 @@ export function startLiteBridge(
 /** JupyterLab's themes for the app's colour schemes. */
 export const LITE_THEMES = { light: "JupyterLab Light", dark: "JupyterLab Dark" } as const;
 
-/** The embedded app in the app's colour scheme (JupyterLab's own theme command). */
-export function followScheme(app: LiteApp, scheme: keyof typeof LITE_THEMES): Promise<unknown> {
+/** JupyterLab's splash screen, in the embedded app's document while it starts or loads a theme. */
+export const LITE_SPLASH_ID = "jupyterlab-splash";
+
+/** Resolves once `doc` holds no splash screen. JupyterLab removes its startup splash 200 ms after
+ * the app is restored; a theme loaded meanwhile shows the same splash again and schedules a second
+ * removal of it, which throws (removeChild of a node no longer a child). */
+function splashGone(doc: Document): Promise<void> {
+  return new Promise((resolve) => {
+    if (doc.getElementById(LITE_SPLASH_ID) === null) return resolve();
+    const watch = new MutationObserver(() => {
+      if (doc.getElementById(LITE_SPLASH_ID) !== null) return;
+      watch.disconnect();
+      resolve();
+    });
+    watch.observe(doc.body, { childList: true });
+  });
+}
+
+/** The embedded app in the app's colour scheme (JupyterLab's own theme command), once the app is
+ * restored -- the page has the app as soon as its frame exposes it, before its plugins are active
+ * -- and its startup splash is gone from `doc`, the app's document. */
+export async function followScheme(
+  app: LiteApp,
+  scheme: keyof typeof LITE_THEMES,
+  doc: Document,
+): Promise<unknown> {
+  await app.restored;
+  await splashGone(doc);
   return app.commands.execute("apputils:change-theme", { theme: LITE_THEMES[scheme] });
 }
 

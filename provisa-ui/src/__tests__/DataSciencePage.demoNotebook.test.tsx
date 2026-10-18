@@ -29,7 +29,7 @@ import { DataScienceHost, type MakeWorker } from "../pages/DataSciencePage";
 import { NamedDemoContext, NO_NAMED_DEMO } from "../context/NamedDemoContext";
 
 const CELLS = ["import provisa_client\nprovisa_client.sign_in()", "model.score(X, y)"];
-const APP = { shell: {}, commands: {} };
+const APP = { restored: Promise.resolve(), shell: {}, commands: {} };
 
 function page(notebook: string[], state?: Record<string, unknown>) {
   const make = (() => ({ postMessage: vi.fn(), terminate: vi.fn() })) as unknown as MakeWorker;

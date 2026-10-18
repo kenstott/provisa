@@ -10,6 +10,7 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
+  LITE_SPLASH_ID,
   LITE_THEMES,
   NOTEBOOK_STARTER,
   followScheme,
@@ -40,6 +41,7 @@ function kernel() {
 function app(kernels: KernelConnection[], current: unknown = null) {
   const slots: Array<() => void> = [];
   const lite: LiteApp = {
+    restored: Promise.resolve(),
     commands: { execute: vi.fn(async () => true) },
     shell: {
       widgets: () => kernels.map((k) => ({ sessionContext: { session: { kernel: k } } })),
@@ -148,10 +150,41 @@ describe("seedNewNotebooks", () => {
 });
 
 describe("followScheme", () => {
+  it("waits for the app's startup splash to be gone before asking for the theme", async () => {
+    // JupyterLab removes its splash 200 ms after it is restored; a theme loaded in between shows
+    // the splash again and has it removed twice, which throws inside the app.
+    const { lite } = app([]);
+    const splash = document.createElement("div");
+    splash.id = LITE_SPLASH_ID;
+    document.body.appendChild(splash);
+    const following = followScheme(lite, "light", document);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(lite.commands.execute).not.toHaveBeenCalled();
+    splash.remove();
+    await following;
+    expect(lite.commands.execute).toHaveBeenCalledWith("apputils:change-theme", {
+      theme: LITE_THEMES.light,
+    });
+  });
+
+  it("waits for the app to be restored before asking for the theme", async () => {
+    const { lite } = app([]);
+    let restore = () => {};
+    lite.restored = new Promise<void>((resolve) => (restore = resolve));
+    const following = followScheme(lite, "dark", document);
+    await Promise.resolve();
+    expect(lite.commands.execute).not.toHaveBeenCalled();
+    restore();
+    await following;
+    expect(lite.commands.execute).toHaveBeenCalledWith("apputils:change-theme", {
+      theme: LITE_THEMES.dark,
+    });
+  });
+
   it("puts the embedded app in the app's colour scheme with JupyterLab's theme command", async () => {
     const { lite } = app([]);
-    await followScheme(lite, "dark");
-    await followScheme(lite, "light");
+    await followScheme(lite, "dark", document);
+    await followScheme(lite, "light", document);
     expect(vi.mocked(lite.commands.execute).mock.calls).toEqual([
       ["apputils:change-theme", { theme: LITE_THEMES.dark }],
       ["apputils:change-theme", { theme: LITE_THEMES.light }],
