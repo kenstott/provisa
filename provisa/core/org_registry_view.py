@@ -156,6 +156,15 @@ async def refresh_org_registry_view(*, model_db: "Database", admin_db: "Database
             present = await conn.fetchval(f"SELECT to_regclass('{schema}.user_role_assignments')")
             if present is not None:
                 org_schemas[org_id] = schema
+        # REQ-2077: the view reads each org's grant expiry. An org schema made before those columns
+        # existed gets them when its own runtime is built, which may come after this boot builds the
+        # view (only the root org is built first), so the table the view reads is reconciled here.
+        from provisa.core import schema_org
+        from provisa.core.db import add_missing_columns
+
+        with model_db.engine.begin() as sa_conn:
+            for schema in org_schemas.values():
+                add_missing_columns(sa_conn, [schema_org.user_role_assignments], schema)
         sql = build_view_sql(
             root_schema=root_schema, admin_schema=admin_schema, org_schemas=org_schemas
         )

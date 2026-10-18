@@ -112,6 +112,30 @@ async def test_view_names_each_org_and_its_admin(planes):
     ]
 
 
+async def test_an_org_schema_made_before_grant_expiry_is_reconciled_before_the_view(planes):
+    """REQ-2077: an org whose schema predates the grant-expiry columns (its runtime not yet built in
+    this boot) gets them before the view that reads them is made, so the rebuild does not fail."""
+    admin_db, tenant_db, sync_engine = planes
+    with sync_engine.begin() as conn:
+        for column in ("expires_at", "last_used_at", "expiry_notified_at", "inactive_notified_at"):
+            conn.execute(
+                text(f"ALTER TABLE {_ACME_SCHEMA}.user_role_assignments DROP COLUMN {column}")
+            )
+    await refresh_org_registry_view(model_db=tenant_db, admin_db=admin_db)
+
+    assert [r[0] for r in _read_view(sync_engine)] == [_ROOT, _ACME]
+    with sync_engine.begin() as conn:
+        present = conn.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns"
+                " WHERE table_schema = :s AND table_name = 'user_role_assignments'"
+                " AND column_name = 'expires_at'"
+            ),
+            {"s": _ACME_SCHEMA},
+        ).all()
+    assert present == [("expires_at",)]
+
+
 async def test_view_reads_live_rows_without_a_rebuild(planes):
     """It is a view, not a snapshot: a role granted after the build shows up on the next read."""
     admin_db, tenant_db, sync_engine = planes
