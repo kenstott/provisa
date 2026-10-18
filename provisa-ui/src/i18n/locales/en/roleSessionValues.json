@@ -1,7 +1,7 @@
 {
   "roleSessionValues": {
     "label": "Session values",
-    "help": "Constant values this role's row rules read as current_setting('provisa.<name>'). A value the request binds under the same name takes precedence. A role that inherits from this one gets these values, except the names it sets itself. A value may be a ${env:NAME} reference, resolved when a query uses it. A constant takes part in the query, so Provisa's statement records and a source's own logs can show it: do not use a value that must not be seen. ${secret:…} is refused here for that reason.",
+    "help": "Constant values this role's row rules read as current_setting('provisa.<name>'). A value the request binds under the same name takes precedence. A role that inherits from this one gets these values, except the names it sets itself. A value may be a ${env:NAME} or ${secret:NAME} reference, resolved when a query uses it. A constant takes part in the query: Provisa's records of it are covered by central redaction, but a source's own logs are out of Provisa's reach.",
     "name": "Name",
     "value": "Value",
     "add": "Add a value",

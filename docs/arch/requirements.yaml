@@ -85109,15 +85109,22 @@ Then the SQL explorer reads the report as Provisa had recorded it then, and the 
   feature: row-security-and-masking-row-rules
   priority: SHOULD
   type: behavioral
-  description: "A role constant (session_vars) may be a ${env:NAME} or ${secret:NAME} reference, resolved through the same resolver as every other reference (provisa.core.secrets.resolve_secrets), at use: when a request's session variables are formed, when the regional administrator's are, and when a meta-role inlines a member's constant. The model keeps the reference, never what it resolved to. A reference that resolves to nothing fails, naming the constant and the reference; there is no default. A resolved constant takes part in the query, so Provisa's statement records and a federated source's own logs can show it; ${env:...} is the recommended form. Saving a role through the admin API or the role editor refuses a ${secret:...} constant by name (schema.role_session_var_secret_reference: a role constant takes part in the query and can be logged; use ${env:...} or a plain value). A configuration file loaded as written is not checked; its author takes that responsibility. docs/security.md and the role editor's help state the rule and the reason."
-  use_case: "An operator keeps each region's tenant code out of the exported model by writing it as ${env:TENANT_CODE} in the role's constants; the editor refuses a ${secret:...} value there, since the value appears in the query."
-  scenario: "Given a role whose constant tenant is ${env:TENANT_CODE} and TENANT_CODE is acme-7 on the node\n\nWhen a request acting as the role runs a query whose row rule reads current_setting('provisa.tenant')\n\nThen the rule reads acme-7\n\nAnd the stored role still holds ${env:TENANT_CODE}\n\nAnd saving the role with tenant set to ${secret:tenant} is refused, naming tenant"
+  description: "A role constant (session_vars) may be a ${env:NAME} or ${secret:NAME} reference, resolved through the same resolver as every other reference (provisa.core.secrets.resolve_secrets), at use: when a request's session variables are formed, when the regional administrator's are, and when a meta-role inlines a member's constant. The model keeps the reference, never what it resolved to; it is saved as written. A reference that resolves to nothing fails, naming the constant and the reference; there is no default. A resolved constant takes part in the query: Provisa's own records of it are covered by central redaction, and a federated source's own logs are out of Provisa's reach. docs/security.md and the role editor's help say so."
+  use_case: "An operator keeps each region's tenant code out of the exported model by writing the role constant as ${secret:tenant_code}; a query acting as the role reads the resolved value, and the stored role still holds the reference."
+  scenario: "Given a role whose constant tenant is ${secret:tenant_code} and the org's vault holds tenant_code = acme-7
+
+When a request acting as the role runs a query whose row rule reads current_setting('provisa.tenant')
+
+Then the rule reads acme-7
+
+And the stored role still holds ${secret:tenant_code}
+
+And a constant naming a secret that does not exist fails the query, naming the constant"
   code:
   - provisa/core/secrets.py
   - provisa/core/request_context.py
   - provisa/core/region_admin.py
   - provisa/security/meta_role.py
-  - provisa/api/admin/schema_mutation.py
   - provisa-ui/src/i18n/locales/en/roleSessionValues.json
   tests:
   - tests/unit/test_role_constant_references.py

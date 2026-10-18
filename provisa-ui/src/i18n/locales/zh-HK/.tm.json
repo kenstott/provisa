@@ -3512,7 +3512,7 @@
   "zh-HK/resultRedirect.json::resultRedirect.landed": "The result ({{rows}} rows) was written to the results store.",
   "zh-HK/resultRedirect.json::resultRedirect.landedAt": "The result ({{rows}} rows) was written to the results store: {{url}}",
   "zh-HK/roleSessionValues.json::roleSessionValues.add": "Add a value",
-  "zh-HK/roleSessionValues.json::roleSessionValues.help": "Constant values this role's row rules read as current_setting('provisa.<name>'). A value the request binds under the same name takes precedence. A role that inherits from this one gets these values, except the names it sets itself. A value may be a ${env:NAME} reference, resolved when a query uses it. A constant takes part in the query, so Provisa's statement records and a source's own logs can show it: do not use a value that must not be seen. ${secret:…} is refused here for that reason.",
+  "zh-HK/roleSessionValues.json::roleSessionValues.help": "Constant values this role's row rules read as current_setting('provisa.<name>'). A value the request binds under the same name takes precedence. A role that inherits from this one gets these values, except the names it sets itself. A value may be a ${env:NAME} or ${secret:NAME} reference, resolved when a query uses it. A constant takes part in the query: Provisa's records of it are covered by central redaction, but a source's own logs are out of Provisa's reach.",
   "zh-HK/roleSessionValues.json::roleSessionValues.label": "Session values",
   "zh-HK/roleSessionValues.json::roleSessionValues.name": "Name",
   "zh-HK/roleSessionValues.json::roleSessionValues.remove": "Remove {{name}}",
@@ -7033,6 +7033,5 @@
   "zh-HK/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
-  "zh-HK/serverErrors.json::serverErrors.schema.role_session_var_secret_reference": "Session value '{{name}}': a role constant takes part in the query and can be logged; use ${env:…} or a plain value"
+  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable"
 }

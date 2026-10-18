@@ -441,8 +441,7 @@
       "role_session_var_name_invalid": "שם ערך הסשן '{{name}}' חייב להכיל אותיות, ספרות וקווים תחתונים, ואסור שיתחיל בספרה",
       "role_session_var_name_repeated": "ערך הסשן '{{name}}' מופיע פעמיים",
       "role_description_missing": "התפקיד '{{role}}' צריך תיאור של מטרתו",
-      "rls_rule_description_missing": "חוק שורה צריך תיאור של מטרתו",
-      "role_session_var_secret_reference": "ערך הפעלה '{{name}}': קבוע תפקיד הוא חלק מהשאילתה ועלול להירשם ביומן; השתמשו ב-${env:…} או בערך פשוט"
+      "rls_rule_description_missing": "חוק שורה צריך תיאור של מטרתו"
     },
     "secrets": {
       "name_refused": "{{name}} אינו שם בתוך הסודות של הארגון הזה ב-{{service}}: שם הוא יחסי לארגון ואינו יכול לצאת ממנו",

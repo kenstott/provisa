@@ -441,8 +441,7 @@
       "role_session_var_name_invalid": "O nome do valor de sessão '{{name}}' deve conter letras, dígitos e sublinhados, e não pode começar com um dígito",
       "role_session_var_name_repeated": "O valor de sessão '{{name}}' foi informado duas vezes",
       "role_description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade",
-      "rls_rule_description_missing": "Uma regra de linha precisa de uma descrição da sua finalidade",
-      "role_session_var_secret_reference": "Valor de sessão '{{name}}': uma constante de papel faz parte da consulta e pode ser registrada; use ${env:…} ou um valor simples"
+      "rls_rule_description_missing": "Uma regra de linha precisa de uma descrição da sua finalidade"
     },
     "secrets": {
       "name_refused": "{{name}} não é um nome dentro dos segredos desta organização em {{service}}: um nome é relativo à organização e não pode sair dela",

@@ -1,7 +1,7 @@
 {
   "roleSessionValues": {
     "label": "Valori di sessione",
-    "help": "Valori costanti che le regole di riga di questo ruolo leggono come current_setting('provisa.<name>'). Un valore che la richiesta associa con lo stesso nome ha la precedenza. Un ruolo che eredita da questo riceve questi valori, tranne i nomi che imposta esso stesso. Un valore può essere un riferimento ${env:NAME}, risolto quando una query lo usa. Una costante fa parte della query, quindi i registri delle istruzioni di Provisa e i log propri di una sorgente possono mostrarla: non usare un valore che non deve essere visto. Per questo motivo qui ${secret:…} viene rifiutato.",
+    "help": "Valori costanti che le regole di riga di questo ruolo leggono come current_setting('provisa.<name>'). Un valore che la richiesta associa con lo stesso nome ha la precedenza. Un ruolo che eredita da questo riceve questi valori, tranne i nomi che imposta esso stesso. Un valore può essere un riferimento ${env:NAME} o ${secret:NAME}, risolto quando una query lo usa. Una costante fa parte della query: le registrazioni che ne fa Provisa sono coperte dall'oscuramento centrale, ma i log propri di una sorgente sono fuori dalla portata di Provisa.",
     "name": "Nome",
     "value": "Valore",
     "add": "Aggiungi un valore",

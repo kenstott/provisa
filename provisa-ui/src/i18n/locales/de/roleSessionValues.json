@@ -1,7 +1,7 @@
 {
   "roleSessionValues": {
     "label": "Sitzungswerte",
-    "help": "Konstante Werte, die die Zeilenregeln dieser Rolle als current_setting('provisa.<name>') lesen. Ein Wert, den die Anfrage unter demselben Namen bindet, hat Vorrang. Eine Rolle, die von dieser erbt, erhält diese Werte, außer den Namen, die sie selbst setzt. Ein Wert kann ein ${env:NAME}-Verweis sein, der aufgelöst wird, wenn eine Abfrage ihn verwendet. Eine Konstante ist Teil der Abfrage, daher können Provisas Anweisungsprotokolle und die eigenen Protokolle einer Quelle sie zeigen: Verwenden Sie keinen Wert, der nicht gesehen werden darf. ${secret:…} wird hier aus diesem Grund abgelehnt.",
+    "help": "Konstante Werte, die die Zeilenregeln dieser Rolle als current_setting('provisa.<name>') lesen. Ein Wert, den die Anfrage unter demselben Namen bindet, hat Vorrang. Eine Rolle, die von dieser erbt, erhält diese Werte, außer den Namen, die sie selbst setzt. Ein Wert kann ein ${env:NAME}- oder ${secret:NAME}-Verweis sein, der aufgelöst wird, wenn eine Abfrage ihn verwendet. Eine Konstante ist Teil der Abfrage: Provisas Aufzeichnungen davon werden durch die zentrale Schwärzung abgedeckt, die eigenen Protokolle einer Quelle liegen jedoch außerhalb der Reichweite von Provisa.",
     "name": "Name",
     "value": "Wert",
     "add": "Wert hinzufügen",
