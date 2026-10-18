@@ -1,0 +1,20 @@
+# The support desk's order screen, reshaped for Provisa -- and what Hasura could not do: beside
+# each order's customer, the Salesforce account the customer buys for, from the sales team's org.
+# Run as support. (Hasura's shape: hasura/app-queries/support-order.graphql.)
+query OrdersWithAccounts {
+  s__orders(order_by: [{ totalCents: desc }], limit: 20) {
+    id
+    status
+    totalCents
+    customer {
+      givenName
+      familyName
+      email
+      account {
+        name
+        industry
+        billingCity
+      }
+    }
+  }
+}

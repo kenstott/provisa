@@ -1,0 +1,18 @@
+# The storefront's order-history screen as the app sent it to Hasura, with the customer's token
+# (x-hasura-user-id). Provisa's shape of the same request: ../../queries/1-my-orders.graphql.
+query MyOrders {
+  orders(order_by: { placed_at: desc }) {
+    id
+    status
+    total_cents
+    placed_at
+    items {
+      quantity
+      unit_price_cents
+      product {
+        name
+        sku
+      }
+    }
+  }
+}

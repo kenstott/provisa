@@ -1,0 +1,11 @@
+# The storefront's profile screen as the app sent it to Hasura: the signed-in customer by key,
+# with the full_name computed field. Provisa's shape: ../../queries/2-my-profile.graphql.
+query MyProfile($id: Int!) {
+  customers_by_pk(id: $id) {
+    id
+    givenName
+    familyName
+    email
+    full_name
+  }
+}

@@ -1,0 +1,23 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The hasuramigration demo's card on provisa.dev's live demos page (REQ-2006), generated from this file
+# by scripts/gen-site-demos.mjs. published: true once card.png, a screenshot of the demo in
+# Provisa, is beside it.
+title: Moving a Hasura app
+description: >-
+  An outfitter's storefront app, served by Hasura v2 from PostgreSQL, imported into Provisa in one
+  step: its tables, names, relationships, roles, row rules and write permissions working at once,
+  its queries reshaped once. Then what Hasura could not do: the sales team's Salesforce accounts
+  joined to the orders, under the same rules.
+screenshot: card.png
+published: false
+# The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
+# by name. The first release carrying the demo.
+requires_provisa: 0.1.0a490

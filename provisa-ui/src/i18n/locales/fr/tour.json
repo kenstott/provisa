@@ -1179,6 +1179,58 @@
       "storefrontPoint": {
         "title": "Un modèle, deux consommateurs",
         "description": "<strong>SHIPPED_AS</strong> relie une commande à son expédition. L'app et l'outil de BI lisent à travers elle et toutes les autres relations, sous les mêmes règles : le client voit ses propres commandes, l'analyste ne voit aucun e-mail. Modifiez ici une relation ou une règle, et les deux consommateurs l'ont. Il n'y a rien à synchroniser."
+      },
+      "hasuramigrationScenario": {
+        "title": "Une application quitte Hasura",
+        "description": "La boutique et le support d'un équipementier de plein air fonctionnaient sur Hasura v2 au-dessus de cette base PostgreSQL : clients, catalogue, commandes et leurs lignes, avec des rôles pour les clients, le personnel du support et les analystes. L'équipe fait passer l'application à Provisa et obtient ce que Hasura ne pouvait pas lui donner : les comptes Salesforce de l'équipe commerciale à côté des commandes, sous les mêmes règles."
+      },
+      "hasuramigrationImport": {
+        "title": "Un import, et ça fonctionne",
+        "description": "Admin › Import a lu l'export de métadonnées Hasura de l'application et a montré ce qu'elles devenaient avant d'appliquer quoi que ce soit. <strong>Repris tel quel</strong> : les tables, leurs noms personnalisés, chaque relation, les permissions select, insert, update et delete sous forme de règles de ligne, d'autorisations de colonne et d'autorisations d'écriture. <strong>Converti vers une meilleure fonctionnalité de Provisa</strong>, chacun avec sa raison : le rôle hérité, l'action en commande, l'event trigger en trigger sur les changements de la table, la variable de session et le claim qui la fournit. <strong>À refaire à la main</strong>, chacun avec ce qu'il faut faire : le champ calculé et les nouvelles tentatives des triggers."
+      },
+      "hasuramigrationTables": {
+        "title": "Les tables, telles que l'application les connaissait",
+        "description": "Les quatre tables sont arrivées avec les noms qu'utilise l'application. <strong>customers</strong> garde les noms personnalisés de Hasura <strong>givenName</strong> et <strong>familyName</strong>, la table des produits garde son nom racine <strong>catalog</strong>, et chaque colonne porte les rôles autorisés à la lire, d'après les permissions select."
+      },
+      "hasuramigrationAsAna": {
+        "title": "Connecté en tant qu'Ana",
+        "description": "Ana est cliente. Son jeton portait <strong>x-hasura-user-id: 1</strong> ; Provisa lit ce claim comme la valeur de session <strong>hasura_user_id</strong>, à laquelle se comparent les règles de ligne importées. Suivant choisit <strong>ana</strong> dans le sélecteur de rôle, de sorte que les requêtes ci-dessous s'exécutent comme la boutique les exécute pour elle."
+      },
+      "hasuramigrationMyOrders": {
+        "title": "L'historique des commandes, remodelé",
+        "description": "La requête d'historique des commandes de la boutique, remodelée une fois pour Provisa : le champ racine porte son domaine, les noms de colonnes suivent la convention de Provisa et order_by est une liste. Les relations <strong>items</strong> et <strong>product</strong> ont gardé leurs noms Hasura. Exécutée en tant qu'Ana, elle répond avec ses quatre commandes et celles de personne d'autre."
+      },
+      "hasuramigrationProfile": {
+        "title": "Une lecture par clé",
+        "description": "<strong>customers_by_pk</strong> de Hasura est un filtre sur la table, et le champ calculé <strong>full_name</strong> est l'assemblage des deux noms que fait l'écran ; l'import l'a listé à refaire à la main. La règle de ligne décide toujours : Ana ne lit que sa propre ligne."
+      },
+      "hasuramigrationSalesforce": {
+        "title": "Ce que Hasura ne savait pas faire : Salesforce",
+        "description": "L'équipe commerciale garde ses comptes dans Salesforce. Provisa enregistre l'organisation comme une source et son objet <strong>Account</strong> comme une table, copiée une fois à la construction de la démo. Chaque client professionnel de la boutique nomme le compte pour lequel il achète."
+      },
+      "hasuramigrationAccount": {
+        "title": "Une relation de plus",
+        "description": "<strong>BUYS_FOR</strong> relie un client à son compte Salesforce, approuvée comme les relations apportées par l'import. Dès lors, le compte est à un champ de chaque client, dans chaque interface, sous les règles de chaque rôle."
+      },
+      "hasuramigrationAsSupport": {
+        "title": "Le support",
+        "description": "Le personnel du support lit toutes les commandes et tous les clients, comme le permettaient ses permissions Hasura. Suivant choisit <strong>support</strong>, et l'écran des commandes du support s'exécute comme eux l'exécutent."
+      },
+      "hasuramigrationSupportScreen": {
+        "title": "Les commandes avec leurs comptes",
+        "description": "L'écran des commandes du support, remodelé, avec du nouveau : à côté du client de chaque commande, le compte Salesforce, son secteur et sa ville, dans la même requête. Les clients sans compte n'en montrent aucun."
+      },
+      "hasuramigrationAnalyst": {
+        "title": "L'analyste",
+        "description": "Les analystes lisent les totaux des commandes et les liens vers les comptes, mais aucun nom ni e-mail, et jamais les commandes annulées : la règle de ligne et les listes de colonnes apportées par l'import. Suivant choisit <strong>analyst</strong>."
+      },
+      "hasuramigrationByIndustry": {
+        "title": "Chiffre d'affaires par secteur",
+        "description": "Une seule instruction SQL sur la boutique et Salesforce : le chiffre d'affaires par secteur du compte derrière chaque commande. Les règles de l'analyste s'appliquent comme en GraphQL : les commandes annulées sont exclues et aucun nom ni e-mail n'est lu."
+      },
+      "hasuramigrationRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Une application Hasura importée en une étape et qui fonctionne aussitôt : tables, noms, relations, rôles, règles de ligne, permissions d'écriture, l'action et les triggers. Les requêtes ont changé de forme une fois ; les règles n'ont pas changé du tout. Et une relation plus tard, l'application lit ses comptes Salesforce à côté de ses commandes, sans rien à garder synchronisé."
       }
     },
     "status": {
@@ -1263,6 +1315,10 @@
       "storefront": {
         "title": "Un modèle, app et BI",
         "summary": "L'écran d'historique des commandes d'une app et un tableau de bord de BI lisent un modèle de PostgreSQL, MongoDB et d'un service REST, sous les mêmes relations et règles."
+      },
+      "hasuramigration": {
+        "title": "Migrer une application Hasura",
+        "summary": "Une boutique Hasura v2 importée en une étape, ses requêtes remodelées une fois, puis reliée aux comptes Salesforce de l'équipe commerciale sous les mêmes règles."
       }
     }
   }

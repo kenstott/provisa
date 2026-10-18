@@ -1179,6 +1179,58 @@
       "storefrontPoint": {
         "title": "Um modelo, dois consumidores",
         "description": "<strong>SHIPPED_AS</strong> liga um pedido ao seu envio. O app e a ferramenta de BI leem por ele e por todos os outros relacionamentos, sob as mesmas regras: o cliente vê os próprios pedidos, o analista não vê e-mails. Altere aqui um relacionamento ou uma regra e os dois consumidores passam a tê-lo. Não há nada a manter sincronizado."
+      },
+      "hasuramigrationScenario": {
+        "title": "Um aplicativo saindo do Hasura",
+        "description": "A loja e a central de suporte de uma loja de artigos outdoor rodavam em Hasura v2 sobre este banco de dados PostgreSQL: clientes, o catálogo, pedidos e suas linhas, com funções para clientes, equipe de suporte e analistas. A equipe move o aplicativo para o Provisa e ganha o que o Hasura não podia dar: as contas do Salesforce do time de vendas ao lado dos pedidos, sob as mesmas regras."
+      },
+      "hasuramigrationImport": {
+        "title": "Uma importação, e funciona",
+        "description": "Admin › Import leu a exportação de metadados do Hasura do aplicativo e mostrou no que ela se transformou antes de aplicar qualquer coisa. <strong>Levado como está</strong>: as tabelas, seus nomes personalizados, cada relacionamento, as permissões de select, insert, update e delete como regras de linha, concessões de coluna e concessões de escrita. <strong>Mapeado para um recurso melhor do Provisa</strong>, cada um dizendo o motivo: a função herdada, a action como comando, o event trigger como gatilho nas alterações da tabela, a variável de sessão e o claim que a fornece. <strong>Refazer à mão</strong>, cada um dizendo o que fazer: o campo calculado e as novas tentativas dos gatilhos."
+      },
+      "hasuramigrationTables": {
+        "title": "As tabelas, como o aplicativo as conhecia",
+        "description": "As quatro tabelas vieram com os nomes que o aplicativo usa. <strong>customers</strong> mantém os nomes personalizados do Hasura <strong>givenName</strong> e <strong>familyName</strong>, a tabela de produtos mantém seu nome raiz <strong>catalog</strong>, e cada coluna traz as funções que podem lê-la, a partir das permissões de select."
+      },
+      "hasuramigrationAsAna": {
+        "title": "Conectado como Ana",
+        "description": "Ana é cliente. Seu token trazia <strong>x-hasura-user-id: 1</strong>; o Provisa lê esse claim como o valor de sessão <strong>hasura_user_id</strong>, com o qual as regras de linha importadas comparam. Avançar escolhe <strong>ana</strong> no seletor de funções, e as consultas abaixo rodam como a loja as roda para ela."
+      },
+      "hasuramigrationMyOrders": {
+        "title": "O histórico de pedidos, remodelado",
+        "description": "A consulta de histórico de pedidos da loja, remodelada uma vez para o Provisa: o campo raiz traz seu domínio, os nomes das colunas seguem a convenção do Provisa e order_by é uma lista. Os relacionamentos <strong>items</strong> e <strong>product</strong> mantiveram seus nomes do Hasura. Executada como Ana, responde com os quatro pedidos dela e os de mais ninguém."
+      },
+      "hasuramigrationProfile": {
+        "title": "Uma leitura por chave",
+        "description": "O <strong>customers_by_pk</strong> do Hasura é um filtro na tabela, e o campo calculado <strong>full_name</strong> são os dois nomes que a tela junta; a importação o listou para refazer à mão. A regra de linha ainda decide: Ana lê apenas a própria linha."
+      },
+      "hasuramigrationSalesforce": {
+        "title": "O que o Hasura não conseguia: Salesforce",
+        "description": "O time de vendas guarda suas contas no Salesforce. O Provisa registra a organização como uma fonte e seu objeto <strong>Account</strong> como uma tabela, copiada uma vez quando a demonstração foi construída. Cada cliente empresarial da loja indica a conta para a qual compra."
+      },
+      "hasuramigrationAccount": {
+        "title": "Mais um relacionamento",
+        "description": "<strong>BUYS_FOR</strong> liga um cliente à sua conta do Salesforce, aprovado como os relacionamentos que a importação trouxe. A partir daí a conta está a um campo de cada cliente, em todas as interfaces, sob as regras de cada função."
+      },
+      "hasuramigrationAsSupport": {
+        "title": "A central de suporte",
+        "description": "A equipe de suporte lê todos os pedidos e todos os clientes, como suas permissões do Hasura permitiam. Avançar escolhe <strong>support</strong>, e a tela de pedidos do suporte roda como eles a rodam."
+      },
+      "hasuramigrationSupportScreen": {
+        "title": "Pedidos com suas contas",
+        "description": "A tela de pedidos do suporte, remodelada, com algo novo: ao lado do cliente de cada pedido, a conta do Salesforce, seu setor e cidade, na mesma requisição. Clientes sem conta não mostram nenhuma."
+      },
+      "hasuramigrationAnalyst": {
+        "title": "O analista",
+        "description": "Analistas leem totais de pedidos e vínculos de conta, mas nenhum nome ou e-mail, e nunca pedidos cancelados: a regra de linha e as listas de colunas que a importação trouxe. Avançar escolhe <strong>analyst</strong>."
+      },
+      "hasuramigrationByIndustry": {
+        "title": "Receita por setor",
+        "description": "Uma instrução SQL sobre a loja e o Salesforce: receita pelo setor da conta por trás de cada pedido. As regras do analista valem como no GraphQL: pedidos cancelados ficam de fora e nenhum nome ou e-mail é lido."
+      },
+      "hasuramigrationRecap": {
+        "title": "O que você viu",
+        "description": "Um aplicativo Hasura importado em uma etapa e funcionando de imediato: tabelas, nomes, relacionamentos, funções, regras de linha, permissões de escrita, a action e os gatilhos. As consultas mudaram de forma uma vez; as regras não mudaram em nada. E um relacionamento depois, o aplicativo lê suas contas do Salesforce ao lado dos pedidos, sem nada para manter sincronizado."
       }
     },
     "status": {
@@ -1263,6 +1315,10 @@
       "storefront": {
         "title": "Um modelo, app e BI",
         "summary": "A tela de histórico de pedidos de um app e um painel de BI leem um modelo de PostgreSQL, MongoDB e um serviço REST, sob os mesmos relacionamentos e regras."
+      },
+      "hasuramigration": {
+        "title": "Mover um aplicativo Hasura",
+        "summary": "Uma loja Hasura v2 importada em uma etapa, suas consultas remodeladas uma vez e depois ligada às contas do Salesforce do time de vendas sob as mesmas regras."
       }
     }
   }

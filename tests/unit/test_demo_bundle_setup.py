@@ -370,11 +370,15 @@ def test_replicas_that_all_landed_rows_pass(tmp_path):
 
 
 def test_the_bundle_job_carries_the_keys_a_demo_s_build_uses():
-    """A govdata table landed at the build (REQ-2031) and a tour's Polly answers (REQ-2012)."""
+    """A govdata table landed at the build (REQ-2031), a tour's Polly answers (REQ-2012) and a
+    Salesforce table landed at the build (the hasuramigration demo's Account)."""
     workflow = yaml.safe_load((_REPO / ".github" / "workflows" / "demo-bundles.yml").read_text())
     assert workflow["jobs"]["bundle"]["env"] == {
         "ASKAMERICA_API_KEY": "${{ secrets.ASKAMERICA_API_KEY }}",
         "OPENROUTER_API_KEY": "${{ secrets.OPENROUTER_API_KEY }}",
+        "SF_LOGIN_URL": "${{ secrets.SF_LOGIN_URL }}",
+        "SF_CONSUMER_KEY": "${{ secrets.SF_CONSUMER_KEY }}",
+        "SF_CONSUMER_SECRET": "${{ secrets.SF_CONSUMER_SECRET }}",
     }
 
 
