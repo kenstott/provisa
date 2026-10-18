@@ -664,6 +664,26 @@ Provisa aplica un modelo de recuperación de dos niveles en todos los modos de d
 
 Los fallos a nivel de máquina y de clúster siguen siendo responsabilidad del operador: aprovisione nodos redundantes y un balanceador de carga (rutas Terraform y Helm anteriores) para tolerancia a la pérdida de nodos.
 
+### Tabla de telemetría cuyos metadatos faltan {: #telemetry-table-whose-metadata-is-missing }
+
+En el motor Trino, las tablas de telemetría (`otel.signals.traces`, `metrics`, `logs`) son tablas Iceberg. El registro de cada una es una fila en la base de datos del plano de control, y sus metadatos y datos son archivos en el bucket de telemetría. Cuando el bucket se sirve sin esos archivos mientras la base de datos aún conserva los registros, toda sentencia sobre la tabla falla con `ICEBERG_MISSING_METADATA`. Esto ocurre cuando el disco del bucket aún no estaba montado al iniciarse el almacén de objetos, o cuando el bucket se vació o se reemplazó.
+
+Provisa no cambia nada en ese caso. Cada ejecución de compactación registra un `ERROR` que nombra la tabla y la ubicación de metadatos que Trino no pudo leer (`otel.signals.traces is registered but its metadata cannot be read …`), omite esa señal y conserva sus archivos sin procesar en el bucket para una ejecución posterior. Las demás señales se compactan como de costumbre. El arranque deja la tabla fuera de sus comprobaciones de esquema de la misma manera.
+
+Recupérela a mano, en este orden:
+
+1. **Averigüe si los metadatos aún existen.** El `ERROR` nombra la ubicación. En un coordinador de Terraform (GCP), compruebe que el disco del almacén de objetos está montado (`findmnt /var/lib/provisa-object-store`) y que el contenedor de MinIO se inició después del montaje. Un MinIO iniciado antes sirve el directorio vacío bajo el punto de montaje; reinícielo una vez montado el disco y la tabla vuelve a leerse con su historial intacto.
+2. **Si el archivo de metadatos existe pero el registro apunta a otro sitio**, vuelva a registrar la tabla en su ubicación:
+
+   ```sql
+   CALL otel.system.register_table(schema_name => 'signals', table_name => 'traces', table_location => 's3://<bucket>/warehouse/signals/<table directory>')
+   ```
+
+   Anule primero el registro obsoleto si el nombre está ocupado (`CALL otel.system.unregister_table(schema_name => 'signals', table_name => 'traces')`).
+3. **Si los archivos del bucket realmente se perdieron**, anule el registro de la tabla. La siguiente ejecución de compactación la crea de nuevo, vacía. Las señales que contenía no pueden volver a leerse.
+
+No ejecute `remove_orphan_files` sobre una tabla que se está recuperando. Borra archivos a los que los metadatos actuales no hacen referencia, y esos pueden ser el historial que está restaurando.
+
 ## Dependencias del motor de federación {: #federation-engine-dependencies }
 
 Los motores de federación de almacenes de datos requieren paquetes de Python y componentes a nivel de sistema más allá de la instalación por defecto de Provisa. Todos los paquetes de Python listados aquí están declarados en `pyproject.toml` y se instalan como parte de `pip install provisa` o `pip install -e .` estándar [tool-verified: `pyproject.toml` lines 44–52].
