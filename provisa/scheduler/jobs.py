@@ -563,6 +563,18 @@ _ATTR_KEYS: dict[str, str] = {
     # The org the span was started for (otel_setup.OrgSpanProcessor): what a read is scoped by.
     "tenant_id": "provisa.tenant",
 }
+# Each signal's attributes column, and the columns extracted from it at ingest. A metric point
+# and a log record carry their org as a span does (otel_compat.record_query, otel_setup.OrgLogFilter).
+_ATTR_COLUMNS: dict[str, str] = {
+    "traces": "span_attributes",
+    "metrics": "metric_attributes",
+    "logs": "log_attributes",
+}
+_SIGNAL_EXTRA_COLS: dict[str, list[str]] = {
+    "traces": _TRACE_EXTRA_COLS,
+    "metrics": ["tenant_id"],
+    "logs": ["tenant_id"],
+}
 _SPAN_ATTRS_MAX: int = 4096
 
 # Trino's query.max-length defaults to 1,000,000 characters. Chunking the generated INSERT well
@@ -578,11 +590,10 @@ def _build_iceberg_col_defs(signal: str, table: pa.Table) -> list[str]:
             raise ValueError(f"unmapped Arrow type for column {name!r}: {typ}")
         column_type = _PA_TO_PHYSICAL[typ]
         col_defs.append(f'"{name}" {column_type}')
-    if signal == "traces":
-        existing = {n.lower() for n in table.schema.names}
-        for ec in _TRACE_EXTRA_COLS:
-            if ec not in existing:
-                col_defs.append(f'"{ec}" VARCHAR')
+    existing = {n.lower() for n in table.schema.names}
+    for ec in _SIGNAL_EXTRA_COLS[signal]:
+        if ec not in existing:
+            col_defs.append(f'"{ec}" VARCHAR')
     col_defs.append('"_date" DATE')
     return col_defs
 
@@ -643,7 +654,6 @@ def _build_insert_columns(
     _signal: str,
     table: pa.Table,
     engine_cols: dict[str, str],
-    extract_trace_attrs: bool,
     extra_cols: list[str],
 ) -> tuple[list[str], list[str], list[str]]:
     """Return (parquet_cols, col_names, placeholders) for INSERT statement building."""
@@ -657,12 +667,11 @@ def _build_insert_columns(
     parquet_cols = [n for n in table.schema.names if n.lower() in engine_cols]
     col_names = [f'"{n}"' for n in parquet_cols] + ['"_date"']
     placeholders = [_cast_ph(n.lower()) for n in parquet_cols] + ["CAST(? AS DATE)"]
-    if extract_trace_attrs:
-        extra_insert = [
-            ec for ec in extra_cols if ec not in table.schema.names and ec.lower() in engine_cols
-        ]
-        col_names += [f'"{ec}"' for ec in extra_insert]
-        placeholders += [_cast_ph(ec.lower()) for ec in extra_insert]
+    extra_insert = [
+        ec for ec in extra_cols if ec not in table.schema.names and ec.lower() in engine_cols
+    ]
+    col_names += [f'"{ec}"' for ec in extra_insert]
+    placeholders += [_cast_ph(ec.lower()) for ec in extra_insert]
     return parquet_cols, col_names, placeholders
 
 
@@ -670,23 +679,23 @@ def _build_row(
     row: dict,  # type: ignore[type-arg]
     parquet_cols: list[str],
     date_val: str,
-    extract_trace_attrs: bool,
-    table_has_table_name: bool,
+    attr_col: str,
     extra_cols: list[str],
     engine_cols: dict[str, str],
 ) -> tuple:  # type: ignore[type-arg]
-    """Convert a single row dict to a tuple for the engine INSERT."""
+    """Convert a single row dict to a tuple for the engine INSERT: its own columns, then each
+    extra column the object does not carry, read from its ``attr_col`` JSON (_build_insert_columns
+    names the same extras)."""
     vals = dict(row)
     if "span_attributes" in vals and isinstance(vals["span_attributes"], str):
         vals["span_attributes"] = vals["span_attributes"][:_SPAN_ATTRS_MAX]
     base = tuple(vals.get(n) for n in parquet_cols) + (date_val,)
-    if not extract_trace_attrs or table_has_table_name:
+    extra = [ec for ec in extra_cols if ec not in row and ec.lower() in engine_cols]
+    if not extra:
         return base
-    attrs: dict = {}  # type: ignore[type-arg]
-    raw = row.get("span_attributes")
-    if raw:
-        attrs = json.loads(raw)
-    return base + tuple(attrs.get(_ATTR_KEYS[ec]) for ec in extra_cols if ec.lower() in engine_cols)
+    raw = row.get(attr_col)
+    attrs = json.loads(raw) if raw else {}
+    return base + tuple(attrs.get(_ATTR_KEYS[ec]) for ec in extra)
 
 
 def _resolve_batch_size(_signal: str) -> int:
@@ -827,25 +836,17 @@ def _insert_otel_iceberg(engine, signal: str, table: pa.Table, dt: datetime) -> 
 
     date_val = dt.strftime("%Y-%m-%d")
 
-    # For traces: extract provisa-specific span attributes into dedicated columns.
-    extract_trace_attrs = signal == "traces" and "span_attributes" in table.schema.names
-    extra_cols: list[str] = _TRACE_EXTRA_COLS if extract_trace_attrs else []
+    # Extract provisa-specific attributes (the org; for traces the request facts too) into
+    # dedicated columns.
+    attr_col = _ATTR_COLUMNS[signal]
+    extra_cols = _SIGNAL_EXTRA_COLS[signal] if attr_col in table.schema.names else []
 
     parquet_cols, col_names, placeholders = _build_insert_columns(
-        signal, table, engine_cols, extract_trace_attrs, extra_cols
+        signal, table, engine_cols, extra_cols
     )
 
-    table_has_table_name = "table_name" in table.schema.names
     rows = [
-        _build_row(
-            r,
-            parquet_cols,
-            date_val,
-            extract_trace_attrs,
-            table_has_table_name,
-            extra_cols,
-            engine_cols,
-        )
+        _build_row(r, parquet_cols, date_val, attr_col, extra_cols, engine_cols)
         for r in table.to_pylist()
     ]
     if not rows:

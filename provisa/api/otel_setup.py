@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import time
@@ -22,6 +23,7 @@ from opentelemetry.sdk.trace import SpanProcessor
 
 from provisa.core.config_location import config_path_str
 from provisa.otel_compat import (
+    ORG_ATTRIBUTE,
     bind_request_span,
     configure_trace_detail,
     in_request_scope,
@@ -306,7 +308,7 @@ class OrgSpanProcessor(SpanProcessor):
 
         org_id = current_org.get()
         if org_id is not None:
-            span.set_attribute("provisa.tenant", org_id)
+            span.set_attribute(ORG_ATTRIBUTE, org_id)
 
     def on_end(self, span: Any) -> None:
         pass
@@ -315,6 +317,20 @@ class OrgSpanProcessor(SpanProcessor):
         pass
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:  # noqa: ARG002
+        return True
+
+
+class OrgLogFilter(logging.Filter):
+    """Records on each log record the org it was written for (``provisa.tenant``), as
+    ``OrgSpanProcessor`` does on a span: the ops logs keep it as ``tenant_id`` and scope every read
+    by it. A record written for no org records none and is no org's to read. It never drops one."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        from provisa.core.request_context import current_org
+
+        org_id = current_org.get()
+        if org_id is not None:
+            setattr(record, ORG_ATTRIBUTE, org_id)
         return True
 
 
@@ -717,6 +733,7 @@ def attach_otlp_exporters(
         set_logger_provider(log_provider)
         _log_provider = log_provider
         handler = LoggingHandler(level=_logging.WARNING, logger_provider=log_provider)
+        handler.addFilter(OrgLogFilter())
         _logging.getLogger().addHandler(handler)
 
         _log.info("OTel exporters attached → %s (service=%s)", endpoint, service_name)
@@ -961,6 +978,7 @@ def setup_otel(
                 level=getattr(_logging, log_level_name, _logging.WARNING),
                 logger_provider=log_provider,
             )
+            handler.addFilter(OrgLogFilter())
             _logging.getLogger().addHandler(handler)
             _log.info("OTel logs → %s (service=%s)", endpoint, service_name)
 
