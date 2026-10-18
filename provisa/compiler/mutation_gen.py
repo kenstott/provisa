@@ -18,6 +18,8 @@ No mutations for NoSQL sources.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from dataclasses import dataclass, replace
 
 from graphql import DocumentNode, FieldNode, OperationDefinitionNode
@@ -76,10 +78,26 @@ def _get_mutation_meta(
     raise ValueError(f"Unknown mutation field: {field_name!r}")
 
 
+def _physical(table: TableMeta, ctx: CompilationContext) -> Callable[[str], str]:
+    """A column's physical name from the published name a mutation's input, set, where or
+    conflict columns name it by -- the names reads use (CompilationContext.exposed_to_physical,
+    which holds an entry only where the two differ)."""
+
+    def phys(name: str) -> str:
+        return ctx.exposed_to_physical.get((table.table_id, name)) or name
+
+    return phys
+
+
+def _physical_keys(data: dict, phys: Callable[[str], str]) -> dict:
+    return {phys(k): v for k, v in data.items()}
+
+
 def compile_upsert(  # REQ-212, REQ-036
     field_node: FieldNode,
     table: TableMeta,
     variables: dict | None,
+    ctx: CompilationContext,
 ) -> MutationResult:
     """Compile an upsert mutation to INSERT ... ON CONFLICT ... DO UPDATE SQL."""
     collector = ParamCollector()
@@ -88,7 +106,8 @@ def compile_upsert(  # REQ-212, REQ-036
         for arg in field_node.arguments:
             args[arg.name.value] = _extract_value(arg.value, variables)
 
-    input_data = args.get("input", {})
+    phys = _physical(table, ctx)
+    input_data = _physical_keys(args.get("input", {}), phys)
     if not input_data:
         raise ValueError("upsert mutation requires 'input' argument")
 
@@ -99,6 +118,7 @@ def compile_upsert(  # REQ-212, REQ-036
         )
     if isinstance(on_conflict_cols, str):
         on_conflict_cols = [on_conflict_cols]
+    on_conflict_cols = [phys(c) for c in on_conflict_cols]
 
     columns = list(input_data.keys())
     placeholders = [collector.add(input_data[col]) for col in columns]
@@ -137,6 +157,7 @@ def compile_insert(  # REQ-032, REQ-033, REQ-034, REQ-036
     field_node: FieldNode,
     table: TableMeta,
     variables: dict | None,
+    ctx: CompilationContext,
 ) -> MutationResult:
     """Compile an insert mutation to INSERT SQL."""
     collector = ParamCollector()
@@ -145,7 +166,7 @@ def compile_insert(  # REQ-032, REQ-033, REQ-034, REQ-036
         for arg in field_node.arguments:
             args[arg.name.value] = _extract_value(arg.value, variables)
 
-    input_data = args.get("input", {})
+    input_data = _physical_keys(args.get("input", {}), _physical(table, ctx))
     if not input_data:
         raise ValueError("insert mutation requires 'input' argument")
 
@@ -177,6 +198,7 @@ def compile_update(  # REQ-032, REQ-033, REQ-034, REQ-035, REQ-036
     field_node: FieldNode,
     table: TableMeta,
     variables: dict | None,
+    ctx: CompilationContext,
 ) -> MutationResult:
     """Compile an update mutation to UPDATE SQL."""
     collector = ParamCollector()
@@ -185,8 +207,9 @@ def compile_update(  # REQ-032, REQ-033, REQ-034, REQ-035, REQ-036
         for arg in field_node.arguments:
             args[arg.name.value] = _extract_value(arg.value, variables)
 
-    set_data = args.get("set", {})
-    where_data = args.get("where", {})
+    phys = _physical(table, ctx)
+    set_data = _physical_keys(args.get("set", {}), phys)
+    where_data = _physical_keys(args.get("where", {}), phys)
     if not set_data:
         raise ValueError("update mutation requires 'set' argument")
     if not where_data:
@@ -232,6 +255,7 @@ def compile_delete(  # REQ-032, REQ-033, REQ-035, REQ-036
     field_node: FieldNode,
     table: TableMeta,
     variables: dict | None,
+    ctx: CompilationContext,
 ) -> MutationResult:
     """Compile a delete mutation to DELETE SQL."""
     collector = ParamCollector()
@@ -240,7 +264,7 @@ def compile_delete(  # REQ-032, REQ-033, REQ-035, REQ-036
         for arg in field_node.arguments:
             args[arg.name.value] = _extract_value(arg.value, variables)
 
-    where_data = args.get("where", {})
+    where_data = _physical_keys(args.get("where", {}), _physical(table, ctx))
     if not where_data:
         raise ValueError("delete mutation requires 'where' argument")
 
@@ -291,13 +315,13 @@ def compile_mutation(  # REQ-031, REQ-032, REQ-033, REQ-036, REQ-037
             op, _, table = _get_mutation_meta(sel.name.value, ctx)
 
             if op == "upsert":
-                results.append(compile_upsert(sel, table, variables))
+                results.append(compile_upsert(sel, table, variables, ctx))
             elif op == "insert":
-                results.append(compile_insert(sel, table, variables))
+                results.append(compile_insert(sel, table, variables, ctx))
             elif op == "update":
-                results.append(compile_update(sel, table, variables))
+                results.append(compile_update(sel, table, variables, ctx))
             elif op == "delete":
-                results.append(compile_delete(sel, table, variables))
+                results.append(compile_delete(sel, table, variables, ctx))
 
     # Reject cross-source mutations
     source_ids = {r.source_id for r in results}

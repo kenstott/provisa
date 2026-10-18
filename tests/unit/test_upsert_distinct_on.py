@@ -29,7 +29,7 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.mutation_gen import MutationResult, compile_mutation, compile_upsert
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import TableMeta, compile_query
-from provisa.compiler.context import build_context
+from provisa.compiler.context import CompilationContext, build_context
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +143,10 @@ def _arg(name: str, value) -> ArgumentNode:
 # ---------------------------------------------------------------------------
 
 
+# A context whose columns are published under their own names.
+_NO_RENAMES = CompilationContext()
+
+
 class TestCompileUpsert:
     def test_basic_upsert_generates_insert_on_conflict(self):
         table = _table_meta()
@@ -152,7 +156,7 @@ class TestCompileUpsert:
                 _arg("on_conflict", _list_val([_str_val("id")])),
             ]
         )
-        result = compile_upsert(field, table, None)
+        result = compile_upsert(field, table, None, _NO_RENAMES)
         assert "INSERT INTO" in result.sql
         assert "ON CONFLICT" in result.sql
 
@@ -164,7 +168,7 @@ class TestCompileUpsert:
                 _arg("on_conflict", _list_val([_str_val("id")])),
             ]
         )
-        result = compile_upsert(field, table, None)
+        result = compile_upsert(field, table, None, _NO_RENAMES)
         assert '"id"' in result.sql
         assert "ON CONFLICT" in result.sql
 
@@ -185,7 +189,7 @@ class TestCompileUpsert:
                 _arg("on_conflict", _list_val([_str_val("id")])),
             ]
         )
-        result = compile_upsert(field, table, None)
+        result = compile_upsert(field, table, None, _NO_RENAMES)
         assert "DO UPDATE SET" in result.sql
         assert "EXCLUDED" in result.sql
         # Non-conflict columns should appear in SET clause
@@ -200,7 +204,7 @@ class TestCompileUpsert:
             ]
         )
         with pytest.raises(ValueError, match="input"):
-            compile_upsert(field, table, None)
+            compile_upsert(field, table, None, _NO_RENAMES)
 
     def test_missing_on_conflict_raises_value_error(self):
         table = _table_meta()
@@ -210,7 +214,7 @@ class TestCompileUpsert:
             ]
         )
         with pytest.raises(ValueError, match="on_conflict"):
-            compile_upsert(field, table, None)
+            compile_upsert(field, table, None, _NO_RENAMES)
 
     def test_string_on_conflict_auto_wrapped_in_list(self):
         """A bare string on_conflict is internally coerced to a list."""
@@ -223,7 +227,7 @@ class TestCompileUpsert:
                 _arg("on_conflict", _str_val("id")),
             ]
         )
-        result = compile_upsert(field, table, None)
+        result = compile_upsert(field, table, None, _NO_RENAMES)
         # Should not crash; conflict column used
         assert "ON CONFLICT" in result.sql
 
@@ -235,7 +239,7 @@ class TestCompileUpsert:
                 _arg("on_conflict", _list_val([_str_val("id")])),
             ]
         )
-        result = compile_upsert(field, table, None)
+        result = compile_upsert(field, table, None, _NO_RENAMES)
         assert isinstance(result, MutationResult)
         assert result.mutation_type == "upsert"
 
@@ -248,7 +252,7 @@ class TestCompileUpsert:
                 _arg("on_conflict", _list_val([_str_val("id")])),
             ]
         )
-        result = compile_upsert(field, table, None)
+        result = compile_upsert(field, table, None, _NO_RENAMES)
         assert "DO NOTHING" in result.sql
         assert "DO UPDATE" not in result.sql
 
@@ -260,7 +264,7 @@ class TestCompileUpsert:
                 _arg("on_conflict", _list_val([_str_val("id")])),
             ]
         )
-        result = compile_upsert(field, table, None)
+        result = compile_upsert(field, table, None, _NO_RENAMES)
         assert "RETURNING" in result.sql
 
     def test_source_id_on_result(self):
@@ -271,7 +275,7 @@ class TestCompileUpsert:
                 _arg("on_conflict", _list_val([_str_val("id")])),
             ]
         )
-        result = compile_upsert(field, table, None)
+        result = compile_upsert(field, table, None, _NO_RENAMES)
         assert result.source_id == "crm-pg"
 
 

@@ -864,7 +864,8 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
             col_gql_type = column_type_to_graphql(meta.data_type)
             if isinstance(col_gql_type, GraphQLList):
                 col_gql_type = GraphQLString  # fallback for arrays in input
-            fields[col_name] = GraphQLInputField(col_gql_type)
+            # Named as reads name it (its published name); mutation_gen maps it back.
+            fields[_gql_col_name(col, t)] = GraphQLInputField(col_gql_type)
         return fields
 
     insert_fields = _inputs("insert")

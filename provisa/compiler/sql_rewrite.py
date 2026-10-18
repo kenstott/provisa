@@ -21,6 +21,7 @@ from provisa.compiler.sql_literals import sql_literal
 
 import re as _re
 from datetime import datetime, timezone
+from typing import cast
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -368,7 +369,16 @@ def _lower_column_aliases(tree: exp.Expression, ctx: CompilationContext) -> None
     from sqlglot.optimizer.scope import traverse_scope
 
     renames = _column_renames(ctx)
-    if not renames or not isinstance(tree, exp.Query):
+    if not renames:
+        return
+    if isinstance(tree, (exp.Insert, exp.Update, exp.Delete)):
+        _lower_write_target_columns(tree, renames)
+        # INSERT ... SELECT: the query it inserts is lowered as any query is.
+        inserted = tree.expression
+        if isinstance(inserted, exp.Query):
+            _lower_column_aliases(cast(exp.Expression, inserted), ctx)
+        return
+    if not isinstance(tree, exp.Query):
         return
     for scope in traverse_scope(tree):
         tables: dict[str, dict[str, str]] = {}
@@ -417,6 +427,48 @@ def _lower_column_aliases(tree: exp.Expression, ctx: CompilationContext) -> None
             if isinstance(projection, exp.Column) and id(projection) in renamed:
                 published = renamed[id(projection)]
                 projection.replace(exp.alias_(projection.copy(), published, quoted=True))
+
+
+def _lower_write_target_columns(
+    tree: exp.Insert | exp.Update | exp.Delete, renames: dict[tuple[str, str], dict[str, str]]
+) -> None:
+    target = tree.this.this if isinstance(tree.this, exp.Schema) else tree.this
+    if isinstance(target, exp.Table):
+        rename_write_columns(tree, renames.get((target.db.lower(), target.name.lower())) or {})
+
+
+def rename_write_columns(
+    tree: exp.Insert | exp.Update | exp.Delete, mapping: dict[str, str]
+) -> None:
+    """Rename, in place, the target table's columns a write names by their published name: an
+    INSERT's column list and ON CONFLICT targets (its EXCLUDED row too), an UPDATE's SET targets,
+    and the WHERE and RETURNING of all three -- a column there is the target's unless qualified by
+    another name; a renamed RETURNING column keeps its published name as its output name. Columns
+    inside a subquery belong to its own scope and are left to it."""
+    target = tree.this.this if isinstance(tree.this, exp.Schema) else tree.this
+    if not isinstance(target, exp.Table) or not mapping:
+        return
+    names = {target.name.lower(), (target.alias or target.name).lower()}
+    if isinstance(tree, exp.Insert):
+        names.add("excluded")  # ON CONFLICT DO UPDATE's row as it was proposed
+    if isinstance(tree.this, exp.Schema):
+        for ident in tree.this.expressions:
+            physical = mapping.get(ident.name.lower())
+            if physical is not None:
+                ident.set("this", physical)
+                ident.set("quoted", True)
+    for col in tree.find_all(exp.Column):
+        if col.find_ancestor(exp.Subquery, exp.Select) is not None:
+            continue
+        if col.table and col.table.lower() not in names:
+            continue
+        physical = mapping.get(col.name.lower())
+        if physical is None:
+            continue
+        published = col.name
+        col.set("this", exp.Identifier(this=physical, quoted=True))
+        if isinstance(col.parent, exp.Returning):
+            col.replace(exp.alias_(col.copy(), published, quoted=True))
 
 
 def _lower_virtual_columns(tree: exp.Expression, ctx: CompilationContext) -> None:
