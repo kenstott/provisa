@@ -209,7 +209,7 @@ def test_requesting_org_admin_resolves_and_serves(planes):
     assert resp.json()["role"] == "org_admin"
 
 
-def test_requesting_admin_is_rejected(planes):
+def test_requesting_admin_is_rejected(planes, role_probe_events):
     """Asking for a role the creator does not hold is 403 — the exact on-screen failure.
 
     This is the server contract the UI must respect: it may only put an ASSIGNED role in
@@ -221,3 +221,5 @@ def test_requesting_admin_is_rejected(planes):
         resp = _get(client, "admin")
     assert resp.status_code == 403
     assert resp.json()["detail"] == "Role 'admin' is not assigned to this user"
+    # REQ-2076: a security event, recorded; a signed-in session is still told the role's name.
+    assert [(e.transport, e.requested) for e in role_probe_events] == [("http", "admin")]

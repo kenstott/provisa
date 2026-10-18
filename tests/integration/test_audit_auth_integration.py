@@ -127,6 +127,8 @@ class TestREQ535AnonymousAuth:
         from provisa.auth.models import AuthIdentity, AuthProvider
 
         class _RealProvider(AuthProvider):
+            provider_name = "test"  # a provider of this deployment's own, not IdP-signed
+
             async def validate_token(self, token: str) -> AuthIdentity:
                 if token == "ok":
                     return AuthIdentity(
@@ -151,6 +153,8 @@ class TestREQ535AnonymousAuth:
         from provisa.auth.models import AuthIdentity, AuthProvider
 
         class _RealProvider(AuthProvider):
+            provider_name = "test"  # a provider of this deployment's own, not IdP-signed
+
             async def validate_token(self, token: str) -> AuthIdentity:
                 if token == "ok":
                     return AuthIdentity(

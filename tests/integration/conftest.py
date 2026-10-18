@@ -709,3 +709,20 @@ async def platform_admin_db():
     finally:
         app_mod.state.admin_db = previous
         await db.close()
+
+
+@pytest.fixture
+def role_probe_events(monkeypatch):
+    """REQ-2076: a role named that the caller does not hold is recorded through the platform
+    plane (security.role_probe.record). A harness that serves without one collects the events
+    here, for the test to read; the recording itself is tests/unit/test_role_probe.py's."""
+    from provisa.security import role_probe
+
+    events: list = []
+
+    async def _collect(probe):
+        events.append(probe)
+        return role_probe.suspension(probe)
+
+    monkeypatch.setattr(role_probe, "record", _collect)
+    return events

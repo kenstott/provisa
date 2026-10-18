@@ -203,7 +203,8 @@ def server():
         pg_host=_PG_HOST,
         pg_port=_PG_PORT,
         extra_config={"tables": [orders, {**orders, "table": "slow"}]},
-        env={"PROVISA_REDIRECT_ENABLED": "false"},
+        # REQ-2075: a local MCP call names only roles within the pinned set.
+        env={"PROVISA_REDIRECT_ENABLED": "false", "PROVISA_MCP_ROLE": _ROLE},
     )
     boot.create_database()
     try:

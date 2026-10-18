@@ -125,6 +125,8 @@ def _make_test_app(
 class _MockProvider(AuthProvider):
     """Controllable mock auth provider."""
 
+    provider_name = "test"  # a provider of this deployment's own, not IdP-signed
+
     def __init__(self, identity: AuthIdentity | None, raise_on_validate: bool = False) -> None:
         self._identity = identity
         self._raise = raise_on_validate
@@ -409,7 +411,7 @@ class TestAuthMiddlewarePipeline:
         assert resp.status_code == 200
         assert resp.json()["role"] == ORG_ADMIN_ROLE
 
-    def test_x_provisa_role_not_assigned_returns_403(self):
+    def test_x_provisa_role_not_assigned_returns_403(self, role_probe_events):
         # REQ-273: client-supplied role via X-Provisa-Role is rejected if not assigned.
         identity = AuthIdentity(
             user_id="u1",

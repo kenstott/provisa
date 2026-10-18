@@ -688,7 +688,9 @@ class TestSecuredGrpcRequiresACredential:
         assert exc_info.value.code() == grpc.StatusCode.UNAUTHENTICATED
         assert exc_info.value.details() == "credential rejected"
 
-    async def test_a_valid_credential_cannot_claim_a_role_it_lacks(self, secured_stub):
+    async def test_a_valid_credential_cannot_claim_a_role_it_lacks(
+        self, secured_stub, role_probe_events
+    ):
         stub, pb2 = secured_stub
         with pytest.raises(grpc.aio.AioRpcError) as exc_info:
             async for _ in stub.QueryOrder(
@@ -697,6 +699,9 @@ class TestSecuredGrpcRequiresACredential:
             ):
                 pass
         assert exc_info.value.code() == grpc.StatusCode.PERMISSION_DENIED
+        # REQ-2076: a security event; the refusal says nothing of the role.
+        assert exc_info.value.details() == "not permitted"
+        assert [(e.transport, e.requested) for e in role_probe_events] == [("grpc", "root")]
 
     async def test_a_valid_credential_runs_as_its_mapped_role(self, secured_stub):
         """Reaching the schema lookup for 'admin' proves auth passed and the role came from the

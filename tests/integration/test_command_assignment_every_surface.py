@@ -100,7 +100,8 @@ def server():
                 _command("region_count", "query", [{"name": "r", "type": "String"}]),
             ],
         },
-        env={"PROVISA_REDIRECT_ENABLED": "false"},
+        # REQ-2075: a local MCP call names only roles within the pinned set.
+        env={"PROVISA_REDIRECT_ENABLED": "false", "PROVISA_MCP_ROLE": ",".join(_ROLES)},
     )
     boot.create_database()
     engine = sa.create_engine(boot.url, isolation_level="AUTOCOMMIT")

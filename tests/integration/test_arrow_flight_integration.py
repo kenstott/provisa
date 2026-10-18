@@ -614,21 +614,25 @@ class TestSecuredFlightRequiresACredential:
         with pytest.raises(flight.FlightUnauthenticatedError):
             client.do_get(ticket).read_all()
 
-    async def test_a_valid_token_cannot_claim_an_unassigned_role(self, secured_flight_server):
+    async def test_a_valid_token_cannot_claim_an_unassigned_role(
+        self, secured_flight_server, role_probe_events
+    ):
         """The credential is good; `role: admin` is not the client's to assert.
 
         The caller IS authenticated, so the refusal is an authorization one — Flight's
         Unauthorized (permission denied), as HTTP answers 403 and gRPC PERMISSION_DENIED for the
-        same request (docs/security.md, "A refusal says which kind it is") — and it names the
-        role. A missing or rejected credential is the Unauthenticated case above."""
+        same request (docs/security.md, "A refusal says which kind it is"). REQ-2076: naming a
+        role not held is a security event, and the refusal says nothing of the role. A missing or
+        rejected credential is the Unauthenticated case above."""
         client, _, _ = secured_flight_server
         ticket = flight.Ticket(
             json.dumps(
                 {"query": "{ orders { id } }", "role": "admin", "token": "good-token"}
             ).encode()
         )
-        with pytest.raises(flight.FlightUnauthorizedError, match="role 'admin' is not assigned"):
+        with pytest.raises(flight.FlightUnauthorizedError, match="not permitted"):
             client.do_get(ticket).read_all()
+        assert [(e.transport, e.requested) for e in role_probe_events] == [("flight", "admin")]
 
     async def test_a_valid_token_runs_as_its_own_role(self, secured_flight_server):
         """No role requested: the identity maps to the configured default and execution proceeds.
