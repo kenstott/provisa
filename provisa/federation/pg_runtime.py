@@ -747,19 +747,36 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
     def _ensure_foreign_table(cur: Any, details: dict, table_name: str) -> None:
         """The source's foreign server, and the foreign table for ``table_name`` in the
         connector's own schema — each created only when it is not there, so a live attach and a
-        replica build (in any order, in any process, across restarts) converge on one object."""
-        for ddl in details["server_ddl_for_copy"]:
-            cur.execute(ddl)
+        replica build (in any order, in any process, across restarts) converge on one object.
+
+        The check and the creation are one step across processes, under an advisory lock on the
+        foreign table: two servers sharing the engine both found it absent and both imported it,
+        and the second failed (``type ... already exists``). A transaction holds the lock until it
+        ends; a connection with no transaction holds it until this returns."""
         local = details["local_schema"]
-        cur.execute("SELECT to_regclass(%s)", (f'"{local}"."{table_name}"',))
-        row = cur.fetchone()
-        assert row is not None  # a scalar function: always exactly one row
-        if row[0] is None:
-            cur.execute(
-                f'IMPORT FOREIGN SCHEMA "{details["remote_schema"]}" '
-                f'LIMIT TO ("{table_name}") FROM SERVER "{details["server"]}" '
-                f'INTO "{local}"'
-            )
+        key = f"provisa.foreign_table/{details['server']}/{local}/{table_name}"
+        in_transaction = not cur.connection.autocommit
+        cur.execute(
+            "SELECT pg_advisory_xact_lock(hashtext(%s))"
+            if in_transaction
+            else "SELECT pg_advisory_lock(hashtext(%s))",
+            (key,),
+        )
+        try:
+            for ddl in details["server_ddl_for_copy"]:
+                cur.execute(ddl)
+            cur.execute("SELECT to_regclass(%s)", (f'"{local}"."{table_name}"',))
+            row = cur.fetchone()
+            assert row is not None  # a scalar function: always exactly one row
+            if row[0] is None:
+                cur.execute(
+                    f'IMPORT FOREIGN SCHEMA "{details["remote_schema"]}" '
+                    f'LIMIT TO ("{table_name}") FROM SERVER "{details["server"]}" '
+                    f'INTO "{local}"'
+                )
+        finally:
+            if not in_transaction:
+                cur.execute("SELECT pg_advisory_unlock(hashtext(%s))", (key,))
 
     async def apply_cdc_events(
         self,
