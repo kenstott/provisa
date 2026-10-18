@@ -17,6 +17,10 @@ spec:
       role: worker
   template:
     metadata:
+      annotations:
+        # A subPath mount is never refreshed by the kubelet, so a change to the Trino config
+        # (internal TLS turned on, say) rolls the workers through this digest.
+        checksum/trino-config: {{ include (print $.Template.BasePath "/trino-configmap.yaml") . | sha256sum }}
       labels:
         app: trino
         role: worker

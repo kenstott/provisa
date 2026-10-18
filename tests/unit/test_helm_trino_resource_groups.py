@@ -93,3 +93,12 @@ def test_a_change_to_the_trino_config_rolls_the_coordinator():
 
     assert digest() == digest()
     assert digest() != digest("trino.memory.maxMemory=7GB")
+
+
+def test_a_change_to_the_trino_config_rolls_the_workers():
+    def digest(*sets):
+        pod = _named(_render(*sets), "workload", "rel-trino-worker")["spec"]["template"]
+        return pod["metadata"]["annotations"]["checksum/trino-config"]
+
+    assert digest() == digest()
+    assert digest() != digest("trino.memory.maxMemoryPerNode=3GB")
