@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 575b9aa7-3594-43ac-8f20-95bbb67dfffc
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """The pg engine's answer carries its columns' types, on every read path (REQ-846).
 
 The event loop learns a materialized view's output columns from a LIMIT 0 read of its build
