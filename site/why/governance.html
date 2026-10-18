@@ -110,7 +110,9 @@
         <p>
           Columns are visible, hidden, or masked per role. Masking is regex, constant, or
           truncation, with an explicit role-based bypass where a privileged role genuinely
-          needs the raw value.
+          needs the raw value. When a request acts as several roles, each row's columns are
+          masked and shown according to the roles whose row filter admitted that row, and
+          writes are checked the same way.
         </p>
 
         <h3>5 — Predicate guard and approval</h3>
@@ -139,6 +141,10 @@
           who should stay on the rails; take the training wheels off for a trusted role and
           it writes unconstrained JOINs across the whole federated model. Same governed
           path, same RLS and masking — just without the relationship guard.
+        </p>
+        <p>
+          An MCP agent never acts beyond the roles it was given: a remote agent only the roles
+          its token's principal holds, a local one only the set its server was pinned to.
         </p>
 
         <h2>Observability as data</h2>

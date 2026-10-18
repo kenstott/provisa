@@ -119,6 +119,8 @@ Lorsqu'une requête nomme plus d'un rôle, Provisa construit un méta-rôle éph
 
 Les droits sont l'union de ceux de chaque membre. Les filtres de lignes sont l'OR du filtre résolu de chaque membre ; si un membre qui lit une table n'a pas de filtre, le méta-rôle n'en a pas non plus — pas de filtre signifie toutes les lignes. Un méta-rôle n'est jamais stocké, listé ni exporté. Il est reconstruit à partir de ses membres lorsque le modèle change. (REQ-1620)
 
+Les colonnes de chaque ligne sont masquées et affichées selon les rôles dont le filtre de lignes a admis cette ligne : parmi ces rôles, la lecture la moins restrictive de la colonne s'applique, et un rôle qui n'a pas admis la ligne ne contribue en rien à la façon dont elle est lue. Les masques s'appliquent là où la table est lue, avant toute jointure ou agrégation, de sorte qu'une agrégation lit les valeurs masquées. Les écritures sont vérifiées de la même façon : une colonne n'est écrite sur une ligne que là où un rôle qui accorde cette colonne admet la ligne. (REQ-1620)
+
 L'enregistrement d'audit nomme chaque rôle agissant, pas l'identifiant du méta-rôle.
 
 ### Comment une requête nomme des rôles {: #how-a-request-names-roles }
@@ -128,6 +130,8 @@ Un client envoie un rôle, ou un ensemble séparé par des virgules, dans `X-Pro
 Les droits et les données ne suivent que les rôles sous lesquels agit la requête : détenir un rôle n'est pas agir sous lui. Un rôle est ce rôle ; deux ou plus agissent sous leur méta-rôle. Un rôle agissant qui apporterait avec lui les droits de chaque rôle détenu ne signifierait rien ; une requête obtient donc le moindre privilège, et l'enregistrement d'audit nomme exactement ce qui a agi.
 
 Les pseudo-rôles nommés entrent comme qualificatifs. Un qualificatif n'a ni droits, ni accès aux domaines, ni masques, ni filtres de lignes propres, il n'est donc pas membre des droits du méta-rôle : comme membre sans masques, il démasquerait chaque colonne, et comme membre qui ne lit aucune table, il mettrait fin à tout OR de filtres de lignes. Il n'entre que dans les autorisations : une autorisation ou une entrée de masque qui nomme `region__eu` atteint une requête qui nomme ce qualificatif à côté d'un rôle accordé. (REQ-2057)
+
+Un agent MCP n'agit jamais au-delà des rôles qui lui ont été donnés. Un agent distant ne nomme que des rôles que détient le principal de son jeton. Un agent local en stdio ne nomme que des rôles de l'ensemble fixé dans `mcp.role` (`PROVISA_MCP_ROLE`), et agit comme cet ensemble lorsqu'il n'en nomme aucun ; tout autre rôle est refusé par son nom. (REQ-2075)
 
 ### Ce que signifie `+` {: #what-means }
 

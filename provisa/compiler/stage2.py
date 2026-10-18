@@ -92,6 +92,9 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # name (sql_validator.approved_joins): a join key the role cannot select is still read by the
     # engine in such a join, never returned (REQ-603).
     join_keys: set[tuple[int, int, str, str]] = field(default_factory=set)
+    # REQ-1620: a meta-role's members, per table (compiler.rls.MemberReads). A table with a column
+    # its members read differently is read through its member projection (_project_members).
+    member_reads: dict[int, Any] = field(default_factory=dict)
 
 
 def registered_name(gov_ctx: GovernanceContext, table_id: int, name: str) -> str:  # REQ-040
@@ -185,6 +188,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             continue
         for col_name, (rule, dtype) in col_map.items():
             gov.masking_rules[(table_id, col_name)] = (rule, dtype)
+    _with_member_reads(gov, rls_context)
     _bind_fakes(gov)
     gov.kept = dict(ctx.kept)  # REQ-1942
     from provisa.compiler.sql_rewrite import published_columns
@@ -278,6 +282,14 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             all_visible = len(visible) == len(cols)
             if not _reaches and served_across_domains(_subject, tbl):
                 _public.add(table_id)
+            reads = gov.member_reads.get(table_id)
+            if reads is not None:
+                # REQ-1620: a column any member reading the table is served; on the rows only
+                # members not served it admit, the member projection reads it as NULL.
+                from provisa.compiler.rls import HIDDEN
+
+                visible = {c for c, ts in reads.columns.items() if any(t[0] != HIDDEN for t in ts)}
+                all_visible = len(visible) == len(cols)
             gov.visible_columns[table_id] = None if all_visible else frozenset(visible)
 
         # per-table ceiling (REQ-005)
@@ -344,6 +356,22 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             plan_mask_evaluation(cap, can_stream=False)
 
     return gov
+
+
+def _with_member_reads(gov: GovernanceContext, rls_context) -> None:  # REQ-1620
+    """A meta-role reads each row as the member(s) whose filter admitted it. A column every member
+    reading the table treats alike is masked as they read it, through the role's masking rules; a
+    column they treat differently is read through the table's member projection, so it has no
+    masking rule of the role's own."""
+    member_reads = getattr(rls_context, "member_reads", None) or {}
+    gov.member_reads = dict(member_reads)
+    for tid, reads in member_reads.items():
+        for column in reads.columns:
+            gov.masking_rules.pop((tid, column), None)
+            if reads.uniform(column):
+                rank, rule, dtype = reads.columns[column][0]
+                if rule is not None:
+                    gov.masking_rules[(tid, column)] = (rule, dtype)
 
 
 def _bind_fakes(gov: GovernanceContext) -> None:  # REQ-1494
@@ -464,13 +492,28 @@ def _govern_select(
     projected: set[int] = set()
     for tbl, tid in table_refs:
         faked = None
+        members = None if tid is None else _differing_members(tid, gov_ctx)
         if tid is not None and tid in gov_ctx.fake_columns:
+            if members is not None:
+                # REQ-1620, REQ-1494: a faked column is computed in the table's faked projection,
+                # which reads every row alike; a set of roles that read a column of it differently
+                # cannot be served row by row there, and is refused rather than read as any one.
+                raise PermissionError(
+                    f"role {gov_ctx.role_id!r} acts as roles that read columns "
+                    f"{sorted(members)} of a table with faked columns differently; name one role"
+                )
             faked = _project_faked(node, tbl, tid, gov_ctx)
             projected.add(id(tbl))
+        current: exp.Expr | None = None  # pyright: ignore[reportPrivateImportUsage]
         if tid is not None and tid in gov_ctx.kept:
             # REQ-1942: the environment's kept mutations, over the faked rows where there are
             # fakes -- a written row is never faked again.
-            _project_kept(node, tbl, faked, tid, gov_ctx)
+            current = _project_kept(node, tbl, faked, tid, gov_ctx)
+            projected.add(id(tbl))
+        if members is not None:
+            assert tid is not None
+            # REQ-1620: each row read as the member(s) whose filter admitted it.
+            _project_members(node, tbl, current, tid, members, gov_ctx)
             projected.add(id(tbl))
     if projected:
         _read_projected_names(
@@ -655,7 +698,7 @@ def _project_kept(
     faked: exp.Subquery | None,
     tid: int,
     gov_ctx: GovernanceContext,
-) -> None:  # REQ-1942
+) -> exp.Subquery:  # REQ-1942
     """Put ``tbl`` -- or ``faked``, its faked projection already in its place -- with its change
     log applied in its place in ``node``, under the same alias. The row filter reads the table's
     rows and the log's versions alike."""
@@ -689,6 +732,87 @@ def _project_kept(
             col.set("db", None)
             col.set("catalog", None)
     (faked if faked is not None else tbl).replace(subquery)
+    return subquery
+
+
+def _differing_members(tid: int, gov_ctx: GovernanceContext) -> list[str] | None:  # REQ-1620
+    """The columns of ``tid`` the acting meta-role's members read differently, or None when there
+    are none (a single role, or members that read every column alike)."""
+    reads = gov_ctx.member_reads.get(tid)
+    if reads is None:
+        return None
+    differing = [c for c in reads.columns if not reads.uniform(c)]
+    return differing or None
+
+
+def _project_members(
+    node: exp.Select,
+    tbl: exp.Table,
+    current: exp.Expr | None,  # pyright: ignore[reportPrivateImportUsage]
+    tid: int,
+    differing: list[str],
+    gov_ctx: GovernanceContext,
+) -> None:  # REQ-1620
+    """Put ``tbl`` -- or ``current``, the projection already in its place -- read row by row as
+    the members of the acting meta-role read it, in its place in ``node``, under the same alias.
+
+    Each member's own row filter is evaluated once per row, as a flag; the rows are those the
+    role's filter (the OR of the members') admits. A column the members read differently is
+    read through the treatment of the least restrictive group of members whose flag holds for
+    the row -- read as it is, then each mask in the column's mask-list order, then not served
+    (NULL) -- so a row is never read through a mask or grant of a member that did not admit it.
+    Masks are applied here, at the table, before any join or aggregate reads the column."""
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.compiler.rls import HIDDEN
+
+    reads = gov_ctx.member_reads[tid]
+    alias = _alias_for(tbl)
+    column_types = {name: dtype for name, dtype in gov_ctx.all_columns.get(tid, [])}
+    if current is not None:
+        relation = current.this.sql(dialect="postgres")
+        source = f"({relation}) AS {_quote(alias)}"
+    else:
+        plain = tbl.copy()
+        plain.set("alias", None)
+        source = f"{plain.sql(dialect='postgres')} AS {_quote(alias)}"
+    flag_names = [f"__m_{i}" for i in range(len(reads.flags))]
+    flags = ", ".join(
+        f"({'TRUE' if f == 'TRUE' else _qualify_filter(f, alias, column_types)}) AS {n}"
+        for f, n in zip(reads.flags, flag_names, strict=True)
+    )
+    scan = f"SELECT {_quote(alias)}.*, {flags} FROM {source}"
+    if tid in gov_ctx.rls_rules and current is None:
+        scan += f" WHERE {_qualify_filter(gov_ctx.rls_rules[tid], alias, column_types)}"
+    projections: list[str] = []
+    for name, _dtype in gov_ctx.all_columns.get(tid, []):
+        quoted = _quote(apply_sql_name(name))
+        if name not in differing:
+            projections.append(quoted)
+            continue
+        treatments = reads.columns[name]
+        branches: list[str] = []
+        for rank in sorted({t[0] for t in treatments}):
+            group = [i for i, t in enumerate(treatments) if t[0] == rank]
+            _, rule, dtype = treatments[group[0]]
+            if rank == HIDDEN:
+                value = "NULL"
+            elif rule is None:
+                value = quoted
+            else:
+                value = build_mask_expression(rule, quoted, dtype)
+            branches.append(f"WHEN {' OR '.join(flag_names[i] for i in group)} THEN {value}")
+            if any(reads.flags[i] == "TRUE" for i in group):
+                break  # every row is admitted by this group: no later branch is read
+        projections.append(f"CASE {' '.join(branches)} ELSE NULL END AS {quoted}")
+    sql = f"SELECT {', '.join(projections)} FROM ({scan}) AS {_quote(alias)}"
+    projection = sqlglot.parse_one(f"SELECT * FROM ({sql}) AS {_quote(alias)}", read="postgres")
+    subquery = projection.args["from_"].this
+    subquery.meta[_GOVERNED] = True  # its own references are already governed
+    for col in node.find_all(exp.Column):
+        if col.table == tbl.name and col.args.get("db") is not None and alias == tbl.name:
+            col.set("db", None)
+            col.set("catalog", None)
+    (current if current is not None else tbl).replace(subquery)
 
 
 def _quote(name: str) -> str:

@@ -119,6 +119,8 @@ Cuando una solicitud nombra más de un rol, Provisa construye un meta-rol efíme
 
 Los derechos son la unión de los de cada miembro. Los filtros de filas son el OR del filtro resuelto de cada miembro; si algún miembro que lee una tabla no tiene filtro, el meta-rol tampoco: sin filtro significa todas las filas. Un meta-rol nunca se guarda, se lista ni se exporta. Se reconstruye a partir de sus miembros cuando cambia el modelo. (REQ-1620)
 
+Las columnas de cada fila se enmascaran y muestran según los roles cuyo filtro de filas admitió esa fila: de esos roles se aplica la lectura menos restrictiva de la columna, y un rol que no admitió la fila no aporta nada a cómo se lee. Las máscaras se aplican donde se lee la tabla, antes de cualquier join o agregación, de modo que una agregación lee los valores enmascarados. Las escrituras se comprueban del mismo modo: una columna se escribe en una fila solo donde un rol que concede esa columna admite la fila. (REQ-1620)
+
 El registro de auditoría nombra cada rol que actúa, no el id del meta-rol.
 
 ### Cómo nombra roles una solicitud {: #how-a-request-names-roles }
@@ -128,6 +130,8 @@ Un cliente envía un rol, o un conjunto separado por comas, en `X-Provisa-Role`.
 Los derechos y los datos siguen solo a los roles con los que actúa la solicitud: tener un rol no es actuar como él. Un rol es ese rol; dos o más actúan como su meta-rol. Un rol que actuara trayendo consigo los derechos de cada rol que se tiene no significaría nada, así que una solicitud obtiene el mínimo privilegio y el registro de auditoría nombra exactamente lo que actuó.
 
 Los pseudo-roles nombrados entran como calificadores. Un calificador no tiene derechos, acceso por dominio, máscaras ni filtros de filas propios, así que no es miembro de los derechos del meta-rol: como miembro sin máscaras desenmascararía todas las columnas, y como uno que no lee ninguna tabla acabaría con cualquier OR de filtros de filas. Entra solo en las concesiones: una concesión o entrada de máscara que nombra `region__eu` alcanza a una solicitud que nombra ese calificador junto con un rol concedido. (REQ-2057)
+
+Un agente MCP nunca actúa más allá de los roles que se le dieron. Un agente remoto solo nombra roles que posee el principal de su token. Un agente local por stdio solo nombra roles dentro del conjunto fijado en `mcp.role` (`PROVISA_MCP_ROLE`), y actúa como ese conjunto cuando no nombra ninguno; cualquier otro rol se rechaza por su nombre. (REQ-2075)
 
 ### Qué significa `+` {: #what-means }
 

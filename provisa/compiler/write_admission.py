@@ -202,6 +202,29 @@ def _grant(gov: "GovernanceContext", table_id: int, name: str, operation: str) -
     return grant
 
 
+def for_columns(grant: dict, columns: list[str]) -> dict:  # REQ-1620
+    """``grant`` as it applies to a write of ``columns``. A meta-role's grant (one holding its
+    members' own, ``holders``) writes a column on a row only where a member granting that column
+    admits the row: its rows and check are, per column written, the OR of the rows (and checks)
+    of the members granting it, ANDed over the columns. A write naming no column (a DELETE)
+    takes the grant's own. Any other grant is as it is."""
+    holders = grant.get("holders")
+    if not holders or not columns:
+        return grant
+    applied = dict(grant)
+    for stated in ("rows", "check"):
+        if grant.get(stated) is None:
+            continue
+        per_column: list[str] = []
+        for column in dict.fromkeys(columns):
+            terms = [h[stated] for h in holders if column in h["columns"]]
+            if not terms or any(t == "TRUE" for t in terms):
+                continue  # no holder grants it (refused by name) / a holder admits every row
+            per_column.append(" OR ".join(f"({t})" for t in terms))
+        applied[stated] = " AND ".join(f"({t})" for t in dict.fromkeys(per_column)) or "TRUE"
+    return applied
+
+
 def _require_columns(gov: "GovernanceContext", grant: dict, name: str, columns: list[str]) -> None:
     """Every column written is one the grant names; a column the grant presets is the grant's
     to set, never the statement's."""
@@ -407,6 +430,7 @@ def admit_rows(
 
     columns = [registered_name(gov, table_id, c) for c in columns]
     _require_columns(gov, grant, name, columns)
+    grant = for_columns(grant, columns)
     check = _predicate(gov, table_id, grant.get("check"))
     if rows is None or _every_row(check):
         return
@@ -586,6 +610,7 @@ def admit_write(
         for operation in ("insert", "update"):
             grant = _grant(gov, table_id, name, operation)
             _require_columns(gov, grant, name, every)
+            grant = for_columns(grant, every)
             stated = [grant.get("check")] + ([grant.get("rows")] if operation == "update" else [])
             if not all(_every_row(_predicate(gov, table_id, p)) for p in stated):
                 raise WriteNotAdmitted(
@@ -612,6 +637,7 @@ def admit_write(
                 e.this.name for e in conflict.find_all(exp.EQ) if isinstance(e.this, exp.Column)
             ]
             _require_columns(gov, update, name, set_columns)
+            update = for_columns(update, set_columns)
             if update.get("presets") or not (
                 _every_row(_predicate(gov, table_id, update.get("rows")))
                 and _every_row(_predicate(gov, table_id, update.get("check")))
@@ -623,6 +649,7 @@ def admit_write(
                 )
         presets = _preset_values(gov, table_id, name, grant, session_vars)
         listed = _apply_insert_presets(tree, listed, presets, name)
+        grant = for_columns(grant, columns)
         check = _predicate(gov, table_id, grant.get("check"))
         if not _every_row(check):
             assert check is not None
@@ -647,6 +674,7 @@ def admit_write(
     grant = _grant(gov, table_id, name, operation)
     if isinstance(tree, exp.Update):
         _require_columns(gov, grant, name, written_columns(tree, gov, table_id))
+        grant = for_columns(grant, written_columns(tree, gov, table_id))
         for column, value in _preset_values(gov, table_id, name, grant, session_vars).items():
             tree.append("expressions", exp.EQ(this=exp.column(column), expression=value))
         check = _predicate(gov, table_id, grant.get("check"))

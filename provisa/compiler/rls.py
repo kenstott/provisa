@@ -19,9 +19,30 @@ pipeline (compiler/stage2) ANDs each table's filter into every SELECT that reads
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 import sqlglot
 from sqlglot import exp
+
+
+#: A member's treatment of a column, ordered least restrictive first: read as it is (0), through
+#: entry i of the column's mask list (1 + i), or not served (HIDDEN).
+PLAIN = 0
+HIDDEN = 1 << 30
+
+
+@dataclass(frozen=True)
+class MemberReads:  # REQ-1620
+    """How the members of a meta-role read one table. ``flags``: each member's own resolved row
+    filter, its constants inlined (``TRUE`` where it reads every row). ``columns``: per column,
+    each member's treatment, in member order: (rank, mask rule or None, data type), rank as
+    :data:`PLAIN` / ``1 + mask entry index`` / :data:`HIDDEN`."""
+
+    flags: tuple[str, ...]
+    columns: dict[str, tuple[tuple[int, Any, str], ...]]
+
+    def uniform(self, column: str) -> bool:
+        return len({rank for rank, _, _ in self.columns[column]}) == 1
 
 
 @dataclass
@@ -34,6 +55,9 @@ class RLSContext:
     domain_rules: dict[str, str] = field(default_factory=dict)
     # REQ-1679: action name → filter expression over the action's response contract
     action_rules: dict[str, str] = field(default_factory=dict)
+    # REQ-1620: a meta-role's members, per table they read (MemberReads): each row is read as the
+    # member(s) whose filter admitted it. Empty for a single role.
+    member_reads: dict[int, MemberReads] = field(default_factory=dict)
 
     @staticmethod
     def empty() -> RLSContext:
@@ -63,7 +87,10 @@ def org_scoped_signals(rls: RLSContext, tables: list[dict]) -> RLSContext:  # RE
             ORG_SCOPED_SIGNALS_RULE if own is None else f"({ORG_SCOPED_SIGNALS_RULE}) AND ({own})"
         )
     return RLSContext(
-        rules=rules, domain_rules=dict(rls.domain_rules), action_rules=dict(rls.action_rules)
+        rules=rules,
+        domain_rules=dict(rls.domain_rules),
+        action_rules=dict(rls.action_rules),
+        member_reads=dict(rls.member_reads),
     )
 
 

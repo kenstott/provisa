@@ -119,6 +119,8 @@ Wenn eine Anfrage mehr als eine Rolle nennt, baut Provisa eine flüchtige Meta-R
 
 Die Rechte sind die Vereinigung der Rechte aller Mitglieder. Zeilenfilter sind das OR des aufgelösten Filters jedes Mitglieds; hat irgendein Mitglied, das eine Tabelle liest, keinen Filter, hat auch die Meta-Rolle keinen — kein Filter bedeutet alle Zeilen. Eine Meta-Rolle wird nie gespeichert, gelistet oder exportiert. Sie wird aus ihren Mitgliedern neu gebaut, wenn sich das Modell ändert. (REQ-1620)
 
+Die Spalten jeder Zeile werden nach den Rollen maskiert und gezeigt, deren Zeilenfilter diese Zeile zugelassen hat: Von diesen Rollen gilt die am wenigsten einschränkende Lesart der Spalte, und eine Rolle, die die Zeile nicht zugelassen hat, trägt nichts dazu bei, wie sie gelesen wird. Masken greifen dort, wo die Tabelle gelesen wird, vor jedem Join und jeder Aggregation, sodass eine Aggregation die maskierten Werte liest. Schreibvorgänge werden ebenso geprüft: Eine Spalte wird in einer Zeile nur geschrieben, wo eine Rolle, die diese Spalte gewährt, die Zeile zulässt. (REQ-1620)
+
 Der Audit-Eintrag nennt jede handelnde Rolle, nicht die ID der Meta-Rolle.
 
 ### Wie eine Anfrage Rollen nennt {: #how-a-request-names-roles }
@@ -128,6 +130,8 @@ Ein Client sendet eine Rolle oder eine kommagetrennte Menge in `X-Provisa-Role`.
 Rechte und Daten folgen nur den Rollen, als die die Anfrage handelt: Eine Rolle zu halten heißt nicht, als sie zu handeln. Eine Rolle ist diese Rolle; zwei oder mehr handeln als ihre Meta-Rolle. Eine handelnde Rolle, die die Rechte jeder gehaltenen Rolle mitbrächte, bedeutete nichts; so erhält eine Anfrage das geringste Privileg, und der Audit-Eintrag nennt genau, was gehandelt hat.
 
 Genannte Pseudo-Rollen gehen als Qualifikatoren ein. Ein Qualifikator hat keine eigenen Rechte, keinen Domänenzugriff, keine Masken und keine Zeilenfilter, also ist er kein Mitglied der Rechte der Meta-Rolle: Als Mitglied ohne Masken würde er jede Spalte demaskieren, und als eines, das keine Tabelle liest, würde er jedes OR von Zeilenfiltern beenden. Er geht nur in die Freigaben ein: Eine Freigabe oder ein Maskeneintrag, der `region__eu` nennt, erreicht eine Anfrage, die diesen Qualifikator neben einer gewährten Rolle nennt. (REQ-2057)
+
+Ein MCP-Agent handelt nie über die Rollen hinaus, die ihm gegeben wurden. Ein entfernter Agent nennt nur Rollen, die der Prinzipal seines Tokens hält. Ein lokaler stdio-Agent nennt nur Rollen innerhalb der in `mcp.role` (`PROVISA_MCP_ROLE`) festgelegten Menge und handelt als diese Menge, wenn er keine nennt; jede andere Rolle wird namentlich abgelehnt. (REQ-2075)
 
 ### Was `+` bedeutet {: #what-means }
 

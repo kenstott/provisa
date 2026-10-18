@@ -22,9 +22,10 @@ Everything a role is granted reaches the child exactly as role inheritance gives
   ``visible_to`` — gain the child wherever they name a member;
 - a table's write grants (REQ-2074) fold as reads do: per operation any member holds, the
   union of the members' columns, the OR of their rows and of their checks (each member's own,
-  its read filter where it states none), and the presets every such member sets alike;
-- a column's ordered mask list (REQ-2059) is read for the child as for any role: the first entry
-  its own chain (every member's, with their ancestors and qualifiers) holds applies;
+  its read filter where it states none), and the presets every such member sets alike; a column
+  is written on a row only where a member granting that column admits the row;
+- a column's ordered mask list (REQ-2059) is read for each member with its own chain (its
+  ancestors and the set's qualifiers), on the rows that member admits (below);
 - capabilities and domain_access are unioned; the row cap and rate limit are the least
   restrictive.
 
@@ -34,6 +35,11 @@ nearest one. The child's filter on a table is the OR of each member's own resolv
 reads the table resolves to none. Each member's role constants (``session_vars``) are inlined
 into its own term, so two members giving one variable different values cannot collide; the
 request's own variables still resolve at execution.
+
+A row is read as the member(s) whose own filter admitted it: each column is masked or hidden as
+those members read it, the least restrictive of them first (compiler.rls.MemberReads, applied at
+the table by compiler.stage2), never through a mask or grant of a member that did not admit the
+row. Pseudo-roles the set was named with contribute grants only.
 
 The record of a statement made as a meta-role names every member (``enforced["acting_roles"]``).
 """
@@ -163,6 +169,19 @@ def _fold_write_grants(
                 for column, p in first.items()
                 if all({q["column"]: q for q in g["presets"]}.get(column) == p for g in holders)
             ]
+
+            def _own(g: dict, stated: str) -> str:
+                """One holder's own predicate, as _folded reads it: TRUE for every row."""
+                member = by_id[g["role"]]
+                expr = g.get(stated)
+                if expr is None:
+                    ctx = state.surfaces[member["id"]].rls
+                    expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(t.get("domain_id") or "")
+                if _every_row(expr):
+                    return "TRUE"
+                assert expr is not None
+                return _inlined(expr, member.get("session_vars") or {})
+
             t["write_grants"].append(
                 {
                     "role": meta_id,
@@ -171,13 +190,80 @@ def _fold_write_grants(
                     "rows": None if operation == "insert" else _folded("rows"),
                     "check": None if operation == "delete" else _folded("check"),
                     "presets": presets,
+                    # REQ-1620: each holder's own columns, rows and check. A column is written on
+                    # a row only where a holder granting that column admits the row
+                    # (write_admission.for_columns), never by the union across holders.
+                    "holders": [
+                        {
+                            "columns": list(g["columns"]),
+                            "rows": None if operation == "insert" else _own(g, "rows"),
+                            "check": None if operation == "delete" else _own(g, "check"),
+                        }
+                        for g in holders
+                    ],
                 }
             )
 
 
-def _rls(state: Any, members: list[dict], tables: list[dict]) -> Any:
+def _member_reads(
+    state: Any, members: list[dict], tables: list[dict], qualifiers: tuple[str, ...]
+) -> dict[int, Any]:
+    """Per table a member reads, how each member reads it (compiler.rls.MemberReads): a row is
+    read as the member(s) whose own filter admitted it, each column masked or hidden as that
+    member reads it -- never through another member's mask or grant. A member's treatment of a
+    column is decided by its own chain (its ancestors) and the pseudo-roles the set was named
+    with, which contribute grants only."""
+    from provisa.compiler.rls import HIDDEN, PLAIN, MemberReads
+    from provisa.security.masking import entry_for, rule_of
+    from provisa.security.rights import column_served, reaches_domain
+
+    chains = state.role_build_inputs["role_chains"]
+    masked = {(tid, col): (masks, dtype) for tid, col, masks, dtype in state.masked_columns}
+    out: dict[int, Any] = {}
+    for t in tables:
+        readers = [
+            m
+            for m in members
+            if any(tm.table_id == t["id"] for tm in state.surfaces[m["id"]].context.tables.values())
+        ]
+        if not readers:
+            continue
+        domain = t.get("domain_id")
+        flags: list[str] = []
+        for m in readers:
+            ctx = state.surfaces[m["id"]].rls
+            expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(domain or "")
+            flags.append("TRUE" if expr is None else _inlined(expr, m.get("session_vars") or {}))
+        columns: dict[str, tuple[tuple[int, Any, str], ...]] = {}
+        for c in t.get("columns") or []:
+            name = c["column_name"]
+            treatments = []
+            for m in readers:
+                reaches = not domain or reaches_domain(m.get("domain_access") or [], domain)
+                served = any(
+                    column_served({"id": rid}, domain, c, reaches=reaches)
+                    for rid in (m["id"], *qualifiers)
+                )
+                masks, dtype = masked.get((t["id"], name), ([], c.get("data_type", "varchar")))
+                if not served:
+                    treatments.append((HIDDEN, None, dtype))
+                    continue
+                i = entry_for(masks, [*chains[m["id"]], *qualifiers])
+                if i is None or masks[i].get("mask") is None:
+                    treatments.append((PLAIN, None, dtype))
+                else:
+                    treatments.append((1 + i, rule_of(masks[i]["mask"]), dtype))
+            columns[name] = tuple(treatments)
+        out[t["id"]] = MemberReads(flags=tuple(flags), columns=columns)
+    return out
+
+
+def _rls(
+    state: Any, members: list[dict], tables: list[dict], qualifiers: tuple[str, ...] = ()
+) -> Any:
     """The OR of each member's own resolved filter, per table and per command; none where a member
-    that reads it resolves to none."""
+    that reads it resolves to none. With it, how each member reads each table it reads
+    (:func:`_member_reads`)."""
     from provisa.compiler.rls import RLSContext
     from provisa.security.mutation_authz import command_reachable
 
@@ -218,7 +304,12 @@ def _rls(state: Any, members: list[dict], tables: list[dict]) -> Any:
             terms.append(_inlined(expr, m.get("session_vars") or {}))
         if terms and not lifted:
             actions[c["name"]] = _or(terms)
-    return RLSContext(rules=rules, domain_rules={}, action_rules=actions)
+    return RLSContext(
+        rules=rules,
+        domain_rules={},
+        action_rules=actions,
+        member_reads=_member_reads(state, members, tables, qualifiers),
+    )
 
 
 def meta_chain(
@@ -302,7 +393,9 @@ def _build(
     from provisa.compiler.rls import org_scoped_signals
 
     # Held to the reading org on the ops signals as every role is (compiler.rls).
-    rls = org_scoped_signals(_rls(state, member_roles, inputs["tables"]), inputs["tables"])
+    rls = org_scoped_signals(
+        _rls(state, member_roles, inputs["tables"], qualifiers), inputs["tables"]
+    )
     _fold_write_grants(state, meta_id, member_roles, inputs["tables"])  # REQ-2074
     role = _role(member_roles, meta_id)
     state.masking_rules = {**state.masking_rules, **masks}
