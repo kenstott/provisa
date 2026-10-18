@@ -112,7 +112,12 @@ async def reset(conn: "Connection", schema: str) -> list[int]:
 
 
 def overlay_sql(
-    base: str, log: str, key: list[str], columns: list[str], log_filter: str | None = None
+    base: str,
+    log: str,
+    key: list[str],
+    columns: list[str],
+    log_filter: str | None = None,
+    carried: dict[str, str] | None = None,
 ) -> str:
     """``base`` -- a statement reading a table's rows -- with ``log`` -- the qualified address of
     its change log -- applied in ``__seq`` order: after a truncate marker, the base and every
@@ -120,13 +125,19 @@ def overlay_sql(
     left out, and the latest version of each key in the log is added unless it is a delete. ``key`` the primary key's columns,
     ``columns`` every column, in the order ``base`` gives them. ``log_filter``: the table's row
     filter over the log's versions (alias ``l``), which ``base`` has applied to its own rows; None
-    for a table with none. In the governed dialect."""
+    for a table with none. ``carried``: further outputs, by name, that ``base`` gives after
+    ``columns``, each with the same expression over a log version (alias ``l``) -- a meta-role's
+    member flags and real values, computed alike on the base's rows and the log's (REQ-1620). In
+    the governed dialect."""
 
     def q(name: str) -> str:
         return '"' + name.replace('"', '""') + '"'
 
-    cols = ", ".join(f"b.{q(c)}" for c in columns)
-    latest_cols = ", ".join(f"l.{q(c)}" for c in columns)
+    extra = carried or {}
+    cols = ", ".join([f"b.{q(c)}" for c in columns] + [f"b.{q(n)}" for n in extra])
+    latest_cols = ", ".join(
+        [f"l.{q(c)}" for c in columns] + [f"{e} AS {q(n)}" for n, e in extra.items()]
+    )
     key_match = " AND ".join(f"k.{q(c)} = b.{q(c)}" for c in key)
     partition = ", ".join(q(c) for c in key)
     marked = f"{q(OP)} = '{TRUNCATE}'"

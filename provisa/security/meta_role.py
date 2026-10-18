@@ -217,8 +217,18 @@ def _member_reads(
     from provisa.security.masking import entry_for, rule_of
     from provisa.security.rights import column_served, reaches_domain
 
+    from provisa.security.masking import MaskType
+
     chains = state.role_build_inputs["role_chains"]
     masked = {(tid, col): (masks, dtype) for tid, col, masks, dtype in state.masked_columns}
+    # REQ-1494: a fake is the column's own declaration, read by every role in a Test environment
+    # in place of any mask (app_loaders._load_masking_rules); each member holds it alike.
+    faked = {
+        (tid, col): entry
+        for (tid, _rid), cols in state.masking_rules.items()
+        for col, entry in cols.items()
+        if entry[0].mask_type == MaskType.fake
+    }
     out: dict[int, Any] = {}
     for t in tables:
         readers = [
@@ -247,6 +257,10 @@ def _member_reads(
                 masks, dtype = masked.get((t["id"], name), ([], c.get("data_type", "varchar")))
                 if not served:
                     treatments.append((HIDDEN, None, dtype))
+                    continue
+                if (t["id"], name) in faked:
+                    rule, fake_type = faked[(t["id"], name)]
+                    treatments.append((1, rule, fake_type))
                     continue
                 i = entry_for(masks, [*chains[m["id"]], *qualifiers])
                 if i is None or masks[i].get("mask") is None:
