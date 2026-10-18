@@ -1279,6 +1279,38 @@
       "reproduceRecap": {
         "title": "你看到了什么",
         "description": "一份报告，既被解释也被复现：其数字追溯到源列和构建它的刷新，变更的影响在执行前就被列出，报送时的报告与现在的报告并列，而对它的每一次读取都在审计日志中。"
+      },
+      "churnScenario": {
+        "title": "这个演示讲什么",
+        "description": "一家订阅制企业想知道哪些客户即将取消订阅。它的客户及其一年的月度使用情况从它自己的数据库实时读取，数据科学家在浏览器中用这些数据训练模型。"
+      },
+      "churnCustomers": {
+        "title": "客户",
+        "description": "每位客户的套餐、地区、在网时长，以及取消订阅的日期（如已取消）。对 analyst 角色，其电子邮件地址已脱敏：显示为 *** 加域名。"
+      },
+      "churnUsage": {
+        "title": "他们的使用情况",
+        "description": "每位客户十二个月的登录次数和支持工单，关联到所属客户。"
+      },
+      "churnAnalyst": {
+        "title": "以 analyst 身份读取",
+        "description": "之后的查询以 analyst 身份运行，即数据科学家读取数据所用的角色。"
+      },
+      "churnFeatures": {
+        "title": "模型学习所用的特征",
+        "description": "每位客户一行：套餐、在网时长、每月登录次数、全年工单数，以及是否已取消订阅。这是一个通过受治理流水线构建的物化视图。电子邮件地址已脱敏，与提供给 analyst 的一致。"
+      },
+      "churnGraphql": {
+        "title": "通过 GraphQL 获取相同特征",
+        "description": "演示的示例查询以 analyst 身份读取同一视图，使用同样的脱敏：每个接口都提供同一个受治理的答案。"
+      },
+      "churnNotebook": {
+        "title": "在你的浏览器中训练的模型",
+        "description": "在 Notebook 标签页中运行演示的笔记本：以 analyst 身份将特征读入 pandas，用它们训练 scikit-learn 模型，并列出风险最高的客户。Python 在你的浏览器中运行，电子邮件地址仍然是脱敏的。"
+      },
+      "churnRecap": {
+        "title": "你看到了什么",
+        "description": "受治理的数据直接进入数据科学家的笔记本：读取时即应用 analyst 的脱敏，模型训练过程中数据不离开浏览器。在桌面版 Jupyter 中，同样的代码通过 Arrow Flight 读取大批量数据。"
       }
     },
     "status": {
@@ -1371,6 +1403,10 @@
       "reproduce": {
         "title": "复现一份报告",
         "summary": "监管机构就一家银行的敞口报告提出的两个问题：某个数字从何而来，以及报告在报送时的内容，不受此后任何更正的影响。血缘、按截至日期回放和审计日志回答了这两个问题。"
+      },
+      "churn": {
+        "title": "预测客户流失",
+        "summary": "哪些客户即将取消订阅？在浏览器中将他们受治理、已脱敏的特征读入 pandas，并通过演示附带的笔记本训练 scikit-learn 模型。"
       }
     }
   }

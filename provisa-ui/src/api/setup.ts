@@ -30,6 +30,9 @@ export interface SetupStatus {
   demo_tour: DemoTourStepDef[];
   // Where the tour's last "Look around on my own" leaves the visitor (tour.yaml's landing).
   demo_landing: DemoLanding | null;
+  // REQ-2084: the code cells of the notebook the named demo ships (notebook.ipynb), in order;
+  // none when it ships none. The Notebook tab offers them, and a tour's notebook step runs them.
+  demo_notebook: string[];
 }
 
 export interface ExampleQuery {

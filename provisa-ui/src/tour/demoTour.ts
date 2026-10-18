@@ -105,6 +105,9 @@ export interface DemoTourStepDef {
   /** An environment of the model (REQ-2053): shown in the header's environment switcher, picked
    *  on Next, so the steps after it read that environment. */
   env?: string;
+  /** REQ-2084: the demo's notebook (notebook.ipynb): its cells added to the Notebook tab's open
+   *  notebook and run there, in the visitor's browser. */
+  notebook?: true;
   /** A question for Polly: the panel opens on it and its stored `answer`, as an exchange. */
   polly?: string;
   /** REQ-2012: Polly's answer to `polly`, stored when the demo's template was built. */
@@ -117,6 +120,8 @@ export interface DemoTourStepDef {
 
 /** Answers that come from the server are slow on a loaded demo; a run's result waits this long. */
 const RESULT_WAIT_MS = 60000;
+/** A notebook's cells wait for the browser's Python to start and load its packages first. */
+const NOTEBOOK_WAIT_MS = 240000;
 // The SQL explorer's own run-as picker (REQ-1013), not the app-wide role: it is what the explorer's
 // statements run as.
 const RUN_AS = '[data-testid="sql-role"]';
@@ -129,6 +134,7 @@ const SQL_RESULT_ROW = '.sql-results-table tbody tr:not([data-testid="results-gr
 export function demoTourSteps(
   defs: readonly DemoTourStepDef[],
   examples: readonly ExampleQuery[],
+  notebook: readonly string[] = [],
 ): TourStep[] {
   const steps: TourStep[] = [];
   let onPage: string | undefined;
@@ -142,7 +148,7 @@ export function demoTourSteps(
     if (def.as_of !== undefined) context.asOf = def.as_of;
     if (def.as_recorded !== undefined) context.asRecorded = def.as_recorded;
     if (def.sql !== undefined) ran.set(def.key, { sql: def.sql, ...context });
-    steps.push(demoTourStep(def, examples, steps[steps.length - 1], onPage, ran));
+    steps.push(demoTourStep(def, examples, notebook, steps[steps.length - 1], onPage, ran));
   }
   return steps;
 }
@@ -158,6 +164,7 @@ export interface StatementRun {
 function demoTourStep(
   def: DemoTourStepDef,
   examples: readonly ExampleQuery[],
+  notebook: readonly string[],
   before: TourStep | undefined,
   onPage: string | undefined,
   ran: ReadonlyMap<string, StatementRun>,
@@ -237,10 +244,24 @@ function demoTourStep(
       waitMs: RESULT_WAIT_MS,
     };
   }
+  if (def.notebook === true) {
+    // REQ-2084: the demo's notebook, its cells added to the Notebook tab's open notebook and run;
+    // the step is shown once the last has answered.
+    if (notebook.length === 0) {
+      throw new Error(`Tour: step ${def.key} opens the demo's notebook, and it ships none`);
+    }
+    return {
+      ...page,
+      navState: { cells: [...notebook], autoRun: true },
+      readySelector: '[data-testid="notebook-answered"]',
+      element: '[data-testid="notebook-panel"]',
+      waitMs: NOTEBOOK_WAIT_MS,
+    };
+  }
   if (def.group_by !== undefined) {
     return {
       ...page,
-      openView: { groupBy: def.group_by },
+      navState: { view: { groupBy: def.group_by } },
       element: ".graph-stream .gf-frame",
     };
   }

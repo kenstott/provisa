@@ -1,0 +1,14 @@
+# The customers the model is trained on, most support tickets first: their features and whether
+# they cancelled.
+query ChurnFeatures {
+  c__viewChurnFeatures(order_by: [{ tickets: desc }], limit: 20) {
+    customerId
+    email
+    plan
+    region
+    tenureMonths
+    loginsPerMonth
+    tickets
+    churned
+  }
+}

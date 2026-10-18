@@ -19,6 +19,9 @@
     "scriptTitle": "Script {{n}}",
     "newScript": "Nouveau script",
     "closeScript": "Fermer {{title}}",
-    "scriptTabHint": "Double-cliquez pour renommer ; faites glisser, ou Alt+Gauche / Alt+Droite, pour déplacer"
+    "scriptTabHint": "Double-cliquez pour renommer ; faites glisser, ou Alt+Gauche / Alt+Droite, pour déplacer",
+    "demoNotebookShipped": "Cette démo fournit un notebook.",
+    "demoNotebookOpen": "Ajouter le notebook de la démo",
+    "demoNotebookHint": "Ajoute ses cellules au notebook ouvert, à exécuter avec votre rôle actuel."
   }
 }

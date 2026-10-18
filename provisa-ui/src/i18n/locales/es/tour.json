@@ -1279,6 +1279,38 @@
       "reproduceRecap": {
         "title": "Lo que ha visto",
         "description": "Un informe, explicado y reproducido: su cifra rastreada hasta sus columnas de origen y la actualización que lo construyó, el impacto de un cambio nombrado antes de hacerlo, el informe tal como se presentó junto al informe actual y cada lectura en el registro de auditoría."
+      },
+      "churnScenario": {
+        "title": "De qué trata esta demo",
+        "description": "Una empresa de suscripciones quiere saber qué clientes están a punto de darse de baja. Sus clientes y un año de su uso mensual se leen en vivo desde su propia base de datos, y un científico de datos entrena un modelo con ellos en el navegador."
+      },
+      "churnCustomers": {
+        "title": "Los clientes",
+        "description": "El plan, la región y la antigüedad de cada cliente, y el día en que se dio de baja, si lo hizo. Su dirección de correo está enmascarada para el rol analyst: llega como *** y su dominio."
+      },
+      "churnUsage": {
+        "title": "Su uso",
+        "description": "Doce meses de inicios de sesión y tickets de soporte de cada cliente, unidos al cliente al que pertenecen."
+      },
+      "churnAnalyst": {
+        "title": "Leído como analyst",
+        "description": "Las consultas que siguen se ejecutan como analyst, el rol con el que lee el científico de datos."
+      },
+      "churnFeatures": {
+        "title": "Las características de las que aprende el modelo",
+        "description": "Una fila por cliente: plan, antigüedad, inicios de sesión al mes, tickets en el año y si se dio de baja. Una vista materializada, construida por el pipeline gobernado. Las direcciones de correo están enmascaradas, tal como se le sirven a analyst."
+      },
+      "churnGraphql": {
+        "title": "Las mismas características por GraphQL",
+        "description": "La consulta de ejemplo de la demo lee la misma vista como analyst, con el mismo enmascaramiento: cada interfaz sirve una única respuesta gobernada."
+      },
+      "churnNotebook": {
+        "title": "Un modelo, entrenado en su navegador",
+        "description": "El notebook de la demo, ejecutado en la pestaña Notebook: las características leídas en pandas como analyst, un modelo de scikit-learn entrenado con ellas y los clientes con más riesgo listados. Python se ejecuta en su navegador, y las direcciones de correo siguen enmascaradas."
+      },
+      "churnRecap": {
+        "title": "Lo que ha visto",
+        "description": "Datos gobernados directamente en el notebook de un científico de datos: el enmascaramiento de analyst aplicado al leerlos, y un modelo entrenado sin que los datos salgan del navegador. En un Jupyter de escritorio, el mismo código lee grandes volúmenes por Arrow Flight."
       }
     },
     "status": {
@@ -1371,6 +1403,10 @@
       "reproduce": {
         "title": "Reproducir un informe",
         "summary": "Las dos preguntas de un regulador sobre el informe de exposición de un banco: de dónde salió una cifra y qué decía el informe cuando se presentó, sin que le afecte una corrección posterior. El linaje, la reproducción a una fecha y el registro de auditoría responden a ambas."
+      },
+      "churn": {
+        "title": "Predecir la baja de clientes",
+        "summary": "¿Qué clientes están a punto de darse de baja? Sus características gobernadas y enmascaradas, leídas en pandas en el navegador, y un modelo de scikit-learn entrenado con ellas desde el notebook que incluye la demo."
       }
     }
   }

@@ -24,6 +24,7 @@ demo/named/<name>/
   setup.yaml            # optional — commands and MV refreshes to run once after the server is up
   tour.yaml             # the demo tour, one step per object it shows
   queries/              # named example queries the tour or Polly can reference
+  notebook.ipynb        # optional — a notebook the Notebook tab offers and a notebook step runs
   Dockerfile.seeder     # if the demo self-seeds (recommended)
   seed.py               # entrypoint for the seeder service
   generate_*.py         # one per data store, optional but conventional
@@ -488,6 +489,7 @@ Each step has:
 | `as_of` | an ISO 8601 time | SQL explorer's "As of" picker; the statements after it read bitemporal views as of it |
 | `as_recorded` | an ISO 8601 time | SQL explorer's "As recorded at" picker; the statements after it read bitemporal views as Provisa had recorded them then |
 | `as_recorded_from` | `{step: <an earlier sql step's key>, row: <0-based>, column: <a column it returns>}` | SQL explorer's "As recorded at" picker, set to that value of the earlier step's answer when the step runs |
+| `notebook` | `true` | Notebook tab: the demo's `notebook.ipynb` cells added to the open notebook and run |
 
 A `polly` step is answered once when the demo's bundle is built (Polly asked through OpenRouter on
 the sandbox's model, `OPENROUTER_API_KEY` given to the build; the answers are stored beside the
@@ -496,6 +498,16 @@ that stored answer. Nothing is asked live. The question must be one of the demo'
 bake-off questions: `QUESTIONS["<demo>"]` in `tests/integration/polly_bakeoff_questions.py`, each
 with the SQL over the demo's tables whose rows are its right answers. A demo with no stored answer
 leaves the step out.
+
+A `notebook` step runs the demo's `notebook.ipynb` in the visitor's browser: its code cells are
+added to the Notebook tab's open notebook and run in turn, and the step is shown once the last has
+answered. The setup status sends the cells as `demo_notebook`, and the Notebook tab also offers
+them to a visitor who skipped the tour ("Add the demo's notebook"). The tour test refuses the step
+when the demo ships no notebook, when its first code cell does not import `provisa_client` and
+call `provisa_client.sign_in()`, and when a statement it reads (`provisa_client.query("...")`)
+names anything but the demo's own tables and views. [tool-verified: `provisa/core/demo.py`
+`demo_notebook`, `provisa-ui/src/tour/demoTour.ts`, `tests/unit/test_named_demo_tour.py`
+`_check_notebook`]
 
 An `as_recorded_from` step is for a time Provisa stamps, which the tour cannot know when it is
 written: a recording time, read from the answer of a `sql` step before it. The tour runner runs

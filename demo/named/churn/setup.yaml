@@ -1,0 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Run once after the server is up (REQ-2016): the features the model is trained on, built through
+# the governed pipeline.
+steps:
+- refresh: churn_features

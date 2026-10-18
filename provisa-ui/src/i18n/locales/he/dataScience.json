@@ -19,6 +19,9 @@
     "scriptTitle": "סקריפט {{n}}",
     "newScript": "סקריפט חדש",
     "closeScript": "סגירת {{title}}",
-    "scriptTabHint": "לחיצה כפולה לשינוי שם; גרירה, או Alt+שמאלה / Alt+ימינה, להזזה"
+    "scriptTabHint": "לחיצה כפולה לשינוי שם; גרירה, או Alt+שמאלה / Alt+ימינה, להזזה",
+    "demoNotebookShipped": "ההדגמה הזו כוללת מחברת.",
+    "demoNotebookOpen": "הוספת המחברת של ההדגמה",
+    "demoNotebookHint": "מוסיף את התאים שלה למחברת הפתוחה, להרצה בתפקיד הנוכחי שלך."
   }
 }

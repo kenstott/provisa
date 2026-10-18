@@ -1,0 +1,60 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+#
+# The churn demo's own tour (REQ-2010): the story of the demo, told with its own data. The step
+# kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name here is checked
+# against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
+# tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: the business's question (who is about to cancel); its customers and their usage, the
+# email mask the analyst is served; the features the model is trained on, read as the analyst in
+# SQL and over GraphQL; then the demo's notebook (notebook.ipynb, REQ-2084) run in the Notebook
+# tab -- the same features read into pandas as the analyst, a model trained and the customers most
+# at risk listed, email addresses still masked; and a recap, with how a desktop notebook reads
+# large pulls over Arrow Flight with the same code.
+landing:
+  route: /notebook
+  capability: query_development
+steps:
+- key: churnScenario
+  route: /sources
+  capability: source_registration
+  source: churn-db
+- key: churnCustomers
+  route: /tables
+  capability: table_registration
+  table: churn-db.customers
+- key: churnUsage
+  route: /relationships
+  capability: create_relationship
+  relationship: USED_BY
+- key: churnAnalyst
+  route: /sql
+  capability: query_development
+  role: analyst
+- key: churnFeatures
+  sql: >-
+    SELECT f.customer_id, f.email, f.plan, f.tenure_months, f.logins_per_month, f.tickets,
+      f.churned
+    FROM "churn"."view_churn_features" AS f
+    ORDER BY f.tickets DESC
+    LIMIT 20
+- key: churnGraphql
+  route: /query
+  capability: query_development
+  example: 1-churn-features
+- key: churnNotebook
+  route: /notebook
+  capability: query_development
+  notebook: true
+- key: churnRecap
+  route: /tables
+  capability: table_registration
+  table: churn-db.usage

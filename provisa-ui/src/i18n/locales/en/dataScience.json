@@ -19,6 +19,9 @@
     "scriptTitle": "Script {{n}}",
     "newScript": "New script",
     "closeScript": "Close {{title}}",
-    "scriptTabHint": "Double-click to rename; drag, or Alt+Left / Alt+Right, to move"
+    "scriptTabHint": "Double-click to rename; drag, or Alt+Left / Alt+Right, to move",
+    "demoNotebookShipped": "This demo ships a notebook.",
+    "demoNotebookOpen": "Add the demo's notebook",
+    "demoNotebookHint": "Adds its cells to the open notebook, to run as your current role."
   }
 }

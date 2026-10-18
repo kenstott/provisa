@@ -247,7 +247,7 @@ describe("a demo's steps, as the runner walks them", () => {
       EXAMPLES,
     );
     expect(run.openQuery).toEqual({ stateKey: "query", text: "MATCH (p:P) RETURN p" });
-    expect(grouped.openView).toEqual({ groupBy: "degTotal" });
+    expect(grouped.navState).toEqual({ view: { groupBy: "degTotal" } });
     expect(grouped.openQuery).toBeUndefined();
     expect(grouped.element).toBe(".graph-stream .gf-frame");
   });
@@ -283,6 +283,25 @@ describe("a demo's steps, as the runner walks them", () => {
     );
   });
 
+  it("hands the demo's notebook cells to the Notebook tab and waits for them to answer", () => {
+    const cells = ["import provisa_client\nprovisa_client.sign_in()", "df.head()"];
+    const [step] = demoTourSteps(
+      [{ key: "n", route: "/notebook", capability: "query_development", notebook: true }],
+      EXAMPLES,
+      cells,
+    );
+    expect(step.navState).toEqual({ cells, autoRun: true });
+    expect(step.openQuery).toBeUndefined();
+    expect(step.readySelector).toBe('[data-testid="notebook-answered"]');
+    expect(step.element).toBe('[data-testid="notebook-panel"]');
+  });
+
+  it("refuses a notebook step when the demo ships no notebook", () => {
+    expect(() => demoTourSteps([{ key: "n", notebook: true }], EXAMPLES)).toThrow(
+      /opens the demo's notebook, and it ships none/,
+    );
+  });
+
   it("refuses a step naming an example the demo does not ship", () => {
     expect(() => demoTourSteps([{ key: "x", example: "9-missing" }], EXAMPLES)).toThrow(
       /names example "9-missing"/,
@@ -309,6 +328,7 @@ const WEBLOGS: NamedDemo = {
     { key: "weblogsDbLog", source: "shop_db_log" },
   ],
   landing: null,
+  notebook: [],
 };
 
 function Launcher() {
@@ -500,7 +520,7 @@ describe("the tour button in a named demo", () => {
   it("runs the product tour where no named demo has a tour", async () => {
     const { STANDARD_DEMO_ORG } = await import("../test-utils/tourOrg");
     org.current = STANDARD_DEMO_ORG;
-    renderTour({ name: null, exampleQueries: [], tour: [], landing: null });
+    renderTour({ name: null, exampleQueries: [], tour: [], landing: null, notebook: [] });
     fireEvent.click(screen.getByText("launch"));
     await act(async () => chunksResolve());
     await act(async () => vi.advanceTimersByTime(2000));
@@ -562,7 +582,13 @@ describe("the end of a named demo's tour: where next?", () => {
 
 describe("a freshly onboarded org, started as no named demo", () => {
   // The status of a deployment no named demo was started as: the onboard-org flow's.
-  const FRESH = { named_demo: null, example_queries: [], demo_tour: [], demo_landing: null };
+  const FRESH = {
+    named_demo: null,
+    example_queries: [],
+    demo_tour: [],
+    demo_landing: null,
+    demo_notebook: [],
+  };
 
   beforeEach(() => {
     localStorage.clear();
@@ -643,6 +669,7 @@ describe("a demo step's statement", () => {
                 { key: "s1", route: "/sql", capability: "query_development", sql: "SELECT 1" },
               ],
               landing: null,
+              notebook: [],
             }}
           >
             <TourProvider>

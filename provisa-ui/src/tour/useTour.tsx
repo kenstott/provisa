@@ -492,7 +492,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const allSteps = useMemo(
     () => [
       ...TOUR_STEPS,
-      ...demoTourSteps(namedDemo.tour.filter(demoStepShown), namedDemo.exampleQueries),
+      ...demoTourSteps(
+        namedDemo.tour.filter(demoStepShown),
+        namedDemo.exampleQueries,
+        namedDemo.notebook,
+      ),
     ],
     [namedDemo],
   );
@@ -697,13 +701,14 @@ export function TourProvider({ children }: { children: ReactNode }) {
           }
           await nextPaint();
           if (cancelled) return;
-        } else if (route && step.openView) {
-          // REQ-2010: the frame on screen, viewed again: once per visit, as a statement is.
+        } else if (route && step.navState) {
+          // The page's state with no statement (the Graph frame's view, REQ-2010; the demo
+          // notebook's cells, REQ-2084): once per visit, as a statement is.
           currentPathRef.current = route;
           const entry = `${visitRef.current}:${attempt}`;
           if (handedRef.current !== entry) {
             handedRef.current = entry;
-            navigate(route, { state: { view: step.openView } });
+            navigate(route, { state: step.navState });
           }
           await nextPaint();
           if (cancelled) return;

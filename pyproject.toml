@@ -272,6 +272,9 @@ dev = [
     # Test-time deps that were present-but-undeclared in the old venv (recreating
     # the venv dropped them): pandas for provisa_client.query_df. Declared so `uv sync` keeps it.
     "pandas",
+    # REQ-2085: tests/integration/test_churn_demo.py runs the churn demo's notebook, which trains
+    # a scikit-learn model, as a desktop Jupyter runs it.
+    "scikit-learn>=1.9",
     # Direct-driver libraries the unit suite exercises (test_drivers/routing/transpiler).
     # Declared so `uv sync` installs them and the driver tests run instead of skipping.
     "aiomysql",

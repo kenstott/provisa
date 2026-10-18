@@ -1279,6 +1279,38 @@
       "reproduceRecap": {
         "title": "Wat u hebt gezien",
         "description": "Eén rapport, uitgelegd en gereproduceerd: het cijfer teruggevolgd tot de bronkolommen en de verversing die het bouwde, de impact van een wijziging genoemd voordat die wordt doorgevoerd, het rapport zoals ingediend naast het rapport nu, en elke leesactie ervan in het auditlog."
+      },
+      "churnScenario": {
+        "title": "Waar deze demo over gaat",
+        "description": "Een abonnementsbedrijf wil weten welke klanten op het punt staan op te zeggen. Zijn klanten en een jaar van hun maandelijkse gebruik worden live uit zijn eigen database gelezen, en een data scientist traint er in de browser een model op."
+      },
+      "churnCustomers": {
+        "title": "De klanten",
+        "description": "Het abonnement, de regio en de klantduur van elke klant, en de dag waarop die heeft opgezegd, als dat zo is. Het e-mailadres is gemaskeerd voor de rol analyst: het komt binnen als *** met het domein."
+      },
+      "churnUsage": {
+        "title": "Hun gebruik",
+        "description": "Twaalf maanden aanmeldingen en supporttickets van elke klant, gekoppeld aan de klant waartoe ze horen."
+      },
+      "churnAnalyst": {
+        "title": "Gelezen als analyst",
+        "description": "De query's hierna draaien als analyst, de rol waarmee de data scientist leest."
+      },
+      "churnFeatures": {
+        "title": "De kenmerken waarvan het model leert",
+        "description": "Eén rij per klant: abonnement, klantduur, aanmeldingen per maand, tickets in het jaar en of de klant heeft opgezegd. Een gematerialiseerde view, gebouwd via de gegovernede pipeline. De e-mailadressen zijn gemaskeerd, zoals analyst ze krijgt."
+      },
+      "churnGraphql": {
+        "title": "Dezelfde kenmerken via GraphQL",
+        "description": "De voorbeeldquery van de demo leest dezelfde view als analyst, met dezelfde maskering: elke interface levert één gegoverned antwoord."
+      },
+      "churnNotebook": {
+        "title": "Een model, getraind in je browser",
+        "description": "Het notebook van de demo, uitgevoerd op het tabblad Notebook: de kenmerken als analyst in pandas gelezen, een scikit-learn-model erop getraind en de klanten met het hoogste risico op een rij. Python draait in je browser, en de e-mailadressen blijven gemaskeerd."
+      },
+      "churnRecap": {
+        "title": "Wat je hebt gezien",
+        "description": "Gegovernede data rechtstreeks in het notebook van een data scientist: de maskering van analyst toegepast bij het lezen, en een model getraind zonder dat de data de browser verlaat. In een desktop-Jupyter leest dezelfde code grote hoeveelheden via Arrow Flight."
       }
     },
     "status": {
@@ -1371,6 +1403,10 @@
       "reproduce": {
         "title": "Een rapport reproduceren",
         "summary": "De twee vragen van een toezichthouder over het exposure-rapport van een bank: waar een cijfer vandaan kwam, en wat het rapport zei toen het werd ingediend, onaangetast door een latere correctie. Lineage, terugspelen per datum en het auditlog beantwoorden beide."
+      },
+      "churn": {
+        "title": "Klantverloop voorspellen",
+        "summary": "Welke klanten staan op het punt op te zeggen? Hun gegovernede, gemaskeerde kenmerken in de browser in pandas gelezen, en een scikit-learn-model erop getraind vanuit het notebook dat bij de demo hoort."
       }
     }
   }

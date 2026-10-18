@@ -85033,3 +85033,71 @@ Then the SQL explorer reads the report as Provisa had recorded it then, and the 
   stakeholders:
   - compliance
   - app-developer
+- id: REQ-2084
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: 'A named demo may ship a notebook (notebook.ipynb beside its tour.yaml). The setup status carries its code cells, in order, as demo_notebook. The Notebook tab offers it: "Add the demo''s notebook" adds its cells to the open notebook, to run as the user''s current role. A tour step notebook: true (on /notebook) hands the cells to the Notebook tab and runs them in the visitor''s browser, and is shown once they have answered. The step hands them over as navigation state, the same mechanism the Graph page''s grouped frame uses. The tour test refuses a notebook step when the demo ships none, a first cell that does not import provisa_client and call sign_in(), and a statement the notebook reads that names anything but the demo''s own tables and views.'
+  use_case: A data-science demo's visitor runs the demo's own notebook in the browser from the tour, or adds it themselves from the Notebook tab after skipping the tour.
+  scenario: 'Given a named demo that ships notebook.ipynb
+
+
+
+    When its tour reaches its notebook step
+
+
+
+    Then its cells are added to the Notebook tab''s open notebook and run, and the step is shown once they have answered; and a visitor who skipped the tour is offered the same cells on the Notebook tab'
+  related_reqs:
+  - REQ-2071
+  - REQ-2010
+  notes: 'Lead (2026-10-18): offered on the Notebook tab as a demo''s examples are offered outside the tour; the step carries navState with the cells rather than a new openQuery stateKey, so one mechanism.'
+  code:
+  - provisa/core/demo.py
+  - provisa/api/setup_router.py
+  - provisa-ui/src/tour/demoTour.ts
+  - provisa-ui/src/tour/useTour.tsx
+  - provisa-ui/src/tour/tourSteps.ts
+  - provisa-ui/src/pages/DataSciencePage.tsx
+  - provisa-ui/src/context/NamedDemoContext.tsx
+  tests:
+  - tests/unit/test_named_demo_tour.py
+  - provisa-ui/src/__tests__/tourDemoTrack.test.tsx
+  - provisa-ui/src/__tests__/DataSciencePage.demoNotebook.test.tsx
+- id: REQ-2085
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: 'The named demo churn answers which customers of a subscription business are about to cancel. Its customers and twelve months of their usage are read live from its Postgres. A materialized view of one row a customer (plan, region, tenure, sign-ins a month, tickets in the year, whether they cancelled) is built through the governed pipeline by its setup. Email addresses are masked for its analyst role. Its tour reads the features as the analyst in SQL and over GraphQL, then runs the demo''s notebook in the Notebook tab: the features read into pandas as the analyst, a scikit-learn model trained on them and the customers most at risk listed, all in the browser on Pyodide. The tour says a desktop Jupyter reads large pulls over Arrow Flight with the same code.'
+  use_case: A data scientist sees governed, masked data reach a notebook and train a model without the data leaving the browser.
+  scenario: 'Given the churn demo set up
+
+
+
+    When its notebook runs as the analyst
+
+
+
+    Then every email address arrives masked, all 1,500 customers are read, and the model scores above 0.75 AUC on customers it never saw'
+  related_reqs:
+  - REQ-2084
+  - REQ-2071
+  - REQ-2016
+  - REQ-2010
+  code:
+  - demo/named/churn/config.yaml
+  - demo/named/churn/setup.yaml
+  - demo/named/churn/tour.yaml
+  - demo/named/churn/notebook.ipynb
+  - demo/named/churn/db/init.sql
+  tests:
+  - tests/integration/test_churn_demo.py
+  - tests/unit/test_named_demo_tour.py

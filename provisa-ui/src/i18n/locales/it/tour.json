@@ -1279,6 +1279,38 @@
       "reproduceRecap": {
         "title": "Cosa hai visto",
         "description": "Un report, spiegato e riprodotto: la sua cifra ricondotta alle colonne di origine e all'aggiornamento che lo ha costruito, l'impatto di una modifica nominato prima che venga fatta, il report come presentato accanto al report attuale e ogni sua lettura nel log di audit."
+      },
+      "churnScenario": {
+        "title": "Di cosa parla questa demo",
+        "description": "Un'azienda in abbonamento vuole sapere quali clienti stanno per disdire. I suoi clienti e un anno del loro utilizzo mensile vengono letti in tempo reale dal suo database, e un data scientist addestra un modello su di essi nel browser."
+      },
+      "churnCustomers": {
+        "title": "I clienti",
+        "description": "Il piano, la regione e l'anzianità di ogni cliente, e il giorno in cui ha disdetto, se lo ha fatto. Il suo indirizzo email è mascherato per il ruolo analyst: arriva come *** seguito dal dominio."
+      },
+      "churnUsage": {
+        "title": "Il loro utilizzo",
+        "description": "Dodici mesi di accessi e ticket di assistenza di ogni cliente, uniti al cliente a cui appartengono."
+      },
+      "churnAnalyst": {
+        "title": "Letto come analyst",
+        "description": "Le query successive vengono eseguite come analyst, il ruolo con cui legge il data scientist."
+      },
+      "churnFeatures": {
+        "title": "Le variabili da cui il modello impara",
+        "description": "Una riga per cliente: piano, anzianità, accessi al mese, ticket nell'anno e se ha disdetto. Una vista materializzata, costruita tramite la pipeline governata. Gli indirizzi email sono mascherati, come vengono serviti ad analyst."
+      },
+      "churnGraphql": {
+        "title": "Le stesse variabili via GraphQL",
+        "description": "La query di esempio della demo legge la stessa vista come analyst, con lo stesso mascheramento: ogni interfaccia serve un'unica risposta governata."
+      },
+      "churnNotebook": {
+        "title": "Un modello, addestrato nel tuo browser",
+        "description": "Il notebook della demo, eseguito nella scheda Notebook: le variabili lette in pandas come analyst, un modello scikit-learn addestrato su di esse e l'elenco dei clienti più a rischio. Python viene eseguito nel tuo browser, e gli indirizzi email restano mascherati."
+      },
+      "churnRecap": {
+        "title": "Cosa hai visto",
+        "description": "Dati governati direttamente nel notebook di un data scientist: il mascheramento di analyst applicato in lettura, e un modello addestrato senza che i dati lascino il browser. In un Jupyter desktop lo stesso codice legge grandi volumi tramite Arrow Flight."
       }
     },
     "status": {
@@ -1371,6 +1403,10 @@
       "reproduce": {
         "title": "Riprodurre un report",
         "summary": "Le due domande di un regolatore sul report di esposizione di una banca: da dove viene una cifra e cosa diceva il report quando è stato presentato, senza l'effetto di una correzione successiva. La derivazione, la rilettura a una data e il log di audit rispondono a entrambe."
+      },
+      "churn": {
+        "title": "Prevedere l'abbandono dei clienti",
+        "summary": "Quali clienti stanno per disdire? Le loro variabili governate e mascherate, lette in pandas nel browser, e un modello scikit-learn addestrato su di esse dal notebook incluso nella demo."
       }
     }
   }

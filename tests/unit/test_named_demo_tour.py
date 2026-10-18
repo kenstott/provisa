@@ -46,6 +46,7 @@ _TARGETS = (
     "as_recorded_from",
     "polly",
     "image",
+    "notebook",
 )
 # The query parameters a table's REST endpoint declares (provisa/api/rest/openapi_spec.py).
 _REST_PARAMS = {
@@ -75,6 +76,12 @@ def _route_capabilities() -> dict[str, str]:
         cap = re.search(r'capability=\{?"([a-z_]+)"', block)
         if path and cap:
             out[path.group(1)] = cap.group(1)
+    # Routes made from a list of paths, one gate for all (the Python and Notebook tabs).
+    for m in re.finditer(
+        r'\{\[([^\]]+)\]\.map\(\(path\) => \([\s\S]*?capability=\{?"([a-z_]+)"', source
+    ):
+        for path in re.findall(r'"([^"]+)"', m.group(1)):
+            out[path] = m.group(2)
     # The Admin surfaces are a `[path, capability]` table rather than JSX routes.
     for m in re.finditer(r'\["(/admin/[^"]+)",\s*"([a-z_]+)"\]', source):
         out[m.group(1)] = m.group(2)
@@ -310,6 +317,11 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
                 )
             }
             assert read and read <= relations, f"{step['key']}: reads {read - relations}"
+        if "notebook" in step:
+            # REQ-2084: the demo's notebook, its cells added to the Notebook tab's and run there.
+            assert step["notebook"] is True, step
+            assert page == "/notebook", f"{step['key']}: the notebook runs on /notebook, not {page}"
+            _check_notebook(home, relations)
         if "sql" in step:
             sql_steps[step["key"]] = step["sql"]
             read = {
@@ -317,6 +329,76 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
                 for t in sqlglot.parse_one(step["sql"], read="postgres").find_all(sqlglot.exp.Table)
             }
             assert read and read <= relations, f"{step['key']}: reads {read - relations}"
+
+
+def _notebook_code(cells: list[str]) -> list[str]:
+    """Each cell as Python: a line IPython runs as a magic or a shell command (``%pip``) is left
+    out, as the kernel takes it before Python does."""
+    return [
+        "\n".join(line for line in cell.splitlines() if not line.lstrip().startswith(("%", "!")))
+        for cell in cells
+    ]
+
+
+def _check_notebook(home: Path, relations: set[str]) -> None:
+    """The demo's notebook: Python cells, the first signing in as the page's user, and every
+    statement it reads (``provisa_client.query("...")``) over the demo's tables and views."""
+    import ast
+
+    cells = demo.demo_notebook(home)
+    assert cells, f"{home.name}: a notebook step needs {demo.DEMO_NOTEBOOK} beside tour.yaml"
+    code = _notebook_code(cells)
+    assert "import provisa_client" in code[0] and "provisa_client.sign_in()" in code[0], code[0]
+    for cell in code:
+        for call in ast.walk(ast.parse(cell)):
+            if (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "query"
+                and call.args
+                and isinstance(call.args[0], ast.Constant)
+            ):
+                read = {
+                    f"{t.db}.{t.name}"
+                    for t in sqlglot.parse_one(call.args[0].value, read="postgres").find_all(
+                        sqlglot.exp.Table
+                    )
+                }
+                assert read and read <= relations, f"{home.name}: reads {read - relations}"
+
+
+def test_a_demo_s_notebook_is_its_code_cells_in_order(tmp_path):
+    import json
+
+    (tmp_path / "notebook.ipynb").write_text(
+        json.dumps(
+            {
+                "cells": [
+                    {"cell_type": "code", "source": ["import provisa_client\n", "x = 1"]},
+                    {"cell_type": "markdown", "source": "Words"},
+                    {"cell_type": "code", "source": "x + 1"},
+                ]
+            }
+        )
+    )
+    assert demo.demo_notebook(tmp_path) == ["import provisa_client\nx = 1", "x + 1"]
+    assert demo.demo_notebook(tmp_path / "none") == []
+    assert demo.demo_notebook(None) == []
+
+
+def test_a_notebook_step_needs_the_demo_to_ship_one():
+    with pytest.raises(AssertionError, match="needs notebook.ipynb"):
+        _check_steps(
+            _WEBLOGS,
+            [
+                {
+                    "key": "n",
+                    "route": "/notebook",
+                    "capability": "query_development",
+                    "notebook": True,
+                }
+            ],
+        )
 
 
 @pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])

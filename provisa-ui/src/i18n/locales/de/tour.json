@@ -1279,6 +1279,38 @@
       "reproduceRecap": {
         "title": "Was Sie gesehen haben",
         "description": "Ein Bericht, erklärt und reproduziert: seine Zahl bis zu den Quellspalten und der Aktualisierung zurückverfolgt, die ihn erstellt hat, die Auswirkung einer Änderung benannt, bevor sie vorgenommen wird, der Bericht wie eingereicht neben dem Bericht jetzt, und jeder Lesezugriff darauf im Audit-Log."
+      },
+      "churnScenario": {
+        "title": "Worum es in dieser Demo geht",
+        "description": "Ein Abonnementunternehmen möchte wissen, welche Kunden kurz vor der Kündigung stehen. Seine Kunden und ein Jahr ihrer monatlichen Nutzung werden live aus seiner eigenen Datenbank gelesen, und ein Data Scientist trainiert im Browser ein Modell darauf."
+      },
+      "churnCustomers": {
+        "title": "Die Kunden",
+        "description": "Tarif, Region und Kundendauer jedes Kunden sowie der Tag seiner Kündigung, falls er gekündigt hat. Die E-Mail-Adresse ist für die Rolle analyst maskiert: Sie kommt als *** mit ihrer Domain an."
+      },
+      "churnUsage": {
+        "title": "Ihre Nutzung",
+        "description": "Zwölf Monate Anmeldungen und Support-Tickets jedes Kunden, verknüpft mit dem Kunden, zu dem sie gehören."
+      },
+      "churnAnalyst": {
+        "title": "Als analyst gelesen",
+        "description": "Die Abfragen danach laufen als analyst, die Rolle, mit der der Data Scientist liest."
+      },
+      "churnFeatures": {
+        "title": "Die Merkmale, aus denen das Modell lernt",
+        "description": "Eine Zeile pro Kunde: Tarif, Kundendauer, Anmeldungen pro Monat, Tickets im Jahr und ob er gekündigt hat. Eine materialisierte Sicht, über die governte Pipeline erstellt. Die E-Mail-Adressen sind maskiert, so wie analyst sie erhält."
+      },
+      "churnGraphql": {
+        "title": "Dieselben Merkmale über GraphQL",
+        "description": "Die Beispielabfrage der Demo liest dieselbe Sicht als analyst, mit derselben Maskierung: Jede Schnittstelle liefert dieselbe governte Antwort."
+      },
+      "churnNotebook": {
+        "title": "Ein Modell, in Ihrem Browser trainiert",
+        "description": "Das Notebook der Demo, im Notebook-Tab ausgeführt: die Merkmale als analyst in pandas gelesen, ein scikit-learn-Modell darauf trainiert und die gefährdetsten Kunden aufgelistet. Python läuft in Ihrem Browser, und die E-Mail-Adressen bleiben maskiert."
+      },
+      "churnRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Governte Daten direkt im Notebook eines Data Scientists: die Maskierung für analyst schon beim Lesen angewendet und ein Modell trainiert, ohne dass die Daten den Browser verlassen. In einem Desktop-Jupyter liest derselbe Code große Datenmengen über Arrow Flight."
       }
     },
     "status": {
@@ -1371,6 +1403,10 @@
       "reproduce": {
         "title": "Einen Bericht reproduzieren",
         "summary": "Zwei Fragen einer Aufsichtsbehörde zum Exposure-Bericht einer Bank: woher eine Zahl stammt und was der Bericht bei der Einreichung aussagte, unberührt von einer seitdem erfolgten Korrektur. Lineage, Wiedergabe zum Stand eines Datums und das Audit-Log beantworten beide."
+      },
+      "churn": {
+        "title": "Kundenabwanderung vorhersagen",
+        "summary": "Welche Kunden stehen kurz vor der Kündigung? Ihre governten, maskierten Merkmale im Browser in pandas gelesen und ein scikit-learn-Modell darauf trainiert, aus dem Notebook, das die Demo mitbringt."
       }
     }
   }
