@@ -160,11 +160,14 @@ def test_every_tour_statement_answers_rows_as_its_reader(nodes):
 def test_a_group_analyst_reads_eu_customers_pseudonymised(nodes):
     rows = _rows(
         nodes["us"],
-        'SELECT subsidiary, customer FROM "retail"."view_group_customers"',
+        # The role's row limit (100) cuts an unfiltered read to the US rows, which come first.
+        'SELECT subsidiary, customer FROM "retail"."view_group_customers" WHERE subsidiary = \'eu\'',
         "group_analyst",
     )
-    eu = [r["customer"] for r in rows if r["subsidiary"] == "eu"]
-    assert eu and all(re.fullmatch(r"[0-9a-f]{32}", c) for c in eu), (rows, _log_tail(nodes["us"]))
+    eu = [r["customer"] for r in rows]
+    assert eu and all(re.fullmatch(r"[0-9a-f]{32}", c) for c in eu), (
+        f"{rows}\n--- the node's log ---\n{_log_tail(nodes['us'])}"
+    )
     refused = _sql(nodes["us"], 'SELECT email FROM "retail"."eu_customers"', "group_analyst")
     assert refused.status_code in (400, 403), refused.text
 

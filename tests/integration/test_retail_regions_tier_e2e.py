@@ -61,7 +61,7 @@ def tier(tmp_path_factory):
         timeout=2400,
     )
     print(done.stdout[-4000:])
-    assert done.returncode == 0, (done.stdout[-4000:], done.stderr[-8000:])
+    assert done.returncode == 0, f"{done.stdout[-4000:]}\n{done.stderr[-12000:]}"
     (bundle,) = out.glob("retail-*.tar.gz")
     registry, stack = DemoRegistry(), _Stack()
     registry.start()
@@ -71,7 +71,7 @@ def tier(tmp_path_factory):
         registry.push(bundle)
         bundles = work / "data" / "demo-bundles"
         synced = registry.sync("retail", bundles)
-        assert synced.returncode == 0, (synced.stdout, synced.stderr)
+        assert synced.returncode == 0, f"{synced.stdout}\n{synced.stderr}"
         control_plane = stack.url(stack.engine_port, "provisa", "+psycopg")
         server = IsolatedServer(
             "sbxrtiere2e",
@@ -110,8 +110,7 @@ def _open(server) -> dict:
         if opened.status_code == 200:
             return opened.json()
         assert opened.json().get("code") == "sandbox.demo_not_ready", (
-            opened.text,
-            server.dump_stderr_debug()[-6000:],
+            f"{opened.text}\n{server.dump_stderr_debug()[-6000:]}"
         )
         assert time.monotonic() < deadline, server.dump_stderr_debug()[-6000:]
         time.sleep(3)
@@ -128,7 +127,7 @@ def _rows(server, sandbox: dict, statement: str, role: str) -> list[dict]:
         },
         timeout=300,
     )
-    assert resp.status_code == 200, (resp.text, server.dump_stderr_debug()[-4000:])
+    assert resp.status_code == 200, f"{resp.text}\n{server.dump_stderr_debug()[-12000:]}"
     return resp.json()["data"]["sql"]
 
 
