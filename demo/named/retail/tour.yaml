@@ -38,7 +38,7 @@ steps:
 - key: retailJoin
   route: /relationships
   capability: create_relationship
-  relationship: ASKS_ABOUT
+  relationship: ASKS_ABOUT_EU
 # Group reporting, as the group's analysts read it.
 - key: retailAsAnalyst
   route: /sql
@@ -100,4 +100,4 @@ steps:
 - key: retailRecap
   route: /relationships
   capability: create_relationship
-  relationship: ASKS_ABOUT
+  relationship: ASKS_ABOUT_EU
