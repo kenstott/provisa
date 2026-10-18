@@ -3448,6 +3448,14 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     settings_registry.apply_changes()
     config_watch.start(model_reload.targets)
 
+    # REQ-862: a native engine reads the trace records this process lands itself.
+    from provisa.api.otel_setup import land_traces_natively
+
+    land_traces_natively(
+        bool(state.federation_engine.landed_signals)
+        and not state.federation_engine.has_otel_catalog
+    )
+
     await _start_background_tasks(_log)
 
     await _start_servers(_log)

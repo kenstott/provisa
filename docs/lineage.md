@@ -180,6 +180,29 @@ Response is the same shape as the statement graph, with a `cycles` field added
 }
 ```
 
+## What each refresh was built from (REQ-862)
+
+Each refresh of a materialized view records what it was built from: the version of the view's definition, the version of its inputs and how that version was established, and each output column's source columns and expression. The ops view `"ops"."mv_refresh_lineage"` returns one row per refresh:
+
+| Column | Holds |
+|---|---|
+| `mv_id` | The materialized view refreshed |
+| `target_table` | The table the refresh wrote |
+| `definition_version` | The version of the view's definition |
+| `input_version`, `input_version_kind` | The version of its inputs: an Iceberg snapshot, a watermark, a freshness token or the refresh time |
+| `trace_id` | The refresh's trace in `"ops"."traces"` |
+| `refreshed_at` | When it ran |
+| `column_derivations` | Each output column with its source columns and expression, as JSON |
+
+```sql
+SELECT refreshed_at, definition_version, input_version, input_version_kind
+FROM "ops"."mv_refresh_lineage"
+WHERE mv_id = 'view-view_exposure'
+ORDER BY refreshed_at
+```
+
+The view reads the refresh records in `"ops"."traces"` and answers on every engine that keeps them. On Trino those are the `otel` catalog's Iceberg tables. On DuckDB the server writes its own trace records as Parquet files under its telemetry folder (`PROVISA_TELEMETRY_DIR`, `~/.provisa/telemetry` by default), one file per export batch in a folder per day. The scheduled telemetry compaction (`otel.compact_cron`) merges each day's small files into files of up to 64 MB. Each organization reads only its own refreshes, and the records are kept indefinitely. Spans are recorded only while the OpenTelemetry SDK is enabled (`OTEL_SDK_DISABLED` unset or false).
+
 ## What a column rename or drop would break (REQ-1484)
 
 A column carries two names, and each is stored by a different set of artifacts.

@@ -676,6 +676,14 @@ class NativeEngineBackend(EngineBackend):
             attachment = engine_attachment(state)
             if attachment is not None:
                 self._runtime.attach_region_ops(CATALOG, *attachment)
+        # REQ-862: the ops signals this engine lands itself, read at otel.signals.<table> as
+        # Trino reads its Iceberg catalog -- defined like the region's ops views, over no store.
+        if self.landed_signals:
+            from provisa.observability.native_traces import signal_views, traces_dir
+
+            self._runtime.attach_region_ops(
+                "otel", "signals", {}, signal_views(traces_dir(), self.transpile_physical)
+            )
         return complete
 
     # -- residency prep (REQ-825 stage-4b / REQ-932) ---------------------------

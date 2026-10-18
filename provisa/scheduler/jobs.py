@@ -34,7 +34,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from provisa.core.trino_system_catalogs import OTEL_CATALOG
-from provisa.observability.ops_schema import REQUEST_SPAN_ATTR
+from provisa.observability.ops_schema import CATALOG_DRIVER_SCOPES, REQUEST_SPAN_ATTR
 
 if TYPE_CHECKING:
     from provisa.scheduler.holder import Holders
@@ -45,15 +45,6 @@ logger = logging.getLogger(__name__)
 # REQ-1428: concurrent object-store fetches per compaction chunk. Sized to the object store's
 # round-trip latency rather than to CPU — the work is entirely network wait.
 _OTEL_FETCH_WORKERS = 16
-
-# REQ-1428: the instrumentation scope the collector's parquet-lane filter drops. Named here too
-# because the bucket still holds objects written before that filter shipped.
-# REQ-1910: the catalog database is instrumented through psycopg now; asyncpg stays listed for
-# the objects written while it was the instrumented driver.
-_CATALOG_DRIVER_SCOPES = (
-    "opentelemetry.instrumentation.asyncpg",
-    "opentelemetry.instrumentation.psycopg",
-)
 
 
 # The "org_admin" role is the platform's well-known system execution role for governed
@@ -145,13 +136,17 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
     from provisa.api.app import state
 
     # The Parquet is compacted into the Iceberg ``otel.signals`` tables, which only an engine that
-    # declares the ``otel`` catalog has (Trino). A native engine's telemetry is the dedicated ops
-    # store, written directly — there is nothing to compact into (REQ-302, REQ-303).
-    if (
-        state.shared_federation_engine is None
-        or not state.shared_federation_engine.has_otel_catalog
-    ):
-        logger.debug("compact_otel: the engine has no otel Iceberg catalog — nothing to compact")
+    # declares the ``otel`` catalog has (Trino) (REQ-302, REQ-303). A native engine that lands its
+    # own traces (REQ-862, observability.native_traces) has each day's small batch files merged
+    # into files of up to 64 MB instead; one that lands none has nothing to compact.
+    if state.shared_federation_engine is None:
+        return
+    if not state.shared_federation_engine.has_otel_catalog:
+        if state.shared_federation_engine.landed_signals:
+            from provisa.observability import native_traces
+
+            merged = await asyncio.to_thread(native_traces.compact, native_traces.traces_dir())
+            logger.debug("compact_otel: merged %d native trace files", merged)
         return
 
     # None = compact every date present, oldest first. A backfill pins one date.
@@ -277,7 +272,7 @@ def _drop_foreign_rows(signal: str, table):
     # generated onto the module at import time from the C++ function registry, so they exist at
     # runtime but are not members any reader -- human or checker -- can find in the source.
     if "scope_name" in table.column_names:
-        for scope in _CATALOG_DRIVER_SCOPES:
+        for scope in CATALOG_DRIVER_SCOPES:
             keep = pc.call_function(
                 "not_equal", [table.column("scope_name"), pa.scalar(scope, type=pa.string())]
             )

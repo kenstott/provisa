@@ -34,7 +34,9 @@ class _Runtime:
     """The bound engine runtime: its declared capability, and every statement sent to it."""
 
     def __init__(self, kind: str) -> None:
-        self.has_otel_catalog = build_engine(kind).backend.has_otel_catalog
+        backend = build_engine(kind).backend
+        self.has_otel_catalog = backend.has_otel_catalog
+        self.landed_signals = backend.landed_signals
         self.sent: list[str] = []
 
     def execute_engine_sync(self, sql, params=None, *, session_hints=None, authorization=None):
@@ -74,13 +76,20 @@ async def test_reclaim_runs_the_iceberg_procedures_on_trino(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_compaction_compacts_nothing_into_duckdb(monkeypatch):
+async def test_compaction_compacts_nothing_into_duckdb(monkeypatch, tmp_path):
+    from provisa.observability import native_traces
+
+    monkeypatch.setenv("PROVISA_TELEMETRY_DIR", str(tmp_path))
     runtime = _Runtime("duckdb")
     _state(monkeypatch, runtime)
     compacted: list[str] = []
+    merged: list[str] = []
     monkeypatch.setattr(jobs, "_compact_signal", lambda signal, *a: compacted.append(signal))
+    monkeypatch.setattr(native_traces, "compact", lambda root: merged.append(root) or 0)
     await jobs.compact_otel_signals()
     assert compacted == [] and runtime.sent == []
+    # REQ-862: DuckDB's own trace lane has its day's small files merged instead.
+    assert merged == [native_traces.traces_dir()]
 
 
 @pytest.mark.asyncio

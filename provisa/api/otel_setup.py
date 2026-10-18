@@ -583,6 +583,9 @@ def _make_log_exporter(endpoint: str, protocol: str = "") -> Any:
 _SOURCE_ORDER = ("stored", "env", "config", "default")
 # What this process's exporters were last attached for: (endpoint, service name, protocol).
 _attached: "tuple[str, str, str] | None" = None
+# The internal channel's redaction (observability.telemetry_filter), as setup_otel read it: the
+# native trace lane lands what the internal channel would send.
+_internal_redaction: "tuple[bool, list[str]]" = (False, [])
 
 
 def exporter_settings() -> "tuple[str | None, str, str]":
@@ -620,6 +623,28 @@ def apply_exporter_settings() -> None:
         return
     attach_otlp_exporters(endpoint, service_name, protocol)
     _attached = (endpoint, service_name, protocol)
+
+
+def land_traces_natively(on: bool) -> None:  # REQ-862
+    """Land this process's trace records for a native engine (``observability.native_traces``),
+    or stop. The engine reads them at ``otel.signals.traces``, as Trino reads its Iceberg table;
+    an engine with the ``otel`` catalog, or one reading no signals, has no native lane."""
+    assert _span_exports is not None  # setup_otel builds the provider when the app is created
+    if not on:
+        _span_exports.set("native", None)
+        return
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    from provisa.core import settings_registry
+    from provisa.observability.native_traces import ParquetSpanExporter, traces_dir
+
+    _span_exports.set(
+        "native",
+        BatchSpanProcessor(
+            _make_filtering_exporter(ParquetSpanExporter(traces_dir()), *_internal_redaction),
+            schedule_delay_millis=settings_registry.value("otel.span_export_delay_millis"),
+        ),
+    )
 
 
 def _register_exporter_settings() -> None:
@@ -823,6 +848,8 @@ def setup_otel(
     _internal_filter = _otel_cfg.get("telemetry_filter", {})
     _internal_redact_sql = bool(_internal_filter.get("redact_sql_literals", False))
     _internal_redact_attrs = list(_internal_filter.get("redact_attributes", []))
+    global _internal_redaction
+    _internal_redaction = (_internal_redact_sql, _internal_redact_attrs)
     _support_endpoint = _setting("otel.support_endpoint")
     support_endpoint = _support_endpoint if _support_endpoint is not None else ""
     _support_redact_sql = _setting("otel.support_redact_sql_literals")

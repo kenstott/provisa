@@ -52,11 +52,12 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
 
 from provisa.core.database import sync_engine_from_url
 from provisa.observability.ops_schema import (
-    REQUEST_SPAN_ATTR,
-    TRACE_ATTR_COLS,
     TRACE_DETAIL_RETENTION_HOURS,
+    _ns_to_dt,
     ensure_tables,
+    is_trace_record,
     ops_db_url,
+    trace_row,
 )
 
 log = logging.getLogger(__name__)
@@ -102,21 +103,6 @@ def _attrs(kvs) -> dict:
     return {kv.key: _anyval(kv.value) for kv in kvs}
 
 
-def _ns_to_dt(ns: int) -> datetime | None:
-    """OTLP instant (nanoseconds since the epoch) as a UTC datetime.
-
-    REQ-1435: the ops tables register these columns as timestamps, so the row carries the instant
-    itself rather than its integer encoding. Microsecond is the resolution every store in the lane
-    keeps (Iceberg TIMESTAMP(6), Postgres/DuckDB TIMESTAMP), so the sub-microsecond digits are
-    dropped here rather than silently at the first write.
-    """
-    return (
-        datetime.fromtimestamp(ns / 1_000_000_000, timezone.utc).replace(tzinfo=None)
-        if ns
-        else None
-    )
-
-
 def _date_of(ts: datetime | None) -> date | None:
     if not ts:
         return None
@@ -128,55 +114,25 @@ def _trace_rows(req: ExportTraceServiceRequest) -> list[dict]:
     rows: list[dict] = []
     for rs in req.resource_spans:
         res_attrs = _attrs(rs.resource.attributes)
-        svc = res_attrs.get("service.name")
-        ns = res_attrs.get("service.namespace")
-        res_json = json.dumps(res_attrs)
         for ss in rs.scope_spans:
-            scope = ss.scope.name
             for sp in ss.spans:
-                a = _attrs(sp.attributes)
-                ts = _ns_to_dt(sp.start_time_unix_nano)
-                end = _ns_to_dt(sp.end_time_unix_nano)
-                row = {
-                    "trace_id": sp.trace_id.hex(),
-                    "span_id": sp.span_id.hex(),
-                    "parent_span_id": sp.parent_span_id.hex() or None,
-                    "span_name": sp.name,
-                    "span_kind": int(sp.kind),
-                    "service_name": svc,
-                    "service_namespace": ns,
-                    "timestamp": ts,
-                    "end_timestamp": end,
-                    # Elapsed nanoseconds, per the catalog description. Taken from the wire
-                    # integers, not the rounded datetimes above.
-                    "duration": (
-                        sp.end_time_unix_nano - sp.start_time_unix_nano
-                        if (sp.start_time_unix_nano and sp.end_time_unix_nano)
-                        else None
-                    ),
-                    "status_code": int(sp.status.code),
-                    "status_message": sp.status.message or None,
-                    "scope_name": scope,
-                    "span_attributes": json.dumps(a),
-                    "resource_attributes": res_json,
-                    "table_name": None,
-                    "domain_id": None,
-                    "role_id": None,
-                    "query_text": None,
-                    "tenant_id": None,
-                    "_date": _date_of(ts),
-                }
-                for attr_key, col in TRACE_ATTR_COLS.items():
-                    if attr_key in a:
-                        row[col] = a[attr_key]
-                rows.append(row)
+                rows.append(
+                    trace_row(
+                        trace_id=sp.trace_id.hex(),
+                        span_id=sp.span_id.hex(),
+                        parent_span_id=sp.parent_span_id.hex(),
+                        name=sp.name,
+                        kind=int(sp.kind),
+                        attributes=_attrs(sp.attributes),
+                        resource_attributes=res_attrs,
+                        scope_name=ss.scope.name,
+                        start_ns=sp.start_time_unix_nano,
+                        end_ns=sp.end_time_unix_nano,
+                        status_code=int(sp.status.code),
+                        status_message=sp.status.message,
+                    )
+                )
     return rows
-
-
-def _is_request_record(row: dict) -> bool:
-    """REQ-1910: whether a span row is a record of its own — a request span, or the root span of
-    background work — rather than detail under one."""
-    return row["parent_span_id"] is None or REQUEST_SPAN_ATTR in json.loads(row["span_attributes"])
 
 
 def _detail_retention_hours() -> float:
@@ -344,7 +300,7 @@ async def traces(request: Request) -> Response:
     records: list[dict] = []
     details: list[dict] = []
     for row in _trace_rows(msg):
-        (records if _is_request_record(row) else details).append(row)
+        (records if is_trace_record(row) else details).append(row)
     await _enqueue("traces", records)
     await _enqueue("trace_details", details)
     return Response(

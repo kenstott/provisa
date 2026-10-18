@@ -242,6 +242,11 @@ class EngineRuntime:  # REQ-825, REQ-840
         seeding and catalog-name map use instead of branching on the engine name."""
         return self._backend.has_otel_catalog
 
+    @property
+    def landed_signals(self) -> frozenset[str]:
+        """The ops signal tables the bound engine reads (``EngineBackend.landed_signals``)."""
+        return self._backend.landed_signals
+
     # -- capability introspection (REQ-825): consumer-side features gate on these -----------
 
     @property

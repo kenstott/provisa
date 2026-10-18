@@ -42,6 +42,12 @@ class DuckDBBackend(NativeEngineBackend):
 
     computes_fakes = True  # REQ-1494: provisa.fakes.duckdb_functions, registered in-process
 
+    @property
+    def landed_signals(self) -> frozenset[str]:
+        """REQ-862: the traces this process lands as Parquet (observability.native_traces), read
+        at otel.signals.traces as Trino reads its Iceberg table."""
+        return frozenset({"traces"})
+
     def replica_target(self, state: Any, *, address: Any, args: Any, engine: Any) -> Any:
         """A replica in the embedded DuckDB store file is written through the store broker; a
         replica in any other store by that store's own write face."""

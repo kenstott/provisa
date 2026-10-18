@@ -23,6 +23,7 @@ from provisa.observability.ops_schema import OPS_TABLES
 # Postgres column types (ops_schema's source of truth) mapped to Trino/Iceberg types.
 from provisa.compiler.type_map import OPS_PG_TO_PHYSICAL
 from provisa.federation.trino_types import TrinoConnection, TrinoError
+from provisa.transpiler.transpile import transpile_to_trino
 
 
 def _ops_physical(pg_type: str) -> str:
@@ -35,7 +36,8 @@ def seed_ops_trino(  # REQ-016
     trino_conn: TrinoConnection,
     ops_views: list[tuple[str, list[tuple[str, str, bool]], str]],
 ) -> None:
-    """Create Iceberg schema/tables/views in Trino for the ops domain (idempotent)."""
+    """Create Iceberg schema/tables/views in Trino for the ops domain (idempotent). Each view's
+    SELECT is PostgreSQL (``startup_seed._OPS_VIEWS``), transpiled to Trino's SQL here."""
     _log = logging.getLogger(__name__)
 
     def _exec(ddl: str) -> None:
@@ -126,11 +128,10 @@ def seed_ops_trino(  # REQ-016
     # individually). If tables already exist from a prior run, views are created/refreshed here.
     # Use DROP IF EXISTS + CREATE VIEW for broad Trino version compatibility
     # (CREATE OR REPLACE VIEW for Iceberg requires Trino 418+).
-    for view_name, _, view_ddl in ops_views:
+    for view_name, _, view_select in ops_views:
         try:
             _exec(f"DROP VIEW IF EXISTS otel.signals.{view_name}")
-            clean_ddl = view_ddl.replace("CREATE OR REPLACE VIEW", "CREATE VIEW")
-            _exec(clean_ddl)
+            _exec(f"CREATE VIEW otel.signals.{view_name} AS {transpile_to_trino(view_select)}")
         except Exception:
             _log.warning("ops view %s: create failed", view_name, exc_info=True)
 
