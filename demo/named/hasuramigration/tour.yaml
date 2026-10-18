@@ -29,14 +29,6 @@ steps:
   route: /tables
   capability: table_registration
   table: outfitters.customers
-- key: hasuramigrationAsAna
-  route: /query
-  capability: query_development
-  role: ana
-- key: hasuramigrationMyOrders
-  example: 1-my-orders
-- key: hasuramigrationProfile
-  example: 2-my-profile
 - key: hasuramigrationSalesforce
   route: /sources
   capability: source_registration
@@ -45,6 +37,14 @@ steps:
   route: /relationships
   capability: create_relationship
   relationship: BUYS_FOR
+- key: hasuramigrationAsAna
+  route: /query
+  capability: query_development
+  role: ana
+- key: hasuramigrationMyOrders
+  example: 1-my-orders
+- key: hasuramigrationProfile
+  example: 2-my-profile
 - key: hasuramigrationAsSupport
   route: /query
   capability: query_development
@@ -64,6 +64,6 @@ steps:
     GROUP BY a."Industry"
     ORDER BY revenue DESC
 - key: hasuramigrationRecap
-  route: /relationships
-  capability: create_relationship
-  relationship: BUYS_FOR
+  route: /query
+  capability: query_development
+  role: all
