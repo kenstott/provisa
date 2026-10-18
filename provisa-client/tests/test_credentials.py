@@ -11,6 +11,8 @@
 """A notebook's connection comes from keywords, then the environment, then the profile file; a
 username and password are exchanged for a session token, never pasted as one."""
 
+import json
+
 import httpx
 import pytest
 import respx
@@ -60,7 +62,9 @@ def test_a_username_and_password_are_exchanged_for_a_session_token(tmp_path):
     path = _profile(tmp_path, f"[default]\nurl = {URL}/\nusername = ana\n")
     creds = resolve(environ={"PROVISA_PASSWORD": "secret"}, path=path)
     assert creds.token == "session"
-    assert route.calls.last.request.read() == b'{"username":"ana","password":"secret"}'
+    # The JSON the request carries, not its spacing: httpx before 0.28 writes ", " between
+    # members, and the client allows httpx>=0.27.
+    assert json.loads(route.calls.last.request.read()) == {"username": "ana", "password": "secret"}
 
 
 @respx.mock
