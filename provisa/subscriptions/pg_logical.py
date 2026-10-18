@@ -90,8 +90,23 @@ class PgConnection:
         )
 
 
-def slot_name(source_id: str) -> str:
-    """The slot Provisa holds for ``source_id``: lower case letters, digits and underscores."""
+def slot_name(org_id: str, env: str | None, source_id: str) -> str:
+    """The slot, and the publication, Provisa holds for org ``org_id``'s environment ``env``
+    (None: prod) reading ``source_id``: lower case letters, digits and underscores. Orgs, and an
+    org's environments, name their sources alike and may reach one database; each reads its own
+    slot, so the source's id is followed by a digest of all three."""
+    import hashlib
+
+    readable = re.sub(r"[^a-z0-9_]", "_", source_id.lower())[:32]
+    digest = hashlib.sha256(f"{org_id}\0{env or ''}\0{source_id}".encode()).hexdigest()[:16]
+    name = f"provisa_{readable}_{digest}"
+    assert len(name) <= _SLOT_MAX
+    return name
+
+
+def unqualified_slot_name(source_id: str) -> str:
+    """The name earlier builds gave ``source_id``'s slot and publication, by its id alone. No
+    build reads one now; one left on a source holds its WAL, so it is dropped where it is found."""
     return ("provisa_" + re.sub(r"[^a-z0-9_]", "_", source_id.lower()))[:_SLOT_MAX]
 
 

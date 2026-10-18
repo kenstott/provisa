@@ -21,6 +21,7 @@ its publication are dropped when no table follows them any more.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import threading
 from types import SimpleNamespace
@@ -114,8 +115,8 @@ def test_a_database_without_logical_wal_or_on_a_replica_is_refused():
 
 
 def test_the_slot_reports_the_followed_tables_that_changed(conn):
-    name = pg_logical.slot_name("Shop-DB")
-    assert name == "provisa_shop_db"
+    name = pg_logical.slot_name("acme", None, "Shop-DB")
+    assert name.startswith("provisa_shop_db_") and len(name) <= 63
     pg_logical.ensure_slot(conn, name, [("public", "orders"), ("public", 'Mixed "Case"')])
     pg_logical.ensure_slot(conn, name, [("public", "orders"), ("public", 'Mixed "Case"')])
     conn.execute("INSERT INTO orders VALUES (1)")
@@ -135,7 +136,7 @@ def test_the_slot_reports_the_followed_tables_that_changed(conn):
 
 
 def test_following_another_set_of_tables_republishes_it(conn):
-    name = pg_logical.slot_name("shop")
+    name = _slot()
     pg_logical.ensure_slot(conn, name, [("public", "orders")])
     pg_logical.ensure_slot(conn, name, [("public", "refunds")])
     conn.execute("INSERT INTO orders VALUES (2)")
@@ -144,7 +145,7 @@ def test_following_another_set_of_tables_republishes_it(conn):
 
 
 def test_dropping_the_slot_drops_its_publication_too(conn):
-    name = pg_logical.slot_name("shop")
+    name = _slot()
     pg_logical.ensure_slot(conn, name, [("public", "orders")])
     pg_logical.drop_slot(conn, name)
     pg_logical.drop_slot(conn, name)  # nothing left to drop: no error
@@ -176,6 +177,7 @@ def test_the_listener_asks_for_a_build_of_each_changed_table(logical_pg, conn, m
             push_wiring._run_logical_stream(
                 state=state,
                 source=_source(logical_pg),
+                slot=_slot(),
                 followed=[("public", "orders", 1), ("public", "refunds", 2)],
                 disconnect=disconnect,
                 log=logging.getLogger("test"),
@@ -201,7 +203,7 @@ def test_the_listener_asks_for_a_build_of_each_changed_table(logical_pg, conn, m
 def test_a_source_whose_tables_stop_following_it_has_its_slot_dropped(logical_pg, conn):
     from provisa.events import push_wiring
 
-    name = pg_logical.slot_name("shop")
+    name = _slot()
     pg_logical.ensure_slot(conn, name, [("public", "orders")])
     state = SimpleNamespace(
         active_org_id="default", logical_slot_sources={"shop": _source(logical_pg)}
@@ -209,6 +211,13 @@ def test_a_source_whose_tables_stop_following_it_has_its_slot_dropped(logical_pg
     asyncio.run(push_wiring._drop_unfollowed_slots(state, {}, {}, log=logging.getLogger("test")))
     assert _held(conn) == (0, 0)
     assert state.logical_slot_sources == {}
+
+
+def _slot(source_id: str = "shop") -> str:
+    """The slot the bound org's prod environment holds for ``source_id``."""
+    from provisa.core.request_context import require_current_org
+
+    return pg_logical.slot_name(require_current_org(), None, source_id)
 
 
 def _held(conn) -> tuple[int, int]:
@@ -225,8 +234,9 @@ def test_a_slot_left_while_no_process_ran_is_dropped_at_the_first_wiring(logical
     PostgreSQL source that no native table follows, and drops it with its publication."""
     from provisa.events import push_wiring
 
-    pg_logical.ensure_slot(conn, pg_logical.slot_name("shop"), [("public", "orders")])
-    state = SimpleNamespace(active_org_id="default")  # a new process: nothing wired before
+    pg_logical.ensure_slot(conn, _slot(), [("public", "orders")])
+    # A new process: nothing wired before.
+    state = SimpleNamespace(active_org_id="default", logical_slot_sources=None)
     registered = {"shop": _source(logical_pg), "other": _source(logical_pg, "other")}
     asyncio.run(
         push_wiring._drop_unfollowed_slots(state, {}, registered, log=logging.getLogger("test"))
@@ -237,8 +247,8 @@ def test_a_slot_left_while_no_process_ran_is_dropped_at_the_first_wiring(logical
 def test_a_followed_sources_slot_is_kept_at_the_first_wiring(logical_pg, conn):
     from provisa.events import push_wiring
 
-    pg_logical.ensure_slot(conn, pg_logical.slot_name("shop"), [("public", "orders")])
-    state = SimpleNamespace(active_org_id="default")
+    pg_logical.ensure_slot(conn, _slot(), [("public", "orders")])
+    state = SimpleNamespace(active_org_id="default", logical_slot_sources=None)
     source = _source(logical_pg)
     followed = {"shop": (source, [("public", "orders", 1)])}
     asyncio.run(
@@ -248,3 +258,127 @@ def test_a_followed_sources_slot_is_kept_at_the_first_wiring(logical_pg, conn):
     )
     assert _held(conn) == (1, 1)
     assert state.logical_slot_sources == {"shop": source}
+
+
+# -- several orgs, and their environments, on one database --------------------------------------
+
+
+def _slots(conn) -> set[str]:
+    return {r[0] for r in conn.execute("SELECT slot_name FROM pg_replication_slots").fetchall()}
+
+
+@pytest.fixture
+def two_orgs(monkeypatch):
+    """Two orgs in one process, each with a runtime of its own."""
+    from provisa.api.app import AppState
+    from provisa.api.org_runtime import OrgRuntime
+
+    state = AppState()
+    state.org_id = "root"
+    for org in ("acme", "globex"):
+        state.org_registry.set(org, OrgRuntime(org_id=org))
+    monkeypatch.setattr("provisa.api.app.state", state)
+    return state
+
+
+@contextlib.contextmanager
+def _in(org: str):
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    token = set_current_org(org)
+    try:
+        yield
+    finally:
+        reset_current_org(token)
+
+
+def test_each_org_and_environment_has_a_slot_of_its_own_for_a_source_named_alike():
+    names = {pg_logical.slot_name(o, e, "shop") for o in ("acme", "globex") for e in (None, "dev")}
+    assert len(names) == 4 and all(len(n) <= 63 for n in names)
+    assert pg_logical.slot_name("acme", None, "shop") == pg_logical.slot_name("acme", None, "shop")
+
+
+def test_two_orgs_following_one_database_each_hear_the_changes_of_their_own_tables(conn):
+    acme = pg_logical.slot_name("acme", None, "shop")
+    globex = pg_logical.slot_name("globex", None, "shop")
+    pg_logical.ensure_slot(conn, acme, [("public", "orders")])
+    pg_logical.ensure_slot(conn, globex, [("public", "refunds")])
+    conn.execute("INSERT INTO orders VALUES (5)")
+    conn.execute("INSERT INTO refunds VALUES (5)")
+    assert pg_logical.read_changes(conn, acme, 100) == {("public", "orders")}
+    assert pg_logical.read_changes(conn, globex, 100) == {("public", "refunds")}
+
+
+def test_another_orgs_wiring_leaves_an_orgs_slot_on_a_shared_database(logical_pg, conn, two_orgs):
+    from provisa.events import push_wiring
+
+    state, source, log = two_orgs, _source(logical_pg), logging.getLogger("test")
+    acme = pg_logical.slot_name("acme", None, "shop")
+    pg_logical.ensure_slot(conn, acme, [("public", "orders")])
+    with _in("acme"):  # acme follows shop
+        followed = {"shop": (source, [("public", "orders", 1)])}
+        asyncio.run(push_wiring._drop_unfollowed_slots(state, followed, {"shop": source}, log=log))
+    with _in("globex"):  # globex, on the same database, follows nothing
+        asyncio.run(push_wiring._drop_unfollowed_slots(state, {}, {"shop": source}, log=log))
+        assert state.logical_slot_sources == {}
+    with _in("acme"):
+        assert state.logical_slot_sources == {"shop": source}
+    assert _slots(conn) == {acme}
+
+
+def test_a_slot_an_earlier_build_named_by_the_source_alone_is_dropped_at_the_first_wiring(
+    logical_pg, conn
+):
+    from provisa.events import push_wiring
+
+    old = pg_logical.unqualified_slot_name("shop")
+    pg_logical.ensure_slot(conn, old, [("public", "orders")])
+    source = _source(logical_pg)
+    state = SimpleNamespace(active_org_id="default", logical_slot_sources=None)
+    asyncio.run(
+        push_wiring._drop_unfollowed_slots(
+            state, {}, {"shop": source}, log=logging.getLogger("test")
+        )
+    )
+    assert _held(conn) == (0, 0)
+
+
+def test_a_followed_source_drops_the_slot_an_earlier_build_named_by_it_alone(
+    logical_pg, conn, monkeypatch
+):
+    """Opening a source's slot drops the one an earlier build named by the source's id alone
+    (it holds the source's WAL, and no build reads it), keeping only the org's own."""
+    from provisa.events import push_wiring
+    from provisa.federation import replica_builds
+
+    old = pg_logical.unqualified_slot_name("shop")
+    pg_logical.ensure_slot(conn, old, [("public", "orders")])
+    asked: list[int] = []
+
+    async def _request(state, table_id, source_id, reason):
+        asked.append(table_id)
+        return True
+
+    monkeypatch.setattr(replica_builds, "request_if_replicated", _request)
+    disconnect = threading.Event()
+
+    async def _scenario() -> None:
+        listener = asyncio.create_task(
+            push_wiring._run_logical_stream(
+                state=SimpleNamespace(active_org_id="default"),
+                source=_source(logical_pg),
+                slot=_slot(),
+                followed=[("public", "orders", 1)],
+                disconnect=disconnect,
+                log=logging.getLogger("test"),
+            )
+        )
+        while not asked:  # the slot is open
+            await asyncio.sleep(0.05)
+        disconnect.set()
+        await asyncio.wait_for(listener, 5)
+
+    asyncio.run(_scenario())
+    assert _slots(conn) == {_slot()}
+    held = {r[0] for r in conn.execute("SELECT pubname FROM pg_publication").fetchall()}
+    assert held == {_slot()}

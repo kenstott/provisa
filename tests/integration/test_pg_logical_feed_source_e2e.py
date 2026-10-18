@@ -32,6 +32,7 @@ import psycopg
 import pytest
 import yaml
 
+from provisa.subscriptions import pg_logical
 from tests.embedded_pg import DATABASE, PASSWORD, ROLE, start_local_postgres
 from tests.helpers import registered_id, release_field
 
@@ -39,7 +40,8 @@ pytestmark = [pytest.mark.integration]
 
 _NAME = "pg_logical_feed"
 _ADMIN = "org_admin"
-_SLOT = "provisa_shop_pg"
+# The org the server runs as (IsolatedServer(_NAME)), its prod environment, source shop_pg.
+_SLOT = pg_logical.slot_name(_NAME, None, "shop_pg")
 
 
 def _config() -> dict:

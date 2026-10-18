@@ -307,6 +307,9 @@ class OrgRuntime:
     views_awaiting_input: dict[str, set[str]] = field(default_factory=dict)
     poll_jobs_registered: set[str] = field(default_factory=set)
     on_input_landed: Any = None
+    # The PostgreSQL sources whose logical replication slot the organisation's last push wiring
+    # followed; None before its first (events.push_wiring).
+    logical_slot_sources: dict[str, Any] | None = None
     # REQ-1317: config-declared metric registry (name → Metric), published alongside tables
     # so the raw-SQL path can expand `metrics.<name>` queries before governance.
     metrics: dict[str, Any] = field(default_factory=dict)

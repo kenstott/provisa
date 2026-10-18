@@ -445,7 +445,10 @@ def _start_logical_streams(
     """Start one logical replication listener per PostgreSQL source with tables on the native
     signal (REQ-929). The listener's node names the tables it follows, so a change to that set
     stops it and starts one that publishes the new set."""
+    from provisa.subscriptions import pg_logical
+
     started: list[LongLived] = []
+    org, env, _ = _listener_key("")
     for source_id, (src, followed) in sorted(logical.items()):
         node = "logical:" + source_id + ":" + ",".join(sorted(f"{s}.{t}" for s, t, _ in followed))
         wired.add(node)
@@ -455,7 +458,12 @@ def _start_logical_streams(
         state.push_listener_disconnects[_listener_key(node)] = disconnect
         task = spawn_long_lived(
             _run_logical_stream(
-                state=state, source=src, followed=followed, disconnect=disconnect, log=log
+                state=state,
+                source=src,
+                slot=pg_logical.slot_name(org, env, src.id),
+                followed=followed,
+                disconnect=disconnect,
+                log=log,
             ),
             name=f"logical-stream:{source_id}",
         )
@@ -484,18 +492,21 @@ async def _drop_unfollowed_slots(
     from provisa.federation.source_vault import org_vault
     from provisa.subscriptions import pg_logical
 
-    first = not hasattr(state, "logical_slot_sources")
+    before = state.logical_slot_sources  # this org's: its runtime's
     held: dict[str, Any] = (
         {sid: s for sid, s in sources.items() if _source_type_of(s) == "postgresql"}
-        if first
-        else state.logical_slot_sources
+        if before is None
+        else before
     )
+    org, env, _ = _listener_key("")
     for source_id, src in sorted(held.items()):
         if source_id in logical:
             continue
         try:
             async with org_vault(state, [src]):
-                dropped = await asyncio.to_thread(_drop_slot_of, src)
+                dropped = await asyncio.to_thread(
+                    _drop_slot_of, src, pg_logical.slot_name(org, env, src.id)
+                )
             if dropped:
                 log.info("logical replication slot of source %r dropped", source_id)
         except Exception as failed:  # allow-ble: named in the log with the slot to drop by hand; one source's server being down must not stop the wiring of every other
@@ -503,23 +514,26 @@ async def _drop_unfollowed_slots(
                 "source %r could not be checked for Provisa's logical replication slot %r (%s): "
                 "a slot left there holds the source's WAL; drop it on the source",
                 source_id,
-                pg_logical.slot_name(source_id),
+                pg_logical.slot_name(org, env, source_id),
                 failed,
             )
     state.logical_slot_sources = {sid: src for sid, (src, _t) in logical.items()}
 
 
-def _drop_slot_of(src: Any) -> bool:
+def _drop_slot_of(src: Any, name: str) -> bool:
+    """Drop the slot ``name`` on ``src`` and the one an earlier build named by its id alone."""
     from provisa.subscriptions import pg_logical
 
     with pg_logical.PgConnection.from_source(src).connect() as conn:
-        return pg_logical.drop_slot(conn, pg_logical.slot_name(src.id))
+        dropped = pg_logical.drop_slot(conn, name)
+        return pg_logical.drop_slot(conn, pg_logical.unqualified_slot_name(src.id)) or dropped
 
 
 async def _run_logical_stream(
     *,
     state: Any,
     source: Any,
+    slot: str,
     followed: list[tuple[str, str, int]],
     disconnect: threading.Event,
     log: Any,
@@ -535,7 +549,7 @@ async def _run_logical_stream(
     from provisa.subscriptions import pg_logical
 
     ids = {(schema, table): table_id for schema, table, table_id in followed}
-    name = pg_logical.slot_name(source.id)
+    name = slot  # the org's and environment's own (pg_logical.slot_name)
 
     async def _ask(changed: set[tuple[str, str]]) -> None:
         # A burst of changes: each table's build, and the commands that run on it (REQ-2054).
@@ -557,6 +571,10 @@ async def _run_logical_stream(
             async with org_vault(state, [source]):
                 conn = await asyncio.to_thread(pg_logical.PgConnection.from_source(source).connect)
             try:
+                # One an earlier build named by the source's id alone holds its WAL: dropped.
+                old = pg_logical.unqualified_slot_name(source.id)
+                if await asyncio.to_thread(pg_logical.drop_slot, conn, old):
+                    log.info("logical replication slot %r of source %r dropped", old, source.id)
                 await asyncio.to_thread(pg_logical.ensure_slot, conn, name, list(ids))
                 await _opened()
                 # A burst ends after a read with nothing new, or _LOGICAL_MAX_DELAY_SECONDS after

@@ -66,6 +66,8 @@ class _FakeState:
         self.push_listener_disconnects: dict = {}
         self.push_listener_tasks: list = []
         self.push_listener_handles: dict = {}
+        # As the org runtime holds it before its first push wiring (OrgRuntime).
+        self.logical_slot_sources: dict | None = None
         self.tenant_db = MagicMock()
         self.model_db = self.tenant_db
         self.tenant_db.acquire = MagicMock(
@@ -331,7 +333,7 @@ async def test_a_kafka_signal_table_of_a_database_lands_its_delta_topic():
         ),
         patch("provisa.subscriptions.registry.get_provider", _get_provider),
         patch("provisa.events.push_wiring._run_listener", run),
-        patch("provisa.events.push_wiring._drop_slot_of", lambda src: False),
+        patch("provisa.events.push_wiring._drop_slot_of", lambda src, name: False),
     ):
         tasks = await wire_push_listeners(state=state, log=logging.getLogger("test"))
         await shutdown_push_listeners(state)

@@ -1010,6 +1010,16 @@ class AppState:
         self._active_runtime().on_input_landed = value
 
     @property
+    def logical_slot_sources(self) -> dict[str, Any] | None:
+        """The PostgreSQL sources the organisation's last push wiring followed by a logical
+        replication slot (OrgRuntime.logical_slot_sources)."""
+        return self._active_runtime().logical_slot_sources
+
+    @logical_slot_sources.setter
+    def logical_slot_sources(self, value: dict[str, Any] | None) -> None:
+        self._active_runtime().logical_slot_sources = value
+
+    @property
     def api_endpoints(self) -> dict[tuple[str, str], Any]:
         """(source id, table name) → ApiEndpoint: the endpoints the organisation's API tables are
         served from (OrgRuntime.api_endpoints)."""
