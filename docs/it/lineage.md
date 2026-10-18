@@ -182,6 +182,29 @@ La risposta ha la stessa forma del grafo di istruzione, con l'aggiunta di un cam
 }
 ```
 
+## Da cosa è stato costruito ogni refresh (REQ-862) {: #what-each-refresh-was-built-from-req-862 }
+
+Ogni refresh di una vista materializzata registra da cosa è stato costruito: la versione della definizione della vista, la versione dei suoi input e come è stata stabilita, e le colonne sorgente e l'espressione di ogni colonna di output. La vista operativa `"ops"."mv_refresh_lineage"` restituisce una riga per refresh:
+
+| Colonna | Contiene |
+|---|---|
+| `mv_id` | La vista materializzata aggiornata |
+| `target_table` | La tabella scritta dal refresh |
+| `definition_version` | La versione della definizione della vista |
+| `input_version`, `input_version_kind` | La versione dei suoi input: uno snapshot Iceberg, un watermark, un token di freschezza o l'ora del refresh |
+| `trace_id` | Il trace del refresh in `"ops"."traces"` |
+| `refreshed_at` | Quando è stato eseguito |
+| `column_derivations` | Ogni colonna di output con le sue colonne sorgente e la sua espressione, in JSON |
+
+```sql
+SELECT refreshed_at, definition_version, input_version, input_version_kind
+FROM "ops"."mv_refresh_lineage"
+WHERE mv_id = 'view-view_exposure'
+ORDER BY refreshed_at
+```
+
+La vista legge i record di refresh in `"ops"."traces"` e risponde su ogni motore che li conserva. Su Trino sono le tabelle Iceberg del catalogo `otel`. Su DuckDB il server scrive i propri record di trace come file Parquet nella sua cartella di telemetria (`PROVISA_TELEMETRY_DIR`, `~/.provisa/telemetry` per impostazione predefinita), un file per batch di esportazione in una cartella per giorno. La compattazione pianificata della telemetria (`otel.compact_cron`) unisce i file piccoli di ogni giorno in file fino a 64 MB. Ogni organizzazione legge solo i propri refresh, e i record sono conservati a tempo indeterminato. Gli span vengono registrati solo mentre l'SDK OpenTelemetry è abilitato (`OTEL_SDK_DISABLED` non impostato o false).
+
 ## Che cosa romperebbe la ridenominazione o la rimozione di una colonna (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Una colonna porta due nomi, e ciascuno è memorizzato da un insieme diverso di artefatti.

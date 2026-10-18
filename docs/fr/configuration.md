@@ -943,7 +943,16 @@ Une version est en vigueur de son instant jusqu'à celui de la version suivante.
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
-Un instant renvoie la version de chaque clé en vigueur à ce moment. Une plage renvoie chaque version en vigueur à un moment quelconque de cette plage, une ligne par version. (REQ-2064) La même valeur est l'argument `as_of` de `resolve` (GraphQL, gRPC, MCP), le paramètre de requête REST `as_of` et l'option `as_of` d'un ticket Arrow Flight. Une plage donnée à `resolve` renvoie les `versions` de la ligne à la place de sa `row`. Les droits, les masques et les règles de lignes s'appliquent comme à toute lecture. Une valeur mal formée, ou une plage dont la fin n'est pas postérieure au début, est refusée avec HTTP 400 (`data.invalid_as_of`).
+Un instant renvoie la version de chaque clé en vigueur à ce moment. Une plage renvoie chaque version en vigueur à un moment quelconque de cette plage, une ligne par version. (REQ-2064)
+
+**Tel qu'enregistré.** Une correction enregistrée plus tard change ce qu'une vue dit du passé : la version en vigueur le 30 septembre est la version corrigée une fois la correction enregistrée. Pour lire la vue telle que Provisa l'avait enregistrée à un instant, avant toute correction ultérieure, ajoutez `X-Provisa-As-Recorded`, un instant ISO 8601 :
+
+```
+X-Provisa-As-Of: 2026-09-30T12:00:00
+X-Provisa-As-Recorded: 2026-10-01T00:00:00
+```
+
+Toute version enregistrée après cet instant est écartée, et l'as-of choisit alors la version en vigueur à son propre instant. Avec `X-Provisa-As-Recorded` seul, la lecture renvoie la version de chaque clé en vigueur telle qu'enregistrée alors. C'est un instant, pas une plage ; une plage ou une valeur mal formée est refusée avec HTTP 400 (`data.invalid_as_recorded`). La même valeur est l'argument `as_recorded` de `resolve`, le paramètre de requête REST `as_recorded` et l'option `as_recorded` d'un ticket Arrow Flight. L'enregistrement d'audit de chaque instruction garde les deux instants avec lesquels elle a lu, `as_of` et `as_recorded`. (REQ-1163) La même valeur est l'argument `as_of` de `resolve` (GraphQL, gRPC, MCP), le paramètre de requête REST `as_of` et l'option `as_of` d'un ticket Arrow Flight. Une plage donnée à `resolve` renvoie les `versions` de la ligne à la place de sa `row`. Les droits, les masques et les règles de lignes s'appliquent comme à toute lecture. Une valeur mal formée, ou une plage dont la fin n'est pas postérieure au début, est refusée avec HTTP 400 (`data.invalid_as_of`).
 
 Toute vue avec historique renvoie trois colonnes supplémentaires, accordées comme l'est sa colonne d'heure source (sinon sa première colonne de clé) :
 

@@ -206,6 +206,8 @@ Amazon Athena הוא שירות שאילתות ללא שרת על נתונים �
 | `cassandra` | cassandra (Trino); קריאת CQL דרך cassandra-driver בכל מנוע אחר | לא | Keyspace הם סכמות; Register Table מציג את הטבלאות של keyspace ומקצה טיפוסים לעמודות לפי מטא-נתוני הסכמה של האשכול (מפתחות מחיצה כמפתחות ראשיים); התוסף `cassandra` מתקין את הדרייבר [tool-verified: `provisa/cassandra/fetch.py`] (REQ-1676) |
 | `redis` | redis (Trino); קריאת redis-py ללא HTTP בכל מנוע אחר | לא | קידומת מפתח `<table>:*` היא טבלה ו-hash הוא שורה; Register Table מציג את הקידומות הקיימות ומקצה טיפוסים לעמודות הקידומת לפי ה-hashes שלה (רשומת `mapping.tables` עוקפת תבנית, עמודת מפתח, טיפוס ערך ועמודות) [tool-verified: `provisa/redis/fetch.py`] (REQ-1675) |
 
+**Redis במנועים המתארחים.** Redis אינו זמין כשהמנוע של הארגון הוא אחד המנועים המוקצים של הפלטפורמה המתארחת. Trino קורא את הטבלאות של קטלוג Redis מקובצי תיאור בתיקייה משל הקטלוג, ולא ניתן לתת למנוע מתארח תיקייה כזו בזמן שהוא פועל. שמירה או החלה של מקור Redis שם נדחות בשמן (HTTP 422, `sources.redis_needs_engine_files`); פריסה באירוח עצמי קוראת את Redis כפי שתואר לעיל. [tool-verified: `provisa/core/repositories/source.py` `refuse_on_engine_shard`] (REQ-2073)
+
 ### Qdrant
 
 `qdrant` (REQ-1983, REQ-2000) נקרא ונכתב באמצעות הלקוח של Qdrant עצמה, `qdrant-client`. Qdrant הוא **חי בלבד**: תכונה של סוג המקור, לא הגדרה. היא עונה באמצעות אינדקס הווקטורים וה-Query API שלה, ושום עותק אינו יכול לענות כך, ולכן הטבלאות שלה אינן משוכפלות לעולם. אין בחירת Replicate למקור Qdrant או לטבלאות שלו; ערך `replicate` או `row_materialize` עליהם נדחה. [tool-verified: `provisa/core/source_registry.py` `LIVE_ONLY_TYPES`; `provisa/api/admin/_landing_ttl.py` `_live_only_refusal`]
@@ -258,6 +260,8 @@ Amazon Athena הוא שירות שאילתות ללא שרת על נתונים �
 | `kafka` | מחבר Kafka מפודרר; סכמה דרך Confluent Schema Registry (Avro, Protobuf, JSON Schema), הגדרה ידנית, או הסקה מדגמית (REQ-147, REQ-150) | לא; הפלט החי של טבלה מפרסם ל-Kafka (REQ-565) |
 | `websocket` | הזנת WebSocket חיצונית — התחברות, הרשמה, קבלת אירועים; התוצאות עוברות מטריאליזציה (REQ-338) | לא |
 | `rss` | הזנת RSS 2.0 / Atom — בדיקה תקופתית (poll), סימון מים לפי pubDate/updated; התוצאות עוברות מטריאליזציה (REQ-342, REQ-343) | לא |
+
+**Kafka במנועים המתארחים.** במנועים המוקצים של הפלטפורמה המתארחת, מקור Kafka חייב לציין מאגר סכימות (`schema_registry_url`). מקור שרק המודל מצהיר על עמודות ה-topics שלו נדחה בשמו בעת שמירה או החלה (HTTP 422, `sources.kafka_needs_schema_registry`), משום שתיאורי הטבלאות שלו היו דורשים תיקייה שלא ניתן לתת למנוע בזמן ריצה. אישורי SASL מגיעים למנועים האלה בזיכרון (ראו [אבטחה](security.md#the-federation-engine-trino)). [tool-verified: `provisa/core/repositories/kafka_source.py` `refuse_on_engine_shard`] (REQ-2073)
 
 ### Push Receiver
 

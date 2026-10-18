@@ -184,6 +184,29 @@ La respuesta tiene la misma forma que el grafo de sentencia, con un campo `cycle
 }
 ```
 
+## De qué se construyó cada refresco (REQ-862) {: #what-each-refresh-was-built-from-req-862 }
+
+Cada refresco de una vista materializada registra de qué se construyó: la versión de la definición de la vista, la versión de sus entradas y cómo se estableció esa versión, y las columnas de origen y la expresión de cada columna de salida. La vista operativa `"ops"."mv_refresh_lineage"` devuelve una fila por refresco:
+
+| Columna | Contiene |
+|---|---|
+| `mv_id` | La vista materializada refrescada |
+| `target_table` | La tabla que escribió el refresco |
+| `definition_version` | La versión de la definición de la vista |
+| `input_version`, `input_version_kind` | La versión de sus entradas: un snapshot de Iceberg, una marca de agua, un token de frescura o la hora del refresco |
+| `trace_id` | La traza del refresco en `"ops"."traces"` |
+| `refreshed_at` | Cuándo se ejecutó |
+| `column_derivations` | Cada columna de salida con sus columnas de origen y su expresión, como JSON |
+
+```sql
+SELECT refreshed_at, definition_version, input_version, input_version_kind
+FROM "ops"."mv_refresh_lineage"
+WHERE mv_id = 'view-view_exposure'
+ORDER BY refreshed_at
+```
+
+La vista lee los registros de refresco de `"ops"."traces"` y responde en todo motor que los conserve. En Trino son las tablas Iceberg del catálogo `otel`. En DuckDB el servidor escribe sus propios registros de traza como archivos Parquet en su carpeta de telemetría (`PROVISA_TELEMETRY_DIR`, `~/.provisa/telemetry` por defecto), un archivo por lote exportado en una carpeta por día. La compactación programada de telemetría (`otel.compact_cron`) une los archivos pequeños de cada día en archivos de hasta 64 MB. Cada organización lee solo sus propios refrescos, y los registros se conservan indefinidamente. Los spans solo se registran mientras el SDK de OpenTelemetry está activado (`OTEL_SDK_DISABLED` sin definir o false).
+
 ## Qué rompería un renombrado o una eliminación de columna (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Una columna lleva dos nombres, y cada uno lo almacena un conjunto distinto de artefactos.

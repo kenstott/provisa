@@ -181,6 +181,29 @@ A resposta tem o mesmo formato do grafo de declaração, com um campo `cycles` a
 }
 ```
 
+## De que cada atualização foi construída (REQ-862) {: #what-each-refresh-was-built-from-req-862 }
+
+Cada atualização de uma visão materializada registra de que foi construída: a versão da definição da visão, a versão das suas entradas e como essa versão foi estabelecida, e as colunas de origem e a expressão de cada coluna de saída. A visão operacional `"ops"."mv_refresh_lineage"` retorna uma linha por atualização:
+
+| Coluna | Contém |
+|---|---|
+| `mv_id` | A visão materializada atualizada |
+| `target_table` | A tabela que a atualização gravou |
+| `definition_version` | A versão da definição da visão |
+| `input_version`, `input_version_kind` | A versão das suas entradas: um snapshot do Iceberg, uma marca d'água, um token de atualidade ou o horário da atualização |
+| `trace_id` | O trace da atualização em `"ops"."traces"` |
+| `refreshed_at` | Quando rodou |
+| `column_derivations` | Cada coluna de saída com suas colunas de origem e sua expressão, em JSON |
+
+```sql
+SELECT refreshed_at, definition_version, input_version, input_version_kind
+FROM "ops"."mv_refresh_lineage"
+WHERE mv_id = 'view-view_exposure'
+ORDER BY refreshed_at
+```
+
+A visão lê os registros de atualização em `"ops"."traces"` e responde em todo motor que os guarda. No Trino são as tabelas Iceberg do catálogo `otel`. No DuckDB o servidor grava os próprios registros de trace como arquivos Parquet na sua pasta de telemetria (`PROVISA_TELEMETRY_DIR`, `~/.provisa/telemetry` por padrão), um arquivo por lote exportado numa pasta por dia. A compactação agendada da telemetria (`otel.compact_cron`) junta os arquivos pequenos de cada dia em arquivos de até 64 MB. Cada organização lê só as próprias atualizações, e os registros são mantidos indefinidamente. Os spans só são registrados enquanto o SDK do OpenTelemetry está habilitado (`OTEL_SDK_DISABLED` não definido ou false).
+
 ## O que uma renomeação ou remoção de coluna quebraria (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Uma coluna carrega dois nomes, e cada um é armazenado por um conjunto diferente de artefatos.

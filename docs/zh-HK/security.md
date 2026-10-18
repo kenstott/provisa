@@ -285,7 +285,7 @@ rls_rules:
 ```
 過濾條件以 AND 附加至查詢的 WHERE 子句。適用於查詢及變更（UPDATE/DELETE）。（REQ-035、REQ-041）
 
-`current_setting('provisa.<name>')` 項會從請求所綁定的工作階段變數解析：來自已驗證身份的 `user_id`、來自執行角色的 `role`，以及權杖中每個純量 claim，以其小寫名稱綁定，連字號換為底線。Hasura 工作階段變數保留自己的名稱：`X-Hasura-User-Id` 是 `hasura_user_id`，讀自權杖的 `x-hasura-user-id` claim（在頂層，或在 Hasura claims 物件內，如 `https://hasura.io/jwt/claims`），或作為屬性 `hasura_user_id` 記錄在成員名下。因此匯入的、以 `X-Hasura-User-Id` 為基礎的 Hasura 過濾會讀取 `provisa.hasura_user_id`。`provisa.user_id` 一律是已登入的身份，任何 claim 都不會取代它。角色所設定的 `session_vars` 是基礎常數；請求的綁定疊加於其上。在不安全模式下，標頭 `x-provisa-session-<name>` 綁定 `<name>`。任何地方都沒有綁定的變數解析為 NULL，不會符合任何資料列。（REQ-1682）
+`current_setting('provisa.<name>')` 項會從請求所綁定的工作階段變數解析：來自已驗證身份的 `user_id`、來自執行角色的 `role`，以及權杖中每個純量 claim，以其小寫名稱綁定，連字號換為底線。Hasura 工作階段變數保留自己的名稱：`X-Hasura-User-Id` 是 `hasura_user_id`，讀自權杖的 `x-hasura-user-id` claim（在頂層，或在 Hasura claims 物件內，如 `https://hasura.io/jwt/claims`），或作為屬性 `hasura_user_id` 記錄在成員名下。因此匯入的、以 `X-Hasura-User-Id` 為基礎的 Hasura 過濾會讀取 `provisa.hasura_user_id`。`provisa.user_id` 一律是已登入的身份，任何 claim 都不會取代它。角色所設定的 `session_vars` 是基礎常數；請求的綁定疊加於其上。從另一個角色繼承的角色，會把祖先的常數放在自己的常數之下，每個名稱取最近角色的值。`user_id`、`role`、`region` 和 `org` 由請求或節點繫結，不能設定為常數。在不安全模式下，標頭 `x-provisa-session-<name>` 綁定 `<name>`。任何地方都沒有綁定的變數解析為 NULL，不會符合任何資料列。（REQ-1682）
 
 ## 欄位層級遮罩 {: #column-level-masking }
 
@@ -489,6 +489,14 @@ Provisa 終結 TLS 的每個監聽器（HTTP API 及 UI、pgwire、Bolt、MCP、
 
 組織的密鑰只由該組織讀取。在 Provisa 本身的儲存中，每個密鑰都存放於其組織之下。在承載多個組織的部署的中央服務中（Vault、AWS Secrets Manager、GCP Secret Manager、Azure Key Vault），每次讀取都在讀取方組織的前綴之內進行，會離開該前綴的參照會被拒絕。（REQ-1557） 前綴，以及把現有密鑰遷移至前綴之下的步驟，請參閱[密鑰](secrets.md#one-organizations-secrets-in-a-central-service)。
 
+## 跨組織的遙測 {: #telemetry-across-organizations }
+
+在許多組織共用的部署上，維運訊號（`"ops"."traces"`，在 Trino 引擎上還有旁邊的指標和日誌）是所有組織的工作都寫入的同一個儲存。每個 span 記錄啟動它所服務的組織，儲存為 `tenant_id`；對這些訊號的每次讀取只傳回讀取方組織的列，與角色無關。在任何組織的工作之外啟動的 span（例如伺服器啟動時）不屬於任何組織，也沒有組織會讀到它。平台管理員在任何組織中都沒有數據存取權，也不透過 Provisa 讀取其中任何一個。(REQ-1349, REQ-1327)
+
+維運訊號在兩種引擎上都會無限期保留，與稽核日誌一樣：壓縮會重寫存放它們的檔案，但不刪除任何列。在 Trino 上，它們是 `otel` 目錄的 Iceberg 資料表。在原生引擎（DuckDB）上，伺服器把自身的追蹤記錄以 Parquet 檔案寫入其遙測資料夾，引擎以同一名稱 `"ops"."traces"` 讀取它們，並在其上提供重新整理血緣檢視 `"ops"."mv_refresh_lineage"`；兩者都按同一條按組織劃分的規則讀取。(REQ-862)
+
+訊號在其儲存中以明文保存。需要在一個部署內部比按組織劃分更強邊界的工作負載，在專用部署上執行；高度敏感或受監管的工作負載則自行託管。
+
 ## 部署加固 {: #deployment-hardening }
 
 ### 儲存區憑據與儲存區的監聽位置 {: #store-credentials-and-where-the-stores-listen }
@@ -514,6 +522,7 @@ Provisa 終結的每個監聽器都提供 TLS（參見 [TLS 版本](#tls-version
 - **節點之間。** 協調器與其工作節點使用為部署產生的共用密鑰（`internal-communication.shared-secret`）互相驗證。加密它們之間的流量是營運者的選項，預設關閉：關閉時，流量保持在部署的私有網絡或叢集之內。當合規或零信任要求部署內部也須加密時再開啟。Trino 文件指出，它會使 shuffle 密集的查詢（分散式連接、聚合、視窗函數）變慢 10% 至 100% 以上。在 compose 部署上，它是設定 `engine.trino_internal_tls`（Deployment settings → Engine），旁邊是引擎網絡與協調器的固定位址，並於下次啟動時生效。在 Helm chart 下，它是值 `trino.internalTls`，另有 `trino.coordinatorClusterIP`。託管平台的引擎是單節點協調器，沒有節點間流量，並拒絕該選項。（REQ-2072）
 - **暫存資料。** 容錯執行以每個查詢產生、查詢結束即丟棄的金鑰，加密它暫存的交換資料（`fault-tolerant-execution.exchange-encryption-enabled=true`，明確設定）。不使用舊式的溢寫至磁碟。
 - **同一引擎上的多個組織。** 每個組織的 catalog 屬於它自己，以該組織命名，每個組織的陳述式在它自己的資源群組中執行。
+- **目錄及其中的憑證只存在於引擎記憶體中。** Provisa 在執行時建立每個 Trino 目錄，每個目錄保存其數據來源的連線屬性，包括密碼。Provisa 執行的每個引擎都把它們保存在記憶體中（`catalog.store=memory`）：不會有目錄寫入引擎磁碟，也不會從檔案掛載目錄。重新啟動的協調器回來時沒有任何目錄；每個 Provisa 程序會在下一次查詢時發現，引擎監看器則在一分鐘內發現，並重新建立它所服務的目錄。帶 SASL 憑證的 Kafka 數據來源需要一個檔案：Trino 的 Kafka 連接器只從檔案讀取用戶端設定，因此 Provisa 把它們（包括密碼）寫入 `kafka-client/<catalog>.properties`。該檔案只有 Trino 的使用者可讀（0700 資料夾中的 0600 模式）。在容器堆疊中，該資料夾是 API 與引擎共用的記憶體磁碟區。在託管平台的引擎上，它是引擎自己的 Kubernetes Secret，保存在節點記憶體中，只有 Trino 的使用者群組可讀（0440 模式）。無論哪種方式，該檔案都不會落到磁碟上。在託管引擎上，Kafka 數據來源必須指定結構描述登錄：主題欄位只由模型宣告的數據來源在儲存或套用時會被按名稱拒絕，因為它的資料表描述需要一個無法交給執行中引擎的資料夾。啟動堆疊時會刪除早期版本留在磁碟上的目錄檔案和 Kafka 用戶端檔案。
 
 ### 共用部署上的數據來源 {: #sources-on-a-shared-deployment }
 
@@ -532,15 +541,16 @@ Provisa 終結的每個監聽器都提供 TLS（參見 [TLS 版本](#tls-version
 - 組織執行的 DuckDB 引擎溢寫至組織的資料夾。
 - 列篩選器擷取的列與上傳的程式碼暫存於組織的資料夾中。
 - Trino 的容錯執行以每個查詢產生、查詢結束即丟棄的金鑰，加密暫存的交換資料（`fault-tolerant-execution.exchange-encryption-enabled=true`）。Provisa 不開啟 Trino 舊式的溢寫至磁碟。
+- Trino 把組織的目錄連同其憑證保存在記憶體中，不向磁碟寫入任何目錄（`catalog.store=memory`）；Kafka 數據來源的 SASL 用戶端設定位於只有 Trino 使用者可讀的檔案中，在容器堆疊中位於記憶體（參見[聯邦引擎](#the-federation-engine-trino)）。
 - PostgreSQL 聯邦引擎把暫存檔案寫在該 PostgreSQL 伺服器保存它們的位置，處於伺服器本身的儲存加密之下，而不是組織的資料夾中。
 
 ### 共用與專用託管平台 {: #shared-and-dedicated-hosted-platforms }
 
-共用託管平台在邏輯上隔離各組織。一個部署服務所有組織，每個組織的數據透過治理、引擎上自己的 schema、catalog 與資源群組、自己的金鑰、暫存引擎數據的每查詢金鑰，以及拒絕其數據來源存取平台私有位址，而始終歸其自己所有。建議用於試驗與小型企業。專用託管平台在物理上隔離：擁有自己的機器、網絡與儲存區，服務一個客戶。
+共用託管平台在邏輯上隔離各組織。一個部署服務所有組織，每個組織的數據透過治理、引擎上自己的 schema、catalog 與資源群組、自己的金鑰、暫存引擎數據的每查詢金鑰，以及拒絕其數據來源存取平台私有位址，而始終歸其自己所有。建議用於試驗與小型企業。專用託管平台在物理上隔離：擁有自己的機器、網絡與儲存區，服務一個客戶。對於高度敏感或受監管的工作負載，請在你自己的邊界內自行託管 Provisa，由你自己的維運人員掌握每一把金鑰和每一台主機。託管平台目前沒有 SOC 2 報告。我們正在評估 SOC 2，並會提供進展。如果你需要 SOC 2，我們建議自行託管。
 
 ### 瀏覽器中的 Python {: #python-in-the-browser }
 
-Data Science 區域在訪客的瀏覽器中執行 Python。它發出的每次讀取都以已登入使用者的身分，帶著其目前角色、組織與環境傳送至伺服器，並與任何其他用戶端的同一陳述式完全一樣受到治理。
+Explore 的 Python 和 Notebook 分頁在訪客的瀏覽器中執行 Python。它發出的每次讀取都以已登入使用者的身分、帶著其目前角色、組織和環境傳送到伺服器，並與來自任何其他用戶端的同一陳述式完全一樣地受到治理。
 
 ## 高安全模式 {: #high-security-mode }
 

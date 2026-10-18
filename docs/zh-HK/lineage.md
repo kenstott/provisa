@@ -160,6 +160,29 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 }
 ```
 
+## 每次重新整理由甚麼建構（REQ-862） {: #what-each-refresh-was-built-from-req-862 }
+
+實體化檢視的每次重新整理都會記錄它由甚麼建構：檢視定義的版本、其輸入的版本以及該版本是如何確定的，以及每個輸出欄位的來源欄位和運算式。維運檢視 `"ops"."mv_refresh_lineage"` 每次重新整理傳回一列：
+
+| 欄位 | 內容 |
+|---|---|
+| `mv_id` | 被重新整理的實體化檢視 |
+| `target_table` | 重新整理寫入的資料表 |
+| `definition_version` | 檢視定義的版本 |
+| `input_version`, `input_version_kind` | 其輸入的版本：Iceberg 快照、水位線、新鮮度權杖或重新整理時間 |
+| `trace_id` | 該重新整理在 `"ops"."traces"` 中的追蹤 |
+| `refreshed_at` | 執行時間 |
+| `column_derivations` | 每個輸出欄位及其來源欄位和運算式，以 JSON 表示 |
+
+```sql
+SELECT refreshed_at, definition_version, input_version, input_version_kind
+FROM "ops"."mv_refresh_lineage"
+WHERE mv_id = 'view-view_exposure'
+ORDER BY refreshed_at
+```
+
+該檢視讀取 `"ops"."traces"` 中的重新整理記錄，並在保留這些記錄的每個引擎上作答。在 Trino 上，它們是 `otel` 目錄的 Iceberg 資料表。在 DuckDB 上，伺服器把自身的追蹤記錄以 Parquet 檔案寫入其遙測資料夾（`PROVISA_TELEMETRY_DIR`，預設 `~/.provisa/telemetry`），每個匯出批次一個檔案，每天一個資料夾。排程的遙測壓縮（`otel.compact_cron`）會把每天的小檔案合併為最大 64 MB 的檔案。每個組織只讀取自己的重新整理，記錄無限期保留。只有在啟用 OpenTelemetry SDK 時（`OTEL_SDK_DISABLED` 未設定或為 false）才會記錄 span。
+
 ## 改名或刪除一個欄位會弄壞什麼（REQ-1484） {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 一個欄位帶著兩個名字，而各由不同的一組構件儲存。

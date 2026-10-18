@@ -943,7 +943,16 @@ views:
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
-时刻返回每个键在当时有效的版本。范围返回在其中任一时点有效的每个版本，每个版本一行。（REQ-2064） 同一个值也是 `resolve`（GraphQL、gRPC、MCP）的 `as_of` 参数、REST 查询参数 `as_of`，以及 Arrow Flight ticket 的 `as_of` 选项。传给 `resolve` 的范围返回该行的 `versions`，而不是它的 `row`。权限、脱敏和行规则与任何读取一样适用。格式错误的值，或结束不晚于开始的范围，会以 HTTP 400（`data.invalid_as_of`）被拒绝。
+时刻返回每个键在当时有效的版本。范围返回在其中任一时点有效的每个版本，每个版本一行。（REQ-2064）
+
+**按记录时间。** 之后记录的更正会改变视图对过去的描述：一旦更正被记录，9 月 30 日生效的版本就是更正后的版本。若要按 Provisa 在某个时间点记录的样子读取视图（早于之后的任何更正），请加上 `X-Provisa-As-Recorded`，即一个 ISO 8601 时间：
+
+```
+X-Provisa-As-Of: 2026-09-30T12:00:00
+X-Provisa-As-Recorded: 2026-10-01T00:00:00
+```
+
+在该时间之后记录的每个版本都会被排除，然后 as-of 选出在其自身时间点生效的版本。只用 `X-Provisa-As-Recorded` 时，读取返回按当时记录生效的每个键的版本。它是一个时间点而不是范围；范围或格式错误的值会以 HTTP 400 拒绝（`data.invalid_as_recorded`）。同一个值也是 `resolve` 的 `as_recorded` 参数、REST 的 `as_recorded` 查询参数，以及 Arrow Flight 票据的 `as_recorded` 选项。每条语句的审计记录会保存它读取时使用的两个时间，`as_of` 和 `as_recorded`。（REQ-1163）同一个值也是 `resolve`（GraphQL、gRPC、MCP）的 `as_of` 参数、REST 查询参数 `as_of`，以及 Arrow Flight ticket 的 `as_of` 选项。传给 `resolve` 的范围返回该行的 `versions`，而不是它的 `row`。权限、脱敏和行规则与任何读取一样适用。格式错误的值，或结束不晚于开始的范围，会以 HTTP 400（`data.invalid_as_of`）被拒绝。
 
 每个带历史的视图还会返回三列，其授权方式与它的数据源时间列相同（没有时则与第一个键列相同）：
 

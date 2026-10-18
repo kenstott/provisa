@@ -205,6 +205,8 @@ Diese Quelltypen sind nur-Federation — kein direkter Treiber, kein Dialekt. [t
 | `cassandra` | cassandra (Trino); CQL-Read über cassandra-driver auf jeder anderen Engine | Nein | Keyspaces sind Schemas; Register Table listet die Tabellen eines Keyspace und typisiert Spalten aus den Schema-Metadaten des Clusters (Partition Keys als Primärschlüssel); das `cassandra`-Extra installiert den Treiber [tool-verified: `provisa/cassandra/fetch.py`] (REQ-1676) |
 | `redis` | redis (Trino); HTTP-freier redis-py-Read auf jeder anderen Engine | Nein | Ein Key-Präfix `<table>:*` ist eine Tabelle, und ein Hash ist eine Zeile; Register Table listet die vorhandenen Präfixe und typisiert die Spalten eines Präfixes aus dessen Hashes (ein `mapping.tables`-Eintrag überschreibt Muster, Key-Spalte, Werttyp und Spalten) [tool-verified: `provisa/redis/fetch.py`] (REQ-1675) |
 
+**Redis auf den gehosteten Engines.** Redis ist nicht verfügbar, wenn die Engine der Organisation eine der bereitgestellten Engines der gehosteten Plattform ist. Trino liest die Tabellen eines Redis-Katalogs aus Beschreibungsdateien in einem eigenen Verzeichnis des Katalogs, und einer gehosteten Engine kann im laufenden Betrieb keines gegeben werden. Das Speichern oder Anwenden einer Redis-Quelle wird dort mit Namen abgelehnt (HTTP 422, `sources.redis_needs_engine_files`); ein selbst gehostetes Deployment liest Redis wie oben beschrieben. [tool-verified: `provisa/core/repositories/source.py` `refuse_on_engine_shard`] (REQ-2073)
+
 ### Qdrant
 
 `qdrant` (REQ-1983, REQ-2000) wird vom eigenen Client von Qdrant gelesen und geschrieben, `qdrant-client`. Qdrant ist **nur live**: eine Eigenschaft des Quelltyps, keine Einstellung. Antworten gibt es mit seinem Vektorindex und seiner Query API, und kein Replikat kann dasselbe beantworten; seine Tabellen werden daher nie repliziert. Für eine Qdrant-Quelle oder ihre Tabellen gibt es keine Replicate-Auswahl; ein `replicate`-Wert oder `row_materialize` darauf wird abgelehnt. [tool-verified: `provisa/core/source_registry.py` `LIVE_ONLY_TYPES`; `provisa/api/admin/_landing_ttl.py` `_live_only_refusal`]
@@ -257,6 +259,8 @@ Eine Suche wird pro Anweisung unter ihren Argumenten gelesen, ihre Zeilen für d
 | `kafka` | Föderierter Kafka-Connector; Schema über Confluent Schema Registry (Avro, Protobuf, JSON Schema), manuelle Definition oder Stichproben-Inferenz (REQ-147, REQ-150) | Nein; die Live-Ausgabe einer Tabelle veröffentlicht nach Kafka (REQ-565) |
 | `websocket` | Externer WebSocket-Feed — verbinden, abonnieren, Ereignisse empfangen; Ergebnisse materialisiert (REQ-338) | Nein |
 | `rss` | RSS-2.0-/Atom-Feed — pollen, Watermark nach pubDate/updated; Ergebnisse materialisiert (REQ-342, REQ-343) | Nein |
+
+**Kafka auf den gehosteten Engines.** Auf den bereitgestellten Engines der gehosteten Plattform muss eine Kafka-Quelle eine Schema-Registry nennen (`schema_registry_url`). Eine Quelle, deren Topic-Spalten nur das Modell deklariert, wird beim Speichern oder Anwenden mit Namen abgelehnt (HTTP 422, `sources.kafka_needs_schema_registry`), da ihre Tabellenbeschreibungen ein Verzeichnis bräuchten, das der laufenden Engine nicht gegeben werden kann. SASL-Zugangsdaten erreichen diese Engines im Speicher (siehe [Sicherheit](security.md#the-federation-engine-trino)). [tool-verified: `provisa/core/repositories/kafka_source.py` `refuse_on_engine_shard`] (REQ-2073)
 
 ### Push-Empfänger {: #push-receiver }
 

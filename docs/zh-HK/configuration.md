@@ -943,7 +943,16 @@ views:
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
-時刻傳回每個鍵在當時生效的版本。範圍傳回在其中任何時點生效的每個版本，每個版本一列。(REQ-2064) 同一個值亦是 `resolve`（GraphQL、gRPC、MCP）的 `as_of` 引數、REST 查詢參數 `as_of`，以及 Arrow Flight ticket 的 `as_of` 選項。傳給 `resolve` 的範圍會傳回該資料列的 `versions`，而不是其 `row`。權限、遮罩及資料列規則與任何讀取一樣適用。格式錯誤的值，或結束不晚於開始的範圍，會以 HTTP 400（`data.invalid_as_of`）被拒絕。
+時刻傳回每個鍵在當時生效的版本。範圍傳回在其中任何時點生效的每個版本，每個版本一列。(REQ-2064)
+
+**按記錄時間。** 之後記錄的更正會改變檢視對過去的描述：一旦更正被記錄，9 月 30 日生效的版本就是更正後的版本。若要按 Provisa 在某個時間點記錄的樣子讀取檢視（早於之後的任何更正），請加上 `X-Provisa-As-Recorded`，即一個 ISO 8601 時間：
+
+```
+X-Provisa-As-Of: 2026-09-30T12:00:00
+X-Provisa-As-Recorded: 2026-10-01T00:00:00
+```
+
+在該時間之後記錄的每個版本都會被排除，然後 as-of 選出在其自身時間點生效的版本。只用 `X-Provisa-As-Recorded` 時，讀取傳回按當時記錄生效的每個鍵的版本。它是一個時間點而不是範圍；範圍或格式錯誤的值會以 HTTP 400 拒絕（`data.invalid_as_recorded`）。同一個值亦是 `resolve` 的 `as_recorded` 引數、REST 的 `as_recorded` 查詢參數，以及 Arrow Flight 票證的 `as_recorded` 選項。每條陳述式的稽核記錄會保存它讀取時使用的兩個時間，`as_of` 和 `as_recorded`。(REQ-1163)同一個值亦是 `resolve`（GraphQL、gRPC、MCP）的 `as_of` 引數、REST 查詢參數 `as_of`，以及 Arrow Flight ticket 的 `as_of` 選項。傳給 `resolve` 的範圍會傳回該資料列的 `versions`，而不是其 `row`。權限、遮罩及資料列規則與任何讀取一樣適用。格式錯誤的值，或結束不晚於開始的範圍，會以 HTTP 400（`data.invalid_as_of`）被拒絕。
 
 每個帶歷史的檢視還會傳回三個欄位，其授權方式與其數據來源時間欄位相同（沒有時則與第一個鍵欄位相同）：
 

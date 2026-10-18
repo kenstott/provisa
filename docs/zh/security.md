@@ -285,7 +285,7 @@ rls_rules:
 ```
 过滤条件以 AND 追加到查询的 WHERE 子句。适用于查询和变更（UPDATE/DELETE）。（REQ-035、REQ-041）
 
-`current_setting('provisa.<name>')` 项从请求所绑定的会话变量解析：来自已验证身份的 `user_id`、来自执行角色的 `role`，以及令牌中每个标量 claim，以其小写名称绑定，连字符换为下划线。Hasura 会话变量保留自己的名称：`X-Hasura-User-Id` 是 `hasura_user_id`，读自令牌的 `x-hasura-user-id` claim（在顶层，或在 Hasura claims 对象内，如 `https://hasura.io/jwt/claims`），或作为属性 `hasura_user_id` 记录在成员名下。因此导入的基于 `X-Hasura-User-Id` 的 Hasura 过滤会读取 `provisa.hasura_user_id`。`provisa.user_id` 始终是已登录的身份，任何 claim 都不会替换它。角色配置的 `session_vars` 是基础常量；请求的绑定叠加在其上。在不安全模式下，标头 `x-provisa-session-<name>` 绑定 `<name>`。任何地方都未绑定的变量解析为 NULL，不匹配任何行。（REQ-1682）
+`current_setting('provisa.<name>')` 项从请求所绑定的会话变量解析：来自已验证身份的 `user_id`、来自执行角色的 `role`，以及令牌中每个标量 claim，以其小写名称绑定，连字符换为下划线。Hasura 会话变量保留自己的名称：`X-Hasura-User-Id` 是 `hasura_user_id`，读自令牌的 `x-hasura-user-id` claim（在顶层，或在 Hasura claims 对象内，如 `https://hasura.io/jwt/claims`），或作为属性 `hasura_user_id` 记录在成员名下。因此导入的基于 `X-Hasura-User-Id` 的 Hasura 过滤会读取 `provisa.hasura_user_id`。`provisa.user_id` 始终是已登录的身份，任何 claim 都不会替换它。角色配置的 `session_vars` 是基础常量；请求的绑定叠加在其上。从另一个角色继承的角色，会把祖先的常量放在自己的常量之下，每个名称取最近角色的值。`user_id`、`role`、`region` 和 `org` 由请求或节点绑定，不能配置为常量。在不安全模式下，标头 `x-provisa-session-<name>` 绑定 `<name>`。任何地方都未绑定的变量解析为 NULL，不匹配任何行。（REQ-1682）
 
 ## 列级脱敏 {: #column-level-masking }
 
@@ -489,6 +489,14 @@ Provisa 终结 TLS 的每个监听器（HTTP API 和 UI、pgwire、Bolt、MCP、
 
 组织的密钥只由该组织读取。在 Provisa 自己的存储中，每个密钥都保存在其组织之下。在承载多个组织的部署的中央服务中（Vault、AWS Secrets Manager、GCP Secret Manager、Azure Key Vault），每次读取都在读取方组织的前缀内进行，会离开该前缀的引用会被拒绝。（REQ-1557） 前缀以及将已有密钥迁移到前缀下的步骤，参见[密钥](secrets.md#one-organizations-secrets-in-a-central-service)。
 
+## 跨组织的遥测 {: #telemetry-across-organizations }
+
+在许多组织共享的部署上，运维信号（`"ops"."traces"`，在 Trino 引擎上还有旁边的指标和日志）是所有组织的工作都写入的同一个存储。每个 span 记录启动它所服务的组织，保存为 `tenant_id`；对这些信号的每次读取只返回读取方组织的行，与角色无关。在任何组织的工作之外启动的 span（例如服务器启动时）不属于任何组织，也没有组织会读到它。平台管理员在任何组织中都没有数据访问权，也不通过 Provisa 读取其中任何一个。(REQ-1349, REQ-1327)
+
+运维信号在两种引擎上都会无限期保留，与审计日志一样：压缩会重写存放它们的文件，但不删除任何行。在 Trino 上，它们是 `otel` 目录的 Iceberg 表。在原生引擎（DuckDB）上，服务器把自身的追踪记录以 Parquet 文件写入其遥测文件夹，引擎以同一名称 `"ops"."traces"` 读取它们，并在其上提供刷新血缘视图 `"ops"."mv_refresh_lineage"`；两者都按同一条按组织划分的规则读取。(REQ-862)
+
+信号在其存储中以明文保存。需要在一个部署内部比按组织划分更强边界的工作负载，运行在专用部署上；高度敏感或受监管的工作负载则自托管。
+
 ## 部署加固 {: #deployment-hardening }
 
 ### 存储凭据与存储的监听位置 {: #store-credentials-and-where-the-stores-listen }
@@ -514,6 +522,7 @@ Provisa 终结的每个监听器都提供 TLS（参见 [TLS 版本](#tls-version
 - **节点之间。** 协调器与其 worker 使用为部署生成的共享密钥（`internal-communication.shared-secret`）相互认证。加密它们之间的流量是运营者的可选项，默认关闭：关闭时，流量保持在部署的私有网络或集群之内。当合规或零信任要求部署内部也须加密时再开启。Trino 文档称它会使 shuffle 密集型查询（分布式连接、聚合、窗口函数）变慢 10% 到 100% 以上。在 compose 部署上，它是设置 `engine.trino_internal_tls`（Deployment settings → Engine），旁边是引擎网络和协调器的固定地址，并在下次启动时生效。在 Helm chart 下，它是值 `trino.internalTls`，另有 `trino.coordinatorClusterIP`。托管平台的引擎是单节点协调器，没有节点间流量，并拒绝该选项。（REQ-2072）
 - **假脱机数据。** 容错执行用为每个查询生成、查询结束即丢弃的密钥，加密它假脱机的交换数据（`fault-tolerant-execution.exchange-encryption-enabled=true`，显式设置）。不使用旧式的溢写到磁盘。
 - **同一引擎上的多个组织。** 每个组织的 catalog 属于它自己，以该组织命名，每个组织的语句在它自己的资源组中运行。
+- **目录及其中的凭据只存在于引擎内存中。** Provisa 在运行时创建每个 Trino 目录，每个目录保存其数据源的连接属性，包括密码。Provisa 运行的每个引擎都把它们保存在内存中（`catalog.store=memory`）：不会有目录写入引擎磁盘，也不会从文件挂载目录。重启的协调器回来时没有任何目录；每个 Provisa 进程会在下一次查询时发现，引擎监视器则在一分钟内发现，并重新创建它所服务的目录。带 SASL 凭据的 Kafka 数据源需要一个文件：Trino 的 Kafka 连接器只从文件读取客户端设置，因此 Provisa 把它们（包括密码）写入 `kafka-client/<catalog>.properties`。该文件只有 Trino 的用户可读（0700 目录中的 0600 模式）。在容器栈中，该目录是 API 与引擎共享的内存卷。在托管平台的引擎上，它是引擎自己的 Kubernetes Secret，保存在节点内存中，只有 Trino 的用户组可读（0440 模式）。无论哪种方式，该文件都不会落到磁盘上。在托管引擎上，Kafka 数据源必须指定模式注册表：主题列只由模型声明的数据源在保存或应用时会被按名称拒绝，因为它的表描述需要一个无法交给运行中引擎的目录。启动栈时会删除早期版本留在磁盘上的目录文件和 Kafka 客户端文件。
 
 ### 共享部署上的数据源 {: #sources-on-a-shared-deployment }
 
@@ -532,15 +541,16 @@ Provisa 终结的每个监听器都提供 TLS（参见 [TLS 版本](#tls-version
 - 组织运行的 DuckDB 引擎溢写到组织的文件夹。
 - 行过滤器获取的行和上传的代码暂存在组织的文件夹中。
 - Trino 的容错执行用为每个查询生成、查询结束即丢弃的密钥，加密假脱机的交换数据（`fault-tolerant-execution.exchange-encryption-enabled=true`）。Provisa 不开启 Trino 旧式的溢写到磁盘。
+- Trino 把组织的目录连同其凭据保存在内存中，不向磁盘写入任何目录（`catalog.store=memory`）；Kafka 数据源的 SASL 客户端设置位于只有 Trino 用户可读的文件中，在容器栈中位于内存（参见[联邦引擎](#the-federation-engine-trino)）。
 - PostgreSQL 联邦引擎把临时文件写在该 PostgreSQL 服务器保存它们的位置，处于服务器自身的存储加密之下，而不是组织的文件夹中。
 
 ### 共享与专用托管平台 {: #shared-and-dedicated-hosted-platforms }
 
-共享托管平台在逻辑上隔离各组织。一个部署服务所有组织，每个组织的数据通过治理、引擎上自己的 schema、catalog 和资源组、自己的密钥、假脱机引擎数据的每查询密钥，以及拒绝其数据源访问平台私有地址，而始终归其自己所有。建议用于试验和小型企业。专用托管平台在物理上隔离：拥有自己的机器、网络和存储，服务一个客户。
+共享托管平台在逻辑上隔离各组织。一个部署服务所有组织，每个组织的数据通过治理、引擎上自己的 schema、catalog 和资源组、自己的密钥、假脱机引擎数据的每查询密钥，以及拒绝其数据源访问平台私有地址，而始终归其自己所有。建议用于试验和小型企业。专用托管平台在物理上隔离：拥有自己的机器、网络和存储，服务一个客户。对于高度敏感或受监管的工作负载，请在你自己的边界内自托管 Provisa，由你自己的运维人员掌握每一个密钥和每一台主机。托管平台目前没有 SOC 2 报告。我们正在评估 SOC 2，并会提供进展。如果你需要 SOC 2，我们建议自托管。
 
 ### 浏览器中的 Python {: #python-in-the-browser }
 
-Data Science 区域在访问者的浏览器中运行 Python。它发出的每次读取都以已登录用户的身份，带着其当前角色、组织和环境发送到服务器，并与任何其他客户端的同一语句完全一样受到治理。
+Explore 的 Python 和 Notebook 标签页在访问者的浏览器中运行 Python。它发出的每次读取都以已登录用户的身份、带着其当前角色、组织和环境发送到服务器，并与来自任何其他客户端的同一语句完全一样地受到治理。
 
 ## 高安全模式 {: #high-security-mode }
 

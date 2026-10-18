@@ -200,6 +200,8 @@ MotherDuck 數據來源只由 DuckDB 和 Postgres 引擎提供服務。其他引
 | `cassandra` | cassandra (Trino)；在其他每個引擎上經 cassandra-driver 做 CQL 讀取 | 否 | Keyspace 即結構描述；Register Table 列出 keyspace 的資料表，並依叢集的結構描述中繼資料為資料行定型（分區鍵作為主鍵）；`cassandra` extra 會安裝驅動程式 [tool-verified: `provisa/cassandra/fetch.py`] (REQ-1676) |
 | `redis` | redis (Trino)；在其他每個引擎上以不經 HTTP 的 redis-py 讀取 | 否 | 鍵前綴 `<table>:*` 是一張表，一個 hash 是一列；Register Table 列出現有的前綴，並依前綴的 hash 為資料行定型（`mapping.tables` 條目可覆寫模式、鍵資料行、值類型與資料行） [tool-verified: `provisa/redis/fetch.py`] (REQ-1675) |
 
+**託管引擎上的 Redis。** 當組織的引擎是託管平台預置的引擎之一時，Redis 不可用。Trino 從目錄自身資料夾中的描述檔案讀取 Redis 目錄的資料表，而託管引擎在執行期間無法被賦予這樣的資料夾。在那裡儲存或套用 Redis 數據來源會被按名稱拒絕（HTTP 422，`sources.redis_needs_engine_files`）；自行託管的部署按上文所述讀取 Redis。[tool-verified: `provisa/core/repositories/source.py` `refuse_on_engine_shard`] (REQ-2073)
+
 ### Qdrant
 
 `qdrant`（REQ-1983、REQ-2000）由 Qdrant 自家的用戶端 `qdrant-client` 讀寫。Qdrant **僅限即時**：這是來源類型的屬性，不是設定。它以自己的向量索引和 Query API 作答，任何副本都無法給出同樣的答案，因此其表格永遠不會被複製。Qdrant 來源及其表格沒有 Replicate 選項；對其設定 `replicate` 值或 `row_materialize` 會被拒絕。[tool-verified: `provisa/core/source_registry.py` `LIVE_ONLY_TYPES`；`provisa/api/admin/_landing_ttl.py` `_live_only_refusal`]
@@ -251,6 +253,8 @@ MotherDuck 數據來源只由 DuckDB 和 Postgres 引擎提供服務。其他引
 | `kafka` | 聯邦 Kafka 連接器；結構描述經 Confluent Schema Registry（Avro、Protobuf、JSON Schema）、手動定義或樣本推斷取得（REQ-147、REQ-150） | 否；資料表的即時輸出會發佈至 Kafka（REQ-565） |
 | `websocket` | 外部 WebSocket 饋送——連線、訂閱、接收事件；結果經具體化（REQ-338） | 否 |
 | `rss` | RSS 2.0／Atom 饋送——輪詢，以 pubDate/updated 標記水位；結果經具體化（REQ-342、REQ-343） | 否 |
+
+**託管引擎上的 Kafka。** 在託管平台預置的引擎上，Kafka 數據來源必須指定一個結構描述登錄（`schema_registry_url`）。主題欄位只由模型宣告的數據來源在儲存或套用時會被按名稱拒絕（HTTP 422，`sources.kafka_needs_schema_registry`），因為它的資料表描述需要一個無法交給執行中引擎的資料夾。SASL 憑證以記憶體方式送達這些引擎（參見[安全](security.md#the-federation-engine-trino)）。[tool-verified: `provisa/core/repositories/kafka_source.py` `refuse_on_engine_shard`] (REQ-2073)
 
 ### 推送接收器 {: #push-receiver }
 | 數據來源類型 | 機制 | 變更操作 |

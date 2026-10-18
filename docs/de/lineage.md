@@ -185,6 +185,29 @@ Die Antwort hat dieselbe Form wie der Statement-Graph, mit einem zusätzlichen F
 }
 ```
 
+## Woraus jede Aktualisierung gebaut wurde (REQ-862) {: #what-each-refresh-was-built-from-req-862 }
+
+Jede Aktualisierung einer materialisierten Sicht hält fest, woraus sie gebaut wurde: die Version der Definition der Sicht, die Version ihrer Eingaben und wie diese Version ermittelt wurde, sowie die Quellspalten und den Ausdruck jeder Ausgabespalte. Die Betriebssicht `"ops"."mv_refresh_lineage"` liefert eine Zeile pro Aktualisierung:
+
+| Spalte | Enthält |
+|---|---|
+| `mv_id` | Die aktualisierte materialisierte Sicht |
+| `target_table` | Die Tabelle, die die Aktualisierung geschrieben hat |
+| `definition_version` | Die Version der Definition der Sicht |
+| `input_version`, `input_version_kind` | Die Version ihrer Eingaben: ein Iceberg-Snapshot, ein Watermark, ein Freshness-Token oder der Zeitpunkt der Aktualisierung |
+| `trace_id` | Der Trace der Aktualisierung in `"ops"."traces"` |
+| `refreshed_at` | Wann sie lief |
+| `column_derivations` | Jede Ausgabespalte mit ihren Quellspalten und ihrem Ausdruck, als JSON |
+
+```sql
+SELECT refreshed_at, definition_version, input_version, input_version_kind
+FROM "ops"."mv_refresh_lineage"
+WHERE mv_id = 'view-view_exposure'
+ORDER BY refreshed_at
+```
+
+Die Sicht liest die Aktualisierungsdatensätze in `"ops"."traces"` und antwortet auf jeder Engine, die sie aufbewahrt. Auf Trino sind das die Iceberg-Tabellen des Katalogs `otel`. Auf DuckDB schreibt der Server seine eigenen Trace-Datensätze als Parquet-Dateien in seinen Telemetrie-Ordner (`PROVISA_TELEMETRY_DIR`, standardmäßig `~/.provisa/telemetry`), eine Datei pro Export-Batch in einem Ordner pro Tag. Die geplante Telemetrie-Kompaktierung (`otel.compact_cron`) fasst die kleinen Dateien jedes Tages zu Dateien von bis zu 64 MB zusammen. Jede Organisation liest nur ihre eigenen Aktualisierungen, und die Datensätze werden unbegrenzt aufbewahrt. Spans werden nur erfasst, solange das OpenTelemetry-SDK aktiviert ist (`OTEL_SDK_DISABLED` nicht gesetzt oder false).
+
 ## Was eine Spaltenumbenennung oder -löschung beeinträchtigen würde (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Eine Spalte trägt zwei Namen, und jeder wird von einer anderen Gruppe von Artefakten gespeichert.

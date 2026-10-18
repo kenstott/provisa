@@ -943,7 +943,16 @@ Una versión rige desde su momento hasta el de la versión siguiente. Un borrado
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
-Un momento responde la versión de cada clave vigente entonces. Un rango responde cada versión vigente en algún momento dentro de él, una fila por versión. (REQ-2064) El mismo valor es el argumento `as_of` de `resolve` (GraphQL, gRPC, MCP), el parámetro de consulta REST `as_of` y la opción `as_of` de un ticket de Arrow Flight. Un rango dado a `resolve` responde las `versions` de la fila en lugar de su `row`. Los derechos, las máscaras y las reglas de filas se aplican como en cualquier lectura. Un valor mal formado, o un rango cuyo fin no es posterior a su inicio, se rechaza con HTTP 400 (`data.invalid_as_of`).
+Un momento responde la versión de cada clave vigente entonces. Un rango responde cada versión vigente en algún momento dentro de él, una fila por versión. (REQ-2064)
+
+**Según lo registrado.** Una corrección registrada después cambia lo que una vista dice del pasado: la versión vigente el 30 de septiembre es la corregida una vez registrada la corrección. Para leer la vista tal como Provisa la tenía registrada en un momento, antes de cualquier corrección posterior, añada `X-Provisa-As-Recorded`, un instante ISO 8601:
+
+```
+X-Provisa-As-Of: 2026-09-30T12:00:00
+X-Provisa-As-Recorded: 2026-10-01T00:00:00
+```
+
+Toda versión registrada después de ese momento queda fuera, y el as-of elige entonces la versión vigente en su propio momento. Con `X-Provisa-As-Recorded` solo, la lectura responde la versión de cada clave vigente según lo registrado entonces. Es un instante, no un rango; un rango o un valor mal formado se rechaza con HTTP 400 (`data.invalid_as_recorded`). El mismo valor es el argumento `as_recorded` de `resolve`, el parámetro de consulta REST `as_recorded` y la opción `as_recorded` de un ticket de Arrow Flight. El registro de auditoría de cada sentencia guarda los dos momentos con que leyó, `as_of` y `as_recorded`. (REQ-1163) El mismo valor es el argumento `as_of` de `resolve` (GraphQL, gRPC, MCP), el parámetro de consulta REST `as_of` y la opción `as_of` de un ticket de Arrow Flight. Un rango dado a `resolve` responde las `versions` de la fila en lugar de su `row`. Los derechos, las máscaras y las reglas de filas se aplican como en cualquier lectura. Un valor mal formado, o un rango cuyo fin no es posterior a su inicio, se rechaza con HTTP 400 (`data.invalid_as_of`).
 
 Toda vista con historial responde tres columnas más, concedidas como lo está su columna de hora de origen (si no, su primera columna de clave):
 

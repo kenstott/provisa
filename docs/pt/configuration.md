@@ -942,7 +942,16 @@ Uma versão vigora do seu momento até o da versão seguinte. Uma exclusão não
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
-Um momento responde a versão de cada chave vigente então. Um intervalo responde cada versão vigente em algum momento dentro dele, uma linha por versão. (REQ-2064) O mesmo valor é o argumento `as_of` de `resolve` (GraphQL, gRPC, MCP), o parâmetro de consulta REST `as_of` e a opção `as_of` de um ticket Arrow Flight. Um intervalo dado a `resolve` responde as `versions` da linha em vez da sua `row`. Direitos, máscaras e regras de linha se aplicam como em qualquer leitura. Um valor malformado, ou um intervalo cujo fim não é posterior ao início, é recusado com HTTP 400 (`data.invalid_as_of`).
+Um momento responde a versão de cada chave vigente então. Um intervalo responde cada versão vigente em algum momento dentro dele, uma linha por versão. (REQ-2064)
+
+**Como registrado.** Uma correção registrada depois muda o que uma visão diz sobre o passado: a versão em vigor em 30 de setembro passa a ser a corrigida assim que a correção é registrada. Para ler a visão como o Provisa a tinha registrado num momento, antes de qualquer correção posterior, adicione `X-Provisa-As-Recorded`, um instante ISO 8601:
+
+```
+X-Provisa-As-Of: 2026-09-30T12:00:00
+X-Provisa-As-Recorded: 2026-10-01T00:00:00
+```
+
+Toda versão registrada depois desse momento fica de fora, e o as-of escolhe então a versão em vigor no seu próprio momento. Com `X-Provisa-As-Recorded` sozinho, a leitura responde a versão de cada chave em vigor como registrada então. É um instante, não um intervalo; um intervalo ou um valor malformado é recusado com HTTP 400 (`data.invalid_as_recorded`). O mesmo valor é o argumento `as_recorded` de `resolve`, o parâmetro de consulta REST `as_recorded` e a opção `as_recorded` de um ticket do Arrow Flight. O registro de auditoria de cada instrução guarda os dois momentos com que leu, `as_of` e `as_recorded`. (REQ-1163) O mesmo valor é o argumento `as_of` de `resolve` (GraphQL, gRPC, MCP), o parâmetro de consulta REST `as_of` e a opção `as_of` de um ticket Arrow Flight. Um intervalo dado a `resolve` responde as `versions` da linha em vez da sua `row`. Direitos, máscaras e regras de linha se aplicam como em qualquer leitura. Um valor malformado, ou um intervalo cujo fim não é posterior ao início, é recusado com HTTP 400 (`data.invalid_as_of`).
 
 Toda view com histórico responde mais três colunas, concedidas como a sua coluna de hora de origem (senão a sua primeira coluna de chave):
 

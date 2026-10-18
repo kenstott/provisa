@@ -205,6 +205,8 @@ MotherDuck 数据源只由 DuckDB 和 Postgres 引擎提供服务。其他引擎
 | `cassandra` | cassandra（Trino）；在其他所有引擎上通过 cassandra-driver 进行 CQL 读取 | No | Keyspace 即为 schema；Register Table 列出某个 keyspace 的表，并根据集群的 schema 元数据为列定型（分区键作为主键）；`cassandra` extra 安装该驱动 [tool-verified: `provisa/cassandra/fetch.py`] (REQ-1676) |
 | `redis` | redis（Trino）；在其他所有引擎上通过 redis-py 进行无 HTTP 读取 | No | 键前缀 `<table>:*` 即为一张表，一个 hash 即为一行；Register Table 列出存在的前缀，并根据前缀的 hash 为其列定型（`mapping.tables` 条目可覆盖模式、键列、值类型和列） [tool-verified: `provisa/redis/fetch.py`] (REQ-1675) |
 
+**托管引擎上的 Redis。** 当组织的引擎是托管平台预置的引擎之一时，Redis 不可用。Trino 从目录自身目录中的描述文件读取 Redis 目录的表，而托管引擎在运行期间无法被赋予这样的目录。在那里保存或应用 Redis 数据源会被按名称拒绝（HTTP 422，`sources.redis_needs_engine_files`）；自托管部署按上文所述读取 Redis。[tool-verified: `provisa/core/repositories/source.py` `refuse_on_engine_shard`] (REQ-2073)
+
 ### Qdrant
 
 `qdrant`（REQ-1983、REQ-2000）由 Qdrant 自带的客户端 `qdrant-client` 读写。Qdrant **仅限实时**：这是源类型的属性，不是设置。它用自己的向量索引和 Query API 作答，任何副本都无法给出同样的答案，因此其表永远不会被复制。Qdrant 源及其表没有 Replicate 选项；对其设置 `replicate` 值或 `row_materialize` 会被拒绝。[tool-verified: `provisa/core/source_registry.py` `LIVE_ONLY_TYPES`；`provisa/api/admin/_landing_ttl.py` `_live_only_refusal`]
@@ -257,6 +259,8 @@ MotherDuck 数据源只由 DuckDB 和 Postgres 引擎提供服务。其他引擎
 | `kafka` | 联邦 Kafka 连接器；通过 Confluent Schema Registry（Avro、Protobuf、JSON Schema）、手动定义或样本推断获取 schema（REQ-147, REQ-150） | 否；表的实时输出发布到 Kafka（REQ-565） |
 | `websocket` | 外部 WebSocket 数据流 — 连接、订阅、接收事件；结果会被物化（REQ-338） | No |
 | `rss` | RSS 2.0 / Atom 订阅源 — 轮询、按 pubDate/updated 设置水位线；结果会被物化（REQ-342, REQ-343） | No |
+
+**托管引擎上的 Kafka。** 在托管平台预置的引擎上，Kafka 数据源必须指定一个模式注册表（`schema_registry_url`）。主题列只由模型声明的数据源在保存或应用时会被按名称拒绝（HTTP 422，`sources.kafka_needs_schema_registry`），因为它的表描述需要一个无法交给运行中引擎的目录。SASL 凭据以内存方式送达这些引擎（参见[安全](security.md#the-federation-engine-trino)）。[tool-verified: `provisa/core/repositories/kafka_source.py` `refuse_on_engine_shard`] (REQ-2073)
 
 ### Push Receiver {: #push-receiver }
 

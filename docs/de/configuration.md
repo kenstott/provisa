@@ -944,7 +944,16 @@ X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
 
-Ein Zeitpunkt liefert die damals geltende Version jedes Schlüssels. Ein Bereich liefert jede Version, die zu irgendeinem Zeitpunkt darin galt, eine Zeile pro Version. (REQ-2064) Derselbe Wert ist das Argument `as_of` von `resolve` (GraphQL, gRPC, MCP), der REST-Abfrageparameter `as_of` und die Option `as_of` eines Arrow-Flight-Tickets. Ein an `resolve` übergebener Bereich liefert die `versions` der Zeile anstelle ihrer `row`. Rechte, Masken und Zeilenregeln gelten wie bei jedem Lesevorgang. Ein fehlerhafter Wert oder ein Bereich, dessen Ende nicht nach seinem Anfang liegt, wird mit HTTP 400 abgelehnt (`data.invalid_as_of`).
+Ein Zeitpunkt liefert die damals geltende Version jedes Schlüssels. Ein Bereich liefert jede Version, die zu irgendeinem Zeitpunkt darin galt, eine Zeile pro Version. (REQ-2064)
+
+**Wie erfasst.** Eine später erfasste Korrektur ändert, was eine Sicht über die Vergangenheit sagt: Die am 30. September geltende Version ist die korrigierte, sobald die Korrektur erfasst ist. Um die Sicht so zu lesen, wie Provisa sie zu einem Zeitpunkt erfasst hatte, vor jeder späteren Korrektur, fügen Sie `X-Provisa-As-Recorded` hinzu, einen ISO-8601-Zeitpunkt:
+
+```
+X-Provisa-As-Of: 2026-09-30T12:00:00
+X-Provisa-As-Recorded: 2026-10-01T00:00:00
+```
+
+Jede nach diesem Zeitpunkt erfasste Version bleibt außen vor, und das As-of wählt dann die Version, die zu seinem eigenen Zeitpunkt galt. Mit `X-Provisa-As-Recorded` allein liefert der Lesevorgang die Version jedes Schlüssels, die nach damaligem Erfassungsstand galt. Es ist ein Zeitpunkt, kein Bereich; ein Bereich oder ein fehlerhafter Wert wird mit HTTP 400 abgelehnt (`data.invalid_as_recorded`). Derselbe Wert ist das Argument `as_recorded` von `resolve`, der REST-Abfrageparameter `as_recorded` und die Option `as_recorded` eines Arrow-Flight-Tickets. Der Audit-Eintrag jeder Anweisung hält beide Zeitpunkte fest, mit denen sie gelesen hat, `as_of` und `as_recorded`. (REQ-1163) Derselbe Wert ist das Argument `as_of` von `resolve` (GraphQL, gRPC, MCP), der REST-Abfrageparameter `as_of` und die Option `as_of` eines Arrow-Flight-Tickets. Ein an `resolve` übergebener Bereich liefert die `versions` der Zeile anstelle ihrer `row`. Rechte, Masken und Zeilenregeln gelten wie bei jedem Lesevorgang. Ein fehlerhafter Wert oder ein Bereich, dessen Ende nicht nach seinem Anfang liegt, wird mit HTTP 400 abgelehnt (`data.invalid_as_of`).
 
 Jede Sicht mit Historie liefert drei weitere Spalten, freigegeben wie ihre Quellzeit-Spalte (sonst ihre erste Schlüsselspalte):
 

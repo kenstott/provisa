@@ -943,7 +943,16 @@ Una versione è in vigore dal suo istante fino a quello della versione successiv
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
-Un istante restituisce la versione di ogni chiave in vigore in quel momento. Un intervallo restituisce ogni versione in vigore in qualsiasi momento al suo interno, una riga per versione. (REQ-2064) Lo stesso valore è l'argomento `as_of` di `resolve` (GraphQL, gRPC, MCP), il parametro di query REST `as_of` e l'opzione `as_of` di un ticket Arrow Flight. Un intervallo dato a `resolve` restituisce le `versions` della riga al posto della sua `row`. Diritti, maschere e regole di riga si applicano come a qualsiasi lettura. Un valore malformato, o un intervallo la cui fine non è successiva all'inizio, viene rifiutato con HTTP 400 (`data.invalid_as_of`).
+Un istante restituisce la versione di ogni chiave in vigore in quel momento. Un intervallo restituisce ogni versione in vigore in qualsiasi momento al suo interno, una riga per versione. (REQ-2064)
+
+**Come registrato.** Una correzione registrata in seguito cambia ciò che una vista dice del passato: la versione in vigore il 30 settembre è quella corretta una volta registrata la correzione. Per leggere la vista come Provisa l'aveva registrata in un momento, prima di qualsiasi correzione successiva, aggiungete `X-Provisa-As-Recorded`, un istante ISO 8601:
+
+```
+X-Provisa-As-Of: 2026-09-30T12:00:00
+X-Provisa-As-Recorded: 2026-10-01T00:00:00
+```
+
+Ogni versione registrata dopo quel momento resta fuori, e l'as-of sceglie poi la versione in vigore al proprio momento. Con il solo `X-Provisa-As-Recorded`, la lettura restituisce la versione di ogni chiave in vigore come registrata allora. È un istante, non un intervallo; un intervallo o un valore malformato viene rifiutato con HTTP 400 (`data.invalid_as_recorded`). Lo stesso valore è l'argomento `as_recorded` di `resolve`, il parametro di query REST `as_recorded` e l'opzione `as_recorded` di un ticket Arrow Flight. Il record di audit di ogni istruzione conserva entrambi i momenti con cui ha letto, `as_of` e `as_recorded`. (REQ-1163) Lo stesso valore è l'argomento `as_of` di `resolve` (GraphQL, gRPC, MCP), il parametro di query REST `as_of` e l'opzione `as_of` di un ticket Arrow Flight. Un intervallo dato a `resolve` restituisce le `versions` della riga al posto della sua `row`. Diritti, maschere e regole di riga si applicano come a qualsiasi lettura. Un valore malformato, o un intervallo la cui fine non è successiva all'inizio, viene rifiutato con HTTP 400 (`data.invalid_as_of`).
 
 Ogni vista con cronologia restituisce tre colonne in più, concesse come lo è la sua colonna dell'ora di origine (altrimenti la sua prima colonna chiave):
 

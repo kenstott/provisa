@@ -160,6 +160,29 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 }
 ```
 
+## 每次刷新由什么构建（REQ-862） {: #what-each-refresh-was-built-from-req-862 }
+
+物化视图的每次刷新都会记录它由什么构建：视图定义的版本、其输入的版本以及该版本是如何确定的，以及每个输出列的源列和表达式。运维视图 `"ops"."mv_refresh_lineage"` 每次刷新返回一行：
+
+| 列 | 内容 |
+|---|---|
+| `mv_id` | 被刷新的物化视图 |
+| `target_table` | 刷新写入的表 |
+| `definition_version` | 视图定义的版本 |
+| `input_version`, `input_version_kind` | 其输入的版本：Iceberg 快照、水位线、新鲜度令牌或刷新时间 |
+| `trace_id` | 该刷新在 `"ops"."traces"` 中的追踪 |
+| `refreshed_at` | 运行时间 |
+| `column_derivations` | 每个输出列及其源列和表达式，以 JSON 表示 |
+
+```sql
+SELECT refreshed_at, definition_version, input_version, input_version_kind
+FROM "ops"."mv_refresh_lineage"
+WHERE mv_id = 'view-view_exposure'
+ORDER BY refreshed_at
+```
+
+该视图读取 `"ops"."traces"` 中的刷新记录，并在保留这些记录的每个引擎上作答。在 Trino 上，它们是 `otel` 目录的 Iceberg 表。在 DuckDB 上，服务器把自身的追踪记录以 Parquet 文件写入其遥测文件夹（`PROVISA_TELEMETRY_DIR`，默认 `~/.provisa/telemetry`），每个导出批次一个文件，每天一个文件夹。定时的遥测压缩（`otel.compact_cron`）会把每天的小文件合并为最大 64 MB 的文件。每个组织只读取自己的刷新，记录无限期保留。只有在启用 OpenTelemetry SDK 时（`OTEL_SDK_DISABLED` 未设置或为 false）才会记录 span。
+
 ## 重命名或删除一个列会打断什么（REQ-1484） {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 一个列带着两个名字，每一个都由不同的一组制品保存。

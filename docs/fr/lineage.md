@@ -188,6 +188,29 @@ La réponse a la même forme que le graphe d'instruction, avec un champ `cycles`
 }
 ```
 
+## À partir de quoi chaque rafraîchissement a été construit (REQ-862) {: #what-each-refresh-was-built-from-req-862 }
+
+Chaque rafraîchissement d'une vue matérialisée enregistre à partir de quoi il a été construit : la version de la définition de la vue, la version de ses entrées et la manière dont cette version a été établie, ainsi que les colonnes sources et l'expression de chaque colonne de sortie. La vue opérationnelle `"ops"."mv_refresh_lineage"` renvoie une ligne par rafraîchissement :
+
+| Colonne | Contient |
+|---|---|
+| `mv_id` | La vue matérialisée rafraîchie |
+| `target_table` | La table que le rafraîchissement a écrite |
+| `definition_version` | La version de la définition de la vue |
+| `input_version`, `input_version_kind` | La version de ses entrées : un snapshot Iceberg, un filigrane, un jeton de fraîcheur ou l'heure du rafraîchissement |
+| `trace_id` | La trace du rafraîchissement dans `"ops"."traces"` |
+| `refreshed_at` | Quand il a eu lieu |
+| `column_derivations` | Chaque colonne de sortie avec ses colonnes sources et son expression, en JSON |
+
+```sql
+SELECT refreshed_at, definition_version, input_version, input_version_kind
+FROM "ops"."mv_refresh_lineage"
+WHERE mv_id = 'view-view_exposure'
+ORDER BY refreshed_at
+```
+
+La vue lit les enregistrements de rafraîchissement dans `"ops"."traces"` et répond sur tout moteur qui les conserve. Sur Trino, ce sont les tables Iceberg du catalogue `otel`. Sur DuckDB, le serveur écrit ses propres enregistrements de traces en fichiers Parquet dans son dossier de télémétrie (`PROVISA_TELEMETRY_DIR`, `~/.provisa/telemetry` par défaut), un fichier par lot d'export dans un dossier par jour. La compaction planifiée de la télémétrie (`otel.compact_cron`) fusionne les petits fichiers de chaque jour en fichiers d'au plus 64 Mo. Chaque organisation ne lit que ses propres rafraîchissements, et les enregistrements sont conservés indéfiniment. Les spans ne sont enregistrés que tant que le SDK OpenTelemetry est activé (`OTEL_SDK_DISABLED` non défini ou false).
+
 ## Ce que renommer ou supprimer une colonne casserait (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Une colonne porte deux noms, et chacun est stocké par un ensemble d'artefacts différent.

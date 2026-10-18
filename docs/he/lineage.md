@@ -180,6 +180,29 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 }
 ```
 
+## ממה נבנה כל רענון (REQ-862) {: #what-each-refresh-was-built-from-req-862 }
+
+כל רענון של תצוגה ממומשת רושם ממה הוא נבנה: הגרסה של הגדרת התצוגה, הגרסה של הקלטים שלה ואיך נקבעה הגרסה הזו, ועמודות המקור והביטוי של כל עמודת פלט. תצוגת התפעול `"ops"."mv_refresh_lineage"` מחזירה שורה אחת לכל רענון:
+
+| עמודה | מכילה |
+|---|---|
+| `mv_id` | התצוגה הממומשת שרועננה |
+| `target_table` | הטבלה שהרענון כתב |
+| `definition_version` | הגרסה של הגדרת התצוגה |
+| `input_version`, `input_version_kind` | הגרסה של הקלטים שלה: snapshot של Iceberg, סימן מים, אסימון רעננות או זמן הרענון |
+| `trace_id` | ה-trace של הרענון ב-`"ops"."traces"` |
+| `refreshed_at` | מתי הוא רץ |
+| `column_derivations` | כל עמודת פלט עם עמודות המקור והביטוי שלה, כ-JSON |
+
+```sql
+SELECT refreshed_at, definition_version, input_version, input_version_kind
+FROM "ops"."mv_refresh_lineage"
+WHERE mv_id = 'view-view_exposure'
+ORDER BY refreshed_at
+```
+
+התצוגה קוראת את רשומות הרענון ב-`"ops"."traces"` ועונה בכל מנוע ששומר אותן. ב-Trino אלה טבלאות ה-Iceberg של הקטלוג `otel`. ב-DuckDB השרת כותב את רשומות ה-trace שלו כקובצי Parquet בתיקיית הטלמטריה שלו (`PROVISA_TELEMETRY_DIR`, כברירת מחדל `~/.provisa/telemetry`), קובץ אחד לכל אצוות ייצוא בתיקייה לכל יום. דחיסת הטלמטריה המתוזמנת (`otel.compact_cron`) ממזגת את הקבצים הקטנים של כל יום לקבצים של עד 64 MB. כל ארגון קורא רק את הרענונים שלו, והרשומות נשמרות ללא הגבלת זמן. spans נרשמים רק כל עוד ה-SDK של OpenTelemetry מופעל (`OTEL_SDK_DISABLED` לא מוגדר או false).
+
 ## מה שינוי שם או מחיקה של עמודה היו שוברים (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 עמודה נושאת שני שמות, וכל אחד מהם מאוחסן על ידי קבוצת ארטיפקטים אחרת.

@@ -205,6 +205,8 @@ Esses tipos de fonte são somente federação — sem driver direto, sem dialeto
 | `cassandra` | cassandra (Trino); leitura CQL via cassandra-driver em todo outro motor | Não | Keyspaces são esquemas; Register Table lista as tabelas de um keyspace e tipa as colunas a partir dos metadados de esquema do cluster (chaves de partição como chaves primárias); o extra `cassandra` instala o driver [tool-verified: `provisa/cassandra/fetch.py`] (REQ-1676) |
 | `redis` | redis (Trino); leitura redis-py sem HTTP em todo outro motor | Não | Um prefixo de chave `<table>:*` é uma tabela e um hash é uma linha; Register Table lista os prefixos presentes e tipa as colunas de um prefixo a partir de seus hashes (uma entrada de `mapping.tables` sobrepõe padrão, coluna de chave, tipo de valor e colunas) [tool-verified: `provisa/redis/fetch.py`] (REQ-1675) |
 
+**Redis nos motores hospedados.** O Redis não está disponível quando o motor da organização é um dos motores provisionados da plataforma hospedada. O Trino lê as tabelas de um catálogo Redis de arquivos de descrição num diretório próprio do catálogo, e não é possível dar um a um motor hospedado enquanto ele roda. Salvar ou aplicar ali uma fonte Redis é recusado pelo nome (HTTP 422, `sources.redis_needs_engine_files`); uma implantação auto-hospedada lê o Redis como descrito acima. [tool-verified: `provisa/core/repositories/source.py` `refuse_on_engine_shard`] (REQ-2073)
+
 ### Qdrant
 
 `qdrant` (REQ-1983, REQ-2000) é lido e escrito pelo cliente próprio do Qdrant, `qdrant-client`. O Qdrant é **somente ao vivo**: uma propriedade do tipo de fonte, não uma configuração. Ele responde com seu índice vetorial e sua Query API, e nenhuma réplica pode responder do mesmo modo, então suas tabelas nunca são replicadas. Não há opção Replicate para uma fonte Qdrant nem para suas tabelas; um valor `replicate` ou `row_materialize` em uma delas é recusado. [tool-verified: `provisa/core/source_registry.py` `LIVE_ONLY_TYPES`; `provisa/api/admin/_landing_ttl.py` `_live_only_refusal`]
@@ -257,6 +259,8 @@ Uma busca é lida por instrução sob seus argumentos, suas linhas mantidas sob 
 | `kafka` | Conector Kafka federado; esquema via Confluent Schema Registry (Avro, Protobuf, JSON Schema), definição manual, ou inferência de amostra (REQ-147, REQ-150) | Não; a saída ao vivo de uma tabela publica no Kafka (REQ-565) |
 | `websocket` | Feed WebSocket externo — conecta, subscreve, recebe eventos; resultados materializados (REQ-338) | Não |
 | `rss` | Feed RSS 2.0 / Atom — polling, marca d'água por pubDate/updated; resultados materializados (REQ-342, REQ-343) | Não |
+
+**Kafka nos motores hospedados.** Nos motores provisionados da plataforma hospedada, uma fonte Kafka deve nomear um registro de esquemas (`schema_registry_url`). Uma fonte cujas colunas dos tópicos só o modelo declara é recusada pelo nome ao ser salva ou aplicada (HTTP 422, `sources.kafka_needs_schema_registry`), pois suas descrições de tabela exigiriam um diretório que não pode ser dado ao motor em execução. As credenciais SASL chegam a esses motores em memória (veja [Segurança](security.md#the-federation-engine-trino)). [tool-verified: `provisa/core/repositories/kafka_source.py` `refuse_on_engine_shard`] (REQ-2073)
 
 ### Receptor Push {: #push-receiver }
 
