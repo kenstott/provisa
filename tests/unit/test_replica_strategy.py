@@ -758,7 +758,7 @@ async def test_a_connector_table_lands_only_the_rows_its_landing_filter_passes(t
         table_name="reports", schema_name=None, landing_filter="col IN ('v', 'w')"
     )
     await replica.load(table)
-    assert conn.queries == ["SELECT * FROM \"local_files\".\"reports\" WHERE col IN ('v', 'w')"]
+    assert conn.queries == ['SELECT * FROM "local_files"."reports" WHERE "col" IN (\'v\', \'w\')']
     assert pr.make_pgwire_loader().applies_landing_filter  # replica_source lets it through
     replica.close()
 

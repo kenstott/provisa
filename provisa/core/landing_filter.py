@@ -67,4 +67,7 @@ def where(table: Any, dialect_of: Callable[[], str | None]) -> str:
             f"table {table.table_name!r} has a landing_filter and the read that lands it has no "
             "SQL dialect to apply it in"
         )
-    return " WHERE " + _parsed(table.table_name, predicate).sql(dialect=dialect)
+    # Every identifier is quoted: a column named as a keyword of the reader's SQL (year, month,
+    # date in Calcite's) is read as that keyword unquoted. ``check`` holds each one to a column's
+    # own name, so the quoted name is the column's.
+    return " WHERE " + _parsed(table.table_name, predicate).sql(dialect=dialect, identify=True)
