@@ -16,7 +16,7 @@ description: >-
   into pandas in the browser as the analyst role, email addresses masked, and a scikit-learn model
   trained on them in the Notebook tab, from a notebook the demo ships.
 screenshot: card.png
-published: false
+published: true
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo's notebook step.
 requires_provisa: 0.1.0a491

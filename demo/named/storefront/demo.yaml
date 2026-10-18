@@ -16,7 +16,7 @@ description: >-
   an internal REST service. The app asks one nested GraphQL query as the signed-in customer; Apache
   Superset charts revenue and late shipments over the PostgreSQL wire protocol as the analyst.
 screenshot: card.png
-published: false
+published: true
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo.
 # The first release carrying the demo and what it needs: its tour's image steps, the pgwire catalog's

@@ -16,7 +16,7 @@ description: >-
   Which regions placed the most orders in the last five minutes? A view refreshed by every batch
   of orders that lands answers it in SQL, GraphQL and REST, and a subscription watches it move.
 screenshot: card.png
-published: false
+published: true
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo.
 requires_provisa: 0.1.0a489
