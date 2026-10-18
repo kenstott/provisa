@@ -151,6 +151,8 @@ I ruoli derivati nominati entrano come qualificatori. Un qualificatore non ha di
 
 Un agente MCP non agisce mai oltre i ruoli che gli sono stati dati. Un agente remoto nomina solo ruoli che il principal del suo token detiene. Un agente stdio locale nomina solo ruoli all'interno dell'insieme fissato in `mcp.role` (`PROVISA_MCP_ROLE`), e agisce come quell'insieme quando non ne nomina nessuno; qualsiasi altro ruolo viene rifiutato per nome. (REQ-2075)
 
+Un agente chiede con quale ruolo agisce tramite lo strumento MCP `describe_role`. La risposta è quel ruolo e a cosa serve (un meta-ruolo con ciascuno dei suoi membri), e i ruoli a cui l'agente può passare, ciascuno con la sua descrizione. Non contiene mai una regola di riga, una maschera, una concessione o una condizione. Provisa non dice mai a un agente perché un risultato è stato ristretto, e un risultato non porta alcun indicatore «filtrato»: i dati di un ruolo sono tutta la sua vista, e un motivo per ciò che manca inviterebbe a sondarlo. (REQ-2082)
+
 ### Cosa significa `+` {: #what-means }
 
 `+` compare in due punti, con un significato diverso in ciascuno.

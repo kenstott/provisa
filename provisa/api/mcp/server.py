@@ -230,6 +230,23 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
     return resolve_requested_role(state, held, named)
 
 
+def switchable_roles(state: Any) -> set[str]:  # REQ-2082
+    """The roles a tool call may name -- what :func:`named_role` checks a named role against: over
+    remote HTTP the token's held roles, the role it maps to and the derived roles its principal
+    holds; over stdio, the roles the operator pinned."""
+    identity = _request_identity.get()
+    if identity is None:
+        return {r.strip() for r in _pinned_stdio_role().split(",") if r.strip()}
+    from provisa.auth.derived_roles import principal_of
+    from provisa.security.rights import role_ids_from_claims
+
+    held = role_ids_from_claims(getattr(identity, "roles", None) or ())
+    mapped = _request_role.get()
+    if mapped is None:
+        raise RuntimeError("a remote MCP call carries an identity but no role")
+    return {*held, mapped, *principal_of(state, identity)[1]}
+
+
 def _pinned_stdio_role() -> str:
     """The role for local stdio calls. Must be explicitly configured via
     PROVISA_MCP_ROLE — there is no admin default."""
@@ -404,6 +421,11 @@ def build_mcp_server(state: Any):
                 user_id=identity.user_id, roles=list(identity.roles), acting_roles=[resolved_role]
             )
         return SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=org_id))
+
+    @_tool
+    async def describe_role(role: str | None = None) -> dict:  # REQ-2082
+        """The role you act as and what it is for, and the roles you may switch to."""
+        return tools.describe_role(state, _role(role), switchable_roles(state))
 
     @_tool
     async def list_schemas(role: str | None = None) -> list[dict]:

@@ -151,6 +151,8 @@ Funções derivadas nomeadas entram como qualificadores. Um qualificador não te
 
 Um agente MCP nunca age além dos papéis que lhe foram dados. Um agente remoto só nomeia papéis que o principal do seu token detém. Um agente stdio local só nomeia papéis dentro do conjunto fixado em `mcp.role` (`PROVISA_MCP_ROLE`), e age como esse conjunto quando não nomeia nenhum; qualquer outro papel é recusado pelo nome. (REQ-2075)
 
+Um agente pergunta com qual função age por meio da ferramenta MCP `describe_role`. A resposta é essa função e para que ela serve (uma meta-função com cada um de seus membros), e as funções para as quais o agente pode mudar, cada uma com sua descrição. Ela nunca traz uma regra de linha, máscara, concessão ou condição. O Provisa nunca diz a um agente por que um resultado foi restringido, e um resultado não traz nenhum indicador de "filtrado": os dados de uma função são toda a sua visão, e um motivo para o que falta convidaria a sondá-lo. (REQ-2082)
+
 ### O que `+` significa {: #what-means }
 
 `+` aparece em dois lugares, com significado diferente em cada um.

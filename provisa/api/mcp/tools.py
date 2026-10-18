@@ -1665,3 +1665,32 @@ def _json_safe(val: Any) -> Any:
     if isinstance(val, (_dt.date, _dt.datetime, _dt.time)):
         return val.isoformat()
     return str(val)
+
+
+def _described_role(state: Any, role_id: str) -> dict:  # REQ-2082
+    """One role as an agent may know it: its id and what it is for. A derived value role's line is
+    generated (REQ-2076); a derived parent's is its declaration's."""
+    from provisa.auth.derived_roles import SEPARATOR, declared_derived_role_entries
+
+    held = state.roles.get(role_id)
+    if held is not None:
+        return {"id": role_id, "description": held["description"]}
+    declared = {e.attribute: e.description for e in declared_derived_role_entries(state)}
+    attribute, sep, value = role_id.partition(SEPARATOR)
+    if sep and attribute in declared:
+        return {"id": role_id, "description": f"Held when the user's {attribute} is {value}"}
+    return {"id": role_id, "description": declared[role_id]}
+
+
+def describe_role(state: Any, role: str, switchable: set[str]) -> dict:  # REQ-2082
+    """The role the caller acts as -- a meta-role with its members -- and the roles it may switch
+    to, each with its description. Nothing about what any role is granted or denied: no row rule,
+    mask, grant or condition, and no reason a result was narrowed. A role's data is its whole view,
+    so an agent is told who it is, never what it cannot see."""
+    out: dict[str, Any] = {"role": _described_role(state, role)}
+    members = getattr(state, "meta_roles", {}).get(role)
+    if members is not None:
+        qualifiers = getattr(state, "meta_qualifiers", {}).get(role, ())
+        out["members"] = [_described_role(state, m) for m in (*members, *qualifiers)]
+    out["can_switch_to"] = [_described_role(state, r) for r in sorted(switchable)]
+    return out

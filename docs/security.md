@@ -152,6 +152,8 @@ Named derived roles enter as qualifiers. A qualifier has no rights, domain acces
 
 An MCP agent never acts beyond the roles it was given. A remote agent names only roles its token's principal holds. A local stdio agent names only roles within the set pinned in `mcp.role` (`PROVISA_MCP_ROLE`), and acts as that set when it names none; any other role is refused by name. (REQ-2075)
 
+An agent asks which role it acts as with the MCP tool `describe_role`. The answer is that role and what it is for (a meta-role with each of its members), and the roles the agent may switch to, each with its description. It never carries a row rule, mask, grant or condition. Provisa never tells an agent why a result was narrowed, and a result carries no "filtered" flag: a role's data is its whole view, and a reason for what is missing would invite probing for it. (REQ-2082)
+
 ### What `+` means
 
 `+` appears in two places with different meanings in each.

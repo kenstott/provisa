@@ -84933,3 +84933,36 @@ Then it is refused, saying a row rule needs a description'
   - provisa-ui/src/pages/__tests__/SecurityPage.actionRule.test.tsx
   stakeholders:
   - compliance
+- id: REQ-2082
+  status: proposed
+  since: 2026-10
+  group: 11. Platform, Infrastructure & Delivery
+  category: MCP Authentication
+  feature: mcp-server-identity
+  priority: SHOULD
+  type: behavioral
+  description: 'MCP tool describe_role returns only the caller''s resolved role (for a meta-role, also its members, derived roles among them) with each one''s description (REQ-2080), and the roles the caller may switch to: the set named_role checks a named role against (remote: the token''s held roles, the role it maps to and its principal''s derived roles; stdio: the pinned mcp.role set), each with its description. It never returns row rules, masks, grants, conditions or rule descriptions. Agents are not told why results are narrowed, since that would invite probing, and results carry no filtered flag: a role''s data is its whole view.'
+  use_case: 'An agent asked which data it can see learns it acts as analyst, what analyst is for, and that it may switch to steward.'
+  scenario: 'Given an agent whose token holds analyst, with row rules and masks on analyst
+
+
+When it calls describe_role
+
+
+Then it gets analyst and its description and the roles it may switch to, and no rule, mask or grant content
+
+
+And a role its token does not hold is not listed'
+  related_reqs:
+  - REQ-2075
+  - REQ-2080
+  - REQ-1620
+  notes: 'Maintainer (via lead, 2026-10-18): agents get no explanation of why results are narrowed (anti-probing) and no filtered flag; a role''s data is its whole view.'
+  code:
+  - provisa/api/mcp/tools.py
+  - provisa/api/mcp/server.py
+  tests:
+  - tests/unit/test_mcp_describe_role.py
+  stakeholders:
+  - compliance
+  - app-developer
