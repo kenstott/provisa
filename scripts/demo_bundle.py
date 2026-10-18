@@ -775,6 +775,27 @@ def _replicates(demo: Path, stores: Stores) -> bool:
     return bool(replicated_tables(_demo_config(demo, stores)))
 
 
+def _prefetch_connector_bundles(demo: Path) -> None:
+    """Fetch the connector bundle of every source the demo reads through one, before any server
+    of the build starts: its replica builds then find each bundle whole instead of several fetching
+    it at once (``demo_templates.prefetch_connector_bundles`` does the same for the sandbox tier).
+    A bundle that cannot be fetched fails the build, by name. Only the sources' types are read
+    from the file: a demo in regions has a config that parses only on a region's node."""
+    from provisa.core.config_loader import read_config_with_includes
+    from provisa.runtime_deps.pgwire_bundles import (
+        BUNDLE_CONNECTOR,
+        BundleResolver,
+        bundle_spec_for,
+    )
+
+    raw = read_config_with_includes(demo / "config.yaml")
+    types = {str(source["type"]) for source in raw.get("sources") or []}
+    resolver = BundleResolver()
+    for source_type in sorted(types & set(BUNDLE_CONNECTOR)):
+        spec = bundle_spec_for(source_type)
+        print(f"connector bundle {spec.artifact_name} {spec.version}: {resolver.resolve(spec)}")
+
+
 def _export_views(work: Path, demo: Path, stores: Stores) -> None:
     """REQ-1162: the setup server's bitemporal views' append logs, written out beside the seed
     (demo_replicas.export_views) -- the history its steps gave them, which the demo's template and
@@ -835,6 +856,7 @@ def build(args: argparse.Namespace) -> int:
         stores = Stores(demo)
         try:
             stores.up()
+            _prefetch_connector_bundles(demo)
             if (demo / "setup.yaml").exists() or polly_steps(demo):
                 _set_up(work, demo, stores, args.timeout)
                 _export_views(work, demo, stores)

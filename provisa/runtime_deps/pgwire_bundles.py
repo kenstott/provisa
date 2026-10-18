@@ -27,6 +27,7 @@ import os
 import platform
 import shutil
 import tarfile
+import tempfile
 import threading
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -196,12 +197,11 @@ def download_release_asset(spec: BundleSpec, dest: Path) -> None:
 
     if not spec.download_url.startswith("https://"):
         raise BundleUnavailable(f"refusing non-https bundle URL: {spec.download_url}")
-    # The tarball nests everything under ``<asset_stem>/``; extract beside ``dest`` and move that
-    # directory into place so the bundle root is ``dest`` (``dest/bin/pgwire-<connector>``).
-    staging = dest.parent / f".{dest.name}.download"
-    if staging.exists():
-        shutil.rmtree(staging)
-    staging.mkdir(parents=True)
+    # The tarball nests everything under ``<asset_stem>/``; extract beside ``dest`` into a staging
+    # directory of this download's own and rename that directory into place whole, so the bundle
+    # root is ``dest`` (``dest/bin/pgwire-<connector>``) and a reader never sees it half laid down.
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{dest.name}.", suffix=".download", dir=dest.parent))
     try:
         with httpx.stream("GET", spec.download_url, follow_redirects=True, timeout=120.0) as resp:
             if resp.status_code != HTTPStatus.OK:
@@ -221,9 +221,10 @@ def download_release_asset(spec: BundleSpec, dest: Path) -> None:
                 f"pgwire bundle {spec.asset_filename} does not contain a {spec.asset_stem}/ directory"
             )
         if dest.exists():
+            # Left by a download that did not finish (it has no launcher, or this one would not
+            # run): the resolver holds the bundle's lock, so nothing reads it.
             shutil.rmtree(dest)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(root), str(dest))
+        os.rename(root, dest)
     except (OSError, httpx.HTTPError, tarfile.TarError) as exc:
         raise BundleUnavailable(
             f"failed to download pgwire bundle {spec.artifact_name} from {spec.download_url}: {exc}"
@@ -305,7 +306,18 @@ class BundleResolver:  # REQ-956
         return dest
 
     def _fetch(self, spec: BundleSpec, dest: Path) -> None:
-        self._download(spec, dest)
+        """Download ``spec`` into ``dest`` once among every thread and process of this host: under
+        the bundle's own lock file, and only when it is still missing once the lock is held. A
+        fetch that waited for another's finds the bundle that one laid down."""
+        from provisa.core.host_lock import FileLock
+
+        lock = FileLock(dest.parent / f".{dest.name}.lock")
+        lock.acquire()
+        try:
+            if not self.is_cached(spec):
+                self._download(spec, dest)
+        finally:
+            lock.release()
         if not self.is_cached(spec):
             raise BundleUnavailable(
                 f"pgwire bundle {spec.artifact_name} download did not produce launcher "

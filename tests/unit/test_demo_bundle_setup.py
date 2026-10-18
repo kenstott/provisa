@@ -98,9 +98,13 @@ def test_a_qdrant_store_is_saved_as_one_snapshot_a_collection(tmp_path, monkeypa
     [
         # sonnets: its sources are read live. A setup's bitemporal views' history is exported after
         # it (REQ-1162).
-        (True, False, ["up", "set up", "export views", "dump", "down"]),
-        (True, True, ["up", "set up", "export views", "seed", "no empty replica", "dump", "down"]),
-        (False, True, ["up", "seed", "no empty replica", "dump", "down"]),
+        (True, False, ["up", "bundles", "set up", "export views", "dump", "down"]),
+        (
+            True,
+            True,
+            ["up", "bundles", "set up", "export views", "seed", "no empty replica", "dump", "down"],
+        ),
+        (False, True, ["up", "bundles", "seed", "no empty replica", "dump", "down"]),
     ],
     ids=["setup-live", "setup-replicated", "no-setup"],
 )
@@ -120,6 +124,7 @@ def test_a_demo_s_setup_runs_after_its_stores_come_up_and_before_its_seed(
     monkeypatch.setattr(builder, "_set_up", lambda *_a: done.append("set up"))
     monkeypatch.setattr(builder, "_export_views", lambda *_a: done.append("export views"))
     monkeypatch.setattr(builder, "_seed", lambda *_a: done.append("seed"))
+    monkeypatch.setattr(builder, "_prefetch_connector_bundles", lambda *_a: done.append("bundles"))
     monkeypatch.setattr(
         builder, "_refuse_empty_replicas", lambda *_a: done.append("no empty replica")
     )
@@ -147,6 +152,7 @@ def test_a_demo_in_regions_is_seeded_without_parsing_its_config_outside_a_region
     monkeypatch.setattr(builder.Stores, "dump", lambda self: done.append("dump") or [])
     monkeypatch.setattr(builder.Stores, "down", lambda self: done.append("down"))
     monkeypatch.setattr(builder, "_seed", lambda *_a: done.append("seed"))
+    monkeypatch.setattr(builder, "_prefetch_connector_bundles", lambda *_a: done.append("bundles"))
     monkeypatch.setattr(
         builder, "_refuse_empty_replicas", lambda *_a: done.append("no empty replica")
     )
@@ -160,7 +166,7 @@ def test_a_demo_in_regions_is_seeded_without_parsing_its_config_outside_a_region
         name="retail", named_dir=named, out=tmp_path / "out", commit="a" * 40, timeout=60.0
     )
     assert builder.build(args) == 0
-    assert done == ["up", "seed", "no empty replica", "dump", "down"]
+    assert done == ["up", "bundles", "seed", "no empty replica", "dump", "down"]
 
 
 def test_the_bundle_action_installs_a_demo_s_extras_before_it_builds():
@@ -676,3 +682,27 @@ def test_a_build_server_is_told_where_duckdb_finds_its_extensions(tmp_path, monk
 
     monkeypatch.setenv("PROVISA_DUCKDB_EXT_DIR", "/opt/ext")
     assert builder._duckdb_env(tmp_path)["PROVISA_DUCKDB_EXT_DIR"] == "/opt/ext"
+
+
+def test_the_build_fetches_the_demos_connector_bundles_before_any_server_starts(
+    tmp_path, monkeypatch
+):
+    """REQ-956: the bundle of each source the demo reads through one is fetched once, before the
+    build's replica builds would each fetch it at the same moment; a source read without a bundle
+    fetches nothing."""
+    from provisa.runtime_deps import pgwire_bundles
+
+    fetched: list[str] = []
+    demo = tmp_path / "demo"
+    demo.mkdir()
+    (demo / "config.yaml").write_text(
+        "sources:\n- {id: code, type: postgresql}\n- {id: gov, type: govdata}\n"
+        "- {id: gov2, type: govdata}\n"
+    )
+    monkeypatch.setattr(
+        pgwire_bundles.BundleResolver,
+        "resolve",
+        lambda _self, spec: fetched.append(spec.artifact_name) or Path("/bundles"),
+    )
+    builder._prefetch_connector_bundles(demo)
+    assert fetched == ["pgwire-govdata"]
