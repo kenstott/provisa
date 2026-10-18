@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2333cd52-b3db-4abc-998e-72175c644316
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """A user's read of a stored view outside its read window is refused on every surface (REQ-2066).
 
 A statement is governed as ONE semantic statement: every view it reads is replaced by its SQL
