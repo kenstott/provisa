@@ -20,6 +20,7 @@ from types import SimpleNamespace
 import pyarrow as pa
 import pytest
 
+import provisa.api.app  # noqa: F401 -- the API layer says whether the deployment holds many orgs, which reading a source's secrets asks
 from provisa.core.landing_filter import check, where
 from provisa.core.models import Column, Table
 
@@ -58,10 +59,31 @@ def test_anything_else_is_refused_by_name(predicate, refused):
 
 def test_it_is_read_in_the_dialect_of_the_read_that_builds_the_replica():
     table = _table("cve_id ILIKE 'cve-2021-%'")
-    assert where(table, lambda: "postgres") == " WHERE cve_id ILIKE 'cve-2021-%'"
-    assert where(table, lambda: "duckdb") == " WHERE cve_id ILIKE 'cve-2021-%'"
-    assert where(table, lambda: "trino") == " WHERE LOWER(cve_id) LIKE LOWER('cve-2021-%')"
+    assert where(table, lambda: "postgres") == " WHERE \"cve_id\" ILIKE 'cve-2021-%'"
+    assert where(table, lambda: "duckdb") == " WHERE \"cve_id\" ILIKE 'cve-2021-%'"
+    assert where(table, lambda: "trino") == " WHERE LOWER(\"cve_id\") LIKE LOWER('cve-2021-%')"
     assert where(_table(None), lambda: "duckdb") == ""
+
+
+def test_a_column_named_as_a_keyword_is_quoted():
+    """The govdata server reads the filter as Calcite SQL, where YEAR, MONTH and DATE are
+    keywords: ``WHERE year = 2023`` failed to parse (Encountered "year =")."""
+    table = Table(
+        source_id="govdata",
+        domain_id="d",
+        schema="health",
+        table="cdc_county_overdose_deaths",
+        landing_filter="st_abbrev = 'OH' AND year BETWEEN 2010 AND 2017 AND "
+        "SUBSTRING(date FROM 6 FOR 2) IN ('05', '06') AND month = '12'",
+        columns=[
+            Column(name=c, data_type="text", visible_to=["admin"])
+            for c in ("st_abbrev", "year", "date", "month")
+        ],
+    )
+    assert where(table, lambda: "postgres") == (
+        ' WHERE "st_abbrev" = \'OH\' AND "year" BETWEEN 2010 AND 2017 AND '
+        "SUBSTRING(\"date\" FROM 6 FOR 2) IN ('05', '06') AND \"month\" = '12'"
+    )
 
 
 async def test_the_engine_reads_only_the_rows_that_pass_it():
@@ -85,7 +107,7 @@ async def test_the_engine_reads_only_the_rows_that_pass_it():
     )  # fmt: skip
     batches = [b async for b in source.batches(100)]
     assert asked == [
-        'SELECT * FROM "govdata"."cyber_vuln"."vulnerabilities" WHERE cve_id = \'CVE-2021-44228\''
+        'SELECT * FROM "govdata"."cyber_vuln"."vulnerabilities" WHERE "cve_id" = \'CVE-2021-44228\''
     ]
     assert batches[0].num_rows == 1
 
@@ -119,7 +141,7 @@ def test_postgres_copies_only_the_rows_that_pass_it(monkeypatch):
         where=where(_table("cvss >= 9"), lambda: "postgres"),
     )
     (insert,) = [s for s in statements if s.startswith("INSERT INTO")]
-    assert insert.endswith('FROM "govdata_fdw"."vulnerabilities" WHERE cvss >= 9')
+    assert insert.endswith('FROM "govdata_fdw"."vulnerabilities" WHERE "cvss" >= 9')
 
 
 async def test_a_table_read_by_its_adapter_refuses_a_landing_filter():
