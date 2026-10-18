@@ -140,6 +140,28 @@ def _protocol_ports() -> dict[str, str]:
     }
 
 
+def _duckdb_env(work: Path) -> dict[str, str]:
+    """Where a build's server finds DuckDB's extensions, named explicitly: its environment is
+    otherwise only the build's own, and DuckDB without HOME cannot place its per-user extension
+    directory (the icu extension then fails to load and the server does not start). As
+    provisa/cli.py does for a deployment: the extensions staged offline from provisa-duckdb-ext
+    when it is installed (PROVISA_DUCKDB_EXT_DIR), or else this user's own DuckDB cache, under the
+    HOME this process has -- a checkout without the embedded extra installs from the network on
+    first use, as it does everywhere (cli.py). An extension directory this process was given is
+    passed on as it is."""
+    from provisa.federation.duckdb_extensions import extension_directory, stage_bundled_extensions
+
+    env = {"HOME": str(Path.home())}
+    given = extension_directory()
+    if given is not None:
+        return {**env, "PROVISA_DUCKDB_EXT_DIR": given}
+    try:
+        staged = stage_bundled_extensions(work / "duckdb-ext")
+    except ModuleNotFoundError:
+        return env  # no provisa-duckdb-ext: DuckDB's own cache under HOME (cli.py's dev case)
+    return {**env, "PROVISA_DUCKDB_EXT_DIR": str(staged)}
+
+
 def _requires_provisa(demo: Path) -> str:
     spec = yaml.safe_load((demo / "demo.yaml").read_text())
     required = spec.get("requires_provisa")
@@ -540,6 +562,7 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
         "PROVISA_CONFIG": str(answering_config(work, demo) if asked else demo / "config.yaml"),
         "PROVISA_ENGINE": "duckdb",
         **_protocol_ports(),
+        **_duckdb_env(work),
         "FLIGHT_PORT": str(flight_port),
         "ORG_ID": _SETUP_ORG,
         "PROVISA_DATA_DIR": str(work / "setup-data"),
@@ -681,6 +704,7 @@ def _seed_node(
         **_config_env(demo),
         **stores.env,
         **_protocol_ports(),
+        **_duckdb_env(work),
         "ORG_ID": "demobundle",
         "PROVISA_CONFIG": str(_config(work, regions="PROVISA_REGION" in env)),
         "PROVISA_ENGINE": "duckdb",

@@ -653,3 +653,26 @@ def test_a_demo_in_regions_refuses_an_empty_replica_of_any_region(tmp_path):
     with pytest.raises(SystemExit) as refused:
         builder._refuse_empty_replicas(demo)
     assert str(refused.value) == "retail: these replicas landed no rows: eu-shop.public.customers"
+
+
+def test_a_build_server_is_told_where_duckdb_finds_its_extensions(tmp_path, monkeypatch):
+    """Its environment is only the build's own: without HOME, DuckDB cannot place its per-user
+    extension directory, and the server fails to start (icu could not be autoloaded)."""
+    from provisa.federation import duckdb_extensions
+
+    builder = _builder()
+    monkeypatch.delenv("PROVISA_DUCKDB_EXT_DIR", raising=False)
+    monkeypatch.delenv("HOME", raising=False)
+
+    def not_installed(_target):
+        raise ModuleNotFoundError("provisa_duckdb_ext")
+
+    monkeypatch.setattr(duckdb_extensions, "stage_bundled_extensions", not_installed)
+    assert builder._duckdb_env(tmp_path) == {"HOME": str(Path.home())}
+
+    staged = tmp_path / "duckdb-ext"
+    monkeypatch.setattr(duckdb_extensions, "stage_bundled_extensions", lambda target: target)
+    assert builder._duckdb_env(tmp_path)["PROVISA_DUCKDB_EXT_DIR"] == str(staged)
+
+    monkeypatch.setenv("PROVISA_DUCKDB_EXT_DIR", "/opt/ext")
+    assert builder._duckdb_env(tmp_path)["PROVISA_DUCKDB_EXT_DIR"] == "/opt/ext"
