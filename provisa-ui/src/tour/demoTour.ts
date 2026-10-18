@@ -17,6 +17,7 @@
 import type { Capability } from "../types/auth";
 import type { ExampleQuery } from "../api/setup";
 import type { TourStep } from "./tourSteps";
+import { runSql } from "../api/admin";
 import type { TourPrerequisites } from "./tourPrerequisites";
 
 /** REQ-2013: a demo's track needs the sources and tables its steps show. */
@@ -96,6 +97,11 @@ export interface DemoTourStepDef {
   /** REQ-1163: a time, ISO 8601, set in the SQL explorer's "as recorded at" picker: the
    *  statements after it read bitemporal views as Provisa had recorded them then. */
   as_recorded?: string;
+  /** REQ-2083: the "as recorded at" time taken from the answer of an earlier `sql` step of the
+   *  tour, row `row` (0-based) and column `column`, when this step runs: a recording time Provisa
+   *  stamped, which no tour can know in advance. The earlier step's statement is run again as it
+   *  ran then (its role and time travel). */
+  as_recorded_from?: { step: string; row: number; column: string };
   /** An environment of the model (REQ-2053): shown in the header's environment switcher, picked
    *  on Next, so the steps after it read that environment. */
   env?: string;
@@ -126,11 +132,27 @@ export function demoTourSteps(
 ): TourStep[] {
   const steps: TourStep[] = [];
   let onPage: string | undefined;
+  // What each `sql` step ran as: the SQL explorer's role and time travel set by the steps before
+  // it (REQ-2083), so a later step can run its statement again as it ran then.
+  const ran = new Map<string, StatementRun>();
+  const context: Omit<StatementRun, "sql"> = {};
   for (const def of defs) {
     onPage = def.route ?? onPage;
-    steps.push(demoTourStep(def, examples, steps[steps.length - 1], onPage));
+    if (def.role !== undefined && onPage === "/sql") context.role = def.role;
+    if (def.as_of !== undefined) context.asOf = def.as_of;
+    if (def.as_recorded !== undefined) context.asRecorded = def.as_recorded;
+    if (def.sql !== undefined) ran.set(def.key, { sql: def.sql, ...context });
+    steps.push(demoTourStep(def, examples, steps[steps.length - 1], onPage, ran));
   }
   return steps;
+}
+
+/** A tour statement as the SQL explorer ran it: its text, run-as role and time travel. */
+export interface StatementRun {
+  sql: string;
+  role?: string;
+  asOf?: string;
+  asRecorded?: string;
 }
 
 function demoTourStep(
@@ -138,6 +160,7 @@ function demoTourStep(
   examples: readonly ExampleQuery[],
   before: TourStep | undefined,
   onPage: string | undefined,
+  ran: ReadonlyMap<string, StatementRun>,
 ): TourStep {
   const page = {
     key: def.key,
@@ -284,6 +307,19 @@ function demoTourStep(
       element: '[data-testid="sql-as-recorded"]',
     };
   }
+  if (def.as_recorded_from !== undefined) {
+    const { step, row, column } = def.as_recorded_from;
+    const source = ran.get(step);
+    // Only a `sql` step before this one has an answer to take the time from; the tour test holds it.
+    if (source === undefined) {
+      throw new Error(`Tour: step ${def.key} takes its time from "${step}", no sql step before it`);
+    }
+    return {
+      ...page,
+      openQuery: { stateKey: "asRecorded", text: "", from: { ...source, row, column } },
+      element: '[data-testid="sql-as-recorded"]',
+    };
+  }
   if (def.env !== undefined) {
     return {
       ...page,
@@ -315,4 +351,28 @@ function demoTourStep(
     return { ...page, element: before.element, image: def.image_src };
   }
   throw new Error(`Tour: step ${def.key} names no target`);
+}
+
+/**
+ * REQ-2083: the value an `as_recorded_from` step takes, read when it runs: the earlier statement
+ * run again as it ran (its role, else the role the app acts as; its time travel), and row
+ * `row`'s `column`. A refused statement, or an answer without that row or column, fails the step
+ * by name: there is no time to stand in for it.
+ */
+export async function answerValue(
+  from: NonNullable<NonNullable<TourStep["openQuery"]>["from"]>,
+  actingRoles: string | null,
+): Promise<string> {
+  const role = from.role ?? actingRoles;
+  if (role === null) throw new Error("Tour: no role to run the earlier statement as");
+  const answer = await runSql(from.sql, role, false, {
+    asOf: from.asOf ?? null,
+    asRecorded: from.asRecorded ?? null,
+  });
+  if (answer.error) throw new Error(`Tour: the earlier statement was refused: ${answer.error}`);
+  const row = answer.rows[from.row];
+  if (row === undefined || !(from.column in row) || row[from.column] === null) {
+    throw new Error(`Tour: the earlier statement has no ${from.column} in row ${from.row}`);
+  }
+  return String(row[from.column]);
 }

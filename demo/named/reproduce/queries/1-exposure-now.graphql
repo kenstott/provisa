@@ -1,0 +1,8 @@
+# Each desk's exposure in the report, as the report stands now: the corrected figures.
+query ExposureNow {
+  r__viewExposure(limit: 20) {
+    desk
+    exposure
+    validFrom
+  }
+}

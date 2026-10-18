@@ -1,0 +1,54 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The reproduce demo where it runs from its bundle (start-ui-install.sh --demo reproduce; REQ-2049):
+# the database, loaded from the dump the bundle build wrote (dump/postgres.sql), read only but
+# for the rate a correction writes (db/reader.sql).
+
+x-demo-labels: &demo-labels
+  com.provisa.demo: reproduce
+
+name: provisa-demo-reproduce-run
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+      # Where config.yaml's reproduce-db reads it, for the sandbox tier's node (REQ-2049,
+      # scripts/demo_stores_sync.sh): it writes these two into the bundle's stores.env.
+      com.provisa.demo.host_env: REPRODUCE_PG_HOST
+      com.provisa.demo.port_env: REPRODUCE_PG_PORT
+      com.provisa.demo.port: "5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: reproduce
+    ports:
+      # Unset: 29832. Set empty (the node, which runs several versions at once): a port docker
+      # picks. On the loopback only.
+      - "127.0.0.1:${REPRODUCE_PG_PORT-29832}:5432"
+    volumes:
+      - reproduce_run_pg:/var/lib/postgresql/data
+      - ./dump/postgres.sql:/docker-entrypoint-initdb.d/10-reproduce.sql:ro
+      - ./db/reader.sql:/docker-entrypoint-initdb.d/20-reader.sql:ro
+      - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /var/lib/postgresql/data/.provisa-init-complete && pg_isready -U postgres -d reproduce"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+      # The first start loads the dump before the marker is written; failures meanwhile do
+      # not count.
+      start_period: 600s
+
+volumes:
+  reproduce_run_pg:

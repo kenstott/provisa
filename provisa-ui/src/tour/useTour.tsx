@@ -37,7 +37,13 @@ import {
   type TopicId,
   type TourStep,
 } from "./tourSteps";
-import { demoStepShown, demoTourPrerequisites, demoTourSteps, demoTrackStamp } from "./demoTour";
+import {
+  answerValue,
+  demoStepShown,
+  demoTourPrerequisites,
+  demoTourSteps,
+  demoTrackStamp,
+} from "./demoTour";
 import { prerequisitesMet, type OrgHas } from "./tourPrerequisites";
 import { useNamedDemo } from "../context/NamedDemoContext";
 import { TourMenu } from "./TourMenu";
@@ -473,7 +479,12 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const [orgHas, setOrgHas] = useState<OrgHas | null>(null);
   const prefetchTourData = useTourPrefetch();
   const whatTheOrgHas = useOrgHas();
-  const { capabilities } = useAuth();
+  const { capabilities, actingRoles } = useAuth();
+  // REQ-2083: what a step that re-runs an earlier statement runs it as, read when the step runs.
+  const actingRolesRef = useRef(actingRoles);
+  useEffect(() => {
+    actingRolesRef.current = actingRoles;
+  }, [actingRoles]);
   // REQ-2010: the named demo's own steps follow TOUR_STEPS in the list the runner walks; its track
   // is those steps (scope "demo").
   const namedDemo = useNamedDemo();
@@ -674,8 +685,14 @@ export function TourProvider({ children }: { children: ReactNode }) {
           const entry = `${visitRef.current}:${attempt}`;
           if (handedRef.current !== entry) {
             handedRef.current = entry;
+            // REQ-2083: a value of an earlier statement's answer, read now: what Provisa recorded
+            // is known only once it has.
+            const text = step.openQuery.from
+              ? await answerValue(step.openQuery.from, actingRolesRef.current)
+              : step.openQuery.text;
+            if (cancelled) return;
             navigate(route, {
-              state: { [step.openQuery.stateKey]: step.openQuery.text, autoRun: true },
+              state: { [step.openQuery.stateKey]: text, autoRun: true },
             });
           }
           await nextPaint();

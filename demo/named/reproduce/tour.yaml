@@ -1,0 +1,84 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+#
+# The reproduce demo's own tour (REQ-2010): the story of the demo, told with its own data. The step
+# kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name here is checked
+# against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
+# tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: a regulator's question (where did this figure come from, and what did the report say
+# when it was filed); the book and the report built from it; the figure's lineage to its source
+# columns, and the refresh that built it; what renaming a source column would break; the report
+# now; the report as of 30 September as recorded now, then as recorded when it was filed -- the
+# time the correction's rebuild began, taken from the refreshes step's answer (each refresh's
+# record is stamped before it writes, so that time falls after the filed version was recorded and
+# before the correction was: Provisa stamps both, the tour cannot know them in advance);
+# and the audit log of who read it, with the times they read it as of.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+- key: reproduceScenario
+  route: /sources
+  capability: source_registration
+  source: reproduce-db
+- key: reproduceBook
+  route: /tables
+  capability: table_registration
+  table: reproduce-db.positions
+- key: reproduceLineage
+  route: /lineage
+  capability: table_registration
+  lineage: >-
+    SELECT e.desk, e.exposure FROM "reproduce"."view_exposure" AS e
+- key: reproduceRefreshes
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT r.refreshed_at, r.definition_version, r.input_version, r.input_version_kind
+    FROM "ops"."mv_refresh_lineage" AS r
+    WHERE r.mv_id = 'view-view_exposure'
+    ORDER BY r.refreshed_at
+- key: reproduceImpact
+  route: /tables
+  capability: table_registration
+  table: reproduce-db.positions
+- key: reproduceNow
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT e.desk, e.exposure, e.valid_from, e.recorded_at
+    FROM "reproduce"."view_exposure" AS e
+    ORDER BY e.desk
+- key: reproduceAsOf
+  as_of: "2026-09-30T12:00:00"
+- key: reproduceAsOfNow
+  sql: >-
+    SELECT e.desk, e.exposure, e.recorded_at
+    FROM "reproduce"."view_exposure" AS e
+    ORDER BY e.desk
+- key: reproduceAsFiled
+  as_recorded_from: {step: reproduceRefreshes, row: 1, column: refreshed_at}
+- key: reproduceFiled
+  sql: >-
+    SELECT e.desk, e.exposure, e.recorded_at
+    FROM "reproduce"."view_exposure" AS e
+    ORDER BY e.desk
+- key: reproduceAudit
+  sql: >-
+    SELECT q.logged_at, q.user_name, q.role_id, q.as_of, q.as_recorded, q.table_names
+    FROM "ops"."query_audit_log" AS q
+    WHERE q.as_of IS NOT NULL
+    ORDER BY q.logged_at DESC
+    LIMIT 20
+- key: reproduceRecap
+  route: /tables
+  capability: table_registration
+  table: reproduce-db.positions

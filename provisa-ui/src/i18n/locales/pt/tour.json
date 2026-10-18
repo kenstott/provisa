@@ -1231,6 +1231,54 @@
       "hasuramigrationRecap": {
         "title": "O que você viu",
         "description": "Um aplicativo Hasura importado em uma etapa e funcionando de imediato: tabelas, nomes, relacionamentos, funções, regras de linha, permissões de escrita, a action e os gatilhos. As consultas mudaram de forma uma vez; as regras não mudaram em nada. E um relacionamento depois, o aplicativo lê suas contas do Salesforce ao lado dos pedidos, sem nada para manter sincronizado."
+      },
+      "reproduceScenario": {
+        "title": "Do que trata esta demo",
+        "description": "Um banco entrega ao seu regulador um relatório de exposição referente a 30 de setembro. O regulador pergunta de onde veio o número da mesa de juros e pede o relatório exatamente como foi entregue: uma taxa foi corrigida desde então. A carteira de negociação do banco é lida ao vivo do seu próprio banco de dados."
+      },
+      "reproduceBook": {
+        "title": "A carteira de negociação",
+        "description": "Cada posição: sua mesa, seu notional na própria moeda e a taxa pela qual é convertida para USD, válida a partir de 30 de setembro. Uma dessas taxas é corrigida depois que o relatório é entregue pela primeira vez."
+      },
+      "reproduceLineage": {
+        "title": "De onde vem o número",
+        "description": "A coluna de exposição do relatório, rastreada de volta: a exposição de cada mesa é a soma de notional vezes fx_rate em suas posições. Cada coluna do relatório leva às colunas de origem a partir das quais é calculada."
+      },
+      "reproduceRefreshes": {
+        "title": "As atualizações que o construíram",
+        "description": "Cada construção do relatório registra a partir do que foi feita: a versão da definição do relatório, a versão de sua entrada e como ela foi estabelecida. Duas construções: uma como entregue pela primeira vez, outra após a correção."
+      },
+      "reproduceImpact": {
+        "title": "O que uma renomeação quebraria",
+        "description": "Renomeie fx_rate aqui e o Provisa lista o que a lê antes de você salvar: o relatório entre eles. Nada que dependa de uma coluna muda sem ser nomeado antes."
+      },
+      "reproduceNow": {
+        "title": "O relatório agora",
+        "description": "A exposição de cada mesa como o relatório está hoje, com o momento em que o Provisa registrou cada número. A mesa de juros mostra 1.550.000: a taxa corrigida."
+      },
+      "reproduceAsOf": {
+        "title": "Na data de 30 de setembro",
+        "description": "O relatório na sua data de negócio: quais eram os números para 30 de setembro."
+      },
+      "reproduceAsOfNow": {
+        "title": "Na data de 30 de setembro, registrado agora",
+        "description": "Lido como o Provisa o tem registrado hoje, 30 de setembro mostra o número corrigido: 1.550.000 para a mesa de juros. É isso que os livros dizem agora, não o que foi entregue."
+      },
+      "reproduceAsFiled": {
+        "title": "Registrado no momento da entrega",
+        "description": "O momento em que a reconstrução após a correção começou, tirado da resposta do passo das atualizações: depois de registrados os números entregues e antes de registrada a correção. O relatório agora é lido como o Provisa o tinha registrado então, de modo que nada registrado depois pode alterá-lo."
+      },
+      "reproduceFiled": {
+        "title": "O relatório como entregue",
+        "description": "Na data de 30 de setembro e registrado no momento da entrega: a mesa de juros mostra 1.540.000, o número que o regulador recebeu. A correção registrada desde então não altera o que foi entregue."
+      },
+      "reproduceAudit": {
+        "title": "Quem o leu e em que data",
+        "description": "O log de auditoria registra cada leitura: quem a executou, com qual função, e os momentos “Na data de” e “Registrado em” com que leu o relatório. A reprodução do regulador também fica registrada."
+      },
+      "reproduceRecap": {
+        "title": "O que você viu",
+        "description": "Um relatório, explicado e reproduzido: seu número rastreado até as colunas de origem e a atualização que o construiu, o impacto de uma mudança nomeado antes de ser feita, o relatório como entregue ao lado do relatório atual e cada leitura dele no log de auditoria."
       }
     },
     "status": {
@@ -1319,6 +1367,10 @@
       "hasuramigration": {
         "title": "Mover um aplicativo Hasura",
         "summary": "Uma loja Hasura v2 importada em uma etapa, suas consultas remodeladas uma vez e depois ligada às contas do Salesforce do time de vendas sob as mesmas regras."
+      },
+      "reproduce": {
+        "title": "Reproduzir um relatório",
+        "summary": "As duas perguntas de um regulador sobre o relatório de exposição de um banco: de onde veio um número e o que o relatório dizia quando foi entregue, intocado por uma correção posterior. Linhagem, reprodução em uma data e o log de auditoria respondem às duas."
       }
     }
   }

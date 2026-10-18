@@ -1231,6 +1231,54 @@
       "hasuramigrationRecap": {
         "title": "Wat je zag",
         "description": "Een Hasura-app in één stap geïmporteerd en meteen werkend: tabellen, namen, relaties, rollen, rijregels, schrijfrechten, de action en de triggers. De query's veranderden één keer van vorm; de regels veranderden helemaal niet. En één relatie later leest de app zijn Salesforce-accounts naast zijn bestellingen, zonder iets om synchroon te houden."
+      },
+      "reproduceScenario": {
+        "title": "Waar deze demo over gaat",
+        "description": "Een bank dient bij haar toezichthouder een exposure-rapport in per 30 september. De toezichthouder vraagt waar het cijfer van de rentedesk vandaan komt, en wil het rapport precies zoals het is ingediend: er is sindsdien een koers gecorrigeerd. Het handelsboek van de bank wordt live uit haar eigen database gelezen."
+      },
+      "reproduceBook": {
+        "title": "Het handelsboek",
+        "description": "Elke positie: haar desk, haar notional in haar eigen valuta en de koers waartegen ze naar USD wordt omgerekend, geldig vanaf 30 september. Een van deze koersen wordt gecorrigeerd nadat het rapport voor het eerst is ingediend."
+      },
+      "reproduceLineage": {
+        "title": "Waar het cijfer vandaan komt",
+        "description": "De exposure-kolom van het rapport, teruggevolgd: de exposure van elke desk is de som van notional maal fx_rate over haar posities. Elke kolom van het rapport leidt naar de bronkolommen waaruit ze wordt berekend."
+      },
+      "reproduceRefreshes": {
+        "title": "De verversingen die het bouwden",
+        "description": "Elke build van het rapport legt vast waaruit hij is gebouwd: de versie van de rapportdefinitie, de versie van de invoer en hoe die is vastgesteld. Twee builds: één zoals eerst ingediend, één na de correctie."
+      },
+      "reproduceImpact": {
+        "title": "Wat een hernoeming zou breken",
+        "description": "Hernoem fx_rate hier, en Provisa toont wat ervan leest voordat u opslaat: het rapport ertussen. Niets wat van een kolom afhangt verandert zonder eerst genoemd te worden."
+      },
+      "reproduceNow": {
+        "title": "Het rapport nu",
+        "description": "De exposure van elke desk zoals het rapport er vandaag voor staat, met wanneer Provisa elk cijfer heeft vastgelegd. De rentedesk toont 1.550.000: de gecorrigeerde koers."
+      },
+      "reproduceAsOf": {
+        "title": "Per 30 september",
+        "description": "Het rapport per zijn businessdatum: wat de cijfers voor 30 september waren."
+      },
+      "reproduceAsOfNow": {
+        "title": "Per 30 september, vastgelegd op nu",
+        "description": "Gelezen zoals Provisa het vandaag heeft vastgelegd, toont 30 september het gecorrigeerde cijfer: 1.550.000 voor de rentedesk. Dat zeggen de boeken nu, niet wat er is ingediend."
+      },
+      "reproduceAsFiled": {
+        "title": "Vastgelegd op het moment van indienen",
+        "description": "Het moment waarop de herbouw na de correctie begon, overgenomen uit het antwoord van de stap met de verversingen: nadat de ingediende cijfers waren vastgelegd en voordat de correctie werd vastgelegd. Het rapport wordt nu gelezen zoals Provisa het toen had vastgelegd, zodat niets wat later is vastgelegd het kan veranderen."
+      },
+      "reproduceFiled": {
+        "title": "Het rapport zoals ingediend",
+        "description": "Per 30 september en vastgelegd op het moment van indienen: de rentedesk toont 1.540.000, het cijfer dat de toezichthouder ontving. De sindsdien vastgelegde correctie verandert niets aan wat er is ingediend."
+      },
+      "reproduceAudit": {
+        "title": "Wie het las, en per wanneer",
+        "description": "Het auditlog legt elke leesactie vast: wie die uitvoerde, als welke rol, en de tijden voor ‘Per’ en ‘Vastgelegd op’ waarmee het rapport werd gelezen. De reproductie van de toezichthouder staat zelf ook vastgelegd."
+      },
+      "reproduceRecap": {
+        "title": "Wat u hebt gezien",
+        "description": "Eén rapport, uitgelegd en gereproduceerd: het cijfer teruggevolgd tot de bronkolommen en de verversing die het bouwde, de impact van een wijziging genoemd voordat die wordt doorgevoerd, het rapport zoals ingediend naast het rapport nu, en elke leesactie ervan in het auditlog."
       }
     },
     "status": {
@@ -1319,6 +1367,10 @@
       "hasuramigration": {
         "title": "Een Hasura-app verhuizen",
         "summary": "Een Hasura v2-webwinkel in één stap geïmporteerd, de query's eenmaal hervormd, daarna gekoppeld aan de Salesforce-accounts van het verkoopteam onder dezelfde regels."
+      },
+      "reproduce": {
+        "title": "Een rapport reproduceren",
+        "summary": "De twee vragen van een toezichthouder over het exposure-rapport van een bank: waar een cijfer vandaan kwam, en wat het rapport zei toen het werd ingediend, onaangetast door een latere correctie. Lineage, terugspelen per datum en het auditlog beantwoorden beide."
       }
     }
   }

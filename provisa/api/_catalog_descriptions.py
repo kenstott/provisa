@@ -404,6 +404,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "model_commit": "The environment repository commit that model equals, when proven",
         "enforced": "What was enforced on it — row filters (with the names of the session "
         "variables they read), masks by kind, row caps, and for a write its table and columns",
+        "as_of": "The time the statement read bitemporal views as of, when it set one",
+        "as_recorded": "The time the statement read bitemporal views as recorded at, when it set one",
     },
     "usage_ranking": {
         "id": "The registered table this row ranks",

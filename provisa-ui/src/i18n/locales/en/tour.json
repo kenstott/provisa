@@ -1231,6 +1231,54 @@
       "hasuramigrationRecap": {
         "title": "What you saw",
         "description": "A Hasura app imported in one step and working at once: tables, names, relationships, roles, row rules, write permissions, the action and the triggers. The queries changed shape once; the rules did not change at all. And one relationship later, the app reads its Salesforce accounts beside its orders, with nothing to keep in sync."
+      },
+      "reproduceScenario": {
+        "title": "What this demo is",
+        "description": "A bank files an exposure report with its regulator for 30 September. The regulator asks where the rates desk's figure came from, and for the report exactly as it was filed: a rate has been corrected since. The bank's trading book is read live from its own database."
+      },
+      "reproduceBook": {
+        "title": "The trading book",
+        "description": "Each position: its desk, its notional in its own currency and the rate it converts to USD at, valid from 30 September. One of these rates is corrected after the report is first filed."
+      },
+      "reproduceLineage": {
+        "title": "Where the figure comes from",
+        "description": "The report's exposure column, traced back: each desk's exposure is the sum of notional times fx_rate over its positions. Every column of the report leads to the source columns it is computed from."
+      },
+      "reproduceRefreshes": {
+        "title": "The refreshes that built it",
+        "description": "Each build of the report records what it was built from: the version of the report's definition, and the version of its input with how that was established. Two builds: one as first filed, one after the correction."
+      },
+      "reproduceImpact": {
+        "title": "What a rename would break",
+        "description": "Rename fx_rate here, and Provisa lists what reads it before you save: the report among them. Nothing that depends on a column changes without being named first."
+      },
+      "reproduceNow": {
+        "title": "The report now",
+        "description": "Each desk's exposure as the report stands today, with when Provisa recorded each figure. The rates desk reads 1,550,000: the corrected rate."
+      },
+      "reproduceAsOf": {
+        "title": "As of 30 September",
+        "description": "The report as of its business date: what the figures were for 30 September."
+      },
+      "reproduceAsOfNow": {
+        "title": "As of 30 September, as recorded now",
+        "description": "Read as Provisa has it recorded today, 30 September shows the corrected figure: 1,550,000 for the rates desk. That is what the books say now, not what was filed."
+      },
+      "reproduceAsFiled": {
+        "title": "As recorded when it was filed",
+        "description": "The time the correction's rebuild began, taken from the refreshes step's answer: after the filed figures were recorded and before the correction was. The report is now read as Provisa had it recorded then, so nothing recorded later can change it."
+      },
+      "reproduceFiled": {
+        "title": "The report as filed",
+        "description": "As of 30 September and as recorded when it was filed: the rates desk reads 1,540,000, the figure the regulator received. The correction recorded since does not change what was filed."
+      },
+      "reproduceAudit": {
+        "title": "Who read it, and as of when",
+        "description": "The audit log records every read: who ran it, as which role, and the time it read the report as of and as recorded at. The regulator's reproduction is itself on record."
+      },
+      "reproduceRecap": {
+        "title": "What you saw",
+        "description": "One report, explained and reproduced: its figure traced to its source columns and the refresh that built it, the impact of a change named before it is made, the report as filed beside the report now, and every read of it in the audit log."
       }
     },
     "status": {
@@ -1319,6 +1367,10 @@
       "hasuramigration": {
         "title": "Moving a Hasura app",
         "summary": "A Hasura v2 storefront imported in one step, its queries reshaped once, then joined to the sales team's Salesforce accounts under the same rules."
+      },
+      "reproduce": {
+        "title": "Reproduce a report",
+        "summary": "A regulator's two questions about a bank's exposure report: where a figure came from, and what the report said when it was filed, untouched by a correction since. Lineage, as-of replay and the audit log answer both."
       }
     }
   }
