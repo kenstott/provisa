@@ -497,7 +497,7 @@ La clave es el principal que lleva el protocolo. Una superficie solo bearer no l
 
 Nombrar un rol que el autor de la llamada no tiene se trata como un evento de seguridad detectado de gravedad alta, en todas las superficies: la API HTTP, MCP, pgwire, Bolt, Arrow Flight, el servicio Flight de airport y gRPC. Un cliente legítimo nombra los roles que se le dieron; uno que nombra otro está roto o está sondeando. (REQ-2076)
 
-La solicitud se rechaza. Al autor de la llamada solo se le dice «not permitted», nada sobre si el rol existe, y la conexión o sesión termina donde la hay: la conexión pgwire, la sesión Bolt, la llamada gRPC, la sesión MCP. La única excepción es una sesión iniciada en la API HTTP, que conserva el rechazo que nombra el rol.
+La solicitud se rechaza. Al autor de la llamada solo se le dice «not permitted», nada sobre si el rol existe, y la conexión o sesión termina donde la hay: la conexión pgwire, la sesión Bolt, la llamada gRPC, la sesión MCP. La excepción es la API HTTP con cualquier credencial que no sea un token de acceso personal: allí el navegador presenta su sesión o el token de su proveedor de identidad, por lo que el rechazo sigue nombrando el rol.
 
 Lo demás depende de la credencial y del transporte:
 

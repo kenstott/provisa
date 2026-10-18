@@ -497,7 +497,7 @@ Der Schlüssel ist der Principal, den das Protokoll trägt. Eine reine Bearer-Ob
 
 Das Nennen einer Rolle, die der Aufrufer nicht hält, wird auf jeder Oberfläche als erkanntes Sicherheitsereignis hoher Schwere behandelt: der HTTP-API, MCP, pgwire, Bolt, Arrow Flight, dem Airport-Flight-Dienst und gRPC. Ein legitimer Client nennt die Rollen, die ihm gegeben wurden; einer, der eine andere nennt, ist entweder fehlerhaft oder sondiert. (REQ-2076)
 
-Die Anfrage wird abgelehnt. Der Aufrufer erfährt nur „not permitted“, nichts darüber, ob die Rolle existiert, und die Verbindung oder Sitzung endet, wo es eine gibt: die pgwire-Verbindung, die Bolt-Sitzung, der gRPC-Aufruf, die MCP-Sitzung. Die einzige Ausnahme ist eine angemeldete Sitzung auf der HTTP-API, die die Ablehnung mit dem Rollennamen behält.
+Die Anfrage wird abgelehnt. Der Aufrufer erfährt nur „not permitted“, nichts darüber, ob die Rolle existiert, und die Verbindung oder Sitzung endet, wo es eine gibt: die pgwire-Verbindung, die Bolt-Sitzung, der gRPC-Aufruf, die MCP-Sitzung. Die Ausnahme ist die HTTP-API mit allen Anmeldedaten außer einem persönlichen Zugriffstoken: Der Browser legt dort seine Sitzung oder das Token seines Identitätsanbieters vor, daher nennt die Ablehnung weiterhin die Rolle.
 
 Was sonst geschieht, hängt von Anmeldedaten und Transport ab:
 

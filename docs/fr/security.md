@@ -497,7 +497,7 @@ La clé est le principal que porte le protocole. Une surface uniquement bearer n
 
 Nommer un rôle que l'appelant ne détient pas est traité comme un événement de sécurité détecté de gravité élevée, sur chaque surface : l'API HTTP, MCP, pgwire, Bolt, Arrow Flight, le service Flight airport et gRPC. Un client légitime nomme les rôles qui lui ont été donnés ; celui qui en nomme un autre est soit défaillant, soit en train de sonder. (REQ-2076)
 
-La requête est refusée. L'appelant n'apprend que « not permitted », rien sur l'existence du rôle, et la connexion ou la session se termine là où il y en a une : la connexion pgwire, la session Bolt, l'appel gRPC, la session MCP. La seule exception est une session connectée sur l'API HTTP, qui garde le refus nommant le rôle.
+La requête est refusée. L'appelant n'apprend que « not permitted », rien sur l'existence du rôle, et la connexion ou la session se termine là où il y en a une : la connexion pgwire, la session Bolt, l'appel gRPC, la session MCP. L'exception est l'API HTTP avec tout identifiant autre qu'un jeton d'accès personnel : le navigateur y présente sa session ou le jeton de son fournisseur d'identité, si bien que le refus continue de nommer le rôle.
 
 Le reste dépend de l'identifiant et du transport :
 

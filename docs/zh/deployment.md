@@ -647,6 +647,26 @@ Provisa 在所有部署模式下都采用两层恢复模型（REQ-703）：
 
 机器级和集群级故障仍是运维方的责任——请为节点丢失容错预配冗余节点和负载均衡器（见上文的 Terraform 和 Helm 路径）。
 
+### 元数据缺失的遥测表 {: #telemetry-table-whose-metadata-is-missing }
+
+在 Trino 引擎上，遥测表（`otel.signals.traces`、`metrics`、`logs`）是 Iceberg 表。每张表的注册是控制平面数据库中的一行，其元数据和数据是遥测 bucket 中的文件。当 bucket 在提供服务时缺少这些文件，而数据库仍保留着注册时，对该表的每条语句都会以 `ICEBERG_MISSING_METADATA` 失败。这会发生在对象存储启动时 bucket 的磁盘尚未挂载，或 bucket 被清空或替换时。
+
+这种情况下 Provisa 不做任何更改。每次压缩运行都会记录一条 `ERROR`，指明该表以及 Trino 无法读取的元数据位置（`otel.signals.traces is registered but its metadata cannot be read …`），跳过该信号，并将其原始文件保留在 bucket 中供之后的运行使用。其他信号照常压缩。启动时同样把该表排除在其模式检查之外。
+
+请按以下顺序手动恢复：
+
+1. **确认元数据是否仍然存在。** `ERROR` 会指明位置。在 Terraform（GCP）协调器上，检查对象存储磁盘已挂载（`findmnt /var/lib/provisa-object-store`），且 MinIO 容器是在挂载之后启动的。先启动的 MinIO 会提供挂载点下的空目录；在磁盘挂载后重启它，该表即可连同其历史完整地再次读取。
+2. **如果元数据文件存在但注册指向别处**，请在其位置重新注册该表：
+
+   ```sql
+   CALL otel.system.register_table(schema_name => 'signals', table_name => 'traces', table_location => 's3://<bucket>/warehouse/signals/<table directory>')
+   ```
+
+   如果名称已被占用，请先取消注册过时的行（`CALL otel.system.unregister_table(schema_name => 'signals', table_name => 'traces')`）。
+3. **如果 bucket 的文件确实已丢失**，请取消注册该表。下一次压缩运行会重新创建它，为空表。它所保存的信号无法再被读取。
+
+不要对正在恢复的表运行 `remove_orphan_files`。它会删除当前元数据未引用的文件，而这些文件可能正是你要恢复的历史。
+
 ## 联邦查询引擎依赖 {: #federation-engine-dependencies }
 
 数据仓库联邦查询引擎需要 Provisa 默认安装之外的 Python 包和系统级组件。此处列出的所有 Python 包都声明在 `pyproject.toml` 中，并作为标准 `pip install provisa` 或 `pip install -e .` 的一部分安装 [tool-verified: `pyproject.toml` lines 44–52]。

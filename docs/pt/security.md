@@ -497,7 +497,7 @@ A chave é o principal que o protocolo traz. Uma superfície só de bearer não 
 
 Nomear um papel que o autor da chamada não detém é tratado como um evento de segurança detectado de gravidade alta, em todas as superfícies: a API HTTP, MCP, pgwire, Bolt, Arrow Flight, o serviço Flight do airport e gRPC. Um cliente legítimo nomeia os papéis que lhe foram dados; um que nomeia outro está com defeito ou sondando. (REQ-2076)
 
-A solicitação é recusada. O autor da chamada recebe apenas "not permitted", nada sobre a existência do papel, e a conexão ou sessão termina onde houver uma: a conexão pgwire, a sessão Bolt, a chamada gRPC, a sessão MCP. A única exceção é uma sessão autenticada na API HTTP, que mantém a recusa que nomeia o papel.
+A solicitação é recusada. O autor da chamada recebe apenas "not permitted", nada sobre a existência do papel, e a conexão ou sessão termina onde houver uma: a conexão pgwire, a sessão Bolt, a chamada gRPC, a sessão MCP. A exceção é a API HTTP com qualquer credencial que não seja um token de acesso pessoal: ali o navegador apresenta sua sessão ou o token do seu provedor de identidade, por isso a recusa continua nomeando o papel.
 
 O restante depende da credencial e do transporte:
 

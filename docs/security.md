@@ -501,7 +501,7 @@ The key is the principal the protocol carries. A bearer-only surface carries no 
 
 Naming a role the caller does not hold is treated as a detected security event of high severity, on every surface: the HTTP API, MCP, pgwire, Bolt, Arrow Flight, the airport Flight service and gRPC. A legitimate client names the roles it was given; one that names another is either broken or probing. (REQ-2076)
 
-The request is refused. The caller is told only "not permitted", nothing about whether the role exists, and the connection or session ends where there is one: the pgwire connection, the Bolt session, the gRPC call, the MCP session. The one exception is a signed-in session on the HTTP API, which keeps the refusal naming the role.
+The request is refused. The caller is told only "not permitted", nothing about whether the role exists, and the connection or session ends where there is one: the pgwire connection, the Bolt session, the gRPC call, the MCP session. The exception is the HTTP API with any credential but a personal access token: the browser presents its session or its identity provider's token there, so the refusal keeps naming the role.
 
 What else happens depends on the credential and the transport:
 

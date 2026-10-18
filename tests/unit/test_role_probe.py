@@ -74,13 +74,16 @@ def test_a_local_stdio_session_is_never_suspended():
 # --- what the caller is told ----------------------------------------------------------------
 
 
-def test_a_signed_in_session_is_told_what_it_named():
+@pytest.mark.parametrize("credential", [None, "idp"])
+def test_the_browsers_credentials_on_the_http_api_are_told_what_they_named(credential):
+    # A session, or the identity provider's token the browser presents (a stale tab's role).
     said = "Role 'admin' is not assigned to this user"
-    assert role_probe.refusal(_probe(None, "http"), said) == said
+    assert role_probe.refusal(_probe(credential, "http"), said) == said
 
 
 @pytest.mark.parametrize(
-    ("credential", "transport"), [("pat", "http"), ("idp", "http"), ("idp", "mcp"), (None, "bolt")]
+    ("credential", "transport"),
+    [("pat", "http"), ("idp", "mcp"), ("idp", "pgwire"), (None, "bolt")],
 )
 def test_any_other_caller_is_told_nothing_about_the_role(credential, transport):
     assert role_probe.refusal(_probe(credential, transport), "Role 'admin' ...") == NOT_PERMITTED

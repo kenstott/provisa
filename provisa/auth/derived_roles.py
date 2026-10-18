@@ -81,6 +81,10 @@ def declared_derived_role_entries(state) -> list[DerivedRole]:  # REQ-2078
     overrides = state.settings_overrides
     if "derived_roles" in overrides:
         return [DerivedRole.model_validate(e) for e in overrides["derived_roles"]]
+    if state.config is None:
+        # A first start with no config file yet (app._load_and_build returns before loading one;
+        # the server runs unsecured for its setup): no config declares any (REQ-2057).
+        return []
     return list(state.config.derived_roles)
 
 

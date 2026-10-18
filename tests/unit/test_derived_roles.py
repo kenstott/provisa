@@ -315,3 +315,39 @@ class TestTheNodesOwnWork:
         data = client.get("/test", headers={"Authorization": "Bearer t"}).json()
         # The org's record says eu; the node being us adds nothing.
         assert data["derived"] == {"region": "", "region__eu": "region"}
+
+
+def test_a_first_start_with_no_config_declares_no_derived_roles():
+    """app._load_and_build returns before loading a config when there is no config file yet: the
+    server then runs unsecured for its setup, with no config to declare any."""
+    from provisa.auth.derived_roles import declared_derived_role_entries
+
+    assert declared_derived_role_entries(SimpleNamespace(settings_overrides={}, config=None)) == []
+    # The org's own setting still declares what it declares.
+    declared = SimpleNamespace(
+        settings_overrides={"derived_roles": [{"attribute": "region", "description": "Where."}]},
+        config=None,
+    )
+    assert [e.attribute for e in declared_derived_role_entries(declared)] == ["region"]
+
+
+def test_an_unsecured_request_on_a_first_start_with_no_config_is_served(
+    monkeypatch, serve_deployment_org
+):
+    """The unsecured path names the declared derived roles of every request (REQ-2057): with no
+    config loaded it was refused ('NoneType' object has no attribute 'derived_roles')."""
+    from provisa.api.app import state
+
+    serve_deployment_org("root")
+    monkeypatch.setattr(state, "config", None)
+    monkeypatch.setattr(state, "settings_overrides", {})
+    app = FastAPI()
+    app.add_middleware(AuthMiddleware, provider=None, default_org_id="root")
+
+    @app.get("/probe")
+    async def probe(request: Request):
+        return {"role": request.state.role}
+
+    resp = TestClient(app).get("/probe")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["role"] == "org_admin"

@@ -497,7 +497,7 @@ Provisa 终结 TLS 的每个监听器（HTTP API 和 UI、pgwire、Bolt、MCP、
 
 指名调用方并不持有的角色，会在每个接口上被视为已检测到的高严重性安全事件：HTTP API、MCP、pgwire、Bolt、Arrow Flight、airport Flight 服务和 gRPC。合法的客户端只指名分配给它的角色；指名其他角色的客户端不是出了故障，就是在探测。（REQ-2076）
 
-请求被拒绝。调用方只会得到 "not permitted"，不会得知该角色是否存在；有连接或会话的地方，连接或会话随之结束：pgwire 连接、Bolt 会话、gRPC 调用、MCP 会话。唯一的例外是 HTTP API 上已登录的会话，它保留指名该角色的拒绝信息。
+请求被拒绝。调用方只会得到 "not permitted"，不会得知该角色是否存在；有连接或会话的地方，连接或会话随之结束：pgwire 连接、Bolt 会话、gRPC 调用、MCP 会话。例外是使用个人访问令牌以外任何凭据的 HTTP API：浏览器在那里出示其会话或其身份提供方的令牌，因此拒绝信息仍会指名该角色。
 
 其余处理取决于凭据和传输方式：
 
