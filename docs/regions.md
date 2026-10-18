@@ -117,6 +117,6 @@ Setting, changing or removing the region of a table, a source or a materialized 
 
 The right exists only when the platform declares regions. Domain ownership still decides who may edit everything else about the object. A region confers no right of its own, so an organization that wants a region's tables run by that region's people gives them domains of their own. (REQ-1921)
 
-A table or view can also be set to **draft**: out of service, with no copy kept in any region. A table registered through the admin starts as draft. A move between regions can pass through draft, so no data is held or read anywhere in between: the first region's side sets draft, and the second region's holder claims the object by setting their region. (REQ-1921)
+A table or view can also be set to **draft**: out of service and offered to no reader. A table registered through the admin starts as draft. Its steward previews it only on the nodes of the region it names (one naming none, where the steward is), and the copy that preview lands is kept in that region for the table's release. A copy any other region holds of it, from before its region was set or changed, is retired and dropped as for a published table. A move between regions can pass through draft, so the table is served nowhere in between: the first region's side sets draft, and the second region's holder claims the object by setting their region. (REQ-1921)
 
 See also the [two-region demo](regions-demo.md).

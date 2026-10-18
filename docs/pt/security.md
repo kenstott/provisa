@@ -320,7 +320,7 @@ O filtro é combinado com AND na cláusula WHERE da consulta. Funciona para cons
 
 Um termo `current_setting('provisa.<name>')` é resolvido contra as variáveis de sessão que a requisição vincula: `user_id` a partir da identidade autenticada, `role` a partir da função atuante, e cada claim escalar do token pelo seu nome em minúsculas, com hifens como sublinhados. Uma variável de sessão do Hasura mantém o próprio nome: `X-Hasura-User-Id` é `hasura_user_id`, lida do claim `x-hasura-user-id` do token (no nível superior ou dentro do objeto de claims do Hasura, como `https://hasura.io/jwt/claims`) ou registrada para o membro como o atributo `hasura_user_id`. Por isso um filtro Hasura importado sobre `X-Hasura-User-Id` lê `provisa.hasura_user_id`. `provisa.user_id` é sempre a identidade autenticada; nenhum claim a substitui. As `session_vars` configuradas de uma função são as constantes de base; os vínculos da requisição as sobrepõem. Um papel que herda de outro recebe as constantes dos seus ancestrais por baixo das suas, com o valor do papel mais próximo para cada nome. `user_id`, `role`, `region` e `org` são vinculados pela requisição ou pelo nó e não podem ser configurados como constantes. No modo sem segurança, um cabeçalho `x-provisa-session-<name>` vincula `<name>`. Uma variável não vinculada em lugar nenhum resolve para NULL e não corresponde a nenhuma linha. (REQ-1682)
 
-Uma constante de papel pode ser uma referência `${env:NAME}` ou `${secret:NAME}`, resolvida pelo mesmo resolvedor de qualquer outra referência quando uma consulta a usa; o modelo mantém a referência, nunca o valor resolvido, e uma referência que não se resolve em nada faz a consulta falhar, nomeando a constante. Uma constante resolvida faz parte da consulta. Os registros que o próprio Provisa faz da consulta são cobertos pela ocultação central; os logs da própria fonte federada estão fora do alcance do Provisa. (REQ-2086)
+Uma constante de papel é o inverso de um papel derivado. Um papel derivado transforma em papel um valor que um membro tem; uma constante de papel dá a cada requisição que age como o papel um valor, que uma regra de linha lê como lê um claim. Uma constante de papel pode ser uma referência `${env:NAME}` ou `${secret:NAME}`, resolvida pelo mesmo resolvedor de qualquer outra referência quando uma consulta a usa; o modelo mantém a referência, nunca o valor resolvido, e uma referência que não se resolve em nada faz a consulta falhar, nomeando a constante. Uma constante resolvida faz parte da consulta. Os registros que o próprio Provisa faz da consulta são cobertos pela ocultação central; os logs da própria fonte federada estão fora do alcance do Provisa. (REQ-2086)
 
 ## Mascaramento em nível de coluna {: #column-level-masking }
 
@@ -384,6 +384,18 @@ Cada linha guarda `tenant_id` (a organização), `user_id`, `role_id`, um hash S
 O log é somente de acréscimo no nível do banco de dados: regras do PostgreSQL transformam `DELETE` e `UPDATE` em `query_audit_log` em operações nulas. (REQ-596, REQ-613) Dois índices, `(tenant_id, logged_at)` e `(user_id, logged_at)`, dão suporte a consultas de conformidade por organização e por usuário em intervalos de tempo. (REQ-596, REQ-613)
 
 Retenção: as linhas são mantidas indefinidamente. O Provisa não tem configuração de retenção e nunca apaga o log de auditoria; como `DELETE` é uma operação nula, remover linhas antigas significa que um operador descarta ou arquiva os dados da tabela fora do Provisa.
+
+## Ocultação {: #redaction }
+
+O que o Provisa registra sobre o próprio trabalho passa por uma lista de regras de ocultação por organização antes de ser escrito em qualquer lugar. As regras embutidas do Provisa são o conjunto inicial da lista; uma organização acrescenta as suas. Todo segredo que o Provisa guarda, e todo segredo a que o modelo faz referência, é ocultado sem que uma regra o nomeie: um valor resolvido de `${secret:…}` ou do armazenamento do próprio Provisa nunca aparece em claro num registro.
+
+A lista se aplica em cada saída em que o Provisa escreve:
+
+- cada span e cada registro de log, no SDK do OpenTelemetry do Provisa, antes que qualquer exportador o veja; a saída padrão incluída;
+- as tabelas de auditoria, à medida que cada linha é escrita;
+- as mensagens de erro que um cliente recebe.
+
+Uma fonte federada mantém os próprios logs, que o Provisa não escreve e não alcança. Os registros que uma fonte guarda das instruções que o Provisa lhe envia cabe a essa fonte proteger.
 
 ## Limitação de taxa {: #rate-limiting }
 
@@ -555,6 +567,21 @@ Numa implantação compartilhada por muitas organizações, os sinais operaciona
 Os sinais operacionais são mantidos indefinidamente nos dois motores, como o log de auditoria: a compactação reescreve os arquivos em que estão guardados e não remove nenhuma de suas linhas. No Trino eles são as tabelas Iceberg do catálogo `otel`. Num motor nativo (DuckDB) o servidor grava os próprios registros de trace como arquivos Parquet na sua pasta de telemetria e o motor os lê com o mesmo nome, `"ops"."traces"`, com a visão de linhagem de atualizações `"ops"."mv_refresh_lineage"` sobre eles; ambos são lidos pela mesma regra por organização. (REQ-862)
 
 Os sinais são mantidos em claro no seu armazenamento. Uma carga de trabalho que precise de mais do que um limite por organização dentro de uma implantação roda numa implantação dedicada; uma muito sensível ou regulada é auto-hospedada.
+
+## Trabalho em segundo plano entre organizações {: #background-work-across-organizations }
+
+Um processo que atende muitas organizações executa o trabalho em segundo plano de cada uma como essa organização. O processamento de mudanças de cada organização (o loop de eventos que grava as mudanças das fontes e atualiza as visões sobre elas), suas construções de réplicas e os gatilhos de tabela que disparam pertencem ao seu próprio runtime: uma mudança é processada pela tarefa da sua própria organização, lê sua fonte com o endereço e a credencial dessa organização e grava no armazenamento dessa organização. Cada ambiente de uma organização tem seu próprio slot de replicação lógica do PostgreSQL e sua publicação, nomeados pela organização, pelo ambiente e pela fonte, de modo que duas organizações que dão o mesmo nome a uma fonte num mesmo banco leem cada uma as próprias mudanças.
+
+## Residência de dados {: #data-residency }
+
+Numa implantação com regiões, uma tabela pode nomear uma região como sua casa, e seus dados pessoais são armazenados e processados lá. (REQ-1921, REQ-1922)
+
+- Só a região de casa constrói e atualiza a réplica da tabela. Qualquer outra região lê essa réplica no lugar, com as regras de linha e coluna do leitor aplicadas na região de casa, de modo que só sai dela o que o leitor pode ver.
+- Uma região de casa cuja réplica não foi construída, ou cujos armazenamentos não podem ser alcançados, recusa a leitura (`query.home_region_unavailable`). A fonte nunca é lida ao vivo de outra região no lugar.
+- Um rascunho só é pré-visualizado onde vive. Uma tabela em rascunho que nomeia uma região é lida para a pré-visualização do seu responsável só nos nós dessa região e recusada em outros lugares; a cópia que a pré-visualização grava é mantida lá para a sua liberação. Uma cópia que qualquer região tenha de uma tabela, rascunho ou publicada, cuja casa agora é outra região é retirada e depois removida.
+- Definir, mudar ou remover a região de uma tabela exige o direito `data_residency` para as regiões envolvidas, além de ser dono da tabela pelo seu domínio. Uma mudança pode passar pelo rascunho, de modo que a tabela não é servida em lugar nenhum no intervalo.
+
+Regras de linha e coluna escritas sobre a região do nó que responde (`current_setting('provisa.region')`) e sobre o atributo `region` dos membros decidem o que atravessa entre regiões. [Regiões](regions.md) descreve por completo regiões, a atribuição de casa e essas regras.
 
 ## Fortalecimento da implantação {: #deployment-hardening }
 

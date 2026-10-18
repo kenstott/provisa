@@ -131,6 +131,13 @@
           the organization's record wins.
         </p>
         <p>
+          A role constant runs the other way: from role to value. Every request acting as the
+          role binds the constant, and a row rule reads it as it reads a claim, so a role for a
+          subsidiary can carry that subsidiary's code without a user attribute for it. A
+          constant may be an <code>${env:…}</code> or <code>${secret:…}</code> reference,
+          resolved when a request uses it; the model keeps the reference, never the value.
+        </p>
+        <p>
           Every role and every row rule carries a required description of what it is for, so
           an access review reads the reason beside the rule. A role that means something
           different in one domain becomes a new role there, usually a child of the general
@@ -169,8 +176,84 @@
         </p>
         <p>
           A role grant can be given until a date, and a role can remove its grants once they
-          go unused for a set number of days. The holder and the organization's administrators
-          are emailed before either happens, and each removal is recorded.
+          go unused for a set number of days. Use is measured by data: a grant counts as used
+          when a request depended on it to read, not when its holder merely signed in or acted
+          as every role at once. The holder and the organization's administrators are emailed
+          before either happens, and each removal is recorded.
+        </p>
+
+        <h2>Probing for a role is a security event</h2>
+        <p>
+          A legitimate client names the roles it was given. Naming one it does not hold is
+          treated as a high-severity security event on every surface: the HTTP API, MCP,
+          pgwire, Bolt, Arrow Flight and gRPC. The request is refused with "not permitted" and
+          nothing about whether the role exists, and the connection or session ends.
+        </p>
+        <p>
+          On the machine transports the credential stops working: a personal access token is
+          suspended, and so is a principal's token access to the organization when an external
+          identity provider signed the token. Only an administrator lifts a suspension; no
+          timer does. Each event lands in the organization's administrative trail with the
+          principal, credential, address, transport, the role named and the roles held, and
+          is mailed to the administrators and, where the operator has set one, posted to a
+          security webhook.
+        </p>
+
+        <h2>One redaction list, applied at every exit</h2>
+        <p>
+          What Provisa writes about its own work is redacted by one list of rules per
+          organization. Provisa's built-in rules are its starting set, and the organization adds
+          its own. Every secret Provisa holds, and every one the
+          model references, is redacted without a rule being written for it.
+        </p>
+        <p>
+          The list applies where records leave: in the OpenTelemetry SDK to every span and log
+          line, standard output included, to the audit tables as each row is written, and to
+          the errors a client receives. A federated source's own logs are written by that
+          source and stay outside Provisa's reach.
+        </p>
+
+        <h2>Organizations stay apart on a shared deployment</h2>
+        <p>
+          Many organizations can share one deployment. Each one's catalogs on the engine are
+          named for it, its statements run in its own resource group, and its secrets are read
+          only inside its own prefix of a central vault. Every span, metric point and log
+          record carries the organization it was written for, and a read of them answers only
+          the reader's organization. Background work stays its organization's too: change
+          processing, replica builds and the triggers they fire each run as the organization
+          they belong to, reading its sources and writing its stores, and each organization's
+          environments hold their own replication slots. An organization's sources may reach
+          only public addresses, never the platform's private network.
+        </p>
+
+        <h2>Data stays in its region</h2>
+        <p>
+          A table can name a region as its home. Only that region builds its copy; every other
+          region reads that copy in place, with the reader's row and column rules applied at
+          home, so only what the reader may see crosses. A home that cannot answer refuses the
+          read; the source is never read live from elsewhere instead.
+        </p>
+        <p>
+          Drafts follow the same line. A draft table that names a region is previewed only on
+          that region's nodes, and a copy held anywhere else, from before its region was set,
+          is retired and dropped. Moving a table between regions needs the
+          <code>data_residency</code> right for both, and a move can pass through draft, so the
+          table is served nowhere in between.
+        </p>
+
+        <h2>Encrypted in transit, under the organization's own keys at rest</h2>
+        <p>
+          Every listener Provisa terminates serves TLS. Inside the deployment, encrypting the
+          federation engine's coordinator-to-worker traffic is an operator option; under the
+          Helm chart the chart generates the certificate authority and node certificates and
+          keeps them across upgrades. Spooled engine data is encrypted with a key made for each
+          query and discarded when it ends, and the engine keeps source catalogs, credentials
+          included, in memory only.
+        </p>
+        <p>
+          An organization can hold its own encryption key, which wraps its secrets, encrypted
+          columns and audit query text, and can encrypt its file folder (uploads, landed files,
+          spill and temporary files) under a key kept in its own vault.
         </p>
 
         <h2>Observability as data</h2>

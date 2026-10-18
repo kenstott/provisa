@@ -320,7 +320,7 @@ Il filtro viene combinato in AND con la clausola WHERE della query. Funziona sia
 
 Un termine `current_setting('provisa.<name>')` si risolve rispetto alle variabili di sessione che la richiesta associa: `user_id` dall'identità autenticata, `role` dal ruolo agente, e ogni claim scalare del token con il suo nome in minuscolo, trattini come trattini bassi. Una variabile di sessione Hasura mantiene il proprio nome: `X-Hasura-User-Id` è `hasura_user_id`, letta dal claim `x-hasura-user-id` del token (al livello superiore o dentro l'oggetto di claim Hasura, come `https://hasura.io/jwt/claims`) o registrata per il membro come attributo `hasura_user_id`. Un filtro Hasura importato su `X-Hasura-User-Id` legge quindi `provisa.hasura_user_id`. `provisa.user_id` è sempre l'identità autenticata; nessun claim la sostituisce. Le `session_vars` configurate di un ruolo sono le costanti di base; le associazioni della richiesta le sovrascrivono. Un ruolo che eredita da un altro prende le costanti dei suoi antenati sotto le proprie, con il valore del ruolo più vicino per ogni nome. `user_id`, `role`, `region` e `org` sono associati dalla richiesta o dal nodo e non si possono configurare come costanti. In modalità non protetta, un'intestazione `x-provisa-session-<name>` associa `<name>`. Una variabile non associata da nessuna parte si risolve in NULL e non corrisponde ad alcuna riga. (REQ-1682)
 
-Una costante di ruolo può essere un riferimento `${env:NAME}` o `${secret:NAME}`, risolto con lo stesso risolutore di ogni altro riferimento quando una query lo usa; il modello conserva il riferimento, mai il valore risolto, e un riferimento che non si risolve in nulla fa fallire la query nominando la costante. Una costante risolta fa parte della query. Le registrazioni che Provisa fa della query sono coperte dall'oscuramento centrale; i log propri di una sorgente federata sono fuori dalla portata di Provisa. (REQ-2086)
+Una costante di ruolo è l'inverso di un ruolo derivato. Un ruolo derivato trasforma in ruolo un valore che un membro possiede; una costante di ruolo dà a ogni richiesta che agisce come quel ruolo un valore, che una regola di riga legge come legge un claim. Una costante di ruolo può essere un riferimento `${env:NAME}` o `${secret:NAME}`, risolto con lo stesso risolutore di ogni altro riferimento quando una query lo usa; il modello conserva il riferimento, mai il valore risolto, e un riferimento che non si risolve in nulla fa fallire la query nominando la costante. Una costante risolta fa parte della query. Le registrazioni che Provisa fa della query sono coperte dall'oscuramento centrale; i log propri di una sorgente federata sono fuori dalla portata di Provisa. (REQ-2086)
 
 ## Mascheramento a livello di colonna {: #column-level-masking }
 
@@ -384,6 +384,18 @@ Ogni riga registra `tenant_id` (l'organizzazione), `user_id`, `role_id`, un hash
 Il log è di sola aggiunta a livello di database: regole PostgreSQL trasformano `DELETE` e `UPDATE` su `query_audit_log` in operazioni nulle. (REQ-596, REQ-613) Due indici, `(tenant_id, logged_at)` e `(user_id, logged_at)`, supportano query di conformità per organizzazione e per utente su intervalli di tempo. (REQ-596, REQ-613)
 
 Conservazione: le righe sono conservate a tempo indeterminato. Provisa non ha alcuna impostazione di conservazione e non elimina mai il log di audit; poiché `DELETE` è un'operazione nulla, rimuovere le righe vecchie significa che un operatore elimina o archivia i dati della tabella al di fuori di Provisa.
+
+## Oscuramento {: #redaction }
+
+Ciò che Provisa registra del proprio lavoro passa per un'unica lista di regole di oscuramento per organizzazione prima di essere scritto ovunque. Le regole integrate di Provisa sono l'insieme iniziale della lista; un'organizzazione aggiunge le proprie. Ogni segreto che Provisa detiene, e ogni segreto a cui il modello fa riferimento, viene oscurato senza che una regola lo nomini: un valore risolto da `${secret:…}` o dall'archivio di Provisa non compare mai in chiaro in un record.
+
+La lista si applica a ogni uscita su cui Provisa scrive:
+
+- ogni span e ogni record di log, nell'SDK OpenTelemetry di Provisa, prima che un exporter lo veda; output standard compreso;
+- le tabelle di audit, mentre ogni riga viene scritta;
+- i messaggi di errore che un client riceve.
+
+Una sorgente federata tiene i propri log, che Provisa non scrive e non può raggiungere. I record che una sorgente conserva delle istruzioni che Provisa le invia spetta a quella sorgente proteggerli.
 
 ## Limitazione della frequenza {: #rate-limiting }
 
@@ -555,6 +567,21 @@ Su un deployment condiviso da molte organizzazioni, i segnali operativi (`"ops".
 I segnali operativi sono conservati a tempo indeterminato su entrambi i motori, come il log di audit: la compattazione riscrive i file in cui sono archiviati e non rimuove nessuna delle loro righe. Su Trino sono le tabelle Iceberg del catalogo `otel`. Su un motore nativo (DuckDB) il server deposita i propri record di trace come file Parquet nella sua cartella di telemetria e il motore li legge con lo stesso nome, `"ops"."traces"`, con la vista di lineage dei refresh `"ops"."mv_refresh_lineage"` sopra; entrambi sono letti con la stessa regola per organizzazione. (REQ-862)
 
 I segnali sono conservati in chiaro nel loro archivio. Un carico di lavoro che richiede più di un confine per organizzazione all'interno di un deployment gira su un deployment dedicato; uno molto sensibile o regolamentato è self-hosted.
+
+## Lavoro in background tra organizzazioni {: #background-work-across-organizations }
+
+Un processo che serve molte organizzazioni esegue il lavoro in background di ciascuna come quell'organizzazione. L'elaborazione delle modifiche di ogni organizzazione (il ciclo di eventi che deposita le modifiche delle sorgenti e aggiorna le viste che le leggono), le sue costruzioni di repliche e i trigger di tabella che attivano appartengono al suo runtime: una modifica è elaborata dal job della sua organizzazione, legge la sua sorgente con indirizzo e credenziale di quell'organizzazione e scrive nell'archivio di quell'organizzazione. Ogni ambiente di un'organizzazione ha il proprio slot di replica logica PostgreSQL e la propria publication, chiamati per organizzazione, ambiente e sorgente, così due organizzazioni che danno lo stesso nome a una sorgente sullo stesso database leggono ciascuna le proprie modifiche.
+
+## Residenza dei dati {: #data-residency }
+
+In un deployment con regioni, una tabella può nominare una regione come sua sede, e i suoi dati personali vi sono archiviati ed elaborati. (REQ-1921, REQ-1922)
+
+- Solo la regione sede costruisce e aggiorna la replica della tabella. Ogni altra regione legge quella replica sul posto, con le regole di riga e di colonna del lettore applicate nella regione sede, così ne esce solo ciò che il lettore può vedere.
+- Una regione sede la cui replica non è costruita, o i cui archivi non sono raggiungibili, rifiuta la lettura (`query.home_region_unavailable`). La sorgente non viene mai letta in diretta da un'altra regione al suo posto.
+- Una bozza si vede in anteprima solo dove vive. Una tabella in bozza che nomina una regione viene letta per l'anteprima del suo responsabile solo sui nodi di quella regione e rifiutata altrove; la copia che l'anteprima deposita vi è conservata per il suo rilascio. Una copia che qualunque regione detiene di una tabella, in bozza o pubblicata, la cui sede è ora un'altra regione viene ritirata e poi eliminata.
+- Impostare, cambiare o togliere la regione di una tabella richiede il diritto `data_residency` per le regioni coinvolte, oltre a possedere la tabella tramite il suo dominio. Uno spostamento può passare per la bozza, così la tabella non è servita da nessuna parte nel frattempo.
+
+Le regole di riga e di colonna scritte sulla regione del nodo che risponde (`current_setting('provisa.region')`) e sull'attributo `region` dei membri decidono che cosa passa tra le regioni. [Regioni](regions.md) descrive per intero regioni, assegnazione della sede e queste regole.
 
 ## Hardening del deployment {: #deployment-hardening }
 

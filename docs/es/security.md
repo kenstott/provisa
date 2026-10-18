@@ -320,7 +320,7 @@ El filtro se añade con AND a la cláusula WHERE de la consulta. Funciona tanto 
 
 Un término `current_setting('provisa.<name>')` se resuelve contra las variables de sesión que enlaza la solicitud: `user_id` a partir de la identidad autenticada, `role` a partir del rol que actúa, y cada claim escalar del token bajo su nombre en minúsculas, con guiones como guiones bajos. Una variable de sesión de Hasura conserva su propio nombre: `X-Hasura-User-Id` es `hasura_user_id`, leída del claim `x-hasura-user-id` del token (en el nivel superior o dentro del objeto de claims de Hasura, como `https://hasura.io/jwt/claims`) o registrada para el miembro como el atributo `hasura_user_id`. Por eso un filtro de Hasura importado sobre `X-Hasura-User-Id` lee `provisa.hasura_user_id`. `provisa.user_id` es siempre la identidad con sesión iniciada; ningún claim la reemplaza. Las `session_vars` configuradas de un rol son las constantes de base; los enlaces de la solicitud las superponen. Un rol que hereda de otro toma las constantes de sus ancestros bajo las suyas, con el valor del rol más cercano para cada nombre. `user_id`, `role`, `region` y `org` los enlaza la solicitud o el nodo y no se pueden configurar como constantes. En modo no protegido, una cabecera `x-provisa-session-<name>` enlaza `<name>`. Una variable no enlazada en ningún sitio se resuelve a NULL y no coincide con ninguna fila. (REQ-1682)
 
-Una constante de rol puede ser una referencia `${env:NAME}` o `${secret:NAME}`, resuelta mediante el mismo resolutor que cualquier otra referencia cuando una consulta la usa; el modelo conserva la referencia, nunca su valor resuelto, y una referencia que no se resuelve en nada hace fallar la consulta nombrando la constante. Una constante resuelta forma parte de la consulta. Los registros propios de Provisa sobre la consulta están cubiertos por la redacción central; los registros propios de una fuente federada quedan fuera del alcance de Provisa. (REQ-2086)
+Una constante de rol es la inversa de un rol derivado. Un rol derivado convierte un valor que tiene un miembro en un rol; una constante de rol da a cada solicitud que actúa como el rol un valor, que una regla de fila lee como lee un claim. Una constante de rol puede ser una referencia `${env:NAME}` o `${secret:NAME}`, resuelta mediante el mismo resolutor que cualquier otra referencia cuando una consulta la usa; el modelo conserva la referencia, nunca su valor resuelto, y una referencia que no se resuelve en nada hace fallar la consulta nombrando la constante. Una constante resuelta forma parte de la consulta. Los registros propios de Provisa sobre la consulta están cubiertos por la redacción central; los registros propios de una fuente federada quedan fuera del alcance de Provisa. (REQ-2086)
 
 ## Enmascaramiento de columnas {: #column-level-masking }
 
@@ -384,6 +384,18 @@ Cada fila guarda `tenant_id` (la organización), `user_id`, `role_id`, un hash S
 El registro es de solo anexado a nivel de base de datos: las reglas de PostgreSQL convierten `DELETE` y `UPDATE` sobre `query_audit_log` en operaciones nulas. (REQ-596, REQ-613) Dos índices, `(tenant_id, logged_at)` y `(user_id, logged_at)`, admiten consultas de cumplimiento por organización y por usuario sobre intervalos de tiempo. (REQ-596, REQ-613)
 
 Retención: las filas se conservan indefinidamente. Provisa no tiene ningún ajuste de retención y nunca purga el registro de auditoría; como `DELETE` es una operación nula, eliminar filas antiguas implica que un operador elimine o archive los datos de la tabla fuera de Provisa.
+
+## Redacción de datos sensibles {: #redaction }
+
+Lo que Provisa registra sobre su propio trabajo pasa por una lista de reglas de redacción por organización antes de escribirse en ningún sitio. Las reglas integradas de Provisa son el conjunto inicial de la lista; una organización añade las suyas. Todo secreto que Provisa guarda, y todo secreto al que hace referencia el modelo, se redacta sin que una regla lo nombre: un valor resuelto desde `${secret:…}` o desde el almacén propio de Provisa nunca aparece en claro en un registro.
+
+La lista se aplica en cada salida en la que Provisa escribe:
+
+- cada span y cada registro de log, en el SDK de OpenTelemetry de Provisa, antes de que lo vea ningún exportador; incluida la salida estándar;
+- las tablas de auditoría, a medida que se escribe cada fila;
+- los mensajes de error que recibe un cliente.
+
+Una fuente federada mantiene sus propios logs, que Provisa no escribe ni puede alcanzar. Los registros que una fuente hace de las sentencias que Provisa le envía le corresponde protegerlos a esa fuente.
 
 ## Limitación de tasa {: #rate-limiting }
 
@@ -555,6 +567,21 @@ En un despliegue que comparten muchas organizaciones, las señales operativas (`
 Las señales operativas se conservan indefinidamente en ambos motores, como el registro de auditoría: la compactación reescribe los archivos en que se guardan y no elimina ninguna de sus filas. En Trino son las tablas Iceberg del catálogo `otel`. En un motor nativo (DuckDB) el servidor deposita sus propios registros de traza como archivos Parquet en su carpeta de telemetría y el motor los lee con el mismo nombre, `"ops"."traces"`, con la vista de linaje de refrescos `"ops"."mv_refresh_lineage"` sobre ellos; ambos se leen con la misma regla por organización. (REQ-862)
 
 Las señales se guardan en claro en su almacén. Una carga de trabajo que necesite más que un límite por organización dentro de un despliegue se ejecuta en un despliegue dedicado; una muy sensible o regulada se autoaloja.
+
+## Trabajo en segundo plano entre organizaciones {: #background-work-across-organizations }
+
+Un proceso que sirve a muchas organizaciones ejecuta el trabajo en segundo plano de cada una como esa organización. El procesamiento de cambios de cada organización (el bucle de eventos que deposita los cambios de las fuentes y refresca las vistas sobre ellos), sus construcciones de réplicas y los disparadores de tabla que activan pertenecen a su propio runtime: un cambio lo procesa el trabajo de su propia organización, lee su fuente con la dirección y la credencial de esa organización y escribe en el almacén de esa organización. Cada entorno de una organización tiene su propio slot de replicación lógica de PostgreSQL y su publicación, nombrados por la organización, el entorno y la fuente, de modo que dos organizaciones que nombran igual una fuente en una misma base de datos leen cada una sus propios cambios.
+
+## Residencia de datos {: #data-residency }
+
+En un despliegue con regiones, una tabla puede nombrar una región como su hogar, y sus datos personales se almacenan y procesan allí. (REQ-1921, REQ-1922)
+
+- Solo la región hogar construye y refresca la réplica de la tabla. Cualquier otra región lee esa réplica en su sitio, con las reglas de fila y columna del lector aplicadas en la región hogar, de modo que solo sale de ella lo que el lector puede ver.
+- Una región hogar cuya réplica no está construida, o cuyos almacenes no se pueden alcanzar, rechaza la lectura (`query.home_region_unavailable`). La fuente nunca se lee en vivo desde otra región en su lugar.
+- Un borrador solo se previsualiza donde vive. Una tabla en borrador que nombra una región se lee para la vista previa de su responsable solo en los nodos de esa región y se rechaza en otros sitios; la copia que deposita la vista previa se conserva allí para su publicación. Una copia que cualquier región tenga de una tabla, en borrador o publicada, cuyo hogar es ahora otra región se retira y después se elimina.
+- Establecer, cambiar o quitar la región de una tabla requiere el derecho `data_residency` para las regiones implicadas, además de ser dueño de la tabla a través de su dominio. Un traslado puede pasar por borrador, de modo que la tabla no se sirve en ningún sitio entretanto.
+
+Las reglas de fila y columna escritas sobre la región del nodo que responde (`current_setting('provisa.region')`) y sobre el atributo `region` de los miembros deciden qué cruza entre regiones. [Regiones](regions.md) describe por completo las regiones, la asignación de hogar y estas reglas.
 
 ## Refuerzo del despliegue {: #deployment-hardening }
 
