@@ -10,7 +10,8 @@
 
 """Integration: the ASSEMBLED periodic-snapshot pipeline over real DuckDB (REQ-961/1162/1166/1167).
 
-Every collaborator is real — no fakes but the tiny DuckDB engine shim (which runs real SQL): the
+Every collaborator is real but two stand-ins: the tiny DuckDB engine shim (which runs real SQL),
+and the one pipeline routing the view's definition to it (governing a build is tested elsewhere): the
 event-loop ``MVTableProcessor`` claims/coalesces the fire, the calendar ``PeriodicCalendar`` peg it
 seals, ``make_mv_bitemporal_generate`` → ``apply_bitemporal_append`` → the REQ-1162 append SQL land a
 version stamped by ``window.end``, and ``reconstruct_as_of_sql`` reads each sealed period back. This
@@ -36,7 +37,11 @@ from provisa.mv.bitemporal import BitemporalSpec, reconstruct_as_of_sql, system_
 from provisa.mv.models import MVDefinition
 from provisa.mv.refresh import apply_bitemporal_append
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.local_platform,
+    pytest.mark.asyncio(loop_scope="session"),
+]
 
 UTC = timezone.utc
 MV_NODE = "mat.month_snap"
@@ -83,10 +88,31 @@ def _mv() -> MVDefinition:
         target_schema="main",
         target_table="mv_month_snap",
         sql="SELECT id, region, amount FROM base",
+        # A view's build is its definition in the model's terms through the one pipeline.
+        semantic_sql="SELECT id, region, amount FROM base",
         bitemporal=BitemporalSpec(key=("id",), mode="snapshot"),
         calendar="fy",
         grain="monthly",
     )
+
+
+@pytest.fixture(autouse=True)
+def _one_pipeline(monkeypatch):
+    """The one pipeline, standing in: it routes the view's definition to the engine as the
+    statement the engine reads, here the DuckDB table ``base`` itself. Governing a view's build is
+    test_mv_governed_build's subject; this test's is the calendar's seal and the append it lands."""
+    from provisa.federation import query_residency
+    from provisa.pgwire import _pipeline
+    from provisa.transpiler.router import Route
+
+    async def _govern_and_route(sql, _role_id, **_kw):
+        return SimpleNamespace(route=Route.ENGINE, physical_sql=sql, exec_params=None)
+
+    async def _resident(_state, _plan):
+        return None
+
+    monkeypatch.setattr(_pipeline, "_govern_and_route", _govern_and_route)
+    monkeypatch.setattr(query_residency, "prepare_engine_residency", _resident)
 
 
 def _processor(db, engine, mv):

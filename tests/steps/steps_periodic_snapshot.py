@@ -65,6 +65,25 @@ class _DuckEngine:
         return SimpleNamespace(column_names=cols, rows=cur.fetchall())
 
 
+@pytest.fixture(autouse=True)
+def _one_pipeline(monkeypatch):
+    """The one pipeline, standing in: it routes the view's definition to the engine as the
+    statement the engine reads, here the DuckDB table ``base`` itself. Governing a view's build is
+    test_mv_governed_build's subject; this scenario's is the calendar's seal and the append."""
+    from provisa.federation import query_residency
+    from provisa.pgwire import _pipeline
+    from provisa.transpiler.router import Route
+
+    async def _govern_and_route(sql, _role_id, **_kw):
+        return SimpleNamespace(route=Route.ENGINE, physical_sql=sql, exec_params=None)
+
+    async def _resident(_state, _plan):
+        return None
+
+    monkeypatch.setattr(_pipeline, "_govern_and_route", _govern_and_route)
+    monkeypatch.setattr(query_residency, "prepare_engine_residency", _resident)
+
+
 @pytest.fixture
 def loop():
     lp = asyncio.new_event_loop()
@@ -84,12 +103,12 @@ def _run(ctx, coro):
     return ctx["loop"].run_until_complete(coro)
 
 
-async def _build_mode(mode: str):
-    """A fresh assembled pipeline (control plane + DuckDB store + processor) for one storage mode."""
+async def _build_mode(mode: str, plane):
+    """A fresh assembled pipeline (control plane + DuckDB store + processor) for one storage mode.
+    ``plane`` is made before the loop runs: building it runs a loop of its own."""
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE base (id INTEGER, region VARCHAR, amount INTEGER)")
     target = f'"memory"."main"."mv_snap_{mode}"'
-    plane = fresh_control_plane()  # REQ-2014: one PostgreSQL control plane per storage mode
     db = plane.org()
     mv = MVDefinition(
         id=f"view-snap-{mode}",
@@ -98,6 +117,8 @@ async def _build_mode(mode: str):
         target_schema="main",
         target_table=f"mv_snap_{mode}",
         sql="SELECT id, region, amount FROM base",
+        # A view's build is its definition in the model's terms through the one pipeline.
+        semantic_sql="SELECT id, region, amount FROM base",
         bitemporal=BitemporalSpec(key=("id",), mode=mode),
         calendar="fy",
         grain="monthly",
@@ -144,8 +165,9 @@ async def _fire(state, rows, now):
 @given("a materialized view with a repeating calendar trigger on a named boundary")
 def _given(ctx):
     # both storage strategies, to assert addressability "regardless of storage"
-    ctx["modes"]["snapshot"] = _run(ctx, _build_mode("snapshot"))
-    ctx["modes"]["delta"] = _run(ctx, _build_mode("delta"))
+    # REQ-2014: one PostgreSQL control plane per storage mode.
+    ctx["modes"]["snapshot"] = _run(ctx, _build_mode("snapshot", fresh_control_plane()))
+    ctx["modes"]["delta"] = _run(ctx, _build_mode("delta", fresh_control_plane()))
 
 
 @when("each calendar boundary is reached and input freshness gates are satisfied")
