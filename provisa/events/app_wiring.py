@@ -430,7 +430,12 @@ def replica_write_lock_factory(state: Any) -> Callable[[tuple[str, str, str]], A
     return lock
 
 
-def registry_marking(registry: Any, model_db: Any, build_state: Any) -> Any:
+def registry_marking(
+    registry: Any,
+    model_db: Any,
+    build_state: Any,
+    on_built: Callable[[Any], None] | None = None,
+) -> Any:
     """``mv -> mark(change)``: a view's refresh by the event loop, recorded in the MV registry a
     read asks whether the view is fresh, and on this region's build row in ``build_state`` (its
     state store), which another region reads to know the view's copy here is built (REQ-1922).
@@ -441,7 +446,10 @@ def registry_marking(registry: Any, model_db: Any, build_state: Any) -> Any:
 
     The build row is a part of the view's definition in ``model_db`` (integrity: a region's sweep
     removes a build row whose view the model does not hold), so the definition is seeded with
-    it, as the coordinated refresh seeds it (``coordination.ensure_mv_row``)."""
+    it, as the coordinated refresh seeds it (``coordination.ensure_mv_row``).
+
+    ``on_built`` is told of each view a change marks fresh: a view that reads it may have been
+    waiting for its first build to be wired (:func:`_views_awaiting_an_input`)."""
     from provisa.mv.coordination import ensure_mv_row, record_build
 
     def mv_refreshed(mv: Any) -> Any:
@@ -464,10 +472,65 @@ def registry_marking(registry: Any, model_db: Any, build_state: Any) -> Any:
             else:
                 registry.mark_refreshed(mv.id, None)
                 await record()
+            if event_type != "error" and on_built is not None:
+                on_built(mv)
 
         return mark
 
     return mv_refreshed
+
+
+def _views_awaiting_an_input(
+    mvs: list[Any], columns: dict[str, Any], graph: dict[str, set[str]]
+) -> dict[str, set[str]]:
+    """``{view node: the view nodes it reads}`` for each view left unwired because its columns
+    could not be learned while a view it reads is one the loop builds."""
+    views = {view_node(mv) for mv in mvs}
+    awaiting: dict[str, set[str]] = {}
+    for mv in mvs:
+        node = view_node(mv)
+        inputs = graph.get(node, set()) & views
+        if getattr(mv, "sql", None) and node not in columns and inputs:
+            awaiting[node] = inputs
+    return awaiting
+
+
+def _wire_views_reading(scheduler: Any, state: Any, log: Any, org_id: str) -> Any:
+    """``on_built`` for :func:`registry_marking`: when a view's build lands and a view awaiting it
+    reads it, the loop is wired again (one job, under ``org_id``) and each view it now wires is
+    given its first build, as the built view's change."""
+
+    def _built(mv: Any) -> None:
+        built = view_node(mv)
+        waiting = [node for node, inputs in state.views_awaiting_input.items() if built in inputs]
+        if not waiting:
+            return
+
+        async def _wire_again() -> None:
+            from provisa.core.request_context import reset_current_org, set_current_org
+            from provisa.events import queue
+
+            token = set_current_org(org_id)
+            try:
+                await wire_event_loop(scheduler, state=state, log=log, seed=False)
+                wired = {p.node for p in state.event_loop_processors}
+                for node in waiting:
+                    if node not in wired:
+                        continue  # still awaiting another input
+                    async with state.tenant_db.acquire() as conn:
+                        event_id = await queue.post_event(
+                            conn, source_table=built, event_type="replace", payload={}
+                        )
+                        await queue.fan_out(conn, event_id, [node])
+                    log.info("event loop: %s wired after %s was first built", node, built)
+            finally:
+                reset_current_org(token)
+
+        scheduler.add_job(
+            _wire_again, id=f"events:wire-awaiting:org_{org_id}", replace_existing=True
+        )
+
+    return _built
 
 
 def _replica_nodes(specs: list[Any]) -> dict[tuple[str, str, str], str]:
@@ -687,7 +750,17 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
 
             return _append
 
-        mv_refreshed = registry_marking(state.mv_registry, state.model_db, state.tenant_db)
+        # A view whose input view is not built yet reads nothing to learn its columns from: it is
+        # wired when that input's first build lands, not left off the loop for the process's life.
+        state.views_awaiting_input = _views_awaiting_an_input(mvs, _mv_cols, graph)
+        from provisa.core.request_context import require_current_org as _org_bound
+
+        mv_refreshed = registry_marking(
+            state.mv_registry,
+            state.model_db,
+            state.tenant_db,
+            on_built=_wire_views_reading(scheduler, state, log, _org_bound()),
+        )
 
         # Drive the loop off the design-time REGISTERED tables (semantic sql names + resolved types),
         # not the raw YAML — the landed replica name must match what the schema-currency reconcile

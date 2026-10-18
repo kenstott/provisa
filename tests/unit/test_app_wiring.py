@@ -460,3 +460,134 @@ async def test_a_sources_own_probe_runs_with_its_orgs_vault_bound(monkeypatch):
     assert await probe() == "t"
     assert order == ["bound:1", "asked", "released"]
     assert source_probe(source, SimpleNamespace(table_name="events")) is None
+
+
+def _state_with_a_view_over_a_view(built: set[str], probed: list[str]):
+    """``margins`` reads the table ``orders``; ``close`` reads the view ``margins``. A probe of a
+    view's build reads the views it reads from their store, so ``close``'s fails until ``margins``
+    has been built (``built``)."""
+    from provisa.core.models import DERIVED_SOURCE_ID
+    from provisa.executor.result import QueryResult
+
+    async def _execute_engine(sql, *a, **k):
+        probed.append(sql)
+        if "close" in sql and "margins" not in built:
+            raise RuntimeError("schema org_x_mv_cache does not exist")
+        return QueryResult(rows=[], column_names=["d", "n"], column_types=["date", "bigint"])
+
+    engine = SimpleNamespace(
+        engine=build_duckdb_engine(),
+        materialize_store_dsn=lambda: "sqlite://",
+        execute_engine=_execute_engine,
+        address_replicas=lambda sql: sql,
+        reconcile_mv_table=_noop_reconcile,
+        land_source_table=_noop_land,
+        persist_mv_table=_noop_land,
+        replica_address=_replica_address,
+    )
+
+    def _mv(name: str, sql: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=f"view-view_{name}",
+            target_catalog="store",
+            target_schema="analytics",
+            target_table=f"mv_view_{name}",
+            sql=sql,
+            freshness_mode="ttl",
+            refresh_interval=600,
+            debounce_quiet=0.0,
+            debounce_max_delay=None,
+            region=None,
+        )
+
+    margins = _mv("margins", "SELECT day AS d, count(*) AS n FROM orders GROUP BY day")
+    close = _mv("close", "SELECT d, n FROM view_margins")
+    views = {mv.id: mv for mv in (margins, close)}
+    row = {"domain_id": "sales", "landing_filter": None, "alias": None}
+    return RoleState(
+        model_db=(_one_db := _fake_db([])),
+        tenant_db=_one_db,
+        federation_engine=engine,
+        config=SimpleNamespace(sources=[], tables=[]),
+        mv_registry=SimpleNamespace(
+            get_enabled=lambda: [margins, close],
+            get=views.get,
+            mark_refreshed=lambda *_a: None,
+        ),
+        tables=[
+            {**row, "id": 1, "source_id": "pg", "schema_name": "public", "table_name": "orders"},
+            {
+                **row,
+                "id": 2,
+                "source_id": DERIVED_SOURCE_ID,
+                "schema_name": "sales",
+                "table_name": "view_margins",
+                "view_sql": margins.sql,
+            },
+        ],
+        source_catalogs={"pg": "pg"},
+        contexts={},
+    ), margins
+
+
+class _RunnableSched(_Sched):
+    def __init__(self):
+        super().__init__()
+        self.fns: dict[str, object] = {}
+
+    def add_job(self, fn, trigger=None, id="", replace_existing=None):
+        super().add_job(fn, trigger, id, replace_existing)
+        self.fns[id] = fn
+
+
+@pytest.mark.asyncio
+async def test_a_view_over_a_view_not_yet_built_is_wired_and_built_once_its_input_lands(
+    monkeypatch,
+):
+    """A view whose input view is not built yet is skipped at boot -- its build reads nothing yet
+    -- and is wired onto the loop when that input's first build lands, then built as that input's
+    change: never left off the loop for the life of the process."""
+    build_through_a_stand_in_pipeline(monkeypatch, lambda mv: f"SELECT d, n FROM {mv.id}")
+    monkeypatch.setattr("provisa.mv.coordination.ensure_mv_row", _noop_land_any)
+    monkeypatch.setattr("provisa.mv.coordination.record_build", _noop_land_any)
+    marked: list = []
+    real_specs = __import__("provisa.events.app_wiring", fromlist=["x"]).specs_from_config
+
+    def _specs(**kw):
+        marked.append(kw["mv_refreshed"])
+        return real_specs(**kw)
+
+    monkeypatch.setattr("provisa.events.app_wiring.specs_from_config", _specs)
+    posted: list = []
+
+    async def _post_event(conn, *, source_table, event_type, payload):
+        posted.append((source_table, event_type))
+        return 7
+
+    async def _fan_out(conn, event_id, dependents):
+        posted.append((event_id, list(dependents)))
+        return len(dependents)
+
+    monkeypatch.setattr("provisa.events.queue.post_event", _post_event)
+    monkeypatch.setattr("provisa.events.queue.fan_out", _fan_out)
+    built: set[str] = set()
+    state, margins = _state_with_a_view_over_a_view(built, probed := [])
+    sched = _RunnableSched()
+
+    assert await wire_event_loop(sched, state=state, log=_LOG) == 1  # margins; close skipped
+    assert state.views_awaiting_input == {"analytics.mv_view_close": {"analytics.mv_view_margins"}}
+
+    built.add("margins")
+    await marked[0](margins)(("replace", {"rows": 3}))  # margins' first build lands
+    await sched.fns["events:wire-awaiting:org_default"]()
+
+    assert {p.node for p in state.event_loop_processors} == {
+        "analytics.mv_view_margins",
+        "analytics.mv_view_close",
+    }
+    assert state.views_awaiting_input == {}
+    assert posted == [("analytics.mv_view_margins", "replace"), (7, ["analytics.mv_view_close"])]
+
+
+async def _noop_land_any(*_a, **_kw):
+    return None
