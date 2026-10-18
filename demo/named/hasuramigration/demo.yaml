@@ -20,4 +20,4 @@ screenshot: card.png
 published: false
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo.
-requires_provisa: 0.1.0a490
+requires_provisa: 0.1.0a491
