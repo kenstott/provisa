@@ -455,6 +455,17 @@ locals {
     mkdir -p /var/lib/provisa-object-store
     grep -q "^$dev " /etc/fstab || echo "$dev /var/lib/provisa-object-store ext4 discard,defaults,nofail 0 2" >> /etc/fstab
     mountpoint -q /var/lib/provisa-object-store || mount /var/lib/provisa-object-store
+    # The warehouse (MinIO) and the catalog that names its tables (the control DB) both live on
+    # this disk, and Docker's restart policy brings them back on a wake that runs none of this
+    # script. Docker waits for the disk: a container started before it is mounted binds the empty
+    # directory beneath it -- MinIO then serves no warehouse to a catalog that still names every
+    # table (ICEBERG_MISSING_METADATA), and what it writes there is hidden once the disk mounts.
+    mkdir -p /etc/systemd/system/docker.service.d
+    cat > /etc/systemd/system/docker.service.d/provisa-object-store.conf <<'UNIT'
+    [Unit]
+    RequiresMountsFor=/var/lib/provisa-object-store
+    UNIT
+    systemctl daemon-reload
     export PROVISA_OBJECT_STORE_DIR=/var/lib/provisa-object-store
   SHELL
 
