@@ -263,7 +263,7 @@ relationships:
 - {id: county-to-market-losses, alias: MARKET_LOSSES_IN, cardinality: one-to-many, source_table_id: counties, source_column: county_fips, target_table_id: crop_losses, target_column: county_fips}
 - {id: county-to-weather, alias: WEATHER_IN, cardinality: one-to-many, source_table_id: counties, source_column: county_fips, target_table_id: daily_weather, target_column: county_fips}
 - {id: county-to-yields, alias: YIELDS_IN, cardinality: one-to-many, source_table_id: counties, source_column: county_fips, target_table_id: crop_yields, target_column: county_fips}
-- {id: county-to-answer, alias: SEASONS_IN, cardinality: one-to-many, source_table_id: counties, source_column: county_fips, target_table_id: losses_and_weather, target_column: county_fips}
+- {id: county-to-answer, alias: SEASONS_IN, cardinality: one-to-many, source_table_id: counties, source_column: county_fips, target_table_id: view_losses_and_weather, target_column: county_fips}
 # A crop insurer's vocabulary: abstract terms, grounded through their edges in the terms the
 # portfolio's and the public tables' columns derive (loss ratio, indemnity, premium, liability).
 glossary_terms:
