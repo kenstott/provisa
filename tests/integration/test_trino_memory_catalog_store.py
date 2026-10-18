@@ -135,3 +135,45 @@ def test_a_catalog_is_never_written_to_disk_and_a_restart_drops_it(coordinator):
 
     assert ["probe"] not in coordinator.run("SHOW CATALOGS")
     assert coordinator_start(kwargs, 60, fresh=True) != before
+
+
+def _shipped_worker_catalog_lines() -> str:
+    config = (_REPO / "trino" / "etc" / "worker" / "config.properties").read_text().splitlines()
+    return "\n".join(line for line in config if line.startswith("catalog."))
+
+
+def test_a_worker_starts_on_the_shipped_catalog_lines(tmp_path):
+    """The coordinator alone stores catalogs. A worker given ``catalog.store`` refused to start
+    ("Configuration property 'catalog.store' was not used"), and with no worker the coordinator ran
+    no query: the app's boot step timed out under the chart."""
+    from tests.port_lease import lease_ports
+
+    config = tmp_path / "config.properties"
+    config.write_text(
+        "coordinator=false\n"
+        "http-server.http.port=8080\n"
+        f"discovery.uri=http://127.0.0.1:{lease_ports(1)[0]}\n"
+        f"{_shipped_worker_catalog_lines()}\n"
+    )
+    name = f"provisa-itest-memory-catalogs-worker-{os.getpid()}"
+    subprocess.run(
+        ["docker", "run", "-d", "--name", name]
+        + ["-v", f"{config}:/etc/trino/config.properties:ro", _IMAGE],
+        check=True,
+        capture_output=True,
+    )
+    try:
+        deadline = time.monotonic() + 180
+        logs = ""
+        while time.monotonic() < deadline:
+            read = subprocess.run(
+                ["docker", "logs", name], capture_output=True, text=True, check=True
+            )
+            logs = read.stdout + read.stderr  # the launcher logs to either
+            if "SERVER STARTED" in logs or "Configuration is invalid" in logs:
+                break
+            time.sleep(2)
+        assert "Configuration is invalid" not in logs, logs[-2000:]
+        assert "SERVER STARTED" in logs, logs[-2000:]
+    finally:
+        subprocess.run(["docker", "rm", "-f", name], check=True, capture_output=True)

@@ -89,7 +89,12 @@ def test_every_engine_keeps_its_catalogs_in_memory():
     # catalog.config-dir. In memory, none reaches the disk (Provisa reissues them on a restart).
     for name, config in _engine_configs().items():
         assert "catalog.management=dynamic" in config, name
-        assert "catalog.store=memory" in config, name
+        if "coordinator=false" in config:
+            # The coordinator alone stores catalogs: a worker given catalog.store refuses to start
+            # ("was not used"), and with no worker the coordinator runs no query.
+            assert "catalog.store" not in config, name
+        else:
+            assert "catalog.store=memory" in config, name
 
 
 def test_nothing_mounts_a_catalog_directory():
