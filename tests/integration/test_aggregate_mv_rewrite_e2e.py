@@ -34,7 +34,7 @@ import yaml
 
 from tests.embedded_pg import DATABASE, PASSWORD, ROLE, start_local_postgres
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
 
 _NAME = "aggregate_mv"
 # The view's id among the materialized views: its table, view_<id>, as the build registers it.
@@ -73,6 +73,8 @@ def _config(pg) -> dict:
                 "domain_id": "shop",
                 "schema": "public",
                 "table": "orders",
+                "enable_aggregates": True,
+                "enable_group_by": True,
                 "columns": [
                     {"name": "id", "data_type": "integer", "is_primary_key": True,
                      "visible_to": [_ADMIN]},
@@ -167,10 +169,10 @@ def _graphql(srv) -> dict[str, tuple[int, Decimal]]:
         srv,
         "/data/graphql",
         {
-            "query": "{ orders_group_by(by: [region]) { groupKey "
+            "query": "{ ordersGroupBy(by: [region]) { groupKey "
             "aggregate { count sum { amount } } } }"
         },
-    )["data"]["orders_group_by"]
+    )["data"]["ordersGroupBy"]
     return {
         g["groupKey"]["region"]: (
             int(g["aggregate"]["count"]),
@@ -197,6 +199,13 @@ def _table(pg) -> dict[str, tuple[int, Decimal]]:
 
 
 def test_an_aggregate_is_answered_from_the_view_and_as_the_table_answers(server, source_pg):
+    # The view reads a live table (no replica lands it at boot) and refreshes hourly: build it.
+    built = _post(
+        server,
+        "/admin/graphql",
+        {"query": f'mutation {{ refreshMv(mvId: "{_VIEW}") {{ success message }} }}'},
+    )
+    assert built["data"]["refreshMv"]["success"], built
     deadline = time.monotonic() + 120
     while not _built(server):
         assert time.monotonic() < deadline, server.dump_stderr_debug()[-6000:]

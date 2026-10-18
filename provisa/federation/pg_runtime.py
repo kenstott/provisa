@@ -1293,6 +1293,13 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                     cur.execute(*_psycopg2_exec_args(sql, params))
                     cols = [d[0] for d in cur.description] if cur.description else []
                     rows = list(cur.fetchall()) if cur.description else []
+                # Each column's type, as the streamed read reports it (run_sync): known even for
+                # a zero-row result, which is how a view's output columns are learned (REQ-846).
+                types = (
+                    _pg_type_names(con, [d[1] for d in cur.description])
+                    if cur.description
+                    else None
+                )
                 con.commit()
                 cur.close()
             except BaseException:
@@ -1303,7 +1310,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             with shield.lock:
                 shield.settle()
                 self._read_pool.putconn(con)
-            return QueryResult(rows=rows, column_names=cols)
+            return QueryResult(rows=rows, column_names=cols, column_types=types)
 
         return await loop.run_in_executor(None, _run)
 
