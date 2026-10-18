@@ -26,6 +26,7 @@ import duckdb
 import psycopg
 import pytest
 
+import provisa.api.app  # noqa: F401 -- the API layer says whether the deployment holds many orgs, which reading a source's secrets asks
 from provisa.core.models import SourceType
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime, SourceUnreachable
 from tests.embedded_pg import DATABASE, PASSWORD, ROLE, start_local_postgres

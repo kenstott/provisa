@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 import psycopg
 
+import provisa.api.app  # noqa: F401 -- the API layer says whether the deployment holds many orgs, which reading a source's secrets asks
 from provisa.core.models import Column, SourceType, Table
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 from provisa.federation.native_backend import _mongo_column_fields
