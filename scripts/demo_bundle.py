@@ -784,6 +784,15 @@ def _export_views(work: Path, demo: Path, stores: Stores) -> None:
     tables = bitemporal_view_tables(_demo_config(demo, stores))
     if not tables:
         return
+    store = work / "setup-data" / "orgs" / _SETUP_ORG / "materialize.duckdb"
+    if not store.is_file():
+        # The setup server keeps its views in its org's embedded store; one it kept elsewhere is
+        # said here with every store this build's work holds (CI run 39156933023).
+        held = sorted(str(p.relative_to(work)) for p in work.rglob("*.duckdb"))
+        raise SystemExit(
+            f"{demo.name}: the setup server's store is not at {store.relative_to(work)}; "
+            f"the build holds {held or 'no DuckDB store'}"
+        )
     subprocess.run(
         [
             sys.executable,
