@@ -1732,6 +1732,9 @@ def test_the_engines_attach_pass_never_waits_on_a_source_whose_catalog_is_being_
                 pr.ensure_endpoint(merged)  # what the connector's details() does first
             self.attached.append(merged.id)
 
+        def attach_region_ops(self, catalog, schema, stores, views) -> None:  # noqa: ANN001
+            """The ops views a native walk defines (the engine's landed traces, REQ-862)."""
+
         def detach_source(self, *_a) -> None:
             pass
 

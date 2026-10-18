@@ -38,6 +38,9 @@ class _RecordingRuntime:
     def detach_source(self, *_a) -> None:
         pass
 
+    def attach_region_ops(self, catalog, schema, stores, views) -> None:  # noqa: ANN001
+        """The ops views a native walk defines (the engine's landed traces, REQ-862)."""
+
 
 def _source(sid: str, type_value: str):
     return SimpleNamespace(
