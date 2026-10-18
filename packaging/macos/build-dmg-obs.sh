@@ -16,7 +16,7 @@ OBS_IMAGES=(
   # exact error since at least 2026-09-12. quay.io/minio/minio is MinIO's own current public
   # distribution (verified pullable).
   "quay.io/minio/minio:latest"
-  "ghcr.io/smithclay/otlp2parquet:latest"
+  "ghcr.io/smithclay/otlp2parquet:0.12.0"
   "otel/opentelemetry-collector-contrib:0.99.0"
   "prom/prometheus:v2.51.2"
   "grafana/tempo:2.4.1"

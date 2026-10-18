@@ -6,7 +6,13 @@
 services:
   otlp2parquet:
     restart: unless-stopped
-    image: ghcr.io/smithclay/otlp2parquet:latest
+    # Pinned: the telemetry compaction reads the Parquet this writes by its column names
+    # (scheduler.jobs._compact_signal), so a new release is taken on purpose, after
+    # tests/integration/test_otlp2parquet_columns.py passes on it. 0.12.0's multi-arch index is
+    # sha256:b9471a87c22c62f623280a94754b075bd2e17dfff5075a8a5d18cb42c2e0dd1c. The tag, not the
+    # digest, is the reference: an air-gapped install loads the image from a saved tarball, which
+    # keeps its tag but not its registry digest.
+    image: ghcr.io/smithclay/otlp2parquet:0.12.0
     volumes:
       - ./observability/otlp2parquet.toml:/etc/otlp2parquet.toml:ro
     command:

@@ -283,7 +283,7 @@ pulls the amd64 image zip on demand. MinIO is a core service (REQ-561). No demo.
 "provisa/zaychik:local"   # built from source
 
 # Obs (bundled directly — no separate download on Linux)
-"ghcr.io/smithclay/otlp2parquet:latest"
+"ghcr.io/smithclay/otlp2parquet:0.12.0"
 "otel/opentelemetry-collector-contrib:0.99.0"
 "prom/prometheus:v2.51.2"
 "grafana/tempo:2.4.1"
