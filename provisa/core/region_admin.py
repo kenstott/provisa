@@ -47,8 +47,14 @@ def session_vars(state: Any) -> dict[str, str]:
     from provisa.core import process_region
     from provisa.core.request_context import REGION_VAR
 
+    from provisa.core.secrets import resolve_role_constant
+
     role = state.roles.get(ROLE) or {}
-    out = {str(k): str(v) for k, v in (role.get("session_vars") or {}).items()}
+    # REQ-2086: a constant's ${env:...} / ${secret:...} reference is resolved here, at use.
+    out = {
+        str(k): resolve_role_constant(str(k), str(v))
+        for k, v in (role.get("session_vars") or {}).items()
+    }
     out[REGION_VAR] = process_region.region()
     return out
 

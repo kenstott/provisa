@@ -128,9 +128,14 @@ def _inlined(filter_expr: str, constants: dict) -> str:
     from provisa.compiler.sql_literals import sql_literal
     from provisa.pgwire._pipeline import _CURRENT_SETTING_RE
 
+    from provisa.core.secrets import resolve_role_constant
+
     def _sub(m: re.Match) -> str:
         key = m.group(1)
-        return sql_literal(str(constants[key]), "postgres") if key in constants else m.group(0)
+        if key not in constants:
+            return m.group(0)
+        # REQ-2086: a constant's ${env:...} / ${secret:...} reference, resolved where it is used.
+        return sql_literal(resolve_role_constant(key, str(constants[key])), "postgres")
 
     return _CURRENT_SETTING_RE.sub(_sub, filter_expr)
 

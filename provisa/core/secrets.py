@@ -232,3 +232,19 @@ def resolve_secrets_in_dict(data: dict) -> dict:  # REQ-251, REQ-320
         else:
             result[key] = value
     return result
+
+
+# --- role constants (REQ-2086) -----------------------------------------------------------------
+
+
+def resolve_role_constant(name: str, value: str) -> str:
+    """A role constant's value with its ``${env:...}`` and ``${secret:...}`` references resolved
+    now, at use, through :func:`resolve_secrets`: the model holds the reference, never what it
+    resolved to. A reference that resolves to nothing is refused, naming the constant and the
+    reference; there is no default. The resolved value takes part in the statement it governs."""
+    if "${" not in value:
+        return value
+    try:
+        return resolve_secrets(value, providers=("env", "secret"))
+    except (KeyError, ValueError) as exc:
+        raise ValueError(f"role constant {name!r} ({value}) could not be resolved: {exc}") from exc
