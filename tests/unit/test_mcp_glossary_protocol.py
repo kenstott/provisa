@@ -67,7 +67,8 @@ async def test_search_terms_is_a_registered_tool(control_plane):
         assert "search_terms" in names
 
 
-async def test_search_terms_round_trips_through_the_protocol(control_plane):
+async def test_search_terms_round_trips_through_the_protocol(control_plane, monkeypatch):
+    monkeypatch.setenv("PROVISA_MCP_ROLE", "analyst")  # stdio names roles within its pin
     async with _server(control_plane) as (server, db):
         # Derived and undefined, so the protocol offers nothing: an agent may only bind a
         # question to a term that is in service, defined, and grounded in a column.
@@ -85,7 +86,8 @@ async def test_search_terms_round_trips_through_the_protocol(control_plane):
         assert term["refs"][0]["column_name"] == "cust_id"
 
 
-async def test_unknown_role_fails_through_the_protocol(control_plane):
+async def test_unknown_role_fails_through_the_protocol(control_plane, monkeypatch):
+    monkeypatch.setenv("PROVISA_MCP_ROLE", "nobody")  # pinned, yet no role the model knows
     async with _server(control_plane) as (server, _db):
         with pytest.raises(Exception, match="No schema for role"):
             await server.call_tool("search_terms", {"query": "customer", "role": "nobody"})

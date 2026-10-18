@@ -12,7 +12,8 @@
 
 Binds the pure tool functions in tools.py to the shared FastAPI ``AppState`` and
 exposes them over MCP. Two transports:
-  - local stdio: role pinned via ``PROVISA_MCP_ROLE`` (development).
+  - local stdio: roles pinned via ``PROVISA_MCP_ROLE`` (development); a call names a role
+    within that pin, or omits it and acts as the pin.
   - remote Streamable HTTP: OAuth bearer token -> provisa role via the same
     OIDC path pgwire uses (build_auth_provider + resolve_role).
 
@@ -187,8 +188,9 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
 
     Remote HTTP: naming a role in a tool call is the same act as naming one in the role header,
     and follows the same rule — the token's principal must hold it. The role the token itself
-    maps to always qualifies. stdio has no principal: the operator pinned the process's role and a
-    local client names roles at will.
+    maps to always qualifies. stdio (and a loopback HTTP call with no bearer) has no principal:
+    the operator pinned the roles the process may act as (PROVISA_MCP_ROLE, a role or a set), and
+    a local client names only roles within that pin; any other is refused by name.
     """
     from provisa.security.meta_role import refuse_named_meta_role, resolve_requested_role
 
@@ -208,6 +210,13 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
         return resolve_requested_role(state, held, named, lambda: principal_of(state, identity)[1])
     held = {r.strip() for r in named.split(",") if r.strip()}
     refuse_named_meta_role(sorted(held))
+    pinned = {r.strip() for r in _pinned_stdio_role().split(",") if r.strip()}
+    beyond = sorted(held - pinned)
+    if beyond:
+        raise PermissionError(
+            f"role {beyond[0]!r} is not among the roles this MCP server was given "
+            f"(mcp.role / PROVISA_MCP_ROLE: {', '.join(sorted(pinned))})"
+        )
     return resolve_requested_role(state, held, named)
 
 
@@ -254,7 +263,8 @@ def build_mcp_server(state: Any):
     """Build a FastMCP server whose tools are bound to ``state``.
 
     Each tool takes an explicit ``role`` (required). For local stdio a client
-    may omit it and the pinned PROVISA_MCP_ROLE is used; a remote HTTP caller's
+    names a role within the pinned PROVISA_MCP_ROLE set, or omits it and the pin
+    is used; a remote HTTP caller's
     role is derived from its bearer token by the transport layer and passed in.
     """
     from mcp.server.fastmcp import Image, Context, FastMCP

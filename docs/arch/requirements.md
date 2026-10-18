@@ -23971,3 +23971,17 @@ Per-table write grants. What a role may write to a table is stated per operation
 **Code:** `provisa/core/models.py`, `provisa/compiler/write_admission.py`, `provisa/compiler/stage2.py`, `provisa/compiler/schema_gen.py`, `provisa/grpc/proto_gen.py`, `provisa/core/repositories/write_grant.py`, `provisa/core/repositories/table.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`, `provisa/security/inheritance.py`, `provisa/security/meta_role.py`, `provisa/hasura_v2/mapper.py`
 
 **Tests:** `tests/unit/test_write_grants_admission.py`, `tests/unit/test_write_grants_model.py`, `tests/unit/test_role_inheritance.py`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2075 · MCP Authentication {#REQ-2075}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+An MCP agent never acts beyond the roles it was given. Over the local stdio transport (and a loopback HTTP call that carries no bearer), the roles are the set the operator pinned in mcp.role (PROVISA_MCP_ROLE): a tool call that names a role, or a comma-separated set, acts as it only when every named role is within that pin, and is otherwise refused with a PermissionError naming the first role beyond it. A call that names no role acts as the pinned set. A remote call is governed by its bearer token's principal ([REQ-1105](#REQ-1105)).
+
+**Use case:** An operator runs a local agent pinned to analyst; the agent naming admin in a tool call is refused by name instead of acting as admin.
+
+**Code:** `provisa/api/mcp/server.py`
+
+**Tests:** `tests/unit/test_path_role_is_held.py`, `tests/unit/test_mcp_glossary_protocol.py`

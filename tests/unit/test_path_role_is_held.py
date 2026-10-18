@@ -359,11 +359,37 @@ def test_the_tokens_own_mapped_role_qualifies_even_when_no_claim_names_it():
         server._request_identity.reset(r2)
 
 
-def test_a_local_stdio_mcp_client_names_roles_as_before():
+def test_a_local_stdio_mcp_client_names_a_role_within_its_pin(monkeypatch):
     from provisa.api.mcp import server
 
+    monkeypatch.setenv("PROVISA_MCP_ROLE", f"{A},{B}")
     assert server._request_identity.get() is None
     assert server.named_role(B, _MCP_STATE) == B
+
+
+def test_a_local_stdio_mcp_client_naming_no_role_acts_as_its_pin(monkeypatch):
+    from provisa.api.mcp import server
+    import provisa.security.meta_role as meta_role
+
+    monkeypatch.setattr(meta_role, "ensure_meta_role", lambda st, m: meta_role.meta_role_id(m))
+    monkeypatch.setenv("PROVISA_MCP_ROLE", A)
+    assert server.named_role(server._pinned_stdio_role(), _MCP_STATE) == A
+    monkeypatch.setenv("PROVISA_MCP_ROLE", f"{B},{A}")
+    assert server.named_role(server._pinned_stdio_role(), _MCP_STATE) == meta_role.meta_role_id(
+        [A, B]
+    )
+
+
+def test_a_local_stdio_mcp_client_naming_a_role_beyond_its_pin_is_refused(monkeypatch):
+    from provisa.api.mcp import server
+
+    monkeypatch.setenv("PROVISA_MCP_ROLE", A)
+    with pytest.raises(PermissionError, match=f"role '{B}' is not among the roles"):
+        server.named_role(B, _MCP_STATE)
+    with pytest.raises(PermissionError, match="role 'admin' is not among the roles"):
+        server.named_role("admin", _MCP_STATE)
+    with pytest.raises(PermissionError, match=f"role '{B}' is not among the roles"):
+        server.named_role(f"{A},{B}", _MCP_STATE)  # a set reaching past the pin
 
 
 # --- X-Role names no role: /data/sdl, /data/domains, /data/introspection -------------------------
@@ -518,11 +544,12 @@ def test_a_remote_mcp_caller_names_a_set_of_held_roles(monkeypatch):
         server._request_identity.reset(r2)
 
 
-def test_a_local_stdio_mcp_client_names_a_set_at_will(monkeypatch):
+def test_a_local_stdio_mcp_client_names_a_set_within_its_pin(monkeypatch):
     from provisa.api.mcp import server
     import provisa.security.meta_role as meta_role
 
     monkeypatch.setattr(meta_role, "ensure_meta_role", lambda st, m: meta_role.meta_role_id(m))
+    monkeypatch.setenv("PROVISA_MCP_ROLE", f"{A},{B},role_c")
     assert server.named_role(f"{B},{A}", _MCP_STATE) == meta_role.meta_role_id([A, B])
     with pytest.raises(PermissionError, match="is not a role"):
         server.named_role(meta_role.meta_role_id([A, B]), None)
