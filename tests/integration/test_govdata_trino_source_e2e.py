@@ -175,7 +175,9 @@ def catalog(served):
         props = TrinoGovdataConnector().details(source)
     with_clause = ", ".join(f"\"{k}\" = '{v}'" for k, v in props.items())
     create = f"CREATE CATALOG {_CATALOG} USING postgresql WITH ({with_clause})"
-    conn = trino.dbapi.connect(host=_TRINO_HOST, port=_TRINO_PORT, user="provisa")
+    # A client of the test's own, as the other catalog tests connect: the resource groups admit
+    # user "provisa" only with Provisa's own source (provisa/<org>, or Flight's trino-jdbc).
+    conn = trino.dbapi.connect(host=_TRINO_HOST, port=_TRINO_PORT, user="itest")
     cur = conn.cursor()
     cur.execute(f"DROP CATALOG IF EXISTS {_CATALOG}")
     cur.fetchall()
