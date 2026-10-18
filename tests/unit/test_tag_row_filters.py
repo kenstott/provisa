@@ -41,6 +41,7 @@ def _tag(tag_id: str, table_id: int) -> dict:
 
 def _tag_rule(role: str, tag: str, expr: str) -> dict:
     return {
+        "description": "Test rule.",
         "id": 9,
         "role_id": role,
         "tag_id": tag,
@@ -53,6 +54,7 @@ def _tag_rule(role: str, tag: str, expr: str) -> dict:
 
 def _table_rule(role: str, table_id: int, expr: str) -> dict:
     return {
+        "description": "Test rule.",
         "role_id": role,
         "tag_id": None,
         "table_id": table_id,
@@ -64,6 +66,7 @@ def _table_rule(role: str, table_id: int, expr: str) -> dict:
 
 def _domain_rule(role: str, domain: str, expr: str) -> dict:
     return {
+        "description": "Test rule.",
         "role_id": role,
         "tag_id": None,
         "table_id": None,

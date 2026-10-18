@@ -24,7 +24,12 @@ from provisa.compiler.sql_validator import validate_sql
 from provisa.compiler.stage2 import GovernanceContext
 from provisa.mv.view_read import semantic_statement
 
-_ROLE = {"id": "reviewer_ben", "capabilities": [], "domain_access": ["*"]}
+_ROLE = {
+    "id": "reviewer_ben",
+    "description": "Test role.",
+    "capabilities": [],
+    "domain_access": ["*"],
+}
 _COLUMNS = {
     1: ["employee_id", "desk"],  # employee
     2: ["desk", "reviewer"],  # desk_reviewer

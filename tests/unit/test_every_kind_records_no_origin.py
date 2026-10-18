@@ -152,7 +152,12 @@ KINDS: dict[str, tuple[Write, Any, Any]] = {
     "row filter": (
         lambda conn: rls_repo.upsert(
             conn,
-            RLSRule(table_id="orders", role_id="seller", filter="region = 'eu'"),
+            RLSRule(
+                table_id="orders",
+                role_id="seller",
+                filter="region = 'eu'",
+                description="Test rule.",
+            ),
         ),
         rls_rules,
         rls_rules.c.role_id == "seller",

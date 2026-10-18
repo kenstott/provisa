@@ -1374,10 +1374,12 @@ rls_rules:
   - table_id: orders          # applies to orders table only
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
+    description: Analysts read only their own region's orders.
 
   - domain_id: sales-analytics  # applies to every table in domain (REQ-402)
     role_id: analyst
     filter: "tenant_id = current_setting('provisa.tenant_id')"
+    description: Analysts read only their own tenant's rows.
 ```
 
 כאשר קיים גם כלל ברמת-דומיין וגם כלל ברמת-טבלה עבור אותו תפקיד, הכלל ברמת-הטבלה גובר (REQ-403).
@@ -1388,6 +1390,7 @@ rls_rules:
 | `domain_id` | מותנה | הדומיין שעליו חל הכלל; חל על כל הטבלאות בדומיין (REQ-402) |
 | `role_id` | כן | התפקיד שעליו חל כלל זה |
 | `filter` | כן | פרדיקט SQL המוזרק לתוך `WHERE`; יכול להפנות למשתני session (REQ-041) |
+| `description` | כן | לשם מה הכלל קיים, כפי שסקירת גישה קוראת אותו (REQ-2081) |
 
 ---
 

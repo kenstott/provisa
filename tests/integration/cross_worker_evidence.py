@@ -163,7 +163,7 @@ def run(order: list[Worker], rows: list, tag: str) -> None:
 
     # 3. RLS: analyst sees only id = 1 --------------------------------------------------------
     res = author.admin(
-        'mutation { upsertRlsRule(input: {tableId: "orders", roleId: "analyst", '
+        'mutation { upsertRlsRule(input: { description: "Test rule.",tableId: "orders", roleId: "analyst", '
         'filterExpr: "id = 1"}) { success message } }'
     )
     print(f"[{tag}] upsertRlsRule -> {json.dumps(res)[:200]}")

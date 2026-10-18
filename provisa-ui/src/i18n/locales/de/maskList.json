@@ -26,7 +26,7 @@
     "coveredBy": "Kein Leser erreicht diesen Eintrag: Für jeden von ihnen gilt zuerst Eintrag {{n}}.",
     "unlistedUnmasked": "Leser, die diese Liste nicht nennt, sehen die Spalte unmaskiert. Fügen Sie als letzten Eintrag einen für alle hinzu, um sie für diese Leser zu maskieren.",
     "checkLabel": "Zugriff prüfen",
-    "checkPlaceholder": "Rollen und Claim-Rollen wählen oder eingeben",
+    "checkPlaceholder": "Rollen und abgeleitete Rollen wählen oder eingeben",
     "applies": "Eintrag {{n}} gilt",
     "appliesNone": "Kein Eintrag gilt: unmaskiert",
     "none": "Keine",

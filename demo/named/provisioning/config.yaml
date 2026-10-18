@@ -47,6 +47,7 @@ naming:
 roles:
 # The finance team: every order, margins included.
 - id: finance
+  description: "The finance team: every order, margins included."
   capabilities:
   - query_development
   # A team pulls the whole dataset over Flight, not the default row limit's first rows.
@@ -55,6 +56,7 @@ roles:
   - provisioning
 # The data science team's feature store: margins masked, product orders only.
 - id: data_science
+  description: "The data science team's feature store: product orders only, margins masked."
   capabilities:
   - query_development
   - full_results
@@ -244,7 +246,7 @@ views:
   - {name: stock_value, data_type: decimal, description: Its stock on hand at list price in USD, visible_to: [org_admin, finance]}
 rls_rules:
 # Data science builds features from product orders: service orders are not its to see.
-- {table_id: view_order_margins, role_id: data_science, filter: "category <> 'services'"}
+- {description: "Data science builds features from product orders: service orders are not its to see.", table_id: view_order_margins, role_id: data_science, filter: "category <> 'services'"}
 relationships:
 - {id: order-to-product, alias: ORDERED, cardinality: many-to-one, source_table_id: orders, source_column: sku, target_table_id: products, target_column: sku}
 - {id: stock-to-product, alias: STOCK_OF, cardinality: one-to-one, source_table_id: inventory, source_column: sku, target_table_id: products, target_column: sku}

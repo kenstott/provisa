@@ -28,7 +28,12 @@ def unscoped_role(role_id: str, *capabilities: str) -> dict:
     lists, so a test that is about something other than domain scope names the role and gives it
     the wildcard rather than leaving either out.
     """
-    return {"id": role_id, "capabilities": list(capabilities), "domain_access": ["*"]}
+    return {
+        "id": role_id,
+        "description": "Test role.",
+        "capabilities": list(capabilities),
+        "domain_access": ["*"],
+    }
 
 
 #: A Data Profiler source's run defaults as the source form writes them (REQ-1934): every one is

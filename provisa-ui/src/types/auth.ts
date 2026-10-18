@@ -79,6 +79,9 @@ export interface SessionVar {
 
 export interface Role {
   id: string;
+  /** REQ-2080: what the role is for, as an access review reads it. Shown even where the role's
+   *  definition is withheld: it explains, it grants nothing. */
+  description: string;
   capabilities: Capability[];
   /**
    * REQ-1602: rights the role does NOT hold, whose surfaces it is shown anyway -- disabled and
@@ -118,9 +121,9 @@ export interface OrgMembership {
   env_name?: string | null;
 }
 
-/** A pseudo-role the user holds (REQ-2057): a declared claim type (parent null) or the sub-role
+/** A derived role the user holds (REQ-2057): a declared attribute (parent null) or the sub-role
  *  of the value their attributes give it. Rightless; a request acts as it only by naming it. */
-export interface PseudoRole {
+export interface DerivedRole {
   id: string;
   parent: string | null;
 }

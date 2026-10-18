@@ -177,7 +177,7 @@ def _authenticate(
         context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
         raise  # as above: never proceed as an unauthorized role
 
-    from provisa.auth.pseudo_roles import bind_principal_session_vars
+    from provisa.auth.derived_roles import bind_principal_session_vars
 
     async def _publish() -> None:
         _authorized_role.set(role)

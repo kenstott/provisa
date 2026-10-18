@@ -616,6 +616,7 @@ export interface RLSRule {
   tagId?: string | null; // REQ-1384: the rule covers every table carrying this tag
   roleId: string;
   filterExpr: string;
+  description: string; // REQ-2081: what the rule is for
 }
 
 // REQ-1484: an artifact that references a column the administrator is about to rename or drop.

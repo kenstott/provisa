@@ -90,7 +90,7 @@ def test_each_readers_masks_are_keyed_as_the_masking_rules_are():
 def test_a_meta_role_is_judged_by_its_own_set(monkeypatch):
     state = SimpleNamespace(
         roles={
-            r: {"id": r, "capabilities": [], "domain_access": ["*"]}
+            r: {"id": r, "description": "Test role.", "capabilities": [], "domain_access": ["*"]}
             for r in ("analyst", "contractor")
         },
         role_build_inputs={
@@ -186,12 +186,14 @@ def test_an_embedding_column_takes_no_mask_but_may_list_unmasked_entries():
 def _state() -> SimpleNamespace:
     return SimpleNamespace(
         role_chains={"analyst": ["analyst", "developer"], "developer": ["developer"]},
-        settings_overrides={"claim_roles": ["region"]},
-        config=SimpleNamespace(claim_roles=[]),
+        settings_overrides={
+            "derived_roles": [{"attribute": "region", "description": "The member's region."}]
+        },
+        config=SimpleNamespace(derived_roles=[]),
     )
 
 
-def test_a_pseudo_roles_chain_is_it_and_its_claim_type():
+def test_a_derived_roles_chain_is_it_and_its_claim_type():
     from provisa.api.admin.masks_router import chain_of as route_chain
 
     state = _state()

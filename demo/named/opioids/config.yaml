@@ -47,12 +47,14 @@ naming:
 roles:
 # The fund's staff: every allocation, the providers it paid and what each spent.
 - id: staff
+  description: "The fund's staff: every allocation, the providers it paid and what each spent."
   capabilities:
   - query_development
   domain_access:
   - opioids
 # The public, and the council: the dashboard and the counties, never an allocation.
 - id: public
+  description: "The public and the council: the dashboard and the counties, never an allocation."
   capabilities:
   - query_development
   domain_access:

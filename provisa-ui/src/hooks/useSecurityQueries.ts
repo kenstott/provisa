@@ -55,6 +55,7 @@ export function useUpsertRlsRule() {
       tagId?: string | null; // REQ-1384
       roleId: string;
       filterExpr: string;
+      description: string; // REQ-2081: required
     }) => {
       const result = await upsertRlsRule({ variables: { input } });
       return (result.data?.upsertRlsRule ?? { success: false, message: "" }) as MutationResult;
@@ -109,6 +110,7 @@ export function useUpsertRole() {
     upsertRole: async (
       input: {
         id: string;
+        description: string; // REQ-2080: required
         capabilities: string[];
         domainAccess: string[];
         rateLimit?: {

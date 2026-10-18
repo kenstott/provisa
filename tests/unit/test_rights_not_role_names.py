@@ -44,13 +44,15 @@ from provisa.security.rights import (
 SEEDED_ROLES: dict[str, dict] = {
     "platform_admin": {
         "id": "platform_admin",
+        "description": "Test role.",
         "capabilities": ["platform_settings", "cross_org"],
     },
     "org_admin": {
         "id": "org_admin",
+        "description": "Test role.",
         "capabilities": ["user_management", "table_registration", "query_development"],
     },
-    "analyst": {"id": "analyst", "capabilities": ["usage"]},
+    "analyst": {"id": "analyst", "description": "Test role.", "capabilities": ["usage"]},
 }
 
 

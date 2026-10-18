@@ -30,7 +30,7 @@
     "role": "Rôle : {{role}}",
     "dev": "DEV",
     "checking": "Vérification…",
-    "claimRoles": "Rôles de revendication"
+    "derivedRoles": "Rôles dérivés"
   },
   "localUsers": {
     "colUsername": "Nom d'utilisateur",
@@ -78,7 +78,7 @@
   "grantPicker": {
     "and": "et",
     "combine": "Combiner des rôles en une autorisation",
-    "combineHelp": "Un lecteur doit détenir chacun des rôles indiqués ici. Saisissez un rôle de revendication tel que region__eu s'il n'est pas proposé.",
+    "combineHelp": "Un lecteur doit détenir chaque rôle listé ici. Saisissez un rôle dérivé comme region__eu s'il n'est pas proposé.",
     "parts": "Rôles qu'un lecteur doit tous détenir",
     "partsPlaceholder": "Choisissez ou saisissez un rôle et appuyez sur Entrée",
     "add": "Ajouter"

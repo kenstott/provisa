@@ -57,8 +57,18 @@ def _model() -> dict:
         "tables": [_table("sales", "orders", "seller"), _table("hr", "staff", "hr_reader")],
         # org_admin is the reserved administrative role (REQ-1349): not declared.
         "roles": [
-            {"id": "seller", "capabilities": ["query_development"], "domain_access": ["sales"]},
-            {"id": "hr_reader", "capabilities": ["query_development"], "domain_access": ["hr"]},
+            {
+                "id": "seller",
+                "description": "Test role.",
+                "capabilities": ["query_development"],
+                "domain_access": ["sales"],
+            },
+            {
+                "id": "hr_reader",
+                "description": "Test role.",
+                "capabilities": ["query_development"],
+                "domain_access": ["hr"],
+            },
         ],
     }
 

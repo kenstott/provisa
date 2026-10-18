@@ -30,6 +30,7 @@ naming:
   rules: []
 roles:
 - id: analyst
+  description: "TODO: what this demo's reader is for."
   capabilities:
   - query_development
   domain_access:

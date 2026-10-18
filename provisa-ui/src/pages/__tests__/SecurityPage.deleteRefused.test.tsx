@@ -20,6 +20,7 @@ const deleteRoleSpy = vi.fn();
 const ROLES = [
   {
     id: "seller",
+    description: "What seller is for.",
     capabilities: [],
     demonstrated: [],
     domain_access: ["sales"],
@@ -49,6 +50,11 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
   useUpsertRlsRule: () => ({ upsertRlsRule: vi.fn(), loading: false }),
   useDeleteRlsRule: () => ({ deleteRlsRule: vi.fn(), loading: false }),
   useRevokeRoleGrants: () => ({ revokeFromTable: vi.fn(), revokeFromObject: vi.fn() }),
+}));
+
+vi.mock("../../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/admin")>()),
+  fetchDerivedRoles: vi.fn(async () => ({ roles: [], source: "deployment" })),
 }));
 
 import { SecurityRolesPage } from "../SecurityPage";

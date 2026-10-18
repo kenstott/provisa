@@ -132,7 +132,12 @@ def _make_schema_input(
             _col("region", "varchar(50)", nullable=True),
         ],
     }
-    role = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+    role = {
+        "id": "admin",
+        "description": "Test role.",
+        "capabilities": ALL_DATA_CAPABILITIES,
+        "domain_access": ["*"],
+    }
     domains = [{"id": "sales", "description": "Sales"}]
     return SchemaInput(
         tables=tables,
@@ -433,6 +438,7 @@ class TestAggregates:
         ]
         role_no_agg = {
             "id": "analyst",
+            "description": "Test role.",
             "capabilities": [],
             "domain_access": ["*"],
             "no_aggregations": True,
@@ -1122,12 +1128,14 @@ class TestRLSCompilerFallback:
         # Two rules for same role: one table-level (id=1), one domain-level
         rls_rules = [
             {
+                "description": "Test rule.",
                 "role_id": "admin",
                 "table_id": 1,
                 "domain_id": None,
                 "filter_expr": "region = 'us-east'",
             },
             {
+                "description": "Test rule.",
                 "role_id": "admin",
                 "table_id": None,
                 "domain_id": "sales",
@@ -1147,6 +1155,7 @@ class TestRLSCompilerFallback:
 
         rls_rules = [
             {
+                "description": "Test rule.",
                 "role_id": "admin",
                 "table_id": None,
                 "domain_id": "sales",
@@ -1193,6 +1202,7 @@ class TestRLSCompilerFallback:
         # No table-level rule; domain-level rule for "sales"
         rules = [
             {
+                "description": "Test rule.",
                 "role_id": "admin",
                 "table_id": None,
                 "domain_id": "sales",

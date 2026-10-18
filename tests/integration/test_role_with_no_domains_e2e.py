@@ -53,10 +53,20 @@ def _config_with_the_two_roles(tmp_dir: Path) -> str:
     with open(_REPO_ROOT / "tests" / "fixtures" / "sample_config.yaml") as f:
         cfg = yaml.safe_load(f)
     cfg["roles"].append(
-        {"id": _NO_DOMAINS, "capabilities": list(_CAPABILITIES), "domain_access": [_ITS_DOMAIN]}
+        {
+            "id": _NO_DOMAINS,
+            "description": "Test role.",
+            "capabilities": list(_CAPABILITIES),
+            "domain_access": [_ITS_DOMAIN],
+        }
     )
     cfg["roles"].append(
-        {"id": _ALL_DOMAINS, "capabilities": list(_CAPABILITIES), "domain_access": ["*"]}
+        {
+            "id": _ALL_DOMAINS,
+            "description": "Test role.",
+            "capabilities": list(_CAPABILITIES),
+            "domain_access": ["*"],
+        }
     )
     granted = 0
     for table in cfg["tables"]:
@@ -134,7 +144,12 @@ def test_rest_refuses_to_create_a_role_with_no_domains(server):
     with _client(server) as c:
         resp = c.post(
             "/admin/roles/",
-            json={"id": "fresh", "capabilities": list(_CAPABILITIES), "domain_access": []},
+            json={
+                "id": "fresh",
+                "description": "Test role.",
+                "capabilities": list(_CAPABILITIES),
+                "domain_access": [],
+            },
         )
     assert resp.status_code == 422, resp.text
     body = resp.json()
@@ -156,7 +171,7 @@ def test_graphql_refuses_to_create_a_role_with_no_domains(server):
         resp = c.post(
             "/admin/graphql",
             json={
-                "query": 'mutation { createRole(input: {id: "fresh", capabilities: ["usage"], '
+                "query": 'mutation { createRole(input: {id: "fresh", description: "Test role.", capabilities: ["usage"], '
                 "domainAccess: []}) { success message code } }"
             },
         )
@@ -259,7 +274,7 @@ def emptied(server):
         resp = c.post(
             "/admin/graphql",
             json={
-                "query": 'mutation { createRole(input: {id: "rebuildtrigger", '
+                "query": 'mutation { createRole(input: {id: "rebuildtrigger", description: "Test role.", '
                 'capabilities: ["usage"], domainAccess: ["*"]}) { success message } }'
             },
         )

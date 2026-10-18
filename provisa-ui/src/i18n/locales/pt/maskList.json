@@ -26,7 +26,7 @@
     "coveredBy": "Nenhum leitor chega a esta entrada: a entrada {{n}} se aplica antes a cada um deles.",
     "unlistedUnmasked": "Os leitores que esta lista não nomeia veem a coluna sem máscara. Adicione por último uma entrada para todos para mascará-la para eles.",
     "checkLabel": "Verificar acesso",
-    "checkPlaceholder": "Escolha ou digite funções e funções de declaração",
+    "checkPlaceholder": "Escolha ou digite funções e funções derivadas",
     "applies": "A entrada {{n}} se aplica",
     "appliesNone": "Nenhuma entrada se aplica: sem máscara",
     "none": "Nenhum",

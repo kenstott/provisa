@@ -217,8 +217,8 @@ def test_edges_and_tags_touching_an_unmarked_table_are_withheld():
         ],
         # A role outside visible_to=["admin"], so every column carries a visibility tag.
         roles=[
-            Role(id="analyst", capabilities=[], domain_access=["*"]),
-            Role(id="admin", capabilities=[], domain_access=["*"]),
+            Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"]),
+            Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
         ],
     )
 

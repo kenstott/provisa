@@ -30,7 +30,7 @@
     "role": "Função: {{role}}",
     "dev": "DEV",
     "checking": "Verificando…",
-    "claimRoles": "Funções de declaração"
+    "derivedRoles": "Funções derivadas"
   },
   "localUsers": {
     "colUsername": "Nome de usuário",
@@ -78,7 +78,7 @@
   "grantPicker": {
     "and": "e",
     "combine": "Combinar funções em uma concessão",
-    "combineHelp": "Um leitor deve ter todas as funções listadas aqui. Digite uma função de declaração como region__eu se ela não for oferecida.",
+    "combineHelp": "Um leitor precisa ter cada função listada aqui. Digite uma função derivada como region__eu se ela não for oferecida.",
     "parts": "Funções que um leitor deve ter todas",
     "partsPlaceholder": "Escolha ou digite uma função e pressione Enter",
     "add": "Adicionar"

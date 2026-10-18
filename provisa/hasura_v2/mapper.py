@@ -69,6 +69,11 @@ _HASURA_KIND_TO_SOURCE_TYPE: dict[str, str] = {
 }
 
 
+def _imported_role(role_id: str) -> str:  # REQ-2080
+    """The description an imported role starts with; the administrator replaces it."""
+    return f"Imported from the Hasura metadata's role {role_id}."
+
+
 def _source_type_from_kind(kind: str) -> SourceType:
     mapped = _HASURA_KIND_TO_SOURCE_TYPE.get(kind.lower(), "postgresql")
     return SourceType(mapped)
@@ -178,6 +183,7 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
                     if p.role not in roles:
                         roles[p.role] = Role(
                             id=p.role,
+                            description=_imported_role(p.role),
                             capabilities=list(_READ_CAPS),
                             domain_access=["*"],
                         )
@@ -188,6 +194,7 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
             if role_id and role_id not in roles:
                 roles[role_id] = Role(
                     id=role_id,
+                    description=_imported_role(role_id),
                     capabilities=list(_READ_CAPS),
                     domain_access=["*"],
                 )
@@ -197,6 +204,7 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
         if ir.role_name not in roles:
             roles[ir.role_name] = Role(
                 id=ir.role_name,
+                description=_imported_role(ir.role_name),
                 capabilities=list(_READ_CAPS),
                 domain_access=["*"],
             )
@@ -211,6 +219,7 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
                 if child_role not in roles:
                     roles[child_role] = Role(
                         id=child_role,
+                        description=_imported_role(child_role),
                         capabilities=list(_READ_CAPS),
                         domain_access=["*"],
                     )
@@ -549,6 +558,8 @@ def _map_table(
                         table_id=tid,
                         role_id=perm.role,
                         filter=sql_filter,
+                        description=f"The rows of {tid} the Hasura select permission of "
+                        f"{perm.role} allowed.",
                     )
                 )
     for perm in ht.select_permissions:
@@ -702,7 +713,14 @@ def _inherit_several(
                 column.visible_to = sorted({*column.visible_to, role_id})
         filters = [rules.get((tid, m)) for m in readers]
         if readers and all(filters):
-            rls.append(RLSRule(table_id=tid, role_id=role_id, filter=_or(filters)))
+            rls.append(
+                RLSRule(
+                    table_id=tid,
+                    role_id=role_id,
+                    filter=_or(filters),
+                    description=f"The rows of {tid} any role {role_id} inherits from may read.",
+                )
+            )
         held = [g for g in table.write_grants if g.role in members]
         for operation in ("insert", "update", "delete"):
             holders = [g for g in held if g.operation == operation]

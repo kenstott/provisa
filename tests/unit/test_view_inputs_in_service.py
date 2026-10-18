@@ -79,7 +79,15 @@ def _build(monkeypatch, *, view: dict, drafts: list[dict], role: dict | None = N
         ColumnMetadata(column_name="note", data_type="varchar", is_nullable=True),
     ]
     _build_and_register_schemas(
-        roles=[role or {"id": "r", "capabilities": ["usage"], "domain_access": ["sales"]}],
+        roles=[
+            role
+            or {
+                "id": "r",
+                "description": "Test role.",
+                "capabilities": ["usage"],
+                "domain_access": ["sales"],
+            }
+        ],
         tables=tables,
         relationships=[],
         col_types_converted=columns,
@@ -212,7 +220,12 @@ async def test_a_reader_who_reaches_the_other_domain_reads_the_same_view(monkeyp
         monkeypatch,
         view=_view(_OVER_ANOTHER_DOMAIN),
         drafts=[],
-        role={"id": "r", "capabilities": ["usage"], "domain_access": ["sales", "finance"]},
+        role={
+            "id": "r",
+            "description": "Test role.",
+            "capabilities": ["usage"],
+            "domain_access": ["sales", "finance"],
+        },
     )
     assert '"pg"."public"."ledger"' in await _read_the_view(state)
 

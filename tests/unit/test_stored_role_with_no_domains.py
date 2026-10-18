@@ -30,6 +30,7 @@ def _model(domain_access: list[str]) -> dict:
         "roles": [
             {
                 "id": "nodomains",
+                "description": "Test role.",
                 "capabilities": ["query_development"],
                 "domain_access": domain_access,
             }

@@ -1779,8 +1779,19 @@ class RoleRateLimit(BaseModel):
     max_query_time_ms: int | None = None
 
 
+def required_description(kind: str, owner: str, value: str) -> str:  # REQ-2080, REQ-2081
+    """A role's or a row rule's description, which access reviews read: never empty."""
+    text = value.strip()
+    if not text:
+        raise ValueError(f"{kind} {owner} needs a description of what it is for")
+    return text
+
+
 class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     id: str
+    # REQ-2080: what the role is for, in words an access review reads. Required: a role nobody can
+    # explain is one nobody can review.
+    description: str
     capabilities: list[str]
     domain_access: list[str]
     rate_limit: RoleRateLimit | None = None  # REQ-369
@@ -1796,6 +1807,11 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     # current_setting('provisa.<name>') reads when the request binds nothing of that name. A child
     # takes its ancestors' under its own (nearest wins).
     session_vars: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("description")
+    @classmethod
+    def _described(cls, value: str, info) -> str:  # REQ-2080
+        return required_description("Role", repr(info.data.get("id")), value)
 
     @field_validator("session_vars")
     @classmethod
@@ -1856,6 +1872,7 @@ def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042
         result.append(
             Role(
                 id=r.id,
+                description=r.description,
                 capabilities=sorted(caps),
                 domain_access=["*"] if "*" in domains else sorted(domains),
                 parent_role_id=r.parent_role_id,
@@ -1868,6 +1885,28 @@ def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042
     return result
 
 
+class DerivedRole(BaseModel):  # REQ-2057, REQ-2078, REQ-2080
+    """An attribute that becomes a rightless parent role, with a sub-role per value it is seen with."""
+
+    attribute: str
+    description: str
+
+    @field_validator("attribute")
+    @classmethod
+    def _named(cls, value: str) -> str:
+        from provisa.auth.attributes import attribute_name_problem, normalize_name
+
+        problem = attribute_name_problem(value)
+        if problem is not None:
+            raise ValueError(problem[1])
+        return normalize_name(value)
+
+    @field_validator("description")
+    @classmethod
+    def _described(cls, value: str, info) -> str:  # REQ-2080
+        return required_description("Derived role", repr(info.data.get("attribute")), value)
+
+
 class RLSRule(BaseModel):  # REQ-041, REQ-402, REQ-1679
     table_id: str | None = None
     domain_id: str | None = None
@@ -1877,6 +1916,23 @@ class RLSRule(BaseModel):  # REQ-041, REQ-402, REQ-1679
     tag_id: str | None = None
     role_id: str
     filter: str
+    # REQ-2081: what the rule is for, as an access review reads it. Required, as a role's is.
+    description: str
+
+    @field_validator("description")
+    @classmethod
+    def _described(cls, value: str, info) -> str:  # REQ-2081
+        target = next(
+            (
+                info.data[k]
+                for k in ("table_id", "domain_id", "action_name", "tag_id")
+                if info.data.get(k)
+            ),
+            None,
+        )
+        return required_description(
+            "The row rule", f"for {info.data.get('role_id')!r} on {target!r}", value
+        )
 
 
 class EventTrigger(BaseModel):  # REQ-565
@@ -2860,9 +2916,10 @@ class ProvisaConfig(BaseModel):
     metrics: list[Metric] = Field(default_factory=list)
     vector_models: list[VectorModelConfig] = Field(default_factory=list)  # REQ-419
     roles: list[Role]
-    # REQ-2057: the claim types that become pseudo-roles -- a parent role per type and a sub-role
-    # ``<type>__<value>`` for the value a user's attributes give it. Only these, never every claim.
-    claim_roles: list[str] = Field(default_factory=list)
+    # REQ-2057, REQ-2078: the attributes that become derived roles -- a parent role per attribute
+    # and a sub-role ``<attribute>__<value>`` for the value a user's attributes give it. Only these,
+    # never every claim.
+    derived_roles: list[DerivedRole] = Field(default_factory=list)
     rls_rules: list[RLSRule] = Field(default_factory=list)
     event_triggers: list[EventTrigger] = Field(default_factory=list)
     scheduled_triggers: list[ScheduledTrigger] = Field(default_factory=list)

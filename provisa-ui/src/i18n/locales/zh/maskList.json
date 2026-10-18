@@ -26,7 +26,7 @@
     "coveredBy": "没有读者能到达此条目：条目 {{n}} 会先应用于其中每一位读者。",
     "unlistedUnmasked": "此列表未列出的读者看到的是未脱敏的列。请在最后添加一个面向所有人的条目，为他们脱敏。",
     "checkLabel": "检查访问",
-    "checkPlaceholder": "选择或键入角色和声明角色",
+    "checkPlaceholder": "选择或输入角色和派生角色",
     "applies": "适用条目 {{n}}",
     "appliesNone": "没有适用的条目：不脱敏",
     "none": "无",

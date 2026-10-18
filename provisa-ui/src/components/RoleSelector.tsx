@@ -24,9 +24,9 @@ export function RoleSelector() {
     selectRole,
     devMode,
     loading,
-    pseudoRoles,
-    selectedPseudoRoles,
-    togglePseudoRole,
+    derivedRoles,
+    selectedDerivedRoles,
+    toggleDerivedRole,
   } = useAuth();
 
   // REQ-1430: an in-flight bootstrap has no roles yet. "No roles configured" states a settled fact
@@ -37,8 +37,8 @@ export function RoleSelector() {
 
   const allSelected = selectedRole === "all";
   const roleLabel = allSelected ? t("roleSelector.all") : (selectedRole as Role).id;
-  // REQ-2057: the pseudo-roles selected beside the roles are part of what every request names.
-  const label = [roleLabel, ...selectedPseudoRoles].join(" + ");
+  // REQ-2057: the derived roles selected beside the roles are part of what every request names.
+  const label = [roleLabel, ...selectedDerivedRoles].join(" + ");
 
   function handleSelect(value: Role | "all") {
     selectRole(value);
@@ -87,12 +87,12 @@ export function RoleSelector() {
             </Menu.Item>
           );
         })}
-        {pseudoRoles.length > 0 && (
+        {derivedRoles.length > 0 && (
           <>
             <Menu.Divider />
-            <Menu.Label>{t("roleSelector.claimRoles")}</Menu.Label>
-            {pseudoRoles.map((p) => {
-              const on = selectedPseudoRoles.includes(p.id);
+            <Menu.Label>{t("roleSelector.derivedRoles")}</Menu.Label>
+            {derivedRoles.map((p) => {
+              const on = selectedDerivedRoles.includes(p.id);
               return (
                 <Menu.Item
                   key={p.id}
@@ -101,7 +101,7 @@ export function RoleSelector() {
                   role="menuitemcheckbox"
                   closeMenuOnClick={false}
                   leftSection={on ? <Check size={14} aria-hidden /> : undefined}
-                  onClick={() => togglePseudoRole(p.id)}
+                  onClick={() => toggleDerivedRole(p.id)}
                   data-testid={`role-selector-claim-${p.id}`}
                 >
                   {p.id}

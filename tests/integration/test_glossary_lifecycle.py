@@ -94,7 +94,14 @@ def _config(tables: dict) -> dict:
             }
             for name, columns in tables.items()
         ],
-        "roles": [{"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}],
+        "roles": [
+            {
+                "id": "admin",
+                "description": "Test role.",
+                "capabilities": ALL_DATA_CAPABILITIES,
+                "domain_access": ["*"],
+            }
+        ],
     }
 
 

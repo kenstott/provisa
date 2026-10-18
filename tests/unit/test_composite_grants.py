@@ -59,7 +59,7 @@ def test_metric_and_command_grant_lists_take_composites_too():
     assert "meta:m" in metric["visible_to"] and "meta:m" in command["visible_to"]
 
 
-def test_a_meta_role_holds_its_members_ancestors_and_its_pseudo_roles(monkeypatch):
+def test_a_meta_role_holds_its_members_ancestors_and_its_derived_roles(monkeypatch):
     # analyst (child of developer) named with region__eu reaches "developer+region__eu".
     col = {
         "column_name": "sender",

@@ -36,6 +36,7 @@ naming:
   rules: []
 roles:
 - id: analyst
+  description: "Queries the shop's streams and tables."
   capabilities:
   - query_development
   domain_access:

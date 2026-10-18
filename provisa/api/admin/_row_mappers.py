@@ -166,6 +166,7 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
     if not detail:
         return RoleType(
             id=row["id"],
+            description=row["description"],  # REQ-2080
             capabilities=None,
             domain_access=None,
             demonstrated=None,
@@ -183,6 +184,7 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
         )
     return RoleType(
         id=row["id"],
+        description=row["description"],  # REQ-2080
         capabilities=list(row["capabilities"]),
         domain_access=list(row["domain_access"]),
         # REQ-1602: the rights this role is shown but does not hold.
@@ -261,6 +263,7 @@ def _rls_from_row(row) -> RLSRuleType:
         domain_id=row["domain_id"],
         role_id=row["role_id"],
         filter_expr=row["filter_expr"],
+        description=row["description"],  # REQ-2081
         action_name=row.get("action_name"),  # REQ-1679
         tag_id=row["tag_id"],  # REQ-1384
     )

@@ -1388,10 +1388,12 @@ rls_rules:
   - table_id: orders          # applies to orders table only
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
+    description: Analysts read only their own region's orders.
 
   - domain_id: sales-analytics  # applies to every table in domain (REQ-402)
     role_id: analyst
     filter: "tenant_id = current_setting('provisa.tenant_id')"
+    description: Analysts read only their own tenant's rows.
 ```
 
 当同一个角色同时存在域级规则和表级规则时，表级规则优先（REQ-403）。
@@ -1402,6 +1404,7 @@ rls_rules:
 | `domain_id` | Conditional | 该规则适用的域；适用于该域中的所有表（REQ-402） |
 | `role_id` | Yes | 该规则适用的角色 |
 | `filter` | Yes | 注入到 `WHERE` 中的 SQL 谓词；可以引用会话变量（REQ-041） |
+| `description` | Yes | 规则的用途，即访问审查读到的内容（REQ-2081） |
 
 ---
 

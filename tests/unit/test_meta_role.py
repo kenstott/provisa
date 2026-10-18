@@ -91,6 +91,7 @@ def _no_surface_build(monkeypatch):
 def _role(rid: str, *, caps=(), domains=("sales",), max_rows=None, session_vars=None) -> dict:
     return {
         "id": rid,
+        "description": f"What {rid} is for.",
         "capabilities": list(caps),
         "domain_access": list(domains),
         "max_rows": max_rows,

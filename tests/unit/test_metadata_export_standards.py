@@ -138,10 +138,14 @@ def snapshot():
             )
         ],
         roles=[
-            Role(id="analyst", capabilities=[], domain_access=["*"]),
-            Role(id="admin", capabilities=[], domain_access=["*"]),
+            Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"]),
+            Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
         ],
-        rls_rules=[RLSRule(table_id="orders", role_id="analyst", filter=RLS_FILTER)],
+        rls_rules=[
+            RLSRule(
+                table_id="orders", role_id="analyst", filter=RLS_FILTER, description="Test rule."
+            )
+        ],
     )
     return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
@@ -211,7 +215,7 @@ def test_openlineage_dataset_facet_names_its_data_product():  # REQ-1634
         sources=[Source(id="wh", type=SourceType.postgresql, description="Warehouse")],
         domains=[Domain(id="sales", description="Sales", steward="data-steward")],
         tables=[_table("orders", [Column(name="id", data_type="integer", visible_to=["analyst"])])],
-        roles=[Role(id="analyst", capabilities=[], domain_access=["*"])],
+        roles=[Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"])],
         data_products=[
             DataProduct(
                 id="prod",

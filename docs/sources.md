@@ -1409,10 +1409,12 @@ rls_rules:
   - table_id: orders          # applies to orders table only
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
+    description: Analysts read only their own region's orders.
 
   - domain_id: sales-analytics  # applies to every table in domain (REQ-402)
     role_id: analyst
     filter: "tenant_id = current_setting('provisa.tenant_id')"
+    description: Analysts read only their own tenant's rows.
 ```
 
 When both a domain-level and a table-level rule exist for the same role, the table-level rule takes precedence (REQ-403).
@@ -1423,6 +1425,7 @@ When both a domain-level and a table-level rule exist for the same role, the tab
 | `domain_id` | Conditional | Domain to apply the rule to; applies to all tables in the domain (REQ-402) |
 | `role_id` | Yes | Role this rule applies to |
 | `filter` | Yes | SQL predicate injected into `WHERE`; may reference session variables (REQ-041) |
+| `description` | Yes | What the rule is for, as an access review reads it (REQ-2081) |
 
 ---
 

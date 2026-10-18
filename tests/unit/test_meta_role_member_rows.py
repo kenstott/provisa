@@ -48,6 +48,7 @@ def _no_surface_build(monkeypatch):
 
 def _role(rid: str) -> dict:
     return {
+        "description": "Test role.",
         "id": rid,
         "capabilities": ["write"],
         "domain_access": ["sales"],

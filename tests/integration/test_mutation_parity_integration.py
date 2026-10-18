@@ -193,7 +193,12 @@ class TestDistinctOn:
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
             }
         ]
-        role = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+        role = {
+            "id": "admin",
+            "description": "Test role.",
+            "capabilities": ALL_DATA_CAPABILITIES,
+            "domain_access": ["*"],
+        }
         inp = SchemaInput(
             tables=tables,
             relationships=[],
@@ -238,7 +243,12 @@ class TestDistinctOn:
                 ],
             }
         ]
-        role = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+        role = {
+            "id": "admin",
+            "description": "Test role.",
+            "capabilities": ALL_DATA_CAPABILITIES,
+            "domain_access": ["*"],
+        }
         inp = SchemaInput(
             tables=tables,
             relationships=[],
@@ -353,9 +363,15 @@ class TestInheritedRoles:
         # REQ-215: flatten_roles merges parent capabilities into child
         from provisa.core.models import Role, flatten_roles
 
-        parent = Role(id="base", capabilities=["query_development"], domain_access=["*"])
+        parent = Role(
+            id="base",
+            description="Test role.",
+            capabilities=["query_development"],
+            domain_access=["*"],
+        )
         child = Role(
             id="analyst",
+            description="Test role.",
             capabilities=["custom_cap"],
             domain_access=["sales"],
             parent_role_id="base",
@@ -371,9 +387,12 @@ class TestInheritedRoles:
         # REQ-215: domain_access is merged from parent into child
         from provisa.core.models import Role, flatten_roles
 
-        parent = Role(id="base", capabilities=[], domain_access=["finance"])
+        parent = Role(
+            id="base", description="Test role.", capabilities=[], domain_access=["finance"]
+        )
         child = Role(
             id="analyst",
+            description="Test role.",
             capabilities=[],
             domain_access=["sales"],
             parent_role_id="base",
@@ -389,9 +408,15 @@ class TestInheritedRoles:
         # REQ-215: parent role is not mutated by child inheritance
         from provisa.core.models import Role, flatten_roles
 
-        parent = Role(id="base", capabilities=["source_registration"], domain_access=["*"])
+        parent = Role(
+            id="base",
+            description="Test role.",
+            capabilities=["source_registration"],
+            domain_access=["*"],
+        )
         child = Role(
             id="analyst",
+            description="Test role.",
             capabilities=["custom_cap"],
             domain_access=["sales"],
             parent_role_id="base",
@@ -406,9 +431,10 @@ class TestInheritedRoles:
         # REQ-215: if either parent or child holds "*", result is ["*"]
         from provisa.core.models import Role, flatten_roles
 
-        parent = Role(id="base", capabilities=[], domain_access=["*"])
+        parent = Role(id="base", description="Test role.", capabilities=[], domain_access=["*"])
         child = Role(
             id="analyst",
+            description="Test role.",
             capabilities=[],
             domain_access=["sales"],
             parent_role_id="base",
@@ -424,8 +450,14 @@ class TestInheritedRoles:
         from provisa.core.models import Role, flatten_roles
 
         roles = [
-            Role(id="r1", capabilities=["cap1"], domain_access=["d1"]),
-            Role(id="r2", capabilities=["cap2"], domain_access=["d2"], parent_role_id="r1"),
+            Role(id="r1", description="Test role.", capabilities=["cap1"], domain_access=["d1"]),
+            Role(
+                id="r2",
+                description="Test role.",
+                capabilities=["cap2"],
+                domain_access=["d2"],
+                parent_role_id="r1",
+            ),
         ]
         flattened = flatten_roles(roles)
         by_id = {r.id: r for r in flattened}

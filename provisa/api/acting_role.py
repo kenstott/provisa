@@ -79,7 +79,7 @@ def held_role(request: Request, role_id: str) -> str:  # REQ-273
         # REQ-2076: a security event, recorded and answered by the app's handler for it.
         from provisa.security import role_probe
 
-        pseudo = getattr(identity, "pseudo_roles", None) or {}
+        derived = identity.derived_roles or {}
         raise RoleProbeRefused(
             role_probe.Probe(
                 org_id=getattr(request.state, "active_org_id", None),
@@ -89,7 +89,7 @@ def held_role(request: Request, role_id: str) -> str:  # REQ-273
                 transport="http",
                 endpoint="",  # the route and peer are the app handler's to fill in
                 requested=role_id,
-                held=tuple(sorted(held | set(pseudo))),
+                held=tuple(sorted(held | set(derived))),
             )
         )
     return role_id
@@ -137,13 +137,13 @@ def named_role(request: Request, named: str) -> str:  # REQ-273, REQ-1620
     names = [r.strip() for r in named.split(",") if r.strip()]
     if not names:
         raise ApiError(400, "data.missing_role_id", "Missing role_id")
-    # REQ-2057: a pseudo-role the caller holds is named like any role; it qualifies the set.
-    # A router mounted without the auth middleware has no bound pseudo-roles, as held_role's
+    # REQ-2057: a derived role the caller holds is named like any role; it qualifies the set.
+    # A router mounted without the auth middleware has no bound derived roles, as held_role's
     # anonymous case: it names none.
     identity = getattr(request.state, "identity", None)
-    pseudo = getattr(identity, "pseudo_roles", None) or {}
-    named_pseudo = [n for n in names if n in pseudo]
-    names = [n for n in names if n not in pseudo]
+    derived = getattr(identity, "derived_roles", None) or {}
+    named_derived = [n for n in names if n in derived]
+    names = [n for n in names if n not in derived]
     for name in names:
         if not name.startswith(META_PREFIX):
             held_role(request, name)
@@ -155,7 +155,7 @@ def named_role(request: Request, named: str) -> str:  # REQ-273, REQ-1620
         names = data_plane or names[:1]
     try:
         return resolve_requested_role(
-            state, set(names), ",".join([*names, *named_pseudo]), lambda: pseudo
+            state, set(names), ",".join([*names, *named_derived]), lambda: derived
         )
     except MetaRoleNamed as exc:
         raise ApiError(403, "auth.meta_role_named", str(exc), role_id=named) from exc

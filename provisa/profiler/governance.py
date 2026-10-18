@@ -230,10 +230,17 @@ def _prefill_masks(readers: list[str], restricted: set[str]) -> list[dict]:
     ]
 
 
+def _row_rule_said(kind: str, role: str) -> str:  # REQ-2081
+    """What a prefilled row rule is for, in the words its description starts with."""
+    if kind in VALUE_KINDS:
+        return f"Keeps the profile rows {role} may read: only of columns it sees unmasked."
+    return f"Keeps the profile rows {role} may read: only of columns it may see."
+
+
 def prefill(kind: str, fields: list[str], rules: list[ColumnRule]) -> dict:
     """The default rules a result table of ``kind`` is registered with.
 
-    ``{"columns": [{name, visibleTo, masks}], "rowRules": [{roleId, filter}]}``:
+    ``{"columns": [{name, visibleTo, masks}], "rowRules": [{roleId, filter, description}]}``:
     every field granted to the profiled table's readers; on the columns table the value fields
     masked (to NULL) for each reader with a column masked to it or tagged pii; and per reader a
     row rule keeping the rows that speak only of described columns it may see -- for the value
@@ -263,7 +270,9 @@ def prefill(kind: str, fields: list[str], rules: list[ColumnRule]) -> dict:
         for role in readers:
             found = _involved_filter(kind, rules, role)
             if found is not None:
-                row_rules.append({"roleId": role, "filter": found})
+                row_rules.append(
+                    {"roleId": role, "filter": found, "description": _row_rule_said(kind, role)}
+                )
     elif kind in COLUMN_KINDS:
         everything = [r.exposed for r in own]
         for role in readers:
@@ -274,5 +283,11 @@ def prefill(kind: str, fields: list[str], rules: list[ColumnRule]) -> dict:
                 if r.seen_by(one) and (kind not in VALUE_KINDS or not r.restricted_for(one))
             ]
             if allowed != everything:
-                row_rules.append({"roleId": role, "filter": _in_list(allowed)})
+                row_rules.append(
+                    {
+                        "roleId": role,
+                        "filter": _in_list(allowed),
+                        "description": _row_rule_said(kind, role),
+                    }
+                )
     return {"columns": columns, "rowRules": row_rules}

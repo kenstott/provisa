@@ -41,6 +41,7 @@ naming:
   rules: []
 roles:
 - id: analyst
+  description: "Queries the security domain's findings."
   capabilities:
   - query_development
   domain_access:

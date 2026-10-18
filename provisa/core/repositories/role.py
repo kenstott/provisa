@@ -100,6 +100,7 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
         roles,
         {
             "id": role.id,
+            "description": role.description,  # REQ-2080
             "capabilities": role.capabilities,  # JSON column — list passes through
             "domain_access": role.domain_access,
             "residency_values": role.residency_values,  # REQ-1921
@@ -113,6 +114,7 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
         },
         index_elements=["id"],
         update_columns=[
+            "description",
             "capabilities",
             "domain_access",
             "residency_values",

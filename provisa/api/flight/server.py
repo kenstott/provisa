@@ -750,7 +750,7 @@ class ProvisaFlightServer(
             user_id = identity.user_id if identity is not None else ANONYMOUS_USER
             import contextlib
 
-            from provisa.auth.pseudo_roles import principal_scope
+            from provisa.auth.derived_roles import principal_scope
 
             # REQ-1682/REQ-1382: what a row filter reads for this caller, as on every transport;
             # a deployment that authenticates nobody has no principal to bind.

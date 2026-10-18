@@ -30,7 +30,7 @@
     "role": "Rolle: {{role}}",
     "dev": "DEV",
     "checking": "Wird geprüft…",
-    "claimRoles": "Claim-Rollen"
+    "derivedRoles": "Abgeleitete Rollen"
   },
   "localUsers": {
     "colUsername": "Benutzername",
@@ -78,7 +78,7 @@
   "grantPicker": {
     "and": "und",
     "combine": "Rollen zu einer Freigabe kombinieren",
-    "combineHelp": "Ein Leser muss jede hier aufgeführte Rolle besitzen. Geben Sie eine Claim-Rolle wie region__eu ein, wenn sie nicht angeboten wird.",
+    "combineHelp": "Ein Leser muss jede hier aufgeführte Rolle halten. Geben Sie eine abgeleitete Rolle wie region__eu ein, wenn sie nicht angeboten wird.",
     "parts": "Rollen, die ein Leser alle besitzen muss",
     "partsPlaceholder": "Rolle wählen oder eingeben und Enter drücken",
     "add": "Hinzufügen"

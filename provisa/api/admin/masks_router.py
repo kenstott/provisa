@@ -10,7 +10,7 @@
 
 """What the column editor shows about a mask list as it is being edited (REQ-2059): the entries
 no reader reaches, whether readers it does not list read the column unmasked, and the entry a
-reader acting as chosen roles and pseudo-roles reads it through. It refuses nothing; the list is
+reader acting as chosen roles and derived roles reads it through. It refuses nothing; the list is
 saved with the table. Gated by ``masking_config``, the right that edits masks."""
 
 # Requirements: REQ-2059
@@ -35,16 +35,16 @@ class MasksCheckBody(BaseModel):
 
 
 def chain_of(state: Any, role_id: str) -> list[str]:
-    """A role's chain as the org's model has it: a role and its ancestors; a pseudo-role
-    ``t__v`` and its parent ``t`` (REQ-2057); any other id -- a claim type's parent, or a role
+    """A role's chain as the org's model has it: a role and its ancestors; a derived role
+    ``t__v`` and its parent ``t`` (REQ-2057); any other id -- an attribute's parent, or a role
     with no ancestors -- itself alone."""
-    from provisa.auth.pseudo_roles import SEPARATOR, declared_claim_roles
+    from provisa.auth.derived_roles import SEPARATOR, declared_derived_roles
 
     if role_id in state.role_chains:
         return state.role_chains[role_id]
-    claim_type, sep, _value = role_id.partition(SEPARATOR)
-    if sep and claim_type in declared_claim_roles(state):
-        return [role_id, claim_type]
+    attribute, sep, _value = role_id.partition(SEPARATOR)
+    if sep and attribute in declared_derived_roles(state):
+        return [role_id, attribute]
     return [role_id]
 
 

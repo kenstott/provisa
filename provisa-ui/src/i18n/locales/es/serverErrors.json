@@ -275,7 +275,8 @@
       "has_dependents": "El rol {{role}} todavía es referenciado por {{count}} objeto(s); elimine primero esas referencias",
       "not_found": "No se encontró el rol",
       "org_selection_required": "Se requiere seleccionar una organización",
-      "already_exists": "El rol '{{role}}' ya existe"
+      "already_exists": "El rol '{{role}}' ya existe",
+      "description_missing": "El rol '{{role}}' necesita una descripción de para qué sirve"
     },
     "schema": {
       "allowed_domains_updated": "Dominios permitidos actualizados para el origen '{{source}}'",
@@ -438,7 +439,9 @@
       "role_session_var_name_missing": "Un valor de sesión necesita un nombre",
       "role_session_var_name_reserved": "'{{name}}' lo vincula la solicitud o el nodo y no puede ser un valor de sesión de un rol",
       "role_session_var_name_invalid": "El nombre del valor de sesión '{{name}}' debe contener letras, dígitos y guiones bajos, y no debe empezar por un dígito",
-      "role_session_var_name_repeated": "El valor de sesión '{{name}}' se nombra dos veces"
+      "role_session_var_name_repeated": "El valor de sesión '{{name}}' se nombra dos veces",
+      "role_description_missing": "El rol '{{role}}' necesita una descripción de para qué sirve",
+      "rls_rule_description_missing": "Una regla de fila necesita una descripción de para qué sirve"
     },
     "secrets": {
       "name_refused": "{{name}} no es un nombre dentro de los secretos de esta organización en {{service}}: un nombre es relativo a la organización y no puede salir de ella",
@@ -602,11 +605,13 @@
     "engine": {
       "write_conflict": "Otro cambio en los mismos datos se escribió al mismo tiempo. Inténtelo de nuevo."
     },
-    "claim_roles": {
-      "name_invalid": "El tipo de notificación '{{name}}' debe tener solo letras, dígitos y guiones bajos, y no puede empezar por un dígito",
-      "name_missing": "Un tipo de notificación necesita un nombre",
-      "name_reserved": "'{{name}}' se asigna desde la identidad que actúa en cada solicitud y no puede ser un tipo de notificación",
-      "database_not_connected": "Base de datos no conectada"
+    "derived_roles": {
+      "name_invalid": "El atributo '{{name}}' solo puede tener letras, dígitos y guiones bajos, y no puede empezar por un dígito",
+      "name_missing": "Un atributo necesita un nombre",
+      "name_reserved": "'{{name}}' se toma de la identidad que actúa en cada solicitud y no puede ser un atributo",
+      "database_not_connected": "Base de datos no conectada",
+      "description_missing": "Un rol derivado necesita una descripción de para qué sirve",
+      "not_found": "No hay ningún rol derivado de {{name}}"
     }
   }
 }

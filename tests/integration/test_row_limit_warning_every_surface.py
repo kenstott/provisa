@@ -65,9 +65,15 @@ def server():
         extra_config={
             "tables": [_table("four"), _table("three")],
             "roles": [
-                {"id": "limited", "capabilities": reads, "domain_access": ["*"]},
+                {
+                    "id": "limited",
+                    "description": "Test role.",
+                    "capabilities": reads,
+                    "domain_access": ["*"],
+                },
                 {
                     "id": "whole",
+                    "description": "Test role.",
                     "capabilities": [*reads, "full_results"],
                     "domain_access": ["*"],
                 },

@@ -82,7 +82,14 @@ def _make_state(
     state.roles = (
         roles
         if roles is not None
-        else {"admin": {"id": "admin", "capabilities": [], "domain_access": ["*"]}}
+        else {
+            "admin": {
+                "id": "admin",
+                "description": "Test role.",
+                "capabilities": [],
+                "domain_access": ["*"],
+            }
+        }
     )
     state.contexts = contexts or {}
     state.schema_build_cache = schema_build_cache or {"tables": [], "column_types": {}}

@@ -59,6 +59,7 @@ const EMPTY_RULE = {
   tagId: "", // REQ-1384: the rule's target when scope is "tag"
   roleId: "",
   filterExpr: "",
+  description: "", // REQ-2081: required
   domainFilter: "",
   applyToDomain: false,
   applyToAction: false,
@@ -165,6 +166,7 @@ export function SecurityRlsPage() {
       target,
       [ruleForm.roleId, "securityPage.role"],
       [ruleForm.filterExpr, "securityPage.filterExpression"],
+      [ruleForm.description.trim(), "securityPage.ruleDescription"],
     ]
       .filter(([value]) => !value)
       .map(([, label]) => t(label));
@@ -185,6 +187,7 @@ export function SecurityRlsPage() {
         tagId: ruleForm.applyToTag ? ruleForm.tagId || null : null, // REQ-1384
         roleId: ruleForm.roleId,
         filterExpr: ruleForm.filterExpr,
+        description: ruleForm.description.trim(),
       });
       if (!res.success) {
         setError(serverMessage(res, res.message));
@@ -228,6 +231,7 @@ export function SecurityRlsPage() {
         tagId: rule.tagId,
         roleId: rule.roleId,
         filterExpr: rule.filterExpr,
+        description: rule.description,
         applyToTag: true,
       });
     } else if (rule.actionName) {
@@ -236,6 +240,7 @@ export function SecurityRlsPage() {
         actionName: rule.actionName,
         roleId: rule.roleId,
         filterExpr: rule.filterExpr,
+        description: rule.description,
         domainFilter: actions.find((a) => a.name === rule.actionName)?.domainId ?? "",
         applyToAction: true,
       });
@@ -246,6 +251,7 @@ export function SecurityRlsPage() {
         domainId: rule.domainId,
         roleId: rule.roleId,
         filterExpr: rule.filterExpr,
+        description: rule.description,
         domainFilter: rule.domainId,
         applyToDomain: true,
       });
@@ -259,6 +265,7 @@ export function SecurityRlsPage() {
         domainId: "",
         roleId: rule.roleId,
         filterExpr: rule.filterExpr,
+        description: rule.description,
         domainFilter: tbl ? tbl.domainId : "",
         applyToDomain: false,
       });
@@ -289,7 +296,11 @@ export function SecurityRlsPage() {
         : r.domainId
           ? `domain:${r.domainId}`
           : (tableLabelById[r.tableId!] ?? String(r.tableId));
-    return r.roleId.toLowerCase().includes(q) || scope.toLowerCase().includes(q);
+    return (
+      r.roleId.toLowerCase().includes(q) ||
+      scope.toLowerCase().includes(q) ||
+      r.description.toLowerCase().includes(q)
+    );
   });
 
   // REQ-1940: sort and group are the shared list mechanism.
@@ -316,6 +327,12 @@ export function SecurityRlsPage() {
       groupValue: (r) => r.roleId,
     },
     { key: "filter", label: t("securityPage.colFilter"), sortValue: (r) => r.filterExpr },
+    // REQ-2081: what each rule is for, beside what it filters.
+    {
+      key: "description",
+      label: t("securityPage.colDescription"),
+      sortValue: (r) => r.description,
+    },
   ];
   const ruleSortGroup = useListSortGroup(filtered, ruleColumns, "rules");
 
@@ -443,6 +460,19 @@ export function SecurityRlsPage() {
             value={ruleForm.filterExpr}
             onChange={(e) => setRuleForm({ ...ruleForm, filterExpr: e.target.value })}
             styles={{ input: { fontFamily: "monospace", fontSize: "0.875rem" } }}
+          />
+        </FormField>
+        {/* REQ-2081: required; an access review reads it beside the filter. */}
+        <FormField size="full" help={t("securityPage.ruleDescriptionHelp")}>
+          <Textarea
+            label={t("securityPage.ruleDescription")}
+            placeholder={t("securityPage.ruleDescriptionPlaceholder")}
+            required
+            autosize
+            minRows={2}
+            value={ruleForm.description}
+            onChange={(e) => setRuleForm({ ...ruleForm, description: e.target.value })}
+            data-testid="rule-description"
           />
         </FormField>
       </FormLayout>
@@ -612,11 +642,17 @@ export function SecurityRlsPage() {
           <ListTable minWidth={640} testId="rules-list">
             <ListHead
               sortGroup={ruleSortGroup}
-              columns={[{ col: "id" }, { col: "scope" }, { col: "role" }, { col: "filter" }]}
+              columns={[
+                { col: "id" },
+                { col: "scope" },
+                { col: "role" },
+                { col: "filter" },
+                { col: "description" },
+              ]}
             />
             <Table.Tbody>
               {filtered.length === 0 && (
-                <ListEmpty colSpan={4}>
+                <ListEmpty colSpan={5}>
                   {rules.length === 0
                     ? t("securityPage.noRulesDefined")
                     : t("securityPage.noRulesMatchFilter")}
@@ -624,7 +660,7 @@ export function SecurityRlsPage() {
               )}
               <ListItems
                 state={ruleSortGroup}
-                colSpan={4}
+                colSpan={5}
                 rowKey={(r) => r.id}
                 render={(r) => (
                   <React.Fragment>
@@ -669,6 +705,7 @@ export function SecurityRlsPage() {
                       <Table.Td>
                         <Text component="code">{r.filterExpr}</Text>
                       </Table.Td>
+                      <Table.Td data-testid={`rule-description-${r.id}`}>{r.description}</Table.Td>
                     </ListRow>
                   </React.Fragment>
                 )}

@@ -74,7 +74,14 @@ def _minimal_config_dict(
                 ],
             }
         ],
-        "roles": [{"id": "analyst", "capabilities": ["read"], "domain_access": ["sales"]}],
+        "roles": [
+            {
+                "id": "analyst",
+                "description": "Test role.",
+                "capabilities": ["read"],
+                "domain_access": ["sales"],
+            }
+        ],
         "naming": {"convention": convention, "domain_prefix": domain_prefix},
     }
 
@@ -143,7 +150,12 @@ def _make_schema_input(convention: str = "snake", domain_prefix: bool = False) -
             ]
         },
         naming_rules=[],
-        role={"id": "analyst", "capabilities": ["read"], "domain_access": ["sales"]},
+        role={
+            "id": "analyst",
+            "description": "Test role.",
+            "capabilities": ["read"],
+            "domain_access": ["sales"],
+        },
         domains=[{"id": "sales", "description": ""}],
         source_types={"pg-src": "postgresql"},
         domain_prefix=domain_prefix,
@@ -369,7 +381,12 @@ class TestRollbackOnValidationFailure:
         this is the schema-level equivalent of a rollback trigger."""
         si = _make_schema_input()
         # A role whose one domain holds none of these tables
-        si.role = {"id": "stranger", "capabilities": ["read"], "domain_access": ["nowhere"]}
+        si.role = {
+            "id": "stranger",
+            "description": "Test role.",
+            "capabilities": ["read"],
+            "domain_access": ["nowhere"],
+        }
         with pytest.raises(ValueError, match="No tables visible"):
             generate_schema(si)
 
@@ -430,7 +447,12 @@ class TestDomainPrefixEmptyDomain:
                 2: [_col("id", "integer")],
             },
             naming_rules=[],
-            role={"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]},
+            role={
+                "id": "admin",
+                "description": "Test role.",
+                "capabilities": ["admin"],
+                "domain_access": ["*"],
+            },
             domains=[],
             source_types={"remote-src": "graphql_remote"},
             domain_prefix=True,

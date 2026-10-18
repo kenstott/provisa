@@ -88,31 +88,43 @@ Roles can inherit from one parent role via `parent_role_id`, set in config or on
 ```yaml
 roles:
   - id: basic_user
+    description: Queries the public domain.
     capabilities: [query_development]
     domain_access: [public]
   - id: analyst
+    description: Analyses sales; reads full results.
     capabilities: [full_results]
     domain_access: [sales, analytics]
     parent_role_id: basic_user   # inherits query_development + public domain
 ```
 
-## Roles: granted, pseudo and meta
+## Roles: granted, derived and meta
 
-Three kinds of role work together in Provisa's access model.
+Three kinds of role work together in Provisa's access model. The Roles page lists the first two together; a meta-role is never listed.
 
 ### Granted roles
 
 A granted role is assigned directly to a user. It holds rights: capabilities, domain access, masking entries, row filters. Inheritance (`parent_role_id`) folds an ancestor's rights into the child at startup. Rights only add; there is no subtraction. To restrict a reader, grant to a composite that names both the role and a condition, or place a mask entry before the permissive one. (REQ-215, REQ-1677)
 
-### Pseudo-roles
+### Derived roles
 
-A pseudo-role is derived from a user's attributes. The org declares which attribute types become roles (`claim_roles`). For each declared type `t` whose value `v` the user's attributes supply, the user holds the parent role `t` and its sub-role `t__v`. No value means neither role.
+A derived role comes from a user's attributes. The org declares which attributes become roles (`derived_roles`), each with a description. For each declared attribute `a` whose value `v` the user's attributes supply, the user holds the parent role `a` and its value role `a__v`: `region = eu` gives `region` and `region__eu`. No value means neither role.
 
 Attribute resolution matters. The org's own record of a member wins over what the identity provider supplies: both name the same attribute, the org's value is used, the provider's is marked overridden.
 
-Pseudo-roles carry no rights and are never assigned by hand. A grant list names them exactly as it names a granted role; a request names them in `X-Provisa-Role` and acts as them. (REQ-2057)
+Derived roles carry no rights and are never assigned by hand. A grant list, a mask or a row rule names them exactly as it names a granted role; a request names them in `X-Provisa-Role` and acts as them. (REQ-2057)
 
-Think of a JWT: its claims are facts about the person. Pseudo-roles turn chosen facts into roles, so a grant can address them without creating a role per combination.
+On the Roles page each declared attribute is a parent role marked *derived*, with its value roles listed under it as their values are seen. **Add role → Derived from attribute** declares one. Its panel shows the attribute, its description, the values seen so far and every mask, row rule and grant that names it or one of its value roles. It has no grant controls. A value role's description is generated: "Held when the user's region is eu". (REQ-2078, REQ-2079)
+
+Declare them in configuration as a list:
+
+```yaml
+derived_roles:
+- attribute: region
+  description: The subsidiary a member works for; region__eu marks EU staff.
+```
+
+Think of a JWT: its claims are facts about the person. Derived roles turn chosen facts into roles, so a grant can address them without creating a role per combination.
 
 ### Meta-roles
 
@@ -122,7 +134,13 @@ Rights are the union of every member's. Row filters are the OR of each member's 
 
 Each row's columns are masked and shown according to the roles whose row filter admitted that row: of those roles, the least restrictive reading of the column applies, and a role that did not admit the row contributes nothing to how it is read. Masks apply where the table is read, before any join or aggregate, so an aggregate reads the masked values. Writes are checked the same way: a column is written on a row only where a role granting that column admits the row. (REQ-1620)
 
-The audit record names every acting role, not the meta-role id.
+The audit record names every acting role, not the meta-role id. Since a meta-role is never stored, it has no description of its own: wherever one is shown, its description is its members', each id with its own. (REQ-2080)
+
+### Descriptions
+
+Every role and every row rule says what it is for. An access review reads who may see what and why. A role or a rule nobody can explain is one nobody can review, so the description is required: a role, a derived parent role or a row rule with an empty one is refused by the configuration load, the admin API and the UI, with the reason. The Roles and Row rules lists show each description, and their detail panels show and edit it. (REQ-2080, REQ-2081)
+
+A role has one description, not one per domain. A general role that does not describe its responsibilities within a particular domain means that domain needs a role of its own, usually a child of the general role (`parent_role_id`), which inherits its rights and describes what it does there.
 
 ### How a request names roles
 
@@ -130,7 +148,7 @@ A client sends one role, or a comma-separated set, in `X-Provisa-Role`. Each nam
 
 Rights and data follow only the roles the request acts as: holding a role is not acting as it. One role is that role; two or more act as their meta-role. An acting role that brought every held role's rights with it would mean nothing, so a request gets least privilege and the audit record names exactly what acted.
 
-Named pseudo-roles enter as qualifiers. A qualifier has no rights, domain access, masks or row filters of its own, so it is no member of the meta-role's rights: as a member with no masks it would unmask every column, and as one reading no table it would end every OR of row filters. It enters only the grants: a grant or mask entry naming `region__eu` reaches a request that names that qualifier alongside a granted role. (REQ-2057)
+Named derived roles enter as qualifiers. A qualifier has no rights, domain access, masks or row filters of its own, so it is no member of the meta-role's rights: as a member with no masks it would unmask every column, and as one reading no table it would end every OR of row filters. It enters only the grants: a grant or mask entry naming `region__eu` reaches a request that names that qualifier alongside a granted role. (REQ-2057)
 
 An MCP agent never acts beyond the roles it was given. A remote agent names only roles its token's principal holds. A local stdio agent names only roles within the set pinned in `mcp.role` (`PROVISA_MCP_ROLE`), and acts as that set when it names none; any other role is refused by name. (REQ-2075)
 
@@ -144,9 +162,9 @@ An MCP agent never acts beyond the roles it was given. A remote agent names only
 
 ### ABAC column rules as plain RBAC
 
-An attribute-based policy asks: "can this user, with these attributes, see this column?" RBAC asks: "which roles can see this column?" Composite grants and pseudo-roles make them the same question.
+An attribute-based policy asks: "can this user, with these attributes, see this column?" RBAC asks: "which roles can see this column?" Composite grants and derived roles make them the same question.
 
-"Unmask this email only for an analyst in the EU" is a mask entry `{to: [analyst+region__eu], mask: null}`. Any reader holding both the `analyst` role and the `region__eu` pseudo-role reads the column unmasked. No policy language. No role per combination.
+"Unmask this email only for an analyst in the EU" is a mask entry `{to: [analyst+region__eu], mask: null}`. Any reader holding both the `analyst` role and the `region__eu` derived role reads the column unmasked. No policy language. No role per combination.
 
 The trade-off is computation over enumeration. A small role catalogue keeps maintenance low, but "who can see this EU email?" becomes a computed answer: composite entries are evaluated against each user's assignments and claims. Provisa can answer that in both directions because the model is one definition. The column editor's Check access (`POST /admin/masks/check`) runs that evaluation for a chosen set of roles.
 
@@ -287,6 +305,7 @@ rls_rules:
   - table_id: orders
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
+    description: Analysts read only their own region's orders.
 ```
 
 The filter is ANDed into the query's WHERE clause. Works for both queries and mutations (UPDATE/DELETE). (REQ-035, REQ-041)
@@ -313,7 +332,7 @@ The mask expression is pushed into the SQL SELECT projection. The database retur
 
 **Deny by order.** An earlier entry wins even when the reader also holds a later, more permissive one. To ensure contractors always see a masked salary regardless of their other roles, put the contractor entry before the unmasked entry. A granted role never loses what its parent grants through inheritance, but a mask entry placed earlier in the list applies first — that is how restriction works here.
 
-**Meta-roles.** A meta-role's chain includes every member's roles, their ancestors, and any named pseudo-roles. An entry granted to any member reaches the meta-role. An entry before it, held by another member, still applies first.
+**Meta-roles.** A meta-role's chain includes every member's roles, their ancestors, and any named derived roles. An entry granted to any member reaches the meta-role. An entry before it, held by another member, still applies first.
 
 **Checking access.** `POST /admin/masks/check` accepts a mask list and an optional set of roles, and returns which entry applies for those roles plus any entries no reader can reach. Gated by `masking_config`.
 

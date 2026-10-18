@@ -83,12 +83,18 @@ def server():
             "roles": [
                 {
                     "id": "east_reader",
+                    "description": "Test role.",
                     "capabilities": ["query_development", "full_results"],
                     "domain_access": ["*"],
                 },
             ],
             "rls_rules": [
-                {"table_id": "orders", "role_id": "east_reader", "filter": "region = 'east'"}
+                {
+                    "description": "Test rule.",
+                    "table_id": "orders",
+                    "role_id": "east_reader",
+                    "filter": "region = 'east'",
+                }
             ],
         },
         env={"PROVISA_REDIRECT_ENABLED": "false"},

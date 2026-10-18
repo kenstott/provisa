@@ -32,6 +32,7 @@ from provisa.security.inheritance import (
 def _role(rid, parent=None, caps=(), domains=(), rate_limit=None):
     return {
         "id": rid,
+        "description": "Test role.",
         "capabilities": list(caps),
         "domain_access": list(domains),
         "rate_limit": rate_limit,
@@ -109,8 +110,20 @@ class TestFlattenDicts:
         with pytest.raises(ValueError, match="cycle"):
             flatten_roles(
                 [
-                    Role(id="a", capabilities=[], domain_access=["*"], parent_role_id="b"),
-                    Role(id="b", capabilities=[], domain_access=["*"], parent_role_id="a"),
+                    Role(
+                        id="a",
+                        description="Test role.",
+                        capabilities=[],
+                        domain_access=["*"],
+                        parent_role_id="b",
+                    ),
+                    Role(
+                        id="b",
+                        description="Test role.",
+                        capabilities=[],
+                        domain_access=["*"],
+                        parent_role_id="a",
+                    ),
                 ]
             )
 
@@ -178,6 +191,7 @@ TABLES = [ORDERS, CUSTOMERS, TICKETS]
 
 def _rule(role, expr, table_id=None, domain_id=None):
     return {
+        "description": "Test rule.",
         "id": 1,
         "role_id": role,
         "table_id": table_id,

@@ -327,7 +327,7 @@ class OrgRuntime:
     grpc_role_descriptors: dict[str, Any] = field(default_factory=dict)
     # meta-role id → the held roles it acts as (security/meta_role.py), this generation.
     meta_roles: dict = field(default_factory=dict)
-    # meta-role id -> the pseudo-roles it was named with (REQ-2057), which enter its grants only.
+    # meta-role id -> the derived roles it was named with (REQ-2057), which enter its grants only.
     meta_qualifiers: dict = field(default_factory=dict)
     # meta-role id -> when a request last resolved it (time.monotonic): what a rebuild reads to
     # know a request may still be acting as it (security/meta_role.rebuild_meta_roles).

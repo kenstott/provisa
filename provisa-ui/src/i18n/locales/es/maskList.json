@@ -26,7 +26,7 @@
     "coveredBy": "Ningún lector llega a esta entrada: la entrada {{n}} se aplica antes a cada uno de ellos.",
     "unlistedUnmasked": "Los lectores que esta lista no nombra ven la columna sin enmascarar. Añada al final una entrada para todos para enmascararla para ellos.",
     "checkLabel": "Comprobar acceso",
-    "checkPlaceholder": "Elija o escriba roles y roles de notificación",
+    "checkPlaceholder": "Elija o escriba roles y roles derivados",
     "applies": "Se aplica la entrada {{n}}",
     "appliesNone": "No se aplica ninguna entrada: sin enmascarar",
     "none": "Ninguno",

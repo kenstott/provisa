@@ -70,9 +70,24 @@ def server():
             "tables": [orders],
             # org_admin is the reserved administrative role (REQ-1349): not declared.
             "roles": [
-                {"id": "east_writer", "capabilities": [*reads, "write"], "domain_access": ["*"]},
-                {"id": "region_only", "capabilities": [*reads, "write"], "domain_access": ["*"]},
-                {"id": "east_reader", "capabilities": reads, "domain_access": ["*"]},
+                {
+                    "id": "east_writer",
+                    "description": "Test role.",
+                    "capabilities": [*reads, "write"],
+                    "domain_access": ["*"],
+                },
+                {
+                    "id": "region_only",
+                    "description": "Test role.",
+                    "capabilities": [*reads, "write"],
+                    "domain_access": ["*"],
+                },
+                {
+                    "id": "east_reader",
+                    "description": "Test role.",
+                    "capabilities": reads,
+                    "domain_access": ["*"],
+                },
             ],
             # A materialized view over the table, for the steps after a write.
             "views": [
@@ -88,8 +103,18 @@ def server():
                 }
             ],
             "rls_rules": [
-                {"table_id": "orders", "role_id": "east_writer", "filter": "region = 'east'"},
-                {"table_id": "orders", "role_id": "east_reader", "filter": "region = 'east'"},
+                {
+                    "description": "Test rule.",
+                    "table_id": "orders",
+                    "role_id": "east_writer",
+                    "filter": "region = 'east'",
+                },
+                {
+                    "description": "Test rule.",
+                    "table_id": "orders",
+                    "role_id": "east_reader",
+                    "filter": "region = 'east'",
+                },
             ],
         },
         env={"PROVISA_REDIRECT_ENABLED": "false"},

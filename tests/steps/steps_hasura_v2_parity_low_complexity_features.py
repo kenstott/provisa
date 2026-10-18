@@ -149,7 +149,12 @@ def _build_schema_input(source_type: str = "postgresql") -> SchemaInput:
         relationships=[],
         column_types=col_types,
         naming_rules=[],
-        role={"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]},
+        role={
+            "id": "admin",
+            "description": "Test role.",
+            "capabilities": ALL_DATA_CAPABILITIES,
+            "domain_access": ["*"],
+        },
         domains=[{"id": "sales", "description": "Sales"}],
         source_types={"sales-pg": source_type},
     )
@@ -208,7 +213,12 @@ def _build_batch_schema_and_ctx() -> tuple:
         relationships=[],
         column_types=col_types,
         naming_rules=[],
-        role={"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]},
+        role={
+            "id": "admin",
+            "description": "Test role.",
+            "capabilities": ALL_DATA_CAPABILITIES,
+            "domain_access": ["*"],
+        },
         domains=[{"id": "sales", "description": "Sales"}],
         source_types={"sales-pg": "postgresql"},
     )
@@ -264,6 +274,7 @@ def _flatten_roles_from_dicts(role_definitions: list[dict]) -> dict[str, dict]:
             domains |= set(parent_resolved["domain_access"])
         merged = {
             "id": role_id,
+            "description": "Test role.",
             "capabilities": sorted(caps),
             "domain_access": sorted(domains),
         }
@@ -285,6 +296,7 @@ def _role(
     """Construct a Role model instance."""
     return Role(
         id=role_id,
+        description="Test role.",
         capabilities=caps,
         domain_access=domains,
         parent_role_id=parent,
@@ -522,18 +534,21 @@ def _given_roles_with_parent_role_id(shared_data: dict) -> None:
     role_dicts = [
         {
             "id": "base_viewer",
+            "description": "Test role.",
             "capabilities": ["read"],
             "domain_access": ["public"],
             "parent_role_id": None,
         },
         {
             "id": "analyst",
+            "description": "Test role.",
             "capabilities": ["aggregate"],
             "domain_access": ["analytics"],
             "parent_role_id": "base_viewer",
         },
         {
             "id": "senior_analyst",
+            "description": "Test role.",
             "capabilities": ["export"],
             "domain_access": ["finance"],
             "parent_role_id": "analyst",

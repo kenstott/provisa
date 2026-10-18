@@ -30,7 +30,7 @@
     "role": "Role: {{role}}",
     "dev": "DEV",
     "checking": "Checking…",
-    "claimRoles": "Claim roles"
+    "derivedRoles": "Derived roles"
   },
   "localUsers": {
     "colUsername": "Username",
@@ -78,7 +78,7 @@
   "grantPicker": {
     "and": "and",
     "combine": "Combine roles into one grant",
-    "combineHelp": "A reader must hold every role you list here. Type a claim role such as region__eu if it is not offered.",
+    "combineHelp": "A reader must hold every role you list here. Type a derived role such as region__eu if it is not offered.",
     "parts": "Roles a reader must all hold",
     "partsPlaceholder": "Pick or type a role and press Enter",
     "add": "Add"

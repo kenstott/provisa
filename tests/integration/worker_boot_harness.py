@@ -102,7 +102,12 @@ def _config(pg_host: str, pg_port: int, database: str) -> dict:
         # file may not declare it, so only the harness's own role is listed.
         "roles": [
             # No full_results: the default row limit applies to this role's queries.
-            {"id": "analyst", "capabilities": ["query_development"], "domain_access": ["*"]},
+            {
+                "id": "analyst",
+                "description": "Test role.",
+                "capabilities": ["query_development"],
+                "domain_access": ["*"],
+            },
         ],
     }
 
@@ -508,6 +513,7 @@ def _request(name: str, port: int) -> None:
             f"http://127.0.0.1:{port}/mcp",
             data=json.dumps(
                 {
+                    "description": "Test role.",
                     "jsonrpc": "2.0",
                     "id": 1,
                     "method": "initialize",

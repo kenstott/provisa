@@ -70,7 +70,12 @@ async def seed(db: Database) -> None:
         for role_id in ("leaving", "staying"):
             await role_repo.upsert(
                 conn,
-                Role(id=role_id, capabilities=["usage"], domain_access=["*"]),
+                Role(
+                    id=role_id,
+                    description="Test role.",
+                    capabilities=["usage"],
+                    domain_access=["*"],
+                ),
                 org_id=ORG,
             )
         await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))

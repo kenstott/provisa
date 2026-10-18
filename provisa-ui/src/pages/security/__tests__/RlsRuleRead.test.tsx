@@ -23,6 +23,7 @@ const rule = (over: Partial<RLSRule>): RLSRule => ({
   actionName: null,
   roleId: "analyst",
   filterExpr: "region = 'east'",
+  description: "Analysts read only the east region's rows.",
   ...over,
 });
 
@@ -37,6 +38,7 @@ describe("an RLS rule's read view", () => {
     render(<RlsRuleRead rule={rule({})} domain="sales" tableLabel="sales.orders" />);
     expect(fields(3)).toEqual([
       ["Rule ID", "3"],
+      ["Description", "Analysts read only the east region's rows."],
       ["Apply To", "Specific Table"],
       ["Domain", "sales"],
       ["Table", "sales.orders"],
@@ -55,6 +57,7 @@ describe("an RLS rule's read view", () => {
     );
     expect(fields(3)).toEqual([
       ["Rule ID", "3"],
+      ["Description", "Analysts read only the east region's rows."],
       ["Apply To", "Entire Domain"],
       ["Domain", "ops"],
       ["Role", "analyst"],
@@ -71,6 +74,7 @@ describe("an RLS rule's read view", () => {
     // An action registered in no domain: its domain is shown empty, not left out.
     expect(fields(9)).toEqual([
       ["Rule ID", "9"],
+      ["Description", "Analysts read only the east region's rows."],
       ["Apply To", "Action (function or webhook)"],
       ["Domain", "—"],
       ["Action", "notify_ops"],

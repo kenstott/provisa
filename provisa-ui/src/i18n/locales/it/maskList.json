@@ -26,7 +26,7 @@
     "coveredBy": "Nessun lettore raggiunge questa voce: a ciascuno di loro si applica prima la voce {{n}}.",
     "unlistedUnmasked": "I lettori che questo elenco non nomina vedono la colonna non mascherata. Aggiungi in fondo una voce per tutti per mascherarla anche per loro.",
     "checkLabel": "Verifica accesso",
-    "checkPlaceholder": "Scegli o digita ruoli e ruoli di attestazione",
+    "checkPlaceholder": "Scegli o digita ruoli e ruoli derivati",
     "applies": "Si applica la voce {{n}}",
     "appliesNone": "Nessuna voce si applica: non mascherato",
     "none": "Nessuno",

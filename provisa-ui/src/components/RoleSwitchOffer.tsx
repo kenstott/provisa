@@ -10,7 +10,7 @@
 
 // REQ-2060: rights follow the roles a request acts as, so a page the selection does not grant may
 // still be granted by another role the person holds. Under the refusal, each such role is offered:
-// one click makes it the acting role and the page opens. Held pseudo-roles carry no rights and are
+// one click makes it the acting role and the page opens. Held derived roles carry no rights and are
 // never offered.
 
 import type { ReactNode } from "react";

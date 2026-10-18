@@ -275,7 +275,8 @@
       "has_dependents": "Naar rol {{role}} wordt nog verwezen door {{count}} object(en); verwijder eerst die verwijzingen",
       "not_found": "Rol niet gevonden",
       "org_selection_required": "Organisatieselectie vereist",
-      "already_exists": "Rol '{{role}}' bestaat al"
+      "already_exists": "Rol '{{role}}' bestaat al",
+      "description_missing": "De rol '{{role}}' heeft een beschrijving nodig van waar hij voor is"
     },
     "schema": {
       "allowed_domains_updated": "Toegestane domeinen bijgewerkt voor bron '{{source}}'",
@@ -438,7 +439,9 @@
       "role_session_var_name_missing": "Een sessiewaarde heeft een naam nodig",
       "role_session_var_name_reserved": "'{{name}}' wordt door het verzoek of het knooppunt gebonden en kan geen sessiewaarde van een rol zijn",
       "role_session_var_name_invalid": "De naam van sessiewaarde '{{name}}' mag alleen letters, cijfers en underscores bevatten en mag niet met een cijfer beginnen",
-      "role_session_var_name_repeated": "Sessiewaarde '{{name}}' is twee keer genoemd"
+      "role_session_var_name_repeated": "Sessiewaarde '{{name}}' is twee keer genoemd",
+      "role_description_missing": "De rol '{{role}}' heeft een beschrijving nodig van waar hij voor is",
+      "rls_rule_description_missing": "Een rijregel heeft een beschrijving nodig van waar hij voor is"
     },
     "secrets": {
       "name_refused": "{{name}} is geen naam binnen de secrets van deze organisatie in {{service}}: een naam is relatief ten opzichte van de organisatie en kan deze niet verlaten",
@@ -602,11 +605,13 @@
     "engine": {
       "write_conflict": "Een andere wijziging van dezelfde gegevens werd tegelijk geschreven. Probeer het opnieuw."
     },
-    "claim_roles": {
-      "name_invalid": "Claimtype '{{name}}' mag alleen letters, cijfers en underscores bevatten en mag niet met een cijfer beginnen",
-      "name_missing": "Een claimtype heeft een naam nodig",
-      "name_reserved": "'{{name}}' wordt bij elk verzoek ingesteld vanuit de handelende identiteit en kan geen claimtype zijn",
-      "database_not_connected": "Database niet verbonden"
+    "derived_roles": {
+      "name_invalid": "Attribuut '{{name}}' mag alleen letters, cijfers en underscores bevatten en mag niet met een cijfer beginnen",
+      "name_missing": "Een attribuut heeft een naam nodig",
+      "name_reserved": "'{{name}}' wordt bij elk verzoek uit de handelende identiteit gehaald en kan geen attribuut zijn",
+      "database_not_connected": "Database niet verbonden",
+      "description_missing": "Een afgeleide rol heeft een beschrijving nodig van waar hij voor is",
+      "not_found": "Geen afgeleide rol van {{name}}"
     }
   }
 }

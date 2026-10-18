@@ -34,7 +34,13 @@ from provisa.security.inheritance import flatten_role_dicts
 
 
 def _role(**kw: Any) -> Role:
-    return Role(id=kw.pop("id", "seller"), capabilities=[], domain_access=["sales"], **kw)
+    return Role(
+        id=kw.pop("id", "seller"),
+        description="Test role.",
+        capabilities=[],
+        domain_access=["sales"],
+        **kw,
+    )
 
 
 # --- the model ------------------------------------------------------------------------------------
@@ -145,6 +151,7 @@ def test_a_meta_role_inlines_each_members_inherited_constants(monkeypatch):
     )
     stored = [
         {
+            "description": "Test role.",
             "id": "base",
             "capabilities": [],
             "domain_access": ["sales"],
@@ -154,6 +161,7 @@ def test_a_meta_role_inlines_each_members_inherited_constants(monkeypatch):
             "session_vars": {"tier": "gold"},
         },
         {
+            "description": "Test role.",
             "id": "east",
             "capabilities": [],
             "domain_access": ["sales"],
@@ -163,6 +171,7 @@ def test_a_meta_role_inlines_each_members_inherited_constants(monkeypatch):
             "session_vars": {},
         },
         {
+            "description": "Test role.",
             "id": "west",
             "capabilities": [],
             "domain_access": ["sales"],
@@ -214,6 +223,7 @@ async def test_the_store_writes_a_roles_constants_into_the_configuration(monkeyp
     from provisa.core.repositories import role as role_repo
 
     row = {
+        "description": "Test role.",
         "id": "seller",
         "capabilities": ["usage"],
         "domain_access": ["sales"],
@@ -256,7 +266,12 @@ async def plane(monkeypatch, control_plane):
     db = control_plane.org()
     async with db.acquire() as conn:
         await conn.execute_core(insert(domains).values(id="sales"))
-    admin = {"id": "admin", "capabilities": ["user_management"], "domain_access": ["*"]}
+    admin = {
+        "id": "admin",
+        "description": "Test role.",
+        "capabilities": ["user_management"],
+        "domain_access": ["*"],
+    }
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "model_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", {"admin": admin}, raising=False)
@@ -283,6 +298,7 @@ async def _save(session_vars: list) -> Any:
         _info("admin"),  # type: ignore[arg-type]
         RoleInput(
             id="seller",
+            description="Test role.",
             capabilities=["usage"],
             domain_access=["sales"],
             session_vars=[SessionVarInput(name=n, value=v) for n, v in session_vars],
@@ -339,6 +355,7 @@ def test_the_role_type_carries_its_constants_as_name_value_pairs():
 
     out = _role_from_row(
         {
+            "description": "Test role.",
             "id": "seller",
             "capabilities": [],
             "domain_access": ["sales"],
@@ -348,4 +365,7 @@ def test_the_role_type_carries_its_constants_as_name_value_pairs():
         }
     )
     assert [(p.name, p.value) for p in out.session_vars] == [("tier", "gold"), ("zone", "a")]
-    assert _role_from_row({"id": "seller"}, detail=False).session_vars is None
+    assert (
+        _role_from_row({"id": "seller", "description": "Test role."}, detail=False).session_vars
+        is None
+    )

@@ -232,7 +232,12 @@ class TestSchemaVisibility:
                 ],
             }
         ]
-        role = {"id": ROLE_ANALYST, "domain_access": ["*"], "capabilities": []}
+        role = {
+            "id": ROLE_ANALYST,
+            "description": "Test role.",
+            "domain_access": ["*"],
+            "capabilities": [],
+        }
         result = visible_tables(tables, role)
         assert result == [], "REQ-039: table with no visible columns must be excluded from schema"
 
@@ -248,7 +253,12 @@ class TestSchemaVisibility:
                 ],
             }
         ]
-        role = {"id": ROLE_ANALYST, "domain_access": ["*"], "capabilities": []}
+        role = {
+            "id": ROLE_ANALYST,
+            "description": "Test role.",
+            "domain_access": ["*"],
+            "capabilities": [],
+        }
         result = visible_tables(tables, role)
         assert len(result) == 1
         col_names = [c["column_name"] for c in result[0]["columns"]]
@@ -326,7 +336,7 @@ class TestRLSEnforcement:
 class TestGovernanceAsOnlyGate:
     async def test_check_capability_raises_for_missing_capability(self):
         # REQ-042: distinct capabilities must be independently enforced.
-        role = {"id": ROLE_ANALYST, "capabilities": ["usage"]}
+        role = {"id": ROLE_ANALYST, "description": "Test role.", "capabilities": ["usage"]}
         with pytest.raises(InsufficientRightsError) as exc:
             check_capability(role, Capability.SOURCE_REGISTRATION)
         assert "source_registration" in str(exc.value)
@@ -341,7 +351,7 @@ class TestGovernanceAsOnlyGate:
             Capability.MASKING_CONFIG,
         )
         for held in (["admin"], ["superadmin"], ["platform_settings", "cross_org"]):
-            role = {"id": ROLE_ADMIN, "capabilities": held}
+            role = {"id": ROLE_ADMIN, "description": "Test role.", "capabilities": held}
             for cap in checked:
                 with pytest.raises(InsufficientRightsError):
                     check_capability(role, cap)
@@ -349,7 +359,11 @@ class TestGovernanceAsOnlyGate:
 
     async def test_a_role_holding_each_capability_passes_each_check(self):
         # REQ-042: an administrator's role names the rights it holds.
-        role = {"id": ROLE_ADMIN, "capabilities": ALL_DATA_CAPABILITIES}
+        role = {
+            "id": ROLE_ADMIN,
+            "description": "Test role.",
+            "capabilities": ALL_DATA_CAPABILITIES,
+        }
         # check_capability returns None on success; any failure raises InsufficientRightsError.
         assert check_capability(role, Capability.SOURCE_REGISTRATION) is None
         assert check_capability(role, Capability.TABLE_REGISTRATION) is None
@@ -362,19 +376,27 @@ class TestGovernanceAsOnlyGate:
 
     async def test_has_capability_returns_false_for_missing(self):
         # REQ-001: governance is expressed through rights, not capability gates on querying.
-        role = {"id": ROLE_VIEWER, "capabilities": ["usage"]}
+        role = {"id": ROLE_VIEWER, "description": "Test role.", "capabilities": ["usage"]}
         assert not has_capability(role, Capability.FULL_RESULTS)
         assert not has_capability(role, Capability.CREATE_VIEW)
 
     async def test_has_capability_returns_true_when_present(self):
         # REQ-042: independently configured rights — present capability is respected.
-        role = {"id": ROLE_ANALYST, "capabilities": ["usage", "full_results"]}
+        role = {
+            "id": ROLE_ANALYST,
+            "description": "Test role.",
+            "capabilities": ["usage", "full_results"],
+        }
         assert has_capability(role, Capability.USAGE)
         assert has_capability(role, Capability.FULL_RESULTS)
 
     async def test_distinct_rights_are_independent(self):
         # REQ-042: holding one right does not grant another.
-        role = {"id": ROLE_ANALYST, "capabilities": ["table_registration"]}
+        role = {
+            "id": ROLE_ANALYST,
+            "description": "Test role.",
+            "capabilities": ["table_registration"],
+        }
         assert has_capability(role, Capability.TABLE_REGISTRATION)
         assert not has_capability(role, Capability.SOURCE_REGISTRATION), (
             "REQ-042: TABLE_REGISTRATION must not imply SOURCE_REGISTRATION"
@@ -385,8 +407,12 @@ class TestGovernanceAsOnlyGate:
 
     async def test_ignore_relationships_is_distinct_capability(self):
         # REQ-042 / REQ-463: ignore_relationships is a distinct, independently assigned cap.
-        role_with = {"id": "steward", "capabilities": ["ignore_relationships"]}
-        role_without = {"id": ROLE_ANALYST, "capabilities": ["usage"]}
+        role_with = {
+            "id": "steward",
+            "description": "Test role.",
+            "capabilities": ["ignore_relationships"],
+        }
+        role_without = {"id": ROLE_ANALYST, "description": "Test role.", "capabilities": ["usage"]}
         assert has_capability(role_with, Capability.IGNORE_RELATIONSHIPS)
         assert not has_capability(role_without, Capability.IGNORE_RELATIONSHIPS)
 
@@ -474,7 +500,12 @@ class TestTwoStageCompiler:
                 "max_rows": None,
             }
         ]
-        role = {"id": ROLE_ANALYST, "capabilities": ["usage"], "domain_access": ["*"]}
+        role = {
+            "id": ROLE_ANALYST,
+            "description": "Test role.",
+            "capabilities": ["usage"],
+            "domain_access": ["*"],
+        }
 
         gov = build_governance_context(ROLE_ANALYST, rls, masking_rules, ctx, tables, role)
 
@@ -503,7 +534,12 @@ class TestTwoStageCompiler:
                 "max_rows": None,
             }
         ]
-        role = {"id": ROLE_ANALYST, "capabilities": ["usage"], "domain_access": ["*"]}
+        role = {
+            "id": ROLE_ANALYST,
+            "description": "Test role.",
+            "capabilities": ["usage"],
+            "domain_access": ["*"],
+        }
 
         gov = build_governance_context(ROLE_ANALYST, rls, masking_rules, ctx, tables, role)
 
@@ -531,7 +567,12 @@ class TestTwoStageCompiler:
                 "max_rows": None,
             }
         ]
-        role = {"id": ROLE_ADMIN, "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+        role = {
+            "id": ROLE_ADMIN,
+            "description": "Test role.",
+            "capabilities": ALL_DATA_CAPABILITIES,
+            "domain_access": ["*"],
+        }
 
         gov = build_governance_context(ROLE_ADMIN, rls, masking_rules, ctx, tables, role)
 
@@ -543,7 +584,12 @@ class TestTwoStageCompiler:
         # REQ-263, REQ-005: roles without FULL_RESULTS capability get a row cap.
         from provisa.compiler.stage2 import resolve_row_cap
 
-        role_without = {"id": ROLE_ANALYST, "capabilities": ["usage"], "max_rows": None}
+        role_without = {
+            "id": ROLE_ANALYST,
+            "description": "Test role.",
+            "capabilities": ["usage"],
+            "max_rows": None,
+        }
         cap = resolve_row_cap(role_without, None)
         assert cap is not None, "REQ-263: analyst without FULL_RESULTS must receive a row cap"
 
@@ -551,7 +597,12 @@ class TestTwoStageCompiler:
         # REQ-263: role with FULL_RESULTS capability must receive no row cap.
         from provisa.compiler.stage2 import resolve_row_cap
 
-        role_full = {"id": ROLE_ADMIN, "capabilities": ["full_results"], "max_rows": None}
+        role_full = {
+            "id": ROLE_ADMIN,
+            "description": "Test role.",
+            "capabilities": ["full_results"],
+            "max_rows": None,
+        }
         cap = resolve_row_cap(role_full, None)
         assert cap is None, "REQ-263: role with FULL_RESULTS must not be capped"
 
@@ -559,7 +610,12 @@ class TestTwoStageCompiler:
         # REQ-263: explicit max_rows on a role overrides any computed default.
         from provisa.compiler.stage2 import resolve_row_cap
 
-        role = {"id": ROLE_ANALYST, "capabilities": ["usage"], "max_rows": None}
+        role = {
+            "id": ROLE_ANALYST,
+            "description": "Test role.",
+            "capabilities": ["usage"],
+            "max_rows": None,
+        }
         cap = resolve_row_cap(role, 500)
         assert cap == 500, "REQ-263: explicit max_rows=500 must take precedence over defaults"
 
@@ -797,6 +853,7 @@ class TestDomainLevelRLS:
         # The domain rule is folded into the table's rule at runtime build
         # (security/row_filters.resolve_table_rules), as the server does.
         domain_rule = {
+            "description": "Test rule.",
             "role_id": ROLE_ANALYST,
             "table_id": None,
             "domain_id": "sales",

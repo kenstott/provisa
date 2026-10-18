@@ -39,7 +39,7 @@ class FakeState:
         self.roles = {}
         # The org's member attributes and its claim types: none recorded, none declared (REQ-2057).
         self.user_attributes = {}
-        self.settings_overrides = {"claim_roles": []}
+        self.settings_overrides = {"derived_roles": []}
 
 
 _AUTH_CONFIG = {

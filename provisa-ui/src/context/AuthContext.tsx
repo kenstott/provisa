@@ -17,7 +17,7 @@ import type {
   RoleAssignment,
   AuthState,
   OrgMembership,
-  PseudoRole,
+  DerivedRole,
 } from "../types/auth";
 import { AuthMeError, fetchMe } from "../api/admin";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
@@ -42,6 +42,9 @@ import { setActingRoles } from "../lib/actingRole";
 // instead of removing a tab.
 export const DEFAULT_ADMIN_ROLE: Role = {
   id: "org_admin",
+  // The seed's own (SEEDED_ROLE_DESCRIPTIONS in provisa/core/db.py).
+  description:
+    "Administers the organization: its sources, model, governance, members and settings, in every domain.",
   capabilities: [
     "source_registration",
     "table_registration",
@@ -108,13 +111,13 @@ function unionCapabilities(roles: Role[]): Capability[] {
 
 interface AuthContextValue extends AuthState {
   selectRole: (role: Role | "all") => void;
-  // REQ-2057: the pseudo-roles the user holds, those selected to act as beside the roles, and the
+  // REQ-2057: the derived roles the user holds, those selected to act as beside the roles, and the
   // switch for one. They never join a request unselected.
-  pseudoRoles: PseudoRole[];
-  selectedPseudoRoles: string[];
-  togglePseudoRole: (id: string) => void;
+  derivedRoles: DerivedRole[];
+  selectedDerivedRoles: string[];
+  toggleDerivedRole: (id: string) => void;
   // The X-Provisa-Role value every request sends: the selected roles, then the selected
-  // pseudo-roles. Null with no role selected (a pseudo-role alone reaches no data).
+  // derived roles. Null with no role selected (a derived role alone reaches no data).
   actingRoles: string | null;
   availableRoles: Role[];
   availableDomains: string[];
@@ -185,8 +188,8 @@ export function AuthProvider({
   const [orgMemberships, setOrgMemberships] = useState<OrgMembership[]>([]);
   // REQ-1528: what owning the environment being read confers, as the server reports it.
   const [envCapabilities, setEnvCapabilities] = useState<Capability[]>([]);
-  const [pseudoRoles, setPseudoRoles] = useState<PseudoRole[]>([]);
-  const [pickedPseudo, setPickedPseudo] = useState<string[]>([]);
+  const [derivedRoles, setDerivedRoles] = useState<DerivedRole[]>([]);
+  const [pickedDerived, setPickedDerived] = useState<string[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [identityErrorStatus, setIdentityErrorStatus] = useState<number | null>(null);
   const [email, setEmail] = useState<string | null>(null);
@@ -220,7 +223,7 @@ export function AuthProvider({
         setControlPlaneId(me.control_plane_id);
         userAssignments = me.assignments;
         setEnvCapabilities(me.env_capabilities as Capability[]);
-        setPseudoRoles(me.pseudo_roles);
+        setDerivedRoles(me.derived_roles);
         setOrgMemberships(me.org_memberships);
         setUserId(me.user_id);
         setIdentityErrorStatus(null);
@@ -389,17 +392,17 @@ export function AuthProvider({
     () => [...new Set([...unionCapabilities(activeRoles), ...envCapabilities])],
     [activeRoles, envCapabilities],
   );
-  // A selection survives only while the pseudo-role is still held (an identity re-read can drop it).
-  const selectedPseudoRoles = useMemo(
-    () => pickedPseudo.filter((id) => pseudoRoles.some((p) => p.id === id)),
-    [pickedPseudo, pseudoRoles],
+  // A selection survives only while the derived role is still held (an identity re-read can drop it).
+  const selectedDerivedRoles = useMemo(
+    () => pickedDerived.filter((id) => derivedRoles.some((p) => p.id === id)),
+    [pickedDerived, derivedRoles],
   );
   const actingRoles = useMemo(
     () =>
       activeRoles.length > 0
-        ? [...activeRoles.map((r) => r.id), ...selectedPseudoRoles].join(",")
+        ? [...activeRoles.map((r) => r.id), ...selectedDerivedRoles].join(",")
         : null,
-    [activeRoles, selectedPseudoRoles],
+    [activeRoles, selectedDerivedRoles],
   );
   // Every request acts as the selected roles: the server reads rights from them, as these gates do.
   useEffect(() => setActingRoles(actingRoles), [actingRoles]);
@@ -418,8 +421,8 @@ export function AuthProvider({
     else setStored("provisa_role", (r as Role).id, { global: true });
   }
 
-  function togglePseudoRole(id: string) {
-    setPickedPseudo((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
+  function toggleDerivedRole(id: string) {
+    setPickedDerived((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
   }
 
   function selectDomain(domain: string | null) {
@@ -472,9 +475,9 @@ export function AuthProvider({
         selectedRole,
         selectedDomain,
         selectRole,
-        pseudoRoles,
-        selectedPseudoRoles,
-        togglePseudoRole,
+        derivedRoles,
+        selectedDerivedRoles,
+        toggleDerivedRole,
         actingRoles,
         selectDomain,
         availableRoles,

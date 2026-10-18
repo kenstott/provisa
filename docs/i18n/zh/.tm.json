@@ -2,7 +2,7 @@
   "index.md": "4e0478051a707c558954cf06d6662bfd075a2828ddf8c3c33b0b3c85e6518e8a",
   "quickstart.md": "03d442441ed339c6b0d9a5ef40916f7a4f3ee41ef719ae305f20c8a97593e266",
   "architecture.md": "67fa6bf2248956978e8721a0e907e7613c6c721351f9e09ba05382c0d47d1232",
-  "security.md": "4232908a9500864c4bb841cddda9b9b7cf0af93fa05f042443f9492ad490dd5f",
+  "security.md": "90d27421bcbea640231252a226c454dd311624200d249d8b386cd52787522fad",
   "subscriptions.md": "1d08aba4f026b68a466d32ef313d7584ab2d3aa53ec7b0b8eb94f4ccf2a6e9b8",
   "integrations.md": "f08b2f45f9ee23d3e44c4c4e18efd0a06d6dd56f093f379f70f177801302e629",
   "admin.md": "2558f4f7fe3b96e6ff50117855ce62e76f22b0105d0de424a3116df860be2447",
@@ -15,9 +15,9 @@
   "domain-principles.md": "44304b8e02c8aacc2ebae9c7258e5db363fd459fcde1f28e7672dd4435f42eff",
   "migration/hasura-ddn.md": "71e83d26dd688d68c72b64eba3dd95c6e7d305b0c313c65e6140eeb9013c9e9a",
   "migration/hasura-v2.md": "41481ef03ad22d1d2af20ee6d7437bdfcb5a2ac0360258af0d4d5f0e26179227",
-  "configuration.md": "30b1421046671f6f1f9fe007f1735c72bf21a4f1502dea162db5096af8edda1e",
+  "configuration.md": "87cd5de61699d6fdca1d56cc4309ca6be59bfcca5aec32f39be516e70b0840f3",
   "api-reference.md": "b36e1dcae81be7cbf88319451e2d39f3deed50f8d48faf73652f94bc72235500",
-  "sources.md": "61cc03b4f87d8b760b833a05fcf1b9e9ea2b9888e4c67ba666e7a51a6a597210",
+  "sources.md": "978dcbf7cc38c000a016b24faa50eef2ffa866ee5e36bb803ff0535a4c6fd5db",
   "python-client.md": "4781626775e1c98b8c375fcfe98ceb3369d9ac9692b126b6b740bd27150580f7",
   "deployment.md": "da7e3e31f788480612a479e19677d8042ad384233d3f023cceec7d4251840a90",
   "commands.md": "04d2e1ef9c027dd42917858380d52b38c70479c2486714f32ad19eafab86d86c",
@@ -30,5 +30,5 @@
   "admin-graphql.md": "ecc93cf0baa0e6d2f0c515e867b2733d43bc1140bee7392397eaca0aee61ef0e",
   "replicas.md": "a268c0f79aea8ca50c2ad746cca6503b089e5ab49e34268e4ef85e8fa5bc2d13",
   "sizing.md": "c8c6f94e2ad84a9b9889f4fef2cf56c721bac02f8afa398511446e759615bcf0",
-  "regions.md": "abc4b60c696e25f2ab57b0fb9ee0eef3a970b6f0e319fa0be243cc31c9f6e291"
+  "regions.md": "265dc758bb8da8ed4e9681c4d521cae68e1a04dacaee822c1643594d17b830d0"
 }

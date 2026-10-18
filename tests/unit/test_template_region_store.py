@@ -43,7 +43,7 @@ _SEED = {
     "sources": [],
     "domains": [{"id": "retail"}],
     "tables": [],
-    "roles": [{"id": "admin", "capabilities": [], "domain_access": ["*"]}],
+    "roles": [{"id": "admin", "description": "Test role.", "capabilities": [], "domain_access": ["*"]}],
 }  # fmt: skip
 
 

@@ -95,6 +95,7 @@ def _create_rest(c: httpx.Client, role_id: str, parent: str | None = None) -> No
         "/admin/roles/",
         json={
             "id": role_id,
+            "description": "Test role.",
             "capabilities": ["query_development"],
             "domain_access": ["*"],
             "parent_role_id": parent,

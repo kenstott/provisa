@@ -54,9 +54,15 @@ def server():
             "tables": [orders],
             # org_admin is reserved (REQ-1349): a config may not define it.
             "roles": [
-                {"id": "analyst", "capabilities": reads, "domain_access": ["*"]},
+                {
+                    "id": "analyst",
+                    "description": "Test role.",
+                    "capabilities": reads,
+                    "domain_access": ["*"],
+                },
                 {
                     "id": "steward",
+                    "description": "Test role.",
                     "capabilities": [*reads, "table_registration"],
                     "domain_access": ["*"],
                 },

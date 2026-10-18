@@ -427,6 +427,7 @@ roles:
   - pet-store
   - shelter
   id: analyst
+  description: "Queries the pet store's and the shelter's data."
 server:
   limits:
     default_row_limit: 100

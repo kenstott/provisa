@@ -39,6 +39,7 @@ naming:
   rules: []
 roles:
 - id: analyst
+  description: "Queries the insurer's book and the public risk tables."
   capabilities:
   - query_development
   domain_access:

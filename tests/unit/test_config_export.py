@@ -546,12 +546,20 @@ async def test_a_role_with_empty_lists_exports_a_config_the_loader_accepts():
         roles=[
             {
                 "id": "platform_admin",
+                "description": "Test role.",
                 "capabilities": ["platform_settings", "cross_org"],
                 "domain_access": [],
             },
-            {"id": "bare", "capabilities": [], "domain_access": ["sales"]},
+            {
+                "id": "bare",
+                "description": "Test role.",
+                "capabilities": [],
+                "domain_access": ["sales"],
+            },
         ],
     )
-    assert cfg["roles"] == [{"id": "bare", "capabilities": [], "domain_access": ["sales"]}]
+    assert cfg["roles"] == [
+        {"id": "bare", "description": "Test role.", "capabilities": [], "domain_access": ["sales"]}
+    ]
     for role in cfg["roles"]:
         Role.model_validate(role)

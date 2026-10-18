@@ -26,7 +26,7 @@
     "coveredBy": "Geen lezer bereikt deze regel: voor elk van hen geldt eerst regel {{n}}.",
     "unlistedUnmasked": "Lezers die deze lijst niet noemt, zien de kolom ongemaskeerd. Voeg als laatste een regel voor iedereen toe om hem voor hen te maskeren.",
     "checkLabel": "Toegang controleren",
-    "checkPlaceholder": "Kies of typ rollen en claimrollen",
+    "checkPlaceholder": "Kies of typ rollen en afgeleide rollen",
     "applies": "Regel {{n}} is van toepassing",
     "appliesNone": "Geen regel van toepassing: ongemaskeerd",
     "none": "Geen",

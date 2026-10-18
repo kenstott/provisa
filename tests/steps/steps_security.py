@@ -122,7 +122,7 @@ def _build_tables() -> list[dict]:
 @given("a user without rights to a table or column")
 def user_without_rights(shared_data: dict) -> None:
     # analyst can only access the 'sales' domain and only a subset of columns.
-    shared_data["role"] = {"id": "analyst", "domain_access": ["sales"]}
+    shared_data["role"] = {"id": "analyst", "description": "Test role.", "domain_access": ["sales"]}
     shared_data["catalog"] = _build_tables()
     # Sanity: the role genuinely lacks rights to at least one table/column.
     assert not is_column_visible(shared_data["catalog"][0], "amount", "analyst")
@@ -213,8 +213,13 @@ def query_with_restricted_rights(shared_data: dict) -> None:
 
     # RLS rules: analyst is restricted to their region.
     shared_data["rls_rules"] = [
-        {"table_id": 1, "role_id": "analyst", "filter_expr": "region = 'us'"},
-        {"table_id": 1, "role_id": "admin", "filter_expr": "1=1"},
+        {
+            "description": "Test rule.",
+            "table_id": 1,
+            "role_id": "analyst",
+            "filter_expr": "region = 'us'",
+        },
+        {"description": "Test rule.", "table_id": 1, "role_id": "admin", "filter_expr": "1=1"},
     ]
 
     # The (naive) compiled query a user might submit, selecting all columns.
@@ -321,7 +326,7 @@ def query_with_masked_predicate(shared_data: dict) -> None:
     shared_data["ctx"] = ctx
 
     # Domain access '*' so V001 doesn't pre-empt V005 — we want to exercise V005.
-    shared_data["role"] = {"id": "analyst", "domain_access": ["*"]}
+    shared_data["role"] = {"id": "analyst", "description": "Test role.", "domain_access": ["*"]}
 
     # A binary-search style filter on a masked column — the attack V005 blocks.
     shared_data["where_sql"] = "SELECT id FROM users WHERE email = 'victim@example.com'"
@@ -390,7 +395,7 @@ def rejected_via_v005(shared_data: dict) -> None:
 def role_without_full_results(shared_data: dict) -> None:
     # An ordinary role carrying no capabilities at all — definitively lacks
     # FULL_RESULTS and must therefore receive the default row cap.
-    role = {"id": "viewer", "capabilities": [], "domain_access": ["*"]}
+    role = {"id": "viewer", "description": "Test role.", "capabilities": [], "domain_access": ["*"]}
     assert not has_capability(role, Capability.FULL_RESULTS)
     shared_data["role"] = role
 
@@ -401,7 +406,11 @@ def role_without_full_results(shared_data: dict) -> None:
     shared_data["expected_cap"] = cap
 
     # A FULL_RESULTS role is the negative control: it must receive NO cap.
-    privileged = {"id": "power", "capabilities": [Capability.FULL_RESULTS.value]}
+    privileged = {
+        "id": "power",
+        "description": "Test role.",
+        "capabilities": [Capability.FULL_RESULTS.value],
+    }
     assert has_capability(privileged, Capability.FULL_RESULTS)
     assert resolve_row_cap(privileged) is None
     shared_data["privileged_role"] = privileged
@@ -913,9 +922,14 @@ def role_specific_masks_applied(shared_data: dict) -> None:
 def role_with_specific_capability(shared_data: dict) -> None:
     shared_data["role_qd"] = {
         "id": "developer",
+        "description": "Test role.",
         "capabilities": [Capability.QUERY_DEVELOPMENT.value],
     }
-    shared_data["role_admin"] = {"id": "root", "capabilities": ALL_DATA_CAPABILITIES}
+    shared_data["role_admin"] = {
+        "id": "root",
+        "description": "Test role.",
+        "capabilities": ALL_DATA_CAPABILITIES,
+    }
     assert has_capability(shared_data["role_qd"], Capability.QUERY_DEVELOPMENT)
     assert not has_capability(shared_data["role_qd"], Capability.SOURCE_REGISTRATION)
 
@@ -1011,6 +1025,7 @@ def two_remote_same_source_tables(shared_data: dict) -> None:
     shared_data["gov_747"] = gov
     shared_data["role_747"] = {
         "id": "admin",
+        "description": "Test role.",
         "capabilities": ALL_DATA_CAPABILITIES,
         "domain_access": ["*"],
     }

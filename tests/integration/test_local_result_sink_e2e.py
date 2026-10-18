@@ -73,6 +73,7 @@ def start_server(work: Path):
         "roles": [
             {
                 "id": _ROLE,
+                "description": "Test role.",
                 "capabilities": ["query_development", "full_results"],
                 "domain_access": ["store"],
             }

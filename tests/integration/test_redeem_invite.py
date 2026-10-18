@@ -127,7 +127,7 @@ def planes(monkeypatch):
         model_db=tenant_db,
         tenant_db=tenant_db,
         record_db=tenant_db,
-        roles={"org_admin": {"id": "org_admin", "capabilities": []}},
+        roles={"org_admin": {"id": "org_admin", "description": "Test role.", "capabilities": []}},
     )
 
     async def _org_runtime(org_id: str, _env: str | None = None):

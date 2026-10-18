@@ -141,7 +141,7 @@ class TestMutations:
                     "query": """
                         mutation {
                             createRole(input: {
-                                id: "test-role",
+                                id: "test-role", description: "Test role.",
                                 capabilities: ["query_development"],
                                 domainAccess: ["sales-analytics"]
                             }) { success }

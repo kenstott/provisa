@@ -61,7 +61,12 @@ def server():
             "tables": [orders],
             "roles": base["roles"]
             + [
-                {"id": r, "capabilities": ["query_development"], "domain_access": ["*"]}
+                {
+                    "id": r,
+                    "description": "Test role.",
+                    "capabilities": ["query_development"],
+                    "domain_access": ["*"],
+                }
                 for r in _NEW_ROLES
             ],
             "tags": [{"id": "regional", "applies_to": ["table"]}],
@@ -73,10 +78,30 @@ def server():
                 }
             ],
             "rls_rules": [
-                {"tag_id": "regional", "role_id": "tag_east", "filter": "region = 'east'"},
-                {"tag_id": "regional", "role_id": "tag_and_table", "filter": "region = 'east'"},
-                {"table_id": "orders", "role_id": "tag_and_table", "filter": "id > 1"},
-                {"domain_id": "sales", "role_id": "domain_west", "filter": "region = 'west'"},
+                {
+                    "description": "Test rule.",
+                    "tag_id": "regional",
+                    "role_id": "tag_east",
+                    "filter": "region = 'east'",
+                },
+                {
+                    "description": "Test rule.",
+                    "tag_id": "regional",
+                    "role_id": "tag_and_table",
+                    "filter": "region = 'east'",
+                },
+                {
+                    "description": "Test rule.",
+                    "table_id": "orders",
+                    "role_id": "tag_and_table",
+                    "filter": "id > 1",
+                },
+                {
+                    "description": "Test rule.",
+                    "domain_id": "sales",
+                    "role_id": "domain_west",
+                    "filter": "region = 'west'",
+                },
             ],
         },
         env={"PROVISA_REDIRECT_ENABLED": "false"},

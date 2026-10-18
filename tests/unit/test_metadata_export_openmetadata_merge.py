@@ -103,10 +103,17 @@ def snapshot():
             )
         ],
         roles=[
-            Role(id="analyst", capabilities=[], domain_access=["*"]),
-            Role(id="admin", capabilities=[], domain_access=["*"]),
+            Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"]),
+            Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
         ],
-        rls_rules=[RLSRule(table_id="orders", role_id="analyst", filter="region_id = 'us'")],
+        rls_rules=[
+            RLSRule(
+                table_id="orders",
+                role_id="analyst",
+                filter="region_id = 'us'",
+                description="Test rule.",
+            )
+        ],
     )
     return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 

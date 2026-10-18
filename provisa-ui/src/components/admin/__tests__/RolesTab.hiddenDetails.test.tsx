@@ -18,17 +18,29 @@ vi.mock("../../../api/admin", async (orig) => ({
 
 describe("normalizeRole", () => {
   it("marks a role arriving as an id alone as hidden", () => {
-    expect(normalizeRole({ id: "org_admin" })).toMatchObject({
-      id: "org_admin",
-      detailsHidden: true,
-    });
-    expect(normalizeRole({ id: "x", capabilities: null, domainAccess: null }).detailsHidden).toBe(
-      true,
+    expect(normalizeRole({ id: "org_admin", description: "What org_admin is for." })).toMatchObject(
+      {
+        id: "org_admin",
+        detailsHidden: true,
+      },
     );
+    expect(
+      normalizeRole({
+        id: "x",
+        description: "What x is for.",
+        capabilities: null,
+        domainAccess: null,
+      }).detailsHidden,
+    ).toBe(true);
   });
 
   it("keeps a full definition and reads either spelling of domain access", () => {
-    const role = normalizeRole({ id: "a", capabilities: ["usage"], domainAccess: ["sales"] });
+    const role = normalizeRole({
+      id: "a",
+      description: "What a is for.",
+      capabilities: ["usage"],
+      domainAccess: ["sales"],
+    });
     expect(role.detailsHidden).toBeUndefined();
     expect(role.capabilities).toEqual(["usage"]);
     expect(role.domain_access).toEqual(["sales"]);
@@ -38,8 +50,13 @@ describe("normalizeRole", () => {
 describe("RolesTab", () => {
   it("shows a hidden role by id with a note and no controls", async () => {
     vi.mocked(api.fetchOrgRoles).mockResolvedValue([
-      normalizeRole({ id: "analyst", capabilities: ["usage"], domain_access: ["sales"] }),
-      normalizeRole({ id: "org_admin" }),
+      normalizeRole({
+        id: "analyst",
+        description: "What analyst is for.",
+        capabilities: ["usage"],
+        domain_access: ["sales"],
+      }),
+      normalizeRole({ id: "org_admin", description: "What org_admin is for." }),
     ]);
     render(<RolesTab orgId="acme" />);
 
@@ -56,7 +73,12 @@ describe("RolesTab", () => {
 
   it("asks before deleting a role, and deletes only on confirm", async () => {
     vi.mocked(api.fetchOrgRoles).mockResolvedValue([
-      normalizeRole({ id: "analyst", capabilities: ["usage"], domain_access: ["sales"] }),
+      normalizeRole({
+        id: "analyst",
+        description: "What analyst is for.",
+        capabilities: ["usage"],
+        domain_access: ["sales"],
+      }),
     ]);
     render(<RolesTab orgId="acme" />);
 

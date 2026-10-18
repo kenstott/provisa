@@ -275,7 +275,8 @@
       "has_dependents": "仍有 {{count}} 个对象引用角色 {{role}}；请先移除这些引用",
       "not_found": "未找到角色",
       "org_selection_required": "需要先选择组织",
-      "already_exists": "角色 '{{role}}' 已存在"
+      "already_exists": "角色 '{{role}}' 已存在",
+      "description_missing": "角色 '{{role}}' 需要说明其用途"
     },
     "schema": {
       "allowed_domains_updated": "已更新数据源 '{{source}}' 的允许域",
@@ -438,7 +439,9 @@
       "role_session_var_name_missing": "会话值需要名称",
       "role_session_var_name_reserved": "'{{name}}' 由请求或节点绑定，不能作为角色的会话值",
       "role_session_var_name_invalid": "会话值名称 '{{name}}' 只能包含字母、数字和下划线，且不能以数字开头",
-      "role_session_var_name_repeated": "会话值 '{{name}}' 被指定了两次"
+      "role_session_var_name_repeated": "会话值 '{{name}}' 被指定了两次",
+      "role_description_missing": "角色 '{{role}}' 需要说明其用途",
+      "rls_rule_description_missing": "行规则需要说明其用途"
     },
     "secrets": {
       "name_refused": "{{name}} 不是 {{service}} 中本组织密钥范围内的名称：名称相对于组织，不能超出组织范围",
@@ -602,11 +605,13 @@
     "engine": {
       "write_conflict": "对同一数据的另一项更改同时被写入。请重试。"
     },
-    "claim_roles": {
-      "name_invalid": "声明类型 '{{name}}' 只能包含字母、数字和下划线，且不能以数字开头",
-      "name_missing": "声明类型需要名称",
-      "name_reserved": "'{{name}}' 在每个请求中由当前操作的身份绑定，不能作为声明类型",
-      "database_not_connected": "数据库未连接"
+    "derived_roles": {
+      "name_invalid": "属性 '{{name}}' 只能包含字母、数字和下划线，且不能以数字开头",
+      "name_missing": "属性需要名称",
+      "name_reserved": "'{{name}}' 在每个请求中都取自执行操作的身份，不能作为属性",
+      "database_not_connected": "数据库未连接",
+      "description_missing": "派生角色需要说明其用途",
+      "not_found": "没有从 {{name}} 派生的角色"
     }
   }
 }

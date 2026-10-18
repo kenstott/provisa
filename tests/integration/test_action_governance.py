@@ -64,7 +64,7 @@ class TestActionRls:
     async def test_rule_over_unknown_column_refused(self, client):
         res = await _admin(
             client,
-            f'''mutation {{ upsertRlsRule(input: {{ actionName: "{ACTION}", roleId: "{ROLE}",
+            f'''mutation {{ upsertRlsRule(input: {{ description: "Test rule.", actionName: "{ACTION}", roleId: "{ROLE}",
                 filterExpr: "regon = 'east'" }}) {{ success message code }} }}''',
         )
         out = res["data"]["upsertRlsRule"]
@@ -75,7 +75,7 @@ class TestActionRls:
     async def test_rule_filters_the_functions_rows(self, client):
         res = await _admin(
             client,
-            f'''mutation {{ upsertRlsRule(input: {{ actionName: "{ACTION}", roleId: "{ROLE}",
+            f'''mutation {{ upsertRlsRule(input: {{ description: "Test rule.", actionName: "{ACTION}", roleId: "{ROLE}",
                 filterExpr: "region = 'east'" }}) {{ success message code }} }}''',
         )
         assert res["data"]["upsertRlsRule"]["success"] is True, res

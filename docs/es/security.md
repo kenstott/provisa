@@ -88,30 +88,42 @@ Los roles pueden heredar de un rol padre mediante `parent_role_id`, definido en 
 ```yaml
 roles:
   - id: basic_user
+    description: Queries the public domain.
     capabilities: [query_development]
     domain_access: [public]
   - id: analyst
+    description: Analyses sales; reads full results.
     capabilities: [full_results]
     domain_access: [sales, analytics]
     parent_role_id: basic_user   # inherits query_development + public domain
 ```
-## Roles: concedidos, pseudo y meta {: #roles-granted-pseudo-and-meta }
+## Roles: concedidos, derivados y meta {: #roles-granted-derived-and-meta }
 
-Tres tipos de rol funcionan juntos en el modelo de acceso de Provisa.
+Tres tipos de rol funcionan juntos en el modelo de acceso de Provisa. La página Roles lista los dos primeros juntos; un meta-rol nunca se lista.
 
 ### Roles concedidos {: #granted-roles }
 
 Un rol concedido se asigna directamente a un usuario. Tiene derechos: capacidades, acceso por dominio, entradas de enmascaramiento, filtros de filas. La herencia (`parent_role_id`) pliega al arrancar los derechos de un antepasado en el hijo. Los derechos solo suman; no hay resta. Para restringir a un lector, conceda a un compuesto que nombre tanto el rol como una condición, o ponga una entrada de máscara antes de la permisiva. (REQ-215, REQ-1677)
 
-### Pseudo-roles
+### Roles derivados {: #derived-roles }
 
-Un pseudo-rol se deriva de los atributos de un usuario. La organización declara qué tipos de atributo se convierten en roles (`claim_roles`). Para cada tipo declarado `t` cuyo valor `v` aportan los atributos del usuario, el usuario tiene el rol padre `t` y su subrol `t__v`. Sin valor, no tiene ninguno de los dos roles.
+Un rol derivado procede de los atributos de un usuario. La organización declara qué atributos se convierten en roles (`derived_roles`), cada uno con una descripción. Para cada atributo declarado `a` cuyo valor `v` aportan los atributos del usuario, el usuario tiene el rol padre `a` y su rol de valor `a__v`: `region = eu` da `region` y `region__eu`. Sin valor, no tiene ninguno de los dos roles.
 
 La resolución de atributos importa. El registro propio de la organización sobre un miembro prevalece sobre lo que aporta el proveedor de identidad: si ambos nombran el mismo atributo, se usa el valor de la organización y el del proveedor se marca como sustituido.
 
-Los pseudo-roles no llevan derechos y nunca se asignan a mano. Una lista de concesión los nombra exactamente como nombra un rol concedido; una solicitud los nombra en `X-Provisa-Role` y actúa como ellos. (REQ-2057)
+Los roles derivados no llevan derechos y nunca se asignan a mano. Una lista de concesión, una máscara o una regla de filas los nombra exactamente como nombra un rol concedido; una solicitud los nombra en `X-Provisa-Role` y actúa como ellos. (REQ-2057)
 
-Piense en un JWT: sus claims son hechos sobre la persona. Los pseudo-roles convierten hechos elegidos en roles, de modo que una concesión puede dirigirse a ellos sin crear un rol por combinación.
+En la página Roles, cada atributo declarado es un rol padre marcado como *derivado*, con sus roles de valor listados debajo a medida que se ven sus valores. **+ Rol → Derivado de un atributo** declara uno. Su panel muestra el atributo, su descripción, los valores vistos hasta ahora y cada máscara, regla de filas y concesión que lo nombra a él o a uno de sus roles de valor. No tiene controles de concesión. La descripción de un rol de valor se genera: "Se tiene cuando el region del usuario es eu". (REQ-2078, REQ-2079)
+
+Declárelos en la configuración como una lista:
+
+```yaml
+derived_roles:
+- attribute: region
+  description: The subsidiary a member works for; region__eu marks EU staff.
+```
+
+Piense en un JWT: sus claims son hechos sobre la persona. Los roles derivados convierten hechos elegidos en roles, de modo que una concesión puede dirigirse a ellos sin crear un rol por combinación.
 
 ### Meta-roles
 
@@ -121,7 +133,13 @@ Los derechos son la unión de los de cada miembro. Los filtros de filas son el O
 
 Las columnas de cada fila se enmascaran y muestran según los roles cuyo filtro de filas admitió esa fila: de esos roles se aplica la lectura menos restrictiva de la columna, y un rol que no admitió la fila no aporta nada a cómo se lee. Las máscaras se aplican donde se lee la tabla, antes de cualquier join o agregación, de modo que una agregación lee los valores enmascarados. Las escrituras se comprueban del mismo modo: una columna se escribe en una fila solo donde un rol que concede esa columna admite la fila. (REQ-1620)
 
-El registro de auditoría nombra cada rol que actúa, no el id del meta-rol.
+El registro de auditoría nombra cada rol que actúa, no el id del meta-rol. Como un meta-rol nunca se guarda, no tiene descripción propia: dondequiera que se muestre una, su descripción es la de sus miembros, cada id con la suya. (REQ-2080)
+
+### Descripciones {: #descriptions }
+
+Cada rol y cada regla de filas dice para qué sirve. Una revisión de acceso lee quién puede ver qué y por qué. Un rol o una regla que nadie sabe explicar es uno que nadie puede revisar, así que la descripción es obligatoria: un rol, un rol padre derivado o una regla de filas con la descripción vacía es rechazado por la carga de configuración, la API de administración y la UI, con el motivo. Las listas Roles y Reglas de filas muestran cada descripción, y sus paneles de detalle la muestran y la editan. (REQ-2080, REQ-2081)
+
+Un rol tiene una descripción, no una por dominio. Si un rol general no describe sus responsabilidades dentro de un dominio concreto, ese dominio necesita un rol propio, normalmente un hijo del rol general (`parent_role_id`), que hereda sus derechos y describe lo que hace allí.
 
 ### Cómo nombra roles una solicitud {: #how-a-request-names-roles }
 
@@ -129,7 +147,7 @@ Un cliente envía un rol, o un conjunto separado por comas, en `X-Provisa-Role`.
 
 Los derechos y los datos siguen solo a los roles con los que actúa la solicitud: tener un rol no es actuar como él. Un rol es ese rol; dos o más actúan como su meta-rol. Un rol que actuara trayendo consigo los derechos de cada rol que se tiene no significaría nada, así que una solicitud obtiene el mínimo privilegio y el registro de auditoría nombra exactamente lo que actuó.
 
-Los pseudo-roles nombrados entran como calificadores. Un calificador no tiene derechos, acceso por dominio, máscaras ni filtros de filas propios, así que no es miembro de los derechos del meta-rol: como miembro sin máscaras desenmascararía todas las columnas, y como uno que no lee ninguna tabla acabaría con cualquier OR de filtros de filas. Entra solo en las concesiones: una concesión o entrada de máscara que nombra `region__eu` alcanza a una solicitud que nombra ese calificador junto con un rol concedido. (REQ-2057)
+Los roles derivados nombrados entran como calificadores. Un calificador no tiene derechos, acceso por dominio, máscaras ni filtros de filas propios, así que no es miembro de los derechos del meta-rol: como miembro sin máscaras desenmascararía todas las columnas, y como uno que no lee ninguna tabla acabaría con cualquier OR de filtros de filas. Entra solo en las concesiones: una concesión o entrada de máscara que nombra `region__eu` alcanza a una solicitud que nombra ese calificador junto con un rol concedido. (REQ-2057)
 
 Un agente MCP nunca actúa más allá de los roles que se le dieron. Un agente remoto solo nombra roles que posee el principal de su token. Un agente local por stdio solo nombra roles dentro del conjunto fijado en `mcp.role` (`PROVISA_MCP_ROLE`), y actúa como ese conjunto cuando no nombra ninguno; cualquier otro rol se rechaza por su nombre. (REQ-2075)
 
@@ -143,9 +161,9 @@ Un agente MCP nunca actúa más allá de los roles que se le dieron. Un agente r
 
 ### Reglas de columna ABAC como RBAC simple {: #abac-column-rules-as-plain-rbac }
 
-Una política basada en atributos pregunta: "¿puede este usuario, con estos atributos, ver esta columna?" RBAC pregunta: "¿qué roles pueden ver esta columna?" Las concesiones compuestas y los pseudo-roles las convierten en la misma pregunta.
+Una política basada en atributos pregunta: "¿puede este usuario, con estos atributos, ver esta columna?" RBAC pregunta: "¿qué roles pueden ver esta columna?" Las concesiones compuestas y los roles derivados las convierten en la misma pregunta.
 
-"Desenmascarar este correo solo para un analista en la UE" es una entrada de máscara `{to: [analyst+region__eu], mask: null}`. Cualquier lector que tenga tanto el rol `analyst` como el pseudo-rol `region__eu` lee la columna sin enmascarar. Sin lenguaje de políticas. Sin un rol por combinación.
+"Desenmascarar este correo solo para un analista en la UE" es una entrada de máscara `{to: [analyst+region__eu], mask: null}`. Cualquier lector que tenga tanto el rol `analyst` como el rol derivado `region__eu` lee la columna sin enmascarar. Sin lenguaje de políticas. Sin un rol por combinación.
 
 La contrapartida es cálculo en lugar de enumeración. Un catálogo de roles pequeño mantiene bajo el mantenimiento, pero "¿quién puede ver este correo de la UE?" pasa a ser una respuesta calculada: las entradas compuestas se evalúan contra las asignaciones y los claims de cada usuario. Provisa puede responder en ambas direcciones porque el modelo es una sola definición. La comprobación de acceso del editor de columnas (`POST /admin/masks/check`) ejecuta esa evaluación para un conjunto de roles elegido.
 
@@ -286,6 +304,7 @@ rls_rules:
   - table_id: orders
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
+    description: Analysts read only their own region's orders.
 ```
 El filtro se añade con AND a la cláusula WHERE de la consulta. Funciona tanto en consultas como en mutaciones (UPDATE/DELETE). (REQ-035, REQ-041)
 
@@ -311,7 +330,7 @@ La expresión de máscara se lleva a la proyección SQL SELECT. La base de datos
 
 **Denegar por orden.** Una entrada anterior gana aunque el lector tenga también una posterior más permisiva. Para que los contratistas vean siempre un salario enmascarado, tengan los demás roles que tengan, ponga la entrada de contratistas antes de la entrada sin máscara. Un rol concedido nunca pierde lo que su padre concede por herencia, pero una entrada de máscara situada antes en la lista se aplica primero: así funciona la restricción aquí.
 
-**Meta-roles.** La cadena de un meta-rol incluye los roles de cada miembro, sus antepasados y los pseudo-roles nombrados. Una entrada concedida a cualquier miembro alcanza al meta-rol. Una entrada anterior, que tiene otro miembro, se sigue aplicando primero.
+**Meta-roles.** La cadena de un meta-rol incluye los roles de cada miembro, sus antepasados y los roles derivados nombrados. Una entrada concedida a cualquier miembro alcanza al meta-rol. Una entrada anterior, que tiene otro miembro, se sigue aplicando primero.
 
 **Comprobar el acceso.** `POST /admin/masks/check` acepta una lista de máscaras y un conjunto opcional de roles, y devuelve qué entrada se aplica para esos roles más las entradas que ningún lector puede alcanzar. Protegido por `masking_config`.
 

@@ -114,7 +114,14 @@ def _config(naming: dict, domains: list, table_domain: str) -> dict:
                 "columns": [{"name": "id", "data_type": "integer", "visible_to": ["admin"]}],
             }
         ],
-        "roles": [{"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}],
+        "roles": [
+            {
+                "id": "admin",
+                "description": "Test role.",
+                "capabilities": ALL_DATA_CAPABILITIES,
+                "domain_access": ["*"],
+            }
+        ],
     }
 
 

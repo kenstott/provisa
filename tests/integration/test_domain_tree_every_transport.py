@@ -75,11 +75,21 @@ def server():
             "tables": [orders, depots],
             "roles": base["roles"]
             + [
-                {"id": role, "capabilities": ["query_development"], "domain_access": [domain]}
+                {
+                    "id": role,
+                    "description": "Test role.",
+                    "capabilities": ["query_development"],
+                    "domain_access": [domain],
+                }
                 for role, domain in _NEW_ROLES.items()
             ],
             "rls_rules": [
-                {"domain_id": "retail", "role_id": "bu_filtered", "filter": "region = 'east'"},
+                {
+                    "description": "Test rule.",
+                    "domain_id": "retail",
+                    "role_id": "bu_filtered",
+                    "filter": "region = 'east'",
+                },
             ],
         },
         env={"PROVISA_REDIRECT_ENABLED": "false"},

@@ -136,7 +136,12 @@ def server(emulator, tmp_path_factory):
         "cache": {"enabled": False},
         "domains": [{"id": "shop", "description": "cosmos e2e"}],
         "roles": [
-            {"id": _ANALYST, "capabilities": ["query_development"], "domain_access": ["shop"]}
+            {
+                "id": _ANALYST,
+                "description": "Test role.",
+                "capabilities": ["query_development"],
+                "domain_access": ["shop"],
+            }
         ],
         "sources": [
             {

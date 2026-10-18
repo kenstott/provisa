@@ -297,7 +297,7 @@ class TestBoltLabelMapCeiling:
             {"domain_id": "hr", "columns": [{"column_name": "id", "visible_to": ["analyst"]}]},
             {"domain_id": "finance", "columns": [{"column_name": "id", "visible_to": ["analyst"]}]},
         ]
-        role = {"id": "analyst", "domain_access": ["sales"]}
+        role = {"id": "analyst", "description": "Test role.", "domain_access": ["sales"]}
         result = visible_tables(tables, role)
         domains_visible = {t["domain_id"] for t in result}
 
@@ -313,7 +313,7 @@ class TestBoltLabelMapCeiling:
             {"domain_id": "sales", "columns": [{"column_name": "id", "visible_to": ["admin"]}]},
             {"domain_id": "hr", "columns": [{"column_name": "id", "visible_to": ["admin"]}]},
         ]
-        role = {"id": "admin", "domain_access": ["*"]}
+        role = {"id": "admin", "description": "Test role.", "domain_access": ["*"]}
         result = visible_tables(tables, role)
         domains_visible = {t["domain_id"] for t in result}
 
@@ -331,12 +331,21 @@ class TestBoltLabelMapCeiling:
             {"domain_id": "sales", "columns": [{"column_name": "id", "visible_to": ["admin"]}]},
             {"domain_id": "hr", "columns": [{"column_name": "id", "visible_to": ["admin"]}]},
         ]
-        assert visible_tables(tables, {"id": "admin", "domain_access": []}) == []
+        assert (
+            visible_tables(
+                tables, {"id": "admin", "description": "Test role.", "domain_access": []}
+            )
+            == []
+        )
 
-        everything = visible_tables(tables, {"id": "admin", "domain_access": ["*"]})
+        everything = visible_tables(
+            tables, {"id": "admin", "description": "Test role.", "domain_access": ["*"]}
+        )
         assert {t["domain_id"] for t in everything} == {"sales", "hr"}
 
-        only_sales = visible_tables(tables, {"id": "admin", "domain_access": ["sales"]})
+        only_sales = visible_tables(
+            tables, {"id": "admin", "description": "Test role.", "domain_access": ["sales"]}
+        )
         assert {t["domain_id"] for t in only_sales} == {"sales"}
 
     def test_single_domain_mode_reaches_the_one_domain_whatever_the_list(self, monkeypatch):
@@ -347,7 +356,14 @@ class TestBoltLabelMapCeiling:
         tables = [
             {"domain_id": "default", "columns": [{"column_name": "id", "visible_to": ["admin"]}]},
         ]
-        assert len(visible_tables(tables, {"id": "admin", "domain_access": []})) == 1
+        assert (
+            len(
+                visible_tables(
+                    tables, {"id": "admin", "description": "Test role.", "domain_access": []}
+                )
+            )
+            == 1
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -122,6 +122,21 @@
           — a ticket number, a break-glass approval, a time window — enters the decision.
         </p>
 
+        <h2>Roles from attributes, and roles that explain themselves</h2>
+        <p>
+          A derived role comes from a user's attribute: <code>region = eu</code> makes the
+          user hold <code>region</code> and <code>region__eu</code>. Derived roles carry no
+          rights and are never granted by hand; masks, row rules and grants name them like any
+          role. Where the organization's record of a member and the identity provider disagree,
+          the organization's record wins.
+        </p>
+        <p>
+          Every role and every row rule carries a required description of what it is for, so
+          an access review reads the reason beside the rule. A role that means something
+          different in one domain becomes a new role there, usually a child of the general
+          one, with its own description.
+        </p>
+
         <h2>Relationships are governed too</h2>
         <p>
           A JOIN, or a graph traversal, is legal only if it matches a registered, approved

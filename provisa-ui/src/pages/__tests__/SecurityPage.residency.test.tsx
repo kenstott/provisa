@@ -13,6 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "../../test-utils/render";
+import { openNewRole } from "../../test-utils/securityRoles";
 
 const upsertRoleSpy = vi.fn();
 const choices = vi.hoisted(() => ({
@@ -31,6 +32,7 @@ vi.mock("../../context/DomainFilterContext", () => ({
 const RESIDENCY_ROLES = [
   {
     id: "eu_steward",
+    description: "What eu_steward is for.",
     capabilities: [],
     demonstrated: [],
     domain_access: ["sales"],
@@ -59,6 +61,11 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
   useRevokeRoleGrants: () => ({ revokeFromTable: vi.fn(), revokeFromObject: vi.fn() }),
 }));
 
+vi.mock("../../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/admin")>()),
+  fetchDerivedRoles: vi.fn(async () => ({ roles: [], source: "deployment" })),
+}));
+
 import { SecurityRolesPage } from "../SecurityPage";
 
 beforeEach(() => {
@@ -69,7 +76,7 @@ beforeEach(() => {
 
 async function newRole(id: string) {
   render(<SecurityRolesPage />);
-  fireEvent.click(await screen.findByTestId("toggle-role-form"));
+  await openNewRole();
   fireEvent.change(screen.getByTestId("role-id-input"), { target: { value: id } });
   fireEvent.click(screen.getByRole("textbox", { name: "Domain Access" }));
   fireEvent.click(await screen.findByRole("option", { name: "sales", hidden: true }));

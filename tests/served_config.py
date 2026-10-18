@@ -12,7 +12,7 @@
 without booting it.
 
 A booted node loads its config before the first request (``_load_and_build``), and every request
-reads what it declares -- the claim types its pseudo-roles come from (REQ-2057) among them. A test
+reads what it declares -- the claim types its derived roles come from (REQ-2057) among them. A test
 that wires the app state by hand gives it this: a deployment that declares nothing of its own.
 """
 
@@ -23,7 +23,7 @@ from typing import Any
 
 def served_config(**declared: Any):
     """A parsed config with no sources, domains, tables or roles, plus whatever ``declared``
-    adds (``multitenancy=True``, ``claim_roles=[...]``)."""
+    adds (``multitenancy=True``, ``derived_roles=[...]``)."""
     from provisa.core.config_loader import parse_config_dict
 
     return parse_config_dict({"sources": [], "domains": [], "tables": [], "roles": [], **declared})

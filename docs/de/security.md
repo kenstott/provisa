@@ -88,30 +88,42 @@ Rollen können über `parent_role_id` von einer übergeordneten Rolle erben, ges
 ```yaml
 roles:
   - id: basic_user
+    description: Queries the public domain.
     capabilities: [query_development]
     domain_access: [public]
   - id: analyst
+    description: Analyses sales; reads full results.
     capabilities: [full_results]
     domain_access: [sales, analytics]
     parent_role_id: basic_user   # inherits query_development + public domain
 ```
-## Rollen: gewährt, pseudo und meta {: #roles-granted-pseudo-and-meta }
+## Rollen: gewährt, abgeleitet und meta {: #roles-granted-derived-and-meta }
 
-Drei Arten von Rollen wirken im Zugriffsmodell von Provisa zusammen.
+Drei Arten von Rollen wirken im Zugriffsmodell von Provisa zusammen. Die Seite Rollen listet die ersten beiden gemeinsam auf; eine Meta-Rolle wird nie gelistet.
 
 ### Gewährte Rollen {: #granted-roles }
 
 Eine gewährte Rolle wird einem Benutzer direkt zugewiesen. Sie hält Rechte: Capabilities, Domänenzugriff, Maskierungseinträge, Zeilenfilter. Die Vererbung (`parent_role_id`) faltet beim Start die Rechte eines Vorfahren in das Kind. Rechte kommen nur hinzu; es gibt keine Subtraktion. Um einen Leser einzuschränken, gewähren Sie einem Kompositum, das sowohl die Rolle als auch eine Bedingung nennt, oder setzen Sie einen Maskeneintrag vor den freizügigen. (REQ-215, REQ-1677)
 
-### Pseudo-Rollen {: #pseudo-roles }
+### Abgeleitete Rollen {: #derived-roles }
 
-Eine Pseudo-Rolle wird aus den Attributen eines Benutzers abgeleitet. Die Org deklariert, welche Attributtypen zu Rollen werden (`claim_roles`). Für jeden deklarierten Typ `t`, dessen Wert `v` die Attribute des Benutzers liefern, hält der Benutzer die Elternrolle `t` und ihre Unterrolle `t__v`. Kein Wert bedeutet keine der beiden Rollen.
+Eine abgeleitete Rolle stammt aus den Attributen eines Benutzers. Die Org deklariert, welche Attribute zu Rollen werden (`derived_roles`), jedes mit einer Beschreibung. Für jedes deklarierte Attribut `a`, dessen Wert `v` die Attribute des Benutzers liefern, hält der Benutzer die Elternrolle `a` und ihre Wertrolle `a__v`: `region = eu` ergibt `region` und `region__eu`. Kein Wert bedeutet keine der beiden Rollen.
 
 Die Auflösung der Attribute zählt. Die eigene Aufzeichnung der Org über ein Mitglied hat Vorrang vor dem, was der Identity Provider liefert: Nennen beide dasselbe Attribut, wird der Wert der Org verwendet, und der des Providers wird als überschrieben markiert.
 
-Pseudo-Rollen tragen keine Rechte und werden nie von Hand zugewiesen. Eine Freigabeliste nennt sie genau so, wie sie eine gewährte Rolle nennt; eine Anfrage nennt sie in `X-Provisa-Role` und handelt als sie. (REQ-2057)
+Abgeleitete Rollen tragen keine Rechte und werden nie von Hand zugewiesen. Eine Freigabeliste, eine Maske oder eine Zeilenregel nennt sie genau so, wie sie eine gewährte Rolle nennt; eine Anfrage nennt sie in `X-Provisa-Role` und handelt als sie. (REQ-2057)
 
-Denken Sie an ein JWT: Seine Claims sind Fakten über die Person. Pseudo-Rollen machen ausgewählte Fakten zu Rollen, sodass eine Freigabe sie ansprechen kann, ohne für jede Kombination eine Rolle anzulegen.
+Auf der Seite Rollen ist jedes deklarierte Attribut eine Elternrolle mit der Markierung *abgeleitet*; ihre Wertrollen werden darunter aufgelistet, sobald ihre Werte auftreten. **+ Rolle → Aus Attribut abgeleitet** deklariert eine. Ihr Panel zeigt das Attribut, seine Beschreibung, die bisher gesehenen Werte und jede Maske, Zeilenregel und Freigabe, die es oder eine seiner Wertrollen nennt. Es hat keine Freigabe-Steuerelemente. Die Beschreibung einer Wertrolle wird erzeugt: „Gehalten, wenn region des Benutzers eu ist“. (REQ-2078, REQ-2079)
+
+Deklarieren Sie sie in der Konfiguration als Liste:
+
+```yaml
+derived_roles:
+- attribute: region
+  description: The subsidiary a member works for; region__eu marks EU staff.
+```
+
+Denken Sie an ein JWT: Seine Claims sind Fakten über die Person. Abgeleitete Rollen machen ausgewählte Fakten zu Rollen, sodass eine Freigabe sie ansprechen kann, ohne für jede Kombination eine Rolle anzulegen.
 
 ### Meta-Rollen {: #meta-roles }
 
@@ -121,7 +133,13 @@ Die Rechte sind die Vereinigung der Rechte aller Mitglieder. Zeilenfilter sind d
 
 Die Spalten jeder Zeile werden nach den Rollen maskiert und gezeigt, deren Zeilenfilter diese Zeile zugelassen hat: Von diesen Rollen gilt die am wenigsten einschränkende Lesart der Spalte, und eine Rolle, die die Zeile nicht zugelassen hat, trägt nichts dazu bei, wie sie gelesen wird. Masken greifen dort, wo die Tabelle gelesen wird, vor jedem Join und jeder Aggregation, sodass eine Aggregation die maskierten Werte liest. Schreibvorgänge werden ebenso geprüft: Eine Spalte wird in einer Zeile nur geschrieben, wo eine Rolle, die diese Spalte gewährt, die Zeile zulässt. (REQ-1620)
 
-Der Audit-Eintrag nennt jede handelnde Rolle, nicht die ID der Meta-Rolle.
+Der Audit-Eintrag nennt jede handelnde Rolle, nicht die ID der Meta-Rolle. Da eine Meta-Rolle nie gespeichert wird, hat sie keine eigene Beschreibung: Wo immer eine angezeigt wird, ist ihre Beschreibung die ihrer Mitglieder, jede ID mit ihrer eigenen. (REQ-2080)
+
+### Beschreibungen {: #descriptions }
+
+Jede Rolle und jede Zeilenregel sagt, wofür sie da ist. Eine Zugriffsprüfung liest, wer was sehen darf und warum. Eine Rolle oder Regel, die niemand erklären kann, kann auch niemand prüfen; deshalb ist die Beschreibung Pflicht: Eine Rolle, eine abgeleitete Elternrolle oder eine Zeilenregel mit leerer Beschreibung wird vom Laden der Konfiguration, von der Admin-API und von der UI abgelehnt, mit Begründung. Die Listen Rollen und Zeilenregeln zeigen jede Beschreibung, und ihre Detail-Panels zeigen und bearbeiten sie. (REQ-2080, REQ-2081)
+
+Eine Rolle hat eine Beschreibung, nicht eine pro Domäne. Beschreibt eine allgemeine Rolle ihre Aufgaben in einer bestimmten Domäne nicht, braucht diese Domäne eine eigene Rolle, meist ein Kind der allgemeinen Rolle (`parent_role_id`), das deren Rechte erbt und beschreibt, was es dort tut.
 
 ### Wie eine Anfrage Rollen nennt {: #how-a-request-names-roles }
 
@@ -129,7 +147,7 @@ Ein Client sendet eine Rolle oder eine kommagetrennte Menge in `X-Provisa-Role`.
 
 Rechte und Daten folgen nur den Rollen, als die die Anfrage handelt: Eine Rolle zu halten heißt nicht, als sie zu handeln. Eine Rolle ist diese Rolle; zwei oder mehr handeln als ihre Meta-Rolle. Eine handelnde Rolle, die die Rechte jeder gehaltenen Rolle mitbrächte, bedeutete nichts; so erhält eine Anfrage das geringste Privileg, und der Audit-Eintrag nennt genau, was gehandelt hat.
 
-Genannte Pseudo-Rollen gehen als Qualifikatoren ein. Ein Qualifikator hat keine eigenen Rechte, keinen Domänenzugriff, keine Masken und keine Zeilenfilter, also ist er kein Mitglied der Rechte der Meta-Rolle: Als Mitglied ohne Masken würde er jede Spalte demaskieren, und als eines, das keine Tabelle liest, würde er jedes OR von Zeilenfiltern beenden. Er geht nur in die Freigaben ein: Eine Freigabe oder ein Maskeneintrag, der `region__eu` nennt, erreicht eine Anfrage, die diesen Qualifikator neben einer gewährten Rolle nennt. (REQ-2057)
+Genannte abgeleitete Rollen gehen als Qualifikatoren ein. Ein Qualifikator hat keine eigenen Rechte, keinen Domänenzugriff, keine Masken und keine Zeilenfilter, also ist er kein Mitglied der Rechte der Meta-Rolle: Als Mitglied ohne Masken würde er jede Spalte demaskieren, und als eines, das keine Tabelle liest, würde er jedes OR von Zeilenfiltern beenden. Er geht nur in die Freigaben ein: Eine Freigabe oder ein Maskeneintrag, der `region__eu` nennt, erreicht eine Anfrage, die diesen Qualifikator neben einer gewährten Rolle nennt. (REQ-2057)
 
 Ein MCP-Agent handelt nie über die Rollen hinaus, die ihm gegeben wurden. Ein entfernter Agent nennt nur Rollen, die der Prinzipal seines Tokens hält. Ein lokaler stdio-Agent nennt nur Rollen innerhalb der in `mcp.role` (`PROVISA_MCP_ROLE`) festgelegten Menge und handelt als diese Menge, wenn er keine nennt; jede andere Rolle wird namentlich abgelehnt. (REQ-2075)
 
@@ -143,9 +161,9 @@ Ein MCP-Agent handelt nie über die Rollen hinaus, die ihm gegeben wurden. Ein e
 
 ### ABAC-Spaltenregeln als einfaches RBAC {: #abac-column-rules-as-plain-rbac }
 
-Eine attributbasierte Richtlinie fragt: „Darf dieser Benutzer mit diesen Attributen diese Spalte sehen?" RBAC fragt: „Welche Rollen dürfen diese Spalte sehen?" Zusammengesetzte Freigaben und Pseudo-Rollen machen daraus dieselbe Frage.
+Eine attributbasierte Richtlinie fragt: „Darf dieser Benutzer mit diesen Attributen diese Spalte sehen?" RBAC fragt: „Welche Rollen dürfen diese Spalte sehen?" Zusammengesetzte Freigaben und abgeleitete Rollen machen daraus dieselbe Frage.
 
-„Diese E-Mail nur für einen Analysten in der EU demaskieren" ist ein Maskeneintrag `{to: [analyst+region__eu], mask: null}`. Jeder Leser, der sowohl die Rolle `analyst` als auch die Pseudo-Rolle `region__eu` hält, liest die Spalte unmaskiert. Keine Richtliniensprache. Keine Rolle pro Kombination.
+„Diese E-Mail nur für einen Analysten in der EU demaskieren" ist ein Maskeneintrag `{to: [analyst+region__eu], mask: null}`. Jeder Leser, der sowohl die Rolle `analyst` als auch die abgeleitete Rolle `region__eu` hält, liest die Spalte unmaskiert. Keine Richtliniensprache. Keine Rolle pro Kombination.
 
 Der Kompromiss ist Berechnung statt Aufzählung. Ein kleiner Rollenkatalog hält den Pflegeaufwand gering, aber „Wer darf diese EU-E-Mail sehen?" wird zu einer berechneten Antwort: Zusammengesetzte Einträge werden gegen die Zuweisungen und Claims jedes Benutzers ausgewertet. Provisa kann das in beide Richtungen beantworten, weil das Modell eine Definition ist. Die Zugriffsprüfung des Spalteneditors (`POST /admin/masks/check`) führt diese Auswertung für eine gewählte Menge von Rollen aus.
 
@@ -286,6 +304,7 @@ rls_rules:
   - table_id: orders
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
+    description: Analysts read only their own region's orders.
 ```
 Der Filter wird per AND in die WHERE-Klausel der Abfrage eingefügt. Funktioniert für Abfragen und Mutationen (UPDATE/DELETE). (REQ-035, REQ-041)
 
@@ -311,7 +330,7 @@ Der Maskenausdruck wird in die SQL-SELECT-Projektion verschoben. Die Datenbank l
 
 **Verweigern durch Reihenfolge.** Ein früherer Eintrag gewinnt, auch wenn der Leser zusätzlich einen späteren, freizügigeren hält. Damit Auftragnehmer ein Gehalt immer maskiert sehen, gleich welche anderen Rollen sie haben, setzen Sie den Eintrag für Auftragnehmer vor den unmaskierten Eintrag. Eine gewährte Rolle verliert nie, was ihr Elternteil über die Vererbung gewährt, aber ein früher in der Liste stehender Maskeneintrag gilt zuerst — so funktioniert Einschränkung hier.
 
-**Meta-Rollen.** Die Kette einer Meta-Rolle umfasst die Rollen jedes Mitglieds, deren Vorfahren und alle genannten Pseudo-Rollen. Ein Eintrag, der irgendeinem Mitglied gewährt ist, erreicht die Meta-Rolle. Ein Eintrag davor, den ein anderes Mitglied hält, gilt weiterhin zuerst.
+**Meta-Rollen.** Die Kette einer Meta-Rolle umfasst die Rollen jedes Mitglieds, deren Vorfahren und alle genannten abgeleiteten Rollen. Ein Eintrag, der irgendeinem Mitglied gewährt ist, erreicht die Meta-Rolle. Ein Eintrag davor, den ein anderes Mitglied hält, gilt weiterhin zuerst.
 
 **Zugriff prüfen.** `POST /admin/masks/check` nimmt eine Maskenliste und eine optionale Menge von Rollen entgegen und liefert, welcher Eintrag für diese Rollen gilt, sowie alle Einträge, die kein Leser erreichen kann. Geschützt durch `masking_config`.
 

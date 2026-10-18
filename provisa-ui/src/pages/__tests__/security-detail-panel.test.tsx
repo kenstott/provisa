@@ -15,6 +15,7 @@
 import { describe, it, expect, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { render, screen, fireEvent, waitFor, within } from "../../test-utils/render";
+import { openNewRole } from "../../test-utils/securityRoles";
 
 const upsertRoleSpy = vi.fn(async (_input: Record<string, unknown>) => ({
   success: true,
@@ -23,6 +24,7 @@ const upsertRoleSpy = vi.fn(async (_input: Record<string, unknown>) => ({
 
 const role = (id: string, detailsHidden = false) => ({
   id,
+  description: `What ${id} is for.`,
   capabilities: [],
   demonstrated: [],
   domain_access: ["sales"],
@@ -31,8 +33,8 @@ const role = (id: string, detailsHidden = false) => ({
 });
 const ROLES = [role("analyst"), role("steward"), role("locked", true)];
 const RULES = [
-  { id: 1, tableId: null, domainId: "sales", actionName: null, roleId: "analyst", filterExpr: "a" },
-  { id: 2, tableId: null, domainId: "sales", actionName: null, roleId: "steward", filterExpr: "b" },
+  { id: 1, tableId: null, domainId: "sales", actionName: null, roleId: "analyst", filterExpr: "a", description: "A" },
+  { id: 2, tableId: null, domainId: "sales", actionName: null, roleId: "steward", filterExpr: "b", description: "B" },
 ];
 
 vi.mock("../../context/DomainFilterContext", () => ({
@@ -59,6 +61,11 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
 }));
 vi.mock("../../api/actions", () => ({
   fetchActions: vi.fn().mockResolvedValue({ functions: [], webhooks: [] }),
+}));
+
+vi.mock("../../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/admin")>()),
+  fetchDerivedRoles: vi.fn(async () => ({ roles: [], source: "deployment" })),
 }));
 
 import { SecurityRolesPage } from "../SecurityPage";
@@ -94,10 +101,10 @@ describe("SecurityRolesPage: the right-hand detail panel", () => {
     expect(rowIn("roles-list", "locked").className).not.toContain("row-selected");
   });
 
-  it("opens the new-role form in the panel, in place of the open role", () => {
+  it("opens the new-role form in the panel, in place of the open role", async () => {
     render(<SecurityRolesPage />);
     fireEvent.click(rowIn("roles-list", "analyst"));
-    fireEvent.click(screen.getByTestId("toggle-role-form"));
+    await openNewRole();
     expect(screen.getByTestId("roles-split-title")).toHaveTextContent("New role");
     expect(
       within(screen.getByTestId("roles-split-panel")).getByTestId("role-id-input"),
@@ -108,7 +115,7 @@ describe("SecurityRolesPage: the right-hand detail panel", () => {
   it("asks a new role only for what it needs to exist, then opens it in edit", async () => {
     upsertRoleSpy.mockClear();
     render(<SecurityRolesPage />);
-    fireEvent.click(screen.getByTestId("toggle-role-form"));
+    await openNewRole();
     const panel = within(screen.getByTestId("roles-split-panel"));
     // The short step: the id, and a domain of its own or a parent's. Nothing else.
     expect(panel.getByTestId("role-parent-select")).toBeTruthy();
@@ -123,7 +130,12 @@ describe("SecurityRolesPage: the right-hand detail panel", () => {
 
     await waitFor(() => expect(screen.getByTestId("save-role-steward")).toBeTruthy());
     expect(upsertRoleSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "steward", capabilities: [], domainAccess: ["sales"] }),
+      expect.objectContaining({
+        id: "steward",
+        description: "What the role is for.",
+        capabilities: [],
+        domainAccess: ["sales"],
+      }),
       true, // a new role is created
     );
     expect(screen.getByTestId("roles-split-title")).toHaveTextContent("steward");

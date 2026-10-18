@@ -23,10 +23,26 @@ MANAGE = er.MANAGE_CAPABILITY
 SWITCH = er.SWITCH_CAPABILITY
 
 _ROLES = {
-    "org_admin": {"id": "org_admin", "capabilities": [MANAGE, SWITCH, "user_management"]},
-    "developer": {"id": "developer", "capabilities": [MANAGE, SWITCH, "create_model"]},
-    "analyst": {"id": "analyst", "capabilities": ["usage", "query_development"]},
-    "platform_admin": {"id": "platform_admin", "capabilities": ["platform_settings", "cross_org"]},
+    "org_admin": {
+        "id": "org_admin",
+        "description": "Test role.",
+        "capabilities": [MANAGE, SWITCH, "user_management"],
+    },
+    "developer": {
+        "id": "developer",
+        "description": "Test role.",
+        "capabilities": [MANAGE, SWITCH, "create_model"],
+    },
+    "analyst": {
+        "id": "analyst",
+        "description": "Test role.",
+        "capabilities": ["usage", "query_development"],
+    },
+    "platform_admin": {
+        "id": "platform_admin",
+        "description": "Test role.",
+        "capabilities": ["platform_settings", "cross_org"],
+    },
 }
 
 

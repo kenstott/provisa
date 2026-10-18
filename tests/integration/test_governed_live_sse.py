@@ -137,6 +137,7 @@ async def two_orgs():
                                     "tables": [_table(schema)],
                                     "rls_rules": [
                                         {
+                                            "description": "Test rule.",
                                             "table_id": "marks",
                                             "role_id": "restricted",
                                             "filter": "region = 'us'",

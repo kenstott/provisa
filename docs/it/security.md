@@ -88,30 +88,42 @@ I ruoli possono ereditare da un ruolo padre tramite `parent_role_id`, impostato 
 ```yaml
 roles:
   - id: basic_user
+    description: Queries the public domain.
     capabilities: [query_development]
     domain_access: [public]
   - id: analyst
+    description: Analyses sales; reads full results.
     capabilities: [full_results]
     domain_access: [sales, analytics]
     parent_role_id: basic_user   # inherits query_development + public domain
 ```
-## Ruoli: concessi, pseudo e meta {: #roles-granted-pseudo-and-meta }
+## Ruoli: concessi, derivati e meta {: #roles-granted-derived-and-meta }
 
-Tre tipi di ruolo lavorano insieme nel modello di accesso di Provisa.
+Tre tipi di ruolo lavorano insieme nel modello di accesso di Provisa. La pagina Ruoli elenca insieme i primi due; un meta-ruolo non viene mai elencato.
 
 ### Ruoli concessi {: #granted-roles }
 
 Un ruolo concesso viene assegnato direttamente a un utente. Detiene diritti: capacità, accesso ai domini, voci di mascheramento, filtri di riga. L'ereditarietà (`parent_role_id`) ripiega all'avvio i diritti di un antenato nel figlio. I diritti si sommano soltanto; non c'è sottrazione. Per restringere un lettore, concedete a un composto che nomini sia il ruolo sia una condizione, oppure mettete una voce di maschera prima di quella permissiva. (REQ-215, REQ-1677)
 
-### Pseudo-ruoli {: #pseudo-roles }
+### Ruoli derivati {: #derived-roles }
 
-Uno pseudo-ruolo deriva dagli attributi di un utente. L'organizzazione dichiara quali tipi di attributo diventano ruoli (`claim_roles`). Per ogni tipo dichiarato `t` il cui valore `v` è fornito dagli attributi dell'utente, l'utente detiene il ruolo padre `t` e il suo sotto-ruolo `t__v`. Senza valore, nessuno dei due ruoli.
+Un ruolo derivato proviene dagli attributi di un utente. L'organizzazione dichiara quali attributi diventano ruoli (`derived_roles`), ciascuno con una descrizione. Per ogni attributo dichiarato `a` il cui valore `v` è fornito dagli attributi dell'utente, l'utente detiene il ruolo padre `a` e il suo ruolo di valore `a__v`: `region = eu` dà `region` e `region__eu`. Senza valore, nessuno dei due ruoli.
 
 La risoluzione degli attributi conta. Il registro proprio dell'organizzazione su un membro prevale su ciò che fornisce il provider di identità: se entrambi nominano lo stesso attributo, si usa il valore dell'organizzazione e quello del provider viene segnato come sostituito.
 
-Gli pseudo-ruoli non portano diritti e non vengono mai assegnati a mano. Una lista di concessione li nomina esattamente come nomina un ruolo concesso; una richiesta li nomina in `X-Provisa-Role` e agisce come essi. (REQ-2057)
+I ruoli derivati non portano diritti e non vengono mai assegnati a mano. Una lista di concessione, una maschera o una regola di riga li nomina esattamente come nomina un ruolo concesso; una richiesta li nomina in `X-Provisa-Role` e agisce come essi. (REQ-2057)
 
-Pensate a un JWT: i suoi claim sono fatti sulla persona. Gli pseudo-ruoli trasformano fatti scelti in ruoli, così che una concessione possa rivolgersi a essi senza creare un ruolo per combinazione.
+Nella pagina Ruoli ogni attributo dichiarato è un ruolo padre contrassegnato come *derivato*, con i suoi ruoli di valore elencati sotto man mano che i loro valori compaiono. **+ Ruolo → Derivato da un attributo** ne dichiara uno. Il suo pannello mostra l'attributo, la sua descrizione, i valori visti finora e ogni maschera, regola di riga e concessione che nomina esso o uno dei suoi ruoli di valore. Non ha controlli di concessione. La descrizione di un ruolo di valore è generata: «Posseduto quando l'attributo region dell'utente è eu». (REQ-2078, REQ-2079)
+
+Dichiarateli nella configurazione come elenco:
+
+```yaml
+derived_roles:
+- attribute: region
+  description: The subsidiary a member works for; region__eu marks EU staff.
+```
+
+Pensate a un JWT: i suoi claim sono fatti sulla persona. I ruoli derivati trasformano fatti scelti in ruoli, così che una concessione possa rivolgersi a essi senza creare un ruolo per combinazione.
 
 ### Meta-ruoli {: #meta-roles }
 
@@ -121,7 +133,13 @@ I diritti sono l'unione di quelli di ogni membro. I filtri di riga sono l'OR del
 
 Le colonne di ogni riga sono mascherate e mostrate secondo i ruoli il cui filtro di righe ha ammesso quella riga: tra questi ruoli si applica la lettura meno restrittiva della colonna, e un ruolo che non ha ammesso la riga non contribuisce in nulla a come viene letta. Le maschere si applicano dove la tabella viene letta, prima di ogni join o aggregazione, così un'aggregazione legge i valori mascherati. Le scritture sono verificate allo stesso modo: una colonna viene scritta su una riga solo dove un ruolo che concede quella colonna ammette la riga. (REQ-1620)
 
-Il record di audit nomina ogni ruolo agente, non l'id del meta-ruolo.
+Il record di audit nomina ogni ruolo agente, non l'id del meta-ruolo. Poiché un meta-ruolo non viene mai memorizzato, non ha una descrizione propria: ovunque ne venga mostrata una, la sua descrizione è quella dei suoi membri, ogni id con la propria. (REQ-2080)
+
+### Descrizioni {: #descriptions }
+
+Ogni ruolo e ogni regola di riga dice a cosa serve. Una revisione degli accessi legge chi può vedere cosa e perché. Un ruolo o una regola che nessuno sa spiegare è uno che nessuno può rivedere, quindi la descrizione è obbligatoria: un ruolo, un ruolo padre derivato o una regola di riga con descrizione vuota viene rifiutato dal caricamento della configurazione, dall'API di amministrazione e dalla UI, con il motivo. Gli elenchi Ruoli e Regole di riga mostrano ogni descrizione, e i loro pannelli di dettaglio la mostrano e la modificano. (REQ-2080, REQ-2081)
+
+Un ruolo ha una sola descrizione, non una per dominio. Un ruolo generale che non descrive le sue responsabilità in un particolare dominio significa che quel dominio ha bisogno di un ruolo proprio, di solito un figlio del ruolo generale (`parent_role_id`), che ne eredita i diritti e descrive cosa fa lì.
 
 ### Come una richiesta nomina i ruoli {: #how-a-request-names-roles }
 
@@ -129,7 +147,7 @@ Un client invia un ruolo, o un insieme separato da virgole, in `X-Provisa-Role`.
 
 Diritti e dati seguono solo i ruoli con cui agisce la richiesta: detenere un ruolo non significa agire come esso. Un ruolo è quel ruolo; due o più agiscono come il loro meta-ruolo. Un ruolo agente che portasse con sé i diritti di ogni ruolo detenuto non significherebbe nulla, quindi una richiesta ottiene il privilegio minimo e il record di audit nomina esattamente ciò che ha agito.
 
-Gli pseudo-ruoli nominati entrano come qualificatori. Un qualificatore non ha diritti, accesso ai domini, maschere o filtri di riga propri, quindi non è membro dei diritti del meta-ruolo: come membro senza maschere smaschererebbe ogni colonna, e come membro che non legge alcuna tabella porrebbe fine a ogni OR di filtri di riga. Entra solo nelle concessioni: una concessione o una voce di maschera che nomina `region__eu` raggiunge una richiesta che nomina quel qualificatore insieme a un ruolo concesso. (REQ-2057)
+I ruoli derivati nominati entrano come qualificatori. Un qualificatore non ha diritti, accesso ai domini, maschere o filtri di riga propri, quindi non è membro dei diritti del meta-ruolo: come membro senza maschere smaschererebbe ogni colonna, e come membro che non legge alcuna tabella porrebbe fine a ogni OR di filtri di riga. Entra solo nelle concessioni: una concessione o una voce di maschera che nomina `region__eu` raggiunge una richiesta che nomina quel qualificatore insieme a un ruolo concesso. (REQ-2057)
 
 Un agente MCP non agisce mai oltre i ruoli che gli sono stati dati. Un agente remoto nomina solo ruoli che il principal del suo token detiene. Un agente stdio locale nomina solo ruoli all'interno dell'insieme fissato in `mcp.role` (`PROVISA_MCP_ROLE`), e agisce come quell'insieme quando non ne nomina nessuno; qualsiasi altro ruolo viene rifiutato per nome. (REQ-2075)
 
@@ -143,9 +161,9 @@ Un agente MCP non agisce mai oltre i ruoli che gli sono stati dati. Un agente re
 
 ### Regole di colonna ABAC come semplice RBAC {: #abac-column-rules-as-plain-rbac }
 
-Una politica basata sugli attributi chiede: «questo utente, con questi attributi, può vedere questa colonna?» RBAC chiede: «quali ruoli possono vedere questa colonna?» Le concessioni composte e gli pseudo-ruoli le rendono la stessa domanda.
+Una politica basata sugli attributi chiede: «questo utente, con questi attributi, può vedere questa colonna?» RBAC chiede: «quali ruoli possono vedere questa colonna?» Le concessioni composte e i ruoli derivati le rendono la stessa domanda.
 
-«Smascherare questa email solo per un analista nell'UE» è una voce di maschera `{to: [analyst+region__eu], mask: null}`. Qualsiasi lettore che detenga sia il ruolo `analyst` sia lo pseudo-ruolo `region__eu` legge la colonna non mascherata. Nessun linguaggio di policy. Nessun ruolo per combinazione.
+«Smascherare questa email solo per un analista nell'UE» è una voce di maschera `{to: [analyst+region__eu], mask: null}`. Qualsiasi lettore che detenga sia il ruolo `analyst` sia il ruolo derivato `region__eu` legge la colonna non mascherata. Nessun linguaggio di policy. Nessun ruolo per combinazione.
 
 Il compromesso è il calcolo al posto dell'enumerazione. Un piccolo catalogo di ruoli mantiene bassa la manutenzione, ma «chi può vedere questa email UE?» diventa una risposta calcolata: le voci composte vengono valutate rispetto alle assegnazioni e ai claim di ogni utente. Provisa può rispondere in entrambe le direzioni perché il modello è un'unica definizione. Il controllo di accesso dell'editor di colonne (`POST /admin/masks/check`) esegue questa valutazione per un insieme di ruoli scelto.
 
@@ -286,6 +304,7 @@ rls_rules:
   - table_id: orders
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
+    description: Analysts read only their own region's orders.
 ```
 Il filtro viene combinato in AND con la clausola WHERE della query. Funziona sia per le query sia per le mutazioni (UPDATE/DELETE). (REQ-035, REQ-041)
 
@@ -311,7 +330,7 @@ L'espressione di maschera viene spinta nella proiezione SQL SELECT. Il database 
 
 **Negare con l'ordine.** Una voce precedente vince anche quando il lettore ne detiene anche una successiva più permissiva. Perché i collaboratori esterni vedano sempre uno stipendio mascherato, qualunque altro ruolo abbiano, mettete la voce dei collaboratori prima della voce non mascherata. Un ruolo concesso non perde mai ciò che il padre concede per ereditarietà, ma una voce di maschera posta prima nella lista si applica per prima — così funziona qui la restrizione.
 
-**Meta-ruoli.** La catena di un meta-ruolo include i ruoli di ogni membro, i loro antenati e gli pseudo-ruoli nominati. Una voce concessa a qualsiasi membro raggiunge il meta-ruolo. Una voce precedente, detenuta da un altro membro, si applica comunque per prima.
+**Meta-ruoli.** La catena di un meta-ruolo include i ruoli di ogni membro, i loro antenati e i ruoli derivati nominati. Una voce concessa a qualsiasi membro raggiunge il meta-ruolo. Una voce precedente, detenuta da un altro membro, si applica comunque per prima.
 
 **Verificare l'accesso.** `POST /admin/masks/check` accetta una lista di maschere e un insieme facoltativo di ruoli, e restituisce quale voce si applica per quei ruoli più le voci che nessun lettore può raggiungere. Protetto da `masking_config`.
 

@@ -52,6 +52,7 @@ naming:
 roles:
 # Reads the vault: the satellites of European customers, their personal data masked.
 - id: analyst_eu
+  description: "An analyst in the EU: queries orders, the CRM and the vault, and sees only European customers."
   capabilities: [query_development]
   domain_access: [orders, crm, vault]
 server:
@@ -511,10 +512,10 @@ functions:
       VALUES (2, 'Chang', 1, 1, '24 - 12 oz bottles', 18.00, false, TIMESTAMP '1998-02-01 09:00:00')
 rls_rules:
 # An analyst reads the satellites of European customers only, and the views built on them.
-- {table_id: view_sat_customer_orders, role_id: analyst_eu, filter: "country IN ('Austria', 'Belgium', 'Denmark', 'Finland', 'France', 'Germany', 'Ireland', 'Italy', 'Norway', 'Poland', 'Portugal', 'Spain', 'Sweden', 'Switzerland', 'UK')"}
-- {table_id: view_sat_customer_crm, role_id: analyst_eu, filter: "country IN ('Austria', 'Belgium', 'Denmark', 'Finland', 'France', 'Germany', 'Ireland', 'Italy', 'Norway', 'Poland', 'Portugal', 'Spain', 'Sweden', 'Switzerland', 'UK')"}
-- {table_id: view_customer_as_known, role_id: analyst_eu, filter: "country IN ('Austria', 'Belgium', 'Denmark', 'Finland', 'France', 'Germany', 'Ireland', 'Italy', 'Norway', 'Poland', 'Portugal', 'Spain', 'Sweden', 'Switzerland', 'UK')"}
-- {table_id: view_dim_customer, role_id: analyst_eu, filter: "country IN ('Austria', 'Belgium', 'Denmark', 'Finland', 'France', 'Germany', 'Ireland', 'Italy', 'Norway', 'Poland', 'Portugal', 'Spain', 'Sweden', 'Switzerland', 'UK')"}
+- {description: "Shows the EU analyst only the customers in European countries.", table_id: view_sat_customer_orders, role_id: analyst_eu, filter: "country IN ('Austria', 'Belgium', 'Denmark', 'Finland', 'France', 'Germany', 'Ireland', 'Italy', 'Norway', 'Poland', 'Portugal', 'Spain', 'Sweden', 'Switzerland', 'UK')"}
+- {description: "Shows the EU analyst only the customers in European countries.", table_id: view_sat_customer_crm, role_id: analyst_eu, filter: "country IN ('Austria', 'Belgium', 'Denmark', 'Finland', 'France', 'Germany', 'Ireland', 'Italy', 'Norway', 'Poland', 'Portugal', 'Spain', 'Sweden', 'Switzerland', 'UK')"}
+- {description: "Shows the EU analyst only the customers in European countries.", table_id: view_customer_as_known, role_id: analyst_eu, filter: "country IN ('Austria', 'Belgium', 'Denmark', 'Finland', 'France', 'Germany', 'Ireland', 'Italy', 'Norway', 'Poland', 'Portugal', 'Spain', 'Sweden', 'Switzerland', 'UK')"}
+- {description: "Shows the EU analyst only the customers in European countries.", table_id: view_dim_customer, role_id: analyst_eu, filter: "country IN ('Austria', 'Belgium', 'Denmark', 'Finland', 'France', 'Germany', 'Ireland', 'Italy', 'Norway', 'Poland', 'Portugal', 'Spain', 'Sweden', 'Switzerland', 'UK')"}
 relationships:
 # Hub-link-hub: GraphQL walks a customer to its orders and an order to its products.
 - {id: customer-orders, alias: PLACED, cardinality: one-to-many, source_table_id: view_hub_customer, source_column: customer_hk, target_table_id: view_link_customer_order, target_column: customer_hk}

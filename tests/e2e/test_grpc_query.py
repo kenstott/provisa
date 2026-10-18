@@ -59,7 +59,7 @@ def _make_full_state(role_id: str, extra_roles: dict | None = None):
     """Build a full mock AppState for e2e-style servicer tests."""
     from provisa.compiler.rls import RLSContext
 
-    roles = {role_id: {"id": role_id, "capabilities": []}}
+    roles = {role_id: {"id": role_id, "description": "Test role.", "capabilities": []}}
     schemas = {role_id: MagicMock()}
     contexts = {role_id: MagicMock()}
     rls_contexts = {role_id: RLSContext.empty()}
@@ -234,7 +234,7 @@ class TestRoleBasedFieldFiltering:
         state = _make_full_state(
             "admin",
             extra_roles={
-                "viewer": {"id": "viewer", "capabilities": []},
+                "viewer": {"id": "viewer", "description": "Test role.", "capabilities": []},
             },
         )
         servicer = ProvisaServicer(state, pb2)

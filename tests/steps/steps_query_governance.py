@@ -124,6 +124,7 @@ async def audit_pool(shared_data):
 def given_authenticated_identity(shared_data, role_name):
     role = {
         "id": role_name,
+        "description": "Test role.",
         "capabilities": [Capability.QUERY_DEVELOPMENT.value],
     }
     shared_data["role"] = role
@@ -198,7 +199,7 @@ def then_no_capability_gate(shared_data):
     for forbidden in ("QUERY", "EXECUTE_QUERY", "RUN_QUERY", "QUERY_EXECUTION"):
         assert forbidden not in capability_names
 
-    bare = {"id": "bare", "capabilities": []}
+    bare = {"id": "bare", "description": "Test role.", "capabilities": []}
     assert not has_capability(bare, Capability.SOURCE_REGISTRATION)
 
     role = shared_data.get("role", {})
@@ -225,9 +226,10 @@ def then_no_capability_gate(shared_data):
 
     minimal_role = {
         "id": shared_data.get("role_name", "analyst"),
+        "description": "Test role.",
         "capabilities": [Capability.QUERY_DEVELOPMENT.value],
     }
-    empty_role = {"id": "empty", "capabilities": []}
+    empty_role = {"id": "empty", "description": "Test role.", "capabilities": []}
     for forbidden_cap_name in ("QUERY", "EXECUTE_QUERY", "RUN_QUERY", "QUERY_EXECUTION"):
         assert forbidden_cap_name not in capability_names, (
             f"Capability {forbidden_cap_name} must not exist — it would constitute a query gate"
@@ -247,6 +249,7 @@ def then_no_capability_gate(shared_data):
 def given_user_with_table_view_rights(shared_data):
     role = {
         "id": "rights-user",
+        "description": "Test role.",
         "capabilities": [
             Capability.QUERY_DEVELOPMENT.value,
             Capability.CREATE_RELATIONSHIP.value,
@@ -313,7 +316,7 @@ def then_executed_on_rights_alone(shared_data):
     ):
         assert forbidden not in capability_names
 
-    no_rights = {"id": "no-rights", "capabilities": []}
+    no_rights = {"id": "no-rights", "description": "Test role.", "capabilities": []}
     with pytest.raises(InsufficientRightsError):
         check_capability(no_rights, Capability.QUERY_DEVELOPMENT)
 
@@ -337,6 +340,7 @@ def then_executed_on_rights_alone(shared_data):
 
     query_only_role = {
         "id": "query-only",
+        "description": "Test role.",
         "capabilities": [Capability.QUERY_DEVELOPMENT.value],
     }
     check_capability(query_only_role, Capability.QUERY_DEVELOPMENT)
@@ -345,6 +349,7 @@ def then_executed_on_rights_alone(shared_data):
 
     relationship_only_role = {
         "id": "relationship-only",
+        "description": "Test role.",
         "capabilities": [Capability.CREATE_RELATIONSHIP.value],
     }
     check_capability(relationship_only_role, Capability.CREATE_RELATIONSHIP)
@@ -387,6 +392,7 @@ def _stage2_inject_limit(sql: str, role_config: dict[str, int]) -> tuple[str, in
 def given_role_with_max_rows_ceiling(shared_data):
     role = {
         "id": "analyst",
+        "description": "Test role.",
         "capabilities": [Capability.QUERY_DEVELOPMENT.value],
     }
     role_config = {"orders": 1000, "customers": 500}
@@ -515,6 +521,7 @@ def _evaluate_large_result(
 def given_user_with_rights_to_query_table(shared_data):
     role = {
         "id": "analyst",
+        "description": "Test role.",
         "capabilities": [Capability.QUERY_DEVELOPMENT.value],
     }
     shared_data["role"] = role
@@ -575,6 +582,7 @@ def then_large_result_redirect_and_arrow_output_available(shared_data):
 
     minimal_role = {
         "id": "minimal",
+        "description": "Test role.",
         "capabilities": [Capability.QUERY_DEVELOPMENT.value],
     }
     minimal_transport = _evaluate_large_result(minimal_role, _LARGE_RESULT_ROW_THRESHOLD + 1)
@@ -663,6 +671,7 @@ def _make_permissive_role() -> dict:
     """A role with open domain_access (no V001 blocking) for V002 tests."""
     return {
         "id": "v002-tester",
+        "description": "Test role.",
         "capabilities": [Capability.QUERY_DEVELOPMENT.value],
         "domain_access": ["*"],
     }

@@ -24,7 +24,12 @@ from provisa.core.repositories.role import ReservedRoleRedefined
 async def test_a_reserved_admin_role_cannot_be_redefined(role_id):
     # The refusal fires before any DB write, so no connection is needed (None would be used only
     # after the check passes).
-    role = Role(id=role_id, capabilities=["table_registration"], domain_access=["*"])
+    role = Role(
+        id=role_id,
+        description="Test role.",
+        capabilities=["table_registration"],
+        domain_access=["*"],
+    )
     with pytest.raises(ReservedRoleRedefined) as exc:
         await role_repo.upsert(None, role, org_id=None)  # type: ignore[arg-type]
     assert exc.value.role_id == role_id
@@ -36,7 +41,12 @@ async def test_an_ordinary_role_is_not_refused_by_the_reserved_check():
     # A non-reserved role passes the reserved-role gate and proceeds (it then needs a connection,
     # which None is not — so an AttributeError/TypeError here, NOT ReservedRoleRedefined, confirms
     # the gate let it through).
-    role = Role(id="eu_resident", capabilities=["table_registration"], domain_access=["*"])
+    role = Role(
+        id="eu_resident",
+        description="Test role.",
+        capabilities=["table_registration"],
+        domain_access=["*"],
+    )
     with pytest.raises(Exception) as exc:
         await role_repo.upsert(None, role, org_id=None)  # type: ignore[arg-type]
     assert not isinstance(exc.value, ReservedRoleRedefined)

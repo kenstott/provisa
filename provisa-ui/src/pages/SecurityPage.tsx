@@ -8,7 +8,6 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { ClaimRolesForm } from "../components/admin/ClaimRolesForm";
 import { Tip } from "../components/Tip";
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
@@ -19,12 +18,14 @@ import {
   Button,
   Group,
   ActionIcon,
+  Menu,
   NumberInput,
   Select,
   Stack,
   Table,
   Text,
   TextInput,
+  Textarea,
   Title,
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -48,6 +49,8 @@ import { useListSortGroup, type ListColumn } from "../components/list/useListSor
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { serverMessage } from "../i18n/serverMessage";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
+import { DerivedRoleDetail, DerivedRoleNewForm, DerivedRoleRows } from "./security/DerivedRoles";
+import { useDerivedRoles, type DerivedPick } from "../hooks/useDerivedRoles";
 
 /** A role may be saved once it lists a domain — its own, or one a parent role hands down. */
 function listsADomain(form: { domainAccess: string[]; parentRoleId: string }): boolean {
@@ -56,6 +59,8 @@ function listsADomain(form: { domainAccess: string[]; parentRoleId: string }): b
 
 const EMPTY_ROLE = {
   id: "",
+  description: "", // REQ-2080: required
+
   capabilities: [] as Capability[],
   domainAccess: [] as string[],
   parentRoleId: "" as string, // REQ-1677: "" = no parent
@@ -97,12 +102,14 @@ export function SecurityRolesPage() {
   const [expandedRole, setExpandedRole] = useState<string | null>(null);
   const [editingRoleInRow, setEditingRoleInRow] = useState<string | null>(null);
   const [roleSearch, setRoleSearch] = useState("");
-  // REQ-2057: the panel shows the org's declared claim types instead of a role.
-  const [showClaimRoles, setShowClaimRoles] = useState(false);
+  // REQ-2078: derived roles share the list. The panel declares one, or shows the one picked.
+  const { derived, problem: derivedProblem, reload: reloadDerived } = useDerivedRoles();
+  const [showDerivedForm, setShowDerivedForm] = useState(false);
+  const [derivedPick, setDerivedPick] = useState<DerivedPick | null>(null);
 
   const reload = useCallback(async () => {
-    await Promise.all([refetchRoles(), refetchDomains()]);
-  }, [refetchRoles, refetchDomains]);
+    await Promise.all([refetchRoles(), refetchDomains(), reloadDerived()]);
+  }, [refetchRoles, refetchDomains, reloadDerived]);
 
   useEffect(() => {
     setSelectedDomain("all");
@@ -113,14 +120,15 @@ export function SecurityRolesPage() {
   }, [domains, setContextDomains]);
 
   const handleNewRole = () => {
-    setShowClaimRoles(false);
+    setShowDerivedForm(false);
+    setDerivedPick(null);
     setRoleForm({ ...EMPTY_ROLE });
     setShowRoleForm(true);
     setError("");
   };
 
   const handleSaveRole = async () => {
-    if (!roleForm.id) return;
+    if (!roleForm.id || !roleForm.description.trim()) return;
     setSaving(true);
     setError("");
     try {
@@ -135,6 +143,7 @@ export function SecurityRolesPage() {
       const res = await upsertRole(
         {
           id: roleForm.id,
+          description: roleForm.description.trim(), // REQ-2080
           capabilities: roleForm.capabilities,
           domainAccess: roleForm.domainAccess,
           rateLimit: hasLimit ? rateLimit : null,
@@ -192,6 +201,7 @@ export function SecurityRolesPage() {
   const startEditingRole = (role: Role) => {
     setRoleForm({
       id: role.id,
+      description: role.description,
       capabilities: [...role.capabilities],
       domainAccess: [...role.domain_access],
       parentRoleId: role.parentRoleId ?? "", // REQ-1677
@@ -222,7 +232,10 @@ export function SecurityRolesPage() {
 
   // REQ-1940: sort and group are the shared list mechanism.
   const filteredRoles = roles.filter(
-    (r) => !roleSearch.trim() || r.id.toLowerCase().includes(roleSearch.toLowerCase()),
+    (r) =>
+      !roleSearch.trim() ||
+      r.id.toLowerCase().includes(roleSearch.toLowerCase()) ||
+      r.description.toLowerCase().includes(roleSearch.toLowerCase()),
   );
   const roleColumns: ListColumn<Role>[] = [
     { key: "id", label: t("securityPage.colId"), sortValue: (r) => r.id },
@@ -238,6 +251,12 @@ export function SecurityRolesPage() {
       sortValue: (r) => r.domain_access.join(", "),
       groupValue: (r) => r.domain_access.join(", ") || t("securityPage.noDomains"),
     },
+    // REQ-2080: what each role is for.
+    {
+      key: "description",
+      label: t("securityPage.colDescription"),
+      sortValue: (r) => r.description,
+    },
   ];
   const roleSortGroup = useListSortGroup(filteredRoles, roleColumns, "roles");
 
@@ -247,7 +266,8 @@ export function SecurityRolesPage() {
   // role -- its detail, or the form that edits it. A role whose details are hidden from this user
   // has nothing to show, so it opens no panel.
   const closeRolePanel = () => {
-    setShowClaimRoles(false);
+    setShowDerivedForm(false);
+    setDerivedPick(null);
     setShowRoleForm(false);
     setEditingRoleInRow(null);
     setExpandedRole(null);
@@ -276,6 +296,18 @@ export function SecurityRolesPage() {
           />
         </FormField>
       </FormIdentifiers>
+      {/* REQ-2080: required. A role says what it is for, in words an access review reads. */}
+      <FormField size="full" help={t("securityPage.roleDescriptionHelp")}>
+        <Textarea
+          label={t("securityPage.roleDescription")}
+          required
+          autosize
+          minRows={2}
+          value={roleForm.description}
+          onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
+          data-testid="role-description-input"
+        />
+      </FormField>
       <FormField size="long">
         <MultiSelect
           label={t("securityPage.domainAccess")}
@@ -312,7 +344,10 @@ export function SecurityRolesPage() {
         onSave={handleSaveRole}
         saving={saving}
         onCancel={() => setShowRoleForm(false)}
-        saveProps={{ "data-testid": "save-role", disabled: !listsADomain(roleForm) }}
+        saveProps={{
+          "data-testid": "save-role",
+          disabled: !listsADomain(roleForm) || !roleForm.description.trim(),
+        }}
         cancelProps={{ "data-testid": "cancel-role" }}
       />
     </FormLayout>
@@ -365,6 +400,18 @@ export function SecurityRolesPage() {
           <RoleRead role={r} />
         ) : (
           <FormLayout>
+            {/* REQ-2080: required. A role says what it is for, in words an access review reads. */}
+            <FormField size="full" help={t("securityPage.roleDescriptionHelp")}>
+              <Textarea
+                label={t("securityPage.roleDescription")}
+                required
+                autosize
+                minRows={2}
+                value={roleForm.description}
+                onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
+                data-testid="role-description-input"
+              />
+            </FormField>
             <CapabilityGrid
               value={roleForm.capabilities}
               onToggle={toggleCapability}
@@ -460,7 +507,7 @@ export function SecurityRolesPage() {
               onCancel={() => setEditingRoleInRow(null)}
               saveProps={{
                 "data-testid": `save-role-${r.id}`,
-                disabled: !listsADomain(roleForm),
+                disabled: !listsADomain(roleForm) || !roleForm.description.trim(),
               }}
             />
           </FormLayout>
@@ -478,6 +525,11 @@ export function SecurityRolesPage() {
           {error}
         </Alert>
       )}
+      {derivedProblem && (
+        <Alert color="red" data-testid="derived-roles-error">
+          {derivedProblem}
+        </Alert>
+      )}
 
       <Group justify="space-between" wrap="wrap">
         <Title order={2}>{t("securityPage.rolesHeading")}</Title>
@@ -489,29 +541,39 @@ export function SecurityRolesPage() {
         {/* Nested Group: the parent spreads its children, and the bubble explains this
             button, so it has to travel with it. */}
         <Group gap="xs">
-          {!showRoleForm && (
-            <Button
-              data-testid="toggle-role-form"
-              onClick={() => {
-                setExpandedRole(null);
-                handleNewRole();
-              }}
-            >
-              {t("securityPage.addRole")}
-            </Button>
+          {!showRoleForm && !showDerivedForm && (
+            // REQ-2078: a role is granted rights; a derived one comes from an attribute.
+            <Menu position="bottom-end" withinPortal>
+              <Menu.Target>
+                <Button data-testid="toggle-role-form">{t("securityPage.addRole")}</Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  data-testid="add-granted-role"
+                  onClick={() => {
+                    setExpandedRole(null);
+                    handleNewRole();
+                  }}
+                >
+                  {t("securityPage.addGrantedRole")}
+                </Menu.Item>
+                <Tip text={t("securityPage.derivedRolesHelp")} position="left">
+                  <Menu.Item
+                    data-testid="add-derived-role"
+                    onClick={() => {
+                      setExpandedRole(null);
+                      setEditingRoleInRow(null);
+                      setShowRoleForm(false);
+                      setDerivedPick(null);
+                      setShowDerivedForm(true);
+                    }}
+                  >
+                    {t("securityPage.addDerivedRole")}
+                  </Menu.Item>
+                </Tip>
+              </Menu.Dropdown>
+            </Menu>
           )}
-          <Button
-            variant="default"
-            data-testid="toggle-claim-roles"
-            onClick={() => {
-              setExpandedRole(null);
-              setEditingRoleInRow(null);
-              setShowRoleForm(false);
-              setShowClaimRoles(true);
-            }}
-          >
-            {t("securityPage.claimRolesButton")}
-          </Button>
           <HelpBubble
             title={t("securityPage.rolePurposeTitle")}
             paragraphs={[t("securityPage.rolePurposeBody"), t("securityPage.rolePurposeAdd")]}
@@ -524,7 +586,15 @@ export function SecurityRolesPage() {
       <SplitPane
         testId="roles-split"
         storageKey="provisa.roles.detailWidth"
-        title={showClaimRoles ? t("securityPage.claimRolesTitle") : rolePanelTitle}
+        title={
+          showDerivedForm
+            ? t("securityPage.panelNewDerivedRole")
+            : derivedPick
+              ? derivedPick.value === null
+                ? derivedPick.attribute
+                : `${derivedPick.attribute}__${derivedPick.value}`
+              : rolePanelTitle
+        }
         onClose={closeRolePanel}
         // Escape closes a role that is only being looked at; it never drops what is being typed.
         closeOnEscape={!showRoleForm && editingRoleInRow === null}
@@ -540,12 +610,17 @@ export function SecurityRolesPage() {
           <ListTable minWidth={480} testId="roles-list">
             <ListHead
               sortGroup={roleSortGroup}
-              columns={[{ col: "id" }, { col: "capabilities" }, { col: "domains" }]}
+              columns={[
+                { col: "id" },
+                { col: "capabilities" },
+                { col: "domains" },
+                { col: "description" },
+              ]}
             />
             <Table.Tbody>
               <ListItems
                 state={roleSortGroup}
-                colSpan={3}
+                colSpan={4}
                 rowKey={(r) => r.id}
                 render={(r) => (
                   <React.Fragment>
@@ -557,7 +632,8 @@ export function SecurityRolesPage() {
                         setExpandedRole(expandedRole === r.id ? null : r.id);
                         setEditingRoleInRow(null);
                         setShowRoleForm(false);
-                        setShowClaimRoles(false);
+                        setShowDerivedForm(false);
+                        setDerivedPick(null);
                       }}
                     >
                       <Table.Td>{r.id}</Table.Td>
@@ -577,15 +653,57 @@ export function SecurityRolesPage() {
                           </Table.Td>
                         </>
                       )}
+                      <Table.Td data-testid={`role-description-${r.id}`}>{r.description}</Table.Td>
                     </ListRow>
                   </React.Fragment>
                 )}
               />
+              {derived && (
+                <DerivedRoleRows
+                  roles={derived.roles}
+                  search={roleSearch}
+                  picked={derivedPick}
+                  onPick={(pick) => {
+                    const same =
+                      derivedPick?.attribute === pick.attribute && derivedPick.value === pick.value;
+                    setDerivedPick(same ? null : pick);
+                    setExpandedRole(null);
+                    setEditingRoleInRow(null);
+                    setShowRoleForm(false);
+                    setShowDerivedForm(false);
+                  }}
+                />
+              )}
             </Table.Tbody>
           </ListTable>
         }
       >
-        {showClaimRoles ? <ClaimRolesForm onClose={closeRolePanel} /> : rolePanelBody}
+        {showDerivedForm ? (
+          <DerivedRoleNewForm
+            onCancel={() => setShowDerivedForm(false)}
+            onSaved={async (attribute) => {
+              await reloadDerived();
+              setShowDerivedForm(false);
+              setDerivedPick({ attribute, value: null });
+            }}
+          />
+        ) : derivedPick && derived ? (
+          ((d) =>
+            d ? (
+              <DerivedRoleDetail
+                key={`${d.attribute}:${derivedPick.value ?? ""}`}
+                role={d}
+                value={derivedPick.value}
+                onChanged={reloadDerived}
+                onDeleted={async () => {
+                  setDerivedPick(null);
+                  await reloadDerived();
+                }}
+              />
+            ) : null)(derived.roles.find((x) => x.attribute === derivedPick.attribute))
+        ) : (
+          rolePanelBody
+        )}
       </SplitPane>
       {refusal.dialog}
     </Stack>

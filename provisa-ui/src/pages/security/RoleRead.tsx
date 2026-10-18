@@ -30,6 +30,8 @@ export function RoleRead({ role: r }: { role: Role }) {
         testId="role-read-fields"
         fields={[
           { label: t("securityPage.roleId"), value: r.id },
+          // REQ-2080: what the role is for.
+          { label: t("securityPage.roleDescription"), value: r.description },
           { label: t("securityPage.capabilities"), value: list(r.capabilities) },
           { label: t("securityPage.demonstrated"), value: list(r.demonstrated) },
           { label: t("residencyGrant.values"), value: list(r.residencyValues) },

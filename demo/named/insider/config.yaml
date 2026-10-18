@@ -43,17 +43,21 @@ naming:
 roles:
 # The control room: the watch list and every case.
 - id: control_room
+  description: "The control room: the watch list and every case."
   capabilities: [query_development]
   domain_access: [bank]
 # First-level reviewers: their own desks' cases, the deal withheld; never the watch list.
 - id: reviewer_ana
+  description: "A first-level reviewer: the cases of the desks Ana reviews, the deal withheld, never the watch list."
   capabilities: [query_development]
   domain_access: [bank]
 - id: reviewer_ben
+  description: "A first-level reviewer: the cases of the desks Ben reviews, the deal withheld, never the watch list."
   capabilities: [query_development]
   domain_access: [bank]
 # A deal team: its own deal's rows of the watch list and of the queue.
 - id: deal_team_falcon
+  description: "The Falcon deal team: its own deal's rows of the watch list and of the review queue."
   capabilities: [query_development]
   domain_access: [bank]
 server:
@@ -296,17 +300,17 @@ functions:
 rls_rules:
 # A first-level reviewer reads only the mail of the desks they review and the matches of that mail
 # (the flagged entity among them); of the watch list itself, nothing: no grant names them.
-- {table_id: message, role_id: reviewer_ana, filter: "sender_id IN (SELECT own_e.employee_id FROM \"bank\".\"employee\" AS own_e JOIN \"bank\".\"desk_reviewer\" AS own_r ON own_r.desk = own_e.desk WHERE own_r.reviewer = current_setting('provisa.role'))"}
-- {table_id: customer_access, role_id: reviewer_ana, filter: "employee_id IN (SELECT own_e.employee_id FROM \"bank\".\"employee\" AS own_e JOIN \"bank\".\"desk_reviewer\" AS own_r ON own_r.desk = own_e.desk WHERE own_r.reviewer = current_setting('provisa.role'))"}
-- {table_id: deal_match, role_id: reviewer_ana, filter: "message_id IN (SELECT own_m.message_id FROM \"bank\".\"message\" AS own_m WHERE own_m.sender_id IN (SELECT own_e.employee_id FROM \"bank\".\"employee\" AS own_e JOIN \"bank\".\"desk_reviewer\" AS own_r ON own_r.desk = own_e.desk WHERE own_r.reviewer = current_setting('provisa.role')))"}
-- {table_id: message, role_id: reviewer_ben, filter: "sender_id IN (SELECT own_e.employee_id FROM \"bank\".\"employee\" AS own_e JOIN \"bank\".\"desk_reviewer\" AS own_r ON own_r.desk = own_e.desk WHERE own_r.reviewer = current_setting('provisa.role'))"}
-- {table_id: customer_access, role_id: reviewer_ben, filter: "employee_id IN (SELECT own_e.employee_id FROM \"bank\".\"employee\" AS own_e JOIN \"bank\".\"desk_reviewer\" AS own_r ON own_r.desk = own_e.desk WHERE own_r.reviewer = current_setting('provisa.role'))"}
-- {table_id: deal_match, role_id: reviewer_ben, filter: "message_id IN (SELECT own_m.message_id FROM \"bank\".\"message\" AS own_m WHERE own_m.sender_id IN (SELECT own_e.employee_id FROM \"bank\".\"employee\" AS own_e JOIN \"bank\".\"desk_reviewer\" AS own_r ON own_r.desk = own_e.desk WHERE own_r.reviewer = current_setting('provisa.role')))"}
+- {description: "Ana reads only the mail sent from the desks she reviews.", table_id: message, role_id: reviewer_ana, filter: "sender_id IN (SELECT own_e.employee_id FROM \"bank\".\"employee\" AS own_e JOIN \"bank\".\"desk_reviewer\" AS own_r ON own_r.desk = own_e.desk WHERE own_r.reviewer = current_setting('provisa.role'))"}
+- {description: "Ana reads only the customer accesses of the desks she reviews.", table_id: customer_access, role_id: reviewer_ana, filter: "employee_id IN (SELECT own_e.employee_id FROM \"bank\".\"employee\" AS own_e JOIN \"bank\".\"desk_reviewer\" AS own_r ON own_r.desk = own_e.desk WHERE own_r.reviewer = current_setting('provisa.role'))"}
+- {description: "Ana reads only the matches in the mail of the desks she reviews.", table_id: deal_match, role_id: reviewer_ana, filter: "message_id IN (SELECT own_m.message_id FROM \"bank\".\"message\" AS own_m WHERE own_m.sender_id IN (SELECT own_e.employee_id FROM \"bank\".\"employee\" AS own_e JOIN \"bank\".\"desk_reviewer\" AS own_r ON own_r.desk = own_e.desk WHERE own_r.reviewer = current_setting('provisa.role')))"}
+- {description: "Ben reads only the mail sent from the desks he reviews.", table_id: message, role_id: reviewer_ben, filter: "sender_id IN (SELECT own_e.employee_id FROM \"bank\".\"employee\" AS own_e JOIN \"bank\".\"desk_reviewer\" AS own_r ON own_r.desk = own_e.desk WHERE own_r.reviewer = current_setting('provisa.role'))"}
+- {description: "Ben reads only the customer accesses of the desks he reviews.", table_id: customer_access, role_id: reviewer_ben, filter: "employee_id IN (SELECT own_e.employee_id FROM \"bank\".\"employee\" AS own_e JOIN \"bank\".\"desk_reviewer\" AS own_r ON own_r.desk = own_e.desk WHERE own_r.reviewer = current_setting('provisa.role'))"}
+- {description: "Ben reads only the matches in the mail of the desks he reviews.", table_id: deal_match, role_id: reviewer_ben, filter: "message_id IN (SELECT own_m.message_id FROM \"bank\".\"message\" AS own_m WHERE own_m.sender_id IN (SELECT own_e.employee_id FROM \"bank\".\"employee\" AS own_e JOIN \"bank\".\"desk_reviewer\" AS own_r ON own_r.desk = own_e.desk WHERE own_r.reviewer = current_setting('provisa.role')))"}
 # A deal team reads only its own deal of the watch list.
-- {table_id: deal, role_id: deal_team_falcon, filter: "deal_id = 'D-01'"}
-- {table_id: deal_team, role_id: deal_team_falcon, filter: "deal_id = 'D-01'"}
-- {table_id: deal_counterparty, role_id: deal_team_falcon, filter: "deal_id = 'D-01'"}
-- {table_id: deal_match, role_id: deal_team_falcon, filter: "deal_id = 'D-01'"}
+- {description: "The Falcon team reads only its own deal.", table_id: deal, role_id: deal_team_falcon, filter: "deal_id = 'D-01'"}
+- {description: "The Falcon team reads only its own deal's team.", table_id: deal_team, role_id: deal_team_falcon, filter: "deal_id = 'D-01'"}
+- {description: "The Falcon team reads only its own deal's counterparties.", table_id: deal_counterparty, role_id: deal_team_falcon, filter: "deal_id = 'D-01'"}
+- {description: "The Falcon team reads only the matches on its own deal.", table_id: deal_match, role_id: deal_team_falcon, filter: "deal_id = 'D-01'"}
 tag_assignments:
 # The customer records are pii: every read of them is in the record (ops.pii_access).
 - {tag_id: pii, object_type: column, table_ref: bank.bank.customer, column_name: name}

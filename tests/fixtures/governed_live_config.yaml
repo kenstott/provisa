@@ -17,8 +17,10 @@ tables: []
 
 roles:
   - id: reader
+    description: "Reads every governed column of the live tables."
     capabilities: [query_development, full_results]
     domain_access: ["*"]
   - id: restricted
+    description: "Reads the live tables with the governed columns withheld."
     capabilities: [query_development, full_results]
     domain_access: ["*"]

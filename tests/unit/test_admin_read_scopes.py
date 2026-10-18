@@ -123,6 +123,7 @@ async def test_everyone_else_reads_the_source_without_them(monkeypatch):
 
 _ROLE_ROWS = [
     {
+        "description": "Test role.",
         "id": "analyst",
         "capabilities": ["usage"],
         "demonstrated": [],
@@ -133,6 +134,7 @@ _ROLE_ROWS = [
         "parent_role_id": None,
     },
     {
+        "description": "Test role.",
         "id": "org_admin",
         "capabilities": ["user_management"],
         "demonstrated": [],
@@ -180,7 +182,8 @@ async def test_rest_roles_full_for_user_management_else_own_role_only(monkeypatc
     with patch.object(roles_router, "_pool", return_value=_Pool(_ROLE_ROWS)):
         seen = {r["id"]: r for r in await roles_router.list_roles(request)}
     assert seen["analyst"]["capabilities"] == ["usage"]
-    assert seen["org_admin"] == {"id": "org_admin"}
+    # REQ-2080: what a role is for is shown with it even where its definition is withheld.
+    assert seen["org_admin"] == {"id": "org_admin", "description": "Test role."}
 
 
 _STATUS = {

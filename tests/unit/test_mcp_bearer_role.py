@@ -79,7 +79,7 @@ async def test_valid_bearer_sets_request_role(monkeypatch):
     app = mcp_server._wrap_role_auth(
         downstream,
         SimpleNamespace(
-            org_id="default", user_attributes={}, settings_overrides={"claim_roles": []}
+            org_id="default", user_attributes={}, settings_overrides={"derived_roles": []}
         ),
         require_token=True,
     )
@@ -105,7 +105,7 @@ async def test_invalid_bearer_is_401_fail_closed(monkeypatch):
     app = mcp_server._wrap_role_auth(
         downstream,
         SimpleNamespace(
-            org_id="default", user_attributes={}, settings_overrides={"claim_roles": []}
+            org_id="default", user_attributes={}, settings_overrides={"derived_roles": []}
         ),
         require_token=True,
     )
@@ -122,7 +122,7 @@ async def test_no_bearer_off_loopback_is_401():
     app = mcp_server._wrap_role_auth(
         downstream,
         SimpleNamespace(
-            org_id="default", user_attributes={}, settings_overrides={"claim_roles": []}
+            org_id="default", user_attributes={}, settings_overrides={"derived_roles": []}
         ),
         require_token=True,
     )
@@ -139,7 +139,7 @@ async def test_no_bearer_loopback_passes_through():
     app = mcp_server._wrap_role_auth(
         downstream,
         SimpleNamespace(
-            org_id="default", user_attributes={}, settings_overrides={"claim_roles": []}
+            org_id="default", user_attributes={}, settings_overrides={"derived_roles": []}
         ),
         require_token=False,
     )

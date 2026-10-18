@@ -60,7 +60,14 @@ _VALID_CONFIG = {
             ],
         }
     ],
-    "roles": [{"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}],
+    "roles": [
+        {
+            "id": "admin",
+            "description": "Test role.",
+            "capabilities": ["admin"],
+            "domain_access": ["*"],
+        }
+    ],
 }
 
 
@@ -250,6 +257,7 @@ class TestParseConfigFile:
                     visible_to: [admin]
             roles:
               - id: admin
+                description: Test role.
                 capabilities: [admin]
                 domain_access: ["*"]
         """)
@@ -294,9 +302,11 @@ class TestParseConfigFile:
                     visible_to: [admin]
             roles:
               - id: admin
+                description: Test role.
                 capabilities: [admin]
                 domain_access: ["*"]
               - id: analyst
+                description: Test role.
                 capabilities: [query_development]
                 domain_access: [sales]
         """)

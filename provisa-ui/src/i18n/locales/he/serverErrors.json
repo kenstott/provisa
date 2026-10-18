@@ -275,7 +275,8 @@
       "has_dependents": "{{count}} אובייקט(ים) עדיין מפנים אל התפקיד {{role}}; יש להסיר תחילה את ההפניות האלה",
       "not_found": "התפקיד לא נמצא",
       "org_selection_required": "נדרשת בחירת ארגון",
-      "already_exists": "התפקיד '{{role}}' כבר קיים"
+      "already_exists": "התפקיד '{{role}}' כבר קיים",
+      "description_missing": "התפקיד '{{role}}' צריך תיאור של מטרתו"
     },
     "schema": {
       "allowed_domains_updated": "הדומיינים המותרים עודכנו עבור המקור '{{source}}'",
@@ -438,7 +439,9 @@
       "role_session_var_name_missing": "לערך סשן נדרש שם",
       "role_session_var_name_reserved": "'{{name}}' מקושר על ידי הבקשה או הצומת ואינו יכול להיות ערך סשן של תפקיד",
       "role_session_var_name_invalid": "שם ערך הסשן '{{name}}' חייב להכיל אותיות, ספרות וקווים תחתונים, ואסור שיתחיל בספרה",
-      "role_session_var_name_repeated": "ערך הסשן '{{name}}' מופיע פעמיים"
+      "role_session_var_name_repeated": "ערך הסשן '{{name}}' מופיע פעמיים",
+      "role_description_missing": "התפקיד '{{role}}' צריך תיאור של מטרתו",
+      "rls_rule_description_missing": "חוק שורה צריך תיאור של מטרתו"
     },
     "secrets": {
       "name_refused": "{{name}} אינו שם בתוך הסודות של הארגון הזה ב-{{service}}: שם הוא יחסי לארגון ואינו יכול לצאת ממנו",
@@ -602,11 +605,13 @@
     "engine": {
       "write_conflict": "שינוי אחר באותם נתונים נכתב באותו זמן. נסו שוב."
     },
-    "claim_roles": {
-      "name_invalid": "סוג התביעה '{{name}}' חייב להכיל אותיות, ספרות וקווים תחתונים בלבד, ואסור שיתחיל בספרה",
-      "name_missing": "סוג תביעה צריך שם",
-      "name_reserved": "'{{name}}' נקבע מהזהות הפועלת בכל בקשה ואינו יכול להיות סוג תביעה",
-      "database_not_connected": "מסד הנתונים אינו מחובר"
+    "derived_roles": {
+      "name_invalid": "המאפיין '{{name}}' יכול להכיל רק אותיות, ספרות וקווים תחתונים, ואינו יכול להתחיל בספרה",
+      "name_missing": "מאפיין צריך שם",
+      "name_reserved": "'{{name}}' נלקח מהזהות הפועלת בכל בקשה ואינו יכול להיות מאפיין",
+      "database_not_connected": "מסד הנתונים אינו מחובר",
+      "description_missing": "תפקיד נגזר צריך תיאור של מטרתו",
+      "not_found": "אין תפקיד נגזר מתוך {{name}}"
     }
   }
 }

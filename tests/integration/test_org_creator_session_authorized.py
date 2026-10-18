@@ -168,7 +168,7 @@ def planes(monkeypatch):
     monkeypatch.setattr(
         app_state,
         "config",
-        types.SimpleNamespace(auth={"provider": "basic"}, claim_roles=[]),
+        types.SimpleNamespace(auth={"provider": "basic"}, derived_roles=[]),
         raising=False,
     )
     monkeypatch.setattr(

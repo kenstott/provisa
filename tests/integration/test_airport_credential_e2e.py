@@ -88,6 +88,7 @@ def _model() -> dict:
         "roles": [
             {
                 "id": "seller",
+                "description": "Test role.",
                 "capabilities": ["query_development", "full_results"],
                 "domain_access": ["sales"],
             }

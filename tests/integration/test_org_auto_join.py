@@ -126,7 +126,9 @@ def _planes(monkeypatch, *org_rows: dict):
                 model_db=tenant_db,
                 tenant_db=tenant_db,
                 record_db=tenant_db,
-                roles={"analyst": {"id": "analyst", "capabilities": []}},
+                roles={
+                    "analyst": {"id": "analyst", "description": "Test role.", "capabilities": []}
+                },
             ),
         )
     monkeypatch.setattr(app_state, "org_registry", registry, raising=False)

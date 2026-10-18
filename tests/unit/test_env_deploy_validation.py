@@ -59,7 +59,9 @@ def _tree() -> dict[str, dict]:
                     "cardinality": "many-to-one",
                 }
             ],
-            "row_policies": [{"role_id": "analyst", "filter_expr": b"x"}],
+            "row_policies": [
+                {"description": "Test rule.", "role_id": "analyst", "filter_expr": b"x"}
+            ],
         },
     }
 

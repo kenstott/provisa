@@ -2970,3 +2970,8 @@ main {
   border-top: 1px solid var(--border);
   padding-top: 0.75rem;
 }
+
+/* REQ-2078: a derived role's value roles sit under their parent in the Roles list. */
+.data-table tbody td.derived-value-cell {
+  padding-inline-start: 1.75rem;
+}

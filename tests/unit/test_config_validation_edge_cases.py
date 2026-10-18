@@ -65,6 +65,7 @@ def _minimal_table(source_id: str = "pg-src", domain_id: str = "d1") -> dict:
 def _minimal_role(role_id: str = "analyst") -> dict:
     return {
         "id": role_id,
+        "description": "Test role.",
         "capabilities": ["read"],
         "domain_access": ["d1"],
     }
@@ -294,6 +295,7 @@ class TestRLSFilterField:
             table_id="orders",
             role_id="analyst",
             filter="region = 'us-east' AND status != 'deleted'",
+            description="Test rule.",
         )
         assert rule.filter == "region = 'us-east' AND status != 'deleted'"
 
@@ -302,18 +304,20 @@ class TestRLSFilterField:
             table_id="orders",
             role_id="analyst",
             filter="customer_id IN (SELECT id FROM customers WHERE tier = 'gold')",
+            description="Test rule.",
         )
         assert "SELECT" in rule.filter
 
     def test_filter_empty_string_is_accepted_by_pydantic(self):
         """No validator exists for the filter field; empty string silently parses."""
-        rule = RLSRule(table_id="orders", role_id="analyst", filter="")
+        rule = RLSRule(table_id="orders", role_id="analyst", filter="", description="Test rule.")
         assert rule.filter == ""
 
     def test_rls_rule_filter_via_parse_config_dict(self):
         data = _minimal_config(
             rls_rules=[
                 {
+                    "description": "Test rule.",
                     "table_id": "orders",
                     "role_id": "analyst",
                     "filter": "user_id = current_user_id()",
@@ -327,7 +331,7 @@ class TestRLSFilterField:
     def test_filter_none_raises_validation_error(self):
         """filter is a required str field; None should raise."""
         with pytest.raises((ValidationError, TypeError)):
-            RLSRule(table_id="orders", role_id="analyst", filter=None)
+            RLSRule(table_id="orders", role_id="analyst", filter=None, description="Test rule.")
 
 
 # ---------------------------------------------------------------------------
@@ -407,6 +411,7 @@ class TestRoleSelfReference:
         """Pydantic accepts parent_role_id == id (no circular-ref validator)."""
         role = Role(
             id="admin",
+            description="Test role.",
             capabilities=["admin"],
             domain_access=["*"],
             parent_role_id="admin",  # points to itself
@@ -418,6 +423,7 @@ class TestRoleSelfReference:
             roles=[
                 {
                     "id": "loop-role",
+                    "description": "Test role.",
                     "capabilities": ["read"],
                     "domain_access": ["d1"],
                     "parent_role_id": "loop-role",
@@ -431,6 +437,7 @@ class TestRoleSelfReference:
         """flatten_roles() names the cycle instead of recursing into it."""
         role = Role(
             id="loop",
+            description="Test role.",
             capabilities=["read"],
             domain_access=["d1"],
             parent_role_id="loop",

@@ -18,5 +18,6 @@ tables: []
 
 roles:
   - id: trig_writer
+    description: "Writes the rows the org's triggers fire on."
     capabilities: [query_development, full_results, write]
     domain_access: ["*"]

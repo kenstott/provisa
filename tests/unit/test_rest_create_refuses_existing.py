@@ -56,7 +56,9 @@ async def test_a_role_id_that_exists_is_refused_by_name(monkeypatch, control_pla
         monkeypatch.setattr(roles_router, check, _valid)
     monkeypatch.setattr(roles_router.role_repo, "require_residency_grant_saved", _valid)
     before = await _count(plane, roles)
-    body = roles_router.CreateRoleBody(id="auditor", capabilities=[], domain_access=["sales"])
+    body = roles_router.CreateRoleBody(
+        id="auditor", description="Test role.", capabilities=[], domain_access=["sales"]
+    )
     with pytest.raises(ApiError) as err:
         await roles_router.create_role(body, _request())
     assert (err.value.status_code, err.value.code, err.value.params) == (

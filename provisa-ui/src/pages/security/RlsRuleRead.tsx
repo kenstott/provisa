@@ -44,6 +44,8 @@ export function RlsRuleRead({
       testId={`rule-read-${r.id}`}
       fields={[
         { label: t("securityPage.ruleId"), value: String(r.id) },
+        // REQ-2081: what the rule is for.
+        { label: t("securityPage.ruleDescription"), value: r.description },
         { label: t("securityPage.applyTo"), value: scopeLabel },
         // A tag reaches across domains: its form has no domain to pick, so none is shown.
         ...(scope === "tag" ? [] : [{ label: t("securityPage.domain"), value: domain }]),
