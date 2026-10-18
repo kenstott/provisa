@@ -201,3 +201,24 @@ def test_a_returning_column_keeps_its_published_name():
         _writer(["id", "first_name"]),
     )
     assert 'RETURNING "first_name" AS "givenName"' in governed, governed
+
+
+def test_a_cypher_create_names_the_property_its_reads_name_and_writes_the_physical_column(built):
+    """Cypher names a column by its property -- the same key its MATCH reads -- and the write it
+    translates to names the published column, admitted and lowered to the physical one."""
+    from provisa.compiler.sql_rewrite import lower_to_catalog_physical
+    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.cypher.write_translator import WriteTranslator, parse_cypher_write
+    from tests.write_governance import admitted
+
+    _, ctx = built
+    label_map = CypherLabelMap.from_schema(ctx, ["*"])
+    (node,) = label_map.nodes.values()
+    assert node.properties["firstName"] == "givenName"  # the key MATCH reads
+    sql = WriteTranslator(label_map).translate(
+        parse_cypher_write("CREATE (c:Customers {id: 1, firstName: 'Ana'})")
+    )
+    gov = _writer(["id", "first_name"])
+    gov.table_map = {"store.customers": 1, "public.customers": 1, "customers": 1}
+    assert '"first_name"' in admitted(sql, gov)
+    assert '"first_name"' in lower_to_catalog_physical(sql, ctx)
