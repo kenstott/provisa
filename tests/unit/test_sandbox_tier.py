@@ -361,12 +361,14 @@ def test_a_cloud_deploy_reaches_the_sandbox_vm_too():
     assert "if sandbox_on_own_vm; then" in stores and "return" in stores
     own_vm = deploy[deploy.index("sandbox_on_own_vm() {") :]
     assert '[ "$NODE" != "$SANDBOX_NODE" ]' in own_vm[: own_vm.index("\n}\n")]
-    # Nor is the tier's container restarted on it: it is on the VM.
+    # Nor is the tier's container restarted, or given plugins, on it: it is on the VM.
+    node = deploy[deploy.index("node_containers() {") :]
+    node = node[: node.index("\n}\n")]
+    assert "if sandbox_on_own_vm; then" in node and "grep -vx compose-provisa-sandbox-1" in node
     restart = deploy[deploy.index("restart() {") :]
-    restart = restart[: restart.index("\n}\n")]
-    assert (
-        "if sandbox_on_own_vm; then" in restart and "grep -vx compose-provisa-sandbox-1" in restart
-    )
+    assert 'containers="$(node_containers)"' in restart[: restart.index("\n}\n")]
+    plugins = deploy[deploy.index("push_plugins() {") :]
+    assert 'CONTAINERS="$(node_containers)" push_commercial' in plugins[: plugins.index("\n}\n")]
     # The overlay publishes the tier on the VM's VPC address, read from the instance.
     assert "value(networkInterfaces[0].networkIP)" in body and "SANDBOX_PUBLISH=" in body
     assert '- "${SANDBOX_PUBLISH}:8000"' in deploy
