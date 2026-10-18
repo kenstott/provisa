@@ -125,7 +125,9 @@ def source_pg():
 def server(source_pg):
     from tests.integration.isolated_server import IsolatedServer
 
-    store = start_local_postgres()
+    # The pg engine's own PostgreSQL: it reaches the source through postgres_fdw, which the
+    # product bundles and a bare install lacks ("extension postgres_fdw is not available").
+    store = start_local_postgres(fdws=True)
     try:
         with tempfile.TemporaryDirectory() as workdir:
             path = Path(workdir) / "config.yaml"
