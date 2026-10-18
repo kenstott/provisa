@@ -154,14 +154,44 @@ def _replica_rows(pg: _SourceAndEngine) -> int | None:
             return None
 
 
-def _wait(condition, *, seconds: float, what: str, watching: tuple) -> None:
-    """Wait for ``condition``; a timeout says what each server in ``watching`` was doing."""
+def _wait(
+    condition,
+    *,
+    seconds: float,
+    what: str,
+    watching: tuple,
+    engine: "_SourceAndEngine | None" = None,
+) -> None:
+    """Wait for ``condition``; a timeout says what each server in ``watching`` was doing, and with
+    ``engine``, what the replica holds and every statement the engine ran on it."""
     deadline = time.monotonic() + seconds
     while not condition():
         assert time.monotonic() < deadline, "\n".join(
-            [f"timed out waiting for {what}", *(_what_it_was_doing(srv) for srv in watching)]
+            [
+                f"timed out waiting for {what}",
+                *(_what_it_was_doing(srv) for srv in watching),
+                *(_what_the_engine_did(engine) if engine is not None else []),
+            ]
         )
         time.sleep(0.25)
+
+
+def _what_the_engine_did(pg: "_SourceAndEngine") -> list[str]:
+    """The replica's row count and the engine's statements on the replica or the source's foreign
+    schema, in order: what became of a build its record calls complete."""
+    done = subprocess.run(
+        ["docker", "logs", pg._engine], check=True, capture_output=True, text=True
+    )
+    touched = [
+        line
+        for line in (done.stdout + done.stderr).splitlines()
+        if "src__public__orders" in line or "fdw_src" in line
+    ]
+    return [
+        f"--- the engine: replica rows {_replica_rows(pg)!r}",
+        f"statements on the replica or fdw_src ({len(touched)}):",
+        *touched[-300:],
+    ]
 
 
 #: The tail of a server's stderr a timeout shows.
@@ -317,6 +347,7 @@ def test_two_servers_that_see_the_declaration_build_the_replica_once(databases):
                 seconds=60,
                 what="the replica",
                 watching=(first, second),
+                engine=pg,
             )
             time.sleep(2 * _RELOAD_S + 2)  # the other server has reloaded and converged too
             (build,) = _builds(second)["builds"]  # it sees the same record
