@@ -454,7 +454,7 @@ async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598
             # registry does not hold is a mapper bug, not a tolerable miss -- let it fail the
             # registration by name (rel_repo.upsert raises ValueError) rather than warn and leave
             # the relationship silently absent. The deferred-config retry below is the one place a
-            # not-yet-registered table is expected, and it alone swallows ValueError.
+            # not-yet-registered table is expected, and it alone leaves one waiting for it.
             await rel_repo.upsert(
                 conn,
                 Relationship(
@@ -467,14 +467,19 @@ async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598
                     source_json_key=r.get("source_json_key") or None,
                 ),
             )
-        # Retry config relationships deferred at startup (tables may now exist)
+        # Retry config relationships deferred at startup (tables may now exist). One still
+        # waiting for a table another remote source registers stays deferred; anything else
+        # fails, naming the relationship (config_loader.upsert_declared_relationship).
         cfg = getattr(state, "config", None) if state is not None else None
         if cfg is not None:
+            from provisa.core.config_loader import (
+                declared_table_names,
+                upsert_declared_relationship,
+            )
+
+            declared = declared_table_names(cfg)
             for rel in cfg.relationships:
-                try:
-                    await rel_repo.upsert(conn, rel)
-                except ValueError:
-                    pass
+                await upsert_declared_relationship(conn, rel, declared)
 
 
 @router.post("")

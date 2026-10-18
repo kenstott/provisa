@@ -1667,11 +1667,13 @@ async def _load_and_build(
 
         async with model_change.scope("configuration seed"):
             async with model_db.acquire() as _retry_conn:
+                # Every table is registered now: one a relationship names that is not, fails the
+                # boot by name.
                 for _rel in _seed_file.relationships:
                     try:
                         await _rel_repo.upsert(_retry_conn, _rel)
                     except ValueError as exc:
-                        log.warning("seeded relationship %r not registered: %s", _rel.id, exc)
+                        raise ValueError(f"seeded relationship {_rel.id!r}: {exc}") from exc
 
     _mark("source-pools+ingest+remote")
 

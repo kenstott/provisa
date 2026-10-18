@@ -27,6 +27,14 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
+class TableNotRegistered(ValueError):
+    """A relationship names a table no registration holds (yet)."""
+
+    def __init__(self, end: str, table_name: str) -> None:
+        super().__init__(f"{end} table not registered: {table_name}")
+        self.table_name = table_name
+
+
 async def upsert(
     conn: "Connection", rel: Relationship
 ) -> None:  # REQ-019, REQ-020, REQ-399, REQ-400, REQ-1919
@@ -34,7 +42,7 @@ async def upsert(
     model_change.name("upsert", "relationship", rel.id)  # REQ-1524
     source_tbl = await table_repo.find_by_table_name(conn, rel.source_table_id)
     if source_tbl is None:
-        raise ValueError(f"Source table not registered: {rel.source_table_id}")
+        raise TableNotRegistered("Source", rel.source_table_id)
 
     target_tbl_id = None
     if rel.target_function_name:
@@ -43,7 +51,7 @@ async def upsert(
     else:
         target_tbl = await table_repo.find_by_table_name(conn, rel.target_table_id)
         if target_tbl is None:
-            raise ValueError(f"Target table not registered: {rel.target_table_id}")
+            raise TableNotRegistered("Target", rel.target_table_id)
         target_tbl_id = target_tbl["id"]
 
     # REQ-1586: a junction-backed edge names a registered associative table; an unregistered
@@ -52,7 +60,7 @@ async def upsert(
     if rel.via_table:
         via_tbl = await table_repo.find_by_table_name(conn, rel.via_table)
         if via_tbl is None:
-            raise ValueError(f"Junction table not registered: {rel.via_table}")
+            raise TableNotRegistered("Junction", rel.via_table)
         via_tbl_id = via_tbl["id"]
 
     if await _provided_elsewhere(conn, rel, source_tbl["id"], target_tbl_id):
