@@ -22,7 +22,9 @@ from opentelemetry.trace import SpanKind
 
 from provisa import otel_compat
 from provisa.api.otel_setup import _trace_detail_sampler
+from provisa.core.request_context import current_org
 from provisa.otel_compat import (
+    ORG_ATTRIBUTE,
     annotate_request,
     record_query,
     register_query_instruments,
@@ -317,6 +319,7 @@ def test_record_query_counts_and_times_in_either_detail(monkeypatch, detail):
     finally:
         reset_trace_detail(token)
     labels = {"transport": "pgwire", "route": "direct", "engine": "postgres", "status": 200}
+    labels[ORG_ATTRIBUTE] = current_org.get()  # the org bound for the test (conftest)
     assert counter.calls == [(1, labels)]
     assert duration.calls == [(1.5, labels)]
 
@@ -374,6 +377,7 @@ def test_observe_plan_puts_the_statements_facts_on_the_request_span(traced, inst
         assert duplicated not in attrs
     counter, duration = instruments
     labels = {"transport": "pgwire", "route": "direct", "engine": "postgres", "status": 200}
+    labels[ORG_ATTRIBUTE] = current_org.get()  # the org bound for the test (conftest)
     assert counter.calls == [(1, labels)]
     assert duration.calls[0][1] == labels
 
@@ -435,6 +439,7 @@ def test_a_raw_sql_response_cache_hit_is_reported_as_the_cache_route(traced, ins
         "route": "cache",
         "engine": "none",
         "status": 200,
+        ORG_ATTRIBUTE: current_org.get(),
     }
 
 
@@ -470,6 +475,7 @@ def test_a_graphql_cache_hit_is_reported_as_the_cache_route(traced, instruments)
         "route": "cache",
         "engine": "none",
         "status": 200,
+        ORG_ATTRIBUTE: current_org.get(),
     }
 
 

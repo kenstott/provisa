@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
+from datetime import datetime
 
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
@@ -36,7 +37,7 @@ from provisa.core.request_context import (
     set_session_vars,
 )
 from provisa.pgwire._pipeline import _resolve_session_settings
-from provisa.scheduler.jobs import _TRACE_EXTRA_COLS, _build_row
+from provisa.scheduler.jobs import _TRACE_EXTRA_COLS, _build_row, _insert_otel_iceberg
 
 pytestmark = pytest.mark.unit
 
@@ -75,7 +76,9 @@ def test_the_store_keeps_a_spans_org_as_its_tenant():
     attrs = {"provisa.tenant": "acme", "provisa.table": "orders"}
     row = {"trace_id": "t1", "span_attributes": json.dumps(attrs)}
     engine_cols = {c: "varchar" for c in ("trace_id", *_TRACE_EXTRA_COLS)}
-    built = _build_row(row, ["trace_id"], "2026-10-17", True, False, _TRACE_EXTRA_COLS, engine_cols)
+    built = _build_row(
+        row, ["trace_id"], "2026-10-17", "span_attributes", _TRACE_EXTRA_COLS, engine_cols
+    )
     by_col = dict(zip(["trace_id", "_date", *_TRACE_EXTRA_COLS], built))
     assert by_col["tenant_id"] == "acme"
     assert by_col["table_name"] == "orders"
@@ -214,3 +217,43 @@ def test_otlp2sql_keeps_a_metric_points_and_a_log_records_org():
 
     [log_row] = otlp2sql._log_rows(encode_logs(_finished_logs("acme")))
     assert log_row["tenant_id"] == "acme"
+
+
+class _CompactingEngine:
+    """The Trino side of compaction: the signal table's columns, and every statement run."""
+
+    dialect = "trino"
+
+    def __init__(self, cols: dict[str, str]):
+        self._cols = cols
+        self.sql: list[str] = []
+
+    def execute_engine_sync(self, sql, params=None, authorization=None):
+        from provisa.executor.result import QueryResult
+
+        self.sql.append(sql)
+        rows = list(self._cols.items()) if "SHOW COLUMNS" in sql else []
+        return QueryResult(rows=rows, column_names=[])
+
+
+@pytest.mark.parametrize(
+    ("signal", "attr_col"), [("metrics", "metric_attributes"), ("logs", "log_attributes")]
+)
+def test_the_store_keeps_a_metric_points_and_a_log_records_org_as_its_tenant(signal, attr_col):
+    import pyarrow as pa
+
+    from provisa.scheduler.jobs import _build_iceberg_col_defs
+
+    table = pa.table(
+        {
+            "metric_name" if signal == "metrics" else "body": ["provisa.query.executed"],
+            attr_col: [json.dumps({"provisa.tenant": "acme"})],
+        }
+    )
+    assert '"tenant_id" VARCHAR' in _build_iceberg_col_defs(signal, table)
+    engine = _CompactingEngine({n: "varchar" for n in (*table.schema.names, "tenant_id")})
+    engine._cols["_date"] = "date"
+    _insert_otel_iceberg(engine, signal, table, datetime(2026, 10, 18))
+    [insert] = [s for s in engine.sql if s.startswith("INSERT")]
+    assert '"tenant_id"' in insert
+    assert "'acme'" in insert
