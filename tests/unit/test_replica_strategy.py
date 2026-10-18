@@ -291,6 +291,33 @@ def test_a_port_another_process_listens_on_at_every_address_is_not_free():
         assert not pr._port_is_free(port)
 
 
+def test_a_port_another_process_listens_on_at_loopback_is_not_free():
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as held:
+        held.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        held.bind(("127.0.0.1", 0))
+        held.listen()
+        assert not pr._port_is_free(held.getsockname()[1])
+
+
+def test_a_port_a_stopped_server_left_closed_connections_on_is_free():
+    """A server that closes its connections first leaves them in TIME_WAIT on its port once it
+    stops; a server binds there again at once, so the probe that waits for the stop must agree."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        port = server.getsockname()[1]
+        client = socket.create_connection(("127.0.0.1", port))
+        accepted, _ = server.accept()
+        accepted.close()  # the server closes first: TIME_WAIT is on its side, on its port
+        client.close()
+    assert pr._port_is_free(port)
+
+
 def test_a_deployment_that_names_its_ports_gets_those_alone(monkeypatch):
     monkeypatch.setenv(pr.PORTS_ENV, "23001,23002,23003")
     alloc = pr.PortAllocator(is_free=lambda p: p != 23002)

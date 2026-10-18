@@ -553,11 +553,15 @@ class PortPair:
 
 def _port_is_free(port: int) -> bool:
     """Whether ``port`` can be bound right now, on loopback and on every address -- the real
-    free-port probe. No SO_REUSEADDR: with it, a loopback bind succeeds beside another process
-    listening on the wildcard address, and a server started there is shadowed by that process."""
+    free-port probe. Bound as a server binds, with SO_REUSEADDR: a listener on either address
+    still refuses it (the wildcard bind is the one that meets a wildcard listener, which a
+    loopback bind with SO_REUSEADDR passes on macOS), while the closed connections a stopped
+    server leaves in TIME_WAIT do not, as they do not refuse the server's own bind (Linux keeps
+    them 60s, past SERVER_STOP_SECONDS)."""
     # A probe: each socket is bound and closed at once, never listened on.
     for host in ("127.0.0.1", "0.0.0.0"):  # nosec B104
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 sock.bind((host, port))
             except OSError:
