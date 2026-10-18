@@ -344,7 +344,9 @@ OpenAPI 探索工具頁面（`/app/openapi`）在沙箱化的 iframe 中內嵌 S
 - `groupBy` — 以逗號分隔的欄位名稱；與 `?aggregate=` 搭配使用以分組結果。只有資料表 `DistinctOnColumn` 列舉中的欄位有效；角色看不到的欄位，伺服器一律傳回 `400`。(REQ-1361) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:447`]
 - `includeNodes` — 設為 `true` 可在每個群組資料列的 `nodes` 陣列中包含基礎資料表的純量欄位（以及 `include=` 中指名的聯結維度純量）。當自然語言分組查詢同時要求維度明細時為必要。(REQ-1405)
 
-回應為帶有 `type`/`id`/`attributes` 的資源物件。錯誤遵循 JSON:API 錯誤物件的形狀。
+- `include` — 以逗號分隔的關係名稱，使用實體拼寫，例如 `?include=order_items,shipment`：每個相關資源在 `included` 中只傳回一次，每個主要資源在 `relationships.<name>.data` 下連結它包含的內容（一對多關係為資源識別碼清單，一對一關係為一個識別碼或 `null`）。(REQ-257) [tool-verified: `provisa/api/jsonapi/generator.py`]
+
+回應是帶有 `type`/`id`/`attributes` 的資源物件。資源的 `id` 是其資料表的主鍵：鍵欄位的值；對於複合鍵，則是按鍵順序以 `:` 連接的各欄位值（主鍵為 `(order_id, line)` 的資料表中，訂單 7 的第 2 行是 `7:2`）。值中的 `:` 或 `\` 用 `\` 跳脫。沒有宣告主鍵的資料表使用其 `id` 欄位；兩者都沒有的資料表傳回 `400`，到達這種資料表的 `include` 也是如此。[tool-verified: `provisa/api/jsonapi/serializer.py`] 錯誤遵循 JSON:API 錯誤物件的格式。
 
 **回應快取：** 透過請求標頭選擇啟用，`Cache-Control: max-age=N` 或 `x-provisa-cache: true`（參見[回應快取請求標頭](#response-cache-request-headers)）。每個回應都帶有 `X-Provisa-Cache: HIT|MISS`，命中時還帶有 `X-Provisa-Cache-Age`。兩種形式不一致時，以 JSON:API 錯誤物件傳回 `400`。(REQ-544, REQ-536) [tool-verified: `provisa/api/jsonapi/generator.py`]
 

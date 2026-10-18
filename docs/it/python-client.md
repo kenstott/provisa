@@ -111,6 +111,149 @@ tables_df = client.list_tables()
 
 ---
 
+## Usare Provisa in Jupyter {: #using-provisa-in-jupyter }
+
+Installate nel kernel in esecuzione prima di importare. L'extra `pandas` copre l'output come DataFrame; aggiungete `sqlalchemy` se vi serve anche `pandas.read_sql` tramite il dialetto.
+
+```python
+%pip install "provisa-client[pandas]"
+```
+
+### Credenziali {: #credentials }
+
+I notebook salvano l'output delle celle nel file `.ipynb`. Un token digitato in una cella viene salvato su disco insieme al vostro codice. Non fatelo.
+
+`ProvisaClient` non legge l'ambiente: passategli le credenziali esplicitamente, da variabili d'ambiente. (`provisa_client.query()`, più sotto, le legge per voi.)
+
+```python
+import os
+from provisa_client import ProvisaClient
+
+client = ProvisaClient(
+    os.environ["PROVISA_URL"],           # choose your own variable name
+    token=os.environ["PROVISA_TOKEN"],   # personal access token
+    role=os.environ.get("PROVISA_ROLE"), # optional; omit to run as your own role
+    org=os.environ.get("PROVISA_ORG"),   # required on a multi-tenant deployment; None otherwise
+)
+```
+
+Impostate queste variabili nella shell prima di avviare Jupyter, oppure caricate un file `.env` con `python-dotenv`. In entrambi i casi, tenetele fuori dal notebook.
+
+### Una sola chiamata: `query()` {: #one-call-query }
+
+`provisa_client.query()` accetta un'istruzione SQL, GraphQL o Cypher e restituisce un DataFrame pandas. Il server riconosce di quale linguaggio si tratta. Non si costruisce nulla prima: la connessione viene dall'ambiente o da un file di profilo.
+
+```python
+import provisa_client
+
+df = provisa_client.query("SELECT region, amount FROM shop.orders")
+admin_view = provisa_client.query("SELECT region, amount FROM shop.orders", role="org_admin")
+```
+
+`role=` agisce con quel ruolo per una lettura, inviato come `X-Provisa-Role`. Il server lo rispetta solo per un ruolo che possedete. La lettura passa per Arrow Flight; impostate `transport` su `http` per inviarla a `/data/query`. `await provisa_client.aquery(...)` ne è la forma awaitable.
+
+La connessione si legge dal primo posto che nomina ciascuna impostazione:
+
+1. le parole chiave di `provisa_client.sign_in(...)`, che risolve la connessione una volta per tutte le letture successive;
+2. le variabili d'ambiente: `PROVISA_URL`, `PROVISA_TOKEN`, `PROVISA_USERNAME`, `PROVISA_PASSWORD`, `PROVISA_ROLE`, `PROVISA_ORG`, `PROVISA_FLIGHT_PORT`, `PROVISA_TRANSPORT`;
+3. una sezione di `~/.provisa/credentials`: `[default]`, o quella che nomina `PROVISA_PROFILE` (o `sign_in(profile=...)`).
+
+```ini
+[default]
+url = https://provisa.example.com
+token = provisa_pat_...
+role = analyst
+
+[staging]
+url = https://staging.provisa.example.com
+username = ana
+```
+
+Un `token` è un token di accesso personale o un token di sessione. Date invece `username` e `password` e il client li scambia con un token di sessione presso `POST /auth/login`. Funziona su un deployment il cui provider di accesso accetta una password (basic, simple, LDAP). Tenete la password in `PROVISA_PASSWORD` invece che nel file. Un accesso rifiutato, un URL mancante o un profilo nominato che non è nel file sollevano un errore con il motivo. Provisa non ha un flusso di accesso che un notebook possa guidare tramite un browser, quindi per i deployment con single sign-on usate un token di accesso personale.
+
+### Magic di cella {: #cell-magics }
+
+```python
+%pip install "provisa-client[notebook]"
+%load_ext provisa_client.magics
+```
+
+```text
+%%sql eu --role analyst_eu
+SELECT region, customer_email FROM shop.orders
+```
+
+`%%sql`, `%%graphql` e `%%cypher` rispondono alla cella con `query()`. Il DataFrame è il risultato della cella. Un nome dopo il magic lo associa anche nel notebook (`eu` sopra); `--role` agisce con quel ruolo per la cella.
+
+Anche JupySQL (`%load_ext sql`) definisce un `%%sql`. Caricandoli entrambi, `%%sql` appartiene all'estensione caricata per ultima. Quella di Provisa accetta `--role` e legge tramite Arrow Flight. Anche JupySQL funziona, tramite il dialetto SQLAlchemy: `%sql provisa+http://user:password@host:port` si connette, `%sql`/`%%sql` eseguono istruzioni governate, e `%sqlcmd tables -s <domain>` e `%sqlcmd columns -t <table> -s <domain>` elencano il catalogo.
+
+### Nel browser (Pyodide) {: #in-the-browser-pyodide }
+
+Con Pyodide, `query()` legge dal server che ha servito la pagina, come l'utente autenticato della pagina. La pagina ospite tiene quell'utente nello scope globale del kernel:
+
+```javascript
+self.provisaAuth = { baseUrl: "", role: "analyst_eu", bearer: "<token>", org: null };
+```
+
+`baseUrl` è vuoto per l'origine stessa della pagina. Il client legge `provisaAuth` a ogni richiesta, quindi un token ruotato ha effetto senza riavvio. I risultati arrivano come Arrow quando `pyarrow` è caricato; senza, arrivano come JSON. Un'istruzione Cypher torna sempre come JSON. `query()` è bloccante, cosa che un Web Worker (dove gira il kernel di un notebook) può fare; sul thread principale della pagina solleva un errore e la chiamata da usare è `await provisa_client.aquery(...)`.
+
+### DataFrame da GraphQL, SQL e Cypher {: #dataframes-from-graphql-sql-and-cypher }
+
+`query_df()` accetta tutti e tre i linguaggi di query e restituisce un DataFrame pandas.
+
+```python
+# GraphQL — first root field is extracted automatically
+df = client.query_df("{ orders { id amount region } }")
+
+# SQL
+df = client.query_df("SELECT id, amount, region FROM orders WHERE region = 'west'")
+
+# Cypher
+df = client.query_df("MATCH (o:Order) RETURN o.id, o.amount, o.region")
+```
+
+Le risposte GraphQL portano i dati sotto il nome di un campo radice; `query_df()` li estrae. Le risposte SQL e Cypher portano nomi di colonna espliciti dal server e vengono mappate direttamente.
+
+### Arrow Flight per estrazioni grandi {: #arrow-flight-for-large-pulls }
+
+`flight_df()` trasmette i dati come batch di record Arrow invece di deserializzare JSON. Per tabelle larghe o risultati oltre qualche centinaio di migliaia di righe è più veloce e usa meno memoria.
+
+```python
+df = client.flight_df("SELECT * FROM events")
+```
+
+Arrow preserva i tipi di colonna: gli interi restano interi, i timestamp restano timestamp. JSON no. Già questo basta per preferire Flight quando lo schema conta.
+
+Flight si connette per impostazione predefinita alla porta 8815. Passate `flight_port=` al costruttore di `ProvisaClient` se il vostro server usa un'altra porta.
+
+### `pandas.read_sql` tramite il dialetto SQLAlchemy {: #pandasread_sql-through-the-sqlalchemy-dialect }
+
+Installate l'extra `sqlalchemy` nel kernel:
+
+```python
+%pip install "provisa-client[sqlalchemy]"
+```
+
+Poi create un engine con un URL `provisa+http://`. Mettete le credenziali in variabili d'ambiente, non nell'URL.
+
+```python
+import os
+import pandas as pd
+from sqlalchemy import create_engine
+
+host = os.environ["PROVISA_HOST"]       # e.g. "localhost:8001"
+user = os.environ["PROVISA_USER"]
+pwd  = os.environ["PROVISA_PASSWORD"]
+
+engine = create_engine(f"provisa+http://{user}:{pwd}@{host}")
+
+df = pd.read_sql("SELECT id, amount FROM orders", engine)
+```
+
+Il dialetto invia nome utente e password a `/auth/login` e conserva il token ottenuto per tutta la vita dell'engine: le credenziali non vengono ritrasmesse a ogni query.
+
+---
+
 ## DB-API 2.0
 
 Interfaccia standard [PEP 249](https://peps.python.org/pep-0249/). (REQ-268) Funziona con qualsiasi strumento che accetta una connessione DB-API.
@@ -216,7 +359,7 @@ engine = create_engine(
 
 ### Introspezione dello schema {: #schema-introspection }
 
-Il dialetto implementa `get_table_names()`, `get_columns()`, e `has_table()` — gli strumenti di catalogo (DBeaver, SQLAlchemy automap) possono ispezionare lo schema. (REQ-363, REQ-270)
+Il dialetto riflette il catalogo servito al vostro ruolo, letto da `GET /data/catalog` come utente, ruolo e organizzazione della connessione. Ogni dominio è uno schema, e ogni tabella vive in uno: `get_schema_names()` elenca i domini, `get_table_names(schema="shop")` elenca le tabelle di quel dominio con i loro nomi SQL, e `get_columns("orders", schema="shop")` dà tipo, nullabilità e descrizione di ogni colonna. Senza schema, `get_table_names()` non ne elenca nessuna. Una tabella sconosciuta solleva `NoSuchTableError`; un catalogo che il server rifiuta solleva un errore. (REQ-363, REQ-270, REQ-2070)
 
 ---
 

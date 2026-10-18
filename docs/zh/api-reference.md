@@ -344,7 +344,9 @@ OpenAPI 浏览器页面（`/app/openapi`）在一个沙盒 iframe 中嵌入 Swag
 - `groupBy` — 逗号分隔的列名；与 `?aggregate=` 一起使用以对结果分组。只有表的 `DistinctOnColumn` 枚举中的列有效；对角色不可见的列，服务器返回 `400`。(REQ-1361) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:447`]
 - `includeNodes` — `true` 表示在每个分组行的 `nodes` 数组中包含基表标量列（以及 `include=` 中命名的已联接维度标量）。当 NL 分组查询同时请求维度详情时需要此参数。(REQ-1405)
 
-响应为带有 `type`/`id`/`attributes` 的资源对象。错误遵循 JSON:API 错误对象格式。
+- `include` — 以逗号分隔的关系名称，使用物理拼写，例如 `?include=order_items,shipment`：每个相关资源在 `included` 中只返回一次，每个主资源在 `relationships.<name>.data` 下链接它包含的内容（一对多关系为资源标识符列表，一对一关系为一个标识符或 `null`）。(REQ-257) [tool-verified: `provisa/api/jsonapi/generator.py`]
+
+响应是带有 `type`/`id`/`attributes` 的资源对象。资源的 `id` 是其表的主键：键列的值；对于复合键，则是按键顺序以 `:` 连接的各列值（主键为 `(order_id, line)` 的表中，订单 7 的第 2 行是 `7:2`）。值中的 `:` 或 `\` 用 `\` 转义。没有声明主键的表使用其 `id` 列；两者都没有的表返回 `400`，到达这种表的 `include` 也是如此。[tool-verified: `provisa/api/jsonapi/serializer.py`] 错误遵循 JSON:API 错误对象的格式。
 
 **响应缓存：** 通过请求头选择启用，`Cache-Control: max-age=N` 或 `x-provisa-cache: true`（参见[响应缓存请求头](#response-cache-request-headers)）。每个响应都带有 `X-Provisa-Cache: HIT|MISS`，命中时还带有 `X-Provisa-Cache-Age`。两种形式不一致时，以 JSON:API 错误对象返回 `400`。（REQ-544、REQ-536）[tool-verified: `provisa/api/jsonapi/generator.py`]
 

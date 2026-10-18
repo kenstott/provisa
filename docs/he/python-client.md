@@ -111,6 +111,149 @@ tables_df = client.list_tables()
 
 ---
 
+## שימוש ב-Provisa ב-Jupyter {: #using-provisa-in-jupyter }
+
+התקינו בקרנל הפועל לפני הייבוא. התוסף `pandas` מכסה פלט כ-DataFrame; הוסיפו `sqlalchemy` אם צריך גם `pandas.read_sql` דרך הדיאלקט.
+
+```python
+%pip install "provisa-client[pandas]"
+```
+
+### אישורי גישה {: #credentials }
+
+מחברות שומרות את פלט התאים בקובץ `.ipynb`. אסימון שמוקלד בתא יישמר בדיסק לצד הקוד שלכם. אל תעשו זאת.
+
+`ProvisaClient` אינו קורא את הסביבה: העבירו לו את אישורי הגישה במפורש, ממשתני סביבה. (`provisa_client.query()`, להלן, קורא אותם בשבילכם.)
+
+```python
+import os
+from provisa_client import ProvisaClient
+
+client = ProvisaClient(
+    os.environ["PROVISA_URL"],           # choose your own variable name
+    token=os.environ["PROVISA_TOKEN"],   # personal access token
+    role=os.environ.get("PROVISA_ROLE"), # optional; omit to run as your own role
+    org=os.environ.get("PROVISA_ORG"),   # required on a multi-tenant deployment; None otherwise
+)
+```
+
+הגדירו את המשתנים האלה במעטפת לפני הפעלת Jupyter, או טענו קובץ `.env` בעזרת `python-dotenv`. בכל מקרה, השאירו אותם מחוץ למחברת.
+
+### קריאה אחת: `query()` {: #one-call-query }
+
+`provisa_client.query()` מקבל משפט SQL, GraphQL או Cypher ומחזיר DataFrame של pandas. השרת מזהה באיזו שפה מדובר. דבר אינו נבנה מראש: החיבור מגיע מהסביבה או מקובץ פרופיל.
+
+```python
+import provisa_client
+
+df = provisa_client.query("SELECT region, amount FROM shop.orders")
+admin_view = provisa_client.query("SELECT region, amount FROM shop.orders", role="org_admin")
+```
+
+`role=` פועל בתפקיד הזה לקריאה אחת, ונשלח כ-`X-Provisa-Role`. השרת מכבד אותו רק לתפקיד שיש לכם. הקריאה עוברת דרך Arrow Flight; הגדירו את `transport` ל-`http` כדי לשלוח אותה ל-`/data/query` במקום. `await provisa_client.aquery(...)` היא הצורה הא-סינכרונית.
+
+החיבור נקרא מהמקום הראשון שמציין כל הגדרה:
+
+1. ארגומנטים של `provisa_client.sign_in(...)`, שמפענח את החיבור פעם אחת לכל הקריאות שאחריו;
+2. משתני סביבה: `PROVISA_URL`, `PROVISA_TOKEN`, `PROVISA_USERNAME`, `PROVISA_PASSWORD`, `PROVISA_ROLE`, `PROVISA_ORG`, `PROVISA_FLIGHT_PORT`, `PROVISA_TRANSPORT`;
+3. מקטע של `~/.provisa/credentials`: `[default]`, או זה ש-`PROVISA_PROFILE` (או `sign_in(profile=...)`) מציין.
+
+```ini
+[default]
+url = https://provisa.example.com
+token = provisa_pat_...
+role = analyst
+
+[staging]
+url = https://staging.provisa.example.com
+username = ana
+```
+
+`token` הוא אסימון גישה אישי או אסימון הפעלה. תנו במקומו `username` ו-`password`, והלקוח מחליף אותם באסימון הפעלה ב-`POST /auth/login`. זה עובד בפריסה שספק הכניסה שלה מקבל סיסמה (basic, simple, LDAP). שמרו את הסיסמה ב-`PROVISA_PASSWORD` ולא בקובץ. כניסה שנדחתה, URL חסר או פרופיל בשם שאינו בקובץ מעלים שגיאה עם הסיבה. ל-Provisa אין תהליך כניסה שמחברת יכולה להפעיל דרך דפדפן, ולכן בפריסות עם כניסה יחידה השתמשו באסימון גישה אישי.
+
+### פקודות קסם לתאים {: #cell-magics }
+
+```python
+%pip install "provisa-client[notebook]"
+%load_ext provisa_client.magics
+```
+
+```text
+%%sql eu --role analyst_eu
+SELECT region, customer_email FROM shop.orders
+```
+
+`%%sql`, `%%graphql` ו-`%%cypher` עונים לתא באמצעות `query()`. ה-DataFrame הוא תוצאת התא. שם אחרי פקודת הקסם גם קושר אותו במחברת (`eu` למעלה); `--role` פועל בתפקיד הזה עבור התא.
+
+גם JupySQL (`%load_ext sql`) מגדיר `%%sql`. טענו את שניהם ו-`%%sql` שייך להרחבה שנטענה אחרונה. זו של Provisa מקבלת `--role` וקוראת דרך Arrow Flight. גם JupySQL עובד, דרך דיאלקט SQLAlchemy: `%sql provisa+http://user:password@host:port` מתחבר, `%sql`/`%%sql` מריצים משפטים מנוהלים, ו-`%sqlcmd tables -s <domain>` ו-`%sqlcmd columns -t <table> -s <domain>` מציגים את הקטלוג.
+
+### בדפדפן (Pyodide) {: #in-the-browser-pyodide }
+
+תחת Pyodide, `query()` קורא מהשרת שהגיש את הדף, כמשתמש המחובר בדף. דף המארח שומר את המשתמש הזה בהיקף הגלובלי של הקרנל:
+
+```javascript
+self.provisaAuth = { baseUrl: "", role: "analyst_eu", bearer: "<token>", org: null };
+```
+
+`baseUrl` ריק עבור המקור של הדף עצמו. הלקוח קורא את `provisaAuth` בכל בקשה, כך שאסימון שהוחלף נכנס לתוקף בלי הפעלה מחדש. התוצאות מגיעות כ-Arrow כש-`pyarrow` טעון; בלעדיו הן מגיעות כ-JSON. משפט Cypher תמיד חוזר כ-JSON. `query()` חוסם, מה ש-Web Worker (שבו רץ קרנל של מחברת) יכול לעשות; בתהליכון הראשי של הדף הוא מעלה שגיאה, והקריאה שיש להשתמש בה היא `await provisa_client.aquery(...)`.
+
+### DataFrames מ-GraphQL, SQL ו-Cypher {: #dataframes-from-graphql-sql-and-cypher }
+
+`query_df()` מקבל את שלוש שפות השאילתה ומחזיר DataFrame של pandas.
+
+```python
+# GraphQL — first root field is extracted automatically
+df = client.query_df("{ orders { id amount region } }")
+
+# SQL
+df = client.query_df("SELECT id, amount, region FROM orders WHERE region = 'west'")
+
+# Cypher
+df = client.query_df("MATCH (o:Order) RETURN o.id, o.amount, o.region")
+```
+
+תשובות GraphQL נושאות את הנתונים תחת שם של שדה שורש; `query_df()` מחלץ אותם. תשובות SQL ו-Cypher נושאות שמות עמודות מפורשים מהשרת וממופות ישירות.
+
+### Arrow Flight לשליפות גדולות {: #arrow-flight-for-large-pulls }
+
+`flight_df()` מזרים נתונים כאצוות רשומות Arrow במקום לפענח JSON. לטבלאות רחבות או לתוצאות של יותר מכמה מאות אלפי שורות, זה מהיר יותר וצורך פחות זיכרון.
+
+```python
+df = client.flight_df("SELECT * FROM events")
+```
+
+Arrow שומר על סוגי העמודות – מספרים שלמים נשארים שלמים, חותמות זמן נשארות חותמות זמן. JSON לא. זו לבדה סיבה להעדיף את Flight כשהסכימה חשובה.
+
+Flight מתחבר כברירת מחדל לפורט 8815. העבירו `flight_port=` לבנאי של `ProvisaClient` אם השרת שלכם משתמש בפורט אחר.
+
+### `pandas.read_sql` דרך דיאלקט SQLAlchemy {: #pandasread_sql-through-the-sqlalchemy-dialect }
+
+התקינו את התוסף `sqlalchemy` בקרנל:
+
+```python
+%pip install "provisa-client[sqlalchemy]"
+```
+
+לאחר מכן בנו engine עם URL מסוג `provisa+http://`. שימו את אישורי הגישה במשתני סביבה, לא במחרוזת ה-URL.
+
+```python
+import os
+import pandas as pd
+from sqlalchemy import create_engine
+
+host = os.environ["PROVISA_HOST"]       # e.g. "localhost:8001"
+user = os.environ["PROVISA_USER"]
+pwd  = os.environ["PROVISA_PASSWORD"]
+
+engine = create_engine(f"provisa+http://{user}:{pwd}@{host}")
+
+df = pd.read_sql("SELECT id, amount FROM orders", engine)
+```
+
+הדיאלקט שולח את שם המשתמש והסיסמה ל-`/auth/login` ומחזיק את האסימון שהתקבל לכל אורך חיי ה-engine – אישורי הגישה אינם נשלחים מחדש בכל שאילתה.
+
+---
+
 ## DB-API 2.0
 
 ממשק [PEP 249](https://peps.python.org/pep-0249/) סטנדרטי. (REQ-268) עובד עם כל כלי המקבל חיבור DB-API.
@@ -216,7 +359,7 @@ engine = create_engine(
 
 ### Introspection סכמה {: #schema-introspection }
 
-הדיאלקט מממש `get_table_names()`, `get_columns()`, ו-`has_table()` — כלי קטלוג (DBeaver, SQLAlchemy automap) יכולים לבחון את הסכמה. (REQ-363, REQ-270)
+הדיאלקט משקף את הקטלוג שמוגש לתפקיד שלכם, נקרא מ-`GET /data/catalog` כמשתמש, התפקיד והארגון של החיבור. כל דומיין הוא סכימה, וכל טבלה נמצאת באחת: `get_schema_names()` מציג את הדומיינים, `get_table_names(schema="shop")` מציג את טבלאות הדומיין לפי שמות ה-SQL שלהן, ו-`get_columns("orders", schema="shop")` נותן את הסוג, האפשרות ל-NULL והתיאור של כל עמודה. בלי סכימה שצוינה, `get_table_names()` אינו מציג אף אחת. טבלה לא מוכרת מעלה `NoSuchTableError`; קטלוג שהשרת מסרב לו מעלה שגיאה. (REQ-363, REQ-270, REQ-2070)
 
 ---
 
