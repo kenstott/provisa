@@ -388,6 +388,18 @@ The log is append-only at the database level: PostgreSQL rules turn `DELETE` and
 
 Retention: rows are kept indefinitely. Provisa has no retention setting and never purges the audit log; because `DELETE` is a no-op, removing old rows means an operator dropping or archiving the table's data outside Provisa.
 
+## Redaction
+
+What Provisa records about its own work passes through one list of redaction rules per organization before it is written anywhere. Provisa's built-in rules are the list's starting set; an organization adds its own. Every secret Provisa holds, and every secret the model references, is redacted without a rule naming it: a value resolved from `${secret:…}` or from Provisa's own store never appears in a record in the clear.
+
+The list applies at every exit Provisa writes:
+
+- every span and every log record, in Provisa's OpenTelemetry SDK, before any exporter sees it; standard output included;
+- the audit tables, as each row is written;
+- the error messages a client receives.
+
+A federated source keeps its own logs, which Provisa does not write and cannot reach. Records a source makes of the statements Provisa sends it are that source's to protect.
+
 ## Rate Limiting
 
 Per-role rate limits are configured in `provisa.yaml`: max requests per second, max concurrent SSE subscriptions, and max concurrent Arrow Flight streams. (REQ-369) Limits are enforced at the API layer before compilation or execution; requests over the limit are rejected with HTTP 429 and a `Retry-After` header. (REQ-369)
@@ -559,6 +571,21 @@ On a deployment shared by many organizations, the ops signals (`"ops"."traces"`,
 The ops signals are kept indefinitely on both engines, as the audit log is: compaction rewrites the files they are stored in and removes none of their rows. On Trino they are the `otel` catalog's Iceberg tables. On a native engine (DuckDB) the server lands its own trace records as Parquet files in its telemetry folder and the engine reads them under the same name, `"ops"."traces"`, with the refresh lineage view `"ops"."mv_refresh_lineage"` over them; both are read under the same per-organization rule. (REQ-862)
 
 The signals are kept in the clear in their store. A workload that needs more than a per-organization boundary inside one deployment runs on a dedicated deployment; a highly sensitive or regulated one is self-hosted.
+
+## Background work across organizations
+
+A process that serves many organizations runs each one's background work as that organization. Each organization's change processing (the event loop that lands source changes and refreshes the views over them), its replica builds and the table triggers they fire belong to its own runtime: a change is processed by its own organization's job, reads its source with that organization's address and credential, and writes that organization's store. Each environment of an organization holds its own PostgreSQL logical replication slot and publication, named for the organization, the environment and the source, so two organizations that name a source alike on one database each read their own changes.
+
+## Data residency
+
+On a deployment with regions, a table can name one region as its home, and its personal data is stored and processed there. (REQ-1921, REQ-1922)
+
+- Only the home region builds and refreshes the table's replica. Every other region reads that replica in place, with the reader's row and column rules applied in the home region, so only what the reader may see leaves it.
+- A home region whose replica is not built, or whose stores cannot be reached, refuses the read (`query.home_region_unavailable`). The source is never read live from another region instead.
+- A draft is previewed only where it lives. A draft table that names a region is read for its steward's preview only on that region's nodes and refused elsewhere; the copy the preview lands is kept there for its release. A copy any region holds of a table, draft or published, whose home is now another region is retired and then dropped.
+- Setting, changing or removing a table's region needs the `data_residency` right for the regions involved, on top of owning the table through its domain. A move can pass through draft, so the table is served nowhere in between.
+
+Row and column rules written on the answering node's region (`current_setting('provisa.region')`) and on members' `region` attribute decide what crosses between regions. [Regions](regions.md) describes regions, homing and these rules in full.
 
 ## Deployment Hardening
 

@@ -385,6 +385,18 @@ O log é somente de acréscimo no nível do banco de dados: regras do PostgreSQL
 
 Retenção: as linhas são mantidas indefinidamente. O Provisa não tem configuração de retenção e nunca apaga o log de auditoria; como `DELETE` é uma operação nula, remover linhas antigas significa que um operador descarta ou arquiva os dados da tabela fora do Provisa.
 
+## Ocultação {: #redaction }
+
+O que o Provisa registra sobre o próprio trabalho passa por uma lista de regras de ocultação por organização antes de ser escrito em qualquer lugar. As regras embutidas do Provisa são o conjunto inicial da lista; uma organização acrescenta as suas. Todo segredo que o Provisa guarda, e todo segredo a que o modelo faz referência, é ocultado sem que uma regra o nomeie: um valor resolvido de `${secret:…}` ou do armazenamento do próprio Provisa nunca aparece em claro num registro.
+
+A lista se aplica em cada saída em que o Provisa escreve:
+
+- cada span e cada registro de log, no SDK do OpenTelemetry do Provisa, antes que qualquer exportador o veja; a saída padrão incluída;
+- as tabelas de auditoria, à medida que cada linha é escrita;
+- as mensagens de erro que um cliente recebe.
+
+Uma fonte federada mantém os próprios logs, que o Provisa não escreve e não alcança. Os registros que uma fonte guarda das instruções que o Provisa lhe envia cabe a essa fonte proteger.
+
 ## Limitação de taxa {: #rate-limiting }
 
 Limites de taxa por função são configurados em `provisa.yaml`: máximo de requisições por segundo, máximo de assinaturas SSE simultâneas e máximo de fluxos Arrow Flight simultâneos. (REQ-369) Os limites são aplicados na camada de API antes da compilação ou execução; requisições acima do limite são recusadas com HTTP 429 e um cabeçalho `Retry-After`. (REQ-369)
@@ -555,6 +567,21 @@ Numa implantação compartilhada por muitas organizações, os sinais operaciona
 Os sinais operacionais são mantidos indefinidamente nos dois motores, como o log de auditoria: a compactação reescreve os arquivos em que estão guardados e não remove nenhuma de suas linhas. No Trino eles são as tabelas Iceberg do catálogo `otel`. Num motor nativo (DuckDB) o servidor grava os próprios registros de trace como arquivos Parquet na sua pasta de telemetria e o motor os lê com o mesmo nome, `"ops"."traces"`, com a visão de linhagem de atualizações `"ops"."mv_refresh_lineage"` sobre eles; ambos são lidos pela mesma regra por organização. (REQ-862)
 
 Os sinais são mantidos em claro no seu armazenamento. Uma carga de trabalho que precise de mais do que um limite por organização dentro de uma implantação roda numa implantação dedicada; uma muito sensível ou regulada é auto-hospedada.
+
+## Trabalho em segundo plano entre organizações {: #background-work-across-organizations }
+
+Um processo que atende muitas organizações executa o trabalho em segundo plano de cada uma como essa organização. O processamento de mudanças de cada organização (o loop de eventos que grava as mudanças das fontes e atualiza as visões sobre elas), suas construções de réplicas e os gatilhos de tabela que disparam pertencem ao seu próprio runtime: uma mudança é processada pela tarefa da sua própria organização, lê sua fonte com o endereço e a credencial dessa organização e grava no armazenamento dessa organização. Cada ambiente de uma organização tem seu próprio slot de replicação lógica do PostgreSQL e sua publicação, nomeados pela organização, pelo ambiente e pela fonte, de modo que duas organizações que dão o mesmo nome a uma fonte num mesmo banco leem cada uma as próprias mudanças.
+
+## Residência de dados {: #data-residency }
+
+Numa implantação com regiões, uma tabela pode nomear uma região como sua casa, e seus dados pessoais são armazenados e processados lá. (REQ-1921, REQ-1922)
+
+- Só a região de casa constrói e atualiza a réplica da tabela. Qualquer outra região lê essa réplica no lugar, com as regras de linha e coluna do leitor aplicadas na região de casa, de modo que só sai dela o que o leitor pode ver.
+- Uma região de casa cuja réplica não foi construída, ou cujos armazenamentos não podem ser alcançados, recusa a leitura (`query.home_region_unavailable`). A fonte nunca é lida ao vivo de outra região no lugar.
+- Um rascunho só é pré-visualizado onde vive. Uma tabela em rascunho que nomeia uma região é lida para a pré-visualização do seu responsável só nos nós dessa região e recusada em outros lugares; a cópia que a pré-visualização grava é mantida lá para a sua liberação. Uma cópia que qualquer região tenha de uma tabela, rascunho ou publicada, cuja casa agora é outra região é retirada e depois removida.
+- Definir, mudar ou remover a região de uma tabela exige o direito `data_residency` para as regiões envolvidas, além de ser dono da tabela pelo seu domínio. Uma mudança pode passar pelo rascunho, de modo que a tabela não é servida em lugar nenhum no intervalo.
+
+Regras de linha e coluna escritas sobre a região do nó que responde (`current_setting('provisa.region')`) e sobre o atributo `region` dos membros decidem o que atravessa entre regiões. [Regiões](regions.md) descreve por completo regiões, a atribuição de casa e essas regras.
 
 ## Fortalecimento da implantação {: #deployment-hardening }
 

@@ -385,6 +385,18 @@ Das Log ist auf Datenbankebene nur anhängbar: PostgreSQL-Regeln machen `DELETE`
 
 Aufbewahrung: Zeilen werden unbegrenzt behalten. Provisa hat keine Einstellung für die Aufbewahrung und löscht das Audit-Log nie; da `DELETE` ein No-op ist, bedeutet das Entfernen alter Zeilen, dass ein Operator die Daten der Tabelle außerhalb von Provisa löscht oder archiviert.
 
+## Schwärzung {: #redaction }
+
+Was Provisa über seine eigene Arbeit aufzeichnet, durchläuft eine Liste von Schwärzungsregeln je Organisation, bevor es irgendwohin geschrieben wird. Die eingebauten Regeln von Provisa sind der Ausgangsbestand der Liste; eine Organisation ergänzt eigene. Jedes Secret, das Provisa hält, und jedes Secret, auf das das Modell verweist, wird ohne eine Regel geschwärzt, die es nennt: Ein aus `${secret:…}` oder aus Provisas eigenem Speicher aufgelöster Wert erscheint nie im Klartext in einem Eintrag.
+
+Die Liste gilt an jedem Ausgang, an den Provisa schreibt:
+
+- jeder Span und jeder Log-Eintrag, im OpenTelemetry-SDK von Provisa, bevor ein Exporter ihn sieht; die Standardausgabe eingeschlossen;
+- die Audit-Tabellen, wenn jede Zeile geschrieben wird;
+- die Fehlermeldungen, die ein Client erhält.
+
+Eine föderierte Quelle führt ihre eigenen Logs, die Provisa weder schreibt noch erreicht. Aufzeichnungen einer Quelle über die Anweisungen, die Provisa an sie sendet, sind von dieser Quelle zu schützen.
+
 ## Ratenbegrenzung {: #rate-limiting }
 
 Rollenspezifische Ratenlimits werden in `provisa.yaml` konfiguriert: maximale Anfragen pro Sekunde, maximale gleichzeitige SSE-Subscriptions und maximale gleichzeitige Arrow-Flight-Streams. (REQ-369) Die Limits werden auf der API-Schicht vor Kompilierung und Ausführung durchgesetzt; Anfragen über dem Limit werden mit HTTP 429 und einem `Retry-After`-Header abgelehnt. (REQ-369)
@@ -555,6 +567,21 @@ Auf einem Deployment, das sich viele Organisationen teilen, sind die Betriebssig
 Die Betriebssignale werden auf beiden Engines unbegrenzt aufbewahrt, wie das Audit-Log: Die Kompaktierung schreibt die Dateien, in denen sie liegen, neu und entfernt keine ihrer Zeilen. Auf Trino sind sie die Iceberg-Tabellen des Katalogs `otel`. Auf einer nativen Engine (DuckDB) legt der Server seine eigenen Trace-Datensätze als Parquet-Dateien in seinem Telemetrie-Ordner ab, und die Engine liest sie unter demselben Namen, `"ops"."traces"`, mit der Refresh-Lineage-Sicht `"ops"."mv_refresh_lineage"` darüber; beide werden nach derselben Regel pro Organisation gelesen. (REQ-862)
 
 Die Signale liegen in ihrem Store im Klartext. Eine Workload, die mehr als eine Grenze pro Organisation innerhalb eines Deployments braucht, läuft auf einem dedizierten Deployment; eine hochsensible oder regulierte wird selbst gehostet.
+
+## Hintergrundarbeit über Organisationen hinweg {: #background-work-across-organizations }
+
+Ein Prozess, der viele Organisationen bedient, führt die Hintergrundarbeit jeder Organisation als diese Organisation aus. Die Änderungsverarbeitung jeder Organisation (die Ereignisschleife, die Quelländerungen landet und die Views darüber aktualisiert), ihre Replica-Builds und die Tabellen-Trigger, die sie auslösen, gehören zu ihrer eigenen Runtime: Eine Änderung wird vom Job ihrer eigenen Organisation verarbeitet, liest ihre Quelle mit Adresse und Zugangsdaten dieser Organisation und schreibt in deren Speicher. Jede Umgebung einer Organisation hält ihren eigenen PostgreSQL-Slot für logische Replikation samt Publication, benannt nach Organisation, Umgebung und Quelle, sodass zwei Organisationen, die eine Quelle auf derselben Datenbank gleich benennen, jeweils ihre eigenen Änderungen lesen.
+
+## Datenresidenz {: #data-residency }
+
+In einem Deployment mit Regionen kann eine Tabelle eine Region als ihre Heimat nennen; ihre personenbezogenen Daten werden dort gespeichert und verarbeitet. (REQ-1921, REQ-1922)
+
+- Nur die Heimatregion baut und aktualisiert die Replica der Tabelle. Jede andere Region liest diese Replica an Ort und Stelle, wobei die Zeilen- und Spaltenregeln des Lesers in der Heimatregion angewendet werden, sodass sie nur verlässt, was der Leser sehen darf.
+- Eine Heimatregion, deren Replica nicht gebaut ist oder deren Speicher nicht erreichbar sind, verweigert das Lesen (`query.home_region_unavailable`). Die Quelle wird nie stattdessen live aus einer anderen Region gelesen.
+- Ein Entwurf wird nur dort in der Vorschau gezeigt, wo er lebt. Eine Entwurfstabelle, die eine Region nennt, wird für die Vorschau ihres Stewards nur auf den Knoten dieser Region gelesen und anderswo verweigert; die Kopie, die die Vorschau landet, wird dort für die Freigabe aufbewahrt. Eine Kopie, die irgendeine Region von einer Tabelle hält (Entwurf oder veröffentlicht), deren Heimat nun eine andere Region ist, wird stillgelegt und dann gelöscht.
+- Die Region einer Tabelle zu setzen, zu ändern oder zu entfernen erfordert das Recht `data_residency` für die beteiligten Regionen, zusätzlich zum Besitz der Tabelle über ihre Domäne. Ein Umzug kann über den Entwurf laufen, sodass die Tabelle dazwischen nirgends bereitgestellt wird.
+
+Zeilen- und Spaltenregeln auf der Region des antwortenden Knotens (`current_setting('provisa.region')`) und auf dem Attribut `region` der Mitglieder entscheiden, was zwischen Regionen übertragen wird. [Regionen](regions.md) beschreibt Regionen, Homing und diese Regeln vollständig.
 
 ## Deployment-Härtung {: #deployment-hardening }
 

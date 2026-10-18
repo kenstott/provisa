@@ -385,6 +385,18 @@ Le journal est en ajout seul au niveau de la base de données : les règles Post
 
 Rétention : les lignes sont conservées indéfiniment. Provisa n'a aucun réglage de rétention et ne purge jamais le journal d'audit ; comme `DELETE` est une opération nulle, supprimer d'anciennes lignes suppose qu'un opérateur supprime ou archive les données de la table en dehors de Provisa.
 
+## Expurgation {: #redaction }
+
+Ce que Provisa enregistre de son propre travail passe par une seule liste de règles d'expurgation par organisation avant d'être écrit où que ce soit. Les règles intégrées de Provisa sont l'ensemble de départ de la liste ; une organisation y ajoute les siennes. Chaque secret que Provisa détient, et chaque secret auquel le modèle fait référence, est expurgé sans qu'une règle le nomme : une valeur résolue depuis `${secret:…}` ou depuis le magasin propre de Provisa n'apparaît jamais en clair dans un enregistrement.
+
+La liste s'applique à chaque sortie où Provisa écrit :
+
+- chaque span et chaque enregistrement de log, dans le SDK OpenTelemetry de Provisa, avant qu'un exportateur ne le voie ; la sortie standard comprise ;
+- les tables d'audit, à l'écriture de chaque ligne ;
+- les messages d'erreur qu'un client reçoit.
+
+Une source fédérée tient ses propres logs, que Provisa n'écrit pas et ne peut pas atteindre. Les traces qu'une source garde des instructions que Provisa lui envoie relèvent de la protection de cette source.
+
 ## Limitation de débit {: #rate-limiting }
 
 Les limites de débit par rôle se configurent dans `provisa.yaml` : nombre maximal de requêtes par seconde, d'abonnements SSE simultanés et de flux Arrow Flight simultanés. (REQ-369) Les limites s'appliquent dans la couche API avant compilation ou exécution ; les requêtes au-delà de la limite sont refusées avec HTTP 429 et un en-tête `Retry-After`. (REQ-369)
@@ -555,6 +567,21 @@ Sur un déploiement partagé par de nombreuses organisations, les signaux opéra
 Les signaux opérationnels sont conservés indéfiniment sur les deux moteurs, comme le journal d'audit : la compaction réécrit les fichiers où ils sont stockés et n'en supprime aucune ligne. Sur Trino, ce sont les tables Iceberg du catalogue `otel`. Sur un moteur natif (DuckDB), le serveur dépose ses propres enregistrements de traces en fichiers Parquet dans son dossier de télémétrie et le moteur les lit sous le même nom, `"ops"."traces"`, avec la vue de lignage des rafraîchissements `"ops"."mv_refresh_lineage"` par-dessus ; les deux sont lus selon la même règle par organisation. (REQ-862)
 
 Les signaux sont conservés en clair dans leur magasin. Une charge de travail qui exige plus qu'une frontière par organisation au sein d'un déploiement tourne sur un déploiement dédié ; une charge très sensible ou réglementée est auto-hébergée.
+
+## Travail en arrière-plan entre organisations {: #background-work-across-organizations }
+
+Un processus qui sert de nombreuses organisations exécute le travail en arrière-plan de chacune en tant que cette organisation. Le traitement des changements de chaque organisation (la boucle d'événements qui dépose les changements des sources et rafraîchit les vues qui les lisent), ses constructions de réplicas et les déclencheurs de table qu'ils lancent appartiennent à son propre runtime : un changement est traité par la tâche de sa propre organisation, lit sa source avec l'adresse et l'identifiant de cette organisation, et écrit dans le magasin de cette organisation. Chaque environnement d'une organisation détient son propre slot de réplication logique PostgreSQL et sa publication, nommés d'après l'organisation, l'environnement et la source, de sorte que deux organisations qui nomment une source de la même façon sur une même base lisent chacune leurs propres changements.
+
+## Résidence des données {: #data-residency }
+
+Sur un déploiement à régions, une table peut nommer une région comme son domicile, et ses données personnelles y sont stockées et traitées. (REQ-1921, REQ-1922)
+
+- Seule la région domicile construit et rafraîchit le réplica de la table. Toute autre région lit ce réplica sur place, avec les règles de ligne et de colonne du lecteur appliquées dans la région domicile, de sorte que n'en sort que ce que le lecteur peut voir.
+- Une région domicile dont le réplica n'est pas construit, ou dont les magasins sont injoignables, refuse la lecture (`query.home_region_unavailable`). La source n'est jamais lue en direct depuis une autre région à la place.
+- Un brouillon n'est prévisualisé que là où il vit. Une table en brouillon qui nomme une région n'est lue pour l'aperçu de son responsable que sur les nœuds de cette région et refusée ailleurs ; la copie que dépose l'aperçu y est conservée pour sa publication. Une copie qu'une région quelconque détient d'une table, brouillon ou publiée, dont le domicile est désormais une autre région est retirée puis supprimée.
+- Définir, changer ou retirer la région d'une table exige le droit `data_residency` pour les régions concernées, en plus de posséder la table par son domaine. Un déménagement peut passer par le brouillon, de sorte que la table n'est servie nulle part entre les deux.
+
+Les règles de ligne et de colonne écrites sur la région du nœud qui répond (`current_setting('provisa.region')`) et sur l'attribut `region` des membres décident de ce qui passe d'une région à l'autre. [Régions](regions.md) décrit en détail les régions, l'attribution de domicile et ces règles.
 
 ## Durcissement du déploiement {: #deployment-hardening }
 
