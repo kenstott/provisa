@@ -104,6 +104,7 @@ describe("SecurityPage — per-role rate & query-complexity limits (REQ-1174)", 
     expect(screen.queryByTestId("role-req-per-sec")).not.toBeInTheDocument();
     expect(screen.queryByTestId("role-max-complexity")).not.toBeInTheDocument();
     expect(screen.queryByTestId("role-max-time-ms")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("role-inactivity-days")).not.toBeInTheDocument();
   });
 
   it("renders the limit fields when a role is edited", () => {
@@ -140,6 +141,33 @@ describe("SecurityPage — per-role rate & query-complexity limits (REQ-1174)", 
         },
       }),
       false, // a role that exists is updated
+    );
+  });
+
+  // REQ-2077: a role removes its grants once unused this many days; blank is never.
+  it("stages the days a grant may go unused, and blank as never", async () => {
+    upsertRoleSpy.mockClear();
+    renderPage();
+    editRole("analyst");
+    expect(input("role-inactivity-days").value).toBe("");
+    fireEvent.change(input("role-inactivity-days"), { target: { value: "30" } });
+    fireEvent.click(screen.getByTestId("save-role-analyst"));
+    await waitFor(() => expect(upsertRoleSpy).toHaveBeenCalledTimes(1));
+    expect(upsertRoleSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "analyst", inactivityDays: 30 }),
+      false,
+    );
+  });
+
+  it("sends inactivityDays=null when no day count is entered", async () => {
+    upsertRoleSpy.mockClear();
+    renderPage();
+    editRole("analyst");
+    fireEvent.click(screen.getByTestId("save-role-analyst"));
+    await waitFor(() => expect(upsertRoleSpy).toHaveBeenCalledTimes(1));
+    expect(upsertRoleSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ inactivityDays: null }),
+      false,
     );
   });
 

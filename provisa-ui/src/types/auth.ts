@@ -98,6 +98,8 @@ export interface Role {
   /** REQ-1682: the role's own constant session values, what its row rules read when the request
    *  binds nothing of that name. */
   sessionVars?: SessionVar[];
+  /** REQ-2077: a grant of the role unused this many days is removed; null/absent: never. */
+  inactivityDays?: number | null;
   /** The server withheld this role's definition from the caller; the lists above are empty placeholders. */
   detailsHidden?: boolean;
 }

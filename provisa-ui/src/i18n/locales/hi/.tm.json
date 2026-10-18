@@ -6984,5 +6984,8 @@
   "hi.json::localUsers.noExpiry": "No end date",
   "hi.json::localUsers.neverUsed": "Never",
   "hi/settings.json::settings.auth.role_grant_notice_days.label": "Notice before a role grant ends",
-  "hi/settings.json::settings.auth.role_grant_notice_days.help": "How many days before a role grant expires, or is removed for going unused, its holder and the organization's administrators are emailed."
+  "hi/settings.json::settings.auth.role_grant_notice_days.help": "How many days before a role grant expires, or is removed for going unused, its holder and the organization's administrators are emailed.",
+  "hi/securityPage.json::securityPage.inactivityDays": "Remove grants unused for (days)",
+  "hi/securityPage.json::securityPage.inactivityDaysHint": "A user's grant of this role is removed once no request has used it for this many days. Blank keeps grants until they are removed by hand.",
+  "hi/securityPage.json::securityPage.inactivityNever": "never"
 }

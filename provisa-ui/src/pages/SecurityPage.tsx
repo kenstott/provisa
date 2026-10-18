@@ -70,6 +70,8 @@ const EMPTY_ROLE = {
   reqPerSec: "" as number | "",
   maxComplexity: "" as number | "",
   maxTimeMs: "" as number | "",
+  // REQ-2077: remove a grant of the role once unused this many days ("" = never).
+  inactivityDays: "" as number | "",
 };
 export function SecurityRolesPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them, and
@@ -153,6 +155,7 @@ export function SecurityRolesPage() {
             ? roleForm.residencyValues
             : [],
           sessionVars: roleForm.sessionVars, // REQ-1682
+          inactivityDays: _n(roleForm.inactivityDays), // REQ-2077
         },
         // The new-role form creates; a role's own detail updates it.
         showRoleForm,
@@ -211,6 +214,7 @@ export function SecurityRolesPage() {
       reqPerSec: role.rateLimit?.requestsPerSecond ?? "",
       maxComplexity: role.rateLimit?.maxQueryComplexity ?? "",
       maxTimeMs: role.rateLimit?.maxQueryTimeMs ?? "",
+      inactivityDays: role.inactivityDays ?? "", // REQ-2077
     });
     setEditingRoleInRow(role.id);
     setError("");
@@ -496,6 +500,20 @@ export function SecurityRolesPage() {
                 value={roleForm.maxTimeMs}
                 onChange={(v) =>
                   setRoleForm({ ...roleForm, maxTimeMs: typeof v === "number" ? v : "" })
+                }
+              />
+            </FormField>
+            {/* REQ-2077: a grant of the role nobody uses this long is removed. Blank = never. */}
+            <FormField help={t("securityPage.inactivityDaysHint")} size="short">
+              <NumberInput
+                label={t("securityPage.inactivityDays")}
+                placeholder={t("securityPage.inactivityNever")}
+                min={1}
+                allowDecimal={false}
+                data-testid="role-inactivity-days"
+                value={roleForm.inactivityDays}
+                onChange={(v) =>
+                  setRoleForm({ ...roleForm, inactivityDays: typeof v === "number" ? v : "" })
                 }
               />
             </FormField>

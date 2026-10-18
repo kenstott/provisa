@@ -234,3 +234,27 @@ async def test_notices_go_wherever_mail_is_configured_single_org_included(
     monkeypatch.setattr(state, "config", config, raising=False)
     await role_grants.sweep_org("acme")
     assert calls == ([f"sweep notify={told}", "told"] if told else ["sweep notify=False"])
+
+
+async def test_a_roles_inactivity_days_is_kept_and_served(org):
+    from provisa.api.admin._row_mappers import _role_from_row
+    from provisa.core.models import Role
+    from provisa.core.repositories import role as role_repo
+
+    async with org.acquire() as conn:
+        await role_repo.upsert(
+            conn,
+            Role(
+                id="temp",
+                description="Short engagements.",
+                capabilities=[],
+                domain_access=["*"],
+                inactivity_days=14,
+            ),
+            org_id="acme",
+        )
+        row = await role_repo.get(conn, "temp")
+    assert row is not None and row["inactivity_days"] == 14
+    assert _role_from_row(row).inactivity_days == 14
+    with pytest.raises(ValueError):
+        Role(id="t", description="d", capabilities=[], domain_access=["*"], inactivity_days=0)
