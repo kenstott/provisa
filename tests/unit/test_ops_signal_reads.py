@@ -133,3 +133,84 @@ def test_the_rule_reads_the_bound_org_and_no_org_reads_nothing():
             ORG_SCOPED_SIGNALS_RULE, session_vars_for(None), "trino"
         )
     assert unbound == "tenant_id = NULL"
+
+
+def _finished_logs(org: str | None) -> list:
+    """The records a log line written for ``org`` is exported as."""
+    import logging
+
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
+
+    from provisa.api.otel_setup import OrgLogFilter
+
+    exporter = InMemoryLogRecordExporter()
+    provider = LoggerProvider()
+    provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
+    handler = LoggingHandler(level=logging.WARNING, logger_provider=provider)
+    handler.addFilter(OrgLogFilter())
+    logger = logging.getLogger("provisa.test.org_logs")
+    logger.addHandler(handler)
+    try:
+        with _serving(org):
+            logger.warning("refresh failed")
+    finally:
+        logger.removeHandler(handler)
+    return list(exporter.get_finished_logs())
+
+
+def _log_records(org: str | None) -> list:
+    return [finished.log_record for finished in _finished_logs(org)]
+
+
+def test_a_log_record_records_the_org_it_was_written_for():
+    [record] = _log_records("acme")
+    assert record.attributes["provisa.tenant"] == "acme"
+
+
+def test_a_log_record_written_for_no_org_records_none():
+    [record] = _log_records(None)
+    assert "provisa.tenant" not in (record.attributes or {})
+
+
+def test_a_query_metric_records_the_org_it_ran_for(monkeypatch):
+    from provisa import otel_compat
+
+    recorded: list[dict] = []
+
+    class _Instrument:
+        def add(self, _value, attrs):
+            recorded.append(attrs)
+
+        def record(self, _value, attrs):
+            recorded.append(attrs)
+
+    monkeypatch.setattr(otel_compat, "_query_counter", _Instrument())
+    monkeypatch.setattr(otel_compat, "_query_duration", _Instrument())
+    with _serving("acme"):
+        otel_compat.record_query(
+            transport="http", route="direct", engine="trino", status_code=200, duration_ms=3.0
+        )
+    with _serving(None):
+        otel_compat.record_query(
+            transport="http", route="direct", engine="trino", status_code=200, duration_ms=3.0
+        )
+    assert [a.get("provisa.tenant") for a in recorded] == ["acme", "acme", None, None]
+
+
+def test_otlp2sql_keeps_a_metric_points_and_a_log_records_org():
+    from opentelemetry.exporter.otlp.proto.common._log_encoder import encode_logs
+    from opentelemetry.exporter.otlp.proto.common.metrics_encoder import encode_metrics
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+
+    from provisa.observability import otlp2sql
+
+    reader = InMemoryMetricReader()
+    meter = MeterProvider(metric_readers=[reader]).get_meter("provisa")
+    meter.create_counter("provisa.query.executed").add(1, {"provisa.tenant": "acme"})
+    [metric_row] = otlp2sql._metric_rows(encode_metrics(reader.get_metrics_data()))
+    assert metric_row["tenant_id"] == "acme"
+
+    [log_row] = otlp2sql._log_rows(encode_logs(_finished_logs("acme")))
+    assert log_row["tenant_id"] == "acme"

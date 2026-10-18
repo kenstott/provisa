@@ -572,6 +572,11 @@ def annotate_request(**facts: Any) -> None:
         request.set_attribute(attr, value)
 
 
+#: The attribute every signal records its org under (spans, metric points, log records); the ops
+#: signals keep it as ``tenant_id`` (observability.ops_schema), what every read of them is scoped by.
+ORG_ATTRIBUTE = "provisa.tenant"
+
+
 # Request metrics (REQ-1910): recorded for every statement in either detail, from the audit seam
 # every transport reaches — never derived from spans, so dashboards and alerts do not depend on the
 # trace detail. The instruments exist once setup_otel has a collector to export to.
@@ -590,7 +595,19 @@ def record_query(
     """Count one executed statement and record its latency, per transport, route and engine."""
     if _query_counter is None:
         return  # no collector configured: metrics are not exported at all (setup_otel)
-    attrs = {"transport": transport, "route": route, "engine": engine, "status": status_code}
+    attrs: dict[str, Any] = {
+        "transport": transport,
+        "route": route,
+        "engine": engine,
+        "status": status_code,
+    }
+    # The org the statement ran for, which the ops metrics keep as tenant_id and scope every read
+    # by (REQ-1349); a statement of no org records none and is no org's to read.
+    from provisa.core.request_context import current_org
+
+    org_id = current_org.get()
+    if org_id is not None:
+        attrs[ORG_ATTRIBUTE] = org_id
     _query_counter.add(1, attrs)
     _query_duration.record(duration_ms, attrs)
 

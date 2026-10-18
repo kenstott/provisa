@@ -51,6 +51,7 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
 )
 
 from provisa.core.database import sync_engine_from_url
+from provisa.otel_compat import ORG_ATTRIBUTE
 from provisa.observability.ops_schema import (
     TRACE_DETAIL_RETENTION_HOURS,
     _ns_to_dt,
@@ -171,6 +172,7 @@ def _metric_rows(req: ExportMetricsServiceRequest) -> list[dict]:
                     continue  # histograms/summaries: not modelled as a scalar row
                 for dp, mtype in points:
                     ts = _ns_to_dt(dp.time_unix_nano)
+                    point_attrs = _attrs(dp.attributes)
                     val = dp.as_double if dp.HasField("as_double") else float(dp.as_int)
                     rows.append(
                         {
@@ -183,10 +185,10 @@ def _metric_rows(req: ExportMetricsServiceRequest) -> list[dict]:
                             "service_name": svc,
                             "service_namespace": ns,
                             "scope_name": scope,
-                            "metric_attributes": json.dumps(_attrs(dp.attributes)),
+                            "metric_attributes": json.dumps(point_attrs),
                             "resource_attributes": res_json,
                             "value": val,
-                            "tenant_id": None,
+                            "tenant_id": point_attrs.get(ORG_ATTRIBUTE),
                             "_date": _date_of(ts),
                         }
                     )
@@ -204,6 +206,7 @@ def _log_rows(req: ExportLogsServiceRequest) -> list[dict]:
             scope = sl.scope.name
             for r in sl.log_records:
                 ts = _ns_to_dt(r.time_unix_nano)
+                record_attrs = _attrs(r.attributes)
                 rows.append(
                     {
                         "timestamp": ts,
@@ -216,9 +219,9 @@ def _log_rows(req: ExportLogsServiceRequest) -> list[dict]:
                         "service_name": svc,
                         "service_namespace": ns,
                         "scope_name": scope,
-                        "log_attributes": json.dumps(_attrs(r.attributes)),
+                        "log_attributes": json.dumps(record_attrs),
                         "resource_attributes": res_json,
-                        "tenant_id": None,
+                        "tenant_id": record_attrs.get(ORG_ATTRIBUTE),
                         "_date": _date_of(ts),
                     }
                 )
