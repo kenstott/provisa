@@ -497,7 +497,7 @@ La chiave è il principal che il protocollo porta. Una superficie solo bearer no
 
 Nominare un ruolo che il chiamante non detiene è trattato come un evento di sicurezza rilevato di gravità alta, su ogni superficie: l'API HTTP, MCP, pgwire, Bolt, Arrow Flight, il servizio Flight airport e gRPC. Un client legittimo nomina i ruoli che gli sono stati dati; uno che ne nomina un altro è guasto oppure sta sondando. (REQ-2076)
 
-La richiesta viene rifiutata. Al chiamante viene detto solo «not permitted», niente sull'esistenza del ruolo, e la connessione o la sessione termina dove ce n'è una: la connessione pgwire, la sessione Bolt, la chiamata gRPC, la sessione MCP. L'unica eccezione è una sessione autenticata sull'API HTTP, che mantiene il rifiuto che nomina il ruolo.
+La richiesta viene rifiutata. Al chiamante viene detto solo «not permitted», niente sull'esistenza del ruolo, e la connessione o la sessione termina dove ce n'è una: la connessione pgwire, la sessione Bolt, la chiamata gRPC, la sessione MCP. L'eccezione è l'API HTTP con qualsiasi credenziale diversa da un token di accesso personale: lì il browser presenta la propria sessione o il token del suo provider di identità, quindi il rifiuto continua a nominare il ruolo.
 
 Il resto dipende dalla credenziale e dal trasporto:
 

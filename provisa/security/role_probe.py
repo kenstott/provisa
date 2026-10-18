@@ -125,9 +125,11 @@ def suspension(probe: Probe) -> str | None:
 
 
 def refusal(probe: Probe, said: str) -> str:
-    """What the caller is told: ``said`` (the transport's own refusal naming the role) to a
-    signed-in session, which may simply have gone stale; :data:`NOT_PERMITTED` to everyone else."""
-    if probe.credential is None and probe.transport == "http":
+    """What the caller is told: on the HTTP API, ``said`` (the refusal naming the role) to every
+    credential but a personal access token -- the browser presents its session or its identity
+    provider's token there, and a tab naming a role since lost is routine; :data:`NOT_PERMITTED`
+    to a personal access token, and on MCP and every other transport."""
+    if probe.transport == "http" and probe.credential != "pat":
         return said
     return NOT_PERMITTED
 
