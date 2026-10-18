@@ -85,6 +85,16 @@ export interface TourStep {
       | "asOf"
       | "asRecorded";
     text: string;
+    /** REQ-2083: the text is a value of an earlier tour statement's answer, read when the step
+     *  runs: `sql` run again as it ran (role, time travel), row `row`'s `column`. */
+    from?: {
+      sql: string;
+      role?: string;
+      asOf?: string;
+      asRecorded?: string;
+      row: number;
+      column: string;
+    };
   };
   /**
    * REQ-2010: a view of the Graph page's frame on screen, handed over with no query on every entry

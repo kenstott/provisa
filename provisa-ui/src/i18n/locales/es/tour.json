@@ -1231,6 +1231,54 @@
       "hasuramigrationRecap": {
         "title": "Lo que viste",
         "description": "Una aplicación Hasura importada en un paso y funcionando de inmediato: tablas, nombres, relaciones, roles, reglas de fila, permisos de escritura, la acción y los triggers. Las consultas cambiaron de forma una vez; las reglas no cambiaron en absoluto. Y una relación después, la aplicación lee sus cuentas de Salesforce junto a sus pedidos, sin nada que mantener sincronizado."
+      },
+      "reproduceScenario": {
+        "title": "De qué trata esta demo",
+        "description": "Un banco presenta a su regulador un informe de exposición a 30 de septiembre. El regulador pregunta de dónde salió la cifra de la mesa de tipos y pide el informe exactamente como se presentó: desde entonces se ha corregido un tipo. La cartera de negociación del banco se lee en vivo desde su propia base de datos."
+      },
+      "reproduceBook": {
+        "title": "La cartera de negociación",
+        "description": "Cada posición: su mesa, su notional en su propia moneda y el tipo al que se convierte a USD, vigente desde el 30 de septiembre. Uno de estos tipos se corrige después de presentar el informe por primera vez."
+      },
+      "reproduceLineage": {
+        "title": "De dónde sale la cifra",
+        "description": "La columna de exposición del informe, rastreada hacia atrás: la exposición de cada mesa es la suma de notional por fx_rate sobre sus posiciones. Cada columna del informe lleva a las columnas de origen a partir de las que se calcula."
+      },
+      "reproduceRefreshes": {
+        "title": "Las actualizaciones que lo construyeron",
+        "description": "Cada construcción del informe registra a partir de qué se construyó: la versión de la definición del informe, la versión de su entrada y cómo se determinó. Dos construcciones: una tal como se presentó por primera vez y otra tras la corrección."
+      },
+      "reproduceImpact": {
+        "title": "Lo que rompería un cambio de nombre",
+        "description": "Cambie el nombre de fx_rate aquí y Provisa enumera lo que la lee antes de que guarde: el informe entre ellos. Nada que dependa de una columna cambia sin que se nombre primero."
+      },
+      "reproduceNow": {
+        "title": "El informe ahora",
+        "description": "La exposición de cada mesa tal como está hoy el informe, con el momento en que Provisa registró cada cifra. La mesa de tipos muestra 1.550.000: el tipo corregido."
+      },
+      "reproduceAsOf": {
+        "title": "A fecha de 30 de septiembre",
+        "description": "El informe a su fecha de negocio: cuáles eran las cifras para el 30 de septiembre."
+      },
+      "reproduceAsOfNow": {
+        "title": "A fecha de 30 de septiembre, registrado a hoy",
+        "description": "Leído tal como Provisa lo tiene registrado hoy, el 30 de septiembre muestra la cifra corregida: 1.550.000 para la mesa de tipos. Eso es lo que dicen los libros ahora, no lo que se presentó."
+      },
+      "reproduceAsFiled": {
+        "title": "Registrado al momento de la presentación",
+        "description": "El momento en que empezó la reconstrucción tras la corrección, tomado de la respuesta del paso de las actualizaciones: después de registrarse las cifras presentadas y antes de registrarse la corrección. El informe se lee ahora tal como Provisa lo tenía registrado entonces, así que nada registrado después puede cambiarlo."
+      },
+      "reproduceFiled": {
+        "title": "El informe tal como se presentó",
+        "description": "A fecha de 30 de septiembre y registrado al momento de la presentación: la mesa de tipos muestra 1.540.000, la cifra que recibió el regulador. La corrección registrada desde entonces no cambia lo que se presentó."
+      },
+      "reproduceAudit": {
+        "title": "Quién lo leyó y a qué fecha",
+        "description": "El registro de auditoría anota cada lectura: quién la ejecutó, con qué rol, y los momentos «A fecha de» y «Registrado al» con los que leyó el informe. La reproducción del regulador también queda registrada."
+      },
+      "reproduceRecap": {
+        "title": "Lo que ha visto",
+        "description": "Un informe, explicado y reproducido: su cifra rastreada hasta sus columnas de origen y la actualización que lo construyó, el impacto de un cambio nombrado antes de hacerlo, el informe tal como se presentó junto al informe actual y cada lectura en el registro de auditoría."
       }
     },
     "status": {
@@ -1319,6 +1367,10 @@
       "hasuramigration": {
         "title": "Trasladar una aplicación de Hasura",
         "summary": "Una tienda Hasura v2 importada en un paso, sus consultas remodeladas una vez y luego unida a las cuentas de Salesforce del equipo de ventas bajo las mismas reglas."
+      },
+      "reproduce": {
+        "title": "Reproducir un informe",
+        "summary": "Las dos preguntas de un regulador sobre el informe de exposición de un banco: de dónde salió una cifra y qué decía el informe cuando se presentó, sin que le afecte una corrección posterior. El linaje, la reproducción a una fecha y el registro de auditoría responden a ambas."
       }
     }
   }

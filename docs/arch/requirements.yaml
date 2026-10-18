@@ -84999,3 +84999,37 @@ And a role its token does not hold is not listed'
   stakeholders:
   - compliance
   - app-developer
+- id: REQ-2083
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: 'A named demo''s tour step can take its "as recorded at" time from data instead of a literal: as_recorded_from {step, row, column} names an earlier sql step of the tour, a 0-based row and a column its statement returns. When the step runs, the tour runner runs that statement again as it ran (the run-as role and the time travel the steps before it set) and sets the SQL explorer''s as-recorded picker to that value; a refused statement or a missing value fails the step by name. The tour test checks the step names an earlier sql step, a valid row and a returned column, on the SQL explorer. It is a tour feature only: how Provisa stamps recording time does not change, and no recording time can be chosen, so a demo of transaction time cannot forge it.'
+  use_case: 'The reproduce demo reads its report as recorded when it was filed, at a time Provisa stamped during the demo''s own setup.'
+  scenario: 'Given a tour whose refreshes step returns two refresh records
+
+
+When a later step takes as_recorded_from the second record''s refreshed_at
+
+
+Then the SQL explorer reads the report as Provisa had recorded it then, and the tour test refuses a step naming no earlier sql step'
+  related_reqs:
+  - REQ-1163
+  - REQ-2010
+  - REQ-862
+  notes: 'Lead (2026-10-18): not a settable recording time (that would forge transaction time, the point of the demo for a regulator); bind the time from data, keep it a tour feature.'
+  code:
+  - provisa-ui/src/tour/demoTour.ts
+  - provisa-ui/src/tour/useTour.tsx
+  - provisa-ui/src/tour/tourSteps.ts
+  - demo/named/reproduce/tour.yaml
+  tests:
+  - tests/unit/test_named_demo_tour.py
+  - provisa-ui/src/__tests__/tourRecordedFrom.test.ts
+  - tests/integration/test_reproduce_demo.py
+  stakeholders:
+  - compliance
+  - app-developer

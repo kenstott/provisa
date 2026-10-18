@@ -1231,6 +1231,54 @@
       "hasuramigrationRecap": {
         "title": "Cosa hai visto",
         "description": "Un'app Hasura importata in un passaggio e subito funzionante: tabelle, nomi, relazioni, ruoli, regole di riga, permessi di scrittura, l'action e i trigger. Le query hanno cambiato forma una volta; le regole non sono cambiate affatto. E una relazione dopo, l'app legge i suoi account Salesforce accanto agli ordini, senza nulla da tenere sincronizzato."
+      },
+      "reproduceScenario": {
+        "title": "Di cosa tratta questa demo",
+        "description": "Una banca presenta al proprio regolatore un report di esposizione al 30 settembre. Il regolatore chiede da dove viene la cifra del desk tassi e vuole il report esattamente come è stato presentato: da allora un tasso è stato corretto. Il portafoglio di negoziazione della banca viene letto in tempo reale dal suo database."
+      },
+      "reproduceBook": {
+        "title": "Il portafoglio di negoziazione",
+        "description": "Ogni posizione: il suo desk, il suo notional nella propria valuta e il tasso a cui viene convertita in USD, valido dal 30 settembre. Uno di questi tassi viene corretto dopo la prima presentazione del report."
+      },
+      "reproduceLineage": {
+        "title": "Da dove viene la cifra",
+        "description": "La colonna di esposizione del report, ripercorsa a ritroso: l'esposizione di ogni desk è la somma di notional per fx_rate sulle sue posizioni. Ogni colonna del report porta alle colonne di origine da cui è calcolata."
+      },
+      "reproduceRefreshes": {
+        "title": "Gli aggiornamenti che lo hanno costruito",
+        "description": "Ogni build del report registra da cosa è stata costruita: la versione della definizione del report, la versione del suo input e come è stata stabilita. Due build: una come presentata la prima volta, una dopo la correzione."
+      },
+      "reproduceImpact": {
+        "title": "Cosa romperebbe una ridenominazione",
+        "description": "Rinomina fx_rate qui e Provisa elenca ciò che la legge prima che tu salvi: tra questi il report. Nulla che dipenda da una colonna cambia senza essere prima nominato."
+      },
+      "reproduceNow": {
+        "title": "Il report ora",
+        "description": "L'esposizione di ogni desk come risulta oggi il report, con il momento in cui Provisa ha registrato ogni cifra. Il desk tassi riporta 1.550.000: il tasso corretto."
+      },
+      "reproduceAsOf": {
+        "title": "Alla data del 30 settembre",
+        "description": "Il report alla sua data di business: quali erano le cifre per il 30 settembre."
+      },
+      "reproduceAsOfNow": {
+        "title": "Alla data del 30 settembre, registrato a oggi",
+        "description": "Letto come Provisa lo ha registrato oggi, il 30 settembre mostra la cifra corretta: 1.550.000 per il desk tassi. È ciò che dicono i libri ora, non ciò che è stato presentato."
+      },
+      "reproduceAsFiled": {
+        "title": "Registrato al momento della presentazione",
+        "description": "Il momento in cui è iniziata la ricostruzione dopo la correzione, preso dalla risposta del passo degli aggiornamenti: dopo la registrazione delle cifre depositate e prima di quella della correzione. Il report viene ora letto come Provisa lo aveva registrato allora, quindi nulla di registrato in seguito può cambiarlo."
+      },
+      "reproduceFiled": {
+        "title": "Il report come presentato",
+        "description": "Alla data del 30 settembre e registrato al momento della presentazione: il desk tassi riporta 1.540.000, la cifra ricevuta dal regolatore. La correzione registrata da allora non cambia ciò che è stato presentato."
+      },
+      "reproduceAudit": {
+        "title": "Chi l'ha letto e a quale data",
+        "description": "Il log di audit registra ogni lettura: chi l'ha eseguita, con quale ruolo, e i momenti «Alla data» e «Registrato al» con cui ha letto il report. La riproduzione del regolatore è a sua volta registrata."
+      },
+      "reproduceRecap": {
+        "title": "Cosa hai visto",
+        "description": "Un report, spiegato e riprodotto: la sua cifra ricondotta alle colonne di origine e all'aggiornamento che lo ha costruito, l'impatto di una modifica nominato prima che venga fatta, il report come presentato accanto al report attuale e ogni sua lettura nel log di audit."
       }
     },
     "status": {
@@ -1319,6 +1367,10 @@
       "hasuramigration": {
         "title": "Spostare un'app Hasura",
         "summary": "Un negozio Hasura v2 importato in un passaggio, le sue query rimodellate una volta, poi collegato agli account Salesforce del team vendite con le stesse regole."
+      },
+      "reproduce": {
+        "title": "Riprodurre un report",
+        "summary": "Le due domande di un regolatore sul report di esposizione di una banca: da dove viene una cifra e cosa diceva il report quando è stato presentato, senza l'effetto di una correzione successiva. La derivazione, la rilettura a una data e il log di audit rispondono a entrambe."
       }
     }
   }

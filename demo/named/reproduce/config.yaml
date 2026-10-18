@@ -1,0 +1,118 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "reproduce" (start-ui-install.sh --demo reproduce; REQ-1858).
+# A regulator asks a bank where one figure of its 30 September exposure report came from, and for
+# the report as it stood when it was first filed, unaffected by a correction recorded since. The
+# report is a bitemporal materialized view over the trading book: each refresh records the version
+# of the book it was built from, and every version it answered is kept with when Provisa recorded
+# it.
+#
+#   reproduce-db   the bank's trading book, read live as provisa_reader (db/init.sql).
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+domains:
+- id: reproduce
+  description: The bank's trading book and the exposure report it files with its regulator
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+- id: regulator
+  description: The regulator's examiner. Reads the exposure report and the trading book it is built
+    from, as filed and as it stands now.
+  capabilities:
+  - query_development
+  domain_access:
+  - reproduce
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- id: reproduce-db
+  type: postgresql
+  host: ${env:REPRODUCE_PG_HOST:-localhost}
+  port: ${env:REPRODUCE_PG_PORT:-29832}
+  database: reproduce
+  username: provisa_reader
+  password: provisa_reader
+  description: The bank's trading book system
+tables:
+- source_id: reproduce-db
+  domain_id: reproduce
+  schema: public
+  table: positions
+  description: Every position of the trading book, valued at the rate in force on its business date
+  columns:
+  - {name: id, data_type: integer, is_primary_key: true, description: The position's id, visible_to: [org_admin, regulator]}
+  - {name: desk, data_type: varchar, description: The trading desk that holds it, visible_to: [org_admin, regulator]}
+  - {name: instrument, data_type: varchar, description: What is held, visible_to: [org_admin, regulator]}
+  - {name: currency, data_type: varchar, description: The currency of its notional, visible_to: [org_admin, regulator]}
+  - {name: notional, data_type: decimal, description: Its notional in its own currency, visible_to: [org_admin, regulator]}
+  - {name: fx_rate, data_type: decimal, description: The rate its notional converts to USD at, visible_to: [org_admin, regulator]}
+  - {name: valid_from, data_type: timestamp, description: The business date the position and its rate are for, visible_to: [org_admin, regulator]}
+  write_grants:
+  # The back office's rate corrections: the rate alone, through the governed write path.
+  - {role: org_admin, operation: update, columns: [fx_rate]}
+views:
+# The report: each desk's exposure in USD on its business date. Bitemporal on the business date, so
+# a read as of 30 September answers the figures for that date; every version is kept with when
+# Provisa recorded it, so a read as recorded at a time answers what had been filed by then.
+- id: exposure
+  domain_id: reproduce
+  materialize: true
+  bitemporal_mode: delta
+  bitemporal_key: [desk]
+  bitemporal_source_time: valid_from
+  enable_aggregates: true
+  description: The regulatory exposure report -- each desk's exposure in USD on its business date
+  sql: >-
+    SELECT p.desk, SUM(p.notional * p.fx_rate) AS exposure, MAX(p.valid_from) AS valid_from
+    FROM "reproduce"."positions" AS p
+    GROUP BY p.desk
+  columns:
+  - {name: desk, data_type: varchar, description: The trading desk, visible_to: [org_admin, regulator]}
+  - {name: exposure, data_type: decimal, description: 'Its exposure in USD -- each position''s notional at its rate, summed', visible_to: [org_admin, regulator]}
+  - {name: valid_from, data_type: timestamp, description: The business date the figure is for, visible_to: [org_admin, regulator]}
+relationships: []
+functions:
+# The demo's setup files the report, then corrects a rate (REQ-2016, setup.yaml). Each a governed
+# write, recorded in the audit log like any statement.
+- name: reset_fx_rate
+  function_name: reset_fx_rate
+  impl_kind: statement
+  domain_id: reproduce
+  description: The Bund's EUR rate as first booked for 30 September, 1.08
+  source_id: ''
+  returns: ''
+  visible_to: [org_admin]
+  binding:
+    sql: >-
+      UPDATE "reproduce"."positions" SET fx_rate = 1.08 WHERE id = 2
+- name: correct_fx_rate
+  function_name: correct_fx_rate
+  impl_kind: statement
+  domain_id: reproduce
+  description: The back office corrects the Bund's EUR rate for 30 September to 1.10, days later
+  source_id: ''
+  returns: ''
+  visible_to: [org_admin]
+  binding:
+    sql: >-
+      UPDATE "reproduce"."positions" SET fx_rate = 1.10 WHERE id = 2

@@ -1231,6 +1231,54 @@
       "hasuramigrationRecap": {
         "title": "Was Sie gesehen haben",
         "description": "Eine Hasura-App in einem Schritt importiert und sofort funktionsfähig: Tabellen, Namen, Beziehungen, Rollen, Zeilenregeln, Schreibberechtigungen, die Action und die Trigger. Die Abfragen änderten einmal ihre Form; die Regeln änderten sich überhaupt nicht. Und eine Beziehung später liest die App ihre Salesforce-Konten neben ihren Bestellungen, ohne dass etwas synchron zu halten wäre."
+      },
+      "reproduceScenario": {
+        "title": "Worum es in dieser Demo geht",
+        "description": "Eine Bank reicht bei ihrer Aufsichtsbehörde einen Exposure-Bericht zum 30. September ein. Die Aufsichtsbehörde fragt, woher die Zahl des Rates-Desks stammt, und verlangt den Bericht genau so, wie er eingereicht wurde: Ein Kurs wurde seitdem korrigiert. Das Handelsbuch der Bank wird live aus ihrer eigenen Datenbank gelesen."
+      },
+      "reproduceBook": {
+        "title": "Das Handelsbuch",
+        "description": "Jede Position: ihr Desk, ihr notional in ihrer eigenen Währung und der Kurs, zu dem sie in USD umgerechnet wird, gültig ab 30. September. Einer dieser Kurse wird korrigiert, nachdem der Bericht erstmals eingereicht wurde."
+      },
+      "reproduceLineage": {
+        "title": "Woher die Zahl stammt",
+        "description": "Die Exposure-Spalte des Berichts, zurückverfolgt: Das Exposure jedes Desks ist die Summe von notional mal fx_rate über seine Positionen. Jede Spalte des Berichts führt zu den Quellspalten, aus denen sie berechnet wird."
+      },
+      "reproduceRefreshes": {
+        "title": "Die Aktualisierungen, die ihn erstellt haben",
+        "description": "Jeder Build des Berichts hält fest, woraus er erstellt wurde: die Version der Berichtsdefinition sowie die Version seiner Eingabe und wie diese ermittelt wurde. Zwei Builds: einer wie erstmals eingereicht, einer nach der Korrektur."
+      },
+      "reproduceImpact": {
+        "title": "Was eine Umbenennung beschädigen würde",
+        "description": "Benennen Sie fx_rate hier um, und Provisa listet vor dem Speichern auf, was es liest: darunter den Bericht. Nichts, das von einer Spalte abhängt, ändert sich, ohne vorher genannt zu werden."
+      },
+      "reproduceNow": {
+        "title": "Der Bericht jetzt",
+        "description": "Das Exposure jedes Desks, wie der Bericht heute steht, mit dem Zeitpunkt, zu dem Provisa jede Zahl erfasst hat. Der Rates-Desk zeigt 1.550.000: der korrigierte Kurs."
+      },
+      "reproduceAsOf": {
+        "title": "Stand vom 30. September",
+        "description": "Der Bericht zum Stand seines Geschäftsdatums: was die Zahlen für den 30. September waren."
+      },
+      "reproduceAsOfNow": {
+        "title": "Stand vom 30. September, erfasst bis jetzt",
+        "description": "So gelesen, wie Provisa es heute erfasst hat, zeigt der 30. September die korrigierte Zahl: 1.550.000 für den Rates-Desk. Das sagen die Bücher jetzt, nicht das, was eingereicht wurde."
+      },
+      "reproduceAsFiled": {
+        "title": "Erfasst bis zur Einreichung",
+        "description": "Der Zeitpunkt, zu dem der Neuaufbau nach der Korrektur begann, aus der Antwort des Schritts mit den Aktualisierungen: nachdem die eingereichten Zahlen erfasst waren und bevor die Korrektur erfasst wurde. Der Bericht wird nun so gelesen, wie Provisa ihn damals erfasst hatte, sodass nichts später Erfasstes ihn ändern kann."
+      },
+      "reproduceFiled": {
+        "title": "Der Bericht wie eingereicht",
+        "description": "Stand vom 30. September und erfasst bis zur Einreichung: Der Rates-Desk zeigt 1.540.000, die Zahl, die die Aufsichtsbehörde erhalten hat. Die seitdem erfasste Korrektur ändert nichts an dem, was eingereicht wurde."
+      },
+      "reproduceAudit": {
+        "title": "Wer es gelesen hat, und zu welchem Stand",
+        "description": "Das Audit-Log erfasst jeden Lesezugriff: wer ihn ausgeführt hat, in welcher Rolle, und die Zeitpunkte für „Stand vom“ und „Erfasst bis“, mit denen der Bericht gelesen wurde. Die Reproduktion der Aufsichtsbehörde ist selbst protokolliert."
+      },
+      "reproduceRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Ein Bericht, erklärt und reproduziert: seine Zahl bis zu den Quellspalten und der Aktualisierung zurückverfolgt, die ihn erstellt hat, die Auswirkung einer Änderung benannt, bevor sie vorgenommen wird, der Bericht wie eingereicht neben dem Bericht jetzt, und jeder Lesezugriff darauf im Audit-Log."
       }
     },
     "status": {
@@ -1319,6 +1367,10 @@
       "hasuramigration": {
         "title": "Eine Hasura-App umziehen",
         "summary": "Ein Hasura-v2-Shop in einem Schritt importiert, seine Abfragen einmal umgeformt, dann unter denselben Regeln mit den Salesforce-Konten des Vertriebsteams verbunden."
+      },
+      "reproduce": {
+        "title": "Einen Bericht reproduzieren",
+        "summary": "Zwei Fragen einer Aufsichtsbehörde zum Exposure-Bericht einer Bank: woher eine Zahl stammt und was der Bericht bei der Einreichung aussagte, unberührt von einer seitdem erfolgten Korrektur. Lineage, Wiedergabe zum Stand eines Datums und das Audit-Log beantworten beide."
       }
     }
   }

@@ -43,6 +43,7 @@ _TARGETS = (
     "env",
     "as_of",
     "as_recorded",
+    "as_recorded_from",
     "polly",
     "image",
 )
@@ -87,7 +88,11 @@ def _relations(config: dict) -> set[str]:
     from provisa.core.config_loader import views_as_tables
 
     tables = views_as_tables(json.loads(json.dumps(config)))["tables"]
-    ops = {f"ops.{name}" for name in (*_OPS_LOG_TABLE_VIEWS, *_OPS_REPORT_VIEWS)}
+    from provisa.observability.ops_schema import OPS_SIGNAL_VIEWS
+
+    # REQ-862: and the ops signal views, each MV refresh's lineage among them.
+    signals = [v[0] for v in OPS_SIGNAL_VIEWS]
+    ops = {f"ops.{name}" for name in (*_OPS_LOG_TABLE_VIEWS, *_OPS_REPORT_VIEWS, *signals)}
     return {f"{t['domain_id']}.{t.get('alias') or config_table_name(t)}" for t in tables} | ops
 
 
@@ -186,6 +191,8 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     assert "route" in steps[0], "the first step names the page the tour opens on"
     page = None
     before = None
+    # REQ-2083: each sql step's statement, by key, for a later step that takes a value of its answer.
+    sql_steps: dict[str, str] = {}
     for step in steps:
         page = step.get("route", page)
         previous, before = before, step
@@ -271,6 +278,25 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
                 # REQ-1163: set in the SQL explorer's picker, on that page, as one ISO 8601 time.
                 assert page == "/sql", f"{step['key']}: {travel} is set on /sql, not {page}"
                 datetime.fromisoformat(step[travel])
+        if "as_recorded_from" in step:
+            # REQ-2083: set in the SQL explorer's picker from a value of an EARLIER sql step's
+            # answer: its row (0-based) and a column its statement returns.
+            assert page == "/sql", f"{step['key']}: as_recorded_from is set on /sql, not {page}"
+            taken = step["as_recorded_from"]
+            assert set(taken) == {"step", "row", "column"}, f"{step['key']}: {taken}"
+            assert taken["step"] in sql_steps, (
+                f"{step['key']}: no sql step {taken['step']!r} before it"
+            )
+            assert isinstance(taken["row"], int) and taken["row"] >= 0, (
+                f"{step['key']}: row {taken}"
+            )
+            returned = [
+                e.alias_or_name
+                for e in sqlglot.parse_one(sql_steps[taken["step"]], read="postgres").expressions
+            ]
+            assert taken["column"] in returned, (
+                f"{step['key']}: {taken['column']!r} not in {returned}"
+            )
         if "env" in step:
             # Picked in the header's environment switcher, on any page.
             assert step["env"] in envs, f"{step['key']}: no environment {step['env']!r}"
@@ -285,6 +311,7 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             }
             assert read and read <= relations, f"{step['key']}: reads {read - relations}"
         if "sql" in step:
+            sql_steps[step["key"]] = step["sql"]
             read = {
                 f"{t.db}.{t.name}"
                 for t in sqlglot.parse_one(step["sql"], read="postgres").find_all(sqlglot.exp.Table)
@@ -521,3 +548,50 @@ def test_a_demo_names_its_fields_as_its_sandbox_does(path):
     base = yaml.safe_load((_REPO / "config" / "provisa-install-base.yaml").read_text())
     config = yaml.safe_load((path.parent / "config.yaml").read_text())
     assert config["naming"]["domain_prefix"] == base["naming"]["domain_prefix"], path.parent.name
+
+
+# REQ-2083: a step takes its "as recorded at" time from a value of an earlier sql step's answer.
+_VERSIONS = {
+    "key": "v",
+    "route": "/sql",
+    "capability": "query_development",
+    "sql": 'SELECT p.path, p.page_ms AS recorded_at FROM "shop"."view_slowest_pages" AS p',
+}
+
+
+def test_a_recording_time_is_taken_from_an_earlier_statements_answer():
+    taken = {"step": "v", "row": 0, "column": "recorded_at"}
+    _check_steps(_WEBLOGS, [_VERSIONS, {"key": "r", "as_recorded_from": taken}])
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        # No sql step of that key before it.
+        [
+            {**_VERSIONS, "key": "w"},
+            {"key": "r", "as_recorded_from": {"step": "v", "row": 0, "column": "recorded_at"}},
+        ],
+        # A column the statement does not return.
+        [_VERSIONS, {"key": "r", "as_recorded_from": {"step": "v", "row": 0, "column": "nope"}}],
+        # Not a row index.
+        [
+            _VERSIONS,
+            {"key": "r", "as_recorded_from": {"step": "v", "row": -1, "column": "recorded_at"}},
+        ],
+        # On another page than the SQL explorer.
+        [
+            _VERSIONS,
+            {
+                "key": "r",
+                "route": "/graph",
+                "capability": "query_development",
+                "as_recorded_from": {"step": "v", "row": 0, "column": "recorded_at"},
+            },
+        ],
+    ],
+    ids=["no-step", "column", "row", "page"],
+)
+def test_a_recording_time_from_nothing_the_tour_ran_is_refused(steps):
+    with pytest.raises(AssertionError):
+        _check_steps(_WEBLOGS, steps)

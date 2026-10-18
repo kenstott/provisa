@@ -1231,6 +1231,54 @@
       "hasuramigrationRecap": {
         "title": "Ce que vous avez vu",
         "description": "Une application Hasura importée en une étape et qui fonctionne aussitôt : tables, noms, relations, rôles, règles de ligne, permissions d'écriture, l'action et les triggers. Les requêtes ont changé de forme une fois ; les règles n'ont pas changé du tout. Et une relation plus tard, l'application lit ses comptes Salesforce à côté de ses commandes, sans rien à garder synchronisé."
+      },
+      "reproduceScenario": {
+        "title": "De quoi parle cette démo",
+        "description": "Une banque dépose auprès de son régulateur un rapport d'exposition au 30 septembre. Le régulateur demande d'où vient le chiffre du desk de taux, et veut le rapport exactement tel qu'il a été déposé : un cours a été corrigé depuis. Le portefeuille de négociation de la banque est lu en direct dans sa propre base de données."
+      },
+      "reproduceBook": {
+        "title": "Le portefeuille de négociation",
+        "description": "Chaque position : son desk, son notional dans sa propre devise et le cours auquel elle est convertie en USD, valable à partir du 30 septembre. L'un de ces cours est corrigé après le premier dépôt du rapport."
+      },
+      "reproduceLineage": {
+        "title": "D'où vient le chiffre",
+        "description": "La colonne d'exposition du rapport, remontée : l'exposition de chaque desk est la somme de notional multiplié par fx_rate sur ses positions. Chaque colonne du rapport mène aux colonnes sources à partir desquelles elle est calculée."
+      },
+      "reproduceRefreshes": {
+        "title": "Les rafraîchissements qui l'ont construit",
+        "description": "Chaque construction du rapport enregistre ce à partir de quoi elle a été faite : la version de la définition du rapport, la version de son entrée et la façon dont elle a été établie. Deux constructions : l'une telle que déposée la première fois, l'autre après la correction."
+      },
+      "reproduceImpact": {
+        "title": "Ce qu'un renommage casserait",
+        "description": "Renommez fx_rate ici, et Provisa liste ce qui la lit avant que vous n'enregistriez : le rapport en fait partie. Rien de ce qui dépend d'une colonne ne change sans avoir d'abord été nommé."
+      },
+      "reproduceNow": {
+        "title": "Le rapport aujourd'hui",
+        "description": "L'exposition de chaque desk telle que le rapport se présente aujourd'hui, avec le moment où Provisa a enregistré chaque chiffre. Le desk de taux affiche 1 550 000 : le cours corrigé."
+      },
+      "reproduceAsOf": {
+        "title": "À la date du 30 septembre",
+        "description": "Le rapport à sa date métier : ce qu'étaient les chiffres pour le 30 septembre."
+      },
+      "reproduceAsOfNow": {
+        "title": "À la date du 30 septembre, enregistré à ce jour",
+        "description": "Lu tel que Provisa l'a enregistré aujourd'hui, le 30 septembre affiche le chiffre corrigé : 1 550 000 pour le desk de taux. C'est ce que disent les livres maintenant, pas ce qui a été déposé."
+      },
+      "reproduceAsFiled": {
+        "title": "Enregistré au moment du dépôt",
+        "description": "Le moment où la reconstruction après la correction a commencé, repris de la réponse de l'étape des rafraîchissements : après l'enregistrement des chiffres déposés et avant celui de la correction. Le rapport est désormais lu tel que Provisa l'avait enregistré alors, si bien que rien de ce qui a été enregistré ensuite ne peut le modifier."
+      },
+      "reproduceFiled": {
+        "title": "Le rapport tel que déposé",
+        "description": "À la date du 30 septembre et enregistré au moment du dépôt : le desk de taux affiche 1 540 000, le chiffre que le régulateur a reçu. La correction enregistrée depuis ne change pas ce qui a été déposé."
+      },
+      "reproduceAudit": {
+        "title": "Qui l'a lu, et à quelle date",
+        "description": "Le journal d'audit enregistre chaque lecture : qui l'a exécutée, sous quel rôle, et les moments « À la date du » et « Enregistré au » avec lesquels elle a lu le rapport. La reproduction du régulateur est elle-même consignée."
+      },
+      "reproduceRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Un rapport, expliqué et reproduit : son chiffre remonté jusqu'à ses colonnes sources et au rafraîchissement qui l'a construit, l'impact d'un changement nommé avant qu'il soit fait, le rapport tel que déposé à côté du rapport actuel, et chaque lecture dans le journal d'audit."
       }
     },
     "status": {
@@ -1319,6 +1367,10 @@
       "hasuramigration": {
         "title": "Migrer une application Hasura",
         "summary": "Une boutique Hasura v2 importée en une étape, ses requêtes remodelées une fois, puis reliée aux comptes Salesforce de l'équipe commerciale sous les mêmes règles."
+      },
+      "reproduce": {
+        "title": "Reproduire un rapport",
+        "summary": "Les deux questions d'un régulateur sur le rapport d'exposition d'une banque : d'où vient un chiffre, et ce que disait le rapport lors de son dépôt, intact malgré une correction ultérieure. La traçabilité, la relecture à une date et le journal d'audit répondent aux deux."
       }
     }
   }
