@@ -15,6 +15,6 @@ description: >-
   masked in the satellites, and one point-in-time query that answers what was known about a
   customer, from which source, and when.
 screenshot: card.png
-published: false
+published: true
 # The oldest Provisa this demo's bundle runs on (REQ-2049).
 requires_provisa: 0.1.0a489
