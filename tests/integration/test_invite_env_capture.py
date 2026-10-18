@@ -221,8 +221,6 @@ class _EnvRoutingShim:
                 identity,
                 requested_env,
                 env_caps,
-                # REQ-1618: the stand-in for _OrgRoutingMiddleware reads the same published flag.
-                is_control_plane=bool(request_state.get("can_cross_org")),
             )
         except EnvironmentSelectionError as exc:
             from starlette.responses import JSONResponse
