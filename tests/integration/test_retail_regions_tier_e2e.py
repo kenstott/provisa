@@ -25,6 +25,7 @@ EU customer row."""
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -54,8 +55,17 @@ def tier(tmp_path_factory):
 
     work = tmp_path_factory.mktemp("retail_regions_tier")
     out = work / "out"
+    # The tier offers, and a bundle build's seeding node templates, only a published demo; retail
+    # is not published yet (it has no card), so the test builds a copy of it that says it is.
+    named = work / "named"
+    shutil.copytree(_REPO / "demo" / "named" / "retail", named / "retail")
+    spec = named / "retail" / "demo.yaml"
+    text = spec.read_text()
+    assert text.count("\npublished: false\n") == 1, text
+    spec.write_text(text.replace("\npublished: false\n", "\npublished: true\n"))
     done = subprocess.run(
-        [sys.executable, str(_SCRIPT), "build", "retail", "--out", str(out), "--timeout", "900"],
+        [sys.executable, str(_SCRIPT), "build", "retail", "--out", str(out), "--timeout", "900"]
+        + ["--named-dir", str(named)],
         capture_output=True,
         text=True,
         timeout=2400,

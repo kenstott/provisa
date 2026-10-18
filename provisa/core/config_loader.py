@@ -915,23 +915,46 @@ async def _keep_unlisted_columns(conn: "Connection", tbl: Table) -> Table:  # RE
 
 
 async def _upsert_relationships(
-    conn: "Connection", config: ProvisaConfig
+    conn: "Connection", config: ProvisaConfig, *, defer_unregistered: bool
 ) -> None:  # REQ-018, REQ-019, REQ-020
     """Upsert the relationships the file declares. Nothing is removed here (REQ-1919): one the
-    file no longer declares is judged with everything else at the end of the load."""
+    file no longer declares is judged with everything else at the end of the load.
+
+    ``defer_unregistered``: a relationship naming a table the file does not declare -- one a
+    remote source's registration brings later in the same boot -- is left for that registration's
+    retry (:func:`upsert_declared_relationship`); the caller that passes it retries. Every other
+    failure fails the load, naming the relationship."""
+    declared = declared_table_names(config)
     for rel in config.relationships:
-        try:
-            await rel_repo.upsert(conn, rel)
-        except ValueError as exc:
-            # Genuinely expected for a dynamic source (createSource mutation flow — the target
-            # table registers moments later and this same upsert is retried then). For static
-            # config it means a relationship row names a table/alias that never resolves at
-            # all — a real authoring error (e.g. a stale table_name reference after that table
-            # gained an alias, changing its "virtual name" — confirmed live: this swallowed a
-            # relationship that should have registered a Cypher edge type, and nothing anywhere
-            # showed the config had a problem). Log rather than stay silent either way; only the
-            # dynamic-source case is expected to self-heal on retry.
-            log.warning("relationship %r not registered: %s", rel.id, exc)
+        waiting = await upsert_declared_relationship(conn, rel, declared)
+        if waiting is not None and not defer_unregistered:
+            raise ValueError(
+                f"relationship {rel.id!r} names {waiting!r}, which no registration holds"
+            )
+
+
+def declared_table_names(config: ProvisaConfig) -> frozenset[str]:
+    """The names a relationship reaches the file's own tables by: each one's alias, else its
+    table name (table_repo.find_by_table_name)."""
+    return frozenset(t.alias or t.table_name for t in config.tables)
+
+
+async def upsert_declared_relationship(
+    conn: "Connection", rel: Any, declared: frozenset[str]
+) -> str | None:
+    """Upsert one relationship the configuration declares. None once it is registered; the table
+    it is waiting for when that table is not one the file declares (a remote source registers it)
+    and is not registered yet. Anything else -- a table the file declares that did not register,
+    a type its table already has -- raises, naming the relationship."""
+    try:
+        await rel_repo.upsert(conn, rel)
+    except rel_repo.TableNotRegistered as exc:
+        if exc.table_name not in declared:
+            return exc.table_name
+        raise ValueError(f"relationship {rel.id!r}: {exc}") from exc
+    except ValueError as exc:
+        raise ValueError(f"relationship {rel.id!r}: {exc}") from exc
+    return None
 
 
 async def _upsert_metrics(conn: "Connection", config: ProvisaConfig) -> None:  # REQ-1317, REQ-1320
@@ -971,12 +994,12 @@ async def _resolve_tag_assignment_table(
 
 
 async def _load_after_tables(  # REQ-1919
-    conn: "Connection", config: ProvisaConfig, *, domains_before: Any
+    conn: "Connection", config: ProvisaConfig, *, domains_before: Any, defer_unregistered: bool
 ) -> None:
     """The apply's steps after the tables: what refers to tables."""
 
     # 6. Relationships (tables must exist first).
-    await _upsert_relationships(conn, config)
+    await _upsert_relationships(conn, config, defer_unregistered=defer_unregistered)
 
     # 6.5 Metrics (REQ-1317/REQ-1320): governed metric definitions; fact-derived ones preserved.
     await _upsert_metrics(conn, config)
@@ -1057,7 +1080,7 @@ async def _load_after_tables(  # REQ-1919
 
 
 async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-1266, REQ-1919
-    config: ProvisaConfig, conn: "Connection", engine: Any = None
+    config: ProvisaConfig, conn: "Connection", engine: Any = None, *, defer_unregistered: bool
 ) -> list[str]:
     """Add and update, through the model store, everything the config declares, within the
     caller's transaction. Nothing is removed. ``engine`` decides only the names tables are
@@ -1134,7 +1157,9 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
     _validate_landing_ttl(config)
     failed_feeds = await _check_change_feeds(config)
     await _upsert_tables(conn, engine, config, openapi_specs)
-    await _load_after_tables(conn, config, domains_before=domains_before)
+    await _load_after_tables(
+        conn, config, domains_before=domains_before, defer_unregistered=defer_unregistered
+    )
     return failed_feeds
 
 
@@ -1887,8 +1912,15 @@ async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
     (:func:`reset_model`) and apply the configuration, in one transaction, so the organisation
     starts exactly as its configuration says. Returns the source ids whose change feed could not
     be reached."""
+    # Its remote sources' tables are registered after the apply, which retries their
+    # relationships (graphql_remote_router._upsert_relationships_to_semantic_layer).
     return await _apply(
-        config, conn, engine, label="demo rebuilt from its configuration", reset=True
+        config,
+        conn,
+        engine,
+        label="demo rebuilt from its configuration",
+        defer_unregistered=True,
+        reset=True,
     )
 
 
@@ -1898,6 +1930,7 @@ async def _apply(
     engine: Any,
     *,
     label: str,
+    defer_unregistered: bool,
     reset: bool = False,
 ) -> list[str]:
     from provisa.core import model_change
@@ -1913,7 +1946,9 @@ async def _apply(
             await conn.advisory_xact_lock(7261748190)
             if reset:
                 await reset_model(conn)
-            failed = await _apply_in_txn(config, conn, engine)
+            failed = await _apply_in_txn(
+                config, conn, engine, defer_unregistered=defer_unregistered
+            )
             await _mark_seeded(conn)
     return failed
 
@@ -1928,7 +1963,10 @@ async def apply_config(  # REQ-1919, REQ-164
     ``engine`` decides only the names tables are registered under. Returns the source ids whose
     change feed could not be reached.
     """
-    return await _apply(config, conn, engine, label="configuration applied")
+    # Nothing registers a table after an admin's apply: every relationship registers now.
+    return await _apply(
+        config, conn, engine, label="configuration applied", defer_unregistered=False
+    )
 
 
 async def seed_config(  # REQ-1919
@@ -1942,7 +1980,9 @@ async def seed_config(  # REQ-1919
         await conn.advisory_xact_lock(7261748190)
         if await is_seeded(conn):
             return False
-    await _apply(config, conn, engine, label="configuration seed")
+    # The boot registers its remote sources' tables after the seed and retries the relationships
+    # naming them (api.app, after _load_grpc_remote_sources_from_db).
+    await _apply(config, conn, engine, label="configuration seed", defer_unregistered=True)
     return True
 
 

@@ -205,7 +205,7 @@ def test_an_aggregate_is_answered_from_the_view_and_as_the_table_answers(server,
         "/admin/graphql",
         {"query": f'mutation {{ refreshMv(mvId: "{_VIEW}") {{ success message }} }}'},
     )
-    assert built["data"]["refreshMv"]["success"], built
+    assert built["data"]["refreshMv"]["success"], f"{built}\n{server.dump_stderr_debug()[-12000:]}"
     deadline = time.monotonic() + 120
     while not _built(server):
         assert time.monotonic() < deadline, server.dump_stderr_debug()[-6000:]

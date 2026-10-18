@@ -2930,6 +2930,22 @@ class ProvisaConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _relationship_types_are_one_per_source_table(self) -> "ProvisaConfig":
+        # REQ-388: a relationship's type (alias) names one edge of its source table; the model
+        # store keeps it once per table (relationships_source_alias_unique).
+        first: dict[tuple[str, str], str] = {}
+        for rel in self.relationships:
+            if not rel.alias:
+                continue
+            held = first.setdefault((rel.source_table_id, rel.alias), rel.id)
+            if held != rel.id:
+                raise ValueError(
+                    f"relationships {held!r} and {rel.id!r} both have the type {rel.alias!r} "
+                    f"from {rel.source_table_id!r}: a type names one relationship of its table"
+                )
+        return self
+
+    @model_validator(mode="after")
     def _validate_metrics(self) -> "ProvisaConfig":
         # REQ-1317: metric names are unique. REQ-1318: view_metrics references resolve.
         seen: set[str] = set()

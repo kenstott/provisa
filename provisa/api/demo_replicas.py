@@ -74,12 +74,19 @@ def store_identity(org_id: str, store: str | None = None) -> str:
     in its embedded file -- or in ``store``, its region's (REQ-2068, demo_region_seed)."""
     from types import SimpleNamespace
 
+    from provisa.core.request_context import reset_current_org, set_current_org
     from provisa.federation.engine import build_engine, embedded_store_dsn
     from provisa.federation.replica_builds import store_identity as build_identity
 
     engine = build_engine("duckdb")
     engine.pin_materialize_store(store if store is not None else embedded_store_dsn(org_id))
-    return build_identity(SimpleNamespace(federation_engine=SimpleNamespace(engine=engine)))
+    # Read as the build reads it: with org_id bound, not whichever org the caller is bound to --
+    # the regions tier's boot org runs an engine of its own, the template org does not.
+    token = set_current_org(org_id)
+    try:
+        return build_identity(SimpleNamespace(federation_engine=SimpleNamespace(engine=engine)))
+    finally:
+        reset_current_org(token)
 
 
 def _store_path(org_id: str) -> str:
