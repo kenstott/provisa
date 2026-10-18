@@ -106,11 +106,23 @@ class TestStopActuallyStopsTheProcess:
         monkeypatch.setitem(sys.modules, "pgserver.postgres_server", fake_pgserver_postgres_server)
 
         killed: list[tuple[int, int]] = []
-        monkeypatch.setattr(os, "kill", lambda pid, sig: killed.append((pid, sig)))
+
+        def _kill(pid: int, sig: int) -> None:
+            if sig == 0:  # is it gone yet: it is, once killed
+                raise ProcessLookupError
+            killed.append((pid, sig))
+
+        monkeypatch.setattr(os, "kill", _kill)
+        released: list = []
+        monkeypatch.setattr(
+            "provisa.core.pg_shared_memory.release_segment", lambda d: released.append(d)
+        )
 
         control_plane_pg.stop(str(tmp_path))
 
         assert killed == [(999999999, __import__("signal").SIGKILL)]
+        # A killed postmaster leaves its System V segment: released before the directory goes.
+        assert released == [tmp_path]
 
 
 class TestHasTableToleratesNoDatabaseYet:

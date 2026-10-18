@@ -225,8 +225,14 @@ def _reap_stray_pgserver_processes() -> None:
         if result.returncode != 0:
             try:
                 proc.kill()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                proc.wait(timeout=10)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired):
                 pass
+            # Its System V segment outlives a kill; its data directory is removed with the test's
+            # tmp tree, and the segment with it unless released here (pg_shared_memory).
+            from provisa.core.pg_shared_memory import release_segment
+
+            release_segment(pgdata)
 
 
 @pytest.fixture(scope="session", autouse=True)

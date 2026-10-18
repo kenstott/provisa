@@ -44,6 +44,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from provisa.core.pg_shared_memory import release_segment
+
 ROLE = "provisa"
 PASSWORD = "provisa"
 DATABASE = "provisa"
@@ -306,6 +308,9 @@ def _stop_orphans() -> None:
                     check=True,
                     capture_output=True,
                 )
+            # A killed one left its System V segment, recorded only in the directory removed next:
+            # released first, or it is held until the machine restarts (pg_shared_memory).
+            release_segment(root / "data")
             shutil.rmtree(root)
 
 

@@ -270,6 +270,29 @@ def stop(datadir: str) -> None:
             os.kill(int(pid_line), signal.SIGKILL)
         except (ValueError, ProcessLookupError):
             pass  # already gone, or the pid file was never a real pid
+        # A killed postmaster leaves its System V segment, and a caller that removes the data
+        # directory next removes the only record of it (pg_shared_memory).
+        _await_exit(pid_line)
+        from provisa.core.pg_shared_memory import release_segment
+
+        release_segment(pgdata)
+
+
+def _await_exit(pid_line: str, timeout: float = 10.0) -> None:
+    """Wait for the process ``pid_line`` names to be gone (a SIGKILL is not instant)."""
+    import time
+
+    try:
+        pid = int(pid_line)
+    except ValueError:
+        return
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.05)
 
 
 def reset(datadir: str) -> None:
