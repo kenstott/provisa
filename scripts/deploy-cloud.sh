@@ -257,7 +257,7 @@ push_plugins() {
   fi
   # shellcheck source=/dev/null
   . "$hook"
-  push_commercial
+  CONTAINERS="$(node_containers)" push_commercial
 }
 
 push_cfg() {
@@ -343,12 +343,19 @@ sandbox_on_own_vm() {
     --zone "$ZONE" --project "$PROJECT" --format='value(name)' >/dev/null 2>&1
 }
 
-restart() {
-  local containers="$CONTAINERS"
-  # The sandbox tier's container is on its VM when it has one (deploy_sandbox_vm restarts it there).
+# The app containers on this node. The sandbox tier's container is on its VM when it has one
+# (deploy_sandbox_vm pushes to and restarts it there).
+node_containers() {
   if sandbox_on_own_vm; then
-    containers="$(tr ' ' '\n' <<<"$containers" | grep -vx compose-provisa-sandbox-1 | tr '\n' ' ')"
+    tr ' ' '\n' <<<"$CONTAINERS" | grep -vx compose-provisa-sandbox-1 | tr '\n' ' '
+  else
+    echo "$CONTAINERS"
   fi
+}
+
+restart() {
+  local containers
+  containers="$(node_containers)"
   echo "== restarting"
   ssh_node "sudo docker restart $containers"
 }
@@ -891,7 +898,7 @@ deploy_sandbox_vm() {
   echo "== sandbox VM: $SANDBOX_NODE"
   push_demo_stores; push_overlay
   # What this deploy built: the api arm has no configs, the cfg arm no package.
-  [ -f "$STAGE/api.tgz" ] && push_api
+  [ -f "$STAGE/api.tgz" ] && { push_api; push_plugins; }
   [ -f "$STAGE/cfg.tgz" ] && push_cfg
   restart
 }
