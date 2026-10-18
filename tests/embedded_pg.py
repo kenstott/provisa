@@ -35,6 +35,7 @@ session's is left alone.
 
 from __future__ import annotations
 
+import fcntl
 import os
 import shutil
 import subprocess
@@ -266,25 +267,46 @@ def _orphaned(root: Path) -> bool:
     return time.time() - root.stat().st_mtime > OWNERLESS_AFTER_SECONDS
 
 
+#: Held while a starter reaps. Every pytest worker reaps at its own start, and two reaping the same
+#: orphan at once failed: one stopped the server, and the other's ``pg_ctl stop`` found no PID file,
+#: or found the data directory half removed (a whole xdist worker's session fixture errored).
+#: Outside the ``pv-pg-*`` glob.
+_REAP_LOCK = "pv-pg.reap.lock"
+
+
+def _postmaster_pid(data: Path) -> int | None:
+    pid_file = data / "postmaster.pid"
+    if not pid_file.exists():
+        return None
+    return int(pid_file.read_text().splitlines()[0])
+
+
 def _stop_orphans() -> None:
     """Stop every embedded server whose starter is gone, and remove its directory: one whose
     recorded starter is not running, and one with no recorded starter older than
-    ``OWNERLESS_AFTER_SECONDS``. One whose starter runs is left alone."""
-    for root in Path(tempfile.gettempdir()).glob(f"{_PREFIX}*"):
-        try:
-            if not _orphaned(root):
+    ``OWNERLESS_AFTER_SECONDS``. One whose starter runs is left alone. One reaper at a time
+    (``_REAP_LOCK``), so a directory is reaped whole by one of them."""
+    temp = Path(tempfile.gettempdir())
+    with open(temp / _REAP_LOCK, "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        for root in temp.glob(f"{_PREFIX}*"):
+            try:
+                if not _orphaned(root):
+                    continue
+            except FileNotFoundError:
+                # A live starter's own stop removed it between the glob and this look: not an
+                # orphan, and already gone.
                 continue
-            if (root / "data" / "postmaster.pid").exists():
+            postmaster = _postmaster_pid(root / "data")
+            # A postmaster that is gone (killed with its PID file left behind) is already stopped;
+            # pg_ctl refuses to stop it, and there is nothing to stop.
+            if postmaster is not None and _running(postmaster):
                 subprocess.run(
                     [_bin("pg_ctl"), "-D", str(root / "data"), "-w", "stop", "-m", "immediate"],
                     check=True,
                     capture_output=True,
                 )
             shutil.rmtree(root)
-        except FileNotFoundError:
-            # Every pytest worker reaps at its own start: a directory another worker reaped
-            # between this one's glob and its look at it is already gone, which is the outcome.
-            continue
 
 
 def start_local_postgres(

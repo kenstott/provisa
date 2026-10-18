@@ -119,3 +119,61 @@ def test_a_directory_with_no_recorded_starter_is_removed_once_it_is_a_day_old(
     embedded_pg._stop_orphans()
     assert not old.exists()
     assert new.exists() and owned.exists()
+
+
+_REAPER = """
+import sys, time
+from pathlib import Path
+sys.path.insert(0, {repo!r})
+from tests.embedded_pg import _stop_orphans
+go = Path({go!r})
+while not go.exists():
+    time.sleep(0.01)
+_stop_orphans()
+"""
+
+
+def _orphan() -> tuple[int, Path]:
+    """A running Postgres whose session was killed: what every worker's start reaps."""
+    starter, root = _start_elsewhere()
+    postmaster = _postmaster(root)
+    assert postmaster is not None and _alive(postmaster)
+    starter.send_signal(signal.SIGTERM)
+    starter.wait(timeout=30)
+    return postmaster, root
+
+
+def test_workers_starting_together_reap_one_orphan_once(tmp_path):
+    """Every pytest worker reaps at its own start. Two reaping the same orphan at once failed:
+    one stopped it, and the other's pg_ctl found no PID file ("Is server running?") or a half
+    removed data directory, and that worker's session fixture errored every test on it."""
+    postmaster, root = _orphan()
+    go = tmp_path / "go"
+    reapers = [
+        subprocess.Popen(
+            [sys.executable, "-c", _REAPER.format(repo=str(_REPO), go=str(go))],
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for _ in range(6)
+    ]
+    time.sleep(2)  # every reaper is waiting
+    go.write_text("")
+    for reaper in reapers:
+        _, stderr = reaper.communicate(timeout=60)
+        assert reaper.returncode == 0, stderr
+    assert not _alive(postmaster)
+    assert not root.exists()
+
+
+def test_an_orphan_whose_postmaster_is_gone_is_removed():
+    """A postmaster killed outright leaves its PID file; there is nothing to stop, and pg_ctl
+    refuses to stop it, so the directory is removed without a stop."""
+    postmaster, root = _orphan()
+    os.kill(postmaster, signal.SIGKILL)
+    deadline = time.monotonic() + 30
+    while _alive(postmaster) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert (root / "data" / "postmaster.pid").exists()
+    embedded_pg._stop_orphans()
+    assert not root.exists()

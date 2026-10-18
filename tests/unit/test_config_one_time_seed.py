@@ -38,6 +38,9 @@ import pytest
 import yaml
 from sqlalchemy import insert, select
 
+# The API layer says at import whether the deployment holds many organizations, which a secret's
+# read asks; run alone, nothing else here imports it.
+import provisa.api.app  # noqa: F401
 from provisa.core import config_loader, secrets_store
 from provisa.core.config_loader import (
     apply_config,
