@@ -421,6 +421,7 @@ class TestScheduledTriggerRunsAsAHeldRole:
             "/admin/roles/",
             json={
                 "id": "scheduler",
+                "description": "Test role.",
                 "capabilities": ["org_settings", "table_registration"],
                 "domain_access": ["*"],
             },

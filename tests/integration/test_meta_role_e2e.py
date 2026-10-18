@@ -66,14 +66,34 @@ def server():
             # org_admin is reserved: it exists without a definition, and a config may not
             # define it (REQ-1349).
             "roles": [
-                {"id": r, "capabilities": reads, "domain_access": ["*"]}
+                {
+                    "id": r,
+                    "description": "Test role.",
+                    "capabilities": reads,
+                    "domain_access": ["*"],
+                }
                 for r in _ROLES
                 if r != "org_admin"
             ],
             "rls_rules": [
-                {"table_id": "orders", "role_id": "analyst", "filter": "region = 'east'"},
-                {"table_id": "orders", "role_id": "east_reader", "filter": "region = 'east'"},
-                {"table_id": "orders", "role_id": "west_reader", "filter": "region = 'west'"},
+                {
+                    "description": "Test rule.",
+                    "table_id": "orders",
+                    "role_id": "analyst",
+                    "filter": "region = 'east'",
+                },
+                {
+                    "description": "Test rule.",
+                    "table_id": "orders",
+                    "role_id": "east_reader",
+                    "filter": "region = 'east'",
+                },
+                {
+                    "description": "Test rule.",
+                    "table_id": "orders",
+                    "role_id": "west_reader",
+                    "filter": "region = 'west'",
+                },
             ],
         },
         env={"PROVISA_REDIRECT_ENABLED": "false"},

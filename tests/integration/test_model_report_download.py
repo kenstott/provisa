@@ -160,6 +160,7 @@ def _config() -> dict:
         "roles": [
             {
                 "id": rid,
+                "description": "Test role.",
                 "capabilities": spec["capabilities"],
                 "domain_access": spec["domain_access"],
             }

@@ -142,6 +142,7 @@ def _config(role: dict, *, regions: bool) -> dict:
 def _steward(values: list[str], caps: tuple[str, ...] = ("data_residency",)) -> dict:
     return {
         "id": "steward",
+        "description": "Test role.",
         "capabilities": list(caps),
         "domain_access": ["*"],
         "residency_values": values,

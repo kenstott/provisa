@@ -72,10 +72,14 @@ def _governed_config(shared_data):
         ],
         relationships=[],
         roles=[
-            Role(id="analyst", capabilities=[], domain_access=["*"]),
-            Role(id="admin", capabilities=[], domain_access=["*"]),
+            Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"]),
+            Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
         ],
-        rls_rules=[RLSRule(table_id="customers", role_id="analyst", filter=RLS_FILTER)],
+        rls_rules=[
+            RLSRule(
+                table_id="customers", role_id="analyst", filter=RLS_FILTER, description="Test rule."
+            )
+        ],
     )
 
 

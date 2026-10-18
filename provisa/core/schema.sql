@@ -446,6 +446,9 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS roles (
     id              TEXT PRIMARY KEY,
+    -- REQ-2080: what the role is for; required on every write. The seeded roles' are written
+    -- after the seed below (mirrored by SEEDED_ROLE_DESCRIPTIONS in core/db.py).
+    description     TEXT NOT NULL DEFAULT '',
     capabilities    JSONB NOT NULL DEFAULT '[]',
     -- REQ-1602: rights this role does NOT hold, whose surfaces are shown to it anyway -- disabled,
     -- and badged with what they are. A role built by taking rights AWAY (the sandbox, REQ-1597) is
@@ -476,12 +479,17 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- REQ-2080: the seed below writes each seeded role's description before add_missing_columns runs,
+-- so a roles table made before the column existed needs it here first.
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+
 CREATE TABLE IF NOT EXISTS rls_rules (
     id          SERIAL PRIMARY KEY,
     table_id    INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
     domain_id   TEXT REFERENCES domains(id) ON DELETE CASCADE,
     role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
     filter_expr BYTEA NOT NULL,  -- REQ-686: encrypted at rest via EncryptionService
+    description TEXT NOT NULL DEFAULT '',  -- REQ-2081: what the rule is for; required on write
     -- REQ-1679: a rule may target a tracked function or webhook by name instead of a table.
     action_name TEXT,
     -- REQ-1384: a rule may target a user tag; it then applies to every table carrying the tag.
@@ -1500,6 +1508,15 @@ ON CONFLICT (id) DO NOTHING;
 -- NOTHING above leaves an existing row alone), the same way the retired-id rewrite below does.
 -- domain_access is empty too: the control plane reaches no data domain.
 UPDATE roles SET capabilities = '["platform_settings","cross_org"]'::jsonb, domain_access = '[]'::jsonb WHERE id = 'platform_admin';
+
+-- REQ-2080: what each seeded role is for (SEEDED_ROLE_DESCRIPTIONS in core/db.py), on a row that has none.
+UPDATE roles SET description = 'Administers the organization: its sources, model, governance, members and settings, in every domain.' WHERE id = 'org_admin' AND description = '';
+UPDATE roles SET description = 'Reads and queries the governed data of the domains it is granted. The least-privileged role, and what an invitation gives when it names none.' WHERE id = 'analyst' AND description = '';
+UPDATE roles SET description = 'Builds queries, views and relationships, writes data and manages environments, in the domains it is granted.' WHERE id = 'developer' AND description = '';
+UPDATE roles SET description = 'Works out the model: the one seeded role that may join across relations no approved relationship covers yet. Every other rule still applies to it.' WHERE id = 'modeler' AND description = '';
+UPDATE roles SET description = 'Governs a domain: column visibility, row rules, grants, masks, sensitive columns, the glossary and data products. Nothing operational.' WHERE id = 'data_steward' AND description = '';
+UPDATE roles SET description = 'A Try it Out visitor: what the organization administrator does, inside an environment that expires, but not members, environments or the organization glossary.' WHERE id = 'sandbox' AND description = '';
+UPDATE roles SET description = 'Runs the platform: organizations, infrastructure and deployment settings. Holds no right to any organization''s data.' WHERE id = 'platform_admin' AND description = '';
 
 -- REQ-1573: the two environment rights arrived after these system roles were seeded, and
 -- ON CONFLICT DO NOTHING leaves an existing row alone, so assert them here the same way

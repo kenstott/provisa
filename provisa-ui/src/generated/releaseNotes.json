@@ -66,8 +66,8 @@
       "scope": "auth",
       "entries": [
         "A member's attributes -- the org's record over the provider's claims",
-        "pseudo-roles -- a role held for what a member's attributes say about a declared claim type",
-        "A regional node's own work carries its region pseudo-role"
+        "derived roles -- a role held for what a member's attributes say about a declared claim type",
+        "A regional node's own work carries its region derived role"
       ]
     },
     {

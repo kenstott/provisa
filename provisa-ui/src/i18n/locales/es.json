@@ -30,7 +30,7 @@
     "role": "Rol: {{role}}",
     "dev": "DEV",
     "checking": "Comprobando…",
-    "claimRoles": "Roles de notificación"
+    "derivedRoles": "Roles derivados"
   },
   "localUsers": {
     "colUsername": "Nombre de usuario",
@@ -78,7 +78,7 @@
   "grantPicker": {
     "and": "y",
     "combine": "Combinar roles en una concesión",
-    "combineHelp": "Un lector debe tener todos los roles que indique aquí. Escriba un rol de notificación como region__eu si no se ofrece.",
+    "combineHelp": "Un lector debe tener cada rol que enumere aquí. Escriba un rol derivado como region__eu si no se ofrece.",
     "parts": "Roles que un lector debe tener todos",
     "partsPlaceholder": "Elija o escriba un rol y pulse Intro",
     "add": "Agregar"

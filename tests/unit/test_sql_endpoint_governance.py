@@ -91,7 +91,7 @@ async def sql_client(monkeypatch):
     monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_registered_sources)
     # The middleware reads the bound org's declared claim types (REQ-2057); the state here
     # carries no config, and no org declares any.
-    monkeypatch.setattr("provisa.auth.middleware._loaded_claim_roles", lambda: [])
+    monkeypatch.setattr("provisa.auth.middleware._loaded_derived_roles", lambda: [])
 
     # Pin unsecured auth BEFORE create_app(): wire_auth reads state.auth_config at
     # app-construction time. These governance tests post a `role` with no bearer
@@ -117,6 +117,7 @@ async def sql_client(monkeypatch):
     app_mod.state.roles = {
         "org_admin": {
             "id": "org_admin",
+            "description": "Test role.",
             "capabilities": ["query_development", "full_results", "usage", "write"],
             "domain_access": ["*"],  # the seeded org_admin: every domain, said explicitly
         }
@@ -249,7 +250,12 @@ class TestSQLGovernanceApplied:
             masking_rules={},
             ctx=ctx,
             tables=tables,
-            role={"id": "analyst", "capabilities": [], "domain_access": ["*"]},
+            role={
+                "id": "analyst",
+                "description": "Test role.",
+                "capabilities": [],
+                "domain_access": ["*"],
+            },
         )
 
         sql = "SELECT id FROM orders"
@@ -359,7 +365,7 @@ class TestImplicitTraversalDomains:
             },
         )
 
-        role = {"id": "analyst", "domain_access": ["pet-store"]}
+        role = {"id": "analyst", "description": "Test role.", "domain_access": ["pet-store"]}
         raw_tables = [
             {
                 "id": 1,
@@ -483,7 +489,7 @@ class TestMaskedColumnInPredicate:
             else masking_rules,
             visible_columns={1: None},
         )
-        role = {"id": "analyst", "domain_access": ["hr"]}
+        role = {"id": "analyst", "description": "Test role.", "domain_access": ["hr"]}
         raw_tables = [
             {
                 "id": 1,
@@ -588,6 +594,7 @@ def two_roles(sql_client, monkeypatch):
     state.rls_contexts["analyst"] = RLSContext.empty()
     state.roles["analyst"] = {
         "id": "analyst",
+        "description": "Test role.",
         "capabilities": ["query_development"],
         "domain_access": ["*"],
     }

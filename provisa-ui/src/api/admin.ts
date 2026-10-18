@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { Role, RoleAssignment, OrgMembership, PseudoRole } from "../types/auth";
+import type { Role, RoleAssignment, OrgMembership, DerivedRole } from "../types/auth";
 import type { ViewerRequest } from "../components/nativeParams";
 import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
@@ -47,8 +47,8 @@ export async function fetchMe(): Promise<{
   assignments: RoleAssignment[];
   // REQ-1528: rights held by OWNING the environment the request was served by.
   env_capabilities: string[];
-  // REQ-2057: the pseudo-roles the caller holds, named like any role.
-  pseudo_roles: PseudoRole[];
+  // REQ-2057: the derived roles the caller holds, named like any role.
+  derived_roles: DerivedRole[];
 }> {
   let res: Response;
   try {
@@ -1918,30 +1918,59 @@ export async function removeUserAssignment(userId: string, assignmentId: number)
   if (!res.ok) throw httpError("remove assignment", res.status);
 }
 
-/** The claim types the org declares as pseudo-roles, and whether the list is the org's own or the
- *  deployment configuration's (REQ-2057). */
-export interface ClaimRoles {
-  claim_types: string[];
+/** A grant, mask or row rule that names a derived role or one of its value roles (REQ-2079). */
+export interface DerivedRoleUse {
+  kind: string;
+  name: string;
+  via: string[];
+}
+
+/** An attribute the org declares as a derived role (REQ-2057, REQ-2078): its description, the
+ *  values it has been seen with (each a value role, `<attribute>__<value>`) and what names it. */
+export interface DeclaredDerivedRole {
+  attribute: string;
+  description: string;
+  values: string[];
+  uses: DerivedRoleUse[];
+}
+
+/** The org's derived roles, and whether the list is the org's own or the deployment
+ *  configuration's. */
+export interface DerivedRoles {
+  roles: DeclaredDerivedRole[];
   source: "org" | "deployment";
 }
 
-export async function fetchClaimRoles(): Promise<ClaimRoles> {
-  const res = await fetch(`${API_BASE}/admin/claim-roles`);
-  if (!res.ok) throw httpError("fetch claim roles", res.status);
+export async function fetchDerivedRoles(): Promise<DerivedRoles> {
+  const res = await fetch(`${API_BASE}/admin/derived-roles`);
+  if (!res.ok) throw httpError("fetch derived roles", res.status);
   return res.json();
 }
 
-export async function saveClaimRoles(claimTypes: string[]): Promise<ClaimRoles> {
-  const res = await fetch(`${API_BASE}/admin/claim-roles`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ claim_types: claimTypes }),
-  });
+async function refusedOrJson(res: Response, what: string): Promise<unknown> {
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(serverMessage(data, requestFailed("save claim roles", res.status)));
+    throw new Error(serverMessage(data, requestFailed(what, res.status)));
   }
   return res.json();
+}
+
+/** Declare a derived role, or change its description. */
+export async function saveDerivedRole(attribute: string, description: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/derived-roles/${encodeURIComponent(attribute)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ description }),
+  });
+  await refusedOrJson(res, "save derived role");
+}
+
+/** Stop deriving roles from an attribute. */
+export async function deleteDerivedRole(attribute: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/derived-roles/${encodeURIComponent(attribute)}`, {
+    method: "DELETE",
+  });
+  await refusedOrJson(res, "delete derived role");
 }
 
 /** One attribute of a member: the org's record, or what their identity provider supplied at their

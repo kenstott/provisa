@@ -71,7 +71,9 @@ def _config(**over) -> dict:
                 "columns": [{"name": "id", "visible_to": ["admin"]}],
             }
         ],
-        "roles": [{"id": "admin", "capabilities": [], "domain_access": ["*"]}],
+        "roles": [
+            {"id": "admin", "description": "Test role.", "capabilities": [], "domain_access": ["*"]}
+        ],
     }
     base.update(over)
     return base

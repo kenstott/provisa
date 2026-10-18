@@ -62,6 +62,7 @@ class _Conn:
                 _Row(
                     {
                         "id": self.role_id,
+                        "description": "Test role.",  # REQ-2080: the router selects it
                         "capabilities": ["query_development", "write"],
                         "domain_access": ["*"],
                         "residency_values": [],  # REQ-1921: the router selects it

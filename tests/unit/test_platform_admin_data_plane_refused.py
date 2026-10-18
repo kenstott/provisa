@@ -49,6 +49,7 @@ ROOT_ORG = "root"
 ROLES: dict[str, dict] = {
     role_id: {
         "id": role_id,
+        "description": "Test role.",
         "capabilities": list(caps),
         # The seed (db.py, schema.sql): the control plane reaches no data domain.
         "domain_access": [] if role_id == "platform_admin" else ["*"],
@@ -59,11 +60,13 @@ ROLES: dict[str, dict] = {
 # definition would have had, placed in the registry to show what its holder could NOT do with it.
 ROLES["retired_strings"] = {
     "id": "retired_strings",
+    "description": "Test role.",
     "capabilities": ["admin", "superadmin"],
     "domain_access": ["*"],
 }
 ROLES["settings_only"] = {
     "id": "settings_only",
+    "description": "Test role.",
     "capabilities": ["platform_settings", "usage"],
     "domain_access": ["*"],
 }
@@ -185,7 +188,9 @@ async def test_platform_admin_alone_is_refused_the_admin_data_routes(monkeypatch
     calls = [
         audit_query_text_router.read_statement_text(req, 1),
         roles_router.create_role(
-            roles_router.CreateRoleBody(id="r", capabilities=["usage"], domain_access=["*"]),
+            roles_router.CreateRoleBody(
+                id="r", description="Test role.", capabilities=["usage"], domain_access=["*"]
+            ),
             req,
         ),
         roles_router.update_role(
@@ -258,6 +263,7 @@ def test_platform_admin_adds_no_domain_scope_to_a_role_held_beside_it(monkeypatc
         **ROLES,
         "sales_dev": {
             "id": "sales_dev",
+            "description": "Test role.",
             "capabilities": ["query_development", "create_view"],
             "domain_access": ["sales"],
         },
@@ -419,6 +425,7 @@ def _role_rows(**extra: dict) -> list[dict]:
     rows = [
         {
             "id": role_id,
+            "description": "Test role.",
             "capabilities": role["capabilities"],
             "domain_access": role["domain_access"],
             "residency_values": [],  # REQ-1921
@@ -431,6 +438,7 @@ def _role_rows(**extra: dict) -> list[dict]:
         rows.append(
             {
                 "id": role_id,
+                "description": "Test role.",
                 "capabilities": [],
                 "domain_access": ["*"],
                 "residency_values": [],  # REQ-1921
@@ -464,7 +472,11 @@ async def test_an_org_administrator_cannot_create_such_a_role(
     db = _Db(_role_rows())
     monkeypatch.setattr(roles_router, "_pool", lambda _request: db)
     body = roles_router.CreateRoleBody(
-        id="minted", capabilities=capabilities, domain_access=["*"], parent_role_id=parent
+        id="minted",
+        description="Test role.",
+        capabilities=capabilities,
+        domain_access=["*"],
+        parent_role_id=parent,
     )
     with pytest.raises(ApiError) as err:
         await roles_router.create_role(body, _request(*ORG_ADMIN, org="acme"))
@@ -524,7 +536,11 @@ async def test_the_graphql_surface_refuses_the_same_definitions(
     result = await schema_mutation.Mutation().create_role(
         info,  # pyright: ignore[reportArgumentType]
         RoleInput(
-            id="minted", capabilities=capabilities, domain_access=["*"], parent_role_id=parent
+            id="minted",
+            description="Test role.",
+            capabilities=capabilities,
+            domain_access=["*"],
+            parent_role_id=parent,
         ),
     )
     assert result.success is False
@@ -624,7 +640,11 @@ async def test_rest_create_refuses_a_role_with_no_domains(monkeypatch, parent):
     db = _Db(_role_rows())
     monkeypatch.setattr(roles_router, "_pool", lambda _request: db)
     body = roles_router.CreateRoleBody(
-        id="minted", capabilities=["usage"], domain_access=[], parent_role_id=parent
+        id="minted",
+        description="Test role.",
+        capabilities=["usage"],
+        domain_access=[],
+        parent_role_id=parent,
     )
     # BOOTSTRAP holds every right there is: the refusal is about the definition, not the caller.
     with pytest.raises(ApiError) as err:
@@ -643,7 +663,9 @@ async def test_rest_create_refuses_an_invalid_definition_for_what_it_is_on_an_ex
 
     db = _Db(_role_rows())
     monkeypatch.setattr(roles_router, "_pool", lambda _request: db)
-    body = roles_router.CreateRoleBody(id="analyst", capabilities=["usage"], domain_access=[])
+    body = roles_router.CreateRoleBody(
+        id="analyst", description="Test role.", capabilities=["usage"], domain_access=[]
+    )
     with pytest.raises(ApiError) as err:
         await roles_router.create_role(body, _request(*BOOTSTRAP))
     assert (err.value.status_code, err.value.code) == (422, "roles.domain_required")
@@ -693,7 +715,8 @@ async def test_graphql_create_refuses_a_role_with_no_domains(monkeypatch):
     monkeypatch.setattr(role_repo, "upsert", _upsert)
     info: Any = types.SimpleNamespace(context={"request": _request(*BOOTSTRAP)})
     result = await schema_mutation.Mutation().create_role(
-        info, RoleInput(id="minted", capabilities=["usage"], domain_access=[])
+        info,
+        RoleInput(id="minted", description="Test role.", capabilities=["usage"], domain_access=[]),
     )
     assert result.success is False
     assert result.code == "roles.domain_required"
@@ -744,14 +767,30 @@ def _config(roles: list[dict]) -> dict:
 @pytest.mark.parametrize(
     "role,fragment",
     [
-        ({"id": "empty", "capabilities": ["usage"], "domain_access": []}, "Role 'empty' must list"),
-        ({"id": "missing", "capabilities": ["usage"]}, "role 'missing' has no domain_access"),
+        (
+            {
+                "id": "empty",
+                "description": "Test role.",
+                "capabilities": ["usage"],
+                "domain_access": [],
+            },
+            "Role 'empty' must list",
+        ),
+        (
+            {"id": "missing", "description": "Test role.", "capabilities": ["usage"]},
+            "role 'missing' has no domain_access",
+        ),
     ],
 )
 def test_config_load_refuses_a_role_with_no_domains_by_name(role, fragment):
     from provisa.core.models import ProvisaConfig
 
-    ok = {"id": "analyst", "capabilities": ["usage"], "domain_access": ["sales"]}
+    ok = {
+        "id": "analyst",
+        "description": "Test role.",
+        "capabilities": ["usage"],
+        "domain_access": ["sales"],
+    }
     with pytest.raises(ValueError, match=fragment):
         ProvisaConfig.model_validate(_config([ok, role]))
 
@@ -762,10 +801,21 @@ def test_config_load_accepts_listed_wildcard_and_inherited_domains():
     config = ProvisaConfig.model_validate(
         _config(
             [
-                {"id": "analyst", "capabilities": ["usage"], "domain_access": ["sales"]},
-                {"id": "everything", "capabilities": ["usage"], "domain_access": ["*"]},
+                {
+                    "id": "analyst",
+                    "description": "Test role.",
+                    "capabilities": ["usage"],
+                    "domain_access": ["sales"],
+                },
+                {
+                    "id": "everything",
+                    "description": "Test role.",
+                    "capabilities": ["usage"],
+                    "domain_access": ["*"],
+                },
                 {
                     "id": "junior",
+                    "description": "Test role.",
                     "capabilities": [],
                     "domain_access": [],
                     "parent_role_id": "analyst",

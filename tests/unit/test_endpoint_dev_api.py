@@ -124,6 +124,7 @@ async def sql_client(monkeypatch):
     app_mod.state.roles = {
         "org_admin": {
             "id": "org_admin",
+            "description": "Test role.",
             "capabilities": ["query_development", "full_results", "usage", "write"],
             "domain_access": ["*"],  # the seeded org_admin: every domain, said explicitly
         }
@@ -177,7 +178,11 @@ class TestSqlEndpointCapability:
     async def test_no_query_development_capability_403(self, sql_client):
         import provisa.api.app as app_mod
 
-        app_mod.state.roles["org_admin"] = {"id": "org_admin", "capabilities": []}
+        app_mod.state.roles["org_admin"] = {
+            "id": "org_admin",
+            "description": "Test role.",
+            "capabilities": [],
+        }
         resp = await sql_client.post(
             "/data/sql", json={"sql": "SELECT id FROM orders", "role": "org_admin"}
         )
@@ -192,7 +197,11 @@ class TestSqlEndpointCapability:
         """
         import provisa.api.app as app_mod
 
-        app_mod.state.roles["org_admin"] = {"id": "org_admin", "capabilities": []}
+        app_mod.state.roles["org_admin"] = {
+            "id": "org_admin",
+            "description": "Test role.",
+            "capabilities": [],
+        }
         resp = await sql_client.post(
             "/data/sql",
             json={
@@ -214,6 +223,7 @@ class TestSqlEndpointNoSchema:
 
         app_mod.state.roles["schemaless"] = {
             "id": "schemaless",
+            "description": "Test role.",
             "capabilities": ["query_development", "full_results", "usage", "write"],
         }
         try:
@@ -558,6 +568,7 @@ class TestProtoEndpoint:
 
         app_mod.state.roles["org_admin"] = {
             "id": "org_admin",
+            "description": "Test role.",
             "capabilities": ["query_development", "full_results", "usage", "write"],
             "domain_access": ["*"],
         }
@@ -591,6 +602,7 @@ class TestProtoEndpoint:
 
         app_mod.state.roles["org_admin"] = {
             "id": "org_admin",
+            "description": "Test role.",
             "capabilities": ["query_development", "full_results", "usage", "write"],
             "domain_access": ["*"],
         }
@@ -638,6 +650,7 @@ class TestProtoEndpoint:
     def _role(self, app_mod, domain_access):
         app_mod.state.roles["scoped"] = {
             "id": "scoped",
+            "description": "Test role.",
             "capabilities": ["query_development", "usage"],
             "domain_access": domain_access,
         }
@@ -753,7 +766,9 @@ class TestCheckSqlCapabilities:
         from provisa.api.data.endpoint_dev import _check_sql_capabilities
 
         with pytest.raises(HTTPException) as exc_info:
-            _check_sql_capabilities({"id": "admin", "capabilities": []})
+            _check_sql_capabilities(
+                {"id": "admin", "description": "Test role.", "capabilities": []}
+            )
         assert exc_info.value.status_code == 403
 
     def test_admin_capability_passes(self):

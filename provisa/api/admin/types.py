@@ -844,6 +844,9 @@ class SessionVarType:  # REQ-1682: one of a role's constant session values
 @strawberry.type
 class RoleType:  # REQ-042
     id: str
+    # REQ-2080: what the role is for. Shown to everyone who sees the role: it explains, it grants
+    # nothing.
+    description: str
     # Null for a caller who neither holds user_management nor holds the role itself: a role's
     # definition is the right-holder's, and everyone else sees only that it exists.
     capabilities: list[str] | None
@@ -871,6 +874,7 @@ class RLSRuleType:  # REQ-041, REQ-402, REQ-1679
     domain_id: str | None
     role_id: str
     filter_expr: str
+    description: str  # REQ-2081: what the rule is for
     action_name: str | None = None  # REQ-1679
     tag_id: str | None = None  # REQ-1384: the rule applies to every table carrying this tag
 
@@ -1467,6 +1471,7 @@ class SessionVarInput:  # REQ-1682
 @strawberry.input
 class RoleInput:  # REQ-042
     id: str
+    description: str  # REQ-2080: required; an empty one is refused
     capabilities: list[str]
     domain_access: list[str]
     rate_limit: RoleRateLimitInput | None = None  # REQ-1174
@@ -1506,6 +1511,7 @@ class RLSRuleInput:  # REQ-041, REQ-402
     tag_id: str | None = None  # REQ-1384: a user tag; the rule covers every table carrying it
     role_id: str = ""
     filter_expr: str = ""
+    description: str = ""  # REQ-2081: required; an empty one is refused
 
 
 @strawberry.type

@@ -317,7 +317,7 @@ EVERYONE = "*"
 
 
 def holds_mask_entry(to: list[str], chain: list[str]) -> bool:
-    """Whether a reader whose roles (each with its ancestors, and the pseudo-roles it acts with)
+    """Whether a reader whose roles (each with its ancestors, and the derived roles it acts with)
     are ``chain`` holds a mask entry granted ``to``: everyone, or any of its grant entries
     (composites included, REQ-2058)."""
     from provisa.security.inheritance import holds_entry
@@ -366,7 +366,7 @@ def reader_masks(
 
 def masks_report(masks: list[dict], chain_of: Any, roles: list[str] | None = None) -> dict:
     """What the editor shows about a mask list (REQ-2059), from ``chain_of(role id)`` -- a role's
-    chain (itself and its ancestors; a pseudo-role's, its parent):
+    chain (itself and its ancestors; a derived role's, its parent):
 
     - ``unreachable``: each entry no reader reaches, with the earlier entry that covers it
       (``covered_by``, None for an entry granted to no one). Holding is monotonic -- a reader

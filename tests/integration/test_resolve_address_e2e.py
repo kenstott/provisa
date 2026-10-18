@@ -60,7 +60,14 @@ def server():
         pg_port=_PG_PORT,
         extra_config={
             "tables": [orders],
-            "rls_rules": [{"table_id": "orders", "role_id": "analyst", "filter": "id = 1"}],
+            "rls_rules": [
+                {
+                    "description": "Test rule.",
+                    "table_id": "orders",
+                    "role_id": "analyst",
+                    "filter": "id = 1",
+                }
+            ],
         },
         env={"PROVISA_REDIRECT_ENABLED": "false"},
     )

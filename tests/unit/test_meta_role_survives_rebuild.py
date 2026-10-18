@@ -29,8 +29,13 @@ from provisa.security import meta_role
 from provisa.security.meta_role import ensure_meta_role, meta_role_id
 from tests.unit.test_empty_domain_access_reaches_nothing import _built_roles
 
-_A = {"id": "a", "capabilities": ["usage"], "domain_access": ["sales"]}
-_B = {"id": "b", "capabilities": ["usage"], "domain_access": ["finance"]}
+_A = {"id": "a", "description": "Test role.", "capabilities": ["usage"], "domain_access": ["sales"]}
+_B = {
+    "id": "b",
+    "description": "Test role.",
+    "capabilities": ["usage"],
+    "domain_access": ["finance"],
+}
 _META = meta_role_id(["a", "b"])
 
 

@@ -88,30 +88,42 @@ Les rôles peuvent hériter d'un rôle parent via `parent_role_id`, défini dans
 ```yaml
 roles:
   - id: basic_user
+    description: Queries the public domain.
     capabilities: [query_development]
     domain_access: [public]
   - id: analyst
+    description: Analyses sales; reads full results.
     capabilities: [full_results]
     domain_access: [sales, analytics]
     parent_role_id: basic_user   # inherits query_development + public domain
 ```
-## Rôles : accordés, pseudo et méta {: #roles-granted-pseudo-and-meta }
+## Rôles : accordés, dérivés et méta {: #roles-granted-derived-and-meta }
 
-Trois sortes de rôles fonctionnent ensemble dans le modèle d'accès de Provisa.
+Trois sortes de rôles fonctionnent ensemble dans le modèle d'accès de Provisa. La page Rôles liste les deux premières ensemble ; un méta-rôle n'est jamais listé.
 
 ### Rôles accordés {: #granted-roles }
 
 Un rôle accordé est attribué directement à un utilisateur. Il détient des droits : capacités, accès aux domaines, entrées de masquage, filtres de lignes. L'héritage (`parent_role_id`) replie au démarrage les droits d'un ancêtre dans l'enfant. Les droits ne font que s'ajouter ; il n'y a pas de soustraction. Pour restreindre un lecteur, accordez à un composé qui nomme à la fois le rôle et une condition, ou placez une entrée de masque avant l'entrée permissive. (REQ-215, REQ-1677)
 
-### Pseudo-rôles
+### Rôles dérivés {: #derived-roles }
 
-Un pseudo-rôle est dérivé des attributs d'un utilisateur. L'organisation déclare quels types d'attribut deviennent des rôles (`claim_roles`). Pour chaque type déclaré `t` dont la valeur `v` est fournie par les attributs de l'utilisateur, l'utilisateur détient le rôle parent `t` et son sous-rôle `t__v`. Sans valeur, il ne détient ni l'un ni l'autre.
+Un rôle dérivé provient des attributs d'un utilisateur. L'organisation déclare quels attributs deviennent des rôles (`derived_roles`), chacun avec une description. Pour chaque attribut déclaré `a` dont la valeur `v` est fournie par les attributs de l'utilisateur, l'utilisateur détient le rôle parent `a` et son rôle de valeur `a__v` : `region = eu` donne `region` et `region__eu`. Sans valeur, il ne détient ni l'un ni l'autre.
 
 La résolution des attributs compte. L'enregistrement propre de l'organisation sur un membre l'emporte sur ce que fournit le fournisseur d'identité : si les deux nomment le même attribut, la valeur de l'organisation est utilisée et celle du fournisseur est marquée comme remplacée.
 
-Les pseudo-rôles ne portent aucun droit et ne sont jamais attribués à la main. Une liste d'autorisation les nomme exactement comme elle nomme un rôle accordé ; une requête les nomme dans `X-Provisa-Role` et agit sous eux. (REQ-2057)
+Les rôles dérivés ne portent aucun droit et ne sont jamais attribués à la main. Une liste d'autorisation, un masque ou une règle de lignes les nomme exactement comme il nomme un rôle accordé ; une requête les nomme dans `X-Provisa-Role` et agit sous eux. (REQ-2057)
 
-Pensez à un JWT : ses claims sont des faits sur la personne. Les pseudo-rôles transforment des faits choisis en rôles, de sorte qu'une autorisation peut les viser sans créer un rôle par combinaison.
+Sur la page Rôles, chaque attribut déclaré est un rôle parent marqué *dérivé*, avec ses rôles de valeur listés en dessous à mesure que leurs valeurs apparaissent. **+ Rôle → Dérivé d'un attribut** en déclare un. Son panneau montre l'attribut, sa description, les valeurs vues jusqu'ici et chaque masque, règle de lignes et autorisation qui le nomme, lui ou l'un de ses rôles de valeur. Il n'a pas de contrôles d'autorisation. La description d'un rôle de valeur est générée : « Détenu quand l'attribut region de l'utilisateur vaut eu ». (REQ-2078, REQ-2079)
+
+Déclarez-les dans la configuration sous forme de liste :
+
+```yaml
+derived_roles:
+- attribute: region
+  description: The subsidiary a member works for; region__eu marks EU staff.
+```
+
+Pensez à un JWT : ses claims sont des faits sur la personne. Les rôles dérivés transforment des faits choisis en rôles, de sorte qu'une autorisation peut les viser sans créer un rôle par combinaison.
 
 ### Méta-rôles
 
@@ -121,7 +133,13 @@ Les droits sont l'union de ceux de chaque membre. Les filtres de lignes sont l'O
 
 Les colonnes de chaque ligne sont masquées et affichées selon les rôles dont le filtre de lignes a admis cette ligne : parmi ces rôles, la lecture la moins restrictive de la colonne s'applique, et un rôle qui n'a pas admis la ligne ne contribue en rien à la façon dont elle est lue. Les masques s'appliquent là où la table est lue, avant toute jointure ou agrégation, de sorte qu'une agrégation lit les valeurs masquées. Les écritures sont vérifiées de la même façon : une colonne n'est écrite sur une ligne que là où un rôle qui accorde cette colonne admet la ligne. (REQ-1620)
 
-L'enregistrement d'audit nomme chaque rôle agissant, pas l'identifiant du méta-rôle.
+L'enregistrement d'audit nomme chaque rôle agissant, pas l'identifiant du méta-rôle. Comme un méta-rôle n'est jamais stocké, il n'a pas de description propre : partout où une description est affichée, c'est celle de ses membres, chaque identifiant avec la sienne. (REQ-2080)
+
+### Descriptions {: #descriptions }
+
+Chaque rôle et chaque règle de lignes dit à quoi il sert. Une revue d'accès lit qui peut voir quoi et pourquoi. Un rôle ou une règle que personne ne sait expliquer est un rôle que personne ne peut revoir ; la description est donc obligatoire : un rôle, un rôle parent dérivé ou une règle de lignes dont la description est vide est refusé par le chargement de la configuration, l'API d'administration et l'UI, avec la raison. Les listes Rôles et Règles de lignes montrent chaque description, et leurs panneaux de détail la montrent et la modifient. (REQ-2080, REQ-2081)
+
+Un rôle a une seule description, pas une par domaine. Un rôle général qui ne décrit pas ses responsabilités dans un domaine particulier signifie que ce domaine a besoin de son propre rôle, généralement un enfant du rôle général (`parent_role_id`), qui hérite de ses droits et décrit ce qu'il y fait.
 
 ### Comment une requête nomme des rôles {: #how-a-request-names-roles }
 
@@ -129,7 +147,7 @@ Un client envoie un rôle, ou un ensemble séparé par des virgules, dans `X-Pro
 
 Les droits et les données ne suivent que les rôles sous lesquels agit la requête : détenir un rôle n'est pas agir sous lui. Un rôle est ce rôle ; deux ou plus agissent sous leur méta-rôle. Un rôle agissant qui apporterait avec lui les droits de chaque rôle détenu ne signifierait rien ; une requête obtient donc le moindre privilège, et l'enregistrement d'audit nomme exactement ce qui a agi.
 
-Les pseudo-rôles nommés entrent comme qualificatifs. Un qualificatif n'a ni droits, ni accès aux domaines, ni masques, ni filtres de lignes propres, il n'est donc pas membre des droits du méta-rôle : comme membre sans masques, il démasquerait chaque colonne, et comme membre qui ne lit aucune table, il mettrait fin à tout OR de filtres de lignes. Il n'entre que dans les autorisations : une autorisation ou une entrée de masque qui nomme `region__eu` atteint une requête qui nomme ce qualificatif à côté d'un rôle accordé. (REQ-2057)
+Les rôles dérivés nommés entrent comme qualificatifs. Un qualificatif n'a ni droits, ni accès aux domaines, ni masques, ni filtres de lignes propres, il n'est donc pas membre des droits du méta-rôle : comme membre sans masques, il démasquerait chaque colonne, et comme membre qui ne lit aucune table, il mettrait fin à tout OR de filtres de lignes. Il n'entre que dans les autorisations : une autorisation ou une entrée de masque qui nomme `region__eu` atteint une requête qui nomme ce qualificatif à côté d'un rôle accordé. (REQ-2057)
 
 Un agent MCP n'agit jamais au-delà des rôles qui lui ont été donnés. Un agent distant ne nomme que des rôles que détient le principal de son jeton. Un agent local en stdio ne nomme que des rôles de l'ensemble fixé dans `mcp.role` (`PROVISA_MCP_ROLE`), et agit comme cet ensemble lorsqu'il n'en nomme aucun ; tout autre rôle est refusé par son nom. (REQ-2075)
 
@@ -143,9 +161,9 @@ Un agent MCP n'agit jamais au-delà des rôles qui lui ont été donnés. Un age
 
 ### Règles de colonne ABAC en simple RBAC {: #abac-column-rules-as-plain-rbac }
 
-Une politique fondée sur les attributs demande : « cet utilisateur, avec ces attributs, peut-il voir cette colonne ? » RBAC demande : « quels rôles peuvent voir cette colonne ? » Les autorisations composées et les pseudo-rôles en font la même question.
+Une politique fondée sur les attributs demande : « cet utilisateur, avec ces attributs, peut-il voir cette colonne ? » RBAC demande : « quels rôles peuvent voir cette colonne ? » Les autorisations composées et les rôles dérivés en font la même question.
 
-« Démasquer cet e-mail uniquement pour un analyste dans l'UE » est une entrée de masque `{to: [analyst+region__eu], mask: null}`. Tout lecteur qui détient à la fois le rôle `analyst` et le pseudo-rôle `region__eu` lit la colonne non masquée. Pas de langage de politique. Pas de rôle par combinaison.
+« Démasquer cet e-mail uniquement pour un analyste dans l'UE » est une entrée de masque `{to: [analyst+region__eu], mask: null}`. Tout lecteur qui détient à la fois le rôle `analyst` et le rôle dérivé `region__eu` lit la colonne non masquée. Pas de langage de politique. Pas de rôle par combinaison.
 
 Le compromis est le calcul plutôt que l'énumération. Un petit catalogue de rôles réduit la maintenance, mais « qui peut voir cet e-mail de l'UE ? » devient une réponse calculée : les entrées composées sont évaluées contre les attributions et les claims de chaque utilisateur. Provisa peut répondre dans les deux sens parce que le modèle est une seule définition. La vérification d'accès de l'éditeur de colonnes (`POST /admin/masks/check`) exécute cette évaluation pour un ensemble de rôles choisi.
 
@@ -286,6 +304,7 @@ rls_rules:
   - table_id: orders
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
+    description: Analysts read only their own region's orders.
 ```
 Le filtre est combiné par AND à la clause WHERE de la requête. Fonctionne pour les requêtes comme pour les mutations (UPDATE/DELETE). (REQ-035, REQ-041)
 
@@ -311,7 +330,7 @@ L'expression de masque est poussée dans la projection SQL SELECT. La base de do
 
 **Refuser par l'ordre.** Une entrée antérieure l'emporte même lorsque le lecteur en détient aussi une ultérieure plus permissive. Pour que les prestataires voient toujours un salaire masqué quels que soient leurs autres rôles, placez l'entrée des prestataires avant l'entrée non masquée. Un rôle accordé ne perd jamais ce que son parent accorde par héritage, mais une entrée de masque placée plus tôt dans la liste s'applique en premier — c'est ainsi que fonctionne la restriction ici.
 
-**Méta-rôles.** La chaîne d'un méta-rôle comprend les rôles de chaque membre, leurs ancêtres et tout pseudo-rôle nommé. Une entrée accordée à n'importe quel membre atteint le méta-rôle. Une entrée placée avant, détenue par un autre membre, s'applique toujours en premier.
+**Méta-rôles.** La chaîne d'un méta-rôle comprend les rôles de chaque membre, leurs ancêtres et tout rôle dérivé nommé. Une entrée accordée à n'importe quel membre atteint le méta-rôle. Une entrée placée avant, détenue par un autre membre, s'applique toujours en premier.
 
 **Vérifier l'accès.** `POST /admin/masks/check` accepte une liste de masques et un ensemble facultatif de rôles, et renvoie l'entrée qui s'applique pour ces rôles ainsi que les entrées qu'aucun lecteur ne peut atteindre. Protégé par `masking_config`.
 

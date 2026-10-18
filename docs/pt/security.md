@@ -88,30 +88,42 @@ Funções podem herdar de uma função pai via `parent_role_id`, definida na con
 ```yaml
 roles:
   - id: basic_user
+    description: Queries the public domain.
     capabilities: [query_development]
     domain_access: [public]
   - id: analyst
+    description: Analyses sales; reads full results.
     capabilities: [full_results]
     domain_access: [sales, analytics]
     parent_role_id: basic_user   # inherits query_development + public domain
 ```
-## Funções: concedidas, pseudo e meta {: #roles-granted-pseudo-and-meta }
+## Funções: concedidas, derivadas e meta {: #roles-granted-derived-and-meta }
 
-Três tipos de função trabalham juntos no modelo de acesso do Provisa.
+Três tipos de função trabalham juntos no modelo de acesso do Provisa. A página Funções lista as duas primeiras juntas; uma meta-função nunca é listada.
 
 ### Funções concedidas {: #granted-roles }
 
 Uma função concedida é atribuída diretamente a um usuário. Ela tem direitos: capacidades, acesso a domínios, entradas de mascaramento, filtros de linha. A herança (`parent_role_id`) dobra na inicialização os direitos de um ancestral no filho. Direitos só se somam; não há subtração. Para restringir um leitor, conceda a um composto que nomeie tanto a função quanto uma condição, ou coloque uma entrada de máscara antes da permissiva. (REQ-215, REQ-1677)
 
-### Pseudo-funções {: #pseudo-roles }
+### Funções derivadas {: #derived-roles }
 
-Uma pseudo-função é derivada dos atributos de um usuário. A organização declara quais tipos de atributo viram funções (`claim_roles`). Para cada tipo declarado `t` cujo valor `v` os atributos do usuário fornecem, o usuário tem a função pai `t` e a sua subfunção `t__v`. Sem valor, nenhuma das duas.
+Uma função derivada vem dos atributos de um usuário. A organização declara quais atributos viram funções (`derived_roles`), cada um com uma descrição. Para cada atributo declarado `a` cujo valor `v` os atributos do usuário fornecem, o usuário tem a função pai `a` e a sua função de valor `a__v`: `region = eu` dá `region` e `region__eu`. Sem valor, nenhuma das duas.
 
 A resolução dos atributos importa. O registro próprio da organização sobre um membro prevalece sobre o que o provedor de identidade fornece: quando os dois nomeiam o mesmo atributo, o valor da organização é usado e o do provedor é marcado como substituído.
 
-Pseudo-funções não trazem direitos e nunca são atribuídas à mão. Uma lista de concessão as nomeia exatamente como nomeia uma função concedida; uma requisição as nomeia em `X-Provisa-Role` e age como elas. (REQ-2057)
+Funções derivadas não trazem direitos e nunca são atribuídas à mão. Uma lista de concessão, uma máscara ou uma regra de linha as nomeia exatamente como nomeia uma função concedida; uma requisição as nomeia em `X-Provisa-Role` e age como elas. (REQ-2057)
 
-Pense em um JWT: seus claims são fatos sobre a pessoa. Pseudo-funções transformam fatos escolhidos em funções, para que uma concessão possa se dirigir a eles sem criar uma função por combinação.
+Na página Funções, cada atributo declarado é uma função pai marcada como *derivada*, com suas funções de valor listadas abaixo à medida que seus valores aparecem. **+ Função → Derivada de um atributo** declara uma. O painel dela mostra o atributo, sua descrição, os valores vistos até agora e cada máscara, regra de linha e concessão que nomeia ela ou uma de suas funções de valor. Ela não tem controles de concessão. A descrição de uma função de valor é gerada: "Mantida quando o region do usuário é eu". (REQ-2078, REQ-2079)
+
+Declare-as na configuração como uma lista:
+
+```yaml
+derived_roles:
+- attribute: region
+  description: The subsidiary a member works for; region__eu marks EU staff.
+```
+
+Pense em um JWT: seus claims são fatos sobre a pessoa. Funções derivadas transformam fatos escolhidos em funções, para que uma concessão possa se dirigir a eles sem criar uma função por combinação.
 
 ### Meta-funções {: #meta-roles }
 
@@ -121,7 +133,13 @@ Os direitos são a união dos de cada membro. Os filtros de linha são o OR do f
 
 As colunas de cada linha são mascaradas e exibidas conforme os papéis cujo filtro de linhas admitiu essa linha: desses papéis, aplica-se a leitura menos restritiva da coluna, e um papel que não admitiu a linha não contribui em nada para como ela é lida. As máscaras se aplicam onde a tabela é lida, antes de qualquer join ou agregação, de modo que uma agregação lê os valores mascarados. As escritas são verificadas da mesma forma: uma coluna é escrita em uma linha apenas onde um papel que concede essa coluna admite a linha. (REQ-1620)
 
-O registro de auditoria nomeia cada função atuante, não o id da meta-função.
+O registro de auditoria nomeia cada função atuante, não o id da meta-função. Como uma meta-função nunca é armazenada, ela não tem descrição própria: onde quer que uma seja mostrada, sua descrição é a de seus membros, cada id com a sua. (REQ-2080)
+
+### Descrições {: #descriptions }
+
+Toda função e toda regra de linha diz para que serve. Uma revisão de acesso lê quem pode ver o quê e por quê. Uma função ou regra que ninguém sabe explicar é uma que ninguém pode revisar, então a descrição é obrigatória: uma função, uma função pai derivada ou uma regra de linha com descrição vazia é recusada pelo carregamento da configuração, pela API de administração e pela UI, com o motivo. As listas Funções e Regras de linha mostram cada descrição, e seus painéis de detalhe a mostram e editam. (REQ-2080, REQ-2081)
+
+Uma função tem uma descrição, não uma por domínio. Uma função geral que não descreve suas responsabilidades dentro de um domínio específico significa que esse domínio precisa de uma função própria, geralmente uma filha da função geral (`parent_role_id`), que herda seus direitos e descreve o que faz ali.
 
 ### Como uma requisição nomeia funções {: #how-a-request-names-roles }
 
@@ -129,7 +147,7 @@ Um cliente envia uma função, ou um conjunto separado por vírgulas, em `X-Prov
 
 Direitos e dados seguem apenas as funções com que a requisição age: ter uma função não é agir como ela. Uma função é essa função; duas ou mais agem como sua meta-função. Uma função atuante que trouxesse junto os direitos de cada função tida não significaria nada, então uma requisição recebe o menor privilégio e o registro de auditoria nomeia exatamente o que agiu.
 
-Pseudo-funções nomeadas entram como qualificadores. Um qualificador não tem direitos, acesso a domínios, máscaras ou filtros de linha próprios, então não é membro dos direitos da meta-função: como membro sem máscaras, desmascararia toda coluna, e como membro que não lê nenhuma tabela, encerraria todo OR de filtros de linha. Ele entra só nas concessões: uma concessão ou entrada de máscara que nomeia `region__eu` alcança uma requisição que nomeia esse qualificador junto com uma função concedida. (REQ-2057)
+Funções derivadas nomeadas entram como qualificadores. Um qualificador não tem direitos, acesso a domínios, máscaras ou filtros de linha próprios, então não é membro dos direitos da meta-função: como membro sem máscaras, desmascararia toda coluna, e como membro que não lê nenhuma tabela, encerraria todo OR de filtros de linha. Ele entra só nas concessões: uma concessão ou entrada de máscara que nomeia `region__eu` alcança uma requisição que nomeia esse qualificador junto com uma função concedida. (REQ-2057)
 
 Um agente MCP nunca age além dos papéis que lhe foram dados. Um agente remoto só nomeia papéis que o principal do seu token detém. Um agente stdio local só nomeia papéis dentro do conjunto fixado em `mcp.role` (`PROVISA_MCP_ROLE`), e age como esse conjunto quando não nomeia nenhum; qualquer outro papel é recusado pelo nome. (REQ-2075)
 
@@ -143,9 +161,9 @@ Um agente MCP nunca age além dos papéis que lhe foram dados. Um agente remoto 
 
 ### Regras de coluna ABAC como RBAC simples {: #abac-column-rules-as-plain-rbac }
 
-Uma política baseada em atributos pergunta: "este usuário, com estes atributos, pode ver esta coluna?" O RBAC pergunta: "quais funções podem ver esta coluna?" Concessões compostas e pseudo-funções as tornam a mesma pergunta.
+Uma política baseada em atributos pergunta: "este usuário, com estes atributos, pode ver esta coluna?" O RBAC pergunta: "quais funções podem ver esta coluna?" Concessões compostas e funções derivadas as tornam a mesma pergunta.
 
-"Desmascarar este e-mail só para um analista na UE" é uma entrada de máscara `{to: [analyst+region__eu], mask: null}`. Qualquer leitor que tenha tanto a função `analyst` quanto a pseudo-função `region__eu` lê a coluna sem máscara. Sem linguagem de política. Sem uma função por combinação.
+"Desmascarar este e-mail só para um analista na UE" é uma entrada de máscara `{to: [analyst+region__eu], mask: null}`. Qualquer leitor que tenha tanto a função `analyst` quanto a função derivada `region__eu` lê a coluna sem máscara. Sem linguagem de política. Sem uma função por combinação.
 
 A troca é cálculo em vez de enumeração. Um catálogo de funções pequeno mantém a manutenção baixa, mas "quem pode ver este e-mail da UE?" vira uma resposta calculada: entradas compostas são avaliadas contra as atribuições e os claims de cada usuário. O Provisa consegue responder nas duas direções porque o modelo é uma única definição. A verificação de acesso do editor de colunas (`POST /admin/masks/check`) executa essa avaliação para um conjunto de funções escolhido.
 
@@ -286,6 +304,7 @@ rls_rules:
   - table_id: orders
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
+    description: Analysts read only their own region's orders.
 ```
 O filtro é combinado com AND na cláusula WHERE da consulta. Funciona para consultas e mutações (UPDATE/DELETE). (REQ-035, REQ-041)
 
@@ -311,7 +330,7 @@ A expressão de máscara é levada para a projeção SQL SELECT. O banco de dado
 
 **Negar pela ordem.** Uma entrada anterior vence mesmo quando o leitor também tem uma posterior mais permissiva. Para que prestadores de serviço vejam sempre um salário mascarado, quaisquer que sejam suas outras funções, coloque a entrada deles antes da entrada sem máscara. Uma função concedida nunca perde o que o pai concede por herança, mas uma entrada de máscara colocada antes na lista se aplica primeiro — é assim que a restrição funciona aqui.
 
-**Meta-funções.** A cadeia de uma meta-função inclui as funções de cada membro, seus ancestrais e quaisquer pseudo-funções nomeadas. Uma entrada concedida a qualquer membro alcança a meta-função. Uma entrada anterior, tida por outro membro, ainda se aplica primeiro.
+**Meta-funções.** A cadeia de uma meta-função inclui as funções de cada membro, seus ancestrais e quaisquer funções derivadas nomeadas. Uma entrada concedida a qualquer membro alcança a meta-função. Uma entrada anterior, tida por outro membro, ainda se aplica primeiro.
 
 **Verificar o acesso.** `POST /admin/masks/check` aceita uma lista de máscaras e um conjunto opcional de funções, e retorna qual entrada se aplica para essas funções, mais as entradas que nenhum leitor consegue alcançar. Protegido por `masking_config`.
 

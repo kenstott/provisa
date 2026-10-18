@@ -39,6 +39,7 @@ CUSTOMERS_TABLE_ID = 2
 def _role(role_id: str, caps: list[str], domains: list[str], parent: str | None = None) -> Role:
     return Role(
         id=role_id,
+        description="Test role.",
         capabilities=caps,
         domain_access=domains,
         parent_role_id=parent,
@@ -158,6 +159,7 @@ class TestInheritedRolesRLS:
     def test_child_inherits_parent_rls(self):
         """A child role with no rule of its own for a table reads under its parent's rule."""
         parent_rule = {
+            "description": "Test rule.",
             "role_id": "parent",
             "table_id": ORDERS_TABLE_ID,
             "domain_id": None,
@@ -174,12 +176,14 @@ class TestInheritedRolesRLS:
         are never ANDed."""
         rules = [
             {
+                "description": "Test rule.",
                 "role_id": "parent",
                 "table_id": ORDERS_TABLE_ID,
                 "domain_id": None,
                 "filter_expr": "\"region\" = 'us-east'",
             },
             {
+                "description": "Test rule.",
                 "role_id": "child",
                 "table_id": ORDERS_TABLE_ID,
                 "domain_id": None,

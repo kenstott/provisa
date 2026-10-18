@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "../test-utils/render";
 import i18n from "../i18n";
 import { RoleSelector } from "../components/RoleSelector";
-import type { Role, Capability, PseudoRole } from "../types/auth";
+import type { Role, Capability, DerivedRole } from "../types/auth";
 
 const t = i18n.getFixedT("en");
 
@@ -26,6 +26,7 @@ const mockUseAuth = vi.mocked(useAuth);
 
 const ADMIN_ROLE: Role = {
   id: "admin",
+  description: "What admin is for.",
   capabilities: ["user_management", "access_config"] as Capability[],
   demonstrated: [],
   domain_access: ["*"],
@@ -33,6 +34,7 @@ const ADMIN_ROLE: Role = {
 
 const ANALYST_ROLE: Role = {
   id: "analyst",
+  description: "What analyst is for.",
   capabilities: ["query_development", "full_results"] as Capability[],
   demonstrated: [],
   domain_access: ["sales"],
@@ -44,9 +46,9 @@ function makeAuthValue(overrides: {
   selectRole?: (role: Role | "all") => void;
   devMode?: boolean;
   loading?: boolean;
-  pseudoRoles?: PseudoRole[];
-  selectedPseudoRoles?: string[];
-  togglePseudoRole?: (id: string) => void;
+  derivedRoles?: DerivedRole[];
+  selectedDerivedRoles?: string[];
+  toggleDerivedRole?: (id: string) => void;
 }) {
   const selectedRole = overrides.selectedRole ?? "all";
   const availableRoles = overrides.availableRoles ?? [ADMIN_ROLE, ANALYST_ROLE];
@@ -81,9 +83,9 @@ function makeAuthValue(overrides: {
     multitenancy: false,
     billing: false,
     controlPlaneId: "test-cp",
-    pseudoRoles: overrides.pseudoRoles ?? [],
-    selectedPseudoRoles: overrides.selectedPseudoRoles ?? [],
-    togglePseudoRole: overrides.togglePseudoRole ?? vi.fn(),
+    derivedRoles: overrides.derivedRoles ?? [],
+    selectedDerivedRoles: overrides.selectedDerivedRoles ?? [],
+    toggleDerivedRole: overrides.toggleDerivedRole ?? vi.fn(),
     actingRoles: null,
   };
 }
@@ -215,18 +217,18 @@ describe("RoleSelector", () => {
   });
 });
 
-describe("RoleSelector claim roles", () => {
-  it("offers the held pseudo-roles as switches beside the roles, and names the selected ones", async () => {
+describe("RoleSelector derived roles", () => {
+  it("offers the held derived roles as switches beside the roles, and names the selected ones", async () => {
     const toggle = vi.fn();
     mockUseAuth.mockReturnValue(
       makeAuthValue({
         selectedRole: ANALYST_ROLE,
-        pseudoRoles: [
+        derivedRoles: [
           { id: "region", parent: null },
           { id: "region__eu", parent: "region" },
         ],
-        selectedPseudoRoles: ["region__eu"],
-        togglePseudoRole: toggle,
+        selectedDerivedRoles: ["region__eu"],
+        toggleDerivedRole: toggle,
       }),
     );
     render(<RoleSelector />);
@@ -245,11 +247,11 @@ describe("RoleSelector claim roles", () => {
     expect(screen.getByTestId("role-selector-claim-region__eu")).toBeInTheDocument();
   });
 
-  it("shows no claim roles section to a user who holds none", async () => {
+  it("shows no derived roles section to a user who holds none", async () => {
     mockUseAuth.mockReturnValue(makeAuthValue({}));
     render(<RoleSelector />);
     fireEvent.click(screen.getByTestId("role-selector-trigger"));
     await screen.findByRole("menu");
-    expect(screen.queryByText("Claim roles")).toBeNull();
+    expect(screen.queryByText("Derived roles")).toBeNull();
   });
 });

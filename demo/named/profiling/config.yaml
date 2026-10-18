@@ -35,6 +35,7 @@ naming:
   rules: []
 roles:
 - id: analyst
+  description: "Queries the harbor domain's data."
   capabilities:
   - query_development
   domain_access:

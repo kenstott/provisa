@@ -66,6 +66,7 @@ fragment WriteGrantFields on WriteGrantType {
 query RolesQuery {
   roles {
     id
+    description
     capabilities
     demonstrated
     domainAccess
@@ -637,6 +638,7 @@ query RLSRulesQuery {
     tagId
     roleId
     filterExpr
+    description
   }
 }
 

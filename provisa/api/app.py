@@ -942,7 +942,7 @@ class AppState:
 
     @property
     def meta_qualifiers(self) -> dict:
-        """meta-role id -> the pseudo-roles it was named with (OrgRuntime.meta_qualifiers)."""
+        """meta-role id -> the derived roles it was named with (OrgRuntime.meta_qualifiers)."""
         return self._active_runtime().meta_qualifiers
 
     @property
@@ -2940,6 +2940,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                     # query-complexity limits the data endpoint enforces.
                     select(
                         _roles_t.c.id,
+                        _roles_t.c.description,  # REQ-2080: what the role is for
                         _roles_t.c.capabilities,
                         _roles_t.c.domain_access,
                         _roles_t.c.rate_limit,
@@ -4535,9 +4536,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.roles_router import router as roles_router
 
     app.include_router(roles_router)
-    from provisa.api.admin.claim_roles_router import router as claim_roles_router
+    from provisa.api.admin.derived_roles_router import router as derived_roles_router
 
-    app.include_router(claim_roles_router)  # REQ-2057
+    app.include_router(derived_roles_router)  # REQ-2057
     from provisa.api.admin.masks_router import router as masks_router
 
     app.include_router(masks_router)  # REQ-2059

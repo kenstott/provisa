@@ -112,7 +112,7 @@ class _State:
         self.engine_conn = None
         # The org's member attributes and its claim types: none recorded, none declared (REQ-2057).
         self.user_attributes = {}
-        self.settings_overrides = {"claim_roles": []}
+        self.settings_overrides = {"derived_roles": []}
         self.roles = {r: {"id": r} for r in _SERVED}
         self.contexts = {role: _context(served) for role, served in _SERVED.items()}
         self.meta_roles = {_META: ("hr_reader", "seller")}

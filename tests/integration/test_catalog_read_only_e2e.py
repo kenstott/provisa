@@ -46,7 +46,12 @@ def server():
             "tables": base["tables"],
             # org_admin is the reserved administrative role (REQ-1349): not declared.
             "roles": [
-                {"id": "analyst", "capabilities": ["query_development"], "domain_access": ["*"]},
+                {
+                    "id": "analyst",
+                    "description": "Test role.",
+                    "capabilities": ["query_development"],
+                    "domain_access": ["*"],
+                },
             ],
         },
         env={"PROVISA_REDIRECT_ENABLED": "false"},

@@ -86,6 +86,13 @@ def _least_restrictive(values: list[Any]) -> Any:
     return None if any(v is None for v in values) else max(values)
 
 
+def meta_description(members: list[dict]) -> str:  # REQ-2080
+    """A meta-role is never stored, so its description is its members': each id with its own."""
+    return "Acts as " + "; ".join(
+        f"{m['id']} ({m['description']})" for m in sorted(members, key=lambda m: m["id"])
+    )
+
+
 def _role(members: list[dict], meta_id: str) -> dict:
     caps: set[str] = set()
     domains: set[str] = set()
@@ -94,6 +101,7 @@ def _role(members: list[dict], meta_id: str) -> dict:
         domains.update(m.get("domain_access") or [])
     return {
         "id": meta_id,
+        "description": meta_description(members),  # REQ-2080
         "capabilities": sorted(caps),
         "domain_access": ["*"] if "*" in domains else sorted(domains),
         "max_rows": _least_restrictive([m.get("max_rows") for m in members]),
@@ -333,7 +341,7 @@ def meta_chain(
     qualifiers: tuple[str, ...] = (),
 ) -> list[str]:
     """The meta-role's chain: itself, every member with each member's ancestors (a composite
-    grant names them, REQ-2058), and the pseudo-roles it was named with."""
+    grant names them, REQ-2058), and the derived roles it was named with."""
     held: list[str] = []
     for m in member_ids:
         for rid in role_chains[m]:
@@ -383,7 +391,7 @@ def _build(
     its masks, its role and its surface (one assignment — a request acting as it reads the
     surface this replaces or this one).
 
-    REQ-2057: ``qualifiers`` are the pseudo-roles the request named. They have no surface, rights,
+    REQ-2057: ``qualifiers`` are the derived roles the request named. They have no surface, rights,
     masks or row filters of their own -- as a member, one with no masks would unmask every column,
     and one reading no table would end every OR of row filters -- so they enter only the grants:
     a grant list naming one reaches the child, as a member's does."""
@@ -436,7 +444,7 @@ def ensure_meta_role(state: Any, members: list[str], qualifiers: tuple[str, ...]
     if len(data) == 1 and not quals:
         return data[0]
     members = data
-    # REQ-2057: a set naming pseudo-roles is its own meta-role even with one data role: what it
+    # REQ-2057: a set naming derived roles is its own meta-role even with one data role: what it
     # is granted differs from that role's.
     meta_id = meta_role_id([*members, *quals])
     if meta_id not in state.roles or state.meta_roles.get(meta_id) is None:
@@ -488,7 +496,7 @@ def resolve_requested_role(
     roles its identity holds (``permitted``). Each named role must be held, and one that is not is
     refused by name; one role is that role, several act as their meta-role.
 
-    REQ-2057: ``pseudo`` reads the pseudo-roles the identity holds (id -> parent), asked only when
+    REQ-2057: ``pseudo`` reads the derived roles the identity holds (id -> parent), asked only when
     a request names a role the identity is not assigned. One named enters the set as a qualifier,
     with its parent, and the set acts as its meta-role."""
     names = [r.strip() for r in requested.split(",") if r.strip()]

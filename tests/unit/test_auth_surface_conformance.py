@@ -127,7 +127,7 @@ def _state(pool) -> SimpleNamespace:
 def _no_claim_types(monkeypatch):
     """The HTTP surface's app runs with no deployment config: no claim type is declared
     (REQ-2057)."""
-    monkeypatch.setattr("provisa.auth.middleware._loaded_claim_roles", lambda: [])
+    monkeypatch.setattr("provisa.auth.middleware._loaded_derived_roles", lambda: [])
 
 
 @pytest.fixture(autouse=True)

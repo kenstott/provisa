@@ -121,7 +121,12 @@ def server(pgvector, tmp_path_factory):
         "cache": {"enabled": False},
         "domains": [{"id": "shop", "description": "vector similarity e2e"}],
         "roles": [
-            {"id": _ANALYST, "capabilities": ["query_development"], "domain_access": ["shop"]}
+            {
+                "id": _ANALYST,
+                "description": "Test role.",
+                "capabilities": ["query_development"],
+                "domain_access": ["shop"],
+            }
         ],
         # The model is only read for its dimensions here: every query is a vector.
         "vector_models": [

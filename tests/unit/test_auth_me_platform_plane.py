@@ -93,7 +93,7 @@ def _request(active_org_id: str | None, role_id: str):
         display_name=None,
         roles=[f"{role_id}:*"],
         raw_claims={},
-        pseudo_roles={},  # bound by the middleware with the attributes (REQ-2057)
+        derived_roles={},  # bound by the middleware with the attributes (REQ-2057)
     )
     request = SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=active_org_id))
     return cast("Any", request)

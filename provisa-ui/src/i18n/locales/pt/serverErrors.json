@@ -272,7 +272,8 @@
       "has_dependents": "O papel {{role}} ainda é referenciado por {{count}} objeto(s); remova primeiro essas referências",
       "not_found": "Função não encontrada",
       "org_selection_required": "Seleção de organização necessária",
-      "already_exists": "A função '{{role}}' já existe"
+      "already_exists": "A função '{{role}}' já existe",
+      "description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade"
     },
     "schema": {
       "allowed_domains_updated": "Domínios permitidos atualizados para a fonte '{{source}}'",
@@ -435,7 +436,9 @@
       "role_session_var_name_missing": "Um valor de sessão precisa de um nome",
       "role_session_var_name_reserved": "'{{name}}' é vinculado pela solicitação ou pelo nó e não pode ser um valor de sessão de uma função",
       "role_session_var_name_invalid": "O nome do valor de sessão '{{name}}' deve conter letras, dígitos e sublinhados, e não pode começar com um dígito",
-      "role_session_var_name_repeated": "O valor de sessão '{{name}}' foi informado duas vezes"
+      "role_session_var_name_repeated": "O valor de sessão '{{name}}' foi informado duas vezes",
+      "role_description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade",
+      "rls_rule_description_missing": "Uma regra de linha precisa de uma descrição da sua finalidade"
     },
     "secrets": {
       "name_refused": "{{name}} não é um nome dentro dos segredos desta organização em {{service}}: um nome é relativo à organização e não pode sair dela",
@@ -599,11 +602,13 @@
     "engine": {
       "write_conflict": "Outra alteração nos mesmos dados foi gravada ao mesmo tempo. Tente novamente."
     },
-    "claim_roles": {
-      "name_invalid": "O tipo de declaração '{{name}}' deve conter apenas letras, dígitos e sublinhados, e não pode começar com um dígito",
-      "name_missing": "Um tipo de declaração precisa de um nome",
-      "name_reserved": "'{{name}}' é definido a partir da identidade atuante em cada solicitação e não pode ser um tipo de declaração",
-      "database_not_connected": "Banco de dados não conectado"
+    "derived_roles": {
+      "name_invalid": "O atributo '{{name}}' só pode ter letras, dígitos e sublinhados, e não pode começar com um dígito",
+      "name_missing": "Um atributo precisa de um nome",
+      "name_reserved": "'{{name}}' é obtido da identidade atuante em cada solicitação e não pode ser um atributo",
+      "database_not_connected": "Banco de dados não conectado",
+      "description_missing": "Uma função derivada precisa de uma descrição da sua finalidade",
+      "not_found": "Nenhuma função derivada de {{name}}"
     }
   }
 }

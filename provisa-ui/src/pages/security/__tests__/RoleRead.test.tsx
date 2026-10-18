@@ -18,6 +18,7 @@ import { RoleRead } from "../RoleRead";
 
 const steward: Role = {
   id: "data_steward",
+  description: "What data_steward is for.",
   capabilities: ["data_residency", "masking_config"],
   demonstrated: ["create_relationship"],
   domain_access: ["*"],
@@ -41,6 +42,7 @@ describe("a role's read view", () => {
     render(<RoleRead role={steward} />);
     expect(fields("role-read-fields")).toEqual([
       ["Role ID", "data_steward"],
+      ["Description", "What data_steward is for."],
       ["Capabilities", "data_residency, masking_config"],
       ["Demonstrated capabilities", "create_relationship"],
       ["Region values covered", "eu, no_region"],
@@ -71,6 +73,7 @@ describe("a role's read view", () => {
       <RoleRead
         role={{
           id: "guest",
+          description: "What guest is for.",
           capabilities: [],
           demonstrated: [],
           domain_access: [],
@@ -81,6 +84,7 @@ describe("a role's read view", () => {
     );
     expect(fields("role-read-fields")).toEqual([
       ["Role ID", "guest"],
+      ["Description", "What guest is for."],
       ["Capabilities", "—"],
       ["Demonstrated capabilities", "—"],
       ["Region values covered", "—"],

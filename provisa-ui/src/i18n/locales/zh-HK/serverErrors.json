@@ -272,7 +272,8 @@
       "has_dependents": "仍有 {{count}} 個物件引用角色 {{role}}；請先移除這些引用",
       "not_found": "找不到角色",
       "org_selection_required": "需要選取組織",
-      "already_exists": "角色 '{{role}}' 已存在"
+      "already_exists": "角色 '{{role}}' 已存在",
+      "description_missing": "角色 '{{role}}' 需要說明其用途"
     },
     "schema": {
       "allowed_domains_updated": "已更新數據來源「{{source}}」的允許領域",
@@ -435,7 +436,9 @@
       "role_session_var_name_missing": "工作階段值需要名稱",
       "role_session_var_name_reserved": "'{{name}}' 由請求或節點綁定，不能作為角色的工作階段值",
       "role_session_var_name_invalid": "工作階段值名稱 '{{name}}' 只能包含字母、數字及底線，且不能以數字開頭",
-      "role_session_var_name_repeated": "工作階段值 '{{name}}' 被指定了兩次"
+      "role_session_var_name_repeated": "工作階段值 '{{name}}' 被指定了兩次",
+      "role_description_missing": "角色 '{{role}}' 需要說明其用途",
+      "rls_rule_description_missing": "行規則需要說明其用途"
     },
     "secrets": {
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",
@@ -599,11 +602,13 @@
     "engine": {
       "write_conflict": "對同一資料的另一項更改同時被寫入。請重試。"
     },
-    "claim_roles": {
-      "name_invalid": "宣告類型 '{{name}}' 只可包含字母、數字及底線，且不可以數字開頭",
-      "name_missing": "宣告類型需要名稱",
-      "name_reserved": "'{{name}}' 在每個請求中由當前操作的身分繫結，不能作為宣告類型",
-      "database_not_connected": "數據庫未連線"
+    "derived_roles": {
+      "name_invalid": "屬性 '{{name}}' 只能包含字母、數字和底線，且不能以數字開頭",
+      "name_missing": "屬性需要名稱",
+      "name_reserved": "'{{name}}' 在每個請求中都取自執行操作的身份，不能作為屬性",
+      "database_not_connected": "資料庫未連接",
+      "description_missing": "派生角色需要說明其用途",
+      "not_found": "沒有從 {{name}} 派生的角色"
     }
   }
 }

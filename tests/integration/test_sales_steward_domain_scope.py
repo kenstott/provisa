@@ -173,11 +173,19 @@ async def test_a_sales_steward_governs_sales_and_is_refused_finance(plane):
     ]
     assert invoices["amount"]["masks"] == []
 
-    rule = RLSRuleInput(table_id="orders", role_id="analyst", filter_expr="1 = 1")
+    rule = RLSRuleInput(
+        table_id="orders", role_id="analyst", filter_expr="1 = 1", description="Test rule."
+    )
     assert (await m.upsert_rls_rule(steward, rule)).success
     with pytest.raises(PermissionError, match="'finance'"):
         await m.upsert_rls_rule(
-            steward, RLSRuleInput(table_id="invoices", role_id="analyst", filter_expr="1 = 1")
+            steward,
+            RLSRuleInput(
+                table_id="invoices",
+                role_id="analyst",
+                filter_expr="1 = 1",
+                description="Test rule.",
+            ),
         )
 
     product = DataProductInput(id="sales_kpis", domain_id="sales", name="Sales KPIs")

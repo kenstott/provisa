@@ -346,8 +346,18 @@ def built(monkeypatch):
     state = _built_roles(
         monkeypatch,
         [
-            {"id": "sales_reader", "capabilities": ["usage"], "domain_access": ["sales"]},
-            {"id": "finance_reader", "capabilities": ["usage"], "domain_access": ["finance"]},
+            {
+                "id": "sales_reader",
+                "description": "Test role.",
+                "capabilities": ["usage"],
+                "domain_access": ["sales"],
+            },
+            {
+                "id": "finance_reader",
+                "description": "Test role.",
+                "capabilities": ["usage"],
+                "domain_access": ["finance"],
+            },
         ],
     )
     monkeypatch.setattr("provisa.grpc.auth.auth_active", lambda _state: False)
@@ -535,7 +545,12 @@ def meta_reach(monkeypatch):
     return _built_roles(
         monkeypatch,
         [
-            {"id": "sales_reader", "capabilities": ["usage"], "domain_access": ["sales"]},
+            {
+                "id": "sales_reader",
+                "description": "Test role.",
+                "capabilities": ["usage"],
+                "domain_access": ["sales"],
+            },
             {"id": "cataloguer", "capabilities": ["usage"], "domain_access": ["sales", "meta"]},
         ],
     )

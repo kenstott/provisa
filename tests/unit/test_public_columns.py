@@ -101,7 +101,12 @@ TABLES = [STAFF, REVIEWS, ORDERS, LOOKUP, AUDIT]
 
 
 def _role(role_id: str, *domains: str) -> dict:
-    return {"id": role_id, "domain_access": list(domains), "capabilities": []}
+    return {
+        "id": role_id,
+        "description": "Test role.",
+        "domain_access": list(domains),
+        "capabilities": [],
+    }
 
 
 def _served(role: dict) -> dict[str, list[str]]:

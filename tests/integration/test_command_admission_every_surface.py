@@ -93,9 +93,24 @@ def server():
             "tables": [orders],
             # org_admin is the reserved administrative role (REQ-1349): not declared.
             "roles": [
-                {"id": "writer", "capabilities": [*reads, "write"], "domain_access": ["*"]},
-                {"id": "reader", "capabilities": reads, "domain_access": ["*"]},
-                {"id": "outsider", "capabilities": [*reads, "write"], "domain_access": ["*"]},
+                {
+                    "id": "writer",
+                    "description": "Test role.",
+                    "capabilities": [*reads, "write"],
+                    "domain_access": ["*"],
+                },
+                {
+                    "id": "reader",
+                    "description": "Test role.",
+                    "capabilities": reads,
+                    "domain_access": ["*"],
+                },
+                {
+                    "id": "outsider",
+                    "description": "Test role.",
+                    "capabilities": [*reads, "write"],
+                    "domain_access": ["*"],
+                },
             ],
             "functions": [
                 _command("region_count", "query", [{"name": "r", "type": "String"}]),

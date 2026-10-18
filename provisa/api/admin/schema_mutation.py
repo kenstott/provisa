@@ -503,6 +503,13 @@ async def _save_role(
             code="schema.role_not_found",
             params={"role": input.id},
         )
+    if not input.description.strip():  # REQ-2080
+        return MutationResult(
+            success=False,
+            message=f"Role {input.id!r} needs a description of what it is for",
+            code="schema.role_description_missing",
+            params={"role": input.id},
+        )
     if held is not None:
         # REQ-1531: redefining a role is an act in every domain it reaches now, not only in
         # the ones the change adds.
@@ -516,6 +523,7 @@ async def _save_role(
     )
     model = RoleModel(
         id=input.id,
+        description=input.description,  # REQ-2080
         capabilities=input.capabilities,
         domain_access=input.domain_access,
         rate_limit=rate_limit,
@@ -3846,6 +3854,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return MutationResult(
                 success=False, message="RLS rule names no role", code="schema.rls_rule_no_role"
             )
+        if not input.description.strip():  # REQ-2081
+            return MutationResult(
+                success=False,
+                message="A row rule needs a description of what it is for",
+                code="schema.rls_rule_description_missing",
+            )
         from provisa.core.repositories import role as role_repo
 
         async with pool.acquire() as _rconn:
@@ -3899,6 +3913,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             domain_id=input.domain_id or None,
             role_id=input.role_id,
             filter=input.filter_expr,
+            description=input.description,
         )
         try:
             async with pool.acquire() as conn:
@@ -5576,7 +5591,12 @@ async def _upsert_tag_rls_rule(
             )
         await rls_repo.upsert(
             cast("Connection", conn),
-            RLSRuleModel(tag_id=tag_id, role_id=input.role_id, filter=input.filter_expr),
+            RLSRuleModel(
+                tag_id=tag_id,
+                role_id=input.role_id,
+                filter=input.filter_expr,
+                description=input.description,
+            ),
         )
     await _rebuild_schemas()
     return MutationResult(
@@ -5650,7 +5670,12 @@ async def _upsert_action_rls_rule(
     async with pool.acquire() as conn:
         await rls_repo.upsert(
             cast("Connection", conn),
-            RLSRuleModel(action_name=name, role_id=input.role_id, filter=input.filter_expr),
+            RLSRuleModel(
+                action_name=name,
+                role_id=input.role_id,
+                filter=input.filter_expr,
+                description=input.description,
+            ),
         )
     # See upsert_rls_rule's own matching rebuild — this action-RLS path bypasses that function
     # entirely (early-returns before it), so it needs the identical rebuild call itself.

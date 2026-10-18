@@ -57,6 +57,7 @@ roles:
 # apply_tenancy_role_grants and overwrites capabilities wholesale, which is how org_admin lost both
 # org-scoped rights and its Admin tab.
 - id: analyst
+  description: "Queries the pet store's data. What a member is given to explore it."
   capabilities:
   - query_development
   domain_access:

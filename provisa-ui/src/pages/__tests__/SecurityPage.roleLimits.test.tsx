@@ -14,6 +14,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "../../test-utils/render";
+import { openNewRole } from "../../test-utils/securityRoles";
 
 const upsertRoleSpy = vi.fn(async () => ({ success: true, message: "" }));
 
@@ -27,7 +28,14 @@ vi.mock("../../context/DomainFilterContext", () => ({
 
 // Stable: a hook that answered a new array each render would re-run the page's effects.
 const LIMIT_ROLES = [
-  { id: "analyst", capabilities: [], demonstrated: [], domain_access: ["*"], parentRoleId: null },
+  {
+    id: "analyst",
+    description: "What analyst is for.",
+    capabilities: [],
+    demonstrated: [],
+    domain_access: ["*"],
+    parentRoleId: null,
+  },
 ];
 
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
@@ -48,6 +56,11 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
   useUpsertRlsRule: () => ({ upsertRlsRule: vi.fn(), loading: false }),
   useDeleteRlsRule: () => ({ deleteRlsRule: vi.fn(), loading: false }),
   useRevokeRoleGrants: () => ({ revokeFromTable: vi.fn(), revokeFromObject: vi.fn() }),
+}));
+
+vi.mock("../../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/admin")>()),
+  fetchDerivedRoles: vi.fn(async () => ({ roles: [], source: "deployment" })),
 }));
 
 import { SecurityPage } from "../SecurityPage";
@@ -84,9 +97,9 @@ function editRole(id: string) {
 const input = (testid: string) => screen.getByTestId(testid) as HTMLInputElement;
 
 describe("SecurityPage — per-role rate & query-complexity limits (REQ-1174)", () => {
-  it("asks a new role for no limits: they are set once it exists", () => {
+  it("asks a new role for no limits: they are set once it exists", async () => {
     renderPage();
-    fireEvent.click(screen.getByTestId("toggle-role-form"));
+    await openNewRole();
     expect(screen.getByTestId("role-id-input")).toBeInTheDocument();
     expect(screen.queryByTestId("role-req-per-sec")).not.toBeInTheDocument();
     expect(screen.queryByTestId("role-max-complexity")).not.toBeInTheDocument();
@@ -133,7 +146,7 @@ describe("SecurityPage — per-role rate & query-complexity limits (REQ-1174)", 
   it("sends rateLimit=null when no limit is entered", async () => {
     upsertRoleSpy.mockClear();
     renderPage();
-    fireEvent.click(screen.getByTestId("toggle-role-form"));
+    await openNewRole();
     fireEvent.change(input("role-id-input"), { target: { value: "guest" } });
     await chooseAllDomains();
     fireEvent.click(screen.getByTestId("save-role"));

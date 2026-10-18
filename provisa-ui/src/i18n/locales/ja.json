@@ -30,7 +30,7 @@
     "role": "ロール: {{role}}",
     "dev": "DEV",
     "checking": "確認中…",
-    "claimRoles": "要求ロール"
+    "derivedRoles": "派生ロール"
   },
   "localUsers": {
     "colUsername": "ユーザー名",
@@ -78,7 +78,7 @@
   "grantPicker": {
     "and": "かつ",
     "combine": "ロールを 1 つの付与にまとめる",
-    "combineHelp": "読み手はここに挙げたすべてのロールを持っている必要があります。region__eu のような要求ロールが候補にない場合は入力してください。",
+    "combineHelp": "閲覧者はここに挙げたすべてのロールを持つ必要があります。候補にない場合は region__eu のような派生ロールを入力してください。",
     "parts": "読み手がすべて持つ必要があるロール",
     "partsPlaceholder": "ロールを選ぶか入力して Enter キーを押します",
     "add": "追加"

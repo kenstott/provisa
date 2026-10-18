@@ -30,7 +30,7 @@
     "role": "Ruolo: {{role}}",
     "dev": "DEV",
     "checking": "Verifica in corso…",
-    "claimRoles": "Ruoli di attestazione"
+    "derivedRoles": "Ruoli derivati"
   },
   "localUsers": {
     "colUsername": "Nome utente",
@@ -78,7 +78,7 @@
   "grantPicker": {
     "and": "e",
     "combine": "Combina ruoli in un'unica concessione",
-    "combineHelp": "Un lettore deve avere ogni ruolo elencato qui. Digita un ruolo di attestazione come region__eu se non è proposto.",
+    "combineHelp": "Un lettore deve avere ogni ruolo elencato qui. Digita un ruolo derivato come region__eu se non è proposto.",
     "parts": "Ruoli che un lettore deve avere tutti",
     "partsPlaceholder": "Scegli o digita un ruolo e premi Invio",
     "add": "Aggiungi"

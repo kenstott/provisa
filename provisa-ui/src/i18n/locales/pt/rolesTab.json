@@ -16,6 +16,7 @@
     "nextPage": "Próxima página",
     "lastPage": "Última página",
     "deleteRoleTitle": "Excluir a função \"{{roleId}}\"?",
-    "deleteRoleConsequence": "A função é removida desta organização."
+    "deleteRoleConsequence": "A função é removida desta organização.",
+    "colDescription": "Descrição"
   }
 }

@@ -107,11 +107,11 @@ def named_role(request: Request, named: str) -> str:  # REQ-273, REQ-1620
     names = [r.strip() for r in named.split(",") if r.strip()]
     if not names:
         raise ApiError(400, "data.missing_role_id", "Missing role_id")
-    # REQ-2057: a pseudo-role the caller holds is named like any role; it qualifies the set.
-    # A router mounted without the auth middleware has no bound pseudo-roles, as held_role's
+    # REQ-2057: a derived role the caller holds is named like any role; it qualifies the set.
+    # A router mounted without the auth middleware has no bound derived roles, as held_role's
     # anonymous case: it names none.
     identity = getattr(request.state, "identity", None)
-    pseudo = getattr(identity, "pseudo_roles", None) or {}
+    pseudo = getattr(identity, "derived_roles", None) or {}
     named_pseudo = [n for n in names if n in pseudo]
     names = [n for n in names if n not in pseudo]
     for name in names:

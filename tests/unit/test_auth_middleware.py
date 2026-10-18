@@ -47,7 +47,7 @@ class MockProvider(AuthProvider):
 def _no_claim_types(monkeypatch):
     """These apps run with no deployment config; none declares a claim type (REQ-2057) unless a
     test says so."""
-    monkeypatch.setattr("provisa.auth.middleware._loaded_claim_roles", lambda: [])
+    monkeypatch.setattr("provisa.auth.middleware._loaded_derived_roles", lambda: [])
 
 
 def _make_app(

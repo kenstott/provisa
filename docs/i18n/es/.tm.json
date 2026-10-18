@@ -1,11 +1,11 @@
 {
   "index.md": "52c6c654156ff0b595872b0f42d7fd7bbc752adf10b3bb54edba7962d0e767b7",
   "quickstart.md": "03d442441ed339c6b0d9a5ef40916f7a4f3ee41ef719ae305f20c8a97593e266",
-  "configuration.md": "30b1421046671f6f1f9fe007f1735c72bf21a4f1502dea162db5096af8edda1e",
+  "configuration.md": "87cd5de61699d6fdca1d56cc4309ca6be59bfcca5aec32f39be516e70b0840f3",
   "api-reference.md": "b36e1dcae81be7cbf88319451e2d39f3deed50f8d48faf73652f94bc72235500",
   "architecture.md": "67fa6bf2248956978e8721a0e907e7613c6c721351f9e09ba05382c0d47d1232",
-  "security.md": "9cc072112e7ef5a673e1cbbdb30a117520f57e6aeb89d347bf57d7ba597528ef",
-  "sources.md": "c8915131322e33004be8875e36f57412577ea0d5aee03dbdebdf1ee01598bf8f",
+  "security.md": "ecf38563c6ab8e3e2d69b6864ee943bcbf34510a26754f7087b4c1b184c60ffa",
+  "sources.md": "978dcbf7cc38c000a016b24faa50eef2ffa866ee5e36bb803ff0535a4c6fd5db",
   "subscriptions.md": "1d08aba4f026b68a466d32ef313d7584ab2d3aa53ec7b0b8eb94f4ccf2a6e9b8",
   "integrations.md": "f08b2f45f9ee23d3e44c4c4e18efd0a06d6dd56f093f379f70f177801302e629",
   "python-client.md": "4781626775e1c98b8c375fcfe98ceb3369d9ac9692b126b6b740bd27150580f7",
@@ -30,5 +30,5 @@
   "cli.md": "c50d34a357d301be4ee3c23756fae49b46d4a13578c143cdc0c9fc61617be913",
   "replicas.md": "a268c0f79aea8ca50c2ad746cca6503b089e5ab49e34268e4ef85e8fa5bc2d13",
   "sizing.md": "c8c6f94e2ad84a9b9889f4fef2cf56c721bac02f8afa398511446e759615bcf0",
-  "regions.md": "abc4b60c696e25f2ab57b0fb9ee0eef3a970b6f0e319fa0be243cc31c9f6e291"
+  "regions.md": "265dc758bb8da8ed4e9681c4d521cae68e1a04dacaee822c1643594d17b830d0"
 }

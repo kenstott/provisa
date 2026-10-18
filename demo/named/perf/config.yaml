@@ -491,7 +491,9 @@ roles:
   - pet-store
   - shelter
   id: analyst
+  description: "Queries the pet store's and the shelter's data, as the benchmark's reader."
 - id: org_admin_unguarded
+  description: "The organization administrator's rights without the relationship guard, for the benchmark's unguarded joins."
   capabilities:
   - source_registration
   - table_registration

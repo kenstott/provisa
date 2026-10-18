@@ -498,6 +498,7 @@ class SchemaGenerationEngine:
 
         role = {
             "id": "analyst",
+            "description": "Test role.",
             "name": "Analyst",
             "capabilities": ["read"],
             "domain_access": ["*"],
@@ -968,7 +969,12 @@ def _build_schema_input_with_root_ids(root_table_ids: set[int] | None) -> Any:
         relationships=relationships,
         column_types=column_types,
         naming_rules=[],
-        role={"id": "analyst", "capabilities": ["read"], "domain_access": ["*"]},
+        role={
+            "id": "analyst",
+            "description": "Test role.",
+            "capabilities": ["read"],
+            "domain_access": ["*"],
+        },
         domains=[],
         root_table_ids=root_table_ids,
     )

@@ -70,12 +70,17 @@ FN = {"name": "customer_lookup", "domain_id": "sales", "output_columns": CONTRAC
 
 def _state(rls_by_role: dict[str, RLSContext] | None = None, roles: dict | None = None):
     roles = roles or {
+        "description": "Test role.",
         "analyst": {
             "id": "analyst",
             "capabilities": ["full_results"],
             "session_vars": {"region": "east"},
         },
-        "org_admin": {"id": "org_admin", "capabilities": ["admin", "full_results"]},
+        "org_admin": {
+            "id": "org_admin",
+            "description": "Test role.",
+            "capabilities": ["admin", "full_results"],
+        },
         "junior": {
             "id": "junior",
             "capabilities": ["full_results"],
@@ -186,6 +191,7 @@ class TestGovern:
     async def test_inherited_action_rule_reaches_child(self):
         rules = [
             {
+                "description": "Test rule.",
                 "id": 1,
                 "role_id": "analyst",
                 "table_id": None,

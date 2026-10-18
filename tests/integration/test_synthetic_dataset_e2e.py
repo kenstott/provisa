@@ -154,6 +154,7 @@ def server():
         "roles": [
             {
                 "id": "analyst",
+                "description": "Test role.",
                 "capabilities": ["query_development", "full_results"],
                 "domain_access": ["*"],
             }

@@ -56,7 +56,12 @@ def _first_file() -> dict:
     raw = yaml.safe_load(_SAMPLE.read_text())
     raw["roles"] = [
         *raw.get("roles", []),
-        {"id": "auditor", "capabilities": ["usage"], "domain_access": ["sales-analytics"]},
+        {
+            "id": "auditor",
+            "description": "Test role.",
+            "capabilities": ["usage"],
+            "domain_access": ["sales-analytics"],
+        },
     ]
     return raw
 
@@ -64,7 +69,12 @@ def _first_file() -> dict:
 def _changed_file() -> dict:
     raw = _first_file()
     raw["roles"] = [r for r in raw["roles"] if r["id"] != "auditor"] + [
-        {"id": "buyer", "capabilities": ["usage"], "domain_access": ["sales-analytics"]}
+        {
+            "id": "buyer",
+            "description": "Test role.",
+            "capabilities": ["usage"],
+            "domain_access": ["sales-analytics"],
+        }
     ]
     raw["tables"] = [t for t in raw["tables"] if t["table"] != "customers"]
     next(src for src in raw["sources"] if src["id"] == "sales-pg")["host"] = "elsewhere.invalid"
@@ -167,7 +177,12 @@ async def test_a_reboot_never_reapplies_the_file_and_an_admin_edit_survives(
         async with model_change.scope("admin edit"), state.model_db.acquire() as conn:
             await role_repo.upsert(
                 conn,
-                Role(id="auditor", capabilities=["usage", "write"], domain_access=["*"]),
+                Role(
+                    id="auditor",
+                    description="Test role.",
+                    capabilities=["usage", "write"],
+                    domain_access=["*"],
+                ),
                 org_id=_ORG_ID,
             )
 
@@ -239,13 +254,23 @@ async def test_a_demo_org_starts_as_its_config_at_every_build(clean, tmp_path, m
             async with model_change.scope("demo edit"), rt.model_db.acquire() as conn:
                 await role_repo.upsert(
                     conn,
-                    Role(id="auditor", capabilities=["usage", "write"], domain_access=["*"]),
+                    Role(
+                        id="auditor",
+                        description="Test role.",
+                        capabilities=["usage", "write"],
+                        domain_access=["*"],
+                    ),
                     org_id=_DEMO_ID,
                 )
                 # An addition, too, lasts only until the next build.
                 await role_repo.upsert(
                     conn,
-                    Role(id="added_in_demo", capabilities=["usage"], domain_access=["*"]),
+                    Role(
+                        id="added_in_demo",
+                        description="Test role.",
+                        capabilities=["usage"],
+                        domain_access=["*"],
+                    ),
                     org_id=_DEMO_ID,
                 )
             assert await _auditor(rt) == ["usage", "write"]

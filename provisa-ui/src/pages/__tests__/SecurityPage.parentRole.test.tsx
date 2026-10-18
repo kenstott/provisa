@@ -13,6 +13,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "../../test-utils/render";
+import { openNewRole } from "../../test-utils/securityRoles";
 
 const upsertRoleSpy = vi.fn(async (_input: Record<string, unknown>) => ({
   success: true,
@@ -21,12 +22,20 @@ const upsertRoleSpy = vi.fn(async (_input: Record<string, unknown>) => ({
 const ROLES = [
   {
     id: "analyst",
+    description: "What analyst is for.",
     capabilities: [],
     demonstrated: [],
     domain_access: ["sales"],
     parentRoleId: null,
   },
-  { id: "junior", capabilities: [], demonstrated: [], domain_access: [], parentRoleId: "analyst" },
+  {
+    id: "junior",
+    description: "What junior is for.",
+    capabilities: [],
+    demonstrated: [],
+    domain_access: [],
+    parentRoleId: "analyst",
+  },
 ];
 
 vi.mock("../../context/DomainFilterContext", () => ({
@@ -51,6 +60,11 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
   useUpsertRlsRule: () => ({ upsertRlsRule: vi.fn(), loading: false }),
   useDeleteRlsRule: () => ({ deleteRlsRule: vi.fn(), loading: false }),
   useRevokeRoleGrants: () => ({ revokeFromTable: vi.fn(), revokeFromObject: vi.fn() }),
+}));
+
+vi.mock("../../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/admin")>()),
+  fetchDerivedRoles: vi.fn(async () => ({ roles: [], source: "deployment" })),
 }));
 
 import { SecurityPage } from "../SecurityPage";
@@ -85,12 +99,12 @@ describe("SecurityPage — role inheritance (REQ-1677)", () => {
   it("stages the chosen parent through upsertRole", async () => {
     upsertRoleSpy.mockClear();
     render(<SecurityPage />);
-    fireEvent.click(screen.getByTestId("toggle-role-form"));
+    await openNewRole();
     fireEvent.change(input("role-id-input"), { target: { value: "intern" } });
     const select = input("role-parent-select");
     fireEvent.click(select);
     fireEvent.change(select, { target: { value: "analyst" } });
-    fireEvent.click(await screen.findByRole("option", { name: "analyst" }));
+    fireEvent.click(await screen.findByRole("option", { name: "analyst", hidden: true }));
     fireEvent.click(screen.getByTestId("save-role"));
     await waitFor(() => expect(upsertRoleSpy).toHaveBeenCalled());
     expect(upsertRoleSpy.mock.calls[0][0]).toMatchObject({ id: "intern", parentRoleId: "analyst" });
@@ -99,7 +113,7 @@ describe("SecurityPage — role inheritance (REQ-1677)", () => {
   it("sends null when no parent is chosen", async () => {
     upsertRoleSpy.mockClear();
     render(<SecurityPage />);
-    fireEvent.click(screen.getByTestId("toggle-role-form"));
+    await openNewRole();
     fireEvent.change(input("role-id-input"), { target: { value: "solo" } });
     await chooseAllDomains();
     fireEvent.click(screen.getByTestId("save-role"));

@@ -272,7 +272,8 @@
       "has_dependents": "Auf die Rolle {{role}} verweisen noch {{count}} Objekt(e); entfernen Sie zuerst diese Verweise",
       "not_found": "Rolle nicht gefunden",
       "org_selection_required": "Organisationsauswahl erforderlich",
-      "already_exists": "Die Rolle '{{role}}' existiert bereits"
+      "already_exists": "Die Rolle '{{role}}' existiert bereits",
+      "description_missing": "Die Rolle '{{role}}' braucht eine Beschreibung, wofür sie da ist"
     },
     "schema": {
       "allowed_domains_updated": "Zulässige Domänen für Quelle '{{source}}' aktualisiert",
@@ -435,7 +436,9 @@
       "role_session_var_name_missing": "Ein Sitzungswert braucht einen Namen",
       "role_session_var_name_reserved": "'{{name}}' wird von der Anfrage oder vom Knoten gebunden und kann kein Sitzungswert einer Rolle sein",
       "role_session_var_name_invalid": "Der Name des Sitzungswerts '{{name}}' darf nur Buchstaben, Ziffern und Unterstriche enthalten und nicht mit einer Ziffer beginnen",
-      "role_session_var_name_repeated": "Der Sitzungswert '{{name}}' ist doppelt benannt"
+      "role_session_var_name_repeated": "Der Sitzungswert '{{name}}' ist doppelt benannt",
+      "role_description_missing": "Die Rolle '{{role}}' braucht eine Beschreibung, wofür sie da ist",
+      "rls_rule_description_missing": "Eine Zeilenregel braucht eine Beschreibung, wofür sie da ist"
     },
     "secrets": {
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",
@@ -599,11 +602,13 @@
     "engine": {
       "write_conflict": "Eine andere Änderung an denselben Daten wurde gleichzeitig geschrieben. Versuchen Sie es erneut."
     },
-    "claim_roles": {
-      "name_invalid": "Der Claim-Typ '{{name}}' darf nur Buchstaben, Ziffern und Unterstriche enthalten und nicht mit einer Ziffer beginnen",
-      "name_missing": "Ein Claim-Typ braucht einen Namen",
-      "name_reserved": "'{{name}}' wird bei jeder Anfrage aus der handelnden Identität gesetzt und kann kein Claim-Typ sein",
-      "database_not_connected": "Datenbank nicht verbunden"
+    "derived_roles": {
+      "name_invalid": "Das Attribut '{{name}}' darf nur Buchstaben, Ziffern und Unterstriche enthalten und nicht mit einer Ziffer beginnen",
+      "name_missing": "Ein Attribut braucht einen Namen",
+      "name_reserved": "'{{name}}' wird bei jeder Anfrage aus der handelnden Identität gesetzt und kann kein Attribut sein",
+      "database_not_connected": "Datenbank nicht verbunden",
+      "description_missing": "Eine abgeleitete Rolle braucht eine Beschreibung, wofür sie da ist",
+      "not_found": "Keine abgeleitete Rolle aus {{name}}"
     }
   }
 }

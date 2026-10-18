@@ -26,7 +26,7 @@
     "coveredBy": "Aucun lecteur n'atteint cette entrée : l'entrée {{n}} s'applique d'abord à chacun d'eux.",
     "unlistedUnmasked": "Les lecteurs que cette liste ne nomme pas voient la colonne démasquée. Ajoutez en dernier une entrée pour tout le monde afin de la masquer pour eux.",
     "checkLabel": "Vérifier l'accès",
-    "checkPlaceholder": "Choisissez ou saisissez des rôles et des rôles de revendication",
+    "checkPlaceholder": "Choisissez ou saisissez des rôles et des rôles dérivés",
     "applies": "L'entrée {{n}} s'applique",
     "appliesNone": "Aucune entrée ne s'applique : démasqué",
     "none": "Aucun",

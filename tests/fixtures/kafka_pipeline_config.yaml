@@ -16,6 +16,7 @@ domains:
 
 roles:
   - id: analyst
+    description: "Queries the Kafka pipeline's tables."
     capabilities:
       - query_development
     domain_access:

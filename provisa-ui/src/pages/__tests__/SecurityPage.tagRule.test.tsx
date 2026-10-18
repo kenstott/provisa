@@ -38,7 +38,15 @@ vi.mock("../../api/actions", () => ({
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
   useRoles: () => ({
-    roles: [{ id: "analyst", capabilities: [], demonstrated: [], domain_access: ["*"] }],
+    roles: [
+      {
+        id: "analyst",
+        description: "What analyst is for.",
+        capabilities: [],
+        demonstrated: [],
+        domain_access: ["*"],
+      },
+    ],
     loading: false,
     refetch: vi.fn(),
   }),
@@ -149,6 +157,9 @@ describe("SecurityPage — RLS rules on tags (REQ-1384)", () => {
     await selectOption(screen.getByTestId("rule-role-select"), "analyst");
     fireEvent.change(screen.getByLabelText("Filter Expression"), {
       target: { value: "1 = 1" },
+    });
+    fireEvent.change(screen.getByTestId("rule-description"), {
+      target: { value: "Every row, for the test." },
     });
     fireEvent.click(screen.getByTestId("save-rule"));
     await waitFor(() => expect(upsertRlsRuleSpy).toHaveBeenCalled());

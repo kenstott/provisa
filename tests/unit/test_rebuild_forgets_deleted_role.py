@@ -44,7 +44,13 @@ def test_a_rebuild_forgets_a_role_that_was_deleted(monkeypatch):
     def _build(role_ids: list[str]) -> None:
         _build_and_register_schemas(
             roles=[
-                {"id": r, "capabilities": ["usage"], "domain_access": ["sales"]} for r in role_ids
+                {
+                    "id": r,
+                    "description": "Test role.",
+                    "capabilities": ["usage"],
+                    "domain_access": ["sales"],
+                }
+                for r in role_ids
             ],
             tables=[
                 {

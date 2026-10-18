@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // A grant list: the roles a reader may hold any one of. "Combine" adds one entry a reader must
-// hold every role of -- a role and a claim role (analyst and region__eu), shown as one pill.
+// hold every role of -- a role and a derived role (analyst and region__eu), shown as one pill.
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -44,14 +44,14 @@ export function GrantPicker({
   const [parts, setParts] = useState<string[]>([]);
 
   const known = new Set(options.map((o) => o.id));
-  // An entry the role list does not hold (a composite, a claim role) is still a choice to show.
+  // An entry the role list does not hold (a composite, a derived role) is still a choice to show.
   const shown = [
     ...options,
     ...value
       .filter((v) => !known.has(v))
       .map((v) => ({ id: v, label: v.includes(COMPOSITE) ? grantLabel(v, t) : v })),
   ];
-  // A claim role's sub-roles (region__eu) are as many as its values: typed, not listed.
+  // A derived role's sub-roles (region__eu) are as many as its values: typed, not listed.
   const suggestions = options.map((o) => o.id);
 
   const add = () => {

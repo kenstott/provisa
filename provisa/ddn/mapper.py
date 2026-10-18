@@ -302,6 +302,8 @@ def _map_rls_rules(  # REQ-184, REQ-187
                         table_id=table_id,
                         role_id=mp.role,
                         filter=sql_filter,
+                        description=f"The rows of {table_id} the DDN model permission of "
+                        f"{mp.role} allowed.",
                     )
                 )
     return rules
@@ -448,7 +450,15 @@ def _collect_roles(
     for mp in model_perms:
         if mp.role:
             role_ids.add(mp.role)
-    return [Role(id=rid, capabilities=["read"], domain_access=["*"]) for rid in sorted(role_ids)]
+    return [
+        Role(
+            id=rid,
+            description=f"Imported from the DDN metadata's role {rid}.",  # REQ-2080
+            capabilities=["read"],
+            domain_access=["*"],
+        )
+        for rid in sorted(role_ids)
+    ]
 
 
 def _map_commands(

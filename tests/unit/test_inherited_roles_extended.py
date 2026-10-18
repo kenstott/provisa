@@ -58,6 +58,7 @@ def _role(
 ) -> Role:
     return Role(
         id=role_id,
+        description="Test role.",
         capabilities=caps,
         domain_access=domains,
         parent_role_id=parent,
@@ -223,10 +224,30 @@ class TestRLSAccumulationThroughInheritance:
     def test_build_rls_context_accumulates_multiple_tables(self):
         """build_rls_context must collect rules from all tables for the given role."""
         raw_rules = [
-            {"table_id": ORDERS_TABLE_ID, "role_id": "analyst", "filter_expr": "\"region\" = 'us'"},
-            {"table_id": CUSTOMERS_TABLE_ID, "role_id": "analyst", "filter_expr": "active = true"},
-            {"table_id": PRODUCTS_TABLE_ID, "role_id": "analyst", "filter_expr": "visible = true"},
-            {"table_id": ORDERS_TABLE_ID, "role_id": "admin", "filter_expr": "1=1"},
+            {
+                "description": "Test rule.",
+                "table_id": ORDERS_TABLE_ID,
+                "role_id": "analyst",
+                "filter_expr": "\"region\" = 'us'",
+            },
+            {
+                "description": "Test rule.",
+                "table_id": CUSTOMERS_TABLE_ID,
+                "role_id": "analyst",
+                "filter_expr": "active = true",
+            },
+            {
+                "description": "Test rule.",
+                "table_id": PRODUCTS_TABLE_ID,
+                "role_id": "analyst",
+                "filter_expr": "visible = true",
+            },
+            {
+                "description": "Test rule.",
+                "table_id": ORDERS_TABLE_ID,
+                "role_id": "admin",
+                "filter_expr": "1=1",
+            },
         ]
         rls = build_rls_context(raw_rules, "analyst")
 
@@ -246,12 +267,14 @@ class TestRLSAccumulationThroughInheritance:
         chains = {"parent": ["parent"], "child": ["child", "parent"]}
         rules = [
             {
+                "description": "Test rule.",
                 "role_id": "parent",
                 "table_id": ORDERS_TABLE_ID,
                 "domain_id": None,
                 "filter_expr": "\"region\" = 'eu-west'",
             },
             {
+                "description": "Test rule.",
                 "role_id": "parent",
                 "table_id": CUSTOMERS_TABLE_ID,
                 "domain_id": None,
@@ -286,12 +309,14 @@ class TestRLSAccumulationThroughInheritance:
         chains = {"parent": ["parent"], "child": ["child", "parent"]}
         rules = [
             {
+                "description": "Test rule.",
                 "role_id": "parent",
                 "table_id": ORDERS_TABLE_ID,
                 "domain_id": None,
                 "filter_expr": "region = 'us-west'",
             },
             {
+                "description": "Test rule.",
                 "role_id": "child",
                 "table_id": ORDERS_TABLE_ID,
                 "domain_id": None,
@@ -311,7 +336,12 @@ class TestRLSAccumulationThroughInheritance:
     def test_rls_context_empty_when_role_has_no_rules(self):
         """A role not present in the rules list should produce an empty RLSContext."""
         raw_rules = [
-            {"table_id": ORDERS_TABLE_ID, "role_id": "analyst", "filter_expr": "x = 1"},
+            {
+                "description": "Test rule.",
+                "table_id": ORDERS_TABLE_ID,
+                "role_id": "analyst",
+                "filter_expr": "x = 1",
+            },
         ]
         rls = build_rls_context(raw_rules, "viewer")
         assert not rls.has_rules()

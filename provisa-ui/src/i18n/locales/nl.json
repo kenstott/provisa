@@ -30,7 +30,7 @@
     "role": "Rol: {{role}}",
     "dev": "DEV",
     "checking": "Bezig met controleren…",
-    "claimRoles": "Claimrollen"
+    "derivedRoles": "Afgeleide rollen"
   },
   "localUsers": {
     "colUsername": "Gebruikersnaam",
@@ -78,7 +78,7 @@
   "grantPicker": {
     "and": "en",
     "combine": "Rollen combineren tot één toekenning",
-    "combineHelp": "Een lezer moet elke rol hebben die u hier noemt. Typ een claimrol zoals region__eu als die niet wordt aangeboden.",
+    "combineHelp": "Een lezer moet elke rol hebben die u hier opgeeft. Typ een afgeleide rol zoals region__eu als die niet wordt aangeboden.",
     "parts": "Rollen die een lezer allemaal moet hebben",
     "partsPlaceholder": "Kies of typ een rol en druk op Enter",
     "add": "Toevoegen"

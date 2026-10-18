@@ -272,7 +272,8 @@
       "has_dependents": "Le rôle {{role}} est encore référencé par {{count}} objet(s) ; supprimez d’abord ces références",
       "not_found": "Rôle introuvable",
       "org_selection_required": "Sélection d'une organisation requise",
-      "already_exists": "Le rôle '{{role}}' existe déjà"
+      "already_exists": "Le rôle '{{role}}' existe déjà",
+      "description_missing": "Le rôle '{{role}}' a besoin d'une description de ce à quoi il sert"
     },
     "schema": {
       "allowed_domains_updated": "Domaines autorisés mis à jour pour la source « {{source}} »",
@@ -435,7 +436,9 @@
       "role_session_var_name_missing": "Une valeur de session doit avoir un nom",
       "role_session_var_name_reserved": "'{{name}}' est lié par la requête ou le nœud et ne peut pas être une valeur de session d'un rôle",
       "role_session_var_name_invalid": "Le nom de valeur de session '{{name}}' doit comporter des lettres, des chiffres et des traits de soulignement, et ne doit pas commencer par un chiffre",
-      "role_session_var_name_repeated": "La valeur de session '{{name}}' est nommée deux fois"
+      "role_session_var_name_repeated": "La valeur de session '{{name}}' est nommée deux fois",
+      "role_description_missing": "Le rôle '{{role}}' a besoin d'une description de ce à quoi il sert",
+      "rls_rule_description_missing": "Une règle de ligne a besoin d'une description de ce à quoi elle sert"
     },
     "secrets": {
       "name_refused": "{{name}} n'est pas un nom situé dans les secrets de cette organisation dans {{service}} : un nom est relatif à l'organisation et ne peut pas en sortir",
@@ -599,11 +602,13 @@
     "engine": {
       "write_conflict": "Une autre modification des mêmes données a été écrite au même moment. Réessayez."
     },
-    "claim_roles": {
-      "name_invalid": "Le type de revendication '{{name}}' ne doit contenir que des lettres, des chiffres et des traits de soulignement, et ne doit pas commencer par un chiffre",
-      "name_missing": "Un type de revendication doit avoir un nom",
-      "name_reserved": "'{{name}}' est défini à partir de l'identité agissante à chaque requête et ne peut pas être un type de revendication",
-      "database_not_connected": "Base de données non connectée"
+    "derived_roles": {
+      "name_invalid": "L'attribut '{{name}}' ne peut contenir que des lettres, des chiffres et des tirets bas, et ne peut pas commencer par un chiffre",
+      "name_missing": "Un attribut a besoin d'un nom",
+      "name_reserved": "'{{name}}' est lié à l'identité agissante à chaque requête et ne peut pas être un attribut",
+      "database_not_connected": "Base de données non connectée",
+      "description_missing": "Un rôle dérivé a besoin d'une description de ce à quoi il sert",
+      "not_found": "Aucun rôle dérivé de {{name}}"
     }
   }
 }

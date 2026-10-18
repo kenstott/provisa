@@ -177,7 +177,13 @@ def test_rls_rule_has_table_id_and_domain_id():
     # REQ-404: RLSRule must have both table_id and domain_id fields.
     from provisa.core.models import RLSRule
 
-    rule_table = RLSRule(table_id="public.orders", domain_id=None, role_id="analyst", filter="true")
+    rule_table = RLSRule(
+        table_id="public.orders",
+        domain_id=None,
+        role_id="analyst",
+        filter="true",
+        description="Test rule.",
+    )
     assert rule_table.table_id == "public.orders"
     assert rule_table.domain_id is None
 
@@ -186,7 +192,9 @@ def test_rls_rule_domain_id_populated_when_entire_domain():
     # REQ-404: When "Entire Domain" is selected, domain_id is set and table_id is None.
     from provisa.core.models import RLSRule
 
-    rule_domain = RLSRule(table_id=None, domain_id="sales", role_id="analyst", filter="true")
+    rule_domain = RLSRule(
+        table_id=None, domain_id="sales", role_id="analyst", filter="true", description="Test rule."
+    )
     assert rule_domain.domain_id == "sales"
     assert rule_domain.table_id is None
 
@@ -195,7 +203,7 @@ def test_rls_rule_table_id_defaults_none():
     # REQ-404: table_id is optional (None by default).
     from provisa.core.models import RLSRule
 
-    rule = RLSRule(role_id="admin", filter="1=1")
+    rule = RLSRule(role_id="admin", filter="1=1", description="Test rule.")
     assert rule.table_id is None
 
 
@@ -203,7 +211,7 @@ def test_rls_rule_domain_id_defaults_none():
     # REQ-404: domain_id is optional (None by default).
     from provisa.core.models import RLSRule
 
-    rule = RLSRule(role_id="admin", filter="1=1")
+    rule = RLSRule(role_id="admin", filter="1=1", description="Test rule.")
     assert rule.domain_id is None
 
 

@@ -619,6 +619,7 @@ export function RegisterTableForm({
             tableId: tableName,
             roleId: rule.roleId,
             filterExpr: rule.filter.trim(),
+            description: rule.description.trim(),
           });
           if (!saved.success) {
             setError(

@@ -48,9 +48,15 @@ def _config() -> ProvisaConfig:
         sources=[Source(id="pg1", type="postgresql"), Source(id="wh", type="postgresql")],
         domains=[Domain(id="sales"), Domain(id="hr")],
         roles=[
-            Role(id="analyst", capabilities=[], domain_access=["sales"]),
-            Role(id="junior", capabilities=[], domain_access=[], parent_role_id="analyst"),
-            Role(id="people", capabilities=[], domain_access=["hr"]),
+            Role(id="analyst", description="Test role.", capabilities=[], domain_access=["sales"]),
+            Role(
+                id="junior",
+                description="Test role.",
+                capabilities=[],
+                domain_access=[],
+                parent_role_id="analyst",
+            ),
+            Role(id="people", description="Test role.", capabilities=[], domain_access=["hr"]),
         ],
         tables=[
             Table(

@@ -45,6 +45,7 @@ ORG = "acme"
 def _role(role_id: str, parent: str | None = None) -> Role:
     return Role(
         id=role_id,
+        description="Test role.",
         capabilities=["query_development"],
         domain_access=["*"],
         parent_role_id=parent,
@@ -109,7 +110,12 @@ async def test_an_admin_edit_of_a_seeded_role_stands(plane):
     async with plane.acquire() as conn:
         await role_repo.upsert(
             conn,
-            Role(id="from_config", capabilities=["usage", "write"], domain_access=["*"]),
+            Role(
+                id="from_config",
+                description="Test role.",
+                capabilities=["usage", "write"],
+                domain_access=["*"],
+            ),
             org_id=ORG,
         )
         held = await role_repo.get(conn, "from_config")
@@ -322,7 +328,10 @@ async def test_rest_lists_no_origin(plane):
 
 async def test_rest_creates_a_role_and_rebuilds(plane, rebuilds):
     body = roles_router.CreateRoleBody(
-        id="fresh", capabilities=["query_development"], domain_access=["*"]
+        id="fresh",
+        description="Test role.",
+        capabilities=["query_development"],
+        domain_access=["*"],
     )
     made = await roles_router.create_role(body, _request())  # type: ignore[arg-type]
     assert made["id"] == "fresh"

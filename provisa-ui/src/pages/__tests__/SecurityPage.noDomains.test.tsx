@@ -16,6 +16,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "../../test-utils/render";
+import { openNewRole } from "../../test-utils/securityRoles";
 
 const upsertRoleSpy = vi.fn(async (_input: Record<string, unknown>) => ({
   success: true,
@@ -25,6 +26,7 @@ const upsertRoleSpy = vi.fn(async (_input: Record<string, unknown>) => ({
 const ROLES = [
   {
     id: "analyst",
+    description: "What analyst is for.",
     capabilities: [],
     demonstrated: [],
     domain_access: ["sales"],
@@ -32,12 +34,20 @@ const ROLES = [
   },
   {
     id: "everything",
+    description: "What everything is for.",
     capabilities: [],
     demonstrated: [],
     domain_access: ["*"],
     parentRoleId: null,
   },
-  { id: "newrole", capabilities: [], demonstrated: [], domain_access: [], parentRoleId: null },
+  {
+    id: "newrole",
+    description: "What newrole is for.",
+    capabilities: [],
+    demonstrated: [],
+    domain_access: [],
+    parentRoleId: null,
+  },
 ];
 
 vi.mock("../../context/DomainFilterContext", () => ({
@@ -64,6 +74,11 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
   useRevokeRoleGrants: () => ({ revokeFromTable: vi.fn(), revokeFromObject: vi.fn() }),
 }));
 
+vi.mock("../../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/admin")>()),
+  fetchDerivedRoles: vi.fn(async () => ({ roles: [], source: "deployment" })),
+}));
+
 import { SecurityPage } from "../SecurityPage";
 
 // Mantine MultiSelect in jsdom: floating-ui hides the detached dropdown (all rects are 0), so
@@ -83,11 +98,11 @@ async function chooseAllDomains() {
 }
 
 describe("SecurityPage — a role lists at least one domain", () => {
-  it("states the requirement and withholds Save while a new role has no domain", () => {
+  it("states the requirement and withholds Save while a new role has no domain", async () => {
     upsertRoleSpy.mockClear();
     render(<SecurityPage />);
     expect(screen.queryByTestId("role-domains-required")).toBeNull();
-    fireEvent.click(screen.getByTestId("toggle-role-form"));
+    await openNewRole();
     fireEvent.change(screen.getByTestId("role-id-input"), { target: { value: "fresh" } });
 
     expect(screen.getByTestId("role-domains-required")).toHaveTextContent(
@@ -103,7 +118,7 @@ describe("SecurityPage — a role lists at least one domain", () => {
   it("offers All Domains as an explicit choice, which lifts the requirement", async () => {
     upsertRoleSpy.mockClear();
     render(<SecurityPage />);
-    fireEvent.click(screen.getByTestId("toggle-role-form"));
+    await openNewRole();
     fireEvent.change(screen.getByTestId("role-id-input"), { target: { value: "fresh" } });
     await chooseAllDomains();
 

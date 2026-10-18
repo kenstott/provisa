@@ -16,6 +16,7 @@
     "nextPage": "下一頁",
     "lastPage": "最後一頁",
     "deleteRoleTitle": "刪除角色「{{roleId}}」？",
-    "deleteRoleConsequence": "該角色將從此組織中移除。"
+    "deleteRoleConsequence": "該角色將從此組織中移除。",
+    "colDescription": "描述"
   }
 }

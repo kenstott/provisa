@@ -228,6 +228,25 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
 # implies they could confer roles or admit people, even inertly, misrepresents what the role can ever
 # do here, so /team stays a hard NotAuthorized instead of a demonstration.
 # Every other role's absence of a right means the same thing it always did -- nothing to show.
+# REQ-2080: what each seeded role is for, mirrored from schema.sql's seed (its UPDATE ... SET
+# description statements), which writes each to a seeded row that has none on every init_schema.
+SEEDED_ROLE_DESCRIPTIONS: dict[str, str] = {
+    "org_admin": "Administers the organization: its sources, model, governance, members and "
+    "settings, in every domain.",
+    "analyst": "Reads and queries the governed data of the domains it is granted. The "
+    "least-privileged role, and what an invitation gives when it names none.",
+    "developer": "Builds queries, views and relationships, writes data and manages environments, "
+    "in the domains it is granted.",
+    "modeler": "Works out the model: the one seeded role that may join across relations no "
+    "approved relationship covers yet. Every other rule still applies to it.",
+    "data_steward": "Governs a domain: column visibility, row rules, grants, masks, sensitive "
+    "columns, the glossary and data products. Nothing operational.",
+    "sandbox": "A Try it Out visitor: what the organization administrator does, inside an "
+    "environment that expires, but not members, environments or the organization glossary.",
+    "platform_admin": "Runs the platform: organizations, infrastructure and deployment settings. "
+    "Holds no right to any organization's data.",
+}
+
 _DEMONSTRATED_ROLES: dict[str, list[str]] = {
     "sandbox": sorted(_SANDBOX_DENIED - {"user_management"})
 }

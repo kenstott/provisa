@@ -272,7 +272,8 @@
       "has_dependents": "ロール {{role}} はまだ {{count}} 個のオブジェクトから参照されています。先にそれらの参照を削除してください",
       "not_found": "ロールが見つかりません",
       "org_selection_required": "組織の選択が必要です",
-      "already_exists": "ロール '{{role}}' はすでに存在します"
+      "already_exists": "ロール '{{role}}' はすでに存在します",
+      "description_missing": "ロール '{{role}}' には目的の説明が必要です"
     },
     "schema": {
       "allowed_domains_updated": "ソース「{{source}}」の許可ドメインを更新しました",
@@ -435,7 +436,9 @@
       "role_session_var_name_missing": "セッション値には名前が必要です",
       "role_session_var_name_reserved": "'{{name}}' はリクエストまたはノードがバインドするため、ロールのセッション値にはできません",
       "role_session_var_name_invalid": "セッション値の名前 '{{name}}' は英字、数字、アンダースコアのみで、数字で始めることはできません",
-      "role_session_var_name_repeated": "セッション値 '{{name}}' が 2 回指定されています"
+      "role_session_var_name_repeated": "セッション値 '{{name}}' が 2 回指定されています",
+      "role_description_missing": "ロール '{{role}}' には目的の説明が必要です",
+      "rls_rule_description_missing": "行ルールには目的の説明が必要です"
     },
     "secrets": {
       "name_refused": "{{name}} は {{service}} 内のこの組織のシークレットに含まれる名前ではありません。名前は組織に対する相対指定であり、組織の外に出ることはできません",
@@ -599,11 +602,13 @@
     "engine": {
       "write_conflict": "同じデータへの別の変更が同時に書き込まれました。もう一度お試しください。"
     },
-    "claim_roles": {
-      "name_invalid": "要求の種類 '{{name}}' には英字、数字、アンダースコアのみ使用でき、数字で始めることはできません",
-      "name_missing": "要求の種類には名前が必要です",
-      "name_reserved": "'{{name}}' は各リクエストで操作中の ID から設定されるため、要求の種類にはできません",
-      "database_not_connected": "データベースが接続されていません"
+    "derived_roles": {
+      "name_invalid": "属性 '{{name}}' には英字、数字、アンダースコアのみ使用でき、数字で始めることはできません",
+      "name_missing": "属性には名前が必要です",
+      "name_reserved": "'{{name}}' は各リクエストで操作中の ID から設定されるため、属性にできません",
+      "database_not_connected": "データベースに接続されていません",
+      "description_missing": "派生ロールには目的の説明が必要です",
+      "not_found": "{{name}} からの派生ロールはありません"
     }
   }
 }

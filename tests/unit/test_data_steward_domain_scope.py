@@ -63,10 +63,16 @@ STEWARD_RIGHTS = [
 def _roles(steward_id: str) -> dict[str, dict]:
     return {
         # The steward under test: the seeded rights, copied to sales.
-        steward_id: {"id": steward_id, "capabilities": STEWARD_RIGHTS, "domain_access": ["sales"]},
+        steward_id: {
+            "id": steward_id,
+            "description": "Test role.",
+            "capabilities": STEWARD_RIGHTS,
+            "domain_access": ["sales"],
+        },
         # The seeded reach: every domain.
         "steward_everywhere": {
             "id": "steward_everywhere",
+            "description": "Test role.",
             "capabilities": STEWARD_RIGHTS,
             "domain_access": ["*"],
         },
@@ -74,17 +80,20 @@ def _roles(steward_id: str) -> dict[str, dict]:
         # never for governing (the rights are paired with the domains of the roles carrying them).
         "finance_reader": {
             "id": "finance_reader",
+            "description": "Test role.",
             "capabilities": ["usage", "query_development"],
             "domain_access": ["finance"],
         },
         # A table editor reaching every domain but holding no governance right.
         "editor": {
             "id": "editor",
+            "description": "Test role.",
             "capabilities": ["table_registration"],
             "domain_access": ["*"],
         },
         "admin_sales": {
             "id": "admin_sales",
+            "description": "Test role.",
             "capabilities": ["user_management"],
             "domain_access": ["sales"],
         },
@@ -253,7 +262,9 @@ def test_a_right_reaches_only_the_domains_of_the_roles_carrying_it(plane):
 def _rls(table_id: str) -> Any:
     from provisa.api.admin.types import RLSRuleInput
 
-    return RLSRuleInput(table_id=table_id, role_id="sales_role", filter_expr="1 = 1")
+    return RLSRuleInput(
+        table_id=table_id, role_id="sales_role", filter_expr="1 = 1", description="Test rule."
+    )
 
 
 async def test_a_row_rule_in_the_stewards_domain_is_saved(plane):
@@ -276,7 +287,9 @@ async def test_a_row_rule_with_no_role_or_an_unknown_role_is_refused_with_a_mess
 
     result = await M().upsert_rls_rule(
         _info(plane.steward),
-        RLSRuleInput(table_id="orders", role_id=role_id, filter_expr="1 = 1"),
+        RLSRuleInput(
+            table_id="orders", role_id=role_id, filter_expr="1 = 1", description="Test rule."
+        ),
     )
     assert (result.success, result.code) == (False, code), result.message
     assert result.message
@@ -291,7 +304,9 @@ async def test_an_action_row_rule_with_an_unknown_role_is_refused_with_a_message
     monkeypatch.setattr(appmod.state, "tracked_functions", {"of_sales": action}, raising=False)
     result = await M().upsert_rls_rule(
         _info(plane.steward),
-        RLSRuleInput(action_name="of_sales", role_id="ghost", filter_expr="1 = 1"),
+        RLSRuleInput(
+            action_name="of_sales", role_id="ghost", filter_expr="1 = 1", description="Test rule."
+        ),
     )
     assert (result.success, result.code, result.params) == (
         False,

@@ -446,6 +446,9 @@ roles = Table(
     "roles",
     metadata,
     Column("id", Text, primary_key=True),
+    # REQ-2080: what the role is for, as an access review reads it. Required on every write
+    # (models.Role); the seeded roles' are written by schema.sql (SEEDED_ROLE_DESCRIPTIONS).
+    Column("description", Text, nullable=False, server_default=""),
     Column("capabilities", JSON, nullable=False, default=list, server_default="[]"),
     # REQ-1602: rights the role does NOT hold, whose surfaces it is shown anyway -- disabled and
     # badged. A role defined by subtraction (the sandbox, REQ-1597) is a demonstration, and an
@@ -507,6 +510,8 @@ rls_rules = Table(
     Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE")),
     Column("role_id", Text, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False),
     Column("filter_expr", LargeBinary, nullable=False),  # REQ-686: encrypted at rest (BYTEA)
+    # REQ-2081: what the rule is for, as an access review reads it. Required on every write.
+    Column("description", Text, nullable=False, server_default=""),
     Column("action_name", Text),  # REQ-1679: a tracked function/webhook target, by name
     # REQ-1384: a user tag — the rule applies to every table carrying it. No ON DELETE: a tag
     # that carries a row filter is refused deletion (repositories.integrity), because removing

@@ -43,6 +43,7 @@ naming:
   rules: []
 roles:
 - id: analyst
+  description: "Queries the store's reviews."
   capabilities:
   - query_development
   domain_access:

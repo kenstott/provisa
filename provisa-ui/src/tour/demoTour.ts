@@ -246,7 +246,7 @@ function demoTourStep(
     };
   }
   if (def.role !== undefined && def.role.includes(",")) {
-    // A set of roles, a pseudo-role among them (reviewer,region__eu, REQ-2057): handed to the
+    // A set of roles, a derived role among them (reviewer,region__eu, REQ-2057): handed to the
     // SQL explorer, which offers it as its own run-as entry and picks it.
     return {
       ...page,

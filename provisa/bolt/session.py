@@ -96,7 +96,7 @@ class BoltSession:
         # or None for a credential that names no org. It is the only org such a credential opens.
         self._credential_org: str | None = None
         # The validated identity of a secured session (None unsecured): the principal its RUNs
-        # bind attributes and pseudo-roles for (REQ-1382, REQ-2057).
+        # bind attributes and derived roles for (REQ-1382, REQ-2057).
         self._identity: Any = None
         # All role_ids the authenticated user holds; each surfaces as a "provisa_<role>" database.
         self.roles: list[str] = []
@@ -327,11 +327,11 @@ class BoltSession:
 
         token = set_current_org(self._bound_org())
         try:
-            # REQ-2057: a pseudo-role the session's identity holds is named like any role.
+            # REQ-2057: a derived role the session's identity holds is named like any role.
             identity = self._identity
-            if identity is None:  # an unsecured session holds no pseudo-role
+            if identity is None:  # an unsecured session holds no derived role
                 return resolve_requested_role(app_state, set(self.roles), named)
-            from provisa.auth.pseudo_roles import principal_of
+            from provisa.auth.derived_roles import principal_of
 
             return resolve_requested_role(
                 app_state, set(self.roles), named, lambda: principal_of(app_state, identity)[1]
@@ -346,7 +346,7 @@ class BoltSession:
 
         if self._identity is None:
             return contextlib.nullcontext()
-        from provisa.auth.pseudo_roles import principal_scope
+        from provisa.auth.derived_roles import principal_scope
 
         return principal_scope(app_state, self._identity, role_id)
 

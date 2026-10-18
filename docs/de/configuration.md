@@ -799,6 +799,7 @@ Setzen Sie `materialize: true` auf einer Beziehung, um automatisch eine material
 ```yaml
 roles:
   - id: admin
+    description: Administers sources, tables, relationships and security.
     capabilities:
       - source_registration
       - table_registration
@@ -809,9 +810,11 @@ roles:
       - admin
     domain_access: ["*"]
   - id: analyst
+    description: Queries the sales analytics domain.
     capabilities: [query_development]
     domain_access: [sales-analytics]
   - id: junior_analyst
+    description: A new analyst, with the analyst's access and nothing more.
     capabilities: []
     domain_access: [sales-analytics]
     parent_role_id: analyst      # inherits query_development + sales-analytics
@@ -838,6 +841,7 @@ rls_rules:
   - table_id: orders
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
+    description: Analysts read only their own region's orders.
 ```
 
 ## Materialisierte Sichten {: #materialized-views }
@@ -1287,16 +1291,20 @@ Rollen können über `parent_role_id` von einer übergeordneten Rolle erben. (RE
 ```yaml
 roles:
   - id: admin
+    description: Administers everything.
     capabilities: [admin]
     domain_access: ["*"]
   - id: analyst
+    description: Queries the sales analytics domain.
     capabilities: [query_development]
     domain_access: [sales-analytics]
   - id: junior_analyst
+    description: A new analyst, with the analyst's access and nothing more.
     capabilities: []
     domain_access: []
     parent_role_id: analyst      # inherits query_development + sales-analytics
   - id: intern
+    description: An intern, with the junior analyst's access.
     capabilities: []
     domain_access: []
     parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)

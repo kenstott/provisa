@@ -211,14 +211,27 @@ def server():
         extra_config={
             "tables": [orders],
             "roles": base["roles"]
-            + [{"id": "east_only", "capabilities": ["query_development"], "domain_access": ["*"]}],
+            + [
+                {
+                    "id": "east_only",
+                    "description": "Test role.",
+                    "capabilities": ["query_development"],
+                    "domain_access": ["*"],
+                }
+            ],
             "rls_rules": [
                 {
+                    "description": "Test rule.",
                     "table_id": "orders",
                     "role_id": "analyst",
                     "filter": "region = current_setting('provisa.user_region')",
                 },
-                {"table_id": "orders", "role_id": "east_only", "filter": "region = 'east'"},
+                {
+                    "description": "Test rule.",
+                    "table_id": "orders",
+                    "role_id": "east_only",
+                    "filter": "region = 'east'",
+                },
             ],
         },
         env={"PROVISA_REDIRECT_ENABLED": "false"},

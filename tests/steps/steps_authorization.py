@@ -284,7 +284,7 @@ scenarios("../features/REQ-870.feature")
 
 
 def _make_role(role_id: str, *caps: str) -> dict:
-    return {"id": role_id, "capabilities": list(caps)}
+    return {"id": role_id, "description": "Test role.", "capabilities": list(caps)}
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +346,8 @@ def then_ops_reaches_create_order(shared_data: dict) -> None:
     from provisa.security.mutation_authz import command_reachable
 
     assert command_reachable(
-        shared_data["function_record"], {"id": "ops", "domain_access": ["sales"]}
+        shared_data["function_record"],
+        {"id": "ops", "description": "Test role.", "domain_access": ["sales"]},
     )
 
 
@@ -358,8 +359,12 @@ def then_assignment_and_domain_are_both_needed(shared_data: dict) -> None:
     from provisa.security.mutation_authz import command_reachable
 
     record = shared_data["function_record"]
-    assert not command_reachable(record, {"id": "ops", "domain_access": ["finance"]})
-    assert not command_reachable(record, {"id": "analyst", "domain_access": ["*"]})
+    assert not command_reachable(
+        record, {"id": "ops", "description": "Test role.", "domain_access": ["finance"]}
+    )
+    assert not command_reachable(
+        record, {"id": "analyst", "description": "Test role.", "domain_access": ["*"]}
+    )
 
 
 @then(

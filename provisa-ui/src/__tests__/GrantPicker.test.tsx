@@ -36,7 +36,7 @@ describe("GrantPicker", () => {
     expect(screen.getAllByText("marketing").length).toBeGreaterThan(0);
   });
 
-  it("combines roles, a claim role typed in among them, into one entry", async () => {
+  it("combines roles, a derived role typed in among them, into one entry", async () => {
     const onChange = vi.fn();
     render(
       <GrantPicker

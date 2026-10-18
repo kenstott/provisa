@@ -58,8 +58,8 @@ def _config(*, tables: list[Table], rls: list[RLSRule] | None = None) -> Provisa
         tables=tables,
         relationships=[],
         roles=[
-            Role(id="analyst", capabilities=[], domain_access=["*"]),
-            Role(id="admin", capabilities=[], domain_access=["*"]),
+            Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"]),
+            Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
         ],
         rls_rules=rls or [],
     )
@@ -154,7 +154,11 @@ def test_table_scoped_rls_rule_tags_only_that_table():
                 "regions", [Column(name="id", data_type="int", visible_to=["analyst", "admin"])]
             ),
         ],
-        rls=[RLSRule(table_id="orders", role_id="analyst", filter=RLS_FILTER)],
+        rls=[
+            RLSRule(
+                table_id="orders", role_id="analyst", filter=RLS_FILTER, description="Test rule."
+            )
+        ],
     )
     tags = _tags(config, GovernanceSignal.RLS_RESTRICTED)
     assert [t.asset.fqn() for t in tags] == ["wh.public.orders"]
@@ -176,7 +180,11 @@ def test_domain_scoped_rls_rule_tags_every_table_in_the_domain():
                 domain_id="lab",
             ),
         ],
-        rls=[RLSRule(domain_id="sales", role_id="analyst", filter=RLS_FILTER)],
+        rls=[
+            RLSRule(
+                domain_id="sales", role_id="analyst", filter=RLS_FILTER, description="Test rule."
+            )
+        ],
     )
     tags = _tags(config, GovernanceSignal.RLS_RESTRICTED)
     assert {t.asset.fqn() for t in tags} == {"wh.public.orders", "wh.public.regions"}
@@ -188,7 +196,11 @@ def test_tag_scoped_rls_rule_tags_every_table_carrying_the_tag():
     readable = [Column(name="id", data_type="int", visible_to=["analyst", "admin"])]
     config = _config(
         tables=[_table("orders", readable), _table("regions", readable), _table("staff", readable)],
-        rls=[RLSRule(tag_id="regional", role_id="analyst", filter=RLS_FILTER)],
+        rls=[
+            RLSRule(
+                tag_id="regional", role_id="analyst", filter=RLS_FILTER, description="Test rule."
+            )
+        ],
     )
     config.tag_assignments = [
         TagAssignment(tag_id="regional", object_type="table", table_ref="wh.public.orders"),
@@ -207,7 +219,11 @@ def test_rls_rule_naming_an_unknown_table_is_refused():
         tables=[
             _table("orders", [Column(name="id", data_type="int", visible_to=["analyst", "admin"])])
         ],
-        rls=[RLSRule(table_id="ghost", role_id="analyst", filter=RLS_FILTER)],
+        rls=[
+            RLSRule(
+                table_id="ghost", role_id="analyst", filter=RLS_FILTER, description="Test rule."
+            )
+        ],
     )
     with pytest.raises(UnknownTableError):
         build_governance_tags(config, "acme")
@@ -218,7 +234,7 @@ def test_rls_rule_with_no_scope_is_refused():
         tables=[
             _table("orders", [Column(name="id", data_type="int", visible_to=["analyst", "admin"])])
         ],
-        rls=[RLSRule(role_id="analyst", filter=RLS_FILTER)],
+        rls=[RLSRule(role_id="analyst", filter=RLS_FILTER, description="Test rule.")],
     )
     with pytest.raises(ValueError, match="neither a table, a domain nor a tag"):
         build_governance_tags(config, "acme")
@@ -274,7 +290,11 @@ def test_rule_bodies_never_appear_anywhere_in_a_published_snapshot():
                 ],
             )
         ],
-        rls=[RLSRule(table_id="customers", role_id="analyst", filter=RLS_FILTER)],
+        rls=[
+            RLSRule(
+                table_id="customers", role_id="analyst", filter=RLS_FILTER, description="Test rule."
+            )
+        ],
     )
     text = _snapshot_text(build_snapshot(config, org_id="acme", dialect="postgres", contexts={}))
     assert MASK_PATTERN not in text
@@ -310,7 +330,11 @@ def test_build_snapshot_attaches_governance_tags():
                 ],
             )
         ],
-        rls=[RLSRule(table_id="customers", role_id="analyst", filter=RLS_FILTER)],
+        rls=[
+            RLSRule(
+                table_id="customers", role_id="analyst", filter=RLS_FILTER, description="Test rule."
+            )
+        ],
     )
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     signals = {t.signal for t in snapshot.governance_tags}

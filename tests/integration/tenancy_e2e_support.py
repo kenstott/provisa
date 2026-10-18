@@ -55,7 +55,12 @@ def boot_server() -> WorkerBoot:
                 "superuser": {"username": _BREAK_GLASS[0], "password": _BREAK_GLASS[1]},
             },
             "roles": [
-                {"id": MEMBER_ROLE, "capabilities": ["query_development"], "domain_access": ["*"]}
+                {
+                    "id": MEMBER_ROLE,
+                    "description": "Test role.",
+                    "capabilities": ["query_development"],
+                    "domain_access": ["*"],
+                }
             ],
         },
         env={"PROVISA_REDIRECT_ENABLED": "false"},

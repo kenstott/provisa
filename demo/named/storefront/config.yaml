@@ -40,12 +40,14 @@ roles:
 # The signed-in customer of the order-history screen: their own orders and nothing else (the row
 # filters below name customer 42, the demo's signed-in customer).
 - id: customer
+  description: "The signed-in customer of the order-history screen: their own orders and nothing else."
   capabilities:
   - query_development
   domain_access:
   - shop
 # The BI analyst: every order, and no customer's email.
 - id: analyst
+  description: "The BI analyst: every order, and no customer's email."
   capabilities:
   - query_development
   domain_access:
@@ -179,7 +181,7 @@ relationships:
 rls_rules:
 # The signed-in customer reads their own orders, the lines and shipments of those, and their own
 # customer record -- the screen's rules, kept by the model rather than the app.
-- {table_id: customers, role_id: customer, filter: "id = 42"}
-- {table_id: orders, role_id: customer, filter: "customer_id = 42"}
-- {table_id: order_items, role_id: customer, filter: "order_id IN (SELECT own_o.id FROM \"shop\".\"orders\" AS own_o WHERE own_o.customer_id = 42)"}
-- {table_id: shipments, role_id: customer, filter: "order_id IN (SELECT own_o.id FROM \"shop\".\"orders\" AS own_o WHERE own_o.customer_id = 42)"}
+- {description: "The signed-in customer reads only their own customer record.", table_id: customers, role_id: customer, filter: "id = 42"}
+- {description: "The signed-in customer reads only their own orders.", table_id: orders, role_id: customer, filter: "customer_id = 42"}
+- {description: "The signed-in customer reads only the lines of their own orders.", table_id: order_items, role_id: customer, filter: "order_id IN (SELECT own_o.id FROM \"shop\".\"orders\" AS own_o WHERE own_o.customer_id = 42)"}
+- {description: "The signed-in customer reads only the shipments of their own orders.", table_id: shipments, role_id: customer, filter: "order_id IN (SELECT own_o.id FROM \"shop\".\"orders\" AS own_o WHERE own_o.customer_id = 42)"}

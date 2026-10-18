@@ -8,12 +8,12 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Pseudo-roles: roles a user holds because of what their attributes say (REQ-2057).
+"""Derived roles: roles a user holds because of what their attributes say (REQ-2057).
 
-The org declares which claim types become roles (``claim_roles``). For each declared type ``t``
+The org declares which attributes become roles (``derived_roles``). For each declared type ``t``
 whose value ``v`` the user's attributes give (the org's record over the identity provider's
 claims, :mod:`provisa.auth.attributes`), the user holds the parent role ``t`` and its sub-role
-``t__v``. No value: neither. A pseudo-role carries no rights and is never granted by hand: a grant
+``t__v``. No value: neither. A derived role carries no rights and is never granted by hand: a grant
 list names it like any role, and a request acts as it only by naming it, as with any role.
 """
 
@@ -26,21 +26,22 @@ from contextlib import contextmanager
 from typing import Any
 
 from provisa.auth.attributes import effective, idp_attributes, normalize_name
+from provisa.core.models import DerivedRole
 
-#: Between a claim type and its value in a sub-role's id, as in a GraphQL path.
+#: Between an attribute and its value in a sub-role's id, as in a GraphQL path.
 SEPARATOR = "__"
 
 
-def sub_role_id(claim_type: str, value: str) -> str:
-    return f"{claim_type}{SEPARATOR}{value}"
+def sub_role_id(attribute: str, value: str) -> str:
+    return f"{attribute}{SEPARATOR}{value}"
 
 
-def held_pseudo_roles(declared: Iterable[str], attributes: Mapping[str, str]) -> dict[str, str]:
-    """pseudo-role id -> its parent ('' for a parent), for every declared claim type the user's
+def held_derived_roles(declared: Iterable[str], attributes: Mapping[str, str]) -> dict[str, str]:
+    """derived role id -> its parent ('' for a parent), for every declared attribute the user's
     resolved ``attributes`` give a value."""
     held: dict[str, str] = {}
-    for claim_type in declared:
-        name = normalize_name(claim_type)
+    for attribute in declared:
+        name = normalize_name(attribute)
         value = attributes.get(name)
         if value is None or value == "":
             continue
@@ -53,19 +54,19 @@ def named_unsecured(
     names: Iterable[str], declared: Iterable[str]
 ) -> tuple[list[str], dict[str, str], dict[str, str]]:
     """An unsecured request's named roles split (REQ-2057, REQ-2035): the data roles, the declared
-    pseudo-roles it names -- held, each with its parent, as unsecured mode takes any role it is
+    derived roles it names -- held, each with its parent, as unsecured mode takes any role it is
     named at its word -- and the attributes those imply (``region__eu``: region=eu), which bind its
-    session variables. A signed-in request holds a pseudo-role only by its claims, never so."""
+    session variables. A signed-in request holds a derived role only by its claims, never so."""
     types = {normalize_name(t) for t in declared}
     roles: list[str] = []
     held: dict[str, str] = {}
     attributes: dict[str, str] = {}
     for name in names:
-        claim_type, sep, value = name.partition(SEPARATOR)
-        if sep and value and claim_type in types:
-            held[name] = claim_type
-            held.setdefault(claim_type, "")
-            attributes[claim_type] = value
+        attribute, sep, value = name.partition(SEPARATOR)
+        if sep and value and attribute in types:
+            held[name] = attribute
+            held.setdefault(attribute, "")
+            attributes[attribute] = value
         elif name in types:
             held.setdefault(name, "")
         else:
@@ -73,33 +74,38 @@ def named_unsecured(
     return roles, held, attributes
 
 
-def declared_claim_roles(state) -> list[str]:
-    """The claim types the bound org declares: its own ``claim_roles`` setting (org_settings)
-    where it has one, which replaces the deployment config's as every org-owned key does
-    (REQ-1349, ``org_settings.merge_org_overrides``)."""
+def declared_derived_role_entries(state) -> list[DerivedRole]:  # REQ-2078
+    """The derived roles the bound org declares, each an attribute and its description: its own
+    ``derived_roles`` setting (org_settings) where it has one, which replaces the deployment
+    config's as every org-owned key does (REQ-1349, ``org_settings.merge_org_overrides``)."""
     overrides = state.settings_overrides
-    if "claim_roles" in overrides:
-        return [str(t) for t in overrides["claim_roles"]]
-    return list(state.config.claim_roles)
+    if "derived_roles" in overrides:
+        return [DerivedRole.model_validate(e) for e in overrides["derived_roles"]]
+    return list(state.config.derived_roles)
+
+
+def declared_derived_roles(state) -> list[str]:
+    """The attributes the bound org declares as derived roles."""
+    return [e.attribute for e in declared_derived_role_entries(state)]
 
 
 def principal_bindings(
     raw_claims: Mapping | None, org_attributes: Mapping[str, str], declared: Iterable[str]
 ) -> tuple[dict[str, str], dict[str, str]]:
     """What one authenticated principal binds, on every transport: its resolved attributes (the
-    session variables a row filter reads, before ``user_id`` and ``role``) and the pseudo-roles
+    session variables a row filter reads, before ``user_id`` and ``role``) and the derived roles
     they make it hold."""
     attributes = effective(idp_attributes(raw_claims), org_attributes)
-    return attributes, held_pseudo_roles(declared, attributes)
+    return attributes, held_derived_roles(declared, attributes)
 
 
 def principal_of(state: Any, identity: Any) -> tuple[dict[str, str], dict[str, str]]:
     """:func:`principal_bindings` for ``identity`` in the org bound now: the attributes the org
-    records for it (its runtime build, REQ-1382) over its provider's claims, and the claim types
+    records for it (its runtime build, REQ-1382) over its provider's claims, and the attributes
     the org declares. For a transport that authenticates its own caller (Flight, gRPC, Bolt,
     pgwire, MCP); HTTP binds the same from its middleware."""
     org = state.user_attributes.get(identity.user_id, {})
-    return principal_bindings(identity.raw_claims, org, declared_claim_roles(state))
+    return principal_bindings(identity.raw_claims, org, declared_derived_roles(state))
 
 
 def principal_session_vars(
@@ -140,13 +146,13 @@ def bind_principal_session_vars(state: Any, identity: Any, role_id: str | None) 
     set_session_vars(principal_session_vars(identity.user_id, attributes, role_id))
 
 
-#: The claim type a regional node's own region is carried as, on its service calls.
+#: The attribute a regional node's own region is carried as, on its service calls.
 REGION_CLAIM = "region"
 
 
 def service_acting_role(state: Any, role_id: str) -> str:
     """The role a service call this node makes on its own behalf acts as (REQ-2057): ``role_id``
-    with the node's region pseudo-role -- ``region`` and ``region__<node region>`` -- in its set,
+    with the node's region derived role -- ``region`` and ``region__<node region>`` -- in its set,
     so a grant to the region reaches the node's own work (a trigger run). A node with no region
     acts as ``role_id`` alone. Never for a user's request: a user's region never comes from the
     node."""

@@ -309,7 +309,12 @@ def _graphql(grant: dict):
             ]
         },
         naming_rules=[],
-        role={"id": "customer", "capabilities": ["write"], "domain_access": ["*"]},
+        role={
+            "id": "customer",
+            "description": "Test role.",
+            "capabilities": ["write"],
+            "domain_access": ["*"],
+        },
         domains=[{"id": "sales", "description": ""}],
         source_types={"shop": "postgresql"},
     )

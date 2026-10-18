@@ -16,6 +16,7 @@ import type { Capability, Role } from "../types/auth";
 
 export interface RawRole {
   id: string;
+  description: string; // REQ-2080
   capabilities?: string[] | null;
   demonstrated?: string[] | null;
   domain_access?: string[] | null;
@@ -37,6 +38,7 @@ export function normalizeRole(raw: RawRole): Role {
   if (raw.capabilities == null || domainAccess == null) {
     return {
       id: raw.id,
+      description: raw.description,
       capabilities: [],
       demonstrated: [],
       domain_access: [],
@@ -45,6 +47,7 @@ export function normalizeRole(raw: RawRole): Role {
   }
   return {
     id: raw.id,
+    description: raw.description,
     capabilities: raw.capabilities as Capability[],
     // REQ-1602: rights the role is shown but does not hold.
     demonstrated: (raw.demonstrated ?? []) as Capability[],

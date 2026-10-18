@@ -173,7 +173,14 @@ def _config(naming: dict, domains: list, tables: list) -> dict:
         "domains": domains,
         "naming": naming,
         "tables": tables,
-        "roles": [{"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}],
+        "roles": [
+            {
+                "id": "admin",
+                "description": "Test role.",
+                "capabilities": ["admin"],
+                "domain_access": ["*"],
+            }
+        ],
     }
 
 

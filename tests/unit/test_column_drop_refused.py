@@ -213,7 +213,12 @@ async def test_a_row_filter_on_the_table_that_names_the_column_blocks_the_drop(p
         )
         await rls_repo.upsert(
             conn,
-            RLSRule(table_id="orders", role_id="seller", filter="note = 'public'"),
+            RLSRule(
+                table_id="orders",
+                role_id="seller",
+                filter="note = 'public'",
+                description="Test rule.",
+            ),
         )
         stored = (
             await conn.execute_core(select(rls_rules.c.id, rls_rules.c.filter_expr))

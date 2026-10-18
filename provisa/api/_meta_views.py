@@ -225,7 +225,9 @@ _META_TABLE_VIEWS: dict[str, str] = {
         SELECT id, parent_role_id, org_id,
                capabilities,
                tenant_id,
-               'meta' AS domain_id
+               'meta' AS domain_id,
+               -- REQ-2080: last, so an existing view is replaced in place.
+               description
         FROM roles
     """,
     "roles_domain_access": """

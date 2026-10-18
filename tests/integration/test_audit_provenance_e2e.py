@@ -66,12 +66,14 @@ def server():
             "roles": [
                 {
                     "id": "east_reader",
+                    "description": "Test role.",
                     "capabilities": ["query_development"],
                     "domain_access": ["*"],
                 },
             ],
             "rls_rules": [
                 {
+                    "description": "Test rule.",
                     "table_id": "orders",
                     "role_id": "east_reader",
                     "filter": "id < 100 AND region <> current_setting('provisa.blocked_region')",

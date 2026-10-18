@@ -16,6 +16,7 @@
     "nextPage": "Следующая страница",
     "lastPage": "Последняя страница",
     "deleteRoleTitle": "Удалить роль «{{roleId}}»?",
-    "deleteRoleConsequence": "Роль будет удалена из этой организации."
+    "deleteRoleConsequence": "Роль будет удалена из этой организации.",
+    "colDescription": "Описание"
   }
 }

@@ -130,7 +130,12 @@ def _config() -> dict:
             for domain, table, columns in tables
         ],
         "roles": [
-            {"id": rid, "capabilities": _caps(rid), "domain_access": access}
+            {
+                "id": rid,
+                "description": "Test role.",
+                "capabilities": _caps(rid),
+                "domain_access": access,
+            }
             for rid, access in _ROLES.items()
         ],
     }
@@ -149,7 +154,12 @@ def _request(role_id: str, monkeypatch, *, user_id: str = "u1") -> Request:
         app_module.state,
         "roles",
         {
-            rid: {"id": rid, "capabilities": _caps(rid), "domain_access": acc}
+            rid: {
+                "id": rid,
+                "description": "Test role.",
+                "capabilities": _caps(rid),
+                "domain_access": acc,
+            }
             for rid, acc in _ROLES.items()
         },
         raising=False,
@@ -394,11 +404,13 @@ async def test_a_declaration_reads_the_domains_of_the_curation_right_alone(loade
         {
             "rw_sales": {
                 "id": "rw_sales",
+                "description": "Test role.",
                 "capabilities": ["glossary_read", "glossary_rw"],
                 "domain_access": ["sales"],
             },
             "read_store": {
                 "id": "read_store",
+                "description": "Test role.",
                 "capabilities": ["glossary_read"],
                 "domain_access": ["petstore"],
             },

@@ -73,7 +73,7 @@ def snapshot():
                 ],
             )
         ],
-        roles=[Role(id="analyst", capabilities=[], domain_access=["*"])],
+        roles=[Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"])],
     )
     return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 

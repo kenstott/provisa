@@ -65,8 +65,21 @@ def _pool(_request: Request) -> "Database":  # pyright: ignore[reportUnusedParam
     return state.model_db
 
 
+def _description(role_id: str, value: str) -> str:  # REQ-2080
+    """The role's description as stored, or the refusal of an empty one."""
+    if not value.strip():
+        raise ApiError(
+            422,
+            "roles.description_missing",
+            f"Role {role_id!r} needs a description of what it is for",
+            role=role_id,
+        )
+    return value.strip()
+
+
 class CreateRoleBody(BaseModel):
     id: str
+    description: str  # REQ-2080
     capabilities: list[str]
     domain_access: list[str]
     parent_role_id: str | None = None  # REQ-1677
@@ -74,6 +87,7 @@ class CreateRoleBody(BaseModel):
 
 
 class UpdateRoleBody(BaseModel):
+    description: str | None = None  # REQ-2080: None leaves it unchanged
     capabilities: list[str] | None = None
     domain_access: list[str] | None = None
     parent_role_id: str | None = None  # REQ-1677: None leaves the parent unchanged
@@ -88,6 +102,7 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
         result = await conn.execute_core(
             select(
                 roles.c.id,
+                roles.c.description,  # REQ-2080
                 roles.c.capabilities,
                 # REQ-1602: the rights the role is shown but does not hold -- the client dims and
                 # badges those surfaces instead of dropping them.
@@ -103,7 +118,9 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
         rows = result.fetchall()
     identity = getattr(request.state, "identity", None)
     full = role_definitions_visible(request, getattr(identity, "roles", []))
-    return [dict(r._mapping) if full(r.id) else {"id": r.id} for r in rows]
+    return [
+        dict(r._mapping) if full(r.id) else {"id": r.id, "description": r.description} for r in rows
+    ]
 
 
 async def _require_reach_of_added(
@@ -145,6 +162,7 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
     require_capability_request(request, "user_management")
     org_id = _active_org(request)
     pool = _pool(request)
+    description = _description(body.id, body.description)
     async with pool.acquire() as conn:
         await _check_parent(conn, body.id, body.parent_role_id)  # REQ-1677
         await _check_definition(
@@ -166,6 +184,7 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
         await conn.execute_core(
             insert(roles).values(
                 id=body.id,
+                description=description,
                 capabilities=body.capabilities,
                 domain_access=body.domain_access,
                 residency_values=body.residency_values,
@@ -179,6 +198,7 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
     await _rebuild_schemas()
     return {
         "id": body.id,
+        "description": description,
         "capabilities": body.capabilities,
         "domain_access": body.domain_access,
         "residency_values": body.residency_values,
@@ -245,6 +265,7 @@ async def update_role(
         result = await conn.execute_core(
             select(
                 roles.c.id,
+                roles.c.description,
                 roles.c.capabilities,
                 roles.c.domain_access,
                 roles.c.residency_values,
@@ -261,6 +282,11 @@ async def update_role(
                 400, "roles.cannot_modify_administrative", "Cannot modify administrative roles"
             )
 
+        new_description = (
+            existing["description"]
+            if body.description is None
+            else _description(role_id, body.description)
+        )
         new_caps = body.capabilities if body.capabilities is not None else existing["capabilities"]
         new_domains = (
             body.domain_access if body.domain_access is not None else existing["domain_access"]
@@ -291,6 +317,7 @@ async def update_role(
             update(roles)
             .where(roles.c.id == role_id)
             .values(
+                description=new_description,
                 capabilities=new_caps,
                 domain_access=new_domains,
                 residency_values=new_values,
@@ -303,6 +330,7 @@ async def update_role(
     await _rebuild_schemas()
     return {
         "id": role_id,
+        "description": new_description,
         "capabilities": new_caps,
         "domain_access": new_domains,
         "residency_values": new_values,

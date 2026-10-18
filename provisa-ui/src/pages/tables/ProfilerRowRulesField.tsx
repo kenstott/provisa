@@ -36,6 +36,15 @@ export function ProfilerRowRulesField({
               }
               data-testid={`register-table-profiler-row-rule-${rule.roleId}`}
             />
+            {/* REQ-2081: what the rule is for; saved with it. */}
+            <input
+              aria-label={t("securityPage.ruleDescription")}
+              value={rule.description}
+              onChange={(e) =>
+                onChange(rules.map((r, j) => (j === i ? { ...r, description: e.target.value } : r)))
+              }
+              data-testid={`register-table-profiler-row-rule-description-${rule.roleId}`}
+            />
           </label>
         ))}
       </fieldset>

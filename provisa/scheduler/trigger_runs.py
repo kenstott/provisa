@@ -61,11 +61,11 @@ async def _run_command(trigger: dict, given: dict, state: Any) -> None:
     """The trigger's command, as its role, given those of the trigger's arguments it declares
     (in the order it declares them); one the firing did not carry is given None."""
     from provisa.api.data.action_exec import invoke_command
-    from provisa.auth.pseudo_roles import service_acting_role
+    from provisa.auth.derived_roles import service_acting_role
 
     fn = state.tracked_functions.get(trigger["command"])
     names = [a["name"] for a in fn["arguments"]] if fn is not None else []
-    # The node's own work: the trigger's role with the node's region pseudo-role (REQ-2057).
+    # The node's own work: the trigger's role with the node's region derived role (REQ-2057).
     await invoke_command(
         trigger["command"],
         {n: given.get(n) for n in names},

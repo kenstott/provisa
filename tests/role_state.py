@@ -43,10 +43,10 @@ class RoleState(SimpleNamespace):
             from provisa.mv.registry import MVRegistry
 
             attrs["mv_registry"] = MVRegistry()
-        # As the real state of an org that records no member attributes, declares no claim type
-        # (its own empty list) and has named no pseudo-role (REQ-1382, REQ-2057).
+        # As the real state of an org that records no member attributes, declares no attribute
+        # (its own empty list) and has named no derived role (REQ-1382, REQ-2057).
         attrs.setdefault("user_attributes", {})
-        attrs.setdefault("settings_overrides", {"claim_roles": []})
+        attrs.setdefault("settings_overrides", {"derived_roles": []})
         attrs.setdefault("meta_qualifiers", {})
         # As the real state of a generation no request has acted as a set of roles in yet.
         attrs.setdefault("meta_roles", {})

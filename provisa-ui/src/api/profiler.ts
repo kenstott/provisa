@@ -40,6 +40,7 @@ export interface ProfilerCatalogColumn {
 export interface ProfilerRowRule {
   roleId: string;
   filter: string;
+  description: string; // REQ-2081: what the rule is for; required to save it
 }
 
 export interface ProfilerCatalogTable {

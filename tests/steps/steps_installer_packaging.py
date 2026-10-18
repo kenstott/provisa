@@ -112,8 +112,18 @@ def _authoritative_config_dict() -> dict:
             }
         ],
         "roles": [
-            {"id": "analyst", "capabilities": [], "domain_access": ["default"]},
-            {"id": "admin", "capabilities": [], "domain_access": ["default"]},
+            {
+                "id": "analyst",
+                "description": "Test role.",
+                "capabilities": [],
+                "domain_access": ["default"],
+            },
+            {
+                "id": "admin",
+                "description": "Test role.",
+                "capabilities": [],
+                "domain_access": ["default"],
+            },
         ],
     }
 

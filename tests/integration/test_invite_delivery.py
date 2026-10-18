@@ -209,7 +209,7 @@ def planes(monkeypatch, smtp):
     monkeypatch.setattr(
         app_state,
         "config",
-        SimpleNamespace(mail=mail, multitenancy=True, claim_roles=[]),
+        SimpleNamespace(mail=mail, multitenancy=True, derived_roles=[]),
         raising=False,
     )
 
@@ -494,7 +494,7 @@ def test_self_hosted_deployments_send_no_email(planes, smtp, monkeypatch):
     monkeypatch.setattr(
         app_state,
         "config",
-        SimpleNamespace(mail=planes.mail, multitenancy=False, claim_roles=[]),
+        SimpleNamespace(mail=planes.mail, multitenancy=False, derived_roles=[]),
         raising=False,
     )
     with TestClient(_make_app(planes)) as client:

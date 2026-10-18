@@ -53,7 +53,10 @@ regions:
 - {id: us, engine: us_engine, replicas: us_data, views: us_data, cache: cache, state: us_data, record: us_data}
 # REQ-2057: a member's region attribute makes them hold region and region__<value>; a mask entry
 # names region__eu to reveal what only an EU reviewer may see.
-claim_roles: [region]
+derived_roles:
+- attribute: region
+  description: The subsidiary a member works for (eu or us). region__eu marks EU staff, who may see
+    what EU rules keep from group reporting, such as the sender of a flagged message.
 domains:
 - id: retail
   description: One retail group -- an EU and a US subsidiary, their loyalty customers, orders,
@@ -61,18 +64,22 @@ domains:
 roles:
 # The group's analysts, in the US: they read group reporting, where EU customers are pseudonymised.
 - id: group_analyst
+  description: "The group's analysts, in the US: group reporting, where EU customers are pseudonymised."
   capabilities: [query_development]
   domain_access: [retail]
 # EU marketing: reads only the EU customers who agreed to marketing.
 - id: marketing_eu
+  description: "EU marketing: only the EU customers who agreed to marketing."
   capabilities: [query_development]
   domain_access: [retail]
 # The data protection officer: answers data subject requests across both subsidiaries.
 - id: dpo
+  description: "The data protection officer: answers data subject requests across both subsidiaries."
   capabilities: [query_development]
   domain_access: [retail]
 # The group's insider reviewers: the review queue, the sender revealed only to an EU reviewer.
 - id: reviewer
+  description: "The group's insider reviewers: the review queue, the sender shown only to an EU reviewer."
   capabilities: [query_development]
   domain_access: [retail]
 server:

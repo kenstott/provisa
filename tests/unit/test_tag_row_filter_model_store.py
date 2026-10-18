@@ -113,7 +113,12 @@ async def test_a_tag_filter_is_stored_scoped_by_the_tag_and_replaced_on_resave(p
         for predicate in ("region = 'us'", "region = 'eu'"):
             await rls_repo.upsert(
                 conn,
-                RLSRule(tag_id="regional", role_id="tagreader", filter=predicate),
+                RLSRule(
+                    tag_id="regional",
+                    role_id="tagreader",
+                    filter=predicate,
+                    description="Test rule.",
+                ),
             )
         held = await rls_repo.list_for_tag(conn, "regional")
         assert await rls_repo.tags_with_filters(conn) == {"regional"}
@@ -124,7 +129,12 @@ async def test_a_tag_filter_is_stored_scoped_by_the_tag_and_replaced_on_resave(p
 
 async def test_a_tag_that_carries_a_filter_is_not_deleted(plane):
     async with plane.acquire() as conn:
-        await rls_repo.upsert(conn, RLSRule(tag_id="regional", role_id="tagreader", filter="true"))
+        await rls_repo.upsert(
+            conn,
+            RLSRule(
+                tag_id="regional", role_id="tagreader", filter="true", description="Test rule."
+            ),
+        )
         with pytest.raises(tag_repo.TagDeleteRefused) as err:
             await tag_repo.delete(conn, "regional")
         assert [d.ref.kind for d in err.value.dependents] == ["row_filter"]
@@ -136,7 +146,12 @@ async def test_a_tag_that_carries_a_filter_is_not_deleted(plane):
 
 async def test_the_delete_mutation_refuses_naming_the_filter(plane):
     async with plane.acquire() as conn:
-        await rls_repo.upsert(conn, RLSRule(tag_id="regional", role_id="tagreader", filter="true"))
+        await rls_repo.upsert(
+            conn,
+            RLSRule(
+                tag_id="regional", role_id="tagreader", filter="true", description="Test rule."
+            ),
+        )
     result = await schema_mutation.Mutation().delete_tag(_info(), "regional")
     assert (result.success, result.code) == (False, "schema.tag_has_dependents")
     assert [d["kind"] for d in result.params["dependents"]] == ["row_filter"]
@@ -153,13 +168,22 @@ async def test_saving_a_tag_filter_resolves_it_against_every_tagged_table(plane)
             )
     # `region` is a column of orders and not of customers, and the tag is on both.
     refused = await mutation.upsert_rls_rule(
-        _info(), RLSRuleInput(tag_id="regional", role_id="tagreader", filter_expr="region = 'us'")
+        _info(),
+        RLSRuleInput(
+            tag_id="regional",
+            role_id="tagreader",
+            filter_expr="region = 'us'",
+            description="Test rule.",
+        ),
     )
     assert (refused.success, refused.code) == (False, "schema.rls_rule_invalid")
     assert await _count(plane, rls_rules) == 0 and plane.rebuilds == []
 
     saved = await mutation.upsert_rls_rule(
-        _info(), RLSRuleInput(tag_id="regional", role_id="tagreader", filter_expr="1 = 1")
+        _info(),
+        RLSRuleInput(
+            tag_id="regional", role_id="tagreader", filter_expr="1 = 1", description="Test rule."
+        ),
     )
     assert (saved.success, saved.code) == (True, "schema.rls_rule_saved_tag")
     assert saved.params == {"tag": "regional", "role": "tagreader"}
@@ -177,7 +201,10 @@ async def test_saving_a_tag_filter_resolves_it_against_every_tagged_table(plane)
 )
 async def test_only_a_user_tag_that_applies_to_tables_takes_a_filter(plane, tag_id, code):
     result = await schema_mutation.Mutation().upsert_rls_rule(
-        _info(), RLSRuleInput(tag_id=tag_id, role_id="tagreader", filter_expr="1 = 1")
+        _info(),
+        RLSRuleInput(
+            tag_id=tag_id, role_id="tagreader", filter_expr="1 = 1", description="Test rule."
+        ),
     )
     assert (result.success, result.code) == (False, code)
     assert await _count(plane, rls_rules) == 0
@@ -186,7 +213,13 @@ async def test_only_a_user_tag_that_applies_to_tables_takes_a_filter(plane, tag_
 async def test_tagging_a_table_the_filter_does_not_fit_is_refused(plane):
     mutation = schema_mutation.Mutation()
     saved = await mutation.upsert_rls_rule(
-        _info(), RLSRuleInput(tag_id="regional", role_id="tagreader", filter_expr="region = 'us'")
+        _info(),
+        RLSRuleInput(
+            tag_id="regional",
+            role_id="tagreader",
+            filter_expr="region = 'us'",
+            description="Test rule.",
+        ),
     )
     assert saved.success, saved.message
     refused = await mutation.assign_tag(
@@ -205,7 +238,13 @@ async def test_assigning_and_removing_a_filtered_tag_rebuilds_the_role_contexts(
     assert plane.rebuilds == []  # the tag carries no filter: it is annotation
 
     saved = await mutation.upsert_rls_rule(
-        _info(), RLSRuleInput(tag_id="regional", role_id="tagreader", filter_expr="region = 'us'")
+        _info(),
+        RLSRuleInput(
+            tag_id="regional",
+            role_id="tagreader",
+            filter_expr="region = 'us'",
+            description="Test rule.",
+        ),
     )
     assert saved.success, saved.message
     plane.rebuilds.clear()
@@ -218,7 +257,10 @@ async def test_assigning_and_removing_a_filtered_tag_rebuilds_the_role_contexts(
 async def test_deleting_a_tag_filter_through_the_mutation_rebuilds(plane):
     mutation = schema_mutation.Mutation()
     await mutation.upsert_rls_rule(
-        _info(), RLSRuleInput(tag_id="regional", role_id="tagreader", filter_expr="1 = 1")
+        _info(),
+        RLSRuleInput(
+            tag_id="regional", role_id="tagreader", filter_expr="1 = 1", description="Test rule."
+        ),
     )
     plane.rebuilds.clear()
     result = await mutation.delete_rls_rule(_info(), role_id="tagreader", tag_id="regional")

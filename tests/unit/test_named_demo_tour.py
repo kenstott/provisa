@@ -245,9 +245,9 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             # The Data Products page opens the product its deep link names.
             assert page == "/data-products", f"{step['key']}: a product opens on /data-products"
         if "role" in step:
-            # One role, "all", or a set of the demo's roles and its declared pseudo-roles
+            # One role, "all", or a set of the demo's roles and its declared derived roles
             # (reviewer,region__eu, REQ-2057), which the tour hands to the explorer.
-            claim_types = set(config.get("claim_roles") or [])
+            claim_types = {d["attribute"] for d in config.get("derived_roles") or []}
             for part in step["role"].split(","):
                 claim, sep, value = part.partition("__")
                 assert (

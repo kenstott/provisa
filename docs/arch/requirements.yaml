@@ -83072,7 +83072,7 @@
     about one EU customer across every subsidiary''s sources (right of access), and the view that drives its erasure;
     an insider review in retail form, staff with access to customer data who then mail customer lists outside the
     group, their messages scored in their own region so no message body leaves it, one group review queue carrying
-    only the score, the signals and a pseudonymised sender, and the sender revealed only to a reviewer acting with the employee''s region pseudo-role (region__eu, REQ-2057) through the column''s ordered mask list (REQ-2059); and one audit record across both regions of who saw which customer''s data, where. The same query
+    only the score, the signals and a pseudonymised sender, and the sender revealed only to a reviewer acting with the employee''s region derived role (region__eu, REQ-2057) through the column''s ordered mask list (REQ-2059); and one audit record across both regions of who saw which customer''s data, where. The same query
     returns different rows per reader, the per-request record shows serving region and rules, no copy of EU rows
     exists outside the EU, and a cross-region read is served from the home region''s replica or refused naming it.
     Its tour states that legal requirements can be met with these features, but meeting them takes active design
@@ -84208,9 +84208,9 @@ And a request naming a role the user does not hold is refused by name'
   feature: roles-and-capabilities-capabilities
   priority: SHOULD
   type: behavioral
-  description: 'Pseudo-roles: roles derived from identity claims, which turn an attribute-conditioned (ABAC) column rule into an ordinary role grant (RBAC). For each claim type in the org''s declared list (an org setting with a UI surface), there is an implicit parent role named by the claim type (e.g. region) and, for each value, a child sub-role named <claim type>__<value> (e.g. region__eu), the double underscore as in GraphQL paths. A user holds a sub-role exactly when their claim has that value; the value comes from the org''s own user record, and the identity provider''s claim fills in only where the record has none. Pseudo-roles carry no capabilities, no domain access, no row-filter term and no mask vote; they are never assigned by hand and never self-granted; they act only as grant qualifiers, so existing grant points use them unchanged (visible_to, writable_by, masks, meta-roles). Like every role they count only when the request names them (REQ-2060): a request acts as analyst,region__eu to get EU reveals; the role picker offers the pseudo-roles a user holds. The node''s own region is never taken as the user''s. A service call a regional node makes on its own behalf (scheduled jobs, triggers, materialized-view and replica refreshes, reads of another region''s store, calls to the control plane) carries that node''s region pseudo-role (region__<node region>) in the set it acts as, so grants naming the region apply to the region''s own work. Row rules naming pseudo-roles are not part of this. Role inheritance stays additive: a child holds its parent''s rights plus its own, and nothing subtracts an inherited right; restriction comes from composition (REQ-2058), not from denials. A role''s properties are different from its rights: each property (rate_limit, max_rows) is set by the nearest role in the chain that declares it, the role itself first, so a child may raise or lower its parent''s. docs/security.md explains meta-roles and pseudo-roles and why each is useful, led by the rationale that pseudo-roles simplify a traditional ABAC column problem into a simpler RBAC solution, with guidance on hierarchy versus composition (inheritance within one axis, composition across independent axes, a small role catalogue).'
+  description: 'Derived roles: roles derived from identity claims, which turn an attribute-conditioned (ABAC) column rule into an ordinary role grant (RBAC). For each attribute in the org''s declared list (an org setting with a UI surface), there is an implicit parent role named by the attribute (e.g. region) and, for each value, a child sub-role named <attribute>__<value> (e.g. region__eu), the double underscore as in GraphQL paths. A user holds a sub-role exactly when their claim has that value; the value comes from the org''s own user record, and the identity provider''s claim fills in only where the record has none. Derived roles carry no capabilities, no domain access, no row-filter term and no mask vote; they are never assigned by hand and never self-granted; they act only as grant qualifiers, so existing grant points use them unchanged (visible_to, writable_by, masks, meta-roles). Like every role they count only when the request names them (REQ-2060): a request acts as analyst,region__eu to get EU reveals; the role picker offers the derived roles a user holds. The node''s own region is never taken as the user''s. A service call a regional node makes on its own behalf (scheduled jobs, triggers, materialized-view and replica refreshes, reads of another region''s store, calls to the control plane) carries that node''s region derived role (region__<node region>) in the set it acts as, so grants naming the region apply to the region''s own work. Row rules naming derived roles are not part of this. Role inheritance stays additive: a child holds its parent''s rights plus its own, and nothing subtracts an inherited right; restriction comes from composition (REQ-2058), not from denials. A role''s properties are different from its rights: each property (rate_limit, max_rows) is set by the nearest role in the chain that declares it, the role itself first, so a child may raise or lower its parent''s. docs/security.md explains meta-roles and derived roles and why each is useful, led by the rationale that derived roles simplify a traditional ABAC column problem into a simpler RBAC solution, with guidance on hierarchy versus composition (inheritance within one axis, composition across independent axes, a small role catalogue).'
   use_case: 'An EU reviewer acting as reviewer,region__eu sees a sender column that is masked for every other reader, without any attribute evaluated at query time.'
-  scenario: 'Given region declared as a claim type and a user whose org record says region eu
+  scenario: 'Given region declared as a derived role and a user whose org record says region eu
 
 
 When the user acts as reviewer,region__eu
@@ -84760,3 +84760,135 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   stakeholders:
   - compliance
   - ops
+- id: REQ-2078
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Security
+  feature: roles-and-capabilities-capabilities
+  priority: SHOULD
+  type: behavioral
+  description: 'Derived roles join the Roles list. Each attribute the org declares as a derived role (REQ-2057) is a parent role in the main Roles list, marked derived, with its value roles (<attribute>__<value>, e.g. region__eu) listed under it as their values are seen. Adding one is Add role -> Derived from attribute; there is no separate derived-roles screen. A derived role is declared one at a time with a required description (REQ-2080); the org''s list replaces the deployment config''s, its first change copying the deployment''s list. Saving or removing one re-reads the caller''s identity, so the role picker offers the roles they now hold without a reload.'
+  use_case: 'An administrator adds region as a derived role from the Roles page and sees region, region__eu and region__us in the same list as the granted roles.'
+  scenario: 'Given members whose recorded region is eu or us
+
+
+When the administrator chooses Add role, Derived from attribute, and saves region with a description
+
+
+Then the Roles list shows region marked derived, with region__eu and region__us under it'
+  related_reqs:
+  - REQ-2057
+  - REQ-2079
+  - REQ-2080
+  notes: 'Maintainer 2026-10-18 (via lead): derived roles join the main Roles list; the separate screen is removed; renamed from claim roles / pseudo-roles to Derived Roles everywhere.'
+  code:
+  - provisa/api/admin/derived_roles_router.py
+  - provisa/auth/derived_roles.py
+  - provisa/core/models.py
+  - provisa-ui/src/pages/SecurityPage.tsx
+  - provisa-ui/src/pages/security/DerivedRoles.tsx
+  tests:
+  - tests/unit/test_role_descriptions.py
+  - tests/unit/test_derived_roles.py
+  - provisa-ui/src/pages/__tests__/SecurityPage.derivedRoles.test.tsx
+  stakeholders:
+  - compliance
+- id: REQ-2079
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Security
+  feature: roles-and-capabilities-capabilities
+  priority: SHOULD
+  type: behavioral
+  description: 'A derived role''s detail panel, in the shared form layout with the standard save and notice: the source attribute, its description (editable), the values seen so far (from the org''s member records and the identity providers'' recorded claims) and where it is used: every row rule, column grant, mask entry and metric, command or webhook grant list that names the parent or one of its value roles, alone or in a composite entry. No grant controls: a derived role holds no rights. A value role shows a generated line, "Held when the user''s region is eu", translated.'
+  use_case: 'Before removing region, an administrator sees that the customers.email mask names region__eu.'
+  scenario: 'Given a mask entry naming analyst+region__eu
+
+
+When the administrator opens the derived role region
+
+
+Then its panel lists the values seen and the column whose mask names it, and offers no capability or domain controls'
+  related_reqs:
+  - REQ-2078
+  - REQ-2057
+  - REQ-2059
+  code:
+  - provisa/core/repositories/derived_role.py
+  - provisa/api/admin/derived_roles_router.py
+  - provisa-ui/src/pages/security/DerivedRoles.tsx
+  tests:
+  - tests/unit/test_role_descriptions.py
+  - provisa-ui/src/pages/__tests__/SecurityPage.derivedRoles.test.tsx
+  stakeholders:
+  - compliance
+- id: REQ-2080
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Security
+  feature: roles-and-capabilities-capabilities
+  priority: MUST
+  type: behavioral
+  description: 'Every role carries a required description of what it is for: ordinary roles, derived parent roles and the seeded roles (whose descriptions the deployment writes). An empty description is refused with a clear message by the configuration load, the REST and GraphQL role mutations and the UI. It is shown in the Roles lists and detail panels, edited in the detail panel, and returned even where a role''s definition is withheld. A meta-role is never stored, so its description is generated from its members'' descriptions. Derived value roles show a generated line. There are no per-domain role descriptions: a general role that does not describe its responsibilities within a domain means that domain needs a new role, usually a child of the general role; the description field''s help and the roles docs say so. Descriptions are a policy and possibly regulatory requirement: access reviews read them.'
+  use_case: 'An access reviewer reads, beside each role, what it is for.'
+  scenario: 'Given a role saved with an empty description
+
+
+When it is saved through the API, the UI or a configuration file
+
+
+Then it is refused, naming the role and saying it needs a description'
+  related_reqs:
+  - REQ-042
+  - REQ-1620
+  - REQ-2081
+  notes: 'Maintainer 2026-10-18 (via lead): descriptions are a policy (and possibly regulatory) requirement, so they are required; no per-domain role descriptions.'
+  code:
+  - provisa/core/models.py
+  - provisa/core/db.py
+  - provisa/core/schema_org.py
+  - provisa/core/schema.sql
+  - provisa/core/repositories/role.py
+  - provisa/api/admin/roles_router.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/security/meta_role.py
+  - provisa-ui/src/pages/SecurityPage.tsx
+  tests:
+  - tests/unit/test_role_descriptions.py
+  - provisa-ui/src/pages/__tests__/SecurityPage.derivedRoles.test.tsx
+  stakeholders:
+  - compliance
+- id: REQ-2081
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Security
+  feature: row-security-and-masking-masking
+  priority: MUST
+  type: behavioral
+  description: 'Every row (RLS) rule carries a required description of what it is for, refused when empty by the configuration load, the GraphQL mutation and the UI, and shown in the rule''s detail panel and in the Row rules list. Rules an importer writes (Hasura, DDN) and the profiler''s prefilled rules carry a generated description the administrator can replace.'
+  use_case: 'An access reviewer reads, beside each row rule, why the rule exists.'
+  scenario: 'Given a row rule saved with an empty description
+
+
+When it is saved
+
+
+Then it is refused, saying a row rule needs a description'
+  related_reqs:
+  - REQ-041
+  - REQ-2080
+  code:
+  - provisa/core/models.py
+  - provisa/core/repositories/rls.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/profiler/governance.py
+  - provisa-ui/src/pages/security/SecurityRlsPage.tsx
+  tests:
+  - tests/unit/test_role_descriptions.py
+  - provisa-ui/src/pages/__tests__/SecurityPage.actionRule.test.tsx
+  stakeholders:
+  - compliance

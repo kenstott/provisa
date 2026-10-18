@@ -61,7 +61,12 @@ CASES = [
 
 
 def _role(domain_access: list[str], *capabilities: str) -> dict:
-    return {"id": "r", "capabilities": list(capabilities), "domain_access": domain_access}
+    return {
+        "id": "r",
+        "description": "Test role.",
+        "capabilities": list(capabilities),
+        "domain_access": domain_access,
+    }
 
 
 def _tables() -> list[dict]:
@@ -319,7 +324,10 @@ def test_a_label_map_is_never_built_without_the_acting_roles_list():
 def test_role_all_is_the_union_and_an_all_empty_union_is_none(multi_domain, lists, union):
     from provisa.security import meta_role
 
-    roles = {f"r{i}": {"id": f"r{i}", "domain_access": lst} for i, lst in enumerate(lists)}
+    roles = {
+        f"r{i}": {"id": f"r{i}", "description": "Test role.", "domain_access": lst}
+        for i, lst in enumerate(lists)
+    }
     # "Role: All" acts as the set's meta-role: its domain_access is the union.
     effective = meta_role._role(list(roles.values()), meta_role.meta_role_id(list(roles)))
     assert effective["domain_access"] == union
@@ -360,7 +368,7 @@ def test_a_role_id_that_is_not_loaded_raises():
 
 
 def test_a_role_dict_with_no_domain_list_is_not_read_as_any_scope(multi_domain):
-    role: Any = {"id": "r", "capabilities": []}
+    role: Any = {"id": "r", "description": "Test role.", "capabilities": []}
     with pytest.raises(KeyError):
         validate_sql("SELECT id FROM orders", _ctx(), _gov(), role, [])
     with pytest.raises(KeyError):
@@ -409,8 +417,18 @@ def _built_roles(monkeypatch, roles: list[dict]) -> Any:
 def test_a_role_listing_no_domain_is_built_no_schema_and_breaks_nobody_elses(
     multi_domain, monkeypatch
 ):
-    empty = {"id": "newrole", "capabilities": ["usage"], "domain_access": []}
-    scoped = {"id": "r", "capabilities": ["usage"], "domain_access": ["sales"]}
+    empty = {
+        "id": "newrole",
+        "description": "Test role.",
+        "capabilities": ["usage"],
+        "domain_access": [],
+    }
+    scoped = {
+        "id": "r",
+        "description": "Test role.",
+        "capabilities": ["usage"],
+        "domain_access": ["sales"],
+    }
     state = _built_roles(monkeypatch, [empty, scoped])
 
     # Registered as a role (its rights still resolve), with no data surface of any kind.
@@ -421,7 +439,7 @@ def test_a_role_listing_no_domain_is_built_no_schema_and_breaks_nobody_elses(
 
 
 def test_single_domain_mode_builds_the_same_role_its_schema(single_domain, monkeypatch):
-    empty = {"id": "r", "capabilities": ["usage"], "domain_access": []}
+    empty = {"id": "r", "description": "Test role.", "capabilities": ["usage"], "domain_access": []}
     state = _built_roles(monkeypatch, [empty])
     assert "r" in state.schemas and "r" in state.contexts
 
@@ -433,7 +451,15 @@ def test_a_role_whose_list_becomes_empty_loses_the_surface_an_earlier_build_gave
     from provisa.api.app_loaders import _drop_data_surface
 
     state = _built_roles(
-        monkeypatch, [{"id": "r", "capabilities": ["usage"], "domain_access": ["sales"]}]
+        monkeypatch,
+        [
+            {
+                "id": "r",
+                "description": "Test role.",
+                "capabilities": ["usage"],
+                "domain_access": ["sales"],
+            }
+        ],
     )
 
     def parts():
@@ -461,14 +487,32 @@ def test_the_build_itself_drops_a_stale_surface(multi_domain, monkeypatch):
     from provisa.api.app_loaders import _build_and_register_schemas
 
     state = _built_roles(
-        monkeypatch, [{"id": "r", "capabilities": ["usage"], "domain_access": ["sales"]}]
+        monkeypatch,
+        [
+            {
+                "id": "r",
+                "description": "Test role.",
+                "capabilities": ["usage"],
+                "domain_access": ["sales"],
+            }
+        ],
     )
     assert "r" in state.schemas
     # Rebuild in place (the maps are NOT reset between builds of a live runtime).
     _build_and_register_schemas(
         roles=[
-            {"id": "r", "capabilities": ["usage"], "domain_access": []},
-            {"id": "s", "capabilities": ["usage"], "domain_access": ["sales"]},
+            {
+                "id": "r",
+                "description": "Test role.",
+                "capabilities": ["usage"],
+                "domain_access": [],
+            },
+            {
+                "id": "s",
+                "description": "Test role.",
+                "capabilities": ["usage"],
+                "domain_access": ["sales"],
+            },
         ],
         tables=_tables(),
         relationships=[],

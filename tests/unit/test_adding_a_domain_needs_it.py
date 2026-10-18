@@ -41,8 +41,18 @@ from provisa.security.rights import domains_added
 
 RIGHTS = ["user_management", "source_registration"]
 ROLES = {
-    "sales_admin": {"id": "sales_admin", "capabilities": RIGHTS, "domain_access": ["sales"]},
-    "everywhere": {"id": "everywhere", "capabilities": RIGHTS, "domain_access": ["*"]},
+    "sales_admin": {
+        "id": "sales_admin",
+        "description": "Test role.",
+        "capabilities": RIGHTS,
+        "domain_access": ["sales"],
+    },
+    "everywhere": {
+        "id": "everywhere",
+        "description": "Test role.",
+        "capabilities": RIGHTS,
+        "domain_access": ["*"],
+    },
 }
 
 
@@ -169,12 +179,16 @@ async def _role_row(db: Database, role_id: str) -> dict | None:
 
 
 async def test_rest_creates_a_role_in_the_callers_domain_and_refuses_one_outside_it(plane):
-    body = roles_router.CreateRoleBody(id="r1", capabilities=["usage"], domain_access=["sales"])
+    body = roles_router.CreateRoleBody(
+        id="r1", description="Test role.", capabilities=["usage"], domain_access=["sales"]
+    )
     await roles_router.create_role(body, _request("sales_admin"))
     assert (await _role_row(plane, "r1"))["domain_access"] == ["sales"]
 
     for listed in (["finance"], ["sales", "finance"], ["*"]):
-        body = roles_router.CreateRoleBody(id="r2", capabilities=["usage"], domain_access=listed)
+        body = roles_router.CreateRoleBody(
+            id="r2", description="Test role.", capabilities=["usage"], domain_access=listed
+        )
         with pytest.raises(ApiError) as err:
             await roles_router.create_role(body, _request("sales_admin"))
         assert (err.value.status_code, err.value.code) == (403, "auth.domain_denied")
@@ -183,7 +197,11 @@ async def test_rest_creates_a_role_in_the_callers_domain_and_refuses_one_outside
 
 async def test_rest_refuses_a_role_that_would_inherit_a_domain_the_caller_does_not_reach(plane):
     body = roles_router.CreateRoleBody(
-        id="r3", capabilities=["usage"], domain_access=["sales"], parent_role_id="auditor"
+        id="r3",
+        description="Test role.",
+        capabilities=["usage"],
+        domain_access=["sales"],
+        parent_role_id="auditor",
     )
     with pytest.raises(ApiError) as err:
         await roles_router.create_role(body, _request("sales_admin"))
@@ -226,14 +244,22 @@ async def test_rest_update_needs_every_domain_the_role_reaches_before_and_after(
 async def _create_role(caller: str, role_id: str, listed: list[str], parent: str | None = None):
     return await schema_mutation.Mutation().create_role(
         _info(caller),  # type: ignore[arg-type]
-        RoleInput(id=role_id, capabilities=["usage"], domain_access=listed, parent_role_id=parent),
+        RoleInput(
+            id=role_id,
+            description="Test role.",
+            capabilities=["usage"],
+            domain_access=listed,
+            parent_role_id=parent,
+        ),
     )
 
 
 async def _update_role(caller: str, role_id: str, listed: list[str]):
     return await schema_mutation.Mutation().update_role(
         _info(caller),  # type: ignore[arg-type]
-        RoleInput(id=role_id, capabilities=["usage"], domain_access=listed),
+        RoleInput(
+            id=role_id, description="Test role.", capabilities=["usage"], domain_access=listed
+        ),
     )
 
 

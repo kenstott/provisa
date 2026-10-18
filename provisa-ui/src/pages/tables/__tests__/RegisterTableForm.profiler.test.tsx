@@ -73,7 +73,13 @@ const CATALOG = [
             ],
           },
         ],
-        rowRules: [{ roleId: "analyst", filter: "column_name IN ('id')" }],
+        rowRules: [
+          {
+            roleId: "analyst",
+            filter: "column_name IN ('id')",
+            description: "Keeps the profile rows analyst may read.",
+          },
+        ],
       },
     ],
   },
@@ -140,6 +146,7 @@ describe("RegisterTableForm on a Data Profiler source (REQ-1934)", () => {
       tableId: TOP,
       roleId: "analyst",
       filterExpr: "column_name IN ('id', 'region')",
+      description: "Keeps the profile rows analyst may read.",
     });
   });
 });

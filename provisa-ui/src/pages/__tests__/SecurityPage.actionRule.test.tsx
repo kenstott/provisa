@@ -41,7 +41,15 @@ vi.mock("../../api/actions", () => ({
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
   useRoles: () => ({
-    roles: [{ id: "analyst", capabilities: [], demonstrated: [], domain_access: ["*"] }],
+    roles: [
+      {
+        id: "analyst",
+        description: "What analyst is for.",
+        capabilities: [],
+        demonstrated: [],
+        domain_access: ["*"],
+      },
+    ],
     loading: false,
     refetch: vi.fn(),
   }),
@@ -106,6 +114,9 @@ describe("SecurityPage — RLS rules on actions (REQ-1679)", () => {
     fireEvent.change(screen.getByLabelText("Filter Expression"), {
       target: { value: "1 = 1" },
     });
+    fireEvent.change(screen.getByTestId("rule-description"), {
+      target: { value: "Every row, for the test." },
+    });
     fireEvent.click(screen.getByTestId("save-rule"));
     await waitFor(() => expect(upsertRlsRuleSpy).toHaveBeenCalled());
     expect(upsertRlsRuleSpy.mock.calls[0][0]).toMatchObject({
@@ -123,13 +134,13 @@ describe("SecurityPage — RLS rules on actions (REQ-1679)", () => {
     fireEvent.click(screen.getByTestId("toggle-rule-form"));
     fireEvent.click(screen.getByTestId("save-rule"));
     expect(await screen.findByTestId("form-problem")).toHaveTextContent(
-      "Before saving, choose or fill in: Table, Role, Filter Expression",
+      "Before saving, choose or fill in: Table, Role, Filter Expression, Description",
     );
     await selectOption(screen.getByTestId("rule-apply-to"), /Action/);
     await selectOption(screen.getByTestId("rule-role-select"), "analyst");
     fireEvent.click(screen.getByTestId("save-rule"));
     expect(screen.getByTestId("form-problem")).toHaveTextContent(
-      "Before saving, choose or fill in: Action, Filter Expression",
+      "Before saving, choose or fill in: Action, Filter Expression, Description",
     );
     expect(upsertRlsRuleSpy).not.toHaveBeenCalled();
   });

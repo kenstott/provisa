@@ -274,6 +274,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
         rule = {
             "role_id": row["role_id"],
             "filter": row["filter_expr"],
+            "description": row["description"],  # REQ-2081
             "table_id": None if row["table_id"] is None else name_of[int(row["table_id"])],
             "domain_id": row["domain_id"],
             "action_name": row["action_name"],

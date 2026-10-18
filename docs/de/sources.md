@@ -1397,10 +1397,12 @@ rls_rules:
   - table_id: orders          # applies to orders table only
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
+    description: Analysts read only their own region's orders.
 
   - domain_id: sales-analytics  # applies to every table in domain (REQ-402)
     role_id: analyst
     filter: "tenant_id = current_setting('provisa.tenant_id')"
+    description: Analysts read only their own tenant's rows.
 ```
 
 Existieren sowohl eine Regel auf Domänenebene als auch auf Tabellenebene für dieselbe Rolle, hat die Regel auf Tabellenebene Vorrang (REQ-403).
@@ -1411,6 +1413,7 @@ Existieren sowohl eine Regel auf Domänenebene als auch auf Tabellenebene für d
 | `domain_id` | Bedingt | Domäne, auf die die Regel angewendet wird; gilt für alle Tabellen in der Domäne (REQ-402) |
 | `role_id` | Ja | Rolle, für die diese Regel gilt |
 | `filter` | Ja | SQL-Prädikat, injiziert in `WHERE`; kann Session-Variablen referenzieren (REQ-041) |
+| `description` | Ja | Wofür die Regel da ist, so wie eine Zugriffsprüfung sie liest (REQ-2081) |
 
 ---
 

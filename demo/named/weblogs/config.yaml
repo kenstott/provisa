@@ -51,6 +51,7 @@ naming:
   rules: []
 roles:
 - id: analyst
+  description: "Queries the shop's web and database logs."
   capabilities:
   - query_development
   domain_access:

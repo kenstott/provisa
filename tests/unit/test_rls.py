@@ -50,9 +50,19 @@ def _resolved(rules: list[dict], meta: TableMeta, role: str = "a") -> RLSContext
 class TestBuildRLSContext:
     def test_filters_by_role(self):
         rules = [
-            {"table_id": 1, "role_id": "analyst", "filter_expr": "\"region\" = 'us'"},
-            {"table_id": 1, "role_id": "admin", "filter_expr": "1=1"},
-            {"table_id": 2, "role_id": "analyst", "filter_expr": "active = true"},
+            {
+                "description": "Test rule.",
+                "table_id": 1,
+                "role_id": "analyst",
+                "filter_expr": "\"region\" = 'us'",
+            },
+            {"description": "Test rule.", "table_id": 1, "role_id": "admin", "filter_expr": "1=1"},
+            {
+                "description": "Test rule.",
+                "table_id": 2,
+                "role_id": "analyst",
+                "filter_expr": "active = true",
+            },
         ]
         rls = build_rls_context(rules, "analyst")
         assert rls.rules == {1: "\"region\" = 'us'", 2: "active = true"}
@@ -62,7 +72,9 @@ class TestBuildRLSContext:
         assert not rls.has_rules()
 
     def test_empty_for_unmatched_role(self):
-        rules = [{"table_id": 1, "role_id": "other", "filter_expr": "x = 1"}]
+        rules = [
+            {"description": "Test rule.", "table_id": 1, "role_id": "other", "filter_expr": "x = 1"}
+        ]
         rls = build_rls_context(rules, "admin")
         assert not rls.has_rules()
 
@@ -73,6 +85,7 @@ class TestDomainRLS:
     def test_domain_rule_populates_domain_rules(self):
         rules = [
             {
+                "description": "Test rule.",
                 "table_id": None,
                 "domain_id": "sales",
                 "role_id": "analyst",
@@ -85,8 +98,15 @@ class TestDomainRLS:
 
     def test_table_and_domain_rules_coexist(self):
         rules = [
-            {"table_id": 5, "domain_id": None, "role_id": "analyst", "filter_expr": "active"},
             {
+                "description": "Test rule.",
+                "table_id": 5,
+                "domain_id": None,
+                "role_id": "analyst",
+                "filter_expr": "active",
+            },
+            {
+                "description": "Test rule.",
                 "table_id": None,
                 "domain_id": "sales",
                 "role_id": "analyst",
@@ -112,6 +132,7 @@ class TestDomainRLS:
         rls = _resolved(
             [
                 {
+                    "description": "Test rule.",
                     "table_id": None,
                     "domain_id": "sales",
                     "role_id": "a",
@@ -138,12 +159,14 @@ class TestDomainRLS:
         rls = _resolved(
             [
                 {
+                    "description": "Test rule.",
                     "table_id": 1,
                     "domain_id": None,
                     "role_id": "a",
                     "filter_expr": "\"owner\" = 'me'",
                 },
                 {
+                    "description": "Test rule.",
                     "table_id": None,
                     "domain_id": "sales",
                     "role_id": "a",

@@ -180,7 +180,7 @@ def planes(monkeypatch):
     monkeypatch.setattr(
         app_state,
         "config",
-        types.SimpleNamespace(auth={"provider": "basic"}, claim_roles=[]),
+        types.SimpleNamespace(auth={"provider": "basic"}, derived_roles=[]),
         raising=False,
     )
     # REQ-1290: /auth/claim-bootstrap resolves the bootstrap flag from state.auth_config — the same

@@ -105,7 +105,7 @@ tables:
 为主权而使用的区域确实声明跨区域规则，无论原因是法律还是组织：把自己的表归属于自己区域的子公司，会在自己的基础设施上处理和存储这些表，并通过这些规则决定集团其他部分能读取什么。这些规则就是普通的行和列规则，写在表明读取者（或执行工作的节点）所在位置的属性上：
 
 - 当平台声明了区域时，`current_setting('provisa.region')` 是应答请求的节点所在的区域。写在它上面的行过滤会把某个区域的行留在该区域。(REQ-1922) [tool-verified: `provisa/core/request_context.py` `session_vars_for`]
-- 成员的 `region` 属性使其持有伪角色 `region` 和 `region__<value>`，因此脱敏或授权条目可以指定 `analyst+region__eu`。节点自身的后台工作也以同样方式携带其区域。(REQ-2057) 参见[角色：授予角色、伪角色和元角色](security.md#roles-granted-pseudo-and-meta)。
+- 成员的 `region` 属性使其持有派生角色 `region` 和 `region__<value>`，因此脱敏或授权条目可以指定 `analyst+region__eu`。节点自身的后台工作也以同样方式携带其区域。(REQ-2057) 参见[角色：授予角色、派生角色和元角色](security.md#roles-granted-derived-and-meta)。
 
 这些规则与区域归属一起，决定什么会越过边界。归属表的个人数据在其归属区域存储和处理，其他地方的读取者只获得其规则允许的内容，并在归属区域完成过滤。在每个区域构建的无区域视图包含该区域管理员可以看到的内容，因此一个区域的副本可能包含另一个区域的副本所排除的行。(REQ-1921)
 

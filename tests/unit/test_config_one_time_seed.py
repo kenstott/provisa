@@ -166,7 +166,10 @@ def _raw(
             for s in sources
         ],
         "domains": [{"id": d} for d in domains],
-        "roles": [{"id": r, "capabilities": [], "domain_access": ["sales"]} for r in roles],
+        "roles": [
+            {"id": r, "description": "Test role.", "capabilities": [], "domain_access": ["sales"]}
+            for r in roles
+        ],
         "tables": [_table("orders")] if tables is None else tables,
         "relationships": relationships or [],
         **more,
@@ -229,7 +232,9 @@ async def _admin_makes_its_own(db: Database) -> None:
         )
         await domain_repo.upsert(conn, Domain(id="lab"))
         await role_repo.upsert(
-            conn, Role(id="tester", capabilities=[], domain_access=["lab"]), org_id="o"
+            conn,
+            Role(id="tester", description="Test role.", capabilities=[], domain_access=["lab"]),
+            org_id="o",
         )
         for source_id, name in (("mine", "scratch"), ("cfg", "extra")):
             await table_repo.upsert(
@@ -302,7 +307,11 @@ async def test_an_admin_edit_survives_a_restart(db):
     async with db.acquire() as conn:
         # The admin edits a seeded role and a seeded table, deletes a seeded role, and makes its own.
         await role_repo.upsert(
-            conn, Role(id="seller", capabilities=["usage"], domain_access=["*"]), org_id="o"
+            conn,
+            Role(
+                id="seller", description="Test role.", capabilities=["usage"], domain_access=["*"]
+            ),
+            org_id="o",
         )
         await role_repo.delete(conn, "auditor")
         await table_repo.upsert(
@@ -435,7 +444,9 @@ async def test_the_install_configuration_seeds_once_and_admin_made_objects_survi
         )
         await domain_repo.upsert(conn, Domain(id="lab"))
         await role_repo.upsert(
-            conn, Role(id="tester", capabilities=[], domain_access=["lab"]), org_id="o"
+            conn,
+            Role(id="tester", description="Test role.", capabilities=[], domain_access=["lab"]),
+            org_id="o",
         )
         for source_id, name in (("mine", "scratch"), (declared, "extra")):
             await table_repo.upsert(
@@ -498,7 +509,14 @@ async def test_an_apply_removes_nothing_of_any_kind(db):
         tag_assignments=[
             {"tag_id": "pii", "object_type": "table", "table_ref": "cfg.public.orders"}
         ],
-        rls_rules=[{"table_id": "orders", "role_id": "seller", "filter": "region = 'eu'"}],
+        rls_rules=[
+            {
+                "description": "Test rule.",
+                "table_id": "orders",
+                "role_id": "seller",
+                "filter": "region = 'eu'",
+            }
+        ],
         glossary_terms=[
             {"name": "Bookings", "domains": ["sales"], "edges": [{"to": "ID"}]},
             {"name": "id", "domains": ["sales"], "definition": "the row's key"},
@@ -548,7 +566,9 @@ async def test_an_apply_goes_through_the_guards(db):
 
 async def test_an_apply_refuses_a_reserved_role(db):
     raw = _raw()
-    raw["roles"].append({"id": "org_admin", "capabilities": [], "domain_access": ["*"]})
+    raw["roles"].append(
+        {"id": "org_admin", "description": "Test role.", "capabilities": [], "domain_access": ["*"]}
+    )
     with pytest.raises(role_repo.ReservedRoleRedefined):
         await _apply(db, parse_config_dict(raw))
 
@@ -574,7 +594,12 @@ async def test_a_seeded_role_a_file_redefined_keeps_that_definition(db):
     leaves the role as it stands."""
     raw = _raw(domains=("sales", "analytics"))
     raw["roles"].append(
-        {"id": "analyst", "capabilities": ["usage", "write"], "domain_access": ["analytics"]}
+        {
+            "id": "analyst",
+            "description": "Test role.",
+            "capabilities": ["usage", "write"],
+            "domain_access": ["analytics"],
+        }
     )
     await _apply(db, parse_config_dict(raw))
     await _apply(db, _file())
@@ -648,7 +673,14 @@ def _everything() -> dict:
         tag_assignments=[
             {"tag_id": "pii", "object_type": "table", "table_ref": "cfg.public.orders"}
         ],
-        rls_rules=[{"table_id": "orders", "role_id": "seller", "filter": "region = 'eu'"}],
+        rls_rules=[
+            {
+                "description": "Test rule.",
+                "table_id": "orders",
+                "role_id": "seller",
+                "filter": "region = 'eu'",
+            }
+        ],
         glossary_terms=[
             {
                 "name": "Bookings",
@@ -777,7 +809,11 @@ async def test_a_demo_rebuild_starts_exactly_as_its_config_says(db, new_plane):
     await _admin_makes_its_own(db)
     async with db.acquire() as conn:
         await role_repo.upsert(
-            conn, Role(id="seller", capabilities=["usage"], domain_access=["*"]), org_id="o"
+            conn,
+            Role(
+                id="seller", description="Test role.", capabilities=["usage"], domain_access=["*"]
+            ),
+            org_id="o",
         )
         await conn.execute_core(
             insert(metadata.tables["user_role_assignments"]).values(

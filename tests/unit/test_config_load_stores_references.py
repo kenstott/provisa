@@ -95,7 +95,7 @@ def _config(spec_path: str):
                      "client_secret": "${env:IT_OIDC_SECRET}"}},
             "metadata_export": {"api_key": "${env:IT_EXPORT_KEY}"},
             "domains": [{"id": "sales"}],
-            "roles": [{"id": "seller", "capabilities": [], "domain_access": ["sales"]}],
+            "roles": [{"id": "seller", "description": "Test role.", "capabilities": [], "domain_access": ["sales"]}],
             "sources": [
                 {
                     "id": "pg",

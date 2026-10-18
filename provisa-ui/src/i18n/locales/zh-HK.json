@@ -30,7 +30,7 @@
     "role": "角色：{{role}}",
     "dev": "DEV",
     "checking": "正在檢查…",
-    "claimRoles": "宣告角色"
+    "derivedRoles": "派生角色"
   },
   "localUsers": {
     "colUsername": "使用者名稱",
@@ -78,7 +78,7 @@
   "grantPicker": {
     "and": "且",
     "combine": "將角色組合為一項授權",
-    "combineHelp": "讀者必須擁有此處列出的每個角色。如果未列出 region__eu 之類的宣告角色，請直接輸入。",
+    "combineHelp": "讀者必須擁有此處列出的每個角色。如未提供，請輸入派生角色，例如 region__eu。",
     "parts": "讀者必須全部擁有的角色",
     "partsPlaceholder": "選擇或輸入角色並按 Enter",
     "add": "新增"

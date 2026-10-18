@@ -873,7 +873,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # their meta-role, made again in this session's org before each statement (a model rebuild
         # drops it).
         self.role_set: tuple[str, ...] | None = None
-        # REQ-2057: the pseudo-roles the session named; its meta-role is made with them.
+        # REQ-2057: the derived roles the session named; its meta-role is made with them.
         self.role_quals: tuple[str, ...] = ()
         # The validated identity of a secured session (None in trust mode): the principal whose
         # attributes each statement binds as session variables (REQ-1682, REQ-1382).
@@ -1063,7 +1063,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         if self.identity is None:
             return fn()
         from provisa.api.app import state
-        from provisa.auth.pseudo_roles import principal_scope
+        from provisa.auth.derived_roles import principal_scope
 
         with principal_scope(state, self.identity, self.role_id):
             return fn()
@@ -1072,7 +1072,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         self, role_id: str, members: tuple[str, ...], qualifiers: tuple[str, ...] = ()
     ) -> None:
         """Act as ``role_id``; ``members`` are the held roles it stands for (one: itself), and
-        ``qualifiers`` the pseudo-roles it was named with (REQ-2057)."""
+        ``qualifiers`` the derived roles it was named with (REQ-2057)."""
         self.role_id = role_id
         self.role_set = members if len(members) > 1 or qualifiers else None
         self.role_quals = qualifiers
@@ -2132,9 +2132,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
                 org_token = set_current_org(org_id)
             try:
-                from provisa.auth.pseudo_roles import principal_of
+                from provisa.auth.derived_roles import principal_of
 
-                # REQ-2057: a pseudo-role the identity holds is named like any role.
+                # REQ-2057: a derived role the identity holds is named like any role.
                 role = resolve_requested_role(
                     _state, permitted, requested, lambda: principal_of(_state, identity)[1]
                 )

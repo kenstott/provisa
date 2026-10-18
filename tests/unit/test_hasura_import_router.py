@@ -222,7 +222,14 @@ CONFIG_YAML = yaml.dump(
         "sources": [{"id": "pg1", "type": "postgresql", "host": "db", "database": "shop"}],
         "domains": [{"id": "default"}],
         "tables": [],
-        "roles": [{"id": "customer", "capabilities": [], "domain_access": ["default"]}],
+        "roles": [
+            {
+                "id": "customer",
+                "description": "Test role.",
+                "capabilities": [],
+                "domain_access": ["default"],
+            }
+        ],
     }
 )
 

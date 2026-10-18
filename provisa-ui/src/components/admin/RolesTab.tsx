@@ -46,6 +46,8 @@ export function RolesTab({ orgId }: RolesTabProps) {
   // REQ-1940: sort and group are the shared list mechanism.
   const roleColumns: ListColumn<Role>[] = [
     { key: "id", label: t("rolesTab.colId"), sortValue: (r) => r.id },
+    // REQ-2080: what each role is for, shown even where its definition is withheld.
+    { key: "description", label: t("rolesTab.colDescription"), sortValue: (r) => r.description },
     {
       key: "capabilities",
       label: t("rolesTab.colCapabilities"),
@@ -69,21 +71,23 @@ export function RolesTab({ orgId }: RolesTabProps) {
           sortGroup={sortGroup}
           columns={[
             { col: "id" },
+            { col: "description" },
             { col: "capabilities" },
             { col: "domains" },
             t("rolesTab.colActions"),
           ]}
         />
         <Table.Tbody>
-          {orgRoles.length === 0 && <ListEmpty colSpan={4}>{t("rolesTab.empty")}</ListEmpty>}
+          {orgRoles.length === 0 && <ListEmpty colSpan={5}>{t("rolesTab.empty")}</ListEmpty>}
           <ListItems
             state={sortGroup}
             items={pageItems(sortGroup, rolePage - 1, PAGE_SIZE)}
-            colSpan={4}
+            colSpan={5}
             rowKey={(role) => role.id}
             render={(role) => (
               <ListRow>
                 <Table.Td>{role.id}</Table.Td>
+                <Table.Td data-testid={`role-description-${role.id}`}>{role.description}</Table.Td>
                 {role.detailsHidden ? (
                   <Table.Td colSpan={3} c="dimmed" data-testid={`role-details-hidden-${role.id}`}>
                     {t("rolesTab.detailsHidden")}

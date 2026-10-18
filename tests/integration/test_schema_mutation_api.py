@@ -122,7 +122,7 @@ class TestRoleLifecycle:
             """
             mutation {
                 createRole(input: {
-                    id: "smtest-role-1",
+                    id: "smtest-role-1", description: "Test role.",
                     capabilities: ["query_development"],
                     domainAccess: ["pet-store"]
                 }) { success message }
@@ -161,7 +161,7 @@ class TestRoleInheritance:  # REQ-1677
             """
             mutation {
                 createRole(input: {
-                    id: "junior_analyst_1677", capabilities: [], domainAccess: [],
+                    id: "junior_analyst_1677", description: "Test role.", capabilities: [], domainAccess: [],
                     parentRoleId: "analyst"
                 }) { success message }
             }
@@ -213,7 +213,7 @@ class TestRoleInheritance:  # REQ-1677
             """
             mutation {
                 createRole(input: {
-                    id: "orphan_1677", capabilities: [], domainAccess: [], parentRoleId: "ghost"
+                    id: "orphan_1677", description: "Test role.", capabilities: [], domainAccess: [], parentRoleId: "ghost"
                 }) { success message code }
             }
             """,
@@ -229,7 +229,7 @@ class TestRoleInheritance:  # REQ-1677
             """
             mutation {
                 createRole(input: {
-                    id: "analyst", capabilities: [], domainAccess: [], parentRoleId: "analyst"
+                    id: "analyst", description: "Test role.", capabilities: [], domainAccess: [], parentRoleId: "analyst"
                 }) { success message code }
             }
             """,
@@ -245,7 +245,7 @@ class TestRlsRule:
             client,
             """
             mutation {
-                upsertRlsRule(input: {
+                upsertRlsRule(input: { description: "Test rule.",
                     domainId: "pet-store",
                     roleId: "analyst",
                     filterExpr: "1 = 1"
@@ -267,7 +267,7 @@ class TestRlsRule:
             client,
             """
             mutation {
-                upsertRlsRule(input: {
+                upsertRlsRule(input: { description: "Test rule.",
                     tableId: "pets",
                     roleId: "analyst",
                     filterExpr: "speces = current_setting('provisa.species')"
@@ -285,7 +285,7 @@ class TestRlsRule:
             client,
             """
             mutation {
-                upsertRlsRule(input: {
+                upsertRlsRule(input: { description: "Test rule.",
                     domainId: "pet-store",
                     roleId: "analyst",
                     filterExpr: "species = = 'dog'"
@@ -303,7 +303,7 @@ class TestRlsRule:
             client,
             """
             mutation {
-                upsertRlsRule(input: {
+                upsertRlsRule(input: { description: "Test rule.",
                     domainId: "pet-store",
                     roleId: "analyst",
                     filterExpr: "species = 'dog'"
@@ -321,7 +321,7 @@ class TestRlsRule:
             client,
             """
             mutation {
-                upsertRlsRule(input: {
+                upsertRlsRule(input: { description: "Test rule.",
                     tableId: "pets",
                     roleId: "analyst",
                     filterExpr: "species = current_setting('provisa.species')"

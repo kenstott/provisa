@@ -1412,10 +1412,12 @@ rls_rules:
   - table_id: orders          # applies to orders table only
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
+    description: Analysts read only their own region's orders.
 
   - domain_id: sales-analytics  # applies to every table in domain (REQ-402)
     role_id: analyst
     filter: "tenant_id = current_setting('provisa.tenant_id')"
+    description: Analysts read only their own tenant's rows.
 ```
 
 Когда для одной и той же роли существуют и правило на уровне домена, и правило на уровне таблицы, правило на уровне таблицы имеет приоритет (REQ-403).
@@ -1426,6 +1428,7 @@ rls_rules:
 | `domain_id` | Условно | Домен, к которому применяется правило; применяется ко всем таблицам домена (REQ-402) |
 | `role_id` | Да | Роль, к которой применяется это правило |
 | `filter` | Да | SQL-предикат, вставляемый в `WHERE`; может ссылаться на переменные сессии (REQ-041) |
+| `description` | Да | Для чего нужно правило — так, как его читает проверка доступа (REQ-2081) |
 
 ---
 

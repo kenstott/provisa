@@ -67,9 +67,14 @@ async def upsert(  # REQ-041, REQ-402, REQ-686, REQ-1919
     ((scope_column, scope_value),) = scope.items()
     await conn.upsert(
         rls_rules,
-        {**scope, "role_id": rule.role_id, "filter_expr": filter_enc},
+        {
+            **scope,
+            "role_id": rule.role_id,
+            "filter_expr": filter_enc,
+            "description": rule.description,  # REQ-2081
+        },
         index_elements=[scope_column, "role_id"],
-        update_columns=["filter_expr"],
+        update_columns=["filter_expr", "description"],
     )
 
 

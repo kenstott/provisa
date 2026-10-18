@@ -61,7 +61,14 @@ class TestREQ1134GovernanceColumnVisibility:
 
     def test_role_without_view_governance_sees_core_only(self):
         # REQ-1134 — meta grant, no view_governance: CORE visible, GOVERNANCE hidden.
-        gov = _build({"id": "analyst", "capabilities": [], "domain_access": ["*"]})
+        gov = _build(
+            {
+                "id": "analyst",
+                "description": "Test role.",
+                "capabilities": [],
+                "domain_access": ["*"],
+            }
+        )
         visible = gov.visible_columns[1]
         assert visible is not None
         assert _CORE_COL in visible
@@ -69,7 +76,14 @@ class TestREQ1134GovernanceColumnVisibility:
 
     def test_role_with_view_governance_sees_governance_columns(self):
         # REQ-1134 — view_governance granted independently: GOVERNANCE columns now visible.
-        gov = _build({"id": "steward", "capabilities": ["view_governance"], "domain_access": ["*"]})
+        gov = _build(
+            {
+                "id": "steward",
+                "description": "Test role.",
+                "capabilities": ["view_governance"],
+                "domain_access": ["*"],
+            }
+        )
         visible = gov.visible_columns[1]
         assert visible is not None
         assert _CORE_COL in visible
@@ -79,7 +93,14 @@ class TestREQ1134GovernanceColumnVisibility:
         # REQ-1134/REQ-1327 — the retired wildcard strings and the platform rights are the
         # default tier here: CORE visible, GOVERNANCE hidden, exactly as for a role holding nothing.
         for held in (["admin"], ["superadmin"], ["platform_settings", "cross_org"]):
-            gov = _build({"id": "admin", "capabilities": held, "domain_access": ["*"]})
+            gov = _build(
+                {
+                    "id": "admin",
+                    "description": "Test role.",
+                    "capabilities": held,
+                    "domain_access": ["*"],
+                }
+            )
             visible = gov.visible_columns[1]
             assert visible is not None, held
             assert _CORE_COL in visible
@@ -87,7 +108,14 @@ class TestREQ1134GovernanceColumnVisibility:
 
     def test_meta_grant_alone_does_not_auto_grant_governance(self):
         # REQ-1134 — a meta DOMAIN grant must NOT imply view_governance.
-        gov = _build({"id": "meta_reader", "capabilities": [], "domain_access": [META_DOMAIN_ID]})
+        gov = _build(
+            {
+                "id": "meta_reader",
+                "description": "Test role.",
+                "capabilities": [],
+                "domain_access": [META_DOMAIN_ID],
+            }
+        )
         visible = gov.visible_columns[1]
         assert visible is not None
         assert "visible_to" not in visible
@@ -100,7 +128,14 @@ class TestREQ1132ColumnTiering:
 
     def test_default_tier_sees_core_meta_columns(self):
         # REQ-1132 — CORE (structural) columns are always discoverable by the default tier.
-        gov = _build({"id": "analyst", "capabilities": [], "domain_access": ["*"]})
+        gov = _build(
+            {
+                "id": "analyst",
+                "description": "Test role.",
+                "capabilities": [],
+                "domain_access": ["*"],
+            }
+        )
         visible = gov.visible_columns[1]
         assert visible is not None
         assert _CORE_COL in visible
@@ -188,19 +223,38 @@ class TestREQ1132RowScope:
 
     def test_default_tier_row_predicate_covers_direct_plus_open_neighbor(self):
         # REQ-1132 — sales role: direct {10,11} + 1-hop open neighbour {30}; hidden {31} excluded.
-        gov = _row_gov({"id": "sales", "capabilities": [], "domain_access": ["sales"]})
+        gov = _row_gov(
+            {
+                "id": "sales",
+                "description": "Test role.",
+                "capabilities": [],
+                "domain_access": ["sales"],
+            }
+        )
         assert gov.rls_rules[_RT_META_TID] == f"id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
         assert gov.rls_rules[_TC_META_TID] == f"table_id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
 
     def test_opt_out_target_not_discoverable(self):
         # REQ-1132 — the hide_target_meta edge's target must never appear in the row predicate.
-        gov = _row_gov({"id": "sales", "capabilities": [], "domain_access": ["sales"]})
+        gov = _row_gov(
+            {
+                "id": "sales",
+                "description": "Test role.",
+                "capabilities": [],
+                "domain_access": ["sales"],
+            }
+        )
         assert str(_FIN_HIDDEN) not in gov.rls_rules[_RT_META_TID]
 
     def test_meta_domain_grant_sees_all_rows(self):
         # REQ-1132 — a meta domain grant lifts the row filter entirely (no predicate injected).
         gov = _row_gov(
-            {"id": "cataloger", "capabilities": [], "domain_access": ["sales", META_DOMAIN_ID]}
+            {
+                "id": "cataloger",
+                "description": "Test role.",
+                "capabilities": [],
+                "domain_access": ["sales", META_DOMAIN_ID],
+            }
         )
         assert _RT_META_TID not in gov.rls_rules
         assert _TC_META_TID not in gov.rls_rules
@@ -209,7 +263,14 @@ class TestREQ1132RowScope:
         # REQ-1132/REQ-1327 — the whole catalog is the meta DOMAIN GRANT's (above), never a
         # capability's: a sales-scoped role holding the retired strings is scoped like any other.
         for held in (["admin"], ["superadmin"], ["platform_settings", "cross_org"]):
-            gov = _row_gov({"id": "admin", "capabilities": held, "domain_access": ["sales"]})
+            gov = _row_gov(
+                {
+                    "id": "admin",
+                    "description": "Test role.",
+                    "capabilities": held,
+                    "domain_access": ["sales"],
+                }
+            )
             assert gov.rls_rules[_RT_META_TID] == f"id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
             assert gov.rls_rules[_TC_META_TID] == (
                 f"table_id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
@@ -217,5 +278,12 @@ class TestREQ1132RowScope:
 
     def test_role_with_no_reachable_tables_sees_no_rows(self):
         # REQ-1132 — a role whose domain has no tables gets a match-nothing predicate (fail-closed).
-        gov = _row_gov({"id": "empty", "capabilities": [], "domain_access": ["marketing"]})
+        gov = _row_gov(
+            {
+                "id": "empty",
+                "description": "Test role.",
+                "capabilities": [],
+                "domain_access": ["marketing"],
+            }
+        )
         assert gov.rls_rules[_RT_META_TID] == "id IN (-1)"

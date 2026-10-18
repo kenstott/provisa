@@ -212,35 +212,45 @@ relationships:
 rls_rules:
 - table_id: customers
   role_id: customer
+  description: "A customer reads only their own customer record."
   filter: "id = current_setting('provisa.hasura_user_id')"
 - table_id: order_items
   role_id: customer
+  description: "A customer reads only the lines of their own orders."
   filter: "EXISTS (SELECT 1 FROM orders AS _r1 WHERE _r1.id = order_id AND CAST(_r1.customer_id AS TEXT) = current_setting('provisa.hasura_user_id'))"
 - table_id: orders
   role_id: customer
+  description: "A customer reads only their own orders."
   filter: "customer_id = current_setting('provisa.hasura_user_id')"
 - table_id: orders
   role_id: analyst
+  description: "Reporting leaves out cancelled orders."
   filter: "status != 'cancelled'"
 - table_id: catalog
   role_id: customer
+  description: "A customer sees only the products on sale."
   filter: "active = TRUE"
 roles:
 - id: analyst
+  description: "Reports on the shop: reads orders and the catalog, without cancelled orders."
   capabilities: [query_development]
   domain_access: ["*"]
 - id: customer
+  description: "A shop customer as the app signs one in: their own record, orders and order lines, and the active catalog."
   capabilities: [query_development, write]
   domain_access: ["*"]
 - id: support
+  description: "Customer support: reads and updates customers and their orders to resolve requests."
   capabilities: [query_development, write]
   domain_access: ["*"]
 - id: support_lead
+  description: "Leads customer support: what support does, for the requests support escalates."
   capabilities: [query_development, write]
   domain_access: ["*"]
 # A customer as the app signs one in: Ana, customer 1. The role's session value stands in for the
 # x-hasura-user-id claim her token would carry, so the tour reads the store as she does.
 - id: ana
+  description: "Ana, customer 1, as the app signs her in: the customer role with her user id set."
   capabilities: [query_development, write]
   domain_access: ["*"]
   parent_role_id: customer

@@ -285,7 +285,7 @@ class ProvisaAirportServer(
         if role_id not in self._state.contexts:
             raise _err(f"airport: role {role_id!r} has no data surface")
         bind_call_principal(identity.user_id)  # REQ-074: the audit row names the user
-        from provisa.auth.pseudo_roles import bind_principal_session_vars
+        from provisa.auth.derived_roles import bind_principal_session_vars
 
         # REQ-1682/REQ-1382: what a row filter reads for this caller, as on every transport.
         bind_principal_session_vars(self._state, identity, role_id)

@@ -1338,10 +1338,12 @@ rls_rules:
   - table_id: orders          # applies to orders table only
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
+    description: Analysts read only their own region's orders.
 
   - domain_id: sales-analytics  # applies to every table in domain (REQ-402)
     role_id: analyst
     filter: "tenant_id = current_setting('provisa.tenant_id')"
+    description: Analysts read only their own tenant's rows.
 ```
 
 Cuando existen tanto una regla de nivel de dominio como una de nivel de tabla para el mismo rol, la regla de nivel de tabla tiene prioridad (REQ-403).
@@ -1352,6 +1354,7 @@ Cuando existen tanto una regla de nivel de dominio como una de nivel de tabla pa
 | `domain_id` | Condicional | Dominio al que se aplica la regla; se aplica a todas las tablas del dominio (REQ-402) |
 | `role_id` | Sí | Rol al que se aplica esta regla |
 | `filter` | Sí | Predicado SQL inyectado en `WHERE`; puede referenciar variables de sesión (REQ-041) |
+| `description` | Sí | Para qué sirve la regla, tal como la lee una revisión de acceso (REQ-2081) |
 
 ---
 

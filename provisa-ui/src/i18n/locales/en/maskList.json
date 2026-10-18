@@ -26,7 +26,7 @@
     "coveredBy": "No reader reaches this entry: entry {{n}} applies to each of them first.",
     "unlistedUnmasked": "Readers this list does not name see the column unmasked. Add an entry for everyone, last, to mask it for them.",
     "checkLabel": "Check access",
-    "checkPlaceholder": "Pick or type roles and claim roles",
+    "checkPlaceholder": "Pick or type roles and derived roles",
     "applies": "Entry {{n}} applies",
     "appliesNone": "No entry applies: unmasked",
     "none": "None",

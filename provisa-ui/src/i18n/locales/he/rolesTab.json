@@ -16,6 +16,7 @@
     "nextPage": "עמוד הבא",
     "lastPage": "עמוד אחרון",
     "deleteRoleTitle": "למחוק את התפקיד \"{{roleId}}\"?",
-    "deleteRoleConsequence": "התפקיד יוסר מהארגון הזה."
+    "deleteRoleConsequence": "התפקיד יוסר מהארגון הזה.",
+    "colDescription": "תיאור"
   }
 }

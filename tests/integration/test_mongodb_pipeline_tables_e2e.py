@@ -291,7 +291,12 @@ def _config(atlas: _Atlas, engine: str) -> dict:
         "cache": {"enabled": False},
         "domains": [{"id": "films", "description": "pipeline tables e2e"}],
         "roles": [
-            {"id": _ANALYST, "capabilities": ["query_development"], "domain_access": ["films"]}
+            {
+                "id": _ANALYST,
+                "description": "Test role.",
+                "capabilities": ["query_development"],
+                "domain_access": ["films"],
+            }
         ],
         "sources": [
             # REQ-1985: the source is given by a connection string, with no port of its own.

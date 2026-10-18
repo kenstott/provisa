@@ -97,9 +97,9 @@ async def _execute_sql(  # REQ-1003, REQ-1004
         # REQ-2001: every run is audited, as the trigger's principal on the scheduler's surface.
         with audit_identity_scope(f"scheduler:{trigger_id}", "scheduler"):
             from provisa.api.app import state
-            from provisa.auth.pseudo_roles import service_acting_role
+            from provisa.auth.derived_roles import service_acting_role
 
-            # The node's own work: the trigger's role with the node's region pseudo-role.
+            # The node's own work: the trigger's role with the node's region derived role.
             role = service_acting_role(state, role)
             if call is not None:
                 from provisa.pgwire.function_call import maybe_invoke_registered_function
