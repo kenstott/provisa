@@ -52,7 +52,7 @@ import threading
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from provisa.core import request_deadline
@@ -133,6 +133,11 @@ class AuditRecord:
     # (federation/replica_hot.py). No store = a caller that counts nothing (a denial).
     hot_counts: Any = None  # Any: replica_hot.HotCounts
     hot_scope: str = ""
+    # REQ-2077: the org's model store holding the user's role grants, and the roles a served
+    # statement depended on (auth.role_grants.used_roles), resolved on the writer's thread. None:
+    # a record that marks no grant used.
+    usage_db: Any = None  # Any: the org's model store Database handle
+    used_roles: "Callable[[], tuple[str, ...]] | None" = None
 
     def row(self, model_commit: str | None) -> dict[str, Any]:
         """The ``query_audit_log`` row: query text encrypted (REQ-689), its plaintext hash kept.
@@ -212,6 +217,12 @@ async def _deployed_commit(pool: Any, org_id: str, env: str, stamp: int) -> str 
     return row["deployed_sha"]
 
 
+async def _mark_used(db: Any, user_id: str, role_ids: list[str]) -> None:
+    from provisa.auth.role_grants import mark_used
+
+    await mark_used(db, user_id, role_ids)
+
+
 async def _meter(pool: Any, org_id: str) -> None:
     from provisa.core.commerce import meter_op
 
@@ -246,6 +257,7 @@ class AuditWriter:
         meter: Callable[[Any, str], Awaitable[None]] = _meter,
         deployed_commit: Callable[[Any, str, str, int], Awaitable[str | None]] = _deployed_commit,
         count: "Callable[[list[AuditRecord]], None]" = _count,
+        mark_used: "Callable[[Any, str, list[str]], Awaitable[None]]" = _mark_used,
     ) -> None:
         self._queue: queue.Queue[AuditRecord] = queue.Queue(maxsize=capacity)
         self._batch_size = batch_size
@@ -261,6 +273,11 @@ class AuditWriter:
         # Taken off the queue, not yet landed: rows whose insert failed, meters whose call failed.
         self._held_rows: list[AuditRecord] = []
         self._held_meters: list[tuple[Any, str]] = []
+        # REQ-2077: grants a landed statement used, not yet recorded as used today, by
+        # (store, user, role); and the day each was last recorded, so a grant is written once a day.
+        self._held_usage: dict[tuple[int, str, str], tuple[Any, str, str]] = {}
+        self._used_on: dict[tuple[int, str, str], date] = {}
+        self._mark_used = mark_used
         # Progress, for flush(): records accepted and records fully written.
         self._progress = threading.Condition()
         self._accepted = 0
@@ -409,7 +426,10 @@ class AuditWriter:
             landed = {id(rec) for rec in group}
             self._held_rows = [rec for rec in self._held_rows if id(rec) not in landed]
             self._count_landed(group)
+            self._hold_usage(group)
             self._held_meters.extend((rec.meter_pool, rec.meter_org) for rec in group)
+        # Before the batch settles, so a flush covers it.
+        await self._record_usage()
         todo, self._held_meters = self._held_meters, []
         settled = 0
         for i, (pool, org_id) in enumerate(todo):
@@ -427,7 +447,37 @@ class AuditWriter:
                     raise
             settled += 1
         self._settle(settled)
-        return not self._held_rows and not self._held_meters
+        return not self._held_rows and not self._held_meters and not self._held_usage
+
+    def _hold_usage(self, group: list[AuditRecord]) -> None:
+        """The grants each served statement of a landed batch used, not yet recorded today."""
+        today = datetime.now(timezone.utc).date()
+        for rec in group:
+            if rec.used_roles is None or rec.usage_db is None or rec.status_code >= 400:
+                continue
+            for role_id in rec.used_roles():
+                key = (id(rec.usage_db), rec.user_id, role_id)
+                if self._used_on.get(key) != today:
+                    self._held_usage[key] = (rec.usage_db, rec.user_id, role_id)
+
+    async def _record_usage(self) -> None:
+        """Record the held grants as used today, one call per (store, user); a failed call is
+        held and tried again with the next batch."""
+        today = datetime.now(timezone.utc).date()
+        by_user: dict[tuple[int, str], list[tuple[int, str, str]]] = {}
+        for key in self._held_usage:
+            by_user.setdefault(key[:2], []).append(key)
+        for keys in by_user.values():
+            db, user_id, _ = self._held_usage[keys[0]]
+            try:
+                await self._mark_used(db, user_id, [self._held_usage[k][2] for k in keys])
+            except Exception as exc:
+                self.last_error = f"role grant use not recorded: {type(exc).__name__}: {exc}"
+                log.exception("role grant use for %s not recorded: held and retried", user_id)
+                continue
+            for k in keys:
+                del self._held_usage[k]
+                self._used_on[k] = today
 
     async def _model_commit(self, rec: AuditRecord) -> str | None:
         """The commit ``rec``'s model equals, when proven. A deployment without a control plane,
@@ -466,7 +516,7 @@ class AuditWriter:
         try:
             while not self._stopping.is_set():
                 batch = self._take()
-                if batch or self._held_rows or self._held_meters:
+                if batch or self._held_rows or self._held_meters or self._held_usage:
                     if not await self._write(batch):
                         self._stopping.wait(self._retry_s)
                 # A suspension point per pass, so a cancel of this thread's task is delivered here.
@@ -495,6 +545,11 @@ class AuditWriter:
                 lost,
                 len(self._held_rows),
                 len(self._held_meters),
+            )
+        if self._held_usage:
+            log.error(
+                "audit writer shut down with %d role grant use(s) unrecorded",
+                len(self._held_usage),
             )
 
     def close(self, timeout: float) -> int:

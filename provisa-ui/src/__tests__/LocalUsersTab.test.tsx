@@ -13,7 +13,8 @@ import userEvent from "@testing-library/user-event";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
 import i18n from "../i18n";
 import { LocalUsersTab } from "../components/admin/LocalUsersTab";
-import type { LocalUser } from "../api/admin";
+import type { LocalUser, UserAssignment } from "../api/admin";
+import { untilEndOf } from "../lib/grantUntil";
 import { LIST_COLUMN_CAP_PX } from "../components/list/listCellLimits";
 
 const t = i18n.getFixedT("en");
@@ -21,6 +22,8 @@ const t = i18n.getFixedT("en");
 const createSpy = vi.fn(async () => ({ id: "u2" }));
 const deleteSpy = vi.fn(async (): Promise<"org" | "account"> => "org");
 let mockUsers: LocalUser[] = [];
+let mockAssignments: UserAssignment[] = [];
+const addSpy = vi.fn(async (..._a: unknown[]) => undefined);
 // Whether the caller holds the cross-org right: it deletes accounts; an org administrator
 // removes a person from their org.
 let holdsCrossOrg = false;
@@ -33,8 +36,8 @@ vi.mock("../api/admin", () => ({
   fetchLocalUsers: () => Promise.resolve(mockUsers),
   createLocalUser: (...a: unknown[]) => createSpy(...(a as [])),
   deleteLocalUser: (...a: unknown[]) => deleteSpy(...(a as [])),
-  fetchUserAssignments: () => Promise.resolve([]),
-  addUserAssignment: vi.fn(async () => undefined),
+  fetchUserAssignments: () => Promise.resolve(mockAssignments),
+  addUserAssignment: (...a: unknown[]) => addSpy(...a),
   removeUserAssignment: vi.fn(async () => undefined),
 }));
 
@@ -63,7 +66,61 @@ describe("LocalUsersTab", () => {
     deleteSpy.mockResolvedValue("org");
     showSpy.mockClear();
     mockUsers = [];
+    mockAssignments = [];
+    addSpy.mockClear();
     holdsCrossOrg = false;
+  });
+
+  // REQ-2077: a grant's end and its last use are on the list; a grant can be given until a day.
+  it("lists each grant with when it ends and when it was last used", async () => {
+    mockUsers = [makeUser()];
+    mockAssignments = [
+      {
+        id: 1,
+        role_id: "analyst",
+        domain_id: "sales",
+        created_at: "2026-10-01T00:00:00Z",
+        expires_at: "2026-11-30T23:59:59Z",
+        last_used_at: "2026-10-17T09:00:00Z",
+      },
+      {
+        id: 2,
+        role_id: "steward",
+        domain_id: "*",
+        created_at: "2026-10-01T00:00:00Z",
+        expires_at: null,
+        last_used_at: null,
+      },
+    ];
+    render(<LocalUsersTab allRoles={["analyst"]} allDomains={["sales"]} />);
+    fireEvent.click(await screen.findByTestId("expand-user-alice"));
+    const timed = await screen.findByTestId("assignment-analyst-sales");
+    const day = (iso: string) => new Date(iso).toLocaleDateString("en");
+    expect(timed).toHaveTextContent(day("2026-11-30T23:59:59Z"));
+    expect(timed).toHaveTextContent(day("2026-10-17T09:00:00Z"));
+    const open = screen.getByTestId("assignment-steward-*");
+    expect(open).toHaveTextContent(t("localUsers.noExpiry"));
+    expect(open).toHaveTextContent(t("localUsers.neverUsed"));
+  });
+
+  it("gives a grant until the close of the day picked", async () => {
+    mockUsers = [makeUser()];
+    render(<LocalUsersTab allRoles={["analyst"]} allDomains={["sales"]} />);
+    fireEvent.click(await screen.findByTestId("expand-user-alice"));
+    const until = await screen.findByTestId("assignment-until");
+    const next = new Date();
+    next.setDate(next.getDate() + 10);
+    const picked = [
+      next.getFullYear(),
+      String(next.getMonth() + 1).padStart(2, "0"),
+      String(next.getDate()).padStart(2, "0"),
+    ].join("-");
+    await userEvent.type(until, picked);
+    fireEvent.blur(until);
+    fireEvent.click(screen.getByRole("button", { name: t("localUsers.add") }));
+    await waitFor(() =>
+      expect(addSpy).toHaveBeenCalledWith("u1", "analyst", "*", untilEndOf(picked)),
+    );
   });
 
   it("renders the empty state when there are no users", async () => {

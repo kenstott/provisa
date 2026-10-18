@@ -606,6 +606,19 @@ DECLARED: list[Setting] = [
         nullable=True,
         secret=True,
     ),
+    # REQ-2077: how long before a role grant expires, or is removed for lack of use, its holder
+    # and the org's admins are told.
+    Setting(
+        key="auth.role_grant_notice_days",
+        card="security",
+        type="int",
+        effect="live",  # read at each sweep
+        req="REQ-2077",
+        env="PROVISA_GRANT_NOTICE_DAYS",
+        default=7,
+        min=1,
+        unit="days",
+    ),
     # --- Network: hostname, listeners, TLS -------------------------------------------------------
     # Ports and TLS files are guarded: a wrong one can leave the operator unable to reach the
     # deployment. 0 turns an optional listener off.

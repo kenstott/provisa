@@ -471,6 +471,8 @@ roles = Table(
     # every runtime build, which silently handed the subtracted rights back.
     Column("defined_from", Text),
     Column("max_rows", Integer),  # REQ-005: the role's result-size ceiling; NULL = none of its own
+    # A grant of this role unused for this many days is removed (auth.role_grants); NULL = never.
+    Column("inactivity_days", Integer),
     Column("relationship_guard", Boolean, nullable=False, server_default=true()),  # REQ-1919
     Column("org_id", Text),  # cross-model ref -> admin.orgs
     Column("tenant_id", Uuid),
@@ -1284,6 +1286,12 @@ user_role_assignments = Table(
     Column("role_id", Text, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False),
     Column("domain_id", Text, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # A time-limited grant, its last use and the notices sent before it goes (auth.role_grants).
+    # See the matching block in schema.sql.
+    Column("expires_at", DateTime(timezone=True)),
+    Column("last_used_at", DateTime(timezone=True)),
+    Column("expiry_notified_at", DateTime(timezone=True)),
+    Column("inactive_notified_at", DateTime(timezone=True)),
     UniqueConstraint("user_id", "role_id", "domain_id"),
 )
 

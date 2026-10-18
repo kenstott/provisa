@@ -12,7 +12,6 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
-  Badge,
   Button,
   Collapse,
   Group,
@@ -26,6 +25,7 @@ import {
   PasswordInput,
   Title,
 } from "@mantine/core";
+import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { ChevronDown, ChevronRight, Plus, Trash2, X } from "lucide-react";
 import {
@@ -44,6 +44,7 @@ import { LIST_COLUMN_CAP_PX } from "../list/listCellLimits";
 import { Tip } from "../Tip";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
+import { tomorrow, untilEndOf } from "../../lib/grantUntil";
 
 const PAGE_SIZE = 50;
 
@@ -101,7 +102,7 @@ interface LocalUsersTabProps {
 }
 
 export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [localUsers, setLocalUsers] = useState<LocalUser[]>([]);
   const [creating, setCreating] = useState(false);
   const [newUsername, setNewUsername] = useState("");
@@ -112,6 +113,9 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
   const [userAssignments, setUserAssignments] = useState<Record<string, UserAssignment[]>>({});
   const [assignRole, setAssignRole] = useState<string | null>(null);
   const [assignDomain, setAssignDomain] = useState<string>("*");
+  const [assignUntil, setAssignUntil] = useState<string | null>(null);
+  const day = (value: string | null) =>
+    value ? new Date(value).toLocaleDateString(i18n.language) : t("localUsers.none");
   const [userPage, setUserPage] = useState(1);
 
   useEffect(() => {
@@ -197,6 +201,7 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
     setExpandedUserId(userId);
     setAssignRole(allRoles[0] ?? null);
     setAssignDomain("*");
+    setAssignUntil(null);
     if (!userAssignments[userId]) {
       const rows = await fetchUserAssignments(userId);
       setUserAssignments((prev) => ({ ...prev, [userId]: rows }));
@@ -206,7 +211,13 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
   const handleAddAssignment = async (userId: string) => {
     if (!assignRole) return;
     try {
-      await addUserAssignment(userId, assignRole, assignDomain || "*");
+      await addUserAssignment(
+        userId,
+        assignRole,
+        assignDomain || "*",
+        assignUntil ? untilEndOf(assignUntil) : null,
+      );
+      setAssignUntil(null);
       const rows = await fetchUserAssignments(userId);
       setUserAssignments((prev) => ({ ...prev, [userId]: rows }));
     } catch (e: unknown) {
@@ -342,35 +353,54 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
                     <Text fw={600} fz="sm">
                       {t("localUsers.assignmentsHeading")}
                     </Text>
-                    <Group gap="xs">
-                      {(userAssignments[u.id] ?? []).length === 0 && (
-                        <Text c="dimmed" fz="sm">
-                          {t("localUsers.noAssignments")}
-                        </Text>
-                      )}
-                      {(userAssignments[u.id] ?? []).map((a) => (
-                        <Badge
-                          key={a.id}
-                          variant="light"
-                          rightSection={
-                            <ActionIcon
-                              variant="transparent"
-                              size="xs"
-                              color="red"
-                              aria-label={t("localUsers.removeAssignment", {
-                                role: a.role_id,
-                                domain: a.domain_id,
-                              })}
-                              onClick={() => handleRemoveAssignment(u.id, a.id)}
+                    {(userAssignments[u.id] ?? []).length === 0 ? (
+                      <Text c="dimmed" fz="sm">
+                        {t("localUsers.noAssignments")}
+                      </Text>
+                    ) : (
+                      <Table withRowBorders={false} verticalSpacing={2} fz="sm" w="auto">
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>{t("localUsers.roleLabel")}</Table.Th>
+                            <Table.Th>{t("localUsers.domainLabel")}</Table.Th>
+                            <Table.Th>{t("localUsers.colUntil")}</Table.Th>
+                            <Table.Th>{t("localUsers.colLastUsed")}</Table.Th>
+                            <Table.Th />
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {(userAssignments[u.id] ?? []).map((a) => (
+                            <Table.Tr
+                              key={a.id}
+                              data-testid={`assignment-${a.role_id}-${a.domain_id}`}
                             >
-                              <X size={12} />
-                            </ActionIcon>
-                          }
-                        >
-                          {a.role_id}:{a.domain_id}
-                        </Badge>
-                      ))}
-                    </Group>
+                              <Table.Td ff="monospace">{a.role_id}</Table.Td>
+                              <Table.Td ff="monospace">{a.domain_id}</Table.Td>
+                              <Table.Td>
+                                {a.expires_at ? day(a.expires_at) : t("localUsers.noExpiry")}
+                              </Table.Td>
+                              <Table.Td>
+                                {a.last_used_at ? day(a.last_used_at) : t("localUsers.neverUsed")}
+                              </Table.Td>
+                              <Table.Td>
+                                <ActionIcon
+                                  variant="subtle"
+                                  size="sm"
+                                  color="red"
+                                  aria-label={t("localUsers.removeAssignment", {
+                                    role: a.role_id,
+                                    domain: a.domain_id,
+                                  })}
+                                  onClick={() => handleRemoveAssignment(u.id, a.id)}
+                                >
+                                  <X size={12} />
+                                </ActionIcon>
+                              </Table.Td>
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+                    )}
                     <Group gap="xs" align="flex-end">
                       <Select
                         label={t("localUsers.roleLabel")}
@@ -387,6 +417,18 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
                         value={assignDomain}
                         onChange={(v) => setAssignDomain(v ?? "*")}
                         allowDeselect={false}
+                      />
+                      <DateInput
+                        label={t("localUsers.untilLabel")}
+                        placeholder={t("localUsers.untilPlaceholder")}
+                        size="xs"
+                        valueFormat="YYYY-MM-DD"
+                        clearable
+                        minDate={tomorrow()}
+                        value={assignUntil}
+                        onChange={setAssignUntil}
+                        popoverProps={{ withinPortal: true }}
+                        data-testid="assignment-until"
                       />
                       <Button
                         size="xs"

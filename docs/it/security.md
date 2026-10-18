@@ -105,6 +105,14 @@ Tre tipi di ruolo lavorano insieme nel modello di accesso di Provisa. La pagina 
 
 Un ruolo concesso viene assegnato direttamente a un utente. Detiene diritti: capacità, accesso ai domini, voci di mascheramento, filtri di riga. L'ereditarietà (`parent_role_id`) ripiega all'avvio i diritti di un antenato nel figlio. I diritti si sommano soltanto; non c'è sottrazione. Per restringere un lettore, concedete a un composto che nomini sia il ruolo sia una condizione, oppure mettete una voce di maschera prima di quella permissiva. (REQ-215, REQ-1677)
 
+### Assegnazioni in scadenza e inutilizzate {: #expiring-and-unused-grants }
+
+Un'assegnazione che Provisa detiene può terminare. Un'assegnazione concessa con una scadenza non è più detenuta da quell'istante, a ogni richiesta. Un ruolo può indicare `inactivity_days`: un'assegnazione di quel ruolo da cui nessuna richiesta è dipesa per più tempo, contato dal più recente tra l'ultimo uso e la creazione, viene rimossa. I ruoli che provengono dai claim o dalle mappature dei ruoli di un provider di identità sono limitati nel tempo dal provider; impostatene lì la scadenza. I ruoli derivati e i meta-ruoli non scadono mai. (REQ-2077)
+
+Una richiesta è dipesa da un ruolo quando quel ruolo l'ha servita da solo o, quando la richiesta agisce come più ruoli, quando al ruolo è concessa una tabella che l'istruzione ha letto. Agire come «Tutti» non conta come usato ogni ruolo detenuto. L'ultimo uso di un'assegnazione è registrato al massimo una volta al giorno.
+
+Ogni 15 minuti la scansione di ogni organizzazione elimina le assegnazioni scadute e inutilizzate e registra ciascuna nel registro amministrativo come `role.expired` o `role.removed_inactive`. Dove la posta in uscita è configurata, anche in un deployment con una sola organizzazione, il titolare e gli amministratori dell'organizzazione ricevono un'email `auth.role_grant_notice_days` giorni (7 di default) prima che un'assegnazione termini, e gli amministratori ne ricevono una quando viene rimossa; dove la posta non è configurata, la voce del registro fa da traccia. Questi avvisi sono inviati qualunque sia la preferenza email dell'utente.
+
 ### Ruoli derivati {: #derived-roles }
 
 Un ruolo derivato proviene dagli attributi di un utente. L'organizzazione dichiara quali attributi diventano ruoli (`derived_roles`), ciascuno con una descrizione. Per ogni attributo dichiarato `a` il cui valore `v` è fornito dagli attributi dell'utente, l'utente detiene il ruolo padre `a` e il suo ruolo di valore `a__v`: `region = eu` dà `region` e `region__eu`. Senza valore, nessuno dei due ruoli.

@@ -1093,6 +1093,10 @@ async def register_org_triggers(  # REQ-1003, REQ-1266
         from provisa.audit.sla_monitor import register_org_sla
 
         register_org_sla(scheduler, org_id)
+        # REQ-2077: and its role grants, swept of the expired and the unused.
+        from provisa.auth.role_grants import register_org_role_grants
+
+        register_org_role_grants(scheduler, org_id)
     finally:
         reset_current_env(env_token)
         reset_current_org(org_token)

@@ -1954,6 +1954,10 @@ export interface UserAssignment {
   role_id: string;
   domain_id: string;
   created_at: string;
+  /** REQ-2077: a time-limited grant is held until this instant; null is held until removed. */
+  expires_at: string | null;
+  /** REQ-2077: the last day a request depended on the grant; null when never used. */
+  last_used_at: string | null;
 }
 
 export async function fetchUserAssignments(userId: string): Promise<UserAssignment[]> {
@@ -1966,11 +1970,12 @@ export async function addUserAssignment(
   userId: string,
   roleId: string,
   domainId: string,
+  expiresAt: string | null = null,
 ): Promise<UserAssignment> {
   const res = await fetch(`${API_BASE}/admin/users/${userId}/assignments`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role_id: roleId, domain_id: domainId }),
+    body: JSON.stringify({ role_id: roleId, domain_id: domainId, expires_at: expiresAt }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));

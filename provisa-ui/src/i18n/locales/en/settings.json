@@ -227,6 +227,10 @@
           "label": "Lockout duration",
           "help": "How long a locked-out account is refused. Guarded because shortening it weakens the brake on password guessing."
         }
+      },
+      "role_grant_notice_days": {
+        "label": "Notice before a role grant ends",
+        "help": "How many days before a role grant expires, or is removed for going unused, its holder and the organization's administrators are emailed."
       }
     },
     "server": {

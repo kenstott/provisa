@@ -6974,5 +6974,13 @@
   "he/serverErrors.json::serverErrors.derived_roles.not_found": "No derived role from {{name}}",
   "he/serverErrors.json::serverErrors.roles.description_missing": "Role '{{role}}' needs a description of what it is for",
   "he/serverErrors.json::serverErrors.schema.rls_rule_description_missing": "A row rule needs a description of what it is for",
-  "he/serverErrors.json::serverErrors.schema.role_description_missing": "Role '{{role}}' needs a description of what it is for"
+  "he/serverErrors.json::serverErrors.schema.role_description_missing": "Role '{{role}}' needs a description of what it is for",
+  "he.json::localUsers.untilLabel": "Until",
+  "he.json::localUsers.untilPlaceholder": "No end date",
+  "he.json::localUsers.colUntil": "Until",
+  "he.json::localUsers.colLastUsed": "Last used",
+  "he.json::localUsers.noExpiry": "No end date",
+  "he.json::localUsers.neverUsed": "Never",
+  "he/settings.json::settings.auth.role_grant_notice_days.label": "Notice before a role grant ends",
+  "he/settings.json::settings.auth.role_grant_notice_days.help": "How many days before a role grant expires, or is removed for going unused, its holder and the organization's administrators are emailed."
 }

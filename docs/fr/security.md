@@ -105,6 +105,14 @@ Trois sortes de rôles fonctionnent ensemble dans le modèle d'accès de Provisa
 
 Un rôle accordé est attribué directement à un utilisateur. Il détient des droits : capacités, accès aux domaines, entrées de masquage, filtres de lignes. L'héritage (`parent_role_id`) replie au démarrage les droits d'un ancêtre dans l'enfant. Les droits ne font que s'ajouter ; il n'y a pas de soustraction. Pour restreindre un lecteur, accordez à un composé qui nomme à la fois le rôle et une condition, ou placez une entrée de masque avant l'entrée permissive. (REQ-215, REQ-1677)
 
+### Attributions qui expirent et inutilisées {: #expiring-and-unused-grants }
+
+Une attribution que Provisa détient peut prendre fin. Une attribution accordée avec une expiration n'est plus détenue à partir de cet instant, pour chaque requête. Un rôle peut indiquer `inactivity_days` : une attribution de ce rôle dont aucune requête n'a dépendu pendant plus longtemps, compté à partir du plus récent de son dernier usage et de sa création, est supprimée. Les rôles issus des revendications ou des correspondances de rôles d'un fournisseur d'identité sont limités dans le temps par le fournisseur ; fixez-y leur expiration. Les rôles dérivés et les méta-rôles n'expirent jamais. (REQ-2077)
+
+Une requête a dépendu d'un rôle quand ce rôle l'a servie seul ou, quand la requête agit en tant que plusieurs rôles, quand une table que l'instruction a lue est accordée au rôle. Agir en tant que « Tous » ne compte pas chaque rôle détenu comme utilisé. Le dernier usage d'une attribution est enregistré au plus une fois par jour.
+
+Toutes les 15 minutes, le balayage de chaque organisation supprime les attributions expirées et inutilisées et inscrit chacune au journal d'administration comme `role.expired` ou `role.removed_inactive`. Là où le courrier sortant est configuré, y compris dans un déploiement à une seule organisation, le titulaire et les administrateurs de l'organisation reçoivent un e-mail `auth.role_grant_notice_days` jours (7 par défaut) avant la fin d'une attribution, et les administrateurs en reçoivent un quand l'une est supprimée ; sans courrier configuré, l'entrée du journal en fait foi. Ces avis sont envoyés quelle que soit la préférence de courrier de l'utilisateur.
+
 ### Rôles dérivés {: #derived-roles }
 
 Un rôle dérivé provient des attributs d'un utilisateur. L'organisation déclare quels attributs deviennent des rôles (`derived_roles`), chacun avec une description. Pour chaque attribut déclaré `a` dont la valeur `v` est fournie par les attributs de l'utilisateur, l'utilisateur détient le rôle parent `a` et son rôle de valeur `a__v` : `region = eu` donne `region` et `region__eu`. Sans valeur, il ne détient ni l'un ni l'autre.

@@ -248,6 +248,7 @@ def build_audit_record(
     from datetime import datetime, timezone
 
     from provisa.audit.writer import AuditRecord
+    from provisa.auth.role_grants import used_roles_of
     from provisa.core import process_region
     from provisa.core.environments import PROD
     from provisa.core.request_context import active_env, current_env, require_current_org
@@ -302,6 +303,9 @@ def build_audit_record(
         time_travel=time_travel,
         # The model's tables as this statement ran under them: the names its row records.
         tables=state.tables,
+        # REQ-2077: the role grants a served statement depended on are marked used.
+        usage_db=state.model_db,
+        used_roles=used_roles_of(pending.role_id, pending.table_ids, state),
     )
 
 

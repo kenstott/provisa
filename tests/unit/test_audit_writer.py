@@ -478,6 +478,7 @@ def test_write_audit_lands_one_row_in_the_tenant_database(
     counts = HotCounts(None)
     state = SimpleNamespace(
         record_db=record_db,
+        model_db=record_db,  # REQ-2077: the org's grants, marked used
         org_id=org,
         admin_db=None,
         hot_counts=counts,
@@ -520,6 +521,7 @@ def test_a_logged_query_names_its_tables_as_they_were_when_it_ran(
     bind_org(org)
     state = SimpleNamespace(
         record_db=record_db,
+        model_db=record_db,  # REQ-2077: the org's grants, marked used
         org_id=org,
         admin_db=None,
         hot_counts=None,
@@ -635,3 +637,38 @@ def test_start_replaces_a_process_writer_whose_thread_has_ended():
     second = writer_mod.start_audit_writer()
     assert second is not first and second.running()
     assert writer_mod.audit_writer() is second
+
+
+def test_the_role_grants_a_served_statement_used_are_recorded_once_a_day(store):  # REQ-2077
+    import dataclasses
+
+    marked: list[tuple[object, str, list[str]]] = []
+
+    async def mark_used(db, user_id, role_ids):
+        marked.append((db, user_id, sorted(role_ids)))
+
+    usage_db = object()
+    w = AuditWriter(
+        capacity=100,
+        batch_size=100,
+        interval_s=0.05,
+        retry_s=0.05,
+        insert=store.insert,
+        mark_used=mark_used,
+    ).start()
+    try:
+
+        def used(n: int, roles: tuple[str, ...], status: int = 200) -> AuditRecord:
+            return dataclasses.replace(
+                _record(n, status_code=status), usage_db=usage_db, used_roles=lambda: roles
+            )
+
+        w.enqueue(used(1, ("analyst", "auditor")))
+        w.enqueue(used(2, ("analyst",)))
+        w.enqueue(used(3, ("steward",), status=403))  # refused: it used nothing
+        assert w.flush(2.0)
+        w.enqueue(used(4, ("analyst", "auditor")))  # already recorded today
+        assert w.flush(2.0)
+    finally:
+        w.close(5.0)
+    assert marked == [(usage_db, "alice", ["analyst", "auditor"])]

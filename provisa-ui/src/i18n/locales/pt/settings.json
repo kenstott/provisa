@@ -227,6 +227,10 @@
           "label": "Duração do bloqueio",
           "help": "Por quanto tempo uma conta bloqueada é recusada. Pede confirmação antes de salvar porque reduzir o valor enfraquece o freio contra tentativas de adivinhar senhas."
         }
+      },
+      "role_grant_notice_days": {
+        "label": "Aviso antes do fim de uma atribuição de função",
+        "help": "Quantos dias antes de uma atribuição de função expirar, ou ser removida por falta de uso, o titular e os administradores da organização recebem um e-mail."
       }
     },
     "server": {

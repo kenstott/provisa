@@ -62,6 +62,7 @@ def _state():
         org_id="acme",
         admin_db=None,
         hot_counts=None,  # REQ-826: no Hot-count store; counting has its own tests
+        model_db=None,  # REQ-2077: no model store, so no role grant is marked used
         federation_engine=SimpleNamespace(dialect="duckdb"),
         model_stamp=1,
         tables=[
