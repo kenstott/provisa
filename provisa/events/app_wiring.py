@@ -28,7 +28,8 @@ everything else are real.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import contextlib
+from collections.abc import Callable, Iterator
 from typing import Any
 
 from provisa.core.runtime_gone import RuntimeNotBuilt
@@ -134,6 +135,33 @@ def _build_subscribers_of(
     return subscribers_of
 
 
+def wired_for() -> tuple[str, str]:
+    """The org and environment a wiring is for: those bound while it runs (REQ-1266)."""
+    from provisa.core.request_context import active_env, require_current_org
+
+    return require_current_org(), active_env()
+
+
+@contextlib.contextmanager
+def bound_to(wiring: tuple[str, str]) -> Iterator[None]:
+    """The org and environment ``wiring`` was built for, bound for one read or write of theirs:
+    a read of a source -- its address and credential -- or a trigger of a table resolves the org
+    bound when it runs, and a node's work runs on whichever job fires it (REQ-1266)."""
+    from provisa.core.request_context import (
+        reset_current_env,
+        reset_current_org,
+        set_current_env,
+        set_current_org,
+    )
+
+    org_token, env_token = set_current_org(wiring[0]), set_current_env(wiring[1])
+    try:
+        yield
+    finally:
+        reset_current_env(env_token)
+        reset_current_org(org_token)
+
+
 def make_source_probe(state: Any, loaders: dict[str, Any], sources: list[Any]) -> Any:
     """``(source, table) -> probe | None``: the token transport a source's own adapter gives for
     a table (``probes.loader_probe``), run with the vault of the org the sources are registered
@@ -141,14 +169,17 @@ def make_source_probe(state: Any, loaders: dict[str, Any], sources: list[Any]) -
     from provisa.events.probes import loader_probe
     from provisa.federation.source_vault import org_vault
 
+    wiring = wired_for()
+
     def source_probe(src: Any, tbl: Any) -> Any:
         transport = loader_probe(loaders, src, tbl)
         if transport is None:
             return None
 
         async def probe() -> str | None:
-            async with org_vault(state, sources):
-                return await transport()
+            with bound_to(wiring):
+                async with org_vault(state, sources):
+                    return await transport()
 
         return probe
 
@@ -652,10 +683,13 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             engine, adapter_loaders=_adapter_loaders, keyed_adapter_loaders=_keyed_adapter_loaders
         )
 
+        wiring = wired_for()
+
         def source_fetch(src: Any, tbl: Any) -> Any:
             async def _fetch(_pending: list[dict]) -> list[dict]:
                 try:
-                    return await row_loader.load(src, tbl)
+                    with bound_to(wiring):  # the source as its own org registered it
+                        return await row_loader.load(src, tbl)
                 except UnsupportedSourceFetch:
                     # API/push source with no engine-scannable table — its adapter fetch is a
                     # per-adapter follow-up. Land nothing (logged once) rather than fail the node.
@@ -780,7 +814,10 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # engine terminal — the same read path as the row loader, returning the single scalar.
         def probe_scalar(_src: Any, _tbl: Any) -> Any:
             async def _scalar(sql: str) -> Any:
-                result = await engine.execute_engine(sql, authorization=system_auth("event signal"))
+                with bound_to(wiring):
+                    result = await engine.execute_engine(
+                        sql, authorization=system_auth("event signal")
+                    )
                 return result.rows[0][0] if result.rows else None
 
             return _scalar
@@ -887,12 +924,15 @@ def node_event_triggers(state: Any) -> Any:
     table. A materialized view's node is no registered table, and nothing is on it."""
     from provisa.scheduler.table_triggers import table_event
 
+    wiring = wired_for()
+
     def fired(node: str, event: str, payload: dict) -> None:
         if "/" not in node:
             return  # a materialized view's node
         source_id, qualified = node.split("/", 1)
         schema_name, table_name = qualified.split(".", 1)
-        table_event(state, (source_id, schema_name, table_name), event, payload)
+        with bound_to(wiring):  # the triggers of the org whose table it is
+            table_event(state, (source_id, schema_name, table_name), event, payload)
 
     return fired
 
@@ -977,10 +1017,13 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
         )
         _warned: set[str] = set()
 
+        wiring = wired_for()
+
         def source_fetch(src: Any, tbl: Any) -> Any:
             async def _fetch(_pending: list[dict]) -> list[dict]:
                 try:
-                    return await row_loader.load(src, tbl)
+                    with bound_to(wiring):  # the source as its own org registered it
+                        return await row_loader.load(src, tbl)
                 except UnsupportedSourceFetch:
                     if src.id not in _warned:
                         log.warning(
@@ -995,7 +1038,10 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
 
         def probe_scalar(_src: Any, _tbl: Any) -> Any:
             async def _scalar(sql: str) -> Any:
-                result = await engine.execute_engine(sql, authorization=system_auth("event signal"))
+                with bound_to(wiring):
+                    result = await engine.execute_engine(
+                        sql, authorization=system_auth("event signal")
+                    )
                 return result.rows[0][0] if result.rows else None
 
             return _scalar
