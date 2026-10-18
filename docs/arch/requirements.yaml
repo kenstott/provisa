@@ -84706,3 +84706,22 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   stakeholders:
   - compliance
   - data-engineer
+- id: REQ-2075
+  status: complete
+  since: 2026-10
+  group: 11. Platform, Infrastructure & Delivery
+  category: MCP Authentication
+  feature: mcp-server-identity
+  priority: MUST
+  type: behavioral
+  description: "An MCP agent never acts beyond the roles it was given. Over the local stdio transport (and a loopback HTTP call that carries no bearer), the roles are the set the operator pinned in mcp.role (PROVISA_MCP_ROLE): a tool call that names a role, or a comma-separated set, acts as it only when every named role is within that pin, and is otherwise refused with a PermissionError naming the first role beyond it. A call that names no role acts as the pinned set. A remote call is governed by its bearer token's principal (REQ-1105)."
+  use_case: "An operator runs a local agent pinned to analyst; the agent naming admin in a tool call is refused by name instead of acting as admin."
+  scenario: "Given an MCP server on stdio with PROVISA_MCP_ROLE pinned to analyst\n\nWhen a tool call names the role admin, or the set analyst,admin\n\nThen the call is refused with a PermissionError naming admin\n\nAnd a call naming analyst, or naming no role, acts as analyst"
+  code:
+  - provisa/api/mcp/server.py
+  tests:
+  - tests/unit/test_path_role_is_held.py
+  - tests/unit/test_mcp_glossary_protocol.py
+  stakeholders:
+  - compliance
+  - ops
