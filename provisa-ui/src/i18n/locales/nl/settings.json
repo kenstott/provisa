@@ -227,6 +227,10 @@
           "label": "Duur van vergrendeling",
           "help": "Hoelang een vergrendeld account wordt geweigerd. Met bevestiging omdat een kortere duur de rem op het raden van wachtwoorden verzwakt."
         }
+      },
+      "role_grant_notice_days": {
+        "label": "Bericht voordat een roltoewijzing afloopt",
+        "help": "Hoeveel dagen voordat een roltoewijzing verloopt, of wordt verwijderd omdat ze ongebruikt blijft, de houder en de beheerders van de organisatie een e-mail krijgen."
       }
     },
     "server": {

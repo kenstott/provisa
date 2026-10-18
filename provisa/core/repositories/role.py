@@ -110,6 +110,7 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
             "parent_role_id": role.parent_role_id,  # REQ-1677
             "max_rows": role.max_rows,  # REQ-005, REQ-1919
             "relationship_guard": role.relationship_guard,  # REQ-1919
+            "inactivity_days": role.inactivity_days,  # auth.role_grants
             "org_id": org_id,
         },
         index_elements=["id"],
@@ -123,6 +124,7 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
             "parent_role_id",
             "max_rows",
             "relationship_guard",
+            "inactivity_days",
         ],
     )
 

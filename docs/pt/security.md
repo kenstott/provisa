@@ -105,6 +105,14 @@ Três tipos de função trabalham juntos no modelo de acesso do Provisa. A pági
 
 Uma função concedida é atribuída diretamente a um usuário. Ela tem direitos: capacidades, acesso a domínios, entradas de mascaramento, filtros de linha. A herança (`parent_role_id`) dobra na inicialização os direitos de um ancestral no filho. Direitos só se somam; não há subtração. Para restringir um leitor, conceda a um composto que nomeie tanto a função quanto uma condição, ou coloque uma entrada de máscara antes da permissiva. (REQ-215, REQ-1677)
 
+### Atribuições que expiram e sem uso {: #expiring-and-unused-grants }
+
+Uma atribuição que o Provisa mantém pode terminar. Uma atribuição concedida com expiração deixa de ser mantida a partir desse instante, em cada solicitação. Uma função pode indicar `inactivity_days`: uma atribuição dessa função da qual nenhuma solicitação dependeu por mais tempo, contado a partir do mais recente entre o último uso e a criação, é removida. As funções que vêm das reivindicações ou dos mapeamentos de funções de um provedor de identidade são limitadas no tempo pelo provedor; defina lá a expiração delas. Funções derivadas e meta-funções nunca expiram. (REQ-2077)
+
+Uma solicitação dependeu de uma função quando essa função a atendeu sozinha ou, quando a solicitação atua como várias funções, quando à função é concedida uma tabela que a instrução leu. Atuar como «Todas» não conta como usada cada função mantida. O último uso de uma atribuição é registrado no máximo uma vez por dia.
+
+A cada 15 minutos, a varredura de cada organização exclui as atribuições expiradas e sem uso e registra cada uma no registro administrativo como `role.expired` ou `role.removed_inactive`. Onde o e-mail de saída está configurado, inclusive numa implantação com uma só organização, o titular e os administradores da organização recebem um e-mail `auth.role_grant_notice_days` dias (padrão 7) antes de uma atribuição terminar, e os administradores recebem um quando uma é removida; onde não há e-mail configurado, a entrada do registro é o comprovante. Esses avisos são enviados qualquer que seja a preferência de e-mail do usuário.
+
 ### Funções derivadas {: #derived-roles }
 
 Uma função derivada vem dos atributos de um usuário. A organização declara quais atributos viram funções (`derived_roles`), cada um com uma descrição. Para cada atributo declarado `a` cujo valor `v` os atributos do usuário fornecem, o usuário tem a função pai `a` e a sua função de valor `a__v`: `region = eu` dá `region` e `region__eu`. Sem valor, nenhuma das duas.

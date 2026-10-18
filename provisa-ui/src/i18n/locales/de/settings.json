@@ -227,6 +227,10 @@
           "label": "Sperrdauer",
           "help": "Wie lange ein gesperrtes Konto abgewiesen wird. Bestätigungspflichtig, da eine Verkürzung die Bremse gegen Passwort-Raten schwächt."
         }
+      },
+      "role_grant_notice_days": {
+        "label": "Hinweis vor dem Ende einer Rollenzuweisung",
+        "help": "Wie viele Tage vor dem Ablauf einer Rollenzuweisung oder ihrer Entfernung wegen Nichtnutzung der Inhaber und die Administratoren der Organisation per E-Mail benachrichtigt werden."
       }
     },
     "server": {

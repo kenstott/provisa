@@ -77,6 +77,12 @@ export function RoleRead({ role: r }: { role: Role }) {
             value: r.rateLimit?.maxQueryComplexity,
           },
           { label: t("securityPage.maxQueryTimeMs"), value: r.rateLimit?.maxQueryTimeMs },
+          {
+            // REQ-2077: a grant of the role unused this long is removed.
+            label: t("securityPage.inactivityDays"),
+            value: r.inactivityDays ?? t("securityPage.inactivityNever"),
+            testId: `role-inactivity-${r.id}`,
+          },
         ]}
       />
     </div>

@@ -196,6 +196,7 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
             SessionVarType(name=name, value=value)
             for name, value in sorted(row["session_vars"].items())
         ],
+        inactivity_days=row["inactivity_days"],  # REQ-2077
     )
 
 

@@ -25,6 +25,7 @@ export interface RawRole {
   parentRoleId?: string | null;
   residencyValues?: string[] | null; // REQ-1921
   sessionVars?: Role["sessionVars"] | null; // REQ-1682
+  inactivityDays?: number | null; // REQ-2077
 }
 
 /**
@@ -56,5 +57,6 @@ export function normalizeRole(raw: RawRole): Role {
     parentRoleId: raw.parentRoleId,
     residencyValues: raw.residencyValues ?? [],
     sessionVars: raw.sessionVars ?? [],
+    inactivityDays: raw.inactivityDays ?? null,
   };
 }

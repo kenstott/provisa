@@ -103,7 +103,7 @@ def build_view_sql(*, root_schema: str, admin_schema: str, org_schemas: dict[str
     if org_schemas:
         holders = " UNION ALL ".join(
             f"SELECT {_quote_literal(org_id)} AS org_id, user_id FROM {schema}.user_role_assignments"
-            f" WHERE role_id = 'org_admin'"
+            f" WHERE role_id = 'org_admin' AND (expires_at IS NULL OR expires_at > now())"
             for org_id, schema in sorted(org_schemas.items())
         )
     else:

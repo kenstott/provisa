@@ -34,6 +34,7 @@ from provisa.core.schema_admin import (
     orgs,
     user_org_memberships,
 )
+from provisa.auth.role_grants import in_force as grant_in_force
 from provisa.core.schema_org import admin_audit_log, roles, user_role_assignments
 from provisa.security.inheritance import effective_capabilities
 from provisa.security.rights import DEPLOYMENT_GRANTER, ORG_ADMIN_ROLE, check_role_grant
@@ -333,7 +334,7 @@ async def org_admin_user_ids(model_db: "Database") -> set[str]:  # REQ-1302
     async with model_db.acquire() as conn:
         result = await conn.execute_core(
             select(user_role_assignments.c.user_id).where(
-                user_role_assignments.c.role_id == ORG_ADMIN_ROLE
+                user_role_assignments.c.role_id == ORG_ADMIN_ROLE, grant_in_force()
             )
         )
         return {r[0] for r in result.fetchall()}
@@ -551,7 +552,7 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
     async with platform_db.acquire() as conn:
         result = await conn.execute_core(
             select(user_role_assignments.c.user_id).where(
-                user_role_assignments.c.role_id == PLATFORM_ADMIN_ROLE
+                user_role_assignments.c.role_id == PLATFORM_ADMIN_ROLE, grant_in_force()
             )
         )
         platform_admins = {r[0] for r in result.fetchall()}

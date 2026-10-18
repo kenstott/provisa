@@ -105,6 +105,14 @@ Drei Arten von Rollen wirken im Zugriffsmodell von Provisa zusammen. Die Seite R
 
 Eine gewährte Rolle wird einem Benutzer direkt zugewiesen. Sie hält Rechte: Capabilities, Domänenzugriff, Maskierungseinträge, Zeilenfilter. Die Vererbung (`parent_role_id`) faltet beim Start die Rechte eines Vorfahren in das Kind. Rechte kommen nur hinzu; es gibt keine Subtraktion. Um einen Leser einzuschränken, gewähren Sie einem Kompositum, das sowohl die Rolle als auch eine Bedingung nennt, oder setzen Sie einen Maskeneintrag vor den freizügigen. (REQ-215, REQ-1677)
 
+### Ablaufende und ungenutzte Zuweisungen {: #expiring-and-unused-grants }
+
+Eine Zuweisung, die Provisa hält, kann enden. Eine Zuweisung mit Ablaufzeitpunkt wird ab diesem Zeitpunkt bei keiner Anfrage mehr gehalten. Eine Rolle kann `inactivity_days` angeben: Eine Zuweisung dieser Rolle, von der länger als so viele Tage keine Anfrage abhing, gezählt ab dem späteren Zeitpunkt aus letzter Nutzung und Erstellung, wird entfernt. Rollen aus den Claims oder Rollenzuordnungen eines Identitätsanbieters befristet der Anbieter; legen Sie ihren Ablauf dort fest. Abgeleitete Rollen und Meta-Rollen laufen nie ab. (REQ-2077)
+
+Eine Anfrage hing von einer Rolle ab, wenn diese Rolle sie allein bedient hat oder, wenn die Anfrage als mehrere Rollen handelt, wenn der Rolle eine Tabelle gewährt ist, die die Anweisung gelesen hat. Das Handeln als „Alle“ zählt nicht jede gehaltene Rolle als genutzt. Die letzte Nutzung einer Zuweisung wird höchstens einmal pro Tag erfasst.
+
+Alle 15 Minuten löscht der Durchlauf jeder Organisation die abgelaufenen und ungenutzten Zuweisungen und verzeichnet jede im Verwaltungsprotokoll als `role.expired` oder `role.removed_inactive`. Wo ausgehende E-Mail eingerichtet ist, auch in einer Bereitstellung mit nur einer Organisation, erhalten der Inhaber und die Administratoren der Organisation `auth.role_grant_notice_days` Tage (Standard 7) vor dem Ende einer Zuweisung eine E-Mail, und die Administratoren erhalten eine, wenn eine entfernt wird; ist keine E-Mail eingerichtet, ist der Protokolleintrag der Nachweis. Diese Hinweise werden unabhängig von der E-Mail-Einstellung eines Benutzers versendet.
+
 ### Abgeleitete Rollen {: #derived-roles }
 
 Eine abgeleitete Rolle stammt aus den Attributen eines Benutzers. Die Org deklariert, welche Attribute zu Rollen werden (`derived_roles`), jedes mit einer Beschreibung. Für jedes deklarierte Attribut `a`, dessen Wert `v` die Attribute des Benutzers liefern, hält der Benutzer die Elternrolle `a` und ihre Wertrolle `a__v`: `region = eu` ergibt `region` und `region__eu`. Kein Wert bedeutet keine der beiden Rollen.

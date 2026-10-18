@@ -470,6 +470,8 @@ CREATE TABLE IF NOT EXISTS roles (
     -- every runtime build, which handed the subtracted rights straight back.
     defined_from    TEXT,
     max_rows        INTEGER,  -- REQ-005: the role's result-size ceiling; NULL = none of its own
+    -- A grant of this role unused for this many days is removed (auth.role_grants); NULL = never.
+    inactivity_days INTEGER,
     relationship_guard BOOLEAN NOT NULL DEFAULT TRUE  -- REQ-1919: held so the store owns it
 );
 
@@ -1279,6 +1281,15 @@ CREATE TABLE IF NOT EXISTS user_role_assignments (
     role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
     domain_id   TEXT NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- A time-limited grant: held until this instant, then absent (auth.role_grants).
+    expires_at  TIMESTAMPTZ,
+    -- The last day a request depended on the grant, written at most once a day; with the role's
+    -- inactivity_days it decides when an unused grant is removed.
+    last_used_at TIMESTAMPTZ,
+    -- When the holder and the org's admins were told of the coming expiry, and of the coming
+    -- removal for inactivity (cleared by a new expiry; the second is stale once the grant is used).
+    expiry_notified_at   TIMESTAMPTZ,
+    inactive_notified_at TIMESTAMPTZ,
     UNIQUE (user_id, role_id, domain_id)
 );
 

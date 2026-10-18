@@ -31,6 +31,7 @@ from provisa.core.schema_admin import (
     superadmin_bootstrap,
     user_profiles,
 )
+from provisa.auth.role_grants import in_force as grant_in_force
 from provisa.core.schema_org import user_directory, user_role_assignments
 from provisa.security.rights import (
     ORG_ADMIN_ROLE,
@@ -456,7 +457,11 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 select(
                     user_role_assignments.c.role_id,
                     user_role_assignments.c.domain_id,
-                ).where(user_role_assignments.c.user_id == identity.user_id)
+                ).where(
+                    user_role_assignments.c.user_id == identity.user_id,
+                    # REQ-2077: an expired grant is not held from the instant it expires.
+                    grant_in_force(),
+                )
             )
             rows = [dict(r._mapping) for r in result.fetchall()]
         if rows:

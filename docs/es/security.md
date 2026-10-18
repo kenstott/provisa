@@ -105,6 +105,14 @@ Tres tipos de rol funcionan juntos en el modelo de acceso de Provisa. La página
 
 Un rol concedido se asigna directamente a un usuario. Tiene derechos: capacidades, acceso por dominio, entradas de enmascaramiento, filtros de filas. La herencia (`parent_role_id`) pliega al arrancar los derechos de un antepasado en el hijo. Los derechos solo suman; no hay resta. Para restringir a un lector, conceda a un compuesto que nombre tanto el rol como una condición, o ponga una entrada de máscara antes de la permisiva. (REQ-215, REQ-1677)
 
+### Asignaciones que caducan y sin uso {: #expiring-and-unused-grants }
+
+Una asignación que Provisa mantiene puede terminar. Una asignación concedida con caducidad deja de tenerse desde ese instante, en cada solicitud. Un rol puede indicar `inactivity_days`: una asignación de ese rol de la que ninguna solicitud ha dependido durante más tiempo, contado desde el más reciente entre su último uso y su creación, se elimina. Los roles que vienen de las reclamaciones o asignaciones de roles de un proveedor de identidad los limita en el tiempo el proveedor; fije allí su caducidad. Los roles derivados y los meta-roles nunca caducan. (REQ-2077)
+
+Una solicitud dependió de un rol cuando ese rol la atendió por sí solo o, cuando la solicitud actúa como varios roles, cuando al rol se le concede una tabla que la sentencia leyó. Actuar como «Todos» no cuenta como usado cada rol que se tiene. El último uso de una asignación se registra como mucho una vez al día.
+
+Cada 15 minutos, el barrido de cada organización elimina las asignaciones caducadas y sin uso y registra cada una en el registro administrativo como `role.expired` o `role.removed_inactive`. Donde el correo saliente está configurado, también en una implantación de una sola organización, el titular y los administradores de la organización reciben un correo `auth.role_grant_notice_days` días (7 por defecto) antes de que termine una asignación, y los administradores reciben otro cuando se elimina; donde no hay correo configurado, la entrada del registro es la constancia. Estos avisos se envían sea cual sea la preferencia de correo del usuario.
+
 ### Roles derivados {: #derived-roles }
 
 Un rol derivado procede de los atributos de un usuario. La organización declara qué atributos se convierten en roles (`derived_roles`), cada uno con una descripción. Para cada atributo declarado `a` cuyo valor `v` aportan los atributos del usuario, el usuario tiene el rol padre `a` y su rol de valor `a__v`: `region = eu` da `region` y `region__eu`. Sin valor, no tiene ninguno de los dos roles.

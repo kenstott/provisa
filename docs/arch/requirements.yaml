@@ -84798,6 +84798,39 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   - tests/unit/test_mcp_server.py
   - tests/unit/test_pgwire_requirements.py
   - provisa-ui/src/__tests__/SuspendedAccess.test.tsx
+- id: REQ-2077
+  status: complete
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Role Assignments
+  feature: roles-and-capabilities-capabilities
+  priority: MUST
+  type: behavioral
+  description: "A role grant Provisa holds (a user_role_assignments row) may be time-limited, and a role may remove its grants once they go unused. A grant may carry an expiry (expires_at): from that instant it is absent from the user's held roles on every request, however the request arrives, and an expired org_admin or platform_admin grant counts as no administrator. A role may state inactivity_days: a grant of it that no request has depended on for longer than that, counted from the later of the grant's last use and its creation, is removed. A request depended on a role when that role served it as the single acting role, or, acting as several roles (a named set or All), when the role is granted a table the governed statement read; acting as All does not count every held role as used. The grant's last use (last_used_at) is recorded at most once a day per grant, after the statement's audit row lands. A sweep on the scheduler, every 15 minutes per org, deletes the expired grants and the unused ones and records each in the org's administrative trail as role.expired or role.removed_inactive. Wherever mail is configured (mail.provider), a self-hosted single-org deployment included, the holder and the org's administrators are emailed auth.role_grant_notice_days days (an operator setting, default 7) before a grant expires or is removed for going unused, once per coming end (again after a grant is used and falls idle again, or is given a new expiry), and the administrators are emailed when a grant is removed; where no mail is configured the trail entry is the record. Security notices are sent whatever a user's email opt-in says. A grant given again states its expiry anew. Roles from an identity provider's claims or role mappings are the provider's to time-limit, and derived roles and meta-roles never expire. The grant form takes an optional until date (the grant ends at the close of that day), the role form takes remove after N days unused, and the grant list shows each grant's end and last use."
+  use_case: "An org administrator gives a contractor the analyst role until the end of the engagement and sets the contractor role to lapse after 30 days unused; on the last day the grant stops working without anyone remembering to remove it, and a role nobody uses is removed from its holders automatically, with everyone told beforehand."
+  scenario: "Given ada holds analyst until tomorrow and bo holds contractor, a role with inactivity_days 30, last used 31 days ago\n\nWhen the next request after ada's expiry arrives\n\nThen it is served without analyst\n\nAnd the sweep deletes both grants, records role.expired and role.removed_inactive, and emails the org's administrators\n\nAnd seven days before either end, ada and bo and the administrators were emailed"
+  related_reqs:
+  - REQ-042
+  - REQ-1302
+  - REQ-1303
+  - REQ-1330
+  - REQ-1620
+  - REQ-074
+  code:
+  - provisa/auth/role_grants.py
+  - provisa/auth/middleware.py
+  - provisa/audit/pipeline.py
+  - provisa/audit/writer.py
+  - provisa/core/org_membership.py
+  - provisa/api/admin/local_users_router.py
+  - provisa/core/settings_catalog.py
+  - provisa/scheduler/jobs.py
+  - provisa-ui/src/components/admin/LocalUsersTab.tsx
+  tests:
+  - tests/unit/test_role_grants.py
+  - tests/unit/test_audit_writer.py
+  - provisa-ui/src/__tests__/LocalUsersTab.test.tsx
+  notes: "Lead 2026-10-18, maintainer-approved: time-limited grants and inactivity removal apply to Provisa-held assignments only; IdP-claim and role-mapping roles are the IdP's to expire."
   stakeholders:
   - compliance
   - ops

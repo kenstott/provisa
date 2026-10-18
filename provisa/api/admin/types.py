@@ -858,6 +858,8 @@ class RoleType:  # REQ-042
     residency_values: list[str] | None = strawberry.field(default_factory=list)
     # REQ-1682: the role's own constant session values, by name; null as capabilities is.
     session_vars: list[SessionVarType] | None = strawberry.field(default_factory=list)
+    # REQ-2077: a grant of the role unused this many days is removed; null: never, or not shown.
+    inactivity_days: int | None = None
 
 
 @strawberry.type
@@ -1480,6 +1482,8 @@ class RoleInput:  # REQ-042
     residency_values: list[str] = strawberry.field(default_factory=list)
     # REQ-1682: the role's own constant session values; the whole set, as the form holds it.
     session_vars: list[SessionVarInput] = strawberry.field(default_factory=list)
+    # REQ-2077: remove a grant of the role once unused this many days; null: never.
+    inactivity_days: int | None = None
 
 
 @strawberry.input

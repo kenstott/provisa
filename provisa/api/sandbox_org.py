@@ -143,6 +143,7 @@ async def seat_platform_admins(pool) -> int:
     from provisa.api.app import ensure_org_runtime, state
     from provisa.core.request_context import reset_current_org, set_current_org
     from provisa.core.org_membership import JOINED_VIA_ADMIN, grant_org_admin
+    from provisa.auth.role_grants import in_force as grant_in_force
     from provisa.core.schema_org import user_role_assignments
     from provisa.security.rights import PLATFORM_ADMIN_ROLE
 
@@ -168,7 +169,7 @@ async def seat_platform_admins(pool) -> int:
     async with root_db.acquire() as conn:
         result = await conn.execute_core(
             select(user_role_assignments.c.user_id).where(
-                user_role_assignments.c.role_id == PLATFORM_ADMIN_ROLE
+                user_role_assignments.c.role_id == PLATFORM_ADMIN_ROLE, grant_in_force()
             )
         )
         admins = sorted({r[0] for r in result.fetchall()})

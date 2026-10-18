@@ -74,6 +74,8 @@ class _CapturingState:
         # REQ-826: no Hot-count store — these tests are about the audit row; counting has its
         # own (test_replica_hot.py, test_audit_writer.py).
         self.hot_counts = None
+        # REQ-2077: no model store, so no role grant is marked used (test_role_grants.py).
+        self.model_db = None
         # The model's tables, which the row names its table ids by.
         self.tables = [
             {"id": 7, "source_id": "sales-pg", "schema_name": "public", "table_name": "orders"},

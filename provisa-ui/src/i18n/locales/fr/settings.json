@@ -227,6 +227,10 @@
           "label": "Durée du verrouillage",
           "help": "Durée pendant laquelle un compte verrouillé est refusé. Confirmation demandée car la raccourcir affaiblit le frein contre la devinette de mots de passe."
         }
+      },
+      "role_grant_notice_days": {
+        "label": "Préavis avant la fin d'une attribution de rôle",
+        "help": "Combien de jours avant qu'une attribution de rôle expire, ou soit supprimée faute d'usage, son titulaire et les administrateurs de l'organisation sont prévenus par e-mail."
       }
     },
     "server": {

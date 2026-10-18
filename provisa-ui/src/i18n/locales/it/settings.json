@@ -227,6 +227,10 @@
           "label": "Durata del blocco",
           "help": "Per quanto tempo un account bloccato viene rifiutato. Protetta da conferma perché ridurla indebolisce il freno ai tentativi di indovinare la password."
         }
+      },
+      "role_grant_notice_days": {
+        "label": "Preavviso prima della fine di un'assegnazione di ruolo",
+        "help": "Quanti giorni prima che un'assegnazione di ruolo scada, o venga rimossa perché inutilizzata, il titolare e gli amministratori dell'organizzazione ricevono un'email."
       }
     },
     "server": {

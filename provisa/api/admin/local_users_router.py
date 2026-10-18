@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 import bcrypt
@@ -46,6 +47,8 @@ class CreateUserBody(BaseModel):
 class AssignmentBody(BaseModel):
     role_id: str
     domain_id: str
+    # REQ-2077: a time-limited grant is held until this instant; None is held until removed.
+    expires_at: datetime | None = None
 
 
 class UpdateUserBody(BaseModel):
@@ -363,7 +366,14 @@ async def list_assignments(user_id: str, request: Request):
     t = user_role_assignments
     async with pool.acquire() as conn:
         result = await conn.execute_core(
-            select(t.c.id, t.c.role_id, t.c.domain_id, t.c.created_at)
+            select(
+                t.c.id,
+                t.c.role_id,
+                t.c.domain_id,
+                t.c.created_at,
+                t.c.expires_at,  # REQ-2077
+                t.c.last_used_at,
+            )
             .where(t.c.user_id == user_id)
             .order_by(t.c.role_id, t.c.domain_id)
         )
@@ -379,15 +389,22 @@ async def add_assignment(user_id: str, body: AssignmentBody, request: Request): 
     pool = _pool(request)
     t = user_role_assignments
     async with pool.acquire() as conn:
-        # Insert-if-absent (idempotent assignment), then read the row back.
+        # Idempotent assignment, then read the row back. REQ-2077: a grant given again states its
+        # expiry anew, and its holder is told again before the new one.
         await conn.upsert(
             t,
-            {"user_id": user_id, "role_id": body.role_id, "domain_id": body.domain_id},
+            {
+                "user_id": user_id,
+                "role_id": body.role_id,
+                "domain_id": body.domain_id,
+                "expires_at": body.expires_at,
+                "expiry_notified_at": None,
+            },
             index_elements=["user_id", "role_id", "domain_id"],
-            update_columns=[],
+            update_columns=["expires_at", "expiry_notified_at"],
         )
         result = await conn.execute_core(
-            select(t.c.id, t.c.role_id, t.c.domain_id).where(
+            select(t.c.id, t.c.role_id, t.c.domain_id, t.c.expires_at).where(
                 t.c.user_id == user_id,
                 t.c.role_id == body.role_id,
                 t.c.domain_id == body.domain_id,

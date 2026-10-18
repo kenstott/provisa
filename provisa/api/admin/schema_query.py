@@ -25,6 +25,7 @@ import strawberry
 from sqlalchemy import func, or_, select
 from strawberry.types.info import Info as StrawberryInfo
 
+from provisa.auth.role_grants import in_force as grant_in_force
 from provisa.core.schema_org import (
     domains,
     registered_tables,
@@ -720,7 +721,7 @@ class Query:  # REQ-021, REQ-042
                                 isouter=True,
                             )
                         )
-                        .where(user_role_assignments.c.role_id == ref)
+                        .where(user_role_assignments.c.role_id == ref, grant_in_force())
                         .distinct()
                     )
                     for r in _res.fetchall():

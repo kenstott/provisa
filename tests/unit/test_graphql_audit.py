@@ -89,6 +89,8 @@ def audited(monkeypatch):
     harness.state.tenant_db = object()
     harness.state.record_db = harness.state.tenant_db
     harness.state.hot_counts = None  # REQ-826: no Hot-count store; counting has its own tests
+    # REQ-2077: no model store, so no role grant is marked used; marking has its own tests.
+    harness.state.model_db = None
     harness.state.org_id = "acme"
     harness.state.contexts = {"analyst": _CTX}
     # The model's tables, which each row names its table ids by.

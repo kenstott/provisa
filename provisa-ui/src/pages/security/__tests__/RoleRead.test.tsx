@@ -29,6 +29,7 @@ const steward: Role = {
     { name: "desk", value: "7" },
   ],
   rateLimit: { requestsPerSecond: 20, maxQueryComplexity: 50, maxQueryTimeMs: 30000 },
+  inactivityDays: 30, // REQ-2077
 };
 
 function fields(testId: string): [string, string][] {
@@ -62,6 +63,7 @@ describe("a role's read view", () => {
       ["Requests / sec", "20"],
       ["Max query complexity", "50"],
       ["Max query time (ms)", "30000"],
+      ["Remove grants unused for (days)", "30"],
     ]);
     // The grid every detail panel uses, not a bold label run into its value.
     expect(screen.getByTestId("role-read-fields")).toHaveClass("detail-fields");
@@ -92,6 +94,9 @@ describe("a role's read view", () => {
       ["Inherits from", "—"],
       ["Session values", "—"],
     ]);
-    for (const [, value] of fields("role-read-limits")) expect(value).toBe("—");
+    const limits = fields("role-read-limits");
+    for (const [, value] of limits.slice(0, -1)) expect(value).toBe("—");
+    // REQ-2077: a role that removes no grant for going unused says so.
+    expect(limits.at(-1)).toEqual(["Remove grants unused for (days)", "never"]);
   });
 });

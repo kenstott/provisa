@@ -106,6 +106,14 @@ Three kinds of role work together in Provisa's access model. The Roles page list
 
 A granted role is assigned directly to a user. It holds rights: capabilities, domain access, masking entries, row filters. Inheritance (`parent_role_id`) folds an ancestor's rights into the child at startup. Rights only add; there is no subtraction. To restrict a reader, grant to a composite that names both the role and a condition, or place a mask entry before the permissive one. (REQ-215, REQ-1677)
 
+### Expiring and unused grants
+
+A grant Provisa holds can end. A grant given with an expiry is no longer held from that instant, on every request. A role can state `inactivity_days`: a grant of it that no request has depended on for longer than that, counted from the later of its last use and its creation, is removed. Roles that come from an identity provider's claims or role mappings are the provider's to time-limit, so set their expiry there. Derived roles and meta-roles never expire. (REQ-2077)
+
+A request depended on a role when that role alone served it, or, when the request acts as several roles, when the role is granted a table the statement read. Acting as All does not count every held role as used. A grant's last use is recorded at most once a day.
+
+Every 15 minutes each organization's sweep deletes the expired and unused grants and records each in the administrative trail as `role.expired` or `role.removed_inactive`. Wherever outgoing mail is configured, a single-organization deployment included, the holder and the organization's administrators are emailed `auth.role_grant_notice_days` days (default 7) before a grant ends, and the administrators are emailed when one is removed; where no mail is configured, the trail entry is the record. These notices are sent whatever a user's email preference says.
+
 ### Derived roles
 
 A derived role comes from a user's attributes. The org declares which attributes become roles (`derived_roles`), each with a description. For each declared attribute `a` whose value `v` the user's attributes supply, the user holds the parent role `a` and its value role `a__v`: `region = eu` gives `region` and `region__eu`. No value means neither role.

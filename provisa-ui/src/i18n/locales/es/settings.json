@@ -227,6 +227,10 @@
           "label": "Duración del bloqueo",
           "help": "Cuánto tiempo se rechaza una cuenta bloqueada. Requiere confirmación al guardar porque acortarlo debilita el freno a la adivinación de contraseñas."
         }
+      },
+      "role_grant_notice_days": {
+        "label": "Aviso antes de que termine una asignación de rol",
+        "help": "Cuántos días antes de que una asignación de rol caduque, o se elimine por falta de uso, se avisa por correo a su titular y a los administradores de la organización."
       }
     },
     "server": {
