@@ -59,7 +59,9 @@ def cfg_path(tmp_path, monkeypatch, control_plane):
 
 def _caller(*held: str):
     """An authenticated caller assigned ``held``; returns ``(info, request)``."""
-    identity = types.SimpleNamespace(user_id="u1", roles=list(held), acting_roles=list(held))
+    identity = types.SimpleNamespace(
+        user_id="u1", roles=list(held), acting_roles=list(held), derived_roles=None
+    )
     state = types.SimpleNamespace(
         identity=identity,
         assignments=[RoleAssignment(role_id=r, domain_id="*") for r in held],

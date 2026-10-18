@@ -220,13 +220,13 @@ _META_TABLE_VIEWS: dict[str, str] = {
         -- nor are a draft table's columns.
         WHERE table_id IN (SELECT id FROM registered_tables WHERE NOT draft)
     """,
+    # REQ-2080: description is the last column, so an existing view is replaced in place.
     "roles": """
         CREATE OR REPLACE VIEW roles_meta AS
         SELECT id, parent_role_id, org_id,
                capabilities,
                tenant_id,
                'meta' AS domain_id,
-               -- REQ-2080: last, so an existing view is replaced in place.
                description
         FROM roles
     """,

@@ -40,7 +40,7 @@ META = "meta:role_a+role_b"
 
 def _request(*held: str, acting: str | None = None):
     state = types.SimpleNamespace(
-        identity=types.SimpleNamespace(user_id="u1", roles=list(held)),
+        identity=types.SimpleNamespace(user_id="u1", roles=list(held), derived_roles=None),
         assignments=[RoleAssignment(role_id=r, domain_id="*") for r in held],
     )
     if acting is not None:
@@ -97,7 +97,7 @@ def client(monkeypatch):
     @app.middleware("http")
     async def _auth(request, call_next):
         held = request.headers["x-held"].split(",")
-        request.state.identity = types.SimpleNamespace(user_id="u1", roles=held)
+        request.state.identity = types.SimpleNamespace(user_id="u1", roles=held, derived_roles=None)
         request.state.assignments = [RoleAssignment(role_id=r, domain_id="*") for r in held]
         request.state.role = held[0]
         return await call_next(request)
