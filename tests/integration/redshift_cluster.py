@@ -42,6 +42,7 @@ resolution is never reached and the R2 values cannot leak in.
 
 from __future__ import annotations
 
+import atexit
 import os
 import secrets
 import socket
@@ -189,32 +190,58 @@ def _wait_available(rss: Any, workgroup: str) -> dict:
 
 
 def _wait_tcp_ready(host: str, port: int) -> None:
-    """Block until the endpoint accepts a raw TCP connection.
+    """Block until every address the endpoint resolves to accepts a raw TCP connection.
 
     Called after GetWorkgroup reports AVAILABLE and the security-group rule is authorized — status
     AVAILABLE only means the control plane is done, not that DNS/ENI/security-group propagation to
-    the data-plane endpoint has finished (see _TCP_READY_TIMEOUT_S above).
+    the data-plane endpoint has finished (see _TCP_READY_TIMEOUT_S above). A public workgroup's
+    name resolves to more than one address; one accepting while another does not let the seeding
+    client through and then timed out the engine's next connect (warehouse run 39087576400: SHOW
+    SCHEMAS answered, SHOW TABLES 13s later "Connect timed out"), so each is waited for.
     """
     deadline = time.monotonic() + _TCP_READY_TIMEOUT_S
-    last_exc: OSError | None = None
+    waiting: dict[str, OSError | None] = {}
     while time.monotonic() < deadline:
-        try:
-            with socket.create_connection((host, port), timeout=5):
-                return
-        except OSError as exc:
-            last_exc = exc
-            time.sleep(5)
+        addresses = {
+            info[4][0]
+            for info in socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+        }
+        waiting = {}
+        for address in sorted(addresses):
+            try:
+                with socket.create_connection((address, port), timeout=5):
+                    pass
+            except OSError as exc:
+                waiting[address] = exc
+        print(
+            f"== {host} resolves to {sorted(addresses)}; not yet accepting: {sorted(waiting)} ==",
+            flush=True,
+        )
+        if not waiting:
+            return
+        time.sleep(5)
     raise RuntimeError(
-        f"{host}:{port} not accepting TCP connections within {_TCP_READY_TIMEOUT_S}s"
-    ) from last_exc
+        f"{host}:{port} not accepting TCP connections at {sorted(waiting)} within "
+        f"{_TCP_READY_TIMEOUT_S}s: {waiting}"
+    )
 
 
-def _delete_workgroup(rss: Any, workgroup: str) -> None:
+def _request_workgroup_delete(rss: Any, workgroup: str) -> None:
     try:
         rss.delete_workgroup(workgroupName=workgroup)
     except ClientError as exc:
         if exc.response["Error"]["Code"] != "ResourceNotFoundException":
             print(f"delete_workgroup {workgroup}: {exc}", flush=True)
+
+
+def _finish_delete(rss: Any, workgroup: str, namespace: str) -> None:
+    _delete_workgroup(rss, workgroup)
+    _delete_namespace(rss, namespace)
+    print("== redshift teardown done ==", flush=True)
+
+
+def _delete_workgroup(rss: Any, workgroup: str) -> None:
+    _request_workgroup_delete(rss, workgroup)
     # The namespace cannot be deleted while a workgroup still references it, so block until gone.
     deadline = time.monotonic() + _DELETE_TIMEOUT_S
     while time.monotonic() < deadline:
@@ -337,7 +364,10 @@ def redshift_cluster():
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
-        print(f"== deleting {workgroup} / {namespace} ==", flush=True)
-        _delete_workgroup(rss, workgroup)
-        _delete_namespace(rss, namespace)
-        print("== redshift teardown done ==", flush=True)
+        # Deleting a workgroup takes minutes, and this teardown runs inside the last test's
+        # teardown, under that test's own pytest-timeout (warehouse run 39087576400: the
+        # BigQuery test after it failed at 900s, blocked here). The delete is asked for now and
+        # waited for at interpreter exit, which no test's timeout bounds.
+        print(f"== deleting {workgroup} / {namespace} (finished at exit) ==", flush=True)
+        _request_workgroup_delete(rss, workgroup)
+        atexit.register(_finish_delete, rss, workgroup, namespace)
