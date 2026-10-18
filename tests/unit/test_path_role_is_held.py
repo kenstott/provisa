@@ -41,7 +41,7 @@ def _request(*held: str, user_id: str | None = "u1", body: dict | None = None) -
     state = types.SimpleNamespace()
     if user_id is not None:
         state.identity = types.SimpleNamespace(
-            user_id=user_id, roles=list(held), acting_roles=list(held)
+            user_id=user_id, roles=list(held), acting_roles=list(held), derived_roles=None
         )
         state.assignments = [RoleAssignment(role_id=r, domain_id="*") for r in held]
 
