@@ -151,6 +151,8 @@ Genannte abgeleitete Rollen gehen als Qualifikatoren ein. Ein Qualifikator hat k
 
 Ein MCP-Agent handelt nie über die Rollen hinaus, die ihm gegeben wurden. Ein entfernter Agent nennt nur Rollen, die der Prinzipal seines Tokens hält. Ein lokaler stdio-Agent nennt nur Rollen innerhalb der in `mcp.role` (`PROVISA_MCP_ROLE`) festgelegten Menge und handelt als diese Menge, wenn er keine nennt; jede andere Rolle wird namentlich abgelehnt. (REQ-2075)
 
+Ein Agent fragt mit dem MCP-Werkzeug `describe_role`, als welche Rolle er handelt. Die Antwort ist diese Rolle und wofür sie da ist (eine Meta-Rolle mit jedem ihrer Mitglieder) sowie die Rollen, zu denen der Agent wechseln darf, jede mit ihrer Beschreibung. Sie enthält nie eine Zeilenregel, Maske, Freigabe oder Bedingung. Provisa sagt einem Agenten nie, warum ein Ergebnis eingeschränkt wurde, und ein Ergebnis trägt kein „gefiltert“-Kennzeichen: Die Daten einer Rolle sind ihre ganze Sicht, und ein Grund für das Fehlende würde dazu einladen, danach zu sondieren. (REQ-2082)
+
 ### Was `+` bedeutet {: #what-means }
 
 `+` erscheint an zwei Stellen, mit jeweils anderer Bedeutung.

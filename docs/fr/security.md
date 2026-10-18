@@ -151,6 +151,8 @@ Les rôles dérivés nommés entrent comme qualificatifs. Un qualificatif n'a ni
 
 Un agent MCP n'agit jamais au-delà des rôles qui lui ont été donnés. Un agent distant ne nomme que des rôles que détient le principal de son jeton. Un agent local en stdio ne nomme que des rôles de l'ensemble fixé dans `mcp.role` (`PROVISA_MCP_ROLE`), et agit comme cet ensemble lorsqu'il n'en nomme aucun ; tout autre rôle est refusé par son nom. (REQ-2075)
 
+Un agent demande sous quel rôle il agit avec l'outil MCP `describe_role`. La réponse est ce rôle et ce à quoi il sert (un méta-rôle avec chacun de ses membres), ainsi que les rôles vers lesquels l'agent peut basculer, chacun avec sa description. Elle ne contient jamais de règle de lignes, de masque, d'autorisation ni de condition. Provisa ne dit jamais à un agent pourquoi un résultat a été restreint, et un résultat ne porte aucun indicateur « filtré » : les données d'un rôle sont toute sa vue, et une raison pour ce qui manque inviterait à le sonder. (REQ-2082)
+
 ### Ce que signifie `+` {: #what-means }
 
 `+` apparaît à deux endroits, avec un sens différent dans chacun.

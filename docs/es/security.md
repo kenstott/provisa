@@ -151,6 +151,8 @@ Los roles derivados nombrados entran como calificadores. Un calificador no tiene
 
 Un agente MCP nunca actúa más allá de los roles que se le dieron. Un agente remoto solo nombra roles que posee el principal de su token. Un agente local por stdio solo nombra roles dentro del conjunto fijado en `mcp.role` (`PROVISA_MCP_ROLE`), y actúa como ese conjunto cuando no nombra ninguno; cualquier otro rol se rechaza por su nombre. (REQ-2075)
 
+Un agente pregunta con qué rol actúa mediante la herramienta MCP `describe_role`. La respuesta es ese rol y para qué sirve (un meta-rol con cada uno de sus miembros), y los roles a los que el agente puede cambiar, cada uno con su descripción. Nunca incluye una regla de filas, máscara, concesión ni condición. Provisa nunca le dice a un agente por qué se redujo un resultado, y un resultado no lleva ninguna marca de "filtrado": los datos de un rol son toda su vista, y un motivo de lo que falta invitaría a sondearlo. (REQ-2082)
+
 ### Qué significa `+` {: #what-means }
 
 `+` aparece en dos lugares, con significados distintos en cada uno.
