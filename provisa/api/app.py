@@ -956,6 +956,60 @@ class AppState:
         self._active_runtime().api_sources = value
 
     @property
+    def event_loop_processors(self) -> list[Any] | None:
+        """The processors the organisation's event-loop tick drains (OrgRuntime.event_loop_processors)."""
+        return self._active_runtime().event_loop_processors
+
+    @event_loop_processors.setter
+    def event_loop_processors(self, value: list[Any] | None) -> None:
+        self._active_runtime().event_loop_processors = value
+
+    @property
+    def replica_nodes(self) -> dict[tuple[str, str, str], str] | None:
+        """Replica key → the organisation's event-loop node that watches it (OrgRuntime.replica_nodes)."""
+        return self._active_runtime().replica_nodes
+
+    @replica_nodes.setter
+    def replica_nodes(self, value: dict[tuple[str, str, str], str] | None) -> None:
+        self._active_runtime().replica_nodes = value
+
+    @property
+    def replica_dependents_of(self) -> Any:
+        """Node → the organisation's views that read it (OrgRuntime.replica_dependents_of)."""
+        return self._active_runtime().replica_dependents_of
+
+    @replica_dependents_of.setter
+    def replica_dependents_of(self, value: Any) -> None:
+        self._active_runtime().replica_dependents_of = value
+
+    @property
+    def views_awaiting_input(self) -> dict[str, set[str]]:
+        """View node → the inputs it waits on to be wired (OrgRuntime.views_awaiting_input)."""
+        return self._active_runtime().views_awaiting_input
+
+    @views_awaiting_input.setter
+    def views_awaiting_input(self, value: dict[str, set[str]]) -> None:
+        self._active_runtime().views_awaiting_input = value
+
+    @property
+    def poll_jobs_registered(self) -> set[str]:
+        """The organisation's nodes that have a poll job (OrgRuntime.poll_jobs_registered)."""
+        return self._active_runtime().poll_jobs_registered
+
+    @poll_jobs_registered.setter
+    def poll_jobs_registered(self, value: set[str]) -> None:
+        self._active_runtime().poll_jobs_registered = value
+
+    @property
+    def on_input_landed(self) -> Any:
+        """What a landed input of the organisation's loop tells its waiting views (OrgRuntime.on_input_landed)."""
+        return self._active_runtime().on_input_landed
+
+    @on_input_landed.setter
+    def on_input_landed(self, value: Any) -> None:
+        self._active_runtime().on_input_landed = value
+
+    @property
     def api_endpoints(self) -> dict[tuple[str, str], Any]:
         """(source id, table name) → ApiEndpoint: the endpoints the organisation's API tables are
         served from (OrgRuntime.api_endpoints)."""

@@ -297,6 +297,16 @@ class OrgRuntime:
     # organisations, so these are the runtime's and never the process's.
     api_sources: dict[str, Any] = field(default_factory=dict)
     api_endpoints: dict[tuple[str, str], Any] = field(default_factory=dict)
+    # The organisation's event loop as its wiring left it (events.app_wiring): the processors its
+    # tick drains, the replicas its nodes watch and what reads them, the views waiting on an input,
+    # the nodes with a poll job, and what a landed input tells. Node names repeat across
+    # organisations, so these are the runtime's and never the process's (REQ-1266).
+    event_loop_processors: list[Any] | None = None
+    replica_nodes: dict[tuple[str, str, str], str] | None = None
+    replica_dependents_of: Any = None
+    views_awaiting_input: dict[str, set[str]] = field(default_factory=dict)
+    poll_jobs_registered: set[str] = field(default_factory=set)
+    on_input_landed: Any = None
     # REQ-1317: config-declared metric registry (name → Metric), published alongside tables
     # so the raw-SQL path can expand `metrics.<name>` queries before governance.
     metrics: dict[str, Any] = field(default_factory=dict)
