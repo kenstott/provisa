@@ -167,7 +167,10 @@ def test_the_connector_names_no_schema_of_its_own(attached):
     assert "remote_schema" not in details
 
 
-def test_duckdb_lists_the_schemas_the_source_serves_and_no_other(attached):
+def test_duckdb_lists_every_schema_the_source_was_given(attached):
+    """The server is the installed bundle as it ships, serving every schema it carries; which of
+    them a source offers is Provisa's to say (Register Table lists and registers from those alone),
+    not the server's."""
     con, details = attached
     listed = {
         row[0]
@@ -176,8 +179,7 @@ def test_duckdb_lists_the_schemas_the_source_serves_and_no_other(attached):
             [details["raw_alias"]],
         ).fetchall()
     }
-    assert _SCHEMA in listed
-    assert listed <= set(_SCHEMAS.split(",")), listed
+    assert set(_SCHEMAS.split(",")) <= listed, listed
 
 
 def test_a_table_is_read_in_place_from_its_own_schema(attached):
