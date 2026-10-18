@@ -169,7 +169,10 @@ def catalog(served):
     from provisa.federation.trino_connectors import TrinoGovdataConnector
 
     source, data_dir = served
-    props = TrinoGovdataConnector().details(source)
+    # A module fixture runs before the per-test org binding: the endpoint is the deployment
+    # org's, as in served.
+    with as_deployment_org():
+        props = TrinoGovdataConnector().details(source)
     with_clause = ", ".join(f"\"{k}\" = '{v}'" for k, v in props.items())
     create = f"CREATE CATALOG {_CATALOG} USING postgresql WITH ({with_clause})"
     conn = trino.dbapi.connect(host=_TRINO_HOST, port=_TRINO_PORT, user="provisa")
