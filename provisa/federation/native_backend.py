@@ -62,7 +62,10 @@ _log = logging.getLogger(__name__)
 #   failed with "file is not a database".
 # - __derived__ is the virtual-view sentinel: "the sentinel has no address of its own"
 #   (api/startup_seed.py). Its rows are compiler-emitted views, never a remote database.
-_NO_REMOTE_SOURCE_IDS = frozenset({"provisa-admin", "__derived__"})
+# - provisa-otel, on a native engine, is the ops signals the engine lands itself (REQ-862), defined
+#   at otel.signals.<table> over its telemetry folder (signal_views, below). Its seeded row names
+#   no Iceberg location, so an attach as a source scanned iceberg_scan('None') and failed.
+_NO_REMOTE_SOURCE_IDS = frozenset({"provisa-admin", "__derived__", "provisa-otel"})
 
 # Attach refusals that are the declared state of an (engine, source type) pair — the engine has no
 # connector for the type (UnreachableSource, REQ-841). A source whose connector simply has no live
