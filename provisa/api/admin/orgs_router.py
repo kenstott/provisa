@@ -27,6 +27,11 @@ from provisa.core import model_change
 from provisa.api.errors import ApiError
 from provisa.core.connection_loop import spawn_background
 from provisa.core.database import Database
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from provisa.api.org_runtime import OrgRuntime
 from provisa.core import settings_registry as _settings
 from provisa.core.org_ids import is_org_id
 from provisa.core.redis_location import redis_url as _redis_url
@@ -387,6 +392,20 @@ async def _refresh_root_registry_view() -> None:  # REQ-1301
         reset_current_org(token)
 
 
+async def on_its_region_lane(org_id: str, rt: "OrgRuntime") -> "OrgRuntime":  # REQ-1922
+    """The org's runtime as provisioning leaves it: in a region deployment, built again on the lane
+    its model names for this node's region -- the engine and store every later build of it runs on
+    (``ensure_org_runtime``). The model names that lane only once the provisioning build has
+    seeded it. An org that does not select this node's region is refused, as it is there."""
+    from provisa.api.app import _region_lane_of, build_on_its_lane
+    from provisa.api.app import state as _app_state
+    from provisa.core.environments import PROD
+
+    if await _region_lane_of(org_id, PROD) is None:
+        return rt
+    return await _app_state.org_registry.rebuild(org_id, lambda oid: build_on_its_lane(oid, None))
+
+
 @model_change.commits_itself  # REQ-1524: commits the model it writes itself
 async def _provision_org_task(
     org_id: str, include_demo: bool, created_by: str | None, isolated_engine: bool = False
@@ -455,6 +474,7 @@ async def _provision_org_task(
                 oid, include_demo=include_demo, isolated_engine=isolated_engine, shard=shard
             ),
         )
+        rt = await on_its_region_lane(org_id, rt)
         # The creator's org_admin role assignment lands in the org's own schema — possible only now
         # the schema + seeded org_admin row exist. Membership (admin plane) was granted synchronously.
         if created_by is not None:
