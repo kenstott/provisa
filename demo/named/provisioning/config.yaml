@@ -49,12 +49,15 @@ roles:
 - id: finance
   capabilities:
   - query_development
+  # A team pulls the whole dataset over Flight, not the default row limit's first rows.
+  - full_results
   domain_access:
   - provisioning
 # The data science team's feature store: margins masked, product orders only.
 - id: data_science
   capabilities:
   - query_development
+  - full_results
   domain_access:
   - provisioning
 server:
