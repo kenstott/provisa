@@ -196,6 +196,13 @@
       "allowed_file_extensions": "1行に1つ。これらの種類のいずれかのリンク先ファイルはテーブルになります",
       "max_html_size": "例：10MB。これより大きいページは読み取られません",
       "max_data_file_size": "例：100MB。これより大きいファイルは読み取られません"
-    }
+    },
+    "siteAddress": "サイトのアドレス",
+    "siteAddressHint": "Jira サイト（例: https://your-site.atlassian.net）",
+    "accountEmail": "Atlassian アカウントのメールアドレス",
+    "accountEmailHint": "Atlassian へのサインインに使うメールアドレス。API トークンはこのアカウントのものです。",
+    "apiToken": "API トークン",
+    "apiTokenHint": "id.atlassian.com で作成（Security, API tokens）。シークレットボールトに保存されます。",
+    "siteAddressInvalid": "https:// で始まるサイトの完全なアドレスを入力してください"
   }
 }

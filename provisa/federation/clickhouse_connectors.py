@@ -147,6 +147,10 @@ class ClickHouseServicenowConnector(_ClickHousePgwireConnector):  # REQ-1954
     source_type = "servicenow"
 
 
+class ClickHouseJiraConnector(_ClickHousePgwireConnector):  # REQ-2069
+    source_type = "jira"
+
+
 class ClickHouseGovdataConnector(_ClickHousePgwireConnector):  # REQ-540
     source_type = "govdata"
 

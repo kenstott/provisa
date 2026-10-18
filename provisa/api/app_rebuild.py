@@ -297,6 +297,7 @@ async def serve_registered_tables(state) -> None:
     not."""
     from provisa.api.admin.schema_common import restart_source_server
     from provisa.core.secrets import resolve_secrets
+    from provisa.federation.jira import form_of
     from provisa.federation.served_tables import SERVES_REGISTERED_TABLES, serve_tables
 
     config = state.config
@@ -305,7 +306,9 @@ async def serve_registered_tables(state) -> None:
             continue
         own = [t for t in config.tables if t.source_id == source.id]
         import_sets = {t.table_name: t.import_set for t in own if t.import_set}
-        if not serve_tables(source.id, [t.table_name for t in own], import_sets):
+        # REQ-2069: a Jira source's server is given the forms its tables are.
+        forms = [form_of(t) for t in own] if source.type.value == "jira" else []
+        if not serve_tables(source.id, [t.table_name for t in own], import_sets, forms):
             continue
         await restart_source_server(source)
         state.federation_engine.register_source(

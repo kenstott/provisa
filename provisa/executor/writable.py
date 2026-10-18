@@ -60,11 +60,14 @@ class WritePath(str, Enum):  # REQ-229, REQ-842
 
 # REQ-1946: the source types written through their own bundled pgwire server. ``files`` and
 # ``splunk`` have such a server too, and it reads only. REQ-1954: ServiceNow's tables are written
-# through its server as well.
-PGWIRE_SERVER_WRITTEN: frozenset[str] = frozenset({"sharepoint", "salesforce", "servicenow"})
+# through its server as well, and REQ-2069: Jira's forms and links.
+PGWIRE_SERVER_WRITTEN: frozenset[str] = frozenset(
+    {"sharepoint", "salesforce", "servicenow", "jira"}
+)
 # The types of those whose server returns the rows a write wrote (REQ-1954): the ServiceNow
-# server answers each write with the record the instance holds after it.
-PGWIRE_SERVER_RETURNS_ROWS: frozenset[str] = frozenset({"servicenow"})
+# server answers each write with the record the instance holds after it; the Jira server does the
+# same, by each issue's key (REQ-2069).
+PGWIRE_SERVER_RETURNS_ROWS: frozenset[str] = frozenset({"servicenow", "jira"})
 #: REQ-1994: the source types whose writes are made through the provider's API by
 #: ``federation.mail_write`` -- the events, attendees and tasks of a mail source.
 API_WRITTEN: frozenset[str] = frozenset({"google_workspace", "microsoft_365"})

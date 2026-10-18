@@ -23,7 +23,7 @@
 ---
 
 ## 所有數據來源 {: #all-sources }
-Provisa 註冊了 **72** 種數據來源類型，即 Sources 表單所提供的類型。下方表格涵蓋全部 72 種；索引即為計數。 [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`，其中 `graphql` 與 `grpc` 即 `graphql_remote` 與 `grpc_remote`; Kaggle、Wikipedia、GitHub、GitLab 與 Stripe 雖然內部經 `files`、`graphql_remote` 與 `openapi` 連接器註冊，仍計為獨立的數據來源]
+Provisa 註冊了 **73** 種數據來源類型，即 Sources 表單所提供的類型。下方表格涵蓋全部 73 種；索引即為計數。 [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`，其中 `graphql` 與 `grpc` 即 `graphql_remote` 與 `grpc_remote`; Kaggle、Wikipedia、GitHub、GitLab 與 Stripe 雖然內部經 `files`、`graphql_remote` 與 `openapi` 連接器註冊，仍計為獨立的數據來源]
 
 | # | 群組 | 數據來源類型 |
 | --- | --- | --- |
@@ -38,13 +38,13 @@ Provisa 註冊了 **72** 種數據來源類型，即 Sources 表單所提供的�
 | 45–46 | [圖形與語意](#graph-semantic) | `neo4j`, `sparql` |
 | 47–51 | [檔案式](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 52–53 | [可觀測性與其他](#observability-other) | `google_sheets`, `prometheus` |
-| 54–60 | [企業 SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 61–66 | [API 數據來源](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
-| 67 | [GovData](#govdata) | `govdata` |
-| 68–69 | [數據品質檢查器](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
-| 70 | [數據剖析器](#data-profiler) | `data_profiler` |
-| 71 | [Kaggle 數據集](#kaggle-datasets) | Kaggle（經 Sources 表單暫存；註冊為 `files` 數據來源——見 [Kaggle 數據集](#kaggle-datasets)） |
-| 72 | [Wikipedia](#wikipedia) | Wikipedia（註冊為爬取所指定頁面的 `files` 數據來源——見 [Wikipedia](#wikipedia)） |
+| 54–61 | [企業 SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
+| 62–67 | [API 數據來源](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
+| 68 | [GovData](#govdata) | `govdata` |
+| 69–70 | [數據品質檢查器](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
+| 71 | [數據剖析器](#data-profiler) | `data_profiler` |
+| 72 | [Kaggle 數據集](#kaggle-datasets) | Kaggle（經 Sources 表單暫存；註冊為 `files` 數據來源——見 [Kaggle 數據集](#kaggle-datasets)） |
+| 73 | [Wikipedia](#wikipedia) | Wikipedia（註冊為爬取所指定頁面的 `files` 數據來源——見 [Wikipedia](#wikipedia)） |
 
 Provisa 支援的每一種數據來源類型的參照。「直接驅動程式」指單一來源查詢原生地針對該數據來源執行（低於 100 毫秒）（REQ-027）。「連接器名稱」是該數據來源參與多來源 JOIN 時所用的聯邦連接器（REQ-028）。 [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
@@ -518,7 +518,7 @@ Provisa 知道這些語言版本的「See also」標題：`en`、`de`、`es`、`
 | `prometheus` | prometheus | 否 | 一個指標即為一張表，一個樣本即為一列（`timestamp`、`value`，每個標籤一個資料行）；在沒有即時連接器的每個引擎上，Provisa 讀取 HTTP API——Register Table 取得指標名稱與標籤，落地時對該表的範圍使用 `query_range` [tool-verified: `provisa/prometheus/fetch.py`] (REQ-1689)
 
 ### 企業 SaaS 連接器 {: #enterprise-saas-connectors }
-Google Workspace 與 Microsoft 365 由各自的載入器讀取；見 [Google Workspace 與 Microsoft 365](#google-workspace-and-microsoft-365)。SharePoint、Salesforce、ServiceNow、雲端資源清單與 Splunk 經 Apache Calcite 連接器（kenstott/calcite fork）註冊。它們都沒有直接驅動程式——Provisa 啟動連接器隨附的 Calcite pgwire 伺服器（`pgwire-sharepoint`、`pgwire-salesforce`、`pgwire-servicenow`、`pgwire-cloudops`、`pgwire-splunk`），以通用 PostgreSQL 端點的身分連線。在 DuckDB 引擎上，該端點經 postgres 擴充即時附掛：Register Table 從已附掛的目錄列出連接器的表，查詢就地讀取該連接器，篩選與投影會下推到 Calcite（REQ-1690） [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]。其他每個引擎都把資料列落地到具體化儲存區供聯邦使用（REQ-954）。這些套件依作業系統／架構，從固定版本的 `kenstott/calcite` release 取得（`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`；macOS arm64、Linux x86_64、Windows x86_64） [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] 營運者也可以為每個連接器單獨指定一個為此主機建置的套件資料夾，位於 Admin → 設定 → 連接器伺服器（`connectors.<connector>.bundle_dir`）；見 [Admin](admin.md)。。五個連接器都一律啟用不分大小寫的名稱比對，以配合各產品自身不分大小寫的語意（REQ-725、REQ-730）。 [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
+Google Workspace 與 Microsoft 365 由各自的載入器讀取；見 [Google Workspace 與 Microsoft 365](#google-workspace-and-microsoft-365)。SharePoint、Salesforce、ServiceNow、Jira、雲端資源清單與 Splunk 經 Apache Calcite 連接器（kenstott/calcite fork）註冊。它們都沒有直接驅動程式——Provisa 啟動連接器隨附的 Calcite pgwire 伺服器（`pgwire-sharepoint`、`pgwire-salesforce`、`pgwire-servicenow`、`pgwire-jira`、`pgwire-cloudops`、`pgwire-splunk`），以通用 PostgreSQL 端點的身分連線。在 DuckDB 引擎上，該端點經 postgres 擴充即時附掛：Register Table 從已附掛的目錄列出連接器的表，查詢就地讀取該連接器，篩選與投影會下推到 Calcite（REQ-1690） [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]。其他每個引擎都把資料列落地到具體化儲存區供聯邦使用（REQ-954）。這些套件依作業系統／架構，從固定版本的 `kenstott/calcite` release 取得（`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`；macOS arm64、Linux x86_64、Windows x86_64） [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] 營運者也可以為每個連接器單獨指定一個為此主機建置的套件資料夾，位於 Admin → 設定 → 連接器伺服器（`connectors.<connector>.bundle_dir`）；見 [Admin](admin.md)。。五個連接器都一律啟用不分大小寫的名稱比對，以配合各產品自身不分大小寫的語意（REQ-725、REQ-730）。 [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
 
 #### `sharepoint`
 
@@ -645,6 +645,48 @@ ServiceNow 數據來源指定執行個體的完整 `https://…` URL 以及使�
   base_url: https://acme.service-now.com
   username: ${env:SN_USERNAME}
   password: ${env:SN_PASSWORD}
+```
+
+#### `jira`
+
+Jira Cloud 網站透過其自有的 Calcite 配接器讀取和寫入（REQ-2069）。Jira 數據來源的一張資料表是一個**表單**：一個專案和一種 issue 類型，以及其欄所讀取的欄位。Register Table 列出該帳戶可建立 issue 的每個表單，按專案分組；選取一個表單會從 Jira 讀取其欄位，列出表單不會這樣做。每個表單都有欄 `key`（其主鍵）、`id`、`summary`、`status`、`created` 和 `updated`，之後是每個所選欄位一欄，按配接器的命名方式命名：欄位名稱的 snake case 形式（`Story Points` 即 `story_points`）。名稱已是某欄名稱的欄位，以其欄位 id 命名（`customfield_10099`），因此每個欄位都可被選取。使用者欄位保存帳戶 id；其顯示名稱是單獨的欄位（`assignee.displayName`，欄 `assignee_name`）。由 Jira 自行寫入的欄為唯讀：`key`、`id`、`created`、`updated`、使用者欄位的顯示名稱，以及配接器不認識其形態的欄位（配接器將其作為 JSON 文字提供）。註冊此類欄時，若其沒有說明，會在說明中標註「Read only: Jira sets it」；設定該欄的寫入會被伺服器拒絕，並指出該欄。[tool-verified: `provisa/federation/jira.py` `FIXED_COLUMNS`、`form_columns`；`provisa/federation/pgwire_replica.py` `jira_form_list`、`jira_fields`；`provisa/api/admin/introspect.py` `complete_jira_form`]
+
+表單的資料表在其 `arguments` 中指明其專案和 issue 類型（`project`、`issue_type`），每一欄讀取其 `path` 所指明的欄位（欄位 id 或欄位名稱），或與其同名的欄位。從管理端註冊的資料表會從 Jira 取得這兩者；配置則明確宣告它們。固定了其他內容或缺少其中任何一項的 Jira 資料表將被拒絕，並指出資料表名稱。[tool-verified: `provisa/federation/jira.py` `form_of`；`provisa/core/config_loader.py` `_validate_table_arguments`]
+
+| 來源欄位 | 配接器屬性 | 說明 |
+| --- | --- | --- |
+| `base_url` 或 `host` | `baseUrl` | 網站的完整 `https://…` 位址（例如 `https://acme.atlassian.net`）。裸主機或其他配置將被拒絕 |
+| `username` | `email` | Atlassian 帳戶的電子郵件 |
+| `password` | `apiToken` | 該帳戶的 API 權杖，在 id.atlassian.com 的 Security、API tokens 下建立 |
+
+[tool-verified: `provisa/federation/jira.py` `jira_site_url`、`jira_settings`]
+
+**連結。** 數據來源的 `issue_links` 資料表保存其表單的 issue 之間的連結：`link_id`、`link_type`、`outward_key` 和 `inward_key`，每個連結一次。兩個表單之間的關係透過它宣告為聯結表（junction，REQ-1586），以 `link_type` 為判別欄，因此 GraphQL 和 Cypher 按連結類型從 issue 走到被連結的 issue。[inferred: the adapter's design agreed for REQ-2069]
+
+**讀取。** 按鍵查找（`key =`、`key IN`）按鍵擷取，因此未指明任何 issue 的鍵不會產生資料列。日期或數字比較會作為 JQL 傳送至 Jira。其他所有篩選器以及每個排序，都套用於已讀取的資料列：對文字、選項、狀態或使用者的相等比較不會傳送，因為對於 SQL 傳回零列的情況，JQL 會拒絕未指明任何對象的值。多值欄位（標籤、多選、元件、版本）是保存 JSON 陣列的文字，寫入方式相同。[inferred: the adapter's behaviour, as the calcite connector reports it for REQ-2069]
+
+在 DuckDB、PostgreSQL 和 ClickHouse 上，引擎會掛載數據來源的 pgwire 伺服器並就地讀取。在 Trino 上，數據來源沒有自己的目錄，而是透過其伺服器落地。[tool-verified: `provisa/federation/engine.py`；`provisa/federation/strategy.py` `_CONNECTOR_PGWIRE_REPLICA`]
+
+**伺服器生命週期。** 伺服器僅提供從中註冊的表單，以及其表單清單、欄位清單和連結。註冊、變更或移除表單會重新啟動伺服器並在引擎上重新佈建數據來源。[tool-verified: `provisa/federation/served_tables.py` `SERVES_REGISTERED_TABLES`、`serve_tables`；`provisa/api/app_rebuild.py` `serve_registered_tables`]
+
+**寫入。** 對表單的 `INSERT`、`UPDATE` 和 `DELETE` 屬於變更操作，在每個引擎上都在數據來源的 pgwire 伺服器上寫入。資料列以每批 50 列的方式插入；更新或刪除逐個 issue 按鍵進行。設定 `status` 會執行到該狀態的工作流程轉換，當 issue 的工作流程沒有可到達的狀態時會被拒絕，並指出可到達的狀態。帶有子任務的 issue 不會被刪除。伺服器按鍵傳回每個已寫入的資料列，因此接受 `RETURNING`，GraphQL 也提供變更欄位。在 `issue_links` 上，`INSERT` 建立連結，`DELETE` 移除連結；`UPDATE` 被拒絕。[tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`、`PGWIRE_SERVER_RETURNS_ROWS`] [inferred: the batching, transitions and subtask refusal are the adapter's, agreed for REQ-2069]
+
+```yaml
+- id: support-jira
+  type: jira
+  base_url: https://acme.atlassian.net
+  username: ${env:JIRA_EMAIL}
+  password: ${env:JIRA_API_TOKEN}
+tables:
+- source_id: support-jira
+  table: incident
+  arguments: {project: KAN, issue_type: Incident}
+  columns:
+  - {name: key, data_type: varchar, is_primary_key: true}
+  - {name: summary, data_type: varchar}
+  - {name: status, data_type: varchar}
+  - {name: priority, data_type: varchar}
+  - {name: flagged, data_type: varchar, path: customfield_10021}
 ```
 
 #### `cloudops`

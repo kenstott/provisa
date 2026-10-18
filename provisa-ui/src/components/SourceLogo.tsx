@@ -49,6 +49,7 @@ import {
   siSplunk,
   siSqlite,
   siStripe,
+  siJira,
   siTidb,
   siTrino,
 } from "simple-icons";
@@ -91,6 +92,7 @@ const MARKS: Record<string, Icon> = {
   github: siGithub,
   gitlab: siGitlab,
   stripe: siStripe,
+  jira: siJira,
   kafka: siApachekafka,
   rss: siRss,
   splunk: siSplunk,

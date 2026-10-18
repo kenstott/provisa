@@ -166,6 +166,7 @@ export const SOURCE_TYPES = [
   { value: "sharepoint", label: "SharePoint", category: "Enterprise", defaultPort: 0 },
   { value: "salesforce", label: "Salesforce", category: "Enterprise", defaultPort: 0 }, // REQ-1946
   { value: "servicenow", label: "ServiceNow", category: "Enterprise", defaultPort: 0 }, // REQ-1954
+  { value: "jira", label: "Jira", category: "Enterprise", defaultPort: 0 }, // REQ-2069
   // REQ-1947
   {
     value: "cloudops",

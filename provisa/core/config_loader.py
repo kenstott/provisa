@@ -566,19 +566,26 @@ def _validate_neo4j_sources(config: ProvisaConfig) -> None:  # REQ-1668, REQ-168
             )
 
 
-#: REQ-2061: the sources whose tables take arguments by name, which a table may fix.
-_ARGUMENT_SOURCE_TYPES = frozenset({"graphql_remote", "openapi"})
+#: REQ-2061: the sources whose tables take arguments by name, which a table may fix. REQ-2069: a
+#: Jira table's arguments are its form's project and issue type.
+_ARGUMENT_SOURCE_TYPES = frozenset({"graphql_remote", "openapi", "jira"})
 
 
-def _validate_table_arguments(config: ProvisaConfig) -> None:  # REQ-2061
+def _validate_table_arguments(config: ProvisaConfig) -> None:  # REQ-2061, REQ-2069
     """A table fixes arguments only where its source takes them by name: a GraphQL root field's
-    arguments, an OpenAPI operation's parameters. Anywhere else it is refused by name."""
+    arguments, an OpenAPI operation's parameters, a Jira form's project and issue type. Anywhere
+    else it is refused by name; a Jira table fixing anything but its form is refused too."""
+    from provisa.federation.jira import form_of
+
     types = {s.id: s.type.value for s in config.sources}
     for tbl in config.tables:
-        if tbl.arguments and types.get(tbl.source_id) not in _ARGUMENT_SOURCE_TYPES:
+        stype = types.get(tbl.source_id)
+        if stype == "jira":
+            form_of(tbl)
+        elif tbl.arguments and stype not in _ARGUMENT_SOURCE_TYPES:
             raise ValueError(
                 f"table {tbl.table_name!r}: arguments are fixed only on a table of a "
-                f"graphql_remote or openapi source, not {types.get(tbl.source_id)!r}"
+                f"graphql_remote, openapi or jira source, not {stype!r}"
             )
 
 

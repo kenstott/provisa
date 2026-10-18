@@ -196,6 +196,13 @@
       "allowed_file_extensions": "По одному на строку. Связанный файл одного из этих типов становится таблицей",
       "max_html_size": "Например, 10MB. Страница большего размера не читается",
       "max_data_file_size": "Например, 100MB. Файл большего размера не читается"
-    }
+    },
+    "siteAddress": "Адрес сайта",
+    "siteAddressHint": "Ваш сайт Jira, например https://your-site.atlassian.net",
+    "accountEmail": "Эл. почта аккаунта Atlassian",
+    "accountEmailHint": "Почта для входа в Atlassian; токен API принадлежит этому аккаунту.",
+    "apiToken": "Токен API",
+    "apiTokenHint": "Создаётся на id.atlassian.com, Security, API tokens. Хранится в хранилище секретов.",
+    "siteAddressInvalid": "Введите полный адрес сайта, начинающийся с https://"
   }
 }

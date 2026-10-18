@@ -87,7 +87,9 @@ def test_arguments_are_fixed_only_on_an_api_that_takes_them_by_name():
             ],
         }
     )  # fmt: skip
-    with pytest.raises(ValueError, match=r"graphql_remote or openapi source, not 'postgresql'"):
+    with pytest.raises(
+        ValueError, match=r"graphql_remote, openapi or jira source, not 'postgresql'"
+    ):
         _validate_table_arguments(config)
 
 

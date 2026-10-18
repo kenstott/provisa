@@ -59,20 +59,34 @@ async def table_import_set_refusal(conn: Any, model: Any) -> MutationResult | No
 
 async def table_arguments_refusal(conn: Any, model: Any) -> MutationResult | None:  # REQ-2061
     """A failing MutationResult when ``model`` fixes arguments and its source takes none by name
-    (config_loader._ARGUMENT_SOURCE_TYPES); None otherwise."""
-    if not model.arguments:
-        return None
+    (config_loader._ARGUMENT_SOURCE_TYPES), or is a Jira table that is no form (REQ-2069): its
+    arguments are its project and issue type; None otherwise."""
     from provisa.core.config_loader import _ARGUMENT_SOURCE_TYPES
     from provisa.core.repositories import source as source_repo
 
     row = await source_repo.get(conn, model.source_id)
     stype = None if row is None else row["type"]
+    if stype == "jira":
+        from provisa.federation.jira import form_of
+
+        try:
+            form_of(model)
+        except ValueError as exc:
+            return MutationResult(
+                success=False,
+                message=str(exc),
+                code="schema.jira_table_not_a_form",
+                params={"table": model.table_name, "source": model.source_id},
+            )
+        return None
+    if not model.arguments:
+        return None
     if stype in _ARGUMENT_SOURCE_TYPES:
         return None
     return MutationResult(
         success=False,
         message=f"table {model.table_name!r}: arguments are fixed only on a table of a "
-        f"graphql_remote or openapi source, not {stype!r}",
+        f"graphql_remote, openapi or jira source, not {stype!r}",
         code="schema.arguments_not_an_api",
         params={"table": model.table_name, "source": model.source_id},
     )

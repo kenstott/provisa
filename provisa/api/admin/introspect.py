@@ -19,7 +19,7 @@ Returns None when no native path exists — caller falls back to the engine.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 
 import json
@@ -362,7 +362,7 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
 
         return [SCHEMA]
 
-    if t in ("files", "servicenow"):
+    if t in ("files", "servicenow", "jira"):
         # Schema is always the sql-normalised source-id (matches pgwire_replica.schema_name())
         return [source_id.replace("-", "_")]
 
@@ -1294,6 +1294,72 @@ async def _native_columns_athena(
         return await asyncio.to_thread(columns, source, schema_name, table_name)
 
 
+async def jira_form(source: Any, schema: str, name: str) -> tuple[str, str]:
+    """``(project_key, issue_type)`` of the form a Jira source's account offers under ``name``
+    (REQ-2069), from its form list; a name it offers no form under is refused by name."""
+    from provisa.federation.pgwire_replica import jira_form_list
+
+    for project_key, issue_type, form_name in await jira_form_list(source, schema):
+        if form_name == name:
+            return project_key, issue_type
+    raise ValueError(f"jira source {source.id!r} offers no form named {name!r}")
+
+
+#: REQ-2069: how a Jira column Jira writes itself is marked, in its description.
+READ_ONLY_NOTE = "Read only: Jira sets it"
+
+
+async def complete_jira_form(model: Any) -> None:
+    """Fill in what a Jira table registered from the admin leaves to its source (REQ-2069): its
+    form's project and issue type (its ``arguments``), found by the table's name in the account's
+    form list, and the field each chosen column reads (its ``path``), from that form's fields. A
+    table that already states them keeps them. A column Jira writes itself (a fixed column but
+    summary and status, a read-only field) is marked so in its description where it has none; the
+    server refuses a write that sets one. A column no field of the form is named for is refused by
+    name."""
+    from provisa.federation.jira import form_columns
+    from provisa.federation.pgwire_replica import jira_fields
+
+    source = await _adapter_source(model.source_id)
+    schema = model.schema_name.strip().lower()
+    async with _adapter_bound():
+        if not model.arguments:
+            project_key, issue_type = await jira_form(source, schema, model.table_name)
+            model.arguments = {"project": project_key, "issue_type": issue_type}
+        fields = await jira_fields(
+            source, schema, model.arguments["project"], model.arguments["issue_type"]
+        )
+    listed = {
+        name: (field_id, read_only) for name, _type, field_id, read_only in form_columns(fields)
+    }
+    for column in model.columns:
+        if column.name not in listed and not column.path:
+            raise ValueError(
+                f"jira table {model.table_name!r}: no field of its form is column {column.name!r}"
+            )
+        field_id, read_only = listed.get(column.name, (column.path, False))
+        if not column.path and field_id is not None:
+            column.path = field_id
+        if read_only and not column.description:
+            column.description = READ_ONLY_NOTE
+
+
+async def _native_columns_jira(
+    source_id: str, schema_name: str, table_name: str
+) -> list[tuple[str, str]]:
+    """One Jira form's columns (REQ-2069): its fixed columns, then a column per field Jira
+    reports for its project and issue type, read only when the steward selects the form."""
+    from provisa.federation.jira import form_columns
+    from provisa.federation.pgwire_replica import jira_fields
+
+    source = await _adapter_source(source_id)
+    schema = schema_name.strip().lower()
+    async with _adapter_bound():
+        project_key, issue_type = await jira_form(source, schema, table_name)
+        fields = await jira_fields(source, schema, project_key, issue_type)
+    return [(name, data_type) for name, data_type, _field, _read_only in form_columns(fields)]
+
+
 async def _native_columns_servicenow(
     source_id: str, schema_name: str, table_name: str
 ) -> list[tuple[str, str]]:
@@ -1396,6 +1462,8 @@ async def native_columns(  # REQ-1732
         return await _native_columns_govdata(source_id, schema_name, table_name)
     if t == "servicenow":
         return await _native_columns_servicenow(source_id, schema_name, table_name)
+    if t == "jira":
+        return await _native_columns_jira(source_id, schema_name, table_name)
     if not pool.has(source_id):
         return None
     if t == "trino":
@@ -1823,6 +1891,20 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
         return [
             AvailableTableType(name=name, comment=label, group=theme)
             for name, label, theme in listed
+        ]
+
+    if t == "jira":
+        # REQ-2069: every form the account can create an issue of, under its project; read from
+        # the adapter's form list, so no form's fields are read to list them.
+        from provisa.api.admin.types import AvailableTableType
+        from provisa.federation.pgwire_replica import jira_form_list
+
+        source = await _adapter_source(source_id)
+        async with _adapter_bound():
+            forms = await jira_form_list(source, schema_name.strip().lower())
+        return [
+            AvailableTableType(name=name, comment=issue_type, group=project_key)
+            for project_key, issue_type, name in forms
         ]
 
     if _listed_by_its_server(t, state):

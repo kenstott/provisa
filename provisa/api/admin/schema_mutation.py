@@ -3343,6 +3343,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 model.table_format = await athena_table_format(
                     model.source_id, model.schema_name, model.table_name
                 )
+            if _app_state.source_types.get(model.source_id) == "jira":
+                # REQ-2069: a form's project and issue type, and each column's field, from the
+                # account's form and field lists -- the steward picks a form and its columns.
+                from provisa.api.admin.introspect import complete_jira_form
+
+                try:
+                    await complete_jira_form(model)
+                except ValueError as exc:
+                    return MutationResult(
+                        success=False,
+                        message=str(exc),
+                        code="schema.jira_form_unresolved",
+                        params={"table": model.table_name, "source": model.source_id},
+                    )
 
             from provisa.api.admin._import_set import table_import_set_refusal
 

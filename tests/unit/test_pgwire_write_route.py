@@ -59,11 +59,11 @@ def _salesforce() -> Source:
 
 
 def test_the_types_written_through_their_server():
-    assert PGWIRE_SERVER_WRITTEN == {"sharepoint", "salesforce", "servicenow"}
+    assert PGWIRE_SERVER_WRITTEN == {"sharepoint", "salesforce", "servicenow", "jira"}
     assert PGWIRE_SERVER_WRITTEN <= pr.PGWIRE_REPLICA_TYPES
 
 
-@pytest.mark.parametrize("source_type", ["sharepoint", "salesforce", "servicenow"])
+@pytest.mark.parametrize("source_type", ["sharepoint", "salesforce", "servicenow", "jira"])
 @pytest.mark.parametrize("build", _ENGINES)
 def test_written_on_every_engine(source_type, build):
     engine = build()

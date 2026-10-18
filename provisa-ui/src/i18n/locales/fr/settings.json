@@ -703,6 +703,12 @@
           "help": "Un dossier contenant un paquet serveur AskAmerica construit pour cet hôte, avec son lanceur sous bin/. Vide, la version épinglée est utilisée. Un dossier sans lanceur empêche le serveur de démarrer et nomme ce paramètre."
         }
       },
+      "jira": {
+        "bundle_dir": {
+          "label": "Dossier du paquet serveur Jira",
+          "help": "Un dossier contenant un paquet serveur Jira construit pour cet hôte, avec son lanceur sous bin/. Vide, la version épinglée est utilisée. Un dossier sans lanceur empêche le serveur de démarrer et nomme ce paramètre."
+        }
+      },
       "salesforce": {
         "bundle_dir": {
           "label": "Dossier du paquet serveur Salesforce",

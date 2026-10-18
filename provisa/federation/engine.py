@@ -617,6 +617,7 @@ def build_duckdb_engine(
         DuckDBPostgresConnector,
         DuckDBSalesforceConnector,
         DuckDBServicenowConnector,
+        DuckDBJiraConnector,
         DuckDBSharepointConnector,
         DuckDBSnowflakeConnector,
         DuckDBSplunkConnector,
@@ -655,6 +656,7 @@ def build_duckdb_engine(
             DuckDBSharepointConnector(),
             DuckDBSalesforceConnector(),  # REQ-1946
             DuckDBServicenowConnector(),  # REQ-1954
+            DuckDBJiraConnector(),  # REQ-2069
             DuckDBCloudopsConnector(),  # REQ-1947
             DuckDBGovdataConnector(),  # REQ-540: AskAmerica
             DuckDBSplunkConnector(),
@@ -775,6 +777,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         PgGovdataConnector,
         PgSalesforceConnector,
         PgServicenowConnector,
+        PgJiraConnector,
         PgSharepointConnector,
         PgSplunkConnector,
         PostgresFdwConnector,
@@ -792,6 +795,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
             PgSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
             PgSalesforceConnector(),  # salesforce (pgwire bridge, live attach — REQ-1946)
             PgServicenowConnector(),  # servicenow (pgwire bridge, live attach — REQ-1954)
+            PgJiraConnector(),  # jira (pgwire bridge, live attach — REQ-2069)
             PgCloudopsConnector(),  # cloudops (pgwire bridge, live attach — REQ-1947)
             PgGovdataConnector(),  # AskAmerica (pgwire bridge, live attach — REQ-540)
             PgSplunkConnector(),  # splunk (pgwire bridge, live attach — REQ-1730)
@@ -865,6 +869,7 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
         ClickHousePostgresConnector,
         ClickHouseSalesforceConnector,
         ClickHouseServicenowConnector,
+        ClickHouseJiraConnector,
         ClickHouseSharepointConnector,
         ClickHouseSplunkConnector,
         ClickHouseSqliteConnector,
@@ -884,6 +889,7 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
                 ClickHouseSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
                 ClickHouseSalesforceConnector(),  # salesforce (pgwire bridge, live attach — REQ-1946)
                 ClickHouseServicenowConnector(),  # servicenow (pgwire bridge, live attach — REQ-1954)
+                ClickHouseJiraConnector(),  # jira (pgwire bridge, live attach — REQ-2069)
                 ClickHouseCloudopsConnector(),  # cloudops (pgwire bridge, live attach — REQ-1947)
                 ClickHouseGovdataConnector(),  # AskAmerica (pgwire bridge, live attach — REQ-540)
                 ClickHouseSplunkConnector(),  # splunk (pgwire bridge, live attach — REQ-1730)

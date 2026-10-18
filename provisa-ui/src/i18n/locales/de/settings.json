@@ -703,6 +703,12 @@
           "help": "Ein Ordner mit einem für diesen Host gebauten AskAmerica-Server-Bundle, dessen Startprogramm unter bin/ liegt. Leer verwendet das festgelegte Release. Ein Ordner ohne Startprogramm verhindert den Serverstart und nennt diese Einstellung."
         }
       },
+      "jira": {
+        "bundle_dir": {
+          "label": "Jira: Ordner des Server-Bundles",
+          "help": "Ein Ordner mit einem für diesen Host gebauten Jira-Server-Bundle, dessen Startprogramm unter bin/ liegt. Leer verwendet das festgelegte Release. Ein Ordner ohne Startprogramm verhindert den Serverstart und nennt diese Einstellung."
+        }
+      },
       "salesforce": {
         "bundle_dir": {
           "label": "Salesforce: Ordner des Server-Bundles",

@@ -196,6 +196,13 @@
       "allowed_file_extensions": "Une par ligne. Un fichier lié de l’un de ces types devient un tableau",
       "max_html_size": "Par exemple 10MB. Une page plus volumineuse n’est pas lue",
       "max_data_file_size": "Par exemple 100MB. Un fichier plus volumineux n’est pas lu"
-    }
+    },
+    "siteAddress": "Adresse du site",
+    "siteAddressHint": "Votre site Jira, par exemple https://your-site.atlassian.net",
+    "accountEmail": "E-mail du compte Atlassian",
+    "accountEmailHint": "L'e-mail de connexion à Atlassian ; le jeton d'API appartient à ce compte.",
+    "apiToken": "Jeton d'API",
+    "apiTokenHint": "Créé sur id.atlassian.com, Security, API tokens. Conservé dans le coffre-fort de secrets.",
+    "siteAddressInvalid": "Saisissez l'adresse complète du site, commençant par https://"
   }
 }

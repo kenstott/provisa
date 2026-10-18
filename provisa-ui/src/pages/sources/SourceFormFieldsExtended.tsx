@@ -39,6 +39,7 @@ import { PushFeedFormSection } from "./PushFeedFormSection";
 import { ProfilerFormSection } from "./ProfilerFormSection";
 import { SalesforceFields } from "./SalesforceFields";
 import { ServiceNowFields } from "./ServiceNowFields";
+import { JiraFields } from "./JiraFields";
 import { CloudopsFields } from "./CloudopsFields";
 import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
 import { Microsoft365Fields } from "./Microsoft365Fields";
@@ -702,6 +703,7 @@ export function SourceFormFieldsExtended({
         />
       )}
       {form.type === "servicenow" && <ServiceNowFields form={form} setForm={setForm} />}
+      {form.type === "jira" && <JiraFields form={form} setForm={setForm} />}
       {form.type === "sharepoint" && (
         <SharepointFields
           form={form}

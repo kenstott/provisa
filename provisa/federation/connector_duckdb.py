@@ -487,6 +487,10 @@ class DuckDBServicenowConnector(_DuckDBPgwireConnector):  # REQ-1954
     source_type = "servicenow"
 
 
+class DuckDBJiraConnector(_DuckDBPgwireConnector):  # REQ-2069
+    source_type = "jira"
+
+
 class DuckDBGovdataConnector(_DuckDBPgwireConnector):  # REQ-540
     """AskAmerica: its bundled pgwire-govdata server, attached like its sibling adapters."""
 
@@ -1210,6 +1214,10 @@ class PgSalesforceConnector(_PgPgwireConnector):  # REQ-1946
 
 class PgServicenowConnector(_PgPgwireConnector):  # REQ-1954
     source_type = "servicenow"
+
+
+class PgJiraConnector(_PgPgwireConnector):  # REQ-2069
+    source_type = "jira"
 
 
 class PgGovdataConnector(_PgPgwireConnector):  # REQ-540

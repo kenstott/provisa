@@ -46,13 +46,14 @@ from provisa.federation.cloudops import cloudops_settings
 from provisa.federation.connector_config import MissingConnectorConfig
 from provisa.federation.pgwire_endpoint import sign_in_password
 from provisa.federation.salesforce import salesforce_login_url
+from provisa.federation.jira import jira_settings
 from provisa.federation.servicenow import servicenow_settings
 from provisa.runtime_deps import BundleResolver, BundleSpec, bundle_spec_for
 
 # The pgwire-replica source types (mirror of strategy._CONNECTOR_PGWIRE_REPLICA). A type here has a
 # bundled Calcite pgwire server and is landed through this module when no engine connector reaches it.
 PGWIRE_REPLICA_TYPES = frozenset(
-    {"files", "sharepoint", "splunk", "salesforce", "servicenow", "cloudops", "govdata"}
+    {"files", "sharepoint", "splunk", "salesforce", "servicenow", "jira", "cloudops", "govdata"}
 )
 # Types whose bundle is a complete install — its own model of SEVERAL schemas (AskAmerica: sec,
 # econ, ...) and the catalog prebuilt for exactly that model beside it. Such a server is the
@@ -120,6 +121,7 @@ _SCHEMA_FACTORY: dict[str, str] = {
     "splunk": "org.apache.calcite.adapter.splunk.SplunkSchemaFactory",
     "salesforce": "org.apache.calcite.adapter.salesforce.SalesforceSchemaFactory",
     "servicenow": "org.apache.calcite.adapter.servicenow.ServiceNowSchemaFactory",
+    "jira": "org.apache.calcite.adapter.jira.JiraSchemaFactory",  # REQ-2069
     "cloudops": "org.apache.calcite.adapter.ops.CloudOpsSchemaFactory",
 }
 
@@ -485,6 +487,7 @@ _OPERAND_BUILDERS: dict[str, Callable[[Any], dict]] = {
     "splunk": _splunk_operand,
     "salesforce": _salesforce_operand,
     "servicenow": servicenow_settings,  # REQ-1954
+    "jira": jira_settings,  # REQ-2069
     "cloudops": cloudops_settings,
 }
 
@@ -1078,6 +1081,47 @@ async def servicenow_transform_maps(source: Any, schema: str, target: str) -> li
         f"WHERE target_table = '{target}' AND active ORDER BY name",
     )
     return [(row[0], row[1]) for row in rows]
+
+
+def _quoted(value: str) -> str:
+    """``value`` as a SQL string literal: a Jira project key or issue type name, which may hold a
+    space ("Service Request") and so is no identifier."""
+    return "'" + value.replace("'", "''") + "'"
+
+
+async def jira_form_list(source: Any, schema: str) -> list[tuple[str, str, str]]:
+    """``[(project_key, issue_type, name), ...]`` of every form a Jira source's account can create
+    (REQ-2069), from the adapter's form list (``jira.FORM_LIST``): one statement, and no form's
+    fields read."""
+    from provisa.federation.jira import FORM_LIST
+
+    schema = _identifier(schema, "schema")
+    rows = await _read_information_schema(
+        source,
+        f'SELECT project_key, issue_type, name FROM "{schema}"."{FORM_LIST}" '  # noqa: S608 - identifiers
+        "ORDER BY project_key, issue_type",
+    )
+    return [(row[0], row[1], row[2]) for row in rows]
+
+
+async def jira_fields(
+    source: Any, schema: str, project_key: str, issue_type: str
+) -> list[tuple[str, str, str, str, bool, bool]]:
+    """``[(field_id, field_name, column_name, data_type, required, read_only), ...]`` of one form
+    of a Jira source (REQ-2069), in order, from the adapter's field list (``jira.FIELD_LIST``):
+    that form's metadata alone is read. A user field's display name is a field of its own
+    (``assignee.displayName``), read only."""
+    from provisa.federation.jira import FIELD_LIST
+
+    schema = _identifier(schema, "schema")
+    rows = await _read_information_schema(
+        source,
+        "SELECT field_id, field_name, column_name, data_type, required, read_only "
+        f'FROM "{schema}"."{FIELD_LIST}" '  # noqa: S608 - identifiers; the values quoted
+        f"WHERE project_key = {_quoted(project_key)} AND issue_type = {_quoted(issue_type)} "
+        "ORDER BY ordinal_position",
+    )
+    return [(row[0], row[1], row[2], row[3], bool(row[4]), bool(row[5])) for row in rows]
 
 
 async def adapter_columns(

@@ -26,7 +26,7 @@
 
 ## כל המקורות {: #all-sources }
 
-Provisa רושמת **72** סוגי מקור, אלה שטופס המקורות מציע. הטבלאות שלהלן מכסות את כל 72; המספור הוא הספירה. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`, where `graphql` and `grpc` are `graphql_remote` and `grpc_remote`; Kaggle, Wikipedia, GitHub, GitLab and Stripe are counted as distinct sources even though they register through the `files`, `graphql_remote` and `openapi` connectors internally]
+Provisa רושמת **73** סוגי מקור, אלה שטופס המקורות מציע. הטבלאות שלהלן מכסות את כל 73; המספור הוא הספירה. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`, where `graphql` and `grpc` are `graphql_remote` and `grpc_remote`; Kaggle, Wikipedia, GitHub, GitLab and Stripe are counted as distinct sources even though they register through the `files`, `graphql_remote` and `openapi` connectors internally]
 
 | # | קבוצה | סוגי מקור |
 | --- | --- | --- |
@@ -41,13 +41,13 @@ Provisa רושמת **72** סוגי מקור, אלה שטופס המקורות מ
 | 45–46 | [גרף וסמנטיקה](#graph-semantic) | `neo4j`, `sparql` |
 | 47–51 | [מבוססי קובץ](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 52–53 | [Observability ואחרים](#observability-other) | `google_sheets`, `prometheus` |
-| 54–60 | [מחברי SaaS ארגוניים](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 61–66 | [מקורות API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
-| 67 | [GovData](#govdata) | `govdata` |
-| 68–69 | [בודקי איכות נתונים](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
-| 70 | [Data Profiler](#data-profiler) | `data_profiler` |
-| 71 | [ערכות נתונים של Kaggle](#kaggle-datasets) | Kaggle (מוכן דרך טופס המקורות; נרשם כמקור מסוג `files` — ראו [ערכות נתונים של Kaggle](#kaggle-datasets)) |
-| 72 | [Wikipedia](#wikipedia) | Wikipedia (נרשם כמקור מסוג `files` שסורק את הדפים הנקובים — ראו [Wikipedia](#wikipedia)) |
+| 54–61 | [מחברי SaaS ארגוניים](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
+| 62–67 | [מקורות API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
+| 68 | [GovData](#govdata) | `govdata` |
+| 69–70 | [בודקי איכות נתונים](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
+| 71 | [Data Profiler](#data-profiler) | `data_profiler` |
+| 72 | [ערכות נתונים של Kaggle](#kaggle-datasets) | Kaggle (מוכן דרך טופס המקורות; נרשם כמקור מסוג `files` — ראו [ערכות נתונים של Kaggle](#kaggle-datasets)) |
+| 73 | [Wikipedia](#wikipedia) | Wikipedia (נרשם כמקור מסוג `files` שסורק את הדפים הנקובים — ראו [Wikipedia](#wikipedia)) |
 
 מסמך עזר לכל סוג מקור שנתמך על ידי Provisa. "דרייבר ישיר" פירושו ששאילתות חד-מקוריות מבוצעות מול המקור באופן ילידי (מתחת ל-100ms) (REQ-027). "שם המחבר" הוא המחבר המפודרר שבו נעשה שימוש כאשר המקור משתתף ב-JOIN רב-מקורי (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
@@ -529,7 +529,7 @@ Provisa מכירה את כותרת "See also" של המהדורות האלה: `e
 
 ### מחברי SaaS ארגוניים {: #enterprise-saas-connectors }
 
-Google Workspace ו-Microsoft 365 נקראים על ידי טוענים משלהם; ראו [Google Workspace ו-Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, מלאי הענן ו-Splunk נרשמים דרך מחברי Apache Calcite (kenstott/calcite fork). לאף אחד מהם אין דרייבר ישיר — Provisa מפעילה את שרת ה-pgwire המצורף של Calcite למחבר (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-cloudops`, `pgwire-splunk`) ומתחברת אליו כנקודת קצה גנרית של PostgreSQL. במנוע DuckDB נקודת הקצה הזו מצורפת חיה דרך תוסף postgres: Register Table מציג את הטבלאות של המחבר מהקטלוג המצורף, השאילתות קוראות את המחבר במקומו, והסינונים וההטלות מועברים ל-Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. כל מנוע אחר מנחית את השורות למחסן המטריאליזציה לצורך פדרציה (REQ-954). החבילות נשלפות לפי מערכת הפעלה וארכיטקטורה מהגרסה המוצמדת של `kenstott/calcite` (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] מפעיל רשאי במקום זאת לציין תיקיית חבילה שנבנתה עבור המארח הזה, לכל מחבר, תחת Admin → Settings → Connector servers (`connectors.<connector>.bundle_dir`); ראו [Admin](admin.md). חמשת המחברים מפעילים תמיד התאמת שמות שאינה תלוית רישיות, בהתאמה לסמנטיקה שאינה תלוית-רישיות של כל מוצר (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
+Google Workspace ו-Microsoft 365 נקראים על ידי טוענים משלהם; ראו [Google Workspace ו-Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, מלאי הענן ו-Splunk נרשמים דרך מחברי Apache Calcite (kenstott/calcite fork). לאף אחד מהם אין דרייבר ישיר — Provisa מפעילה את שרת ה-pgwire המצורף של Calcite למחבר (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`) ומתחברת אליו כנקודת קצה גנרית של PostgreSQL. במנוע DuckDB נקודת הקצה הזו מצורפת חיה דרך תוסף postgres: Register Table מציג את הטבלאות של המחבר מהקטלוג המצורף, השאילתות קוראות את המחבר במקומו, והסינונים וההטלות מועברים ל-Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. כל מנוע אחר מנחית את השורות למחסן המטריאליזציה לצורך פדרציה (REQ-954). החבילות נשלפות לפי מערכת הפעלה וארכיטקטורה מהגרסה המוצמדת של `kenstott/calcite` (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] מפעיל רשאי במקום זאת לציין תיקיית חבילה שנבנתה עבור המארח הזה, לכל מחבר, תחת Admin → Settings → Connector servers (`connectors.<connector>.bundle_dir`); ראו [Admin](admin.md). חמשת המחברים מפעילים תמיד התאמת שמות שאינה תלוית רישיות, בהתאמה לסמנטיקה שאינה תלוית-רישיות של כל מוצר (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
 
 #### `sharepoint`
 
@@ -656,6 +656,48 @@ Google Workspace ו-Microsoft 365 נקראים על ידי טוענים משלה
   base_url: https://acme.service-now.com
   username: ${env:SN_USERNAME}
   password: ${env:SN_PASSWORD}
+```
+
+#### `jira`
+
+אתר Jira Cloud נקרא ונכתב דרך מתאם Calcite משלו (REQ-2069). טבלה של מקור Jira היא **טופס**: פרויקט אחד וסוג issue אחד, והשדות שהעמודות שלה קוראות. Register Table מציגה כל טופס שהחשבון יכול ליצור ממנו issue, מקובצים לפי פרויקט; בחירת טופס קוראת את השדות שלו מ-Jira, ורישום הטפסים אינו עושה זאת. לכל טופס יש את העמודות `key` (המפתח הראשי שלו), `id`, `summary`, `status`, `created` ו-`updated`, ואחריהן עמודה אחת לכל שדה שנבחר, בשם שהמתאם נותן לה: שם השדה ב-snake case (‏`Story Points` הופך ל-`story_points`). שדה ששמו כבר שם של עמודה נקרא לפי מזהה השדה שלו (`customfield_10099`), כך שאפשר לבחור כל שדה. שדה משתמש מכיל את מזהה החשבון; שם התצוגה שלו הוא שדה בפני עצמו (`assignee.displayName`, עמודה `assignee_name`). עמודות ש-Jira עצמה כותבת הן לקריאה בלבד: `key`, `id`, `created`, `updated`, שם התצוגה של שדה משתמש, ושדה בצורה שהמתאם אינו מכיר, שהוא מגיש כטקסט JSON. רישום עמודה כזו מסמן אותה ב-"Read only: Jira sets it" בתיאור שלה כשאין לה תיאור, וכתיבה שקובעת אותה נדחית על ידי השרת תוך ציון העמודה. [tool-verified: `provisa/federation/jira.py` `FIXED_COLUMNS`, `form_columns`; `provisa/federation/pgwire_replica.py` `jira_form_list`, `jira_fields`; `provisa/api/admin/introspect.py` `complete_jira_form`]
+
+טבלת טופס מציינת את הפרויקט ואת סוג ה-issue שלה ב-`arguments` שלה (`project`, `issue_type`), וכל עמודה קוראת את השדה ש-`path` שלה מציין (מזהה שדה או שם שדה), או את השדה בעל שמה. טבלה שנרשמה מה-admin מקבלת את שניהם מ-Jira; תצורה מצהירה עליהם. טבלת Jira שקובעת דבר אחר, או שאחד מהם חסר בה, נדחית תוך ציון שמה. [tool-verified: `provisa/federation/jira.py` `form_of`; `provisa/core/config_loader.py` `_validate_table_arguments`]
+
+| שדה מקור | מאפיין המתאם | הערות |
+| --- | --- | --- |
+| `base_url` או `host` | `baseUrl` | כתובת `https://…` המלאה של האתר (לדוגמה `https://acme.atlassian.net`). מארח בלבד או פרוטוקול אחר נדחה |
+| `username` | `email` | כתובת האימייל של חשבון Atlassian |
+| `password` | `apiToken` | אסימון API של אותו חשבון, שנוצר ב-id.atlassian.com תחת Security, API tokens |
+
+[tool-verified: `provisa/federation/jira.py` `jira_site_url`, `jira_settings`]
+
+**קישורים.** טבלת `issue_links` של המקור מחזיקה את הקישורים בין ה-issues של הטפסים שלו: `link_id`, `link_type`, `outward_key` ו-`inward_key`, כל קישור פעם אחת. קשר בין שני טפסים מוצהר דרכה כ-junction (REQ-1586), כש-`link_type` הוא המבחין, כך ש-GraphQL ו-Cypher עוברים מ-issue ל-issue המקושר לפי סוג הקישור. [inferred: the adapter's design agreed for REQ-2069]
+
+**קריאות.** חיפוש לפי מפתח (`key =`, `key IN`) נשלף לפי מפתח, כך שמפתח שאינו מציין issue כלשהו אינו שורה. השוואת תאריך או מספר נשלחת ל-Jira כ-JQL. כל פילטר אחר, וכל מיון, מוחל על השורות שנקראו: שוויון על טקסט, אפשרות, סטטוס או משתמש אינו נשלח, כיוון ש-JQL דוחה ערך שאינו מציין דבר במקום שבו SQL מחזיר אפס שורות. שדה מרובה ערכים (labels, בחירה מרובה, components, versions) הוא טקסט המכיל מערך JSON, ונכתב באותה צורה. [inferred: the adapter's behaviour, as the calcite connector reports it for REQ-2069]
+
+ב-DuckDB, ב-PostgreSQL וב-ClickHouse המנוע מצרף את שרת ה-pgwire של המקור וקורא אותו במקומו. ב-Trino אין למקור קטלוג משלו, והוא נטען דרך השרת שלו. [tool-verified: `provisa/federation/engine.py`; `provisa/federation/strategy.py` `_CONNECTOR_PGWIRE_REPLICA`]
+
+**מחזור חיים השרת.** השרת משרת רק את הטפסים הרשומים ממנו, לצד רשימת הטפסים שלו, רשימת השדות שלו והקישורים. רישום, שינוי או הסרה של טופס מפעיל מחדש את השרת ומספק מחדש את המקור על המנוע. [tool-verified: `provisa/federation/served_tables.py` `SERVES_REGISTERED_TABLES`, `serve_tables`; `provisa/api/app_rebuild.py` `serve_registered_tables`]
+
+**כתיבות.** `INSERT`, `UPDATE` ו-`DELETE` על טופס הן מוטציות, הנכתבות על שרת ה-pgwire של המקור בכל מנוע. שורות מוכנסות בקבוצות של 50; עדכון או מחיקה נעשים issue אחר issue, לפי מפתח. הגדרת `status` מבצעת את מעבר ה-workflow לסטטוס זה, ונדחית, תוך ציון הסטטוסים שניתן להגיע אליהם, כשאין ל-workflow של ה-issue אף סטטוס כזה. issue בעל subtasks אינו נמחק. השרת מחזיר כל שורה שנכתבה לפי המפתח שלה, ולכן `RETURNING` מתקבל ו-GraphQL מציע שדות מוטציה. ב-`issue_links`, `INSERT` יוצר קישור ו-`DELETE` מסיר קישור; `UPDATE` נדחה. [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`, `PGWIRE_SERVER_RETURNS_ROWS`] [inferred: the batching, transitions and subtask refusal are the adapter's, agreed for REQ-2069]
+
+```yaml
+- id: support-jira
+  type: jira
+  base_url: https://acme.atlassian.net
+  username: ${env:JIRA_EMAIL}
+  password: ${env:JIRA_API_TOKEN}
+tables:
+- source_id: support-jira
+  table: incident
+  arguments: {project: KAN, issue_type: Incident}
+  columns:
+  - {name: key, data_type: varchar, is_primary_key: true}
+  - {name: summary, data_type: varchar}
+  - {name: status, data_type: varchar}
+  - {name: priority, data_type: varchar}
+  - {name: flagged, data_type: varchar, path: customfield_10021}
 ```
 
 #### `cloudops`

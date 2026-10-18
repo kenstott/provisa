@@ -168,6 +168,7 @@ export const COUNTED = [
   "provisa-ui/public/guides-md/readme.md",
   "site/index.html",
   "site/vs/hasura.html",
+  "site/why/data-mesh.html",
   "site/why/one-model.html",
   "site/why/sources.html",
 ];
@@ -195,7 +196,7 @@ export function withCounts(text, total, kinds) {
     .replace(/\b[A-Z][a-z]+(?:-[a-z]+)? connectors, and one of them\b/g, `${capital(inWords(total))} connectors, and one of them`)
     .replace(/\b[A-Z][a-z]+(?:-[a-z]+)? of them connect to\b/g, `${capital(inWords(total - 1))} of them connect to`)
     .replace(/\bThe [a-z]+(?:-[a-z]+)?(\s+)is a crawler\b/g, (_m, gap) => `The ${inOrdinal(total)}${gap}is a crawler`)
-    .replace(/\b\d+ connectors\b/g, `${total} connectors`)
+    .replace(/\b\d+(\s+)connectors\b/g, (_m, gap) => `${total}${gap}connectors`)
     .replace(/\b\d+\+ kinds of source\b/g, `${kinds}+ kinds of source`)
     .replace(/#the-\d+"/g, `#the-${total}"`)
     .replace(/id="the-\d+">The \d+</g, `id="the-${total}">The ${total}<`)
