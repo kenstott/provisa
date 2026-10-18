@@ -344,7 +344,9 @@ X-Provisa-Redirect-Threshold: 1000
 - `groupBy` — שמות עמודות מופרדים בפסיק; משמש עם `?aggregate=` לקיבוץ תוצאות. רק עמודות ב-Enum `DistinctOnColumn` של הטבלה תקפות; השרת מחזיר `400` עבור כל עמודה שהתפקיד אינו יכול לראות. (REQ-1361) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:447`]
 - `includeNodes` — `true` לכלול עמודות סקלריות של טבלת הבסיס (וסקלרים של ממדים מצורפים (Joined) הנקובים ב-`include=`) בתוך מערך `nodes` של כל שורת קבוצה. נדרש כאשר שאילתת קיבוץ NL מבקשת גם פרטי ממד. (REQ-1405)
 
-התגובות הן אובייקטי משאב עם `type`/`id`/`attributes`. שגיאות עוקבות אחר צורת אובייקט השגיאה של JSON:API.
+- `include` — שמות קשרים מופרדים בפסיקים, באיות הפיזי, למשל `?include=order_items,shipment`: כל משאב קשור מוחזר פעם אחת ב-`included`, וכל משאב ראשי מקשר את מה שהוא כולל תחת `relationships.<name>.data` (רשימת מזהי משאבים לקשר אחד-לרבים, מזהה אחד או `null` לקשר אחד-לאחד). (REQ-257) [tool-verified: `provisa/api/jsonapi/generator.py`]
+
+התשובות הן אובייקטי משאב עם `type`/`id`/`attributes`. ה-`id` של משאב הוא המפתח הראשי של הטבלה שלו: הערך של עמודת המפתח או, במפתח מורכב, ערכי העמודות שלו בסדר המפתח מחוברים ב-`:` (שורה 2 של הזמנה 7 בטבלה עם המפתח `(order_id, line)` היא `7:2`). `:` או `\` בתוך ערך מוברחים עם `\`. טבלה בלי מפתח ראשי מוצהר משתמשת בעמודת `id` שלה; טבלה בלי אף אחד מהם מחזירה `400`, וכך גם `include` שמגיע לטבלה כזו. [tool-verified: `provisa/api/jsonapi/serializer.py`] השגיאות עוקבות אחר מבנה אובייקט השגיאה של JSON:API.
 
 **מטמון תגובות:** הצטרפות באמצעות כותרת בקשה, `Cache-Control: max-age=N` או `x-provisa-cache: true` (ראו [כותרות בקשה למטמון התגובות](#response-cache-request-headers)). כל תגובה נושאת `X-Provisa-Cache: HIT|MISS`, ובפגיעה גם `X-Provisa-Cache-Age`. שתי צורות סותרות מחזירות `400` כאובייקט שגיאה של JSON:API. (REQ-544, REQ-536) [tool-verified: `provisa/api/jsonapi/generator.py`]
 

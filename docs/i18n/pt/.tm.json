@@ -1,6 +1,6 @@
 {
   "admin.md": "aa495b864add7cf82d1410d97abfc86bbd742935301c500175b621484317a308",
-  "api-reference.md": "00661e7fa98059f9aafb091af805f247ae2b6ef09f1cb9b4d4d93c9eac279f87",
+  "api-reference.md": "b36e1dcae81be7cbf88319451e2d39f3deed50f8d48faf73652f94bc72235500",
   "architecture.md": "20e7b35564f87e06b0aa4a6f12ff781cf275f97305c3cb4152dc13ccfbd873e2",
   "commands.md": "04d2e1ef9c027dd42917858380d52b38c70479c2486714f32ad19eafab86d86c",
   "configuration.md": "daf42f891a1fe02447a708a4008546e6efb487a1ea33aed1ec32eb7daf0ef3ff",
@@ -17,7 +17,7 @@
   "migration/hasura-v2.md": "191fc313bf034df9d98d1297c2dace635cf5c0b0db85d664a498c1452552c906",
   "modeling.md": "dd0415ff146446911aea3360a7d0408393134b7b54933a7b53d25237eaa55997",
   "pgwire.md": "147580ecbf20d8cee310a6bc20cb358f1843dc2d747146a3148832434fed5eb5",
-  "python-client.md": "ead2a55e47202c3dc89a8aacb5f8f45facde9d4fecd47d78153fbe3c545c1fda",
+  "python-client.md": "4781626775e1c98b8c375fcfe98ceb3369d9ac9692b126b6b740bd27150580f7",
   "quickstart.md": "03d442441ed339c6b0d9a5ef40916f7a4f3ee41ef719ae305f20c8a97593e266",
   "releasing.md": "9eab172c5c9688f324fb0c948025eae39e8a52d839f12594b9a00baa8fe66384",
   "remote-schemas.md": "a67640dacdaf4d906a3ec7232a382bce68655e06b7ce7e63af91e267457ce437",
