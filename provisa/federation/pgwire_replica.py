@@ -91,6 +91,11 @@ PGWIRE_DEFAULT_PORT = 5433
 CALCITE_CHILD_DEFAULT_HOST = "127.0.0.1"
 CALCITE_CHILD_DEFAULT_PORT = 5533
 _PORT_SCAN_LIMIT = 512  # how far up from a base to probe before giving up (fail loud)
+#: The ports a deployment gives its sources' servers (pgwire and Calcite child alike), comma
+#: separated, in place of the scan up from the default bases: the deployment's to say, as the
+#: bind host is. A test instance names ports leased for it, so it never binds one another
+#: instance on the machine uses (tests/conftest.py).
+PORTS_ENV = "PROVISA_PGWIRE_PORTS"
 SERVER_STOP_SECONDS = 30  # SIGTERM grace before the group is killed
 SERVER_READY_SECONDS = (
     90  # a bundled JVM + Calcite schema boot; the probe measured ~10s on a laptop
@@ -547,14 +552,17 @@ class PortPair:
 
 
 def _port_is_free(port: int) -> bool:
-    """Whether ``port`` can be bound on loopback right now — the real free-port probe."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.bind(("127.0.0.1", port))
-        except OSError:
-            return False
-        return True
+    """Whether ``port`` can be bound right now, on loopback and on every address -- the real
+    free-port probe. No SO_REUSEADDR: with it, a loopback bind succeeds beside another process
+    listening on the wildcard address, and a server started there is shadowed by that process."""
+    # A probe: each socket is bound and closed at once, never listened on.
+    for host in ("127.0.0.1", "0.0.0.0"):  # nosec B104
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind((host, port))
+            except OSError:
+                return False
+    return True
 
 
 class PortAllocator:  # REQ-955
@@ -576,6 +584,9 @@ class PortAllocator:  # REQ-955
         self._is_free = is_free if is_free is not None else _port_is_free
         self._assigned: dict[Hashable, PortPair] = {}
         self._used: set[int] = set()
+        # The deployment's own ports, when it names them (PORTS_ENV): drawn from alone.
+        listed = os.environ.get(PORTS_ENV, "").strip()
+        self._listed = [int(p) for p in listed.split(",")] if listed else None
 
     def allocate(self, key: Hashable) -> PortPair:
         """The stable port pair for ``key`` (a source, by its org and id: REQ-1992) — allocated
@@ -590,6 +601,15 @@ class PortAllocator:  # REQ-955
         return pair
 
     def _next(self, base: int) -> int:
+        if self._listed is not None:
+            for port in self._listed:
+                if port not in self._used and self._is_free(port):
+                    self._used.add(port)
+                    return port
+            raise PortAllocationError(
+                f"no free port among the {len(self._listed)} {PORTS_ENV} names for a pgwire "
+                "replica server"
+            )
         port = base
         limit = base + _PORT_SCAN_LIMIT
         while port <= limit:

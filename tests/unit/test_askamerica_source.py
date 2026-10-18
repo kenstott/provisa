@@ -68,6 +68,14 @@ _BUNDLE_MODEL = {
 }
 
 
+@pytest.fixture
+def _default_scan(monkeypatch):
+    """A deployment that names no ports for its servers: the scan up from the default bases."""
+    from provisa.federation import pgwire_replica
+
+    monkeypatch.delenv(pgwire_replica.PORTS_ENV, raising=False)
+
+
 def _source(database: str = "sec,ref,geo", key: str = "aa-key") -> Source:
     return Source(id="test-askamerica", type=SourceType.govdata, username=key, database=database)
 
@@ -258,7 +266,9 @@ def _replica_on(bundle: Path, spawned: list, monkeypatch) -> pr.ConnectorReplica
     )
 
 
-def test_the_server_is_the_installed_bundle_started_by_its_own_launcher(tmp_path, monkeypatch):
+def test_the_server_is_the_installed_bundle_started_by_its_own_launcher(
+    tmp_path, monkeypatch, _default_scan
+):
     """Installed, then called: the bundle's launcher, in the bundle, with a port and the
     environment the key resolves to. Nothing of the bundle is copied, linked or rewritten; the
     one thing added is its own seed, laid down beside its model."""

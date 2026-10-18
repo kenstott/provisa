@@ -77,6 +77,10 @@ os.environ["PROVISA_LICENSING_FIRST_SEEN"] = __import__("datetime").date.today()
 os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = start_discarding_receiver(lease_ports(1)[0])
 # The transport is declared, never read off the URL (REQ-549), and the receiver speaks OTLP/HTTP.
 os.environ["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
+# A source's pgwire server (and its Calcite child) is given ports leased for this session, never
+# the default scan up from 5433, which reaches ports another instance on the machine listens on
+# (local-dev's pgwire, 5439). Inherited by every server a test starts.
+os.environ["PROVISA_PGWIRE_PORTS"] = ",".join(str(p) for p in lease_ports(20))
 
 # Before ANY test module is imported: the cloud-DW e2es gate on os.environ inside module-level
 # skipif conditions evaluated at collection time, so live .env creds must be present now or those

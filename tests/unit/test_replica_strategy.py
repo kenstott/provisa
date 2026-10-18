@@ -243,7 +243,13 @@ def test_non_replica_type_is_loud():
 # -- REQ-955: port allocation --------------------------------------------------
 
 
-def test_ports_unique_across_sources():
+@pytest.fixture
+def _default_scan(monkeypatch):
+    """A deployment that names no ports for its servers: the scan up from the default bases."""
+    monkeypatch.delenv(pr.PORTS_ENV, raising=False)
+
+
+def test_ports_unique_across_sources(_default_scan):
     alloc = pr.PortAllocator(is_free=lambda _: True)
     a = alloc.allocate("src-a")
     b = alloc.allocate("src-b")
@@ -254,22 +260,60 @@ def test_ports_unique_across_sources():
     assert a.calcite_child_host == pr.CALCITE_CHILD_DEFAULT_HOST
 
 
-def test_port_allocation_is_idempotent_per_source():
+def test_port_allocation_is_idempotent_per_source(_default_scan):
     alloc = pr.PortAllocator(is_free=lambda _: True)
     assert alloc.allocate("src-a") == alloc.allocate("src-a")
 
 
-def test_port_allocation_skips_busy_ports():
+def test_port_allocation_skips_busy_ports(_default_scan):
     busy = {pr.PGWIRE_DEFAULT_PORT, pr.PGWIRE_DEFAULT_PORT + 1}
     alloc = pr.PortAllocator(is_free=lambda p: p not in busy)
     a = alloc.allocate("src-a")
     assert a.pgwire_port == pr.PGWIRE_DEFAULT_PORT + 2
 
 
-def test_port_allocation_exhaustion_is_loud():
+def test_port_allocation_exhaustion_is_loud(_default_scan):
     alloc = pr.PortAllocator(is_free=lambda _: False)
     with pytest.raises(pr.PortAllocationError):
         alloc.allocate("src-a")
+
+
+def test_a_port_another_process_listens_on_at_every_address_is_not_free():
+    """A server listening on the wildcard address holds the port for loopback too: a pgwire
+    server started on it would be shadowed, and a read meant for it would reach the other
+    process."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as held:
+        held.bind(("0.0.0.0", 0))
+        held.listen()
+        port = held.getsockname()[1]
+        assert not pr._port_is_free(port)
+
+
+def test_a_deployment_that_names_its_ports_gets_those_alone(monkeypatch):
+    monkeypatch.setenv(pr.PORTS_ENV, "23001,23002,23003")
+    alloc = pr.PortAllocator(is_free=lambda p: p != 23002)
+    pair = alloc.allocate("src-a")
+    assert (pair.pgwire_port, pair.calcite_child_port) == (23001, 23003)
+    with pytest.raises(pr.PortAllocationError, match=pr.PORTS_ENV):
+        alloc.allocate("src-b")
+
+
+# The ports local-dev listens on (its server, UI, pgwire, Bolt, Flight, gRPC, OTel collector) and
+# the default scan its own sources' pgwire servers take ports from.
+_LOCAL_DEV_PORTS = {3000, 4317, 4318, 4319, 5439, 7687, 8001, 8815, 50051} | set(
+    range(pr.PGWIRE_DEFAULT_PORT, pr.CALCITE_CHILD_DEFAULT_PORT + 512 + 1)
+)
+
+
+def test_a_test_instance_never_gives_a_server_a_port_local_dev_uses():
+    """Every test server's sources are served on ports leased for the session (tests/conftest.py),
+    none of which local-dev uses -- even one that is free when it is handed out."""
+    import os
+
+    leased = {int(p) for p in os.environ[pr.PORTS_ENV].split(",")}
+    assert leased and not leased & _LOCAL_DEV_PORTS
 
 
 # -- REQ-956: runtime_deps bundle resolution / caching / version pin -----------
@@ -669,7 +713,7 @@ async def test_land_via_select_timeout_is_tightened_by_the_request_budget():
 
 
 @_aio
-async def test_connector_replica_end_to_end(tmp_path):
+async def test_connector_replica_end_to_end(tmp_path, _default_scan):
     conn = _FakeConn([{"col": "v"}])
 
     async def _connect(host, port, password):
@@ -751,7 +795,7 @@ async def test_connector_replica_unhealthy_is_loud(tmp_path):
 
 
 @_aio
-async def test_make_pgwire_loader_dispatches_per_source(tmp_path):
+async def test_make_pgwire_loader_dispatches_per_source(tmp_path, _default_scan):
     conns = {"sp-a": _FakeConn([{"x": 1}]), "sp-b": _FakeConn([{"x": 2}])}
     seen_ports: list[int] = []
 
@@ -823,7 +867,7 @@ def test_no_pgwire_replica_for_non_replica_type():
 # -- REQ-1690: live endpoint for an engine that attaches the server ---------------
 
 
-def test_endpoint_waits_for_the_listener(tmp_path, monkeypatch):
+def test_endpoint_waits_for_the_listener(tmp_path, monkeypatch, _default_scan):
     """The JVM binds seconds after spawn: endpoint() polls health until it answers, then returns
     the ports the engine attaches; the same replica hands back the same server."""
     monkeypatch.setattr(pr.time, "sleep", lambda _: None)
@@ -941,7 +985,7 @@ def test_a_server_that_exited_is_reported_with_its_log_not_as_still_starting(tmp
     assert len(spawned_in) == 2
 
 
-def test_ensure_endpoint_for_discovery_succeeds_when_ready(tmp_path, monkeypatch):
+def test_ensure_endpoint_for_discovery_succeeds_when_ready(tmp_path, monkeypatch, _default_scan):
     """A discovery call against an already-healthy server returns normally, same as a real query."""
     monkeypatch.setattr(pr.time, "sleep", lambda _: None)
     monkeypatch.setattr(pr, "_ENDPOINTS", {})
