@@ -1179,6 +1179,58 @@
       "storefrontPoint": {
         "title": "一个模型，两个使用方",
         "description": "<strong>SHIPPED_AS</strong> 将订单与其配送连接起来。应用和 BI 工具都通过它以及其他所有关系、在同样的规则下读取：顾客只看到自己的订单，分析师看不到邮箱。在这里修改一个关系或一条规则，两个使用方都会得到它。没有什么需要保持同步。"
+      },
+      "hasuramigrationScenario": {
+        "title": "从 Hasura 迁出的应用",
+        "description": "一家户外用品店的商店和客服台在这个 PostgreSQL 数据库上通过 Hasura v2 运行：客户、商品目录、订单及其明细，并为客户、客服人员和分析师设置了角色。团队把应用迁到 Provisa，获得了 Hasura 给不了的能力：销售团队的 Salesforce 账户与订单并列，适用同样的规则。"
+      },
+      "hasuramigrationImport": {
+        "title": "一次导入，即可运行",
+        "description": "Admin › Import 读取了应用的 Hasura 元数据导出，并在应用任何内容之前显示了它变成了什么。<strong>原样沿用</strong>：表、它们的自定义名称、每一个关系，以及 select、insert、update 和 delete 权限，分别成为行规则、列授权和写入授权。<strong>映射到更好的 Provisa 功能</strong>，每项都说明原因：继承的角色、作为命令的 action、作为表变更触发器的事件触发器、会话变量及提供它的 claim。<strong>需手动重做</strong>，每项都说明该做什么：计算字段和触发器重试。"
+      },
+      "hasuramigrationTables": {
+        "title": "应用所认识的表",
+        "description": "四张表带着应用使用的名称过来了。<strong>customers</strong> 保留了 Hasura 的自定义名称 <strong>givenName</strong> 和 <strong>familyName</strong>，商品表保留其根名称 <strong>catalog</strong>，每一列都带有可读取它的角色，来自 select 权限。"
+      },
+      "hasuramigrationAsAna": {
+        "title": "以 Ana 身份登录",
+        "description": "Ana 是客户。她的令牌带有 <strong>x-hasura-user-id: 1</strong>；Provisa 把该 claim 读作会话值 <strong>hasura_user_id</strong>，导入的行规则与之比较。点击下一步会在角色选择器中选中 <strong>ana</strong>，下面的查询便按商店为她运行的方式运行。"
+      },
+      "hasuramigrationMyOrders": {
+        "title": "重塑后的订单历史",
+        "description": "商店的订单历史查询为 Provisa 重塑了一次：根字段带有其域，列名遵循 Provisa 的约定，order_by 是一个列表。关系 <strong>items</strong> 和 <strong>product</strong> 保留了它们的 Hasura 名称。以 Ana 身份运行，它返回她的四张订单，不包含任何其他人的订单。"
+      },
+      "hasuramigrationProfile": {
+        "title": "按键读取",
+        "description": "Hasura 的 <strong>customers_by_pk</strong> 是表上的一个过滤条件，计算字段 <strong>full_name</strong> 是界面拼合的两个名字；导入将其列为需手动重做。行规则仍然起决定作用：Ana 只能读取她自己的行。"
+      },
+      "hasuramigrationSalesforce": {
+        "title": "Hasura 做不到的：Salesforce",
+        "description": "销售团队把账户放在 Salesforce 中。Provisa 将该组织注册为数据源，将其 <strong>Account</strong> 对象注册为表，在构建演示时复制一次。商店中的每个企业客户都指明其所购买的账户。"
+      },
+      "hasuramigrationAccount": {
+        "title": "再加一个关系",
+        "description": "<strong>BUYS_FOR</strong> 将客户连接到其 Salesforce 账户，与导入带来的关系一样获得批准。从这里起，在每个界面、每个角色的规则之下，账户与每个客户都只隔一个字段。"
+      },
+      "hasuramigrationAsSupport": {
+        "title": "客服台",
+        "description": "客服人员读取所有订单和所有客户，正如他们的 Hasura 权限所允许的。点击下一步会选中 <strong>support</strong>，客服台的订单界面便按他们的方式运行。"
+      },
+      "hasuramigrationSupportScreen": {
+        "title": "订单及其账户",
+        "description": "客服台的订单界面经过重塑，并加入了新内容：在每个订单的客户旁边，在同一个请求中显示来自 Salesforce 的账户及其行业和城市。没有账户的客户则不显示。"
+      },
+      "hasuramigrationAnalyst": {
+        "title": "分析师",
+        "description": "分析师读取订单总额和账户关联，但读不到姓名或电子邮件，也读不到已取消的订单：这是导入带来的行规则和列列表。点击下一步会选中 <strong>analyst</strong>。"
+      },
+      "hasuramigrationByIndustry": {
+        "title": "按行业统计的收入",
+        "description": "一条横跨商店和 Salesforce 的 SQL 语句：按每个订单背后账户的行业统计收入。分析师的规则与在 GraphQL 中一样适用：已取消的订单被排除，也不会读取姓名或电子邮件。"
+      },
+      "hasuramigrationRecap": {
+        "title": "你所看到的",
+        "description": "一个 Hasura 应用一步导入并立即运行：表、名称、关系、角色、行规则、写入权限、action 和触发器。查询的形状变了一次；规则则丝毫未变。再加一个关系之后，应用就能把 Salesforce 账户与订单并列读取，无需保持任何同步。"
       }
     },
     "status": {
@@ -1263,6 +1315,10 @@
       "storefront": {
         "title": "一个模型，应用和 BI",
         "summary": "一个应用的订单历史页面和一个 BI 仪表板，在同样的关系和规则下读取由 PostgreSQL、MongoDB 和一个 REST 服务组成的同一个模型。"
+      },
+      "hasuramigration": {
+        "title": "迁移 Hasura 应用",
+        "summary": "一个 Hasura v2 商店一步导入，查询重塑一次，然后在同样的规则下与销售团队的 Salesforce 账户连接起来。"
       }
     }
   }

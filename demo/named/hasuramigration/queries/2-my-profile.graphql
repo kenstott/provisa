@@ -1,0 +1,11 @@
+# The storefront's profile screen, reshaped for Provisa: a read by key is a filter on the table,
+# and the full name the Hasura computed field returned is put together from the two names. Run as
+# ana, it returns her own row alone. (Hasura's shape: hasura/app-queries/my-profile.graphql.)
+query MyProfile {
+  s__customers(where: { id: { eq: 1 } }) {
+    id
+    givenName
+    familyName
+    email
+  }
+}

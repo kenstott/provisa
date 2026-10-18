@@ -107,6 +107,8 @@ def _views_schema(home: Path, role: dict, *, include_tables: bool = False):
                     {
                         "column_name": c["name"],
                         "visible_to": c["visible_to"],
+                        # A published name is the column's field, as the server serves it.
+                        **({"alias": c["alias"]} if c.get("alias") else {}),
                         **{k: c[k] for k in _PARAMETER_KEYS if k in c},
                     }
                     for c in view["columns"]

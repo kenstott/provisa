@@ -1,0 +1,4 @@
+- "!include public_customers.yaml"
+- "!include public_order_items.yaml"
+- "!include public_orders.yaml"
+- "!include public_products.yaml"

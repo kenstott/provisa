@@ -1,0 +1,19 @@
+# The storefront's order-history screen, reshaped for Provisa: the same orders, lines and products
+# the app read from Hasura. Run as ana, a customer: her own orders and nobody else's, by the row
+# rules the import carried. (Hasura's shape: hasura/app-queries/my-orders.graphql.)
+query MyOrders {
+  s__orders(order_by: [{ placedAt: desc }]) {
+    id
+    status
+    totalCents
+    placedAt
+    items {
+      quantity
+      unitPriceCents
+      product {
+        name
+        sku
+      }
+    }
+  }
+}

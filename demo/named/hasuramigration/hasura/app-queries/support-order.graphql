@@ -1,0 +1,20 @@
+# The support desk's order screen as it was on Hasura: an order, its customer and lines. Provisa's
+# shape, with the customer's Salesforce account beside it: ../../queries/3-order-with-account.graphql.
+query SupportOrder($id: Int!) {
+  orders_by_pk(id: $id) {
+    id
+    status
+    total_cents
+    customer {
+      givenName
+      familyName
+      email
+    }
+    items {
+      quantity
+      product {
+        name
+      }
+    }
+  }
+}

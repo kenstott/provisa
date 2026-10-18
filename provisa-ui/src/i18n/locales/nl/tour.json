@@ -1179,6 +1179,58 @@
       "storefrontPoint": {
         "title": "Eén model, twee afnemers",
         "description": "<strong>SHIPPED_AS</strong> verbindt een bestelling met haar zending. De app en de BI-tool lezen allebei via deze en elke andere relatie, onder dezelfde regels: de klant ziet zijn eigen bestellingen, de analist ziet geen e-mailadressen. Wijzig hier een relatie of regel, en beide afnemers hebben die. Er valt niets synchroon te houden."
+      },
+      "hasuramigrationScenario": {
+        "title": "Een app die Hasura verlaat",
+        "description": "De webwinkel en de helpdesk van een outdoorwinkel draaiden op Hasura v2 boven deze PostgreSQL-database: klanten, de catalogus, bestellingen en hun regels, met rollen voor klanten, supportmedewerkers en analisten. Het team verhuist de app naar Provisa en krijgt wat Hasura niet kon geven: de Salesforce-accounts van het verkoopteam naast de bestellingen, onder dezelfde regels."
+      },
+      "hasuramigrationImport": {
+        "title": "Eén import, en het werkt",
+        "description": "Admin › Import las de Hasura-metadata-export van de app en toonde wat die werd voordat er iets werd toegepast. <strong>Ongewijzigd overgenomen</strong>: de tabellen, hun aangepaste namen, elke relatie, de select-, insert-, update- en delete-rechten als rijregels, kolomrechten en schrijfrechten. <strong>Omgezet naar een betere Provisa-functie</strong>, elk met de reden: de overgeërfde rol, de action als commando, de event trigger als trigger op de wijzigingen van de tabel, de sessievariabele en de claim die haar levert. <strong>Handmatig opnieuw te doen</strong>, elk met wat te doen: het berekende veld en de herhaalpogingen van de triggers."
+      },
+      "hasuramigrationTables": {
+        "title": "De tabellen, zoals de app ze kende",
+        "description": "De vier tabellen kwamen over met de namen die de app gebruikt. <strong>customers</strong> behoudt Hasura's aangepaste namen <strong>givenName</strong> en <strong>familyName</strong>, de producttabel behoudt zijn rootnaam <strong>catalog</strong>, en elke kolom draagt de rollen die haar mogen lezen, uit de select-rechten."
+      },
+      "hasuramigrationAsAna": {
+        "title": "Aangemeld als Ana",
+        "description": "Ana is een klant. Haar token bevatte <strong>x-hasura-user-id: 1</strong>; Provisa leest die claim als de sessiewaarde <strong>hasura_user_id</strong>, waarmee de geïmporteerde rijregels vergelijken. Volgende kiest <strong>ana</strong> in de rolkiezer, zodat de onderstaande query's draaien zoals de webwinkel ze voor haar draait."
+      },
+      "hasuramigrationMyOrders": {
+        "title": "De bestelgeschiedenis, hervormd",
+        "description": "De bestelgeschiedenis-query van de webwinkel, eenmaal hervormd voor Provisa: het rootveld draagt zijn domein, de kolomnamen volgen de conventie van Provisa en order_by is een lijst. De relaties <strong>items</strong> en <strong>product</strong> behielden hun Hasura-namen. Als Ana uitgevoerd antwoordt hij met haar vier bestellingen en die van niemand anders."
+      },
+      "hasuramigrationProfile": {
+        "title": "Een lezing op sleutel",
+        "description": "Hasura's <strong>customers_by_pk</strong> is een filter op de tabel, en het berekende veld <strong>full_name</strong> zijn de twee namen die het scherm samenvoegt; de import noemde het als handmatig opnieuw te doen. De rijregel beslist nog steeds: Ana leest alleen haar eigen rij."
+      },
+      "hasuramigrationSalesforce": {
+        "title": "Wat Hasura niet kon: Salesforce",
+        "description": "Het verkoopteam bewaart zijn accounts in Salesforce. Provisa registreert de organisatie als bron en het object <strong>Account</strong> als tabel, eenmalig gekopieerd toen de demo werd gebouwd. Elke zakelijke klant in de winkel noemt het account waarvoor hij koopt."
+      },
+      "hasuramigrationAccount": {
+        "title": "Nog één relatie",
+        "description": "<strong>BUYS_FOR</strong> koppelt een klant aan zijn Salesforce-account, goedgekeurd zoals de relaties die de import meebracht. Vanaf hier is het account één veld verwijderd van elke klant, in elke interface, onder de regels van elke rol."
+      },
+      "hasuramigrationAsSupport": {
+        "title": "De helpdesk",
+        "description": "Supportmedewerkers lezen elke bestelling en elke klant, zoals hun Hasura-rechten toestonden. Volgende kiest <strong>support</strong>, en het bestelscherm van de helpdesk draait zoals zij het draaien."
+      },
+      "hasuramigrationSupportScreen": {
+        "title": "Bestellingen met hun accounts",
+        "description": "Het bestelscherm van de helpdesk, hervormd, met iets nieuws: naast de klant van elke bestelling het account uit Salesforce, de branche en de stad, in hetzelfde verzoek. Klanten zonder account tonen er geen."
+      },
+      "hasuramigrationAnalyst": {
+        "title": "De analist",
+        "description": "Analisten lezen bestelsommen en accountkoppelingen maar geen namen of e-mailadressen, en nooit geannuleerde bestellingen: de rijregel en kolomlijsten die de import meebracht. Volgende kiest <strong>analyst</strong>."
+      },
+      "hasuramigrationByIndustry": {
+        "title": "Omzet per branche",
+        "description": "Eén SQL-statement over de winkel en Salesforce: omzet per branche van het account achter elke bestelling. De regels van de analist gelden zoals in GraphQL: geannuleerde bestellingen blijven buiten beschouwing en er wordt geen naam of e-mailadres gelezen."
+      },
+      "hasuramigrationRecap": {
+        "title": "Wat je zag",
+        "description": "Een Hasura-app in één stap geïmporteerd en meteen werkend: tabellen, namen, relaties, rollen, rijregels, schrijfrechten, de action en de triggers. De query's veranderden één keer van vorm; de regels veranderden helemaal niet. En één relatie later leest de app zijn Salesforce-accounts naast zijn bestellingen, zonder iets om synchroon te houden."
       }
     },
     "status": {
@@ -1263,6 +1315,10 @@
       "storefront": {
         "title": "Eén model, app en BI",
         "summary": "Het bestelgeschiedenisscherm van een app en een BI-dashboard lezen één model van PostgreSQL, MongoDB en een REST-service, onder dezelfde relaties en regels."
+      },
+      "hasuramigration": {
+        "title": "Een Hasura-app verhuizen",
+        "summary": "Een Hasura v2-webwinkel in één stap geïmporteerd, de query's eenmaal hervormd, daarna gekoppeld aan de Salesforce-accounts van het verkoopteam onder dezelfde regels."
       }
     }
   }

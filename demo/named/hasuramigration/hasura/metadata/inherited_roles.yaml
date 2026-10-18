@@ -1,0 +1,4 @@
+- role_name: support_lead
+  role_set:
+    - support
+    - analyst

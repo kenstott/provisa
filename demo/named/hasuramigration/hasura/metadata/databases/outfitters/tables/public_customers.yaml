@@ -1,0 +1,72 @@
+table:
+  name: customers
+  schema: public
+configuration:
+  column_config:
+    first_name:
+      custom_name: givenName
+    last_name:
+      custom_name: familyName
+  custom_column_names:
+    first_name: givenName
+    last_name: familyName
+  custom_root_fields: {}
+array_relationships:
+  - name: orders
+    using:
+      foreign_key_constraint_on:
+        column: customer_id
+        table:
+          name: orders
+          schema: public
+computed_fields:
+  - name: full_name
+    definition:
+      function:
+        name: customer_full_name
+        schema: public
+    comment: First and last name
+select_permissions:
+  - role: customer
+    permission:
+      columns:
+        - email
+        - first_name
+        - id
+        - last_name
+      computed_fields:
+        - full_name
+      filter:
+        id:
+          _eq: X-Hasura-User-Id
+  - role: support
+    permission:
+      columns:
+        - created_at
+        - email
+        - first_name
+        - id
+        - last_name
+        - sf_account_id
+      computed_fields:
+        - full_name
+      filter: {}
+      allow_aggregations: true
+  - role: analyst
+    permission:
+      columns:
+        - created_at
+        - id
+        - sf_account_id
+      filter: {}
+      allow_aggregations: true
+update_permissions:
+  - role: customer
+    permission:
+      columns:
+        - first_name
+        - last_name
+      filter:
+        id:
+          _eq: X-Hasura-User-Id
+      check: null

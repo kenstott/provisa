@@ -1179,6 +1179,58 @@
       "storefrontPoint": {
         "title": "1つのモデル、2つの利用者",
         "description": "<strong>SHIPPED_AS</strong>は注文をその配送に結び付けます。アプリもBIツールも、これと他のすべてのリレーションシップを通じて、同じルールのもとで読み取ります。顧客は自分の注文を見て、アナリストはメールアドレスを見ません。ここでリレーションシップやルールを変えれば、両方の利用者に反映されます。同期すべきものはありません。"
+      },
+      "hasuramigrationScenario": {
+        "title": "Hasuraから移行するアプリ",
+        "description": "アウトドア用品店のストアとサポート窓口は、このPostgreSQLデータベース上のHasura v2で動いていました。顧客、カタログ、注文とその明細があり、顧客、サポート担当者、アナリスト向けのロールがあります。チームはアプリをProvisaに移し、Hasuraにはできなかったことを手に入れます。営業チームのSalesforceアカウントを注文の隣に、同じルールのもとで置けます。"
+      },
+      "hasuramigrationImport": {
+        "title": "1回のインポートで動く",
+        "description": "Admin › Importは、アプリのHasuraメタデータのエクスポートを読み込み、何も適用する前に、それが何になるかを表示しました。<strong>そのまま引き継ぎ</strong>: テーブル、そのカスタム名、すべてのリレーションシップ、select・insert・update・deleteの権限を行ルール、列の許可、書き込みの許可として。<strong>Provisaのより良い機能に対応付け</strong>、それぞれ理由を示します: 継承されたロール、コマンドとしてのアクション、テーブルの変更に対するトリガーとしてのイベントトリガー、セッション変数とそれを供給するclaim。<strong>手作業でやり直し</strong>、それぞれ何をすべきかを示します: 計算フィールドとトリガーのリトライ。"
+      },
+      "hasuramigrationTables": {
+        "title": "アプリが知っていたままのテーブル",
+        "description": "4つのテーブルは、アプリが使う名前のまま移行されました。<strong>customers</strong>はHasuraのカスタム名<strong>givenName</strong>と<strong>familyName</strong>を保ち、商品テーブルはルート名<strong>catalog</strong>を保ち、各列にはselect権限に基づいて、その列を読めるロールが付きます。"
+      },
+      "hasuramigrationAsAna": {
+        "title": "Anaとしてサインイン",
+        "description": "Anaは顧客です。彼女のトークンには<strong>x-hasura-user-id: 1</strong>が含まれていました。Provisaはこのclaimをセッション値<strong>hasura_user_id</strong>として読み取り、インポートされた行ルールがそれと比較します。「次へ」でロールの選択に<strong>ana</strong>が選ばれ、以下のクエリは、ストアが彼女のために実行するとおりに実行されます。"
+      },
+      "hasuramigrationMyOrders": {
+        "title": "形を変えた注文履歴",
+        "description": "ストアの注文履歴クエリを、Provisa向けに一度だけ形を変えました。ルートフィールドにドメインが付き、列名はProvisaの規則に従い、order_byはリストになります。リレーションシップ<strong>items</strong>と<strong>product</strong>はHasuraでの名前のままです。Anaとして実行すると、彼女の4件の注文だけが返り、他の人の注文は返りません。"
+      },
+      "hasuramigrationProfile": {
+        "title": "キーによる読み取り",
+        "description": "Hasuraの<strong>customers_by_pk</strong>はテーブルに対するフィルターで、計算フィールド<strong>full_name</strong>は画面が組み合わせる2つの名前です。インポートはこれを手作業でやり直す項目として挙げました。行ルールは引き続き効きます。Anaは自分の行だけを読めます。"
+      },
+      "hasuramigrationSalesforce": {
+        "title": "Hasuraにできなかったこと: Salesforce",
+        "description": "営業チームはアカウントをSalesforceで管理しています。Provisaは組織をソースとして、その<strong>Account</strong>オブジェクトをテーブルとして登録し、デモの構築時に一度コピーされました。ストアの各法人顧客は、購入先のアカウントを指定します。"
+      },
+      "hasuramigrationAccount": {
+        "title": "もう1つのリレーションシップ",
+        "description": "<strong>BUYS_FOR</strong>は顧客をそのSalesforceアカウントに結び付け、インポートが持ち込んだリレーションシップと同様に承認されます。ここから、アカウントはすべてのインターフェースで、すべてのロールのルールのもと、各顧客から1フィールドの距離にあります。"
+      },
+      "hasuramigrationAsSupport": {
+        "title": "サポート窓口",
+        "description": "サポート担当者は、Hasuraの権限で許されていたとおり、すべての注文とすべての顧客を読み取れます。「次へ」で<strong>support</strong>が選ばれ、サポート窓口の注文画面が彼らの実行と同じように動きます。"
+      },
+      "hasuramigrationSupportScreen": {
+        "title": "アカウント付きの注文",
+        "description": "サポート窓口の注文画面を形を変えて、新しいものを加えました。各注文の顧客の隣に、Salesforceのアカウント、その業種と所在地が、同じリクエストで表示されます。アカウントのない顧客には何も表示されません。"
+      },
+      "hasuramigrationAnalyst": {
+        "title": "アナリスト",
+        "description": "アナリストは注文の合計とアカウントへのリンクを読み取れますが、名前もメールも読めず、キャンセルされた注文も読めません。インポートが持ち込んだ行ルールと列リストによるものです。「次へ」で<strong>analyst</strong>が選ばれます。"
+      },
+      "hasuramigrationByIndustry": {
+        "title": "業種別の売上",
+        "description": "ストアとSalesforceにまたがる1つのSQL文です。各注文の背後にあるアカウントの業種ごとの売上を求めます。アナリストのルールはGraphQLと同じように適用されます。キャンセルされた注文は除外され、名前もメールも読み取られません。"
+      },
+      "hasuramigrationRecap": {
+        "title": "ここまでの内容",
+        "description": "Hasuraアプリを1ステップでインポートし、すぐに動作しました。テーブル、名前、リレーションシップ、ロール、行ルール、書き込み権限、アクション、トリガーが対象です。クエリは一度だけ形が変わり、ルールはまったく変わりませんでした。そしてリレーションシップをもう1つ加えれば、アプリは注文の隣にSalesforceアカウントを読み取れ、同期を保つものは何もありません。"
       }
     },
     "status": {
@@ -1263,6 +1315,10 @@
       "storefront": {
         "title": "1つのモデル、アプリとBI",
         "summary": "アプリの注文履歴画面とBIダッシュボードが、PostgreSQL、MongoDB、RESTサービスからなる1つのモデルを、同じリレーションシップとルールのもとで読み取ります。"
+      },
+      "hasuramigration": {
+        "title": "Hasuraアプリの移行",
+        "summary": "Hasura v2のストアを1ステップでインポートし、クエリを一度だけ形を変えたうえで、営業チームのSalesforceアカウントに同じルールのもとで結び付けます。"
       }
     }
   }

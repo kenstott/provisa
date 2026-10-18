@@ -1,0 +1,69 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The hasuramigration demo's own tour (REQ-2010): the story of the demo, told with its own data. The step
+# kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name here is checked
+# against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
+# tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: the scenario and the features it shows; how the pieces fit, each step on its real
+# object; the solution, as predesigned queries over the transports that fit it (a Polly step is
+# optional, its answer stored); a recap; and "Where next?", the landing page below.
+landing:
+  route: /query
+  capability: query_development
+steps:
+- key: hasuramigrationScenario
+  route: /sources
+  capability: source_registration
+  source: outfitters
+- key: hasuramigrationImport
+  image: import-report.png
+- key: hasuramigrationTables
+  route: /tables
+  capability: table_registration
+  table: outfitters.customers
+- key: hasuramigrationAsAna
+  route: /query
+  capability: query_development
+  role: ana
+- key: hasuramigrationMyOrders
+  example: 1-my-orders
+- key: hasuramigrationProfile
+  example: 2-my-profile
+- key: hasuramigrationSalesforce
+  route: /sources
+  capability: source_registration
+  source: crm
+- key: hasuramigrationAccount
+  route: /relationships
+  capability: create_relationship
+  relationship: BUYS_FOR
+- key: hasuramigrationAsSupport
+  route: /query
+  capability: query_development
+  role: support
+- key: hasuramigrationSupportScreen
+  example: 3-order-with-account
+- key: hasuramigrationAnalyst
+  route: /sql
+  capability: query_development
+  role: analyst
+- key: hasuramigrationByIndustry
+  sql: >-
+    SELECT a."Industry" AS industry, COUNT(*) AS orders, SUM(o.total_cents) / 100.0 AS revenue
+    FROM "store"."orders" AS o
+    JOIN "store"."customers" AS c ON c.id = o.customer_id
+    JOIN "crm"."accounts" AS a ON a."Id" = c.sf_account_id
+    GROUP BY a."Industry"
+    ORDER BY revenue DESC
+- key: hasuramigrationRecap
+  route: /relationships
+  capability: create_relationship
+  relationship: BUYS_FOR

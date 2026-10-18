@@ -1179,6 +1179,58 @@
       "storefrontPoint": {
         "title": "One model, two consumers",
         "description": "<strong>SHIPPED_AS</strong> joins an order to its shipment. The app and the BI tool both read through it and every other relationship, under the same rules: the customer sees their own orders, the analyst sees no emails. Change a relationship or a rule here, and both consumers have it. There is nothing to keep in sync."
+      },
+      "hasuramigrationScenario": {
+        "title": "An app moving off Hasura",
+        "description": "An outfitter's storefront and support desk ran on Hasura v2 over this PostgreSQL database: customers, the catalog, orders and their lines, with roles for customers, support staff and analysts. The team moves the app to Provisa, and gains what Hasura could not give it: the sales team's Salesforce accounts beside the orders, under the same rules."
+      },
+      "hasuramigrationImport": {
+        "title": "One import, and it works",
+        "description": "Admin › Import read the app's Hasura metadata export and showed what it became before applying anything. <strong>Carried as it is</strong>: the tables, their custom names, every relationship, the select, insert, update and delete permissions as row rules, column grants and write grants. <strong>Mapped to a better Provisa feature</strong>, each saying why: the inherited role, the action as a command, the event trigger as a trigger on the table's changes, the session variable and the claim that supplies it. <strong>Redo by hand</strong>, each saying what to do: the computed field and the trigger retries."
+      },
+      "hasuramigrationTables": {
+        "title": "The tables, as the app knew them",
+        "description": "The four tables came over with the names the app uses. <strong>customers</strong> keeps Hasura's custom names <strong>givenName</strong> and <strong>familyName</strong>, the products table keeps its root name <strong>catalog</strong>, and each column carries the roles that may read it, from the select permissions."
+      },
+      "hasuramigrationAsAna": {
+        "title": "Signed in as Ana",
+        "description": "Ana is a customer. Her token carried <strong>x-hasura-user-id: 1</strong>; Provisa reads that claim as the session value <strong>hasura_user_id</strong>, which the imported row rules compare with. Next picks <strong>ana</strong> in the role picker, so the queries below run as the storefront runs them for her."
+      },
+      "hasuramigrationMyOrders": {
+        "title": "The order history, reshaped",
+        "description": "The storefront's order-history query, reshaped once for Provisa: the root field carries its domain, the column names follow Provisa's convention, and order_by is a list. The relationships <strong>items</strong> and <strong>product</strong> kept their Hasura names. Run as Ana, it answers her four orders and no one else's."
+      },
+      "hasuramigrationProfile": {
+        "title": "A read by key",
+        "description": "Hasura's <strong>customers_by_pk</strong> is a filter on the table, and the <strong>full_name</strong> computed field is the two names the screen puts together; the import listed it to redo by hand. The row rule still decides: Ana reads her own row alone."
+      },
+      "hasuramigrationSalesforce": {
+        "title": "What Hasura couldn't do: Salesforce",
+        "description": "The sales team keeps its accounts in Salesforce. Provisa registers the org as a source and its <strong>Account</strong> object as a table, copied once when the demo was built. Each business customer in the store names the account it buys for."
+      },
+      "hasuramigrationAccount": {
+        "title": "One more relationship",
+        "description": "<strong>BUYS_FOR</strong> joins a customer to their Salesforce account, approved like the relationships the import carried. From here the account is one field away from every customer, in every interface, under every role's rules."
+      },
+      "hasuramigrationAsSupport": {
+        "title": "The support desk",
+        "description": "Support staff read every order and every customer, as their Hasura permissions allowed. Next picks <strong>support</strong>, and the support desk's order screen runs as they run it."
+      },
+      "hasuramigrationSupportScreen": {
+        "title": "Orders with their accounts",
+        "description": "The support desk's order screen, reshaped, with something new: beside each order's customer, the account from Salesforce, its industry and city, in the same request. Customers without an account show none."
+      },
+      "hasuramigrationAnalyst": {
+        "title": "The analyst",
+        "description": "Analysts read order totals and account links but no names or emails, and never cancelled orders: the row rule and column lists the import carried. Next picks <strong>analyst</strong>."
+      },
+      "hasuramigrationByIndustry": {
+        "title": "Revenue by industry",
+        "description": "One SQL statement over the store and Salesforce: revenue by the industry of the account behind each order. The analyst's rules apply as they do in GraphQL: cancelled orders are left out, and no name or email is read."
+      },
+      "hasuramigrationRecap": {
+        "title": "What you saw",
+        "description": "A Hasura app imported in one step and working at once: tables, names, relationships, roles, row rules, write permissions, the action and the triggers. The queries changed shape once; the rules did not change at all. And one relationship later, the app reads its Salesforce accounts beside its orders, with nothing to keep in sync."
       }
     },
     "status": {
@@ -1263,6 +1315,10 @@
       "storefront": {
         "title": "One model, app and BI",
         "summary": "An app's order-history screen and a BI dashboard read one model of PostgreSQL, MongoDB and a REST service, under the same relationships and rules."
+      },
+      "hasuramigration": {
+        "title": "Moving a Hasura app",
+        "summary": "A Hasura v2 storefront imported in one step, its queries reshaped once, then joined to the sales team's Salesforce accounts under the same rules."
       }
     }
   }
