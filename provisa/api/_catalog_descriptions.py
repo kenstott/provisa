@@ -82,6 +82,8 @@ _OPS: dict[str, str] = {
     "traces": "One row per request — the request span, carrying its transport, role, route, "
     "engine, sources, cache result, row count, status and stage durations as attributes — and "
     "one row per piece of background work (a refresh, a scheduled job)",
+    "mv_refresh_lineage": "One row per materialized-view refresh — the versions of the view's "
+    "definition and of its inputs it was built from, and where each of its columns came from",
     "trace_details": "The spans under a request traced in debug detail — one row per stage, "
     "Redis command, source or engine statement and outbound call — joined to its request by "
     "trace_id and kept for a short retention",
@@ -522,6 +524,19 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "query_text": "Statement text of a debug-detail statement span; empty on a request record",
         "tenant_id": "Org the span was emitted for",
         "_date": "Partition day the span was compacted into",
+    },
+    "mv_refresh_lineage": {
+        "mv_id": "Materialized view that was refreshed",
+        "target_table": "Table the refresh wrote",
+        "definition_version": "Version of the view's definition the refresh ran",
+        "input_version": "Version of the inputs the refresh read",
+        "input_version_kind": "What the input version is: an Iceberg snapshot, a watermark, a "
+        "freshness token or the refresh time",
+        "trace_id": "Trace of the refresh",
+        "refreshed_at": "When the refresh ran (UTC)",
+        "column_derivations": "Each output column with the source columns and expression it "
+        "comes from, as JSON",
+        "tenant_id": "Org the refresh ran for",
     },
     "trace_details": {
         "trace_id": "Identifier shared by every span of one end-to-end operation",

@@ -132,6 +132,14 @@ class EngineBackend:
         with ``Catalog "otel" does not exist``. Registration follows this flag."""
         return False
 
+    @property
+    def landed_signals(self) -> frozenset[str]:
+        """The ops signal tables (``ops_schema.OPS_TABLES``) the engine reads at
+        ``otel.signals.<table>``, which startup_seed registers under ``provisa-otel`` (REQ-862):
+        every one on an engine with the ``otel`` catalog, the traces a native engine's own lane
+        lands (``observability.native_traces``), none on an engine that reads neither."""
+        return frozenset()
+
     # -- lifecycle -------------------------------------------------------------
 
     def is_connected(self, state: Any) -> bool:
@@ -966,6 +974,12 @@ class TrinoBackend(EngineBackend):
         """Trino owns the ``otel`` catalog — ensure_system_catalogs registers it on the
         coordinator (provision/reseed_ops), so ``otel.signals.*`` resolves."""
         return True
+
+    @property
+    def landed_signals(self) -> frozenset[str]:
+        from provisa.observability.ops_schema import OPS_TABLES
+
+        return frozenset(OPS_TABLES)
 
     def transpile_physical(self, pg_sql: str) -> str:
         from provisa.transpiler.transpile import (

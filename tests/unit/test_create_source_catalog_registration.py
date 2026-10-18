@@ -41,6 +41,7 @@ class _NativeEngine:
     """
 
     has_otel_catalog = False
+    landed_signals: frozenset[str] = frozenset()
 
 
 @pytest.fixture()
@@ -123,6 +124,7 @@ def test_fixed_catalog_warehouse_pins_every_source_to_the_warehouse_database(sta
     class _FederationEngine:
         engine = _Engine()
         has_otel_catalog = False
+        landed_signals: frozenset[str] = frozenset()
 
     monkeypatch.setattr(state, "federation_engine", _FederationEngine(), raising=False)
     monkeypatch.setenv("SYNAPSE_DATABASE", "provisa_syn")
@@ -138,6 +140,7 @@ class _RecordingEngine:
     """Records what the source-provisioning seam is asked to act on."""
 
     has_otel_catalog = False
+    landed_signals: frozenset[str] = frozenset()
 
     def __init__(self) -> None:
         self.registered: list[tuple[str, str | None]] = []
@@ -224,6 +227,7 @@ class _TrinoFederationEngine:
 
     engine = _Engine()
     has_otel_catalog = True
+    landed_signals = frozenset({"traces", "metrics", "logs"})
 
     def materialize_store_target(self, org_id: str) -> tuple[str, str]:
         return ("provisa_admin", f"org_{org_id}_mv_cache")

@@ -76,6 +76,9 @@ class _FakeRuntime:
     def attach_source(self, source):  # exercised by _attach_registered — no-op record
         pass
 
+    def attach_region_ops(self, catalog, schema, stores, views) -> None:  # noqa: ANN001
+        """The ops views a native walk defines (the engine's landed traces, REQ-862)."""
+
     async def reconcile_replica(self, *, schema, table, columns, pk_columns=None):
         self.landed.append((schema, table, columns, pk_columns))
         return "created"

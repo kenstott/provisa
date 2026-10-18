@@ -17,7 +17,9 @@ exactly where the ops domain reads it. ``OPS_TABLES`` is imported by
 
 from __future__ import annotations
 
+import json
 import os
+from datetime import datetime, timezone
 
 import sqlalchemy as sa
 
@@ -93,6 +95,46 @@ OPS_TABLES: dict[str, list[tuple[str, str, bool]]] = {
 # retention (TRACE_DETAIL_RETENTION_HOURS).
 OPS_TABLES["trace_details"] = list(OPS_TABLES["traces"])
 
+# REQ-862: the span each MV refresh records its lineage on (mv.refresh._emit_column_lineage_span).
+MV_REFRESH_LINEAGE_SPAN = "mv.refresh.column_lineage"
+
+# REQ-862: the refresh lineage records, one row a refresh, read out of their spans in `traces`.
+# Written in PostgreSQL and transpiled to each engine's SQL where the engine defines the view
+# (ops_trino.seed_ops_trino, the native attach walk). The attributes are read from the text
+# column as it is, never cast: Trino's CAST(varchar AS JSON) makes a JSON string rather than
+# parsing it, and json_extract_scalar parses varchar itself. tenant_id carries the org rule
+# (compiler.rls.ORG_SCOPED_SIGNALS_RULE) every provisa-otel table is read under.
+MV_REFRESH_LINEAGE_VIEW = "mv_refresh_lineage"
+MV_REFRESH_LINEAGE_SQL = f"""SELECT
+  span_attributes ->> 'mv.id' AS mv_id,
+  span_attributes ->> 'mv.target_table' AS target_table,
+  span_attributes ->> 'lineage.definition_version' AS definition_version,
+  span_attributes ->> 'lineage.input_version' AS input_version,
+  span_attributes ->> 'lineage.input_version_kind' AS input_version_kind,
+  trace_id,
+  "timestamp" AS refreshed_at,
+  span_attributes ->> 'lineage.column_derivations' AS column_derivations,
+  tenant_id
+FROM otel.signals.traces
+WHERE span_name = '{MV_REFRESH_LINEAGE_SPAN}'"""
+MV_REFRESH_LINEAGE_COLUMNS: list[tuple[str, str, bool]] = [
+    ("mv_id", "text", False),
+    ("target_table", "text", False),
+    ("definition_version", "text", False),
+    ("input_version", "text", False),
+    ("input_version_kind", "text", False),
+    ("trace_id", "text", True),
+    ("refreshed_at", "timestamp", False),
+    ("column_derivations", "text", False),
+    ("tenant_id", "text", False),
+]
+
+# The views each engine with the ops signals defines in otel.signals over them, each
+# (view_name, [(column, logical_type, is_primary_key)], PostgreSQL SELECT).
+OPS_SIGNAL_VIEWS: list[tuple[str, list[tuple[str, str, bool]], str]] = [
+    (MV_REFRESH_LINEAGE_VIEW, MV_REFRESH_LINEAGE_COLUMNS, MV_REFRESH_LINEAGE_SQL),
+]
+
 # The span attribute that marks a request span (set by provisa.otel_compat.request_span and the
 # HTTP server-span hook). A request span whose caller sent a traceparent has a parent, in another
 # process — this attribute, not the absence of a parent, is what says it is the request record.
@@ -111,6 +153,86 @@ TRACE_ATTR_COLS: dict[str, str] = {
     "provisa.query_text": "query_text",
     "provisa.tenant": "tenant_id",
 }
+
+# REQ-1428: the instrumentation scopes of the catalog database's driver, whose statement spans no
+# lane keeps. REQ-1910: the catalog database is instrumented through psycopg now; asyncpg stays
+# listed for the objects written while it was the instrumented driver.
+CATALOG_DRIVER_SCOPES = (
+    "opentelemetry.instrumentation.asyncpg",
+    "opentelemetry.instrumentation.psycopg",
+)
+
+
+def _ns_to_dt(ns: int) -> datetime | None:
+    """OTLP instant (nanoseconds since the epoch) as a UTC datetime.
+
+    REQ-1435: the ops tables register these columns as timestamps, so the row carries the instant
+    itself rather than its integer encoding. Microsecond is the resolution every store in the lane
+    keeps (Iceberg TIMESTAMP(6), Postgres/DuckDB TIMESTAMP), so the sub-microsecond digits are
+    dropped here rather than silently at the first write.
+    """
+    return (
+        datetime.fromtimestamp(ns / 1_000_000_000, timezone.utc).replace(tzinfo=None)
+        if ns
+        else None
+    )
+
+
+def trace_row(
+    *,
+    trace_id: str,
+    span_id: str,
+    parent_span_id: str | None,
+    name: str,
+    kind: int,
+    attributes: dict,
+    resource_attributes: dict,
+    scope_name: str | None,
+    start_ns: int,
+    end_ns: int,
+    status_code: int,
+    status_message: str | None,
+) -> dict:
+    """One span as a ``traces`` row (OPS_TABLES["traces"]): the one mapping every lane that lands
+    spans uses -- otlp2sql from the OTLP wire, the native lane from the SDK's finished span -- so
+    a span is the same row whichever wrote it."""
+    ts = _ns_to_dt(start_ns)
+    row = {
+        "trace_id": trace_id,
+        "span_id": span_id,
+        "parent_span_id": parent_span_id or None,
+        "span_name": name,
+        "span_kind": kind,
+        "service_name": resource_attributes.get("service.name"),
+        "service_namespace": resource_attributes.get("service.namespace"),
+        "timestamp": ts,
+        "end_timestamp": _ns_to_dt(end_ns),
+        # Elapsed nanoseconds, per the catalog description. Taken from the integers, not the
+        # rounded datetimes above.
+        "duration": end_ns - start_ns if (start_ns and end_ns) else None,
+        "status_code": status_code,
+        "status_message": status_message or None,
+        "scope_name": scope_name,
+        "span_attributes": json.dumps(attributes),
+        "resource_attributes": json.dumps(resource_attributes),
+        "table_name": None,
+        "domain_id": None,
+        "role_id": None,
+        "query_text": None,
+        "tenant_id": None,
+        "_date": ts.date() if ts else None,
+    }
+    for attr_key, col in TRACE_ATTR_COLS.items():
+        if attr_key in attributes:
+            row[col] = attributes[attr_key]
+    return row
+
+
+def is_trace_record(row: dict) -> bool:
+    """REQ-1910: whether a span row is a record of its own -- a request span, or the root span of
+    background work -- rather than detail under one."""
+    return row["parent_span_id"] is None or REQUEST_SPAN_ATTR in json.loads(row["span_attributes"])
+
 
 _TYPE_MAP = {
     "text": sa.Text,

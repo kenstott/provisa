@@ -56,3 +56,17 @@ def test_partition_evolution_uses_trino_syntax():
 def test_seeding_does_not_run_snapshot_reclamation():
     """Reclamation belongs to the scheduler (REQ-302/303), which passes a duration threshold."""
     assert not [s for s in _seed() if "EXECUTE expire_snapshots" in s or "remove_orphan_files" in s]
+
+
+def test_an_ops_view_is_created_in_trinos_sql():
+    """REQ-862: an ops view's SELECT is PostgreSQL, transpiled to Trino's SQL before it is sent."""
+    from provisa.api.startup_seed import _OPS_VIEWS
+
+    conn = _Conn()
+    seed_ops_trino(conn, _OPS_VIEWS)
+    [create] = [
+        s for s in conn.statements if s.startswith("CREATE VIEW otel.signals.mv_refresh_lineage")
+    ]
+    assert "JSON_EXTRACT_SCALAR(span_attributes, '$[\"mv.id\"]') AS mv_id" in create
+    assert "->>" not in create
+    assert "DROP VIEW IF EXISTS otel.signals.mv_refresh_lineage" in conn.statements

@@ -19,9 +19,11 @@ Uses the engine CTAS for initial creation, DELETE+INSERT for refresh.
 # Requirements: REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ-235
 
 from __future__ import annotations
+
 from provisa.compiler.sql_literals import sql_literal
 
 import asyncio
+import json
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -32,6 +34,8 @@ from provisa.federation.execution_auth import SystemAuth, mint_system_token
 from provisa.mv.bitemporal import append_sql, create_sql, system_columns_ddl
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
+from provisa.observability.ops_schema import MV_REFRESH_LINEAGE_SPAN
+from provisa.otel_compat import detached_trace_context
 from provisa.otel_compat import get_tracer as _get_tracer
 
 log = logging.getLogger(__name__)
@@ -296,7 +300,10 @@ def _emit_column_lineage_span(
         log.warning("MV %s: column lineage unresolved (%s)", mv.id, exc)
         derivations = []
     input_version = resolve_input_version(input_signals or [], refresh_epoch)
-    with _tracer.start_as_current_span("mv.refresh.column_lineage") as span:
+    # The record roots a trace of its own: as a child of a request's span it was dropped in
+    # normal detail (the trace-detail sampler) and was no `traces` row on any engine, which
+    # keeps only records (REQ-1910). The org it is recorded for is the context's, not the span's.
+    with detached_trace_context(), _tracer.start_as_current_span(MV_REFRESH_LINEAGE_SPAN) as span:
         _get_ctx = getattr(span, "get_span_context", None)  # _NoopSpan lacks it
         ctx = _get_ctx() if _get_ctx is not None else None
         trace_id = format(ctx.trace_id, "032x") if ctx is not None else ""
@@ -308,6 +315,16 @@ def _emit_column_lineage_span(
         span.set_attribute("lineage.trace_id", trace_id)
         for key, value in lineage_span_attributes(derivations).items():
             span.set_attribute(key, value)
+        # The derivations as one JSON value, the column ops.mv_refresh_lineage reads them from.
+        span.set_attribute(
+            "lineage.column_derivations",
+            json.dumps(
+                [
+                    {"output": d.output, "sources": list(d.sources), "transform": d.transform}
+                    for d in derivations
+                ]
+            ),
+        )
 
 
 def _mv_definition_version(mv: MVDefinition) -> str:  # REQ-862

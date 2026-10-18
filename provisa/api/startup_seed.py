@@ -61,6 +61,7 @@ from provisa.core.schema_org import (
     sources as _sources_t,
     table_columns as _table_columns_t,
 )
+from provisa.observability.ops_schema import OPS_SIGNAL_VIEWS
 from provisa.observability.ops_schema import OPS_TABLES as _OPS_TABLES
 
 # Circular-import guard: app.py never imports this module at module level.
@@ -76,14 +77,15 @@ from provisa.core.models import DERIVED_SOURCE_ID
 # "PROVISA1" packed as ASCII bytes, chosen so it reads as clearly app-specific in pg_locks output.
 _SEED_DOMAIN_ADVISORY_LOCK_KEY = 0x50524F5649534131
 
-# Views registered in the ops domain alongside the raw Iceberg tables.
-# Each entry: (view_name, [(col_name, data_type, is_pk)], ddl_sql)
+# The ops views over the signals (ops_schema.OPS_SIGNAL_VIEWS), each engine with the signals
+# defining them in otel.signals.
 #
-# REQ-1910: none today. The `queries` report used to be a view here, over the trace table's
-# provisa.query.* spans; it now reads query_audit_log (``_meta_views._OPS_REPORT_VIEWS``), the one
-# home of a statement's table, role, transport, status, duration and text, and `traces` holds one
-# row per request with what only the span has (stage timings, route, engine, cache result, rows).
-_OPS_VIEWS: list[tuple[str, list[tuple[str, str, bool]], str]] = []
+# REQ-1910: the `queries` report used to be a view here, over the trace table's provisa.query.*
+# spans; it now reads query_audit_log (``_meta_views._OPS_REPORT_VIEWS``), the one home of a
+# statement's table, role, transport, status, duration and text, and `traces` holds one row per
+# request with what only the span has (stage timings, route, engine, cache result, rows).
+# REQ-862: mv_refresh_lineage reads each MV refresh's lineage record out of its span.
+_OPS_VIEWS = OPS_SIGNAL_VIEWS
 
 
 _CREATE_OR_REPLACE_VIEW_RE = re.compile(r"CREATE\s+OR\s+REPLACE\s+VIEW\s+(\w+)\s+AS", re.IGNORECASE)
@@ -608,17 +610,22 @@ async def _compute_and_store_clusters(conn: "Connection") -> int:  # REQ-510
 async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
     """Register ops tables/views in PG registered_tables + table_columns (idempotent).
 
-    The rows point at ``provisa-otel`` / schema ``signals`` — the ``otel`` Iceberg catalog, which
-    only the Trino engine has (EngineBackend.has_otel_catalog). On a native engine they name a
-    catalog the engine cannot reach, so registering them there advertises unreachable labels: an
-    unlabeled Cypher ``MATCH (n)`` unions every label and compiled ``FROM "otel"."signals"."traces"``,
-    failing the whole query with ``Catalog "otel" does not exist``. This seed is the only writer of
-    those rows, so on an engine without the catalog it removes them — a deployment re-pinned from
-    trino to a native engine carries them forward otherwise."""
-    if not state.federation_engine.has_otel_catalog:
-        await _table_repo.remove_registrations(
-            conn, _registered_tables_t.c.source_id == "provisa-otel"
-        )
+    The rows point at ``provisa-otel`` / schema ``signals``: the tables the engine reads at
+    ``otel.signals.<table>`` (EngineBackend.landed_signals) -- every one on Trino's ``otel``
+    Iceberg catalog, the traces a native engine lands itself (REQ-862) -- and the ops views over
+    them. A table the engine does not read is not registered: it would advertise an unreachable
+    label, and an unlabeled Cypher ``MATCH (n)``, which unions every label, compiled ``FROM
+    "otel"."signals".<table>`` and failed the whole query. This seed is the only writer of those
+    rows, so it removes every one the engine does not read -- a deployment re-pinned from Trino
+    to a native engine carries them forward otherwise."""
+    landed = state.federation_engine.landed_signals
+    kept = [*landed, *(view_name for view_name, _, _ in _OPS_VIEWS)] if landed else []
+    await _table_repo.remove_registrations(
+        conn,
+        _registered_tables_t.c.source_id == "provisa-otel",
+        _registered_tables_t.c.table_name.not_in(kept),
+    )
+    if not landed:
         return
 
     async def _seed_cols(table_id: Any, table_name: str, cols: list) -> None:
@@ -647,6 +654,8 @@ async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
             )
 
     for tbl_name, cols in _OPS_TABLES.items():
+        if tbl_name not in landed:
+            continue
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {

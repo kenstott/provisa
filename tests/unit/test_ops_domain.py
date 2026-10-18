@@ -268,7 +268,11 @@ class _OtelEngine:
     """Stands in for the EngineRuntime the seed reads its otel-catalog capability from."""
 
     def __init__(self, has_otel_catalog: bool) -> None:
+        from provisa.observability.ops_schema import OPS_TABLES
+
         self.has_otel_catalog = has_otel_catalog
+        # The signal tables the engine reads (EngineBackend.landed_signals): Trino's every one.
+        self.landed_signals = frozenset(OPS_TABLES) if has_otel_catalog else frozenset()
 
 
 class TestOpsStewardGrant:
@@ -306,6 +310,27 @@ class TestOpsStewardGrant:
 
         assert not conn.upsert.await_args_list, "ops rows seeded on an engine without otel"
         assert conn.execute_core.await_args_list, "stale provisa-otel rows not deleted"
+
+    def test_a_native_engine_registers_the_traces_it_lands_and_the_views_over_them(
+        self, monkeypatch
+    ):
+        # REQ-862: DuckDB reads the traces it lands at otel.signals.traces; metrics, logs and
+        # trace_details it does not read, so they are not registered.
+        from provisa.api import startup_seed
+        from provisa.api.startup_seed import _seed_ops_pg
+
+        engine = _OtelEngine(False)
+        engine.landed_signals = frozenset({"traces"})
+        monkeypatch.setattr(startup_seed.state, "federation_engine", engine)
+        conn = _seeding_conn()
+        conn.upsert_returning = AsyncMock(return_value=7)
+
+        asyncio.run(_seed_ops_pg(conn))
+
+        registered = {call.args[1]["table_name"] for call in conn.upsert_returning.await_args_list}
+        assert registered == {"traces", "mv_refresh_lineage"}
+        [removal] = [str(c.args[0]) for c in conn.execute_core.await_args_list]
+        assert "NOT IN" in removal  # every provisa-otel row but those two is removed
 
     def test_existing_columns_converge_on_steward_grant(self):
         # A column seeded before the grant existed gains org_admin and sandbox (REQ-1608); grants

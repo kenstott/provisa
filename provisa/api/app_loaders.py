@@ -343,9 +343,10 @@ def _populate_source_catalog_names(
 
     # Seed system source catalogs (never org-prefixed — one physical catalog shared across orgs).
     state.source_catalogs["provisa-admin"] = source_to_catalog("provisa-admin")
-    # `otel` is a Trino dynamic catalog; a native engine has no such catalog (see
-    # EngineBackend.has_otel_catalog), and startup_seed registers no provisa-otel tables there.
-    if state.federation_engine.has_otel_catalog:
+    # The ops signals are read at otel.signals.<table>: Trino's Iceberg catalog, or the catalog a
+    # native engine defines over the traces it lands (EngineBackend.landed_signals). An engine
+    # that reads neither has no provisa-otel table registered (startup_seed._seed_ops_pg).
+    if state.federation_engine.landed_signals:
         state.source_catalogs["provisa-otel"] = "otel"
 
     for src in (*config.sources, *(extra_sources or ())):
