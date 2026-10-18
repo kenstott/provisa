@@ -130,6 +130,15 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
+def _protocol_ports() -> dict[str, str]:
+    """A port of its own for each protocol a build's server serves beside HTTP: their defaults
+    (8815, 50051, 5439, 7687) are a running Provisa's on the machine that builds."""
+    return {
+        name: str(_free_port())
+        for name in ("FLIGHT_PORT", "GRPC_PORT", "PROVISA_PGWIRE_PORT", "PROVISA_BOLT_PORT")
+    }
+
+
 def _requires_provisa(demo: Path) -> str:
     spec = yaml.safe_load((demo / "demo.yaml").read_text())
     required = spec.get("requires_provisa")
@@ -529,6 +538,7 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
         **({"OPENROUTER_API_KEY": os.environ["OPENROUTER_API_KEY"]} if asked else {}),
         "PROVISA_CONFIG": str(answering_config(work, demo) if asked else demo / "config.yaml"),
         "PROVISA_ENGINE": "duckdb",
+        **_protocol_ports(),
         "FLIGHT_PORT": str(flight_port),
         "ORG_ID": _SETUP_ORG,
         "PROVISA_DATA_DIR": str(work / "setup-data"),
@@ -666,6 +676,7 @@ def _seed_node(
     server_env = {
         **_config_env(demo),
         **stores.env,
+        **_protocol_ports(),
         "ORG_ID": "demobundle",
         "PROVISA_CONFIG": str(_config(work, regions="PROVISA_REGION" in env)),
         "PROVISA_ENGINE": "duckdb",

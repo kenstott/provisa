@@ -23,6 +23,7 @@ from provisa.api.role_surface import role_surface
 
 import asyncio
 import collections
+import contextvars
 from datetime import datetime
 import dataclasses
 import functools
@@ -2816,6 +2817,9 @@ class _CutCheckedDrain:
         self._batches = iter(batches)
         self._rows_in = rows_in
         self._rows = 0
+        # The request's context (its org, deadline and identity): a surface may drain the stream
+        # after the request returned, on a thread where none of it is bound (Flight's do_get).
+        self._context = contextvars.copy_context()
 
     def __iter__(self) -> "_CutCheckedDrain":
         return self
@@ -2824,7 +2828,7 @@ class _CutCheckedDrain:
         try:
             batch = next(self._batches)
         except StopIteration:
-            _stream_answer_whole(self._plan, self._rows)
+            self._context.run(_stream_answer_whole, self._plan, self._rows)
             raise
         self._rows += self._rows_in(batch)
         return batch
