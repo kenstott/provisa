@@ -209,7 +209,7 @@ views:
       UNION ALL
       SELECT f.county_fips, k.crop_year, NULL, NULL, NULL,
         CAST(SUM(k.indemnity) AS DOUBLE PRECISION),
-        CAST(SUM(CASE WHEN k.cause_of_loss IN ('drought', 'heat') THEN k.indemnity END)
+        CAST(SUM(CASE WHEN k.cause_of_loss IN ('drought', 'heat') THEN k.indemnity ELSE 0 END)
           AS DOUBLE PRECISION),
         NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
       FROM "agriculture"."claims" AS k
@@ -219,7 +219,7 @@ views:
       SELECT l.county_fips, l.year, NULL, NULL, NULL, NULL, NULL,
         SUM(l.total_premium_amount), SUM(l.indemnity_amount),
         SUM(CASE WHEN UPPER(TRIM(l.cause_of_loss_desc)) IN ('DROUGHT', 'HEAT')
-          THEN l.indemnity_amount END),
+          THEN l.indemnity_amount ELSE 0 END),
         NULL, NULL, NULL, NULL, NULL
       FROM "agriculture"."crop_losses" AS l
       GROUP BY l.county_fips, l.year

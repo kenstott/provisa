@@ -221,6 +221,27 @@ def test_2012_is_the_dry_year_the_losses_follow(server):
     assert max(by_year, key=lambda y: by_year[y]["market_dry_share"]) == 2012
 
 
+def test_a_season_with_indemnity_and_none_for_dry_weather_has_a_dry_share_of_zero(server):
+    """A dry share is the share of the indemnity paid for drought and heat: a county's season
+    whose claims were all for other perils paid none of it for dry weather (0), and only a season
+    that paid no indemnity at all has no share. 2010, 2011 and 2013 were wet or hail years."""
+    rows = query(server, f"SELECT county_fips, year, indemnity, dry_share FROM {_VIEW}")
+    missing = sorted(
+        (r["county_fips"], r["year"]) for r in rows if r["indemnity"] and r["dry_share"] is None
+    )
+    assert missing == [], f"seasons with indemnity and no dry share: {missing[:10]}"
+    by_year = {
+        r["year"]: r
+        for r in query(
+            server,
+            "SELECT year, SUM(indemnity * dry_share) / SUM(indemnity) AS dry_share "
+            f"FROM {_VIEW} GROUP BY year",
+        )
+    }
+    assert [by_year[y]["dry_share"] for y in (2010, 2011, 2013)] == [0, 0, 0]
+    assert by_year[2012]["dry_share"] > 0.5
+
+
 def test_the_answer_is_the_same_live_and_built(server):
     sql = f"SELECT county_fips, year, premium, indemnity FROM {_VIEW} ORDER BY county_fips, year"
     live = query(server, sql)
