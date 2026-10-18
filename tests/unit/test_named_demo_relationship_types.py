@@ -36,21 +36,19 @@ def test_each_relationship_type_is_declared_once_per_source_table(path):
     assert [pair for pair, n in declared.items() if n > 1] == [], path.parent.name
 
 
-# The sources whose tables are registered after the configuration's own, by their registration
-# (graphql_remote_router, the gRPC remote's): a relationship may name one of theirs.
-_REGISTERED_LATER = {"graphql_remote", "grpc_remote"}
-
-
 @pytest.mark.parametrize("path", CONFIGS, ids=[p.parent.name for p in CONFIGS])
 def test_each_relationship_names_a_table_by_the_name_it_is_registered_under(path):
     """A relationship reaches a table by its registered name, its alias else its table name; a
     view is registered as ``view_<id>`` (config_loader.views_as_tables). A name nothing registers
-    fails the load by name (REQ-388, REQ-1919): agriculture's answer view was named by its id."""
+    fails the load by name (REQ-388, REQ-1919): agriculture's answer view was named by its id.
+
+    Every named demo's relationships join tables its own configuration declares, the one with a
+    remote source (perf, a graphql_remote) included: none relates a table a remote source
+    registers after the configuration. A demo that does must have this test extended to name that
+    source's tables, never skipped."""
     from provisa.core.config_loader import views_as_tables
 
     config = views_as_tables(yaml.safe_load(path.read_text()))
-    if any(s.get("type") in _REGISTERED_LATER for s in config.get("sources", [])):
-        pytest.skip("a remote source registers tables of its own after the configuration's")
     names = {t.get("alias") or t["table"] for t in config.get("tables", [])}
     unknown = [
         (rel["id"], rel[end])
