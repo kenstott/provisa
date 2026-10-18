@@ -938,6 +938,9 @@ services:
       <<: *provisa_env
       PROVISA_SANDBOX_TIER: "true"
       PROVISA_DATA_DIR: /var/lib/provisa
+      # REQ-862: its own trace records (each MV refresh's lineage among them) on the data volume,
+      # where the engine reads them as "ops"."traces" and they survive a container replacement.
+      PROVISA_TELEMETRY_DIR: /var/lib/provisa/telemetry
       # Its own engine is DuckDB (each sandbox's is anyway): it never wakes a Trino shard.
       PROVISA_ENGINE: "duckdb"
       # REQ-2049: the demos it offers. The node's sync (provisa-demo-stores units) pulls each

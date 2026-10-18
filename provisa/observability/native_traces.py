@@ -191,6 +191,42 @@ def compact(root: str, target_bytes: int = COMPACT_TARGET_BYTES) -> int:
     return removed
 
 
+def _landed(root: str) -> pa.Table:
+    """Every trace row landed under ``root``, each file read as itself (see ``compact``)."""
+    paths = [
+        os.path.join(folder, name)
+        for folder, _dirs, names in os.walk(root)
+        for name in sorted(names)
+        if name.endswith(".parquet") and name != SCHEMA_FILE and not name.startswith(".")
+    ]
+    tables = [pq.ParquetFile(p).read().cast(TRACES_SCHEMA) for p in sorted(paths)]
+    return pa.concat_tables(tables) if tables else TRACES_SCHEMA.empty_table()
+
+
+def refresh_records(root: str, mv_ids: Sequence[str]) -> list[dict]:
+    """REQ-862: the refresh records landed under ``root`` of the materialized views ``mv_ids``,
+    oldest first: what each refresh was built from, as its span recorded it."""
+    import json
+
+    from provisa.observability.ops_schema import MV_REFRESH_LINEAGE_SPAN
+
+    wanted = set(mv_ids)
+    rows = [
+        r
+        for r in _landed(root).to_pylist()
+        if r["span_name"] == MV_REFRESH_LINEAGE_SPAN
+        and json.loads(r["span_attributes"] or "{}").get("mv.id") in wanted
+    ]
+    return sorted(rows, key=lambda r: r["timestamp"])
+
+
+def land_records(root: str, rows: Sequence[dict], org_id: str) -> list[str]:
+    """REQ-862: land ``rows`` -- refresh records carried with the history they built -- as
+    ``org_id``'s, its organisation the one that now holds that history. Each record keeps its
+    times and its trace: a copy of what was recorded, not a new recording."""
+    return write_batch(root, [{**r, "tenant_id": org_id} for r in rows])
+
+
 class ParquetSpanExporter:
     """The span exporter of the native lane: each batch it is handed lands as closed files."""
 

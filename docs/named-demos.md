@@ -523,7 +523,10 @@ A demo marked `published: true` in its `demo.yaml` is built into a bundle and pu
 The bundle holds: the demo's `config.yaml` and `demo.yaml`, its tour and example queries, what
 its setup wrote (available in the stores' dumps), the log files the build's traffic generator
 wrote, and — for a demo with replicated external sources — the seed the sandbox tier's template
-is built from (`seeded/`). [tool-verified: `scripts/demo_bundle.py` module docstring,
+is built from (`seeded/`). A demo with bitemporal views also carries their history
+(`seeded/views.duckdb`) and the records of the setup's refreshes that built it
+(`seeded/refresh_lineage.parquet`). The template and each sandbox land those records as their own,
+so `ops.mv_refresh_lineage` in a sandbox lists the refreshes its history came from. [tool-verified: `scripts/demo_bundle.py` module docstring,
 `provisa/core/demo_bundles.py` module docstring]
 
 The Demo bundles workflow (`.github/workflows/demo-bundles.yml`) builds a demo on a push to
