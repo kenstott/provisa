@@ -628,8 +628,7 @@ Hinweis: Das Provisa-AppImage kann nicht innerhalb eines Kubernetes-Pods ausgef�
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | Deployt die Föderations-Engine (REQ-028) |
 | `trino.workers` | `2` | Replikate der Föderations-Engine-Worker (REQ-056) |
-| `trino.internalTls` | `false` | Koordinator-Worker-Datenverkehr verschlüsseln; verlangsamt Shuffle-lastige Abfragen um 10 % bis über 100 % (REQ-2072) |
-| `trino.coordinatorClusterIP` | `""` | Die festgelegte Adresse des Koordinator-Service, erforderlich mit `trino.internalTls` (REQ-2072) |
+| `trino.internalTls` | `false` | Koordinator-Worker-Datenverkehr mit einem vom Chart erzeugten Zertifikat verschlüsseln; verlangsamt Shuffle-lastige Abfragen um 10 % bis über 100 % (REQ-2072) |
 | `postgresql.enabled` | `true` | Deployt PostgreSQL im Cluster (REQ-169) |
 | `postgresql.host` | `""` | Setzen, um externes PostgreSQL zu verwenden |
 | `minio.enabled` | `true` | Deployt MinIO im Cluster (REQ-029) |

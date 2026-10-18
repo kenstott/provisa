@@ -628,8 +628,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | Развернуть федеративный движок (REQ-028) |
 | `trino.workers` | `2` | Реплики рабочих узлов федеративного движка (REQ-056) |
-| `trino.internalTls` | `false` | Шифрует трафик координатор–рабочие узлы; замедляет запросы с интенсивным обменом данными от 10% до более чем 100% (REQ-2072) |
-| `trino.coordinatorClusterIP` | `""` | Закреплённый адрес Service координатора, обязателен вместе с `trino.internalTls` (REQ-2072) |
+| `trino.internalTls` | `false` | Шифрует трафик координатор–рабочие узлы сертификатом, сгенерированным chart; замедляет запросы с интенсивным обменом данными от 10% до более чем 100% (REQ-2072) |
 | `postgresql.enabled` | `true` | Развернуть PostgreSQL внутри кластера (REQ-169) |
 | `postgresql.host` | `""` | Задайте, чтобы использовать внешнюю PostgreSQL |
 | `minio.enabled` | `true` | Развернуть MinIO внутри кластера (REQ-029) |

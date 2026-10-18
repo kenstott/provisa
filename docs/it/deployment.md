@@ -628,8 +628,7 @@ Nota: l'AppImage Provisa non può essere eseguita dentro un pod Kubernetes — r
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | Deploy motore di federazione (REQ-028) |
 | `trino.workers` | `2` | Repliche worker del motore di federazione (REQ-056) |
-| `trino.internalTls` | `false` | Cifra il traffico coordinator-worker; rallenta le query ad alto shuffle dal 10% a oltre il 100% (REQ-2072) |
-| `trino.coordinatorClusterIP` | `""` | L'indirizzo fissato del Service del coordinator, richiesto con `trino.internalTls` (REQ-2072) |
+| `trino.internalTls` | `false` | Cifra il traffico coordinator-worker con un certificato generato dal chart; rallenta le query ad alto shuffle dal 10% a oltre il 100% (REQ-2072) |
 | `postgresql.enabled` | `true` | Deploy PostgreSQL in-cluster (REQ-169) |
 | `postgresql.host` | `""` | Imposta per usare PostgreSQL esterno |
 | `minio.enabled` | `true` | Deploy MinIO in-cluster (REQ-029) |

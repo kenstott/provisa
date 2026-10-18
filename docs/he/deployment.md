@@ -628,8 +628,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | פרוס מנוע פדרציה (REQ-028) |
 | `trino.workers` | `2` | replicas עובד מנוע פדרציה (REQ-056) |
-| `trino.internalTls` | `false` | הצפנת התעבורה בין coordinator ל-workers; מאטה שאילתות עתירות shuffle ב-10% ועד למעלה מ-100% (REQ-2072) |
-| `trino.coordinatorClusterIP` | `""` | הכתובת הנעוצה של ה-Service של ה-coordinator, נדרשת עם `trino.internalTls` (REQ-2072) |
+| `trino.internalTls` | `false` | הצפנת התעבורה בין coordinator ל-workers בתעודה שה-chart מייצר; מאטה שאילתות עתירות shuffle ב-10% ועד למעלה מ-100% (REQ-2072) |
 | `postgresql.enabled` | `true` | פרוס PostgreSQL בתוך-אשכולי (REQ-169) |
 | `postgresql.host` | `""` | הגדירו כדי להשתמש ב-PostgreSQL חיצוני |
 | `minio.enabled` | `true` | פרוס MinIO בתוך-אשכולי (REQ-029) |

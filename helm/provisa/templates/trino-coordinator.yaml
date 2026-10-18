@@ -44,6 +44,9 @@ spec:
       containers:
         - name: trino
           image: "{{ .Values.trino.image.repository }}:{{ .Values.trino.image.tag }}"
+          {{- if .Values.trino.internalTls }}
+          {{- include "provisa.trinoInternalTlsStart" . | nindent 10 }}
+          {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -53,6 +56,9 @@ spec:
           env:
             - name: TRINO_NODE_TYPE
               value: coordinator
+            {{- if .Values.trino.internalTls }}
+            {{- include "provisa.trinoInternalTlsEnv" . | nindent 12 }}
+            {{- end }}
             - name: PROVISA_TRINO_SHARED_SECRET
               valueFrom:
                 secretKeyRef:
@@ -76,6 +82,11 @@ spec:
             - name: fake-key
               mountPath: /etc/provisa/fake-key
               readOnly: true
+            {{- if .Values.trino.internalTls }}
+            - name: internal-tls
+              mountPath: {{ include "provisa.trinoInternalTlsDir" . }}
+              readOnly: true
+            {{- end }}
             {{- if .Values.trino.coordinator.cache.persistence.enabled }}
             # REQ-1946: what a connector keeps between Trino restarts. A Salesforce catalog keeps
             # its describe results under salesforce-describe/ here; without the volume a restarted
@@ -116,6 +127,12 @@ spec:
         - name: fake-key
           secret:
             secretName: {{ .Release.Name }}-fake-key
+        {{- if .Values.trino.internalTls }}
+        - name: internal-tls
+          secret:
+            secretName: {{ .Release.Name }}-trino-internal-tls
+            defaultMode: 0440
+        {{- end }}
         - name: config
           configMap:
             name: {{ .Release.Name }}-trino-config
@@ -149,13 +166,10 @@ spec:
       port: {{ .Values.trino.port }}
       targetPort: {{ .Values.trino.port }}
     {{- if .Values.trino.internalTls }}
-    # REQ-2072: the nodes' HTTPS port, at the coordinator's pinned address.
+    # REQ-2072: the nodes' HTTPS port, where the workers discover the coordinator.
     - name: internal-https
       port: 8443
       targetPort: 8443
     {{- end }}
   type: ClusterIP
-  {{- if .Values.trino.internalTls }}
-  clusterIP: {{ include "provisa.trinoCoordinatorIP" . }}
-  {{- end }}
 {{- end }}

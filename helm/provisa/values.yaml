@@ -265,13 +265,12 @@ provisa:
 trino:
   enabled: true
   # REQ-2072: Trino's internal TLS, off by default. On, the coordinator and workers require HTTPS
-  # between them. Trino 481 addresses the coordinator by IP alone for it, so the coordinator's
-  # Service is pinned to coordinatorClusterIP (an unused address in the cluster's Service range),
-  # which the coordinator also advertises. Shuffle-heavy queries (distributed joins, aggregations,
-  # window functions) run 10% to over 100% slower; turn it on where a compliance or zero-trust
-  # requirement asks for encryption inside the cluster.
+  # between them, with a CA and certificate the chart generates and keeps across upgrades (the
+  # Secret <release>-trino-internal-tls). Each node is addressed by its pod DNS name, which the
+  # certificate covers. Shuffle-heavy queries (distributed joins, aggregations, window functions)
+  # run 10% to over 100% slower; turn it on where a compliance or zero-trust requirement asks for
+  # encryption inside the cluster.
   internalTls: false
-  coordinatorClusterIP: ""
   coordinator:
     replicaCount: 1
     resources:

@@ -46,6 +46,9 @@ spec:
       containers:
         - name: trino
           image: "{{ .Values.trino.image.repository }}:{{ .Values.trino.image.tag }}"
+          {{- if .Values.trino.internalTls }}
+          {{- include "provisa.trinoInternalTlsStart" . | nindent 10 }}
+          {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -55,6 +58,9 @@ spec:
           env:
             - name: TRINO_NODE_TYPE
               value: worker
+            {{- if .Values.trino.internalTls }}
+            {{- include "provisa.trinoInternalTlsEnv" . | nindent 12 }}
+            {{- end }}
             - name: PROVISA_TRINO_SHARED_SECRET
               valueFrom:
                 secretKeyRef:
@@ -78,6 +84,11 @@ spec:
             - name: fake-key
               mountPath: /etc/provisa/fake-key
               readOnly: true
+            {{- if .Values.trino.internalTls }}
+            - name: internal-tls
+              mountPath: {{ include "provisa.trinoInternalTlsDir" . }}
+              readOnly: true
+            {{- end }}
             - name: config
               mountPath: /etc/trino/config.properties
               subPath: worker-config.properties
@@ -102,6 +113,12 @@ spec:
         - name: fake-key
           secret:
             secretName: {{ .Release.Name }}-fake-key
+        {{- if .Values.trino.internalTls }}
+        - name: internal-tls
+          secret:
+            secretName: {{ .Release.Name }}-trino-internal-tls
+            defaultMode: 0440
+        {{- end }}
         - name: config
           configMap:
             name: {{ .Release.Name }}-trino-config

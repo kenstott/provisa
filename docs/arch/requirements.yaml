@@ -84584,7 +84584,7 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   feature: deployment-compose-helm
   priority: SHOULD
   type: infrastructure
-  description: "Trino internal TLS is an operator option, off by default. When on, the coordinator and workers require HTTPS between them (internal-communication.https.required), with the coordinator at a pinned address on the engine network, since Trino's internal certificates name IP addresses only. The settings engine.trino_internal_tls, engine.trino_internal_subnet and engine.trino_coordinator_ip apply at the next start: the app writes the engine-scoped settings to a launch-settings file beside the engine's configuration, and the launchers read it when they start the stack, which also carries the engine sizing settings to a compose deployment. The Helm chart takes it as the value trino.internalTls, and the admin UI shows it there read-only, naming that value. A single-node coordinator has no internal traffic and refuses the setting by name. Off, coordinator-to-worker traffic stays on the private engine network and is authenticated by the deployment's generated shared secret."
+  description: "Trino internal TLS is an operator option, off by default. When on, the coordinator and workers require HTTPS between them (internal-communication.https.required), with the coordinator at a pinned address on the engine network, since the certificates Trino generates for itself name IP addresses only. The settings engine.trino_internal_tls, engine.trino_internal_subnet and engine.trino_coordinator_ip apply at the next start: the app writes the engine-scoped settings to a launch-settings file beside the engine's configuration, and the launchers read it when they start the stack, which also carries the engine sizing settings to a compose deployment. The Helm chart takes it as the value trino.internalTls, and the admin UI shows it there read-only, naming that value. There the certificates are Helm-generated, not Trino's own: the chart generates a CA and one certificate, kept in a Secret it reuses across upgrades, naming the coordinator Service's DNS names and every pod DNS name in the namespace; the nodes discover the coordinator by its Service name, each node is addressed by its pod DNS name, and every node reads the certificate and the CA as its keystore and truststore, so no address is pinned. A single-node coordinator has no internal traffic and refuses the setting by name. Off, coordinator-to-worker traffic stays on the private engine network and is authenticated by the deployment's generated shared secret."
   use_case: "A regulated customer whose auditor requires encryption on every hop turns on Trino internal TLS in the admin UI and restarts the stack; the coordinator and workers then speak HTTPS to each other."
   notes: "Maintainer 2026-10-17: internal TLS buys little against an attacker on a node and costs 10-100%+ on shuffle-heavy queries, so it is off by default and offered for compliance or zero-trust requirements."
   code:
@@ -84601,8 +84601,11 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   - helm/provisa/templates/trino-configmap.yaml
   - helm/provisa/templates/trino-coordinator.yaml
   - helm/provisa/templates/_trino.tpl
+  - helm/provisa/templates/trino-worker.yaml
+  - helm/provisa/templates/trino-internal-tls-secret.yaml
   tests:
   - tests/unit/test_trino_internal_tls.py
+  - tests/e2e/test_helm_minikube.py
 - id: REQ-2073
   status: complete
   since: 2026-10

@@ -6,9 +6,6 @@ metadata:
 data:
   coordinator-config.properties: |
     coordinator=true
-    {{- if .Values.trino.internalTls }}
-    node.internal-address={{ include "provisa.trinoCoordinatorIP" . }}
-    {{- end }}
     # CREATE/DROP CATALOG at runtime: the API registers its own catalogs at boot (REQ-1332), kept
     # in memory alone, never on disk; the API reissues them after a restart.
     catalog.management=dynamic
@@ -18,10 +15,7 @@ data:
     node-scheduler.include-coordinator=false
     http-server.http.port={{ .Values.trino.port }}
     {{- if .Values.trino.internalTls }}
-    internal-communication.https.required=true
-    http-server.https.enabled=true
-    http-server.https.port=8443
-    discovery.uri=https://{{ include "provisa.trinoCoordinatorIP" . }}:8443
+    {{- include "provisa.trinoInternalTlsConfig" . | nindent 4 }}
     {{- else }}
     discovery.uri=http://{{ .Release.Name }}-trino-coordinator:{{ .Values.trino.port }}
     {{- end }}
@@ -48,10 +42,7 @@ data:
     internal-communication.shared-secret=${ENV:PROVISA_TRINO_SHARED_SECRET}
     http-server.http.port={{ .Values.trino.port }}
     {{- if .Values.trino.internalTls }}
-    internal-communication.https.required=true
-    http-server.https.enabled=true
-    http-server.https.port=8443
-    discovery.uri=https://{{ include "provisa.trinoCoordinatorIP" . }}:8443
+    {{- include "provisa.trinoInternalTlsConfig" . | nindent 4 }}
     {{- else }}
     discovery.uri=http://{{ .Release.Name }}-trino-coordinator:{{ .Values.trino.port }}
     {{- end }}

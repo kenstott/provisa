@@ -628,8 +628,7 @@ Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FU
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | Deploy federation engine (REQ-028) |
 | `trino.workers` | `2` | Federation engine worker replicas (REQ-056) |
-| `trino.internalTls` | `false` | Encrypt coordinator-worker traffic; slows shuffle-heavy queries 10% to over 100% (REQ-2072) |
-| `trino.coordinatorClusterIP` | `""` | The coordinator Service's pinned address, required with `trino.internalTls` (REQ-2072) |
+| `trino.internalTls` | `false` | Encrypt coordinator-worker traffic with a chart-generated certificate; slows shuffle-heavy queries 10% to over 100% (REQ-2072) |
 | `postgresql.enabled` | `true` | Deploy in-cluster PostgreSQL (REQ-169) |
 | `postgresql.host` | `""` | Set to use external PostgreSQL |
 | `minio.enabled` | `true` | Deploy in-cluster MinIO (REQ-029) |

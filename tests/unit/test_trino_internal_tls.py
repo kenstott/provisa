@@ -250,24 +250,105 @@ def test_the_chart_renders_it_off_by_default():
     assert "name: PROVISA_ENGINE_CONFIG_SOURCE" in rendered.stdout
 
 
-def test_the_chart_pins_the_coordinator_when_it_is_on():
-    rendered = _helm("trino.internalTls=true", "trino.coordinatorClusterIP=10.96.0.50")
+def _rendered_on() -> list[dict]:
+    import yaml
+
+    rendered = _helm("trino.internalTls=true")
     assert rendered.returncode == 0, rendered.stderr
-    assert rendered.stdout.count("internal-communication.https.required=true") == 2
-    assert rendered.stdout.count("discovery.uri=https://10.96.0.50:8443") == 2
-    assert "node.internal-address=10.96.0.50" in rendered.stdout
-    assert "clusterIP: 10.96.0.50" in rendered.stdout
+    return [doc for doc in yaml.safe_load_all(rendered.stdout) if doc]
+
+
+def _trino_config(docs: list[dict], key: str) -> str:
+    config = next(
+        d for d in docs if d["kind"] == "ConfigMap" and d["metadata"]["name"] == "rel-trino-config"
+    )
+    return config["data"][key]
+
+
+def test_the_nodes_find_the_coordinator_by_its_service_name_when_it_is_on():
+    docs = _rendered_on()
+    for key in ("coordinator-config.properties", "worker-config.properties"):
+        lines = _trino_config(docs, key).splitlines()
+        assert "internal-communication.https.required=true" in lines
+        assert "discovery.uri=https://rel-trino-coordinator:8443" in lines
+        # Each node is addressed by its pod DNS name, set at its start.
+        assert "node.internal-address=${ENV:PROVISA_TRINO_NODE_ADDRESS}" in lines
+        assert (
+            "internal-communication.https.keystore.path=/etc/trino/internal-tls/keystore.pem"
+            in lines
+        )
+        assert (
+            "internal-communication.https.truststore.path=/etc/trino/internal-tls/truststore.pem"
+            in lines
+        )
+        assert "http-server.https.keystore.path=/etc/trino/internal-tls/keystore.pem" in lines
+    coordinator = next(
+        d
+        for d in docs
+        if d["kind"] == "Service" and d["metadata"]["name"] == "rel-trino-coordinator"
+    )
+    assert "clusterIP" not in coordinator["spec"]  # no address pinned
+
+
+def test_the_chart_generates_a_certificate_naming_the_service_and_the_pods():
+    import base64
+
+    from cryptography import x509
+
+    docs = _rendered_on()
+    secret = next(
+        d
+        for d in docs
+        if d["kind"] == "Secret" and d["metadata"]["name"] == "rel-trino-internal-tls"
+    )
+    keystore = base64.b64decode(secret["data"]["keystore.pem"])
+    assert b"PRIVATE KEY-----" in keystore
+    cert = x509.load_pem_x509_certificate(keystore)
+    names = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    assert sorted(names.get_values_for_type(x509.DNSName)) == [
+        "*.default.pod.cluster.local",
+        "rel-trino-coordinator",
+        "rel-trino-coordinator.default",
+        "rel-trino-coordinator.default.svc.cluster.local",
+    ]
+    ca = x509.load_pem_x509_certificate(base64.b64decode(secret["data"]["truststore.pem"]))
+    assert cert.issuer == ca.subject
+
+
+def test_every_trino_pod_mounts_the_certificate_and_sets_its_address():
+    docs = _rendered_on()
+    pods = [
+        d["spec"]["template"]["spec"]
+        for d in docs
+        if d["kind"] in ("StatefulSet", "Deployment")
+        and d["metadata"]["name"].startswith("rel-trino-")
+    ]
+    assert len(pods) == 2
+    for pod in pods:
+        trino = pod["containers"][0]
+        assert (
+            'PROVISA_TRINO_NODE_ADDRESS="${POD_IP//./-}.${POD_NAMESPACE}.pod.cluster.local"'
+            in (trino["command"][-1])
+        )
+        env = {e["name"]: e.get("valueFrom") for e in trino["env"]}
+        assert env["POD_IP"] == {"fieldRef": {"fieldPath": "status.podIP"}}
+        assert env["POD_NAMESPACE"] == {"fieldRef": {"fieldPath": "metadata.namespace"}}
+        mount = next(m for m in trino["volumeMounts"] if m["name"] == "internal-tls")
+        assert mount["mountPath"] == "/etc/trino/internal-tls"
+        volume = next(v for v in pod["volumes"] if v["name"] == "internal-tls")
+        assert volume["secret"]["secretName"] == "rel-trino-internal-tls"
+
+
+def test_off_the_chart_makes_no_certificate_and_keeps_the_image_start():
+    rendered = _helm()
+    assert rendered.returncode == 0, rendered.stderr
+    assert "rel-trino-internal-tls" not in rendered.stdout
+    assert "PROVISA_TRINO_NODE_ADDRESS" not in rendered.stdout
 
 
 def test_every_service_port_is_named_when_it_is_on():
     # Kubernetes rejects a multi-port Service with an unnamed port; TLS adds the coordinator's 8443.
-    import yaml
-
-    rendered = _helm("trino.internalTls=true", "trino.coordinatorClusterIP=10.96.0.50")
-    assert rendered.returncode == 0, rendered.stderr
-    services = [
-        doc for doc in yaml.safe_load_all(rendered.stdout) if doc and doc.get("kind") == "Service"
-    ]
+    services = [d for d in _rendered_on() if d["kind"] == "Service"]
     coordinator = [s for s in services if s["spec"]["selector"].get("role") == "coordinator"]
     assert [p["port"] for p in coordinator[0]["spec"]["ports"]][1:] == [8443]
     unnamed = [
@@ -278,12 +359,6 @@ def test_every_service_port_is_named_when_it_is_on():
         if not p.get("name")
     ]
     assert unnamed == []
-
-
-def test_the_chart_refuses_it_without_the_pinned_address():
-    rendered = _helm("trino.internalTls=true")
-    assert rendered.returncode != 0
-    assert "trino.coordinatorClusterIP" in rendered.stderr
 
 
 def test_under_the_chart_the_settings_show_it_read_only(monkeypatch):

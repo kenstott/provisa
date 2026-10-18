@@ -611,8 +611,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | 部署联邦查询引擎（REQ-028） |
 | `trino.workers` | `2` | 联邦查询引擎 worker 副本数（REQ-056） |
-| `trino.internalTls` | `false` | 加密协调器与 worker 之间的流量；使 shuffle 密集型查询变慢 10% 到 100% 以上（REQ-2072） |
-| `trino.coordinatorClusterIP` | `""` | 协调器 Service 的固定地址，与 `trino.internalTls` 一起使用时必填（REQ-2072） |
+| `trino.internalTls` | `false` | 使用 chart 生成的证书加密协调器与 worker 之间的流量；使 shuffle 密集型查询变慢 10% 到 100% 以上（REQ-2072） |
 | `postgresql.enabled` | `true` | 部署集群内 PostgreSQL（REQ-169） |
 | `postgresql.host` | `""` | 设置以使用外部 PostgreSQL |
 | `minio.enabled` | `true` | 部署集群内 MinIO（REQ-029） |

@@ -62,6 +62,8 @@ _INTERNAL_TLS_REQ = "REQ-2072"
 # them. Trino 481 addresses the coordinator by IP alone for it, so the coordinator is pinned to an
 # address on an engine network of its own. They apply at the next start of the stack: the app
 # writes them to the launch-settings file beside the engine's config, which the launcher reads.
+# Under the Helm chart the chart's trino.internalTls decides it all: the chart generates the
+# certificate and addresses each node by its pod DNS name, so it pins no address.
 INTERNAL_TLS: list[Setting] = [
     Setting(
         key="engine.trino_internal_tls",
@@ -83,7 +85,7 @@ INTERNAL_TLS: list[Setting] = [
         req=_INTERNAL_TLS_REQ,
         env="PROVISA_TRINO_INTERNAL_SUBNET",
         default="172.30.250.0/24",
-        chart_value="trino.coordinatorClusterIP",
+        chart_value="trino.internalTls",
     ),
     Setting(
         key="engine.trino_coordinator_ip",
@@ -94,7 +96,7 @@ INTERNAL_TLS: list[Setting] = [
         req=_INTERNAL_TLS_REQ,
         env="PROVISA_TRINO_COORDINATOR_IP",
         default="172.30.250.10",
-        chart_value="trino.coordinatorClusterIP",
+        chart_value="trino.internalTls",
     ),
 ]
 

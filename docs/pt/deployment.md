@@ -628,8 +628,7 @@ Nota: o AppImage do Provisa não consegue rodar dentro de um pod Kubernetes — 
 | `redis.tls` | `false` | |
 | `trino.enabled` | `true` | Implantar motor de federação (REQ-028) |
 | `trino.workers` | `2` | Réplicas de worker do motor de federação (REQ-056) |
-| `trino.internalTls` | `false` | Criptografa o tráfego coordenador-worker; torna consultas com muito shuffle de 10% a mais de 100% mais lentas (REQ-2072) |
-| `trino.coordinatorClusterIP` | `""` | O endereço fixado do Service do coordenador, exigido com `trino.internalTls` (REQ-2072) |
+| `trino.internalTls` | `false` | Criptografa o tráfego coordenador-worker com um certificado gerado pelo chart; torna consultas com muito shuffle de 10% a mais de 100% mais lentas (REQ-2072) |
 | `postgresql.enabled` | `true` | Implantar PostgreSQL no cluster (REQ-169) |
 | `postgresql.host` | `""` | Definir para usar PostgreSQL externo |
 | `minio.enabled` | `true` | Implantar MinIO no cluster (REQ-029) |

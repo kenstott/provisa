@@ -673,12 +673,9 @@ class TestWorkerScaling:
 
 
 class TestTrinoInternalTls:
-    """REQ-2072: with trino.internalTls the workers find the coordinator at its pinned Service
-    address over HTTPS, and the cluster serves queries with every node active."""
-
-    # An address in minikube's Service range (10.96.0.0/12) that nothing else is given.
-    _CLUSTER_IP = "10.111.222.233"
-    _SERVICE = f"{RELEASE}-trino-coordinator"
+    """REQ-2072: with trino.internalTls the workers find the coordinator at its Service name over
+    HTTPS, with the certificate the chart generates, and the cluster serves queries with every node
+    active."""
 
     def _active_nodes(self) -> str:
         coordinator = next(
@@ -700,23 +697,12 @@ class TestTrinoInternalTls:
         return result.stdout.strip().strip('"')
 
     def test_workers_join_over_internal_tls(self):
-        # A Service's ClusterIP cannot change in place: removed, the upgrade makes it again.
-        _kubectl("delete", "service", self._SERVICE)
-        result = _helm_deploy(
-            worker_replicas=1,
-            extra=(
-                "--set",
-                "trino.internalTls=true",
-                "--set",
-                f"trino.coordinatorClusterIP={self._CLUSTER_IP}",
-            ),
-        )
+        result = _helm_deploy(worker_replicas=1, extra=("--set", "trino.internalTls=true"))
         assert result.returncode == 0, f"helm upgrade failed:\n{result.stderr}\n{_why_not_ready()}"
         try:
             # The coordinator and its one worker, the worker having joined over HTTPS.
             assert self._active_nodes() == "2"
         finally:
-            _kubectl("delete", "service", self._SERVICE)
             restored = _helm_deploy(worker_replicas=1)
             assert restored.returncode == 0, (
                 f"helm upgrade (internal TLS off) failed:\n{restored.stderr}\n{_why_not_ready()}"

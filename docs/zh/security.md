@@ -519,7 +519,7 @@ Provisa 终结的每个监听器都提供 TLS（参见 [TLS 版本](#tls-version
 
 ### 联邦查询引擎（Trino） {: #the-federation-engine-trino }
 
-- **节点之间。** 协调器与其 worker 使用为部署生成的共享密钥（`internal-communication.shared-secret`）相互认证。加密它们之间的流量是运营者的可选项，默认关闭：关闭时，流量保持在部署的私有网络或集群之内。当合规或零信任要求部署内部也须加密时再开启。Trino 文档称它会使 shuffle 密集型查询（分布式连接、聚合、窗口函数）变慢 10% 到 100% 以上。在 compose 部署上，它是设置 `engine.trino_internal_tls`（Deployment settings → Engine），旁边是引擎网络和协调器的固定地址，并在下次启动时生效。在 Helm chart 下，它是值 `trino.internalTls`，另有 `trino.coordinatorClusterIP`。托管平台的引擎是单节点协调器，没有节点间流量，并拒绝该选项。（REQ-2072）
+- **节点之间。** 协调器与其 worker 使用为部署生成的共享密钥（`internal-communication.shared-secret`）相互认证。加密它们之间的流量是运营者的可选项，默认关闭：关闭时，流量保持在部署的私有网络或集群之内。当合规或零信任要求部署内部也须加密时再开启。Trino 文档称它会使 shuffle 密集型查询（分布式连接、聚合、窗口函数）变慢 10% 到 100% 以上。在 compose 部署上，它是设置 `engine.trino_internal_tls`（Deployment settings → Engine），旁边是引擎网络和协调器的固定地址，并在下次启动时生效。在 Helm chart 下，它是值 `trino.internalTls`；chart 生成节点使用的 CA 和证书，在升级之间保留它们，并按每个节点的 pod DNS 名称寻址。托管平台的引擎是单节点协调器，没有节点间流量，并拒绝该选项。（REQ-2072）
 - **假脱机数据。** 容错执行用为每个查询生成、查询结束即丢弃的密钥，加密它假脱机的交换数据（`fault-tolerant-execution.exchange-encryption-enabled=true`，显式设置）。不使用旧式的溢写到磁盘。
 - **同一引擎上的多个组织。** 每个组织的 catalog 属于它自己，以该组织命名，每个组织的语句在它自己的资源组中运行。
 - **目录及其中的凭据只存在于引擎内存中。** Provisa 在运行时创建每个 Trino 目录，每个目录保存其数据源的连接属性，包括密码。Provisa 运行的每个引擎都把它们保存在内存中（`catalog.store=memory`）：不会有目录写入引擎磁盘，也不会从文件挂载目录。重启的协调器回来时没有任何目录；每个 Provisa 进程会在下一次查询时发现，引擎监视器则在一分钟内发现，并重新创建它所服务的目录。带 SASL 凭据的 Kafka 数据源需要一个文件：Trino 的 Kafka 连接器只从文件读取客户端设置，因此 Provisa 把它们（包括密码）写入 `kafka-client/<catalog>.properties`。该文件只有 Trino 的用户可读（0700 目录中的 0600 模式）。在容器栈中，该目录是 API 与引擎共享的内存卷。在托管平台的引擎上，它是引擎自己的 Kubernetes Secret，保存在节点内存中，只有 Trino 的用户组可读（0440 模式）。无论哪种方式，该文件都不会落到磁盘上。在托管引擎上，Kafka 数据源必须指定模式注册表：主题列只由模型声明的数据源在保存或应用时会被按名称拒绝，因为它的表描述需要一个无法交给运行中引擎的目录。启动栈时会删除早期版本留在磁盘上的目录文件和 Kafka 客户端文件。
