@@ -59,19 +59,6 @@ def here() -> str:
     return process_region.region()
 
 
-def template_region_store(template_org: str) -> str:
-    """The store this node's region keeps template ``template_org``'s replicas and views in, as
-    its demo's configuration names it: what its model will name once its first build has seeded
-    it from that configuration (REQ-2068)."""
-    from provisa.api.demo_templates import template_seed
-    from provisa.core.region_stores import region_lane
-
-    seed = template_seed(template_org)
-    lane = region_lane(template_org, seed.regions, seed.stores)
-    assert lane is not None, "a regional node: process_region names a platform region"
-    return lane.materialize_url
-
-
 @dataclass(frozen=True)
 class RegionStore:
     """What one region of an org keeps, and where: its replicas' and views' store URLs (resolved)

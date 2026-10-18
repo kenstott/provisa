@@ -1952,62 +1952,69 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
     # whichever key the org holds now.
     await ensure_org_encryption(org_id)
 
-    async def _builder(_key: str) -> OrgRuntime:
-        lane = await _read_org_flags(org_id)
-        # REQ-1621: an environment with an expiry is ephemeral, and the mutation gate reads that off
-        # the runtime rather than re-querying the registry per call. PROD never has one, so it is
-        # not asked -- the row is the org's oldest and the answer is structural.
-        from provisa.core.env_store import get_env
+    return await state.org_registry.get_or_build(
+        runtime_key(org_id, env), lambda _key: build_on_its_lane(org_id, env)
+    )
 
-        _ephemeral = False
-        # REQ-1942: the environment's data choices, read off the runtime by the query path. PROD
-        # has none: it is always real, and its mutations change its own data.
-        _data_mode: str | None = None
-        _mutation_handling: str | None = None
-        if env is not None and env != PROD:
-            assert state.admin_db is not None, "the admin plane holds the environment registry"
-            _row = await get_env(state.admin_db, org_id, env)
-            if _row is None:
-                raise KeyError(f"organization {org_id!r} has no environment {env!r}")
-            _ephemeral = _row["expires_at"] is not None
-            _data_mode, _mutation_handling = _row["data_mode"], _row["mutation_handling"]
-        external_engine, engine_kind, engine_url, storage_url = (
-            lane.external_engine,
-            lane.engine_kind,
-            lane.engine_url,
-            lane.storage_url,
-        )
-        # REQ-1922: in a region deployment the org's region names its engine and its materialize
-        # store, in its model; the admin-plane row may not name others (refuse_lane_conflict).
-        bound = await _region_lane_of(org_id, env or PROD)
-        if bound is not None:
-            from provisa.core.region_stores import refuse_lane_conflict
 
-            refuse_lane_conflict(
-                org_id,
-                engine_kind=lane.engine_kind,
-                engine_url=lane.engine_url,
-                external_engine=lane.external_engine,
-                storage_url=lane.storage_url,
-            )
-            external_engine, engine_kind, engine_url = bound.endpoint, bound.kind, bound.url
-            storage_url = bound.materialize_url
-        return await build_org_runtime(
+async def build_on_its_lane(org_id: str, env: str | None) -> OrgRuntime:  # REQ-1266, REQ-1922
+    """Build the org environment's runtime on the lane its admin-plane row and, in a region
+    deployment, its model name: the engine and store it runs on. ``ensure_org_runtime`` builds
+    through it, and provisioning builds an org again through it once that build has seeded the
+    model a region's lane is read from."""
+    lane = await _read_org_flags(org_id)
+    # REQ-1621: an environment with an expiry is ephemeral, and the mutation gate reads that off
+    # the runtime rather than re-querying the registry per call. PROD never has one, so it is
+    # not asked -- the row is the org's oldest and the answer is structural.
+    from provisa.core.env_store import get_env
+
+    _ephemeral = False
+    # REQ-1942: the environment's data choices, read off the runtime by the query path. PROD
+    # has none: it is always real, and its mutations change its own data.
+    _data_mode: str | None = None
+    _mutation_handling: str | None = None
+    if env is not None and env != PROD:
+        assert state.admin_db is not None, "the admin plane holds the environment registry"
+        _row = await get_env(state.admin_db, org_id, env)
+        if _row is None:
+            raise KeyError(f"organization {org_id!r} has no environment {env!r}")
+        _ephemeral = _row["expires_at"] is not None
+        _data_mode, _mutation_handling = _row["data_mode"], _row["mutation_handling"]
+    external_engine, engine_kind, engine_url, storage_url = (
+        lane.external_engine,
+        lane.engine_kind,
+        lane.engine_url,
+        lane.storage_url,
+    )
+    # REQ-1922: in a region deployment the org's region names its engine and its materialize
+    # store, in its model; the admin-plane row may not name others (refuse_lane_conflict).
+    bound = await _region_lane_of(org_id, env or PROD)
+    if bound is not None:
+        from provisa.core.region_stores import refuse_lane_conflict
+
+        refuse_lane_conflict(
             org_id,
-            env=env or PROD,
-            ephemeral=_ephemeral,
-            include_demo=lane.seeded_demo,
-            isolated_engine=lane.isolated_engine,
-            external_engine=external_engine,
-            engine_kind=engine_kind,
-            engine_url=engine_url,
-            shard=lane.shard,
-            storage_url=storage_url,
-            data_mode=_data_mode,
-            mutation_handling=_mutation_handling,
+            engine_kind=lane.engine_kind,
+            engine_url=lane.engine_url,
+            external_engine=lane.external_engine,
+            storage_url=lane.storage_url,
         )
-
-    return await state.org_registry.get_or_build(runtime_key(org_id, env), _builder)
+        external_engine, engine_kind, engine_url = bound.endpoint, bound.kind, bound.url
+        storage_url = bound.materialize_url
+    return await build_org_runtime(
+        org_id,
+        env=env or PROD,
+        ephemeral=_ephemeral,
+        include_demo=lane.seeded_demo,
+        isolated_engine=lane.isolated_engine,
+        external_engine=external_engine,
+        engine_kind=engine_kind,
+        engine_url=engine_url,
+        shard=lane.shard,
+        storage_url=storage_url,
+        data_mode=_data_mode,
+        mutation_handling=_mutation_handling,
+    )
 
 
 def _bind_boot_engine(raw_config: dict) -> None:
@@ -2400,14 +2407,7 @@ async def _build_org_runtime(
             # REQ-2068: on the regions sandbox tier the org's region names its store (its own
             # schemas in that region's PostgreSQL, the region lane's ``storage_url``).
             from provisa.api.demo_region_seed import regional
-            from provisa.core.org_ids import is_template_org
 
-            if regional() and storage_url is None and is_template_org(org_id):
-                # A template's first build is its provisioning's, before its model -- which this
-                # build seeds from its demo's configuration -- names a region.
-                from provisa.api.demo_region_seed import template_region_store
-
-                storage_url = rt.storage_url = template_region_store(org_id)
             rt.federation_engine.engine.pin_materialize_store(
                 storage_url
                 if regional() and storage_url is not None
