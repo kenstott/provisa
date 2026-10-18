@@ -543,6 +543,11 @@ async def run_build(state: Any, key: ReplicaKey, progress: Progress) -> BuildOut
         await queue.record_refresh(conn, node, at=datetime.now(UTC), ok=True)
         if outcome.changed:
             await _post_built(state, conn, key, node, outcome.rows_copied)
+    landed = getattr(state, "on_input_landed", None)
+    if outcome.changed and landed is not None:
+        # A view left off the event loop because this replica had not landed is wired now
+        # (events.app_wiring._wire_views_reading).
+        landed(node)
     return outcome
 
 
