@@ -764,6 +764,39 @@ async def test_a_connector_table_lands_only_the_rows_its_landing_filter_passes(t
 
 
 @_aio
+async def test_a_registered_table_lands_its_registered_columns(tmp_path):
+    """The replica keeps the table's registered columns, so those are what its server is asked
+    for -- not every column of the remote object (a Salesforce sObject has hundreds)."""
+    from types import SimpleNamespace
+
+    conn = _FakeConn([{"Id": "1", "Name": "a"}])
+
+    async def _connect(host, port, password):
+        return conn
+
+    replica = pr.ConnectorReplica(
+        _files_source(),
+        resolver=rd.BundleResolver(
+            cache_root=tmp_path, downloader=lambda spec, dest: _lay_down_bundle(spec, dest)
+        ),
+        allocator=pr.PortAllocator(is_free=lambda _: True),
+        spawn=_spawn_returning(_FakeProc()),
+        health_check=_health_from(lambda: True),
+        port_is_free=lambda _: True,
+        connect=_connect,
+    )
+    table = SimpleNamespace(
+        table_name="reports",
+        schema_name=None,
+        landing_filter=None,
+        columns=[SimpleNamespace(name="Id"), SimpleNamespace(name="Name")],
+    )
+    await replica.load(table)
+    assert conn.queries == ['SELECT "Id", "Name" FROM "local_files"."reports"']
+    replica.close()
+
+
+@_aio
 async def test_connector_replica_unhealthy_is_loud(tmp_path):
     def _dl(spec, dest):
         _lay_down_bundle(spec, dest)

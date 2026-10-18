@@ -933,6 +933,17 @@ async def _pg_connect(host: str, port: int, password: str) -> Any:
     )
 
 
+def _registered_columns(table: Any) -> list[str] | None:
+    """The columns a registered table's replica keeps, by name; None for a table named bare. The
+    landing's commit time is the landing's own, never a column of the source (REQ-1163)."""
+    from provisa.federation.commit_time import SOURCE_COMMITTED_AT
+
+    columns = getattr(table, "columns", None)
+    if not columns:
+        return None
+    return [c.name for c in columns if c.name != SOURCE_COMMITTED_AT]
+
+
 async def land_via_select(
     ports: PortPair,
     schema: str,
@@ -941,15 +952,19 @@ async def land_via_select(
     password: str,
     connect: Callable[[str, int, str], Any] | None = None,
     where: str = "",
+    columns: list[str] | None = None,
 ) -> list[dict]:
     """Connect to the pgwire endpoint as generic PostgreSQL and SELECT the connector table's rows
     (REQ-954). Returns the rows as dicts keyed by column name; the caller lands them into the store.
-    ``where`` is the table's landing filter (REQ-2062), `` WHERE ...`` in PostgreSQL, or ``""``."""
+    ``where`` is the table's landing filter (REQ-2062), `` WHERE ...`` in PostgreSQL, or ``""``.
+    ``columns`` are the registered columns the replica keeps, the ones asked for; None (a table
+    named bare, with none registered) asks for every column."""
     do_connect = connect if connect is not None else _pg_connect
     conn = await do_connect(ports.pgwire_host, ports.pgwire_port, password)
+    select = ", ".join('"' + c.replace('"', '""') + '"' for c in columns) if columns else "*"
     try:
         rows = await conn.fetch(
-            f'SELECT * FROM "{schema}"."{table}"{where}', timeout=_fetch_timeout()
+            f'SELECT {select} FROM "{schema}"."{table}"{where}', timeout=_fetch_timeout()
         )
         return [dict(row) for row in rows]
     finally:
@@ -1292,6 +1307,7 @@ class ConnectorReplica:  # REQ-954/955/956
             password=sign_in_password(self._source),
             connect=self._connect,
             where=where,
+            columns=_registered_columns(table),
         )
 
     def _schema_of(self, table: Any) -> str:
