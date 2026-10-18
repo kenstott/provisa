@@ -689,6 +689,11 @@ class TestTrinoInternalTls:
             "-c",
             "trino",
             "--",
+            # The CLI wrapper starts its JVM with -Xmx1G beside a server allowed 80% of the
+            # container's 4Gi, past the limit: the exec was killed (137). _JAVA_OPTIONS outranks
+            # the wrapper's own flag.
+            "env",
+            "_JAVA_OPTIONS=-Xmx192m",
             "trino",
             "--execute",
             "SELECT count(*) FROM system.runtime.nodes WHERE state = 'active'",
