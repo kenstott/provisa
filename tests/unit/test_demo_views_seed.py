@@ -10,9 +10,10 @@
 
 """A demo's bitemporal views keep their history from its bundle build to every sandbox (REQ-1162,
 REQ-2006): the build writes their append logs beside the seed, the template adopts them into its
-store, and a sandbox is given the template's."""
+store, and a sandbox is given the template's. The records of the refreshes that built that history
+(REQ-862) travel with it, each landed as the organisation's that now holds it."""
 
-# Requirements: REQ-1162, REQ-2006
+# Requirements: REQ-1162, REQ-2006, REQ-862
 
 from __future__ import annotations
 
@@ -128,6 +129,8 @@ def test_a_copy_names_the_tables_it_takes(tmp_path):
 @pytest.fixture
 def data_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path / "data"))
+    # Where this process lands its trace records, the refresh records among them (REQ-862).
+    monkeypatch.setenv("PROVISA_TELEMETRY_DIR", str(tmp_path / "telemetry"))
     for org in ("default", "sbxtpldv", "sbx0a1b"):
         (tmp_path / "data" / "orgs" / org).mkdir(parents=True)
     return tmp_path / "data" / "orgs"
@@ -153,7 +156,7 @@ def test_the_history_reaches_the_template_and_each_sandbox(data_dir, tmp_path):
     assert _rows(template, _views("sbxtpldv"), "mv_view_sat_customer") == _HISTORY
 
     asyncio.run(
-        demo_replicas.copy_views_to_sandbox("sbxtpldv", "sbx0a1b", ["mv_view_sat_customer"])
+        demo_replicas.copy_views_to_sandbox("sbxtpldv", "sbx0a1b", ["mv_view_sat_customer"], demo)
     )
     sandbox = data_dir / "sbx0a1b" / "materialize.duckdb"
     assert _rows(sandbox, _views("sbx0a1b"), "mv_view_sat_customer") == _HISTORY
@@ -177,3 +180,80 @@ def test_a_bitemporal_view_the_setup_never_built_fails_the_build(data_dir, tmp_p
     _store(data_dir / "default" / "materialize.duckdb", _views("default"), {"mv_view_s": _HISTORY})
     with pytest.raises(RuntimeError, match="mv_view_absent"):
         demo_replicas.export_views("default", tmp_path / "demo", ["mv_view_s", "mv_view_absent"])
+
+
+def _refresh(mv_id: str, start_s: int, name: str | None = None) -> dict:
+    from provisa.observability.ops_schema import MV_REFRESH_LINEAGE_SPAN, trace_row
+
+    row = trace_row(
+        trace_id=f"{start_s:032x}",
+        span_id=f"{start_s:016x}",
+        parent_span_id=None,
+        name=name or MV_REFRESH_LINEAGE_SPAN,
+        kind=1,
+        attributes={"mv.id": mv_id, "lineage.definition_version": "sha256:d"},
+        resource_attributes={"service.name": "provisa"},
+        scope_name="provisa",
+        start_ns=start_s * 1_000_000_000,
+        end_ns=start_s * 1_000_000_000 + 1,
+        status_code=0,
+        status_message=None,
+    )
+    return {**row, "tenant_id": "default"}
+
+
+def _landed_refreshes(org: str) -> list[tuple[str, str]]:
+    from provisa.observability import native_traces
+
+    return [
+        (r["trace_id"], r["tenant_id"])
+        for r in native_traces.refresh_records(
+            native_traces.traces_dir(), ["view-view_sat_customer"]
+        )
+        if r["tenant_id"] == org
+    ]
+
+
+def test_the_refreshes_that_built_the_history_travel_with_it(data_dir, tmp_path):
+    from provisa.observability import native_traces
+
+    demo = tmp_path / "demo"
+    _store(
+        data_dir / "default" / "materialize.duckdb",
+        _views("default"),
+        {"mv_view_sat_customer": _HISTORY},
+    )
+    # The build's own refreshes: the view's two, another view's and a span that is no refresh.
+    native_traces.write_batch(
+        native_traces.traces_dir(),
+        [
+            _refresh("view-view_sat_customer", 1_790_000_000),
+            _refresh("view-view_sat_customer", 1_790_000_005),
+            _refresh("view-view_mart", 1_790_000_003),
+            _refresh("view-view_sat_customer", 1_790_000_004, name="mv.refresh"),
+        ],
+    )
+    demo_replicas.export_views("default", demo, ["mv_view_sat_customer"])
+    assert json.loads((demo / "seeded" / "views.json").read_text())["refreshes"] == 2
+
+    built = [(f"{s:032x}", "default") for s in (1_790_000_000, 1_790_000_005)]
+    assert _landed_refreshes("default") == built
+    demo_replicas.adopt_views("sbxtpldv", demo)
+    asyncio.run(
+        demo_replicas.copy_views_to_sandbox("sbxtpldv", "sbx0a1b", ["mv_view_sat_customer"], demo)
+    )
+    # The same records, in order, each the organisation's that now holds the history.
+    for org in ("sbxtpldv", "sbx0a1b"):
+        assert _landed_refreshes(org) == [(trace, org) for trace, _ in built]
+
+
+def test_a_bundle_carrying_no_refresh_records_lands_none(data_dir, tmp_path):
+    demo = tmp_path / "demo"
+    _store(
+        data_dir / "default" / "materialize.duckdb",
+        _views("default"),
+        {"mv_view_sat_customer": _HISTORY},
+    )
+    demo_replicas.export_views("default", demo, ["mv_view_sat_customer"])
+    assert not (demo / "seeded" / "refresh_lineage.parquet").exists()
+    assert demo_replicas.land_refreshes(demo, "sbx0a1b") == 0

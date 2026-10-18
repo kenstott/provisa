@@ -21,8 +21,9 @@ where the demo runs:
        config.yaml with a throwaway control plane (scripts/run_demo_setup.py, REQ-2016) -- the
        sonnets demo's embeds its lines into Qdrant and writes its echoes; a demo with bitemporal
        views (REQ-1162) then has their append logs -- the history its setup's steps gave them --
-       written out as ``seeded/views.duckdb`` and ``seeded/views.json``, which its template and
-       each sandbox start from;
+       written out as ``seeded/views.duckdb`` and ``seeded/views.json``, with the records of the
+       refreshes that built it (``seeded/refresh_lineage.parquet``, REQ-862), which its template
+       and each sandbox start from;
     2. a sandbox tier runs on a throwaway embedded control plane in seeding mode
        (``PROVISA_DEMO_SEED_EXPORT=true``): it lands the demo's template from those stores and
        writes the seed -- ``seeded/replicas.duckdb`` and ``seeded/replicas.json``
@@ -547,7 +548,10 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
         "PLATFORM_DATABASE_URL": url,
         "PG_HOST": host,
         "PG_PORT": port,
-        "OTEL_SDK_DISABLED": "true",
+        # REQ-862: its refreshes are recorded, and the records of those that build a bitemporal
+        # view's history are carried with it (_export_views): what each was built from.
+        "OTEL_SDK_DISABLED": "false",
+        "PROVISA_TELEMETRY_DIR": str(work / "setup-telemetry"),
     }
     server = subprocess.Popen(
         [
@@ -768,7 +772,12 @@ def _export_views(work: Path, demo: Path, stores: Stores) -> None:
             *tables,
         ],
         cwd=_REPO,
-        env={**os.environ, "PROVISA_DATA_DIR": str(work / "setup-data")},
+        env={
+            **os.environ,
+            "PROVISA_DATA_DIR": str(work / "setup-data"),
+            # REQ-862: where the setup server landed its refresh records.
+            "PROVISA_TELEMETRY_DIR": str(work / "setup-telemetry"),
+        },
         check=True,
     )
 

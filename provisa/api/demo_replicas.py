@@ -32,6 +32,12 @@ version its build's setup appended, as its sources changed. Their append logs tr
 ``seeded/views.json``), copied into the template's store when its runtime is built, and from the
 template into each sandbox's. A refresh over sources unchanged since then appends nothing, so the
 history is the vault's own wherever the demo runs.
+
+The records of the refreshes that built that history (REQ-862: ``ops.mv_refresh_lineage``, what
+each was built from) travel with it -- written out by the build beside the append logs
+(``seeded/refresh_lineage.parquet``) and landed as the template's, then each sandbox's, wherever
+the history is copied. They are the records of those builds, carried, not new ones: their times
+and traces are as recorded, so a time read from them falls where it fell against that history.
 """
 
 # Requirements: REQ-2006, REQ-1992, REQ-1920
@@ -52,6 +58,8 @@ SEED_RECORD = "replicas.json"
 #: A demo's bitemporal views' append logs, beside its seed (REQ-1162).
 VIEWS_STORE = "views.duckdb"
 VIEWS_RECORD = "views.json"
+#: The refreshes that built them, as each refresh's record has it (REQ-862).
+REFRESHES_STORE = "refresh_lineage.parquet"
 _VIEWS_SCHEMA = "views"
 
 #: The fields of a replica's record a seed carries; every other one is the copy's own.
@@ -119,6 +127,30 @@ def bitemporal_view_tables(config: Any) -> list[str]:
         for table in config.tables
         if table.source_id == DERIVED_SOURCE_ID and table.materialize and table.mv_bitemporal_mode
     )
+
+
+def view_mv_id(table: str) -> str:
+    """The materialized view whose append log is the stored table ``table`` (``mv_<table name>``)."""
+    return "view-" + table.removeprefix("mv_")
+
+
+def _refreshes_path(demo_directory: Path) -> Path:
+    return demo_directory / SEED_DIR / REFRESHES_STORE
+
+
+def land_refreshes(demo_directory: Path, org_id: str) -> int:
+    """Land the demo's carried refresh records (REQ-862) as ``org_id``'s, where its views' history
+    has just been copied; how many. A bundle built before they were carried has none."""
+    import pyarrow.parquet as pq
+
+    from provisa.observability import native_traces
+
+    path = _refreshes_path(demo_directory)
+    if not path.exists():
+        return 0
+    rows = pq.read_table(path).cast(native_traces.TRACES_SCHEMA).to_pylist()
+    native_traces.land_records(native_traces.traces_dir(), rows, org_id)
+    return len(rows)
 
 
 def _state_db(org_id: str) -> Any:
@@ -225,10 +257,12 @@ async def copy_to_sandbox(template_org: str, org_id: str) -> None:
         await replica_state.record_copied(conn, copied)
 
 
-async def copy_views_to_sandbox(template_org: str, org_id: str, tables: list[str]) -> None:
+async def copy_views_to_sandbox(
+    template_org: str, org_id: str, tables: list[str], demo_directory: Path
+) -> None:
     """The template's bitemporal views' append logs (``tables``), into a sandbox's own store: the
     sandbox keeps their history, and its first refresh over the demo's unchanged sources appends
-    nothing (REQ-1162)."""
+    nothing (REQ-1162). The refreshes that built it are landed as the sandbox's (REQ-862)."""
     from provisa.api import demo_region_seed
     from provisa.federation.materialize_broker import copy_schema
 
@@ -243,6 +277,7 @@ async def copy_views_to_sandbox(template_org: str, org_id: str, tables: list[str
         _views_schema(org_id),
         tables,
     )
+    await asyncio.to_thread(land_refreshes, demo_directory, org_id)
 
 
 def seed_paths(demo_directory: Path) -> tuple[Path, Path]:
@@ -272,7 +307,25 @@ def export_views(org_id: str, demo_directory: Path, tables: list[str]) -> None:
     missing = sorted(set(tables) - set(copied))
     if missing:
         raise RuntimeError(f"these bitemporal views were never built: {', '.join(missing)}")
-    record.write_text(json.dumps({"schema": _VIEWS_SCHEMA, "tables": copied}, indent=2) + "\n")
+    # REQ-862: and the records of the refreshes that built them, landed by this process's run.
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from provisa.observability import native_traces
+
+    refreshes = native_traces.refresh_records(
+        native_traces.traces_dir(), [view_mv_id(t) for t in copied]
+    )
+    path = _refreshes_path(demo_directory)
+    path.unlink(missing_ok=True)
+    if refreshes:
+        pq.write_table(pa.Table.from_pylist(refreshes, schema=native_traces.TRACES_SCHEMA), path)
+    record.write_text(
+        json.dumps(
+            {"schema": _VIEWS_SCHEMA, "tables": copied, "refreshes": len(refreshes)}, indent=2
+        )
+        + "\n"
+    )
 
 
 def adopt_views(template_org: str, demo_directory: Path) -> bool:
@@ -295,6 +348,7 @@ def adopt_views(template_org: str, demo_directory: Path) -> bool:
     copy_schema(
         str(store), _VIEWS_SCHEMA, _store_path(template_org), _views_schema(template_org), tables
     )
+    land_refreshes(demo_directory, template_org)  # REQ-862: the refreshes that built it
     return True
 
 
