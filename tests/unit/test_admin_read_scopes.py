@@ -130,6 +130,7 @@ _ROLE_ROWS = [
         "domain_access": ["sales"],
         "residency_values": [],
         "session_vars": {},  # REQ-1682: a stored role always carries its session values
+        "inactivity_days": None,  # REQ-2077: likewise its grants' inactivity limit
         "org_id": None,
         "parent_role_id": None,
     },
@@ -141,6 +142,7 @@ _ROLE_ROWS = [
         "domain_access": ["*"],
         "residency_values": [],
         "session_vars": {},  # REQ-1682: a stored role always carries its session values
+        "inactivity_days": None,  # REQ-2077: likewise its grants' inactivity limit
         "org_id": None,
         "parent_role_id": None,
     },
