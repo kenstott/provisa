@@ -712,6 +712,7 @@ def _govern_references(
     which the projection rewrite names and drops. A column of this SELECT's tables referenced
     from a nested SELECT by its alias (a correlated subquery) is replaced too."""
     top_level = {id(e) for e in node.expressions}
+    outputs = {e.alias_or_name.lower() for e in node.expressions if e.alias_or_name}
     for col in list(node.find_all(exp.Column)):
         parent = col.parent
         if id(col) in top_level or (
@@ -720,6 +721,8 @@ def _govern_references(
             continue
         if _already_governed(col):
             continue
+        if _names_an_output(col, node, outputs):
+            continue  # the statement's own output column: what it reads is governed there
         if col.find_ancestor(exp.Select) is not node and col.table not in alias_to_tid:
             continue  # a nested SELECT's own column: governed when that SELECT is
         if not _is_column_visible(col, alias_to_tid, gov_ctx):
@@ -734,6 +737,18 @@ def _govern_references(
             continue
         replacement.meta[_GOVERNED] = True
         _replace_reference(col, replacement)
+
+
+def _names_an_output(col: exp.Column, node: exp.Select, outputs: set[str]) -> bool:
+    """Whether ``col`` is an ORDER BY key of ``node`` naming one of its output columns by its
+    output name (``SUM(x) AS revenue ... ORDER BY revenue``): the statement's own name, governed
+    where the output is, so there is nothing to hide or mask in it. In ORDER BY an output name
+    is read before a table's column of that name (PostgreSQL's rule); GROUP BY reads the table's
+    first, so a GROUP BY key is governed as the column it is."""
+    if col.table or col.name.lower() not in outputs:
+        return False
+    clause = col.find_ancestor(exp.Order, exp.Select)
+    return isinstance(clause, exp.Order) and clause.parent is node
 
 
 def _unwrap_cast(node: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
