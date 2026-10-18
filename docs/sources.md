@@ -26,7 +26,7 @@ Every query ultimately executes through the federation engine, which provides fe
 
 ## All Sources
 
-Provisa registers **72** source types, the ones the Sources form offers. The tables below cover all 72; the index is the count. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`, where `graphql` and `grpc` are `graphql_remote` and `grpc_remote`; Kaggle, Wikipedia, GitHub, GitLab and Stripe are counted as distinct sources even though they register through the `files`, `graphql_remote` and `openapi` connectors internally]
+Provisa registers **73** source types, the ones the Sources form offers. The tables below cover all 73; the index is the count. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`, where `graphql` and `grpc` are `graphql_remote` and `grpc_remote`; Kaggle, Wikipedia, GitHub, GitLab and Stripe are counted as distinct sources even though they register through the `files`, `graphql_remote` and `openapi` connectors internally]
 
 | # | Group | Source types |
 | --- | --- | --- |
@@ -41,13 +41,13 @@ Provisa registers **72** source types, the ones the Sources form offers. The tab
 | 45–46 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql` |
 | 47–51 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 52–53 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
-| 54–60 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 61–66 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
-| 67 | [GovData](#govdata) | `govdata` |
-| 68–69 | [Data quality checkers](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
-| 70 | [Data profiler](#data-profiler) | `data_profiler` |
-| 71 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source — see [Kaggle datasets](#kaggle-datasets)) |
-| 72 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages — see [Wikipedia](#wikipedia)) |
+| 54–61 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
+| 62–67 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
+| 68 | [GovData](#govdata) | `govdata` |
+| 69–70 | [Data quality checkers](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
+| 71 | [Data profiler](#data-profiler) | `data_profiler` |
+| 72 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source — see [Kaggle datasets](#kaggle-datasets)) |
+| 73 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages — see [Wikipedia](#wikipedia)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms) (REQ-027). "Connector Name" is the federated connector used when the source participates in multi-source JOINs (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
@@ -529,7 +529,7 @@ Only tables that editors mark as data tables (`table.wikitable`) become tables, 
 
 ### Enterprise SaaS Connectors
 
-Google Workspace and Microsoft 365 are read by loaders of their own; see [Google Workspace and Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, cloud inventory and Splunk register through Apache Calcite connectors (kenstott/calcite fork). None has a direct driver — Provisa launches the connector's bundled Calcite pgwire server (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-cloudops`, `pgwire-splunk`) and reaches it as a generic PostgreSQL endpoint. On the DuckDB engine that endpoint is attached live through the postgres extension: Register Table lists the connector's tables from the attached catalog, queries read the connector in place, and filters and projections push down to Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. Every other engine lands the rows into the materialize store for federation (REQ-954). The bundles are fetched per OS/arch from the pinned `kenstott/calcite` release (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] An operator may instead name a bundle folder built for this host, per connector, under Admin → Settings → Connector servers (`connectors.<connector>.bundle_dir`); see [Admin](admin.md).. All five connectors always enable case-insensitive name matching, matching each product's own case-insensitive semantics (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
+Google Workspace and Microsoft 365 are read by loaders of their own; see [Google Workspace and Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, cloud inventory and Splunk register through Apache Calcite connectors (kenstott/calcite fork). None has a direct driver — Provisa launches the connector's bundled Calcite pgwire server (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`) and reaches it as a generic PostgreSQL endpoint. On the DuckDB engine that endpoint is attached live through the postgres extension: Register Table lists the connector's tables from the attached catalog, queries read the connector in place, and filters and projections push down to Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. Every other engine lands the rows into the materialize store for federation (REQ-954). The bundles are fetched per OS/arch from the pinned `kenstott/calcite` release (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] An operator may instead name a bundle folder built for this host, per connector, under Admin → Settings → Connector servers (`connectors.<connector>.bundle_dir`); see [Admin](admin.md).. All five Trino connectors (Jira has none) always enable case-insensitive name matching, matching each product's own case-insensitive semantics (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
 
 #### `sharepoint`
 
@@ -656,6 +656,48 @@ Table search (natural language) matches each table's name, label and theme. Once
   base_url: https://acme.service-now.com
   username: ${env:SN_USERNAME}
   password: ${env:SN_PASSWORD}
+```
+
+#### `jira`
+
+A Jira Cloud site is read and written through its own Calcite adapter (REQ-2069). A table of a Jira source is a **form**: one project and one issue type, and the fields its columns read. Register Table lists every form the account can create an issue of, grouped by project; selecting one reads that form's fields from Jira, and listing the forms does not. Every form has the columns `key` (its primary key), `id`, `summary`, `status`, `created` and `updated`, then one column per chosen field, named as the adapter names it: the field's name in snake case (`Story Points` is `story_points`). A field whose name is already a column's is named by its field id (`customfield_10099`), so every field can be chosen. A user field holds the account id; its display name is a field of its own (`assignee.displayName`, column `assignee_name`). Columns Jira writes itself are read only: `key`, `id`, `created`, `updated`, a user field's display name, and a field of a shape the adapter does not know, which it serves as JSON text. Registering one marks it "Read only: Jira sets it" in its description where it has none, and a write that sets it is refused by the server, naming it. [tool-verified: `provisa/federation/jira.py` `FIXED_COLUMNS`, `form_columns`; `provisa/federation/pgwire_replica.py` `jira_form_list`, `jira_fields`; `provisa/api/admin/introspect.py` `complete_jira_form`]
+
+A form's table names its project and issue type in its `arguments` (`project`, `issue_type`), and each column reads the field its `path` names (a field id or a field's name), or the field of its own name. A table registered from the admin gets both from Jira; a configuration states them. A Jira table fixing anything else, or missing either, is refused by name. [tool-verified: `provisa/federation/jira.py` `form_of`; `provisa/core/config_loader.py` `_validate_table_arguments`]
+
+| Source field | Adapter property | Notes |
+| --- | --- | --- |
+| `base_url` or `host` | `baseUrl` | The site's full `https://…` address (for example `https://acme.atlassian.net`). A bare host or other scheme is refused |
+| `username` | `email` | The Atlassian account's email |
+| `password` | `apiToken` | An API token of that account, made at id.atlassian.com under Security, API tokens |
+
+[tool-verified: `provisa/federation/jira.py` `jira_site_url`, `jira_settings`]
+
+**Links.** The source's `issue_links` table holds the links between the issues of its forms: `link_id`, `link_type`, `outward_key` and `inward_key`, each link once. A relationship between two forms is declared through it as a junction (REQ-1586), its `link_type` the discriminator, so GraphQL and Cypher walk issue to linked issue by link type. [inferred: the adapter's design agreed for REQ-2069]
+
+**Reads.** A lookup by key (`key =`, `key IN`) is fetched by key, so a key that names no issue is no row. A date or number comparison is sent to Jira as JQL. Every other filter, and every sort, is applied to the rows read: an equality on text, an option, a status or a user is not sent, since JQL refuses a value that names nothing where SQL returns no rows. A multi-value field (labels, a multi-select, components, versions) is text holding a JSON array, and is written the same way. [inferred: the adapter's behaviour, as the calcite connector reports it for REQ-2069]
+
+On DuckDB, PostgreSQL and ClickHouse the engine attaches the source's pgwire server and reads it in place. On Trino the source has no catalog of its own and is landed through its server. [tool-verified: `provisa/federation/engine.py`; `provisa/federation/strategy.py` `_CONNECTOR_PGWIRE_REPLICA`]
+
+**Server lifecycle.** The server serves only the forms registered from it, beside its form list, its field list and the links. Registering, changing or removing a form restarts the server and re-provisions the source on the engine. [tool-verified: `provisa/federation/served_tables.py` `SERVES_REGISTERED_TABLES`, `serve_tables`; `provisa/api/app_rebuild.py` `serve_registered_tables`]
+
+**Writes.** `INSERT`, `UPDATE` and `DELETE` on a form are mutations, written on the source's pgwire server on every engine. Rows are inserted in batches of 50; an update or delete is made issue by issue, by key. Setting `status` performs the workflow transition to that status, and is refused, naming the reachable statuses, where the issue's workflow has none. An issue with subtasks is not deleted. The server returns each written row by its key, so `RETURNING` is accepted and GraphQL offers mutation fields. On `issue_links`, `INSERT` creates a link and `DELETE` removes one; `UPDATE` is refused. [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`, `PGWIRE_SERVER_RETURNS_ROWS`] [inferred: the batching, transitions and subtask refusal are the adapter's, agreed for REQ-2069]
+
+```yaml
+- id: support-jira
+  type: jira
+  base_url: https://acme.atlassian.net
+  username: ${env:JIRA_EMAIL}
+  password: ${env:JIRA_API_TOKEN}
+tables:
+- source_id: support-jira
+  table: incident
+  arguments: {project: KAN, issue_type: Incident}
+  columns:
+  - {name: key, data_type: varchar, is_primary_key: true}
+  - {name: summary, data_type: varchar}
+  - {name: status, data_type: varchar}
+  - {name: priority, data_type: varchar}
+  - {name: flagged, data_type: varchar, path: customfield_10021}
 ```
 
 #### `cloudops`

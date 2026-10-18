@@ -703,6 +703,12 @@
           "help": "A folder holding a AskAmerica server bundle built for this host, with its launcher under bin/. Empty uses the pinned release. A folder without the launcher stops the server from starting, naming this setting."
         }
       },
+      "jira": {
+        "bundle_dir": {
+          "label": "Jira server bundle folder",
+          "help": "A folder holding a Jira server bundle built for this host, with its launcher under bin/. Empty uses the pinned release. A folder without the launcher stops the server from starting, naming this setting."
+        }
+      },
       "salesforce": {
         "bundle_dir": {
           "label": "Salesforce server bundle folder",

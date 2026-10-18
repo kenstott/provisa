@@ -196,6 +196,13 @@
       "allowed_file_extensions": "हर पंक्ति में एक। इन प्रकारों में से किसी की लिंक की गई फ़ाइल तालिका बन जाती है",
       "max_html_size": "उदाहरण के लिए 10MB। इससे बड़ा पेज नहीं पढ़ा जाता",
       "max_data_file_size": "उदाहरण के लिए 100MB। इससे बड़ी फ़ाइल नहीं पढ़ी जाती"
-    }
+    },
+    "siteAddress": "साइट का पता",
+    "siteAddressHint": "आपकी Jira साइट, उदाहरण के लिए https://your-site.atlassian.net",
+    "accountEmail": "Atlassian खाते का ईमेल",
+    "accountEmailHint": "जिस ईमेल से आप Atlassian में साइन इन करते हैं; API टोकन इसी खाते का है।",
+    "apiToken": "API टोकन",
+    "apiTokenHint": "id.atlassian.com पर बनाएँ, Security, API tokens। सीक्रेट वॉल्ट में रखा जाता है।",
+    "siteAddressInvalid": "साइट का पूरा पता दर्ज करें, जो https:// से शुरू हो"
   }
 }

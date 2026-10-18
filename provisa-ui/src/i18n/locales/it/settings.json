@@ -703,6 +703,12 @@
           "help": "Una cartella con un pacchetto server di AskAmerica compilato per questo host, con il suo avviatore in bin/. Vuota, si usa la release fissata. Una cartella senza avviatore impedisce l'avvio del server e indica questa impostazione."
         }
       },
+      "jira": {
+        "bundle_dir": {
+          "label": "Cartella del pacchetto server di Jira",
+          "help": "Una cartella con un pacchetto server di Jira compilato per questo host, con il suo avviatore in bin/. Vuota, si usa la release fissata. Una cartella senza avviatore impedisce l'avvio del server e indica questa impostazione."
+        }
+      },
       "salesforce": {
         "bundle_dir": {
           "label": "Cartella del pacchetto server di Salesforce",

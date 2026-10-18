@@ -26,7 +26,7 @@
 
 ## Все источники {: #all-sources }
 
-Provisa регистрирует **72** типов источников — те, что предлагает форма Sources. Приведённые ниже таблицы охватывают все 72; индекс — это счётчик. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`, где `graphql` и `grpc` — это `graphql_remote` и `grpc_remote`; Kaggle, Wikipedia, GitHub, GitLab и Stripe учитываются как отдельные источники, хотя внутренне регистрируются через коннекторы `files`, `graphql_remote` и `openapi`]
+Provisa регистрирует **73** типов источников — те, что предлагает форма Sources. Приведённые ниже таблицы охватывают все 73; индекс — это счётчик. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`, где `graphql` и `grpc` — это `graphql_remote` и `grpc_remote`; Kaggle, Wikipedia, GitHub, GitLab и Stripe учитываются как отдельные источники, хотя внутренне регистрируются через коннекторы `files`, `graphql_remote` и `openapi`]
 
 | # | Группа | Типы источников |
 | --- | --- | --- |
@@ -41,13 +41,13 @@ Provisa регистрирует **72** типов источников — те
 | 45–46 | [Граф и семантика](#graph-semantic) | `neo4j`, `sparql` |
 | 47–51 | [На основе файлов](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 52–53 | [Наблюдаемость и прочее](#observability-other) | `google_sheets`, `prometheus` |
-| 54–60 | [Корпоративный SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 61–66 | [API-источники](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
-| 67 | [GovData](#govdata) | `govdata` |
-| 68–69 | [Проверки качества данных](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
-| 70 | [Профайлер данных](#data-profiler) | `data_profiler` |
-| 71 | [Наборы данных Kaggle](#kaggle-datasets) | Kaggle (загружается через форму Sources; регистрируется как источник `files` — см. [Наборы данных Kaggle](#kaggle-datasets)) |
-| 72 | [Wikipedia](#wikipedia) | Wikipedia (регистрируется как источник `files`, который обходит указанные страницы — см. [Wikipedia](#wikipedia)) |
+| 54–61 | [Корпоративный SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
+| 62–67 | [API-источники](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
+| 68 | [GovData](#govdata) | `govdata` |
+| 69–70 | [Проверки качества данных](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
+| 71 | [Профайлер данных](#data-profiler) | `data_profiler` |
+| 72 | [Наборы данных Kaggle](#kaggle-datasets) | Kaggle (загружается через форму Sources; регистрируется как источник `files` — см. [Наборы данных Kaggle](#kaggle-datasets)) |
+| 73 | [Wikipedia](#wikipedia) | Wikipedia (регистрируется как источник `files`, который обходит указанные страницы — см. [Wikipedia](#wikipedia)) |
 
 Справочник по каждому типу источника, поддерживаемому Provisa. «Прямой драйвер» означает, что однопоточные запросы выполняются напрямую к источнику (менее 100 мс) (REQ-027). «Имя коннектора» — это федеративный коннектор, используемый, когда источник участвует в многопоточных (multi-source) JOIN (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
@@ -530,7 +530,7 @@ Provisa знает заголовок «See also» этих редакций: `e
 
 ### Корпоративные SaaS-коннекторы {: #enterprise-saas-connectors }
 
-Google Workspace и Microsoft 365 читаются собственными загрузчиками; см. [Google Workspace и Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, облачный инвентарь и Splunk регистрируются через коннекторы Apache Calcite (форк kenstott/calcite). Ни у одного нет прямого драйвера — Provisa запускает встроенный в коннектор сервер Calcite pgwire (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-cloudops`, `pgwire-splunk`) и обращается к нему как к обычной конечной точке PostgreSQL. На движке DuckDB эта конечная точка подключается вживую через расширение postgres: регистрация таблицы перечисляет таблицы коннектора из подключённого каталога, запросы читают коннектор на месте, а фильтры и проекции проталкиваются в Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. Любой другой движок загружает строки в хранилище материализации для федерации (REQ-954). Пакеты загружаются под конкретную ОС/архитектуру из закреплённого релиза `kenstott/calcite` (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] Оператор может вместо этого задать папку с пакетом, собранным для данного хоста, отдельно для каждого коннектора, в разделе Admin → Настройки → Серверы коннекторов (`connectors.<connector>.bundle_dir`); см. [Admin](admin.md).. Все пять коннекторов всегда включают сопоставление имён без учёта регистра, что соответствует собственной регистронезависимой семантике каждого продукта (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
+Google Workspace и Microsoft 365 читаются собственными загрузчиками; см. [Google Workspace и Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, облачный инвентарь и Splunk регистрируются через коннекторы Apache Calcite (форк kenstott/calcite). Ни у одного нет прямого драйвера — Provisa запускает встроенный в коннектор сервер Calcite pgwire (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`) и обращается к нему как к обычной конечной точке PostgreSQL. На движке DuckDB эта конечная точка подключается вживую через расширение postgres: регистрация таблицы перечисляет таблицы коннектора из подключённого каталога, запросы читают коннектор на месте, а фильтры и проекции проталкиваются в Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. Любой другой движок загружает строки в хранилище материализации для федерации (REQ-954). Пакеты загружаются под конкретную ОС/архитектуру из закреплённого релиза `kenstott/calcite` (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] Оператор может вместо этого задать папку с пакетом, собранным для данного хоста, отдельно для каждого коннектора, в разделе Admin → Настройки → Серверы коннекторов (`connectors.<connector>.bundle_dir`); см. [Admin](admin.md).. Все пять коннекторов всегда включают сопоставление имён без учёта регистра, что соответствует собственной регистронезависимой семантике каждого продукта (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
 
 #### `sharepoint`
 
@@ -657,6 +657,48 @@ Google Workspace и Microsoft 365 читаются собственными за
   base_url: https://acme.service-now.com
   username: ${env:SN_USERNAME}
   password: ${env:SN_PASSWORD}
+```
+
+#### `jira`
+
+Сайт Jira Cloud читается и записывается через собственный адаптер Calcite (REQ-2069). Таблица источника Jira — это **форма**: один проект и один тип задачи, а также поля, которые читают её столбцы. Register Table перечисляет каждую форму, по которой аккаунт может создать задачу, сгруппированные по проектам; при выборе формы её поля считываются из Jira, а простое перечисление форм поля не загружает. У каждой формы есть столбцы `key` (её первичный ключ), `id`, `summary`, `status`, `created` и `updated`, а затем по одному столбцу на каждое выбранное поле, названному так, как его называет адаптер: имя поля в snake case (`Story Points` становится `story_points`). Поле, имя которого уже совпадает с именем столбца, называется по идентификатору поля (`customfield_10099`), так что можно выбрать любое поле. Поле пользователя содержит идентификатор аккаунта; его отображаемое имя — отдельное поле (`assignee.displayName`, столбец `assignee_name`). Столбцы, которые Jira записывает сама, доступны только для чтения: `key`, `id`, `created`, `updated`, отображаемое имя поля пользователя и поле формы, неизвестной адаптеру, которое он отдаёт как текст JSON. Регистрация помечает такой столбец текстом «Read only: Jira sets it» в его описании, если описания нет, а запись, которая задаёт этот столбец, отклоняется сервером с указанием столбца. [tool-verified: `provisa/federation/jira.py` `FIXED_COLUMNS`, `form_columns`; `provisa/federation/pgwire_replica.py` `jira_form_list`, `jira_fields`; `provisa/api/admin/introspect.py` `complete_jira_form`]
+
+Таблица формы указывает свой проект и тип задачи в своих `arguments` (`project`, `issue_type`), а каждый столбец читает поле, которое называет его `path` (идентификатор поля или имя поля), либо поле с собственным именем. Таблица, зарегистрированная из админки, получает оба значения из Jira; в конфигурации они задаются явно. Таблица Jira, фиксирующая что-либо иное или не имеющая одного из них, отклоняется с указанием её имени. [tool-verified: `provisa/federation/jira.py` `form_of`; `provisa/core/config_loader.py` `_validate_table_arguments`]
+
+| Поле источника | Свойство адаптера | Примечание |
+| --- | --- | --- |
+| `base_url` или `host` | `baseUrl` | Полный адрес `https://…` сайта (например, `https://acme.atlassian.net`). Голый хост или другая схема отклоняется |
+| `username` | `email` | Адрес электронной почты аккаунта Atlassian |
+| `password` | `apiToken` | Токен API этого аккаунта, созданный на id.atlassian.com в разделе Security, API tokens |
+
+[tool-verified: `provisa/federation/jira.py` `jira_site_url`, `jira_settings`]
+
+**Связи.** Таблица `issue_links` источника содержит связи между задачами его форм: `link_id`, `link_type`, `outward_key` и `inward_key`, каждая связь один раз. Отношение между двумя формами объявляется через неё как junction (REQ-1586), а `link_type` служит дискриминатором, так что GraphQL и Cypher переходят от задачи к связанной задаче по типу связи. [inferred: the adapter's design agreed for REQ-2069]
+
+**Чтение.** Поиск по ключу (`key =`, `key IN`) выполняется выборкой по ключу, так что ключ, не называющий ни одной задачи, не даёт строки. Сравнение даты или числа отправляется в Jira как JQL. Все прочие фильтры и каждая сортировка применяются к уже прочитанным строкам: равенство по тексту, опции, статусу или пользователю не отправляется, поскольку JQL отклоняет значение, не называющее ничего, там, где SQL возвращает ноль строк. Многозначное поле (метки, множественный выбор, компоненты, версии) — это текст с массивом JSON, и записывается оно так же. [inferred: the adapter's behaviour, as the calcite connector reports it for REQ-2069]
+
+В DuckDB, PostgreSQL и ClickHouse движок подключает pgwire-сервер источника и читает его на месте. В Trino у источника нет собственного каталога, и он загружается через свой сервер. [tool-verified: `provisa/federation/engine.py`; `provisa/federation/strategy.py` `_CONNECTOR_PGWIRE_REPLICA`]
+
+**Жизненный цикл сервера.** Сервер обслуживает только зарегистрированные из него формы, а также свой список форм, свой список полей и связи. Регистрация, изменение или удаление формы перезапускает сервер и повторно провизионирует источник на движке. [tool-verified: `provisa/federation/served_tables.py` `SERVES_REGISTERED_TABLES`, `serve_tables`; `provisa/api/app_rebuild.py` `serve_registered_tables`]
+
+**Запись.** `INSERT`, `UPDATE` и `DELETE` над формой — это мутации, записываемые на pgwire-сервере источника в каждом движке. Строки вставляются пакетами по 50; обновление или удаление выполняется задача за задачей, по ключу. Установка `status` выполняет переход workflow в этот статус и отклоняется с указанием достижимых статусов, если у workflow задачи их нет. Задача с подзадачами не удаляется. Сервер возвращает каждую записанную строку по её ключу, поэтому `RETURNING` принимается, и GraphQL предлагает поля мутаций. В `issue_links` `INSERT` создаёт связь, а `DELETE` удаляет её; `UPDATE` отклоняется. [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`, `PGWIRE_SERVER_RETURNS_ROWS`] [inferred: the batching, transitions and subtask refusal are the adapter's, agreed for REQ-2069]
+
+```yaml
+- id: support-jira
+  type: jira
+  base_url: https://acme.atlassian.net
+  username: ${env:JIRA_EMAIL}
+  password: ${env:JIRA_API_TOKEN}
+tables:
+- source_id: support-jira
+  table: incident
+  arguments: {project: KAN, issue_type: Incident}
+  columns:
+  - {name: key, data_type: varchar, is_primary_key: true}
+  - {name: summary, data_type: varchar}
+  - {name: status, data_type: varchar}
+  - {name: priority, data_type: varchar}
+  - {name: flagged, data_type: varchar, path: customfield_10021}
 ```
 
 #### `cloudops`

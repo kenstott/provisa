@@ -196,6 +196,13 @@
       "allowed_file_extensions": "אחד בכל שורה. קובץ מקושר מאחד הסוגים האלה הופך לטבלה",
       "max_html_size": "למשל 10MB. דף גדול יותר אינו נקרא",
       "max_data_file_size": "למשל 100MB. קובץ גדול יותר אינו נקרא"
-    }
+    },
+    "siteAddress": "כתובת האתר",
+    "siteAddressHint": "אתר ה-Jira שלכם, לדוגמה https://your-site.atlassian.net",
+    "accountEmail": "דוא\"ל חשבון Atlassian",
+    "accountEmailHint": "הדוא\"ל שבו נכנסים ל-Atlassian; אסימון ה-API שייך לחשבון זה.",
+    "apiToken": "אסימון API",
+    "apiTokenHint": "נוצר ב-id.atlassian.com, Security, API tokens. נשמר בכספת הסודות.",
+    "siteAddressInvalid": "הזינו את הכתובת המלאה של האתר, המתחילה ב-https://"
   }
 }

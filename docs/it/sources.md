@@ -26,7 +26,7 @@ Le origini **Materialize** non hanno un connettore federato. Provisa recupera i 
 
 ## Tutte le origini {: #all-sources }
 
-Provisa registra **72** tipi di origine, quelli che il modulo Sources offre. Le tabelle qui sotto le coprono tutte e 72; l'indice è il conteggio. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`, where `graphql` and `grpc` are `graphql_remote` and `grpc_remote`; Kaggle, Wikipedia, GitHub, GitLab and Stripe are counted as distinct sources even though they register through the `files`, `graphql_remote` and `openapi` connectors internally]
+Provisa registra **73** tipi di origine, quelli che il modulo Sources offre. Le tabelle qui sotto le coprono tutte e 73; l'indice è il conteggio. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`, where `graphql` and `grpc` are `graphql_remote` and `grpc_remote`; Kaggle, Wikipedia, GitHub, GitLab and Stripe are counted as distinct sources even though they register through the `files`, `graphql_remote` and `openapi` connectors internally]
 
 | # | Gruppo | Tipi di origine |
 | --- | --- | --- |
@@ -41,13 +41,13 @@ Provisa registra **72** tipi di origine, quelli che il modulo Sources offre. Le 
 | 45–46 | [Grafo e semantico](#graph-semantic) | `neo4j`, `sparql` |
 | 47–51 | [Basate su file](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 52–53 | [Osservabilità e altro](#observability-other) | `google_sheets`, `prometheus` |
-| 54–60 | [Connettori SaaS enterprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 61–66 | [Origini API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
-| 67 | [GovData](#govdata) | `govdata` |
-| 68–69 | [Controlli di qualità dei dati (REQ-1443)](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
-| 70 | [Data profiler](#data-profiler) | `data_profiler` |
-| 71 | [Dataset Kaggle](#kaggle-datasets) | Kaggle (messo in stage tramite il modulo Sources; si registra come origine `files` — vedere [Dataset Kaggle](#kaggle-datasets)) |
-| 72 | [Wikipedia](#wikipedia) | Wikipedia (si registra come origine `files` che scansiona le pagine indicate — vedere [Wikipedia](#wikipedia)) |
+| 54–61 | [Connettori SaaS enterprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
+| 62–67 | [Origini API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
+| 68 | [GovData](#govdata) | `govdata` |
+| 69–70 | [Controlli di qualità dei dati (REQ-1443)](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
+| 71 | [Data profiler](#data-profiler) | `data_profiler` |
+| 72 | [Dataset Kaggle](#kaggle-datasets) | Kaggle (messo in stage tramite il modulo Sources; si registra come origine `files` — vedere [Dataset Kaggle](#kaggle-datasets)) |
+| 73 | [Wikipedia](#wikipedia) | Wikipedia (si registra come origine `files` che scansiona le pagine indicate — vedere [Wikipedia](#wikipedia)) |
 
 Riferimento per ogni tipo di origine supportato da Provisa. "Driver diretto" significa che le query a singola origine vengono eseguite nativamente contro l'origine (sub-100ms) (REQ-027). "Nome connettore" è il connettore federato usato quando l'origine partecipa a JOIN multi-source (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
@@ -529,7 +529,7 @@ Solo le tabelle che i redattori contrassegnano come tabelle di dati (`table.wiki
 
 ### Connettori SaaS enterprise {: #enterprise-saas-connectors }
 
-Google Workspace e Microsoft 365 sono letti da loader propri; vedere [Google Workspace e Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, l'inventario cloud e Splunk si registrano tramite connettori Apache Calcite (fork kenstott/calcite). Nessuno ha un driver diretto — Provisa avvia il server pgwire Calcite integrato del connettore (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-cloudops`, `pgwire-splunk`) e lo raggiunge come endpoint PostgreSQL generico. Sul motore DuckDB quell'endpoint viene collegato live tramite l'estensione postgres: Registra tabella elenca le tabelle del connettore dal catalogo collegato, le query leggono il connettore sul posto, e i filtri e le proiezioni vengono spinti fino a Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. Ogni altro motore atterra le righe nello store di materializzazione per la federazione (REQ-954). I bundle vengono scaricati per OS/architettura dalla release fissata di `kenstott/calcite` (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] Un operatore può invece indicare una cartella bundle costruita per questo host, per ogni connettore, in Admin → Impostazioni → Server dei connettori (`connectors.<connector>.bundle_dir`); vedere [Admin](admin.md). Tutti e cinque i connettori abilitano sempre il matching dei nomi case-insensitive, corrispondente alla semantica case-insensitive propria di ciascun prodotto (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
+Google Workspace e Microsoft 365 sono letti da loader propri; vedere [Google Workspace e Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, l'inventario cloud e Splunk si registrano tramite connettori Apache Calcite (fork kenstott/calcite). Nessuno ha un driver diretto — Provisa avvia il server pgwire Calcite integrato del connettore (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`) e lo raggiunge come endpoint PostgreSQL generico. Sul motore DuckDB quell'endpoint viene collegato live tramite l'estensione postgres: Registra tabella elenca le tabelle del connettore dal catalogo collegato, le query leggono il connettore sul posto, e i filtri e le proiezioni vengono spinti fino a Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. Ogni altro motore atterra le righe nello store di materializzazione per la federazione (REQ-954). I bundle vengono scaricati per OS/architettura dalla release fissata di `kenstott/calcite` (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] Un operatore può invece indicare una cartella bundle costruita per questo host, per ogni connettore, in Admin → Impostazioni → Server dei connettori (`connectors.<connector>.bundle_dir`); vedere [Admin](admin.md). Tutti e cinque i connettori abilitano sempre il matching dei nomi case-insensitive, corrispondente alla semantica case-insensitive propria di ciascun prodotto (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
 
 #### `sharepoint`
 
@@ -656,6 +656,48 @@ La ricerca di tabelle (linguaggio naturale) corrisponde a nome, etichetta e tema
   base_url: https://acme.service-now.com
   username: ${env:SN_USERNAME}
   password: ${env:SN_PASSWORD}
+```
+
+#### `jira`
+
+Un sito Jira Cloud viene letto e scritto tramite un proprio adattatore Calcite (REQ-2069). Una tabella di una fonte Jira è un **modulo**: un progetto e un tipo di issue, più i campi che le sue colonne leggono. Register Table elenca ogni modulo di cui l'account può creare una issue, raggruppato per progetto; selezionarne uno legge da Jira i campi di quel modulo, mentre elencare i moduli non lo fa. Ogni modulo ha le colonne `key` (la sua chiave primaria), `id`, `summary`, `status`, `created` e `updated`, poi una colonna per ogni campo scelto, denominata come la denomina l'adattatore: il nome del campo in snake case (`Story Points` diventa `story_points`). Un campo il cui nome è già quello di una colonna viene denominato con il suo id di campo (`customfield_10099`), così che ogni campo possa essere scelto. Un campo utente contiene l'id dell'account; il suo nome visualizzato è un campo a sé (`assignee.displayName`, colonna `assignee_name`). Le colonne che Jira scrive da sé sono di sola lettura: `key`, `id`, `created`, `updated`, il nome visualizzato di un campo utente e un campo di una forma che l'adattatore non conosce, che serve come testo JSON. Registrarla la contrassegna con «Read only: Jira sets it» nella sua descrizione, se non ne ha una, e una scrittura che la imposta viene rifiutata dal server, nominandola. [tool-verified: `provisa/federation/jira.py` `FIXED_COLUMNS`, `form_columns`; `provisa/federation/pgwire_replica.py` `jira_form_list`, `jira_fields`; `provisa/api/admin/introspect.py` `complete_jira_form`]
+
+La tabella di un modulo nomina il suo progetto e il suo tipo di issue nei suoi `arguments` (`project`, `issue_type`), e ogni colonna legge il campo che il suo `path` nomina (un id di campo o il nome di un campo), oppure il campo con il proprio nome. Una tabella registrata dall'admin ottiene entrambi da Jira; una configurazione li dichiara. Una tabella Jira che fissa altro, o a cui manca uno dei due, viene rifiutata, nominandola. [tool-verified: `provisa/federation/jira.py` `form_of`; `provisa/core/config_loader.py` `_validate_table_arguments`]
+
+| Campo fonte | Proprietà dell'adattatore | Note |
+| --- | --- | --- |
+| `base_url` o `host` | `baseUrl` | Indirizzo completo `https://…` del sito (ad es. `https://acme.atlassian.net`). Un host nudo o un altro schema viene rifiutato |
+| `username` | `email` | Email dell'account Atlassian |
+| `password` | `apiToken` | Un token API di quell'account, creato su id.atlassian.com in Security, API tokens |
+
+[tool-verified: `provisa/federation/jira.py` `jira_site_url`, `jira_settings`]
+
+**Collegamenti.** La tabella `issue_links` della fonte contiene i collegamenti tra le issue dei suoi moduli: `link_id`, `link_type`, `outward_key` e `inward_key`, ogni collegamento una sola volta. Una relazione tra due moduli viene dichiarata attraverso di essa come junction (REQ-1586), con `link_type` come discriminante, così che GraphQL e Cypher passino da una issue alla issue collegata per tipo di collegamento. [inferred: the adapter's design agreed for REQ-2069]
+
+**Letture.** Una ricerca per chiave (`key =`, `key IN`) viene recuperata per chiave, così che una chiave che non nomina alcuna issue non dà alcuna riga. Un confronto su data o numero viene inviato a Jira come JQL. Ogni altro filtro, e ogni ordinamento, viene applicato alle righe lette: un'uguaglianza su testo, opzione, stato o utente non viene inviata, poiché JQL rifiuta un valore che non nomina nulla dove SQL restituisce zero righe. Un campo a più valori (etichette, selezione multipla, componenti, versioni) è testo che contiene un array JSON, e si scrive allo stesso modo. [inferred: the adapter's behaviour, as the calcite connector reports it for REQ-2069]
+
+Su DuckDB, PostgreSQL e ClickHouse il motore collega il server pgwire della fonte e la legge sul posto. Su Trino la fonte non ha un catalogo proprio e viene caricata tramite il suo server. [tool-verified: `provisa/federation/engine.py`; `provisa/federation/strategy.py` `_CONNECTOR_PGWIRE_REPLICA`]
+
+**Ciclo di vita del server.** Il server serve solo i moduli registrati da esso, insieme al suo elenco di moduli, al suo elenco di campi e ai collegamenti. Registrare, modificare o rimuovere un modulo riavvia il server e ri-provisiona la fonte sul motore. [tool-verified: `provisa/federation/served_tables.py` `SERVES_REGISTERED_TABLES`, `serve_tables`; `provisa/api/app_rebuild.py` `serve_registered_tables`]
+
+**Scritture.** `INSERT`, `UPDATE` e `DELETE` su un modulo sono mutazioni, scritte sul server pgwire della fonte su ogni motore. Le righe vengono inserite in lotti da 50; un aggiornamento o un'eliminazione avviene issue per issue, per chiave. Impostare `status` esegue la transizione del workflow verso quello stato, e viene rifiutato, nominando gli stati raggiungibili, quando il workflow della issue non ne ha. Una issue con sottoattività non viene eliminata. Il server restituisce ogni riga scritta per chiave, quindi `RETURNING` è accettato e GraphQL offre campi di mutazione. Su `issue_links`, `INSERT` crea un collegamento e `DELETE` ne rimuove uno; `UPDATE` viene rifiutato. [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`, `PGWIRE_SERVER_RETURNS_ROWS`] [inferred: the batching, transitions and subtask refusal are the adapter's, agreed for REQ-2069]
+
+```yaml
+- id: support-jira
+  type: jira
+  base_url: https://acme.atlassian.net
+  username: ${env:JIRA_EMAIL}
+  password: ${env:JIRA_API_TOKEN}
+tables:
+- source_id: support-jira
+  table: incident
+  arguments: {project: KAN, issue_type: Incident}
+  columns:
+  - {name: key, data_type: varchar, is_primary_key: true}
+  - {name: summary, data_type: varchar}
+  - {name: status, data_type: varchar}
+  - {name: priority, data_type: varchar}
+  - {name: flagged, data_type: varchar, path: customfield_10021}
 ```
 
 #### `cloudops`

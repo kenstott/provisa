@@ -84478,6 +84478,41 @@ Then the read is served from the EU regions store in place and the record names 
   - REQ-2035
   - REQ-2049
   notes: 'Maintainer 2026-10-16: the retail GDPR demo ships local first; hosted two-region sandboxes follow as this platform requirement.'
+- id: REQ-2069
+  status: in-progress
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Enterprise SaaS
+  feature: connector-catalog-saas-and-enterprise
+  priority: SHOULD
+  type: behavioral
+  description: 'Jira Cloud is a source type (jira) read and written through its own Apache Calcite adapter''s bundled pgwire server, as ServiceNow is (REQ-1954): an API with a query language is read through Calcite, JQL taking what can be pushed down. The source names the site''s full https:// address, the Atlassian account''s email and an API token, each resolved at use. FORMS: a table of a Jira source is a form -- one project and one issue type (its arguments, REQ-2061) and the fields its columns read (each column''s path a field id or name); every form has the columns key (its primary key), id, summary, status, created and updated, then one per chosen field, named by the field''s name snake-cased, or by its field id where that name is already a column''s. Register Table lists every form the account can create (the adapter''s _jira_forms), grouped by project, and reads a form''s fields only when it is selected (_jira_fields); a form registered from the admin gets its project, issue type and each column''s field from those lists. The server serves only the forms registered from it (the forms operand), beside its form list, field list and links; registering, changing or removing one restarts it. CRUD: INSERT, UPDATE and DELETE on a form are written on the server on every engine, returning the written rows by key; rows are inserted in batches of 50, an update or delete is made issue by issue by key; setting status performs the workflow transition to that status, refused naming the reachable statuses where there is none; an issue with subtasks is not deleted. LINKS: the issue_links table (link_id, link_type, outward_key, inward_key), each link once, takes INSERT and DELETE (UPDATE refused: Jira has no link edit); relationships between forms ride it as junction edges (REQ-1586) discriminated by link_type. Attached live on DuckDB, PostgreSQL and ClickHouse; landed through its server on Trino. Site configuration is not offered. Jira Data Center (on-premises: REST v2, a personal access token, any host) follows as a second flavour of the same adapter. (Amended 2026-10-16, READ-ONLY COLUMNS:) A column Jira writes itself -- key, id, created, updated, a user field''s display name (its own field, <id>.displayName), a field of a shape the adapter does not know -- is flagged read only (its description says so where it has none), not refused when a writer is registered on it; the server refuses a write that sets one, naming it.'
+  use_case: 'A support team''s Jira incidents, problems and changes are tables in the governed model: an analyst reads which open P1 incidents trace to a problem whose fix is blocked, and an agent moves an incident to In Progress, which runs its workflow transition.'
+  scenario: 'Given a Jira source with the forms Incident, Problem and Change registered and a relationship over its links
+
+
+When a role with write rights inserts an Incident row, links it to a Problem and sets the Problem''s status to In Progress
+
+
+Then Jira holds the new incident, its link and the Problem in its In Progress status, and reading the forms and the links answers them
+
+
+And setting a status the issue''s workflow cannot reach from its current one is refused naming the reachable statuses'
+  related_reqs:
+  - REQ-1954
+  - REQ-1586
+  - REQ-2061
+  - REQ-2034
+  code:
+  - provisa/federation/jira.py
+  - provisa/federation/pgwire_replica.py
+  - provisa/federation/served_tables.py
+  - provisa/api/admin/introspect.py
+  - provisa-ui/src/pages/sources/JiraFields.tsx
+  tests:
+  - tests/unit/test_jira_connector.py
+  - provisa-ui/src/pages/sources/__tests__/jira.test.tsx
+  notes: 'Maintainer 2026-10-16: ServiceNow is down -- think about Atlassian/Jira; forms (form types, custom forms), limited to reading and entering form content; the content of forms needs CRUD; links need CRUD, as an associative table; on-prem enterprise Jira has significant customization; it is important to update workflow status. Then, via the lead: Jira becomes a Calcite pgwire connector (an API with a query language means Calcite; JQL pushdown), built by the calcite teammate; the OpenAPI brand first drafted for it was stopped (branch feat/jira-brand, kept for reference).'
 - id: REQ-2070
   status: complete
   since: 2026-10

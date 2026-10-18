@@ -23,7 +23,7 @@ Los orígenes de **materialización** no tienen conector federado. Provisa obtie
 ---
 
 ## Todos los orígenes {: #all-sources }
-Provisa registra **72** tipos de origen, los que ofrece el formulario de Orígenes. Las tablas siguientes cubren los 72; el índice es el recuento. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`, donde `graphql` y `grpc` son `graphql_remote` y `grpc_remote`; Kaggle, Wikipedia, GitHub, GitLab y Stripe se cuentan como orígenes distintos aunque internamente se registran mediante los conectores `files`, `graphql_remote` y `openapi`]
+Provisa registra **73** tipos de origen, los que ofrece el formulario de Orígenes. Las tablas siguientes cubren los 73; el índice es el recuento. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`, donde `graphql` y `grpc` son `graphql_remote` y `grpc_remote`; Kaggle, Wikipedia, GitHub, GitLab y Stripe se cuentan como orígenes distintos aunque internamente se registran mediante los conectores `files`, `graphql_remote` y `openapi`]
 
 | # | Grupo | Tipos de origen |
 | --- | --- | --- |
@@ -38,13 +38,13 @@ Provisa registra **72** tipos de origen, los que ofrece el formulario de Orígen
 | 45–46 | [Grafo y semántica](#graph-semantic) | `neo4j`, `sparql` |
 | 47–51 | [Basados en archivos](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 52–53 | [Observabilidad y otros](#observability-other) | `google_sheets`, `prometheus` |
-| 54–60 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 61–66 | [Orígenes de API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
-| 67 | [GovData](#govdata) | `govdata` |
-| 68–69 | [Verificadores de calidad de datos](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
-| 70 | [Perfilador de datos](#data-profiler) | `data_profiler` |
-| 71 | [Conjuntos de datos de Kaggle](#kaggle-datasets) | Kaggle (preparado mediante el formulario de Orígenes; se registra como un origen `files` — véase [Conjuntos de datos de Kaggle](#kaggle-datasets)) |
-| 72 | [Wikipedia](#wikipedia) | Wikipedia (se registra como un origen `files` que rastrea las páginas indicadas — véase [Wikipedia](#wikipedia)) |
+| 54–61 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
+| 62–67 | [Orígenes de API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
+| 68 | [GovData](#govdata) | `govdata` |
+| 69–70 | [Verificadores de calidad de datos](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
+| 71 | [Perfilador de datos](#data-profiler) | `data_profiler` |
+| 72 | [Conjuntos de datos de Kaggle](#kaggle-datasets) | Kaggle (preparado mediante el formulario de Orígenes; se registra como un origen `files` — véase [Conjuntos de datos de Kaggle](#kaggle-datasets)) |
+| 73 | [Wikipedia](#wikipedia) | Wikipedia (se registra como un origen `files` que rastrea las páginas indicadas — véase [Wikipedia](#wikipedia)) |
 
 Referencia de todos los tipos de origen que soporta Provisa. "Controlador directo" significa que las consultas de un solo origen se ejecutan de forma nativa contra el origen (menos de 100 ms) (REQ-027). "Nombre del conector" es el conector federado que se usa cuando el origen participa en JOIN entre varios orígenes (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
@@ -518,7 +518,7 @@ Solo las tablas que los editores marcan como tablas de datos (`table.wikitable`)
 | `prometheus` | prometheus | No | Una métrica es una tabla y una muestra es una fila (`timestamp`, `value`, una columna por etiqueta); en cualquier motor sin conector en vivo Provisa lee la API HTTP — nombres de métricas y etiquetas para Register Table, `query_range` sobre el rango de la tabla para el aterrizaje [tool-verified: `provisa/prometheus/fetch.py`] (REQ-1689) |
 
 ### Conectores SaaS empresariales {: #enterprise-saas-connectors }
-Google Workspace y Microsoft 365 los leen cargadores propios; véase [Google Workspace y Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, el inventario de nube y Splunk se registran mediante conectores de Apache Calcite (kenstott/calcite fork). Ninguno tiene controlador directo — Provisa lanza el servidor pgwire de Calcite incluido en el conector (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-cloudops`, `pgwire-splunk`) y lo alcanza como un endpoint genérico de PostgreSQL. En el motor DuckDB ese endpoint se conecta en vivo mediante la extensión postgres: Register Table lista las tablas del conector desde el catálogo conectado, las consultas leen el conector en su sitio, y los filtros y proyecciones se empujan hacia abajo hasta Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. Cualquier otro motor lleva las filas al almacén de materialización para la federación (REQ-954). Los paquetes se obtienen por SO/arquitectura desde la versión fijada de `kenstott/calcite` (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] Un operador puede en cambio nombrar una carpeta de paquete construida para este host, por conector, en Admin → Configuración → Servidores de conectores (`connectors.<connector>.bundle_dir`); consulte [Admin](admin.md).. Los cinco conectores siempre habilitan la coincidencia de nombres sin distinción de mayúsculas y minúsculas, coincidiendo con la semántica propia de cada producto en ese aspecto (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
+Google Workspace y Microsoft 365 los leen cargadores propios; véase [Google Workspace y Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, el inventario de nube y Splunk se registran mediante conectores de Apache Calcite (kenstott/calcite fork). Ninguno tiene controlador directo — Provisa lanza el servidor pgwire de Calcite incluido en el conector (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`) y lo alcanza como un endpoint genérico de PostgreSQL. En el motor DuckDB ese endpoint se conecta en vivo mediante la extensión postgres: Register Table lista las tablas del conector desde el catálogo conectado, las consultas leen el conector en su sitio, y los filtros y proyecciones se empujan hacia abajo hasta Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. Cualquier otro motor lleva las filas al almacén de materialización para la federación (REQ-954). Los paquetes se obtienen por SO/arquitectura desde la versión fijada de `kenstott/calcite` (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] Un operador puede en cambio nombrar una carpeta de paquete construida para este host, por conector, en Admin → Configuración → Servidores de conectores (`connectors.<connector>.bundle_dir`); consulte [Admin](admin.md).. Los cinco conectores siempre habilitan la coincidencia de nombres sin distinción de mayúsculas y minúsculas, coincidiendo con la semántica propia de cada producto en ese aspecto (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
 
 #### `sharepoint`
 
@@ -645,6 +645,48 @@ La búsqueda de tablas (lenguaje natural) coincide con el nombre, la etiqueta y 
   base_url: https://acme.service-now.com
   username: ${env:SN_USERNAME}
   password: ${env:SN_PASSWORD}
+```
+
+#### `jira`
+
+Un sitio de Jira Cloud se lee y se escribe mediante su propio adaptador de Calcite (REQ-2069). Una tabla de una fuente Jira es un **formulario**: un proyecto y un tipo de incidencia, y los campos que leen sus columnas. Register Table lista cada formulario del que la cuenta puede crear una incidencia, agrupados por proyecto; al seleccionar uno se leen sus campos de Jira, y listar los formularios no lo hace. Cada formulario tiene las columnas `key` (su clave primaria), `id`, `summary`, `status`, `created` y `updated`, y luego una columna por cada campo elegido, con el nombre que le da el adaptador: el nombre del campo en snake case (`Story Points` es `story_points`). Un campo cuyo nombre ya es el de una columna se nombra por su id de campo (`customfield_10099`), de modo que todo campo puede elegirse. Un campo de usuario contiene el id de cuenta; su nombre para mostrar es un campo aparte (`assignee.displayName`, columna `assignee_name`). Las columnas que escribe el propio Jira son de solo lectura: `key`, `id`, `created`, `updated`, el nombre para mostrar de un campo de usuario y un campo de una forma que el adaptador no conoce, que sirve como texto JSON. Al registrarla se marca con «Read only: Jira sets it» en su descripción cuando no tiene ninguna, y el servidor rechaza una escritura que la establezca, nombrándola. [tool-verified: `provisa/federation/jira.py` `FIXED_COLUMNS`, `form_columns`; `provisa/federation/pgwire_replica.py` `jira_form_list`, `jira_fields`; `provisa/api/admin/introspect.py` `complete_jira_form`]
+
+La tabla de un formulario nombra su proyecto y su tipo de incidencia en sus `arguments` (`project`, `issue_type`), y cada columna lee el campo que nombra su `path` (un id de campo o el nombre de un campo), o el campo de su mismo nombre. Una tabla registrada desde el admin obtiene ambos de Jira; una configuración los declara. Una tabla Jira que fije cualquier otra cosa, o que carezca de alguno, se rechaza, nombrándola. [tool-verified: `provisa/federation/jira.py` `form_of`; `provisa/core/config_loader.py` `_validate_table_arguments`]
+
+| Campo fuente | Propiedad del adaptador | Notas |
+| --- | --- | --- |
+| `base_url` o `host` | `baseUrl` | Dirección `https://…` completa del sitio (p. ej. `https://acme.atlassian.net`). Un host simple u otro esquema se rechaza |
+| `username` | `email` | Correo electrónico de la cuenta de Atlassian |
+| `password` | `apiToken` | Un token de API de esa cuenta, creado en id.atlassian.com en Security, API tokens |
+
+[tool-verified: `provisa/federation/jira.py` `jira_site_url`, `jira_settings`]
+
+**Vínculos.** La tabla `issue_links` de la fuente contiene los vínculos entre las incidencias de sus formularios: `link_id`, `link_type`, `outward_key` e `inward_key`, cada vínculo una vez. A través de ella se declara como junction una relación entre dos formularios (REQ-1586), con `link_type` como discriminador, de modo que GraphQL y Cypher recorren de una incidencia a la incidencia vinculada por tipo de vínculo. [inferred: the adapter's design agreed for REQ-2069]
+
+**Lecturas.** Una búsqueda por clave (`key =`, `key IN`) se obtiene por clave, de modo que una clave que no nombra ninguna incidencia no es una fila. Una comparación de fecha o de número se envía a Jira como JQL. Todo otro filtro, y toda ordenación, se aplica a las filas leídas: una igualdad sobre texto, una opción, un estado o un usuario no se envía, ya que JQL rechaza un valor que no nombra nada donde SQL devuelve cero filas. Un campo multivalor (etiquetas, selección múltiple, componentes, versiones) es texto que contiene un array JSON, y se escribe de la misma manera. [inferred: the adapter's behaviour, as the calcite connector reports it for REQ-2069]
+
+En DuckDB, PostgreSQL y ClickHouse el motor adjunta el servidor pgwire de la fuente y la lee en su sitio. En Trino la fuente no tiene catálogo propio y se carga a través de su servidor. [tool-verified: `provisa/federation/engine.py`; `provisa/federation/strategy.py` `_CONNECTOR_PGWIRE_REPLICA`]
+
+**Ciclo de vida del servidor.** El servidor sirve solo los formularios registrados desde él, junto con su lista de formularios, su lista de campos y los vínculos. Registrar, cambiar o eliminar un formulario reinicia el servidor y vuelve a aprovisionar la fuente en el motor. [tool-verified: `provisa/federation/served_tables.py` `SERVES_REGISTERED_TABLES`, `serve_tables`; `provisa/api/app_rebuild.py` `serve_registered_tables`]
+
+**Escrituras.** `INSERT`, `UPDATE` y `DELETE` sobre un formulario son mutaciones, escritas en el servidor pgwire de la fuente en todos los motores. Las filas se insertan en lotes de 50; una actualización o eliminación se hace incidencia por incidencia, por clave. Establecer `status` ejecuta la transición de flujo de trabajo a ese estado, y se rechaza, nombrando los estados alcanzables, cuando el flujo de trabajo de la incidencia no tiene ninguno. Una incidencia con subtareas no se elimina. El servidor devuelve cada fila escrita por su clave, por lo que se acepta `RETURNING` y GraphQL ofrece campos de mutación. En `issue_links`, `INSERT` crea un vínculo y `DELETE` elimina uno; `UPDATE` se rechaza. [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`, `PGWIRE_SERVER_RETURNS_ROWS`] [inferred: the batching, transitions and subtask refusal are the adapter's, agreed for REQ-2069]
+
+```yaml
+- id: support-jira
+  type: jira
+  base_url: https://acme.atlassian.net
+  username: ${env:JIRA_EMAIL}
+  password: ${env:JIRA_API_TOKEN}
+tables:
+- source_id: support-jira
+  table: incident
+  arguments: {project: KAN, issue_type: Incident}
+  columns:
+  - {name: key, data_type: varchar, is_primary_key: true}
+  - {name: summary, data_type: varchar}
+  - {name: status, data_type: varchar}
+  - {name: priority, data_type: varchar}
+  - {name: flagged, data_type: varchar, path: customfield_10021}
 ```
 
 #### `cloudops`

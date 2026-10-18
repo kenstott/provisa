@@ -196,6 +196,13 @@
       "allowed_file_extensions": "每行一个。属于这些类型之一的被链接文件会成为表格",
       "max_html_size": "例如 10MB。更大的页面不会被读取",
       "max_data_file_size": "例如 100MB。更大的文件不会被读取"
-    }
+    },
+    "siteAddress": "站点地址",
+    "siteAddressHint": "您的 Jira 站点，例如 https://your-site.atlassian.net",
+    "accountEmail": "Atlassian 账户邮箱",
+    "accountEmailHint": "用于登录 Atlassian 的邮箱；API 令牌属于此账户。",
+    "apiToken": "API 令牌",
+    "apiTokenHint": "在 id.atlassian.com 创建，Security, API tokens。保存在密钥保管库中。",
+    "siteAddressInvalid": "请输入完整的站点地址，以 https:// 开头"
   }
 }

@@ -196,6 +196,13 @@
       "allowed_file_extensions": "每行一個。屬於這些類型之一的被連結檔案會成為表格",
       "max_html_size": "例如 10MB。更大的頁面不會被讀取",
       "max_data_file_size": "例如 100MB。更大的檔案不會被讀取"
-    }
+    },
+    "siteAddress": "網站地址",
+    "siteAddressHint": "您的 Jira 網站，例如 https://your-site.atlassian.net",
+    "accountEmail": "Atlassian 帳戶電郵",
+    "accountEmailHint": "用於登入 Atlassian 的電郵；API 權杖屬於此帳戶。",
+    "apiToken": "API 權杖",
+    "apiTokenHint": "在 id.atlassian.com 建立，Security, API tokens。保存在密鑰保管庫中。",
+    "siteAddressInvalid": "請輸入完整的網站地址，以 https:// 開頭"
   }
 }

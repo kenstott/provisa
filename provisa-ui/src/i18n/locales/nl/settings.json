@@ -703,6 +703,12 @@
           "help": "Een map met een voor deze host gebouwde AskAmerica-serverbundel, met het startprogramma onder bin/. Leeg gebruikt de vastgezette release. Een map zonder startprogramma houdt de server tegen en noemt deze instelling."
         }
       },
+      "jira": {
+        "bundle_dir": {
+          "label": "Map van de Jira-serverbundel",
+          "help": "Een map met een voor deze host gebouwde Jira-serverbundel, met het startprogramma onder bin/. Leeg gebruikt de vastgezette release. Een map zonder startprogramma houdt de server tegen en noemt deze instelling."
+        }
+      },
       "salesforce": {
         "bundle_dir": {
           "label": "Map van de Salesforce-serverbundel",

@@ -26,7 +26,7 @@
 
 ## 所有数据源 {: #all-sources }
 
-Provisa 注册了 **72** 种数据源类型，即 Sources 表单所提供的类型。下表覆盖全部 72 种；索引即为计数。[tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`，其中 `graphql` 和 `grpc` 即 `graphql_remote` 和 `grpc_remote`；Kaggle、Wikipedia、GitHub、GitLab 和 Stripe 虽然内部通过 `files`、`graphql_remote` 和 `openapi` 连接器注册，但仍作为独立数据源计数]
+Provisa 注册了 **73** 种数据源类型，即 Sources 表单所提供的类型。下表覆盖全部 73 种；索引即为计数。[tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`，其中 `graphql` 和 `grpc` 即 `graphql_remote` 和 `grpc_remote`；Kaggle、Wikipedia、GitHub、GitLab 和 Stripe 虽然内部通过 `files`、`graphql_remote` 和 `openapi` 连接器注册，但仍作为独立数据源计数]
 
 | # | 分组 | 数据源类型 |
 | --- | --- | --- |
@@ -41,13 +41,13 @@ Provisa 注册了 **72** 种数据源类型，即 Sources 表单所提供的类�
 | 45–46 | [图与语义](#graph-semantic) | `neo4j`、`sparql` |
 | 47–51 | [基于文件](#file-based) | `sqlite`、`csv`、`parquet`、`files`、`logs` |
 | 52–53 | [可观测性及其他](#observability-other) | `google_sheets`、`prometheus` |
-| 54–60 | [企业级 SaaS](#enterprise-saas-connectors) | `sharepoint`、`salesforce`、`servicenow`、`cloudops`、`splunk`、`google_workspace`, `microsoft_365` |
-| 61–66 | [API 数据源](#api-sources) | `openapi`、`graphql_remote`、`grpc_remote`、GitHub、GitLab、Stripe |
-| 67 | [GovData](#govdata) | `govdata` |
-| 68–69 | [数据质量检查器](#data-quality-checkers-req-1443) | `soda`、`great_expectations` |
-| 70 | [数据剖析器](#data-profiler) | `data_profiler` |
-| 71 | [Kaggle 数据集](#kaggle-datasets) | Kaggle（通过 Sources 表单暂存；注册为 `files` 数据源 — 参见 [Kaggle 数据集](#kaggle-datasets)） |
-| 72 | [Wikipedia](#wikipedia) | Wikipedia（注册为抓取所指定页面的 `files` 数据源 — 参见 [Wikipedia](#wikipedia)） |
+| 54–61 | [企业级 SaaS](#enterprise-saas-connectors) | `sharepoint`、`salesforce`、`servicenow`、`jira`、`cloudops`、`splunk`、`google_workspace`, `microsoft_365` |
+| 62–67 | [API 数据源](#api-sources) | `openapi`、`graphql_remote`、`grpc_remote`、GitHub、GitLab、Stripe |
+| 68 | [GovData](#govdata) | `govdata` |
+| 69–70 | [数据质量检查器](#data-quality-checkers-req-1443) | `soda`、`great_expectations` |
+| 71 | [数据剖析器](#data-profiler) | `data_profiler` |
+| 72 | [Kaggle 数据集](#kaggle-datasets) | Kaggle（通过 Sources 表单暂存；注册为 `files` 数据源 — 参见 [Kaggle 数据集](#kaggle-datasets)） |
+| 73 | [Wikipedia](#wikipedia) | Wikipedia（注册为抓取所指定页面的 `files` 数据源 — 参见 [Wikipedia](#wikipedia)） |
 
 Provisa 支持的每种数据源类型的参考。"Direct driver"（直连驱动）表示单数据源查询直接针对该数据源原生执行（亚 100 毫秒）（REQ-027）。"Connector Name"（连接器名称）是当该数据源参与多数据源 JOIN 时所使用的联邦连接器（REQ-028）。[tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`；`provisa/federation/trino_connectors.py` `trino_connector_name`]
 
@@ -529,7 +529,7 @@ Provisa 知道这些语言版本的"See also"标题：`en`、`de`、`es`、`it`�
 
 ### Enterprise SaaS Connectors {: #enterprise-saas-connectors }
 
-Google Workspace 和 Microsoft 365 由各自的加载器读取；参见 [Google Workspace 和 Microsoft 365](#google-workspace-and-microsoft-365)。SharePoint、Salesforce、ServiceNow、云资源清单和 Splunk 通过 Apache Calcite 连接器（kenstott/calcite fork）注册。它们都没有直连驱动 — Provisa 启动连接器自带的 Calcite pgwire 服务器（`pgwire-sharepoint`、`pgwire-salesforce`、`pgwire-servicenow`、`pgwire-cloudops`、`pgwire-splunk`），并将其作为通用 PostgreSQL 端点访问。在 DuckDB 引擎上，该端点通过 postgres 扩展实时挂载：Register Table 从已挂载的目录中列出连接器的表，查询就地读取该连接器，过滤和投影会下推到 Calcite（REQ-1690）[tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]。在其他所有引擎上，数据行都会落地到物化存储中以用于联邦（REQ-954）。这些程序包按操作系统/架构从固定版本的 `kenstott/calcite` release 中获取（`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`；macOS arm64、Linux x86_64、Windows x86_64）[tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] 操作员也可以为每个连接器单独命名一个为该主机构建的程序包文件夹，路径位于 Admin → 设置 → 连接器服务器（`connectors.<connector>.bundle_dir`）；请参阅 [Admin](admin.md)。。五个连接器都始终启用大小写不敏感的名称匹配，以匹配各自产品自身的大小写不敏感语义（REQ-725, REQ-730）。[tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
+Google Workspace 和 Microsoft 365 由各自的加载器读取；参见 [Google Workspace 和 Microsoft 365](#google-workspace-and-microsoft-365)。SharePoint、Salesforce、ServiceNow、Jira、云资源清单和 Splunk 通过 Apache Calcite 连接器（kenstott/calcite fork）注册。它们都没有直连驱动 — Provisa 启动连接器自带的 Calcite pgwire 服务器（`pgwire-sharepoint`、`pgwire-salesforce`、`pgwire-servicenow`、`pgwire-jira`、`pgwire-cloudops`、`pgwire-splunk`），并将其作为通用 PostgreSQL 端点访问。在 DuckDB 引擎上，该端点通过 postgres 扩展实时挂载：Register Table 从已挂载的目录中列出连接器的表，查询就地读取该连接器，过滤和投影会下推到 Calcite（REQ-1690）[tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]。在其他所有引擎上，数据行都会落地到物化存储中以用于联邦（REQ-954）。这些程序包按操作系统/架构从固定版本的 `kenstott/calcite` release 中获取（`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`；macOS arm64、Linux x86_64、Windows x86_64）[tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] 操作员也可以为每个连接器单独命名一个为该主机构建的程序包文件夹，路径位于 Admin → 设置 → 连接器服务器（`connectors.<connector>.bundle_dir`）；请参阅 [Admin](admin.md)。。五个连接器都始终启用大小写不敏感的名称匹配，以匹配各自产品自身的大小写不敏感语义（REQ-725, REQ-730）。[tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
 
 #### `sharepoint`
 
@@ -656,6 +656,48 @@ ServiceNow 数据源指定实例的完整 `https://…` URL 以及用户名和�
   base_url: https://acme.service-now.com
   username: ${env:SN_USERNAME}
   password: ${env:SN_PASSWORD}
+```
+
+#### `jira`
+
+Jira Cloud 站点通过其自有的 Calcite 适配器读取和写入（REQ-2069）。Jira 数据源的一张表是一个**表单**：一个项目和一种 issue 类型，以及其列所读取的字段。Register Table 列出该账户可创建 issue 的每个表单，按项目分组；选择一个表单会从 Jira 读取其字段，列出表单不会这样做。每个表单都有列 `key`（其主键）、`id`、`summary`、`status`、`created` 和 `updated`，之后是每个所选字段一列，按适配器的命名方式命名：字段名称的 snake case 形式（`Story Points` 即 `story_points`）。名称已是某列名称的字段，以其字段 id 命名（`customfield_10099`），因此每个字段都可被选择。用户字段保存账户 id；其显示名称是单独的字段（`assignee.displayName`，列 `assignee_name`）。由 Jira 自行写入的列为只读：`key`、`id`、`created`、`updated`、用户字段的显示名称，以及适配器不认识其形态的字段（适配器将其作为 JSON 文本提供）。注册此类列时，若其没有描述，会在描述中标注“Read only: Jira sets it”；设置该列的写入会被服务器拒绝，并指出该列。[tool-verified: `provisa/federation/jira.py` `FIXED_COLUMNS`、`form_columns`；`provisa/federation/pgwire_replica.py` `jira_form_list`、`jira_fields`；`provisa/api/admin/introspect.py` `complete_jira_form`]
+
+表单的表在其 `arguments` 中指明其项目和 issue 类型（`project`、`issue_type`），每一列读取其 `path` 所指明的字段（字段 id 或字段名称），或与其同名的字段。从管理端注册的表会从 Jira 获得这两者；配置则显式声明它们。固定了其他内容或缺少其中任何一项的 Jira 表将被拒绝，并指出表名。[tool-verified: `provisa/federation/jira.py` `form_of`；`provisa/core/config_loader.py` `_validate_table_arguments`]
+
+| 源字段 | 适配器属性 | 说明 |
+| --- | --- | --- |
+| `base_url` 或 `host` | `baseUrl` | 站点的完整 `https://…` 地址（例如 `https://acme.atlassian.net`）。裸主机或其他方案将被拒绝 |
+| `username` | `email` | Atlassian 账户的电子邮件 |
+| `password` | `apiToken` | 该账户的 API 令牌，在 id.atlassian.com 的 Security、API tokens 下创建 |
+
+[tool-verified: `provisa/federation/jira.py` `jira_site_url`、`jira_settings`]
+
+**链接。** 数据源的 `issue_links` 表保存其表单的 issue 之间的链接：`link_id`、`link_type`、`outward_key` 和 `inward_key`，每个链接一次。两个表单之间的关系通过它声明为联结表（junction，REQ-1586），以 `link_type` 为判别列，因此 GraphQL 和 Cypher 按链接类型从 issue 走到被链接的 issue。[inferred: the adapter's design agreed for REQ-2069]
+
+**读取。** 按键查找（`key =`、`key IN`）按键获取，因此未指明任何 issue 的键不会产生行。日期或数字比较会作为 JQL 发送到 Jira。其他所有过滤器以及每个排序，都应用于已读取的行：对文本、选项、状态或用户的相等比较不会发送，因为对于 SQL 返回零行的情况，JQL 会拒绝未指明任何对象的值。多值字段（标签、多选、组件、版本）是保存 JSON 数组的文本，写入方式相同。[inferred: the adapter's behaviour, as the calcite connector reports it for REQ-2069]
+
+在 DuckDB、PostgreSQL 和 ClickHouse 上，引擎挂载数据源的 pgwire 服务器并就地读取。在 Trino 上，数据源没有自己的目录，而是通过其服务器落地。[tool-verified: `provisa/federation/engine.py`；`provisa/federation/strategy.py` `_CONNECTOR_PGWIRE_REPLICA`]
+
+**服务器生命周期。** 服务器仅提供从中注册的表单，以及其表单列表、字段列表和链接。注册、更改或移除表单会重启服务器并在引擎上重新配置数据源。[tool-verified: `provisa/federation/served_tables.py` `SERVES_REGISTERED_TABLES`、`serve_tables`；`provisa/api/app_rebuild.py` `serve_registered_tables`]
+
+**写入。** 对表单的 `INSERT`、`UPDATE` 和 `DELETE` 是变更操作，在每个引擎上都在数据源的 pgwire 服务器上写入。行以每批 50 行的方式插入；更新或删除逐个 issue 按键进行。设置 `status` 会执行到该状态的工作流转换，当 issue 的工作流没有可到达的状态时会被拒绝，并指出可到达的状态。带有子任务的 issue 不会被删除。服务器按键返回每个已写入的行，因此接受 `RETURNING`，GraphQL 也提供变更字段。在 `issue_links` 上，`INSERT` 创建链接，`DELETE` 移除链接；`UPDATE` 被拒绝。[tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`、`PGWIRE_SERVER_RETURNS_ROWS`] [inferred: the batching, transitions and subtask refusal are the adapter's, agreed for REQ-2069]
+
+```yaml
+- id: support-jira
+  type: jira
+  base_url: https://acme.atlassian.net
+  username: ${env:JIRA_EMAIL}
+  password: ${env:JIRA_API_TOKEN}
+tables:
+- source_id: support-jira
+  table: incident
+  arguments: {project: KAN, issue_type: Incident}
+  columns:
+  - {name: key, data_type: varchar, is_primary_key: true}
+  - {name: summary, data_type: varchar}
+  - {name: status, data_type: varchar}
+  - {name: priority, data_type: varchar}
+  - {name: flagged, data_type: varchar, path: customfield_10021}
 ```
 
 #### `cloudops`

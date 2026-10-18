@@ -703,6 +703,12 @@
           "help": "Una carpeta con un paquete del servidor de AskAmerica compilado para este host, con su lanzador en bin/. Vacía, se usa la versión fijada. Una carpeta sin el lanzador impide que el servidor arranque e indica este ajuste."
         }
       },
+      "jira": {
+        "bundle_dir": {
+          "label": "Carpeta del paquete del servidor de Jira",
+          "help": "Una carpeta con un paquete del servidor de Jira compilado para este host, con su lanzador en bin/. Vacía, se usa la versión fijada. Una carpeta sin el lanzador impide que el servidor arranque e indica este ajuste."
+        }
+      },
       "salesforce": {
         "bundle_dir": {
           "label": "Carpeta del paquete del servidor de Salesforce",

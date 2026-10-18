@@ -196,6 +196,13 @@
       "allowed_file_extensions": "Eén per regel. Een gekoppeld bestand van een van deze typen wordt een tabel",
       "max_html_size": "Bijvoorbeeld 10MB. Een grotere pagina wordt niet gelezen",
       "max_data_file_size": "Bijvoorbeeld 100MB. Een groter bestand wordt niet gelezen"
-    }
+    },
+    "siteAddress": "Siteadres",
+    "siteAddressHint": "Je Jira-site, bijvoorbeeld https://your-site.atlassian.net",
+    "accountEmail": "E-mailadres van het Atlassian-account",
+    "accountEmailHint": "Het e-mailadres waarmee je inlogt bij Atlassian; het API-token hoort bij dit account.",
+    "apiToken": "API-token",
+    "apiTokenHint": "Aangemaakt op id.atlassian.com, Security, API tokens. Bewaard in de geheimenkluis.",
+    "siteAddressInvalid": "Voer het volledige adres van de site in, beginnend met https://"
   }
 }

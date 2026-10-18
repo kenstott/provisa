@@ -703,6 +703,12 @@
           "help": "Uma pasta com um pacote do servidor AskAmerica compilado para este host, com o inicializador em bin/. Vazia, usa a versão fixada. Uma pasta sem o inicializador impede o servidor de iniciar e cita esta configuração."
         }
       },
+      "jira": {
+        "bundle_dir": {
+          "label": "Pasta do pacote do servidor Jira",
+          "help": "Uma pasta com um pacote do servidor Jira compilado para este host, com o inicializador em bin/. Vazia, usa a versão fixada. Uma pasta sem o inicializador impede o servidor de iniciar e cita esta configuração."
+        }
+      },
       "salesforce": {
         "bundle_dir": {
           "label": "Pasta do pacote do servidor Salesforce",
