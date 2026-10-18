@@ -180,6 +180,8 @@ Cypher suporta três padrões de escrita através do endpoint `/data/cypher`, ex
 
 Nomes de propriedade mapeiam para colunas via remoção de prefixo de domínio e resolução de alias; valores escalares Cypher são coagidos ao tipo de coluna alvo. (REQ-666, REQ-668) O corpo da resposta carrega uma contagem `affected_rows`. (REQ-670)
 
+A propriedade de um nó é o nome publicado da sua coluna: o alias da coluna quando ela tem um, senão o nome pela convenção de nomenclatura — o nome pelo qual GraphQL e SQL a leem — em `MATCH`, `RETURN`, `CREATE`, `SET` e `MERGE` igualmente. (REQ-471)
+
 Regras:
 
 - O label deve resolver para exatamente uma tabela registrada. Labels ambíguos ou desconhecidos são erros rígidos; sem correspondência fuzzy. (REQ-661) Novos labels ou tipos não podem ser criados através do Cypher. (REQ-662)

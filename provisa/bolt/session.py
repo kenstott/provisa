@@ -1186,7 +1186,6 @@ async def _impute_relationships(
     Each returned edge carries integer node IDs (re-registered idempotently), so they
     line up with the nodes already on the Browser canvas.
     """
-    from provisa.compiler.naming import apply_cql_property as _cql_prop
 
     model_db = getattr(app_state, "model_db", None)
     if model_db is None:
@@ -1243,8 +1242,8 @@ async def _impute_relationships(
             continue
         src_nm = label_map.nodes[rel.source_label]
         tgt_nm = label_map.nodes[rel.target_label]
-        src_prop = _cql_prop(src_nm.id_column)
-        tgt_prop = _cql_prop(tgt_nm.id_column)
+        src_prop = src_nm.property_of(src_nm.id_column)
+        tgt_prop = tgt_nm.property_of(tgt_nm.id_column)
         src_ids = ", ".join(_cql_literal(i) for i in by_label[src_label])
         tgt_ids = ", ".join(_cql_literal(i) for i in by_label[tgt_label])
         query = (

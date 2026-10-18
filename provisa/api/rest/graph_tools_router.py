@@ -31,7 +31,6 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from provisa.core.schema_org import node_ids
-from provisa.compiler.naming import apply_cql_property as _cql_prop
 from provisa.api.rest.cypher_router import router
 from provisa.api.rest.cypher_exec import (  # noqa: F401
     _build_label_map,
@@ -118,8 +117,8 @@ async def impute_relationships(
             continue
         src_nm = label_map.nodes[rel.source_label]
         tgt_nm = label_map.nodes[rel.target_label]
-        src_prop = _cql_prop(src_nm.id_column)
-        tgt_prop = _cql_prop(tgt_nm.id_column)
+        src_prop = src_nm.property_of(src_nm.id_column)
+        tgt_prop = tgt_nm.property_of(tgt_nm.id_column)
         src_ids = ", ".join(_cql_literal(i) for i in by_label[src_label])
         tgt_ids = ", ".join(_cql_literal(i) for i in by_label[tgt_label])
         queries.append(

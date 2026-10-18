@@ -180,6 +180,8 @@ Cypher supporta tre pattern di scrittura tramite l'endpoint `/data/cypher`, eseg
 
 I nomi delle proprietà mappano a colonne tramite lo strip del prefisso di dominio e la risoluzione degli alias; i valori scalari Cypher vengono convertiti al tipo della colonna target. (REQ-666, REQ-668) Il corpo della risposta porta un conteggio `affected_rows`. (REQ-670)
 
+La proprietà di un nodo è il nome pubblicato della sua colonna: l'alias della colonna quando ne ha uno, altrimenti il nome secondo la convenzione di denominazione — il nome con cui la leggono GraphQL e SQL — in `MATCH`, `RETURN`, `CREATE`, `SET` e `MERGE` allo stesso modo. (REQ-471)
+
 Regole:
 
 - L'etichetta deve risolvere esattamente a una tabella registrata. Etichette ambigue o sconosciute sono errori bloccanti; nessun matching fuzzy. (REQ-661) Non è possibile creare nuove etichette o tipi tramite Cypher. (REQ-662)

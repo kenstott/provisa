@@ -271,8 +271,10 @@ def test_traversal_node_properties_use_alias_not_inline_conversion():
         all_column_types=all_column_types,
     )
     xnode = lm.nodes["Logistics_Shipments"]
-    # breedName has alias "breed_label" — must NOT be converted inline to "breedName" snake
-    assert xnode.properties.get("breedName") == "breed_label"
+    # breedName has alias "breed_label": the alias is its property, as it is its GraphQL and SQL
+    # name, and the column it reads is the alias, never an inline conversion.
+    assert xnode.properties.get("breed_label") == "breed_label"
+    assert "breedName" not in xnode.properties
 
 
 def test_from_schema_star_domain_access_skips_cross_domain():

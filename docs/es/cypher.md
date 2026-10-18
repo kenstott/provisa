@@ -180,6 +180,8 @@ Cypher admite tres patrones de escritura a través del endpoint `/data/cypher`, 
 
 Los nombres de propiedad se asignan a columnas mediante la eliminación del prefijo de dominio y la resolución de alias; los valores escalares de Cypher se convierten al tipo de columna de destino. (REQ-666, REQ-668) El cuerpo de la respuesta incluye un recuento `affected_rows`. (REQ-670)
 
+La propiedad de un nodo es el nombre publicado de su columna: el alias de la columna cuando lo tiene, si no el nombre según la convención de nomenclatura —el nombre con el que la leen GraphQL y SQL— en `MATCH`, `RETURN`, `CREATE`, `SET` y `MERGE` por igual. (REQ-471)
+
 Reglas:
 
 - La etiqueta debe resolverse a exactamente una tabla registrada. Las etiquetas ambiguas o desconocidas son errores irrecuperables; no hay coincidencia aproximada. (REQ-661) No se pueden crear nuevas etiquetas ni tipos a través de Cypher. (REQ-662)

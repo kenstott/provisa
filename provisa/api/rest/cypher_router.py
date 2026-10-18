@@ -716,9 +716,9 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     "table_label": n.table_label,
                     "properties": list(n.properties.keys()),
                     # REQ-392: singular primary-key column name (first designated PK), or null.
-                    "pk": _cql_prop(n.pk_columns[0]) if n.pk_columns else None,
-                    "pk_columns": [_cql_prop(c) for c in n.pk_columns],
-                    "id_column": _cql_prop(n.id_column),
+                    "pk": n.property_of(n.pk_columns[0]) if n.pk_columns else None,
+                    "pk_columns": [n.property_of(c) for c in n.pk_columns],
+                    "id_column": n.property_of(n.id_column),
                     "native_filter_columns": sorted(
                         (
                             {"name": _cql_prop(k[4:] if k.startswith("_nf_") else k), "type": v}
