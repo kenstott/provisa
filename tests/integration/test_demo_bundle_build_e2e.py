@@ -77,7 +77,12 @@ def build(named: Path, name: str, out: Path, commit: str) -> Path:
         text=True,
         timeout=600,
     )
-    assert done.returncode == 0, (done.stdout[-4000:], done.stderr[-8000:])
+    # A string, not a tuple: pytest shortens a tuple's repr to a line, which hid the traceback of
+    # the build's failing step (CI run 39147851796).
+    assert done.returncode == 0, (
+        f"build exited {done.returncode}\n--- stdout ---\n{done.stdout[-4000:]}"
+        f"\n--- stderr ---\n{done.stderr[-12000:]}"
+    )
     (bundle,) = out.glob(f"{name}-*.tar.gz")
     return bundle
 
