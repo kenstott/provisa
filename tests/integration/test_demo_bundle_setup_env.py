@@ -12,21 +12,21 @@
 
 The build gives its servers an environment of their own. Without HOME, DuckDB cannot place its
 per-user extension directory: the server failed to start ("To set the TimeZone setting, the icu
-extension needs to be loaded. But it could not be autoloaded."). The build now names where DuckDB
-finds its extensions (_duckdb_env), and this sets up a demo with HOME unset to show the server
-starts and its setup runs."""
+extension needs to be loaded. But it could not be autoloaded."), on a demo whose views keep time
+(the reproduce demo's bitemporal report). The build now names where DuckDB finds its extensions
+(_duckdb_env), and this sets the reproduce demo up with HOME unset, its trading book in an
+embedded Postgres of the test's own, to show the server starts and its setup runs."""
 
 # Requirements: REQ-2016, REQ-2049
 
 from __future__ import annotations
 
 import importlib.util
+import shutil
 from pathlib import Path
 
+import psycopg
 import pytest
-import yaml
-
-from tests.integration.test_demo_sandboxes_e2e import _demo
 
 pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
 
@@ -43,20 +43,33 @@ def _builder():
     return module
 
 
-class _NoStores:
-    """The demo reads its own sqlite file: no stores for the build to name."""
+class _Book:
+    """The demo's stores as the build names them: its trading book, here an embedded Postgres."""
 
-    env: dict[str, str] = {}
+    def __init__(self, port: int) -> None:
+        self.env = {"REPRODUCE_PG_HOST": "127.0.0.1", "REPRODUCE_PG_PORT": str(port)}
 
 
-def test_the_setup_server_starts_and_sets_up_with_home_absent(tmp_path, monkeypatch):
-    named = tmp_path / "named"
-    _demo(named, "alpha", published=True)
-    demo = named / "alpha"
-    # Its sqlite file by its path: the setup server is given only the variables the build holds.
-    config = demo / "config.yaml"
-    config.write_text(config.read_text().replace("${env:PROVISA_NAMED_DEMO_DIR}", str(demo)))
-    (demo / "setup.yaml").write_text(yaml.safe_dump({"steps": []}))
+@pytest.fixture
+def book():
+    from tests.embedded_pg import start_local_postgres
+
+    pg = start_local_postgres()
+    try:
+        with psycopg.connect(pg.dsn("postgres"), autocommit=True) as conn:
+            conn.execute("CREATE DATABASE reproduce")
+        db = _REPO / "demo" / "named" / "reproduce" / "db"
+        with psycopg.connect(pg.dsn("reproduce"), autocommit=True) as conn:
+            conn.execute((db / "init.sql").read_text())
+            conn.execute((db / "reader.sql").read_text())
+        yield pg
+    finally:
+        pg.stop()
+
+
+def test_the_setup_server_starts_and_sets_up_with_home_absent(tmp_path, monkeypatch, book):
+    demo = tmp_path / "named" / "reproduce"
+    shutil.copytree(_REPO / "demo" / "named" / "reproduce", demo)
     monkeypatch.delenv("HOME", raising=False)
     # Raises SystemExit naming an early exit (the server did not start) or a timeout.
-    _builder()._set_up(tmp_path, demo, _NoStores(), 300)
+    _builder()._set_up(tmp_path, demo, _Book(book.port), 300)
