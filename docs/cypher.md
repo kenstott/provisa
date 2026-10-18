@@ -180,6 +180,8 @@ Cypher supports three write patterns through the `/data/cypher` endpoint, execut
 
 Property names map to columns via domain-prefix stripping and alias resolution; Cypher scalar values are coerced to the target column type. (REQ-666, REQ-668) The response body carries an `affected_rows` count. (REQ-670)
 
+A node's property is its column's published name: the column's alias when it has one, else the naming convention's name for it -- the name GraphQL and SQL read it by -- in `MATCH`, `RETURN`, `CREATE`, `SET` and `MERGE` alike. (REQ-471)
+
 Rules:
 
 - The label must resolve to exactly one registered table. Ambiguous or unknown labels are hard errors; no fuzzy matching. (REQ-661) New labels or types cannot be created through Cypher. (REQ-662)

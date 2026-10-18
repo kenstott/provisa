@@ -21,18 +21,23 @@ pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
 def _node(label: str, pk_columns: list[str]):
-    return types.SimpleNamespace(
+    from provisa.cypher.label_map import NodeMapping
+
+    # Each column read and written by its published name (the convention's: customerId).
+    return NodeMapping(
         label=label,
+        type_name=label,
         domain_label=None,
-        domain_id=None,
         table_label=label,
         table_id=0,
-        properties={"id": "id"},
-        physical_properties={"id": "id"},
-        pk_columns=pk_columns,
+        source_id="pg",
         id_column="id",
-        native_filter_columns={},
-        traversal_only=False,
+        pk_columns=pk_columns,
+        catalog_name="pg",
+        schema_name="public",
+        table_name=label.lower(),
+        properties={"id": "id", "customerId": "customer_id"},
+        physical_properties={"id": "id", "customerId": "customer_id"},
     )
 
 
@@ -54,5 +59,6 @@ async def test_graph_schema_includes_singular_pk(monkeypatch):
     by_label = {n["label"]: n for n in body["node_labels"]}
 
     assert "pk" in by_label["Orders"]
-    assert by_label["Orders"]["pk"] == cr._cql_prop("customer_id")
+    # The property the column is read and written by.
+    assert by_label["Orders"]["pk"] == "customerId"
     assert by_label["Events"]["pk"] is None

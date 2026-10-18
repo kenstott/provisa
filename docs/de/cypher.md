@@ -180,6 +180,8 @@ Cypher unterstützt drei Schreibmuster über den `/data/cypher`-Endpunkt, ausgef
 
 Eigenschaftsnamen werden über Domänenpräfix-Entfernung und Alias-Auflösung auf Spalten abgebildet; Cypher-Skalarwerte werden auf den Zielspaltentyp konvertiert. (REQ-666, REQ-668) Der Antwortkörper enthält eine `affected_rows`-Zählung. (REQ-670)
 
+Die Eigenschaft eines Knotens ist der veröffentlichte Name seiner Spalte: der Alias der Spalte, wenn sie einen hat, sonst der Name nach der Namenskonvention – der Name, unter dem GraphQL und SQL sie lesen – in `MATCH`, `RETURN`, `CREATE`, `SET` und `MERGE` gleichermaßen. (REQ-471)
+
 Regeln:
 
 - Das Label muss auf genau eine registrierte Tabelle aufgelöst werden. Mehrdeutige oder unbekannte Labels sind harte Fehler; kein Fuzzy-Matching. (REQ-661) Neue Labels oder Typen können nicht über Cypher erstellt werden. (REQ-662)

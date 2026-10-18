@@ -180,6 +180,8 @@ Cypher prend en charge trois modèles d'écriture via le endpoint `/data/cypher`
 
 Les noms de propriété sont mappés aux colonnes par suppression du préfixe de domaine et résolution d'alias ; les valeurs scalaires Cypher sont converties vers le type de colonne cible. (REQ-666, REQ-668) Le corps de la réponse contient un compteur `affected_rows`. (REQ-670)
 
+La propriété d'un nœud est le nom publié de sa colonne : l'alias de la colonne quand elle en a un, sinon le nom selon la convention de nommage — le nom sous lequel GraphQL et SQL la lisent — dans `MATCH`, `RETURN`, `CREATE`, `SET` et `MERGE` de la même façon. (REQ-471)
+
 Règles :
 
 - L'étiquette doit correspondre à exactement une table enregistrée. Les étiquettes ambiguës ou inconnues provoquent des erreurs bloquantes ; aucune correspondance approximative. (REQ-661) Aucune nouvelle étiquette ni aucun nouveau type ne peut être créé via Cypher. (REQ-662)

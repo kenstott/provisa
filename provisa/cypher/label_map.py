@@ -76,6 +76,17 @@ class NodeMapping:
     # traversal-only node built without its table's compilation.
     query_name: str = ""
 
+    def property_of(self, column: str) -> str:
+        """The property a column of this node is read and written by, the column named by its
+        physical name or by the SQL name it is published under."""
+        for prop, phys in self.physical_properties.items():
+            if phys == column:
+                return prop
+        for prop, sql_name in self.properties.items():
+            if sql_name == column:
+                return prop
+        raise KeyError(f"{column!r} is no column of node {self.type_name!r}")
+
     @property
     def sql_table_name(self) -> str:
         return self.physical_table_name or self.table_name
@@ -439,6 +450,17 @@ def _build_target_pk(ctx_typed: "CompilationContext") -> dict[str, str]:
     return target_pk
 
 
+def _published_property(ctx_typed: "CompilationContext", table_id: int, column: str) -> str:
+    """The property a column is read and written by: its alias when it has one -- the name it is
+    published under in GraphQL and SQL alike -- else the convention's name for it."""
+    from provisa.compiler.naming import apply_sql_name
+
+    published = ctx_typed.physical_to_sql.get((table_id, column))
+    if published is not None and published != apply_sql_name(column):
+        return published
+    return _apply_cql_property(column)
+
+
 def _build_node_mappings(
     ctx_typed: "CompilationContext",
     target_pk: dict[str, str],
@@ -469,7 +491,9 @@ def _build_node_mappings(
         id_col = ctx_typed.physical_to_sql.get((table_meta.table_id, _phys_id), _phys_id)
         _gov_obj = ctx_typed.gql_governed_object_cols
         props: dict[str, str] = {
-            _apply_cql_property(c): ctx_typed.physical_to_sql.get((table_meta.table_id, c), c)
+            _published_property(ctx_typed, table_meta.table_id, c): ctx_typed.physical_to_sql.get(
+                (table_meta.table_id, c), c
+            )
             for c in col_names
             if (table_meta.table_id, c) not in _gov_obj
         }
@@ -478,7 +502,9 @@ def _build_node_mappings(
         # (photoUrls) is no column of it.
         _materialized = table_meta.source_type in api_source_types()
         phys_props: dict[str, str] = {
-            _apply_cql_property(c): props[_apply_cql_property(c)] if _materialized else c
+            (prop := _published_property(ctx_typed, table_meta.table_id, c)): props[prop]
+            if _materialized
+            else c
             for c in col_names
             if (table_meta.table_id, c) not in _gov_obj
         }
@@ -685,9 +711,12 @@ def _make_traversal_node(
         col["column_name"]: col["alias"] for col in tgt_table.get("columns", []) if col.get("alias")
     }
     props: dict[str, str] = {
-        _apply_cql_property(c): (_col_alias.get(c) or _apply_sql_name(c)) for c in col_names
+        (_col_alias.get(c) or _apply_cql_property(c)): (_col_alias.get(c) or _apply_sql_name(c))
+        for c in col_names
     }
-    phys_props: dict[str, str] = {_apply_cql_property(c): c for c in col_names}
+    phys_props: dict[str, str] = {
+        (_col_alias.get(c) or _apply_cql_property(c)): c for c in col_names
+    }
     _phys_id = _resolve_id_column(tgt_type_name, col_names, {}, [])
     id_col = _col_alias.get(_phys_id) or _apply_sql_name(_phys_id)
     tgt_source_id = tgt_table.get("source_id")

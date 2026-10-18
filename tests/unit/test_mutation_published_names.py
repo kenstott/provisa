@@ -203,7 +203,7 @@ def test_a_returning_column_keeps_its_published_name():
     assert 'RETURNING "first_name" AS "givenName"' in governed, governed
 
 
-def test_a_cypher_create_names_the_property_its_reads_name_and_writes_the_physical_column(built):
+def test_a_cypher_create_names_the_columns_published_name_and_writes_the_physical_column(built):
     """Cypher names a column by its property -- the same key its MATCH reads -- and the write it
     translates to names the published column, admitted and lowered to the physical one."""
     from provisa.compiler.sql_rewrite import lower_to_catalog_physical
@@ -214,11 +214,30 @@ def test_a_cypher_create_names_the_property_its_reads_name_and_writes_the_physic
     _, ctx = built
     label_map = CypherLabelMap.from_schema(ctx, ["*"])
     (node,) = label_map.nodes.values()
-    assert node.properties["firstName"] == "givenName"  # the key MATCH reads
+    # The column's published name is its property, in MATCH and CREATE alike.
+    assert node.properties["givenName"] == "givenName"
+    assert "firstName" not in node.properties
+    assert node.property_of("first_name") == "givenName"
     sql = WriteTranslator(label_map).translate(
-        parse_cypher_write("CREATE (c:Customers {id: 1, firstName: 'Ana'})")
+        parse_cypher_write("CREATE (c:Customers {id: 1, givenName: 'Ana'})")
     )
     gov = _writer(["id", "first_name"])
     gov.table_map = {"store.customers": 1, "public.customers": 1, "customers": 1}
     assert '"first_name"' in admitted(sql, gov)
     assert '"first_name"' in lower_to_catalog_physical(sql, ctx)
+
+
+def test_a_cypher_match_returns_a_column_under_its_published_name(built):
+    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.cypher.parser import parse_cypher
+    from provisa.cypher.translator import cypher_to_sql
+
+    _, ctx = built
+    label_map = CypherLabelMap.from_schema(ctx, ["*"])
+    select, _, _ = cypher_to_sql(
+        parse_cypher("MATCH (c:Customers) WHERE c.givenName = 'Ana' RETURN c.givenName"),
+        label_map,
+        {},
+    )
+    sql = select.sql(dialect="postgres")
+    assert "givenName" in sql and "firstName" not in sql, sql
