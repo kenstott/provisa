@@ -154,6 +154,9 @@ def _serving(state):
     test set, so a role with no proto of its own is offered every method, as in the runtime."""
     state.wire_proto = MINIMAL_PROTO
     state.grpc_descriptor = None
+    # No role has a proto of its own (grpc/descriptor.role_descriptor): each is offered every method.
+    state.proto_files = {}
+    state.grpc_role_descriptors = {}
     return state
 
 

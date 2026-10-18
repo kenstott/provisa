@@ -45,6 +45,7 @@ from provisa.core.schema_org import (
     sources,
     table_columns,
     user_directory,
+    user_idp_attributes,
     user_role_assignments,
 )
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
@@ -87,6 +88,7 @@ def _prepare_sync():
                 registered_tables,
                 table_columns,
                 user_directory,  # REQ-1439: every authenticated request upserts it
+                user_idp_attributes,  # REQ-1383: every authenticated request records it
             ],
         )
         conn.execute(insert(roles).values(id="org_admin"))

@@ -35,6 +35,7 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs, user_org_memberships
 from provisa.core.schema_org import metadata as org_metadata
+from provisa.core.schema_org import user_idp_attributes
 from provisa.core.schema_org import roles, user_directory, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
@@ -71,7 +72,9 @@ def _prepare_sync(*, org_rows: list[dict]):
             conn.execute(_seed_org(**values))
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(conn, tables=[roles, user_role_assignments, user_directory])
+        org_metadata.create_all(
+            conn, tables=[roles, user_role_assignments, user_directory, user_idp_attributes]
+        )
         conn.execute(insert(roles).values(id="analyst"))
     return engine
 

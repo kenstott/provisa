@@ -42,6 +42,7 @@ from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs, user_org_memberships
 from provisa.core.schema_org import admin_audit_log, query_audit_log, user_directory
 from provisa.core.schema_org import metadata as org_metadata
+from provisa.core.schema_org import user_idp_attributes
 from provisa.core.schema_org import roles, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
@@ -56,7 +57,14 @@ _ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provis
 _ADMIN_SCHEMA = "test_invmail_admin"
 _ORG_SCHEMAS = {"root": "test_invmail_root", "acme": "test_invmail_acme"}
 # user_directory: every authenticated request upserts the caller's directory entry (REQ-1439).
-_TENANT_TABLES = [roles, user_role_assignments, admin_audit_log, query_audit_log, user_directory]
+_TENANT_TABLES = [
+    roles,
+    user_role_assignments,
+    admin_audit_log,
+    query_audit_log,
+    user_directory,
+    user_idp_attributes,
+]
 
 # REQ-1297 seeds these as system template roles in every org schema. REQ-1337: the invite gates read
 # the RIGHTS these rows carry — an empty capability list authorizes nothing however the row is named
@@ -486,7 +494,7 @@ def test_self_hosted_deployments_send_no_email(planes, smtp, monkeypatch):
     monkeypatch.setattr(
         app_state,
         "config",
-        SimpleNamespace(mail=planes.mail, multitenancy=False),
+        SimpleNamespace(mail=planes.mail, multitenancy=False, claim_roles=[]),
         raising=False,
     )
     with TestClient(_make_app(planes)) as client:

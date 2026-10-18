@@ -39,6 +39,7 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import org_invites, orgs
 from provisa.core.schema_org import metadata as org_metadata
+from provisa.core.schema_org import user_idp_attributes
 from provisa.core.schema_org import roles, user_directory, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
@@ -69,7 +70,9 @@ def _prepare_sync():
         # The middleware resolves role assignments from the tenant plane on every request, so the
         # tenant tables must exist even though this endpoint reads only the platform plane.
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(conn, tables=[roles, user_role_assignments, user_directory])
+        org_metadata.create_all(
+            conn, tables=[roles, user_role_assignments, user_directory, user_idp_attributes]
+        )
         conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
         admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
         conn.execute(insert(orgs).values(id="acme", name="Acme", created_by="super"))
