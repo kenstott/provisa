@@ -1,7 +1,7 @@
 {
   "roleSessionValues": {
     "label": "Valores de sessão",
-    "help": "Valores constantes que as regras de linhas desta função leem como current_setting('provisa.<name>'). Um valor que a solicitação vincula com o mesmo nome tem precedência. Uma função que herda desta recebe esses valores, exceto os nomes que ela mesma define.",
+    "help": "Valores constantes que as regras de linha deste papel leem como current_setting('provisa.<name>'). Um valor que a solicitação vincula com o mesmo nome tem precedência. Um papel que herda deste recebe esses valores, exceto os nomes que ele mesmo define. Um valor pode ser uma referência ${env:NAME} ou ${secret:NAME}, resolvida quando uma consulta a usa. Uma constante faz parte da consulta: os registros que o Provisa faz dela são cobertos pela ocultação central, mas os logs da própria fonte estão fora do alcance do Provisa.",
     "name": "Nome",
     "value": "Valor",
     "add": "Adicionar um valor",

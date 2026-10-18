@@ -1,7 +1,7 @@
 {
   "roleSessionValues": {
     "label": "Sessiewaarden",
-    "help": "Constante waarden die de rijregels van deze rol lezen als current_setting('provisa.<name>'). Een waarde die het verzoek onder dezelfde naam bindt, gaat voor. Een rol die van deze rol erft, krijgt deze waarden, behalve de namen die hij zelf instelt.",
+    "help": "Constante waarden die de rijregels van deze rol lezen als current_setting('provisa.<name>'). Een waarde die het verzoek onder dezelfde naam bindt, heeft voorrang. Een rol die van deze erft, krijgt deze waarden, behalve de namen die hij zelf instelt. Een waarde kan een ${env:NAME}- of ${secret:NAME}-verwijzing zijn, die wordt opgelost wanneer een query haar gebruikt. Een constante maakt deel uit van de query: de registraties die Provisa ervan maakt vallen onder de centrale afscherming, maar de eigen logs van een bron liggen buiten het bereik van Provisa.",
     "name": "Naam",
     "value": "Waarde",
     "add": "Waarde toevoegen",

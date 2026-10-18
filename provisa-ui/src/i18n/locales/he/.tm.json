@@ -3507,7 +3507,7 @@
   "he/resultRedirect.json::resultRedirect.landed": "The result ({{rows}} rows) was written to the results store.",
   "he/resultRedirect.json::resultRedirect.landedAt": "The result ({{rows}} rows) was written to the results store: {{url}}",
   "he/roleSessionValues.json::roleSessionValues.add": "Add a value",
-  "he/roleSessionValues.json::roleSessionValues.help": "Constant values this role's row rules read as current_setting('provisa.<name>'). A value the request binds under the same name takes precedence. A role that inherits from this one gets these values, except the names it sets itself.",
+  "he/roleSessionValues.json::roleSessionValues.help": "Constant values this role's row rules read as current_setting('provisa.<name>'). A value the request binds under the same name takes precedence. A role that inherits from this one gets these values, except the names it sets itself. A value may be a ${env:NAME} or ${secret:NAME} reference, resolved when a query uses it. A constant takes part in the query: Provisa's records of it are covered by central redaction, but a source's own logs are out of Provisa's reach.",
   "he/roleSessionValues.json::roleSessionValues.label": "Session values",
   "he/roleSessionValues.json::roleSessionValues.name": "Name",
   "he/roleSessionValues.json::roleSessionValues.remove": "Remove {{name}}",

@@ -1,7 +1,7 @@
 {
   "roleSessionValues": {
     "label": "Valeurs de session",
-    "help": "Valeurs constantes que les règles de lignes de ce rôle lisent en tant que current_setting('provisa.<name>'). Une valeur que la requête lie sous le même nom l'emporte. Un rôle qui hérite de celui-ci reçoit ces valeurs, sauf les noms qu'il définit lui-même.",
+    "help": "Valeurs constantes que les règles de lignes de ce rôle lisent comme current_setting('provisa.<name>'). Une valeur que la requête lie sous le même nom prévaut. Un rôle qui hérite de celui-ci reçoit ces valeurs, sauf les noms qu'il définit lui-même. Une valeur peut être une référence ${env:NAME} ou ${secret:NAME}, résolue lorsqu'une requête l'utilise. Une constante fait partie de la requête : les enregistrements qu'en fait Provisa sont couverts par le masquage central, mais les journaux propres d'une source sont hors de portée de Provisa.",
     "name": "Nom",
     "value": "Valeur",
     "add": "Ajouter une valeur",

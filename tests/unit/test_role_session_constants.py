@@ -370,3 +370,11 @@ def test_the_role_type_carries_its_constants_as_name_value_pairs():
         _role_from_row({"id": "seller", "description": "Test role."}, detail=False).session_vars
         is None
     )
+
+
+@pytest.mark.parametrize("value", ["${env:PROVISA_ZONE_CODE}", "${secret:zone_code}"])
+async def test_the_mutation_saves_a_reference_as_written(plane, value):
+    # REQ-2086: the model keeps the reference; it is resolved when a query uses it.
+    result = await _save([("zone", value)])
+    assert result.success is True
+    assert (await _stored(plane))["session_vars"] == {"zone": value}

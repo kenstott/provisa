@@ -1,7 +1,7 @@
 {
   "roleSessionValues": {
     "label": "会话值",
-    "help": "此角色的行规则以 current_setting('provisa.<name>') 读取的常量值。请求以相同名称绑定的值优先。继承此角色的角色会获得这些值，但其自身设置的名称除外。",
+    "help": "此角色的行规则以 current_setting('provisa.<name>') 读取的常量值。请求以同一名称绑定的值优先。继承此角色的角色会获得这些值，但其自行设置的名称除外。值可以是 ${env:NAME} 或 ${secret:NAME} 引用，在查询使用时解析。常量会参与查询：Provisa 对它的记录由集中脱敏覆盖，但数据源自身的日志不在 Provisa 的控制范围内。",
     "name": "名称",
     "value": "值",
     "add": "添加值",

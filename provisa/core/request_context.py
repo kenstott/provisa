@@ -118,12 +118,15 @@ def reset_session_vars(token: Token[dict[str, str]]) -> None:
 
 
 def session_vars_for(role: dict | None) -> dict[str, str]:
-    """The session variables a predicate resolves against: the role's configured constants
-    overlaid by what the request bound (REQ-1682). The request wins because it is the more
-    specific statement."""
+    """The session variables a predicate resolves against: the role's configured constants (their
+    references resolved now, REQ-2086) overlaid by what the request bound (REQ-1682). The request
+    wins because it is the more specific statement."""
+    from provisa.core.secrets import resolve_role_constant
+
     out: dict[str, str] = {}
     for k, v in ((role or {}).get("session_vars") or {}).items():
-        out[str(k)] = str(v)
+        # REQ-2086: a constant may be a ${env:...} / ${secret:...} reference, resolved here.
+        out[str(k)] = resolve_role_constant(str(k), str(v))
     out.update(current_session_vars.get())
     # REQ-1922: where the platform declares regions, ``provisa.region`` is the region of the
     # node answering, so a rule can keep a region's rows in that region. It is the node's fact,
