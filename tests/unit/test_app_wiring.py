@@ -591,3 +591,48 @@ async def test_a_view_over_a_view_not_yet_built_is_wired_and_built_once_its_inpu
 
 async def _noop_land_any(*_a, **_kw):
     return None
+
+
+@pytest.mark.asyncio
+async def test_a_view_over_a_replica_not_yet_landed_is_wired_and_built_once_it_lands(monkeypatch):
+    """REQ-2068: a demo template's views read replicas that land after its loop is wired. A view
+    whose input replica has not landed is skipped -- its build reads nothing yet -- and is wired
+    when that replica's build lands (replica_builds.run_build tells ``state.on_input_landed``),
+    then built as that replica's change: never left off the loop, its region's seed never
+    written."""
+    from provisa.executor.result import QueryResult
+
+    build_through_a_stand_in_pipeline(monkeypatch, lambda mv: f"SELECT d, n FROM {mv.id}")
+    posted: list = []
+
+    async def _post_event(conn, *, source_table, event_type, payload):
+        posted.append((source_table, event_type))
+        return 7
+
+    async def _fan_out(conn, event_id, dependents):
+        posted.append((event_id, list(dependents)))
+        return len(dependents)
+
+    monkeypatch.setattr("provisa.events.queue.post_event", _post_event)
+    monkeypatch.setattr("provisa.events.queue.fan_out", _fan_out)
+    landed: set[str] = set()
+    state, _margins = _state_with_a_view_over_a_view(set(), [])
+
+    async def _execute_engine(sql, *a, **k):
+        if "orders" not in landed:
+            raise RuntimeError("eu-shop.public.orders has not landed yet")
+        return QueryResult(rows=[], column_names=["d", "n"], column_types=["date", "bigint"])
+
+    state.federation_engine.execute_engine = _execute_engine
+    sched = _RunnableSched()
+
+    await wire_event_loop(sched, state=state, log=_LOG)
+    orders = "pg/public.orders"
+    assert orders in state.views_awaiting_input["analytics.mv_view_margins"]
+
+    landed.add("orders")
+    state.on_input_landed(orders)  # the replica's first build lands
+    await sched.fns["events:wire-awaiting:org_default"]()
+
+    assert "analytics.mv_view_margins" in {p.node for p in state.event_loop_processors}
+    assert (orders, "replace") in posted and (7, ["analytics.mv_view_margins"]) in posted

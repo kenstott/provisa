@@ -2336,7 +2336,14 @@ async def _build_org_runtime(
             # REQ-2068: on the regions sandbox tier the org's region names its store (its own
             # schemas in that region's PostgreSQL, the region lane's ``storage_url``).
             from provisa.api.demo_region_seed import regional
+            from provisa.core.org_ids import is_template_org
 
+            if regional() and storage_url is None and is_template_org(org_id):
+                # A template's first build is its provisioning's, before its model -- which this
+                # build seeds from its demo's configuration -- names a region.
+                from provisa.api.demo_region_seed import template_region_store
+
+                storage_url = rt.storage_url = template_region_store(org_id)
             rt.federation_engine.engine.pin_materialize_store(
                 storage_url
                 if regional() and storage_url is not None

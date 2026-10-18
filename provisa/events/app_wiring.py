@@ -483,13 +483,13 @@ def registry_marking(
 def _views_awaiting_an_input(
     mvs: list[Any], columns: dict[str, Any], graph: dict[str, set[str]]
 ) -> dict[str, set[str]]:
-    """``{view node: the view nodes it reads}`` for each view left unwired because its columns
-    could not be learned while a view it reads is one the loop builds."""
-    views = {view_node(mv) for mv in mvs}
+    """``{view node: the nodes it reads}`` for each view left unwired because its columns could
+    not be learned: an input -- a view the loop builds, or a table whose replica has not landed --
+    had nothing to read yet."""
     awaiting: dict[str, set[str]] = {}
     for mv in mvs:
         node = view_node(mv)
-        inputs = graph.get(node, set()) & views
+        inputs = graph.get(node, set())
         if getattr(mv, "sql", None) and node not in columns and inputs:
             awaiting[node] = inputs
     return awaiting
@@ -498,10 +498,13 @@ def _views_awaiting_an_input(
 def _wire_views_reading(scheduler: Any, state: Any, log: Any, org_id: str) -> Any:
     """``on_built`` for :func:`registry_marking`: when a view's build lands and a view awaiting it
     reads it, the loop is wired again (one job, under ``org_id``) and each view it now wires is
-    given its first build, as the built view's change."""
+    given its first build, as the built view's change. A replica's landed build is told the same
+    way (``state.on_input_landed``, called by replica_builds.run_build)."""
 
     def _built(mv: Any) -> None:
-        built = view_node(mv)
+        _landed(view_node(mv))
+
+    def _landed(built: str) -> None:
         waiting = [node for node, inputs in state.views_awaiting_input.items() if built in inputs]
         if not waiting:
             return
@@ -530,6 +533,7 @@ def _wire_views_reading(scheduler: Any, state: Any, log: Any, org_id: str) -> An
             _wire_again, id=f"events:wire-awaiting:org_{org_id}", replace_existing=True
         )
 
+    state.on_input_landed = _landed
     return _built
 
 
@@ -750,8 +754,9 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
 
             return _append
 
-        # A view whose input view is not built yet reads nothing to learn its columns from: it is
-        # wired when that input's first build lands, not left off the loop for the process's life.
+        # A view whose input -- a view not built yet, a replica not landed yet -- reads nothing to
+        # learn its columns from: it is wired when that input's first build lands, not left off the
+        # loop for the process's life.
         state.views_awaiting_input = _views_awaiting_an_input(mvs, _mv_cols, graph)
         from provisa.core.request_context import require_current_org as _org_bound
 
