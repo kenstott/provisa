@@ -280,9 +280,8 @@ def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch
         (dest / "bin" / spec.artifact_name).write_text("")
 
     monkeypatch.setattr(rd, "download_release_asset", _download)
-    # files reads through the file connector, vulnerabilities and agriculture through govdata,
-    # hasuramigration's CRM source through salesforce (its bundle build lands the copy).
-    bundles = ["pgwire-file", "pgwire-govdata", "pgwire-salesforce"]
+    # files reads through the file connector, vulnerabilities and agriculture through govdata.
+    bundles = ["pgwire-file", "pgwire-govdata"]
     assert [s.artifact_name for s in demo_templates.connector_bundles()] == bundles
     demo_templates.prefetch_connector_bundles()
     assert fetched == [(name, None) for name in bundles]
